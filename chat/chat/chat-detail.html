@@ -2684,6 +2684,20 @@
         }
         function saveUserMemories(memories) {
             if (!memories || !memories.length) return;
+            const roleMemoryId = String(aliasRoleId || currentRoleId || '');
+            if (window.MemoryRecall && roleMemoryId) {
+                memories.forEach(function(content) {
+                    window.MemoryRecall.upsertMemory(roleMemoryId, {
+                        content: String(content || '').trim(),
+                        category: 'detail',
+                        importance: 3,
+                        status: 'confirmed',
+                        source: 'ai-marker'
+                    });
+                });
+                return;
+            }
+            // Fallback for an older browser build: keep the memory role-scoped.
             try {
                 const list = JSON.parse(localStorage.getItem('user_memory') || '[]');
                 const now = Date.now();
@@ -2694,7 +2708,7 @@
                     const existing = list.find(function(item) {
                         const oldText = String(item && (item.text || item.content) || '')
                             .toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
-                        return oldText && oldText === key;
+                        return oldText && oldText === key && String(item.sourceRoleId || '') === roleMemoryId;
                     });
                     if (existing) {
                         existing.reinforcementCount = Math.max(1, Number(existing.reinforcementCount) || 1) + 1;
@@ -2705,8 +2719,7 @@
                         list.push({
                             id: 'user_mem_' + now.toString(36) + '_' + list.length.toString(36),
                             text: content.slice(0, 240), time: now, createdAt: now,
-                            lastReinforcedAt: now, reinforcementCount: 1,
-                            sourceRoleId: String(aliasRoleId || currentRoleId || '')
+                            lastReinforcedAt: now, reinforcementCount: 1, sourceRoleId: roleMemoryId
                         });
                     }
                 });
@@ -3135,7 +3148,12 @@
             try {
                 const um = JSON.parse(localStorage.getItem('user_memory') || '[]');
                 if (Array.isArray(um) && um.length) {
-                    userMemoryText = um.slice(-30).map(function(m){ return '· ' + m.text; }).join('\n');
+                    // User facts saved by older builds may be global; new extracted memories are stored
+                    // in chat_memories_<roleId>. Keep scoped legacy entries with their own character.
+                    const roleScoped = um.filter(function(m) {
+                        return !m.sourceRoleId || String(m.sourceRoleId) === String(aliasRoleId || currentRoleId || '');
+                    });
+                    userMemoryText = roleScoped.slice(-30).map(function(m){ return '· ' + (m.text || m.content || ''); }).join('\n');
                 }
             } catch(e) {}
             userMemoryText = capText(userMemoryText, CTX_CAP.userMemory);
