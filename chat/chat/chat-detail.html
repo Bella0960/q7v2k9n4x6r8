@@ -3410,7 +3410,7 @@
                     maxChars: 760,
                     maxScan: 2500
                 });
-                if (recalledText) systemPrompt += '\n\n' + recalledText;
+                if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
             recentHistory.forEach(m => {
