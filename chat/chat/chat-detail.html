@@ -4598,19 +4598,33 @@
 
       var history = getHistory(), startIndex = getProcessedCount();
       if (startIndex > history.length) startIndex = 0;
-      var endIndex = Math.min(history.length, startIndex + Math.min(20, getInterval()));
-      var batch = history.slice(startIndex, endIndex);
-      if (!batch.length) {
+      var hardEnd = Math.min(history.length, startIndex + Math.min(20, getInterval()));
+      var endIndex = startIndex, transcriptLines = [], transcriptChars = 0;
+      while (endIndex < hardEnd) {
+        var m = history[endIndex], line = '';
+        if (m && !m.isError && m.role !== 'system_error') {
+          var who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
+          var content = String(m.text || m.content || m.desc || '').trim();
+          if (content) line = who + '：' + content;
+        }
+        if (line && transcriptLines.length && transcriptChars + line.length + 1 > 4000) break;
+        if (line && !transcriptLines.length && line.length > 4000) {
+          transcriptLines.push(line.slice(0, 3800) + '…[单条消息较长，原文完整保留]');
+          endIndex++;
+          break;
+        }
+        if (line) {
+          transcriptLines.push(line);
+          transcriptChars += line.length + 1;
+        }
+        endIndex++;
+      }
+      var transcript = transcriptLines.join('\n');
+      if (endIndex === startIndex) {
         overlay.style.display = 'none';
         sumToast('没有新的未整理记录');
         return;
       }
-      var transcript = batch.map(function (m) {
-        if (!m || m.isError || m.role === 'system_error') return '';
-        var who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
-        return who + '：' + String(m.text || m.content || m.desc || '').trim();
-      }).filter(Boolean).join('\n');
-      if (transcript.length > 4000) transcript = transcript.slice(0, 4000) + '\n…（本批达到输入上限，完整原文仍保留）';
       if (!transcript) {
         localStorage.setItem('chat_summary_processed_' + rid, String(endIndex));
         localStorage.setItem('chat_last_summary_' + rid, String(Date.now()));

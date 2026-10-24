@@ -1205,10 +1205,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const apiModel = (config.model || 'gpt-3.5-turbo').trim();
         const cats = getSelectedCats();
         const catNames = cats.map(c => CAT_LABEL[c]).join('、');
-        const transcript = historySlice.map(m => {
+        let transcript = historySlice.map(m => {
+            if (!m || m.isError || m.role === 'system_error') return '';
             const who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
-            return who + '：' + (m.text || m.content || '');
-        }).join('\n');
+            return who + '：' + String(m.text || m.content || m.desc || '').trim();
+        }).filter(Boolean).join('\n');
+        // Keep summary input bounded. The original messages are never changed or deleted.
+        if (transcript.length > 4000) transcript = transcript.slice(0, 3800) + '\n…（摘要输入达到上限，原文仍完整保留）';
         const btn = isAll ? document.getElementById('btnManualAll') : document.getElementById('btnManualRecent');
         btn.disabled = true;
         const oldText = btn.textContent;
@@ -1546,7 +1549,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const total = history.length;
         let start = readProcessed(currentMemId);
         if (start > total) start = 0;
-        const end = Math.min(total, start + 30);
+        const hardEnd = Math.min(total, start + 30);
+        let end = start, chars = 0;
+        while (end < hardEnd) {
+            const m = history[end] || {};
+            const content = (m.isError || m.role === 'system_error') ? '' : String(m.text || m.content || m.desc || '').trim();
+            const line = content ? (((m.role === 'sent' || m.role === 'user') ? '用户：' : '角色：') + content) : '';
+            if (line && chars > 0 && chars + line.length + 1 > 4000) break;
+            end++;
+            if (line) chars += line.length + 1;
+            if (chars >= 4000) break;
+        }
         const slice = history.slice(start, end);
         if (!slice.length) { alert('没有未整理的历史记录'); return; }
         runSummary(slice, true, end);
