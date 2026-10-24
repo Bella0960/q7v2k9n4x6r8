@@ -1240,9 +1240,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             const text = data.choices && data.choices[0] && data.choices[0].message
                 ? (data.choices[0].message.content || '').trim() : '';
             const jsonMatch = text.match(/\[[\s\S]*\]/);
-            let items = [];
-            if (jsonMatch) { try { items = JSON.parse(jsonMatch[0]); } catch (e) {} }
-            if (!Array.isArray(items)) items = [];
+            if (!jsonMatch) throw new Error('memory-json-invalid');
+            let items;
+            try { items = JSON.parse(jsonMatch[0]); } catch (e) { throw new Error('memory-json-invalid'); }
+            if (!Array.isArray(items)) throw new Error('memory-json-invalid');
 
             const mems = loadMemories(currentMemId);
             const now = Date.now();
@@ -1294,7 +1295,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             refreshManual();
             renderLib();
         } catch (err) {
-            alert('总结失败：' + (err.name === 'AbortError' ? '请求超时' : '网络错误'));
+            alert('总结失败：' + (err.name === 'AbortError' ? '请求超时' : (err.message === 'memory-json-invalid' ? '返回格式不正确，进度未推进，可以重试' : '网络错误')));
         } finally {
             btn.disabled = false;
             btn.textContent = oldText;
