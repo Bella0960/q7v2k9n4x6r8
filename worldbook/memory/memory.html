@@ -7,6 +7,7 @@
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/memory_recall.js?v=20261024v1"></script>
     <style>
         /* 全局重置 */
         * {
@@ -879,7 +880,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                         <div class="toggle-row">
                             <div>
                                 <div class="toggle-label">总结提醒</div>
-                                <div class="toggle-hint">轮数到了且距上次总结超 8 小时才提醒，避免打扰</div>
+                                <div class="toggle-hint">只提醒，不会自动扣费；确认后每次整理最多 30 条，并额外调用一次 API</div>
                             </div>
                             <div class="mem-toggle on" id="autoToggle"></div>
                         </div>
@@ -901,7 +902,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 </div>
                 <div class="fold-body">
                     <div class="fold-inner">
-                        <div class="manual-banner">当前有 <b id="unsumCount">0</b> 条消息还没总结</div>
+                        <div class="manual-banner">当前有 <b id="unsumCount">0</b> 条消息待整理。每次最多处理 30 条，完整原文不会被覆盖。</div>
                         <div class="field-label">总结分类</div>
                         <div class="cat-grid" id="catChips">
                             <button type="button" class="cat-chip on" data-cat="plot">剧情</button>
@@ -917,7 +918,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                         </div>
                         <div style="display:flex;gap:10px;margin-top:14px;">
                             <button type="button" class="btn-ghost" id="btnManualRecent">总结最近30条</button>
-                            <button type="button" class="btn-primary" id="btnManualAll">一键全部未总结</button>
+                            <button type="button" class="btn-primary" id="btnManualAll">整理下一批未总结</button>
                         </div>
                         <div style="display:flex;gap:10px;margin-top:10px;">
                             <button type="button" class="btn-ghost" id="btnManualBusy" style="display:none;">正在总结...</button>
@@ -1195,7 +1196,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
     function getAiConfig() {
         try { return JSON.parse(localStorage.getItem('api_settings') || '{}'); } catch (e) { return {}; }
     }
-    async function runSummary(historySlice, isAll) {
+    async function runSummary(historySlice, isAll, processedTo) {
         const config = getAiConfig();
         const apiKey = (config.apiKey || '').trim();
         if (!apiKey) { alert('请先到设置页配置 API Key'); return; }
@@ -1223,6 +1224,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                     model: apiModel,
                     temperature: 0.3,
                     stream: false,
+                    max_tokens: Math.max(100, Math.min(1200, Number(sumConfig.maxOutput) || 500)),
                     messages: [
                         { role: 'system', content: '你是记忆整理助手。阅读聊天记录，只提取以下分类的记忆：' + catNames + '。每条记忆输出一个 JSON 对象：{"content":"简短陈述","category":"' + cats.join('|') + '","importance":1到5的整数}。importance：关键事件5，重要4，一般3。只输出 JSON 数组，不要解释；没有值得记住的事就输出 []。' },
                         { role: 'user', content: '聊天记录：\n' + transcript }
@@ -1241,27 +1243,50 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 
             const mems = loadMemories(currentMemId);
             const now = Date.now();
-            let autoN = 0, pendingN = 0;
+            let autoN = 0, pendingN = 0, reinforcedN = 0;
             items.forEach(it => {
                 if (!it || !it.content) return;
-                if (mems.some(e => e.content === it.content)) return;
+                const content = String(it.content).trim().slice(0, 240);
+                const key = content.toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
+                const duplicate = mems.find(e => {
+                    const old = String(e && e.content || '').toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
+                    return old && old === key;
+                });
                 const imp = Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3));
+                if (duplicate) {
+                    duplicate.reinforcementCount = Math.max(1, Number(duplicate.reinforcementCount) || 1) + 1;
+                    duplicate.lastReinforcedAt = now;
+                    duplicate.updatedAt = now;
+                    duplicate.importance = Math.max(Number(duplicate.importance) || 3, imp);
+                    reinforcedN++;
+                    return;
+                }
                 const st = imp >= 4 ? 'confirmed' : 'pending';
                 if (st === 'confirmed') autoN++; else pendingN++;
                 mems.push({
-                    content: String(it.content).slice(0, 120),
+                    id: 'mem_' + now.toString(36) + '_' + mems.length.toString(36),
+                    content: content,
                     category: ['key', 'plot', 'detail', 'anniversary', 'preference'].indexOf(it.category) !== -1 ? it.category : 'detail',
                     importance: imp,
                     status: st,
-                    createdAt: now
+                    createdAt: now,
+                    lastReinforcedAt: now,
+                    reinforcementCount: 1,
+                    source: 'manual-summary',
+                    sourceRoleId: String(currentMemId),
+                    sourceMessageCount: historySlice.length
                 });
             });
             saveMemories(currentMemId, mems);
-            // 记录已总结到的最新消息数
-            try { localStorage.setItem('chat_summary_processed_' + currentMemId, String(readHistory(currentMemId).length)); } catch (e) {}
+            // Only chronological "next batch" summaries advance this cursor.
+            // Summarizing recent N messages must never mark older history as processed.
+            if (isAll && Number.isFinite(Number(processedTo))) {
+                try { localStorage.setItem('chat_summary_processed_' + currentMemId, String(Number(processedTo)); } catch (e) {}
+            }
             try { localStorage.setItem('chat_last_summary_' + currentMemId, String(now)); } catch (e) {}
-            let msg = '已总结：' + autoN + ' 条自动确认';
+            let msg = '已整理：' + autoN + ' 条新记忆';
             if (pendingN > 0) msg += '，' + pendingN + ' 条待确认';
+            if (reinforcedN > 0) msg += '，强化旧记忆 ' + reinforcedN + ' 条';
             alert(msg);
             refreshManual();
             renderLib();
@@ -1517,10 +1542,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         runSummary(slice, false);
     });
     document.getElementById('btnManualAll').addEventListener('click', () => {
-        const total = readHistory(currentMemId).length;
-        const processed = readProcessed(currentMemId);
-        const slice = readHistory(currentMemId).slice(processed > total ? 0 : processed);
-        runSummary(slice, true);
+        const history = readHistory(currentMemId);
+        const total = history.length;
+        let start = readProcessed(currentMemId);
+        if (start > total) start = 0;
+        const end = Math.min(total, start + 30);
+        const slice = history.slice(start, end);
+        if (!slice.length) { alert('没有未整理的历史记录'); return; }
+        runSummary(slice, true, end);
     });
 
     // 记忆库操作（事件委托）
@@ -1692,5 +1721,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeTools();closeStream();}});
 })();
 </script>
+<script src="../../shared/js/phone/memory_space_v2.js?v=20261024v1"></script>
 </body>
 </html>
