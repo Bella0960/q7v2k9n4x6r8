@@ -1281,7 +1281,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
             // Only chronological "next batch" summaries advance this cursor.
             // Summarizing recent N messages must never mark older history as processed.
             if (isAll && Number.isFinite(Number(processedTo))) {
-                try { localStorage.setItem('chat_summary_processed_' + currentMemId, String(Number(processedTo)); } catch (e) {}
+                try { localStorage.setItem('chat_summary_processed_' + currentMemId, String(Number(processedTo))); } catch (e) {}
             }
             try { localStorage.setItem('chat_last_summary_' + currentMemId, String(now)); } catch (e) {}
             let msg = '已整理：' + autoN + ' 条新记忆';
