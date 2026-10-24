@@ -210,9 +210,7 @@
 
   /* === Home Indicator 避让：只给贴底的固定元素加 padding-bottom ===
      （避免全局堆 env()，只作用于确实贴底的控件） */
-  .dock-wrapper,
-  .dock-bar,
-  .gesture-bar,
+  /* Dock 外层已在上方单独处理安全区；内层 Dock 与手势条不能再重复叠加底部留白。 */
   .tabbar,
   .bottom-bar,
   .tab-bar,

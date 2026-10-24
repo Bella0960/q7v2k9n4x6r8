@@ -9,6 +9,7 @@
     <script src="../../shared/js/chat-beauty.js?v=20261024v2"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261024v2">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <style>
         * {
@@ -2709,12 +2710,45 @@
         }
         function saveUserMemories(memories) {
             if (!memories || !memories.length) return;
+            const roleMemoryId = String(aliasRoleId || currentRoleId || '');
+            if (window.MemoryRecall && roleMemoryId) {
+                memories.forEach(function(content) {
+                    window.MemoryRecall.upsertMemory(roleMemoryId, {
+                        content: String(content || '').trim(),
+                        category: 'detail',
+                        importance: 3,
+                        status: 'confirmed',
+                        source: 'ai-marker'
+                    });
+                });
+                return;
+            }
+            // Fallback for an older browser build: keep the memory role-scoped.
             try {
                 const list = JSON.parse(localStorage.getItem('user_memory') || '[]');
-                memories.forEach(function(content){
-                    list.push({ text: content, time: Date.now() });
+                const now = Date.now();
+                memories.forEach(function(content) {
+                    content = String(content || '').trim();
+                    if (!content) return;
+                    const key = content.toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
+                    const existing = list.find(function(item) {
+                        const oldText = String(item && (item.text || item.content) || '')
+                            .toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
+                        return oldText && oldText === key && String(item.sourceRoleId || '') === roleMemoryId;
+                    });
+                    if (existing) {
+                        existing.reinforcementCount = Math.max(1, Number(existing.reinforcementCount) || 1) + 1;
+                        existing.lastReinforcedAt = now;
+                        existing.time = now;
+                        existing.updatedAt = now;
+                    } else {
+                        list.push({
+                            id: 'user_mem_' + now.toString(36) + '_' + list.length.toString(36),
+                            text: content.slice(0, 240), time: now, createdAt: now,
+                            lastReinforcedAt: now, reinforcementCount: 1, sourceRoleId: roleMemoryId
+                        });
+                    }
                 });
-                // 最多存 200 条
                 while (list.length > 200) list.shift();
                 localStorage.setItem('user_memory', JSON.stringify(list));
             } catch(e) {}
@@ -2843,13 +2877,16 @@
             try { localStorage.setItem('chat_memories_' + roleId, JSON.stringify(arr)); } catch (e) {}
         }
         function memoryWeight(m) {
-            const days = (Date.now() - (m.createdAt || Date.now())) / 86400000;
+            const anchor = m.lastReinforcedAt || m.createdAt || Date.now();
+            const days = Math.max(0, (Date.now() - anchor) / 86400000);
             const half = MEM_HALF_LIFE[m.category] || 60;
             const base = MEM_CAT_BASE[m.category] || 0.6;
             let imp = Number(m.importance);
             if (isNaN(imp)) imp = 3;
             imp = Math.max(1, Math.min(5, imp)) / 5;
-            return imp * base * Math.pow(2, -days / half);
+            const repeats = Math.max(1, Number(m.reinforcementCount) || 1);
+            const reinforcementBoost = Math.min(1.45, 1 + (repeats - 1) * 0.08);
+            return imp * base * Math.pow(2, -days / half) * reinforcementBoost;
         }
         // M1：记忆存储上限 —— 超过 max 条时按权重淘汰最不重要的；fixed（钉住）永不淘汰
         function trimMemoriesByWeight(arr, max) {
@@ -3067,12 +3104,9 @@
                 }
                 chatMessages.scrollTop = chatMessages.scrollHeight;
 
-                if (!silent && typeof memorySystem !== 'undefined') {
-                    memorySystem.addMemory('你说：' + text);
-                    if (text.includes('想你') || text.includes('喜欢')) {
-                        setTimeout(() => memorySystem.addMemory('[特别瞬间] 察觉到了一份温柔的信号'), 1000);
-                    }
-                }
+                // Full text is already saved in chat_history_<roleId>. Keep the stream real:
+                // do not create a separate truncated copy or infer a "special moment" from keywords.
+
             } else {
                 historyList = loadMessages();
             }
@@ -3140,7 +3174,12 @@
             try {
                 const um = JSON.parse(localStorage.getItem('user_memory') || '[]');
                 if (Array.isArray(um) && um.length) {
-                    userMemoryText = um.slice(-30).map(function(m){ return '· ' + m.text; }).join('\n');
+                    // User facts saved by older builds may be global; new extracted memories are stored
+                    // in chat_memories_<roleId>. Keep scoped legacy entries with their own character.
+                    const roleScoped = um.filter(function(m) {
+                        return !m.sourceRoleId || String(m.sourceRoleId) === String(aliasRoleId || currentRoleId || '');
+                    });
+                    userMemoryText = roleScoped.slice(-30).map(function(m){ return '· ' + (m.text || m.content || ''); }).join('\n');
                 }
             } catch(e) {}
             userMemoryText = capText(userMemoryText, CTX_CAP.userMemory);
@@ -3380,6 +3419,28 @@
                 memoryLimit = config.memoryCount || 20;
             }
             const recentHistory = historyList.slice(-memoryLimit);
+
+            // Search older saved conversation locally. This adds no separate API call and only
+            // injects a few relevant source excerpts when the current message matches.
+            if (window.MemoryRecall && typeof window.MemoryRecall.buildHistoricalRecallText === 'function') {
+                let recallQuery = text;
+                if (!recallQuery) {
+                    for (let ri = historyList.length - 1; ri >= 0; ri--) {
+                        const entry = historyList[ri];
+                        if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
+                            recallQuery = String(entry.text || entry.content);
+                            break;
+                        }
+                    }
+                }
+                const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, {
+                    excludeRecent: recentHistory.length,
+                    maxItems: 2,
+                    maxChars: 540,
+                    maxScan: 2500
+                });
+                if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
+            }
 
             recentHistory.forEach(m => {
                 if (m.isError || m.role === 'system_error') return;
@@ -4454,11 +4515,11 @@
 <div class="sum-overlay" id="sumOverlay" style="display:none;">
   <div class="sum-sheet">
     <div class="sum-handle"></div>
-    <div class="sum-title">Memory Summary</div>
+    <div class="sum-title">记忆整理 · 分批进行</div>
     <div class="sum-sub" id="sumSub">聊了不少内容，该总结一下记忆了</div>
     <div class="sum-btns">
       <button class="sum-ghost" id="sumDismiss">稍后再说</button>
-      <button class="sum-primary" id="sumConfirm">立即总结</button>
+      <button class="sum-primary" id="sumConfirm">整理下一批</button>
     </div>
   </div>
 </div>
@@ -4518,46 +4579,44 @@
     else alert(msg);
   }
 
-  function getHistoryCount() {
+  function getHistory() {
     try {
       var raw = localStorage.getItem('chat_history_' + rid);
       var arr = raw ? JSON.parse(raw) : [];
-      return Array.isArray(arr) ? arr.length : 0;
-    } catch (e) { return 0; }
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function getProcessedCount() {
+    var n = parseInt(localStorage.getItem('chat_summary_processed_' + rid), 10);
+    return isNaN(n) || n < 0 ? 0 : n;
   }
   function getInterval() {
     var n = parseInt(localStorage.getItem('chat_summary_interval_' + rid), 10);
     if (isNaN(n) || n < 1) n = 20;
     return Math.min(n, 200);
   }
-  function autoEnabled() {
-    return localStorage.getItem('chat_summary_auto_' + rid) !== '0';
-  }
+  function autoEnabled() { return localStorage.getItem('chat_summary_auto_' + rid) !== '0'; }
   function lastSummaryAt() {
     var t = parseInt(localStorage.getItem('chat_last_summary_' + rid), 10);
     return isNaN(t) ? 0 : t;
   }
-
   function checkAutoSummary() {
-    if (!autoEnabled()) return;
-    if (overlay.style.display !== 'none') return;
-    var count = getHistoryCount();
-    var interval = getInterval();
-    if (count < interval) return;
-    var now = Date.now();
-    if (now - lastSummaryAt() < 8 * HOUR) return;
-    sumSub.textContent = '已经聊了 ' + count + ' 条内容，AI 会自动提取值得记住的事存入长期记忆。';
+    if (!autoEnabled() || overlay.style.display !== 'none') return;
+    var history = getHistory(), processed = getProcessedCount();
+    if (processed > history.length) processed = 0;
+    var remaining = Math.max(0, history.length - processed);
+    if (remaining < getInterval()) return;
+    if (Date.now() - lastSummaryAt() < 8 * HOUR) return;
+    sumSub.textContent = '有 ' + remaining + ' 条历史消息尚未整理。本次最多整理 20 条；原始聊天不会被替换或删除。确认后才会额外调用一次 API。';
     overlay.style.display = 'flex';
   }
-
   function snooze() {
     try { localStorage.setItem('chat_last_summary_' + rid, String(Date.now())); } catch (e) {}
     overlay.style.display = 'none';
   }
-
   async function doSummarize() {
     btnConfirm.disabled = true;
-    btnConfirm.textContent = '总结中...';
+    btnConfirm.textContent = '整理中...';
     try {
       var config = {};
       try { config = JSON.parse(localStorage.getItem('api_settings') || '{}'); } catch (e) {}
@@ -4566,26 +4625,42 @@
       var apiModel = (config.model || 'gpt-3.5-turbo').trim();
       if (!apiKey) { sumToast('请先到设置页配置 API Key'); overlay.style.display = 'none'; return; }
 
-      var history = [];
-      try {
-        var raw = localStorage.getItem('chat_history_' + rid);
-        history = raw ? JSON.parse(raw) : [];
-      } catch (e) {}
-      history = Array.isArray(history) ? history.slice(-60) : [];
-      if (!history.length) { overlay.style.display = 'none'; return; }
-
-      var transcript = history.map(function (m) {
-        var who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
-        return who + '：' + (m.text || m.content || '');
-      }).join('\n');
-      // M3：总结输入字符预算 4000 字，超长从头部截断（保留最近内容），不切代理对
-      var MAX_TRANSCRIPT_CHARS = 4000;
-      if (transcript.length > MAX_TRANSCRIPT_CHARS) {
-        var cut = transcript.length - MAX_TRANSCRIPT_CHARS;
-        if (transcript.charCodeAt(cut) >= 0xD800 && transcript.charCodeAt(cut) <= 0xDBFF) cut += 1;
-        transcript = '…（更早内容已省略）\n' + transcript.slice(cut);
+      var history = getHistory(), startIndex = getProcessedCount();
+      if (startIndex > history.length) startIndex = 0;
+      var hardEnd = Math.min(history.length, startIndex + Math.min(20, getInterval()));
+      var endIndex = startIndex, transcriptLines = [], transcriptChars = 0;
+      while (endIndex < hardEnd) {
+        var m = history[endIndex], line = '';
+        if (m && !m.isError && m.role !== 'system_error') {
+          var who = (m.role === 'sent' || m.role === 'user') ? '用户' : '角色';
+          var content = String(m.text || m.content || m.desc || '').trim();
+          if (content) line = who + '：' + content;
+        }
+        if (line && transcriptLines.length && transcriptChars + line.length + 1 > 4000) break;
+        if (line && !transcriptLines.length && line.length > 4000) {
+          transcriptLines.push(line.slice(0, 3800) + '…[单条消息较长，原文完整保留]');
+          endIndex++;
+          break;
+        }
+        if (line) {
+          transcriptLines.push(line);
+          transcriptChars += line.length + 1;
+        }
+        endIndex++;
       }
-
+      var transcript = transcriptLines.join('\n');
+      if (endIndex === startIndex) {
+        overlay.style.display = 'none';
+        sumToast('没有新的未整理记录');
+        return;
+      }
+      if (!transcript) {
+        localStorage.setItem('chat_summary_processed_' + rid, String(endIndex));
+        localStorage.setItem('chat_last_summary_' + rid, String(Date.now()));
+        overlay.style.display = 'none';
+        sumToast('这批没有可整理的文字消息');
+        return;
+      }
       var controller = new AbortController();
       var timer = setTimeout(function () { controller.abort(); }, 20000);
       var resp = await fetch(baseUrl + '/chat/completions', {
@@ -4593,62 +4668,73 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         signal: controller.signal,
         body: JSON.stringify({
-          model: apiModel,
-          temperature: 0.3,
-          stream: false,
+          model: apiModel, temperature: 0.3, stream: false, max_tokens: 600,
           messages: [
-            { role: 'system', content: '你是记忆整理助手。阅读聊天记录，提取值得角色长期记住的事。每条记忆输出一个 JSON 对象：{"content":"简短陈述","category":"key|plot|detail|anniversary|preference","importance":1到5的整数}。category：key=关键事件/关系状态，plot=线上聊天剧情互动，detail=生活细节，anniversary=纪念日/重要日期/约定，preference=互动偏好/喜好习惯。importance：关键事件5，重要4，一般3。只输出 JSON 数组，不要解释；没有值得记住的事就输出 []。' },
-            { role: 'user', content: '聊天记录：\n' + transcript }
+            { role: 'system', content: '你是长期记忆整理助手。只整理当前这小批对话，不要把多件事压缩成空泛人格摘要。尽量保留具体人物、时间、专有名词、承诺、事件因果和未完成话题；没有证据的内容不要补造。输出 JSON 数组，每条格式为 {"content":"具体记忆","category":"key|plot|detail|anniversary|preference","importance":1到5的整数}。只输出 JSON 数组，没有值得长期保留的内容就输出 []。' },
+            { role: 'user', content: '本批原始对话（消息序号 ' + startIndex + ' 至 ' + (endIndex - 1) + '）：\n' + transcript }
           ]
         })
       });
       clearTimeout(timer);
       if (!resp.ok) { sumToast(friendlyHttpError(resp.status, '')); overlay.style.display = 'none'; return; }
       var data = await resp.json();
-      var text = data && data.choices && data.choices[0] && data.choices[0].message
-        ? (data.choices[0].message.content || '').trim() : '';
+      var text = data && data.choices && data.choices[0] && data.choices[0].message ? (data.choices[0].message.content || '').trim() : '';
       var jsonMatch = text.match(/\[[\s\S]*\]/);
-      var items = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
-      if (!Array.isArray(items)) items = [];
+      if (!jsonMatch) throw new Error('memory-json-invalid');
+      var items = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(items)) throw new Error('memory-json-invalid');
 
       var existing = [];
       try {
-        var rawEx = localStorage.getItem('chat_memories_' + rid);
-        existing = rawEx ? JSON.parse(rawEx) : [];
+        var raw = localStorage.getItem('chat_memories_' + rid);
+        existing = raw ? JSON.parse(raw) : [];
         if (!Array.isArray(existing)) existing = [];
       } catch (e) {}
-      var now = Date.now();
-      var autoConfirmed = 0, pending = 0;
+      var now = Date.now(), confirmed = 0, pending = 0, reinforced = 0;
       items.forEach(function (it) {
         if (!it || !it.content) return;
-        var dup = existing.some(function (e) { return e.content === it.content; });
-        if (dup) return;
-        var imp = Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3));
-        // 高重要性(>=4)自动确认，其余进待确认草稿
-        var status = imp >= 4 ? 'confirmed' : 'pending';
-        if (status === 'confirmed') autoConfirmed++; else pending++;
+        var content = String(it.content).trim().slice(0, 240);
+        var key = content.toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '');
+        var duplicate = existing.find(function (m) {
+          return String(m && m.content || '').toLowerCase().replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '') === key;
+        });
+        var importance = Math.max(1, Math.min(5, parseInt(it.importance, 10) || 3));
+        if (duplicate && key) {
+          duplicate.reinforcementCount = Math.max(1, Number(duplicate.reinforcementCount) || 1) + 1;
+          duplicate.lastReinforcedAt = now;
+          duplicate.updatedAt = now;
+          duplicate.importance = Math.max(Number(duplicate.importance) || 3, importance);
+          duplicate.sourceStartIndex = startIndex;
+          duplicate.sourceEndIndex = endIndex - 1;
+          reinforced++;
+          return;
+        }
+        var status = importance >= 4 ? 'confirmed' : 'pending';
+        if (status === 'confirmed') confirmed++; else pending++;
         existing.push({
-          content: String(it.content).slice(0, 120),
-          category: (it.category === 'key' || it.category === 'plot' || it.category === 'detail' || it.category === 'anniversary' || it.category === 'preference') ? it.category : 'detail',
-          importance: imp,
-          status: status,
-          createdAt: now
+          id: 'mem_' + now.toString(36) + '_' + existing.length.toString(36),
+          content: content,
+          category: ['key','plot','detail','anniversary','preference'].indexOf(it.category) >= 0 ? it.category : 'detail',
+          importance: importance, status: status, createdAt: now, lastReinforcedAt: now,
+          reinforcementCount: 1, source: 'auto-summary', sourceRoleId: String(rid),
+          sourceStartIndex: startIndex, sourceEndIndex: endIndex - 1
         });
       });
-      // M1：统一走 saveWeightMemories（双写 phone_data_v2 + 按权重裁剪到 300 条，fixed 不淘汰）
-      try { saveWeightMemories(rid, existing); } catch (e) {}
-      try { localStorage.setItem('chat_last_summary_' + rid, String(now)); } catch (e) {}
+      if (window.MemoryRecall && window.MemoryRecall.saveMemories) window.MemoryRecall.saveMemories(rid, existing);
+      else localStorage.setItem('chat_memories_' + rid, JSON.stringify(existing));
+      localStorage.setItem('chat_summary_processed_' + rid, String(endIndex));
+      localStorage.setItem('chat_last_summary_' + rid, String(now));
       overlay.style.display = 'none';
-      var msg = '已总结：' + autoConfirmed + ' 条自动确认';
-      if (pending > 0) msg += '，' + pending + ' 条待确认';
-      btnConfirm.textContent = msg;
-      setTimeout(function () { overlay.style.display = 'none'; }, 1200);
+      var message = '本批整理：' + confirmed + ' 条确认';
+      if (pending) message += ' · ' + pending + ' 条待确认';
+      if (reinforced) message += ' · 强化旧记忆 ' + reinforced + ' 条';
+      sumToast(message);
     } catch (err) {
-      sumToast('总结失败：' + (err.name === 'AbortError' ? '请求超时' : '网络错误'));
+      sumToast('总结失败：' + (err.name === 'AbortError' ? '请求超时' : (err.message === 'memory-json-invalid' ? '模型返回格式不正确，未推进进度，可重试' : '网络错误')));
       overlay.style.display = 'none';
     } finally {
       btnConfirm.disabled = false;
-      btnConfirm.textContent = '立即总结';
+      btnConfirm.textContent = '整理下一批';
     }
   }
 
