@@ -136,7 +136,7 @@
       ranked.push({ doc:doc, score:coverage + (exact ? 1.3 : 0) + (matched >= 2 ? 0.12 : 0) + 0.08 * Math.exp(-days / 180) });
     });
     ranked.sort(function (a,b) { return b.score - a.score || (b.doc.time || 0) - (a.doc.time || 0); });
-    var max = Math.max(1, Math.min(5, Number(options.maxItems) || 3)), result = [], used = new Set();
+    var max = Math.max(1, Math.min(5, Number(options.maxItems) || 2)), result = [], used = new Set();
     for (var j = 0; j < ranked.length && result.length < max; j++) {
       var d = ranked[j].doc;
       if (!d.normalized || used.has(d.normalized)) continue;
@@ -149,7 +149,7 @@
     options = options || {};
     var matches = searchHistoryMessages(history, query, options);
     if (!matches.length) return '';
-    var maxChars = Math.max(250, Number(options.maxChars) || 760), lines = [], used = 0;
+    var maxChars = Math.max(250, Number(options.maxChars) || 540), lines = [], used = 0;
     matches.forEach(function (item) {
       var date = '';
       if (item.time) {

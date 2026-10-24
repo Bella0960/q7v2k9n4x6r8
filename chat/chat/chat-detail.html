@@ -3406,8 +3406,8 @@
                 }
                 const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, {
                     excludeRecent: recentHistory.length,
-                    maxItems: 3,
-                    maxChars: 760,
+                    maxItems: 2,
+                    maxChars: 540,
                     maxScan: 2500
                 });
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
