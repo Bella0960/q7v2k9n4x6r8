@@ -188,8 +188,10 @@
       var memories = readMemories(roleId);
       list.innerHTML = shown.map(function (entry) {
         var m = entry.message, original = entry.text, content = original.length > 260 ? original.slice(0,260) + '…' : original;
-        var normalized = window.MemoryRecall ? window.MemoryRecall.normalize(original) : original.trim().toLowerCase();
+        var sourceExcerpt = original.slice(0, 600);
+        var normalized = window.MemoryRecall ? window.MemoryRecall.normalize(sourceExcerpt) : sourceExcerpt.trim().toLowerCase();
         var already = memories.some(function (memory) {
+          if (memory.source === 'chat-archive' && Number(memory.sourceMessageIndex) === entry.index) return true;
           return (window.MemoryRecall ? window.MemoryRecall.normalize(memory.content || memory.text || '') : String(memory.content || memory.text || '').trim().toLowerCase()) === normalized;
         });
         return '<div class="mem-line memory-archive-entry" data-index="' + entry.index + '">' +

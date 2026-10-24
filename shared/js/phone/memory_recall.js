@@ -65,7 +65,7 @@
     input = input || {};
     var content = cleanText(input.content || input.text || '');
     if (!roleId || !content) return { ok: false, reason: 'empty' };
-    content = content.slice(0, 360);
+    content = content.slice(0, 600);
     var key = normalize(content), list = getMemories(roleId).filter(Boolean), now = Date.now();
     var existing = list.find(function (item) { return normalize(item && (item.content || item.text || '')) === key; });
     if (existing) {
