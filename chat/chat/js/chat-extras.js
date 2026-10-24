@@ -482,7 +482,7 @@
         if (!file) return;
         compressChatImage(file, function (dataUrl) {
           if (!dataUrl) { showToast('图片处理失败'); return; }
-          insertChatMessage({ role: 'user', type: 'image', img: dataUrl, desc: '图片', text: '[图片]' });
+          insertChatMessage({ role: 'user', type: 'image', img: dataUrl, desc: '', text: '[图片]' });
           sendSilentInstruction('[系统动作：我发了一张图片给你]');
         });
       });
@@ -762,7 +762,6 @@
 
   var oldHandleFeature = handleFeature;
   handleFeature = function(feat) {
-    if(feat==='img'){featureVirtualImage();return;}
     if(feat==='emoji'){featureEmoji();return;}
     if(feat==='aside'||feat==='narration'){featureAside();return;}
     if(feat==='clear-chat'){coreClearChat();return;}

@@ -192,7 +192,6 @@
             margin-left: var(--chat-bubble-gap-x, 0px);
             margin-right: var(--chat-bubble-gap-x, 0px);
             font-size: 0.75rem;
-            line-height: 1.5;
             letter-spacing: -0.1px;
             word-break: break-word;
             font-weight: 500;
@@ -200,17 +199,20 @@
             min-width: 0;
         }
         .msg-row.received .msg-bubble, .msg-row.left .msg-bubble {
-            background: var(--partner-bubble-bg, #FFFFFF);
-            color: var(--partner-bubble-color, #111111);
-            border-radius: var(--partner-bubble-radius, 18px 18px 18px 4px);
-            border: 1px solid rgba(255, 255, 255, 0.9);
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.02);
+            background: var(--chat-bubble-ta-bg, #FFFFFF);
+            color: var(--chat-bubble-ta-color, #111111);
+            border-radius: var(--chat-bubble-ta-radius-size, var(--chat-bubble-ta-radius, 18px 18px 18px 4px));
+            border: var(--chat-bubble-ta-border-width, 1px) var(--chat-bubble-ta-border-style, solid) var(--chat-bubble-ta-border-color, rgba(20,20,24,.035));
+            box-shadow: var(--chat-bubble-ta-shadow, 0 3px 10px rgba(0, 0, 0, 0.02));
+            line-height: var(--chat-bubble-ta-line-height, 1.5);
         }
         .msg-row.sent .msg-bubble, .msg-row.right .msg-bubble {
-            background: var(--my-bubble-bg, #111111);
-            color: var(--my-bubble-color, #FFFFFF);
-            border-radius: var(--my-bubble-radius, 18px 18px 4px 18px);
-            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+            background: var(--chat-bubble-my-bg, #111111);
+            color: var(--chat-bubble-my-color, #FFFFFF);
+            border-radius: var(--chat-bubble-my-radius-size, var(--chat-bubble-my-radius, 18px 18px 4px 18px));
+            border: var(--chat-bubble-my-border-width, 0px) var(--chat-bubble-my-border-style, solid) var(--chat-bubble-my-border-color, #111111);
+            box-shadow: var(--chat-bubble-my-shadow, 0 3px 12px rgba(0, 0, 0, 0.08));
+            line-height: var(--chat-bubble-my-line-height, 1.5);
         }
         .loading-dots {
             color: #888888;
@@ -580,26 +582,51 @@
         .msg-translation { font-size: 0.688rem; line-height: 1.45; color: #8E8E93; margin-top: 6px; padding-top: 6px; border-top: 0.5px solid rgba(0,0,0,0.08); }
         .msg-edited { font-size: 0.625rem; color: #C7C7CC; margin-top: 4px; }
 
-        /* 语音气泡 / 图片气泡 / 拉黑输入态 */
-        .bubble-voice { min-width: 108px; padding: 8px 12px; }
-        .voice-row { display: flex; align-items: center; gap: 8px; }
+        /* 语音气泡：单行波形 + 时长，转文字入口放在气泡外 */
+        .bubble-voice { min-width: 104px; padding: 8px 12px; }
+        .voice-row { display: flex; align-items: center; gap: 8px; height: 18px; }
         .voice-wave { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
         .voice-wave i { width: 2px; border-radius: 1px; background: currentColor; opacity: 0.4; }
         .voice-wave i.on { opacity: 1; }
         .voice-dur { font-size: 0.688rem; opacity: 0.7; }
-        .voice-transcript { font-size: 0.688rem; opacity: 0.75; margin-top: 6px; line-height: 1.4; }
+        .msg-voice { display: flex; flex-direction: column; gap: 1px; max-width: min(260px, 100%); }
+        .msg-row.sent .msg-voice, .msg-row.right .msg-voice { align-items: flex-end; }
+        .msg-row.received .msg-voice, .msg-row.left .msg-voice { align-items: flex-start; }
+        .voice-transcript-toggle summary {
+            list-style: none; display: inline-flex; align-items: center; gap: 3px;
+            font-size: 0.5rem; line-height: 1.2; color: #8E8E93; opacity: 0.9;
+            cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+        .voice-transcript-toggle summary::-webkit-details-marker { display: none; }
+        .voice-transcript-toggle summary::after {
+            content: "›"; display: inline-block; font-size: 0.5rem; line-height: 1;
+            transform: rotate(90deg); transition: transform 0.15s ease; opacity: 0.8;
+        }
+        .voice-transcript-toggle[open] summary { opacity: 0.5; }
+        .voice-transcript-toggle[open] summary::after { transform: rotate(-90deg); }
+        .voice-transcript-toggle .vt-open { display: none; }
+        .voice-transcript-toggle[open] .vt-closed { display: none; }
+        .voice-transcript-toggle[open] .vt-open { display: inline; }
+        .voice-transcript {
+            font-size: 0.688rem; line-height: 1.5; color: #66666B;
+            max-width: 220px; margin-top: 2px; text-align: left;
+        }
         .bubble-media { padding: 0 !important; background: transparent !important; border: none !important; }
         .msg-media-img { width: 180px; max-width: 100%; border-radius: 16px; display: block; }
         .msg-media-desc { font-size: 0.688rem; color: #8E8E93; margin-top: 6px; }
-        /* 虚拟图片：AI 描述 + 灰底占位图 */
+        /* 虚拟图片：AI 描述 + 可见的图片框 */
         .vimg-box {
-            width: 180px; max-width: 100%; min-height: 118px; box-sizing: border-box;
-            background: #F2F2F7; border-radius: 16px; padding: 14px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+            width: 180px; max-width: 100%; box-sizing: border-box;
+            background: #FFFFFF; border: 1px solid #E5E5E5; border-radius: 8px;
+            overflow: hidden;
         }
-        .vimg-icon { width: 26px; height: 26px; color: #C7C7CC; display: block; }
-        .vimg-icon svg { width: 26px; height: 26px; display: block; }
-        .vimg-desc { font-size: 0.688rem; line-height: 1.45; color: #8E8E93; text-align: center; }
+        .vimg-icon {
+            width: 100%; height: 112px;
+            display: flex; align-items: center; justify-content: center;
+            background: #F7F7F8;
+            color: #B9B9BF;
+        }
+        .vimg-icon svg { width: 22px; height: 22px; display: block; }
         /* ========== 心声卡：iOS 备忘录风格（方案 B · 严守黑白灰） ========== */
         .bubble-heart {
             display: block !important;
@@ -1311,13 +1338,14 @@
         }
         /* 圆角恢复为变量驱动：此前的覆盖块写死了 15px，导致美化配置的圆角不生效 */
         .msg-row.received .msg-bubble, .msg-row.left .msg-bubble {
-            border-radius: var(--partner-bubble-radius, 15px 15px 15px 4px);
-            border: 1px solid rgba(20,20,24,.035);
-            box-shadow: none;
+            border-radius: var(--chat-bubble-ta-radius-size, var(--chat-bubble-ta-radius, 15px 15px 15px 4px));
+            border: var(--chat-bubble-ta-border-width, 1px) var(--chat-bubble-ta-border-style, solid) var(--chat-bubble-ta-border-color, rgba(20,20,24,.035));
+            box-shadow: var(--chat-bubble-ta-shadow, none);
         }
         .msg-row.sent .msg-bubble, .msg-row.right .msg-bubble {
-            border-radius: var(--my-bubble-radius, 15px 15px 4px 15px);
-            box-shadow: none;
+            border-radius: var(--chat-bubble-my-radius-size, var(--chat-bubble-my-radius, 15px 15px 4px 15px));
+            border: var(--chat-bubble-my-border-width, 0px) var(--chat-bubble-my-border-style, solid) var(--chat-bubble-my-border-color, #111111);
+            box-shadow: var(--chat-bubble-my-shadow, none);
         }
         .message-time {
             background: transparent;
@@ -1712,12 +1740,12 @@
             <button class="plus-action-btn" type="button" id="plus-action-btn" aria-label="更多功能">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <div class="input-capsule" style="width: 298px; height: 20px; transform: matrix(1, 0, 0, 1, 9.53674e-07, 0);">
+            <div class="input-capsule">
                 <textarea class="real-input" id="chat-input" rows="1" placeholder="发送消息…" autocomplete="off" enterkeyhint="send" style="height: 31px;"></textarea>
-                <button class="send-icon-btn disabled" type="submit" aria-label="发送" disabled="">
-                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6c-2.2-2.2-5.7-2.2-7.9 0L12 5.5l-.9-.9c-2.2-2.2-5.7-2.2-7.9 0s-2.2 5.7 0 7.9L12 21l8.8-8.5c2.2-2.2 2.2-5.7 0-7.9Z"></path></svg>
-                </button>
             </div>
+            <button class="send-icon-btn disabled" type="submit" aria-label="发送" disabled="">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6c-2.2-2.2-5.7-2.2-7.9 0L12 5.5l-.9-.9c-2.2-2.2-5.7-2.2-7.9 0s-2.2 5.7 0 7.9L12 21l8.8-8.5c2.2-2.2 2.2-5.7 0-7.9Z"></path></svg>
+            </button>
         </form>
 
         <!-- 消息多选底部栏 -->
@@ -1731,15 +1759,6 @@
         <div class="plus-panel-overlay" id="plusPanelOverlay">
             <div class="plus-panel-backdrop" id="plusPanelBackdrop"></div>
             <div class="plus-panel-sheet">
-                <div class="plus-panel-head">
-                    <div class="plus-panel-heading">
-                        <span class="plus-panel-kicker">MAOMAO · CHAT TOOLS</span>
-                        <span class="plus-panel-title">快捷功能</span>
-                    </div>
-                    <button class="plus-panel-close" type="button" aria-label="关闭菜单" onclick="window.closePlusPanel &amp;&amp; window.closePlusPanel()">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m18 6-12 12M6 6l12 12"></path></svg>
-                    </button>
-                </div>
                 <div class="plus-grid">
                     <button class="plus-item" data-feat="sticker" type="button">
                         <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><path d="M9 9h.01M15 9h.01"></path></svg></span>
@@ -2220,20 +2239,17 @@
 
             const bubble = document.createElement('div');
             bubble.className = 'msg-bubble';
+            var attachEl = bubble;
 
             // 特殊类型消息渲染为卡片，复用同一套气泡与左右对齐
-            if (msg.type === 'image' && msg.img) {
+            if ((msg.type === 'image' || msg.type === 'virtual-image') && msg.img) {
                 bubble.classList.add('bubble-media');
-                var imgDesc = String(msg.desc || '');
-                bubble.innerHTML = '<img class="msg-media-img" src="' + String(msg.img) + '" alt="' + imgDesc + '">' +
-                    (imgDesc ? '<div class="msg-media-desc">' + imgDesc + '</div>' : '');
-            } else if (msg.type === 'image') {
-                // 虚拟图片：AI 只给了文字描述，前端渲染灰底占位图 + 描述
+                bubble.innerHTML = '<img class="msg-media-img" src="' + String(msg.img) + '" alt="">';
+            } else if (msg.type === 'image' || msg.type === 'virtual-image') {
+                // 虚拟图片：只渲染图片框，不显示任何描述文字
                 bubble.classList.add('bubble-media');
-                var vDesc = String(msg.desc || msg.text || '');
                 bubble.innerHTML = '<div class="vimg-box">' +
-                    '<span class="vimg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg></span>' +
-                    '<span class="vimg-desc">' + vDesc + '</span></div>';
+                    '<span class="vimg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg></span></div>';
             } else if (msg.type === 'heart') {
                 // 心声卡：iOS 备忘录风格卡片（方案 B · 黑白灰）
                 bubble.classList.add('bubble-heart');
@@ -2260,8 +2276,18 @@
                     voiceBars += '<i style="height:' + (5 + Math.round(Math.random() * 13)) + 'px"></i>';
                 }
                 bubble.innerHTML = '<div class="voice-row"><span class="voice-wave" data-bars="1">' + voiceBars + '</span>' +
-                    '<span class="voice-dur">' + voiceSecs + '"</span></div>' +
-                    (msg.text ? '<div class="voice-transcript">' + String(msg.text) + '</div>' : '');
+                    '<span class="voice-dur">' + voiceSecs + '"</span></div>';
+                if (msg.text) {
+                    var vWrap = document.createElement('div');
+                    vWrap.className = 'msg-voice';
+                    vWrap.appendChild(bubble);
+                    var vDetails = document.createElement('details');
+                    vDetails.className = 'voice-transcript-toggle';
+                    vDetails.innerHTML = '<summary><span class="vt-closed">转文字</span><span class="vt-open">收起</span></summary>' +
+                        '<div class="voice-transcript">' + String(msg.text) + '</div>';
+                    vWrap.appendChild(vDetails);
+                    attachEl = vWrap;
+                }
             } else if (msg.type === 'sticker') {
                 bubble.classList.add('bubble-sticker');
                 var safeDesc = String(msg.desc || '表情');
@@ -2463,11 +2489,11 @@
             }
 
             if (isSent) {
-                row.appendChild(bubble);
+                row.appendChild(attachEl);
                 row.appendChild(avatar);
             } else {
                 row.appendChild(avatar);
-                row.appendChild(bubble);
+                row.appendChild(attachEl);
             }
 
             chatMessages.appendChild(row);
@@ -3336,7 +3362,10 @@
             systemPrompt += '\n\n[心声能力]\n你可以在回复里展示自己的内心独白——那些你心里想到、但没有说出口的话。需要时请在整条回复的最后另起一行输出标记：\n[心声:你在心里说的话]\n系统会自动把它渲染成一张浅灰色的「心声」小卡片。\n注意：一次回复最多一句心声；心声不能代替正常对话内容；不要解释这个标记。';
 
             // 虚拟图片：由 AI 用文字描述图片，前端渲染成占位图（严禁输出任何图片链接或代码）
-            systemPrompt += '\n\n[虚拟图片能力]\n你可以在对话中给我「看」一张图片。需要发图时，请在整条回复的最后另起一行输出标记：\n[图片:一句话描述这张图片的内容]\n系统会自动把它渲染成一张图片气泡，描述会显示在图片下方。\n注意：绝对不要输出任何图片链接、URL、Markdown 图片语法或 base64 代码，只允许输出上面这种标记；一次回复最多一张。';
+            systemPrompt += '\n\n[虚拟图片能力]\n你可以在对话中给我「看」一张图片。需要发图时，请在整条回复的最后另起一行输出标记：\n[图片:一句话描述这张图片的内容]\n系统会自动把它渲染成一张图片气泡（描述只用于对话记录，不会显示在界面上）。\n注意：绝对不要输出任何图片链接、URL、Markdown 图片语法或 base64 代码，只允许输出上面这种标记；一次回复最多一张。';
+
+            // 叙事总规范（线上模式）：与线下模式共用同一套表达规范，边界清晰
+            systemPrompt += '\n\n[叙事总规范]\n- 边界清晰：当前是线上聊天模式（隔着屏幕交流），只写消息内容与打字时的心理，不写面对面动作或场景描写；线下模式的面对面叙事不适用于这里。\n- 动作描写原则：只在推进剧情、表现人物情绪、传递关键信息时才添加动作描述，删减无意义的动作与状态描写。\n- 拒绝模板：不要堆砌「动作 + 环境 + 心理」的固定结构，避免机械式的动作衔接。\n- 允许纯对话：可以只写台词和少量必要的心理，无需每条回复都搭配动作描写。\n- 表达精简：减少「刚刚、此刻、下一秒、就在这时」这类无实义的时间词；日常分享内容要有话题性，避免流水账式的状态汇报。';
 
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
@@ -4310,7 +4339,7 @@
         }
 
     </script>
-    <script src="js/chat-extras.js?t=20261016clean"></script>
+    <script src="js/chat-extras.js?t=20261024v2"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');
@@ -4719,8 +4748,8 @@
   position:absolute !important;
   left:0 !important; right:0 !important; bottom:0 !important;
   display:flex !important; flex-direction:row !important;
-  align-items:flex-end !important; gap:0 !important;
-  padding:8px 12px calc(8px + env(safe-area-inset-bottom)) !important;
+  align-items:center !important; gap:8px !important;
+  padding:8px 24px calc(8px + env(safe-area-inset-bottom)) !important;
   background:transparent !important;
   border-top:0 !important;
   backdrop-filter:none !important;
@@ -4734,13 +4763,13 @@
   margin-bottom:calc(64px + env(safe-area-inset-bottom)) !important;
 }
 .input-capsule {
-  order:1 !important; flex:1 1 100% !important; width:100% !important;
-  min-height:43px !important; box-sizing:border-box !important;
+  order:1 !important; flex:1 1 auto !important; width:auto !important; min-width:0 !important;
+  min-height:36px !important; box-sizing:border-box !important;
   border-radius:9999px !important;
   background:rgba(255,255,255,.38) !important;
   border:1px solid rgba(35,35,40,.075) !important;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.52),0 4px 20px rgba(0,0,0,.05) !important;
-  padding:5px 6px 5px 16px !important;
+  padding:2px 16px !important;
 }
 .input-capsule:focus-within {
   background:rgba(255,255,255,.48) !important;
@@ -4748,13 +4777,18 @@
   box-shadow:inset 0 1px 0 rgba(255,255,255,.58) !important;
 }
 .send-icon-btn {
-  width:25px !important;height:25px !important;min-width:25px !important;
-  margin:0 1px 0 0 !important; flex:0 0 25px !important;
+  order:2 !important; flex:0 0 36px !important;
+  width:36px !important;height:36px !important;min-width:36px !important;
+  margin:0 !important;padding:0 !important;
+  border-radius:50% !important;border:1px solid rgba(35,35,40,.075) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.52),0 4px 20px rgba(0,0,0,.05) !important;
+  background:rgba(255,255,255,.38) !important;color:#111111 !important;
+  display:flex !important;align-items:center !important;justify-content:center !important;
 }
-.send-icon-btn svg { width:16px !important;height:16px !important; }
+.send-icon-btn svg { width:17px !important;height:17px !important; }
 .plus-action-btn {
   position:absolute !important;
-  left:15px !important; bottom:calc(100% + 4px) !important;
+  left:24px !important; bottom:calc(100% + 4px) !important;
   z-index:55 !important;
   width:22px !important;height:22px !important;
   min-width:22px !important; margin:0 !important;padding:0 !important;
@@ -4765,24 +4799,27 @@
 .plus-action-btn svg { width:15px !important;height:15px !important; }
 .plus-panel-sheet {
   left:10px !important; right:auto !important;
-  bottom:112px !important;
-  width:min(216px,calc(100% - 20px)) !important;
-  max-height:min(49vh,350px) !important;
-  padding:10px 10px 8px !important;
-  border-radius:4px 12px 4px 12px !important;
+  bottom:84px !important;
+  width:min(204px,calc(100% - 20px)) !important;
+  max-height:min(46vh,340px) !important;
+  padding:9px 8px !important;
+  border-radius:8px !important;
+  background:#FAFAFB !important;
+  border:1px solid #E5E5E5 !important;
+  box-shadow:0 10px 26px rgba(20,20,26,.08) !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
 }
-.plus-panel-head { margin-bottom:7px !important;padding-bottom:7px !important; }
-.plus-panel-title { font-size:16px !important; }
-.plus-grid { gap:6px 4px !important; }
-.plus-item { min-height:47px !important; gap:4px !important; }
-.plus-icon-circle { width:23px !important;height:23px !important; }
-.plus-icon-circle svg { width:14px !important;height:14px !important; }
+.plus-grid { gap:4px 2px !important; }
+.plus-item { min-height:45px !important; gap:4px !important; padding:5px 1px !important; }
+.plus-icon-circle { width:21px !important;height:21px !important;border-radius:6px !important; }
+.plus-icon-circle svg { width:13px !important;height:13px !important; }
 .plus-label { font-size:9px !important; }
 @media(max-width:380px) {
-  .input-dock { padding-left:10px !important;padding-right:10px !important; }
-  .input-capsule { min-height:41px !important;padding-left:14px !important; }
-  .plus-action-btn { left:13px !important;bottom:calc(100% + 3px) !important; }
-  .plus-panel-sheet { left:9px !important;bottom:108px !important;width:min(210px,calc(100% - 18px)) !important; }
+  .input-dock { padding-left:24px !important;padding-right:24px !important; }
+  .input-capsule { min-height:35px !important;padding-left:14px !important;padding-right:14px !important; }
+  .plus-action-btn { left:24px !important;bottom:calc(100% + 3px) !important; }
+  .plus-panel-sheet { left:9px !important;bottom:80px !important;width:min(198px,calc(100% - 18px)) !important; }
 }
 </style>
 

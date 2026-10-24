@@ -3,24 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>赴约 · 线下剧情</title>
+<title>线下模式 · 沉浸式剧情</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/phone_stream.js"></script>
 <style>
   /* ============================================================
-   * 赴约 · 线下沉浸式剧情 —— 小说沉浸式排版
-   * 纸质浅米底 · 衬线正文 17px/1.8 · 无气泡无头像无时间戳
+   * 线下模式 · 沉浸式剧情 —— 小说沉浸式排版
+   * 纯白底 · 衬线正文 14.5px/1.7 · 无气泡无头像无时间戳
    * 一键直达：phone_current_contact → chat_history 最多 → 随机角色
    * 数据与线上聊天互通：读写同一 chat_history_<id>（mode:'date' 标记）
    * ============================================================ */
   :root {
-    --paper: #F8F6F0;
-    --ink: #1C1B18;
-    --sub: #77736A;
-    --weak: #A8A499;
-    --hairline: #E0DCD1;
+    --paper: #FFFFFF;
+    --ink: #111111;
+    --sub: #8E8E93;
+    --weak: #C7C7CC;
+    --hairline: #E5E5E5;
   }
   * {
     box-sizing: border-box;
@@ -48,94 +48,355 @@
     flex-direction: column;
   }
 
-  /* ===== 页眉：刊头 + 返回（极小全大写） ===== */
+  /* ===== 顶部导航：左返回 · 中品牌 · 右功能 ===== */
   .masthead {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: baseline;
-    padding: 16px 22px 10px;
+    padding: 14px 18px 10px;
     flex-shrink: 0;
-  }
-  .mast-word {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.28em;
-    text-transform: uppercase;
-    color: var(--ink);
+    position: relative;
   }
   .mast-link {
-    font-size: 9px;
+    font-size: 8px;
     letter-spacing: 0.22em;
     text-transform: uppercase;
     color: var(--sub);
     text-decoration: none;
   }
   .mast-link:active { color: var(--ink); }
+  .mast-word {
+    font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+    font-size: 8px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--weak);
+  }
+  .mast-action {
+    border: none;
+    background: transparent;
+    color: var(--sub);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    cursor: pointer;
+  }
+  .mast-action:active { color: var(--ink); }
+  .mast-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
 
-  /* ===== 中型衬线标题（不与正文争抢视线） ===== */
+  /* ===== 写作设置浮层（锚定右上角，白底细线） ===== */
+  .writing-pop {
+    position: absolute;
+    top: 44px;
+    right: 16px;
+    width: 268px;
+    max-height: 76vh;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    background: #FFFFFF;
+    border: 1px solid #E5E5E5;
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+    padding: 14px 16px;
+    z-index: 120;
+    display: none;
+  }
+  .writing-pop::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  .writing-pop.show { display: block; }
+  .wp-head {
+    font-size: 10px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--weak);
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .wp-group { margin-bottom: 14px; }
+  .wp-group:last-child { margin-bottom: 0; }
+  .wp-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: var(--sub);
+    margin-bottom: 7px;
+  }
+  .wp-chips {
+    display: flex;
+    gap: 6px;
+  }
+  .wp-chip {
+    flex: 1;
+    border: 1px solid var(--hairline);
+    background: transparent;
+    border-radius: 4px;
+    font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--ink);
+    padding: 6px 0;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .wp-chip.active {
+    background: #111111;
+    border-color: #111111;
+    color: #FFFFFF;
+  }
+  .wp-word {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .wp-word input {
+    width: 72px;
+    border: none;
+    border-bottom: 1px solid var(--ink);
+    background: transparent;
+    font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+    padding: 3px 2px;
+    outline: none;
+    -moz-appearance: textfield;
+  }
+  .wp-word input::-webkit-outer-spin-button,
+  .wp-word input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .wp-range {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--weak);
+  }
+
+  /* 字号滑块：极细 2px 轨道 + 小圆点拇指（禁用浏览器默认样式） */
+  .wp-slider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .wp-slider input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 22px;              /* 实际点击区域，避免只有 2px 难以拖动 */
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+  }
+  .wp-slider input[type="range"]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: #E5E5E5;
+    border-radius: 1px;
+  }
+  .wp-slider input[type="range"]::-moz-range-track {
+    height: 2px;
+    background: #E5E5E5;
+    border-radius: 1px;
+  }
+  .wp-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: #111111;
+    border: 2px solid #FFFFFF;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+  }
+  .wp-slider input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #111111;
+    border: 2px solid #FFFFFF;
+    cursor: pointer;
+  }
+
+  /* 背景行：色卡 + 按钮 */
+  .wp-bg-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .wp-bg-row input[type="color"] {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .wp-bg-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  .wp-bg-row input[type="color"]::-webkit-color-swatch {
+    border-radius: 50%;
+    border: 1px solid #E5E5E5;
+  }
+  .wp-bg-row .wp-chip { flex: 1; }
+
+  /* ===== 标题区：只留大标题（减法，少即是多） ===== */
   .title-wrap {
-    padding: 6px 22px 18px;
+    padding: 24px 24px 18px;
     border-bottom: 1px solid var(--hairline);
     flex-shrink: 0;
   }
   .title {
     font-family: Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
-    font-size: clamp(30px, 8vw, 44px);
-    line-height: 1.05;
-    letter-spacing: -0.01em;
+    font-size: clamp(20px, 5.5vw, 26px);
+    line-height: 1.15;
+    letter-spacing: 0.12em;
     font-weight: 400;
     color: var(--ink);
     overflow-wrap: break-word;
   }
-  .title-sub {
-    margin-top: 10px;
-    font-size: 10px;
-    letter-spacing: 0.45em;
+
+  /* ===== 元信息行：作者栏（角色名 · 场景类别） ===== */
+  .byline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 10px 24px 12px;
+    border-bottom: 1px solid var(--hairline);
+    flex-shrink: 0;
+  }
+  .by-name {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    color: var(--ink);
+  }
+  .by-meta {
+    font-size: 8px;
+    letter-spacing: 0.28em;
     text-transform: uppercase;
     color: var(--weak);
   }
 
-  /* ===== 叙事正文：小说排版 ===== */
+  /* ===== 阅读区：居中对话框，整条消息一个块 ===== */
   .story {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 24px 34px;
+    padding: 26px 20px 34px;
+    position: relative;
+    font-size: var(--story-font-size, 13.5px);
+    background-color: var(--story-bg, #FFFFFF);
+    background-image: var(--story-bg-image, none);
+    background-size: cover;
+    background-position: center;
   }
   .story p { word-break: break-word; }
 
-  /* 用户消息：居中 + 淡化（[你] 开头） */
-  .p-you {
-    text-align: center;
-    color: var(--sub);
-    font-size: 13.5px;
-    font-style: italic;
-    margin: 2.2em 0;
-    line-height: 1.8;
+  /* 每条消息 = 一个居中块 */
+  .msg-block { margin: 0 0 16px; }
+  .msg-block.p-ai.ops-target { background: rgba(0, 0, 0, 0.03); }
+
+  /* 居中对话框：动作、独白、台词全部整合在内 */
+  .bubble {
+    display: block;
+    width: fit-content;
+    max-width: 88%;
+    margin: 0 auto;
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-family: Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+    font-size: 1em;
+    line-height: 1.9;
+    word-break: break-word;
+    overflow-wrap: break-word;
   }
-  .p-you .you-tag {
-    font-style: normal;
-    letter-spacing: 0.2em;
-    color: var(--weak);
-    margin-right: 4px;
+  .bubble p { margin: 0 0 0.85em; text-indent: 0; }
+  .bubble p:last-child { margin-bottom: 0; }
+
+  /* 台词文字：字正下方一条细线（只跟随文字，不是整段横线） */
+  .spoken {
+    border-bottom: 1px solid #C9C9CE;
+    padding-bottom: 1px;
+  }
+  .bubble.me .spoken {
+    border-bottom-color: rgba(255, 255, 255, 0.48);
   }
 
-  /* 角色回复：连贯叙事段落（衬线 17px / 1.8） */
-  .p-ai {
-    font-size: 17px;
-    line-height: 1.8;
+  /* 对方：浅灰底 + 细边 */
+  .bubble.ai {
+    background: #F5F5F7;
     color: var(--ink);
-    margin-bottom: 1.4em;
-    text-indent: 2em;
+    border: 1px solid #EDEDED;
   }
-  .p-ai:first-letter { }
+  /* 己方：墨黑底反白 */
+  .bubble.me {
+    background: #111111;
+    color: #FFFFFF;
+    border: 1px solid #111111;
+  }
+  .bubble.me .you-tag { display: none; }
+
+  /* ===== 断屏设置：none / line / space ===== */
+  .story[data-break="line"] .msg-block + .msg-block {
+    border-top: 1px solid var(--hairline);
+    padding-top: 18px;
+  }
+  .story[data-break="space"] .msg-block { margin-bottom: 44px; }
+
+  /* ===== 剧情摘要区：两种展示模式 ===== */
+  .summary-box {
+    margin: 26px auto 4px;
+    max-width: 100%;
+    font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+  }
+  .summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 8px;
+  }
+  .summary-title {
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--weak);
+  }
+  .summary-toggle {
+    border: none;
+    background: transparent;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: var(--sub);
+    cursor: pointer;
+    padding: 2px 0;
+  }
+  .summary-toggle:active { color: var(--ink); }
+  .summary-body {
+    font-size: 11.5px;
+    line-height: 1.85;
+    color: var(--sub);
+    padding: 12px 14px;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    background: #FAFAFA;
+  }
+  /* 纯文字模式：去掉卡片边框与底色 */
+  .summary-box[data-mode="text"] .summary-body {
+    border: none;
+    background: transparent;
+    padding: 2px 0 0;
+  }
+  .summary-box[data-mode="text"] .summary-head { border-bottom: 1px solid var(--hairline); }
 
   .p-sys {
     text-align: center;
     color: var(--weak);
-    font-size: 12px;
+    font-size: 11px;
     font-style: italic;
-    margin: 1.6em 0;
-    line-height: 1.7;
+    margin: 1.5em 0;
+    line-height: 1.6;
   }
 
   /* 流式光标：1px 竖线闪烁 */
@@ -152,24 +413,32 @@
   }
   @keyframes caret { 50% { opacity: 0; } }
 
-  /* 场景切换章：极小字距拉开的居中提示 */
+  /* 章节标题：'-Chapter N | 场景' 两侧细线（对标杂志章节） */
   .scene-divider {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     color: var(--weak);
-    font-size: 11px;
-    letter-spacing: 0.5em;
-    margin: 2.6em 0 2.2em;
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin: 2.6em 0 2em;
   }
-  .scene-divider::before { content: '——\00a0\00a0'; letter-spacing: 0; }
-  .scene-divider::after  { content: '\00a0\00a0——'; letter-spacing: 0; }
+  .scene-divider::before,
+  .scene-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--hairline);
+  }
 
   .story-hint {
     text-align: center;
     color: var(--weak);
-    font-size: 13.5px;
+    font-size: 12px;
     font-style: italic;
-    line-height: 2.1;
-    margin-top: 3em;
+    line-height: 1.9;
+    margin-top: 2.2em;
   }
   .story-hint a { color: var(--sub); }
 
@@ -186,10 +455,10 @@
     border-right: 1px solid var(--hairline);
     background: transparent;
     font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
-    font-size: 11px;
+    font-size: 10px;
     letter-spacing: 0.18em;
     color: var(--sub);
-    padding: 11px 0;
+    padding: 9px 0;
     cursor: pointer;
     transition: color 0.15s ease;
   }
@@ -202,8 +471,8 @@
     flex-shrink: 0;
     display: flex;
     align-items: flex-end;
-    gap: 14px;
-    padding: 8px 22px calc(16px + env(safe-area-inset-bottom, 0px));
+    gap: 12px;
+    padding: 6px 18px calc(14px + env(safe-area-inset-bottom, 0px));
     background: var(--paper);
   }
   .composer textarea {
@@ -213,13 +482,13 @@
     border-bottom: 1px solid var(--ink);
     background: transparent;
     font-family: inherit;
-    font-size: 15px;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.6;
     color: var(--ink);
     resize: none;
     outline: none;
-    max-height: 110px;
-    padding: 5px 2px 7px;
+    max-height: 90px;
+    padding: 4px 2px 6px;
   }
   .composer textarea::placeholder { color: var(--weak); font-style: italic; }
   .send-btn {
@@ -227,15 +496,93 @@
     border: none;
     background: transparent;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 13px;
     font-style: italic;
     color: var(--ink);
     cursor: pointer;
-    padding: 5px 0 7px;
+    padding: 4px 0 6px;
     white-space: nowrap;
   }
   .send-btn:disabled { color: var(--weak); cursor: default; }
   .send-btn:active:not(:disabled) { opacity: 0.5; }
+
+  /* 续写图标按钮：一条细线回旋箭头，点击让角色接着往下写 */
+  .continue-btn {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--sub);
+    cursor: pointer;
+    padding: 4px 0 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .continue-btn:active:not(:disabled) { color: var(--ink); }
+  .continue-btn:disabled { color: var(--weak); cursor: default; }
+
+  /* 长按角色消息弹出的锚定操作菜单（白底细线，锚定在段落旁，非底部抽屉） */
+  .msg-ops {
+    position: absolute;
+    z-index: 50;
+    display: flex;
+    background: #FFFFFF;
+    border: 1px solid #E5E5E5;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+  }
+  .msg-ops button {
+    flex: 1;
+    border: none;
+    border-right: 1px solid #E5E5E5;
+    background: transparent;
+    font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: #111;
+    padding: 9px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .msg-ops button:last-child { border-right: none; }
+  .msg-ops button:active { background: #F8F8FA; }
+  .p-ai.ops-target { background: #F5F5F7; }
+
+  /* 就地编辑角色消息：细线文本框 + 保存/取消 */
+  .edit-box {
+    margin: 6px 0 14px;
+  }
+  .edit-box textarea {
+    width: 100%;
+    border: 1px solid var(--ink);
+    background: #FFFFFF;
+    font-family: Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--ink);
+    padding: 8px 10px;
+    resize: vertical;
+    outline: none;
+    min-height: 90px;
+  }
+  .edit-actions {
+    display: flex;
+    margin-top: 8px;
+  }
+  .edit-actions button {
+    flex: 1;
+    border: 1px solid var(--hairline);
+    background: transparent;
+    font-family: "Helvetica Neue", Arial, "PingFang SC", sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--ink);
+    padding: 7px 0;
+    cursor: pointer;
+  }
+  .edit-actions button + button { border-left: none; }
+  .edit-actions button:active { background: #F8F8FA; }
 
   .date-toast {
     position: fixed;
@@ -261,13 +608,87 @@
 <body>
 <div class="page">
   <header class="masthead">
-    <span class="mast-word">MAOMAO&ensp;/&ensp;DATE</span>
-    <a class="mast-link" id="backLink" href="../chat/chat/chat.html">BACK&ensp;↖</a>
+    <a class="mast-link" id="backLink" href="../chat/chat/chat.html">← BACK</a>
+    <span class="mast-word">MAOMAO&ensp;/&ensp;OFFLINE STORY</span>
+    <div class="mast-right">
+      <button class="mast-action" id="writingBtn" type="button" title="写作设置" aria-label="写作设置">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/></svg>
+      </button>
+      <button class="mast-action" id="saveBtnTop" type="button" title="保存文稿" aria-label="保存文稿">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+    </div>
+
+    <!-- 写作设置浮层：锚定右上按钮，非底部抽屉 -->
+    <div class="writing-pop" id="writingPop">
+      <div class="wp-head">写作设置</div>
+
+      <div class="wp-group">
+        <div class="wp-label">回复预设</div>
+        <div class="wp-chips" id="presetChips"></div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">单次字数基准</div>
+        <div class="wp-word">
+          <input type="number" id="wordBase" min="100" max="5000" step="50" value="1000">
+          <span class="wp-range" id="wordRange">800–1200 字</span>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">我方叙述人称</div>
+        <div class="wp-chips" id="userPersonaChips"></div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">角色叙述人称</div>
+        <div class="wp-chips" id="charPersonaChips"></div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">对话主动方</div>
+        <div class="wp-chips" id="initiatorChips"></div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">字号</div>
+        <div class="wp-slider">
+          <input type="range" id="fontSizeRange" min="11" max="20" step="0.5" value="13.5">
+          <span class="wp-range" id="fontSizeVal">13.5</span>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">阅读背景</div>
+        <div class="wp-bg-row">
+          <input type="color" id="bgColorInput" value="#ffffff" title="背景色">
+          <button class="wp-chip" id="bgImageBtn" type="button">上传图片</button>
+          <button class="wp-chip" id="bgClearBtn" type="button">清除</button>
+          <input type="file" id="bgImageFile" accept="image/*" hidden>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">断屏</div>
+        <div class="wp-chips" id="breakChips"></div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">总结区展示</div>
+        <div class="wp-chips" id="summaryChips"></div>
+      </div>
+    </div>
   </header>
 
   <div class="title-wrap">
-    <h1 class="title" id="dateTitle">赴约</h1>
-    <div class="title-sub" id="dateSub">A QUIET SCENE</div>
+    <h1 class="title" id="dateTitle">线下模式</h1>
+  </div>
+
+  <!-- 元信息行：作者栏（角色名 + 场景类别） -->
+  <div class="byline" id="byline">
+    <span class="by-name" id="byName">TA</span>
+    <span class="by-meta" id="byMeta">OFFLINE MODE</span>
   </div>
 
   <main class="story" id="story"></main>
@@ -281,6 +702,9 @@
 
   <form class="composer" id="dateForm">
     <textarea id="dateInput" rows="1" placeholder="写下你的行动与台词……"></textarea>
+    <button class="continue-btn" id="dateContinue" type="button" title="让角色续写" aria-label="让角色续写">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
     <button class="send-btn" id="dateSend" type="submit">Send&thinsp;↗</button>
   </form>
 
@@ -304,6 +728,7 @@
     var params = new URLSearchParams(location.search);
     var roleId = params.get('id') || '';
     var sceneName = (params.get('scene') || '').trim();
+    var isPreview = params.get('preview') === '1';   // 预览模式：用默认角色与演示数据，不依赖角色库
 
     var storyEl = document.getElementById('story');
     var input = document.getElementById('dateInput');
@@ -313,6 +738,25 @@
     var dateTitle = document.getElementById('dateTitle');
     var dateSub = document.getElementById('dateSub');
     var backLink = document.getElementById('backLink');
+    var byName = document.getElementById('byName');
+    var byMeta = document.getElementById('byMeta');
+    var saveBtnTop = document.getElementById('saveBtnTop');
+    var writingBtn = document.getElementById('writingBtn');
+    var writingPop = document.getElementById('writingPop');
+    var presetChips = document.getElementById('presetChips');
+    var wordBase = document.getElementById('wordBase');
+    var wordRange = document.getElementById('wordRange');
+    var userPersonaChips = document.getElementById('userPersonaChips');
+    var charPersonaChips = document.getElementById('charPersonaChips');
+    var initiatorChips = document.getElementById('initiatorChips');
+    var fontSizeRange = document.getElementById('fontSizeRange');
+    var fontSizeVal = document.getElementById('fontSizeVal');
+    var bgColorInput = document.getElementById('bgColorInput');
+    var bgImageBtn = document.getElementById('bgImageBtn');
+    var bgClearBtn = document.getElementById('bgClearBtn');
+    var bgImageFile = document.getElementById('bgImageFile');
+    var breakChips = document.getElementById('breakChips');
+    var summaryChips = document.getElementById('summaryChips');
     var sending = false;
 
     function toast(msg) {
@@ -320,6 +764,200 @@
         toastEl.textContent = msg;
         toastEl.classList.add('show');
         setTimeout(function () { toastEl.classList.remove('show'); }, 2400);
+    }
+
+    /* ---------- 写作设置：回复预设 / 字数基准 / 叙述人称 ---------- */
+    var WOPT_KEY = 'date_writing_opts';
+    var PERSONAS = ['你', '我', '他'];
+    var PRESETS = {
+        default:  { name: '均衡', style: '均衡的小说叙事：描写与对话并重，节奏自然，情绪克制而准确。' },
+        literary: { name: '细腻', style: '偏文学化：细腻的心理与环境描写，克制的对话，善用长句、意象与留白。' },
+        concise:  { name: '克制', style: '简洁克制：句子短，少修饰，重心落在动作与台词上，情绪藏在细节里。' },
+        dramatic: { name: '戏剧', style: '戏剧张力：情绪起伏明显，冲突与转折密集，节奏偏快，台词锋利。' }
+    };
+    function personaDesc(p) {
+        return p === '你' ? '第二人称' : (p === '我' ? '第一人称' : '第三人称');
+    }
+    function loadWritingOpts() {
+        var d = {
+            preset: 'default', wordBase: 1000,
+            userPersona: '你', charPersona: '他',
+            initiator: 'char', fontSize: 13.5,
+            bgColor: '#FFFFFF', bgImage: '',
+            breakMode: 'none', summaryMode: 'card'
+        };
+        try {
+            var v = JSON.parse(localStorage.getItem(WOPT_KEY) || '{}') || {};
+            if (v.preset && PRESETS[v.preset]) d.preset = v.preset;
+            var wb = parseInt(v.wordBase, 10);
+            if (wb >= 100 && wb <= 5000) d.wordBase = wb;
+            if (v.userPersona && PERSONAS.indexOf(v.userPersona) >= 0) d.userPersona = v.userPersona;
+            if (v.charPersona && PERSONAS.indexOf(v.charPersona) >= 0) d.charPersona = v.charPersona;
+            if (v.initiator === 'me' || v.initiator === 'char') d.initiator = v.initiator;
+            var fs = parseFloat(v.fontSize);
+            if (fs >= 11 && fs <= 20) d.fontSize = fs;
+            if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor)) d.bgColor = v.bgColor;
+            if (v.bgImage && /^data:image\//.test(v.bgImage)) d.bgImage = v.bgImage;
+            if (v.breakMode && ['none', 'line', 'space'].indexOf(v.breakMode) >= 0) d.breakMode = v.breakMode;
+            if (v.summaryMode === 'card' || v.summaryMode === 'text') d.summaryMode = v.summaryMode;
+        } catch (e) {}
+        return d;
+    }
+    var writingOpts = loadWritingOpts();
+    function saveWritingOpts() {
+        try { localStorage.setItem(WOPT_KEY, JSON.stringify(writingOpts)); } catch (e) {}
+    }
+    function wordRangeText(wb) {
+        var lo = Math.round(wb * 0.8), hi = Math.round(wb * 1.2);
+        return lo + '–' + hi + ' 字';
+    }
+    function renderChips(container, items, activeKey, onPick) {
+        if (!container) return;
+        container.innerHTML = '';
+        items.forEach(function (it) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'wp-chip' + (it.key === activeKey ? ' active' : '');
+            b.textContent = it.label;
+            b.addEventListener('click', function (e) {
+                e.stopPropagation();
+                onPick(it.key);
+                saveWritingOpts();
+                renderWritingUI();
+            });
+            container.appendChild(b);
+        });
+    }
+    function renderWritingUI() {
+        var presetItems = Object.keys(PRESETS).map(function (k) { return { key: k, label: PRESETS[k].name }; });
+        var personaItems = PERSONAS.map(function (p) { return { key: p, label: p }; });
+        renderChips(presetChips, presetItems, writingOpts.preset, function (k) { writingOpts.preset = k; });
+        renderChips(userPersonaChips, personaItems, writingOpts.userPersona, function (k) { writingOpts.userPersona = k; });
+        renderChips(charPersonaChips, personaItems, writingOpts.charPersona, function (k) { writingOpts.charPersona = k; });
+        renderChips(initiatorChips, [
+            { key: 'char', label: '角色主动' },
+            { key: 'me', label: '我主动' }
+        ], writingOpts.initiator, function (k) { writingOpts.initiator = k; });
+        renderChips(breakChips, [
+            { key: 'none', label: '无缝' },
+            { key: 'line', label: '细线' },
+            { key: 'space', label: '留白' }
+        ], writingOpts.breakMode, function (k) {
+            writingOpts.breakMode = k;
+            applyReadingStyle();
+            appendSummary();
+        });
+        renderChips(summaryChips, [
+            { key: 'card', label: '卡片' },
+            { key: 'text', label: '纯文字' }
+        ], writingOpts.summaryMode, function (k) {
+            writingOpts.summaryMode = k;
+            appendSummary();
+        });
+        if (wordBase) wordBase.value = writingOpts.wordBase;
+        if (wordRange) wordRange.textContent = wordRangeText(writingOpts.wordBase);
+        if (fontSizeRange) fontSizeRange.value = writingOpts.fontSize;
+        if (fontSizeVal) fontSizeVal.textContent = writingOpts.fontSize;
+        if (bgColorInput) bgColorInput.value = writingOpts.bgColor;
+        applyReadingStyle();
+    }
+
+    /* 应用阅读区样式：字号 / 背景色 / 背景图 / 断屏 */
+    function applyReadingStyle() {
+        var root = document.documentElement;
+        root.style.setProperty('--story-font-size', (writingOpts.fontSize || 13.5) + 'px');
+        root.style.setProperty('--story-bg', writingOpts.bgColor || '#FFFFFF');
+        root.style.setProperty('--story-bg-image', writingOpts.bgImage ? 'url("' + writingOpts.bgImage + '")' : 'none');
+        if (storyEl) storyEl.setAttribute('data-break', writingOpts.breakMode || 'none');
+    }
+    if (wordBase) {
+        wordBase.addEventListener('input', function () {
+            var v = parseInt(wordBase.value, 10);
+            if (isNaN(v)) return;
+            if (v < 100) v = 100;
+            if (v > 5000) v = 5000;
+            writingOpts.wordBase = v;
+            if (wordRange) wordRange.textContent = wordRangeText(v);
+            saveWritingOpts();
+        });
+    }
+    if (fontSizeRange) {
+        fontSizeRange.addEventListener('input', function () {
+            var v = parseFloat(fontSizeRange.value);
+            if (isNaN(v)) return;
+            writingOpts.fontSize = v;
+            if (fontSizeVal) fontSizeVal.textContent = v;
+            applyReadingStyle();
+            saveWritingOpts();
+        });
+    }
+    if (bgColorInput) {
+        bgColorInput.addEventListener('input', function () {
+            writingOpts.bgColor = bgColorInput.value;
+            applyReadingStyle();
+            saveWritingOpts();
+        });
+    }
+    // 背景图：压缩后存入 localStorage，避免超配额
+    if (bgImageBtn && bgImageFile) {
+        bgImageBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            bgImageFile.click();
+        });
+        bgImageFile.addEventListener('change', function () {
+            var file = bgImageFile.files && bgImageFile.files[0];
+            if (!file) return;
+            compressImage(file, function (dataUrl) {
+                if (!dataUrl) { toast('图片读取失败'); return; }
+                writingOpts.bgImage = dataUrl;
+                applyReadingStyle();
+                saveWritingOpts();
+                toast('背景已更新');
+                bgImageFile.value = '';
+            });
+        });
+    }
+    if (bgClearBtn) {
+        bgClearBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            writingOpts.bgImage = '';
+            writingOpts.bgColor = '#FFFFFF';
+            if (bgColorInput) bgColorInput.value = '#FFFFFF';
+            applyReadingStyle();
+            saveWritingOpts();
+            toast('已恢复默认背景');
+        });
+    }
+    function compressImage(file, cb) {
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+            var img = new Image();
+            img.onload = function () {
+                try {
+                    var maxW = 900;
+                    var scale = Math.min(1, maxW / (img.width || maxW));
+                    var c = document.createElement('canvas');
+                    c.width = Math.round((img.width || maxW) * scale);
+                    c.height = Math.round((img.height || maxW) * scale);
+                    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                    cb(c.toDataURL('image/jpeg', 0.7));
+                } catch (e) { cb(''); }
+            };
+            img.onerror = function () { cb(''); };
+            img.src = ev.target.result;
+        };
+        reader.onerror = function () { cb(''); };
+        reader.readAsDataURL(file);
+    }
+    if (writingBtn && writingPop) {
+        writingBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            writingPop.classList.toggle('show');
+        });
+        writingPop.addEventListener('click', function (e) { e.stopPropagation(); });
+        document.addEventListener('click', function () {
+            writingPop.classList.remove('show');
+        });
     }
 
     function readRoles() {
@@ -369,10 +1007,11 @@
 
     if (!roleId) roleId = resolveRoleId();
 
-    /* ---------- 守卫：一个角色都没有 ---------- */
+    /* ---------- 守卫：一个角色都没有（预览模式跳过） ---------- */
     var composer = document.getElementById('dateForm');
+    if (isPreview) roleId = 'preview';
     if (!roleId) {
-        storyEl.innerHTML = '<p class="story-hint">还没有可以赴约的人。<br>先去<a href="../worldbook/characters/characters.html">角色库</a>创建一位，再回来续写你们的故事。</p>';
+        storyEl.innerHTML = '<p class="story-hint">还没有可以约见的人。<br>先去<a href="../worldbook/characters/characters.html">角色库</a>创建一位，再回来续写你们的故事。</p>';
         if (composer) composer.style.display = 'none';
         if (quickBar) quickBar.style.display = 'none';
         return;
@@ -384,12 +1023,18 @@
         return;
     }
 
-    var character = getCharacter(roleId) || { id: roleId, name: 'TA' };
+    var character = { id: roleId, name: 'TA' };
+    try {
+        var roles = readRoles();
+        for (var i = 0; i < roles.length; i++) {
+            if (String(roles[i].id) === String(roleId)) { character = roles[i]; break; }
+        }
+    } catch (e) {}
     var charName = character.name || 'TA';
 
-    /* ---------- 顶栏 / 标题 / 返回 ---------- */
-    dateTitle.textContent = charName;
-    dateSub.textContent = sceneName ? 'SCENE — ' + sceneName : 'A QUIET SCENE';
+    /* ---------- 顶栏 / 标题 / 元信息 / 返回 ---------- */
+    if (byName) byName.textContent = charName;
+    if (byMeta) byMeta.textContent = 'OFFLINE MODE' + (sceneName ? ' · ' + sceneName.toUpperCase() : '');
     backLink.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
 
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
@@ -412,41 +1057,145 @@
         try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) {}
     }
 
-    /* ---------- 渲染：小说排版（无气泡 / 无头像 / 无时间戳） ---------- */
+    /* ---------- 本地内容生成（预览用，不依赖 API） ----------
+     * 进入即有完整示例：角色开场 → 我的长文 → 角色大篇幅回复，
+     * 全部以气泡呈现，用于直接预览排版效果。 */
+    function buildLocalOpening() {
+        var scene = sceneName || '';
+        var head = scene
+            ? '你推开' + scene + '的门，暖意和气息一同漫上来。'
+            : '你推开门的时候，风从你身后涌进来。';
+        return head + charName + '抬起头，目光隔着几步与你相接，安静地看了两秒，像在确认什么，才极轻地弯了一下嘴角。\n\n' +
+            '（' + charName + '在心里想：是你。……终于，还是来了。）"你来啦。"' + charName + '开口时声音比想象中低一些，"我等你一会儿了。"';
+    }
+    function buildLocalUserDemo() {
+        return '我推门进去的时候，风把外套下摆吹得翻了一下。看到你的那一刻，路上准备好的那几句话忽然全忘了，只剩下心跳声。\n\n' +
+            '"……我来了。"我在门口站了两秒才走过去，拉开椅子坐下，才发现手心有点凉。';
+    }
+    function buildLocalReply() {
+        var cn = charName;
+        var sc = sceneName || '这里';
+        // 段落池：按字数基准拼接，模拟「基准 ±20%」的回复长度
+        var pool = [
+            cn + '没有马上回答。' + sc + '的光线从窗边漫进来，落在桌沿的杯壁上，也落在你微微发红的耳廓上。他看了你一会儿，眼神里有种被藏得很好的东西，慢慢松开了。',
+            '（终于见到你了。）他在心里想。这句话在胸口翻了好几天，真正到了嘴边，却变得又轻又软，怕一用力就会碎掉。',
+            '"我还以为你不会来。"他说完就笑了一下，像是想把这句过于直白的话收回去，"……我是说，路上堵不堵？"',
+            '他伸手把你面前那杯热饮往你的方向推了推，指尖在杯壁上停了一瞬才收回去。那点温度顺着瓷壁传上来，他忽然觉得自己有点好笑——明明在别人面前，从来不是这样的人。',
+            '（别紧张。）他在心里对自己说，（你已经在心里排练过一百遍了。）可越是这样想，握着杯子的手指越是收不紧。',
+            '窗外的车声远了，屋里安静下来，只剩杯子里细微的水汽声。他抬起眼，睫毛在灯光下投出一小片阴影，动了动嘴唇，又把话咽了回去。',
+            '"其实这段时间，我一直想找个机会跟你说件事。"他终于开口，声音压得很低，像是怕被邻桌听见，"关于我们。"',
+            '他说完就低下头去，指节在桌面上轻轻敲了一下，又在半途停住。那种几不可闻的迟疑，比任何一句表白都要清楚。',
+            '（如果现在不说，是不是又要等很久。）他想着，喉结动了一下，抬起眼来看你，目光里带着一点孤注一掷的亮。',
+            '你没有立刻接话，他也不催，只是把身体微微前倾了一点，安静地等。窗玻璃上映出两个人的轮廓，靠得比坐着的位置要近。',
+            '"你不用现在回答我。"他忽然又软下来，笑了一下，"我只是……不想再假装若无其事了。"',
+            '空气里有咖啡的苦味和一点点甜。他垂下眼，指尖无意识地描着杯沿的一圈水痕，等你的回应。'
+        ];
+        var wb = (writingOpts && writingOpts.wordBase) || 1000;
+        var target = Math.round(wb * 0.9);
+        var out = [], len = 0;
+        for (var i = 0; i < pool.length && len < target; i++) {
+            out.push(pool[i]);
+            len += pool[i].length;
+        }
+        return out.join('\n\n');
+    }
+    function initScene() {
+        if (isPreview) {
+            // 预览模式：固定 3 条示例（TA 开场 → 我的叙述+台词 → TA 大篇幅回复）
+            var PREVIEW_KEY = 'date_preview_ver', PREVIEW_VER = '6';
+            var curVer = '';
+            try { curVer = localStorage.getItem(PREVIEW_KEY) || ''; } catch (e) {}
+            if (curVer === PREVIEW_VER && history.length === 3) return;
+            history.length = 0;
+            var tp = Date.now();
+            history.push({ role: 'assistant', text: buildLocalOpening(), time: tp, mode: 'date', scene: sceneName || undefined });
+            history.push({ role: 'user', text: buildLocalUserDemo(), time: tp + 1, mode: 'date', scene: sceneName || undefined });
+            history.push({ role: 'assistant', text: buildLocalReply(), time: tp + 2, mode: 'date', scene: sceneName || undefined });
+            saveHistory(history);
+            try { localStorage.setItem(PREVIEW_KEY, PREVIEW_VER); } catch (e) {}
+            return;
+        }
+        // 真实使用：只在空历史时补一条角色开场白，不写入任何示例对话
+        if (history.length) return;
+        history.push({ role: 'assistant', text: buildLocalOpening(), time: Date.now(), mode: 'date', scene: sceneName || undefined });
+        saveHistory(history);
+    }
+    // 本地模拟流式：逐字上屏，最终落库并渲染为气泡
+    function localReplySim() {
+        var text = buildLocalReply();
+        var ind = document.getElementById('dateIndicator');
+        if (ind) ind.remove();
+        streamingP = null;
+        streamingRow = null;
+        var i = 0;
+        var timer = setInterval(function () {
+            i += 8;
+            paintStream(text.slice(0, i));
+            if (i >= text.length) {
+                clearInterval(timer);
+                removeStreaming();
+                history.push({ role: 'assistant', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined });
+                saveHistory(history);
+                appendAiParagraphs(text, history.length - 1);
+                setSending(false);
+                scrollBottom();
+            }
+        }, 24);
+    }
+
+    /* ---------- 渲染：气泡对话 ---------- */
     var lastScene = '';
+    var sceneCount = 0;
     function appendSceneDivider(name) {
+        sceneCount++;
         var d = document.createElement('div');
         d.className = 'scene-divider';
-        d.textContent = name;
+        d.textContent = 'Chapter ' + sceneCount + ' | ' + name;
         storyEl.appendChild(d);
     }
-    function appendYou(text) {
+    /* 段落内的台词文字加下划线：引号内容包进 .spoken，其余为普通文本 */
+    function buildRichParagraph(text) {
         var p = document.createElement('p');
-        p.className = 'p-you';
-        var tag = document.createElement('span');
-        tag.className = 'you-tag';
-        tag.textContent = '[你]';
-        p.appendChild(tag);
-        p.appendChild(document.createTextNode(text));
-        storyEl.appendChild(p);
+        var re = /[“"「『]([^”"」』]*)[”"」』]/g;
+        var last = 0, m;
+        while ((m = re.exec(text)) !== null) {
+            if (m.index > last) p.appendChild(document.createTextNode(text.slice(last, m.index)));
+            var sp = document.createElement('span');
+            sp.className = 'spoken';
+            sp.textContent = m[0];
+            p.appendChild(sp);
+            last = m.index + m[0].length;
+        }
+        if (last < text.length) p.appendChild(document.createTextNode(text.slice(last)));
+        return p;
     }
-    function appendAiParagraphs(text) {
+
+    /* 渲染一条消息：动作、内心独白、台词全部整合进同一个居中对话框 */
+    function appendMessageBlock(text, idx, isMe) {
+        var block = document.createElement('div');
+        block.className = 'msg-block ' + (isMe ? 'p-you' : 'p-ai');
+        if (idx != null) block.setAttribute('data-idx', idx);
+
+        var bubble = document.createElement('div');
+        bubble.className = 'bubble ' + (isMe ? 'me' : 'ai');
         String(text || '').replace(/\n{3,}/g, '\n\n').split(/\n\n+/).forEach(function (seg) {
             var s = seg.trim();
             if (!s) return;
-            var p = document.createElement('p');
-            p.className = 'p-ai';
-            p.textContent = s;
-            storyEl.appendChild(p);
+            bubble.appendChild(buildRichParagraph(s));
         });
+
+        block.appendChild(bubble);
+        storyEl.appendChild(block);
     }
+    function appendYou(text, idx) { appendMessageBlock(text, idx, true); }
+    function appendAiParagraphs(text, idx) { appendMessageBlock(text, idx, false); }
     function appendSys(text) {
         var p = document.createElement('p');
         p.className = 'p-sys';
         p.textContent = '（' + text + '）';
         storyEl.appendChild(p);
     }
-    function appendMessage(msg) {
+    function appendMessage(msg, idx) {
         if (!msg) return;
         var text = String(msg.text || msg.content || '').trim();
         if (!text) return;   // 线上卡片类消息（红包/位置等）不进小说排版
@@ -456,13 +1205,14 @@
             lastScene = msg.scene;
         }
         if (msg.role === 'user' || msg.role === 'sent') appendYou(text);
-        else if (msg.role === 'assistant' || msg.role === 'received') appendAiParagraphs(text);
+        else if (msg.role === 'assistant' || msg.role === 'received') appendAiParagraphs(text, idx);
     }
     function renderAll() {
         storyEl.innerHTML = '';
         lastScene = '';
+        sceneCount = 0;
         var list = loadHistory();
-        list.forEach(appendMessage);
+        list.forEach(function (m, i) { appendMessage(m, i); });
         if (!list.length) {
             var hint = document.createElement('p');
             hint.className = 'story-hint';
@@ -471,7 +1221,57 @@
                 : '故事从这里开始。写下你们见面的第一幕。';
             storyEl.appendChild(hint);
         }
+        appendSummary();
         storyEl.scrollTop = storyEl.scrollHeight;
+    }
+
+    /* ---------- 剧情摘要区：底部一条，支持「卡片 / 纯文字」两种展示 ---------- */
+    function appendSummary() {
+        var old = document.getElementById('summaryBox');
+        if (old) old.remove();
+        if (!history.length) return;
+
+        var scenes = [], seen = {}, lastLine = '';
+        history.forEach(function (m) {
+            if (m.scene && !seen[m.scene]) { seen[m.scene] = 1; scenes.push(m.scene); }
+            var t = String(m.text || m.content || '').trim();
+            if (t && (m.role === 'assistant' || m.role === 'received')) lastLine = t;
+        });
+        lastLine = lastLine.replace(/\s+/g, ' ');
+        var text = (scenes.length ? '场景 · ' + scenes.join(' / ') + '　' : '') + '共 ' + history.length + ' 条记录';
+        if (lastLine) text += '　｜　最新：' + lastLine.slice(0, 56) + (lastLine.length > 56 ? '…' : '');
+
+        var box = document.createElement('div');
+        box.className = 'summary-box';
+        box.id = 'summaryBox';
+        box.setAttribute('data-mode', writingOpts.summaryMode || 'card');
+
+        var head = document.createElement('div');
+        head.className = 'summary-head';
+        var title = document.createElement('span');
+        title.className = 'summary-title';
+        title.textContent = '剧情摘要';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'summary-toggle';
+        btn.textContent = (writingOpts.summaryMode === 'text') ? '切换 · 卡片' : '切换 · 纯文字';
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            writingOpts.summaryMode = (writingOpts.summaryMode === 'text') ? 'card' : 'text';
+            saveWritingOpts();
+            appendSummary();
+            renderWritingUI();
+        });
+        head.appendChild(title);
+        head.appendChild(btn);
+
+        var body = document.createElement('div');
+        body.className = 'summary-body';
+        body.textContent = text;
+
+        box.appendChild(head);
+        box.appendChild(body);
+        storyEl.appendChild(box);
     }
     function scrollBottom() { storyEl.scrollTop = storyEl.scrollHeight; }
 
@@ -489,15 +1289,31 @@
         var persona = capText((character.persona || character.prompt || '').trim() || '一个真实、有生活气息的人。', 5000);
         var parts = [];
 
+        parts.push('【叙事总规范 · 线上与线下通用】');
+        parts.push('- 边界清晰：线上模式是隔着屏幕的文字交流，只写消息内容与输入时的心理，不写面对面动作；线下模式是同一空间的面对面相处，可写动作、神态、环境与内心独白。两者表达逻辑不混淆。');
+        parts.push('- 动作描写原则：只在推进剧情、表现人物情绪、传递关键信息时才添加动作描述；删减无意义的动作与状态描写。');
+        parts.push('- 拒绝模板：不要堆砌「动作 + 环境 + 心理」的固定结构，避免机械式的动作衔接。');
+        parts.push('- 允许纯对话：可以只写台词和少量必要的心理，无需每条回复都搭配动作描写。');
+        parts.push('- 表达精简：减少「刚刚、此刻、下一秒、就在这时」这类无实义的时间词；日常分享内容要有话题性，避免流水账式的状态汇报。');
+
+        parts.push('');
         parts.push('【线下沉浸式剧情模式 · 最高优先级】');
-        parts.push('当前为线下沉浸式剧情模式' + (sceneName ? '（场景：' + sceneName + '）' : '') + '，对话已从线上微信聊天切换到面对面的剧情时间线。');
-        parts.push('请以长篇幅的小说叙事方式回复：包含丰富的心理描写、动作描写和环境描写，推动剧情发展。');
+        parts.push('当前场景：' + (sceneName || '未指定') + '。面对面相处，按小说叙事推进。');
         parts.push('写作要求：');
-        parts.push('1. 单次回复 300-600 字：心理、动作、神态、环境四类描写兼备。');
-        parts.push('2. 用第二人称「你」称呼对方；你自己以第一人称思考、说话与行动，台词自然融入叙事。');
-        parts.push('3. 每次回复推动剧情发展：给出具体的事件、对话或细微转折，结尾以角色的动作或提问收束，留出对方回应的空间。不要一次写完整个约会。');
-        parts.push('4. 严禁输出 <think>、<narratage> 等标记；严禁 [红包][转账][发起语音通话] 等线上功能标记——线下场景中这些不存在。');
-        parts.push('5. 保持人设的性格与说话方式；叙事文风可以文学化，但角色的台词要符合人设。');
+        var wo = writingOpts;
+        var wb = wo.wordBase || 1000;
+        var wbLo = Math.round(wb * 0.8), wbHi = Math.round(wb * 1.2);
+        var preset = PRESETS[wo.preset] || PRESETS['default'];
+
+        parts.push('1. 字数控制：单次回复约 ' + wbLo + '–' + wbHi + ' 字（基准 ' + wb + ' 字，允许上下浮动约 20%）。');
+        parts.push('2. 叙述人称：描写对方（用户）时使用' + personaDesc(wo.userPersona) + '「' + wo.userPersona + '」；你自己以' + personaDesc(wo.charPersona) + '「' + wo.charPersona + '」思考、说话与行动。台词自然融入叙事，不要写成对话列表。');
+        parts.push('3. 文风预设「' + preset.name + '」——' + preset.style);
+        parts.push('4. 主动方：' + (wo.initiator === 'me'
+            ? '本轮由用户主动推进，你更多回应、接住话题，不要自己另开新的分支。'
+            : '本轮由角色主动推进，你可以先开口、抛出话题或提出邀约，把剧情往前带。'));
+        parts.push('5. 剧情推进：给出具体的事件、对话或细微转折，结尾以角色的动作或提问收束，留出对方回应的空间。不要一次写完整个约会。');
+        parts.push('6. 严禁输出 <think>、<narratage> 等标记；严禁 [红包][转账][发起语音通话] 等线上功能标记——线下场景中这些不存在。');
+        parts.push('7. 保持人设的性格与说话方式；叙事可以文学化，但角色的台词要符合人设。');
 
         parts.push('');
         parts.push('【你的人设】');
@@ -570,9 +1386,8 @@
         var cfg = {};
         try { cfg = JSON.parse(localStorage.getItem('api_settings') || '{}') || {}; } catch (e) {}
         if (!(cfg.apiKey || '').trim()) {
-            appendSys('请先到【设置 → API 设置】配置 API Key，再开始这段剧情');
-            setSending(false);
-            scrollBottom();
+            // 未配置 API：使用本地模拟回复，保证可以直接预览气泡效果
+            localReplySim();
             return;
         }
 
@@ -616,8 +1431,8 @@
                     var aiPartial = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
                     history.push(aiPartial);
                     saveHistory(history);
-                    if (streamingP) streamingP.remove();
-                    appendAiParagraphs(fullText);
+                    if (streamingP) removeStreaming();
+                    appendAiParagraphs(fullText, history.length - 1);
                 }
                 appendSys(msg);
                 toast('续写失败，请检查网络或 API 设置');
@@ -639,11 +1454,11 @@
                 .replace(/\[记住:[^\]]*\]/g, '')
                 .replace(/\n{3,}/g, '\n\n').trim();
 
-            if (streamingP) streamingP.remove();
+            if (streamingP) removeStreaming();
             var aiMsg = { role: 'assistant', text: fullText, time: Date.now(), mode: 'date', scene: sceneName || undefined };
             history.push(aiMsg);
             saveHistory(history);
-            appendAiParagraphs(fullText);
+            appendAiParagraphs(fullText, history.length - 1);
             setSending(false);
             scrollBottom();
         });
@@ -655,6 +1470,8 @@
             sendBtn.disabled = on;
             sendBtn.textContent = on ? 'Writing…' : 'Send ↗';
         }
+        var contBtn = document.getElementById('dateContinue');
+        if (contBtn) contBtn.disabled = on;
         if (quickBar) {
             quickBar.querySelectorAll('button').forEach(function (b) { b.disabled = on; });
         }
@@ -671,14 +1488,24 @@
     }
 
     var streamingP = null;
+    var streamingRow = null;
     function paintStream(fullText) {
         if (!streamingP) {
-            streamingP = document.createElement('p');
-            streamingP.className = 'p-ai p-streaming';
-            storyEl.appendChild(streamingP);
+            streamingRow = document.createElement('div');
+            streamingRow.className = 'msg-block p-ai p-streaming';
+            streamingP = document.createElement('div');
+            streamingP.className = 'bubble ai';
+            streamingRow.appendChild(streamingP);
+            storyEl.appendChild(streamingRow);
         }
         streamingP.textContent = fullText;
         scrollBottom();
+    }
+    function removeStreaming() {
+        if (streamingRow && streamingRow.parentNode) streamingRow.remove();
+        else if (streamingP && streamingP.parentNode) streamingP.remove();
+        streamingP = null;
+        streamingRow = null;
     }
 
     var history = loadHistory();
@@ -691,7 +1518,7 @@
         var userMsg = { role: 'user', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
         history.push(userMsg);
         saveHistory(history);
-        appendMessage(userMsg);
+        appendMessage(userMsg, history.length - 1);
         input.value = '';
         input.style.height = 'auto';
 
@@ -715,23 +1542,14 @@
         }
         history.pop();
         saveHistory(history);
-        // 移除 DOM 里该回复渲染出的所有段落（从尾部回溯到上一个非 AI 段）
-        var removed = 0;
-        for (var i = storyEl.children.length - 1; i >= 0; i--) {
-            var el = storyEl.children[i];
-            if (el.classList && (el.classList.contains('p-ai') || el.classList.contains('p-streaming'))) {
-                storyEl.removeChild(el);
-                removed++;
-            } else if (removed > 0) {
-                break;
-            }
-        }
+        renderAll();   // 气泡结构统一重渲染，避免残留旧气泡
+        scrollBottom();
         setSending(true);
         requestReply(null);
     }
-    // 保存：把当前赴约剧情导出为 .txt 文稿下载
+    // 保存：把当前线下模式剧情导出为 .txt 文稿下载
     function actSave() {
-        var lines = ['赴约 · ' + charName, '导出于 ' + new Date().toLocaleString('zh-CN'), ''];
+        var lines = ['线下模式 · ' + charName, '导出于 ' + new Date().toLocaleString('zh-CN'), ''];
         var lastSceneSaved = '';
         history.forEach(function (m) {
             var t = String(m.text || m.content || '').trim();
@@ -750,7 +1568,7 @@
         var d = new Date();
         function p2(n) { return n < 10 ? '0' + n : '' + n; }
         a.href = url;
-        a.download = '赴约-' + charName + '-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + '.txt';
+        a.download = '线下模式-' + charName + '-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + '.txt';
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -777,14 +1595,163 @@
     var btnContinue = document.getElementById('actContinue');
     var btnReroll = document.getElementById('actReroll');
     var btnSave = document.getElementById('actSave');
+    var btnDateContinue = document.getElementById('dateContinue');
     if (btnContinue) btnContinue.addEventListener('click', actContinue);
     if (btnReroll) btnReroll.addEventListener('click', actReroll);
     if (btnSave) btnSave.addEventListener('click', actSave);
+    if (btnDateContinue) btnDateContinue.addEventListener('click', actContinue);
+    if (saveBtnTop) saveBtnTop.addEventListener('click', actSave);
+
+    /* ---------- 长按角色消息 → 锚定操作菜单（重写 / 编辑 / 删除） ---------- */
+    var opsMenu = null;
+
+    function closeOps() {
+        if (opsMenu) { opsMenu.remove(); opsMenu = null; }
+        var marked = storyEl.querySelectorAll('.p-ai.ops-target');
+        for (var i = 0; i < marked.length; i++) marked[i].classList.remove('ops-target');
+    }
+
+    function openOps(p) {
+        closeOps();
+        var idx = Number(p.getAttribute('data-idx'));
+        if (isNaN(idx) || idx < 0 || idx >= history.length) return;
+        var m = history[idx];
+        if (!m || !(m.role === 'assistant' || m.role === 'received')) return;
+        p.classList.add('ops-target');
+
+        opsMenu = document.createElement('div');
+        opsMenu.className = 'msg-ops';
+        var defs = [
+            { op: 'reroll', label: '重写' },
+            { op: 'edit', label: '编辑' },
+            { op: 'delete', label: '删除' }
+        ];
+        defs.forEach(function (d) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = d.label;
+            b.addEventListener('click', function (e) {
+                e.stopPropagation();
+                closeOps();
+                if (d.op === 'reroll') rerollMsg(idx);
+                else if (d.op === 'edit') editMsg(idx);
+                else if (d.op === 'delete') deleteMsg(idx);
+            });
+            opsMenu.appendChild(b);
+        });
+        storyEl.appendChild(opsMenu);
+
+        // 定位：段落上方优先，放不下则紧贴段落下方（锚定在气泡旁，非底部抽屉）
+        var ph = p.offsetHeight || 24;
+        var top = p.offsetTop;
+        if (top > 46) opsMenu.style.top = (top - 34) + 'px';
+        else opsMenu.style.top = (top + ph + 6) + 'px';
+        opsMenu.style.left = Math.max(0, Math.min(p.offsetLeft, storyEl.clientWidth - 170)) + 'px';
+    }
+
+    // 重写：删掉这条角色回复，基于之前的剧情重新生成
+    function rerollMsg(idx) {
+        if (sending) return;
+        var m = history[idx];
+        if (!m || !(m.role === 'assistant' || m.role === 'received')) { toast('这条不是角色回复'); return; }
+        history.splice(idx, 1);
+        saveHistory(history);
+        renderAll();
+        scrollBottom();
+        setSending(true);
+        requestReply(null);
+    }
+
+    // 编辑：就地改为可编辑文本，保存后写回聊天记录
+    function editMsg(idx) {
+        var m = history[idx];
+        if (!m) return;
+        var ps = storyEl.querySelectorAll('.p-ai[data-idx="' + idx + '"]');
+        if (!ps.length) return;
+        var editAnchor = ps[0];
+        editAnchor.style.display = 'none';
+
+        var box = document.createElement('div');
+        box.className = 'edit-box';
+        var ta = document.createElement('textarea');
+        ta.value = String(m.text || '');
+        var actions = document.createElement('div');
+        actions.className = 'edit-actions';
+        var btnSave = document.createElement('button');
+        btnSave.type = 'button';
+        btnSave.textContent = '保存';
+        var btnCancel = document.createElement('button');
+        btnCancel.type = 'button';
+        btnCancel.textContent = '取消';
+        actions.appendChild(btnSave);
+        actions.appendChild(btnCancel);
+        box.appendChild(ta);
+        box.appendChild(actions);
+        editAnchor.before(box);
+
+        btnSave.addEventListener('click', function () {
+            var v = ta.value.trim();
+            if (!v) { toast('内容不能为空'); return; }
+            history[idx].text = v;
+            saveHistory(history);
+            renderAll();
+            scrollBottom();
+        });
+        btnCancel.addEventListener('click', function () {
+            box.remove();
+            if (editAnchor) editAnchor.style.display = '';
+        });
+        setTimeout(function () { try { ta.focus(); } catch (e) {} }, 50);
+    }
+
+    // 删除：从剧情与聊天记录中移除这条回复
+    function deleteMsg(idx) {
+        if (history[idx]) {
+            history.splice(idx, 1);
+            saveHistory(history);
+            renderAll();
+            scrollBottom();
+            toast('已删除这条回复');
+        }
+    }
+
+    // 长按检测：移动端 touch 计时 450ms；桌面右键 contextmenu
+    var longPressTimer = null;
+    storyEl.addEventListener('touchstart', function (e) {
+        var p = e.target.closest ? e.target.closest('.p-ai') : null;
+        if (!p) return;
+        var idx = Number(p.getAttribute('data-idx'));
+        if (isNaN(idx)) return;
+        longPressTimer = setTimeout(function () {
+            longPressTimer = null;
+            if (e.cancelable) e.preventDefault();
+            openOps(p);
+        }, 450);
+    }, { passive: false });
+    storyEl.addEventListener('touchmove', function () {
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    }, { passive: true });
+    storyEl.addEventListener('touchend', function () {
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    }, { passive: true });
+    storyEl.addEventListener('contextmenu', function (e) {
+        var p = e.target.closest ? e.target.closest('.p-ai') : null;
+        if (!p) return;
+        e.preventDefault();
+        openOps(p);
+    });
+    document.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('.msg-ops')) return;
+        closeOps();
+    });
+    storyEl.addEventListener('scroll', closeOps);
 
     /* ---------- 初始化 ---------- */
+    renderWritingUI();
+    initScene();   // 补全演示内容（已有真实对话时不做任何改动）
     renderAll();
     if (sceneName) {
-        // 奔赴入口携带场景：预填开场白（存储时不带 [你] 前缀，由渲染层统一加）
+        // 奔赴入口携带场景：预填用户的第一句行动（存储时不带 [你] 前缀，由渲染层统一加）
         input.value = '来到了' + sceneName + '，远远就看到了' + charName + '的身影……';
         setTimeout(function () { try { input.focus(); } catch (e) {} }, 300);
     }

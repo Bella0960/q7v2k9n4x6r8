@@ -150,7 +150,40 @@ html[data-theme="liquid-glass"] body.maomao-home .gesture-bar {
   box-shadow: 0 1px 0 rgba(255,255,255,.42);
 }
 
-/* iOS 26-like Customize sheet: translucent blurred panel that rises from the bottom. */
+/* Deep-toned wallpaper: flip home-screen typography to white.
+   Tone is written to <html data-wallpaper-tone="dark"> by wallpaper-store.js. */
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .status-bar {
+  color: rgba(255,255,255,.9) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .app-name {
+  color: rgba(255,255,255,.94) !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.5);
+}
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .gesture-bar {
+  background: rgba(255,255,255,.62) !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,.35);
+}
+/* Glass widgets show the wallpaper through, so their ink flips too. */
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .ds-clock .cl-time {
+  color: rgba(255,255,255,.96) !important;
+}
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .ds-clock .cl-week {
+  color: rgba(255,255,255,.64) !important;
+}
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .ds-clock .cl-date {
+  color: rgba(255,255,255,.78) !important;
+}
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .ds-music .ms-title,
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .ds-music .ms-artist,
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .ds-music .ms-times {
+  color: rgba(255,255,255,.64) !important;
+}
+html[data-theme="liquid-glass"][data-wallpaper-tone="dark"] body.maomao-home .ds-music .ms-song {
+  color: rgba(255,255,255,.94) !important;
+}
+
+/* Customize sheet: translucent, no backdrop blur so the home screen stays fully visible. */
 .lg-controls-backdrop {
   position: fixed;
   z-index: 99999;
@@ -159,9 +192,7 @@ html[data-theme="liquid-glass"] body.maomao-home .gesture-bar {
   align-items: flex-end;
   justify-content: center;
   padding: 0 10px max(10px, env(safe-area-inset-bottom, 0px));
-  background: rgba(37,37,44,.12);
-  -webkit-backdrop-filter: blur(11px) saturate(1.12);
-  backdrop-filter: blur(11px) saturate(1.12);
+  background: transparent;
   isolation: isolate;
   pointer-events: none;
   touch-action: auto;
@@ -188,8 +219,6 @@ html[data-theme="liquid-glass"] body.maomao-home .gesture-bar {
   background-color: rgba(127,128,139,.54);
   background-image: linear-gradient(145deg, rgba(255,255,255,.52), rgba(175,176,186,.37) 37%, rgba(111,112,124,.48) 100%);
   border: 1px solid rgba(255,255,255,.72);
-  -webkit-backdrop-filter: blur(40px) saturate(1.55) contrast(1.04);
-  backdrop-filter: blur(40px) saturate(1.55) contrast(1.04);
   box-shadow: 0 20px 60px rgba(20,20,27,.22), inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(255,255,255,.22);
   animation: lgSheetRise .32s cubic-bezier(.2,.8,.2,1) both;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
@@ -480,6 +509,34 @@ html[data-theme="liquid-glass"] body.maomao-home .gesture-bar {
 }
 @media (prefers-reduced-motion: reduce) {
   .lg-controls-backdrop.open, .lg-controls-sheet, .lg-mode-weather, .lg-appearance-disc { animation: none !important; transition: none !important; }
+}
+
+
+/* ===== Customize sheet de-iosified: drop the top-side symbols and the weather icon tiles.
+   The four style tiles become three plain text choices: 深色 / 透明 / 色调. ===== */
+.lg-sheet-topbar { grid-template-columns: 1fr; }
+.lg-sheet-topbar > .lg-control-symbol { display: none !important; }
+.lg-style-option[data-lg-style="default"] { display: none !important; }
+.lg-style-option .lg-mode-weather { display: none !important; }
+.lg-style-grid {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.lg-style-option {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding: 0;
+}
+.lg-style-option strong {
+  min-width: 0;
+  width: 100%;
+  padding: 7px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,.95);
 }
 
 
@@ -896,23 +953,23 @@ body.maomao-home.home-editing .status-bar {
 
 /* Liquid Glass widgets: transparent material instead of opaque white tiles.
    Image widgets keep their own chosen photo untouched. */
-html[data-theme="liquid-glass"] body.maomao-home .ds-widget:not(.ds-image) {
-  background-color: rgba(var(--lg-glass-tint-rgb, 208,210,218), .065) !important;
-  background-image: linear-gradient(145deg, rgba(255,255,255,.105), rgba(var(--lg-glass-tint-rgb,208,210,218),.04) 60%, rgba(255,255,255,.018)) !important;
+html[data-theme="liquid-glass"] body.maomao-home .ds-widget:not(.ds-image):not(.ds-clock) {
+  background: transparent !important;
+  background-image: none !important;
   border-color: transparent !important;
   outline: none !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.45) !important;
-  backdrop-filter: blur(24px) saturate(1.45) !important;
-  box-shadow: 0 5px 18px rgba(24,26,36,.065), inset 0 1px 0 rgba(255,255,255,.12) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 html[data-theme="liquid-glass"] body.maomao-home .ds-clock {
-  background-color: rgba(var(--lg-glass-tint-rgb,208,210,218),.045) !important;
-  background-image: linear-gradient(145deg, rgba(255,255,255,.07), rgba(var(--lg-glass-tint-rgb,208,210,218),.025)) !important;
+  background: transparent !important;
+  background-image: none !important;
   border: 0 !important;
-  border-radius: 18px !important;
-  -webkit-backdrop-filter: blur(28px) saturate(1.5) !important;
-  backdrop-filter: blur(28px) saturate(1.5) !important;
-  box-shadow: 0 4px 16px rgba(24,26,36,.045), inset 0 1px 0 rgba(255,255,255,.10) !important;
+  border-radius: 0 !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 html[data-theme="liquid-glass"] body.maomao-home .ds-music {
   background-color: rgba(var(--lg-glass-tint-rgb,208,210,218),.055) !important;
@@ -940,8 +997,8 @@ html[data-theme="liquid-glass"] body.maomao-home .po-card {
   box-shadow: 0 3px 9px rgba(24,26,36,.045) !important;
 }
 html[data-theme="liquid-glass"] body.maomao-home .ds-clock .cl-time {
-  color: rgba(28,29,36,.92) !important;
-  text-shadow: 0 1px 10px rgba(255,255,255,.12);
+  color: #ffffff !important;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.3);
 }
 html[data-theme="liquid-glass"] body.maomao-home .ds-clock .cl-week,
 html[data-theme="liquid-glass"] body.maomao-home .ds-clock .cl-date {

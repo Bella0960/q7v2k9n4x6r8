@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>我的主页 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
+<script src="../../shared/js/wallpaper-store.js?v=20261024v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <style>
@@ -48,64 +49,63 @@
     z-index: 50;
   }
 
-  /* 主舞台容器（本页无底部悬浮导航，底部只需普通留白） */
+  /* 主舞台滚动区（浮在全屏壁纸之上，本页无底部悬浮导航） */
   .space-stage {
+    position: relative;
+    z-index: 1;
     flex: 1;
     overflow-y: auto;
-    padding: 44px 8px 24px 8px;
+    padding: 88px 0 40px 0;
     display: flex;
     flex-direction: column;
     scrollbar-width: none;
-    background: #F8F8F8;
   }
   .space-stage::-webkit-scrollbar { display: none; }
 
-  /* 通体连贯的大板块容器（无壁纸时用深灰渐变兜底，保证白字可见；清除边框/轮廓/阴影） */
-  .profile-main-container {
-    position: relative;
-    width: 100%;
-    flex: 1;
-    background: #FFFFFF;
-    background-image: linear-gradient(180deg, #48484D 0%, #6E6E74 42%, #FFFFFF 100%);
-    border-radius: 28px;
-    overflow: hidden;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    gap: 16px;
-  }
-
-  /* 用户上传的壁纸图片（顶部清晰，向下渐变融入白色） */
-  .cover-bg-image {
+  /* ===== 全屏壁纸层 ===== */
+  .page-wallpaper {
     position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    background: linear-gradient(168deg, #EEF0F3 0%, #E1E5EB 46%, #F3F4F6 100%);
+  }
+  .page-wallpaper img {
+    width: 100%; height: 100%;
     object-fit: cover;
-    z-index: 1;
     display: none;
-    pointer-events: none;
-    border: none !important;
-    outline: none !important;
-    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,1) 40%, rgba(0,0,0,0.5) 75%, rgba(0,0,0,0) 100%);
-    mask-image: linear-gradient(180deg, rgba(0,0,0,1) 40%, rgba(0,0,0,0.5) 75%, rgba(0,0,0,0) 100%);
+  }
+  /* 白雾罩：让壁纸整屏可见，同时保证文字可读 */
+  .wallpaper-veil {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.16) 30%, rgba(250,250,251,0.30) 60%, rgba(250,250,251,0.46) 100%);
   }
 
-  /* 整屏点击唤起相册（仅头部区域可见可点，内容内衬层在其之上） */
+  /* 点击上半屏换壁纸（头像与信息区不拦截，点按穿透到这里） */
   .cover-upload-label {
     position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 5;
-    cursor: pointer;
+    top: 0; left: 0;
+    width: 100%;
+    height: 260px;
+    z-index: 2;
     display: block;
+    cursor: pointer;
+  }
+  .cover-input-hidden {
+    position: absolute;
+    opacity: 0;
+    width: 1px; height: 1px;
+    pointer-events: none;
   }
 
-  /* 左上角透明返回键 */
+  /* 左上角返回键（浮在最上层，不随内容滚动） */
   .cover-nav-btn {
-    position: relative;
-    z-index: 20;
-    width: 24px; height: 24px;
+    position: absolute;
+    top: 50px;
+    left: 20px;
+    z-index: 30;
+    width: 28px; height: 28px;
     background: transparent;
     border: none;
     display: flex; align-items: center; justify-content: center;
@@ -113,31 +113,36 @@
     pointer-events: auto;
     padding: 0;
   }
-  .cover-nav-btn svg { width: 18px; height: 18px; stroke: #FFFFFF; stroke-width: 1.8; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7)); }
+  .cover-nav-btn svg {
+    width: 19px; height: 19px;
+    stroke: #111111; stroke-width: 1.5;
+    filter: drop-shadow(0 1px 2px rgba(255,255,255,0.75));
+  }
 
-  /* 个人信息区：左侧正方形头像 + 名字与签名 */
-  .profile-info-group {
+  /* ===== 个人信息区：圆形头像 + 昵称 ===== */
+  .profile-hero {
     position: relative;
-    z-index: 10;
+    z-index: 3;
     display: flex;
     align-items: center;
     gap: 14px;
+    padding: 0 22px;
     pointer-events: none;
   }
   .profile-avatar {
-    width: 58px; height: 58px;
-    background: #E5E5EA;
-    border-radius: 14px;
+    width: 63px; height: 63px;
+    background: #E9E9EE;
+    border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
-    border: 2px solid #FFFFFF;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.10);
+    border: 1px solid rgba(255,255,255,0.95);
     flex-shrink: 0;
     overflow: hidden;
   }
   .profile-avatar img {
     width: 100%; height: 100%; object-fit: cover; display: block;
   }
-  .profile-avatar svg { width: 28px; height: 28px; }
+  .profile-avatar svg { width: 25px; height: 25px; }
 
   .profile-text-box {
     display: flex;
@@ -146,83 +151,144 @@
     min-width: 0;
   }
   .profile-name {
-    font-size: 1rem;
-    font-weight: 800;
-    color: #FFFFFF;
-    letter-spacing: -0.2px;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
-  }
-  .profile-bio {
-    font-size: 0.688rem;
-    color: #F2F2F7;
-    line-height: 1.35;
-    font-weight: 500;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+    font-family: Georgia, "Songti SC", "Times New Roman", serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #111111;
+    letter-spacing: -0.01em;
+    text-shadow: 0 1px 8px rgba(255,255,255,0.9);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  /* 内衬内容板块（极淡边框可无，去除厚重线条与轮廓） */
-  .inner-content-panel {
+  /* ===== QQ 空间式统计行：五栏等宽铺满 ===== */
+  .stats-row {
     position: relative;
-    z-index: 10;
-    flex: 1;
-    background: #FFFFFF;
-    border-radius: 20px;
-    padding: 16px;
+    z-index: 3;
     display: flex;
-    flex-direction: column;
-    gap: 12px;
-    box-shadow: none !important;
-    border: none !important;
-    outline: none !important;
-    overflow-y: auto;
-    scrollbar-width: none;
+    margin-top: 22px;
+    padding: 0 12px;
+    pointer-events: auto;
   }
-  .inner-content-panel::-webkit-scrollbar { display: none; }
-
-  /* 我的动态卡片 */
-  .my-post {
-    background: #F7F7F9;
-    border-radius: 12px;
-    padding: 12px;
+  .stat {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .stat-label {
+    font-size: 0.688rem;
+    color: #3F3F45;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 4px rgba(255,255,255,0.9);
+  }
+  .stat-num {
+    font-size: 0.938rem;
+    font-weight: 600;
+    color: #111111;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 6px rgba(255,255,255,0.9);
+    pointer-events: auto;
+    cursor: pointer;
+    padding: 0 4px;
+    border-radius: 2px;
+    outline: none;
+    min-width: 12px;
+    text-align: center;
+  }
+  /* 正在编辑：底部一条细线示意，不加底色 */
+  .stat-num[contenteditable="true"] {
+    box-shadow: inset 0 -1px 0 #111111;
+    cursor: text;
+  }
+
+  /* ===== 动态流：细线分隔，无卡片底色 ===== */
+  .feed {
+    position: relative;
+    z-index: 3;
+    margin-top: 26px;
+    padding: 0 22px;
+  }
+  .feed-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 9px;
+    border-bottom: 1px solid #E5E5E5;
+  }
+  .feed-title {
+    font-family: Georgia, "Songti SC", "Times New Roman", serif;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #111111;
+  }
+
+  /* 我的动态条目 */
+  .my-post {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 16px 0;
+    border-bottom: 1px solid #E5E5E5;
+    background: transparent;
   }
   .my-post-text {
     font-size: 0.813rem;
-    line-height: 1.55;
-    color: #333333;
+    line-height: 1.7;
+    color: #1A1A1A;
     word-break: break-word;
     white-space: pre-wrap;
   }
   .my-post-image {
     width: 100%;
-    border-radius: 14px !important;
+    border-radius: 2px !important;
     border: none !important;
     outline: none !important;
     box-shadow: none !important;
     display: block;
   }
+  .my-post-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+  }
   .my-post-time {
     font-size: 0.625rem;
-    color: #999999;
-    font-family: monospace;
+    color: #6E6E73;
+    letter-spacing: 0.02em;
   }
+  /* 删除：细字按钮，第一次点变成「确认删除」，3 秒后自动还原 */
+  .my-post-del {
+    background: none;
+    border: none;
+    padding: 2px 0;
+    margin: 0;
+    font-family: inherit;
+    font-size: 0.625rem;
+    color: #B3261E;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+  }
+  .my-post-del.confirm { color: #B3261E; font-weight: 600; }
   .my-post-actions {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 14px;
+    gap: 18px;
   }
   .my-post-stat {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.625rem;
-    color: #666666;
+    font-size: 0.688rem;
+    color: #8E8E93;
     background: none;
     border: none;
     padding: 2px 0;
@@ -230,7 +296,7 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .my-post-stat svg { width: 13px; height: 13px; stroke: #666666; transition: transform 0.12s ease; }
+  .my-post-stat svg { width: 14px; height: 14px; stroke: #8E8E93; transition: transform 0.12s ease; }
   /* 点赞态：实心黑色 */
   .my-post-stat.is-liked { color: #111111; }
   .my-post-stat.is-liked svg { stroke: #111111; fill: #111111; }
@@ -241,29 +307,28 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
-    background: #FFFFFF;
-    border-radius: 10px;
+    background: rgba(255,255,255,0.72);
+    border-radius: 4px;
     padding: 8px 10px;
   }
   .mpc-row {
     font-size: 0.688rem;
     line-height: 1.4;
-    color: #666666;
+    color: #5A5A60;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .mpc-row .mpc-name { color: #999999; font-weight: 600; margin-right: 3px; }
+  .mpc-row .mpc-name { color: #8E8E93; font-weight: 600; margin-right: 3px; }
 
   .my-empty {
-    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
     font-size: 0.75rem;
-    color: #999999;
-    padding: 40px 0;
+    color: #8E8E93;
+    padding: 56px 0;
   }
 
   /* ===== 评论抽屉 ===== */
@@ -400,6 +465,38 @@
     border-radius: 10px;
     display: block;
   }
+
+  /* ===== 壁纸明暗自适应：深色壁纸 → 整页文字转白，雾罩改为暗色 =====
+     判定结果由 shared/js/wallpaper-store.js 写入 <html data-wallpaper-tone="dark">。 */
+  html[data-wallpaper-tone="dark"] .status-bar { color: #FFFFFF; }
+  html[data-wallpaper-tone="dark"] .cover-nav-btn svg {
+    stroke: #FFFFFF;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));
+  }
+  html[data-wallpaper-tone="dark"] .profile-name {
+    color: #FFFFFF;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.55);
+  }
+  html[data-wallpaper-tone="dark"] .stat-label { color: rgba(255,255,255,0.78); text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+  html[data-wallpaper-tone="dark"] .stat-num { color: #FFFFFF; text-shadow: 0 1px 6px rgba(0,0,0,0.5); }
+  html[data-wallpaper-tone="dark"] .stat-num[contenteditable="true"] { box-shadow: inset 0 -1px 0 #FFFFFF; }
+  html[data-wallpaper-tone="dark"] .feed-head { border-bottom-color: rgba(255,255,255,0.38); }
+  html[data-wallpaper-tone="dark"] .feed-title { color: #FFFFFF; }
+  html[data-wallpaper-tone="dark"] .my-post { border-bottom-color: rgba(255,255,255,0.24); }
+  html[data-wallpaper-tone="dark"] .my-post-text {
+    color: rgba(255,255,255,0.94);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  html[data-wallpaper-tone="dark"] .my-post-time { color: rgba(255,255,255,0.66); }
+  html[data-wallpaper-tone="dark"] .my-post-stat { color: rgba(255,255,255,0.66); }
+  html[data-wallpaper-tone="dark"] .my-post-stat svg { stroke: rgba(255,255,255,0.66); }
+  html[data-wallpaper-tone="dark"] .my-post-stat.is-liked { color: #FFFFFF; }
+  html[data-wallpaper-tone="dark"] .my-post-stat.is-liked svg { stroke: #FFFFFF; fill: #FFFFFF; }
+  html[data-wallpaper-tone="dark"] .my-post-del { color: #FF8A80; }
+  html[data-wallpaper-tone="dark"] .my-empty { color: rgba(255,255,255,0.66); }
+  html[data-wallpaper-tone="dark"] .wallpaper-veil {
+    background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.16) 30%, rgba(0,0,0,0.26) 60%, rgba(0,0,0,0.38) 100%);
+  }
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -407,40 +504,50 @@
 
   <div class="phone-mockup">
 
+    <!-- 全屏壁纸层（有封面图时显示，无图时渐变兜底） -->
+    <div class="page-wallpaper">
+      <img id="coverImg" alt="个人主页壁纸">
+      <div class="wallpaper-veil"></div>
+    </div>
+
     <!-- 状态栏 -->
     <div class="status-bar"><span>4:41</span></div>
+
+    <!-- 返回朋友圈（固定在最上层） -->
+    <button class="cover-nav-btn" type="button" aria-label="返回"
+      onclick="window.location.href='moments.html'">
+      <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
 
     <!-- 主舞台滚动区 -->
     <div class="space-stage">
 
-      <div class="profile-main-container">
+      <!-- 点击上半屏更换壁纸 -->
+      <label for="coverInput" class="cover-upload-label" title="点击更换壁纸"></label>
+      <input type="file" id="coverInput" accept="image/*" class="cover-input-hidden">
 
-        <!-- 壁纸层（有封面时显示） -->
-        <img id="coverImg" class="cover-bg-image" alt="个人主页壁纸">
-
-        <!-- 点击头部更换壁纸 -->
-        <label for="coverInput" class="cover-upload-label" title="点击更换壁纸"></label>
-        <input type="file" id="coverInput" accept="image/*" style="position: absolute; opacity: 0; width: 1px; height: 1px;">
-
-        <!-- 返回朋友圈 -->
-        <button class="cover-nav-btn" type="button" aria-label="返回"
-          onclick="window.location.href='moments.html'">
-          <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-        </button>
-
-        <!-- 个人信息 -->
-        <div class="profile-info-group">
-          <div class="profile-avatar" id="profileAvatar"></div>
-          <div class="profile-text-box">
-            <span class="profile-name" id="profileName">未设置昵称</span>
-            <span class="profile-bio" id="profileBio">这个人很懒，什么都没有留下</span>
-          </div>
+      <!-- 个人信息 -->
+      <header class="profile-hero">
+        <div class="profile-avatar" id="profileAvatar"></div>
+        <div class="profile-text-box">
+          <h1 class="profile-name" id="profileName">未设置昵称</h1>
         </div>
+      </header>
 
-        <!-- 我的动态列表 -->
-        <div class="inner-content-panel" id="innerPanel"></div>
-
+      <!-- 五栏统计：数字可点击编辑 -->
+      <div class="stats-row" id="statsRow">
+        <div class="stat"><span class="stat-label">动态</span><span class="stat-num" data-stat="moments">0</span></div>
+        <div class="stat"><span class="stat-label">日志</span><span class="stat-num" data-stat="diary">0</span></div>
+        <div class="stat"><span class="stat-label">照片</span><span class="stat-num" data-stat="photos">0</span></div>
+        <div class="stat"><span class="stat-label">留言</span><span class="stat-num" data-stat="messages">0</span></div>
+        <div class="stat"><span class="stat-label">访客</span><span class="stat-num" data-stat="visitors">0</span></div>
       </div>
+
+      <!-- 我的动态流 -->
+      <section class="feed">
+        <div class="feed-head"><span class="feed-title">动态</span></div>
+        <div id="innerPanel"></div>
+      </section>
 
     </div>
 
@@ -536,12 +643,8 @@
     function renderProfile() {
       var p = readProfile();
       var name = p.nickname || '未设置昵称';
-      var bio = p.sign || p.about || '这个人很懒，什么都没有留下';
 
       document.getElementById('profileName').textContent = name;
-      var bioEl = document.getElementById('profileBio');
-      bioEl.textContent = bio;
-      bioEl.title = bio;
 
       var avatarBox = document.getElementById('profileAvatar');
       avatarBox.innerHTML = p.avatar
@@ -561,6 +664,11 @@
       } else {
         coverImg.removeAttribute('src');
         coverImg.style.display = 'none';
+      }
+
+      /* 壁纸明暗自适应：深色封面 → 整页文字转白，浅色封面保持黑字 */
+      if (window.MAOMAOContrast && typeof window.MAOMAOContrast.apply === 'function') {
+        window.MAOMAOContrast.apply(p.cover || '');
       }
 
       return { id: p.id || '', name: name === '未设置昵称' ? '' : p.nickname || '' };
@@ -591,11 +699,113 @@
       return !!m.isLiked;
     }
 
+    /* ===== 五栏统计：默认取真实数据，用户手动改过的值优先 ===== */
+    var STATS_KEY = 'myProfileStats';
+
+    function readStatsOverride() {
+      try {
+        var o = JSON.parse(localStorage.getItem(STATS_KEY) || '{}');
+        return o && typeof o === 'object' ? o : {};
+      } catch (e) { return {}; }
+    }
+    function writeStatsOverride(o) {
+      try { localStorage.setItem(STATS_KEY, JSON.stringify(o)); } catch (e) {}
+    }
+
+    function renderStats(list, me) {
+      var images = 0, commentsTotal = 0;
+      list.forEach(function (m) {
+        if (m.image) images++;
+        commentsTotal += getComments(m).length;
+      });
+
+      var seed = 0;
+      var key = (me && me.name) || 'guest';
+      for (var i = 0; i < key.length; i++) seed = (seed * 31 + key.charCodeAt(i)) % 9973;
+
+      var defaults = {
+        moments: list.length,
+        diary: 0,
+        photos: images,
+        messages: commentsTotal,
+        visitors: 40 + (seed % 260)
+      };
+      var overrides = readStatsOverride();
+
+      var nums = document.querySelectorAll('.stat-num');
+      for (var j = 0; j < nums.length; j++) {
+        var k = nums[j].getAttribute('data-stat');
+        var v = overrides[k] != null ? overrides[k] : defaults[k];
+        nums[j].textContent = v;
+      }
+    }
+
+    /* 点击整栏进入编辑，失焦 / 回车保存，Esc 取消 */
+    (function initStatEditing() {
+      var statsRow = document.getElementById('statsRow');
+      if (!statsRow) return;
+      var editingEl = null;
+      var beforeValue = '';
+
+      function startEdit(el) {
+        if (editingEl === el) return;
+        if (editingEl) editingEl.blur();
+        editingEl = el;
+        beforeValue = el.textContent;
+        el.setAttribute('contenteditable', 'true');
+        el.focus();
+        var range = document.createRange();
+        range.selectNodeContents(el);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      statsRow.addEventListener('click', function (e) {
+        var stat = e.target.closest('.stat');
+        if (!stat) return;
+        var el = stat.querySelector('.stat-num');
+        if (!el) return;
+        e.stopPropagation();
+        startEdit(el);
+      });
+
+      statsRow.addEventListener('input', function (e) {
+        var el = e.target;
+        if (!el.classList || !el.classList.contains('stat-num')) return;
+        var digits = el.textContent.replace(/[^0-9]/g, '').slice(0, 6);
+        if (digits !== el.textContent) el.textContent = digits;
+      });
+
+      statsRow.addEventListener('keydown', function (e) {
+        var el = e.target;
+        if (!el.classList || !el.classList.contains('stat-num')) return;
+        if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+        if (e.key === 'Escape') { el.textContent = beforeValue; el.blur(); }
+      });
+
+      statsRow.addEventListener('blur', function (e) {
+        var el = e.target;
+        if (!el.classList || !el.classList.contains('stat-num')) return;
+        el.removeAttribute('contenteditable');
+        var val = el.textContent.replace(/[^0-9]/g, '').slice(0, 6);
+        var k = el.getAttribute('data-stat');
+        var o = readStatsOverride();
+        if (val === '') { delete o[k]; }
+        else { o[k] = parseInt(val, 10); }
+        writeStatsOverride(o);
+        editingEl = null;
+        // 保存后按「覆盖值优先」重新回显，空值回落默认统计
+        renderMyMoments(currentMe);
+      }, true);
+    })();
+
     /* ===== 渲染我的动态 ===== */
     var panel = document.getElementById('innerPanel');
 
     function renderMyMoments(me) {
       var list = loadMoments().filter(function (m) { return isMyPost(m, me); });
+      renderStats(list, me);
 
       if (!list.length) {
         panel.innerHTML = '<div class="my-empty">还没有发布过任何动态</div>';
@@ -616,7 +826,10 @@
           (m.content ? '<div class="my-post-text">' + escapeHtml(m.content) + '</div>' : '') +
           (m.image ? '<img class="my-post-image" src="' + m.image + '" alt="">' : '') +
           preview +
-          '<div class="my-post-time">' + formatTime(m.time) + '</div>' +
+          '<div class="my-post-meta">' +
+            '<span class="my-post-time">' + formatTime(m.time) + '</span>' +
+            '<button type="button" class="my-post-del js-del" aria-label="删除这条动态">删除</button>' +
+          '</div>' +
           '<div class="my-post-actions">' +
             '<button type="button" class="my-post-stat js-like' + (liked ? ' is-liked' : '') + '" aria-label="点赞">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
@@ -649,16 +862,41 @@
       }
     }
 
-    /* ===== 点赞 / 评论入口（事件委托） ===== */
+    /* ===== 删除 / 点赞 / 评论入口（事件委托） ===== */
     var currentMe = { id: '', name: '' };
+    var delTimer = null;
 
     panel.addEventListener('click', function (e) {
+      var delBtn = e.target.closest('.js-del');
       var likeBtn = e.target.closest('.js-like');
       var commentBtn = e.target.closest('.js-comment');
-      if (!likeBtn && !commentBtn) return;
+      if (!delBtn && !likeBtn && !commentBtn) return;
       var card = e.target.closest('.my-post');
       if (!card) return;
       var id = card.getAttribute('data-id');
+      e.stopPropagation();
+
+      // 删除动态：第一次点击切到确认态，3 秒内再点才真正删除
+      if (delBtn) {
+        if (!delBtn.classList.contains('confirm')) {
+          delBtn.classList.add('confirm');
+          delBtn.textContent = '确认删除';
+          if (delTimer) clearTimeout(delTimer);
+          delTimer = setTimeout(function () {
+            if (delBtn.isConnected) {
+              delBtn.classList.remove('confirm');
+              delBtn.textContent = '删除';
+            }
+          }, 3000);
+          return;
+        }
+        if (delTimer) clearTimeout(delTimer);
+        var rest = loadMoments().filter(function (m) { return String(m.id) !== String(id); });
+        if (!saveMomentsSafe(rest)) return;
+        renderMyMoments(currentMe);
+        return;
+      }
+
       var list = loadMoments();
       var post = findInList(list, id);
       if (!post) return;

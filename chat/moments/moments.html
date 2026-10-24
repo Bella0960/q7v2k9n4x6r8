@@ -92,7 +92,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             height: 160px;
             background: linear-gradient(135deg, #EBEBEF 0%, #DEDEE3 100%);
             border-radius: 20px;
-            overflow: hidden;
+            overflow: visible;
             display: flex;
             align-items: center;
             padding: 0 20px;
@@ -100,83 +100,92 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             border: 1px solid rgba(0,0,0,0.04);
             flex-shrink: 0;
         }
-        .cover-nav-btn {
-            position: absolute;
-            top: 14px;
-            left: 16px;
-            width: 24px;
-            height: 24px;
-            background: transparent;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 10;
-        }
-        .cover-nav-btn svg { width: 18px; height: 18px; stroke: #111; stroke-width: 1.5; }
+        /* 右上角：封面唯一入口（加号 → 浮层菜单） */
         .cover-add-btn {
             position: absolute;
-            top: 14px;
+            top: 13px;
             right: 16px;
-            width: 24px;
-            height: 24px;
+            width: 28px;
+            height: 28px;
             background: transparent;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 10;
+            z-index: 12;
         }
-        .cover-add-btn svg { width: 20px; height: 20px; stroke: #111; stroke-width: 1.5; }
+        .cover-add-btn svg {
+            width: 20px;
+            height: 20px;
+            stroke: #111;
+            stroke-width: 1.5;
+            transition: transform 0.18s ease;
+        }
+        .cover-add-btn.open svg { transform: rotate(45deg); }
 
-        /* 整机刷新按钮 */
-        .cover-refresh-btn {
+        /* 浮层菜单：锚定加号下方，点外部 / 再点加号关闭 */
+        .cover-menu {
             position: absolute;
-            top: 14px;
-            right: 48px;
-            width: 24px;
-            height: 24px;
+            top: 46px;
+            right: 12px;
+            width: 178px;
+            padding: 6px;
+            background: #FFFFFF;
+            border: 1px solid #E5E5E5;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
+            display: none;
+            z-index: 20;
+        }
+        .cover-menu.open { display: block; }
+        .cover-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 9px 10px;
             background: transparent;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 12px;
+            color: #111111;
+            text-align: left;
             cursor: pointer;
-            z-index: 10;
-            opacity: 0.7;
-            transition: opacity 0.15s;
         }
-        .cover-refresh-btn:hover { opacity: 1; }
-        .cover-refresh-btn svg { width: 18px; height: 18px; stroke: #111; stroke-width: 1.5; }
-        .cover-refresh-btn.spinning svg { animation: cover-spin 0.9s linear infinite; }
-        @keyframes cover-spin { to { transform: rotate(360deg); } }
-
-        /* 角色选择条（封面底部） */
-        .cover-role-bar {
-            position: absolute;
-            bottom: 12px;
-            right: 16px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 11px;
-            color: #666;
-            z-index: 10;
+        .cover-menu-item:hover { background: #F5F5F6; }
+        .cover-menu-item:disabled { opacity: 0.45; cursor: default; }
+        .cover-menu-item svg {
+            width: 15px;
+            height: 15px;
+            stroke: #111111;
+            stroke-width: 1.5;
+            flex-shrink: 0;
         }
-        .cover-role-bar select {
+        .cover-menu-sep { height: 1px; background: #E5E5E5; margin: 5px 4px; }
+        .cover-menu-label {
+            padding: 7px 10px 4px;
+            font-size: 10px;
+            letter-spacing: 0.04em;
+            color: #8E8E93;
+        }
+        .cover-menu-role { padding: 0 4px 4px; }
+        .cover-menu select {
+            width: 100%;
             appearance: none;
             -webkit-appearance: none;
             border: none;
-            background: rgba(255,255,255,0.7);
-            padding: 3px 18px 3px 8px;
-            border-radius: 8px;
-            font-size: 11px;
-            color: #333;
+            background-color: #F5F5F6;
+            padding: 7px 24px 7px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #111111;
             cursor: pointer;
             font-family: inherit;
             /* 下拉箭头 */
-            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
             background-repeat: no-repeat;
-            background-position: right 4px center;
+            background-position: right 8px center;
         }
 
         /* 封面头像：有图显图，无图浅灰圆角方块 + 细线条 SVG 占位 */
@@ -324,27 +333,6 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         }
         .comment-row .comment-name { color: #999; font-weight: 600; margin-right: 4px; }
         .comment-row .comment-time { color: #B0B0B5; font-size: 0.594rem; margin-left: 6px; font-family: monospace; }
-
-        /* ===== 封面 AI 隐形入口（细线条四角星，右下角半透明白圆） ===== */
-        .cover-ai-btn {
-            position: absolute;
-            right: 16px;
-            bottom: 14px;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            border: none;
-            background: rgba(255,255,255,0.55);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 10;
-            transition: transform 0.1s ease, opacity 0.2s ease;
-        }
-        .cover-ai-btn:active { transform: scale(0.92); }
-        .cover-ai-btn:disabled { opacity: 0.45; cursor: default; }
-        .cover-ai-btn svg { width: 15px; height: 15px; stroke: #333; }
 
         /* ===== 评论抽屉 ===== */
         .comment-sheet {
@@ -587,26 +575,26 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
         <!-- 主舞台：封面 + 动态面板 -->
         <div class="space-stage">
 
-            <!-- 封面板块 -->
+            <!-- 封面板块：只保留我的头像 + 右上角加号入口 -->
             <div class="cover-block">
-                <div class="cover-nav-btn" aria-label="返回" onclick="location.href='../../index.html'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
-                </div>
-                <div class="cover-add-btn" id="btnAdd" aria-label="发表动态" onclick="location.href='../../forum/post-create.html'">
+                <div class="cover-avatar-left" id="coverAvatar"><svg viewBox="0 0 24 24" fill="none" stroke="#A0A0A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
+                <div class="cover-add-btn" id="btnAdd" role="button" tabindex="0" aria-label="更多" aria-expanded="false">
                     <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </div>
-                <div class="cover-refresh-btn" id="btnRefreshAll" aria-label="整机刷新" title="整机刷新：AI 一次性生成朋友圈 + 钱包">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                <!-- 所有功能收进这里：发动态 / 让 TA 发动态 / 选择角色 -->
+                <div class="cover-menu" id="coverMenu">
+                    <button class="cover-menu-item" type="button" id="menuPost">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+                        <span>发表动态</span>
+                    </button>
+                    <button class="cover-menu-item" type="button" id="btnAiPost">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path><path d="M19 14l.7 1.8L21.5 16.5l-1.8.7L19 19l-.7-1.8-1.8-.7 1.8-.7z"></path></svg>
+                        <span>让 TA 发动态</span>
+                    </button>
+                    <div class="cover-menu-sep"></div>
+                    <div class="cover-menu-label">当前角色</div>
+                    <div class="cover-menu-role"><select id="roleSelect"></select></div>
                 </div>
-                <div class="cover-role-bar">
-                    <span>角色：</span>
-                    <select id="roleSelect"></select>
-                </div>
-                <div class="cover-avatar-left" id="coverAvatar"><svg viewBox="0 0 24 24" fill="none" stroke="#A0A0A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
-                <!-- 隐形入口：让随机角色由 AI 生成一条动态 -->
-                <button class="cover-ai-btn" id="btnAiPost" type="button" aria-label="让 TA 发动态" title="让 TA 发动态">
-                    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path><path d="M19 14l.7 1.8L21.5 16.5l-1.8.7L19 19l-.7-1.8-1.8-.7 1.8-.7z"></path></svg>
-                </button>
             </div>
 
             <!-- 动态面板（原 #momentsList 节点保留，事件委托不受 innerHTML 重建影响） -->
@@ -1456,22 +1444,46 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 });
             }
 
-            // 点击绑定：点封面空白换封面，点头像只换头像；内部按钮阻止冒泡避免误触
-            coverBlock.addEventListener('click', function () { coverInput.click(); });
+            var addBtn = document.getElementById('btnAdd');
+            var coverMenu = document.getElementById('coverMenu');
+            var menuPost = document.getElementById('menuPost');
+            var menuOpen = false;
+
+            function setMenu(open) {
+                menuOpen = !!open;
+                if (coverMenu) coverMenu.classList.toggle('open', menuOpen);
+                if (addBtn) {
+                    addBtn.classList.toggle('open', menuOpen);
+                    addBtn.setAttribute('aria-expanded', menuOpen ? 'true' : 'false');
+                }
+            }
+
+            // 点封面空白换封面；菜单打开时点空白只收起菜单
+            coverBlock.addEventListener('click', function () {
+                if (menuOpen) { setMenu(false); return; }
+                coverInput.click();
+            });
             avatarBox.addEventListener('click', function (e) {
                 e.stopPropagation();
                 avatarInput.click();
             });
-            var navBtn = coverBlock.querySelector('.cover-nav-btn');
-            if (navBtn) navBtn.addEventListener('click', function (e) { e.stopPropagation(); });
-            var addBtn = document.getElementById('btnAdd');
-            if (addBtn) addBtn.addEventListener('click', function (e) { e.stopPropagation(); });
+            if (addBtn) addBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                setMenu(!menuOpen);
+            });
+            if (coverMenu) coverMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+            if (menuPost) menuPost.addEventListener('click', function () {
+                setMenu(false);
+                location.href = '../../forum/post-create.html';
+            });
+            // 菜单项执行后收起浮层（功能本身由各自原有监听器处理）
             var aiBtn = document.getElementById('btnAiPost');
-            if (aiBtn) aiBtn.addEventListener('click', function (e) { e.stopPropagation(); });
-            var refreshBtn = document.getElementById('btnRefreshAll');
-            if (refreshBtn) refreshBtn.addEventListener('click', function (e) { e.stopPropagation(); });
-            var roleSel = document.getElementById('roleSelect');
-            if (roleSel) roleSel.addEventListener('click', function (e) { e.stopPropagation(); });
+            if (aiBtn) aiBtn.addEventListener('click', function () { setMenu(false); });
+            // 点外部 / Esc 关闭
+            document.addEventListener('click', function () { if (menuOpen) setMenu(false); });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && menuOpen) setMenu(false);
+            });
 
             bindFileChange(coverInput, 'cover', 'cover');
             bindFileChange(avatarInput, 'avatar', 'avatar');
@@ -1481,18 +1493,16 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
 
         renderMoments();
 
-        /* ================= 整机刷新（PhoneEngine） ================= */
-        (function initRefreshAll() {
+        /* ================= 角色选择（封面菜单内） ================= */
+        (function initRoleSelect() {
             var S = window.PhoneStorage;
             var E = window.PhoneEngine;
-            var UI = window.PhoneUI;
 
-            if (!S || !E || !UI) return; // 公共模块没加载就跳过
+            if (!S || !E) return; // 公共模块没加载就跳过
 
             var roleSelect = document.getElementById('roleSelect');
-            var refreshBtn = document.getElementById('btnRefreshAll');
 
-            // 1. 填充角色下拉
+            // 填充角色下拉
             var chars = S.getCharacters();
             if (roleSelect && chars.length) {
                 var html = '';
@@ -1507,57 +1517,10 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 E.setCurrentContact(roleSelect.value);
             }
 
-            // 2. 角色切换 → 保存
+            // 角色切换 → 保存
             if (roleSelect) {
                 roleSelect.addEventListener('change', function () {
                     E.setCurrentContact(roleSelect.value);
-                });
-            }
-
-            // 3. 整机刷新按钮
-            if (refreshBtn) {
-                refreshBtn.addEventListener('click', function () {
-                    if (!roleSelect) { UI.showToast('请先添加 AI 角色'); return; }
-                    var contactId = roleSelect.value;
-                    if (!contactId) { UI.showToast('请先选择角色'); return; }
-
-                    // 检查 API key
-                    var cfg = S.getApiConfig();
-                    if (!cfg.apiKey) {
-                        UI.confirm({
-                            title: '还没配置 API Key',
-                            message: '请到 设置 → API 设置 里填入 API Key 后再试。',
-                            okText: '知道了',
-                            cancelText: null
-                        });
-                        return;
-                    }
-
-                    // 开始刷新
-                    refreshBtn.classList.add('spinning');
-                    UI.showLoading('AI 正在生成整机数据...');
-
-                    E.refreshAll({ contactId: contactId }).then(function (result) {
-                        if (!result || !result.ok) {
-                            throw new Error((result && result.error) || 'AI 返回空结果');
-                        }
-                        // 存入各 App
-                        var applied = E.applyBundle(result.data);
-                        var okCount = 0;
-                        for (var k in applied) { if (applied[k]) okCount++; }
-
-                        UI.hideLoading();
-                        refreshBtn.classList.remove('spinning');
-
-                        // 刷新页面数据
-                        renderMoments();
-
-                        UI.showToast('整机刷新完成 ✅ 成功 ' + okCount + ' 个 App');
-                    }).catch(function (err) {
-                        UI.hideLoading();
-                        refreshBtn.classList.remove('spinning');
-                        UI.showToast('刷新失败：' + (err && err.message ? err.message.slice(0, 60) : String(err)));
-                    });
                 });
             }
         })();

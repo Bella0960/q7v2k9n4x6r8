@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<html lang="zh">
-<head>
+<html lang="zh"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>聊天美化 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/chat-beauty.js?v=20261024v2"></script>
+<script src="../shared/js/chat-beauty.js?v=20261024v6"></script>
 <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261024v2">
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -39,6 +38,12 @@
   }
   .back-btn svg { width: 16px; height: 16px; stroke: #111; }
   .title { font-size: 24px; font-weight: 800; color: #111; letter-spacing: -0.3px; }
+  .header-actions { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-top: 1px; }
+  .h-act { background: none; border: 0; padding: 0; cursor: pointer; line-height: 1; font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: 400; color: #111; }
+  .h-act-main { font-size: 15px; letter-spacing: -0.01em; padding-bottom: 3px; border-bottom: 1px solid #111; }
+  .h-act-main:active { opacity: 0.5; }
+  .h-act-sub { display: none; }
+  .h-act-sub:active { opacity: 0.5; }
   .content { flex: 1; overflow-y: auto; padding: 0 18px 120px; }
 
   /* 顶部工具条 */
@@ -121,33 +126,35 @@
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
 
-  .footer {
-    position: absolute; left: 0; right: 0; bottom: 0;
-    padding: 12px 16px calc(20px + env(safe-area-inset-bottom));
-    background: linear-gradient(to top, #fff 60%, rgba(255,255,255,0));
-    display: flex; gap: 10px;
-  }
   .btn { flex: 1; height: 46px; border: none; border-radius: 999px; font-size: 0.875rem; font-weight: 600; cursor: pointer; }
   .btn-primary { background: #111; color: #fff; }
   .btn-secondary { background: #F4F4F6; color: #111; }
   .toast {
-    position: absolute; left: 50%; bottom: 100px; transform: translateX(-50%);
+    position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
     background: rgba(17,17,17,0.88); color: #fff; font-size: 0.813rem;
     padding: 10px 18px; border-radius: 12px; opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 100;
   }
   .toast.show { opacity: 1; }
+  .vb-preset-overlay{position:absolute;inset:0;background:rgba(0,0,0,.3);z-index:200;display:none;align-items:flex-start;justify-content:flex-end;padding:50px 16px 0}
+  .vb-preset-overlay.show{display:flex}
+  .vb-preset-panel{background:#fff;border-radius:12px;width:100%;max-width:280px;max-height:60vh;overflow-y:auto;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.15)}
+  .vb-preset-panel-head{font:italic 14px Georgia,serif;margin-bottom:10px;color:#111}
+  .vb-preset-panel-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .vb-preset-chip{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:8px;background:#f4f4f6;font-size:12px;color:#333;cursor:pointer}
+  .vb-preset-chip.on{background:#111;color:#fff}
+  .vb-preset-chip button{background:none;border:0;color:inherit;opacity:.5;cursor:pointer;font-size:14px;padding:0 0 0 8px}
+  .vb-preset-save-btn{width:100%;height:38px;border:1px solid #111;background:transparent;color:#111;border-radius:8px;font:italic 13px Georgia,serif;cursor:pointer}
 
   /* MAOMAO Editorial Beauty — refinement */
 .field-hint{margin-top:8px;color:#858585;font-size:11px;line-height:1.7;letter-spacing:.01em;max-width:34em}
 .copy-btn{white-space:nowrap}
   body{background:#e9e9e9;color:#151515}
   .phone{border-radius:30px;box-shadow:0 18px 60px rgba(0,0,0,.10);border:1px solid #d6d6d6;position:relative}
-  .status-bar{font-size:11px;letter-spacing:.12em;font-weight:500;padding:17px 25px 12px}
-  .header{align-items:flex-start;gap:13px;padding:7px 22px 20px;border-bottom:1px solid #e8e8e8}
+  .status-bar{font-size:11px;letter-spacing:.12em;font-weight:500;padding:12px 22px 8px}
+  .header{align-items:flex-start;gap:13px;padding:4px 22px 10px;border-bottom:1px solid #e8e8e8}
   .back-btn{background:transparent;border-radius:0;width:25px;height:32px;border-right:1px solid #dedede;padding-right:10px;flex:0 0 25px}
-  .title{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:30px;letter-spacing:-.055em;line-height:1}
-  .title:after{content:"INTERFACE CUSTOMIZATION";display:block;font-family:Arial,sans-serif;font-size:8px;letter-spacing:.19em;color:#888;margin-top:9px;font-weight:500}
-  .content{padding:18px 22px 125px}
+  .title{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:21px;letter-spacing:-.04em;line-height:1.1}
+  .content{padding:0 22px 44px}
   .toolbar{justify-content:space-between;gap:14px;margin-bottom:23px;border-bottom:1px solid #dedede;padding-bottom:13px}
   .circle-btn{background:transparent;border-radius:0;width:30px;height:28px;border-bottom:1px solid #222}
   .circle-btn:active,.copy-btn:active{background:transparent;color:#777}
@@ -164,7 +171,7 @@
   .preset-del{border-radius:0;width:28px;height:28px;font-size:20px;color:#999}
   .empty{padding:52px 8px;text-align:left;font-family:Georgia,serif;font-size:19px;line-height:1.7;color:#555}
   .empty:before{content:"NO PRESETS / 00";display:block;font:9px Arial,sans-serif;letter-spacing:.17em;color:#999;margin-bottom:12px}
-  .field{margin-bottom:23px}
+  .field{margin-bottom:14px}
   .field label{font-size:9px;letter-spacing:.16em;color:#777;margin-bottom:9px;text-transform:uppercase}
   .field input,.field textarea,.field select{background:#f7f7f7;border:0;border-bottom:1px solid #cfcfcf;border-radius:0;padding:13px 10px;font-size:13px}
   .field input:focus,.field textarea:focus,.field select:focus{border-bottom-color:#111;box-shadow:0 1px 0 #111}
@@ -173,7 +180,6 @@
   .pill{background:transparent;border:0;border-radius:0;padding:9px 0 10px;font-size:11px;color:#888;position:relative}
   .pill.on{background:transparent;color:#111}
   .pill.on:after{content:"";position:absolute;bottom:0;left:0;right:0;height:2px;background:#111}
-  .footer{position:absolute;background:linear-gradient(to top,#fff 76%,rgba(255,255,255,0));padding:20px 23px calc(21px + env(safe-area-inset-bottom));gap:24px;align-items:center}
   .btn{flex:0 0 auto;height:auto;min-height:34px;border-radius:0;font-family:Georgia,"Times New Roman",serif;font-size:15px;font-style:italic;font-weight:400;background:transparent;color:#111;position:relative;padding:4px 0 8px}
   .btn:after{content:"";position:absolute;left:0;bottom:0;width:100%;height:1px;background:currentColor;transition:transform .22s ease;transform-origin:left}
   .btn:active{background:transparent;opacity:.55}
@@ -182,35 +188,120 @@
   @media(max-width:420px){.phone{width:100vw;height:100dvh;border-radius:0;border:0}body{background:#fff}}
 
   /* ===== 双 Tab：可视化调节 / 深度自定义 ===== */
-  .beauty-tabs{display:flex;border-bottom:1px solid #dedede;margin-bottom:23px}
-  .btab{flex:1;background:transparent;border:0;padding:10px 0 12px;font-family:Georgia,"Times New Roman",serif;font-style:italic;font-size:15px;color:#999;cursor:pointer;position:relative}
+  .beauty-tabs{display:flex;border-bottom:1px solid #dedede;margin:0 22px 14px;padding:0 0 8px}
+  .btab{flex:1;background:transparent;border:0;padding:7px 0 9px;font-family:Georgia,"Times New Roman",serif;font-style:italic;font-size:13px;color:#999;cursor:pointer;position:relative}
   .btab.on{color:#111}
   .btab.on:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#111}
   .tab-view.hide{display:none}
 
   /* ===== 可视化调节：预览区（消费 ChatBeauty 的 --chat-* 变量，与 chat-detail 同名同义） ===== */
-  /* Sticky 预览：滚动调参时始终可见；白色不透明底 + 底部轻阴影与下方滑块区隔 */
-  .vb-preview{position:sticky;top:0;z-index:5;border:1px solid #dedede;border-radius:14px;overflow:hidden;background:#FFFFFF;margin-bottom:26px;box-shadow:0 6px 18px rgba(0,0,0,.09)}
+  /* 预览卡片：位于页面流首屏，滚动时由吸顶 dock 收成一条细栏 */
+  .vb-preview{position:relative;border:1px solid #dedede;border-radius:8px;overflow:hidden;background:#FFFFFF;margin-bottom:0;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .vbp-stage{display:flex;flex-direction:column;gap:var(--chat-bubble-gap,13px);padding:16px 14px;min-height:230px;background-image:var(--chat-bg-image,linear-gradient(180deg,#F7F7F8 0%,#F1F1F4 100%));background-size:cover;background-position:center;background-repeat:no-repeat}
   .vbp-time{align-self:center;font-size:8px;letter-spacing:.14em;color:#999;font-family:Arial,sans-serif;padding:2px 8px}
   .vbp-row{display:flex;gap:8px;align-items:flex-start;max-width:var(--chat-bubble-max-width,86%)}
-  .vbp-row.ta{align-self:flex-start}
-  .vbp-row.me{align-self:flex-end}
-  .vbp-avatar{width:var(--chat-avatar-size,30px);height:var(--chat-avatar-size,30px);border-radius:var(--chat-avatar-radius,50%);background:linear-gradient(135deg,#EFEFEF 0%,#DCDCDC 100%);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#444;flex-shrink:0;border:1px solid rgba(255,255,255,.8);overflow:hidden}
-  .vbp-bubble{padding:var(--chat-bubble-padding,9.5px 13px);margin-left:var(--chat-bubble-gap-x,0px);margin-right:var(--chat-bubble-gap-x,0px);font-size:12px;line-height:1.5;word-break:break-word;max-width:100%}
+  .vbp-row.ta{align-self:flex-start;flex-direction:var(--chat-ta-flex-dir,row);align-items:var(--chat-ta-align,flex-start)}
+  .vbp-row.me{align-self:flex-end;flex-direction:var(--chat-my-flex-dir,row);align-items:var(--chat-my-align,flex-start)}
+  .vbp-content{display:flex;flex-direction:column;gap:3px;min-width:0;max-width:100%}
+  .vbp-row.ta .vbp-content{align-items:flex-start}
+  .vbp-row.me .vbp-content{align-items:flex-end}
+  .vbp-avatar{width:var(--chat-avatar-size,30px);height:var(--chat-avatar-size,30px);border-radius:var(--chat-avatar-radius,50%);background:linear-gradient(135deg,#EFEFEF 0%,#DCDCDC 100%);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#444;flex-shrink:0;border:1px solid rgba(255,255,255,.8);overflow:visible}
+  .vbp-bubble{padding:var(--chat-bubble-padding,9.5px 13px);font-size:12px;line-height:1.5;word-break:break-word;max-width:100%}
   .vbp-row.ta .vbp-bubble{background:var(--chat-bubble-ta-bg,#FFFFFF);color:var(--chat-bubble-ta-color,#111111);border-radius:var(--chat-bubble-ta-radius,15px 15px 15px 4px);border:1px solid rgba(20,20,24,.035)}
   .vbp-row.me .vbp-bubble{background:var(--chat-bubble-my-bg,#111111);color:var(--chat-bubble-my-color,#FFFFFF);border-radius:var(--chat-bubble-my-radius,15px 15px 4px 15px)}
+  /* 每条消息的时间戳：默认在气泡下方，跟着气泡对齐 */
+  .vbp-msg-time{
+    display:var(--chat-time-display,flex);
+    flex-direction:column;gap:1px;
+    font-size:var(--chat-time-size,8px);
+    color:var(--chat-time-color,#999);
+    font-family:Arial,sans-serif;letter-spacing:.05em;line-height:1.5;flex-shrink:0;white-space:nowrap;
+  }
+  .vbp-msg-read{display:var(--chat-time-show-read,none);opacity:.7}
+  .vbp-msg-date{display:var(--chat-show-date,block)}
+  /* 头像旁自定义小标签 */
+  .vbp-avatar{position:relative}
+  .vbp-row.ta .vbp-avatar::after{
+    content:var(--chat-ta-badge,'');
+    position:absolute;top:var(--chat-ta-badge-y,-2px);left:calc(100% + var(--chat-ta-badge-x,6px));
+    font:var(--chat-ta-badge-size,7px) Arial,sans-serif;letter-spacing:.05em;line-height:1.3;white-space:nowrap;
+    color:var(--chat-ta-badge-color,#999);pointer-events:none;
+  }
+  .vbp-row.me .vbp-avatar::after{
+    content:var(--chat-my-badge,'');
+    position:absolute;top:var(--chat-my-badge-y,-2px);right:calc(100% + var(--chat-my-badge-x,6px));
+    font:var(--chat-my-badge-size,7px) Arial,sans-serif;letter-spacing:.05em;line-height:1.3;white-space:nowrap;
+    color:var(--chat-my-badge-color,#999);pointer-events:none;
+  }
+  /* 连续同方向消息只在第一个头像旁显示标签 */
+  .vbp-row.ta + .vbp-row.ta .vbp-avatar::after,
+  .vbp-row.me + .vbp-row.me .vbp-avatar::after{content:none}
+  /* 标签钉在气泡角落时，用气泡伪元素 */
+  .vbp-bubble{position:relative}
+  .vbp-row.ta .vbp-bubble::after{
+    content:'';position:absolute;font:7px Arial,sans-serif;letter-spacing:.05em;line-height:1.3;white-space:nowrap;pointer-events:none;
+  }
+  .vbp-row.me .vbp-bubble::after{
+    content:'';position:absolute;font:7px Arial,sans-serif;letter-spacing:.05em;line-height:1.3;white-space:nowrap;pointer-events:none;
+  }
+  .vbp-row.ta .vbp-bubble::after{color:var(--chat-ta-badge-color,#999)}
+  .vbp-row.me .vbp-bubble::after{color:var(--chat-my-badge-color,#999)}
+  /* anchor=bubble-* 时隐藏头像旁标签，显示气泡角标签 */
+  .vbp-row.ta[data-anchor^="bubble"] .vbp-avatar::after{content:none}
+  .vbp-row.me[data-anchor^="bubble"] .vbp-avatar::after{content:none}
+  .vbp-row.ta[data-anchor="bubble-tl"] .vbp-bubble::after{content:var(--chat-ta-badge,'');top:var(--chat-ta-badge-y,-2px);left:var(--chat-ta-badge-x,6px)}
+  .vbp-row.ta[data-anchor="bubble-tr"] .vbp-bubble::after{content:var(--chat-ta-badge,'');top:var(--chat-ta-badge-y,-2px);right:var(--chat-ta-badge-x,6px)}
+  .vbp-row.ta[data-anchor="bubble-bl"] .vbp-bubble::after{content:var(--chat-ta-badge,'');bottom:var(--chat-ta-badge-y,-2px);left:var(--chat-ta-badge-x,6px)}
+  .vbp-row.ta[data-anchor="bubble-br"] .vbp-bubble::after{content:var(--chat-ta-badge,'');bottom:var(--chat-ta-badge-y,-2px);right:var(--chat-ta-badge-x,6px)}
+  .vbp-row.me[data-anchor="bubble-tl"] .vbp-bubble::after{content:var(--chat-my-badge,'');top:var(--chat-my-badge-y,-2px);left:var(--chat-my-badge-x,6px)}
+  .vbp-row.me[data-anchor="bubble-tr"] .vbp-bubble::after{content:var(--chat-my-badge,'');top:var(--chat-my-badge-y,-2px);right:var(--chat-my-badge-x,6px)}
+  .vbp-row.me[data-anchor="bubble-bl"] .vbp-bubble::after{content:var(--chat-my-badge,'');bottom:var(--chat-my-badge-y,-2px);left:var(--chat-my-badge-x,6px)}
+  .vbp-row.me[data-anchor="bubble-br"] .vbp-bubble::after{content:var(--chat-my-badge,'');bottom:var(--chat-my-badge-y,-2px);right:var(--chat-my-badge-x,6px)}
+  /* 已读位置：inline=时间同行 / below=时间下面一行 / bubble=气泡右下角 */
+  .vbp-msg-time[data-read-pos="inline"] .vbp-msg-read{margin-left:5px;align-self:center}
+  .vbp-msg-time[data-read-pos="below"] .vbp-msg-read{margin-left:0}
+  .vbp-row.me .vbp-content.read-on-bubble{position:relative}
+  .vbp-row.me .vbp-content.read-on-bubble .vbp-msg-read{
+    position:absolute;right:0;bottom:-16px;display:var(--chat-time-show-read,none);opacity:.7;
+  }
+  /* above 模式：头像+时间一行，气泡在下面（iMessage 风） */
+  .vb-preview.time-above .vbp-content{display:contents}
+  .vb-preview.time-above .vbp-row{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    grid-template-areas:"avatar time" "bubble bubble";
+    column-gap:8px;row-gap:4px;align-items:start;
+  }
+  .vb-preview.time-above .vbp-row.me{
+    grid-template-areas:"time avatar" "bubble bubble";
+    justify-items:end;
+  }
+  .vb-preview.time-above .vbp-avatar{grid-area:avatar}
+  .vb-preview.time-above .vbp-msg-time{grid-area:time;margin:0;white-space:nowrap;line-height:1.5}
+  .vb-preview.time-above .vbp-bubble{grid-area:bubble}
+  /* side 模式：时间和气泡同行，在气泡靠中间那侧 */
+  .vb-preview.time-side .vbp-content{display:contents;flex-direction:row;align-items:center;gap:6px}
+  .vb-preview.time-side .vbp-row{align-items:center}
+  .vb-preview.time-side .vbp-msg-time{margin:0}
+  .vb-preview.time-side .vbp-row.ta .vbp-avatar{order:0}
+  .vb-preview.time-side .vbp-row.ta .vbp-bubble{order:1}
+  .vb-preview.time-side .vbp-row.ta .vbp-msg-time{order:2}
+  .vb-preview.time-side .vbp-row.me .vbp-msg-time{order:0}
+  .vb-preview.time-side .vbp-row.me .vbp-bubble{order:1}
+  .vb-preview.time-side .vbp-row.me .vbp-avatar{order:2}
 
   /* ===== 可视化调节：滑块 / 色板 / 背景上传 ===== */
-  .vb-slider{margin-bottom:21px}
-  .vb-slider-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
-  .vb-name{font-size:9px;letter-spacing:.16em;color:#777;text-transform:uppercase}
-  .vb-val{font-family:Georgia,serif;font-style:italic;font-size:13px;color:#111}
-  .vb-slider input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:2px;background:#d6d6d6;outline:none;border-radius:0;padding:0}
-  .vb-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#111;cursor:pointer;border:none}
-  .vb-slider input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#111;cursor:pointer;border:none}
-  .vb-colors{display:grid;grid-template-columns:1fr 1fr;gap:18px;border-top:1px solid #dedede;padding-top:19px;margin-bottom:23px}
-  .vb-color-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid #cfcfcf;padding-bottom:7px}
+  .vb-slider{margin-bottom:14px;position:relative;z-index:10}
+  .vb-slider-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;gap:10px}
+  .vb-name{font-size:9px;letter-spacing:.16em;color:#777;text-transform:uppercase;white-space:nowrap}
+  .vb-val{font-family:Georgia,serif;font-style:italic;font-size:13px;color:#111;white-space:nowrap;flex-shrink:0}
+  .vb-slider input[type=range],.vb-advanced-control input[type=range],.vb-decor-item-controls input[type=range],.vb-hue-range,.vb-tone-range{width:100%;-webkit-appearance:none;appearance:none;height:22px;margin:0;background:transparent;outline:none;border:0;border-radius:0;padding:0;cursor:pointer;touch-action:pan-y;position:relative;z-index:10}
+  .vb-slider input[type=range]::-webkit-slider-runnable-track,.vb-advanced-control input[type=range]::-webkit-slider-runnable-track,.vb-decor-item-controls input[type=range]::-webkit-slider-runnable-track{height:2px;background:#E5E5EA;border-radius:0}
+  .vb-slider input[type=range]::-webkit-slider-thumb,.vb-advanced-control input[type=range]::-webkit-slider-thumb,.vb-decor-item-controls input[type=range]::-webkit-slider-thumb,.vb-hue-range::-webkit-slider-thumb,.vb-tone-range::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-6px;border-radius:50%;background:#111;cursor:pointer;border:none;box-shadow:none}
+  .vb-slider input[type=range]::-moz-range-thumb,.vb-advanced-control input[type=range]::-moz-range-thumb,.vb-decor-item-controls input[type=range]::-moz-range-thumb,.vb-hue-range::-moz-range-thumb,.vb-tone-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#111;cursor:pointer;border:none}
+  .vb-slider input[type=range]::-moz-range-track,.vb-advanced-control input[type=range]::-moz-range-track,.vb-decor-item-controls input[type=range]::-moz-range-track{height:2px;background:#E5E5EA;border:0}
+  .vb-colors{display:grid;grid-template-columns:1fr 1fr;gap:14px;border-top:1px solid #dedede;padding-top:12px;margin-bottom:14px}
+  .vb-color-row{display:flex;align-items:center;gap:10px;border-bottom:1px solid #cfcfcf;padding-bottom:5px}
   .vb-color-row input[type=color]{width:30px;height:30px;border:none;background:none;padding:0;cursor:pointer}
   .vb-color-hex{font-family:"SF Mono",Menlo,monospace;font-size:11px;color:#555}
   .vb-bg-actions{display:flex;gap:24px;align-items:center;margin-bottom:8px}
@@ -222,18 +313,16 @@
   .vb-color-slider-line input{min-width:0}
   .vb-side-color-head{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:9px;color:#66666f}
   .vb-side-color-head output{font:italic 11px Georgia,serif;color:#222229}
-  .vb-hue-range,.vb-tone-range{appearance:none;-webkit-appearance:none;width:100%;height:20px;margin:0;padding:0;background:transparent;outline:none;cursor:pointer}
-  .vb-hue-range::-webkit-slider-runnable-track{height:9px;border-radius:999px;background:linear-gradient(90deg,#f33 0%,#ffb52e 14%,#f4ee42 25%,#55c66e 39%,#21c8b4 51%,#2797ed 64%,#5852dc 76%,#bd42d8 88%,#f33 100%)}
-  .vb-hue-range::-moz-range-track{height:9px;border-radius:999px;background:linear-gradient(90deg,#f33 0%,#ffb52e 14%,#f4ee42 25%,#55c66e 39%,#21c8b4 51%,#2797ed 64%,#5852dc 76%,#bd42d8 88%,#f33 100%)}
-  .vb-hue-range::-webkit-slider-thumb,.vb-tone-range::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-3.5px;border-radius:50%;border:2px solid #fff;background:#42424a;box-shadow:0 1px 4px rgba(0,0,0,.2)}
-  .vb-hue-range::-moz-range-thumb,.vb-tone-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:#42424a;box-shadow:0 1px 4px rgba(0,0,0,.2)}
-  .vb-tone-range::-webkit-slider-runnable-track{height:9px;border-radius:999px;background:linear-gradient(90deg,#fff 0%,var(--vb-tone-hue,hsl(0,72%,50%)) 50%,#111 100%);border:1px solid rgba(0,0,0,.06)}
-  .vb-tone-range::-moz-range-track{height:9px;border-radius:999px;background:linear-gradient(90deg,#fff 0%,var(--vb-tone-hue,hsl(0,72%,50%)) 50%,#111 100%);border:1px solid rgba(0,0,0,.06)}
+  .vb-hue-range::-webkit-slider-runnable-track{height:2px;border-radius:0;background:#E5E5EA}
+  .vb-hue-range::-moz-range-track{height:2px;border-radius:0;background:#E5E5EA;border:0}
+  .vb-tone-range::-webkit-slider-runnable-track{height:2px;border-radius:0;background:linear-gradient(90deg,#E5E5EA 0%,var(--vb-tone-hue,#8E8E93) 50%,#111 100%)}
+  .vb-tone-range::-moz-range-track{height:2px;border-radius:0;background:linear-gradient(90deg,#E5E5EA 0%,var(--vb-tone-hue,#8E8E93) 50%,#111 100%);border:0}
   @media(max-width:360px){.vb-side-color-sliders{gap:10px;padding-left:10px;padding-right:10px}}
   /* ===== ChatBeauty advanced live editor ===== */
   .vbp-special-samples{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;align-items:stretch}
   .vbp-pay{position:relative;display:flex;flex-direction:column;gap:3px;min-height:58px;padding:8px 10px;border-radius:var(--chat-redpacket-radius,10px);background:var(--chat-redpacket-bg-rgba,#111);border:var(--chat-redpacket-border-width,0px) solid var(--chat-redpacket-border-color,#111);color:var(--chat-redpacket-text-color,#fff);overflow:hidden;isolation:isolate}
   .vbp-pay:before{content:"";position:absolute;z-index:-1;inset:0;background-image:var(--chat-redpacket-image,none);background-size:cover;background-position:center;opacity:var(--chat-redpacket-image-opacity,1);pointer-events:none}
+  .vbp-pay.is-transfer:before{background-image:var(--chat-transfer-image,none);opacity:var(--chat-transfer-image-opacity,1)}
   .vbp-pay-title{font-size:var(--chat-redpacket-font-size,12px);color:var(--chat-redpacket-title-color,#8E8E93)}
   .vbp-pay-amount{font-size:calc(var(--chat-redpacket-font-size,12px)*1.3);font-weight:650;color:var(--chat-redpacket-amount-color,#fff)}
   .vbp-pay-status{font-size:calc(var(--chat-redpacket-font-size,12px)*.72);color:var(--chat-redpacket-text-color,#fff);display:var(--chat-redpacket-status-display,block);opacity:.7}
@@ -247,11 +336,11 @@
   .vb-live-mark{display:flex;align-items:center;gap:6px;font-size:10px;color:#66666f;white-space:nowrap}
   .vb-live-mark i{display:block;width:6px;height:6px;border-radius:50%;background:#26262b;box-shadow:0 0 0 3px rgba(28,28,35,.08)}
   .vb-advanced-sides{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:end;margin-bottom:12px}
-  .vb-advanced-field{display:flex;flex-direction:column;gap:7px;font-size:11px;color:#66666f}
-  .vb-advanced-field select,.vb-advanced-field input,.vb-decor-add-row input,.vb-advanced-control input[type=text],.vb-advanced-control input[type=url]{width:100%;min-width:0;border:1px solid #e0e0e5;border-radius:10px;background:#fbfbfc;color:#25252b;padding:10px 11px;font-size:12px;outline:none}
+  .vb-advanced-field{display:flex;flex-direction:column;gap:7px;font-size:11px;color:#66666f;position:relative;z-index:10}
+  .vb-advanced-field select,.vb-advanced-field input,.vb-decor-add-row input,.vb-advanced-control input[type=text],.vb-advanced-control input[type=url]{width:100%;min-width:0;border:1px solid #e0e0e5;border-radius:8px;background:#fbfbfc;color:#25252b;padding:10px 11px;font-size:12px;outline:none}
   .vb-advanced-field select:focus,.vb-decor-add-row input:focus,.vb-advanced-control input[type=text]:focus,.vb-advanced-control input[type=url]:focus{border-color:#898992}
   .vb-copy-side{white-space:nowrap;height:37px!important;padding:0 12px!important;font-size:11px!important}
-  .vb-advanced-card{border:1px solid #e6e6eb;border-radius:14px;background:#fbfbfc;margin-top:9px;overflow:hidden}
+  .vb-advanced-card{border:1px solid #e6e6eb;border-radius:8px;background:#fbfbfc;margin-top:9px;overflow:hidden}
   .vb-advanced-card summary{list-style:none;display:flex;align-items:center;gap:9px;padding:14px 13px;cursor:pointer;user-select:none}
   .vb-advanced-card summary::-webkit-details-marker{display:none}
   .vb-card-number{font:italic 12px Georgia,serif;color:#9b9ba3;min-width:17px}
@@ -261,12 +350,12 @@
   .vb-advanced-card[open] summary:after{content:"−"}
   .vb-advanced-card[open] summary{border-bottom:1px solid #eaeaf0}
   .vb-advanced-grid{display:grid;grid-template-columns:1fr 1fr;gap:17px 14px;padding:14px 13px}
-  .vb-advanced-control{min-width:0}
+  .vb-advanced-control{min-width:0;position:relative;z-index:10}
   .vb-advanced-control-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
   .vb-advanced-control-head label{font-size:10px;color:#66666f}
   .vb-advanced-control-head output{font:italic 12px Georgia,serif;color:#222229;white-space:nowrap}
-  .vb-advanced-control input[type=range]{width:100%;display:block;accent-color:#24242b}
-  .vb-advanced-control input[type=color]{display:block;width:100%;height:34px;border:1px solid #e1e1e6;border-radius:9px;padding:3px;background:#fff;cursor:pointer}
+  .vb-advanced-control input[type=range]{display:block}
+  .vb-advanced-control input[type=color]{display:block;width:100%;height:34px;border:1px solid #e1e1e6;border-radius:8px;padding:3px;background:#fff;cursor:pointer}
   .vb-color-large{width:100%}
   .vb-control-span{grid-column:1/-1}
   .vb-advanced-subtitle{margin:0 13px;padding:0 0 9px;border-bottom:1px solid #e9e9ed;font-size:8px;letter-spacing:.15em;color:#9a9aa2}
@@ -275,38 +364,40 @@
   .vb-decor-add-row input{flex:1}
   .vb-decor-add-row .btn{flex:0 0 auto;min-width:52px;padding:0 13px!important;font-size:11px!important}
   .vb-decor-list{display:flex;flex-direction:column;gap:9px;padding:0 13px 14px}
-  .vb-decor-item{border:1px solid #e6e6eb;border-radius:12px;background:#fff;padding:10px;display:grid;grid-template-columns:48px minmax(0,1fr) 28px;gap:9px;align-items:start}
+  .vb-decor-item{border:1px solid #e6e6eb;border-radius:8px;background:#fff;padding:10px;display:grid;grid-template-columns:48px minmax(0,1fr) 28px;gap:9px;align-items:start}
   .vb-decor-thumb{width:48px;height:48px;border-radius:8px;background:#f1f1f4;object-fit:contain}
   .vb-decor-item-body{min-width:0}
   .vb-decor-url{font-size:9px;color:#65656f;overflow-wrap:anywhere;margin:0 0 8px}
   .vb-decor-item-controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .vb-decor-item-controls label{font-size:8px;color:#8d8d95;display:flex;flex-direction:column;gap:4px}
-  .vb-decor-item-controls input{width:100%;accent-color:#34343b}
+  .vb-decor-item-controls input{width:100%}
   .vb-decor-remove{width:27px;height:27px;border:0;border-radius:50%;background:#f2f2f4;color:#777780;font-size:15px}
-  .vb-empty-note{font-size:10px;color:#a1a1a8;text-align:center;padding:12px;border:1px dashed #dedee4;border-radius:10px}
+  .vb-empty-note{font-size:10px;color:#a1a1a8;text-align:center;padding:12px;border:1px dashed #dedee4;border-radius:8px}
   .vb-check-field{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:11px;color:#5f5f68}
   .vb-check-field input{accent-color:#25252b;width:15px;height:15px}
   .vb-mini-hint{display:block;font-size:9px;color:#9a9aa1;margin-top:5px}
   @media(max-width:360px){.vb-advanced-grid{gap:14px 10px;padding:12px 10px}.vb-advanced-sides{grid-template-columns:1fr}.vb-copy-side{width:100%}.vb-decor-add-row{padding-left:10px;padding-right:10px}}
 
 
-  /* ===== Pinned live preview + independent settings scroll ===== */
-  .content{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;padding:12px 22px 100px}
-  #beautyTabs{flex:0 0 auto;margin-bottom:10px;padding-bottom:8px}
-  #tabVisual:not(.hide){display:flex;flex:1 1 auto;flex-direction:column;min-height:0;overflow:hidden;gap:9px}
-  #tabCss:not(.hide){display:block;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:22px}
-  .vb-preview-dock{position:relative;z-index:8;flex:0 0 auto;min-width:0;padding:0 0 9px;background:#fff}
-  .vb-preview-modes{display:flex;flex-direction:column;gap:7px;margin:0 0 8px}
-  .vb-preview-modes-label{font:8px Arial,sans-serif;letter-spacing:.18em;color:#919198}
-  .vb-preview-mode-buttons{display:flex;gap:5px;align-items:center;flex-wrap:nowrap}
-  .vb-preview-mode{min-width:0;flex:1 1 0;white-space:nowrap;padding:7px 4px;border:0;border-radius:999px;background:#F1F1F3;color:#68686F;font:10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}
+  /* ===== 单列滚动：仅预览卡片吸顶，tabs 与模式条正常滚走 ===== */
+  .content{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;display:block;overscroll-behavior:contain;padding:0 0 44px;-webkit-overflow-scrolling:auto}
+  #beautyTabs{margin:6px 22px 4px;padding-bottom:0}
+  #tabVisual:not(.hide){display:block}
+  #tabCss:not(.hide){display:block;padding-bottom:22px}
+  .vb-preview-bar{display:flex;align-items:center;gap:10px;margin:0 22px 10px}
+  .vb-preview-modes{display:flex;align-items:center;gap:9px;flex:1 1 auto;min-width:0}
+  .vb-preview-modes-label{flex:0 0 auto;font:8px Arial,sans-serif;letter-spacing:.18em;color:#919198}
+  .vb-preview-mode-buttons{display:flex;gap:5px;align-items:center;flex:1 1 auto;min-width:0}
+  .vb-preview-mode{min-width:0;flex:1 1 0;white-space:nowrap;padding:6px 2px;border:0;border-radius:999px;background:#F2F2F7;color:#68686F;font:9px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}
   .vb-preview-mode.on{background:#111;color:#fff}
   .vb-preview-mode:active{opacity:.7}
-  #vbPreview.vb-preview{position:relative;top:auto;z-index:auto;margin:0;box-shadow:0 3px 12px rgba(0,0,0,.055)}
-  #vbPreview .vbp-stage{min-height:0;height:clamp(155px,21vh,205px);max-height:205px;overflow:hidden;padding:10px 12px;gap:7px}
+  #vbPreview.vb-preview{position:sticky;top:0;z-index:20;margin:0 22px 10px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);pointer-events:none}
+  #vbPreview .vbp-stage{min-height:0;height:clamp(175px,26vh,215px);max-height:215px;overflow:hidden;padding:10px 12px}
   #vbPreview .vbp-row{gap:7px}
-  #vbPreview .vbp-avatar{width:26px;height:26px;font-size:10px}
-  #vbPreview .vbp-bubble{font-size:11px;line-height:1.4;padding:7px 10px}
+  #vbPreview .vbp-avatar{width:var(--chat-avatar-size,26px);height:var(--chat-avatar-size,26px);font-size:10px}
+  #vbPreview .vbp-bubble{line-height:1.4;padding:7px 10px}
+  #vbPreview .vbp-row.ta .vbp-bubble{font-size:var(--chat-bubble-ta-font-size,11px)}
+  #vbPreview .vbp-row.me .vbp-bubble{font-size:var(--chat-bubble-my-font-size,11px)}
   #vbPreview .vbp-time{padding:0 6px;font-size:7px}
   #vbPreview .vbp-special-samples{display:none}
   #vbPreview .vbp-novel-sample{display:none;flex:1;min-height:0;flex-direction:column;justify-content:center;padding:8px 12px;color:var(--chat-bubble-my-color,#fff);background:var(--chat-bubble-my-bg,#111);border-radius:var(--chat-bubble-my-radius,15px 15px 4px 15px)}
@@ -320,34 +411,55 @@
   #vbPreview.mode-redpacket .vbp-pay.is-transfer,#vbPreview.mode-redpacket .vbp-image,#vbPreview.mode-transfer .vbp-pay.pay-card-red,#vbPreview.mode-transfer .vbp-image{display:none!important}
   #vbPreview.mode-novel .vbp-special-samples{display:none}
   #vbPreview.mode-novel .vbp-novel-sample{display:flex}
-  #vbSettingsScroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:0 2px 24px 0;scrollbar-width:thin;scrollbar-color:#D0D0D5 transparent}
-  #vbSettingsScroll::-webkit-scrollbar{display:block;width:3px}
-  #vbSettingsScroll::-webkit-scrollbar-thumb{background:#D0D0D5;border-radius:4px}
-  #vbSettingsScroll>.field{margin-bottom:12px}
-  #vbSettingsScroll .vb-slider{margin-bottom:17px}
-  #vbSettingsScroll .vb-advanced{margin-top:14px}
+  #vbSettingsScroll{padding:0 22px 32px}
+  #vbSettingsScroll .hide{display:none!important}
+  #vbSettingsScroll>.field{margin-bottom:8px}
+  #vbSettingsScroll .vb-slider{margin-bottom:12px}
+  #vbSettingsScroll .vb-advanced{margin-top:8px}
   #vbSettingsScroll .vb-advanced-heading{margin-bottom:12px}
   @media(max-width:420px){
-    .content{padding:9px 16px 94px}
-    #beautyTabs{margin-bottom:7px}
-    .vb-preview-modes{gap:6px;margin-bottom:7px}
-    .vb-preview-mode{font-size:9px;padding:7px 2px}
-    #vbPreview .vbp-stage{height:clamp(150px,20vh,185px);padding:9px 10px;gap:6px}
-    #vbPreview .vbp-bubble{font-size:10px;padding:6px 8px}
+    .content{padding:0 0 38px}
+    .status-bar{padding:12px 16px 8px}
+    .header{padding:4px 16px 10px}
+    #beautyTabs{margin:6px 16px 6px}
+    .beauty-tabs{margin:0 16px 23px}
+    .vb-preview-bar{margin:0 16px 10px}
+    #vbPreview.vb-preview{margin:0 16px 16px}
+    #vbSettingsScroll{padding:0 16px 32px}
+    .vb-preview-mode{font-size:8.5px;padding:6px 1px}
+    #vbPreview .vbp-stage{height:clamp(165px,24vh,195px);padding:9px 10px}
+    #vbPreview .vbp-bubble{padding:6px 8px}
+    .vb-slider input[type=range],.vb-advanced-control input[type=range],.vb-decor-item-controls input[type=range],.vb-hue-range,.vb-tone-range{height:44px}
+    .vb-slider input[type=range]::-webkit-slider-thumb,.vb-advanced-control input[type=range]::-webkit-slider-thumb,.vb-decor-item-controls input[type=range]::-webkit-slider-thumb,.vb-hue-range::-webkit-slider-thumb,.vb-tone-range::-webkit-slider-thumb{width:24px;height:24px;margin-top:-11px}
+    .vb-slider input[type=range]::-moz-range-thumb,.vb-advanced-control input[type=range]::-moz-range-thumb,.vb-decor-item-controls input[type=range]::-moz-range-thumb,.vb-hue-range::-moz-range-thumb,.vb-tone-range::-moz-range-thumb{width:24px;height:24px}
+    .vb-slider input[type=range]::-webkit-slider-runnable-track,.vb-advanced-control input[type=range]::-webkit-slider-runnable-track,.vb-decor-item-controls input[type=range]::-webkit-slider-runnable-track{margin-top:21px}
   }
 
 </style>
 </head>
 <body>
 <div class="phone">
+  <div class="content">
   <div class="status-bar"><span>4:41</span></div>
   <div class="header">
     <button class="back-btn" onclick="goBack()">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
     </button>
-    <div class="title">聊天美化</div>
+    <div class="title">美化</div>
+    <div class="header-actions">
+      <button class="h-act h-act-sub" id="btnLeft" type="button" onclick="leftAction()">恢复默认</button>
+      <button class="h-act" id="btnPreset" type="button" style="font-size:11px;border-bottom:1px solid #999;padding-bottom:2px">预设</button>
+      <button class="h-act h-act-main" id="btnRight" type="button" onclick="rightAction()">保存配置</button>
+    </div>
   </div>
-  <div class="content">
+  <!-- 预设浮层 -->
+  <div class="vb-preset-overlay" id="vbPresetOverlay">
+    <div class="vb-preset-panel">
+      <div class="vb-preset-panel-head">我的预设</div>
+      <div class="vb-preset-panel-list" id="vbVisualPresetList"></div>
+      <button type="button" class="vb-preset-save-btn" id="vbSavePresetBtn">保存当前为新预设</button>
+    </div>
+  </div>
     <div class="beauty-tabs" id="beautyTabs">
       <button class="btab on" type="button" data-tab="visual">可视化调节</button>
       <button class="btab" type="button" data-tab="css">深度自定义</button>
@@ -355,35 +467,44 @@
 
     <!-- ============ Tab 1：可视化调节 ============ -->
     <div class="tab-view" id="tabVisual">
-      <div class="vb-preview-dock" id="vbPreviewDock">
-      <div class="vb-preview-modes" id="vbPreviewModes" role="group" aria-label="切换预览模式">
-        <span class="vb-preview-modes-label">PREVIEW MODE</span>
-        <div class="vb-preview-mode-buttons">
-          <button type="button" class="vb-preview-mode on" data-preview-mode="basic" aria-pressed="true">普通气泡</button>
-          <button type="button" class="vb-preview-mode" data-preview-mode="redpacket" aria-pressed="false">红包</button>
-          <button type="button" class="vb-preview-mode" data-preview-mode="transfer" aria-pressed="false">转账</button>
-          <button type="button" class="vb-preview-mode" data-preview-mode="novel" aria-pressed="false">小说</button>
+      <div class="vb-preview-bar">
+        <div class="vb-preview-modes" id="vbPreviewModes" role="group" aria-label="切换预览模式">
+          <div class="vb-preview-mode-buttons">
+            <button type="button" class="vb-preview-mode on" data-preview-mode="basic" aria-pressed="true">普通气泡</button>
+            <button type="button" class="vb-preview-mode" data-preview-mode="redpacket" aria-pressed="false">红包</button>
+            <button type="button" class="vb-preview-mode" data-preview-mode="transfer" aria-pressed="false">转账</button>
+            <button type="button" class="vb-preview-mode" data-preview-mode="novel" aria-pressed="false">小说</button>
+          </div>
         </div>
       </div>
       <!-- 实时预览：类名与 chat-detail 同构，CSS 变量由 ChatBeauty.applyVars 注入 -->
-      <div class="vb-preview" id="vbPreview">
+      <div class="vb-preview mode-basic" id="vbPreview">
         <div class="vbp-stage">
           <div class="vbp-time">JUST NOW</div>
           <div class="vbp-row ta">
             <div class="vbp-avatar">彼</div>
-            <div class="vbp-bubble">今天下午去喝杯咖啡吗？</div>
+            <div class="vbp-content">
+              <div class="vbp-bubble">今天下午去喝杯咖啡吗？</div>
+              <div class="vbp-msg-time"><span class="vbp-msg-date">10月24日</span><span class="vbp-msg-clock">14:32</span></div>
+            </div>
           </div>
           <div class="vbp-row me">
-            <div class="vbp-bubble">好啊，老地方见～</div>
+            <div class="vbp-content">
+              <div class="vbp-bubble">好啊，老地方见～</div>
+              <div class="vbp-msg-time"><span class="vbp-msg-date">10月24日</span><span class="vbp-msg-clock">14:32</span><span class="vbp-msg-read">已读</span></div>
+            </div>
             <div class="vbp-avatar">我</div>
           </div>
           <div class="vbp-row ta">
             <div class="vbp-avatar">彼</div>
-            <div class="vbp-bubble">那就四点半，我提前把位置占好。</div>
+            <div class="vbp-content">
+              <div class="vbp-bubble">那就四点半，我提前把位置占好。</div>
+              <div class="vbp-msg-time"><span class="vbp-msg-date">10月24日</span><span class="vbp-msg-clock">14:31</span></div>
+            </div>
           </div>
           <div class="vbp-special-samples">
             <div class="vbp-pay pay-card-red" id="vbPreviewRedPacket">
-              <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 8.5 12 11.6 14.5 8.5M10.6 12.5h2.8M12 12v4"/></svg>
+              <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 8.5 12 11.6 14.5 8.5M10.6 12.5h2.8M12 12v4"></path></svg>
               <div class="vbp-pay-main">
                 <span class="vbp-pay-title" id="vbPreviewRedPacketTitle">红包</span>
                 <span class="vbp-pay-amount" id="vbPreviewRedPacketAmount">¥88.00</span>
@@ -392,29 +513,27 @@
               <span class="vbp-pay-status" id="vbPreviewRedPacketStatus">未领取</span>
             </div>
             <div class="vbp-pay is-transfer" id="vbPreviewTransfer">
-              <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h13l-3-3M20 7l-3 3M17 17H4l3 3M4 17l3-3"/></svg>
+              <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h13l-3-3M20 7l-3 3M17 17H4l3 3M4 17l3-3"></path></svg>
               <div class="vbp-pay-main">
                 <span class="vbp-pay-title">转账</span>
                 <span class="vbp-pay-amount">¥88.00</span>
               </div>
               <span class="vbp-pay-status">待收款</span>
-              <svg class="pay-card-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+              <svg class="pay-card-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
             </div>
             <div class="vbp-image" id="vbPreviewImage" aria-label="图片消息预览"><span>IMAGE MESSAGE</span></div>
           </div>
           <div class="vbp-novel-sample" id="vbPreviewNovel"><span class="vbp-novel-kicker">CHAPTER 01 / 午后</span><strong>雨停之前</strong><p>窗边落着一层很轻的光。你抬起头时，故事正好从这一句开始。</p><span class="vbp-novel-meta">细节叙事 · 实时样式预览</span></div>
         </div>
       </div>
-      </div>
       <div class="vb-settings-scroll" id="vbSettingsScroll">
       <div class="field">
-        <label>配置对象</label>
         <select id="vbScope">
           <option value="global">全局默认配置</option>
-        </select>
-        <div class="field-hint" id="vbScopeHint">对所有角色生效；某个角色可以在下拉里单独覆盖全局。</div>
+        <option value="role_1">角色 · 宝宝</option><option value="role_2">角色 · 苏格拉底</option><option value="role_3">角色 · 灵感助手</option><option value="role_1">角色 · 宝宝</option><option value="role_2">角色 · 苏格拉底</option><option value="role_3">角色 · 灵感助手</option></select>
       </div>
 
+      <div data-mode="basic novel">
       <div class="vb-slider">
         <div class="vb-slider-head"><span class="vb-name">头像大小</span><span class="vb-val" id="vbAvatarSizeVal">30px</span></div>
         <input type="range" id="vbAvatarSize" min="20" max="64" step="1" value="30">
@@ -439,8 +558,9 @@
         <div class="vb-slider-head"><span class="vb-name">气泡内边距</span><span class="vb-val" id="vbBubblePaddingVal">10px</span></div>
         <input type="range" id="vbBubblePadding" min="5" max="20" step="1" value="10">
       </div>
+      </div>
 
-      <div class="vb-colors">
+      <div class="vb-colors" data-mode="basic novel">
         <div class="vb-color">
           <div class="vb-slider-head"><span class="vb-name">我的气泡 · 底色</span></div>
           <div class="vb-color-row"><input type="color" id="vbMyBg" value="#111111"><span class="vb-color-hex" id="vbMyBgHex">#111111</span></div>
@@ -465,15 +585,15 @@
           <span class="vb-live-mark"><i></i> 实时预览</span>
         </div>
 
-        <div class="vb-advanced-sides">
+        <div class="vb-advanced-sides" data-mode="basic novel">
           <label class="vb-advanced-field"><span>正在编辑</span>
             <select id="vbEditSide"><option value="my">我的气泡</option><option value="partner">对方气泡</option></select>
           </label>
           <button type="button" class="btn btn-secondary vb-copy-side" id="vbCopySideBtn">复制到另一侧 ↗</button>
         </div>
 
-        <details class="vb-advanced-card" open>
-          <summary><span class="vb-card-number">01</span><span class="vb-card-title">气泡形状与文字</span><span class="vb-card-note">BUBBLE</span></summary>
+        <details class="vb-advanced-card" open="" data-mode="basic novel">
+          <summary><span class="vb-card-number">01</span><span class="vb-card-title">气泡形状与文字</span></summary>
           <div class="vb-advanced-grid">
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbSideBorderColor">描边颜色</label><output id="vbSideBorderColorHex">#DADAE0</output></div>
@@ -493,7 +613,7 @@
             </div>
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbSideFontSize">文字字号</label><output id="vbSideFontSizeVal">12px</output></div>
-              <input type="range" id="vbSideFontSize" min="10" max="24" step="1" value="12">
+              <input type="range" id="vbSideFontSize" min="8" max="28" step="1" value="12">
             </div>
             <label class="vb-advanced-field"><span>字体</span>
               <select id="vbSideFontFamily"><option value="system">系统默认</option><option value="serif">衬线</option><option value="mono">等宽</option></select>
@@ -505,13 +625,16 @@
               <label class="vb-color-slider-line"><span>彩色色调</span><input type="range" id="vbSideFillHue" class="vb-hue-range" min="0" max="360" step="1" value="0" aria-label="气泡填充色色调"></label>
               <label class="vb-color-slider-line"><span>浅 / 深</span><input type="range" id="vbSideFillTone" class="vb-tone-range" min="0" max="100" step="1" value="8" aria-label="气泡填充色明暗"></label>
             </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideOpacity">气泡不透明度</label><output id="vbSideOpacityVal">100%</output></div>
+              <input type="range" id="vbSideOpacity" min="20" max="100" step="1" value="100">
+            </div>
             <div class="vb-side-color-channel">
               <div class="vb-side-color-head"><span>气泡描边色</span><output id="vbSideBorderHueHex">#111111</output></div>
               <label class="vb-color-slider-line"><span>彩色色调</span><input type="range" id="vbSideBorderHue" class="vb-hue-range" min="0" max="360" step="1" value="0" aria-label="气泡描边色色调"></label>
               <label class="vb-color-slider-line"><span>浅 / 深</span><input type="range" id="vbSideBorderTone" class="vb-tone-range" min="0" max="100" step="1" value="8" aria-label="气泡描边色明暗"></label>
             </div>
           </div>
-          <div class="vb-advanced-subtitle">气泡尾巴 · TAIL</div>
           <div class="vb-advanced-grid vb-tail-grid">
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbSideTailSize">尾巴大小</label><output id="vbSideTailSizeVal">0px</output></div>
@@ -525,11 +648,69 @@
               <div class="vb-advanced-control-head"><label for="vbSideTailY">垂直位置 Y</label><output id="vbSideTailYVal">12px</output></div>
               <input type="range" id="vbSideTailY" min="0" max="64" step="1" value="12">
             </div>
+            <label class="vb-advanced-field"><span>尾巴形状</span>
+              <select id="vbSideTailShape"><option value="triangle">直角三角</option><option value="round">圆角尾巴</option></select>
+            </label>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideTailColor">尾巴颜色</label><output id="vbSideTailColorHex">跟随气泡</output></div>
+              <input type="color" id="vbSideTailColor" value="#111111" class="vb-color-large">
+            </div>
+          </div>
+          <div class="vb-advanced-subtitle">气泡四角圆角</div>
+          <div class="vb-advanced-grid">
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideRadiusTL">左上</label><output id="vbSideRadiusTLVal">15px</output></div>
+              <input type="range" id="vbSideRadiusTL" min="0" max="36" step="1" value="15">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideRadiusTR">右上</label><output id="vbSideRadiusTRVal">15px</output></div>
+              <input type="range" id="vbSideRadiusTR" min="0" max="36" step="1" value="15">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideRadiusBR">右下</label><output id="vbSideRadiusBRVal">4px</output></div>
+              <input type="range" id="vbSideRadiusBR" min="0" max="36" step="1" value="4">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideRadiusBL">左下</label><output id="vbSideRadiusBLVal">15px</output></div>
+              <input type="range" id="vbSideRadiusBL" min="0" max="36" step="1" value="15">
+            </div>
+          </div>
+          <div class="vb-advanced-grid">
+            <label class="vb-advanced-field"><span>描边样式</span>
+              <select id="vbSideBorderStyle"><option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option></select>
+            </label>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideLineHeight">文字行高</label><output id="vbSideLineHeightVal">1.4</output></div>
+              <input type="range" id="vbSideLineHeight" min="1" max="2.4" step="0.05" value="1.4">
+            </div>
+          </div>
+          <div class="vb-advanced-grid">
+            <label class="vb-check-field"><input type="checkbox" id="vbSideShadowVisible"><span>启用阴影</span></label>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideShadowColor">阴影颜色</label><output id="vbSideShadowColorHex">#000000</output></div>
+              <input type="color" id="vbSideShadowColor" value="#000000" class="vb-color-large">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideShadowX">水平偏移 X</label><output id="vbSideShadowXVal">0px</output></div>
+              <input type="range" id="vbSideShadowX" min="-20" max="20" step="1" value="0">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideShadowY">垂直偏移 Y</label><output id="vbSideShadowYVal">2px</output></div>
+              <input type="range" id="vbSideShadowY" min="-20" max="20" step="1" value="2">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideShadowBlur">模糊半径</label><output id="vbSideShadowBlurVal">6px</output></div>
+              <input type="range" id="vbSideShadowBlur" min="0" max="40" step="1" value="6">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbSideShadowSpread">扩散大小</label><output id="vbSideShadowSpreadVal">0px</output></div>
+              <input type="range" id="vbSideShadowSpread" min="-10" max="20" step="1" value="0">
+            </div>
           </div>
         </details>
 
-        <details class="vb-advanced-card">
-          <summary><span class="vb-card-number">02</span><span class="vb-card-title">装饰图片叠加</span><span class="vb-card-note">DECOR</span></summary>
+        <details class="vb-advanced-card" data-mode="basic">
+          <summary><span class="vb-card-number">02</span><span class="vb-card-title">装饰图片叠加</span></summary>
           <p class="vb-advanced-help">填写图片链接后添加，可叠加多张图片。每张图片都能独立调整位置、大小与透明度，图片保持原始比例。</p>
           <div class="vb-decor-add-row">
             <input type="url" id="vbDecorUrl" placeholder="https://… 图片链接">
@@ -538,8 +719,8 @@
           <div class="vb-decor-list" id="vbDecorList"><div class="vb-empty-note">尚未添加装饰图片</div></div>
         </details>
 
-        <details class="vb-advanced-card">
-          <summary><span class="vb-card-number">03</span><span class="vb-card-title">头像、时间与图片</span><span class="vb-card-note">DETAIL</span></summary>
+        <details class="vb-advanced-card" data-mode="basic">
+          <summary><span class="vb-card-number">03</span><span class="vb-card-title">头像、时间与图片</span></summary>
           <div class="vb-advanced-grid">
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbAvatarBorderColor">头像描边颜色</label><output id="vbAvatarBorderColorHex">#FFFFFF</output></div>
@@ -549,6 +730,42 @@
               <div class="vb-advanced-control-head"><label for="vbAvatarBorderWidth">头像描边粗细</label><output id="vbAvatarBorderWidthVal">1px</output></div>
               <input type="range" id="vbAvatarBorderWidth" min="0" max="5" step="0.5" value="1">
             </div>
+            <label class="vb-advanced-field"><span>对方头像位置</span>
+              <select id="vbPartnerAvatarPos"><option value="side">气泡旁</option><option value="top">气泡上</option><option value="bottom">气泡下</option></select>
+            </label>
+            <label class="vb-advanced-field"><span>我的头像位置</span>
+              <select id="vbMyAvatarPos"><option value="side">气泡旁</option><option value="top">气泡上</option><option value="bottom">气泡下</option></select>
+            </label>
+            <label class="vb-advanced-field vb-control-span"><span>对方头像旁小标签（留空不显示）</span>
+              <input type="text" id="vbPartnerBadge" placeholder="例：在线中">
+            </label>
+            <label class="vb-advanced-field vb-control-span"><span>我的头像旁小标签（留空不显示）</span>
+              <input type="text" id="vbMyBadge" placeholder="例：在输入…">
+            </label>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbPartnerBadgeX">对方标签 左右位置</label><output id="vbPartnerBadgeXVal">6px</output></div>
+              <input type="range" id="vbPartnerBadgeX" min="-30" max="60" step="1" value="6">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbMyBadgeX">我的标签 左右位置</label><output id="vbMyBadgeXVal">6px</output></div>
+              <input type="range" id="vbMyBadgeX" min="-30" max="60" step="1" value="6">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbPartnerBadgeY">对方标签 上下位置</label><output id="vbPartnerBadgeYVal">-2px</output></div>
+              <input type="range" id="vbPartnerBadgeY" min="-40" max="40" step="1" value="-2">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbMyBadgeY">我的标签 上下位置</label><output id="vbMyBadgeYVal">-2px</output></div>
+              <input type="range" id="vbMyBadgeY" min="-40" max="40" step="1" value="-2">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbPartnerBadgeSize">对方标签 字号</label><output id="vbPartnerBadgeSizeVal">7px</output></div>
+              <input type="range" id="vbPartnerBadgeSize" min="6" max="16" step="1" value="7">
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbMyBadgeSize">我的标签 字号</label><output id="vbMyBadgeSizeVal">7px</output></div>
+              <input type="range" id="vbMyBadgeSize" min="6" max="16" step="1" value="7">
+            </div>
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbTimeColor">时间颜色</label><output id="vbTimeColorHex">#999999</output></div>
               <input type="color" id="vbTimeColor" value="#999999" class="vb-color-large">
@@ -557,7 +774,16 @@
               <div class="vb-advanced-control-head"><label for="vbTimeSize">时间字号</label><output id="vbTimeSizeVal">8px</output></div>
               <input type="range" id="vbTimeSize" min="7" max="15" step="1" value="8">
             </div>
-            <label class="vb-check-field"><input type="checkbox" id="vbTimeVisible" checked><span>显示消息时间</span></label>
+            <label class="vb-check-field"><input type="checkbox" id="vbTimeVisible" checked=""><span>显示消息时间</span></label>
+            <label class="vb-advanced-field vb-control-span"><span>时间位置</span>
+              <select id="vbTimePosition"><option value="below">时间在气泡下</option><option value="above">时间在气泡上</option><option value="side">时间在气泡侧</option></select>
+            </label>
+            <label class="vb-check-field vb-control-span"><input type="checkbox" id="vbShowTime"><span>显示消息时间戳</span></label>
+            <label class="vb-check-field vb-control-span"><input type="checkbox" id="vbShowDate" checked=""><span>时间戳显示日期（关闭则只显示几点几分）</span></label>
+            <label class="vb-check-field vb-control-span"><input type="checkbox" id="vbTimeShowRead"><span>我的消息显示「已读」标记</span></label>
+            <label class="vb-advanced-field vb-control-span"><span>已读位置</span>
+              <select id="vbReadPosition"><option value="inline">时间同行右边</option><option value="below">时间下面一行</option><option value="bubble">气泡右下角</option></select>
+            </label>
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbImageOpacity">图片透明度</label><output id="vbImageOpacityVal">100%</output></div>
               <input type="range" id="vbImageOpacity" min="10" max="100" step="1" value="100">
@@ -569,8 +795,8 @@
           </div>
         </details>
 
-        <details class="vb-advanced-card">
-          <summary><span class="vb-card-number">04</span><span class="vb-card-title">红包样式</span><span class="vb-card-note">RED PACKET</span></summary>
+        <details class="vb-advanced-card hide" data-mode="redpacket">
+          <summary><span class="vb-card-number">04</span><span class="vb-card-title">红包样式</span></summary>
           <div class="vb-advanced-grid">
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbRpBg">卡片底色</label><output id="vbRpBgHex">#111111</output></div>
@@ -604,7 +830,7 @@
               <div class="vb-advanced-control-head"><label for="vbRpFontSize">文案字号</label><output id="vbRpFontSizeVal">12px</output></div>
               <input type="range" id="vbRpFontSize" min="9" max="18" step="1" value="12">
             </div>
-            <label class="vb-check-field"><input type="checkbox" id="vbRpShowStatus" checked><span>显示已领取 / 未领取</span></label>
+            <label class="vb-check-field"><input type="checkbox" id="vbRpShowStatus" checked=""><span>显示已领取 / 未领取</span></label>
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbRpTextColor">文案颜色</label><output id="vbRpTextColorHex">#FFFFFF</output></div>
               <input type="color" id="vbRpTextColor" value="#FFFFFF" class="vb-color-large">
@@ -629,8 +855,8 @@
           </div>
         </details>
 
-        <details class="vb-advanced-card">
-          <summary><span class="vb-card-number">05</span><span class="vb-card-title">转账卡片</span><span class="vb-card-note">TRANSFER</span></summary>
+        <details class="vb-advanced-card hide" data-mode="transfer">
+          <summary><span class="vb-card-number">05</span><span class="vb-card-title">转账卡片</span></summary>
           <div class="vb-advanced-grid">
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbTransferBg">卡片底色</label><output id="vbTransferBgHex">#FFFFFF</output></div>
@@ -647,6 +873,14 @@
             <div class="vb-advanced-control">
               <div class="vb-advanced-control-head"><label for="vbTransferTextColor">文字颜色</label><output id="vbTransferTextColorHex">#111111</output></div>
               <input type="color" id="vbTransferTextColor" value="#111111" class="vb-color-large">
+            </div>
+            <div class="vb-advanced-control vb-control-span">
+              <div class="vb-advanced-control-head"><label for="vbTransferImageUrl">转账卡片背景图片</label></div>
+              <div class="vb-decor-add-row"><input type="url" id="vbTransferImageUrl" placeholder="https://… 背景图片链接"><button type="button" class="btn btn-secondary" id="vbTransferImageApply">应用</button></div>
+            </div>
+            <div class="vb-advanced-control">
+              <div class="vb-advanced-control-head"><label for="vbTransferImageOpacity">背景图片透明度</label><output id="vbTransferImageOpacityVal">100%</output></div>
+              <input type="range" id="vbTransferImageOpacity" min="0" max="100" step="1" value="100">
             </div>
           </div>
         </details>
@@ -669,12 +903,12 @@
     <div class="list-view" id="listView">
       <div class="toolbar">
         <button class="circle-btn" onclick="document.getElementById('importFile').click()" title="导入CSS文件">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
         </button>
         <button class="copy-btn" onclick="copyRef()">复制原代码 CSS</button>
       </div>
       <input type="file" id="importFile" accept=".css,.txt" style="display:none;">
-      <div class="preset-list" id="presetList"></div>
+      <div class="preset-list" id="presetList"><div class="empty">还没有美化预设<br>点下面"新建"开始</div></div>
     </div>
     <div class="edit-view" id="editView">
       <div class="field">
@@ -685,7 +919,7 @@
         <label>用在哪</label>
         <div class="target-pills" id="targetPills">
           <div class="pill on" data-target="all">聊天全局</div>
-        </div>
+        <div class="pill" data-target="role_1">宝宝</div><div class="pill" data-target="role_2">苏格拉底</div><div class="pill" data-target="role_3">灵感助手</div><div class="pill" data-target="role_1">宝宝</div><div class="pill" data-target="role_2">苏格拉底</div><div class="pill" data-target="role_3">灵感助手</div></div>
       </div>
       <div class="field">
         <label>CSS</label>
@@ -694,10 +928,6 @@
       </div>
     </div>
     </div>
-  </div>
-  <div class="footer">
-    <button class="btn btn-secondary" id="btnLeft" onclick="leftAction()">恢复默认</button>
-    <button class="btn btn-primary" id="btnRight" onclick="rightAction()">保存配置</button>
   </div>
   <div class="toast" id="toast">已保存</div>
 </div>
@@ -986,14 +1216,74 @@ document.getElementById('importFile').addEventListener('change', function(e){
 // ====================== Tab 1：可视化调节 ======================
 // 数据链路：draft（内存）--input 事件--> applyVars 到预览区（零延迟）；点保存才 ChatBeauty.save 落盘
 (function () {
-  var VISUAL_FIELDS = ['avatarSize','avatarRadius','bubbleGap','bubbleGapX','bubbleMaxWidth','bubblePadding','myBubbleBg','myBubbleColor','myBubbleRadius','partnerBubbleBg','partnerBubbleColor','partnerBubbleRadius','myBubbleBorderColor','myBubbleBorderWidth','partnerBubbleBorderColor','partnerBubbleBorderWidth','myBubbleRadiusSize','partnerBubbleRadiusSize','myBubblePadding','partnerBubblePadding','myBubbleFontSize','partnerBubbleFontSize','myBubbleFontFamily','partnerBubbleFontFamily','myBubbleTailSize','myBubbleTailX','myBubbleTailY','partnerBubbleTailSize','partnerBubbleTailX','partnerBubbleTailY','myBubbleDecorations','partnerBubbleDecorations','avatarBorderColor','avatarBorderWidth','messageTimeVisible','messageTimeColor','messageTimeSize','imageBubbleOpacity','imageBubbleRadius','redPacketBg','redPacketBgOpacity','redPacketImage','redPacketImageOpacity','redPacketBorderColor','redPacketBorderWidth','redPacketRadius','redPacketShowStatus','redPacketTextColor','redPacketFontSize','redPacketTitle','redPacketTitleColor','redPacketAmountTemplate','redPacketAmountColor','transferBg','transferBorderColor','transferBorderWidth','transferTextColor','chatBg','chatBgDim'];
+  var VISUAL_FIELDS = ['avatarSize','avatarRadius','bubbleGap','bubbleGapX','bubbleMaxWidth','bubblePadding','myBubbleBg','myBubbleColor','myBubbleOpacity','partnerBubbleBg','partnerBubbleColor','partnerBubbleOpacity','myBubbleRadius','myBubbleRadiusTL','myBubbleRadiusTR','myBubbleRadiusBR','myBubbleRadiusBL','partnerBubbleRadiusTL','partnerBubbleRadiusTR','partnerBubbleRadiusBR','partnerBubbleRadiusBL','myBubbleBorderStyle','partnerBubbleBorderStyle','myBubbleLineHeight','partnerBubbleLineHeight','myBubbleShadowVisible','myBubbleShadowColor','myBubbleShadowX','myBubbleShadowY','myBubbleShadowBlur','myBubbleShadowSpread','partnerBubbleShadowVisible','partnerBubbleShadowColor','partnerBubbleShadowX','partnerBubbleShadowY','partnerBubbleShadowBlur','partnerBubbleShadowSpread','myBubbleBorderColor','myBubbleBorderWidth','partnerBubbleBorderColor','partnerBubbleBorderWidth','myBubbleRadiusSize','partnerBubbleRadiusSize','myBubblePadding','partnerBubblePadding','myBubbleFontSize','partnerBubbleFontSize','myBubbleFontFamily','partnerBubbleFontFamily','myBubbleTailSize','myBubbleTailX','myBubbleTailY','myBubbleTailShape','myBubbleTailColor','partnerBubbleTailSize','partnerBubbleTailX','partnerBubbleTailY','partnerBubbleTailShape','partnerBubbleTailColor','myBubbleDecorations','partnerBubbleDecorations','myBubbleAvatarPosition','partnerBubbleAvatarPosition','myBubbleBadge','partnerBubbleBadge','myBubbleBadgeColor','partnerBubbleBadgeColor','myBubbleBadgeX','partnerBubbleBadgeX','myBubbleBadgeY','partnerBubbleBadgeY','partnerBubbleBadgeAnchor','myBubbleBadgeAnchor','partnerBubbleBadgeSize','myBubbleBadgeSize','avatarBorderColor','avatarBorderWidth','messageTimeVisible','messageTimeColor','messageTimeSize','messageTimePosition','messageTimeShowRead','messageReadPosition','messageShowDate','imageBubbleOpacity','imageBubbleRadius','redPacketBg','redPacketBgOpacity','redPacketImage','redPacketImageOpacity','redPacketBorderColor','redPacketBorderWidth','redPacketRadius','redPacketShowStatus','redPacketTextColor','redPacketFontSize','redPacketTitle','redPacketTitleColor','redPacketAmountTemplate','redPacketAmountColor','transferBg','transferBorderColor','transferBorderWidth','transferTextColor','transferImage','transferImageOpacity','chatBg','chatBgDim'];
   var previewEl = document.getElementById('vbPreview');
   var scopeSel = document.getElementById('vbScope');
   var currentScope = 'global';
   var draft = null;
   var activeTab = 'visual';
+  var VISUAL_PRESET_KEY = 'beauty_visual_presets_v1';
+  function getVisualPresets(){ try { return JSON.parse(localStorage.getItem(VISUAL_PRESET_KEY))||[]; } catch(e){ return []; } }
+  function setVisualPresets(l){ localStorage.setItem(VISUAL_PRESET_KEY, JSON.stringify(l)); }
+  function renderVisualPresets(){
+    var list = getVisualPresets();
+    var box = document.getElementById('vbVisualPresetList');
+    if (!list.length){ box.innerHTML = '<span style="font-size:11px;color:#aaa">还没有预设，调好后点上面保存</span>'; return; }
+    box.innerHTML = list.map(function(p,i){
+      return '<span class="vb-preset-chip" data-i="'+i+'">'+esc(p.name)+'<button data-del="'+i+'">×</button></span>';
+    }).join('');
+  }
+  function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+  document.getElementById('vbSavePresetBtn').addEventListener('click', function(){
+    var name = prompt('给这个预设起个名：');
+    if (!name || !name.trim()) return;
+    var list = getVisualPresets();
+    list.push({name: name.trim(), data: JSON.parse(JSON.stringify(draft))});
+    setVisualPresets(list);
+    renderVisualPresets();
+    showToast('已保存预设「'+name.trim()+'」');
+  });
+  document.getElementById('btnPreset').addEventListener('click', function(){
+    document.getElementById('vbPresetOverlay').classList.add('show');
+    renderVisualPresets();
+  });
+  document.getElementById('vbPresetOverlay').addEventListener('click', function(e){
+    if (e.target === this) this.classList.remove('show');
+  });
+  document.getElementById('vbVisualPresetList').addEventListener('click', function(e){
+    var del = e.target.closest('[data-del]');
+    if (del){
+      var list = getVisualPresets();
+      list.splice(Number(del.getAttribute('data-del')),1);
+      setVisualPresets(list); renderVisualPresets();
+      return;
+    }
+    var chip = e.target.closest('.vb-preset-chip');
+    if (!chip) return;
+    var list = getVisualPresets();
+    var p = list[Number(chip.getAttribute('data-i'))];
+    if (!p) return;
+    draft = JSON.parse(JSON.stringify(p.data));
+    setRange('vbAvatarSize', draft.avatarSize, 'px', 30);
+    setRange('vbAvatarRadius', draft.avatarRadius, '%', 50);
+    setRange('vbBubbleGap', draft.bubbleGap, 'px', 13);
+    setRange('vbBubbleGapX', draft.bubbleGapX, 'px', 0);
+    setRange('vbBubbleMaxWidth', draft.bubbleMaxWidth, '%', 86);
+    setRange('vbBubblePadding', draft.bubblePadding, 'px', 10);
+    setColor('vbMyBg', draft.myBubbleBg, '#111111');
+    setColor('vbMyColor', draft.myBubbleColor, '#FFFFFF');
+    setColor('vbPartnerBg', draft.partnerBubbleBg, '#FFFFFF');
+    setColor('vbPartnerColor', draft.partnerBubbleColor, '#111111');
+    loadAdvancedControls();
+    updateBgHint();
+    applyPreviewDraft();
+    document.querySelectorAll('.vb-preset-chip').forEach(function(c){ c.classList.remove('on'); });
+    chip.classList.add('on');
+    showToast('已载入预设「'+p.name+'」');
+  });
+  renderVisualPresets();
 
-  // Keep the preview in a non-scrolling dock; only settings scroll independently.
+  // 预览固定在上；切换模式时，下方设置区只显示对应类别的配置
   var previewModeButtons = document.querySelectorAll('#vbPreviewModes [data-preview-mode]');
   function setPreviewMode(mode) {
     if (!previewEl) return;
@@ -1005,6 +1295,12 @@ document.getElementById('importFile').addEventListener('change', function(e){
       button.classList.toggle('on', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    document.querySelectorAll('#vbSettingsScroll [data-mode]').forEach(function (el) {
+      var modes = (el.getAttribute('data-mode') || '').split(/\s+/);
+      el.classList.toggle('hide', modes.indexOf(mode) === -1);
+    });
+    var contentEl = document.querySelector('.content');
+    if (contentEl) contentEl.scrollTop = 0;
   }
   previewModeButtons.forEach(function (button) {
     button.addEventListener('click', function () {
@@ -1054,29 +1350,37 @@ document.getElementById('importFile').addEventListener('change', function(e){
     });
   })();
 
-  function updateScopeHint() {
-    document.getElementById('vbScopeHint').textContent = currentScope === 'global'
-      ? '对所有角色生效；某个角色可以在下拉里单独覆盖全局。'
-      : '正在单独配置「' + roleName(currentScope) + '」；未单独设置的项沿用全局配置。';
-  }
+  function updateScopeHint() {}
 
   // ---- 控件回填（单聊无数据时 resolve 自动显示全局合并结果） ----
   function setRange(id, v, unit, fb) {
     var el = document.getElementById(id);
+    if (!el) return;
     el.value = numOr(v, fb);
-    document.getElementById(id + 'Val').textContent = el.value + unit;
+    var valEl = document.getElementById(id + 'Val');
+    if (valEl) valEl.textContent = el.value + unit;
   }
   function setColor(id, v, fb) {
+    var el = document.getElementById(id);
+    if (!el) return;
     var hex = toHex(v, fb);
-    document.getElementById(id).value = hex;
-    document.getElementById(id + 'Hex').textContent = hex;
+    el.value = hex;
+    var hexEl = document.getElementById(id + 'Hex');
+    if (hexEl) hexEl.textContent = hex;
   }
 
 
   // ---- 高级聊天美化：同一 draft 驱动预览与落盘，左右分区独立 ----
   function applyPreviewDraft() {
     if (!draft) return;
-    ChatBeauty.applyVars(draft, previewEl);
+    try { ChatBeauty.applyVars(draft, previewEl); } catch (e) {}
+    previewEl.classList.toggle('time-above', draft.messageTimePosition === 'above');
+    previewEl.classList.toggle('time-side', draft.messageTimePosition === 'side');
+    var readPos = draft.messageReadPosition || 'inline';
+    previewEl.querySelectorAll('.vbp-msg-time').forEach(function(el){ el.setAttribute('data-read-pos', readPos); });
+    previewEl.querySelectorAll('.vbp-row.ta').forEach(function(el){ el.setAttribute('data-anchor', draft.partnerBubbleBadgeAnchor || 'avatar'); });
+    previewEl.querySelectorAll('.vbp-row.me').forEach(function(el){ el.setAttribute('data-anchor', draft.myBubbleBadgeAnchor || 'avatar'); });
+    previewEl.querySelectorAll('.vbp-row.me .vbp-content').forEach(function(el){ el.classList.toggle('read-on-bubble', readPos === 'bubble'); });
     updatePreviewSamples();
   }
 
@@ -1201,41 +1505,104 @@ document.getElementById('importFile').addEventListener('change', function(e){
     setAdvRange('vbSideRadius', draft[prefix + 'RadiusSize'], 'px', 15);
     setAdvRange('vbSidePadding', draft[prefix + 'Padding'], 'px', numOr(draft.bubblePadding, 10));
     setAdvRange('vbSideFontSize', draft[prefix + 'FontSize'], 'px', 12);
-    document.getElementById('vbSideFontFamily').value = draft[prefix + 'FontFamily'] || 'system';
+    var sideFF = document.getElementById('vbSideFontFamily');
+    if (sideFF) sideFF.value = draft[prefix + 'FontFamily'] || 'system';
     setAdvRange('vbSideTailSize', draft[prefix + 'TailSize'], 'px', 0);
     setAdvRange('vbSideTailX', draft[prefix + 'TailX'], 'px', 0);
     setAdvRange('vbSideTailY', draft[prefix + 'TailY'], 'px', 12);
+    var tShape = document.getElementById('vbSideTailShape');
+    if (tShape) tShape.value = draft[prefix + 'TailShape'] || 'triangle';
+    var tColor = draft[prefix + 'TailColor'];
+    var tColorEl = document.getElementById('vbSideTailColor');
+    var tColorHex = document.getElementById('vbSideTailColorHex');
+    if (tColorEl) { tColorEl.value = tColor || (prefix === 'myBubble' ? '#111111' : '#FFFFFF'); }
+    if (tColorHex) { tColorHex.textContent = tColor ? tColor.toUpperCase() : '跟随气泡'; }
+    // 四角圆角
+    setAdvRange('vbSideRadiusTL', draft[prefix + 'RadiusTL'], 'px', prefix === 'myBubble' ? 15 : 15);
+    setAdvRange('vbSideRadiusTR', draft[prefix + 'RadiusTR'], 'px', 15);
+    setAdvRange('vbSideRadiusBR', draft[prefix + 'RadiusBR'], 'px', prefix === 'myBubble' ? 4 : 15);
+    setAdvRange('vbSideRadiusBL', draft[prefix + 'RadiusBL'], 'px', prefix === 'myBubble' ? 15 : 4);
+    // 描边样式 / 行高
+    var bs = document.getElementById('vbSideBorderStyle');
+    if (bs) bs.value = draft[prefix + 'BorderStyle'] || 'solid';
+    var lh = document.getElementById('vbSideLineHeight');
+    if (lh) { lh.value = numOr(draft[prefix + 'LineHeight'], 1.4); var lhOut = document.getElementById('vbSideLineHeightVal'); if (lhOut) lhOut.textContent = lh.value; }
+    // 阴影
+    var sv = document.getElementById('vbSideShadowVisible');
+    if (sv) sv.checked = draft[prefix + 'ShadowVisible'] === true;
+    setAdvColor('vbSideShadowColor', draft[prefix + 'ShadowColor'], '#000000');
+    setAdvRange('vbSideShadowX', draft[prefix + 'ShadowX'], 'px', 0);
+    setAdvRange('vbSideShadowY', draft[prefix + 'ShadowY'], 'px', 2);
+    setAdvRange('vbSideShadowBlur', draft[prefix + 'ShadowBlur'], 'px', 6);
+    setAdvRange('vbSideShadowSpread', draft[prefix + 'ShadowSpread'], 'px', 0);
     renderDecorations();
   }
 
   function loadAdvancedControls() {
     setAdvColor('vbAvatarBorderColor', draft.avatarBorderColor, '#FFFFFF');
     setAdvRange('vbAvatarBorderWidth', draft.avatarBorderWidth, 'px', 1);
-    document.getElementById('vbTimeVisible').checked = draft.messageTimeVisible !== false;
+    var paPos = document.getElementById('vbPartnerAvatarPos');
+    if (paPos) paPos.value = draft.partnerBubbleAvatarPosition || 'side';
+    var maPos = document.getElementById('vbMyAvatarPos');
+    if (maPos) maPos.value = draft.myBubbleAvatarPosition || 'side';
+    var pbBadge = document.getElementById('vbPartnerBadge');
+    if (pbBadge) pbBadge.value = draft.partnerBubbleBadge || '';
+    var mbBadge = document.getElementById('vbMyBadge');
+    if (mbBadge) mbBadge.value = draft.myBubbleBadge || '';
+    setAdvRange('vbPartnerBadgeX', draft.partnerBubbleBadgeX, 'px', 6);
+    setAdvRange('vbPartnerBadgeY', draft.partnerBubbleBadgeY, 'px', -2);
+    setAdvRange('vbMyBadgeX', draft.myBubbleBadgeX, 'px', -6);
+    setAdvRange('vbMyBadgeY', draft.myBubbleBadgeY, 'px', -2);
+    setAdvRange('vbSideOpacity', draft[getSidePrefix() + 'Opacity'], '%', 100);
+    setAdvRange('vbPartnerBadgeSize', draft.partnerBubbleBadgeSize, 'px', 7);
+    setAdvRange('vbMyBadgeSize', draft.myBubbleBadgeSize, 'px', 7);
+    var showTime = document.getElementById('vbShowTime');
+    if (showTime) showTime.checked = draft.messageTimeVisible !== false;
+    var paAnchor = document.getElementById('vbPartnerBadgeAnchor');
+    if (paAnchor) paAnchor.value = draft.partnerBubbleBadgeAnchor || 'avatar';
+    var maAnchor = document.getElementById('vbMyBadgeAnchor');
+    if (maAnchor) maAnchor.value = draft.myBubbleBadgeAnchor || 'avatar';
+    var timeVis = document.getElementById('vbTimeVisible');
+    if (timeVis) timeVis.checked = draft.messageTimeVisible !== false;
     setAdvColor('vbTimeColor', draft.messageTimeColor, '#999999');
     setAdvRange('vbTimeSize', draft.messageTimeSize, 'px', 8);
+    var timePos = document.getElementById('vbTimePosition');
+    if (timePos) timePos.value = ['above','side','below'].indexOf(draft.messageTimePosition) >= 0 ? draft.messageTimePosition : 'below';
+    var timeRead = document.getElementById('vbTimeShowRead');
+    if (timeRead) timeRead.checked = draft.messageTimeShowRead === true;
+    var readPos = document.getElementById('vbReadPosition');
+    if (readPos) readPos.value = draft.messageReadPosition || 'inline';
+    var showDate = document.getElementById('vbShowDate');
+    if (showDate) showDate.checked = draft.messageShowDate !== false;
     setAdvRange('vbImageOpacity', draft.imageBubbleOpacity, '%', 100);
     setAdvRange('vbImageRadius', draft.imageBubbleRadius, 'px', 16);
 
     setAdvColor('vbRpBg', draft.redPacketBg, '#111111');
     setAdvRange('vbRpBgOpacity', draft.redPacketBgOpacity, '%', 100);
-    document.getElementById('vbRpImageUrl').value = draft.redPacketImage || '';
+    var rpImg = document.getElementById('vbRpImageUrl');
+    if (rpImg) rpImg.value = draft.redPacketImage || '';
     setAdvRange('vbRpImageOpacity', draft.redPacketImageOpacity, '%', 100);
     setAdvColor('vbRpBorderColor', draft.redPacketBorderColor, '#111111');
     setAdvRange('vbRpBorderWidth', draft.redPacketBorderWidth, 'px', 0);
     setAdvRange('vbRpRadius', draft.redPacketRadius, 'px', 10);
-    document.getElementById('vbRpShowStatus').checked = draft.redPacketShowStatus !== false;
+    var rpStatus = document.getElementById('vbRpShowStatus');
+    if (rpStatus) rpStatus.checked = draft.redPacketShowStatus !== false;
     setAdvColor('vbRpTextColor', draft.redPacketTextColor, '#FFFFFF');
     setAdvRange('vbRpFontSize', draft.redPacketFontSize, 'px', 12);
-    document.getElementById('vbRpTitle').value = draft.redPacketTitle || '';
+    var rpTitle = document.getElementById('vbRpTitle');
+    if (rpTitle) rpTitle.value = draft.redPacketTitle || '';
     setAdvColor('vbRpTitleColor', draft.redPacketTitleColor, '#8E8E93');
-    document.getElementById('vbRpAmountTemplate').value = draft.redPacketAmountTemplate || '';
+    var rpAmt = document.getElementById('vbRpAmountTemplate');
+    if (rpAmt) rpAmt.value = draft.redPacketAmountTemplate || '';
     setAdvColor('vbRpAmountColor', draft.redPacketAmountColor, '#FFFFFF');
 
     setAdvColor('vbTransferBg', draft.transferBg, '#FFFFFF');
     setAdvColor('vbTransferBorderColor', draft.transferBorderColor, '#E5E5EA');
     setAdvRange('vbTransferBorderWidth', draft.transferBorderWidth, 'px', 1);
     setAdvColor('vbTransferTextColor', draft.transferTextColor, '#111111');
+    var ti = document.getElementById('vbTransferImageUrl');
+    if (ti) ti.value = draft.transferImage || '';
+    setAdvRange('vbTransferImageOpacity', draft.transferImageOpacity, '%', 100);
     loadSideControls();
     updatePreviewSamples();
   }
@@ -1356,7 +1723,9 @@ document.getElementById('importFile').addEventListener('change', function(e){
   }
 
   // 选侧后切换的是同一份 draft 的对应字段；颜色/范围变化会立即进入共同预览。
-  document.getElementById('vbEditSide').addEventListener('change', loadSideControls);
+  document.getElementById('vbEditSide').addEventListener('change', function () {
+    loadSideControls();
+  });
   document.getElementById('vbSideBorderColor').addEventListener('input', function () {
     draft[getSidePrefix() + 'BorderColor'] = this.value.toUpperCase();
     document.getElementById('vbSideBorderColorHex').textContent = this.value.toUpperCase();
@@ -1370,9 +1739,19 @@ document.getElementById('importFile').addEventListener('change', function(e){
     ['vbSideFontSize','FontSize','px'],
     ['vbSideTailSize','TailSize','px'],
     ['vbSideTailX','TailX','px'],
-    ['vbSideTailY','TailY','px']
+    ['vbSideTailY','TailY','px'],
+    ['vbSideRadiusTL','RadiusTL','px'],
+    ['vbSideOpacity','Opacity','%'],
+    ['vbSideRadiusTR','RadiusTR','px'],
+    ['vbSideRadiusBR','RadiusBR','px'],
+    ['vbSideRadiusBL','RadiusBL','px'],
+    ['vbSideShadowX','ShadowX','px'],
+    ['vbSideShadowY','ShadowY','px'],
+    ['vbSideShadowBlur','ShadowBlur','px'],
+    ['vbSideShadowSpread','ShadowSpread','px']
   ].forEach(function (spec) {
     var el = document.getElementById(spec[0]);
+    if (!el) return;
     el.addEventListener('input', function () {
       draft[getSidePrefix() + spec[1]] = Number(this.value);
       document.getElementById(spec[0] + 'Val').textContent = this.value + spec[2];
@@ -1381,6 +1760,58 @@ document.getElementById('importFile').addEventListener('change', function(e){
   });
   document.getElementById('vbSideFontFamily').addEventListener('change', function () {
     draft[getSidePrefix() + 'FontFamily'] = this.value;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbPartnerAvatarPos').addEventListener('change', function () {
+    draft.partnerBubbleAvatarPosition = this.value;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbMyAvatarPos').addEventListener('change', function () {
+    draft.myBubbleAvatarPosition = this.value;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbPartnerBadge').addEventListener('input', function () {
+    draft.partnerBubbleBadge = this.value;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbMyBadge').addEventListener('input', function () {
+    draft.myBubbleBadge = this.value;
+    applyPreviewDraft();
+  });
+  [['vbPartnerBadgeX','partnerBubbleBadgeX'],['vbPartnerBadgeY','partnerBubbleBadgeY'],['vbMyBadgeX','myBubbleBadgeX'],['vbMyBadgeY','myBubbleBadgeY'],['vbPartnerBadgeSize','partnerBubbleBadgeSize'],['vbMyBadgeSize','myBubbleBadgeSize']].forEach(function(item){
+    bindAdvancedRange(item[0], item[1], 'px');
+  });
+  var tailShapeEl = document.getElementById('vbSideTailShape');
+  if (tailShapeEl) tailShapeEl.addEventListener('change', function () {
+    draft[getSidePrefix() + 'TailShape'] = this.value;
+    applyPreviewDraft();
+  });
+  var tailColorEl = document.getElementById('vbSideTailColor');
+  if (tailColorEl) tailColorEl.addEventListener('input', function () {
+    draft[getSidePrefix() + 'TailColor'] = this.value.toUpperCase();
+    var hex = document.getElementById('vbSideTailColorHex');
+    if (hex) hex.textContent = this.value.toUpperCase();
+    applyPreviewDraft();
+  });
+  document.getElementById('vbSideBorderStyle').addEventListener('change', function () {
+    draft[getSidePrefix() + 'BorderStyle'] = this.value;
+    applyPreviewDraft();
+  });
+  var lhEl = document.getElementById('vbSideLineHeight');
+  if (lhEl) lhEl.addEventListener('input', function () {
+    draft[getSidePrefix() + 'LineHeight'] = Number(this.value);
+    document.getElementById('vbSideLineHeightVal').textContent = this.value;
+    applyPreviewDraft();
+  });
+  var svEl = document.getElementById('vbSideShadowVisible');
+  if (svEl) svEl.addEventListener('change', function () {
+    draft[getSidePrefix() + 'ShadowVisible'] = this.checked;
+    applyPreviewDraft();
+  });
+  var scEl = document.getElementById('vbSideShadowColor');
+  if (scEl) scEl.addEventListener('input', function () {
+    draft[getSidePrefix() + 'ShadowColor'] = this.value.toUpperCase();
+    document.getElementById('vbSideShadowColorHex').textContent = this.value.toUpperCase();
     applyPreviewDraft();
   });
 
@@ -1412,7 +1843,8 @@ document.getElementById('importFile').addEventListener('change', function(e){
     ['vbRpBorderWidth','redPacketBorderWidth','px'],
     ['vbRpRadius','redPacketRadius','px'],
     ['vbRpFontSize','redPacketFontSize','px'],
-    ['vbTransferBorderWidth','transferBorderWidth','px']
+    ['vbTransferBorderWidth','transferBorderWidth','px'],
+    ['vbTransferImageOpacity','transferImageOpacity','%']
   ];
   fixedRanges.forEach(function (item) { bindAdvancedRange(item[0],item[1],item[2]); });
 
@@ -1438,6 +1870,26 @@ document.getElementById('importFile').addEventListener('change', function(e){
     draft.messageTimeVisible = this.checked;
     applyPreviewDraft();
   });
+  document.getElementById('vbTimePosition').addEventListener('change',function () {
+    draft.messageTimePosition = this.value;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbTimeShowRead').addEventListener('change',function () {
+    draft.messageTimeShowRead = this.checked;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbReadPosition').addEventListener('change',function () {
+    draft.messageReadPosition = this.value;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbShowTime').addEventListener('change',function () {
+    draft.messageTimeVisible = this.checked;
+    applyPreviewDraft();
+  });
+  document.getElementById('vbShowDate').addEventListener('change',function () {
+    draft.messageShowDate = this.checked;
+    applyPreviewDraft();
+  });
   document.getElementById('vbRpShowStatus').addEventListener('change',function () {
     draft.redPacketShowStatus = this.checked;
     applyPreviewDraft();
@@ -1449,6 +1901,14 @@ document.getElementById('importFile').addEventListener('change', function(e){
     draft.redPacketImage = url;
     applyPreviewDraft();
     showToast(url ? '红包背景图已应用到预览' : '已移除红包背景图');
+  });
+
+  document.getElementById('vbTransferImageApply').addEventListener('click',function () {
+    var url = document.getElementById('vbTransferImageUrl').value.trim();
+    if (url && !isImageUrl(url)) { showToast('请输入有效的图片链接（https 或图片 data URL）'); return; }
+    draft.transferImage = url;
+    applyPreviewDraft();
+    showToast(url ? '转账背景图已应用到预览' : '已移除转账背景图');
   });
 
   document.getElementById('vbAddDecor').addEventListener('click',function () {
@@ -1487,7 +1947,12 @@ document.getElementById('importFile').addEventListener('change', function(e){
 
   function loadVisualScope(scope) {
     currentScope = scope;
-    draft = ChatBeauty.resolve(scope === 'global' ? null : scope);
+    try {
+      draft = ChatBeauty.resolve(scope === 'global' ? null : scope);
+    } catch (e) {
+      draft = {};
+      console.warn('ChatBeauty.resolve failed, using empty draft:', e.message);
+    }
     setRange('vbAvatarSize', draft.avatarSize, 'px', 30);
     setRange('vbAvatarRadius', draft.avatarRadius, '%', 50);
     setRange('vbBubbleGap', draft.bubbleGap, 'px', 13);
@@ -1615,6 +2080,8 @@ document.getElementById('importFile').addEventListener('change', function(e){
   // ---- Tab 切换（联动底部按钮含义） ----
   function switchTab(tab) {
     activeTab = tab;
+    var contentEl = document.querySelector('.content');
+    if (contentEl) contentEl.scrollTop = 0;
     document.querySelectorAll('#beautyTabs .btab').forEach(function (b) {
       b.classList.toggle('on', b.dataset.tab === tab);
     });
@@ -1644,10 +2111,120 @@ document.getElementById('importFile').addEventListener('change', function(e){
   };
   rightAction = function () { if (activeTab === 'visual') saveVisual(); else savePreset(); };
 
-  // 初始化：默认落在可视化调节
-  loadVisualScope('global');
-  switchTab('visual');
+  // 初始化：默认落在可视化调节（容错：外部 JS 未加载时不中断）
+  try { loadVisualScope('global'); } catch (e) { console.warn('loadVisualScope skipped:', e.message); }
+  try { switchTab('visual'); } catch (e) { console.warn('switchTab skipped:', e.message); }
+
+  // ===== 自绘滑条：替代原生 range，确保所有 WebView 都能触摸拖动 =====
+  (function () {
+    var ranges = document.querySelectorAll('input[type=range]');
+    ranges.forEach(function (inp) {
+      // 读取原生 input 的高度（在隐藏前）
+      var inpH = inp.offsetHeight || (window.matchMedia('(max-width:420px)').matches ? 44 : 22);
+      // 创建自绘滑条容器
+      var wrap = document.createElement('div');
+      wrap.className = 'vb-range-wrap';
+      wrap.style.cssText = 'position:relative;width:100%;height:' + inpH + 'px;touch-action:none;';
+      inp.parentNode.insertBefore(wrap, inp);
+      wrap.appendChild(inp);
+      // 隐藏原生 input 但保留功能
+      inp.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;padding:0;pointer-events:none;';
+
+      // 自绘轨道
+      var track = document.createElement('div');
+      track.className = 'vb-range-track';
+      track.style.cssText = 'position:absolute;left:0;right:0;top:50%;height:2px;background:#E5E5EA;transform:translateY(-50%);';
+      wrap.appendChild(track);
+
+      // 已填充部分
+      var fill = document.createElement('div');
+      fill.className = 'vb-range-fill';
+      fill.style.cssText = 'position:absolute;left:0;top:50%;height:2px;background:#111;transform:translateY(-50%);width:0;';
+      wrap.appendChild(fill);
+
+      // 自绘 thumb
+      var thumb = document.createElement('div');
+      thumb.className = 'vb-range-thumb';
+      thumb.style.cssText = 'position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:#111;transform:translate(-50%,-50%);left:0;pointer-events:none;';
+      wrap.appendChild(thumb);
+
+      // 移动端放大 thumb
+      if (window.matchMedia('(max-width:420px)').matches) {
+        thumb.style.width = '24px';
+        thumb.style.height = '24px';
+      }
+
+      function updateVisual() {
+        var min = Number(inp.min) || 0;
+        var max = Number(inp.max) || 100;
+        var val = Number(inp.value);
+        var pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+        thumb.style.left = pct + '%';
+        fill.style.width = pct + '%';
+      }
+      updateVisual();
+      inp.addEventListener('input', updateVisual);
+      inp.addEventListener('change', updateVisual);
+
+      // 触摸/鼠标拖动
+      var dragging = false;
+      function getVal(clientX) {
+        var rect = wrap.getBoundingClientRect();
+        var ratio = (clientX - rect.left) / rect.width;
+        ratio = Math.max(0, Math.min(1, ratio));
+        var min = Number(inp.min) || 0;
+        var max = Number(inp.max) || 100;
+        var step = Number(inp.step) || 1;
+        var val = min + ratio * (max - min);
+        val = Math.round(val / step) * step;
+        val = Math.max(min, Math.min(max, val));
+        return val;
+      }
+      function onDown(clientX) {
+        dragging = true;
+        var val = getVal(clientX);
+        if (val !== Number(inp.value)) {
+          inp.value = String(val);
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      function onMove(clientX) {
+        if (!dragging) return;
+        var val = getVal(clientX);
+        if (val !== Number(inp.value)) {
+          inp.value = String(val);
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      function onUp() { dragging = false; }
+
+      wrap.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        onDown(e.touches[0].clientX);
+      }, { passive: false });
+      wrap.addEventListener('touchmove', function (e) {
+        e.preventDefault();
+        onMove(e.touches[0].clientX);
+      }, { passive: false });
+      wrap.addEventListener('touchend', onUp);
+      wrap.addEventListener('touchcancel', onUp);
+      wrap.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        onDown(e.clientX);
+        function mm(ev) { onMove(ev.clientX); }
+        function mu() {
+          onUp();
+          document.removeEventListener('mousemove', mm);
+          document.removeEventListener('mouseup', mu);
+        }
+        document.addEventListener('mousemove', mm);
+        document.addEventListener('mouseup', mu);
+      });
+    });
+  })();
 })();
 </script>
-</body>
-</html>
+
+
+
+</body></html>

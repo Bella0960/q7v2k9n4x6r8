@@ -83,21 +83,21 @@ html.dark .phone-mockup { border-color: rgba(255, 255, 255, 0.08); }
 .header-left { display: flex; align-items: center; gap: 12px; }
 .header-actions { display: flex; gap: 10px; padding-bottom: 4px; }
 .icon-btn {
-    width: 30px;
-    height: 30px;
-    background: var(--card-2);
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border-radius: 0;
+    border: none;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--ink);
-    border: none;
     cursor: pointer;
     flex-shrink: 0;
-    transition: transform 0.2s ease, background 0.2s ease;
+    transition: transform 0.2s ease;
 }
-.icon-btn:active { transform: scale(0.97); background: var(--weak); }
-.icon-btn svg { width: 14px; height: 14px; }
+.icon-btn:active { transform: translateX(-2px); }
+.icon-btn svg { width: 16px; height: 16px; }
 .header-title {
     font-size: 30px;
     font-weight: 800;

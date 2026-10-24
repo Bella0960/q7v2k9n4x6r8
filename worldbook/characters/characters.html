@@ -59,8 +59,10 @@
         .back-circle {
             width: 36px;
             height: 36px;
-            border-radius: 50%;
-            background: #F8F8FA;
+            border-radius: 0;
+            border: none;
+            border-bottom: 1px solid #bdbdbd;
+            background: transparent;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -69,11 +71,11 @@
             font-size: 1.25rem;
             line-height: 1;
             flex-shrink: 0;
-            transition: transform .2s ease, background .2s ease;
+            transition: transform .2s ease, border-color .2s ease;
         }
         .back-circle:active {
-            transform: scale(0.95);
-            background: #EEEEF0;
+            transform: translateY(1px);
+            border-color: #171717;
         }
         .header-title {
             font-size: 24px;
@@ -370,11 +372,12 @@
         .btn-header-cancel {
             color: #111111;
             font-size: 1.25rem;
-            background: #F8F8FA;
+            background: transparent;
             width: 36px;
             height: 36px;
-            border-radius: 50%;
+            border-radius: 0;
             border: none;
+            border-bottom: 1px solid #bdbdbd;
             cursor: pointer;
             font-family: inherit;
             display: inline-flex;
@@ -382,11 +385,11 @@
             justify-content: center;
             line-height: 1;
             flex-shrink: 0;
-            transition: transform .2s ease, background .2s ease;
+            transition: transform .2s ease, border-color .2s ease;
         }
         .btn-header-cancel:active {
-            transform: scale(0.95);
-            background: #EEEEF0;
+            transform: translateY(1px);
+            border-color: #171717;
         }
 
         .hidden {

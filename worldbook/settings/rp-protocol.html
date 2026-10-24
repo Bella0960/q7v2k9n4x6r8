@@ -79,19 +79,20 @@
   .cs-top-left { justify-content: flex-start; }
   .cs-top-right { justify-content: flex-end; display: none; }
   .cs-circle-btn {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border-radius: 0;
     border: none;
-    background: #F4F4F6;
+    border-bottom: 1px solid #bdbdbd;
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: transform 0.2s ease, background-color 0.2s ease;
+    transition: transform 0.2s ease, border-color 0.2s ease;
   }
-  .cs-circle-btn:active { transform: scale(0.97); background: #B0B0B5; }
-  .cs-circle-btn svg { width: 14px; height: 14px; stroke: #111111; }
+  .cs-circle-btn:active { transform: translateY(1px); border-color: #171717; }
+  .cs-circle-btn svg { width: 15px; height: 15px; stroke: #111111; }
   .cs-title {
     flex: 1;
     text-align: left;

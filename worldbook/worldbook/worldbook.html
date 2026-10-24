@@ -80,12 +80,35 @@
     align-items: center !important;
     flex-shrink: 0 !important;
   }
-  .wb-top-left { width: 40px !important; justify-content: flex-start !important; }
+  .wb-top-left { width: auto !important; justify-content: flex-start !important; }
   .wb-top-actions { width: 72px !important; justify-content: flex-end !important; gap: 8px !important; position: relative !important; }
+  /* 返回：← 折线箭头雕刻（图4风格，纯图标无文字，安静居左） */
+  .wb-back-link {
+    display: flex !important;
+    align-items: center !important;
+    text-decoration: none !important;
+    color: #171717 !important;
+    position: relative !important;
+    width: 32px !important;
+    height: 32px !important;
+    justify-content: center !important;
+  }
+  .wb-back-arrow { display: flex !important; align-items: center !important; }
+  .wb-back-arrow svg {
+    width: 17px !important;
+    height: 17px !important;
+    stroke: #171717 !important;
+    fill: none !important;
+    stroke-width: 1.5 !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+    transition: transform 0.2s ease !important;
+  }
+  .wb-back-link:active .wb-back-arrow svg { transform: translateX(-2px); }
   .wb-en {
     flex: 1 !important;
     text-align: left !important;
-    margin-left: 8px !important;
+    margin-left: 10px !important;
     font-family: "Songti SC", "Noto Serif CJK SC", Georgia, serif !important;
     font-size: 1.125rem !important;
     font-weight: 600 !important;
@@ -95,28 +118,29 @@
   .wb-circle-btn {
     width: 32px !important;
     height: 32px !important;
-    border-radius: 50%;
+    border-radius: 0;
     border: none;
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     position: relative !important;
     z-index: 30 !important;
-    transition: transform 0.1s ease, background-color 0.2s ease;
+    transition: transform 0.1s ease;
   }
-  /* 隐形热区：把 32px 圆钮的可点区域扩大到约 44px，不影响视觉尺寸 */
+  /* 隐形热区：把 32px 钮的可点区域扩大到约 44px，不影响视觉尺寸 */
   .wb-circle-btn::after {
     content: '' !important;
     position: absolute !important;
     inset: -6px !important;
   }
-  .wb-circle-btn:active { transform: scale(0.94); }
-  .wb-circle-btn.is-ghost { background: #F6F6F4; }
-  .wb-circle-btn.is-dark { background: #171717; }
+  .wb-circle-btn:active { transform: translateY(1px); }
+  .wb-circle-btn.is-ghost { background: transparent; }
+  .wb-circle-btn.is-dark { background: transparent; }
   .wb-circle-btn svg { width: 16px !important; height: 16px !important; }
   .wb-circle-btn.is-ghost svg { stroke: #333333; }
-  .wb-circle-btn.is-dark svg { stroke: #FFFFFF; }
+  .wb-circle-btn.is-dark svg { stroke: #171717; }
 
   /* 独立椭圆气泡：选中变亮（深色），其余变灰，互不相连 */
   .wb-filter-pills {
@@ -606,15 +630,14 @@
       <!-- 顶部导航栏：左侧返回 / WORLDBOOK 紧贴返回 / 右侧加号弹出导入/导出菜单 -->
       <div class="wb-topbar">
         <div class="wb-top-left">
-          <button class="wb-circle-btn is-ghost" type="button" aria-label="返回"
-            onclick="window.location.href='../../index.html'">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-          </button>
+          <a class="wb-back-link" href="../../index.html" aria-label="返回首页">
+            <span class="wb-back-arrow"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4 4 12l7 8"/><path d="M4 12h15"/><path d="M19 4.5 21 6.5l-2 2"/></svg></span>
+          </a>
         </div>
         <span class="wb-en">世界书</span>
         <div class="wb-top-actions">
           <button class="wb-circle-btn is-dark" id="btnAddTop" type="button" aria-label="导入或导出" title="导入或导出">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           </button>
           <!-- 锚定加号下方的浮动菜单 -->
           <div class="wb-popover" id="actionPopover">
@@ -727,7 +750,7 @@
     </div>
 
     <!-- 隐藏文件选择框 -->
-    <input type="file" id="importInput" accept=".json,.txt,.csv,.md,.jsonl,.yaml,.yml" style="display:none;">
+    <input type="file" id="importInput" accept=".json,.txt,.csv,.md,.jsonl,.yaml,.yml,.docx" style="display:none;">
 
     <!-- Toast -->
     <div class="wb-toast" id="wbToast"></div>
@@ -973,6 +996,85 @@
     toastEl.classList.add('show');
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+  }
+
+  /* ================= DOCX 解析：手写 ZIP 中央目录 + DecompressionStream 解压 ================= */
+  // 读取 ZIP 中央目录，定位 word/document.xml 并解压出 XML 文本
+  function extractDocxXml(buf) {
+    return new Promise(function (resolve, reject) {
+      try {
+        var u8 = new Uint8Array(buf);
+        // 从尾部往前找 End Of Central Directory（PK\x05\x06）
+        var eocd = -1;
+        for (var i = u8.length - 22; i >= 0; i--) {
+          if (u8[i] === 0x50 && u8[i+1] === 0x4b && u8[i+2] === 0x05 && u8[i+3] === 0x06) { eocd = i; break; }
+        }
+        if (eocd < 0) { reject(new Error('不是有效的 DOCX（缺少 ZIP 目录）')); return; }
+        // EOCD 中：注释长度在 eocd+20；中央目录起始偏移在 eocd+16（4字节小端）
+        var cdOffset = u8[eocd+16] | (u8[eocd+17] << 8) | (u8[eocd+18] << 16) | (u8[eocd+19] << 24);
+        var entryCount = u8[eocd+10] | (u8[eocd+11] << 8);
+        var p = cdOffset;
+        var docEntry = null;
+        for (var n = 0; n < entryCount; n++) {
+          if (!(u8[p] === 0x50 && u8[p+1] === 0x4b && u8[p+2] === 0x01 && u8[p+3] === 0x02)) break;
+          var method = u8[p+10] | (u8[p+11] << 8);                    // 8 = deflate, 0 = store
+          var compSize = u8[p+20] | (u8[p+21] << 8) | (u8[p+22] << 16) | (u8[p+23] << 24);
+          var nameLen = u8[p+28] | (u8[p+29] << 8);
+          var extraLen = u8[p+30] | (u8[p+31] << 8);
+          var commentLen = u8[p+32] | (u8[p+33] << 8);
+          var localOff = u8[p+42] | (u8[p+43] << 8) | (u8[p+44] << 16) | (u8[p+45] << 24);
+          var name = '';
+          for (var k = 0; k < nameLen; k++) name += String.fromCharCode(u8[p+46+k]);
+          // 规范化路径分隔符：真实 DOCX 用 /，个别工具生成 \，统一为 /
+          name = name.replace(/\\/g, '/');
+          if (name === 'word/document.xml') { docEntry = { method: method, compSize: compSize, localOff: localOff }; break; }
+          p += 46 + nameLen + extraLen + commentLen;
+        }
+        if (!docEntry) { reject(new Error('DOCX 中未找到正文（word/document.xml）')); return; }
+        // 跳到 local file header，计算压缩数据起始位置
+        var lp = docEntry.localOff;
+        var lNameLen = u8[lp+26] | (u8[lp+27] << 8);
+        var lExtraLen = u8[lp+28] | (u8[lp+29] << 8);
+        var dataStart = lp + 30 + lNameLen + lExtraLen;
+        var slice = u8.subarray(dataStart, dataStart + docEntry.compSize);
+        if (docEntry.method === 0) {
+          // 未压缩
+          var txt = '';
+          for (var q = 0; q < slice.length; q++) txt += String.fromCharCode(slice[q]);
+          resolve(txt);
+          return;
+        }
+        if (docEntry.method !== 8 || typeof DecompressionStream === 'undefined') {
+          reject(new Error('当前浏览器不支持解压此 DOCX'));
+          return;
+        }
+        var ds = new DecompressionStream('deflate-raw');
+        var stream = new Blob([slice]).stream().pipeThrough(ds);
+        new Response(stream).arrayBuffer().then(function (ab) {
+          var txt = '';
+          var bytes = new Uint8Array(ab);
+          for (var q2 = 0; q2 < bytes.length; q2++) txt += String.fromCharCode(bytes[q2]);
+          resolve(txt);
+        }).catch(function () { reject(new Error('DOCX 解压失败')); });
+      } catch (err) { reject(err); }
+    });
+  }
+  // 从 document.xml 提取段落文本（<w:p> 为段落，<w:t> 为文本）
+  function docxXmlToText(xml) {
+    var doc = new DOMParser().parseFromString(xml, 'application/xml');
+    var paras = doc.getElementsByTagName('w:p');
+    var parts = [];
+    for (var i = 0; i < paras.length; i++) {
+      var ts = paras[i].getElementsByTagName('w:t');
+      var line = '';
+      for (var j = 0; j < ts.length; j++) {
+        line += ts[j].textContent || '';
+      }
+      // 保留表格单元格分隔为空格（简化阅读）
+      if (paras[i].getElementsByTagName('w:tab').length) line += '\t';
+      parts.push(line);
+    }
+    return parts.join('\n');
   }
 
   /* ================= 范围切换：全部 / 全局 / 局部 ================= */
@@ -1283,10 +1385,34 @@
     var file = e.target.files && e.target.files[0];
     if (!file) return;
     var fileName = file.name || '导入的世界书';
-    // 拒绝 Word 文档
-    if (/\.docx?$|\.doc$/i.test(fileName)) {
-      showToast('暂不支持 Word 文档，请先复制内容粘贴，或转为 TXT 文件');
+    // 拒绝旧版 .doc（OLE 二进制，无法在前端解析），DOCX 走下方专用解析
+    if (/\.doc$/i.test(fileName)) {
+      showToast('暂不支持旧版 Word（.doc），请另存为 DOCX 后再导入');
       importInput.value = '';
+      return;
+    }
+    // DOCX：专用 ZIP/XML 解析（异步）
+    if (/\.docx$/i.test(fileName)) {
+      var docxReader = new FileReader();
+      docxReader.onload = function (dev) {
+        extractDocxXml(dev.target.result).then(function (xml) {
+          var text = docxXmlToText(xml).replace(/\n{3,}/g, '\n\n').trim();
+          var baseTitle = fileName.replace(/\.[^.]+$/, '').trim() || '导入的文档';
+          if (!text) { showToast('DOCX 中没有可导入的文字内容'); importInput.value = ''; return; }
+          var added = [normalizeBook({ title: baseTitle, content: text, scope: 'global' }, 'worldbook')];
+          var list = loadBooks();
+          added.forEach(function (b) { list.push(b); });
+          try { saveBooks(list); } catch (err) { showToast('存储空间不足，导入未完成'); importInput.value = ''; return; }
+          renderAll();
+          importInput.value = '';
+          showToast('导入成功，新增 1 本');
+        }).catch(function (err) {
+          showToast('DOCX 解析失败：' + (err && err.message ? err.message : '格式不支持'));
+          importInput.value = '';
+        });
+      };
+      docxReader.onerror = function () { showToast('文件读取失败'); };
+      docxReader.readAsArrayBuffer(file);
       return;
     }
     var reader = new FileReader();

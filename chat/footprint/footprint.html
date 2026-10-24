@@ -73,9 +73,9 @@
   .icon-btn { background: none; border: none; outline: none; padding: 4px; }
   .icon-btn svg { width: 20px; height: 20px; stroke: #555; fill: none; stroke-width: 1.5; stroke-linecap: round; }
   .top-left { display: flex; align-items: flex-start; gap: 6px; }
-  .fp-back { background: none; border: none; outline: none; padding: 2px; display: flex; align-items: center; cursor: pointer; }
+  .fp-back { background: none; border: none; border-bottom: 1px solid #d0d0d0; outline: none; padding: 2px 3px; display: flex; align-items: center; cursor: pointer; border-radius: 0; transition: transform 0.2s ease, border-color 0.2s ease; }
   .fp-back svg { width: 20px; height: 20px; stroke: #555; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .fp-back:active { transform: scale(0.94); }
+  .fp-back:active { transform: translateY(1px); border-color: #171717; }
 
   /* 主视觉图 */
   .hero-image { padding: 16px 22px; position: relative; overflow: hidden; }

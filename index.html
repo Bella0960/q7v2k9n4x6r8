@@ -29,9 +29,9 @@
     <meta property="og:title" content="手机模拟器" />
     <meta property="og:description" content="沉浸式手机模拟器，支持聊天、论坛、音乐、记忆、世界书等完整手机功能" />
     <script src="shared/js/font-loader.js?v=20261022v1"></script>
-    <script src="shared/js/wallpaper-store.js?v=20261023v1"></script>
+    <script src="shared/js/wallpaper-store.js?v=20261024v1"></script>
 <script src="shared/js/native-feel.js?v=20261023v12"></script>
-    <link rel="stylesheet" href="desktop/css/styles.css?v=20261022v8">
+    <link rel="stylesheet" href="desktop/css/styles.css?v=20261025v2">
   <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261022v4">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
     <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', observe: true, debug: false };</script>
@@ -65,6 +65,14 @@
             <!-- 元素仓库（初始内容）：每个应用/挂件在这里只写一次；实际显示在哪一页由下方脚本按保存的布局决定，每一页都可以混放应用和挂件 -->
             <div class="home-page" data-page="0">
               <div class="desktop-grid" id="gridPage0">
+
+                <button class="app-card app-tile" type="button" data-href="inspect-phone/select.html" data-drag="app_inspect" data-name="查手机" title="查手机">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.5 18.5h3"/><circle cx="11.7" cy="11.7" r="2.7"/><path d="m13.9 13.9 2.6 2.6"/></svg>
+                  </span>
+                  <span class="app-name">查手机</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
 
                 <button class="app-card app-tile" type="button" data-href="worldbook/worldbook/worldbook.html" data-drag="app_worldbook" data-name="世界书" title="世界书">
                   <span class="app-icon">
@@ -199,6 +207,15 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <!-- 赴约 App：线下沉浸式剧情模式（简称：线下模式） -->
+                <button class="app-card app-tile" type="button" data-href="chat/date/date.html" data-drag="app_date" data-name="线下模式" title="线下模式">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m22 7-10 6L2 7"/></svg>
+                  </span>
+                  <span class="app-name">线下模式</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <!-- ========== 明信片组件（4×2）：3层设计 ========== -->
                 <div class="ds-postcard ds-widget" data-drag="postcard">
                   <div class="pc-bg-top" id="pcBgTop"></div>
@@ -261,11 +278,46 @@
                   <span class="ds-del" title="移除组件">×</span>
                 </div>
 
-                <!-- ========== 时钟组件（2×2）：实时时间与日期 ========== -->
+                <!-- ========== 时钟组件（2×2）：纯时间，无容器 ========== -->
                 <div class="ds-clock ds-widget" data-drag="clock">
                   <div class="cl-time" id="clTime">--:--</div>
-                  <div class="cl-week" id="clWeek">WEDNESDAY</div>
-                  <div class="cl-date" id="clDate">SEPTEMBER 20</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 今日待办（2×2） ========== -->
+                <div class="ds-todo ds-widget" data-drag="todo">
+                  <div class="td-head">
+                    <span class="td-title">TODO</span>
+                    <span class="td-count" id="tdCount"></span>
+                  </div>
+                  <ul class="td-list" id="tdList"></ul>
+                  <button class="td-add" id="tdAdd" type="button">+ 添加一项</button>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 迷你月历（2×2） ========== -->
+                <div class="ds-cal ds-widget" data-drag="calendar">
+                  <div class="cal-month" id="calMonth">OCTOBER</div>
+                  <div class="cal-weekrow">
+                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                  </div>
+                  <div class="cal-grid" id="calGrid"></div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 倒数日（2×2） ========== -->
+                <div class="ds-count ds-widget" data-drag="countdown">
+                  <div class="ct-label">COUNTDOWN</div>
+                  <div class="ct-num"><span id="ctDays">0</span><em>天</em></div>
+                  <div class="ct-event" id="ctEvent" title="点击编辑名称">目标日</div>
+                  <div class="ct-date" id="ctDateLabel" title="点击修改日期">2026-09-01</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 便签（2×2） ========== -->
+                <div class="ds-note ds-widget" data-drag="note">
+                  <div class="nt-tape" aria-hidden="true"></div>
+                  <div class="nt-body" id="noteBody">写下此刻的想法…</div>
                   <span class="ds-del" title="移除组件">×</span>
                 </div>
 
@@ -379,7 +431,7 @@
           pages: [
             [
               'image',
-              'app_worldbook', 'app_memory', 'clock',
+              'app_inspect', 'app_worldbook', 'app_memory', 'clock',
               'app_forum', 'app_wallet',
               'polaroid',
               'app_music', 'app_beauty', 'app_characters', 'app_settings'
@@ -1267,15 +1319,16 @@
       restoreLayout();
     })();
 
+    // ===== 挂件数据读写（全局）：明信片/拍立得/小对话/音乐箱/待办/倒数日/便签共用 =====
+    function load(k) { try { return JSON.parse(localStorage.getItem(k)) || null; } catch(e) { return null; } }
+    function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
+
     // ===== 四个桌面组件交互 =====
     (function () {
       var POSTCARD_KEY = 'ds_postcard_v1';
       var POLAROID_KEY = 'ds_polaroid_v1';
       var DIALOG_KEY = 'ds_dialog_v1';
       var MUSIC_KEY = 'ds_music_v1';
-
-      function load(k) { try { return JSON.parse(localStorage.getItem(k)) || null; } catch(e) { return null; } }
-      function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
 
       // --- 明信片 ---
       (function () {
@@ -1505,27 +1558,213 @@
       })();
     })();
 
-    // ===== 时钟组件：实时时间与日期 =====
+    // ===== 时钟组件：纯时间大字 =====
     (function () {
       var timeEl = document.getElementById('clTime');
-      var weekEl = document.getElementById('clWeek');
-      var dateEl = document.getElementById('clDate');
       if (!timeEl) return;
-
-      var DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-      var MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 
       function pad(n) { return (n < 10 ? '0' : '') + n; }
 
       function tick() {
         var d = new Date();
         timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
-        weekEl.textContent = DAYS[d.getDay()];
-        dateEl.textContent = MONTHS[d.getMonth()] + ' ' + d.getDate();
       }
 
       tick();
       setInterval(tick, 1000);
+    })();
+
+    // ===== 今日待办组件：勾选/编辑/添加，localStorage 持久化 =====
+    (function () {
+      var KEY = 'ds_todo_v1';
+      var data = load(KEY) || { items: [
+        { text: '喝水', done: false },
+        { text: '散步十分钟', done: false }
+      ] };
+      var listEl = document.getElementById('tdList');
+      var countEl = document.getElementById('tdCount');
+      var addBtn = document.getElementById('tdAdd');
+      if (!listEl) return;
+
+      function render() {
+        listEl.innerHTML = '';
+        if (!data.items.length) {
+          var empty = document.createElement('li');
+          empty.className = 'td-empty';
+          empty.textContent = '还没有事项，点下方添加';
+          listEl.appendChild(empty);
+        }
+        data.items.forEach(function (item, idx) {
+          var li = document.createElement('li');
+          li.className = 'td-item' + (item.done ? ' done' : '');
+
+          var check = document.createElement('span');
+          check.className = 'td-check';
+          check.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (document.body.classList.contains('home-editing')) return;
+            item.done = !item.done;
+            save(KEY, data);
+            render();
+          });
+
+          var text = document.createElement('span');
+          text.className = 'td-text';
+          text.textContent = item.text;
+          text.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (document.body.classList.contains('home-editing')) return;
+            if (text.isContentEditable) return;
+            text.contentEditable = 'true';
+            text.focus();
+            document.execCommand('selectAll', false, null);
+          });
+          text.addEventListener('blur', function () {
+            text.contentEditable = 'false';
+            var v = text.textContent.trim();
+            if (!v) { data.items.splice(idx, 1); } else { item.text = v; }
+            save(KEY, data);
+            render();
+          });
+          text.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); text.blur(); }
+          });
+
+          li.appendChild(check);
+          li.appendChild(text);
+          listEl.appendChild(li);
+        });
+        var done = data.items.filter(function (i) { return i.done; }).length;
+        countEl.textContent = done + '/' + data.items.length;
+      }
+
+      addBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (document.body.classList.contains('home-editing')) return;
+        data.items.push({ text: '新事项', done: false });
+        save(KEY, data);
+        render();
+        var lasts = listEl.querySelectorAll('.td-text');
+        if (lasts.length) {
+          lasts[lasts.length - 1].focus();
+          document.execCommand('selectAll', false, null);
+        }
+      });
+
+      render();
+    })();
+
+    // ===== 迷你月历组件：当月日历，今天高亮 =====
+    (function () {
+      var monthEl = document.getElementById('calMonth');
+      var gridEl = document.getElementById('calGrid');
+      if (!gridEl) return;
+      var MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+        'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+
+      function render() {
+        var now = new Date();
+        var y = now.getFullYear(), m = now.getMonth();
+        monthEl.textContent = MONTHS[m];
+        var firstDay = new Date(y, m, 1).getDay();
+        var days = new Date(y, m + 1, 0).getDate();
+        gridEl.innerHTML = '';
+        var i, d, c;
+        for (i = 0; i < firstDay; i++) {
+          c = document.createElement('span');
+          c.className = 'cal-cell blank';
+          gridEl.appendChild(c);
+        }
+        for (d = 1; d <= days; d++) {
+          c = document.createElement('span');
+          c.className = 'cal-cell' + (d === now.getDate() ? ' today' : '');
+          c.textContent = d;
+          gridEl.appendChild(c);
+        }
+      }
+      render();
+      setInterval(render, 60000);
+    })();
+
+    // ===== 倒数日组件：剩余天数，可编辑名称与目标日期 =====
+    (function () {
+      var KEY = 'ds_countdown_v1';
+      var data = load(KEY) || { event: '开学', target: '2026-09-01' };
+      var daysEl = document.getElementById('ctDays');
+      var eventEl = document.getElementById('ctEvent');
+      var dateEl = document.getElementById('ctDateLabel');
+      if (!daysEl) return;
+
+      function refresh() {
+        eventEl.textContent = data.event;
+        dateEl.textContent = data.target;
+        var now = new Date();
+        now.setHours(0, 0, 0, 0);
+        var t = new Date(data.target + 'T00:00:00');
+        var diff = Math.round((t - now) / 86400000);
+        daysEl.textContent = Math.abs(diff);
+      }
+
+      eventEl.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (document.body.classList.contains('home-editing')) return;
+        if (eventEl.isContentEditable) return;
+        eventEl.contentEditable = 'true';
+        eventEl.focus();
+        document.execCommand('selectAll', false, null);
+      });
+      eventEl.addEventListener('blur', function () {
+        eventEl.contentEditable = 'false';
+        data.event = eventEl.textContent.trim() || '目标日';
+        save(KEY, data);
+        refresh();
+      });
+      eventEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); eventEl.blur(); }
+      });
+
+      dateEl.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (document.body.classList.contains('home-editing')) return;
+        var fi = document.createElement('input');
+        fi.type = 'date';
+        fi.value = data.target;
+        fi.onchange = function () {
+          if (fi.value) { data.target = fi.value; save(KEY, data); refresh(); }
+        };
+        try { if (fi.showPicker) { fi.showPicker(); return; } } catch (err) {}
+        fi.click();
+      });
+
+      refresh();
+      setInterval(refresh, 60000);
+    })();
+
+    // ===== 便签组件：随手写，localStorage 持久化 =====
+    (function () {
+      var KEY = 'ds_note_v1';
+      var data = load(KEY) || { text: '写下此刻的想法…' };
+      var body = document.getElementById('noteBody');
+      if (!body) return;
+      body.textContent = data.text;
+
+      body.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (document.body.classList.contains('home-editing')) return;
+        if (body.isContentEditable) return;
+        body.contentEditable = 'true';
+        body.focus();
+        document.execCommand('selectAll', false, null);
+      });
+      body.addEventListener('blur', function () {
+        body.contentEditable = 'false';
+        var v = body.textContent.trim();
+        data.text = v || ' ';
+        save(KEY, data);
+      });
+      body.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); body.blur(); }
+      });
     })();
 
     // ===== 图片组件：点击上传图片（Canvas 压缩，最长边 900px，JPEG 0.7） =====
@@ -1604,6 +1843,8 @@
       root.removeAttribute('data-home-wallpaper');
       lastApplied = '';
     }
+    /* 深色壁纸 → 主屏文字自动转白；浅色壁纸保持黑字。 */
+    if (store && typeof store.applyTone === 'function') store.applyTone(dataUrl || '');
   }
 
   function applyDesktopWallpaper() {

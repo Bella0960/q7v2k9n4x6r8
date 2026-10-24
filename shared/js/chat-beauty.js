@@ -33,12 +33,20 @@
         bubbleGapX: 0,           // px，气泡左右外边距（0 = 与旧版视觉一致）
         bubbleMaxWidth: 86,      // %，消息行最大宽度（限制气泡能有多宽）
         bubblePadding: 10,       // px，气泡内边距基准；实际 = (n-0.5px) 上下 / (n+3px) 左右，默认即 9.5px 13px
-        myBubbleBg: '#111111',
+        myBubbleBg: '#111111', myBubbleOpacity: 100,
         myBubbleColor: '#FFFFFF',
         myBubbleRadius: '15px 15px 4px 15px',
-        partnerBubbleBg: '#FFFFFF',
+        myBubbleRadiusTL: 15, myBubbleRadiusTR: 15, myBubbleRadiusBR: 4, myBubbleRadiusBL: 15,
+        myBubbleBorderStyle: 'solid',
+        myBubbleLineHeight: 1.4,
+        myBubbleShadowVisible: false, myBubbleShadowColor: '#000000', myBubbleShadowX: 0, myBubbleShadowY: 2, myBubbleShadowBlur: 6, myBubbleShadowSpread: 0,
+        partnerBubbleBg: '#FFFFFF', partnerBubbleOpacity: 100,
         partnerBubbleColor: '#111111',
         partnerBubbleRadius: '15px 15px 15px 4px',
+        partnerBubbleRadiusTL: 15, partnerBubbleRadiusTR: 15, partnerBubbleRadiusBR: 15, partnerBubbleRadiusBL: 4,
+        partnerBubbleBorderStyle: 'solid',
+        partnerBubbleLineHeight: 1.4,
+        partnerBubbleShadowVisible: false, partnerBubbleShadowColor: '#000000', partnerBubbleShadowX: 0, partnerBubbleShadowY: 2, partnerBubbleShadowBlur: 6, partnerBubbleShadowSpread: 0,
         myBubbleBorderColor: '#111111', myBubbleBorderWidth: 0,
         partnerBubbleBorderColor: '#DADAE0', partnerBubbleBorderWidth: 1,
         myBubbleRadiusSize: '', partnerBubbleRadiusSize: '',
@@ -46,16 +54,30 @@
         myBubbleFontSize: 12, partnerBubbleFontSize: 12,
         myBubbleFontFamily: 'system', partnerBubbleFontFamily: 'system',
         myBubbleTailSize: 0, myBubbleTailX: 0, myBubbleTailY: 12,
+        myBubbleTailShape: 'triangle', myBubbleTailColor: '',
         partnerBubbleTailSize: 0, partnerBubbleTailX: 0, partnerBubbleTailY: 12,
+        partnerBubbleTailShape: 'triangle', partnerBubbleTailColor: '',
         myBubbleDecorations: [], partnerBubbleDecorations: [],
+        myBubbleAvatarPosition: 'side', partnerBubbleAvatarPosition: 'side',
+        myBubbleBadge: '', partnerBubbleBadge: '',    // 头像旁边的自定义小标签文字（空=不显示）
+        myBubbleBadgeColor: '#999999', partnerBubbleBadgeColor: '#999999',
+        myBubbleBadgeX: 6, partnerBubbleBadgeX: 6,    // 标签水平偏移 px（正值=朝屏幕中间推）
+        myBubbleBadgeY: -2, partnerBubbleBadgeY: -2,    // 标签垂直偏移 px
+        partnerBubbleBadgeAnchor: 'avatar', myBubbleBadgeAnchor: 'avatar',  // avatar=钉头像旁 / bubble-tl/tr/bl/br=钉气泡角落
+        partnerBubbleBadgeSize: 7, myBubbleBadgeSize: 7,   // 标签字号 px
         avatarBorderColor: '#FFFFFF', avatarBorderWidth: 1,
-        messageTimeVisible: true, messageTimeColor: '#999999', messageTimeSize: 8,
+        messageTimeVisible: false, messageTimeColor: '#999999', messageTimeSize: 8,
+        messageTimePosition: 'below',   // 'above' = 气泡上方（与头像同行）；'below' = 气泡下方；'side' = 气泡侧边（与气泡同行，靠中间）
+        messageTimeShowRead: false,      // 是否在我的消息后面显示"已读"
+        messageReadPosition: 'inline',   // 'inline' = 时间同行右侧；'below' = 时间下面单独一行；'bubble' = 气泡右下角外侧
+        messageShowDate: true,            // 时间戳是否显示日期（false = 只显示几点几分）
         imageBubbleOpacity: 100, imageBubbleRadius: 16,
         redPacketBg: '#111111', redPacketBgOpacity: 100, redPacketImage: '', redPacketImageOpacity: 100,
         redPacketBorderColor: '#111111', redPacketBorderWidth: 0, redPacketRadius: 10,
         redPacketShowStatus: true, redPacketTextColor: '#FFFFFF', redPacketFontSize: 12,
         redPacketTitle: '', redPacketTitleColor: '#8E8E93', redPacketAmountTemplate: '', redPacketAmountColor: '#FFFFFF',
         transferBg: '#FFFFFF', transferBorderColor: '#E5E5EA', transferBorderWidth: 1, transferTextColor: '#111111',
+        transferImage: '', transferImageOpacity: 100,
         chatBg: '',
         chatBgDim: 0
     };
@@ -230,10 +252,10 @@
         s.setProperty('--chat-bubble-max-width', num(v.bubbleMaxWidth, 86) + '%');
         var pad = num(v.bubblePadding, 10);
         s.setProperty('--chat-bubble-padding', (pad - 0.5) + 'px ' + (pad + 3) + 'px');
-        s.setProperty('--chat-bubble-my-bg', v.myBubbleBg);
+        s.setProperty('--chat-bubble-my-bg', 'color-mix(in srgb, ' + v.myBubbleBg + ' ' + num(v.myBubbleOpacity,100) + '%, transparent)');
         s.setProperty('--chat-bubble-my-color', v.myBubbleColor);
         s.setProperty('--chat-bubble-my-radius', v.myBubbleRadius);
-        s.setProperty('--chat-bubble-ta-bg', v.partnerBubbleBg);
+        s.setProperty('--chat-bubble-ta-bg', 'color-mix(in srgb, ' + v.partnerBubbleBg + ' ' + num(v.partnerBubbleOpacity,100) + '%, transparent)');
         s.setProperty('--chat-bubble-ta-color', v.partnerBubbleColor);
         s.setProperty('--chat-bubble-ta-radius', v.partnerBubbleRadius);
 
@@ -241,6 +263,28 @@
         s.setProperty('--chat-bubble-my-border-width', num(v.myBubbleBorderWidth, 0) + 'px');
         s.setProperty('--chat-bubble-ta-border-color', v.partnerBubbleBorderColor || '#DADAE0');
         s.setProperty('--chat-bubble-ta-border-width', num(v.partnerBubbleBorderWidth, 1) + 'px');
+        s.setProperty('--chat-bubble-my-border-style', v.myBubbleBorderStyle || 'solid');
+        s.setProperty('--chat-bubble-ta-border-style', v.partnerBubbleBorderStyle || 'solid');
+        s.setProperty('--chat-bubble-my-line-height', String(num(v.myBubbleLineHeight, 1.4)));
+        s.setProperty('--chat-bubble-ta-line-height', String(num(v.partnerBubbleLineHeight, 1.4)));
+        // 四角独立圆角：若任一角被显式设置过（非空），则用四角值覆盖统一 radius
+        if (v.myBubbleRadiusTL != null || v.myBubbleRadiusTR != null || v.myBubbleRadiusBR != null || v.myBubbleRadiusBL != null) {
+            s.setProperty('--chat-bubble-my-radius', num(v.myBubbleRadiusTL,15)+'px '+num(v.myBubbleRadiusTR,15)+'px '+num(v.myBubbleRadiusBR,4)+'px '+num(v.myBubbleRadiusBL,15)+'px');
+        }
+        if (v.partnerBubbleRadiusTL != null || v.partnerBubbleRadiusTR != null || v.partnerBubbleRadiusBR != null || v.partnerBubbleRadiusBL != null) {
+            s.setProperty('--chat-bubble-ta-radius', num(v.partnerBubbleRadiusTL,15)+'px '+num(v.partnerBubbleRadiusTR,15)+'px '+num(v.partnerBubbleRadiusBR,15)+'px '+num(v.partnerBubbleRadiusBL,4)+'px');
+        }
+        // 阴影
+        function shadowStr(prefix) {
+            var vis = v[prefix+'ShadowVisible'];
+            if (vis === false) return 'none';
+            var c = v[prefix+'ShadowColor'] || '#000000';
+            var x = num(v[prefix+'ShadowX'], 0), y = num(v[prefix+'ShadowY'], 2);
+            var b = num(v[prefix+'ShadowBlur'], 6), sp = num(v[prefix+'ShadowSpread'], 0);
+            return x+'px '+y+'px '+b+'px '+sp+'px '+c;
+        }
+        s.setProperty('--chat-bubble-my-shadow', shadowStr('myBubble'));
+        s.setProperty('--chat-bubble-ta-shadow', shadowStr('partnerBubble'));
         if (v.myBubbleRadiusSize !== '' && v.myBubbleRadiusSize != null) s.setProperty('--chat-bubble-my-radius-size', num(v.myBubbleRadiusSize, 15) + 'px');
         else s.removeProperty('--chat-bubble-my-radius-size');
         s.setProperty('--chat-bubble-my-padding', paddingCss(v.myBubblePadding, v.bubblePadding));
@@ -254,14 +298,64 @@
         s.setProperty('--chat-bubble-my-tail-size', num(v.myBubbleTailSize, 0) + 'px');
         s.setProperty('--chat-bubble-my-tail-x', num(v.myBubbleTailX, 0) + 'px');
         s.setProperty('--chat-bubble-my-tail-y', num(v.myBubbleTailY, 12) + 'px');
+        s.setProperty('--chat-bubble-my-tail-color', v.myBubbleTailColor || '');
         s.setProperty('--chat-bubble-ta-tail-size', num(v.partnerBubbleTailSize, 0) + 'px');
         s.setProperty('--chat-bubble-ta-tail-x', num(v.partnerBubbleTailX, 0) + 'px');
         s.setProperty('--chat-bubble-ta-tail-y', num(v.partnerBubbleTailY, 12) + 'px');
+        s.setProperty('--chat-bubble-ta-tail-color', v.partnerBubbleTailColor || '');
+        // 尾巴形状：triangle 用 clip-path 三角，round 用圆角+旋转
+        var myShape = v.myBubbleTailShape || 'triangle';
+        var taShape = v.partnerBubbleTailShape || 'triangle';
+        if (myShape === 'round') {
+            s.setProperty('--chat-bubble-my-tail-clip', 'none');
+            s.setProperty('--chat-bubble-my-tail-radius', '0 70% 0 0');
+            s.setProperty('--chat-bubble-my-tail-transform', 'rotate(45deg)');
+        } else {
+            s.setProperty('--chat-bubble-my-tail-clip', 'polygon(0 0, 100% 0, 0 100%)');
+            s.setProperty('--chat-bubble-my-tail-radius', '0');
+            s.setProperty('--chat-bubble-my-tail-transform', 'none');
+        }
+        if (taShape === 'round') {
+            s.setProperty('--chat-bubble-ta-tail-clip', 'none');
+            s.setProperty('--chat-bubble-ta-tail-radius', '0 0 0 70%');
+            s.setProperty('--chat-bubble-ta-tail-transform', 'rotate(-45deg)');
+        } else {
+            s.setProperty('--chat-bubble-ta-tail-clip', 'polygon(0 0, 100% 0, 100% 100%)');
+            s.setProperty('--chat-bubble-ta-tail-radius', '0');
+            s.setProperty('--chat-bubble-ta-tail-transform', 'none');
+        }
         s.setProperty('--chat-avatar-border-color', v.avatarBorderColor || '#FFFFFF');
         s.setProperty('--chat-avatar-border-width', num(v.avatarBorderWidth, 1) + 'px');
+        s.setProperty('--chat-my-avatar-pos', v.myBubbleAvatarPosition || 'side');
+        s.setProperty('--chat-ta-avatar-pos', v.partnerBubbleAvatarPosition || 'side');
+        // 头像位置：side=旁边(默认), top=上方, bottom=下方
+        var myPos = v.myBubbleAvatarPosition || 'side';
+        var taPos = v.partnerBubbleAvatarPosition || 'side';
+        // sent 行 DOM: bubble 在前, avatar 在后
+        s.setProperty('--chat-my-flex-dir', myPos === 'top' ? 'column-reverse' : myPos === 'bottom' ? 'column' : 'row');
+        s.setProperty('--chat-my-align', myPos === 'side' ? 'flex-start' : 'flex-end');
+        // received 行 DOM: avatar 在前, bubble 在后
+        s.setProperty('--chat-ta-flex-dir', taPos === 'top' ? 'column' : taPos === 'bottom' ? 'column-reverse' : 'row');
+        s.setProperty('--chat-ta-align', taPos === 'side' ? 'flex-start' : 'flex-start');
         s.setProperty('--chat-time-color', v.messageTimeColor || '#999999');
         s.setProperty('--chat-time-size', num(v.messageTimeSize, 8) + 'px');
-        s.setProperty('--chat-time-display', v.messageTimeVisible === false ? 'none' : 'block');
+        s.setProperty('--chat-time-display', v.messageTimeVisible === false ? 'none' : 'flex');
+        s.setProperty('--chat-time-position', v.messageTimePosition === 'above' ? 'above' : 'below');
+        s.setProperty('--chat-time-show-read', v.messageTimeShowRead === true ? 'flex' : 'none');
+        s.setProperty('--chat-read-position', v.messageReadPosition || 'inline');
+        s.setProperty('--chat-show-date', v.messageShowDate === false ? 'none' : 'block');
+        s.setProperty('--chat-ta-badge', v.partnerBubbleBadge ? '"' + String(v.partnerBubbleBadge).replace(/["\\]/g,'\\$&') + '"' : '');
+        s.setProperty('--chat-my-badge', v.myBubbleBadge ? '"' + String(v.myBubbleBadge).replace(/["\\]/g,'\\$&') + '"' : '');
+        s.setProperty('--chat-ta-badge-color', v.partnerBubbleBadgeColor || '#999999');
+        s.setProperty('--chat-my-badge-color', v.myBubbleBadgeColor || '#999999');
+        s.setProperty('--chat-ta-badge-x', num(v.partnerBubbleBadgeX, 6) + 'px');
+        s.setProperty('--chat-ta-badge-y', num(v.partnerBubbleBadgeY, -2) + 'px');
+        s.setProperty('--chat-my-badge-x', num(v.myBubbleBadgeX, -6) + 'px');
+        s.setProperty('--chat-my-badge-y', num(v.myBubbleBadgeY, -2) + 'px');
+        s.setProperty('--chat-ta-badge-anchor', v.partnerBubbleBadgeAnchor || 'avatar');
+        s.setProperty('--chat-my-badge-anchor', v.myBubbleBadgeAnchor || 'avatar');
+        s.setProperty('--chat-ta-badge-size', num(v.partnerBubbleBadgeSize, 7) + 'px');
+        s.setProperty('--chat-my-badge-size', num(v.myBubbleBadgeSize, 7) + 'px');
         s.setProperty('--chat-image-opacity', (num(v.imageBubbleOpacity, 100) / 100).toFixed(2));
         s.setProperty('--chat-image-radius', num(v.imageBubbleRadius, 16) + 'px');
         s.setProperty('--chat-redpacket-bg', v.redPacketBg || '#111111');
@@ -280,6 +374,8 @@
         s.setProperty('--chat-transfer-border-color', v.transferBorderColor || '#E5E5EA');
         s.setProperty('--chat-transfer-border-width', num(v.transferBorderWidth, 1) + 'px');
         s.setProperty('--chat-transfer-text-color', v.transferTextColor || '#111111');
+        s.setProperty('--chat-transfer-image', v.transferImage ? 'url("'+v.transferImage+'")' : 'none');
+        s.setProperty('--chat-transfer-image-opacity', (num(v.transferImageOpacity, 100)/100));
 
         // 过渡期双写：chat-detail 现有 CSS 仍消费这批旧变量名
         s.setProperty('--avatar-size', num(v.avatarSize, 30) + 'px');

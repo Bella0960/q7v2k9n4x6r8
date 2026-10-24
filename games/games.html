@@ -19,7 +19,8 @@ button{cursor:pointer}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #555;outline-offset:3px}
 .shell{padding:calc(16px + env(safe-area-inset-top)) 21px 115px}
 .topline{display:flex;align-items:center;justify-content:space-between;margin-bottom:29px}
-.back{width:36px;height:36px;border:1px solid var(--line);border-radius:50%;background:transparent;display:grid;place-items:center;color:var(--ink)}
+.back{width:36px;height:36px;border:0;border-bottom:1px solid #bdbdbd;border-radius:0;background:transparent;display:grid;place-items:center;color:var(--ink);transition:transform .2s ease,border-color .2s ease}
+.back:active{transform:translateY(1px);border-color:#171717}
 .back svg{width:17px;height:17px}
 .wordmark{font-size:10px;letter-spacing:.2em;color:#73736d;font-weight:650}
 .header-kicker{display:flex;align-items:center;gap:9px;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:12px}

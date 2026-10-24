@@ -40,7 +40,8 @@
   .brand-copy { min-width: 0; display: flex; flex-direction: column; }
   .brand-name { font: 400 15px/1 var(--serif); letter-spacing: .04em; color: var(--ink); }
   .brand-copy small { font-size: 8px; font-weight: 400; letter-spacing: .16em; color: #a0a0a0; margin-top: 5px; display: block; }
-  .back-btn { border:0; background:transparent; padding:6px 8px 6px 0; color:#444; display:grid; place-items:center; }
+  .back-btn { border:0; background:transparent; padding:6px 8px 6px 0; color:#444; display:grid; place-items:center; border-radius:0; border-bottom:1px solid #d0d0d0; transition:transform .2s ease,border-color .2s ease; }
+  .back-btn:active { transform:translateY(1px); border-color:#171717; }
   .back-btn svg { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.45; stroke-linecap:round; stroke-linejoin:round; }
   .head-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .clear-btn {

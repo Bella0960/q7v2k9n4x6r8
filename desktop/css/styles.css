@@ -1142,54 +1142,288 @@ button { color: inherit; font: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== 时钟组件（2×2）：实时时间与日期，黑白灰杂志风 ===== */
-.ds-clock {
-  grid-column: span 2 !important;
+/* ===== 挂件共享：全部无底透明，直接浮在壁纸上 ===== */
+.ds-todo,
+.ds-cal,
+.ds-count,
+.ds-note {
   grid-row: span 2 !important;
-  aspect-ratio: 1/1;
+  aspect-ratio: 1 / 1;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+  position: relative;
+  overflow: visible;
+}
+
+/* ===== 时钟组件（2×2）：纯时间大字，无任何容器 ===== */
+.ds-clock {
+  grid-row: span 2 !important;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.ds-clock .cl-time {
+  font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-size: 4rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== 今日待办（2×2） ===== */
+.ds-todo {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+}
+.ds-todo .td-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.ds-todo .td-title {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  color: #111;
+}
+.ds-todo .td-count {
+  font-size: 0.56rem;
+  color: #8E8E93;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+}
+.ds-todo .td-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  overflow: hidden;
+}
+.ds-todo .td-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ds-todo .td-check {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.5px solid #C7C7CC;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ds-todo .td-item.done .td-check {
+  background: #111;
+  border-color: #111;
+}
+.ds-todo .td-item.done .td-check::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  border-left: 1.5px solid #fff;
+  border-bottom: 1.5px solid #fff;
+  transform: rotate(-45deg) translateY(-1px);
+}
+.ds-todo .td-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  color: #222;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+  outline: none;
+}
+.ds-todo .td-text:focus {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+.ds-todo .td-item.done .td-text {
+  color: #AEAEB2;
+  text-decoration: line-through;
+}
+.ds-todo .td-empty {
+  font-size: 0.66rem;
+  color: #C7C7CC;
+}
+.ds-todo .td-add {
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 0.62rem;
+  color: #8E8E93;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  padding: 0;
+}
+.ds-todo .td-add:active { opacity: 0.6; }
+
+/* ===== 迷你月历（2×2） ===== */
+.ds-cal {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+}
+.ds-cal .cal-month {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #111;
+  text-align: center;
+}
+.ds-cal .cal-weekrow,
+.ds-cal .cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.ds-cal .cal-weekrow {
+  margin-top: 9px;
+}
+.ds-cal .cal-weekrow span {
+  text-align: center;
+  font-size: 0.5rem;
+  color: #AEAEB2;
+  height: 14px;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+}
+.ds-cal .cal-grid {
+  margin-top: 2px;
+}
+.ds-cal .cal-cell {
+  text-align: center;
+  font-size: 0.6rem;
+  color: #222;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 50%;
+  font-variant-numeric: tabular-nums;
+}
+.ds-cal .cal-cell.blank { visibility: hidden; }
+.ds-cal .cal-cell.today {
+  background: #111;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ===== 倒数日（2×2） ===== */
+.ds-count {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  position: relative;
+  gap: 7px;
+  padding: 14px;
 }
-.ds-clock .cl-time {
-  font-family: Georgia, 'Songti SC', serif;
-  font-size: 1.75rem;
-  font-weight: 400;
+.ds-count .ct-label {
+  font-size: 0.54rem;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  color: #8E8E93;
+}
+.ds-count .ct-num {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.ds-count .ct-num span {
+  font-family: -apple-system, "SF Pro Display", sans-serif;
+  font-size: 2.5rem;
+  font-weight: 200;
   line-height: 1;
   color: #111;
-  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
 }
-.ds-clock .cl-week {
-  margin-top: 6px;
-  font-size: 0.625rem;
-  font-weight: 600;
+.ds-count .ct-num em {
+  font-style: normal;
+  font-size: 0.6rem;
   color: #8E8E93;
-  letter-spacing: 0.18em;
 }
-.ds-clock .cl-date {
-  font-size: 0.688rem;
-  color: #48484A;
-  letter-spacing: 0.04em;
+.ds-count .ct-event {
+  font-size: 0.7rem;
+  color: #222;
+  text-align: center;
+  max-width: 100%;
+  cursor: text;
+  padding: 2px 8px;
+  border-radius: 6px;
+  outline: none;
 }
+.ds-count .ct-event:focus { background: rgba(0, 0, 0, 0.05); }
+.ds-count .ct-date {
+  font-size: 0.56rem;
+  color: #AEAEB2;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 便签（2×2） ===== */
+.ds-note {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px 14px;
+}
+.ds-note .nt-tape {
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-2deg);
+  width: 44px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.07);
+  border-radius: 2px;
+}
+.ds-note .nt-body {
+  flex: 1;
+  font-size: 0.74rem;
+  line-height: 1.65;
+  color: #333;
+  overflow: hidden;
+  cursor: text;
+  outline: none;
+}
+.ds-note .nt-body:focus { background: rgba(0, 0, 0, 0.04); border-radius: 6px; padding: 2px 4px; }
 
 /* ===== 图片组件（4×2）：纯图片上传横幅，无文字内容 ===== */
 .ds-image {
   grid-column: span 4 !important;
   grid-row: span 2 !important;
-  aspect-ratio: 16/9;
+  height: 100%;
   min-height: 120px;
-  max-height: 180px;
-  border-radius: 8px;
-  border: 1px solid #E5E5E5;
-  background: #F7F7F9;
+  border-radius: 0;
+  border: none;
+  background: transparent;
   background-size: cover;
   background-position: center;
   overflow: hidden;
@@ -1210,15 +1444,16 @@ button { color: inherit; font: inherit; }
   width: 28px;
   height: 28px;
   fill: none;
-  stroke: #C7C7CC;
+  stroke: rgba(255, 255, 255, 0.85);
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .ds-image .im-hint {
   font-size: 0.688rem;
-  color: #8E8E93;
+  color: rgba(255, 255, 255, 0.85);
   letter-spacing: 0.08em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* Dock：默认只有商店，居中 */
@@ -1241,4 +1476,41 @@ body.maomao-home.maomao-dock-hidden .dock-wrapper {
 }
 body.maomao-home.maomao-dock-hidden .dock-bar {
   display: none !important;
+}
+
+/* ===== 壁纸明暗自适应：深色壁纸 → 主屏文字与系统元素转为白色 =====
+   判定结果由 shared/js/wallpaper-store.js 写入 <html data-wallpaper-tone="dark">。 */
+html[data-wallpaper-tone="dark"] body.maomao-home .status-bar {
+  color: #FFFFFF !important;
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .status-bar .signal-icon i {
+  background: #FFFFFF !important;
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .status-bar .wifi-icon {
+  border-top-color: #FFFFFF !important;
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .status-bar .wifi-icon::after {
+  background: #FFFFFF !important;
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .status-bar .battery-icon {
+  border-color: #FFFFFF !important;
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .status-bar .battery-icon::after {
+  background: #FFFFFF !important;
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .status-bar .battery-icon b {
+  background: #FFFFFF !important;
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .app-name {
+  color: rgba(255, 255, 255, 0.94) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .page-dots .dot {
+  background: rgba(255, 255, 255, 0.36);
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .page-dots .dot.active {
+  background: rgba(255, 255, 255, 0.92);
+}
+html[data-wallpaper-tone="dark"] body.maomao-home .gesture-bar {
+  background: rgba(255, 255, 255, 0.55) !important;
 }

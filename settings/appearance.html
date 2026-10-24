@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Appearance · 外观</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
-<script src="../shared/js/wallpaper-store.js?v=20261023v1"></script>
-<script src="../shared/js/native-feel.js?v=20261023v12"></script>
+<script src="../shared/js/wallpaper-store.js?v=20261024v1"></script>
+<script src="../shared/js/native-feel.js?v=20261024v1"></script>
 <script src="../shared/js/statusbar-control.js?v=20261023v2"></script>
 <style>
   :root {
@@ -66,17 +66,19 @@
     flex-shrink: 0;
   }
   .icon-btn {
-    width: 30px; height: 30px;
-    background: var(--card-2);
-    border-radius: 50%;
+    width: 32px; height: 32px;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid #bdbdbd;
     display: flex; align-items: center; justify-content: center;
     color: var(--ink);
-    border: none; cursor: pointer;
+    cursor: pointer;
     flex-shrink: 0;
-    transition: transform 0.2s ease, background 0.2s ease;
+    transition: transform 0.2s ease, border-color 0.2s ease;
   }
-  .icon-btn:active { transform: scale(0.97); background: var(--weak); }
-  .icon-btn svg { width: 14px; height: 14px; }
+  .icon-btn:active { transform: translateY(1px); border-color: #171717; }
+  .icon-btn svg { width: 15px; height: 15px; }
   .header-title {
     font-size: 24px;
     font-weight: 800;

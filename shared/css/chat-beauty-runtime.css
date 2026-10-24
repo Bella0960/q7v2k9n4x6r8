@@ -5,23 +5,35 @@
 }
 .chat-stage .msg-row.received .msg-bubble:not(.bubble-pay):not(.bubble-media),
 .chat-stage .msg-row.left .msg-bubble:not(.bubble-pay):not(.bubble-media) {
-  border: var(--chat-bubble-ta-border-width, 1px) solid var(--chat-bubble-ta-border-color, rgba(20,20,24,.035)) !important;
+  border: var(--chat-bubble-ta-border-width, 1px) var(--chat-bubble-ta-border-style, solid) var(--chat-bubble-ta-border-color, rgba(20,20,24,.035)) !important;
   border-radius: var(--chat-bubble-ta-radius-size, var(--chat-bubble-ta-radius, 15px 15px 15px 4px)) !important;
   font-size: var(--chat-bubble-ta-font-size, 12px) !important;
   font-family: var(--chat-bubble-ta-font-family, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif) !important;
   padding: var(--chat-bubble-ta-padding, var(--chat-bubble-padding, 9.5px 13px)) !important;
+  line-height: var(--chat-bubble-ta-line-height, 1.4) !important;
+  box-shadow: var(--chat-bubble-ta-shadow, none) !important;
 }
 .chat-stage .msg-row.sent .msg-bubble:not(.bubble-pay):not(.bubble-media),
 .chat-stage .msg-row.right .msg-bubble:not(.bubble-pay):not(.bubble-media) {
-  border: var(--chat-bubble-my-border-width, 0px) solid var(--chat-bubble-my-border-color, #111111) !important;
+  border: var(--chat-bubble-my-border-width, 0px) var(--chat-bubble-my-border-style, solid) var(--chat-bubble-my-border-color, #111111) !important;
   border-radius: var(--chat-bubble-my-radius-size, var(--chat-bubble-my-radius, 15px 15px 4px 15px)) !important;
   font-size: var(--chat-bubble-my-font-size, 12px) !important;
   font-family: var(--chat-bubble-my-font-family, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif) !important;
   padding: var(--chat-bubble-my-padding, var(--chat-bubble-padding, 9.5px 13px)) !important;
+  line-height: var(--chat-bubble-my-line-height, 1.4) !important;
+  box-shadow: var(--chat-bubble-my-shadow, none) !important;
 }
 .chat-stage .msg-avatar {
   border-color: var(--chat-avatar-border-color, #FFFFFF) !important;
   border-width: var(--chat-avatar-border-width, 1px) !important;
+}
+.chat-stage .msg-row.received, .chat-stage .msg-row.left {
+  flex-direction: var(--chat-ta-flex-dir, row) !important;
+  align-items: var(--chat-ta-align, flex-start) !important;
+}
+.chat-stage .msg-row.sent, .chat-stage .msg-row.right {
+  flex-direction: var(--chat-my-flex-dir, row) !important;
+  align-items: var(--chat-my-align, flex-start) !important;
 }
 .chat-stage .message-time {
   display: var(--chat-time-display, block) !important;
@@ -50,8 +62,10 @@
   top: var(--chat-bubble-ta-tail-y, 12px);
   width: var(--chat-bubble-ta-tail-size, 0px);
   height: var(--chat-bubble-ta-tail-size, 0px);
-  background: var(--chat-bubble-ta-bg, #FFFFFF);
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  background: var(--chat-bubble-ta-tail-color, var(--chat-bubble-ta-bg, #FFFFFF));
+  clip-path: var(--chat-bubble-ta-tail-clip, polygon(0 0, 100% 0, 100% 100%));
+  border-radius: var(--chat-bubble-ta-tail-radius, 0);
+  transform: var(--chat-bubble-ta-tail-transform, none);
   pointer-events: none;
 }
 .chat-stage .msg-row.sent .msg-bubble:not(.bubble-pay):not(.bubble-media)::after,
@@ -63,8 +77,10 @@
   top: var(--chat-bubble-my-tail-y, 12px);
   width: var(--chat-bubble-my-tail-size, 0px);
   height: var(--chat-bubble-my-tail-size, 0px);
-  background: var(--chat-bubble-my-bg, #111111);
-  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background: var(--chat-bubble-my-tail-color, var(--chat-bubble-my-bg, #111111));
+  clip-path: var(--chat-bubble-my-tail-clip, polygon(0 0, 100% 0, 0 100%));
+  border-radius: var(--chat-bubble-my-tail-radius, 0);
+  transform: var(--chat-bubble-my-tail-transform, none);
   pointer-events: none;
 }
 
@@ -76,8 +92,10 @@
   top:var(--chat-bubble-ta-tail-y,12px);
   width:var(--chat-bubble-ta-tail-size,0px);
   height:var(--chat-bubble-ta-tail-size,0px);
-  background:var(--chat-bubble-ta-bg,#fff);
-  clip-path:polygon(0 0,100% 0,100% 100%);
+  background:var(--chat-bubble-ta-tail-color, var(--chat-bubble-ta-bg,#fff));
+  clip-path:var(--chat-bubble-ta-tail-clip, polygon(0 0,100% 0,100% 100%));
+  border-radius:var(--chat-bubble-ta-tail-radius, 0);
+  transform:var(--chat-bubble-ta-tail-transform, none);
   pointer-events:none;
 }
 #vbPreview .vbp-row.me .vbp-bubble::after {
@@ -88,8 +106,10 @@
   top:var(--chat-bubble-my-tail-y,12px);
   width:var(--chat-bubble-my-tail-size,0px);
   height:var(--chat-bubble-my-tail-size,0px);
-  background:var(--chat-bubble-my-bg,#111);
-  clip-path:polygon(0 0,100% 0,0 100%);
+  background:var(--chat-bubble-my-tail-color, var(--chat-bubble-my-bg,#111));
+  clip-path:var(--chat-bubble-my-tail-clip, polygon(0 0,100% 0,0 100%));
+  border-radius:var(--chat-bubble-my-tail-radius, 0);
+  transform:var(--chat-bubble-my-tail-transform, none);
   pointer-events:none;
 }
 
@@ -189,23 +209,26 @@
   margin-left: var(--chat-bubble-gap-x, 0px);
   margin-right: var(--chat-bubble-gap-x, 0px);
   max-width: 100%;
-  line-height: 1.5;
 }
 #vbPreview .vbp-row.ta .vbp-bubble {
   background: var(--chat-bubble-ta-bg,#FFFFFF) !important;
   color: var(--chat-bubble-ta-color,#111111) !important;
-  border: var(--chat-bubble-ta-border-width,1px) solid var(--chat-bubble-ta-border-color,rgba(20,20,24,.035)) !important;
+  border: var(--chat-bubble-ta-border-width,1px) var(--chat-bubble-ta-border-style,solid) var(--chat-bubble-ta-border-color,rgba(20,20,24,.035)) !important;
   border-radius: var(--chat-bubble-ta-radius-size, var(--chat-bubble-ta-radius,15px 15px 15px 4px)) !important;
   font-size: var(--chat-bubble-ta-font-size,12px) !important;
   font-family: var(--chat-bubble-ta-font-family,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif) !important;
+  line-height: var(--chat-bubble-ta-line-height,1.4) !important;
+  box-shadow: var(--chat-bubble-ta-shadow,none) !important;
 }
 #vbPreview .vbp-row.me .vbp-bubble {
   background: var(--chat-bubble-my-bg,#111111) !important;
   color: var(--chat-bubble-my-color,#FFFFFF) !important;
-  border: var(--chat-bubble-my-border-width,0px) solid var(--chat-bubble-my-border-color,#111111) !important;
+  border: var(--chat-bubble-my-border-width,0px) var(--chat-bubble-my-border-style,solid) var(--chat-bubble-my-border-color,#111111) !important;
   border-radius: var(--chat-bubble-my-radius-size, var(--chat-bubble-my-radius,15px 15px 4px 15px)) !important;
   font-size: var(--chat-bubble-my-font-size,12px) !important;
   font-family: var(--chat-bubble-my-font-family,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif) !important;
+  line-height: var(--chat-bubble-my-line-height,1.4) !important;
+  box-shadow: var(--chat-bubble-my-shadow,none) !important;
 }
 #vbPreview .vbp-avatar {
   border-color: var(--chat-avatar-border-color,#FFFFFF) !important;
