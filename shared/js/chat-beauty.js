@@ -408,10 +408,16 @@
     // 美化未配置背景时，回落旧单聊背景 chat_bg_<id>（72% 白遮罩，沿用原 applyChatBackground 观感）。
     NS.apply = function (contactId, rootEl) {
         if (!rootEl) return null;
+        var roleVars = contactId != null && contactId !== '' ? readScope(String(contactId)) : {};
+        var hasRoleSpecificBeautyBg = Object.prototype.hasOwnProperty.call(roleVars, 'chatBg') &&
+            roleVars.chatBg !== null && roleVars.chatBg !== '';
         var v = NS.applyVars(NS.resolve(contactId), rootEl);
-        if (v && !v.chatBg) {
+
+        // 角色专属美化背景优先；否则先检查旧版按角色保存的 chat_bg_<id>，
+        // 最后才使用全局 chatBg 作为兜底。旧版背景不能被全局背景遮蔽。
+        if (!hasRoleSpecificBeautyBg && contactId != null && contactId !== '') {
             var legacyBg = '';
-            try { legacyBg = localStorage.getItem('chat_bg_' + contactId) || ''; } catch (e) {}
+            try { legacyBg = localStorage.getItem('chat_bg_' + String(contactId)) || ''; } catch (e) {}
             if (legacyBg) {
                 rootEl.style.setProperty('--chat-bg-image',
                     'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),url("' + legacyBg + '")');
