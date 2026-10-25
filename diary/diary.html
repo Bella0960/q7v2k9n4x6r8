@@ -196,6 +196,31 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 
 @media(hover:hover){.entry-card:hover{background:#fafafa}.round-btn:hover{color:#000;border-color:#171717}}
 
+/* Immersive paper-page reader */
+.reader-backdrop{position:fixed;inset:0;z-index:80;background:rgba(245,245,245,.97);display:none;align-items:center;justify-content:center;padding:18px}
+.reader-backdrop.show{display:flex;animation:backdropFade .22s ease}
+.reader-book{position:relative;width:min(100%,560px);height:min(860px,calc(100dvh - 36px));background:#fff;border:1px solid #e6e6e6;box-shadow:0 18px 55px rgba(0,0,0,.10);display:flex;flex-direction:column;overflow:hidden}
+.reader-toolbar{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #ededed;flex-shrink:0}
+.reader-toolbar button{border:0;background:transparent;color:#333;padding:7px 4px;font-size:13px}
+.reader-progress{font-size:10px;letter-spacing:.16em;color:#888}
+.reader-page{overflow:auto;flex:1;padding:clamp(22px,6vw,42px) clamp(22px,7vw,44px) 28px;overscroll-behavior:contain}
+.reader-date{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid #ddd;padding-bottom:17px;margin-bottom:28px}
+.reader-date-main{display:flex;align-items:baseline;gap:12px}
+.reader-day{font:42px/1 Georgia,serif;letter-spacing:-.06em}
+.reader-date-meta{font-size:11px;color:#888;line-height:1.8}
+.reader-date-right{text-align:right;font-size:11px;letter-spacing:.08em;color:#777}
+.reader-title{font:400 clamp(25px,6vw,34px)/1.3 Georgia,"Songti SC",serif;letter-spacing:-.04em;margin:0 0 22px;color:#191919;overflow-wrap:anywhere}
+.reader-content{font-size:16px;line-height:2;white-space:pre-wrap;overflow-wrap:anywhere;color:#333;min-height:80px}
+.reader-photo{display:block;width:100%;height:auto;max-height:540px;object-fit:contain;margin:26px auto 10px;background:#f7f7f7}
+.reader-tags{display:flex;gap:7px;flex-wrap:wrap;margin-top:24px}
+.reader-tags span{font-size:11px;color:#777;border-bottom:1px solid #ddd;padding:3px 0;margin-right:9px}
+.reader-foot{border-top:1px solid #ededed;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
+.reader-foot button{background:transparent;border:0;padding:9px 5px;color:#333;font-size:13px}
+.reader-nav{display:flex;gap:15px;align-items:center}
+.reader-nav button:disabled{opacity:.25}
+.reader-actions{display:flex;gap:12px}
+.reader-actions button.active{font-weight:700}
+@media(max-width:500px){.reader-backdrop{padding:0;background:#fff}.reader-book{width:100%;height:100dvh;border:0;box-shadow:none}.reader-toolbar{padding-top:calc(12px + env(safe-area-inset-top,0px))}.reader-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}.reader-page{padding-top:28px}}
 </style>
 </head>
 <body>
@@ -247,6 +272,13 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       <button class="menu-item" id="clearSearchBtn"><span>清除搜索与筛选<small>回到全部日记</small></span><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg></button>
     </section>
   </div>
+  <div class="reader-backdrop" id="readerBackdrop" role="dialog" aria-modal="true" aria-label="日记阅读">
+    <section class="reader-book">
+      <header class="reader-toolbar"><button id="readerClose" aria-label="返回日记列表">← 返回</button><span class="reader-progress" id="readerProgress">PAGE 01</span><button id="readerEdit">编辑记录 ↗</button></header>
+      <article class="reader-page" id="readerPage"></article>
+      <footer class="reader-foot"><div class="reader-nav"><button id="readerPrev">← 上一篇</button><button id="readerNext">下一篇 →</button></div><div class="reader-actions"><button id="readerPin">置顶</button><button id="readerFavorite">☆ 收藏</button></div></footer>
+    </section>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
 <script>
@@ -270,6 +302,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   var root=document.getElementById('viewRoot'), scroll=document.getElementById('appScroll');
   var editor=document.getElementById('editorBackdrop'), menu=document.getElementById('menuBackdrop');
   var $=function(id){return document.getElementById(id)};
+  var reader=$('readerBackdrop'), readerId=null;
   function loadEntries(){
     try{var v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v.filter(function(x){return x&&x.id&&x.date;}):[]}
     catch(e){return []}
@@ -311,6 +344,26 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>'
     };
     return '<svg viewBox="0 0 24 24">'+(paths[name]||'')+'</svg>';
+  }
+  function readerEntries(){return sorted(entries.filter(function(e){return currentView==='favorites'?!!e.favorite:currentView==='calendar'?e.date===selectedCalendarDate:true}))}
+  function openReader(id){
+    var entry=entries.find(function(e){return e.id===id});if(!entry)return;
+    readerId=id;renderReader();reader.classList.add('show');document.body.style.overflow='hidden';
+  }
+  function closeReader(){reader.classList.remove('show');document.body.style.overflow='';readerId=null}
+  function renderReader(){
+    var entry=entries.find(function(e){return e.id===readerId});if(!entry){closeReader();return}
+    var list=readerEntries(),index=list.findIndex(function(e){return e.id===readerId});
+    $('readerProgress').textContent='PAGE '+String(Math.max(index,0)+1).padStart(2,'0')+' / '+String(list.length).padStart(2,'0');
+    var p=String(entry.date||todayKey()).split('-');
+    $('readerPage').innerHTML='<div class="reader-date"><div class="reader-date-main"><span class="reader-day">'+esc(Number(p[2]))+'</span><div class="reader-date-meta"><strong>'+esc(weekday(entry.date))+'</strong><br>'+esc(p[0]+'/'+p[1])+'<br>'+esc(entry.mood||'平静')+'</div></div><div class="reader-date-right">'+esc(entry.noteType||'日记')+(entry.pinned?'<br>已置顶':'')+'</div></div>'+(entry.title?'<h1 class="reader-title">'+esc(entry.title)+'</h1>':'')+'<div class="reader-content">'+esc(entry.content||'这一天，留下一点空白。')+'</div>'+(entry.photo?'<img class="reader-photo" src="'+esc(entry.photo)+'" alt="日记照片">':'')+'<div class="reader-tags">'+(entry.tags||[]).map(function(t){return '<span># '+esc(t)+'</span>'}).join('')+'</div>';
+    $('readerPrev').disabled=index<=0;$('readerNext').disabled=index<0||index>=list.length-1;
+    $('readerPin').textContent=entry.pinned?'已置顶':'置顶';$('readerPin').classList.toggle('active',!!entry.pinned);
+    $('readerFavorite').textContent=entry.favorite?'★ 已收藏':'☆ 收藏';$('readerFavorite').classList.toggle('active',!!entry.favorite);
+  }
+  function moveReader(direction){
+    var list=readerEntries(),index=list.findIndex(function(e){return e.id===readerId}),next=list[index+direction];
+    if(next){readerId=next.id;renderReader();$('readerPage').scrollTop=0}
   }
   function renderEntryCard(e){
     var tags=(e.tags||[]).slice(0,4).map(function(t){return '<span class="tiny-tag"># '+esc(t)+'</span>'}).join('');
@@ -516,9 +569,16 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var edit=e.target.closest('[data-edit]');
     if(edit){e.stopPropagation();openEditor(edit.dataset.edit);return}
     var card=e.target.closest('[data-open-entry]');
-    if(card){openEditor(card.dataset.openEntry);return}
+    if(card){openReader(card.dataset.openEntry);return}
   });
   document.querySelectorAll('.tab-btn').forEach(function(b){b.addEventListener('click',function(){currentView=b.dataset.view;cardAnimQueued=true;render()})});
+  $('readerClose').addEventListener('click',closeReader);
+  reader.addEventListener('click',function(e){if(e.target===reader)closeReader()});
+  $('readerEdit').addEventListener('click',function(){var id=readerId;closeReader();openEditor(id)});
+  $('readerPrev').addEventListener('click',function(){moveReader(-1)});
+  $('readerNext').addEventListener('click',function(){moveReader(1)});
+  $('readerPin').addEventListener('click',function(){if(readerId){togglePinned(readerId);renderReader()}});
+  $('readerFavorite').addEventListener('click',function(){if(readerId){toggleFavorite(readerId);renderReader()}});
   $('backHome').addEventListener('click',function(){location.href='../index.html'});
   $('newEntryBtn').addEventListener('click',function(){openEditor()});
   $('searchToggle').addEventListener('click',function(){if(currentView!=='home'){currentView='home';render()}var inp=$('diarySearch');if(inp){inp.focus();inp.scrollIntoView({block:'nearest',behavior:'smooth'})}});
