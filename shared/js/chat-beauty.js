@@ -413,14 +413,17 @@
             roleVars.chatBg !== null && roleVars.chatBg !== '';
         var v = NS.applyVars(NS.resolve(contactId), rootEl);
 
-        // 角色专属美化背景优先；否则先检查旧版按角色保存的 chat_bg_<id>，
-        // 最后才使用全局 chatBg 作为兜底。旧版背景不能被全局背景遮蔽。
+        // 背景必须按聊天角色隔离：角色专属 ChatBeauty 背景优先，其次读取旧版 chat_bg_<id>。
+        // 不把全局 chatBg 兜底到每个角色；否则只设置一次全局图，就会让未单独设置的对话看起来共用同一张背景。
         if (!hasRoleSpecificBeautyBg && contactId != null && contactId !== '') {
             var legacyBg = '';
             try { legacyBg = localStorage.getItem('chat_bg_' + String(contactId)) || ''; } catch (e) {}
             if (legacyBg) {
                 rootEl.style.setProperty('--chat-bg-image',
                     'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),url("' + legacyBg + '")');
+            } else {
+                // 清除 resolve() 合并进来的全局背景，只保留全局气泡/排版等其他外观配置。
+                rootEl.style.removeProperty('--chat-bg-image');
             }
         }
         return v;
