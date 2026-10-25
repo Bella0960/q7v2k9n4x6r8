@@ -270,7 +270,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
         </div></div>
         <div><label class="field-label" for="entryTags">标签 · 用逗号分开</label><input class="tag-input" id="entryTags" maxlength="120" placeholder="生活, 灵感, 旅行"></div>
       </div>
-      <div class="photo-tools"><label class="photo-pick" for="entryPhoto"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>添加照片</label><input type="file" id="entryPhoto" accept="image/*" multiple hidden><span style="font-size:9px;color:#aaa">照片会压缩后保存在本机</span></div>
+      <div class="photo-tools"><label class="photo-pick" for="entryPhoto"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>添加照片</label><input type="file" id="entryPhoto" accept="image/*" multiple hidden><span style="font-size:9px;color:#aaa">最多 8 张 · 自动压缩保存在本机</span></div>
       <div class="photo-preview" id="photoPreview" aria-label="已选照片"></div>
       <div class="editor-footer"><button type="button" class="delete-entry" id="deleteEntry" hidden>删除这篇</button><button type="button" class="btn-secondary" id="cancelEditor">取消</button><button type="button" class="btn-primary" id="saveEntry">保存日记</button></div>
     </section>
@@ -492,7 +492,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       $('nextMonth').addEventListener('click',function(){calendarMonth=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth()+1,1);render()});
       $('todayMonth').addEventListener('click',function(){calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);selectedCalendarDate=todayKey();render()});
       $('jumpMonth').addEventListener('change',function(){
-        var value=this.value;if(!/^\\d{4}-\\d{2}$/.test(value))return;
+        var value=this.value;if(!/^\d{4}-\d{2}$/.test(value))return;
         var parts=value.split('-');calendarMonth=new Date(Number(parts[0]),Number(parts[1])-1,1);
         var firstSaved=entries.filter(function(e){return String(e.date||'').slice(0,7)===value}).sort(function(a,b){return String(b.date).localeCompare(String(a.date))})[0];
         selectedCalendarDate=firstSaved?firstSaved.date:value+'-01';render();
