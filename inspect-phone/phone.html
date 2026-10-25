@@ -8,10 +8,10 @@
 :root{color-scheme:light;--ink:#222226;--muted:#8d8d95;--line:#e5e5ea;--bg:#f7f7f9;--card:#fff;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:#e9e9ee;color:var(--ink);display:grid;place-items:center;min-height:100dvh}
-.device{position:relative;width:min(390px,100vw);height:100dvh;background:var(--bg);overflow:hidden;box-shadow:0 0 0 1px #d8d8de,0 24px 70px rgba(20,20,25,.14)}
+body{background:#e9e9ee;color:var(--ink);display:grid;place-items:center;min-height:100dvh;overflow:hidden;touch-action:pan-y}
+.device{position:relative;width:min(390px,100vw);height:100dvh;background:var(--bg);overflow:hidden;box-shadow:0 0 0 1px #d8d8de,0 24px 70px rgba(20,20,25,.14)}\n@media(max-width:480px){body{display:block;width:100%;min-height:100dvh;background:var(--bg)}.device{width:100%;max-width:none;height:100dvh;height:100svh;box-shadow:none;border:0}.lock,.phone{width:100%}}
 .screen{position:absolute;inset:0}
-.lock{position:absolute;inset:0;z-index:6;display:grid;place-items:center;background:radial-gradient(circle at 25% 18%,rgba(255,255,255,.62),transparent 55%),repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 1px,transparent 1px 8px),linear-gradient(180deg,#ececef,#dedfe4);transition:opacity .28s ease,transform .28s ease}
+.lock{position:absolute;inset:0;z-index:6;display:grid;place-items:center;touch-action:pan-y;background:radial-gradient(circle at 25% 18%,rgba(255,255,255,.62),transparent 55%),repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 1px,transparent 1px 8px),linear-gradient(180deg,#ececef,#dedfe4);transition:opacity .28s ease,transform .28s ease}
 .lock.hide{opacity:0;transform:translateY(-16px);pointer-events:none}
 .lock-top{position:absolute;top:64px;left:0;right:0;text-align:center}
 .lock-time{font-size:52px;font-weight:200;letter-spacing:.04em;line-height:1}
@@ -168,10 +168,46 @@ body{background:#e9e9ee;color:var(--ink);display:grid;place-items:center;min-hei
   updateTime();
   setInterval(updateTime,10000);
 
-  lock.addEventListener('click',function(){
+  var lockStartY=0;
+  var lockStartX=0;
+  var lockTracking=false;
+  var unlocked=false;
+  function unlockPhone(){
+    if(unlocked)return;
+    unlocked=true;
     lock.classList.add('hide');
     phone.classList.add('show');
+  }
+  // 真正支持向上滑动解锁；保留点击作为兼容兜底
+  lock.addEventListener('touchstart',function(e){
+    if(!e.touches||!e.touches[0])return;
+    lockStartY=e.touches[0].clientY;
+    lockStartX=e.touches[0].clientX;
+    lockTracking=true;
+  },{passive:true});
+  lock.addEventListener('touchend',function(e){
+    if(!lockTracking)return;
+    lockTracking=false;
+    var t=e.changedTouches&&e.changedTouches[0];
+    if(!t)return;
+    var dy=t.clientY-lockStartY;
+    var dx=t.clientX-lockStartX;
+    if(dy < -36 && Math.abs(dy)>Math.abs(dx)*1.15)unlockPhone();
+  },{passive:true});
+  lock.addEventListener('pointerdown',function(e){
+    if(e.pointerType==='touch')return;
+    lockStartY=e.clientY;
+    lockStartX=e.clientX;
+    lockTracking=true;
   });
+  lock.addEventListener('pointerup',function(e){
+    if(e.pointerType==='touch'||!lockTracking)return;
+    lockTracking=false;
+    var dy=e.clientY-lockStartY;
+    var dx=e.clientX-lockStartX;
+    if(dy < -36 && Math.abs(dy)>Math.abs(dx)*1.15)unlockPhone();
+  });
+  lock.addEventListener('click',unlockPhone);
 
   var titles={album:'相册',chat:'聊天',notes:'备忘录',forum:'论坛',browser:'浏览器',settings:'设置'};
   var chats=[
