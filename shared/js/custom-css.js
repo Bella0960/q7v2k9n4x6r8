@@ -10,17 +10,21 @@
 
       var path = (location.pathname || '').toLowerCase();
       var isChatDetail = /chat-detail\.html$/.test(path);
+      var isChatList = /(?:^|\/)chat\.html$/.test(path);
+      var isChatPage = isChatDetail || isChatList;
       var params = new URLSearchParams(location.search || '');
       var currentRole = params.get('id') || '';
       var cssToApply = [];
 
-      // 「聊天全局」预设应用于聊天列表与聊天详情页。
-      presets.forEach(function (preset) {
-        if (preset && preset.target === 'all' &&
-            active.all === preset.name && typeof preset.css === 'string') {
-          cssToApply.push(preset.css);
-        }
-      });
+      // 聊天美化 CSS 必须限制在聊天列表/详情页；不能把 body、背景等规则泄漏到动态、主题或其他应用。
+      if (isChatPage) {
+        presets.forEach(function (preset) {
+          if (preset && preset.target === 'all' &&
+              active.all === preset.name && typeof preset.css === 'string') {
+            cssToApply.push(preset.css);
+          }
+        });
+      }
 
       // 角色专属预设只在角色聊天详情页加载，避免串到列表或群聊。
       if (isChatDetail && currentRole && !/^g/i.test(currentRole)) {
