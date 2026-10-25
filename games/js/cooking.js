@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 var $=function(id){return document.getElementById(id)};
-var ROLE_KEY='maomao_game_role', HISTORY_KEY='maomao_cooking_history_v1', PENDING_PREFIX='maomao_cooking_pending_', TASTE_PREFIX='maomao_cooking_taste_v1_';
+var ROLE_KEY='maomao_game_role', HISTORY_KEY='maomao_cooking_history_v1', PENDING_PREFIX='maomao_cooking_pending_', TASTE_PREFIX='maomao_cooking_taste_v1_', DISCOVERY_KEY='maomao_cooking_discoveries_v1', ACHIEVEMENT_KEY='maomao_cooking_achievements_v1';
 var categories=[{id:'all',label:'全部食材'},{id:'staple',label:'主食'},{id:'protein',label:'蛋白质'},{id:'vegetable',label:'蔬菜'},{id:'seasoning',label:'调味料'},{id:'extra',label:'其他'}];
 var ingredients=[
 {id:'rice',name:'米饭',category:'staple',note:'软糯 / 温和',color:'#e7e3d8',flavor:'温和',tags:['主食','饱腹']},
@@ -25,7 +25,14 @@ var ingredients=[
 {id:'honey',name:'蜂蜜',category:'extra',note:'甜润 / 花香',color:'#c49a4d',flavor:'甜润',tags:['甜']},
 {id:'chocolate',name:'巧克力',category:'extra',note:'微苦 / 香浓',color:'#59463d',flavor:'可可',tags:['甜','浓郁']}
 ];
-var selected={},activeCategory='all',roles=[],activeRole=null,currentDish=null,history=[],tasteMemory={};
+var selected={},activeCategory='all',roles=[],activeRole=null,currentDish=null,history=[],tasteMemory={},discoveries=[],progress={dishes:0,feedback:0,ingredients:[],unlocked:[]};
+var hiddenRecipes=[
+{id:'midnight-rice',name:'深夜酱香蛋炒饭',required:['rice','egg','soy'],flavor:'深夜咸香',description:'米饭、鸡蛋与酱油在锅里相遇，像一份专门留给深夜的热乎心意。',event:'深夜厨房事件'},
+{id:'sunset-egg',name:'日落芝士烘蛋',required:['egg','tomato','cheese'],flavor:'酸甜奶香',description:'番茄的酸甜托起芝士的浓郁，像把傍晚的暖光留在盘子里。',event:'日落试吃事件'},
+{id:'rainy-noodles',name:'雨夜菌菇鸡汤面',required:['noodle','chicken','mushroom','soy'],flavor:'温润鲜香',description:'鸡肉与菌菇的鲜味落进面汤里，是适合雨天慢慢吃完的一碗。',event:'雨夜暖心事件'},
+{id:'midnight-toast',name:'午夜蜂蜜巧克力吐司',required:['bread','honey','chocolate'],flavor:'甜润可可',description:'烘烤香、蜂蜜的甜润与巧克力的微苦叠在一起，是一份安静的小甜点。',event:'午夜甜点事件'}
+];
+var achievementDefs=[{id:'first-dish',title:'第一道作品',desc:'完成第一次烹饪',test:function(){return progress.dishes>=1}},{id:'hidden-dish',title:'发现隐藏料理',desc:'解锁任意一份隐藏配方',test:function(){return discoveries.length>=1}},{id:'five-dishes',title:'常驻厨房',desc:'累计完成 5 道料理',test:function(){return progress.dishes>=5}},{id:'ingredient-explorer',title:'食材漫游者',desc:'尝试过 8 种不同食材',test:function(){return progress.ingredients.length>=8}},{id:'taste-listener',title:'认真倾听',desc:'累计留下 3 次口味反馈',test:function(){return progress.feedback>=3}}];
 function safeJSON(raw,fallback){try{return JSON.parse(raw)||fallback}catch(e){return fallback}}
 function loadRoles(){
  try{if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function')roles=PhoneStorage.getCharacters()||[]}catch(e){}
@@ -51,7 +58,12 @@ function renderRole(){
 function tasteStorageKey(){return TASTE_PREFIX+String(activeRole&&activeRole.id||'unknown')}
 function loadTasteMemory(){tasteMemory=safeJSON(localStorage.getItem(tasteStorageKey()),{likes:0,dislikes:0,flavors:{},ingredients:{},lastFeedback:''});if(!tasteMemory||typeof tasteMemory!=='object')tasteMemory={likes:0,dislikes:0,flavors:{},ingredients:{},lastFeedback:''};tasteMemory.flavors=tasteMemory.flavors||{};tasteMemory.ingredients=tasteMemory.ingredients||{}}
 function renderTasteMemory(){var target=$('tasteMemoryText');if(!target)return;var top=Object.keys(tasteMemory.flavors||{}).sort(function(a,b){return tasteMemory.flavors[b]-tasteMemory.flavors[a]})[0],fav=Object.keys(tasteMemory.ingredients||{}).sort(function(a,b){return tasteMemory.ingredients[b]-tasteMemory.ingredients[a]})[0];if(!tasteMemory.likes&&!tasteMemory.dislikes){target.textContent='还没有记录。每次试吃后，可以慢慢了解 TA 喜欢什么。';return}var bits=['已记录 '+(tasteMemory.likes+tasteMemory.dislikes)+' 次反馈'];if(top&&tasteMemory.flavors[top]>0)bits.push('偏好风味：'+top);if(fav&&tasteMemory.ingredients[fav]>0)bits.push('偏好食材：'+fav);target.textContent=bits.join(' · ')}
-function saveTasteFeedback(liked){if(!currentDish||currentDish.tasteFeedback){showToast('这道菜的口味反馈已经记过啦');return}loadTasteMemory();var p=currentDish.profile||{},flavor=p.flavor||'自由风味';if(liked)tasteMemory.likes=(tasteMemory.likes||0)+1;else tasteMemory.dislikes=(tasteMemory.dislikes||0)+1;tasteMemory.flavors[flavor]=(tasteMemory.flavors[flavor]||0)+(liked?1:-1);(p.ingredients||[]).forEach(function(item){var n=item.name;tasteMemory.ingredients[n]=(tasteMemory.ingredients[n]||0)+(liked?1:-1)});tasteMemory.lastFeedback=(liked?'喜欢':'不太合口味')+'：'+(currentDish.name||'未命名菜品');currentDish.tasteFeedback=liked?'liked':'disliked';try{localStorage.setItem(tasteStorageKey(),JSON.stringify(tasteMemory))}catch(e){showToast('口味档案暂时无法保存');return}$('tasteLiked').classList.toggle('selected',liked);$('tasteDisliked').classList.toggle('selected',!liked);$('tasteFeedbackNote').textContent=liked?'记下啦。下次试吃会参考这次的风味和食材。':'记下啦。之后会尝试避开类似的搭配，或让 TA 给出更谨慎的评价。';renderTasteMemory();saveHistory();showToast('已更新 '+roleName(activeRole)+' 的口味档案')}
+function saveTasteFeedback(liked){if(!currentDish||currentDish.tasteFeedback){showToast('这道菜的口味反馈已经记过啦');return}loadTasteMemory();var p=currentDish.profile||{},flavor=p.flavor||'自由风味';if(liked)tasteMemory.likes=(tasteMemory.likes||0)+1;else tasteMemory.dislikes=(tasteMemory.dislikes||0)+1;tasteMemory.flavors[flavor]=(tasteMemory.flavors[flavor]||0)+(liked?1:-1);(p.ingredients||[]).forEach(function(item){var n=item.name;tasteMemory.ingredients[n]=(tasteMemory.ingredients[n]||0)+(liked?1:-1)});tasteMemory.lastFeedback=(liked?'喜欢':'不太合口味')+'：'+(currentDish.name||'未命名菜品');currentDish.tasteFeedback=liked?'liked':'disliked';progress.feedback++;checkAchievements();saveProgress();renderKitchenProgress();try{localStorage.setItem(tasteStorageKey(),JSON.stringify(tasteMemory))}catch(e){showToast('口味档案暂时无法保存');return}$('tasteLiked').classList.toggle('selected',liked);$('tasteDisliked').classList.toggle('selected',!liked);$('tasteFeedbackNote').textContent=liked?'记下啦。下次试吃会参考这次的风味和食材。':'记下啦。之后会尝试避开类似的搭配，或让 TA 给出更谨慎的评价。';renderTasteMemory();saveHistory();showToast('已更新 '+roleName(activeRole)+' 的口味档案')}
+function loadProgress(){discoveries=safeJSON(localStorage.getItem(DISCOVERY_KEY),[]);if(!Array.isArray(discoveries))discoveries=[];progress=safeJSON(localStorage.getItem(ACHIEVEMENT_KEY),{dishes:0,feedback:0,ingredients:[],unlocked:[]});if(!progress||typeof progress!=='object')progress={dishes:0,feedback:0,ingredients:[],unlocked:[]};progress.dishes=Number(progress.dishes)||0;progress.feedback=Number(progress.feedback)||0;progress.ingredients=Array.isArray(progress.ingredients)?progress.ingredients:[];progress.unlocked=Array.isArray(progress.unlocked)?progress.unlocked:[];checkAchievements();renderKitchenProgress()}
+function saveProgress(){try{localStorage.setItem(DISCOVERY_KEY,JSON.stringify(discoveries));localStorage.setItem(ACHIEVEMENT_KEY,JSON.stringify(progress))}catch(e){showToast('图鉴空间不足，进度暂时无法保存')}}
+function checkAchievements(){achievementDefs.forEach(function(def){if(def.test()&&progress.unlocked.indexOf(def.id)<0)progress.unlocked.push(def.id)})}
+function renderKitchenProgress(){var dc=$('discoveryCount'),ac=$('achievementCount'),dl=$('discoveryList'),al=$('achievementList');if(!dc||!ac||!dl||!al)return;dc.textContent=discoveries.length+'/'+hiddenRecipes.length;ac.textContent=progress.unlocked.length+'/'+achievementDefs.length;dl.innerHTML='';hiddenRecipes.forEach(function(recipe){var found=discoveries.indexOf(recipe.id)>=0,row=document.createElement('div');row.className='kitchen-record'+(found?' unlocked':'');var title=document.createElement('strong'),desc=document.createElement('span');title.textContent=found?recipe.name:'未发现的料理';desc.textContent=found?recipe.flavor+' · 已收入图鉴':'尝试不同食材的特定组合';row.append(title,desc);dl.appendChild(row)});al.innerHTML='';achievementDefs.forEach(function(def){var found=progress.unlocked.indexOf(def.id)>=0,row=document.createElement('div');row.className='kitchen-record'+(found?' unlocked':'');var title=document.createElement('strong'),desc=document.createElement('span');title.textContent=(found?'已解锁 / ':'待解锁 / ')+def.title;desc.textContent=def.desc;row.append(title,desc);al.appendChild(row)})}
+function registerCookedDish(profile){progress.dishes++;(profile.ingredients||[]).forEach(function(item){if(progress.ingredients.indexOf(item.id)<0)progress.ingredients.push(item.id)});if(profile.specialRecipe&&discoveries.indexOf(profile.specialRecipe.id)<0){discoveries.push(profile.specialRecipe.id);showToast('发现隐藏料理：'+profile.specialRecipe.name)}checkAchievements();saveProgress();renderKitchenProgress()}
 function showToast(msg){var el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(showToast.timer);showToast.timer=setTimeout(function(){el.classList.remove('show')},2200)}
 function ingredient(id){return ingredients.find(function(x){return x.id===id})}
 function count(){return Object.keys(selected).reduce(function(n,id){return n+selected[id]},0)}
@@ -83,12 +95,13 @@ function tasteProfile(list){
  var tags=list.reduce(function(a,x){return a.concat(x.tags)},[]),flavors=list.map(function(x){return x.flavor});
  var unique=[...new Set(flavors)],has=function(id){return !!selected[id]};
  var odd=(has('chocolate')&&(has('soy')||has('fish')||has('chili')))||(has('honey')&&has('vinegar')&&has('chili'))||(has('bread')&&has('soy')&&has('sugar'));
+ var ids=list.map(function(x){return x.id}).sort(),recipe=hiddenRecipes.find(function(r){return r.required.length===ids.length&&r.required.slice().sort().every(function(id,i){return id===ids[i]})})||null;
  var sweet=tags.indexOf('甜')>=0,spicy=has('chili'),acid=has('vinegar')||has('tomato'),protein=list.some(function(x){return x.category==='protein'}),staple=list.some(function(x){return x.category==='staple'}),veg=list.some(function(x){return x.category==='vegetable'});
- var flavor=odd?'实验性搭配':spicy?(acid?'酸辣开胃':'辛香浓郁'):sweet?(protein?'甜咸混搭':'甜口系'):acid?'清爽微酸':protein&&veg?'鲜香均衡':staple?'温和饱腹':'自由风味';
+ var flavor=recipe?recipe.flavor:odd?'实验性搭配':spicy?(acid?'酸辣开胃':'辛香浓郁'):sweet?(protein?'甜咸混搭':'甜口系'):acid?'清爽微酸':protein&&veg?'鲜香均衡':staple?'温和饱腹':'自由风味';
  var names=[];if(staple)names.push(list.find(function(x){return x.category==='staple'}).name);if(protein)names.push(list.find(function(x){return x.category==='protein'}).name);if(veg)names.push(list.find(function(x){return x.category==='vegetable'}).name);
- var dishName=odd?'灵感失控实验碗':names.length?names.slice(0,2).join('与')+'小料理':list.length>2?list[0].name+'的自由组合':list.map(function(x){return x.name}).join('与')+'小食';
- var description=odd?'这道菜大胆得有点出乎意料。味道之间正在进行一场不太按常理出牌的碰撞。':protein&&veg&&staple?'主食、鲜味与蔬菜凑在了一起，是一道层次比较完整的家常风格组合。':sweet?'甜味成为了这道菜的主角，像是一次不太严肃的厨房实验。':spicy?'辛香先声夺人，适合喜欢鲜明味道的试吃员。':'没有固定菜谱的限制，食材各自留下自己的味道，最后拼成了这一份独家组合。';
- return {flavor:flavor,description:description,odd:odd,dishName:dishName,ingredients:list,tags:tags};
+ var dishName=recipe?recipe.name:odd?'灵感失控实验碗':names.length?names.slice(0,2).join('与')+'小料理':list.length>2?list[0].name+'的自由组合':list.map(function(x){return x.name}).join('与')+'小食';
+ var description=recipe?recipe.description:odd?'这道菜大胆得有点出乎意料。味道之间正在进行一场不太按常理出牌的碰撞。':protein&&veg&&staple?'主食、鲜味与蔬菜凑在了一起，是一道层次比较完整的家常风格组合。':sweet?'甜味成为了这道菜的主角，像是一次不太严肃的厨房实验。':spicy?'辛香先声夺人，适合喜欢鲜明味道的试吃员。':'没有固定菜谱的限制，食材各自留下自己的味道，最后拼成了这一份独家组合。';
+ return {flavor:flavor,description:description,odd:odd,dishName:dishName,ingredients:list,tags:tags,specialRecipe:recipe};
 }
 function setStage(stage){
  ['cookStage','dishStage','tastingStage'].forEach(function(id){$(id).hidden=id!==stage});
@@ -99,7 +112,7 @@ function cook(){
  $('potScene').classList.add('cooking');$('cookButton').disabled=true;$('cookButton').innerHTML='正在烹饪…';
  setTimeout(function(){
   $('potScene').classList.remove('cooking');$('cookButton').innerHTML='开始烹饪 <span>↗</span>';$('cookButton').disabled=false;
-  var profile=tasteProfile(list);currentDish={id:'dish_'+Date.now(),name:profile.dishName,profile:profile,roleId:activeRole.id,roleName:roleName(activeRole),createdAt:new Date().toISOString(),reaction:''};
+  var profile=tasteProfile(list);currentDish={id:'dish_'+Date.now(),name:profile.dishName,profile:profile,roleId:activeRole.id,roleName:roleName(activeRole),createdAt:new Date().toISOString(),reaction:''};registerCookedDish(profile);
   $('dishName').value=currentDish.name;$('dishFlavor').textContent=profile.flavor;$('dishCount').textContent=count()+' 份食材';$('dishDescription').textContent=profile.description;
   $('dishFood').style.background='radial-gradient(circle at 35% 35%,'+list[0].color+' 0 10%,transparent 11%),radial-gradient(circle at 63% 61%,'+(list[1]||list[0]).color+' 0 12%,transparent 13%),radial-gradient(circle at 53% 27%,'+(list[2]||list[0]).color+' 0 10%,transparent 11%),radial-gradient(circle at 32% 69%,'+(list[list.length-1]||list[0]).color+' 0 13%,transparent 14%),radial-gradient(circle at 50% 50%,#f1f1ed,#aaa 80%)';
   $('usedIngredients').innerHTML='';list.forEach(function(x){var tag=document.createElement('span');tag.className='used-ingredient';tag.textContent=x.name+(x.quantity>1?' ×'+x.quantity:'');$('usedIngredients').appendChild(tag)});
@@ -112,7 +125,7 @@ function localReaction(profile){
  var lines=profile.odd?['……你真的把这些放在一起了？我得承认，我很好奇。','这味道有点出乎意料。下次我们可以试试少放一点特别的那种。','我先观察一下。你是不是故意想看我的反应？']:profile.flavor.indexOf('甜')>=0?['这个味道意外地讨喜。你是不是记得我会喜欢这种？','甜度挺明显的，不过还蛮有你的风格。','嗯，这一口有点像今天的小惊喜。']:profile.flavor.indexOf('辛')>=0?['第一口就很有存在感……你这是在考验我的接受能力吗？','这个味道很直接，我喜欢你敢这么搭。','有点刺激，不过我愿意再尝一口。']:['搭配比我想象中更协调。你还挺会给人惊喜。','这个组合有点意思。下次要不要让我也来选两样？','能看出来你有认真想过怎么搭，味道也挺舒服。'];
  if(/冷淡|寡言|高冷/.test(personality))lines=['我尝过了。比想象中好。','……可以，再做一次。','搭配有点大胆，但不算差。'];
  if(/活泼|开朗|热情/.test(personality))lines=['哇，居然还不错！再给我一口！','这个组合好有创意，你是不是偷偷练过？','我宣布，这道菜今天有资格上桌！'];
- return {title:profile.odd?'TA 有点意外。':profile.flavor.indexOf('均衡')>=0?'TA 看起来很满意。':'TA 认真尝了一口。',copy:name+'先看了看菜品，然后终于尝了一口。',quote:lines[Math.floor(Math.random()*lines.length)]};
+ var flavorScore=(tasteMemory.flavors&&tasteMemory.flavors[profile.flavor])||0,ingredientScore=(profile.ingredients||[]).reduce(function(sum,item){return sum+((tasteMemory.ingredients&&tasteMemory.ingredients[item.name])||0)},0);var eventLine=profile.specialRecipe?({ 'midnight-rice':'你居然做出了深夜酱香蛋炒饭……这组合有种被认真照顾到的感觉。','sunset-egg':'番茄和芝士的味道意外合拍。这个配方，我想记住。','rainy-noodles':'这碗面很适合慢慢吃。今天好像真的被安慰到了。','midnight-toast':'蜂蜜和巧克力？这份甜点有点犯规，我想再尝一口。'}[profile.specialRecipe.id]||'这个隐藏配方让我有点惊喜。'):null;if(eventLine)lines=[eventLine];else if(flavorScore>0||ingredientScore>=2)lines=['你记得我喜欢这样的味道吧？这次真的很合口味。','这份搭配很对我的胃口，感觉你有认真记住之前的反馈。','嗯，这次比上次更合适了。我愿意把它列进喜欢的菜。'];else if(flavorScore<0||ingredientScore<=-2)lines=['这次的味道和我平常喜欢的有点不一样，不过我能感受到你的用心。','好像有一点点不太合口味。下次我们可以试着调整一下搭配。'];return {title:profile.specialRecipe?'发现隐藏料理！':profile.odd?'TA 有点意外。':profile.flavor.indexOf('均衡')>=0?'TA 看起来很满意。':'TA 认真尝了一口。',copy:profile.specialRecipe?name+'触发了「'+profile.specialRecipe.event+'」。':name+'先看了看菜品，然后终于尝了一口。',quote:lines[Math.floor(Math.random()*lines.length)]};
 }
 function beginTasting(){
  if(!currentDish)return;currentDish.tasteFeedback='';currentDish.name=$('dishName').value.trim()||currentDish.profile.dishName;
@@ -138,7 +151,7 @@ function requestReaction(){
  var rolePrompt=[activeRole.description,activeRole.bio,activeRole.personality,activeRole.character,activeRole.speechStyle,activeRole.prompt,activeRole.systemPrompt].filter(Boolean).join('\n');
  var items=profile.ingredients.map(function(x){return x.name+(x.quantity>1?' ×'+x.quantity:'')}).join('、');
  var memory=tasteMemory||{},memoryLine=(memory.likes||memory.dislikes)?'过往口味反馈：喜欢 '+(memory.likes||0)+' 次，不太合口味 '+(memory.dislikes||0)+' 次。风味记录：'+Object.keys(memory.flavors||{}).map(function(k){return k+'('+memory.flavors[k]+')'}).join('、')+'。食材记录：'+Object.keys(memory.ingredients||{}).map(function(k){return k+'('+memory.ingredients[k]+')'}).join('、')+'。这些只是用户给出的偏好线索，不要机械复述。':'目前还没有口味档案，请自然地表达第一反应。';
- var user='用户亲手做了一道菜并请你试吃。菜名：'+currentDish.name+'。食材：'+items+'。风味：'+profile.flavor+'。组合特点：'+profile.description+'。'+memoryLine+'请以角色本人身份先给出自然的第一反应和简短评价，像真实聊天，不要客服口吻，不要分析菜谱，不超过90个汉字。';
+ var user='用户亲手做了一道菜并请你试吃。菜名：'+currentDish.name+'。食材：'+items+'。风味：'+profile.flavor+'。组合特点：'+profile.description+'。'+(profile.specialRecipe?'这是隐藏料理「'+profile.specialRecipe.name+'」，触发事件「'+profile.specialRecipe.event+'」，请让角色对此有自然的专属反应。':'')+memoryLine+'请以角色本人身份先给出自然的第一反应和简短评价，像真实聊天，不要客服口吻，不要分析菜谱，不超过90个汉字。';
  window.PhoneAPI.complete({system:'你正在 MAOMAO 小手机里扮演用户选定的聊天角色。保持角色人设，不要声称真实存在。角色设定：'+rolePrompt+'\n你正在试吃用户亲手做的菜。可以惊喜、吐槽或温柔回应，但不要辱骂用户。只输出角色会说的话。',user:user,temperature:0.85,timeoutMs:12000}).then(function(text){finish(text||local.quote,text?'ai':'local')}).catch(function(){finish(local.quote,'local')});
 }
 function saveHistory(){try{localStorage.setItem(HISTORY_KEY,JSON.stringify(history))}catch(e){showToast('记录空间不足，暂时无法保存更多菜品')}}
@@ -163,5 +176,5 @@ $('clearIngredients').onclick=function(){selected={};renderIngredients();renderP
 $('cookButton').onclick=cook;$('editDish').onclick=function(){setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
 $('historyButton').onclick=openHistory;$('closeHistory').onclick=function(){$('historyPanel').hidden=true};
 $('tasteLiked').onclick=function(){saveTasteFeedback(true)};$('tasteDisliked').onclick=function(){saveTasteFeedback(false)};
-loadRoles();loadHistory();renderCategories();renderIngredients();renderPot();
+loadRoles();loadHistory();loadProgress();renderCategories();renderIngredients();renderPot();
 })();

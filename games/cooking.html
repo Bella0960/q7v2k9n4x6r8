@@ -7,7 +7,7 @@
 <meta name="description" content="自由搭配食材，做一道菜给喜欢的角色试吃。">
 <title>投喂厨房 · 小手机</title>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css?v=20261021">
-<link rel="stylesheet" href="css/cooking.css?v=20261025v2">
+<link rel="stylesheet" href="css/cooking.css?v=20261025v3">
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
@@ -36,6 +36,8 @@
     <div class="taste-memory" id="tasteMemory"><span class="taste-memory-label">口味档案 / TASTE NOTES</span><span id="tasteMemoryText">还没有记录。每次试吃后，可以慢慢了解 TA 喜欢什么。</span></div>
     <div class="role-options" id="roleOptions" hidden></div>
   </section>
+
+  <section class="kitchen-progress" aria-label="料理图鉴与成就"><div class="progress-heading"><div><p class="eyebrow">YOUR KITCHEN ARCHIVE</p><h2>发现与收藏</h2></div><div class="progress-numbers"><span><strong id="discoveryCount">0/4</strong>隐藏料理</span><span><strong id="achievementCount">0/5</strong>成就</span></div></div><div class="progress-columns"><div><h3>隐藏料理图鉴</h3><div id="discoveryList" class="kitchen-record-list"></div></div><div><h3>厨房成就</h3><div id="achievementList" class="kitchen-record-list"></div></div></div></section>
 
   <section class="stage" id="cookStage">
     <div class="stage-heading"><div><p class="eyebrow">01 / PREPARE</p><h2>把灵感放进锅里</h2></div><span class="stage-count" id="ingredientCount">00 INGREDIENTS</span></div>
@@ -93,6 +95,6 @@
   </section>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </main>
-<script src="js/cooking.js?v=20261025v2"></script>
+<script src="js/cooking.js?v=20261025v3"></script>
 </body>
 </html>
