@@ -822,7 +822,10 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
           var clean={id:String(e.id),date:String(e.date),title:String(e.title||''),content:String(e.content||''),mood:String(e.mood||'平静'),noteType:e.noteType==='备忘'?'备忘':'日记',pinned:!!e.pinned,tags:Array.isArray(e.tags)?e.tags.map(String).slice(0,12):[],photo:importedPhotos[0]||'',photos:importedPhotos,charComments:Array.isArray(e.charComments)?e.charComments.filter(function(n){return n&&typeof n.text==='string'}).slice(0,80):[],favorite:!!e.favorite,createdAt:e.createdAt||new Date().toISOString(),updatedAt:e.updatedAt||new Date().toISOString()};
           entries.push(clean);seen[e.id]=1;added++;
         });
-        if(persist()){currentView='home';query='';render();menu.classList.remove('show');showToast('已导入 '+added+' 篇新记录')}
+        if(persist()){
+          var imported=entries.filter(function(entry){return !!seen[entry.id]&&Array.isArray(entry.photos)&&entry.photos.length});
+          Promise.all(imported.map(function(entry){var photos=entry.photos.slice(0,8);entry.photoCount=photos.length;delete entry.photos;delete entry.photo;return savePhotosForEntry(entry.id,photos)})).then(function(){return hydrateAllPhotoCounts()}).then(function(){persist();currentView='home';query='';render();menu.classList.remove('show');showToast('已导入 '+added+' 篇新记录')}).catch(function(){showToast('文字已导入，但部分照片保存失败；请保留原备份后重试')})
+        }
       }catch(e){showToast('备份文件格式不正确')}
     };
     reader.onerror=function(){showToast('读取备份失败')};reader.readAsText(file);
@@ -893,6 +896,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   function updateTime(){var el=$('statusTime');if(!el)return;var d=new Date();el.textContent=d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false})}
   updateTime();setInterval(updateTime,30000);
   render();
+  hydratePhotos().then(function(){return hydrateAllPhotoCounts()}).then(function(){render()});
 })();
 </script>
 </body>
