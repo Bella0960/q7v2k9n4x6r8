@@ -13,3 +13,6 @@
 
 /* Keep ingredient markers above the pot body. */
 .pot-inner{z-index:2}.pot-front{z-index:1}
+
+/* Per-character taste memory */
+.taste-memory{display:flex;flex-direction:column;gap:6px;margin-top:15px;padding:11px 12px;border-left:1px solid #c8c8c2;background:#f8f8f6}.taste-memory-label{font-size:8px;letter-spacing:.14em;color:#8a8a84}#tasteMemoryText{font-size:10px;line-height:1.65;color:#666}.taste-feedback{margin-top:17px;padding:14px 12px;border:1px solid #e5e5e1}.taste-feedback>p{font-size:10px;color:#777;margin:0 0 10px;text-align:center}.taste-feedback-actions{display:flex;gap:8px}.taste-vote{flex:1;min-height:38px;padding:8px 9px;background:#fff;border:1px solid #deded9;color:#444;font-size:10px;transition:background .2s,color .2s,border-color .2s}.taste-vote.selected{background:#171717;color:#fff;border-color:#171717}.taste-feedback-note{display:block;margin-top:9px;font-size:9px;line-height:1.65;color:#999;text-align:center}
