@@ -20,10 +20,15 @@
     return false;
   }
 
-  function apply() {
+  function apply(syncLayout) {
     dockBar = dockBar || document.getElementById('dockBar');
     dockWrapper = dockWrapper || document.querySelector('.dock-wrapper');
     if (!dockBar || !dockWrapper) return;
+
+    /* Keep layout state in sync when returning from Appearance settings or changing tabs. */
+    if (syncLayout && typeof window.MAOMAOReconcileDockLayout === 'function') {
+      window.MAOMAOReconcileDockLayout();
+    }
 
     /* Hide automatically if empty; the Appearance preference can also hide a populated Dock. */
     var hasApps = hasDockApps();
@@ -39,17 +44,17 @@
     dockBar = document.getElementById('dockBar');
     dockWrapper = document.querySelector('.dock-wrapper');
     if (!dockBar || !dockWrapper) return;
-    apply();
+    apply(true);
     if (window.MutationObserver) {
-      observer = new MutationObserver(apply);
+      observer = new MutationObserver(function () { apply(false); });
       observer.observe(dockBar, { childList: true });
       observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     }
-    window.addEventListener('pageshow', apply);
+    window.addEventListener('pageshow', function () { apply(true); });
     window.addEventListener('storage', function (event) {
-      if (!event.key || event.key === PREF_KEY) apply();
+      if (!event.key || event.key === PREF_KEY) apply(true);
     });
-    window.addEventListener('maomao:dock-visibility-change', apply);
+    window.addEventListener('maomao:dock-visibility-change', function () { apply(true); });
     window.MAOMAOApplyDockVisibility = apply;
   }
 
