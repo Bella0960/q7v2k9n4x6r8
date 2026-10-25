@@ -56,6 +56,8 @@ h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(42px,12vw,64px);f
 const $=id=>document.getElementById(id);
 const KEY='maomao_companion_v1';
 const state=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||{role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}catch(e){return {role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}})();
+// Playback cannot survive a reload; keep the saved song but reset its transient playing state.
+state.listening=false;
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
 let toastTimer;
 function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2300)}
