@@ -408,11 +408,27 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   function savePhotosForEntry(entryId,photos){
     return openPhotoDB().then(function(){var tasks=[];for(var i=0;i<8;i++){var photo=photos[i];if(photo)tasks.push(putPhoto(photoKey(entryId,i),photo));else tasks.push(deletePhoto(photoKey(entryId,i)))}return Promise.all(tasks)})
   }
-  function removeEntryPhotos(entryId){var tasks=[];for(var i=0;i<8;i++)tasks.push(deletePhoto(photoKey(entryId,i)).catch(function(){}));return Promise.all(tasks)}
-  function photoStorageStats(){
-    var count=0,bytes=0;entries.forEach(function(entry){count+=entry.photoCount||((entry.photos&&entry.photos.length)||(entry.photo?1:0));});
-    return {bytes:bytes,count:count,mb:'独立数据库'}
+  function hydrateAllPhotoCounts(){
+    return getAllPhotos().then(function(rows){
+      var grouped={};
+      rows.forEach(function(row){
+        var split=String(row.key).lastIndexOf('::');
+        if(split<0)return;
+        var id=String(row.key).slice(0,split),index=Number(String(row.key).slice(split+2));
+        if(!Number.isFinite(index)||index<0||index>7)return;
+        if(!grouped[id])grouped[id]=[];
+        grouped[id][index]=row.data;
+      });
+      entries.forEach(function(entry){
+        var photos=(grouped[entry.id]||[]).filter(Boolean);
+        entry.photoCount=photos.length;
+        if(photos.length){entry.photos=photos;entry.photo=photos[0]}
+        else {delete entry.photos;delete entry.photo}
+      });
+      return entries
+    })
   }
+  function removeEntryPhotos(entryId){var tasks=[];for(var i=0;i<8;i++)tasks.push(deletePhoto(photoKey(entryId,i)).catch(function(){}));return Promise.all(tasks)}
   function estimatePhotoBytes(value){return typeof value==='string'?Math.floor(value.length*.75):0}
   function photoStorageStats(){
     var bytes=0,count=0;
@@ -706,6 +722,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     scroll.scrollTop=0;
   }
   function openEditor(id,date){
+    if(id&&photoDbError){showToast('照片数据库暂不可用，请先导出备份后再编辑');return}
     editId=id||null;
     var entry=id?entries.find(function(e){return e.id===id}):null;
     selectedMood=entry?(entry.mood||'平静'):'平静';
@@ -748,8 +765,9 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   function deleteCurrent(){
     if(!editId)return;
     if(!window.confirm('确定删除这篇日记吗？删除后无法撤销。'))return;
-    entries=entries.filter(function(e){return e.id!==editId});
-    persist();closeEditor();currentView='home';render();showToast('这篇日记已删除');
+    var deletedId=editId;
+    entries=entries.filter(function(e){return e.id!==deletedId});
+    persist();removeEntryPhotos(deletedId);closeEditor();currentView='home';render();showToast('这篇日记已删除');
   }
   function togglePinned(id){
     var e=entries.find(function(x){return x.id===id});if(!e)return;
