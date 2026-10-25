@@ -1514,3 +1514,16 @@ html[data-wallpaper-tone="dark"] body.maomao-home .page-dots .dot.active {
 html[data-wallpaper-tone="dark"] body.maomao-home .gesture-bar {
   background: rgba(255, 255, 255, 0.55) !important;
 }
+
+
+/* Dock shortcuts gently reflow when the navigation bar is folded into or restored from the desktop. */
+@keyframes maomaoDockReflowIn {
+  from { opacity: 0.35; transform: translateY(-5px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.dock-reflow-enter {
+  animation: maomaoDockReflowIn 0.28s cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock-reflow-enter { animation: none !important; }
+}
