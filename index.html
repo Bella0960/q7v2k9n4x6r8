@@ -20,7 +20,7 @@
         }
         // 清除所有历史版本的布局键，防止旧脏数据命中
         var keys = Object.keys(localStorage);
-        keys.forEach(function (k) { if (/^ds_layout_v/.test(k)) localStorage.removeItem(k); });
+        keys.forEach(function (k) { if (/^ds_layout_v/.test(k) && k !== 'ds_layout_v12') localStorage.removeItem(k); });
         // 兼容 ds_polaroid_v1 / ds_image_v1 等挂件数据保留，只清布局
       })();
     </script>
@@ -148,6 +148,30 @@
                 </button>
 
 
+                <button class="app-card app-tile" type="button" data-href="couple/couple.html" data-drag="app_couple" data-name="情侣空间" title="情侣空间">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/><path d="M7 12h3l1.2-2.5L13 15l1.2-3H17"/></svg>
+                  </span>
+                  <span class="app-name">情侣空间</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
+                <button class="app-card app-tile" type="button" data-href="growth/growth.html" data-drag="app_growth" data-name="共同成长" title="共同成长">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M5 16l4-5 3 2 6-8"/><path d="M14 5h4v4"/></svg>
+                  </span>
+                  <span class="app-name">共同成长</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
+                <button class="app-card app-tile" type="button" data-href="companion/companion.html" data-drag="app_companion" data-name="陪伴日历" title="陪伴日历">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="17" rx="1.5"/><path d="M7 2.5v4M17 2.5v4M3 9h18M8 13h3M8 17h7"/></svg>
+                  </span>
+                  <span class="app-name">陪伴日历</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <button class="app-card app-tile" type="button" data-href="games/games.html" data-drag="app_games" data-name="游戏大厅" title="游戏大厅">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="3" ry="3" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7" y1="12" x2="11" y2="12" stroke="currentColor" stroke-width="1.5"/><line x1="9" y1="10" x2="9" y2="14" stroke="currentColor" stroke-width="1.5"/><circle cx="16" cy="11" r="1" fill="currentColor"/><circle cx="18" cy="13" r="1" fill="currentColor"/></svg>
@@ -161,6 +185,24 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h2a3 3 0 0 1 0 6h-3"/><path d="M8 3c0 1.5 1.5 1.5 1.5 3M13 3c0 1.5 1.5 1.5 1.5 3"/><path d="M3 22h17"/></svg>
                   </span>
                   <span class="app-name">咖啡馆</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
+                <!-- 独立直播间入口 -->
+                <button class="app-card app-tile" type="button" data-href="companion/live.html" data-drag="app_live_room" data-name="直播间" title="直播间">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="m9 10 6 2-6 2z"/><path d="M8 3h8"/></svg>
+                  </span>
+                  <span class="app-name">直播间</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
+                <!-- 独立互动海报档案入口 -->
+                <button class="app-card app-tile" type="button" data-href="poster/poster.html" data-drag="app_poster" data-name="视觉档案" title="互动海报档案">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M7 7h10M7 10h6M7 17l3-3 2 2 3-4 2 5"/></svg>
+                  </span>
+                  <span class="app-name">视觉档案</span>
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
@@ -189,7 +231,14 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
-                <!-- 触梦旅行：幻想目的地探索 -->
+<!-- 小说创作与作者模拟器：独立应用 -->
+                <button class="app-card app-tile" type="button" data-href="novel/novel.html" data-drag="app_novelstudio" data-name="小说工坊" title="小说工坊">
+                  <span class="app-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v18H6.5A2.5 2.5 0 0 1 4 17.5z"/><path d="M4 17.5A2.5 2.5 0 0 1 6.5 15H20M8 6h8M8 9h8M8 12h5"/></svg></span>
+                  <span class="app-name">小说工坊</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
+                                <!-- 触梦旅行：幻想目的地探索 -->
                 <button class="app-card app-tile" type="button" data-href="travel/dream-travel.html" data-drag="app_dreamtravel" data-name="触梦旅行" title="触梦旅行">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.2 5.4-5.4 2.2 2.2-5.4z"/></svg>
@@ -1315,8 +1364,112 @@
         });
       }
 
-      // 初始化桌面恢复
-      restoreLayout();
+      // Dock 隐藏时把快捷应用折叠进桌面；重新显示时恢复原 Dock 归属。
+      // 采用稳定的 data-drag ID 记录，而不是依赖元素位置，避免重复、丢失或打乱原桌面排序。
+      var DOCK_FOLDED_KEY = 'ds_dock_folded_items_v1';
+      var dockReflowIds = [];
+
+      function getKnownDragIds() {
+        var known = {};
+        document.querySelectorAll('[data-drag]').forEach(function (el) {
+          if (el.dataset && el.dataset.drag) known[el.dataset.drag] = true;
+        });
+        return known;
+      }
+
+      function getDockPreference() {
+        try { return localStorage.getItem('settings_dock_nav_visible') !== '0'; }
+        catch (e) { return true; }
+      }
+
+      function reconcileDockLayoutPreference() {
+        dockReflowIds = [];
+        var known = getKnownDragIds();
+        var removed = {};
+        (currentLayout.removed || []).forEach(function (id) { removed[id] = true; });
+
+        if (!getDockPreference()) {
+          var dockIds = (currentLayout.dock || []).filter(function (id) {
+            return !!known[id] && !removed[id];
+          });
+          if (!dockIds.length) return false;
+
+          try { localStorage.setItem(DOCK_FOLDED_KEY, JSON.stringify(dockIds)); } catch (e) {}
+          if (!Array.isArray(currentLayout.pages) || !currentLayout.pages.length) {
+            currentLayout.pages = [[]];
+          }
+
+          // 将 Dock 应用按原顺序追加到最后一页；已存在的 ID 不重复插入。
+          var alreadyPlaced = {};
+          currentLayout.pages.forEach(function (pageIds) {
+            (pageIds || []).forEach(function (id) { alreadyPlaced[id] = true; });
+          });
+          var lastPage = currentLayout.pages[currentLayout.pages.length - 1];
+          dockIds.forEach(function (id) {
+            if (!alreadyPlaced[id]) {
+              lastPage.push(id);
+              alreadyPlaced[id] = true;
+            }
+          });
+          currentLayout.dock = [];
+          dockReflowIds = dockIds.slice();
+          saveLayout(currentLayout);
+          return true;
+        }
+
+        var foldedIds = readJSON(DOCK_FOLDED_KEY);
+        if (!Array.isArray(foldedIds) || !foldedIds.length) return false;
+
+        // 只恢复仍存在、未被用户移除的应用；其他 ID 不会被“复活”。
+        var restoreIds = foldedIds.filter(function (id) {
+          return !!known[id] && !removed[id];
+        });
+        var restoreSet = {};
+        restoreIds.forEach(function (id) { restoreSet[id] = true; });
+        currentLayout.pages = (currentLayout.pages || []).map(function (pageIds) {
+          return (pageIds || []).filter(function (id) { return !restoreSet[id]; });
+        });
+
+        var currentDock = (currentLayout.dock || []).filter(function (id) { return !restoreSet[id]; });
+        var dockSeen = {};
+        currentDock.forEach(function (id) { dockSeen[id] = true; });
+        restoreIds.forEach(function (id) {
+          if (!dockSeen[id]) {
+            currentDock.push(id);
+            dockSeen[id] = true;
+          }
+        });
+        currentLayout.dock = currentDock;
+        dockReflowIds = restoreIds.slice();
+        try { localStorage.removeItem(DOCK_FOLDED_KEY); } catch (e) {}
+        saveLayout(currentLayout);
+        return true;
+      }
+
+      function animateDockReflow(ids) {
+        if (!ids || !ids.length) return;
+        var moving = {};
+        ids.forEach(function (id) { moving[id] = true; });
+        document.querySelectorAll('[data-drag]').forEach(function (el) {
+          if (!moving[el.dataset.drag]) return;
+          el.classList.remove('dock-reflow-enter');
+          void el.offsetWidth;
+          el.classList.add('dock-reflow-enter');
+          window.setTimeout(function () { el.classList.remove('dock-reflow-enter'); }, 420);
+        });
+      }
+
+      window.MAOMAOReconcileDockLayout = function () {
+        var changed = reconcileDockLayoutPreference();
+        if (changed) {
+          restoreLayout();
+          animateDockReflow(dockReflowIds);
+        }
+        return changed;
+      };
+
+      // 初始化桌面恢复。若开关状态要求调整 Dock，先更新数据模型再渲染。
+      if (!window.MAOMAOReconcileDockLayout()) restoreLayout();
     })();
 
     // ===== 挂件数据读写（全局）：明信片/拍立得/小对话/音乐箱/待办/倒数日/便签共用 =====

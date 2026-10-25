@@ -530,7 +530,7 @@
       <div class="field">
         <select id="vbScope">
           <option value="global">全局默认配置</option>
-        <option value="role_1">角色 · 宝宝</option><option value="role_2">角色 · 苏格拉底</option><option value="role_3">角色 · 灵感助手</option><option value="role_1">角色 · 宝宝</option><option value="role_2">角色 · 苏格拉底</option><option value="role_3">角色 · 灵感助手</option></select>
+        </select>
       </div>
 
       <div data-mode="basic novel">
@@ -1223,14 +1223,53 @@ document.getElementById('importFile').addEventListener('change', function(e){
   var draft = null;
   var activeTab = 'visual';
   var VISUAL_PRESET_KEY = 'beauty_visual_presets_v1';
-  function getVisualPresets(){ try { return JSON.parse(localStorage.getItem(VISUAL_PRESET_KEY))||[]; } catch(e){ return []; } }
-  function setVisualPresets(l){ localStorage.setItem(VISUAL_PRESET_KEY, JSON.stringify(l)); }
+  var VISUAL_PRESET_DELETED_KEY = 'beauty_visual_presets_deleted_v1';
+
+  function readVisualPresetDeletedIds(){
+    try {
+      var ids = JSON.parse(localStorage.getItem(VISUAL_PRESET_DELETED_KEY) || '[]');
+      return Array.isArray(ids) ? ids.filter(function(id){ return typeof id === 'string'; }) : [];
+    } catch(e){ return []; }
+  }
+  function getVisualPresets(){
+    var list = [];
+    try {
+      var value = JSON.parse(localStorage.getItem(VISUAL_PRESET_KEY) || '[]');
+      list = Array.isArray(value) ? value.filter(function(p){ return p && typeof p === 'object'; }) : [];
+    } catch(e){ list = []; }
+    var deleted = readVisualPresetDeletedIds();
+    var changed = false;
+    list.forEach(function(p){
+      if (!p.id) {
+        p.id = 'visual-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,9);
+        changed = true;
+      }
+    });
+    list = list.filter(function(p){ return deleted.indexOf(p.id) === -1; });
+    if (changed) setVisualPresets(list);
+    return list;
+  }
+  function setVisualPresets(list){
+    var deleted = readVisualPresetDeletedIds();
+    var clean = (Array.isArray(list) ? list : []).filter(function(p){
+      return p && p.id && deleted.indexOf(p.id) === -1;
+    });
+    try {
+      var serialized = JSON.stringify(clean);
+      localStorage.setItem(VISUAL_PRESET_KEY, serialized);
+      if (localStorage.getItem(VISUAL_PRESET_KEY) !== serialized) throw new Error('storage verification failed');
+      return true;
+    } catch(e) {
+      showToast('预设保存失败：请检查浏览器存储空间');
+      return false;
+    }
+  }
   function renderVisualPresets(){
     var list = getVisualPresets();
     var box = document.getElementById('vbVisualPresetList');
     if (!list.length){ box.innerHTML = '<span style="font-size:11px;color:#aaa">还没有预设，调好后点上面保存</span>'; return; }
     box.innerHTML = list.map(function(p,i){
-      return '<span class="vb-preset-chip" data-i="'+i+'">'+esc(p.name)+'<button data-del="'+i+'">×</button></span>';
+      return '<span class="vb-preset-chip" data-i="'+i+'" data-preset-id="'+esc(p.id)+'">'+esc(p.name)+'<button data-del="'+i+'" aria-label="删除预设 '+esc(p.name)+'">×</button></span>';
     }).join('');
   }
   function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
@@ -1238,10 +1277,15 @@ document.getElementById('importFile').addEventListener('change', function(e){
     var name = prompt('给这个预设起个名：');
     if (!name || !name.trim()) return;
     var list = getVisualPresets();
-    list.push({name: name.trim(), data: JSON.parse(JSON.stringify(draft))});
-    setVisualPresets(list);
-    renderVisualPresets();
-    showToast('已保存预设「'+name.trim()+'」');
+    list.push({
+      id: 'visual-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,9),
+      name: name.trim(),
+      data: JSON.parse(JSON.stringify(draft))
+    });
+    if (setVisualPresets(list)) {
+      renderVisualPresets();
+      showToast('主题预设已保存：「'+name.trim()+'」');
+    }
   });
   document.getElementById('btnPreset').addEventListener('click', function(){
     document.getElementById('vbPresetOverlay').classList.add('show');
@@ -1254,15 +1298,36 @@ document.getElementById('importFile').addEventListener('change', function(e){
     var del = e.target.closest('[data-del]');
     if (del){
       var list = getVisualPresets();
-      list.splice(Number(del.getAttribute('data-del')),1);
-      setVisualPresets(list); renderVisualPresets();
+      var removeIndex = Number(del.getAttribute('data-del'));
+      var removedPreset = list[removeIndex];
+      if (!removedPreset) return;
+      try {
+        var deletedIds = readVisualPresetDeletedIds();
+        if (deletedIds.indexOf(removedPreset.id) === -1) deletedIds.push(removedPreset.id);
+        var deletedSerialized = JSON.stringify(deletedIds);
+        localStorage.setItem(VISUAL_PRESET_DELETED_KEY, deletedSerialized);
+        if (localStorage.getItem(VISUAL_PRESET_DELETED_KEY) !== deletedSerialized) {
+          throw new Error('delete verification failed');
+        }
+      } catch(error) {
+        showToast('删除未保存：请检查浏览器存储权限');
+        return;
+      }
+      list.splice(removeIndex,1);
+      if (setVisualPresets(list)) {
+        renderVisualPresets();
+        showToast('预设已删除并记住');
+      }
       return;
     }
     var chip = e.target.closest('.vb-preset-chip');
     if (!chip) return;
     var list = getVisualPresets();
     var p = list[Number(chip.getAttribute('data-i'))];
-    if (!p) return;
+    if (!p || readVisualPresetDeletedIds().indexOf(p.id) !== -1) {
+      renderVisualPresets();
+      return;
+    }
     draft = JSON.parse(JSON.stringify(p.data));
     setRange('vbAvatarSize', draft.avatarSize, 'px', 30);
     setRange('vbAvatarRadius', draft.avatarRadius, '%', 50);
@@ -1322,6 +1387,29 @@ document.getElementById('importFile').addEventListener('change', function(e){
     }
     return '角色';
   }
+
+  // 角色范围必须使用角色数据里的真实 ID；旧版写死 role_1/role_2/role_3
+  // 会让配置保存到错误的 key，最终表现为多个聊天共用全局背景。
+  function populateVisualScopeOptions() {
+    var requestedId = '';
+    try { requestedId = new URLSearchParams(window.location.search).get('roleId') || ''; } catch (e) {}
+    while (scopeSel.options.length > 1) scopeSel.remove(1);
+    readRoles().forEach(function (role) {
+      if (!role || role.id == null || String(role.id) === '') return;
+      var id = String(role.id);
+      var option = document.createElement('option');
+      option.value = id;
+      option.textContent = '角色 · ' + (role.name || id);
+      scopeSel.appendChild(option);
+    });
+    var found = false;
+    for (var i = 0; i < scopeSel.options.length; i++) {
+      if (requestedId && scopeSel.options[i].value === requestedId) { found = true; break; }
+    }
+    scopeSel.value = found ? requestedId : 'global';
+    return scopeSel.value;
+  }
+
   function numOr(v, fb) { var n = Number(v); return isNaN(n) ? fb : n; }
 
   // input[type=color] 只认 #rrggbb；存储值可能是 #rgb / rgba()，转不动就给 fallback（预览仍显示真实色）
@@ -2111,8 +2199,8 @@ document.getElementById('importFile').addEventListener('change', function(e){
   };
   rightAction = function () { if (activeTab === 'visual') saveVisual(); else savePreset(); };
 
-  // 初始化：默认落在可视化调节（容错：外部 JS 未加载时不中断）
-  try { loadVisualScope('global'); } catch (e) { console.warn('loadVisualScope skipped:', e.message); }
+  // 初始化：使用真实角色 ID；若通过聊天上下文带入 roleId，则直接打开该角色专属配置。
+  try { loadVisualScope(populateVisualScopeOptions()); } catch (e) { console.warn('loadVisualScope skipped:', e.message); }
   try { switchTab('visual'); } catch (e) { console.warn('switchTab skipped:', e.message); }
 
   // ===== 自绘滑条：替代原生 range，确保所有 WebView 都能触摸拖动 =====
@@ -2124,7 +2212,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
       // 创建自绘滑条容器
       var wrap = document.createElement('div');
       wrap.className = 'vb-range-wrap';
-      wrap.style.cssText = 'position:relative;width:100%;height:' + inpH + 'px;touch-action:none;';
+      wrap.style.cssText = 'position:relative;width:100%;height:' + inpH + 'px;touch-action:pan-y;';
       inp.parentNode.insertBefore(wrap, inp);
       wrap.appendChild(inp);
       // 隐藏原生 input 但保留功能
@@ -2198,16 +2286,44 @@ document.getElementById('importFile').addEventListener('change', function(e){
       }
       function onUp() { dragging = false; }
 
+      // 手势方向锁：先观察移动方向，纵向手势交还给页面滚动，横向手势才操作滑条。
+      var touchStartX = 0;
+      var touchStartY = 0;
+      var touchGesture = null;
+      var touchStarted = false;
       wrap.addEventListener('touchstart', function (e) {
-        e.preventDefault();
-        onDown(e.touches[0].clientX);
-      }, { passive: false });
+        if (!e.touches || !e.touches.length) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchGesture = null;
+        touchStarted = true;
+        dragging = false;
+      }, { passive: true });
       wrap.addEventListener('touchmove', function (e) {
-        e.preventDefault();
-        onMove(e.touches[0].clientX);
+        if (!touchStarted || !e.touches || !e.touches.length) return;
+        var dx = e.touches[0].clientX - touchStartX;
+        var dy = e.touches[0].clientY - touchStartY;
+        if (!touchGesture) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+          touchGesture = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+          if (touchGesture === 'horizontal') onDown(touchStartX);
+        }
+        if (touchGesture === 'vertical') {
+          dragging = false;
+          return;
+        }
+        if (touchGesture === 'horizontal') {
+          if (e.cancelable) e.preventDefault();
+          onMove(e.touches[0].clientX);
+        }
       }, { passive: false });
-      wrap.addEventListener('touchend', onUp);
-      wrap.addEventListener('touchcancel', onUp);
+      function finishTouch() {
+        touchStarted = false;
+        touchGesture = null;
+        onUp();
+      }
+      wrap.addEventListener('touchend', finishTouch);
+      wrap.addEventListener('touchcancel', finishTouch);
       wrap.addEventListener('mousedown', function (e) {
         e.preventDefault();
         onDown(e.clientX);

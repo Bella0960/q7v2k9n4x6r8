@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F7F7F9">
+<title>角色陪伴 · MAOMAO</title>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css">
+<style>
+:root{color-scheme:light;--ink:#111;--muted:#777;--line:#e6e6e8;--paper:#fff;--wash:#f7f7f9}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--wash);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select{font:inherit}button{cursor:pointer}
+.shell{max-width:520px;min-height:100dvh;margin:auto;background:var(--paper);padding:calc(18px + env(safe-area-inset-top)) 22px calc(28px + env(safe-area-inset-bottom));overflow:hidden}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}.back{border:0;background:none;padding:8px 0;color:#555}.eyebrow{font-size:10px;letter-spacing:2.5px;color:#888;text-transform:uppercase}
+h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(42px,12vw,64px);font-weight:400;letter-spacing:-2.5px;line-height:.95;margin:16px 0 14px}
+.intro{font-size:13px;line-height:1.8;color:#777;max-width:310px}.rolebar{display:flex;gap:10px;margin:24px 0 30px}.rolebar input{min-width:0;flex:1;border:1px solid var(--line);border-radius:12px;padding:13px 14px;outline:none;background:#fff}.rolebar button,.primary{border:1px solid #111;background:#111;color:#fff;border-radius:12px;padding:12px 16px}.section-title{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--ink);padding-bottom:10px;margin:28px 0 0}.section-title h2{font-size:19px;font-weight:600;margin:0}.section-title span{font-size:10px;letter-spacing:1.5px;color:#888}
+.feature{padding:20px 0;border-bottom:1px solid var(--line)}.feature-head{display:flex;gap:15px;align-items:flex-start}.index{font-family:Georgia,serif;font-size:25px;color:#bbb;line-height:1.1;width:34px;flex-shrink:0}.feature-main{flex:1;min-width:0}.feature h3{font-size:17px;margin:0 0 6px;font-weight:600}.desc{font-size:12px;line-height:1.7;color:#888;margin:0 0 15px}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid #dedee2;border-radius:10px;background:#fff;padding:10px 13px;color:#222;font-size:12px}.btn.dark{background:#111;color:#fff;border-color:#111}.btn:active,.primary:active{transform:scale(.98)}.subpanel{display:none;margin:16px 0 0 49px;padding:15px;background:#f7f7f9;border-radius:14px;animation:rise .24s ease}.subpanel.open{display:block}.field{display:flex;flex-direction:column;gap:6px;margin:0 0 12px}.field label{font-size:11px;color:#777}.field input,.field select{width:100%;padding:11px;border:1px solid #e2e2e5;border-radius:9px;background:#fff;min-width:0}.alarm-row,.chat-line{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #e4e4e6;font-size:12px}.alarm-row:last-child{border-bottom:0}.pill{font-size:10px;color:#777;border:1px solid #ddd;padding:4px 7px;border-radius:999px}.live-stage{background:#111;color:#fff;padding:20px;border-radius:14px;position:relative;overflow:hidden;min-height:150px}.live-stage:after{content:"";position:absolute;width:180px;height:180px;border:1px solid #444;border-radius:50%;right:-50px;top:-70px}.live-status{font-size:10px;letter-spacing:2px;color:#bbb}.live-title{font-family:Georgia,serif;font-size:27px;margin:14px 0 4px}.live-copy{font-size:11px;color:#aaa}.live-comments{font-size:12px;color:#555;line-height:1.8;max-height:100px;overflow:auto;margin:12px 0}.inline-form{display:flex;gap:7px}.inline-form input{min-width:0;flex:1;border:1px solid #ddd;border-radius:9px;padding:10px}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}.metric{background:#f7f7f9;border-radius:12px;padding:15px}.metric strong{display:block;font-family:Georgia,serif;font-size:30px;font-weight:400}.metric span{font-size:10px;color:#888;letter-spacing:1px}.note{font-size:10px;color:#999;line-height:1.7;margin:12px 0 0}.toast{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);background:#111;color:#fff;padding:11px 16px;border-radius:999px;font-size:12px;opacity:0;pointer-events:none;transition:.2s;z-index:20;white-space:nowrap}.toast.show{opacity:1;transform:translate(-50%,0)}.modal{position:fixed;inset:0;background:rgba(0,0,0,.42);display:none;align-items:center;justify-content:center;padding:24px;z-index:30}.modal.show{display:flex}.call-card{width:min(340px,100%);background:#fff;border-radius:24px;padding:26px 22px;text-align:center;animation:rise .25s ease}.call-orb{width:78px;height:78px;border:1px solid #ddd;border-radius:50%;display:grid;place-items:center;margin:12px auto 18px;font:30px Georgia}.call-card h2{font-size:21px;margin:0 0 7px}.call-card p{font-size:12px;color:#888;margin:0 0 22px}.call-actions{display:flex;gap:10px}.call-actions button{flex:1;border-radius:12px;padding:13px;border:1px solid #ddd;background:#fff}.call-actions .answer{background:#111;color:#fff;border-color:#111}@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main class="shell">
+<header class="top"><button class="back" onclick="history.length>1?history.back():location.href='../index.html'">← 返回</button><span class="eyebrow">MAOMAO / COMPANION</span></header>
+<div class="eyebrow">SMALL MOMENTS, TOGETHER</div>
+<h1>Stay<br>Connected.</h1>
+<p class="intro">把日常变成共同经历。来电、音乐、直播与轻量运动，都从这里开始。</p>
+<div class="rolebar"><input id="roleName" maxlength="30" placeholder="输入角色名字"><button id="saveRole">确认角色</button></div>
+<div class="section-title"><h2>陪伴功能</h2><span>02 — 05</span></div>
+
+<section class="feature">
+<div class="feature-head"><div class="index">02</div><div class="feature-main"><h3>角色来电与闹钟</h3><p class="desc">发起一通模拟来电，或设置提醒时间。提醒只在页面打开时检查，浏览器后台闹钟尚未接入。</p><div class="actions"><button class="btn dark" id="callBtn">模拟角色来电</button><button class="btn" data-toggle="alarmPanel">设置闹钟</button></div></div></div>
+<div class="subpanel" id="alarmPanel"><div class="field"><label for="alarmTime">提醒时间</label><input type="datetime-local" id="alarmTime"></div><div class="field"><label for="alarmText">提醒内容</label><input id="alarmText" maxlength="80" placeholder="例如：该休息一下了"></div><div class="field"><label for="alarmMode">到点方式</label><select id="alarmMode"><option value="reminder">轻提醒</option><option value="call">角色模拟来电</option></select></div><div class="actions"><button class="btn dark" id="addAlarm">保存提醒</button><button class="btn" id="enableNotifications">开启系统通知</button></div><div id="alarmList"></div><p class="note">系统通知需授权。网页关闭或被系统暂停时，不能保证准时触发。</p></div>
+</section>
+
+<section class="feature">
+<div class="feature-head"><div class="index">03</div><div class="feature-main"><h3>一起听歌</h3><p class="desc">选择一首歌，开启你和角色的共同聆听状态，并记录这次的小小约定。</p><div class="actions"><button class="btn dark" data-toggle="musicPanel">开启共同聆听</button><a class="btn" href="../music/music.html" style="text-decoration:none">打开音乐 App ↗</a></div></div></div>
+<div class="subpanel" id="musicPanel"><div class="field"><label for="songSelect">今天一起听 · 示例曲目</label><select id="songSelect"><option value="track-0">To Speak Of Solitude — Brambles</option><option value="track-1">Unsayable — Brambles</option><option value="track-2">In The Androgynous Dark — Brambles</option><option value="track-3">Salt Photographs — Brambles</option><option value="track-4">Pink And Golden Billows — Brambles</option><option value="custom">自定义曲名（仅记录）</option></select></div><div class="field" id="customSongWrap" hidden><label for="customSong">曲名</label><input id="customSong" maxlength="80" placeholder="输入曲名"></div><button class="btn dark" id="listenBtn">播放并开始共同聆听</button><div id="listenState" class="note">点击后尝试播放示例音源。播放发生在当前设备；尚未与角色或其他设备实时同步。</div><audio id="sharedAudio" preload="none" style="width:100%;height:36px;margin-top:10px" controls></audio><p class="note">示例音源来自现有音乐页使用的公开演示音频；网络、音源可用性和浏览器策略可能影响播放。</p></div>
+</section>
+
+<section class="feature">
+<div class="feature-head"><div class="index">04</div><div class="feature-main"><h3>角色直播间</h3><p class="desc">进入角色的模拟直播现场，发送留言、点亮互动，保留轻松的实时感。</p><div class="actions"><button class="btn dark" data-toggle="livePanel">进入直播间</button></div></div></div>
+<div class="subpanel" id="livePanel"><div class="live-stage"><div class="live-status" id="liveStatus">● LIVE / PRIVATE ROOM</div><div class="live-title" id="liveRoleTitle">A little room</div><div class="live-copy">角色正在这里等你 · 本地互动原型</div></div><div class="actions" style="margin-top:10px"><button class="btn dark" id="heartBtn">点亮互动 <span id="heartCount">0</span></button><button class="btn" id="topicBtn">换个话题</button><button class="btn" id="askRoleBtn">邀请角色回应</button></div><div class="live-comments" id="liveComments"><div>系统 · 欢迎进入这个小小直播间。</div></div><form class="inline-form" id="commentForm"><input id="commentInput" maxlength="100" placeholder="写一句留言…" required><button class="btn" type="submit">发送</button></form><p class="note">目前没有真实推流或多人实时聊天室。点击「邀请角色回应」时才会调用已配置的聊天 API；每次点击会产生一次模型请求费用。</p></div>
+</section>
+
+<section class="feature">
+<div class="feature-head"><div class="index">05</div><div class="feature-main"><h3>步数与摇一摇</h3><p class="desc">记录今天的步数，或摇动手机触发一次角色回应。步数可手动记录；传感器能力取决于浏览器授权。</p><div class="actions"><button class="btn dark" id="motionBtn">开启摇一摇</button><button class="btn" id="addSteps">＋ 记录 100 步</button><button class="btn" id="resetSteps">重置今日</button></div></div></div>
+<div class="subpanel open" style="display:block"><div class="metrics"><div class="metric"><strong id="stepsCount">0</strong><span>TODAY'S STEPS</span></div><div class="metric"><strong id="shakeCount">0</strong><span>SHAKE MOMENTS</span></div></div><div id="shakeMessage" class="note">摇一摇准备就绪。点击“开启摇一摇”后，按浏览器提示授权。</div></div>
+</section>
+<p class="note" style="margin-top:25px">你的角色名称、闹钟和活动记录仅保存在当前浏览器的本地存储中；清除网站数据后可能丢失。</p>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="modal" id="callModal" role="dialog" aria-modal="true" aria-labelledby="callTitle"><div class="call-card"><div class="eyebrow">INCOMING CALL</div><div class="call-orb">M</div><h2 id="callTitle">角色来电</h2><p>正在呼叫你 · 模拟来电体验</p><div class="call-actions"><button id="declineBtn">稍后再说</button><button class="answer" id="answerBtn">接听</button></div><p id="callResult" class="note" style="margin-top:14px"></p></div></div>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const KEY='maomao_companion_v1';
+const state=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||{role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}catch(e){return {role:'',alarms:[],steps:0,stepDate:'',shakes:0,likes:0,comments:[],song:'',listening:false}}})();
+// Playback cannot survive a reload; keep the saved song but reset its transient playing state.
+state.listening=false;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+let toastTimer;
+function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2300)}
+function role(){return state.role||'TA'}
+function renderRole(){ $('roleName').value=state.role||'';$('liveRoleTitle').textContent=role()+' 的小小直播间';$('callTitle').textContent=role()+' 来电';document.querySelector('.call-orb').textContent=(role().trim()[0]||'M');}
+$('saveRole').addEventListener('click',()=>{state.role=$('roleName').value.trim();save();renderRole();toast(state.role?'已切换角色：'+state.role:'已清空角色名称')});
+document.querySelectorAll('[data-toggle]').forEach(btn=>btn.addEventListener('click',()=>{$(btn.dataset.toggle).classList.toggle('open')}));
+$('callBtn').addEventListener('click',()=>{$('callResult').textContent='';$('callModal').classList.add('show')});
+function closeCall(){ $('callModal').classList.remove('show') }
+$('declineBtn').addEventListener('click',()=>{closeCall();toast('已稍后处理这通来电')});
+$('answerBtn').addEventListener('click',()=>{$('callResult').textContent='已接听：这是本地模拟通话，不会连接真实电话或启动麦克风。';toast('已接听模拟来电')});
+$('callModal').addEventListener('click',e=>{if(e.target===$('callModal'))closeCall()});
+function renderAlarms(){const box=$('alarmList');box.innerHTML='';if(!state.alarms.length){box.innerHTML='<p class="note">还没有提醒。</p>';return}state.alarms.forEach((a,i)=>{const row=document.createElement('div');row.className='alarm-row';const left=document.createElement('div');left.textContent=new Date(a.time).toLocaleString()+' · '+(a.type==='call'?'角色来电':'轻提醒')+' · '+a.text;const del=document.createElement('button');del.className='btn';del.textContent='删除';del.addEventListener('click',()=>{state.alarms.splice(i,1);save();renderAlarms()});row.append(left,del);box.appendChild(row)})}
+$('enableNotifications').addEventListener('click',async()=>{if(!('Notification'in window)){toast('当前浏览器不支持系统通知');return}try{const permission=await Notification.requestPermission();toast(permission==='granted'?'系统通知已开启':permission==='denied'?'通知权限未开启':'尚未允许通知')}catch(e){toast('无法请求通知权限')}});
+$('addAlarm').addEventListener('click',()=>{const time=$('alarmTime').value;const text=$('alarmText').value.trim()||'和'+role()+'约定的时间到了';if(!time||new Date(time).getTime()<=Date.now()){toast('请选择一个未来的时间');return}state.alarms.push({time,text,type:$('alarmMode').value==='call'?'call':'reminder',fired:false});state.alarms.sort((a,b)=>new Date(a.time)-new Date(b.time));save();renderAlarms();$('alarmText').value='';toast('提醒已保存')});
+function checkAlarms(){const now=Date.now();let changed=false;state.alarms.forEach(a=>{if(!a.fired&&new Date(a.time).getTime()<=now){a.fired=true;changed=true;const isCall=a.type==='call';const title=isCall?role()+' 来电':role()+' 的提醒';if(isCall){$('callResult').textContent='';$('callTitle').textContent=role()+' 来电';$('callModal').classList.add('show');$('callResult').textContent=a.text}else toast(title+'：'+a.text);if('Notification'in window&&Notification.permission==='granted'){try{const notification=new Notification(title,{body:a.text,tag:'maomao-alarm-'+a.time});notification.onclick=()=>{window.focus();if(isCall){$('callModal').classList.add('show')}notification.close()}}catch(e){}}}});if(changed)save()}
+const sampleTracks=[{name:'To Speak Of Solitude',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'},{name:'Unsayable',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'},{name:'In The Androgynous Dark',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'},{name:'Salt Photographs',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'},{name:'Pink And Golden Billows',url:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3'}];
+const sharedAudio=$('sharedAudio');
+$('songSelect').addEventListener('change',()=>{$('customSongWrap').hidden=$('songSelect').value!=='custom'});
+sharedAudio.addEventListener('ended',()=>{state.listening=false;save();$('listenBtn').textContent='重新开始共同聆听';$('listenState').textContent='曲目播放结束。你和'+role()+'的聆听记录已保留。'});
+$('listenBtn').addEventListener('click',async()=>{if(state.listening){sharedAudio.pause();state.listening=false;save();$('listenBtn').textContent='继续共同聆听';$('listenState').textContent='播放已暂停。曲目：'+(state.song||'未选择');toast('已暂停播放');return}const choice=$('songSelect').value;let song='',track=null;if(choice==='custom'){song=$('customSong').value.trim();if(!song){toast('先写下曲名');return}}else{const idx=Number(choice.replace('track-',''));track=sampleTracks[idx];song=track?track.name:''}if(!song){toast('请选择曲目');return}state.song=song;if(track){if(sharedAudio.src!==track.url){sharedAudio.src=track.url;sharedAudio.load()}try{await sharedAudio.play()}catch(e){state.listening=false;save();$('listenState').textContent='音源无法播放，可能是网络、浏览器或音源服务限制。可以换一首再试。';toast('暂时无法播放这首歌');return}state.listening=true;$('listenBtn').textContent='暂停共同聆听';$('listenState').textContent='你和'+role()+'正在共同聆听「'+song+'」。当前设备已开始播放；跨设备同步尚未接入。'}else{state.listening=false;$('listenState').textContent='已记录「'+song+'」作为共同聆听曲目。自定义曲名不会自动播放音频。';$('listenBtn').textContent='播放并开始共同聆听';toast('曲目记录已保存')}save();if(track)toast('共同聆听已开始')});
+const topics=['今天的心情适合慢慢聊一会儿。','如果把今天拍成电影，会是什么镜头？','留一点时间给自己，也留一点给喜欢的故事。','今天有没有一件想分享的小事？'];
+$('topicBtn').addEventListener('click',()=>{const text=topics[Math.floor(Math.random()*topics.length)];addComment(role()+' · '+text)});
+$('heartBtn').addEventListener('click',()=>{state.likes++;save();$('heartCount').textContent=state.likes;addComment('你点亮了一次互动。');});
+function addComment(text){state.comments=state.comments||[];state.comments.push(text);state.comments=state.comments.slice(-30);save();renderComments()}
+function renderComments(){const box=$('liveComments');box.innerHTML='';(state.comments||[]).forEach(t=>{const div=document.createElement('div');div.textContent=t;box.appendChild(div)});box.scrollTop=box.scrollHeight}
+$('commentForm').addEventListener('submit',e=>{e.preventDefault();const t=$('commentInput').value.trim();if(!t)return;addComment('你 · '+t);$('commentInput').value=''});
+async function inviteRoleReply(){
+ const btn=$('askRoleBtn');const config=(()=>{try{return JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){return {}}})();
+ const apiKey=String(config.apiKey||'').trim();const baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');const model=String(config.model||'gpt-3.5-turbo').trim();
+ if(!apiKey){toast('请先到设置页配置 API Key');return}
+ let profile={};try{const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');if(Array.isArray(list)){profile=list.find(x=>String(x.name||'')===String(state.role||''))||{}}}catch(e){}
+ const persona=String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'请用自然、温和、有个性的日常口吻回应。').slice(0,1800);
+ const history=(state.comments||[]).slice(-10).map(x=>String(x).slice(0,180)).join('\n')||'直播间刚刚开始，还没有留言。';
+ btn.disabled=true;btn.textContent='角色正在回应…';
+ const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);
+ try{
+  const response=await fetch(baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},signal:controller.signal,body:JSON.stringify({model,messages:[{role:'system',content:'你正在 MAOMAO 的私人模拟直播间中扮演角色「'+role()+'」。角色人设参考：'+persona+'。请保持角色口吻，针对最近的直播留言自然回应，中文 1-3 句，不要声称自己真的在现实中直播、看见用户或执行了现实动作。不要输出标题或列表。'},{role:'user',content:'直播间最近的留言：\n'+history+'\n请给直播间观众一段简短回应。'}],temperature:0.8,max_tokens:180,stream:false})});
+  if(!response.ok){let detail='';try{const data=await response.json();detail=data.error?.message||''}catch(e){}throw new Error(response.status===401?'API Key 无效或已过期':response.status===429?'API 额度不足或请求过频':('请求失败（HTTP '+response.status+'）'+(detail?'：'+detail.slice(0,100):'')))}
+  const data=await response.json();const reply=String(data.choices?.[0]?.message?.content||'').trim();if(!reply)throw new Error('角色没有返回内容');addComment(role()+' · '+reply);toast('角色已回应')
+ }catch(e){toast(e.name==='AbortError'?'请求超时，请稍后重试':(e.message||'请求失败'))}
+ finally{clearTimeout(timeout);btn.disabled=false;btn.textContent='邀请角色回应'}
+}
+$('askRoleBtn').addEventListener('click',inviteRoleReply);
+function today(){return new Date().toLocaleDateString('en-CA')}
+function syncSteps(){if(state.stepDate!==today()){state.stepDate=today();state.steps=0;state.shakes=0;save()}$('stepsCount').textContent=Number(state.steps||0).toLocaleString();$('shakeCount').textContent=Number(state.shakes||0).toLocaleString()}
+$('addSteps').addEventListener('click',()=>{syncSteps();state.steps=(state.steps||0)+100;save();syncSteps();toast('已记录 100 步')});
+$('resetSteps').addEventListener('click',()=>{state.steps=0;state.shakes=0;state.stepDate=today();save();syncSteps();toast('今日记录已重置')});
+let motionOn=false,lastShake=0,lastMag=0;
+async function enableMotion(){if(motionOn){toast('摇一摇已开启');return}try{if(typeof DeviceMotionEvent==='undefined'){throw new Error('当前浏览器不支持动作传感器')}if(typeof DeviceMotionEvent.requestPermission==='function'){const permission=await DeviceMotionEvent.requestPermission();if(permission!=='granted')throw new Error('没有获得传感器授权')}window.addEventListener('devicemotion',onMotion);motionOn=true;$('motionBtn').textContent='摇一摇已开启';$('shakeMessage').textContent='已开启。轻轻摇动手机即可触发互动；若设备不支持，将无法检测。';toast('摇一摇已开启')}catch(e){$('shakeMessage').textContent=e.message||'无法开启传感器，请检查浏览器权限。';toast('未能开启摇一摇')}}
+function onMotion(e){const a=e.accelerationIncludingGravity;if(!a)return;const mag=Math.sqrt((a.x||0)**2+(a.y||0)**2+(a.z||0)**2);const now=Date.now();if(Math.abs(mag-lastMag)>13&&now-lastShake>1400){lastShake=now;lastMag=mag;state.shakes=(state.shakes||0)+1;save();syncSteps();$('shakeMessage').textContent=role()+' 收到你的摇一摇：今天也来一点小小的好运。';toast(role()+' 收到摇一摇')}else lastMag=mag}
+$('motionBtn').addEventListener('click',enableMotion);
+renderRole();renderAlarms();renderComments();syncSteps();if(state.song)$('listenState').textContent='上次曲目：'+state.song+(state.listening?' · 共同聆听状态已保存':'');$('heartCount').textContent=state.likes||0;setInterval(checkAlarms,15000);checkAlarms();
+})();
+</script>
+</body>
+</html>

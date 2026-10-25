@@ -469,16 +469,29 @@
     if (liquidThemeOption) liquidThemeOption.classList.toggle('selected', isLiquid);
   }
 
+  function persistSetting(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return localStorage.getItem(key) === value;
+    } catch (error) {
+      return false;
+    }
+  }
+
   function applyTheme(theme, announce) {
     theme = theme === 'liquid-glass' ? 'liquid-glass' : 'classic';
+    var saved = persistSetting('maomao_theme', theme);
     if (window.MAOMAOTheme && typeof window.MAOMAOTheme.set === 'function') {
       window.MAOMAOTheme.set(theme);
     } else {
-      try { localStorage.setItem('maomao_theme', theme); } catch (e) {}
       document.documentElement.setAttribute('data-theme', theme);
     }
     reflectThemeChoice(theme);
-    if (announce) showToast(theme === 'liquid-glass' ? '已切换为 iOS 26 液态玻璃主题' : '已恢复经典极简主题');
+    if (!saved) {
+      showToast('主题暂未保存：请检查浏览器存储权限');
+      return;
+    }
+    if (announce) showToast(theme === 'liquid-glass' ? '主题已保存 · iOS 26 液态玻璃' : '主题已保存 · 经典极简');
   }
 
   function bindThemeOption(element, theme) {
@@ -511,18 +524,19 @@
   var rowClean = document.getElementById('rowClean');
 
   function applyStyle(style) {
+    style = style === 'clean' ? 'clean' : 'glass';
     var isGlass = style !== 'clean';
     rowGlass.classList.toggle('selected', isGlass);
     rowClean.classList.toggle('selected', !isGlass);
-    try { localStorage.setItem(ICON_STYLE_KEY, style); } catch (e) {}
+    return persistSetting(ICON_STYLE_KEY, style);
   }
   rowGlass.addEventListener('click', function () {
-    applyStyle('glass');
-    showToast('已切换为毛玻璃（图标底色保持你选的色卡）');
+    if (applyStyle('glass')) showToast('图标样式已保存 · 毛玻璃');
+    else showToast('保存失败：请检查浏览器存储权限');
   });
   rowClean.addEventListener('click', function () {
-    applyStyle('clean');
-    showToast('已切换为纯净（图标底色保持你选的色卡）');
+    if (applyStyle('clean')) showToast('图标样式已保存 · 纯净');
+    else showToast('保存失败：请检查浏览器存储权限');
   });
   applyStyle(localStorage.getItem(ICON_STYLE_KEY) || 'glass');
 
@@ -534,8 +548,8 @@
     chip.addEventListener('click', function () {
       chips.forEach(function (c) { c.classList.remove('active'); });
       chip.classList.add('active');
-      try { localStorage.setItem(ICON_BG_KEY, chip.dataset.color); } catch (e) {}
-      showToast('图标底色已更新');
+      if (persistSetting(ICON_BG_KEY, chip.dataset.color)) showToast('图标底色已保存');
+      else showToast('保存失败：请检查浏览器存储权限');
     });
   });
 
