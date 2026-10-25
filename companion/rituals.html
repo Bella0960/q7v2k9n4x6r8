@@ -81,7 +81,7 @@ function renderComments(){const box=$('liveComments');box.innerHTML='';(state.co
 $('commentForm').addEventListener('submit',e=>{e.preventDefault();const t=$('commentInput').value.trim();if(!t)return;addComment('你 · '+t);$('commentInput').value=''});
 async function inviteRoleReply(){
  const btn=$('askRoleBtn');const config=(()=>{try{return JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){return {}}})();
- const apiKey=String(config.apiKey||'').trim();const baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\\/+$/,'');const model=String(config.model||'gpt-3.5-turbo').trim();
+ const apiKey=String(config.apiKey||'').trim();const baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');const model=String(config.model||'gpt-3.5-turbo').trim();
  if(!apiKey){toast('请先到设置页配置 API Key');return}
  let profile={};try{const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');if(Array.isArray(list)){profile=list.find(x=>String(x.name||'')===String(state.role||''))||{}}}catch(e){}
  const persona=String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'请用自然、温和、有个性的日常口吻回应。').slice(0,1800);
