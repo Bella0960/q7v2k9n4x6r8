@@ -77,6 +77,68 @@ body.readers-mode .reader-disclaimer{font-size:9px;line-height:1.8;color:#aaa;ma
  body.readers-mode .reader-avatar{width:32px;height:32px;font-size:14px}
  body.readers-mode .reader-post-text{font-size:12px}
 }
+
+/* Reading-platform refinement: calmer hierarchy, more breathing room on phones */
+body.readers-mode{background:#fff}
+body.readers-mode .top{min-height:62px}
+body.readers-mode .scroll{padding-bottom:80px}
+body.readers-mode .scroll>#pane-audience>.independent-nav{margin-bottom:14px;padding-top:11px;padding-bottom:11px;gap:22px}
+body.readers-mode .reader-hero{padding:24px 0 30px}
+body.readers-mode .reader-subtitle{font-size:13px;line-height:2}
+body.readers-mode .reader-dashboard{margin-bottom:34px}
+body.readers-mode .reader-metric{padding-top:20px;padding-bottom:21px}
+body.readers-mode .reader-layout{grid-template-columns:minmax(0,1fr) 260px;gap:clamp(28px,5vw,64px)}
+body.readers-mode .reader-feed-head{padding-bottom:16px}
+body.readers-mode .reader-feed-title{font-size:30px}
+body.readers-mode .reader-filters{padding:17px 0 18px;gap:12px}
+body.readers-mode .reader-post{grid-template-columns:44px minmax(0,1fr);gap:16px;padding:25px 0 27px}
+body.readers-mode .reader-avatar{width:42px;height:42px;background:#f6f6f4}
+body.readers-mode .reader-name{font-size:13px}
+body.readers-mode .reader-chapter-label{margin:9px 0 12px}
+body.readers-mode .reader-post-text{font-size:14px;line-height:2.05;color:#333}
+body.readers-mode .reader-post-time{margin-top:13px}
+body.readers-mode .reader-side{padding-top:18px}
+body.readers-mode .reader-side .actions{gap:10px}
+body.readers-mode .reader-side .btn{padding:13px 14px}
+@media(max-width:760px){
+ body.readers-mode .top{padding-left:18px;padding-right:18px}
+ body.readers-mode .scroll{padding-left:20px;padding-right:20px}
+ body.readers-mode .scroll>#pane-audience>.independent-nav{gap:18px;margin-bottom:8px}
+ body.readers-mode .reader-hero{padding:23px 0 23px;gap:16px}
+ body.readers-mode .reader-kicker{margin-bottom:11px}
+ body.readers-mode .reader-title{font-size:42px;line-height:1.02;margin-bottom:12px}
+ body.readers-mode .reader-subtitle{font-size:12px;line-height:1.9}
+ body.readers-mode .reader-book{padding-top:11px}
+ body.readers-mode .reader-book-label{margin-bottom:5px}
+ body.readers-mode .reader-book-title{font-size:19px;margin-bottom:4px}
+ body.readers-mode .reader-book-meta{font-size:9px}
+ body.readers-mode .reader-dashboard{margin-bottom:26px}
+ body.readers-mode .reader-metric{padding-top:14px;padding-bottom:15px}
+ body.readers-mode .reader-metric-label{font-size:9px;margin-bottom:6px}
+ body.readers-mode .reader-metric-value{font-size:23px}
+ body.readers-mode .reader-layout{grid-template-columns:minmax(0,1fr);gap:30px}
+ body.readers-mode .reader-layout>.reader-side{grid-row:auto;order:2;padding:19px 0 0;border-top:1px solid #222;border-bottom:0}
+ body.readers-mode .reader-feed-head{padding-bottom:13px}
+ body.readers-mode .reader-feed-title{font-size:26px}
+ body.readers-mode .reader-filters{padding:13px 0 14px;gap:8px}
+ body.readers-mode .reader-filters .field{min-width:0}
+ body.readers-mode .reader-filters select{padding:10px 8px;font-size:10px}
+ body.readers-mode .reader-post{grid-template-columns:34px minmax(0,1fr);gap:12px;padding:21px 0 23px}
+ body.readers-mode .reader-avatar{width:32px;height:32px;font-size:14px}
+ body.readers-mode .reader-post-top{align-items:flex-start;flex-wrap:wrap;row-gap:4px}
+ body.readers-mode .reader-name{font-size:12px}
+ body.readers-mode .reader-chapter-label{margin:8px 0 10px;font-size:10px}
+ body.readers-mode .reader-post-text{font-size:13px;line-height:2}
+ body.readers-mode .reader-side .actions{grid-template-columns:1fr 1fr}
+}
+@media(max-width:380px){
+ body.readers-mode .scroll{padding-left:16px;padding-right:16px}
+ body.readers-mode .reader-title{font-size:37px}
+ body.readers-mode .reader-metric+.reader-metric{padding-left:7px}
+ body.readers-mode .reader-metric-value{font-size:21px}
+ body.readers-mode .reader-post{gap:9px}
+ body.readers-mode .reader-filters{display:grid;grid-template-columns:1fr 1fr}
+}
 </style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / WRITING DESK</span><button class="btn" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
 <section class="hero"><div class="kicker">YOUR STORIES · YOUR AUDIENCE</div><h1>Write your<br>own world.</h1><p>从一份大纲开始，写出自己的故事。发布后，让模拟读者阅读、追更、留下评论。</p></section>
 <div class="stats"><div class="stat"><small>我的作品</small><strong id="workCount">0</strong></div><div class="stat"><small>累计字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动</small><strong id="reactionCount">0</strong></div></div>
