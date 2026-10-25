@@ -39,7 +39,7 @@ h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(42px,12vw,64px);f
 
 <section class="feature">
 <div class="feature-head"><div class="index">04</div><div class="feature-main"><h3>角色直播间</h3><p class="desc">进入角色的模拟直播现场，发送留言、点亮互动，保留轻松的实时感。</p><div class="actions"><button class="btn dark" data-toggle="livePanel">进入直播间</button></div></div></div>
-<div class="subpanel" id="livePanel"><div class="live-stage"><div class="live-status" id="liveStatus">● LIVE / PRIVATE ROOM</div><div class="live-title" id="liveRoleTitle">A little room</div><div class="live-copy">角色正在这里等你 · 本地互动原型</div></div><div class="actions" style="margin-top:10px"><button class="btn dark" id="heartBtn">点亮互动 <span id="heartCount">0</span></button><button class="btn" id="topicBtn">换个话题</button></div><div class="live-comments" id="liveComments"><div>系统 · 欢迎进入这个小小直播间。</div></div><form class="inline-form" id="commentForm"><input id="commentInput" maxlength="100" placeholder="写一句留言…" required><button class="btn" type="submit">发送</button></form><p class="note">目前是本地模拟直播，没有真实推流、多人聊天室或 AI 实时回应。</p></div>
+<div class="subpanel" id="livePanel"><div class="live-stage"><div class="live-status" id="liveStatus">● LIVE / PRIVATE ROOM</div><div class="live-title" id="liveRoleTitle">A little room</div><div class="live-copy">角色正在这里等你 · 本地互动原型</div></div><div class="actions" style="margin-top:10px"><button class="btn dark" id="heartBtn">点亮互动 <span id="heartCount">0</span></button><button class="btn" id="topicBtn">换个话题</button><button class="btn" id="askRoleBtn">邀请角色回应</button></div><div class="live-comments" id="liveComments"><div>系统 · 欢迎进入这个小小直播间。</div></div><form class="inline-form" id="commentForm"><input id="commentInput" maxlength="100" placeholder="写一句留言…" required><button class="btn" type="submit">发送</button></form><p class="note">目前没有真实推流或多人实时聊天室。点击「邀请角色回应」时才会调用已配置的聊天 API；每次点击会产生一次模型请求费用。</p></div>
 </section>
 
 <section class="feature">
@@ -79,6 +79,23 @@ $('heartBtn').addEventListener('click',()=>{state.likes++;save();$('heartCount')
 function addComment(text){state.comments=state.comments||[];state.comments.push(text);state.comments=state.comments.slice(-30);save();renderComments()}
 function renderComments(){const box=$('liveComments');box.innerHTML='';(state.comments||[]).forEach(t=>{const div=document.createElement('div');div.textContent=t;box.appendChild(div)});box.scrollTop=box.scrollHeight}
 $('commentForm').addEventListener('submit',e=>{e.preventDefault();const t=$('commentInput').value.trim();if(!t)return;addComment('你 · '+t);$('commentInput').value=''});
+async function inviteRoleReply(){
+ const btn=$('askRoleBtn');const config=(()=>{try{return JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){return {}}})();
+ const apiKey=String(config.apiKey||'').trim();const baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');const model=String(config.model||'gpt-3.5-turbo').trim();
+ if(!apiKey){toast('请先到设置页配置 API Key');return}
+ let profile={};try{const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');if(Array.isArray(list)){profile=list.find(x=>String(x.name||'')===String(state.role||''))||{}}}catch(e){}
+ const persona=String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'请用自然、温和、有个性的日常口吻回应。').slice(0,1800);
+ const history=(state.comments||[]).slice(-10).map(x=>String(x).slice(0,180)).join('\n')||'直播间刚刚开始，还没有留言。';
+ btn.disabled=true;btn.textContent='角色正在回应…';
+ const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);
+ try{
+  const response=await fetch(baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},signal:controller.signal,body:JSON.stringify({model,messages:[{role:'system',content:'你正在 MAOMAO 的私人模拟直播间中扮演角色「'+role()+'」。角色人设参考：'+persona+'。请保持角色口吻，针对最近的直播留言自然回应，中文 1-3 句，不要声称自己真的在现实中直播、看见用户或执行了现实动作。不要输出标题或列表。'},{role:'user',content:'直播间最近的留言：\n'+history+'\n请给直播间观众一段简短回应。'}],temperature:0.8,max_tokens:180,stream:false})});
+  if(!response.ok){let detail='';try{const data=await response.json();detail=data.error?.message||''}catch(e){}throw new Error(response.status===401?'API Key 无效或已过期':response.status===429?'API 额度不足或请求过频':('请求失败（HTTP '+response.status+'）'+(detail?'：'+detail.slice(0,100):'')))}
+  const data=await response.json();const reply=String(data.choices?.[0]?.message?.content||'').trim();if(!reply)throw new Error('角色没有返回内容');addComment(role()+' · '+reply);toast('角色已回应')
+ }catch(e){toast(e.name==='AbortError'?'请求超时，请稍后重试':(e.message||'请求失败'))}
+ finally{clearTimeout(timeout);btn.disabled=false;btn.textContent='邀请角色回应'}
+}
+$('askRoleBtn').addEventListener('click',inviteRoleReply);
 function today(){return new Date().toLocaleDateString('en-CA')}
 function syncSteps(){if(state.stepDate!==today()){state.stepDate=today();state.steps=0;state.shakes=0;save()}$('stepsCount').textContent=Number(state.steps||0).toLocaleString();$('shakeCount').textContent=Number(state.shakes||0).toLocaleString()}
 $('addSteps').addEventListener('click',()=>{syncSteps();state.steps=(state.steps||0)+100;save();syncSteps();toast('已记录 100 步')});
