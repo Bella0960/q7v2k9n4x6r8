@@ -406,6 +406,68 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     readerId=id;renderReader();reader.classList.add('show');document.body.style.overflow='hidden';
   }
   function closeReader(){closeAnnotation();reader.classList.remove('show');document.body.style.overflow='';readerId=null}
+  function diaryCharacters(){
+    var list=[];
+    try{list=window.PhoneStorage&&typeof window.PhoneStorage.getCharacters==='function'?window.PhoneStorage.getCharacters():[]}catch(e){list=[]}
+    if(!Array.isArray(list))return [];
+    return list.map(function(role,index){
+      if(!role||typeof role!=='object')return null;
+      var name=String(role.name||role.nickname||role.characterName||'').trim();if(!name)return null;
+      var setting=[role.personality,role.description,role.systemPrompt,role.prompt,role.characterPrompt,role.background,role.setting].filter(function(v){return typeof v==='string'&&v.trim()}).join('\n').slice(0,2400);
+      return {id:role.id!==undefined&&role.id!==null?String(role.id):String(index),name:name,setting:setting,index:index};
+    }).filter(Boolean);
+  }
+  function openAnnotation(){
+    var entry=entries.find(function(e){return e.id===readerId});if(!entry)return;
+    var roles=diaryCharacters();
+    if(!roles.length){showToast('还没有可用角色，请先在小手机里添加角色');return}
+    $('annotationCharacter').innerHTML=roles.map(function(role,index){return '<option value="'+index+'">'+esc(role.name)+'</option>'}).join('');
+    var last=(entry.charComments||[]).slice(-1)[0];
+    if(last){var chosen=roles.findIndex(function(role){return role.id===String(last.characterId)});if(chosen>=0)$('annotationCharacter').value=String(chosen)}
+    $('annotationPrompt').value='';
+    $('annotationStatus').textContent='手动点击“生成角色留言”后才会调用 API。';
+    $('annotationGenerate').disabled=false;$('annotationGenerate').textContent='生成角色留言';
+    renderAnnotationHistory(entry);
+    annotationBackdrop.classList.add('show');
+  }
+  function closeAnnotation(){if(annotationBackdrop)annotationBackdrop.classList.remove('show')}
+  function renderAnnotationHistory(entry){
+    var host=$('annotationHistory');if(!host)return;
+    var notes=entry&&Array.isArray(entry.charComments)?entry.charComments:[];
+    if(!notes.length){host.innerHTML='';return}
+    host.innerHTML='<div class="annotation-history-title">已保存的角色留言 · '+notes.length+'</div>'+notes.slice().reverse().map(function(note){return '<article class="annotation-history-item"><div class="annotation-history-meta"><strong>'+esc(note.characterName||'CHAR')+' · '+esc(String(note.createdAt||'').slice(0,16).replace('T',' '))+'</strong><button type="button" class="annotation-delete" data-delete-char-comment="'+esc(note.id||'')+'">删除</button></div><p>'+esc(note.text||'')+'</p></article>'}).join('');
+  }
+  function generateCharComment(){
+    if(annotationBusy)return;
+    var entryId=readerId,entry=entries.find(function(e){return e.id===entryId});if(!entry)return;
+    var roles=diaryCharacters(),selected=Number($('annotationCharacter').value),role=roles[selected];
+    if(!role){$('annotationStatus').textContent='请选择一个有效角色。';return}
+    if(!window.PhoneAPI||typeof window.PhoneAPI.complete!=='function'){$('annotationStatus').textContent='AI 请求模块暂时不可用。';return}
+    var extra=$('annotationPrompt').value.trim();
+    var diaryText=String(entry.content||'').slice(0,3500);
+    var system='请扮演角色「'+role.name+'」，为用户的私人日记写一条角色留言或批注。遵循角色设定，语气自然、有辨识度，不要改写日记，不要添加日记里没有的事实，也不要假称现实经历。用简体中文，约 40—160 字，直接输出留言，不要标题或前言。\n角色设定：'+(role.setting||'请根据角色名称与当前日记内容自然回应。');
+    var user='请阅读下面这篇日记，并以角色「'+role.name+'」的身份留下留言。\n日期：'+String(entry.date||'')+'\n标题：'+String(entry.title||'（无标题）')+'\n心情：'+String(entry.mood||'平静')+'\n标签：'+(entry.tags||[]).join('、')+'\n正文：\n'+(diaryText||'（没有正文，可结合标题、日期与标签简短回应）')+(String(entry.content||'').length>3500?'\n（正文较长，已截取前 3500 字）':'')+(extra?'\n用户补充方向：'+extra:'');
+    annotationBusy=true;
+    var button=$('annotationGenerate');button.disabled=true;button.textContent='正在等角色回信…';
+    $('annotationStatus').textContent='正在生成。关闭此面板不会取消已发出的请求。';
+    window.PhoneAPI.complete({system:system,user:user,temperature:0.78,timeoutMs:30000}).then(function(response){
+      var text=String(response||'').trim();
+      if(!text)throw new Error('角色没有返回留言，请稍后重试。');
+      var live=entries.find(function(e){return e.id===entryId});if(!live)throw new Error('这篇日记已不存在。');
+      if(!Array.isArray(live.charComments))live.charComments=[];
+      var note={id:'char_note_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),characterId:role.id,characterName:role.name,text:text.slice(0,3000),createdAt:new Date().toISOString()};
+      live.charComments.push(note);live.updatedAt=new Date().toISOString();
+      if(!persist()){live.charComments.pop();throw new Error('保存失败，请先导出备份并检查本机存储空间。')}
+      if(readerId===entryId)renderReader();
+      renderAnnotationHistory(live);
+      $('annotationStatus').textContent=role.name+' 的留言已保存在这篇日记里。';
+      showToast('已收到 '+role.name+' 的留言');
+    }).catch(function(err){
+      $('annotationStatus').textContent='生成失败：'+String(err&&err.message?err.message:err||'未知错误').slice(0,150)+'。请检查 API 配置后重试。';
+    }).then(function(){
+      annotationBusy=false;button.disabled=false;button.textContent='再生成一条留言';
+    });
+  }
   function renderReader(){
     var entry=entries.find(function(e){return e.id===readerId});if(!entry){closeReader();return}
     var list=readerEntries(),index=list.findIndex(function(e){return e.id===readerId});
@@ -688,6 +750,18 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   });
   document.querySelectorAll('.tab-btn').forEach(function(b){b.addEventListener('click',function(){currentView=b.dataset.view;cardAnimQueued=true;render()})});
   $('readerClose').addEventListener('click',closeReader);
+  $('readerComment').addEventListener('click',openAnnotation);
+  $('annotationClose').addEventListener('click',closeAnnotation);
+  annotationBackdrop.addEventListener('click',function(e){if(e.target===annotationBackdrop&&!annotationBusy)closeAnnotation()});
+  $('annotationGenerate').addEventListener('click',generateCharComment);
+  $('annotationHistory').addEventListener('click',function(e){
+    var button=e.target.closest('[data-delete-char-comment]');if(!button)return;
+    if(!window.confirm('确定删除这条角色留言吗？'))return;
+    var entry=entries.find(function(item){return item.id===readerId});if(!entry||!Array.isArray(entry.charComments))return;
+    var id=button.dataset.deleteCharComment,index=entry.charComments.findIndex(function(note){return String(note.id||'')===id});if(index<0)return;
+    entry.charComments.splice(index,1);entry.updatedAt=new Date().toISOString();
+    if(persist()){renderReader();renderAnnotationHistory(entry);showToast('已删除这条留言')}
+  });
   reader.addEventListener('click',function(e){if(e.target===reader)closeReader()});
   $('readerEdit').addEventListener('click',function(){var id=readerId;closeReader();openEditor(id)});
   $('readerPrev').addEventListener('click',function(){moveReader(-1)});
