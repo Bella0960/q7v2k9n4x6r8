@@ -530,7 +530,7 @@
       <div class="field">
         <select id="vbScope">
           <option value="global">全局默认配置</option>
-        <option value="role_1">角色 · 宝宝</option><option value="role_2">角色 · 苏格拉底</option><option value="role_3">角色 · 灵感助手</option><option value="role_1">角色 · 宝宝</option><option value="role_2">角色 · 苏格拉底</option><option value="role_3">角色 · 灵感助手</option></select>
+        </select>
       </div>
 
       <div data-mode="basic novel">
@@ -1387,6 +1387,29 @@ document.getElementById('importFile').addEventListener('change', function(e){
     }
     return '角色';
   }
+
+  // 角色范围必须使用角色数据里的真实 ID；旧版写死 role_1/role_2/role_3
+  // 会让配置保存到错误的 key，最终表现为多个聊天共用全局背景。
+  function populateVisualScopeOptions() {
+    var requestedId = '';
+    try { requestedId = new URLSearchParams(window.location.search).get('roleId') || ''; } catch (e) {}
+    while (scopeSel.options.length > 1) scopeSel.remove(1);
+    readRoles().forEach(function (role) {
+      if (!role || role.id == null || String(role.id) === '') return;
+      var id = String(role.id);
+      var option = document.createElement('option');
+      option.value = id;
+      option.textContent = '角色 · ' + (role.name || id);
+      scopeSel.appendChild(option);
+    });
+    var found = false;
+    for (var i = 0; i < scopeSel.options.length; i++) {
+      if (requestedId && scopeSel.options[i].value === requestedId) { found = true; break; }
+    }
+    scopeSel.value = found ? requestedId : 'global';
+    return scopeSel.value;
+  }
+
   function numOr(v, fb) { var n = Number(v); return isNaN(n) ? fb : n; }
 
   // input[type=color] 只认 #rrggbb；存储值可能是 #rgb / rgba()，转不动就给 fallback（预览仍显示真实色）
@@ -2176,8 +2199,8 @@ document.getElementById('importFile').addEventListener('change', function(e){
   };
   rightAction = function () { if (activeTab === 'visual') saveVisual(); else savePreset(); };
 
-  // 初始化：默认落在可视化调节（容错：外部 JS 未加载时不中断）
-  try { loadVisualScope('global'); } catch (e) { console.warn('loadVisualScope skipped:', e.message); }
+  // 初始化：使用真实角色 ID；若通过聊天上下文带入 roleId，则直接打开该角色专属配置。
+  try { loadVisualScope(populateVisualScopeOptions()); } catch (e) { console.warn('loadVisualScope skipped:', e.message); }
   try { switchTab('visual'); } catch (e) { console.warn('switchTab skipped:', e.message); }
 
   // ===== 自绘滑条：替代原生 range，确保所有 WebView 都能触摸拖动 =====
