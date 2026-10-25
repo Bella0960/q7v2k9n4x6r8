@@ -492,7 +492,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     editId=id||null;
     var entry=id?entries.find(function(e){return e.id===id}):null;
     selectedMood=entry?(entry.mood||'平静'):'平静';
-    activePhoto=entry?(entry.photo||''):'';
+    activePhotos=photosFor(entry);activePhoto=activePhotos[0]||'';
     $('editorHeading').textContent=entry?'编辑这篇日记':'写下一页';
     $('entryDate').value=entry?entry.date:(date||todayKey());
     $('entryTitle').value=entry?(entry.title||''):'';
@@ -501,7 +501,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     $('entryTags').value=entry?(entry.tags||[]).join(', '):'';
     document.querySelectorAll('.mood-choice').forEach(function(b){b.classList.toggle('active',b.dataset.mood===selectedMood)});
     $('deleteEntry').hidden=!entry;
-    $('previewImage').src=activePhoto||'';$('photoPreview').style.display=activePhoto?'block':'none';
+    renderPhotoPreview();
     $('entryPhoto').value='';
     editor.classList.add('show');
     document.body.style.overflow='hidden';
@@ -512,12 +512,12 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var date=$('entryDate').value||todayKey();
     var title=$('entryTitle').value.trim();
     var content=$('entryContent').value.trim();
-    if(!title&&!content&&!activePhoto){showToast('先写下一点内容吧');$('entryContent').focus();return}
+    if(!title&&!content&&!activePhotos.length){showToast('先写下一点内容吧');$('entryContent').focus();return}
     var old=editId?entries.find(function(e){return e.id===editId}):null;
     var record=old||{id:'d_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),createdAt:new Date().toISOString(),favorite:false};
     record.date=date;record.title=title;record.content=content;record.mood=selectedMood;record.noteType=$('entryType').value||'日记';
     record.tags=$('entryTags').value.split(/[,，、]/).map(function(t){return t.trim().replace(/^#+/,'')}).filter(Boolean).slice(0,12);
-    record.photo=activePhoto;record.updatedAt=new Date().toISOString();
+    record.photos=activePhotos.slice(0,8);record.photo=record.photos[0]||'';record.updatedAt=new Date().toISOString();
     if(!old)entries.push(record);
     if(!persist()){if(!old)entries.pop();return}
     currentView='home';moodFilter='全部';query='';closeEditor();render();showToast(old?'日记已更新':'已保存到你的日记'); 
@@ -538,22 +538,39 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     e.favorite=!e.favorite;e.updatedAt=new Date().toISOString();
     if(persist()){render();showToast(e.favorite?'已加入收藏':'已取消收藏')}
   }
-  function processImage(file){
-    if(!file)return;
-    if(!file.type||file.type.indexOf('image/')!==0){showToast('请选择图片文件');return}
+  function renderPhotoPreview(){
+    var box=$('photoPreview');if(!box)return;
+    if(!activePhotos.length){box.innerHTML='';box.style.display='none';box.classList.remove('single');return}
+    box.classList.toggle('single',activePhotos.length===1);box.style.display='grid';
+    box.innerHTML=activePhotos.map(function(photo,i){return '<div class="photo-preview-item"><img src="'+esc(photo)+'" alt="照片 '+(i+1)+' 预览"><span class="photo-index">'+(i+1)+' / '+activePhotos.length+'</span><button type="button" class="photo-remove" data-remove-photo="'+i+'" aria-label="移除第 '+(i+1)+' 张照片">×</button></div>'}).join('');
+  }
+  function processImage(file,done){
+    if(!file||!file.type||file.type.indexOf('image/')!==0){showToast('请选择图片文件');if(done)done('');return}
     var reader=new FileReader();
     reader.onload=function(){
       var img=new Image();
       img.onload=function(){
         var max=1400,scale=Math.min(1,max/Math.max(img.width,img.height));
         var canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
-        var ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
-        try{activePhoto=canvas.toDataURL('image/jpeg',.76);$('previewImage').src=activePhoto;$('photoPreview').style.display='block';showToast('照片已添加（保存时写入日记）')}
-        catch(e){showToast('这张图片暂时无法处理')}
+        var ctx=canvas.getContext('2d');if(!ctx){showToast('这张图片暂时无法处理');if(done)done('');return}
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        try{if(done)done(canvas.toDataURL('image/jpeg',.76))}
+        catch(e){showToast('这张图片暂时无法处理');if(done)done('')}
       };
-      img.onerror=function(){showToast('图片读取失败，请换一张试试')};img.src=reader.result;
+      img.onerror=function(){showToast('图片读取失败，请换一张试试');if(done)done('')};img.src=reader.result;
     };
-    reader.onerror=function(){showToast('图片读取失败')};reader.readAsDataURL(file);
+    reader.onerror=function(){showToast('图片读取失败');if(done)done('')};reader.readAsDataURL(file);
+  }
+  function processImages(fileList){
+    var queue=Array.prototype.slice.call(fileList||[]);if(!queue.length)return;
+    var room=8-activePhotos.length;if(room<=0){showToast('每篇日记最多添加 8 张照片');return}
+    if(queue.length>room){queue=queue.slice(0,room);showToast('每篇日记最多添加 8 张照片，已截取可添加的数量')}
+    var index=0,added=0;
+    function next(){
+      if(index>=queue.length){activePhoto=activePhotos[0]||'';renderPhotoPreview();if(added)showToast('已添加 '+added+' 张照片');return}
+      var file=queue[index++];processImage(file,function(data){if(data){activePhotos.push(data);added++;renderPhotoPreview()}next()});
+    }
+    next();
   }
   function exportBackup(){
     var data={app:'MAOMAO Journal',version:1,exportedAt:new Date().toISOString(),entries:entries};
@@ -574,7 +591,9 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
         var added=0;
         list.forEach(function(e){
           if(!e||!e.id||!e.date||seen[e.id])return;
-          var clean={id:String(e.id),date:String(e.date),title:String(e.title||''),content:String(e.content||''),mood:String(e.mood||'平静'),tags:Array.isArray(e.tags)?e.tags.map(String).slice(0,12):[],photo:typeof e.photo==='string'?e.photo:'',favorite:!!e.favorite,createdAt:e.createdAt||new Date().toISOString(),updatedAt:e.updatedAt||new Date().toISOString()};
+          var importedPhotos=Array.isArray(e.photos)?e.photos.filter(function(p){return typeof p==='string'&&p.length>0}).slice(0,8):[];
+          if(!importedPhotos.length&&typeof e.photo==='string'&&e.photo)importedPhotos=[e.photo];
+          var clean={id:String(e.id),date:String(e.date),title:String(e.title||''),content:String(e.content||''),mood:String(e.mood||'平静'),noteType:e.noteType==='备忘'?'备忘':'日记',pinned:!!e.pinned,tags:Array.isArray(e.tags)?e.tags.map(String).slice(0,12):[],photo:importedPhotos[0]||'',photos:importedPhotos,favorite:!!e.favorite,createdAt:e.createdAt||new Date().toISOString(),updatedAt:e.updatedAt||new Date().toISOString()};
           entries.push(clean);seen[e.id]=1;added++;
         });
         if(persist()){currentView='home';query='';render();menu.classList.remove('show');showToast('已导入 '+added+' 篇新记录')}
@@ -624,8 +643,12 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   editor.addEventListener('click',function(e){if(e.target===editor)closeEditor()});
   $('saveEntry').addEventListener('click',saveEntry);$('deleteEntry').addEventListener('click',deleteCurrent);
   $('moodChoices').addEventListener('click',function(e){var b=e.target.closest('[data-mood]');if(!b)return;selectedMood=b.dataset.mood;document.querySelectorAll('.mood-choice').forEach(function(x){x.classList.toggle('active',x===b)})});
-  $('entryPhoto').addEventListener('change',function(){processImage(this.files&&this.files[0]);this.value=''});
-  $('removePhoto').addEventListener('click',function(){activePhoto='';$('previewImage').src='';$('photoPreview').style.display='none'});
+  $('entryPhoto').addEventListener('change',function(){processImages(this.files);this.value=''});
+  $('photoPreview').addEventListener('click',function(e){
+    var remove=e.target.closest('[data-remove-photo]');if(!remove)return;
+    var index=Number(remove.dataset.removePhoto);if(!Number.isFinite(index)||index<0||index>=activePhotos.length)return;
+    activePhotos.splice(index,1);activePhoto=activePhotos[0]||'';renderPhotoPreview();
+  });
   $('aboutExport')&&$('aboutExport').addEventListener('click',exportBackup);
   $('aboutImport')&&$('aboutImport').addEventListener('click',function(){$('importFile').click()});
   function updateTime(){var el=$('statusTime');if(!el)return;var d=new Date();el.textContent=d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false})}
