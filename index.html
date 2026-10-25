@@ -20,7 +20,7 @@
         }
         // 清除所有历史版本的布局键，防止旧脏数据命中
         var keys = Object.keys(localStorage);
-        keys.forEach(function (k) { if (/^ds_layout_v/.test(k)) localStorage.removeItem(k); });
+        keys.forEach(function (k) { if (/^ds_layout_v/.test(k) && k !== 'ds_layout_v12') localStorage.removeItem(k); });
         // 兼容 ds_polaroid_v1 / ds_image_v1 等挂件数据保留，只清布局
       })();
     </script>
@@ -1357,8 +1357,112 @@
         });
       }
 
-      // 初始化桌面恢复
-      restoreLayout();
+      // Dock 隐藏时把快捷应用折叠进桌面；重新显示时恢复原 Dock 归属。
+      // 采用稳定的 data-drag ID 记录，而不是依赖元素位置，避免重复、丢失或打乱原桌面排序。
+      var DOCK_FOLDED_KEY = 'ds_dock_folded_items_v1';
+      var dockReflowIds = [];
+
+      function getKnownDragIds() {
+        var known = {};
+        document.querySelectorAll('[data-drag]').forEach(function (el) {
+          if (el.dataset && el.dataset.drag) known[el.dataset.drag] = true;
+        });
+        return known;
+      }
+
+      function getDockPreference() {
+        try { return localStorage.getItem('settings_dock_nav_visible') !== '0'; }
+        catch (e) { return true; }
+      }
+
+      function reconcileDockLayoutPreference() {
+        dockReflowIds = [];
+        var known = getKnownDragIds();
+        var removed = {};
+        (currentLayout.removed || []).forEach(function (id) { removed[id] = true; });
+
+        if (!getDockPreference()) {
+          var dockIds = (currentLayout.dock || []).filter(function (id) {
+            return !!known[id] && !removed[id];
+          });
+          if (!dockIds.length) return false;
+
+          try { localStorage.setItem(DOCK_FOLDED_KEY, JSON.stringify(dockIds)); } catch (e) {}
+          if (!Array.isArray(currentLayout.pages) || !currentLayout.pages.length) {
+            currentLayout.pages = [[]];
+          }
+
+          // 将 Dock 应用按原顺序追加到最后一页；已存在的 ID 不重复插入。
+          var alreadyPlaced = {};
+          currentLayout.pages.forEach(function (pageIds) {
+            (pageIds || []).forEach(function (id) { alreadyPlaced[id] = true; });
+          });
+          var lastPage = currentLayout.pages[currentLayout.pages.length - 1];
+          dockIds.forEach(function (id) {
+            if (!alreadyPlaced[id]) {
+              lastPage.push(id);
+              alreadyPlaced[id] = true;
+            }
+          });
+          currentLayout.dock = [];
+          dockReflowIds = dockIds.slice();
+          saveLayout(currentLayout);
+          return true;
+        }
+
+        var foldedIds = readJSON(DOCK_FOLDED_KEY);
+        if (!Array.isArray(foldedIds) || !foldedIds.length) return false;
+
+        // 只恢复仍存在、未被用户移除的应用；其他 ID 不会被“复活”。
+        var restoreIds = foldedIds.filter(function (id) {
+          return !!known[id] && !removed[id];
+        });
+        var restoreSet = {};
+        restoreIds.forEach(function (id) { restoreSet[id] = true; });
+        currentLayout.pages = (currentLayout.pages || []).map(function (pageIds) {
+          return (pageIds || []).filter(function (id) { return !restoreSet[id]; });
+        });
+
+        var currentDock = (currentLayout.dock || []).filter(function (id) { return !restoreSet[id]; });
+        var dockSeen = {};
+        currentDock.forEach(function (id) { dockSeen[id] = true; });
+        restoreIds.forEach(function (id) {
+          if (!dockSeen[id]) {
+            currentDock.push(id);
+            dockSeen[id] = true;
+          }
+        });
+        currentLayout.dock = currentDock;
+        dockReflowIds = restoreIds.slice();
+        try { localStorage.removeItem(DOCK_FOLDED_KEY); } catch (e) {}
+        saveLayout(currentLayout);
+        return true;
+      }
+
+      function animateDockReflow(ids) {
+        if (!ids || !ids.length) return;
+        var moving = {};
+        ids.forEach(function (id) { moving[id] = true; });
+        document.querySelectorAll('[data-drag]').forEach(function (el) {
+          if (!moving[el.dataset.drag]) return;
+          el.classList.remove('dock-reflow-enter');
+          void el.offsetWidth;
+          el.classList.add('dock-reflow-enter');
+          window.setTimeout(function () { el.classList.remove('dock-reflow-enter'); }, 420);
+        });
+      }
+
+      window.MAOMAOReconcileDockLayout = function () {
+        var changed = reconcileDockLayoutPreference();
+        if (changed) {
+          restoreLayout();
+          animateDockReflow(dockReflowIds);
+        }
+        return changed;
+      };
+
+      // 初始化桌面恢复。若开关状态要求调整 Dock，先更新数据模型再渲染。
+      if (!window.MAOMAOReconcileDockLayout()) restoreLayout();
     })();
 
     // ===== 挂件数据读写（全局）：明信片/拍立得/小对话/音乐箱/待办/倒数日/便签共用 =====
