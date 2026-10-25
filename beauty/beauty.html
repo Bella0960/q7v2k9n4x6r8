@@ -2189,7 +2189,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
       // 创建自绘滑条容器
       var wrap = document.createElement('div');
       wrap.className = 'vb-range-wrap';
-      wrap.style.cssText = 'position:relative;width:100%;height:' + inpH + 'px;touch-action:none;';
+      wrap.style.cssText = 'position:relative;width:100%;height:' + inpH + 'px;touch-action:pan-y;';
       inp.parentNode.insertBefore(wrap, inp);
       wrap.appendChild(inp);
       // 隐藏原生 input 但保留功能
@@ -2263,16 +2263,44 @@ document.getElementById('importFile').addEventListener('change', function(e){
       }
       function onUp() { dragging = false; }
 
+      // 手势方向锁：先观察移动方向，纵向手势交还给页面滚动，横向手势才操作滑条。
+      var touchStartX = 0;
+      var touchStartY = 0;
+      var touchGesture = null;
+      var touchStarted = false;
       wrap.addEventListener('touchstart', function (e) {
-        e.preventDefault();
-        onDown(e.touches[0].clientX);
-      }, { passive: false });
+        if (!e.touches || !e.touches.length) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchGesture = null;
+        touchStarted = true;
+        dragging = false;
+      }, { passive: true });
       wrap.addEventListener('touchmove', function (e) {
-        e.preventDefault();
-        onMove(e.touches[0].clientX);
+        if (!touchStarted || !e.touches || !e.touches.length) return;
+        var dx = e.touches[0].clientX - touchStartX;
+        var dy = e.touches[0].clientY - touchStartY;
+        if (!touchGesture) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+          touchGesture = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+          if (touchGesture === 'horizontal') onDown(touchStartX);
+        }
+        if (touchGesture === 'vertical') {
+          dragging = false;
+          return;
+        }
+        if (touchGesture === 'horizontal') {
+          if (e.cancelable) e.preventDefault();
+          onMove(e.touches[0].clientX);
+        }
       }, { passive: false });
-      wrap.addEventListener('touchend', onUp);
-      wrap.addEventListener('touchcancel', onUp);
+      function finishTouch() {
+        touchStarted = false;
+        touchGesture = null;
+        onUp();
+      }
+      wrap.addEventListener('touchend', finishTouch);
+      wrap.addEventListener('touchcancel', finishTouch);
       wrap.addEventListener('mousedown', function (e) {
         e.preventDefault();
         onDown(e.clientX);
