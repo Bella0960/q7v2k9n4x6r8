@@ -184,7 +184,16 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 .tab-add:active{transform:translateY(1px);box-shadow:none;background:transparent}
 .editor-sheet{border-radius:0;border-top:1px solid #171717;box-shadow:0 -10px 30px rgba(0,0,0,.08)}
 .editor-title{font-family:var(--serif,Georgia,"Times New Roman",serif);font-weight:400}
-.mood-choice{border-radius:0}
+ .mood-choice{border-radius:0}
+.entry-labels{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.entry-type-label,.entry-pin-label{font-size:10px;letter-spacing:.08em;color:#777;border:1px solid #dedede;padding:3px 5px;white-space:nowrap}
+.entry-pin-label{color:#171717;border-color:#171717}
+.entry-actions .mini-action{font-size:11px;min-width:30px;margin-left:9px}
+.mini-action.active{color:#171717;font-weight:650}
+.entry-type-select{width:100%;padding:11px 10px;margin:0 0 15px;background:#f7f7f7;border:0;border-bottom:1px solid #ccc;border-radius:0;color:#222;outline-offset:2px}
+.note-type-filters{margin-top:3px;padding-bottom:7px;border-bottom:1px solid #eee}
+.mood-filters{padding-top:4px}
+
 @media(hover:hover){.entry-card:hover{background:#fafafa}.round-btn:hover{color:#000;border-color:#171717}}
 
 </style>
@@ -216,6 +225,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       <div class="editor-header"><div><div class="editor-heading" id="editorHeading">写下一页</div><div class="editor-sub">A MOMENT, KEPT FOR YOURSELF</div></div><button class="sheet-link" id="closeEditor">关闭</button></div>
       <label class="field-label" for="entryDate">日期</label><input class="editor-date" id="entryDate" type="date">
       <label class="field-label" for="entryTitle">标题 · 可留空</label><input class="editor-title" id="entryTitle" maxlength="80" placeholder="给今天一个名字">
+      <label class="field-label" for="entryType">记录类型</label><select class="entry-type-select" id="entryType"><option value="日记">日记 · 记录今天</option><option value="备忘">备忘 · 留下待办或灵感</option></select>
       <label class="field-label" for="entryContent">今天发生了什么？</label><textarea class="editor-content" id="entryContent" maxlength="12000" placeholder="不需要把每一天都写得很完整。&#10;&#10;你可以从任何一个小片段开始……"></textarea>
       <div class="editor-meta">
         <div><label class="field-label">此刻心情</label><div class="mood-choices" id="moodChoices">
@@ -244,7 +254,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   'use strict';
   var STORAGE_KEY='maomao_diary_entries_v1';
   var entries=loadEntries();
-  var currentView='home', query='', moodFilter='全部', selectedMood='平静';
+  var currentView='home', query='', moodFilter='全部', noteTypeFilter='全部', selectedMood='平静';
   var editId=null, activePhoto='', calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), selectedCalendarDate=todayKey();
   var cardAnimQueued=true;
   var prompts=[
@@ -277,10 +287,11 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   function weekday(key){var d=new Date(key+'T12:00:00');return ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()]}
   function friendlyDate(key){var p=String(key).split('-');return p[0]+'年'+Number(p[1])+'月'+Number(p[2])+'日 · '+weekday(key)}
   function monthLabel(d){return d.getFullYear()+'年 '+String(d.getMonth()+1).padStart(2,'0')+'月'}
-  function sorted(list){return list.slice().sort(function(a,b){return (b.date+' '+(b.updatedAt||b.createdAt||'' )).localeCompare(a.date+' '+(a.updatedAt||a.createdAt||''))})}
+  function sorted(list){return list.slice().sort(function(a,b){if(!!a.pinned!==!!b.pinned)return a.pinned?-1:1;return (b.date+' '+(b.updatedAt||b.createdAt||'' )).localeCompare(a.date+' '+(a.updatedAt||a.createdAt||''))})}
   function filteredEntries(){
     var list=entries.slice();
     if(currentView==='favorites')list=list.filter(function(e){return !!e.favorite});
+    if(noteTypeFilter!=='全部')list=list.filter(function(e){return (e.noteType||'日记')===noteTypeFilter});
     if(currentView==='calendar')list=list.filter(function(e){return e.date===selectedCalendarDate});
     if(moodFilter!=='全部')list=list.filter(function(e){return e.mood===moodFilter});
     if(query.trim()){
@@ -306,11 +317,11 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var text=(e.content||'').trim();
     if(!text)text='这一天，留下一点空白。';
     return '<article class="entry-card" data-open-entry="'+esc(e.id)+'">'+
-      '<div class="entry-top"><div class="entry-date"><strong>'+esc(shortDate(e.date))+'</strong><span>'+esc(weekday(e.date))+'</span></div><span class="entry-mood">'+esc(e.mood||'平静')+'</span></div>'+
+      '<div class="entry-top"><div class="entry-date"><strong>'+esc(shortDate(e.date))+'</strong><span>'+esc(weekday(e.date))+'</span></div><div class="entry-labels">'+(e.pinned?'<span class="entry-pin-label">置顶</span>':'')+'<span class="entry-type-label">'+esc(e.noteType||'日记')+'</span><span class="entry-mood">'+esc(e.mood||'平静')+'</span></div></div>'+
       (e.title?'<h3 class="entry-title">'+esc(e.title)+'</h3>':'')+
       '<p class="entry-text">'+esc(text)+'</p>'+
       (e.photo?'<img class="entry-photo" src="'+esc(e.photo)+'" alt="日记照片" loading="lazy">':'')+
-      '<div class="entry-bottom"><div class="entry-tags">'+tags+'</div><div class="entry-actions"><button class="mini-action '+(e.favorite?'active':'')+'" data-favorite="'+esc(e.id)+'" aria-label="'+(e.favorite?'取消收藏':'收藏')+'" title="收藏">'+(e.favorite?'★':'☆')+'</button></div></div></article>';
+      '<div class="entry-bottom"><div class="entry-tags">'+tags+'</div><div class="entry-actions"><button class="mini-action '+(e.pinned?'active':'')+'" data-pin="'+esc(e.id)+'" aria-label="'+(e.pinned?'取消置顶':'置顶')+'" title="'+(e.pinned?'取消置顶':'置顶')+'">'+(e.pinned?'置顶中':'置顶')+'</button><button class="mini-action '+(e.favorite?'active':'')+'" data-favorite="'+esc(e.id)+'" aria-label="'+(e.favorite?'取消收藏':'收藏')+'" title="收藏">'+(e.favorite?'★':'☆')+'</button></div></div></article>';
   }
   function renderCards(list,emptyTitle,emptyText){
     if(!list.length)return '<div class="empty-state"><div class="empty-mark">01 / —</div><h3>'+esc(emptyTitle)+'</h3><p>'+esc(emptyText)+'</p><button class="text-btn" data-create="1">写下第一篇</button></div>';
@@ -328,7 +339,8 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       '<aside class="prompt"><div class="prompt-mark">“</div><div class="prompt-copy"><div class="label">A SMALL PROMPT FOR TODAY</div><p>'+esc(prompts[promptIndex])+'</p></div><button class="prompt-refresh" id="refreshPrompt">换一句</button></aside>'+
       '<div class="section-head"><h2>最近记录</h2><span class="section-meta">'+(query?'搜索结果 '+list.length+' 篇':list.length+' ENTRIES')+'</span></div>'+
       '<div class="search-wrap" id="searchWrap">'+svg('search')+'<input id="diarySearch" type="search" value="'+esc(query)+'" placeholder="搜索标题、文字或标签" aria-label="搜索日记"><button class="mini-action" id="clearSearch" style="'+(query?'':'display:none')+'" aria-label="清除搜索">×</button></div>'+
-      '<div class="filter-row">'+filters.map(function(f){return '<button class="filter-chip '+(moodFilter===f?'active':'')+'" data-mood-filter="'+esc(f)+'">'+esc(f)+'</button>'}).join('')+'</div>'+
+      '<div class="filter-row note-type-filters">'+['全部','日记','备忘'].map(function(f){return '<button class="filter-chip '+(noteTypeFilter===f?'active':'')+'" data-note-type-filter="'+esc(f)+'">'+esc(f)+'</button>'}).join('')+'</div>'+
+      '<div class="filter-row mood-filters">'+filters.map(function(f){return '<button class="filter-chip '+(moodFilter===f?'active':'')+'" data-mood-filter="'+esc(f)+'">'+esc(f)+'</button>'}).join('')+'</div>'+
       renderCards(list,'这一页还是空白','给今天留下一点文字、一个心情，或者一张照片。');
   }
   function renderCalendar(){
@@ -398,6 +410,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     $('editorHeading').textContent=entry?'编辑这篇日记':'写下一页';
     $('entryDate').value=entry?entry.date:(date||todayKey());
     $('entryTitle').value=entry?(entry.title||''):'';
+    $('entryType').value=entry?(entry.noteType||'日记'):'日记';
     $('entryContent').value=entry?(entry.content||''):'';
     $('entryTags').value=entry?(entry.tags||[]).join(', '):'';
     document.querySelectorAll('.mood-choice').forEach(function(b){b.classList.toggle('active',b.dataset.mood===selectedMood)});
@@ -416,7 +429,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     if(!title&&!content&&!activePhoto){showToast('先写下一点内容吧');$('entryContent').focus();return}
     var old=editId?entries.find(function(e){return e.id===editId}):null;
     var record=old||{id:'d_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),createdAt:new Date().toISOString(),favorite:false};
-    record.date=date;record.title=title;record.content=content;record.mood=selectedMood;
+    record.date=date;record.title=title;record.content=content;record.mood=selectedMood;record.noteType=$('entryType').value||'日记';
     record.tags=$('entryTags').value.split(/[,，、]/).map(function(t){return t.trim().replace(/^#+/,'')}).filter(Boolean).slice(0,12);
     record.photo=activePhoto;record.updatedAt=new Date().toISOString();
     if(!old)entries.push(record);
@@ -428,6 +441,11 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     if(!window.confirm('确定删除这篇日记吗？删除后无法撤销。'))return;
     entries=entries.filter(function(e){return e.id!==editId});
     persist();closeEditor();currentView='home';render();showToast('这篇日记已删除');
+  }
+  function togglePinned(id){
+    var e=entries.find(function(x){return x.id===id});if(!e)return;
+    e.pinned=!e.pinned;e.updatedAt=new Date().toISOString();
+    if(persist()){render();showToast(e.pinned?'已置顶，记录会优先显示':'已取消置顶')}
   }
   function toggleFavorite(id){
     var e=entries.find(function(x){return x.id===id});if(!e)return;
@@ -481,6 +499,10 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   function openMenu(){menu.classList.add('show')}
   function closeMenu(){menu.classList.remove('show')}
   root.addEventListener('click',function(e){
+    var typeFilter=e.target.closest('[data-note-type-filter]');
+    if(typeFilter){noteTypeFilter=typeFilter.dataset.noteTypeFilter;render();return}
+    var pin=e.target.closest('[data-pin]');
+    if(pin){e.stopPropagation();togglePinned(pin.dataset.pin);return}
     var filter=e.target.closest('[data-mood-filter]');
     if(filter){moodFilter=filter.dataset.moodFilter;render();return}
     var create=e.target.closest('[data-create]');
