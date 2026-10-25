@@ -363,7 +363,45 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   }
   function persist(){
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(entries));return true}
-    catch(e){showToast('本机存储空间不足，请移除较大的照片后再试');return false}
+    catch(e){showToast('本机日记空间已满。请先导出备份，再到“关于 → 空间整理”压缩旧照片。不要清理浏览器数据，以免丢失记录。');return false}
+  }
+  function estimatePhotoBytes(value){return typeof value==='string'?Math.floor(value.length*.75):0}
+  function photoStorageStats(){
+    var bytes=0,count=0;
+    entries.forEach(function(entry){photosFor(entry).forEach(function(photo){bytes+=estimatePhotoBytes(photo);count++})});
+    return {bytes:bytes,count:count,mb:(bytes/1048576).toFixed(2)}
+  }
+  function compressDataUrl(dataUrl,done){
+    var img=new Image();
+    img.onload=function(){
+      var max=720,scale=Math.min(1,max/Math.max(img.width,img.height));
+      var canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+      var ctx=canvas.getContext('2d');if(!ctx){done('');return}
+      ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      try{done(canvas.toDataURL('image/jpeg',.42))}catch(e){done('')}
+    };
+    img.onerror=function(){done('')};img.src=dataUrl
+  }
+  function compressExistingPhotos(){
+    var candidates=[];
+    entries.forEach(function(entry){photosFor(entry).forEach(function(photo,index){if(/^data:image\\//i.test(photo))candidates.push({entry:entry,index:index,photo:photo})})});
+    if(!candidates.length){showToast('没有可整理的照片');return}
+    if(!window.confirm('将逐张压缩现有日记照片，尽量保留画面。原照片会被较小版本替换，建议先导出备份。是否继续？'))return;
+    var index=0,changed=0;
+    function next(){
+      if(index>=candidates.length){
+        entries.forEach(function(entry){var photos=photosFor(entry);entry.photos=photos;entry.photo=photos[0]||''});
+        if(persist()){render();showToast('空间整理完成：已压缩 '+changed+' 张照片')}
+        else showToast('整理后空间仍不足。请先导出备份，再删除不需要的照片或记录。');
+        return
+      }
+      var item=candidates[index++];
+      compressDataUrl(item.photo,function(smaller){
+        if(smaller&&estimatePhotoBytes(smaller)<estimatePhotoBytes(item.photo)){var list=photosFor(item.entry);list[item.index]=smaller;item.entry.photos=list;item.entry.photo=list[0]||'';changed++}
+        next()
+      })
+    }
+    next()
   }
   function todayKey(d){
     d=d||new Date();
@@ -576,6 +614,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       '<div class="prompt"><div class="prompt-mark">01</div><div class="prompt-copy"><div class="label">YOUR PRIVACY</div><p>日记保存在当前浏览器的本地存储中，不会主动上传到服务器。清理浏览器数据或更换设备前，请先导出备份。</p></div></div>'+
       '<div class="stat" style="margin-bottom:10px"><div class="stat-label">本机记录数量</div><div class="stat-main"><strong>'+entries.length+'</strong><span>篇</span></div></div>'+
       '<div class="stat" style="margin-bottom:10px"><div class="stat-label">保存方式</div><div class="stat-main"><strong style="font-size:17px">仅本机</strong><span>Local Storage</span></div></div>'+
+      '<div class="entry-card"><h3 class="entry-title">空间整理</h3><p class="entry-text">照片会占用本机浏览器空间。整理会把已有照片压缩为较小版本，释放空间；建议先导出备份。当前照片约 '+photoStorageStats().mb+' MB，共 '+photoStorageStats().count+' 张。</p><div class="entry-actions" style="justify-content:flex-start;margin-top:14px"><button class="btn-secondary" id="compressOldPhotos">压缩旧照片，释放空间</button></div></div>'+
       '<div class="section-head" style="margin-top:24px"><h2>备份与迁移</h2><span class="section-meta">YOUR DATA</span></div>'+
       '<div class="entry-card"><h3 class="entry-title">留一份自己的副本</h3><p class="entry-text">导出的文件包含日记文字、日期、心情、标签和照片数据。请妥善保管备份文件。</p><div class="entry-actions" style="justify-content:flex-start;margin-top:14px"><button class="btn-secondary" id="aboutExport">导出备份</button><button class="btn-secondary" id="aboutImport">导入备份</button></div></div>';
   }
@@ -675,11 +714,11 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     reader.onload=function(){
       var img=new Image();
       img.onload=function(){
-        var max=1400,scale=Math.min(1,max/Math.max(img.width,img.height));
+        var max=960,scale=Math.min(1,max/Math.max(img.width,img.height));
         var canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
         var ctx=canvas.getContext('2d');if(!ctx){showToast('这张图片暂时无法处理');if(done)done('');return}
         ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
-        try{if(done)done(canvas.toDataURL('image/jpeg',.76))}
+        try{if(done)done(canvas.toDataURL('image/jpeg',.52))}
         catch(e){showToast('这张图片暂时无法处理');if(done)done('')}
       };
       img.onerror=function(){showToast('图片读取失败，请换一张试试');if(done)done('')};img.src=reader.result;
@@ -787,6 +826,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     activePhotos.splice(index,1);activePhoto=activePhotos[0]||'';renderPhotoPreview();
   });
   $('aboutExport')&&$('aboutExport').addEventListener('click',exportBackup);
+  if($('compressOldPhotos'))$('compressOldPhotos').addEventListener('click',compressExistingPhotos);
   $('aboutImport')&&$('aboutImport').addEventListener('click',function(){$('importFile').click()});
   function updateTime(){var el=$('statusTime');if(!el)return;var d=new Date();el.textContent=d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false})}
   updateTime();setInterval(updateTime,30000);
