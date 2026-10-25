@@ -85,11 +85,11 @@ async function inviteRoleReply(){
  if(!apiKey){toast('请先到设置页配置 API Key');return}
  let profile={};try{const list=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]');if(Array.isArray(list)){profile=list.find(x=>String(x.name||'')===String(state.role||''))||{}}}catch(e){}
  const persona=String(profile.personality||profile.description||profile.prompt||profile.systemPrompt||profile.characterDescription||'请用自然、温和、有个性的日常口吻回应。').slice(0,1800);
- const history=(state.comments||[]).slice(-10).map(x=>String(x).slice(0,180)).join('\\n')||'直播间刚刚开始，还没有留言。';
+ const history=(state.comments||[]).slice(-10).map(x=>String(x).slice(0,180)).join('\n')||'直播间刚刚开始，还没有留言。';
  btn.disabled=true;btn.textContent='角色正在回应…';
  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);
  try{
-  const response=await fetch(baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},signal:controller.signal,body:JSON.stringify({model,messages:[{role:'system',content:'你正在 MAOMAO 的私人模拟直播间中扮演角色「'+role()+'」。角色人设参考：'+persona+'。请保持角色口吻，针对最近的直播留言自然回应，中文 1-3 句，不要声称自己真的在现实中直播、看见用户或执行了现实动作。不要输出标题或列表。'},{role:'user',content:'直播间最近的留言：\\n'+history+'\\n请给直播间观众一段简短回应。'}],temperature:0.8,max_tokens:180,stream:false})});
+  const response=await fetch(baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},signal:controller.signal,body:JSON.stringify({model,messages:[{role:'system',content:'你正在 MAOMAO 的私人模拟直播间中扮演角色「'+role()+'」。角色人设参考：'+persona+'。请保持角色口吻，针对最近的直播留言自然回应，中文 1-3 句，不要声称自己真的在现实中直播、看见用户或执行了现实动作。不要输出标题或列表。'},{role:'user',content:'直播间最近的留言：\n'+history+'\n请给直播间观众一段简短回应。'}],temperature:0.8,max_tokens:180,stream:false})});
   if(!response.ok){let detail='';try{const data=await response.json();detail=data.error?.message||''}catch(e){}throw new Error(response.status===401?'API Key 无效或已过期':response.status===429?'API 额度不足或请求过频':('请求失败（HTTP '+response.status+'）'+(detail?'：'+detail.slice(0,100):'')))}
   const data=await response.json();const reply=String(data.choices?.[0]?.message?.content||'').trim();if(!reply)throw new Error('角色没有返回内容');addComment(role()+' · '+reply);toast('角色已回应')
  }catch(e){toast(e.name==='AbortError'?'请求超时，请稍后重试':(e.message||'请求失败'))}
