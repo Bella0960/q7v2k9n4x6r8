@@ -8,6 +8,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>日记 · 小手机</title>
 <script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/phone_api.js"></script>
 <style>
 :root{color-scheme:light;--ink:#171717;--text:#444;--muted:#999;--line:#e9e9e9;--paper:#fff;--soft:#f6f6f6;--soft2:#f0f0f0;--shadow:0 12px 40px rgba(0,0,0,.07)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -227,6 +229,35 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 .reader-nav button:disabled{opacity:.25}
 .reader-actions{display:flex;gap:12px}
 .reader-actions button.active{font-weight:700}
+.reader-char-notes{margin-top:34px;padding-top:18px;border-top:1px solid #e4e4e4}
+.reader-char-notes-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;font-size:9px;letter-spacing:.16em;color:#888}
+.reader-char-notes-head strong{font-size:13px;letter-spacing:0;color:#222;font-weight:600}
+.reader-char-note{padding:12px 0;border-bottom:1px solid #eee}
+.reader-char-note-meta{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11px}
+.reader-char-note-meta strong{font-weight:650;color:#222}
+.reader-char-note-meta time{font-size:9px;color:#aaa;white-space:nowrap}
+.reader-char-note p{font-size:12px;line-height:1.9;color:#555;white-space:pre-wrap;margin:7px 0 0;overflow-wrap:anywhere}
+.annotation-backdrop{position:fixed;inset:0;z-index:120;display:none;align-items:flex-end;justify-content:center;padding:12px;background:rgba(20,20,20,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.annotation-backdrop.show{display:flex;animation:backdropFade .2s ease}
+.annotation-sheet{width:min(100%,440px);max-height:min(82dvh,720px);overflow:auto;background:#fff;border-top:1px solid #171717;box-shadow:0 -12px 36px rgba(0,0,0,.12);padding:18px 20px calc(18px + env(safe-area-inset-bottom,0px));animation:sheetUp .28s var(--ease-apple)}
+.annotation-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid #e8e8e8}
+.annotation-kicker{font-size:9px;color:#999;letter-spacing:.18em}
+.annotation-header h3{font-size:21px;font-weight:500;letter-spacing:-.04em;margin:6px 0 0}
+.annotation-close{border:0;background:transparent;font-size:12px;color:#777;padding:5px}
+.annotation-field-label{display:block;font-size:10px;color:#888;margin:16px 0 7px;letter-spacing:.04em}
+.annotation-select,.annotation-prompt{width:100%;border:0;border-bottom:1px solid #ddd;border-radius:0;background:#fafafa;padding:12px 10px;color:#222;font-size:12px;outline-offset:2px}
+.annotation-prompt{min-height:74px;resize:vertical;line-height:1.7}
+.annotation-privacy{font-size:10px;line-height:1.7;color:#888;margin:10px 0 0}
+.annotation-status{font-size:11px;line-height:1.7;color:#777;margin:10px 0;min-height:18px}
+.annotation-history{border-top:1px solid #ededed;margin-top:14px}
+.annotation-history-title{font-size:10px;color:#888;letter-spacing:.1em;padding-top:13px}
+.annotation-history-item{padding:10px 0;border-bottom:1px solid #eee}
+.annotation-history-meta{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:#777}
+.annotation-history-item p{font-size:11px;line-height:1.8;color:#555;white-space:pre-wrap;margin:6px 0 0;overflow-wrap:anywhere}
+.annotation-delete{border:0;background:transparent;font-size:10px;color:#999;text-decoration:underline;text-underline-offset:3px;padding:2px}
+.annotation-generate{width:100%;height:44px;background:#171717;color:#fff;border:1px solid #171717;font-size:12px;font-weight:600;margin-top:14px}
+.annotation-generate:disabled{opacity:.45}
+@media(max-width:500px){.annotation-backdrop{padding:0}.annotation-sheet{max-height:86dvh}.reader-char-notes{margin-top:28px}}
 .reader-page.turn-next{animation:readerTurnNext .24s ease both}
 .reader-page.turn-prev{animation:readerTurnPrev .24s ease both}
 @keyframes readerTurnNext{from{opacity:.45;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
@@ -288,7 +319,18 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     <section class="reader-book">
       <header class="reader-toolbar"><button id="readerClose" aria-label="返回日记列表">← 返回</button><span class="reader-progress" id="readerProgress">PAGE 01</span><button id="readerEdit">编辑记录 ↗</button></header>
       <article class="reader-page" id="readerPage"></article>
-      <footer class="reader-foot"><div class="reader-nav"><button id="readerPrev">← 上一篇</button><button id="readerNext">下一篇 →</button></div><div class="reader-actions"><button id="readerPin">置顶</button><button id="readerFavorite">☆ 收藏</button></div></footer>
+      <footer class="reader-foot"><div class="reader-nav"><button id="readerPrev">← 上一篇</button><button id="readerNext">下一篇 →</button></div><div class="reader-actions"><button id="readerComment">CHAR 批注</button><button id="readerPin">置顶</button><button id="readerFavorite">☆ 收藏</button></div></footer>
+    </section>
+  </div>
+  <div class="annotation-backdrop" id="annotationBackdrop" role="dialog" aria-modal="true" aria-labelledby="annotationTitle">
+    <section class="annotation-sheet">
+      <header class="annotation-header"><div><div class="annotation-kicker">CHAR / NOTES</div><h3 id="annotationTitle">让角色读读这一页</h3></div><button class="annotation-close" id="annotationClose">关闭</button></header>
+      <label class="annotation-field-label" for="annotationCharacter">选择角色</label><select class="annotation-select" id="annotationCharacter"></select>
+      <label class="annotation-field-label" for="annotationPrompt">留言方向 · 可留空</label><textarea class="annotation-prompt" id="annotationPrompt" maxlength="300" placeholder="例如：像平常聊天一样，留一句自然的留言"></textarea>
+      <p class="annotation-privacy">只在点击生成时调用当前配置的 AI API；会发送本篇日记的标题与文字，不会发送照片。每次生成可能产生 API 费用。</p>
+      <div class="annotation-status" id="annotationStatus" role="status" aria-live="polite">选好角色后，再决定要不要请 TA 留言。</div>
+      <div class="annotation-history" id="annotationHistory"></div>
+      <button class="annotation-generate" id="annotationGenerate">生成角色留言</button>
     </section>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -314,7 +356,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   var root=document.getElementById('viewRoot'), scroll=document.getElementById('appScroll');
   var editor=document.getElementById('editorBackdrop'), menu=document.getElementById('menuBackdrop');
   var $=function(id){return document.getElementById(id)};
-  var reader=$('readerBackdrop'), readerId=null;
+  var reader=$('readerBackdrop'), readerId=null, annotationBackdrop=$('annotationBackdrop'), annotationBusy=false;
   function loadEntries(){
     try{var v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v.filter(function(x){return x&&x.id&&x.date;}):[]}
     catch(e){return []}
@@ -363,7 +405,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var entry=entries.find(function(e){return e.id===id});if(!entry)return;
     readerId=id;renderReader();reader.classList.add('show');document.body.style.overflow='hidden';
   }
-  function closeReader(){reader.classList.remove('show');document.body.style.overflow='';readerId=null}
+  function closeReader(){closeAnnotation();reader.classList.remove('show');document.body.style.overflow='';readerId=null}
   function renderReader(){
     var entry=entries.find(function(e){return e.id===readerId});if(!entry){closeReader();return}
     var list=readerEntries(),index=list.findIndex(function(e){return e.id===readerId});
@@ -371,7 +413,14 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var p=String(entry.date||todayKey()).split('-');
     var photos=photosFor(entry);var photoHtml=photos.length?'<div class="reader-photo-stack">'+photos.map(function(photo,i){return '<img class="reader-photo" src="'+esc(photo)+'" alt="日记照片 '+(i+1)+'">'}).join('')+'</div>':'';
     $('readerPage').innerHTML='<div class="reader-date"><div class="reader-date-main"><span class="reader-day">'+esc(Number(p[2]))+'</span><div class="reader-date-meta"><strong>'+esc(weekday(entry.date))+'</strong><br>'+esc(p[0]+'/'+p[1])+'<br>'+esc(entry.mood||'平静')+'</div></div><div class="reader-date-right">'+esc(entry.noteType||'日记')+(entry.pinned?'<br>已置顶':'')+'</div></div>'+(entry.title?'<h1 class="reader-title">'+esc(entry.title)+'</h1>':'')+'<div class="reader-content">'+esc(entry.content||'这一天，留下一点空白。')+'</div>'+photoHtml+'<div class="reader-tags">'+(entry.tags||[]).map(function(t){return '<span># '+esc(t)+'</span>'}).join('')+'</div>';
+    var comments=Array.isArray(entry.charComments)?entry.charComments:[];
+    if(comments.length){
+      var notesHtml='<section class="reader-char-notes"><div class="reader-char-notes-head"><strong>角色留言</strong><span>CHAR NOTES · '+comments.length+'</span></div>';
+      notesHtml+=comments.map(function(note){return '<article class="reader-char-note"><div class="reader-char-note-meta"><strong>'+esc(note.characterName||'CHAR')+'</strong><time>'+esc(String(note.createdAt||'').slice(0,16).replace('T',' '))+'</time></div><p>'+esc(note.text||'')+'</p></article>'}).join('');
+      notesHtml+='</section>'; $('readerPage').insertAdjacentHTML('beforeend',notesHtml);
+    }
     $('readerPrev').disabled=index<=0;$('readerNext').disabled=index<0||index>=list.length-1;
+    $('readerComment').textContent=(entry.charComments&&entry.charComments.length?'CHAR 留言 '+entry.charComments.length:'CHAR 批注');
     $('readerPin').textContent=entry.pinned?'已置顶':'置顶';$('readerPin').classList.toggle('active',!!entry.pinned);
     $('readerFavorite').textContent=entry.favorite?'★ 已收藏':'☆ 收藏';$('readerFavorite').classList.toggle('active',!!entry.favorite);
   }
@@ -607,7 +656,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
           if(!e||!e.id||!e.date||seen[e.id])return;
           var importedPhotos=Array.isArray(e.photos)?e.photos.filter(function(p){return typeof p==='string'&&p.length>0}).slice(0,8):[];
           if(!importedPhotos.length&&typeof e.photo==='string'&&e.photo)importedPhotos=[e.photo];
-          var clean={id:String(e.id),date:String(e.date),title:String(e.title||''),content:String(e.content||''),mood:String(e.mood||'平静'),noteType:e.noteType==='备忘'?'备忘':'日记',pinned:!!e.pinned,tags:Array.isArray(e.tags)?e.tags.map(String).slice(0,12):[],photo:importedPhotos[0]||'',photos:importedPhotos,favorite:!!e.favorite,createdAt:e.createdAt||new Date().toISOString(),updatedAt:e.updatedAt||new Date().toISOString()};
+          var clean={id:String(e.id),date:String(e.date),title:String(e.title||''),content:String(e.content||''),mood:String(e.mood||'平静'),noteType:e.noteType==='备忘'?'备忘':'日记',pinned:!!e.pinned,tags:Array.isArray(e.tags)?e.tags.map(String).slice(0,12):[],photo:importedPhotos[0]||'',photos:importedPhotos,charComments:Array.isArray(e.charComments)?e.charComments.filter(function(n){return n&&typeof n.text==='string'}).slice(0,80):[],favorite:!!e.favorite,createdAt:e.createdAt||new Date().toISOString(),updatedAt:e.updatedAt||new Date().toISOString()};
           entries.push(clean);seen[e.id]=1;added++;
         });
         if(persist()){currentView='home';query='';render();menu.classList.remove('show');showToast('已导入 '+added+' 篇新记录')}
