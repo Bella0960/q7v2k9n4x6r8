@@ -7,7 +7,7 @@
 <meta name="description" content="自由搭配食材，做一道菜给喜欢的角色试吃。">
 <title>投喂厨房 · 小手机</title>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css?v=20261021">
-<link rel="stylesheet" href="css/cooking.css?v=20261025v1">
+<link rel="stylesheet" href="css/cooking.css?v=20261025v2">
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
@@ -33,6 +33,7 @@
       <div class="role-details"><strong id="roleName">选择你的角色</strong><span id="roleDescription">做好之后，TA 会给出反应</span></div>
       <button class="small-outline" id="changeRole">更换</button>
     </div>
+    <div class="taste-memory" id="tasteMemory"><span class="taste-memory-label">口味档案 / TASTE NOTES</span><span id="tasteMemoryText">还没有记录。每次试吃后，可以慢慢了解 TA 喜欢什么。</span></div>
     <div class="role-options" id="roleOptions" hidden></div>
   </section>
 
@@ -74,6 +75,11 @@
     <h3 class="reaction-title" id="reactionTitle">TA 看向了这道菜。</h3>
     <p class="reaction-copy" id="reactionCopy">等一下，看看 TA 会怎么说。</p>
     <div class="reaction-quote" id="reactionQuote" aria-live="polite">正在准备试吃……</div>
+    <div class="taste-feedback" id="tasteFeedback" hidden>
+      <p>这次的反应，符合 TA 的口味吗？</p>
+      <div class="taste-feedback-actions"><button type="button" class="taste-vote" id="tasteLiked">TA 喜欢这道菜</button><button type="button" class="taste-vote" id="tasteDisliked">这次不太合口味</button></div>
+      <span class="taste-feedback-note" id="tasteFeedbackNote">你的选择会记进 TA 的口味档案，影响之后的试吃反应。</span>
+    </div>
     <div class="tasting-actions" id="tastingActions" hidden>
       <button class="secondary-button" id="cookAgain">再做一道</button>
       <button class="primary-button" id="continueChat">继续和 TA 聊聊 <span>↗</span></button>
@@ -87,6 +93,6 @@
   </section>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </main>
-<script src="js/cooking.js?v=20261025v1"></script>
+<script src="js/cooking.js?v=20261025v2"></script>
 </body>
 </html>
