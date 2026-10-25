@@ -817,6 +817,9 @@
   <script>
     /* ================= 数据键名（与项目现有逻辑一致） ================= */
     var PROFILE_KEY = 'myProfile';
+    // 聊天列表顶部封面必须与朋友圈/个人主页封面分开保存。
+    var CHAT_LIST_COVER_KEY = 'chat_list_cover_v1';
+    var CHAT_LIST_COVER_MIGRATED_KEY = 'chat_list_cover_migrated_v1';
     var CHARACTERS_KEY = 'ai_custom_characters';
     var HIDDEN_CHATS_KEY = 'hidden_chat_dialog_ids';
     var MUSIC_KEY = 'home_music_state';
@@ -835,6 +838,31 @@
         if (raw) { var obj = JSON.parse(raw); if (obj && typeof obj === 'object') return obj; }
       } catch (e) {}
       return {};
+    }
+
+    /* 聊天列表封面独立存储。首次只迁移一次旧封面，之后不再跟随 myProfile.cover。 */
+    function loadChatListCover() {
+      try {
+        var saved = localStorage.getItem(CHAT_LIST_COVER_KEY);
+        if (saved) return saved;
+        if (localStorage.getItem(CHAT_LIST_COVER_MIGRATED_KEY) !== '1') {
+          var legacy = loadProfile().cover || '';
+          if (legacy) localStorage.setItem(CHAT_LIST_COVER_KEY, legacy);
+          localStorage.setItem(CHAT_LIST_COVER_MIGRATED_KEY, '1');
+          return legacy;
+        }
+      } catch (e) {}
+      return '';
+    }
+
+    function saveChatListCover(dataUrl) {
+      try {
+        localStorage.setItem(CHAT_LIST_COVER_KEY, dataUrl || '');
+        return true;
+      } catch (err) {
+        alert('封面保存失败：本机存储空间不足');
+        return false;
+      }
     }
 
     /* 昵称：nickname 为主，name 仅作旧数据兜底显示；保存一律写 nickname，不改数据结构 */
@@ -900,8 +928,9 @@
       var profile = loadProfile();
 
       var coverBox = document.getElementById('coverBox');
-      if (profile.cover) {
-        coverBox.style.backgroundImage = "url('" + profile.cover + "')";
+      var chatListCover = loadChatListCover();
+      if (chatListCover) {
+        coverBox.style.backgroundImage = "url('" + chatListCover + "')";
       } else {
         coverBox.style.backgroundImage = '';
       }
@@ -931,7 +960,7 @@
       var file = e.target.files[0];
       if (!file) return;
       compressImage(file, 1080, 'contain', function (dataUrl) {
-        if (dataUrl && mergeProfile({ cover: dataUrl })) renderProfile();
+        if (dataUrl && saveChatListCover(dataUrl)) renderProfile();
       });
       e.target.value = '';
     });
