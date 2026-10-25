@@ -139,6 +139,78 @@ body.readers-mode .reader-side .btn{padding:13px 14px}
  body.readers-mode .reader-post{gap:9px}
  body.readers-mode .reader-filters{display:grid;grid-template-columns:1fr 1fr}
 }
+
+/* Real reader-community structure: editorial header, spacious feed, tools separated */
+body.readers-mode .reader-community-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,.65fr);gap:28px;align-items:end;padding:28px 0 30px;border-bottom:1px solid #222}
+body.readers-mode .reader-kicker{font-size:9px;letter-spacing:.2em;color:#999;margin-bottom:13px}
+body.readers-mode .reader-title{font:400 clamp(38px,6vw,64px)/.98 Georgia,"Songti SC",serif;letter-spacing:-.06em;margin:0 0 13px}
+body.readers-mode .reader-subtitle{font-size:12px;line-height:1.95;color:#777;margin:0;max-width:450px}
+body.readers-mode .reader-book{border-left:1px solid #e5e5e0;padding:4px 0 4px 18px;min-width:0}
+body.readers-mode .reader-book-label{font-size:9px;letter-spacing:.16em;color:#aaa;margin-bottom:8px}
+body.readers-mode .reader-book-title{font:italic 22px/1.3 Georgia,"Songti SC",serif;overflow-wrap:anywhere;margin-bottom:6px}
+body.readers-mode .reader-book-meta{font-size:10px;line-height:1.8;color:#888}
+body.readers-mode .reader-dashboard{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid #e8e8e5;margin-bottom:31px}
+body.readers-mode .reader-metric{padding:17px 15px 18px 0;border-right:1px solid #e8e8e5}
+body.readers-mode .reader-metric+.reader-metric{padding-left:18px}
+body.readers-mode .reader-metric:last-child{border-right:0}
+body.readers-mode .reader-metric-label{font-size:10px;color:#999;margin-bottom:7px}
+body.readers-mode .reader-metric-value{font:400 27px Georgia,serif;letter-spacing:-.04em}
+body.readers-mode .reader-community-layout{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:clamp(28px,5vw,62px);align-items:start}
+body.readers-mode .reader-feed-title{font:400 29px Georgia,"Songti SC",serif;letter-spacing:-.04em}
+body.readers-mode .reader-feed-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:0 0 15px;border-bottom:1px solid #222}
+body.readers-mode .reader-feed-count{font-size:10px;color:#999}
+body.readers-mode .reader-filters{display:flex;gap:10px;padding:15px 0 14px;border-bottom:1px solid #e8e8e5}
+body.readers-mode .reader-filters .field{margin:0;flex:1;min-width:0;gap:5px}
+body.readers-mode .reader-filters .field label{font-size:9px;color:#999}
+body.readers-mode .reader-filters select{border-radius:2px;background:#fff;padding:10px;font-size:11px}
+body.readers-mode .reader-post{display:grid;grid-template-columns:40px minmax(0,1fr);gap:14px;padding:24px 0 25px;border-bottom:1px solid #e8e8e5}
+body.readers-mode .reader-avatar{width:38px;height:38px;border:1px solid #e0e0dc;background:#f7f7f5;display:grid;place-items:center;font:italic 16px Georgia,serif;color:#555}
+body.readers-mode .reader-post-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+body.readers-mode .reader-name{font-size:12px;font-weight:600;color:#222}
+body.readers-mode .reader-badge{font-size:9px;color:#999}
+body.readers-mode .reader-chapter-label{font-size:10px;color:#999;margin:9px 0 11px}
+body.readers-mode .reader-post-text{font-size:13px;line-height:2;color:#444;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+body.readers-mode .reader-post-time{font-size:9px;color:#aaa;margin-top:13px}
+body.readers-mode .reader-side{border-top:1px solid #222;padding-top:15px}
+body.readers-mode .reader-side-title{font:400 22px Georgia,serif;margin:0 0 6px}
+body.readers-mode .reader-side-hint{font-size:10px;line-height:1.9;color:#999;margin:0 0 17px}
+body.readers-mode .reader-side .actions{display:grid;grid-template-columns:1fr;gap:9px;margin:0}
+body.readers-mode .reader-side .btn{border-radius:2px;padding:12px;text-align:left}
+body.readers-mode .reader-side .btn.dark{background:#171717;color:#fff}
+body.readers-mode .reader-side #chapterReaderStats{margin-top:25px}
+body.readers-mode .reader-side #chapterReaderStats>div{border-top:1px solid #e8e8e5!important}
+body.readers-mode .reader-side #chapterReaderStats>div>div:first-child{font:400 20px Georgia,serif!important}
+body.readers-mode .reader-side #chapterReaderStats>div>div{font-size:10px!important}
+body.readers-mode .reader-empty{padding:46px 18px;text-align:center;border-bottom:1px solid #e8e8e5;color:#999;font-size:12px;line-height:2}
+body.readers-mode .reader-empty strong{display:block;font:400 24px Georgia,serif;color:#333;margin-bottom:7px}
+body.readers-mode .reader-disclaimer{font-size:9px;line-height:1.8;color:#aaa;margin-top:22px}
+@media(max-width:760px){
+ body.readers-mode .scroll{padding-left:20px;padding-right:20px}
+ body.readers-mode .reader-community-hero{grid-template-columns:1fr;gap:17px;padding:24px 0 22px}
+ body.readers-mode .reader-title{font-size:43px}
+ body.readers-mode .reader-book{border-left:0;border-top:1px solid #e5e5e0;padding:11px 0 0}
+ body.readers-mode .reader-book-title{font-size:19px}
+ body.readers-mode .reader-dashboard{margin-bottom:26px}
+ body.readers-mode .reader-metric{padding:14px 8px 15px 0}
+ body.readers-mode .reader-metric+.reader-metric{padding-left:10px}
+ body.readers-mode .reader-metric-value{font-size:23px}
+ body.readers-mode .reader-community-layout{grid-template-columns:1fr;gap:30px}
+ body.readers-mode .reader-feed-title{font-size:26px}
+ body.readers-mode .reader-post{grid-template-columns:32px minmax(0,1fr);gap:11px;padding:21px 0 22px}
+ body.readers-mode .reader-avatar{width:31px;height:31px;font-size:13px}
+ body.readers-mode .reader-post-text{font-size:13px;line-height:2}
+ body.readers-mode .reader-side{order:2;padding-top:18px}
+ body.readers-mode .reader-side .actions{grid-template-columns:1fr 1fr}
+ body.readers-mode .reader-filters{gap:8px}
+ body.readers-mode .reader-filters select{padding:10px 7px;font-size:10px}
+}
+@media(max-width:380px){
+ body.readers-mode .scroll{padding-left:16px;padding-right:16px}
+ body.readers-mode .reader-title{font-size:37px}
+ body.readers-mode .reader-filters{display:grid;grid-template-columns:1fr 1fr}
+ body.readers-mode .reader-metric+.reader-metric{padding-left:6px}
+ body.readers-mode .reader-metric-value{font-size:21px}
+}
 </style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / WRITING DESK</span><button class="btn" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
 <section class="hero"><div class="kicker">YOUR STORIES · YOUR AUDIENCE</div><h1>Write your<br>own world.</h1><p>从一份大纲开始，写出自己的故事。发布后，让模拟读者阅读、追更、留下评论。</p></section>
 <div class="stats"><div class="stat"><small>我的作品</small><strong id="workCount">0</strong></div><div class="stat"><small>累计字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动</small><strong id="reactionCount">0</strong></div></div>
@@ -177,7 +249,7 @@ function renderChapters(){const root=$('chapters'),w=current();root.innerHTML=''
 function moveChapter(id,d){const w=current(),i=w.chapters.findIndex(c=>c.id===id),j=i+d;if(j<0||j>=w.chapters.length)return;[w.chapters[i],w.chapters[j]]=[w.chapters[j],w.chapters[i]];persist();renderChapters()}
 function renderVersions(){const w=current(),c=w?.chapters.find(x=>x.id===activeChapterId);const root=$('versionList');root.innerHTML='';if(!c||!c.versions?.length)return;root.innerHTML='<label class="field" style="font-size:10px;color:#888">历史版本 · 点击恢复（当前正文会先备份）</label>';c.versions.slice().reverse().forEach((v,i)=>{const b=document.createElement('button');b.className='btn';b.style.margin='0 6px 6px 0';b.textContent='版本 '+(c.versions.length-i)+' · '+new Date(v.at).toLocaleString();b.onclick=()=>{c.versions.push({body:$('chapterBody').value,at:Date.now()});$('chapterBody').value=v.body;persist();toast('已载入旧稿，请保存以确认')};root.appendChild(b)})}
 function saveChapter(publish){const w=syncWork();let c=w.chapters.find(x=>x.id===activeChapterId);if(!c){c={id:uid(),title:'',body:'',versions:[],published:false};w.chapters.push(c);activeChapterId=c.id}if(c.body!==$('chapterBody').value&&c.body){c.versions=c.versions||[];c.versions.push({body:c.body,at:Date.now()});if(c.versions.length>20)c.versions.shift()}c.title=$('chapterTitle').value.trim()||'未命名章节';c.body=$('chapterBody').value;c.updated=Date.now();if(publish){const wasPublished=!!c.published;c.published=true;w.status='连载中';if(!wasPublished){w.views+=Math.floor(15+Math.random()*90);w.likes+=Math.floor(Math.random()*9)+1;w.follows+=Math.floor(Math.random()*5);w.notes.unshift({id:uid(),type:'发布',text:'新章节《'+c.title+'》已发布，读者可以开始阅读。',at:Date.now()})}else{w.notes.unshift({id:uid(),type:'更新',text:'章节《'+c.title+'》已更新，模拟读者可以看到新版本。',at:Date.now()})}}persist();renderAll();fillEditor();toast(publish?'章节已发布给模拟读者':'章节已保存')}
-function renderAudience(){const w=current();$('views').textContent=w?.views||0;$('likes').textContent=w?.likes||0;$('follows').textContent=w?.follows||0;const root=$('readerNotes');root.innerHTML='';if(!w||!w.notes.length){root.innerHTML='<div class="empty">发布章节后，这里会出现读者留言与连载反馈。</div>';return}w.notes.forEach(n=>{const el=document.createElement('div');el.className='reader-note';el.innerHTML='<strong>'+esc(n.type==='读者'?'模拟读者来信':'作品动态')+'</strong><p>'+esc(n.text)+'</p><small>'+new Date(n.at).toLocaleString()+'</small>';root.appendChild(el)})}
+function renderAudience(){const w=current();updateReaderCommunityHeader();$('views').textContent=w?.views||0;$('likes').textContent=w?.likes||0;$('follows').textContent=w?.follows||0;const root=$('readerNotes');root.innerHTML='';if(!w||!w.notes.length){root.innerHTML='<div class="empty">发布章节后，这里会出现读者留言与连载反馈。</div>';return}w.notes.forEach(n=>{const el=document.createElement('div');el.className='reader-note';el.innerHTML='<strong>'+esc(n.type==='读者'?'模拟读者来信':'作品动态')+'</strong><p>'+esc(n.text)+'</p><small>'+new Date(n.at).toLocaleString()+'</small>';root.appendChild(el)})}
 const readers=[['细节观察型读者','我注意到前面那个小细节了！感觉后面一定会有呼应，蹲后续。'],['角色厨','这个角色越写越立体了，尤其是他说话的方式，很有辨识度。'],['剧情分析型读者','这一章像是在埋伏笔。我先记下来，等更新后回来验证猜想。'],['沉浸式读者','读到最后突然有点舍不得，希望下一章快点来。'],['理性读者','节奏比上一章更稳了，如果再多一点环境细节，画面感会更强。'],['催更读者','已收藏！作者请继续更新，我真的很好奇接下来会发生什么。']];
 function randomReaderFeedback(){const w=current();if(!w){toast('先创建或打开一本作品');return}const pub=w.chapters.filter(c=>c.published);if(!pub.length){toast('先保存并发布至少一章');return}const r=readers[Math.floor(Math.random()*readers.length)],c=pub[Math.floor(Math.random()*pub.length)];w.notes.unshift({id:uid(),type:'读者',text:'《'+c.title+'》：'+r[1],reader:r[0],at:Date.now()});w.views+=Math.floor(8+Math.random()*45);if(Math.random()>.35)w.likes++;if(Math.random()>.55)w.follows++;persist();renderAudience();renderStats();toast(r[0]+' 留下了评论')}
 function renderAll(){renderWorks();renderStats();renderChapters();renderAudience();renderBible();renderChapterPlan()}
@@ -270,6 +342,36 @@ function buildStudioPages(){
 
 buildStudioPages();
 if(NOVEL_PAGE==='readers'){const n=document.createElement('nav');n.className='independent-nav';[['novel.html','作品书架'],['novel-setup.html','作品设定'],['novel-bible.html','故事资料库'],['novel-planning.html','章节策划'],['novel-editor.html','正文编辑'],['novel-continuity.html','一致性检查'],['novel-readers.html','作者模拟器']].forEach(([href,label])=>{const a=document.createElement('a');a.href=href;a.textContent=label;if(href==='novel-readers.html')a.setAttribute('aria-current','page');n.appendChild(a)});$('pane-audience').prepend(n)};
+
+function buildReaderCommunity(){
+ if(NOVEL_PAGE!=='readers')return;
+ const pane=$('pane-audience');if(!pane||pane.dataset.communityBuilt)return;pane.dataset.communityBuilt='1';
+ const nav=pane.querySelector('.independent-nav'),oldTitle=pane.querySelector('.section-title'),oldHint=oldTitle?.nextElementSibling,stats=pane.querySelector('.stats'),fields=[...pane.querySelectorAll(':scope > .field')],chapterStats=$('chapterReaderStats'),actions=$('simulateReaders')?.closest('.actions'),notes=$('readerNotes');
+ const hero=document.createElement('section');hero.className='reader-community-hero';hero.innerHTML='<div><div class="reader-kicker">READERS / COMMUNITY</div><h1 class="reader-title">The reading<br>room.</h1><p class="reader-subtitle">每一条评论，都从某一页故事开始。看看读者停留在哪里、记住了什么。</p></div><div class="reader-book"><div class="reader-book-label">NOW READING</div><div class="reader-book-title" id="readerBookTitle">尚未选择作品</div><div class="reader-book-meta" id="readerBookMeta">打开作品并发布章节后，这里会显示作品信息。</div></div>';
+ if(nav)nav.after(hero);else pane.prepend(hero);
+ if(stats){stats.className='reader-dashboard';stats.querySelectorAll('.stat').forEach(el=>{el.className='reader-metric';const small=el.querySelector('small'),strong=el.querySelector('strong');if(small){small.className='reader-metric-label'}if(strong){strong.className='reader-metric-value'}})}
+ const layout=document.createElement('div');layout.className='reader-community-layout';
+ const feed=document.createElement('section');feed.className='reader-feed';
+ const feedHead=document.createElement('div');feedHead.className='reader-feed-head';feedHead.innerHTML='<div class="reader-feed-title">读者评论</div><div class="reader-feed-count" id="readerFeedCount">最新动态</div>';
+ const filterWrap=document.createElement('div');filterWrap.className='reader-filters';
+ fields.forEach(el=>filterWrap.appendChild(el));
+ if(notes){feed.append(feedHead,filterWrap,notes)}
+ const side=document.createElement('aside');side.className='reader-side';side.innerHTML='<h2 class="reader-side-title">作者工作台</h2><p class="reader-side-hint">生成基于章节正文的模拟读者反馈，或导出当前作品备份。</p>';
+ if(actions)side.appendChild(actions);if(chapterStats)side.appendChild(chapterStats);
+ layout.append(feed,side);
+ if(stats)stats.after(layout);else hero.after(layout);
+ if(oldTitle)oldTitle.remove();if(oldHint)oldHint.remove();
+ const footer=pane.nextElementSibling;if(footer&&footer.classList.contains('footer'))footer.classList.add('reader-disclaimer');
+}
+function updateReaderCommunityHeader(){
+ const w=current(),title=$('readerBookTitle'),meta=$('readerBookMeta'),count=$('readerFeedCount');
+ if(title)title.textContent=w?.title||'尚未选择作品';
+ if(meta)meta.textContent=w?((w.genre||'小说')+' · '+(w.status||'构思中')+' · '+(w.chapters||[]).filter(c=>c.published).length+' 章已发布'):'打开作品并发布章节后，这里会显示作品信息。';
+ const notes=w?.notes||[];if(count)count.textContent=notes.length+' 条动态';
+}
+
+buildReaderCommunity();
 load();
+updateReaderCommunityHeader();
 })();
 </script></body></html>
