@@ -1223,14 +1223,53 @@ document.getElementById('importFile').addEventListener('change', function(e){
   var draft = null;
   var activeTab = 'visual';
   var VISUAL_PRESET_KEY = 'beauty_visual_presets_v1';
-  function getVisualPresets(){ try { return JSON.parse(localStorage.getItem(VISUAL_PRESET_KEY))||[]; } catch(e){ return []; } }
-  function setVisualPresets(l){ localStorage.setItem(VISUAL_PRESET_KEY, JSON.stringify(l)); }
+  var VISUAL_PRESET_DELETED_KEY = 'beauty_visual_presets_deleted_v1';
+
+  function readVisualPresetDeletedIds(){
+    try {
+      var ids = JSON.parse(localStorage.getItem(VISUAL_PRESET_DELETED_KEY) || '[]');
+      return Array.isArray(ids) ? ids.filter(function(id){ return typeof id === 'string'; }) : [];
+    } catch(e){ return []; }
+  }
+  function getVisualPresets(){
+    var list = [];
+    try {
+      var value = JSON.parse(localStorage.getItem(VISUAL_PRESET_KEY) || '[]');
+      list = Array.isArray(value) ? value.filter(function(p){ return p && typeof p === 'object'; }) : [];
+    } catch(e){ list = []; }
+    var deleted = readVisualPresetDeletedIds();
+    var changed = false;
+    list.forEach(function(p){
+      if (!p.id) {
+        p.id = 'visual-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,9);
+        changed = true;
+      }
+    });
+    list = list.filter(function(p){ return deleted.indexOf(p.id) === -1; });
+    if (changed) setVisualPresets(list);
+    return list;
+  }
+  function setVisualPresets(list){
+    var deleted = readVisualPresetDeletedIds();
+    var clean = (Array.isArray(list) ? list : []).filter(function(p){
+      return p && p.id && deleted.indexOf(p.id) === -1;
+    });
+    try {
+      var serialized = JSON.stringify(clean);
+      localStorage.setItem(VISUAL_PRESET_KEY, serialized);
+      if (localStorage.getItem(VISUAL_PRESET_KEY) !== serialized) throw new Error('storage verification failed');
+      return true;
+    } catch(e) {
+      showToast('预设保存失败：请检查浏览器存储空间');
+      return false;
+    }
+  }
   function renderVisualPresets(){
     var list = getVisualPresets();
     var box = document.getElementById('vbVisualPresetList');
     if (!list.length){ box.innerHTML = '<span style="font-size:11px;color:#aaa">还没有预设，调好后点上面保存</span>'; return; }
     box.innerHTML = list.map(function(p,i){
-      return '<span class="vb-preset-chip" data-i="'+i+'">'+esc(p.name)+'<button data-del="'+i+'">×</button></span>';
+      return '<span class="vb-preset-chip" data-i="'+i+'" data-preset-id="'+esc(p.id)+'">'+esc(p.name)+'<button data-del="'+i+'" aria-label="删除预设 '+esc(p.name)+'">×</button></span>';
     }).join('');
   }
   function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
@@ -1238,10 +1277,15 @@ document.getElementById('importFile').addEventListener('change', function(e){
     var name = prompt('给这个预设起个名：');
     if (!name || !name.trim()) return;
     var list = getVisualPresets();
-    list.push({name: name.trim(), data: JSON.parse(JSON.stringify(draft))});
-    setVisualPresets(list);
-    renderVisualPresets();
-    showToast('已保存预设「'+name.trim()+'」');
+    list.push({
+      id: 'visual-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,9),
+      name: name.trim(),
+      data: JSON.parse(JSON.stringify(draft))
+    });
+    if (setVisualPresets(list)) {
+      renderVisualPresets();
+      showToast('主题预设已保存：「'+name.trim()+'」');
+    }
   });
   document.getElementById('btnPreset').addEventListener('click', function(){
     document.getElementById('vbPresetOverlay').classList.add('show');
@@ -1254,15 +1298,36 @@ document.getElementById('importFile').addEventListener('change', function(e){
     var del = e.target.closest('[data-del]');
     if (del){
       var list = getVisualPresets();
-      list.splice(Number(del.getAttribute('data-del')),1);
-      setVisualPresets(list); renderVisualPresets();
+      var removeIndex = Number(del.getAttribute('data-del'));
+      var removedPreset = list[removeIndex];
+      if (!removedPreset) return;
+      try {
+        var deletedIds = readVisualPresetDeletedIds();
+        if (deletedIds.indexOf(removedPreset.id) === -1) deletedIds.push(removedPreset.id);
+        var deletedSerialized = JSON.stringify(deletedIds);
+        localStorage.setItem(VISUAL_PRESET_DELETED_KEY, deletedSerialized);
+        if (localStorage.getItem(VISUAL_PRESET_DELETED_KEY) !== deletedSerialized) {
+          throw new Error('delete verification failed');
+        }
+      } catch(error) {
+        showToast('删除未保存：请检查浏览器存储权限');
+        return;
+      }
+      list.splice(removeIndex,1);
+      if (setVisualPresets(list)) {
+        renderVisualPresets();
+        showToast('预设已删除并记住');
+      }
       return;
     }
     var chip = e.target.closest('.vb-preset-chip');
     if (!chip) return;
     var list = getVisualPresets();
     var p = list[Number(chip.getAttribute('data-i'))];
-    if (!p) return;
+    if (!p || readVisualPresetDeletedIds().indexOf(p.id) !== -1) {
+      renderVisualPresets();
+      return;
+    }
     draft = JSON.parse(JSON.stringify(p.data));
     setRange('vbAvatarSize', draft.avatarSize, 'px', 30);
     setRange('vbAvatarRadius', draft.avatarRadius, '%', 50);
