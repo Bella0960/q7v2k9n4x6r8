@@ -401,7 +401,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
         var photos=[];for(var i=0;i<8;i++){var data=map[photoKey(entry.id,i)];if(data)photos.push(data);else if(i===0&&entry.photo)photos.push(entry.photo);else break}
         if(photos.length){entry.photos=photos;entry.photo=photos[0]}
       });
-      var legacy=entries.filter(function(entry){return (Array.isArray(entry.photos)&&entry.photos.length)||(entry.photo&&/^data:image\\//i.test(entry.photo))});
+      var legacy=entries.filter(function(entry){return (Array.isArray(entry.photos)&&entry.photos.length)||(entry.photo&&/^data:image\//i.test(entry.photo))});
       return legacy.reduce(function(chain,entry){return chain.then(function(){var photos=photosFor(entry);return photos.reduce(function(promise,photo,index){return promise.then(function(){return putPhoto(photoKey(entry.id,index),photo)})},Promise.resolve()).then(function(){delete entry.photos;delete entry.photo})})},Promise.resolve()).then(function(){if(legacy.length)persist();return {migrated:legacy.length}})
     }).catch(function(error){photoDbError=String(error&&error.message||error);return {error:photoDbError}})
   }
@@ -448,7 +448,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   }
   function compressExistingPhotos(){
     var candidates=[];
-    entries.forEach(function(entry){photosFor(entry).forEach(function(photo,index){if(/^data:image\\//i.test(photo))candidates.push({entry:entry,index:index,photo:photo})})});
+    entries.forEach(function(entry){photosFor(entry).forEach(function(photo,index){if(/^data:image\//i.test(photo))candidates.push({entry:entry,index:index,photo:photo})})});
     if(!candidates.length){showToast('没有可整理的照片');return}
     if(!window.confirm('将逐张压缩现有日记照片，尽量保留画面。原照片会被较小版本替换，建议先导出备份。是否继续？'))return;
     var index=0,changed=0;
