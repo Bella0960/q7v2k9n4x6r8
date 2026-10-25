@@ -526,7 +526,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   menu.addEventListener('click',function(e){if(e.target===menu)closeMenu()});
   $('exportBtn').addEventListener('click',exportBackup);$('importBtn').addEventListener('click',function(){$('importFile').click()});
   $('importFile').addEventListener('change',function(){importBackup(this.files&&this.files[0]);this.value=''});
-  $('clearSearchBtn').addEventListener('click',function(){query='';moodFilter='全部';currentView='home';closeMenu();render();showToast('已清除筛选')});
+  $('clearSearchBtn').addEventListener('click',function(){query='';moodFilter='全部';noteTypeFilter='全部';currentView='home';closeMenu();render();showToast('已清除筛选')});
   $('closeEditor').addEventListener('click',closeEditor);$('cancelEditor').addEventListener('click',closeEditor);
   editor.addEventListener('click',function(e){if(e.target===editor)closeEditor()});
   $('saveEntry').addEventListener('click',saveEntry);$('deleteEntry').addEventListener('click',deleteCurrent);
