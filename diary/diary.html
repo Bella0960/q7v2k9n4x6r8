@@ -300,9 +300,9 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   ];
   var promptIndex=Math.floor(Date.now()/86400000)%prompts.length;
   var root=document.getElementById('viewRoot'), scroll=document.getElementById('appScroll');
-  var reader=$('readerBackdrop'), readerId=null;
   var editor=document.getElementById('editorBackdrop'), menu=document.getElementById('menuBackdrop');
   var $=function(id){return document.getElementById(id)};
+  var reader=$('readerBackdrop'), readerId=null;
   function loadEntries(){
     try{var v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v.filter(function(x){return x&&x.id&&x.date;}):[]}
     catch(e){return []}
