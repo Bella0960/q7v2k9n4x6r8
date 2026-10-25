@@ -422,7 +422,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var roles=diaryCharacters();
     if(!roles.length){showToast('还没有可用角色，请先在小手机里添加角色');return}
     $('annotationCharacter').innerHTML=roles.map(function(role,index){return '<option value="'+index+'">'+esc(role.name)+'</option>'}).join('');
-    var last=(entry.charComments||[]).slice(-1)[0];
+    var savedComments=Array.isArray(entry.charComments)?entry.charComments:[];var last=savedComments.slice(-1)[0];
     if(last){var chosen=roles.findIndex(function(role){return role.id===String(last.characterId)});if(chosen>=0)$('annotationCharacter').value=String(chosen)}
     $('annotationPrompt').value='';
     $('annotationStatus').textContent='手动点击“生成角色留言”后才会调用 API。';
