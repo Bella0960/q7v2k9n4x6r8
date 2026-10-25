@@ -575,6 +575,9 @@
   <script>
     var PROFILE_KEY = 'myProfile';
     var MOMENTS_KEY = 'moments';
+    // 我的主页封面单独保存，避免与朋友圈封面/其他背景共用 myProfile.cover。
+    var MY_HOME_COVER_KEY = 'my_home_cover_v1';
+    var MY_HOME_COVER_MIGRATED_KEY = 'my_home_cover_migrated_v1';
 
     var AVATAR_FALLBACK_SVG =
       '<svg viewBox="0 0 24 24" fill="none" stroke="#A0A0A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
@@ -595,6 +598,36 @@
         }
       } catch (e) {}
       return {};
+    }
+
+    function loadMyHomeCover() {
+      try {
+        var saved = localStorage.getItem(MY_HOME_COVER_KEY);
+        if (saved) return saved;
+        // 仅首次迁移旧封面，保留用户原来的显示效果；之后不再跟随 myProfile.cover。
+        if (localStorage.getItem(MY_HOME_COVER_MIGRATED_KEY) !== '1') {
+          var legacy = readProfile().cover || '';
+          if (legacy) localStorage.setItem(MY_HOME_COVER_KEY, legacy);
+          localStorage.setItem(MY_HOME_COVER_MIGRATED_KEY, '1');
+          return legacy;
+        }
+      } catch (e) {}
+      return '';
+    }
+
+    function saveMyHomeCover(dataUrl) {
+      try {
+        localStorage.setItem(MY_HOME_COVER_KEY, dataUrl || '');
+        localStorage.setItem(MY_HOME_COVER_MIGRATED_KEY, '1');
+        return true;
+      } catch (err) {
+        if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
+          alert('存储空间不足，请清理空间后重试');
+        } else {
+          alert('封面保存失败，请重试');
+        }
+        return false;
+      }
     }
 
     function loadMoments() {
@@ -658,17 +691,18 @@
       }
 
       var coverImg = document.getElementById('coverImg');
-      if (p.cover) {
-        coverImg.src = p.cover;
+      var myHomeCover = loadMyHomeCover();
+      if (myHomeCover) {
+        coverImg.src = myHomeCover;
         coverImg.style.display = 'block';
       } else {
         coverImg.removeAttribute('src');
         coverImg.style.display = 'none';
       }
 
-      /* 壁纸明暗自适应：深色封面 → 整页文字转白，浅色封面保持黑字 */
+      /* 明暗自适应只读取我的主页专属封面，不再读取共享的 myProfile.cover */
       if (window.MAOMAOContrast && typeof window.MAOMAOContrast.apply === 'function') {
-        window.MAOMAOContrast.apply(p.cover || '');
+        window.MAOMAOContrast.apply(myHomeCover || '');
       }
 
       return { id: p.id || '', name: name === '未设置昵称' ? '' : p.nickname || '' };
@@ -1134,18 +1168,8 @@
       compressCover(file, function (dataUrl) {
         if (!dataUrl) return;
         try {
-          var p = readProfile();   // 读-改-写，保留其他字段
-          p.cover = dataUrl;
-          try {
-            localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
-          } catch (err) {
-            if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
-              alert('存储空间不足，请压缩图片');
-            } else {
-              alert('保存失败，请更换图片重试');
-            }
-            return;
-          }
+          // 只写入我的主页专属封面键，绝不改动 myProfile.cover。
+          if (!saveMyHomeCover(dataUrl)) return;
           var me = renderProfile();
           currentMe = me;
           renderMyMoments(me);
