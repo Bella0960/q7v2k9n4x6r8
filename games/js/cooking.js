@@ -149,7 +149,7 @@ function continueChat(){
  try{localStorage.setItem(PENDING_PREFIX+String(activeRole.id),JSON.stringify(pending))}catch(e){}
  location.href='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&cooking=1';
 }
-$('backButton').onclick=function(){if(history.length>0&&history.state)history.back();else location.href='games.html'};
+$('backButton').onclick=function(){if(window.history.length>1)window.history.back();else location.href='games.html'};
 $('changeRole').onclick=function(){var box=$('roleOptions');if(!roles.length){showToast('暂未找到角色，请先在聊天角色管理中创建');return}box.hidden=!box.hidden;if(!box.hidden){box.innerHTML='';roles.forEach(function(r){var b=document.createElement('button');b.type='button';b.className='role-option'+(String(r.id)===String(activeRole.id)?' active':'');b.textContent=roleName(r);b.onclick=function(){activeRole=r;localStorage.setItem(ROLE_KEY,String(r.id));renderRole();box.hidden=true};box.appendChild(b)})}};
 $('clearIngredients').onclick=function(){selected={};renderIngredients();renderPot()};
 $('cookButton').onclick=cook;$('editDish').onclick=function(){setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
