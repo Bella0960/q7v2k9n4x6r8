@@ -5009,4 +5009,32 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindShortcuts);else bindShortcuts();
 })();
 </script>
+
+    <script>
+    // 投喂厨房只把菜品情境放进输入框草稿，由用户确认后再发送；不自动发消息。
+    (function(){
+      try {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('cooking') !== '1') return;
+        var roleId = params.get('id');
+        if (!roleId) return;
+        var key = 'maomao_cooking_pending_' + String(roleId);
+        var raw = localStorage.getItem(key);
+        if (!raw) return;
+        localStorage.removeItem(key);
+        var dish = JSON.parse(raw);
+        if (!dish || !dish.dishName) return;
+        var draft = '我刚刚在投喂厨房给你做了一道「' + dish.dishName + '」。食材有：' + (Array.isArray(dish.ingredients) ? dish.ingredients.join('、') : '几样特别的食材') + '。风味是' + (dish.flavor || '自由搭配') + '。你刚才试吃时说：“' + (dish.reaction || '还没来得及评价') + '”。我们继续聊聊这道菜吧。';
+        function fillDraft(){
+          var input = document.getElementById('chat-input');
+          if (!input || input.value.trim()) return false;
+          input.value = draft;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.focus({ preventScroll: true });
+          return true;
+        }
+        if (!fillDraft()) window.addEventListener('load', function(){ setTimeout(fillDraft, 350); }, { once: true });
+      } catch (e) { console.warn('投喂厨房上下文未能载入', e); }
+    })();
+    </script>
 </body></html>
