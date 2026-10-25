@@ -220,6 +220,11 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 .reader-nav button:disabled{opacity:.25}
 .reader-actions{display:flex;gap:12px}
 .reader-actions button.active{font-weight:700}
+.reader-page.turn-next{animation:readerTurnNext .24s ease both}
+.reader-page.turn-prev{animation:readerTurnPrev .24s ease both}
+@keyframes readerTurnNext{from{opacity:.45;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
+@keyframes readerTurnPrev{from{opacity:.45;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
+@media(prefers-reduced-motion:reduce){.reader-page.turn-next,.reader-page.turn-prev{animation:none}}
 @media(max-width:500px){.reader-backdrop{padding:0;background:#fff}.reader-book{width:100%;height:100dvh;border:0;box-shadow:none}.reader-toolbar{padding-top:calc(12px + env(safe-area-inset-top,0px))}.reader-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}.reader-page{padding-top:28px}}
 </style>
 </head>
@@ -363,8 +368,32 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   }
   function moveReader(direction){
     var list=readerEntries(),index=list.findIndex(function(e){return e.id===readerId}),next=list[index+direction];
-    if(next){readerId=next.id;renderReader();$('readerPage').scrollTop=0}
+    if(next){
+      var page=$('readerPage');
+      page.classList.remove('turn-next','turn-prev');
+      readerId=next.id;renderReader();page.scrollTop=0;
+      page.classList.add(direction>0?'turn-next':'turn-prev');
+    }
   }
+  var readerTouchStart=null;
+  $('readerPage').addEventListener('touchstart',function(e){
+    if(!e.touches||e.touches.length!==1)return;
+    readerTouchStart={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  },{passive:true});
+  $('readerPage').addEventListener('touchend',function(e){
+    if(!readerTouchStart||!e.changedTouches||!e.changedTouches.length){readerTouchStart=null;return}
+    var dx=e.changedTouches[0].clientX-readerTouchStart.x;
+    var dy=e.changedTouches[0].clientY-readerTouchStart.y;
+    readerTouchStart=null;
+    if(Math.abs(dx)<65||Math.abs(dx)<Math.abs(dy)*1.25)return;
+    moveReader(dx<0?1:-1);
+  },{passive:true});
+  document.addEventListener('keydown',function(e){
+    if(!reader.classList.contains('show'))return;
+    if(e.key==='Escape')closeReader();
+    else if(e.key==='ArrowRight')moveReader(1);
+    else if(e.key==='ArrowLeft')moveReader(-1);
+  });
   function renderEntryCard(e){
     var tags=(e.tags||[]).slice(0,4).map(function(t){return '<span class="tiny-tag"># '+esc(t)+'</span>'}).join('');
     var text=(e.content||'').trim();
