@@ -357,13 +357,61 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   var editor=document.getElementById('editorBackdrop'), menu=document.getElementById('menuBackdrop');
   var $=function(id){return document.getElementById(id)};
   var reader=$('readerBackdrop'), readerId=null, annotationBackdrop=$('annotationBackdrop'), annotationBusy=false;
+  var DIARY_PHOTO_DB='maomao_diary_photo_store_v1',DIARY_PHOTO_STORE='photos',photoDb=null,photoDbReady=null,photoDbError='';
+  function openPhotoDB(){
+    if(photoDbReady)return photoDbReady;
+    photoDbReady=new Promise(function(resolve,reject){
+      if(!window.indexedDB){photoDbError='当前浏览器不支持 IndexedDB';reject(new Error(photoDbError));return}
+      var request=indexedDB.open(DIARY_PHOTO_DB,1);
+      request.onupgradeneeded=function(){var db=request.result;if(!db.objectStoreNames.contains(DIARY_PHOTO_STORE))db.createObjectStore(DIARY_PHOTO_STORE,{keyPath:'key'})};
+      request.onsuccess=function(){photoDb=request.result;photoDb.onversionchange=function(){photoDb.close();photoDb=null};resolve(photoDb)};
+      request.onerror=function(){photoDbError='无法打开照片数据库';reject(request.error||new Error(photoDbError))};
+      request.onblocked=function(){photoDbError='照片数据库升级被其他页面占用';reject(new Error(photoDbError))}
+    });
+    return photoDbReady
+  }
+  function photoKey(entryId,index){return String(entryId)+'::'+String(index)}
+  function photoDbRequest(mode,work){
+    return openPhotoDB().then(function(db){return new Promise(function(resolve,reject){
+      var tx=db.transaction(DIARY_PHOTO_STORE,mode),store=tx.objectStore(DIARY_PHOTO_STORE),result;
+      try{result=work(store)}catch(e){reject(e);return}
+      tx.oncomplete=function(){resolve(result&&result.result!==undefined?result.result:result)};
+      tx.onerror=function(){reject(tx.error||new Error('照片数据库操作失败'))};
+      tx.onabort=function(){reject(tx.error||new Error('照片数据库操作已取消'))}
+    })})
+  }
+  function putPhoto(key,data){return photoDbRequest('readwrite',function(store){return store.put({key:key,data:data,updatedAt:Date.now()})})}
+  function getPhoto(key){return photoDbRequest('readonly',function(store){return store.get(key)}).then(function(row){return row&&row.data||''})}
+  function deletePhoto(key){return photoDbRequest('readwrite',function(store){return store.delete(key)})}
+  function getAllPhotos(){return photoDbRequest('readonly',function(store){return store.getAll()})}
   function loadEntries(){
     try{var v=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');return Array.isArray(v)?v.filter(function(x){return x&&x.id&&x.date;}):[]}
     catch(e){return []}
   }
   function persist(){
-    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(entries));return true}
-    catch(e){showToast('本机日记空间已满。请先导出备份，再到“关于 → 空间整理”压缩旧照片。不要清理浏览器数据，以免丢失记录。');return false}
+    try{
+      var safe=entries.map(function(entry){var copy=Object.assign({},entry);delete copy.photos;delete copy.photo;return copy});
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(safe));return true
+    }catch(e){showToast('日记文字保存失败。请导出备份并检查浏览器存储空间；照片现在独立保存在照片数据库中。');return false}
+  }
+  function hydratePhotos(){
+    return openPhotoDB().then(function(){return getAllPhotos()}).then(function(rows){
+      var map={};rows.forEach(function(row){map[row.key]=row.data});
+      entries.forEach(function(entry){
+        var photos=[];for(var i=0;i<8;i++){var data=map[photoKey(entry.id,i)];if(data)photos.push(data);else if(i===0&&entry.photo)photos.push(entry.photo);else break}
+        if(photos.length){entry.photos=photos;entry.photo=photos[0]}
+      });
+      var legacy=entries.filter(function(entry){return (Array.isArray(entry.photos)&&entry.photos.length)||(entry.photo&&/^data:image\\//i.test(entry.photo))});
+      return legacy.reduce(function(chain,entry){return chain.then(function(){var photos=photosFor(entry);return photos.reduce(function(promise,photo,index){return promise.then(function(){return putPhoto(photoKey(entry.id,index),photo)})},Promise.resolve()).then(function(){delete entry.photos;delete entry.photo})})},Promise.resolve()).then(function(){if(legacy.length)persist();return {migrated:legacy.length}})
+    }).catch(function(error){photoDbError=String(error&&error.message||error);return {error:photoDbError}})
+  }
+  function savePhotosForEntry(entryId,photos){
+    return openPhotoDB().then(function(){var tasks=[];for(var i=0;i<8;i++){var photo=photos[i];if(photo)tasks.push(putPhoto(photoKey(entryId,i),photo));else tasks.push(deletePhoto(photoKey(entryId,i)))}return Promise.all(tasks)})
+  }
+  function removeEntryPhotos(entryId){var tasks=[];for(var i=0;i<8;i++)tasks.push(deletePhoto(photoKey(entryId,i)).catch(function(){}));return Promise.all(tasks)}
+  function photoStorageStats(){
+    var count=0,bytes=0;entries.forEach(function(entry){count+=entry.photoCount||((entry.photos&&entry.photos.length)||(entry.photo?1:0));});
+    return {bytes:bytes,count:count,mb:'独立数据库'}
   }
   function estimatePhotoBytes(value){return typeof value==='string'?Math.floor(value.length*.75):0}
   function photoStorageStats(){
@@ -442,6 +490,11 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   function openReader(id){
     var entry=entries.find(function(e){return e.id===id});if(!entry)return;
     readerId=id;renderReader();reader.classList.add('show');document.body.style.overflow='hidden';
+    loadEntryPhotos(entry).then(function(){if(readerId===id)renderReader()});
+  }
+  function loadEntryPhotos(entry){
+    var tasks=[];for(var i=0;i<Math.min(8,entry.photoCount||8);i++)tasks.push(getPhoto(photoKey(entry.id,i)).catch(function(){return ''}));
+    return Promise.all(tasks).then(function(photos){entry.photos=photos.filter(Boolean);entry.photo=entry.photos[0]||'';return entry.photos})
   }
   function closeReader(){closeAnnotation();reader.classList.remove('show');document.body.style.overflow='';readerId=null}
   function diaryCharacters(){
@@ -681,10 +734,16 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var record=old||{id:'d_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),createdAt:new Date().toISOString(),favorite:false};
     record.date=date;record.title=title;record.content=content;record.mood=selectedMood;record.noteType=$('entryType').value||'日记';
     record.tags=$('entryTags').value.split(/[,，、]/).map(function(t){return t.trim().replace(/^#+/,'')}).filter(Boolean).slice(0,12);
-    record.photos=activePhotos.slice(0,8);record.photo=record.photos[0]||'';record.updatedAt=new Date().toISOString();
+    var photosToSave=activePhotos.slice(0,8),isNew=!old;
+    record.photoCount=photosToSave.length;record.updatedAt=new Date().toISOString();
     if(!old)entries.push(record);
-    if(!persist()){if(!old)entries.pop();return}
-    currentView='home';moodFilter='全部';query='';closeEditor();render();showToast(old?'日记已更新':'已保存到你的日记'); 
+    if(!persist()){if(isNew)entries.pop();return}
+    savePhotosForEntry(record.id,photosToSave).then(function(){
+      currentView='home';moodFilter='全部';query='';closeEditor();render();showToast(old?'日记已更新':'已保存到你的日记');
+    }).catch(function(error){
+      if(isNew)entries=entries.filter(function(item){return item.id!==record.id});
+      persist();showToast('照片保存失败：'+String(error&&error.message||error).slice(0,90)+'。文字已保留，请重新编辑并添加照片。');
+    }); 
   }
   function deleteCurrent(){
     if(!editId)return;
@@ -737,11 +796,14 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     next();
   }
   function exportBackup(){
-    var data={app:'MAOMAO Journal',version:1,exportedAt:new Date().toISOString(),entries:entries};
+    showToast('正在打包日记与照片…');
+    Promise.all(entries.map(function(entry){return loadEntryPhotos(entry).then(function(photos){var copy=Object.assign({},entry,{photos:photos,photo:photos[0]||''});return copy})})).then(function(exportEntries){
+    var data={app:'MAOMAO Journal',version:2,exportedAt:new Date().toISOString(),entries:exportEntries};
     var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
     var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='maomao-diary-backup-'+todayKey()+'.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},1500);
     menu.classList.remove('show');showToast('备份文件已生成');
+    }).catch(function(){showToast('备份失败，请检查照片数据库是否可用')});
   }
   function importBackup(file){
     if(!file)return;
