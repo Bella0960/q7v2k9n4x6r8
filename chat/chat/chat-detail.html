@@ -5064,7 +5064,7 @@
 
     /* 避免浏览器既未触发 onstart 也未触发 onend 时，按钮卡死无法停止。 */
     startTimer=setTimeout(function(){
-      if(recognition!==rec||mode!=='starting')return;
+      if(recognition!==rec||(mode!=='starting'&&mode!=='stop-after-start'))return;
       try{rec.abort()}catch(e){}
       resetState();
       toast('语音识别启动超时。请检查麦克风权限或换用 Chrome 浏览器。');
@@ -5073,6 +5073,15 @@
     rec.onstart=function(){
       if(recognition!==rec)return;
       if(startTimer){clearTimeout(startTimer);startTimer=null}
+      if(mode==='stop-after-start'){
+        mode='stopping';
+        setActive(true,'正在整理语音文字…');
+        try{rec.stop()}catch(e){
+          try{rec.abort()}catch(ignore){}
+          resetState();
+        }
+        return;
+      }
       mode='listening';
       setActive(true,'正在聆听；说完后再点一次结束');
       toast('正在聆听。说完后再点一次波形结束。');
@@ -5117,7 +5126,7 @@
 
   function stopListening(){
     if(mode==='starting'){
-      /* 不立即把服务 abort 掉；等它启动后立刻 stop，避免浏览器报“操作太快”。 */
+      /* 等待启动完成后立刻结束，避免语音服务被过早 stop。 */
       mode='stop-after-start';
       setActive(true,'正在启动，马上结束…');
       toast('语音正在启动，请稍等一下');
@@ -5148,20 +5157,9 @@
     else stopListening();
   });
 
-  /* onstart 可能晚于第二次点击：等真正启动后再 stop，不把识别服务过早关闭。 */
-  var originalStartTimerMarker=true;
-  var observerTimer=setInterval(function(){
-    if(!recognition)return;
-    if(mode==='stop-after-start'&&recognition.readyState!=='starting'){
-      try{recognition.stop();mode='stopping';setActive(true,'正在整理语音文字…')}
-      catch(e){}
-    }
-  },200);
-
-  /* 上限 8 秒的启动看门狗之外，不保留任何轮询；结束页面时清理兼容资源。 */
+  /* 页面离开时清理语音识别和启动看门狗。 */
   window.addEventListener('pagehide',function(){
     if(startTimer){clearTimeout(startTimer);startTimer=null}
-    clearInterval(observerTimer);
     try{if(recognition)recognition.abort()}catch(e){}
     recognition=null;mode='';
   },{once:true});
