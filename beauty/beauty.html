@@ -2353,7 +2353,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
 
       var ok = ChatBeauty.save(scope, payload);
       if (ok) {
-        targetDraft.__chatBgStoreRef = payload.chatBg || '';
+        targetDraft.__chatBgStoreRef = payload.chatBg || (inheritedGlobalBg && globalVars ? globalVars.chatBg : '');
         if (!payload.chatBg && wallpaperStore && typeof wallpaperStore.removeByKey === 'function') {
           wallpaperStore.removeByKey(visualBgKey(scope)).catch(function () {});
         }
