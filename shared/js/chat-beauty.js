@@ -79,9 +79,15 @@
         transferBg: '#FFFFFF', transferBorderColor: '#E5E5EA', transferBorderWidth: 1, transferTextColor: '#111111',
         transferImage: '', transferImageOpacity: 100,
         chatBg: '',
-        chatBgDim: 0
+        chatBgDim: 0,
+        themePreset: 'default' // built-in theme preset metadata
     };
     NS.DEFAULTS = DEFAULTS;
+    NS.getDefaults = function () {
+        var copy = {};
+        for (var key in DEFAULTS) copy[key] = Array.isArray(DEFAULTS[key]) ? DEFAULTS[key].slice() : DEFAULTS[key];
+        return copy;
+    };
 
     function readJSON(key, fallback) {
         try {
@@ -244,6 +250,7 @@
     NS.applyVars = function (v, rootEl) {
         if (!rootEl || !v) return v;
         var s = rootEl.style;
+        try { rootEl.setAttribute('data-chat-theme-preset', v.themePreset === 'imessage' ? 'imessage' : 'default'); } catch (e) {}
 
         s.setProperty('--chat-avatar-size', num(v.avatarSize, 30) + 'px');
         s.setProperty('--chat-avatar-radius', num(v.avatarRadius, 50) + '%');

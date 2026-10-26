@@ -375,3 +375,13 @@
   color:var(--chat-transfer-text-color,#111111) !important;
 }
 #vbPreview .vbp-pay.is-transfer .vbp-pay-amount { font-size:calc(var(--chat-redpacket-font-size,12px)*1.15); }
+
+
+/* iMessage SMS built-in theme: colors and geometry come from ChatBeauty preset data. */
+.chat-stage[data-chat-theme-preset="imessage"] .message-time,
+.chat-stage[data-chat-theme-preset="imessage"] .msg-time,
+.chat-stage[data-chat-theme-preset="imessage"] .msg-timestamp{
+  color:#8E8E93!important;font-size:10px!important;
+}
+.chat-stage[data-chat-theme-preset="imessage"] .msg-row .msg-bubble:not(.bubble-pay):not(.bubble-media){box-shadow:none!important}
+#vbPreview[data-chat-theme-preset="imessage"] .vbp-msg-time{color:#8E8E93!important;font-size:10px!important}
