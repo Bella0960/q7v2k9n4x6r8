@@ -1137,6 +1137,16 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 }
 .writing-pop .reply-preset-select{justify-self:end}
 
+/* Ensure all detailed settings and preset editors stay collapsed until requested. */
+.writing-pop details.drawer-accordion:not([open])>.drawer-accordion-panel,
+.writing-pop details.drawer-subaccordion:not([open])>.drawer-subaccordion-panel,
+.writing-pop details.reply-preset-item:not([open])>.reply-preset-edit-panel{display:none!important}
+.writing-pop details.drawer-accordion[open]>.drawer-accordion-panel,
+.writing-pop details.drawer-subaccordion[open]>.drawer-subaccordion-panel,
+.writing-pop details.reply-preset-item[open]>.reply-preset-edit-panel{display:block}
+.reply-preset-toolbar span{max-width:145px;line-height:1.4}
+.reply-preset-select input[type="checkbox"]{border-radius:50%!important}
+.reply-preset-select input[type="checkbox"]:checked::after{content:"✓";font-size:10px}
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1291,11 +1301,11 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 <div class="reply-style-editor">
  <div class="reply-preset-intro">
   <div class="wp-label">回复文风预设 / REPLY PRESETS</div>
-  <p class="reply-style-help">可以保存多套自己的文风。勾选最多 3 套，自动回复就按勾选顺序生成候选；每套点开后再编辑。</p>
+  <p class="reply-style-help">文风可以一直保存。勾选一套作为当前回复风格；点开预设可修改名称与要求，保存后随时切换。</p>
  </div>
- <div class="reply-preset-toolbar"><span id="replyPresetCount">已选 3 套 · 最多 3 套</span><button type="button" id="addReplyPreset" class="reply-preset-add">＋ 新建预设</button></div>
+ <div class="reply-preset-toolbar"><span id="replyPresetCount">当前使用 1 套 · 已保存 3/30 套</span><button type="button" id="addReplyPreset" class="reply-preset-add">＋ 新建预设</button></div>
  <div class="reply-preset-list" id="replyPresetList"></div>
- <p class="reply-preset-footnote" id="replyPresetStatus" aria-live="polite">默认提供三套示例文风，可以修改、删除或新增。</p>
+ <p class="reply-preset-footnote" id="replyPresetStatus" aria-live="polite">勾选框用于切换当前文风；展开名称后可编辑和保存。</p>
 </div>
   </div>
 </details>
@@ -1462,8 +1472,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             textAlign: 'left', backgroundWash: 0.24,
             replyStyles: [
                 { id: 'reply-natural', name: '自然接话', prompt: '像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。', selected: true },
-                { id: 'reply-empathy', name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。', selected: true },
-                { id: 'reply-playful', name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。', selected: true }
+                { id: 'reply-empathy', name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。', selected: false },
+                { id: 'reply-playful', name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。', selected: false }
             ],
             bgColor: '#FFFFFF', bgImage: '',
             breakMode: 'none', summaryMode: 'card'
@@ -1509,7 +1519,14 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
                     };
                 });
             }
-            if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor)) d.bgColor = v.bgColor;
+            if (Array.isArray(v.replyStyles)) {
+                var selectedPresetFound = false;
+                d.replyStyles.forEach(function (item) {
+                    if (item.selected && !selectedPresetFound) selectedPresetFound = true;
+                    else item.selected = false;
+                });
+            }
+            if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor));
             if (v.bgImage && /^data:image\//.test(v.bgImage)) d.bgImage = v.bgImage;
             if (v.breakMode && ['none', 'line', 'space'].indexOf(v.breakMode) >= 0) d.breakMode = v.breakMode;
             if (v.summaryMode === 'card' || v.summaryMode === 'text') d.summaryMode = v.summaryMode;
@@ -1547,12 +1564,12 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var addReplyPresetButton = document.getElementById('addReplyPreset');
     var replyPresetListInitialized = false;
     function selectedReplyStyles() {
-        return (writingOpts.replyStyles || []).filter(function (item) { return item.selected; }).slice(0, 3);
+        return (writingOpts.replyStyles || []).filter(function (item) { return item.selected; }).slice(0, 1);
     }
     function updateReplyPresetCount() {
         var selected = selectedReplyStyles().length;
         var total = (writingOpts.replyStyles || []).length;
-        if (replyPresetCount) replyPresetCount.textContent = '已选 ' + selected + ' 套 · 最多 3 套';
+        if (replyPresetCount) replyPresetCount.textContent = (selected ? '当前使用 1 套' : '尚未选择文风') + ' · 已保存 ' + total + '/30 套';
         if (addReplyPresetButton) addReplyPresetButton.disabled = total >= 30;
     }
     function renderReplyPresetList(openId) {
@@ -1585,17 +1602,17 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             selectedLabel.addEventListener('click', function (event) { event.stopPropagation(); });
             checkbox.addEventListener('change', function (event) {
                 event.stopPropagation();
-                if (checkbox.checked && selectedReplyStyles().length >= 3) {
-                    checkbox.checked = false;
-                    toast('最多同时选用三套文风');
-                    return;
+                if (checkbox.checked) {
+                    (writingOpts.replyStyles || []).forEach(function (other) { other.selected = other.id === item.id; });
+                } else {
+                    item.selected = false;
                 }
-                item.selected = checkbox.checked;
                 saveWritingOpts();
+                renderReplyPresetList(item.id);
                 updateReplyPresetCount();
                 if (replyPresetStatus) replyPresetStatus.textContent = item.selected
-                    ? '已选用「' + item.name + '」。自动回复会按勾选顺序生成候选。'
-                    : '已取消选用「' + item.name + '」。预设仍会保存在列表里。';
+                    ? '当前回复文风已切换为「' + item.name + '」。'
+                    : '已取消当前文风；预设仍会保存在列表里。';
             });
             var panel = document.createElement('div');
             panel.className = 'reply-preset-edit-panel';
@@ -1676,7 +1693,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
                 writingOpts.replyStyles.push(item);
                 saveWritingOpts();
                 renderReplyPresetList(item.id);
-                if (replyPresetStatus) replyPresetStatus.textContent = '新预设已创建。修改名称与文风要求后，点击“保存预设”。';
+                if (replyPresetStatus) replyPresetStatus.textContent = '新预设已创建。编辑后点“保存预设”，再勾选即可使用。';
             });
             addReplyPresetButton.dataset.bound = '1';
         }
@@ -2605,7 +2622,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             };
         });
         if (!styles.length) {
-            setReplyOptionsStatus('先到右上角「自动回复文风」里勾选至少一套预设。', true);
+            setReplyOptionsStatus('先到右上角「自动回复文风」里勾选一套预设。', true);
             if (replySuggestionsList) replySuggestionsList.innerHTML = '';
             return;
         }
