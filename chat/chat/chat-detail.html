@@ -4283,6 +4283,7 @@
         window.addEventListener('maomao:chat-theme-change', refreshChatBeautyConfig);
         window.addEventListener('storage', function (event) {
             if (!event.key || event.key === 'beauty_chat_global_v1' ||
+                event.key === 'maomao_chat_theme_preset' ||
                 (currentCharacter && event.key === 'beauty_chat_' + currentCharacter.id)) {
                 refreshChatBeautyConfig();
             }
