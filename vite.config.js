@@ -20,6 +20,18 @@ const htmlFiles = {};
 })(__dirname, '');
 
 export default defineConfig({
+  plugins: [{
+    name: 'copy-root-service-worker',
+    apply: 'build',
+    generateBundle() {
+      // PWA service workers must be served from the site root; keep the source sw.js in sync.
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sw.js',
+        source: fs.readFileSync(resolve(__dirname, 'sw.js'), 'utf8')
+      });
+    }
+  }],
   server: {
     host: '0.0.0.0',
     port: 3000,
