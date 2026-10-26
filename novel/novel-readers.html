@@ -301,6 +301,131 @@ body.readers-mode .reader-disclaimer{font-size:10px;line-height:1.8;margin-top:2
  body.readers-mode .reader-filters .field{flex:1 1 140px}
 }
 
+
+/* Final reader-page hierarchy: active work first, balanced sorting control. */
+body.readers-mode .reader-community-hero{
+ display:block!important;
+ padding:17px 0 16px!important;
+ border-bottom:1px solid #e8e8e5!important;
+ margin:0 0 0!important;
+}
+body.readers-mode .reader-book{
+ border:0!important;
+ margin:0!important;
+ padding:0!important;
+ min-width:0!important;
+}
+body.readers-mode .reader-book-label{
+ font-size:10px!important;
+ letter-spacing:.11em!important;
+ color:#999!important;
+ margin:0 0 6px!important;
+}
+body.readers-mode .reader-book-title{
+ font:600 23px/1.35 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif!important;
+ letter-spacing:-.035em!important;
+ color:#202020!important;
+ margin:0 0 4px!important;
+ overflow-wrap:anywhere;
+}
+body.readers-mode .reader-book-meta{
+ font-size:11px!important;
+ line-height:1.6!important;
+ color:#858585!important;
+}
+body.readers-mode .reader-dashboard{
+ margin:0 0 24px!important;
+ border-bottom:1px solid #e8e8e5!important;
+}
+body.readers-mode .reader-metric{
+ padding:14px 8px 15px 0!important;
+}
+body.readers-mode .reader-metric+.reader-metric{
+ padding-left:12px!important;
+}
+body.readers-mode .reader-metric-label{font-size:10px!important;margin-bottom:4px!important}
+body.readers-mode .reader-metric-value{
+ font:500 24px/1.2 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif!important;
+}
+body.readers-mode .reader-feed-head{
+ display:flex!important;
+ align-items:center!important;
+ gap:12px!important;
+ padding:0 0 11px!important;
+ margin:0!important;
+ border-bottom:1px solid #222!important;
+}
+body.readers-mode .reader-feed-title{
+ font:600 20px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif!important;
+ letter-spacing:-.025em!important;
+}
+body.readers-mode .reader-feed-count{font-size:10px!important;color:#999!important}
+body.readers-mode .reader-sortbar{
+ display:grid!important;
+ grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ gap:4px!important;
+ width:100%!important;
+ padding:4px!important;
+ margin:12px 0 14px!important;
+ background:#f3f3f1!important;
+ border:1px solid #ececea!important;
+ border-radius:10px!important;
+ box-sizing:border-box!important;
+}
+body.readers-mode .reader-sort-btn{
+ display:flex!important;
+ width:100%!important;
+ min-width:0!important;
+ min-height:40px!important;
+ align-items:center!important;
+ justify-content:center!important;
+ padding:10px 12px!important;
+ border:1px solid transparent!important;
+ border-radius:7px!important;
+ background:transparent!important;
+ color:#777!important;
+ font-size:12px!important;
+ line-height:1.2!important;
+ text-align:center!important;
+}
+body.readers-mode .reader-sort-btn.active{
+ background:#fff!important;
+ border-color:#e6e6e2!important;
+ color:#202020!important;
+ box-shadow:0 1px 3px rgba(0,0,0,.035)!important;
+}
+body.readers-mode .reader-filters{
+ display:grid!important;
+ grid-template-columns:minmax(0,1fr)!important;
+ gap:11px!important;
+ padding:0 0 13px!important;
+ border-bottom:1px solid #e8e8e5!important;
+}
+body.readers-mode .reader-filters .field{
+ width:100%!important;
+ min-width:0!important;
+ margin:0!important;
+ gap:6px!important;
+}
+body.readers-mode .reader-filters .field label{
+ font-size:10px!important;
+ color:#777!important;
+}
+body.readers-mode .reader-filters select{
+ width:100%!important;
+ min-height:42px!important;
+ padding:10px 12px!important;
+ border:1px solid #e5e5e2!important;
+ border-radius:10px!important;
+ background:#fafaf9!important;
+ font-size:12px!important;
+}
+@media(min-width:761px){
+ body.readers-mode .reader-community-hero{padding:22px 0 18px!important}
+ body.readers-mode .reader-book-title{font-size:25px!important}
+ body.readers-mode .reader-filters{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+
 </style></head><body class="readers-mode"><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / WRITING DESK</span><button class="btn" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
 <section class="hero"><div class="kicker">YOUR STORIES · YOUR AUDIENCE</div><h1>Write your<br>own world.</h1><p>从一份大纲开始，写出自己的故事。发布后，让模拟读者阅读、追更、留下评论。</p></section>
 <div class="stats"><div class="stat"><small>我的作品</small><strong id="workCount">0</strong></div><div class="stat"><small>累计字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动</small><strong id="reactionCount">0</strong></div></div>
@@ -449,24 +574,70 @@ buildStudioPages();
 
 function buildReaderCommunity(){
  if(NOVEL_PAGE!=='readers')return;
- const pane=$('pane-audience');if(!pane||pane.dataset.communityBuilt)return;pane.dataset.communityBuilt='1';
- const nav=pane.querySelector('.independent-nav'),oldTitle=pane.querySelector('.section-title'),oldHint=oldTitle?.nextElementSibling,stats=pane.querySelector('.stats'),fields=[...pane.querySelectorAll(':scope > .field')],chapterStats=$('chapterReaderStats'),actions=$('simulateReaders')?.closest('.actions'),notes=$('readerNotes');
- const hero=document.createElement('section');hero.className='reader-community-hero';hero.innerHTML='<div><div class="reader-kicker">READERS / COMMUNITY</div><h1 class="reader-title">The reading<br>room.</h1><p class="reader-subtitle">每一条评论，都从某一页故事开始。看看读者停留在哪里、记住了什么。</p></div><div class="reader-book"><div class="reader-book-label">NOW READING</div><div class="reader-book-title" id="readerBookTitle">尚未选择作品</div><div class="reader-book-meta" id="readerBookMeta">打开作品并发布章节后，这里会显示作品信息。</div></div>';
- if(nav)nav.after(hero);else pane.prepend(hero);
- if(stats){stats.className='reader-dashboard';stats.querySelectorAll('.stat').forEach(el=>{el.className='reader-metric';const small=el.querySelector('small'),strong=el.querySelector('strong');if(small){small.className='reader-metric-label'}if(strong){strong.className='reader-metric-value'}})}
- const layout=document.createElement('div');layout.className='reader-community-layout';
- const feed=document.createElement('section');feed.className='reader-feed';
- const feedHead=document.createElement('div');feedHead.className='reader-feed-head';feedHead.innerHTML='<div class="reader-feed-title">读者评论</div><div class="reader-feed-count" id="readerFeedCount">最新动态</div>';
- const sortBar=document.createElement('div');sortBar.className='reader-sortbar';sortBar.innerHTML='<span class="reader-sortbar-label">ORDER BY</span><button type="button" class="reader-sort-btn active" data-reader-sort="latest">最新</button><button type="button" class="reader-sort-btn" data-reader-sort="popular">热门</button>';sortBar.querySelectorAll('[data-reader-sort]').forEach(b=>b.addEventListener('click',()=>{readerSortMode=b.dataset.readerSort;sortBar.querySelectorAll('[data-reader-sort]').forEach(x=>x.classList.toggle('active',x===b));renderAudience()}));
- const filterWrap=document.createElement('div');filterWrap.className='reader-filters';
- fields.forEach(el=>filterWrap.appendChild(el));
- if(notes){feed.append(feedHead,sortBar,filterWrap,notes)}
- const side=document.createElement('aside');side.className='reader-side';side.innerHTML='<h2 class="reader-side-title">作者工作台</h2><p class="reader-side-hint">生成基于章节正文的模拟读者反馈，或导出当前作品备份。</p>';
- if(actions)side.appendChild(actions);if(chapterStats)side.appendChild(chapterStats);
+ const pane=$('pane-audience');
+ if(!pane||pane.dataset.communityBuilt)return;
+ pane.dataset.communityBuilt='1';
+ const nav=pane.querySelector(':scope > .independent-nav');
+ const oldTitle=pane.querySelector('.section-title');
+ const oldHint=oldTitle?.nextElementSibling;
+ const stats=pane.querySelector('.stats');
+ const fields=[...pane.querySelectorAll(':scope > .field')];
+ const chapterStats=$('chapterReaderStats');
+ const actions=$('simulateReaders')?.closest('.actions');
+ const notes=$('readerNotes');
+
+ // The active work is the page heading. Remove the oversized editorial banner.
+ if(nav)nav.remove();
+ const hero=document.createElement('section');
+ hero.className='reader-community-hero';
+ hero.innerHTML='<div class="reader-book"><div class="reader-book-label">当前作品</div><div class="reader-book-title" id="readerBookTitle">尚未选择作品</div><div class="reader-book-meta" id="readerBookMeta">打开作品并发布章节后，这里会显示作品信息。</div></div>';
+ pane.prepend(hero);
+
+ if(stats){
+  stats.className='reader-dashboard';
+  stats.querySelectorAll('.stat').forEach(el=>{
+   el.className='reader-metric';
+   const small=el.querySelector('small'),strong=el.querySelector('strong');
+   if(small)small.className='reader-metric-label';
+   if(strong)strong.className='reader-metric-value';
+  });
+ }
+ const layout=document.createElement('div');
+ layout.className='reader-community-layout';
+ const feed=document.createElement('section');
+ feed.className='reader-feed';
+ const feedHead=document.createElement('div');
+ feedHead.className='reader-feed-head';
+ feedHead.innerHTML='<div class="reader-feed-title">读者评论</div><div class="reader-feed-count" id="readerFeedCount">0 条动态</div>';
+ const sortBar=document.createElement('div');
+ sortBar.className='reader-sortbar';
+ sortBar.setAttribute('role','group');
+ sortBar.setAttribute('aria-label','评论排序');
+ sortBar.innerHTML='<button type="button" class="reader-sort-btn active" data-reader-sort="latest" aria-pressed="true">最新</button><button type="button" class="reader-sort-btn" data-reader-sort="popular" aria-pressed="false">热门</button>';
+ sortBar.querySelectorAll('[data-reader-sort]').forEach(button=>button.addEventListener('click',()=>{
+  readerSortMode=button.dataset.readerSort;
+  sortBar.querySelectorAll('[data-reader-sort]').forEach(item=>{
+   const active=item===button;
+   item.classList.toggle('active',active);
+   item.setAttribute('aria-pressed',String(active));
+  });
+  renderAudience();
+ }));
+ const filterWrap=document.createElement('div');
+ filterWrap.className='reader-filters';
+ fields.forEach(field=>filterWrap.appendChild(field));
+ if(notes)feed.append(feedHead,sortBar,filterWrap,notes);
+ const side=document.createElement('aside');
+ side.className='reader-side';
+ side.innerHTML='<h2 class="reader-side-title">作者工作台</h2><p class="reader-side-hint">生成基于章节正文的模拟读者反馈，或导出当前作品备份。</p>';
+ if(actions)side.appendChild(actions);
+ if(chapterStats)side.appendChild(chapterStats);
  layout.append(feed,side);
  if(stats)stats.after(layout);else hero.after(layout);
- if(oldTitle)oldTitle.remove();if(oldHint)oldHint.remove();
- const footer=pane.nextElementSibling;if(footer&&footer.classList.contains('footer'))footer.classList.add('reader-disclaimer');
+ if(oldTitle)oldTitle.remove();
+ if(oldHint)oldHint.remove();
+ const footer=pane.nextElementSibling;
+ if(footer&&footer.classList.contains('footer'))footer.classList.add('reader-disclaimer');
 }
 function updateReaderCommunityHeader(){
  const w=current(),title=$('readerBookTitle'),meta=$('readerBookMeta'),count=$('readerFeedCount');
