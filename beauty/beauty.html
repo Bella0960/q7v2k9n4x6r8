@@ -5,8 +5,8 @@
 <title>聊天美化 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/chat-beauty.js?v=20261026v7"></script>
-<link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261026v11">
+<script src="../shared/js/chat-beauty.js?v=20261026v8"></script>
+<link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261026v12">
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; scrollbar-width: none; -ms-overflow-style: none; }
@@ -438,6 +438,35 @@
 
 
 
+  /* Full-page chat theme selection: separate from bubble detail controls */
+  .theme-page-intro{padding:10px 22px 22px;border-bottom:1px solid #E4E4E7}
+  .theme-page-kicker{font:10px/1.4 Arial,sans-serif;letter-spacing:1.8px;color:#777;text-transform:uppercase}
+  .theme-page-intro h2{margin:12px 0 8px;font:italic 29px/1.05 Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-.7px;color:#111}
+  .theme-page-intro p{margin:0;max-width:300px;color:#777;font-size:12px;line-height:1.65}
+  .theme-choice-list{padding:0 16px}
+  .theme-choice{display:flex;width:100%;align-items:center;gap:13px;padding:17px 4px;border:0;border-bottom:1px solid #E5E5E7;border-radius:0;background:transparent;color:#111;text-align:left;cursor:pointer}
+  .theme-choice:active{background:#F7F7F8}
+  .theme-choice-art{position:relative;display:block;flex:0 0 84px;width:84px;height:78px;overflow:hidden;border:1px solid #DADAE0;border-radius:7px;background:#F7F7F9}
+  .theme-choice-art i{position:absolute;display:block;height:7px;border-radius:8px}
+  .theme-choice-art .art-top{left:6px;right:6px;top:7px;height:3px;background:#C7C7CC}
+  .theme-choice-art .art-left{left:7px;bottom:24px;width:38px;background:#E5E5EA}
+  .theme-choice-art .art-right{right:7px;bottom:12px;width:31px;background:#111}
+  .theme-choice-art .art-bottom{left:7px;right:7px;bottom:5px;height:2px;background:#D0D0D5}
+  .theme-art-imessage{background:#F2F2F7}
+  .theme-art-imessage .art-left{background:#E5E5EA}
+  .theme-art-imessage .art-right{background:#007AFF}
+  .theme-art-imessage .art-bottom{background:#B8B8BE}
+  .theme-choice-copy{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:4px}
+  .theme-choice-index{font:9px/1.2 Arial,sans-serif;letter-spacing:1.25px;color:#999}
+  .theme-choice-copy strong{font-size:15px;line-height:1.35;font-weight:600;color:#111}
+  .theme-choice-desc{font-size:11px;line-height:1.55;color:#777}
+  .theme-choice-mark{display:flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;border:1px solid #D5D5DA;border-radius:50%;font-size:11px;color:transparent}
+  .theme-choice.selected .theme-choice-mark{background:#111;border-color:#111;color:#fff}
+  .theme-choice.selected .theme-choice-art{border-color:#111;box-shadow:0 0 0 1px #111}
+  .theme-page-status{margin:18px 20px 0;padding:11px 12px;border-left:2px solid #111;background:#F7F7F8;color:#444;font-size:11px;line-height:1.6}
+  .theme-page-footnote{margin:16px 20px 30px;color:#999;font:9px/1.7 Arial,sans-serif;letter-spacing:.8px}
+  @media(max-width:360px){.theme-page-intro{padding-left:17px;padding-right:17px}.theme-choice-list{padding:0 12px}.theme-choice-art{flex-basis:72px;width:72px;height:70px}.theme-choice{gap:10px}.theme-choice-copy strong{font-size:14px}}
+
 </style>
 </head>
 <body>
@@ -466,6 +495,7 @@
     <div class="beauty-tabs" id="beautyTabs">
       <button class="btab on" type="button" data-tab="visual">可视化调节</button>
       <button class="btab" type="button" data-tab="css">深度自定义</button>
+      <button class="btab" type="button" data-tab="theme">主题美化</button>
     </div>
 
     <!-- ============ Tab 1：可视化调节 ============ -->
@@ -899,6 +929,29 @@
         <div class="field-hint" id="vbBgHint">未设置背景 · 上传时自动压缩到 800×1422 内（JPEG）</div>
       </div>      </div>
 
+    </div>
+
+    <!-- Tab 3: full-page global chat theme, separate from bubble controls -->
+    <div class="tab-view hide" id="tabTheme">
+      <div class="theme-page-intro">
+        <div class="theme-page-kicker">CHAT DISPLAY / 全局</div>
+        <h2>聊天页面主题</h2>
+        <p>这里切换整套聊天界面。气泡颜色、圆角与字号仍在「可视化调节」中独立控制。</p>
+      </div>
+      <div class="theme-choice-list" role="group" aria-label="全局聊天页面主题">
+        <button class="theme-choice" type="button" id="chatThemeDefaultOption" data-theme-value="default" aria-pressed="false">
+          <span class="theme-choice-art theme-art-default" aria-hidden="true"><i class="art-top"></i><i class="art-left"></i><i class="art-right"></i><i class="art-bottom"></i></span>
+          <span class="theme-choice-copy"><span class="theme-choice-index">01 / ORIGINAL</span><strong>默认主题</strong><span class="theme-choice-desc">保留 MAOMAO 原有聊天界面与发送按钮。</span></span>
+          <span class="theme-choice-mark" aria-hidden="true">✓</span>
+        </button>
+        <button class="theme-choice" type="button" id="chatThemeIMessageOption" data-theme-value="imessage" aria-pressed="false">
+          <span class="theme-choice-art theme-art-imessage" aria-hidden="true"><i class="art-top"></i><i class="art-left"></i><i class="art-right"></i><i class="art-bottom"></i></span>
+          <span class="theme-choice-copy"><span class="theme-choice-index">02 / MESSAGE</span><strong>iMessage 短信</strong><span class="theme-choice-desc">全局切换顶部、消息区与输入栏的短信风格。</span></span>
+          <span class="theme-choice-mark" aria-hidden="true">✓</span>
+        </button>
+      </div>
+      <p class="theme-page-status" id="chatThemeStatus" aria-live="polite">正在读取当前聊天主题…</p>
+      <p class="theme-page-footnote">THEME IS GLOBAL · 所有角色共用此主题，不覆盖单独的气泡美化设置。</p>
     </div>
 
     <!-- ============ Tab 2：深度自定义（原有 CSS 预设管理，原样保留） ============ -->
@@ -2178,16 +2231,55 @@ document.getElementById('importFile').addEventListener('change', function(e){
     });
     document.getElementById('tabVisual').classList.toggle('hide', tab !== 'visual');
     document.getElementById('tabCss').classList.toggle('hide', tab !== 'css');
+    document.getElementById('tabTheme').classList.toggle('hide', tab !== 'theme');
+    var headerActions = document.querySelector('.header-actions');
+    var pageTitle = document.querySelector('.header .title');
+    if (headerActions) headerActions.style.display = tab === 'theme' ? 'none' : '';
+    if (pageTitle) pageTitle.textContent = tab === 'theme' ? '主题美化' : '美化';
     if (tab === 'visual') {
       document.getElementById('btnLeft').textContent = '恢复默认';
       document.getElementById('btnRight').textContent = '保存配置';
-      loadVisualScope(currentScope);   // 回到 Tab 1 时刷新一次（角色列表可能已变化）
-    } else {
+      loadVisualScope(currentScope);
+    } else if (tab === 'css') {
       var inEdit = document.getElementById('editView').classList.contains('show');
       document.getElementById('btnLeft').textContent = inEdit ? '取消' : '新建';
       document.getElementById('btnRight').textContent = '保存';
+    } else {
+      refreshChatThemeSelection();
     }
   }
+  function refreshChatThemeSelection() {
+    var current = window.ChatBeauty && typeof ChatBeauty.getThemePreset === 'function' ? ChatBeauty.getThemePreset() : 'default';
+    [[document.getElementById('chatThemeDefaultOption'), 'default'],
+     [document.getElementById('chatThemeIMessageOption'), 'imessage']].forEach(function (pair) {
+      if (!pair[0]) return;
+      var selected = current === pair[1];
+      pair[0].classList.toggle('selected', selected);
+      pair[0].setAttribute('aria-pressed', String(selected));
+    });
+    var status = document.getElementById('chatThemeStatus');
+    if (status) status.textContent = current === 'imessage'
+      ? '当前全局主题：iMessage 短信。所有角色的聊天详情页都将使用这套整页布局。'
+      : '当前全局主题：默认聊天主题。原有气泡细节、CSS 预设与聊天记录均会保留。';
+  }
+  function chooseChatTheme(theme) {
+    var status = document.getElementById('chatThemeStatus');
+    if (!window.ChatBeauty || typeof ChatBeauty.setThemePreset !== 'function') {
+      if (status) status.textContent = '主题模块尚未加载，请返回后重新打开此页面。';
+      return;
+    }
+    if (!ChatBeauty.setThemePreset(theme)) {
+      if (status) status.textContent = '保存失败，请检查本机存储空间后重试。';
+      return;
+    }
+    refreshChatThemeSelection();
+    try { window.dispatchEvent(new CustomEvent('maomao:chat-theme-change', { detail: { theme: theme } })); } catch (e) {}
+    if (typeof showToast === 'function') showToast(theme === 'imessage' ? '已应用 iMessage 短信主题' : '已恢复默认聊天主题');
+  }
+  document.getElementById('chatThemeDefaultOption').addEventListener('click', function () { chooseChatTheme('default'); });
+  document.getElementById('chatThemeIMessageOption').addEventListener('click', function () { chooseChatTheme('imessage'); });
+  window.addEventListener('pageshow', refreshChatThemeSelection);
+
   document.getElementById('beautyTabs').addEventListener('click', function (e) {
     var b = e.target.closest('.btab');
     if (!b || b.dataset.tab === activeTab) return;
@@ -2200,7 +2292,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
     if (activeTab === 'visual') { resetVisualScope(); return; }
     _leftAction();
   };
-  rightAction = function () { if (activeTab === 'visual') saveVisual(); else savePreset(); };
+  rightAction = function () { if (activeTab === 'visual') saveVisual(); else if (activeTab === 'css') savePreset(); };
 
   // 初始化：使用真实角色 ID；若通过聊天上下文带入 roleId，则直接打开该角色专属配置。
   try { loadVisualScope(populateVisualScopeOptions()); } catch (e) { console.warn('loadVisualScope skipped:', e.message); }
