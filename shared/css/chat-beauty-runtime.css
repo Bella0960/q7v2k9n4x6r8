@@ -377,11 +377,75 @@
 #vbPreview .vbp-pay.is-transfer .vbp-pay-amount { font-size:calc(var(--chat-redpacket-font-size,12px)*1.15); }
 
 
-/* iMessage SMS built-in theme: colors and geometry come from ChatBeauty preset data. */
+/* iMessage SMS built-in theme: the existing ChatBeauty variables drive the bubbles;
+   these scoped rules complete the rest of the chat surface without touching the default theme. */
+.chat-stage[data-chat-theme-preset="imessage"]{
+  background:var(--chat-bg-image,#F2F2F7)!important;
+  background-size:cover!important;
+  background-position:center!important;
+  background-repeat:no-repeat!important;
+}
 .chat-stage[data-chat-theme-preset="imessage"] .message-time,
 .chat-stage[data-chat-theme-preset="imessage"] .msg-time,
 .chat-stage[data-chat-theme-preset="imessage"] .msg-timestamp{
+  color:#8E8E93!important;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif!important;
+  font-size:10px!important;
+  letter-spacing:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.chat-stage[data-chat-theme-preset="imessage"] .msg-row .msg-bubble:not(.bubble-pay):not(.bubble-media){
+  box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"]{
+  background:#F2F2F7!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-header{
+  background:rgba(242,242,247,.96)!important;
+  border-bottom:1px solid rgba(60,60,67,.14)!important;
+  box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-user-name{
+  color:#111!important;
+  font-weight:650!important;
+  letter-spacing:-.2px!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-status-sub,
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-notice-bar{
+  color:#8E8E93!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .nav-circle-btn{
+  color:#007AFF!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .nav-circle-btn svg{
+  stroke:#007AFF!important;
+  fill:none!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .input-dock{
+  background:rgba(242,242,247,.97)!important;
+  border-top:1px solid #D1D1D6!important;
+  box-shadow:none!important;
+  -webkit-backdrop-filter:blur(16px);
+  backdrop-filter:blur(16px);
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .input-capsule{
+  background:#fff!important;
+  border:1px solid #D1D1D6!important;
+  border-radius:20px!important;
+  box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .input-capsule:focus-within{
+  border-color:#B8B8BE!important;
+  box-shadow:none!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .send-icon-btn{
+  background:#007AFF!important;
+  border-radius:50%!important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .plus-action-btn{
+  color:#007AFF!important;
+}
+#vbPreview[data-chat-theme-preset="imessage"] .vbp-msg-time{
   color:#8E8E93!important;font-size:10px!important;
 }
-.chat-stage[data-chat-theme-preset="imessage"] .msg-row .msg-bubble:not(.bubble-pay):not(.bubble-media){box-shadow:none!important}
-#vbPreview[data-chat-theme-preset="imessage"] .vbp-msg-time{color:#8E8E93!important;font-size:10px!important}
