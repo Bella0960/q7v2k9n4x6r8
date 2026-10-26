@@ -522,17 +522,27 @@
 .chat-stage[data-chat-theme-preset="imessage"] .msg-row.right { align-items: flex-end !important; }
 .chat-stage[data-chat-theme-preset="imessage"] .msg-row.received .msg-bubble:not(.bubble-pay):not(.bubble-media),
 .chat-stage[data-chat-theme-preset="imessage"] .msg-row.left .msg-bubble:not(.bubble-pay):not(.bubble-media) {
-  background: #E5E5EA !important; color: #111111 !important; border: 0 !important;
-  border-radius: 18px 18px 18px 5px !important; padding: 9px 13px !important; box-shadow: none !important;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
-  font-size: 14px !important; line-height: 1.42 !important;
+  background: var(--chat-bubble-ta-bg, #E5E5EA) !important;
+  color: var(--chat-bubble-ta-color, #111111) !important;
+  border: var(--chat-bubble-ta-border-width, 0px) var(--chat-bubble-ta-border-style, solid) var(--chat-bubble-ta-border-color, #E5E5EA) !important;
+  border-radius: var(--chat-bubble-ta-radius-size, var(--chat-bubble-ta-radius, 18px 18px 18px 5px)) !important;
+  padding: var(--chat-bubble-ta-padding, var(--chat-bubble-padding, 9.5px 13px)) !important;
+  box-shadow: var(--chat-bubble-ta-shadow, none) !important;
+  font-family: var(--chat-bubble-ta-font-family, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif) !important;
+  font-size: var(--chat-bubble-ta-font-size, 14px) !important;
+  line-height: var(--chat-bubble-ta-line-height, 1.42) !important;
 }
 .chat-stage[data-chat-theme-preset="imessage"] .msg-row.sent .msg-bubble:not(.bubble-pay):not(.bubble-media),
 .chat-stage[data-chat-theme-preset="imessage"] .msg-row.right .msg-bubble:not(.bubble-pay):not(.bubble-media) {
-  background: #007AFF !important; color: #FFFFFF !important; border: 0 !important;
-  border-radius: 18px 18px 5px 18px !important; padding: 9px 13px !important; box-shadow: none !important;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
-  font-size: 14px !important; line-height: 1.42 !important;
+  background: var(--chat-bubble-my-bg, #007AFF) !important;
+  color: var(--chat-bubble-my-color, #FFFFFF) !important;
+  border: var(--chat-bubble-my-border-width, 0px) var(--chat-bubble-my-border-style, solid) var(--chat-bubble-my-border-color, #007AFF) !important;
+  border-radius: var(--chat-bubble-my-radius-size, var(--chat-bubble-my-radius, 18px 18px 5px 18px)) !important;
+  padding: var(--chat-bubble-my-padding, var(--chat-bubble-padding, 9.5px 13px)) !important;
+  box-shadow: var(--chat-bubble-my-shadow, none) !important;
+  font-family: var(--chat-bubble-my-font-family, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif) !important;
+  font-size: var(--chat-bubble-my-font-size, 14px) !important;
+  line-height: var(--chat-bubble-my-line-height, 1.42) !important;
 }
 .chat-stage[data-chat-theme-preset="imessage"] .message-time,
 .chat-stage[data-chat-theme-preset="imessage"] .msg-time,
@@ -564,6 +574,14 @@
 .phone-mockup[data-chat-theme-preset="imessage"] .voice-input-btn {
   display: flex !important; flex: 0 0 24px !important; width: 24px !important; height: 28px !important;
   align-items: center !important; justify-content: center !important; color: #636366 !important;
+  order: 2 !important; margin-left: auto !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .real-input { order: 1 !important; }
+.phone-mockup[data-chat-theme-preset="imessage"] .input-dock:has(.send-icon-btn.disabled) .send-icon-btn {
+  display: none !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .input-dock:has(.send-icon-btn:not(.disabled)) .voice-input-btn {
+  display: none !important;
 }
 .phone-mockup[data-chat-theme-preset="imessage"] .voice-input-btn svg {
   width: 18px !important; height: 18px !important; stroke: #636366 !important;
