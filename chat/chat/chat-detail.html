@@ -5020,7 +5020,7 @@
 
   /* 单一交互：点一次开始聆听，再点一次结束。完全不使用长按/指针捕获逻辑。 */
   var SpeechRecognitionCtor=window.SpeechRecognition||window.webkitSpeechRecognition;
-  var recognition=null, mode='', finalText='', interimText='', startTimer=null;
+  var recognition=null, mode='', finalText='', interimText='', startTimer=null, stopRequested=false;
   var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
 
   function getRestoredPlaceholder(){
@@ -5031,7 +5031,7 @@
   }
 
   function toast(message){
-    if(typeof window.showToast==='function'){window.showToast(message);return}
+    /* Voice feedback stays local to this control, so other page-level toast/click guards cannot replace it. */
     var el=document.getElementById('voice-input-status');
     if(!el){
       el=document.createElement('div');el.id='voice-input-status';
@@ -5079,6 +5079,7 @@
     mode='';
     finalText='';
     interimText='';
+    stopRequested=false;
     setActive(false);
     btn.disabled=false;
     input.placeholder=getRestoredPlaceholder();
@@ -5087,7 +5088,8 @@
   function startListening(){
     if(mode!=='')return;
     if(!SpeechRecognitionCtor){
-      toast('当前浏览器没有内置语音识别，当前 API 也不支持转写。请用支持语音识别的 Chrome 浏览器打开。');
+      input.focus();
+      toast('当前浏览器不支持网页语音识别。可点输入框，再使用手机键盘上的麦克风听写；文字不会自动发送。');
       return;
     }
     var rec;
@@ -5117,6 +5119,14 @@
       if(startTimer){clearTimeout(startTimer);startTimer=null}
       mode='listening';
       setActive(true,'正在聆听；说完后再点一次结束');
+      /* 用户在启动阶段又点了一次时，等 onstart 确认就绪后再 stop，避免浏览器判定“操作太快”。 */
+      if(stopRequested){
+        mode='stopping';
+        setActive(true,'正在整理语音文字…');
+        try{rec.stop()}
+        catch(e){try{rec.abort()}catch(ignore){};resetState();toast('语音服务未能正常结束，已重置。请再点一次重试。')}
+        return;
+      }
       toast('正在聆听。说完后再点一次波形结束。');
     };
 
@@ -5144,10 +5154,12 @@
       if(recognition!==rec)return;
       var result=(finalText+' '+interimText).trim();
       var error=rec._maomaoError||'';
+      var wasActive=mode!=='';
+      var endedByUser=(mode==='stopping'||stopRequested);
       resetState();
       if(result)putText(result);
       else if(error&&error!=='aborted')toast(errorText(error));
-      else if(mode!=='')toast('语音识别结束');
+      else if(wasActive&&endedByUser)toast('已结束，但没有识别到文字。请说完后再点一次结束。');
     };
 
     try{rec.start()}
@@ -5159,8 +5171,10 @@
 
   function stopListening(){
     if(mode==='starting'){
-      /* 服务就绪前不抢先 stop，避免触发浏览器“操作太快”错误。 */
-      toast('请稍等，等提示“正在聆听”出现后，再点一次结束');
+      /* 不把“正在启动”当成失败，也不立刻调用 stop；等浏览器 onstart 后自动结束。 */
+      stopRequested=true;
+      setActive(true,'正在启动，已收到结束指令…');
+      toast('已收到结束指令，正在等语音服务就绪；不会重复启动。');
       return;
     }
     if(mode==='listening'){
