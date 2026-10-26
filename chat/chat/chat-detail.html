@@ -5020,7 +5020,7 @@
 
   /* 单一交互：点一次开始聆听，再点一次结束。完全不使用长按/指针捕获逻辑。 */
   var SpeechRecognitionCtor=window.SpeechRecognition||window.webkitSpeechRecognition;
-  var recognition=null, mode='', finalText='', interimText='', lastTapAt=0, startTimer=null;
+  var recognition=null, mode='', finalText='', interimText='', startTimer=null;
   var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
 
   function getRestoredPlaceholder(){
@@ -5106,7 +5106,7 @@
 
     /* 避免浏览器既未触发 onstart 也未触发 onend 时，按钮卡死无法停止。 */
     startTimer=setTimeout(function(){
-      if(recognition!==rec||(mode!=='starting'&&mode!=='stop-after-start'))return;
+      if(recognition!==rec||mode!=='starting')return;
       try{rec.abort()}catch(e){}
       resetState();
       toast('语音识别启动超时。请检查麦克风权限或换用 Chrome 浏览器。');
@@ -5115,15 +5115,6 @@
     rec.onstart=function(){
       if(recognition!==rec)return;
       if(startTimer){clearTimeout(startTimer);startTimer=null}
-      if(mode==='stop-after-start'){
-        mode='stopping';
-        setActive(true,'正在整理语音文字…');
-        try{rec.stop()}catch(e){
-          try{rec.abort()}catch(ignore){}
-          resetState();
-        }
-        return;
-      }
       mode='listening';
       setActive(true,'正在聆听；说完后再点一次结束');
       toast('正在聆听。说完后再点一次波形结束。');
@@ -5168,10 +5159,8 @@
 
   function stopListening(){
     if(mode==='starting'){
-      /* 等待启动完成后立刻结束，避免语音服务被过早 stop。 */
-      mode='stop-after-start';
-      setActive(true,'正在启动，马上结束…');
-      toast('语音正在启动，请稍等一下');
+      /* 服务就绪前不抢先 stop，避免触发浏览器“操作太快”错误。 */
+      toast('请稍等，等提示“正在聆听”出现后，再点一次结束');
       return;
     }
     if(mode==='listening'){
@@ -5185,17 +5174,12 @@
       }
       return;
     }
-    if(mode==='stop-after-start'||mode==='stopping'){
-      toast('正在结束语音，请稍等一下');
-    }
+    if(mode==='stopping')toast('正在整理语音文字，请稍等一下');
   }
 
   btn.addEventListener('click',function(event){
     if(event){event.preventDefault();event.stopPropagation()}
-    var now=Date.now();
-    if(now-lastTapAt<350)return;
-    lastTapAt=now;
-    if(mode==='' )startListening();
+    if(mode==='')startListening();
     else stopListening();
   });
 
