@@ -851,8 +851,8 @@
 .phone-mockup[data-chat-theme-preset="imessage"] #btn-more-menu svg { fill: #1C1C1E !important; stroke: none !important; }
 .chat-stage[data-chat-theme-preset="imessage"] .msg-row.received .msg-bubble:not(.bubble-pay):not(.bubble-media),
 .chat-stage[data-chat-theme-preset="imessage"] .msg-row.left .msg-bubble:not(.bubble-pay):not(.bubble-media) {
-  background: color-mix(in srgb, var(--chat-bubble-ta-bg, #FFFFFF) 62%, transparent) !important;
-  color: var(--chat-bubble-ta-color, #1C1C1E) !important;
+  background: rgba(255,255,255,.48) !important;
+  color: #1C1C1E !important;
   border-color: rgba(255,255,255,.56) !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.42), 0 2px 9px rgba(0,0,0,.045) !important;
   backdrop-filter: blur(12px) saturate(125%) !important;
