@@ -1147,6 +1147,13 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 .reply-preset-toolbar span{max-width:145px;line-height:1.4}
 .reply-preset-select input[type="checkbox"]{border-radius:50%!important}
 .reply-preset-select input[type="checkbox"]:checked::after{content:"✓";font-size:10px}
+
+#myReplyPresetGroup,#characterReplyPresetGroup{border-top:1px solid #ecece8}
+#myReplyPresetGroup .reply-preset-select input,
+#characterReplyPresetGroup .reply-preset-select input{border-radius:50%!important}
+#myReplyPresetGroup .reply-preset-select input:checked,
+#characterReplyPresetGroup .reply-preset-select input:checked{background:#222;border-color:#222}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1292,21 +1299,40 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 </details>
 <details class="drawer-accordion" id="drawerReplyStyles">
   <summary class="drawer-accordion-summary">
-    <span class="drawer-accordion-title">自动回复文风</span>
-    <small>多套可保存 · 最多勾选 3 套</small>
+    <span class="drawer-accordion-title">双方文风预设</span>
+    <small>我的回复 / 角色长文</small>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
   </summary>
   <div class="drawer-accordion-panel">
 
-<div class="reply-style-editor">
- <div class="reply-preset-intro">
-  <div class="wp-label">回复文风预设 / REPLY PRESETS</div>
-  <p class="reply-style-help">文风可以一直保存。勾选一套作为当前回复风格；点开预设可修改名称与要求，保存后随时切换。</p>
+<details class="drawer-subaccordion" id="myReplyPresetGroup">
+ <summary class="drawer-subaccordion-summary"><span>我的回复文风</span><small>AI 帮我回复时使用</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="reply-style-editor">
+   <div class="reply-preset-intro">
+    <div class="wp-label">我的文风 / MY VOICE</div>
+    <p class="reply-style-help">这里只影响替你生成的候选回复。可以保存多套，每次勾选一套作为当前使用的文风。</p>
+   </div>
+   <div class="reply-preset-toolbar"><span id="replyPresetCount">当前使用 1 套 · 已保存 3/30 套</span><button type="button" id="addReplyPreset" class="reply-preset-add">＋ 新建预设</button></div>
+   <div class="reply-preset-list" id="replyPresetList"></div>
+   <p class="reply-preset-footnote" id="replyPresetStatus" aria-live="polite">展开预设可编辑名称与要求，保存后勾选即可使用。</p>
+  </div>
  </div>
- <div class="reply-preset-toolbar"><span id="replyPresetCount">当前使用 1 套 · 已保存 3/30 套</span><button type="button" id="addReplyPreset" class="reply-preset-add">＋ 新建预设</button></div>
- <div class="reply-preset-list" id="replyPresetList"></div>
- <p class="reply-preset-footnote" id="replyPresetStatus" aria-live="polite">勾选框用于切换当前文风；展开名称后可编辑和保存。</p>
-</div>
+</details>
+<details class="drawer-subaccordion" id="characterReplyPresetGroup">
+ <summary class="drawer-subaccordion-summary"><span>角色回复文风</span><small>控制对面角色的长文</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="reply-style-editor">
+   <div class="reply-preset-intro">
+    <div class="wp-label">角色文风 / CHARACTER VOICE</div>
+    <p class="reply-style-help">这里只影响角色下一次生成的叙述、台词和描写，不会替换角色原本人设。可保存多套，勾选一套生效。</p>
+   </div>
+   <div class="reply-preset-toolbar"><span id="characterPresetCount">当前使用 1 套 · 已保存 3/30 套</span><button type="button" id="addCharacterPreset" class="reply-preset-add">＋ 新建预设</button></div>
+   <div class="reply-preset-list" id="characterPresetList"></div>
+   <p class="reply-preset-footnote" id="characterPresetStatus" aria-live="polite">角色文风与我的文风独立保存，互不覆盖。</p>
+  </div>
+ </div>
+</details>
   </div>
 </details>
     </div>
@@ -1475,6 +1501,11 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
                 { id: 'reply-empathy', name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。', selected: false },
                 { id: 'reply-playful', name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。', selected: false }
             ],
+            characterStyles: [
+                { id: 'character-original', name: '贴合角色人设', prompt: '严格遵循角色已有性格、经历、关系和说话习惯。自然推进剧情，不能为了文风而改变角色的人设。', selected: true },
+                { id: 'character-literary', name: '细腻沉浸式', prompt: '使用有画面感但不堆砌的环境、动作与心理描写，节奏舒展、情绪藏在细节里；每段描写都要推进关系或剧情。', selected: false },
+                { id: 'character-dialogue', name: '对话优先', prompt: '主要通过自然、有辨识度的台词和少量必要动作推动故事，减少冗长环境描写，不使用机械重复的动作模板。', selected: false }
+            ],
             bgColor: '#FFFFFF', bgImage: '',
             breakMode: 'none', summaryMode: 'card'
         };
@@ -1526,7 +1557,29 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
                     else item.selected = false;
                 });
             }
-            if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor));
+            if (Array.isArray(v.characterStyles)) {
+                var baseCharacterStyles = d.characterStyles;
+                d.characterStyles = v.characterStyles.slice(0, 30).map(function (saved, i) {
+                    saved = saved || {};
+                    var fallback = baseCharacterStyles[i] || {
+                        id: 'character-custom-' + (i + 1),
+                        name: '新角色预设 ' + (i + 1),
+                        prompt: '请在这里写下希望角色遵循的叙事与台词文风。'
+                    };
+                    return {
+                        id: String(saved.id || fallback.id || ('character-custom-' + (i + 1))).slice(0, 60),
+                        name: String(saved.name || fallback.name).trim().slice(0, 30) || fallback.name,
+                        prompt: String(saved.prompt || fallback.prompt).trim().slice(0, 600) || fallback.prompt,
+                        selected: typeof saved.selected === 'boolean' ? saved.selected : i === 0
+                    };
+                });
+                var selectedCharacterPresetFound = false;
+                d.characterStyles.forEach(function (item) {
+                    if (item.selected && !selectedCharacterPresetFound) selectedCharacterPresetFound = true;
+                    else item.selected = false;
+                });
+            }
+            if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor)) d.bgColor = v.bgColor;
             if (v.bgImage && /^data:image\//.test(v.bgImage)) d.bgImage = v.bgImage;
             if (v.breakMode && ['none', 'line', 'space'].indexOf(v.breakMode) >= 0) d.breakMode = v.breakMode;
             if (v.summaryMode === 'card' || v.summaryMode === 'text') d.summaryMode = v.summaryMode;
@@ -1562,38 +1615,70 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var replyPresetCount = document.getElementById('replyPresetCount');
     var replyPresetStatus = document.getElementById('replyPresetStatus');
     var addReplyPresetButton = document.getElementById('addReplyPreset');
-    var replyPresetListInitialized = false;
-    function selectedReplyStyles() {
-        return (writingOpts.replyStyles || []).filter(function (item) { return item.selected; }).slice(0, 1);
+    var characterPresetList = document.getElementById('characterPresetList');
+    var characterPresetCount = document.getElementById('characterPresetCount');
+    var characterPresetStatus = document.getElementById('characterPresetStatus');
+    var addCharacterPresetButton = document.getElementById('addCharacterPreset');
+    var presetListInitialized = { user: false, character: false };
+
+    var presetManagers = {
+        user: {
+            key: 'replyStyles', prefix: 'reply', kind: '我的回复',
+            list: replyPresetList, count: replyPresetCount, status: replyPresetStatus,
+            addButton: addReplyPresetButton,
+            emptyPrompt: '请描述希望 AI 如何替你回复，例如语气、长度和表达习惯。',
+            deleteMessage: '确定删除这套我的回复文风吗？'
+        },
+        character: {
+            key: 'characterStyles', prefix: 'character', kind: '角色回复',
+            list: characterPresetList, count: characterPresetCount, status: characterPresetStatus,
+            addButton: addCharacterPresetButton,
+            emptyPrompt: '请描述角色应该如何叙述和说话，注意不要覆盖角色原本人设。',
+            deleteMessage: '确定删除这套角色回复文风吗？'
+        }
+    };
+    function getPresetList(type) {
+        return writingOpts[presetManagers[type].key] || [];
     }
-    function updateReplyPresetCount() {
-        var selected = selectedReplyStyles().length;
-        var total = (writingOpts.replyStyles || []).length;
-        if (replyPresetCount) replyPresetCount.textContent = (selected ? '当前使用 1 套' : '尚未选择文风') + ' · 已保存 ' + total + '/30 套';
-        if (addReplyPresetButton) addReplyPresetButton.disabled = total >= 30;
+    function selectedPresets(type) {
+        return getPresetList(type).filter(function (item) { return item.selected; }).slice(0, 1);
     }
-    function renderReplyPresetList(openId) {
-        if (!replyPresetList) return;
-        replyPresetList.innerHTML = '';
-        (writingOpts.replyStyles || []).forEach(function (item, index) {
+    function selectedReplyStyles() { return selectedPresets('user'); }
+    function selectedCharacterStyles() { return selectedPresets('character'); }
+
+    function updatePresetCount(type) {
+        var manager = presetManagers[type];
+        var selected = selectedPresets(type).length;
+        var total = getPresetList(type).length;
+        if (manager.count) manager.count.textContent = (selected ? '当前使用 1 套' : '尚未选择文风') + ' · 已保存 ' + total + '/30 套';
+        if (manager.addButton) manager.addButton.disabled = total >= 30;
+    }
+    function renderStylePresetList(type, openId) {
+        var manager = presetManagers[type];
+        if (!manager.list) return;
+        manager.list.innerHTML = '';
+        getPresetList(type).forEach(function (item, index) {
             var details = document.createElement('details');
             details.className = 'reply-preset-item';
             details.dataset.presetId = item.id;
             details.open = item.id === openId;
+
             var summary = document.createElement('summary');
             summary.className = 'reply-preset-summary';
             var title = document.createElement('span');
             title.className = 'reply-preset-name';
             title.textContent = item.name || ('新预设 ' + (index + 1));
+
             var selectedLabel = document.createElement('label');
             selectedLabel.className = 'reply-preset-select';
             var checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = !!item.selected;
-            checkbox.setAttribute('aria-label', '选用预设：' + title.textContent);
+            checkbox.setAttribute('aria-label', '当前使用这套' + manager.kind + '文风：' + title.textContent);
             var tick = document.createElement('span');
-            tick.textContent = '使用';
+            tick.textContent = '当前使用';
             selectedLabel.append(checkbox, tick);
+
             var chevron = document.createElement('span');
             chevron.className = 'reply-preset-chevron';
             chevron.textContent = '⌄';
@@ -1603,37 +1688,42 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             checkbox.addEventListener('change', function (event) {
                 event.stopPropagation();
                 if (checkbox.checked) {
-                    (writingOpts.replyStyles || []).forEach(function (other) { other.selected = other.id === item.id; });
+                    getPresetList(type).forEach(function (other) { other.selected = other.id === item.id; });
                 } else {
                     item.selected = false;
                 }
                 saveWritingOpts();
-                renderReplyPresetList(item.id);
-                updateReplyPresetCount();
-                if (replyPresetStatus) replyPresetStatus.textContent = item.selected
-                    ? '当前回复文风已切换为「' + item.name + '」。'
+                renderStylePresetList(type, item.id);
+                updatePresetCount(type);
+                if (manager.status) manager.status.textContent = item.selected
+                    ? '当前' + manager.kind + '文风已切换为「' + item.name + '」。'
                     : '已取消当前文风；预设仍会保存在列表里。';
             });
+
             var panel = document.createElement('div');
             panel.className = 'reply-preset-edit-panel';
             var nameLabel = document.createElement('label');
             nameLabel.className = 'reply-preset-field-label';
             nameLabel.textContent = '预设名称';
+
             var nameInput = document.createElement('input');
             nameInput.type = 'text';
             nameInput.className = 'wp-text-input';
             nameInput.maxLength = 30;
             nameInput.value = item.name || '';
-            nameInput.setAttribute('aria-label', '预设名称');
+            nameInput.setAttribute('aria-label', manager.kind + '预设名称');
+
             var promptLabel = document.createElement('label');
             promptLabel.className = 'reply-preset-field-label';
-            promptLabel.textContent = '文风要求';
+            promptLabel.textContent = type === 'character' ? '角色叙述与台词要求' : '我的回复文风要求';
+
             var promptInput = document.createElement('textarea');
             promptInput.className = 'wp-textarea';
             promptInput.maxLength = 600;
             promptInput.rows = 3;
             promptInput.value = item.prompt || '';
-            promptInput.placeholder = '描述希望 AI 如何替你回复，比如语气、句子长度、表达习惯。';
+            promptInput.placeholder = manager.emptyPrompt;
+
             var actions = document.createElement('div');
             actions.className = 'reply-preset-actions';
             var saveButton = document.createElement('button');
@@ -1642,61 +1732,72 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             saveButton.textContent = '保存预设';
             saveButton.addEventListener('click', function () {
                 item.name = (nameInput.value || '').trim().slice(0, 30) || ('新预设 ' + (index + 1));
-                item.prompt = (promptInput.value || '').trim().slice(0, 600) || '请按自然、符合当前剧情的方式回复，避免替用户做出重大决定。';
+                item.prompt = (promptInput.value || '').trim().slice(0, 600) || manager.emptyPrompt;
                 saveWritingOpts();
-                renderReplyPresetList(item.id);
-                if (replyPresetStatus) replyPresetStatus.textContent = '已保存「' + item.name + '」。';
+                renderStylePresetList(type, item.id);
+                updatePresetCount(type);
+                if (manager.status) manager.status.textContent = '已保存「' + item.name + '」。';
                 toast('预设已保存');
             });
+
             var deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             deleteButton.className = 'reply-preset-delete';
             deleteButton.textContent = '删除';
             deleteButton.addEventListener('click', function () {
                 if (!window.confirm('确定删除预设「' + item.name + '」吗？')) return;
-                writingOpts.replyStyles = writingOpts.replyStyles.filter(function (other) { return other.id !== item.id; });
+                writingOpts[manager.key] = getPresetList(type).filter(function (other) { return other.id !== item.id; });
                 saveWritingOpts();
-                renderReplyPresetList();
-                if (replyPresetStatus) replyPresetStatus.textContent = '预设已删除。';
+                renderStylePresetList(type);
+                updatePresetCount(type);
+                if (manager.status) manager.status.textContent = '已删除「' + item.name + '」。';
                 toast('预设已删除');
             });
+
             actions.append(saveButton, deleteButton);
             panel.append(nameLabel, nameInput, promptLabel, promptInput, actions);
             details.append(summary, panel);
             details.addEventListener('toggle', function () {
                 if (!details.open) return;
-                Array.prototype.slice.call(replyPresetList.querySelectorAll('.reply-preset-item')).forEach(function (other) {
+                Array.prototype.slice.call(manager.list.querySelectorAll('.reply-preset-item')).forEach(function (other) {
                     if (other !== details) other.open = false;
                 });
             });
-            replyPresetList.appendChild(details);
+            manager.list.appendChild(details);
         });
-        updateReplyPresetCount();
+        updatePresetCount(type);
     }
-    function bindReplyStyleControls() {
-        if (!replyPresetListInitialized) {
-            renderReplyPresetList();
-            replyPresetListInitialized = true;
+    function bindStylePresetControls(type) {
+        var manager = presetManagers[type];
+        if (!manager || !manager.list) return;
+        if (!presetListInitialized[type]) {
+            renderStylePresetList(type);
+            presetListInitialized[type] = true;
         }
-        if (addReplyPresetButton && !addReplyPresetButton.dataset.bound) {
-            addReplyPresetButton.addEventListener('click', function () {
-                if (writingOpts.replyStyles.length >= 30) {
-                    toast('最多保存 30 套预设');
+        if (manager.addButton && !manager.addButton.dataset.bound) {
+            manager.addButton.addEventListener('click', function () {
+                var list = getPresetList(type);
+                if (list.length >= 30) {
+                    toast('每类文风最多保存 30 套预设');
                     return;
                 }
                 var item = {
-                    id: 'reply-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
-                    name: '新预设 ' + (writingOpts.replyStyles.length + 1),
-                    prompt: '请在这里描述你希望 AI 遵循的回复文风。',
+                    id: manager.prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+                    name: (type === 'character' ? '新角色预设 ' : '新预设 ') + (list.length + 1),
+                    prompt: manager.emptyPrompt,
                     selected: false
                 };
-                writingOpts.replyStyles.push(item);
+                writingOpts[manager.key].push(item);
                 saveWritingOpts();
-                renderReplyPresetList(item.id);
-                if (replyPresetStatus) replyPresetStatus.textContent = '新预设已创建。编辑后点“保存预设”，再勾选即可使用。';
+                renderStylePresetList(type, item.id);
+                if (manager.status) manager.status.textContent = '新预设已创建。编辑并保存，再勾选即可使用。';
             });
-            addReplyPresetButton.dataset.bound = '1';
+            manager.addButton.dataset.bound = '1';
         }
+    }
+    function bindReplyStyleControls() {
+        bindStylePresetControls('user');
+        bindStylePresetControls('character');
     }
 
     function renderWritingUI() {
@@ -2291,6 +2392,13 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         parts.push('【你的人设】');
         parts.push('你是' + charName + '。');
         parts.push(persona);
+        var activeCharacterStyle = selectedCharacterStyles()[0];
+        if (activeCharacterStyle && activeCharacterStyle.prompt) {
+            parts.push('');
+            parts.push('【当前角色回复文风预设：「' + capText(activeCharacterStyle.name || '自定义角色文风', 60) + '」】');
+            parts.push(capText(activeCharacterStyle.prompt, 1200));
+            parts.push('此预设只调整叙述节奏、描写密度、台词口吻与段落风格；不得覆盖上方角色人设、既有经历、关系设定、世界书及记忆，也不要为了套用风格而写成固定模板。');
+        }
 
         // 世界书：线下剧情的舞台背景
         try {
