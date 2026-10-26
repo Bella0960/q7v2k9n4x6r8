@@ -1266,7 +1266,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 <details class="drawer-accordion" id="drawerReplyStyles">
   <summary class="drawer-accordion-summary">
     <span class="drawer-accordion-title">自动回复文风</span>
-    <small>自定义三种回复方式</small>
+    <small>多套可保存 · 最多勾选 3 套</small>
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
   </summary>
   <div class="drawer-accordion-panel">
@@ -1315,12 +1315,12 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         <button type="button" id="closeReplyOptions" aria-label="收起回复选项">×</button>
       </div>
     </div>
-    <p class="reply-suggestions-status" id="replySuggestionsStatus" aria-live="polite">根据当前剧情生成三种不同文风。</p>
+    <p class="reply-suggestions-status" id="replySuggestionsStatus" aria-live="polite">根据当前剧情与已勾选的预设生成回复。</p>
     <div class="reply-suggestions-list" id="replySuggestionsList"></div>
   </section>
   <form class="composer" id="dateForm">
     <textarea id="dateInput" rows="1" placeholder="写下你的行动与台词……"></textarea>
-    <button type="button" class="reply-options-trigger" id="replyOptionsBtn" aria-label="根据当前剧情生成三种回复" title="帮我回复">
+    <button type="button" class="reply-options-trigger" id="replyOptionsBtn" aria-label="根据当前剧情与已选文风生成回复候选" title="帮我回复">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.8 9l5.5 1.8-5.5 1.8-1.8 5.5-1.8-5.5-5.5-1.8L10.2 9 12 3.5Z"/><path d="m19 15 .9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg>
       <span>帮我回复</span>
     </button>
@@ -2458,7 +2458,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     function showReplyOptionsPanel() {
         if (replySuggestionsPanel) replySuggestionsPanel.hidden = false;
     }
-    function parseReplyOptions(rawText, expectedCount) {
+    function parseReplyOptions(rawText, expectedStyles) {
+        var expectedCount = expectedStyles.length;
         var raw = String(rawText || '').trim()
             .replace(/^\s*```(?:json)?\s*/i, '')
             .replace(/\s*```\s*$/i, '');
@@ -2472,7 +2473,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         var options = Array.isArray(parsed) ? parsed : parsed.options || parsed.replies || parsed.choices;
         if (!Array.isArray(options) || options.length < expectedCount) throw new Error('没有成功识别出 ' + expectedCount + ' 条回复，请重新生成');
         return options.slice(0, expectedCount).map(function (item, index) {
-            var fallback = writingOpts.replyStyles[index] || { name: '风格 ' + (index + 1) };
+            var fallback = expectedStyles[index] || { name: '风格 ' + (index + 1) };
             var text = String(item.text || item.reply || item.content || '').trim();
             var style = String(item.style || item.name || fallback.name).trim();
             if (!text) throw new Error('第 ' + (index + 1) + ' 条回复为空，请重新生成');
@@ -2530,11 +2531,11 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     function buildReplyOptionMessages(styles) {
         var characterPrompt = capText(String(character.persona || character.prompt || '一个真实、有生活气息的人。').trim(), 3500);
         var system = [
-            '你是互动小说里的“用户回复建议器”，不是正在扮演角色的人。你的任务是根据当前线下剧情，为用户生成三条可直接发给角色的回应。',
+            '你是互动小说里的“用户回复建议器”，不是正在扮演角色的人。你的任务是根据当前线下剧情，为用户生成 ' + styles.length + ' 条可直接发给角色的回应。',
             '当前角色：' + charName + '。当前场景：' + (sceneName || '未指定') + '。',
             '角色人设（仅用于理解对方，不要代替角色作答）：\n' + characterPrompt,
             '回应写给角色本人，而不是写给读者。中文自然表达，可包含少量行动描写或台词，适应正在进行的面对面场景。',
-            '尊重用户自主性：不要替用户做重大承诺、决定关系走向或编造用户没有表达过的经历。每条通常 1–3 句，尽量适合直接发送；三条要明显不同，但都符合当前剧情。',
+            '尊重用户自主性：不要替用户做重大承诺、决定关系走向或编造用户没有表达过的经历。每条通常 1–3 句，尽量适合直接发送；各条分别遵循对应预设，同时符合当前剧情。',
             '只能返回合法 JSON，不要 Markdown 代码块，不要解释，不要添加 JSON 外文字。请返回一个 options 数组，里面必须有 ' + styles.length + ' 个元素，每项包含 style 和 text 两个字符串字段。',
             '必须按以下 ' + styles.length + ' 个已勾选的自定义文风顺序各生成一条：',
             styles.map(function (style, index) {
@@ -2607,7 +2608,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
                 toast('自动回复生成失败');
                 return;
             }
-            latestReplyOptions = parseReplyOptions(result.fullText, styles.length);
+            latestReplyOptions = parseReplyOptions(result.fullText, styles);
             renderReplyOptions(latestReplyOptions);
             setReplyOptionsStatus('已生成 ' + latestReplyOptions.length + ' 条回复。可编辑后发送，也可以直接选用。', false);
         }).catch(function (error) {
