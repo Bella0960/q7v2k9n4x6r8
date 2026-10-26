@@ -79,7 +79,7 @@
         transferBg: '#FFFFFF', transferBorderColor: '#E5E5EA', transferBorderWidth: 1, transferTextColor: '#111111',
         transferImage: '', transferImageOpacity: 100,
         chatBg: '',
-        chatBgDim: 0
+        chatBgDim: 0,
         themePreset: 'default' // built-in theme preset metadata
     };
     NS.DEFAULTS = DEFAULTS;
