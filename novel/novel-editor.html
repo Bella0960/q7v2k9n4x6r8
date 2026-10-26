@@ -174,5 +174,6 @@ function buildStudioPages(){
 
 buildStudioPages();
 load();
+if(new URLSearchParams(location.search).get('section')==='chapters'){setTimeout(()=>document.getElementById('chapters')?.scrollIntoView({behavior:'auto',block:'start'}),100)}
 })();
 </script></body></html>
