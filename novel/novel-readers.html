@@ -426,6 +426,89 @@ body.readers-mode .reader-filters select{
  body.readers-mode .reader-filters{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 }
 
+
+/* Balanced full-width controls for reader comments on phone and desktop. */
+body.readers-mode .reader-feed,
+body.readers-mode .reader-community-layout,
+body.readers-mode #readerNotes{
+ width:100%!important;
+ min-width:0!important;
+ box-sizing:border-box!important;
+}
+body.readers-mode .reader-sortbar{
+ display:grid!important;
+ grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ gap:6px!important;
+ width:100%!important;
+ max-width:none!important;
+ margin:12px 0 13px!important;
+ padding:4px!important;
+ box-sizing:border-box!important;
+}
+body.readers-mode .reader-sort-btn{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ width:100%!important;
+ min-width:0!important;
+ min-height:42px!important;
+ margin:0!important;
+ padding:10px 8px!important;
+ box-sizing:border-box!important;
+ text-align:center!important;
+}
+body.readers-mode .reader-filters{
+ display:grid!important;
+ grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ align-items:start!important;
+ gap:10px!important;
+ width:100%!important;
+ max-width:none!important;
+ margin:0!important;
+ padding:0 0 14px!important;
+ box-sizing:border-box!important;
+}
+body.readers-mode .reader-filters .field{
+ display:flex!important;
+ flex-direction:column!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:none!important;
+ flex:initial!important;
+ margin:0!important;
+ gap:6px!important;
+ box-sizing:border-box!important;
+}
+body.readers-mode .reader-filters .field label{
+ display:block!important;
+ min-height:15px!important;
+ margin:0!important;
+ font-size:10px!important;
+ line-height:1.5!important;
+ white-space:nowrap!important;
+}
+body.readers-mode .reader-filters select{
+ display:block!important;
+ width:100%!important;
+ min-width:0!important;
+ max-width:none!important;
+ height:43px!important;
+ min-height:43px!important;
+ margin:0!important;
+ padding:9px 7px!important;
+ border:1px solid #e5e5e2!important;
+ border-radius:9px!important;
+ background:#fafaf9!important;
+ font-size:11px!important;
+ line-height:1.3!important;
+ box-sizing:border-box!important;
+}
+@media(max-width:350px){
+ body.readers-mode .scroll{padding-left:14px!important;padding-right:14px!important}
+ body.readers-mode .reader-filters{gap:7px!important}
+ body.readers-mode .reader-filters select{font-size:10px!important;padding-left:5px!important;padding-right:5px!important}
+}
+
 </style></head><body class="readers-mode"><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / WRITING DESK</span><button class="btn" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
 <section class="hero"><div class="kicker">YOUR STORIES · YOUR AUDIENCE</div><h1>Write your<br>own world.</h1><p>从一份大纲开始，写出自己的故事。发布后，让模拟读者阅读、追更、留下评论。</p></section>
 <div class="stats"><div class="stat"><small>我的作品</small><strong id="workCount">0</strong></div><div class="stat"><small>累计字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动</small><strong id="reactionCount">0</strong></div></div>
@@ -443,7 +526,7 @@ body.readers-mode .reader-filters select{
 <div class="actions"><button class="btn" id="generatePlan">AI 生成章节策划</button><button class="btn" id="savePlan">保存策划</button><button class="btn" id="clearPlan">清空策划</button></div><div id="planStatus" class="hint"></div>
 <div class="actions"><button class="btn dark" id="saveWork">保存作品设定</button><button class="btn" id="generateOutline">AI 生成大纲</button><button class="btn" id="generateChapter">AI 生成章节</button><button class="btn" id="openApiSettings">API 设置</button></div>
 <div class="field"><label>章节目录 · 点击可编辑</label><div id="chapters"></div></div><div class="field"><label>章节标题</label><input class="input" id="chapterTitle" placeholder="第一章 · 雨停之前"></div><div class="field"><label>章节正文</label><textarea id="chapterBody" style="min-height:260px" placeholder="在这里写正文，或先生成草稿再逐句修改……"></textarea><div style="display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#999;margin-top:5px"><span>支持选中一段后进行局部改写</span><span id="chapterWordCount">0 字</span></div></div><div class="actions"><button class="btn" id="continueChapter">续写一段</button><button class="btn" id="rewriteChapter">AI 润色 / 改写</button></div><div class="actions"><button class="btn" id="checkContinuity">AI 检查设定一致性</button></div><div id="continuityResults"></div><div class="actions"><button class="btn dark" id="saveChapter">保存章节</button><button class="btn" id="publishChapter">发布给模拟读者</button><button class="btn" id="newChapter">＋ 新章节</button></div><div id="versionList"></div></section>
-<section id="pane-audience" class="hidden"><h2 class="section-title">Readers / 读者来信</h2><p class="hint">发布章节后，可以查看模拟读者的评论、追更反应和人气变化。此处为本地模拟读者系统，不代表真实联网读者。</p><div class="stats"><div class="stat"><small>阅读量</small><strong id="views">0</strong></div><div class="stat"><small>收藏</small><strong id="likes">0</strong></div><div class="stat"><small>追更</small><strong id="follows">0</strong></div></div><div class="field"><label>按章节查看反馈</label><select id="readerChapterFilter"><option value="all">全部章节与作品动态</option></select></div><div class="field"><label>反馈类型</label><select id="readerTypeFilter"><option value="all">全部反馈</option><option value="读者">读者评论</option><option value="发布">发布记录</option><option value="更新">更新记录</option></select></div><div id="chapterReaderStats"></div><div class="actions"><button class="btn dark" id="simulateReaders">AI 生成读者反馈</button><button class="btn" id="exportWork">导出当前作品</button></div><div id="readerNotes"></div></section>
+<section id="pane-audience" class="hidden"><h2 class="section-title">Readers / 读者来信</h2><p class="hint">发布章节后，可以查看模拟读者的评论、追更反应和人气变化。此处为本地模拟读者系统，不代表真实联网读者。</p><div class="stats"><div class="stat"><small>阅读量</small><strong id="views">0</strong></div><div class="stat"><small>收藏</small><strong id="likes">0</strong></div><div class="stat"><small>追更</small><strong id="follows">0</strong></div></div><div class="field"><label>按章节查看反馈</label><select id="readerChapterFilter"><option value="all">全部章节 / 作品动态</option></select></div><div class="field"><label>反馈类型</label><select id="readerTypeFilter"><option value="all">全部反馈</option><option value="读者">读者评论</option><option value="发布">发布记录</option><option value="更新">更新记录</option></select></div><div id="chapterReaderStats"></div><div class="actions"><button class="btn dark" id="simulateReaders">AI 生成读者反馈</button><button class="btn" id="exportWork">导出当前作品</button></div><div id="readerNotes"></div></section>
 <p class="footer">LOCAL FIRST / 内容保存在当前浏览器。大纲、章节续写与改写、读者反馈可调用小手机现有 AI API；未配置 API 时请先到设置中完成配置。读者互动数据仍为本地模拟，不代表真实联网读者。清理浏览器数据可能导致本地作品丢失，请定期导出备份。</p>
 </div></main><div class="toast" id="toast"></div>
 <script>
@@ -506,7 +589,7 @@ $('addEvent').onclick=()=>{const w=syncWork();ensureBible(w);const title=$('even
 $('addClue').onclick=()=>{const w=syncWork();ensureBible(w);const title=$('clueTitle').value.trim();if(!title){toast('先填写伏笔名称');return}w.foreshadow.push({id:uid(),title,plant:$('cluePlant').value.trim(),payoff:$('cluePayoff').value.trim(),status:$('clueStatus').value,created:Date.now()});['clueTitle','cluePlant','cluePayoff'].forEach(id=>$(id).value='');persist();renderBible();toast('伏笔已加入追踪清单')};
 document.addEventListener('click',e=>{const b=e.target.closest('[data-bible-delete]');if(!b)return;const w=current();if(!w)return;ensureBible(w);const key={person:'people',event:'timeline',clue:'foreshadow'}[b.dataset.bibleDelete];w[key]=w[key].filter(x=>x.id!==b.dataset.bibleId);persist();renderBible();toast('记录已删除')});
 
-function renderReaderChapterOptions(){const sel=$('readerChapterFilter'),w=current(),old=sel.value;sel.innerHTML='<option value="all">全部章节与作品动态</option>';(w?.chapters||[]).filter(c=>c.published).forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.title||'未命名章节';sel.appendChild(o)});if([...sel.options].some(o=>o.value===old))sel.value=old}
+function renderReaderChapterOptions(){const sel=$('readerChapterFilter'),w=current(),old=sel.value;sel.innerHTML='<option value="all">全部章节 / 作品动态</option>';(w?.chapters||[]).filter(c=>c.published).forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.title||'未命名章节';sel.appendChild(o)});if([...sel.options].some(o=>o.value===old))sel.value=old}
 function renderChapterReaderStats(w){const root=$('chapterReaderStats');root.innerHTML='';if(!w)return;const published=w.chapters.filter(c=>c.published);if(!published.length){root.innerHTML='<div class="empty">发布章节后，这里会汇总每章收到的模拟反馈。</div>';return}const counts=published.map(c=>({c,n:w.notes.filter(n=>n.type==='读者'&&(n.chapterId===c.id||(!n.chapterId&&String(n.text||'').includes('《'+c.title+'》')))).length}));const max=Math.max(1,...counts.map(x=>x.n));const box=document.createElement('div');box.style.cssText='border-top:1px solid #e8e8e5;margin:8px 0 18px';box.innerHTML='<div style="font:400 20px Georgia,serif;margin:14px 0 5px">Chapter reactions</div><div style="font-size:10px;color:#999;margin-bottom:12px">各章收到的模拟读者评论数</div>';counts.forEach(({c,n},i)=>{const row=document.createElement('div');row.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) 1.2fr 24px;gap:9px;align-items:center;padding:7px 0';row.innerHTML='<span style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.title||('第'+(i+1)+'章'))+'</span><span style="height:4px;background:#f0f0ee;display:block"><span style="display:block;width:'+Math.round(n/max*100)+'%;height:4px;background:#333"></span></span><span style="font-size:10px;text-align:right;color:#777">'+n+'</span>';box.appendChild(row)});root.appendChild(box)}
 let readerSortMode='latest';
 function renderAudience(){
