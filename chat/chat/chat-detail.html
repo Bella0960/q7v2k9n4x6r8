@@ -4981,7 +4981,7 @@
 
 <style id="maomao-voice-input-style">
 .input-capsule { display:flex !important;align-items:center !important;gap:8px !important; }
-.voice-input-btn { flex:0 0 25px;width:25px;height:29px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#555;padding:0;cursor:pointer;border-radius:50%; }
+.voice-input-btn { flex:0 0 25px;width:25px;height:29px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#555;padding:0;cursor:pointer;border-radius:50%;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none; }
 .voice-input-btn svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round; }
 .voice-input-btn.is-imessage-audio { flex-basis:27px;width:27px;color:#555;transition:color .18s ease,transform .18s ease,background .18s ease; }
 .voice-input-btn.is-imessage-audio svg { width:19px;height:19px;stroke-width:1.8; }
@@ -5005,59 +5005,292 @@
   var btn=document.getElementById('voice-input-btn');
   var input=document.getElementById('chat-input');
   if(!btn||!input)return;
-  var recognition=null, recorder=null, chunks=[], stream=null, mode='', finalText='', oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
-  function getRestoredPlaceholder(){return window.ChatBeauty&&typeof ChatBeauty.getThemePreset==='function'&&ChatBeauty.getThemePreset()==='imessage'?'iMessage 信息':oldPlaceholder}
+
+  var recognition=null, recorder=null, chunks=[], stream=null, mode='', finalText='';
+  var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
+  var speechStopRequested=false, recorderStartToken=0;
+  var pointerTimer=null, pointerDown=false, holdCaptureActive=false, suppressClickUntil=0;
+
+  function getRestoredPlaceholder(){
+    return window.ChatBeauty&&typeof ChatBeauty.getThemePreset==='function'&&ChatBeauty.getThemePreset()==='imessage'?'iMessage 信息':oldPlaceholder;
+  }
   var Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
-  function toast(message){if(typeof window.showToast==='function')window.showToast(message);else{var el=document.getElementById('voice-input-status');if(!el){el=document.createElement('div');el.id='voice-input-status';el.style.cssText='position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;background:#111;color:#fff;padding:9px 13px;font:12px -apple-system,BlinkMacSystemFont,sans-serif;max-width:85%;text-align:center';document.querySelector('.phone-mockup')?.appendChild(el)}el.textContent=message;el.style.display='block';clearTimeout(el._timer);el._timer=setTimeout(function(){el.style.display='none'},2600)}}
-  function setActive(active,label){btn.classList.toggle('recording',active);btn.setAttribute('aria-pressed',active?'true':'false');btn.title=label|| (active?'再次点击结束录音':'点击说话，识别后可编辑再发送');if(active)input.placeholder='正在聆听… 再点一次结束';else input.placeholder=getRestoredPlaceholder()}
-  function putText(text){text=String(text||'').trim();if(!text){toast('没有识别到清晰的语音，请再试一次');return}var prefix=input.value.trim();input.value=prefix?(prefix+' '+text):text;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();toast('语音已转成文字，可以检查后发送')}
-  function releaseStream(){if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}}
-  function stopRecorder(){if(recorder&&recorder.state!=='inactive')recorder.stop()}
+
+  function toast(message){
+    if(typeof window.showToast==='function'){window.showToast(message);return}
+    var el=document.getElementById('voice-input-status');
+    if(!el){
+      el=document.createElement('div');el.id='voice-input-status';
+      el.style.cssText='position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;background:#111;color:#fff;padding:9px 13px;font:12px -apple-system,BlinkMacSystemFont,sans-serif;max-width:85%;text-align:center';
+      document.querySelector('.phone-mockup')?.appendChild(el);
+    }
+    el.textContent=message;el.style.display='block';clearTimeout(el._timer);
+    el._timer=setTimeout(function(){el.style.display='none'},2600);
+  }
+
+  function setActive(active,label){
+    btn.classList.toggle('recording',active);
+    btn.setAttribute('aria-pressed',active?'true':'false');
+    btn.title=label||(active?'再次点击结束录音':'点击说话；长按也可录音');
+    input.placeholder=active?'正在聆听… 再点一次结束':getRestoredPlaceholder();
+  }
+  function putText(text){
+    text=String(text||'').trim();
+    if(!text){toast('没有听到清晰的语音，再试一次就好');return}
+    var prefix=input.value.trim();
+    input.value=prefix?(prefix+' '+text):text;
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.focus();
+    toast('语音已转成文字，可以检查后发送');
+  }
+  function releaseStream(){
+    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
+  }
+  function stopRecorder(){
+    if(recorder&&recorder.state!=='inactive'){
+      try{recorder.stop()}catch(e){}
+    }
+  }
+
+  function switchFromSpeechToRecorder(message){
+    if(mode!=='speech')return;
+    var oldRecognition=recognition;
+    recognition=null;
+    mode='';
+    if(oldRecognition){
+      oldRecognition.onend=null;
+      oldRecognition.onerror=null;
+      try{oldRecognition.abort()}catch(e){}
+    }
+    if(finalText.trim()){
+      setActive(false);
+      putText(finalText);
+      finalText='';
+      return;
+    }
+    setActive(false);
+    if(message)toast(message);
+    startRecorder();
+  }
+
   function startRecognition(){
     try{
-      recognition=new Speech();recognition.lang='zh-CN';recognition.continuous=true;recognition.interimResults=true;
-      finalText='';mode='speech';setActive(true,'再次点击结束语音识别');btn.disabled=false;
-      recognition.onresult=function(event){var interim='';for(var i=event.resultIndex;i<event.results.length;i++){var piece=event.results[i][0].transcript||'';if(event.results[i].isFinal)finalText+=piece;else interim+=piece}input.placeholder=(finalText+interim).trim()||'正在聆听…'};
-      recognition.onerror=function(event){if(event.error==='aborted')return;setActive(false);mode='';if(event.error==='not-allowed'||event.error==='service-not-allowed')toast('麦克风权限未开启，请在浏览器设置中允许使用麦克风');else if(event.error==='network')toast('浏览器语音识别暂不可用，可尝试重新点击或使用支持音频转写的 API');else toast('语音识别暂不可用：'+event.error)};
-      recognition.onend=function(){if(mode!=='speech')return;mode='';setActive(false);if(finalText.trim())putText(finalText);else if(!input.value.trim())toast('没有识别到语音内容')};
+      recognition=new Speech();
+      recognition.lang='zh-CN';
+      recognition.continuous=true;
+      recognition.interimResults=true;
+      finalText='';
+      speechStopRequested=false;
+      mode='speech';
+      setActive(true,'正在聆听，再点一次结束');
+
+      recognition.onresult=function(event){
+        var interim='';
+        for(var i=event.resultIndex;i<event.results.length;i++){
+          var piece=event.results[i][0].transcript||'';
+          if(event.results[i].isFinal)finalText+=piece;
+          else interim+=piece;
+        }
+        var current=(finalText+interim).trim();
+        input.placeholder=current||'正在聆听…';
+      };
+
+      recognition.onerror=function(event){
+        if(event.error==='aborted'||mode!=='speech')return;
+        if(event.error==='not-allowed'){
+          mode='';recognition=null;setActive(false);
+          toast('麦克风权限未开启，请在浏览器设置中允许使用麦克风');
+          return;
+        }
+        if(event.error==='no-speech'||event.error==='network'||event.error==='service-not-allowed'){
+          switchFromSpeechToRecorder('语音识别没有及时启动，已切换到录音模式，再说一次试试');
+          return;
+        }
+        mode='';recognition=null;setActive(false);
+        toast('语音识别暂不可用，正在尝试录音模式…');
+        startRecorder();
+      };
+
+      recognition.onend=function(){
+        if(mode!=='speech')return;
+        mode='';
+        recognition=null;
+        setActive(false);
+        if(finalText.trim()){
+          var recognized=finalText;
+          finalText='';
+          putText(recognized);
+          return;
+        }
+        if(speechStopRequested){
+          speechStopRequested=false;
+          toast('没有听到清晰的语音，再试一次就好');
+          return;
+        }
+        // Some mobile browsers end speech recognition almost immediately with no result.
+        // Fall back to actual recording instead of treating that as a user error.
+        toast('语音识别提前结束，正在切换录音模式…');
+        startRecorder();
+      };
+
       recognition.start();
-    }catch(e){recognition=null;startRecorder()}
+    }catch(e){
+      recognition=null;mode='';setActive(false);
+      startRecorder();
+    }
   }
+
   async function startRecorder(){
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){toast('当前浏览器不支持录音，请使用支持语音识别的浏览器');return}
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){
+      mode='';setActive(false);
+      toast('当前浏览器暂不支持录音，请检查浏览器麦克风权限或更换浏览器');
+      return;
+    }
+    var thisToken=++recorderStartToken;
+    var acquiredStream=null;
+    mode='requesting';
+    setActive(true,'正在申请麦克风权限…');
     try{
-      stream=await navigator.mediaDevices.getUserMedia({audio:true});chunks=[];
-      var options={};if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))options.mimeType='audio/webm;codecs=opus';else if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/mp4'))options.mimeType='audio/mp4';
-      recorder=new MediaRecorder(stream,options);mode='record';setActive(true,'再次点击结束录音并转写');
-      recorder.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
-      recorder.onerror=function(){mode='';setActive(false);releaseStream();toast('录音失败，请检查麦克风权限')};
-      recorder.onstop=function(){var blob=new Blob(chunks,{type:recorder.mimeType||'audio/webm'});releaseStream();setActive(false);mode='';if(blob.size)transcribe(blob);else toast('没有录到音频')};
-      recorder.start();
-    }catch(e){releaseStream();mode='';setActive(false);toast(e&&e.name==='NotAllowedError'?'请允许浏览器使用麦克风后重试':'无法启动录音，请检查设备权限')}
+      acquiredStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      // If the user released a long press while the permission prompt was open,
+      // cancel this start cleanly instead of unexpectedly recording afterwards.
+      if(thisToken!==recorderStartToken||mode!=='requesting'){
+        acquiredStream.getTracks().forEach(function(t){t.stop()});
+        return;
+      }
+      stream=acquiredStream;
+      chunks=[];
+      var options={};
+      if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))options.mimeType='audio/webm;codecs=opus';
+      else if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/mp4'))options.mimeType='audio/mp4';
+
+      var activeRecorder=new MediaRecorder(stream,options);
+      recorder=activeRecorder;
+      mode='record';
+      setActive(true,'正在录音，再点一次结束');
+
+      activeRecorder.ondataavailable=function(e){
+        if(e.data&&e.data.size)chunks.push(e.data);
+      };
+      activeRecorder.onerror=function(){
+        if(recorder!==activeRecorder)return;
+        mode='';setActive(false);releaseStream();
+        toast('录音失败，请检查麦克风权限后重试');
+      };
+      activeRecorder.onstop=function(){
+        if(recorder!==activeRecorder)return;
+        var blob=new Blob(chunks,{type:activeRecorder.mimeType||'audio/webm'});
+        releaseStream();mode='';setActive(false);
+        if(blob.size)transcribe(blob);
+        else toast('录音时间太短，没有录到声音，再试一次就好');
+      };
+      activeRecorder.start();
+    }catch(e){
+      if(thisToken!==recorderStartToken)return;
+      if(acquiredStream)acquiredStream.getTracks().forEach(function(t){t.stop()});
+      if(stream===acquiredStream)releaseStream();
+      mode='';setActive(false);
+      toast(e&&e.name==='NotAllowedError'?'请允许浏览器使用麦克风后重试':'无法启动录音，请检查设备麦克风权限');
+    }
   }
+
   async function transcribe(blob){
     var config={};try{config=JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){}
-    var apiKey=String(config.apiKey||'').trim(),baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');
+    var apiKey=String(config.apiKey||'').trim();
+    var baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');
     if(!apiKey){toast('录音已完成，但需要 API Key 才能转写；请到设置页配置 API');return}
     btn.disabled=true;btn.title='正在转写…';toast('正在将语音转成文字…');
     try{
-      var form=new FormData();var ext=(blob.type.indexOf('mp4')>=0)?'m4a':'webm';form.append('file',blob,'voice.'+ext);form.append('model',String(config.transcriptionModel||'whisper-1').trim());
-      var controller=new AbortController(),timer=setTimeout(function(){controller.abort()},60000);
-      var response=await fetch(baseUrl+'/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+apiKey},body:form,signal:controller.signal});clearTimeout(timer);
-      if(!response.ok){var detail='';try{detail=await response.text()}catch(e){}throw new Error('语音转写接口不可用（HTTP '+response.status+'）。请确认服务商支持 /audio/transcriptions'+(detail?'：'+detail.slice(0,100):''))}
-      var data=await response.json();putText(data.text||'');
-    }catch(e){toast(e&&e.name==='AbortError'?'语音转写超时，请缩短录音后重试':(e.message||'语音转写失败，请检查 API 服务商是否支持音频转写'))}
-    finally{btn.disabled=false;btn.classList.remove('recording');btn.title='点击说话，识别后可编辑再发送'}
+      var form=new FormData();
+      var ext=(blob.type.indexOf('mp4')>=0)?'m4a':'webm';
+      form.append('file',blob,'voice.'+ext);
+      form.append('model',String(config.transcriptionModel||'whisper-1').trim());
+      var controller=new AbortController();
+      var timer=setTimeout(function(){controller.abort()},60000);
+      var response=await fetch(baseUrl+'/audio/transcriptions',{
+        method:'POST',
+        headers:{Authorization:'Bearer '+apiKey},
+        body:form,
+        signal:controller.signal
+      });
+      clearTimeout(timer);
+      if(!response.ok){
+        var detail='';try{detail=await response.text()}catch(e){}
+        throw new Error('语音转写接口不可用（HTTP '+response.status+'）。请确认服务商支持 /audio/transcriptions'+(detail?'：'+detail.slice(0,100):''));
+      }
+      var data=await response.json();
+      putText(data.text||'');
+    }catch(e){
+      toast(e&&e.name==='AbortError'?'语音转写超时，请缩短录音后重试':(e.message||'语音转写失败，请检查 API 服务商是否支持音频转写'));
+    }finally{
+      btn.disabled=false;
+      btn.classList.remove('recording');
+      btn.setAttribute('aria-pressed','false');
+      btn.title='点击说话；长按也可录音';
+      input.placeholder=getRestoredPlaceholder();
+    }
   }
-  btn.addEventListener('click',function(){
-    if(mode==='speech'){try{recognition.stop()}catch(e){mode='';setActive(false)}return}
+
+  function startVoiceCapture(){
+    if(mode!=='')return;
+    if(Speech)startRecognition();
+    else startRecorder();
+  }
+  function stopVoiceCapture(){
+    if(mode==='speech'){
+      speechStopRequested=true;
+      try{if(recognition)recognition.stop()}catch(e){
+        mode='';recognition=null;setActive(false);
+        if(finalText.trim()){var text=finalText;finalText='';putText(text)}
+      }
+      return;
+    }
     if(mode==='record'){stopRecorder();return}
-    if(Speech){startRecognition()}else{startRecorder()}
+    if(mode==='requesting'){
+      recorderStartToken++;
+      mode='';
+      setActive(false);
+    }
+  }
+
+  // Normal tap remains a start/stop toggle. Holding for 420 ms starts a
+  // press-to-talk session, which stops as soon as the finger/mouse is released.
+  btn.addEventListener('pointerdown',function(event){
+    if(event.button!==undefined&&event.button!==0)return;
+    pointerDown=true;
+    holdCaptureActive=false;
+    if(mode!=='')return;
+    try{btn.setPointerCapture(event.pointerId)}catch(e){}
+    clearTimeout(pointerTimer);
+    pointerTimer=setTimeout(function(){
+      pointerTimer=null;
+      if(!pointerDown||mode!=='')return;
+      holdCaptureActive=true;
+      suppressClickUntil=Date.now()+900;
+      startVoiceCapture();
+    },420);
   });
-  // Future extension point: config.audioModel is intentionally separate from config.model.
-  // Raw-audio understanding requires a provider/model that accepts input_audio and a supported audio encoding.
-  // Do not silently send audio to the ordinary text model; use transcription fallback until explicitly configured.
-  window.MAOMAO_VOICE_CAPABILITIES={speechToText:true,recordingFallback:true,directAudioModelKey:'audioModel',directAudioReady:false};
+  function finishPointerPress(){
+    pointerDown=false;
+    if(pointerTimer){clearTimeout(pointerTimer);pointerTimer=null}
+    if(holdCaptureActive){
+      holdCaptureActive=false;
+      suppressClickUntil=Date.now()+900;
+      if(mode!=='')stopVoiceCapture();
+    }
+  }
+  btn.addEventListener('pointerup',finishPointerPress);
+  btn.addEventListener('pointercancel',finishPointerPress);
+  btn.addEventListener('lostpointercapture',finishPointerPress);
+  btn.addEventListener('contextmenu',function(event){event.preventDefault()});
+
+  btn.addEventListener('click',function(event){
+    if(Date.now()<suppressClickUntil){event.preventDefault();return}
+    if(mode!=='')stopVoiceCapture();
+    else startVoiceCapture();
+  });
+
+  window.MAOMAO_VOICE_CAPABILITIES={speechToText:true,recordingFallback:true,pressAndHold:true,directAudioModelKey:'audioModel',directAudioReady:false};
 })();
 </script>
 
