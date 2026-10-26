@@ -35,11 +35,11 @@
     return dbPromise;
   }
 
-  function readDB() {
+  function readDB(key) {
     return openDB().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(STORE_NAME, 'readonly');
-        var request = tx.objectStore(STORE_NAME).get(WALLPAPER_KEY);
+        var request = tx.objectStore(STORE_NAME).get(key || WALLPAPER_KEY);
         request.onsuccess = function () {
           var value = request.result;
           resolve(typeof value === 'string' ? value : (value && value.dataUrl) || '');
@@ -50,16 +50,16 @@
     });
   }
 
-  function writeDB(dataUrl) {
+  function writeDB(key, dataUrl) {
     return openDB().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(STORE_NAME, 'readwrite');
         tx.objectStore(STORE_NAME).put({
           dataUrl: dataUrl,
           updatedAt: Date.now()
-        }, WALLPAPER_KEY);
+        }, key || WALLPAPER_KEY);
         tx.oncomplete = function () {
-          try { window.localStorage.removeItem(WALLPAPER_KEY); } catch (error) {}
+          try { window.localStorage.removeItem(key || WALLPAPER_KEY); } catch (error) {}
           resolve(true);
         };
         tx.onerror = function () { reject(tx.error || new Error('Could not save wallpaper')); };
@@ -68,58 +68,65 @@
     });
   }
 
-  function readLegacy() {
-    try { return window.localStorage.getItem(WALLPAPER_KEY) || ''; }
+  function readLegacy(key) {
+    try { return window.localStorage.getItem(key || WALLPAPER_KEY) || ''; }
     catch (error) { return ''; }
   }
 
-  function getWallpaper() {
-    return readDB().then(function (value) {
+  /* 按独立 key 读取图片。旧的 localStorage 图片会在成功后迁移到 IndexedDB。 */
+  function getByKey(key) {
+    key = String(key || WALLPAPER_KEY);
+    return readDB(key).then(function (value) {
       if (value) return value;
-      var legacy = readLegacy();
+      var legacy = readLegacy(key);
       if (!legacy) return '';
-      /* Migrate older localStorage-based wallpaper asynchronously; do not block display. */
-      writeDB(legacy).catch(function () {});
+      writeDB(key, legacy).catch(function () {});
       return legacy;
     }).catch(function () {
-      return readLegacy();
+      return readLegacy(key);
     });
   }
 
-  function saveWallpaper(dataUrl) {
+  /* 图片优先进入 IndexedDB，避免和聊天记录/记忆挤占 localStorage 配额。 */
+  function saveByKey(key, dataUrl) {
+    key = String(key || WALLPAPER_KEY);
     if (typeof dataUrl !== 'string' || !/^data:image\//i.test(dataUrl)) {
       return Promise.reject(new Error('Invalid wallpaper image'));
     }
-    return writeDB(dataUrl).catch(function () {
-      /* Fallback for browsers that disable IndexedDB; use a compressed image if quota allows. */
+    return writeDB(key, dataUrl).catch(function () {
       try {
-        window.localStorage.setItem(WALLPAPER_KEY, dataUrl);
+        window.localStorage.setItem(key, dataUrl);
         return true;
       } catch (error) {
-        throw new Error('本机存储空间不足，无法保存壁纸');
+        throw new Error('本机存储空间不足，壁纸无法保存；请尝试较小的图片或检查浏览器存储权限');
       }
     });
   }
 
-  function clearWallpaper() {
+  function removeByKey(key) {
+    key = String(key || WALLPAPER_KEY);
     var legacyRemoved = false;
     try {
-      window.localStorage.removeItem(WALLPAPER_KEY);
+      window.localStorage.removeItem(key);
       legacyRemoved = true;
     } catch (error) {}
     return openDB().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).delete(WALLPAPER_KEY);
+        tx.objectStore(STORE_NAME).delete(key);
         tx.oncomplete = function () { resolve(true); };
         tx.onerror = function () { reject(tx.error || new Error('Could not clear wallpaper')); };
-        tx.onabort = function () { reject(tx.error || new Error('Wallpaper clear was aborted')); };
+        tx.onabort = function () { reject(tx.error || new Error('Could not clear wallpaper')); };
       });
-    }).catch(function () {
+    }).catch(function (error) {
       if (legacyRemoved) return true;
-      throw new Error('无法清除已保存的壁纸');
+      throw error || new Error('无法清除已保存的壁纸');
     });
   }
+
+  function getWallpaper() { return getByKey(WALLPAPER_KEY); }
+  function saveWallpaper(dataUrl) { return saveByKey(WALLPAPER_KEY, dataUrl); }
+  function clearWallpaper() { return removeByKey(WALLPAPER_KEY); }
 
   /* 壁纸明暗判定：任何上传的背景图都走同一套规则，深色壁纸自动切白字，浅色壁纸保持黑字。
      取小尺寸缩略图的 relative luminance 平均值；0.179 是黑白字体对比度相等的临界点。 */
@@ -185,6 +192,9 @@
     clear: clearWallpaper,
     detectTone: detectTone,
     applyTone: applyTone,
-    key: WALLPAPER_KEY
+    key: WALLPAPER_KEY,
+    getByKey: getByKey,
+    saveByKey: saveByKey,
+    removeByKey: removeByKey
   };
 })(window, document);
