@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v47';
+const CACHE_NAME = 'phone-app-pwa-v48';
 const APP_SHELL = [
   './',
   './index.html',
@@ -21,6 +21,7 @@ const APP_SHELL = [
   './novel/novel-detail.html',
   './novel/novel-stats.html',
   './novel/novel-achievements.html',
+  './novel/novel-live-room.html',
   './novel/novel-setup.html',
   './novel/novel-bible.html',
   './novel/novel-planning.html',
