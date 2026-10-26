@@ -2142,17 +2142,20 @@
             return text;
         }
 
-        // ===== 解析 AI 回复：移除所有内部推理标记，只渲染聊天正文与角色旁白 =====
-        function parseReplyContent(raw) {
-            var text = String(raw || '');
-            /* 兼容历史记录和不同模型的标签形式：推理草稿永远不渲染。 */
-            text = text
+        // 推理内容只作为内部模型输出处理，永不显示、存储或回灌给下一轮对话。
+        function stripInternalReasoning(raw) {
+            return String(raw || '')
                 .replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, '')
                 .replace(/<\/?think\b[^>]*>/gi, '')
                 .replace(/<reasoning\b[^>]*>[\s\S]*?(?:<\/reasoning\s*>|$)/gi, '')
                 .replace(/<\/?reasoning\b[^>]*>/gi, '')
                 .replace(/<analysis\b[^>]*>[\s\S]*?(?:<\/analysis\s*>|$)/gi, '')
                 .replace(/<\/?analysis\b[^>]*>/gi, '');
+        }
+
+        // ===== 解析 AI 回复：移除所有内部推理标记，只渲染聊天正文与角色旁白 =====
+        function parseReplyContent(raw) {
+            var text = stripInternalReasoning(raw);
 
             var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/gi;
             var narrations = [];
@@ -3396,10 +3399,8 @@
 
             recentHistory.forEach(m => {
                 if (m.isError || m.role === 'system_error') return;
-                var content = String(m.text || m.content || '').trim();
+                var content = stripInternalReasoning(m.text || m.content || '').trim();
                 if (!content) return; // 纯展示卡片消息（位置/通话等）无文本时不发给 AI
-                // 剥离 <think>...</think>（思维链是草稿，不进上下文）
-                content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
                 // 剥离 <narratage>...</narratage>（旁白是 UI 层，不占上下文序号）
                 content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
                 content = content.replace(/\n{3,}/g, '\n\n').trim();
@@ -3440,25 +3441,25 @@
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
             function paintStreamLive(text) {
-                // 首个增量：移除"正在输入..."，复用现有气泡结构创建 AI 气泡
+                /* 推理标签可能先于正文到达；在真正有可见聊天文字前，不创建气泡。 */
+                var tmpText = stripInternalReasoning(extractVoiceCallMarker(text).text);
+                tmpText = tmpText
+                    .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, '')
+                    .replace(/<\/?narratage\b[^>]*>/gi, '')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+
+                if (!tmpText) return;
+
                 if (!streamBubble) {
                     const loadingEl = document.getElementById(statusId);
                     if (loadingEl) loadingEl.remove();
-                    appendMessageToDOM({ role: 'assistant', text: text, name: groupReplyPick ? groupReplyPick.name : undefined });
+                    appendMessageToDOM({ role: 'assistant', text: tmpText, name: groupReplyPick ? groupReplyPick.name : undefined });
                     if (typeof SoundSystem !== 'undefined') SoundSystem.play('receive', currentRoleId || '');
                     const lastRow = chatMessages.lastElementChild;
                     streamBubble = lastRow ? lastRow.querySelector('.msg-bubble') : null;
                 }
-                if (streamBubble) {
-                    // 流式实时显示：临时隐藏 think/narratage 标签块（含未闭合的），只展示正文
-                    var tmpText = extractVoiceCallMarker(text).text;
-                    tmpText = tmpText.replace(/<think>[\s\S]*?<\/think>/gi, '')
-                        .replace(/<narratage>[\s\S]*?<\/narratage>/gi, '')
-                        .replace(/<think>[\s\S]*$/gi, '')   // 未闭合的 <think> 开标签
-                        .replace(/<narratage>[\s\S]*$/gi, '')
-                        .replace(/\n{3,}/g, '\n\n').trim();
-                    streamBubble.textContent = tmpText;
-                }
+                if (streamBubble) streamBubble.textContent = tmpText;
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
 
@@ -3523,7 +3524,8 @@
                     fullText = parsedHeart.text;
                     const parsedImg = extractVImageMarkers(fullText);
                     fullText = parsedImg.text;
-                    // AI 回复清洗：保护 think/narratage 标签
+                    // 删除模型意外输出的推理草稿，再进行普通聊天文本清洗
+                    fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
                     if (fullText) {
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
