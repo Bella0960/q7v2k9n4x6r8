@@ -5,6 +5,7 @@
 <title>聊天美化 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="../shared/js/chat-beauty.js?v=20261026v11"></script>
 <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261026v15">
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
@@ -1280,6 +1281,64 @@ document.getElementById('importFile').addEventListener('change', function(e){
   var activeTab = 'visual';
   var VISUAL_PRESET_KEY = 'beauty_visual_presets_v1';
   var VISUAL_PRESET_DELETED_KEY = 'beauty_visual_presets_deleted_v1';
+  var wallpaperStore = window.MAOMAOWallpaperStore;
+
+  function visualBgKey(scope) {
+    return 'beauty_chat_bg_' + (scope === 'global' ? 'global' : 'role_' + String(scope));
+  }
+  function visualBgToken(scope) {
+    return 'idb-image:' + visualBgKey(scope);
+  }
+  function rawScopeBg(scope) {
+    var key = scope === 'global' ? 'beauty_chat_global_v1' : 'beauty_chat_' + String(scope);
+    try {
+      var cfg = JSON.parse(localStorage.getItem(key) || '{}');
+      return cfg && cfg.vars && typeof cfg.vars.chatBg === 'string' ? cfg.vars.chatBg : '';
+    } catch (e) { return ''; }
+  }
+
+  /* 旧版把完整图片塞进配置 JSON。打开时自动迁移到独立图片存储，配置只保留短引用。 */
+  function migrateVisualBg(scope, dataUrl) {
+    if (!wallpaperStore || typeof wallpaperStore.saveByKey !== 'function' ||
+        typeof dataUrl !== 'string' || dataUrl.indexOf('data:image/') !== 0) {
+      return Promise.resolve('');
+    }
+    var key = visualBgKey(scope);
+    var token = 'idb-image:' + key;
+    return wallpaperStore.saveByKey(key, dataUrl).then(function () {
+      if (!ChatBeauty.save(scope, { chatBg: token })) throw new Error('图片已转移，但配置更新失败');
+      return token;
+    });
+  }
+
+  function hydrateDraftBackground(scope) {
+    var targetDraft = draft;
+    if (!targetDraft || !targetDraft.chatBg || !wallpaperStore) return;
+    var value = targetDraft.chatBg;
+
+    if (typeof value === 'string' && value.indexOf('idb-image:') === 0) {
+      targetDraft.__chatBgStoreRef = value;
+      var key = value.slice('idb-image:'.length);
+      wallpaperStore.getByKey(key).then(function (imageData) {
+        if (!imageData || draft !== targetDraft || currentScope !== scope) return;
+        targetDraft.chatBg = imageData;
+        targetDraft.__chatBgStoreRef = value;
+        applyPreviewDraft();
+        updateBgHint();
+      }).catch(function () {});
+      return;
+    }
+
+    if (typeof value === 'string' && value.indexOf('data:image/') === 0) {
+      var owner = rawScopeBg(scope) === value ? scope :
+        (rawScopeBg('global') === value ? 'global' : null);
+      if (owner == null) return;
+      migrateVisualBg(owner, value).then(function (token) {
+        if (draft !== targetDraft || currentScope !== scope || !token) return;
+        targetDraft.__chatBgStoreRef = token;
+      }).catch(function () {});
+    }
+  }
 
   function readVisualPresetDeletedIds(){
     try {
@@ -2111,6 +2170,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
     updateBgHint();
     updateScopeHint();
     applyPreviewDraft();
+    hydrateDraftBackground(scope);
   }
 
   function updateBgHint() {
@@ -2184,6 +2244,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
 
   function clearVisualBg() {
     draft.chatBg = '';
+    draft.__chatBgStoreRef = '';
     applyPreviewDraft();
     updateBgHint();
   }
