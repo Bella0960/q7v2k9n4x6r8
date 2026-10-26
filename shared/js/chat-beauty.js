@@ -504,8 +504,8 @@
         s.setProperty('--partner-bubble-color', v.partnerBubbleColor);
         s.setProperty('--partner-bubble-radius', v.partnerBubbleRadius);
 
-        // 背景：有自定义图则按 chatBgDim 合成压暗遮罩；无则清掉变量、回落 CSS 默认渐变
-        if (v.chatBg) {
+        // 背景：大图由 IndexedDB 保存，配置里只保留 idb-image: 引用，读取完成后再应用。
+        if (v.chatBg && String(v.chatBg).indexOf('idb-image:') !== 0) {
             var dim = Math.min(Math.max(num(v.chatBgDim, 0), 0), 0.85);
             var img = 'url("' + v.chatBg + '")';
             var layers = dim > 0
@@ -571,6 +571,23 @@
                 }
             }
             syncShellWallpaper();
+        }
+
+        // 角色专属美化背景若使用 IndexedDB 引用，读取真实图片后再刷新舞台和 iMessage 壳层。
+        // 只解析角色专属背景，避免把全局美化图自动铺给所有聊天角色。
+        if (hasRoleSpecificBeautyBg && typeof v.chatBg === 'string' && v.chatBg.indexOf('idb-image:') === 0) {
+            var referencedBgKey = v.chatBg.slice('idb-image:'.length);
+            var backgroundStore = window.MAOMAOWallpaperStore;
+            if (backgroundStore && typeof backgroundStore.getByKey === 'function') {
+                try {
+                    backgroundStore.getByKey(referencedBgKey).then(function (imageData) {
+                        if (!imageData) return;
+                        v.chatBg = imageData;
+                        NS.applyVars(v, rootEl);
+                        syncShellWallpaper();
+                    }).catch(function () {});
+                } catch (e) {}
+            }
         }
 
         // 先同步显示仍存在于 localStorage 的旧壁纸，随后从独立图片存储读取最新版。
