@@ -1046,3 +1046,34 @@
   background: transparent !important;
   box-shadow: none !important;
 }
+
+
+/* Wallpaper continuity fix: header and message area share the same phone-shell wallpaper. */
+.phone-mockup[data-chat-theme-preset="imessage"] {
+  background-color: transparent !important;
+  background-image: var(--chat-theme-bg-image, linear-gradient(180deg,#F2F2F7 0%,#E7E7ED 100%)) !important;
+  background-position: center center !important;
+  background-size: cover !important;
+  background-repeat: no-repeat !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] > .chat-header {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: auto !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] > .chat-stage {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-header-avatar,
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-title-box {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
