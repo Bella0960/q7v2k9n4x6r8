@@ -248,6 +248,59 @@ small,.muted,.sub,.hint,.description{color:#8E8E93}
 hr,.divider{border-color:#ECECEE!important;background:#ECECEE!important}
 @media(min-width:600px){.phone{height:calc(100dvh - 24px)!important;min-height:580px!important;margin:12px auto!important;border:1px solid #E6E6E8!important;border-radius:24px!important;overflow:hidden}.top{border-radius:24px 24px 0 0!important}}
 @media(max-width:360px){.top{padding-left:14px!important;padding-right:14px!important}}
+
+/* Mobile-first cleanup: keep the reader workspace focused and readable. */
+body.readers-mode .phone{width:min(100%,760px);margin:0 auto}
+body.readers-mode .top{padding:calc(10px + env(safe-area-inset-top)) 18px 10px;min-height:58px}
+body.readers-mode .brand{font-size:9px;letter-spacing:.12em}
+body.readers-mode .top .btn{padding:9px 12px;font-size:11px}
+body.readers-mode .scroll{padding:0 20px 38px}
+body.readers-mode .scroll>#pane-audience>.independent-nav{display:none!important}
+body.readers-mode .reader-hero{display:block;padding:22px 0 20px}
+body.readers-mode .reader-kicker{font-size:9px;letter-spacing:.13em;margin-bottom:10px}
+body.readers-mode .reader-title{font:600 clamp(30px,8vw,40px)/1.08 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;letter-spacing:-.045em;margin:0 0 12px;max-width:360px}
+body.readers-mode .reader-subtitle{font-size:13px;line-height:1.75;max-width:34em}
+body.readers-mode .reader-book{border:0;border-top:1px solid #e8e8e5;margin-top:18px;padding:13px 0 0}
+body.readers-mode .reader-book-label{margin-bottom:5px}
+body.readers-mode .reader-book-title{font:500 18px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;margin-bottom:3px}
+body.readers-mode .reader-book-meta{font-size:11px;line-height:1.6}
+body.readers-mode .reader-dashboard{margin:0 0 24px;grid-template-columns:repeat(3,minmax(0,1fr))}
+body.readers-mode .reader-metric{padding:13px 8px 14px 0}
+body.readers-mode .reader-metric+.reader-metric{padding-left:10px}
+body.readers-mode .reader-metric-label{font-size:10px;margin-bottom:5px}
+body.readers-mode .reader-metric-value{font:500 23px/1.2 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+body.readers-mode .reader-layout{display:flex;flex-direction:column;gap:24px}
+body.readers-mode .reader-side{order:0;width:100%;padding:15px 0 17px;border-top:1px solid #222;border-bottom:1px solid #e8e8e5}
+body.readers-mode .reader-side-title{font:600 19px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;margin-bottom:4px}
+body.readers-mode .reader-side-hint{font-size:11px;line-height:1.7;margin-bottom:12px}
+body.readers-mode .reader-side .actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+body.readers-mode .reader-side .btn{padding:11px 10px;font-size:11px;line-height:1.4}
+body.readers-mode .reader-feed-head{align-items:center;padding-bottom:10px}
+body.readers-mode .reader-feed-title{font:600 20px/1.35 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+body.readers-mode .reader-feed-count{font-size:10px}
+body.readers-mode .reader-filters{gap:10px;padding:12px 0}
+body.readers-mode .reader-filters .field{min-width:0;width:100%;flex:1 1 100%}
+body.readers-mode .reader-filters .field label{font-size:10px;margin-bottom:2px}
+body.readers-mode .reader-filters select,body.readers-mode .reader-side select{min-height:42px;padding:10px 12px;border:1px solid #e4e4e1;border-radius:10px;background:#f8f8f6;font-size:12px}
+body.readers-mode .reader-post{grid-template-columns:34px minmax(0,1fr);gap:10px;padding:15px 0}
+body.readers-mode .reader-avatar{width:32px;height:32px;border-radius:9px;background:#f5f5f3;font-size:13px}
+body.readers-mode .reader-name{font-size:12px}
+body.readers-mode .reader-chapter-label{font-size:10px;line-height:1.5}
+body.readers-mode .reader-post-text{font-size:13px;line-height:1.8}
+body.readers-mode .reader-post-time{font-size:10px}
+body.readers-mode .reader-empty{padding:25px 14px;font-size:12px}
+body.readers-mode .reader-empty strong{font:600 17px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+body.readers-mode .reader-disclaimer{font-size:10px;line-height:1.8;margin-top:24px}
+@media(min-width:761px){
+ body.readers-mode .phone{width:min(100%,980px)}
+ body.readers-mode .reader-hero{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr);gap:28px;align-items:end}
+ body.readers-mode .reader-book{border-top:0;border-left:1px solid #e8e8e5;margin-top:0;padding:4px 0 4px 18px}
+ body.readers-mode .reader-title{font-size:46px}
+ body.readers-mode .reader-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:32px}
+ body.readers-mode .reader-side{order:initial}
+ body.readers-mode .reader-filters .field{flex:1 1 140px}
+}
+
 </style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / WRITING DESK</span><button class="btn" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
 <section class="hero"><div class="kicker">YOUR STORIES · YOUR AUDIENCE</div><h1>Write your<br>own world.</h1><p>从一份大纲开始，写出自己的故事。发布后，让模拟读者阅读、追更、留下评论。</p></section>
 <div class="stats"><div class="stat"><small>我的作品</small><strong id="workCount">0</strong></div><div class="stat"><small>累计字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动</small><strong id="reactionCount">0</strong></div></div>
