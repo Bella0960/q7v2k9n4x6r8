@@ -301,7 +301,7 @@ body.readers-mode .reader-disclaimer{font-size:10px;line-height:1.8;margin-top:2
  body.readers-mode .reader-filters .field{flex:1 1 140px}
 }
 
-</style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / WRITING DESK</span><button class="btn" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
+</style></head><body class="readers-mode"><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / WRITING DESK</span><button class="btn" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
 <section class="hero"><div class="kicker">YOUR STORIES · YOUR AUDIENCE</div><h1>Write your<br>own world.</h1><p>从一份大纲开始，写出自己的故事。发布后，让模拟读者阅读、追更、留下评论。</p></section>
 <div class="stats"><div class="stat"><small>我的作品</small><strong id="workCount">0</strong></div><div class="stat"><small>累计字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动</small><strong id="reactionCount">0</strong></div></div>
 <nav class="tabs"><button class="tab active" data-tab="works">作品书架</button><button class="tab" data-tab="studio">创作编辑</button><button class="tab" data-tab="audience">读者与人气</button></nav>
@@ -445,7 +445,7 @@ function buildStudioPages(){
 }
 
 buildStudioPages();
-if(NOVEL_PAGE==='readers'){const n=document.createElement('nav');n.className='independent-nav';[['novel.html','作品书架'],['novel-setup.html','作品设定'],['novel-bible.html','故事资料库'],['novel-planning.html','章节策划'],['novel-editor.html','正文编辑'],['novel-continuity.html','一致性检查'],['novel-readers.html','作者模拟器']].forEach(([href,label])=>{const a=document.createElement('a');a.href=href;a.textContent=label;if(href==='novel-readers.html')a.setAttribute('aria-current','page');n.appendChild(a)});$('pane-audience').prepend(n)};
+/* 独立读者页不再注入重复的工坊横向导航；页面布局由 readers-mode 样式统一控制。 */
 
 function buildReaderCommunity(){
  if(NOVEL_PAGE!=='readers')return;
