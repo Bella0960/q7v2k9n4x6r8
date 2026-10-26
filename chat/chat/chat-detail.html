@@ -8,7 +8,7 @@
     <script src="../../shared/js/custom-css.js"></script>
     <script src="../../shared/js/wallpaper-store.js?v=20261026v2"></script>
     <script src="../../shared/js/chat-beauty.js?v=20261026v11"></script>
-    <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v15">
+    <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v16">
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
@@ -4292,13 +4292,22 @@
             if (chatInput && !chatInput.hasAttribute('data-default-placeholder')) {
                 chatInput.setAttribute('data-default-placeholder', defaultChatInputPlaceholder);
             }
-            if (isIMessageTheme && capsule && sendButton && sendButton.parentElement !== capsule) {
-                capsule.appendChild(sendButton);
-            } else if (!isIMessageTheme && chatForm && sendButton && sendButton.parentElement !== chatForm) {
-                chatForm.appendChild(sendButton);
+            // Keep the send button as a sibling of the capsule. The iMessage preset
+            // hides it while the field is empty and shows it when there is text.
+            if (chatForm && capsule && sendButton && sendButton.parentElement !== chatForm) {
+                chatForm.insertBefore(sendButton, capsule.nextSibling);
             }
-            if (!isIMessageTheme && capsule && voiceButton && voiceButton.parentElement !== capsule) {
-                capsule.insertBefore(voiceButton, chatInput || null);
+            if (isIMessageTheme && capsule && voiceButton && chatInput) {
+                // iMessage: text first, audio waveform on the right edge of the pill.
+                if (voiceButton.parentElement !== capsule) capsule.appendChild(voiceButton);
+                if (voiceButton.previousElementSibling !== chatInput) {
+                    capsule.insertBefore(voiceButton, chatInput.nextSibling);
+                }
+            } else if (capsule && voiceButton && chatInput) {
+                // Original theme: keep the microphone on the left of the text field.
+                if (voiceButton.parentElement !== capsule || voiceButton.nextElementSibling !== chatInput) {
+                    capsule.insertBefore(voiceButton, chatInput);
+                }
             }
             if (chatInput) chatInput.placeholder = isIMessageTheme ? 'iMessage 信息' : defaultChatInputPlaceholder;
         }
@@ -4994,6 +5003,14 @@
 .voice-input-btn svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round; }
 .voice-input-btn.is-imessage-audio { flex-basis:27px;width:27px;color:#555;transition:color .18s ease,transform .18s ease,background .18s ease; }
 .voice-input-btn.is-imessage-audio svg { width:19px;height:19px;stroke-width:1.8; }
+/* Keep the audio control at the far right in iMessage, independent of cached theme CSS. */
+.phone-mockup[data-chat-theme-preset="imessage"] .input-capsule .real-input { order:1 !important; }
+.phone-mockup[data-chat-theme-preset="imessage"] .input-capsule .voice-input-btn {
+  order:2 !important; margin-left:auto !important; flex:0 0 27px !important;
+  width:27px !important; min-width:27px !important; color:#555 !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .input-dock:has(.send-icon-btn.disabled) .send-icon-btn { display:none !important; }
+.phone-mockup[data-chat-theme-preset="imessage"] .input-dock:has(.send-icon-btn:not(.disabled)) .voice-input-btn { display:none !important; }
 .voice-input-btn.is-imessage-audio:active { transform:scale(.94);background:rgba(0,0,0,.055); }
 .voice-input-btn.is-imessage-audio.recording { color:#111; }
 .voice-input-btn.is-imessage-audio.recording svg line { animation:imessageAudioWave .65s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center; }
