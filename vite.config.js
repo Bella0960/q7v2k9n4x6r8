@@ -20,6 +20,7 @@ const htmlFiles = {};
 })(__dirname, '');
 
 export default defineConfig({
+  base: './',
   plugins: [{
     name: 'copy-static-web-resources',
     apply: 'build',
