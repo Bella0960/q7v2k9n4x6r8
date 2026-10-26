@@ -1176,57 +1176,6 @@
             opacity: 0.9;
         }
 
-        /* ========== 思维链（<think>）：可折叠，默认收起，黑白灰极简 ========== */
-        .think-chain {
-            align-self: flex-start;
-            max-width: 86%;
-            margin: 2px 0;
-            font-size: 0.688rem;
-            color: #999999;
-            line-height: 1.5;
-        }
-        .think-chain-head {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 10px;
-            background: #F2F2F7;
-            border-radius: 10px;
-            cursor: pointer;
-            user-select: none;
-            transition: background 0.15s ease;
-            font-weight: 500;
-        }
-        .think-chain-head:active {
-            background: #E5E5EA;
-        }
-        .think-chain-head svg {
-            width: 10px;
-            height: 10px;
-            stroke: #8E8E93;
-            transition: transform 0.2s ease;
-        }
-        .think-chain.open .think-chain-head svg {
-            transform: rotate(90deg);
-        }
-        .think-chain-body {
-            display: none;
-            margin-top: 4px;
-            padding: 8px 10px;
-            background: #FAFAFA;
-            border-radius: 10px;
-            border: 1px solid #ECECF0;
-            font-size: 0.656rem;
-            color: #8E8E93;
-            line-height: 1.55;
-            white-space: pre-wrap;
-            word-break: break-word;
-            font-style: italic;
-        }
-        .think-chain.open .think-chain-body {
-            display: block;
-        }
-
         /* ========== 旁白（<narratage>）：居中淡化，无气泡包裹 ========== */
         .narratage-block {
             align-self: center;
@@ -2193,34 +2142,27 @@
             return text;
         }
 
-        // ===== 解析 AI 回复：拆分 <think>思维链</think>、<narratage>旁白</narratage>、双回车多气泡 =====
+        // ===== 解析 AI 回复：移除所有内部推理标记，只渲染聊天正文与角色旁白 =====
         function parseReplyContent(raw) {
             var text = String(raw || '');
-            // 1) 提取思维链块
-            var thinkRegex = /<think>([\s\S]*?)<\/think>/g;
-            var thinks = [];
-            var m;
-            thinkRegex.lastIndex = 0;
-            while ((m = thinkRegex.exec(text)) !== null) {
-                var tc = String(m[1] || '').trim();
-                if (tc) thinks.push(tc);
-            }
-            // 从正文中移除 <think>...</think>
-            text = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+            /* 兼容历史记录和不同模型的标签形式：推理草稿永远不渲染。 */
+            text = text
+                .replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, '')
+                .replace(/<\/?think\b[^>]*>/gi, '')
+                .replace(/<reasoning\b[^>]*>[\s\S]*?(?:<\/reasoning\s*>|$)/gi, '')
+                .replace(/<\/?reasoning\b[^>]*>/gi, '')
+                .replace(/<analysis\b[^>]*>[\s\S]*?(?:<\/analysis\s*>|$)/gi, '')
+                .replace(/<\/?analysis\b[^>]*>/gi, '');
 
-            // 2) 提取旁白块
-            var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/g;
+            var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/gi;
             var narrations = [];
-            narrRegex.lastIndex = 0;
+            var m;
             while ((m = narrRegex.exec(text)) !== null) {
                 var nc = String(m[1] || '').trim();
                 if (nc) narrations.push(nc);
             }
-            // 从正文中移除 <narratage>...</narratage>
-            text = text.replace(/<narratage>[\s\S]*?<\/narratage>/g, '');
+            text = text.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
 
-            // 3) 双回车拆分成多段正文，每段一个气泡
-            // 先清理多余空行，再按 \n\n 分段
             var segments = text.replace(/\n{3,}/g, '\n\n').split(/\n\n+/);
             var bubbles = [];
             segments.forEach(function (seg) {
@@ -2228,23 +2170,7 @@
                 if (s) bubbles.push(s);
             });
 
-            return { thinks: thinks, narrations: narrations, bubbles: bubbles };
-        }
-
-        // 渲染思维链块（可折叠）
-        function renderThinkChainBlock(content) {
-            var wrap = document.createElement('div');
-            wrap.className = 'think-chain';
-            wrap.innerHTML = '' +
-                '<div class="think-chain-head">' +
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
-                    '<span>思维链</span>' +
-                '</div>' +
-                '<div class="think-chain-body">' + escHtml(content) + '</div>';
-            wrap.querySelector('.think-chain-head').addEventListener('click', function () {
-                wrap.classList.toggle('open');
-            });
-            return wrap;
+            return { thinks: [], narrations: narrations, bubbles: bubbles };
         }
 
         // 渲染旁白块（居中淡化，无气泡）
@@ -2435,10 +2361,6 @@
                 var _pendingExtras = []; // 收集 think/narration/extra rows，主 row 之后再 append
                 if (isAiMsg && rawText) {
                     var parsed = parseReplyContent(rawText);
-                    // 思维链块（折叠）
-                    parsed.thinks.forEach(function (tc) {
-                        _pendingExtras.push(renderThinkChainBlock(tc));
-                    });
                     // 旁白块（居中淡化）
                     parsed.narrations.forEach(function (nc) {
                         _pendingExtras.push(renderNarratageBlock(nc));
@@ -3296,7 +3218,7 @@
             const SPEAK_STYLE = '[说话方式强制约束]\n' +
                 '1. 你是在发微信，不是写小说！禁止写 *动作*（星号动作描写）、禁止写（心理描写）括号。\n' +
                 '2. 如果需要动作/神态/环境旁白，请使用固定格式 <narratage>旁白内容</narratage>，每次旁白不超过50字，总旁白占比不超过50%。\n' +
-                '3. 每次回复【必须】先输出思维链：<think>你的思考过程</think>，然后再输出对话正文。思维链是你的思考草稿，可以随意写，会被系统折叠隐藏。\n' +
+                '3. 直接输出自然的聊天正文，不要输出思维链、分析过程、推理草稿或 <think>/<reasoning>/<analysis> 标签。\n' +
                 '4. 句子必须极短，口语化，1-6句话。多段回复用双回车 \\n\\n 分隔，系统会自动拆成多个气泡。\n' +
                 '5. 不要每句话都带括号、不要每句话都带颜文字，自然一点。\n' +
                 '6. 绝对禁止使用"作为AI"、"我是语言模型"、"我没有情感"等任何助手语气。你现在就是一个活生生的人。';
@@ -3370,9 +3292,9 @@
               '',
               '【输出格式】',
               '每次回复必须按以下顺序输出：',
-              '1. <think>你的思考过程（随意写，会被折叠）</think>',
-              '2. 1-6句对话正文（多段用双回车 \\n\\n 分隔，系统会自动拆成多气泡）',
-              '3. 可选：<narratage>动作/神态/环境旁白</narratage>（每次不超50字，总占比不超50%）',
+              '回复只包含角色的自然聊天内容，禁止输出思维链、分析过程、推理草稿或任何 <think>/<reasoning>/<analysis> 标签。',
+              '1. 1-6句对话正文（多段用双回车 \\n\\n 分隔，系统会自动拆成多气泡）',
+              '2. 可选：<narratage>动作/神态/环境旁白</narratage>（每次不超50字，总占比不超50%）',
               '禁止：',
               '- 禁止写 *动作*（星号动作描写）',
               '- 禁止写（心理活动）括号',
@@ -5037,10 +4959,11 @@
   var input=document.getElementById('chat-input');
   if(!btn||!input)return;
 
-  var recorder=null, chunks=[], stream=null, mode='', recorderStartToken=0;
-  var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
+  /* 使用浏览器内置语音识别，不再把录音上传给用户配置的聊天 API。 */
+  var SpeechRecognitionCtor=window.SpeechRecognition||window.webkitSpeechRecognition;
+  var recognition=null, mode='', finalText='', interimText='', stopWhenStarted=false;
   var pointerTimer=null, pointerDown=false, holdCaptureActive=false, suppressClickUntil=0;
-  var holdReleasedWhileRequesting=false;
+  var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
 
   function getRestoredPlaceholder(){
     try {
@@ -5048,6 +4971,7 @@
         ?'iMessage 信息':oldPlaceholder;
     } catch(e) { return oldPlaceholder; }
   }
+
   function toast(message){
     if(typeof window.showToast==='function'){window.showToast(message);return}
     var el=document.getElementById('voice-input-status');
@@ -5060,15 +4984,14 @@
     el.textContent=message;el.style.display='block';clearTimeout(el._timer);
     el._timer=setTimeout(function(){el.style.display='none'},3200);
   }
+
   function setActive(active,label){
     btn.classList.toggle('recording',active);
     btn.setAttribute('aria-pressed',active?'true':'false');
-    btn.title=label||(active?'正在录音，再点一下结束':'点击开始语音输入，再点一下结束');
+    btn.title=label||(active?'正在聆听，再点一下结束':'点击开始语音输入，再点一下结束');
     input.placeholder=active?'正在聆听… 再点一下结束':getRestoredPlaceholder();
   }
-  function releaseStream(){
-    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
-  }
+
   function putText(text){
     text=String(text||'').trim();
     if(!text){toast('没有听到清晰的语音，再试一次');return}
@@ -5078,133 +5001,131 @@
     input.focus();
     toast('语音已转成文字，可以检查后发送');
   }
-  function stopRecorder(){
-    if(recorder&&recorder.state!=='inactive'){
-      try{recorder.stop()}catch(e){toast('结束录音失败，请再点一次')}
+
+  function errorText(code){
+    switch(code){
+      case 'not-allowed':
+      case 'service-not-allowed':
+        return '请允许浏览器使用麦克风和语音识别功能后重试';
+      case 'audio-capture':
+        return '没有检测到可用的麦克风';
+      case 'no-speech':
+        return '没有听到清晰的语音，再试一次';
+      case 'network':
+        return '浏览器语音识别服务暂时不可用，请检查网络后重试';
+      case 'language-not-supported':
+        return '当前浏览器语音识别不支持所选语言';
+      case 'aborted':
+        return '语音识别已结束';
+      default:
+        return '语音识别暂时不可用，请检查麦克风权限后重试';
     }
   }
 
-  async function startRecorder(){
+  function resetState(){
+    recognition=null;
+    mode='';
+    setActive(false);
+    btn.disabled=false;
+    interimText='';
+    input.placeholder=getRestoredPlaceholder();
+  }
+
+  function startRecorder(){
     if(mode!=='')return;
-    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){
-      toast('当前浏览器暂不支持录音，请用 HTTPS 页面并允许麦克风权限');
+    if(!SpeechRecognitionCtor){
+      toast('当前浏览器没有内置语音识别，且当前 API 不支持音频转写。请使用支持语音识别的 Chrome 浏览器打开小手机。');
       return;
     }
-    var token=++recorderStartToken;
-    var acquiredStream=null;
-    chunks=[];
+
+    var activeRecognition;
+    try{activeRecognition=new SpeechRecognitionCtor()}
+    catch(e){toast('无法启动浏览器语音识别，请检查麦克风权限后重试');return}
+
+    recognition=activeRecognition;
     mode='requesting';
-    setActive(true,'正在申请麦克风权限…');
+    finalText='';
+    interimText='';
+    stopWhenStarted=false;
+    activeRecognition.lang='zh-CN';
+    activeRecognition.continuous=true;
+    activeRecognition.interimResults=true;
+    activeRecognition.maxAlternatives=1;
+    setActive(true,'正在启动语音识别…');
+
+    activeRecognition.onstart=function(){
+      if(recognition!==activeRecognition)return;
+      mode='recognizing';
+      setActive(true,'正在聆听，再点一下结束');
+      if(stopWhenStarted){
+        mode='stopping';
+        try{activeRecognition.stop()}catch(e){}
+      }
+    };
+
+    activeRecognition.onresult=function(event){
+      if(recognition!==activeRecognition)return;
+      var interim='';
+      for(var i=event.resultIndex;i<event.results.length;i++){
+        var result=event.results[i];
+        var spoken=result&&result[0]?String(result[0].transcript||'').trim():'';
+        if(!spoken)continue;
+        if(result.isFinal)finalText+=(finalText?' ':'')+spoken;
+        else interim+=(interim?' ':'')+spoken;
+      }
+      interimText=interim;
+      if(interimText){
+        input.placeholder=interimText;
+      }else if(mode==='recognizing'){
+        input.placeholder='正在聆听… 再点一下结束';
+      }
+    };
+
+    activeRecognition.onerror=function(event){
+      if(recognition!==activeRecognition)return;
+      activeRecognition._maomaoError=event&&event.error?event.error:'';
+    };
+
+    activeRecognition.onend=function(){
+      if(recognition!==activeRecognition)return;
+      var result=(finalText+' '+interimText).trim();
+      var error=activeRecognition._maomaoError||'';
+      resetState();
+      if(result){
+        putText(result);
+      }else if(error&&error!=='aborted'){
+        toast(errorText(error));
+      }else if(error!=='aborted'){
+        toast('没有听到清晰的语音，再试一次');
+      }
+    };
+
     try{
-      acquiredStream=await navigator.mediaDevices.getUserMedia({audio:true});
-      if(token!==recorderStartToken||mode!=='requesting'){
-        acquiredStream.getTracks().forEach(function(t){t.stop()});
-        return;
-      }
-      stream=acquiredStream;
-      var options={};
-      if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/mp4'))options.mimeType='audio/mp4';
-      else if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))options.mimeType='audio/webm;codecs=opus';
-      var activeRecorder=new MediaRecorder(stream,options);
-      recorder=activeRecorder;
-      mode='record';
-      setActive(true,'正在录音，再点一下结束');
-      activeRecorder.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
-      activeRecorder.onerror=function(){
-        if(recorder!==activeRecorder)return;
-        mode='';recorder=null;setActive(false);releaseStream();
-        toast('录音失败，请检查麦克风权限后重试');
-      };
-      activeRecorder.onstop=function(){
-        if(recorder!==activeRecorder)return;
-        var blob=new Blob(chunks,{type:activeRecorder.mimeType||'audio/webm'});
-        releaseStream();
-        if(blob.size){
-          mode='transcribing';
-          setActive(false,'正在转写语音…');
-          transcribe(blob);
-        } else {
-          mode='';recorder=null;setActive(false);
-          toast('录音时间太短，没有录到声音，再说一句试试');
-        }
-      };
-      activeRecorder.start();
-      if(holdReleasedWhileRequesting){
-        holdReleasedWhileRequesting=false;
-        toast('麦克风已开启，请开始说话；说完再点一次波形');
-      }
+      activeRecognition.start();
+      toast('开始聆听，说完后再点一次波形');
     }catch(e){
-      if(token!==recorderStartToken)return;
-      if(acquiredStream)acquiredStream.getTracks().forEach(function(t){t.stop()});
-      if(stream===acquiredStream)releaseStream();
-      mode='';setActive(false);
-      if(e&&e.name==='NotAllowedError')toast('麦克风权限未开启，请在浏览器设置中允许使用麦克风');
-      else if(e&&e.name==='NotFoundError')toast('没有检测到可用的麦克风');
-      else toast('无法启动录音：请检查麦克风权限，并确认页面使用 HTTPS');
+      resetState();
+      toast('浏览器无法启动语音识别，请确认允许麦克风并使用 HTTPS');
     }
   }
 
-  async function transcribe(blob){
-    var config={};
-    try{config=JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){}
-    var apiKey=String(config.apiKey||'').trim();
-    var baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');
-    if(!apiKey){
-      mode='';recorder=null;btn.disabled=false;setActive(false);
-      toast('录音已完成，但还没有读取到 API Key，请检查设置页的当前 API 配置');
+  function stopVoiceCapture(){
+    if(mode==='recognizing'){
+      mode='stopping';
+      setActive(true,'正在整理语音文字…');
+      try{if(recognition)recognition.stop()}catch(e){}
       return;
     }
-    btn.disabled=true;
-    btn.title='正在转写语音…';
-    toast('正在将语音转成文字…');
-    var controller=new AbortController(),timer=null;
-    try{
-      var form=new FormData();
-      var isMp4=String(blob.type||'').indexOf('mp4')>=0;
-      form.append('file',blob,isMp4?'voice.m4a':'voice.webm');
-      form.append('model',String(config.transcriptionModel||'whisper-1').trim());
-      timer=setTimeout(function(){controller.abort()},60000);
-      var response=await fetch(baseUrl+'/audio/transcriptions',{
-        method:'POST',
-        headers:{Authorization:'Bearer '+apiKey},
-        body:form,
-        signal:controller.signal
-      });
-      if(!response.ok){
-        var detail='';try{detail=await response.text()}catch(e){}
-        throw new Error('语音转写接口返回 HTTP '+response.status+'。当前 API 服务商可能不支持 /audio/transcriptions'+(detail?'：'+detail.slice(0,100):''));
-      }
-      var data=await response.json();
-      putText(data.text||'');
-    }catch(e){
-      toast(e&&e.name==='AbortError'?'语音转写超时，请缩短录音后重试':(e.message||'语音转写失败，请检查当前 API 是否支持音频转写'));
-    }finally{
-      if(timer)clearTimeout(timer);
-      btn.disabled=false;
-      btn.classList.remove('recording');
-      btn.setAttribute('aria-pressed','false');
-      btn.title='点击开始语音输入，再点一下结束';
-      input.placeholder=getRestoredPlaceholder();
-      mode='';recorder=null;
-      chunks=[];
+    if(mode==='requesting'){
+      stopWhenStarted=true;
+      toast('正在开启麦克风，请允许权限');
+      return;
     }
+    if(mode==='stopping')toast('正在整理语音文字…');
   }
 
   function startVoiceCapture(){if(mode==='')startRecorder()}
-  function stopVoiceCapture(){
-    if(mode==='record'){stopRecorder();return}
-    if(mode==='requesting'){
-      // Permission dialogs can interrupt a long-press gesture. Let the permission
-      // request finish; the user can then tap once more to stop the actual recording.
-      holdReleasedWhileRequesting=true;
-      toast('正在申请麦克风权限，请先允许使用麦克风');
-      return;
-    }
-    if(mode==='transcribing')toast('正在转写，请稍等片刻');
-  }
 
-  // Tap toggles recording. A long press also starts recording and release ends it.
-  // If first-use permission UI interrupts the hold, keep recording after permission is granted.
   btn.addEventListener('pointerdown',function(event){
     if(event.button!==undefined&&event.button!==0)return;
     pointerDown=true;
@@ -5220,6 +5141,7 @@
       startRecorder();
     },420);
   });
+
   function finishPointerPress(){
     pointerDown=false;
     if(pointerTimer){clearTimeout(pointerTimer);pointerTimer=null}
@@ -5240,8 +5162,11 @@
   });
 
   window.MAOMAO_VOICE_CAPABILITIES={
-    speechToText:true,recordingFallback:false,pressAndHold:true,
-    captureMode:'MediaRecorder',directAudioReady:false
+    speechToText:!!SpeechRecognitionCtor,
+    recordingFallback:false,
+    pressAndHold:true,
+    captureMode:'Browser SpeechRecognition',
+    requiresConfiguredAPI:false
   };
 })();
 </script>
