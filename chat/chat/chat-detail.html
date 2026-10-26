@@ -6,8 +6,8 @@
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/custom-css.js"></script>
-    <script src="../../shared/js/chat-beauty.js?v=20261026v5"></script>
-    <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v6">
+    <script src="../../shared/js/chat-beauty.js?v=20261026v6"></script>
+    <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v7">
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
@@ -1719,9 +1719,14 @@
                 <span class="chat-status-sub" id="chat-status-sub">ONLINE · ACTIVE</span>
                 <span class="chat-notice-bar" id="chat-notice-bar" style="display:none;"></span>
             </div>
-            <button class="nav-circle-btn" type="button" id="btn-more-menu" aria-label="对话设置">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#111111"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg>
-            </button>
+            <div class="chat-header-actions">
+                <button class="nav-circle-btn imessage-video-btn" type="button" id="btn-header-video" aria-label="视频通话" title="视频通话">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"></rect><path d="m16 10 5-3v10l-5-3"></path></svg>
+                </button>
+                <button class="nav-circle-btn" type="button" id="btn-more-menu" aria-label="对话设置" title="对话设置">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#111111"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg>
+                </button>
+            </div>
         </header>
 
         <div class="detail-toast" id="detailToast"></div>
@@ -4263,10 +4268,31 @@
         fitInputHeight();
         updateSendBtnState();
 
+        // ================= 聊天主题布局联动 =================
+        const defaultChatInputPlaceholder = chatInput ? (chatInput.getAttribute('data-default-placeholder') || chatInput.getAttribute('placeholder') || '发送消息…') : '发送消息…';
+        function syncChatThemeLayout() {
+            const isIMessageTheme = !!(window.ChatBeauty && typeof ChatBeauty.getThemePreset === 'function' && ChatBeauty.getThemePreset() === 'imessage');
+            const capsule = chatForm && chatForm.querySelector('.input-capsule');
+            const sendButton = chatForm && chatForm.querySelector('.send-icon-btn');
+            const voiceButton = chatForm && chatForm.querySelector('.voice-input-btn');
+            if (chatInput && !chatInput.hasAttribute('data-default-placeholder')) {
+                chatInput.setAttribute('data-default-placeholder', defaultChatInputPlaceholder);
+            }
+            if (isIMessageTheme && capsule && sendButton && sendButton.parentElement !== capsule) {
+                capsule.appendChild(sendButton);
+            } else if (!isIMessageTheme && chatForm && sendButton && sendButton.parentElement !== chatForm) {
+                chatForm.appendChild(sendButton);
+            }
+            if (!isIMessageTheme && capsule && voiceButton && voiceButton.parentElement !== capsule) {
+                capsule.insertBefore(voiceButton, chatInput || null);
+            }
+            if (chatInput) chatInput.placeholder = isIMessageTheme ? 'iMessage 信息' : defaultChatInputPlaceholder;
+        }
+
         // ================= 聊天美化应用（结构化参数，唯一注入点） =================
-        // 底层：shared/js/chat-beauty.js —— 内置默认 < beauty_chat_global_v1 < beauty_chat_<角色id>
-        // 旧 theme_bubble_* 已由 chat-beauty.js 加载时自动迁移到新 key；本块取代原 applyBubbleTheme
+        // 默认主题 < iMessage主题基础样式 < 全局气泡自定义 < 角色气泡自定义
         try { if (window.ChatBeauty) ChatBeauty.apply(currentCharacter.id, chatMessages); } catch (e) {}
+        syncChatThemeLayout();
 
         renderAllMessages();
         highlightMessageFromUrl();
@@ -4276,6 +4302,7 @@
             try {
                 if (window.ChatBeauty && currentCharacter && chatMessages) {
                     ChatBeauty.apply(currentCharacter.id, chatMessages);
+                    syncChatThemeLayout();
                 }
             } catch (e) {}
         }
@@ -4293,6 +4320,12 @@
         const btnMoreMenu = document.getElementById('btn-more-menu');
         if (btnMoreMenu) btnMoreMenu.addEventListener('click', function () {
             window.location.href = 'chat-settings.html?roleId=' + encodeURIComponent(currentCharacter.id);
+        });
+        const btnHeaderVideo = document.getElementById('btn-header-video');
+        if (btnHeaderVideo) btnHeaderVideo.addEventListener('click', function () {
+            const existingVideoAction = document.querySelector('.plus-item[data-feat="video"]');
+            if (existingVideoAction) existingVideoAction.click();
+            else if (typeof showToast === 'function') showToast('请从加号菜单打开视频通话');
         });
 
         // ================= Toast（chat-extras.js 等模块仍在使用，必须保留） =================
@@ -4956,10 +4989,11 @@
   var btn=document.getElementById('voice-input-btn');
   var input=document.getElementById('chat-input');
   if(!btn||!input)return;
-  var recognition=null, recorder=null, chunks=[], stream=null, mode='', finalText='', oldPlaceholder=input.placeholder;
+  var recognition=null, recorder=null, chunks=[], stream=null, mode='', finalText='', oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
+  function getRestoredPlaceholder(){return window.ChatBeauty&&typeof ChatBeauty.getThemePreset==='function'&&ChatBeauty.getThemePreset()==='imessage'?'iMessage 信息':oldPlaceholder}
   var Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
   function toast(message){if(typeof window.showToast==='function')window.showToast(message);else{var el=document.getElementById('voice-input-status');if(!el){el=document.createElement('div');el.id='voice-input-status';el.style.cssText='position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;background:#111;color:#fff;padding:9px 13px;font:12px -apple-system,BlinkMacSystemFont,sans-serif;max-width:85%;text-align:center';document.querySelector('.phone-mockup')?.appendChild(el)}el.textContent=message;el.style.display='block';clearTimeout(el._timer);el._timer=setTimeout(function(){el.style.display='none'},2600)}}
-  function setActive(active,label){btn.classList.toggle('recording',active);btn.setAttribute('aria-pressed',active?'true':'false');btn.title=label|| (active?'再次点击结束录音':'点击说话，识别后可编辑再发送');if(active)input.placeholder='正在聆听… 再点一次结束';else input.placeholder=oldPlaceholder}
+  function setActive(active,label){btn.classList.toggle('recording',active);btn.setAttribute('aria-pressed',active?'true':'false');btn.title=label|| (active?'再次点击结束录音':'点击说话，识别后可编辑再发送');if(active)input.placeholder='正在聆听… 再点一次结束';else input.placeholder=getRestoredPlaceholder()}
   function putText(text){text=String(text||'').trim();if(!text){toast('没有识别到清晰的语音，请再试一次');return}var prefix=input.value.trim();input.value=prefix?(prefix+' '+text):text;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();toast('语音已转成文字，可以检查后发送')}
   function releaseStream(){if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}}
   function stopRecorder(){if(recorder&&recorder.state!=='inactive')recorder.stop()}
