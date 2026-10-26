@@ -548,10 +548,29 @@
         if (phoneShell) {
             if (v.themePreset === 'imessage') {
                 var shellBackground = rootEl.style.getPropertyValue('--chat-bg-image');
-                if (shellBackground) phoneShell.style.setProperty('--chat-theme-bg-image', shellBackground);
-                else phoneShell.style.removeProperty('--chat-theme-bg-image');
+                // Older wallpaper sources may expose the background via computed style
+                // instead of an inline custom property; make that image cover the shell too.
+                if (!shellBackground) {
+                    try {
+                        shellBackground = window.getComputedStyle(rootEl).getPropertyValue('--chat-bg-image').trim();
+                    } catch (e) {}
+                }
+                if (!shellBackground || shellBackground === 'none') {
+                    try {
+                        var computedStageBackground = window.getComputedStyle(rootEl).backgroundImage;
+                        if (computedStageBackground && computedStageBackground !== 'none') shellBackground = computedStageBackground;
+                    } catch (e) {}
+                }
+                if (shellBackground && shellBackground !== 'none') {
+                    phoneShell.style.setProperty('--chat-theme-bg-image', shellBackground);
+                    phoneShell.style.backgroundImage = 'var(--chat-theme-bg-image)';
+                } else {
+                    phoneShell.style.removeProperty('--chat-theme-bg-image');
+                    phoneShell.style.removeProperty('background-image');
+                }
             } else {
                 phoneShell.style.removeProperty('--chat-theme-bg-image');
+                phoneShell.style.removeProperty('background-image');
             }
         }
         return v;
