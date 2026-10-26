@@ -250,7 +250,14 @@
     NS.applyVars = function (v, rootEl) {
         if (!rootEl || !v) return v;
         var s = rootEl.style;
-        try { rootEl.setAttribute('data-chat-theme-preset', v.themePreset === 'imessage' ? 'imessage' : 'default'); } catch (e) {}
+        // The page shell and the message stage share the same built-in theme.
+        // This lets iMessage update the header/composer together with the bubbles.
+        var activeThemePreset = v.themePreset === 'imessage' ? 'imessage' : 'default';
+        try {
+            rootEl.setAttribute('data-chat-theme-preset', activeThemePreset);
+            var phoneShell = rootEl.closest ? rootEl.closest('.phone-mockup') : null;
+            if (phoneShell) phoneShell.setAttribute('data-chat-theme-preset', activeThemePreset);
+        } catch (e) {}
 
         s.setProperty('--chat-avatar-size', num(v.avatarSize, 30) + 'px');
         s.setProperty('--chat-avatar-radius', num(v.avatarRadius, 50) + '%');
