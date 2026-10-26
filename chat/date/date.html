@@ -602,13 +602,156 @@
     z-index: 90;
   }
   .date-toast.show { opacity: 1; }
+
+/* ===== Editorial offline story: reference-inspired clean reading layout ===== */
+html,body{height:100%;min-height:0}
+body{display:flex;justify-content:center;align-items:stretch;background:#fff;overflow:hidden}
+.page{
+  width:100%;max-width:560px;height:100dvh;min-height:0;max-height:100dvh;
+  overflow:hidden;border-top:0;background:#fff;
+  box-shadow:none;
+}
+.masthead{
+  flex:0 0 auto;min-height:58px;padding:calc(7px + env(safe-area-inset-top,0px)) 18px 8px;
+  border-bottom:1px solid #e9e9e7;gap:10px;
+}
+.mast-link{
+  display:inline-flex;align-items:center;gap:5px;min-height:32px;
+  font-family:var(--sans);font-size:12px;letter-spacing:0;color:#555;
+  text-transform:none;white-space:nowrap;
+}
+.mast-word{
+  font-family:var(--sans);font-size:9px;letter-spacing:.13em;color:#777;
+  text-align:center;white-space:nowrap;flex:1;
+}
+.mast-right{gap:4px}
+.mast-action{width:34px;height:34px;border:1px solid transparent;border-radius:50%;color:#686868}
+.mast-action:active{background:#f5f5f3;color:#111}
+.mast-action svg{width:17px;height:17px}
+.title-wrap{
+  flex:0 0 auto;padding:16px 22px 15px;border-bottom:1px solid #e7e7e5;
+  background:#fff;
+}
+.editorial-kicker{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-bottom:12px;font-family:var(--sans);font-size:9px;letter-spacing:.13em;
+  color:#999;text-transform:uppercase;
+}
+.editorial-kicker span:last-child{font-size:8px;letter-spacing:.12em;color:#b1b1ae;white-space:nowrap}
+.editorial-headline{display:grid;grid-template-columns:minmax(0,1fr) 76px;align-items:center;gap:20px}
+.editorial-copy{min-width:0}
+.title{
+  font-family:var(--sans);font-size:clamp(23px,6vw,29px);line-height:1.18;
+  letter-spacing:-.045em;font-weight:650;color:#1b1b1b;overflow-wrap:anywhere;
+}
+.editorial-caption{margin-top:8px;font-family:var(--sans);font-size:12px;line-height:1.7;color:#858585}
+.character-stamp{
+  width:76px;height:86px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+  background:#f4f4f2;border:1px solid #e5e5e1;color:#5e5e5a;
+}
+.character-stamp::before{content:"";position:absolute;inset:7px;border:1px solid rgba(0,0,0,.07)}
+.character-stamp span{font-family:Georgia,"Songti SC",serif;font-size:24px;line-height:1;color:#343434;z-index:1}
+.character-stamp i{position:absolute;left:14px;right:14px;height:1px;background:#d6d6d1}
+.character-stamp i:nth-of-type(1){bottom:23px}
+.character-stamp i:nth-of-type(2){bottom:17px;left:20px;right:20px}
+.character-stamp i:nth-of-type(3){bottom:11px;left:25px;right:25px}
+.character-stamp img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:grayscale(1) contrast(1.02);z-index:2}
+.byline{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 22px 13px;border-bottom:1px solid #e7e7e5;background:#fff;
+}
+.by-name{font-family:var(--sans);font-size:14px;letter-spacing:0;font-weight:600;color:#262626;overflow-wrap:anywhere}
+.by-meta{font-family:var(--sans);font-size:9px;letter-spacing:.1em;color:#999;text-align:right}
+.story{
+  flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding:19px 22px 28px;position:relative;
+  font-family:"Noto Serif SC","Songti SC","STSong",Georgia,serif;
+  font-size:var(--story-font-size,13.5px);line-height:1.9;
+  background-color:var(--story-bg,#fff);background-image:var(--story-bg-image,none);
+  background-size:cover;background-position:center;-webkit-overflow-scrolling:touch;
+}
+.msg-block{width:100%;max-width:100%;margin:0 0 27px;padding:0;background:transparent!important}
+.msg-block::before{
+  display:block;margin:0 0 7px;font-family:var(--sans);font-size:8px;line-height:1.4;
+  letter-spacing:.16em;color:#aaa;text-transform:uppercase;
+}
+.msg-block.p-ai::before{content:"STORY / CHARACTER"}
+.msg-block.p-you::before{content:"MY NOTE"}
+.msg-block.p-ai.ops-target{background:transparent!important}
+.bubble,.bubble.ai,.bubble.me{
+  display:block;width:100%;max-width:100%;margin:0;padding:0;
+  border:0;border-radius:0;background:transparent;box-shadow:none;
+  font-family:inherit;font-size:1em;line-height:1.95;font-weight:400;
+  color:#30302e;text-align:left;overflow-wrap:anywhere;word-break:break-word;
+}
+.bubble p{margin:0 0 .9em;text-indent:0}
+.bubble p:last-child{margin-bottom:0}
+.bubble.me,.bubble.me p{color:#777}
+.bubble.me{border-left:1px solid #d7d7d2;padding:1px 0 1px 13px}
+.bubble .spoken,.bubble.me .spoken{border-bottom:1px solid #c9c9c3;padding-bottom:1px;color:inherit}
+.p-sys{font-family:var(--sans);font-size:10px;letter-spacing:.03em;color:#aaa;font-style:normal;text-align:center;margin:19px 0;line-height:1.7}
+.scene-divider{
+  display:flex;align-items:center;gap:12px;margin:30px 0 23px;
+  color:#999;font-family:var(--sans);font-size:10px;letter-spacing:.09em;
+  text-transform:none;line-height:1.5;
+}
+.scene-divider::before,.scene-divider::after{content:"";display:block;flex:1;min-width:12px;height:1px;background:#e1e1dd}
+.summary-box{margin:27px 0 7px;padding:13px 0 14px;border-top:1px solid #e2e2de;border-bottom:1px solid #e2e2de;max-width:none}
+.summary-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid #ededeb}
+.summary-title{font-family:var(--sans);font-size:9px;letter-spacing:.13em;color:#999}
+.summary-toggle{font-family:var(--sans);font-size:10px;letter-spacing:0;color:#666}
+.summary-body,.summary-box[data-mode="text"] .summary-body{
+  border:0;background:transparent;border-radius:0;padding:9px 0 0;
+  font-family:var(--sans);font-size:11px;line-height:1.8;color:#777;
+}
+.quick-bar{
+  flex:0 0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  border-top:1px solid #e6e6e3;background:rgba(255,255,255,.97);
+}
+.quick-bar button{
+  min-width:0;min-height:43px;padding:10px 4px;border-right:1px solid #e9e9e7;
+  font-family:var(--sans);font-size:11px;letter-spacing:.02em;color:#5f5f5b;
+}
+.quick-bar button:last-child{border-right:0}
+.quick-bar button:active:not(:disabled){background:#f6f6f4;color:#111}
+.composer{
+  flex:0 0 auto;display:flex;align-items:flex-end;gap:10px;
+  padding:8px 18px calc(10px + env(safe-area-inset-bottom,0px));
+  border-top:1px solid #e7e7e4;background:rgba(255,255,255,.97);
+}
+.composer textarea{
+  flex:1;min-width:0;max-height:90px;min-height:37px;padding:8px 2px 7px;
+  border:0;border-bottom:1px solid #c9c9c5;border-radius:0;background:transparent;
+  font-family:var(--sans);font-size:13px;line-height:1.6;color:#252525;
+}
+.composer textarea::placeholder{font-style:normal;color:#aaa}
+.continue-btn,.send-btn{min-height:36px;display:flex;align-items:center;justify-content:center;padding:6px 4px;font-family:var(--sans);font-size:11px;font-style:normal;color:#292929}
+.continue-btn svg{width:17px;height:17px}
+.send-btn{padding:7px 0 7px 8px;border-left:1px solid #e3e3df;font-size:11px;letter-spacing:.04em}
+.date-toast{bottom:calc(106px + env(safe-area-inset-bottom,0px));border-radius:5px;letter-spacing:0;box-shadow:0 5px 20px rgba(0,0,0,.08)}
+.writing-pop{top:calc(100% + 4px);right:12px;border-radius:7px;max-width:calc(100vw - 32px)}
+@media(min-width:561px){
+ body{background:#f3f3f1}
+ .page{height:100dvh;border-left:1px solid #eee;border-right:1px solid #eee}
+}
+@media(max-width:360px){
+ .masthead{padding-left:13px;padding-right:13px}
+ .mast-word{font-size:8px;letter-spacing:.08em}
+ .title-wrap{padding-left:17px;padding-right:17px}
+ .editorial-headline{grid-template-columns:minmax(0,1fr) 66px;gap:12px}
+ .character-stamp{width:66px;height:78px}
+ .story{padding-left:18px;padding-right:18px}
+ .byline{padding-left:17px;padding-right:17px}
+}
+@media(prefers-reduced-motion:reduce){.p-streaming::after{animation:none}}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
 <body>
 <div class="page">
   <header class="masthead">
-    <a class="mast-link" id="backLink" href="../chat/chat/chat.html">← BACK</a>
+    <a class="mast-link" id="backLink" href="../chat/chat/chat.html">‹ 返回</a>
     <span class="mast-word">MAOMAO&ensp;/&ensp;OFFLINE STORY</span>
     <div class="mast-right">
       <button class="mast-action" id="writingBtn" type="button" title="写作设置" aria-label="写作设置">
@@ -681,9 +824,19 @@
     </div>
   </header>
 
-  <div class="title-wrap">
-    <h1 class="title" id="dateTitle">线下模式</h1>
-  </div>
+  <section class="title-wrap" aria-label="线下故事信息">
+    <div class="editorial-kicker"><span>OFFLINE / DAILY NOTES</span><span>FIELD NOTES</span></div>
+    <div class="editorial-headline">
+      <div class="editorial-copy">
+        <h1 class="title" id="dateTitle">线下模式</h1>
+        <p class="editorial-caption">在屏幕之外，继续你们的故事。</p>
+      </div>
+      <div class="character-stamp" id="characterPortrait" aria-hidden="true">
+        <span id="characterInitial">TA</span>
+        <i></i><i></i><i></i>
+      </div>
+    </div>
+  </section>
 
   <!-- 元信息行：作者栏（角色名 + 场景类别） -->
   <div class="byline" id="byline">
@@ -1035,6 +1188,22 @@
     /* ---------- 顶栏 / 标题 / 元信息 / 返回 ---------- */
     if (byName) byName.textContent = charName;
     if (byMeta) byMeta.textContent = 'OFFLINE MODE' + (sceneName ? ' · ' + sceneName.toUpperCase() : '');
+
+    var portrait = document.getElementById('characterPortrait');
+    var portraitInitial = document.getElementById('characterInitial');
+    if (portraitInitial) portraitInitial.textContent = (String(charName || 'TA').trim().slice(0, 1) || 'T');
+    var avatarSource = String(character.avatar || character.avatarUrl || character.image || '').trim();
+    if (portrait && avatarSource && /^(https?:\/\/|data:image\/|blob:|\/|\.\.?\/|assets\/)/i.test(avatarSource)) {
+        var portraitImg = document.createElement('img');
+        portraitImg.alt = '';
+        portraitImg.src = avatarSource;
+        portraitImg.addEventListener('error', function () {
+            portraitImg.remove();
+            if (portraitInitial) portraitInitial.textContent = (String(charName || 'TA').trim().slice(0, 1) || 'T');
+        }, { once: true });
+        portrait.appendChild(portraitImg);
+    }
+
     backLink.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
 
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
