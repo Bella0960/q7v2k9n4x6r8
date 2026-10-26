@@ -745,6 +745,69 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 }
 @media(prefers-reduced-motion:reduce){.p-streaming::after{animation:none}}
 
+
+/* Bottom status/action toolbar: one calm, balanced strip instead of three heavy buttons. */
+:root{--sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+.story{
+  background-image:linear-gradient(rgba(255,255,255,.24),rgba(255,255,255,.24)),var(--story-bg-image,none);
+}
+.bubble,.bubble.ai,.bubble.me{color:#292927}
+.bubble.me,.bubble.me p{color:#555550}
+.quick-bar{
+  position:relative;z-index:5;
+  flex:0 0 auto;
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  align-items:stretch;
+  min-height:48px;
+  padding:0;
+  border-top:1px solid rgba(30,30,28,.13);
+  border-bottom:1px solid rgba(30,30,28,.08);
+  background:rgba(255,255,255,.91);
+  -webkit-backdrop-filter:blur(18px);
+  backdrop-filter:blur(18px);
+}
+.quick-bar button{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  width:100%;min-width:0;min-height:47px;
+  margin:0;padding:8px 5px;
+  border:0;border-right:1px solid rgba(30,30,28,.09);
+  border-radius:0;background:transparent;
+  font-family:var(--sans);font-size:10px;line-height:1.2;
+  font-weight:500;letter-spacing:.015em;color:#555550;
+  white-space:nowrap;
+  transition:background .15s ease,color .15s ease;
+}
+.quick-bar button:last-child{border-right:0}
+.quick-bar button svg{
+  display:block;flex:0 0 15px;width:15px;height:15px;
+  fill:none;stroke:currentColor;stroke-width:1.45;
+  stroke-linecap:round;stroke-linejoin:round;opacity:.82;
+}
+.quick-bar button span{overflow:hidden;text-overflow:ellipsis}
+.quick-bar button:active:not(:disabled){background:rgba(0,0,0,.045);color:#111}
+.quick-bar button:disabled{opacity:.35}
+.summary-box{
+  margin:24px 0 7px;padding:12px 12px 13px;
+  border-top:1px solid rgba(50,50,45,.20);
+  border-bottom:1px solid rgba(50,50,45,.20);
+  background:rgba(255,255,255,.68);
+  -webkit-backdrop-filter:blur(10px);
+  backdrop-filter:blur(10px);
+}
+.summary-head{border-bottom:1px solid rgba(50,50,45,.10)}
+.summary-body,.summary-box[data-mode="text"] .summary-body{color:#555550}
+.composer{
+  position:relative;z-index:5;
+  background:rgba(255,255,255,.97);
+  -webkit-backdrop-filter:blur(18px);
+  backdrop-filter:blur(18px);
+}
+@media(max-width:360px){
+  .quick-bar button{gap:4px;font-size:9px;padding-left:3px;padding-right:3px}
+  .quick-bar button svg{flex-basis:14px;width:14px;height:14px}
+}
+@media(prefers-reduced-motion:reduce){.quick-bar button{transition:none}}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -847,10 +910,19 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
   <main class="story" id="story"></main>
 
   <!-- 三颗行动钮：让 TA 继续 / 重 Roll / 保存 -->
-  <div class="quick-bar" id="quickBar">
-    <button type="button" id="actContinue">让 TA 继续</button>
-    <button type="button" id="actReroll">重 Roll</button>
-    <button type="button" id="actSave">保存</button>
+  <div class="quick-bar" id="quickBar" role="toolbar" aria-label="剧情状态与操作">
+    <button type="button" id="actContinue" aria-label="让角色继续剧情" title="继续剧情">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 11.5a7.5 7.5 0 0 1 13-5L20 9"/><path d="M20 4.5V9h-4.5"/><path d="M19.5 12.5a7.5 7.5 0 0 1-13 5L4 15"/><path d="M4 19.5V15h4.5"/></svg>
+      <span>继续剧情</span>
+    </button>
+    <button type="button" id="actReroll" aria-label="重新生成角色回复" title="重写回复">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4.7 9a7.5 7.5 0 0 1 12.6-2L20 12"/><path d="M4 17v-5h5"/><path d="M19.3 15a7.5 7.5 0 0 1-12.6 2L4 12"/></svg>
+      <span>重写回复</span>
+    </button>
+    <button type="button" id="actSave" aria-label="保存剧情文稿" title="保存文稿">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3h16v-3"/></svg>
+      <span>保存文稿</span>
+    </button>
   </div>
 
   <form class="composer" id="dateForm">
