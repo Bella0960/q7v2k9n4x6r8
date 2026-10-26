@@ -9,7 +9,7 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F7F7F9",
-  "theme_color": "#F7F7F9",
+  "theme_color": "#FFFFFF",
   "shortcuts": [
     {
       "name": "咖啡馆经营",
