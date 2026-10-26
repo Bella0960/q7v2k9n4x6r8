@@ -4976,10 +4976,9 @@
   var input=document.getElementById('chat-input');
   if(!btn||!input)return;
 
-  /* 使用浏览器内置语音识别，不再把录音上传给用户配置的聊天 API。 */
+  /* 单一交互：点一次开始聆听，再点一次结束。完全不使用长按/指针捕获逻辑。 */
   var SpeechRecognitionCtor=window.SpeechRecognition||window.webkitSpeechRecognition;
-  var recognition=null, mode='', finalText='', interimText='', stopWhenStarted=false;
-  var pointerTimer=null, pointerDown=false, holdCaptureActive=false, suppressClickUntil=0;
+  var recognition=null, mode='', finalText='', interimText='', lastTapAt=0, startTimer=null;
   var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
 
   function getRestoredPlaceholder(){
@@ -5005,13 +5004,13 @@
   function setActive(active,label){
     btn.classList.toggle('recording',active);
     btn.setAttribute('aria-pressed',active?'true':'false');
-    btn.title=label||(active?'正在聆听，再点一下结束':'点击开始语音输入，再点一下结束');
+    btn.title=label||(active?'正在聆听，再点一下结束':'点一下开始语音输入，再点一下结束');
     input.placeholder=active?'正在聆听… 再点一下结束':getRestoredPlaceholder();
   }
 
   function putText(text){
     text=String(text||'').trim();
-    if(!text){toast('没有听到清晰的语音，再试一次');return}
+    if(!text){toast('没有识别到文字。说完后再点一次波形结束录音。');return}
     var prefix=input.value.trim();
     input.value=prefix?(prefix+' '+text):text;
     input.dispatchEvent(new Event('input',{bubbles:true}));
@@ -5022,66 +5021,65 @@
   function errorText(code){
     switch(code){
       case 'not-allowed':
-      case 'service-not-allowed':
-        return '请允许浏览器使用麦克风和语音识别功能后重试';
-      case 'audio-capture':
-        return '没有检测到可用的麦克风';
-      case 'no-speech':
-        return '没有听到清晰的语音，再试一次';
-      case 'network':
-        return '浏览器语音识别服务暂时不可用，请检查网络后重试';
-      case 'language-not-supported':
-        return '当前浏览器语音识别不支持所选语言';
-      case 'aborted':
-        return '语音识别已结束';
-      default:
-        return '语音识别暂时不可用，请检查麦克风权限后重试';
+      case 'service-not-allowed': return '请允许浏览器使用麦克风和语音识别功能后重试';
+      case 'audio-capture': return '没有检测到可用的麦克风';
+      case 'no-speech': return '没有识别到语音。点一下开始，说完后再点一下结束';
+      case 'network': return '浏览器的语音识别服务连接失败；这不是聊天 API 的转写接口';
+      case 'language-not-supported': return '当前浏览器语音识别不支持中文';
+      case 'aborted': return '';
+      default: return '语音识别暂时不可用，请检查麦克风权限后重试';
     }
   }
 
   function resetState(){
+    if(startTimer){clearTimeout(startTimer);startTimer=null}
     recognition=null;
     mode='';
+    finalText='';
+    interimText='';
     setActive(false);
     btn.disabled=false;
-    interimText='';
     input.placeholder=getRestoredPlaceholder();
   }
 
-  function startRecorder(){
+  function startListening(){
     if(mode!=='')return;
     if(!SpeechRecognitionCtor){
-      toast('当前浏览器没有内置语音识别，且当前 API 不支持音频转写。请使用支持语音识别的 Chrome 浏览器打开小手机。');
+      toast('当前浏览器没有内置语音识别，当前 API 也不支持转写。请用支持语音识别的 Chrome 浏览器打开。');
       return;
     }
+    var rec;
+    try{rec=new SpeechRecognitionCtor()}
+    catch(e){toast('无法启动语音识别，请检查麦克风权限后重试');return}
 
-    var activeRecognition;
-    try{activeRecognition=new SpeechRecognitionCtor()}
-    catch(e){toast('无法启动浏览器语音识别，请检查麦克风权限后重试');return}
-
-    recognition=activeRecognition;
-    mode='requesting';
+    recognition=rec;
+    mode='starting';
     finalText='';
     interimText='';
-    stopWhenStarted=false;
-    activeRecognition.lang='zh-CN';
-    activeRecognition.continuous=true;
-    activeRecognition.interimResults=true;
-    activeRecognition.maxAlternatives=1;
-    setActive(true,'正在启动语音识别…');
+    rec.lang='zh-CN';
+    rec.continuous=true;
+    rec.interimResults=true;
+    rec.maxAlternatives=1;
+    setActive(true,'正在开启语音识别… 再点一下可结束');
 
-    activeRecognition.onstart=function(){
-      if(recognition!==activeRecognition)return;
-      mode='recognizing';
-      setActive(true,'正在聆听，再点一下结束');
-      if(stopWhenStarted){
-        mode='stopping';
-        try{activeRecognition.stop()}catch(e){}
-      }
+    /* 避免浏览器既未触发 onstart 也未触发 onend 时，按钮卡死无法停止。 */
+    startTimer=setTimeout(function(){
+      if(recognition!==rec||mode!=='starting')return;
+      try{rec.abort()}catch(e){}
+      resetState();
+      toast('语音识别启动超时。请检查麦克风权限或换用 Chrome 浏览器。');
+    },8000);
+
+    rec.onstart=function(){
+      if(recognition!==rec)return;
+      if(startTimer){clearTimeout(startTimer);startTimer=null}
+      mode='listening';
+      setActive(true,'正在聆听；说完后再点一次结束');
+      toast('正在聆听。说完后再点一次波形结束。');
     };
 
-    activeRecognition.onresult=function(event){
-      if(recognition!==activeRecognition)return;
+    rec.onresult=function(event){
+      if(recognition!==rec)return;
       var interim='';
       for(var i=event.resultIndex;i<event.results.length;i++){
         var result=event.results[i];
@@ -5091,97 +5089,87 @@
         else interim+=(interim?' ':'')+spoken;
       }
       interimText=interim;
-      if(interimText){
-        input.placeholder=interimText;
-      }else if(mode==='recognizing'){
-        input.placeholder='正在聆听… 再点一下结束';
-      }
+      /* 识别预览只放在输入框占位提示里，不会直接发送消息。 */
+      input.placeholder=interimText||'正在聆听；说完后再点一次结束';
     };
 
-    activeRecognition.onerror=function(event){
-      if(recognition!==activeRecognition)return;
-      activeRecognition._maomaoError=event&&event.error?event.error:'';
+    rec.onerror=function(event){
+      if(recognition!==rec)return;
+      rec._maomaoError=event&&event.error?event.error:'';
     };
 
-    activeRecognition.onend=function(){
-      if(recognition!==activeRecognition)return;
+    rec.onend=function(){
+      if(recognition!==rec)return;
       var result=(finalText+' '+interimText).trim();
-      var error=activeRecognition._maomaoError||'';
+      var error=rec._maomaoError||'';
       resetState();
-      if(result){
-        putText(result);
-      }else if(error&&error!=='aborted'){
-        toast(errorText(error));
-      }else if(error!=='aborted'){
-        toast('没有听到清晰的语音，再试一次');
-      }
+      if(result)putText(result);
+      else if(error&&error!=='aborted')toast(errorText(error));
+      else if(mode!=='')toast('语音识别结束');
     };
 
-    try{
-      activeRecognition.start();
-      toast('开始聆听，说完后再点一次波形');
-    }catch(e){
+    try{rec.start()}
+    catch(e){
       resetState();
-      toast('浏览器无法启动语音识别，请确认允许麦克风并使用 HTTPS');
+      toast('浏览器拒绝启动语音识别，请确认麦克风权限并使用 HTTPS。');
     }
   }
 
-  function stopVoiceCapture(){
-    if(mode==='recognizing'){
+  function stopListening(){
+    if(mode==='starting'){
+      /* 不立即把服务 abort 掉；等它启动后立刻 stop，避免浏览器报“操作太快”。 */
+      mode='stop-after-start';
+      setActive(true,'正在启动，马上结束…');
+      toast('语音正在启动，请稍等一下');
+      return;
+    }
+    if(mode==='listening'){
       mode='stopping';
       setActive(true,'正在整理语音文字…');
-      try{if(recognition)recognition.stop()}catch(e){}
+      try{if(recognition)recognition.stop()}
+      catch(e){
+        try{if(recognition)recognition.abort()}catch(ignore){}
+        resetState();
+        toast('语音已结束，请再试一次');
+      }
       return;
     }
-    if(mode==='requesting'){
-      stopWhenStarted=true;
-      toast('正在开启麦克风，请允许权限');
-      return;
-    }
-    if(mode==='stopping')toast('正在整理语音文字…');
-  }
-
-  function startVoiceCapture(){if(mode==='')startRecorder()}
-
-  btn.addEventListener('pointerdown',function(event){
-    if(event.button!==undefined&&event.button!==0)return;
-    pointerDown=true;
-    holdCaptureActive=false;
-    if(mode!=='')return;
-    try{btn.setPointerCapture(event.pointerId)}catch(e){}
-    if(pointerTimer)clearTimeout(pointerTimer);
-    pointerTimer=setTimeout(function(){
-      pointerTimer=null;
-      if(!pointerDown||mode!=='')return;
-      holdCaptureActive=true;
-      suppressClickUntil=Date.now()+1200;
-      startRecorder();
-    },420);
-  });
-
-  function finishPointerPress(){
-    pointerDown=false;
-    if(pointerTimer){clearTimeout(pointerTimer);pointerTimer=null}
-    if(holdCaptureActive){
-      holdCaptureActive=false;
-      suppressClickUntil=Date.now()+1200;
-      stopVoiceCapture();
+    if(mode==='stop-after-start'||mode==='stopping'){
+      toast('正在结束语音，请稍等一下');
     }
   }
-  btn.addEventListener('pointerup',finishPointerPress);
-  btn.addEventListener('pointercancel',finishPointerPress);
-  btn.addEventListener('lostpointercapture',finishPointerPress);
-  btn.addEventListener('contextmenu',function(event){event.preventDefault()});
+
   btn.addEventListener('click',function(event){
-    if(Date.now()<suppressClickUntil){event.preventDefault();return}
-    if(mode==='')startVoiceCapture();
-    else stopVoiceCapture();
+    if(event){event.preventDefault();event.stopPropagation()}
+    var now=Date.now();
+    if(now-lastTapAt<350)return;
+    lastTapAt=now;
+    if(mode==='' )startListening();
+    else stopListening();
   });
+
+  /* onstart 可能晚于第二次点击：等真正启动后再 stop，不把识别服务过早关闭。 */
+  var originalStartTimerMarker=true;
+  var observerTimer=setInterval(function(){
+    if(!recognition)return;
+    if(mode==='stop-after-start'&&recognition.readyState!=='starting'){
+      try{recognition.stop();mode='stopping';setActive(true,'正在整理语音文字…')}
+      catch(e){}
+    }
+  },200);
+
+  /* 上限 8 秒的启动看门狗之外，不保留任何轮询；结束页面时清理兼容资源。 */
+  window.addEventListener('pagehide',function(){
+    if(startTimer){clearTimeout(startTimer);startTimer=null}
+    clearInterval(observerTimer);
+    try{if(recognition)recognition.abort()}catch(e){}
+    recognition=null;mode='';
+  },{once:true});
 
   window.MAOMAO_VOICE_CAPABILITIES={
     speechToText:!!SpeechRecognitionCtor,
     recordingFallback:false,
-    pressAndHold:true,
+    interaction:'tap-to-start-tap-to-stop',
     captureMode:'Browser SpeechRecognition',
     requiresConfiguredAPI:false
   };
