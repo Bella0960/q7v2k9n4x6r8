@@ -2312,37 +2312,90 @@ document.getElementById('importFile').addEventListener('change', function(e){
     updateBgHint();
   }
 
-  // ---- 保存：全局 = 整份快照；单聊 = 与全局做差量（一致项传 null，保持稀疏存储） ----
+  // ---- 保存：背景图独立存放于 IndexedDB，配置 JSON 只保存短引用 ----
   function saveVisual() {
-    var payload = {};
-    VISUAL_FIELDS.forEach(function (k) {
-      payload[k] = (k === 'chatBg') ? (draft[k] || null) : draft[k];
-    });
-    if (currentScope !== 'global') {
-      var g = ChatBeauty.resolve(null);
+    var scope = currentScope;
+    var targetDraft = draft;
+    var bgValue = targetDraft && typeof targetDraft.chatBg === 'string' ? targetDraft.chatBg : '';
+    var bgRef = targetDraft && targetDraft.__chatBgStoreRef ? targetDraft.__chatBgStoreRef : '';
+    var globalVars = scope !== 'global' ? ChatBeauty.resolve(null) : null;
+
+    var inheritedGlobalBg = scope !== 'global' && bgValue && globalVars && (
+      (bgRef && bgRef === globalVars.chatBg) || bgValue === globalVars.chatBg
+    );
+
+    function persistVisual(bgToken) {
+      if (draft !== targetDraft || currentScope !== scope) return;
+      var payload = {};
       VISUAL_FIELDS.forEach(function (k) {
-        var same = (k === 'chatBg')
-          ? (!payload.chatBg || payload.chatBg === g.chatBg)
-          : (JSON.stringify(payload[k]) === JSON.stringify(g[k]));
-        payload[k] = same ? null : payload[k];
+        payload[k] = k === 'chatBg' ? (bgToken || null) : targetDraft[k];
       });
-      var hasDiff = VISUAL_FIELDS.some(function (k) { return payload[k] !== null; });
-      if (!hasDiff) {
-        ChatBeauty.reset(currentScope);
-        showToast('与全局一致：已清除「' + roleName(currentScope) + '」的单独配置');
-        return;
+
+      if (scope !== 'global') {
+        var g = ChatBeauty.resolve(null);
+        VISUAL_FIELDS.forEach(function (k) {
+          var same = k === 'chatBg'
+            ? (!payload.chatBg || payload.chatBg === g.chatBg || (bgRef && bgRef === g.chatBg))
+            : (JSON.stringify(payload[k]) === JSON.stringify(g[k]));
+          payload[k] = same ? null : payload[k];
+        });
+        var hasDiff = VISUAL_FIELDS.some(function (k) { return payload[k] !== null; });
+        if (!hasDiff) {
+          ChatBeauty.reset(scope);
+          if (wallpaperStore && typeof wallpaperStore.removeByKey === 'function') {
+            wallpaperStore.removeByKey(visualBgKey(scope)).catch(function () {});
+          }
+          targetDraft.__chatBgStoreRef = '';
+          showToast('与全局一致：已清除「' + roleName(scope) + '」的单独配置');
+          return;
+        }
+      }
+
+      var ok = ChatBeauty.save(scope, payload);
+      if (ok) {
+        targetDraft.__chatBgStoreRef = payload.chatBg || '';
+        if (!payload.chatBg && wallpaperStore && typeof wallpaperStore.removeByKey === 'function') {
+          wallpaperStore.removeByKey(visualBgKey(scope)).catch(function () {});
+        }
+        showToast(scope === 'global' ? '已保存全局配置' : '已保存「' + roleName(scope) + '」的专属配置');
+      } else {
+        showToast('保存失败：请检查浏览器存储权限后重试');
       }
     }
-    var ok = ChatBeauty.save(currentScope, payload);
-    if (ok) showToast(currentScope === 'global' ? '已保存全局配置' : '已保存「' + roleName(currentScope) + '」的专属配置');
-    else showToast('保存失败：图片过大或本地存储已满');
+
+    if (!bgValue || inheritedGlobalBg) {
+      persistVisual(null);
+      return;
+    }
+    if (bgValue.indexOf('idb-image:') === 0) {
+      persistVisual(bgValue);
+      return;
+    }
+    if (bgValue.indexOf('data:image/') === 0) {
+      if (wallpaperStore && typeof wallpaperStore.saveByKey === 'function') {
+        var key = visualBgKey(scope);
+        wallpaperStore.saveByKey(key, bgValue).then(function () {
+          persistVisual('idb-image:' + key);
+        }).catch(function (error) {
+          showToast(error && error.message ? error.message : '壁纸保存失败，请尝试较小的图片');
+        });
+      } else {
+        showToast('图片存储组件暂不可用，请刷新页面后重试');
+      }
+      return;
+    }
+    persistVisual(null);
   }
 
   function resetVisualScope() {
     if (currentScope === 'global' && !confirm('确定恢复默认外观？当前的全局配置会被清除。')) return;
-    ChatBeauty.reset(currentScope);
-    loadVisualScope(currentScope);
-    showToast(currentScope === 'global' ? '已恢复默认外观' : '已清除单独配置，恢复跟随全局');
+    var scope = currentScope;
+    ChatBeauty.reset(scope);
+    if (wallpaperStore && typeof wallpaperStore.removeByKey === 'function') {
+      wallpaperStore.removeByKey(visualBgKey(scope)).catch(function () {});
+    }
+    loadVisualScope(scope);
+    showToast(scope === 'global' ? '已恢复默认外观' : '已清除单独配置，恢复跟随全局');
   }
 
   // ---- Tab 切换（联动底部按钮含义） ----
