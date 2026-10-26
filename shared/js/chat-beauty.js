@@ -114,6 +114,63 @@
         return (cfg && cfg.vars && typeof cfg.vars === 'object') ? cfg.vars : {};
     }
 
+    var CHAT_THEME_KEY = 'maomao_chat_theme_preset';
+    // Only values written by the old built-in iMessage preset are eligible for automatic cleanup.
+    var LEGACY_IMESSAGE_VALUES = {
+        bubbleGap: 9, bubbleGapX: 0, bubbleMaxWidth: 80, bubblePadding: 10,
+        myBubbleBg: '#007AFF', myBubbleOpacity: 100, myBubbleColor: '#FFFFFF',
+        myBubbleRadius: '18px 18px 5px 18px', myBubbleRadiusTL: 18, myBubbleRadiusTR: 18,
+        myBubbleRadiusBR: 5, myBubbleRadiusBL: 18, myBubbleBorderColor: '#007AFF',
+        myBubbleBorderWidth: 0, myBubbleBorderStyle: 'solid', myBubbleLineHeight: 1.45,
+        myBubbleShadowVisible: false, myBubbleRadiusSize: '', myBubblePadding: 10,
+        myBubbleFontSize: 12, myBubbleFontFamily: 'system', myBubbleTailSize: 7,
+        myBubbleTailX: 5, myBubbleTailY: 10, myBubbleTailShape: 'round', myBubbleTailColor: '#007AFF',
+        partnerBubbleBg: '#E9E9EB', partnerBubbleOpacity: 100, partnerBubbleColor: '#111111',
+        partnerBubbleRadius: '18px 18px 18px 5px', partnerBubbleRadiusTL: 18,
+        partnerBubbleRadiusTR: 18, partnerBubbleRadiusBR: 18, partnerBubbleRadiusBL: 5,
+        partnerBubbleBorderColor: '#E9E9EB', partnerBubbleBorderWidth: 0,
+        partnerBubbleBorderStyle: 'solid', partnerBubbleLineHeight: 1.45,
+        partnerBubbleShadowVisible: false, partnerBubbleRadiusSize: '', partnerBubblePadding: 10,
+        partnerBubbleFontSize: 12, partnerBubbleFontFamily: 'system', partnerBubbleTailSize: 7,
+        partnerBubbleTailX: -5, partnerBubbleTailY: 10, partnerBubbleTailShape: 'round',
+        partnerBubbleTailColor: '#E9E9EB', messageTimeVisible: true, messageTimeColor: '#8E8E93',
+        messageTimeSize: 10, messageTimePosition: 'above', messageTimeShowRead: true,
+        messageReadPosition: 'inline', messageShowDate: false, imageBubbleRadius: 16
+    };
+    function cleanupLegacyThemeValues() {
+        var keys = [];
+        try { keys = Object.keys(localStorage); } catch (e) { return; }
+        keys.forEach(function (key) {
+            if (key !== GLOBAL_KEY && key.indexOf(ROLE_PREFIX) !== 0) return;
+            var cfg = readJSON(key, null);
+            if (!cfg || !cfg.vars || cfg.vars.themePreset !== 'imessage') return;
+            Object.keys(LEGACY_IMESSAGE_VALUES).forEach(function (field) {
+                if (Object.prototype.hasOwnProperty.call(cfg.vars, field) &&
+                    JSON.stringify(cfg.vars[field]) === JSON.stringify(LEGACY_IMESSAGE_VALUES[field])) {
+                    delete cfg.vars[field];
+                }
+            });
+            delete cfg.vars.themePreset;
+            cfg.updatedAt = Date.now();
+            writeJSON(key, cfg);
+        });
+    }
+    NS.getThemePreset = function () {
+        try {
+            var saved = localStorage.getItem(CHAT_THEME_KEY);
+            if (saved === 'default' || saved === 'imessage') return saved;
+        } catch (e) {}
+        return readScope('global').themePreset === 'imessage' ? 'imessage' : 'default';
+    };
+    NS.setThemePreset = function (theme) {
+        theme = theme === 'imessage' ? 'imessage' : 'default';
+        if (theme === 'default' && NS.getThemePreset() === 'imessage') cleanupLegacyThemeValues();
+        try {
+            localStorage.setItem(CHAT_THEME_KEY, theme);
+            return localStorage.getItem(CHAT_THEME_KEY) === theme;
+        } catch (e) { return false; }
+    };
+
     function paddingCss(sideValue, fallback) {
         var pad = Math.max(2, Math.min(28, num(sideValue, num(fallback, 10))));
         return (pad - 0.5) + 'px ' + (pad + 3) + 'px';
@@ -240,6 +297,8 @@
                 if (k in DEFAULTS && vars[k] !== null && vars[k] !== '') out[k] = vars[k];
             }
         });
+        // 整页主题采用独立的全局键，忽略旧的单角色 themePreset，避免覆盖全局选择。
+        out.themePreset = NS.getThemePreset();
         return out;
     };
 
