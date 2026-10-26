@@ -37,6 +37,7 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
+  'shared/js/phone/phone_stream.js',
   'shared/js/phone/memory_recall.js?v=20261024v2',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   'shared/js/phone/phone_api.js',
