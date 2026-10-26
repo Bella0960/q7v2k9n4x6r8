@@ -536,9 +536,9 @@
             var legacyBg = '';
             try { legacyBg = localStorage.getItem('chat_bg_' + String(contactId)) || ''; } catch (e) {}
             if (legacyBg) {
-                var legacyOverlay = v.themePreset === 'imessage'
-                    ? 'linear-gradient(rgba(0,0,0,0.10), rgba(0,0,0,0.10)),'
-                    : 'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),';
+                // iMessage 壁纸不叠加白色/黑色蒙层，保留原图本身的色彩和对比度。
+                var legacyOverlay = v.themePreset === 'imessage' ? '' :
+                    'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),';
                 rootEl.style.setProperty('--chat-bg-image', legacyOverlay + 'url("' + legacyBg + '")');
             } else {
                 rootEl.style.removeProperty('--chat-bg-image');
