@@ -956,6 +956,63 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
  .wp-color-field span{font-size:9px}
 }
 
+ 
+/* API-generated user reply choices: compact card stack above the reply composer. */
+.reply-suggestions[hidden]{display:none!important}
+.reply-suggestions{
+  flex:0 1 auto;min-height:0;max-height:min(39dvh,390px);overflow-y:auto;
+  padding:11px 14px 12px;border-top:1px solid #e7e7e3;
+  background:rgba(255,255,255,.97);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  box-shadow:0 -5px 24px rgba(0,0,0,.035);
+}
+.reply-suggestions-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.reply-suggestions-head>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}
+.reply-suggestions-kicker{font-size:7px;line-height:1.2;letter-spacing:.14em;color:#a0a09a}
+.reply-suggestions-head strong{font-size:12px;line-height:1.4;font-weight:650;color:#30302d}
+.reply-suggestions-tools{display:flex;align-items:center;gap:5px;flex:none}
+.reply-suggestions-tools button{min-width:30px;height:29px;padding:4px 8px;border:1px solid #e8e8e4;border-radius:7px;background:#fff;font-size:10px;color:#666}
+.reply-suggestions-tools button:last-child{min-width:28px;padding:2px;font-size:18px;line-height:1}
+.reply-suggestions-status{margin:0 0 7px;font-size:10px;line-height:1.5;color:#999}
+.reply-suggestions-list{display:flex;flex-direction:column;gap:7px}
+.reply-suggestion-card{padding:9px 10px;border:1px solid #e9e9e5;border-radius:8px;background:#fff}
+.reply-suggestion-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.reply-suggestion-card-head strong{font-size:10px;font-weight:650;color:#383835}
+.reply-suggestion-card-head small{font-size:8px;color:#aaa;letter-spacing:.08em}
+.reply-suggestion-text{margin:0;font-size:11px;line-height:1.7;color:#555550;white-space:pre-wrap;overflow-wrap:anywhere}
+.reply-suggestion-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:7px}
+.reply-suggestion-actions button{min-height:28px;padding:5px 9px;border:1px solid #e7e7e3;border-radius:6px;background:#fff;color:#666;font-size:9px}
+.reply-suggestion-actions button.primary{background:#222;border-color:#222;color:#fff}
+.reply-suggestion-actions button:disabled{opacity:.4}
+.reply-options-trigger{
+  flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  min-width:49px;min-height:37px;padding:3px 5px;border:0;border-left:1px solid #e4e4df;
+  background:transparent;color:#555550;font-size:8px;line-height:1.2;white-space:nowrap;
+}
+.reply-options-trigger svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.reply-options-trigger:disabled{opacity:.45}
+.reply-options-trigger:active:not(:disabled){background:#f4f4f1}
+.wp-text-input,.wp-textarea{
+  display:block;width:100%;min-width:0;box-sizing:border-box;border:1px solid #e7e7e2;
+  border-radius:7px;background:#fafaf8;color:#333;padding:8px 9px;font:11px/1.6 var(--sans);outline:none;
+}
+.wp-text-input:focus,.wp-textarea:focus{border-color:#aaa;background:#fff}
+.wp-textarea{min-height:54px;resize:vertical}
+.reply-style-editor{margin:20px 0 8px;padding:15px 0 0;border-top:1px solid #e6e6e2}
+.reply-style-help{margin:5px 0 13px;color:#999;font:10px/1.7 var(--sans)}
+.reply-style-field{display:flex;flex-direction:column;gap:6px;margin:0 0 13px}
+.reply-style-field label{font:10px/1.4 var(--sans);color:#696963}
+.reply-style-save{width:100%;min-height:34px;display:flex;align-items:center;justify-content:center;border:1px solid #ddd;background:#f7f7f4}
+@media(max-width:360px){
+ .reply-suggestions{padding-left:10px;padding-right:10px;max-height:42dvh}
+ .reply-suggestion-card{padding:8px}
+ .reply-options-trigger{min-width:43px;font-size:7px}
+}
+
+
+.reply-suggestions-status.is-error{color:#8b5555}
+.reply-options-trigger.is-loading svg{animation:replyPulse 1s ease-in-out infinite}
+@keyframes replyPulse{50%{opacity:.35;transform:scale(.88)}}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1107,6 +1164,27 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         <div class="wp-label">总结区展示</div>
         <div class="wp-chips" id="summaryChips"></div>
       </div>
+
+      <div class="reply-style-editor">
+        <div class="wp-label">自动回复预设 / YOUR REPLY STYLES</div>
+        <p class="reply-style-help">编辑三种你常用的回应风格。点击底部「帮我回复」时，AI 会依次按这三套文风生成选项。</p>
+        <div class="reply-style-field">
+          <label for="replyStyleName1">01 · 风格名称</label>
+          <input class="wp-text-input" id="replyStyleName1" maxlength="20" value="自然接话">
+          <textarea class="wp-textarea" id="replyStylePrompt1" maxlength="240" rows="2">像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。</textarea>
+        </div>
+        <div class="reply-style-field">
+          <label for="replyStyleName2">02 · 风格名称</label>
+          <input class="wp-text-input" id="replyStyleName2" maxlength="20" value="细腻共情">
+          <textarea class="wp-textarea" id="replyStylePrompt2" maxlength="240" rows="2">更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。</textarea>
+        </div>
+        <div class="reply-style-field">
+          <label for="replyStyleName3">03 · 风格名称</label>
+          <input class="wp-text-input" id="replyStyleName3" maxlength="20" value="轻松俏皮">
+          <textarea class="wp-textarea" id="replyStylePrompt3" maxlength="240" rows="2">轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。</textarea>
+        </div>
+        <button type="button" id="saveReplyStyles" class="wp-chip reply-style-save">保存三种预设</button>
+      </div>
     </div>
   </header>
 
@@ -1132,8 +1210,23 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 
   <main class="story" id="story"></main>
 
+  <section class="reply-suggestions" id="replySuggestionsPanel" aria-label="AI 自动回复选项" hidden>
+    <div class="reply-suggestions-head">
+      <div><span class="reply-suggestions-kicker">AI REPLY OPTIONS</span><strong>选择一条回应</strong></div>
+      <div class="reply-suggestions-tools">
+        <button type="button" id="refreshReplyOptions" aria-label="重新生成三种回复">换一组</button>
+        <button type="button" id="closeReplyOptions" aria-label="收起回复选项">×</button>
+      </div>
+    </div>
+    <p class="reply-suggestions-status" id="replySuggestionsStatus" aria-live="polite">根据当前剧情生成三种不同文风。</p>
+    <div class="reply-suggestions-list" id="replySuggestionsList"></div>
+  </section>
   <form class="composer" id="dateForm">
     <textarea id="dateInput" rows="1" placeholder="写下你的行动与台词……"></textarea>
+    <button type="button" class="reply-options-trigger" id="replyOptionsBtn" aria-label="根据当前剧情生成三种回复" title="帮我回复">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.8 9l5.5 1.8-5.5 1.8-1.8 5.5-1.8-5.5-5.5-1.8L10.2 9 12 3.5Z"/><path d="m19 15 .9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg>
+      <span>帮我回复</span>
+    </button>
     <button class="send-btn" id="dateSend" type="submit">Send&thinsp;↗</button>
   </form>
 
@@ -1229,6 +1322,11 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             charTextColor: '#292927', userTextColor: '#555550',
             lineHeight: 1.95, paragraphGap: 0.9, letterSpacing: 0,
             textAlign: 'left', backgroundWash: 0.24,
+            replyStyles: [
+                { name: '自然接话', prompt: '像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。' },
+                { name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。' },
+                { name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。' }
+            ],
             bgColor: '#FFFFFF', bgImage: '',
             breakMode: 'none', summaryMode: 'card'
         };
@@ -1256,6 +1354,15 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             if (v.textAlign === 'left' || v.textAlign === 'justify') d.textAlign = v.textAlign;
             var wash = parseFloat(v.backgroundWash);
             if (wash >= 0 && wash <= 0.75) d.backgroundWash = wash;
+            if (Array.isArray(v.replyStyles)) {
+                d.replyStyles = d.replyStyles.map(function (fallback, i) {
+                    var saved = v.replyStyles[i] || {};
+                    return {
+                        name: String(saved.name || fallback.name).trim().slice(0, 20) || fallback.name,
+                        prompt: String(saved.prompt || fallback.prompt).trim().slice(0, 240) || fallback.prompt
+                    };
+                });
+            }
             if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor)) d.bgColor = v.bgColor;
             if (v.bgImage && /^data:image\//.test(v.bgImage)) d.bgImage = v.bgImage;
             if (v.breakMode && ['none', 'line', 'space'].indexOf(v.breakMode) >= 0) d.breakMode = v.breakMode;
@@ -1288,6 +1395,50 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             container.appendChild(b);
         });
     }
+    function bindReplyStyleControls() {
+        for (var i = 0; i < 3; i++) {
+            (function (index) {
+                var item = writingOpts.replyStyles[index];
+                var nameInput = document.getElementById('replyStyleName' + (index + 1));
+                var promptInput = document.getElementById('replyStylePrompt' + (index + 1));
+                if (nameInput) {
+                    nameInput.value = item.name;
+                    if (!nameInput.dataset.bound) {
+                        nameInput.addEventListener('input', function () {
+                            item.name = nameInput.value.slice(0, 20);
+                            saveWritingOpts();
+                        });
+                        nameInput.dataset.bound = '1';
+                    }
+                }
+                if (promptInput) {
+                    promptInput.value = item.prompt;
+                    if (!promptInput.dataset.bound) {
+                        promptInput.addEventListener('input', function () {
+                            item.prompt = promptInput.value.slice(0, 240);
+                            saveWritingOpts();
+                        });
+                        promptInput.dataset.bound = '1';
+                    }
+                }
+            })(i);
+        }
+        var saveButton = document.getElementById('saveReplyStyles');
+        if (saveButton && !saveButton.dataset.bound) {
+            saveButton.addEventListener('click', function () {
+                for (var i = 0; i < 3; i++) {
+                    var nameInput = document.getElementById('replyStyleName' + (i + 1));
+                    var promptInput = document.getElementById('replyStylePrompt' + (i + 1));
+                    if (nameInput) writingOpts.replyStyles[i].name = (nameInput.value || '').trim().slice(0, 20) || ['自然接话','细腻共情','轻松俏皮'][i];
+                    if (promptInput) writingOpts.replyStyles[i].prompt = (promptInput.value || '').trim().slice(0, 240) || writingOpts.replyStyles[i].prompt;
+                }
+                saveWritingOpts();
+                toast('三种回复文风已保存');
+            });
+            saveButton.dataset.bound = '1';
+        }
+    }
+
     function renderWritingUI() {
         var presetItems = Object.keys(PRESETS).map(function (k) { return { key: k, label: PRESETS[k].name }; });
         var personaItems = PERSONAS.map(function (p) { return { key: p, label: p }; });
@@ -1339,6 +1490,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         if (backgroundWashRange) backgroundWashRange.value = writingOpts.backgroundWash;
         if (backgroundWashVal) backgroundWashVal.textContent = Math.round(writingOpts.backgroundWash * 100) + '%';
         if (bgColorInput) bgColorInput.value = writingOpts.bgColor;
+        bindReplyStyleControls();
         applyReadingStyle();
     }
 
@@ -2069,10 +2221,196 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     }
 
     var history = loadHistory();
+    var replyOptionsBtn = document.getElementById('replyOptionsBtn');
+    var replySuggestionsPanel = document.getElementById('replySuggestionsPanel');
+    var replySuggestionsStatus = document.getElementById('replySuggestionsStatus');
+    var replySuggestionsList = document.getElementById('replySuggestionsList');
+    var refreshReplyOptions = document.getElementById('refreshReplyOptions');
+    var closeReplyOptions = document.getElementById('closeReplyOptions');
+    var generatingReplyOptions = false;
+    var latestReplyOptions = [];
+
+    function setReplyOptionsStatus(text, isError) {
+        if (!replySuggestionsStatus) return;
+        replySuggestionsStatus.textContent = text;
+        replySuggestionsStatus.classList.toggle('is-error', !!isError);
+    }
+    function closeReplyOptionsPanel() {
+        if (replySuggestionsPanel) replySuggestionsPanel.hidden = true;
+    }
+    function showReplyOptionsPanel() {
+        if (replySuggestionsPanel) replySuggestionsPanel.hidden = false;
+    }
+    function parseReplyOptions(rawText) {
+        var raw = String(rawText || '').trim()
+            .replace(/^\s*```(?:json)?\s*/i, '')
+            .replace(/\s*```\s*$/i, '');
+        var parsed;
+        try { parsed = JSON.parse(raw); }
+        catch (e) {
+            var first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+            if (first < 0 || last <= first) throw new Error('AI 返回的内容不是有效 JSON');
+            parsed = JSON.parse(raw.slice(first, last + 1));
+        }
+        var options = Array.isArray(parsed) ? parsed : parsed.options || parsed.replies || parsed.choices;
+        if (!Array.isArray(options) || options.length < 3) throw new Error('没有成功识别出三条回复，请重新生成');
+        return options.slice(0, 3).map(function (item, index) {
+            var fallback = writingOpts.replyStyles[index] || { name: '风格 ' + (index + 1) };
+            var text = String(item.text || item.reply || item.content || '').trim();
+            var style = String(item.style || item.name || fallback.name).trim();
+            if (!text) throw new Error('第 ' + (index + 1) + ' 条回复为空，请重新生成');
+            return { style: style.slice(0, 24), text: text.slice(0, 1400) };
+        });
+    }
+    function renderReplyOptions(options) {
+        if (!replySuggestionsList) return;
+        replySuggestionsList.innerHTML = '';
+        options.forEach(function (option, index) {
+            var card = document.createElement('article');
+            card.className = 'reply-suggestion-card';
+            var head = document.createElement('div');
+            head.className = 'reply-suggestion-card-head';
+            var name = document.createElement('strong');
+            name.textContent = String(index + 1).padStart(2, '0') + ' / ' + option.style;
+            var note = document.createElement('small');
+            note.textContent = '风格提案';
+            head.append(name, note);
+            var body = document.createElement('p');
+            body.className = 'reply-suggestion-text';
+            body.textContent = option.text;
+            var actions = document.createElement('div');
+            actions.className = 'reply-suggestion-actions';
+            var editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.textContent = '放入输入框';
+            editButton.addEventListener('click', function () {
+                if (input) {
+                    input.value = option.text;
+                    input.style.height = 'auto';
+                    input.style.height = Math.min(input.scrollHeight, 110) + 'px';
+                    closeReplyOptionsPanel();
+                    input.focus();
+                }
+            });
+            var sendButton = document.createElement('button');
+            sendButton.type = 'button';
+            sendButton.className = 'primary';
+            sendButton.textContent = '选用并发送 ↗';
+            sendButton.disabled = sending;
+            sendButton.addEventListener('click', function () {
+                if (sending || generatingReplyOptions || !input) return;
+                input.value = option.text;
+                input.style.height = 'auto';
+                input.style.height = Math.min(input.scrollHeight, 110) + 'px';
+                closeReplyOptionsPanel();
+                send();
+            });
+            actions.append(editButton, sendButton);
+            card.append(head, body, actions);
+            replySuggestionsList.appendChild(card);
+        });
+    }
+    function buildReplyOptionMessages(styles) {
+        var characterPrompt = capText(String(character.persona || character.prompt || '一个真实、有生活气息的人。').trim(), 3500);
+        var system = [
+            '你是互动小说里的“用户回复建议器”，不是正在扮演角色的人。你的任务是根据当前线下剧情，为用户生成三条可直接发给角色的回应。',
+            '当前角色：' + charName + '。当前场景：' + (sceneName || '未指定') + '。',
+            '角色人设（仅用于理解对方，不要代替角色作答）：\n' + characterPrompt,
+            '回应写给角色本人，而不是写给读者。中文自然表达，可包含少量行动描写或台词，适应正在进行的面对面场景。',
+            '尊重用户自主性：不要替用户做重大承诺、决定关系走向或编造用户没有表达过的经历。每条通常 1–3 句，尽量适合直接发送；三条要明显不同，但都符合当前剧情。',
+            '只能返回合法 JSON，不要 Markdown 代码块，不要解释，不要添加 JSON 外文字。格式严格为：{"options":[{"style":"风格名称","text":"回应内容"},{"style":"风格名称","text":"回应内容"},{"style":"风格名称","text":"回应内容"}]}。',
+            '必须按以下三个自定义文风的顺序各生成一条：',
+            styles.map(function (style, index) {
+                return (index + 1) + '. 风格名称：' + style.name + '\n文风要求：' + style.prompt;
+            }).join('\n')
+        ].join('\n\n');
+        var messages = [{ role: 'system', content: system }];
+        history.slice(-10).forEach(function (item) {
+            var text = String(item.text || item.content || '').trim();
+            if (!text) return;
+            text = capText(text, 900);
+            if (item.role === 'user' || item.role === 'sent') messages.push({ role: 'user', content: text });
+            else if (item.role === 'assistant' || item.role === 'received') messages.push({ role: 'assistant', content: text });
+        });
+        messages.push({
+            role: 'user',
+            content: '请结合上面的最近剧情，为我生成三条不同风格、适合我现在回复' + charName + '的回应。只输出约定的 JSON。'
+        });
+        return messages;
+    }
+    function generateReplyOptions() {
+        if (generatingReplyOptions || sending) return;
+        var cfg = {};
+        try { cfg = JSON.parse(localStorage.getItem('api_settings') || '{}') || {}; } catch (e) {}
+        showReplyOptionsPanel();
+        if (!(cfg.apiKey || '').trim()) {
+            setReplyOptionsStatus('还没有配置 API Key。请先在小手机的 API 设置中完成配置，再使用 AI 自动回复。', true);
+            if (replySuggestionsList) replySuggestionsList.innerHTML = '';
+            toast('请先配置 API Key');
+            return;
+        }
+        if (!window.PhoneStream || typeof window.PhoneStream.chat !== 'function') {
+            setReplyOptionsStatus('API 请求组件没有加载成功，请刷新页面后再试。', true);
+            toast('API 组件未加载');
+            return;
+        }
+        var styles = (writingOpts.replyStyles || []).slice(0, 3).map(function (item, index) {
+            var fallback = [
+                { name: '自然接话', prompt: '自然、真实地回应对方' },
+                { name: '细腻共情', prompt: '温柔并关注细节和情绪' },
+                { name: '轻松俏皮', prompt: '轻松并有一点俏皮' }
+            ][index];
+            return {
+                name: String(item.name || fallback.name).trim() || fallback.name,
+                prompt: String(item.prompt || fallback.prompt).trim() || fallback.prompt
+            };
+        });
+        generatingReplyOptions = true;
+        if (replyOptionsBtn) { replyOptionsBtn.disabled = true; replyOptionsBtn.classList.add('is-loading'); }
+        if (refreshReplyOptions) refreshReplyOptions.disabled = true;
+        if (replySuggestionsList) replySuggestionsList.innerHTML = '';
+        setReplyOptionsStatus('正在结合角色人设与最近剧情，生成三种不同文风……', false);
+        var configuredMax = Number(cfg.maxTokens);
+        var request = {
+            baseUrl: cfg.baseUrl || 'https://api.openai.com/v1',
+            apiKey: cfg.apiKey,
+            model: cfg.model || 'gpt-3.5-turbo',
+            messages: buildReplyOptionMessages(styles),
+            temperature: cfg.temperature != null ? cfg.temperature : 0.85,
+            maxTokens: configuredMax > 0 ? Math.min(configuredMax, 1800) : 1500,
+            topP: cfg.topP
+        };
+        window.PhoneStream.chat(request).then(function (result) {
+            if (!result || !result.ok) {
+                var error = result && result.error || {};
+                var message = error.kind === 'http'
+                    ? 'API 连接失败（HTTP ' + error.status + '）' + (error.detail ? '：' + error.detail : '')
+                    : error.detail || '生成失败，请检查网络与 API 设置后重试。';
+                setReplyOptionsStatus(message, true);
+                toast('自动回复生成失败');
+                return;
+            }
+            latestReplyOptions = parseReplyOptions(result.fullText);
+            renderReplyOptions(latestReplyOptions);
+            setReplyOptionsStatus('已生成 3 条回复。点“放入输入框”可编辑，或直接选用并发送。', false);
+        }).catch(function (error) {
+            setReplyOptionsStatus('生成失败：' + (error && error.message ? error.message : '未知错误'), true);
+            toast('自动回复生成失败');
+        }).finally(function () {
+            generatingReplyOptions = false;
+            if (replyOptionsBtn) { replyOptionsBtn.disabled = false; replyOptionsBtn.classList.remove('is-loading'); }
+            if (refreshReplyOptions) refreshReplyOptions.disabled = false;
+        });
+    }
+
+    if (replyOptionsBtn) replyOptionsBtn.addEventListener('click', generateReplyOptions);
+    if (refreshReplyOptions) refreshReplyOptions.addEventListener('click', generateReplyOptions);
+    if (closeReplyOptions) closeReplyOptions.addEventListener('click', closeReplyOptionsPanel);
 
     function send() {
         var text = (input.value || '').trim();
-        if (!text || sending) return;
+        if (!text || sending || generatingReplyOptions) return;
+        closeReplyOptionsPanel();
         setSending(true);
 
         var userMsg = { role: 'user', text: text, time: Date.now(), mode: 'date', scene: sceneName || undefined };
