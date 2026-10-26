@@ -394,7 +394,10 @@
                 var desiredBg = isOverlay ? 'transparent' : color;
                 var currentInlineBg = statusBar.style.getPropertyValue('background-color');
                 var currentInlinePriority = statusBar.style.getPropertyPriority('background-color');
-                if (currentInlineBg !== desiredBg || currentInlinePriority !== 'important') {
+                var bgMatches = desiredBg === 'transparent'
+                    ? currentInlineBg === 'transparent'
+                    : toHex(currentInlineBg) === color.toLowerCase();
+                if (!bgMatches || currentInlinePriority !== 'important') {
                     statusBar.style.setProperty('background-color', desiredBg, 'important');
                 }
             }
