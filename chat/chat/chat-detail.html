@@ -5267,7 +5267,8 @@
       if(!pointerDown||mode!=='')return;
       holdCaptureActive=true;
       suppressClickUntil=Date.now()+900;
-      startVoiceCapture();
+      // Press-and-hold captures real audio; releasing it stops the recorder and transcribes it.
+      startRecorder();
     },420);
   });
   function finishPointerPress(){
