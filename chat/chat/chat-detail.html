@@ -5032,268 +5032,186 @@
   var input=document.getElementById('chat-input');
   if(!btn||!input)return;
 
-  var recognition=null, recorder=null, chunks=[], stream=null, mode='', finalText='';
+  var recorder=null, chunks=[], stream=null, mode='', recorderStartToken=0;
   var oldPlaceholder=input.getAttribute('data-default-placeholder')||input.placeholder;
-  var speechStopRequested=false, recorderStartToken=0;
   var pointerTimer=null, pointerDown=false, holdCaptureActive=false, suppressClickUntil=0;
+  var holdReleasedWhileRequesting=false;
 
   function getRestoredPlaceholder(){
-    return window.ChatBeauty&&typeof ChatBeauty.getThemePreset==='function'&&ChatBeauty.getThemePreset()==='imessage'?'iMessage 信息':oldPlaceholder;
+    try {
+      return window.ChatBeauty&&typeof ChatBeauty.getThemePreset==='function'&&ChatBeauty.getThemePreset()==='imessage'
+        ?'iMessage 信息':oldPlaceholder;
+    } catch(e) { return oldPlaceholder; }
   }
-  var Speech=window.SpeechRecognition||window.webkitSpeechRecognition;
-
   function toast(message){
     if(typeof window.showToast==='function'){window.showToast(message);return}
     var el=document.getElementById('voice-input-status');
     if(!el){
       el=document.createElement('div');el.id='voice-input-status';
       el.style.cssText='position:absolute;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;background:#111;color:#fff;padding:9px 13px;font:12px -apple-system,BlinkMacSystemFont,sans-serif;max-width:85%;text-align:center';
-      document.querySelector('.phone-mockup')?.appendChild(el);
+      var shell=document.querySelector('.phone-mockup');
+      if(shell)shell.appendChild(el);else document.body.appendChild(el);
     }
     el.textContent=message;el.style.display='block';clearTimeout(el._timer);
-    el._timer=setTimeout(function(){el.style.display='none'},2600);
+    el._timer=setTimeout(function(){el.style.display='none'},3200);
   }
-
   function setActive(active,label){
     btn.classList.toggle('recording',active);
     btn.setAttribute('aria-pressed',active?'true':'false');
-    btn.title=label||(active?'再次点击结束录音':'点击说话；长按也可录音');
-    input.placeholder=active?'正在聆听… 再点一次结束':getRestoredPlaceholder();
+    btn.title=label||(active?'正在录音，再点一下结束':'点击开始语音输入，再点一下结束');
+    input.placeholder=active?'正在聆听… 再点一下结束':getRestoredPlaceholder();
+  }
+  function releaseStream(){
+    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
   }
   function putText(text){
     text=String(text||'').trim();
-    if(!text){toast('没有听到清晰的语音，再试一次就好');return}
+    if(!text){toast('没有听到清晰的语音，再试一次');return}
     var prefix=input.value.trim();
     input.value=prefix?(prefix+' '+text):text;
     input.dispatchEvent(new Event('input',{bubbles:true}));
     input.focus();
     toast('语音已转成文字，可以检查后发送');
   }
-  function releaseStream(){
-    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
-  }
   function stopRecorder(){
     if(recorder&&recorder.state!=='inactive'){
-      try{recorder.stop()}catch(e){}
-    }
-  }
-
-  function switchFromSpeechToRecorder(message){
-    if(mode!=='speech')return;
-    var oldRecognition=recognition;
-    recognition=null;
-    mode='';
-    if(oldRecognition){
-      oldRecognition.onend=null;
-      oldRecognition.onerror=null;
-      try{oldRecognition.abort()}catch(e){}
-    }
-    if(finalText.trim()){
-      setActive(false);
-      putText(finalText);
-      finalText='';
-      return;
-    }
-    setActive(false);
-    if(message)toast(message);
-    startRecorder();
-  }
-
-  function startRecognition(){
-    try{
-      recognition=new Speech();
-      recognition.lang='zh-CN';
-      recognition.continuous=true;
-      recognition.interimResults=true;
-      finalText='';
-      speechStopRequested=false;
-      mode='speech';
-      setActive(true,'正在聆听，再点一次结束');
-
-      recognition.onresult=function(event){
-        var interim='';
-        for(var i=event.resultIndex;i<event.results.length;i++){
-          var piece=event.results[i][0].transcript||'';
-          if(event.results[i].isFinal)finalText+=piece;
-          else interim+=piece;
-        }
-        var current=(finalText+interim).trim();
-        input.placeholder=current||'正在聆听…';
-      };
-
-      recognition.onerror=function(event){
-        if(event.error==='aborted'||mode!=='speech')return;
-        if(event.error==='not-allowed'){
-          mode='';recognition=null;setActive(false);
-          toast('麦克风权限未开启，请在浏览器设置中允许使用麦克风');
-          return;
-        }
-        if(event.error==='no-speech'||event.error==='network'||event.error==='service-not-allowed'){
-          switchFromSpeechToRecorder('语音识别没有及时启动，已切换到录音模式，再说一次试试');
-          return;
-        }
-        mode='';recognition=null;setActive(false);
-        toast('语音识别暂不可用，正在尝试录音模式…');
-        startRecorder();
-      };
-
-      recognition.onend=function(){
-        if(mode!=='speech')return;
-        mode='';
-        recognition=null;
-        setActive(false);
-        if(finalText.trim()){
-          var recognized=finalText;
-          finalText='';
-          putText(recognized);
-          return;
-        }
-        if(speechStopRequested){
-          speechStopRequested=false;
-          toast('没有听到清晰的语音，再试一次就好');
-          return;
-        }
-        // Some mobile browsers end speech recognition almost immediately with no result.
-        // Fall back to actual recording instead of treating that as a user error.
-        toast('语音识别提前结束，正在切换录音模式…');
-        startRecorder();
-      };
-
-      recognition.start();
-    }catch(e){
-      recognition=null;mode='';setActive(false);
-      startRecorder();
+      try{recorder.stop()}catch(e){toast('结束录音失败，请再点一次')}
     }
   }
 
   async function startRecorder(){
+    if(mode!=='')return;
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){
-      mode='';setActive(false);
-      toast('当前浏览器暂不支持录音，请检查浏览器麦克风权限或更换浏览器');
+      toast('当前浏览器暂不支持录音，请用 HTTPS 页面并允许麦克风权限');
       return;
     }
-    var thisToken=++recorderStartToken;
+    var token=++recorderStartToken;
     var acquiredStream=null;
+    chunks=[];
     mode='requesting';
     setActive(true,'正在申请麦克风权限…');
     try{
       acquiredStream=await navigator.mediaDevices.getUserMedia({audio:true});
-      // If the user released a long press while the permission prompt was open,
-      // cancel this start cleanly instead of unexpectedly recording afterwards.
-      if(thisToken!==recorderStartToken||mode!=='requesting'){
+      if(token!==recorderStartToken||mode!=='requesting'){
         acquiredStream.getTracks().forEach(function(t){t.stop()});
         return;
       }
       stream=acquiredStream;
-      chunks=[];
       var options={};
-      if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))options.mimeType='audio/webm;codecs=opus';
-      else if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/mp4'))options.mimeType='audio/mp4';
-
+      if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/mp4'))options.mimeType='audio/mp4';
+      else if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))options.mimeType='audio/webm;codecs=opus';
       var activeRecorder=new MediaRecorder(stream,options);
       recorder=activeRecorder;
       mode='record';
-      setActive(true,'正在录音，再点一次结束');
-
-      activeRecorder.ondataavailable=function(e){
-        if(e.data&&e.data.size)chunks.push(e.data);
-      };
+      setActive(true,'正在录音，再点一下结束');
+      activeRecorder.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
       activeRecorder.onerror=function(){
         if(recorder!==activeRecorder)return;
-        mode='';setActive(false);releaseStream();
+        mode='';recorder=null;setActive(false);releaseStream();
         toast('录音失败，请检查麦克风权限后重试');
       };
       activeRecorder.onstop=function(){
         if(recorder!==activeRecorder)return;
         var blob=new Blob(chunks,{type:activeRecorder.mimeType||'audio/webm'});
-        releaseStream();mode='';setActive(false);
-        if(blob.size)transcribe(blob);
-        else toast('录音时间太短，没有录到声音，再试一次就好');
+        releaseStream();
+        if(blob.size){
+          mode='transcribing';
+          setActive(false,'正在转写语音…');
+          transcribe(blob);
+        } else {
+          mode='';recorder=null;setActive(false);
+          toast('录音时间太短，没有录到声音，再说一句试试');
+        }
       };
       activeRecorder.start();
+      if(holdReleasedWhileRequesting){
+        holdReleasedWhileRequesting=false;
+        toast('麦克风已开启，请开始说话；说完再点一次波形');
+      }
     }catch(e){
-      if(thisToken!==recorderStartToken)return;
+      if(token!==recorderStartToken)return;
       if(acquiredStream)acquiredStream.getTracks().forEach(function(t){t.stop()});
       if(stream===acquiredStream)releaseStream();
       mode='';setActive(false);
-      toast(e&&e.name==='NotAllowedError'?'请允许浏览器使用麦克风后重试':'无法启动录音，请检查设备麦克风权限');
+      if(e&&e.name==='NotAllowedError')toast('麦克风权限未开启，请在浏览器设置中允许使用麦克风');
+      else if(e&&e.name==='NotFoundError')toast('没有检测到可用的麦克风');
+      else toast('无法启动录音：请检查麦克风权限，并确认页面使用 HTTPS');
     }
   }
 
   async function transcribe(blob){
-    var config={};try{config=JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){}
+    var config={};
+    try{config=JSON.parse(localStorage.getItem('api_settings')||'{}')}catch(e){}
     var apiKey=String(config.apiKey||'').trim();
     var baseUrl=String(config.baseUrl||'https://api.openai.com/v1').trim().replace(/\/+$/,'');
-    if(!apiKey){toast('录音已完成，但需要 API Key 才能转写；请到设置页配置 API');return}
-    btn.disabled=true;btn.title='正在转写…';toast('正在将语音转成文字…');
+    if(!apiKey){
+      mode='';recorder=null;btn.disabled=false;setActive(false);
+      toast('录音已完成，但还没有读取到 API Key，请检查设置页的当前 API 配置');
+      return;
+    }
+    btn.disabled=true;
+    btn.title='正在转写语音…';
+    toast('正在将语音转成文字…');
+    var controller=new AbortController(),timer=null;
     try{
       var form=new FormData();
-      var ext=(blob.type.indexOf('mp4')>=0)?'m4a':'webm';
-      form.append('file',blob,'voice.'+ext);
+      var isMp4=String(blob.type||'').indexOf('mp4')>=0;
+      form.append('file',blob,isMp4?'voice.m4a':'voice.webm');
       form.append('model',String(config.transcriptionModel||'whisper-1').trim());
-      var controller=new AbortController();
-      var timer=setTimeout(function(){controller.abort()},60000);
+      timer=setTimeout(function(){controller.abort()},60000);
       var response=await fetch(baseUrl+'/audio/transcriptions',{
         method:'POST',
         headers:{Authorization:'Bearer '+apiKey},
         body:form,
         signal:controller.signal
       });
-      clearTimeout(timer);
       if(!response.ok){
         var detail='';try{detail=await response.text()}catch(e){}
-        throw new Error('语音转写接口不可用（HTTP '+response.status+'）。请确认服务商支持 /audio/transcriptions'+(detail?'：'+detail.slice(0,100):''));
+        throw new Error('语音转写接口返回 HTTP '+response.status+'。当前 API 服务商可能不支持 /audio/transcriptions'+(detail?'：'+detail.slice(0,100):''));
       }
       var data=await response.json();
       putText(data.text||'');
     }catch(e){
-      toast(e&&e.name==='AbortError'?'语音转写超时，请缩短录音后重试':(e.message||'语音转写失败，请检查 API 服务商是否支持音频转写'));
+      toast(e&&e.name==='AbortError'?'语音转写超时，请缩短录音后重试':(e.message||'语音转写失败，请检查当前 API 是否支持音频转写'));
     }finally{
+      if(timer)clearTimeout(timer);
       btn.disabled=false;
       btn.classList.remove('recording');
       btn.setAttribute('aria-pressed','false');
-      btn.title='点击说话；长按也可录音';
+      btn.title='点击开始语音输入，再点一下结束';
       input.placeholder=getRestoredPlaceholder();
+      mode='';recorder=null;
+      chunks=[];
     }
   }
 
-  function startVoiceCapture(){
-    if(mode!=='')return;
-    if(Speech)startRecognition();
-    else startRecorder();
-  }
+  function startVoiceCapture(){if(mode==='')startRecorder()}
   function stopVoiceCapture(){
-    if(mode==='speech'){
-      speechStopRequested=true;
-      try{if(recognition)recognition.stop()}catch(e){
-        mode='';recognition=null;setActive(false);
-        if(finalText.trim()){var text=finalText;finalText='';putText(text)}
-      }
-      return;
-    }
     if(mode==='record'){stopRecorder();return}
     if(mode==='requesting'){
-      recorderStartToken++;
-      mode='';
-      setActive(false);
+      // Permission dialogs can interrupt a long-press gesture. Let the permission
+      // request finish; the user can then tap once more to stop the actual recording.
+      holdReleasedWhileRequesting=true;
+      toast('正在申请麦克风权限，请先允许使用麦克风');
+      return;
     }
+    if(mode==='transcribing')toast('正在转写，请稍等片刻');
   }
 
-  // Normal tap remains a start/stop toggle. Holding for 420 ms starts a
-  // press-to-talk session, which stops as soon as the finger/mouse is released.
+  // Tap toggles recording. A long press also starts recording and release ends it.
+  // If first-use permission UI interrupts the hold, keep recording after permission is granted.
   btn.addEventListener('pointerdown',function(event){
     if(event.button!==undefined&&event.button!==0)return;
     pointerDown=true;
     holdCaptureActive=false;
     if(mode!=='')return;
     try{btn.setPointerCapture(event.pointerId)}catch(e){}
-    clearTimeout(pointerTimer);
+    if(pointerTimer)clearTimeout(pointerTimer);
     pointerTimer=setTimeout(function(){
       pointerTimer=null;
       if(!pointerDown||mode!=='')return;
       holdCaptureActive=true;
-      suppressClickUntil=Date.now()+900;
-      // Press-and-hold captures real audio; releasing it stops the recorder and transcribes it.
+      suppressClickUntil=Date.now()+1200;
       startRecorder();
     },420);
   });
@@ -5302,22 +5220,24 @@
     if(pointerTimer){clearTimeout(pointerTimer);pointerTimer=null}
     if(holdCaptureActive){
       holdCaptureActive=false;
-      suppressClickUntil=Date.now()+900;
-      if(mode!=='')stopVoiceCapture();
+      suppressClickUntil=Date.now()+1200;
+      stopVoiceCapture();
     }
   }
   btn.addEventListener('pointerup',finishPointerPress);
   btn.addEventListener('pointercancel',finishPointerPress);
   btn.addEventListener('lostpointercapture',finishPointerPress);
   btn.addEventListener('contextmenu',function(event){event.preventDefault()});
-
   btn.addEventListener('click',function(event){
     if(Date.now()<suppressClickUntil){event.preventDefault();return}
-    if(mode!=='')stopVoiceCapture();
-    else startVoiceCapture();
+    if(mode==='')startVoiceCapture();
+    else stopVoiceCapture();
   });
 
-  window.MAOMAO_VOICE_CAPABILITIES={speechToText:true,recordingFallback:true,pressAndHold:true,directAudioModelKey:'audioModel',directAudioReady:false};
+  window.MAOMAO_VOICE_CAPABILITIES={
+    speechToText:true,recordingFallback:false,pressAndHold:true,
+    captureMode:'MediaRecorder',directAudioReady:false
+  };
 })();
 </script>
 
