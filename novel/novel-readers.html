@@ -348,7 +348,7 @@ function buildStudioPages(){
  const pages={};
  defs.forEach((d,i)=>{const b=document.createElement('button');b.className='studio-link'+(d[0]===startPage?' active':'');b.type='button';b.dataset.studioPage=d[0];b.innerHTML='<span class="studio-link-no">'+d[1]+'</span><span class="studio-link-label">'+d[2]+'</span><span class="studio-link-en">'+d[3]+'</span>';nav.appendChild(b);const p=document.createElement('section');p.className='studio-page'+(d[0]!==startPage?' hidden':'');p.id='studio-page-'+d[0];p.dataset.page=d[0];host.appendChild(p);pages[d[0]]=p});
  const readerLink=document.createElement('button');readerLink.className='studio-link studio-reader-link';readerLink.type='button';readerLink.innerHTML='<span class="studio-link-no">06</span><span class="studio-link-label">作者模拟器</span><span class="studio-link-en">READERS</span>';readerLink.addEventListener('click',()=>location.href=routes.readers);nav.appendChild(readerLink);
- studio.append(nav,host);
+ if(NOVEL_PAGE==='home'){studio.append(nav,host)}else{studio.append(host)}
  const has=(node,id)=>node.id===id||!!node.querySelector('#'+id);
  let page='setup';
  original.forEach(node=>{
@@ -370,9 +370,7 @@ function buildStudioPages(){
   actionGroup.remove();pages.setup.appendChild(setupActions);
  }
  nav.querySelectorAll('[data-studio-page]').forEach(b=>b.addEventListener('click',()=>{const name=b.dataset.studioPage;if(routes[name]&&name!==NOVEL_PAGE){location.href=routes[name];return}nav.querySelectorAll('.studio-link').forEach(x=>x.classList.toggle('active',x===b));Object.entries(pages).forEach(([k,p])=>p.classList.toggle('hidden',k!==name));$('scroll').scrollTop=0;if(name==='bible')renderBible()}));
- const quick=document.createElement('div');quick.className='studio-quick';quick.innerHTML='<span>WORKSPACE</span><button type="button" data-go="setup">作品设定</button><button type="button" data-go="bible">故事资料库</button><button type="button" data-go="planning">章节策划</button><button type="button" data-go="editor">正文编辑</button><button type="button" data-go="continuity">一致性检查</button>';
- Object.values(pages).forEach(p=>p.prepend(quick.cloneNode(true)));
- studio.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>nav.querySelector('[data-studio-page="'+b.dataset.go+'"]').click()));
+
  const title=pages.setup.querySelector('.section-title');if(title)title.textContent='Project / 作品设定';
 }
 
