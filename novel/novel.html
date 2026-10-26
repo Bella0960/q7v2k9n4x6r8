@@ -191,16 +191,182 @@ body{background:#f4f4f2;color:#202020}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;scroll-behavior:auto!important}}
 
+
+/* ===== Bookshelf redesign: reference-led structure, grayscale only ===== */
+html,body{min-height:100%;overflow-x:hidden}
+body{background:#f4f4f2;color:#202020;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+.phone{width:min(1120px,100%);height:100dvh;min-height:600px;background:#fff;box-shadow:none}
+.top{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.97);backdrop-filter:blur(14px);border-bottom:1px solid #e8e8e6;padding:calc(12px + env(safe-area-inset-top)) clamp(16px,3vw,28px) 12px}
+.brand{font-size:12px;letter-spacing:.015em;font-weight:650;color:#454545}
+.back{width:36px;height:36px;border:1px solid #e5e5e2;border-radius:12px;background:#fff;color:#222}
+.scroll{width:100%;max-width:1120px;margin:0 auto;padding:0 clamp(16px,3vw,30px) 40px;background:#fff}
+.shelf-heading{padding:27px 0 20px}
+.shelf-title-row{display:flex;justify-content:space-between;align-items:flex-end;gap:22px}
+.shelf-title-block{min-width:0}
+.shelf-kicker,.shelf-list-kicker{font-size:9px;letter-spacing:.14em;color:#999;margin:0 0 8px;text-transform:uppercase}
+.shelf-title-block h1{font-size:30px;line-height:1.15;letter-spacing:-.045em;font-weight:700;margin:0;color:#1e1e1e}
+.shelf-subtitle{font-size:11px;line-height:1.7;color:#888;margin:8px 0 0}
+.shelf-summary{display:flex;align-items:flex-end;gap:0;flex-shrink:0;border-left:1px solid #e8e8e6;padding-left:18px}
+.summary-item{display:flex;flex-direction:column;gap:3px;padding:0 14px;border-right:1px solid #e8e8e6}
+.summary-item:first-child{padding-left:0}
+.summary-item:last-child{padding-right:0;border-right:0}
+.summary-item strong{font-size:18px;line-height:1.1;font-weight:650;letter-spacing:-.03em;color:#222}
+.summary-item span{font-size:9px;white-space:nowrap;color:#999}
+.main-tabs{display:flex;gap:24px;overflow-x:auto;border-bottom:1px solid #e8e8e6;margin:0 0 22px;padding:0;scrollbar-width:none;border-radius:0;background:transparent}
+.main-tabs::-webkit-scrollbar{display:none}
+.main-tabs .tab{background:transparent;color:#999;border:0;border-bottom:2px solid transparent;border-radius:0;padding:12px 0 11px;font-size:12px;font-weight:500;flex:0 0 auto}
+.main-tabs .tab.active{background:transparent;color:#1c1c1c;border-bottom-color:#1c1c1c;font-weight:650}
+#pane-works{display:block!important;background:transparent;border:0;border-radius:0;box-shadow:none;padding:0;margin:0;max-width:none}
+#pane-works.hidden{display:none!important}
+.shelf-controls{padding:0 0 20px}
+.shelf-categories{display:flex;align-items:center;gap:19px;overflow-x:auto;white-space:nowrap;padding:0 0 14px;scrollbar-width:none}
+.shelf-categories::-webkit-scrollbar{display:none}
+.shelf-category{padding:0 0 5px;border:0;border-bottom:1px solid transparent;border-radius:0;background:transparent;color:#999;font-size:12px;white-space:nowrap;cursor:pointer}
+.shelf-category.active{border-bottom-color:#222;color:#222;font-weight:650}
+.shelf-search-row{display:grid;grid-template-columns:minmax(0,1fr) 138px;gap:10px;align-items:center}
+.shelf-search{min-width:0;display:flex;align-items:center;gap:8px;background:#f6f6f5;border:1px solid #ececea;border-radius:10px;padding:0 12px;height:43px}
+.shelf-search svg{width:15px;height:15px;fill:none;stroke:#858585;stroke-width:1.6;flex:none}
+.shelf-search .input{min-width:0;width:100%;border:0!important;outline:0;background:transparent!important;box-shadow:none!important;padding:9px 0;font:12px -apple-system,BlinkMacSystemFont,sans-serif;color:#222}
+.shelf-search .input::-webkit-search-cancel-button{-webkit-appearance:none}
+.shelf-search .input::placeholder{color:#aaa}
+.shelf-search-row select#workSort{width:100%;min-width:0;height:43px;border:1px solid #e8e8e6;border-radius:10px;background:#fff;padding:0 10px;color:#555;font:11px -apple-system,BlinkMacSystemFont,sans-serif}
+.visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.shelf-list-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:2px 0 7px;border-bottom:1px solid #e5e5e2}
+.shelf-list-kicker{font-size:8px;letter-spacing:.16em;margin-bottom:3px}
+.shelf-list-heading h2{font-size:16px;font-weight:650;letter-spacing:-.025em;margin:0;color:#242424}
+.works-count{font-size:10px;color:#999;white-space:nowrap;margin:0 0 2px}
+#pane-works #newWork{display:none!important}
+#works{width:100%}
+.book-item{display:grid;grid-template-columns:42px minmax(0,1fr);gap:12px;padding:17px 2px 17px;border-bottom:1px solid #e9e9e7;margin:0;background:transparent;min-width:0}
+.book-icon{width:40px;height:48px;display:flex;align-items:center;justify-content:center;flex:none;border:1px solid #e7e7e4;background:#f8f8f7;border-radius:5px;color:#777}
+.book-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.book-main{min-width:0}
+.book-main-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0}
+.book-main h3{font-size:15px;line-height:1.45;font-weight:650;letter-spacing:-.02em;color:#252525;margin:0;overflow-wrap:anywhere}
+.book-subline{display:flex;align-items:center;gap:6px;font-size:10px;color:#999;margin-top:3px;flex-wrap:wrap}
+.book-state{display:inline-flex;align-items:center;gap:5px;font-size:9px;color:#777;border:1px solid #e7e7e4;border-radius:4px;padding:4px 6px;white-space:nowrap;flex-shrink:0}
+.book-state::before{content:"";width:4px;height:4px;border-radius:50%;background:#969696}
+.book-description{font-size:11px;line-height:1.65;color:#737373;margin:8px 0 0;overflow-wrap:anywhere}
+.book-meta{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:8px;font-size:10px;color:#999;line-height:1.5}
+.book-meta span{white-space:nowrap}
+.book-actions{display:flex;flex-wrap:wrap;gap:6px 7px;margin-top:11px}
+.book-actions .btn{display:inline-flex;align-items:center;justify-content:center;min-height:30px;padding:6px 9px;border:1px solid #e5e5e2;border-radius:6px;background:#fff;color:#686868;font-size:10px;line-height:1.2;white-space:nowrap}
+.book-actions .btn.dark{background:#222;border-color:#222;color:#fff;font-weight:550}
+.book-actions .btn[data-delete]{color:#888}
+.work-empty{padding:29px 0;text-align:left;border:0;border-top:1px solid #e8e8e6;border-radius:0;color:#999;font-size:11px;line-height:1.8}
+.work-empty strong{display:block;font-size:15px;color:#252525;margin-bottom:4px}
+#pane-studio,#pane-audience{max-width:100%;background:#fff;border:0;border-radius:0;box-shadow:none;padding:0}
+#pane-studio .section-title,#pane-audience .section-title{font-family:inherit;font-size:20px;line-height:1.4;font-weight:650;letter-spacing:-.025em;color:#222;margin:14px 0 6px}
+#pane-studio>.hint,#pane-audience>.hint{font-size:11px;line-height:1.8;color:#858585;max-width:520px}
+#pane-audience .stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px 0 16px}
+#pane-audience .stat{border:1px solid #e9e9e7;border-radius:8px;box-shadow:none;padding:12px}
+#pane-audience .stat strong{font-size:22px}
+#pane-audience .field{margin-top:12px}
+#dashboardTools{margin:4px 0 20px;padding:0 0 18px;border-bottom:1px solid #e8e8e6;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+#dashboardTools.hidden{display:none!important}
+#dashboardTools .tool-group{background:transparent;border:0;border-radius:0;padding:0;box-shadow:none;min-width:0}
+#dashboardTools .tool-group h2{font-size:11px;font-weight:650;color:#555;margin:0 0 8px}
+#dashboardTools .tool-links{display:flex;flex-direction:column;gap:0}
+#dashboardTools .dashboard-shortcut{display:flex;align-items:center;justify-content:space-between;gap:8px;text-decoration:none;color:#555;background:transparent;border:0;border-bottom:1px solid #efefed;border-radius:0;padding:10px 0;min-height:0}
+#dashboardTools .dashboard-shortcut strong{font-size:11px;font-weight:500}
+#dashboardTools .dashboard-shortcut span{font-size:16px;color:#999}
+#dashboardTools .dashboard-shortcut:hover{background:transparent;color:#111}
+@media(max-width:640px){
+ .phone{width:100%;min-height:100dvh;height:100dvh}
+ .top{padding-left:14px;padding-right:14px}
+ .top .brand{font-size:11px}
+ .scroll{padding:0 17px calc(28px + env(safe-area-inset-bottom))}
+ .shelf-heading{padding:23px 0 17px}
+ .shelf-title-row{display:block}
+ .shelf-title-block h1{font-size:29px}
+ .shelf-subtitle{font-size:10px;margin-top:6px}
+ .shelf-summary{margin-top:17px;padding:10px 0 0;border-left:0;border-top:1px solid #e8e8e6;justify-content:flex-start;width:100%}
+ .summary-item{flex:1;padding:0 10px;border-right:1px solid #e8e8e6}
+ .summary-item:first-child{padding-left:0}
+ .summary-item strong{font-size:17px}
+ .summary-item span{font-size:9px}
+ .main-tabs{gap:22px;margin-bottom:19px}
+ .main-tabs .tab{padding:11px 0 10px}
+ .shelf-categories{gap:20px;padding-bottom:13px}
+ .shelf-search-row{grid-template-columns:minmax(0,1fr) 112px;gap:8px}
+ .shelf-search,.shelf-search-row select#workSort{height:42px}
+ .shelf-list-heading{padding-bottom:8px}
+ .book-item{grid-template-columns:38px minmax(0,1fr);gap:10px;padding:15px 0}
+ .book-icon{width:36px;height:44px}
+ .book-main h3{font-size:14px}
+ .book-actions{gap:6px;margin-top:10px}
+ .book-actions .btn{min-height:32px;padding:7px 8px;font-size:10px}
+ #dashboardTools{grid-template-columns:1fr;gap:15px;padding-bottom:14px}
+ #dashboardTools .tool-group h2{margin-bottom:4px}
+ #dashboardTools .tool-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:15px}
+ #pane-works .shelf-controls{padding-bottom:18px}
+ #pane-audience .stats{gap:7px}
+ #pane-audience .stat{padding:10px}
+}
+@media(prefers-reduced-motion:no-preference){
+ .book-actions .btn,.shelf-category{transition:background .16s,border-color .16s,color .16s}
+ .book-actions .btn:active{transform:scale(.98)}
+}
+
 </style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO · 小说作者中心</span><button class="btn dark" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
-<section class="author-heading"><div><h1>作者工作台</h1></div></section>
-<div class="stats"><div class="stat"><small>作品总数</small><strong id="workCount">0</strong></div><div class="stat"><small>累计创作字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动记录</small><strong id="reactionCount">0</strong></div></div>
-<nav class="tabs"><button class="tab active" data-tab="works">作品列表</button><button class="tab" data-tab="studio">写作台</button><button class="tab" data-tab="audience">读者评论</button></nav>
-<div class="dashboard-tools" id="dashboardTools">
-<section class="tool-group"><h2>作品资料</h2><div class="tool-links"><a class="dashboard-shortcut" href="novel-setup.html"><strong>作品设定</strong><span aria-hidden="true">›</span></a><a class="dashboard-shortcut" href="novel-bible.html"><strong>故事资料库</strong><span aria-hidden="true">›</span></a></div></section>
-<section class="tool-group"><h2>章节写作</h2><div class="tool-links"><a class="dashboard-shortcut" href="novel-planning.html"><strong>章节策划</strong><span aria-hidden="true">›</span></a><a class="dashboard-shortcut" href="novel-editor.html"><strong>正文编辑</strong><span aria-hidden="true">›</span></a></div></section>
-<section class="tool-group"><h2>检查工具</h2><div class="tool-links"><a class="dashboard-shortcut" href="novel-continuity.html"><strong>一致性检查</strong><span aria-hidden="true">›</span></a></div></section>
+
+<section class="shelf-heading">
+  <div class="shelf-title-row">
+    <div class="shelf-title-block">
+      <p class="shelf-kicker">MAOMAO / WRITING DESK</p>
+      <h1>书架</h1>
+      <p class="shelf-subtitle">把故事收在这里，再从上次停下的地方继续。</p>
+    </div>
+    <div class="shelf-summary" aria-label="创作统计">
+      <div class="summary-item"><strong id="workCount">0</strong><span>部作品</span></div>
+      <div class="summary-item"><strong id="wordCount">0</strong><span>累计字数</span></div>
+      <div class="summary-item"><strong id="reactionCount">0</strong><span>读者互动</span></div>
+    </div>
+  </div>
+</section>
+<nav class="tabs main-tabs" aria-label="作者中心导航">
+  <button class="tab active" data-tab="works" type="button">书架</button>
+  <button class="tab" data-tab="studio" type="button">创作工作台</button>
+  <button class="tab" data-tab="audience" type="button">读者来信</button>
+</nav>
+<div class="dashboard-tools hidden" id="dashboardTools">
+  <section class="tool-group"><h2>作品资料</h2><div class="tool-links"><a class="dashboard-shortcut" href="novel-setup.html"><strong>作品设定</strong><span aria-hidden="true">›</span></a><a class="dashboard-shortcut" href="novel-bible.html"><strong>故事资料库</strong><span aria-hidden="true">›</span></a></div></section>
+  <section class="tool-group"><h2>章节写作</h2><div class="tool-links"><a class="dashboard-shortcut" href="novel-planning.html"><strong>章节策划</strong><span aria-hidden="true">›</span></a><a class="dashboard-shortcut" href="novel-editor.html"><strong>正文编辑</strong><span aria-hidden="true">›</span></a></div></section>
+  <section class="tool-group"><h2>检查工具</h2><div class="tool-links"><a class="dashboard-shortcut" href="novel-continuity.html"><strong>一致性检查</strong><span aria-hidden="true">›</span></a></div></section>
 </div>
-<section id="pane-works"><div class="works-heading"><h2 class="section-title">作品列表</h2><button class="btn dark" id="newWork">＋ 新作品</button></div><div class="works-filters"><input id="workSearch" class="input" type="search" placeholder="搜索作品名称" aria-label="搜索作品名称"><select id="workStatus" aria-label="按作品状态筛选"><option value="全部">全部状态</option><option value="构思中">构思中</option><option value="连载中">连载中</option><option value="已完结">已完结</option></select><select id="workSort" aria-label="作品排序"><option value="updated">最近更新</option><option value="created">创建时间</option><option value="words">字数最多</option></select></div><div class="works-count" id="worksCount"></div><div id="works"></div></section>
+<section id="pane-works">
+  <div class="shelf-controls">
+    <div class="shelf-categories" role="group" aria-label="按作品状态筛选">
+      <button class="shelf-category active" type="button" data-shelf-status="全部">全部</button>
+      <button class="shelf-category" type="button" data-shelf-status="构思中">构思中</button>
+      <button class="shelf-category" type="button" data-shelf-status="连载中">连载</button>
+      <button class="shelf-category" type="button" data-shelf-status="已完结">完结</button>
+    </div>
+    <div class="shelf-search-row">
+      <label class="shelf-search" for="workSearch">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 4.2 4.2"></path></svg>
+        <input id="workSearch" class="input" type="search" placeholder="搜索作品名称" aria-label="搜索作品名称">
+      </label>
+      <select id="workSort" aria-label="作品排序">
+        <option value="updated">最近更新</option>
+        <option value="created">创建时间</option>
+        <option value="words">字数最多</option>
+      </select>
+      <select id="workStatus" class="visually-hidden" aria-label="当前作品状态筛选">
+        <option value="全部">全部状态</option>
+        <option value="构思中">构思中</option>
+        <option value="连载中">连载中</option>
+        <option value="已完结">已完结</option>
+      </select>
+    </div>
+  </div>
+  <div class="shelf-list-heading">
+    <div><p class="shelf-list-kicker">YOUR STORIES</p><h2>所有作品</h2></div>
+    <span class="works-count" id="worksCount"></span>
+  </div>
+  <button class="btn dark visually-hidden" id="newWork" type="button" tabindex="-1">＋ 新作品</button>
+  <div id="works"></div>
+</section>
 <section id="pane-studio" class="hidden"><h2 class="section-title">Writing Studio</h2><p class="hint">先建立作品设定，再自己写或生成灵感草稿。所有生成结果都能编辑，不会自动覆盖原稿。</p>
 <div class="field"><label>作品名称</label><input class="input" id="title" placeholder="给故事起个名字"></div><div class="row"><div class="field"><label>题材</label><select id="genre"><option>现代言情</option><option>奇幻冒险</option><option>悬疑推理</option><option>校园故事</option><option>科幻</option><option>日常治愈</option><option>自定义</option></select></div><div class="field"><label>作品状态</label><select id="status"><option>构思中</option><option>连载中</option><option>已完结</option></select></div></div>
 <div class="field"><label>人物人设与世界观</label><textarea id="setting" placeholder="人物性格、关系、背景、世界规则……"></textarea></div><div class="field"><label>故事大纲（可自行编辑）</label><textarea id="outline" placeholder="开端、转折、高潮、结局；也可以先写几个关键词"></textarea></div><div class="outline"></div><h3 style="font:400 20px Georgia,serif;margin:18px 0 6px">Story Bible / 故事资料库</h3><p class="hint">把人物、时间线和伏笔单独记录下来，方便长篇创作时随时查阅。内容跟随作品保存在本机。</p><div class="tabs" style="margin-top:8px"><button class="tab active" data-bible-tab="characters">人物档案</button><button class="tab" data-bible-tab="timeline">故事时间线</button><button class="tab" data-bible-tab="foreshadow">伏笔追踪</button></div><div id="bible-characters"><div class="field"><label>人物姓名</label><input class="input" id="personName" placeholder="人物名字"></div><div class="row"><div class="field"><label>身份 / 角色</label><input class="input" id="personRole" placeholder="主角、配角…"></div><div class="field"><label>人物关系</label><input class="input" id="personRelation" placeholder="与谁是什么关系"></div></div><div class="field"><label>性格、外貌与说话习惯</label><textarea id="personTraits" placeholder="稳定的人物特征、行为习惯、禁忌…"></textarea></div><div class="field"><label>秘密 / 角色弧光</label><textarea id="personSecret" placeholder="人物隐瞒的事、成长方向…"></textarea></div><button class="btn" id="addPerson">＋ 保存人物档案</button><div id="peopleList"></div></div><div id="bible-timeline" class="hidden"><div class="field"><label>事件时间 / 顺序</label><input class="input" id="eventWhen" placeholder="例如：故事开始前一年 / 第三章之后"></div><div class="field"><label>事件名称</label><input class="input" id="eventTitle" placeholder="发生了什么"></div><div class="field"><label>事件影响与涉及人物</label><textarea id="eventDetail" placeholder="原因、结果、人物当时知道什么…"></textarea></div><button class="btn" id="addEvent">＋ 添加时间线事件</button><div id="timelineList"></div></div><div id="bible-foreshadow" class="hidden"><div class="field"><label>伏笔名称</label><input class="input" id="clueTitle" placeholder="给伏笔一个便于识别的名字"></div><div class="field"><label>埋下位置 / 内容</label><textarea id="cluePlant" placeholder="哪一章出现，读者看到了什么…"></textarea></div><div class="field"><label>计划回收 / 预期揭晓</label><textarea id="cluePayoff" placeholder="准备在哪个阶段解释，答案是什么…"></textarea></div><div class="field"><label>状态</label><select id="clueStatus"><option>待回收</option><option>部分揭晓</option><option>已回收</option></select></div><button class="btn" id="addClue">＋ 保存伏笔</button><div id="clueList"></div></div><div id="bibleHint" class="hint" style="margin-top:12px">资料库只做记录和提醒，不会擅自改动正文。</div><div class="outline"></div><div class="field"><label>当前章节要求</label><textarea id="request" placeholder="本章必须发生什么、叙事视角、情绪、字数要求、不能出现什么……"></textarea></div>
@@ -225,10 +391,11 @@ function current(){return db.works.find(w=>w.id===db.activeId)||null}
 function blankWork(){return{id:uid(),title:'未命名的故事',genre:'现代言情',status:'构思中',setting:'',outline:'',chapters:[],notes:[],views:0,likes:0,follows:0,created:Date.now()}}
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||'{}');if(Array.isArray(x.works))db=x}catch(e){}if(!db.works)db.works=[];if(!current()&&db.works.length)db.activeId=db.works[0].id;renderAll()}
 function renderStats(){ $('workCount').textContent=db.works.length;$('wordCount').textContent=db.works.reduce((n,w)=>n+words(w.chapters.map(c=>c.body).join('')),0);$('reactionCount').textContent=db.works.reduce((n,w)=>n+w.notes.length,0)}
-function switchTab(name){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));['works','studio','audience'].forEach(k=>$('pane-'+k).classList.toggle('hidden',k!==name));$('dashboardTools').classList.toggle('hidden',name!=='works');if(name==='studio')fillEditor();if(name==='audience')renderAudience();$('scroll').scrollTop=0}
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
-function renderWorks(){const root=$('works'),query=($('workSearch')?.value||'').trim().toLocaleLowerCase(),status=$('workStatus')?.value||'全部',sort=$('workSort')?.value||'updated';root.innerHTML='';let list=db.works.filter(w=>(!query||String(w.title||'').toLocaleLowerCase().includes(query))&&(status==='全部'||(w.status||'构思中')===status));const count=$('worksCount');if(count)count.textContent='共 '+list.length+' 部作品'+(list.length!==db.works.length?'（全部 '+db.works.length+' 部）':'');const totalWords=w=>words((w.chapters||[]).map(c=>c.body||'').join(''));list.sort((a,b)=>sort==='words'?totalWords(b)-totalWords(a):sort==='created'?(b.created||0)-(a.created||0):(b.updated||b.created||0)-(a.updated||a.created||0));if(!list.length){root.innerHTML='<div class="work-empty"><strong>'+(db.works.length?'没有找到匹配的作品':'还没有作品')+'</strong>'+(db.works.length?'试试更换搜索词或作品状态。':'点击右上角“新作品”开始创作。')+'</div>';return}list.forEach(w=>{w.chapters=w.chapters||[];const el=document.createElement('article');el.className='work';const chapterCount=w.chapters.length,wordCount=totalWords(w),updated=w.updated||w.created;el.innerHTML='<div class="worktop"><div><h3>'+esc(w.title||'未命名的故事')+'</h3><p>'+esc(w.genre||'未设置题材')+'</p></div><span class="pill">'+esc(w.status||'构思中')+'</span></div><div class="work-meta"><span>'+chapterCount+' 章</span><span>'+wordCount.toLocaleString()+' 字</span><span>'+(updated?'更新于 '+new Date(updated).toLocaleDateString():'尚未更新')+'</span></div><p class="work-description">'+esc((w.outline||w.setting||'尚未填写故事简介').slice(0,100))+'</p><div class="work-actions"><button class="btn dark" data-open="'+w.id+'">写正文</button><button class="btn" data-setup="'+w.id+'">作品设定</button><button class="btn" data-chapters="'+w.id+'">章节目录（'+chapterCount+'）</button><button class="btn" data-readers="'+w.id+'">读者评论</button><button class="btn" data-delete="'+w.id+'">删除作品</button></div>';root.appendChild(el)});root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.open;activeChapterId=null;fillEditor();switchTab('studio')});root.querySelectorAll('[data-setup]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.setup;persist();location.href='novel-setup.html'});root.querySelectorAll('[data-chapters]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.chapters;activeChapterId=null;fillEditor();switchTab('studio');setTimeout(()=>document.getElementById('chapters')?.scrollIntoView({behavior:'smooth',block:'start'}),80)});root.querySelectorAll('[data-readers]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.readers;persist();location.href='novel-readers.html'});root.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>{if(confirm('确定删除《'+(db.works.find(w=>w.id===b.dataset.delete)?.title||'未命名的故事')+'》及其全部章节？此操作无法撤销，建议先导出备份。')){db.works=db.works.filter(w=>w.id!==b.dataset.delete);if(db.activeId===b.dataset.delete)db.activeId=db.works[0]?.id||null;persist();renderAll()}})}
+function switchTab(name){document.querySelectorAll('.main-tabs .tab[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));['works','studio','audience'].forEach(k=>$('pane-'+k).classList.toggle('hidden',k!==name));$('dashboardTools').classList.toggle('hidden',name!=='studio');if(name==='studio')fillEditor();if(name==='audience')renderAudience();$('scroll').scrollTop=0}
+document.querySelectorAll('.main-tabs .tab[data-tab]').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
+function renderWorks(){const root=$('works'),query=($('workSearch')?.value||'').trim().toLocaleLowerCase(),status=$('workStatus')?.value||'全部',sort=$('workSort')?.value||'updated';root.innerHTML='';let list=db.works.filter(w=>(!query||String(w.title||'').toLocaleLowerCase().includes(query))&&(status==='全部'||(w.status||'构思中')===status));const count=$('worksCount');if(count)count.textContent='共 '+list.length+' 部作品'+(list.length!==db.works.length?' / 全部 '+db.works.length+' 部':'');const totalWords=w=>words((w.chapters||[]).map(c=>c.body||'').join(''));list.sort((a,b)=>sort==='words'?totalWords(b)-totalWords(a):sort==='created'?(b.created||0)-(a.created||0):(b.updated||b.created||0)-(a.updated||a.created||0));if(!list.length){root.innerHTML='<div class="work-empty"><strong>'+(db.works.length?'没有找到匹配的故事':'书架还空着')+'</strong>'+(db.works.length?'试试切换分类，或更改搜索关键词。':'从右上角新建作品，把第一个故事放进书架。')+'</div>';return}list.forEach(w=>{w.chapters=w.chapters||[];const el=document.createElement('article');el.className='book-item';const chapterCount=w.chapters.length,wordCount=totalWords(w),updated=w.updated||w.created,description=String(w.outline||w.setting||'').trim().replace(/\\s+/g,' ');el.innerHTML='<div class="book-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v18H7.5A2.5 2.5 0 0 0 5 22z"/><path d="M5 4.5v15A2.5 2.5 0 0 1 7.5 17H20"/><path d="M9 6h7M9 9h7"/></svg></div><div class="book-main"><div class="book-main-head"><div><h3>'+esc(w.title||'未命名的故事')+'</h3><div class="book-subline"><span>'+esc(w.genre||'未设置题材')+'</span><span>·</span><span>'+chapterCount+' 章</span></div></div><span class="book-state">'+esc(w.status||'构思中')+'</span></div>'+(description?'<p class="book-description">'+esc(description.slice(0,110))+'</p>':'')+'<div class="book-meta"><span>'+wordCount.toLocaleString()+' 字</span><span>'+(updated?'更新于 '+new Date(updated).toLocaleDateString():'尚未更新')+'</span></div><div class="book-actions"><button class="btn dark" data-open="'+w.id+'">继续写作</button><button class="btn" data-setup="'+w.id+'">作品设定</button><button class="btn" data-chapters="'+w.id+'">章节目录</button><button class="btn" data-readers="'+w.id+'">读者评论</button><button class="btn" data-delete="'+w.id+'">删除</button></div></div>';root.appendChild(el)});root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.open;activeChapterId=null;fillEditor();switchTab('studio')});root.querySelectorAll('[data-setup]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.setup;persist();location.href='novel-setup.html'});root.querySelectorAll('[data-chapters]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.chapters;activeChapterId=null;fillEditor();switchTab('studio');setTimeout(()=>document.getElementById('chapters')?.scrollIntoView({behavior:'smooth',block:'start'}),80)});root.querySelectorAll('[data-readers]').forEach(b=>b.onclick=()=>{db.activeId=b.dataset.readers;persist();location.href='novel-readers.html'});root.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>{if(confirm('确定删除《'+(db.works.find(w=>w.id===b.dataset.delete)?.title||'未命名的故事')+'》及其全部章节？此操作无法撤销，建议先导出备份。')){db.works=db.works.filter(w=>w.id!==b.dataset.delete);if(db.activeId===b.dataset.delete)db.activeId=db.works[0]?.id||null;persist();renderAll()}})}
 $('workSearch')?.addEventListener('input',renderWorks);$('workStatus')?.addEventListener('change',renderWorks);$('workSort')?.addEventListener('change',renderWorks);
+document.querySelectorAll('[data-shelf-status]').forEach(b=>b.addEventListener('click',()=>{const value=b.dataset.shelfStatus;$('workStatus').value=value;document.querySelectorAll('[data-shelf-status]').forEach(x=>x.classList.toggle('active',x===b));renderWorks()}));
 function fillEditor(){const w=current();if(!w){['title','setting','outline','request','chapterTitle','chapterBody'].forEach(id=>$(id).value='');renderChapters();return}$('title').value=w.title;$('genre').value=w.genre;$('status').value=w.status;$('setting').value=w.setting;$('outline').value=w.outline;const ch=w.chapters.find(c=>c.id===activeChapterId)||w.chapters[w.chapters.length-1];activeChapterId=ch?.id||null;$('chapterTitle').value=ch?.title||'';$('chapterBody').value=ch?.body||'';updateChapterWordCount();renderChapters();renderVersions();renderBible();renderChapterPlan()}
 function syncWork(){let w=current();if(!w){w=blankWork();db.works.unshift(w);db.activeId=w.id}w.title=$('title').value.trim()||'未命名的故事';w.genre=$('genre').value;w.status=$('status').value;w.setting=$('setting').value;w.outline=$('outline').value;w.updated=Date.now();return w}
 function renderChapters(){const root=$('chapters'),w=current();root.innerHTML='';if(!w||!w.chapters.length){root.innerHTML='<div class="empty">还没有章节。保存第一章后，目录会自动生成。</div>';return}w.chapters.forEach((c,i)=>{const row=document.createElement('div');row.className='chapter';row.innerHTML='<div class="chapter-head"><span class="chapter-num">'+String(i+1).padStart(2,'0')+'</span><span class="chapter-title">'+esc(c.title||'未命名章节')+'</span><small>'+words(c.body)+' 字</small></div><div class="chapter-actions"><button class="btn" data-edit="'+c.id+'">打开编辑</button><button class="btn" data-up="'+c.id+'">上移</button><button class="btn" data-down="'+c.id+'">下移</button></div>';root.appendChild(row)});root.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{activeChapterId=b.dataset.edit;fillEditor()});root.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>moveChapter(b.dataset.up,-1));root.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>moveChapter(b.dataset.down,1))}
