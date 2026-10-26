@@ -1013,6 +1013,61 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 .reply-options-trigger.is-loading svg{animation:replyPulse 1s ease-in-out infinite}
 @keyframes replyPulse{50%{opacity:.35;transform:scale(.88)}}
 
+
+/* Fold drawer options into a calm, single-column settings index. */
+.writing-pop .drawer-accordion{
+  display:block!important;flex:0 0 auto!important;
+  margin:0!important;border-bottom:1px solid #ecece8!important;
+  min-width:0!important;
+}
+.writing-pop .drawer-accordion:first-of-type{border-top:1px solid #ecece8!important}
+.writing-pop .drawer-accordion-summary{
+  display:grid!important;grid-template-columns:minmax(0,1fr) auto 16px!important;
+  align-items:center!important;gap:9px!important;
+  min-height:54px!important;padding:11px 1px!important;
+  cursor:pointer!important;list-style:none!important;user-select:none!important;
+}
+.writing-pop .drawer-accordion-summary::-webkit-details-marker{display:none!important}
+.writing-pop .drawer-accordion-summary::marker{content:""!important;display:none!important}
+.writing-pop .drawer-accordion-title{
+  min-width:0;font-size:12px;line-height:1.4;font-weight:600;color:#343430;
+  letter-spacing:.01em;
+}
+.writing-pop .drawer-accordion-summary small{
+  font-size:9px;line-height:1.4;color:#a0a09a;text-align:right;white-space:nowrap;
+}
+.writing-pop .drawer-accordion-summary svg{
+  width:14px;height:14px;fill:none;stroke:#8a8a84;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .18s ease;
+}
+.writing-pop .drawer-accordion[open]>.drawer-accordion-summary svg{transform:rotate(180deg)}
+.writing-pop .drawer-accordion[open]>.drawer-accordion-summary{border-bottom:1px solid #efefec}
+.writing-pop .drawer-accordion-panel{padding:13px 0 15px;min-width:0}
+.writing-pop .drawer-accordion-panel>.wp-group:last-child{margin-bottom:0!important}
+.writing-pop .drawer-accordion-panel .reply-style-editor{
+  margin:0!important;padding:0!important;border-top:0!important;
+}
+.writing-pop .drawer-accordion-panel .reply-style-editor>.wp-label{font-size:9px!important}
+.writing-pop .quick-bar{margin:0!important}
+.writing-pop .drawer-accordion-panel .wp-group{margin-bottom:13px!important}
+.writing-pop .drawer-accordion-panel .wp-group:last-child{margin-bottom:0!important}
+.reply-options-trigger{
+  flex-direction:row!important;gap:5px!important;
+  min-width:76px!important;width:76px!important;min-height:37px!important;
+  padding:5px 7px!important;border-left:1px solid #e4e4df!important;
+  color:#44443f!important;font-size:9px!important;letter-spacing:0!important;
+}
+.reply-options-trigger svg{width:15px!important;height:15px!important;flex:0 0 15px!important}
+.reply-options-trigger span{white-space:nowrap!important}
+.reply-options-trigger.is-loading{opacity:.55}
+@media(max-width:360px){
+ .writing-pop .drawer-accordion-summary{grid-template-columns:minmax(0,1fr) auto 14px!important;gap:6px!important}
+ .writing-pop .drawer-accordion-title{font-size:11px}
+ .writing-pop .drawer-accordion-summary small{font-size:8px}
+ .reply-options-trigger{min-width:68px!important;width:68px!important;gap:4px!important;padding-left:4px!important;padding-right:4px!important;font-size:8px!important}
+}
+@media(prefers-reduced-motion:reduce){.writing-pop .drawer-accordion-summary svg{transition:none}}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1031,7 +1086,14 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     <div class="writing-backdrop" id="writingBackdrop"></div>
     <div class="writing-pop" id="writingPop" role="dialog" aria-modal="true" aria-label="剧情功能与美化设置">
       <div class="wp-head drawer-head"><span>剧情功能与美化</span><button type="button" id="closeWritingPop" class="drawer-close" aria-label="关闭菜单">×</button></div>
-      <div class="drawer-section-kicker">剧情操作 / STORY ACTIONS</div>
+      <details class="drawer-accordion" id="drawerActions">
+  <summary class="drawer-accordion-summary">
+    <span class="drawer-accordion-title">剧情操作</span>
+    <small>继续剧情 · 重写 · 保存</small>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+  </summary>
+  <div class="drawer-accordion-panel">
+
   <div class="quick-bar" id="quickBar" role="toolbar" aria-label="剧情状态与操作">
     <button type="button" id="actContinue" aria-label="让角色继续剧情" title="继续剧情">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 11.5a7.5 7.5 0 0 1 13-5L20 9"/><path d="M20 4.5V9h-4.5"/><path d="M19.5 12.5a7.5 7.5 0 0 1-13 5L4 15"/><path d="M4 19.5V15h4.5"/></svg>
@@ -1046,7 +1108,17 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
       <span>保存文稿</span>
     </button>
   </div>
-      <div class="drawer-section-kicker">阅读与回复 / READING SETTINGS</div>
+      
+  </div>
+</details>
+<details class="drawer-accordion" id="drawerGeneration">
+  <summary class="drawer-accordion-summary">
+    <span class="drawer-accordion-title">剧情生成设置</span>
+    <small>回复预设 · 字数 · 人称</small>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+  </summary>
+  <div class="drawer-accordion-panel">
+
 
       <div class="wp-group">
         <div class="wp-label">回复预设</div>
@@ -1076,8 +1148,17 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         <div class="wp-chips" id="initiatorChips"></div>
       </div>
 
-      <div class="wp-group">
-        <div class="wp-label">字号</div>
+      
+  </div>
+</details>
+<details class="drawer-accordion" id="drawerTypography">
+  <summary class="drawer-accordion-summary">
+    <span class="drawer-accordion-title">文字排版</span>
+    <small>字体 · 颜色 · 行距 · 对齐</small>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+  </summary>
+  <div class="drawer-accordion-panel">
+
         <div class="wp-slider">
           <input type="range" id="fontSizeRange" min="11" max="20" step="0.5" value="13.5">
           <span class="wp-range" id="fontSizeVal">13.5</span>
@@ -1145,8 +1226,17 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         </div>
       </div>
 
-      <div class="wp-group">
-        <div class="wp-label">阅读背景</div>
+      
+  </div>
+</details>
+<details class="drawer-accordion" id="drawerBackground">
+  <summary class="drawer-accordion-summary">
+    <span class="drawer-accordion-title">背景与阅读</span>
+    <small>背景图 · 断屏 · 摘要</small>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+  </summary>
+  <div class="drawer-accordion-panel">
+
         <div class="wp-bg-row">
           <input type="color" id="bgColorInput" value="#ffffff" title="背景色">
           <button class="wp-chip" id="bgImageBtn" type="button">上传图片</button>
@@ -1165,7 +1255,17 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         <div class="wp-chips" id="summaryChips"></div>
       </div>
 
-      <div class="reply-style-editor">
+      
+  </div>
+</details>
+<details class="drawer-accordion" id="drawerReplyStyles">
+  <summary class="drawer-accordion-summary">
+    <span class="drawer-accordion-title">自动回复文风</span>
+    <small>自定义三种回复方式</small>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+  </summary>
+  <div class="drawer-accordion-panel">
+<div class="reply-style-editor">
         <div class="wp-label">自动回复预设 / YOUR REPLY STYLES</div>
         <p class="reply-style-help">编辑三种你常用的回应风格。点击底部「帮我回复」时，AI 会依次按这三套文风生成选项。</p>
         <div class="reply-style-field">
@@ -1185,6 +1285,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         </div>
         <button type="button" id="saveReplyStyles" class="wp-chip reply-style-save">保存三种预设</button>
       </div>
+  </div>
+</details>
     </div>
   </header>
 
@@ -1292,6 +1394,15 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var bgImageFile = document.getElementById('bgImageFile');
     var breakChips = document.getElementById('breakChips');
     var summaryChips = document.getElementById('summaryChips');
+    // 设置菜单采用单组展开，避免一次打开后内容过长、过于杂乱。
+    document.querySelectorAll('.drawer-accordion').forEach(function (section) {
+        section.addEventListener('toggle', function () {
+            if (!section.open) return;
+            document.querySelectorAll('.drawer-accordion').forEach(function (other) {
+                if (other !== section) other.open = false;
+            });
+        });
+    });
     var sending = false;
 
     function toast(msg) {
