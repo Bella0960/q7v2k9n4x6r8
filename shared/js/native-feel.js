@@ -276,4 +276,86 @@
         helper.setAttribute('data-maomao-home-indicator-loader', '1');
         (document.head || document.documentElement).appendChild(helper);
     })();
+
+    /* ---------- 状态栏融合：让 Android / 浏览器顶部系统栏贴合当前页面底色 ----------
+       不重写页面原本的状态栏布局；主屏保留壁纸自适应。 */
+    function initStatusBarBlend() {
+        if (!document.body || document.body.classList.contains('maomao-home')) return;
+
+        var themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (!themeMeta) {
+            themeMeta = document.createElement('meta');
+            themeMeta.name = 'theme-color';
+            themeMeta.content = '#F7F7F9';
+            document.head.appendChild(themeMeta);
+        }
+
+        function solidColorFrom(element) {
+            var node = element;
+            var depth = 0;
+            while (node && node.nodeType === 1 && depth < 16) {
+                var raw = window.getComputedStyle(node).backgroundColor || '';
+                var match = raw.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)/i);
+                if (match) {
+                    var alpha = match[4] === undefined ? 1 : parseFloat(match[4]);
+                    if (alpha >= 0.92) {
+                        function hex(value) {
+                            var n = Math.max(0, Math.min(255, Math.round(parseFloat(value))));
+                            return n.toString(16).padStart(2, '0');
+                        }
+                        return '#' + hex(match[1]) + hex(match[2]) + hex(match[3]);
+                    }
+                }
+                node = node.parentElement;
+                depth++;
+            }
+            return null;
+        }
+
+        function updateThemeColor() {
+            if (!document.body || document.body.classList.contains('maomao-home')) return;
+            var statusBar = document.querySelector('.status-bar');
+            var shell = statusBar && statusBar.closest('.phone-screen, .phone-mockup, .app-frame, .phone');
+            if (!shell) {
+                shell = document.querySelector('.phone-screen, .phone-mockup, .app-frame, .phone') || document.body;
+            }
+
+            /* 优先取实际应用画布的底色，透明背景则沿父级向外寻找。 */
+            var color = solidColorFrom(shell) ||
+                solidColorFrom(document.body) ||
+                solidColorFrom(document.documentElement) ||
+                '#F7F7F9';
+
+            if (themeMeta.getAttribute('content') !== color) {
+                themeMeta.setAttribute('content', color);
+            }
+        }
+
+        updateThemeColor();
+        window.addEventListener('pageshow', updateThemeColor);
+        window.addEventListener('resize', updateThemeColor);
+        window.addEventListener('maomao:themechange', updateThemeColor);
+
+        if (window.MutationObserver) {
+            var observer = new MutationObserver(function () {
+                window.requestAnimationFrame(updateThemeColor);
+            });
+            var watched = [document.documentElement, document.body];
+            var activeShell = document.querySelector('.phone-screen, .phone-mockup, .app-frame, .phone');
+            if (activeShell) watched.push(activeShell);
+            watched.forEach(function (element) {
+                if (element) observer.observe(element, {
+                    attributes: true,
+                    attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone']
+                });
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initStatusBarBlend, { once: true });
+    } else {
+        initStatusBarBlend();
+    }
+
 })();
