@@ -2044,17 +2044,37 @@
             ];
         }
 
+        function removeLegacyStickerCaptions(list) {
+            if (!Array.isArray(list)) return [];
+            var changed = false;
+            var cleaned = list.filter(function (m, index) {
+                if (!m || (m.role !== 'user' && m.role !== 'sent')) return true;
+                var raw = typeof m.text === 'string' ? m.text : (typeof m.content === 'string' ? m.content : '');
+                var match = raw.match(/^\[发表情包：([\s\S]*)\]$/);
+                if (!match) return true;
+                var previous = list[index - 1];
+                if (previous && previous.type === 'sticker' && String(previous.desc || '') === match[1]) {
+                    changed = true;
+                    return false;
+                }
+                return true;
+            });
+            // 清理旧版本遗留的独立文字消息，避免刷新后再次显示；表情图片本身保留。
+            if (changed) saveMessages(cleaned);
+            return cleaned;
+        }
+
         function loadMessages() {
             if (_storage) {
                 var arr = _storage.getChatHistory(currentCharacter.id);
-                if (arr && arr.length) return arr;
+                if (arr && arr.length) return removeLegacyStickerCaptions(arr);
             }
             try {
                 const raw = localStorage.getItem(storageKey);
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     if (Array.isArray(parsed) && parsed.length > 0) {
-                        return parsed;
+                        return removeLegacyStickerCaptions(parsed);
                     }
                 }
             } catch (err) {
@@ -2249,13 +2269,16 @@
                     attachEl = vWrap;
                 }
             } else if (msg.type === 'sticker') {
+                // 表情消息只展示图片；desc 保留在数据中供 AI 理解，不渲染为标题/替代文字。
                 bubble.classList.add('bubble-sticker');
-                var safeDesc = String(msg.desc || '表情');
                 var safeImg = String(msg.img || '');
-                if (safeImg && safeImg.length > 50) {
-                    bubble.innerHTML = '<img class="sticker-msg-img" src="' + safeImg + '" alt="' + safeDesc + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><div class="sticker-fallback">' + safeDesc + '</div>';
-                } else {
-                    bubble.innerHTML = '<div class="sticker-fallback">' + safeDesc + '</div>';
+                if (safeImg) {
+                    var stickerImg = document.createElement('img');
+                    stickerImg.className = 'sticker-msg-img';
+                    stickerImg.alt = '';
+                    stickerImg.src = safeImg;
+                    stickerImg.onerror = function () { this.remove(); };
+                    bubble.appendChild(stickerImg);
                 }
             } else if (msg.type === 'location') {
                 const loc = msg.location || {};
@@ -3029,10 +3052,11 @@
             const input = document.getElementById('chat-input');
             const customText = (opts && typeof opts.text === 'string') ? opts.text.trim() : '';
             const silent = !!(opts && opts.silent);
+            const contextOnly = !!(opts && opts.contextOnly);
             const regenDirection = (opts && typeof opts.regenDirection === 'string') ? opts.regenDirection.trim() : '';
             const isRegen = !!(opts && opts.isRegenerate);
             const text = customText || input.value.trim();
-            if (!text && !isRegen) return;
+            if (!text && !isRegen && !contextOnly) return;
             if (isBlocked(aliasRoleId)) {
                 if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法发送消息');
                 return;
@@ -3062,21 +3086,21 @@
             // 重玩模式：不新增用户消息，直接基于现有历史重新请求
             let historyList = loadMessages();
             if (!isRegen) {
-                const userMsg = { role: 'user', text: text, time: Date.now() };
-                historyList.push(userMsg);
-                saveMessages(historyList);
-                if (!silent) {
-                    appendMessageToDOM(userMsg);
-                    input.value = '';
-                    input.style.height = 'auto';
-                    updateSendBtnState();
-                    if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
+                if (!contextOnly) {
+                    const userMsg = { role: 'user', text: text, time: Date.now() };
+                    historyList.push(userMsg);
+                    saveMessages(historyList);
+                    if (!silent) {
+                        appendMessageToDOM(userMsg);
+                        input.value = '';
+                        input.style.height = 'auto';
+                        updateSendBtnState();
+                        if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
+                    }
                 }
                 chatMessages.scrollTop = chatMessages.scrollHeight;
 
-                // Full text is already saved in chat_history_<roleId>. Keep the stream real:
-                // do not create a separate truncated copy or infer a "special moment" from keywords.
-
+                // contextOnly 只发起 AI 回合，不创建普通用户文字消息。
             } else {
                 historyList = loadMessages();
             }
@@ -3414,6 +3438,17 @@
 
             recentHistory.forEach(m => {
                 if (m.isError || m.role === 'system_error') return;
+                if (m.type === 'sticker') {
+                    var stickerMeaning = String(m.desc || '').trim();
+                    var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
+                    apiMessages.push({
+                        role: stickerRole,
+                        content: stickerMeaning
+                            ? '[用户发送了一张表情包，表达的意思是：' + stickerMeaning + '。请理解其含义并自然回应，不要复述这段说明。]'
+                            : '[用户发送了一张表情包，请结合语境自然回应。]'
+                    });
+                    return;
+                }
                 var content = stripInternalReasoning(m.text || m.content || '').trim();
                 if (!content) return; // 纯展示卡片消息（位置/通话等）无文本时不发给 AI
                 // 剥离 <narratage>...</narratage>（旁白是 UI 层，不占上下文序号）
@@ -4508,7 +4543,10 @@
                 stickers.forEach(function (s) {
                     var item = document.createElement('div');
                     item.className = 'sticker-panel-item';
-                    item.innerHTML = '<img src="' + s.img + '"><span>' + s.desc + '</span>';
+                    var stickerThumb = document.createElement('img');
+                    stickerThumb.src = String(s.img || '');
+                    stickerThumb.alt = '';
+                    item.appendChild(stickerThumb);
                     item.addEventListener('click', function () {
                         overlay.classList.remove('is-show');
                         sendSticker(s);
@@ -4533,8 +4571,12 @@
                 appendMessageToDOM(msg);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
                 if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
-                // 发给 AI：把描述词作为文本上下文发给模型
-                sendMsg({ text: '[发表情包：' + s.desc + ']', silent: true });
+                // 描述只留在表情消息数据中，供 AI 请求上下文读取；不另存、不显示成聊天文字。
+                sendMsg({
+                    text: '[用户发送了一张表情包，表达的意思是：' + String(s.desc || '') + '。]',
+                    silent: true,
+                    contextOnly: true
+                });
             }
         })();
     </script>
