@@ -101,6 +101,8 @@
         '    html { transition: none !important; }',
         '}',
         '* { -webkit-tap-highlight-color: transparent; }',
+        /* 状态栏只叠在页面上方，不额外制造色块或横向分割线。 */
+        '.status-bar { background: transparent !important; background-image: none !important; border-bottom: 0 !important; box-shadow: none !important; }',
         'html, body { overscroll-behavior-y: none; }',
         /* 内层滚动容器：阻止滚动到底后把回弹传给页面 */
         '[class*="scroll"], .chat-stage { overscroll-behavior-y: none; }',
