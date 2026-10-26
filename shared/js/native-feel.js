@@ -101,8 +101,8 @@
         '    html { transition: none !important; }',
         '}',
         '* { -webkit-tap-highlight-color: transparent; }',
-        /* 状态栏只叠在页面上方，不额外制造色块或横向分割线。 */
-        '.status-bar { background: transparent !important; background-image: none !important; border-bottom: 0 !important; box-shadow: none !important; }',
+        /* 保留每个页面本来设计的状态栏底色，只去掉突兀的阴影和横线。 */
+        '.status-bar { border-bottom: 0 !important; box-shadow: none !important; }',
         'html, body { overscroll-behavior-y: none; }',
         /* 内层滚动容器：阻止滚动到底后把回弹传给页面 */
         '[class*="scroll"], .chat-stage { overscroll-behavior-y: none; }',
@@ -279,8 +279,7 @@
         (document.head || document.documentElement).appendChild(helper);
     })();
 
-    /* ---------- 状态栏融合：让 Android / 浏览器顶部系统栏贴合当前页面底色 ----------
-       不重写页面原本的状态栏布局；主屏保留壁纸自适应。 */
+    /* ---------- 状态栏融合：读取屏幕顶部真实露出的底色，而不是整个手机外壳的底色 ---------- */
     function initStatusBarBlend() {
         if (!document.body || document.body.classList.contains('maomao-home')) return;
 
@@ -288,68 +287,126 @@
         if (!themeMeta) {
             themeMeta = document.createElement('meta');
             themeMeta.name = 'theme-color';
-            themeMeta.content = '#F7F7F9';
+            themeMeta.content = '#FFFFFF';
             document.head.appendChild(themeMeta);
         }
 
-        function solidColorFrom(element) {
+        function toHex(raw) {
+            var match = String(raw || '').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)/i);
+            if (!match) return null;
+            var alpha = match[4] === undefined ? 1 : parseFloat(match[4]);
+            if (alpha < 0.92) return null;
+            function hex(value) {
+                var n = Math.max(0, Math.min(255, Math.round(parseFloat(value))));
+                return n.toString(16).padStart(2, '0');
+            }
+            return '#' + hex(match[1]) + hex(match[2]) + hex(match[3]);
+        }
+
+        function opaqueBackgroundFrom(element) {
             var node = element;
             var depth = 0;
-            while (node && node.nodeType === 1 && depth < 16) {
-                var raw = window.getComputedStyle(node).backgroundColor || '';
-                var match = raw.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)/i);
-                if (match) {
-                    var alpha = match[4] === undefined ? 1 : parseFloat(match[4]);
-                    if (alpha >= 0.92) {
-                        function hex(value) {
-                            var n = Math.max(0, Math.min(255, Math.round(parseFloat(value))));
-                            return n.toString(16).padStart(2, '0');
-                        }
-                        return '#' + hex(match[1]) + hex(match[2]) + hex(match[3]);
-                    }
-                }
+            while (node && node.nodeType === 1 && depth < 18) {
+                var style = window.getComputedStyle(node);
+                var color = toHex(style.backgroundColor);
+                if (color) return color;
                 node = node.parentElement;
                 depth++;
             }
             return null;
         }
 
+        function visibleBackdropAt(x, y, statusBar) {
+            var stack = [];
+            try {
+                if (document.elementsFromPoint) stack = document.elementsFromPoint(x, y);
+                else {
+                    var single = document.elementFromPoint(x, y);
+                    if (single) stack = [single];
+                }
+            } catch (err) {}
+
+            for (var i = 0; i < stack.length; i++) {
+                var candidate = stack[i];
+                if (!candidate || candidate === statusBar || (statusBar && statusBar.contains(candidate))) continue;
+                var color = opaqueBackgroundFrom(candidate);
+                if (color) return color;
+            }
+            return null;
+        }
+
         function updateThemeColor() {
             if (!document.body || document.body.classList.contains('maomao-home')) return;
+
             var statusBar = document.querySelector('.status-bar');
-            var shell = statusBar && statusBar.closest('.phone-screen, .phone-mockup, .app-frame, .phone');
-            if (!shell) {
-                shell = document.querySelector('.phone-screen, .phone-mockup, .app-frame, .phone') || document.body;
+            var statusStyle = statusBar ? window.getComputedStyle(statusBar) : null;
+            /* 如果页面本身给状态栏指定了不透明底色，系统栏直接跟随它。 */
+            var color = statusStyle ? toHex(statusStyle.backgroundColor) : null;
+
+            /* 透明状态栏：取它实际覆盖区域下方露出的内容，不再拿 .phone-mockup 的通用底色猜测。 */
+            if (!color) {
+                var rect = statusBar ? statusBar.getBoundingClientRect() : null;
+                var y = rect ? Math.max(1, Math.min(window.innerHeight - 1, rect.top + Math.min(8, Math.max(1, rect.height / 3)))) : 1;
+                var width = Math.max(1, window.innerWidth);
+                var xs = [Math.min(width - 1, Math.max(1, Math.round(width * 0.08))), Math.round(width * 0.5), Math.min(width - 1, Math.max(1, Math.round(width * 0.92)))];
+                var samples = [];
+                for (var i = 0; i < xs.length; i++) {
+                    var sample = visibleBackdropAt(xs[i], y, statusBar);
+                    if (sample) samples.push(sample);
+                }
+                if (samples.length) {
+                    /* 取顶部左右/中间采样里最常见的底色，避免被单个图标或小控件带偏。 */
+                    var counts = {};
+                    var best = samples[0];
+                    var bestCount = 0;
+                    samples.forEach(function (sample) {
+                        counts[sample] = (counts[sample] || 0) + 1;
+                        if (counts[sample] > bestCount) {
+                            best = sample;
+                            bestCount = counts[sample];
+                        }
+                    });
+                    color = best;
+                }
             }
 
-            /* 优先取实际应用画布的底色，透明背景则沿父级向外寻找。 */
-            var color = solidColorFrom(shell) ||
-                solidColorFrom(document.body) ||
-                solidColorFrom(document.documentElement) ||
-                '#F7F7F9';
+            if (!color && statusBar) color = opaqueBackgroundFrom(statusBar.parentElement);
+            if (!color) color = opaqueBackgroundFrom(document.body);
+            if (!color) color = opaqueBackgroundFrom(document.documentElement);
+            if (!color) color = '#FFFFFF';
 
-            if (themeMeta.getAttribute('content') !== color) {
+            if (themeMeta.getAttribute('content').toLowerCase() !== color.toLowerCase()) {
                 themeMeta.setAttribute('content', color);
             }
         }
 
-        updateThemeColor();
-        window.addEventListener('pageshow', updateThemeColor);
-        window.addEventListener('resize', updateThemeColor);
-        window.addEventListener('maomao:themechange', updateThemeColor);
-
-        if (window.MutationObserver) {
-            var observer = new MutationObserver(function () {
-                window.requestAnimationFrame(updateThemeColor);
+        var updateQueued = false;
+        function scheduleUpdate() {
+            if (updateQueued) return;
+            updateQueued = true;
+            window.requestAnimationFrame(function () {
+                updateQueued = false;
+                updateThemeColor();
             });
-            var watched = [document.documentElement, document.body];
-            var activeShell = document.querySelector('.phone-screen, .phone-mockup, .app-frame, .phone');
-            if (activeShell) watched.push(activeShell);
-            watched.forEach(function (element) {
-                if (element) observer.observe(element, {
-                    attributes: true,
-                    attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone']
-                });
+        }
+
+        scheduleUpdate();
+        window.addEventListener('pageshow', scheduleUpdate);
+        window.addEventListener('load', scheduleUpdate);
+        window.addEventListener('resize', scheduleUpdate);
+        window.addEventListener('orientationchange', scheduleUpdate);
+        window.addEventListener('maomao:themechange', scheduleUpdate);
+
+        if (window.MutationObserver && document.body) {
+            var observer = new MutationObserver(scheduleUpdate);
+            observer.observe(document.body, {
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone']
+            });
+            observer.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone']
             });
         }
     }
