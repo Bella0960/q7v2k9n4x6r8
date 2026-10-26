@@ -375,24 +375,46 @@ body{background:#F6F6F7;color:#1C1C1E;font-family:-apple-system,BlinkMacSystemFo
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #A6A6AA;outline-offset:2px}
 @media(min-width:600px){.phone{height:calc(100dvh - 24px);min-height:600px;margin:12px auto;border:1px solid #E6E6E8;border-radius:24px}.top{border-radius:24px 24px 0 0}.scroll{padding-left:20px;padding-right:20px}}
 @media(max-width:360px){.scroll{padding-left:13px;padding-right:13px}.shelf-categories{gap:13px}.shelf-search-row{grid-template-columns:minmax(0,1fr) 94px}.book-item{grid-template-columns:34px minmax(0,1fr);gap:9px}.book-icon{width:34px;height:42px}.book-actions{gap:4px 8px}}
-.shelf-stat-link{margin:0 0 14px}.shelf-stat-link a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;background:#fff;border:1px solid #e9e9e7;border-radius:10px;text-decoration:none;color:#292929}.shelf-stat-link a span:first-child{font-size:12px;font-weight:650}.shelf-stat-link a span:last-child{font-size:10px;color:#929292}@media(max-width:520px){.shelf-stat-link a{padding:12px}.shelf-stat-link a span:last-child{font-size:9px}}.shelf-stat-link+.shelf-stat-link{margin-top:-7px}.shelf-stat-link a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;background:#fff;border:1px solid #e9e9e7;border-radius:10px;text-decoration:none;color:#292929}.shelf-stat-link a span:first-child{font-size:12px;font-weight:650}.shelf-stat-link a span:last-child{font-size:10px;color:#929292}@media(max-width:520px){.shelf-stat-link a{padding:12px}.shelf-stat-link a span:last-child{font-size:9px}}.shelf-stat-link+.shelf-stat-link{margin-top:-7px}.shelf-stat-link a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;background:#fff;border:1px solid #e9e9e7;border-radius:10px;text-decoration:none;color:#292929}.shelf-stat-link a span:first-child{font-size:12px;font-weight:650}.shelf-stat-link a span:last-child{font-size:10px;color:#929292}@media(max-width:520px){.shelf-stat-link a{padding:12px}.shelf-stat-link a span:last-child{font-size:9px}}</style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO · 小说作者中心</span></header><div class="scroll" id="scroll">
+.shelf-stat-link{margin:0 0 14px}.shelf-stat-link a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;background:#fff;border:1px solid #e9e9e7;border-radius:10px;text-decoration:none;color:#292929}.shelf-stat-link a span:first-child{font-size:12px;font-weight:650}.shelf-stat-link a span:last-child{font-size:10px;color:#929292}@media(max-width:520px){.shelf-stat-link a{padding:12px}.shelf-stat-link a span:last-child{font-size:9px}}.shelf-stat-link+.shelf-stat-link{margin-top:-7px}.shelf-stat-link a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;background:#fff;border:1px solid #e9e9e7;border-radius:10px;text-decoration:none;color:#292929}.shelf-stat-link a span:first-child{font-size:12px;font-weight:650}.shelf-stat-link a span:last-child{font-size:10px;color:#929292}@media(max-width:520px){.shelf-stat-link a{padding:12px}.shelf-stat-link a span:last-child{font-size:9px}}.shelf-stat-link+.shelf-stat-link{margin-top:-7px}.shelf-stat-link a{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;background:#fff;border:1px solid #e9e9e7;border-radius:10px;text-decoration:none;color:#292929}.shelf-stat-link a span:first-child{font-size:12px;font-weight:650}.shelf-stat-link a span:last-child{font-size:10px;color:#929292}@media(max-width:520px){.shelf-stat-link a{padding:12px}.shelf-stat-link a span:last-child{font-size:9px}}
+/* Clean bookshelf home: keep secondary tools inside a closed menu. */
+.shelf-actions{position:relative;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.shelf-tools-trigger{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 11px;border:1px solid #e7e7e4;border-radius:18px;background:#fff;color:#555;font-size:11px;line-height:1;cursor:pointer;transition:background .16s,border-color .16s}
+.shelf-tools-trigger svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .16s}
+.shelf-tools-trigger[aria-expanded="true"]{background:#f7f7f5;border-color:#d8d8d4}
+.shelf-tools-trigger[aria-expanded="true"] svg{transform:rotate(180deg)}
+.shelf-tools-trigger:focus-visible,.shelf-add:focus-visible{outline:2px solid #888;outline-offset:3px}
+.shelf-tools-menu{position:absolute;top:calc(100% + 9px);right:0;z-index:30;width:min(250px,calc(100vw - 32px));padding:6px;background:#fff;border:1px solid #e8e8e5;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.09)}
+.shelf-tools-menu a{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 10px;border-radius:8px;text-decoration:none;color:#292929;transition:background .14s}
+.shelf-tools-menu a+a{border-top:1px solid #f0f0ed}
+.shelf-tools-menu a:hover,.shelf-tools-menu a:focus-visible{background:#f7f7f5;outline:none}
+.shelf-tools-menu a span{display:flex;flex-direction:column;gap:4px;min-width:0}
+.shelf-tools-menu a strong{font-size:12px;font-weight:650}
+.shelf-tools-menu a small{font-size:10px;color:#999;line-height:1.45}
+.shelf-tools-menu a b{font-size:13px;font-weight:400;color:#999;flex:none}
+@media(max-width:520px){.shelf-heading{padding-top:21px;padding-bottom:12px}.shelf-tools-trigger{padding:0 10px}.shelf-tools-menu{width:min(250px,calc(100vw - 28px))}}
+
+</style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO · 小说作者中心</span></header><div class="scroll" id="scroll">
 
 <section class="shelf-heading">
   <div class="shelf-title-row">
-    <div class="shelf-title-block">
-      <h1>书架</h1>
+    <div class="shelf-title-block"><h1>书架</h1></div>
+    <div class="shelf-actions">
+      <button class="shelf-tools-trigger" id="shelfToolsToggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="shelfToolsMenu">
+        <span>工具</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"></path></svg>
+      </button>
+      <button class="shelf-add" id="newWorkTop" type="button" aria-label="新建作品">+</button>
+      <nav class="shelf-tools-menu hidden" id="shelfToolsMenu" aria-label="更多创作工具">
+        <a href="novel-stats.html"><span><strong>写作统计</strong><small>字数趋势与更新记录</small></span><b>↗</b></a>
+        <a href="novel-achievements.html"><span><strong>创作成就</strong><small>里程碑与完成进度</small></span><b>↗</b></a>
+        <a href="novel-live-room.html"><span><strong>码字直播间</strong><small>专注写作与模拟互动</small></span><b>↗</b></a>
+        <a href="novel-me.html"><span><strong>作者主页</strong><small>笔名、签名与创作资料</small></span><b>↗</b></a>
+      </nav>
     </div>
-    <button class="shelf-add" id="newWorkTop" type="button" aria-label="新建作品">+</button>
     <div class="shelf-summary" aria-hidden="true">
       <strong id="workCount">0</strong><strong id="wordCount">0</strong><strong id="reactionCount">0</strong>
     </div>
   </div>
 </section>
-
-<div class="shelf-stat-link"><a href="novel-stats.html"><span>写作统计</span><span>查看字数趋势与更新记录　↗</span></a></div>
-<div class="shelf-stat-link"><a href="novel-achievements.html"><span>创作成就</span><span>查看里程碑与解锁进度　↗</span></a></div>
-<div class="shelf-stat-link"><a href="novel-live-room.html"><span>码字直播间</span><span>开启专注写作与模拟互动　↗</span></a></div>
-<div class="shelf-stat-link"><a href="novel-me.html"><span>作者主页</span><span>编辑笔名、签名与创作资料　↗</span></a></div>
 <section id="pane-works">
   <div class="shelf-controls">
     <div class="shelf-categories" role="group" aria-label="按作品状态筛选">
@@ -418,10 +440,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
         <option value="已完结">已完结</option>
       </select>
     </div>
-  </div>
-  <div class="shelf-illus" aria-label="写作提示">
-    <div class="clip" aria-hidden="true"><span></span></div>
-    <div class="shelf-illus-copy"><strong>Take what you need</strong><p>随手取用，写就完了</p></div>
   </div>
   <div class="shelf-list-heading">
     <div><p class="shelf-list-kicker">YOUR STORIES</p><h2>所有作品</h2></div>
@@ -475,6 +493,13 @@ function generateChapter(){const w=syncWork(),title=$('chapterTitle').value.trim
 $('newWork').onclick=$('newWorkTop').onclick=()=>{const w=blankWork();db.works.unshift(w);db.activeId=w.id;activeChapterId=null;persist();location.href='novel-setup.html'};
 $('saveWork').onclick=()=>{syncWork();persist();renderAll();toast('作品设定已保存')};$('generateOutline').onclick=generateOutline;$('generateChapter').onclick=generateChapter;$('saveChapter').onclick=()=>saveChapter(false);$('publishChapter').onclick=()=>saveChapter(true);$('newChapter').onclick=()=>{const w=syncWork();activeChapterId=null;$('chapterTitle').value='第'+(w.chapters.length+1)+'章';$('chapterBody').value='';updateChapterWordCount();renderChapters()};$('simulateReaders').onclick=randomReaderFeedback;
 $('exportWork').onclick=()=>{const w=current();if(!w){toast('先打开一本作品');return}const blob=new Blob([JSON.stringify(w,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(w.title||'novel').replace(/[\\/:*?"<>|]/g,'_')+'.json';a.click();URL.revokeObjectURL(url);toast('已导出作品备份')};
+const shelfToolsToggle=$('shelfToolsToggle'),shelfToolsMenu=$('shelfToolsMenu');
+function closeShelfTools(){if(!shelfToolsToggle||!shelfToolsMenu)return;shelfToolsMenu.classList.add('hidden');shelfToolsToggle.setAttribute('aria-expanded','false')}
+shelfToolsToggle?.addEventListener('click',e=>{e.stopPropagation();const opening=shelfToolsMenu.classList.contains('hidden');shelfToolsMenu.classList.toggle('hidden',!opening);shelfToolsToggle.setAttribute('aria-expanded',String(opening))});
+shelfToolsMenu?.addEventListener('click',e=>{if(e.target.closest('a'))closeShelfTools()});
+document.addEventListener('click',e=>{if(!e.target.closest('.shelf-actions'))closeShelfTools()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeShelfTools()});
+
 $('back').onclick=()=>{if(history.length>1)history.back();else location.href='../index.html'};
 
 $('openApiSettings').onclick=()=>{location.href='../settings/settings.html'};
