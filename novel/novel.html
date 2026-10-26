@@ -311,19 +311,80 @@ body{background:#f4f4f2;color:#202020;font-family:-apple-system,BlinkMacSystemFo
 
 /* Keep the bookshelf masthead out of the writing and reader panes. */
 .phone[data-main-pane="studio"] .shelf-heading,.phone[data-main-pane="audience"] .shelf-heading{display:none!important}
-</style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO · 小说作者中心</span><button class="btn dark" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
+
+/* ===== Reference polish: pale minimalist bookshelf, monochrome edition ===== */
+:root{--bg:#F6F6F7;--card:#FFFFFF;--line:#ECECEE;--ink:#1C1C1E;--ink-2:#8E8E93;--ink-3:#C7C7CC;--accent:#333333;--accent-soft:#F1F1F2;--good:#777777;--warn:#8E8E93;--radius-lg:18px;--radius-md:12px;--radius-sm:10px}
+html{background:#F6F6F7}
+body{background:#F6F6F7;color:#1C1C1E;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+.phone{width:min(430px,100%);height:100dvh;min-height:600px;margin:0 auto;background:#fff;box-shadow:none;border:0;border-radius:0;overflow:hidden}
+.top{position:sticky;top:0;z-index:15;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 18px 10px;background:rgba(255,255,255,.97);border-bottom:1px solid #ECECEE;backdrop-filter:blur(12px)}
+.back{flex:0 0 35px;width:35px;height:35px;border:1px solid #ECECEE;border-radius:50%;background:#fff;color:#1C1C1E;font-size:19px}
+.brand{font-size:10px;letter-spacing:.06em;font-weight:600;color:#777;text-align:center}
+
+.scroll{width:100%;max-width:430px;margin:0 auto;padding:0 17px calc(26px + env(safe-area-inset-bottom));background:#fff;overflow:auto}
+.shelf-heading{padding:24px 0 15px;border-bottom:0}
+.shelf-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.shelf-title-block h1{font-size:27px;line-height:1.25;font-weight:700;letter-spacing:-.045em;color:#1C1C1E;margin:0}
+.shelf-kicker,.shelf-subtitle{display:none!important}
+.shelf-summary{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
+.shelf-add{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:1px solid #ECECEE;border-radius:50%;background:#fff;color:#1C1C1E;font-size:23px;line-height:1;font-weight:300;cursor:pointer;transition:background .16s,transform .16s}
+.shelf-add:active{background:#F2F2F3;transform:scale(.96)}
+.shelf-controls{padding:0 0 16px}
+.shelf-categories{display:flex;align-items:center;gap:17px;overflow-x:auto;white-space:nowrap;padding:0 0 13px;scrollbar-width:none}
+.shelf-categories::-webkit-scrollbar{display:none}
+.shelf-category{appearance:none;flex:0 0 auto;padding:2px 0 5px;border:0;border-bottom:1px solid transparent;border-radius:0;background:transparent;color:#8E8E93;font-size:12px;line-height:1.5;font-weight:400;white-space:nowrap;cursor:pointer}
+.shelf-category.active{border-bottom:1.5px solid #1C1C1E;color:#1C1C1E;font-weight:650}
+.shelf-search-row{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:8px;align-items:center}
+.shelf-search{display:flex;align-items:center;gap:7px;min-width:0;height:40px;padding:0 11px;background:#F2F2F4;border:1px solid transparent;border-radius:9px}
+.shelf-search svg{width:14px;height:14px;flex:none;fill:none;stroke:#8E8E93;stroke-width:1.7}
+.shelf-search .input{width:100%;min-width:0;padding:6px 0;border:0!important;border-radius:0;background:transparent!important;box-shadow:none!important;outline:0;color:#1C1C1E;font:12px -apple-system,BlinkMacSystemFont,sans-serif}
+.shelf-search .input::placeholder{color:#A7A7AC}
+.shelf-search-row select#workSort{width:100%;height:40px;min-width:0;padding:0 8px;border:1px solid #ECECEE;border-radius:9px;background:#fff;color:#666;font:11px -apple-system,BlinkMacSystemFont,sans-serif}
+.shelf-illus{display:flex;align-items:center;gap:13px;min-height:82px;margin:1px 0 13px;padding:13px 14px;background:#F5F5F6;border:1px solid #ECECEE;border-radius:12px}
+.clip{position:relative;flex:0 0 35px;width:35px;height:49px;border-radius:3px;background:#fff;border:1px solid #E7E7E9;box-shadow:0 2px 5px rgba(28,28,30,.05)}
+.clip:before{content:"";position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:17px;height:11px;border-radius:3px 3px 2px 2px;background:#DADADD}
+.clip:after{content:"";position:absolute;inset:8px 5px;background:repeating-linear-gradient(to bottom,#E8E8EA 0 1px,transparent 1px 5px)}
+.shelf-illus-copy{min-width:0}
+.shelf-illus-copy strong{display:block;font-size:11px;font-weight:600;letter-spacing:.015em;color:#555}
+.shelf-illus-copy p{font-size:11px;color:#8E8E93;margin:3px 0 0;line-height:1.5}
+.shelf-list-heading{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:0 0 8px;border-bottom:1px solid #ECECEE}
+.shelf-list-heading>div{display:none}
+.works-count{font-size:10px;color:#A0A0A5;white-space:nowrap;margin:0}
+#pane-works{display:block!important;margin:0;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;max-width:none}
+#pane-works.hidden{display:none!important}
+#works{width:100%;min-width:0}
+.book-item{display:grid;grid-template-columns:38px minmax(0,1fr);align-items:center;gap:11px;padding:13px 1px 12px;margin:0;border-bottom:1px solid #ECECEE;background:transparent;min-width:0}
+.book-icon{position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:44px;flex:none;border:1px solid #ECECEE;border-radius:6px;background:#F5F5F6;color:#777}
+.book-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.book-main{min-width:0}
+.book-main-head{display:flex;align-items:flex-start;justify-content:space-between;gap:7px;min-width:0}
+.book-main h3{margin:0;color:#1C1C1E;font-size:13.5px;line-height:1.45;font-weight:650;letter-spacing:-.02em;overflow-wrap:anywhere}
+.book-subline{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:3px;color:#8E8E93;font-size:10.5px;line-height:1.5}
+.book-state{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;padding:3px 6px;border:1px solid #E8E8EA;border-radius:4px;background:#FAFAFA;color:#777;font-size:9px;line-height:1.4;white-space:nowrap}
+.book-state:before{content:"";width:4px;height:4px;border-radius:50%;background:#9A9A9E}
+.book-description{margin:6px 0 0;color:#8E8E93;font-size:10px;line-height:1.65;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.book-meta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 11px;margin-top:5px;color:#B0B0B5;font-size:9.5px;line-height:1.5}
+.book-meta span{white-space:nowrap}
+.book-actions{display:flex;align-items:center;flex-wrap:wrap;gap:3px 11px;margin-top:8px}
+.book-actions .btn{display:inline-flex;align-items:center;justify-content:center;min-height:0;padding:3px 0;border:0;border-radius:0;background:transparent;color:#8E8E93;font-size:10px;line-height:1.4;white-space:nowrap}
+.book-actions .btn:hover{background:transparent;color:#333}
+.book-actions .btn.dark{background:transparent;border:0;color:#333;font-weight:650;text-decoration:underline;text-decoration-color:#D1D1D4;text-underline-offset:3px}
+.book-actions .btn[data-delete]{margin-left:auto;color:#B0B0B5}
+.work-empty{padding:22px 0;text-align:left;border:0;border-bottom:1px solid #ECECEE;border-radius:0;background:transparent;color:#8E8E93;font-size:11px;line-height:1.8}
+.work-empty strong{display:block;margin:0 0 3px;color:#1C1C1E;font-size:14px;font-weight:650}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #A6A6AA;outline-offset:2px}
+@media(min-width:600px){.phone{height:calc(100dvh - 24px);min-height:600px;margin:12px auto;border:1px solid #E6E6E8;border-radius:24px}.top{border-radius:24px 24px 0 0}.scroll{padding-left:20px;padding-right:20px}}
+@media(max-width:360px){.scroll{padding-left:13px;padding-right:13px}.shelf-categories{gap:13px}.shelf-search-row{grid-template-columns:minmax(0,1fr) 94px}.book-item{grid-template-columns:34px minmax(0,1fr);gap:9px}.book-icon{width:34px;height:42px}.book-actions{gap:4px 8px}}
+</style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO · 小说作者中心</span></header><div class="scroll" id="scroll">
 
 <section class="shelf-heading">
   <div class="shelf-title-row">
     <div class="shelf-title-block">
-      <p class="shelf-kicker">MAOMAO / WRITING DESK</p>
       <h1>书架</h1>
-      <p class="shelf-subtitle">把故事收在这里，再从上次停下的地方继续。</p>
     </div>
-    <div class="shelf-summary" aria-label="创作统计">
-      <div class="summary-item"><strong id="workCount">0</strong><span>部作品</span></div>
-      <div class="summary-item"><strong id="wordCount">0</strong><span>累计字数</span></div>
-      <div class="summary-item"><strong id="reactionCount">0</strong><span>读者互动</span></div>
+    <button class="shelf-add" id="newWorkTop" type="button" aria-label="新建作品">+</button>
+    <div class="shelf-summary" aria-hidden="true">
+      <strong id="workCount">0</strong><strong id="wordCount">0</strong><strong id="reactionCount">0</strong>
     </div>
   </div>
 </section>
@@ -332,9 +393,9 @@ body{background:#f4f4f2;color:#202020;font-family:-apple-system,BlinkMacSystemFo
   <div class="shelf-controls">
     <div class="shelf-categories" role="group" aria-label="按作品状态筛选">
       <button class="shelf-category active" type="button" data-shelf-status="全部">全部</button>
-      <button class="shelf-category" type="button" data-shelf-status="构思中">构思中</button>
       <button class="shelf-category" type="button" data-shelf-status="连载中">连载</button>
-      <button class="shelf-category" type="button" data-shelf-status="已完结">完结</button>
+      <button class="shelf-category" type="button" data-shelf-status="已完结">完本</button>
+      <button class="shelf-category" type="button" data-shelf-status="构思中">草稿</button>
     </div>
     <div class="shelf-search-row">
       <label class="shelf-search" for="workSearch">
@@ -353,6 +414,10 @@ body{background:#f4f4f2;color:#202020;font-family:-apple-system,BlinkMacSystemFo
         <option value="已完结">已完结</option>
       </select>
     </div>
+  </div>
+  <div class="shelf-illus" aria-label="写作提示">
+    <div class="clip" aria-hidden="true"><span></span></div>
+    <div class="shelf-illus-copy"><strong>Take what you need</strong><p>随手取用，写就完了</p></div>
   </div>
   <div class="shelf-list-heading">
     <div><p class="shelf-list-kicker">YOUR STORIES</p><h2>所有作品</h2></div>
