@@ -914,6 +914,48 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 }
 @media(prefers-reduced-motion:reduce){.writing-pop,.writing-backdrop{transition:none!important}}
 
+
+/* User-customizable typography & contrast controls. */
+.wp-select{
+  display:block;width:100%;min-height:36px;padding:8px 10px;
+  border:1px solid #e4e4df;border-radius:7px;background:#fafaf8;
+  color:#333;font:11px/1.4 var(--sans);outline:none;
+}
+.wp-select:focus{border-color:#999}
+.wp-color-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.wp-color-field{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:7px 8px;border:1px solid #e8e8e3;border-radius:7px;background:#fafaf8}
+.wp-color-field span{font-size:10px;line-height:1.4;color:#666;white-space:nowrap}
+.wp-color-field input[type=color]{flex:0 0 27px;width:27px;height:25px;padding:1px;border:1px solid #e0e0db;border-radius:5px;background:#fff;cursor:pointer}
+.wp-slider input[type=range]{width:100%;min-width:0;accent-color:#333}
+.wp-slider{display:flex;align-items:center;gap:10px}
+.wp-slider input[type=range]{flex:1}
+.wp-slider .wp-range{flex:0 0 auto;min-width:45px;text-align:right;font-size:10px;letter-spacing:0;color:#777}
+.writing-pop .wp-group{margin-bottom:14px}
+.story{
+  font-family:var(--story-font-family,"Noto Serif SC","Songti SC",serif)!important;
+  font-weight:var(--story-font-weight,400)!important;
+  line-height:var(--story-line-height,1.95)!important;
+  letter-spacing:var(--story-letter-spacing,0em)!important;
+  text-align:var(--story-text-align,left)!important;
+  background-image:linear-gradient(rgba(255,255,255,var(--story-overlay-opacity,.24)),rgba(255,255,255,var(--story-overlay-opacity,.24))),var(--story-bg-image,none)!important;
+}
+.bubble,.bubble.ai,.bubble.me{
+  font-family:inherit!important;font-weight:var(--story-font-weight,400)!important;
+  line-height:var(--story-line-height,1.95)!important;
+  letter-spacing:var(--story-letter-spacing,0em)!important;
+  color:var(--story-text-color,#292927)!important;
+  text-align:var(--story-text-align,left)!important;
+}
+.bubble p{margin:0 0 var(--story-paragraph-gap,.9em)!important;text-align:inherit!important}
+.bubble p:last-child{margin-bottom:0!important}
+.bubble.me,.bubble.me p{color:var(--story-user-color,#555550)!important}
+.bubble .spoken,.bubble.me .spoken{color:inherit!important}
+@media(max-width:360px){
+ .wp-color-controls{gap:6px}
+ .wp-color-field{padding:6px}
+ .wp-color-field span{font-size:9px}
+}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -982,6 +1024,67 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         <div class="wp-slider">
           <input type="range" id="fontSizeRange" min="11" max="20" step="0.5" value="13.5">
           <span class="wp-range" id="fontSizeVal">13.5</span>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">正文字体</div>
+        <select class="wp-select" id="fontFamilySelect" aria-label="正文字体">
+          <option value="serif">宋体 / 衬线</option>
+          <option value="sans">简洁黑体</option>
+          <option value="kai">手写楷体</option>
+          <option value="book">文学衬线</option>
+          <option value="mono">等宽打字机</option>
+        </select>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">字体粗细</div>
+        <div class="wp-chips" id="fontWeightChips"></div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">文字颜色</div>
+        <div class="wp-color-controls">
+          <label class="wp-color-field" for="charTextColorInput"><span>角色正文</span><input type="color" id="charTextColorInput" value="#292927"></label>
+          <label class="wp-color-field" for="userTextColorInput"><span>我的叙述</span><input type="color" id="userTextColorInput" value="#555550"></label>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">行距</div>
+        <div class="wp-slider">
+          <input type="range" id="lineHeightRange" min="1.4" max="2.5" step="0.05" value="1.95">
+          <span class="wp-range" id="lineHeightVal">1.95</span>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">段落间距</div>
+        <div class="wp-slider">
+          <input type="range" id="paragraphGapRange" min="0" max="2" step="0.1" value="0.9">
+          <span class="wp-range" id="paragraphGapVal">0.9em</span>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">字间距</div>
+        <div class="wp-slider">
+          <input type="range" id="letterSpacingRange" min="-0.02" max="0.08" step="0.01" value="0">
+          <span class="wp-range" id="letterSpacingVal">0</span>
+        </div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">正文对齐</div>
+        <div class="wp-chips" id="textAlignChips"></div>
+      </div>
+
+      <div class="wp-group">
+        <div class="wp-label">背景柔化</div>
+        <div class="wp-slider">
+          <input type="range" id="backgroundWashRange" min="0" max="0.75" step="0.05" value="0.24">
+          <span class="wp-range" id="backgroundWashVal">24%</span>
         </div>
       </div>
 
@@ -1077,6 +1180,19 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var initiatorChips = document.getElementById('initiatorChips');
     var fontSizeRange = document.getElementById('fontSizeRange');
     var fontSizeVal = document.getElementById('fontSizeVal');
+    var fontFamilySelect = document.getElementById('fontFamilySelect');
+    var fontWeightChips = document.getElementById('fontWeightChips');
+    var charTextColorInput = document.getElementById('charTextColorInput');
+    var userTextColorInput = document.getElementById('userTextColorInput');
+    var lineHeightRange = document.getElementById('lineHeightRange');
+    var lineHeightVal = document.getElementById('lineHeightVal');
+    var paragraphGapRange = document.getElementById('paragraphGapRange');
+    var paragraphGapVal = document.getElementById('paragraphGapVal');
+    var letterSpacingRange = document.getElementById('letterSpacingRange');
+    var letterSpacingVal = document.getElementById('letterSpacingVal');
+    var textAlignChips = document.getElementById('textAlignChips');
+    var backgroundWashRange = document.getElementById('backgroundWashRange');
+    var backgroundWashVal = document.getElementById('backgroundWashVal');
     var bgColorInput = document.getElementById('bgColorInput');
     var bgImageBtn = document.getElementById('bgImageBtn');
     var bgClearBtn = document.getElementById('bgClearBtn');
@@ -1109,6 +1225,10 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             preset: 'default', wordBase: 1000,
             userPersona: '你', charPersona: '他',
             initiator: 'char', fontSize: 13.5,
+            fontFamily: 'serif', fontWeight: 400,
+            charTextColor: '#292927', userTextColor: '#555550',
+            lineHeight: 1.95, paragraphGap: 0.9, letterSpacing: 0,
+            textAlign: 'left', backgroundWash: 0.24,
             bgColor: '#FFFFFF', bgImage: '',
             breakMode: 'none', summaryMode: 'card'
         };
@@ -1122,6 +1242,20 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             if (v.initiator === 'me' || v.initiator === 'char') d.initiator = v.initiator;
             var fs = parseFloat(v.fontSize);
             if (fs >= 11 && fs <= 20) d.fontSize = fs;
+            if (['serif','sans','kai','book','mono'].indexOf(v.fontFamily) >= 0) d.fontFamily = v.fontFamily;
+            var fw = parseInt(v.fontWeight, 10);
+            if ([400,500,600].indexOf(fw) >= 0) d.fontWeight = fw;
+            if (v.charTextColor && /^#[0-9a-fA-F]{6}$/.test(v.charTextColor)) d.charTextColor = v.charTextColor;
+            if (v.userTextColor && /^#[0-9a-fA-F]{6}$/.test(v.userTextColor)) d.userTextColor = v.userTextColor;
+            var lh = parseFloat(v.lineHeight);
+            if (lh >= 1.4 && lh <= 2.5) d.lineHeight = lh;
+            var pg = parseFloat(v.paragraphGap);
+            if (pg >= 0 && pg <= 2) d.paragraphGap = pg;
+            var ls = parseFloat(v.letterSpacing);
+            if (ls >= -0.02 && ls <= 0.08) d.letterSpacing = ls;
+            if (v.textAlign === 'left' || v.textAlign === 'justify') d.textAlign = v.textAlign;
+            var wash = parseFloat(v.backgroundWash);
+            if (wash >= 0 && wash <= 0.75) d.backgroundWash = wash;
             if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor)) d.bgColor = v.bgColor;
             if (v.bgImage && /^data:image\//.test(v.bgImage)) d.bgImage = v.bgImage;
             if (v.breakMode && ['none', 'line', 'space'].indexOf(v.breakMode) >= 0) d.breakMode = v.breakMode;
@@ -1184,14 +1318,50 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         if (wordRange) wordRange.textContent = wordRangeText(writingOpts.wordBase);
         if (fontSizeRange) fontSizeRange.value = writingOpts.fontSize;
         if (fontSizeVal) fontSizeVal.textContent = writingOpts.fontSize;
+        if (fontFamilySelect) fontFamilySelect.value = writingOpts.fontFamily;
+        if (charTextColorInput) charTextColorInput.value = writingOpts.charTextColor;
+        if (userTextColorInput) userTextColorInput.value = writingOpts.userTextColor;
+        renderChips(fontWeightChips, [
+            { key: '400', label: '常规' },
+            { key: '500', label: '中等' },
+            { key: '600', label: '加粗' }
+        ], String(writingOpts.fontWeight), function (k) { writingOpts.fontWeight = parseInt(k, 10); applyReadingStyle(); });
+        renderChips(textAlignChips, [
+            { key: 'left', label: '左对齐' },
+            { key: 'justify', label: '两端对齐' }
+        ], writingOpts.textAlign, function (k) { writingOpts.textAlign = k; applyReadingStyle(); });
+        if (lineHeightRange) lineHeightRange.value = writingOpts.lineHeight;
+        if (lineHeightVal) lineHeightVal.textContent = Number(writingOpts.lineHeight).toFixed(2);
+        if (paragraphGapRange) paragraphGapRange.value = writingOpts.paragraphGap;
+        if (paragraphGapVal) paragraphGapVal.textContent = Number(writingOpts.paragraphGap).toFixed(1) + 'em';
+        if (letterSpacingRange) letterSpacingRange.value = writingOpts.letterSpacing;
+        if (letterSpacingVal) letterSpacingVal.textContent = Number(writingOpts.letterSpacing).toFixed(2) + 'em';
+        if (backgroundWashRange) backgroundWashRange.value = writingOpts.backgroundWash;
+        if (backgroundWashVal) backgroundWashVal.textContent = Math.round(writingOpts.backgroundWash * 100) + '%';
         if (bgColorInput) bgColorInput.value = writingOpts.bgColor;
         applyReadingStyle();
     }
 
-    /* 应用阅读区样式：字号 / 背景色 / 背景图 / 断屏 */
+    /* 将全部阅读美化配置即时应用；选项写入 date_writing_opts，重进页面仍保留。 */
     function applyReadingStyle() {
         var root = document.documentElement;
+        var families = {
+            serif: '"Noto Serif SC","Songti SC","STSong",Georgia,serif',
+            sans: '-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif',
+            kai: '"Kaiti SC","STKaiti","KaiTi","Songti SC",serif',
+            book: 'Georgia,"Songti SC","Noto Serif SC",serif',
+            mono: 'ui-monospace,SFMono-Regular,Consolas,monospace'
+        };
+        root.style.setProperty('--story-font-family', families[writingOpts.fontFamily] || families.serif);
         root.style.setProperty('--story-font-size', (writingOpts.fontSize || 13.5) + 'px');
+        root.style.setProperty('--story-font-weight', String(writingOpts.fontWeight || 400));
+        root.style.setProperty('--story-text-color', writingOpts.charTextColor || '#292927');
+        root.style.setProperty('--story-user-color', writingOpts.userTextColor || '#555550');
+        root.style.setProperty('--story-line-height', String(writingOpts.lineHeight || 1.95));
+        root.style.setProperty('--story-paragraph-gap', String(writingOpts.paragraphGap == null ? 0.9 : writingOpts.paragraphGap) + 'em');
+        root.style.setProperty('--story-letter-spacing', String(writingOpts.letterSpacing || 0) + 'em');
+        root.style.setProperty('--story-text-align', writingOpts.textAlign === 'justify' ? 'justify' : 'left');
+        root.style.setProperty('--story-overlay-opacity', String(writingOpts.backgroundWash == null ? 0.24 : writingOpts.backgroundWash));
         root.style.setProperty('--story-bg', writingOpts.bgColor || '#FFFFFF');
         root.style.setProperty('--story-bg-image', writingOpts.bgImage ? 'url("' + writingOpts.bgImage + '")' : 'none');
         if (storyEl) storyEl.setAttribute('data-break', writingOpts.breakMode || 'none');
@@ -1217,6 +1387,35 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             saveWritingOpts();
         });
     }
+    if (fontFamilySelect) {
+        fontFamilySelect.addEventListener('change', function () {
+            writingOpts.fontFamily = fontFamilySelect.value;
+            applyReadingStyle(); saveWritingOpts();
+        });
+    }
+    function bindColorInput(element, key) {
+        if (!element) return;
+        element.addEventListener('input', function () {
+            writingOpts[key] = element.value;
+            applyReadingStyle(); saveWritingOpts();
+        });
+    }
+    bindColorInput(charTextColorInput, 'charTextColor');
+    bindColorInput(userTextColorInput, 'userTextColor');
+    function bindRange(element, key, valueLabel, format) {
+        if (!element) return;
+        element.addEventListener('input', function () {
+            var value = parseFloat(element.value);
+            if (!Number.isFinite(value)) return;
+            writingOpts[key] = value;
+            if (valueLabel) valueLabel.textContent = format(value);
+            applyReadingStyle(); saveWritingOpts();
+        });
+    }
+    bindRange(lineHeightRange, 'lineHeight', lineHeightVal, function (v) { return Number(v).toFixed(2); });
+    bindRange(paragraphGapRange, 'paragraphGap', paragraphGapVal, function (v) { return Number(v).toFixed(1) + 'em'; });
+    bindRange(letterSpacingRange, 'letterSpacing', letterSpacingVal, function (v) { return Number(v).toFixed(2) + 'em'; });
+    bindRange(backgroundWashRange, 'backgroundWash', backgroundWashVal, function (v) { return Math.round(v * 100) + '%'; });
     if (bgColorInput) {
         bgColorInput.addEventListener('input', function () {
             writingOpts.bgColor = bgColorInput.value;
