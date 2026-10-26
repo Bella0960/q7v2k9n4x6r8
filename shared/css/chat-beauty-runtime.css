@@ -1077,3 +1077,51 @@
   border-color: transparent !important;
   box-shadow: none !important;
 }
+
+
+/* Definitive iMessage wallpaper layer: place one shared image behind header and messages. */
+.phone-mockup[data-chat-theme-preset="imessage"] {
+  position: relative !important;
+  isolation: isolate !important;
+  background-color: #F2F2F7 !important;
+  background-image: none !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"]::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  display: block !important;
+  pointer-events: none !important;
+  background-image: var(--chat-theme-bg-image, linear-gradient(180deg,#F2F2F7 0%,#E7E7ED 100%)) !important;
+  background-size: cover !important;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] > .status-bar { z-index: 80 !important; }
+.phone-mockup[data-chat-theme-preset="imessage"] > .chat-header {
+  position: relative !important;
+  z-index: 40 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] > .chat-stage {
+  position: relative !important;
+  z-index: 1 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-title-box,
+.phone-mockup[data-chat-theme-preset="imessage"] .chat-header-avatar {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
