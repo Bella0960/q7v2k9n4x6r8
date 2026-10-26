@@ -1523,6 +1523,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var replyPresetCount = document.getElementById('replyPresetCount');
     var replyPresetStatus = document.getElementById('replyPresetStatus');
     var addReplyPresetButton = document.getElementById('addReplyPreset');
+    var replyPresetListInitialized = false;
     function selectedReplyStyles() {
         return (writingOpts.replyStyles || []).filter(function (item) { return item.selected; }).slice(0, 3);
     }
@@ -1634,7 +1635,10 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         updateReplyPresetCount();
     }
     function bindReplyStyleControls() {
-        renderReplyPresetList();
+        if (!replyPresetListInitialized) {
+            renderReplyPresetList();
+            replyPresetListInitialized = true;
+        }
         if (addReplyPresetButton && !addReplyPresetButton.dataset.bound) {
             addReplyPresetButton.addEventListener('click', function () {
                 if (writingOpts.replyStyles.length >= 30) {
