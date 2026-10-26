@@ -101,8 +101,8 @@
         '    html { transition: none !important; }',
         '}',
         '* { -webkit-tap-highlight-color: transparent; }',
-        /* 保留每个页面本来设计的状态栏底色，只去掉突兀的阴影和横线。 */
-        '.status-bar { border-bottom: 0 !important; box-shadow: none !important; }',
+        /* 状态栏自身不另铺色块；保留原有背景图层，只去掉横线与阴影。 */
+        '.status-bar { background-color: transparent !important; border-bottom: 0 !important; box-shadow: none !important; }',
         'html, body { overscroll-behavior-y: none; }',
         /* 内层滚动容器：阻止滚动到底后把回弹传给页面 */
         '[class*="scroll"], .chat-stage { overscroll-behavior-y: none; }',
@@ -340,46 +340,69 @@
 
             var statusBar = document.querySelector('.status-bar');
             var statusStyle = statusBar ? window.getComputedStyle(statusBar) : null;
-            /* 如果页面本身给状态栏指定了不透明底色，系统栏直接跟随它。 */
-            var color = statusStyle ? toHex(statusStyle.backgroundColor) : null;
+            var rect = statusBar ? statusBar.getBoundingClientRect() : null;
+            var isOverlay = !!(statusStyle && (statusStyle.position === 'absolute' || statusStyle.position === 'fixed'));
 
-            /* 透明状态栏：取它实际覆盖区域下方露出的内容，不再拿 .phone-mockup 的通用底色猜测。 */
-            if (!color) {
-                var rect = statusBar ? statusBar.getBoundingClientRect() : null;
-                var y = rect ? Math.max(1, Math.min(window.innerHeight - 1, rect.top + Math.min(8, Math.max(1, rect.height / 3)))) : 1;
-                var width = Math.max(1, window.innerWidth);
-                var xs = [Math.min(width - 1, Math.max(1, Math.round(width * 0.08))), Math.round(width * 0.5), Math.min(width - 1, Math.max(1, Math.round(width * 0.92)))];
-                var samples = [];
-                for (var i = 0; i < xs.length; i++) {
-                    var sample = visibleBackdropAt(xs[i], y, statusBar);
-                    if (sample) samples.push(sample);
-                }
-                if (samples.length) {
-                    /* 取顶部左右/中间采样里最常见的底色，避免被单个图标或小控件带偏。 */
-                    var counts = {};
-                    var best = samples[0];
-                    var bestCount = 0;
-                    samples.forEach(function (sample) {
-                        counts[sample] = (counts[sample] || 0) + 1;
-                        if (counts[sample] > bestCount) {
-                            best = sample;
-                            bestCount = counts[sample];
-                        }
-                    });
-                    color = best;
-                }
+            /*
+             * 浮在封面/壁纸上的状态栏：取它下面实际露出的底色。
+             * 普通文档流状态栏：取紧接着的页面内容，再让状态栏沿用同一个底色。
+             * 不再使用手机外壳的通用背景色来猜顶部颜色。
+             */
+            var width = Math.max(1, window.innerWidth);
+            var y;
+            if (rect) {
+                y = isOverlay
+                    ? rect.top + Math.min(8, Math.max(1, rect.height / 3))
+                    : rect.bottom + 1;
+            } else {
+                y = 1;
+            }
+            y = Math.max(1, Math.min(Math.max(1, window.innerHeight - 1), y));
+            var xs = [
+                Math.min(width - 1, Math.max(1, Math.round(width * 0.08))),
+                Math.round(width * 0.5),
+                Math.min(width - 1, Math.max(1, Math.round(width * 0.92)))
+            ];
+            var samples = [];
+            for (var i = 0; i < xs.length; i++) {
+                var sample = visibleBackdropAt(xs[i], y, statusBar);
+                if (sample) samples.push(sample);
             }
 
+            var color = null;
+            if (samples.length) {
+                var counts = {};
+                var bestCount = 0;
+                samples.forEach(function (sample) {
+                    counts[sample] = (counts[sample] || 0) + 1;
+                    if (counts[sample] > bestCount) {
+                        color = sample;
+                        bestCount = counts[sample];
+                    }
+                });
+            }
+
+            /* 只在无法采样真实背景时，才退回到页面自己声明的底色。 */
+            if (!color && statusStyle) color = toHex(statusStyle.backgroundColor);
             if (!color && statusBar) color = opaqueBackgroundFrom(statusBar.parentElement);
             if (!color) color = opaqueBackgroundFrom(document.body);
             if (!color) color = opaqueBackgroundFrom(document.documentElement);
             if (!color) color = '#FFFFFF';
 
+            /* 普通流状态栏与下一段内容同色；叠在壁纸/封面上的状态栏保持透出。 */
+            if (statusBar) {
+                var desiredBg = isOverlay ? 'transparent' : color;
+                var currentInlineBg = statusBar.style.getPropertyValue('background-color');
+                var currentInlinePriority = statusBar.style.getPropertyPriority('background-color');
+                if (currentInlineBg !== desiredBg || currentInlinePriority !== 'important') {
+                    statusBar.style.setProperty('background-color', desiredBg, 'important');
+                }
+            }
+
             if (themeMeta.getAttribute('content').toLowerCase() !== color.toLowerCase()) {
                 themeMeta.setAttribute('content', color);
             }
         }
-
         var updateQueued = false;
         function scheduleUpdate() {
             if (updateQueued) return;
