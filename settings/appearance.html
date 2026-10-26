@@ -7,7 +7,6 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/wallpaper-store.js?v=20261024v1"></script>
 <script src="../shared/js/native-feel.js?v=20261024v1"></script>
-<script src="../shared/js/chat-beauty.js?v=20261026v7"></script>
 <script src="../shared/js/statusbar-control.js?v=20261023v2"></script>
 <style>
   :root {
@@ -315,19 +314,6 @@
     padding: 18px 0 8px;
   }
 
-  /* 全局聊天主题：整页主题与消息气泡细节美化分离 */
-  .chat-theme-thumb{position:relative;flex:0 0 48px;width:48px;height:43px;overflow:hidden;border-radius:12px;border:1px solid #DADAE0;background:#F7F7F9;transition:border-color .2s ease,box-shadow .2s ease}
-  .chat-theme-thumb::before{content:"";position:absolute;left:5px;right:5px;top:5px;height:3px;border-radius:3px;background:#C7C7CC}
-  .chat-theme-thumb i,.chat-theme-thumb b{position:absolute;display:block;height:7px;border-radius:6px}
-  .chat-theme-thumb i{left:5px;bottom:13px;width:21px;background:#E5E5EA}
-  .chat-theme-thumb b{right:5px;bottom:4px;width:24px;background:#111}
-  .chat-theme-thumb-imessage{background:#F2F2F7}
-  .chat-theme-thumb-imessage i{background:#E5E5EA}
-  .chat-theme-thumb-imessage b{background:#007AFF}
-  .chat-theme-note{padding:8px 12px 0;color:var(--aux);font-size:11px;line-height:1.5}
-  .chat-theme-row{cursor:pointer}
-  .chat-theme-row .row-check{opacity:0}
-  .chat-theme-row.selected .row-check{opacity:1}
 
 </style>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
@@ -393,22 +379,6 @@
         <span class="row-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
       </div>
     </section>
-<!-- 聊天页面整页主题：全局生效，和气泡细节美化分开管理 -->
-    <div class="group-title">CHAT THEME · 主题美化</div>
-    <section class="card theme-picker" aria-label="聊天页面全局主题">
-      <div class="row theme-row chat-theme-row" id="chatThemeDefaultOption" role="button" tabindex="0" aria-label="切换默认聊天主题">
-        <div class="chat-theme-thumb" aria-hidden="true"><i></i><b></b></div>
-        <div class="row-main"><div class="row-title">默认聊天主题</div><div class="row-sub">保留 MAOMAO 原有聊天界面</div></div>
-        <span class="row-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 12 20 18"/></svg></span>
-      </div>
-      <div class="row theme-row chat-theme-row" id="chatThemeIMessageOption" role="button" tabindex="0" aria-label="切换 iMessage 短信主题">
-        <div class="chat-theme-thumb chat-theme-thumb-imessage" aria-hidden="true"><i></i><b></b></div>
-        <div class="row-main"><div class="row-title">iMessage 短信</div><div class="row-sub">角色头像标题栏、蓝灰消息气泡与短信输入栏</div></div>
-        <span class="row-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 12 20 18"/></svg></span>
-      </div>
-    </section>
-    <p class="chat-theme-note" id="chatThemeStatus">这个选择会应用到所有角色的聊天详情页，不影响主屏主题、聊天记录或 API 设置。</p>
-
     <div class="wallpaper-actions" style="margin-top: 10px;">
       <button type="button" class="btn btn-secondary" id="customizeLiquidGlassBtn">自定义主屏幕图标 · 透明度 / 色调</button>
     </div>
@@ -739,60 +709,7 @@
 </script>
 <script src="../shared/js/liquid-glass-controls.js?v=20261023v11"></script>
 
-<script>
-/* 全局聊天主题设置：整页主题单独保存，不写入气泡细节配置。 */
-(function () {
-  var defaultOption = document.getElementById('chatThemeDefaultOption');
-  var imessageOption = document.getElementById('chatThemeIMessageOption');
-  var status = document.getElementById('chatThemeStatus');
-  function getTheme() {
-    try {
-      return window.ChatBeauty && typeof ChatBeauty.getThemePreset === 'function'
-        ? ChatBeauty.getThemePreset() : 'default';
-    } catch (e) { return 'default'; }
-  }
-  function reflect(theme) {
-    [[defaultOption, 'default'], [imessageOption, 'imessage']].forEach(function (pair) {
-      if (!pair[0]) return;
-      var active = pair[1] === theme;
-      pair[0].classList.toggle('selected', active);
-      pair[0].setAttribute('aria-pressed', String(active));
-    });
-    if (status) status.textContent = theme === 'imessage'
-      ? '当前全局主题：iMessage 短信。所有角色的聊天详情页将使用这一套完整布局。'
-      : '当前全局主题：默认。所有角色恢复 MAOMAO 原有聊天布局，独立气泡美化配置仍会保留。';
-  }
-  function choose(theme) {
-    if (!window.ChatBeauty || typeof ChatBeauty.setThemePreset !== 'function') {
-      if (status) status.textContent = '主题模块尚未加载，请刷新页面后重试。';
-      return;
-    }
-    if (!ChatBeauty.setThemePreset(theme)) {
-      if (status) status.textContent = '保存失败，请检查本机存储空间后重试。';
-      return;
-    }
-    reflect(theme);
-    try { window.dispatchEvent(new CustomEvent('maomao:chat-theme-change', { detail: { theme: theme } })); } catch (e) {}
-    var toast = document.getElementById('toast');
-    if (toast) {
-      toast.textContent = theme === 'imessage' ? '已应用全局 iMessage 短信主题' : '已恢复默认聊天主题';
-      toast.classList.add('show');
-      window.setTimeout(function () { toast.classList.remove('show'); }, 1800);
-    }
-  }
-  function bind(node, theme) {
-    if (!node) return;
-    node.addEventListener('click', function () { choose(theme); });
-    node.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(theme); }
-    });
-  }
-  bind(defaultOption, 'default');
-  bind(imessageOption, 'imessage');
-  reflect(getTheme());
-  window.addEventListener('pageshow', function () { reflect(getTheme()); });
-})();
-</script>
+
 
 </body>
 </html>
