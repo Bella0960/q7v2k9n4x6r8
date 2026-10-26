@@ -1068,6 +1068,67 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 }
 @media(prefers-reduced-motion:reduce){.writing-pop .drawer-accordion-summary svg{transition:none}}
 
+
+/* Nested option accordions: no sliders or editor forms spill open by default. */
+.writing-pop .drawer-subaccordion{
+  display:block!important;margin:0!important;min-width:0!important;
+  border-bottom:1px solid #f0f0ed!important;
+}
+.writing-pop .drawer-subaccordion-summary{
+  display:flex!important;align-items:center!important;justify-content:space-between!important;
+  gap:10px!important;min-height:43px!important;padding:10px 1px!important;
+  list-style:none!important;cursor:pointer!important;user-select:none!important;
+  font-size:11px!important;line-height:1.45!important;color:#5d5d57!important;
+}
+.writing-pop .drawer-subaccordion-summary::-webkit-details-marker{display:none!important}
+.writing-pop .drawer-subaccordion-summary::marker{content:""!important}
+.writing-pop .drawer-subaccordion-summary svg{
+  flex:0 0 13px;width:13px;height:13px;fill:none;stroke:#92928b;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .17s ease;
+}
+.writing-pop .drawer-subaccordion[open]>.drawer-subaccordion-summary svg{transform:rotate(180deg)}
+.writing-pop .drawer-subaccordion[open]>.drawer-subaccordion-summary{border-bottom:1px solid #f1f1ee}
+.writing-pop .drawer-subaccordion-panel{padding:12px 0 14px;min-width:0}
+.writing-pop .drawer-subaccordion-panel>.wp-group:last-child{margin-bottom:0!important}
+.writing-pop .drawer-subaccordion-panel .wp-group{margin-bottom:13px!important}
+.reply-style-help{margin:0 0 12px!important;font-size:10px!important;line-height:1.65!important;color:#92928b!important}
+.reply-presets-list{display:flex;flex-direction:column;gap:6px}
+.reply-preset-row{
+  display:grid;grid-template-columns:minmax(0,1fr) auto 28px;align-items:center;gap:7px;
+  min-width:0;padding:10px 8px;border:1px solid #e8e8e4;border-radius:8px;background:#fff;
+  transition:border-color .15s,background .15s;
+}
+.reply-preset-row.is-selected{border-color:#c9c9c2;background:#f9f9f7}
+.reply-preset-info{display:flex;flex-direction:column;gap:4px;min-width:0}
+.reply-preset-name{font-size:11px;line-height:1.4;font-weight:650;color:#363632;overflow-wrap:anywhere}
+.reply-preset-prompt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:9px;line-height:1.55;color:#999}
+.reply-preset-actions{display:flex;align-items:center;gap:3px}
+.reply-preset-actions button{min-width:29px;min-height:27px;padding:4px 5px;border:1px solid #e9e9e5;border-radius:5px;background:#fff;color:#777;font-size:9px}
+.reply-preset-actions .reply-preset-remove{color:#999}
+.reply-preset-check{position:relative;display:grid;place-items:center;width:25px;height:25px;cursor:pointer}
+.reply-preset-check input{position:absolute;width:1px;height:1px;opacity:0}
+.reply-preset-checkmark{
+  display:grid;place-items:center;width:20px;height:20px;border:1px solid #d9d9d3;border-radius:6px;
+  background:#fff;transition:background .14s,border-color .14s;
+}
+.reply-preset-checkmark svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+.reply-preset-check input:checked+.reply-preset-checkmark{background:#282826;border-color:#282826}
+.reply-preset-check input:checked+.reply-preset-checkmark svg{opacity:1}
+.reply-preset-check input:focus-visible+.reply-preset-checkmark{outline:2px solid #888;outline-offset:2px}
+.reply-presets-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 1px 11px;font-size:9px;color:#999}
+.reply-preset-new{
+  width:100%;min-height:36px;margin:0 0 10px;padding:8px 10px;border:1px dashed #d7d7d1;
+  border-radius:7px;background:#fafaf8;color:#555;font-size:10px;text-align:center;
+}
+.reply-preset-editor{margin-top:0!important;border:1px solid #e8e8e4!important;border-radius:8px;padding:0 9px}
+.reply-preset-editor .drawer-subaccordion-summary{min-height:38px}
+.reply-style-field{display:flex;flex-direction:column;gap:6px;margin:0 0 12px}
+.reply-style-field label{font-size:10px;color:#777}
+.reply-preset-editor-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.reply-preset-save,.reply-preset-cancel{min-height:34px;padding:8px;border:1px solid #deded9;border-radius:7px;background:#fff;color:#555;font-size:10px}
+.reply-preset-save{background:#242422;color:#fff;border-color:#242422}
+.reply-presets-empty{padding:13px 10px;border:1px dashed #e3e3de;border-radius:8px;font-size:10px;line-height:1.7;color:#999}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1086,207 +1147,108 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     <div class="writing-backdrop" id="writingBackdrop"></div>
     <div class="writing-pop" id="writingPop" role="dialog" aria-modal="true" aria-label="剧情功能与美化设置">
       <div class="wp-head drawer-head"><span>剧情功能与美化</span><button type="button" id="closeWritingPop" class="drawer-close" aria-label="关闭菜单">×</button></div>
+
       <details class="drawer-accordion" id="drawerActions">
-  <summary class="drawer-accordion-summary">
-    <span class="drawer-accordion-title">剧情操作</span>
-    <small>继续剧情 · 重写 · 保存</small>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-  </summary>
-  <div class="drawer-accordion-panel">
-
-  <div class="quick-bar" id="quickBar" role="toolbar" aria-label="剧情状态与操作">
-    <button type="button" id="actContinue" aria-label="让角色继续剧情" title="继续剧情">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 11.5a7.5 7.5 0 0 1 13-5L20 9"/><path d="M20 4.5V9h-4.5"/><path d="M19.5 12.5a7.5 7.5 0 0 1-13 5L4 15"/><path d="M4 19.5V15h4.5"/></svg>
-      <span>继续剧情</span>
-    </button>
-    <button type="button" id="actReroll" aria-label="重新生成角色回复" title="重写回复">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4.7 9a7.5 7.5 0 0 1 12.6-2L20 12"/><path d="M4 17v-5h5"/><path d="M19.3 15a7.5 7.5 0 0 1-12.6 2L4 12"/></svg>
-      <span>重写回复</span>
-    </button>
-    <button type="button" id="actSave" aria-label="保存剧情文稿" title="保存文稿">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3h16v-3"/></svg>
-      <span>保存文稿</span>
-    </button>
-  </div>
-      
-  </div>
-</details>
-<details class="drawer-accordion" id="drawerGeneration">
-  <summary class="drawer-accordion-summary">
-    <span class="drawer-accordion-title">剧情生成设置</span>
-    <small>回复预设 · 字数 · 人称</small>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-  </summary>
-  <div class="drawer-accordion-panel">
-
-
-      <div class="wp-group">
-        <div class="wp-label">回复预设</div>
-        <div class="wp-chips" id="presetChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">单次字数基准</div>
-        <div class="wp-word">
-          <input type="number" id="wordBase" min="100" max="5000" step="50" value="1000">
-          <span class="wp-range" id="wordRange">800–1200 字</span>
+        <summary class="drawer-accordion-summary"><span class="drawer-accordion-title">剧情操作</span><small>继续 · 重写 · 保存</small><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+        <div class="drawer-accordion-panel">
+          <div class="quick-bar" id="quickBar" role="toolbar" aria-label="剧情状态与操作">
+            <button type="button" id="actContinue" aria-label="让角色继续剧情" title="继续剧情"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 11.5a7.5 7.5 0 0 1 13-5L20 9"/><path d="M20 4.5V9h-4.5"/><path d="M19.5 12.5a7.5 7.5 0 0 1-13 5L4 15"/><path d="M4 19.5V15h4.5"/></svg><span>继续剧情</span></button>
+            <button type="button" id="actReroll" aria-label="重新生成角色回复" title="重写回复"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4.7 9a7.5 7.5 0 0 1 12.6-2L20 12"/><path d="M4 17v-5h5"/><path d="M19.3 15a7.5 7.5 0 0 1-12.6 2L4 12"/></svg><span>重写回复</span></button>
+            <button type="button" id="actSave" aria-label="保存剧情文稿" title="保存文稿"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3h16v-3"/></svg><span>保存文稿</span></button>
+          </div>
         </div>
-      </div>
+      </details>
 
-      <div class="wp-group">
-        <div class="wp-label">我方叙述人称</div>
-        <div class="wp-chips" id="userPersonaChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">角色叙述人称</div>
-        <div class="wp-chips" id="charPersonaChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">对话主动方</div>
-        <div class="wp-chips" id="initiatorChips"></div>
-      </div>
-
-      
-  </div>
-</details>
-<details class="drawer-accordion" id="drawerTypography">
-  <summary class="drawer-accordion-summary">
-    <span class="drawer-accordion-title">文字排版</span>
-    <small>字体 · 颜色 · 行距 · 对齐</small>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-  </summary>
-  <div class="drawer-accordion-panel">
-
-        <div class="wp-slider">
-          <input type="range" id="fontSizeRange" min="11" max="20" step="0.5" value="13.5">
-          <span class="wp-range" id="fontSizeVal">13.5</span>
+      <details class="drawer-accordion" id="drawerGeneration">
+        <summary class="drawer-accordion-summary"><span class="drawer-accordion-title">剧情生成设置</span><small>预设 · 字数 · 人称</small><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+        <div class="drawer-accordion-panel">
+          <details class="drawer-subaccordion" id="drawerReplyGeneration">
+            <summary class="drawer-subaccordion-summary"><span>回复生成预设</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel">
+              <div class="wp-group"><div class="wp-label">回复预设</div><div class="wp-chips" id="presetChips"></div></div>
+              <div class="wp-group"><div class="wp-label">单次字数基准</div><div class="wp-word"><input type="number" id="wordBase" min="100" max="5000" step="50" value="1000"><span class="wp-range" id="wordRange">800–1200 字</span></div></div>
+            </div>
+          </details>
+          <details class="drawer-subaccordion" id="drawerNarration">
+            <summary class="drawer-subaccordion-summary"><span>叙述人称与发起方</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel">
+              <div class="wp-group"><div class="wp-label">我方叙述人称</div><div class="wp-chips" id="userPersonaChips"></div></div>
+              <div class="wp-group"><div class="wp-label">角色叙述人称</div><div class="wp-chips" id="charPersonaChips"></div></div>
+              <div class="wp-group"><div class="wp-label">对话主动方</div><div class="wp-chips" id="initiatorChips"></div></div>
+            </div>
+          </details>
         </div>
-      </div>
+      </details>
 
-      <div class="wp-group">
-        <div class="wp-label">正文字体</div>
-        <select class="wp-select" id="fontFamilySelect" aria-label="正文字体">
-          <option value="serif">宋体 / 衬线</option>
-          <option value="sans">简洁黑体</option>
-          <option value="kai">手写楷体</option>
-          <option value="book">文学衬线</option>
-          <option value="mono">等宽打字机</option>
-        </select>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">字体粗细</div>
-        <div class="wp-chips" id="fontWeightChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">文字颜色</div>
-        <div class="wp-color-controls">
-          <label class="wp-color-field" for="charTextColorInput"><span>角色正文</span><input type="color" id="charTextColorInput" value="#292927"></label>
-          <label class="wp-color-field" for="userTextColorInput"><span>我的叙述</span><input type="color" id="userTextColorInput" value="#555550"></label>
+      <details class="drawer-accordion" id="drawerTypography">
+        <summary class="drawer-accordion-summary"><span class="drawer-accordion-title">文字排版</span><small>字体 · 颜色 · 间距</small><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+        <div class="drawer-accordion-panel">
+          <details class="drawer-subaccordion" id="drawerFontSettings">
+            <summary class="drawer-subaccordion-summary"><span>字体与字号</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel">
+              <div class="wp-group"><div class="wp-label">字号</div><div class="wp-slider"><input type="range" id="fontSizeRange" min="11" max="20" step="0.5" value="13.5"><span class="wp-range" id="fontSizeVal">13.5</span></div></div>
+              <div class="wp-group"><div class="wp-label">正文字体</div><select class="wp-select" id="fontFamilySelect" aria-label="正文字体"><option value="serif">宋体 / 衬线</option><option value="sans">简洁黑体</option><option value="kai">手写楷体</option><option value="book">文学衬线</option><option value="mono">等宽打字机</option></select></div>
+              <div class="wp-group"><div class="wp-label">字体粗细</div><div class="wp-chips" id="fontWeightChips"></div></div>
+            </div>
+          </details>
+          <details class="drawer-subaccordion" id="drawerTextColors">
+            <summary class="drawer-subaccordion-summary"><span>文字颜色</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel"><div class="wp-color-controls">
+              <label class="wp-color-field" for="charTextColorInput"><span>角色正文</span><input type="color" id="charTextColorInput" value="#292927"></label>
+              <label class="wp-color-field" for="userTextColorInput"><span>我的叙述</span><input type="color" id="userTextColorInput" value="#555550"></label>
+            </div></div>
+          </details>
+          <details class="drawer-subaccordion" id="drawerSpacing">
+            <summary class="drawer-subaccordion-summary"><span>行距、段落与对齐</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel">
+              <div class="wp-group"><div class="wp-label">行距</div><div class="wp-slider"><input type="range" id="lineHeightRange" min="1.4" max="2.5" step="0.05" value="1.95"><span class="wp-range" id="lineHeightVal">1.95</span></div></div>
+              <div class="wp-group"><div class="wp-label">段落间距</div><div class="wp-slider"><input type="range" id="paragraphGapRange" min="0" max="2" step="0.1" value="0.9"><span class="wp-range" id="paragraphGapVal">0.9em</span></div></div>
+              <div class="wp-group"><div class="wp-label">字间距</div><div class="wp-slider"><input type="range" id="letterSpacingRange" min="-0.02" max="0.08" step="0.01" value="0"><span class="wp-range" id="letterSpacingVal">0</span></div></div>
+              <div class="wp-group"><div class="wp-label">正文对齐</div><div class="wp-chips" id="textAlignChips"></div></div>
+            </div>
+          </details>
+          <details class="drawer-subaccordion" id="drawerBackgroundWash">
+            <summary class="drawer-subaccordion-summary"><span>背景柔化</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel"><div class="wp-group"><div class="wp-label">背景柔化程度</div><div class="wp-slider"><input type="range" id="backgroundWashRange" min="0" max="0.75" step="0.05" value="0.24"><span class="wp-range" id="backgroundWashVal">24%</span></div></div></div>
+          </details>
         </div>
-      </div>
+      </details>
 
-      <div class="wp-group">
-        <div class="wp-label">行距</div>
-        <div class="wp-slider">
-          <input type="range" id="lineHeightRange" min="1.4" max="2.5" step="0.05" value="1.95">
-          <span class="wp-range" id="lineHeightVal">1.95</span>
+      <details class="drawer-accordion" id="drawerBackground">
+        <summary class="drawer-accordion-summary"><span class="drawer-accordion-title">背景与阅读</span><small>背景图 · 断屏 · 摘要</small><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+        <div class="drawer-accordion-panel">
+          <details class="drawer-subaccordion" id="drawerBackgroundStyle">
+            <summary class="drawer-subaccordion-summary"><span>背景外观</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel"><div class="wp-group"><div class="wp-label">纯色或图片</div><div class="wp-bg-row"><input type="color" id="bgColorInput" value="#ffffff" title="背景色"><button class="wp-chip" id="bgImageBtn" type="button">上传图片</button><button class="wp-chip" id="bgClearBtn" type="button">清除</button><input type="file" id="bgImageFile" accept="image/*" hidden></div></div></div>
+          </details>
+          <details class="drawer-subaccordion" id="drawerBreakSummary">
+            <summary class="drawer-subaccordion-summary"><span>断屏与摘要</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel">
+              <div class="wp-group"><div class="wp-label">断屏</div><div class="wp-chips" id="breakChips"></div></div>
+              <div class="wp-group"><div class="wp-label">总结区展示</div><div class="wp-chips" id="summaryChips"></div></div>
+            </div>
+          </details>
         </div>
-      </div>
+      </details>
 
-      <div class="wp-group">
-        <div class="wp-label">段落间距</div>
-        <div class="wp-slider">
-          <input type="range" id="paragraphGapRange" min="0" max="2" step="0.1" value="0.9">
-          <span class="wp-range" id="paragraphGapVal">0.9em</span>
+      <details class="drawer-accordion" id="drawerReplyStyles">
+        <summary class="drawer-accordion-summary"><span class="drawer-accordion-title">自动回复文风</span><small id="replyPresetSummary">已保存 3 个 · 勾选最多 3 个</small><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+        <div class="drawer-accordion-panel">
+          <p class="reply-style-help">预设可以反复保存。勾选 1–3 个文风用于生成回复；勾选的顺序决定三条建议的文风顺序。</p>
+          <div class="reply-presets-list" id="replyPresetsList"></div>
+          <div class="reply-presets-footer"><span id="replyPresetCount">已保存 3 个</span><span id="replyPresetSelectedCount">已勾选 3 / 3</span></div>
+          <button type="button" id="newReplyPresetBtn" class="reply-preset-new">＋ 新建预设</button>
+          <details class="drawer-subaccordion reply-preset-editor" id="replyPresetEditor">
+            <summary class="drawer-subaccordion-summary"><span id="replyPresetEditorSummary">新增一个文风预设</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+            <div class="drawer-subaccordion-panel">
+              <div class="reply-style-field"><label for="replyPresetName">预设名称</label><input class="wp-text-input" id="replyPresetName" maxlength="24" placeholder="例如：克制但关心"></div>
+              <div class="reply-style-field"><label for="replyPresetPrompt">文风要求</label><textarea class="wp-textarea" id="replyPresetPrompt" maxlength="800" rows="4" placeholder="描述语气、句子节奏、行动描写、情绪表达等。"></textarea></div>
+              <div class="reply-preset-editor-actions"><button type="button" id="saveReplyPreset" class="reply-preset-save">保存预设</button><button type="button" id="cancelReplyPreset" class="reply-preset-cancel">取消</button></div>
+            </div>
+          </details>
         </div>
-      </div>
+      </details>
 
-      <div class="wp-group">
-        <div class="wp-label">字间距</div>
-        <div class="wp-slider">
-          <input type="range" id="letterSpacingRange" min="-0.02" max="0.08" step="0.01" value="0">
-          <span class="wp-range" id="letterSpacingVal">0</span>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">正文对齐</div>
-        <div class="wp-chips" id="textAlignChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">背景柔化</div>
-        <div class="wp-slider">
-          <input type="range" id="backgroundWashRange" min="0" max="0.75" step="0.05" value="0.24">
-          <span class="wp-range" id="backgroundWashVal">24%</span>
-        </div>
-      </div>
-
-      
-  </div>
-</details>
-<details class="drawer-accordion" id="drawerBackground">
-  <summary class="drawer-accordion-summary">
-    <span class="drawer-accordion-title">背景与阅读</span>
-    <small>背景图 · 断屏 · 摘要</small>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-  </summary>
-  <div class="drawer-accordion-panel">
-
-        <div class="wp-bg-row">
-          <input type="color" id="bgColorInput" value="#ffffff" title="背景色">
-          <button class="wp-chip" id="bgImageBtn" type="button">上传图片</button>
-          <button class="wp-chip" id="bgClearBtn" type="button">清除</button>
-          <input type="file" id="bgImageFile" accept="image/*" hidden>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">断屏</div>
-        <div class="wp-chips" id="breakChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">总结区展示</div>
-        <div class="wp-chips" id="summaryChips"></div>
-      </div>
-
-      
-  </div>
-</details>
-<details class="drawer-accordion" id="drawerReplyStyles">
-  <summary class="drawer-accordion-summary">
-    <span class="drawer-accordion-title">自动回复文风</span>
-    <small>自定义三种回复方式</small>
-    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
-  </summary>
-  <div class="drawer-accordion-panel">
-<div class="reply-style-editor">
-        <div class="wp-label">自动回复预设 / YOUR REPLY STYLES</div>
-        <p class="reply-style-help">编辑三种你常用的回应风格。点击底部「帮我回复」时，AI 会依次按这三套文风生成选项。</p>
-        <div class="reply-style-field">
-          <label for="replyStyleName1">01 · 风格名称</label>
-          <input class="wp-text-input" id="replyStyleName1" maxlength="20" value="自然接话">
-          <textarea class="wp-textarea" id="replyStylePrompt1" maxlength="240" rows="2">像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。</textarea>
-        </div>
-        <div class="reply-style-field">
-          <label for="replyStyleName2">02 · 风格名称</label>
-          <input class="wp-text-input" id="replyStyleName2" maxlength="20" value="细腻共情">
-          <textarea class="wp-textarea" id="replyStylePrompt2" maxlength="240" rows="2">更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。</textarea>
-        </div>
-        <div class="reply-style-field">
-          <label for="replyStyleName3">03 · 风格名称</label>
-          <input class="wp-text-input" id="replyStyleName3" maxlength="20" value="轻松俏皮">
-          <textarea class="wp-textarea" id="replyStylePrompt3" maxlength="240" rows="2">轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。</textarea>
-        </div>
-        <button type="button" id="saveReplyStyles" class="wp-chip reply-style-save">保存三种预设</button>
-      </div>
-  </div>
-</details>
     </div>
   </header>
 
@@ -1433,10 +1395,10 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             charTextColor: '#292927', userTextColor: '#555550',
             lineHeight: 1.95, paragraphGap: 0.9, letterSpacing: 0,
             textAlign: 'left', backgroundWash: 0.24,
-            replyStyles: [
-                { name: '自然接话', prompt: '像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。' },
-                { name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。' },
-                { name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。' }
+            replyPresets: [
+                { id: 'preset-natural', name: '自然接话', prompt: '像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。', selected: true },
+                { id: 'preset-empathy', name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。', selected: true },
+                { id: 'preset-playful', name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。', selected: true }
             ],
             bgColor: '#FFFFFF', bgImage: '',
             breakMode: 'none', summaryMode: 'card'
@@ -1465,14 +1427,37 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             if (v.textAlign === 'left' || v.textAlign === 'justify') d.textAlign = v.textAlign;
             var wash = parseFloat(v.backgroundWash);
             if (wash >= 0 && wash <= 0.75) d.backgroundWash = wash;
-            if (Array.isArray(v.replyStyles)) {
-                d.replyStyles = d.replyStyles.map(function (fallback, i) {
-                    var saved = v.replyStyles[i] || {};
+            var presetFallbacks = d.replyPresets.slice();
+            var presetSource = Array.isArray(v.replyPresets)
+                ? v.replyPresets
+                : (Array.isArray(v.replyStyles) ? v.replyStyles.map(function (item, index) {
+                    var fallback = presetFallbacks[index] || {};
                     return {
-                        name: String(saved.name || fallback.name).trim().slice(0, 20) || fallback.name,
-                        prompt: String(saved.prompt || fallback.prompt).trim().slice(0, 240) || fallback.prompt
+                        id: fallback.id || ('preset-migrated-' + (index + 1)),
+                        name: item && item.name,
+                        prompt: item && item.prompt,
+                        selected: true
+                    };
+                }) : null);
+            if (presetSource) {
+                var seenPresetIds = {};
+                d.replyPresets = presetSource.slice(0, 60).map(function (saved, index) {
+                    saved = saved && typeof saved === 'object' ? saved : {};
+                    var fallback = presetFallbacks[index] || { id: 'preset-' + (index + 1), name: '文风 ' + (index + 1), prompt: '' };
+                    var id = String(saved.id || fallback.id || ('preset-' + (index + 1))).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+                    if (!id || seenPresetIds[id]) id = 'preset-' + (index + 1) + '-' + String(index + 1);
+                    seenPresetIds[id] = true;
+                    return {
+                        id: id,
+                        name: String(saved.name || fallback.name || '未命名文风').trim().slice(0, 24) || '未命名文风',
+                        prompt: String(saved.prompt || fallback.prompt || '').trim().slice(0, 800),
+                        selected: saved.selected === true
                     };
                 });
+                // 旧版固定三文风没有 selected 字段，升级时默认沿用原先三个风格均启用的行为。
+                if (Array.isArray(v.replyStyles) && !Array.isArray(v.replyPresets)) {
+                    d.replyPresets.forEach(function (item) { item.selected = true; });
+                }
             }
             if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor)) d.bgColor = v.bgColor;
             if (v.bgImage && /^data:image\//.test(v.bgImage)) d.bgImage = v.bgImage;
@@ -1506,47 +1491,162 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             container.appendChild(b);
         });
     }
-    function bindReplyStyleControls() {
-        for (var i = 0; i < 3; i++) {
-            (function (index) {
-                var item = writingOpts.replyStyles[index];
-                var nameInput = document.getElementById('replyStyleName' + (index + 1));
-                var promptInput = document.getElementById('replyStylePrompt' + (index + 1));
-                if (nameInput) {
-                    nameInput.value = item.name;
-                    if (!nameInput.dataset.bound) {
-                        nameInput.addEventListener('input', function () {
-                            item.name = nameInput.value.slice(0, 20);
-                            saveWritingOpts();
-                        });
-                        nameInput.dataset.bound = '1';
-                    }
-                }
-                if (promptInput) {
-                    promptInput.value = item.prompt;
-                    if (!promptInput.dataset.bound) {
-                        promptInput.addEventListener('input', function () {
-                            item.prompt = promptInput.value.slice(0, 240);
-                            saveWritingOpts();
-                        });
-                        promptInput.dataset.bound = '1';
-                    }
-                }
-            })(i);
+    var editingReplyPresetId = null;
+    function getSelectedReplyPresets() {
+        return (writingOpts.replyPresets || []).filter(function (item) { return item.selected === true; }).slice(0, 3);
+    }
+    function renderReplyPresetList() {
+        var list = document.getElementById('replyPresetsList');
+        var totalLabel = document.getElementById('replyPresetCount');
+        var selectedLabel = document.getElementById('replyPresetSelectedCount');
+        var summaryLabel = document.getElementById('replyPresetSummary');
+        var presets = writingOpts.replyPresets || [];
+        var selectedCount = presets.filter(function (item) { return item.selected === true; }).length;
+        if (totalLabel) totalLabel.textContent = '已保存 ' + presets.length + ' 个';
+        if (selectedLabel) selectedLabel.textContent = '已勾选 ' + selectedCount + ' / 3';
+        if (summaryLabel) summaryLabel.textContent = '已保存 ' + presets.length + ' 个 · 已选 ' + selectedCount;
+        if (!list) return;
+        list.innerHTML = '';
+        if (!presets.length) {
+            var empty = document.createElement('div');
+            empty.className = 'reply-presets-empty';
+            empty.textContent = '还没有保存的预设，点击下方“新建预设”添加第一种文风。';
+            list.appendChild(empty);
+            return;
         }
-        var saveButton = document.getElementById('saveReplyStyles');
+        presets.forEach(function (preset) {
+            var row = document.createElement('div');
+            row.className = 'reply-preset-row' + (preset.selected ? ' is-selected' : '');
+            var info = document.createElement('div');
+            info.className = 'reply-preset-info';
+            var name = document.createElement('strong');
+            name.className = 'reply-preset-name';
+            name.textContent = preset.name;
+            var prompt = document.createElement('span');
+            prompt.className = 'reply-preset-prompt';
+            prompt.textContent = preset.prompt || '尚未填写文风要求';
+            info.append(name, prompt);
+
+            var actions = document.createElement('div');
+            actions.className = 'reply-preset-actions';
+            var edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'reply-preset-edit';
+            edit.textContent = '编辑';
+            edit.setAttribute('aria-label', '编辑预设：' + preset.name);
+            edit.addEventListener('click', function () {
+                editingReplyPresetId = preset.id;
+                var nameInput = document.getElementById('replyPresetName');
+                var promptInput = document.getElementById('replyPresetPrompt');
+                var editor = document.getElementById('replyPresetEditor');
+                var editorTitle = document.getElementById('replyPresetEditorSummary');
+                var saveButton = document.getElementById('saveReplyPreset');
+                if (nameInput) nameInput.value = preset.name;
+                if (promptInput) promptInput.value = preset.prompt;
+                if (editorTitle) editorTitle.textContent = '编辑预设 · ' + preset.name;
+                if (saveButton) saveButton.textContent = '保存修改';
+                if (editor) { editor.open = true; editor.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                if (nameInput) nameInput.focus();
+            });
+            var remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'reply-preset-remove';
+            remove.textContent = '删除';
+            remove.setAttribute('aria-label', '删除预设：' + preset.name);
+            remove.addEventListener('click', function () {
+                if (!window.confirm('删除预设“' + preset.name + '”？')) return;
+                writingOpts.replyPresets = writingOpts.replyPresets.filter(function (item) { return item.id !== preset.id; });
+                if (editingReplyPresetId === preset.id) resetReplyPresetEditor();
+                saveWritingOpts();
+                renderReplyPresetList();
+                toast('预设已删除');
+            });
+            var checkLabel = document.createElement('label');
+            checkLabel.className = 'reply-preset-check';
+            checkLabel.title = '选择此文风用于自动回复';
+            var check = document.createElement('input');
+            check.type = 'checkbox';
+            check.checked = preset.selected === true;
+            check.setAttribute('aria-label', '选择预设：' + preset.name);
+            var checkVisual = document.createElement('span');
+            checkVisual.className = 'reply-preset-checkmark';
+            checkVisual.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3.1 3.1L13 4.5"/></svg>';
+            check.addEventListener('change', function () {
+                if (check.checked && getSelectedReplyPresets().length >= 3) {
+                    check.checked = false;
+                    toast('自动回复最多勾选三种文风');
+                    return;
+                }
+                preset.selected = check.checked;
+                saveWritingOpts();
+                renderReplyPresetList();
+            });
+            checkLabel.append(check, checkVisual);
+            actions.append(edit, remove);
+            row.append(info, actions, checkLabel);
+            list.appendChild(row);
+        });
+    }
+    function resetReplyPresetEditor() {
+        editingReplyPresetId = null;
+        var nameInput = document.getElementById('replyPresetName');
+        var promptInput = document.getElementById('replyPresetPrompt');
+        var editor = document.getElementById('replyPresetEditor');
+        var editorTitle = document.getElementById('replyPresetEditorSummary');
+        var saveButton = document.getElementById('saveReplyPreset');
+        if (nameInput) nameInput.value = '';
+        if (promptInput) promptInput.value = '';
+        if (editorTitle) editorTitle.textContent = '新增一个文风预设';
+        if (saveButton) saveButton.textContent = '保存预设';
+        if (editor) editor.open = false;
+    }
+    function startNewReplyPreset() {
+        resetReplyPresetEditor();
+        var editor = document.getElementById('replyPresetEditor');
+        if (editor) editor.open = true;
+        var nameInput = document.getElementById('replyPresetName');
+        if (nameInput) nameInput.focus();
+    }
+    function bindReplyStyleControls() {
+        renderReplyPresetList();
+        var newButton = document.getElementById('newReplyPresetBtn');
+        if (newButton && !newButton.dataset.bound) {
+            newButton.addEventListener('click', startNewReplyPreset);
+            newButton.dataset.bound = '1';
+        }
+        var saveButton = document.getElementById('saveReplyPreset');
         if (saveButton && !saveButton.dataset.bound) {
             saveButton.addEventListener('click', function () {
-                for (var i = 0; i < 3; i++) {
-                    var nameInput = document.getElementById('replyStyleName' + (i + 1));
-                    var promptInput = document.getElementById('replyStylePrompt' + (i + 1));
-                    if (nameInput) writingOpts.replyStyles[i].name = (nameInput.value || '').trim().slice(0, 20) || ['自然接话','细腻共情','轻松俏皮'][i];
-                    if (promptInput) writingOpts.replyStyles[i].prompt = (promptInput.value || '').trim().slice(0, 240) || writingOpts.replyStyles[i].prompt;
+                var nameInput = document.getElementById('replyPresetName');
+                var promptInput = document.getElementById('replyPresetPrompt');
+                var name = String(nameInput && nameInput.value || '').trim().slice(0, 24);
+                var prompt = String(promptInput && promptInput.value || '').trim().slice(0, 800);
+                if (!name) { toast('先给这个预设起个名字'); if (nameInput) nameInput.focus(); return; }
+                if (!prompt) { toast('请填写这个预设的文风要求'); if (promptInput) promptInput.focus(); return; }
+                var item = null;
+                if (editingReplyPresetId) {
+                    item = writingOpts.replyPresets.find(function (entry) { return entry.id === editingReplyPresetId; }) || null;
+                }
+                if (item) {
+                    item.name = name; item.prompt = prompt;
+                } else {
+                    var selectedCount = getSelectedReplyPresets().length;
+                    writingOpts.replyPresets.push({
+                        id: 'reply-preset-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+                        name: name, prompt: prompt, selected: selectedCount < 3
+                    });
                 }
                 saveWritingOpts();
-                toast('三种回复文风已保存');
+                renderReplyPresetList();
+                resetReplyPresetEditor();
+                toast(item ? '预设修改已保存' : '新预设已保存');
             });
             saveButton.dataset.bound = '1';
+        }
+        var cancelButton = document.getElementById('cancelReplyPreset');
+        if (cancelButton && !cancelButton.dataset.bound) {
+            cancelButton.addEventListener('click', resetReplyPresetEditor);
+            cancelButton.dataset.bound = '1';
         }
     }
 
@@ -2366,7 +2466,10 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         var options = Array.isArray(parsed) ? parsed : parsed.options || parsed.replies || parsed.choices;
         if (!Array.isArray(options) || options.length < 3) throw new Error('没有成功识别出三条回复，请重新生成');
         return options.slice(0, 3).map(function (item, index) {
-            var fallback = writingOpts.replyStyles[index] || { name: '风格 ' + (index + 1) };
+            var selectedPresets = getSelectedReplyPresets();
+            var fallback = selectedPresets.length
+                ? selectedPresets[index % selectedPresets.length]
+                : { name: '自定义文风' };
             var text = String(item.text || item.reply || item.content || '').trim();
             var style = String(item.style || item.name || fallback.name).trim();
             if (!text) throw new Error('第 ' + (index + 1) + ' 条回复为空，请重新生成');
@@ -2430,7 +2533,9 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             '回应写给角色本人，而不是写给读者。中文自然表达，可包含少量行动描写或台词，适应正在进行的面对面场景。',
             '尊重用户自主性：不要替用户做重大承诺、决定关系走向或编造用户没有表达过的经历。每条通常 1–3 句，尽量适合直接发送；三条要明显不同，但都符合当前剧情。',
             '只能返回合法 JSON，不要 Markdown 代码块，不要解释，不要添加 JSON 外文字。格式严格为：{"options":[{"style":"风格名称","text":"回应内容"},{"style":"风格名称","text":"回应内容"},{"style":"风格名称","text":"回应内容"}]}。',
-            '必须按以下三个自定义文风的顺序各生成一条：',
+            (styles.length === 3
+                ? '按以下三个已勾选的文风顺序各生成一条回复。'
+                : '用户只勾选了 ' + styles.length + ' 个文风。请仍然生成三条内容明显不同的回应，反复参考已勾选文风，但改变回应角度、动作或表达节奏；不要把未勾选的预设混入。'),
             styles.map(function (style, index) {
                 return (index + 1) + '. 风格名称：' + style.name + '\n文风要求：' + style.prompt;
             }).join('\n')
@@ -2465,17 +2570,17 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             toast('API 组件未加载');
             return;
         }
-        var styles = (writingOpts.replyStyles || []).slice(0, 3).map(function (item, index) {
-            var fallback = [
-                { name: '自然接话', prompt: '自然、真实地回应对方' },
-                { name: '细腻共情', prompt: '温柔并关注细节和情绪' },
-                { name: '轻松俏皮', prompt: '轻松并有一点俏皮' }
-            ][index];
+        var styles = getSelectedReplyPresets().map(function (item) {
             return {
-                name: String(item.name || fallback.name).trim() || fallback.name,
-                prompt: String(item.prompt || fallback.prompt).trim() || fallback.prompt
+                name: String(item.name || '自定义文风').trim() || '自定义文风',
+                prompt: String(item.prompt || '').trim()
             };
         });
+        if (!styles.length) {
+            setReplyOptionsStatus('请先打开右上角菜单，在“自动回复预设”里勾选至少一种文风。', true);
+            if (replySuggestionsList) replySuggestionsList.innerHTML = '';
+            return;
+        }
         generatingReplyOptions = true;
         if (replyOptionsBtn) { replyOptionsBtn.disabled = true; replyOptionsBtn.classList.add('is-loading'); }
         if (refreshReplyOptions) refreshReplyOptions.disabled = true;
