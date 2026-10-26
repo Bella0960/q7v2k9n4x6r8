@@ -155,6 +155,21 @@
             writeJSON(key, cfg);
         });
     }
+    var CHAT_THEME_MIGRATED_FLAG = 'maomao_chat_theme_migrated_v1';
+    // Migrate the former page-wide preset into its own global key once, then detach
+    // the exact built-in values it previously wrote into the bubble customization configs.
+    (function migrateLegacyPageTheme() {
+        try {
+            if (localStorage.getItem(CHAT_THEME_MIGRATED_FLAG) === '1') return;
+            var saved = localStorage.getItem(CHAT_THEME_KEY);
+            if (saved !== 'default' && saved !== 'imessage' &&
+                readScope('global').themePreset === 'imessage') {
+                localStorage.setItem(CHAT_THEME_KEY, 'imessage');
+            }
+            cleanupLegacyThemeValues();
+            localStorage.setItem(CHAT_THEME_MIGRATED_FLAG, '1');
+        } catch (e) {}
+    })();
     NS.getThemePreset = function () {
         try {
             var saved = localStorage.getItem(CHAT_THEME_KEY);
@@ -164,8 +179,7 @@
     };
     NS.setThemePreset = function (theme) {
         theme = theme === 'imessage' ? 'imessage' : 'default';
-        // Regardless of the next theme, detach any legacy built-in iMessage values
-        // from bubble customization. Only configs explicitly marked by the old preset are touched.
+        // The old editor may have left preset-owned values in bubble configs.
         cleanupLegacyThemeValues();
         try {
             localStorage.setItem(CHAT_THEME_KEY, theme);
@@ -292,6 +306,14 @@
     NS.resolve = function (contactId) {
         var out = {};
         for (var k in DEFAULTS) out[k] = DEFAULTS[k];
+        var activeThemePreset = NS.getThemePreset();
+        // A page theme supplies default bubble values only. Explicit global and per-role
+        // bubble customizations are then layered over it, preserving the editor's purpose.
+        if (activeThemePreset === 'imessage') {
+            for (var themeKey in LEGACY_IMESSAGE_VALUES) {
+                if (themeKey in DEFAULTS) out[themeKey] = LEGACY_IMESSAGE_VALUES[themeKey];
+            }
+        }
         var layers = [readScope('global')];
         if (contactId != null && contactId !== '') layers.push(readScope(String(contactId)));
         layers.forEach(function (vars) {
@@ -299,8 +321,8 @@
                 if (k in DEFAULTS && vars[k] !== null && vars[k] !== '') out[k] = vars[k];
             }
         });
-        // 整页主题采用独立的全局键，忽略旧的单角色 themePreset，避免覆盖全局选择。
-        out.themePreset = NS.getThemePreset();
+        // Ignore any old per-role themePreset: page layout selection is global only.
+        out.themePreset = activeThemePreset;
         return out;
     };
 
