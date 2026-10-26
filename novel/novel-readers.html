@@ -15,7 +15,7 @@ body.readers-mode .independent-nav a{font-size:11px}
 body.readers-mode .scroll>#pane-audience>.section-title,
 body.readers-mode .scroll>#pane-audience>.hint,
 body.readers-mode .scroll>#pane-audience>.stats{display:none!important}
-body.readers-mode .reader-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(180px,.7fr);gap:25px;align-items:end;padding:16px 0 28px;border-bottom:1px solid #222}
+body.readers-mode .reader-community-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(180px,.7fr);gap:25px;align-items:end;padding:16px 0 28px;border-bottom:1px solid #222}
 body.readers-mode .reader-kicker{font-size:9px;letter-spacing:.2em;color:#999;margin-bottom:13px}
 body.readers-mode .reader-title{font:400 clamp(38px,6vw,68px)/.98 Georgia,"Songti SC",serif;letter-spacing:-.06em;margin:0 0 13px}
 body.readers-mode .reader-subtitle{max-width:470px;font-size:12px;line-height:1.9;color:#777;margin:0}
@@ -29,7 +29,7 @@ body.readers-mode .reader-metric+.reader-metric{padding-left:18px}
 body.readers-mode .reader-metric:last-child{border-right:0}
 body.readers-mode .reader-metric-label{font-size:10px;color:#999;margin-bottom:7px}
 body.readers-mode .reader-metric-value{font:400 29px Georgia,serif;letter-spacing:-.04em}
-body.readers-mode .reader-layout{display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:clamp(22px,4vw,54px);align-items:start}
+body.readers-mode .reader-community-layout{display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:clamp(22px,4vw,54px);align-items:start}
 body.readers-mode .reader-feed-head{display:flex;justify-content:space-between;align-items:end;gap:15px;padding-bottom:13px;border-bottom:1px solid #222;margin-bottom:4px}
 body.readers-mode .reader-feed-title{font:400 28px Georgia,"Songti SC",serif;letter-spacing:-.04em}
 body.readers-mode .reader-feed-count{font-size:10px;color:#999}
@@ -63,9 +63,9 @@ body.readers-mode .reader-side select{border-radius:2px;background:#fff}
 body.readers-mode .reader-disclaimer{font-size:9px;line-height:1.8;color:#aaa;margin-top:22px}
 @media(max-width:760px){
  body.readers-mode .phone{width:100%;height:100dvh}
- body.readers-mode .reader-hero{grid-template-columns:1fr;gap:19px;padding-top:20px}
+ body.readers-mode .reader-community-hero{grid-template-columns:1fr;gap:19px;padding-top:20px}
  body.readers-mode .reader-book{border-left:0;border-top:1px solid #e5e5e0;padding:12px 0 0}
- body.readers-mode .reader-layout{grid-template-columns:1fr;gap:28px}
+ body.readers-mode .reader-community-layout{grid-template-columns:1fr;gap:28px}
  body.readers-mode .reader-side{grid-row:1;padding-bottom:17px;border-bottom:1px solid #e5e5e0}
  body.readers-mode .reader-side .actions{grid-template-columns:repeat(2,minmax(0,1fr))}
  body.readers-mode .reader-side #chapterReaderStats{margin-top:19px}
@@ -83,11 +83,11 @@ body.readers-mode{background:#fff}
 body.readers-mode .top{min-height:62px}
 body.readers-mode .scroll{padding-bottom:80px}
 body.readers-mode .scroll>#pane-audience>.independent-nav{margin-bottom:14px;padding-top:11px;padding-bottom:11px;gap:22px}
-body.readers-mode .reader-hero{padding:24px 0 30px}
+body.readers-mode .reader-community-hero{padding:24px 0 30px}
 body.readers-mode .reader-subtitle{font-size:13px;line-height:2}
 body.readers-mode .reader-dashboard{margin-bottom:34px}
 body.readers-mode .reader-metric{padding-top:20px;padding-bottom:21px}
-body.readers-mode .reader-layout{grid-template-columns:minmax(0,1fr) 260px;gap:clamp(28px,5vw,64px)}
+body.readers-mode .reader-community-layout{grid-template-columns:minmax(0,1fr) 260px;gap:clamp(28px,5vw,64px)}
 body.readers-mode .reader-feed-head{padding-bottom:16px}
 body.readers-mode .reader-feed-title{font-size:30px}
 body.readers-mode .reader-filters{padding:17px 0 18px;gap:12px}
@@ -104,7 +104,7 @@ body.readers-mode .reader-side .btn{padding:13px 14px}
  body.readers-mode .top{padding-left:18px;padding-right:18px}
  body.readers-mode .scroll{padding-left:20px;padding-right:20px}
  body.readers-mode .scroll>#pane-audience>.independent-nav{gap:18px;margin-bottom:8px}
- body.readers-mode .reader-hero{padding:23px 0 23px;gap:16px}
+ body.readers-mode .reader-community-hero{padding:23px 0 23px;gap:16px}
  body.readers-mode .reader-kicker{margin-bottom:11px}
  body.readers-mode .reader-title{font-size:42px;line-height:1.02;margin-bottom:12px}
  body.readers-mode .reader-subtitle{font-size:12px;line-height:1.9}
@@ -116,8 +116,8 @@ body.readers-mode .reader-side .btn{padding:13px 14px}
  body.readers-mode .reader-metric{padding-top:14px;padding-bottom:15px}
  body.readers-mode .reader-metric-label{font-size:9px;margin-bottom:6px}
  body.readers-mode .reader-metric-value{font-size:23px}
- body.readers-mode .reader-layout{grid-template-columns:minmax(0,1fr);gap:30px}
- body.readers-mode .reader-layout>.reader-side{grid-row:auto;order:2;padding:19px 0 0;border-top:1px solid #222;border-bottom:0}
+ body.readers-mode .reader-community-layout{grid-template-columns:minmax(0,1fr);gap:30px}
+ body.readers-mode .reader-community-layout>.reader-side{grid-row:auto;order:2;padding:19px 0 0;border-top:1px solid #222;border-bottom:0}
  body.readers-mode .reader-feed-head{padding-bottom:13px}
  body.readers-mode .reader-feed-title{font-size:26px}
  body.readers-mode .reader-filters{padding:13px 0 14px;gap:8px}
@@ -255,8 +255,8 @@ body.readers-mode .top{padding:calc(10px + env(safe-area-inset-top)) 18px 10px;m
 body.readers-mode .brand{font-size:9px;letter-spacing:.12em}
 body.readers-mode .top .btn{padding:9px 12px;font-size:11px}
 body.readers-mode .scroll{padding:0 20px 38px}
-body.readers-mode .scroll>#pane-audience>.independent-nav{display:none!important}
-body.readers-mode .reader-hero{display:block;padding:22px 0 20px}
+body.readers-mode .independent-nav{display:none!important}
+body.readers-mode .reader-community-hero{display:block;padding:22px 0 20px}
 body.readers-mode .reader-kicker{font-size:9px;letter-spacing:.13em;margin-bottom:10px}
 body.readers-mode .reader-title{font:600 clamp(30px,8vw,40px)/1.08 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;letter-spacing:-.045em;margin:0 0 12px;max-width:360px}
 body.readers-mode .reader-subtitle{font-size:13px;line-height:1.75;max-width:34em}
@@ -269,7 +269,7 @@ body.readers-mode .reader-metric{padding:13px 8px 14px 0}
 body.readers-mode .reader-metric+.reader-metric{padding-left:10px}
 body.readers-mode .reader-metric-label{font-size:10px;margin-bottom:5px}
 body.readers-mode .reader-metric-value{font:500 23px/1.2 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
-body.readers-mode .reader-layout{display:flex;flex-direction:column;gap:24px}
+body.readers-mode .reader-community-layout{display:flex;flex-direction:column;gap:24px}
 body.readers-mode .reader-side{order:0;width:100%;padding:15px 0 17px;border-top:1px solid #222;border-bottom:1px solid #e8e8e5}
 body.readers-mode .reader-side-title{font:600 19px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;margin-bottom:4px}
 body.readers-mode .reader-side-hint{font-size:11px;line-height:1.7;margin-bottom:12px}
@@ -293,10 +293,10 @@ body.readers-mode .reader-empty strong{font:600 17px/1.5 -apple-system,BlinkMacS
 body.readers-mode .reader-disclaimer{font-size:10px;line-height:1.8;margin-top:24px}
 @media(min-width:761px){
  body.readers-mode .phone{width:min(100%,980px)}
- body.readers-mode .reader-hero{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr);gap:28px;align-items:end}
+ body.readers-mode .reader-community-hero{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr);gap:28px;align-items:end}
  body.readers-mode .reader-book{border-top:0;border-left:1px solid #e8e8e5;margin-top:0;padding:4px 0 4px 18px}
  body.readers-mode .reader-title{font-size:46px}
- body.readers-mode .reader-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:32px}
+ body.readers-mode .reader-community-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:32px}
  body.readers-mode .reader-side{order:initial}
  body.readers-mode .reader-filters .field{flex:1 1 140px}
 }
