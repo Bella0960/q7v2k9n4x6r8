@@ -81,6 +81,116 @@ body{background:#f3f4f6;color:#202124;font-family:-apple-system,BlinkMacSystemFo
 
 /* Work list controls take precedence over the legacy studio layout. */
 #pane-works{padding:20px;background:#fff;border:1px solid #e7e9ed;border-radius:12px}#pane-works>.section-title,#pane-works>.hint{display:none}.works-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.works-heading .section-title{margin:0}.works-filters{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(110px,.8fr) minmax(110px,.8fr);gap:8px;margin-bottom:10px}.works-filters .input,.works-filters select{min-width:0;font:12px -apple-system,BlinkMacSystemFont,sans-serif}.works-count{font-size:11px;color:#737780;margin:0 0 10px}.work-description{font-size:12px;line-height:1.65;color:#606671;margin:10px 0 0}.work-meta{display:flex;flex-wrap:wrap;gap:7px 13px;margin-top:10px;font-size:11px;color:#737780}.work-meta span{white-space:nowrap}.work-actions .btn{min-height:36px}.work-empty{padding:25px 14px;text-align:center;border:1px dashed #dfe2e7;border-radius:9px;color:#6d737d;font-size:12px;line-height:1.8}.work-empty strong{display:block;color:#25282d;font-size:14px;margin-bottom:5px}@media(max-width:640px){#pane-works{padding:13px}.works-filters{grid-template-columns:1fr 1fr}.works-filters #workSearch{grid-column:1/-1}.works-heading{margin-bottom:12px}.work-meta{gap:7px 10px}.work-actions{display:grid;grid-template-columns:1fr 1fr}.work-actions [data-delete]{grid-column:1/-1}}
+
+/* ===== 作者模拟器界面升级：借鉴淡色书架布局，保留原有功能与数据逻辑 ===== */
+:root{--ink:#202020;--muted:#777;--line:#e9e9e7;--paper:#fff;--wash:#f5f5f3}
+html{background:#f4f4f2}
+body{background:#f4f4f2;color:#202020}
+.phone{width:min(1120px,100%);height:100dvh;min-height:620px;background:#f7f7f5;box-shadow:none}
+.top{padding:calc(13px + env(safe-area-inset-top)) 28px 13px;background:rgba(255,255,255,.96);border-bottom:1px solid #e9e9e7;backdrop-filter:blur(14px)}
+.back{width:36px;height:36px;border:1px solid #e7e7e5;border-radius:12px;background:#fff;color:#333;cursor:pointer}
+.brand{font-size:12px;letter-spacing:.02em;font-weight:650;color:#424242}
+.scroll{max-width:1120px;padding:0 28px 40px}
+.author-heading{padding:25px 0 18px;align-items:center}
+.author-heading h1{font-size:25px;font-weight:700;letter-spacing:-.035em;margin:0}
+.author-heading h1:before{content:"";display:inline-block;width:4px;height:22px;background:#222;margin-right:11px;vertical-align:-3px;border-radius:2px}
+.author-heading p{font-size:12px;color:#777}
+.stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 0 18px}
+.stat{background:#fff;border:1px solid #e9e9e7;border-radius:14px;padding:15px 18px;box-shadow:0 3px 14px rgba(0,0,0,.025)}
+.stat small{font-size:11px;color:#888;margin-bottom:8px}
+.stat strong{font-size:25px;font-weight:650;color:#222;letter-spacing:-.03em}
+.tabs{display:flex;gap:4px;overflow:auto;border:1px solid #e8e8e6;background:#fff;border-radius:12px;padding:5px;margin:0 0 17px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:10px 17px;border-radius:8px;border:0;font-size:12px;color:#777;white-space:nowrap;transition:background .18s,color .18s}
+.tab.active{background:#222;color:#fff;border:0}
+.dashboard-tools{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.tool-group{background:#fff;border:1px solid #e9e9e7;border-radius:14px;padding:15px 16px;box-shadow:0 3px 14px rgba(0,0,0,.02)}
+.tool-group h2{font-size:12px;font-weight:700;margin:0 0 10px;color:#4a4a4a}
+.tool-links{gap:7px}
+.dashboard-shortcut{background:#f8f8f7;border:1px solid #efefed;border-radius:10px;padding:11px 12px;min-height:43px;transition:background .18s,border-color .18s,transform .18s}
+.dashboard-shortcut:hover{background:#f0f0ee;border-color:#dededb}
+.dashboard-shortcut:active{transform:scale(.99)}
+.dashboard-shortcut strong{font-size:12px;font-weight:600}
+.dashboard-shortcut span{color:#888}
+#pane-works,#pane-studio,#pane-audience{background:#fff;border:1px solid #e9e9e7;border-radius:15px;padding:20px;box-shadow:0 4px 18px rgba(0,0,0,.025)}
+#pane-works{padding:20px}
+.works-heading{margin-bottom:14px}
+.section-title,#pane-studio .section-title,#pane-audience .section-title{font-family:inherit;font-size:17px;line-height:1.45;font-weight:700;letter-spacing:-.02em;color:#242424}
+.hint{font-size:11px;line-height:1.8;color:#858585}
+.works-filters{gap:8px;margin-bottom:10px}
+.input,textarea,select{border:1px solid #e6e6e3;border-radius:10px;background:#fafaf9;color:#282828;padding:11px 12px;font-size:12px;transition:border-color .18s,background .18s,box-shadow .18s}
+.input:focus,textarea:focus,select:focus{border-color:#a6a6a2;background:#fff;box-shadow:0 0 0 3px rgba(0,0,0,.035);outline:none}
+.field{gap:7px;margin-bottom:15px}
+.field label{font-size:11px;color:#686868;font-weight:600}
+.row{gap:12px}
+.btn{border:1px solid #e2e2df;border-radius:10px;background:#fff;color:#444;padding:10px 13px;font-size:11px;transition:background .18s,border-color .18s,transform .18s;cursor:pointer}
+.btn:hover{background:#f5f5f3;border-color:#d4d4d0}
+.btn:active{transform:scale(.985)}
+.btn.dark{background:#222;border-color:#222;color:#fff}
+.btn.dark:hover{background:#3a3a3a}
+.work{border:1px solid #e9e9e7;border-radius:13px;padding:16px;margin:0 0 10px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.018);transition:border-color .18s,box-shadow .18s}
+.work:hover{border-color:#d8d8d4;box-shadow:0 5px 16px rgba(0,0,0,.035)}
+.work h3{font-size:15px;font-weight:650;letter-spacing:-.015em;color:#242424;margin:0 0 5px}
+.work p{font-size:11px;line-height:1.75;color:#777}
+.worktop{align-items:center}
+.pill{background:#f5f5f3;border:1px solid #e9e9e6;border-radius:7px;padding:5px 9px;color:#666;font-size:10px}
+.work-meta{gap:7px 14px;margin-top:11px;color:#777;font-size:11px}
+.work-description{font-size:11px;line-height:1.75;color:#777;margin:10px 0 0}
+.work-actions{gap:7px;margin-top:13px}
+.work-actions .btn{min-height:36px}
+.works-count{font-size:11px;color:#777;margin:0 0 10px}
+.work-empty{border:1px dashed #dededb;border-radius:12px;background:#fafaf9;padding:28px 16px;color:#777}
+.chapter{border:1px solid #e9e9e7;border-radius:11px;padding:13px;margin-bottom:8px;background:#fff}
+.chapter-head{gap:10px}
+.chapter-num{font:600 13px -apple-system,BlinkMacSystemFont,sans-serif;color:#999;width:28px}
+.chapter-title{font-size:12px;font-weight:600;color:#303030}
+.chapter small{font-size:10px;color:#888;white-space:nowrap}
+.chapter-actions{gap:7px;margin-top:11px}
+.chapter-actions .btn{padding:8px 11px}
+.reader-note{border-bottom:1px solid #ededeb;padding:14px 2px}
+.comment{border-left:2px solid #bdbdb8;border-radius:0 9px 9px 0;background:#f8f8f6;padding:11px 13px}
+.outline{border-top-color:#ededeb}
+.toast{background:#242424;border-radius:12px;box-shadow:0 5px 20px rgba(0,0,0,.14)}
+.footer{color:#999}
+@media(min-width:900px){
+ .dashboard-tools{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #pane-studio,#pane-audience{padding:24px}
+ .work-actions{display:flex}
+}
+@media(max-width:640px){
+ .phone{width:100%;min-height:100dvh;height:100dvh;border-radius:0}
+ .top{padding-left:15px;padding-right:15px}
+ .scroll{padding:0 14px 28px}
+ .author-heading{padding:21px 0 15px}
+ .author-heading h1{font-size:22px}
+ .author-heading h1:before{height:19px;margin-right:9px}
+ .stats{gap:7px;padding-bottom:13px}
+ .stat{padding:12px 10px;border-radius:12px}
+ .stat small{font-size:10px;line-height:1.5;min-height:29px;margin-bottom:5px}
+ .stat strong{font-size:21px}
+ .tabs{margin-bottom:12px}
+ .tab{padding:9px 13px}
+ .dashboard-tools{grid-template-columns:1fr;gap:8px;margin-bottom:13px}
+ .tool-group{padding:12px;border-radius:12px}
+ .tool-group h2{margin-bottom:8px}
+ .tool-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .dashboard-shortcut{padding:10px;min-height:42px}
+ #pane-works,#pane-studio,#pane-audience{padding:13px;border-radius:12px}
+ #pane-works{padding:13px}
+ .works-heading{margin-bottom:12px}
+ .works-filters{grid-template-columns:1fr 1fr}
+ .works-filters #workSearch{grid-column:1/-1}
+ .work{padding:13px;border-radius:11px}
+ .work-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .work-actions .btn{padding:9px 7px;font-size:10px}
+ .work-actions [data-delete]{grid-column:1/-1}
+ .work-meta{gap:6px 10px}
+ .row{gap:8px}
+ .chapter{padding:11px;border-radius:10px}
+ .chapter-actions .btn{padding:8px 9px;font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;scroll-behavior:auto!important}}
+
 </style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO · 小说作者中心</span><button class="btn dark" id="newWorkTop">＋ 新作品</button></header><div class="scroll" id="scroll">
 <section class="author-heading"><div><h1>作者工作台</h1></div></section>
 <div class="stats"><div class="stat"><small>作品总数</small><strong id="workCount">0</strong></div><div class="stat"><small>累计创作字数</small><strong id="wordCount">0</strong></div><div class="stat"><small>读者互动记录</small><strong id="reactionCount">0</strong></div></div>
