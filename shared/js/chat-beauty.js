@@ -155,6 +155,26 @@
             writeJSON(key, cfg);
         });
     }
+    // Defaults for the page-wide iMessage theme; explicit bubble settings remain higher priority.
+    var IMESSAGE_BUBBLE_DEFAULTS = {
+        myBubbleBg: '#007AFF', myBubbleOpacity: 100, myBubbleColor: '#FFFFFF',
+        myBubbleRadius: '18px 18px 5px 18px', myBubbleRadiusTL: 18, myBubbleRadiusTR: 18,
+        myBubbleRadiusBR: 5, myBubbleRadiusBL: 18, myBubbleBorderColor: '#007AFF', myBubbleBorderWidth: 0,
+        myBubbleBorderStyle: 'solid', myBubbleLineHeight: 1.42, myBubbleShadowVisible: false,
+        myBubblePadding: 10, myBubbleFontSize: 14, myBubbleFontFamily: 'system',
+        myBubbleTailSize: 7, myBubbleTailX: -5, myBubbleTailY: 12, myBubbleTailShape: 'triangle', myBubbleTailColor: '#007AFF',
+        partnerBubbleBg: '#2C2C31', partnerBubbleOpacity: 78, partnerBubbleColor: '#FFFFFF',
+        partnerBubbleRadius: '18px 18px 18px 5px', partnerBubbleRadiusTL: 18, partnerBubbleRadiusTR: 18,
+        partnerBubbleRadiusBR: 18, partnerBubbleRadiusBL: 5, partnerBubbleBorderColor: 'rgba(255,255,255,.22)',
+        partnerBubbleBorderWidth: 1, partnerBubbleBorderStyle: 'solid', partnerBubbleLineHeight: 1.42,
+        partnerBubbleShadowVisible: false, partnerBubblePadding: 10, partnerBubbleFontSize: 14,
+        partnerBubbleFontFamily: 'system', partnerBubbleTailSize: 7, partnerBubbleTailX: -5,
+        partnerBubbleTailY: 12, partnerBubbleTailShape: 'triangle', partnerBubbleTailColor: '#2C2C31',
+        messageTimeVisible: true, messageTimeColor: '#FFFFFF', messageTimeSize: 10,
+        messageTimePosition: 'above', messageTimeShowRead: true, messageReadPosition: 'inline',
+        messageShowDate: false, imageBubbleRadius: 16
+    };
+
     var CHAT_THEME_MIGRATED_FLAG = 'maomao_chat_theme_migrated_v1';
     // Migrate the former page-wide preset into its own global key once, then detach
     // the exact built-in values it previously wrote into the bubble customization configs.
@@ -310,8 +330,8 @@
         // A page theme supplies default bubble values only. Explicit global and per-role
         // bubble customizations are then layered over it, preserving the editor's purpose.
         if (activeThemePreset === 'imessage') {
-            for (var themeKey in LEGACY_IMESSAGE_VALUES) {
-                if (themeKey in DEFAULTS) out[themeKey] = LEGACY_IMESSAGE_VALUES[themeKey];
+            for (var themeKey in IMESSAGE_BUBBLE_DEFAULTS) {
+                if (themeKey in DEFAULTS) out[themeKey] = IMESSAGE_BUBBLE_DEFAULTS[themeKey];
             }
         }
         var layers = [readScope('global')];
@@ -516,11 +536,22 @@
             var legacyBg = '';
             try { legacyBg = localStorage.getItem('chat_bg_' + String(contactId)) || ''; } catch (e) {}
             if (legacyBg) {
-                rootEl.style.setProperty('--chat-bg-image',
-                    'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),url("' + legacyBg + '")');
+                var legacyOverlay = v.themePreset === 'imessage'
+                    ? 'linear-gradient(rgba(0,0,0,0.10), rgba(0,0,0,0.10)),'
+                    : 'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),';
+                rootEl.style.setProperty('--chat-bg-image', legacyOverlay + 'url("' + legacyBg + '")');
             } else {
-                // 清除 resolve() 合并进来的全局背景，只保留全局气泡/排版等其他外观配置。
                 rootEl.style.removeProperty('--chat-bg-image');
+            }
+        }
+        var phoneShell = rootEl.closest ? rootEl.closest('.phone-mockup') : null;
+        if (phoneShell) {
+            if (v.themePreset === 'imessage') {
+                var shellBackground = rootEl.style.getPropertyValue('--chat-bg-image');
+                if (shellBackground) phoneShell.style.setProperty('--chat-theme-bg-image', shellBackground);
+                else phoneShell.style.removeProperty('--chat-theme-bg-image');
+            } else {
+                phoneShell.style.removeProperty('--chat-theme-bg-image');
             }
         }
         return v;
