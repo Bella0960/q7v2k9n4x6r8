@@ -6,8 +6,8 @@
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../../shared/js/native-feel.js"></script>
     <script src="../../shared/js/custom-css.js"></script>
-    <script src="../../shared/js/chat-beauty.js?v=20261026v2"></script>
-    <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v2">
+    <script src="../../shared/js/chat-beauty.js?v=20261026v3"></script>
+    <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v3">
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
@@ -1714,6 +1714,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
             </a>
             <div class="chat-title-box">
+                <div class="chat-header-avatar" id="chat-header-avatar" aria-hidden="true"></div>
                 <span class="chat-user-name" id="chat-title">聊天</span>
                 <span class="chat-status-sub" id="chat-status-sub">ONLINE · ACTIVE</span>
                 <span class="chat-notice-bar" id="chat-notice-bar" style="display:none;"></span>
@@ -1746,7 +1747,7 @@
                 <textarea class="real-input" id="chat-input" rows="1" placeholder="发送消息…" autocomplete="off" enterkeyhint="send" style="height: 31px;"></textarea>
             </div>
             <button class="send-icon-btn disabled" type="submit" aria-label="发送" disabled="">
-                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6c-2.2-2.2-5.7-2.2-7.9 0L12 5.5l-.9-.9c-2.2-2.2-5.7-2.2-7.9 0s-2.2 5.7 0 7.9L12 21l8.8-8.5c2.2-2.2 2.2-5.7 0-7.9Z"></path></svg>
+                <svg class="default-send-svg" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6c-2.2-2.2-5.7-2.2-7.9 0L12 5.5l-.9-.9c-2.2-2.2-5.7-2.2-7.9 0s-2.2 5.7 0 7.9L12 21l8.8-8.5c2.2-2.2 2.2-5.7 0-7.9Z"></path></svg><svg class="imessage-send-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"></path></svg>
             </button>
         </form>
 
@@ -1974,9 +1975,23 @@
         }
 
         const currentCharacter = isGroupChat
-            ? { id: currentRoleId, name: (currentGroup && currentGroup.name) || '群聊', avatarBg: '#3B9EFF' }
+            ? { id: currentRoleId, name: (currentGroup && currentGroup.name) || '群聊', avatar: (currentGroup && (currentGroup.avatar || currentGroup.cover)) || '', avatarBg: '#3B9EFF' }
             : (getRoleById(currentRoleId) || { id: currentRoleId || 'default', name: '聊天', avatarBg: '#3B9EFF' });
         const contactName = currentCharacter.name || '聊天';
+        const chatHeaderAvatar = document.getElementById('chat-header-avatar');
+        if (chatHeaderAvatar) {
+            const headerAvatarSource = String(currentCharacter.avatar || currentCharacter.avatarUrl || '').trim();
+            if (headerAvatarSource) {
+                const headerAvatarImage = document.createElement('img');
+                headerAvatarImage.src = headerAvatarSource;
+                headerAvatarImage.alt = '';
+                chatHeaderAvatar.replaceChildren(headerAvatarImage);
+            } else {
+                const headerAvatarInitial = document.createElement('span');
+                headerAvatarInitial.textContent = Array.from(contactName)[0] || '聊';
+                chatHeaderAvatar.replaceChildren(headerAvatarInitial);
+            }
+        }
 
         const chatTitle = document.getElementById('chat-title');
         const chatMessages = document.getElementById('chat-messages');
@@ -4265,6 +4280,7 @@
             } catch (e) {}
         }
         window.addEventListener('pageshow', refreshChatBeautyConfig);
+        window.addEventListener('maomao:chat-theme-change', refreshChatBeautyConfig);
         window.addEventListener('storage', function (event) {
             if (!event.key || event.key === 'beauty_chat_global_v1' ||
                 (currentCharacter && event.key === 'beauty_chat_' + currentCharacter.id)) {
