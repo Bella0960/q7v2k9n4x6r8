@@ -1068,6 +1068,58 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 }
 @media(prefers-reduced-motion:reduce){.writing-pop .drawer-accordion-summary svg{transition:none}}
 
+
+/* Every detailed setting is folded too; the top-level drawer stays short. */
+.writing-pop .drawer-subaccordion{
+ display:block;margin:0;border-bottom:1px solid #efefec;min-width:0;
+}
+.writing-pop .drawer-subaccordion-summary{
+ display:flex;align-items:center;gap:8px;min-height:45px;padding:10px 0;
+ list-style:none;cursor:pointer;user-select:none;
+}
+.writing-pop .drawer-subaccordion-summary::-webkit-details-marker{display:none}
+.writing-pop .drawer-subaccordion-summary::marker{content:"";display:none}
+.writing-pop .drawer-subaccordion-summary span{
+ flex:1;min-width:0;font-size:11px;font-weight:550;color:#44443f;
+}
+.writing-pop .drawer-subaccordion-summary small{
+ font-size:8px;color:#aaa;white-space:nowrap;
+}
+.writing-pop .drawer-subaccordion-summary b{
+ flex:0 0 14px;width:14px;text-align:center;font-weight:400;font-size:14px;color:#999;
+ transition:transform .16s;
+}
+.writing-pop .drawer-subaccordion[open]>.drawer-subaccordion-summary b{transform:rotate(180deg)}
+.writing-pop .drawer-subaccordion[open]>.drawer-subaccordion-summary{border-bottom:1px solid #f0f0ed}
+.writing-pop .drawer-subaccordion-panel{padding:12px 0 14px;min-width:0}
+.writing-pop .drawer-subaccordion-panel .wp-group:last-child{margin-bottom:0!important}
+.reply-preset-toolbar{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:11px 0 9px}
+.reply-preset-toolbar span{font-size:9px;color:#999}
+.reply-preset-add{flex:none;padding:7px 10px;border:1px solid #e5e5e1;border-radius:7px;background:#fff;color:#444;font-size:10px}
+.reply-preset-add:disabled{opacity:.4}
+.reply-preset-list{display:flex;flex-direction:column;gap:7px}
+.reply-preset-item{border:1px solid #e8e8e4;border-radius:8px;background:#fff;overflow:hidden}
+.reply-preset-summary{display:grid;grid-template-columns:minmax(0,1fr) auto 12px;align-items:center;gap:8px;min-height:45px;padding:8px 9px;list-style:none;cursor:pointer}
+.reply-preset-summary::-webkit-details-marker{display:none}
+.reply-preset-summary::marker{content:"";display:none}
+.reply-preset-name{font-size:11px;font-weight:600;color:#393935;overflow-wrap:anywhere}
+.reply-preset-select{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:9px;color:#777;cursor:pointer}
+.reply-preset-select input{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0;border:1px solid #c8c8c2;border-radius:4px;background:#fff;display:grid;place-items:center;cursor:pointer}
+.reply-preset-select input:checked{background:#292927;border-color:#292927}
+.reply-preset-select input:checked::after{content:"✓";font-size:11px;line-height:1;color:#fff}
+.reply-preset-chevron{font-size:13px;color:#aaa;transition:transform .16s}
+.reply-preset-item[open] .reply-preset-chevron{transform:rotate(180deg)}
+.reply-preset-edit-panel{padding:11px 9px 10px;border-top:1px solid #efefec;background:#fcfcfb}
+.reply-preset-field-label{display:block;margin:0 0 5px;font-size:9px;color:#777}
+.reply-preset-edit-panel .wp-text-input{margin-bottom:10px}
+.reply-preset-edit-panel .wp-textarea{margin-bottom:10px;min-height:64px}
+.reply-preset-actions{display:flex;gap:7px}
+.reply-preset-actions button{flex:1;min-height:31px;padding:7px 9px;border:1px solid #e3e3df;border-radius:6px;background:#fff;color:#555;font-size:10px}
+.reply-preset-actions .reply-preset-save{background:#242422;border-color:#242422;color:#fff}
+.reply-preset-actions .reply-preset-delete{flex:0 0 auto;color:#888}
+.reply-preset-footnote{margin:9px 0 0;font-size:9px;line-height:1.6;color:#aaa}
+.reply-style-help{line-height:1.7}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -1119,36 +1171,29 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
   </summary>
   <div class="drawer-accordion-panel">
 
-
-      <div class="wp-group">
-        <div class="wp-label">回复预设</div>
-        <div class="wp-chips" id="presetChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">单次字数基准</div>
-        <div class="wp-word">
-          <input type="number" id="wordBase" min="100" max="5000" step="50" value="1000">
-          <span class="wp-range" id="wordRange">800–1200 字</span>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">我方叙述人称</div>
-        <div class="wp-chips" id="userPersonaChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">角色叙述人称</div>
-        <div class="wp-chips" id="charPersonaChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">对话主动方</div>
-        <div class="wp-chips" id="initiatorChips"></div>
-      </div>
-
-      
+<details class="drawer-subaccordion" id="genPromptGroup">
+ <summary class="drawer-subaccordion-summary"><span>生成预设</span><small>模型提示与语气</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="wp-group"><div class="wp-label">回复预设</div><div class="wp-chips" id="presetChips"></div></div>
+ </div>
+</details>
+<details class="drawer-subaccordion" id="genLengthGroup">
+ <summary class="drawer-subaccordion-summary"><span>回复长度</span><small>每次生成字数范围</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="wp-group">
+   <div class="wp-label">单次字数基准</div>
+   <div class="wp-word"><input type="number" id="wordBase" min="100" max="5000" step="50" value="1000"><span class="wp-range" id="wordRange">800–1200 字</span></div>
+  </div>
+ </div>
+</details>
+<details class="drawer-subaccordion" id="genNarrationGroup">
+ <summary class="drawer-subaccordion-summary"><span>叙述方式</span><small>人称与对话主动方</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="wp-group"><div class="wp-label">我方叙述人称</div><div class="wp-chips" id="userPersonaChips"></div></div>
+  <div class="wp-group"><div class="wp-label">角色叙述人称</div><div class="wp-chips" id="charPersonaChips"></div></div>
+  <div class="wp-group"><div class="wp-label">对话主动方</div><div class="wp-chips" id="initiatorChips"></div></div>
+ </div>
+</details>
   </div>
 </details>
 <details class="drawer-accordion" id="drawerTypography">
@@ -1159,74 +1204,36 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
   </summary>
   <div class="drawer-accordion-panel">
 
-        <div class="wp-slider">
-          <input type="range" id="fontSizeRange" min="11" max="20" step="0.5" value="13.5">
-          <span class="wp-range" id="fontSizeVal">13.5</span>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">正文字体</div>
-        <select class="wp-select" id="fontFamilySelect" aria-label="正文字体">
-          <option value="serif">宋体 / 衬线</option>
-          <option value="sans">简洁黑体</option>
-          <option value="kai">手写楷体</option>
-          <option value="book">文学衬线</option>
-          <option value="mono">等宽打字机</option>
-        </select>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">字体粗细</div>
-        <div class="wp-chips" id="fontWeightChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">文字颜色</div>
-        <div class="wp-color-controls">
-          <label class="wp-color-field" for="charTextColorInput"><span>角色正文</span><input type="color" id="charTextColorInput" value="#292927"></label>
-          <label class="wp-color-field" for="userTextColorInput"><span>我的叙述</span><input type="color" id="userTextColorInput" value="#555550"></label>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">行距</div>
-        <div class="wp-slider">
-          <input type="range" id="lineHeightRange" min="1.4" max="2.5" step="0.05" value="1.95">
-          <span class="wp-range" id="lineHeightVal">1.95</span>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">段落间距</div>
-        <div class="wp-slider">
-          <input type="range" id="paragraphGapRange" min="0" max="2" step="0.1" value="0.9">
-          <span class="wp-range" id="paragraphGapVal">0.9em</span>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">字间距</div>
-        <div class="wp-slider">
-          <input type="range" id="letterSpacingRange" min="-0.02" max="0.08" step="0.01" value="0">
-          <span class="wp-range" id="letterSpacingVal">0</span>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">正文对齐</div>
-        <div class="wp-chips" id="textAlignChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">背景柔化</div>
-        <div class="wp-slider">
-          <input type="range" id="backgroundWashRange" min="0" max="0.75" step="0.05" value="0.24">
-          <span class="wp-range" id="backgroundWashVal">24%</span>
-        </div>
-      </div>
-
-      
+<details class="drawer-subaccordion" id="typeFontGroup">
+ <summary class="drawer-subaccordion-summary"><span>字体与字号</span><small>字形 · 大小 · 粗细</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="wp-group"><div class="wp-label">字号</div><div class="wp-slider"><input type="range" id="fontSizeRange" min="11" max="20" step="0.5" value="13.5"><span class="wp-range" id="fontSizeVal">13.5</span></div></div>
+  <div class="wp-group"><div class="wp-label">正文字体</div><select class="wp-select" id="fontFamilySelect" aria-label="正文字体"><option value="serif">宋体 / 衬线</option><option value="sans">简洁黑体</option><option value="kai">手写楷体</option><option value="book">文学衬线</option><option value="mono">等宽打字机</option></select></div>
+  <div class="wp-group"><div class="wp-label">字体粗细</div><div class="wp-chips" id="fontWeightChips"></div></div>
+ </div>
+</details>
+<details class="drawer-subaccordion" id="typeColorGroup">
+ <summary class="drawer-subaccordion-summary"><span>文字颜色</span><small>角色与我的叙述分别设置</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel"><div class="wp-group"><div class="wp-color-controls">
+  <label class="wp-color-field" for="charTextColorInput"><span>角色正文</span><input type="color" id="charTextColorInput" value="#292927"></label>
+  <label class="wp-color-field" for="userTextColorInput"><span>我的叙述</span><input type="color" id="userTextColorInput" value="#555550"></label>
+ </div></div></div>
+</details>
+<details class="drawer-subaccordion" id="typeSpacingGroup">
+ <summary class="drawer-subaccordion-summary"><span>行距与字距</span><small>行距 · 段落 · 字间距</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="wp-group"><div class="wp-label">行距</div><div class="wp-slider"><input type="range" id="lineHeightRange" min="1.4" max="2.5" step="0.05" value="1.95"><span class="wp-range" id="lineHeightVal">1.95</span></div></div>
+  <div class="wp-group"><div class="wp-label">段落间距</div><div class="wp-slider"><input type="range" id="paragraphGapRange" min="0" max="2" step="0.1" value="0.9"><span class="wp-range" id="paragraphGapVal">0.9em</span></div></div>
+  <div class="wp-group"><div class="wp-label">字间距</div><div class="wp-slider"><input type="range" id="letterSpacingRange" min="-0.02" max="0.08" step="0.01" value="0"><span class="wp-range" id="letterSpacingVal">0</span></div></div>
+ </div>
+</details>
+<details class="drawer-subaccordion" id="typeAlignGroup">
+ <summary class="drawer-subaccordion-summary"><span>正文对齐与背景柔化</span><small>对齐 · 清晰度</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel">
+  <div class="wp-group"><div class="wp-label">正文对齐</div><div class="wp-chips" id="textAlignChips"></div></div>
+  <div class="wp-group"><div class="wp-label">背景柔化</div><div class="wp-slider"><input type="range" id="backgroundWashRange" min="0" max="0.75" step="0.05" value="0.24"><span class="wp-range" id="backgroundWashVal">24%</span></div></div>
+ </div>
+</details>
   </div>
 </details>
 <details class="drawer-accordion" id="drawerBackground">
@@ -1237,25 +1244,23 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
   </summary>
   <div class="drawer-accordion-panel">
 
-        <div class="wp-bg-row">
-          <input type="color" id="bgColorInput" value="#ffffff" title="背景色">
-          <button class="wp-chip" id="bgImageBtn" type="button">上传图片</button>
-          <button class="wp-chip" id="bgClearBtn" type="button">清除</button>
-          <input type="file" id="bgImageFile" accept="image/*" hidden>
-        </div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">断屏</div>
-        <div class="wp-chips" id="breakChips"></div>
-      </div>
-
-      <div class="wp-group">
-        <div class="wp-label">总结区展示</div>
-        <div class="wp-chips" id="summaryChips"></div>
-      </div>
-
-      
+<details class="drawer-subaccordion" id="bgImageGroup">
+ <summary class="drawer-subaccordion-summary"><span>背景色与图片</span><small>自定义阅读背景</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel"><div class="wp-group"><div class="wp-color-controls">
+  <label class="wp-color-field" for="bgColorInput"><span>背景颜色</span><input type="color" id="bgColorInput" value="#ffffff" title="背景色"></label>
+  <button class="wp-chip" id="bgImageBtn" type="button">上传图片</button>
+  <button class="wp-chip" id="bgClearBtn" type="button">清除背景图</button>
+  <input type="file" id="bgImageFile" accept="image/*" hidden>
+ </div></div></div>
+</details>
+<details class="drawer-subaccordion" id="bgBreakGroup">
+ <summary class="drawer-subaccordion-summary"><span>段落分隔</span><small>断屏效果</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel"><div class="wp-group"><div class="wp-label">断屏</div><div class="wp-chips" id="breakChips"></div></div></div>
+</details>
+<details class="drawer-subaccordion" id="bgSummaryGroup">
+ <summary class="drawer-subaccordion-summary"><span>剧情摘要</span><small>摘要显示方式</small><b>⌄</b></summary>
+ <div class="drawer-subaccordion-panel"><div class="wp-group"><div class="wp-label">总结区展示</div><div class="wp-chips" id="summaryChips"></div></div></div>
+</details>
   </div>
 </details>
 <details class="drawer-accordion" id="drawerReplyStyles">
@@ -1265,26 +1270,16 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
   </summary>
   <div class="drawer-accordion-panel">
+
 <div class="reply-style-editor">
-        <div class="wp-label">自动回复预设 / YOUR REPLY STYLES</div>
-        <p class="reply-style-help">编辑三种你常用的回应风格。点击底部「帮我回复」时，AI 会依次按这三套文风生成选项。</p>
-        <div class="reply-style-field">
-          <label for="replyStyleName1">01 · 风格名称</label>
-          <input class="wp-text-input" id="replyStyleName1" maxlength="20" value="自然接话">
-          <textarea class="wp-textarea" id="replyStylePrompt1" maxlength="240" rows="2">像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。</textarea>
-        </div>
-        <div class="reply-style-field">
-          <label for="replyStyleName2">02 · 风格名称</label>
-          <input class="wp-text-input" id="replyStyleName2" maxlength="20" value="细腻共情">
-          <textarea class="wp-textarea" id="replyStylePrompt2" maxlength="240" rows="2">更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。</textarea>
-        </div>
-        <div class="reply-style-field">
-          <label for="replyStyleName3">03 · 风格名称</label>
-          <input class="wp-text-input" id="replyStyleName3" maxlength="20" value="轻松俏皮">
-          <textarea class="wp-textarea" id="replyStylePrompt3" maxlength="240" rows="2">轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。</textarea>
-        </div>
-        <button type="button" id="saveReplyStyles" class="wp-chip reply-style-save">保存三种预设</button>
-      </div>
+ <div class="reply-preset-intro">
+  <div class="wp-label">回复文风预设 / REPLY PRESETS</div>
+  <p class="reply-style-help">可以保存多套自己的文风。勾选最多 3 套，自动回复就按勾选顺序生成候选；每套点开后再编辑。</p>
+ </div>
+ <div class="reply-preset-toolbar"><span id="replyPresetCount">已选 3 套 · 最多 3 套</span><button type="button" id="addReplyPreset" class="reply-preset-add">＋ 新建预设</button></div>
+ <div class="reply-preset-list" id="replyPresetList"></div>
+ <p class="reply-preset-footnote" id="replyPresetStatus" aria-live="polite">默认提供三套示例文风，可以修改、删除或新增。</p>
+</div>
   </div>
 </details>
     </div>
@@ -1403,6 +1398,16 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             });
         });
     });
+    document.querySelectorAll('.drawer-subaccordion').forEach(function (section) {
+        section.addEventListener('toggle', function () {
+            if (!section.open) return;
+            var parent = section.parentElement;
+            if (!parent) return;
+            parent.querySelectorAll(':scope > .drawer-subaccordion').forEach(function (other) {
+                if (other !== section) other.open = false;
+            });
+        });
+    });
     var sending = false;
 
     function toast(msg) {
@@ -1434,9 +1439,9 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             lineHeight: 1.95, paragraphGap: 0.9, letterSpacing: 0,
             textAlign: 'left', backgroundWash: 0.24,
             replyStyles: [
-                { name: '自然接话', prompt: '像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。' },
-                { name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。' },
-                { name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。' }
+                { id: 'reply-natural', name: '自然接话', prompt: '像真实聊天一样自然回应，接住对方最后的话，语气松弛，不刻意煽情。', selected: true },
+                { id: 'reply-empathy', name: '细腻共情', prompt: '更细腻、温柔，能回应情绪和细节，但不过度解释，不替用户做重大决定。', selected: true },
+                { id: 'reply-playful', name: '轻松俏皮', prompt: '轻松、有一点俏皮或小小的调侃，像熟悉的人之间自然说话，不要故意卖萌。', selected: true }
             ],
             bgColor: '#FFFFFF', bgImage: '',
             breakMode: 'none', summaryMode: 'card'
@@ -1466,11 +1471,19 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             var wash = parseFloat(v.backgroundWash);
             if (wash >= 0 && wash <= 0.75) d.backgroundWash = wash;
             if (Array.isArray(v.replyStyles)) {
-                d.replyStyles = d.replyStyles.map(function (fallback, i) {
-                    var saved = v.replyStyles[i] || {};
+                var baseStyles = d.replyStyles;
+                d.replyStyles = v.replyStyles.slice(0, 30).map(function (saved, i) {
+                    saved = saved || {};
+                    var fallback = baseStyles[i] || {
+                        id: 'reply-custom-' + (i + 1),
+                        name: '新预设 ' + (i + 1),
+                        prompt: '请在这里写下希望 AI 遵循的回复文风。'
+                    };
                     return {
-                        name: String(saved.name || fallback.name).trim().slice(0, 20) || fallback.name,
-                        prompt: String(saved.prompt || fallback.prompt).trim().slice(0, 240) || fallback.prompt
+                        id: String(saved.id || fallback.id || ('reply-custom-' + (i + 1))).slice(0, 60),
+                        name: String(saved.name || fallback.name).trim().slice(0, 30) || fallback.name,
+                        prompt: String(saved.prompt || fallback.prompt).trim().slice(0, 600) || fallback.prompt,
+                        selected: typeof saved.selected === 'boolean' ? saved.selected : i < 3
                     };
                 });
             }
@@ -1506,47 +1519,140 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             container.appendChild(b);
         });
     }
-    function bindReplyStyleControls() {
-        for (var i = 0; i < 3; i++) {
-            (function (index) {
-                var item = writingOpts.replyStyles[index];
-                var nameInput = document.getElementById('replyStyleName' + (index + 1));
-                var promptInput = document.getElementById('replyStylePrompt' + (index + 1));
-                if (nameInput) {
-                    nameInput.value = item.name;
-                    if (!nameInput.dataset.bound) {
-                        nameInput.addEventListener('input', function () {
-                            item.name = nameInput.value.slice(0, 20);
-                            saveWritingOpts();
-                        });
-                        nameInput.dataset.bound = '1';
-                    }
+    var replyPresetList = document.getElementById('replyPresetList');
+    var replyPresetCount = document.getElementById('replyPresetCount');
+    var replyPresetStatus = document.getElementById('replyPresetStatus');
+    var addReplyPresetButton = document.getElementById('addReplyPreset');
+    function selectedReplyStyles() {
+        return (writingOpts.replyStyles || []).filter(function (item) { return item.selected; }).slice(0, 3);
+    }
+    function updateReplyPresetCount() {
+        var selected = selectedReplyStyles().length;
+        var total = (writingOpts.replyStyles || []).length;
+        if (replyPresetCount) replyPresetCount.textContent = '已选 ' + selected + ' 套 · 最多 3 套';
+        if (addReplyPresetButton) addReplyPresetButton.disabled = total >= 30;
+    }
+    function renderReplyPresetList(openId) {
+        if (!replyPresetList) return;
+        replyPresetList.innerHTML = '';
+        (writingOpts.replyStyles || []).forEach(function (item, index) {
+            var details = document.createElement('details');
+            details.className = 'reply-preset-item';
+            details.dataset.presetId = item.id;
+            details.open = item.id === openId;
+            var summary = document.createElement('summary');
+            summary.className = 'reply-preset-summary';
+            var title = document.createElement('span');
+            title.className = 'reply-preset-name';
+            title.textContent = item.name || ('新预设 ' + (index + 1));
+            var selectedLabel = document.createElement('label');
+            selectedLabel.className = 'reply-preset-select';
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = !!item.selected;
+            checkbox.setAttribute('aria-label', '选用预设：' + title.textContent);
+            var tick = document.createElement('span');
+            tick.textContent = '使用';
+            selectedLabel.append(checkbox, tick);
+            var chevron = document.createElement('span');
+            chevron.className = 'reply-preset-chevron';
+            chevron.textContent = '⌄';
+            summary.append(title, selectedLabel, chevron);
+            checkbox.addEventListener('click', function (event) { event.stopPropagation(); });
+            selectedLabel.addEventListener('click', function (event) { event.stopPropagation(); });
+            checkbox.addEventListener('change', function (event) {
+                event.stopPropagation();
+                if (checkbox.checked && selectedReplyStyles().length >= 3) {
+                    checkbox.checked = false;
+                    toast('最多同时选用三套文风');
+                    return;
                 }
-                if (promptInput) {
-                    promptInput.value = item.prompt;
-                    if (!promptInput.dataset.bound) {
-                        promptInput.addEventListener('input', function () {
-                            item.prompt = promptInput.value.slice(0, 240);
-                            saveWritingOpts();
-                        });
-                        promptInput.dataset.bound = '1';
-                    }
-                }
-            })(i);
-        }
-        var saveButton = document.getElementById('saveReplyStyles');
-        if (saveButton && !saveButton.dataset.bound) {
-            saveButton.addEventListener('click', function () {
-                for (var i = 0; i < 3; i++) {
-                    var nameInput = document.getElementById('replyStyleName' + (i + 1));
-                    var promptInput = document.getElementById('replyStylePrompt' + (i + 1));
-                    if (nameInput) writingOpts.replyStyles[i].name = (nameInput.value || '').trim().slice(0, 20) || ['自然接话','细腻共情','轻松俏皮'][i];
-                    if (promptInput) writingOpts.replyStyles[i].prompt = (promptInput.value || '').trim().slice(0, 240) || writingOpts.replyStyles[i].prompt;
-                }
+                item.selected = checkbox.checked;
                 saveWritingOpts();
-                toast('三种回复文风已保存');
+                updateReplyPresetCount();
+                if (replyPresetStatus) replyPresetStatus.textContent = item.selected
+                    ? '已选用「' + item.name + '」。自动回复会按勾选顺序生成候选。'
+                    : '已取消选用「' + item.name + '」。预设仍会保存在列表里。';
             });
-            saveButton.dataset.bound = '1';
+            var panel = document.createElement('div');
+            panel.className = 'reply-preset-edit-panel';
+            var nameLabel = document.createElement('label');
+            nameLabel.className = 'reply-preset-field-label';
+            nameLabel.textContent = '预设名称';
+            var nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.className = 'wp-text-input';
+            nameInput.maxLength = 30;
+            nameInput.value = item.name || '';
+            nameInput.setAttribute('aria-label', '预设名称');
+            var promptLabel = document.createElement('label');
+            promptLabel.className = 'reply-preset-field-label';
+            promptLabel.textContent = '文风要求';
+            var promptInput = document.createElement('textarea');
+            promptInput.className = 'wp-textarea';
+            promptInput.maxLength = 600;
+            promptInput.rows = 3;
+            promptInput.value = item.prompt || '';
+            promptInput.placeholder = '描述希望 AI 如何替你回复，比如语气、句子长度、表达习惯。';
+            var actions = document.createElement('div');
+            actions.className = 'reply-preset-actions';
+            var saveButton = document.createElement('button');
+            saveButton.type = 'button';
+            saveButton.className = 'reply-preset-save';
+            saveButton.textContent = '保存预设';
+            saveButton.addEventListener('click', function () {
+                item.name = (nameInput.value || '').trim().slice(0, 30) || ('新预设 ' + (index + 1));
+                item.prompt = (promptInput.value || '').trim().slice(0, 600) || '请按自然、符合当前剧情的方式回复，避免替用户做出重大决定。';
+                saveWritingOpts();
+                renderReplyPresetList(item.id);
+                if (replyPresetStatus) replyPresetStatus.textContent = '已保存「' + item.name + '」。';
+                toast('预设已保存');
+            });
+            var deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'reply-preset-delete';
+            deleteButton.textContent = '删除';
+            deleteButton.addEventListener('click', function () {
+                if (!window.confirm('确定删除预设「' + item.name + '」吗？')) return;
+                writingOpts.replyStyles = writingOpts.replyStyles.filter(function (other) { return other.id !== item.id; });
+                saveWritingOpts();
+                renderReplyPresetList();
+                if (replyPresetStatus) replyPresetStatus.textContent = '预设已删除。';
+                toast('预设已删除');
+            });
+            actions.append(saveButton, deleteButton);
+            panel.append(nameLabel, nameInput, promptLabel, promptInput, actions);
+            details.append(summary, panel);
+            details.addEventListener('toggle', function () {
+                if (!details.open) return;
+                Array.prototype.slice.call(replyPresetList.querySelectorAll('.reply-preset-item')).forEach(function (other) {
+                    if (other !== details) other.open = false;
+                });
+            });
+            replyPresetList.appendChild(details);
+        });
+        updateReplyPresetCount();
+    }
+    function bindReplyStyleControls() {
+        renderReplyPresetList();
+        if (addReplyPresetButton && !addReplyPresetButton.dataset.bound) {
+            addReplyPresetButton.addEventListener('click', function () {
+                if (writingOpts.replyStyles.length >= 30) {
+                    toast('最多保存 30 套预设');
+                    return;
+                }
+                var item = {
+                    id: 'reply-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+                    name: '新预设 ' + (writingOpts.replyStyles.length + 1),
+                    prompt: '请在这里描述你希望 AI 遵循的回复文风。',
+                    selected: false
+                };
+                writingOpts.replyStyles.push(item);
+                saveWritingOpts();
+                renderReplyPresetList(item.id);
+                if (replyPresetStatus) replyPresetStatus.textContent = '新预设已创建。修改名称与文风要求后，点击“保存预设”。';
+            });
+            addReplyPresetButton.dataset.bound = '1';
         }
     }
 
@@ -2352,7 +2458,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     function showReplyOptionsPanel() {
         if (replySuggestionsPanel) replySuggestionsPanel.hidden = false;
     }
-    function parseReplyOptions(rawText) {
+    function parseReplyOptions(rawText, expectedCount) {
         var raw = String(rawText || '').trim()
             .replace(/^\s*```(?:json)?\s*/i, '')
             .replace(/\s*```\s*$/i, '');
@@ -2364,8 +2470,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             parsed = JSON.parse(raw.slice(first, last + 1));
         }
         var options = Array.isArray(parsed) ? parsed : parsed.options || parsed.replies || parsed.choices;
-        if (!Array.isArray(options) || options.length < 3) throw new Error('没有成功识别出三条回复，请重新生成');
-        return options.slice(0, 3).map(function (item, index) {
+        if (!Array.isArray(options) || options.length < expectedCount) throw new Error('没有成功识别出 ' + expectedCount + ' 条回复，请重新生成');
+        return options.slice(0, expectedCount).map(function (item, index) {
             var fallback = writingOpts.replyStyles[index] || { name: '风格 ' + (index + 1) };
             var text = String(item.text || item.reply || item.content || '').trim();
             var style = String(item.style || item.name || fallback.name).trim();
@@ -2429,8 +2535,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             '角色人设（仅用于理解对方，不要代替角色作答）：\n' + characterPrompt,
             '回应写给角色本人，而不是写给读者。中文自然表达，可包含少量行动描写或台词，适应正在进行的面对面场景。',
             '尊重用户自主性：不要替用户做重大承诺、决定关系走向或编造用户没有表达过的经历。每条通常 1–3 句，尽量适合直接发送；三条要明显不同，但都符合当前剧情。',
-            '只能返回合法 JSON，不要 Markdown 代码块，不要解释，不要添加 JSON 外文字。格式严格为：{"options":[{"style":"风格名称","text":"回应内容"},{"style":"风格名称","text":"回应内容"},{"style":"风格名称","text":"回应内容"}]}。',
-            '必须按以下三个自定义文风的顺序各生成一条：',
+            '只能返回合法 JSON，不要 Markdown 代码块，不要解释，不要添加 JSON 外文字。请返回一个 options 数组，里面必须有 ' + styles.length + ' 个元素，每项包含 style 和 text 两个字符串字段。',
+            '必须按以下 ' + styles.length + ' 个已勾选的自定义文风顺序各生成一条：',
             styles.map(function (style, index) {
                 return (index + 1) + '. 风格名称：' + style.name + '\n文风要求：' + style.prompt;
             }).join('\n')
@@ -2445,7 +2551,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         });
         messages.push({
             role: 'user',
-            content: '请结合上面的最近剧情，为我生成三条不同风格、适合我现在回复' + charName + '的回应。只输出约定的 JSON。'
+            content: '请结合上面的最近剧情，为我生成 ' + styles.length + ' 条适合我现在回复' + charName + '的候选回应，严格按上面的预设顺序一套一条。只输出约定的 JSON。'
         });
         return messages;
     }
@@ -2465,22 +2571,22 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             toast('API 组件未加载');
             return;
         }
-        var styles = (writingOpts.replyStyles || []).slice(0, 3).map(function (item, index) {
-            var fallback = [
-                { name: '自然接话', prompt: '自然、真实地回应对方' },
-                { name: '细腻共情', prompt: '温柔并关注细节和情绪' },
-                { name: '轻松俏皮', prompt: '轻松并有一点俏皮' }
-            ][index];
+        var styles = selectedReplyStyles().map(function (item, index) {
             return {
-                name: String(item.name || fallback.name).trim() || fallback.name,
-                prompt: String(item.prompt || fallback.prompt).trim() || fallback.prompt
+                name: String(item.name || ('风格 ' + (index + 1))).trim(),
+                prompt: String(item.prompt || '按当前剧情自然回应').trim()
             };
         });
+        if (!styles.length) {
+            setReplyOptionsStatus('先到右上角「自动回复文风」里勾选至少一套预设。', true);
+            if (replySuggestionsList) replySuggestionsList.innerHTML = '';
+            return;
+        }
         generatingReplyOptions = true;
         if (replyOptionsBtn) { replyOptionsBtn.disabled = true; replyOptionsBtn.classList.add('is-loading'); }
         if (refreshReplyOptions) refreshReplyOptions.disabled = true;
         if (replySuggestionsList) replySuggestionsList.innerHTML = '';
-        setReplyOptionsStatus('正在结合角色人设与最近剧情，生成三种不同文风……', false);
+        setReplyOptionsStatus('正在结合最近剧情，生成 ' + styles.length + ' 套选中预设的回复……', false);
         var configuredMax = Number(cfg.maxTokens);
         var request = {
             baseUrl: cfg.baseUrl || 'https://api.openai.com/v1',
@@ -2501,9 +2607,9 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
                 toast('自动回复生成失败');
                 return;
             }
-            latestReplyOptions = parseReplyOptions(result.fullText);
+            latestReplyOptions = parseReplyOptions(result.fullText, styles.length);
             renderReplyOptions(latestReplyOptions);
-            setReplyOptionsStatus('已生成 3 条回复。点“放入输入框”可编辑，或直接选用并发送。', false);
+            setReplyOptionsStatus('已生成 ' + latestReplyOptions.length + ' 条回复。可编辑后发送，也可以直接选用。', false);
         }).catch(function (error) {
             setReplyOptionsStatus('生成失败：' + (error && error.message ? error.message : '未知错误'), true);
             toast('自动回复生成失败');
