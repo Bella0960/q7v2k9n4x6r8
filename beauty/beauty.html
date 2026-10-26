@@ -1320,7 +1320,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
       targetDraft.__chatBgStoreRef = value;
       var key = value.slice('idb-image:'.length);
       wallpaperStore.getByKey(key).then(function (imageData) {
-        if (!imageData || draft !== targetDraft || currentScope !== scope) return;
+        if (!imageData || draft !== targetDraft || currentScope !== scope || targetDraft.chatBg !== value) return;
         targetDraft.chatBg = imageData;
         targetDraft.__chatBgStoreRef = value;
         applyPreviewDraft();
