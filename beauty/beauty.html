@@ -5,8 +5,8 @@
 <title>聊天美化 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/chat-beauty.js?v=20261026v2"></script>
-<link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261026v2">
+<script src="../shared/js/chat-beauty.js?v=20261026v3"></script>
+<link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261026v3">
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; scrollbar-width: none; -ms-overflow-style: none; }
@@ -436,29 +436,7 @@
   }
 
 
-.vb-theme-presets{margin:8px 0 20px;padding:15px 13px 14px;border:1px solid #e8e8e5;border-radius:13px;background:#fff}
-.vb-theme-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:13px}
-.vb-theme-heading>div{display:flex;flex-direction:column;gap:4px}
-.vb-section-kicker{font-size:8px;letter-spacing:.14em;color:#a4a4a0}
-.vb-theme-heading strong{font-size:13px;font-weight:650;color:#252525}
-.vb-theme-hint{font-size:9px;line-height:1.4;color:#999;text-align:right}
-.vb-theme-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-.vb-theme-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0;padding:9px;border:1px solid #e8e8e5;border-radius:10px;background:#fafaf9;text-align:left;cursor:pointer;transition:border-color .16s,background .16s,box-shadow .16s}
-.vb-theme-card.active{border-color:#333;background:#fff;box-shadow:0 0 0 1px #333 inset}
-.vb-theme-sample{position:relative;display:block;height:54px;margin-bottom:3px;border-radius:6px;background:#f4f4f6;border:1px solid #ececef;overflow:hidden}
-.vb-theme-sample i,.vb-theme-sample b,.vb-theme-sample em{position:absolute;display:block;height:10px;border-radius:8px}
-.vb-theme-sample i{top:10px;left:7px;width:46%;background:#fff;border:1px solid #e3e3e7}
-.vb-theme-sample b{top:25px;right:7px;width:49%;background:#111}
-.vb-theme-sample em{top:39px;left:7px;width:32%;background:#fff;border:1px solid #e3e3e7}
-.imessage-sample{background:#fff}
-.imessage-sample i,.imessage-sample em{background:#e9e9eb;border-color:#e9e9eb}
-.imessage-sample b{background:#007aff}
-.vb-theme-card-name{font-size:11px;line-height:1.45;font-weight:650;color:#303030;padding-right:18px}
-.vb-theme-card-note{font-size:9px;line-height:1.5;color:#999;overflow-wrap:anywhere}
-.vb-theme-check{position:absolute;right:8px;top:8px;width:17px;height:17px;display:flex;align-items:center;justify-content:center;border:1px solid #e0e0dc;border-radius:50%;font-size:9px;color:transparent;background:#fff}
-.vb-theme-card.active .vb-theme-check{color:#fff;background:#222;border-color:#222}
-.vb-theme-description{margin:10px 0 0;font-size:9px;line-height:1.7;color:#92928c}
-@media(max-width:360px){.vb-theme-presets{padding:12px 10px}.vb-theme-cards{gap:7px}.vb-theme-card{padding:7px}.vb-theme-sample{height:48px}.vb-theme-card-name{font-size:10px}}
+
 
 </style>
 </head>
@@ -557,28 +535,6 @@
           <option value="global">全局默认配置</option>
         </select>
       </div>
-
-      <section class="vb-theme-presets" aria-labelledby="vbThemePresetTitle">
-        <div class="vb-theme-heading">
-          <div><span class="vb-section-kicker">CHAT THEMES</span><strong id="vbThemePresetTitle">聊天主题</strong></div>
-          <span class="vb-theme-hint">点选切换 · 实时预览 · 保存后应用</span>
-        </div>
-        <div class="vb-theme-cards" role="group" aria-label="选择聊天主题预设">
-          <button type="button" class="vb-theme-card" data-built-in-theme="default" aria-pressed="true">
-            <span class="vb-theme-sample default-sample" aria-hidden="true"><i></i><b></b><em></em></span>
-            <span class="vb-theme-card-name">默认主题</span>
-            <span class="vb-theme-card-note">保留原有样式</span>
-            <span class="vb-theme-check" aria-hidden="true">✓</span>
-          </button>
-          <button type="button" class="vb-theme-card" data-built-in-theme="imessage" aria-pressed="false">
-            <span class="vb-theme-sample imessage-sample" aria-hidden="true"><i></i><b></b><em></em></span>
-            <span class="vb-theme-card-name">iMessage 短信</span>
-            <span class="vb-theme-card-note">蓝色发送 · 灰色接收 · iOS 风格</span>
-            <span class="vb-theme-check" aria-hidden="true">✓</span>
-          </button>
-        </div>
-        <p class="vb-theme-description" id="vbThemePresetStatus">默认主题未改变。选择另一个预设后，可先看实时预览，再保存到当前作用范围。</p>
-      </section>
 
       <div data-mode="basic novel">
       <div class="vb-slider">
@@ -1263,7 +1219,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
 // ====================== Tab 1：可视化调节 ======================
 // 数据链路：draft（内存）--input 事件--> applyVars 到预览区（零延迟）；点保存才 ChatBeauty.save 落盘
 (function () {
-  var VISUAL_FIELDS = ['themePreset','avatarSize','avatarRadius','bubbleGap','bubbleGapX','bubbleMaxWidth','bubblePadding','myBubbleBg','myBubbleColor','myBubbleOpacity','partnerBubbleBg','partnerBubbleColor','partnerBubbleOpacity','myBubbleRadius','myBubbleRadiusTL','myBubbleRadiusTR','myBubbleRadiusBR','myBubbleRadiusBL','partnerBubbleRadiusTL','partnerBubbleRadiusTR','partnerBubbleRadiusBR','partnerBubbleRadiusBL','myBubbleBorderStyle','partnerBubbleBorderStyle','myBubbleLineHeight','partnerBubbleLineHeight','myBubbleShadowVisible','myBubbleShadowColor','myBubbleShadowX','myBubbleShadowY','myBubbleShadowBlur','myBubbleShadowSpread','partnerBubbleShadowVisible','partnerBubbleShadowColor','partnerBubbleShadowX','partnerBubbleShadowY','partnerBubbleShadowBlur','partnerBubbleShadowSpread','myBubbleBorderColor','myBubbleBorderWidth','partnerBubbleBorderColor','partnerBubbleBorderWidth','myBubbleRadiusSize','partnerBubbleRadiusSize','myBubblePadding','partnerBubblePadding','myBubbleFontSize','partnerBubbleFontSize','myBubbleFontFamily','partnerBubbleFontFamily','myBubbleTailSize','myBubbleTailX','myBubbleTailY','myBubbleTailShape','myBubbleTailColor','partnerBubbleTailSize','partnerBubbleTailX','partnerBubbleTailY','partnerBubbleTailShape','partnerBubbleTailColor','myBubbleDecorations','partnerBubbleDecorations','myBubbleAvatarPosition','partnerBubbleAvatarPosition','myBubbleBadge','partnerBubbleBadge','myBubbleBadgeColor','partnerBubbleBadgeColor','myBubbleBadgeX','partnerBubbleBadgeX','myBubbleBadgeY','partnerBubbleBadgeY','partnerBubbleBadgeAnchor','myBubbleBadgeAnchor','partnerBubbleBadgeSize','myBubbleBadgeSize','avatarBorderColor','avatarBorderWidth','messageTimeVisible','messageTimeColor','messageTimeSize','messageTimePosition','messageTimeShowRead','messageReadPosition','messageShowDate','imageBubbleOpacity','imageBubbleRadius','redPacketBg','redPacketBgOpacity','redPacketImage','redPacketImageOpacity','redPacketBorderColor','redPacketBorderWidth','redPacketRadius','redPacketShowStatus','redPacketTextColor','redPacketFontSize','redPacketTitle','redPacketTitleColor','redPacketAmountTemplate','redPacketAmountColor','transferBg','transferBorderColor','transferBorderWidth','transferTextColor','transferImage','transferImageOpacity','chatBg','chatBgDim'];
+  var VISUAL_FIELDS = ['avatarSize','avatarRadius','bubbleGap','bubbleGapX','bubbleMaxWidth','bubblePadding','myBubbleBg','myBubbleColor','myBubbleOpacity','partnerBubbleBg','partnerBubbleColor','partnerBubbleOpacity','myBubbleRadius','myBubbleRadiusTL','myBubbleRadiusTR','myBubbleRadiusBR','myBubbleRadiusBL','partnerBubbleRadiusTL','partnerBubbleRadiusTR','partnerBubbleRadiusBR','partnerBubbleRadiusBL','myBubbleBorderStyle','partnerBubbleBorderStyle','myBubbleLineHeight','partnerBubbleLineHeight','myBubbleShadowVisible','myBubbleShadowColor','myBubbleShadowX','myBubbleShadowY','myBubbleShadowBlur','myBubbleShadowSpread','partnerBubbleShadowVisible','partnerBubbleShadowColor','partnerBubbleShadowX','partnerBubbleShadowY','partnerBubbleShadowBlur','partnerBubbleShadowSpread','myBubbleBorderColor','myBubbleBorderWidth','partnerBubbleBorderColor','partnerBubbleBorderWidth','myBubbleRadiusSize','partnerBubbleRadiusSize','myBubblePadding','partnerBubblePadding','myBubbleFontSize','partnerBubbleFontSize','myBubbleFontFamily','partnerBubbleFontFamily','myBubbleTailSize','myBubbleTailX','myBubbleTailY','myBubbleTailShape','myBubbleTailColor','partnerBubbleTailSize','partnerBubbleTailX','partnerBubbleTailY','partnerBubbleTailShape','partnerBubbleTailColor','myBubbleDecorations','partnerBubbleDecorations','myBubbleAvatarPosition','partnerBubbleAvatarPosition','myBubbleBadge','partnerBubbleBadge','myBubbleBadgeColor','partnerBubbleBadgeColor','myBubbleBadgeX','partnerBubbleBadgeX','myBubbleBadgeY','partnerBubbleBadgeY','partnerBubbleBadgeAnchor','myBubbleBadgeAnchor','partnerBubbleBadgeSize','myBubbleBadgeSize','avatarBorderColor','avatarBorderWidth','messageTimeVisible','messageTimeColor','messageTimeSize','messageTimePosition','messageTimeShowRead','messageReadPosition','messageShowDate','imageBubbleOpacity','imageBubbleRadius','redPacketBg','redPacketBgOpacity','redPacketImage','redPacketImageOpacity','redPacketBorderColor','redPacketBorderWidth','redPacketRadius','redPacketShowStatus','redPacketTextColor','redPacketFontSize','redPacketTitle','redPacketTitleColor','redPacketAmountTemplate','redPacketAmountColor','transferBg','transferBorderColor','transferBorderWidth','transferTextColor','transferImage','transferImageOpacity','chatBg','chatBgDim'];
   var previewEl = document.getElementById('vbPreview');
   var scopeSel = document.getElementById('vbScope');
   var currentScope = 'global';
@@ -2080,123 +2036,6 @@ document.getElementById('importFile').addEventListener('change', function(e){
     applyPreviewDraft();
   });
 
-  var CHAT_THEME_FIELDS = [
-    'bubbleGap','bubbleGapX','bubbleMaxWidth','bubblePadding',
-    'myBubbleBg','myBubbleColor','myBubbleOpacity','myBubbleRadius','myBubbleRadiusTL','myBubbleRadiusTR','myBubbleRadiusBR','myBubbleRadiusBL',
-    'myBubbleBorderStyle','myBubbleLineHeight','myBubbleShadowVisible','myBubbleShadowColor','myBubbleShadowX','myBubbleShadowY','myBubbleShadowBlur','myBubbleShadowSpread','myBubbleBorderColor','myBubbleBorderWidth','myBubbleRadiusSize','myBubblePadding','myBubbleFontSize','myBubbleFontFamily','myBubbleTailSize','myBubbleTailX','myBubbleTailY','myBubbleTailShape','myBubbleTailColor',
-    'partnerBubbleBg','partnerBubbleColor','partnerBubbleOpacity','partnerBubbleRadius','partnerBubbleRadiusTL','partnerBubbleRadiusTR','partnerBubbleRadiusBR','partnerBubbleRadiusBL',
-    'partnerBubbleBorderStyle','partnerBubbleLineHeight','partnerBubbleShadowVisible','partnerBubbleShadowColor','partnerBubbleShadowX','partnerBubbleShadowY','partnerBubbleShadowBlur','partnerBubbleShadowSpread','partnerBubbleBorderColor','partnerBubbleBorderWidth','partnerBubbleRadiusSize','partnerBubblePadding','partnerBubbleFontSize','partnerBubbleFontFamily','partnerBubbleTailSize','partnerBubbleTailX','partnerBubbleTailY','partnerBubbleTailShape','partnerBubbleTailColor',
-    'messageTimeVisible','messageTimeColor','messageTimeSize','messageTimePosition','messageTimeShowRead','messageReadPosition','messageShowDate','imageBubbleRadius'
-  ];
-
-  function updateBuiltInThemeSelection() {
-    var selected = draft && draft.themePreset === 'imessage' ? 'imessage' : 'default';
-    document.querySelectorAll('[data-built-in-theme]').forEach(function (button) {
-      var active = button.getAttribute('data-built-in-theme') === selected;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', String(active));
-    });
-    var note = document.getElementById('vbThemePresetStatus');
-    if (note) note.textContent = selected === 'imessage'
-      ? '当前预览：iMessage 短信。保存配置后应用到上方选定的作用范围。'
-      : '当前预览：默认主题。原有默认视觉保持不变，选择后保存即可恢复这套基础气泡样式。';
-  }
-
-  function syncThemePresetControls() {
-    setRange('vbAvatarSize', draft.avatarSize, 'px', 30);
-    setRange('vbAvatarRadius', draft.avatarRadius, '%', 50);
-    setRange('vbBubbleGap', draft.bubbleGap, 'px', 13);
-    setRange('vbBubbleGapX', draft.bubbleGapX, 'px', 0);
-    setRange('vbBubbleMaxWidth', draft.bubbleMaxWidth, '%', 86);
-    setRange('vbBubblePadding', draft.bubblePadding, 'px', 10);
-    setColor('vbMyBg', draft.myBubbleBg, '#111111');
-    setColor('vbMyColor', draft.myBubbleColor, '#FFFFFF');
-    setColor('vbPartnerBg', draft.partnerBubbleBg, '#FFFFFF');
-    setColor('vbPartnerColor', draft.partnerBubbleColor, '#111111');
-    try { loadAdvancedControls(); } catch (e) {}
-    updateBgHint();
-    updateScopeHint();
-    applyPreviewDraft();
-    updateBuiltInThemeSelection();
-  }
-
-  function applyBuiltInTheme(themeName) {
-    if (!draft) return;
-    var base = typeof ChatBeauty.getDefaults === 'function' ? ChatBeauty.getDefaults() : ChatBeauty.DEFAULTS;
-    if (!base) {
-      showToast('主题预设暂时无法加载，请刷新页面重试');
-      return;
-    }
-    CHAT_THEME_FIELDS.forEach(function (key) {
-      if (Object.prototype.hasOwnProperty.call(base, key)) {
-        draft[key] = Array.isArray(base[key]) ? base[key].slice() : base[key];
-      }
-    });
-    draft.themePreset = themeName === 'imessage' ? 'imessage' : 'default';
-    if (themeName === 'imessage') {
-      Object.assign(draft, {
-        bubbleGap: 9,
-        bubbleGapX: 0,
-        bubbleMaxWidth: 80,
-        bubblePadding: 10,
-        myBubbleBg: '#007AFF',
-        myBubbleOpacity: 100,
-        myBubbleColor: '#FFFFFF',
-        myBubbleRadius: '18px 18px 5px 18px',
-        myBubbleRadiusTL: 18, myBubbleRadiusTR: 18, myBubbleRadiusBR: 5, myBubbleRadiusBL: 18,
-        myBubbleBorderColor: '#007AFF',
-        myBubbleBorderWidth: 0,
-        myBubbleBorderStyle: 'solid',
-        myBubbleLineHeight: 1.45,
-        myBubbleShadowVisible: false,
-        myBubbleRadiusSize: '',
-        myBubblePadding: 10,
-        myBubbleFontSize: 12,
-        myBubbleFontFamily: 'system',
-        myBubbleTailSize: 7,
-        myBubbleTailX: 5,
-        myBubbleTailY: 10,
-        myBubbleTailShape: 'round',
-        myBubbleTailColor: '#007AFF',
-        partnerBubbleBg: '#E9E9EB',
-        partnerBubbleOpacity: 100,
-        partnerBubbleColor: '#111111',
-        partnerBubbleRadius: '18px 18px 18px 5px',
-        partnerBubbleRadiusTL: 18, partnerBubbleRadiusTR: 18, partnerBubbleRadiusBR: 18, partnerBubbleRadiusBL: 5,
-        partnerBubbleBorderColor: '#E9E9EB',
-        partnerBubbleBorderWidth: 0,
-        partnerBubbleBorderStyle: 'solid',
-        partnerBubbleLineHeight: 1.45,
-        partnerBubbleShadowVisible: false,
-        partnerBubbleRadiusSize: '',
-        partnerBubblePadding: 10,
-        partnerBubbleFontSize: 12,
-        partnerBubbleFontFamily: 'system',
-        partnerBubbleTailSize: 7,
-        partnerBubbleTailX: -5,
-        partnerBubbleTailY: 10,
-        partnerBubbleTailShape: 'round',
-        partnerBubbleTailColor: '#E9E9EB',
-        messageTimeVisible: true,
-        messageTimeColor: '#8E8E93',
-        messageTimeSize: 10,
-        messageTimePosition: 'above',
-        messageTimeShowRead: true,
-        messageReadPosition: 'inline',
-        messageShowDate: false,
-        imageBubbleRadius: 16
-      });
-    }
-    syncThemePresetControls();
-    showToast(themeName === 'imessage' ? 'iMessage 短信主题已加载预览，保存配置后应用' : '默认主题已加载预览，保存配置后应用');
-  }
-
-  document.querySelectorAll('[data-built-in-theme]').forEach(function (button) {
-    button.addEventListener('click', function () {
-      applyBuiltInTheme(button.getAttribute('data-built-in-theme'));
-    });
-  });
-
   function loadVisualScope(scope) {
     currentScope = scope;
     try {
@@ -2219,7 +2058,6 @@ document.getElementById('importFile').addEventListener('change', function(e){
     updateBgHint();
     updateScopeHint();
     applyPreviewDraft();
-    updateBuiltInThemeSelection();
   }
 
   function updateBgHint() {
