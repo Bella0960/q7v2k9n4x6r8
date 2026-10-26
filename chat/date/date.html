@@ -1356,12 +1356,26 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var bgImageFile = document.getElementById('bgImageFile');
     var breakChips = document.getElementById('breakChips');
     var summaryChips = document.getElementById('summaryChips');
-    // 设置菜单采用单组展开，避免一次打开后内容过长、过于杂乱。
+    // 菜单采用两层折叠：外层一次只展开一组；关闭外层时重置其子分组。
     document.querySelectorAll('.drawer-accordion').forEach(function (section) {
         section.addEventListener('toggle', function () {
-            if (!section.open) return;
+            if (!section.open) {
+                section.querySelectorAll('.drawer-subaccordion[open]').forEach(function (sub) { sub.open = false; });
+                return;
+            }
             document.querySelectorAll('.drawer-accordion').forEach(function (other) {
                 if (other !== section) other.open = false;
+            });
+        });
+    });
+    // 每个外层分组内部也只展开一项，避免滑块和颜色选项同时铺开。
+    document.querySelectorAll('.drawer-subaccordion').forEach(function (sub) {
+        sub.addEventListener('toggle', function () {
+            if (!sub.open) return;
+            var parent = sub.closest('.drawer-accordion');
+            if (!parent) return;
+            parent.querySelectorAll('.drawer-subaccordion[open]').forEach(function (other) {
+                if (other !== sub) other.open = false;
             });
         });
     });
