@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fff">
+<title>作者主页 · 小说工坊</title>
+<style>
+*{box-sizing:border-box}
+:root{color-scheme:light;--ink:#202020;--muted:#777;--line:#e9e9e7;--paper:#fff;--wash:#f6f6f4}
+html,body{margin:0;min-height:100%;background:#f4f4f2;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+button,input,textarea,select{font:inherit}
+.app{max-width:1000px;min-height:100dvh;margin:auto;background:#f8f8f6}
+.top{display:flex;align-items:center;gap:12px;padding:calc(12px + env(safe-area-inset-top)) 28px 12px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;backdrop-filter:blur(12px)}
+.back{width:36px;height:36px;border:1px solid var(--line);border-radius:11px;background:#fff;color:#333;font-size:20px;cursor:pointer}
+.brand{font-size:12px;font-weight:650;color:#444;flex:1}
+.top-note{font-size:10px;color:#999}
+main{max-width:920px;margin:auto;padding:0 28px 44px}
+.intro{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:29px 0 20px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:10px;letter-spacing:.12em;color:#999}
+h1{font-size:26px;letter-spacing:-.04em;line-height:1.35;margin:8px 0 6px;font-weight:700}
+.intro p{font-size:12px;line-height:1.8;color:#777;margin:0;max-width:500px}
+.saved{font-size:10px;color:#8a8a8a;white-space:nowrap}
+.profile-hero{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:20px;align-items:center;padding:22px 0 24px;border-bottom:1px solid var(--line)}
+.avatar{width:104px;height:104px;border:1px solid #dededb;background:#f0f0ed;display:grid;place-items:center;position:relative;overflow:hidden}
+.avatar:before,.avatar:after{content:"";position:absolute;background:#d9d9d5}
+.avatar:before{width:1px;height:100%;left:50%;top:0}
+.avatar:after{height:1px;width:100%;top:50%;left:0}
+.avatar strong{z-index:1;min-width:48px;height:48px;padding:0 6px;display:grid;place-items:center;background:#222;color:#fff;font:600 18px/1.1 Georgia,serif;letter-spacing:.02em;overflow-wrap:anywhere}
+.profile-name{font-size:22px;line-height:1.35;font-weight:650;letter-spacing:-.035em;overflow-wrap:anywhere}
+.profile-bio{font-size:12px;line-height:1.8;color:#777;margin:6px 0 10px;overflow-wrap:anywhere}
+.profile-tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-flex;align-items:center;padding:5px 8px;border:1px solid #e7e7e4;background:#fff;color:#696969;font-size:10px;border-radius:5px}
+.level-badge{text-align:right;min-width:100px}
+.level-badge small{display:block;font-size:10px;color:#8a8a8a;margin-bottom:5px}
+.level-badge strong{font-size:25px;font-weight:650;letter-spacing:-.04em}
+.level-badge span{display:block;font-size:10px;color:#777;margin-top:4px}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:18px 0}
+.metric{min-width:0;background:#fff;border:1px solid var(--line);border-radius:11px;padding:14px 15px}
+.metric small{display:block;color:#888;font-size:10px;margin-bottom:8px}
+.metric strong{display:block;font-size:23px;line-height:1.2;font-weight:650;letter-spacing:-.04em;overflow-wrap:anywhere}
+.metric em{display:block;font-size:10px;font-style:normal;color:#999;margin-top:5px;line-height:1.5}
+.columns{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:14px;align-items:start}
+.panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:19px;min-width:0}
+.panel-heading{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:15px}
+.panel-heading h2{font-size:15px;line-height:1.4;margin:0;font-weight:700}
+.panel-heading span{font-size:10px;color:#999}
+.field{display:flex;flex-direction:column;gap:7px;margin-bottom:13px}
+.field label{font-size:11px;color:#646464;font-weight:600}
+.input,textarea{width:100%;min-width:0;border:1px solid #e5e5e1;border-radius:8px;background:#fafaf9;color:#222;padding:11px 12px;font-size:12px;line-height:1.6;outline:none;transition:border-color .18s,background .18s,box-shadow .18s}
+.input:focus,textarea:focus{border-color:#aaa;background:#fff;box-shadow:0 0 0 3px rgba(0,0,0,.03)}
+textarea{resize:vertical;min-height:77px}
+.field-hint{font-size:10px;color:#999;line-height:1.6;margin-top:-2px}
+.form-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:11px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:7px}
+.btn{min-height:39px;border:1px solid #dededb;border-radius:8px;background:#fff;color:#444;padding:9px 14px;font-size:11px;cursor:pointer;transition:transform .18s,background .18s}
+.btn:active{transform:scale(.985)}
+.btn.primary{background:#222;border-color:#222;color:#fff}
+.btn.primary:hover{background:#383838}
+.meter{height:5px;background:#eeefec;border-radius:99px;overflow:hidden;margin:12px 0 8px}
+.meter span{display:block;width:0;height:100%;background:#333;border-radius:99px;transition:width .3s ease}
+.level-caption{display:flex;justify-content:space-between;gap:8px;color:#777;font-size:10px}
+.xp-note{font-size:10px;line-height:1.7;color:#999;margin:13px 0 0}
+.link-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.quick-link{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px;padding:11px 12px;background:#fafaf9;border:1px solid #ededea;border-radius:8px;color:#303030;text-decoration:none;transition:background .18s,border-color .18s,transform .18s}
+.quick-link:hover{background:#f1f1ee;border-color:#deded9}
+.quick-link:active{transform:scale(.99)}
+.quick-link strong{font-size:11px;font-weight:600}
+.quick-link span{font-size:16px;color:#999}
+.recent{margin-top:14px}
+.recent-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+.recent-head h2{font-size:15px;margin:0;font-weight:700}
+.recent-head a{font-size:10px;color:#777;text-decoration:none}
+.work-row{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:13px 0;border-top:1px solid #eeeeeb}
+.work-row-copy{min-width:0}
+.work-row strong{display:block;font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.work-row small{display:block;font-size:10px;color:#888;margin-top:5px}
+.work-status{font-size:10px;color:#777;white-space:nowrap;border:1px solid #e9e9e7;padding:5px 7px;border-radius:5px}
+.empty{padding:19px 0;color:#999;font-size:11px;line-height:1.8}
+.footnote{padding:16px 0 0;color:#999;font-size:10px;line-height:1.8}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);background:#222;color:#fff;border-radius:10px;padding:11px 15px;font-size:11px;box-shadow:0 5px 24px rgba(0,0,0,.14);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:20;max-width:calc(100% - 28px);text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(max-width:700px){.top{padding-left:16px;padding-right:16px}main{padding:0 15px 30px}.intro{padding:22px 0 16px}h1{font-size:23px}.top-note{display:none}.profile-hero{grid-template-columns:78px minmax(0,1fr);gap:13px;padding:17px 0 19px}.avatar{width:76px;height:76px}.avatar strong{min-width:38px;height:38px;font-size:15px}.profile-name{font-size:19px}.profile-bio{font-size:11px;margin:5px 0 8px}.level-badge{grid-column:1/-1;text-align:left;display:flex;align-items:baseline;gap:9px;min-width:0;border-top:1px solid #efefec;padding-top:12px}.level-badge small,.level-badge span{display:inline;margin:0}.level-badge strong{font-size:21px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:13px 0}.metric{padding:12px;border-radius:9px}.metric strong{font-size:22px}.columns{grid-template-columns:1fr;gap:10px}.panel{padding:15px;border-radius:10px}.form-row{gap:8px}.link-list{gap:7px}.quick-link{padding:10px;min-height:44px}.footnote{padding-top:12px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <button class="back" id="back" type="button" aria-label="返回书架">‹</button>
+  <span class="brand">MAOMAO · 小说作者中心</span>
+  <span class="top-note">LOCAL AUTHOR SPACE</span>
+</header>
+<main>
+  <section class="intro">
+    <div><div class="eyebrow">AUTHOR / PERSONAL SPACE</div><h1>作者主页</h1><p>整理创作资料，看看一路写下来的作品与进度。这里的数据保存在当前浏览器中。</p></div>
+    <div class="saved" id="saveState" aria-live="polite">资料尚未修改</div>
+  </section>
+
+  <section class="profile-hero" aria-label="作者资料预览">
+    <div class="avatar"><strong id="avatarPreview">写作</strong></div>
+    <div>
+      <div class="profile-name" id="namePreview">未命名作者</div>
+      <p class="profile-bio" id="bioPreview">每一次落笔，都是故事开始的地方。</p>
+      <div class="profile-tags"><span class="tag" id="genrePreview">常写题材：未设置</span><span class="tag" id="goalPreview">每日目标：1000 字</span></div>
+    </div>
+    <div class="level-badge"><small>CREATOR LEVEL</small><strong id="levelPreview">LV. 1</strong><span id="xpPreview">0 成长值</span></div>
+  </section>
+
+  <section class="metrics" aria-label="创作数据">
+    <div class="metric"><small>作品总数</small><strong id="worksCount">0</strong><em>全部作品</em></div>
+    <div class="metric"><small>累计字数</small><strong id="wordsCount">0</strong><em>按已有章节正文统计</em></div>
+    <div class="metric"><small>章节总数</small><strong id="chaptersCount">0</strong><em>所有作品合计</em></div>
+    <div class="metric"><small>已发布章节</small><strong id="publishedCount">0</strong><em>本地发布标记</em></div>
+  </section>
+
+  <div class="columns">
+    <section class="panel">
+      <div class="panel-heading"><h2>编辑作者资料</h2><span>PROFILE SETTINGS</span></div>
+      <form id="profileForm">
+        <div class="form-row">
+          <div class="field"><label for="authorName">作者昵称</label><input class="input" id="authorName" name="authorName" maxlength="24" placeholder="给自己取个笔名"></div>
+          <div class="field"><label for="avatarText">头像文字</label><input class="input" id="avatarText" name="avatarText" maxlength="4" placeholder="2–4 字" aria-describedby="avatarHint"><span class="field-hint" id="avatarHint">使用文字标识，不会上传照片</span></div>
+        </div>
+        <div class="field"><label for="authorBio">个人签名</label><textarea id="authorBio" name="authorBio" maxlength="160" placeholder="写一句介绍自己的话，或记下现在的创作心情。"></textarea><span class="field-hint">最多 160 字</span></div>
+        <div class="form-row">
+          <div class="field"><label for="favoriteGenre">常写题材</label><input class="input" id="favoriteGenre" name="favoriteGenre" maxlength="30" placeholder="例如：奇幻、悬疑"></div>
+          <div class="field"><label for="dailyGoal">每日写作目标（字）</label><input class="input" id="dailyGoal" name="dailyGoal" type="number" min="100" max="100000" step="100" inputmode="numeric"></div>
+        </div>
+        <div class="actions"><button class="btn primary" type="submit">保存作者资料</button><button class="btn" id="resetProfile" type="button">恢复默认资料</button></div>
+      </form>
+    </section>
+
+    <div>
+      <section class="panel">
+        <div class="panel-heading"><h2>创作成长</h2><span>LOCAL PROGRESS</span></div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><strong style="font-size:14px" id="levelTitle">创作新芽</strong><span style="font-size:10px;color:#888" id="nextLevel">距离下一等级</span></div>
+        <div class="meter" role="progressbar" aria-label="等级进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="levelMeter"><span id="levelBar"></span></div>
+        <div class="level-caption"><span id="levelCurrent">当前 0</span><span id="levelTarget">下一等级 500</span></div>
+        <p class="xp-note">成长值由现有章节字数、章节数量和发布标记计算，仅用于本地进度展示，不代表真实平台等级或奖励。</p>
+      </section>
+
+      <section class="panel recent">
+        <div class="panel-heading"><h2>作者工具</h2><span>SHORTCUTS</span></div>
+        <nav class="link-list" aria-label="作者功能入口">
+          <a class="quick-link" href="novel.html"><strong>我的书架</strong><span>↗</span></a>
+          <a class="quick-link" href="novel-stats.html"><strong>写作统计</strong><span>↗</span></a>
+          <a class="quick-link" href="novel-achievements.html"><strong>创作成就</strong><span>↗</span></a>
+          <a class="quick-link" href="novel-live-room.html"><strong>码字直播间</strong><span>↗</span></a>
+          <a class="quick-link" href="novel-setup.html"><strong>作品设定</strong><span>↗</span></a>
+          <a class="quick-link" href="novel-readers.html"><strong>读者反馈</strong><span>↗</span></a>
+        </nav>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel recent">
+    <div class="recent-head"><h2>最近创作</h2><a href="novel.html">前往书架 ↗</a></div>
+    <div id="recentWorks"><div class="empty">正在整理作品记录……</div></div>
+  </section>
+  <p class="footnote">LOCAL FIRST / 作者资料独立保存在当前浏览器，不会覆盖小说作品数据。清除浏览器数据可能导致本地资料丢失。</p>
+</main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+'use strict';
+const WORK_KEY='maomao_novel_author_v1';
+const PROFILE_KEY='maomao_novel_author_profile_v1';
+const $=id=>document.getElementById(id);
+const defaults={name:'未命名作者',avatar:'写作',bio:'每一次落笔，都是故事开始的地方。',genre:'',dailyGoal:1000};
+const esc=value=>String(value==null?'':value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const countWords=value=>(String(value||'').match(/[\u3400-\u9fff]|[a-zA-Z0-9]+/g)||[]).length;
+const fmt=value=>Number(value||0).toLocaleString('zh-CN');
+let profile={...defaults};
+let workDb={works:[],activeId:null};
+let toastTimer;
+function toast(message){const node=$('toast');node.textContent=message;node.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>node.classList.remove('show'),2200)}
+function readProfile(){try{const value=JSON.parse(localStorage.getItem(PROFILE_KEY)||'null');if(value&&typeof value==='object')profile={...defaults,...value}}catch(error){}}
+function readWorks(){try{const value=JSON.parse(localStorage.getItem(WORK_KEY)||'{}');if(value&&Array.isArray(value.works))workDb=value}catch(error){}if(!Array.isArray(workDb.works))workDb.works=[]}
+function safeNumber(value,min,max,fallback){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.round(n))):fallback}
+function setForm(){ $('authorName').value=profile.name||'';$('avatarText').value=profile.avatar||'';$('authorBio').value=profile.bio||'';$('favoriteGenre').value=profile.genre||'';$('dailyGoal').value=safeNumber(profile.dailyGoal,100,100000,1000);updatePreview()}
+function getMetrics(){
+ let words=0,chapters=0,published=0;
+ workDb.works.forEach(work=>{const list=Array.isArray(work.chapters)?work.chapters:[];chapters+=list.length;list.forEach(chapter=>{words+=countWords(chapter&&chapter.body);if(chapter&&chapter.published)published++})});
+ const xp=words+chapters*120+published*250;
+ const thresholds=[0,500,1500,3000,6000,10000,18000,30000,50000];
+ const level=Math.max(1,thresholds.filter(n=>xp>=n).length);
+ const current=thresholds[Math.min(level-1,thresholds.length-1)];
+ const next=thresholds[level]||current;
+ const progress=level>=thresholds.length?100:Math.max(0,Math.min(100,((xp-current)/(next-current))*100));
+ const titles=['创作新芽','灵感收集者','故事筑造师','稳定创作者','叙事探索者','长篇实践者','世界编织者','成熟作者','创作常青'];
+ return {words,chapters,published,works:workDb.works.length,xp,level,progress,current,next,title:titles[Math.min(level-1,titles.length-1)]};
+}
+function updatePreview(){
+ const name=($('authorName').value||'').trim()||defaults.name;
+ const avatar=($('avatarText').value||'').trim()||'写作';
+ const bio=($('authorBio').value||'').trim()||'还没有填写个人签名。';
+ const genre=($('favoriteGenre').value||'').trim();
+ const goal=safeNumber($('dailyGoal').value,100,100000,1000);
+ $('namePreview').textContent=name;
+ $('avatarPreview').textContent=avatar.slice(0,4);
+ $('bioPreview').textContent=bio;
+ $('genrePreview').textContent='常写题材：'+(genre||'未设置');
+ $('goalPreview').textContent='每日目标：'+fmt(goal)+' 字';
+ const stats=getMetrics();
+ $('levelPreview').textContent='LV. '+stats.level;
+ $('xpPreview').textContent=fmt(stats.xp)+' 成长值';
+}
+function renderMetrics(){
+ const s=getMetrics();
+ $('worksCount').textContent=fmt(s.works);$('wordsCount').textContent=fmt(s.words);$('chaptersCount').textContent=fmt(s.chapters);$('publishedCount').textContent=fmt(s.published);
+ $('levelTitle').textContent=s.title;
+ $('nextLevel').textContent=s.level>=9?'已达到当前最高等级':'距离下一等级';
+ $('levelBar').style.width=s.progress+'%';
+ $('levelMeter').setAttribute('aria-valuenow',String(Math.round(s.progress)));
+ $('levelCurrent').textContent='当前 '+fmt(s.xp)+' 成长值';
+ $('levelTarget').textContent=s.level>=9?'当前最高等级':'下一等级 '+fmt(s.next);
+ $('levelPreview').textContent='LV. '+s.level;$('xpPreview').textContent=fmt(s.xp)+' 成长值';
+}
+function renderRecent(){
+ const root=$('recentWorks');
+ const works=[...workDb.works].sort((a,b)=>(b.updated||b.created||0)-(a.updated||a.created||0)).slice(0,4);
+ if(!works.length){root.innerHTML='<div class="empty">还没有作品记录。创建第一部作品后，这里就会显示作品名称、章节数量和当前状态。</div>';return}
+ root.innerHTML=works.map(work=>{
+   const chapters=Array.isArray(work.chapters)?work.chapters:[];
+   const words=chapters.reduce((total,chapter)=>total+countWords(chapter&&chapter.body),0);
+   const status=String(work.status||'构思中');
+   return '<div class="work-row"><div class="work-row-copy"><strong>'+esc(work.title||'未命名的故事')+'</strong><small>'+chapters.length+' 章 · '+fmt(words)+' 字</small></div><span class="work-status">'+esc(status)+'</span></div>';
+ }).join('');
+}
+function saveProfile(event){
+ event.preventDefault();
+ profile={
+  name:($('authorName').value||'').trim().slice(0,24)||defaults.name,
+  avatar:($('avatarText').value||'').trim().slice(0,4)||'写作',
+  bio:($('authorBio').value||'').trim().slice(0,160)||defaults.bio,
+  genre:($('favoriteGenre').value||'').trim().slice(0,30),
+  dailyGoal:safeNumber($('dailyGoal').value,100,100000,1000)
+ };
+ try{localStorage.setItem(PROFILE_KEY,JSON.stringify(profile));setForm();$('saveState').textContent='已保存到本机';toast('作者资料已保存')}catch(error){$('saveState').textContent='保存失败';toast('保存失败：请检查浏览器储存空间')}
+}
+function resetProfile(){
+ profile={...defaults};
+ try{localStorage.setItem(PROFILE_KEY,JSON.stringify(profile));setForm();$('saveState').textContent='已恢复默认资料';toast('已恢复默认资料')}catch(error){setForm();toast('本机储存空间不足，无法保存')}
+}
+$('back').addEventListener('click',()=>{location.href='novel.html'});
+$('profileForm').addEventListener('submit',saveProfile);
+$('resetProfile').addEventListener('click',resetProfile);
+['authorName','avatarText','authorBio','favoriteGenre','dailyGoal'].forEach(id=>$(id).addEventListener('input',()=>{$('saveState').textContent='有未保存的修改';updatePreview()}));
+readProfile();readWorks();setForm();renderMetrics();renderRecent();
+})();
+</script>
+</body>
+</html>
