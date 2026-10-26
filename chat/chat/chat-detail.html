@@ -2464,8 +2464,23 @@
             const list = loadMessages();
             // 老数据补齐稳定 id 与时间戳：只新增字段，不迁移、不改变原有结构
             let midAdded = false;
-            list.forEach(function (m) { if (m && (!m.mid || !m.time)) { ensureMid(m); midAdded = true; } });
-            if (midAdded) saveMessages(list);
+            let reasoningRemoved = false;
+            list.forEach(function (m) {
+                if (!m) return;
+                if (m.role === 'assistant' || m.role === 'received') {
+                    var field = typeof m.text === 'string' ? 'text' : (typeof m.content === 'string' ? 'content' : '');
+                    if (field) {
+                        var originalText = m[field];
+                        var visibleText = stripInternalReasoning(originalText);
+                        if (visibleText !== originalText) {
+                            m[field] = visibleText;
+                            reasoningRemoved = true;
+                        }
+                    }
+                }
+                if (!m.mid || !m.time) { ensureMid(m); midAdded = true; }
+            });
+            if (midAdded || reasoningRemoved) saveMessages(list);
             // 清理历史残留：此前真实定位调用产生的超时/失败错误消息，一次性从记录中移除
             const cleaned = list.filter(m => {
                 const t = String((m && (m.text || m.content)) || '');
