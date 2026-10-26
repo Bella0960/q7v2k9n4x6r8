@@ -529,27 +529,12 @@
         var hasRoleSpecificBeautyBg = Object.prototype.hasOwnProperty.call(roleVars, 'chatBg') &&
             roleVars.chatBg !== null && roleVars.chatBg !== '';
         var v = NS.applyVars(NS.resolve(contactId), rootEl);
-
-        // 背景必须按聊天角色隔离：角色专属 ChatBeauty 背景优先，其次读取旧版 chat_bg_<id>。
-        // 不把全局 chatBg 兜底到每个角色；否则只设置一次全局图，就会让未单独设置的对话看起来共用同一张背景。
-        if (!hasRoleSpecificBeautyBg && contactId != null && contactId !== '') {
-            var legacyBg = '';
-            try { legacyBg = localStorage.getItem('chat_bg_' + String(contactId)) || ''; } catch (e) {}
-            if (legacyBg) {
-                // iMessage 壁纸不叠加白色/黑色蒙层，保留原图本身的色彩和对比度。
-                var legacyOverlay = v.themePreset === 'imessage' ? '' :
-                    'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),';
-                rootEl.style.setProperty('--chat-bg-image', legacyOverlay + 'url("' + legacyBg + '")');
-            } else {
-                rootEl.style.removeProperty('--chat-bg-image');
-            }
-        }
         var phoneShell = rootEl.closest ? rootEl.closest('.phone-mockup') : null;
-        if (phoneShell) {
+
+        function syncShellWallpaper() {
+            if (!phoneShell) return;
             if (v.themePreset === 'imessage') {
                 var shellBackground = rootEl.style.getPropertyValue('--chat-bg-image');
-                // Older wallpaper sources may expose the background via computed style
-                // instead of an inline custom property; make that image cover the shell too.
                 if (!shellBackground) {
                     try {
                         shellBackground = window.getComputedStyle(rootEl).getPropertyValue('--chat-bg-image').trim();
@@ -563,7 +548,7 @@
                 }
                 if (shellBackground && shellBackground !== 'none') {
                     phoneShell.style.setProperty('--chat-theme-bg-image', shellBackground);
-                    phoneShell.style.removeProperty('background-image')
+                    phoneShell.style.removeProperty('background-image');
                 } else {
                     phoneShell.style.removeProperty('--chat-theme-bg-image');
                     phoneShell.style.removeProperty('background-image');
@@ -572,6 +557,47 @@
                 phoneShell.style.removeProperty('--chat-theme-bg-image');
                 phoneShell.style.removeProperty('background-image');
             }
+        }
+
+        function applyLegacyWallpaper(legacyBg) {
+            if (!hasRoleSpecificBeautyBg) {
+                if (legacyBg) {
+                    // iMessage 直接显示原图；默认主题延续旧版 72% 白色遮罩效果。
+                    var legacyOverlay = v.themePreset === 'imessage' ? '' :
+                        'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)),';
+                    rootEl.style.setProperty('--chat-bg-image', legacyOverlay + 'url("' + legacyBg + '")');
+                } else {
+                    rootEl.style.removeProperty('--chat-bg-image');
+                }
+            }
+            syncShellWallpaper();
+        }
+
+        // 先同步显示仍存在于 localStorage 的旧壁纸，随后从独立图片存储读取最新版。
+        // 这样旧数据无闪断迁移，新上传的壁纸也不再占用聊天记录的 localStorage 配额。
+        if (!hasRoleSpecificBeautyBg && contactId != null && contactId !== '') {
+            var legacyBg = '';
+            var bgKey = 'chat_bg_' + String(contactId);
+            try { legacyBg = localStorage.getItem(bgKey) || ''; } catch (e) {}
+            applyLegacyWallpaper(legacyBg);
+
+            var mediaStore = window.MAOMAOWallpaperStore;
+            if (mediaStore && typeof mediaStore.getByKey === 'function') {
+                try {
+                    var pendingBg = mediaStore.getByKey(bgKey);
+                    if (pendingBg && typeof pendingBg.then === 'function') {
+                        pendingBg.then(function (storedBg) {
+                            applyLegacyWallpaper(storedBg || '');
+                        }).catch(function () {
+                            applyLegacyWallpaper(legacyBg);
+                        });
+                    }
+                } catch (e) {
+                    applyLegacyWallpaper(legacyBg);
+                }
+            }
+        } else {
+            syncShellWallpaper();
         }
         return v;
     };
