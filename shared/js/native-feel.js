@@ -101,8 +101,7 @@
         '    html { transition: none !important; }',
         '}',
         '* { -webkit-tap-highlight-color: transparent; }',
-        /* 状态栏自身不另铺色块；保留原有背景图层，只去掉横线与阴影。 */
-        '.status-bar { background-color: transparent !important; border-bottom: 0 !important; box-shadow: none !important; }',
+        /* 不强制覆盖各页面状态栏的背景，由页面自己的顶层排版决定是否透明。 */
         'html, body { overscroll-behavior-y: none; }',
         /* 内层滚动容器：阻止滚动到底后把回弹传给页面 */
         '[class*="scroll"], .chat-stage { overscroll-behavior-y: none; }',
@@ -356,6 +355,137 @@
             var observer = new MutationObserver(schedule);
             observer.observe(root, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
             if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+        }
+    })();
+
+
+    /* ---------- MAOMAO PWA：令 Android 系统状态栏跟随当前应用顶部底色 ---------- */
+    (function MAOMAOSystemBarColor() {
+        function colorChannels(value) {
+            var m = String(value || '').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)/i);
+            if (!m) return null;
+            return {
+                r: Math.max(0, Math.min(255, Number(m[1]))),
+                g: Math.max(0, Math.min(255, Number(m[2]))),
+                b: Math.max(0, Math.min(255, Number(m[3]))),
+                a: m[4] === undefined ? 1 : Math.max(0, Math.min(1, Number(m[4])))
+            };
+        }
+
+        function compositeColor(element) {
+            var chain = [];
+            var node = element;
+            var depth = 0;
+            while (node && node.nodeType === 1 && depth < 18) {
+                chain.push(node);
+                node = node.parentElement;
+                depth++;
+            }
+            var color = { r: 255, g: 255, b: 255, a: 1 };
+            for (var i = chain.length - 1; i >= 0; i--) {
+                var parsed = colorChannels(window.getComputedStyle(chain[i]).backgroundColor);
+                if (!parsed || parsed.a <= 0) continue;
+                var a = parsed.a;
+                color = {
+                    r: parsed.r * a + color.r * (1 - a),
+                    g: parsed.g * a + color.g * (1 - a),
+                    b: parsed.b * a + color.b * (1 - a),
+                    a: 1
+                };
+            }
+            function hex(v) { return Math.round(v).toString(16).padStart(2, '0'); }
+            return '#' + hex(color.r) + hex(color.g) + hex(color.b);
+        }
+
+        function colorAtTop(x, y, statusBar) {
+            var stack = [];
+            try {
+                stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
+            } catch (err) {}
+            for (var i = 0; i < stack.length; i++) {
+                var el = stack[i];
+                if (!el || el === statusBar || (statusBar && statusBar.contains(el))) continue;
+                if (el === document.documentElement) continue;
+                return compositeColor(el);
+            }
+            return null;
+        }
+
+        function update() {
+            if (!document.body || document.body.classList.contains('maomao-home')) return;
+
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (!meta) {
+                meta = document.createElement('meta');
+                meta.name = 'theme-color';
+                meta.content = '#FFFFFF';
+                document.head.appendChild(meta);
+            }
+
+            var statusBar = document.querySelector('.status-bar');
+            var rect = statusBar && statusBar.getBoundingClientRect();
+            /* 采样状态栏实际覆盖的屏幕最上方，而不是用整页 body 或手机壳颜色代替。 */
+            var y = rect
+                ? (window.getComputedStyle(statusBar).position === 'absolute' || window.getComputedStyle(statusBar).position === 'fixed'
+                    ? rect.top + Math.min(6, Math.max(1, rect.height / 4))
+                    : Math.max(1, rect.bottom + 1))
+                : 1;
+            y = Math.max(1, Math.min(Math.max(1, window.innerHeight - 1), y));
+            var w = Math.max(1, window.innerWidth);
+            var points = [Math.max(1, Math.round(w * 0.12)), Math.round(w * 0.5), Math.min(w - 1, Math.round(w * 0.88))];
+            var samples = [];
+            for (var i = 0; i < points.length; i++) {
+                var c = colorAtTop(points[i], y, statusBar);
+                if (c) samples.push(c);
+            }
+
+            var chosen = null;
+            var counts = {};
+            var best = 0;
+            samples.forEach(function (c) {
+                counts[c] = (counts[c] || 0) + 1;
+                if (counts[c] > best) {
+                    chosen = c;
+                    best = counts[c];
+                }
+            });
+
+            /* 屏幕采样被浏览器遮挡时退回到实际应用容器，而非任意写死颜色。 */
+            if (!chosen) {
+                var shell = (statusBar && statusBar.closest('.phone-screen, .phone-mockup, .app-frame, .phone')) ||
+                    document.querySelector('.phone-screen, .phone-mockup, .app-frame, .phone') ||
+                    document.body;
+                chosen = compositeColor(shell);
+            }
+            if (meta.getAttribute('content').toLowerCase() !== chosen.toLowerCase()) {
+                meta.setAttribute('content', chosen);
+            }
+        }
+
+        var queued = false;
+        function schedule() {
+            if (queued) return;
+            queued = true;
+            window.requestAnimationFrame(function () {
+                queued = false;
+                update();
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', schedule, { once: true });
+        } else {
+            schedule();
+        }
+        window.addEventListener('pageshow', schedule);
+        window.addEventListener('load', schedule);
+        window.addEventListener('resize', schedule);
+        window.addEventListener('orientationchange', schedule);
+        window.addEventListener('maomao:themechange', schedule);
+        if (window.MutationObserver) {
+            var observer = new MutationObserver(schedule);
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-wallpaper-tone'] });
+            if (document.body) observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
         }
     })();
 
