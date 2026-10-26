@@ -4540,22 +4540,27 @@
             var openBtn = document.getElementById('stickerOpenBtn');
             if (!overlay || !grid || !openBtn) return;
 
-            function getMountedStickers() {
+            // 表情包管理页把所有库统一保存在 sticker_libraries。
+            // 旧逻辑还要求每个角色额外存在 chat_sticker_libs_<roleId> 挂载列表，
+            // 但管理页没有提供挂载操作，导致已上传的表情在聊天选择器里永远是空的。
+            // 这里直接读取已保存的表情库，让上传内容立即可选、可发送。
+            function getAvailableStickers() {
                 try {
-                    var mountedIds = JSON.parse(localStorage.getItem('chat_sticker_libs_' + currentRoleId) || '[]');
                     var libs = JSON.parse(localStorage.getItem('sticker_libraries') || '[]');
+                    if (!Array.isArray(libs)) return [];
                     var out = [];
                     libs.forEach(function (lib) {
-                        if (mountedIds.indexOf(String(lib.id)) !== -1 && lib.stickers) {
-                            lib.stickers.forEach(function (s) { out.push(s); });
-                        }
+                        if (!lib || !Array.isArray(lib.stickers)) return;
+                        lib.stickers.forEach(function (s) {
+                            if (s && s.img) out.push(s);
+                        });
                     });
                     return out;
                 } catch (e) { return []; }
             }
 
             function render() {
-                var stickers = getMountedStickers();
+                var stickers = getAvailableStickers();
                 grid.innerHTML = '';
                 if (!stickers.length) {
                     grid.innerHTML = '<div class="sticker-panel-empty">还没有表情包<br><button onclick="location.href=\'../sticker/sticker-manager.html\'" style="margin-top:12px;padding:8px 20px;border:none;border-radius:10px;background:#111;color:#fff;font-size:0.8rem;cursor:pointer;">+ 添加表情包</button></div>';
