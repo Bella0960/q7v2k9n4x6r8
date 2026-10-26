@@ -563,7 +563,7 @@
                 }
                 if (shellBackground && shellBackground !== 'none') {
                     phoneShell.style.setProperty('--chat-theme-bg-image', shellBackground);
-                    phoneShell.style.backgroundImage = 'var(--chat-theme-bg-image)';
+                    phoneShell.style.removeProperty('background-image')
                 } else {
                     phoneShell.style.removeProperty('--chat-theme-bg-image');
                     phoneShell.style.removeProperty('background-image');
