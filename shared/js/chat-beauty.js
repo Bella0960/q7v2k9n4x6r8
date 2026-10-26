@@ -164,7 +164,9 @@
     };
     NS.setThemePreset = function (theme) {
         theme = theme === 'imessage' ? 'imessage' : 'default';
-        if (theme === 'default' && NS.getThemePreset() === 'imessage') cleanupLegacyThemeValues();
+        // Regardless of the next theme, detach any legacy built-in iMessage values
+        // from bubble customization. Only configs explicitly marked by the old preset are touched.
+        cleanupLegacyThemeValues();
         try {
             localStorage.setItem(CHAT_THEME_KEY, theme);
             return localStorage.getItem(CHAT_THEME_KEY) === theme;
