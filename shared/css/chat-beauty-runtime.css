@@ -452,6 +452,7 @@
 
 /* Keep the new header avatar invisible in the unchanged default theme. */
 .phone-mockup:not([data-chat-theme-preset="imessage"]) .chat-header-avatar { display: none !important; }
+.phone-mockup:not([data-chat-theme-preset="imessage"]) .send-icon-btn .imessage-send-svg { display: none !important; }
 
 /* iMessage full-page preset: scoped to the chat detail shell only. */
 .chat-stage[data-chat-theme-preset="imessage"] {
