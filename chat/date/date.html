@@ -1129,6 +1129,10 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 .reply-preset-save{background:#242422;color:#fff;border-color:#242422}
 .reply-presets-empty{padding:13px 10px;border:1px dashed #e3e3de;border-radius:8px;font-size:10px;line-height:1.7;color:#999}
 
+/* Explicitly hide all nested panel content until its own summary is opened. */
+.writing-pop details.drawer-accordion:not([open])>.drawer-accordion-panel,
+.writing-pop details.drawer-subaccordion:not([open])>.drawer-subaccordion-panel{display:none!important}
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
