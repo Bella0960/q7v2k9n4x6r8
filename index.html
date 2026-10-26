@@ -11,19 +11,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="manifest" href="manifest.json" />
     <script>
-      // ===== 优先级最高：强制解除所有 Service Worker 缓存 + 清除旧布局 localStorage =====
+      // 只清理旧版主屏布局配置；保留壁纸、挂件、聊天和其他本地数据。
       (function () {
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistrations().then(function (regs) {
-            regs.forEach(function (r) { r.unregister(); });
+        try {
+          var keys = Object.keys(localStorage);
+          keys.forEach(function (k) {
+            if (/^ds_layout_v/.test(k) && k !== 'ds_layout_v12') {
+              localStorage.removeItem(k);
+            }
           });
-        }
-        // 清除所有历史版本的布局键，防止旧脏数据命中
-        var keys = Object.keys(localStorage);
-        keys.forEach(function (k) { if (/^ds_layout_v/.test(k) && k !== 'ds_layout_v12') localStorage.removeItem(k); });
-        // 兼容 ds_polaroid_v1 / ds_image_v1 等挂件数据保留，只清布局
+        } catch (err) {}
       })();
-    </script>
+    </script>ipt>
     <title>手机模拟器</title>
     <meta name="description" content="沉浸式手机模拟器，支持聊天、论坛、音乐、记忆、世界书等完整手机功能" />
     <meta property="og:title" content="手机模拟器" />
@@ -1974,10 +1973,19 @@
     })();
   </script>
     <script>
-      // Service Worker 已禁用（PWA 缓存会导致 HTML/JS 无法更新）
-      // if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-      //   navigator.serviceWorker.register('sw.js').catch(function () {});
-      // }
+      // 注册并主动检查 Service Worker 更新。sw.js 使用版本化缓存，部署后可替换旧的 app shell。
+      (function () {
+        if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+            .then(function (registration) {
+              return registration.update();
+            })
+            .catch(function (error) {
+              console.warn('PWA 更新检查失败：', error);
+            });
+        });
+      })();
     </script>
 <script>
 (function () {
