@@ -65,18 +65,20 @@
     NS.getData = function (contactId, appId) {
         var root = NS._getRoot();
         var bucket = root[contactId];
-        if (bucket && bucket[appId] != null) return bucket[appId];
 
-        // 大型聊天记录/记忆以旧 key 为唯一写入源，避免在 phone_data_v2 再保存一份。
-        // 保留旧 API 兼容：没有旧 key 时从 phone_data_v2 读取已有数据。
+        // 聊天记录/记忆以现有旧 key 为主，避免读取到旧的重复副本。
         if (appId === 'chat') {
             var history = NS.rawGet('chat_history_' + contactId, null);
             if (Array.isArray(history)) return { history: history };
+            if (bucket && bucket.chat != null) return bucket.chat;
         }
         if (appId === 'memories') {
             var memories = NS.rawGet('chat_memories_' + contactId, null);
             if (Array.isArray(memories)) return { items: memories };
+            if (bucket && bucket.memories != null) return bucket.memories;
         }
+
+        if (bucket && bucket[appId] != null) return bucket[appId];
         return null;
     };
 
@@ -178,10 +180,17 @@
     };
 
     NS.saveChatHistory = function (contactId, list) {
-        // 聊天记录可能很大。以前同时写入 chat_history_* 和 phone_data_v2，
-        // 造成完整聊天记录被重复保存，消耗有限的 localStorage 配额。
-        // 新写入只保存一份；读取时仍兼容 phone_data_v2 中的旧副本。
-        return NS.rawSet('chat_history_' + contactId, Array.isArray(list) ? list : []);
+        // 聊天记录可能很大。先写入当前主 key，成功后再移除 phone_data_v2 中的重复副本。
+        var saved = NS.rawSet('chat_history_' + contactId, Array.isArray(list) ? list : []);
+        if (!saved) return false;
+        var root = NS._getRoot();
+        var bucket = root[contactId];
+        if (bucket && bucket.chat != null) {
+            delete bucket.chat;
+            if (!Object.keys(bucket).length) delete root[contactId];
+            NS.rawSet(PHONE_DATA_KEY, root);
+        }
+        return true;
     };
 
     // 记忆（按角色）
@@ -195,8 +204,17 @@
     };
 
     NS.saveMemories = function (contactId, list) {
-        // 与聊天记录一样，长期记忆也不再双份写入。
-        return NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
+        // 与聊天记录一样，先确认主 key 写入成功，再清除重复副本。
+        var saved = NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
+        if (!saved) return false;
+        var root = NS._getRoot();
+        var bucket = root[contactId];
+        if (bucket && bucket.memories != null) {
+            delete bucket.memories;
+            if (!Object.keys(bucket).length) delete root[contactId];
+            NS.rawSet(PHONE_DATA_KEY, root);
+        }
+        return true;
     };
 
     /* ========== 本地空间整理 ========== */
