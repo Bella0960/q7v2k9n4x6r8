@@ -4,7 +4,7 @@
     var navScript = document.currentScript;
     var appBase = navScript ? new URL('../../', navScript.src).pathname : '/';
     // 不注入导航的页面（手机桌面、聊天详情、设置页、编辑资料、记忆空间、角色管理）
-    var SKIP_PAGES = ['index.html', 'chat-detail.html', 'settings.html', 'edit-profile.html', 'memory.html', 'characters.html', 'games/games.html', 'cafe/cafe.html'];
+    var SKIP_PAGES = ['index.html', 'chat-detail.html', 'settings.html', 'edit-profile.html', 'memory.html', 'characters.html', 'games/games.html', 'cafe/cafe.html', 'shake.html'];
     var path = location.pathname.toLowerCase();
     for (var i = 0; i < SKIP_PAGES.length; i++) {
         if (path.indexOf(SKIP_PAGES[i]) !== -1) return;

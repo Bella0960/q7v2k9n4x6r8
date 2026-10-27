@@ -383,37 +383,6 @@
       <button type="button" class="btn btn-secondary" id="customizeLiquidGlassBtn">自定义主屏幕图标 · 透明度 / 色调</button>
     </div>
 
-    <!-- 图标底色 -->
-    <div class="group-title">ICON COLOR</div>
-    <section class="card">
-      <div class="color-palette" id="colorPalette">
-        <div class="color-chip" data-color="rgba(255, 255, 255, 0.6)">
-          <div class="color-circle" style="background: #FFFFFF; border: 0.5px solid #E5E5EA;"></div>
-          <span>纯白</span>
-        </div>
-        <div class="color-chip" data-color="rgba(242, 242, 247, 0.65)">
-          <div class="color-circle" style="background: #F2F2F7;"></div>
-          <span>极浅灰</span>
-        </div>
-        <div class="color-chip" data-color="rgba(229, 229, 234, 0.65)">
-          <div class="color-circle" style="background: #E5E5EA;"></div>
-          <span>浅灰</span>
-        </div>
-        <div class="color-chip" data-color="rgba(199, 199, 204, 0.65)">
-          <div class="color-circle" style="background: #C7C7CC;"></div>
-          <span>中灰</span>
-        </div>
-        <div class="color-chip" data-color="rgba(142, 142, 147, 0.65)">
-          <div class="color-circle" style="background: #8E8E93;"></div>
-          <span>深灰</span>
-        </div>
-        <div class="color-chip" data-color="rgba(44, 44, 46, 0.65)">
-          <div class="color-circle" style="background: #2C2C2E;"></div>
-          <span>近黑</span>
-        </div>
-      </div>
-    </section>
-
     <!-- 壁纸 -->
     <div class="group-title">WALLPAPER</div>
     <section class="card">
@@ -542,19 +511,6 @@
   });
   applyStyle(localStorage.getItem(ICON_STYLE_KEY) || 'glass');
 
-  /* ---- 图标底色色卡 ---- */
-  var chips = document.querySelectorAll('.color-chip');
-  var savedColor = localStorage.getItem(ICON_BG_KEY) || 'rgba(255, 255, 255, 0.6)';
-  chips.forEach(function (chip) {
-    if (chip.dataset.color === savedColor) chip.classList.add('active');
-    chip.addEventListener('click', function () {
-      chips.forEach(function (c) { c.classList.remove('active'); });
-      chip.classList.add('active');
-      if (persistSetting(ICON_BG_KEY, chip.dataset.color)) showToast('图标底色已保存');
-      else showToast('保存失败：请检查浏览器存储权限');
-    });
-  });
-
   /* ---- 壁纸：使用共享 IndexedDB，确保设置页上传后能被手机桌面读取 ---- */
   var previewBox = document.getElementById('wallpaperPreviewBox');
   var emptyText = document.getElementById('wallpaperEmptyText');
@@ -592,7 +548,7 @@
 
   function compressImage(file) {
     return new Promise(function (resolve, reject) {
-      if (!file || !/^image\\//i.test(file.type || '')) {
+      if (!file || !/^image\//i.test(file.type || '')) {
         reject(new Error('请选择图片文件'));
         return;
       }

@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1f">
+<meta name="description" content="互动故事剧场——选一个剧本，开始你的故事。">
+<title>故事剧场</title>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css?v=20261021">
+<script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/phone_storage.js"></script>
+<script src="story-books.js?v=20261027b"></script>
+<style>
+:root{
+  --ink:#f2f1ee;--muted:#9a9aa2;--line:rgba(255,255,255,.14);
+  --paper:#1a1a1f;--accent:#e8c9a0;
+  --serif:Georgia,"Songti SC","Noto Serif CJK SC",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;background:#111}
+body{font-family:var(--sans);color:var(--ink);max-width:460px;margin:0 auto;min-height:100vh;position:relative;overflow:hidden}
+button{font:inherit;cursor:pointer;border:0;background:transparent;color:inherit}
+
+#stage{position:fixed;inset:0;max-width:460px;margin:0 auto;overflow:hidden;background:#1a1a1f}
+.scene-bg{position:absolute;inset:0;transition:opacity .8s ease,background 1.2s ease;z-index:0}
+.scene-bg.fade{opacity:0}
+.scene-bg::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,transparent 40%,rgba(0,0,0,.35) 100%)}
+.bg-dawn{background:linear-gradient(180deg,#e8d5c0,#d4b89c 45%,#8a7060)}
+.bg-class{background:linear-gradient(180deg,#e8e4d8,#c8c0b0 55%,#6a6058)}
+.bg-roof{background:linear-gradient(180deg,#c8d8e4,#9ab0c4 55%,#4a5a6a)}
+.bg-hall{background:linear-gradient(180deg,#d8d4cc,#a8a098 55%,#5a5450)}
+.bg-basket{background:linear-gradient(180deg,#b8c8d8,#8aa0b8 55%,#3a4a5a)}
+.bg-rain{background:linear-gradient(180deg,#6a7a8a,#4a5a6a 55%,#2a3440)}
+.bg-night{background:linear-gradient(180deg,#2a3040,#1a2030 55%,#0a0e18)}
+.bg-sunset{background:linear-gradient(180deg,#e8b890,#c88878 55%,#4a3848)}
+.bg-cover{background:radial-gradient(ellipse at 50% 30%,#3a3540,#15151c 75%)}
+.grain{position:absolute;inset:0;opacity:.18;pointer-events:none;z-index:1;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
+
+/* ===== 封面：剧本选择 ===== */
+#cover{position:absolute;inset:0;z-index:30;overflow-y:auto;padding:calc(40px + env(safe-area-inset-top)) 24px 40px;background:radial-gradient(ellipse at 50% 20%,#2e2a35,#13131a 80%)}
+.cover-head{text-align:center;margin-bottom:36px}
+.cover-kicker{font-size:10px;letter-spacing:.4em;color:var(--muted);text-transform:uppercase;margin-bottom:14px}
+.cover-title{font-family:var(--serif);font-size:38px;font-weight:500;letter-spacing:-.03em;line-height:1.1}
+.cover-title em{font-style:normal;color:var(--accent)}
+.cover-sub{font-size:12px;color:#888;margin-top:12px;line-height:1.8}
+.book-list{display:flex;flex-direction:column;gap:14px}
+.book-card{position:relative;border:1px solid var(--line);padding:20px 18px;text-align:left;overflow:hidden;transition:border-color .2s}
+.book-card:active{border-color:#fff}
+.book-card-bg{position:absolute;inset:0;opacity:.25;z-index:0}
+.book-card-inner{position:relative;z-index:1}
+.book-tag{font-size:9px;letter-spacing:.2em;color:var(--accent);text-transform:uppercase;margin-bottom:8px}
+.book-title{font-family:var(--serif);font-size:24px;font-weight:500;margin-bottom:6px;letter-spacing:-.02em}
+.book-desc{font-size:12px;line-height:1.7;color:#b0b0b8;margin-bottom:12px}
+.book-meta{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--muted)}
+.book-chars{letter-spacing:.08em}
+.book-progress{color:var(--accent)}
+.cover-foot{text-align:center;margin-top:30px;font-size:10px;color:#555;letter-spacing:.1em}
+
+/* ===== 游戏 UI ===== */
+#gameUI{position:absolute;inset:0;z-index:10;display:none;flex-direction:column}
+#gameUI.show{display:flex}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:calc(14px + env(safe-area-inset-top)) 16px 10px;z-index:5}
+.topbar-btn{height:34px;padding:0 12px;display:grid;place-items:center;color:#fff;background:rgba(0,0,0,.25);backdrop-filter:blur(8px);font-size:11px;letter-spacing:.08em}
+.topbar-title{font-size:11px;letter-spacing:.25em;color:rgba(255,255,255,.85);text-shadow:0 1px 4px rgba(0,0,0,.4)}
+
+.stage-area{flex:1;position:relative;z-index:2;overflow:hidden}
+.sprite{position:absolute;bottom:0;width:150px;height:72%;transition:all .5s ease;opacity:0;pointer-events:none}
+.sprite.show{opacity:1}
+.sprite.left{left:0}
+.sprite.right{right:0}
+.sprite img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;
+  -webkit-mask-image:linear-gradient(180deg,#000 70%,transparent 100%);
+  mask-image:linear-gradient(180deg,#000 70%,transparent 100%)}
+.sprite .sprite-name{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+  font-size:11px;letter-spacing:.15em;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.8);
+  background:rgba(0,0,0,.4);padding:3px 10px;backdrop-filter:blur(4px);white-space:nowrap}
+.sprite-avatar{width:80px;height:80px;border-radius:50%;margin:20px auto 8px;display:grid;place-items:center;font-family:var(--serif);font-size:26px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+
+.choices{position:absolute;left:0;right:0;bottom:155px;z-index:6;display:flex;flex-direction:column;gap:8px;padding:0 20px;opacity:0;pointer-events:none;transition:opacity .3s}
+.choices.show{opacity:1;pointer-events:auto}
+.choice-btn{background:rgba(20,20,28,.92);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.2);color:#fff;padding:13px 16px;font-size:13px;text-align:left;line-height:1.5;transition:all .15s}
+.choice-btn:active{background:#f2f1ee;color:#1a1a1f}
+.choice-btn .effect{display:block;font-size:10px;color:var(--accent);margin-top:4px;letter-spacing:.05em}
+
+.dialog-box{position:relative;margin:0 12px calc(12px + env(safe-area-inset-bottom));background:rgba(15,15,20,.88);backdrop-filter:blur(12px);border:1px solid var(--line);padding:18px 18px 16px;z-index:4;min-height:150px;cursor:pointer}
+.speaker{position:absolute;top:-11px;left:16px;padding:4px 12px;font-size:11px;letter-spacing:.12em;color:#fff;background:#2a2a32;border:1px solid var(--line)}
+.dialog-text{font-size:14px;line-height:1.9;color:#eaeaea;min-height:80px;letter-spacing:.02em}
+.dialog-text .cursor{display:inline-block;width:8px;height:15px;background:#fff;vertical-align:-2px;margin-left:2px;animation:blink .8s infinite}
+@keyframes blink{50%{opacity:0}}
+.next-hint{position:absolute;bottom:10px;right:14px;font-size:10px;color:#888;letter-spacing:.1em;animation:bob 1.2s infinite}
+@keyframes bob{50%{transform:translateY(3px)}}
+
+/* ===== 属性抽屉 ===== */
+.drawer{position:absolute;top:0;right:0;bottom:0;width:280px;background:rgba(22,22,28,.97);backdrop-filter:blur(20px);z-index:20;transform:translateX(100%);transition:transform .3s ease;padding:calc(20px + env(safe-area-inset-top)) 20px 30px;overflow-y:auto}
+.drawer.open{transform:translateX(0)}
+.drawer-mask{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:19;opacity:0;pointer-events:none;transition:opacity .3s}
+.drawer-mask.open{opacity:1;pointer-events:auto}
+.drawer h3{font-family:var(--serif);font-size:20px;font-weight:500;margin-bottom:4px}
+.drawer .drawer-sub{font-size:10px;color:var(--muted);letter-spacing:.15em;margin-bottom:24px}
+.stat-row{margin-bottom:14px}
+.stat-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+.stat-label .val{color:var(--accent);font-variant-numeric:tabular-nums}
+.stat-bar{height:3px;background:rgba(255,255,255,.12);overflow:hidden}
+.stat-fill{height:100%;background:var(--accent);transition:width .5s ease}
+.drawer-divider{height:1px;background:var(--line);margin:20px 0}
+.drawer-actions{display:flex;flex-direction:column;gap:8px;margin-top:20px}
+.drawer-actions button{padding:12px;border:1px solid var(--line);font-size:12px;letter-spacing:.1em;color:#ccc}
+.drawer-actions button:active{background:#fff;color:#111}
+.ending-list{font-size:11px;line-height:2;color:#aaa}
+.ending-list .unlock{color:var(--accent)}
+
+/* ===== 结局 ===== */
+#ending{position:absolute;inset:0;z-index:25;display:none;flex-direction:column;justify-content:center;align-items:center;padding:40px 30px;text-align:center;background:linear-gradient(180deg,#1a1a24,#0a0a10)}
+#ending.show{display:flex}
+.end-tag{font-size:10px;letter-spacing:.4em;color:var(--muted);margin-bottom:20px}
+.end-title{font-family:var(--serif);font-size:34px;font-weight:500;line-height:1.2;margin-bottom:24px;color:var(--accent)}
+.end-text{font-size:13px;line-height:2.1;color:#ccc;max-width:300px;margin-bottom:40px;text-align:left;white-space:pre-line}
+.end-btns{display:flex;flex-direction:column;gap:10px;width:100%;max-width:220px}
+.end-btns button{padding:13px;border:1px solid rgba(255,255,255,.3);font-size:12px;letter-spacing:.15em}
+.end-btns button:active{background:#fff;color:#111}
+
+#toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);padding:8px 16px;font-size:11px;color:#fff;z-index:40;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div class="scene-bg bg-cover" id="sceneBg"></div>
+  <div class="grain"></div>
+
+  <!-- 封面：剧本选择 -->
+  <div id="cover">
+    <div class="cover-head">
+      <div class="cover-kicker">ORIGINAL STORIES</div>
+      <h1 class="cover-title">故事<em>剧场</em></h1>
+      <p class="cover-sub">选一个故事，开始你的选择。</p>
+    </div>
+    <div class="book-list" id="bookList"></div>
+    <div class="cover-foot">每一次选择，都是不同的人生。</div>
+  </div>
+
+  <!-- 名字设置弹窗 -->
+  <div id="nameModal" style="display:none;position:absolute;inset:0;z-index:50;background:rgba(10,10,15,.92);backdrop-filter:blur(8px);overflow-y:auto;padding:24px">
+    <div style="max-width:320px;margin:0 auto;background:#1e1e26;border:1px solid rgba(255,255,255,.15);padding:24px 20px">
+      <div style="font-size:10px;letter-spacing:.3em;color:#999;margin-bottom:10px;text-align:center">BEFORE YOU START</div>
+      <h2 style="font-family:var(--serif);font-size:20px;font-weight:500;margin-bottom:18px;text-align:center">创建你的角色</h2>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:10px;color:#888;letter-spacing:.1em">你的名字</label>
+        <input id="nameInput" maxlength="8" placeholder="输入你的名字" style="width:100%;height:40px;margin-top:4px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);color:#fff;text-align:center;font-size:15px;outline:none">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+        <div><label style="font-size:9px;color:#888">他·学霸</label><input id="npcJiang" maxlength="4" value="江屿" style="width:100%;height:36px;margin-top:3px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#fff;text-align:center;font-size:13px;outline:none"></div>
+        <div><label style="font-size:9px;color:#888">他·篮球</label><input id="npcChen" maxlength="4" value="陈野" style="width:100%;height:36px;margin-top:3px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#fff;text-align:center;font-size:13px;outline:none"></div>
+        <div><label style="font-size:9px;color:#888">她·闺蜜</label><input id="npcSu" maxlength="4" value="苏念" style="width:100%;height:36px;margin-top:3px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#fff;text-align:center;font-size:13px;outline:none"></div>
+      </div>
+
+      <div style="margin-bottom:18px">
+        <label style="font-size:10px;color:#888;letter-spacing:.1em">难度</label>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="diff-btn" data-diff="easy" style="flex:1;padding:10px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#aaa;font-size:12px">简单</button>
+          <button class="diff-btn active" data-diff="normal" style="flex:1;padding:10px;border:1px solid #fff;background:#fff;color:#111;font-size:12px">普通</button>
+          <button class="diff-btn" data-diff="hard" style="flex:1;padding:10px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#aaa;font-size:12px">困难</button>
+        </div>
+        <p style="font-size:10px;color:#666;margin-top:6px;line-height:1.5">简单：属性+50%。普通：标准。困难：结局门槛提高。</p>
+      </div>
+
+      <button id="nameConfirm" style="width:100%;height:44px;background:#f2f1ee;color:#1a1a1f;font-size:13px;letter-spacing:.15em">开始故事</button>
+    </div>
+  </div>
+
+  <!-- 游戏 UI -->
+  <div id="gameUI">
+    <div class="topbar">
+      <button class="topbar-btn" id="btnBackCover">‹ 选剧本</button>
+      <span class="topbar-title" id="gameTitle">故事</span>
+      <button class="topbar-btn" id="btnMenu">菜单</button>
+    </div>
+    <div class="stage-area" id="stageArea"></div>
+    <div class="choices" id="choices"></div>
+    <div class="dialog-box" id="dialogBox">
+      <span class="speaker" id="speaker">旁白</span>
+      <div class="dialog-text" id="dialogText"></div>
+      <div class="next-hint" id="nextHint">▼</div>
+    </div>
+  </div>
+
+  <!-- 属性抽屉 -->
+  <div class="drawer-mask" id="drawerMask"></div>
+  <div class="drawer" id="drawer">
+    <h3>人物面板</h3>
+    <div class="drawer-sub">CHARACTER STATUS</div>
+    <div id="statList"></div>
+    <div class="drawer-divider"></div>
+    <div style="font-size:10px;letter-spacing:.15em;color:var(--muted);margin-bottom:10px">已解锁结局</div>
+    <div class="ending-list" id="endingList">暂无</div>
+    <div class="drawer-actions">
+      <button id="btnSave">保存进度</button>
+      <button id="btnChangeName">改名字（当前：<span id="curName">未设置</span>）</button>
+      <button id="btnReset" style="border-color:#c88">重新开始本剧本</button>
+    </div>
+  </div>
+
+  <!-- 结局 -->
+  <div id="ending">
+    <div class="end-tag" id="endTag">ENDING</div>
+    <h2 class="end-title" id="endTitle"></h2>
+    <p class="end-text" id="endText"></p>
+    <div class="end-btns">
+      <button id="btnEndRestart">再玩一次</button>
+      <button id="btnEndCover">回到选剧本</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+var $ = function(id){ return document.getElementById(id); };
+var books = window.STORY_BOOKS || {};
+/* 加载自制剧本 */
+try{
+  var custom = JSON.parse(localStorage.getItem('maomao_story_custom') || '{}');
+  Object.keys(custom).forEach(function(k){ books[k] = custom[k]; });
+}catch(e){}
+
+var state = {
+  bookId: null,
+  book: null,
+  sceneId: null,
+  stats: {},
+  unlocked: [],
+  playerName: '',
+  npc: {jiang:'江屿', chen:'陈野', su:'苏念'},
+  difficulty: 'normal'
+};
+var typing = false, typeTimer = null, fullText = '';
+
+/* ====== 玩家名/设置 ====== */
+var PLAYER_KEY = 'maomao_story_player_name';
+var NPC_KEY = 'maomao_story_npc_names';
+var DIFF_KEY = 'maomao_story_difficulty';
+function getPlayerName(){
+  try{ return (PhoneStorage && PhoneStorage.rawGet) ? (PhoneStorage.rawGet(PLAYER_KEY,'') || '') : (localStorage.getItem(PLAYER_KEY) || ''); }catch(e){ return ''; }
+}
+function setPlayerName(n){
+  state.playerName = n;
+  try{ if(PhoneStorage && PhoneStorage.rawSet) PhoneStorage.rawSet(PLAYER_KEY,n); else localStorage.setItem(PLAYER_KEY,n); }catch(e){}
+}
+function loadNpc(){
+  try{
+    var raw = (PhoneStorage && PhoneStorage.rawGet) ? PhoneStorage.rawGet(NPC_KEY,null) : null;
+    if(raw && typeof raw==='object') return raw;
+  }catch(e){}
+  return {jiang:'江屿', chen:'陈野', su:'苏念'};
+}
+function saveNpc(n){
+  state.npc = n;
+  try{ if(PhoneStorage && PhoneStorage.rawSet) PhoneStorage.rawSet(NPC_KEY,n); else localStorage.setItem(NPC_KEY,JSON.stringify(n)); }catch(e){}
+}
+function loadDiff(){
+  try{ return (PhoneStorage && PhoneStorage.rawGet) ? (PhoneStorage.rawGet(DIFF_KEY,'normal')||'normal') : (localStorage.getItem(DIFF_KEY)||'normal'); }catch(e){ return 'normal'; }
+}
+function saveDiff(d){
+  state.difficulty = d;
+  try{ if(PhoneStorage && PhoneStorage.rawSet) PhoneStorage.rawSet(DIFF_KEY,d); else localStorage.setItem(DIFF_KEY,d); }catch(e){}
+}
+function applyVars(s){
+  var map = { player: state.playerName || '我' };
+  if(state.book && state.book.meta && state.book.meta.charsName){
+    Object.keys(state.book.meta.charsName).forEach(function(k){
+      map[k] = state.book.meta.charsName[k];
+    });
+  }
+  if(state.npc){
+    map.jiang = state.npc.jiang; map.chen = state.npc.chen; map.su = state.npc.su;
+  }
+  var out = String(s||'');
+  Object.keys(map).forEach(function(k){
+    out = out.split('{{'+k+'}}').join(map[k]);
+  });
+  return out;
+}
+/* 难度倍率 */
+function statMult(){ return state.difficulty==='easy' ? 1.5 : (state.difficulty==='hard' ? 1.0 : 1.0); }
+
+/* ====== 存档（按剧本隔离） ====== */
+function saveKey(){ return 'maomao_story_save_' + (state.bookId || 'default'); }
+function loadSave(){
+  try{
+    var raw = (PhoneStorage && PhoneStorage.rawGet) ? PhoneStorage.rawGet(saveKey(), null) : null;
+    if(raw && typeof raw === 'object') return raw;
+    if(typeof raw === 'string'){ try{ return JSON.parse(raw); }catch(e){ return null; } }
+  }catch(e){}
+  return null;
+}
+function writeSave(){
+  var data = {sceneId:state.sceneId, stats:state.stats, unlocked:state.unlocked};
+  try{
+    if(PhoneStorage && PhoneStorage.rawSet){ PhoneStorage.rawSet(saveKey(), data); }
+    else { localStorage.setItem(saveKey(), JSON.stringify(data)); }
+  }catch(e){}
+}
+
+/* ====== 封面：渲染剧本卡片 ====== */
+function renderCover(){
+  var list = $('bookList');
+  list.innerHTML = '';
+  Object.keys(books).forEach(function(bid){
+    var b = books[bid];
+    var sv = null;
+    try{ sv = (PhoneStorage && PhoneStorage.rawGet) ? PhoneStorage.rawGet('maomao_story_save_' + bid, null) : null; }catch(e){}
+    if(sv && typeof sv === 'string'){ try{ sv = JSON.parse(sv); }catch(e){ sv = null; } }
+
+    var card = document.createElement('div');
+    card.className = 'book-card';
+    card.innerHTML =
+      '<div class="book-card-bg ' + (b.meta.coverBg || 'bg-cover') + '"></div>' +
+      '<div class="book-card-inner">' +
+        '<div class="book-tag">' + esc(b.meta.tag || 'STORY') + '</div>' +
+        '<div class="book-title">' + esc(b.meta.title) + '</div>' +
+        '<div class="book-desc">' + esc(b.meta.desc || '') + '</div>' +
+        '<div class="book-meta">' +
+          '<span class="book-chars">' + esc((b.meta.chars || []).join(' · ')) + '</span>' +
+          '<span class="book-progress">' + (sv ? '继续 ▸' : '开始 ▸') + '</span>' +
+        '</div>' +
+      '</div>';
+    card.addEventListener('click', function(){ startBook(bid, !!sv); });
+    list.appendChild(card);
+  });
+
+  /* 自制剧本入口 */
+  var addCard = document.createElement('div');
+  addCard.className = 'book-card';
+  addCard.style.border = '1px dashed rgba(255,255,255,.2)';
+  addCard.style.background = 'transparent';
+  addCard.innerHTML =
+    '<div class="book-card-inner" style="text-align:center;padding:40px 20px">' +
+      '<div style="font-size:32px;color:var(--muted);margin-bottom:10px">＋</div>' +
+      '<div class="book-title" style="font-size:18px">自制剧本</div>' +
+      '<div class="book-desc">写自己的故事，传自己的角色</div>' +
+    '</div>';
+  addCard.addEventListener('click', function(){ location.href = 'story-create.html'; });
+  list.appendChild(addCard);
+}
+
+/* ====== 开始剧本 ====== */
+function startBook(bid, hasProgress){
+  state.bookId = bid;
+  state.book = books[bid];
+  state.playerName = getPlayerName();
+  state.npc = loadNpc();
+  state.difficulty = loadDiff();
+  currentDiff = state.difficulty;
+  $('gameTitle').textContent = state.book.meta.title;
+  $('cover').style.display = 'none';
+  $('gameUI').classList.add('show');
+
+  /* 如果没设过名字，先弹窗输入 */
+  if(!state.playerName){
+    var m = $('nameModal');
+    m.style.display = 'block';
+    $('nameInput').value = '';
+    $('npcJiang').value = state.npc.jiang;
+    $('npcChen').value = state.npc.chen;
+    $('npcSu').value = state.npc.su;
+    setTimeout(function(){ $('nameInput').focus(); }, 100);
+    return;
+  }
+
+  if(hasProgress){
+    var sv = loadSave();
+    if(sv){
+      state.stats = sv.stats || {};
+      state.unlocked = sv.unlocked || [];
+      goTo(sv.sceneId || state.book.start);
+      return;
+    }
+  }
+  state.stats = {};
+  state.unlocked = state.unlocked || [];
+  goTo(state.book.start);
+}
+
+/* ====== 立绘 ====== */
+var spriteColors = ['#6a8ab8','#c88a7a','#7aaa7a','#a87ab8','#c8b87a','#7ab8b0'];
+function renderSprites(list){
+  var area = $('stageArea');
+  area.innerHTML = '';
+  var charsImg = (state.book && state.book.meta && state.book.meta.charsImg) || {};
+  var charsName = (state.book && state.book.meta && state.book.meta.charsName) || {};
+  (list || []).forEach(function(sp, i){
+    var el = document.createElement('div');
+    el.className = 'sprite ' + (i % 2 === 0 ? 'left' : 'right');
+    var displayName = charsName[sp] || sp;
+    var img = charsImg[sp];
+    if(img){
+      el.innerHTML = '<img src="' + esc(img) + '" alt="' + esc(displayName) + '">' +
+        '<div class="sprite-name">' + esc(displayName) + '</div>';
+    } else {
+      var ch = (displayName || '?').slice(0,1);
+      el.innerHTML =
+        '<div class="sprite-avatar" style="background:linear-gradient(135deg,' + spriteColors[i % spriteColors.length] + ',#333)">' + esc(ch) + '</div>' +
+        '<div class="sprite-name">' + esc(displayName) + '</div>';
+    }
+    area.appendChild(el);
+    setTimeout(function(){ el.classList.add('show'); }, 300);
+  });
+}
+
+/* ====== 场景渲染 ====== */
+function goTo(sceneId){
+  var sc = state.book.scenes[sceneId];
+  if(!sc){ console.warn('scene not found:', sceneId); return; }
+  state.sceneId = sceneId;
+
+  /* 背景：优先用剧本配置的实景图，没有就回退 CSS 渐变 */
+  var bgClass = sc.bg || 'bg-class';
+  var bgMap = (state.book.meta && state.book.meta.bgImg) || {};
+  var bgImg = bgMap[bgClass];
+  var bgEl = $('sceneBg');
+  function setBg(fade){
+    bgEl.className = 'scene-bg' + (fade ? ' fade' : '');
+    if(bgImg){
+      bgEl.style.backgroundImage = 'url(' + bgImg + ')';
+      bgEl.style.backgroundSize = 'cover';
+      bgEl.style.backgroundPosition = 'center';
+    } else {
+      bgEl.style.backgroundImage = '';
+      bgEl.className += ' ' + bgClass;
+    }
+  }
+  setBg(true);
+  setTimeout(function(){ setBg(false); }, 50);
+
+  renderSprites(sc.sprites);
+
+  var sp = sc.speaker || 'narr';
+  var spMap = {narr:'旁白', me:'我'};
+  $('speaker').textContent = spMap[sp] || sp;
+
+  if(sc.onEnter){
+    Object.keys(sc.onEnter).forEach(function(k){
+      state.stats[k] = (state.stats[k] || 0) + sc.onEnter[k];
+    });
+  }
+
+  $('choices').classList.remove('show');
+  typeText(sc.text || '');
+
+  if(sc.ending){
+    setTimeout(function(){ showEnding(sc.ending); }, (sc.text||'').length * 40 + 600);
+  }
+}
+
+/* ====== 打字机 ====== */
+function typeText(rawText){
+  text = applyVars(rawText);
+  fullText = text;
+  typing = true;
+  $('dialogText').innerHTML = '<span class="cursor"></span>';
+  $('nextHint').style.display = 'none';
+  var i = 0;
+  clearInterval(typeTimer);
+  typeTimer = setInterval(function(){
+    i++;
+    $('dialogText').innerHTML = esc(text.slice(0,i)).replace(/\n/g,'<br>') + '<span class="cursor"></span>';
+    if(i >= text.length){
+      clearInterval(typeTimer);
+      typing = false;
+      $('dialogText').innerHTML = esc(text).replace(/\n/g,'<br>');
+      afterType();
+    }
+  }, 35);
+}
+function skipType(){
+  if(!typing) return;
+  clearInterval(typeTimer);
+  typing = false;
+  $('dialogText').innerHTML = esc(fullText).replace(/\n/g,'<br>');
+  afterType();
+}
+function afterType(){
+  var sc = state.book.scenes[state.sceneId];
+  if(!sc) return;
+  if(sc.ending){ $('nextHint').style.display='none'; return; }
+  if(sc.choices){ showChoices(sc.choices); }
+  else if(sc.next){ $('nextHint').style.display='block'; }
+}
+
+$('dialogBox').addEventListener('click', function(){
+  if(typing){ skipType(); return; }
+  var sc = state.book.scenes[state.sceneId];
+  if(!sc || sc.choices || sc.ending) return;
+  $('nextHint').style.display = 'none';
+  goTo(resolveNext(sc.next));
+});
+
+/* ====== 选项 ====== */
+function showChoices(choices){
+  var box = $('choices');
+  box.innerHTML = '';
+  choices.forEach(function(c){
+    var b = document.createElement('button');
+    b.className = 'choice-btn';
+    b.innerHTML = esc(applyVars(c.t)) + (c.et ? '<span class="effect">' + esc(applyVars(c.et)) + '</span>' : '');
+    b.addEventListener('click', function(){
+      if(c.fx){ var mult = statMult(); Object.keys(c.fx).forEach(function(k){ state.stats[k] = (state.stats[k]||0) + Math.round(c.fx[k]*mult); }); }
+      box.classList.remove('show');
+      writeSave();
+      goTo(resolveNext(c.next));
+    });
+    box.appendChild(b);
+  });
+  setTimeout(function(){ box.classList.add('show'); }, 200);
+}
+function resolveNext(n){
+  if(typeof n === 'function') return n(state.stats);
+  return n;
+}
+
+/* ====== 结局 ====== */
+function showEnding(e){
+  $('choices').classList.remove('show');
+  $('nextHint').style.display = 'none';
+  $('endTag').textContent = e.tag;
+  $('endTitle').textContent = e.title;
+  $('endText').textContent = e.text;
+  $('ending').classList.add('show');
+  $('gameUI').style.display = 'none';
+  if(state.unlocked.indexOf(e.title) === -1){
+    state.unlocked.push(e.title);
+    writeSave();
+  }
+}
+
+/* ====== 属性面板（动态） ====== */
+function refreshDrawer(){
+  var list = $('statList');
+  list.innerHTML = '';
+  Object.keys(state.stats).forEach(function(k){
+    var v = state.stats[k];
+    var row = document.createElement('div');
+    row.className = 'stat-row';
+    row.innerHTML =
+      '<div class="stat-label"><span>' + esc(statName(k)) + '</span><span class="val">' + v + '</span></div>' +
+      '<div class="stat-bar"><div class="stat-fill" style="width:' + Math.min(100, v*10) + '%"></div></div>';
+    list.appendChild(row);
+  });
+  $('endingList').innerHTML = state.unlocked.length
+    ? state.unlocked.map(function(t){ return '<div class="unlock">✓ ' + esc(t) + '</div>'; }).join('')
+    : '暂无';
+  var cn = $('curName');
+  if(cn) cn.textContent = state.playerName || '未设置';
+}
+function statName(k){
+  var map = (state.book && state.book.meta && state.book.meta.statNames) || {jiang:'好感', chen:'好感', su:'友情', courage:'勇气', wisdom:'智慧'};
+  return map[k] || k;
+}
+function openDrawer(){ refreshDrawer(); $('drawer').classList.add('open'); $('drawerMask').classList.add('open'); }
+function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerMask').classList.remove('open'); }
+
+/* ====== 按钮 ====== */
+$('btnMenu').addEventListener('click', openDrawer);
+$('drawerMask').addEventListener('click', closeDrawer);
+$('btnBackCover').addEventListener('click', function(){
+  writeSave();
+  $('ending').classList.remove('show');
+  $('gameUI').classList.remove('show');
+  $('gameUI').style.display = '';
+  $('cover').style.display = '';
+  renderCover();
+});
+$('btnSave').addEventListener('click', function(){ writeSave(); toast('已保存'); closeDrawer(); });
+
+/* 改名字 */
+$('btnChangeName').addEventListener('click', function(){
+  $('nameInput').value = state.playerName || '';
+  $('nameModal').style.display = 'flex';
+  $('nameInput').focus();
+});
+
+/* 名字确认 */
+$('nameConfirm').addEventListener('click', function(){
+  var n = $('nameInput').value.trim();
+  if(!n){ $('nameInput').focus(); return; }
+  setPlayerName(n);
+  saveNpc({
+    jiang: $('npcJiang').value.trim() || '江屿',
+    chen: $('npcChen').value.trim() || '陈野',
+    su: $('npcSu').value.trim() || '苏念'
+  });
+  saveDiff(currentDiff);
+  $('nameModal').style.display = 'none';
+  if(state.bookId){
+    var sv = loadSave();
+    if(sv && sv.sceneId){ goTo(sv.sceneId); }
+    else { state.stats = {}; state.unlocked = state.unlocked || []; goTo(state.book.start); }
+  }
+});
+$('nameInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ $('nameConfirm').click(); } });
+
+/* 难度按钮 */
+var currentDiff = 'normal';
+document.querySelectorAll('.diff-btn').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('.diff-btn').forEach(function(x){
+      x.classList.remove('active');
+      x.style.background = 'transparent'; x.style.color = '#aaa';
+    });
+    b.classList.add('active');
+    b.style.background = '#fff'; b.style.color = '#111';
+    currentDiff = b.getAttribute('data-diff');
+  });
+});
+$('btnReset').addEventListener('click', function(){
+  if(confirm('重新开始本剧本？属性清零（已解锁结局保留）。')){
+    state.stats = {};
+    writeSave();
+    location.reload();
+  }
+});
+$('btnEndRestart').addEventListener('click', function(){
+  state.stats = {};
+  $('ending').classList.remove('show');
+  $('gameUI').style.display = '';
+  goTo(state.book.start);
+});
+$('btnEndCover').addEventListener('click', function(){ location.reload(); });
+
+/* ====== toast ====== */
+var toastTimer = null;
+function toast(msg){
+  var t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 1500);
+}
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+renderCover();
+})();
+</script>
+</body>
+</html>

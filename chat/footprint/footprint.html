@@ -241,6 +241,50 @@
   }
   .fp-menu-item + .fp-menu-item { border-top: 1px solid var(--line); }
   .fp-menu-item:active { transform: none; background: rgba(0,0,0,0.04); }
+
+  /* ================= 角色头像：默认占位（无图时显示首字） ================= */
+  .avatar.placeholder {
+    background: #E9E9EB;
+    color: #8E8E93;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  .avatar.placeholder img { display: none; }
+  .cal-roles .avatar.placeholder { font-size: 14px; }
+
+  /* ================= 真机（窄屏）全屏适配 =================
+     shared/css/mobile-fit.css 只接管 .phone-mockup / .phone / .app-frame，
+     本页外壳类名是 .app，这里自己补一段等价规则，
+     让手机上打开时去掉 390px 居中壳与两侧灰底，整屏铺满。 */
+  @media (max-width: 480px) {
+    html, body { background: #FFFFFF !important; }
+    body { justify-content: flex-start; }
+    .app {
+      width: 100vw !important;
+      max-width: none !important;
+      height: 100vh !important;
+      height: 100dvh !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+    }
+    /* 真机上顶部已经靠 env(safe-area-inset-top) 让位，这里不叠加大留白 */
+    .top-bar { padding-top: max(env(safe-area-inset-top, 0px), 14px); }
+    .cal-header, .detail-top { padding-top: max(env(safe-area-inset-top, 0px), 10px); }
+    /* 底部导航避让 Home Indicator */
+    .bottom-nav {
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
+      height: calc(60px + env(safe-area-inset-bottom, 0px));
+    }
+    /* 页面底部留白要给加高后的导航让位 */
+    .page { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+    /* toast 位置避开加高的导航 */
+    .toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+  }
 </style>
 </head>
 <body>
@@ -271,20 +315,7 @@
     </div>
 
     <div class="role-section">
-      <div class="roles-scroll">
-        <button class="role-item active">
-          <div class="avatar"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&amp;fit=crop&amp;w=100&amp;q=80"></div>
-          <span class="role-name">宝宝</span>
-        </button>
-        <button class="role-item">
-          <div class="avatar"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&amp;fit=crop&amp;w=100&amp;q=80"></div>
-          <span class="role-name">梦</span>
-        </button>
-        <button class="role-item">
-          <div class="avatar"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&amp;fit=crop&amp;w=100&amp;q=80"></div>
-          <span class="role-name">灵</span>
-        </button>
-      </div>
+      <div class="roles-scroll" id="rolesScroll"></div>
       <div class="today-count">
         <small>今日足迹</small>
         <strong>3</strong>
@@ -346,20 +377,7 @@
       </button>
     </div>
 
-    <div class="cal-roles">
-      <button class="role-item active">
-        <div class="avatar"><img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&amp;fit=crop&amp;w=100&amp;q=80"></div>
-        <span class="role-name">宝宝</span>
-      </button>
-      <button class="role-item">
-        <div class="avatar"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&amp;fit=crop&amp;w=100&amp;q=80"></div>
-        <span class="role-name">梦</span>
-      </button>
-      <button class="role-item">
-        <div class="avatar"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&amp;fit=crop&amp;w=100&amp;q=80"></div>
-        <span class="role-name">灵</span>
-      </button>
-    </div>
+    <div class="cal-roles" id="calRoles"></div>
 
     <div class="cal-month">
       <h1>2025.04</h1>
@@ -516,6 +534,9 @@
   };
 
   // ================= 当前状态 =================
+  // 真实角色列表：与项目其它页面共用 localStorage 键 ai_custom_characters
+  // 每项形如 { id, name, avatar?(dataURL), memory? }
+  let realRoles = [];
   let currentRole = '宝宝';
   let currentDate = '2025-04-16';
   let viewMonth = '2025-04';
@@ -523,6 +544,63 @@
   const pad = n => n < 10 ? '0' + n : '' + n;
   const periodOf = h => h < 6 ? '凌晨' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : '夜晚';
   const itemsOf = (role, date) => (DATA[role] && DATA[role][date]) || [];
+
+  function loadRealRoles() {
+    try {
+      // 优先走 PhoneStorage（项目统一存储），其次直接读 localStorage
+      if (window.PhoneStorage && typeof window.PhoneStorage.getCharacters === 'function') {
+        const arr = window.PhoneStorage.getCharacters();
+        if (Array.isArray(arr) && arr.length) return arr.filter(r => r && (r.name || r.id));
+      }
+      const raw = localStorage.getItem('ai_custom_characters');
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter(r => r && (r.name || r.id)) : [];
+    } catch (e) { return []; }
+  }
+
+  // 单个角色头像节点：有 avatar 图就渲染 img，没有就显示名字首字占位
+  function avatarHTML(role) {
+    const name = role.name || '角';
+    const ch = name.charAt(0);
+    if (role.avatar) {
+      return '<div class="avatar"><img src="' + role.avatar + '" alt=""></div>';
+    }
+    return '<div class="avatar placeholder">' + ch + '</div>';
+  }
+
+  function renderRoles() {
+    realRoles = loadRealRoles();
+    // 如果当前选中的角色不在真实列表里，回退到第一个真实角色；都没有就保留演示名
+    const names = realRoles.map(r => r.name).filter(Boolean);
+    if (!names.includes(currentRole)) {
+      currentRole = names[0] || currentRole;
+    }
+
+    const build = (containerId) => {
+      const box = document.getElementById(containerId);
+      if (!box) return;
+      if (!realRoles.length) {
+        // 还没有任何角色：渲染一个默认占位项
+        box.innerHTML =
+          '<button class="role-item active" data-role-name="未命名角色">' +
+            '<div class="avatar placeholder">角</div>' +
+            '<span class="role-name">未命名角色</span>' +
+          '</button>';
+        return;
+      }
+      box.innerHTML = realRoles.map(r => {
+        const nm = r.name || '角色';
+        const active = nm === currentRole ? ' active' : '';
+        return '<button class="role-item' + active + '" data-role-name="' + nm + '">' +
+                 avatarHTML(r) +
+                 '<span class="role-name">' + nm + '</span>' +
+               '</button>';
+      }).join('');
+    };
+    build('rolesScroll');
+    build('calRoles');
+  }
 
   // ================= 主页：时间线 =================
   function renderTimeline() {
@@ -681,14 +759,10 @@
     // 角色切换（主页 + 日历两条角色条同步高亮）
     const item = e.target.closest('.role-item');
     if (item) {
-      const nameEl = item.querySelector('.role-name');
-      if (nameEl) {
-        const key = nameEl.textContent;
+      const key = item.dataset.roleName || (item.querySelector('.role-name') || {}).textContent;
+      if (key) {
         currentRole = key;
-        document.querySelectorAll('.roles-scroll .role-item, .cal-roles .role-item').forEach(b => {
-          const n = b.querySelector('.role-name');
-          b.classList.toggle('active', !!(n && n.textContent === key));
-        });
+        renderRoles();          // 重渲两条角色条，同步 active 高亮
         renderTimeline();
         updateCount();
         renderCalendar();
@@ -765,6 +839,7 @@
   });
 
   // ================= 初始化 =================
+  renderRoles();      // 先按真实角色重渲两条角色条，并校正 currentRole
   renderTimeline();
   updateCount();
   renderCalendar();

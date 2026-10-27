@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390,initial-scale=1,user-scalable=no">
+<title>自制剧本 · 故事剧场</title>
+<style>
+:root{
+  --bg:#0e0e12; --panel:#16161d; --line:rgba(255,255,255,.08);
+  --text:#f2f1ee; --muted:rgba(255,255,255,.5); --accent:#c8a87a;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#222;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--text);display:flex;justify-content:center;align-items:center;min-height:100vh}
+.phone{width:390px;height:844px;background:var(--bg);position:relative;overflow:hidden;display:flex;flex-direction:column}
+.topbar{padding:50px 20px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+.topbar h1{font-size:16px;font-weight:600;letter-spacing:.05em}
+.topbar button{background:none;border:1px solid var(--line);color:var(--muted);padding:6px 12px;font-size:12px;border-radius:4px}
+.body{flex:1;overflow-y:auto;padding:20px}
+.section{margin-bottom:28px}
+.section-title{font-size:11px;letter-spacing:.2em;color:var(--muted);margin-bottom:12px;text-transform:uppercase}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+input,textarea,select{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:11px 12px;font-size:14px;border-radius:6px;font-family:inherit;outline:none}
+textarea{resize:vertical;min-height:80px;line-height:1.6}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+.row{display:flex;gap:10px}
+.row>div{flex:1}
+.npc-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px}
+.npc-card h4{font-size:13px;margin-bottom:10px;color:var(--accent)}
+.avatar-preview{width:60px;height:60px;border-radius:8px;background:var(--bg);border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted);margin-bottom:8px;overflow:hidden}
+.avatar-preview img{width:100%;height:100%;object-fit:cover}
+.scene-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.scene-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.scene-head span{font-size:12px;color:var(--accent);font-weight:600}
+.scene-head button{background:none;border:none;color:#c88;font-size:12px;cursor:pointer}
+.choice-row{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;margin-top:8px}
+.choice-row select,.choice-row input{font-size:12px;padding:7px}
+.add-btn{width:100%;padding:12px;border:1px dashed var(--line);background:none;color:var(--muted);font-size:13px;border-radius:8px;cursor:pointer}
+.add-btn:active{background:var(--panel)}
+.save-bar{padding:16px 20px 40px;border-top:1px solid var(--line);display:flex;gap:10px}
+.save-bar button{flex:1;padding:14px;font-size:14px;border-radius:8px;border:none;cursor:pointer}
+.btn-save{background:var(--accent);color:#1a1a1f;font-weight:600}
+.btn-cancel{background:var(--panel);color:var(--text)}
+.hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="topbar">
+    <button onclick="location.href='story.html'">← 返回</button>
+    <h1>自制剧本</h1>
+    <div style="width:50px"></div>
+  </div>
+  <div class="body">
+
+    <div class="section">
+      <div class="section-title">剧本信息</div>
+      <label>剧本名字</label>
+      <input id="f_title" placeholder="比如：我的重生日记">
+      <div style="height:10px"></div>
+      <label>一句话简介</label>
+      <input id="f_desc" placeholder="别人会在封面看到这句话">
+    </div>
+
+    <div class="section">
+      <div class="section-title">角色（最多3个）</div>
+      <div id="npcList"></div>
+      <button class="add-btn" onclick="addNpc()">+ 添加一个角色</button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">剧情场景</div>
+      <div class="hint" style="margin-bottom:12px">第一个场景就是开头。每个场景可以有选项，选完跳到下一个场景。最后一个场景会自动当成结局。</div>
+      <div id="sceneList"></div>
+      <button class="add-btn" onclick="addScene()">+ 添加一个场景</button>
+    </div>
+
+  </div>
+  <div class="save-bar">
+    <button class="btn-cancel" onclick="location.href='story.html'">取消</button>
+    <button class="btn-save" onclick="saveBook()">保存剧本</button>
+  </div>
+</div>
+
+<script>
+var builtinBgs = [
+  {id:'bg-classroom', name:'教室/房间'},
+  {id:'bg-rooftop', name:'天台/户外'},
+  {id:'bg-rain', name:'雨天'},
+  {id:'bg-sunset', name:'夕阳/黄昏'},
+  {id:'bg-night', name:'夜晚'}
+];
+var npcCount = 0;
+var sceneCount = 0;
+
+function addNpc(){
+  if(npcCount >= 3) return alert('最多3个角色');
+  npcCount++;
+  var i = npcCount;
+  var div = document.createElement('div');
+  div.className = 'npc-card';
+  div.id = 'npc'+i;
+  div.innerHTML =
+    '<h4>角色 ' + i + '</h4>' +
+    '<div class="avatar-preview" id="av'+i+'">立绘</div>' +
+    '<input type="file" accept="image/*" onchange="uploadAvatar(this,'+i+')" style="font-size:11px;margin-bottom:8px">' +
+    '<label>角色名字</label>' +
+    '<input id="npcName'+i+'" placeholder="比如：江屿">';
+  document.getElementById('npcList').appendChild(div);
+}
+var avatarData = {};
+function uploadAvatar(input, i){
+  var f = input.files[0];
+  if(!f) return;
+  if(f.size > 800*1024){ alert('图片太大，请用800KB以内的'); input.value=''; return; }
+  var r = new FileReader();
+  r.onload = function(e){
+    avatarData[i] = e.target.result;
+    var prev = document.getElementById('av'+i);
+    prev.innerHTML = '<img src="'+e.target.result+'">';
+  };
+  r.readAsDataURL(f);
+}
+
+function addScene(){
+  sceneCount++;
+  var i = sceneCount;
+  var div = document.createElement('div');
+  div.className = 'scene-card';
+  div.id = 'scene'+i;
+  var opts = builtinBgs.map(function(b){return '<option value="'+b.id+'">'+b.name+'</option>'}).join('');
+  div.innerHTML =
+    '<div class="scene-head"><span>场景 ' + i + '</span><button onclick="this.closest(\'.scene-card\').remove();sceneCount--">删除</button></div>' +
+    '<label>背景</label>' +
+    '<select id="scBg'+i+'">' + opts + '</select>' +
+    '<div style="height:10px"></div>' +
+    '<label>这段话说什么</label>' +
+    '<textarea id="scText'+i+'" placeholder="旁白写剧情，角色写对话"></textarea>' +
+    '<div style="height:10px"></div>' +
+    '<label>说话人</label>' +
+    '<select id="scSpeaker'+i+'">' +
+      '<option value="narr">旁白</option>' +
+      '<option value="player">主角</option>' +
+      '<option value="npc1">角色1</option>' +
+      '<option value="npc2">角色2</option>' +
+      '<option value="npc3">角色3</option>' +
+    '</select>' +
+    '<div style="height:10px"></div>' +
+    '<label>选项（留空就是结局）</label>' +
+    '<div id="choices'+i+'"></div>' +
+    '<button class="add-btn" onclick="addChoice('+i+')" style="margin-top:8px">+ 加选项</button>';
+  document.getElementById('sceneList').appendChild(div);
+  addChoice(i);
+}
+function addChoice(si){
+  var c = document.getElementById('choices'+si).children.length;
+  var div = document.createElement('div');
+  div.className = 'choice-row';
+  var opts = '';
+  for(var k=1;k<=sceneCount;k++){ opts += '<option value="'+k+'">跳到场景'+k+'</option>'; }
+  div.innerHTML =
+    '<div class="row">' +
+      '<div style="flex:2"><input placeholder="选项文字" class="chText"></div>' +
+      '<div style="flex:1"><select class="chNext">'+opts+'</select></div>' +
+    '</div>';
+  document.getElementById('choices'+si).appendChild(div);
+}
+
+function saveBook(){
+  var title = document.getElementById('f_title').value.trim();
+  if(!title) return alert('先填剧本名字');
+  var desc = document.getElementById('f_desc').value.trim() || '自制剧本';
+
+  var npcs = [];
+  for(var i=1;i<=npcCount;i++){
+    var n = document.getElementById('npcName'+i).value.trim();
+    if(n) npcs.push({name:n, img: avatarData[i] || null});
+  }
+
+  var scenes = {};
+  var sceneIds = [];
+  for(var i=1;i<=sceneCount;i++){
+    var sid = 'myScene'+i;
+    sceneIds.push(sid);
+    var text = document.getElementById('scText'+i).value.trim();
+    var bg = document.getElementById('scBg'+i).value;
+    var sp = document.getElementById('scSpeaker'+i).value;
+    var sprites = [];
+    if(sp === 'npc1') sprites.push('npc1');
+    if(sp === 'npc2') sprites.push('npc2');
+    if(sp === 'npc3') sprites.push('npc3');
+
+    var choicesEl = document.getElementById('choices'+i);
+    var choices = [];
+    for(var j=0;j<choicesEl.children.length;j++){
+      var row = choicesEl.children[j];
+      var ct = row.querySelector('.chText').value.trim();
+      var cn = parseInt(row.querySelector('.chNext').value);
+      if(ct) choices.push({t:ct, next: sceneIds[cn-1]});
+    }
+
+    scenes[sid] = {
+      bg: bg, speaker: sp, text: text || '……', sprites: sprites,
+      choices: choices.length ? choices : undefined,
+      next: choices.length ? undefined : undefined,
+      ending: choices.length ? undefined : {
+        tag:'ENDING', title:'结局', text:'故事到这里就结束了。'
+      }
+    };
+  }
+
+  var charsName = {player:'主角'};
+  var charsImg = {};
+  npcs.forEach(function(n, idx){
+    charsName['npc'+(idx+1)] = n.name;
+    if(n.img) charsImg['npc'+(idx+1)] = n.img;
+  });
+
+  var book = {
+    meta: {
+      title: title, subtitle: 'MY STORY', desc: desc,
+      tag: '自制 · ' + npcs.length + '角色',
+      coverBg: 'bg-night',
+      chars: npcs.map(function(n){return n.name}),
+      charsName: charsName,
+      charsImg: charsImg,
+      statNames: {npc1: npcs[0]?npcs[0].name+'好感':'好感', npc2: npcs[1]?npcs[1].name+'好感':'好感', npc3: npcs[2]?npcs[2].name+'好感':'好感', courage:'勇气', wisdom:'智慧'},
+      bgImg: {
+        'bg-classroom': 'assets/bg-classroom.png',
+        'bg-rooftop': 'assets/bg-rooftop.png',
+        'bg-rain': 'assets/bg-rain.png',
+        'bg-sunset': 'assets/bg-sunset.png',
+        'bg-night': 'assets/bg-night.png'
+      }
+    },
+    start: sceneIds[0],
+    scenes: scenes
+  };
+
+  var all = {};
+  try{ all = JSON.parse(localStorage.getItem('maomao_story_custom') || '{}'); }catch(e){}
+  var bid = 'custom_' + Date.now();
+  all[bid] = book;
+  localStorage.setItem('maomao_story_custom', JSON.stringify(all));
+  alert('保存成功！回到封面就能玩了。');
+  location.href = 'story.html';
+}
+
+// 默认给两个场景
+addNpc(); addNpc();
+addScene(); addScene();
+document.getElementById('scText1').value = '你睁开眼睛。一切好像和以前一样，又好像不一样。';
+document.getElementById('scText2').value = '故事到这里。';
+</script>
+</body>
+</html>

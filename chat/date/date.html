@@ -1160,7 +1160,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 <body>
 <div class="page">
   <header class="masthead">
-    <a class="mast-link" id="backLink" href="../chat/chat/chat.html">‹ 返回</a>
+    <a class="mast-link" id="backLink" href="../../index.html">‹ 返回</a>
     <span class="mast-word">MAOMAO&ensp;/&ensp;OFFLINE STORY</span>
     <div class="mast-right">
       <button class="mast-action menu-trigger" id="writingBtn" type="button" title="剧情功能与美化" aria-label="打开剧情功能与美化菜单" aria-expanded="false" aria-controls="writingPop">
@@ -1377,7 +1377,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.8 9l5.5 1.8-5.5 1.8-1.8 5.5-1.8-5.5-5.5-1.8L10.2 9 12 3.5Z"/><path d="m19 15 .9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg>
       <span>帮我回复</span>
     </button>
-    <button class="send-btn" id="dateSend" type="submit">Send&thinsp;↗</button>
+    <button class="send-btn" id="dateSend" type="submit">Send&thinsp;</button>
   </form>
 
   <div class="date-toast" id="dateToast"></div>
@@ -2108,7 +2108,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         portrait.appendChild(portraitImg);
     }
 
-    backLink.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
+    // 退出赴约：回到手机主屏，不钻回线上聊天页（线上/线下是两个独立场景）
+    backLink.href = '../../index.html';
 
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
     var HISTORY_KEY = 'chat_history_' + roleId;
@@ -2188,8 +2189,10 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             try { localStorage.setItem(PREVIEW_KEY, PREVIEW_VER); } catch (e) {}
             return;
         }
-        // 真实使用：只在空历史时补一条角色开场白，不写入任何示例对话
-        if (history.length) return;
+        // 真实使用：只在还没有任何赴约剧情（mode:'date'）时补一条角色开场白，不写入任何示例对话。
+        // 注意不能用 history.length 判断——线上聊天消息会让全量非空，但那不属于线下剧情。
+        var hasDateMsg = history.some(function (m) { return m && m.mode === 'date'; });
+        if (hasDateMsg) return;
         history.push({ role: 'assistant', text: buildLocalOpening(), time: Date.now(), mode: 'date', scene: sceneName || undefined });
         saveHistory(history);
     }
@@ -2285,8 +2288,14 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         lastScene = '';
         sceneCount = 0;
         var list = loadHistory();
-        list.forEach(function (m, i) { appendMessage(m, i); });
-        if (!list.length) {
+        // 线上/线下界面隔离：只渲染 mode:'date' 的赴约剧情；
+        // 线上聊天消息保留在数据里供 AI 上下文（记忆互通），但不进小说排版。
+        list.forEach(function (m, i) {
+            if (!m || m.mode !== 'date') return;
+            appendMessage(m, i);
+        });
+        var hasAnyDate = list.some(function (m) { return m && m.mode === 'date'; });
+        if (!hasAnyDate) {
             var hint = document.createElement('p');
             hint.className = 'story-hint';
             hint.textContent = sceneName
@@ -2302,16 +2311,18 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     function appendSummary() {
         var old = document.getElementById('summaryBox');
         if (old) old.remove();
-        if (!history.length) return;
 
-        var scenes = [], seen = {}, lastLine = '';
+        var scenes = [], seen = {}, lastLine = '', dateCount = 0;
         history.forEach(function (m) {
+            if (!m || m.mode !== 'date') return;   // 只统计线下剧情，不混入线上聊天
+            dateCount++;
             if (m.scene && !seen[m.scene]) { seen[m.scene] = 1; scenes.push(m.scene); }
             var t = String(m.text || m.content || '').trim();
             if (t && (m.role === 'assistant' || m.role === 'received')) lastLine = t;
         });
+        if (!dateCount) return;   // 还没有任何线下剧情时不显示摘要框
         lastLine = lastLine.replace(/\s+/g, ' ');
-        var text = (scenes.length ? '场景 · ' + scenes.join(' / ') + '　' : '') + '共 ' + history.length + ' 条记录';
+        var text = (scenes.length ? '场景 · ' + scenes.join(' / ') + '　' : '') + '共 ' + dateCount + ' 条记录';
         if (lastLine) text += '　｜　最新：' + lastLine.slice(0, 56) + (lastLine.length > 56 ? '…' : '');
 
         var box = document.createElement('div');
@@ -2548,7 +2559,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         sending = on;
         if (sendBtn) {
             sendBtn.disabled = on;
-            sendBtn.textContent = on ? 'Writing…' : 'Send ↗';
+            sendBtn.textContent = on ? 'Writing…' : 'Send ';
         }
         var contBtn = document.getElementById('dateContinue');
         if (contBtn) contBtn.disabled = on;
@@ -2664,7 +2675,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             var sendButton = document.createElement('button');
             sendButton.type = 'button';
             sendButton.className = 'primary';
-            sendButton.textContent = '选用并发送 ↗';
+            sendButton.textContent = '选用并发送';
             sendButton.disabled = sending;
             sendButton.addEventListener('click', function () {
                 if (sending || generatingReplyOptions || !input) return;
@@ -2819,9 +2830,10 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         var lines = ['线下模式 · ' + charName, '导出于 ' + new Date().toLocaleString('zh-CN'), ''];
         var lastSceneSaved = '';
         history.forEach(function (m) {
+            if (!m || m.mode !== 'date') return;   // 导出的是线下剧情文稿，不混入线上聊天
             var t = String(m.text || m.content || '').trim();
             if (!t) return;
-            if (m.mode === 'date' && m.scene && m.scene !== lastSceneSaved) {
+            if (m.scene && m.scene !== lastSceneSaved) {
                 lines.push('———— ' + m.scene + ' ————', '');
                 lastSceneSaved = m.scene;
             }

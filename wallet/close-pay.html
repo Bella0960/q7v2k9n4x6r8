@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>亲密付 · 小手机</title>
+<script src="../shared/js/font-loader.js?v=20261022v1"></script>
+<script src="../shared/js/native-feel.js"></script>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: #e5e5e5;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #111;
+  }
+  .phone-mockup {
+    position: relative;
+    width: min(390px, calc(100vw - 24px));
+    height: min(844px, calc(100vh - 24px));
+    background: #F7F7F9;
+    border-radius: 45px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    overflow: hidden;
+    border: 8px solid #fff;
+    display: flex;
+    flex-direction: column;
+  }
+  .floating-nav { display: none !important; }
+  .cp-stage {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 16px 40px;
+    scrollbar-width: none;
+  }
+  .cp-stage::-webkit-scrollbar { display: none; }
+
+  /* 顶栏 */
+  .cp-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: calc(50px + env(safe-area-inset-top,0px)) 0 12px;
+  }
+  .cp-back {
+    width: 32px; height: 32px; border: none; background: transparent;
+    border-bottom: 1px solid #bdbdbd; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cp-back:active { transform: translateY(1px); border-color: #171717; }
+  .cp-back svg { width: 16px; height: 16px; stroke: #333; fill: none; stroke-width: 1.5; }
+  .cp-title { flex: 1; text-align: center; font-size: 1rem; font-weight: 800; letter-spacing: 2px; }
+  .cp-top-right { width: 32px; }
+
+  /* 开关 */
+  .cp-switch {
+    width: 44px; height: 26px; border-radius: 13px; background: #E5E5EA;
+    position: relative; cursor: pointer; transition: background .2s ease;
+    border: none; flex-shrink: 0;
+  }
+  .cp-switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 22px; height: 22px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: left .2s ease;
+  }
+  .cp-switch.on { background: #111; }
+  .cp-switch.on::after { left: 20px; }
+
+  /* 卡片通用 */
+  .cp-card {
+    background: #fff; border-radius: 18px; padding: 20px;
+    margin-bottom: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  }
+
+  /* 亲密付对象 */
+  .cp-person {
+    display: flex; align-items: center; gap: 14px; cursor: pointer;
+  }
+  .cp-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: #E9E9EB; color: #8E8E93;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 500; overflow: hidden; flex-shrink: 0;
+  }
+  .cp-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .cp-person-meta { flex: 1; min-width: 0; }
+  .cp-person-name { font-size: 1rem; font-weight: 600; }
+  .cp-person-sub { font-size: 0.75rem; color: #8E8E93; margin-top: 4px; }
+  .cp-person-arrow svg { width: 16px; height: 16px; stroke: #C7C7CC; }
+
+  /* 额度 */
+  .cp-limit-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 14px;
+  }
+  .cp-limit-label { font-size: 0.875rem; font-weight: 500; }
+  .cp-limit-value { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px; }
+  .cp-limit-value small { font-size: 0.75rem; color: #8E8E93; font-weight: 400; margin-left: 2px; }
+  .cp-limit-input {
+    width: 100%; height: 44px; background: #F2F2F7; border: none; outline: none;
+    border-radius: 12px; padding: 0 14px; font-size: 1rem; color: #111;
+  }
+  .cp-limit-hint { font-size: 0.7rem; color: #8E8E93; margin-top: 8px; }
+
+  /* 进度条 */
+  .cp-progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 0.75rem; color: #8E8E93; margin-bottom: 8px;
+  }
+  .cp-progress-bar {
+    height: 6px; background: #F2F2F7; border-radius: 3px; overflow: hidden;
+  }
+  .cp-progress-fill {
+    height: 100%; background: #111; border-radius: 3px;
+    transition: width .3s ease;
+  }
+  .cp-progress-num {
+    margin-top: 10px; font-size: 0.813rem; color: #333;
+  }
+  .cp-progress-num b { font-weight: 700; }
+
+  /* 说明 */
+  .cp-notice {
+    background: #F2F2F7; border-radius: 14px; padding: 14px 16px;
+    font-size: 0.75rem; color: #666; line-height: 1.7;
+  }
+
+  /* 交易记录 */
+  .cp-section-title {
+    font-size: 0.813rem; font-weight: 600; color: #333;
+    margin: 18px 4px 10px; letter-spacing: 0.5px;
+  }
+  .cp-record {
+    background: #fff; border-radius: 14px; padding: 14px;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+  }
+  .cp-record-icon {
+    width: 30px; height: 30px; border-radius: 50%; background: #F2F2F7;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .cp-record-icon svg { width: 14px; height: 14px; stroke: #555; fill: none; stroke-width: 1.5; }
+  .cp-record-mid { flex: 1; min-width: 0; }
+  .cp-record-title { font-size: 0.813rem; color: #333; }
+  .cp-record-time { font-size: 0.688rem; color: #8E8E93; margin-top: 2px; }
+  .cp-record-amount { font-size: 0.875rem; font-weight: 600; color: #111; }
+  .cp-empty {
+    text-align: center; font-size: 0.75rem; color: #8E8E93;
+    padding: 24px 0;
+  }
+
+  /* 角色选择弹窗 */
+  .cp-picker-overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.35);
+    display: none; align-items: flex-end; z-index: 100;
+  }
+  .cp-picker-overlay.open { display: flex; }
+  .cp-picker {
+    width: 100%; background: #fff; border-radius: 20px 20px 0 0;
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom,0px));
+    max-height: 60vh; overflow-y: auto;
+    animation: cpUp .22s ease;
+  }
+  @keyframes cpUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .cp-picker-title {
+    font-size: 0.938rem; font-weight: 700; text-align: center;
+    padding-bottom: 12px; letter-spacing: 1px;
+  }
+  .cp-picker-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px; border-radius: 12px; cursor: pointer;
+  }
+  .cp-picker-item:active { background: #F2F2F7; }
+  .cp-picker-item .cp-avatar { width: 40px; height: 40px; font-size: 16px; }
+  .cp-picker-item span { font-size: 0.938rem; }
+
+  /* toast */
+  .cp-toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(10px);
+    background: #111; color: #fff; padding: 10px 18px; border-radius: 20px;
+    font-size: 0.813rem; opacity: 0; pointer-events: none;
+    transition: all .25s ease; z-index: 200;
+  }
+  .cp-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div class="phone-mockup">
+  <main class="cp-stage">
+
+    <div class="cp-topbar">
+      <button class="cp-back" id="btnBack" aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span class="cp-title">亲密付</span>
+      <button class="cp-switch" id="cpSwitch" aria-label="开关"></button>
+    </div>
+
+    <!-- 选择对象 -->
+    <div class="cp-card" id="personCard">
+      <div class="cp-person" id="personRow">
+        <div class="cp-avatar" id="personAvatar">角</div>
+        <div class="cp-person-meta">
+          <div class="cp-person-name" id="personName">未设置</div>
+          <div class="cp-person-sub">点击选择亲密付对象</div>
+        </div>
+        <div class="cp-person-arrow">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- 月额度 -->
+    <div class="cp-card">
+      <div class="cp-limit-row">
+        <span class="cp-limit-label">每月额度</span>
+        <span class="cp-limit-value">¥<span id="limitValue">500</span><small>/ 月</small></span>
+      </div>
+      <input class="cp-limit-input" id="limitInput" type="text" inputmode="decimal" placeholder="输入月额度，例如 500" autocomplete="off">
+      <div class="cp-limit-hint">额度仅作记录与校验，不影响实际余额；用完后商店将无法使用亲密付。</div>
+    </div>
+
+    <!-- 本月使用进度 -->
+    <div class="cp-card">
+      <div class="cp-progress-label">
+        <span>本月已使用</span>
+        <span id="progressText">¥0 / ¥500</span>
+      </div>
+      <div class="cp-progress-bar"><div class="cp-progress-fill" id="progressFill" style="width:0%"></div></div>
+      <div class="cp-progress-num">
+        剩余可用 <b id="remainValue">¥500.00</b>
+      </div>
+    </div>
+
+    <div class="cp-notice">
+      开启亲密付后，在「商店」结算时可选择亲密付，由你代付。每笔支出会同步写入钱包交易明细与记账，并给对方发一条聊天消息提醒。
+    </div>
+
+    <!-- 交易记录 -->
+    <div class="cp-section-title">亲密付记录</div>
+    <div id="recordList"></div>
+
+  </main>
+
+  <!-- 角色选择弹窗 -->
+  <div class="cp-picker-overlay" id="pickerOverlay">
+    <div class="cp-picker">
+      <div class="cp-picker-title">选择亲密付对象</div>
+      <div id="pickerList"></div>
+    </div>
+  </div>
+
+  <div class="cp-toast" id="toast"></div>
+</div>
+
+<script>
+  var KEY = 'close_pay';
+
+  function getData() {
+    try {
+      var d = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (d && typeof d === 'object') return d;
+    } catch (e) {}
+    return { enabled: false, roleId: '', roleName: '', limit: 500, used: 0, history: [] };
+  }
+  function saveData(d) {
+    try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {}
+  }
+
+  function getCharacters() {
+    try {
+      if (window.PhoneStorage && window.PhoneStorage.getCharacters) {
+        var r = window.PhoneStorage.getCharacters();
+        if (Array.isArray(r) && r.length) return r;
+      }
+      var raw = localStorage.getItem('ai_custom_characters');
+      if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
+    } catch (e) {}
+    return [];
+  }
+
+  function fmtTime(ts) {
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    var hh = String(d.getHours()).padStart(2,'0');
+    var mi = String(d.getMinutes()).padStart(2,'0');
+    return mm + '-' + dd + ' ' + hh + ':' + mi;
+  }
+
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ t.classList.remove('show'); }, 1600);
+  }
+
+  function render() {
+    var d = getData();
+    var sw = document.getElementById('cpSwitch');
+    sw.classList.toggle('on', !!d.enabled);
+
+    // 对象
+    var avatar = document.getElementById('personAvatar');
+    var nameEl = document.getElementById('personName');
+    if (d.roleName) {
+      nameEl.textContent = d.roleName;
+      if (d.roleAvatar) {
+        avatar.innerHTML = '<img src="' + d.roleAvatar + '" alt="">';
+      } else {
+        avatar.textContent = d.roleName.charAt(0);
+        avatar.innerHTML = '';
+        avatar.textContent = d.roleName.charAt(0);
+      }
+    } else {
+      nameEl.textContent = '未设置';
+      avatar.innerHTML = '';
+      avatar.textContent = '角';
+    }
+
+    // 额度
+    document.getElementById('limitValue').textContent = d.limit || 0;
+    document.getElementById('limitInput').value = '';
+
+    // 进度
+    var limit = Number(d.limit) || 0;
+    var used = Number(d.used) || 0;
+    var remain = Math.max(0, limit - used);
+    var pct = limit > 0 ? Math.min(100, used / limit * 100) : 0;
+    document.getElementById('progressText').textContent = '¥' + used.toFixed(0) + ' / ¥' + limit;
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('remainValue').textContent = '¥' + remain.toFixed(2);
+
+    // 记录
+    var list = document.getElementById('recordList');
+    var hist = Array.isArray(d.history) ? d.history : [];
+    if (!hist.length) {
+      list.innerHTML = '<div class="cp-empty">还没有亲密付记录</div>';
+      return;
+    }
+    var ICON = '<svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
+    list.innerHTML = hist.slice().reverse().map(function(h){
+      return '<div class="cp-record">' +
+        '<div class="cp-record-icon">' + ICON + '</div>' +
+        '<div class="cp-record-mid">' +
+          '<div class="cp-record-title">' + (h.note || '亲密付') + '</div>' +
+          '<div class="cp-record-time">' + fmtTime(h.time) + '</div>' +
+        '</div>' +
+        '<div class="cp-record-amount">-¥' + Number(h.amount).toFixed(2) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  // 开关
+  document.getElementById('cpSwitch').addEventListener('click', function(){
+    var d = getData();
+    if (!d.roleName) {
+      toast('请先选择亲密付对象');
+      return;
+    }
+    d.enabled = !d.enabled;
+    saveData(d);
+    toast(d.enabled ? '亲密付已开启' : '亲密付已关闭');
+    render();
+  });
+
+  // 选对象弹窗
+  document.getElementById('personRow').addEventListener('click', function(){
+    var chars = getCharacters();
+    var box = document.getElementById('pickerList');
+    if (!chars.length) {
+      box.innerHTML = '<div class="cp-empty">还没有角色，先去聊天里添加一个吧</div>';
+    } else {
+      box.innerHTML = chars.map(function(c){
+        var ch = c.name || '角色';
+        var av = c.avatar
+          ? '<img src="' + c.avatar + '" alt="">'
+          : ch.charAt(0);
+        return '<div class="cp-picker-item" data-id="' + (c.id||'') + '" data-name="' + ch + '" data-avatar="' + (c.avatar||'') + '">' +
+          '<div class="cp-avatar">' + av + '</div>' +
+          '<span>' + ch + '</span>' +
+        '</div>';
+      }).join('');
+    }
+    document.getElementById('pickerOverlay').classList.add('open');
+  });
+  document.getElementById('pickerOverlay').addEventListener('click', function(e){
+    if (e.target === this) this.classList.remove('open');
+    var item = e.target.closest('.cp-picker-item');
+    if (!item) return;
+    var d = getData();
+    d.roleId = item.dataset.id;
+    d.roleName = item.dataset.name;
+    d.roleAvatar = item.dataset.avatar;
+    saveData(d);
+    this.classList.remove('open');
+    toast('已选择 ' + d.roleName + ' 为亲密付对象');
+    render();
+  });
+
+  // 额度输入
+  document.getElementById('limitInput').addEventListener('change', function(){
+    var v = parseFloat(this.value);
+    if (!isFinite(v) || v < 0) { toast('请输入有效额度'); return; }
+    var d = getData();
+    d.limit = Math.round(v * 100) / 100;
+    saveData(d);
+    toast('月额度已设为 ¥' + d.limit);
+    render();
+  });
+
+  // 返回
+  document.getElementById('btnBack').addEventListener('click', function(){
+    if (window.history.length > 1) window.history.back();
+    else location.href = 'wallet.html';
+  });
+
+  render();
+</script>
+</body>
+</html>

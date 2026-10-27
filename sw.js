@@ -1,11 +1,34 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v98';
+const CACHE_NAME = 'phone-app-pwa-v110';
 const APP_SHELL = [
   './',
   './index.html',
   './beauty/beauty.html',
+  './chat/footprint/footprint.html',
+  './wallet/takeout.html',
+  './assets/takeout/s1-noodle.jpg',
+  './assets/takeout/s2-milktea.jpg',
+  './assets/takeout/s3-bbq.jpg',
+  './assets/takeout/s4-salad.jpg',
+  './assets/takeout/s5-coffee.jpg',
+  './assets/takeout/s6-bento.jpg',
+  './assets/takeout/d1-noodle.jpg',
+  './assets/takeout/d2-beef.jpg',
+  './assets/takeout/d4-bingfen.jpg',
+  './assets/takeout/d5-boba.jpg',
+  './assets/takeout/d6-matcha.jpg',
+  './assets/takeout/d7-taro.jpg',
+  './assets/takeout/d8-skewer.jpg',
+  './assets/takeout/d9-eggplant.jpg',
+  './assets/takeout/d10-chive.jpg',
+  './assets/takeout/d11-salad.jpg',
+  './assets/takeout/d12-bowl.jpg',
+  './assets/takeout/d13-americano.jpg',
+  './assets/takeout/d14-latte.jpg',
+  './assets/takeout/d15-croissant.jpg',
+  './assets/takeout/d16-bento.jpg',
   './shared/js/chat-beauty.js?v=20261026v11',
   './shared/js/wallpaper-store.js?v=20261026v2',
   './shared/css/chat-beauty-runtime.css?v=20261026v16',
@@ -71,6 +94,13 @@ self.addEventListener('activate', event => {
         .map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
+});
+
+// 页面发来 SKIP_WAITING 时立刻接管，让 index.html 的 controllerchange 触发自动刷新
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', event => {

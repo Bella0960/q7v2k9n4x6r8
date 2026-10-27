@@ -16,42 +16,59 @@
 <main class="kitchen-shell">
   <header class="topbar">
     <button class="icon-button" id="backButton" aria-label="返回游戏大厅"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6M9 12h11"/></svg></button>
-    <span class="wordmark">MAOMAO / PLAY LAB</span>
-    <button class="text-button" id="historyButton">菜品记录 <span id="historyCount">0</span></button>
+    <span class="wordmark">投喂厨房</span>
+    <button class="text-button" id="historyButton">记录 <span id="historyCount">0</span></button>
   </header>
 
-  <section class="intro">
-    <p class="eyebrow"><span class="eyebrow-rule"></span> A LITTLE SOMETHING FOR YOU</p>
-    <h1>投喂<br><em>厨房。</em></h1>
-    <p class="intro-copy">没有固定菜谱。把想放进去的食材交给锅，做一道只属于你们的菜。</p>
-  </section>
-
-  <section class="role-strip" aria-label="选择试吃角色">
-    <div class="role-caption"><span>今晚的试吃员</span><span class="muted">TASTE TESTER</span></div>
-    <div class="role-picker">
-      <div class="role-monogram" id="roleMonogram">?</div>
-      <div class="role-details"><strong id="roleName">选择你的角色</strong><span id="roleDescription">做好之后，TA 会给出反应</span></div>
-      <button class="small-outline" id="changeRole">更换</button>
-    </div>
-    <div class="taste-memory" id="tasteMemory"><span class="taste-memory-label">口味档案 / TASTE NOTES</span><span id="tasteMemoryText">还没有记录。每次试吃后，可以慢慢了解 TA 喜欢什么。</span></div>
+  <!-- 紧凑角色条：一屏内可见 -->
+  <section class="compact-role-bar" aria-label="试吃角色">
+    <div class="role-monogram" id="roleMonogram">?</div>
+    <div class="role-details"><strong id="roleName">选择角色</strong><span id="roleDescription">做好后 TA 会评价</span></div>
+    <button class="small-outline" id="changeRole">更换</button>
     <div class="role-options" id="roleOptions" hidden></div>
   </section>
 
-  <section class="kitchen-progress" aria-label="料理图鉴与成就"><div class="progress-heading"><div><p class="eyebrow">YOUR KITCHEN ARCHIVE</p><h2>发现与收藏</h2></div><div class="progress-numbers"><span><strong id="discoveryCount">0/4</strong>隐藏料理</span><span><strong id="achievementCount">0/5</strong>成就</span></div></div><div class="progress-columns"><div><h3>隐藏料理图鉴</h3><div id="discoveryList" class="kitchen-record-list"></div></div><div><h3>厨房成就</h3><div id="achievementList" class="kitchen-record-list"></div></div></div></section>
-
+  <!-- 做饭区：首屏核心 -->
   <section class="stage" id="cookStage">
-    <div class="stage-heading"><div><p class="eyebrow">01 / PREPARE</p><h2>把灵感放进锅里</h2></div><span class="stage-count" id="ingredientCount">00 INGREDIENTS</span></div>
     <div class="pot-scene" id="potScene">
       <div class="steam steam-one"></div><div class="steam steam-two"></div><div class="steam steam-three"></div>
       <div class="pot-lid"><span></span></div>
-      <div class="pot"><div class="pot-rim"></div><div class="pot-inner" id="potContents"><span class="empty-pot">锅里还空着<br><small>先挑几样食材</small></span></div><div class="pot-front"></div><div class="pot-handle handle-left"></div><div class="pot-handle handle-right"></div></div>
+      <div class="pot"><div class="pot-rim"></div><div class="pot-inner" id="potContents"><span class="empty-pot">锅里还空着<br><small>先挑几样食材</small></span></div><div class="pot-utensil" id="potUtensil"></div><div class="pot-front"></div><div class="pot-handle handle-left"></div><div class="pot-handle handle-right"></div></div>
       <div class="pot-shadow"></div>
     </div>
     <div class="ingredient-summary" id="ingredientSummary">从下面选食材，点选即可加入锅中。</div>
-    <div class="ingredient-head"><div><p class="eyebrow">YOUR INGREDIENTS</p><h3>食材抽屉</h3></div><button class="subtle-button" id="clearIngredients">清空锅</button></div>
+    <div class="cook-by-toggle">
+      <span>谁来做？</span>
+      <button type="button" class="cook-by-btn active" data-cook-by="me">我来做</button>
+      <button type="button" class="cook-by-btn" data-cook-by="them">TA来做</button>
+    </div>
+    <div class="ingredient-head">
+      <div><h3>食材抽屉</h3></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="stage-count" id="ingredientCount">00 INGREDIENTS</span>
+        <button class="subtle-button" id="clearIngredients">清空锅</button>
+      </div>
+    </div>
     <div class="category-tabs" id="categoryTabs" role="tablist" aria-label="食材分类"></div>
     <div class="ingredient-grid" id="ingredientGrid"></div>
-    <div class="cook-footer"><div class="footer-note"><strong id="footerCount">0</strong><span>样食材已加入</span></div><button class="primary-button" id="cookButton" disabled>开始烹饪 <span>↗</span></button></div>
+    <div class="cook-footer"><div class="footer-note"><strong id="footerCount">0</strong><span>样食材已加入</span></div><button class="primary-button" id="cookButton" disabled>开始烹饪 </button></div>
+  </section>
+
+  <!-- 口味档案：折叠 -->
+  <section class="taste-memory" id="tasteMemory">
+    <span class="taste-memory-label">口味档案 / TASTE NOTES</span>
+    <span id="tasteMemoryText">还没有记录。每次试吃后，可以慢慢了解 TA 喜欢什么。</span>
+  </section>
+
+  <!-- 图鉴成就：移到最下面，不挡首屏 -->
+  <section class="kitchen-progress" aria-label="料理图鉴与成就">
+    <details>
+      <summary>发现与收藏 <span class="progress-numbers-inline"><strong id="discoveryCount">0/4</strong>隐藏料理 · <strong id="achievementCount">0/5</strong>成就</span></summary>
+      <div class="progress-columns">
+        <div><h3 style="display:flex;align-items:center;justify-content:space-between">隐藏料理图鉴 <button type="button" id="addCustomRecipe" class="add-recipe-btn" aria-label="添加自定义菜品">+</button></h3><div id="discoveryList" class="kitchen-record-list"></div></div>
+        <div><h3>厨房成就</h3><div id="achievementList" class="kitchen-record-list"></div></div>
+      </div>
+    </details>
   </section>
 
   <section class="stage result-stage" id="dishStage" hidden>
@@ -62,7 +79,7 @@
     <div class="dish-meta"><span id="dishFlavor">风味待定</span><span id="dishCount">0 种食材</span></div>
     <p class="dish-description" id="dishDescription"></p>
     <div class="used-ingredients" id="usedIngredients"></div>
-    <div class="result-actions"><button class="secondary-button" id="editDish">回去再改</button><button class="primary-button" id="serveButton">端给 TA <span>↗</span></button></div>
+    <div class="result-actions"><button class="secondary-button" id="editDish">回去再改</button><button class="primary-button" id="serveButton">端给 TA </button></div>
   </section>
 
   <section class="stage tasting-stage" id="tastingStage" hidden>
@@ -84,7 +101,7 @@
     </div>
     <div class="tasting-actions" id="tastingActions" hidden>
       <button class="secondary-button" id="cookAgain">再做一道</button>
-      <button class="primary-button" id="continueChat">继续和 TA 聊聊 <span>↗</span></button>
+      <button class="primary-button" id="continueChat">继续和 TA 聊聊 </button>
     </div>
     <p class="api-note" id="apiNote">角色反应会尽量结合人设与食材；未配置 AI 时使用本地反应。</p>
   </section>

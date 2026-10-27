@@ -25,7 +25,61 @@ var ingredients=[
 {id:'honey',name:'蜂蜜',category:'extra',note:'甜润 / 花香',color:'#c49a4d',flavor:'甜润',tags:['甜']},
 {id:'chocolate',name:'巧克力',category:'extra',note:'微苦 / 香浓',color:'#59463d',flavor:'可可',tags:['甜','浓郁']}
 ];
+
+/* 食材 SVG 图形库 — 简洁手绘风，统一尺寸 24x24 */
+var ingredientArt={
+rice:'<svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="15" rx="8" ry="5" fill="#f5f2e8"/><ellipse cx="9" cy="12" rx="2.5" ry="1.8" fill="#fff"/><ellipse cx="14" cy="11" rx="2.5" ry="1.8" fill="#fff"/><ellipse cx="12" cy="14" rx="2.5" ry="1.8" fill="#faf8f0"/></svg>',
+noodle:'<svg viewBox="0 0 24 24" fill="none" stroke="#d9a860" stroke-width="1.8" stroke-linecap="round"><path d="M5 8c2-2 4 2 6 0s4 2 6 0"/><path d="M5 12c2-2 4 2 6 0s4 2 6 0"/><path d="M5 16c2-2 4 2 6 0s4 2 6 0"/></svg>',
+bread:'<svg viewBox="0 0 24 24" fill="none"><path d="M4 14c0-4 3-7 8-7s8 3 8 7v3c0 1.5-1 2.5-2.5 2.5h-11C5.5 19.5 4 18.5 4 17v-3z" fill="#c49a6c"/><path d="M7 12c1-1.5 3-2 5-2" stroke="#a67c52" stroke-width="1.2" stroke-linecap="round"/></svg>',
+potato:'<svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="13" rx="7" ry="6" fill="#c9a876"/><circle cx="9" cy="11" r=".8" fill="#a8855a"/><circle cx="14" cy="14" r=".8" fill="#a8855a"/><circle cx="12" cy="9" r=".8" fill="#a8855a"/></svg>',
+egg:'<svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="13" rx="6" ry="7.5" fill="#f5e6b8"/><ellipse cx="12" cy="14" rx="3" ry="3.5" fill="#f2b830"/></svg>',
+chicken:'<svg viewBox="0 0 24 24" fill="none"><path d="M6 16c-1-3 1-7 5-8s7 1 7 4-2 6-6 6-5 0-6-2z" fill="#d99a80"/><path d="M9 12c1-1.5 3-2 5-1.5" stroke="#b87a62" stroke-width="1" stroke-linecap="round"/></svg>',
+tofu:'<svg viewBox="0 0 24 24" fill="none"><rect x="6" y="9" width="12" height="10" rx="1.5" fill="#f5f3ea"/><rect x="6" y="9" width="12" height="3" rx="1.5" fill="#fff"/></svg>',
+fish:'<svg viewBox="0 0 24 24" fill="none"><path d="M4 12c2-3 5-5 8-5s6 2 8 5c-2 3-5 5-8 5s-6-2-8-5z" fill="#b8c4c9"/><path d="M19 12l3-3v6l-3-3z" fill="#9aa8ad"/><circle cx="8" cy="11" r=".8" fill="#333"/></svg>',
+tomato:'<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="14" r="7" fill="#d45d4e"/><path d="M12 7l-1.5-2 2 1 1.5-1.5-.5 2 2 .5-2 1.5z" fill="#6a994e"/><ellipse cx="9" cy="12" rx="1.5" ry="2" fill="#e88a7d" opacity=".6"/></svg>',
+mushroom:'<svg viewBox="0 0 24 24" fill="none"><path d="M5 11c0-4 3-6 7-6s7 2 7 6H5z" fill="#a67c52"/><rect x="10" y="11" width="4" height="7" rx="1.5" fill="#f0e8d8"/><circle cx="9" cy="9" r="1" fill="#d4b896"/><circle cx="15" cy="8" r="1" fill="#d4b896"/></svg>',
+carrot:'<svg viewBox="0 0 24 24" fill="none"><path d="M12 10c2 3 3 7 2 10H10c-1-3 0-7 2-10z" fill="#e8873a"/><path d="M12 10c-1-2-2-4-1-6 1 1 2 2 3 3-1 1-1 2-2 3z" fill="#6a994e"/></svg>',
+greens:'<svg viewBox="0 0 24 24" fill="none"><path d="M12 20V10" stroke="#5a7a4a" stroke-width="1.5"/><path d="M12 12c-3-1-5-4-4-7 3 0 5 2 5 4 0 2-1 3-1 3z" fill="#7a9a6a"/><path d="M12 14c3-1 5-4 4-7-3 0-5 2-5 4 0 2 1 3 1 3z" fill="#8bab7b"/></svg>',
+salt:'<svg viewBox="0 0 24 24" fill="none"><rect x="9" y="6" width="6" height="12" rx="1" fill="#e8e8e8"/><rect x="9" y="6" width="6" height="3" fill="#fff"/><circle cx="11" cy="13" r=".8" fill="#ccc"/><circle cx="13" cy="15" r=".8" fill="#ccc"/></svg>',
+sugar:'<svg viewBox="0 0 24 24" fill="none"><rect x="7" y="8" width="10" height="10" rx="1" fill="#f5f0e0"/><circle cx="10" cy="11" r="1" fill="#e0d8c0"/><circle cx="14" cy="13" r="1" fill="#e0d8c0"/><circle cx="12" cy="15" r="1" fill="#e0d8c0"/></svg>',
+soy:'<svg viewBox="0 0 24 24" fill="none"><path d="M12 6c3 4 5 7 5 9a5 5 0 0 1-10 0c0-2 2-5 5-9z" fill="#5c3d2e"/><ellipse cx="10" cy="14" rx="1" ry="1.5" fill="#7a5240"/></svg>',
+chili:'<svg viewBox="0 0 24 24" fill="none"><path d="M6 8c0 6 4 10 10 10 2 0 3-1 3-2" stroke="#c44" stroke-width="2.5" stroke-linecap="round"/><path d="M6 8c0-2 2-3 4-2" stroke="#6a994e" stroke-width="2" stroke-linecap="round"/></svg>',
+vinegar:'<svg viewBox="0 0 24 24" fill="none"><path d="M12 5c2 3 4 6 4 8a4 4 0 0 1-8 0c0-2 2-5 4-8z" fill="#b8956a"/><rect x="10" y="3" width="4" height="3" rx=".5" fill="#9a7a52"/></svg>',
+cheese:'<svg viewBox="0 0 24 24" fill="none"><path d="M4 15l14-6 2 8H6l-2-2z" fill="#e8c560"/><circle cx="10" cy="15" r="1.5" fill="#d4a845"/><circle cx="16" cy="13" r="1" fill="#d4a845"/></svg>',
+honey:'<svg viewBox="0 0 24 24" fill="none"><path d="M12 5c3 4 5 7 5 9a5 5 0 0 1-10 0c0-2 2-5 5-9z" fill="#e8b840"/><ellipse cx="10" cy="13" rx="1" ry="1.5" fill="#f0d070"/></svg>',
+chocolate:'<svg viewBox="0 0 24 24" fill="none"><rect x="5" y="6" width="14" height="12" rx="1" fill="#5c3d2e"/><path d="M5 10h14M5 14h14M10 6v12M15 6v12" stroke="#4a2f22" stroke-width="1"/></svg>'
+};
+
+/* 盘子里的菜品布局 — 根据食材数量和类型排列 */
+function dishPlatingArt(list){
+ if(!list||!list.length)return '';
+ var positions=[
+  {x:'20%',y:'30%',s:28},
+  {x:'55%',y:'25%',s:26},
+  {x:'35%',y:'55%',s:30},
+  {x:'60%',y:'58%',s:24},
+  {x:'42%',y:'38%',s:22},
+  {x:'25%',y:'60%',s:20}
+ ];
+ var html='';
+ list.slice(0,6).forEach(function(item,i){
+  var p=positions[i],art=ingredientArt[item.id]||'';
+  if(!art)return;
+  html+='<span class="dish-item dish-item-'+i+'" style="left:'+p.x+';top:'+p.y+';width:'+p.s+'px;height:'+p.s+'px">'+art+'</span>';
+ });
+ return html;
+}
 var selected={},activeCategory='all',roles=[],activeRole=null,currentDish=null,history=[],tasteMemory={},discoveries=[],progress={dishes:0,feedback:0,ingredients:[],unlocked:[]};
+var cookBy='me'; // 'me' = 用户做的, 'them' = 角色做的
+var CUSTOM_RECIPES_KEY='maomao_custom_recipes_v1';
+var customRecipes=[];
+function loadCustomRecipes(){
+ try{customRecipes=JSON.parse(localStorage.getItem(CUSTOM_RECIPES_KEY)||'[]')}catch(e){customRecipes=[]}
+ if(!Array.isArray(customRecipes))customRecipes=[];
+}
+function saveCustomRecipes(){
+ try{localStorage.setItem(CUSTOM_RECIPES_KEY,JSON.stringify(customRecipes))}catch(e){showToast('保存失败，存储空间不足')}
+}
 var hiddenRecipes=[
 {id:'midnight-rice',name:'深夜酱香蛋炒饭',required:['rice','egg','soy'],flavor:'深夜咸香',description:'米饭、鸡蛋与酱油在锅里相遇，像一份专门留给深夜的热乎心意。',event:'深夜厨房事件'},
 {id:'sunset-egg',name:'日落芝士烘蛋',required:['egg','tomato','cheese'],flavor:'酸甜奶香',description:'番茄的酸甜托起芝士的浓郁，像把傍晚的暖光留在盘子里。',event:'日落试吃事件'},
@@ -62,7 +116,24 @@ function saveTasteFeedback(liked){if(!currentDish||currentDish.tasteFeedback){sh
 function loadProgress(){discoveries=safeJSON(localStorage.getItem(DISCOVERY_KEY),[]);if(!Array.isArray(discoveries))discoveries=[];progress=safeJSON(localStorage.getItem(ACHIEVEMENT_KEY),{dishes:0,feedback:0,ingredients:[],unlocked:[]});if(!progress||typeof progress!=='object')progress={dishes:0,feedback:0,ingredients:[],unlocked:[]};progress.dishes=Number(progress.dishes)||0;progress.feedback=Number(progress.feedback)||0;progress.ingredients=Array.isArray(progress.ingredients)?progress.ingredients:[];progress.unlocked=Array.isArray(progress.unlocked)?progress.unlocked:[];checkAchievements();renderKitchenProgress()}
 function saveProgress(){try{localStorage.setItem(DISCOVERY_KEY,JSON.stringify(discoveries));localStorage.setItem(ACHIEVEMENT_KEY,JSON.stringify(progress))}catch(e){showToast('图鉴空间不足，进度暂时无法保存')}}
 function checkAchievements(){achievementDefs.forEach(function(def){if(def.test()&&progress.unlocked.indexOf(def.id)<0)progress.unlocked.push(def.id)})}
-function renderKitchenProgress(){var dc=$('discoveryCount'),ac=$('achievementCount'),dl=$('discoveryList'),al=$('achievementList');if(!dc||!ac||!dl||!al)return;dc.textContent=discoveries.length+'/'+hiddenRecipes.length;ac.textContent=progress.unlocked.length+'/'+achievementDefs.length;dl.innerHTML='';hiddenRecipes.forEach(function(recipe){var found=discoveries.indexOf(recipe.id)>=0,row=document.createElement('div');row.className='kitchen-record'+(found?' unlocked':'');var title=document.createElement('strong'),desc=document.createElement('span');title.textContent=found?recipe.name:'未发现的料理';desc.textContent=found?recipe.flavor+' · 已收入图鉴':'尝试不同食材的特定组合';row.append(title,desc);dl.appendChild(row)});al.innerHTML='';achievementDefs.forEach(function(def){var found=progress.unlocked.indexOf(def.id)>=0,row=document.createElement('div');row.className='kitchen-record'+(found?' unlocked':'');var title=document.createElement('strong'),desc=document.createElement('span');title.textContent=(found?'已解锁 / ':'待解锁 / ')+def.title;desc.textContent=def.desc;row.append(title,desc);al.appendChild(row)})}
+function renderKitchenProgress(){
+ var dc=$('discoveryCount'),ac=$('achievementCount'),dl=$('discoveryList'),al=$('achievementList');
+ if(!dc||!ac||!dl||!al)return;
+ var allRecipes=hiddenRecipes.concat(customRecipes);
+ dc.textContent=discoveries.length+'/'+allRecipes.length;
+ ac.textContent=progress.unlocked.length+'/'+achievementDefs.length;
+ dl.innerHTML='';
+ allRecipes.forEach(function(recipe){
+  var found=discoveries.indexOf(recipe.id)>=0,row=document.createElement('div');
+  row.className='kitchen-record'+(found?' unlocked':'');
+  var title=document.createElement('strong'),desc=document.createElement('span');
+  title.textContent=found?recipe.name:'未发现的料理';
+  desc.textContent=found?(recipe.flavor+' · 已收入图鉴'):recipe.custom?'你的自定义配方':'尝试不同食材的特定组合';
+  row.append(title,desc);
+  dl.appendChild(row)
+ });
+ al.innerHTML='';achievementDefs.forEach(function(def){var found=progress.unlocked.indexOf(def.id)>=0,row=document.createElement('div');row.className='kitchen-record'+(found?' unlocked':'');var title=document.createElement('strong'),desc=document.createElement('span');title.textContent=(found?'已解锁 / ':'待解锁 / ')+def.title;desc.textContent=def.desc;row.append(title,desc);al.appendChild(row)})
+}
 function registerCookedDish(profile){progress.dishes++;(profile.ingredients||[]).forEach(function(item){if(progress.ingredients.indexOf(item.id)<0)progress.ingredients.push(item.id)});if(profile.specialRecipe&&discoveries.indexOf(profile.specialRecipe.id)<0){discoveries.push(profile.specialRecipe.id);showToast('发现隐藏料理：'+profile.specialRecipe.name)}checkAchievements();saveProgress();renderKitchenProgress()}
 function showToast(msg){var el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(showToast.timer);showToast.timer=setTimeout(function(){el.classList.remove('show')},2200)}
 function ingredient(id){return ingredients.find(function(x){return x.id===id})}
@@ -76,7 +147,8 @@ function renderIngredients(){
  var grid=$('ingredientGrid');grid.innerHTML='';
  ingredients.filter(function(x){return activeCategory==='all'||x.category===activeCategory}).forEach(function(x){
   var n=selected[x.id]||0,btn=document.createElement('button');btn.type='button';btn.className='ingredient-item'+(n?' selected':'');btn.setAttribute('aria-pressed',n?'true':'false');
-  btn.innerHTML='<span class="ingredient-visual" style="background:'+x.color+'"></span><span class="ingredient-name"></span><span class="ingredient-note"></span>';
+  var art=ingredientArt[x.id]||'';
+  btn.innerHTML='<span class="ingredient-visual" style="background:#fafaf7">'+art+'</span><span class="ingredient-name"></span><span class="ingredient-note"></span>';
   btn.querySelector('.ingredient-name').textContent=x.name;btn.querySelector('.ingredient-note').textContent=x.note;
   btn.onclick=function(){selected[x.id]=Math.min(5,(selected[x.id]||0)+1);renderIngredients();renderPot()};
   if(n){var q=document.createElement('div');q.className='quantity';q.innerHTML='<button type="button" aria-label="减少用量">−</button><span>'+n+'</span><button type="button" aria-label="增加用量">+</button>';q.children[0].onclick=function(e){e.stopPropagation();selected[x.id]=Math.max(0,(selected[x.id]||0)-1);if(!selected[x.id])delete selected[x.id];renderIngredients();renderPot()};q.children[2].onclick=function(e){e.stopPropagation();selected[x.id]=Math.min(5,(selected[x.id]||0)+1);renderIngredients();renderPot()};btn.appendChild(q)}
@@ -86,7 +158,7 @@ function renderIngredients(){
 function renderPot(){
  var list=chosen(),pot=$('potContents');pot.innerHTML='';
  if(!list.length){pot.innerHTML='<span class="empty-pot">锅里还空着<br><small>先挑几样食材</small></span>'}
- else list.forEach(function(x){for(var i=0;i<Math.min(x.quantity,3);i++){var dot=document.createElement('i');dot.className='ingredient-dot';dot.style.background=x.color;dot.title=x.name;pot.appendChild(dot)}});
+ else list.forEach(function(x){for(var i=0;i<Math.min(x.quantity,2);i++){var wrap=document.createElement('span');wrap.className='pot-ingredient';wrap.title=x.name;wrap.innerHTML=ingredientArt[x.id]||'';pot.appendChild(wrap)}});
  $('ingredientCount').textContent=String(count()).padStart(2,'0')+' INGREDIENT'+(count()===1?'':'S');
  $('footerCount').textContent=count();$('cookButton').disabled=count()===0;
  $('ingredientSummary').textContent=list.length?list.map(function(x){return x.name+(x.quantity>1?' ×'+x.quantity:'')}).join(' · '):'从下面选食材，点选即可加入锅中。';
@@ -95,7 +167,13 @@ function tasteProfile(list){
  var tags=list.reduce(function(a,x){return a.concat(x.tags)},[]),flavors=list.map(function(x){return x.flavor});
  var unique=[...new Set(flavors)],has=function(id){return !!selected[id]};
  var odd=(has('chocolate')&&(has('soy')||has('fish')||has('chili')))||(has('honey')&&has('vinegar')&&has('chili'))||(has('bread')&&has('soy')&&has('sugar'));
- var ids=list.map(function(x){return x.id}).sort(),recipe=hiddenRecipes.find(function(r){return r.required.length===ids.length&&r.required.slice().sort().every(function(id,i){return id===ids[i]})})||null;
+ var ids=list.map(function(x){return x.id}).sort();
+ // 先找内置隐藏配方
+ var recipe=hiddenRecipes.find(function(r){return r.required.length===ids.length&&r.required.slice().sort().every(function(id,i){return id===ids[i]})})||null;
+ // 再找自定义配方
+ if(!recipe){
+  recipe=customRecipes.find(function(r){return r.required&&r.required.length===ids.length&&r.required.slice().sort().every(function(id,i){return id===ids[i]})})||null;
+ }
  var sweet=tags.indexOf('甜')>=0,spicy=has('chili'),acid=has('vinegar')||has('tomato'),protein=list.some(function(x){return x.category==='protein'}),staple=list.some(function(x){return x.category==='staple'}),veg=list.some(function(x){return x.category==='vegetable'});
  var flavor=recipe?recipe.flavor:odd?'实验性搭配':spicy?(acid?'酸辣开胃':'辛香浓郁'):sweet?(protein?'甜咸混搭':'甜口系'):acid?'清爽微酸':protein&&veg?'鲜香均衡':staple?'温和饱腹':'自由风味';
  var names=[];if(staple)names.push(list.find(function(x){return x.category==='staple'}).name);if(protein)names.push(list.find(function(x){return x.category==='protein'}).name);if(veg)names.push(list.find(function(x){return x.category==='vegetable'}).name);
@@ -108,16 +186,53 @@ function setStage(stage){
  window.scrollTo({top:0,behavior:'smooth'});
 }
 function cook(){
+ var isThem=cookBy==='them';
+ if(isThem){
+  // TA来做：自动选食材
+  randomIngredientsForThem();
+  renderIngredients();
+  renderPot();
+ }
  var list=chosen();if(!list.length)return;
- $('potScene').classList.add('cooking');$('cookButton').disabled=true;$('cookButton').innerHTML='正在烹饪…';
+
+ // 判断是炒菜还是煮汤，换厨具
+ var hasSoupBase=list.some(function(x){return x.id==='noodle'||x.id==='rice'||x.id==='potato'});
+ var utensil=$('potUtensil');
+ if(hasSoupBase){
+  utensil.className='pot-utensil ladle';
+  // 汤勺：长手柄斜靠锅边，勺头浸在汤里
+  utensil.innerHTML='<svg viewBox="0 0 44 70" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round"><line x1="22" y1="2" x2="18" y2="48"/><ellipse cx="18" cy="55" rx="10" ry="7" fill="#bbb" stroke="#999"/></svg>';
+ }else{
+  utensil.className='pot-utensil spatula';
+  // 锅铲：长手柄，铲头平的
+  utensil.innerHTML='<svg viewBox="0 0 44 70" fill="none" stroke="#999" stroke-width="2" stroke-linecap="round"><line x1="22" y1="2" x2="19" y2="45"/><rect x="12" y="45" width="14" height="12" rx="2" fill="#bbb" stroke="#999"/></svg>';
+ }
+
+ $('potScene').classList.add('cooking');
+ $('cookButton').disabled=true;
+ $('cookButton').innerHTML=isThem?'TA正在做饭…':(hasSoupBase?'正在煮汤…':'正在炒菜…');
  setTimeout(function(){
-  $('potScene').classList.remove('cooking');$('cookButton').innerHTML='开始烹饪 <span>↗</span>';$('cookButton').disabled=false;
-  var profile=tasteProfile(list);currentDish={id:'dish_'+Date.now(),name:profile.dishName,profile:profile,roleId:activeRole.id,roleName:roleName(activeRole),createdAt:new Date().toISOString(),reaction:''};registerCookedDish(profile);
-  $('dishName').value=currentDish.name;$('dishFlavor').textContent=profile.flavor;$('dishCount').textContent=count()+' 份食材';$('dishDescription').textContent=profile.description;
-  $('dishFood').style.background='radial-gradient(circle at 35% 35%,'+list[0].color+' 0 10%,transparent 11%),radial-gradient(circle at 63% 61%,'+(list[1]||list[0]).color+' 0 12%,transparent 13%),radial-gradient(circle at 53% 27%,'+(list[2]||list[0]).color+' 0 10%,transparent 11%),radial-gradient(circle at 32% 69%,'+(list[list.length-1]||list[0]).color+' 0 13%,transparent 14%),radial-gradient(circle at 50% 50%,#f1f1ed,#aaa 80%)';
+  $('potScene').classList.remove('cooking');
+  $('cookButton').innerHTML=isThem?'等TA做饭 <span>→</span>':'开始烹饪 ';
+  $('cookButton').disabled=false;
+  var profile=tasteProfile(list);
+  currentDish={id:'dish_'+Date.now(),name:profile.dishName,profile:profile,roleId:activeRole.id,roleName:roleName(activeRole),createdAt:new Date().toISOString(),reaction:'',cookBy:cookBy};
+  registerCookedDish(profile);
+  $('dishName').value=currentDish.name;
+  $('dishFlavor').textContent=profile.flavor;
+  $('dishCount').textContent=count()+' 份食材';
+  $('dishDescription').textContent=isThem?(profile.specialRecipe?profile.description:roleName(activeRole)+'随手做的一道菜，卖相看起来还不错。'):profile.description;
+  var dishFoodEl=$('dishFood');
+  dishFoodEl.style.background='radial-gradient(circle at 50% 50%,#f8f6f0,#e8e6e0 85%)';
+  dishFoodEl.innerHTML=dishPlatingArt(list);
   $('usedIngredients').innerHTML='';list.forEach(function(x){var tag=document.createElement('span');tag.className='used-ingredient';tag.textContent=x.name+(x.quantity>1?' ×'+x.quantity:'');$('usedIngredients').appendChild(tag)});
-  $('dishArt').querySelector('.dish-index').textContent='MADE BY YOU / '+String(history.length+1).padStart(3,'0');setStage('dishStage');
- },1000);
+  $('dishArt').querySelector('.dish-index').textContent=isThem?'MADE BY '+roleName(activeRole).toUpperCase()+' / 001':'MADE BY YOU / '+String(history.length+1).padStart(3,'0');
+  // 出锅页面标题反过来
+  document.querySelector('#dishStage .stage-heading h2').textContent=isThem?'TA做了这道菜。':'这道菜，出锅了。';
+  document.querySelector('#dishStage .stage-heading .eyebrow').textContent=isThem?'02 / PLATED BY THEM':'02 / PLATE';
+  $('serveButton').textContent=isThem?'我来尝尝 ':'端给TA ';
+  setStage('dishStage');
+ },isThem?1500:1000);
 }
 function localReaction(profile){
  var name=roleName(activeRole),personality=String(activeRole.personality||activeRole.character||activeRole.profile||'').toLowerCase();
@@ -129,7 +244,37 @@ function localReaction(profile){
 }
 function beginTasting(){
  if(!currentDish)return;currentDish.tasteFeedback='';currentDish.name=$('dishName').value.trim()||currentDish.profile.dishName;
- setStage('tastingStage');$('tastingActions').hidden=true;$('tasteFeedback').hidden=true;$('tasteLiked').classList.remove('selected');$('tasteDisliked').classList.remove('selected');$('tasteFeedbackNote').textContent='你的选择会记进 TA 的口味档案，影响之后的试吃反应。';$('reactionKicker').textContent='THE FIRST LOOK';$('reactionTitle').textContent=roleName(activeRole)+'看向了这道菜。';$('reactionCopy').textContent='TA 先观察了一下你准备的搭配。';$('reactionQuote').textContent='“嗯？今天做了什么？”';$('reactionQuote').classList.add('loading');$('tastingScene').classList.remove('reacted');
+ var isThem=cookBy==='them';
+ setStage('tastingStage');$('tastingActions').hidden=true;$('tasteFeedback').hidden=true;$('tasteLiked').classList.remove('selected');$('tasteDisliked').classList.remove('selected');
+ $('tasteFeedbackNote').textContent='你的选择会记进 TA 的口味档案，影响之后的试吃反应。';
+
+ if(isThem){
+  // TA做的菜：我来尝，我来评价
+  $('reactionKicker').textContent='TA 做的菜 / 你尝了';
+  $('reactionTitle').textContent='你尝了一口。';
+  $('reactionCopy').textContent=roleName(activeRole)+'满怀期待地看着你。';
+  $('reactionQuote').textContent='“怎么样？好吃吗？”';
+  $('reactionQuote').classList.remove('loading');
+  $('tastingScene').classList.add('reacted');
+  $('tasteFeedback').hidden=false;
+  $('tasteFeedback').querySelector('p').textContent='这道菜，合你的口味吗？';
+  $('tasteLiked').textContent='好吃！我很喜欢';
+  $('tasteDisliked').textContent='好像差点意思';
+  $('tastingActions').hidden=false;
+  $('tastingActions').querySelector('#cookAgain').textContent='再让TA做一道';
+  $('tastingActions').querySelector('#continueChat').textContent='跟TA聊聊 →';
+  $('apiNote').textContent='这道菜是 '+roleName(activeRole)+' 做的。选完之后，去跟TA聊聊味道吧。';
+  history.unshift(Object.assign({},currentDish));history=history.slice(0,60);saveHistory();renderHistoryCount();
+  return;
+ }
+
+ // 我做的菜：TA来尝，TA评价
+ $('reactionKicker').textContent='THE FIRST LOOK';
+ $('reactionTitle').textContent=roleName(activeRole)+'看向了这道菜。';
+ $('reactionCopy').textContent='TA 先观察了一下你准备的搭配。';
+ $('reactionQuote').textContent='“嗯？今天做了什么？”';
+ $('reactionQuote').classList.add('loading');
+ $('tastingScene').classList.remove('reacted');
  setTimeout(function(){
   $('reactionKicker').textContent='FIRST BITE';$('reactionTitle').textContent='TA 试吃了一口。';$('reactionCopy').textContent='味道如何？让 TA 自己来告诉你。';$('reactionQuote').textContent='正在等 TA 的评价……';
   requestReaction();
@@ -166,7 +311,7 @@ function openHistory(){
 function continueChat(){
  if(!activeRole.id){showToast('暂时没有可跳转的角色，请先创建角色');return}
  if(!currentDish)return;
- var pending={dishName:currentDish.name,ingredients:currentDish.profile.ingredients.map(function(x){return x.name+(x.quantity>1?' ×'+x.quantity:'')}),flavor:currentDish.profile.flavor,reaction:currentDish.reaction,createdAt:currentDish.createdAt};
+ var pending={dishName:currentDish.name,ingredients:currentDish.profile.ingredients.map(function(x){return x.name+(x.quantity>1?' ×'+x.quantity:'')}),flavor:currentDish.profile.flavor,reaction:currentDish.reaction,createdAt:currentDish.createdAt,cookBy:cookBy};
  try{localStorage.setItem(PENDING_PREFIX+String(activeRole.id),JSON.stringify(pending))}catch(e){}
  location.href='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&cooking=1';
 }
@@ -176,5 +321,70 @@ $('clearIngredients').onclick=function(){selected={};renderIngredients();renderP
 $('cookButton').onclick=cook;$('editDish').onclick=function(){setStage('cookStage')};$('serveButton').onclick=beginTasting;$('continueChat').onclick=continueChat;$('cookAgain').onclick=function(){selected={};currentDish=null;renderIngredients();renderPot();setStage('cookStage')};
 $('historyButton').onclick=openHistory;$('closeHistory').onclick=function(){$('historyPanel').hidden=true};
 $('tasteLiked').onclick=function(){saveTasteFeedback(true)};$('tasteDisliked').onclick=function(){saveTasteFeedback(false)};
-loadRoles();loadHistory();loadProgress();renderCategories();renderIngredients();renderPot();
+
+// 谁来做 切换
+document.querySelectorAll('.cook-by-btn').forEach(function(btn){
+ btn.onclick=function(){
+  cookBy=btn.getAttribute('data-cook-by');
+  document.querySelectorAll('.cook-by-btn').forEach(function(b){b.classList.toggle('active',b===btn)});
+  updateCookByMode();
+ };
+});
+
+// 添加自定义菜品
+$('addCustomRecipe').onclick=function(){
+ var name=prompt('给这道新菜取个名字：');
+ if(!name||!name.trim())return;
+ name=name.trim();
+ var requiredStr=prompt('需要哪些食材？用食材名，逗号分隔。\n比如：鸡蛋,番茄,米饭\n\n可选食材：'+ingredients.map(function(x){return x.name}).join('、'));
+ if(!requiredStr||!requiredStr.trim())return;
+ var requiredIds=[];
+ requiredStr.split(/[,，、]/).forEach(function(s){
+  s=s.trim();
+  var match=ingredients.find(function(x){return x.name===s});
+  if(match)requiredIds.push(match.id);
+ });
+ if(requiredIds.length<2){showToast('至少需要选2种食材哦');return}
+ customRecipes.push({
+  id:'custom-'+Date.now(),
+  name:name,
+  required:requiredIds,
+  flavor:'自定义配方',
+  description:'这是你自己发明的独家菜品。',
+  event:'自定义菜品事件',
+  custom:true
+ });
+ saveCustomRecipes();
+ renderKitchenProgress();
+ showToast('已添加到图鉴：'+name);
+};
+
+function updateCookByMode(){
+ var isThem=cookBy==='them';
+ document.body.classList.toggle('cook-by-them',isThem);
+ var btn=$('cookButton');
+ if(isThem){
+  // TA来做模式：隐藏食材选择，按钮变成"开始等TA做"
+  btn.innerHTML='等TA做饭 <span>→</span>';
+  btn.disabled=false;
+  $('cookButton').classList.add('them-mode');
+  $('ingredientSummary').textContent=roleName(activeRole)+'正在想着要给你做什么菜…';
+ }else{
+  btn.innerHTML='开始烹饪 ';
+  btn.disabled=count()===0;
+  $('cookButton').classList.remove('them-mode');
+  renderPot(); // 恢复原来的提示文字
+ }
+}
+
+// 随机选食材（TA做饭用）
+function randomIngredientsForThem(){
+ var shuffled=ingredients.slice().sort(function(){return Math.random()-0.5});
+ var count=2+Math.floor(Math.random()*3); // 2~4样
+ var picked=shuffled.slice(0,count);
+ selected={};
+ picked.forEach(function(x){selected[x.id]=1});
+}
+
+loadRoles();loadHistory();loadProgress();loadCustomRecipes();renderCategories();renderIngredients();renderPot();
 })();

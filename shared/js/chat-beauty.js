@@ -193,13 +193,13 @@
     NS.getThemePreset = function () {
         try {
             var saved = localStorage.getItem(CHAT_THEME_KEY);
-            if (saved === 'default' || saved === 'imessage') return saved;
+            if (saved === 'default' || saved === 'imessage' || saved === 'qq') return saved;
         } catch (e) {}
-        return readScope('global').themePreset === 'imessage' ? 'imessage' : 'default';
+        var legacy = readScope('global').themePreset;
+        return legacy === 'imessage' ? 'imessage' : 'default';
     };
     NS.setThemePreset = function (theme) {
-        theme = theme === 'imessage' ? 'imessage' : 'default';
-        // The old editor may have left preset-owned values in bubble configs.
+        if (theme !== 'imessage' && theme !== 'qq') theme = 'default';
         cleanupLegacyThemeValues();
         try {
             localStorage.setItem(CHAT_THEME_KEY, theme);
@@ -355,7 +355,7 @@
         var s = rootEl.style;
         // The page shell and the message stage share the same built-in theme.
         // This lets iMessage update the header/composer together with the bubbles.
-        var activeThemePreset = v.themePreset === 'imessage' ? 'imessage' : 'default';
+        var activeThemePreset = (v.themePreset === 'imessage' || v.themePreset === 'qq') ? v.themePreset : 'default';
         try {
             rootEl.setAttribute('data-chat-theme-preset', activeThemePreset);
             var phoneShell = rootEl.closest ? rootEl.closest('.phone-mockup') : null;

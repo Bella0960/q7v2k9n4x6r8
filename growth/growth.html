@@ -1,114 +1,332 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#fff"><meta name="apple-mobile-web-app-capable" content="yes">
-<title>共同成长 · 小手机</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1a">
+<title>共同成长</title>
+<script src="../shared/js/native-feel.js"></script>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
-:root{--ink:#151515;--sub:#777;--muted:#aaa;--line:#e5e5e5;--paper:#fff}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;min-height:100%;background:#f0f0f0;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif}
-button,input{font:inherit}button{cursor:pointer;color:inherit}
-.app{width:min(100%,520px);min-height:100dvh;margin:auto;background:#fff;padding:0 22px calc(42px + env(safe-area-inset-bottom))}
-header{height:58px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #111;font-size:10px;letter-spacing:.14em}
-.back{font-size:12px;letter-spacing:0;color:#777;text-decoration:none}
-.kicker,.eyebrow{font-size:9px;letter-spacing:.19em;color:#999;text-transform:uppercase}
-.kicker{margin-top:29px}
-h1{font:400 clamp(48px,13vw,74px)/.92 Georgia,"Songti SC",serif;letter-spacing:-.06em;margin:13px 0 16px}
-.lead{font-size:12px;line-height:1.85;color:#777;max-width:340px;margin:0 0 27px}
-.hero{border-top:1px solid #111;border-bottom:1px solid #111;padding:19px 0 18px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end}
-.level{font:400 47px/.95 Georgia,serif;letter-spacing:-.05em;margin-top:10px}
-.level-note{font-size:11px;color:#777;margin-top:7px}
-.score{text-align:right}.score strong{font:400 32px Georgia,serif;display:block}.score span{font-size:9px;color:#999;letter-spacing:.13em}
-.progress{height:3px;background:#eee;margin-top:18px;grid-column:1/-1;overflow:hidden}.progress i{height:100%;width:0;display:block;background:#111;transition:width .5s ease}
-.section{margin-top:30px}.section-head{display:flex;justify-content:space-between;align-items:end;border-bottom:1px solid #111;padding-bottom:10px}
-h2{font:400 28px Georgia,"Songti SC",serif;margin:5px 0 0}.count{font:23px Georgia,serif}
-.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-bottom:1px solid var(--line)}
-.stat{padding:16px 9px 15px 0;border-right:1px solid var(--line)}.stat:last-child{border:0;padding-left:10px}.stat:nth-child(2){padding-left:10px}
-.stat strong{font:400 27px Georgia,serif;display:block}.stat span{font-size:10px;color:#888;line-height:1.6}
-.badges{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px}
-.badge-card{padding:16px 0;border-bottom:1px solid var(--line);min-width:0}
-.badge-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
-.badge-mark{width:33px;height:33px;border:1px solid #111;display:grid;place-items:center;font:17px Georgia,serif}
-.badge-card.locked .badge-mark{border-color:#ddd;color:#bbb}
-.state{font-size:9px;color:#888;letter-spacing:.08em}
-.badge-card h3{font-size:12px;font-weight:600;margin:0 0 6px}.badge-card p{font-size:10px;line-height:1.7;color:#888;margin:0}
-.badge-card.locked h3{color:#888}
-.goal-form{display:flex;gap:8px;margin-top:15px}.goal-form input{min-width:0;flex:1;border:1px solid var(--line);padding:12px;font-size:12px;outline:none;border-radius:0}.goal-form input:focus{border-color:#888}
-.btn{border:1px solid #111;background:#111;color:#fff;padding:0 14px;font-size:11px}.btn-light{border:1px solid var(--line);background:#fff;padding:10px 12px;font-size:11px}
-.goal-list{border-top:1px solid #111;margin-top:17px}.goal{display:grid;grid-template-columns:19px minmax(0,1fr) auto;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--line)}
-.goal input{appearance:none;width:16px;height:16px;border:1px solid #aaa;margin:0;display:grid;place-items:center}.goal input:checked{background:#111;border-color:#111}.goal input:checked:after{content:"✓";font-size:10px;color:#fff}
-.goal-text{font-size:12px;line-height:1.6;overflow-wrap:anywhere}.goal.done .goal-text{color:#aaa;text-decoration:line-through}
-.remove{border:0;background:none;color:#aaa;font-size:10px;padding:5px}
-.empty{font-size:11px;color:#aaa;line-height:1.8;padding:20px 0}
-.note{font-size:10px;line-height:1.8;color:#999;margin-top:24px;padding-top:12px;border-top:1px solid var(--line)}
-.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,10px);opacity:0;pointer-events:none;background:#111;color:#fff;padding:10px 15px;font-size:11px;transition:.2s;white-space:nowrap}.toast.show{opacity:1;transform:translate(-50%,0)}
-@media(max-width:360px){.app{padding-left:17px;padding-right:17px}.badges{gap:0 12px}.badge-mark{width:29px;height:29px}}
-@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
-</style></head>
-<body><main class="app">
-<header><a class="back" href="../index.html">← 返回小手机</a><span>MAOMAO / GROW TOGETHER</span><span>03—01</span></header>
-<div class="kicker">Small things, becoming us</div>
-<h1>共同<br>成长。</h1>
-<p class="lead">不是要把感情变成一场比赛。只是把认真生活、一起完成的小事，慢慢积累成看得见的进度。</p>
-<section class="hero" aria-live="polite">
-<div><div class="eyebrow">OUR CURRENT CHAPTER</div><div class="level" id="levelName">Chapter 01</div><div class="level-note" id="levelNote">从记录第一件小事开始</div></div>
-<div class="score"><strong id="points">0</strong><span>GROWTH POINTS</span></div>
-<div class="progress"><i id="progressBar"></i></div>
-</section>
-<section class="section"><div class="section-head"><div><div class="eyebrow">A LITTLE PROGRESS</div><h2>日常积累</h2></div><div class="count" id="badgeCount">00</div></div>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  * { scrollbar-width:none; -ms-overflow-style:none; }
+  *::-webkit-scrollbar { display:none; }
+  html { background:#141414; }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:#141414; color:#f0f0f0;
+    min-height:100vh; max-width:390px; margin:0 auto;
+    padding-bottom:40px;
+  }
+
+  .top {
+    padding:16px 20px;
+    padding-top:calc(16px + env(safe-area-inset-top));
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .back-btn {
+    width:36px; height:36px; border-radius:50%;
+    background:rgba(255,255,255,0.1); backdrop-filter:blur(8px);
+    border:none; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .back-btn svg { stroke:#fff; }
+  .top-title { font-size:0.875rem; font-weight:700; color:#fff; }
+  .top-space { width:36px; }
+
+  /* 等级大卡：灰调背景图 */
+  .level-card {
+    margin:8px 20px 16px;
+    border-radius:24px; overflow:hidden; position:relative;
+    aspect-ratio:9/12;
+    box-shadow:0 16px 40px rgba(0,0,0,0.4);
+    animation:rise 0.6s ease both;
+  }
+  .level-card img {
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  }
+  .level-card::after {
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(180deg,rgba(0,0,0,0.1) 0%,rgba(0,0,0,0.5) 100%);
+  }
+  .level-content {
+    position:absolute; inset:0; padding:24px 20px;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    z-index:1;
+  }
+  .level-label { font-size:0.625rem; letter-spacing:0.2em; color:rgba(255,255,255,0.6); }
+  .level-name { font-size:1.75rem; font-weight:800; color:#fff; margin:6px 0 2px; letter-spacing:-0.02em; }
+  .level-note { font-size:0.75rem; color:rgba(255,255,255,0.7); }
+  .points-row { display:flex; justify-content:space-between; align-items:flex-end; margin-top:20px; }
+  .points-num { font-size:2.5rem; font-weight:800; color:#fff; line-height:1; letter-spacing:-0.03em; }
+  .points-label { font-size:0.625rem; color:rgba(255,255,255,0.5); margin-top:4px; letter-spacing:0.15em; }
+  .progress-wrap { margin-top:16px; }
+  .progress-track { height:4px; background:rgba(255,255,255,0.2); border-radius:2px; overflow:hidden; }
+  .progress-fill {
+    height:100%; background:#fff; border-radius:2px;
+    width:0; transition:width 1.2s cubic-bezier(0.2,0.8,0.2,1);
+  }
+  .progress-text { font-size:0.625rem; color:rgba(255,255,255,0.5); margin-top:8px; }
+
+  /* 三统计 */
+  .stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:0 20px 16px; }
+  .stat-card {
+    background:#1f1f1f; border-radius:16px; padding:16px 10px; text-align:center;
+    border:1px solid rgba(255,255,255,0.05);
+    animation:rise 0.5s ease both;
+  }
+  .stat-card:nth-child(2){ animation-delay:0.08s; }
+  .stat-card:nth-child(3){ animation-delay:0.16s; }
+  .stat-num { font-size:1.5rem; font-weight:800; color:#fff; }
+  .stat-label { font-size:0.625rem; color:#888; margin-top:4px; }
+
+  /* 区块标题 */
+  .sec-head { padding:8px 20px 12px; display:flex; justify-content:space-between; align-items:baseline; }
+  .sec-head h3 { font-size:0.938rem; font-weight:800; color:#fff; }
+  .sec-head .count { font-size:0.75rem; color:#666; font-weight:600; }
+
+  /* 徽章 */
+  .badges { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:0 20px; }
+  .badge-card {
+    background:#1f1f1f; border-radius:16px; padding:14px;
+    border:1px solid rgba(255,255,255,0.05);
+    animation:rise 0.5s ease both;
+    transition:transform 0.15s ease;
+  }
+  .badge-card:active { transform:scale(0.97); }
+  .badge-card.locked { opacity:0.4; }
+  .badge-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .badge-mark {
+    width:38px; height:38px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:0.813rem; font-weight:800;
+    background:#333; color:#888;
+  }
+  .badge-card:not(.locked) .badge-mark {
+    background:#fff; color:#111;
+    box-shadow:0 0 20px rgba(255,255,255,0.2);
+  }
+  .state { font-size:0.6rem; padding:3px 8px; border-radius:8px; font-weight:700; }
+  .badge-card:not(.locked) .state { background:#fff; color:#111; }
+  .badge-card.locked .state { background:#2a2a2a; color:#666; }
+  .badge-card h4 { font-size:0.813rem; font-weight:700; color:#fff; margin-bottom:3px; }
+  .badge-card p { font-size:0.66rem; color:#777; line-height:1.5; }
+
+  /* 清单 */
+  .goal-wrap { margin:0 20px; }
+  .goal-form { display:flex; gap:8px; margin-bottom:12px; }
+  .goal-form input {
+    flex:1; border:1px solid rgba(255,255,255,0.1); border-radius:12px;
+    padding:12px 14px; font-size:0.813rem; outline:none;
+    background:#1f1f1f; color:#fff;
+  }
+  .goal-form input::placeholder { color:#555; }
+  .goal-form button {
+    border:none; background:#fff; color:#111; border-radius:12px;
+    padding:0 18px; font-size:0.813rem; font-weight:700; cursor:pointer;
+    transition:transform 0.15s;
+  }
+  .goal-form button:active { transform:scale(0.95); }
+  .goal-item {
+    background:#1f1f1f; border:1px solid rgba(255,255,255,0.05);
+    border-radius:12px; padding:12px 14px; margin-bottom:8px;
+    display:flex; align-items:center; gap:10px;
+    animation:rise 0.3s ease both;
+  }
+  .goal-check {
+    width:22px; height:22px; border-radius:50%; border:2px solid #444;
+    flex-shrink:0; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.2s; background:transparent; color:transparent;
+  }
+  .goal-item.done .goal-check {
+    background:#fff; border-color:#fff; color:#111;
+  }
+  .goal-item.done .goal-text { text-decoration:line-through; color:#555; }
+  .goal-text { flex:1; font-size:0.813rem; line-height:1.4; color:#eee; }
+  .goal-del { border:none; background:none; color:#555; font-size:0.875rem; cursor:pointer; padding:4px; }
+  .empty { text-align:center; color:#555; font-size:0.813rem; padding:30px 0; }
+
+  .note { font-size:0.625rem; color:#444; line-height:1.6; padding:20px; text-align:center; }
+
+  .toast {
+    position:fixed; bottom:100px; left:50%; transform:translateX(-50%) translateY(10px);
+    background:#fff; color:#111; padding:10px 18px; border-radius:20px;
+    font-size:0.813rem; opacity:0; pointer-events:none; transition:0.25s; z-index:999;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @keyframes rise { from{opacity:0;transform:translateY(12px);} to{opacity:1;transform:translateY(0);} }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <button class="back-btn" onclick="window.location.href='../index.html'">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <div class="top-title">共同成长</div>
+  <div class="top-space"></div>
+</div>
+
+<div class="level-card">
+  <img src="../assets/growth-bg.jpg" alt="">
+  <div class="level-content">
+    <div class="level-label">OUR CURRENT CHAPTER</div>
+    <div class="level-name" id="levelName">Chapter 01</div>
+    <div class="level-note" id="levelNote">从记录第一件小事开始</div>
+    <div class="points-row">
+      <div>
+        <div class="points-num" id="points">0</div>
+        <div class="points-label">GROWTH POINTS</div>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
+      <div class="progress-text" id="progressText">再获得 100 点升级</div>
+    </div>
+  </div>
+</div>
+
 <div class="stats">
-<div class="stat"><strong id="memoryStat">0</strong><span>共同记忆</span></div>
-<div class="stat"><strong id="planStat">0</strong><span>已完成计划</span></div>
-<div class="stat"><strong id="moodStat">0</strong><span>心情记录日</span></div>
-</div></section>
-<section class="section"><div class="section-head"><div><div class="eyebrow">MILESTONES</div><h2>一起解锁</h2></div><div class="count" id="earnedCount">00</div></div>
+  <div class="stat-card"><div class="stat-num" id="memoryStat">0</div><div class="stat-label">共同记忆</div></div>
+  <div class="stat-card"><div class="stat-num" id="planStat">0</div><div class="stat-label">已完成计划</div></div>
+  <div class="stat-card"><div class="stat-num" id="moodStat">0</div><div class="stat-label">心情记录日</div></div>
+</div>
+
+<div class="sec-head">
+  <h3>成长清单</h3>
+  <span class="count" id="goalCount">0/0</span>
+</div>
+<div class="goal-wrap" style="margin-bottom:8px;">
+  <form class="goal-form" id="goalForm">
+    <input id="goalInput" maxlength="100" placeholder="写下一个小目标…">
+    <button type="submit">添加</button>
+  </form>
+  <div class="goal-list" id="goalList"></div>
+</div>
+
+<div class="sec-head">
+  <h3>一起解锁</h3>
+  <span class="count" id="earnedCount">0/9</span>
+</div>
 <div class="badges" id="badges"></div>
-</section>
-<section class="section"><div class="section-head"><div><div class="eyebrow">OUR NEXT LITTLE THING</div><h2>成长清单</h2></div><div class="count" id="goalCount">00</div></div>
-<p class="lead" style="margin:12px 0 0">写下一个小目标。完成它，就为你们的成长再添一点记录。</p>
-<form class="goal-form" id="goalForm"><input id="goalInput" maxlength="100" placeholder="例如：一起散步半小时" aria-label="新的共同目标" required><button class="btn" type="submit">添加 +</button></form>
-<div class="goal-list" id="goalList"></div>
-</section>
-<p class="note">数据说明：成长点数和徽章根据本机「情侣空间」中已有的记录自动计算。资料仅保存在当前浏览器，不会自动同步到另一台设备，也不会调用 AI API。</p>
-</main><div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<p class="note">成长点数根据情侣空间里的记录自动计算<br>数据仅保存在本机</p>
+
+<div class="toast" id="toast"></div>
+
 <script>
 (function(){
-'use strict';
-const $=id=>document.getElementById(id);
-const KEY={profile:'maoer_couple_profile_v1',mood:'maoer_couple_mood_v1',bucket:'maoer_couple_bucket_v1',moments:'maoer_couple_moments_v1',goals:'maoer_growth_goals_v1'};
-function read(key,fallback){try{const v=JSON.parse(localStorage.getItem(key));return v==null?fallback:v}catch(e){return fallback}}
-function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true}catch(e){toast('保存失败，请检查浏览器存储空间');return false}}
-function toast(s){const el=$('toast');el.textContent=s;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2100)}
-function safeDate(s){if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;const d=new Date(s+'T00:00:00');return Number.isNaN(d.getTime())?null:d}
-function getData(){return {profile:read(KEY.profile,{}),moods:read(KEY.mood,{}),bucket:read(KEY.bucket,[]),moments:read(KEY.moments,[]),goals:read(KEY.goals,[])}}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-const milestones=[
-{id:'first-memory',mark:'01',title:'第一段共同记忆',desc:'记录下你们的第一个片刻',test:d=>d.moments.length>=1},
-{id:'memory-five',mark:'05',title:'珍藏五个瞬间',desc:'共同记忆累计达到 5 条',test:d=>d.moments.length>=5},
-{id:'first-plan',mark:'→',title:'把计划变成回忆',desc:'完成清单里的第一件事',test:d=>d.bucket.some(x=>x.done)},
-{id:'plans-five',mark:'05',title:'行动派搭档',desc:'一起完成 5 件小计划',test:d=>d.bucket.filter(x=>x.done).length>=5},
-{id:'mood-first',mark:'日',title:'认真听见彼此',desc:'至少有一天留下双方心情',test:d=>Object.values(d.moods).some(a=>Array.isArray(a)&&a.filter(x=>String(x||'').trim()).length===2)},
-{id:'mood-seven',mark:'07',title:'七日心情档案',desc:'至少 7 个不同日期有心情记录',test:d=>Object.values(d.moods).filter(a=>Array.isArray(a)&&a.some(x=>String(x||'').trim())).length>=7},
-{id:'week-one',mark:'7',title:'一起一周',desc:'从设定的开始日期走过 7 天',test:d=>{const dt=safeDate(d.profile.startDate);return !!dt&&Math.floor((new Date(new Date().toDateString())-dt)/86400000)+1>=7}},
-{id:'month-one',mark:'30',title:'第一个月',desc:'从设定的开始日期走过 30 天',test:d=>{const dt=safeDate(d.profile.startDate);return !!dt&&Math.floor((new Date(new Date().toDateString())-dt)/86400000)+1>=30}},
-{id:'first-goal',mark:'＋',title:'认真许下目标',desc:'添加第一项共同成长目标',test:d=>d.goals.length>=1}
-];
-function render(){
-const d=getData();const completed=d.bucket.filter(x=>x.done).length;const moodDays=Object.values(d.moods).filter(a=>Array.isArray(a)&&a.some(x=>String(x||'').trim())).length;
-const earned=milestones.filter(m=>{try{return m.test(d)}catch(e){return false}}).length;
-const points=d.moments.length*10+completed*15+moodDays*5+d.goals.filter(x=>x.done).length*15;
-const level=Math.floor(points/100)+1;const within=points%100;
-$('points').textContent=points;$('levelName').textContent='Chapter '+String(level).padStart(2,'0');$('levelNote').textContent=level===1?'从记录第一件小事开始':level<4?'你们正在积累属于自己的故事':'每一个小小的认真，都有了回响';
-$('progressBar').style.width=within+'%';$('badgeCount').textContent=String(milestones.length).padStart(2,'0');$('earnedCount').textContent=String(earned).padStart(2,'0');
-$('memoryStat').textContent=d.moments.length;$('planStat').textContent=completed;$('moodStat').textContent=moodDays;
-$('badges').innerHTML=milestones.map(m=>{const ok=(()=>{try{return m.test(d)}catch(e){return false}})();return '<article class="badge-card '+(ok?'':'locked')+'"><div class="badge-top"><div class="badge-mark">'+m.mark+'</div><span class="state">'+(ok?'已解锁':'未解锁')+'</span></div><h3>'+esc(m.title)+'</h3><p>'+esc(m.desc)+'</p></article>'}).join('');
-renderGoals(d.goals);
-}
-function renderGoals(goals){$('goalCount').textContent=String(goals.filter(x=>x.done).length).padStart(2,'0')+'/'+String(goals.length).padStart(2,'0');if(!goals.length){$('goalList').innerHTML='<div class="empty">清单还没有内容。<br>先添加一件近期想一起完成的小事。</div>';return}$('goalList').innerHTML=goals.map(g=>'<div class="goal '+(g.done?'done':'')+'"><input type="checkbox" data-toggle="'+esc(g.id)+'" '+(g.done?'checked':'')+' aria-label="标记目标完成"><div class="goal-text">'+esc(g.text)+'</div><button type="button" class="remove" data-delete="'+esc(g.id)+'">删除</button></div>').join('')}
-$('goalForm').addEventListener('submit',e=>{e.preventDefault();const value=$('goalInput').value.trim();if(!value)return;const goals=read(KEY.goals,[]);goals.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),text:value,done:false,created:new Date().toISOString().slice(0,10)});if(write(KEY.goals,goals)){$('goalInput').value='';render();toast('已加入成长清单')}});
-$('goalList').addEventListener('change',e=>{const id=e.target.dataset.toggle;if(!id)return;const goals=read(KEY.goals,[]).map(g=>g.id===id?Object.assign({},g,{done:e.target.checked}):g);if(write(KEY.goals,goals)){render();toast(e.target.checked?'完成一项小目标':'已更新目标状态')}});
-$('goalList').addEventListener('click',e=>{const id=e.target.dataset.delete;if(!id)return;if(!confirm('删除这项成长目标？'))return;write(KEY.goals,read(KEY.goals,[]).filter(g=>g.id!==id));render();toast('目标已删除')});
-window.addEventListener('pageshow',render);window.addEventListener('storage',render);render();
+  const $ = id => document.getElementById(id);
+  const KEY = {
+    profile:'maoer_couple_profile_v1',
+    mood:'maoer_couple_mood_v1',
+    bucket:'maoer_couple_bucket_v1',
+    moments:'maoer_couple_moments_v1',
+    goals:'maoer_growth_goals_v1'
+  };
+  function read(k, d){ try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } }
+  function write(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+  function toast(s){ let t=$('toast'); t.textContent=s; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1800); }
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function safeDate(s){ if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null; let d=new Date(s+'T00:00:00'); return isNaN(d.getTime())?null:d; }
+
+  const milestones = [
+    {id:'first-memory', mark:'01', title:'第一段共同记忆', desc:'记录下你们的第一个片刻', test:d=>d.moments.length>=1},
+    {id:'memory-five', mark:'05', title:'珍藏五个瞬间', desc:'共同记忆累计达到 5 条', test:d=>d.moments.length>=5},
+    {id:'first-plan', mark:'→', title:'把计划变成回忆', desc:'完成清单里的第一件事', test:d=>d.bucket.some(x=>x.done)},
+    {id:'plans-five', mark:'05', title:'行动派搭档', desc:'一起完成 5 件小计划', test:d=>d.bucket.filter(x=>x.done).length>=5},
+    {id:'mood-first', mark:'日', title:'认真听见彼此', desc:'至少有一天留下双方心情', test:d=>Object.values(d.moods).some(a=>Array.isArray(a)&&a.filter(x=>String(x||'').trim()).length===2)},
+    {id:'mood-seven', mark:'07', title:'七日心情档案', desc:'至少 7 个不同日期有心情记录', test:d=>Object.values(d.moods).filter(a=>Array.isArray(a)&&a.some(x=>String(x||'').trim())).length>=7},
+    {id:'week-one', mark:'7天', title:'一起一周', desc:'从设定的开始日期走过 7 天', test:d=>{ let dt=safeDate(d.profile.startDate); return !!dt && Math.floor((new Date(new Date().toDateString())-dt)/86400000)+1>=7; }},
+    {id:'month-one', mark:'30', title:'第一个月', desc:'从设定的开始日期走过 30 天', test:d=>{ let dt=safeDate(d.profile.startDate); return !!dt && Math.floor((new Date(new Date().toDateString())-dt)/86400000)+1>=30; }},
+    {id:'first-goal', mark:'＋', title:'认真许下目标', desc:'添加第一项共同成长目标', test:d=>d.goals.length>=1}
+  ];
+
+  function animateNum(el, target){
+    let start = 0, dur = 800, t0 = null;
+    function step(ts){
+      if(!t0) t0 = ts;
+      let p = Math.min((ts-t0)/dur, 1);
+      el.textContent = Math.floor(start + (target-start)*p);
+      if(p<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function render(){
+    let d = {
+      profile: read(KEY.profile, {}),
+      moods: read(KEY.mood, {}),
+      bucket: read(KEY.bucket, []),
+      moments: read(KEY.moments, []),
+      goals: read(KEY.goals, [])
+    };
+    let completed = d.bucket.filter(x=>x.done).length;
+    let moodDays = Object.values(d.moods).filter(a=>Array.isArray(a)&&a.some(x=>String(x||'').trim())).length;
+    let earned = milestones.filter(m => { try { return m.test(d); } catch(e){ return false; } }).length;
+    let points = d.moments.length*10 + completed*15 + moodDays*5 + d.goals.filter(x=>x.done).length*15;
+    let level = Math.floor(points/100)+1;
+    let within = points%100;
+
+    $('levelName').textContent = 'Chapter ' + String(level).padStart(2,'0');
+    $('levelNote').textContent = level===1 ? '从记录第一件小事开始' : level<4 ? '你们正在积累属于自己的故事' : '每一个小小的认真，都有了回响';
+    animateNum($('points'), points);
+    animateNum($('memoryStat'), d.moments.length);
+    animateNum($('planStat'), completed);
+    animateNum($('moodStat'), moodDays);
+
+    setTimeout(()=>{ $('progressBar').style.width = within + '%'; }, 300);
+    $('progressText').textContent = '再获得 ' + (100-within) + ' 点升级';
+    $('earnedCount').textContent = earned + '/' + milestones.length;
+
+    $('badges').innerHTML = milestones.map(m => {
+      let ok = false;
+      try { ok = m.test(d); } catch(e){}
+      return '<div class="badge-card '+(ok?'':'locked')+'">'
+        + '<div class="badge-top"><div class="badge-mark">'+m.mark+'</div><span class="state">'+(ok?'已解锁':'未解锁')+'</span></div>'
+        + '<h4>'+esc(m.title)+'</h4><p>'+esc(m.desc)+'</p></div>';
+    }).join('');
+
+    renderGoals(d.goals);
+  }
+
+  function renderGoals(goals){
+    $('goalCount').textContent = goals.filter(x=>x.done).length + '/' + goals.length;
+    if(!goals.length){ $('goalList').innerHTML = '<div class="empty">清单还空着，加一个小目标吧</div>'; return; }
+    $('goalList').innerHTML = goals.map(g =>
+      '<div class="goal-item '+(g.done?'done':'')+'">'
+      + '<div class="goal-check" onclick="toggleGoal(\''+g.id+'\')">'+(g.done?'✓':'')+'</div>'
+      + '<div class="goal-text">'+esc(g.text)+'</div>'
+      + '<button class="goal-del" onclick="delGoal(\''+g.id+'\')">✕</button>'
+      + '</div>'
+    ).join('');
+  }
+
+  window.toggleGoal = function(id){
+    let goals = read(KEY.goals, []).map(g => g.id===id ? {...g, done:!g.done} : g);
+    write(KEY.goals, goals); render();
+    toast('完成一项小目标 +15');
+  };
+  window.delGoal = function(id){
+    if(!confirm('删除这个目标？')) return;
+    write(KEY.goals, read(KEY.goals, []).filter(g => g.id!==id));
+    render(); toast('已删除');
+  };
+
+  $('goalForm').addEventListener('submit', e => {
+    e.preventDefault();
+    let v = $('goalInput').value.trim();
+    if(!v) return;
+    let goals = read(KEY.goals, []);
+    goals.push({id:Date.now().toString(36), text:v, done:false, created:new Date().toISOString().slice(0,10)});
+    write(KEY.goals, goals);
+    $('goalInput').value = '';
+    render(); toast('已加入成长清单');
+  });
+
+  window.addEventListener('pageshow', render);
+  render();
 })();
-</script></body></html>
+</script>
+</body>
+</html>

@@ -10,7 +10,7 @@
 :root{--bg:#fff;--ink:#181818;--muted:#858585;--line:#e5e5e5;--soft:#f5f5f5;--serif:Georgia,"Songti SC","Noto Serif CJK SC",serif;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html{background:#fff;min-height:100%;overscroll-behavior-y:none}body{margin:0;background:#fff;color:var(--ink);font-family:var(--sans);max-width:480px;min-height:100vh;margin-inline:auto;-webkit-font-smoothing:antialiased}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #555;outline-offset:3px}
 .shell{padding:calc(14px + env(safe-area-inset-top)) 20px 125px}.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:27px}.icon-btn{width:36px;height:36px;border:1px solid var(--line);border-radius:50%;background:#fff;color:#222;display:grid;place-items:center}.icon-btn svg{width:17px;height:17px}.wordmark{font-size:10px;letter-spacing:.19em;font-weight:650;color:#777}.live{font-size:10px;display:flex;align-items:center;gap:6px;color:#666}.live:before{content:"";width:5px;height:5px;background:#222;border-radius:50%}
-.eyebrow{font-size:10px;letter-spacing:.17em;color:#888;display:flex;align-items:center;gap:8px}.eyebrow:before{content:"";width:17px;height:1px;background:#222}.hero{position:relative;padding-bottom:21px;border-bottom:1px solid var(--line);overflow:hidden}.hero h1{font:500 clamp(39px,10vw,54px)/1.04 var(--serif);letter-spacing:-.065em;margin:12px 0 10px}.hero p{font-size:12px;line-height:1.8;color:#777;max-width:275px;margin:0}.hero-num{position:absolute;right:0;bottom:1px;font:104px/1 var(--serif);letter-spacing:-.1em;color:#f0f0f0;pointer-events:none}.hero>*:not(.hero-num){position:relative;z-index:1}
+.eyebrow{font-size:10px;letter-spacing:.17em;color:#888;display:flex;align-items:center;gap:8px}.eyebrow:before{content:"";width:17px;height:1px;background:#222}.hero{position:relative;padding-bottom:21px;border-bottom:1px solid var(--line);overflow:hidden}.hero h1{font:300 clamp(36px,9.5vw,50px)/1.18 "Microsoft YaHei","PingFang SC","Helvetica Neue",sans-serif;letter-spacing:.02em;margin:14px 0 10px;color:#1a1a1a}.hero p{font-size:12px;line-height:1.8;color:#777;max-width:275px;margin:0}.hero-num{position:absolute;right:0;bottom:1px;font:104px/1 var(--serif);letter-spacing:-.1em;color:#f0f0f0;pointer-events:none}.hero>*:not(.hero-num){position:relative;z-index:1}
 .partner{display:flex;align-items:center;gap:9px;margin-top:18px}.avatar{width:32px;height:32px;flex:0 0 32px;background:#777;border-radius:50%;overflow:hidden;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:600}.avatar img{width:100%;height:100%;object-fit:cover}.partner-meta{min-width:0;flex:1}.partner-meta strong{display:block;font-size:12px}.partner-meta span{display:block;font-size:10px;color:#888;margin-top:3px}.select-wrap{position:relative;max-width:140px}.role-select{appearance:none;border:1px solid #dedede;background:#fff;border-radius:2px;padding:9px 23px 9px 9px;font-size:10px;max-width:140px;color:#333}.select-wrap:after{content:"⌄";position:absolute;right:8px;top:6px;color:#777;pointer-events:none}
 .tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:20px 0 22px;background:#f5f5f5;padding:4px}.tab{border:0;background:transparent;padding:10px 2px;color:#777;font-size:11px;white-space:nowrap}.tab.active{background:#fff;box-shadow:0 1px 4px #0000000f;color:#171717;font-weight:650}
 .head-row{display:flex;align-items:end;justify-content:space-between;gap:10px;margin:0 0 13px}.kicker{font-size:9px;letter-spacing:.15em;color:#888;margin-bottom:5px}.section-title{font-size:18px;font-weight:650;letter-spacing:-.04em}.aside{font:18px var(--serif);color:#777}
@@ -146,7 +146,7 @@ body{max-width:480px!important;background:#fff!important}
 .cafe-tools-trigger{border:0;border-bottom:1px solid #999;border-radius:0;background:transparent;color:#555;padding:6px 0;font:italic 14px/1 var(--cafe-serif)}
 .hero{padding:0 0 12px!important;border-bottom:1px solid #171717!important}
 .hero .eyebrow{font-size:8px!important;letter-spacing:.17em!important}
-.hero h1{font:400 clamp(29px,8vw,35px)/1.12 var(--cafe-serif)!important;letter-spacing:-.055em!important;margin:8px 0 0!important}
+.hero h1{display:none!important}
 .hero h1 br{display:none}
 .hero p,.hero-num{display:none!important}
 .partner{margin-top:10px!important;padding:0 0 11px!important;border-bottom:1px solid #e5e5e5!important;gap:8px!important}
@@ -154,15 +154,36 @@ body{max-width:480px!important;background:#fff!important}
 .partner-meta strong{font-size:11px!important}.partner-meta span{font-size:9px!important;margin-top:2px!important}
 .role-select{border:0!important;border-bottom:1px solid #ccc!important;border-radius:0!important;padding:7px 4px!important;font-size:10px!important;max-width:125px!important}
 .select-wrap:after{display:none!important}.tabs{display:none!important}
-main{margin-top:10px}#view-overview{display:block!important}main>section[hidden]{display:none!important}
+.cafe-bottom-bar{display:none!important}
+/* 底部游戏导航 */
+.cafe-nav{
+  position:fixed;left:50%;bottom:0;transform:translateX(-50%);
+  width:min(480px,100vw);z-index:50;
+  display:flex;justify-content:space-around;align-items:stretch;
+  background:rgba(255,255,255,.96);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-top:1px solid #e5e5e5;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));
+}
+.cafe-nav button{
+  flex:1;border:0;background:transparent;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:6px 2px;color:#999;font-size:9px;
+  position:relative;
+}
+.cafe-nav button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.cafe-nav button.active{color:#171717;font-weight:600}
+.cafe-nav button.active:before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:18px;height:2px;background:#171717;border-radius:0 0 2px 2px}
+.shell{padding-bottom:calc(90px + env(safe-area-inset-bottom,0px))!important}
+main{margin-top:10px}main>section[hidden]{display:none!important}
 .compact-day-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:0 0 9px}
 .compact-day-kicker{font-size:8px;letter-spacing:.16em;color:#999;margin-bottom:4px}
 .compact-day-title{font:400 23px/1.05 var(--cafe-serif);letter-spacing:-.04em}
 .compact-day-number{font:400 26px/1 var(--cafe-serif);color:#777}
-.compact-funds{display:flex;justify-content:space-between;align-items:end;gap:12px;padding:12px 0 11px;border-top:1px solid #dedede;border-bottom:1px solid #dedede}
-.compact-funds-label{display:block;font-size:9px;color:#8a8a8a;letter-spacing:.04em;margin-bottom:5px}
-.compact-funds-value{display:block;font:400 31px/.98 var(--cafe-serif);letter-spacing:-.055em;color:#171717}
-.compact-funds-side{text-align:right;font-size:9px;line-height:1.8;color:#888;white-space:nowrap}
+.compact-funds{display:flex;justify-content:space-between;align-items:end;gap:12px;padding:18px 18px 16px;background:#191919;border-radius:14px;margin:14px 0;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.compact-funds-label{display:block;font-size:9px;color:rgba(255,255,255,.55);letter-spacing:.08em;margin-bottom:6px}
+.compact-funds-value{display:block;font:500 34px/1 var(--cafe-serif);letter-spacing:-.03em;color:#fff}
+.compact-funds-side{text-align:right;font-size:9px;line-height:1.9;color:rgba(255,255,255,.5);white-space:nowrap}
 .compact-statline{display:flex;gap:0;padding:8px 0 9px;margin:0 0 12px;border-bottom:1px solid #e5e5e5}
 .compact-stat{flex:1;min-width:0;padding-left:10px;border-left:1px solid #e5e5e5}
 .compact-stat:first-child{padding-left:0;border-left:0}.compact-stat span{display:block;font-size:8px;color:#999}
@@ -226,6 +247,29 @@ main{margin-top:10px}#view-overview{display:block!important}main>section[hidden]
 <div class="partner"><div class="avatar" id="partnerAvatar">店</div><div class="partner-meta"><strong id="partnerName">今日经营搭档</strong><span id="partnerCaption">和你一起做决定</span></div><div class="select-wrap"><select class="role-select" id="partnerSelect" aria-label="选择经营搭档"></select></div></div>
 <nav class="tabs" aria-label="咖啡馆功能"><button class="tab active" data-tab="overview">今日经营</button><button class="tab" data-tab="menu">菜单定价</button><button class="tab" data-tab="stock">原料库存</button><button class="tab" data-tab="shop">店铺升级</button><button class="tab" data-tab="partner">伙伴回忆</button></nav>
 <main><section id="view-overview"></section><section id="view-menu" hidden></section><section id="view-stock" hidden></section><section id="view-shop" hidden></section><section id="view-partner" hidden></section></main>
+
+<nav class="cafe-nav" aria-label="咖啡馆场景导航">
+  <button class="active" data-tab="overview">
+    <svg viewBox="0 0 24 24"><path d="M4 9h13v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V9z"/><path d="M17 10h2a2 2 0 0 1 0 4h-2"/><path d="M7 21h9"/></svg>
+    <span>吧台</span>
+  </button>
+  <button data-tab="menu">
+    <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    <span>菜单</span>
+  </button>
+  <button data-tab="stock">
+    <svg viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9z"/><path d="M9 21V12h6v9"/></svg>
+    <span>货架</span>
+  </button>
+  <button data-tab="shop">
+    <svg viewBox="0 0 24 24"><path d="M3 10l1.5-5h15L21 10"/><path d="M4 10v10h16V10"/><path d="M9 20v-6h6v6"/></svg>
+    <span>店铺</span>
+  </button>
+  <button data-tab="partner">
+    <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5"/><circle cx="17" cy="10" r="2.5"/><path d="M16.5 15c2.5.3 4.5 2.2 4.5 5"/></svg>
+    <span>伙伴</span>
+  </button>
+</nav>
 </div><div class="toast" id="toast"></div>
 <script>
 (function(){
@@ -345,7 +389,7 @@ function renderEvent(){
  '<div class="module-head" style="margin:17px 0 9px"><div><div class="kicker">YOUR CALL</div><div class="section-title" style="font-size:14px">或者，你来决定</div></div><span class="tag">选择权在你</span></div><div class="choices">'+ev.options.map(function(o,i){return '<button class="choice" data-event="'+i+'" '+(st.cash<o.cost?'disabled':'')+'><div><strong>'+String.fromCharCode(65+i)+' · '+esc(o.title)+'</strong><span>'+esc(o.detail)+'</span></div><em>'+(o.cost?money(o.cost):'免费应对')+'</em></button>';}).join('')+'</div><div class="notice">你可以采纳搭档建议，也可以坚持自己的判断。不同角色会有不同经营风格；你的决定不会被自动覆盖。</div>';
 }
 
-function renderControls(){var max=Math.max(0,Math.min(100,Math.floor(st.cash/20)*20));st.ad=clamp(st.ad,0,max);var modes=[{id:'warm',n:'温柔待客',s:'满意度更高'},{id:'standard',n:'标准服务',s:'收支均衡'},{id:'fast',n:'快速出杯',s:'客流更高'}];return '<div class="module"><div class="module-head"><div><div class="kicker">DAILY PLAN / 02</div><div class="section-title">今天怎么经营？</div></div><span class="tag">随时可调整</span></div><div class="control"><div class="control-row"><div><div class="label">宣传预算</div><div class="hint">投入一点资金，让更多附近客人知道你。</div></div><div class="budget"><button data-ad="-20" aria-label="减少预算">−</button><div class="budget-value">'+money(st.ad)+'</div><button data-ad="20" aria-label="增加预算" '+(st.ad>=max?'disabled':'')+'>＋</button></div></div><div class="control-row" style="display:block"><div class="label">服务策略</div><div class="modes">'+modes.map(function(m){return '<button class="mode '+(st.service===m.id?'active':'')+'" data-service="'+m.id+'">'+m.n+'<span>'+m.s+'</span></button>';}).join('')+'</div></div></div><div style="margin-top:12px"><button class="primary" id="openShop" '+(st.eventChoice===null||st.eventChoice===undefined?'disabled':'')+'>开始营业 · 结算今日账本　↗</button><div class="notice">'+(st.eventChoice===null||st.eventChoice===undefined?'先处理上面的今日事件，再开始营业。':'每天只能结算一次。菜单、库存、宣传预算和服务方式都会影响结果。')+'</div></div></div>';}
+function renderControls(){var max=Math.max(0,Math.min(100,Math.floor(st.cash/20)*20));st.ad=clamp(st.ad,0,max);var modes=[{id:'warm',n:'温柔待客',s:'满意度更高'},{id:'standard',n:'标准服务',s:'收支均衡'},{id:'fast',n:'快速出杯',s:'客流更高'}];return '<div class="module"><div class="module-head"><div><div class="kicker">DAILY PLAN / 02</div><div class="section-title">今天怎么经营？</div></div><span class="tag">随时可调整</span></div><div class="control"><div class="control-row"><div><div class="label">宣传预算</div><div class="hint">投入一点资金，让更多附近客人知道你。</div></div><div class="budget"><button data-ad="-20" aria-label="减少预算">−</button><div class="budget-value">'+money(st.ad)+'</div><button data-ad="20" aria-label="增加预算" '+(st.ad>=max?'disabled':'')+'>＋</button></div></div><div class="control-row" style="display:block"><div class="label">服务策略</div><div class="modes">'+modes.map(function(m){return '<button class="mode '+(st.service===m.id?'active':'')+'" data-service="'+m.id+'">'+m.n+'<span>'+m.s+'</span></button>';}).join('')+'</div></div></div><div style="margin-top:12px"><button class="primary" id="openShop" '+(st.eventChoice===null||st.eventChoice===undefined?'disabled':'')+'>开始营业 · 结算今日账本</button><div class="notice">'+(st.eventChoice===null||st.eventChoice===undefined?'先处理上面的今日事件，再开始营业。':'每天只能结算一次。菜单、库存、宣传预算和服务方式都会影响结果。')+'</div></div></div>';}
 function roleTraits(){var r=role||fallbackRole;return '角色名称：'+nameOf(r)+'\n角色简介：'+(r.description||r.bio||r.background||'无')+'\n性格设定：'+(r.personality||r.character||r.profile||r.persona||'自然、有自己的主见')+'\n说话习惯：'+(r.speechStyle||r.speech||r.style||'自然简短')+'\n角色原始提示：'+(r.prompt||r.systemPrompt||r.system_prompt||r.rolePrompt||'');}
 
 var PARTNER_STYLES={
@@ -718,7 +762,7 @@ function renderMenu(){
  var all=ITEMS.map(function(p){return (st.itemOverrides||{})[p.id]||p;}).concat(st.customItems||[]),unlocked=all.filter(function(p){return st.unlocked.indexOf(p.id)>=0||p.custom;});
  var groups=[{name:'COFFEE / 咖啡',match:function(p){return p.type==='COFFEE';}},{name:'TEA & SEASONAL / 茶饮与特调',match:function(p){return p.type==='TEA'||p.type==='SEASONAL';}},{name:'BAKERY / 烘焙甜品',match:function(p){return p.type==='BAKERY';}},{name:'YOUR CREATIONS / 自定义',match:function(p){return !!p.custom;}}];
  var html='<div class="head-row"><div><div class="kicker">MENU / MARGIN</div><div class="section-title">菜单与定价</div></div><span class="aside">'+st.menu.length+' 款在售</span></div><div class="shelf-note">按类别浏览菜单。点击编辑可以调整售价与配方；自定义菜品保存在当前经营存档中。</div><div class="menu-tools"><div class="tool-note">PRICE / COST / MARGIN<br>售价、单份成本与毛利</div><button type="button" class="editorial-action" data-new-dish>＋ 新增菜品</button></div>';
- groups.forEach(function(g){var list=unlocked.filter(g.match);if(!list.length)return;html+='<div class="menu-group"><div class="menu-group-label">'+esc(g.name)+'</div><div class="menu-list">'+list.map(function(p){var on=st.menu.indexOf(p.id)>=0;return '<div class="menu-item"><div><div><span class="menu-name">'+esc(p.name)+'</span><span class="menu-type">'+esc(p.type)+'</span></div><div class="menu-desc">'+esc(p.desc||'店内自定义配方')+'</div><div class="menu-cost">成本 '+money(p.cost)+'　·　毛利 '+money(price(p)-p.cost)+'</div><div class="menu-desc">'+Object.keys(p.req||{}).map(function(k){return esc(ing(k).name)+' × '+p.req[k];}).join('　·　')+'</div><button class="menu-edit" data-edit-dish="'+esc(p.id)+'">编辑菜品与配方 ↗</button></div><div class="price-side"><div class="price">'+money(price(p))+'<span class="price-unit"> / 份</span></div><div class="price-adjust"><button class="tiny" data-price="'+esc(p.id)+'" data-delta="-2">−</button><button class="tiny" data-price="'+esc(p.id)+'" data-delta="2">＋</button></div><button class="toggle '+(on?'':'off')+'" data-toggle="'+esc(p.id)+'">'+(on?'正在出售':'加入菜单')+'</button></div></div>';}).join('')+'</div></div>';});
+ groups.forEach(function(g){var list=unlocked.filter(g.match);if(!list.length)return;html+='<div class="menu-group"><div class="menu-group-label">'+esc(g.name)+'</div><div class="menu-list">'+list.map(function(p){var on=st.menu.indexOf(p.id)>=0;return '<div class="menu-item"><div><div><span class="menu-name">'+esc(p.name)+'</span><span class="menu-type">'+esc(p.type)+'</span></div><div class="menu-desc">'+esc(p.desc||'店内自定义配方')+'</div><div class="menu-cost">成本 '+money(p.cost)+'　·　毛利 '+money(price(p)-p.cost)+'</div><div class="menu-desc">'+Object.keys(p.req||{}).map(function(k){return esc(ing(k).name)+' × '+p.req[k];}).join('　·　')+'</div><button class="menu-edit" data-edit-dish="'+esc(p.id)+'">编辑菜品与配方</button></div><div class="price-side"><div class="price">'+money(price(p))+'<span class="price-unit"> / 份</span></div><div class="price-adjust"><button class="tiny" data-price="'+esc(p.id)+'" data-delta="-2">−</button><button class="tiny" data-price="'+esc(p.id)+'" data-delta="2">＋</button></div><button class="toggle '+(on?'':'off')+'" data-toggle="'+esc(p.id)+'">'+(on?'正在出售':'加入菜单')+'</button></div></div>';}).join('')+'</div></div>';});
  var locked=ITEMS.filter(function(p){return st.unlocked.indexOf(p.id)<0;});
  if(locked.length)html+=accWrap('unlock','NEXT ON THE MENU','待解锁菜单','等级与投资',locked.map(function(p){var lev=st.level>=p.level,cash=st.cash>=p.unlock;return '<div class="locked"><div><strong>'+esc(p.name)+'</strong><span>'+esc(p.desc)+' · 需要 LV.'+p.level+'</span></div><button class="unlock" data-unlock="'+p.id+'" '+(!lev||!cash?'disabled':'')+'>'+(lev?money(p.unlock):'LV.'+p.level+' 解锁')+'</button></div>';}).join(''));
  html+=accWrap('summary','TODAY / LINE-UP','今日菜单摘要','','<div class="report-card">'+(st.menu.length?st.menu.map(function(id){var p=item(id);return p?'<div class="history-row"><div><strong>'+esc(p.name)+'</strong><span>售价 '+money(price(p))+' · 单份成本 '+money(p.cost)+'</span></div><div class="history-value">'+money(price(p)-p.cost)+'</div></div>':'';}).join(''):'<div class="shelf-note">还没有在售商品，请先加入至少一款。</div>')+'</div>');
@@ -740,12 +784,16 @@ function openDishEditor(id){
  modal.querySelector('[data-save-dish]').addEventListener('click',function(){var name=modal.querySelector('#dish-name').value.trim(),desc=modal.querySelector('#dish-desc').value.trim(),pv=Math.floor(Number(modal.querySelector('#dish-price').value)||0),recipe={},cost=0;modal.querySelectorAll('[data-recipe]').forEach(function(inp){var q=Math.max(0,Math.floor(Number(inp.value)||0)),key=inp.getAttribute('data-recipe');if(q){recipe[key]=q;cost+=ing(key).cost*q;}});if(!name){toast('先给这道菜取个名字。');return;}if(pv<1||pv>999){toast('售价请填写 1–999 元。');return;}if(!Object.keys(recipe).length){toast('至少选择一种原料并填写用量。');return;}var target=old?Object.assign({},old):{id:'custom_'+Date.now(),custom:true,type:'CUSTOM',level:1,unlock:0};target.name=name;target.desc=desc||'店内自定义配方';target.price=pv;target.cost=cost;target.req=recipe;target.custom=true;target.type='CUSTOM';if(!old){st.customItems=st.customItems||[];st.customItems.push(target);st.unlocked.push(target.id);}else if(!old.custom){st.itemOverrides=st.itemOverrides||{};st.itemOverrides[target.id]=target;}st.prices[target.id]=pv;if(st.menu.indexOf(target.id)<0)st.menu.push(target.id);save();close();renderMenu();toast(old?'菜品配方已更新。':'新菜品已加入菜单。');});calc();
 }
 function renderStock(){
- var html='<div class="head-row"><div><div class="kicker">PANTRY / SUPPLY</div><div class="section-title">原料库存</div></div><span class="aside">'+money(st.cash)+'</span></div><div class="shelf-note">按实际需要输入补货数量。数量、预计支出与剩余资金即时更新；确认采购后才扣款并增加库存。</div><div class="stock-list">'+ING.map(function(x){var q=st.stock[x.id]||0;return '<div class="ingredient"><div class="ing-icon">'+x.symbol+'</div><div><div class="ing-name">'+esc(x.name)+(q<8?' <span style="font-size:9px;color:#777;font-weight:400">· 库存偏低</span>':'')+'</div><div class="ing-detail">'+esc(x.desc)+'<br>单价 '+money(x.cost)+' / '+esc(x.unit)+'</div><div class="purchase-control"><input type="number" min="1" max="999" step="1" value="'+x.pack+'" data-buy-qty="'+x.id+'" aria-label="'+esc(x.name)+'采购数量"><button class="buy" data-buy="'+x.id+'">确认补货</button></div><div class="purchase-total" data-buy-total="'+x.id+'">预计 '+money(x.cost*x.pack)+' · 余额 '+money(st.cash-x.cost*x.pack)+'</div></div><div style="text-align:right"><div class="qty">'+q+'</div><div class="unit">'+esc(x.unit)+'</div></div></div>';}).join('')+'</div>';
+ var SAFE=20;
+ var plan=ING.map(function(x){var q=st.stock[x.id]||0,need=Math.max(0,SAFE-q),cost=x.cost*need;return {x:x,q:q,need:need,cost:cost};});
+ var totalCost=plan.reduce(function(s,p){return s+p.cost;},0);
+ var html='<div class="head-row"><div><div class="kicker">PANTRY / SUPPLY</div><div class="section-title">原料库存</div></div><span class="aside">'+money(st.cash)+'</span></div><div class="shelf-note">按实际需要输入补货数量。数量、预计支出与剩余资金即时更新；确认采购后才扣款并增加库存。</div><div style="display:flex;gap:8px;margin:0 0 14px"><button type="button" class="primary" data-auto-buy style="min-height:42px;flex:1">一键智能补货 · 补到 '+SAFE+' 份（'+money(totalCost)+'）</button></div><div class="stock-list">'+ING.map(function(x){var q=st.stock[x.id]||0;return '<div class="ingredient"><div class="ing-icon">'+x.symbol+'</div><div><div class="ing-name">'+esc(x.name)+(q<8?' <span style="font-size:9px;color:#777;font-weight:400">· 库存偏低</span>':'')+'</div><div class="ing-detail">'+esc(x.desc)+'<br>单价 '+money(x.cost)+' / '+esc(x.unit)+'</div><div class="purchase-control"><input type="number" min="1" max="999" step="1" value="'+x.pack+'" data-buy-qty="'+x.id+'" aria-label="'+esc(x.name)+'采购数量"><button class="buy" data-buy="'+x.id+'">确认补货</button></div><div class="purchase-total" data-buy-total="'+x.id+'">预计 '+money(x.cost*x.pack)+' · 余额 '+money(st.cash-x.cost*x.pack)+'</div></div><div style="text-align:right"><div class="qty">'+q+'</div><div class="unit">'+esc(x.unit)+'</div></div></div>';}).join('')+'</div>';
  html+=accWrap('stockcheck','STOCK CHECK','目前能做多少份？','','<div class="report-card">'+st.menu.map(function(id){var p=item(id);if(!p)return '';var n=Infinity;Object.keys(p.req||{}).forEach(function(k){n=Math.min(n,Math.floor((st.stock[k]||0)/p.req[k]));});return '<div class="history-row"><div><strong>'+esc(p.name)+'</strong><span>按现有库存约可制作 '+Math.max(0,n)+' 份</span></div><div class="history-value">'+Math.max(0,n)+' 份</div></div>';}).join('')+'</div>');
  $('view-stock').innerHTML=html;
  function refreshBuy(id){var x=ing(id),input=document.querySelector('[data-buy-qty="'+id+'"]'),btn=document.querySelector('[data-buy="'+id+'"]'),out=document.querySelector('[data-buy-total="'+id+'"]');if(!input||!x)return;var q=Math.max(1,Math.min(999,Math.floor(Number(input.value)||1))),total=x.cost*q;out.textContent='预计 '+money(total)+' · 余额 '+money(st.cash-total);btn.disabled=st.cash<total;}
  document.querySelectorAll('[data-buy-qty]').forEach(function(inp){inp.addEventListener('input',function(){refreshBuy(inp.getAttribute('data-buy-qty'));});refreshBuy(inp.getAttribute('data-buy-qty'));});
  document.querySelectorAll('[data-buy]').forEach(function(btn){btn.addEventListener('click',function(){var id=btn.getAttribute('data-buy'),x=ing(id),input=document.querySelector('[data-buy-qty="'+id+'"]'),qty=Math.max(1,Math.min(999,Math.floor(Number(input&&input.value)||1))),total=x.cost*qty;if(st.cash<total){toast('资金不足，请减少采购数量。');return;}st.cash-=total;st.stock[x.id]=(st.stock[x.id]||0)+qty;save();renderStock();toast('已补货：'+x.name+' +'+qty+' '+x.unit);});});
+ var auto=document.querySelector('[data-auto-buy]');if(auto)auto.addEventListener('click',function(){if(totalCost<=0){toast('所有原料都已在安全库存以上。');return;}if(st.cash<totalCost){toast('资金不足（需要 '+money(totalCost)+'），先手动补急需的原料吧。');return;}st.cash-=totalCost;plan.forEach(function(p){if(p.need>0)st.stock[p.x.id]=(st.stock[p.x.id]||0)+p.need;});save();renderStock();toast('智能补货完成，花费 '+money(totalCost)+'。');});
 }
 function decorSvg(i){var base='<svg viewBox="0 0 120 80"><path d="M10 69H110M18 69V14H102V69" stroke="#777"/>';var a=['<rect x="24" y="24" width="72" height="29"/><path d="M25 57H95M30 33H90"/>','<rect x="27" y="24" width="25" height="35"/><rect x="60" y="24" width="34" height="21"/><path d="M60 50H94M34 31H45M34 37H45"/>','<rect x="23" y="25" width="74" height="33"/><path d="M60 25V58M23 41H97M32 64V70M88 64V70"/>','<path d="M25 28H95V60H25zM31 34H48V54H31zM55 34H89V44H55zM55 48H89V54H55z"/>','<rect x="28" y="29" width="64" height="29"/><path d="M20 20H100M20 64H100M36 20V29M60 20V29M84 20V29"/>','<path d="M31 69V29M60 69V20M89 69V29M25 29H37M54 20H66M83 29H95M26 16H94"/>'];return base+a[i]+'</svg>';}
 function renderShop(){
@@ -815,6 +863,8 @@ function cafeBindMotion(){
 
 var cafeCompactUI=null;
 function initCafeCompactUI(){
+ // 不再使用抽屉模式，所有页面留在 main 里通过底部导航切换
+ return;
  var body=document.body,oldTabs=document.querySelector('.tabs');
  if(!body||!$('view-overview'))return;
  if(oldTabs)oldTabs.remove();

@@ -18,7 +18,7 @@ button,input,textarea,select{font:inherit}
 button{color:inherit;cursor:pointer}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #777;outline-offset:3px}
 .phone-mockup{position:relative;width:min(410px,calc(100vw - 24px));height:min(890px,calc(100dvh - 24px));min-height:620px;margin:12px auto;background:#fff;border:7px solid #fff;border-radius:43px;box-shadow:0 24px 80px rgba(0,0,0,.12);overflow:hidden;display:flex;flex-direction:column}
-.status-bar{height:34px;flex:0 0 34px;padding:7px 20px 0;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:650;letter-spacing:.02em;background:rgba(255,255,255,.92);z-index:3}
+.status-bar{height:34px;flex:0 0 34px;padding:7px 20px 0;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:650;letter-spacing:.02em;background:transparent;border-bottom:none;box-shadow:none;z-index:3}
 .status-right{display:flex;align-items:center;gap:6px;color:#222}
 .signal{display:flex;align-items:flex-end;gap:2px;height:11px}.signal i{display:block;width:3px;background:#222;border-radius:3px}.signal i:nth-child(1){height:4px}.signal i:nth-child(2){height:6px}.signal i:nth-child(3){height:8px}.signal i:nth-child(4){height:10px}
 .wifi{width:13px;height:9px;border:1.5px solid transparent;border-top-color:#222;border-radius:50%;position:relative;transform:translateY(2px)}.wifi:after{content:"";position:absolute;width:4px;height:4px;border:1.5px solid transparent;border-top-color:#222;border-radius:50%;left:3px;top:2px}
@@ -317,7 +317,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   </div>
   <div class="reader-backdrop" id="readerBackdrop" role="dialog" aria-modal="true" aria-label="日记阅读">
     <section class="reader-book">
-      <header class="reader-toolbar"><button id="readerClose" aria-label="返回日记列表">← 返回</button><span class="reader-progress" id="readerProgress">PAGE 01</span><button id="readerEdit">编辑记录 ↗</button></header>
+      <header class="reader-toolbar"><button id="readerClose" aria-label="返回日记列表">← 返回</button><span class="reader-progress" id="readerProgress">PAGE 01</span><button id="readerEdit">编辑记录</button></header>
       <article class="reader-page" id="readerPage"></article>
       <footer class="reader-foot"><div class="reader-nav"><button id="readerPrev">← 上一篇</button><button id="readerNext">下一篇 →</button></div><div class="reader-actions"><button id="readerComment">CHAR 批注</button><button id="readerPin">置顶</button><button id="readerFavorite">☆ 收藏</button></div></footer>
     </section>

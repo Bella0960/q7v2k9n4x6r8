@@ -260,7 +260,9 @@
 
   // 与 chat-detail.html renderAllMessages 的清洗规则保持一致，
   // 保证这里的数组下标 == 聊天页渲染时 .msg-row 的 data-idx
+  // 同步排除 mode:'date' 的赴约剧情消息（线下剧情只在 date.html 查看，不进线上聊天搜索）
   var displayList = historyList.filter(function (m) {
+    if (!m || m.mode === 'date' || m.silent) return false;
     var t = String((m && (m.text || m.content)) || '');
     return t.indexOf('定位失败') === -1 && t.indexOf('Timeout expired') === -1;
   });

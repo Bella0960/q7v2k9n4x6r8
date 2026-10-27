@@ -1134,7 +1134,12 @@
         if (raw) {
           var arr = JSON.parse(raw);
           if (Array.isArray(arr) && arr.length > 0) {
-            var last = arr[arr.length - 1];
+            // 跳过赴约剧情消息（mode:'date'）：会话列表预览的是线上聊天最后一条，
+            // 线下小说正文不应出现在微信风格的会话预览里。
+            var last = null;
+            for (var i = arr.length - 1; i >= 0; i--) {
+              if (arr[i] && arr[i].mode !== 'date') { last = arr[i]; break; }
+            }
             if (last) {
               if (last.text) return last.text;
               // 无文本的特殊消息：按类型显示占位，避免显示兜底问候语
@@ -1272,6 +1277,11 @@
     renderProfile();
     applyMusicState(musicState);
     renderChatList();
+    
+    // 页面重新显示时（从设置页返回），重新渲染列表，置顶生效
+    window.addEventListener('pageshow', function() {
+      renderChatList();
+    });
   </script>
 <script src="../../shared/js/statusbar-control.js"></script>
 

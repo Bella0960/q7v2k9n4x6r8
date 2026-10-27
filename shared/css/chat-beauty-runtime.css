@@ -1157,3 +1157,103 @@
 .phone-mockup[data-chat-theme-preset="imessage"] .input-dock:has(.send-icon-btn:not(.disabled)) .voice-input-btn {
   display:none !important;
 }
+
+/* ============ QQ 风格主题（贴近真实 QQ 手机版） ============ */
+.phone-mockup[data-chat-theme-preset="qq"],
+.phone-mockup[data-chat-theme-preset="qq"] .chat-stage {
+  background: #F5F5F5 !important;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .chat-header {
+  background: transparent !important;
+  border-bottom: 0 !important;
+  padding-top: 8px !important;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .chat-title-box { text-align: center !important; }
+.phone-mockup[data-chat-theme-preset="qq"] .chat-user-name {
+  color: #111 !important;
+  font-weight: 600 !important;
+  font-size: 17px !important;
+  text-align: center !important;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .chat-status-sub {
+  color: #B2B2B2 !important;
+  font-size: 11px !important;
+  text-align: center !important;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .chat-notice-bar { color: #B2B2B2 !important; }
+.phone-mockup[data-chat-theme-preset="qq"] .nav-circle-btn { background: transparent !important; }
+.phone-mockup[data-chat-theme-preset="qq"] .nav-circle-btn svg { stroke: #111 !important; fill: none !important; }
+
+.chat-stage[data-chat-theme-preset="qq"] {
+  background: #F5F5F5 !important;
+  padding: 10px 12px calc(80px + env(safe-area-inset-bottom)) !important;
+  gap: 10px !important;
+}
+.chat-stage[data-chat-theme-preset="qq"] .msg-row .msg-avatar {
+  display: block !important;
+  width: 40px !important; height: 40px !important;
+  border-radius: 50% !important;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.chat-stage[data-chat-theme-preset="qq"] .msg-row .msg-avatar img,
+.chat-stage[data-chat-theme-preset="qq"] .msg-row .msg-avatar .avatar-fallback {
+  width: 100% !important; height: 100% !important;
+  border-radius: 50% !important;
+  object-fit: cover;
+}
+.chat-stage[data-chat-theme-preset="qq"] .msg-row.received .msg-bubble:not(.bubble-pay):not(.bubble-media):not(.bubble-gift),
+.chat-stage[data-chat-theme-preset="qq"] .msg-row.left .msg-bubble:not(.bubble-pay):not(.bubble-media):not(.bubble-gift) {
+  background: #FFFFFF !important;
+  color: #111 !important;
+  border: 0 !important;
+  border-radius: 4px 16px 16px 16px !important;
+  padding: 9px 12px !important;
+  font-size: 16px !important; line-height: 1.45 !important;
+  box-shadow: none !important;
+  max-width: 70% !important;
+}
+.chat-stage[data-chat-theme-preset="qq"] .msg-row.sent .msg-bubble:not(.bubble-pay):not(.bubble-media):not(.bubble-gift),
+.chat-stage[data-chat-theme-preset="qq"] .msg-row.right .msg-bubble:not(.bubble-pay):not(.bubble-media):not(.bubble-gift) {
+  background: #95EC69 !important;
+  color: #111 !important;
+  border: 0 !important;
+  border-radius: 16px 4px 16px 16px !important;
+  padding: 9px 12px !important;
+  font-size: 16px !important; line-height: 1.45 !important;
+  box-shadow: none !important;
+  max-width: 70% !important;
+}
+.chat-stage[data-chat-theme-preset="qq"] .message-time,
+.chat-stage[data-chat-theme-preset="qq"] .msg-time,
+.chat-stage[data-chat-theme-preset="qq"] .msg-timestamp {
+  color: #C0C0C0 !important; font-size: 11px !important;
+}
+
+.phone-mockup[data-chat-theme-preset="qq"] .input-dock {
+  background: #F7F7F7 !important;
+  border-top: 1px solid #E0E0E0 !important;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom)) !important;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .input-capsule {
+  background: #FFFFFF !important;
+  border-radius: 6px !important;
+  border: 0 !important;
+  min-height: 38px !important;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .send-icon-btn {
+  background: #12B7F5 !important;
+  color: #fff !important;
+  border-radius: 6px !important;
+  width: auto !important; min-width: 54px !important;
+  height: 38px !important;
+  padding: 0 14px !important;
+  font-size: 15px !important; font-weight: 400 !important;
+  white-space: nowrap !important;
+  line-height: 38px !important;
+  display: flex !important; align-items: center !important; justify-content: center !important;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .send-icon-btn .default-send-svg { display: none !important; }
+.phone-mockup[data-chat-theme-preset="qq"] .send-icon-btn::after { content: "发送"; }
+.phone-mockup[data-chat-theme-preset="qq"] .plus-action-btn { color: #555 !important; }
+.phone-mockup[data-chat-theme-preset="qq"] .voice-input-btn { color: #555 !important; }

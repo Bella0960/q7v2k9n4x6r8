@@ -566,6 +566,69 @@
     };
   }
 
+  // ============================================================
+  // 功能：送礼物 —— 弹出礼物选择，发送礼物卡片，点开有拆开惊喜动画
+  // ============================================================
+  var GIFT_CATALOG = [
+    { id: 'rose',     name: '红玫瑰',   color: '#e74c3c', wrap: '#fff0f0', tag: '送给喜欢的你', img: 'assets/gift-heart.png' },
+    { id: 'cake',     name: '小蛋糕',   color: '#f5b041', wrap: '#fff8e7', tag: '甜到心里', img: 'assets/gift-cake.png' },
+    { id: 'choco',    name: '巧克力',   color: '#8b5a2b', wrap: '#f5ece0', tag: '苦苦甜甜都是你', img: 'assets/gift-choco.png' },
+    { id: 'bear',     name: '抱抱熊',   color: '#a87b5a', wrap: '#faf3ec', tag: '替我抱抱你', img: 'assets/gift-bear.png' },
+    { id: 'heart',    name: '爱心礼盒', color: '#ff6b81', wrap: '#ffeef2', tag: '整颗心都给你', img: 'assets/gift-heart.png' },
+    { id: 'star',     name: '幸运星',   color: '#f1c40f', wrap: '#fffbe7', tag: '愿望都会实现', img: 'assets/gift-star.png' }
+  ];
+  function featGift() {
+    var html =
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">' +
+      GIFT_CATALOG.map(function (g, i) {
+        return '<button type="button" class="gift-pick" data-gift="' + i + '" ' +
+          'style="background:' + g.wrap + ';border:2px solid transparent;border-radius:14px;padding:14px 6px 10px;cursor:pointer;text-align:center;transition:transform .12s;">' +
+          '<span style="display:block;width:38px;height:38px;margin:0 auto 6px;border-radius:10px;background:' + g.color + ';position:relative;">' +
+            '<span style="position:absolute;left:50%;top:0;bottom:0;width:4px;margin-left:-2px;background:rgba(255,255,255,.55);"></span>' +
+            '<span style="position:absolute;left:0;right:0;top:11px;height:4px;background:rgba(255,255,255,.55);"></span>' +
+          '</span>' +
+          '<span style="display:block;font-size:12px;font-weight:600;color:#222;">' + g.name + '</span>' +
+          '<span style="display:block;font-size:10px;color:#999;margin-top:2px;">' + g.tag + '</span>' +
+        '</button>';
+      }).join('') +
+      '</div>' +
+      '<textarea class="x-input" id="giftMsg" rows="2" placeholder="写一句悄悄话（可选）" style="width:100%;box-sizing:border-box;"></textarea>' +
+      '<div class="x-row" style="margin-top:12px;display:flex;gap:10px;justify-content:flex-end;">' +
+        '<button class="x-btn x-btn-ghost" id="giftCancel" type="button">取消</button>' +
+        '<button class="x-btn x-btn-primary" id="giftSend" type="button">送出</button>' +
+      '</div>';
+    openModal('送一份小礼物', html);
+
+    var picked = 0;
+    var pickBtns = modalBody.querySelectorAll('.gift-pick');
+    function refreshPick() {
+      pickBtns.forEach(function (b, i) {
+        b.style.borderColor = (i === picked) ? '#111' : 'transparent';
+        b.style.transform = (i === picked) ? 'scale(1.05)' : 'scale(1)';
+      });
+    }
+    pickBtns.forEach(function (b, i) {
+      b.onclick = function () { picked = i; refreshPick(); };
+    });
+    refreshPick();
+
+    document.getElementById('giftCancel').onclick = closeModal;
+    document.getElementById('giftSend').onclick = function () {
+      var g = GIFT_CATALOG[picked];
+      var msg = (document.getElementById('giftMsg').value || '').trim();
+      closeModal();
+      insertChatMessage({
+        role: 'user', type: 'gift',
+        gift: { id: g.id, name: g.name, color: g.color, wrap: g.wrap, tag: g.tag,
+                img: g.img, message: msg },
+        text: '[礼物] ' + g.name
+      });
+      // 让 AI 惊喜地收下礼物
+      var silent = '[我送了你一份礼物：' + g.name + (msg ? '，附上一句悄悄话：“' + msg + '”' : '') + '。请表现出收到礼物时的惊喜与开心，不要真的去拆，用你的反应来回应这份心意。]';
+      sendSilentInstruction(silent);
+    };
+  }
+
   // ---------- 分发 ----------
   function handleFeature(feat) {
     switch (feat) {
@@ -582,6 +645,7 @@
       case 'voice-msg': featVoiceMsg(); break;
       case 'card': featCard(); break;
       case 'date': featDate(); break;
+      case 'gift': featGift(); break;
       case 'narration': featureAside(); break;
       case 'sticker':
         var stickerBtn = document.getElementById('stickerOpenBtn');

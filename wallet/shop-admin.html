@@ -158,10 +158,10 @@
       <input id="fCn" type="text" placeholder="中文名">
       <input id="fPrice" type="number" placeholder="价格 ¥">
       <select id="fCat">
-        <option value="SONY">SONY</option>
-        <option value="APPLE">APPLE</option>
-        <option value="BOSE">BOSE</option>
-        <option value="HIRES">HIRES</option>
+        <option value="数码">数码</option>
+        <option value="食品">食品</option>
+        <option value="美食">美食</option>
+        <option value="服装">服装</option>
       </select>
       <div class="add-actions">
         <button class="add-cancel" onclick="closeAdd()">取消</button>
@@ -174,14 +174,23 @@
 
 <script>
   const DEFAULTS = [
-    { id: 1, name: 'SONY WH-1000XM5', cn: '索尼头戴降噪耳机', price: 2099, cat: 'SONY', icon: 'headphone', desc: '旗舰降噪头戴式耳机，30小时续航。' },
-    { id: 2, name: 'BOSE NC 100', cn: 'Bose 深度降噪耳塞', price: 1599, cat: 'BOSE', icon: 'earbud', desc: '深度降噪，通透模式。' },
-    { id: 3, name: 'ZINO SMR 56', cn: '便携蓝牙音箱', price: 459, cat: 'SONY', icon: 'speaker', desc: '360°环绕声。' },
-    { id: 4, name: 'NURIA 1000 RM', cn: '极简智能手表', price: 799, cat: 'APPLE', icon: 'watch', desc: '健康追踪。' },
-    { id: 5, name: 'AERO BAG', cn: '黑白帆布托特包', price: 299, cat: 'APPLE', icon: 'bag', desc: '大容量。' },
-    { id: 6, name: 'MECH KEY 87', cn: '客制化机械键盘', price: 699, cat: 'BOSE', icon: 'keyboard', desc: '热插拔轴体。' },
-    { id: 7, name: 'DESK LAMP', cn: '无极调光护眼台灯', price: 359, cat: 'HIRES', icon: 'lamp', desc: '护眼台灯。' },
-    { id: 8, name: 'GEL PEN 6PK', cn: '磨砂黑中性笔套装', price: 49, cat: 'HIRES', icon: 'pen', desc: '6支装。' },
+    { id: 1, name: 'SONY WH-1000XM5', cn: '索尼头戴降噪耳机', price: 2099, cat: '数码', icon: 'headphone', desc: '旗舰降噪头戴式耳机，30小时续航。' },
+    { id: 2, name: 'BOSE NC 100', cn: 'Bose 深度降噪耳塞', price: 1599, cat: '数码', icon: 'earbud', desc: '深度降噪，通透模式。' },
+    { id: 3, name: 'ZINO SMR 56', cn: '便携蓝牙音箱', price: 459, cat: '数码', icon: 'speaker', desc: '360°环绕声。' },
+    { id: 4, name: 'NURIA 1000 RM', cn: '极简智能手表', price: 799, cat: '数码', icon: 'watch', desc: '健康追踪。' },
+    { id: 5, name: 'AERO BAG', cn: '灰白帆布托特包', price: 299, cat: '数码', icon: 'bag', desc: '大容量。' },
+    { id: 6, name: 'MECH KEY 87', cn: '客制化机械键盘', price: 699, cat: '数码', icon: 'keyboard', desc: '热插拔轴体。' },
+    { id: 7, name: 'DESK LAMP', cn: '无极调光护眼台灯', price: 359, cat: '数码', icon: 'lamp', desc: '护眼台灯。' },
+    { id: 8, name: 'GEL PEN 6PK', cn: '磨砂黑中性笔套装', price: 49, cat: '数码', icon: 'pen', desc: '6支装。' },
+    { id: 9, name: 'DIP COFFEE BOX', cn: '挂耳咖啡礼盒', price: 89, cat: '食品', icon: 'coffee', desc: '精选产地挂耳咖啡。' },
+    { id: 10, name: 'MIXED NUTS', cn: '混合坚果罐装', price: 69, cat: '食品', icon: 'nuts', desc: '每日坚果500g。' },
+    { id: 11, name: 'MATCHA CAN', cn: '宇治抹茶粉', price: 128, cat: '食品', icon: 'matcha', desc: '宇治石磨抹茶。' },
+    { id: 12, name: 'BUTTER COOKIE', cn: '黄油曲奇铁盒', price: 59, cat: '美食', icon: 'cookie', desc: '法式手工曲奇。' },
+    { id: 13, name: 'DARK CHOC 72%', cn: '黑巧克力排块', price: 39, cat: '美食', icon: 'chocolate', desc: '72%可可黑巧。' },
+    { id: 14, name: 'GRANOLA BAG', cn: '燕麦脆麦片', price: 49, cat: '美食', icon: 'granola', desc: '即食烤燕麦。' },
+    { id: 15, name: 'HEAVY HOODIE', cn: '重磅连帽卫衣', price: 299, cat: '服装', icon: 'hoodie', desc: '480g重磅棉。' },
+    { id: 16, name: 'BASIC TEE', cn: '纯棉基础T恤', price: 99, cat: '服装', icon: 'tshirt', desc: '230g重磅棉。' },
+    { id: 17, name: 'KNIT BEANIE', cn: '灰色针织冷帽', price: 79, cat: '服装', icon: 'beanie', desc: '羊毛混纺。' },
   ];
 
   function load() {
@@ -191,7 +200,12 @@
     if (!arr || !arr.length) {
       arr = JSON.parse(JSON.stringify(DEFAULTS));
       localStorage.setItem('shop_products', JSON.stringify(arr));
+      return arr;
     }
+    DEFAULTS.forEach(d => {
+      if (!arr.find(p => p.id === d.id)) arr.push(JSON.parse(JSON.stringify(d)));
+    });
+    localStorage.setItem('shop_products', JSON.stringify(arr));
     return arr;
   }
   function save(arr) { localStorage.setItem('shop_products', JSON.stringify(arr)); }

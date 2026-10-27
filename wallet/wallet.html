@@ -496,6 +496,15 @@
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           </span>
         </div>
+        <div class="wl-action-card" id="cardClosePay">
+          <span class="wl-action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </span>
+          <span class="wl-action-text">亲密付</span>
+          <span class="wl-action-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </span>
+        </div>
         <div class="wl-history-panel" id="historyPanel">
           <div class="wl-history-list" id="historyList"></div>
         </div>
@@ -688,6 +697,10 @@
     historyPanel.classList.toggle('open', willOpen);
     txCard.classList.toggle('open', willOpen);
   });
+
+  // 亲密付入口
+  var cpCard = document.getElementById('cardClosePay');
+  if (cpCard) cpCard.addEventListener('click', function () { location.href = 'close-pay.html'; });
 
   // ===== 余额：读取 workData 渲染（结构非法一律回落 1000，绝不把脏数据带进计算）=====
   var balanceAmountEl = document.getElementById('balanceAmount');

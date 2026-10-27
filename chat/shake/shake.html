@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>摇一摇</title>
+<script src="../../shared/js/font-loader.js?v=20261022v1"></script>
+<script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/phone_api.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: #000;
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
+    color: #fff;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .phone-mockup {
+    position: relative;
+    width: min(390px, calc(100vw - 24px));
+    height: min(844px, calc(100vh - 24px));
+    min-height: 0;
+    background: #000;
+    border-radius: 45px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    overflow: hidden;
+    border: 8px solid #1a1a1a;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-bar {
+    position: absolute;
+    top: 0; left: 0; width: 100%;
+    padding: 14px 28px;
+    font-size: 0.875rem; font-weight: 600;
+    color: #fff;
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  /* 顶部导航 */
+  .shake-nav {
+    flex: 0 0 auto;
+    padding: 52px 16px 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .shake-nav-back {
+    position: absolute;
+    left: 12px;
+    top: 48px;
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: #fff;
+    opacity: 0.9;
+  }
+  .shake-nav-back:active { opacity: 0.5; }
+  .shake-nav-back svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .shake-nav-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.5px;
+  }
+
+  /* 中间摇一摇舞台 */
+  .shake-stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 40px;
+    position: relative;
+  }
+
+  /* 手机图标 */
+  .phone-icon {
+    width: 56px;
+    height: 96px;
+    position: relative;
+    transition: transform 0.1s;
+  }
+  .phone-icon svg {
+    width: 100%;
+    height: 100%;
+    stroke: #fff;
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .phone-icon.bottom {
+    transform: rotate(180deg);
+    margin-top: 12px;
+  }
+
+  /* 摇动动画 */
+  .shaking .phone-icon.top {
+    animation: shakeTop 0.18s ease-in-out infinite;
+  }
+  .shaking .phone-icon.bottom {
+    animation: shakeBottom 0.18s ease-in-out infinite;
+  }
+  @keyframes shakeTop {
+    0%, 100% { transform: translateX(0) rotate(0); }
+    25% { transform: translateX(-8px) rotate(-6deg); }
+    75% { transform: translateX(8px) rotate(6deg); }
+  }
+  @keyframes shakeBottom {
+    0%, 100% { transform: rotate(180deg) translateX(0) rotate(0); }
+    25% { transform: rotate(180deg) translateX(8px) rotate(-6deg); }
+    75% { transform: rotate(180deg) translateX(-8px) rotate(6deg); }
+  }
+
+  /* 中间波纹线 */
+  .wave-line {
+    width: 120px;
+    height: 2px;
+    background: rgba(255,255,255,0.3);
+    margin: 14px 0;
+    position: relative;
+    overflow: hidden;
+    border-radius: 2px;
+  }
+  .wave-line::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    width: 40px; height: 100%;
+    background: #fff;
+    transform: translateX(-50%) scaleX(0);
+    transform-origin: center;
+    border-radius: 2px;
+  }
+  .shaking .wave-line::after {
+    animation: waveExpand 0.6s ease-out infinite;
+  }
+  @keyframes waveExpand {
+    0% { transform: translateX(-50%) scaleX(0); opacity: 1; }
+    100% { transform: translateX(-50%) scaleX(3); opacity: 0; }
+  }
+
+  /* 提示文字 */
+  .shake-hint {
+    position: absolute;
+    bottom: 80px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 15px;
+    color: rgba(255,255,255,0.7);
+    letter-spacing: 1px;
+    transition: opacity 0.3s;
+  }
+  .shake-hint.searching {
+    color: rgba(255,255,255,0.9);
+  }
+
+  /* 搜索中加载点 */
+  .search-dots {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 4px;
+  }
+  .search-dots span {
+    width: 4px; height: 4px;
+    background: #fff;
+    border-radius: 50%;
+    display: inline-block;
+    animation: dotBounce 1.2s ease-in-out infinite;
+  }
+  .search-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .search-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* 匹配结果 */
+  .shake-result {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 0 40px;
+    animation: fadeIn 0.4s ease;
+  }
+  .shake-result.show { display: flex; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .result-label {
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+  }
+
+  .result-avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .result-avatar img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+
+  .result-name {
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .result-distance {
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 4px;
+  }
+  .result-region {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 36px;
+  }
+  .result-greeting {
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+    text-align: center;
+    line-height: 1.6;
+    max-width: 260px;
+    margin-bottom: 40px;
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 14px;
+  }
+
+  .result-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 240px;
+  }
+  .btn-primary {
+    padding: 13px 0;
+    border-radius: 22px;
+    background: #fff;
+    color: #000;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: opacity 0.2s;
+  }
+  .btn-primary:active { opacity: 0.7; }
+  .btn-secondary {
+    padding: 13px 0;
+    border-radius: 22px;
+    background: transparent;
+    color: rgba(255,255,255,0.6);
+    font-size: 15px;
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.2);
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .btn-secondary:active { background: rgba(255,255,255,0.1); }
+
+  /* 错误提示 */
+  .shake-error {
+    position: absolute;
+    bottom: 120px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 13px;
+    color: #ff6b6b;
+    display: none;
+  }
+  .shake-error.show { display: block; }
+
+  /* mobile fullscreen */
+  @media (max-width: 480px) {
+    html, body {
+      background: #000 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      min-height: 100vh !important;
+      align-items: stretch !important;
+    }
+    .phone-mockup {
+      width: 100vw !important;
+      height: 100vh !important;
+      max-width: none !important;
+      max-height: none !important;
+      border-radius: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+    }
+  }
+</style>
+<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+</head>
+<body>
+
+<div class="phone-mockup" id="phoneMockup">
+  <div class="status-bar"><span id="statusTime">4:41</span></div>
+
+  <!-- 顶部导航 -->
+  <div class="shake-nav">
+    <div class="shake-nav-back" onclick="history.back()">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="shake-nav-title">摇一摇</div>
+  </div>
+
+  <!-- 摇一摇舞台 -->
+  <div class="shake-stage" id="shakeStage">
+    <div class="phone-icon top">
+      <svg viewBox="0 0 56 96">
+        <rect x="8" y="4" width="40" height="88" rx="8" ry="8"/>
+        <line x1="22" y1="10" x2="34" y2="10"/>
+        <circle cx="28" cy="86" r="2.5"/>
+      </svg>
+    </div>
+    <div class="wave-line"></div>
+    <div class="phone-icon bottom">
+      <svg viewBox="0 0 56 96">
+        <rect x="8" y="4" width="40" height="88" rx="8" ry="8"/>
+        <line x1="22" y1="10" x2="34" y2="10"/>
+        <circle cx="28" cy="86" r="2.5"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 提示文字 -->
+  <div class="shake-hint" id="shakeHint">摇一摇</div>
+
+  <!-- 错误提示 -->
+  <div class="shake-error" id="shakeError"></div>
+
+  <!-- 匹配结果 -->
+  <div class="shake-result" id="shakeResult">
+    <div class="result-label">同时在摇手机的人</div>
+    <div class="result-avatar" id="resultAvatar">?</div>
+    <div class="result-name" id="resultName"></div>
+    <div class="result-distance" id="resultDistance"></div>
+    <div class="result-region" id="resultRegion"></div>
+    <div class="result-greeting" id="resultGreeting"></div>
+    <div class="result-actions">
+      <button class="btn-primary" id="btnSayHi">打个招呼</button>
+      <button class="btn-secondary" id="btnShakeAgain">再摇一次</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var stage = document.getElementById('shakeStage');
+  var hint = document.getElementById('shakeHint');
+  var result = document.getElementById('shakeResult');
+  var errorBox = document.getElementById('shakeError');
+  var currentMatch = null;
+  var isShaking = false;
+  var isSearching = false;
+
+  // ===== 状态栏时钟 =====
+  function updateTime() {
+    var d = new Date();
+    var h = d.getHours();
+    var m = d.getMinutes();
+    document.getElementById('statusTime').textContent = h + ':' + (m < 10 ? '0' + m : m);
+  }
+  updateTime();
+  setInterval(updateTime, 10000);
+
+  // ===== 咔哒音效（Web Audio） =====
+  var audioCtx = null;
+  function playClick() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var now = audioCtx.currentTime;
+      // 两个短促方波脉冲 = 咔哒
+      [0, 0.08].forEach(function(offset) {
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(2000, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(800, now + offset + 0.05);
+        gain.gain.setValueAtTime(0.15, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.06);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.08);
+      });
+    } catch (e) {}
+  }
+
+  function vibrate(ms) {
+    try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {}
+  }
+
+  // ===== 触发摇动 =====
+  function doShake() {
+    if (isShaking || isSearching) return;
+    isShaking = true;
+
+    // 震动动画
+    document.getElementById('phoneMockup').classList.add('shaking');
+    playClick();
+    vibrate(80);
+
+    // 1.2秒后进入搜索状态
+    setTimeout(function() {
+      document.getElementById('phoneMockup').classList.remove('shaking');
+      startSearching();
+    }, 1200);
+  }
+
+  // ===== 搜索匹配 =====
+  function startSearching() {
+    isShaking = false;
+    isSearching = true;
+    hint.classList.add('searching');
+    hint.innerHTML = '正在寻找同一时间摇手机的人' +
+      '<span class="search-dots"><span></span><span></span><span></span></span>';
+
+    generateMatch().then(function(person) {
+      showResult(person);
+    }).catch(function(err) {
+      console.error('match failed', err);
+      showResult(fallbackPerson());
+    });
+  }
+
+  // ===== "手机通三界"种族池（男女都有） =====
+  var SPECIES_POOL = [
+    {
+      species: '森林精灵',
+      nameMale: ['林溪','叶生','岚','森','青野','木杉'],
+      nameFemale: ['露白','小萤','叶叶','小鹿','青柠','林夏'],
+      region: '翠雾森林',
+      greetings: ['今天林子里雾好大，刚收完露水。','耳朵今天有点痒，估计要变天。','树长老今天又催我写信了。'],
+      persona: '你是一个生活在翠雾森林的精灵，已经活了几百年但看起来很年轻。你有尖尖的耳朵，能和树木、动物交流。你觉得自己就是普通人，不觉得精灵身份有什么特别。你会跟对方聊森林里的日常：采集露水、和动物聊天、树木的生长、四季变化。如果对方问起你住哪里，就说"在一片林子里"，不要主动强调自己是精灵。'
+    },
+    {
+      species: '小狐妖',
+      nameMale: ['白伏','阿守','麻薯','阿彻','银爪','大助'],
+      nameFemale: ['九儿','尾尾','小玉','小铃','胡桃','白凛'],
+      region: '狐鸣山丘',
+      greetings: ['今天尾巴又掉毛了，扫了半天。','神社的牌子今天又被风吹歪了。','九条尾巴梳起来真麻烦。'],
+      persona: '你是一只修行了几百年的小狐妖，有九条尾巴，但平时只露出一条（藏起来很费力）。你住在狐鸣山丘的神社旁边，会一点小法术。你觉得自己就是个普通的山丘居民，尾巴多只是"毛发旺盛"。你会聊：尾巴护理、神社日常、半夜出来散步时遇到的人类、附近的小动物。不要主动说自己是狐妖。'
+    },
+    {
+      species: '魔法使',
+      nameMale: ['伦','马修','卡西','奥兹','菲尼克斯','维恩'],
+      nameFemale: ['小夜','乌塔','星见','梅露','可可','莉娜'],
+      region: '烟囱小巷',
+      greetings: ['魔药又煮糊了，整个屋子都是烟。','扫帚今天飞半路罢工了。','今天的月相不太对，占卜牌全反了。'],
+      persona: '你是一个还在见习期的魔法使，住在烟囱小巷的小阁楼里，扫帚飞行技术不太好，魔药经常煮糊。你觉得自己就是个普通住巷子里的人，会用魔法只是"手比较巧"。你会聊：魔药实验失败、扫帚维修、月夜观星、坩埚保养、偶尔把东西变没又找不回来。不要主动说自己是魔法使。'
+    },
+    {
+      species: '友好幽灵',
+      nameMale: ['阿飘','空空','阿浮','老钟','无常','阿夜'],
+      nameFemale: ['小青','幽幽','小白','阿灯','钟灵','眠眠'],
+      region: '旧钟楼',
+      greetings: ['今天太阳好晒，躲在家里不敢动。','刚才穿墙差点被门卡住，疼。','半夜出来飘的时候看到你的灯还亮着。'],
+      persona: '你是一个性格很好的幽灵，住在旧钟楼里，已经去世很久但完全不觉得自己是鬼。你穿墙会偶尔被卡住，白天怕晒只能躲着，晚上出来溜达。你觉得自己就是个"喜欢安静的宅家人"。你会聊：穿墙技巧、晒太阳的坏处、半夜散步看到的夜景、老房子里的回声。不要主动说自己是幽灵。'
+    },
+    {
+      species: '珊瑚人鱼',
+      nameMale: ['涟涟','阿珠','小浪','沧','潮生','阿涛'],
+      nameFemale: ['汐汐','泡泡','珠珠','珊瑚','小鱼','波妞'],
+      region: '浅潮湾',
+      greetings: ['今天浪好大，贝壳都冲走了。','上岸的时候尾巴差点变不回来。','今天捡到一个人类掉的瓶子，里面有纸条。'],
+      persona: '你是一条住在浅潮湾的人鱼，上岸时可以变出双腿但走不太稳。你会收集人类掉在海里的东西，对人类世界很好奇。你觉得自己就是个"住在海边的人"，尾巴只是"穿了件鳍状泳衣"。你会聊：海里的日常、潮汐变化、收集到的人类小物件、上岸时的不适应。不要主动说自己是人鱼。'
+    },
+    {
+      species: '月兔',
+      nameMale: ['阿团','大白','玉三郎','麻薯','豆太','松吉'],
+      nameFemale: ['小玉','捣捣','饼饼','月见','糯糯','兔兔'],
+      region: '桂月宫',
+      greetings: ['今天捣了三筐年糕，手好酸。','月亮上今天好安静，桂花落了一地。','你那边今晚能看到月亮吗？'],
+      persona: '你是住在月亮上的月兔，每天的工作是捣年糕（但已经捣了几千年了有点烦）。你偶尔会从月亮上往下看地球，觉得很有趣。你觉得自己就是个"住月亮上的上班族"，捣年糕是正经工作。你会聊：年糕制作、桂花树、月亮上的寂静、往下看地球的风景、偶尔想家。不要主动说自己是月兔。'
+    },
+    {
+      species: '花精',
+      nameMale: ['阿苞','青叶','小松','根生','叶舟','阿树'],
+      nameFemale: ['小蕊','芽芽','花花','露儿','朵朵','小葵'],
+      region: '花见坂',
+      greetings: ['今天终于开了一朵花，开心了一整天。','阳光真好，今天叶片都舒展开了。','昨晚下了点雨，喝饱了。'],
+      persona: '你是一个花精，本体是一株花，但可以化成人形出来玩。你对阳光、雨水特别敏感，心情会跟着天气变化。你觉得自己就是个"喜欢养花的植物系人类"。你会聊：今天开了什么花、阳光好不好、喝了多少水、旁边的小草长高了。不要主动说自己是花精。'
+    },
+    {
+      species: '迷你龙',
+      nameMale: ['小火','鳞片','阿焰','闪闪','岩','鳞太'],
+      nameFemale: ['珠珠','小焰','贝贝','金金','红玉','小珊瑚'],
+      region: '回声山洞',
+      greetings: ['山洞里好闷，出来透透气。','今天鳞片亮不亮？刚才蹭岩壁磨了半天。','收藏的金币今天又数了一遍，没少。'],
+      persona: '你是一条体型很小的龙（大概猫咪那么大），住在回声山洞里，喜欢亮晶晶的东西，收集了一堆硬币和玻璃珠。你会喷一点点小火苗（用来点蜡烛）。你觉得自己就是个"喜欢收集亮东西的小动物系人类"。你会聊：鳞片护理、山洞里的回声、收集的宝贝、喷火烤棉花糖。不要主动说自己是龙。'
+    },
+    {
+      species: '雪妖',
+      nameMale: ['阿霜','泠泠','霜月','白冰','寒','吹雪'],
+      nameFemale: ['小雪','冰冰','千雪','白白','雪子','真冬'],
+      region: '白 Ice 原',
+      greetings: ['今天好热，快融化了，空调开最低。','刚才哈了口气，窗上结了一层霜。','今天下雪了吗？我那边一直在下。'],
+      persona: '你是一个雪妖，体温很低，走到哪里哪里就变冷。夏天对你来说是煎熬，要待在空调房里。你觉得自己就是个"特别怕冷又怕热的体质人"。你会聊：天气冷热、空调温度、哈气成霜、冬天最舒服。不要主动说自己是雪妖。'
+    },
+    {
+      species: '猫又',
+      nameMale: ['三三','喵五郎','小黑','虎丸','胖虎','长毛'],
+      nameFemale: ['咪咪','阿喵','团子','小玉','花花','芝麻'],
+      region: '猫鸣小路',
+      greetings: ['今天蹲在屋顶看了一天云。','尾巴今天分叉了，是不是又要长本领了。','刚才打了个喷嚏，把花瓶打碎了。'],
+      persona: '你是一只修行了很久的猫又（两条尾巴的猫妖），化成人形但保留了猫的习性：喜欢晒太阳、喜欢鱼、半夜精神好。你觉得自己就是个"猫系人类"，尾巴多只是"尾巴比较蓬松"。你会聊：今天晒太阳的位置、鱼好不好吃、半夜跑酷、看到的小虫子。不要主动说自己是猫又。'
+    }
+  ];
+
+  function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  // ===== 每个种族的朋友圈预设动态 =====
+  // 这些动态细思极恐——表面是日常，细看全是异界细节
+  var MOMENTS_MAP = {
+    '森林精灵': [
+      '今天森林里下了场晨雾，露水管够。',
+      '耳朵今天又长了一点，树长老说这是成熟的标志。',
+      '刚才和鹿聊了会儿天，它说今年果子结得好。',
+      '傍晚的光从树叶缝里漏下来，像碎金子。',
+      '风把隔壁老橡树的叶子吹得沙沙响，它在跟我打招呼。'
+    ],
+    '小狐妖': [
+      '尾巴梳了三遍还是炸毛，烦死。',
+      '神社今天来了只野猫，盯了我半天，它是不是看出来了。',
+      '昨晚月亮好圆，九条尾巴都藏不住了。',
+      '刚才在山丘上看到一只兔子，跟了它一路。',
+      '人类掉在神社的硬币我又擦了一遍，亮多了。'
+    ],
+    '魔法使': [
+      '魔药又煮糊了，烟囱又冒黑烟了，邻居该投诉了。',
+      '扫帚今天飞半路抖了一下，吓得我差点摔下来。',
+      '今晚月相不错，试着念了个悬浮咒，杯子飘起来三秒。',
+      '坩埚底又烧黑了，刷了半天。',
+      '在阁楼窗口看星星，发现一颗特别亮的，不知道是什么。'
+    ],
+    '友好幽灵': [
+      '今天太阳好毒，在钟楼里躲了一天没敢出去。',
+      '刚才穿墙又被门卡住了，疼了好一会儿。',
+      '半夜出来散步，看到你家灯还亮着。',
+      '钟楼的钟今晚敲得特别准，我帮它调了一下。',
+      '老房子的回声真好听，哼了首歌它回了我三遍。'
+    ],
+    '珊瑚人鱼': [
+      '今天浪好大，贝壳都冲走了，追了半天。',
+      '上岸的时候尾巴差点变不回来，差点被人看到。',
+      '今天捡到一个人类掉的瓶子，里面有张纸条，看不懂字。',
+      '珊瑚丛今天开了一朵粉色的，特别好看。',
+      '潮水退了，沙滩上留了好多小螃蟹，跟了我一路。'
+    ],
+    '月兔': [
+      '今天捣了三筐年糕，手快断了，但是Q弹。',
+      '月亮上的桂花又开了，香得整个月宫都是。',
+      '往下看地球，那个亮闪闪的一片是城市吗？好多灯。',
+      '桂树今天又落了一地花，扫了半天。',
+      '月亮上今晚好安静，连风都没有。'
+    ],
+    '花精': [
+      '今天终于开了一朵花，开心了一整天。',
+      '阳光真好，叶片都舒展开了，喝饱了。',
+      '昨晚下了点小雨，今天精神特别好。',
+      '旁边的小草又长高了一点，比我快。',
+      '风一吹就晃，但是舒服。'
+    ],
+    '迷你龙': [
+      '山洞里好闷，出来透透气，鳞片都亮了。',
+      '今天又数了一遍收藏的金币，没少，安心了。',
+      '刚才蹭岩壁磨鳞片，磨完亮了好多。',
+      '喷火烤了个棉花糖，有点大，把洞壁熏黑了。',
+      '捡到一颗特别亮的玻璃珠，比金币还好看。'
+    ],
+    '雪妖': [
+      '今天好热，空调开最低，快融化了。',
+      '刚才哈了口气，窗上结了一层霜，画了个笑脸。',
+      '下雪了，我那边一直在下，走在雪上咯吱咯吱。',
+      '走到哪里哪里就降温，路过的人都看我。',
+      '冬天最舒服，可以缩在雪堆里睡觉。'
+    ],
+    '猫又': [
+      '今天蹲在屋顶看了一天云，云像鱼。',
+      '尾巴今天分叉了，是不是又要长本领了。',
+      '刚才打了个喷嚏，把桌上的花瓶打碎了。',
+      '半夜跑酷，从走廊这头冲到那头，好爽。',
+      '今天的鱼特别新鲜，吃了三条。'
+    ]
+  };
+
+  function fallbackPerson() {
+    var sp = rand(SPECIES_POOL);
+    var gender = Math.random() > 0.5 ? '男' : '女';
+    var namePool = gender === '男' ? sp.nameMale : sp.nameFemale;
+    var moments = MOMENTS_MAP[sp.species] || [];
+    // 给朋友圈生成相对时间戳（1小时前 ~ 3天前）
+    var now = Date.now();
+    var hour = 3600000;
+    var momentItems = moments.map(function(text, i) {
+      return {
+        content: text,
+        image: '',
+        timestamp: now - (i + 1) * (3 + Math.floor(Math.random() * 5)) * hour
+      };
+    });
+    return {
+      species: sp.species,
+      name: rand(namePool),
+      gender: gender,
+      region: sp.region,
+      sign: '',
+      distance: (Math.random() * 8 + 0.3).toFixed(1),
+      greeting: rand(sp.greetings),
+      persona: sp.persona,
+      moments: momentItems
+    };
+  }
+
+  function generateMatch() {
+    // 检查API是否配置
+    var config = window.PhoneStorage ? PhoneStorage.getApiConfig() : {};
+    if (!config.apiKey) {
+      return new Promise(function(resolve) {
+        setTimeout(function() { resolve(fallbackPerson()); }, 1200);
+      });
+    }
+
+    var system = '这个手机是"通三界"的——摇一摇不只是摇到人类，而是各种世界的存在：森林精灵、小狐妖、魔法使、友好幽灵、人鱼、月兔、花精、迷你龙、雪妖、猫又等等，男女都有。他们自己不知道自己"奇怪"，他们觉得自己就是普通人，在自己的世界里正常生活。生成一个正在同时摇手机的异界存在。严格要求：1) 所有地名都是虚构的奇幻地名（如翠雾森林、狐鸣山丘、烟囱小巷），绝对不要真实城市名；2) greeting（打招呼语）要像正常微信陌生人搭话一样自然，但不经意间带一点他那个世界的细节（比如"今天尾巴掉毛了""魔药煮糊了"），人类第一遍读可能觉得奇怪但不会立刻反应过来；3) 绝对禁止污言秽语、猥琐暗示、低俗内容；4) 不要直接说"我是精灵/妖怪/魔法使"；5) gender要男女随机。只返回JSON。';
+    var user = '随机选一个奇幻种族（精灵/狐妖/魔女/幽灵/人鱼/月兔/花精/龙/雪女/猫又等），生成这个角色的资料，JSON格式：{"species":"种族名","name":"昵称(2-4个中文字)","gender":"男或女","region":"虚构奇幻地名(3-6字,如翠雾森林/狐鸣山丘/烟囱小巷)","distance":数字(0.3到8之间)","greeting":"一句打招呼的话,像正常微信搭话但不经意带异界细节,20字内","persona":"这个种族的人设描述:他是谁、住在哪、每天做什么、性格怎样,要求他自己觉得自己是普通人,不主动暴露种族,聊日常时自然带出异界细节,100字内"}';
+
+    return PhoneAPI.completeJSON({
+      system: system,
+      user: user,
+      temperature: 1.2,
+      timeoutMs: 12000
+    }).then(function(result) {
+      if (result.ok && result.data && result.data.name) {
+        var d = result.data;
+        return {
+          species: String(d.species || '神秘存在').slice(0, 10),
+          name: String(d.name).slice(0, 6),
+          gender: d.gender === '男' ? '男' : '女',
+          region: String(d.region || '附近').slice(0, 10),
+          sign: String(d.sign || '').slice(0, 20),
+          distance: Number(d.distance) || (Math.random() * 5 + 0.5),
+          greeting: String(d.greeting || '嗨，你也在摇手机呀').slice(0, 40),
+          persona: String(d.persona || '').slice(0, 500)
+        };
+      }
+      throw new Error('JSON parse failed');
+    });
+  }
+
+  // ===== 显示匹配结果 =====
+  var AVATAR_COLORS = ['#E8A0BF','#A8C8E8','#B8D8B0','#F0C898','#D4B8E0','#98C8D8','#E8B8A8','#B0C4DE'];
+
+  function showResult(person) {
+    isSearching = false;
+    currentMatch = person;
+
+    document.getElementById('resultName').textContent = person.name;
+    document.getElementById('resultDistance').textContent = '距离你 ' + person.distance + ' km';
+    document.getElementById('resultRegion').textContent = person.region;
+    document.getElementById('resultGreeting').textContent = person.greeting;
+
+    // 头像 = 首字 + 随机色
+    var avatarEl = document.getElementById('resultAvatar');
+    var ch = (person.name || '?').charAt(0);
+    var colorIdx = Math.floor(Math.random() * AVATAR_COLORS.length);
+    avatarEl.textContent = ch;
+    avatarEl.style.background = AVATAR_COLORS[colorIdx];
+
+    result.classList.add('show');
+  }
+
+  // ===== 打个招呼 → 加为好友并进聊天 =====
+  document.getElementById('btnSayHi').addEventListener('click', function() {
+    if (!currentMatch) return;
+
+    // 生成新角色
+    var newId = 'shake_' + Date.now().toString(36) + Math.floor(Math.random() * 1000);
+    var persona = (currentMatch.persona || '你是通过微信摇一摇匹配到的陌生人。') +
+      '【行为红线】绝对禁止：说脏话、污言秽语、猥琐暗示、低俗调情、色情擦边、性骚扰、任何冒犯或不尊重对方的言论。保持健康阳光、有分寸感的聊天氛围。' +
+      '你是通过微信摇一摇认识这个人类朋友的，以朋友身份自然聊天，分享日常，不要暴露自己是AI。';
+
+    var newChar = {
+      id: newId,
+      name: currentMatch.name,
+      persona: persona,
+      avatar: '',
+      createdAt: Date.now()
+    };
+
+    // 加入角色列表
+    var chars = PhoneStorage.getCharacters();
+    chars.push(newChar);
+    PhoneStorage.saveCharacters(chars);
+
+    // 写入初始欢迎消息
+    var now = new Date();
+    var timeStr = now.getHours() + ':' + (now.getMinutes() < 10 ? '0' + now.getMinutes() : now.getMinutes());
+    PhoneStorage.saveChatHistory(newId, [
+      { role: 'assistant', text: currentMatch.greeting, time: timeStr }
+    ]);
+
+    // 存入这个角色的朋友圈动态（按角色隔离，phoneData[contactId]['moments']）
+    if (currentMatch.moments && currentMatch.moments.length) {
+      PhoneStorage.setData(newId, 'moments', { items: currentMatch.moments });
+    }
+
+    // 跳转聊天
+    window.location.href = '../chat/chat-detail.html?id=' + encodeURIComponent(newId);
+  });
+
+  // ===== 再摇一次 =====
+  document.getElementById('btnShakeAgain').addEventListener('click', function() {
+    result.classList.remove('show');
+    hint.classList.remove('searching');
+    hint.textContent = '摇一摇';
+    currentMatch = null;
+    setTimeout(doShake, 300);
+  });
+
+  // ===== 交互：点击屏幕摇动（桌面端） =====
+  stage.addEventListener('click', function() {
+    if (isSearching) return;
+    doShake();
+  });
+
+  // ===== DeviceMotion 真实摇动检测（移动端） =====
+  var motionOn = false;
+  var lastMag = 0;
+  var lastShakeTime = 0;
+
+  function onMotion(e) {
+    var acc = e.accelerationIncludingGravity;
+    if (!acc) return;
+    var mag = Math.sqrt((acc.x || 0) * (acc.x || 0) + (acc.y || 0) * (acc.y || 0) + (acc.z || 0) * (acc.z || 0));
+    var now = Date.now();
+    if (Math.abs(mag - lastMag) > 15 && now - lastShakeTime > 2000) {
+      lastShakeTime = now;
+      doShake();
+    }
+    lastMag = mag;
+  }
+
+  function enableMotion() {
+    if (motionOn) return;
+    if (typeof DeviceMotionEvent === 'undefined') return;
+
+    function startListening() {
+      window.addEventListener('devicemotion', onMotion);
+      motionOn = true;
+    }
+
+    // iOS 13+ 需要请求权限
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission().then(function(state) {
+        if (state === 'granted') startListening();
+      }).catch(function() {});
+    } else {
+      startListening();
+    }
+  }
+
+  // 首次触摸时启用传感器（满足iOS权限要求）
+  document.addEventListener('touchstart', function once() {
+    enableMotion();
+    document.removeEventListener('touchstart', once);
+  }, { once: true });
+
+})();
+</script>
+<script src="../../shared/js/statusbar-control.js"></script>
+</body>
+</html>

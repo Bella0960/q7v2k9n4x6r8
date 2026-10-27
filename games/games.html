@@ -334,7 +334,7 @@ body.detective-case-mode .case-modal-evidence-card:active{transform:scale(.99)}
 body.detective-case-mode .case-modal-evidence-card.selected{background:#f1f1ee;border-color:#333}
 body.detective-case-mode .case-modal-feedback{font-size:12px;line-height:1.8;color:#555}
 @media(max-width:420px){body.detective-case-mode .case-modal-columns{grid-template-columns:1fr}body.detective-case-mode .case-team-avatars{gap:12px}}
-\n.cooking-entry{text-decoration:none;color:inherit}\n.cooking-entry .game-symbol svg{width:22px;height:22px;stroke:#1c1c1a;fill:none;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}\n</style>
+\n.cooking-entry{text-decoration:none;color:inherit;border-top:0!important;padding-top:16px!important}\n.cooking-entry .game-symbol svg{width:22px;height:22px;stroke:#1c1c1a;fill:none;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}\n</style>
 
 <style id="maomao-editorial-controls">
 
@@ -536,7 +536,7 @@ button{transition:color .2s,background-color .2s,border-color .2s,transform .2s}
     <section>
       <div class="section-head">
         <div><div class="section-eyebrow">PICK A GAME</div><div class="section-title">选择一场小冒险</div></div>
-        <div class="micro-note">01 — 07</div>
+        <div class="micro-note">01 — 08</div>
       </div>
       <div class="games-list">
         <article class="game-row" data-game="word" role="button" tabindex="0" aria-label="开始默契猜词">
@@ -549,7 +549,8 @@ button{transition:color .2s,background-color .2s,border-color .2s,transform .2s}
         <article class="game-row" data-game="detective" role="button" tabindex="0" aria-label="开始双人侦探社">
           <div class="game-topline"><span class="game-index">02</span><span class="game-symbol"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5M8 10.5h5M10.5 8v5"/><path d="M17 3h4v4"/></svg></span></div>
           <div class="game-tag">MYSTERY / CO-OP</div>
-          <div class="game-name">双人侦探社</div>
+          <div class="game-name">多人侦探社</div>
+          <div class="game-desc">组建你的侦探小队，一起查案、问证词、找凶手。多人协作，层层推理。</div>
           <div class="game-desc">检查证据、盘问嫌疑人，和 TA 一起还原案件真相。</div>
           <div class="game-record" id="caseRecord">每一案都有答案</div>
         </article>
@@ -588,6 +589,13 @@ button{transition:color .2s,background-color .2s,border-color .2s,transform .2s}
           <div class="game-name">投喂厨房</div>
           <div class="game-desc">自由搭配食材，做一道菜给 TA 试吃。看完反应，再继续聊天。</div>
           <div class="game-record">自由烹饪 · 角色专属反应</div>
+        </a>
+        <a class="game-row" href="story.html" aria-label="打开故事剧场">
+          <div class="game-topline"><span class="game-index">08</span><span class="game-symbol"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20M8 7h8M8 10.5h5"/></svg></span></div>
+          <div class="game-tag">STORY / CHOICE / MULTI-END</div>
+          <div class="game-name">重返高二</div>
+          <div class="game-desc">重生回到十八岁那年九月。你的每个选择，都会导向不同的结局。</div>
+          <div class="game-record">互动故事 · 四结局 · 存档</div>
         </a>
       </div>
     </section>
@@ -730,6 +738,40 @@ function roleLine(context,fallback){
     if(typeof text==='string'&&text.trim()&&activeGame&&reactionId===reactionSequence){byId('roleQuote').textContent=text.trim().replace(/^["“”' ]+|["“”' ]+$/g,'').slice(0,90);}
   }).catch(function(){});
 }
+
+// 游戏结束后加"跟TA聊聊"按钮
+function addChatAfterGame(result,gameType){
+  // 找到游戏里的按钮区域
+  var btnRow=document.querySelector('.board-foot');
+  if(!btnRow)return;
+  // 如果已经有按钮了就不重复加
+  if(btnRow.querySelector('.chat-after-game'))return;
+  var btn=document.createElement('button');
+  btn.className='chat-after-game secondary-btn';
+  btn.textContent='跟TA聊聊 →';
+  btn.style.marginLeft='8px';
+  btn.onclick=function(){
+    var drafts={
+      win:['刚刚下棋我赢啦！你是不是故意让着我的？','哈哈刚刚那局我赢了！要不要再来一把赢回来？','你刚才那步走错了哦，还好我眼尖看到了。'],
+      lose:['哎呀刚刚下棋我输了……你也太厉害了吧。','不行不行，再来一局！我就不信我赢不了你。','你刚才那步是怎么想到的？我完全没看出来。'],
+      draw:['刚刚居然平局了，我们俩水平也差不多嘛。','棋逢对手！再来一局分个胜负吧。','哎，谁也没赢，要不要再来一把？']
+    };
+    var pool=drafts[result]||drafts.draw;
+    var draft=pool[Math.floor(Math.random()*pool.length)];
+    // 存 pending 消息
+    try{
+      var key='maomao_game_pending_'+String(activeRole.id);
+      localStorage.setItem(key,JSON.stringify({
+        gameType:gameType,
+        gameResult:result,
+        draft:draft,
+        createdAt:new Date().toISOString()
+      }));
+    }catch(e){}
+    location.href='../chat/chat/chat-detail.html?id='+encodeURIComponent(activeRole.id)+'&game='+gameType;
+  };
+  btnRow.appendChild(btn);
+}
 function showGame(id){
   activeGame=id;gameState={};roundNumber=1;setDetectiveVersionBadge(id==='detective');
   byId('lobbyView').style.display='none';byId('gameView').style.display='block';
@@ -766,7 +808,27 @@ var WORDS=[
  {word:'葡萄',aliases:['葡萄'],hints:['它们常常一串串地出现。','有紫色、绿色等不同颜色。','一颗颗圆圆的，洗好就可以吃。']},
  {word:'电梯',aliases:['电梯','升降梯'],hints:['它能让人不用爬楼梯也上下楼。','里面通常有楼层按钮。','站进去按数字，门关上后就会移动。']},
  {word:'彩虹',aliases:['彩虹'],hints:['雨后阳光出现时，有机会看见它。','它通常呈弧形，包含多种颜色。','红橙黄绿蓝靛紫组成的天空彩带。']},
- {word:'牙刷',aliases:['牙刷'],hints:['它每天早晚都可能派上用场。','它常和牙膏一起使用。','放进嘴里刷牙用的小工具。']}
+ {word:'牙刷',aliases:['牙刷'],hints:['它每天早晚都可能派上用场。','它常和牙膏一起使用。','放进嘴里刷牙用的小工具。']},
+ {word:'熊猫',aliases:['熊猫','大熊猫'],hints:['它是中国的国宝。','它的毛色主要是黑白两色。','它最喜欢吃竹子。']},
+ {word:'奶茶',aliases:['奶茶','珍珠奶茶'],hints:['它是年轻人很喜欢的饮品。','里面通常有黑黑的小丸子。','它一般是甜的，有很多种口味。']},
+ {word:'电影',aliases:['电影'],hints:['它通常在电影院里放映。','它在一个屏幕上播放，有声音有画面。','周末很多人会约着一起去看它。']},
+ {word:'猫咪',aliases:['猫咪','猫','小猫'],hints:['它是很常见的宠物。','它会喵喵叫，喜欢吃鱼。','它白天经常在睡觉。']},
+ {word:'太阳',aliases:['太阳'],hints:['它每天从东边升起西边落下。','它给我们光和热。','夏天的时候它会很晒。']},
+ {word:'蛋糕',aliases:['蛋糕'],hints:['它通常在生日的时候吃。','它上面一般有奶油和水果。','它是甜的，很多人喜欢。']},
+ {word:'钥匙',aliases:['钥匙'],hints:['它用来开门。','它一般是金属做的。','出门的时候很多人会带上它。']},
+ {word:'雪花',aliases:['雪花'],hints:['它只有冬天下雪的时候才有。','它是白色的，形状很漂亮。','它落到手上很快就化了。']},
+ {word:'书包',aliases:['书包'],hints:['学生上学的时候会背它。','它里面装着课本和文具。','它一般背在背上。']},
+ {word:'足球',aliases:['足球'],hints:['它是一项体育运动。','它一般是黑白相间的。','很多人会在草地上踢它。']},
+ {word:'巧克力',aliases:['巧克力'],hints:['它是一种甜甜的零食。','它是棕色的。','天气热的时候它容易化掉。']},
+ {word:'镜子',aliases:['镜子'],hints:['你可以从它里面看到自己。','你出门前可能会照一下它。','它一般挂在墙上或者放在洗手台旁边。']},
+ {word:'火车',aliases:['火车'],hints:['它在铁轨上跑。','它有很多节车厢。','它可以坐很多人，去很远的地方。']},
+ {word:'蜡烛',aliases:['蜡烛'],hints:['它点燃了会有火光。','停电的时候可能会用到它。','生日蛋糕上一般会插它。']},
+ {word:'书本',aliases:['书本','书'],hints:['它里面有很多文字和图片。','我们可以从它里面学到知识。','它一般是一页一页装订起来的。']},
+ {word:'雨伞',aliases:['雨伞','伞'],hints:['下雨的时候你会用到它。','它撑开是圆的。','用完之后要把它收起来。']},
+ {word:'烟花',aliases:['烟花'],hints:['它一般在节日的时候放。','它在天上炸开，很漂亮。','它会发出很大的响声。']},
+ {word:'冰淇淋',aliases:['冰淇淋','雪糕'],hints:['它是凉的，甜甜的。','夏天吃它最舒服。','它有很多口味，比如草莓、巧克力。']},
+ {word:'手表',aliases:['手表'],hints:['它戴在手腕上。','它可以告诉你现在几点了。','很多人出门会戴它。']},
+ {word:'树叶',aliases:['树叶','叶子'],hints:['它长在树上。','春天是绿色的，秋天会变黄。','风吹过的时候它会掉下来。']}
 ];
 function startWord(){
   setRoundLabel();var item=WORDS[Math.floor(Math.random()*WORDS.length)];
@@ -790,11 +852,31 @@ function submitGuess(){
     gameState.ended=true;byId('wordHint').textContent='答案是「'+gameState.item.word+'」——猜中了！';
     byId('wordFeedback').innerHTML='<strong>答对啦。</strong> 你用了 '+gameState.guesses+' 次猜中。';
     byId('nextHint').disabled=true;byId('submitGuess').disabled=true;byId('wordAnswer').disabled=true;
-    saveStat('word','win');roleLine('玩家刚刚猜中了词语“'+gameState.item.word+'”，只用了'+gameState.guesses+'次。请自然地回应并邀请继续。',gameState.guesses===1?'第一下就中了？好吧，算你厉害。':'猜中了！看来这题难不倒你。');
+    saveStat('word','win');
+    var wordWinTaunts=gameState.guesses===1?[
+      '第一下就中了？好吧，算你厉害。',
+      '哇，你这也太聪明了吧？我还以为你要猜好几次呢。',
+      '秒答？你是不是偷看答案了？'
+    ]:[
+      '猜中了！看来这题难不倒你。',
+      '可以啊，最后还是被你猜出来了。',
+      '不错不错，我们挺有默契的嘛。'
+    ];
+    var wordWinTaunt=wordWinTaunts[Math.floor(Math.random()*wordWinTaunts.length)];
+    roleLine('玩家刚刚猜中了词语“'+gameState.item.word+'”，只用了'+gameState.guesses+'次。请自然地回应并邀请继续。',wordWinTaunt);
+    addChatAfterGame('win','word');
   }else{
     var responses=['还没猜中，再想想？','方向不太对哦，要不要听下一条线索？','有点接近这个世界了，但答案还不是它。'];
     byId('wordFeedback').textContent=responses[Math.min(gameState.guesses-1,responses.length-1)];
-    roleLine('玩家猜“'+val+'”，正确答案是“'+gameState.item.word+'”，这次猜错。用角色语气鼓励或轻微吐槽一句，不要泄露答案。','唔，不是这个。再想想，我给你留了下一条线索。');
+    var wordGuessTaunts=[
+      '唔，不是这个。再想想，我给你留了下一条线索。',
+      '哈哈不对哦，再猜猜？',
+      '嗯……差得有点远呢，要不要听个提示？',
+      '不是这个啦，再开动脑筋想想。',
+      '哦？你怎么会猜这个？有点意思，但不对哦。'
+    ];
+    var wordGuessTaunt=wordGuessTaunts[Math.floor(Math.random()*wordGuessTaunts.length)];
+    roleLine('玩家猜“'+val+'”，正确答案是“'+gameState.item.word+'”，这次猜错。用角色语气鼓励或轻微吐槽一句，不要泄露答案。',wordGuessTaunt);
   }
 }
 function nextHint(){
@@ -857,7 +939,7 @@ function setDetectiveVersionBadge(visible){
 function startCase(){
  document.body.classList.remove('detective-case-mode','case-modal-open');document.body.removeAttribute('data-case-theme');setDetectiveVersionBadge(true);
  loadGeneratedDetectiveCases();setRoundLabel();var progress=caseProgress(),team=detectiveTeam();
- byId('gameContent').innerHTML='<div class="board-panel"><div class="panel-kicker">DETECTIVE BUREAU / CASE ARCHIVE</div><div class="prompt-title">长线案件档案室</div><div class="prompt-copy">组建你的 AI 角色调查小队，从独立案件逐步追踪同一条暗线。证据、证词和时间线都会影响结案判断。</div><div class="case-progress-strip"><span>已结案件</span><strong>'+progress.completed.length+' / '+CASES.length+'</strong></div><div class="divider-label">调查小队 · 可同时加入多位角色</div><div class="detective-team-picker">'+roleList.map(function(r){var chosen=team.some(function(x){return String(x.id)===String(r.id);});return '<button type="button" class="detective-team-chip '+(chosen?'selected':'')+'" data-team-role="'+esc(r.id)+'" aria-pressed="'+chosen+'">'+avatarMarkup(r,'')+'<span>'+esc(roleName(r))+'</span><small>'+(chosen?'已加入小队':'点击加入')+'</small></button>';}).join('')+'</div><div class="team-caption">当前队伍：'+esc(team.map(roleName).join('、'))+'。不同角色将以各自的人设参与调查讨论。</div><div class="case-ai-create"><div><strong>AI SERIAL CASE / 连载案件生成</strong><p>需要已配置的角色 API 来生成新剧情、证据、证词和后续主线；未配置时仍可游玩内置案件。</p></div><button type="button" class="secondary-btn" id="generateDetectiveCase">生成新案</button></div><div class="case-archive-heading"><span class="panel-kicker">AVAILABLE FILES / 内置案件</span><span class="case-archive-count">先展示 3 宗 · 共 '+CASES.length+' 宗</span></div><div class="case-archive-list" id="caseArchiveList">'+CASES.map(function(c,i){var done=progress.completed.indexOf(i)>=0,locked=i>0&&progress.completed.indexOf(i-1)<0;return '<button class="case-archive-item '+(i>=3?'case-archive-hidden':'')+'" data-open-case="'+i+'" '+(locked?'disabled':'')+'><span class="case-archive-no">CASE / '+String(i+1).padStart(2,'0')+'</span><strong>'+esc(c.title)+'</strong><span class="case-archive-desc">'+esc(c.intro)+'</span><span class="case-archive-status">'+(done?'✓ 已结案':locked?'完成上一案后解锁':i===0?'可调查':'待调查')+'</span></button>';}).join('')+'</div><button type="button" class="case-archive-more" id="caseArchiveMore" aria-expanded="false">展开全部案件 <span>＋</span></button></div>';
+ byId('gameContent').innerHTML='<div class="board-panel detective-bureau-page"><div class="panel-kicker">DETECTIVE BUREAU / CASE ARCHIVE</div><div class="prompt-title">长线案件档案室</div><div class="prompt-copy">组建你的 AI 角色调查小队，从独立案件逐步追踪同一条暗线。证据、证词和时间线都会影响结案判断。</div><div class="case-progress-strip"><span>已结案件</span><strong>'+progress.completed.length+' / '+CASES.length+'</strong></div><div class="divider-label">调查小队 · 可同时加入多位角色</div><div class="detective-team-picker">'+roleList.map(function(r){var chosen=team.some(function(x){return String(x.id)===String(r.id);});return '<button type="button" class="detective-team-chip '+(chosen?'selected':'')+'" data-team-role="'+esc(r.id)+'" aria-pressed="'+chosen+'">'+avatarMarkup(r,'')+'<span>'+esc(roleName(r))+'</span><small>'+(chosen?'已加入小队':'点击加入')+'</small></button>';}).join('')+'</div><div class="team-caption">当前队伍：'+esc(team.map(roleName).join('、'))+'。不同角色将以各自的人设参与调查讨论。</div><div class="case-ai-create"><div><strong>AI SERIAL CASE / 连载案件生成</strong><p>需要已配置的角色 API 来生成新剧情、证据、证词和后续主线；未配置时仍可游玩内置案件。</p></div><button type="button" class="secondary-btn" id="generateDetectiveCase">生成新案</button></div><div class="case-archive-heading"><span class="panel-kicker">AVAILABLE FILES / 内置案件</span><span class="case-archive-count">先展示 3 宗 · 共 '+CASES.length+' 宗</span></div><div class="case-archive-list" id="caseArchiveList">'+CASES.map(function(c,i){var done=progress.completed.indexOf(i)>=0,locked=i>0&&progress.completed.indexOf(i-1)<0;return '<button class="case-archive-item '+(i>=3?'case-archive-hidden':'')+'" data-open-case="'+i+'" '+(locked?'disabled':'')+'><span class="case-archive-no">CASE / '+String(i+1).padStart(2,'0')+'</span><strong>'+esc(c.title)+'</strong><span class="case-archive-desc">'+esc(c.intro)+'</span><span class="case-archive-status">'+(done?'✓ 已结案':locked?'完成上一案后解锁':i===0?'可调查':'待调查')+'</span></button>';}).join('')+'</div><button type="button" class="case-archive-more" id="caseArchiveMore" aria-expanded="false">展开全部案件 <span>＋</span></button></div>';
  var archiveMore=byId('caseArchiveMore'),archiveList=byId('caseArchiveList');if(archiveMore&&archiveList){archiveMore.addEventListener('click',function(){var expanded=archiveMore.getAttribute('aria-expanded')==='true';archiveMore.setAttribute('aria-expanded',String(!expanded));archiveList.classList.toggle('expanded',!expanded);archiveMore.innerHTML=expanded?'展开全部案件 <span>＋</span>':'收起案件列表 <span>−</span>';});}
  byId('gameContent').querySelectorAll('[data-team-role]').forEach(function(b){b.addEventListener('click',function(){toggleDetectiveRole(b.getAttribute('data-team-role'));});});
  byId('gameContent').querySelectorAll('[data-open-case]').forEach(function(b){b.addEventListener('click',function(){openCase(Number(b.getAttribute('data-open-case')));});});
@@ -881,7 +963,7 @@ function generateDetectiveCase(){
 function installFloatingInvestigationTools(){
  var root=byId('gameContent');if(!root||root.querySelector('#floatingToolLauncher'))return;
  var toolkit=root.querySelector('.detective-toolkit');if(!toolkit)return;
- var launcher=document.createElement('button');launcher.type='button';launcher.id='floatingToolLauncher';launcher.className='floating-tool-launcher';launcher.innerHTML='<span class="floating-tool-icon">＋</span><span><strong>调查工具箱</strong><small>TOOLS / 打开工具</small></span><span class="floating-tool-arrow">↗</span>';
+ var launcher=document.createElement('button');launcher.type='button';launcher.id='floatingToolLauncher';launcher.className='floating-tool-launcher';launcher.innerHTML='<span class="floating-tool-icon">＋</span><span><strong>调查工具箱</strong><small>TOOLS / 打开工具</small></span><span class="floating-tool-arrow"></span>';
  toolkit.parentNode.insertBefore(launcher,toolkit);
  var modal=document.createElement('div');modal.id='floatingInvestigationTools';modal.className='floating-tools-modal';modal.hidden=true;
  modal.innerHTML='<button type="button" class="floating-tools-scrim" data-tools-close aria-label="关闭工具箱"></button><section class="floating-tools-dialog" role="dialog" aria-modal="true" aria-labelledby="floatingToolsTitle"><div class="floating-tools-topline"><span>FIELD WORK / 04</span><button type="button" data-tools-close aria-label="关闭">×</button></div><div class="floating-tools-eyebrow">INVESTIGATION DESK</div><h2 id="floatingToolsTitle">调查工具箱</h2><p class="floating-tools-intro">选择一项工具，整理当前案件的线索与下一步行动。</p><div class="floating-tools-grid"><button type="button" data-floating-tool="timeline"><span>01</span><strong>时间线核对</strong><small>整理时间顺序与空白</small></button><button type="button" data-floating-tool="testimony"><span>02</span><strong>证词对照</strong><small>寻找明确矛盾</small></button><button type="button" data-floating-tool="scene"><span>03</span><strong>现场复查</strong><small>提出可执行的复查方向</small></button><button type="button" data-floating-tool="note"><span>04</span><strong>调查笔记</strong><small>记录已知信息与待查事项</small></button></div><div class="floating-tools-foot"><span>CASE FILE / ACTIVE</span><span>选择后可继续调查</span></div></section>';
@@ -910,6 +992,7 @@ function showCaseEvidenceDetail(c,index){
 }
 
 function openCase(index){document.body.classList.add("detective-case-mode");setDetectiveVersionBadge(true);
+ byId('gameContent').classList.add('detective-chat-mode');
  var progress=caseProgress();if(index>0&&progress.completed.indexOf(index-1)<0){showToast('先完成上一宗案件。');return;}
  var c=CASES[index];if(!c)return;
  var savedCaseStates=progress.caseStates||{},savedCaseState=savedCaseStates[c.title]||{};gameState={caseIndex:index,item:c,revealed:Object.assign({},savedCaseState.revealed||{}),interviewed:Object.assign({},savedCaseState.interviewed||{}),ended:false,phase:'evidence'};
@@ -930,7 +1013,7 @@ function openCase(index){document.body.classList.add("detective-case-mode");setD
  var sceneEls=[gameRoot.querySelector('.prompt-title'),gameRoot.querySelector('.prompt-copy'),gameRoot.querySelector('.case-scene-stage'),gameRoot.querySelector('.detective-livebar'),gameRoot.querySelector('.detective-livefeed'),teamPanel,progressStrip,progressBar,toolkit,consoleIntro,evidenceHead,byId('evidenceList')];
  var views={scene:sceneEls,testimony:[interviewHead,byId('interviewList')],notes:[notebook,actionDesk,feedback,suspectHead,suspectList,timelineButton,timelinePanel]};
  function setCaseView(view){Object.keys(views).forEach(function(k){(views[k]||[]).forEach(function(el){if(el)el.style.display=k===view?'':'none';});});if(phaseTrack)phaseTrack.style.display='none';caseNav.querySelectorAll('button').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-case-view')===view);});}
- caseNav.querySelectorAll('[data-case-view]').forEach(function(b){b.type='button';b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var view=b.getAttribute('data-case-view');setCaseView(view);if(view==='testimony'){var target=byId('interviewList');if(target)target.scrollIntoView({block:'start',behavior:'smooth'});}else{window.scrollTo({top:0,behavior:'smooth'});}});});caseNav.addEventListener('click',function(e){var b=e.target.closest('[data-case-view]');if(b){e.preventDefault();setCaseView(b.getAttribute('data-case-view'));}},true);setCaseView('scene');
+ caseNav.querySelectorAll('[data-case-view]').forEach(function(b){b.type='button';b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var view=b.getAttribute('data-case-view');setCaseView(view);if(view==='testimony'){var target=byId('interviewList');if(target)target.scrollIntoView({block:'start',behavior:'smooth'});}else{window.scrollTo({top:0,behavior:'smooth'});}});});caseNav.addEventListener('click',function(e){var b=e.target.closest('[data-case-view]');if(b){e.preventDefault();setCaseView(b.getAttribute('data-case-view'));}},true);setCaseView('notes');
  var modal=document.createElement('div');modal.className='case-interrogation-modal';modal.id='caseInterrogationModal';modal.hidden=true;modal.innerHTML='<div class="case-modal-scrim" data-modal-close></div><section class="case-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="caseModalTitle"><div class="case-modal-grabber" aria-hidden="true"></div><header class="case-modal-head"><div><span class="panel-kicker">CASE FILE / TESTIMONY</span><h2 id="caseModalTitle">人物证词</h2></div><button type="button" class="case-modal-close" data-modal-close aria-label="关闭">×</button></header><div id="caseModalViewActions" class="case-modal-view-actions"><p>选择下一步调查方式</p><div><button type="button" class="secondary-btn" data-modal-mode="ask">深入追问</button><button type="button" class="primary-btn" data-modal-mode="cross">拿证据对质</button></div></div><div class="case-modal-columns"><section class="case-modal-testimony"><span class="case-modal-label">嫌疑人证词</span><h3 id="caseModalSuspect"></h3><p id="caseModalQuote"></p></section><section class="case-modal-evidence"><span class="case-modal-label">选择一条已发现的线索</span><div id="caseModalEvidenceList"></div></section></div><div id="caseModalQuestionBox" class="case-modal-question-box"><span class="case-modal-label">你想具体问什么？</span><div id="caseModalQuestionPrompts" class="case-modal-question-prompts"></div><textarea id="caseModalQuestion" rows="2" maxlength="180" placeholder="也可以自己输入问题，例如：你说离开了，具体几点？"></textarea><p class="case-modal-hint">追问会记录在本案调查笔录中；未被案件资料支持的细节不会自动当作事实。</p></div><div id="caseModalFeedback" class="case-modal-feedback">选择证据，与证词逐项核对。</div><footer class="case-modal-foot"><button type="button" class="secondary-btn" data-modal-close>返回案件</button><button type="button" class="primary-btn" id="caseModalSubmit">提交对质</button></footer></section>';
  byId('gameContent').appendChild(modal);
  function closeCaseModal(){modal.hidden=true;document.body.classList.remove('case-modal-open');}
@@ -1179,8 +1262,36 @@ function resolveMemoryTurn(player){
     if(!isGameSession('memory',token))return;
     if(matched){
       gameState.matched.push(first,second);gameState.scores[player]++;
+      // 配对成功，随机说句话
+      var memoryMatchTaunts=player==='human'?[
+        '不错嘛，居然被你记住了。',
+        '可以啊，这都能配对成功？',
+        '你记忆力可以啊，我有点慌了。',
+        '哦？这你都记住了？厉害。'
+      ]:[
+        '嘿嘿，这对我早就记住了。',
+        '不好意思，这对是我的了。',
+        '我就说我记性好吧。',
+        '轻松拿下一对。'
+      ];
+      var memoryMatchTaunt=memoryMatchTaunts[Math.floor(Math.random()*memoryMatchTaunts.length)];
+      roleLine('记忆翻牌中，'+(player==='human'?'玩家':'AI')+'配对成功一对牌，当前比分玩家'+gameState.scores.human+':'+gameState.scores.ai+'TA。请用角色语气随口说一句，要自然。',memoryMatchTaunt);
     }else{
       gameState.open=[];
+      // 配对失败，随机说句话
+      var memoryMissTaunts=player==='human'?[
+        '哈哈，这都能记错？',
+        '哎呀，这张牌刚才在哪儿来着？',
+        '没关系，下一对你肯定能记住。',
+        '哦豁，记错位置了吧。'
+      ]:[
+        '哎呀，我居然也记错了。',
+        '不好意思，刚才走神了。',
+        '这张牌我在哪儿见过来着？',
+        '哎呀失误失误。'
+      ];
+      var memoryMissTaunt=memoryMissTaunts[Math.floor(Math.random()*memoryMissTaunts.length)];
+      roleLine('记忆翻牌中，'+(player==='human'?'玩家':'AI')+'配对失败，翻了两张不一样的牌。当前比分玩家'+gameState.scores.human+':'+gameState.scores.ai+'TA。请用角色语气随口调侃一句，要自然。',memoryMissTaunt);
     }
     gameState.open=[];
     gameState.busy=false;
@@ -1242,28 +1353,54 @@ function finishMemory(){
   var h=gameState.scores.human,a=gameState.scores.ai,result=h>a?'win':h<a?'loss':'draw';
   byId('memoryStatus').textContent=result==='win'?'你赢下了记忆赛！':result==='loss'?roleName(activeRole)+' 赢下了这局。':'平局，记忆力不相上下。';
   saveStat('memory',result);
-  roleLine('记忆翻牌结束。玩家获得 '+h+' 对，角色 '+roleName(activeRole)+' 获得 '+a+' 对。结果：'+(result==='win'?'玩家获胜':result==='loss'?'角色获胜':'平局')+'。请自然回应。',result==='win'?'好吧，你记得比我牢。再来一盘？':result==='loss'?'这盘我记住了。来，下一盘你先手。':'打成平手了。看来我们都没少动脑筋。');
+  var memoryEndTaunts=result==='win'?[
+    '好吧，你记得比我牢。再来一盘？',
+    '哇，你记忆力也太好了吧！我完全比不过。',
+    '不行不行，再来一局，我就不信我赢不了你。'
+  ]:result==='loss'?[
+    '这盘我记住了。来，下一盘你先手。',
+    '嘿嘿，我赢啦！要不要再来一局赢回去？',
+    '怎么样，我记忆力还可以吧？'
+  ]:[
+    '打成平手了。看来我们都没少动脑筋。',
+    '平局！我们俩记忆力差不多嘛。',
+    '不分胜负，再来一局分个高下？'
+  ];
+  var memoryEndTaunt=memoryEndTaunts[Math.floor(Math.random()*memoryEndTaunts.length)];
+  roleLine('记忆翻牌结束。玩家获得 '+h+' 对，角色 '+roleName(activeRole)+' 获得 '+a+' 对。结果：'+(result==='win'?'玩家获胜':result==='loss'?'角色获胜':'平局')+'。请自然回应。',memoryEndTaunt);
+  addChatAfterGame(result,'memory');
   renderMemory();
 }
 
 /* ===== GAME 05: three-digit code breaker ===== */
-function createSecret(){
+function createSecret(len){
+  len=len||3;
   var digits=shuffleCopy(['0','1','2','3','4','5','6','7','8','9']);
-  return digits.slice(0,3).join('');
+  return digits.slice(0,len).join('');
 }
 function startCode(){
-  setRoundLabel();gameState={session:++gameSession,secret:createSecret(),attempts:0,maxAttempts:7,ended:false,history:[]};
+  setRoundLabel();
+  var codeLen=parseInt(localStorage.getItem('maomao_code_len')||'3');
+  var maxAttempts=codeLen+4;
+  gameState={session:++gameSession,secret:createSecret(codeLen),attempts:0,maxAttempts:maxAttempts,ended:false,history:[],codeLen:codeLen};
   byId('gameContent').innerHTML=
-    '<div class="board-panel"><div class="panel-kicker">LOGIC LOCK / 03 DIGITS</div><div class="prompt-title">破解三位数密码。</div><div class="prompt-copy">密码由 0–9 中三个不重复的数字组成，首位也可能是 0。每次猜测会显示：数字和位置都正确的数量，以及数字正确但位置不对的数量。</div>'+
-    '<div class="memory-scoreboard" style="margin-top:15px"><div class="memory-score"><span>剩余机会</span><strong id="codeRemaining">7</strong></div><div class="memory-score"><span>已用尝试</span><strong id="codeUsed">0</strong></div></div>'+
-    '<label class="field-label" for="codeInput">输入三个不同的数字</label><div class="input-row"><input id="codeInput" class="code-slot" type="text" inputmode="numeric" autocomplete="off" maxlength="3" pattern="[0-9]*" placeholder="0 0 0"><button class="primary-btn" id="submitCode">试一下</button></div>'+
-    '<div class="feedback" id="codeFeedback" aria-live="polite">线索会逐次累积。你有 7 次机会。</div><div class="code-panel"><div class="panel-kicker">YOUR ATTEMPTS</div><div id="codeHistory"><div class="code-attempt"><span>还没有尝试记录</span><span>—</span></div></div></div>'+
+    '<div class="board-panel"><div class="panel-kicker">LOGIC LOCK / '+codeLen+' DIGITS</div><div class="prompt-title">破解'+codeLen+'位数密码。</div><div class="prompt-copy">密码由 0–9 中 '+codeLen+' 个不重复的数字组成，首位也可能是 0。每次猜测会显示：数字和位置都正确的数量，以及数字正确但位置不对的数量。</div>'+
+    '<div class="memory-scoreboard" style="margin-top:15px"><div class="memory-score"><span>剩余机会</span><strong id="codeRemaining">'+maxAttempts+'</strong></div><div class="memory-score"><span>已用尝试</span><strong id="codeUsed">0</strong></div></div>'+
+    '<label class="field-label" for="codeInput">输入'+codeLen+'个不同的数字</label><div class="input-row"><input id="codeInput" class="code-slot" type="text" inputmode="numeric" autocomplete="off" maxlength="'+codeLen+'" pattern="[0-9]*" placeholder="0 0 0"><button class="primary-btn" id="submitCode">试一下</button></div>'+
+    '<div class="feedback" id="codeFeedback" aria-live="polite">线索会逐次累积。你有 '+maxAttempts+' 次机会。</div><div class="code-panel"><div class="panel-kicker">YOUR ATTEMPTS</div><div id="codeHistory"><div class="code-attempt"><span>还没有尝试记录</span><span>—</span></div></div></div>'+
+    '<div class="difficulty" style="margin-top:16px"><button class="diff-btn '+(codeLen===3?'active':'')+'" data-code-len="3">简单 3位</button><button class="diff-btn '+(codeLen===4?'active':'')+'" data-code-len="4">普通 4位</button><button class="diff-btn '+(codeLen===5?'active':'')+'" data-code-len="5">困难 5位</button></div>'+
     '<div class="btn-row"><button class="secondary-btn" id="newCode">重新生成密码</button></div></div>';
   byId('submitCode').addEventListener('click',submitCodeGuess);
   byId('codeInput').addEventListener('keydown',function(e){if(e.key==='Enter')submitCodeGuess();});
-  byId('codeInput').addEventListener('input',function(){this.value=this.value.replace(/\D/g,'').slice(0,3);});
+  byId('codeInput').addEventListener('input',function(){this.value=this.value.replace(/\D/g,'').slice(0,codeLen);});
   byId('newCode').addEventListener('click',function(){roundNumber++;startCode();roleLine('玩家要求重新生成密码，鼓励对方重新挑战。','密码重置！这次可得盯紧每一条线索。');});
-  byId('roleQuote').textContent='密码已经设好了。七次机会，看看你能不能破解。';
+  byId('gameContent').querySelectorAll('[data-code-len]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      localStorage.setItem('maomao_code_len',btn.getAttribute('data-code-len'));
+      roundNumber++;startCode();
+    });
+  });
+  byId('roleQuote').textContent='密码已经设好了。'+maxAttempts+'次机会，看看你能不能破解。';
 }
 function submitCodeGuess(){
   if(gameState.ended)return;
@@ -1285,14 +1422,41 @@ function submitCodeGuess(){
   if(exact===3){
     gameState.ended=true;byId('codeFeedback').innerHTML='<strong>密码破解成功。</strong> 答案是 '+esc(gameState.secret)+'，用了 '+gameState.attempts+' 次。';
     saveStat('code','win');byId('submitCode').disabled=true;
-    roleLine('玩家破解了三位数密码 '+gameState.secret+'，用了 '+gameState.attempts+' 次。请用角色语气夸奖或轻松回应。',gameState.attempts<=3?'这么快就破解了？我得把下一题出难一点。':'密码被你抓住了。不错嘛，侦探。');
+    var codeWinTaunts=gameState.attempts<=3?[
+      '这么快就破解了？我得把下一题出难一点。',
+      '哇，你这也太聪明了吧？我还以为能难住你呢。',
+      '三两次就猜出来了？不行，下次我要搞个更难的。'
+    ]:[
+      '密码被你抓住了。不错嘛，侦探。',
+      '终于猜出来了！我就知道你可以的。',
+      '可以啊，最后还是被你破解了。'
+    ];
+    var codeWinTaunt=codeWinTaunts[Math.floor(Math.random()*codeWinTaunts.length)];
+    roleLine('玩家破解了三位数密码 '+gameState.secret+'，用了 '+gameState.attempts+' 次。请用角色语气夸奖或轻松回应。',codeWinTaunt);
+    addChatAfterGame('win','code');
   }else if(gameState.attempts>=gameState.maxAttempts){
     gameState.ended=true;byId('codeFeedback').innerHTML='<strong>机会用完了。</strong> 正确密码是 '+esc(gameState.secret)+'。';
     saveStat('code','loss');byId('submitCode').disabled=true;
-    roleLine('玩家没有在七次内破解密码。正确答案是 '+gameState.secret+'。请用角色语气安慰并鼓励再来一局。','这次差一点点。看过答案，下轮就能用上新思路。');
+    var codeLoseTaunts=[
+      '这次差一点点。看过答案，下轮就能用上新思路。',
+      '哎呀，就差一点！下次我们肯定能猜出来。',
+      '没关系啦，这个密码确实有点难。再来一局？'
+    ];
+    var codeLoseTaunt=codeLoseTaunts[Math.floor(Math.random()*codeLoseTaunts.length)];
+    roleLine('玩家没有在七次内破解密码。正确答案是 '+gameState.secret+'。请用角色语气安慰并鼓励再来一局。',codeLoseTaunt);
+    addChatAfterGame('lose','code');
   }else{
     byId('codeFeedback').textContent='位置正确 '+exact+' 位；数字正确但位置不对 '+misplaced+' 位。继续推理。';
-    if(gameState.attempts%2===0)roleLine('玩家猜了 '+input+'，反馈为位置正确 '+exact+' 位，数字正确但位置不对 '+misplaced+' 位。请用角色语气给一条鼓励或提醒，不可泄漏答案。','线索已经多了一条。别急，逐位排除就好。');
+    var codeGuessTaunts=[
+      '线索已经多了一条。别急，逐位排除就好。',
+      '哦？这个思路可以啊。',
+      '继续继续，我看你能猜几次。',
+      '嗯，离答案又近了一步。',
+      '不错不错，有点推理那味儿了。',
+      '慢慢来，别着急，我们还有机会。'
+    ];
+    var codeGuessTaunt=codeGuessTaunts[Math.floor(Math.random()*codeGuessTaunts.length)];
+    roleLine('玩家猜了 '+input+'，反馈为位置正确 '+exact+' 位，数字正确但位置不对 '+misplaced+' 位。请用角色语气给一条鼓励或提醒，要像真人随口说的，不可泄漏答案。',codeGuessTaunt);
   }
 }
 
@@ -1307,7 +1471,27 @@ var QUIZ_BANK=[
  {q:'一个字节（Byte）通常等于多少比特（bit）？',options:['4','8','16','32'],answer:1,why:'一个字节通常由 8 个比特组成。'},
  {q:'海洋中面积最大的洋是哪一个？',options:['大西洋','印度洋','北冰洋','太平洋'],answer:3,why:'太平洋是地球面积最大的海洋。'},
  {q:'日本的首都是哪里？',options:['大阪','京都','东京','札幌'],answer:2,why:'日本现今的首都是东京。'},
- {q:'哺乳动物最典型的特征之一是什么？',options:['所有种类都会飞','用鳃呼吸','雌性有乳腺哺育幼体','全部生活在陆地'],answer:2,why:'哺乳动物的名称就来自乳腺哺育幼体这一重要特征。'}
+ {q:'哺乳动物最典型的特征之一是什么？',options:['所有种类都会飞','用鳃呼吸','雌性有乳腺哺育幼体','全部生活在陆地'],answer:2,why:'哺乳动物的名称就来自乳腺哺育幼体这一重要特征。'},
+ {q:'人体最大的器官是什么？',options:['心脏','肝脏','皮肤','肺'],answer:2,why:'皮肤是人体面积最大的器官，起到保护和调节体温的作用。'},
+ {q:'中国的国宝动物是什么？',options:['老虎','熊猫','金丝猴','丹顶鹤'],answer:1,why:'大熊猫是中国特有的珍稀动物，被视为国宝。'},
+ {q:'一周有多少天？',options:['5天','6天','7天','8天'],answer:2,why:'一周有7天，分别是周一到周日。'},
+ {q:'彩虹一般有几种颜色？',options:['5种','6种','7种','8种'],answer:2,why:'彩虹一般有红橙黄绿蓝靛紫7种颜色。'},
+ {q:'企鹅主要生活在哪个大洲？',options:['亚洲','非洲','南极洲','南美洲'],answer:2,why:'企鹅主要生活在南极地区。'},
+ {q:'下列哪个是计算机的输入设备？',options:['显示器','键盘','打印机','音箱'],answer:1,why:'键盘是输入设备，用来输入文字和指令。'},
+ {q:'一年有多少个月？',options:['10个','11个','12个','13个'],answer:2,why:'一年有12个月。'},
+ {q:'蜜蜂采集花蜜是为了做什么？',options:['做蜂蜜','喝水','筑巢','玩耍'],answer:0,why:'蜜蜂采集花蜜和花粉，用来酿造蜂蜜作为食物。'},
+ {q:'下列哪个是可再生能源？',options:['煤炭','石油','太阳能','天然气'],answer:2,why:'太阳能是可再生能源，取之不尽用之不竭。'},
+ {q:'中国的国旗是什么颜色为主？',options:['蓝色','红色','黄色','绿色'],answer:1,why:'中国国旗五星红旗以红色为主色调。'},
+ {q:'正常人体体温大约是多少度？',options:['35℃','37℃','39℃','41℃'],answer:1,why:'人体正常体温大约在36-37℃之间。'},
+ {q:'下列哪个动物是卵生的？',options:['猫','狗','鸡','牛'],answer:2,why:'鸡是卵生动物，通过下蛋繁殖后代。'},
+ {q:'手机里用来存储照片的设备是什么？',options:['电池','内存','摄像头','屏幕'],answer:1,why:'手机的内存用来存储照片、应用和数据。'},
+ {q:'过马路的时候，什么灯亮了可以走？',options:['红灯','黄灯','绿灯','蓝灯'],answer:2,why:'绿灯行，红灯停，黄灯亮了等一等。'},
+ {q:'下列哪个是蔬菜？',options:['苹果','香蕉','西红柿','橘子'],answer:2,why:'西红柿既是蔬菜也是水果，但通常当作蔬菜食用。'},
+ {q:'地球绕太阳转一圈需要多久？',options:['一天','一个月','一年','一周'],answer:2,why:'地球绕太阳公转一圈是一年。'},
+ {q:'下列哪个是用来测量血压的？',options:['温度计','血压计','体重秤','游标卡尺'],answer:1,why:'血压计是专门用来测量血压的医疗设备。'},
+ {q:'中国的传统节日春节是农历几月初几？',options:['正月初一','正月十五','八月十五','五月初五'],answer:0,why:'春节是农历正月初一，也就是新年。'},
+ {q:'下列哪个气体是我们呼吸需要的？',options:['二氧化碳','氧气','氮气','氢气'],answer:1,why:'我们呼吸需要吸入氧气，呼出二氧化碳。'},
+ {q:'跑步的时候，我们身体哪个部位会跳得很快？',options:['手','头','心脏','脚'],answer:2,why:'运动时心脏跳动会加快，给身体输送更多氧气。'}
 ];
 function startQuiz(){
   setRoundLabel();
@@ -1335,7 +1519,21 @@ function answerQuiz(choice){
   });
   byId('quizFeedback').innerHTML=(correct?'<strong>答对了。</strong> ':'<strong>还差一点。</strong> ')+esc(q.why);
   byId('quizScore').textContent='当前答对 '+gameState.score+' 题';
-  roleLine('脑洞快问第 '+(gameState.index+1)+' 题，玩家'+(correct?'答对了':'答错了')+'。知识点：'+q.why+'。请用角色口吻简短回应，不要直接复述解释。',correct?'漂亮，反应很快嘛。':'这题设了个小陷阱，记住这个知识点。');
+  var quizTaunts=correct?[
+    '漂亮，反应很快嘛。',
+    '这题你居然答对了？有点东西。',
+    '可以啊，这题我都差点选错。',
+    '不错不错，继续保持。',
+    '哇，这你都知道？厉害。'
+  ]:[
+    '这题设了个小陷阱，记住这个知识点。',
+    '哈哈这题选错了吧？下次注意哦。',
+    '没事没事，这题确实有点绕。',
+    '哎呀，差一点就对了。',
+    '没关系，下一题我们扳回来。'
+  ];
+  var quizTaunt=quizTaunts[Math.floor(Math.random()*quizTaunts.length)];
+  roleLine('脑洞快问第 '+(gameState.index+1)+' 题，玩家'+(correct?'答对了':'答错了')+'。知识点：'+q.why+'。请用角色口吻简短回应，要像真人随口说的，不要直接复述解释。',quizTaunt);
   setTimeout(function(){
     if(!isGameSession('quiz',token))return;
     gameState.index++;gameState.answered=false;
@@ -1348,7 +1546,22 @@ function finishQuiz(){
   byId('gameContent').innerHTML='<div class="board-panel quiz-result"><div class="panel-kicker">YOUR RESULT</div><div class="quiz-result-number">'+score+'<span style="font-size:25px;color:#888"> / 5</span></div><div class="quiz-result-caption">'+(score===5?'全对！状态非常好。':score>=4?'发挥不错，知识储备很扎实。':score>=2?'再玩一局，看看能不能突破自己。':'这局当热身，下一次肯定更熟练。')+'</div><div class="quiz-progress"><span style="width:'+score/5*100+'%"></span></div><div class="btn-row" style="justify-content:center;margin-top:20px"><button class="primary-btn" id="quizAgain">再答一组</button></div></div>';
   byId('quizAgain').addEventListener('click',function(){roundNumber++;startQuiz();});
   saveStat('quiz',result);
-  roleLine('脑洞快问结束，玩家答对 '+score+' / 5 题。请用角色口吻点评一下，不要重复题目。',score>=4?'答得挺稳的嘛，下次我们冲个满分。':'下一轮我们再冲高一点。刚才那几题还挺有意思。');
+  var quizEndTaunts=score>=4?[
+    '答得挺稳的嘛，下次我们冲个满分。',
+    '厉害啊，这成绩可以了。',
+    '不错不错，你知识面挺广的嘛。'
+  ]:score>=2?[
+    '发挥还行，下一次再冲高分。',
+    '还可以啦，我们再玩一局看看。',
+    '中等水平，还有进步空间哦。'
+  ]:[
+    '这局当热身，下一次肯定更熟练。',
+    '哎呀，这次发挥不太好？没关系，再来一局。',
+    '没事没事，就当娱乐一下啦。'
+  ];
+  var quizEndTaunt=quizEndTaunts[Math.floor(Math.random()*quizEndTaunts.length)];
+  roleLine('脑洞快问结束，玩家答对 '+score+' / 5 题。请用角色口吻点评一下，不要重复题目。',quizEndTaunt);
+  addChatAfterGame(result,'quiz');
 }
 
 function winningLine(board){
@@ -1390,7 +1603,25 @@ function playerMove(i){
   var cell=aiMove(gameState.board);if(cell>=0)gameState.board[cell]='o';
   renderBoard();if(checkTicEnd())return;
   byId('ticStatus').textContent='轮到你落子。';
-  roleLine('正在进行井字棋。玩家落下 X，当前局势为：'+gameState.board.map(function(x){return x||'-';}).join('')+'。请用一句角色台词回应棋局，不要告诉玩家最佳落点。','我看到你的想法了。下一步可别大意。');
+
+  // 根据局势随机说不同的话，互动感更强
+  var xCount=gameState.board.filter(function(x){return x==='x'}).length;
+  var oCount=gameState.board.filter(function(x){return x==='o'}).length;
+  var taunts=[
+    '嗯？走这儿？有点意思。',
+    '我看到你的想法了，下一步可别大意。',
+    '继续继续，看你下一步走哪儿。',
+    '你这步……我得想想怎么接。',
+    '还行，没我想的那么菜嘛。',
+    '慢慢来，我不催你。',
+    '哦？居然走这儿？有点东西。',
+    '我已经在想下一步了哦。',
+    '你刚才那步是不是在试探我？',
+    '嘿，这局有点意思了。'
+  ];
+  var randomTaunt=taunts[Math.floor(Math.random()*taunts.length)];
+
+  roleLine('正在进行井字棋，玩家走了第'+xCount+'步，AI走了第'+oCount+'步。当前局势：'+gameState.board.map(function(x){return x||'-';}).join('')+'。请用一句角色台词回应棋局，要像真人随口说的，不要太正式，不要告诉玩家最佳落点。',randomTaunt);
 }
 function renderBoard(){
   var board=byId('ticBoard');if(!board)return;
@@ -1405,11 +1636,13 @@ function checkTicEnd(){
     byId('ticScore').textContent=xWin?'本局胜利':'下次再战';
     renderBoard();saveStat('tic',xWin?'win':'loss');
     roleLine(xWin?'玩家赢下了井字棋。请以角色语气回应，愿意时可以提出再来一局。':'角色赢下了井字棋。请以角色语气自然回应，不要过分炫耀。',xWin?'好吧，这局算你赢。再来，我可要认真了。':'我赢啦！要不要再试一次？');
+    addChatAfterGame(xWin?'win':'lose','tic');
     return true;
   }
   if(!freeCells(gameState.board).length){
     gameState.ended=true;byId('ticStatus').textContent='平局。';byId('ticScore').textContent='棋逢对手';
     renderBoard();saveStat('tic','draw');roleLine('这局井字棋最后平局，请用角色语气轻松回应。','平局！看来我们今天水平差不多。');
+    addChatAfterGame('draw','tic');
     return true;
   }
   return false;
@@ -1453,6 +1686,14 @@ if(window.PhoneStorage&&typeof window.PhoneStorage.getCurrentContactId==='functi
   var current=window.PhoneStorage.getCurrentContactId();
   if(current){var matched=roleList.find(function(r){return String(r.id)===String(current);});if(matched)selectRole(matched.id);}
 }
+// 暴露给沉浸式流程外部脚本
+window.CASES=CASES;
+window.CASE_INTERVIEWS=CASE_INTERVIEWS;
+window.startCase=startCase;
+window.detectiveTeam=detectiveTeam;
+window.detectiveParty=detectiveParty;
+window.roleName=roleName;
+window.roleList=roleList;
 })();
 </script>
 <script src="../shared/js/nav.js"></script>
@@ -1719,7 +1960,7 @@ body.floating-tools-open{overflow:hidden}
 
 <style id="maomao-detective-v07-live-evidence-layout">
 body.detective-case-mode .detective-livebar{position:sticky;top:8px;z-index:18;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;margin:10px 0 14px;background:rgba(255,255,255,.97);border:1px solid #deded9;box-shadow:0 5px 18px rgba(0,0,0,.045);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);cursor:pointer}
-body.detective-case-mode .detective-livebar:after{content:'查看动态 ↗';font-size:10px;color:#777;white-space:nowrap}
+body.detective-case-mode .detective-livebar:after{content:'查看动态';font-size:10px;color:#777;white-space:nowrap}
 body.detective-case-mode .detective-livebar strong{font-size:12px}
 body.detective-case-mode .detective-livefeed{display:none!important}
 .detective-live-modal{position:fixed;inset:0;z-index:10060;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(18,18,18,.42);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
@@ -1758,7 +1999,7 @@ body.detective-case-mode .detective-live-modal .detective-livefeed{display:grid!
 
 <style id="maomao-notebook-v10-style">
 .case-notebook .investigation-entry{cursor:pointer;position:relative;transition:background .18s,border-color .18s;padding-right:28px}
-.case-notebook .investigation-entry:after{content:'查看档案 ↗';position:absolute;right:8px;bottom:10px;font-size:10px;letter-spacing:.04em;color:#777}
+.case-notebook .investigation-entry:after{content:'查看档案';position:absolute;right:8px;bottom:10px;font-size:10px;letter-spacing:.04em;color:#777}
 .case-notebook .investigation-entry:focus-visible{outline:2px solid #555;outline-offset:2px}
 .case-notebook .investigation-entry:hover{background:rgba(0,0,0,.025)}
 .notebook-detail-overlay{position:fixed;inset:0;z-index:10080;background:rgba(20,20,20,.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:18px}
@@ -2103,6 +2344,991 @@ body.detective-case-mode .case-modal-sheet{max-height:88dvh;overflow:auto}
 @media(prefers-reduced-motion:reduce){body.detective-case-mode .evidence{transition:none}}
 </style>
 <style id="maomao-detective-v18-scene">.scene-art-tidal{height:auto;aspect-ratio:280/348;min-height:350px;max-height:520px;background:#171715}.scene-art-tidal .scene-real-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}.scene-art-tidal>:not(.scene-hotspot):not(.scene-real-image){display:none!important}.scene-art-tidal .scene-hotspot{z-index:5}@media(max-width:360px){.scene-art-tidal{min-height:320px}}</style>
+
+<!-- ============================================ -->
+<!-- MAOMAO DETECTIVE · CLEAN REDESIGN v1.0       -->
+<!-- 统一视觉系统：清透编辑风，白底细黑线          -->
+<!-- ============================================ -->
+<style id="maomao-detective-clean-redesign">
+
+/* ===== 全局变量重置 ===== */
+body.detective-case-mode{
+  --dp-paper:#ffffff;
+  --dp-ink:#1a1a1a;
+  --dp-muted:#8a8a8a;
+  --dp-line:#e8e8e8;
+  --dp-soft:#f7f7f5;
+  --dp-accent:#1a1a1a;
+  --dp-radius:4px;
+  --dp-gap:12px;
+}
+
+/* ===== 页面容器 ===== */
+body.detective-case-mode #gameContent{
+  padding-bottom:100px!important;
+  background:var(--dp-paper)!important;
+}
+body.detective-case-mode .board-panel{
+  padding:0 0 24px!important;
+  border:0!important;
+  box-shadow:none!important;
+  background:transparent!important;
+}
+
+/* ===== 顶部导航栏 ===== */
+body.detective-case-mode .case-nav-line{
+  padding:8px 0 14px!important;
+  margin:0 0 16px!important;
+  border-bottom:1px solid var(--dp-line)!important;
+  background:transparent!important;
+}
+body.detective-case-mode .case-nav-line .back-text{
+  font-size:12px!important;
+  padding:4px 0!important;
+}
+body.detective-case-mode .case-nav-line .game-code{
+  font-size:9px!important;
+  letter-spacing:.15em!important;
+  color:var(--dp-muted)!important;
+  margin:0!important;
+}
+body.detective-case-mode .case-theme-toggle{
+  border:1px solid var(--dp-line)!important;
+  background:var(--dp-paper)!important;
+  color:var(--dp-muted)!important;
+  border-radius:99px!important;
+  padding:5px 11px!important;
+  font-size:10px!important;
+}
+
+/* ===== 案件标题区 ===== */
+body.detective-case-mode .board-panel>.panel-kicker{
+  font-size:9px!important;
+  letter-spacing:.18em!important;
+  color:var(--dp-muted)!important;
+  margin:0 0 8px!important;
+}
+body.detective-case-mode .prompt-title{
+  font-family:var(--serif)!important;
+  font-size:clamp(26px,7vw,34px)!important;
+  line-height:1.15!important;
+  letter-spacing:-.03em!important;
+  font-weight:400!important;
+  margin:0 0 10px!important;
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .prompt-copy{
+  font-size:12px!important;
+  line-height:1.8!important;
+  color:var(--dp-muted)!important;
+  margin:0 0 18px!important;
+  max-width:100%!important;
+}
+
+/* ===== 现场勘查图 ===== */
+body.detective-case-mode .case-scene-stage{
+  margin:0 0 20px!important;
+  border-radius:var(--dp-radius)!important;
+  overflow:hidden;
+  box-shadow:0 4px 20px rgba(0,0,0,.08)!important;
+}
+body.detective-case-mode .scene-stage-top{
+  padding:12px 14px 6px!important;
+  font-size:8px!important;
+  letter-spacing:.14em!important;
+}
+body.detective-case-mode .scene-location{
+  padding:0 14px 12px!important;
+  font-size:17px!important;
+}
+body.detective-case-mode .scene-stage-foot{
+  padding:11px 14px!important;
+}
+
+/* ===== 实时调查动态 ===== */
+body.detective-case-mode .detective-livebar{
+  margin:0 0 12px!important;
+  padding:12px 0!important;
+  border-top:1px solid var(--dp-line)!important;
+  border-bottom:1px solid var(--dp-line)!important;
+}
+body.detective-case-mode .detective-livebar .panel-kicker{
+  font-size:8px!important;
+}
+body.detective-case-mode .detective-livebar strong{
+  font-size:12px!important;
+  font-weight:600!important;
+}
+body.detective-case-mode .live-dot{
+  width:6px!important;
+  height:6px!important;
+}
+body.detective-case-mode .detective-livefeed{
+  margin:0 0 20px!important;
+  padding:0!important;
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  max-height:none!important;
+}
+body.detective-case-mode .livefeed-item{
+  grid-template-columns:36px 1fr!important;
+  gap:10px!important;
+  padding:10px 0!important;
+  border-bottom:1px solid #f0f0f0!important;
+}
+body.detective-case-mode .livefeed-time{
+  font-size:9px!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .livefeed-item p{
+  font-size:11px!important;
+  line-height:1.7!important;
+  color:#555!important;
+}
+
+/* ===== 调查队 ===== */
+body.detective-case-mode .case-team-presence{
+  margin:0 0 20px!important;
+  padding:14px!important;
+  background:var(--dp-soft)!important;
+  border:0!important;
+  border-radius:var(--dp-radius)!important;
+}
+body.detective-case-mode .case-team-presence>.panel-kicker{
+  font-size:8px!important;
+  letter-spacing:.14em!important;
+  color:var(--dp-muted)!important;
+  margin:0 0 10px!important;
+}
+body.detective-case-mode .case-team-avatars{
+  gap:14px!important;
+  margin:0 0 10px!important;
+}
+body.detective-case-mode .case-team-member{
+  gap:6px!important;
+}
+body.detective-case-mode .case-team-member .role-avatar{
+  width:32px!important;
+  height:32px!important;
+  min-width:32px!important;
+  flex:0 0 32px!important;
+}
+body.detective-case-mode .case-team-member small{
+  font-size:10px!important;
+  color:#555!important;
+}
+body.detective-case-mode .case-team-presence>p{
+  font-size:10px!important;
+  line-height:1.7!important;
+  color:var(--dp-muted)!important;
+  margin:0 0 12px!important;
+}
+body.detective-case-mode .case-team-presence .secondary-btn{
+  font-size:11px!important;
+  padding:6px 0!important;
+}
+
+/* ===== 调查工具箱 ===== */
+body.detective-case-mode .detective-toolkit{
+  margin:0 0 20px!important;
+  padding:14px!important;
+  background:var(--dp-soft)!important;
+  border:0!important;
+  border-radius:var(--dp-radius)!important;
+}
+body.detective-case-mode .detective-toolkit-head{
+  margin-bottom:10px!important;
+}
+body.detective-case-mode .detective-toolkit-head strong{
+  font-size:12px!important;
+  font-weight:600!important;
+}
+body.detective-case-mode .detective-toolkit-head span{
+  font-size:8px!important;
+  letter-spacing:.12em!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .detective-tool-buttons{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:6px!important;
+}
+body.detective-case-mode .detective-tool-buttons button{
+  min-height:38px!important;
+  border:1px solid var(--dp-line)!important;
+  background:var(--dp-paper)!important;
+  border-radius:var(--dp-radius)!important;
+  font-size:11px!important;
+  text-align:left!important;
+  padding:8px 10px!important;
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .detective-tool-note{
+  font-size:10px!important;
+  color:var(--dp-muted)!important;
+  margin-top:10px!important;
+}
+
+/* ===== 自由调查输入区 ===== */
+body.detective-case-mode .investigation-console>.prompt-copy{
+  font-size:11px!important;
+  line-height:1.7!important;
+  color:var(--dp-muted)!important;
+  margin:0 0 16px!important;
+}
+body.detective-case-mode .investigation-action-desk{
+  margin:0 0 20px!important;
+  padding:14px!important;
+  background:var(--dp-soft)!important;
+  border:0!important;
+  border-radius:var(--dp-radius)!important;
+}
+body.detective-case-mode .action-desk-title{
+  margin-bottom:10px!important;
+}
+body.detective-case-mode .action-desk-title .panel-kicker{
+  font-size:8px!important;
+}
+body.detective-case-mode .action-desk-title strong{
+  font-family:var(--serif)!important;
+  font-size:16px!important;
+  font-weight:400!important;
+}
+body.detective-case-mode .investigation-actions{
+  grid-template-columns:1fr auto!important;
+  gap:8px!important;
+}
+body.detective-case-mode .investigation-actions input{
+  height:44px!important;
+  padding:0 12px!important;
+  font-size:12px!important;
+  border:1px solid var(--dp-line)!important;
+  border-radius:var(--dp-radius)!important;
+  background:var(--dp-paper)!important;
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .investigation-actions button{
+  min-width:72px!important;
+  height:44px!important;
+  border-radius:var(--dp-radius)!important;
+  font-size:12px!important;
+}
+
+/* ===== 调查记录簿 ===== */
+body.detective-case-mode .case-notebook{
+  margin:0 0 20px!important;
+  border:1px solid var(--dp-line)!important;
+  border-radius:var(--dp-radius)!important;
+  background:var(--dp-paper)!important;
+  box-shadow:none!important;
+  overflow:hidden;
+}
+body.detective-case-mode .notebook-cover{
+  padding:16px 16px 14px!important;
+  background:var(--dp-soft)!important;
+  border-bottom:1px solid var(--dp-line)!important;
+}
+body.detective-case-mode .notebook-cover:before{
+  display:none!important;
+}
+body.detective-case-mode .notebook-kicker{
+  font-size:8px!important;
+  letter-spacing:.14em!important;
+  color:var(--dp-muted)!important;
+  margin-bottom:6px!important;
+}
+body.detective-case-mode .notebook-cover strong{
+  font-family:var(--serif)!important;
+  font-size:20px!important;
+  font-weight:400!important;
+  letter-spacing:0!important;
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .notebook-cover small{
+  font-size:9px!important;
+  color:var(--dp-muted)!important;
+  margin-top:4px!important;
+}
+body.detective-case-mode .notebook-tabs{
+  padding:0 12px!important;
+  background:var(--dp-paper)!important;
+  border-bottom:1px solid var(--dp-line)!important;
+  gap:2px!important;
+}
+body.detective-case-mode .notebook-tab{
+  padding:10px 8px!important;
+  font-size:10px!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .notebook-tab.active{
+  color:var(--dp-ink)!important;
+  border-bottom-color:var(--dp-ink)!important;
+  font-weight:600!important;
+}
+body.detective-case-mode .investigation-log{
+  max-height:320px!important;
+  padding:8px 14px!important;
+  background:transparent!important;
+}
+body.detective-case-mode .investigation-entry{
+  padding:12px 0 12px 20px!important;
+  border-bottom:1px solid #f0f0f0!important;
+  background:transparent!important;
+  border-left:0!important;
+  border-radius:0!important;
+}
+body.detective-case-mode .investigation-entry:before{
+  left:0!important;
+  top:16px!important;
+  width:5px!important;
+  height:5px!important;
+}
+body.detective-case-mode .investigation-entry .record-index{
+  font-size:8px!important;
+  letter-spacing:.1em!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .investigation-entry strong{
+  font-size:12px!important;
+  margin:4px 0 6px!important;
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .investigation-entry p{
+  font-size:11px!important;
+  line-height:1.8!important;
+  color:#444!important;
+}
+body.detective-case-mode .investigation-entry small{
+  font-size:9px!important;
+  color:var(--dp-muted)!important;
+}
+
+/* ===== 进度条 ===== */
+body.detective-case-mode .case-progress-strip{
+  margin:0 0 12px!important;
+  padding:10px 0!important;
+  border-top:1px solid var(--dp-line)!important;
+  border-bottom:1px solid var(--dp-line)!important;
+  background:transparent!important;
+  border-radius:0!important;
+  font-size:11px!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .case-progress-strip strong{
+  color:var(--dp-ink)!important;
+  font-weight:600!important;
+}
+body.detective-case-mode .detective-progress{
+  margin:0 0 20px!important;
+}
+body.detective-case-mode .detective-progress-head{
+  font-size:10px!important;
+  color:var(--dp-muted)!important;
+  margin-bottom:6px!important;
+}
+body.detective-case-mode .detective-progress-head strong{
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .detective-progress-track{
+  height:3px!important;
+  background:#f0f0f0!important;
+  border-radius:0!important;
+}
+body.detective-case-mode .detective-progress-track span{
+  background:var(--dp-ink)!important;
+}
+
+/* ===== 分隔标签 ===== */
+body.detective-case-mode .divider-label{
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  margin:24px 0 12px!important;
+  font-size:9px!important;
+  letter-spacing:.14em!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .divider-label:after{
+  content:"";
+  height:1px;
+  background:var(--dp-line);
+  flex:1;
+}
+
+/* ===== 证物卡片 ===== */
+body.detective-case-mode .clue-list{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:8px!important;
+}
+body.detective-case-mode .evidence{
+  min-height:100px!important;
+  padding:12px!important;
+  border:1px solid var(--dp-line)!important;
+  border-radius:var(--dp-radius)!important;
+  background:var(--dp-paper)!important;
+  box-shadow:none!important;
+  transition:border-color .15s,background .15s;
+}
+body.detective-case-mode .evidence:active{
+  transform:scale(.98);
+}
+body.detective-case-mode .evidence-num{
+  font-size:9px!important;
+  letter-spacing:.12em!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .evidence-text>strong{
+  font-size:12px!important;
+  line-height:1.5!important;
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .evidence-text [id^="evidenceDetail"]{
+  display:none!important;
+}
+body.detective-case-mode .evidence-mark{
+  font-size:14px!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .evidence.revealed{
+  background:var(--dp-soft)!important;
+  border-color:#c8c8c8!important;
+}
+body.detective-case-mode .evidence.revealed .evidence-num:after{
+  content:" · 已确认";
+  font-size:8px!important;
+  color:#666!important;
+}
+
+/* ===== 证词卡片 ===== */
+body.detective-case-mode .interview-list{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:8px!important;
+  margin-bottom:20px!important;
+}
+body.detective-case-mode .interview-item{
+  padding:14px 12px!important;
+  border:1px solid var(--dp-line)!important;
+  border-radius:var(--dp-radius)!important;
+  background:var(--dp-paper)!important;
+  box-shadow:none!important;
+  grid-template-columns:32px 1fr 16px!important;
+  gap:10px!important;
+  min-height:0!important;
+  transition:border-color .15s,background .15s;
+}
+body.detective-case-mode .interview-item:active{
+  background:var(--dp-soft)!important;
+}
+body.detective-case-mode .interview-number{
+  font-family:var(--serif)!important;
+  font-size:20px!important;
+  color:#c0c0c0!important;
+  line-height:1!important;
+}
+body.detective-case-mode .interview-item>span:nth-child(2){
+  display:block!important;
+}
+body.detective-case-mode .interview-item strong{
+  font-size:13px!important;
+  font-weight:600!important;
+  color:var(--dp-ink)!important;
+  margin:0!important;
+}
+body.detective-case-mode .interview-item small{
+  font-size:10px!important;
+  color:var(--dp-muted)!important;
+  margin:2px 0 0!important;
+}
+body.detective-case-mode .interview-text{
+  display:block!important;
+  margin-top:6px!important;
+  font-size:10px!important;
+  line-height:1.6!important;
+  color:var(--dp-muted)!important;
+  min-height:0!important;
+}
+body.detective-case-mode .interview-mark{
+  font-size:14px!important;
+  color:var(--dp-muted)!important;
+}
+body.detective-case-mode .interview-item.revealed{
+  background:var(--dp-soft)!important;
+  border-color:#c8c8c8!important;
+}
+body.detective-case-mode .interview-followups{
+  grid-column:1/-1!important;
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:6px!important;
+  margin-top:8px!important;
+}
+body.detective-case-mode .interview-followups button{
+  min-height:28px!important;
+  padding:0 10px!important;
+  font-size:10px!important;
+}
+
+/* ===== 指认嫌疑人 ===== */
+body.detective-case-mode .suspect-list{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-bottom:16px;
+}
+body.detective-case-mode .suspect{
+  min-height:72px!important;
+  padding:12px 8px!important;
+  border:1px solid var(--dp-line)!important;
+  border-radius:var(--dp-radius)!important;
+  background:var(--dp-paper)!important;
+  text-align:center!important;
+}
+body.detective-case-mode .suspect:disabled{
+  opacity:.45;
+}
+body.detective-case-mode .suspect-name{
+  font-size:13px!important;
+  font-weight:600!important;
+  color:var(--dp-ink)!important;
+}
+body.detective-case-mode .suspect-role{
+  font-size:10px!important;
+  color:var(--dp-muted)!important;
+  margin-top:4px!important;
+}
+body.detective-case-mode .suspect.correct{
+  border-color:var(--dp-ink)!important;
+  background:var(--dp-soft)!important;
+}
+
+/* ===== 反馈区 ===== */
+body.detective-case-mode .feedback{
+  margin:16px 0!important;
+  padding:14px!important;
+  background:var(--dp-soft)!important;
+  border-radius:var(--dp-radius)!important;
+  font-size:11px!important;
+  line-height:1.8!important;
+  color:#444!important;
+}
+body.detective-case-mode .feedback strong{
+  color:var(--dp-ink)!important;
+}
+
+/* ===== 底部操作按钮 ===== */
+body.detective-case-mode .btn-row{
+  display:flex;
+  gap:12px;
+  margin-top:16px;
+}
+body.detective-case-mode .btn-row .secondary-btn{
+  font-size:11px!important;
+}
+
+/* ===== 底部 Tab 导航 ===== */
+body.detective-case-mode .case-section-nav{
+  position:fixed!important;
+  bottom:calc(12px + env(safe-area-inset-bottom))!important;
+  left:50%!important;
+  transform:translateX(-50%)!important;
+  width:min(calc(100% - 32px),400px)!important;
+  z-index:80!important;
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:2px!important;
+  margin:0!important;
+  padding:4px!important;
+  border:1px solid var(--dp-line)!important;
+  border-radius:99px!important;
+  background:rgba(255,255,255,.96)!important;
+  backdrop-filter:blur(16px)!important;
+  box-shadow:0 4px 24px rgba(0,0,0,.08)!important;
+}
+body.detective-case-mode .case-section-nav button{
+  min-height:38px!important;
+  padding:8px 4px!important;
+  border:0!important;
+  border-radius:99px!important;
+  font-size:11px!important;
+  color:var(--dp-muted)!important;
+  background:transparent!important;
+  transition:all .15s;
+}
+body.detective-case-mode .case-section-nav button.active{
+  color:#fff!important;
+  background:var(--dp-ink)!important;
+  font-weight:500!important;
+}
+
+/* ===== 阶段进度条 ===== */
+body.detective-case-mode .case-phase-track{
+  display:none!important;
+}
+
+/* ===== 审讯弹窗 ===== */
+body.detective-case-mode .case-modal-sheet{
+  border-radius:16px 16px 0 0!important;
+  padding:20px 16px calc(20px + env(safe-area-inset-bottom))!important;
+}
+body.detective-case-mode .case-modal-head{
+  padding-bottom:14px!important;
+  margin-bottom:16px!important;
+}
+body.detective-case-mode .case-modal-head h2{
+  font-family:var(--serif)!important;
+  font-size:22px!important;
+  font-weight:400!important;
+}
+body.detective-case-mode .case-modal-close{
+  width:32px!important;
+  height:32px!important;
+  border-radius:50%!important;
+  border:1px solid var(--dp-line)!important;
+  font-size:20px!important;
+}
+body.detective-case-mode .case-modal-testimony{
+  padding:14px!important;
+  border-radius:var(--dp-radius)!important;
+  background:var(--dp-soft)!important;
+  border:0!important;
+}
+body.detective-case-mode .case-modal-testimony h3{
+  font-size:14px!important;
+  margin:6px 0!important;
+}
+body.detective-case-mode .case-modal-testimony p{
+  font-size:12px!important;
+  line-height:1.8!important;
+}
+body.detective-case-mode .case-modal-evidence-card{
+  padding:12px!important;
+  border-radius:var(--dp-radius)!important;
+  border:1px solid var(--dp-line)!important;
+  transition:border-color .15s,background .15s;
+}
+body.detective-case-mode .case-modal-evidence-card.selected{
+  border-color:var(--dp-ink)!important;
+  background:var(--dp-soft)!important;
+  box-shadow:inset 3px 0 var(--dp-ink)!important;
+}
+body.detective-case-mode .case-modal-feedback{
+  border-left:3px solid var(--dp-line)!important;
+  background:var(--dp-soft)!important;
+  padding:12px!important;
+  border-radius:0 var(--dp-radius) var(--dp-radius) 0!important;
+  font-size:11px!important;
+  line-height:1.8!important;
+}
+body.detective-case-mode .case-modal-foot{
+  margin-top:16px!important;
+  gap:8px!important;
+}
+body.detective-case-mode .case-modal-foot button{
+  border-radius:var(--dp-radius)!important;
+  min-height:42px!important;
+  padding:0 18px!important;
+  font-size:12px!important;
+}
+
+/* ===== 证物详情弹窗 ===== */
+body.detective-case-mode .case-evidence-card{
+  border-radius:16px!important;
+  padding:24px 20px 20px!important;
+}
+body.detective-case-mode .case-evidence-card h2{
+  font-size:24px!important;
+}
+body.detective-case-mode .case-evidence-detail{
+  font-size:13px!important;
+  line-height:1.9!important;
+}
+
+/* ===== 暗色主题微调 ===== */
+body.detective-case-mode[data-case-theme="black"]{
+  --dp-paper:#1a1a1a;
+  --dp-ink:#f0f0f0;
+  --dp-muted:#999;
+  --dp-line:#333;
+  --dp-soft:#252525;
+}
+body.detective-case-mode[data-case-theme="black"] .case-section-nav{
+  background:rgba(26,26,26,.96)!important;
+  border-color:#333!important;
+}
+body.detective-case-mode[data-case-theme="black"] .case-section-nav button.active{
+  background:#f0f0f0!important;
+  color:#1a1a1a!important;
+}
+
+/* ===== 小屏适配 ===== */
+@media(max-width:360px){
+  body.detective-case-mode .clue-list{
+    gap:6px!important;
+  }
+  body.detective-case-mode .evidence{
+    min-height:90px!important;
+    padding:10px!important;
+  }
+  body.detective-case-mode .evidence-text>strong{
+    font-size:11px!important;
+  }
+  body.detective-case-mode .case-section-nav button{
+    font-size:10px!important;
+  }
+  body.detective-case-mode .suspect-list{
+    gap:6px!important;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  body.detective-case-mode .evidence,
+  body.detective-case-mode .interview-item,
+  body.detective-case-mode .case-section-nav button{
+    transition:none!important;
+  }
+}
+
+/* ===== 多人侦探社 · 杂志风重构 ===== */
+body.detective-case-mode .detective-bureau-page{
+ animation:caseFadeIn .4s ease-out;
+ padding:16px 14px!important;
+}
+@keyframes caseFadeIn{
+ from{opacity:0;transform:translateY(8px)}
+ to{opacity:1;transform:translateY(0)}
+}
+
+body.detective-case-mode .detective-bureau-page .prompt-title{
+ font-size:28px!important;
+ font-weight:600!important;
+ letter-spacing:-.03em!important;
+ margin:10px 0 6px!important;
+ color:#111!important;
+}
+
+body.detective-case-mode .detective-bureau-page .case-progress-strip{
+ display:flex!important;
+ align-items:center!important;
+ justify-content:space-between!important;
+ padding:12px 0!important;
+ border-bottom:1px solid #e5e5e5!important;
+ margin:16px 0!important;
+ font-size:12px!important;
+ color:#666!important;
+}
+body.detective-case-mode .detective-bureau-page .case-progress-strip strong{
+ font-size:18px!important;
+ color:#111!important;
+}
+
+body.detective-case-mode .detective-bureau-page .divider-label{
+ font-size:10px!important;
+ letter-spacing:.15em!important;
+ color:#999!important;
+ margin:24px 0 12px!important;
+ text-transform:uppercase!important;
+}
+
+body.detective-case-mode .detective-bureau-page .detective-team-picker{
+ display:flex!important;
+ gap:10px!important;
+ overflow-x:auto!important;
+ padding-bottom:8px!important;
+ margin:0 -14px!important;
+ padding-left:14px!important;
+ padding-right:14px!important;
+ border:0!important;
+ background:transparent!important;
+}
+body.detective-case-mode .detective-bureau-page .detective-team-chip{
+ flex:0 0 auto!important;
+ width:80px!important;
+ padding:10px 6px!important;
+ border:1px solid #e5e5e5!important;
+ border-radius:8px!important;
+ text-align:center!important;
+ transition:all .15s!important;
+}
+body.detective-case-mode .detective-bureau-page .detective-team-chip.selected{
+ border-color:#111!important;
+ background:#111!important;
+ color:#fff!important;
+}
+body.detective-case-mode .detective-bureau-page .detective-team-chip .role-avatar{
+ width:40px!important;
+ height:40px!important;
+ margin:0 auto 6px!important;
+}
+body.detective-case-mode .detective-bureau-page .detective-team-chip span{
+ font-size:11px!important;
+ display:block!important;
+}
+body.detective-case-mode .detective-bureau-page .detective-team-chip small{
+ font-size:9px!important;
+ opacity:.6!important;
+}
+
+body.detective-case-mode .detective-bureau-page .case-archive-heading{
+ margin:28px 0 12px!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-list{
+ display:flex!important;
+ flex-direction:column!important;
+ gap:0!important;
+ border-top:1px solid #e5e5e5!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-item{
+ display:grid!important;
+ grid-template-columns:50px 1fr!important;
+ grid-template-rows:auto auto!important;
+ gap:2px 12px!important;
+ padding:18px 0!important;
+ border:0!important;
+ border-bottom:1px solid #e5e5e5!important;
+ border-radius:0!important;
+ text-align:left!important;
+ background:transparent!important;
+ transition:padding-left .15s!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-item:active{
+ padding-left:6px!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-no{
+ grid-row:1/3!important;
+ font-size:11px!important;
+ color:#999!important;
+ letter-spacing:.1em!important;
+ padding-top:3px!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-item strong{
+ font-size:16px!important;
+ font-weight:500!important;
+ letter-spacing:-.01em!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-desc{
+ font-size:12px!important;
+ color:#777!important;
+ line-height:1.6!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-status{
+ font-size:10px!important;
+ color:#aaa!important;
+ margin-top:4px!important;
+}
+body.detective-case-mode .detective-bureau-page .case-archive-item[disabled]{
+ opacity:.4!important;
+}
+
+body.detective-case-mode .detective-bureau-page .case-ai-create{
+ margin:24px 0!important;
+ padding:16px!important;
+ background:#f8f8f8!important;
+ border-radius:8px!important;
+}
+
+/* ===== 多人侦探社 · 探案主页面 · 聊天式重构 ===== */
+body.detective-case-mode .detective-chat-mode .case-scene-stage,
+body.detective-case-mode .detective-chat-mode .detective-livebar,
+body.detective-case-mode .detective-chat-mode .detective-livefeed,
+body.detective-case-mode .detective-chat-mode .case-team-presence,
+body.detective-case-mode .detective-chat-mode .detective-toolkit,
+body.detective-case-mode .detective-chat-mode .case-phase-track,
+body.detective-case-mode .detective-chat-mode .detective-progress,
+body.detective-case-mode .detective-chat-mode .divider-label,
+body.detective-case-mode .detective-chat-mode .clue-list,
+body.detective-case-mode .detective-chat-mode .interview-list,
+body.detective-case-mode .detective-chat-mode .suspect-list,
+body.detective-case-mode .detective-chat-mode .case-progress-strip,
+body.detective-case-mode .detective-chat-mode .case-section-nav{
+ display:none!important;
+}
+
+body.detective-case-mode .detective-chat-mode .prompt-title{
+ font-size:24px!important;
+ font-weight:600!important;
+ letter-spacing:-.02em!important;
+ margin:8px 0 4px!important;
+}
+
+body.detective-case-mode .detective-chat-mode .prompt-copy{
+ font-size:13px!important;
+ line-height:1.7!important;
+ color:#666!important;
+ margin-bottom:20px!important;
+}
+
+/* 调查笔记做成杂志风 */
+body.detective-case-mode .detective-chat-mode .case-notebook{
+ background:transparent!important;
+ border:0!important;
+ padding:0!important;
+ margin:0 0 20px!important;
+}
+body.detective-case-mode .detective-chat-mode .notebook-cover{
+ display:none!important;
+}
+body.detective-case-mode .detective-chat-mode .notebook-tabs{
+ display:none!important;
+}
+body.detective-case-mode .detective-chat-mode .investigation-log{
+ gap:12px!important;
+ margin:0!important;
+ max-height:none!important;
+ overflow:visible!important;
+}
+body.detective-case-mode .detective-chat-mode .investigation-entry{
+ border-left:2px solid #111!important;
+ background:#f8f8f8!important;
+ border-radius:0 8px 8px 0!important;
+ padding:12px 14px!important;
+}
+body.detective-case-mode .detective-chat-mode .investigation-entry strong{
+ font-size:13px!important;
+ display:block!important;
+ margin-bottom:4px!important;
+}
+body.detective-case-mode .detective-chat-mode .investigation-entry p{
+ font-size:13px!important;
+ line-height:1.7!important;
+ color:#333!important;
+}
+
+/* 聊天输入框 */
+body.detective-case-mode .detective-chat-mode .investigation-action-desk{
+ position:sticky!important;
+ bottom:0!important;
+ background:#fff!important;
+ padding:12px 0 0!important;
+ border-top:1px solid #e5e5e5!important;
+ margin:20px -14px -14px!important;
+ padding-left:14px!important;
+ padding-right:14px!important;
+}
+body.detective-case-mode .detective-chat-mode .action-desk-title{
+ display:none!important;
+}
+body.detective-case-mode .detective-chat-mode .investigation-actions{
+ display:flex!important;
+ gap:8px!important;
+}
+body.detective-case-mode .detective-chat-mode .investigation-actions input{
+ flex:1!important;
+ height:44px!important;
+ border:1px solid #e5e5e5!important;
+ border-radius:22px!important;
+ padding:0 16px!important;
+ font-size:14px!important;
+}
+body.detective-case-mode .detective-chat-mode .investigation-actions button{
+ border-radius:22px!important;
+ height:44px!important;
+ padding:0 20px!important;
+}
+
+</style>
+
 <script src="js/interrogation-v20.js?v=20"></script>
+<script src="js/immersive-v21.js?v=44"></script>
 </body>
 </html>

@@ -102,7 +102,7 @@
         '<div><span>长期记忆</span><strong id="memory-stat-long">0</strong></div>' +
         '<div><span>已固定</span><strong id="memory-stat-fixed">0</strong></div>' +
         '<div><span>待确认</span><strong id="memory-stat-pending">0</strong></div>' +
-      '</div><button type="button" class="memory-archive-cta" id="memory-open-archive">回看真实聊天 <span>↗</span></button>';
+      '</div><button type="button" class="memory-archive-cta" id="memory-open-archive">回看真实聊天 </button>';
     card.insertAdjacentElement('afterend', panel);
 
     var daily = $('#mem-daily-mood'), latestCard = daily && daily.closest('.mem-card-glass');
