@@ -14,7 +14,6 @@ import android.view.WindowManager;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
-import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -49,7 +48,6 @@ public final class MainActivity extends Activity {
         webView = new WebView(this);
         // 透明 WebView + edge-to-edge：网页底色/壁纸可以自然延伸到系统状态栏下方。
         webView.setBackgroundColor(Color.TRANSPARENT);
-        webView.addJavascriptInterface(new NativeSystemBarController(), "MAOMAOSystemBars");
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         WebSettings settings = webView.getSettings();
@@ -75,7 +73,6 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                applyEdgeToEdgeInsets(view);
             }
 
             @Override
@@ -136,12 +133,12 @@ public final class MainActivity extends Activity {
 
     private void configureSystemBars() {
         Window window = getWindow();
-        // 系统状态栏透明化，网页直接绘制在状态图标后方，而不是露出一条固定灰色底。
-        window.setStatusBarColor(Color.TRANSPARENT);
+        // 先保留系统状态栏正常占位，避免全屏覆盖破坏各网页现有布局。
+        window.setStatusBarColor(0xFFF7F7F9);
         // 暂时保留底部导航栏的传统布局，避免误触/遮挡聊天输入框。
         window.setNavigationBarColor(0xFFF7F7F9);
 
-        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         }
@@ -155,56 +152,6 @@ public final class MainActivity extends Activity {
             window.setStatusBarContrastEnforced(false);
         }
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-    }
-
-    private int getStatusBarInsetCssPx() {
-        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (resourceId <= 0) return 24;
-        float density = getResources().getDisplayMetrics().density;
-        return Math.max(1, Math.round(getResources().getDimensionPixelSize(resourceId) / density));
-    }
-
-    /** 让网页背景延伸到透明状态栏下方，同时为正文和顶部悬浮控件保留安全距离。 */
-    private void applyEdgeToEdgeInsets(WebView view) {
-        final int inset = getStatusBarInsetCssPx();
-        String script =
-                "(function(){" +
-                "var root=document.documentElement, body=document.body;" +
-                "if(!root||!body)return;" +
-                "var inset=" + inset + ";" +
-                "root.style.setProperty('--maomao-native-statusbar-inset',inset+'px');" +
-
-                "function parseColor(s){var m=String(s||'').match(/rgba?\\(\\s*([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:\\s*[,/]\\s*([\\d.]+))?\\s*\\)/i);return m?{r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]}:null;}" +
-                "function colorAt(x,y){var els=[];try{els=document.elementsFromPoint(x,y);}catch(e){}" +
-                "var c={r:255,g:255,b:255};" +
-                "for(var i=els.length-1;i>=0;i--){var p=parseColor(getComputedStyle(els[i]).backgroundColor);if(!p||p.a<=0)continue;" +
-                "c={r:p.r*p.a+c.r*(1-p.a),g:p.g*p.a+c.g*(1-p.a),b:p.b*p.a+c.b*(1-p.a)};}" +
-                "return c;}" +
-                "function updateIconTone(){var y=Math.max(1,Math.min(inset/2,innerHeight-1)),w=Math.max(1,innerWidth);" +
-                "var xs=[w*.12,w*.5,w*.88],sum=0;" +
-                "for(var i=0;i<xs.length;i++){var c=colorAt(xs[i],y);sum+=(.2126*c.r+.7152*c.g+.0722*c.b)/255;}" +
-                "if(window.MAOMAOSystemBars&&window.MAOMAOSystemBars.setDarkStatusBarIcons)window.MAOMAOSystemBars.setDarkStatusBarIcons(sum/3>.52);}" +
-                "updateIconTone();" +
-                "if(!root.dataset.maomaoNativeBarObserver){root.dataset.maomaoNativeBarObserver='1';" +
-                "var queued=false;function schedule(){if(queued)return;queued=true;requestAnimationFrame(function(){queued=false;updateIconTone();});}" +
-                "addEventListener('resize',schedule);addEventListener('scroll',schedule,true);addEventListener('pageshow',schedule);" +
-                "if(window.MutationObserver){new MutationObserver(schedule).observe(root,{attributes:true,subtree:true,attributeFilter:['class','style','data-theme','data-wallpaper-tone']});}}" +
-                "})();";
-        view.evaluateJavascript(script, null);
-    }
-
-    private final class NativeSystemBarController {
-        @JavascriptInterface
-        public void setDarkStatusBarIcons(final boolean darkIcons) {
-            runOnUiThread(() -> {
-                int flags = getWindow().getDecorView().getSystemUiVisibility();
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    if (darkIcons) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                    else flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                }
-                getWindow().getDecorView().setSystemUiVisibility(flags);
-            });
-        }
     }
 
     private void handleWebPermission(PermissionRequest request) {
