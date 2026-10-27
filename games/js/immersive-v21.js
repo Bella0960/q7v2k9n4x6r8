@@ -10,7 +10,7 @@
 
   /* ---------- 样式注入 ---------- */
   var STYLE = '' +
-  '.imm-root{position:absolute;top:0;left:0;width:100%;height:100%;overflow-y:auto;background:#1a1a1f;color:#f2f1ee;font-family:var(--sans,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-overflow-scrolling:smooth;z-index:50;}' +
+  '.imm-root{position:absolute;top:0;left:0;width:100%;height:100%;overflow-y:auto;background:#1a1a1f;color:#f2f1ee;font-family:var(--sans,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif);-webkit-overflow-scrolling:touch;z-index:50;}' +
   '.imm-root *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}' +
   '.imm-kicker{font-size:9px;letter-spacing:.35em;color:#9a9aa2;text-transform:uppercase;font-weight:400;}' +
   '.imm-title{font-family:var(--serif,Georgia,"Songti SC","Noto Serif CJK SC",serif);font-size:24px;line-height:1.25;font-weight:500;margin:10px 0 6px;letter-spacing:-.01em;}' +
