@@ -3,6 +3,7 @@ package com.maomao.phone;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -13,6 +14,7 @@ import android.view.WindowManager;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -45,7 +47,9 @@ public final class MainActivity extends Activity {
                 .build();
 
         webView = new WebView(this);
-        webView.setBackgroundColor(0xFFF7F7F9);
+        // 透明 WebView + edge-to-edge：网页底色/壁纸可以自然延伸到系统状态栏下方。
+        webView.setBackgroundColor(Color.TRANSPARENT);
+        webView.addJavascriptInterface(new NativeSystemBarController(), "MAOMAOSystemBars");
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         WebSettings settings = webView.getSettings();
@@ -66,6 +70,12 @@ public final class MainActivity extends Activity {
             public android.webkit.WebResourceResponse shouldInterceptRequest(
                     WebView view, WebResourceRequest request) {
                 return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                applyEdgeToEdgeInsets(view);
             }
 
             @Override
@@ -126,19 +136,86 @@ public final class MainActivity extends Activity {
 
     private void configureSystemBars() {
         Window window = getWindow();
-        window.setStatusBarColor(0xFFF7F7F9);
+        // 系统状态栏透明化，网页直接绘制在状态图标后方，而不是露出一条固定灰色底。
+        window.setStatusBarColor(Color.TRANSPARENT);
+        // 暂时保留底部导航栏的传统布局，避免误触/遮挡聊天输入框。
         window.setNavigationBarColor(0xFFF7F7F9);
+
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR |
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                            ? View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0));
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        }
+        window.getDecorView().setSystemUiVisibility(flags);
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.setNavigationBarContrastEnforced(false);
             window.setStatusBarContrastEnforced(false);
         }
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    }
+
+    private int getStatusBarInsetCssPx() {
+        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (resourceId <= 0) return 24;
+        float density = getResources().getDisplayMetrics().density;
+        return Math.max(1, Math.round(getResources().getDimensionPixelSize(resourceId) / density));
+    }
+
+    /** 让网页背景延伸到透明状态栏下方，同时为正文和顶部悬浮控件保留安全距离。 */
+    private void applyEdgeToEdgeInsets(WebView view) {
+        final int inset = getStatusBarInsetCssPx();
+        String script =
+                "(function(){" +
+                "var root=document.documentElement, body=document.body;" +
+                "if(!root||!body)return;" +
+                "var inset=" + inset + ";" +
+                "root.style.setProperty('--maomao-native-statusbar-inset',inset+'px');" +
+                "if(body.dataset.maomaoNativeInsetApplied!=='1'){" +
+                "var oldPadding=parseFloat(getComputedStyle(body).paddingTop)||0;" +
+                "body.style.setProperty('padding-top','calc('+oldPadding+'px + '+inset+'px)','important');" +
+                "body.dataset.maomaoNativeInsetApplied='1';" +
+                "Array.prototype.forEach.call(document.querySelectorAll('body *'),function(el){" +
+                "var cs=getComputedStyle(el),top=parseFloat(cs.top);" +
+                "if(cs.position==='fixed'&&Number.isFinite(top)&&top<inset+2&&el.dataset.maomaoNativeTopAdjusted!=='1'){" +
+                "el.style.setProperty('top','calc('+top+'px + '+inset+'px)','important');" +
+                "el.dataset.maomaoNativeTopAdjusted='1';" +
+                "}" +
+                "});" +
+                "}" +
+                "function parseColor(s){var m=String(s||'').match(/rgba?\\(\\s*([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:\\s*[,/]\\s*([\\d.]+))?\\s*\\)/i);return m?{r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]}:null;}" +
+                "function colorAt(x,y){var els=[];try{els=document.elementsFromPoint(x,y);}catch(e){}" +
+                "var c={r:255,g:255,b:255};" +
+                "for(var i=els.length-1;i>=0;i--){var p=parseColor(getComputedStyle(els[i]).backgroundColor);if(!p||p.a<=0)continue;" +
+                "c={r:p.r*p.a+c.r*(1-p.a),g:p.g*p.a+c.g*(1-p.a),b:p.b*p.a+c.b*(1-p.a)};}" +
+                "return c;}" +
+                "function updateIconTone(){var y=Math.max(1,Math.min(inset/2,innerHeight-1)),w=Math.max(1,innerWidth);" +
+                "var xs=[w*.12,w*.5,w*.88],sum=0;" +
+                "for(var i=0;i<xs.length;i++){var c=colorAt(xs[i],y);sum+=(.2126*c.r+.7152*c.g+.0722*c.b)/255;}" +
+                "if(window.MAOMAOSystemBars&&window.MAOMAOSystemBars.setDarkStatusBarIcons)window.MAOMAOSystemBars.setDarkStatusBarIcons(sum/3>.52);}" +
+                "updateIconTone();" +
+                "if(!root.dataset.maomaoNativeBarObserver){root.dataset.maomaoNativeBarObserver='1';" +
+                "var queued=false;function schedule(){if(queued)return;queued=true;requestAnimationFrame(function(){queued=false;updateIconTone();});}" +
+                "addEventListener('resize',schedule);addEventListener('scroll',schedule,true);addEventListener('pageshow',schedule);" +
+                "if(window.MutationObserver){new MutationObserver(schedule).observe(root,{attributes:true,subtree:true,attributeFilter:['class','style','data-theme','data-wallpaper-tone']});}}" +
+                "})();";
+        view.evaluateJavascript(script, null);
+    }
+
+    private final class NativeSystemBarController {
+        @JavascriptInterface
+        public void setDarkStatusBarIcons(final boolean darkIcons) {
+            runOnUiThread(() -> {
+                int flags = getWindow().getDecorView().getSystemUiVisibility();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (darkIcons) flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                    else flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                }
+                getWindow().getDecorView().setSystemUiVisibility(flags);
+            });
+        }
     }
 
     private void handleWebPermission(PermissionRequest request) {
