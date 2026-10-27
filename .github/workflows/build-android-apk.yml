@@ -96,6 +96,30 @@ jobs:
       - name: Build MAOMAO web pages
         run: npm run build
 
+      - name: Refresh PWA cache version for this APK
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          path = Path("dist/sw.js")
+          content = path.read_text(encoding="utf-8")
+          version = os.environ["GITHUB_SHA"][:10]
+          updated, count = re.subn(
+              r"const CACHE_NAME = ['\"]phone-app-pwa-[^'\"]+['\"];",
+              f"const CACHE_NAME = 'phone-app-pwa-apk-{version}';",
+              content,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not update service-worker cache version")
+          path.write_text(updated, encoding="utf-8")
+          print(f"Service-worker cache version set to phone-app-pwa-apk-{version}")
+          PY
+
       - name: Bundle built pages into Android app assets
         run: |
           mkdir -p android/app/src/main/assets/www
