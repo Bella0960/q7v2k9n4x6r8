@@ -173,18 +173,7 @@ public final class MainActivity extends Activity {
                 "if(!root||!body)return;" +
                 "var inset=" + inset + ";" +
                 "root.style.setProperty('--maomao-native-statusbar-inset',inset+'px');" +
-                "if(body.dataset.maomaoNativeInsetApplied!=='1'){" +
-                "var oldPadding=parseFloat(getComputedStyle(body).paddingTop)||0;" +
-                "body.style.setProperty('padding-top','calc('+oldPadding+'px + '+inset+'px)','important');" +
-                "body.dataset.maomaoNativeInsetApplied='1';" +
-                "Array.prototype.forEach.call(document.querySelectorAll('body *'),function(el){" +
-                "var cs=getComputedStyle(el),top=parseFloat(cs.top);" +
-                "if(cs.position==='fixed'&&Number.isFinite(top)&&top<inset+2&&el.dataset.maomaoNativeTopAdjusted!=='1'){" +
-                "el.style.setProperty('top','calc('+top+'px + '+inset+'px)','important');" +
-                "el.dataset.maomaoNativeTopAdjusted='1';" +
-                "}" +
-                "});" +
-                "}" +
+
                 "function parseColor(s){var m=String(s||'').match(/rgba?\\(\\s*([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:\\s*[,/]\\s*([\\d.]+))?\\s*\\)/i);return m?{r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]}:null;}" +
                 "function colorAt(x,y){var els=[];try{els=document.elementsFromPoint(x,y);}catch(e){}" +
                 "var c={r:255,g:255,b:255};" +
