@@ -395,7 +395,7 @@ endNormal:{
       'bg-roof': 'assets/bg-rooftop.png',
       'bg-hall': 'assets/bg-sunset.png',
       'bg-rain': 'assets/bg-rain.png',
-      'bg-night': 'assets/bg-night.png',
+      'bg-night': 'assets/bg-rain.png',
       'bg-sunset': 'assets/bg-sunset.png'
     }
   },
@@ -567,7 +567,7 @@ gyEndNormal:{
       'bg-roof': 'assets/bg-rooftop.png',
       'bg-hall': 'assets/bg-sunset.png',
       'bg-rain': 'assets/bg-rain.png',
-      'bg-night': 'assets/bg-night.png',
+      'bg-night': 'assets/bg-rain.png',
       'bg-sunset': 'assets/bg-sunset.png'
     }
   },
