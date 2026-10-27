@@ -46,6 +46,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          from io import BytesIO
           from PIL import Image
 
           folder = Path("games/assets")
@@ -57,7 +58,8 @@ jobs:
           for path in sorted(folder.iterdir()):
               if not path.is_file() or path.suffix.lower() not in (".png", ".jpg", ".jpeg"):
                   continue
-              before = path.stat().st_size
+              original = path.read_bytes()
+              before = len(original)
               with Image.open(path) as source:
                   source.load()
                   width, height = source.size
@@ -68,19 +70,26 @@ jobs:
                   else:
                       image = source.copy()
 
+                  buffer = BytesIO()
                   if path.suffix.lower() == ".png":
                       if image.mode not in ("RGB", "RGBA", "L", "LA", "P"):
                           image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
-                      image.save(path, format="PNG", optimize=True)
+                      image.save(buffer, format="PNG", optimize=True)
                   else:
                       if image.mode not in ("RGB", "L"):
                           image = image.convert("RGB")
-                      image.save(path, format="JPEG", quality=75, optimize=True, progressive=True)
+                      image.save(buffer, format="JPEG", quality=75, optimize=True, progressive=True)
 
-              after = path.stat().st_size
+              compressed = buffer.getvalue()
+              if len(compressed) < before:
+                  path.write_bytes(compressed)
+                  after = len(compressed)
+              else:
+                  after = before
               total_before += before
               total_after += after
-              print(f"{path.name}: {before // 1024} KB -> {after // 1024} KB")
+              action = "compressed" if after < before else "kept original"
+              print(f"{path.name}: {before // 1024} KB -> {after // 1024} KB ({action})")
           print(f"Game images total: {total_before // 1024} KB -> {total_after // 1024} KB")
           PY
 
