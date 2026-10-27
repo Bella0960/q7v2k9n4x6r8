@@ -8,6 +8,17 @@ on:
     paths:
       - '.github/workflows/build-android-apk.yml'
       - 'vite.config.js'
+      - 'package.json'
+      - '**/*.html'
+      - '**/*.js'
+      - '**/*.css'
+      - '**/*.json'
+      - 'assets/**'
+      - 'games/assets/**'
+      - 'chat/**'
+      - 'shared/**'
+      - 'apps/**'
+      - 'android/**'
 
 permissions:
   contents: read
@@ -27,6 +38,51 @@ jobs:
 
       - name: Install web dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Install image compression dependency
+        run: python -m pip install --disable-pip-version-check Pillow
+
+      - name: Compress large game images for Android WebView
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          folder = Path("games/assets")
+          if not folder.is_dir():
+              raise SystemExit("games/assets folder is missing")
+
+          total_before = 0
+          total_after = 0
+          for path in sorted(folder.iterdir()):
+              if not path.is_file() or path.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+                  continue
+              before = path.stat().st_size
+              with Image.open(path) as source:
+                  source.load()
+                  width, height = source.size
+                  target_width = 400 if path.name.lower().startswith("char") else 800
+                  if width > target_width:
+                      target_height = max(1, round(height * target_width / width))
+                      image = source.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                  else:
+                      image = source.copy()
+
+                  if path.suffix.lower() == ".png":
+                      if image.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                          image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+                      image.save(path, format="PNG", optimize=True)
+                  else:
+                      if image.mode not in ("RGB", "L"):
+                          image = image.convert("RGB")
+                      image.save(path, format="JPEG", quality=75, optimize=True, progressive=True)
+
+              after = path.stat().st_size
+              total_before += before
+              total_after += after
+              print(f"{path.name}: {before // 1024} KB -> {after // 1024} KB")
+          print(f"Game images total: {total_before // 1024} KB -> {total_after // 1024} KB")
+          PY
 
       - name: Build MAOMAO web pages
         run: npm run build
