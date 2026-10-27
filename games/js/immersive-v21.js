@@ -298,7 +298,7 @@
   function render() {
     var root = document.createElement('div');
     root.id = 'immRoot';
-    root.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;background:#13131a;color:#f2f1ee;font-family:Georgia,"Songti SC",serif;-webkit-font-smoothing:antialiased;';
+    root.style.cssText = 'position:relative;top:auto;left:auto;right:auto;bottom:auto;width:100%;min-height:100dvh;height:auto;overflow-x:hidden;background:#13131a;color:#f2f1ee;font-family:Georgia,"Songti SC",serif;-webkit-font-smoothing:antialiased;';
     if (IMM.step !== 0) root.appendChild(renderPartnerBar());
     root.appendChild(renderStep());
 
@@ -348,7 +348,7 @@
     var caseNo = String(IMM.caseIndex + 1).padStart(2, '0');
     var cc = c();
     var wrap = document.createElement('div');
-    wrap.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100%;color:#f2f1ee;display:flex;flex-direction:column;justify-content:space-between;padding:40px 28px 40px;box-sizing:border-box;background:linear-gradient(180deg,rgba(10,10,16,.55) 0%,rgba(10,10,16,.75) 50%,rgba(10,10,16,.92) 100%),url("assets/tidal-archive-room-v21.jpg") center/cover no-repeat fixed;';
+    wrap.style.cssText = 'position:relative;top:auto;left:auto;width:100%;min-height:100dvh;color:#f2f1ee;display:flex;flex-direction:column;justify-content:space-between;padding:calc(40px + env(safe-area-inset-top)) 28px calc(40px + env(safe-area-inset-bottom));box-sizing:border-box;background:linear-gradient(180deg,rgba(10,10,16,.55) 0%,rgba(10,10,16,.75) 50%,rgba(10,10,16,.92) 100%),url("assets/tidal-archive-room-v21.jpg") center/cover no-repeat;';
     wrap.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
       '  <span style="font-size:10px;letter-spacing:.35em;color:#9a9aa2;">CASE FILE / NO.' + caseNo + '</span>' +

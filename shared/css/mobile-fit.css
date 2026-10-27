@@ -202,7 +202,6 @@
   .dock,
   .composer,
   .buy-bar,
-  .add-btn,
   .add-backdrop,
   .modal-backdrop.show {
     left: 0 !important;
