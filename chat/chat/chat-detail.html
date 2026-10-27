@@ -5848,6 +5848,28 @@
   border-color: rgba(105,185,255,.46) !important;
   box-shadow: none !important;
 }
+
+.phone-mockup[data-chat-theme-preset="imessage"] .msg-bubble::before,
+.phone-mockup[data-chat-theme-preset="imessage"] .msg-bubble::after,
+.chat-stage[data-chat-theme-preset="imessage"] .msg-bubble::before,
+.chat-stage[data-chat-theme-preset="imessage"] .msg-bubble::after,
+#vbPreview[data-chat-theme-preset="imessage"] .vbp-bubble::before,
+#vbPreview[data-chat-theme-preset="imessage"] .vbp-bubble::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+.chat-stage[data-chat-theme-preset="imessage"] .msg-row.received .msg-bubble::after,
+.chat-stage[data-chat-theme-preset="imessage"] .msg-row.left .msg-bubble::after,
+#vbPreview[data-chat-theme-preset="imessage"] .vbp-row.ta .vbp-bubble::after {
+  background: rgba(255,255,255,.12) !important;
+}
+.chat-stage[data-chat-theme-preset="imessage"] .msg-row.sent .msg-bubble::after,
+.chat-stage[data-chat-theme-preset="imessage"] .msg-row.right .msg-bubble::after,
+#vbPreview[data-chat-theme-preset="imessage"] .vbp-row.me .vbp-bubble::after {
+  background: rgba(0,122,255,.26) !important;
+}
 </style>
 <script>
 // iMessage clear transparency: no blur layers anywhere in this theme.
@@ -5938,7 +5960,7 @@
 
   var shell = document.querySelector('.phone-mockup');
   if (shell && window.MutationObserver) {
-    new MutationObserver(scheduleApply).observe(shell, { attributes: true, attributeFilter: ['data-chat-theme-preset'] });
+    new MutationObserver(scheduleApply).observe(shell, { attributes: true, attributeFilter: ['data-chat-theme-preset'], childList: true, subtree: true });
   }
 })();
 </script>
