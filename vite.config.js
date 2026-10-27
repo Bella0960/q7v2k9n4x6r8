@@ -1,3 +1,4 @@
+// build-trigger: 2026-10-27 (v2)
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import fs from 'fs';
