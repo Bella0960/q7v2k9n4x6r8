@@ -5069,7 +5069,7 @@
                 var history = loadMessages();
                 var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.trim().slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
                 ensureMid(message); history.push(message);
-                if (!saveMessages(history)) { showToast('投票创建失败，请检查本地存储'); return; }
+                saveMessages(history);
                 renderAllMessages(); showToast('群投票已发起');
             }, true);
             if (chainAction) chainAction.addEventListener('click', function (event) {
@@ -5081,7 +5081,7 @@
                 var history = loadMessages();
                 var message = { role: 'user', type: 'group_chain', text: '', chain: { title: title.trim().slice(0, 80), entries: entries, closed: false }, time: Date.now() };
                 ensureMid(message); history.push(message);
-                if (!saveMessages(history)) { showToast('接龙创建失败，请检查本地存储'); return; }
+                saveMessages(history);
                 renderAllMessages(); showToast('群接龙已发起');
             }, true);
             var messageContainer = document.getElementById('chat-messages');
