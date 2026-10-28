@@ -4233,6 +4233,7 @@
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
                         const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined };
                         historyList.push(aiMsg);
+                        window.__groupPrivateCardPending = false;
                         saveMessages(historyList);
                         // 删掉流式期间的临时气泡（它只显示了剥离标签后的原始文本）
                         if (streamBubble) {
@@ -4245,6 +4246,11 @@
                         // 模型只输出了标记：移除空白气泡、不落文本（来电卡/红包卡仍会插入）
                         const onlyRow = streamBubble.closest('.msg-row');
                         if (onlyRow) onlyRow.remove();
+                        // 仅私聊标记也可能构成一条完整回复，需要立即刷新群私聊卡片。
+                        if (window.__groupPrivateCardPending) {
+                            window.__groupPrivateCardPending = false;
+                            renderAllMessages();
+                        }
                     }
                     if (parsedCall.wantCall) {
                         // AI 侧插入黑底「发起语音通话」卡并落库；是否拨号由 chat_auto_call 开关决定
@@ -5249,6 +5255,7 @@
                 ensureMid(groupPrivateMessage);
                 historyList.push(groupPrivateMessage);
                 saveMessages(historyList);
+                window.__groupPrivateCardPending = true;
                 showGroupPrivatePopup(displayName, targetId, privateMessageText);
                 return '';
             });
@@ -5277,6 +5284,7 @@
                     var existing = (currentGroup.members || []).find(function (member) { return String(member.id) === targetName || String(member.name || '').trim() === targetName || groupMemberDisplayName(member) === targetName; });
                     if (existing && (currentGroup.members || []).length > 1) {
                         currentGroup.members = currentGroup.members.filter(function (member) { return String(member.id) !== String(existing.id); });
+                        if (String(currentGroup.ownerId || '') === String(existing.id)) currentGroup.ownerId = '__user';
                         actionMessage = '群管理员将「' + groupMemberDisplayName(existing) + '」移出群聊';
                     }
                 }
