@@ -4537,7 +4537,7 @@
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
-                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList);
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen);
                     // 落盘前剥离主动通话标记：气泡展示与聊天记录均不保留标记，避免污染后续上下文
                     const parsedCall = extractVoiceCallMarker(fullText);
                     fullText = parsedCall.text;
@@ -5614,12 +5614,12 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
             text = text.replace(/\[群关系互动[:：]([^\]]{1,100})\]/g, function (marker, targetKey) {
-                if (isRegen || !speaker || speaker.id == null) return '';
+                if (isRegeneration || !speaker || speaker.id == null) return '';
                 var targetId = String(targetKey || '').trim();
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
                 var target = members.find(function (member) { return member && String(member.id) === targetId; });
