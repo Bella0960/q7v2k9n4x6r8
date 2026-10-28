@@ -5632,7 +5632,7 @@
                     relation.familiarity = Math.min(100, Math.max(0, parseInt(relation.familiarity, 10) || 0) + 1);
                     relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0) + 1;
                     relation.lastInteractionAt = Date.now();
-                    var summary = String(memorySummary || '').replace(/[\\r\\n]+/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 140);
+                    var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
                     if (summary) {
                         if (!Array.isArray(relation.memories)) relation.memories = [];
                         relation.memories.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
