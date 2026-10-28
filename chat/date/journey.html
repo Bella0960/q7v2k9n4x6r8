@@ -201,7 +201,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   var stateKey = 'chat_journey_state_' + roleId;
   var historyKey = 'chat_history_' + roleId;
   var modeKey = 'chat_mode_' + roleId;
-  var totalDuration = 36000;
+  var totalDuration = 34000;
   var stages = [
     {at:0,eta:18,title:'准备出发',description:'位置共享已开启，正在往约定地点出发。',left:'位置已共享',right:'预计行程 18 分钟'},
     {at:8000,eta:12,title:'已经在路上',description:'路线开始移动，预计到达时间正在更新。',left:'持续更新位置',right:'预计还需 12 分钟'},
@@ -267,7 +267,12 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     if(!text) text=generateFallbackText(stageIndex);
     var list=loadHistory();
     var messageTime=Number(state.startedAt||Date.now()) + stages[stageIndex].at;
-    list.push({role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:String(state.startedAt),journeyStage:stageIndex,scene:state.scene,type:'text'});
+    var entry={role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:String(state.startedAt),journeyStage:stageIndex,scene:state.scene,type:'text'};
+    if(stageIndex===0){
+      entry.type='location';
+      entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计18分钟到达'};
+    }
+    list.push(entry);
     if(!saveHistory(list)){ showStorageWarning(); }
     state.sentStages.push(stageIndex);
     saveState();
