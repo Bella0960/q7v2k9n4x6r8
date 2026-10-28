@@ -5559,8 +5559,22 @@
                 composerMode = '';
                 composerTargetMid = '';
             }
+            function maybeStartGroupActivity() {
+                const settings = getGroupSettings();
+                const rounds = Number(settings.autoTalkRounds);
+                if (!settings.autoTalkEnabled || !rounds || getAvailableGroupMembers().length < 2) return;
+                if (aiSending) {
+                    showToast('等当前回复结束后，再发起新的群互动');
+                    return;
+                }
+                // 刚创建的投票/接龙也能触发成员响应，不必再额外发送一条文字消息。
+                setTimeout(function () {
+                    sendMsg({ contextOnly: true, silent: true, groupFollowup: true, groupAutoDepth: 1 });
+                }, 180);
+            }
             function openComposer(mode, targetMid) {
                 if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }
+                if (aiSending) { showToast('等当前角色回复结束后再发起互动'); return; }
                 composerMode = mode;
                 composerTargetMid = targetMid || '';
                 composerForm.reset();
@@ -5623,6 +5637,7 @@
                     var history = loadMessages();
                     var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
                     ensureMid(message); history.push(message); saveMessages(history); closeComposer(); renderAllMessages(); showToast('群投票已发起');
+                    maybeStartGroupActivity();
                 } else if (composerMode === 'chain') {
                     var title = composerQuestion.value.trim();
                     if (!title) { composerQuestion.focus(); showToast('先写下接龙主题'); return; }
@@ -5631,6 +5646,7 @@
                     var chainHistory = loadMessages();
                     var chainMessage = { role: 'user', type: 'group_chain', text: '', chain: { title: title.slice(0, 80), entries: entries, closed: false }, time: Date.now() };
                     ensureMid(chainMessage); chainHistory.push(chainMessage); saveMessages(chainHistory); closeComposer(); renderAllMessages(); showToast('群接龙已发起');
+                    maybeStartGroupActivity();
                 } else if (composerMode === 'join') {
                     var entryText = composerEntry.value.trim();
                     if (!entryText) { composerEntry.focus(); showToast('写点内容再提交'); return; }
