@@ -6,6 +6,7 @@
 <title>钱包 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261028v2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -274,6 +275,15 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: #111111;
+    min-width: 0;
+  }
+  .wl-action-subtext {
+    display: block;
+    margin-top: 4px;
+    color: #999999;
+    font-size: 0.688rem;
+    line-height: 1.4;
+    font-weight: 400;
   }
   .wl-action-arrow svg { width: 14px; height: 14px; stroke: #C7C7CC; display: block; }
 
@@ -505,6 +515,15 @@
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           </span>
         </div>
+        <div class="wl-action-card" id="cardFamilyCards">
+          <span class="wl-action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>
+          </span>
+          <span class="wl-action-text">赠予卡包<span class="wl-action-subtext" id="familyCardSummary">角色送来的亲属卡与亲密付</span></span>
+          <span class="wl-action-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </span>
+        </div>
         <div class="wl-history-panel" id="historyPanel">
           <div class="wl-history-list" id="historyList"></div>
         </div>
@@ -698,9 +717,31 @@
     txCard.classList.toggle('open', willOpen);
   });
 
-  // 亲密付入口
+  // 亲密付入口（原有方向：你给角色代付）
   var cpCard = document.getElementById('cardClosePay');
   if (cpCard) cpCard.addEventListener('click', function () { location.href = 'close-pay.html'; });
+
+  // 角色赠予的亲属卡 / 亲密付卡包
+  var familyCardsEntry = document.getElementById('cardFamilyCards');
+  var familyCardSummary = document.getElementById('familyCardSummary');
+  function renderFamilyCardSummary() {
+    if (!familyCardSummary) return;
+    if (!window.RoleFamilyCards) {
+      familyCardSummary.textContent = '查看角色送来的额度卡';
+      return;
+    }
+    var cards = window.RoleFamilyCards.readAll();
+    var activeCount = cards.filter(function (card) { return card.status === 'active'; }).length;
+    var pendingCount = cards.filter(function (card) { return card.status === 'pending'; }).length;
+    familyCardSummary.textContent = activeCount || pendingCount
+      ? activeCount + ' 张可用 · ' + pendingCount + ' 张待领取'
+      : '角色送来的亲属卡与亲密付';
+  }
+  if (familyCardsEntry) familyCardsEntry.addEventListener('click', function () {
+    location.href = 'family-cards.html';
+  });
+  window.addEventListener('pageshow', renderFamilyCardSummary);
+  renderFamilyCardSummary();
 
   // ===== 余额：读取 workData 渲染（结构非法一律回落 1000，绝不把脏数据带进计算）=====
   var balanceAmountEl = document.getElementById('balanceAmount');
