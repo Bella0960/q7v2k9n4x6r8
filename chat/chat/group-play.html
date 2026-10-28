@@ -40,6 +40,20 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 .switch input:checked+.track{background:#111}
 .switch input:checked+.track:after{transform:translateX(18px)}
 .members{display:flex;flex-direction:column;gap:12px}
+.relationships{display:flex;flex-direction:column}
+.relationship{border-top:1px solid var(--line);padding:14px 0 16px}
+.relationship:first-child{border-top:0}
+.relationship-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
+.relationship-pair{font-size:12px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.relationship-pair small{display:block;color:#999;font-size:10px;font-weight:400;margin-top:3px}
+.relationship-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.relationship .field{gap:6px}
+.relationship .field label{font-size:10px}
+.relationship select,.relationship input[type=text]{width:100%;min-width:0;height:36px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:11px;color:#111;outline:none}
+.relationship-meter{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#777;font-size:10px;margin-bottom:5px}
+.relationship-meter strong{font-size:10px;color:#111;font-weight:600}
+.relationship input[type=range]{width:100%;accent-color:#111;display:block;height:22px;margin:0}
+.relationship-note{margin-top:10px}
 .member{border:1px solid #ececf0;border-radius:15px;padding:14px;background:#fff}
 .member-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .avatar{width:38px;height:38px;border-radius:12px;background:#f0f0f3;overflow:hidden;display:grid;place-items:center;flex:none;font-size:14px;color:#777}
@@ -144,6 +158,10 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     <div class="section"><h3>成员资料</h3><span>IDENTITY / HOURS</span></div>
     <div id="membersList" class="members"></div>
     <p class="hint">群昵称和专属头衔只影响群聊显示，不会修改角色库原始资料。禁言与作息只影响该角色能否被选中发言。</p>
+
+    <div class="section"><h3>成员关系与熟悉度</h3><span>RELATIONSHIPS</span></div>
+    <div id="relationshipsList" class="relationships"></div>
+    <p class="hint">关系按成员对独立保存。角色真正接着另一位成员的话题互动时，熟悉度会缓慢增长；关系类型和补充说明由你掌控。此功能不会额外调用 API。</p>
 
     <div class="section"><h3>邀请角色</h3><span>ADD MEMBERS</span></div>
     <div id="addList" class="add-list"></div>
@@ -268,6 +286,30 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
           '</div></div></article>';
       }).join('');
     }
+    var relationshipTypes=['未设定','陌生人','刚认识','朋友','好友','亲密','暧昧','恋人','家人','竞争对手','互相看不顺眼','自定义'];
+    function relationshipKey(idA,idB){return JSON.stringify([String(idA),String(idB)].sort());}
+    function renderRelationships(){
+      var list=document.getElementById('relationshipsList');
+      var members=Array.isArray(group.members)?group.members:[];
+      if(members.length<2){list.innerHTML='<div class="empty">至少邀请两位角色入群，才能设置他们之间的关系。</div>';return;}
+      var rows=[];
+      for(var i=0;i<members.length;i++){
+        for(var j=i+1;j<members.length;j++){
+          var a=members[i],b=members[j],key=relationshipKey(a.id,b.id);
+          var rel=(group.relationships&&group.relationships[key])||{};
+          var type=relationshipTypes.indexOf(String(rel.type||'未设定'))!==-1?String(rel.type||'未设定'):'自定义';
+          var familiarity=Math.max(0,Math.min(100,parseInt(rel.familiarity,10)||0));
+          var options=relationshipTypes.map(function(option){return '<option value="'+escapeHtml(option)+'" '+(option===type?'selected':'')+'>'+escapeHtml(option)+'</option>';}).join('');
+          rows.push('<article class="relationship" data-relationship-key="'+escapeHtml(key)+'">'+
+            '<div class="relationship-head"><div class="relationship-pair">'+escapeHtml(groupMemberName(a))+' ↔ '+escapeHtml(groupMemberName(b))+'<small>双向关系 · '+(parseInt(rel.interactions,10)||0)+' 次明确互动</small></div></div>'+
+            '<div class="relationship-fields"><div class="field"><label>关系类型</label><select data-relationship-field="type">'+options+'</select></div>'+
+            '<div class="field"><div class="relationship-meter"><label>熟悉度</label><strong><span data-familiarity-value>'+familiarity+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="familiarity" value="'+familiarity+'" aria-label="'+escapeHtml(groupMemberName(a)+'与'+groupMemberName(b)+'的熟悉度')+'"></div></div>'+
+            '<div class="field relationship-note"><label>关系补充（可选）</label><input type="text" maxlength="120" data-relationship-field="note" value="'+escapeHtml(rel.note||'')+'" placeholder="例如：总是斗嘴，但会替对方收尾"></div></article>');
+        }
+      }
+      list.innerHTML=rows.join('');
+    }
+    function groupMemberName(member){return String((member&&(member.nickname||member.name))||'未命名成员');}
     function renderCandidates(){
       var list=document.getElementById('addList');
       var all=readArray('ai_custom_characters');
@@ -280,6 +322,31 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         return '<button type="button" class="add-item" data-add-member="'+escapeHtml(id)+'"><span class="avatar">'+avatar+'</span><span class="add-copy"><strong>'+escapeHtml(role.name||'未命名角色')+'</strong><small>角色库成员</small></span><span class="add-mark">+</span></button>';
       }).join('');
     }
+    document.getElementById('relationshipsList').addEventListener('input',function(event){
+      var input=event.target.closest('[data-relationship-field="familiarity"]');
+      if(!input)return;
+      var label=input.closest('.field').querySelector('[data-familiarity-value]');
+      if(label)label.textContent=String(input.value);
+    });
+    document.getElementById('relationshipsList').addEventListener('change',function(event){
+      var input=event.target.closest('[data-relationship-field]');
+      if(!input)return;
+      var card=input.closest('[data-relationship-key]');
+      if(!card)return;
+      var key=card.getAttribute('data-relationship-key');
+      var ids;
+      try{ids=JSON.parse(key);}catch(e){return;}
+      if(!Array.isArray(group.relationships))group.relationships={};
+      if(!group.relationships||typeof group.relationships!=='object'||Array.isArray(group.relationships))group.relationships={};
+      var rel=group.relationships[key];
+      if(!rel||typeof rel!=='object')rel=group.relationships[key]={memberAId:String(ids[0]),memberBId:String(ids[1]),type:'未设定',familiarity:0,interactions:0,note:'',lastInteractionAt:0};
+      var field=input.getAttribute('data-relationship-field');
+      if(field==='familiarity')rel.familiarity=Math.max(0,Math.min(100,parseInt(input.value,10)||0));
+      else if(field==='type')rel.type=relationshipTypes.indexOf(input.value)!==-1?input.value:'自定义';
+      else if(field==='note')rel.note=String(input.value||'').trim().slice(0,120);
+      persist('成员关系已保存');
+      renderRelationships();
+    });
     document.getElementById('transferOwnerBtn').addEventListener('click',function(){
       var nextOwnerId=document.getElementById('ownerSelect').value||'__user';
       var oldOwner=String(group.ownerId||'__user');
@@ -302,7 +369,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(input.type==='checkbox')member[field]=input.checked;
       else member[field]=input.value.trim();
       persist('成员资料已保存');
-      renderMembers();renderOwner();
+      renderMembers();renderOwner();renderRelationships();
     });
     document.getElementById('membersList').addEventListener('click',function(event){
       var button=event.target.closest('[data-remove-member]');
@@ -311,7 +378,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
       group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
       if(String(group.ownerId)===String(id))group.ownerId='__user';
-      persist('已移出群聊');renderMembers();renderCandidates();renderOwner();
+      persist('已移出群聊');renderMembers();renderCandidates();renderOwner();renderRelationships();
     });
     document.getElementById('addList').addEventListener('click',function(event){
       var button=event.target.closest('[data-add-member]');
@@ -322,9 +389,9 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!Array.isArray(group.members))group.members=[];
       if(group.members.some(function(m){return String(m.id)===String(id);}))return;
       group.members.push({id:String(role.id),name:role.name||'未命名角色',avatar:role.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00'});
-      persist('已邀请 '+(role.name||'角色')+' 入群');renderMembers();renderCandidates();renderOwner();
+      persist('已邀请 '+(role.name||'角色')+' 入群');renderMembers();renderCandidates();renderOwner();renderRelationships();
     });
-    renderSettings();renderMembers();renderCandidates();renderOwner();
+    renderSettings();renderMembers();renderCandidates();renderOwner();renderRelationships();
   }
   document.getElementById('backBtn').addEventListener('click',function(){
     location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
