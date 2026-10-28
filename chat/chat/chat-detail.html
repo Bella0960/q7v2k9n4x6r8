@@ -1889,6 +1889,27 @@
 .group-chain-entry strong{font-size:10px;font-weight:600;color:#777}
 .group-chain-entry span{color:#333;overflow-wrap:anywhere}
 .group-chain-empty{color:#999;font-size:11px}
+
+.group-composer-overlay{position:fixed;inset:0;z-index:950;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(0,0,0,.28)}
+.group-composer-overlay.active{display:flex;animation:groupComposerFade .18s ease both}
+.group-composer-sheet{width:min(360px,100%);max-height:min(80dvh,620px);overflow:auto;background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:22px;padding:20px;box-shadow:0 16px 50px rgba(0,0,0,.16);transform:translateY(8px);animation:groupComposerRise .22s cubic-bezier(.2,.75,.25,1) both}
+.group-composer-kicker{font:500 9px/1.2 Georgia,serif;letter-spacing:1.8px;color:#999;text-transform:uppercase}
+.group-composer-title{font:500 22px/1.2 Georgia,"Songti SC",serif;margin:8px 0 6px;color:#111}
+.group-composer-desc{font-size:11px;line-height:1.65;color:#888;margin-bottom:17px}
+.group-composer-field{display:flex;flex-direction:column;gap:7px;margin-top:13px}
+.group-composer-field label{font-size:11px;color:#666}
+.group-composer-field input,.group-composer-field textarea{width:100%;border:1px solid #e6e6eb;border-radius:11px;background:#f9f9fb;padding:11px 12px;color:#111;font:inherit;font-size:13px;outline:none;resize:vertical;min-height:42px}
+.group-composer-field textarea{min-height:92px;line-height:1.55}
+.group-composer-field input:focus,.group-composer-field textarea:focus{border-color:#aaa;background:#fff}
+.group-composer-note{font-size:10px;line-height:1.5;color:#999;margin-top:6px}
+.group-composer-actions{display:flex;gap:9px;margin-top:20px}
+.group-composer-actions button{height:42px;border-radius:12px;font:inherit;font-size:12px;cursor:pointer}
+.group-composer-cancel{flex:1;border:1px solid #e6e6eb;background:#fff;color:#666}
+.group-composer-submit{flex:1.4;border:1px solid #111;background:#111;color:#fff}
+@keyframes groupComposerFade{from{opacity:0}to{opacity:1}}
+@keyframes groupComposerRise{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.group-composer-overlay.active,.group-composer-sheet{animation:none!important}}
+
 @media(prefers-reduced-motion:reduce){.group-poll-option,.group-interaction-primary{transition:none!important}}
 </style>
 </head>
@@ -2134,6 +2155,32 @@
 
     </div>
 
+
+        <div class="group-composer-overlay" id="groupComposerOverlay" aria-hidden="true">
+            <form class="group-composer-sheet" id="groupComposerForm" role="dialog" aria-modal="true" aria-labelledby="groupComposerTitle">
+                <div class="group-composer-kicker">GROUP / INTERACTION</div>
+                <h2 class="group-composer-title" id="groupComposerTitle">发起群互动</h2>
+                <p class="group-composer-desc" id="groupComposerDesc">和群成员一起完成一件小事。</p>
+                <div class="group-composer-field" id="groupComposerQuestionWrap">
+                    <label for="groupComposerQuestion" id="groupComposerQuestionLabel">投票问题</label>
+                    <input id="groupComposerQuestion" type="text" maxlength="100" autocomplete="off" placeholder="例如：周末去哪儿？">
+                </div>
+                <div class="group-composer-field" id="groupComposerOptionsWrap">
+                    <label for="groupComposerOptions">投票选项</label>
+                    <textarea id="groupComposerOptions" maxlength="600" placeholder="海边散步&#10;在家看电影&#10;去吃火锅"></textarea>
+                    <div class="group-composer-note">每行一个选项，或用竖线 | 分隔，最多 6 个。</div>
+                </div>
+                <div class="group-composer-field" id="groupComposerEntryWrap" style="display:none;">
+                    <label for="groupComposerEntry" id="groupComposerEntryLabel">我的内容</label>
+                    <textarea id="groupComposerEntry" maxlength="120" placeholder="写下这一条内容"></textarea>
+                </div>
+                <div class="group-composer-actions">
+                    <button class="group-composer-cancel" type="button" id="groupComposerCancel">取消</button>
+                    <button class="group-composer-submit" type="submit" id="groupComposerSubmit">创建互动</button>
+                </div>
+            </form>
+        </div>
+
     <script src="../../shared/js/memory.js"></script>
     <script src="../../shared/js/sound-system.js"></script>
     <script>
@@ -2330,7 +2377,7 @@
         // 群聊：副标题显示成员名单；普通聊天保持 ONLINE
         const chatStatusSub = document.getElementById('chat-status-sub');
         if (isGroupChat && chatStatusSub) {
-            const names = (currentGroup && currentGroup.members || []).map(function (m) { return m.name; }).filter(Boolean);
+            const names = (currentGroup && currentGroup.members || []).map(groupMemberDisplayName).filter(Boolean);
             chatStatusSub.textContent = names.length ? names.join(' · ') : '群聊';
             // 群聊：显示群公告横条（chat_group_notice_<gid>）
             const chatNoticeBar = document.getElementById('chat-notice-bar');
@@ -5049,6 +5096,21 @@
         (function bindGroupInteractionActions() {
             var pollAction = document.querySelector('.plus-item[data-feat="group-poll"]');
             var chainAction = document.querySelector('.plus-item[data-feat="group-chain"]');
+            var composerOverlay = document.getElementById('groupComposerOverlay');
+            var composerForm = document.getElementById('groupComposerForm');
+            var composerTitle = document.getElementById('groupComposerTitle');
+            var composerDesc = document.getElementById('groupComposerDesc');
+            var composerQuestion = document.getElementById('groupComposerQuestion');
+            var composerQuestionLabel = document.getElementById('groupComposerQuestionLabel');
+            var composerQuestionWrap = document.getElementById('groupComposerQuestionWrap');
+            var composerOptionsWrap = document.getElementById('groupComposerOptionsWrap');
+            var composerOptions = document.getElementById('groupComposerOptions');
+            var composerEntryWrap = document.getElementById('groupComposerEntryWrap');
+            var composerEntryLabel = document.getElementById('groupComposerEntryLabel');
+            var composerEntry = document.getElementById('groupComposerEntry');
+            var composerSubmit = document.getElementById('groupComposerSubmit');
+            var composerMode = '';
+            var composerTargetMid = '';
             if (!isGroupChat) {
                 if (pollAction) pollAction.style.display = 'none';
                 if (chainAction) chainAction.style.display = 'none';
@@ -5058,32 +5120,98 @@
                 var overlay = document.querySelector('.plus-panel-overlay');
                 if (overlay) overlay.classList.remove('active');
             }
+            function closeComposer() {
+                if (!composerOverlay) return;
+                composerOverlay.classList.remove('active');
+                composerOverlay.setAttribute('aria-hidden', 'true');
+                composerMode = '';
+                composerTargetMid = '';
+            }
+            function openComposer(mode, targetMid) {
+                if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }
+                composerMode = mode;
+                composerTargetMid = targetMid || '';
+                composerForm.reset();
+                composerQuestionWrap.style.display = '';
+                composerOptionsWrap.style.display = mode === 'poll' ? '' : 'none';
+                composerEntryWrap.style.display = mode === 'join' || mode === 'chain' ? '' : 'none';
+                if (mode === 'poll') {
+                    composerTitle.textContent = '发起群投票';
+                    composerDesc.textContent = '把问题抛给大家，每位成员都可以表达自己的选择。';
+                    composerQuestionLabel.textContent = '投票问题';
+                    composerQuestion.placeholder = '例如：周末去哪儿？';
+                    composerEntryWrap.style.display = 'none';
+                    composerSubmit.textContent = '发起投票';
+                } else if (mode === 'chain') {
+                    composerTitle.textContent = '发起群接龙';
+                    composerDesc.textContent = '先定一个主题，大家接着往下写。';
+                    composerQuestionLabel.textContent = '接龙主题';
+                    composerQuestion.placeholder = '例如：今天最想做的一件事';
+                    composerEntryLabel.textContent = '我的第一条（可留空）';
+                    composerEntry.placeholder = '可先留空，让群成员接第一棒';
+                    composerSubmit.textContent = '发起接龙';
+                } else {
+                    composerTitle.textContent = '参与接龙';
+                    composerDesc.textContent = '写下你的内容，提交后会追加到接龙列表。';
+                    composerQuestionWrap.style.display = 'none';
+                    composerEntryLabel.textContent = '我的接龙内容';
+                    composerEntry.placeholder = '写下这一条内容';
+                    composerSubmit.textContent = '提交内容';
+                }
+                composerOverlay.classList.add('active');
+                composerOverlay.setAttribute('aria-hidden', 'false');
+                setTimeout(function () {
+                    var focusTarget = mode === 'join' ? composerEntry : composerQuestion;
+                    if (focusTarget) focusTarget.focus();
+                }, 80);
+            }
             if (pollAction) pollAction.addEventListener('click', function (event) {
-                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel();
-                var question = window.prompt('投票问题是什么？');
-                if (!question || !question.trim()) return;
-                var rawOptions = window.prompt('输入 2–6 个选项，用换行或竖线 | 分隔。');
-                if (!rawOptions) return;
-                var options = rawOptions.split(/[\n|]/).map(function (item) { return item.trim().slice(0, 40); }).filter(Boolean).slice(0, 6);
-                if (options.length < 2) { showToast('至少需要两个投票选项'); return; }
-                var history = loadMessages();
-                var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.trim().slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
-                ensureMid(message); history.push(message);
-                saveMessages(history);
-                renderAllMessages(); showToast('群投票已发起');
+                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel(); openComposer('poll');
             }, true);
             if (chainAction) chainAction.addEventListener('click', function (event) {
-                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel();
-                var title = window.prompt('接龙主题是什么？');
-                if (!title || !title.trim()) return;
-                var first = window.prompt('先写下自己的第一条接龙内容（可留空）') || '';
-                var entries = first.trim() ? [{ memberId: '__user', name: '我', text: first.trim().slice(0, 120), time: Date.now() }] : [];
-                var history = loadMessages();
-                var message = { role: 'user', type: 'group_chain', text: '', chain: { title: title.trim().slice(0, 80), entries: entries, closed: false }, time: Date.now() };
-                ensureMid(message); history.push(message);
-                saveMessages(history);
-                renderAllMessages(); showToast('群接龙已发起');
+                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel(); openComposer('chain');
             }, true);
+            if (composerOverlay) composerOverlay.addEventListener('click', function (event) {
+                if (event.target === composerOverlay) closeComposer();
+            });
+            var composerCancel = document.getElementById('groupComposerCancel');
+            if (composerCancel) composerCancel.addEventListener('click', closeComposer);
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && composerOverlay && composerOverlay.classList.contains('active')) closeComposer();
+            });
+            if (composerForm) composerForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+                if (composerMode === 'poll') {
+                    var question = composerQuestion.value.trim();
+                    var options = composerOptions.value.split(/[\n|]/).map(function (item) { return item.trim().slice(0, 40); }).filter(Boolean).slice(0, 6);
+                    if (!question) { composerQuestion.focus(); showToast('先写下投票问题'); return; }
+                    if (options.length < 2) { composerOptions.focus(); showToast('至少填写两个不同的选项'); return; }
+                    options = options.filter(function (item, index) { return options.indexOf(item) === index; });
+                    if (options.length < 2) { showToast('投票选项不能完全相同'); return; }
+                    var history = loadMessages();
+                    var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
+                    ensureMid(message); history.push(message); saveMessages(history); closeComposer(); renderAllMessages(); showToast('群投票已发起');
+                } else if (composerMode === 'chain') {
+                    var title = composerQuestion.value.trim();
+                    if (!title) { composerQuestion.focus(); showToast('先写下接龙主题'); return; }
+                    var first = composerEntry.value.trim();
+                    var entries = first ? [{ memberId: '__user', name: '我', text: first.slice(0, 120), time: Date.now() }] : [];
+                    var chainHistory = loadMessages();
+                    var chainMessage = { role: 'user', type: 'group_chain', text: '', chain: { title: title.slice(0, 80), entries: entries, closed: false }, time: Date.now() };
+                    ensureMid(chainMessage); chainHistory.push(chainMessage); saveMessages(chainHistory); closeComposer(); renderAllMessages(); showToast('群接龙已发起');
+                } else if (composerMode === 'join') {
+                    var entryText = composerEntry.value.trim();
+                    if (!entryText) { composerEntry.focus(); showToast('写点内容再提交'); return; }
+                    var joinHistory = loadMessages();
+                    var targetMessage = joinHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(composerTargetMid); });
+                    var targetChain = targetMessage && targetMessage.chain;
+                    if (!targetChain || targetChain.closed) { closeComposer(); showToast('这条接龙已结束'); renderAllMessages(); return; }
+                    if (!Array.isArray(targetChain.entries)) targetChain.entries = [];
+                    if (targetChain.entries.some(function (entry) { return String(entry.memberId || '') === '__user'; })) { showToast('你已经参与过这条接龙'); return; }
+                    targetChain.entries.push({ memberId: '__user', name: '我', text: entryText.slice(0, 120), time: Date.now() });
+                    saveMessages(joinHistory); closeComposer(); renderAllMessages(); showToast('已加入接龙');
+                }
+            });
             var messageContainer = document.getElementById('chat-messages');
             if (!messageContainer) return;
             messageContainer.addEventListener('click', function (event) {
@@ -5113,11 +5241,8 @@
                     var chainMessage = chainHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(joinButton.getAttribute('data-chain-join')); });
                     var chain = chainMessage && chainMessage.chain;
                     if (!chain || chain.closed) return;
-                    var entryText = window.prompt('写下你的接龙内容');
-                    if (!entryText || !entryText.trim()) return;
-                    if (!Array.isArray(chain.entries)) chain.entries = [];
-                    chain.entries.push({ memberId: '__user', name: '我', text: entryText.trim().slice(0, 120), time: Date.now() });
-                    saveMessages(chainHistory); renderAllMessages(); return;
+                    openComposer('join', String(ensureMid(chainMessage)));
+                    return;
                 }
                 var closeChainButton = event.target.closest('[data-chain-close]');
                 if (closeChainButton) {
