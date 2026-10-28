@@ -7,6 +7,7 @@
 <title>商店</title>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261028v1"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -662,7 +663,7 @@
   let payFromCart = false;
   let payMethod = 'normal'; // 'normal' | 'close_pay'
 
-  // 读取亲密付配置
+  // 读取亲密付配置（用户给角色代付，保留原有方向）
   function getClosePay() {
     try {
       var d = JSON.parse(localStorage.getItem('close_pay') || 'null');
@@ -671,12 +672,43 @@
     return null;
   }
 
+  function escapeFamilyCardText(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+    });
+  }
+  function getRoleCardFromMethod(method) {
+    if (!window.RoleFamilyCards || String(method || '').indexOf('role_card:') !== 0) return null;
+    return window.RoleFamilyCards.find(String(method).slice('role_card:'.length));
+  }
+  function canUseRoleCard(card, total) {
+    return !!(window.RoleFamilyCards && window.RoleFamilyCards.canUse(card, total));
+  }
+  function notifyRoleCardIssuer(card, message) {
+    if (!card || !card.roleId) return;
+    try {
+      var key = 'chat_history_' + card.roleId;
+      var list = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(list)) list = [];
+      list.push({ role: 'user', type: 'text', text: message, time: Date.now() });
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (e) {}
+  }
+
   // 动态渲染支付方式列表：日常账户 + 可选亲密付
   function renderPayMethods(total) {
     var box = document.getElementById('payMethods');
     var cp = getClosePay();
     var canClose = cp && cp.enabled && cp.roleName &&
                    (Number(cp.used) || 0) + total <= (Number(cp.limit) || 0);
+    var roleCardApi = window.RoleFamilyCards;
+    var roleCards = roleCardApi ? roleCardApi.readAll().filter(function (card) {
+      return card && card.status === 'active';
+    }) : [];
+    if (payMethod.indexOf('role_card:') === 0) {
+      var selectedRoleCard = getRoleCardFromMethod(payMethod);
+      if (!selectedRoleCard || !canUseRoleCard(selectedRoleCard, total)) payMethod = 'normal';
+    }
 
     var normalHtml =
       '<div data-method="normal" style="padding:14px;border-radius:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;border:1.5px solid ' + (payMethod==='normal' ? '#111' : '#E5E5EA') + ';background:#fff;cursor:pointer;">' +
@@ -692,30 +724,48 @@
     var cpHtml = '';
     if (canClose) {
       cpHtml =
-        '<div data-method="close_pay" style="padding:14px;border-radius:14px;display:flex;justify-content:space-between;align-items:center;border:1.5px solid ' + (payMethod==='close_pay' ? '#111' : '#E5E5EA') + ';background:#fff;cursor:pointer;">' +
+        '<div data-method="close_pay" style="padding:14px;border-radius:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;border:1.5px solid ' + (payMethod==='close_pay' ? '#111' : '#E5E5EA') + ';background:#fff;cursor:pointer;">' +
           '<div>' +
-            '<div style="font-size:0.875rem;font-weight:600;">亲密付 · ' + cp.roleName + '</div>' +
-            '<div style="font-size:0.688rem;color:#999;margin-top:4px;">剩余 ¥' + Math.max(0,(Number(cp.limit)-Number(cp.used))).toFixed(0) + ' / 月</div>' +
+            '<div style="font-size:0.875rem;font-weight:600;">亲密付 · ' + escapeFamilyCardText(cp.roleName) + '</div>' +
+            '<div style="font-size:0.688rem;color:#999;margin-top:4px;">剩余 ¥' + Math.max(0,(Number(cp.limit)-Number(cp.used))).toFixed(2) + ' / 月</div>' +
           '</div>' +
           '<div style="width:18px;height:18px;border-radius:50%;border:1.5px solid ' + (payMethod==='close_pay' ? '#111' : '#E5E5EA') + ';display:flex;align-items:center;justify-content:center;">' +
             (payMethod==='close_pay' ? '<div style="width:10px;height:10px;border-radius:50%;background:#111;"></div>' : '') +
           '</div>' +
         '</div>';
     } else if (cp && cp.enabled && !cp.roleName) {
-      cpHtml = '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F7;font-size:0.75rem;color:#999;">亲密付未设置对象</div>';
+      cpHtml = '<div style="padding:12px 14px;border-radius:14px;background:#F7F7F7;font-size:0.75rem;color:#999;margin-bottom:10px;">你设置的亲密付还没有绑定角色</div>';
     }
-    box.innerHTML = normalHtml + cpHtml;
 
-    // 点击切换支付方式
+    var roleCardsHtml = roleCards.map(function (card) {
+      var method = 'role_card:' + card.id;
+      var available = Math.max(0, (Number(card.monthlyLimit) || 0) - roleCardApi.usedThisMonth(card));
+      var usable = canUseRoleCard(card, total);
+      var selected = payMethod === method;
+      var kind = card.kind === 'intimate' ? '亲密付' : '亲属卡';
+      var disabledHint = total > (Number(card.singleLimit) || 0)
+        ? '超过单笔上限'
+        : (available < total ? '本月额度不足' : '暂不可用');
+      return '<div ' + (usable ? 'data-method="' + escapeFamilyCardText(method) + '"' : '') +
+        ' style="padding:14px;border-radius:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;border:1.5px solid ' + (selected ? '#111' : '#E5E5EA') + ';background:#fff;cursor:' + (usable ? 'pointer' : 'not-allowed') + ';opacity:' + (usable ? '1' : '.56') + ';">' +
+          '<div style="min-width:0;flex:1;">' +
+            '<div style="font-size:0.875rem;font-weight:600;">' + kind + ' · ' + escapeFamilyCardText(card.roleName || '角色') + ' 赠予</div>' +
+            '<div style="font-size:0.688rem;color:#888;margin-top:4px;">本月剩余 ¥' + available.toFixed(2) + ' · 单笔上限 ¥' + (Number(card.singleLimit) || 0).toFixed(2) + '</div>' +
+            (usable ? '' : '<div style="font-size:0.688rem;color:#888;margin-top:4px;">' + disabledHint + '</div>') +
+          '</div>' +
+          '<div style="width:18px;height:18px;border-radius:50%;border:1.5px solid ' + (selected ? '#111' : '#E5E5EA') + ';display:flex;align-items:center;justify-content:center;margin-left:10px;">' +
+            (selected ? '<div style="width:10px;height:10px;border-radius:50%;background:#111;"></div>' : '') +
+          '</div>' +
+        '</div>';
+    }).join('');
+
+    box.innerHTML = normalHtml + cpHtml + roleCardsHtml;
     box.querySelectorAll('[data-method]').forEach(function(el){
       el.addEventListener('click', function(){
         payMethod = el.dataset.method;
         renderPayMethods(total);
       });
     });
-
-    // 如果当前选中的是 close_pay 但已不可用，回退 normal
-    if (payMethod === 'close_pay' && !canClose) payMethod = 'normal';
   }
 
   function updateBadge() {
@@ -946,6 +996,24 @@
 
   function doPay() {
     const total = payItems.reduce((s,c) => s + c.price, 0);
+    var roleFamilyCard = getRoleCardFromMethod(payMethod);
+    if (payMethod.indexOf('role_card:') === 0) {
+      if (!roleFamilyCard || !canUseRoleCard(roleFamilyCard, total)) {
+        showToast('这张亲属卡的额度不足或已停用');
+        payMethod = 'normal';
+        renderPayMethods(total);
+        return;
+      }
+      var roleCardSpend = window.RoleFamilyCards.consume(
+        roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop'
+      );
+      if (!roleCardSpend || !roleCardSpend.ok) {
+        showToast(roleCardSpend && roleCardSpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式');
+        renderPayMethods(total);
+        return;
+      }
+      roleFamilyCard = roleCardSpend.card;
+    }
     const now = new Date();
     const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
     const itemsDesc = payItems.map(c => c.cn).join('、');
@@ -955,8 +1023,10 @@
       const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
       payItems.forEach(c => {
         list.push({ amount: c.price, type: 'expense',
-          category: payMethod === 'close_pay' ? '亲密付' : '购物',
-          note: (payMethod === 'close_pay' ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · ' : '商店 · ') + c.cn,
+          category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
+          note: (payMethod === 'close_pay'
+            ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
+            : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + c.cn,
           time: timeStr });
       });
       localStorage.setItem('finance_records', JSON.stringify(list));
@@ -997,6 +1067,14 @@
           }
         }
       } catch(e) {}
+    }
+
+    if (roleFamilyCard) {
+      notifyRoleCardIssuer(roleFamilyCard,
+        '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
+        '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
+        '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
+        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
     }
 
     // 写入订单
