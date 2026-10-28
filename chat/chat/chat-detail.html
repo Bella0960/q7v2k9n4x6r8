@@ -1874,7 +1874,7 @@
   padding:2px 4px;margin-top:1px;cursor:pointer;line-height:1.5;
   border-radius:4px;transition:opacity .16s ease,color .16s ease;
 }
-.chat-status-sub.chat-mode-trigger::after{content:"  ↕";font:inherit;color:#777}
+.chat-status-sub.chat-mode-trigger:not(:disabled)::after{content:"  ↕";font:inherit;color:#777}
 .chat-status-sub.chat-mode-trigger:active{opacity:.55}
 .chat-status-sub.chat-mode-trigger:focus-visible{outline:1px solid #999;outline-offset:2px}
 .chat-mode-overlay{
@@ -2293,7 +2293,7 @@
             const names = (currentGroup && currentGroup.members || []).map(function (m) { return m.name; }).filter(Boolean);
             chatStatusSub.textContent = names.length ? names.join(' · ') : '群聊';
             chatStatusSub.disabled = true;
-            chatStatusSub.style.display = 'none';
+            chatStatusSub.classList.remove('chat-mode-trigger');
             // 群聊：显示群公告横条（chat_group_notice_<gid>）
             const chatNoticeBar = document.getElementById('chat-notice-bar');
             if (chatNoticeBar) {
