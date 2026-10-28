@@ -5955,7 +5955,7 @@
 
   var root = document.getElementById('chat-messages');
   if (root && window.MutationObserver) {
-    new MutationObserver(scheduleApply).observe(root, { childList: true, subtree: true, attributes: true });
+    new MutationObserver(scheduleApply).observe(root, { childList: true, subtree: true });
   }
 
   var shell = document.querySelector('.phone-mockup');
