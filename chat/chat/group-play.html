@@ -201,8 +201,21 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       }).join('');
       select.value=members.some(function(m){return String(m.id)===String(group.ownerId);})?String(group.ownerId):'__user';
       var transferBtn=document.getElementById('transferOwnerBtn');
-      transferBtn.textContent=select.value==='__user'?'设为由我担任群主':'确认转让群主';
+      var currentOwnerId=String(group.ownerId||'__user');
+      transferBtn.textContent=String(select.value)===currentOwnerId?'当前群主':(select.value==='__user'?'转让群主给我':'确认转让群主');
+      transferBtn.disabled=String(select.value)===currentOwnerId;
+      transferBtn.style.opacity=transferBtn.disabled?'.58':'1';
+      transferBtn.style.cursor=transferBtn.disabled?'default':'pointer';
     }
+    document.getElementById('ownerSelect').addEventListener('change',function(){
+      var currentOwnerId=String(group.ownerId||'__user');
+      var isCurrent=String(this.value)===currentOwnerId;
+      var button=document.getElementById('transferOwnerBtn');
+      button.textContent=isCurrent?'当前群主':(this.value==='__user'?'转让群主给我':'确认转让群主');
+      button.disabled=isCurrent;
+      button.style.opacity=isCurrent?'.58':'1';
+      button.style.cursor=isCurrent?'default':'pointer';
+    });
     document.querySelectorAll('[data-setting]').forEach(function(input){
       input.addEventListener('change',function(){
         group.settings[input.getAttribute('data-setting')]=!!input.checked;
