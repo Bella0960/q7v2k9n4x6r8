@@ -506,6 +506,40 @@
         duration: connected ? seconds : 0
       }));
     } catch (e) {}
+    // 群通话结束后写入群聊天记录，便于回到群里查看通话结果。
+    if (isGroupCall && currentGroup) {
+      try {
+        var history = [];
+        if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
+          var stored = window.PhoneStorage.getChatHistory(roleId);
+          if (Array.isArray(stored)) history = stored.slice();
+        }
+        if (!history.length) {
+          var rawHistory = localStorage.getItem('chat_history_' + roleId);
+          var parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+          if (Array.isArray(parsedHistory)) history = parsedHistory;
+        }
+        var durationText = connected ? formatTime(seconds) : '未接通';
+        history.push({
+          role: 'user',
+          type: 'call',
+          time: Date.now(),
+          call: {
+            type: 'voice',
+            title: '群语音通话',
+            text: connected ? '通话时长 ' + durationText : '群通话未接通',
+            connected: !!connected,
+            duration: connected ? seconds : 0,
+            participants: (currentGroup.members || []).map(function (member) { return member.nickname || member.name || '群成员'; })
+          }
+        });
+        if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
+          window.PhoneStorage.saveChatHistory(roleId, history);
+        } else {
+          localStorage.setItem('chat_history_' + roleId, JSON.stringify(history));
+        }
+      } catch (e) {}
+    }
     window.location.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
   }
   document.getElementById('btnHangup').addEventListener('click', endCall);
