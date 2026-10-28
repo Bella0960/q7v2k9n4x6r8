@@ -89,8 +89,8 @@
       history: []
     };
     cards.unshift(card);
-    if (cards.length > 80) {
-      while (cards.length > 80) {
+    if (cards.length > 40) {
+      while (cards.length > 40) {
         var removeIndex = -1;
         for (var ri = cards.length - 1; ri >= 0; ri--) {
           if (['rejected', 'revoked'].indexOf(cards[ri].status) !== -1) { removeIndex = ri; break; }
@@ -175,7 +175,7 @@
       time: Date.now()
     };
     card.history.push(row);
-    while (card.history.length > 200) card.history.shift();
+    while (card.history.length > 80) card.history.shift();
     card.lastUsedAt = row.time;
     return writeAll(cards) ? { ok: true, reason: '', card: card, record: row }
       : { ok: false, reason: 'storage', card: card };
