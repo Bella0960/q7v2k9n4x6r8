@@ -115,7 +115,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
           <div class="route-kicker"><span class="live-dot"></span>LOCATION SHARING</div>
           <h1 class="route-title" id="routeTitle">正在前往咖啡馆</h1>
         </div>
-        <div class="eta-box"><div class="eta-label">预计到达</div><div class="eta-value" id="etaValue">18<small>分钟</small></div></div>
+        <div class="eta-box"><div class="eta-label">预计到达</div><div class="eta-value" id="etaValue">2<small>分钟</small></div></div>
       </div>
 
       <div class="map-frame" aria-label="动态模拟路线图">
@@ -201,13 +201,14 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   var stateKey = 'chat_journey_state_' + roleId;
   var historyKey = 'chat_history_' + roleId;
   var modeKey = 'chat_mode_' + roleId;
-  var totalDuration = 34000;
+  // 采用两分钟的短行程模拟；路线进度、ETA 与阶段消息共用同一时钟。
+  var totalDuration = 120000;
   var stages = [
-    {at:0,eta:18,title:'准备出发',description:'位置共享已开启，正在往约定地点出发。',left:'位置已共享',right:'预计行程 18 分钟'},
-    {at:8000,eta:12,title:'已经在路上',description:'路线开始移动，预计到达时间正在更新。',left:'持续更新位置',right:'预计还需 12 分钟'},
-    {at:17000,eta:7,title:'前方路况有变化',description:'前面稍微有些堵，正在调整路线。',left:'路况有变化',right:'预计还需 7 分钟'},
-    {at:26000,eta:3,title:'快到了',description:'已经接近约定地点，正在往入口走。',left:'接近目的地',right:'预计还需 3 分钟'},
-    {at:34000,eta:0,title:'已经抵达',description:'终于到了。接下来进入你们见面后的剧情。',left:'已抵达',right:'行程完成'}
+    {at:0,etaValue:'2<small>分钟</small>',title:'准备出发',description:'位置共享已开启，正在往约定地点出发。',left:'位置已共享',right:'预计行程 2 分钟'},
+    {at:30000,etaValue:'90<small>秒</small>',title:'已经在路上',description:'路线正在移动，预计到达时间同步更新。',left:'持续更新位置',right:'预计还需 90 秒'},
+    {at:60000,etaValue:'60<small>秒</small>',title:'前方路况有变化',description:'路线上出现一点延误，正在调整预计到达时间。',left:'路况有变化',right:'预计还需 60 秒'},
+    {at:90000,etaValue:'30<small>秒</small>',title:'快到了',description:'已经接近约定地点，正在往入口走。',left:'接近目的地',right:'预计还需 30 秒'},
+    {at:120000,etaValue:'0<small>秒</small>',title:'已经抵达',description:'终于到了。接下来进入你们见面后的剧情。',left:'已抵达',right:'行程完成'}
   ];
   var fallbackMessages = [
     '我出门了，开始往约好的地方过去。',
@@ -270,7 +271,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     var entry={role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:String(state.startedAt),journeyStage:stageIndex,scene:state.scene,type:'text'};
     if(stageIndex===0){
       entry.type='location';
-      entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计18分钟到达'};
+      entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计2分钟到达'};
     }
     list.push(entry);
     if(!saveHistory(list)){ showStorageWarning(); }
@@ -286,7 +287,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   }
   function updateStage(index){
     var stage=stages[index];
-    document.getElementById('etaValue').innerHTML=String(stage.eta)+'<small>分钟</small>';
+    document.getElementById('etaValue').innerHTML=stage.etaValue;
     document.getElementById('statusMark').textContent=index<9?'0'+(index+1):String(index+1);
     document.getElementById('statusTitle').textContent=stage.title;
     document.getElementById('statusDescription').textContent=stage.description;
