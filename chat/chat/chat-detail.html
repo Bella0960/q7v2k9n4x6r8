@@ -3673,7 +3673,10 @@
             const contextOnly = !!(opts && opts.contextOnly);
             const regenDirection = (opts && typeof opts.regenDirection === 'string') ? opts.regenDirection.trim() : '';
             const isRegen = !!(opts && opts.isRegenerate);
+            const isGroupFollowup = !!(opts && opts.groupFollowup);
+            const groupAutoDepth = Math.max(0, parseInt(opts && opts.groupAutoDepth, 10) || 0);
             const text = customText || input.value.trim();
+            window.__groupAutoStopRequested = false;
             if (!text && !isRegen && !contextOnly) return;
             if (isBlocked(aliasRoleId)) {
                 if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法发送消息');
@@ -3770,7 +3773,25 @@
                 });
                 rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
-                    const selectedMember = availableMembers[Math.floor(Math.random() * availableMembers.length)];
+                    let pickPool = availableMembers;
+                    // 自动接话优先换另一位成员，不让同一个角色连续霸屏。
+                    if (isGroupFollowup && historyList.length) {
+                        let previousSpeakerName = '';
+                        for (let hi = historyList.length - 1; hi >= 0; hi--) {
+                            const priorMessage = historyList[hi];
+                            if (priorMessage && !priorMessage.type &&
+                                (priorMessage.role === 'assistant' || priorMessage.role === 'received') &&
+                                priorMessage.name) {
+                                previousSpeakerName = String(priorMessage.name);
+                                break;
+                            }
+                        }
+                        const alternatives = availableMembers.filter(function (member) {
+                            return groupMemberDisplayName(member) !== previousSpeakerName;
+                        });
+                        if (alternatives.length) pickPool = alternatives;
+                    }
+                    const selectedMember = pickPool[Math.floor(Math.random() * pickPool.length)];
                     groupReplyPick = Object.assign({}, selectedMember, { name: groupMemberDisplayName(selectedMember) });
                 }
             } else {
@@ -3895,6 +3916,10 @@
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
                 const groupSettings = getGroupSettings();
+                systemPrompt += '\n\n[群成员自然互动]\n你们是在同一个群里的真实角色。先读懂最近几条群消息，再按自己的性格回应其中某一位成员；可以赞同、追问、补充、开玩笑或温和地不同意。不要每次都把话题拉回用户身上，不要机械复述上一句，不要替其他成员发言，也不要凭空编造人际关系或共同经历。回复保持简短自然，像群聊消息。';
+                if (isGroupFollowup) {
+                    systemPrompt += '\n\n[自主接话回合 ' + groupAutoDepth + ']\n这是系统安排的自动接话，不是用户新发了一条消息。请接着最近那位群成员的话题说，当前发言者应当与上一位发言者不同。只输出你自己的1-3句群聊消息。如果话题已经自然结束、没有值得补充的内容，请只输出隐藏标记 [群聊结束]，不必硬聊。禁止把“继续”当成用户实际说的话。';
+                }
                 if (groupSettings.spectatorMode) {
                     systemPrompt += '\n\n[旁观模式]\n用户当前是旁观者。用户发来的文字是剧情走向提示或导演指令；角色之间优先自然交流、争论、互相回应，不要每句话都直接向用户提问或称呼用户，也不要替用户发言。';
                 }
@@ -4199,6 +4224,7 @@
             // 打字机气泡引用（首个 delta 到达时复用现有气泡结构创建）
             let streamBubble = null;
             let fullText = '';
+            let groupReplyVisible = false;
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
@@ -4294,6 +4320,7 @@
                     // 删除模型意外输出的推理草稿，再进行普通聊天文本清洗
                     fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
+                    groupReplyVisible = !!fullText;
                     if (fullText) {
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
                         const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined };
@@ -4361,6 +4388,34 @@
             aiSending = false;   // R3：所有出口统一解锁
             // 恢复 header 名字（所有出口统一恢复）
             if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+
+            // 开启自主接话时，每次最多追加设置页指定的 1–2 轮。
+            // 只在本轮 API 成功且有可见正文时继续；错误、重玩、静默任务不会触发新调用。
+            const autoSettings = isGroupChat ? getGroupSettings() : {};
+            const rawAutoRounds = Number(autoSettings.autoTalkRounds);
+            const maxAutoRounds = [0, 1, 2].indexOf(rawAutoRounds) !== -1 ? rawAutoRounds : 1;
+            const hasTwoAvailableMembers = isGroupChat && getAvailableGroupMembers().length > 1;
+            const canContinueGroupTalk = !!(
+                isGroupChat && currentGroup &&
+                autoSettings.autoTalkEnabled &&
+                maxAutoRounds > groupAutoDepth &&
+                hasTwoAvailableMembers &&
+                groupReplyVisible &&
+                streamResult && streamResult.ok &&
+                !window.__groupAutoStopRequested &&
+                !isRegen &&
+                ((!contextOnly && !silent) || isGroupFollowup) &&
+                !isBlocked(aliasRoleId)
+            );
+            window.__groupAutoStopRequested = false;
+            if (canContinueGroupTalk) {
+                await sendMsg({
+                    contextOnly: true,
+                    silent: true,
+                    groupFollowup: true,
+                    groupAutoDepth: groupAutoDepth + 1
+                });
+            }
         }
 
         // 暴露给 chat-extras.js：重玩/重新生成
@@ -5420,6 +5475,10 @@
                     saveCurrentGroupObject();
                     if (typeof showToast === 'function') showToast(actionMessage);
                 }
+                return '';
+            });
+            text = text.replace(/\[群聊结束\]/g, function () {
+                window.__groupAutoStopRequested = true;
                 return '';
             });
             text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
