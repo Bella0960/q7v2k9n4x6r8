@@ -10,6 +10,7 @@
     <script src="../../shared/js/chat-beauty.js?v=20261026v11"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v16">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/role_family_cards.js?v=20261028v1"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <style>
@@ -2951,6 +2952,47 @@
                     </div>
                     <span class="pay-card-status">${transferStatus}</span>
                 </div>`;
+            } else if (msg.type === 'role_family_card') {
+                bubble.classList.add('bubble-family-card');
+                var familyCard = window.RoleFamilyCards && msg.cardId ? window.RoleFamilyCards.find(msg.cardId) : null;
+                var cardKindLabel = familyCard && familyCard.kind === 'intimate' ? '亲密付' : '亲属卡';
+                var cardStatus = familyCard ? familyCard.status : 'unavailable';
+                var cardStatusText = cardStatus === 'pending' ? '等待领取'
+                    : cardStatus === 'active' ? '已开通'
+                    : cardStatus === 'paused' ? '已暂停'
+                    : cardStatus === 'revoked' ? '已撤销'
+                    : cardStatus === 'rejected' ? '已婉拒'
+                    : '暂不可用';
+                var familyCardButtons = '';
+                var familyCardIdAttr = escHtml(String((familyCard && familyCard.id) || msg.cardId || ''));
+                if (cardStatus === 'pending') {
+                    familyCardButtons = '<div style="display:flex;gap:8px;margin-top:14px;">' +
+                        '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'accept\')" style="flex:1;border:0;border-radius:10px;background:#111;color:#fff;padding:10px 8px;font-size:12px;">领取亲属卡</button>' +
+                        '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'reject\')" style="border:1px solid #ddd;border-radius:10px;background:#fff;color:#666;padding:10px 12px;font-size:12px;">暂不接受</button>' +
+                        '</div>';
+                } else if (cardStatus === 'active') {
+                    familyCardButtons = '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'pause\')" style="margin-top:12px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#555;padding:8px 12px;font-size:12px;">暂停使用</button>';
+                } else if (cardStatus === 'paused') {
+                    familyCardButtons = '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'resume\')" style="margin-top:12px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#555;padding:8px 12px;font-size:12px;">恢复使用</button>';
+                }
+                var familyMonthly = familyCard ? Number(familyCard.monthlyLimit) || 0 : 0;
+                var familySingle = familyCard ? Number(familyCard.singleLimit) || 0 : 0;
+                var familyUsed = familyCard && window.RoleFamilyCards ? window.RoleFamilyCards.usedThisMonth(familyCard) : 0;
+                var familyRemain = Math.max(0, familyMonthly - familyUsed);
+                var familyNote = escHtml(String((familyCard && familyCard.note) || '给你准备的专属日常额度'));
+                bubble.innerHTML = '<div style="width:224px;max-width:100%;border:1px solid #dedee3;border-radius:14px;overflow:hidden;background:#fff;color:#111;box-shadow:0 2px 12px rgba(0,0,0,.035);">' +
+                    '<div style="padding:13px 14px;background:#111;color:#fff;display:flex;justify-content:space-between;align-items:center;">' +
+                        '<span style="font-size:11px;letter-spacing:1.4px;">MAOMAO / BENEFIT</span><span style="font-size:10px;opacity:.7;">' + cardKindLabel + '</span></div>' +
+                    '<div style="padding:15px 14px 13px;">' +
+                        '<div style="font-size:12px;color:#888;">' + escHtml(String((familyCard && familyCard.roleName) || contactName || '角色')) + ' 给你的额度</div>' +
+                        '<div style="font-size:25px;font-weight:700;letter-spacing:-.5px;margin:4px 0;">¥' + familyMonthly.toFixed(2) + '<span style="font-size:11px;font-weight:400;color:#888;letter-spacing:0;"> / 月</span></div>' +
+                        '<div style="font-size:11px;color:#777;line-height:1.7;">单笔上限 ¥' + familySingle.toFixed(2) + ' · 本月剩余 ¥' + familyRemain.toFixed(2) + '</div>' +
+                        '<div style="height:1px;background:#eee;margin:12px 0;"></div>' +
+                        '<div style="font-size:12px;line-height:1.6;color:#444;">' + familyNote + '</div>' +
+                        '<div style="margin-top:10px;font-size:10px;color:' + (cardStatus === 'active' ? '#111' : '#888') + ';">状态 · ' + cardStatusText + '</div>' +
+                        familyCardButtons +
+                        '<div style="margin-top:10px;font-size:9px;color:#aaa;">仅限应用内模拟商店与外卖使用</div>' +
+                    '</div></div>';
             } else if (msg.type === 'card' && msg.card) {
                 const cd = msg.card;
                 const cdAv = cd.avatar && String(cd.avatar).length > 20
@@ -3300,6 +3342,125 @@
                 }
             });
         }
+
+        // ---- 角色赠予亲属卡/亲密付：解析后只保存结构化虚拟额度，不涉及真实支付 ----
+        const ROLE_FAMILY_CARD_MARKER_REGEX = /\[(亲属卡|亲密付):(\d+(?:\.\d{1,2})?):(\d+(?:\.\d{1,2})?):([^\]]{0,160})\]/g;
+        const ROLE_FAMILY_CARD_ADJUST_REGEX = /\[调整(?:亲属卡|亲密付):(\d+(?:\.\d{1,2})?):(\d+(?:\.\d{1,2})?):([^\]]{0,160})\]/g;
+        const ROLE_FAMILY_CARD_REVOKE_REGEX = /\[撤销(?:亲属卡|亲密付)\]/g;
+        function extractRoleFamilyCardMarkers(raw) {
+            var text = String(raw || '');
+            var cards = [];
+            var changes = [];
+            var match;
+            ROLE_FAMILY_CARD_MARKER_REGEX.lastIndex = 0;
+            while ((match = ROLE_FAMILY_CARD_MARKER_REGEX.exec(text)) !== null) {
+                var monthly = Number(match[2]);
+                var single = Number(match[3]);
+                if (isFinite(monthly) && monthly > 0 && isFinite(single) && single > 0) {
+                    cards.push({
+                        kind: match[1] === '亲密付' ? 'intimate' : 'family',
+                        monthlyLimit: Math.min(1000000, monthly),
+                        singleLimit: Math.min(1000000, single),
+                        note: String(match[4] || '').trim().slice(0, 160)
+                    });
+                }
+            }
+            text = text.replace(ROLE_FAMILY_CARD_MARKER_REGEX, '');
+            ROLE_FAMILY_CARD_ADJUST_REGEX.lastIndex = 0;
+            while ((match = ROLE_FAMILY_CARD_ADJUST_REGEX.exec(text)) !== null) {
+                var newMonthly = Number(match[1]);
+                var newSingle = Number(match[2]);
+                if (isFinite(newMonthly) && newMonthly > 0 && isFinite(newSingle) && newSingle > 0) {
+                    changes.push({
+                        action: 'adjust',
+                        monthlyLimit: Math.min(1000000, newMonthly),
+                        singleLimit: Math.min(1000000, newSingle),
+                        note: String(match[3] || '').trim().slice(0, 160)
+                    });
+                }
+            }
+            text = text.replace(ROLE_FAMILY_CARD_ADJUST_REGEX, '');
+            ROLE_FAMILY_CARD_REVOKE_REGEX.lastIndex = 0;
+            if (ROLE_FAMILY_CARD_REVOKE_REGEX.test(text)) changes.push({ action: 'revoke' });
+            text = text.replace(ROLE_FAMILY_CARD_REVOKE_REGEX, '');
+            return {
+                text: text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, ''),
+                cards: cards,
+                changes: changes
+            };
+        }
+
+        function applyRoleFamilyCardChanges(changes) {
+            if (!Array.isArray(changes) || !changes.length || isGroupChat ||
+                !window.RoleFamilyCards || typeof window.RoleFamilyCards.applyRoleChange !== 'function') return false;
+            var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
+            var changed = false;
+            changes.forEach(function (change) {
+                var result = window.RoleFamilyCards.applyRoleChange(roleId, change);
+                if (result && result.ok) changed = true;
+            });
+            return changed;
+        }
+
+        function insertRoleFamilyCardInvitations(historyList, cardSpecs) {
+            if (!Array.isArray(cardSpecs) || !cardSpecs.length || isGroupChat ||
+                !window.RoleFamilyCards || typeof window.RoleFamilyCards.createInvite !== 'function') return false;
+            var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
+            if (!roleId) return false;
+            var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
+            var roleAvatar = String((currentCharacter && currentCharacter.avatar) || '');
+            var inserted = false;
+            cardSpecs.forEach(function (spec) {
+                var card = window.RoleFamilyCards.createInvite({
+                    roleId: roleId,
+                    roleName: roleName,
+                    roleAvatar: roleAvatar,
+                    kind: spec.kind,
+                    monthlyLimit: spec.monthlyLimit,
+                    singleLimit: spec.singleLimit,
+                    note: spec.note
+                });
+                if (!card) {
+                    if (typeof showToast === 'function') showToast('亲属卡保存失败，请检查本地存储空间');
+                    return;
+                }
+                historyList.push({
+                    role: 'assistant',
+                    type: 'role_family_card',
+                    cardId: card.id,
+                    time: Date.now()
+                });
+                inserted = true;
+            });
+            if (inserted) {
+                saveMessages(historyList);
+                renderAllMessages();
+            }
+            return inserted;
+        }
+
+        window.handleRoleFamilyCardAction = function (event, cardId, action) {
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+            if (!window.RoleFamilyCards) return;
+            var result = window.RoleFamilyCards.update(cardId, action);
+            if (!result || !result.ok) {
+                if (typeof showToast === 'function') showToast(result && result.reason === 'storage' ? '保存失败：本地空间不足' : '这张卡当前无法执行该操作');
+                return;
+            }
+            renderAllMessages();
+            var card = result.card || {};
+            if (action === 'accept' || action === 'reject') {
+                if (typeof window.sendMsg === 'function') {
+                    var replyText = action === 'accept'
+                        ? '我收下了你给我的亲属卡。'
+                        : '谢谢你的心意，不过这张亲属卡我暂时先不收。';
+                    window.sendMsg({ text: replyText, silent: true });
+                }
+                if (typeof showToast === 'function') showToast(action === 'accept' ? '已领取，可在商店和外卖结算时使用' : '已婉拒这张卡');
+            } else {
+                if (typeof showToast === 'function') showToast(action === 'pause' ? '这张卡已暂停使用' : '这张卡已恢复使用');
+            }
+        };
 
         // ---- 自动记忆标记：[记住:xxx] 从 AI 回复中剥离，存进 user_memory ----
         const MEM_MARKER_REGEX = /\[记住:([^\]]+)\]/g;
@@ -4137,6 +4298,12 @@
                 systemPrompt += '\n\n[当前模式：旁白与动作描写 · 优先规则]\n把用户的新消息当作同一段剧情中的行动、对白或提示，以自然的小说叙述回应；可以写必要的动作、神态、环境变化、内心活动和对白，但不要替用户擅自决定未表达的行为或思想。避免微信式短句，也不要为了凑字数堆砌动作。默认约 180–400 字，按剧情需要灵活调整。保持角色原有人设，不解释模式规则。此规则优先于前面的线上聊天限制。';
             }
 
+            // 单聊中的亲属卡/亲密付是虚拟互动，不触达真实支付。只有剧情自然适合时才发放，不要每轮强行送卡。
+            systemPrompt += '\n\n【单聊虚拟亲属卡 / 亲密付规则】\n' +
+                '仅在私聊、并且符合你当前人设、关系、经济状况与剧情时，你可以主动赠予对方一张虚拟亲属卡或亲密付卡；不要每次回复都送，也不要把它说成真实银行业务。\n' +
+                '需要发放时，在正常回复末尾附加一个机器标记，格式必须是 [亲属卡:月额度:单笔上限:给对方的留言] 或 [亲密付:月额度:单笔上限:给对方的留言]。金额必须是正数，单笔上限不得高于月额度；留言不要包含右方括号。前端会把标记转换为聊天卡片，不要解释标记本身。\n' +
+                '若需要调整你发出的最近一张未撤销卡，可附加 [调整亲属卡:新月额度:新单笔上限:简短说明]；若想撤销，可附加 [撤销亲属卡]。只有确实在剧情中作出这些决定时才输出对应标记。\n' +
+                '亲属卡只是 MAOMAO 内的虚拟额度，只能用于应用内模拟商店和外卖结算，不是真实余额，不涉及真实支付、银行卡或外部扣款。不得声称已经执行任何现实付款。\n\n';
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -4305,6 +4472,9 @@
                     // 剥离红包/转账标记 [红包:金额:留言] / [转账:金额:留言]
                     const parsedPay = extractPayMarkers(fullText);
                     fullText = parsedPay.text;
+                    const parsedRoleFamilyCard = extractRoleFamilyCardMarkers(fullText);
+                    fullText = parsedRoleFamilyCard.text;
+                    const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
                     const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
                     fullText = parsedTransferDecision.text;
                     applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
@@ -4352,6 +4522,11 @@
                     if (parsedPay.items.length) {
                         // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
                         insertPayCards(historyList, parsedPay.items);
+                    }
+                    if (parsedRoleFamilyCard.cards.length) {
+                        insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
+                    } else if (roleFamilyCardChanged) {
+                        renderAllMessages();
                     }
                     if (parsedHeart.hearts.length) {
                         insertHeartCards(historyList, parsedHeart.hearts);
