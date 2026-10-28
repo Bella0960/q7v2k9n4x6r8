@@ -564,13 +564,13 @@
       var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
       closeModal();
       try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-long'); } catch (e) {}
-      window.location.href = '../date/date.html?id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
+      window.location.href = '../date/date.html?v=20261028modes1&id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
     };
     document.getElementById('dateJourneyGo').onclick = function () {
       var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
       closeModal();
       try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-short'); } catch (e) {}
-      window.location.href = '../date/journey.html?id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
+      window.location.href = '../date/journey.html?v=20261028modes1&id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
     };
   }
 
