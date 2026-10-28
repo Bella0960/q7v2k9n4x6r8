@@ -336,6 +336,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   function startJourney(scene){
     if(!roleId || !character){ alert('没有找到这个角色，请先回到聊天页选择角色。'); return; }
     state={scene:scene,startedAt:Date.now(),status:'travelling',sentStages:[],lastStage:-1,messages:fallbackMessages.slice()};
+    startedJourneyId=String(state.startedAt);
     try { localStorage.setItem(modeKey,'offline-short'); } catch(e) {}
     saveState();
     showTravelView();
@@ -400,12 +401,6 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     startedJourneyId=String(state.startedAt);
     gotoStory();
   }
-  // Set the stable trip id before any optional API request, so a slow response cannot overwrite a later trip.
-  var originalStartJourney=startJourney;
-  startJourney=function(scene){
-    originalStartJourney(scene);
-    if(state && state.startedAt) startedJourneyId=String(state.startedAt);
-  };
 })();
 </script>
 </body>
