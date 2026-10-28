@@ -1867,7 +1867,31 @@
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
 }
-</style></head>
+</style><style id="group-interaction-style">
+.bubble-group-interaction{max-width:min(290px,calc(100vw - 112px))!important;width:100%;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.group-interaction-card{width:100%;min-width:230px;max-width:290px;background:#fff;border:1px solid #e7e7eb;border-radius:15px;padding:13px;color:#111;box-shadow:0 3px 14px rgba(0,0,0,.035);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+.group-interaction-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.5px;color:#888;padding-bottom:9px;border-bottom:1px solid #f0f0f3}
+.group-interaction-title{font-size:14px;font-weight:600;line-height:1.5;margin:10px 0 12px;overflow-wrap:anywhere}
+.group-poll-options{display:flex;flex-direction:column;gap:7px}
+.group-poll-option{position:relative;isolation:isolate;width:100%;min-height:38px;padding:9px 10px;border:1px solid #e9e9ed;border-radius:9px;background:#fafafc;color:#333;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;overflow:hidden;font:12px/1.4 inherit;cursor:pointer}
+.group-poll-option:disabled{cursor:default;opacity:.85}
+.group-poll-option.is-picked{border-color:#111;background:#f4f4f6}
+.group-poll-option-text,.group-poll-count{position:relative;z-index:1}
+.group-poll-count{font-size:10px;color:#888}
+.group-poll-progress{position:absolute;left:0;top:0;bottom:0;background:rgba(17,17,17,.055);z-index:0;pointer-events:none}
+.group-interaction-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;font-size:10px;color:#999;line-height:1.5}
+.group-interaction-primary{border:0;border-radius:9px;background:#111;color:#fff;padding:8px 12px;font:11px inherit;cursor:pointer}
+.group-interaction-text-btn{border:0;background:transparent;color:#555;font:10px inherit;padding:5px 2px;cursor:pointer}
+.group-chain-list{list-style:none;display:flex;flex-direction:column;gap:10px;max-height:190px;overflow:auto}
+.group-chain-list li{display:flex;align-items:flex-start;gap:9px;font-size:11px;line-height:1.55}
+.group-chain-index{color:#aaa;font:10px/1.5 Georgia,serif;min-width:17px}
+.group-chain-entry{display:flex;flex-direction:column;gap:2px;min-width:0}
+.group-chain-entry strong{font-size:10px;font-weight:600;color:#777}
+.group-chain-entry span{color:#333;overflow-wrap:anywhere}
+.group-chain-empty{color:#999;font-size:11px}
+@media(prefers-reduced-motion:reduce){.group-poll-option,.group-interaction-primary{transition:none!important}}
+</style>
+</head>
 <body>
     <div class="phone-mockup">
         <div class="status-bar">
@@ -1997,6 +2021,14 @@
                     <button class="plus-item" data-feat="gift" type="button">
                         <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4"></rect><path d="M5 12v9h14v-9"></path><path d="M12 8v13"></path><path d="M12 8s-4.5 0-4.5-2.5S9.5 2 12 8c0-5 4.5-3 4.5-0.5S12 8 12 8z"></path></svg></span>
                         <span class="plus-label">送礼物</span>
+                    </button>
+                    <button class="plus-item" data-feat="group-poll" type="button">
+                        <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h10M4 19h16"/><circle cx="18" cy="12" r="2"/></svg></span>
+                        <span class="plus-label">群投票</span>
+                    </button>
+                    <button class="plus-item" data-feat="group-chain" type="button">
+                        <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/></svg></span>
+                        <span class="plus-label">群接龙</span>
                     </button>
                 </div>
             </div>
@@ -2187,6 +2219,57 @@
         let currentGroup = null;
         if (isGroupChat) {
             currentGroup = loadGroupById(currentRoleId);
+        }
+
+        function groupMemberDisplayName(member) {
+            return String((member && (member.nickname || member.name)) || '成员').trim() || '成员';
+        }
+        function getGroupSettings() {
+            return (currentGroup && currentGroup.settings && typeof currentGroup.settings === 'object') ? currentGroup.settings : {};
+        }
+        function isGroupMemberInActiveHours(member) {
+            if (!getGroupSettings().scheduleEnabled) return true;
+            var from = String((member && member.activeFrom) || '08:00');
+            var to = String((member && member.activeTo) || '23:00');
+            var now = new Date();
+            var current = now.getHours() * 60 + now.getMinutes();
+            function minutes(value, fallback) {
+                var match = /^(\d{1,2}):(\d{2})$/.exec(value);
+                if (!match) return fallback;
+                var h = Math.max(0, Math.min(23, Number(match[1])));
+                var m = Math.max(0, Math.min(59, Number(match[2])));
+                return h * 60 + m;
+            }
+            var start = minutes(from, 480);
+            var end = minutes(to, 1380);
+            if (start === end) return true;
+            return start < end ? (current >= start && current <= end) : (current >= start || current <= end);
+        }
+        function getAvailableGroupMembers() {
+            var members = (currentGroup && Array.isArray(currentGroup.members)) ? currentGroup.members : [];
+            return members.filter(function(member) {
+                return member && !member.muted && isGroupMemberInActiveHours(member);
+            });
+        }
+        function saveCurrentGroupObject() {
+            if (!currentGroup || !currentGroup.id) return false;
+            try {
+                var groups = JSON.parse(localStorage.getItem('phone_groups') || '[]');
+                if (!Array.isArray(groups)) groups = [];
+                var found = false;
+                for (var i = 0; i < groups.length; i++) {
+                    if (String(groups[i] && groups[i].id) === String(currentGroup.id)) {
+                        groups[i] = currentGroup;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+                localStorage.setItem('phone_groups', JSON.stringify(groups));
+                var status = document.getElementById('chat-status-sub');
+                if (status) status.textContent = (currentGroup.members || []).map(groupMemberDisplayName).join(' · ') || '群聊';
+                return true;
+            } catch (e) { return false; }
         }
 
         const currentCharacter = isGroupChat
@@ -2644,6 +2727,41 @@
                     <div class="msg-card-body">${m.content || ''}</div>
                     <div class="msg-card-meta">${m.date || ''}</div>
                 </div>`;
+            } else if (msg.type === 'group_poll') {
+                const poll = msg.poll || {};
+                const options = Array.isArray(poll.options) ? poll.options : [];
+                const votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {};
+                const tally = options.map(function () { return 0; });
+                Object.keys(votes).forEach(function (voter) {
+                    const pick = Number(votes[voter]);
+                    if (Number.isInteger(pick) && pick >= 0 && pick < tally.length) tally[pick] += 1;
+                });
+                const totalVotes = Object.keys(votes).length;
+                const myVote = typeof votes.__user === 'number' ? votes.__user : -1;
+                const mid = row.dataset.mid;
+                bubble.classList.add('bubble-group-interaction');
+                var optionsHtml = options.map(function (option, optionIndex) {
+                    const percent = totalVotes ? Math.round(tally[optionIndex] * 100 / totalVotes) : 0;
+                    return '<button type="button" class="group-poll-option' + (myVote === optionIndex ? ' is-picked' : '') + '" data-poll-mid="' + escHtml(mid) + '" data-poll-option="' + optionIndex + '"' + (poll.closed ? ' disabled' : '') + '>' +
+                        '<span class="group-poll-option-text">' + escHtml(option) + '</span><span class="group-poll-count">' + tally[optionIndex] + '</span>' +
+                        '<span class="group-poll-progress" style="width:' + percent + '%"></span></button>';
+                }).join('');
+                bubble.innerHTML = '<div class="group-interaction-card"><div class="group-interaction-head"><span>群投票</span><span>' + (poll.closed ? '已结束' : totalVotes + ' 人参与') + '</span></div>' +
+                    '<div class="group-interaction-title">' + escHtml(poll.question || '未命名投票') + '</div><div class="group-poll-options">' + optionsHtml + '</div>' +
+                    '<div class="group-interaction-foot">' + (poll.closed ? '投票已结束' : '选择一个选项即可投票') +
+                    (isSent && !poll.closed ? '<button type="button" class="group-interaction-text-btn" data-poll-close="' + escHtml(mid) + '">结束投票</button>' : '') + '</div></div>';
+            } else if (msg.type === 'group_chain') {
+                const chain = msg.chain || {};
+                const entries = Array.isArray(chain.entries) ? chain.entries : [];
+                const mid = row.dataset.mid;
+                bubble.classList.add('bubble-group-interaction');
+                const entriesHtml = entries.length ? entries.map(function (entry, entryIndex) {
+                    return '<li><span class="group-chain-index">' + String(entryIndex + 1).padStart(2, '0') + '</span><span class="group-chain-entry"><strong>' + escHtml(entry.name || '成员') + '</strong><span>' + escHtml(entry.text || '') + '</span></span></li>';
+                }).join('') : '<li class="group-chain-empty">等第一位成员接龙</li>';
+                bubble.innerHTML = '<div class="group-interaction-card"><div class="group-interaction-head"><span>群接龙</span><span>' + (chain.closed ? '已结束' : entries.length + ' 条内容') + '</span></div>' +
+                    '<div class="group-interaction-title">' + escHtml(chain.title || '群接龙') + '</div><ol class="group-chain-list">' + entriesHtml + '</ol>' +
+                    '<div class="group-interaction-foot">' + (chain.closed ? '接龙已结束' : '<button type="button" class="group-interaction-primary" data-chain-join="' + escHtml(mid) + '">参与接龙</button>') +
+                    (isSent && !chain.closed ? '<button type="button" class="group-interaction-text-btn" data-chain-close="' + escHtml(mid) + '">结束接龙</button>' : '') + '</div></div>';
             } else if (msg.type === 'call') {
                 const c = msg.call || {};
                 if (c.theme === 'dark') bubble.classList.add('bubble-call-in');
@@ -3379,6 +3497,12 @@
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
             }
+            if (isGroupChat && currentGroup && !isRegen && !contextOnly && !getAvailableGroupMembers().length) {
+                if (typeof showToast === 'function') {
+                    showToast(getGroupSettings().scheduleEnabled ? '当前时段没有可发言的群成员，大家都在休息' : '群成员都处于禁言状态');
+                }
+                return;
+            }
 
             const config = getAiConfig();
             const apiKey = (config.apiKey || '').trim();
@@ -3446,14 +3570,21 @@
             let groupReplyPick = null;
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
+                const availableMembers = getAvailableGroupMembers();
                 const personaLines = members.map(function (m, i) {
                     const r = getRoleById(m.id);
                     const p = (r && (r.persona || r.prompt || '').trim()) || '一个善解人意的朋友';
-                    return (i + 1) + '. ' + (m.name || '成员') + '：' + p;
+                    const labels = [];
+                    if (m.title) labels.push('头衔：' + m.title);
+                    if (m.isAdmin) labels.push('管理员');
+                    if (m.muted) labels.push('禁言中');
+                    else if (!isGroupMemberInActiveHours(m)) labels.push('当前休息中');
+                    return (i + 1) + '. ' + groupMemberDisplayName(m) + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
                 });
                 rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
-                if (members.length) {
-                    groupReplyPick = members[Math.floor(Math.random() * members.length)];
+                if (availableMembers.length) {
+                    const selectedMember = availableMembers[Math.floor(Math.random() * availableMembers.length)];
+                    groupReplyPick = Object.assign({}, selectedMember, { name: groupMemberDisplayName(selectedMember) });
                 }
             } else {
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
@@ -3511,12 +3642,22 @@
             } catch (e) {}
             rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
 
-            // 世界书内容：从 phone_worldbooks 读全部条目，拼成文本
+            // 世界书内容：群聊优先读取群聊专属挂载列表；无旧记录时保留兼容回退
             let worldbookText = '';
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               if (rawWB) {
-                const wbList = JSON.parse(rawWB) || [];
+                let wbList = JSON.parse(rawWB) || [];
+                if (isGroupChat) {
+                  const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
+                  if (mountRaw != null) {
+                    const mounted = JSON.parse(mountRaw);
+                    if (Array.isArray(mounted)) {
+                      const mountedIds = mounted.map(function (id) { return String(id); });
+                      wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
+                    }
+                  }
+                }
                 worldbookText = wbList.map(function(b){
                   return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
                 }).join('\n\n');
@@ -3563,9 +3704,42 @@
             }
             // 群聊：覆盖本轮发言者身份（无论是否使用协议均生效）
             if (isGroupChat && groupReplyPick) {
-                const memberNames = (currentGroup.members || []).map(function (m) { return m.name; }).join('、') || '暂无成员';
+                const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
+                const groupSettings = getGroupSettings();
+                if (groupSettings.spectatorMode) {
+                    systemPrompt += '\n\n[旁观模式]\n用户当前是旁观者。用户发来的文字是剧情走向提示或导演指令；角色之间优先自然交流、争论、互相回应，不要每句话都直接向用户提问或称呼用户，也不要替用户发言。';
+                }
+                if (groupSettings.memorySharing) {
+                    const syncedMemoryLines = [];
+                    (currentGroup.members || []).forEach(function (member) {
+                        const role = getRoleById(member.id);
+                        if (!role) return;
+                        const memory = buildWeightedMemoryText(String(member.id), (role.memory || '').trim());
+                        if (memory && memory !== '暂无记忆') syncedMemoryLines.push('【' + groupMemberDisplayName(member) + '的单聊记忆】\n' + memory);
+                    });
+                    if (syncedMemoryLines.length) {
+                        systemPrompt += '\n\n[已启用成员单聊记忆同步]\n' + capText(syncedMemoryLines.join('\n\n'), 2200);
+                    }
+                }
+                if (groupSettings.allowRoleActions) {
+                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员标记的成员才可以根据剧情执行群管理操作。若剧情确实需要，可在正常台词末尾附加一个隐藏标记：改群名用 [群动作:改名:新群名]；邀请角色库中已有角色用 [群动作:邀请:角色名]；移除成员用 [群动作:移除:角色名]。不要向用户解释标记，系统会处理。不要重复邀请已有成员，不要移除最后一名群成员。';
+                }
+                const activePolls = historyList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
+                if (activePolls.length) {
+                    systemPrompt += '\n\n[当前群投票]\n' + activePolls.map(function (item) {
+                        return '投票ID=' + ensureMid(item) + '；问题：' + String(item.poll.question || '') + '；选项：' + (item.poll.options || []).map(function (option, index) { return (index + 1) + '. ' + option; }).join('；');
+                    }).join('\n');
+                    systemPrompt += '\n如果你本轮想投票，请在台词末尾附加 [群投票:投票ID:选项序号]，序号从1开始。按你自己的立场选择，不要伪造其他成员的投票。';
+                }
+                const activeChains = historyList.filter(function (item) { return item && item.type === 'group_chain' && item.chain && !item.chain.closed; }).slice(-3);
+                if (activeChains.length) {
+                    systemPrompt += '\n\n[当前群接龙]\n' + activeChains.map(function (item) {
+                        return '接龙ID=' + ensureMid(item) + '；主题：' + String(item.chain.title || '') + '；已有内容：' + (item.chain.entries || []).map(function (entry) { return String(entry.name || '成员') + '：' + String(entry.text || ''); }).join('；');
+                    }).join('\n');
+                    systemPrompt += '\n如果你想参与其中一项接龙，请在台词末尾附加 [群接龙:接龙ID:你的接龙内容]，每轮最多参与一次。';
+                }
             }
             if (customPrompt && !systemPrompt.includes(customPrompt)) {
                 systemPrompt += `\n补充要求: ${customPrompt}`;
@@ -3900,6 +4074,8 @@
             try {
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
+                    // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList);
                     // 落盘前剥离主动通话标记：气泡展示与聊天记录均不保留标记，避免污染后续上下文
                     const parsedCall = extractVoiceCallMarker(fullText);
                     fullText = parsedCall.text;
@@ -4109,6 +4285,8 @@
         // 取消息的可读文本（非文本消息给等价占位文案）
         function plainTextOf(msg) {
             if (!msg) return '';
+            if (msg.type === 'group_poll' && msg.poll) return '[群投票] ' + String(msg.poll.question || '') + '：' + (msg.poll.options || []).join(' / ');
+            if (msg.type === 'group_chain' && msg.chain) return '[群接龙] ' + String(msg.chain.title || '') + '：' + (msg.chain.entries || []).map(function (entry) { return String(entry.name || '成员') + '：' + String(entry.text || ''); }).join('；');
             // 心声带标签再复制/转发，避免对方看不出这是"心里话"
             if (msg.type === 'heart') return '[心声] ' + String(msg.text || '');
             var t = String((msg.text || msg.content) || '').trim();
@@ -4798,6 +4976,159 @@
             // 3. 结果弹窗：红包「已存入余额」，转账「收款成功」
             openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
         }
+
+
+        // ===== 群投票 / 群接龙 / 角色群管理标记 =====
+        function processGroupInteractionMarkers(rawText, speaker, historyList) {
+            var text = String(rawText || '');
+            if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
+            var changedHistory = false;
+            text = text.replace(/\[群投票:([^\]:]+):(\d{1,2})\]/g, function (marker, pollMid, optionNumber) {
+                var pollMessage = historyList.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(pollMid); });
+                var poll = pollMessage && pollMessage.poll;
+                var optionIndex = parseInt(optionNumber, 10) - 1;
+                if (poll && !poll.closed && Array.isArray(poll.options) && optionIndex >= 0 && optionIndex < poll.options.length && speaker && speaker.id != null) {
+                    if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
+                    poll.votes[String(speaker.id)] = optionIndex;
+                    changedHistory = true;
+                }
+                return '';
+            });
+            text = text.replace(/\[群接龙:([^\]:]+):([^\]]{1,120})\]/g, function (marker, chainMid, entryText) {
+                var chainMessage = historyList.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(chainMid); });
+                var chain = chainMessage && chainMessage.chain;
+                if (chain && !chain.closed && speaker && speaker.id != null && String(entryText || '').trim()) {
+                    if (!Array.isArray(chain.entries)) chain.entries = [];
+                    var duplicate = chain.entries.some(function (entry) { return String(entry.memberId || '') === String(speaker.id); });
+                    if (!duplicate) {
+                        chain.entries.push({ memberId: String(speaker.id), name: groupMemberDisplayName(speaker), text: String(entryText).trim().slice(0, 120), time: Date.now() });
+                        changedHistory = true;
+                    }
+                }
+                return '';
+            });
+            var settings = getGroupSettings();
+            text = text.replace(/\[群动作[:：](改名|邀请|移除)[:：]([^\]]{1,40})\]/g, function (marker, action, targetName) {
+                if (!settings.allowRoleActions || !speaker || !speaker.isAdmin) return '';
+                targetName = String(targetName || '').trim();
+                if (!targetName) return '';
+                var actionMessage = '';
+                if (action === '改名') {
+                    currentGroup.name = targetName.slice(0, 20);
+                    currentCharacter.name = currentGroup.name;
+                    var title = document.getElementById('chat-title');
+                    if (title) title.textContent = currentGroup.name;
+                    actionMessage = '群管理员将群名修改为「' + currentGroup.name + '」';
+                } else if (action === '邀请') {
+                    var roles = [];
+                    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
+                    var targetRole = Array.isArray(roles) ? roles.find(function (role) { return role && (String(role.id) === targetName || String(role.name || '').trim() === targetName); }) : null;
+                    if (targetRole && !(currentGroup.members || []).some(function (member) { return String(member.id) === String(targetRole.id); })) {
+                        if (!Array.isArray(currentGroup.members)) currentGroup.members = [];
+                        currentGroup.members.push({ id: String(targetRole.id), name: targetRole.name || '角色', avatar: targetRole.avatar || '', nickname: '', title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' });
+                        actionMessage = '群管理员邀请「' + (targetRole.name || '角色') + '」加入群聊';
+                    }
+                } else if (action === '移除') {
+                    var existing = (currentGroup.members || []).find(function (member) { return String(member.id) === targetName || String(member.name || '').trim() === targetName || groupMemberDisplayName(member) === targetName; });
+                    if (existing && (currentGroup.members || []).length > 1) {
+                        currentGroup.members = currentGroup.members.filter(function (member) { return String(member.id) !== String(existing.id); });
+                        actionMessage = '群管理员将「' + groupMemberDisplayName(existing) + '」移出群聊';
+                    }
+                }
+                if (actionMessage) {
+                    saveCurrentGroupObject();
+                    if (typeof showToast === 'function') showToast(actionMessage);
+                }
+                return '';
+            });
+            text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+            if (changedHistory) saveMessages(historyList);
+            return text;
+        }
+
+        (function bindGroupInteractionActions() {
+            var pollAction = document.querySelector('.plus-item[data-feat="group-poll"]');
+            var chainAction = document.querySelector('.plus-item[data-feat="group-chain"]');
+            if (!isGroupChat) {
+                if (pollAction) pollAction.style.display = 'none';
+                if (chainAction) chainAction.style.display = 'none';
+                return;
+            }
+            function closePlusPanel() {
+                var overlay = document.querySelector('.plus-panel-overlay');
+                if (overlay) overlay.classList.remove('active');
+            }
+            if (pollAction) pollAction.addEventListener('click', function (event) {
+                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel();
+                var question = window.prompt('投票问题是什么？');
+                if (!question || !question.trim()) return;
+                var rawOptions = window.prompt('输入 2–6 个选项，用换行或竖线 | 分隔。');
+                if (!rawOptions) return;
+                var options = rawOptions.split(/[\n|]/).map(function (item) { return item.trim().slice(0, 40); }).filter(Boolean).slice(0, 6);
+                if (options.length < 2) { showToast('至少需要两个投票选项'); return; }
+                var history = loadMessages();
+                var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.trim().slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
+                ensureMid(message); history.push(message);
+                if (!saveMessages(history)) { showToast('投票创建失败，请检查本地存储'); return; }
+                renderAllMessages(); showToast('群投票已发起');
+            }, true);
+            if (chainAction) chainAction.addEventListener('click', function (event) {
+                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel();
+                var title = window.prompt('接龙主题是什么？');
+                if (!title || !title.trim()) return;
+                var first = window.prompt('先写下自己的第一条接龙内容（可留空）') || '';
+                var entries = first.trim() ? [{ memberId: '__user', name: '我', text: first.trim().slice(0, 120), time: Date.now() }] : [];
+                var history = loadMessages();
+                var message = { role: 'user', type: 'group_chain', text: '', chain: { title: title.trim().slice(0, 80), entries: entries, closed: false }, time: Date.now() };
+                ensureMid(message); history.push(message);
+                if (!saveMessages(history)) { showToast('接龙创建失败，请检查本地存储'); return; }
+                renderAllMessages(); showToast('群接龙已发起');
+            }, true);
+            var messageContainer = document.getElementById('chat-messages');
+            if (!messageContainer) return;
+            messageContainer.addEventListener('click', function (event) {
+                var voteButton = event.target.closest('[data-poll-mid][data-poll-option]');
+                if (voteButton) {
+                    var history = loadMessages();
+                    var pollMessage = history.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(voteButton.getAttribute('data-poll-mid')); });
+                    var poll = pollMessage && pollMessage.poll;
+                    var optionIndex = parseInt(voteButton.getAttribute('data-poll-option'), 10);
+                    if (!poll || poll.closed || !Array.isArray(poll.options) || optionIndex < 0 || optionIndex >= poll.options.length) return;
+                    if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
+                    poll.votes.__user = optionIndex;
+                    saveMessages(history); renderAllMessages(); return;
+                }
+                var closePollButton = event.target.closest('[data-poll-close]');
+                if (closePollButton) {
+                    var pollHistory = loadMessages();
+                    var pollToClose = pollHistory.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(closePollButton.getAttribute('data-poll-close')); });
+                    if (pollToClose && pollToClose.poll && !pollToClose.poll.closed) {
+                        pollToClose.poll.closed = true; saveMessages(pollHistory); renderAllMessages(); showToast('投票已结束');
+                    }
+                    return;
+                }
+                var joinButton = event.target.closest('[data-chain-join]');
+                if (joinButton) {
+                    var chainHistory = loadMessages();
+                    var chainMessage = chainHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(joinButton.getAttribute('data-chain-join')); });
+                    var chain = chainMessage && chainMessage.chain;
+                    if (!chain || chain.closed) return;
+                    var entryText = window.prompt('写下你的接龙内容');
+                    if (!entryText || !entryText.trim()) return;
+                    if (!Array.isArray(chain.entries)) chain.entries = [];
+                    chain.entries.push({ memberId: '__user', name: '我', text: entryText.trim().slice(0, 120), time: Date.now() });
+                    saveMessages(chainHistory); renderAllMessages(); return;
+                }
+                var closeChainButton = event.target.closest('[data-chain-close]');
+                if (closeChainButton) {
+                    var closeHistory = loadMessages();
+                    var chainToClose = closeHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(closeChainButton.getAttribute('data-chain-close')); });
+                    if (chainToClose && chainToClose.chain && !chainToClose.chain.closed) {
+                        chainToClose.chain.closed = true; saveMessages(closeHistory); renderAllMessages(); showToast('接龙已结束');
+                    }
+                }
+            });
+        })();
 
     </script>
     <script src="js/chat-extras.js?t=20261024v2"></script>
