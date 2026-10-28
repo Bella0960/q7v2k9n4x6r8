@@ -421,11 +421,19 @@
   function notifyRoleCardIssuer(card, message) {
     if (!card || !card.roleId) return;
     try {
-      var key = 'chat_history_' + card.roleId;
-      var list = JSON.parse(localStorage.getItem(key) || '[]');
+      var list;
+      if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
+        list = window.PhoneStorage.getChatHistory(card.roleId);
+      } else {
+        list = JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
+      }
       if (!Array.isArray(list)) list = [];
       list.push({ role: 'user', type: 'text', text: message, time: Date.now() });
-      localStorage.setItem(key, JSON.stringify(list));
+      if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
+        window.PhoneStorage.saveChatHistory(card.roleId, list);
+      } else {
+        localStorage.setItem('chat_history_' + card.roleId, JSON.stringify(list));
+      }
     } catch (e) {}
   }
 
