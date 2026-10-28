@@ -192,7 +192,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   var character = findRole(roleId);
   var charName = character && character.name ? String(character.name) : 'TA';
   var backChat = document.getElementById('backChat');
-  if (roleId) backChat.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
+  if (roleId) backChat.href = '../chat/chat-detail.html?v=20261028modes1&id=' + encodeURIComponent(roleId);
   backChat.addEventListener('click', function(){ try { localStorage.setItem('chat_mode_' + roleId, 'online'); } catch(e) {} });
   var setupView = document.getElementById('setupView');
   var travelView = document.getElementById('travelView');
@@ -324,7 +324,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     document.getElementById('routeMetaLeft').textContent='抵达目的地';
     animateRoute(1);
     setTimeout(function(){
-      var url='../date/date.html?id='+encodeURIComponent(roleId)+'&scene='+encodeURIComponent(state.scene)+'&arrived=1&journey='+encodeURIComponent(String(state.startedAt));
+      var url='../date/date.html?v=20261028modes1&id='+encodeURIComponent(roleId)+'&scene='+encodeURIComponent(state.scene)+'&arrived=1&journey='+encodeURIComponent(String(state.startedAt));
       window.location.href=url;
     },1400);
   }
