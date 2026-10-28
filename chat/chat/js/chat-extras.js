@@ -541,11 +541,12 @@
       }).join('') +
       '</div>' +
       '<input class="x-input" id="dateSceneInput" placeholder="自定义场景（如：天台、老书店）" value="咖啡馆" />' +
-      '<div class="x-core-muted">将进入线下沉浸式剧情模式：以小说叙事推进你们的故事。聊天记录与记忆双向互通，随时可从剧情页返回本对话。</div>' +
+      '<div class="x-core-muted">线上聊天与线下剧情共用角色记忆。选择一种赴约方式，途中消息和见面剧情会继续保存在当前对话。</div>' +
       '<div class="x-row">' +
       '<button class="x-btn x-btn-ghost" id="dateCancel">取消</button>' +
-      '<button class="x-btn x-btn-primary" id="dateGo">奔赴</button>' +
-      '</div>';
+      '<button class="x-btn x-btn-primary" id="dateGo">长线下 · 小说</button>' +
+      '</div>' +
+      '<button class="x-btn x-btn-ghost" id="dateJourneyGo" style="width:100%;margin-top:8px">短线下 · 路上动态与到达动画</button>';
     openModal('奔赴 · 线下剧情', html);
     var chips = document.getElementById('dateSceneChips');
     if (chips) {
@@ -562,7 +563,14 @@
     document.getElementById('dateGo').onclick = function () {
       var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
       closeModal();
+      try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-long'); } catch (e) {}
       window.location.href = '../date/date.html?id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
+    };
+    document.getElementById('dateJourneyGo').onclick = function () {
+      var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
+      closeModal();
+      try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-short'); } catch (e) {}
+      window.location.href = '../date/journey.html?id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
     };
   }
 
