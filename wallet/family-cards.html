@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#F7F7F9">
+<title>赠予卡包 · 小手机</title>
+<script src="../shared/js/font-loader.js?v=20261022v1"></script>
+<script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261028v2"></script>
+<style>
+:root{color-scheme:light;--ink:#111;--muted:#8e8e93;--line:#e5e5ea;--paper:#f7f7f9;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;height:100%;color:var(--ink)}
+body{display:flex;justify-content:center;align-items:center;background:#e5e5e5}
+button,a{font:inherit}
+.phone-mockup{position:relative;width:min(390px,calc(100vw - 24px));height:min(844px,calc(100dvh - 24px));background:var(--paper);border:8px solid #fff;border-radius:45px;box-shadow:0 10px 25px rgba(0,0,0,.15);overflow:hidden;display:flex;flex-direction:column}
+.floating-nav{display:none!important}
+.stage{flex:1;min-height:0;overflow-y:auto;padding:0 16px 30px;scrollbar-width:none}
+.stage::-webkit-scrollbar{display:none}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin:0 -16px;padding:calc(42px + env(safe-area-inset-top,0px)) 16px 14px}
+.icon-button{width:32px;height:32px;border:0;border-bottom:1px solid #bdbdbd;background:none;display:grid;place-items:center;color:#333;cursor:pointer}
+.icon-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.top-title{font-size:10px;letter-spacing:2px;color:#8e8e93;font-weight:650}
+.hero{background:#111;color:#fff;border-radius:19px;padding:20px 18px 18px;position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;right:-38px;top:-65px;width:180px;height:180px;border:1px solid rgba(255,255,255,.14);border-radius:50%;box-shadow:0 0 0 22px rgba(255,255,255,.025),0 0 0 45px rgba(255,255,255,.02);pointer-events:none}
+.eyebrow{font-size:9px;letter-spacing:2.2px;color:#a5a5ad;text-transform:uppercase}
+.hero h1{font-family:Georgia,"Songti SC",serif;font-size:30px;letter-spacing:-.5px;font-weight:400;line-height:1.15;margin:12px 0 7px}
+.hero-desc{font-size:11px;color:#b8b8bf;line-height:1.7;max-width:220px}
+.hero-stats{display:flex;gap:0;border-top:1px solid #343438;margin-top:19px;padding-top:14px}
+.hero-stat{flex:1;min-width:0}
+.hero-stat+.hero-stat{border-left:1px solid #343438;padding-left:15px;margin-left:15px}
+.stat-label{font-size:9px;color:#92929b;letter-spacing:.6px}
+.stat-value{font-size:21px;font-weight:500;letter-spacing:-.5px;margin-top:5px}
+.stat-value small{font-size:10px;color:#a4a4ac;margin-left:3px;font-weight:400}
+.shortcut-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+.shortcut{display:flex;align-items:center;justify-content:space-between;gap:8px;text-decoration:none;color:#222;background:#fff;border:1px solid #ececf0;border-radius:13px;padding:13px 12px;font-size:11px}
+.shortcut svg{width:15px;height:15px;stroke:#8e8e93;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.section-head{display:flex;align-items:end;justify-content:space-between;margin:25px 1px 11px;gap:12px}
+.section-title{font-size:13px;font-weight:650;letter-spacing:.1px}
+.section-note{font-size:10px;color:#999}
+.filters{display:flex;gap:7px;overflow-x:auto;padding:1px 0 11px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filter{flex:0 0 auto;border:1px solid #e4e4e9;border-radius:999px;background:transparent;padding:8px 13px;font-size:10px;color:#777;cursor:pointer}
+.filter.active{background:#111;color:#fff;border-color:#111}
+.card-list{display:flex;flex-direction:column;gap:11px}
+.family-card{background:#fff;border:1px solid #e5e5ea;border-radius:17px;overflow:hidden}
+.card-main{padding:15px}
+.card-top{display:flex;align-items:center;gap:10px}
+.card-monogram{width:37px;height:37px;background:#f1f1f4;border-radius:12px;display:grid;place-items:center;font-family:Georgia,serif;font-size:17px;flex-shrink:0}
+.card-id{flex:1;min-width:0}
+.card-issuer{font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-type{font-size:9px;color:#999;margin-top:4px;letter-spacing:.3px}
+.status{font-size:9px;padding:5px 8px;border:1px solid #e4e4e8;border-radius:999px;color:#777;white-space:nowrap}
+.status.active{background:#111;color:#fff;border-color:#111}
+.card-limit{display:flex;justify-content:space-between;align-items:baseline;margin-top:19px;gap:12px}
+.limit-value{font-size:25px;font-weight:600;letter-spacing:-.7px}
+.limit-value small{font-size:10px;color:#888;font-weight:400;letter-spacing:0}
+.limit-meta{font-size:10px;color:#777;text-align:right;line-height:1.65}
+.progress-track{height:4px;background:#f0f0f3;border-radius:999px;overflow:hidden;margin-top:12px}
+.progress-fill{height:100%;background:#111;border-radius:999px;max-width:100%}
+.progress-labels{display:flex;justify-content:space-between;gap:10px;margin-top:7px;font-size:9px;color:#999}
+.card-note{margin-top:14px;padding-top:12px;border-top:1px solid #f0f0f2;font-size:11px;line-height:1.7;color:#555;overflow-wrap:anywhere}
+.card-actions{display:flex;gap:7px;margin-top:14px;flex-wrap:wrap}
+.action-btn{border:1px solid #dddde3;border-radius:10px;background:#fff;color:#444;padding:9px 12px;font-size:10px;cursor:pointer}
+.action-btn.primary{background:#111;border-color:#111;color:#fff}
+.action-btn:active{transform:scale(.98)}
+.history-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;border-top:1px solid #f0f0f2;background:#fafafa;padding:12px 15px;color:#666;font-size:10px;text-align:left;cursor:pointer}
+.history-toggle svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.5;transition:transform .18s}
+.history-toggle.open svg{transform:rotate(180deg)}
+.usage-list{padding:0 15px 8px;background:#fafafa}
+.usage-row{display:flex;align-items:center;gap:9px;padding:10px 0;border-top:1px solid #eeeeF1}
+.usage-copy{flex:1;min-width:0}
+.usage-note{font-size:10px;color:#555;line-height:1.5;overflow-wrap:anywhere}
+.usage-date{font-size:9px;color:#aaa;margin-top:3px}
+.usage-amount{font-size:11px;font-weight:600;white-space:nowrap}
+.empty{padding:29px 18px;text-align:center;background:#fff;border:1px dashed #dedee4;border-radius:15px;color:#888;font-size:11px;line-height:1.9}
+.empty strong{display:block;color:#444;font-size:12px;font-weight:550;margin-bottom:3px}
+.footnote{font-size:9px;line-height:1.8;color:#999;text-align:center;padding:18px 10px 0}
+.toast{position:absolute;left:50%;bottom:28px;transform:translate(-50%,10px);opacity:0;pointer-events:none;transition:.2s;background:#111;color:#fff;border-radius:99px;padding:10px 15px;font-size:10px;white-space:nowrap;z-index:40;max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-height:620px){.phone-mockup{height:calc(100dvh - 12px);border-radius:32px}.topbar{padding-top:calc(25px + env(safe-area-inset-top,0px))}.hero{padding:15px}.hero h1{font-size:26px}}
+</style>
+</head>
+<body>
+<div class="phone-mockup">
+  <main class="stage">
+    <header class="topbar">
+      <button class="icon-button" id="backBtn" type="button" aria-label="返回">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span class="top-title">WALLET / BENEFITS</span>
+      <button class="icon-button" id="refreshBtn" type="button" aria-label="刷新卡包">
+        <svg viewBox="0 0 24 24"><path d="M20 7v5h-5"/><path d="M4.8 9a7.5 7.5 0 0 1 12.5-2.5L20 12M4 17v-5h5"/><path d="M19.2 15a7.5 7.5 0 0 1-12.5 2.5L4 12"/></svg>
+      </button>
+    </header>
+
+    <section class="hero">
+      <div class="eyebrow">PRIVATE BENEFITS / 01</div>
+      <h1>赠予卡包</h1>
+      <div class="hero-desc">角色为你准备的专属额度。领取之后，可在应用内商店与外卖结算使用。</div>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="stat-label">可用卡片</div>
+          <div class="stat-value" id="activeCount">0</div>
+        </div>
+        <div class="hero-stat">
+          <div class="stat-label">本月可用额度</div>
+          <div class="stat-value" id="remainingTotal">0<small> CNY</small></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="shortcut-row">
+      <a class="shortcut" href="shop.html">前往商店 <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="m13 5 7 7-7 7"/></svg></a>
+      <a class="shortcut" href="takeout.html">点一份外卖 <svg viewBox="0 0 24 24"><path d="M5 12h13"/><path d="m13 5 7 7-7 7"/></svg></a>
+    </div>
+
+    <section>
+      <div class="section-head">
+        <div class="section-title">卡片管理</div>
+        <div class="section-note" id="cardCountNote">0 张卡</div>
+      </div>
+      <nav class="filters" aria-label="卡片分类">
+        <button class="filter active" type="button" data-filter="all">全部</button>
+        <button class="filter" type="button" data-filter="pending">待领取</button>
+        <button class="filter" type="button" data-filter="active">可使用</button>
+        <button class="filter" type="button" data-filter="history">历史记录</button>
+      </nav>
+      <div class="card-list" id="cardList"></div>
+    </section>
+    <div class="footnote">卡片额度为 MAOMAO 应用内虚拟额度，不是银行卡余额；仅记录模拟商店及外卖消费，不会触发真实支付。</div>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var api = window.RoleFamilyCards;
+  var filter = 'all';
+  var expandedId = '';
+  var cardList = document.getElementById('cardList');
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+    });
+  }
+  function money(value) {
+    var n = Number(value);
+    return (isFinite(n) ? n : 0).toFixed(2);
+  }
+  function dateTime(value) {
+    var d = new Date(Number(value) || 0);
+    if (!d.getTime()) return '时间未知';
+    return String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0') + ' ' +
+      String(d.getHours()).padStart(2, '0') + ':' +
+      String(d.getMinutes()).padStart(2, '0');
+  }
+  function statusLabel(status) {
+    return ({ pending:'待领取', active:'可使用', paused:'已暂停', revoked:'已撤销', rejected:'已婉拒' })[status] || '不可用';
+  }
+  function getCards() {
+    if (!api) return [];
+    return api.readAll().slice().sort(function (a, b) {
+      return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
+    });
+  }
+  function currentVisibleCards(cards) {
+    return cards.filter(function (card) {
+      if (filter === 'pending') return card.status === 'pending';
+      if (filter === 'active') return card.status === 'active';
+      if (filter === 'history') return ['paused', 'revoked', 'rejected'].indexOf(card.status) !== -1;
+      return true;
+    });
+  }
+  function renderUsage(card) {
+    var history = Array.isArray(card.history) ? card.history.slice().sort(function (a, b) {
+      return (Number(b.time) || 0) - (Number(a.time) || 0);
+    }) : [];
+    if (!history.length) return '<div class="usage-row"><div class="usage-copy"><div class="usage-note">还没有消费记录</div></div></div>';
+    return history.map(function (row) {
+      var where = row.appId === 'takeout' ? '外卖' : (row.appId === 'shop' ? '商店' : '应用内消费');
+      return '<div class="usage-row">' +
+        '<div class="usage-copy"><div class="usage-note">' + esc(row.note || where) + '</div>' +
+        '<div class="usage-date">' + where + ' · ' + dateTime(row.time) + '</div></div>' +
+        '<div class="usage-amount">¥' + money(row.amount) + '</div></div>';
+    }).join('');
+  }
+  function renderCard(card) {
+    var monthly = Math.max(0, Number(card.monthlyLimit) || 0);
+    var single = Math.max(0, Number(card.singleLimit) || 0);
+    var used = api.usedThisMonth(card);
+    var remain = Math.max(0, monthly - used);
+    var pct = monthly > 0 ? Math.min(100, used / monthly * 100) : 0;
+    var kind = card.kind === 'intimate' ? '亲密付' : '亲属卡';
+    var id = esc(card.id);
+    var open = expandedId === card.id;
+    var actions = '';
+    if (card.status === 'pending') {
+      actions = '<button type="button" class="action-btn primary" data-action="accept" data-id="' + id + '">领取卡片</button>' +
+        '<button type="button" class="action-btn" data-action="reject" data-id="' + id + '">暂不接受</button>';
+    } else if (card.status === 'active') {
+      actions = '<button type="button" class="action-btn" data-action="pause" data-id="' + id + '">暂停使用</button>';
+    } else if (card.status === 'paused') {
+      actions = '<button type="button" class="action-btn primary" data-action="resume" data-id="' + id + '">恢复使用</button>';
+    }
+    var currentUsage = ['active', 'paused'].indexOf(card.status) !== -1
+      ? '<div class="progress-track"><div class="progress-fill" style="width:' + pct.toFixed(2) + '%"></div></div>' +
+        '<div class="progress-labels"><span>本月已使用 ¥' + money(used) + '</span><span>剩余 ¥' + money(remain) + '</span></div>'
+      : '';
+    var records = Array.isArray(card.history) ? card.history.length : 0;
+    return '<article class="family-card">' +
+      '<div class="card-main">' +
+        '<div class="card-top">' +
+          '<div class="card-monogram">' + esc(String(card.roleName || '角').slice(0, 1)) + '</div>' +
+          '<div class="card-id"><div class="card-issuer">' + esc(card.roleName || '角色') + ' 赠予</div>' +
+            '<div class="card-type">' + kind + ' · MAOMAO BENEFIT</div></div>' +
+          '<span class="status ' + (card.status === 'active' ? 'active' : '') + '">' + statusLabel(card.status) + '</span>' +
+        '</div>' +
+        '<div class="card-limit"><div class="limit-value">¥' + money(monthly) + '<small> / 月</small></div>' +
+          '<div class="limit-meta">单笔上限<br><strong>¥' + money(single) + '</strong></div></div>' +
+        currentUsage +
+        '<div class="card-note">' + esc(card.note || '这是一份专属日常额度。') + '</div>' +
+        (actions ? '<div class="card-actions">' + actions + '</div>' : '') +
+      '</div>' +
+      '<button class="history-toggle ' + (open ? 'open' : '') + '" type="button" data-action="toggle-history" data-id="' + id + '">' +
+        '<span>消费记录 · ' + records + ' 笔</span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>' +
+      '</button>' +
+      (open ? '<div class="usage-list">' + renderUsage(card) + '</div>' : '') +
+    '</article>';
+  }
+  function render() {
+    if (!api) {
+      cardList.innerHTML = '<div class="empty"><strong>卡包暂不可用</strong>卡片管理模块没有成功加载，请刷新页面。</div>';
+      return;
+    }
+    var cards = getCards();
+    var activeCards = cards.filter(function (card) { return card.status === 'active'; });
+    var remaining = activeCards.reduce(function (sum, card) {
+      return sum + Math.max(0, (Number(card.monthlyLimit) || 0) - api.usedThisMonth(card));
+    }, 0);
+    document.getElementById('activeCount').textContent = String(activeCards.length);
+    document.getElementById('remainingTotal').innerHTML = money(remaining) + '<small> CNY</small>';
+    document.getElementById('cardCountNote').textContent = cards.length + ' 张卡';
+    document.querySelectorAll('[data-filter]').forEach(function (button) {
+      button.classList.toggle('active', button.dataset.filter === filter);
+    });
+    var visible = currentVisibleCards(cards);
+    if (!visible.length) {
+      var emptyTitle = filter === 'pending' ? '暂时没有待领取的卡片'
+        : filter === 'active' ? '还没有可使用的卡片'
+        : filter === 'history' ? '还没有历史卡片'
+        : '这里还没有角色赠予的卡片';
+      var emptyText = filter === 'all'
+        ? '去聊天里和角色互动。符合剧情时，角色可以主动为你准备亲属卡或亲密付。'
+        : '新的卡片或状态变化会自动显示在这里。';
+      cardList.innerHTML = '<div class="empty"><strong>' + emptyTitle + '</strong>' + emptyText + '</div>';
+      return;
+    }
+    cardList.innerHTML = visible.map(renderCard).join('');
+  }
+  function toast(message) {
+    toastEl.textContent = message;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+  function appendRoleNotice(card, message) {
+    if (!card || !card.roleId) return;
+    try {
+      var list;
+      if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
+        list = window.PhoneStorage.getChatHistory(card.roleId);
+      } else {
+        list = JSON.parse(localStorage.getItem('chat_history_' + card.roleId) || '[]');
+      }
+      if (!Array.isArray(list)) list = [];
+      list.push({ role:'user', type:'text', text:message, time:Date.now() });
+      if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
+        window.PhoneStorage.saveChatHistory(card.roleId, list);
+      } else {
+        localStorage.setItem('chat_history_' + card.roleId, JSON.stringify(list));
+      }
+    } catch (e) {}
+  }
+  function runAction(action, id) {
+    if (!api) return;
+    var before = api.find(id);
+    var result = api.update(id, action);
+    if (!result || !result.ok) {
+      toast(result && result.reason === 'storage' ? '保存失败，请检查手机存储空间' : '这张卡目前无法执行该操作');
+      return;
+    }
+    var card = result.card || before;
+    var verb = ({
+      accept:'我收下你送给我的卡了，谢谢你。',
+      reject:'谢谢你的心意，不过这张卡我暂时先不收。',
+      pause:'我先把你给我的卡暂停使用了。',
+      resume:'我恢复使用你给我的卡了。'
+    })[action];
+    if (verb) appendRoleNotice(card, verb);
+    render();
+    toast(({accept:'已领取，可以在商店和外卖结算使用',reject:'已婉拒这张卡',pause:'卡片已暂停',resume:'卡片已恢复使用'})[action] || '已更新');
+  }
+
+  document.querySelector('.filters').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-filter]');
+    if (!button) return;
+    filter = button.dataset.filter || 'all';
+    expandedId = '';
+    render();
+  });
+  cardList.addEventListener('click', function (event) {
+    var button = event.target.closest('[data-action]');
+    if (!button) return;
+    var action = button.dataset.action;
+    var id = button.dataset.id || '';
+    if (action === 'toggle-history') {
+      expandedId = expandedId === id ? '' : id;
+      render();
+      return;
+    }
+    runAction(action, id);
+  });
+  document.getElementById('backBtn').addEventListener('click', function () {
+    if (history.length > 1) history.back();
+    else location.href = 'wallet.html';
+  });
+  document.getElementById('refreshBtn').addEventListener('click', function () {
+    render();
+    toast('卡包已刷新');
+  });
+  window.addEventListener('pageshow', render);
+  render();
+})();
+</script>
+<script src="../shared/js/statusbar-control.js"></script>
+</body>
+</html>
