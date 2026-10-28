@@ -2825,7 +2825,7 @@
                 bubble.classList.add('bubble-pay');
                 const payLabel = msg.isVoice === true ? '语音红包' : '红包';
                 const payStatus = msg.status === 'opened' ? '已领取' : '未领取';
-                bubble.innerHTML = `<div class="pay-card pay-card-red" data-index="${typeof idx === 'number' ? idx : ''}" data-type="redpacket" onclick="handlePayCardClick(event)">
+                bubble.innerHTML = `<div class="pay-card pay-card-red" data-index="${typeof idx === 'number' ? idx : ''}" data-mid="${escHtml(ensureMid(msg))}" data-type="redpacket" onclick="handlePayCardClick(event)">
                     <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 8.5 12 11.6 14.5 8.5"/><line x1="10.6" y1="12.5" x2="13.4" y2="12.5"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
                     <div class="pay-card-main">
                         <span class="pay-card-label">${payLabel}</span>
@@ -2837,13 +2837,18 @@
             } else if (msg.type === 'transfer') {
                 // 转账卡：纯白底 + 浅灰边框 + 黑色细线条双向箭头 + 右侧灰色细箭头
                 bubble.classList.add('bubble-pay');
-                bubble.innerHTML = `<div class="pay-card pay-card-transfer" data-index="${typeof idx === 'number' ? idx : ''}" data-type="transfer" onclick="handlePayCardClick(event)">
+                const transferStatus = msg.status === 'received' ? '已收款'
+                    : msg.status === 'returned' ? '已退回'
+                    : msg.status === 'returning' ? '等待退回到账'
+                    : msg.status === 'accepted' ? '对方已收下'
+                    : (isSent ? '等待对方回应' : '待收款');
+                bubble.innerHTML = `<div class="pay-card pay-card-transfer" data-index="${typeof idx === 'number' ? idx : ''}" data-mid="${escHtml(ensureMid(msg))}" data-type="transfer" onclick="handlePayCardClick(event)">
                     <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                     <div class="pay-card-main">
                         <span class="pay-card-label">转账</span>
                         <span class="pay-card-amount">¥${escHtml(String(msg.amount == null ? '0.00' : msg.amount))}</span>
                     </div>
-                    <svg class="pay-card-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    <span class="pay-card-status">${transferStatus}</span>
                 </div>`;
             } else if (msg.type === 'card' && msg.card) {
                 const cd = msg.card;
@@ -3163,6 +3168,38 @@
                 .replace(/\s+$/, '');
             return { text: cleaned, items: items };
         }
+        // ---- 转账决策标记：角色收下转账时更新对应卡片 ----
+        const TRANSFER_ACCEPT_MARKER_REGEX = /\\[收下转账:(\\d+(?:\\.\\d{1,2})?)\\]/g;
+        function extractTransferDecisionMarkers(raw) {
+            const text = String(raw || '');
+            const amounts = [];
+            let match;
+            TRANSFER_ACCEPT_MARKER_REGEX.lastIndex = 0;
+            while ((match = TRANSFER_ACCEPT_MARKER_REGEX.exec(text)) !== null) {
+                const amount = Number(match[1]);
+                if (isFinite(amount) && amount > 0) amounts.push(amount);
+            }
+            return {
+                text: text.replace(TRANSFER_ACCEPT_MARKER_REGEX, '').replace(/[ \\t]+\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trimEnd(),
+                amounts: amounts
+            };
+        }
+        function applyTransferDecisionMarkers(historyList, amounts) {
+            if (!Array.isArray(historyList) || !Array.isArray(amounts) || !amounts.length) return;
+            amounts.forEach(function (amount) {
+                for (var i = historyList.length - 1; i >= 0; i--) {
+                    var previous = historyList[i];
+                    if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                        previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
+                        Number(previous.amount) === Number(amount)) {
+                        previous.status = 'accepted';
+                        previous.acceptedAt = Date.now();
+                        break;
+                    }
+                }
+            });
+        }
+
         // ---- 自动记忆标记：[记住:xxx] 从 AI 回复中剥离，存进 user_memory ----
         const MEM_MARKER_REGEX = /\[记住:([^\]]+)\]/g;
         function extractMemoryMarkers(raw) {
@@ -3229,6 +3266,18 @@
         function insertPayCards(historyList, items) {
             if (!items || !items.length) return;
             items.forEach(function (item) {
+                if (item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''))) {
+                    for (var pi = historyList.length - 1; pi >= 0; pi--) {
+                        var previous = historyList[pi];
+                        if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                            previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
+                            Number(previous.amount) === Number(item.amount)) {
+                            previous.status = 'returning';
+                            previous.returnRequestedAt = Date.now();
+                            break;
+                        }
+                    }
+                }
                 const payMsg = {
                     role: 'assistant',
                     type: item.type,
@@ -3238,18 +3287,7 @@
                     timestamp: Date.now()
                 };
                 historyList.push(payMsg);
-                // ===== 互通：红包/转账自动写进记账本（用户收入） =====
-                try {
-                    const fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
-                    fin.push({
-                        amount: Number(item.amount),
-                        type: '收入',
-                        category: item.type === 'transfer' ? '转账' : '红包',
-                        note: (currentCharacter ? currentCharacter.name : '角色') + (item.type === 'transfer' ? ' 转账给我' : ' 发的红包'),
-                        time: Date.now()
-                    });
-                    localStorage.setItem('finance_records', JSON.stringify(fin));
-                } catch (e) {}
+
             });
             saveMessages(historyList);
             renderAllMessages();
@@ -4129,6 +4167,9 @@
                     // 剥离红包/转账标记 [红包:金额:留言] / [转账:金额:留言]
                     const parsedPay = extractPayMarkers(fullText);
                     fullText = parsedPay.text;
+                    const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
+                    fullText = parsedTransferDecision.text;
+                    applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                     // 剥离自动记忆标记 [记住:xxx]，并存进 user_memory
                     const parsedMem = extractMemoryMarkers(fullText);
                     fullText = parsedMem.text;
@@ -4968,21 +5009,36 @@
         function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
+            const mid = cardEl.getAttribute('data-mid') || '';
             const indexStr = cardEl.getAttribute('data-index');
-            if (indexStr === '' || indexStr == null) return;
-            const index = parseInt(indexStr, 10);
-            if (isNaN(index) || index < 0) return;
 
-            // 每次点击都从 localStorage 重读最新消息：双击时第二次读到的已是最新状态，天然防重复刷钱
+            // 必须按稳定 mid 查全量历史，不能把过滤了 silent/date 的显示序号当数组下标。
             const list = loadMessages();
+            let index = mid ? list.findIndex(function (item) { return item && ensureMid(item) === mid; }) : -1;
+            if (index < 0 && indexStr !== '' && indexStr != null) {
+                const legacyIndex = parseInt(indexStr, 10);
+                if (!isNaN(legacyIndex) && legacyIndex >= 0) index = legacyIndex;
+            }
+            if (index < 0 || index >= list.length) return;
             const msg = list[index];
             if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
             const isRed = msg.type === 'redpacket';
 
-            // 角色判断（修复资金漏洞）：只有对方(assistant)发来的才能领取；
-            // 自己(user/sent)发出的只提示等待对方，不加余额、不改状态
+            if (msg.type === 'transfer' && msg.status === 'returned') {
+                showToast('这笔转账已退回');
+                return;
+            }
+            if (msg.type === 'transfer' && msg.status === 'accepted') {
+                showToast('对方已收下这笔转账');
+                return;
+            }
+            if (msg.type === 'transfer' && msg.status === 'returning') {
+                showToast('对方正在退回这笔转账');
+                return;
+            }
+            // 只有角色发来的红包/转账可以由用户领取，防止点击自己发出的卡片给自己加钱。
             if (msg.role !== 'assistant') {
-                showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方领取哦');
+                showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方回应哦');
                 return;
             }
 
@@ -5003,22 +5059,70 @@
                 return;
             }
 
-            // 1. 改状态并保存回聊天历史
+            // 1. 先落钱包账本，并以消息 mid 做幂等键，避免状态存储失败后重复加钱。
+            if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
+                showToast('钱包暂不可用，未完成收款');
+                return;
+            }
+            const paymentId = ensureMid(msg);
+            const wd = getWorkData();
+            if (!wd || typeof wd !== 'object') {
+                showToast('钱包数据读取失败，未完成收款');
+                return;
+            }
+            if (!Array.isArray(wd.history)) wd.history = [];
+            if (wd.history.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
+                msg.status = isRed ? 'opened' : 'received';
+                saveMessages(list);
+                renderAllMessages();
+                showToast('这笔款项已经入账');
+                return;
+            }
+            const oldBalance = Number(wd.balance);
+            wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
+            wd.history.unshift({
+                type: 'income',
+                category: msg.type,
+                title: isRed ? '收到红包' : '收到转账',
+                amount: amountNum,
+                time: Date.now(),
+                paymentId: paymentId
+            });
+            if (!saveWorkData(wd)) return;
+
+            // 如果这是角色退回的转账，只有用户实际收款后，原转账才改为「已退回」。
+            if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
+                for (let ri = list.length - 1; ri >= 0; ri--) {
+                    const previous = list[ri];
+                    if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                        previous.type === 'transfer' && previous.status === 'returning' &&
+                        Number(previous.amount) === amountNum) {
+                        previous.status = 'returned';
+                        previous.returnedAt = Date.now();
+                        break;
+                    }
+                }
+            }
             msg.status = isRed ? 'opened' : 'received';
             saveMessages(list);
 
-            // 2. 余额累加：保留两位小数，避免浮点误差
-            const wd = getWorkData();
-            wd.balance = Math.round((wd.balance + amountNum) * 100) / 100;
-            // 交易明细：收入记录（状态校验已保证一条卡只能走到这里一次，不会重复写入）
-            wd.history.unshift({
-                type: 'income',
-                category: msg.type,                 // 'redpacket' | 'transfer'
-                title: isRed ? '收到红包' : '收到转账',
-                amount: parseFloat(msg.amount),
-                time: Date.now()
-            });
-            if (!saveWorkData(wd)) return;
+            // 记账本只在真正收款时记收入，避免 AI 生成卡片但用户尚未领取就提前入账。
+            try {
+                let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
+                if (!Array.isArray(fin)) fin = [];
+                if (!fin.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
+                    fin.push({
+                        paymentId: paymentId,
+                        amount: amountNum,
+                        type: '收入',
+                        category: isRed ? '红包' : '转账',
+                        note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
+                        time: Date.now()
+                    });
+                    localStorage.setItem('finance_records', JSON.stringify(fin));
+                }
+            } catch (e) {}
+            renderAllMessages();
 
             // 3. 结果弹窗：红包「已存入余额」，转账「收款成功」
             openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
