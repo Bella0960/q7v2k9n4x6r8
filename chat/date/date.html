@@ -2118,7 +2118,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 
     // 线下剧情与线上聊天共用记录：返回时直接回到当前角色的线上对话。
     if (!isPreview && roleId) {
-        backLink.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
+        backLink.href = '../chat/chat-detail.html?v=20261028modes1&id=' + encodeURIComponent(roleId);
         backLink.addEventListener('click', function () {
             try { localStorage.setItem('chat_mode_' + roleId, 'online'); } catch (e) {}
         });
