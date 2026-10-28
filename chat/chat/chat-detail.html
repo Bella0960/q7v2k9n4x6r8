@@ -1933,6 +1933,50 @@
 
 @media(prefers-reduced-motion:reduce){.group-poll-option,.group-interaction-primary{transition:none!important}}
 </style>
+
+<style id="chatModeSwitchStyles">
+.chat-status-sub.chat-mode-trigger{
+  min-height:25px;padding:4px 7px;margin-top:1px;
+  border:0;background:transparent;appearance:none;-webkit-appearance:none;
+  cursor:pointer;line-height:1.5;border-radius:4px;
+  transition:opacity .16s ease,color .16s ease;
+}
+.chat-status-sub.chat-mode-trigger:not(:disabled)::after{content:"  ↕";font:inherit;color:#777}
+.chat-status-sub.chat-mode-trigger:active{opacity:.55}
+.chat-status-sub.chat-mode-trigger:focus-visible{outline:1px solid #999;outline-offset:2px}
+.chat-mode-overlay{
+  position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center;
+  padding:0 0 env(safe-area-inset-bottom,0px);background:rgba(0,0,0,.30);
+  animation:chatModeFadeIn .16s ease-out;
+}
+.chat-mode-sheet{
+  width:min(100%,430px);max-height:86dvh;overflow-y:auto;background:#fff;color:#171717;
+  padding:23px 21px calc(18px + env(safe-area-inset-bottom,0px));
+  border-radius:18px 18px 0 0;box-shadow:0 -10px 36px rgba(0,0,0,.10);
+  animation:chatModeRise .22s cubic-bezier(.2,.7,.2,1);
+}
+.chat-mode-kicker{font:9px/1.4 Arial,sans-serif;letter-spacing:.18em;color:#a0a09a;text-transform:uppercase;margin-bottom:10px}
+.chat-mode-heading{font:600 20px/1.3 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;letter-spacing:-.04em;margin-bottom:16px}
+.chat-mode-option{
+  display:flex;width:100%;align-items:center;gap:13px;padding:14px 1px;text-align:left;
+  border:0;border-top:1px solid #e9e9e6;background:#fff;color:#222;cursor:pointer;
+}
+.chat-mode-option:last-of-type{border-bottom:1px solid #e9e9e6}
+.chat-mode-option:active,.chat-mode-option.is-current{background:#f7f7f5}
+.chat-mode-number{flex:0 0 22px;font:10px/1 Georgia,serif;color:#aaa}
+.chat-mode-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.chat-mode-copy strong{font:600 13px/1.35 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222}
+.chat-mode-copy small{font:10px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#888}
+.chat-mode-mark{font:10px/1 Arial,sans-serif;color:#777;white-space:nowrap}
+.chat-mode-close{
+  width:100%;min-height:40px;margin-top:14px;border:1px solid #e4e4e0;background:#fafaf8;
+  color:#555;font:12px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;cursor:pointer;
+}
+@keyframes chatModeFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes chatModeRise{from{transform:translateY(18px);opacity:.75}to{transform:translateY(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){.chat-mode-overlay,.chat-mode-sheet{animation:none!important}}
+</style>
+
 </head>
 <body>
     <div class="phone-mockup">
@@ -1948,7 +1992,7 @@
             <div class="chat-title-box">
                 <div class="chat-header-avatar" id="chat-header-avatar" aria-hidden="true"></div>
                 <span class="chat-user-name" id="chat-title">聊天</span>
-                <span class="chat-status-sub" id="chat-status-sub">ONLINE · ACTIVE</span>
+                <button class="chat-status-sub chat-mode-trigger" id="chat-status-sub" type="button" aria-label="切换聊天模式" title="切换线上、线下与旁白模式">ONLINE · ACTIVE</button>
                 <span class="chat-notice-bar" id="chat-notice-bar" style="display:none;"></span>
             </div>
             <div class="chat-header-actions">
@@ -2416,6 +2460,8 @@
         if (isGroupChat && chatStatusSub) {
             const names = (currentGroup && currentGroup.members || []).map(groupMemberDisplayName).filter(Boolean);
             chatStatusSub.textContent = names.length ? names.join(' · ') : '群聊';
+            chatStatusSub.disabled = true;
+            chatStatusSub.classList.remove('chat-mode-trigger');
             // 群聊：显示群公告横条（chat_group_notice_<gid>）
             const chatNoticeBar = document.getElementById('chat-notice-bar');
             if (chatNoticeBar) {
@@ -2426,6 +2472,17 @@
                     chatNoticeBar.style.display = '';
                 }
             }
+        }
+
+        // 普通单聊默认线上；旁白模式按角色保存。线下页面会单独记录自己的状态。
+        if (!isGroupChat && chatStatusSub) {
+            var initialChatMode = '';
+            try { initialChatMode = localStorage.getItem('chat_mode_' + currentCharacter.id) || ''; } catch (e) {}
+            if (initialChatMode !== 'narration') {
+                initialChatMode = 'online';
+                try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'online'); } catch (e) {}
+            }
+            chatStatusSub.textContent = initialChatMode === 'narration' ? 'NARRATION · ACTIVE' : 'ONLINE · ACTIVE';
         }
 
         // ================= 拉黑态（键 chat_blocked_ids：会话仍在列表，但不能聊） =================
@@ -4048,6 +4105,13 @@
             // 叙事总规范（线上模式）：与线下模式共用同一套表达规范，边界清晰
             systemPrompt += '\n\n[叙事总规范]\n- 边界清晰：当前是线上聊天模式（隔着屏幕交流），只写消息内容与打字时的心理，不写面对面动作或场景描写；线下模式的面对面叙事不适用于这里。\n- 动作描写原则：只在推进剧情、表现人物情绪、传递关键信息时才添加动作描述，删减无意义的动作与状态描写。\n- 拒绝模板：不要堆砌「动作 + 环境 + 心理」的固定结构，避免机械式的动作衔接。\n- 允许纯对话：可以只写台词和少量必要的心理，无需每条回复都搭配动作描写。\n- 表达精简：减少「刚刚、此刻、下一秒、就在这时」这类无实义的时间词；日常分享内容要有话题性，避免流水账式的状态汇报。';
 
+            // 旁白模式是可切回的持久模式，覆盖上面的线上短消息规则。
+            var activeChatModeForPrompt = 'online';
+            try { activeChatModeForPrompt = localStorage.getItem('chat_mode_' + aliasRoleId) || 'online'; } catch (e) {}
+            if (activeChatModeForPrompt === 'narration') {
+                systemPrompt += '\n\n[当前模式：旁白与动作描写 · 优先规则]\n把用户的新消息当作同一段剧情中的行动、对白或提示，以自然的小说叙述回应；可以写必要的动作、神态、环境变化、内心活动和对白，但不要替用户擅自决定未表达的行为或思想。避免微信式短句，也不要为了凑字数堆砌动作。默认约 180–400 字，按剧情需要灵活调整。保持角色原有人设，不解释模式规则。此规则优先于前面的线上聊天限制。';
+            }
+
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -4989,6 +5053,69 @@
             if (existingVideoAction) existingVideoAction.click();
             else if (typeof showToast === 'function') showToast('请从加号菜单打开视频通话');
         });
+
+        // ================= 线上 / 线下 / 旁白模式切换 =================
+        const chatModeTrigger = document.getElementById('chat-status-sub');
+        function openChatModeSheet() {
+            if (isGroupChat || !currentCharacter || !currentCharacter.id) return;
+            if (document.getElementById('chatModeOverlay')) return;
+            const overlay = document.createElement('div');
+            overlay.className = 'chat-mode-overlay';
+            overlay.id = 'chatModeOverlay';
+            overlay.innerHTML =
+                '<section class="chat-mode-sheet" role="dialog" aria-modal="true" aria-labelledby="chatModeHeading">' +
+                  '<div class="chat-mode-kicker">MAOMAO / CONVERSATION MODES</div>' +
+                  '<div class="chat-mode-heading" id="chatModeHeading">选择相处方式</div>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="online"><span class="chat-mode-number">01</span><span class="chat-mode-copy"><strong>线上聊天</strong><small>隔着屏幕，像日常消息一样来回聊</small></span><span class="chat-mode-mark">ONLINE</span></button>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="offline-short"><span class="chat-mode-number">02</span><span class="chat-mode-copy"><strong>短线下 · 赴约</strong><small>共享位置、动态路线、路上消息，到达后进入剧情</small></span><span class="chat-mode-mark">MEET</span></button>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="offline-long"><span class="chat-mode-number">03</span><span class="chat-mode-copy"><strong>长线下 · 小说</strong><small>直接进入沉浸式剧情，可自定义文风、字数与人称</small></span><span class="chat-mode-mark">STORY</span></button>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="narration"><span class="chat-mode-number">04</span><span class="chat-mode-copy"><strong>旁白 / 动作描写</strong><small>切换当前角色的叙述方式，随时可以改回线上</small></span><span class="chat-mode-mark">VOICE</span></button>' +
+                  '<button type="button" class="chat-mode-close" data-chat-mode="cancel">取消</button>' +
+                '</section>';
+            document.body.appendChild(overlay);
+            const modeKey = 'chat_mode_' + currentCharacter.id;
+            let currentMode = 'online';
+            try { currentMode = localStorage.getItem(modeKey) || 'online'; } catch (e) {}
+            overlay.querySelectorAll('[data-chat-mode]').forEach(function (button) {
+                if (button.getAttribute('data-chat-mode') === currentMode) button.classList.add('is-current');
+            });
+            const closeOnEscape = function (event) {
+                if (event.key === 'Escape' && document.getElementById('chatModeOverlay')) closeModeSheet();
+            };
+            function closeModeSheet() {
+                overlay.remove();
+                document.removeEventListener('keydown', closeOnEscape);
+            }
+            overlay.addEventListener('click', function (event) {
+                if (event.target === overlay) { closeModeSheet(); return; }
+                const button = event.target.closest ? event.target.closest('[data-chat-mode]') : null;
+                if (!button) return;
+                const selected = button.getAttribute('data-chat-mode');
+                if (selected === 'cancel') { closeModeSheet(); return; }
+                if (selected === 'offline-short' || selected === 'offline-long') {
+                    try { localStorage.setItem(modeKey, selected); } catch (e) {}
+                    const page = selected === 'offline-short' ? '../date/journey.html' : '../date/date.html';
+                    closeModeSheet();
+                    window.location.href = page + '?id=' + encodeURIComponent(currentCharacter.id);
+                    return;
+                }
+                if (selected === 'narration') {
+                    try { localStorage.setItem(modeKey, 'narration'); } catch (e) {}
+                    if (chatModeTrigger) chatModeTrigger.textContent = 'NARRATION · ACTIVE';
+                    closeModeSheet();
+                    if (typeof showToast === 'function') showToast('旁白模式已开启；再次选择线上聊天即可切回');
+                    return;
+                }
+                try { localStorage.setItem(modeKey, 'online'); } catch (e) {}
+                if (chatModeTrigger) chatModeTrigger.textContent = 'ONLINE · ACTIVE';
+                closeModeSheet();
+                if (typeof showToast === 'function') showToast('已切回线上聊天');
+            });
+            document.addEventListener('keydown', closeOnEscape);
+        }
+        if (chatModeTrigger && !isGroupChat) {
+            chatModeTrigger.addEventListener('click', openChatModeSheet);
+        }
 
         // ================= Toast（chat-extras.js 等模块仍在使用，必须保留） =================
         const detailToast = document.getElementById('detailToast');
