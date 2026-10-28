@@ -79,7 +79,6 @@
       id: id,
       roleId: String(input.roleId),
       roleName: String(input.roleName || '角色').slice(0, 40),
-      roleAvatar: String(input.roleAvatar || '').slice(0, 200000),
       kind: input.kind === 'intimate' ? 'intimate' : 'family',
       monthlyLimit: monthlyLimit,
       singleLimit: Math.min(singleLimit, monthlyLimit),
@@ -90,6 +89,16 @@
       history: []
     };
     cards.unshift(card);
+    if (cards.length > 80) {
+      while (cards.length > 80) {
+        var removeIndex = -1;
+        for (var ri = cards.length - 1; ri >= 0; ri--) {
+          if (['rejected', 'revoked'].indexOf(cards[ri].status) !== -1) { removeIndex = ri; break; }
+        }
+        if (removeIndex < 0) removeIndex = cards.length - 1;
+        cards.splice(removeIndex, 1);
+      }
+    }
     if (!writeAll(cards)) return null;
     return card;
   }
@@ -166,6 +175,7 @@
       time: Date.now()
     };
     card.history.push(row);
+    while (card.history.length > 200) card.history.shift();
     card.lastUsedAt = row.time;
     return writeAll(cards) ? { ok: true, reason: '', card: card, record: row }
       : { ok: false, reason: 'storage', card: card };
