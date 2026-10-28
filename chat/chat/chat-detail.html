@@ -2400,6 +2400,74 @@
                 return true;
             } catch (e) { return false; }
         }
+        function groupRelationshipKey(idA, idB) {
+            return JSON.stringify([String(idA), String(idB)].sort());
+        }
+        function getOrCreateGroupRelationship(memberA, memberB) {
+            if (!currentGroup || !memberA || !memberB || String(memberA.id) === String(memberB.id)) return null;
+            if (!currentGroup.relationships || typeof currentGroup.relationships !== 'object' || Array.isArray(currentGroup.relationships)) currentGroup.relationships = {};
+            var ids = [String(memberA.id), String(memberB.id)].sort();
+            var key = groupRelationshipKey(ids[0], ids[1]);
+            var relation = currentGroup.relationships[key];
+            if (!relation || typeof relation !== 'object') {
+                relation = currentGroup.relationships[key] = {
+                    memberAId: ids[0], memberBId: ids[1], type: '未设定',
+                    familiarity: 0, interactions: 0, note: '', lastInteractionAt: 0
+                };
+            }
+            relation.memberAId = ids[0];
+            relation.memberBId = ids[1];
+            relation.type = String(relation.type || '未设定');
+            relation.familiarity = Math.max(0, Math.min(100, parseInt(relation.familiarity, 10) || 0));
+            relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0);
+            relation.note = String(relation.note || '').slice(0, 120);
+            return relation;
+        }
+        function findGroupSpeakerInHistory(historyList) {
+            var members = currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
+            for (var i = (historyList || []).length - 1; i >= 0; i--) {
+                var item = historyList[i];
+                if (!item || item.type || (item.role !== 'assistant' && item.role !== 'received')) continue;
+                if (item.memberId != null) {
+                    var byId = members.find(function (member) { return String(member.id) === String(item.memberId); });
+                    if (byId) return byId;
+                }
+                if (item.name) {
+                    var byName = members.find(function (member) { return groupMemberDisplayName(member) === String(item.name); });
+                    if (byName) return byName;
+                }
+            }
+            return null;
+        }
+        function getGroupRelationshipContext() {
+            if (!currentGroup || !currentGroup.relationships || typeof currentGroup.relationships !== 'object') return '';
+            var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+            var relations = Object.keys(currentGroup.relationships).map(function (key) {
+                var rel = currentGroup.relationships[key];
+                if (!rel || typeof rel !== 'object') return null;
+                var a = members.find(function (member) { return String(member.id) === String(rel.memberAId); });
+                var b = members.find(function (member) { return String(member.id) === String(rel.memberBId); });
+                if (!a || !b) {
+                    try {
+                        var ids = JSON.parse(key);
+                        if (Array.isArray(ids)) {
+                            a = a || members.find(function (member) { return String(member.id) === String(ids[0]); });
+                            b = b || members.find(function (member) { return String(member.id) === String(ids[1]); });
+                        }
+                    } catch (e) {}
+                }
+                if (!a || !b) return null;
+                var familiarity = Math.max(0, Math.min(100, parseInt(rel.familiarity, 10) || 0));
+                var type = String(rel.type || '未设定');
+                var note = String(rel.note || '').trim().slice(0, 120);
+                if (type === '未设定' && familiarity === 0 && !note) return null;
+                return {
+                    time: Number(rel.lastInteractionAt) || 0,
+                    line: groupMemberDisplayName(a) + ' ↔ ' + groupMemberDisplayName(b) + '：关系=' + type + '；熟悉度 ' + familiarity + '/100；明确互动 ' + (parseInt(rel.interactions, 10) || 0) + ' 次' + (note ? '；补充=' + note : '')
+                };
+            }).filter(Boolean).sort(function (a, b) { return b.time - a.time; }).slice(0, 12);
+            return relations.map(function (item) { return item.line; }).join('\n').slice(0, 1500);
+        }
 
         const currentCharacter = isGroupChat
             ? { id: currentRoleId, name: (currentGroup && currentGroup.name) || '群聊', avatar: (currentGroup && (currentGroup.avatar || currentGroup.cover)) || '', avatarBg: '#3B9EFF' }
@@ -4077,7 +4145,11 @@
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
                 const groupSettings = getGroupSettings();
-                systemPrompt += '\n\n[群成员自然互动]\n你们是在同一个群里的真实角色。先读懂最近几条群消息，再按自己的性格回应其中某一位成员；可以赞同、追问、补充、开玩笑或温和地不同意。不要每次都把话题拉回用户身上，不要机械复述上一句，不要替其他成员发言，也不要凭空编造人际关系或共同经历。回复保持简短自然，像群聊消息。';
+                systemPrompt += '\n\n[群成员自然互动]\n你们是在同一个群里的真实角色。先读懂最近几条群消息，再按自己的性格回应其中某一位成员；可以赞同、追问、补充、开玩笑或温和地不同意。不要每次都把话题拉回用户身上，不要机械复述上一句，不要替其他成员发言，也不要凭空编造人际关系或共同经历。回复保持简短自然，像群聊消息。若本条确实在回应上一位群成员，而不是主要回应用户，请在回复末尾添加隐藏标记 [群关系互动:准确角色ID]；ID必须来自群成员名单，每轮最多一个；没有明确回应对象时不要添加，系统会自动移除标记。';
+                const groupRelationshipContext = getGroupRelationshipContext();
+                if (groupRelationshipContext) {
+                    systemPrompt += '\n\n[群成员关系与熟悉度]\n' + groupRelationshipContext + '\n请尊重记录中的关系类型与熟悉程度；熟悉度不等于好感度，不要因为数值增加就擅自升级为恋人或编造共同过去。';
+                }
                 if (isGroupFollowup) {
                     systemPrompt += '\n\n[自主接话回合 ' + groupAutoDepth + ']\n这是系统安排的自动接话，不是用户新发了一条消息。请接着最近那位群成员的话题说，当前发言者应当与上一位发言者不同。只输出你自己的1-3句群聊消息。如果话题已经自然结束、没有值得补充的内容，请只输出隐藏标记 [群聊结束]，不必硬聊。禁止把“继续”当成用户实际说的话。';
                 }
@@ -4493,7 +4565,7 @@
                     groupReplyVisible = !!fullText;
                     if (fullText) {
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
-                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined };
+                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
                         historyList.push(aiMsg);
                         window.__groupPrivateCardPending = false;
                         saveMessages(historyList);
@@ -5546,6 +5618,23 @@
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
+            text = text.replace(/\[群关系互动[:：]([^\]]{1,100})\]/g, function (marker, targetKey) {
+                if (isRegen || !speaker || speaker.id == null) return '';
+                var targetId = String(targetKey || '').trim();
+                var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                if (!target || String(target.id) === String(speaker.id)) return '';
+                var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
+                var relation = getOrCreateGroupRelationship(speaker, target);
+                if (relation) {
+                    relation.familiarity = Math.min(100, Math.max(0, parseInt(relation.familiarity, 10) || 0) + 1);
+                    relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0) + 1;
+                    relation.lastInteractionAt = Date.now();
+                    saveCurrentGroupObject();
+                }
+                return '';
+            });
             text = text.replace(/\[群投票:([^\]:]+):(\d{1,2})\]/g, function (marker, pollMid, optionNumber) {
                 var pollMessage = historyList.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(pollMid); });
                 var poll = pollMessage && pollMessage.poll;
