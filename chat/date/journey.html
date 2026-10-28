@@ -352,7 +352,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
   async function generateCharacterMessages(){
     var cfg={};
     try{cfg=JSON.parse(localStorage.getItem('api_settings')||'{}')||{};}catch(e){}
-    if(!cfg.apiKey || !cfg.baseUrl || !cfg.model) return;
+    if(!cfg.apiKey) return;
     var context=loadHistory().slice(-8).filter(function(m){return m && m.mode!=='date' && !m.silent && (m.role==='user'||m.role==='assistant'||m.role==='sent'||m.role==='received');}).map(function(m){
       var role=(m.role==='user'||m.role==='sent')?'我':charName;
       return role+'：'+String(m.text||m.content||'').slice(0,100);
@@ -361,9 +361,10 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;
     var ctrl=new AbortController();
     var timer=setTimeout(function(){ctrl.abort();},12000);
     try{
-      var base=String(cfg.baseUrl).trim().replace(/\/+$/,'');
+      var base=String(cfg.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/,'');
+      var model=String(cfg.model || 'gpt-3.5-turbo').trim();
       var response=await fetch(base+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.apiKey},signal:ctrl.signal,body:JSON.stringify({
-        model:cfg.model,
+        model:model,
         messages:[{role:'system',content:system},{role:'user',content:'最近聊天：\n'+(context||'暂时没有聊天记录。')+'\n请生成四条路上消息。'}],
         temperature:typeof cfg.temperature==='number'?cfg.temperature:0.75,
         max_tokens:180
