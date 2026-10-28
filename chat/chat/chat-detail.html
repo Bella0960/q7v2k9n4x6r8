@@ -3476,13 +3476,11 @@
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
             if (!roleId) return false;
             var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
-            var roleAvatar = String((currentCharacter && currentCharacter.avatar) || '');
             var inserted = false;
             cardSpecs.forEach(function (spec) {
                 var card = window.RoleFamilyCards.createInvite({
                     roleId: roleId,
                     roleName: roleName,
-                    roleAvatar: roleAvatar,
                     kind: spec.kind,
                     monthlyLimit: spec.monthlyLimit,
                     singleLimit: spec.singleLimit,
