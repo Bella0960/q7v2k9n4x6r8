@@ -3169,7 +3169,7 @@
             return { text: cleaned, items: items };
         }
         // ---- 转账决策标记：角色收下转账时更新对应卡片 ----
-        const TRANSFER_ACCEPT_MARKER_REGEX = /\\[收下转账:(\\d+(?:\\.\\d{1,2})?)\\]/g;
+        const TRANSFER_ACCEPT_MARKER_REGEX = /\[收下转账:(\d+(?:\.\d{1,2})?)\]/g;
         function extractTransferDecisionMarkers(raw) {
             const text = String(raw || '');
             const amounts = [];
@@ -3180,7 +3180,7 @@
                 if (isFinite(amount) && amount > 0) amounts.push(amount);
             }
             return {
-                text: text.replace(TRANSFER_ACCEPT_MARKER_REGEX, '').replace(/[ \\t]+\\n/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trimEnd(),
+                text: text.replace(TRANSFER_ACCEPT_MARKER_REGEX, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trimEnd(),
                 amounts: amounts
             };
         }
