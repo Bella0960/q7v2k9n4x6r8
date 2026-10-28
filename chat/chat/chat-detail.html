@@ -3706,9 +3706,10 @@
                     const labels = [];
                     if (m.title) labels.push('头衔：' + m.title);
                     if (m.isAdmin) labels.push('管理员');
+                    if (String(currentGroup.ownerId || '__user') === String(m.id)) labels.push('群主');
                     if (m.muted) labels.push('禁言中');
                     else if (!isGroupMemberInActiveHours(m)) labels.push('当前休息中');
-                    return (i + 1) + '. ' + groupMemberDisplayName(m) + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
+                    return (i + 1) + '. ' + groupMemberDisplayName(m) + '（ID：' + String(m.id) + '）' + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
                 });
                 rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
