@@ -50,6 +50,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 .relationship .field{gap:6px}
 .relationship .field label{font-size:10px}
 .relationship select,.relationship input[type=text]{width:100%;min-width:0;height:36px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:11px;color:#111;outline:none}
+.relationship textarea{width:100%;min-height:76px;resize:vertical;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:9px;font:inherit;font-size:11px;line-height:1.6;color:#111;outline:none}
+.relationship .memory-hint{font-size:10px;color:#999;line-height:1.5;margin-top:4px}
 .relationship-meter{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#777;font-size:10px;margin-bottom:5px}
 .relationship-meter strong{font-size:10px;color:#111;font-weight:600}
 .relationship input[type=range]{width:100%;accent-color:#111;display:block;height:22px;margin:0}
@@ -304,7 +306,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
             '<div class="relationship-head"><div class="relationship-pair">'+escapeHtml(groupMemberName(a))+' ↔ '+escapeHtml(groupMemberName(b))+'<small>双向关系 · '+(parseInt(rel.interactions,10)||0)+' 次明确互动</small></div></div>'+
             '<div class="relationship-fields"><div class="field"><label>关系类型</label><select data-relationship-field="type">'+options+'</select></div>'+
             '<div class="field"><div class="relationship-meter"><label>熟悉度</label><strong><span data-familiarity-value>'+familiarity+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="familiarity" value="'+familiarity+'" aria-label="'+escapeHtml(groupMemberName(a)+'与'+groupMemberName(b)+'的熟悉度')+'"></div></div>'+
-            '<div class="field relationship-note"><label>关系补充（可选）</label><input type="text" maxlength="120" data-relationship-field="note" value="'+escapeHtml(rel.note||'')+'" placeholder="例如：总是斗嘴，但会替对方收尾"></div></article>');
+            '<div class="field relationship-note"><label>关系补充（可选）</label><input type="text" maxlength="120" data-relationship-field="note" value="'+escapeHtml(rel.note||'')+'" placeholder="例如：总是斗嘴，但会替对方收尾"></div>'+
+            '<div class="field relationship-note"><label>共同记忆</label><textarea rows="3" maxlength="900" data-relationship-field="memories" placeholder="每行一条，比如：第一次见面时一起处理了突发状况。">'+escapeHtml((Array.isArray(rel.memories)?rel.memories:[]).slice(-6).map(function(memory){return String(memory&&memory.summary||'');}).filter(Boolean).join('\n'))+'</textarea><span class="memory-hint">每行一条，最多保留最近 6 条；自动记录和手动修改都保存在这个群里。</span></div></article>');
         }
       }
       list.innerHTML=rows.join('');
@@ -343,6 +346,13 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(field==='familiarity')rel.familiarity=Math.max(0,Math.min(100,parseInt(input.value,10)||0));
       else if(field==='type')rel.type=relationshipTypes.indexOf(input.value)!==-1?input.value:'自定义';
       else if(field==='note')rel.note=String(input.value||'').trim().slice(0,120);
+      else if(field==='memories'){
+        var oldMemories=Array.isArray(rel.memories)?rel.memories.slice(-6):[];
+        rel.memories=String(input.value||'').split(/\r?\n/).map(function(line){return line.trim().slice(0,140);}).filter(Boolean).slice(-6).map(function(summary,index){
+          var old=oldMemories[index]||{};
+          return {summary:summary,time:Number(old.time)||Date.now(),fromId:old.fromId==null?'':String(old.fromId),toId:old.toId==null?'':String(old.toId)};
+        });
+      }
       persist('成员关系已保存');
       renderRelationships();
     });
