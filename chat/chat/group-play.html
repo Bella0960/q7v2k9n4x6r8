@@ -104,9 +104,29 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         <span class="switch"><input type="checkbox" data-setting="spectatorMode"><span class="track"></span></span>
       </label>
       <label class="setting">
-        <span class="setting-copy"><span class="setting-title">允许角色自主管理群聊</span><span class="setting-desc">角色可按剧情提出改群名、邀请现有角色入群或移除成员；实际变更会保存到群资料。</span></span>
+        <span class="setting-copy"><span class="setting-title">允许角色自主管理群聊</span><span class="setting-desc">管理员或群主可按剧情提出改群名、邀请现有角色入群或移除成员；实际变更会保存到群资料。</span></span>
         <span class="switch"><input type="checkbox" data-setting="allowRoleActions"><span class="track"></span></span>
       </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">允许角色私聊</span><span class="setting-desc">角色可以在群聊中向你发来私聊消息。私聊内容会保存到对应角色的单聊记录，并可从小窗进入完整私聊。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="allowPrivateMessages"><span class="track"></span></span>
+      </label>
+    </div>
+
+    <div class="section"><h3>群主与权限</h3><span>OWNER / ADMIN</span></div>
+    <div class="member" id="ownerPanel">
+      <div class="member-head">
+        <div class="avatar" id="ownerAvatar">我</div>
+        <div class="member-heading"><div class="member-name" id="ownerName">我（群主）</div><div class="member-id" id="ownerDesc">当前群主</div></div>
+      </div>
+      <div class="field">
+        <label for="ownerSelect">转让群主给</label>
+        <select id="ownerSelect" style="width:100%;height:40px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 10px;font:inherit;font-size:12px;color:#111;">
+          <option value="__user">我自己（不转让）</option>
+        </select>
+      </div>
+      <button type="button" id="transferOwnerBtn" style="width:100%;height:40px;margin-top:10px;border:1px solid #111;border-radius:10px;background:#111;color:#fff;font:inherit;font-size:12px;cursor:pointer;">确认转让群主</button>
+      <p class="hint">转让仅改变群聊内的模拟群主身份，不会影响角色库。群主仍可在本页面管理群设置。</p>
     </div>
 
     <div class="section"><h3>成员资料</h3><span>IDENTITY / HOURS</span></div>
@@ -147,7 +167,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     document.getElementById('groupTitle').textContent='群聊不存在';
   }else{
     if(!group.settings||typeof group.settings!=='object')group.settings={};
-    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false};
+    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true};
     Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
     document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
     function persist(message){
@@ -160,10 +180,28 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       try{localStorage.setItem('phone_groups',JSON.stringify(groups));if(message)notify(message);return true;}
       catch(e){notify('保存失败：本地存储空间不足');return false;}
     }
+    if (!group.ownerId) group.ownerId='__user';
     function renderSettings(){
       document.querySelectorAll('[data-setting]').forEach(function(input){
         input.checked=!!group.settings[input.getAttribute('data-setting')];
       });
+    }
+    function renderOwner(){
+      var select=document.getElementById('ownerSelect');
+      var ownerName=document.getElementById('ownerName');
+      var ownerDesc=document.getElementById('ownerDesc');
+      var ownerAvatar=document.getElementById('ownerAvatar');
+      var members=Array.isArray(group.members)?group.members:[];
+      var owner=members.find(function(m){return String(m.id)===String(group.ownerId);});
+      ownerName.textContent=owner?(owner.nickname||owner.name||'群成员'):'我（群主）';
+      ownerDesc.textContent=owner?'群主 · '+(owner.title||'成员'):'当前由你管理群聊';
+      ownerAvatar.innerHTML=owner?(owner.avatar?'<img src="'+escapeHtml(owner.avatar)+'" alt="">':escapeHtml((owner.nickname||owner.name||'群').slice(0,1))):'我';
+      select.innerHTML='<option value="__user">我自己（不转让）</option>'+members.map(function(m){
+        return '<option value="'+escapeHtml(String(m.id))+'">'+escapeHtml(m.nickname||m.name||'未命名成员')+(m.isAdmin?' · 管理员':'')+'</option>';
+      }).join('');
+      select.value=members.some(function(m){return String(m.id)===String(group.ownerId);})?String(group.ownerId):'__user';
+      var transferBtn=document.getElementById('transferOwnerBtn');
+      transferBtn.textContent=select.value==='__user'?'设为由我担任群主':'确认转让群主';
     }
     document.querySelectorAll('[data-setting]').forEach(function(input){
       input.addEventListener('change',function(){
@@ -208,6 +246,18 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         return '<button type="button" class="add-item" data-add-member="'+escapeHtml(id)+'"><span class="avatar">'+avatar+'</span><span class="add-copy"><strong>'+escapeHtml(role.name||'未命名角色')+'</strong><small>角色库成员</small></span><span class="add-mark">+</span></button>';
       }).join('');
     }
+    document.getElementById('transferOwnerBtn').addEventListener('click',function(){
+      var nextOwnerId=document.getElementById('ownerSelect').value||'__user';
+      var oldOwner=String(group.ownerId||'__user');
+      if(nextOwnerId===oldOwner){notify('这位成员已经是群主');return;}
+      var nextOwner=(group.members||[]).find(function(m){return String(m.id)===String(nextOwnerId);});
+      var nextName=nextOwner?(nextOwner.nickname||nextOwner.name||'群成员'):'你自己';
+      if(!confirm('确定将群主转让给「'+nextName+'」吗？'))return;
+      group.ownerId=nextOwner?String(nextOwner.id):'__user';
+      if(nextOwner)nextOwner.isAdmin=true;
+      persist('群主已更新');
+      renderMembers();renderOwner();
+    });
     document.getElementById('membersList').addEventListener('change',function(event){
       var input=event.target.closest('[data-member-field]');
       if(!input)return;
@@ -218,7 +268,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(input.type==='checkbox')member[field]=input.checked;
       else member[field]=input.value.trim();
       persist('成员资料已保存');
-      renderMembers();
+      renderMembers();renderOwner();
     });
     document.getElementById('membersList').addEventListener('click',function(event){
       var button=event.target.closest('[data-remove-member]');
@@ -226,7 +276,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var id=button.getAttribute('data-remove-member');
       if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
       group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
-      persist('已移出群聊');renderMembers();renderCandidates();
+      if(String(group.ownerId)===String(id))group.ownerId='__user';
+      persist('已移出群聊');renderMembers();renderCandidates();renderOwner();
     });
     document.getElementById('addList').addEventListener('click',function(event){
       var button=event.target.closest('[data-add-member]');
@@ -237,9 +288,9 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!Array.isArray(group.members))group.members=[];
       if(group.members.some(function(m){return String(m.id)===String(id);}))return;
       group.members.push({id:String(role.id),name:role.name||'未命名角色',avatar:role.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00'});
-      persist('已邀请 '+(role.name||'角色')+' 入群');renderMembers();renderCandidates();
+      persist('已邀请 '+(role.name||'角色')+' 入群');renderMembers();renderCandidates();renderOwner();
     });
-    renderSettings();renderMembers();renderCandidates();
+    renderSettings();renderMembers();renderCandidates();renderOwner();
   }
   document.getElementById('backBtn').addEventListener('click',function(){
     location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
