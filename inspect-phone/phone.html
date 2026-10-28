@@ -8,8 +8,18 @@
 :root{color-scheme:light;--ink:#222226;--muted:#8d8d95;--line:#e5e5ea;--bg:#f7f7f9;--card:#fff;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:#e9e9ee;color:var(--ink);display:grid;place-items:center;min-height:100dvh;overflow:hidden;touch-action:pan-y}
-.device{position:relative;width:min(390px,100vw);height:100dvh;background:var(--bg);overflow:hidden;box-shadow:0 0 0 1px #d8d8de,0 24px 70px rgba(20,20,25,.14)}\n@media(max-width:480px){body{display:block;width:100%;min-height:100dvh;background:var(--bg)}.device{width:100%;max-width:none;height:100dvh;height:100svh;box-shadow:none;border:0}.lock,.phone{width:100%}}
+body{
+  background:#e5e5e5;color:var(--ink);display:flex;justify-content:center;align-items:center;
+  min-height:100dvh;margin:0;overflow:hidden;touch-action:pan-y;
+}
+.device{
+  position:relative;flex:0 0 auto;
+  width:min(390px,calc(100vw - 24px));
+  height:min(844px,calc(100dvh - 24px));
+  background:var(--bg);overflow:hidden;
+  border:8px solid #fff;border-radius:45px;
+  box-shadow:0 10px 25px rgba(0,0,0,.15);
+}
 .screen{position:absolute;inset:0}
 .lock{position:absolute;inset:0;z-index:6;display:grid;place-items:center;touch-action:pan-y;background:radial-gradient(circle at 25% 18%,rgba(255,255,255,.62),transparent 55%),repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 1px,transparent 1px 8px),linear-gradient(180deg,#ececef,#dedfe4);transition:opacity .28s ease,transform .28s ease}
 .lock.hide{opacity:0;transform:translateY(-16px);pointer-events:none}
