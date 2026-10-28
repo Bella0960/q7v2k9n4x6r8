@@ -1870,9 +1870,10 @@
 </style>
 <style id="chatModeSwitchStyles">
 .chat-status-sub.chat-mode-trigger{
+  min-height:25px;padding:4px 7px;margin-top:1px;
   border:0;background:transparent;appearance:none;-webkit-appearance:none;
-  padding:2px 4px;margin-top:1px;cursor:pointer;line-height:1.5;
-  border-radius:4px;transition:opacity .16s ease,color .16s ease;
+  cursor:pointer;line-height:1.5;border-radius:4px;
+  transition:opacity .16s ease,color .16s ease;
 }
 .chat-status-sub.chat-mode-trigger:not(:disabled)::after{content:"  ↕";font:inherit;color:#777}
 .chat-status-sub.chat-mode-trigger:active{opacity:.55}
@@ -4757,36 +4758,38 @@
             overlay.querySelectorAll('[data-chat-mode]').forEach(function (button) {
                 if (button.getAttribute('data-chat-mode') === currentMode) button.classList.add('is-current');
             });
+            const closeOnEscape = function (event) {
+                if (event.key === 'Escape' && document.getElementById('chatModeOverlay')) closeModeSheet();
+            };
+            function closeModeSheet() {
+                overlay.remove();
+                document.removeEventListener('keydown', closeOnEscape);
+            }
             overlay.addEventListener('click', function (event) {
-                if (event.target === overlay) { overlay.remove(); return; }
+                if (event.target === overlay) { closeModeSheet(); return; }
                 const button = event.target.closest ? event.target.closest('[data-chat-mode]') : null;
                 if (!button) return;
                 const selected = button.getAttribute('data-chat-mode');
-                if (selected === 'cancel') { overlay.remove(); return; }
+                if (selected === 'cancel') { closeModeSheet(); return; }
                 if (selected === 'offline-short' || selected === 'offline-long') {
                     try { localStorage.setItem(modeKey, selected); } catch (e) {}
                     const page = selected === 'offline-short' ? '../date/journey.html' : '../date/date.html';
+                    closeModeSheet();
                     window.location.href = page + '?id=' + encodeURIComponent(currentCharacter.id);
                     return;
                 }
                 if (selected === 'narration') {
                     try { localStorage.setItem(modeKey, 'narration'); } catch (e) {}
                     if (chatModeTrigger) chatModeTrigger.textContent = 'NARRATION · ACTIVE';
-                    overlay.remove();
+                    closeModeSheet();
                     if (typeof showToast === 'function') showToast('旁白模式已开启；再次选择线上聊天即可切回');
                     return;
                 }
                 try { localStorage.setItem(modeKey, 'online'); } catch (e) {}
                 if (chatModeTrigger) chatModeTrigger.textContent = 'ONLINE · ACTIVE';
-                overlay.remove();
+                closeModeSheet();
                 if (typeof showToast === 'function') showToast('已切回线上聊天');
             });
-            const closeOnEscape = function (event) {
-                if (event.key === 'Escape' && document.getElementById('chatModeOverlay')) {
-                    document.getElementById('chatModeOverlay').remove();
-                    document.removeEventListener('keydown', closeOnEscape);
-                }
-            };
             document.addEventListener('keydown', closeOnEscape);
         }
         if (chatModeTrigger && !isGroupChat) {
