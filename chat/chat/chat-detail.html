@@ -5096,7 +5096,7 @@
                     try { localStorage.setItem(modeKey, selected); } catch (e) {}
                     const page = selected === 'offline-short' ? '../date/journey.html' : '../date/date.html';
                     closeModeSheet();
-                    window.location.href = page + '?id=' + encodeURIComponent(currentCharacter.id);
+                    window.location.href = page + '?v=20261028modes1&id=' + encodeURIComponent(currentCharacter.id);
                     return;
                 }
                 if (selected === 'narration') {
@@ -5635,7 +5635,7 @@
         })();
 
     </script>
-    <script src="js/chat-extras.js?t=20261024v2"></script>
+    <script src="js/chat-extras.js?t=20261028modes1"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');
