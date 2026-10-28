@@ -336,7 +336,6 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var key=card.getAttribute('data-relationship-key');
       var ids;
       try{ids=JSON.parse(key);}catch(e){return;}
-      if(!Array.isArray(group.relationships))group.relationships={};
       if(!group.relationships||typeof group.relationships!=='object'||Array.isArray(group.relationships))group.relationships={};
       var rel=group.relationships[key];
       if(!rel||typeof rel!=='object')rel=group.relationships[key]={memberAId:String(ids[0]),memberBId:String(ids[1]),type:'未设定',familiarity:0,interactions:0,note:'',lastInteractionAt:0};
