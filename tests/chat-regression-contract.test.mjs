@@ -61,11 +61,26 @@ test('pure message policy matches the expected online visibility and search elig
   }
 });
 
+test('reasoning cleanup preserves visible prose and removes internal-only blocks', () => {
+  assert.equal(typeof policy.stripInternalReasoning, 'function');
+  const cases = [
+    { input: '你好，<think>私密推理</think>世界', expected: '你好，世界' },
+    { input: 'a<reasoning>secret</reasoning>b<analysis>hidden</analysis>c', expected: 'abc' },
+    { input: '<THINK mode="x">secret</THINK>visible', expected: 'visible' },
+    { input: 'visible<think>unfinished', expected: 'visible' },
+    { input: 'ordinary reply', expected: 'ordinary reply' },
+    { input: null, expected: '' }
+  ];
+  for (const item of cases) {
+    assert.equal(policy.stripInternalReasoning(item.input), item.expected, String(item.input));
+  }
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
-  assert.match(detail, /chat-message-policy\.js\?v=20261029v1/);
-  assert.match(search, /chat-message-policy\.js\?v=20261029v1/);
+  assert.match(detail, /chat-message-policy\.js\?v=20261029v2/);
+  assert.match(search, /chat-message-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /phone-app-pwa-v111/);
-  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v1/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v2/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
