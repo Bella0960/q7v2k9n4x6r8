@@ -13,7 +13,7 @@
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
-    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v4"></script>
+    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -2737,6 +2737,10 @@
 
         // AI 回复清洗（保护 think/narratage 标签不被 cleanup 破坏）
         function cleanupAiReply(raw) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.cleanupReplyPreservingBlocks === 'function') {
+                return window.ChatMessagePolicy.cleanupReplyPreservingBlocks(raw, applyAICleanup);
+            }
+            // Compatibility fallback: keep the original block protection and cleanup order.
             // 1) 提取 think 和 narratage 块，替换成占位符
             var THINK_PH = '\u0000THINK_BLOCK\u0000';
             var NARR_PH = '\u0000NARR_BLOCK\u0000';
