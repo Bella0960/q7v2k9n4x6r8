@@ -35,6 +35,27 @@
     return { text: cleaned, memories: memories };
   }
 
+  // Parse model output into narration blocks and visible chat bubbles.
+  // The output shape intentionally matches parseReplyContent's legacy contract.
+  function parseReplyContent(raw) {
+    var text = stripInternalReasoning(raw);
+    var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/gi;
+    var narrations = [];
+    var m;
+    while ((m = narrRegex.exec(text)) !== null) {
+      var narration = String(m[1] || '').trim();
+      if (narration) narrations.push(narration);
+    }
+    text = text.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
+    var segments = text.replace(/\n{3,}/g, '\n\n').split(/\n\n+/);
+    var bubbles = [];
+    segments.forEach(function (segment) {
+      var bubble = segment.trim();
+      if (bubble) bubbles.push(bubble);
+    });
+    return { thinks: [], narrations: narrations, bubbles: bubbles };
+  }
+
   function isHiddenFromOnlineTimeline(message) {
     return !!(message && (message.mode === 'date' || message.silent));
   }
@@ -69,6 +90,7 @@
   global.ChatMessagePolicy = {
     stripInternalReasoning: stripInternalReasoning,
     extractMemoryMarkers: extractMemoryMarkers,
+    parseReplyContent: parseReplyContent,
     isHiddenFromOnlineTimeline: isHiddenFromOnlineTimeline,
     isOnlineSearchIndexVisible: isOnlineSearchIndexVisible,
     isErrorMessage: isErrorMessage,
