@@ -21,6 +21,10 @@ const policySource = read('shared/js/phone/chat-message-policy.js');
 const policyWindow = {};
 runInNewContext(policySource, { window: policyWindow, globalThis: {} });
 const policy = policyWindow.ChatMessagePolicy;
+const sendPolicySource = read('shared/js/phone/chat-send-policy.js');
+const sendPolicyWindow = {};
+runInNewContext(sendPolicySource, { window: sendPolicyWindow, globalThis: {} });
+const sendPolicy = sendPolicyWindow.ChatSendPolicy;
 const serviceWorker = read('sw.js');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -157,11 +161,50 @@ test('reply cleanup protects think/narration blocks while applying the existing 
   assert.match(detail, /ChatMessagePolicy\.cleanupReplyPreservingBlocks/);
 });
 
+test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
+  assert.equal(typeof sendPolicy.normalizeOptions, 'function');
+  const asPlainObject = (value) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(asPlainObject(sendPolicy.normalizeOptions(null, '  typed text  ')), {
+    customText: '',
+    silent: false,
+    contextOnly: false,
+    regenDirection: '',
+    isRegen: false,
+    isGroupFollowup: false,
+    groupAutoDepth: 0,
+    text: 'typed text'
+  });
+  assert.deepEqual(asPlainObject(sendPolicy.normalizeOptions({
+    text: '  explicit prompt  ',
+    silent: 1,
+    contextOnly: true,
+    regenDirection: '  previous  ',
+    isRegenerate: true,
+    groupFollowup: true,
+    groupAutoDepth: '3'
+  }, 'ignored input')), {
+    customText: 'explicit prompt',
+    silent: true,
+    contextOnly: true,
+    regenDirection: 'previous',
+    isRegen: true,
+    isGroupFollowup: true,
+    groupAutoDepth: 3,
+    text: 'explicit prompt'
+  });
+  assert.equal(sendPolicy.normalizeOptions({ groupAutoDepth: '-7' }, ' hi ').groupAutoDepth, 0);
+  assert.equal(sendPolicy.normalizeOptions({ groupAutoDepth: 'not-a-number' }, ' hi ').groupAutoDepth, 0);
+  assert.match(detail, /ChatSendPolicy\.normalizeOptions/);
+  assert.match(detail, /Compatibility fallback: preserve the original sendMsg option normalization/);
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v115/);
+  assert.match(serviceWorker, /phone-app-pwa-v116/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(detail, /chat-send-policy\.js\?v=20261029v1/);
+  assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v1/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
