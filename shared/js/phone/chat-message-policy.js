@@ -17,6 +17,24 @@
       .replace(/<\/?analysis\b[^>]*>/gi, '');
   }
 
+  // Extract [记住:...] markers without performing any storage writes.
+  function extractMemoryMarkers(raw) {
+    var markerRegex = /\[记住:([^\]]+)\]/g;
+    var text = String(raw || '');
+    var memories = [];
+    var m;
+    markerRegex.lastIndex = 0;
+    while ((m = markerRegex.exec(text)) !== null) {
+      var memory = m[1] && m[1].trim();
+      if (memory) memories.push(memory);
+    }
+    var cleaned = text.replace(markerRegex, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/\s+$/, '');
+    return { text: cleaned, memories: memories };
+  }
+
   function isHiddenFromOnlineTimeline(message) {
     return !!(message && (message.mode === 'date' || message.silent));
   }
@@ -50,6 +68,7 @@
 
   global.ChatMessagePolicy = {
     stripInternalReasoning: stripInternalReasoning,
+    extractMemoryMarkers: extractMemoryMarkers,
     isHiddenFromOnlineTimeline: isHiddenFromOnlineTimeline,
     isOnlineSearchIndexVisible: isOnlineSearchIndexVisible,
     isErrorMessage: isErrorMessage,
