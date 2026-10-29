@@ -87,7 +87,7 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 
 开始抽离前应满足：
 
-- [x] 静态契约测试已在目标仓库的 GitHub Actions 中实际运行通过（Node.js 22，19/19 项通过）。
+- [x] 静态契约测试已在目标仓库的 GitHub Actions 中实际运行通过（Node.js 22，20/20 项通过）。
 - [ ] P0 人工验收至少完成桌面浏览器关键路径，并记录既有失败项。
 - [ ] 样例与当前真实消息结构完成对照，不遗漏已知富消息字段。
 - [x] 第一批已抽离无 DOM 副作用的消息可见性、搜索过滤与字段判断；新模块提供加载失败时的旧逻辑兜底。
@@ -97,7 +97,8 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 - [x] `cleanupAiReply` 的 think/narratage 保护流程已抽离；仍由页面传入原 `applyAICleanup`，并保留旧实现兜底。
 - [x] `sendMsg` 的参数归一化已抽离到 `ChatSendPolicy.normalizeOptions`。
 - [x] 空消息、拉黑、发送中、群成员不可发言的前置判断已抽离到 `ChatSendPolicy.evaluatePreflight`；惰性回调保持原判断顺序，toast 与副作用仍由页面处理。
+- [x] `PhoneStream.chat` 意外抛错/拒绝或返回无效结果时，`sendMsg` 走统一错误收尾兜底，并尝试保留最后一次回调的原始累计文本。
 - [x] 新旧函数保留兼容包装；未同时改 UI、存储 key、API 参数或记忆算法。
 - [ ] 每批变更都能独立回滚，并按同一基线复测。
 
-**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40872321774) 中实际执行 `npm run test:chat:contract`，19/19 项通过（Node.js 22）。测试现已包含回复清洗保护、发送选项归一化和发送前置判断顺序。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
+**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40873823069) 中实际执行 `npm run test:chat:contract`，20/20 项通过（Node.js 22）。测试现已覆盖回复清洗保护、发送选项归一化、发送前置判断顺序，以及流式请求意外抛错时的文本兜底契约。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
