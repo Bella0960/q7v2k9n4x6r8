@@ -84,11 +84,22 @@
       }
     };
   }
+  
+  // Keep legacy entries without sourceRoleId globally visible for compatibility;
+  // explicitly role-scoped entries must only be injected for their matching role.
+  function filterUserMemoriesForRole(memories, roleId) {
+    if (!Array.isArray(memories)) return [];
+    var activeRoleId = String(roleId || '');
+    return memories.filter(function (memory) {
+      return !memory.sourceRoleId || String(memory.sourceRoleId) === activeRoleId;
+    });
+  }
 
   global.ChatContextPolicy = {
     mapHistoryToApiMessages: mapHistoryToApiMessages,
     resolveMemoryLimit: resolveMemoryLimit,
     selectRecentHistory: selectRecentHistory,
-    buildHistoricalRecallRequest: buildHistoricalRecallRequest
+    buildHistoricalRecallRequest: buildHistoricalRecallRequest,
+    filterUserMemoriesForRole: filterUserMemoriesForRole
   };
 })(typeof window !== 'undefined' ? window : globalThis);
