@@ -87,7 +87,7 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 
 开始抽离前应满足：
 
-- [x] 静态契约测试已在目标仓库的 GitHub Actions 中实际运行通过（Node.js 22，23/23 项通过）。
+- [x] 静态契约测试已在目标仓库的 GitHub Actions 中实际运行通过（Node.js 22，24/24 项通过）。
 - [ ] P0 人工验收至少完成桌面浏览器关键路径，并记录既有失败项。
 - [ ] 样例与当前真实消息结构完成对照，不遗漏已知富消息字段。
 - [x] 第一批已抽离无 DOM 副作用的消息可见性、搜索过滤与字段判断；新模块提供加载失败时的旧逻辑兜底。
@@ -101,7 +101,8 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 - [x] `ChatContextPolicy.mapHistoryToApiMessages` 抽离历史消息映射，覆盖贴纸语义、错误消息排除、推理标签/旁白剥离和末尾 assistant 补位；不修改源历史对象，页面保留旧映射兜底。
 - [x] `ChatContextPolicy.resolveMemoryLimit` / `selectRecentHistory` 抽离角色历史条数优先级与最近消息切片，保留 API 配置 fallback 和原 `slice(-memoryLimit)` 行为。
 - [x] `ChatContextPolicy.buildHistoricalRecallRequest` 抽离本地历史召回查询词选择和固定召回预算，保留倒序查找最近用户消息与最近消息排除数量；不增加 API 请求。
+- [x] `ChatContextPolicy.filterUserMemoriesForRole` 保留带角色 ID 的用户动态记忆隔离，同时维持旧版无角色 ID 条目的全局兼容，不修改存储内容。
 - [x] 新旧函数保留兼容包装；未同时改 UI、存储 key、API 参数或记忆算法。
 - [ ] 每批变更都能独立回滚，并按同一基线复测。
 
-**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40877275749) 中实际执行 `npm run test:chat:contract`，23/23 项通过（Node.js 22）；PWA 缓存版本已升至 `phone-app-pwa-v121`。测试现已覆盖回复清洗保护、发送选项归一化、发送前置判断顺序、流式异常兜底、历史消息映射、历史条数优先级/切片和召回查询/预算参数。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
+**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40877950703) 中实际执行 `npm run test:chat:contract`，24/24 项通过（Node.js 22）；PWA 缓存版本已升至 `phone-app-pwa-v122`。测试现已覆盖回复清洗保护、发送选项归一化、发送前置判断顺序、流式异常兜底、历史消息映射、历史条数优先级/切片、召回查询/预算，以及角色范围动态记忆筛选。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
