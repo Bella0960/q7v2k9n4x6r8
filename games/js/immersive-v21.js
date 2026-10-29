@@ -119,9 +119,6 @@
   '.imm-verdict p{font-size:13px;line-height:2.1;color:#b0b0b8;margin-bottom:16px;}' +
   '.imm-verdict .truth{background:rgba(255,255,255,.05);border-left:3px solid #e8c9a0;padding:16px;margin:20px 0;font-size:12px;line-height:2;color:#b0b0b8;}' +
 
-  /* 档案室入口模式标签 */
-  '.case-imm-mode-tag{display:block;margin-top:10px;font-size:9px;letter-spacing:.2em;color:#9a9aa2;text-align:right;cursor:pointer;}' +
-  '.case-imm-mode-tag:hover{color:#e8c9a0;}' +
 
   /* ===== 动画 ===== */
   '@keyframes immFadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}' +
@@ -726,6 +723,91 @@
     return wrap;
   }
 
+  /* ---------- 统一案件结案进度 ---------- */
+  function detectiveProgressKey() {
+    try {
+      if (typeof activeRole !== 'undefined' && activeRole && activeRole.id != null) {
+        return String(activeRole.id);
+      }
+    } catch (e) {}
+    return 'default-partner';
+  }
+
+  // 旧版只写入 immCasesDone，新档案则读取 maomao_detective_progress_v1。
+  // 首次载入时把已有的旧记录迁移一次，避免已结案件仍锁住下一案。
+  function migrateLegacyImmersiveProgress() {
+    var marker = 'maomao_detective_immersive_progress_migrated_v1';
+    try {
+      if (localStorage.getItem(marker) === '1') return;
+      var parsed = JSON.parse(localStorage.getItem('immCasesDone') || '[]');
+      var legacy = Array.isArray(parsed) ? parsed : [];
+      if (legacy.length) {
+        var all = {};
+        try { all = JSON.parse(localStorage.getItem('maomao_detective_progress_v1') || '{}') || {}; } catch (e) { all = {}; }
+        var key = detectiveProgressKey();
+        var progress = all[key] && typeof all[key] === 'object' ? all[key] : {};
+        if (!Array.isArray(progress.completed)) progress.completed = [];
+        if (!progress.notes || typeof progress.notes !== 'object') progress.notes = {};
+        var cases = window.CASES || [];
+        var today = new Date().toISOString().slice(0, 10);
+        legacy.forEach(function (value) {
+          var idx = Number(value);
+          if (!isFinite(idx) || idx < 0 || Math.floor(idx) !== idx || !cases[idx]) return;
+          if (progress.completed.indexOf(idx) < 0) progress.completed.push(idx);
+          if (!progress.notes[cases[idx].title]) {
+            progress.notes[cases[idx].title] = { result: 'solved', day: today, legacy: true };
+          }
+        });
+        all[key] = progress;
+        localStorage.setItem('maomao_detective_progress_v1', JSON.stringify(all));
+      }
+      localStorage.setItem(marker, '1');
+    } catch (e) {
+      console.warn('[immersive-v21] legacy progress migration failed', e);
+    }
+  }
+
+  // 只有正确指认才记为结案，并同步到档案列表使用的进度存储。
+  function recordSolvedCaseInArchive() {
+    var cc = c();
+    var today = new Date().toISOString().slice(0, 10);
+    try {
+      var done = JSON.parse(localStorage.getItem('immCasesDone') || '[]');
+      if (!Array.isArray(done)) done = [];
+      if (done.indexOf(IMM.caseIndex) < 0) done.push(IMM.caseIndex);
+      localStorage.setItem('immCasesDone', JSON.stringify(done));
+    } catch (e) {}
+
+    try {
+      var all = JSON.parse(localStorage.getItem('maomao_detective_progress_v1') || '{}') || {};
+      var key = detectiveProgressKey();
+      var progress = all[key] && typeof all[key] === 'object' ? all[key] : {};
+      if (!Array.isArray(progress.completed)) progress.completed = [];
+      if (progress.completed.indexOf(IMM.caseIndex) < 0) progress.completed.push(IMM.caseIndex);
+      if (!progress.notes || typeof progress.notes !== 'object') progress.notes = {};
+      if (!progress.attempts || typeof progress.attempts !== 'object') progress.attempts = {};
+      if (!progress.campaign || typeof progress.campaign !== 'object') {
+        progress.campaign = { trust: {}, flags: [], threads: [], choices: [] };
+      }
+      if (!progress.campaign.trust || typeof progress.campaign.trust !== 'object') progress.campaign.trust = {};
+      if (!Array.isArray(progress.campaign.flags)) progress.campaign.flags = [];
+      if (!Array.isArray(progress.campaign.threads)) progress.campaign.threads = [];
+      if (!Array.isArray(progress.campaign.choices)) progress.campaign.choices = [];
+      var suspect = cc.suspects && cc.suspects[IMM.accusation] ? cc.suspects[IMM.accusation].name : '';
+      progress.notes[cc.title] = {
+        result: 'solved',
+        day: today,
+        suspect: suspect,
+        evidence: Object.keys(IMM.revealed || {}).length,
+        source: 'immersive'
+      };
+      all[key] = progress;
+      localStorage.setItem('maomao_detective_progress_v1', JSON.stringify(all));
+    } catch (e) {
+      console.warn('[immersive-v21] archive progress sync failed', e);
+    }
+  }
+
   /* ---------- 08 结案 ---------- */
   function tplVerdict() {
     var cc = c();
@@ -741,11 +823,8 @@
       document.head.appendChild(st);
     }
 
-    // 记录已结案
-    try {
-      var done = JSON.parse(localStorage.getItem('immCasesDone') || '[]');
-      if (done.indexOf(IMM.caseIndex) < 0) { done.push(IMM.caseIndex); localStorage.setItem('immCasesDone', JSON.stringify(done)); }
-    } catch (e) {}
+    // 仅在指认正确时标记已结案，并同步档案室的解锁进度。
+    if (correct) recordSolvedCaseInArchive();
 
     var wrap = document.createElement('div');
     wrap.style.cssText = 'padding:40px 24px 60px;background:linear-gradient(180deg,#1a1a24,#0a0a10);min-height:100%;box-sizing:border-box;position:relative;';
@@ -753,13 +832,13 @@
       // 盖章：右上角 absolute，从天而降，盖完停住
       '<div style="position:absolute;top:70px;right:20px;z-index:5;pointer-events:none;">' +
       '  <div style="width:100px;height:100px;border:4px solid #8b3a3a;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#8b3a3a;font-family:Georgia,"Songti SC",serif;animation:immStampDrop .7s cubic-bezier(.3,1.5,.5,1) .4s both, immStampRing .5s ease-out .7s both;opacity:0;">' +
-      '    <div style="font-size:16px;font-weight:700;letter-spacing:.2em;">已结案</div>' +
+      '    <div style="font-size:16px;font-weight:700;letter-spacing:.2em;">' + (correct ? '已结案' : '待复盘') + '</div>' +
       '    <div style="width:32px;height:1px;background:#8b3a3a;margin:5px 0;"></div>' +
       '    <div style="font-size:8px;letter-spacing:.1em;">' + (correct ? '指认正确' : '指认有误') + '</div>' +
       '  </div>' +
       '</div>' +
 
-      '<span style="display:inline-block;padding:6px 14px;border:1px solid #e8c9a0;color:#e8c9a0;font-size:10px;letter-spacing:.3em;margin-bottom:20px;">' + (correct ? 'CASE CLOSED / 指认正确' : 'CASE CLOSED / 指认有误') + '</span>' +
+      '<span style="display:inline-block;padding:6px 14px;border:1px solid #e8c9a0;color:#e8c9a0;font-size:10px;letter-spacing:.3em;margin-bottom:20px;">' + (correct ? 'CASE CLOSED / 指认正确' : 'CASE REVIEW / 指认有误') + '</span>' +
       '<div style="' + S.kicker + '">VERDICT / 最终报告</div>' +
       '<h2 style="font-family:Georgia,serif;font-size:26px;margin:10px 0 20px;font-weight:500;color:#f2f1ee;">' + esc(cc.title) + '</h2>' +
       '<p style="font-size:13px;line-height:2.1;color:#b0b0b8;margin-bottom:16px;">' + esc(cc.story || cc.intro) + '</p>' +
@@ -877,45 +956,14 @@
     if (root) root.scrollTop = root.scrollHeight;
   }
 
-  /* ---------- 档案室入口注入 ---------- */
-  function injectArchiveEntry() {
-    var list = document.getElementById('caseArchiveList');
-    if (!list) return;
-    // 清理旧注入
-    $all('.case-imm-mode-tag,.imm-done-badge', list).forEach(function (b) { b.remove(); });
-    var done = [];
-    try { done = JSON.parse(localStorage.getItem('immCasesDone') || '[]'); } catch (e) {}
-    $all('.case-archive-item', list).forEach(function (item) {
-      if (item.disabled) return;
-      var idx = Number(item.getAttribute('data-open-case'));
-      // 在卡片底部加一个"自由调查模式"的小字链接，保留旧入口
-      var oldLink = document.createElement('span');
-      oldLink.className = 'case-imm-mode-tag';
-      oldLink.setAttribute('data-old-case', idx);
-      oldLink.textContent = '自由调查模式 ›';
-      item.appendChild(oldLink);
-      // 已结案标记
-      if (done.indexOf(idx) >= 0) {
-        var badge = document.createElement('span');
-        badge.className = 'imm-done-badge';
-        badge.textContent = '已结案';
-        badge.style.cssText = 'position:absolute;top:10px;right:10px;padding:3px 9px;border:1.5px solid #8b3a3a;color:#8b3a3a;font-size:9px;letter-spacing:.2em;border-radius:2px;transform:rotate(6deg);background:rgba(255,255,255,.85);font-weight:600;';
-        item.style.position = item.style.position || 'relative';
-        item.appendChild(badge);
-      }
-    });
-  }
-
   /* ---------- 初始化 ---------- */
   function init() {
     injectStyle();
+    migrateLegacyImmersiveProgress();
     console.log('[immersive-v21] init');
 
-    // openCase 是 IIFE 内部局部函数，window.openCase 覆盖无效。
-    // 用 document 捕获阶段拦截：点卡片进沉浸式，点"自由调查模式"小字走旧逻辑。
+    // 所有案件卡片统一进入新版沉浸式流程。
     document.addEventListener('click', function (e) {
-      var oldTag = e.target.closest ? e.target.closest('.case-imm-mode-tag') : null;
-      if (oldTag) return; // 不拦截，让事件冒泡到卡片按钮 → 触发旧 openCase
       var card = e.target.closest ? e.target.closest('.case-archive-item[data-open-case]') : null;
       if (card && !card.disabled) {
         e.stopPropagation();
@@ -925,7 +973,7 @@
       }
     }, true);
 
-    // 档案室渲染后，给每个案件卡片加"自由调查模式"小字和"已结案"标
+    // 档案室只显示结案状态，不再注入旧版调查入口。
     function tagArchive() {
       var list = document.getElementById('caseArchiveList');
       if (!list) return;
@@ -933,13 +981,8 @@
       try { done = JSON.parse(localStorage.getItem('immCasesDone') || '[]'); } catch (e) {}
       var items = list.querySelectorAll('.case-archive-item');
       items.forEach(function (item) {
+        $all('.case-imm-mode-tag', item).forEach(function (tag) { tag.remove(); });
         if (item.disabled) return;
-        if (!item.querySelector('.case-imm-mode-tag')) {
-          var oldLink = document.createElement('span');
-          oldLink.className = 'case-imm-mode-tag';
-          oldLink.textContent = '自由调查模式 ›';
-          item.appendChild(oldLink);
-        }
         var idx = Number(item.getAttribute('data-open-case'));
         if (done.indexOf(idx) >= 0 && !item.querySelector('.imm-done-badge')) {
           item.style.position = item.style.position || 'relative';
