@@ -354,7 +354,7 @@ test('shared context policy preserves weighted long-term memory injection tiers'
     ),
     '【过往长期记忆】旧摘要'
   );
-  assert.match(detail, /ChatContextPolicy\\.buildWeightedMemoryInjectionText/);
+  assert.ok(detail.includes('ChatContextPolicy.buildWeightedMemoryInjectionText'));
   assert.ok(detail.includes('Compatibility fallback: preserve the original fixed/confirmed/pending and clear/vague rules'));
 });
 
