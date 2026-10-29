@@ -239,6 +239,58 @@ main{margin-top:10px}main>section[hidden]{display:none!important}
 @media(max-width:360px){.shell{padding-left:15px!important;padding-right:15px!important}.compact-funds-value{font-size:28px!important}.compact-choice{padding:8px 7px;min-height:59px}.cafe-bottom-bar{padding-left:17px;padding-right:17px;gap:12px}.cafe-drawer-panel{padding-left:17px;padding-right:17px}.cafe-drawer-tabs{gap:14px}}
 @media(prefers-reduced-motion:reduce){.cafe-drawer,.cafe-drawer-panel{animation:none!important}}
 </style>
+<style id="cafe-editorial-overview">
+/* 营业中 · 编辑式文字叙事：纯白底、黑白灰、Georgia 衬线标题、细分割线、无卡片堆叠 */
+#view-overview{padding-top:2px}
+.ed-status{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 20px}
+.ed-day{font-size:10px;letter-spacing:.16em;color:#9a9a9a}
+.ed-cash{font-size:10px;letter-spacing:.04em;color:#9a9a9a}
+.ed-event{margin:0 0 16px}
+.ed-event-tag{font-size:9px;letter-spacing:.16em;color:#a6a6a6;margin-bottom:9px}
+.ed-event-title{font:400 26px/1.16 var(--cafe-serif);letter-spacing:-.03em;color:#171717;margin:0}
+.ed-prose{font-size:15px;line-height:1.85;color:#3a3a3a;margin:0}
+.ed-rule{border:0;border-top:1px solid #e5e5e5;margin:20px 0}
+.ed-section-kicker{font-size:9px;letter-spacing:.16em;color:#a6a6a6;margin-bottom:4px}
+.ed-choices{display:block}
+.ed-choice{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;width:100%;text-align:left;background:transparent;border:0;border-top:1px solid #e5e5e5;padding:16px 2px;color:#222;cursor:pointer}
+.ed-choice:last-child{border-bottom:1px solid #e5e5e5}
+.ed-choice:active{background:#fafafa}
+.ed-choice[disabled]{opacity:.4;cursor:not-allowed}
+.ed-choice-main{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.ed-choice-num{font:400 18px/1.45 var(--cafe-serif);color:#b4b4b4;flex:0 0 auto}
+.ed-choice-body{display:block;min-width:0}
+.ed-choice-title{display:block;font-size:15px;font-weight:600;color:#1c1c1c}
+.ed-choice-detail{display:block;font-size:12px;line-height:1.6;color:#8a8a8a;margin-top:5px}
+.ed-choice-cost{font:400 14px/1.45 var(--cafe-serif);color:#6f6f6f;white-space:nowrap;flex:0 0 auto;padding-top:1px}
+.ed-decided{display:flex;flex-direction:column;gap:4px}
+.ed-decided-label{font-size:9px;letter-spacing:.14em;color:#a6a6a6}
+.ed-decided-title{font:400 19px/1.3 var(--cafe-serif);color:#222}
+.ed-partner{margin-top:2px}
+.ed-partner-head{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.ed-partner-avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:#fff;font:600 13px/1 var(--sans);overflow:hidden;flex:0 0 30px}
+.ed-partner-avatar img{width:100%;height:100%;object-fit:cover}
+.ed-partner-name{font-size:11px;color:#7a7a7a;letter-spacing:.02em}
+.ed-partner-line{font:400 15px/1.8 var(--cafe-serif);color:#333;margin:0 0 9px;padding-left:12px;border-left:2px solid #171717}
+.ed-partner-sub{font-size:11px;color:#a6a6a6;margin-bottom:13px}
+.ed-partner-actions{display:flex;gap:12px;align-items:center}
+.ed-listen{border:1px solid #171717;background:#171717;color:#fff;font-size:13px;padding:9px 18px;cursor:pointer}
+.ed-listen:active{background:#000}
+.ed-ask{border:0;background:transparent;color:#666;font:italic 13px/1 var(--cafe-serif);padding:9px 2px;cursor:pointer;border-bottom:1px solid #c5c5c5}
+.ed-prep{margin-top:2px}
+.ed-prep-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid #eee}
+.ed-prep-row:first-of-type{border-top:0}
+.ed-prep-label{font-size:12px;color:#444}
+.ed-prep-ctrl{display:flex;align-items:center;gap:14px}
+.ed-step{border:0;background:transparent;color:#333;font-size:18px;line-height:1;padding:2px 4px;cursor:pointer}
+.ed-step[disabled]{opacity:.3}
+.ed-prep-val{font:400 15px/1 var(--cafe-serif);color:#222;min-width:64px;text-align:center}
+.ed-prep-modes{display:flex;gap:6px}
+.ed-mode{border:1px solid #ddd;background:#fff;color:#777;font-size:11px;padding:7px 10px;cursor:pointer}
+.ed-mode.is-active{border-color:#171717;color:#171717;background:#f7f7f7}
+.ed-cta{width:100%;min-height:48px;margin-top:2px}
+.ed-hint{font-size:10px;color:#a6a6a6;line-height:1.6;margin:10px 0 0}
+.ed-report-link{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:transparent;color:#666;font:italic 13px/1 var(--cafe-serif);padding:14px 0 0;cursor:pointer;border-top:1px solid #e5e5e5;margin-top:14px}
+</style>
 </head>
 <body>
 <div class="shell">
@@ -721,15 +773,60 @@ function renderCafeDetails(){
 }
 document.addEventListener('click',function(e){var b=e.target.closest('[data-open-daily-report]');if(b)showDailyReport(st.report);});
 function renderOverview(){
- var html='<div class="compact-day-head"><div><div class="compact-day-kicker">DAY '+String(st.day).padStart(2,'0')+' / DAILY SERVICE</div><div class="compact-day-title">今日经营</div></div><div class="compact-day-number">'+String(st.day).padStart(2,'0')+'</div></div>';
- html+='<div class="compact-funds"><div><span class="compact-funds-label">可用经营资金</span><strong class="compact-funds-value">'+money(st.cash)+'</strong></div><div class="compact-funds-side">第 '+st.day+' 天<br>当前等级 LV.'+st.level+'<br>在售菜单 '+st.menu.length+' 款</div></div>';
- if(st.report&&st.report.day<st.day)html+='<button type="button" class="compact-goal-link" data-open-daily-report><strong>上一日经营复盘 · DAY '+String(st.report.day).padStart(2,'0')+'</strong><span>查看账单 +</span></button>';
- html+='<div class="compact-statline"><div class="compact-stat"><span>店铺经验</span><strong>'+st.xp+' / '+needed()+'</strong><small>LV.'+st.level+'</small></div><div class="compact-stat"><span>口碑指数</span><strong>'+st.rep+'</strong><small>熟客与新客</small></div><div class="compact-stat"><span>满意度</span><strong>'+st.sat+'</strong><small>服务体验</small></div></div>';
- html+=renderCompactEvent()+renderCompactControls();
+ var ev=eventNow();
+ var operating=st.businessStatus==='operating';
+ var chosen=st.eventChoice!==null&&st.eventChoice!==undefined;
+ var prepReady=!operating&&chosen&&st.menu.length>0;
+ var statusLabel=businessStatusLabel()+' · 第 '+String(st.day).padStart(2,'0')+' 天';
+ var html='';
+ /* 顶部状态：克制的 kicker，不做 HUD、不做暗色资金卡 */
+ html+='<div class="ed-status"><span class="ed-day">'+esc(statusLabel)+'</span><span class="ed-cash">资金 '+money(st.cash)+' · LV.'+st.level+'</span></div>';
+ /* 当前事件：编号标签 + Georgia 衬线标题，像杂志内页 */
+ html+='<div class="ed-event"><div class="ed-event-tag">'+esc(ev.tag||'TODAY / 今日到店')+'</div><h2 class="ed-event-title">'+esc(ev.title)+'</h2></div>';
+ /* 事件正文：当作一段正在发生的故事来读 */
+ html+='<p class="ed-prose">'+esc(ev.desc)+'</p>';
+ html+='<div class="ed-rule"></div>';
+ if(chosen){
+  var op=ev.options[st.eventChoice];
+  html+='<div class="ed-decided"><span class="ed-decided-label">今日选择已记录</span><span class="ed-decided-title">'+esc(op?op.title:'今日方案')+'</span></div>';
+ }else{
+  html+='<div class="ed-section-kicker">你的回应 · YOUR CALL</div>';
+  html+='<div class="ed-choices">'+ev.options.map(function(o,i){
+   var dis=st.cash<o.cost?' disabled':'';
+   return '<button type="button" class="ed-choice" data-event="'+i+'"'+dis+'><span class="ed-choice-main"><span class="ed-choice-num">'+String.fromCharCode(65+i)+'</span><span class="ed-choice-body"><strong class="ed-choice-title">'+esc(o.title)+'</strong><span class="ed-choice-detail">'+esc(o.detail)+'</span></span></span><span class="ed-choice-cost">'+(o.cost?money(o.cost):'无需额外支出')+'</span></button>';
+  }).join('')+'</div>';
+  /* 搭档建议：次级文字层次，不抢视觉中心 */
+  var advice=adviceForToday(),src=role.avatar||role.avatarUrl||role.avatarData||role.image||'';
+  var av='<span class="ed-partner-avatar" style="background:'+esc(role.avatarBg||role.color||'#777')+'">'+(src?'<img src="'+esc(src)+'" alt="">':esc(nameOf(role).slice(0,1)))+'</span>';
+  html+='<div class="ed-rule"></div>';
+  html+='<div class="ed-partner"><div class="ed-partner-head">'+av+'<span class="ed-partner-name">'+esc(nameOf(role))+' · 搭档建议</span></div>';
+  html+='<p class="ed-partner-line">'+esc(advice.line||'我们先看看今天的情况，再决定怎么应对。')+'</p>';
+  html+='<div class="ed-partner-sub">更倾向：'+esc(ev.options[advice.choice].title)+'</div>';
+  html+='<div class="ed-partner-actions"><button type="button" class="ed-listen" id="followPartner">听 TA 的</button><button type="button" class="ed-ask" id="askAdviceAgain">让 TA 认真分析</button></div></div>';
+ }
+ /* 营业准备：保留现有交互（宣传预算 / 服务方式），低调呈现，不抢故事 */
+ if(!operating){
+  var max=Math.max(0,Math.min(100,Math.floor(st.cash/20)*20));st.ad=clamp(st.ad,0,max);
+  var modes=[{id:'warm',n:'温柔待客'},{id:'standard',n:'标准服务'},{id:'fast',n:'快速出杯'}];
+  html+='<div class="ed-rule"></div>';
+  html+='<div class="ed-prep"><div class="ed-section-kicker">营业准备 · 影响今日结果</div>';
+  html+='<div class="ed-prep-row"><span class="ed-prep-label">宣传预算</span><span class="ed-prep-ctrl"><button type="button" class="ed-step" data-ad="-20" '+(st.ad<=0?'disabled':'')+'>−</button><span class="ed-prep-val">'+money(st.ad)+'</span><button type="button" class="ed-step" data-ad="20" '+(st.ad>=max?'disabled':'')+'>+</button></span></span></div>';
+  html+='<div class="ed-prep-row"><span class="ed-prep-label">服务方式</span><span class="ed-prep-modes">'+modes.map(function(m){return '<button type="button" class="ed-mode '+(st.service===m.id?'is-active':'')+'" data-service="'+m.id+'">'+m.n+'</button>';}).join('')+'</span></div>';
+  html+='</div>';
+ }
+ /* 主操作：自然排布在内容末尾，不遮挡正文与选择 */
+ html+='<div class="ed-rule"></div>';
+ html+='<button type="button" class="primary ed-cta" id="openShop" '+(!operating&&!prepReady?'disabled':'')+'>'+(operating?'打烊并结算今日账本':'开始营业')+'</button>';
+ if(operating)html+='<p class="ed-hint">营业中不可重复开店；打烊后才会结算并进入下一天。</p>';
+ else if(chosen)html+='<p class="ed-hint">确认菜单、库存与预算后，就可以开始今日营业。</p>';
+ else html+='<p class="ed-hint">先安顿好今天到店的这位客人，再开始营业。</p>';
+ if(st.report&&st.report.day<st.day)html+='<button type="button" class="ed-report-link" data-open-daily-report><span>上一日经营复盘 · DAY '+String(st.report.day).padStart(2,'0')+'</span><span>+</span></button>';
  $('view-overview').innerHTML=html;
- document.querySelectorAll('#view-overview [data-event]').forEach(function(b){b.disabled=st.businessStatus==='operating';b.addEventListener('click',function(){if(st.businessStatus==='operating'){toast('营业中不能更改今日事件。');return;}chooseEvent(Number(b.getAttribute('data-event')));});});
+ document.querySelectorAll('#view-overview [data-event]').forEach(function(b){b.addEventListener('click',function(){if(st.businessStatus==='operating'){toast('营业中不能更改今日事件。');return;}chooseEvent(Number(b.getAttribute('data-event')));});});
  document.querySelectorAll('#view-overview [data-ad]').forEach(function(b){b.disabled=st.businessStatus==='operating';b.addEventListener('click',function(){if(st.businessStatus==='operating')return;var max=Math.max(0,Math.min(100,Math.floor(st.cash/20)*20));st.ad=clamp(st.ad+Number(b.getAttribute('data-ad')),0,max);save();renderOverview();});});
  document.querySelectorAll('#view-overview [data-service]').forEach(function(b){b.disabled=st.businessStatus==='operating';b.addEventListener('click',function(){if(st.businessStatus==='operating')return;st.service=b.getAttribute('data-service');save();renderOverview();});});
+ var fp=$('followPartner');if(fp)fp.addEventListener('click',function(){if(st.businessStatus==='operating'){toast('营业中不能更改今日事件。');return;}var a=adviceForToday();chooseEvent(Number(a.choice));});
+ var fa=$('askAdviceAgain');if(fa)fa.addEventListener('click',askPartnerOpinion);
  var open=$('openShop');if(open)open.addEventListener('click',function(){if(st.businessStatus==='operating'){runDay();}else{startBusiness();}});
  renderCafeDetails();
 }
