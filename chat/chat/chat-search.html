@@ -7,6 +7,7 @@
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/chat-message-policy.js?v=20261029v1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -262,18 +263,31 @@
   // 保证这里的数组下标 == 聊天页渲染时 .msg-row 的 data-idx
   // 同步排除 mode:'date' 的赴约剧情消息（线下剧情只在 date.html 查看，不进线上聊天搜索）
   var displayList = historyList.filter(function (m) {
+    if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isOnlineSearchIndexVisible === 'function') {
+      return window.ChatMessagePolicy.isOnlineSearchIndexVisible(m);
+    }
+    // Compatibility fallback: retain the original index filter when policy JS is unavailable.
     if (!m || m.mode === 'date' || m.silent) return false;
     var t = String((m && (m.text || m.content)) || '');
     return t.indexOf('定位失败') === -1 && t.indexOf('Timeout expired') === -1;
   });
 
   function isSentMsg(m) {
+    if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isSentMessage === 'function') {
+      return window.ChatMessagePolicy.isSentMessage(m);
+    }
     return m && (m.role === 'sent' || m.role === 'user');
   }
   function isErrorMsg(m) {
+    if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isErrorMessage === 'function') {
+      return window.ChatMessagePolicy.isErrorMessage(m);
+    }
     return m && (m.isError || m.role === 'system_error');
   }
   function msgText(m) {
+    if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.getMessageText === 'function') {
+      return window.ChatMessagePolicy.getMessageText(m);
+    }
     return String((m && (m.text || m.content)) || '');
   }
   function formatTime(t) {
@@ -314,7 +328,9 @@
     var matched = [];
     for (var i = 0; i < displayList.length; i++) {
       var mm = displayList[i];
-      if (isErrorMsg(mm)) continue;
+      if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isSearchableMessage === 'function') {
+        if (!window.ChatMessagePolicy.isSearchableMessage(mm)) continue;
+      } else if (isErrorMsg(mm)) continue;
       if (kwLower && msgText(mm).toLowerCase().indexOf(kwLower) !== -1) {
         matched.push({ msg: mm, idx: i });
       }
