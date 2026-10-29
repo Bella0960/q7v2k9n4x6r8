@@ -79,7 +79,7 @@ test('reasoning cleanup preserves visible prose and removes internal-only blocks
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v2/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v2/);
-  assert.match(serviceWorker, /phone-app-pwa-v111/);
+  assert.match(serviceWorker, /phone-app-pwa-v112/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v2/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
@@ -110,6 +110,7 @@ test('message identity and model-context mapping keep compatibility fields', () 
   assert.match(detail, /row\.dataset\.mid = ensureMid\(msg\)/);
   assert.match(detail, /m\.text \|\| m\.content/);
   assert.match(detail, /m\.role === 'sent' \|\| m\.role === 'user'/);
+  assert.match(detail, /ChatMessagePolicy\.stripInternalReasoning/);
   assert.match(detail, /m\.role === 'received' \|\| m\.role === 'assistant'/);
   assert.match(detail, /m\.isError \|\| m\.role === 'system_error'/);
   assert.match(detail, /memberId: groupReplyPick && groupReplyPick\.id/);
