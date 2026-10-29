@@ -13,7 +13,7 @@
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
-    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v1"></script>
+    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v2"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -2770,6 +2770,10 @@
 
         // 推理内容只作为内部模型输出处理，永不显示、存储或回灌给下一轮对话。
         function stripInternalReasoning(raw) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.stripInternalReasoning === 'function') {
+                return window.ChatMessagePolicy.stripInternalReasoning(raw);
+            }
+            // Compatibility fallback: exact legacy behavior if the shared module is unavailable.
             return String(raw || '')
                 .replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, '')
                 .replace(/<\/?think\b[^>]*>/gi, '')
