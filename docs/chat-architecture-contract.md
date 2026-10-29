@@ -205,5 +205,5 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 ## 9. 本次状态
 
-本契约依据当前源码持续维护。`sendMsg` 现通过 `ChatContextPolicy` 处理历史映射、角色历史条数优先级、最近历史切片、本地历史召回参数、用户动态记忆角色筛选和长期记忆注入文案分层；显式带角色 ID 的条目按角色注入，无角色 ID 的旧版条目保留全局兼容。PWA Service Worker 已递增到 `phone-app-pwa-v123`，并预缓存上下文策略 v5。自动测试覆盖纯逻辑与静态源码契约，但不等于浏览器/PWA 端到端验证；手机端仍需实测历史召回排除范围、固定/待确认记忆注入和不同角色隔离。
+本契约依据当前源码持续维护。`sendMsg` 现通过 `ChatContextPolicy` 处理历史映射、角色历史条数优先级、最近历史切片、本地历史召回参数、用户动态记忆角色筛选和长期记忆注入文案分层；显式带角色 ID 的条目按角色注入，无角色 ID 的旧版条目保留全局兼容。PWA Service Worker 已递增到 `phone-app-pwa-v123`，并预缓存上下文策略 v5。2026-10-29 的 GitHub Actions [回归运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40879318959) 已在 Node.js 22 执行 `npm run test:chat:contract`，25/25 项通过。自动测试覆盖纯逻辑与静态源码契约，但不等于浏览器/PWA 端到端验证；手机端仍需实测历史召回排除范围、固定/待确认记忆注入和不同角色隔离。
 
