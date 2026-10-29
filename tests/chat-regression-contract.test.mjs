@@ -267,6 +267,42 @@ test('shared context policy preserves local historical recall query and budget r
   assert.match(detail, /buildHistoricalRecallText\(historyList, recallQuery, recallOptions\)/);
 });
 
+test('shared context policy keeps explicitly scoped user memories role-isolated while preserving legacy globals', () => {
+  assert.equal(typeof contextPolicy.filterUserMemoriesForRole, 'function');
+  const memories = [
+    { text: 'legacy global fact' },
+    { content: 'role A fact', sourceRoleId: 'role-A' },
+    { text: 'role B fact', sourceRoleId: 'role-B' },
+    { content: 'numeric role fact', sourceRoleId: 7 }
+  ];
+  const before = JSON.stringify(memories);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(memories, 'role-A'))),
+    [
+      { text: 'legacy global fact' },
+      { content: 'role A fact', sourceRoleId: 'role-A' }
+    ]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(memories, 7))),
+    [
+      { text: 'legacy global fact' },
+      { content: 'numeric role fact', sourceRoleId: 7 }
+    ]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(memories, 'role-C'))),
+    [{ text: 'legacy global fact' }]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.filterUserMemoriesForRole(null, 'role-A'))),
+    []
+  );
+  assert.equal(JSON.stringify(memories), before, 'memory filtering must not mutate stored memory objects');
+  assert.match(detail, /ChatContextPolicy\.filterUserMemoriesForRole/);
+  assert.match(detail, /Compatibility fallback: legacy entries without a role ID remain globally visible/);
+});
+
 test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
   assert.equal(typeof sendPolicy.normalizeOptions, 'function');
   const asPlainObject = (value) => JSON.parse(JSON.stringify(value));
