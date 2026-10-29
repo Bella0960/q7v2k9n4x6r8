@@ -24,6 +24,7 @@
 - **记忆**：详情页含权重记忆注入和总结协调；MemoryRecall 提供清洗、去重/强化、记忆保存和旧聊天检索工具；记忆空间页面也会读写同一批记忆数据。
 - **扩展互动**：chat-extras.js 依赖详情页暴露的函数与全局状态；红包/转账、心声、虚拟图片、通话、亲属卡等特殊标记与消息对象共同构成现有聊天行为。
 - **共享消息策略（渐进迁移中）**：`shared/js/phone/chat-message-policy.js` 提供纯函数，用于线上时间线隐藏规则、搜索索引过滤、错误消息识别、消息文本字段读取、用户消息识别、推理标签清理、`[记住:…]` 标记提取和回复旁白/气泡分段；另提供 `cleanupReplyPreservingBlocks`，在现有页面传入的 `applyAICleanup` 回调前后保护 `<think>` 与 `<narratage>` 块。模块自身不直接操作 DOM 或存储，用户自定义清洗规则仍由原页面函数执行。
+- **发送选项归一化（第一步已拆）**：`shared/js/phone/chat-send-policy.js` 将 `sendMsg(opts)` 起始处的选项读取、布尔化、文本 trim 和自动接话深度下限处理集中为纯函数 `ChatSendPolicy.normalizeOptions`。它不检查角色拉黑状态、不获取 API 配置，也不处理请求或存储；发送控制流程仍由原页面协调。
 
 源码入口：
 - 聊天详情：[chat-detail.html](../chat/chat/chat-detail.html)
@@ -127,7 +128,7 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 7. **Memory Service**：逐步协调记忆读取、强化、检索、注入与总结，但不在首次抽离中改变记忆策略。
 8. **外部适配器**：为聊天扩展、搜索、线下模式、通话、钱包和论坛分享提供明确的调用边界。
 
-已将可见性/搜索规则、推理文本清理、记忆标记提取、旁白与气泡解析抽离为共享策略函数。`cleanupAiReply` 现在把“保护 think/narratage 块—调用现有 `applyAICleanup`—恢复原块”的流程委托给 `ChatMessagePolicy.cleanupReplyPreservingBlocks`；原页面实现仍作为加载失败兜底，用户自定义 regex 规则、DOM 渲染、记忆落库和 API 流程均未迁移。接下来优先完善自动回归测试与真实页面验收，再决定是否拆动发送流程。
+已将可见性/搜索规则、推理文本清理、记忆标记提取、旁白与气泡解析及保护式回复清洗抽离为共享纯函数。另新增 `ChatSendPolicy.normalizeOptions`，让 `sendMsg` 使用共享函数归一化选项，同时保留原地回退代码。此次未迁移拉黑判断、并发锁、群聊可发言判断、API 配置、上下文拼接、流式请求或消息落库。接下来先补足发送前校验的自动测试与真实页面验收，再决定是否拆动更深的发送协调流程。
 
 ## 5. 跨页面读写者登记
 
@@ -202,5 +203,5 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 ## 9. 本次状态
 
-本契约依据当前源码持续维护。聊天详情和搜索页已接入共享消息策略，保留旧实现兜底，并更新 PWA 缓存版本。GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40870708143) 为 17/17 项通过。该结果覆盖纯逻辑行为测试和静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端关键路径仍需实测。下一步先复测真实聊天流程，再决定是否拆分更大业务流程。
+本契约依据当前源码持续维护。聊天详情和搜索页已接入共享消息策略，`sendMsg` 也已使用独立发送选项归一化模块；所有新脚本均保留旧逻辑兜底或不改变原有调用顺序，并同步登记到 PWA 缓存。GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40871676126) 为 18/18 项通过。该结果覆盖纯逻辑行为测试和静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端关键路径仍需实测。下一步先复测真实聊天流程，再决定是否拆分更大业务流程。
 
