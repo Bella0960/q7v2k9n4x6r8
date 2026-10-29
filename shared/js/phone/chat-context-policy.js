@@ -95,11 +95,51 @@
     });
   }
 
+  // Compose the long-term memory prompt from already-loaded records. Weight calculation,
+  // storage access, and record lifecycle remain owned by the chat detail page.
+  function buildWeightedMemoryInjectionText(memories, fallbackText, getMemoryWeight) {
+    var mems = Array.isArray(memories) ? memories : [];
+    var oldText = (fallbackText || '').trim();
+    var oldValid = oldText && oldText !== '暂无记忆';
+    if (!mems.length) return oldValid ? oldText : '暂无记忆';
+
+    var fixed = mems.filter(function (m) { return m.status === 'fixed'; });
+    var confirmed = mems.filter(function (m) { return !m.status || m.status === 'confirmed'; });
+    var weightOf = typeof getMemoryWeight === 'function'
+      ? getMemoryWeight
+      : function () { return 0; };
+    var lines = [];
+
+    if (fixed.length) {
+      lines.push('【你一直记得的事】（钉住的记忆，绝对不会忘，可自然提及）');
+      fixed.forEach(function (m) { lines.push('· ' + m.content); });
+    }
+
+    var weighted = confirmed.map(function (m) {
+      return { content: m.content, weight: weightOf(m) };
+    }).filter(function (m) { return m.content && m.weight > 0.12; });
+    weighted.sort(function (a, b) { return b.weight - a.weight; });
+
+    var clear = weighted.filter(function (m) { return m.weight >= 0.5; });
+    var vague = weighted.filter(function (m) { return m.weight < 0.5; });
+    if (clear.length) {
+      lines.push('【你清晰记得的事】（可以自然地提及）');
+      clear.forEach(function (m) { lines.push('· ' + m.content); });
+    }
+    if (vague.length) {
+      lines.push('【你隐约记得的事】（只有当对方主动提起相关话题时，你才回忆起来；平时不要主动提起）');
+      vague.forEach(function (m) { lines.push('· ' + m.content); });
+    }
+    if (oldValid) lines.push('【过往长期记忆】' + oldText);
+    return lines.length ? lines.join('\\n') : '暂无记忆';
+  }
+
   global.ChatContextPolicy = {
     mapHistoryToApiMessages: mapHistoryToApiMessages,
     resolveMemoryLimit: resolveMemoryLimit,
     selectRecentHistory: selectRecentHistory,
     buildHistoricalRecallRequest: buildHistoricalRecallRequest,
-    filterUserMemoriesForRole: filterUserMemoriesForRole
+    filterUserMemoriesForRole: filterUserMemoriesForRole,
+    buildWeightedMemoryInjectionText: buildWeightedMemoryInjectionText
   };
 })(typeof window !== 'undefined' ? window : globalThis);
