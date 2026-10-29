@@ -1,5 +1,5 @@
 /* MAOMAO Chat Message Policy
- * Pure message predicates shared by chat detail and history search.
+ * Pure message predicates and reply-text cleanup shared by chat pages.
  * Keep these functions free of DOM, storage, and API side effects.
  */
 (function (global) {
