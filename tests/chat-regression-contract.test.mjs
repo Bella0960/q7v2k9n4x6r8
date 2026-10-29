@@ -306,9 +306,9 @@ test('message identity and model-context mapping keep compatibility fields', () 
 });
 
 test('streaming stays behind PhoneStream and keeps partial-reply handling', () => {
-  assert.match(detail, /const streamResult = await PhoneStream\.chat\(/);
+  assert.match(detail, /let streamResult;\s*try\s*\{\s*streamResult = await PhoneStream\.chat\(/);
   assert.match(detail, /onPaint: paintStreamLive/);
-  assert.match(detail, /fullText = streamResult\.fullText/);
+  assert.match(detail, /typeof streamResult\.fullText === 'string'/);
   assert.match(stream, /result\.fullText = fullText/);
   assert.match(stream, /finish\(e\)/);
   assert.match(stream, /WATCHDOG_MS/);
