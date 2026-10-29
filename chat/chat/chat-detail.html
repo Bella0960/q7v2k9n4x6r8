@@ -14,6 +14,7 @@
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
+    <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v1"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -3921,14 +3922,30 @@
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
             const input = document.getElementById('chat-input');
-            const customText = (opts && typeof opts.text === 'string') ? opts.text.trim() : '';
-            const silent = !!(opts && opts.silent);
-            const contextOnly = !!(opts && opts.contextOnly);
-            const regenDirection = (opts && typeof opts.regenDirection === 'string') ? opts.regenDirection.trim() : '';
-            const isRegen = !!(opts && opts.isRegenerate);
-            const isGroupFollowup = !!(opts && opts.groupFollowup);
-            const groupAutoDepth = Math.max(0, parseInt(opts && opts.groupAutoDepth, 10) || 0);
-            const text = customText || input.value.trim();
+            const sendState = (window.ChatSendPolicy && typeof window.ChatSendPolicy.normalizeOptions === 'function')
+                ? window.ChatSendPolicy.normalizeOptions(opts, input.value)
+                : (function () {
+                    // Compatibility fallback: preserve the original sendMsg option normalization.
+                    const customText = (opts && typeof opts.text === 'string') ? opts.text.trim() : '';
+                    return {
+                        customText: customText,
+                        silent: !!(opts && opts.silent),
+                        contextOnly: !!(opts && opts.contextOnly),
+                        regenDirection: (opts && typeof opts.regenDirection === 'string') ? opts.regenDirection.trim() : '',
+                        isRegen: !!(opts && opts.isRegenerate),
+                        isGroupFollowup: !!(opts && opts.groupFollowup),
+                        groupAutoDepth: Math.max(0, parseInt(opts && opts.groupAutoDepth, 10) || 0),
+                        text: customText || input.value.trim()
+                    };
+                })();
+            const customText = sendState.customText;
+            const silent = sendState.silent;
+            const contextOnly = sendState.contextOnly;
+            const regenDirection = sendState.regenDirection;
+            const isRegen = sendState.isRegen;
+            const isGroupFollowup = sendState.isGroupFollowup;
+            const groupAutoDepth = sendState.groupAutoDepth;
+            const text = sendState.text;
             window.__groupAutoStopRequested = false;
             if (!text && !isRegen && !contextOnly) return;
             if (isBlocked(aliasRoleId)) {
