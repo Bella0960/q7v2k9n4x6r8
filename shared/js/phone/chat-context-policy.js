@@ -62,9 +62,33 @@
     return (Array.isArray(history) ? history : []).slice(-memoryLimit);
   }
 
+  function buildHistoricalRecallRequest(history, currentText, recentHistoryLength) {
+    history = Array.isArray(history) ? history : [];
+    var query = currentText || '';
+    if (!query) {
+      for (var i = history.length - 1; i >= 0; i--) {
+        var entry = history[i];
+        if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
+          query = String(entry.text || entry.content);
+          break;
+        }
+      }
+    }
+    return {
+      query: query,
+      options: {
+        excludeRecent: Math.max(0, Number(recentHistoryLength) || 0),
+        maxItems: 2,
+        maxChars: 540,
+        maxScan: 2500
+      }
+    };
+  }
+
   global.ChatContextPolicy = {
     mapHistoryToApiMessages: mapHistoryToApiMessages,
     resolveMemoryLimit: resolveMemoryLimit,
-    selectRecentHistory: selectRecentHistory
+    selectRecentHistory: selectRecentHistory,
+    buildHistoricalRecallRequest: buildHistoricalRecallRequest
   };
 })(typeof window !== 'undefined' ? window : globalThis);
