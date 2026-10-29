@@ -26,7 +26,34 @@
     };
   }
 
+  // Keep sendMsg's guard order intact. Query callbacks are lazy so blocked/busy
+  // paths do not trigger later checks (especially group member availability).
+  function evaluatePreflight(options) {
+    options = options || {};
+    if (!options.text && !options.isRegen && !options.contextOnly) return 'empty';
+
+    if (typeof options.isBlocked === 'function' && options.isBlocked()) return 'blocked';
+    if (typeof options.isSending === 'function' && options.isSending()) return 'busy';
+
+    var isGroupChat = typeof options.isGroupChat === 'function'
+      ? options.isGroupChat()
+      : !!options.isGroupChat;
+    if (!isGroupChat) return 'ready';
+
+    var hasGroup = typeof options.hasGroup === 'function'
+      ? options.hasGroup()
+      : !!options.hasGroup;
+    if (!hasGroup || options.isRegen || options.contextOnly) return 'ready';
+
+    var availableMembers = typeof options.getAvailableGroupMembers === 'function'
+      ? options.getAvailableGroupMembers()
+      : [];
+    if (!availableMembers.length) return 'group-unavailable';
+    return 'ready';
+  }
+
   global.ChatSendPolicy = {
-    normalizeOptions: normalizeOptions
+    normalizeOptions: normalizeOptions,
+    evaluatePreflight: evaluatePreflight
   };
 })(typeof window !== 'undefined' ? window : globalThis);
