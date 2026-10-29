@@ -3,6 +3,7 @@ package com.maomao.phone;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Color;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -45,7 +46,8 @@ public final class MainActivity extends Activity {
                 .build();
 
         webView = new WebView(this);
-        webView.setBackgroundColor(0xFFF7F7F9);
+        // 透明 WebView + edge-to-edge：网页底色/壁纸可以自然延伸到系统状态栏下方。
+        webView.setBackgroundColor(Color.TRANSPARENT);
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         WebSettings settings = webView.getSettings();
@@ -66,6 +68,11 @@ public final class MainActivity extends Activity {
             public android.webkit.WebResourceResponse shouldInterceptRequest(
                     WebView view, WebResourceRequest request) {
                 return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
             }
 
             @Override
@@ -126,14 +133,20 @@ public final class MainActivity extends Activity {
 
     private void configureSystemBars() {
         Window window = getWindow();
+        // 先保留系统状态栏正常占位，避免全屏覆盖破坏各网页现有布局。
         window.setStatusBarColor(0xFFF7F7F9);
+        // 暂时保留底部导航栏的传统布局，避免误触/遮挡聊天输入框。
         window.setNavigationBarColor(0xFFF7F7F9);
+
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR |
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                            ? View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0));
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        }
+        window.getDecorView().setSystemUiVisibility(flags);
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.setNavigationBarContrastEnforced(false);
             window.setStatusBarContrastEnforced(false);

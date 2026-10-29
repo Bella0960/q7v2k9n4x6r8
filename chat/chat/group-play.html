@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>群聊玩法 · 小手机</title>
+<script src="../../shared/js/font-loader.js?v=20261022v1"></script>
+<script src="../../shared/js/native-feel.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{color-scheme:light;--ink:#111;--muted:#888;--line:#e9e9ed;--paper:#fff;--wash:#f7f7f9}
+body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;min-height:100dvh;display:flex;justify-content:center}
+.phone{width:min(430px,100vw);min-height:100dvh;background:var(--paper);position:relative;display:flex;flex-direction:column;overflow:hidden}
+.top{position:sticky;top:0;z-index:5;padding:calc(16px + env(safe-area-inset-top)) 22px 15px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
+.back{width:34px;height:34px;flex:none;border:1px solid var(--line);border-radius:50%;background:#fff;display:grid;place-items:center;color:#111;cursor:pointer}
+.back svg{width:17px;height:17px}
+.top-copy{min-width:0;flex:1}
+.kicker{font:500 9px/1.2 Georgia,serif;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:4px}
+.top h1{font:500 21px/1.15 Georgia,"Songti SC",serif;letter-spacing:-.4px}
+.content{flex:1;overflow:auto;padding:20px 20px calc(34px + env(safe-area-inset-bottom));scrollbar-width:none}
+.content::-webkit-scrollbar{display:none}
+.hero{padding:8px 2px 22px;border-bottom:1px solid var(--line);margin-bottom:24px}
+.hero-label{font-size:10px;letter-spacing:1.8px;color:#999;text-transform:uppercase}
+.hero h2{font:500 30px/1.08 Georgia,"Songti SC",serif;letter-spacing:-.8px;margin:10px 0 9px;overflow-wrap:anywhere}
+.hero p{font-size:12px;line-height:1.75;color:#777;max-width:310px}
+.meta{display:flex;gap:7px;align-items:center;font-size:11px;color:#666;margin-top:15px}
+.meta-dot{width:5px;height:5px;background:#111;border-radius:50%}
+.section{margin:25px 0 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.section h3{font:500 17px/1.2 Georgia,"Songti SC",serif}
+.section span{font-size:10px;color:#999;letter-spacing:.7px}
+.settings{border-top:1px solid var(--line)}
+.setting{display:flex;gap:14px;align-items:center;padding:15px 1px;border-bottom:1px solid var(--line)}
+.setting-copy{min-width:0;flex:1}
+.setting-title{font-size:13px;font-weight:550;margin-bottom:4px}
+.setting-desc{font-size:11px;line-height:1.55;color:#888}
+.switch{position:relative;width:43px;height:25px;flex:none}
+.switch input{position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;z-index:2;cursor:pointer}
+.track{position:absolute;inset:0;border-radius:99px;background:#e4e4e8;transition:background .2s}
+.track:after{content:"";position:absolute;width:19px;height:19px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #00000018;transition:transform .2s}
+.switch input:checked+.track{background:#111}
+.switch input:checked+.track:after{transform:translateX(18px)}
+.members{display:flex;flex-direction:column;gap:12px}
+.relationships{display:flex;flex-direction:column}
+.relationship{border-top:1px solid var(--line);padding:14px 0 16px}
+.relationship:first-child{border-top:0}
+.relationship-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
+.relationship-pair{font-size:12px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.relationship-pair small{display:block;color:#999;font-size:10px;font-weight:400;margin-top:3px}
+.relationship-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.relationship .field{gap:6px}
+.relationship .field label{font-size:10px}
+.relationship select,.relationship input[type=text]{width:100%;min-width:0;height:36px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:11px;color:#111;outline:none}
+.relationship textarea{width:100%;min-height:76px;resize:vertical;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:9px;font:inherit;font-size:11px;line-height:1.6;color:#111;outline:none}
+.relationship .memory-hint{font-size:10px;color:#999;line-height:1.5;margin-top:4px}
+.relationship-meter{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#777;font-size:10px;margin-bottom:5px}
+.relationship-meter strong{font-size:10px;color:#111;font-weight:600}
+.relationship input[type=range]{width:100%;accent-color:#111;display:block;height:22px;margin:0}
+.relationship-note{margin-top:10px}
+.member{border:1px solid #ececf0;border-radius:15px;padding:14px;background:#fff}
+.member-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.avatar{width:38px;height:38px;border-radius:12px;background:#f0f0f3;overflow:hidden;display:grid;place-items:center;flex:none;font-size:14px;color:#777}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.member-heading{min-width:0;flex:1}
+.member-name{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-id{font-size:10px;color:#999;margin-top:3px}
+.remove{border:0;background:#f3f3f5;border-radius:9px;padding:7px 10px;color:#777;font:inherit;font-size:10px;cursor:pointer}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:10px;color:#888}
+.field input{min-width:0;width:100%;height:37px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;outline:none}
+.field input:focus{border-color:#999}
+.member-options{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.check-label{display:flex;align-items:center;gap:6px;background:#f6f6f8;border-radius:8px;padding:7px 9px;font-size:11px;color:#555}
+.check-label input{accent-color:#111}
+.schedule{margin-top:12px;padding-top:11px;border-top:1px solid #f0f0f2}
+.schedule-head{display:flex;justify-content:space-between;font-size:10px;color:#888;margin-bottom:9px}
+.time-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.add-list{border-top:1px solid var(--line);margin-top:12px}
+.add-item{width:100%;display:flex;align-items:center;gap:10px;padding:12px 1px;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:left;cursor:pointer}
+.add-mark{width:27px;height:27px;border:1px solid #ddd;border-radius:50%;display:grid;place-items:center;font-size:18px;color:#444;flex:none}
+.add-copy{flex:1;min-width:0}
+.add-copy strong{display:block;font-size:12px;font-weight:550}
+.add-copy small{display:block;font-size:10px;color:#999;margin-top:3px}
+.empty{padding:15px 0;color:#999;font-size:12px;line-height:1.7}
+.hint{font-size:10px;line-height:1.7;color:#999;margin-top:10px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,8px);background:#111;color:#fff;border-radius:10px;padding:9px 14px;font-size:11px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:20;white-space:nowrap}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.error{font-size:13px;line-height:1.8;color:#777;padding:30px 2px}
+@media(min-width:431px){.phone{min-height:calc(100dvh - 24px);margin:12px 0;border-radius:28px;box-shadow:0 12px 45px #0000000c}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="phone">
+  <header class="top">
+    <button class="back" id="backBtn" type="button" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="top-copy"><div class="kicker">GROUP / SETTINGS</div><h1>群聊玩法设置</h1></div>
+  </header>
+  <main class="content" id="mainContent">
+    <div class="hero">
+      <div class="hero-label">A SMALL WORLD OF CHARACTERS</div>
+      <h2 id="groupTitle">群聊设置</h2>
+      <p>给群成员安排身份、作息与行动边界，让每一场群聊更像一群真实的人在相处。</p>
+      <div class="meta"><span class="meta-dot"></span><span id="memberCount">读取群成员中</span><span>·</span><span>自动保存</span></div>
+    </div>
+    <div class="section"><h3>群聊机制</h3><span>BEHAVIOR</span></div>
+    <div class="settings" id="settingsList">
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">作息感知</span><span class="setting-desc">开启后，休息时段的成员不会被选为本轮发言者；每位成员可单独设置活跃时间。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="scheduleEnabled"><span class="track"></span></span>
+      </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">同步成员的单聊记忆</span><span class="setting-desc">开启后，群聊 AI 会参考成员在各自单聊中的长期记忆。关闭时不额外注入，节省上下文。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="memorySharing"><span class="track"></span></span>
+      </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">旁观模式</span><span class="setting-desc">把发送内容当作剧情走向提示；角色优先彼此互动，不把每句话都当成对用户说。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="spectatorMode"><span class="track"></span></span>
+      </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">允许角色自主管理群聊</span><span class="setting-desc">管理员或群主可按剧情提出改群名、邀请现有角色入群或移除成员；实际变更会保存到群资料。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="allowRoleActions"><span class="track"></span></span>
+      </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">允许角色私聊</span><span class="setting-desc">角色可以在群聊中向你发来私聊消息。私聊内容会保存到对应角色的单聊记录，并可从小窗进入完整私聊。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="allowPrivateMessages"><span class="track"></span></span>
+      </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">角色自主接话</span><span class="setting-desc">你发完消息后，让另一位群成员顺着话题回应；可以设置 1–2 轮，避免每次自动聊太久。此功能会额外调用 API。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="autoTalkEnabled"><span class="track"></span></span>
+      </label>
+      <div class="setting">
+        <span class="setting-copy"><span class="setting-title">最多自动接话次数</span><span class="setting-desc">每次你发消息后，最多追加几条角色回复。</span></span>
+        <select id="autoTalkRounds" style="width:88px;flex:none;height:36px;border:1px solid #e6e6eb;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;">
+          <option value="0">关闭</option>
+          <option value="1">1 轮</option>
+          <option value="2">2 轮</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section"><h3>群主与权限</h3><span>OWNER / ADMIN</span></div>
+    <div class="member" id="ownerPanel">
+      <div class="member-head">
+        <div class="avatar" id="ownerAvatar">我</div>
+        <div class="member-heading"><div class="member-name" id="ownerName">我（群主）</div><div class="member-id" id="ownerDesc">当前群主</div></div>
+      </div>
+      <div class="field">
+        <label for="ownerSelect">转让群主给</label>
+        <select id="ownerSelect" style="width:100%;height:40px;border:1px solid #e8e8ec;border-radius:9px;background:#fafafc;padding:0 10px;font:inherit;font-size:12px;color:#111;">
+          <option value="__user">我自己（不转让）</option>
+        </select>
+      </div>
+      <button type="button" id="transferOwnerBtn" style="width:100%;height:40px;margin-top:10px;border:1px solid #111;border-radius:10px;background:#111;color:#fff;font:inherit;font-size:12px;cursor:pointer;">确认转让群主</button>
+      <p class="hint">转让仅改变群聊内的模拟群主身份，不会影响角色库。群主仍可在本页面管理群设置。</p>
+    </div>
+
+    <div class="section"><h3>成员资料</h3><span>IDENTITY / HOURS</span></div>
+    <div id="membersList" class="members"></div>
+    <p class="hint">群昵称和专属头衔只影响群聊显示，不会修改角色库原始资料。禁言与作息只影响该角色能否被选中发言。</p>
+
+    <div class="section"><h3>成员关系与熟悉度</h3><span>RELATIONSHIPS</span></div>
+    <div id="relationshipsList" class="relationships"></div>
+    <p class="hint">关系按成员对独立保存。角色真正接着另一位成员的话题互动时，熟悉度会缓慢增长；关系类型和补充说明由你掌控。此功能不会额外调用 API。</p>
+
+    <div class="section"><h3>邀请角色</h3><span>ADD MEMBERS</span></div>
+    <div id="addList" class="add-list"></div>
+    <p class="hint">这里只能邀请角色库里已有的角色，不会凭空生成角色，也不会修改原有角色资料。</p>
+  </main>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var groupId = params.get('id') || params.get('roleId') || '';
+  var toastTimer = 0;
+  function escapeHtml(value){
+    return String(value == null ? '' : value).replace(/[&<>"']/g,function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+  function readArray(key){
+    try{var value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value:[];}catch(e){return [];}
+  }
+  function notify(message){
+    var el=document.getElementById('toast');
+    el.textContent=message;el.classList.add('show');
+    clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.classList.remove('show');},1600);
+  }
+  function findGroup(){
+    return readArray('phone_groups').find(function(g){return g&&String(g.id)===String(groupId);})||null;
+  }
+  var group=findGroup();
+  if(!group || String(group.id).charAt(0)!=='g'){
+    document.getElementById('mainContent').innerHTML='<div class="error">没有找到这条群聊记录。<br>可能群聊已经被解散，或链接已失效。</div>';
+    document.getElementById('groupTitle').textContent='群聊不存在';
+  }else{
+    if(!group.settings||typeof group.settings!=='object')group.settings={};
+    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false};
+    Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
+    var autoRounds=Number(group.settings.autoTalkRounds);
+    if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
+    document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
+    function persist(message){
+      var groups=readArray('phone_groups');
+      var found=false;
+      for(var i=0;i<groups.length;i++){
+        if(String(groups[i]&&groups[i].id)===String(group.id)){groups[i]=group;found=true;break;}
+      }
+      if(!found){notify('群聊已不存在，保存失败');return false;}
+      try{localStorage.setItem('phone_groups',JSON.stringify(groups));if(message)notify(message);return true;}
+      catch(e){notify('保存失败：本地存储空间不足');return false;}
+    }
+    if (!group.ownerId) group.ownerId='__user';
+    function renderSettings(){
+      document.querySelectorAll('[data-setting]').forEach(function(input){
+        input.checked=!!group.settings[input.getAttribute('data-setting')];
+      });
+      var roundsSelect=document.getElementById('autoTalkRounds');
+      if(roundsSelect)roundsSelect.value=String(group.settings.autoTalkRounds);
+    }
+    function renderOwner(){
+      var select=document.getElementById('ownerSelect');
+      var ownerName=document.getElementById('ownerName');
+      var ownerDesc=document.getElementById('ownerDesc');
+      var ownerAvatar=document.getElementById('ownerAvatar');
+      var members=Array.isArray(group.members)?group.members:[];
+      var owner=members.find(function(m){return String(m.id)===String(group.ownerId);});
+      ownerName.textContent=owner?(owner.nickname||owner.name||'群成员'):'我（群主）';
+      ownerDesc.textContent=owner?'群主 · '+(owner.title||'成员'):'当前由你管理群聊';
+      ownerAvatar.innerHTML=owner?(owner.avatar?'<img src="'+escapeHtml(owner.avatar)+'" alt="">':escapeHtml((owner.nickname||owner.name||'群').slice(0,1))):'我';
+      select.innerHTML='<option value="__user">我自己（不转让）</option>'+members.map(function(m){
+        return '<option value="'+escapeHtml(String(m.id))+'">'+escapeHtml(m.nickname||m.name||'未命名成员')+(m.isAdmin?' · 管理员':'')+'</option>';
+      }).join('');
+      select.value=members.some(function(m){return String(m.id)===String(group.ownerId);})?String(group.ownerId):'__user';
+      var transferBtn=document.getElementById('transferOwnerBtn');
+      var currentOwnerId=String(group.ownerId||'__user');
+      transferBtn.textContent=String(select.value)===currentOwnerId?'当前群主':(select.value==='__user'?'转让群主给我':'确认转让群主');
+      transferBtn.disabled=String(select.value)===currentOwnerId;
+      transferBtn.style.opacity=transferBtn.disabled?'.58':'1';
+      transferBtn.style.cursor=transferBtn.disabled?'default':'pointer';
+    }
+    document.getElementById('ownerSelect').addEventListener('change',function(){
+      var currentOwnerId=String(group.ownerId||'__user');
+      var isCurrent=String(this.value)===currentOwnerId;
+      var button=document.getElementById('transferOwnerBtn');
+      button.textContent=isCurrent?'当前群主':(this.value==='__user'?'转让群主给我':'确认转让群主');
+      button.disabled=isCurrent;
+      button.style.opacity=isCurrent?'.58':'1';
+      button.style.cursor=isCurrent?'default':'pointer';
+    });
+    document.querySelectorAll('[data-setting]').forEach(function(input){
+      input.addEventListener('change',function(){
+        group.settings[input.getAttribute('data-setting')]=!!input.checked;
+        persist('设置已保存');
+      });
+    });
+    document.getElementById('autoTalkRounds').addEventListener('change',function(){
+      var rounds=parseInt(this.value,10);
+      group.settings.autoTalkRounds=[0,1,2].indexOf(rounds)!==-1?rounds:1;
+      persist('自动接话次数已保存');
+    });
+    function renderMembers(){
+      var list=document.getElementById('membersList');
+      var members=Array.isArray(group.members)?group.members:[];
+      document.getElementById('memberCount').textContent=members.length+' 位群成员';
+      if(!members.length){list.innerHTML='<div class="empty">群里暂时还没有成员。可以从下方邀请角色库中已有的角色。</div>';return;}
+      list.innerHTML=members.map(function(member){
+        var id=String(member.id==null?'':member.id);
+        var avatar=member.avatar?'<img src="'+escapeHtml(member.avatar)+'" alt="">':escapeHtml((member.nickname||member.name||'群').slice(0,1));
+        return '<article class="member" data-member-id="'+escapeHtml(id)+'">'+
+          '<div class="member-head"><div class="avatar">'+avatar+'</div><div class="member-heading"><div class="member-name">'+escapeHtml(member.nickname||member.name||'未命名成员')+'</div><div class="member-id">ID · '+escapeHtml(id)+'</div></div>'+
+          '<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button></div>'+
+          '<div class="fields">'+
+            '<div class="field"><label>群昵称</label><input type="text" maxlength="20" data-member-field="nickname" value="'+escapeHtml(member.nickname||'')+'" placeholder="'+escapeHtml(member.name||'原角色名')+'"></div>'+
+            '<div class="field"><label>专属头衔</label><input type="text" maxlength="20" data-member-field="title" value="'+escapeHtml(member.title||'')+'" placeholder="例如：管理员 / 气氛组"></div>'+
+          '</div>'+
+          '<div class="member-options">'+
+            '<label class="check-label"><input type="checkbox" data-member-field="isAdmin" '+(member.isAdmin?'checked':'')+'> 管理员</label>'+
+            '<label class="check-label"><input type="checkbox" data-member-field="muted" '+(member.muted?'checked':'')+'> 禁言</label>'+
+          '</div>'+
+          '<div class="schedule"><div class="schedule-head"><span>个人活跃时间</span><span>仅作息感知开启时生效</span></div><div class="time-fields">'+
+            '<div class="field"><label>开始活跃</label><input type="time" data-member-field="activeFrom" value="'+escapeHtml(member.activeFrom||'08:00')+'"></div>'+
+            '<div class="field"><label>结束活跃</label><input type="time" data-member-field="activeTo" value="'+escapeHtml(member.activeTo||'23:00')+'"></div>'+
+          '</div></div></article>';
+      }).join('');
+    }
+    var relationshipTypes=['未设定','陌生人','刚认识','朋友','好友','亲密','暧昧','恋人','家人','竞争对手','互相看不顺眼','自定义'];
+    function relationshipKey(idA,idB){return JSON.stringify([String(idA),String(idB)].sort());}
+    function renderRelationships(){
+      var list=document.getElementById('relationshipsList');
+      var members=Array.isArray(group.members)?group.members:[];
+      if(members.length<2){list.innerHTML='<div class="empty">至少邀请两位角色入群，才能设置他们之间的关系。</div>';return;}
+      var rows=[];
+      for(var i=0;i<members.length;i++){
+        for(var j=i+1;j<members.length;j++){
+          var a=members[i],b=members[j],key=relationshipKey(a.id,b.id);
+          var rel=(group.relationships&&group.relationships[key])||{};
+          var type=relationshipTypes.indexOf(String(rel.type||'未设定'))!==-1?String(rel.type||'未设定'):'自定义';
+          var familiarity=Math.max(0,Math.min(100,parseInt(rel.familiarity,10)||0));
+          var options=relationshipTypes.map(function(option){return '<option value="'+escapeHtml(option)+'" '+(option===type?'selected':'')+'>'+escapeHtml(option)+'</option>';}).join('');
+          rows.push('<article class="relationship" data-relationship-key="'+escapeHtml(key)+'">'+
+            '<div class="relationship-head"><div class="relationship-pair">'+escapeHtml(groupMemberName(a))+' ↔ '+escapeHtml(groupMemberName(b))+'<small>双向关系 · '+(parseInt(rel.interactions,10)||0)+' 次明确互动</small></div></div>'+
+            '<div class="relationship-fields"><div class="field"><label>关系类型</label><select data-relationship-field="type">'+options+'</select></div>'+
+            '<div class="field"><div class="relationship-meter"><label>熟悉度</label><strong><span data-familiarity-value>'+familiarity+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="familiarity" value="'+familiarity+'" aria-label="'+escapeHtml(groupMemberName(a)+'与'+groupMemberName(b)+'的熟悉度')+'"></div></div>'+
+            '<div class="field relationship-note"><label>关系补充（可选）</label><input type="text" maxlength="120" data-relationship-field="note" value="'+escapeHtml(rel.note||'')+'" placeholder="例如：总是斗嘴，但会替对方收尾"></div>'+
+            '<div class="field relationship-note"><label>共同记忆</label><textarea rows="3" maxlength="900" data-relationship-field="memories" placeholder="每行一条，比如：第一次见面时一起处理了突发状况。">'+escapeHtml((Array.isArray(rel.memories)?rel.memories:[]).slice(-6).map(function(memory){return String(memory&&memory.summary||'');}).filter(Boolean).join('\n'))+'</textarea><span class="memory-hint">每行一条，最多保留最近 6 条；自动记录和手动修改都保存在这个群里。</span></div></article>');
+        }
+      }
+      list.innerHTML=rows.join('');
+    }
+    function groupMemberName(member){return String((member&&(member.nickname||member.name))||'未命名成员');}
+    function renderCandidates(){
+      var list=document.getElementById('addList');
+      var all=readArray('ai_custom_characters');
+      var existing=(group.members||[]).map(function(m){return String(m.id);});
+      var available=all.filter(function(role){return role&&role.id!=null&&existing.indexOf(String(role.id))<0;});
+      if(!available.length){list.innerHTML='<div class="empty">角色库中的角色都已在群里，暂时没有可添加的人选。</div>';return;}
+      list.innerHTML=available.map(function(role){
+        var id=String(role.id);
+        var avatar=role.avatar?'<img src="'+escapeHtml(role.avatar)+'" alt="">':escapeHtml((role.name||'角').slice(0,1));
+        return '<button type="button" class="add-item" data-add-member="'+escapeHtml(id)+'"><span class="avatar">'+avatar+'</span><span class="add-copy"><strong>'+escapeHtml(role.name||'未命名角色')+'</strong><small>角色库成员</small></span><span class="add-mark">+</span></button>';
+      }).join('');
+    }
+    document.getElementById('relationshipsList').addEventListener('input',function(event){
+      var input=event.target.closest('[data-relationship-field="familiarity"]');
+      if(!input)return;
+      var label=input.closest('.field').querySelector('[data-familiarity-value]');
+      if(label)label.textContent=String(input.value);
+    });
+    document.getElementById('relationshipsList').addEventListener('change',function(event){
+      var input=event.target.closest('[data-relationship-field]');
+      if(!input)return;
+      var card=input.closest('[data-relationship-key]');
+      if(!card)return;
+      var key=card.getAttribute('data-relationship-key');
+      var ids;
+      try{ids=JSON.parse(key);}catch(e){return;}
+      if(!group.relationships||typeof group.relationships!=='object'||Array.isArray(group.relationships))group.relationships={};
+      var rel=group.relationships[key];
+      if(!rel||typeof rel!=='object')rel=group.relationships[key]={memberAId:String(ids[0]),memberBId:String(ids[1]),type:'未设定',familiarity:0,interactions:0,note:'',lastInteractionAt:0};
+      var field=input.getAttribute('data-relationship-field');
+      if(field==='familiarity')rel.familiarity=Math.max(0,Math.min(100,parseInt(input.value,10)||0));
+      else if(field==='type')rel.type=relationshipTypes.indexOf(input.value)!==-1?input.value:'自定义';
+      else if(field==='note')rel.note=String(input.value||'').trim().slice(0,120);
+      else if(field==='memories'){
+        var oldMemories=Array.isArray(rel.memories)?rel.memories.slice(-6):[];
+        rel.memories=String(input.value||'').split(/\r?\n/).map(function(line){return line.trim().slice(0,140);}).filter(Boolean).slice(-6).map(function(summary,index){
+          var old=oldMemories[index]||{};
+          return {summary:summary,time:Number(old.time)||Date.now(),fromId:old.fromId==null?'':String(old.fromId),toId:old.toId==null?'':String(old.toId)};
+        });
+      }
+      persist('成员关系已保存');
+      renderRelationships();
+    });
+    document.getElementById('transferOwnerBtn').addEventListener('click',function(){
+      var nextOwnerId=document.getElementById('ownerSelect').value||'__user';
+      var oldOwner=String(group.ownerId||'__user');
+      if(nextOwnerId===oldOwner){notify('这位成员已经是群主');return;}
+      var nextOwner=(group.members||[]).find(function(m){return String(m.id)===String(nextOwnerId);});
+      var nextName=nextOwner?(nextOwner.nickname||nextOwner.name||'群成员'):'你自己';
+      if(!confirm('确定将群主转让给「'+nextName+'」吗？'))return;
+      group.ownerId=nextOwner?String(nextOwner.id):'__user';
+      if(nextOwner)nextOwner.isAdmin=true;
+      persist('群主已更新');
+      renderMembers();renderOwner();
+    });
+    document.getElementById('membersList').addEventListener('change',function(event){
+      var input=event.target.closest('[data-member-field]');
+      if(!input)return;
+      var card=input.closest('[data-member-id]');
+      var member=(group.members||[]).find(function(m){return String(m.id)===String(card.getAttribute('data-member-id'));});
+      if(!member)return;
+      var field=input.getAttribute('data-member-field');
+      if(input.type==='checkbox')member[field]=input.checked;
+      else member[field]=input.value.trim();
+      persist('成员资料已保存');
+      renderMembers();renderOwner();renderRelationships();
+    });
+    document.getElementById('membersList').addEventListener('click',function(event){
+      var button=event.target.closest('[data-remove-member]');
+      if(!button)return;
+      var id=button.getAttribute('data-remove-member');
+      if(!confirm('确定将这位角色移出群聊？已有聊天记录会保留。'))return;
+      group.members=(group.members||[]).filter(function(m){return String(m.id)!==String(id);});
+      if(String(group.ownerId)===String(id))group.ownerId='__user';
+      persist('已移出群聊');renderMembers();renderCandidates();renderOwner();renderRelationships();
+    });
+    document.getElementById('addList').addEventListener('click',function(event){
+      var button=event.target.closest('[data-add-member]');
+      if(!button)return;
+      var id=button.getAttribute('data-add-member');
+      var role=readArray('ai_custom_characters').find(function(r){return String(r.id)===String(id);});
+      if(!role)return;
+      if(!Array.isArray(group.members))group.members=[];
+      if(group.members.some(function(m){return String(m.id)===String(id);}))return;
+      group.members.push({id:String(role.id),name:role.name||'未命名角色',avatar:role.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00'});
+      persist('已邀请 '+(role.name||'角色')+' 入群');renderMembers();renderCandidates();renderOwner();renderRelationships();
+    });
+    renderSettings();renderMembers();renderCandidates();renderOwner();renderRelationships();
+  }
+  document.getElementById('backBtn').addEventListener('click',function(){
+    location.href='chat-settings.html?roleId='+encodeURIComponent(groupId);
+  });
+})();
+</script>
+</body>
+</html>

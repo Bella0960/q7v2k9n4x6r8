@@ -41,6 +41,7 @@ const APP_SHELL = [
   './cafe/cafe.html',
   './diary/diary.html',
   './chat/date/date.html',
+  './chat/date/journey.html',
   './chat/chat/chat-detail.html',
   './travel/dream-travel.html',
   './novel/novel.html',

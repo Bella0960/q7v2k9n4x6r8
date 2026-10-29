@@ -477,7 +477,7 @@ function goTo(sceneId){
 
 /* ====== 打字机 ====== */
 function typeText(rawText){
-  text = applyVars(rawText);
+  var text = applyVars(rawText);
   fullText = text;
   typing = true;
   $('dialogText').innerHTML = '<span class="cursor"></span>';

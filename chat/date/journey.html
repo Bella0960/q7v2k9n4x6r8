@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>短线下 · 赴约</title>
+<script src="../../shared/js/font-loader.js?v=20261028modes"></script>
+<script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/phone_storage.js"></script>
+<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+<style>
+:root{--ink:#171715;--muted:#777771;--soft:#a7a7a0;--line:#e6e6e1;--paper:#fff;--wash:#f7f7f4;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;min-height:100%;background:var(--paper);color:var(--ink)}
+body{font-family:var(--sans);display:flex;justify-content:center;overflow:hidden}
+button,input{font:inherit}
+button{cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid #777;outline-offset:3px}
+.journey-page{width:100%;max-width:560px;height:100dvh;min-height:0;display:flex;flex-direction:column;background:#fff;border-top:1px solid #191919;overflow:hidden}
+.journey-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto;padding:calc(9px + env(safe-area-inset-top,0px)) 20px 11px;border-bottom:1px solid var(--line)}
+.journey-back{min-width:80px;color:#555;text-decoration:none;font-size:12px;white-space:nowrap}
+.journey-brand{flex:1;text-align:center;font-size:9px;color:#999;letter-spacing:.16em;white-space:nowrap}
+.journey-head-right{min-width:80px;text-align:right;font-size:9px;color:#aaa;letter-spacing:.09em}
+.journey-main{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:25px 22px calc(35px + env(safe-area-inset-bottom,0px));scrollbar-width:none}
+.journey-main::-webkit-scrollbar{display:none}
+.eyebrow{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#999;font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:13px}
+.hero-title{font-size:clamp(29px,8vw,40px);line-height:1.1;font-weight:640;letter-spacing:-.065em;margin:0;color:#1c1c1a}
+.hero-note{font-size:12px;color:#888;line-height:1.8;margin:11px 0 25px;max-width:340px}
+.destination-title{display:flex;justify-content:space-between;align-items:center;padding:0 0 10px;border-bottom:1px solid var(--line);font-size:12px;font-weight:600}
+.destination-title small{font-size:9px;font-weight:400;color:#999;letter-spacing:.06em}
+.scene-chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 15px}
+.scene-chip{border:1px solid #deded9;border-radius:0;background:#fff;color:#555;padding:9px 12px;font-size:11px;transition:background .16s,border-color .16s,color .16s}
+.scene-chip.active{background:#1c1c1a;border-color:#1c1c1a;color:#fff}
+.scene-input{width:100%;min-height:43px;border:0;border-bottom:1px solid #bdbdb7;border-radius:0;background:#fff;color:#222;padding:8px 1px;font-size:13px;outline:none}
+.scene-input::placeholder{color:#aaa}
+.begin-row{margin-top:25px;display:flex;align-items:center;gap:14px}
+.begin-btn{flex:1;min-height:49px;border:1px solid #171715;background:#171715;color:#fff;text-align:left;padding:0 16px;display:flex;align-items:center;justify-content:space-between;font-size:12px;transition:background .15s}
+.begin-btn:active{background:#444}
+.begin-arrow{font-size:19px;font-family:Georgia,serif;font-weight:300}
+.begin-note{font-size:9px;color:#999;line-height:1.7;max-width:108px}
+.route-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.route-kicker{font-size:9px;letter-spacing:.15em;color:#999;margin-bottom:9px}
+.route-title{font-size:23px;line-height:1.25;letter-spacing:-.04em;font-weight:620;margin:0;overflow-wrap:anywhere}
+.eta-box{flex:0 0 auto;text-align:right;border-left:1px solid var(--line);padding-left:15px;margin-top:2px}
+.eta-label{font-size:8px;color:#999;letter-spacing:.12em}
+.eta-value{font-family:Georgia,serif;font-size:28px;line-height:1.25;letter-spacing:-.04em;margin-top:3px;white-space:nowrap}
+.eta-value small{font-family:var(--sans);font-size:10px;color:#777;letter-spacing:0;margin-left:3px}
+.map-frame{position:relative;margin:21px 0 17px;border:1px solid #e4e4df;background:#f8f8f5;overflow:hidden}
+.map-frame svg{display:block;width:100%;height:auto;aspect-ratio:1.52}
+.map-label{position:absolute;font-size:8px;color:#8b8b84;letter-spacing:.04em;padding:4px 6px;background:rgba(255,255,255,.85);border:1px solid rgba(220,220,214,.8)}
+.map-label.origin{left:8%;bottom:15%}
+.map-label.destination{right:5%;top:12%}
+.map-legend{position:absolute;right:9px;bottom:8px;font-size:8px;color:#a0a09a;letter-spacing:.04em}
+.route-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:9px;color:#8d8d87}
+.progress-track{height:2px;background:#e8e8e3;margin-top:9px;overflow:hidden}
+.progress-value{height:100%;width:0;background:#2b2b28;transition:width .18s linear}
+.route-status{margin-top:21px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;display:flex;align-items:flex-start;gap:12px}
+.status-mark{flex:0 0 24px;width:24px;height:24px;border:1px solid #deded9;display:flex;align-items:center;justify-content:center;font:12px Georgia,serif;color:#555}
+.status-copy{min-width:0;flex:1}
+.status-title{font-size:12px;line-height:1.5;font-weight:600;color:#333}
+.status-description{font-size:10px;line-height:1.75;color:#888;margin-top:3px}
+.trip-timeline{margin-top:20px}
+.timeline-label{font-size:9px;color:#999;letter-spacing:.13em;margin-bottom:5px}
+.timeline-item{display:grid;grid-template-columns:15px minmax(0,1fr);gap:11px;padding:10px 0 9px}
+.timeline-track{position:relative;display:flex;justify-content:center}
+.timeline-track:before{content:"";position:absolute;top:0;bottom:-10px;width:1px;background:#e6e6e1}
+.timeline-item:last-child .timeline-track:before{bottom:50%}
+.timeline-dot{position:relative;z-index:1;margin-top:4px;width:5px;height:5px;background:#d2d2cc;border:1px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #d2d2cc}
+.timeline-item.done .timeline-dot{background:#20201d;box-shadow:0 0 0 1px #20201d}
+.timeline-item.current .timeline-dot{width:7px;height:7px;margin-top:3px;background:#fff;box-shadow:0 0 0 1.5px #333}
+.timeline-copy{min-width:0}
+.timeline-title{font-size:11px;color:#8b8b85;line-height:1.5}
+.timeline-item.done .timeline-title,.timeline-item.current .timeline-title{color:#333}
+.timeline-detail{font-size:9px;color:#aaa;line-height:1.6;margin-top:3px}
+.route-footnote{margin-top:17px;color:#aaa;font-size:9px;line-height:1.7}
+@keyframes blink{50%{opacity:.35}}
+.live-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#555;margin-right:6px;vertical-align:1px;animation:blink 1.4s ease-in-out infinite}
+[hidden]{display:none!important}
+@media(max-width:360px){.journey-main{padding-left:16px;padding-right:16px}.journey-head{padding-left:14px;padding-right:14px}.hero-title{font-size:30px}.route-title{font-size:20px}.eta-value{font-size:25px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="journey-page">
+  <header class="journey-head">
+    <a id="backChat" class="journey-back" href="../chat/chat.html">‹ 返回线上</a>
+    <span class="journey-brand">MAOMAO / MEET-UP</span>
+    <span class="journey-head-right">SHORT OFFLINE</span>
+  </header>
+  <main class="journey-main">
+    <section id="setupView">
+      <div class="eyebrow"><span>01 / THE DESTINATION</span><span id="characterEyebrow">PRIVATE MEET-UP</span></div>
+      <h1 class="hero-title">正在去见你。</h1>
+      <p class="hero-note" id="setupCaption">选一个见面地点。路上会有位置更新和途中消息，到达后自然接入你们的线下剧情。</p>
+      <div class="destination-title"><span>这次去哪里</span><small>CHOOSE A PLACE</small></div>
+      <div class="scene-chips" id="sceneChips">
+        <button class="scene-chip active" type="button" data-scene="咖啡馆">咖啡馆</button>
+        <button class="scene-chip" type="button" data-scene="家里">家里</button>
+        <button class="scene-chip" type="button" data-scene="餐厅">餐厅</button>
+        <button class="scene-chip" type="button" data-scene="公园">公园</button>
+        <button class="scene-chip" type="button" data-scene="电影院">电影院</button>
+        <button class="scene-chip" type="button" data-scene="海边">海边</button>
+      </div>
+      <input class="scene-input" id="sceneInput" maxlength="48" value="咖啡馆" placeholder="或输入一个地点，例如：老书店、天台">
+      <div class="begin-row">
+        <button class="begin-btn" id="beginJourney" type="button"><span>开始赴约</span><span class="begin-arrow">↗</span></button>
+        <div class="begin-note">途中会分阶段更新<br>不会瞬间跳到终点</div>
+      </div>
+    </section>
+
+    <section id="travelView" hidden>
+      <div class="route-top">
+        <div>
+          <div class="route-kicker"><span class="live-dot"></span>LOCATION SHARING</div>
+          <h1 class="route-title" id="routeTitle">正在前往咖啡馆</h1>
+        </div>
+        <div class="eta-box"><div class="eta-label">预计到达</div><div class="eta-value" id="etaValue">2<small>分钟</small></div></div>
+      </div>
+
+      <div class="map-frame" aria-label="动态模拟路线图">
+        <svg viewBox="0 0 520 340" role="img" aria-label="位置沿路线持续移动的示意地图">
+          <rect x="0" y="0" width="520" height="340" fill="#f7f7f3"/>
+          <g fill="none" stroke="#e4e4de" stroke-width="18" stroke-linecap="round">
+            <path d="M-20 70 C70 85 110 40 185 77 S310 124 367 64 S445 15 550 38"/>
+            <path d="M25 360 C75 290 80 238 150 212 S266 195 299 130 S354 52 380 -20"/>
+            <path d="M190 -20 C216 52 226 88 264 123 S351 180 345 230 S386 288 430 360"/>
+            <path d="M-25 260 C64 253 125 289 191 273 S308 260 360 286 S463 314 545 285"/>
+            <path d="M410 -20 C392 72 422 111 465 151 S495 226 520 244"/>
+          </g>
+          <g fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round">
+            <path d="M-20 70 C70 85 110 40 185 77 S310 124 367 64 S445 15 550 38"/>
+            <path d="M25 360 C75 290 80 238 150 212 S266 195 299 130 S354 52 380 -20"/>
+            <path d="M190 -20 C216 52 226 88 264 123 S351 180 345 230 S386 288 430 360"/>
+            <path d="M-25 260 C64 253 125 289 191 273 S308 260 360 286 S463 314 545 285"/>
+          </g>
+          <g fill="none" stroke="#ddddd6" stroke-width="1"></g>
+          <g fill="none" stroke="#d1d1ca" stroke-width="1.1" stroke-dasharray="2 6">
+            <path d="M30 15 L50 315"/><path d="M105 4 L128 334"/><path d="M460 16 L470 332"/>
+          </g>
+          <path id="routeUnderlay" d="M52 268 C98 247 101 200 157 207 S236 226 271 175 S334 97 371 128 S426 181 471 78" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+          <path id="routePath" d="M52 268 C98 247 101 200 157 207 S236 226 271 175 S334 97 371 128 S426 181 471 78" fill="none" stroke="#666660" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 7"/>
+          <circle cx="52" cy="268" r="7" fill="#fff" stroke="#4d4d48" stroke-width="2"/>
+          <circle cx="471" cy="78" r="8" fill="#fff" stroke="#242421" stroke-width="2"/>
+          <path d="M471 69 L471 78 L477 82" stroke="#242421" stroke-width="1.5" fill="none"/>
+          <circle id="routeDotHalo" cx="52" cy="268" r="12" fill="#171715" opacity=".10"/>
+          <circle id="routeDot" cx="52" cy="268" r="5.5" fill="#171715" stroke="#fff" stroke-width="2"/>
+        </svg>
+        <div class="map-label origin">当前位置</div>
+        <div class="map-label destination" id="mapDestination">赴约地点</div>
+        <div class="map-legend">ROUTE UPDATE / <span id="mapPercent">0%</span></div>
+      </div>
+
+      <div class="route-meta"><span id="routeMetaLeft">路线正在生成</span><span id="routeMetaRight">预计行程 18 分钟</span></div>
+      <div class="progress-track"><div id="progressValue" class="progress-value"></div></div>
+
+      <div class="route-status">
+        <div class="status-mark" id="statusMark">01</div>
+        <div class="status-copy">
+          <div class="status-title" id="statusTitle">准备出发</div>
+          <div class="status-description" id="statusDescription">正在整理出门的东西。</div>
+        </div>
+      </div>
+      <div class="trip-timeline">
+        <div class="timeline-label">JOURNEY LOG / 行程记录</div>
+        <div class="timeline-item current" id="tl0"><div class="timeline-track"><span class="timeline-dot"></span></div><div class="timeline-copy"><div class="timeline-title">正在出发</div><div class="timeline-detail">位置共享已开启</div></div></div>
+        <div class="timeline-item" id="tl1"><div class="timeline-track"><span class="timeline-dot"></span></div><div class="timeline-copy"><div class="timeline-title">路上</div><div class="timeline-detail">开始移动，持续更新位置</div></div></div>
+        <div class="timeline-item" id="tl2"><div class="timeline-track"><span class="timeline-dot"></span></div><div class="timeline-copy"><div class="timeline-title">途中状况</div><div class="timeline-detail">路况变化会体现在预计到达时间</div></div></div>
+        <div class="timeline-item" id="tl3"><div class="timeline-track"><span class="timeline-dot"></span></div><div class="timeline-copy"><div class="timeline-title">即将抵达</div><div class="timeline-detail">接近约定地点</div></div></div>
+        <div class="timeline-item" id="tl4"><div class="timeline-track"><span class="timeline-dot"></span></div><div class="timeline-copy"><div class="timeline-title">到达目的地</div><div class="timeline-detail">切入面对面剧情</div></div></div>
+      </div>
+      <p class="route-footnote">路线与预计时间用于推进这段虚拟赴约剧情；它不会读取真实 GPS。途中消息会保存在该角色的聊天记录里。</p>
+    </section>
+  </main>
+</div>
+<script>
+(function(){
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var roleId = String(params.get('id') || '');
+  var requestedScene = String(params.get('scene') || '').trim();
+  var roleList = [];
+  try { roleList = window.PhoneStorage ? window.PhoneStorage.getCharacters() : JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch(e) { roleList = []; }
+  if (!Array.isArray(roleList)) roleList = [];
+  function findRole(id){ for(var i=0;i<roleList.length;i++){if(String(roleList[i].id)===String(id))return roleList[i];} return null; }
+  if (!roleId) {
+    try {
+      var current = localStorage.getItem('phone_current_contact') || '';
+      if (current && current.charAt(0)!=='g' && findRole(current)) roleId = current;
+    } catch(e) {}
+  }
+  var character = findRole(roleId);
+  var charName = character && character.name ? String(character.name) : 'TA';
+  var backChat = document.getElementById('backChat');
+  if (roleId) backChat.href = '../chat/chat-detail.html?v=20261028modes1&id=' + encodeURIComponent(roleId);
+  backChat.addEventListener('click', function(){ try { localStorage.setItem('chat_mode_' + roleId, 'online'); } catch(e) {} });
+  var setupView = document.getElementById('setupView');
+  var travelView = document.getElementById('travelView');
+  var sceneInput = document.getElementById('sceneInput');
+  var sceneChips = document.getElementById('sceneChips');
+  var stateKey = 'chat_journey_state_' + roleId;
+  var historyKey = 'chat_history_' + roleId;
+  var modeKey = 'chat_mode_' + roleId;
+  // 采用两分钟的短行程模拟；路线进度、ETA 与阶段消息共用同一时钟。
+  var totalDuration = 120000;
+  var stages = [
+    {at:0,etaValue:'2<small>分钟</small>',title:'准备出发',description:'位置共享已开启，正在往约定地点出发。',left:'位置已共享',right:'预计行程 2 分钟'},
+    {at:30000,etaValue:'90<small>秒</small>',title:'已经在路上',description:'路线正在移动，预计到达时间同步更新。',left:'持续更新位置',right:'预计还需 90 秒'},
+    {at:60000,etaValue:'60<small>秒</small>',title:'前方路况有变化',description:'路线上出现一点延误，正在调整预计到达时间。',left:'路况有变化',right:'预计还需 60 秒'},
+    {at:90000,etaValue:'30<small>秒</small>',title:'快到了',description:'已经接近约定地点，正在往入口走。',left:'接近目的地',right:'预计还需 30 秒'},
+    {at:120000,etaValue:'0<small>秒</small>',title:'已经抵达',description:'终于到了。接下来进入你们见面后的剧情。',left:'已抵达',right:'行程完成'}
+  ];
+  var fallbackMessages = [
+    '我出门了，开始往约好的地方过去。',
+    '已经在路上了，给你发个位置，你不用急。',
+    '前面有点堵，可能会慢一点。你先别急。',
+    '快到了，我现在往入口那边走。'
+  ];
+  var state = null;
+  var animationId = 0;
+  var navigating = false;
+  function loadHistory(){
+    try {
+      if(window.PhoneStorage && typeof window.PhoneStorage.getChatHistory==='function') {
+        var fromStore=window.PhoneStorage.getChatHistory(roleId);
+        if(Array.isArray(fromStore)) return fromStore;
+      }
+    } catch(e) {}
+    try { var arr=JSON.parse(localStorage.getItem(historyKey)||'[]'); return Array.isArray(arr)?arr:[]; } catch(e) { return []; }
+  }
+  function saveHistory(list){
+    try {
+      if(window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory==='function') return window.PhoneStorage.saveChatHistory(roleId,list);
+    } catch(e) {}
+    try { localStorage.setItem(historyKey,JSON.stringify(list)); return true; } catch(e) { return false; }
+  }
+  function saveState(){ try { localStorage.setItem(stateKey,JSON.stringify(state)); } catch(e) {} }
+  function loadState(){ try { var s=JSON.parse(localStorage.getItem(stateKey)||'null'); return s && typeof s==='object' ? s : null; } catch(e) { return null; } }
+  function setScene(value){
+    sceneInput.value=value;
+    sceneChips.querySelectorAll('.scene-chip').forEach(function(button){ button.classList.toggle('active',button.getAttribute('data-scene')===value); });
+  }
+  sceneChips.querySelectorAll('.scene-chip').forEach(function(button){
+    button.addEventListener('click',function(){ setScene(button.getAttribute('data-scene')||'咖啡馆'); });
+  });
+  sceneInput.addEventListener('input',function(){
+    var v=sceneInput.value.trim();
+    sceneChips.querySelectorAll('.scene-chip').forEach(function(button){ button.classList.toggle('active',button.getAttribute('data-scene')===v); });
+  });
+  function showTravelView(){
+    setupView.hidden=true;
+    travelView.hidden=false;
+    document.getElementById('routeTitle').textContent='正在前往' + state.scene;
+    document.getElementById('mapDestination').textContent=state.scene;
+  }
+  function generateFallbackText(stage){
+    if(stage===0) return fallbackMessages[0].replace('约好的地方',state.scene);
+    if(stage===1) return fallbackMessages[1];
+    if(stage===2) return fallbackMessages[2];
+    return fallbackMessages[3];
+  }
+  function appendJourneyMessage(stageIndex){
+    if(!state || stageIndex<0 || stageIndex>3) return;
+    state.sentStages=Array.isArray(state.sentStages)?state.sentStages:[];
+    if(state.sentStages.indexOf(stageIndex)!==-1) return;
+    var messageList=Array.isArray(state.messages)?state.messages:fallbackMessages;
+    var text=String(messageList[stageIndex]||generateFallbackText(stageIndex)).trim();
+    if(!text) text=generateFallbackText(stageIndex);
+    var list=loadHistory();
+    var messageTime=Number(state.startedAt||Date.now()) + stages[stageIndex].at;
+    var entry={role:'assistant',text:text,time:messageTime,mode:'journey',journeyId:String(state.startedAt),journeyStage:stageIndex,scene:state.scene,type:'text'};
+    if(stageIndex===0){
+      entry.type='location';
+      entry.location={label:'已开启位置共享：正在前往'+state.scene+' · 预计2分钟到达'};
+    }
+    list.push(entry);
+    if(!saveHistory(list)){ showStorageWarning(); }
+    state.sentStages.push(stageIndex);
+    saveState();
+  }
+  var storageWarned=false;
+  function showStorageWarning(){
+    if(storageWarned) return;
+    storageWarned=true;
+    var label=document.getElementById('routeMetaLeft');
+    if(label) label.textContent='本地空间不足，途中消息未能保存';
+  }
+  function updateStage(index){
+    var stage=stages[index];
+    document.getElementById('etaValue').innerHTML=stage.etaValue;
+    document.getElementById('statusMark').textContent=index<9?'0'+(index+1):String(index+1);
+    document.getElementById('statusTitle').textContent=stage.title;
+    document.getElementById('statusDescription').textContent=stage.description;
+    document.getElementById('routeMetaLeft').textContent=stage.left;
+    document.getElementById('routeMetaRight').textContent=stage.right;
+    for(var i=0;i<stages.length;i++){
+      var el=document.getElementById('tl'+i);
+      if(!el) continue;
+      el.classList.toggle('done',i<index);
+      el.classList.toggle('current',i===index);
+    }
+    if(index<4) appendJourneyMessage(index);
+  }
+  function animateRoute(percent){
+    var path=document.getElementById('routePath');
+    var dot=document.getElementById('routeDot');
+    var halo=document.getElementById('routeDotHalo');
+    if(!path || !dot || !halo) return;
+    var length=path.getTotalLength();
+    var point=path.getPointAtLength(Math.max(0,Math.min(1,percent))*length);
+    dot.setAttribute('cx',point.x);dot.setAttribute('cy',point.y);
+    halo.setAttribute('cx',point.x);halo.setAttribute('cy',point.y);
+    document.getElementById('mapPercent').textContent=Math.round(percent*100)+'%';
+    document.getElementById('progressValue').style.width=(percent*100)+'%';
+  }
+  function gotoStory(){
+    if(navigating) return;
+    navigating=true;
+    state.status='arrived';
+    saveState();
+    updateStage(4);
+    try { localStorage.setItem(modeKey,'offline-long'); } catch(e) {}
+    document.getElementById('routeTitle').textContent='已经抵达' + state.scene;
+    document.getElementById('routeMetaLeft').textContent='抵达目的地';
+    animateRoute(1);
+    setTimeout(function(){
+      var url='../date/date.html?v=20261028modes1&id='+encodeURIComponent(roleId)+'&scene='+encodeURIComponent(state.scene)+'&arrived=1&journey='+encodeURIComponent(String(state.startedAt));
+      window.location.href=url;
+    },1400);
+  }
+  function tick(){
+    if(!state || state.status!=='travelling' || navigating) return;
+    var elapsed=Math.max(0,Date.now()-Number(state.startedAt||Date.now()));
+    var progress=Math.min(1,elapsed/totalDuration);
+    animateRoute(progress);
+    var stageIndex=0;
+    for(var i=0;i<stages.length;i++){if(elapsed>=stages[i].at)stageIndex=i;}
+    if(state.lastStage!==stageIndex){state.lastStage=stageIndex;saveState();updateStage(stageIndex);}
+    if(elapsed>=totalDuration){gotoStory();return;}
+    animationId=window.requestAnimationFrame(tick);
+  }
+  function startJourney(scene){
+    if(!roleId || !character){ alert('没有找到这个角色，请先回到聊天页选择角色。'); return; }
+    state={scene:scene,startedAt:Date.now(),status:'travelling',sentStages:[],lastStage:-1,messages:fallbackMessages.slice()};
+    startedJourneyId=String(state.startedAt);
+    try { localStorage.setItem(modeKey,'offline-short'); } catch(e) {}
+    saveState();
+    showTravelView();
+    tick();
+    generateCharacterMessages();
+  }
+  async function generateCharacterMessages(){
+    var cfg={};
+    try{cfg=JSON.parse(localStorage.getItem('api_settings')||'{}')||{};}catch(e){}
+    if(!cfg.apiKey) return;
+    var context=loadHistory().slice(-8).filter(function(m){return m && m.mode!=='date' && !m.silent && (m.role==='user'||m.role==='assistant'||m.role==='sent'||m.role==='received');}).map(function(m){
+      var role=(m.role==='user'||m.role==='sent')?'我':charName;
+      return role+'：'+String(m.text||m.content||'').slice(0,100);
+    }).join('\n');
+    var system='你正在扮演角色「'+charName+'」，人设如下：'+String(character.persona||character.prompt||character.description||'保持自然、符合角色性格。').slice(0,1800)+'。你正在去与对方见面，目的地是「'+state.scene+'」。请根据人设与最近聊天，写出四条短微信消息，分别表达：刚出门、正在路上、途中路况变化（可提到堵车但不要每次都强行堵车）、快到了。每条 8-35 个汉字，口语自然、有角色个性，不要写动作括号、标题、编号或解释。只输出 JSON 字符串数组，例如 ["消息1","消息2","消息3","消息4"]。';
+    var ctrl=new AbortController();
+    var timer=setTimeout(function(){ctrl.abort();},12000);
+    try{
+      var base=String(cfg.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/,'');
+      var model=String(cfg.model || 'gpt-3.5-turbo').trim();
+      var response=await fetch(base+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.apiKey},signal:ctrl.signal,body:JSON.stringify({
+        model:model,
+        messages:[{role:'system',content:system},{role:'user',content:'最近聊天：\n'+(context||'暂时没有聊天记录。')+'\n请生成四条路上消息。'}],
+        temperature:typeof cfg.temperature==='number'?cfg.temperature:0.75,
+        max_tokens:180
+      })});
+      if(!response.ok) return;
+      var data=await response.json();
+      var raw=String(data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '').trim();
+      var match=raw.match(/\[[\s\S]*\]/);
+      var parsed=JSON.parse(match?match[0]:raw);
+      if(!Array.isArray(parsed) || parsed.length<4) return;
+      var next=parsed.slice(0,4).map(function(value,index){
+        var line=String(value||'').replace(/^\s*[-\d.、)）]+\s*/,'').trim();
+        return line.slice(0,70) || fallbackMessages[index];
+      });
+      if(state && state.status==='travelling' && String(state.startedAt)===String(startedJourneyId)){
+        state.messages=next;saveState();
+      }
+    }catch(e){}finally{clearTimeout(timer);}
+  }
+  var startedJourneyId = '';
+  var beginButton=document.getElementById('beginJourney');
+  beginButton.addEventListener('click',function(){
+    var scene=String(sceneInput.value||'').trim().slice(0,48) || '咖啡馆';
+    startJourney(scene);
+  });
+  var priorState=loadState();
+  if(requestedScene) setScene(requestedScene);
+  else if(priorState && priorState.scene) setScene(priorState.scene);
+  if(!roleId || !character || roleId.charAt(0)==='g'){
+    document.getElementById('setupCaption').textContent='请从一对一角色聊天页打开短线下模式。群聊暂不支持赴约路线。';
+    beginButton.disabled=true;beginButton.style.opacity='.4';
+  }else if(priorState && priorState.status==='travelling' && priorState.startedAt && Date.now()-Number(priorState.startedAt)<totalDuration+60000){
+    state=priorState;
+    startedJourneyId=String(state.startedAt);
+    sceneInput.value=state.scene || '咖啡馆';
+    showTravelView();
+    tick();
+    generateCharacterMessages();
+  }else if(priorState && priorState.status==='arrived'){
+    state=priorState;
+    startedJourneyId=String(state.startedAt);
+    gotoStory();
+  }
+})();
+</script>
+</body>
+</html>

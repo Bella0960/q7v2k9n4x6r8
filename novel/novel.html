@@ -393,6 +393,356 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .shelf-tools-menu a b{font-size:13px;font-weight:400;color:#999;flex:none}
 @media(max-width:520px){.shelf-heading{padding-top:21px;padding-bottom:12px}.shelf-tools-trigger{padding:0 10px}.shelf-tools-menu{width:min(250px,calc(100vw - 28px))}}
 
+
+/* AWARD-TIER EDITORIAL PASS — NOVEL ATELIER
+   Visual-only layer. Keep all existing markup, event handlers and data logic unchanged. */
+:root{
+  --atelier-ink:#181818;
+  --atelier-muted:#777773;
+  --atelier-faint:#a4a4a0;
+  --atelier-line:#e4e4df;
+  --atelier-paper:#fff;
+  --atelier-wash:#f4f4f1;
+}
+html{background:#f0f0ed!important}
+body{
+  background:#f0f0ed!important;
+  color:var(--atelier-ink)!important;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.phone{
+  width:min(1080px,100%)!important;
+  min-height:100dvh;
+  margin:0 auto!important;
+  background:var(--atelier-paper)!important;
+  box-shadow:0 0 0 1px rgba(24,24,24,.035)!important;
+}
+.top{
+  min-height:58px;
+  padding:calc(10px + env(safe-area-inset-top)) clamp(16px,3.6vw,38px) 10px!important;
+  background:rgba(255,255,255,.97)!important;
+  border-bottom:1px solid var(--atelier-line)!important;
+  backdrop-filter:blur(10px);
+}
+.back{
+  width:34px!important;height:34px!important;flex:0 0 34px;
+  border:1px solid #deded9!important;border-radius:50%!important;
+  background:#fff!important;color:#222!important;
+  transition:background .18s,border-color .18s,transform .18s;
+}
+.back:hover{background:#f0f0ed!important;border-color:#c9c9c2!important}
+.back:active{transform:scale(.96)}
+.brand{
+  font-size:10px!important;letter-spacing:.12em!important;
+  font-weight:550!important;color:#595954!important;
+  text-transform:uppercase;
+}
+.scroll{
+  width:100%;max-width:1010px!important;
+  margin:0 auto!important;
+  padding:0 clamp(17px,4.5vw,56px) calc(34px + env(safe-area-inset-bottom))!important;
+  background:#fff!important;
+}
+.shelf-heading{
+  padding:30px 0 23px!important;
+  border-bottom:1px solid var(--atelier-line);
+}
+.shelf-title-row{
+  align-items:flex-end!important;
+  justify-content:space-between;
+  gap:18px;
+}
+.shelf-title-block{min-width:0}
+.shelf-title-block:before{
+  content:"NOVEL ATELIER  /  YOUR STORY ARCHIVE";
+  display:block;margin:0 0 12px;
+  color:#92928c;font-size:9px;line-height:1.4;
+  letter-spacing:.18em;font-weight:500;
+}
+.shelf-title-block h1{
+  color:var(--atelier-ink)!important;
+  font-family:Georgia,"Times New Roman","Songti SC",serif!important;
+  font-size:clamp(37px,5.8vw,56px)!important;
+  font-weight:400!important;line-height:.98!important;
+  letter-spacing:-.065em!important;margin:0!important;
+}
+.shelf-title-block h1:after{
+  content:"  /  STORY SHELF";
+  display:inline-block;vertical-align:middle;
+  margin-left:5px;color:#92928c;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  font-size:9px;font-weight:500;letter-spacing:.12em;
+}
+.shelf-title-block:after{
+  content:"把灵感存下来，再慢慢写成自己的故事。";
+  display:block;margin-top:12px;
+  color:#777772;font-size:12px;line-height:1.8;letter-spacing:.015em;
+}
+.shelf-actions{gap:12px!important}
+.shelf-tools-trigger{
+  height:34px!important;padding:0 0 2px!important;
+  border:0!important;border-bottom:1px solid #b9b9b2!important;
+  border-radius:0!important;background:transparent!important;
+  color:#55554f!important;font-size:11px!important;letter-spacing:.04em;
+}
+.shelf-tools-trigger:hover{background:transparent!important;color:#111!important;border-color:#222!important}
+.shelf-tools-trigger[aria-expanded="true"]{background:transparent!important;border-color:#222!important}
+.shelf-tools-menu{
+  top:calc(100% + 12px)!important;
+  border:1px solid #e1e1db!important;border-radius:3px!important;
+  box-shadow:0 14px 34px rgba(0,0,0,.09)!important;
+}
+.shelf-tools-menu a{border-radius:2px!important}
+.shelf-tools-menu a:hover,.shelf-tools-menu a:focus-visible{background:#f4f4f1!important}
+.shelf-add{
+  width:37px!important;height:37px!important;
+  border:1px solid #1b1b1b!important;border-radius:50%!important;
+  background:#1b1b1b!important;color:#fff!important;
+  font-size:25px!important;font-weight:300!important;
+  transition:background .18s,transform .18s!important;
+}
+.shelf-add:hover{background:#3a3a36!important}
+.shelf-add:active{background:#111!important;transform:scale(.94)!important}
+.shelf-controls{padding:17px 0 21px!important}
+.shelf-categories{gap:22px!important;padding:0 0 14px!important}
+.shelf-category{
+  padding:3px 0 7px!important;
+  color:#8b8b85!important;font-size:11px!important;
+  letter-spacing:.025em;border-bottom:1px solid transparent!important;
+  transition:color .18s,border-color .18s;
+}
+.shelf-category:hover{color:#222!important}
+.shelf-category.active{
+  color:#171717!important;font-weight:650!important;
+  border-bottom:1px solid #171717!important;
+}
+.shelf-search-row{gap:9px!important}
+.shelf-search{
+  height:42px!important;padding:0 12px!important;
+  border:1px solid #e8e8e2!important;border-radius:4px!important;
+  background:#f7f7f4!important;transition:border-color .18s,background .18s;
+}
+.shelf-search:focus-within{border-color:#b8b8b0!important;background:#fff!important}
+.shelf-search svg{stroke:#777770!important}
+.shelf-search .input{font-size:12px!important}
+.shelf-search-row select#workSort{
+  height:42px!important;border:1px solid #e4e4de!important;
+  border-radius:4px!important;background:#fff!important;
+  color:#62625d!important;font-size:11px!important;
+}
+.shelf-list-heading{
+  padding:0 0 10px!important;
+  border-bottom:1px solid #cfcfc8!important;
+}
+.shelf-list-heading>div{display:block!important}
+.shelf-list-kicker{display:block!important;font-size:8px!important;letter-spacing:.18em!important;color:#999!important}
+.shelf-list-heading h2{
+  margin:0!important;color:#242420!important;
+  font-family:Georgia,"Times New Roman","Songti SC",serif!important;
+  font-size:19px!important;font-weight:400!important;letter-spacing:-.025em;
+}
+.works-count{font-size:10px!important;color:#999!important}
+#works{width:100%;min-width:0}
+.book-item{
+  grid-template-columns:44px minmax(0,1fr)!important;
+  align-items:start!important;gap:15px!important;
+  padding:19px 2px 19px!important;
+  border-bottom:1px solid #e8e8e2!important;
+  transition:background .18s,padding .18s;
+}
+.book-item:hover{background:linear-gradient(90deg,#f8f8f5 0%,#fff 58%)}
+.book-icon{
+  width:42px!important;height:53px!important;
+  border:1px solid #deded7!important;border-radius:2px!important;
+  background:#f5f5f1!important;color:#686862!important;
+  box-shadow:inset 3px 0 0 #e8e8e1!important;
+}
+.book-icon svg{width:18px!important;height:18px!important;stroke-width:1.35!important}
+.book-main-head{gap:12px!important}
+.book-main h3{
+  color:#20201d!important;font-size:17px!important;
+  line-height:1.38!important;font-weight:500!important;
+  letter-spacing:-.025em!important;
+  font-family:Georgia,"Times New Roman","Songti SC",serif!important;
+}
+.book-subline{margin-top:5px!important;color:#92928c!important;font-size:10px!important}
+.book-state{
+  padding:4px 7px!important;border:1px solid #e4e4de!important;
+  border-radius:2px!important;background:#fff!important;
+  color:#777770!important;font-size:9px!important;letter-spacing:.015em;
+}
+.book-state:before{background:#92928c!important}
+.book-description{
+  display:block!important;-webkit-line-clamp:unset!important;
+  margin:9px 0 0!important;color:#777771!important;
+  font-size:11px!important;line-height:1.85!important;
+}
+.book-meta{gap:5px 15px!important;margin-top:9px!important;color:#a0a098!important;font-size:9px!important}
+.book-actions{gap:5px 14px!important;margin-top:11px!important}
+.book-actions .btn{
+  min-height:28px!important;padding:5px 0!important;
+  color:#777770!important;font-size:10px!important;
+  border:0!important;border-bottom:1px solid transparent!important;
+  border-radius:0!important;background:transparent!important;
+}
+.book-actions .btn:hover{color:#171717!important;border-bottom-color:#a9a9a1!important;background:transparent!important}
+.book-actions .btn.dark{
+  color:#1e1e1b!important;font-weight:650!important;
+  text-decoration:none!important;border-bottom-color:#bdbdb5!important;
+}
+.book-actions .btn[data-delete]{margin-left:auto!important;color:#aaa!important}
+.work-empty{
+  padding:26px 0!important;border-top:0!important;
+  border-bottom:1px solid #e8e8e2!important;
+  color:#85857f!important;background:transparent!important;
+}
+.work-empty strong{font-family:Georgia,"Times New Roman","Songti SC",serif!important;font-size:21px!important;font-weight:400!important}
+#pane-studio,#pane-audience{background:#fff!important;border:0!important;border-radius:0!important;box-shadow:none!important;padding:0!important}
+#pane-studio .section-title,#pane-audience .section-title{
+  margin:20px 0 7px!important;color:#20201d!important;
+  font-family:Georgia,"Times New Roman","Songti SC",serif!important;
+  font-size:clamp(27px,4vw,36px)!important;font-weight:400!important;
+  line-height:1.18!important;letter-spacing:-.045em!important;
+}
+#pane-studio>.hint,#pane-audience>.hint{
+  max-width:620px!important;margin:0 0 23px!important;
+  color:#777771!important;font-size:11px!important;line-height:1.9!important;
+}
+.studio-nav{
+  margin:0 -1px 22px!important;padding:0!important;
+  border-top:1px solid #e6e6e0!important;border-bottom:1px solid #d7d7d0!important;
+  gap:0!important;
+}
+.studio-link{
+  min-width:0!important;flex:1 0 auto!important;
+  margin:0 17px 0 0!important;padding:14px 0 12px!important;
+  border-bottom:1px solid transparent!important;
+  color:#90908a!important;
+}
+.studio-link.active{color:#171717!important;border-bottom-color:#171717!important}
+.studio-link-no{color:#a0a098!important;font-size:10px!important}
+.studio-link-label{font-size:11px!important;font-weight:550!important}
+.studio-link-en{font-size:8px!important;letter-spacing:.13em!important;color:#a0a098!important}
+.studio-page{padding:0!important}
+.studio-page>.section-title{margin-top:7px!important}
+.studio-page .hint{max-width:620px!important;line-height:1.9!important;color:#81817b!important}
+.field{gap:8px!important;margin-bottom:18px!important}
+.field label{color:#666660!important;font-size:11px!important;font-weight:550!important;letter-spacing:.015em}
+.input,textarea,select{
+  border:1px solid #e5e5df!important;border-radius:4px!important;
+  background:#fafaf7!important;color:#242420!important;
+  padding:12px 13px!important;font:12px/1.8 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif!important;
+  transition:border-color .18s,background .18s,box-shadow .18s;
+}
+.input:focus,textarea:focus,select:focus{
+  border-color:#a8a8a0!important;background:#fff!important;
+  box-shadow:0 0 0 2px rgba(0,0,0,.025)!important;outline:none;
+}
+textarea{min-height:100px!important;line-height:1.95!important}
+.row{gap:14px!important}
+.actions{gap:8px!important;margin:16px 0 23px!important}
+.btn{
+  min-height:36px;border:1px solid #deded7!important;border-radius:3px!important;
+  background:#fff!important;color:#55554f!important;
+  padding:9px 13px!important;font-size:11px!important;
+  transition:background .18s,border-color .18s,color .18s,transform .18s;
+}
+.btn:hover{background:#f4f4f0!important;border-color:#c9c9c1!important;color:#222!important}
+.btn:active{transform:scale(.985)}
+.btn.dark{background:#1d1d1a!important;border-color:#1d1d1a!important;color:#fff!important}
+.btn.dark:hover{background:#393934!important}
+.tabs{border:0!important;border-bottom:1px solid #e2e2dc!important;border-radius:0!important;background:transparent!important;padding:0!important;gap:18px!important}
+.tab{border-radius:0!important;border-bottom:1px solid transparent!important;padding:11px 0!important;background:transparent!important}
+.tab.active{background:transparent!important;color:#171717!important;border-bottom-color:#171717!important}
+.chapter{
+  padding:13px 0!important;margin:0!important;
+  border:0!important;border-bottom:1px solid #e8e8e2!important;
+  border-radius:0!important;background:transparent!important;
+}
+.chapter-head{gap:12px!important}
+.chapter-num{font:400 17px Georgia,"Times New Roman",serif!important;color:#a0a098!important}
+.chapter-title{color:#2a2a26!important;font-size:12px!important;font-weight:550!important}
+.chapter-actions{gap:12px!important}
+.reader-note{padding:16px 0!important;border-bottom:1px solid #e8e8e2!important}
+.reader-note strong{color:#343430!important;font-size:11px!important}
+.reader-note p{color:#686862!important;font-size:12px!important;line-height:1.9!important}
+.reader-note small{color:#a0a098!important}
+.comment{border-left:1px solid #a6a69e!important;border-radius:0!important;background:#f7f7f3!important;color:#5b5b55!important;line-height:1.9!important}
+.footer{padding:20px 0!important;color:#a0a098!important;font-size:9px!important;line-height:1.9!important;border-top:1px solid #e8e8e2}
+.toast{border-radius:3px!important;box-shadow:0 8px 30px rgba(0,0,0,.16)!important}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{
+  outline:2px solid #898981!important;outline-offset:3px;
+}
+@media(min-width:760px){
+  .phone{width:min(1080px,100%)!important;min-height:100dvh;height:100dvh!important;border:0!important;border-radius:0!important}
+  .top{padding-left:clamp(28px,5vw,66px)!important;padding-right:clamp(28px,5vw,66px)!important}
+  .scroll{padding:0 clamp(28px,5.5vw,72px) 42px!important;max-width:1080px!important}
+  .shelf-heading{padding:46px 0 28px!important}
+  .shelf-title-block h1{font-size:clamp(48px,6.8vw,72px)!important}
+  .shelf-title-block:before{margin-bottom:16px}
+  .shelf-title-block:after{font-size:12px;margin-top:15px}
+  .shelf-controls{
+    display:grid!important;grid-template-columns:minmax(0,1fr) minmax(280px,380px);
+    align-items:center;gap:28px;padding:21px 0 25px!important;
+  }
+  .shelf-categories{padding:0!important;gap:25px!important}
+  .shelf-search-row{grid-template-columns:minmax(0,1fr) 130px!important}
+  .book-item{grid-template-columns:54px minmax(0,1fr)!important;gap:20px!important;padding:24px 8px 23px!important}
+  .book-icon{width:49px!important;height:63px!important}
+  .book-main h3{font-size:22px!important}
+  .book-description{font-size:12px!important;max-width:740px}
+  .book-meta{font-size:10px!important}
+  .book-actions{gap:8px 19px!important}
+  .studio-nav{margin-bottom:28px!important}
+  .studio-link{margin-right:25px!important;padding:17px 0 14px!important}
+  .studio-page .row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #pane-audience .stats{max-width:680px}
+}
+@media(max-width:759px){
+  .phone{width:100%!important;height:100dvh!important;min-height:100dvh!important;border-radius:0!important}
+  .top{padding-left:15px!important;padding-right:15px!important}
+  .scroll{padding:0 17px calc(30px + env(safe-area-inset-bottom))!important}
+  .shelf-heading{padding:24px 0 18px!important}
+  .shelf-title-block:before{font-size:8px;margin-bottom:10px;letter-spacing:.15em}
+  .shelf-title-block h1{font-size:39px!important}
+  .shelf-title-block h1:after{font-size:8px;letter-spacing:.08em;margin-left:3px}
+  .shelf-title-block:after{font-size:11px;margin-top:10px}
+  .shelf-actions{gap:10px!important}
+  .shelf-tools-trigger{font-size:10px!important}
+  .shelf-add{width:35px!important;height:35px!important}
+  .shelf-controls{display:block!important;padding:15px 0 19px!important}
+  .shelf-categories{gap:19px!important;padding-bottom:13px!important}
+  .shelf-search-row{grid-template-columns:minmax(0,1fr) 104px!important}
+  .book-item{grid-template-columns:38px minmax(0,1fr)!important;gap:11px!important;padding:16px 0 17px!important}
+  .book-icon{width:36px!important;height:47px!important}
+  .book-main h3{font-size:16px!important}
+  .book-description{font-size:10.5px!important}
+  .book-meta{gap:4px 10px!important;font-size:9px!important}
+  .book-actions{gap:4px 10px!important}
+  .book-actions .btn{font-size:10px!important}
+  .studio-nav{overflow-x:auto!important}
+  .studio-link{flex:0 0 auto!important;min-width:78px!important;margin-right:14px!important;padding:12px 0 10px!important}
+  .studio-link-label{font-size:10px!important}
+  .studio-link-en{font-size:7px!important}
+  #pane-studio,#pane-audience{padding-bottom:5px!important}
+  .studio-page .row{grid-template-columns:minmax(0,1fr)!important;gap:0!important}
+  .actions{gap:7px!important}
+  .btn{padding:9px 11px!important}
+}
+@media(max-width:360px){
+  .scroll{padding-left:13px!important;padding-right:13px!important}
+  .shelf-title-block h1{font-size:34px!important}
+  .shelf-title-block h1:after{display:block;margin:8px 0 0}
+  .shelf-search-row{grid-template-columns:minmax(0,1fr) 92px!important}
+  .shelf-categories{gap:14px!important}
+  .book-main h3{font-size:15px!important}
+  .book-actions{gap:4px 8px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .back,.shelf-tools-trigger,.shelf-add,.shelf-category,.shelf-search,.book-item,.book-actions .btn,.btn,*::before,*::after{transition:none!important;animation:none!important}
+}
+
 </style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO · 小说作者中心</span></header><div class="scroll" id="scroll">
 
 <section class="shelf-heading">

@@ -1160,7 +1160,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 <body>
 <div class="page">
   <header class="masthead">
-    <a class="mast-link" id="backLink" href="../../index.html">‹ 返回</a>
+    <a class="mast-link" id="backLink" href="../chat/chat-detail.html">‹ 返回线上</a>
     <span class="mast-word">MAOMAO&ensp;/&ensp;OFFLINE STORY</span>
     <div class="mast-right">
       <button class="mast-action menu-trigger" id="writingBtn" type="button" title="剧情功能与美化" aria-label="打开剧情功能与美化菜单" aria-expanded="false" aria-controls="writingPop">
@@ -1400,6 +1400,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var params = new URLSearchParams(location.search);
     var roleId = params.get('id') || '';
     var sceneName = (params.get('scene') || '').trim();
+    var arrived = params.get('arrived') === '1';
+    var journeyId = String(params.get('journey') || '');
     var isPreview = params.get('preview') === '1';   // 预览模式：用默认角色与演示数据，不依赖角色库
 
     var storyEl = document.getElementById('story');
@@ -2088,6 +2090,12 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         }
     } catch (e) {}
     var charName = character.name || 'TA';
+    if (!isPreview && roleId) {
+        try {
+            localStorage.setItem('chat_mode_' + roleId, 'offline-long');
+            if (arrived && journeyId) localStorage.removeItem('chat_journey_state_' + roleId);
+        } catch (e) {}
+    }
 
     /* ---------- 顶栏 / 标题 / 元信息 / 返回 ---------- */
     if (byName) byName.textContent = charName;
@@ -2108,8 +2116,15 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         portrait.appendChild(portraitImg);
     }
 
-    // 退出赴约：回到手机主屏，不钻回线上聊天页（线上/线下是两个独立场景）
-    backLink.href = '../../index.html';
+    // 线下剧情与线上聊天共用记录：返回时直接回到当前角色的线上对话。
+    if (!isPreview && roleId) {
+        backLink.href = '../chat/chat-detail.html?v=20261028modes1&id=' + encodeURIComponent(roleId);
+        backLink.addEventListener('click', function () {
+            try { localStorage.setItem('chat_mode_' + roleId, 'online'); } catch (e) {}
+        });
+    } else {
+        backLink.href = '../../index.html';
+    }
 
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
     var HISTORY_KEY = 'chat_history_' + roleId;
@@ -2189,8 +2204,29 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             try { localStorage.setItem(PREVIEW_KEY, PREVIEW_VER); } catch (e) {}
             return;
         }
-        // 真实使用：只在还没有任何赴约剧情（mode:'date'）时补一条角色开场白，不写入任何示例对话。
-        // 注意不能用 history.length 判断——线上聊天消息会让全量非空，但那不属于线下剧情。
+        // 短线下到达时，用一次有标记的用户动作开启现场；刷新不会重复插入。
+        if (arrived && !isPreview) {
+            var arrivalKey = journeyId || ('arrival-' + Date.now());
+            var alreadyRecordedArrival = history.some(function (m) {
+                return m && m.mode === 'date' && String(m.arrivalJourneyId || '') === String(arrivalKey);
+            });
+            if (!alreadyRecordedArrival) {
+                history.push({
+                    role: 'user',
+                    text: '我终于抵达「' + (sceneName || '约定地点') + '」，抬头在人群中寻找' + charName + '。请从见面这一刻开始，自然地写出你的第一反应与动作。',
+                    time: Date.now(),
+                    mode: 'date',
+                    scene: sceneName || undefined,
+                    arrivalStart: true,
+                    arrivalJourneyId: arrivalKey
+                });
+                saveHistory(history);
+            }
+            return;
+        }
+
+        // 真实使用：只在还没有任何赴约剧情时补一条角色开场白。
+        // 线上聊天与路上消息保留在同一历史中，但不属于小说正文。
         var hasDateMsg = history.some(function (m) { return m && m.mode === 'date'; });
         if (hasDateMsg) return;
         history.push({ role: 'assistant', text: buildLocalOpening(), time: Date.now(), mode: 'date', scene: sceneName || undefined });
@@ -3029,10 +3065,22 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     renderWritingUI();
     initScene();   // 补全演示内容（已有真实对话时不做任何改动）
     renderAll();
-    if (sceneName) {
-        // 奔赴入口携带场景：预填用户的第一句行动（存储时不带 [你] 前缀，由渲染层统一加）
+    if (sceneName && !arrived) {
+        // 普通长线下入口携带场景时，预填一条可编辑的行动；短线下到达后直接自动开始剧情。
         input.value = '来到了' + sceneName + '，远远就看到了' + charName + '的身影……';
         setTimeout(function () { try { input.focus(); } catch (e) {} }, 300);
+    }
+    if (arrived && !isPreview) {
+        var dateMessagesAfterArrival = history.filter(function (m) { return m && m.mode === 'date'; });
+        var lastArrivalMessage = dateMessagesAfterArrival[dateMessagesAfterArrival.length - 1];
+        if (lastArrivalMessage && lastArrivalMessage.role === 'user' && lastArrivalMessage.arrivalStart) {
+            setTimeout(function () {
+                if (!sending) {
+                    setSending(true);
+                    requestReply(null);
+                }
+            }, 420);
+        }
     }
 })();
 </script>

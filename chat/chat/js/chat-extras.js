@@ -541,11 +541,12 @@
       }).join('') +
       '</div>' +
       '<input class="x-input" id="dateSceneInput" placeholder="自定义场景（如：天台、老书店）" value="咖啡馆" />' +
-      '<div class="x-core-muted">将进入线下沉浸式剧情模式：以小说叙事推进你们的故事。聊天记录与记忆双向互通，随时可从剧情页返回本对话。</div>' +
+      '<div class="x-core-muted">线上聊天与线下剧情共用角色记忆。选择一种赴约方式，途中消息和见面剧情会继续保存在当前对话。</div>' +
       '<div class="x-row">' +
       '<button class="x-btn x-btn-ghost" id="dateCancel">取消</button>' +
-      '<button class="x-btn x-btn-primary" id="dateGo">奔赴</button>' +
-      '</div>';
+      '<button class="x-btn x-btn-primary" id="dateGo">长线下 · 小说</button>' +
+      '</div>' +
+      '<button class="x-btn x-btn-ghost" id="dateJourneyGo" style="width:100%;margin-top:8px">短线下 · 路上动态与到达动画</button>';
     openModal('奔赴 · 线下剧情', html);
     var chips = document.getElementById('dateSceneChips');
     if (chips) {
@@ -562,7 +563,14 @@
     document.getElementById('dateGo').onclick = function () {
       var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
       closeModal();
-      window.location.href = '../date/date.html?id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
+      try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-long'); } catch (e) {}
+      window.location.href = '../date/date.html?v=20261028modes1&id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
+    };
+    document.getElementById('dateJourneyGo').onclick = function () {
+      var scene = (document.getElementById('dateSceneInput').value || '').trim() || '咖啡馆';
+      closeModal();
+      try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'offline-short'); } catch (e) {}
+      window.location.href = '../date/journey.html?v=20261028modes1&id=' + encodeURIComponent(currentCharacter.id) + '&scene=' + encodeURIComponent(scene);
     };
   }
 
@@ -671,7 +679,7 @@
     payMode = mode === 'transfer' ? 'transfer' : 'redpacket';
     if (payTitle) payTitle.textContent = payMode === 'transfer' ? '转账' : '发红包';
     if (payAmountInput) payAmountInput.value = '';
-    if (payMessageInput) payMessageInput.value = PAY_DEFAULT_MESSAGE;
+    if (payMessageInput) payMessageInput.value = payMode === 'transfer' ? '给你转一点，拿着吧' : PAY_DEFAULT_MESSAGE;
     if (payConfirmBtn) payConfirmBtn.textContent = payMode === 'transfer' ? '确认转账' : '塞钱进红包';
     if (payOverlay) payOverlay.classList.add('active');
   }
@@ -707,24 +715,26 @@
     }
     var msgText = String((payMessageInput && payMessageInput.value) || PAY_DEFAULT_MESSAGE).trim();
     // 发送即扣款（修复资金漏洞）：余额不足阻止发送，绝不先发红包后扣款
-    if (typeof getWorkData === 'function' && typeof saveWorkData === 'function') {
-      var wd = getWorkData();
-      if (!(wd.balance >= amountNum)) {
-        if (typeof showToast === 'function') showToast('余额不足');
-        return; // 不写消息、不关抽屉、不扣款
-      }
-      wd.balance = Math.round((wd.balance - amountNum) * 100) / 100; // 保留两位防浮点误差
-      // 交易明细：支出记录（amountNum 已是 parseFloat 后的数字，与扣款同一次写入原子落盘）
-      if (!Array.isArray(wd.history)) wd.history = [];
-      wd.history.unshift({
-        type: 'expense',
-        category: payMode,                              // 'redpacket' | 'transfer'
-        title: payMode === 'transfer' ? '发起转账' : '发出红包',
-        amount: amountNum,
-        time: Date.now()
-      });
-      if (!saveWorkData(wd)) return; // 扣款保存失败则中止发送
+    if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
+      if (typeof showToast === 'function') showToast('钱包暂不可用，未发送');
+      return;
     }
+    var wd = getWorkData();
+    if (!wd || !(Number(wd.balance) >= amountNum)) {
+      if (typeof showToast === 'function') showToast('余额不足');
+      return; // 不写消息、不关抽屉、不扣款
+    }
+    wd.balance = Math.round((Number(wd.balance) - amountNum) * 100) / 100; // 保留两位防浮点误差
+    // 交易明细：支出记录（amountNum 已是 parseFloat 后的数字，与扣款同一次写入原子落盘）
+    if (!Array.isArray(wd.history)) wd.history = [];
+    wd.history.unshift({
+      type: 'expense',
+      category: payMode,                              // 'redpacket' | 'transfer'
+      title: payMode === 'transfer' ? '发起转账' : '发出红包',
+      amount: amountNum,
+      time: Date.now()
+    });
+    if (!saveWorkData(wd)) return; // 扣款保存失败则中止发送
     var specialMsg = {
       role: 'user',
       type: payMode,                    // 'redpacket' 或 'transfer'
@@ -743,6 +753,13 @@
     } else if (typeof appendMessageToDOM === 'function') {
       appendMessageToDOM(specialMsg);
       if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    // 支付卡片本身不重复显示为文字；用隐藏上下文触发角色按人设回应。
+    var safeNote = msgText.replace(/[\r\n]+/g, ' ').slice(0, 160);
+    if (payMode === 'transfer') {
+      sendSilentInstruction('[互动事件：我刚刚向你转账 ¥' + amountNum.toFixed(2) + '，附言为“' + safeNote + '”。请根据你自己的性格、关系和经济观念自然决定是否收下。若决定收下，请在回复中附加标记 [收下转账:' + amountNum.toFixed(2) + ']；若决定拒绝并退还，请自然说明原因并附加 [转账:' + amountNum.toFixed(2) + ':退回转账]。两种标记只能二选一；没有决定时不要编造交易，不得改变金额。]');
+    } else {
+      sendSilentInstruction('[互动事件：我给你发送了 ¥' + amountNum.toFixed(2) + ' 的红包，附言为“' + safeNote + '”。请以角色人设自然回应收到红包的反应，不要把红包卡片当作普通文字复述。]');
     }
   }
   if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage);

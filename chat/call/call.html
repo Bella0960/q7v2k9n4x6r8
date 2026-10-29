@@ -251,6 +251,45 @@
   }
   .ctl-hangup:active { transform: scale(0.92); }
   .ctl-hangup svg { width: 28px; height: 28px; stroke: #FFFFFF; }
+
+  /* 群通话参与者：复用已有模拟通话状态机 */
+  .group-remote-grid {
+    position: absolute;
+    inset: calc(102px + env(safe-area-inset-top, 0px)) 14px 174px;
+    display: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: center;
+    gap: 11px;
+    overflow-y: auto;
+    padding: 8px 3px;
+    z-index: 4;
+    scrollbar-width: none;
+  }
+  .group-remote-grid::-webkit-scrollbar { display:none; }
+  .group-call-mode .group-remote-grid { display:grid; }
+  .group-call-mode .remote-view { display:none; }
+  .group-call-mode .call-info { padding-top:calc(61px + env(safe-area-inset-top, 0px)); }
+  .group-call-mode .avatar-wrap { display:none; }
+  .group-call-mode .call-name { margin-top:0; font-size:1.12rem; }
+  .group-participant {
+    min-width:0; min-height:112px; border-radius:16px;
+    background:rgba(255,255,255,.055);
+    border:1px solid rgba(255,255,255,.09);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:8px; padding:10px 7px; text-align:center;
+  }
+  .group-participant.is-active { border-color:rgba(255,255,255,.4); background:rgba(255,255,255,.095); }
+  .group-participant-avatar {
+    width:47px;height:47px;border-radius:50%;overflow:hidden;
+    background:#303034;border:1px solid rgba(255,255,255,.16);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:17px;flex:none;
+  }
+  .group-participant-avatar img { width:100%;height:100%;object-fit:cover; }
+  .group-participant-name { font-size:11px;color:#f7f7f8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%; }
+  .group-participant-role { font-size:9px;color:#929298;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%; }
+  .group-call-mode #btnFlip { display:none!important; }
+
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -265,6 +304,7 @@
     <div class="video-bg" id="videoBg"></div>
 
     <!-- 远端画面 -->
+    <div class="group-remote-grid" id="groupRemoteGrid" aria-label="群通话成员"></div>
     <div class="remote-view">
       <div class="remote-avatar" id="remoteAvatar"></div>
     </div>
@@ -315,6 +355,7 @@
   var params = new URLSearchParams(window.location.search);
   var roleId = params.get('id') || '';
   var callType = params.get('type') === 'video' ? 'video' : 'voice';
+  var isGroupCall = params.get('group') === '1' || String(roleId).charAt(0) === 'g';
 
   function readJSON(key) {
     try {
@@ -331,8 +372,17 @@
     }
   }
   var myProfile = readJSON('myProfile') || {};
+  var currentGroup = null;
+  if (isGroupCall) {
+    var groups = readJSON('phone_groups');
+    if (Array.isArray(groups)) {
+      currentGroup = groups.find(function (item) { return item && String(item.id) === String(roleId); }) || null;
+    }
+  }
 
-  var displayName = (character && character.name) ? character.name : '未知联系人';
+  var displayName = isGroupCall
+    ? ((currentGroup && currentGroup.name) || '群聊')
+    : ((character && character.name) ? character.name : '未知联系人');
   var avatarSrc = character && character.avatar ? character.avatar : '';
   var myAvatarSrc = myProfile.avatar || '';
   var myInitial = (myProfile.nickname || '我').trim().charAt(0) || '我';
@@ -347,6 +397,38 @@
   document.getElementById('mainAvatar').innerHTML = avatarHTML(avatarSrc, roleInitial);
   document.getElementById('remoteAvatar').innerHTML = avatarHTML(avatarSrc, roleInitial);
   document.getElementById('selfPip').innerHTML = avatarHTML(myAvatarSrc, myInitial);
+
+  function escapeCallHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+    });
+  }
+  if (isGroupCall) {
+    var stageForGroup = document.getElementById('callStage');
+    stageForGroup.classList.add('group-call-mode');
+    var groupGrid = document.getElementById('groupRemoteGrid');
+    var groupMembers = currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
+    if (groupGrid) {
+      groupGrid.innerHTML = groupMembers.map(function (member, index) {
+        var role = null;
+        var roles = readJSON('ai_custom_characters');
+        if (Array.isArray(roles)) role = roles.find(function (item) { return item && String(item.id) === String(member.id); }) || null;
+        var name = String(member.nickname || member.name || (role && role.name) || '群成员');
+        var avatar = String(member.avatar || (role && role.avatar) || '');
+        var initials = escapeCallHtml(name.trim().charAt(0) || '群');
+        var avatarMarkup = avatar ? '<img src="' + escapeCallHtml(avatar) + '" alt="">' : initials;
+        var roleLabel = String(member.title || (member.isAdmin ? '管理员' : (String(currentGroup && currentGroup.ownerId || '') === String(member.id) ? '群主' : '群成员')));
+        return '<div class="group-participant' + (index === 0 ? ' is-active' : '') + '">' +
+          '<div class="group-participant-avatar">' + avatarMarkup + '</div>' +
+          '<div class="group-participant-name">' + escapeCallHtml(name) + '</div>' +
+          '<div class="group-participant-role">' + escapeCallHtml(roleLabel) + '</div></div>';
+      }).join('');
+      if (!groupMembers.length) {
+        groupGrid.innerHTML = '<div class="group-participant"><div class="group-participant-avatar">群</div><div class="group-participant-name">暂无群成员</div><div class="group-participant-role">可在群设置中添加角色</div></div>';
+      }
+    }
+    document.getElementById('callStatus').textContent = '正在呼叫群成员…';
+  }
 
   var stage = document.getElementById('callStage');
   if (callType === 'video') {
@@ -424,6 +506,40 @@
         duration: connected ? seconds : 0
       }));
     } catch (e) {}
+    // 群通话结束后写入群聊天记录，便于回到群里查看通话结果。
+    if (isGroupCall && currentGroup) {
+      try {
+        var history = [];
+        if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
+          var stored = window.PhoneStorage.getChatHistory(roleId);
+          if (Array.isArray(stored)) history = stored.slice();
+        }
+        if (!history.length) {
+          var rawHistory = localStorage.getItem('chat_history_' + roleId);
+          var parsedHistory = rawHistory ? JSON.parse(rawHistory) : [];
+          if (Array.isArray(parsedHistory)) history = parsedHistory;
+        }
+        var durationText = connected ? formatTime(seconds) : '未接通';
+        history.push({
+          role: 'user',
+          type: 'call',
+          time: Date.now(),
+          call: {
+            type: 'voice',
+            title: '群语音通话',
+            text: connected ? '通话时长 ' + durationText : '群通话未接通',
+            connected: !!connected,
+            duration: connected ? seconds : 0,
+            participants: (currentGroup.members || []).map(function (member) { return member.nickname || member.name || '群成员'; })
+          }
+        });
+        if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
+          window.PhoneStorage.saveChatHistory(roleId, history);
+        } else {
+          localStorage.setItem('chat_history_' + roleId, JSON.stringify(history));
+        }
+      } catch (e) {}
+    }
     window.location.href = '../chat/chat-detail.html?id=' + encodeURIComponent(roleId);
   }
   document.getElementById('btnHangup').addEventListener('click', endCall);

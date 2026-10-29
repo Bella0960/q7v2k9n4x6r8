@@ -64,8 +64,22 @@
     // phoneData[contactId][appId]
     NS.getData = function (contactId, appId) {
         var root = NS._getRoot();
-        if (!root[contactId]) return null;
-        return root[contactId][appId] != null ? root[contactId][appId] : null;
+        var bucket = root[contactId];
+
+        // 聊天记录/记忆以现有旧 key 为主，避免读取到旧的重复副本。
+        if (appId === 'chat') {
+            var history = NS.rawGet('chat_history_' + contactId, null);
+            if (Array.isArray(history)) return { history: history };
+            if (bucket && bucket.chat != null) return bucket.chat;
+        }
+        if (appId === 'memories') {
+            var memories = NS.rawGet('chat_memories_' + contactId, null);
+            if (Array.isArray(memories)) return { items: memories };
+            if (bucket && bucket.memories != null) return bucket.memories;
+        }
+
+        if (bucket && bucket[appId] != null) return bucket[appId];
+        return null;
     };
 
     NS.setData = function (contactId, appId, value) {
@@ -158,25 +172,103 @@
     NS.getChatHistory = function (contactId) {
         var v = NS.rawGet('chat_history_' + contactId, null);
         if (Array.isArray(v)) return v;
+        // 兼容历史版本：如果旧 key 不存在，尝试读取 phone_data_v2 中已有的副本。
+        var root = NS._getRoot();
+        var bucket = root[contactId];
+        if (bucket && bucket.chat && Array.isArray(bucket.chat.history)) return bucket.chat.history;
         return [];
     };
 
     NS.saveChatHistory = function (contactId, list) {
-        NS.rawSet('chat_history_' + contactId, list || []);
-        // 同时写入新结构
-        NS.setData(contactId, 'chat', { history: list });
+        // 聊天记录可能很大。先写入当前主 key，成功后再移除 phone_data_v2 中的重复副本。
+        var saved = NS.rawSet('chat_history_' + contactId, Array.isArray(list) ? list : []);
+        if (!saved) return false;
+        var root = NS._getRoot();
+        var bucket = root[contactId];
+        if (bucket && bucket.chat != null) {
+            delete bucket.chat;
+            if (!Object.keys(bucket).length) delete root[contactId];
+            NS.rawSet(PHONE_DATA_KEY, root);
+        }
+        return true;
     };
 
     // 记忆（按角色）
     NS.getMemories = function (contactId) {
         var v = NS.rawGet('chat_memories_' + contactId, null);
         if (Array.isArray(v)) return v;
+        var root = NS._getRoot();
+        var bucket = root[contactId];
+        if (bucket && bucket.memories && Array.isArray(bucket.memories.items)) return bucket.memories.items;
         return [];
     };
 
     NS.saveMemories = function (contactId, list) {
-        NS.rawSet('chat_memories_' + contactId, list || []);
-        NS.setData(contactId, 'memories', { items: list });
+        // 与聊天记录一样，先确认主 key 写入成功，再清除重复副本。
+        var saved = NS.rawSet('chat_memories_' + contactId, Array.isArray(list) ? list : []);
+        if (!saved) return false;
+        var root = NS._getRoot();
+        var bucket = root[contactId];
+        if (bucket && bucket.memories != null) {
+            delete bucket.memories;
+            if (!Object.keys(bucket).length) delete root[contactId];
+            NS.rawSet(PHONE_DATA_KEY, root);
+        }
+        return true;
+    };
+
+    /* ========== 本地空间整理 ========== */
+
+    // 删除 phone_data_v2 中与旧 key 完全相同的聊天/记忆副本。
+    // 只有确认另一份副本存在且内容完全一致时才删除，不碰角色头像、世界书、其他应用数据。
+    NS.compactDuplicateData = function () {
+        var root = NS._getRoot();
+        var changed = false;
+        Object.keys(root).forEach(function (contactId) {
+            var bucket = root[contactId];
+            if (!bucket || typeof bucket !== 'object') return;
+
+            var legacyHistory = NS.rawGet('chat_history_' + contactId, null);
+            if (Array.isArray(legacyHistory) && bucket.chat &&
+                Array.isArray(bucket.chat.history) &&
+                JSON.stringify(legacyHistory) === JSON.stringify(bucket.chat.history)) {
+                delete bucket.chat;
+                changed = true;
+            }
+
+            var legacyMemories = NS.rawGet('chat_memories_' + contactId, null);
+            if (Array.isArray(legacyMemories) && bucket.memories &&
+                Array.isArray(bucket.memories.items) &&
+                JSON.stringify(legacyMemories) === JSON.stringify(bucket.memories.items)) {
+                delete bucket.memories;
+                changed = true;
+            }
+
+            if (!Object.keys(bucket).length) delete root[contactId];
+        });
+
+        if (changed) {
+            var ok = NS.rawSet(PHONE_DATA_KEY, root);
+            if (!ok) console.warn('[PhoneStorage] duplicate-data compaction could not be saved');
+        }
+        return changed;
+    };
+
+    // 统计 localStorage 当前占用，方便设置页后续展示；只计算 UTF-16 粗略字节数。
+    NS.getLocalStorageUsage = function () {
+        var total = 0;
+        var entries = [];
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var key = localStorage.key(i);
+                var value = key == null ? '' : (localStorage.getItem(key) || '');
+                var bytes = ((key || '').length + value.length) * 2;
+                total += bytes;
+                entries.push({ key: key, bytes: bytes });
+            }
+        } catch (error) {}
+        entries.sort(function (a, b) { return b.bytes - a.bytes; });
+        return { usedBytes: total, entries: entries };
     };
 
     // 动态（moments）
@@ -281,5 +373,10 @@
         while (logs.length > 50) logs.pop();
         NS.rawSet('api_call_logs', logs);
     };
+
+    // 启动时安全回收旧版本双份保存的聊天/记忆数据，其他内容不作改动。
+    try { NS.compactDuplicateData(); } catch (error) {
+        console.warn('[PhoneStorage] storage compaction skipped', error);
+    }
 
 })(window);

@@ -140,7 +140,7 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 | 挂件 / 元素仓库 | 主屏 `.ds-widget` 小组件；被移除的项目进隐藏仓库，经 desktop/widgets.html 恢复 |
 | 聊天美化中心 | beauty.html 双 Tab：「可视化调节」（ChatBeauty 结构化参数 + Sticky 实时预览）+「深度自定义」（手写 CSS 预设，导入导出 + 校验）；已吸收下线的 bubble-theme 气泡主题 |
 | 咖啡馆经营 / 游戏大厅 / 触梦旅行 | cafe、games（6 款 AI 伴玩小游戏）、travel 三个单页模拟 App |
-| 赴约 / 线下剧情 | chat/date/date.html 独立 App：小说叙事式线下剧情（serif 排版，无气泡），调 `PhoneStream.chat` 流式续写；线上聊天「＋→奔赴」携 `id+scene` 跳入，消息带 `mode:'date'` 写回同一 chat_history，双向记忆互通 |
+| 赴约 / 线下剧情 | `chat/date/journey.html` 短线下路线模拟（动态地图、ETA 分阶段推进、途中消息写回同一角色历史）；`chat/date/date.html` 长线下小说叙事（serif 排版、`PhoneStream.chat` 流式续写）。聊天记录统一写入 `chat_history_<id>`；`mode:'date'` 只在小说页展示，线上与线下记忆互通 |
 | 正则过滤 / RP 协议 | AI 输出正则替换规则 / 角色扮演协议（worldbook/settings/） |
 | 群组 / 贴纸库 | 多角色群聊（群 id 以 `g` 开头）/ chat/sticker/ 表情包管理 |
 | 编辑控制 | forum-editorial 等页面的内容精选控制 |

@@ -10,6 +10,7 @@
     <script src="../../shared/js/chat-beauty.js?v=20261026v11"></script>
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261026v16">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <style>
@@ -1233,7 +1234,10 @@
             font-size: 0.563rem !important;
             font-weight: 400 !important;
             letter-spacing: 0.5px !important;
-            color: rgba(255, 255, 255, 0.55); /* 半透明白：已领取/未领取 */
+            color: rgba(255, 255, 255, 0.55); /* 红包卡用浅白状态字 */
+        }
+        .pay-card-transfer .pay-card-status {
+            color: rgba(17, 17, 17, 0.55); /* 转账卡白底，状态字改为深灰 */
         }
         .pay-card-arrow {
             margin-left: auto;
@@ -1867,7 +1871,114 @@
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
 }
-</style></head>
+</style><style id="group-interaction-style">
+.bubble-group-interaction{max-width:min(290px,calc(100vw - 112px))!important;width:100%;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.group-interaction-card{width:100%;min-width:230px;max-width:290px;background:#fff;border:1px solid #e7e7eb;border-radius:15px;padding:13px;color:#111;box-shadow:0 3px 14px rgba(0,0,0,.035);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+.group-interaction-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.5px;color:#888;padding-bottom:9px;border-bottom:1px solid #f0f0f3}
+.group-interaction-title{font-size:14px;font-weight:600;line-height:1.5;margin:10px 0 12px;overflow-wrap:anywhere}
+.group-poll-options{display:flex;flex-direction:column;gap:7px}
+.group-poll-option{position:relative;isolation:isolate;width:100%;min-height:38px;padding:9px 10px;border:1px solid #e9e9ed;border-radius:9px;background:#fafafc;color:#333;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;overflow:hidden;font:inherit;font-size:12px;line-height:1.4;cursor:pointer}
+.group-poll-option:disabled{cursor:default;opacity:.85}
+.group-poll-option.is-picked{border-color:#111;background:#f4f4f6}
+.group-poll-option-text,.group-poll-count{position:relative;z-index:1}
+.group-poll-count{font-size:10px;color:#888}
+.group-poll-progress{position:absolute;left:0;top:0;bottom:0;background:rgba(17,17,17,.055);z-index:0;pointer-events:none}
+.group-interaction-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;font-size:10px;color:#999;line-height:1.5}
+.group-interaction-primary{border:0;border-radius:9px;background:#111;color:#fff;padding:8px 12px;font:inherit;font-size:11px;cursor:pointer}
+.group-interaction-text-btn{border:0;background:transparent;color:#555;font:inherit;font-size:10px;padding:5px 2px;cursor:pointer}
+.group-chain-list{list-style:none;display:flex;flex-direction:column;gap:10px;max-height:190px;overflow:auto}
+.group-chain-list li{display:flex;align-items:flex-start;gap:9px;font-size:11px;line-height:1.55}
+.group-chain-index{color:#aaa;font:10px/1.5 Georgia,serif;min-width:17px}
+.group-chain-entry{display:flex;flex-direction:column;gap:2px;min-width:0}
+.group-chain-entry strong{font-size:10px;font-weight:600;color:#777}
+.group-chain-entry span{color:#333;overflow-wrap:anywhere}
+.group-chain-empty{color:#999;font-size:11px}
+
+
+.group-private-card{width:100%;min-width:230px;max-width:290px;background:#fff;border:1px solid #e7e7eb;border-radius:15px;padding:13px;box-shadow:0 3px 14px rgba(0,0,0,.035);color:#111}
+.group-private-label{display:flex;align-items:center;gap:6px;font-size:10px;color:#888;border-bottom:1px solid #f0f0f3;padding-bottom:9px}
+.group-private-label:before{content:"";width:6px;height:6px;border-radius:50%;background:#111}
+.group-private-sender{font-size:13px;font-weight:600;margin-top:10px}
+.group-private-text{font-size:12px;line-height:1.65;margin-top:7px;color:#444;white-space:pre-wrap;overflow-wrap:anywhere}
+.group-private-open{margin-top:12px;width:100%;height:36px;border:0;border-radius:9px;background:#111;color:#fff;font:inherit;font-size:11px;cursor:pointer}
+.group-private-overlay{position:fixed;inset:0;z-index:980;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(10,10,12,.28)}
+.group-private-overlay.active{display:flex;animation:groupComposerFade .18s ease both}
+.group-private-sheet{width:min(320px,100%);background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:22px;padding:21px;box-shadow:0 18px 60px rgba(0,0,0,.18);animation:groupComposerRise .22s cubic-bezier(.2,.75,.25,1) both}
+.group-private-kicker{font:500 9px/1.2 Georgia,serif;letter-spacing:1.8px;color:#999}
+.group-private-title{font:500 22px/1.2 Georgia,"Songti SC",serif;margin:9px 0 6px}
+.group-private-desc{font-size:11px;color:#999;line-height:1.6}
+.group-private-body{font-size:13px;line-height:1.75;color:#333;margin:17px 0;padding:14px;background:#f7f7f9;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.group-private-actions{display:flex;gap:9px}
+.group-private-actions button{height:40px;border-radius:11px;font:inherit;font-size:11px;cursor:pointer}
+.group-private-later{flex:1;border:1px solid #e6e6eb;background:#fff;color:#666}
+.group-private-go{flex:1.3;border:1px solid #111;background:#111;color:#fff}
+.group-composer-overlay{position:fixed;inset:0;z-index:950;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(0,0,0,.28)}
+.group-composer-overlay.active{display:flex;animation:groupComposerFade .18s ease both}
+.group-composer-sheet{width:min(360px,100%);max-height:min(80dvh,620px);overflow:auto;background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:22px;padding:20px;box-shadow:0 16px 50px rgba(0,0,0,.16);transform:translateY(8px);animation:groupComposerRise .22s cubic-bezier(.2,.75,.25,1) both}
+.group-composer-kicker{font:500 9px/1.2 Georgia,serif;letter-spacing:1.8px;color:#999;text-transform:uppercase}
+.group-composer-title{font:500 22px/1.2 Georgia,"Songti SC",serif;margin:8px 0 6px;color:#111}
+.group-composer-desc{font-size:11px;line-height:1.65;color:#888;margin-bottom:17px}
+.group-composer-field{display:flex;flex-direction:column;gap:7px;margin-top:13px}
+.group-composer-field label{font-size:11px;color:#666}
+.group-composer-field input,.group-composer-field textarea{width:100%;border:1px solid #e6e6eb;border-radius:11px;background:#f9f9fb;padding:11px 12px;color:#111;font:inherit;font-size:13px;outline:none;resize:vertical;min-height:42px}
+.group-composer-field textarea{min-height:92px;line-height:1.55}
+.group-composer-field input:focus,.group-composer-field textarea:focus{border-color:#aaa;background:#fff}
+.group-composer-note{font-size:10px;line-height:1.5;color:#999;margin-top:6px}
+.group-composer-actions{display:flex;gap:9px;margin-top:20px}
+.group-composer-actions button{height:42px;border-radius:12px;font:inherit;font-size:12px;cursor:pointer}
+.group-composer-cancel{flex:1;border:1px solid #e6e6eb;background:#fff;color:#666}
+.group-composer-submit{flex:1.4;border:1px solid #111;background:#111;color:#fff}
+@keyframes groupComposerFade{from{opacity:0}to{opacity:1}}
+@keyframes groupComposerRise{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.group-composer-overlay.active,.group-composer-sheet{animation:none!important}}
+
+@media(prefers-reduced-motion:reduce){.group-poll-option,.group-interaction-primary{transition:none!important}}
+</style>
+
+<style id="chatModeSwitchStyles">
+.chat-status-sub.chat-mode-trigger{
+  min-height:25px;padding:4px 7px;margin-top:1px;
+  border:0;background:transparent;appearance:none;-webkit-appearance:none;
+  cursor:pointer;line-height:1.5;border-radius:4px;
+  transition:opacity .16s ease,color .16s ease;
+}
+.chat-status-sub.chat-mode-trigger:not(:disabled)::after{content:"  ↕";font:inherit;color:#777}
+.chat-status-sub.chat-mode-trigger:active{opacity:.55}
+.chat-status-sub.chat-mode-trigger:focus-visible{outline:1px solid #999;outline-offset:2px}
+.chat-mode-overlay{
+  position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center;
+  padding:0 0 env(safe-area-inset-bottom,0px);background:rgba(0,0,0,.30);
+  animation:chatModeFadeIn .16s ease-out;
+}
+.chat-mode-sheet{
+  width:min(100%,430px);max-height:86dvh;overflow-y:auto;background:#fff;color:#171717;
+  padding:23px 21px calc(18px + env(safe-area-inset-bottom,0px));
+  border-radius:18px 18px 0 0;box-shadow:0 -10px 36px rgba(0,0,0,.10);
+  animation:chatModeRise .22s cubic-bezier(.2,.7,.2,1);
+}
+.chat-mode-kicker{font:9px/1.4 Arial,sans-serif;letter-spacing:.18em;color:#a0a09a;text-transform:uppercase;margin-bottom:10px}
+.chat-mode-heading{font:600 20px/1.3 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;letter-spacing:-.04em;margin-bottom:16px}
+.chat-mode-option{
+  display:flex;width:100%;align-items:center;gap:13px;padding:14px 1px;text-align:left;
+  border:0;border-top:1px solid #e9e9e6;background:#fff;color:#222;cursor:pointer;
+}
+.chat-mode-option:last-of-type{border-bottom:1px solid #e9e9e6}
+.chat-mode-option:active,.chat-mode-option.is-current{background:#f7f7f5}
+.chat-mode-number{flex:0 0 22px;font:10px/1 Georgia,serif;color:#aaa}
+.chat-mode-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.chat-mode-copy strong{font:600 13px/1.35 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222}
+.chat-mode-copy small{font:10px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#888}
+.chat-mode-mark{font:10px/1 Arial,sans-serif;color:#777;white-space:nowrap}
+.chat-mode-close{
+  width:100%;min-height:40px;margin-top:14px;border:1px solid #e4e4e0;background:#fafaf8;
+  color:#555;font:12px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;cursor:pointer;
+}
+@keyframes chatModeFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes chatModeRise{from{transform:translateY(18px);opacity:.75}to{transform:translateY(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){.chat-mode-overlay,.chat-mode-sheet{animation:none!important}}
+</style>
+
+</head>
 <body>
     <div class="phone-mockup">
         <div class="status-bar">
@@ -1882,7 +1993,7 @@
             <div class="chat-title-box">
                 <div class="chat-header-avatar" id="chat-header-avatar" aria-hidden="true"></div>
                 <span class="chat-user-name" id="chat-title">聊天</span>
-                <span class="chat-status-sub" id="chat-status-sub">ONLINE · ACTIVE</span>
+                <button class="chat-status-sub chat-mode-trigger" id="chat-status-sub" type="button" aria-label="切换聊天模式" title="切换线上、线下与旁白模式">ONLINE · ACTIVE</button>
                 <span class="chat-notice-bar" id="chat-notice-bar" style="display:none;"></span>
             </div>
             <div class="chat-header-actions">
@@ -1998,6 +2109,18 @@
                         <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4"></rect><path d="M5 12v9h14v-9"></path><path d="M12 8v13"></path><path d="M12 8s-4.5 0-4.5-2.5S9.5 2 12 8c0-5 4.5-3 4.5-0.5S12 8 12 8z"></path></svg></span>
                         <span class="plus-label">送礼物</span>
                     </button>
+                    <button class="plus-item" data-feat="group-poll" type="button">
+                        <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h10M4 19h16"/><circle cx="18" cy="12" r="2"/></svg></span>
+                        <span class="plus-label">群投票</span>
+                    </button>
+                    <button class="plus-item" data-feat="group-chain" type="button">
+                        <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/></svg></span>
+                        <span class="plus-label">群接龙</span>
+                    </button>
+                    <button class="plus-item" data-feat="group-call" type="button">
+                        <span class="plus-icon-circle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 8v6M17 11h6"/></svg></span>
+                        <span class="plus-label">群通话</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -2102,6 +2225,44 @@
 
     </div>
 
+
+        <div class="group-composer-overlay" id="groupComposerOverlay" aria-hidden="true">
+            <form class="group-composer-sheet" id="groupComposerForm" role="dialog" aria-modal="true" aria-labelledby="groupComposerTitle">
+                <div class="group-composer-kicker">GROUP / INTERACTION</div>
+                <h2 class="group-composer-title" id="groupComposerTitle">发起群互动</h2>
+                <p class="group-composer-desc" id="groupComposerDesc">和群成员一起完成一件小事。</p>
+                <div class="group-composer-field" id="groupComposerQuestionWrap">
+                    <label for="groupComposerQuestion" id="groupComposerQuestionLabel">投票问题</label>
+                    <input id="groupComposerQuestion" type="text" maxlength="100" autocomplete="off" placeholder="例如：周末去哪儿？">
+                </div>
+                <div class="group-composer-field" id="groupComposerOptionsWrap">
+                    <label for="groupComposerOptions">投票选项</label>
+                    <textarea id="groupComposerOptions" maxlength="600" placeholder="海边散步&#10;在家看电影&#10;去吃火锅"></textarea>
+                    <div class="group-composer-note">每行一个选项，或用竖线 | 分隔，最多 6 个。</div>
+                </div>
+                <div class="group-composer-field" id="groupComposerEntryWrap" style="display:none;">
+                    <label for="groupComposerEntry" id="groupComposerEntryLabel">我的内容</label>
+                    <textarea id="groupComposerEntry" maxlength="120" placeholder="写下这一条内容"></textarea>
+                </div>
+                <div class="group-composer-actions">
+                    <button class="group-composer-cancel" type="button" id="groupComposerCancel">取消</button>
+                    <button class="group-composer-submit" type="submit" id="groupComposerSubmit">创建互动</button>
+                </div>
+            </form>
+        </div>
+
+    <div class="group-private-overlay" id="groupPrivateOverlay" aria-hidden="true">
+        <section class="group-private-sheet" role="dialog" aria-modal="true" aria-labelledby="groupPrivateTitle">
+            <div class="group-private-kicker">PRIVATE MESSAGE</div>
+            <h2 class="group-private-title" id="groupPrivateTitle">有人悄悄找你</h2>
+            <p class="group-private-desc" id="groupPrivateDesc">群成员向你发送了一条私聊。</p>
+            <div class="group-private-body" id="groupPrivateBody"></div>
+            <div class="group-private-actions">
+                <button class="group-private-later" type="button" id="groupPrivateLater">稍后再说</button>
+                <button class="group-private-go" type="button" id="groupPrivateGo">进入私聊</button>
+            </div>
+        </section>
+    </div>
     <script src="../../shared/js/memory.js"></script>
     <script src="../../shared/js/sound-system.js"></script>
     <script>
@@ -2189,6 +2350,128 @@
             currentGroup = loadGroupById(currentRoleId);
         }
 
+        function groupMemberDisplayName(member) {
+            return String((member && (member.nickname || member.name)) || '成员').trim() || '成员';
+        }
+        function getGroupSettings() {
+            return (currentGroup && currentGroup.settings && typeof currentGroup.settings === 'object') ? currentGroup.settings : {};
+        }
+        function isGroupMemberInActiveHours(member) {
+            if (!getGroupSettings().scheduleEnabled) return true;
+            var from = String((member && member.activeFrom) || '08:00');
+            var to = String((member && member.activeTo) || '23:00');
+            var now = new Date();
+            var current = now.getHours() * 60 + now.getMinutes();
+            function minutes(value, fallback) {
+                var match = /^(\d{1,2}):(\d{2})$/.exec(value);
+                if (!match) return fallback;
+                var h = Math.max(0, Math.min(23, Number(match[1])));
+                var m = Math.max(0, Math.min(59, Number(match[2])));
+                return h * 60 + m;
+            }
+            var start = minutes(from, 480);
+            var end = minutes(to, 1380);
+            if (start === end) return true;
+            return start < end ? (current >= start && current <= end) : (current >= start || current <= end);
+        }
+        function getAvailableGroupMembers() {
+            var members = (currentGroup && Array.isArray(currentGroup.members)) ? currentGroup.members : [];
+            return members.filter(function(member) {
+                return member && !member.muted && isGroupMemberInActiveHours(member);
+            });
+        }
+        function saveCurrentGroupObject() {
+            if (!currentGroup || !currentGroup.id) return false;
+            try {
+                var groups = JSON.parse(localStorage.getItem('phone_groups') || '[]');
+                if (!Array.isArray(groups)) groups = [];
+                var found = false;
+                for (var i = 0; i < groups.length; i++) {
+                    if (String(groups[i] && groups[i].id) === String(currentGroup.id)) {
+                        groups[i] = currentGroup;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+                localStorage.setItem('phone_groups', JSON.stringify(groups));
+                var status = document.getElementById('chat-status-sub');
+                if (status) status.textContent = (currentGroup.members || []).map(groupMemberDisplayName).join(' · ') || '群聊';
+                return true;
+            } catch (e) { return false; }
+        }
+        function groupRelationshipKey(idA, idB) {
+            return JSON.stringify([String(idA), String(idB)].sort());
+        }
+        function getOrCreateGroupRelationship(memberA, memberB) {
+            if (!currentGroup || !memberA || !memberB || String(memberA.id) === String(memberB.id)) return null;
+            if (!currentGroup.relationships || typeof currentGroup.relationships !== 'object' || Array.isArray(currentGroup.relationships)) currentGroup.relationships = {};
+            var ids = [String(memberA.id), String(memberB.id)].sort();
+            var key = groupRelationshipKey(ids[0], ids[1]);
+            var relation = currentGroup.relationships[key];
+            if (!relation || typeof relation !== 'object') {
+                relation = currentGroup.relationships[key] = {
+                    memberAId: ids[0], memberBId: ids[1], type: '未设定',
+                    familiarity: 0, interactions: 0, note: '', lastInteractionAt: 0
+                };
+            }
+            relation.memberAId = ids[0];
+            relation.memberBId = ids[1];
+            relation.type = String(relation.type || '未设定');
+            relation.familiarity = Math.max(0, Math.min(100, parseInt(relation.familiarity, 10) || 0));
+            relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0);
+            relation.note = String(relation.note || '').slice(0, 120);
+            return relation;
+        }
+        function findGroupSpeakerInHistory(historyList) {
+            var members = currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : [];
+            for (var i = (historyList || []).length - 1; i >= 0; i--) {
+                var item = historyList[i];
+                if (!item || item.type || (item.role !== 'assistant' && item.role !== 'received')) continue;
+                if (item.memberId != null) {
+                    var byId = members.find(function (member) { return String(member.id) === String(item.memberId); });
+                    if (byId) return byId;
+                }
+                if (item.name) {
+                    var byName = members.find(function (member) { return groupMemberDisplayName(member) === String(item.name); });
+                    if (byName) return byName;
+                }
+            }
+            return null;
+        }
+        function getGroupRelationshipContext() {
+            if (!currentGroup || !currentGroup.relationships || typeof currentGroup.relationships !== 'object') return '';
+            var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+            var relations = Object.keys(currentGroup.relationships).map(function (key) {
+                var rel = currentGroup.relationships[key];
+                if (!rel || typeof rel !== 'object') return null;
+                var a = members.find(function (member) { return String(member.id) === String(rel.memberAId); });
+                var b = members.find(function (member) { return String(member.id) === String(rel.memberBId); });
+                if (!a || !b) {
+                    try {
+                        var ids = JSON.parse(key);
+                        if (Array.isArray(ids)) {
+                            a = a || members.find(function (member) { return String(member.id) === String(ids[0]); });
+                            b = b || members.find(function (member) { return String(member.id) === String(ids[1]); });
+                        }
+                    } catch (e) {}
+                }
+                if (!a || !b) return null;
+                var familiarity = Math.max(0, Math.min(100, parseInt(rel.familiarity, 10) || 0));
+                var type = String(rel.type || '未设定');
+                var note = String(rel.note || '').trim().slice(0, 120);
+                var memories = (Array.isArray(rel.memories) ? rel.memories : []).slice(-4).map(function (memory) {
+                    return String(memory && memory.summary || '').trim().slice(0, 140);
+                }).filter(Boolean);
+                if (type === '未设定' && familiarity === 0 && !note && !memories.length) return null;
+                return {
+                    time: Number(rel.lastInteractionAt) || 0,
+                    line: groupMemberDisplayName(a) + ' ↔ ' + groupMemberDisplayName(b) + '：关系=' + type + '；熟悉度 ' + familiarity + '/100；明确互动 ' + (parseInt(rel.interactions, 10) || 0) + ' 次' + (note ? '；补充=' + note : '') + (memories.length ? '；共同记忆=' + memories.join('；') : '')
+                };
+            }).filter(Boolean).sort(function (a, b) { return b.time - a.time; }).slice(0, 12);
+            return relations.map(function (item) { return item.line; }).join('\n').slice(0, 1500);
+        }
+
         const currentCharacter = isGroupChat
             ? { id: currentRoleId, name: (currentGroup && currentGroup.name) || '群聊', avatar: (currentGroup && (currentGroup.avatar || currentGroup.cover)) || '', avatarBg: '#3B9EFF' }
             : (getRoleById(currentRoleId) || { id: currentRoleId || 'default', name: '聊天', avatarBg: '#3B9EFF' });
@@ -2247,8 +2530,10 @@
         // 群聊：副标题显示成员名单；普通聊天保持 ONLINE
         const chatStatusSub = document.getElementById('chat-status-sub');
         if (isGroupChat && chatStatusSub) {
-            const names = (currentGroup && currentGroup.members || []).map(function (m) { return m.name; }).filter(Boolean);
+            const names = (currentGroup && currentGroup.members || []).map(groupMemberDisplayName).filter(Boolean);
             chatStatusSub.textContent = names.length ? names.join(' · ') : '群聊';
+            chatStatusSub.disabled = true;
+            chatStatusSub.classList.remove('chat-mode-trigger');
             // 群聊：显示群公告横条（chat_group_notice_<gid>）
             const chatNoticeBar = document.getElementById('chat-notice-bar');
             if (chatNoticeBar) {
@@ -2259,6 +2544,17 @@
                     chatNoticeBar.style.display = '';
                 }
             }
+        }
+
+        // 普通单聊默认线上；旁白模式按角色保存。线下页面会单独记录自己的状态。
+        if (!isGroupChat && chatStatusSub) {
+            var initialChatMode = '';
+            try { initialChatMode = localStorage.getItem('chat_mode_' + currentCharacter.id) || ''; } catch (e) {}
+            if (initialChatMode !== 'narration') {
+                initialChatMode = 'online';
+                try { localStorage.setItem('chat_mode_' + currentCharacter.id, 'online'); } catch (e) {}
+            }
+            chatStatusSub.textContent = initialChatMode === 'narration' ? 'NARRATION · ACTIVE' : 'ONLINE · ACTIVE';
         }
 
         // ================= 拉黑态（键 chat_blocked_ids：会话仍在列表，但不能聊） =================
@@ -2644,6 +2940,48 @@
                     <div class="msg-card-body">${m.content || ''}</div>
                     <div class="msg-card-meta">${m.date || ''}</div>
                 </div>`;
+            } else if (msg.type === 'group_private') {
+                const privateRoleId = String(msg.privateRoleId || msg.senderId || '');
+                bubble.classList.add('bubble-group-interaction');
+                bubble.innerHTML = '<div class="group-private-card"><div class="group-private-label">群成员私聊 · ' + escHtml(msg.senderName || msg.name || '群成员') + '</div>' +
+                    '<div class="group-private-sender">' + escHtml(msg.senderName || msg.name || '群成员') + ' 悄悄说</div>' +
+                    '<div class="group-private-text">' + escHtml(msg.text || '') + '</div>' +
+                    '<button type="button" class="group-private-open" data-private-open="' + escHtml(privateRoleId) + '">打开与 TA 的私聊</button></div>';
+            } else if (msg.type === 'group_poll') {
+                const poll = msg.poll || {};
+                const options = Array.isArray(poll.options) ? poll.options : [];
+                const votes = poll.votes && typeof poll.votes === 'object' ? poll.votes : {};
+                const tally = options.map(function () { return 0; });
+                Object.keys(votes).forEach(function (voter) {
+                    const pick = Number(votes[voter]);
+                    if (Number.isInteger(pick) && pick >= 0 && pick < tally.length) tally[pick] += 1;
+                });
+                const totalVotes = Object.keys(votes).length;
+                const myVote = typeof votes.__user === 'number' ? votes.__user : -1;
+                const mid = row.dataset.mid;
+                bubble.classList.add('bubble-group-interaction');
+                var optionsHtml = options.map(function (option, optionIndex) {
+                    const percent = totalVotes ? Math.round(tally[optionIndex] * 100 / totalVotes) : 0;
+                    return '<button type="button" class="group-poll-option' + (myVote === optionIndex ? ' is-picked' : '') + '" data-poll-mid="' + escHtml(mid) + '" data-poll-option="' + optionIndex + '"' + (poll.closed ? ' disabled' : '') + '>' +
+                        '<span class="group-poll-option-text">' + escHtml(option) + '</span><span class="group-poll-count">' + tally[optionIndex] + '</span>' +
+                        '<span class="group-poll-progress" style="width:' + percent + '%"></span></button>';
+                }).join('');
+                bubble.innerHTML = '<div class="group-interaction-card"><div class="group-interaction-head"><span>群投票</span><span>' + (poll.closed ? '已结束' : totalVotes + ' 人参与') + '</span></div>' +
+                    '<div class="group-interaction-title">' + escHtml(poll.question || '未命名投票') + '</div><div class="group-poll-options">' + optionsHtml + '</div>' +
+                    '<div class="group-interaction-foot">' + (poll.closed ? '投票已结束' : '选择一个选项即可投票') +
+                    (isSent && !poll.closed ? '<button type="button" class="group-interaction-text-btn" data-poll-close="' + escHtml(mid) + '">结束投票</button>' : '') + '</div></div>';
+            } else if (msg.type === 'group_chain') {
+                const chain = msg.chain || {};
+                const entries = Array.isArray(chain.entries) ? chain.entries : [];
+                const mid = row.dataset.mid;
+                bubble.classList.add('bubble-group-interaction');
+                const entriesHtml = entries.length ? entries.map(function (entry, entryIndex) {
+                    return '<li><span class="group-chain-index">' + String(entryIndex + 1).padStart(2, '0') + '</span><span class="group-chain-entry"><strong>' + escHtml(entry.name || '成员') + '</strong><span>' + escHtml(entry.text || '') + '</span></span></li>';
+                }).join('') : '<li class="group-chain-empty">等第一位成员接龙</li>';
+                bubble.innerHTML = '<div class="group-interaction-card"><div class="group-interaction-head"><span>群接龙</span><span>' + (chain.closed ? '已结束' : entries.length + ' 条内容') + '</span></div>' +
+                    '<div class="group-interaction-title">' + escHtml(chain.title || '群接龙') + '</div><ol class="group-chain-list">' + entriesHtml + '</ol>' +
+                    '<div class="group-interaction-foot">' + (chain.closed ? '接龙已结束' : '<button type="button" class="group-interaction-primary" data-chain-join="' + escHtml(mid) + '">参与接龙</button>') +
+                    (isSent && !chain.closed ? '<button type="button" class="group-interaction-text-btn" data-chain-close="' + escHtml(mid) + '">结束接龙</button>' : '') + '</div></div>';
             } else if (msg.type === 'call') {
                 const c = msg.call || {};
                 if (c.theme === 'dark') bubble.classList.add('bubble-call-in');
@@ -2660,7 +2998,7 @@
                 bubble.classList.add('bubble-pay');
                 const payLabel = msg.isVoice === true ? '语音红包' : '红包';
                 const payStatus = msg.status === 'opened' ? '已领取' : '未领取';
-                bubble.innerHTML = `<div class="pay-card pay-card-red" data-index="${typeof idx === 'number' ? idx : ''}" data-type="redpacket" onclick="handlePayCardClick(event)">
+                bubble.innerHTML = `<div class="pay-card pay-card-red" data-index="${typeof idx === 'number' ? idx : ''}" data-mid="${escHtml(ensureMid(msg))}" data-type="redpacket" onclick="handlePayCardClick(event)">
                     <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 8.5 12 11.6 14.5 8.5"/><line x1="10.6" y1="12.5" x2="13.4" y2="12.5"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
                     <div class="pay-card-main">
                         <span class="pay-card-label">${payLabel}</span>
@@ -2672,14 +3010,60 @@
             } else if (msg.type === 'transfer') {
                 // 转账卡：纯白底 + 浅灰边框 + 黑色细线条双向箭头 + 右侧灰色细箭头
                 bubble.classList.add('bubble-pay');
-                bubble.innerHTML = `<div class="pay-card pay-card-transfer" data-index="${typeof idx === 'number' ? idx : ''}" data-type="transfer" onclick="handlePayCardClick(event)">
+                const transferStatus = msg.status === 'received' ? '已收款'
+                    : msg.status === 'returned' ? '已退回'
+                    : msg.status === 'returning' ? '等待退回到账'
+                    : msg.status === 'accepted' ? '对方已收下'
+                    : (isSent ? '等待对方回应' : '待收款');
+                bubble.innerHTML = `<div class="pay-card pay-card-transfer" data-index="${typeof idx === 'number' ? idx : ''}" data-mid="${escHtml(ensureMid(msg))}" data-type="transfer" onclick="handlePayCardClick(event)">
                     <svg class="pay-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                     <div class="pay-card-main">
                         <span class="pay-card-label">转账</span>
                         <span class="pay-card-amount">¥${escHtml(String(msg.amount == null ? '0.00' : msg.amount))}</span>
                     </div>
-                    <svg class="pay-card-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    <span class="pay-card-status">${transferStatus}</span>
                 </div>`;
+            } else if (msg.type === 'role_family_card') {
+                bubble.classList.add('bubble-family-card');
+                var familyCard = window.RoleFamilyCards && msg.cardId ? window.RoleFamilyCards.find(msg.cardId) : null;
+                var cardKindLabel = familyCard && familyCard.kind === 'intimate' ? '亲密付' : '亲属卡';
+                var cardStatus = familyCard ? familyCard.status : 'unavailable';
+                var cardStatusText = cardStatus === 'pending' ? '等待领取'
+                    : cardStatus === 'active' ? '已开通'
+                    : cardStatus === 'paused' ? '已暂停'
+                    : cardStatus === 'revoked' ? '已撤销'
+                    : cardStatus === 'rejected' ? '已婉拒'
+                    : '暂不可用';
+                var familyCardButtons = '';
+                var familyCardIdAttr = escHtml(String((familyCard && familyCard.id) || msg.cardId || ''));
+                if (cardStatus === 'pending') {
+                    familyCardButtons = '<div style="display:flex;gap:8px;margin-top:14px;">' +
+                        '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'accept\')" style="flex:1;border:0;border-radius:10px;background:#111;color:#fff;padding:10px 8px;font-size:12px;">领取亲属卡</button>' +
+                        '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'reject\')" style="border:1px solid #ddd;border-radius:10px;background:#fff;color:#666;padding:10px 12px;font-size:12px;">暂不接受</button>' +
+                        '</div>';
+                } else if (cardStatus === 'active') {
+                    familyCardButtons = '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'pause\')" style="margin-top:12px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#555;padding:8px 12px;font-size:12px;">暂停使用</button>';
+                } else if (cardStatus === 'paused') {
+                    familyCardButtons = '<button type="button" onclick="handleRoleFamilyCardAction(event, \'' + familyCardIdAttr + '\', \'resume\')" style="margin-top:12px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#555;padding:8px 12px;font-size:12px;">恢复使用</button>';
+                }
+                var familyMonthly = familyCard ? Number(familyCard.monthlyLimit) || 0 : 0;
+                var familySingle = familyCard ? Number(familyCard.singleLimit) || 0 : 0;
+                var familyUsed = familyCard && window.RoleFamilyCards ? window.RoleFamilyCards.usedThisMonth(familyCard) : 0;
+                var familyRemain = Math.max(0, familyMonthly - familyUsed);
+                var familyNote = escHtml(String((familyCard && familyCard.note) || '给你准备的专属日常额度'));
+                bubble.innerHTML = '<div style="width:224px;max-width:100%;border:1px solid #dedee3;border-radius:14px;overflow:hidden;background:#fff;color:#111;box-shadow:0 2px 12px rgba(0,0,0,.035);">' +
+                    '<div style="padding:13px 14px;background:#111;color:#fff;display:flex;justify-content:space-between;align-items:center;">' +
+                        '<span style="font-size:11px;letter-spacing:1.4px;">MAOMAO / BENEFIT</span><span style="font-size:10px;opacity:.7;">' + cardKindLabel + '</span></div>' +
+                    '<div style="padding:15px 14px 13px;">' +
+                        '<div style="font-size:12px;color:#888;">' + escHtml(String((familyCard && familyCard.roleName) || contactName || '角色')) + ' 给你的额度</div>' +
+                        '<div style="font-size:25px;font-weight:700;letter-spacing:-.5px;margin:4px 0;">¥' + familyMonthly.toFixed(2) + '<span style="font-size:11px;font-weight:400;color:#888;letter-spacing:0;"> / 月</span></div>' +
+                        '<div style="font-size:11px;color:#777;line-height:1.7;">单笔上限 ¥' + familySingle.toFixed(2) + ' · 本月剩余 ¥' + familyRemain.toFixed(2) + '</div>' +
+                        '<div style="height:1px;background:#eee;margin:12px 0;"></div>' +
+                        '<div style="font-size:12px;line-height:1.6;color:#444;">' + familyNote + '</div>' +
+                        '<div style="margin-top:10px;font-size:10px;color:' + (cardStatus === 'active' ? '#111' : '#888') + ';">状态 · ' + cardStatusText + '</div>' +
+                        familyCardButtons +
+                        '<div style="margin-top:10px;font-size:9px;color:#aaa;">仅限应用内模拟商店与外卖使用</div>' +
+                    '</div></div>';
             } else if (msg.type === 'card' && msg.card) {
                 const cd = msg.card;
                 const cdAv = cd.avatar && String(cd.avatar).length > 20
@@ -2998,6 +3382,155 @@
                 .replace(/\s+$/, '');
             return { text: cleaned, items: items };
         }
+        // ---- 转账决策标记：角色收下转账时更新对应卡片 ----
+        const TRANSFER_ACCEPT_MARKER_REGEX = /\[收下转账:(\d+(?:\.\d{1,2})?)\]/g;
+        function extractTransferDecisionMarkers(raw) {
+            const text = String(raw || '');
+            const amounts = [];
+            let match;
+            TRANSFER_ACCEPT_MARKER_REGEX.lastIndex = 0;
+            while ((match = TRANSFER_ACCEPT_MARKER_REGEX.exec(text)) !== null) {
+                const amount = Number(match[1]);
+                if (isFinite(amount) && amount > 0) amounts.push(amount);
+            }
+            return {
+                text: text.replace(TRANSFER_ACCEPT_MARKER_REGEX, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trimEnd(),
+                amounts: amounts
+            };
+        }
+        function applyTransferDecisionMarkers(historyList, amounts) {
+            if (!Array.isArray(historyList) || !Array.isArray(amounts) || !amounts.length) return;
+            amounts.forEach(function (amount) {
+                for (var i = historyList.length - 1; i >= 0; i--) {
+                    var previous = historyList[i];
+                    if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                        previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
+                        Number(previous.amount) === Number(amount)) {
+                        previous.status = 'accepted';
+                        previous.acceptedAt = Date.now();
+                        break;
+                    }
+                }
+            });
+        }
+
+        // ---- 角色赠予亲属卡/亲密付：解析后只保存结构化虚拟额度，不涉及真实支付 ----
+        const ROLE_FAMILY_CARD_MARKER_REGEX = /\[(亲属卡|亲密付):(\d+(?:\.\d{1,2})?):(\d+(?:\.\d{1,2})?):([^\]]{0,160})\]/g;
+        const ROLE_FAMILY_CARD_ADJUST_REGEX = /\[调整(?:亲属卡|亲密付):(\d+(?:\.\d{1,2})?):(\d+(?:\.\d{1,2})?):([^\]]{0,160})\]/g;
+        const ROLE_FAMILY_CARD_REVOKE_REGEX = /\[撤销(?:亲属卡|亲密付)\]/g;
+        function extractRoleFamilyCardMarkers(raw) {
+            var text = String(raw || '');
+            var cards = [];
+            var changes = [];
+            var match;
+            ROLE_FAMILY_CARD_MARKER_REGEX.lastIndex = 0;
+            while ((match = ROLE_FAMILY_CARD_MARKER_REGEX.exec(text)) !== null) {
+                var monthly = Number(match[2]);
+                var single = Number(match[3]);
+                if (isFinite(monthly) && monthly > 0 && isFinite(single) && single > 0) {
+                    cards.push({
+                        kind: match[1] === '亲密付' ? 'intimate' : 'family',
+                        monthlyLimit: Math.min(1000000, monthly),
+                        singleLimit: Math.min(1000000, single),
+                        note: String(match[4] || '').trim().slice(0, 160)
+                    });
+                }
+            }
+            text = text.replace(ROLE_FAMILY_CARD_MARKER_REGEX, '');
+            ROLE_FAMILY_CARD_ADJUST_REGEX.lastIndex = 0;
+            while ((match = ROLE_FAMILY_CARD_ADJUST_REGEX.exec(text)) !== null) {
+                var newMonthly = Number(match[1]);
+                var newSingle = Number(match[2]);
+                if (isFinite(newMonthly) && newMonthly > 0 && isFinite(newSingle) && newSingle > 0) {
+                    changes.push({
+                        action: 'adjust',
+                        monthlyLimit: Math.min(1000000, newMonthly),
+                        singleLimit: Math.min(1000000, newSingle),
+                        note: String(match[3] || '').trim().slice(0, 160)
+                    });
+                }
+            }
+            text = text.replace(ROLE_FAMILY_CARD_ADJUST_REGEX, '');
+            ROLE_FAMILY_CARD_REVOKE_REGEX.lastIndex = 0;
+            if (ROLE_FAMILY_CARD_REVOKE_REGEX.test(text)) changes.push({ action: 'revoke' });
+            text = text.replace(ROLE_FAMILY_CARD_REVOKE_REGEX, '');
+            return {
+                text: text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, ''),
+                cards: cards,
+                changes: changes
+            };
+        }
+
+        function applyRoleFamilyCardChanges(changes) {
+            if (!Array.isArray(changes) || !changes.length || isGroupChat ||
+                !window.RoleFamilyCards || typeof window.RoleFamilyCards.applyRoleChange !== 'function') return false;
+            var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
+            var changed = false;
+            changes.forEach(function (change) {
+                var result = window.RoleFamilyCards.applyRoleChange(roleId, change);
+                if (result && result.ok) changed = true;
+            });
+            return changed;
+        }
+
+        function insertRoleFamilyCardInvitations(historyList, cardSpecs) {
+            if (!Array.isArray(cardSpecs) || !cardSpecs.length || isGroupChat ||
+                !window.RoleFamilyCards || typeof window.RoleFamilyCards.createInvite !== 'function') return false;
+            var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
+            if (!roleId) return false;
+            var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
+            var inserted = false;
+            cardSpecs.forEach(function (spec) {
+                var card = window.RoleFamilyCards.createInvite({
+                    roleId: roleId,
+                    roleName: roleName,
+                    kind: spec.kind,
+                    monthlyLimit: spec.monthlyLimit,
+                    singleLimit: spec.singleLimit,
+                    note: spec.note
+                });
+                if (!card) {
+                    if (typeof showToast === 'function') showToast('亲属卡保存失败，请检查本地存储空间');
+                    return;
+                }
+                historyList.push({
+                    role: 'assistant',
+                    type: 'role_family_card',
+                    cardId: card.id,
+                    time: Date.now()
+                });
+                inserted = true;
+            });
+            if (inserted) {
+                saveMessages(historyList);
+                renderAllMessages();
+            }
+            return inserted;
+        }
+
+        window.handleRoleFamilyCardAction = function (event, cardId, action) {
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+            if (!window.RoleFamilyCards) return;
+            var result = window.RoleFamilyCards.update(cardId, action);
+            if (!result || !result.ok) {
+                if (typeof showToast === 'function') showToast(result && result.reason === 'storage' ? '保存失败：本地空间不足' : '这张卡当前无法执行该操作');
+                return;
+            }
+            renderAllMessages();
+            var card = result.card || {};
+            if (action === 'accept' || action === 'reject') {
+                if (typeof window.sendMsg === 'function') {
+                    var replyText = action === 'accept'
+                        ? '我收下了你给我的亲属卡。'
+                        : '谢谢你的心意，不过这张亲属卡我暂时先不收。';
+                    window.sendMsg({ text: replyText, silent: true });
+                }
+                if (typeof showToast === 'function') showToast(action === 'accept' ? '已领取，可在商店和外卖结算时使用' : '已婉拒这张卡');
+            } else {
+                if (typeof showToast === 'function') showToast(action === 'pause' ? '这张卡已暂停使用' : '这张卡已恢复使用');
+            }
+        };
+
         // ---- 自动记忆标记：[记住:xxx] 从 AI 回复中剥离，存进 user_memory ----
         const MEM_MARKER_REGEX = /\[记住:([^\]]+)\]/g;
         function extractMemoryMarkers(raw) {
@@ -3064,6 +3597,18 @@
         function insertPayCards(historyList, items) {
             if (!items || !items.length) return;
             items.forEach(function (item) {
+                if (item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''))) {
+                    for (var pi = historyList.length - 1; pi >= 0; pi--) {
+                        var previous = historyList[pi];
+                        if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                            previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
+                            Number(previous.amount) === Number(item.amount)) {
+                            previous.status = 'returning';
+                            previous.returnRequestedAt = Date.now();
+                            break;
+                        }
+                    }
+                }
                 const payMsg = {
                     role: 'assistant',
                     type: item.type,
@@ -3073,18 +3618,7 @@
                     timestamp: Date.now()
                 };
                 historyList.push(payMsg);
-                // ===== 互通：红包/转账自动写进记账本（用户收入） =====
-                try {
-                    const fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
-                    fin.push({
-                        amount: Number(item.amount),
-                        type: '收入',
-                        category: item.type === 'transfer' ? '转账' : '红包',
-                        note: (currentCharacter ? currentCharacter.name : '角色') + (item.type === 'transfer' ? ' 转账给我' : ' 发的红包'),
-                        time: Date.now()
-                    });
-                    localStorage.setItem('finance_records', JSON.stringify(fin));
-                } catch (e) {}
+
             });
             saveMessages(historyList);
             renderAllMessages();
@@ -3369,7 +3903,10 @@
             const contextOnly = !!(opts && opts.contextOnly);
             const regenDirection = (opts && typeof opts.regenDirection === 'string') ? opts.regenDirection.trim() : '';
             const isRegen = !!(opts && opts.isRegenerate);
+            const isGroupFollowup = !!(opts && opts.groupFollowup);
+            const groupAutoDepth = Math.max(0, parseInt(opts && opts.groupAutoDepth, 10) || 0);
             const text = customText || input.value.trim();
+            window.__groupAutoStopRequested = false;
             if (!text && !isRegen && !contextOnly) return;
             if (isBlocked(aliasRoleId)) {
                 if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法发送消息');
@@ -3377,6 +3914,12 @@
             }
             if (aiSending) {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
+                return;
+            }
+            if (isGroupChat && currentGroup && !isRegen && !contextOnly && !getAvailableGroupMembers().length) {
+                if (typeof showToast === 'function') {
+                    showToast(getGroupSettings().scheduleEnabled ? '当前时段没有可发言的群成员，大家都在休息' : '群成员都处于禁言状态');
+                }
                 return;
             }
 
@@ -3446,14 +3989,40 @@
             let groupReplyPick = null;
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
+                const availableMembers = getAvailableGroupMembers();
                 const personaLines = members.map(function (m, i) {
                     const r = getRoleById(m.id);
                     const p = (r && (r.persona || r.prompt || '').trim()) || '一个善解人意的朋友';
-                    return (i + 1) + '. ' + (m.name || '成员') + '：' + p;
+                    const labels = [];
+                    if (m.title) labels.push('头衔：' + m.title);
+                    if (m.isAdmin) labels.push('管理员');
+                    if (String(currentGroup.ownerId || '__user') === String(m.id)) labels.push('群主');
+                    if (m.muted) labels.push('禁言中');
+                    else if (!isGroupMemberInActiveHours(m)) labels.push('当前休息中');
+                    return (i + 1) + '. ' + groupMemberDisplayName(m) + '（ID：' + String(m.id) + '）' + (labels.length ? '（' + labels.join('、') + '）' : '') + '：' + p;
                 });
                 rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
-                if (members.length) {
-                    groupReplyPick = members[Math.floor(Math.random() * members.length)];
+                if (availableMembers.length) {
+                    let pickPool = availableMembers;
+                    // 自动接话优先换另一位成员，不让同一个角色连续霸屏。
+                    if (isGroupFollowup && historyList.length) {
+                        let previousSpeakerName = '';
+                        for (let hi = historyList.length - 1; hi >= 0; hi--) {
+                            const priorMessage = historyList[hi];
+                            if (priorMessage && !priorMessage.type &&
+                                (priorMessage.role === 'assistant' || priorMessage.role === 'received') &&
+                                priorMessage.name) {
+                                previousSpeakerName = String(priorMessage.name);
+                                break;
+                            }
+                        }
+                        const alternatives = availableMembers.filter(function (member) {
+                            return groupMemberDisplayName(member) !== previousSpeakerName;
+                        });
+                        if (alternatives.length) pickPool = alternatives;
+                    }
+                    const selectedMember = pickPool[Math.floor(Math.random() * pickPool.length)];
+                    groupReplyPick = Object.assign({}, selectedMember, { name: groupMemberDisplayName(selectedMember) });
                 }
             } else {
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
@@ -3511,12 +4080,22 @@
             } catch (e) {}
             rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
 
-            // 世界书内容：从 phone_worldbooks 读全部条目，拼成文本
+            // 世界书内容：群聊优先读取群聊专属挂载列表；无旧记录时保留兼容回退
             let worldbookText = '';
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               if (rawWB) {
-                const wbList = JSON.parse(rawWB) || [];
+                let wbList = JSON.parse(rawWB) || [];
+                if (isGroupChat) {
+                  const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
+                  if (mountRaw != null) {
+                    const mounted = JSON.parse(mountRaw);
+                    if (Array.isArray(mounted)) {
+                      const mountedIds = mounted.map(function (id) { return String(id); });
+                      wbList = wbList.filter(function (book) { return book && mountedIds.indexOf(String(book.id)) !== -1; });
+                    }
+                  }
+                }
                 worldbookText = wbList.map(function(b){
                   return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
                 }).join('\n\n');
@@ -3563,9 +4142,53 @@
             }
             // 群聊：覆盖本轮发言者身份（无论是否使用协议均生效）
             if (isGroupChat && groupReplyPick) {
-                const memberNames = (currentGroup.members || []).map(function (m) { return m.name; }).join('、') || '暂无成员';
+                const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
+                const groupSettings = getGroupSettings();
+                systemPrompt += '\n\n[群成员自然互动]\n你们是在同一个群里的真实角色。先读懂最近几条群消息，再按自己的性格回应其中某一位成员；可以赞同、追问、补充、开玩笑或温和地不同意。不要每次都把话题拉回用户身上，不要机械复述上一句，不要替其他成员发言，也不要凭空编造人际关系或共同经历。回复保持简短自然，像群聊消息。若本条确实在回应上一位群成员，而不是主要回应用户，请在回复末尾添加隐藏标记 [群关系互动:准确角色ID:一句简短的真实互动记忆]；ID必须来自群成员名单，每轮最多一个。记忆只概括本轮确实发生的事或明确表达，不要推断情绪、关系升级或编造过去；建议 15-70 个汉字。没有明确回应对象时不要添加，系统会自动移除标记。';
+                const groupRelationshipContext = getGroupRelationshipContext();
+                if (groupRelationshipContext) {
+                    systemPrompt += '\n\n[群成员关系与熟悉度]\n' + groupRelationshipContext + '\n请尊重记录中的关系类型与熟悉程度；熟悉度不等于好感度，不要因为数值增加就擅自升级为恋人或编造共同过去。';
+                }
+                if (isGroupFollowup) {
+                    systemPrompt += '\n\n[自主接话回合 ' + groupAutoDepth + ']\n这是系统安排的自动接话，不是用户新发了一条消息。请接着最近那位群成员的话题说，当前发言者应当与上一位发言者不同。只输出你自己的1-3句群聊消息。如果话题已经自然结束、没有值得补充的内容，请只输出隐藏标记 [群聊结束]，不必硬聊。禁止把“继续”当成用户实际说的话。';
+                }
+                if (groupSettings.spectatorMode) {
+                    systemPrompt += '\n\n[旁观模式]\n用户当前是旁观者。用户发来的文字是剧情走向提示或导演指令；角色之间优先自然交流、争论、互相回应，不要每句话都直接向用户提问或称呼用户，也不要替用户发言。';
+                }
+                if (groupSettings.memorySharing) {
+                    const syncedMemoryLines = [];
+                    (currentGroup.members || []).forEach(function (member) {
+                        const role = getRoleById(member.id);
+                        if (!role) return;
+                        const memory = buildWeightedMemoryText(String(member.id), (role.memory || '').trim());
+                        if (memory && memory !== '暂无记忆') syncedMemoryLines.push('【' + groupMemberDisplayName(member) + '的单聊记忆】\n' + memory);
+                    });
+                    if (syncedMemoryLines.length) {
+                        systemPrompt += '\n\n[已启用成员单聊记忆同步]\n' + capText(syncedMemoryLines.join('\n\n'), 2200);
+                    }
+                }
+                if (groupSettings.allowRoleActions) {
+                    systemPrompt += '\n\n[群管理行动]\n只有带有管理员或群主身份的成员才可以根据剧情执行群管理操作。若剧情确实需要，可在正常台词末尾附加一个隐藏标记：改群名用 [群动作:改名:新群名]；邀请角色库中已有角色用 [群动作:邀请:角色名]；移除成员用 [群动作:移除:角色名]。不要向用户解释标记，系统会处理。不要重复邀请已有成员，不要移除最后一名群成员。';
+                }
+                if (groupSettings.allowPrivateMessages !== false) {
+                    systemPrompt += '\n\n[群成员私聊能力]\n你可以偶尔向用户发起私聊，但不要每轮都触发，仅在出现适合单独说的话、想补充秘密或想私下安慰用户时使用。仅允许给自己发私聊：在本轮正常群聊回复末尾另起一行写 [群私聊:你的准确角色ID:私聊内容]。角色ID必须从群成员名单中选择，并且应当是本轮发言者自己的ID；私聊内容控制在1-3句，不要解释标记。标记会保存到你的单聊历史，并在群聊里弹出私聊小窗。每轮最多一条。';
+                }
+                const activePolls = historyList.filter(function (item) { return item && item.type === 'group_poll' && item.poll && !item.poll.closed; }).slice(-3);
+                if (activePolls.length) {
+                    systemPrompt += '\n\n[当前群投票]\n' + activePolls.map(function (item) {
+                        return '投票ID=' + ensureMid(item) + '；问题：' + String(item.poll.question || '') + '；选项：' + (item.poll.options || []).map(function (option, index) { return (index + 1) + '. ' + option; }).join('；');
+                    }).join('\n');
+                    systemPrompt += '\n如果你本轮想投票，请在台词末尾附加 [群投票:投票ID:选项序号]，序号从1开始。按你自己的立场选择，不要伪造其他成员的投票。';
+                }
+                const activeChains = historyList.filter(function (item) { return item && item.type === 'group_chain' && item.chain && !item.chain.closed; }).slice(-3);
+                if (activeChains.length) {
+                    systemPrompt += '\n\n[当前群接龙]\n' + activeChains.map(function (item) {
+                        return '接龙ID=' + ensureMid(item) + '；主题：' + String(item.chain.title || '') + '；已有内容：' + (item.chain.entries || []).map(function (entry) { return String(entry.name || '成员') + '：' + String(entry.text || ''); }).join('；');
+                    }).join('\n');
+                    systemPrompt += '\n如果你想参与其中一项接龙，请在台词末尾附加 [群接龙:接龙ID:你的接龙内容]，每轮最多参与一次。';
+                }
             }
             if (customPrompt && !systemPrompt.includes(customPrompt)) {
                 systemPrompt += `\n补充要求: ${customPrompt}`;
@@ -3741,6 +4364,19 @@
             // 叙事总规范（线上模式）：与线下模式共用同一套表达规范，边界清晰
             systemPrompt += '\n\n[叙事总规范]\n- 边界清晰：当前是线上聊天模式（隔着屏幕交流），只写消息内容与打字时的心理，不写面对面动作或场景描写；线下模式的面对面叙事不适用于这里。\n- 动作描写原则：只在推进剧情、表现人物情绪、传递关键信息时才添加动作描述，删减无意义的动作与状态描写。\n- 拒绝模板：不要堆砌「动作 + 环境 + 心理」的固定结构，避免机械式的动作衔接。\n- 允许纯对话：可以只写台词和少量必要的心理，无需每条回复都搭配动作描写。\n- 表达精简：减少「刚刚、此刻、下一秒、就在这时」这类无实义的时间词；日常分享内容要有话题性，避免流水账式的状态汇报。';
 
+            // 旁白模式是可切回的持久模式，覆盖上面的线上短消息规则。
+            var activeChatModeForPrompt = 'online';
+            try { activeChatModeForPrompt = localStorage.getItem('chat_mode_' + aliasRoleId) || 'online'; } catch (e) {}
+            if (activeChatModeForPrompt === 'narration') {
+                systemPrompt += '\n\n[当前模式：旁白与动作描写 · 优先规则]\n把用户的新消息当作同一段剧情中的行动、对白或提示，以自然的小说叙述回应；可以写必要的动作、神态、环境变化、内心活动和对白，但不要替用户擅自决定未表达的行为或思想。避免微信式短句，也不要为了凑字数堆砌动作。默认约 180–400 字，按剧情需要灵活调整。保持角色原有人设，不解释模式规则。此规则优先于前面的线上聊天限制。';
+            }
+
+            // 单聊中的亲属卡/亲密付是虚拟互动，不触达真实支付。只有剧情自然适合时才发放，不要每轮强行送卡。
+            systemPrompt += '\n\n【单聊虚拟亲属卡 / 亲密付规则】\n' +
+                '仅在私聊、并且符合你当前人设、关系、经济状况与剧情时，你可以主动赠予对方一张虚拟亲属卡或亲密付卡；不要每次回复都送，也不要把它说成真实银行业务。\n' +
+                '需要发放时，在正常回复末尾附加一个机器标记，格式必须是 [亲属卡:月额度:单笔上限:给对方的留言] 或 [亲密付:月额度:单笔上限:给对方的留言]。金额必须是正数，单笔上限不得高于月额度；留言不要包含右方括号。前端会把标记转换为聊天卡片，不要解释标记本身。\n' +
+                '若需要调整你发出的最近一张未撤销卡，可附加 [调整亲属卡:新月额度:新单笔上限:简短说明]；若想撤销，可附加 [撤销亲属卡]。只有确实在剧情中作出这些决定时才输出对应标记。\n' +
+                '亲属卡只是 MAOMAO 内的虚拟额度，只能用于应用内模拟商店和外卖结算，不是真实余额，不涉及真实支付、银行卡或外部扣款。不得声称已经执行任何现实付款。\n\n';
             // 构造 OpenAI 兼容格式 messages 数组 (system + 历史记录)
             const apiMessages = [
                 { role: 'system', content: systemPrompt }
@@ -3828,6 +4464,7 @@
             // 打字机气泡引用（首个 delta 到达时复用现有气泡结构创建）
             let streamBubble = null;
             let fullText = '';
+            let groupReplyVisible = false;
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
@@ -3900,12 +4537,20 @@
             try {
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
+                    // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen);
                     // 落盘前剥离主动通话标记：气泡展示与聊天记录均不保留标记，避免污染后续上下文
                     const parsedCall = extractVoiceCallMarker(fullText);
                     fullText = parsedCall.text;
                     // 剥离红包/转账标记 [红包:金额:留言] / [转账:金额:留言]
                     const parsedPay = extractPayMarkers(fullText);
                     fullText = parsedPay.text;
+                    const parsedRoleFamilyCard = extractRoleFamilyCardMarkers(fullText);
+                    fullText = parsedRoleFamilyCard.text;
+                    const roleFamilyCardChanged = applyRoleFamilyCardChanges(parsedRoleFamilyCard.changes);
+                    const parsedTransferDecision = extractTransferDecisionMarkers(fullText);
+                    fullText = parsedTransferDecision.text;
+                    applyTransferDecisionMarkers(historyList, parsedTransferDecision.amounts);
                     // 剥离自动记忆标记 [记住:xxx]，并存进 user_memory
                     const parsedMem = extractMemoryMarkers(fullText);
                     fullText = parsedMem.text;
@@ -3918,10 +4563,12 @@
                     // 删除模型意外输出的推理草稿，再进行普通聊天文本清洗
                     fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
+                    groupReplyVisible = !!fullText;
                     if (fullText) {
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
-                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined };
+                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
                         historyList.push(aiMsg);
+                        window.__groupPrivateCardPending = false;
                         saveMessages(historyList);
                         // 删掉流式期间的临时气泡（它只显示了剥离标签后的原始文本）
                         if (streamBubble) {
@@ -3934,6 +4581,11 @@
                         // 模型只输出了标记：移除空白气泡、不落文本（来电卡/红包卡仍会插入）
                         const onlyRow = streamBubble.closest('.msg-row');
                         if (onlyRow) onlyRow.remove();
+                        // 仅私聊标记也可能构成一条完整回复，需要立即刷新群私聊卡片。
+                        if (window.__groupPrivateCardPending) {
+                            window.__groupPrivateCardPending = false;
+                            renderAllMessages();
+                        }
                     }
                     if (parsedCall.wantCall) {
                         // AI 侧插入黑底「发起语音通话」卡并落库；是否拨号由 chat_auto_call 开关决定
@@ -3943,6 +4595,11 @@
                     if (parsedPay.items.length) {
                         // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
                         insertPayCards(historyList, parsedPay.items);
+                    }
+                    if (parsedRoleFamilyCard.cards.length) {
+                        insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards);
+                    } else if (roleFamilyCardChanged) {
+                        renderAllMessages();
                     }
                     if (parsedHeart.hearts.length) {
                         insertHeartCards(historyList, parsedHeart.hearts);
@@ -3979,6 +4636,34 @@
             aiSending = false;   // R3：所有出口统一解锁
             // 恢复 header 名字（所有出口统一恢复）
             if (chatTitleEl) chatTitleEl.textContent = originalTitleText;
+
+            // 开启自主接话时，每次最多追加设置页指定的 1–2 轮。
+            // 只在本轮 API 成功且有可见正文时继续；错误、重玩、静默任务不会触发新调用。
+            const autoSettings = isGroupChat ? getGroupSettings() : {};
+            const rawAutoRounds = Number(autoSettings.autoTalkRounds);
+            const maxAutoRounds = [0, 1, 2].indexOf(rawAutoRounds) !== -1 ? rawAutoRounds : 1;
+            const hasTwoAvailableMembers = isGroupChat && getAvailableGroupMembers().length > 1;
+            const canContinueGroupTalk = !!(
+                isGroupChat && currentGroup &&
+                autoSettings.autoTalkEnabled &&
+                maxAutoRounds > groupAutoDepth &&
+                hasTwoAvailableMembers &&
+                groupReplyVisible &&
+                streamResult && streamResult.ok &&
+                !window.__groupAutoStopRequested &&
+                !isRegen &&
+                ((!contextOnly && !silent) || isGroupFollowup) &&
+                !isBlocked(aliasRoleId)
+            );
+            window.__groupAutoStopRequested = false;
+            if (canContinueGroupTalk) {
+                await sendMsg({
+                    contextOnly: true,
+                    silent: true,
+                    groupFollowup: true,
+                    groupAutoDepth: groupAutoDepth + 1
+                });
+            }
         }
 
         // 暴露给 chat-extras.js：重玩/重新生成
@@ -4109,6 +4794,9 @@
         // 取消息的可读文本（非文本消息给等价占位文案）
         function plainTextOf(msg) {
             if (!msg) return '';
+            if (msg.type === 'group_private') return '[群成员私聊] ' + String(msg.senderName || msg.name || '群成员') + '：' + String(msg.text || '');
+            if (msg.type === 'group_poll' && msg.poll) return '[群投票] ' + String(msg.poll.question || '') + '：' + (msg.poll.options || []).join(' / ');
+            if (msg.type === 'group_chain' && msg.chain) return '[群接龙] ' + String(msg.chain.title || '') + '：' + (msg.chain.entries || []).map(function (entry) { return String(entry.name || '成员') + '：' + String(entry.text || ''); }).join('；');
             // 心声带标签再复制/转发，避免对方看不出这是"心里话"
             if (msg.type === 'heart') return '[心声] ' + String(msg.text || '');
             var t = String((msg.text || msg.content) || '').trim();
@@ -4669,6 +5357,69 @@
             else if (typeof showToast === 'function') showToast('请从加号菜单打开视频通话');
         });
 
+        // ================= 线上 / 线下 / 旁白模式切换 =================
+        const chatModeTrigger = document.getElementById('chat-status-sub');
+        function openChatModeSheet() {
+            if (isGroupChat || !currentCharacter || !currentCharacter.id) return;
+            if (document.getElementById('chatModeOverlay')) return;
+            const overlay = document.createElement('div');
+            overlay.className = 'chat-mode-overlay';
+            overlay.id = 'chatModeOverlay';
+            overlay.innerHTML =
+                '<section class="chat-mode-sheet" role="dialog" aria-modal="true" aria-labelledby="chatModeHeading">' +
+                  '<div class="chat-mode-kicker">MAOMAO / CONVERSATION MODES</div>' +
+                  '<div class="chat-mode-heading" id="chatModeHeading">选择相处方式</div>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="online"><span class="chat-mode-number">01</span><span class="chat-mode-copy"><strong>线上聊天</strong><small>隔着屏幕，像日常消息一样来回聊</small></span><span class="chat-mode-mark">ONLINE</span></button>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="offline-short"><span class="chat-mode-number">02</span><span class="chat-mode-copy"><strong>短线下 · 赴约</strong><small>共享位置、动态路线、路上消息，到达后进入剧情</small></span><span class="chat-mode-mark">MEET</span></button>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="offline-long"><span class="chat-mode-number">03</span><span class="chat-mode-copy"><strong>长线下 · 小说</strong><small>直接进入沉浸式剧情，可自定义文风、字数与人称</small></span><span class="chat-mode-mark">STORY</span></button>' +
+                  '<button type="button" class="chat-mode-option" data-chat-mode="narration"><span class="chat-mode-number">04</span><span class="chat-mode-copy"><strong>旁白 / 动作描写</strong><small>切换当前角色的叙述方式，随时可以改回线上</small></span><span class="chat-mode-mark">VOICE</span></button>' +
+                  '<button type="button" class="chat-mode-close" data-chat-mode="cancel">取消</button>' +
+                '</section>';
+            document.body.appendChild(overlay);
+            const modeKey = 'chat_mode_' + currentCharacter.id;
+            let currentMode = 'online';
+            try { currentMode = localStorage.getItem(modeKey) || 'online'; } catch (e) {}
+            overlay.querySelectorAll('[data-chat-mode]').forEach(function (button) {
+                if (button.getAttribute('data-chat-mode') === currentMode) button.classList.add('is-current');
+            });
+            const closeOnEscape = function (event) {
+                if (event.key === 'Escape' && document.getElementById('chatModeOverlay')) closeModeSheet();
+            };
+            function closeModeSheet() {
+                overlay.remove();
+                document.removeEventListener('keydown', closeOnEscape);
+            }
+            overlay.addEventListener('click', function (event) {
+                if (event.target === overlay) { closeModeSheet(); return; }
+                const button = event.target.closest ? event.target.closest('[data-chat-mode]') : null;
+                if (!button) return;
+                const selected = button.getAttribute('data-chat-mode');
+                if (selected === 'cancel') { closeModeSheet(); return; }
+                if (selected === 'offline-short' || selected === 'offline-long') {
+                    try { localStorage.setItem(modeKey, selected); } catch (e) {}
+                    const page = selected === 'offline-short' ? '../date/journey.html' : '../date/date.html';
+                    closeModeSheet();
+                    window.location.href = page + '?v=20261028modes1&id=' + encodeURIComponent(currentCharacter.id);
+                    return;
+                }
+                if (selected === 'narration') {
+                    try { localStorage.setItem(modeKey, 'narration'); } catch (e) {}
+                    if (chatModeTrigger) chatModeTrigger.textContent = 'NARRATION · ACTIVE';
+                    closeModeSheet();
+                    if (typeof showToast === 'function') showToast('旁白模式已开启；再次选择线上聊天即可切回');
+                    return;
+                }
+                try { localStorage.setItem(modeKey, 'online'); } catch (e) {}
+                if (chatModeTrigger) chatModeTrigger.textContent = 'ONLINE · ACTIVE';
+                closeModeSheet();
+                if (typeof showToast === 'function') showToast('已切回线上聊天');
+            });
+            document.addEventListener('keydown', closeOnEscape);
+        }
+        if (chatModeTrigger && !isGroupChat) {
+            chatModeTrigger.addEventListener('click', openChatModeSheet);
+        }
+
         // ================= Toast（chat-extras.js 等模块仍在使用，必须保留） =================
         const detailToast = document.getElementById('detailToast');
         let toastTimer = null;
@@ -4743,21 +5494,36 @@
         function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
+            const mid = cardEl.getAttribute('data-mid') || '';
             const indexStr = cardEl.getAttribute('data-index');
-            if (indexStr === '' || indexStr == null) return;
-            const index = parseInt(indexStr, 10);
-            if (isNaN(index) || index < 0) return;
 
-            // 每次点击都从 localStorage 重读最新消息：双击时第二次读到的已是最新状态，天然防重复刷钱
+            // 必须按稳定 mid 查全量历史，不能把过滤了 silent/date 的显示序号当数组下标。
             const list = loadMessages();
+            let index = mid ? list.findIndex(function (item) { return item && ensureMid(item) === mid; }) : -1;
+            if (index < 0 && indexStr !== '' && indexStr != null) {
+                const legacyIndex = parseInt(indexStr, 10);
+                if (!isNaN(legacyIndex) && legacyIndex >= 0) index = legacyIndex;
+            }
+            if (index < 0 || index >= list.length) return;
             const msg = list[index];
             if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
             const isRed = msg.type === 'redpacket';
 
-            // 角色判断（修复资金漏洞）：只有对方(assistant)发来的才能领取；
-            // 自己(user/sent)发出的只提示等待对方，不加余额、不改状态
+            if (msg.type === 'transfer' && msg.status === 'returned') {
+                showToast('这笔转账已退回');
+                return;
+            }
+            if (msg.type === 'transfer' && msg.status === 'accepted') {
+                showToast('对方已收下这笔转账');
+                return;
+            }
+            if (msg.type === 'transfer' && msg.status === 'returning') {
+                showToast('对方正在退回这笔转账');
+                return;
+            }
+            // 只有角色发来的红包/转账可以由用户领取，防止点击自己发出的卡片给自己加钱。
             if (msg.role !== 'assistant') {
-                showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方领取哦');
+                showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方回应哦');
                 return;
             }
 
@@ -4778,29 +5544,444 @@
                 return;
             }
 
-            // 1. 改状态并保存回聊天历史
+            // 1. 先落钱包账本，并以消息 mid 做幂等键，避免状态存储失败后重复加钱。
+            if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
+                showToast('钱包暂不可用，未完成收款');
+                return;
+            }
+            const paymentId = ensureMid(msg);
+            const wd = getWorkData();
+            if (!wd || typeof wd !== 'object') {
+                showToast('钱包数据读取失败，未完成收款');
+                return;
+            }
+            if (!Array.isArray(wd.history)) wd.history = [];
+            if (wd.history.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
+                msg.status = isRed ? 'opened' : 'received';
+                saveMessages(list);
+                renderAllMessages();
+                showToast('这笔款项已经入账');
+                return;
+            }
+            const oldBalance = Number(wd.balance);
+            wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
+            wd.history.unshift({
+                type: 'income',
+                category: msg.type,
+                title: isRed ? '收到红包' : '收到转账',
+                amount: amountNum,
+                time: Date.now(),
+                paymentId: paymentId
+            });
+            if (!saveWorkData(wd)) return;
+
+            // 如果这是角色退回的转账，只有用户实际收款后，原转账才改为「已退回」。
+            if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
+                for (let ri = list.length - 1; ri >= 0; ri--) {
+                    const previous = list[ri];
+                    if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                        previous.type === 'transfer' && previous.status === 'returning' &&
+                        Number(previous.amount) === amountNum) {
+                        previous.status = 'returned';
+                        previous.returnedAt = Date.now();
+                        break;
+                    }
+                }
+            }
             msg.status = isRed ? 'opened' : 'received';
             saveMessages(list);
 
-            // 2. 余额累加：保留两位小数，避免浮点误差
-            const wd = getWorkData();
-            wd.balance = Math.round((wd.balance + amountNum) * 100) / 100;
-            // 交易明细：收入记录（状态校验已保证一条卡只能走到这里一次，不会重复写入）
-            wd.history.unshift({
-                type: 'income',
-                category: msg.type,                 // 'redpacket' | 'transfer'
-                title: isRed ? '收到红包' : '收到转账',
-                amount: parseFloat(msg.amount),
-                time: Date.now()
-            });
-            if (!saveWorkData(wd)) return;
+            // 记账本只在真正收款时记收入，避免 AI 生成卡片但用户尚未领取就提前入账。
+            try {
+                let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
+                if (!Array.isArray(fin)) fin = [];
+                if (!fin.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
+                    fin.push({
+                        paymentId: paymentId,
+                        amount: amountNum,
+                        type: '收入',
+                        category: isRed ? '红包' : '转账',
+                        note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
+                        time: Date.now()
+                    });
+                    localStorage.setItem('finance_records', JSON.stringify(fin));
+                }
+            } catch (e) {}
+            renderAllMessages();
 
             // 3. 结果弹窗：红包「已存入余额」，转账「收款成功」
             openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
         }
 
+
+        // ===== 群投票 / 群接龙 / 角色群管理标记 =====
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration) {
+            var text = String(rawText || '');
+            if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
+            var changedHistory = false;
+            text = text.replace(/\[群关系互动[:：]([^:：\]]{1,100})(?:[:：]([^\]]{1,160}))?\]/g, function (marker, targetKey, memorySummary) {
+                if (isRegeneration || !speaker || speaker.id == null) return '';
+                var targetId = String(targetKey || '').trim();
+                var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                if (!target || String(target.id) === String(speaker.id)) return '';
+                var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
+                var relation = getOrCreateGroupRelationship(speaker, target);
+                if (relation) {
+                    relation.familiarity = Math.min(100, Math.max(0, parseInt(relation.familiarity, 10) || 0) + 1);
+                    relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0) + 1;
+                    relation.lastInteractionAt = Date.now();
+                    var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+                    if (summary) {
+                        if (!Array.isArray(relation.memories)) relation.memories = [];
+                        relation.memories.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
+                        relation.memories = relation.memories.filter(function (item) { return item && String(item.summary || '').trim(); }).slice(-6);
+                    }
+                    saveCurrentGroupObject();
+                }
+                return '';
+            });
+            text = text.replace(/\[群投票:([^\]:]+):(\d{1,2})\]/g, function (marker, pollMid, optionNumber) {
+                var pollMessage = historyList.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(pollMid); });
+                var poll = pollMessage && pollMessage.poll;
+                var optionIndex = parseInt(optionNumber, 10) - 1;
+                if (poll && !poll.closed && Array.isArray(poll.options) && optionIndex >= 0 && optionIndex < poll.options.length && speaker && speaker.id != null) {
+                    if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
+                    poll.votes[String(speaker.id)] = optionIndex;
+                    changedHistory = true;
+                }
+                return '';
+            });
+            text = text.replace(/\[群接龙:([^\]:]+):([^\]]{1,120})\]/g, function (marker, chainMid, entryText) {
+                var chainMessage = historyList.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(chainMid); });
+                var chain = chainMessage && chainMessage.chain;
+                if (chain && !chain.closed && speaker && speaker.id != null && String(entryText || '').trim()) {
+                    if (!Array.isArray(chain.entries)) chain.entries = [];
+                    var duplicate = chain.entries.some(function (entry) { return String(entry.memberId || '') === String(speaker.id); });
+                    if (!duplicate) {
+                        chain.entries.push({ memberId: String(speaker.id), name: groupMemberDisplayName(speaker), text: String(entryText).trim().slice(0, 120), time: Date.now() });
+                        changedHistory = true;
+                    }
+                }
+                return '';
+            });
+            var settings = getGroupSettings();
+            text = text.replace(/\[群私聊[:：]([^:：\]]+)[:：]([^\]]{1,300})\]/g, function (marker, targetKey, privateText) {
+                if (settings.allowPrivateMessages === false) return '';
+                var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+                var target = members.find(function (member) {
+                    return member && (String(member.id) === String(targetKey).trim() ||
+                        String(member.name || '').trim() === String(targetKey).trim() ||
+                        groupMemberDisplayName(member) === String(targetKey).trim());
+                });
+                if (!target || !target.id || !String(privateText || '').trim()) return '';
+                if (!speaker || String(speaker.id) !== String(target.id)) return '';
+                var targetId = String(target.id);
+                var displayName = groupMemberDisplayName(target);
+                var privateMessageText = String(privateText).trim().slice(0, 300);
+                var privateMsg = { role: 'assistant', name: displayName, text: privateMessageText, time: Date.now(), fromGroupId: String(currentGroup.id), privateFromGroup: true };
+                try {
+                    var privateHistory = [];
+                    if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
+                        var storedHistory = window.PhoneStorage.getChatHistory(targetId);
+                        if (Array.isArray(storedHistory)) privateHistory = storedHistory.slice();
+                    }
+                    if (!privateHistory.length) {
+                        var rawPrivateHistory = localStorage.getItem('chat_history_' + targetId);
+                        var parsedPrivateHistory = rawPrivateHistory ? JSON.parse(rawPrivateHistory) : [];
+                        if (Array.isArray(parsedPrivateHistory)) privateHistory = parsedPrivateHistory;
+                    }
+                    privateHistory.push(privateMsg);
+                    if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
+                        window.PhoneStorage.saveChatHistory(targetId, privateHistory);
+                    } else {
+                        localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory));
+                    }
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('私聊记录未能保存，请检查本地存储空间');
+                }
+                var groupPrivateMessage = {
+                    role: 'assistant', type: 'group_private', text: privateMessageText,
+                    senderId: targetId, privateRoleId: targetId, senderName: displayName,
+                    name: displayName, fromGroupId: String(currentGroup.id), time: Date.now()
+                };
+                ensureMid(groupPrivateMessage);
+                historyList.push(groupPrivateMessage);
+                saveMessages(historyList);
+                window.__groupPrivateCardPending = true;
+                showGroupPrivatePopup(displayName, targetId, privateMessageText);
+                return '';
+            });
+            text = text.replace(/\[群动作[:：](改名|邀请|移除)[:：]([^\]]{1,40})\]/g, function (marker, action, targetName) {
+                var isOwner = currentGroup && String(currentGroup.ownerId || '__user') === String(speaker && speaker.id || '');
+                if (!settings.allowRoleActions || !speaker || (!speaker.isAdmin && !isOwner)) return '';
+                targetName = String(targetName || '').trim();
+                if (!targetName) return '';
+                var actionMessage = '';
+                if (action === '改名') {
+                    currentGroup.name = targetName.slice(0, 20);
+                    currentCharacter.name = currentGroup.name;
+                    var title = document.getElementById('chat-title');
+                    if (title) title.textContent = currentGroup.name;
+                    actionMessage = '群管理员将群名修改为「' + currentGroup.name + '」';
+                } else if (action === '邀请') {
+                    var roles = [];
+                    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch (e) {}
+                    var targetRole = Array.isArray(roles) ? roles.find(function (role) { return role && (String(role.id) === targetName || String(role.name || '').trim() === targetName); }) : null;
+                    if (targetRole && !(currentGroup.members || []).some(function (member) { return String(member.id) === String(targetRole.id); })) {
+                        if (!Array.isArray(currentGroup.members)) currentGroup.members = [];
+                        currentGroup.members.push({ id: String(targetRole.id), name: targetRole.name || '角色', avatar: targetRole.avatar || '', nickname: '', title: '', isAdmin: false, muted: false, activeFrom: '08:00', activeTo: '23:00' });
+                        actionMessage = '群管理员邀请「' + (targetRole.name || '角色') + '」加入群聊';
+                    }
+                } else if (action === '移除') {
+                    var existing = (currentGroup.members || []).find(function (member) { return String(member.id) === targetName || String(member.name || '').trim() === targetName || groupMemberDisplayName(member) === targetName; });
+                    if (existing && (currentGroup.members || []).length > 1) {
+                        currentGroup.members = currentGroup.members.filter(function (member) { return String(member.id) !== String(existing.id); });
+                        if (String(currentGroup.ownerId || '') === String(existing.id)) currentGroup.ownerId = '__user';
+                        actionMessage = '群管理员将「' + groupMemberDisplayName(existing) + '」移出群聊';
+                    }
+                }
+                if (actionMessage) {
+                    saveCurrentGroupObject();
+                    if (typeof showToast === 'function') showToast(actionMessage);
+                }
+                return '';
+            });
+            text = text.replace(/\[群聊结束\]/g, function () {
+                window.__groupAutoStopRequested = true;
+                return '';
+            });
+            text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+            if (changedHistory) saveMessages(historyList);
+            return text;
+        }
+
+        function showGroupPrivatePopup(name, roleId, messageText) {
+            var overlay = document.getElementById('groupPrivateOverlay');
+            var desc = document.getElementById('groupPrivateDesc');
+            var body = document.getElementById('groupPrivateBody');
+            var go = document.getElementById('groupPrivateGo');
+            if (!overlay || !desc || !body || !go) return;
+            desc.textContent = name + ' 在群聊中给你发了一条私聊消息。';
+            body.textContent = messageText || '';
+            go.dataset.roleId = String(roleId || '');
+            overlay.classList.add('active');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+        (function bindGroupPrivatePopup() {
+            var overlay = document.getElementById('groupPrivateOverlay');
+            var later = document.getElementById('groupPrivateLater');
+            var go = document.getElementById('groupPrivateGo');
+            function close() {
+                if (!overlay) return;
+                overlay.classList.remove('active');
+                overlay.setAttribute('aria-hidden', 'true');
+            }
+            if (later) later.addEventListener('click', close);
+            if (overlay) overlay.addEventListener('click', function (event) { if (event.target === overlay) close(); });
+            if (go) go.addEventListener('click', function () {
+                var roleId = go.dataset.roleId;
+                if (!roleId) { close(); return; }
+                location.href = 'chat-detail.html?id=' + encodeURIComponent(roleId);
+            });
+            document.addEventListener('keydown', function (event) { if (event.key === 'Escape') close(); });
+        })();
+
+        (function bindGroupInteractionActions() {
+            var pollAction = document.querySelector('.plus-item[data-feat="group-poll"]');
+            var chainAction = document.querySelector('.plus-item[data-feat="group-chain"]');
+            var callAction = document.querySelector('.plus-item[data-feat="group-call"]');
+            var composerOverlay = document.getElementById('groupComposerOverlay');
+            var composerForm = document.getElementById('groupComposerForm');
+            var composerTitle = document.getElementById('groupComposerTitle');
+            var composerDesc = document.getElementById('groupComposerDesc');
+            var composerQuestion = document.getElementById('groupComposerQuestion');
+            var composerQuestionLabel = document.getElementById('groupComposerQuestionLabel');
+            var composerQuestionWrap = document.getElementById('groupComposerQuestionWrap');
+            var composerOptionsWrap = document.getElementById('groupComposerOptionsWrap');
+            var composerOptions = document.getElementById('groupComposerOptions');
+            var composerEntryWrap = document.getElementById('groupComposerEntryWrap');
+            var composerEntryLabel = document.getElementById('groupComposerEntryLabel');
+            var composerEntry = document.getElementById('groupComposerEntry');
+            var composerSubmit = document.getElementById('groupComposerSubmit');
+            var composerMode = '';
+            var composerTargetMid = '';
+            if (!isGroupChat) {
+                if (pollAction) pollAction.style.display = 'none';
+                if (chainAction) chainAction.style.display = 'none';
+                if (callAction) callAction.style.display = 'none';
+                return;
+            }
+            if (callAction) callAction.addEventListener('click', function (event) {
+                event.preventDefault(); event.stopImmediatePropagation();
+                var overlay = document.querySelector('.plus-panel-overlay');
+                if (overlay) overlay.classList.remove('active');
+                location.href = '../call/call.html?id=' + encodeURIComponent(currentRoleId) + '&group=1&type=voice';
+            }, true);
+            function closePlusPanel() {
+                var overlay = document.querySelector('.plus-panel-overlay');
+                if (overlay) overlay.classList.remove('active');
+            }
+            function closeComposer() {
+                if (!composerOverlay) return;
+                composerOverlay.classList.remove('active');
+                composerOverlay.setAttribute('aria-hidden', 'true');
+                composerMode = '';
+                composerTargetMid = '';
+            }
+            function maybeStartGroupActivity() {
+                const settings = getGroupSettings();
+                const rounds = Number(settings.autoTalkRounds);
+                if (!settings.autoTalkEnabled || !rounds || getAvailableGroupMembers().length < 2) return;
+                if (aiSending) {
+                    showToast('等当前回复结束后，再发起新的群互动');
+                    return;
+                }
+                // 刚创建的投票/接龙也能触发成员响应，不必再额外发送一条文字消息。
+                setTimeout(function () {
+                    sendMsg({ contextOnly: true, silent: true, groupFollowup: true, groupAutoDepth: 1 });
+                }, 180);
+            }
+            function openComposer(mode, targetMid) {
+                if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }
+                if (aiSending) { showToast('等当前角色回复结束后再发起互动'); return; }
+                composerMode = mode;
+                composerTargetMid = targetMid || '';
+                composerForm.reset();
+                composerQuestionWrap.style.display = '';
+                composerOptionsWrap.style.display = mode === 'poll' ? '' : 'none';
+                composerEntryWrap.style.display = mode === 'join' || mode === 'chain' ? '' : 'none';
+                if (mode === 'poll') {
+                    composerTitle.textContent = '发起群投票';
+                    composerDesc.textContent = '把问题抛给大家，每位成员都可以表达自己的选择。';
+                    composerQuestionLabel.textContent = '投票问题';
+                    composerQuestion.placeholder = '例如：周末去哪儿？';
+                    composerEntryWrap.style.display = 'none';
+                    composerSubmit.textContent = '发起投票';
+                } else if (mode === 'chain') {
+                    composerTitle.textContent = '发起群接龙';
+                    composerDesc.textContent = '先定一个主题，大家接着往下写。';
+                    composerQuestionLabel.textContent = '接龙主题';
+                    composerQuestion.placeholder = '例如：今天最想做的一件事';
+                    composerEntryLabel.textContent = '我的第一条（可留空）';
+                    composerEntry.placeholder = '可先留空，让群成员接第一棒';
+                    composerSubmit.textContent = '发起接龙';
+                } else {
+                    composerTitle.textContent = '参与接龙';
+                    composerDesc.textContent = '写下你的内容，提交后会追加到接龙列表。';
+                    composerQuestionWrap.style.display = 'none';
+                    composerEntryLabel.textContent = '我的接龙内容';
+                    composerEntry.placeholder = '写下这一条内容';
+                    composerSubmit.textContent = '提交内容';
+                }
+                composerOverlay.classList.add('active');
+                composerOverlay.setAttribute('aria-hidden', 'false');
+                setTimeout(function () {
+                    var focusTarget = mode === 'join' ? composerEntry : composerQuestion;
+                    if (focusTarget) focusTarget.focus();
+                }, 80);
+            }
+            if (pollAction) pollAction.addEventListener('click', function (event) {
+                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel(); openComposer('poll');
+            }, true);
+            if (chainAction) chainAction.addEventListener('click', function (event) {
+                event.preventDefault(); event.stopImmediatePropagation(); closePlusPanel(); openComposer('chain');
+            }, true);
+            if (composerOverlay) composerOverlay.addEventListener('click', function (event) {
+                if (event.target === composerOverlay) closeComposer();
+            });
+            var composerCancel = document.getElementById('groupComposerCancel');
+            if (composerCancel) composerCancel.addEventListener('click', closeComposer);
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && composerOverlay && composerOverlay.classList.contains('active')) closeComposer();
+            });
+            if (composerForm) composerForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+                if (composerMode === 'poll') {
+                    var question = composerQuestion.value.trim();
+                    var options = composerOptions.value.split(/[\n|]/).map(function (item) { return item.trim().slice(0, 40); }).filter(Boolean).slice(0, 6);
+                    if (!question) { composerQuestion.focus(); showToast('先写下投票问题'); return; }
+                    if (options.length < 2) { composerOptions.focus(); showToast('至少填写两个不同的选项'); return; }
+                    options = options.filter(function (item, index) { return options.indexOf(item) === index; });
+                    if (options.length < 2) { showToast('投票选项不能完全相同'); return; }
+                    var history = loadMessages();
+                    var message = { role: 'user', type: 'group_poll', text: '', poll: { question: question.slice(0, 100), options: options, votes: {}, closed: false }, time: Date.now() };
+                    ensureMid(message); history.push(message); saveMessages(history); closeComposer(); renderAllMessages(); showToast('群投票已发起');
+                    maybeStartGroupActivity();
+                } else if (composerMode === 'chain') {
+                    var title = composerQuestion.value.trim();
+                    if (!title) { composerQuestion.focus(); showToast('先写下接龙主题'); return; }
+                    var first = composerEntry.value.trim();
+                    var entries = first ? [{ memberId: '__user', name: '我', text: first.slice(0, 120), time: Date.now() }] : [];
+                    var chainHistory = loadMessages();
+                    var chainMessage = { role: 'user', type: 'group_chain', text: '', chain: { title: title.slice(0, 80), entries: entries, closed: false }, time: Date.now() };
+                    ensureMid(chainMessage); chainHistory.push(chainMessage); saveMessages(chainHistory); closeComposer(); renderAllMessages(); showToast('群接龙已发起');
+                    maybeStartGroupActivity();
+                } else if (composerMode === 'join') {
+                    var entryText = composerEntry.value.trim();
+                    if (!entryText) { composerEntry.focus(); showToast('写点内容再提交'); return; }
+                    var joinHistory = loadMessages();
+                    var targetMessage = joinHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(composerTargetMid); });
+                    var targetChain = targetMessage && targetMessage.chain;
+                    if (!targetChain || targetChain.closed) { closeComposer(); showToast('这条接龙已结束'); renderAllMessages(); return; }
+                    if (!Array.isArray(targetChain.entries)) targetChain.entries = [];
+                    if (targetChain.entries.some(function (entry) { return String(entry.memberId || '') === '__user'; })) { showToast('你已经参与过这条接龙'); return; }
+                    targetChain.entries.push({ memberId: '__user', name: '我', text: entryText.slice(0, 120), time: Date.now() });
+                    saveMessages(joinHistory); closeComposer(); renderAllMessages(); showToast('已加入接龙');
+                }
+            });
+            var messageContainer = document.getElementById('chat-messages');
+            if (!messageContainer) return;
+            messageContainer.addEventListener('click', function (event) {
+                var privateOpenButton = event.target.closest('[data-private-open]');
+                if (privateOpenButton) {
+                    var privateRoleId = privateOpenButton.getAttribute('data-private-open');
+                    if (privateRoleId) location.href = 'chat-detail.html?id=' + encodeURIComponent(privateRoleId);
+                    return;
+                }
+                var voteButton = event.target.closest('[data-poll-mid][data-poll-option]');
+                if (voteButton) {
+                    var history = loadMessages();
+                    var pollMessage = history.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(voteButton.getAttribute('data-poll-mid')); });
+                    var poll = pollMessage && pollMessage.poll;
+                    var optionIndex = parseInt(voteButton.getAttribute('data-poll-option'), 10);
+                    if (!poll || poll.closed || !Array.isArray(poll.options) || optionIndex < 0 || optionIndex >= poll.options.length) return;
+                    if (!poll.votes || typeof poll.votes !== 'object') poll.votes = {};
+                    poll.votes.__user = optionIndex;
+                    saveMessages(history); renderAllMessages(); return;
+                }
+                var closePollButton = event.target.closest('[data-poll-close]');
+                if (closePollButton) {
+                    var pollHistory = loadMessages();
+                    var pollToClose = pollHistory.find(function (item) { return item && item.type === 'group_poll' && String(ensureMid(item)) === String(closePollButton.getAttribute('data-poll-close')); });
+                    if (pollToClose && pollToClose.poll && !pollToClose.poll.closed) {
+                        pollToClose.poll.closed = true; saveMessages(pollHistory); renderAllMessages(); showToast('投票已结束');
+                    }
+                    return;
+                }
+                var joinButton = event.target.closest('[data-chain-join]');
+                if (joinButton) {
+                    var chainHistory = loadMessages();
+                    var chainMessage = chainHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(joinButton.getAttribute('data-chain-join')); });
+                    var chain = chainMessage && chainMessage.chain;
+                    if (!chain || chain.closed) return;
+                    openComposer('join', String(ensureMid(chainMessage)));
+                    return;
+                }
+                var closeChainButton = event.target.closest('[data-chain-close]');
+                if (closeChainButton) {
+                    var closeHistory = loadMessages();
+                    var chainToClose = closeHistory.find(function (item) { return item && item.type === 'group_chain' && String(ensureMid(item)) === String(closeChainButton.getAttribute('data-chain-close')); });
+                    if (chainToClose && chainToClose.chain && !chainToClose.chain.closed) {
+                        chainToClose.chain.closed = true; saveMessages(closeHistory); renderAllMessages(); showToast('接龙已结束');
+                    }
+                }
+            });
+        })();
+
     </script>
-    <script src="js/chat-extras.js?t=20261024v2"></script>
+    <script src="js/chat-extras.js?t=20261028modes1"></script>
     <script>
     function openNarrationModal() {
         var m = document.createElement('div');
