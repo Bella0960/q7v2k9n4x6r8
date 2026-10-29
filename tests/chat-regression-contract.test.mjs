@@ -315,6 +315,19 @@ test('streaming stays behind PhoneStream and keeps partial-reply handling', () =
   assert.match(stream, /TOTAL_MS/);
 });
 
+test('unexpected stream rejection is converted to the normal error path and keeps last painted text', () => {
+  assert.match(detail, /let lastPaintedStreamText = ''/);
+  assert.match(detail, /lastPaintedStreamText = typeof text === 'string' \? text : ''/);
+  assert.match(detail, /let streamResult;\s*try\s*\{\s*streamResult = await PhoneStream\.chat\(/);
+  assert.match(detail, /catch \(streamErr\)/);
+  assert.match(detail, /fullText: lastPaintedStreamText/);
+  assert.match(detail, /kind: 'network'/);
+  const fallbackIndex = detail.indexOf('fullText: lastPaintedStreamText');
+  const unlockIndex = detail.indexOf('aiSending = false;   // R3：所有出口统一解锁', fallbackIndex);
+  assert.ok(fallbackIndex >= 0 && unlockIndex > fallbackIndex, 'recovered request path should continue to the existing send-lock release');
+});
+
+
 test('context size controls and local historical recall remain bounded', () => {
   assert.match(detail, /persona: 5000/);
   assert.match(detail, /memory: 3000/);
