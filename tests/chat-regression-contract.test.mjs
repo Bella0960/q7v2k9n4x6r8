@@ -97,10 +97,10 @@ test('memory marker parsing and weighted memory semantics remain present', () =>
   assert.match(detail, /MemoryRecall\.upsertMemory\(/);
   assert.match(detail, /function trimMemoriesByWeight\(arr, max\)/);
   assert.match(detail, /m\.status === 'fixed'/);
-  assert.match(detail, /status === 'pending'/);
+  assert.match(detail, /m\.status === 'confirmed'/);
   assert.match(memoryRecall, /reinforcementCount/);
   assert.match(memoryRecall, /lastReinforcedAt/);
-  assert.match(memoryRecall, /NS\.saveMemories = function/);
+  assert.match(memoryRecall, /saveMemories:saveMemories/);
 });
 
 test('chat extras keeps its current bridge dependency until a replacement is migrated', () => {
