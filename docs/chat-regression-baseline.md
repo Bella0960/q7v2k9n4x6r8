@@ -98,7 +98,8 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 - [x] `sendMsg` 的参数归一化已抽离到 `ChatSendPolicy.normalizeOptions`。
 - [x] 空消息、拉黑、发送中、群成员不可发言的前置判断已抽离到 `ChatSendPolicy.evaluatePreflight`；惰性回调保持原判断顺序，toast 与副作用仍由页面处理。
 - [x] `PhoneStream.chat` 意外抛错/拒绝或返回无效结果时，`sendMsg` 走统一错误收尾兜底，并尝试保留最后一次回调的原始累计文本。
+- [x] `ChatContextPolicy.mapHistoryToApiMessages` 抽离历史消息映射，覆盖贴纸语义、错误消息排除、推理标签/旁白剥离和末尾 assistant 补位；不修改源历史对象，页面保留旧映射兜底。
 - [x] 新旧函数保留兼容包装；未同时改 UI、存储 key、API 参数或记忆算法。
 - [ ] 每批变更都能独立回滚，并按同一基线复测。
 
-**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40874072467) 中实际执行 `npm run test:chat:contract`，20/20 项通过（Node.js 22）；PWA 缓存版本已升至 `phone-app-pwa-v118`。测试现已覆盖回复清洗保护、发送选项归一化、发送前置判断顺序，以及流式请求意外抛错时的文本兜底契约。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
+**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40875761658) 中实际执行 `npm run test:chat:contract`，21/21 项通过（Node.js 22）；PWA 缓存版本已升至 `phone-app-pwa-v119`。测试现已覆盖回复清洗保护、发送选项归一化、发送前置判断顺序、流式异常兜底，以及历史消息到 API 对话消息的映射。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
