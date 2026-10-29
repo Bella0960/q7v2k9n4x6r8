@@ -76,11 +76,32 @@ test('reasoning cleanup preserves visible prose and removes internal-only blocks
   }
 });
 
+test('memory marker extraction cleans visible text without performing storage writes', () => {
+  assert.equal(typeof policy.extractMemoryMarkers, 'function');
+  const cases = [
+    { input: '你好[记住:喜欢海边]世界', text: '你好世界', memories: ['喜欢海边'] },
+    {
+      input: 'A [记住: 重要约定 ]\n\n\nB [记住:继续使用旧版模式]\n',
+      text: 'A\n\nB',
+      memories: ['重要约定', '继续使用旧版模式']
+    },
+    { input: 'A[记住:   ]B', text: 'AB', memories: [] },
+    { input: null, text: '', memories: [] }
+  ];
+  for (const item of cases) {
+    const result = policy.extractMemoryMarkers(item.input);
+    assert.equal(result.text, item.text, String(item.input));
+    assert.deepEqual(Array.from(result.memories), item.memories, String(item.input));
+  }
+  assert.match(detail, /ChatMessagePolicy\.extractMemoryMarkers/);
+  assert.match(detail, /function saveUserMemories\(memories\)/);
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
-  assert.match(detail, /chat-message-policy\.js\?v=20261029v2/);
-  assert.match(search, /chat-message-policy\.js\?v=20261029v2/);
-  assert.match(serviceWorker, /phone-app-pwa-v112/);
-  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v2/);
+  assert.match(detail, /chat-message-policy\.js\?v=20261029v3/);
+  assert.match(search, /chat-message-policy\.js\?v=20261029v3/);
+  assert.match(serviceWorker, /phone-app-pwa-v113/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v3/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
