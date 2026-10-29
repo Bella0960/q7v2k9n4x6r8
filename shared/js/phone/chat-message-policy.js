@@ -5,6 +5,18 @@
 (function (global) {
   'use strict';
 
+  // Remove model-only reasoning blocks while preserving visible prose.
+  // Keep the original regular-expression order: changing it can alter legacy output.
+  function stripInternalReasoning(raw) {
+    return String(raw || '')
+      .replace(/<think\\b[^>]*>[\\s\\S]*?(?:<\\/think\\s*>|$)/gi, '')
+      .replace(/<\\/?think\\b[^>]*>/gi, '')
+      .replace(/<reasoning\\b[^>]*>[\\s\\S]*?(?:<\\/reasoning\\s*>|$)/gi, '')
+      .replace(/<\\/?reasoning\\b[^>]*>/gi, '')
+      .replace(/<analysis\\b[^>]*>[\\s\\S]*?(?:<\\/analysis\\s*>|$)/gi, '')
+      .replace(/<\\/?analysis\\b[^>]*>/gi, '');
+  }
+
   function isHiddenFromOnlineTimeline(message) {
     return !!(message && (message.mode === 'date' || message.silent));
   }
@@ -37,6 +49,7 @@
   }
 
   global.ChatMessagePolicy = {
+    stripInternalReasoning: stripInternalReasoning,
     isHiddenFromOnlineTimeline: isHiddenFromOnlineTimeline,
     isOnlineSearchIndexVisible: isOnlineSearchIndexVisible,
     isErrorMessage: isErrorMessage,
