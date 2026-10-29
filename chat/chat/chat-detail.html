@@ -15,6 +15,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v1"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -4474,36 +4475,41 @@
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
-            recentHistory.forEach(m => {
-                if (m.isError || m.role === 'system_error') return;
-                if (m.type === 'sticker') {
-                    var stickerMeaning = String(m.desc || '').trim();
-                    var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
-                    apiMessages.push({
-                        role: stickerRole,
-                        content: stickerMeaning
-                            ? '[用户发送了一张表情包，表达的意思是：' + stickerMeaning + '。请理解其含义并自然回应，不要复述这段说明。]'
-                            : '[用户发送了一张表情包，请结合语境自然回应。]'
-                    });
-                    return;
+            if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
+                apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning));
+            } else {
+                // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
+                recentHistory.forEach(m => {
+                    if (m.isError || m.role === 'system_error') return;
+                    if (m.type === 'sticker') {
+                        var stickerMeaning = String(m.desc || '').trim();
+                        var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
+                        apiMessages.push({
+                            role: stickerRole,
+                            content: stickerMeaning
+                                ? '[用户发送了一张表情包，表达的意思是：' + stickerMeaning + '。请理解其含义并自然回应，不要复述这段说明。]'
+                                : '[用户发送了一张表情包，请结合语境自然回应。]'
+                        });
+                        return;
+                    }
+                    var content = stripInternalReasoning(m.text || m.content || '').trim();
+                    if (!content) return; // 纯展示卡片消息（位置/通话等）无文本时不发给 AI
+                    // 剥离 <narratage>...</narratage>（旁白是 UI 层，不占上下文序号）
+                    content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
+                    content = content.replace(/\n{3,}/g, '\n\n').trim();
+                    if (!content) return;
+                    if (m.role === 'sent' || m.role === 'user') {
+                        apiMessages.push({ role: 'user', content: content });
+                    } else if (m.role === 'received' || m.role === 'assistant') {
+                        apiMessages.push({ role: 'assistant', content: content });
+                    }
+                });
+    
+                // 防呆：最后一条如果是 assistant（比如重试场景），强制补一条 user 消息
+                const lastCheck = apiMessages[apiMessages.length - 1];
+                if (lastCheck && lastCheck.role === 'assistant') {
+                    apiMessages.push({ role: 'user', content: '(继续)' });
                 }
-                var content = stripInternalReasoning(m.text || m.content || '').trim();
-                if (!content) return; // 纯展示卡片消息（位置/通话等）无文本时不发给 AI
-                // 剥离 <narratage>...</narratage>（旁白是 UI 层，不占上下文序号）
-                content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
-                content = content.replace(/\n{3,}/g, '\n\n').trim();
-                if (!content) return;
-                if (m.role === 'sent' || m.role === 'user') {
-                    apiMessages.push({ role: 'user', content: content });
-                } else if (m.role === 'received' || m.role === 'assistant') {
-                    apiMessages.push({ role: 'assistant', content: content });
-                }
-            });
-
-            // 防呆：最后一条如果是 assistant（比如重试场景），强制补一条 user 消息
-            const lastCheck = apiMessages[apiMessages.length - 1];
-            if (lastCheck && lastCheck.role === 'assistant') {
-                apiMessages.push({ role: 'user', content: '(继续)' });
             }
 
             // 界面反馈：显示"对方正在输入..."状态（底部 loading + 顶部 header 切换）
