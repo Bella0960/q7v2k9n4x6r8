@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v3"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v4"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -4115,9 +4115,16 @@
                 if (Array.isArray(um) && um.length) {
                     // User facts saved by older builds may be global; new extracted memories are stored
                     // in chat_memories_<roleId>. Keep scoped legacy entries with their own character.
-                    const roleScoped = um.filter(function(m) {
-                        return !m.sourceRoleId || String(m.sourceRoleId) === String(aliasRoleId || currentRoleId || '');
-                    });
+                    const activeMemoryRoleId = String(aliasRoleId || currentRoleId || '');
+                    const roleScoped = (
+                        window.ChatContextPolicy &&
+                        typeof window.ChatContextPolicy.filterUserMemoriesForRole === 'function'
+                    )
+                        ? window.ChatContextPolicy.filterUserMemoriesForRole(um, activeMemoryRoleId)
+                        : um.filter(function(m) {
+                            // Compatibility fallback: legacy entries without a role ID remain globally visible.
+                            return !m.sourceRoleId || String(m.sourceRoleId) === activeMemoryRoleId;
+                        });
                     userMemoryText = roleScoped.slice(-30).map(function(m){ return '· ' + (m.text || m.content || ''); }).join('\n');
                 }
             } catch(e) {}
