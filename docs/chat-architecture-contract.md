@@ -3,7 +3,7 @@
 **状态：** 契约草案，供渐进式重构使用  
 **建立日期：** 2026-10-29  
 **范围：** 聊天详情、聊天列表、消息搜索、聊天扩展、记忆、线上/线下模式及相关跨页面读写入口  
-**最新进度：** `chat-context-policy.js` 现负责历史消息映射、角色历史条数上限、最近历史切片，以及本地历史召回的查询词选择/固定预算参数；旧逻辑兜底仍保留。此处只是配置本地 `MemoryRecall`，没有增加 API 请求。未修改 UI 样式、API 参数、记忆算法、消息格式、存储 key 或用户数据。
+**最新进度：** `chat-context-policy.js` 现负责历史消息映射、角色历史条数上限、最近历史切片、本地历史召回参数，以及用户动态记忆注入前的角色范围筛选；旧逻辑兜底仍保留。明确带 `sourceRoleId` 的条目仅注入对应角色，旧版未带角色 ID 的条目仍按既有兼容规则视作全局。未改记忆搜索/权重算法或存储数据。
 
 > 本文区分“当前兼容契约”和“未来目标边界”。当前兼容契约必须先遵守；目标边界只指导后续小步迁移，不代表代码已经实现。
 
@@ -26,7 +26,7 @@
 - **共享消息策略（渐进迁移中）**：`shared/js/phone/chat-message-policy.js` 提供纯函数，用于线上时间线隐藏规则、搜索索引过滤、错误消息识别、消息文本字段读取、用户消息识别、推理标签清理、`[记住:…]` 标记提取和回复旁白/气泡分段；另提供 `cleanupReplyPreservingBlocks`，在现有页面传入的 `applyAICleanup` 回调前后保护 `<think>` 与 `<narratage>` 块。模块自身不直接操作 DOM 或存储，用户自定义清洗规则仍由原页面函数执行。
 - **发送选项归一化（第一步已拆）**：`shared/js/phone/chat-send-policy.js` 将 `sendMsg(opts)` 起始处的选项读取、布尔化、文本 trim 和自动接话深度下限处理集中为纯函数 `ChatSendPolicy.normalizeOptions`。它不检查角色拉黑状态、不获取 API 配置，也不处理请求或存储；发送控制流程仍由原页面协调。
 - **发送前置判断（第二步已拆）**：同一模块的 `ChatSendPolicy.evaluatePreflight` 按既有顺序判断空消息、拉黑、发送中状态和群成员可发言性。通过惰性回调读取页面状态，较早的条件命中时不会提前查询后续状态；toast 文案和副作用仍由 `sendMsg` 处理，旧逻辑兜底仍保留。
-- **历史上下文与条数策略（第三步已拆）**：`shared/js/phone/chat-context-policy.js` 的 `ChatContextPolicy.mapHistoryToApiMessages` 将截取后的历史消息转换为 OpenAI 格式的 `user` / `assistant` 消息，保留错误消息排除、贴纸语义提示、推理标签清理、旁白剥离、连续换行收敛、未知角色忽略和末尾 assistant 补 `(继续)` 的既有规则。`resolveMemoryLimit` 保留角色配置（10/20/30/50）优先、API 配置其次、默认 20 的现有优先级；`selectRecentHistory` 只执行旧有 `slice(-memoryLimit)` 截取。上述函数不修改原始历史对象，不负责 systemPrompt、记忆检索或网络请求。页面保留原映射与截取兜底。 `buildHistoricalRecallRequest` 保留当前用户文本优先、空文本时倒序寻找最近用户/ sent 消息的查询策略，并固定使用 `excludeRecent`、`maxItems: 2`、`maxChars: 540`、`maxScan: 2500`；函数只组装本地召回参数，不执行检索或请求。
+- **历史上下文与条数策略（第三步已拆）**：`shared/js/phone/chat-context-policy.js` 的 `ChatContextPolicy.mapHistoryToApiMessages` 将截取后的历史消息转换为 OpenAI 格式的 `user` / `assistant` 消息，保留错误消息排除、贴纸语义提示、推理标签清理、旁白剥离、连续换行收敛、未知角色忽略和末尾 assistant 补 `(继续)` 的既有规则。`resolveMemoryLimit` 保留角色配置（10/20/30/50）优先、API 配置其次、默认 20 的现有优先级；`selectRecentHistory` 只执行旧有 `slice(-memoryLimit)` 截取。上述函数不修改原始历史对象，不负责 systemPrompt、记忆检索或网络请求。页面保留原映射与截取兜底。 `buildHistoricalRecallRequest` 保留当前用户文本优先、空文本时倒序寻找最近用户/ sent 消息的查询策略，并固定使用 `excludeRecent`、`maxItems: 2`、`maxChars: 540`、`maxScan: 2500`；函数只组装本地召回参数，不执行检索或请求。 `filterUserMemoriesForRole` 将带 `sourceRoleId` 的用户动态记忆限制在对应角色，同时保留无 `sourceRoleId` 的旧版全局条目；它只筛选数组，不读写存储。
 
 源码入口：
 - 聊天详情：[chat-detail.html](../chat/chat/chat-detail.html)
@@ -130,7 +130,7 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 7. **Memory Service**：逐步协调记忆读取、强化、检索、注入与总结，但不在首次抽离中改变记忆策略。
 8. **外部适配器**：为聊天扩展、搜索、线下模式、通话、钱包和论坛分享提供明确的调用边界。
 
-已将可见性/搜索规则、推理文本清理、记忆标记提取、旁白与气泡解析、保护式回复清洗、历史映射、历史条数选择和历史召回请求参数组装抽离为共享纯函数。`ChatSendPolicy` 负责发送参数与前置判断；`ChatContextPolicy` 负责历史消息映射、条数限制、最近历史切片和召回查询/预算参数。新模块均不操作 DOM、存储或网络请求，页面仍保留旧逻辑兜底。实际的 `MemoryRecall` 搜索算法、systemPrompt 构建、世界书/记忆注入、API 参数、并发锁主体及消息落库顺序仍保持原位置；上下文整体并未完成抽离。下一步优先在真实页面验收，尤其核对召回排除区间和各角色的数据隔离。
+已将可见性/搜索规则、推理文本清理、记忆标记提取、旁白与气泡解析、保护式回复清洗、历史映射、历史条数选择、召回参数和用户动态记忆角色筛选抽离为共享纯函数。`ChatSendPolicy` 负责发送参数与前置判断；`ChatContextPolicy` 负责上下文相关的纯数据决策。新模块不操作 DOM、存储或网络请求，页面保留旧逻辑兜底。实际的 `MemoryRecall` 搜索算法、长期记忆权重分层、systemPrompt 构建、世界书注入、API 参数、并发锁主体及消息落库顺序仍保持原位置；无角色 ID 的旧版动态记忆仍是兼容性全局条目。下一步优先在真实页面验收召回排除区间、固定/待确认记忆注入和不同角色的数据隔离。
 
 ## 5. 跨页面读写者登记
 
@@ -205,5 +205,5 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 ## 9. 本次状态
 
-本契约依据当前源码持续维护。`sendMsg` 现通过 `ChatContextPolicy` 处理历史映射、角色历史条数优先级、最近历史切片及本地历史召回参数；页面保留旧逻辑兜底。PWA Service Worker 已递增到 `phone-app-pwa-v121`，并预缓存上下文策略 v3；GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40877275749) 为 23/23 项通过。测试包含纯逻辑与静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端仍需实测历史召回查询选择、最近消息排除、角色隔离和 API 预算不变。
+本契约依据当前源码持续维护。`sendMsg` 现通过 `ChatContextPolicy` 处理历史映射、角色历史条数优先级、最近历史切片、本地历史召回参数和用户动态记忆角色筛选；显式带角色 ID 的条目按角色注入，无角色 ID 的旧版条目保留全局兼容。PWA Service Worker 已递增到 `phone-app-pwa-v122`，并预缓存上下文策略 v4；GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40877950703) 为 24/24 项通过。测试包含纯逻辑与静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端仍需实测历史召回排除范围、固定/待确认记忆注入及不同角色隔离。
 
