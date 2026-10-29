@@ -56,6 +56,33 @@
     return { thinks: [], narrations: narrations, bubbles: bubbles };
   }
 
+  // Protect narration and think blocks while the existing page cleanup rules run.
+  // The callback remains owned by the page, so user regex rules and settings stay unchanged.
+  function cleanupReplyPreservingBlocks(raw, cleanupText) {
+    var THINK_PH = '\u0000THINK_BLOCK\u0000';
+    var NARR_PH = '\u0000NARR_BLOCK\u0000';
+    var thinks = [];
+    var narrations = [];
+    var text = String(raw || '');
+    var m;
+    var thinkRegex = /<think>[\s\S]*?<\/think>/gi;
+    while ((m = thinkRegex.exec(text)) !== null) thinks.push(m[0]);
+    text = text.replace(thinkRegex, THINK_PH);
+    var narrRegex = /<narratage>[\s\S]*?<\/narratage>/gi;
+    while ((m = narrRegex.exec(text)) !== null) narrations.push(m[0]);
+    text = text.replace(narrRegex, NARR_PH);
+    text = cleanupText(text);
+    var idx = 0;
+    text = text.replace(new RegExp(THINK_PH.replace(/\u0000/g, '\\u0000'), 'g'), function () {
+      return thinks[idx++] || '';
+    });
+    idx = 0;
+    text = text.replace(new RegExp(NARR_PH.replace(/\u0000/g, '\\u0000'), 'g'), function () {
+      return narrations[idx++] || '';
+    });
+    return text;
+  }
+
   function isHiddenFromOnlineTimeline(message) {
     return !!(message && (message.mode === 'date' || message.silent));
   }
@@ -91,6 +118,7 @@
     stripInternalReasoning: stripInternalReasoning,
     extractMemoryMarkers: extractMemoryMarkers,
     parseReplyContent: parseReplyContent,
+    cleanupReplyPreservingBlocks: cleanupReplyPreservingBlocks,
     isHiddenFromOnlineTimeline: isHiddenFromOnlineTimeline,
     isOnlineSearchIndexVisible: isOnlineSearchIndexVisible,
     isErrorMessage: isErrorMessage,
