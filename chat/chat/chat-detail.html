@@ -13,6 +13,7 @@
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
+    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v1"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -3207,7 +3208,13 @@
             if (cleaned.length !== list.length) saveMessages(cleaned);
             // 线上/线下界面隔离：赴约剧情消息（mode:'date'）与静默指令消息（silent:true，
             // 如送礼物后的 AI 提示词）不进气泡流；数据本身保留全量供 AI 上下文使用。
-            const visibleList = cleaned.filter(m => !(m && (m.mode === 'date' || m.silent)));
+            const visibleList = cleaned.filter(m => {
+                if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.isHiddenFromOnlineTimeline === 'function') {
+                    return !window.ChatMessagePolicy.isHiddenFromOnlineTimeline(m);
+                }
+                // Compatibility fallback if the shared policy script fails to load.
+                return !(m && (m.mode === 'date' || m.silent));
+            });
             visibleList.forEach(function (m, i) { appendMessageToDOM(m, i); });
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
