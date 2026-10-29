@@ -13,7 +13,7 @@
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
-    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v2"></script>
+    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v3"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -3545,6 +3545,10 @@
         // ---- 自动记忆标记：[记住:xxx] 从 AI 回复中剥离，存进 user_memory ----
         const MEM_MARKER_REGEX = /\[记住:([^\]]+)\]/g;
         function extractMemoryMarkers(raw) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.extractMemoryMarkers === 'function') {
+                return window.ChatMessagePolicy.extractMemoryMarkers(raw);
+            }
+            // Compatibility fallback: preserve the original extraction and cleanup behavior.
             const text = String(raw || '');
             const memories = [];
             let m;
