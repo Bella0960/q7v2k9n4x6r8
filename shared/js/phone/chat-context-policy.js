@@ -51,7 +51,20 @@
     return apiMessages;
   }
 
+  function resolveMemoryLimit(roleSettingValue, configuredMemoryCount) {
+    var roleLimit = parseInt(roleSettingValue, 10);
+    if ([10, 20, 30, 50].indexOf(roleLimit) !== -1) return roleLimit;
+    // Match the original page's fallback exactly, including values supplied by config.
+    return configuredMemoryCount || 20;
+  }
+
+  function selectRecentHistory(history, memoryLimit) {
+    return (Array.isArray(history) ? history : []).slice(-memoryLimit);
+  }
+
   global.ChatContextPolicy = {
-    mapHistoryToApiMessages: mapHistoryToApiMessages
+    mapHistoryToApiMessages: mapHistoryToApiMessages,
+    resolveMemoryLimit: resolveMemoryLimit,
+    selectRecentHistory: selectRecentHistory
   };
 })(typeof window !== 'undefined' ? window : globalThis);
