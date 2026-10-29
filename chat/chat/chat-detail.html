@@ -4525,11 +4525,15 @@
             // 打字机气泡引用（首个 delta 到达时复用现有气泡结构创建）
             let streamBubble = null;
             let fullText = '';
+            // 意外异常时，用最后一次收到并尝试渲染的原始累计文本做保文兜底。
+            let lastPaintedStreamText = '';
             let groupReplyVisible = false;
 
             // R4 渲染回调：交给 PhoneStream 每帧节流调用（正则清洗 + DOM 写入 + 滚动）
             // 引擎已抽离至 shared/js/phone/phone_stream.js（三段式超时/SSE 解析/残留收尾）
             function paintStreamLive(text) {
+                // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
+                lastPaintedStreamText = typeof text === 'string' ? text : '';
                 /* 推理标签可能先于正文到达；在真正有可见聊天文字前，不创建气泡。 */
                 var tmpText = stripInternalReasoning(extractVoiceCallMarker(text).text);
                 tmpText = tmpText
@@ -4557,17 +4561,37 @@
             // 流式请求：核心引擎已抽离至 shared/js/phone/phone_stream.js
             //（三段式超时 / SSE 半包解析 / 残留收尾 / rAF 节流 / 中断保文，全部内聚在模块内）
             // 永不 reject：结果对象 { ok, fullText, error }，fullText 中断时 = 已收到的部分
-            const streamResult = await PhoneStream.chat({
-                baseUrl: baseUrl,
-                apiKey: apiKey,
-                model: apiModel,
-                messages: apiMessages,
-                temperature: config.temperature != null ? config.temperature : 0.7,
-                maxTokens: config.maxTokens,
-                topP: config.topP,
-                onPaint: paintStreamLive
-            });
-            fullText = streamResult.fullText;
+            let streamResult;
+            try {
+                streamResult = await PhoneStream.chat({
+                    baseUrl: baseUrl,
+                    apiKey: apiKey,
+                    model: apiModel,
+                    messages: apiMessages,
+                    temperature: config.temperature != null ? config.temperature : 0.7,
+                    maxTokens: config.maxTokens,
+                    topP: config.topP,
+                    onPaint: paintStreamLive
+                });
+                if (!streamResult || typeof streamResult !== 'object') {
+                    throw new Error('流式请求未返回有效结果');
+                }
+            } catch (streamErr) {
+                // PhoneStream 的正常契约是返回结果对象；这里专门防护其意外抛错/拒绝，
+                // 避免 sendMsg 中断后 aiSending 锁一直保持 true。后续仍走统一错误收尾。
+                console.error('[chat-detail] PhoneStream 未预期异常:', streamErr);
+                streamResult = {
+                    ok: false,
+                    fullText: lastPaintedStreamText,
+                    error: {
+                        kind: 'network',
+                        detail: (streamErr && streamErr.message) ? String(streamErr.message) : '流式请求意外中断'
+                    }
+                };
+            }
+            fullText = typeof streamResult.fullText === 'string'
+                ? streamResult.fullText
+                : lastPaintedStreamText;
 
             // 流内一直没出现 loading 移除（零 delta 兜底）
             const loadingEl2 = document.getElementById(statusId);
