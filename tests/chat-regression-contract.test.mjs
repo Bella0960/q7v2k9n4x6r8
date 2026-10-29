@@ -126,7 +126,13 @@ test('reply content parser preserves narration extraction and bubble splitting',
     }
   ];
   for (const item of cases) {
-    assert.deepEqual(policy.parseReplyContent(item.input), item.expected, item.input);
+    const result = policy.parseReplyContent(item.input);
+    const actual = {
+      thinks: Array.from(result.thinks),
+      narrations: Array.from(result.narrations),
+      bubbles: Array.from(result.bubbles)
+    };
+    assert.deepEqual(actual, item.expected, item.input);
   }
   assert.match(detail, /ChatMessagePolicy\.parseReplyContent/);
 });
