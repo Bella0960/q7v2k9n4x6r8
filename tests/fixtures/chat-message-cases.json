@@ -1,0 +1,158 @@
+{
+  "description": "Representative existing MAOMAO chat message shapes. These are synthetic test records; no user chat content is included.",
+  "cases": [
+    {
+      "id": "ordinary-user",
+      "message": {
+        "role": "user",
+        "text": "你好，今天过得怎么样？",
+        "time": 1792518876947,
+        "mid": "m-fixture-user-1"
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": true,
+        "includedInContext": true
+      }
+    },
+    {
+      "id": "legacy-content-field",
+      "message": {
+        "role": "received",
+        "content": "这是一条旧版字段格式的消息。",
+        "time": 1792518876948
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": true,
+        "includedInContext": true
+      },
+      "note": "Legacy messages may use content rather than text and may lack mid."
+    },
+    {
+      "id": "image-message",
+      "message": {
+        "role": "user",
+        "type": "image",
+        "img": "data:image/png;base64,TEST_ONLY",
+        "text": "[图片]",
+        "time": 1792518876949
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": true,
+        "includedInContext": true
+      },
+      "note": "Synthetic image payload; not a real image."
+    },
+    {
+      "id": "sticker-message",
+      "message": {
+        "role": "user",
+        "type": "sticker",
+        "desc": "表达开心",
+        "text": "[表情包]",
+        "time": 1792518876950
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": true,
+        "includedInContext": true
+      },
+      "note": "The model context uses sticker meaning rather than the image bytes."
+    },
+    {
+      "id": "date-mode-message",
+      "message": {
+        "role": "assistant",
+        "text": "我们已经到了约好的地方。",
+        "time": 1792518876951,
+        "mode": "date",
+        "scene": "咖啡馆"
+      },
+      "expected": {
+        "onlineVisible": false,
+        "searchable": false,
+        "includedInContext": true
+      },
+      "note": "The online view/search hide this record; shared history keeps it for the date-mode flow and current context assembly."
+    },
+    {
+      "id": "silent-instruction",
+      "message": {
+        "role": "user",
+        "text": "[系统动作：我送了你一份礼物]",
+        "time": 1792518876952,
+        "silent": true
+      },
+      "expected": {
+        "onlineVisible": false,
+        "searchable": false,
+        "includedInContext": true
+      },
+      "note": "Hidden from ordinary bubbles; current send flow can still include it in the model context."
+    },
+    {
+      "id": "system-error",
+      "message": {
+        "role": "system_error",
+        "isError": true,
+        "text": "请求超时，请检查网络后重试。",
+        "time": 1792518876953
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": false,
+        "includedInContext": false
+      }
+    },
+    {
+      "id": "group-speaker",
+      "message": {
+        "role": "assistant",
+        "name": "小林",
+        "memberId": "role-17",
+        "text": "那我们周末一起去吧。",
+        "time": 1792518876954
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": true,
+        "includedInContext": true
+      },
+      "note": "Group speaker identity must survive storage and rendering."
+    },
+    {
+      "id": "forwarded-message",
+      "message": {
+        "role": "user",
+        "type": "forwarded",
+        "text": "转发：周六下午见面。",
+        "forwarded": true,
+        "time": 1792518876955
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": true,
+        "includedInContext": true
+      }
+    },
+    {
+      "id": "call-card-without-text",
+      "message": {
+        "role": "assistant",
+        "type": "call",
+        "call": {
+          "duration": 36
+        },
+        "time": 1792518876956
+      },
+      "expected": {
+        "onlineVisible": true,
+        "searchable": false,
+        "includedInContext": false
+      },
+      "note": "A display-only card with no text should not be injected as chat prose."
+    }
+  ]
+}
