@@ -202,5 +202,5 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 ## 9. 本次状态
 
-本契约依据当前源码持续维护。当前已新增 `ChatMessagePolicy` 并让聊天详情与搜索页接入，保留了原判断作为脚本加载失败时的兜底；同时更新 PWA 缓存版本。已做源码一致性核对和文本清洗边界冒烟检查，但还没有在完整仓库 checkout 中运行 `npm run test:chat:contract`，也未完成浏览器/PWA 端到端验证。下一步应实际运行回归测试和浏览器关键路径，再评估下一块纯逻辑；不继续一次性拆分更大业务流程。
+本契约依据当前源码持续维护。当前已新增 `ChatMessagePolicy` 并让聊天详情与搜索页接入，保留了原判断作为脚本加载失败时的兜底；同时更新 PWA 缓存版本。已新增 GitHub Actions 自动检查，并在 2026-10-29 的 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40867843521) 中于 Node.js 22 执行 `npm run test:chat:contract`，16/16 项通过。该结果覆盖当前纯逻辑行为测试和静态契约检查，但不等于浏览器/PWA 端到端验证；手机端关键路径仍需实测。下一步先复测真实聊天流程，再决定是否拆分更大业务流程。
 
