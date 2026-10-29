@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v4"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v5"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -3767,9 +3767,13 @@
                 .map(function (x) { return x.m; });
             return pinned.concat(rest);
         }
-        // 构造注入文本：fixed 永远钉住注入 / confirmed 按权重分两层 / pending 不注入
+        // 构造注入文本；加载记录与权重算法仍留在页面。纯文案规则走共享策略，加载失败则回退旧逻辑。
         function buildWeightedMemoryText(roleId, fallbackText) {
             const mems = loadWeightMemories(roleId);
+            if (window.ChatContextPolicy && typeof window.ChatContextPolicy.buildWeightedMemoryInjectionText === 'function') {
+                return window.ChatContextPolicy.buildWeightedMemoryInjectionText(mems, fallbackText, memoryWeight);
+            }
+            // Compatibility fallback: preserve the original fixed/confirmed/pending and clear/vague rules.
             const oldText = (fallbackText || '').trim();
             const oldValid = oldText && oldText !== '暂无记忆';
             if (!mems.length) return oldValid ? oldText : '暂无记忆';
