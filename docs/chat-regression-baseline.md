@@ -70,6 +70,7 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 
 - 聊天详情的 load/save 入口和 PhoneStorage 角色作用域；
 - 线上详情与搜索对 mode=date、silent、历史异常文本和错误消息的过滤约定；
+- `sendMsg` 选项的默认值、trim、布尔化和群自动接话深度归一化；
 - mid、role/text/content、群成员身份与模型上下文映射；
 - PhoneStream 调用、部分回复结果、超时机制；
 - 上下文字符预算和旧聊天检索的上限参数；
@@ -85,7 +86,7 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 
 开始抽离前应满足：
 
-- [x] 静态契约测试已在目标仓库的 GitHub Actions 中实际运行通过（Node.js 22，16/16 项通过）。
+- [x] 静态契约测试已在目标仓库的 GitHub Actions 中实际运行通过（Node.js 22，18/18 项通过）。
 - [ ] P0 人工验收至少完成桌面浏览器关键路径，并记录既有失败项。
 - [ ] 样例与当前真实消息结构完成对照，不遗漏已知富消息字段。
 - [x] 第一批已抽离无 DOM 副作用的消息可见性、搜索过滤与字段判断；新模块提供加载失败时的旧逻辑兜底。
@@ -93,7 +94,8 @@ tests/chat-regression-contract.test.mjs 包含共享消息策略的行为测试�
 - [x] 记忆标记解析已抽离为纯函数；记忆保存仍由原来的 `saveUserMemories` 负责，未改动记忆写入/强化策略。
 - [x] 旁白提取与气泡分段已抽离为纯函数；聊天详情的 DOM 渲染入口、旁白排版和附加气泡创建逻辑仍留在页面内。
 - [x] `cleanupAiReply` 的 think/narratage 保护流程已抽离；仍由页面传入原 `applyAICleanup`，并保留旧实现兜底。
+- [x] `sendMsg` 的参数归一化已抽离到 `ChatSendPolicy.normalizeOptions`；输入/拉黑/并发/群成员检查和后续请求顺序仍保留在页面。
 - [x] 新旧函数保留兼容包装；未同时改 UI、存储 key、API 参数或记忆算法。
 - [ ] 每批变更都能独立回滚，并按同一基线复测。
 
-**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40870708143) 中实际执行 `npm run test:chat:contract`，17/17 项通过（Node.js 22）。测试现已包含受保护的回复清洗回调。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
+**状态说明：** 已于 2026-10-29 在 GitHub Actions 的 [最新运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40871676126) 中实际执行 `npm run test:chat:contract`，18/18 项通过（Node.js 22）。测试现已包含受保护的回复清洗回调和发送选项归一化。自动测试仍不覆盖完整 UI、API 实际请求、浏览器点击行为及手机 PWA，因此聊天主流程仍需手动验收，后续继续小步迁移、每步复验。
