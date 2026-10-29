@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v1"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v2"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -4447,11 +4447,23 @@
             // 记忆条数截断：只取最后 N 条（含当前用户刚发的），system 消息始终保留
             // 优先读每个角色独立设置 chat_memory_limit_<roleId>（对话设置页写入），
             // 非法/未设置时回退全局 API 配置 memoryCount，再回退默认 20
-            let memoryLimit = parseInt(localStorage.getItem('chat_memory_limit_' + aliasRoleId), 10);
-            if ([10, 20, 30, 50].indexOf(memoryLimit) === -1) {
-                memoryLimit = config.memoryCount || 20;
+            const roleMemoryLimitSetting = localStorage.getItem('chat_memory_limit_' + aliasRoleId);
+            let recentHistory;
+            if (
+                window.ChatContextPolicy &&
+                typeof window.ChatContextPolicy.resolveMemoryLimit === 'function' &&
+                typeof window.ChatContextPolicy.selectRecentHistory === 'function'
+            ) {
+                const memoryLimit = window.ChatContextPolicy.resolveMemoryLimit(roleMemoryLimitSetting, config.memoryCount);
+                recentHistory = window.ChatContextPolicy.selectRecentHistory(historyList, memoryLimit);
+            } else {
+                // Compatibility fallback: preserve the page's original limit and slice behavior.
+                let memoryLimit = parseInt(roleMemoryLimitSetting, 10);
+                if ([10, 20, 30, 50].indexOf(memoryLimit) === -1) {
+                    memoryLimit = config.memoryCount || 20;
+                }
+                recentHistory = historyList.slice(-memoryLimit);
             }
-            const recentHistory = historyList.slice(-memoryLimit);
 
             // Search older saved conversation locally. This adds no separate API call and only
             // injects a few relevant source excerpts when the current message matches.
