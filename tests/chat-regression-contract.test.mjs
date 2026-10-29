@@ -169,7 +169,7 @@ test('shared context policy preserves legacy history mapping rules without mutat
   assert.equal(typeof contextPolicy.mapHistoryToApiMessages, 'function');
   const history = [
     { role: 'user', text: '你好' },
-    { role: 'assistant', text: 'A<think>private</think>\\n\\n\\n<narratage>旁白</narratage>\\n\\nB' },
+    { role: 'assistant', text: 'A<think>private</think>\n\n\n<narratage>旁白</narratage>\n\nB' },
     { role: 'received', type: 'sticker', desc: ' 开心 ' },
     { role: 'sent', type: 'sticker', desc: '' },
     { role: 'system_error', text: '不要进入上下文' },
@@ -184,14 +184,14 @@ test('shared context policy preserves legacy history mapping rules without mutat
   ));
   assert.deepEqual(actual, [
     { role: 'user', content: '你好' },
-    { role: 'assistant', content: 'A\\n\\nB' },
+    { role: 'assistant', content: 'A\n\nB' },
     { role: 'assistant', content: '[用户发送了一张表情包，表达的意思是：开心。请理解其含义并自然回应，不要复述这段说明。]' },
     { role: 'user', content: '[用户发送了一张表情包，请结合语境自然回应。]' },
     { role: 'assistant', content: '最后一条 AI 回复' },
     { role: 'user', content: '(继续)' }
   ]);
   assert.equal(JSON.stringify(history), original, 'mapping must not mutate saved history objects');
-  assert.match(detail, /ChatContextPolicy\\.mapHistoryToApiMessages/);
+  assert.match(detail, /ChatContextPolicy\.mapHistoryToApiMessages/);
   assert.match(detail, /Compatibility fallback: keep the legacy context mapping intact/);
 });
 
