@@ -303,6 +303,61 @@ test('shared context policy keeps explicitly scoped user memories role-isolated 
   assert.match(detail, /Compatibility fallback: legacy entries without a role ID remain globally visible/);
 });
 
+
+test('shared context policy preserves weighted long-term memory injection tiers', () => {
+  assert.equal(typeof contextPolicy.buildWeightedMemoryInjectionText, 'function');
+  const memories = [
+    { status: 'fixed', content: '固定事实', testWeight: 0.01 },
+    { status: 'confirmed', content: '清晰事实B', testWeight: 0.81 },
+    { content: '旧版无状态事实', testWeight: 0.65 },
+    { status: 'confirmed', content: '清晰事实A', testWeight: 0.91 },
+    { status: 'confirmed', content: '模糊事实B', testWeight: 0.24 },
+    { status: 'confirmed', content: '模糊事实A', testWeight: 0.41 },
+    { status: 'pending', content: '待确认内容不应注入', testWeight: 0.99 },
+    { status: 'rejected', content: '非确认内容不应注入', testWeight: 0.98 },
+    { status: 'confirmed', content: '低于阈值的内容', testWeight: 0.12 },
+    { status: 'confirmed', testWeight: 0.99 }
+  ];
+  const before = JSON.stringify(memories);
+  const actual = contextPolicy.buildWeightedMemoryInjectionText(memories, '  旧式摘要  ', (memory) => memory.testWeight);
+  const expected = [
+    '【你一直记得的事】（钉住的记忆，绝对不会忘，可自然提及）',
+    '· 固定事实',
+    '【你清晰记得的事】（可以自然地提及）',
+    '· 清晰事实A',
+    '· 清晰事实B',
+    '· 旧版无状态事实',
+    '【你隐约记得的事】（只有当对方主动提起相关话题时，你才回忆起来；平时不要主动提起）',
+    '· 模糊事实A',
+    '· 模糊事实B',
+    '【过往长期记忆】旧式摘要'
+  ].join('\n');
+  assert.equal(actual, expected);
+  assert.equal(actual.includes('待确认内容不应注入'), false);
+  assert.equal(actual.includes('非确认内容不应注入'), false);
+  assert.equal(actual.includes('低于阈值的内容'), false);
+  assert.equal(JSON.stringify(memories), before, 'prompt composition must not mutate stored records');
+
+  assert.equal(
+    contextPolicy.buildWeightedMemoryInjectionText([], '  仅旧摘要  ', (memory) => memory.testWeight),
+    '仅旧摘要'
+  );
+  assert.equal(
+    contextPolicy.buildWeightedMemoryInjectionText([], '暂无记忆', (memory) => memory.testWeight),
+    '暂无记忆'
+  );
+  assert.equal(
+    contextPolicy.buildWeightedMemoryInjectionText(
+      [{ status: 'pending', content: '待确认', testWeight: 1 }],
+      '旧摘要',
+      (memory) => memory.testWeight
+    ),
+    '【过往长期记忆】旧摘要'
+  );
+  assert.match(detail, /ChatContextPolicy\\.buildWeightedMemoryInjectionText/);
+  assert.match(detail, /Compatibility fallback: preserve the original fixed\\/confirmed\\/pending and clear\\/vague rules/);
+});
+
 test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
   assert.equal(typeof sendPolicy.normalizeOptions, 'function');
   const asPlainObject = (value) => JSON.parse(JSON.stringify(value));
@@ -408,7 +463,7 @@ test('send preflight keeps guard precedence and evaluates later checks lazily', 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v122/);
+  assert.match(serviceWorker, /phone-app-pwa-v123/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
