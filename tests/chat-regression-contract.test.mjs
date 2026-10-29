@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
@@ -16,6 +17,12 @@ const memoryRecall = read('shared/js/phone/memory_recall.js');
 const date = read('chat/date/date.html');
 const journey = read('chat/date/journey.html');
 const fixtures = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/chat-message-cases.json'), 'utf8'));
+const policySource = read('shared/js/phone/chat-message-policy.js');
+const policyWindow = {};
+runInNewContext(policySource, { window: policyWindow, globalThis: {} });
+const policy = policyWindow.ChatMessagePolicy;
+const serviceWorker = read('sw.js');
+const packageJson = JSON.parse(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
   const ids = fixtures.cases.map((item) => item.id);
@@ -36,6 +43,33 @@ test('synthetic fixture set covers the compatibility-critical message families',
   ]) {
     assert.ok(ids.includes(required), `missing fixture: ${required}`);
   }
+});
+
+test('pure message policy matches the expected online visibility and search eligibility', () => {
+  assert.ok(policy, 'ChatMessagePolicy should be exposed by the shared script');
+  for (const item of fixtures.cases) {
+    assert.equal(
+      !policy.isHiddenFromOnlineTimeline(item.message),
+      item.expected.onlineVisible,
+      item.id + ': onlineVisible'
+    );
+    assert.equal(
+      policy.isSearchableMessage(item.message),
+      item.expected.searchable,
+      item.id + ': searchable'
+    );
+  }
+});
+
+test('shared policy is loaded by both relevant pages and precached for PWA', () => {
+  assert.match(detail, /chat-message-policy\.js\?v=20261029v1/);
+  assert.match(search, /chat-message-policy\.js\?v=20261029v1/);
+  assert.match(serviceWorker, /phone-app-pwa-v111/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v1/);
+  assert.equal(
+    packageJson.scripts['test:chat:contract'],
+    'node --test tests/chat-regression-contract.test.mjs'
+  );
 });
 
 test('chat detail retains the legacy load/save entry points and role-scoped storage', () => {
