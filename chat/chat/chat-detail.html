@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v2"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v3"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -4469,21 +4469,36 @@
             // injects a few relevant source excerpts when the current message matches.
             if (window.MemoryRecall && typeof window.MemoryRecall.buildHistoricalRecallText === 'function') {
                 let recallQuery = text;
-                if (!recallQuery) {
-                    for (let ri = historyList.length - 1; ri >= 0; ri--) {
-                        const entry = historyList[ri];
-                        if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
-                            recallQuery = String(entry.text || entry.content);
-                            break;
-                        }
-                    }
-                }
-                const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, {
+                let recallOptions = {
                     excludeRecent: recentHistory.length,
                     maxItems: 2,
                     maxChars: 540,
                     maxScan: 2500
-                });
+                };
+                if (
+                    window.ChatContextPolicy &&
+                    typeof window.ChatContextPolicy.buildHistoricalRecallRequest === 'function'
+                ) {
+                    const recallRequest = window.ChatContextPolicy.buildHistoricalRecallRequest(
+                        historyList,
+                        text,
+                        recentHistory.length
+                    );
+                    recallQuery = recallRequest.query;
+                    recallOptions = recallRequest.options;
+                } else {
+                    // Compatibility fallback: preserve the original backwards query scan and limits.
+                    if (!recallQuery) {
+                        for (let ri = historyList.length - 1; ri >= 0; ri--) {
+                            const entry = historyList[ri];
+                            if (entry && (entry.role === 'user' || entry.role === 'sent') && (entry.text || entry.content)) {
+                                recallQuery = String(entry.text || entry.content);
+                                break;
+                            }
+                        }
+                    }
+                }
+                const recalledText = window.MemoryRecall.buildHistoricalRecallText(historyList, recallQuery, recallOptions);
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
