@@ -97,11 +97,45 @@ test('memory marker extraction cleans visible text without performing storage wr
   assert.match(detail, /function saveUserMemories\(memories\)/);
 });
 
+test('reply content parser preserves narration extraction and bubble splitting', () => {
+  assert.equal(typeof policy.parseReplyContent, 'function');
+  const cases = [
+    {
+      input: 'Hi\n\nHow are you?',
+      expected: { thinks: [], narrations: [], bubbles: ['Hi', 'How are you?'] }
+    },
+    {
+      input: '<narratage>（轻声）</narratage>\n你好\n\n第二段',
+      expected: { thinks: [], narrations: ['（轻声）'], bubbles: ['你好', '第二段'] }
+    },
+    {
+      input: '第一段<narratage>旁白一</narratage>第二段<narratage>旁白二</narratage>',
+      expected: { thinks: [], narrations: ['旁白一', '旁白二'], bubbles: ['第一段第二段'] }
+    },
+    {
+      input: '<narratage>   </narratage>\n正文',
+      expected: { thinks: [], narrations: [], bubbles: ['正文'] }
+    },
+    {
+      input: '<think>内部内容</think>',
+      expected: { thinks: [], narrations: [], bubbles: [] }
+    },
+    {
+      input: '<narratage>未闭合标签',
+      expected: { thinks: [], narrations: [], bubbles: ['<narratage>未闭合标签'] }
+    }
+  ];
+  for (const item of cases) {
+    assert.deepEqual(policy.parseReplyContent(item.input), item.expected, item.input);
+  }
+  assert.match(detail, /ChatMessagePolicy\.parseReplyContent/);
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
-  assert.match(detail, /chat-message-policy\.js\?v=20261029v3/);
-  assert.match(search, /chat-message-policy\.js\?v=20261029v3/);
-  assert.match(serviceWorker, /phone-app-pwa-v113/);
-  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v3/);
+  assert.match(detail, /chat-message-policy\.js\?v=20261029v4/);
+  assert.match(search, /chat-message-policy\.js\?v=20261029v4/);
+  assert.match(serviceWorker, /phone-app-pwa-v114/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v4/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
