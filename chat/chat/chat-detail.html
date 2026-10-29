@@ -13,7 +13,7 @@
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
-    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v3"></script>
+    <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v4"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -2785,6 +2785,10 @@
 
         // ===== 解析 AI 回复：移除所有内部推理标记，只渲染聊天正文与角色旁白 =====
         function parseReplyContent(raw) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseReplyContent === 'function') {
+                return window.ChatMessagePolicy.parseReplyContent(raw);
+            }
+            // Compatibility fallback: preserve the original parser if the shared module is unavailable.
             var text = stripInternalReasoning(raw);
 
             var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/gi;
