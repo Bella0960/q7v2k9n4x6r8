@@ -230,6 +230,43 @@ test('shared context policy preserves per-role history limit precedence and rece
   assert.match(detail, /Compatibility fallback: preserve the page's original limit and slice behavior/);
 });
 
+test('shared context policy preserves local historical recall query and budget rules', () => {
+  assert.equal(typeof contextPolicy.buildHistoricalRecallRequest, 'function');
+
+  const history = [
+    { role: 'user', text: '之前说过的老话题' },
+    { role: 'assistant', text: '角色过去说的细节' },
+    { role: 'sent', content: '旧消息只有 content 字段可用' },
+    { role: 'system_error', text: '错误消息不应该变成召回查询' },
+    { role: 'user', text: '' }
+  ];
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.buildHistoricalRecallRequest(history, '当前正在问的问题', 12))),
+    {
+      query: '当前正在问的问题',
+      options: { excludeRecent: 12, maxItems: 2, maxChars: 540, maxScan: 2500 }
+    }
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.buildHistoricalRecallRequest(history, '', 4))),
+    {
+      query: '旧消息只有 content 字段可用',
+      options: { excludeRecent: 4, maxItems: 2, maxChars: 540, maxScan: 2500 }
+    }
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.buildHistoricalRecallRequest([], '', 0))),
+    {
+      query: '',
+      options: { excludeRecent: 0, maxItems: 2, maxChars: 540, maxScan: 2500 }
+    }
+  );
+  assert.match(detail, /ChatContextPolicy\.buildHistoricalRecallRequest/);
+  assert.match(detail, /Compatibility fallback: preserve the original backwards query scan and limits/);
+  assert.match(detail, /buildHistoricalRecallText\(historyList, recallQuery, recallOptions\)/);
+});
+
 test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
   assert.equal(typeof sendPolicy.normalizeOptions, 'function');
   const asPlainObject = (value) => JSON.parse(JSON.stringify(value));
