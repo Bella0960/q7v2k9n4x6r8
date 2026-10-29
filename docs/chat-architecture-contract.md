@@ -3,7 +3,7 @@
 **状态：** 契约草案，供渐进式重构使用  
 **建立日期：** 2026-10-29  
 **范围：** 聊天详情、聊天列表、消息搜索、聊天扩展、记忆、线上/线下模式及相关跨页面读写入口  
-**最新进度：** 聊天详情与历史搜索已接入共享消息策略；发送选项/前置判断已抽离到 `chat-send-policy.js`。主聊天的流式调用现在对 PhoneStream 的意外抛错/无效返回增加兜底，并尝试保留最后一次回调的原始累计文本，继续走既有错误提示、落库和发送锁释放路径。未修改 UI 样式、API 参数、记忆算法、消息格式、存储 key 或用户数据。
+**最新进度：** 聊天详情与历史搜索已接入共享消息策略；发送选项/前置判断已抽离到 `chat-send-policy.js`；保存的聊天历史映射为 API 对话消息的纯逻辑已抽离到 `chat-context-policy.js`，页面继续保留旧映射兜底。流式调用异常也有统一恢复路径。未修改 UI 样式、API 参数、记忆算法、消息格式、存储 key 或用户数据。
 
 > 本文区分“当前兼容契约”和“未来目标边界”。当前兼容契约必须先遵守；目标边界只指导后续小步迁移，不代表代码已经实现。
 
@@ -26,6 +26,7 @@
 - **共享消息策略（渐进迁移中）**：`shared/js/phone/chat-message-policy.js` 提供纯函数，用于线上时间线隐藏规则、搜索索引过滤、错误消息识别、消息文本字段读取、用户消息识别、推理标签清理、`[记住:…]` 标记提取和回复旁白/气泡分段；另提供 `cleanupReplyPreservingBlocks`，在现有页面传入的 `applyAICleanup` 回调前后保护 `<think>` 与 `<narratage>` 块。模块自身不直接操作 DOM 或存储，用户自定义清洗规则仍由原页面函数执行。
 - **发送选项归一化（第一步已拆）**：`shared/js/phone/chat-send-policy.js` 将 `sendMsg(opts)` 起始处的选项读取、布尔化、文本 trim 和自动接话深度下限处理集中为纯函数 `ChatSendPolicy.normalizeOptions`。它不检查角色拉黑状态、不获取 API 配置，也不处理请求或存储；发送控制流程仍由原页面协调。
 - **发送前置判断（第二步已拆）**：同一模块的 `ChatSendPolicy.evaluatePreflight` 按既有顺序判断空消息、拉黑、发送中状态和群成员可发言性。通过惰性回调读取页面状态，较早的条件命中时不会提前查询后续状态；toast 文案和副作用仍由 `sendMsg` 处理，旧逻辑兜底仍保留。
+- **历史上下文映射（第三步已拆）**：`shared/js/phone/chat-context-policy.js` 的 `ChatContextPolicy.mapHistoryToApiMessages` 将截取后的历史消息转换为 OpenAI 格式的 `user` / `assistant` 消息。保留错误消息排除、贴纸语义提示、推理标签清理、旁白剥离、连续换行收敛、未知角色忽略和末尾 assistant 补 `(继续)` 的既有规则；该函数不修改原始历史对象，不负责 systemPrompt、记忆检索、历史条数选择或网络请求。页面仍保留旧实现兜底。
 
 源码入口：
 - 聊天详情：[chat-detail.html](../chat/chat/chat-detail.html)
@@ -129,7 +130,7 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 7. **Memory Service**：逐步协调记忆读取、强化、检索、注入与总结，但不在首次抽离中改变记忆策略。
 8. **外部适配器**：为聊天扩展、搜索、线下模式、通话、钱包和论坛分享提供明确的调用边界。
 
-已将可见性/搜索规则、推理文本清理、记忆标记提取、旁白与气泡解析及保护式回复清洗抽离为共享纯函数。`ChatSendPolicy.normalizeOptions` 处理发送参数归一化，`ChatSendPolicy.evaluatePreflight` 按原顺序处理空消息、拉黑、发送中和群成员可发言性判断；页面仍负责 toast 与具体副作用，且保留旧逻辑兜底。API 配置、上下文拼接、流式请求、并发状态管理的写入方式和消息落库顺序尚未搬离。下一步先补足真实页面验收，再决定是否拆动更深的发送协调流程。
+已将可见性/搜索规则、推理文本清理、记忆标记提取、旁白与气泡解析及保护式回复清洗抽离为共享纯函数。`ChatSendPolicy.normalizeOptions` 处理发送参数归一化，`ChatSendPolicy.evaluatePreflight` 按原顺序处理发送前置判断；`ChatContextPolicy.mapHistoryToApiMessages` 处理历史消息到 API 对话消息的映射。新模块均不操作 DOM、存储或网络请求，页面仍保留旧逻辑兜底。systemPrompt 构建、每角色历史条数选择、记忆检索、世界书/记忆注入、API 参数、并发锁主体以及消息落库顺序仍留在页面中；上下文整体并未完成抽离。下一步应先在真实页面验收，再考虑下一条边界。
 
 ## 5. 跨页面读写者登记
 
@@ -204,5 +205,5 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 ## 9. 本次状态
 
-本契约依据当前源码持续维护。聊天详情和搜索页已接入共享消息策略；`sendMsg` 已接入参数归一化、前置判断，并对 `PhoneStream.chat` 的意外抛错/无效返回增加错误结果兜底。异常时用最后一次流式回调保存的原始累计文本作为尽力保文来源，之后仍走原有错误处理、消息收尾与发送锁释放路径。PWA Service Worker 已递增到 `phone-app-pwa-v118`，确保缓存优先策略更新聊天详情页；GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40874072467) 为 20/20 项通过。该结果覆盖纯逻辑行为测试和静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端关键路径仍需实测。下一步仍应先在浏览器/PWA 中复测异常发送、正常发送和部分回复场景，再决定是否拆分更大业务流程。
+本契约依据当前源码持续维护。聊天详情和搜索页已接入共享消息策略；`sendMsg` 已接入参数归一化、前置判断、流式异常兜底，并使用 `ChatContextPolicy.mapHistoryToApiMessages` 处理历史上下文映射（旧逻辑兜底仍保留）。PWA Service Worker 已递增到 `phone-app-pwa-v119`，并预缓存新的上下文策略模块；GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40875761658) 为 21/21 项通过。该结果覆盖纯逻辑行为测试和静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端关键路径仍需实测。下一步优先在浏览器/PWA 中核验正常发送、群聊、贴纸、旁白和部分回复场景，不改更大业务流程直到完成验收。
 
