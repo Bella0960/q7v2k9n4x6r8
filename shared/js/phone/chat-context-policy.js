@@ -131,7 +131,7 @@
       vague.forEach(function (m) { lines.push('· ' + m.content); });
     }
     if (oldValid) lines.push('【过往长期记忆】' + oldText);
-    return lines.length ? lines.join('\\n') : '暂无记忆';
+    return lines.length ? lines.join('\n') : '暂无记忆';
   }
 
   global.ChatContextPolicy = {
