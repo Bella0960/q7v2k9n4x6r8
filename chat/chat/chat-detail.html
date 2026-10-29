@@ -14,7 +14,7 @@
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
-    <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v1"></script>
+    <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -3947,16 +3947,37 @@
             const groupAutoDepth = sendState.groupAutoDepth;
             const text = sendState.text;
             window.__groupAutoStopRequested = false;
-            if (!text && !isRegen && !contextOnly) return;
-            if (isBlocked(aliasRoleId)) {
+            let preflightReason;
+            if (window.ChatSendPolicy && typeof window.ChatSendPolicy.evaluatePreflight === 'function') {
+                preflightReason = window.ChatSendPolicy.evaluatePreflight({
+                    text: text,
+                    isRegen: isRegen,
+                    contextOnly: contextOnly,
+                    isBlocked: function () { return isBlocked(aliasRoleId); },
+                    isSending: function () { return aiSending; },
+                    isGroupChat: function () { return isGroupChat; },
+                    hasGroup: function () { return !!currentGroup; },
+                    getAvailableGroupMembers: function () { return getAvailableGroupMembers(); }
+                });
+            } else {
+                // Compatibility fallback: keep every guard in its original order.
+                if (!text && !isRegen && !contextOnly) preflightReason = 'empty';
+                else if (isBlocked(aliasRoleId)) preflightReason = 'blocked';
+                else if (aiSending) preflightReason = 'busy';
+                else if (isGroupChat && currentGroup && !isRegen && !contextOnly && !getAvailableGroupMembers().length) {
+                    preflightReason = 'group-unavailable';
+                } else preflightReason = 'ready';
+            }
+            if (preflightReason === 'empty') return;
+            if (preflightReason === 'blocked') {
                 if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法发送消息');
                 return;
             }
-            if (aiSending) {
+            if (preflightReason === 'busy') {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
             }
-            if (isGroupChat && currentGroup && !isRegen && !contextOnly && !getAvailableGroupMembers().length) {
+            if (preflightReason === 'group-unavailable') {
                 if (typeof showToast === 'function') {
                     showToast(getGroupSettings().scheduleEnabled ? '当前时段没有可发言的群成员，大家都在休息' : '群成员都处于禁言状态');
                 }
