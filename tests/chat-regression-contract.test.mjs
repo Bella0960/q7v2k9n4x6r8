@@ -198,13 +198,78 @@ test('send options normalization preserves legacy defaults and clamps group auto
   assert.match(detail, /Compatibility fallback: preserve the original sendMsg option normalization/);
 });
 
+test('send preflight keeps guard precedence and evaluates later checks lazily', () => {
+  assert.equal(typeof sendPolicy.evaluatePreflight, 'function');
+
+  const emptyCalls = [];
+  assert.equal(sendPolicy.evaluatePreflight({
+    text: '',
+    isRegen: false,
+    contextOnly: false,
+    isBlocked: () => { emptyCalls.push('blocked'); return true; },
+    isSending: () => { emptyCalls.push('sending'); return true; },
+    isGroupChat: () => { emptyCalls.push('group'); return true; },
+    hasGroup: () => { emptyCalls.push('hasGroup'); return true; },
+    getAvailableGroupMembers: () => { emptyCalls.push('members'); return []; }
+  }), 'empty');
+  assert.deepEqual(emptyCalls, []);
+
+  const blockedCalls = [];
+  assert.equal(sendPolicy.evaluatePreflight({
+    text: 'hi',
+    isBlocked: () => { blockedCalls.push('blocked'); return true; },
+    isSending: () => { blockedCalls.push('sending'); return true; },
+    isGroupChat: () => { blockedCalls.push('group'); return true; },
+    hasGroup: () => { blockedCalls.push('hasGroup'); return true; },
+    getAvailableGroupMembers: () => { blockedCalls.push('members'); return []; }
+  }), 'blocked');
+  assert.deepEqual(blockedCalls, ['blocked']);
+
+  const busyCalls = [];
+  assert.equal(sendPolicy.evaluatePreflight({
+    text: 'hi',
+    isBlocked: () => { busyCalls.push('blocked'); return false; },
+    isSending: () => { busyCalls.push('sending'); return true; },
+    isGroupChat: () => { busyCalls.push('group'); return true; },
+    hasGroup: () => { busyCalls.push('hasGroup'); return true; },
+    getAvailableGroupMembers: () => { busyCalls.push('members'); return []; }
+  }), 'busy');
+  assert.deepEqual(busyCalls, ['blocked', 'sending']);
+
+  const groupCalls = [];
+  assert.equal(sendPolicy.evaluatePreflight({
+    text: 'hi',
+    isBlocked: () => { groupCalls.push('blocked'); return false; },
+    isSending: () => { groupCalls.push('sending'); return false; },
+    isGroupChat: () => { groupCalls.push('group'); return true; },
+    hasGroup: () => { groupCalls.push('hasGroup'); return true; },
+    getAvailableGroupMembers: () => { groupCalls.push('members'); return []; }
+  }), 'group-unavailable');
+  assert.deepEqual(groupCalls, ['blocked', 'sending', 'group', 'hasGroup', 'members']);
+
+  const regenCalls = [];
+  assert.equal(sendPolicy.evaluatePreflight({
+    text: '',
+    isRegen: true,
+    contextOnly: false,
+    isBlocked: () => { regenCalls.push('blocked'); return false; },
+    isSending: () => { regenCalls.push('sending'); return false; },
+    isGroupChat: () => { regenCalls.push('group'); return true; },
+    hasGroup: () => { regenCalls.push('hasGroup'); return true; },
+    getAvailableGroupMembers: () => { regenCalls.push('members'); return []; }
+  }), 'ready');
+  assert.deepEqual(regenCalls, ['blocked', 'sending', 'group', 'hasGroup']);
+  assert.match(detail, /ChatSendPolicy\.evaluatePreflight/);
+  assert.match(detail, /preflightReason === 'group-unavailable'/);
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v116/);
+  assert.match(serviceWorker, /phone-app-pwa-v117/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(detail, /chat-send-policy\.js\?v=20261029v1/);
-  assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v1/);
+  assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
+  assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
