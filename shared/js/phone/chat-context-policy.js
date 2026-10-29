@@ -31,8 +31,8 @@
       var content = cleanReasoning(m.text || m.content || '').trim();
       if (!content) return; // Pure display cards (location/call etc.) do not enter model context.
       // Narration belongs to the UI layer and must not consume model dialogue turns.
-      content = content.replace(/<narratage>[\\s\\S]*?<\\/narratage>/gi, '');
-      content = content.replace(/\\n{3,}/g, '\\n\\n').trim();
+      content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
+      content = content.replace(/\n{3,}/g, '\n\n').trim();
       if (!content) return;
 
       if (m.role === 'sent' || m.role === 'user') {
