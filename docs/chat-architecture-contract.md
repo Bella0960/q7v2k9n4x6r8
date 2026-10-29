@@ -204,5 +204,5 @@ chat-extras.js 当前依赖详情页中的 loadMessages、saveMessages、appendM
 
 ## 9. 本次状态
 
-本契约依据当前源码持续维护。聊天详情和搜索页已接入共享消息策略；`sendMsg` 已接入参数归一化、前置判断，并对 `PhoneStream.chat` 的意外抛错/无效返回增加错误结果兜底。异常时用最后一次流式回调保存的原始累计文本作为尽力保文来源，之后仍走原有错误处理、消息收尾与发送锁释放路径。GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40873823069) 为 20/20 项通过。该结果覆盖纯逻辑行为测试和静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端关键路径仍需实测。下一步仍应先在浏览器/PWA 中复测异常发送、正常发送和部分回复场景，再决定是否拆分更大业务流程。
+本契约依据当前源码持续维护。聊天详情和搜索页已接入共享消息策略；`sendMsg` 已接入参数归一化、前置判断，并对 `PhoneStream.chat` 的意外抛错/无效返回增加错误结果兜底。异常时用最后一次流式回调保存的原始累计文本作为尽力保文来源，之后仍走原有错误处理、消息收尾与发送锁释放路径。PWA Service Worker 已递增到 `phone-app-pwa-v118`，确保缓存优先策略更新聊天详情页；GitHub Actions 已于 2026-10-29 在 Node.js 22 执行 `npm run test:chat:contract`，当前 [运行记录](https://github.com/Bella0960/MAOMAO/actions/runs/40874072467) 为 20/20 项通过。该结果覆盖纯逻辑行为测试和静态源码契约检查，但不等于浏览器/PWA 端到端验证；手机端关键路径仍需实测。下一步仍应先在浏览器/PWA 中复测异常发送、正常发送和部分回复场景，再决定是否拆分更大业务流程。
 
