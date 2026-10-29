@@ -195,6 +195,41 @@ test('shared context policy preserves legacy history mapping rules without mutat
   assert.match(detail, /Compatibility fallback: keep the legacy context mapping intact/);
 });
 
+test('shared context policy preserves per-role history limit precedence and recent slicing', () => {
+  assert.equal(typeof contextPolicy.resolveMemoryLimit, 'function');
+  assert.equal(typeof contextPolicy.selectRecentHistory, 'function');
+
+  for (const limit of [10, 20, 30, 50]) {
+    assert.equal(contextPolicy.resolveMemoryLimit(String(limit), 99), limit);
+    assert.equal(contextPolicy.resolveMemoryLimit('  ' + limit + ' ', 99), limit);
+  }
+
+  assert.equal(contextPolicy.resolveMemoryLimit(null, 30), 30);
+  assert.equal(contextPolicy.resolveMemoryLimit('5', 30), 30);
+  assert.equal(contextPolicy.resolveMemoryLimit('invalid', 0), 20);
+  assert.equal(contextPolicy.resolveMemoryLimit('30-extra', 99), 30, 'legacy parseInt behavior is preserved');
+  assert.equal(contextPolicy.resolveMemoryLimit('5', '7'), '7', 'legacy config fallback value is not coerced');
+
+  const history = Array.from({ length: 6 }, (_, i) => ({ role: 'user', text: 'm' + i }));
+  const before = JSON.stringify(history);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.selectRecentHistory(history, 3))),
+    [{ role: 'user', text: 'm3' }, { role: 'user', text: 'm4' }, { role: 'user', text: 'm5' }]
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.selectRecentHistory(history, 20))),
+    history
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(contextPolicy.selectRecentHistory([], 10))),
+    []
+  );
+  assert.equal(JSON.stringify(history), before, 'recent history selection must not mutate saved history');
+  assert.match(detail, /ChatContextPolicy\.resolveMemoryLimit/);
+  assert.match(detail, /ChatContextPolicy\.selectRecentHistory/);
+  assert.match(detail, /Compatibility fallback: preserve the page's original limit and slice behavior/);
+});
+
 test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
   assert.equal(typeof sendPolicy.normalizeOptions, 'function');
   const asPlainObject = (value) => JSON.parse(JSON.stringify(value));
@@ -300,12 +335,12 @@ test('send preflight keeps guard precedence and evaluates later checks lazily', 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v119/);
+  assert.match(serviceWorker, /phone-app-pwa-v120/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
-  assert.match(detail, /chat-context-policy\.js\?v=20261029v1/);
-  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261029v1/);
+  assert.match(detail, /chat-context-policy\.js\?v=20261029v2/);
+  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261029v2/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
