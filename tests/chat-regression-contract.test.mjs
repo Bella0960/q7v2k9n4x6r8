@@ -137,11 +137,31 @@ test('reply content parser preserves narration extraction and bubble splitting',
   assert.match(detail, /ChatMessagePolicy\.parseReplyContent/);
 });
 
+test('reply cleanup protects think/narration blocks while applying the existing cleanup callback', () => {
+  assert.equal(typeof policy.cleanupReplyPreservingBlocks, 'function');
+  const raw = '标点，，<think>think one!!</think>\n<narratage>旁白，</narratage>\n<think>think two??</think>正文，，';
+  let callbackCalls = 0;
+  let callbackInput = '';
+  const result = policy.cleanupReplyPreservingBlocks(raw, (text) => {
+    callbackCalls += 1;
+    callbackInput = text;
+    assert.equal(text.includes('<think>'), false);
+    assert.equal(text.includes('<narratage>'), false);
+    assert.equal((text.match(/THINK_BLOCK/g) || []).length, 2);
+    assert.equal((text.match(/NARR_BLOCK/g) || []).length, 1);
+    return text.replace(/，{2,}/g, '，').trim();
+  });
+  assert.equal(callbackCalls, 1);
+  assert.equal(result, '标点，<think>think one!!</think>\n<narratage>旁白，</narratage>\n<think>think two??</think>正文，');
+  assert.ok(callbackInput.includes('THINK_BLOCK'));
+  assert.match(detail, /ChatMessagePolicy\.cleanupReplyPreservingBlocks/);
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
-  assert.match(detail, /chat-message-policy\.js\?v=20261029v4/);
-  assert.match(search, /chat-message-policy\.js\?v=20261029v4/);
-  assert.match(serviceWorker, /phone-app-pwa-v114/);
-  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v4/);
+  assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
+  assert.match(serviceWorker, /phone-app-pwa-v115/);
+  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
