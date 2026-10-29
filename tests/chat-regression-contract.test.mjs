@@ -21,6 +21,10 @@ const policySource = read('shared/js/phone/chat-message-policy.js');
 const policyWindow = {};
 runInNewContext(policySource, { window: policyWindow, globalThis: {} });
 const policy = policyWindow.ChatMessagePolicy;
+const contextPolicySource = read('shared/js/phone/chat-context-policy.js');
+const contextPolicyWindow = {};
+runInNewContext(contextPolicySource, { window: contextPolicyWindow, globalThis: {} });
+const contextPolicy = contextPolicyWindow.ChatContextPolicy;
 const sendPolicySource = read('shared/js/phone/chat-send-policy.js');
 const sendPolicyWindow = {};
 runInNewContext(sendPolicySource, { window: sendPolicyWindow, globalThis: {} });
@@ -159,6 +163,36 @@ test('reply cleanup protects think/narration blocks while applying the existing 
   assert.equal(result, '标点，<think>think one!!</think>\n<narratage>旁白，</narratage>\n<think>think two??</think>正文，');
   assert.ok(callbackInput.includes('THINK_BLOCK'));
   assert.match(detail, /ChatMessagePolicy\.cleanupReplyPreservingBlocks/);
+});
+
+test('shared context policy preserves legacy history mapping rules without mutating source messages', () => {
+  assert.equal(typeof contextPolicy.mapHistoryToApiMessages, 'function');
+  const history = [
+    { role: 'user', text: '你好' },
+    { role: 'assistant', text: 'A<think>private</think>\\n\\n\\n<narratage>旁白</narratage>\\n\\nB' },
+    { role: 'received', type: 'sticker', desc: ' 开心 ' },
+    { role: 'sent', type: 'sticker', desc: '' },
+    { role: 'system_error', text: '不要进入上下文' },
+    { role: 'assistant', isError: true, text: '也不要进入上下文' },
+    { role: 'system', text: '未知角色仍不映射' },
+    { role: 'assistant', text: '<narratage>只有旁白</narratage>' },
+    { role: 'assistant', content: '最后一条 AI 回复' }
+  ];
+  const original = JSON.stringify(history);
+  const actual = JSON.parse(JSON.stringify(
+    contextPolicy.mapHistoryToApiMessages(history, policy.stripInternalReasoning)
+  ));
+  assert.deepEqual(actual, [
+    { role: 'user', content: '你好' },
+    { role: 'assistant', content: 'A\\n\\nB' },
+    { role: 'assistant', content: '[用户发送了一张表情包，表达的意思是：开心。请理解其含义并自然回应，不要复述这段说明。]' },
+    { role: 'user', content: '[用户发送了一张表情包，请结合语境自然回应。]' },
+    { role: 'assistant', content: '最后一条 AI 回复' },
+    { role: 'user', content: '(继续)' }
+  ]);
+  assert.equal(JSON.stringify(history), original, 'mapping must not mutate saved history objects');
+  assert.match(detail, /ChatContextPolicy\\.mapHistoryToApiMessages/);
+  assert.match(detail, /Compatibility fallback: keep the legacy context mapping intact/);
 });
 
 test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
