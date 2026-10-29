@@ -408,12 +408,12 @@ test('send preflight keeps guard precedence and evaluates later checks lazily', 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v121/);
+  assert.match(serviceWorker, /phone-app-pwa-v122/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
-  assert.match(detail, /chat-context-policy\.js\?v=20261029v3/);
-  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261029v3/);
+  assert.match(detail, /chat-context-policy\.js\?v=20261029v4/);
+  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261029v4/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
