@@ -195,6 +195,20 @@ test('shared context policy preserves legacy history mapping rules without mutat
   assert.match(detail, /Compatibility fallback: keep the legacy context mapping intact/);
 });
 
+test('quoted chat messages carry their source into the model context', () => {
+  const mapped = contextPolicy.mapHistoryToApiMessages([
+    {
+      role: 'user',
+      text: '我觉得可以。',
+      quote: { mid: 'm-source', authorName: 'TA', text: '那我们周末去看看？' }
+    }
+  ]);
+  assert.deepEqual(mapped, [{
+    role: 'user',
+    content: '[引用回复上下文，原消息来自TA：「那我们周末去看看？」]\\n我觉得可以。'
+  }]);
+});
+
 test('shared context policy preserves per-role history limit precedence and recent slicing', () => {
   assert.equal(typeof contextPolicy.resolveMemoryLimit, 'function');
   assert.equal(typeof contextPolicy.selectRecentHistory, 'function');
