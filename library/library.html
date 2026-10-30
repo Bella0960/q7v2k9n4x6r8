@@ -894,6 +894,335 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
   }
 
+  /* ===== 导入解析：TXT 按真实章节标题分章，EPUB 按 OPF spine + 原目录排序 ===== */
+  function fileBaseName(fileName) {
+    return String(fileName || '').replace(/\.(txt|epub)$/i, '').trim();
+  }
+  function decodeBookText(buffer) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^\uFEFF/, '');
+    } catch (e) {
+      try { return new TextDecoder('gbk').decode(buffer).replace(/^\uFEFF/, ''); }
+      catch (e2) { return new TextDecoder('utf-8').decode(buffer).replace(/^\uFEFF/, ''); }
+    }
+  }
+  function detectTxtHeading(line) {
+    var value = String(line || '').trim();
+    if (!value || value.length > 72) return null;
+    var patterns = [
+      /^(第[零〇一二三四五六七八九十百千万\d]+[章节回卷部篇集幕节])(?:[\s:：、.．·-]*(.*))?$/,
+      /^(卷[零〇一二三四五六七八九十百千万\d]+)(?:[\s:：、.．·-]*(.*))$/,
+      /^(序章|序言|楔子|引子|前言|后记|尾声|正文|番外(?:篇|章)?(?:[零〇一二三四五六七八九十\d]+)?)(?:[\s:：、.．·-]*(.*))$/,
+      /^(Chapter\s+\d+)(?:[\s:：、.．·-]*(.*))?$/i
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var match = value.match(patterns[i]);
+      if (match) {
+        return {
+          label: String(match[1] || value).trim(),
+          title: String(match[2] || '').trim() || value
+        };
+      }
+    }
+    return null;
+  }
+  function parseTxtBook(text, fallbackTitle) {
+    var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    var chapters = [];
+    var current = null;
+    var hasHeading = false;
+    var beforeHeading = [];
+    function pushCurrent() {
+      if (current && current.paras.length) chapters.push(current);
+      current = null;
+    }
+    lines.forEach(function (raw) {
+      var line = String(raw || '').trim();
+      if (!line) return;
+      var heading = detectTxtHeading(line);
+      if (heading) {
+        hasHeading = true;
+        pushCurrent();
+        current = { label: heading.label, title: heading.title, paras: [] };
+        return;
+      }
+      if (!current) {
+        if (hasHeading) current = { label: '正文', title: '正文', paras: [] };
+        else beforeHeading.push(line);
+        return;
+      }
+      current.paras.push(line);
+    });
+    pushCurrent();
+    if (!hasHeading) {
+      var paras = beforeHeading;
+      if (!paras.length) throw new Error('文件内容为空，无法导入');
+      chapters = [{ label: '全文', title: fallbackTitle || '全文', paras: paras }];
+    } else if (beforeHeading.length) {
+      chapters.unshift({ label: '前言', title: '前言', paras: beforeHeading });
+    }
+    chapters = chapters.filter(function (ch) { return ch.paras && ch.paras.length; });
+    if (!chapters.length) throw new Error('没有读取到正文内容');
+    return {
+      name: fallbackTitle || '',
+      author: '',
+      chapters: chapters,
+      importFormat: 'txt'
+    };
+  }
+
+  function normalizeZipPath(path) {
+    var parts = String(path || '').replace(/\\/g, '/').split('/');
+    var out = [];
+    parts.forEach(function (part) {
+      if (!part || part === '.') return;
+      if (part === '..') out.pop();
+      else out.push(part);
+    });
+    return out.join('/');
+  }
+  function resolveZipPath(baseFile, href) {
+    var clean = String(href || '').split('#')[0].split('?')[0];
+    try { clean = decodeURIComponent(clean); } catch (e) {}
+    if (clean.charAt(0) === '/') return normalizeZipPath(clean.slice(1));
+    var base = String(baseFile || '');
+    var dir = base.indexOf('/') >= 0 ? base.slice(0, base.lastIndexOf('/') + 1) : '';
+    return normalizeZipPath(dir + clean);
+  }
+  async function inflateZipEntry(bytes) {
+    if (typeof DecompressionStream === 'undefined') {
+      throw new Error('当前浏览器暂不支持 EPUB 解压，请将书籍另存为 TXT 后导入');
+    }
+    try {
+      var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch (e) {
+      throw new Error('EPUB 解压失败，请检查文件是否完整，或另存为 TXT 后导入');
+    }
+  }
+  async function readZipText(entries, path) {
+    var item = entries[path];
+    if (!item) throw new Error('EPUB 缺少文件：' + path);
+    var bytes = item.bytes;
+    if (item.method === 8) bytes = await inflateZipEntry(bytes);
+    else if (item.method !== 0) throw new Error('EPUB 使用了暂不支持的压缩方式');
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  async function readZipEntries(buffer) {
+    var view = new DataView(buffer);
+    var bytes = new Uint8Array(buffer);
+    var min = Math.max(0, bytes.length - 65557);
+    var eocd = -1;
+    for (var i = bytes.length - 22; i >= min; i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('这不是有效的 EPUB/ZIP 文件');
+    var count = view.getUint16(eocd + 10, true);
+    var cursor = view.getUint32(eocd + 16, true);
+    var entries = Object.create(null);
+    for (var n = 0; n < count; n++) {
+      if (view.getUint32(cursor, true) !== 0x02014b50) throw new Error('EPUB 目录结构损坏');
+      var flags = view.getUint16(cursor + 8, true);
+      var method = view.getUint16(cursor + 10, true);
+      var compressedSize = view.getUint32(cursor + 20, true);
+      var nameLength = view.getUint16(cursor + 28, true);
+      var extraLength = view.getUint16(cursor + 30, true);
+      var commentLength = view.getUint16(cursor + 32, true);
+      var localOffset = view.getUint32(cursor + 42, true);
+      var name = new TextDecoder('utf-8').decode(bytes.slice(cursor + 46, cursor + 46 + nameLength));
+      cursor += 46 + nameLength + extraLength + commentLength;
+      if (flags & 1) throw new Error('该 EPUB 有密码保护，无法读取');
+      if (!name || name.charAt(name.length - 1) === '/') continue;
+      if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error('EPUB 文件数据损坏');
+      var localNameLength = view.getUint16(localOffset + 26, true);
+      var localExtraLength = view.getUint16(localOffset + 28, true);
+      var dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      entries[normalizeZipPath(name)] = {
+        method: method,
+        bytes: bytes.slice(dataStart, dataStart + compressedSize)
+      };
+    }
+    return entries;
+  }
+  function xmlElements(doc, name) {
+    var found = doc.getElementsByTagNameNS ? doc.getElementsByTagNameNS('*', name) : doc.getElementsByTagName(name);
+    return Array.prototype.slice.call(found || []);
+  }
+  function epubText(node, name) {
+    var list = xmlElements(node, name);
+    return list.length ? String(list[0].textContent || '').trim() : '';
+  }
+  async function parseEpubBook(buffer, fallbackTitle) {
+    var entries = await readZipEntries(buffer);
+    var containerText = await readZipText(entries, 'META-INF/container.xml');
+    var container = new DOMParser().parseFromString(containerText, 'application/xml');
+    var rootfiles = xmlElements(container, 'rootfile');
+    if (!rootfiles.length) throw new Error('EPUB 缺少 container.xml 书籍入口');
+    var opfPath = normalizeZipPath(rootfiles[0].getAttribute('full-path') || '');
+    var opfText = await readZipText(entries, opfPath);
+    var opf = new DOMParser().parseFromString(opfText, 'application/xml');
+    if (xmlElements(opf, 'parsererror').length) throw new Error('EPUB 书籍信息解析失败');
+    var metadata = xmlElements(opf, 'metadata')[0] || opf;
+    var title = epubText(metadata, 'title') || fallbackTitle || '';
+    var author = epubText(metadata, 'creator') || '';
+    var manifest = Object.create(null);
+    xmlElements(opf, 'item').forEach(function (item) {
+      var id = item.getAttribute('id');
+      if (id) manifest[id] = item;
+    });
+    var opfDir = opfPath.indexOf('/') >= 0 ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
+    var tocTitles = Object.create(null);
+
+    var navItem = null;
+    Object.keys(manifest).some(function (id) {
+      var item = manifest[id];
+      if (String(item.getAttribute('properties') || '').split(/\s+/).indexOf('nav') >= 0) {
+        navItem = item; return true;
+      }
+      return false;
+    });
+    if (navItem) {
+      try {
+        var navPath = resolveZipPath(opfPath, navItem.getAttribute('href'));
+        var navDoc = new DOMParser().parseFromString(await readZipText(entries, navPath), 'application/xhtml+xml');
+        Array.prototype.forEach.call(navDoc.getElementsByTagName('a'), function (a) {
+          var href = a.getAttribute('href');
+          if (!href) return;
+          var key = resolveZipPath(navPath, href);
+          if (!tocTitles[key]) tocTitles[key] = String(a.textContent || '').trim();
+        });
+      } catch (e) {}
+    } else {
+      var ncxItem = null;
+      Object.keys(manifest).some(function (id) {
+        var item = manifest[id];
+        if (/ncx/i.test(String(item.getAttribute('media-type') || '')) || /ncx/i.test(String(item.getAttribute('href') || ''))) {
+          ncxItem = item; return true;
+        }
+        return false;
+      });
+      if (ncxItem) {
+        try {
+          var ncxPath = resolveZipPath(opfPath, ncxItem.getAttribute('href'));
+          var ncxDoc = new DOMParser().parseFromString(await readZipText(entries, ncxPath), 'application/xml');
+          xmlElements(ncxDoc, 'navPoint').forEach(function (point) {
+            var src = xmlElements(point, 'content')[0];
+            var label = epubText(point, 'text');
+            if (src && src.getAttribute('src')) {
+              var key = resolveZipPath(ncxPath, src.getAttribute('src'));
+              if (label && !tocTitles[key]) tocTitles[key] = label;
+            }
+          });
+        } catch (e) {}
+      }
+    }
+
+    var spine = xmlElements(opf, 'spine')[0];
+    if (!spine) throw new Error('EPUB 缺少章节顺序信息');
+    var refs = xmlElements(spine, 'itemref');
+    var chapters = [];
+    for (var i = 0; i < refs.length; i++) {
+      var item = manifest[refs[i].getAttribute('idref')];
+      if (!item) continue;
+      if (String(item.getAttribute('properties') || '').split(/\s+/).indexOf('nav') >= 0) continue;
+      var href = item.getAttribute('href');
+      if (!href) continue;
+      var chapterPath = resolveZipPath(opfPath, href);
+      var chapterText;
+      try { chapterText = await readZipText(entries, chapterPath); } catch (e) { continue; }
+      var doc = new DOMParser().parseFromString(chapterText, 'application/xhtml+xml');
+      if (xmlElements(doc, 'parsererror').length) {
+        doc = new DOMParser().parseFromString(chapterText, 'text/html');
+      }
+      var heading = doc.querySelector('h1,h2,h3,h4,h5,h6');
+      var chapterTitle = heading ? String(heading.textContent || '').trim() : '';
+      var paraNodes = Array.prototype.slice.call(doc.getElementsByTagName('p'));
+      var paras = paraNodes.map(function (p) { return String(p.textContent || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+      if (!paras.length) {
+        var body = doc.getElementsByTagName('body')[0] || doc.documentElement;
+        var raw = String(body && body.textContent || '').replace(/\r/g, '\n');
+        paras = raw.split(/\n+/).map(function (p) { return p.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+      }
+      if (!paras.length) continue;
+      var tocTitle = tocTitles[chapterPath] || '';
+      chapterTitle = chapterTitle || tocTitle || ('第' + (chapters.length + 1) + '章');
+      chapters.push({
+        label: '第' + (chapters.length + 1) + '章',
+        title: tocTitle || chapterTitle,
+        paras: paras
+      });
+    }
+    if (!chapters.length) throw new Error('没有从 EPUB 中读取到正文章节');
+    return { name: title, author: author, chapters: chapters, importFormat: 'epub' };
+  }
+
+  function openImportDialog(book, fileName) {
+    pendingImportedBook = book;
+    importBookName.value = String(book.name || fileBaseName(fileName) || '').trim();
+    importBookAuthor.value = String(book.author || '');
+    importSummary.textContent = '已识别 ' + book.chapters.length + ' 个章节，共 ' +
+      book.chapters.reduce(function (sum, ch) { return sum + (ch.paras || []).length; }, 0) + ' 个段落。';
+    importDialog.classList.add('is-open');
+    sheetBackdrop.classList.add('is-open');
+    setTimeout(function () { importBookName.focus(); }, 120);
+  }
+  function closeImportDialog() {
+    pendingImportedBook = null;
+    importDialog.classList.remove('is-open');
+    if (!tocSheet.classList.contains('is-open') && !dialog.classList.contains('is-open') &&
+        !readSettings.classList.contains('is-open') && !paragraphSheet.classList.contains('is-open')) {
+      sheetBackdrop.classList.remove('is-open');
+    }
+  }
+  async function confirmImportedBook() {
+    if (!pendingImportedBook) return;
+    var name = String(importBookName.value || '').trim();
+    if (!name) { showToast('请先填写书名'); importBookName.focus(); return; }
+    var book = Object.assign({}, pendingImportedBook, {
+      id: 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      name: name,
+      author: String(importBookAuthor.value || '').trim() || '未知作者',
+      isLocal: true,
+      createdAt: Date.now()
+    });
+    var chapterCheck = Array.isArray(book.chapters) ? book.chapters.filter(function (ch) {
+      return ch && Array.isArray(ch.paras) && ch.paras.length;
+    }) : [];
+    if (!chapterCheck.length) { showToast('没有可导入的正文章节'); return; }
+    book.chapters = chapterCheck;
+    generateParagraphCommentBtn.disabled = false;
+    try {
+      await persistLocalBook(book);
+      books.unshift(book);
+      renderShelf();
+      renderHome();
+      closeImportDialog();
+      showToast('已将《' + name + '》加入书架');
+    } catch (e) {
+      showToast('书籍保存失败：请检查设备存储空间');
+    }
+  }
+  async function importBookFile(file) {
+    if (!file) return;
+    var extension = String(file.name || '').split('.').pop().toLowerCase();
+    if (extension !== 'txt' && extension !== 'epub') {
+      showToast('目前支持 TXT 和 EPUB，请先转换文件格式');
+      return;
+    }
+    showToast('正在读取书籍…');
+    try {
+      var buffer = await file.arrayBuffer();
+      var baseName = fileBaseName(file.name);
+      var book = extension === 'epub'
+        ? await parseEpubBook(buffer, baseName)
+        : parseTxtBook(decodeBookText(buffer), baseName);
+      if (!book.chapters || !book.chapters.length) throw new Error('没有识别到可阅读章节');
+      openImportDialog(book, file.name);
+    } catch (error) {
+      showToast(error && error.message ? error.message : '书籍解析失败，请检查文件');
+    }
+  }
+
   /* ===== 书籍图版 ===== */
   function cardHtml(b, i) {
     var no = pad2(i + 1);
