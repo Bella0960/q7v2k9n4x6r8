@@ -638,7 +638,7 @@ test('forum creates a fallback for every role and upgrades it with persona-based
   assert.match(forumPage, /PhoneAPI\.completeJSON/);
   assert.match(forumPage, /post\.generatedBy\s*!==\s*'ai'/);
   assert.match(forumPage, /post\.generatedBy='ai'/);
-  assert.match(forumPage, /post\.roleId=roleId/);
+  assert.match(forumPage, /roleId:id/);
 });
 
 test('footprint follows the local current date and keeps week, calendar and generated data role-scoped', () => {
