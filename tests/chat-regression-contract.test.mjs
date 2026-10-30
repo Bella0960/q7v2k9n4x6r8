@@ -14,6 +14,9 @@ const forumPage = read('forum/forum.html');
 const footprint = read('chat/footprint/footprint.html');
 const libraryReader = read('library/library.html');
 const takeout = read('wallet/takeout.html');
+const chatSettings = read('chat/chat/chat-settings.html');
+const globalSettings = read('settings/settings.html');
+const rpProtocolPage = read('worldbook/settings/rp-protocol.html');
 const extras = read('chat/chat/js/chat-extras.js');
 const search = read('chat/chat/chat-search.html');
 const storage = read('shared/js/phone/phone_storage.js');
@@ -712,4 +715,16 @@ test('takeout cart stays bound to one restaurant and checkout uses the cart rest
   assert.match(takeout, /shop: orderShop\.name, shopId: orderShop\.id/);
   assert.match(takeout, /function clearCart\(\)/);
   assert.match(takeout, /if \(currentShop\) renderDishes\(\);\s*else updateCartUI\(\)/);
+});
+
+test('partner protocol is managed globally from desktop settings and shared by every chat', () => {
+  assert.match(globalSettings, /window\.location\.href='\.\.\/worldbook\/settings\/rp-protocol\.html'/);
+  assert.match(globalSettings, /伴侣协议/);
+  assert.doesNotMatch(chatSettings, /rp-protocol\.html|伴侣协议/);
+  assert.match(rpProtocolPage, /var STORAGE_KEY = 'chat_rp_protocol_';/);
+  assert.match(rpProtocolPage, /function migrateLegacyProtocol\(\)/);
+  assert.doesNotMatch(rpProtocolPage, /getRoleIdFromUrl/);
+  assert.match(detail, /localStorage\.getItem\(globalRpKey\)/);
+  assert.match(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
+  assert.doesNotMatch(detail, /localStorage\.getItem\('chat_rp_protocol_' \+ aliasRoleId\)/);
 });
