@@ -624,6 +624,7 @@ test('inspect phone generates and caches private content by character and local 
   assert.match(inspectPhone, /PhoneAPI\.completeJSON/);
   assert.match(inspectPhone, /roleBio/);
   assert.match(inspectPhone, /inspect_phone_content_v2_/);
+  assert.match(inspectPhone, /if\(hasCachedContent\)return/);
   assert.match(inspectPhone, /encodeURIComponent\(roleId\)/);
   assert.match(inspectPhone, /function normalizePhoneContent/);
   assert.match(inspectPhone, /escHtml/);
