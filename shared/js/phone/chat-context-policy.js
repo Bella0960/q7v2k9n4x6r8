@@ -36,7 +36,7 @@
         var quoteAuthor = String(m.quote.authorName || '').trim();
         if (quoteText) {
           content = '[引用回复上下文' + (quoteAuthor ? '，原消息来自' + quoteAuthor : '') +
-            '：「' + quoteText + '」]\\n' + content;
+            '：「' + quoteText + '」]\n' + content;
         }
       }
       // Narration belongs to the UI layer and must not consume model dialogue turns.
