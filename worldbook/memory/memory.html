@@ -716,70 +716,45 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 @media(max-width:480px){body{background:#fff!important}.phone-mockup{width:100vw!important}.mem-header{padding-left:23px!important;padding-right:23px!important}.mem-scroll-area{padding-left:23px!important;padding-right:23px!important}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 </style>
-<style id="memory-compact-navigation">
-/* Compact, viewport-first layout: no arrow icons, no long stacks of settings. */
-.mem-page{position:relative!important;overflow:hidden!important}
-.mem-header{padding-top:calc(37px + env(safe-area-inset-top,0px))!important;padding-bottom:12px!important}
-.mem-header:before{margin-bottom:13px!important}
-.mem-back{left:23px!important;right:auto!important;top:calc(10px + env(safe-area-inset-top,0px))!important;width:auto!important;height:24px!important;display:flex!important;justify-content:flex-start!important}
-.mem-back:before{content:"返回"!important;font:9px/1 var(--sans)!important;letter-spacing:.06em!important;color:#888!important}
-.mem-title{font-size:clamp(51px,13vw,61px)!important}
-.mem-header:after{margin-top:12px!important;padding-bottom:12px!important}
-.mem-scroll-area{padding-bottom:84px!important;overflow-y:auto!important}
-.mem-scroll-area>.mem-section-title:first-child{margin-top:14px!important}
-.mem-card-glass:has(#charPicker){padding:4px 0 10px!important;margin-bottom:8px!important;border-bottom:0!important}
-.char-avatar{border-radius:50%!important;width:39px!important;height:39px!important}
-.mem-card-glass:has(.mem-mood-text){margin:0 0 14px!important;padding:10px 0 11px 13px!important;border-left:1px solid #171717!important;border-bottom:0!important}
-.mem-mood-text{font-size:18px!important}
-.mem-section-title{margin-top:17px!important;margin-bottom:8px!important}
-.mem-main-preview{padding:2px 0 4px!important;margin:0 0 12px!important}
-.mem-preview-line{display:grid;grid-template-columns:35px minmax(0,1fr);column-gap:10px;padding:8px 0;border-bottom:1px solid #efefef}
-.mem-preview-time{font:9px/1.6 var(--sans);color:#aaa;font-variant-numeric:tabular-nums}
-.mem-preview-copy{font:10px/1.8 var(--sans);color:#444;overflow-wrap:anywhere}
-.mem-preview-empty{font:10px/1.8 var(--sans);color:#999;padding:6px 0 12px}
-.mem-preview-open{display:inline-block;margin-top:9px;padding:3px 0 5px;border:0;border-bottom:1px solid #999;background:transparent;color:#555;font:italic 13px/1 var(--serif)}
-.mem-corner-bar{position:absolute;z-index:30;left:0;right:0;bottom:0;display:flex;justify-content:space-between;gap:14px;padding:12px 23px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid #e4e4e4;background:rgba(255,255,255,.97)}
-.mem-corner-bar button,.mem-tools-corner{border:0;border-bottom:1px solid #b8b8b8;border-radius:0;background:transparent;color:#444;padding:4px 0 6px;font:italic 14px/1 var(--serif);white-space:nowrap}
-.mem-corner-bar button:active,.mem-tools-corner:active{color:#aaa}
-.mem-tools-corner{position:absolute;top:calc(9px + env(safe-area-inset-top,0px));right:23px;z-index:65;font-size:13px}
-.mem-tools-drawer,.mem-stream-drawer{position:absolute;inset:0;z-index:100;display:none;align-items:flex-end;background:rgba(0,0,0,.22);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
-.mem-tools-drawer.open,.mem-stream-drawer.open{display:flex;animation:memFadeIn .16s ease}
-@keyframes memFadeIn{from{opacity:0}to{opacity:1}}
-.mem-drawer-panel{position:relative;width:100%;max-height:88%;min-height:300px;display:flex;flex-direction:column;background:#fff;padding:17px 22px calc(15px + env(safe-area-inset-bottom,0px));animation:memPanelUp .22s ease-out}
-@keyframes memPanelUp{from{transform:translateY(15px);opacity:.7}to{transform:translateY(0);opacity:1}}
-.mem-drawer-top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:12px;border-bottom:1px solid #171717}
-.mem-drawer-eyebrow{font:600 8px/1.4 var(--sans);letter-spacing:.18em;color:#888}
-.mem-drawer-close{border:0;border-bottom:1px solid #bbb;background:transparent;color:#555;padding:4px 0;font:italic 13px/1 var(--serif)}
-.mem-drawer-tabs{display:flex;gap:17px;overflow-x:auto;flex-shrink:0;padding:12px 0 10px;border-bottom:1px solid #e8e8e8}
-.mem-drawer-tabs button{position:relative;flex-shrink:0;border:0;background:transparent;padding:3px 0 6px;color:#999;font:10px/1.4 var(--sans)}
-.mem-drawer-tabs button.active{color:#171717;font-weight:650}
-.mem-drawer-tabs button.active:after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:#171717}
-.mem-drawer-content{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-top:1px}
-.mem-drawer-content::-webkit-scrollbar{display:none}
-.mem-tool-view{display:none!important}
-.mem-tool-view.active{display:block!important}
-.mem-tool-view>.mem-section-title{margin-top:14px!important}
-.mem-tool-view>.mem-card-glass{margin-bottom:0!important}
-.mem-tool-view #summarySettingsCard{display:block!important}
-.mem-tool-view #summarySettingsCard:not(.settings-show){display:none!important}
-.mem-summary-heading{display:flex!important}
-.mem-tool-view .mem-summary-heading{padding-top:3px!important}
-.mem-inline-toggle{display:inline-block!important}
-.mem-tool-view .fold-card{margin-top:0!important}
-.mem-tool-view .fold-card.open .fold-body{max-height:60vh!important;overflow-y:auto!important}
-.mem-stream-panel{min-height:45vh}
-.mem-stream-panel .mem-list-container{overflow-y:auto;min-height:0;max-height:65vh;padding-bottom:18px!important}
-.mem-stream-panel .mem-group-date{font-size:16px!important}
-.mem-stream-heading{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:12px;border-bottom:1px solid #171717}
-.mem-stream-heading strong{font:400 26px/1 var(--serif);letter-spacing:-.05em}
+<style id="memory-space-framework">
+/* 统一框架：顶部两段主导航（记忆 / 整理）+ 记忆视图切换。
+   替代先前的多层抽屉与重复入口。所有功能节点与 ID 保持原位。 */
+.mem-tabs{display:flex;gap:20px;flex-shrink:0;padding:0 24px;border-bottom:1px solid #171717;background:#fff}
+.mem-tab{position:relative;border:0;border-bottom:2px solid transparent;background:transparent;padding:11px 0 8px;color:#999;font:600 10px/1 var(--sans);letter-spacing:.14em;cursor:pointer}
+.mem-tab.active{color:#171717;border-bottom-color:#171717}
+.mem-view[hidden],.mem-subview[hidden]{display:none!important}
+.mem-view>.mem-section-title:first-child{margin-top:14px!important}
+.mem-subtabs{position:sticky;top:0;z-index:20;display:flex;gap:16px;margin:20px 0 4px;padding:10px 0 9px;border-bottom:1px solid #e8e8e8;background:#fff}
+.mem-subtab{border:0;background:transparent;padding:3px 0 5px;color:#999;font:10px/1.4 var(--sans);cursor:pointer}
+.mem-subtab.active{color:#171717;font-weight:650;border-bottom:1px solid #171717}
+.mem-scope-note{display:block;color:#999!important;font:9px/1.7 var(--sans)!important;margin:-4px 0 7px!important}
+/* 时间流：由全屏抽屉改为页内常驻视图（ID 与结构保留，v2 依赖节点仍在位） */
+.mem-stream-drawer{position:static!important;inset:auto!important;z-index:auto!important;display:block!important;align-items:stretch!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+.mem-stream-panel{max-height:none!important;min-height:0!important;padding:0!important;background:transparent!important;box-shadow:none!important;animation:none!important}
+.mem-stream-heading{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:10px!important;margin-bottom:2px!important;border-bottom:1px solid #e5e5e5!important}
+.mem-stream-heading strong{font:400 22px/1 var(--serif);letter-spacing:-.05em;color:#171717}
 .mem-stream-heading span{font:8px/1 var(--sans);color:#999;letter-spacing:.15em}
-.mem-stream-panel .mem-group-more{cursor:pointer}
-@media(max-width:480px){
-  .mem-drawer-panel{max-height:90%;padding-left:22px;padding-right:22px}
-  .mem-tools-corner{right:23px}
-  .mem-scroll-area{padding-left:23px!important;padding-right:23px!important}
-}
-@media(prefers-reduced-motion:reduce){.mem-tools-drawer,.mem-stream-drawer,.mem-drawer-panel{animation:none!important}}
+.mem-stream-panel .mem-list-container{max-height:none!important;overflow:visible!important}
+/* 返回按钮：回到左上角文字样式 */
+.mem-back{left:23px!important;right:auto!important;top:calc(10px + env(safe-area-inset-top,0px))!important;display:flex!important;align-items:center!important;width:auto!important;height:24px!important}
+.mem-back:before{content:"返回"!important;font:9px/1 var(--sans)!important;letter-spacing:.06em!important;color:#888!important}
+@media(max-width:480px){.mem-tabs{padding-left:23px;padding-right:23px}}
+/* 概览面板：默认收拢为一行摘要，点击展开（面板内容由 v2 注入） */
+#memory-overview{margin:14px 0 0!important;padding:0!important;border:0!important}
+#memory-overview.open{margin:17px 0 22px!important;padding:17px 0 15px!important;border-top:1px solid #171717!important;border-bottom:1px solid #d9d9d9!important}
+#memory-overview>.memory-overview-kicker,
+#memory-overview>.memory-overview-title,
+#memory-overview>.memory-overview-note,
+#memory-overview>.memory-metrics,
+#memory-overview>.memory-archive-cta{display:none!important}
+#memory-overview.open>.memory-overview-kicker,
+#memory-overview.open>.memory-overview-title,
+#memory-overview.open>.memory-overview-note{display:block!important}
+#memory-overview.open>.memory-metrics{display:grid!important}
+#memory-overview.open>.memory-archive-cta{display:flex!important}
+.mem-overview-fold{display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%;margin:0;padding:9px 0;border:0;border-bottom:1px solid #171717;background:transparent;color:#777;font:10px/1.5 var(--sans);text-align:left;cursor:pointer}
+.mem-overview-fold b{color:#171717;font-weight:650;font-variant-numeric:tabular-nums}
+.mem-overview-fold .fold-mark{flex-shrink:0;color:#555;font:italic 13px/1 var(--serif)}
 </style>
 </head>
 <body>
@@ -801,164 +776,195 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
                 <span class="mem-title">记忆空间</span>
             </div>
         </div>
+
+        <!-- 两段主导航：记忆（看内容）/ 整理（做操作） -->
+        <nav class="mem-tabs" aria-label="记忆空间分区">
+            <button type="button" class="mem-tab active" data-tab="memory">记忆</button>
+            <button type="button" class="mem-tab" data-tab="studio">整理</button>
+        </nav>
+
         <div class="mem-scroll-area">
 
-            <!-- 角色选择 -->
-            <div class="mem-section-title">角色</div>
-            <div class="mem-card-glass" style="padding-top:14px !important;">
-                <div class="char-picker" id="charPicker"></div>
-            </div>
+            <!-- ===== 记忆：只看 ===== -->
+            <section class="mem-view" data-view="memory">
+                <div class="mem-section-title">角色</div>
+                <div class="mem-card-glass" style="padding-top:14px !important;">
+                    <div class="char-picker" id="charPicker"></div>
+                </div>
 
-            <!-- 今日碎片 -->
-            <div class="mem-card-glass">
-                <div class="mem-label">今日碎片</div>
-                <div id="mem-daily-mood" class="mem-mood-text">载入中...</div>
-                <div id="mem-daily-event" class="mem-event-text">捕捉思维中...</div>
-            </div>
+                <!-- 今日碎片（v2 会改写为「最近一次真实对话」） -->
+                <div class="mem-card-glass">
+                    <div class="mem-label">今日碎片</div>
+                    <div id="mem-daily-mood" class="mem-mood-text">载入中...</div>
+                    <div id="mem-daily-event" class="mem-event-text">捕捉思维中...</div>
+                </div>
 
-            <!-- 记忆流 -->
-            <div class="mem-section-title">记忆流</div>
-            <div id="mem-list" class="mem-list-container"></div>
+                <!-- 记忆的两种视图：原始聊天时间流 / 提炼后的长期记忆 -->
+                <div class="mem-subtabs" role="tablist" aria-label="记忆视图">
+                    <button type="button" class="mem-subtab active" data-sub="stream">时间流</button>
+                    <button type="button" class="mem-subtab" data-sub="library">记忆库</button>
+                </div>
 
-            <!-- 记忆总结设置 -->
-            <div class="mem-section-title mem-summary-heading" style="margin-top: 28px;"><span>总结设置</span><button type="button" class="mem-inline-toggle" id="summarySettingsToggle" aria-expanded="false">调节 +</button></div>
-            <div class="mem-card-glass" id="summarySettingsCard">
-                <div class="sum-row">
-                    <div class="sum-label">总结模式</div>
-                    <div class="sum-seg">
-                        <button class="sum-seg-btn active" data-mode="separate" type="button">分开总结</button>
-                        <button class="sum-seg-btn" data-mode="merge" type="button">合并总结</button>
-                    </div>
-                </div>
-                <div class="sum-row">
-                    <div class="sum-label">总结回合数</div>
-                    <div class="sum-value" id="sum-turns-val">20 轮</div>
-                </div>
-                <input type="range" class="sum-slider" id="sum-turns" min="5" max="50" value="20">
-                <div class="sum-row">
-                    <div class="sum-label">总结最少字数</div>
-                    <div class="sum-value" id="sum-min-chars-val">100 字</div>
-                </div>
-                <input type="range" class="sum-slider" id="sum-min-chars" min="50" max="500" step="10" value="100">
-                <div class="sum-row">
-                    <div class="sum-label">单次总结最多生成</div>
-                    <div class="sum-value" id="sum-max-output-val">500 字</div>
-                </div>
-                <input type="range" class="sum-slider" id="sum-max-output" min="100" max="1000" step="50" value="500">
-                <div class="sum-row">
-                    <div class="sum-label">核心记忆重要阈值</div>
-                    <div class="sum-value" id="sum-core-threshold-val">70</div>
-                </div>
-                <input type="range" class="sum-slider" id="sum-core-threshold" min="0" max="100" value="70">
-                <div class="sum-row">
-                    <div class="sum-label">长期记忆重要阈值</div>
-                    <div class="sum-value" id="sum-long-threshold-val">50</div>
-                </div>
-                <input type="range" class="sum-slider" id="sum-long-threshold" min="0" max="100" value="50">
-                <div class="sum-row">
-                    <div class="sum-label">核心记忆单条上限</div>
-                    <div class="sum-value" id="sum-core-max-val">200 字</div>
-                </div>
-                <input type="range" class="sum-slider" id="sum-core-max" min="50" max="500" step="10" value="200">
-                <div class="sum-row">
-                    <div class="sum-label">长期记忆单条上限</div>
-                    <div class="sum-value" id="sum-long-max-val">500 字</div>
-                </div>
-                <input type="range" class="sum-slider" id="sum-long-max" min="100" max="1000" step="50" value="500">
-            </div>
-
-            <!-- 自动总结 -->
-            <div class="mem-section-title" style="margin-top: 28px;">自动总结</div>
-            <div class="fold-card" id="autoCard">
-                <div class="fold-head" id="autoHead">
-                    <span class="fold-title">自动总结</span>
-                    <span class="fold-sub" id="autoSub">已开启 · 每20轮提醒</span>
-                    <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                </div>
-                <div class="fold-body">
-                    <div class="fold-inner">
-                        <div class="toggle-row">
-                            <div>
-                                <div class="toggle-label">总结提醒</div>
-                                <div class="toggle-hint">只提醒，不会自动扣费；确认后每次整理最多 30 条，并额外调用一次 API</div>
+                <div class="mem-subview" data-sub="stream">
+                    <div class="mem-stream-drawer open" id="mem-stream-drawer">
+                        <section class="mem-drawer-panel mem-stream-panel" role="region" aria-label="聊天时间流">
+                            <div class="mem-stream-heading">
+                                <strong>Memory</strong>
+                                <span>PERSONAL NOTES</span>
                             </div>
-                            <div class="mem-toggle on" id="autoToggle"></div>
+                            <div id="mem-list" class="mem-list-container"></div>
+                        </section>
+                    </div>
+                </div>
+
+                <div class="mem-subview" data-sub="library" hidden>
+                    <div class="fold-card open" id="libCard">
+                        <div class="fold-head" id="libHead">
+                            <span class="fold-title">记忆库</span>
+                            <span class="fold-sub" id="libSub">暂无记忆</span>
+                            <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                         </div>
-                        <div class="field-label">总结间隔（轮数）</div>
-                        <div style="display:flex;align-items:center;gap:10px;">
-                            <input type="number" class="num-input" id="autoInterval" min="1" max="200" style="flex:1;">
-                            <span style="font-size:0.688rem;color:#999;white-space:nowrap;">1 ~ 200 轮</span>
+                        <div class="fold-body">
+                            <div class="fold-inner" id="libList"></div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- 手动总结 -->
-            <div class="fold-card" id="manualCard">
-                <div class="fold-head" id="manualHead">
-                    <span class="fold-title">手动总结</span>
-                    <span class="fold-sub" id="manualSub">选择范围与分类</span>
-                    <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                </div>
-                <div class="fold-body">
-                    <div class="fold-inner">
-                        <div class="manual-banner">当前有 <b id="unsumCount">0</b> 条消息待整理。每次最多处理 30 条，完整原文不会被覆盖。</div>
-                        <div class="field-label">总结分类</div>
-                        <div class="cat-grid" id="catChips">
-                            <button type="button" class="cat-chip on" data-cat="plot">剧情</button>
-                            <button type="button" class="cat-chip on" data-cat="key">关键事件</button>
-                            <button type="button" class="cat-chip on" data-cat="detail">生活细节</button>
-                            <button type="button" class="cat-chip on" data-cat="anniversary">纪念日</button>
-                            <button type="button" class="cat-chip on" data-cat="preference">互动偏好</button>
-                        </div>
-                        <div class="field-label">只总结最近</div>
-                        <div style="display:flex;align-items:center;gap:10px;">
-                            <input type="number" class="num-input" id="manualRange" min="1" max="200" value="30" style="flex:1;">
-                            <span style="font-size:0.688rem;color:#999;white-space:nowrap;">条</span>
-                        </div>
-                        <div style="display:flex;gap:10px;margin-top:14px;">
-                            <button type="button" class="btn-ghost" id="btnManualRecent">总结最近30条</button>
-                            <button type="button" class="btn-primary" id="btnManualAll">整理下一批未总结</button>
-                        </div>
-                        <div style="display:flex;gap:10px;margin-top:10px;">
-                            <button type="button" class="btn-ghost" id="btnManualBusy" style="display:none;">正在总结...</button>
+                <!-- 概览面板「回看真实聊天」的桥接按钮，不可见 -->
+                <button type="button" class="mem-preview-open" id="mem-preview-open" hidden>打开时间流</button>
+            </section>
+
+            <!-- ===== 整理：只做 ===== -->
+            <section class="mem-view" data-view="studio" hidden>
+                <div class="mem-section-title">自动总结</div>
+                <div class="fold-card" id="autoCard">
+                    <div class="fold-head" id="autoHead">
+                        <span class="fold-title">自动总结</span>
+                        <span class="fold-sub" id="autoSub">已开启 · 每20条提醒</span>
+                        <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-inner">
+                            <div class="toggle-row">
+                                <div>
+                                    <div class="toggle-label">总结提醒</div>
+                                    <div class="toggle-hint">只提醒，不会自动扣费；确认后每次整理最多 30 条，并额外调用一次 API</div>
+                                </div>
+                                <div class="mem-toggle on" id="autoToggle"></div>
+                            </div>
+                            <div class="field-label">触发阈值</div>
+                            <span class="mem-scope-note">作用于聊天页：未整理消息累计到该条数时弹出提醒。</span>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <input type="number" class="num-input" id="autoInterval" min="1" max="200" style="flex:1;">
+                                <span style="font-size:0.688rem;color:#999;white-space:nowrap;">1 ~ 200 条</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- 记忆库 -->
-            <div class="mem-section-title" style="margin-top: 28px;">记忆库</div>
-            <div class="fold-card" id="libCard">
-                <div class="fold-head" id="libHead">
-                    <span class="fold-title">记忆库</span>
-                    <span class="fold-sub" id="libSub">暂无记忆</span>
-                    <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                </div>
-                <div class="fold-body">
-                    <div class="fold-inner" id="libList"></div>
-                </div>
-            </div>
-
-            <!-- 记忆工具 -->
-            <div class="mem-section-title" style="margin-top: 28px;">记忆工具</div>
-            <div class="fold-card" id="toolCard">
-                <div class="fold-head" id="toolHead">
-                    <span class="fold-title">记忆工具</span>
-                    <span class="fold-sub" id="toolSub">去重与合并</span>
-                    <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                </div>
-                <div class="fold-body">
-                    <div class="fold-inner">
-                        <div class="tool-row">
-                            <button type="button" class="btn-ghost" id="btnDedup">快速去重</button>
-                            <button type="button" class="btn-primary" id="btnMerge">智能合并</button>
+                <div class="mem-section-title">手动总结</div>
+                <div class="fold-card" id="manualCard">
+                    <div class="fold-head" id="manualHead">
+                        <span class="fold-title">手动总结</span>
+                        <span class="fold-sub" id="manualSub">选择范围与分类</span>
+                        <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-inner">
+                            <div class="manual-banner">当前有 <b id="unsumCount">0</b> 条消息待整理。每次最多处理 30 条，完整原文不会被覆盖。</div>
+                            <div class="field-label">总结分类</div>
+                            <div class="cat-grid" id="catChips">
+                                <button type="button" class="cat-chip on" data-cat="plot">剧情</button>
+                                <button type="button" class="cat-chip on" data-cat="key">关键事件</button>
+                                <button type="button" class="cat-chip on" data-cat="detail">生活细节</button>
+                                <button type="button" class="cat-chip on" data-cat="anniversary">纪念日</button>
+                                <button type="button" class="cat-chip on" data-cat="preference">互动偏好</button>
+                            </div>
+                            <div class="field-label">只总结最近</div>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <input type="number" class="num-input" id="manualRange" min="1" max="200" value="30" style="flex:1;">
+                                <span style="font-size:0.688rem;color:#999;white-space:nowrap;">条</span>
+                            </div>
+                            <div style="display:flex;gap:10px;margin-top:14px;">
+                                <button type="button" class="btn-ghost" id="btnManualRecent">总结最近30条</button>
+                                <button type="button" class="btn-primary" id="btnManualAll">整理下一批未总结</button>
+                            </div>
+                            <div style="display:flex;gap:10px;margin-top:10px;">
+                                <button type="button" class="btn-ghost" id="btnManualBusy" style="display:none;">正在总结...</button>
+                            </div>
                         </div>
-                        <div id="toolResult"></div>
-                        <div class="tool-note">快速去重为纯本地算法，不消耗额度；智能合并会调用 AI，固定记忆与关键事件、纪念日不会被合并。</div>
                     </div>
                 </div>
-            </div>
+
+                <div class="mem-section-title">记忆工具</div>
+                <div class="fold-card" id="toolCard">
+                    <div class="fold-head" id="toolHead">
+                        <span class="fold-title">记忆工具</span>
+                        <span class="fold-sub" id="toolSub">去重与合并</span>
+                        <svg class="fold-arrow" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </div>
+                    <div class="fold-body">
+                        <div class="fold-inner">
+                            <div class="tool-row">
+                                <button type="button" class="btn-ghost" id="btnDedup">快速去重</button>
+                                <button type="button" class="btn-primary" id="btnMerge">智能合并</button>
+                            </div>
+                            <div id="toolResult"></div>
+                            <div class="tool-note">快速去重为纯本地算法，不消耗额度；智能合并会调用 AI，固定记忆与关键事件、纪念日不会被合并。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mem-section-title mem-summary-heading" style="margin-top:28px;">
+                    <span>高级参数</span>
+                    <button type="button" class="mem-inline-toggle" id="summarySettingsToggle" aria-expanded="false">调节 +</button>
+                </div>
+                <div class="mem-card-glass" id="summarySettingsCard">
+                    <div class="sum-row">
+                        <div class="sum-label">总结模式</div>
+                        <div class="sum-seg">
+                            <button class="sum-seg-btn active" data-mode="separate" type="button">分开总结</button>
+                            <button class="sum-seg-btn" data-mode="merge" type="button">合并总结</button>
+                        </div>
+                    </div>
+                    <div class="sum-row">
+                        <div class="sum-label">总结回合数</div>
+                        <div class="sum-value" id="sum-turns-val">20 轮</div>
+                    </div>
+                    <span class="mem-scope-note">与上方「触发阈值」不是同一个值；此项目前没有逻辑读取它。</span>
+                    <input type="range" class="sum-slider" id="sum-turns" min="5" max="50" value="20">
+                    <div class="sum-row">
+                        <div class="sum-label">总结最少字数</div>
+                        <div class="sum-value" id="sum-min-chars-val">100 字</div>
+                    </div>
+                    <input type="range" class="sum-slider" id="sum-min-chars" min="50" max="500" step="10" value="100">
+                    <div class="sum-row">
+                        <div class="sum-label">单次总结最多生成</div>
+                        <div class="sum-value" id="sum-max-output-val">500 字</div>
+                    </div>
+                    <input type="range" class="sum-slider" id="sum-max-output" min="100" max="1000" step="50" value="500">
+                    <div class="sum-row">
+                        <div class="sum-label">核心记忆重要阈值</div>
+                        <div class="sum-value" id="sum-core-threshold-val">70</div>
+                    </div>
+                    <input type="range" class="sum-slider" id="sum-core-threshold" min="0" max="100" value="70">
+                    <div class="sum-row">
+                        <div class="sum-label">长期记忆重要阈值</div>
+                        <div class="sum-value" id="sum-long-threshold-val">50</div>
+                    </div>
+                    <input type="range" class="sum-slider" id="sum-long-threshold" min="0" max="100" value="50">
+                    <div class="sum-row">
+                        <div class="sum-label">核心记忆单条上限</div>
+                        <div class="sum-value" id="sum-core-max-val">200 字</div>
+                    </div>
+                    <input type="range" class="sum-slider" id="sum-core-max" min="50" max="500" step="10" value="200">
+                    <div class="sum-row">
+                        <div class="sum-label">长期记忆单条上限</div>
+                        <div class="sum-value" id="sum-long-max-val">500 字</div>
+                    </div>
+                    <input type="range" class="sum-slider" id="sum-long-max" min="100" max="1000" step="50" value="500">
+                </div>
+            </section>
 
         </div>
         <div class="mem-safe-bottom"></div>
@@ -1129,7 +1135,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
         const on = readAutoOn(currentMemId);
         const n = readInterval(currentMemId);
         document.getElementById('autoToggle').classList.toggle('on', on);
-        document.getElementById('autoSub').textContent = on ? ('已开启 · 每' + n + '轮提醒') : '已关闭';
+        document.getElementById('autoSub').textContent = on ? ('已开启 · 每' + n + '条提醒') : '已关闭';
         document.getElementById('autoInterval').value = n;
     }
 
@@ -1604,135 +1610,88 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:1px solid 
 </script>
 <script src="../../shared/js/statusbar-control.js"></script>
 
-<script id="memory-compact-navigation">
-(function(){
-  const page=document.getElementById('memory-page');
-  const scroll=document.querySelector('.mem-scroll-area');
-  const list=document.getElementById('mem-list');
-  if(!page||!scroll||!list)return;
-  const mk=(tag,cls,text)=>{const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el;};
-
-  // Move the live memory stream into a short bottom sheet; the same list node keeps its ID.
-  const streamTitle=[...scroll.children].find(el=>el.classList&&el.classList.contains('mem-section-title')&&el.textContent.trim()==='记忆流');
-  const preview=mk('div','mem-main-preview');
-  preview.id='mem-main-preview';
-  const previewLines=mk('div','mem-preview-lines');
-  const allBtn=mk('button','mem-preview-open','全部记忆 +');
-  allBtn.type='button';
-  preview.append(previewLines,allBtn);
-  if(streamTitle)streamTitle.insertAdjacentElement('afterend',preview);
-
-  const streamDrawer=mk('div','mem-stream-drawer');
-  streamDrawer.id='mem-stream-drawer';
-  const streamPanel=mk('section','mem-drawer-panel mem-stream-panel');
-  streamPanel.setAttribute('role','dialog');streamPanel.setAttribute('aria-label','全部记忆');
-  const streamHead=mk('div','mem-stream-heading');
-  const streamHeadTitle=mk('strong','','Memory');
-  const streamEyebrow=mk('span','','PERSONAL NOTES');
-  const streamClose=mk('button','mem-drawer-close','关闭');
-  streamClose.type='button';
-  const streamTop=mk('div','mem-drawer-top');
-  const streamBrand=mk('span','mem-drawer-eyebrow','MEMORY / ARCHIVE');
-  streamTop.append(streamBrand,streamClose);streamHead.append(streamHeadTitle,streamEyebrow);
-  streamPanel.append(streamTop,streamHead,list);streamDrawer.append(streamPanel);page.append(streamDrawer);
-
-  // Group the original feature nodes into separate views, so each opens on its own.
-  const children=[...scroll.children];
-  const getTitle=label=>children.find(el=>el.classList&&el.classList.contains('mem-section-title')&&el.textContent.trim().toUpperCase()===label);
-  const summaryTitle=children.find(el=>el.classList&&el.classList.contains('mem-summary-heading'));
-  const autoTitle=getTitle('AUTO SUMMARY');
-  const libraryTitle=getTitle('MEMORY BANK');
-  const toolTitle=getTitle('MEMORY TOOLS');
-  const summaryCard=document.getElementById('summarySettingsCard');
-  const autoCard=document.getElementById('autoCard');
-  const manualCard=document.getElementById('manualCard');
-  const libraryCard=document.getElementById('libCard');
-  const toolCard=document.getElementById('toolCard');
-
-  // Remove original settings nodes from the main page before re-housing them.
-  [summaryTitle,summaryCard,autoTitle,autoCard,manualCard,libraryTitle,libraryCard,toolTitle,toolCard].forEach(el=>{if(el&&el.parentNode)el.parentNode.removeChild(el);});
-
-  const defs=[
-    {key:'settings',label:'参数',nodes:[summaryTitle,summaryCard]},
-    {key:'auto',label:'自动',nodes:[autoTitle,autoCard]},
-    {key:'manual',label:'手动',nodes:[manualCard]},
-    {key:'library',label:'记忆库',nodes:[libraryTitle,libraryCard]},
-    {key:'tools',label:'工具',nodes:[toolTitle,toolCard]}
-  ];
-  const toolsDrawer=mk('div','mem-tools-drawer');
-  toolsDrawer.id='mem-tools-drawer';
-  const toolsPanel=mk('section','mem-drawer-panel');
-  toolsPanel.setAttribute('role','dialog');toolsPanel.setAttribute('aria-label','记忆功能');
-  const top=mk('div','mem-drawer-top');
-  top.append(mk('span','mem-drawer-eyebrow','MEMORY / STUDIO'));
-  const close=mk('button','mem-drawer-close','关闭');close.type='button';top.append(close);
-  const tabs=mk('nav','mem-drawer-tabs');tabs.setAttribute('aria-label','记忆功能分类');
-  const content=mk('div','mem-drawer-content');
-  const views={};
-  defs.forEach(def=>{
-    const tab=mk('button','',def.label);tab.type='button';tab.dataset.view=def.key;tabs.append(tab);
-    const view=mk('section','mem-tool-view');view.dataset.view=def.key;
-    def.nodes.filter(Boolean).forEach(node=>view.append(node));
-    if(def.key==='manual'&&manualCard){const title=mk('div','mem-section-title','MANUAL SUMMARY');view.insertBefore(title,manualCard);}
-    content.append(view);views[def.key]=view;
-  });
-  toolsPanel.append(top,tabs,content);toolsDrawer.append(toolsPanel);page.append(toolsDrawer);
-
-  function setView(key){
-    Object.keys(views).forEach(k=>{views[k].classList.toggle('active',k===key);});
-    tabs.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.view===key));
-  }
-  function openTools(key){
-    setView(key||'settings');
-    toolsDrawer.classList.add('open');toolsDrawer.setAttribute('aria-hidden','false');
-  }
-  function closeTools(){toolsDrawer.classList.remove('open');toolsDrawer.setAttribute('aria-hidden','true');}
-  function openStream(){streamDrawer.classList.add('open');streamDrawer.setAttribute('aria-hidden','false');}
-  function closeStream(){streamDrawer.classList.remove('open');streamDrawer.setAttribute('aria-hidden','true');}
-  tabs.addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)setView(b.dataset.view);});
-  close.addEventListener('click',closeTools);streamClose.addEventListener('click',closeStream);
-  toolsDrawer.addEventListener('click',e=>{if(e.target===toolsDrawer)closeTools();});
-  streamDrawer.addEventListener('click',e=>{if(e.target===streamDrawer)closeStream();});
-  allBtn.addEventListener('click',openStream);
-
-  const back=document.querySelector('.mem-back');
-  if(back){back.innerHTML='';back.setAttribute('aria-label','返回首页');back.style.left='23px';}
-  const corner=mk('button','mem-tools-corner','功能 +');corner.type='button';corner.addEventListener('click',()=>openTools('settings'));page.append(corner);
-  const bar=mk('nav','mem-corner-bar');bar.setAttribute('aria-label','记忆快捷入口');
-  const memoryBtn=mk('button','','记忆 +');memoryBtn.type='button';memoryBtn.addEventListener('click',openStream);
-  const summaryBtn=mk('button','','总结 +');summaryBtn.type='button';summaryBtn.addEventListener('click',()=>openTools('manual'));
-  const manageBtn=mk('button','','管理 +');manageBtn.type='button';manageBtn.addEventListener('click',()=>openTools('library'));
-  bar.append(memoryBtn,summaryBtn,manageBtn);page.append(bar);
-
-  function updatePreview(){
-    previewLines.innerHTML='';
-    const lines=list.querySelectorAll('.mem-line');
-    let visible=0;
-    lines.forEach(line=>{
-      if(visible>=2)return;
-      const time=line.querySelector('.mem-line-time')?.textContent||'';
-      const copy=line.querySelector('.mem-line-content')?.textContent||'';
-      const row=mk('div','mem-preview-line');
-      row.append(mk('span','mem-preview-time',time),mk('span','mem-preview-copy',copy));
-      previewLines.append(row);visible++;
+<script id="memory-space-framework">
+/* 框架脚本：只做视图切换。不改动任何业务函数与存储键。 */
+(function () {
+    var tabs = document.querySelectorAll('.mem-tab');
+    var views = document.querySelectorAll('.mem-view');
+    var scroller = document.querySelector('.mem-scroll-area');
+    function setTab(key) {
+        Array.prototype.forEach.call(views, function (v) { v.hidden = v.getAttribute('data-view') !== key; });
+        Array.prototype.forEach.call(tabs, function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === key); });
+        if (scroller) scroller.scrollTop = 0;
+    }
+    Array.prototype.forEach.call(tabs, function (t) {
+        t.addEventListener('click', function () { setTab(t.getAttribute('data-tab')); });
     });
-    if(!visible)previewLines.append(mk('div','mem-preview-empty','聊天里留下的重要片段，会安静地收在这里。'));
-    const total=list.querySelectorAll('.mem-line').length;
-    allBtn.textContent=total?'全部记忆 · '+total+' 条 +':'打开记忆流 +';
-  }
-  const observer=new MutationObserver(updatePreview);observer.observe(list,{childList:true,subtree:true,characterData:true});
-  updatePreview();
 
-  // Keep the seven summary values editable, but hidden until the small inline control is opened.
-  const sumToggle=document.getElementById('summarySettingsToggle');
-  if(sumToggle&&summaryCard){
-    sumToggle.addEventListener('click',()=>{
-      const opened=summaryCard.classList.toggle('settings-show');
-      sumToggle.setAttribute('aria-expanded',String(opened));
-      sumToggle.textContent=opened?'收起 −':'调节 +';
+    var subs = document.querySelectorAll('.mem-subtab');
+    var subviews = document.querySelectorAll('.mem-subview');
+    function setSub(key) {
+        Array.prototype.forEach.call(subviews, function (v) { v.hidden = v.getAttribute('data-sub') !== key; });
+        Array.prototype.forEach.call(subs, function (b) { b.classList.toggle('active', b.getAttribute('data-sub') === key); });
+    }
+    Array.prototype.forEach.call(subs, function (b) {
+        b.addEventListener('click', function () {
+            setSub(b.getAttribute('data-sub'));
+            // 切换后把切换条滚到顶部，内容紧随其后，避免「点了没反应」
+            var bar = document.querySelector('.mem-subtabs');
+            if (bar && bar.scrollIntoView) bar.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
     });
-  }
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeTools();closeStream();}});
+
+    // 高级参数折叠（class 与 CSS 的 is-open 保持一致）
+    var sumToggle = document.getElementById('summarySettingsToggle');
+    var sumCard = document.getElementById('summarySettingsCard');
+    if (sumToggle && sumCard) {
+        sumToggle.addEventListener('click', function () {
+            var opened = sumCard.classList.toggle('is-open');
+            sumToggle.setAttribute('aria-expanded', String(opened));
+            sumToggle.textContent = opened ? '收起 −' : '调节 +';
+        });
+    }
+
+    // 概览面板「回看真实聊天」→ 回到记忆页的时间流
+    var previewOpen = document.querySelector('.mem-preview-open');
+    if (previewOpen) {
+        previewOpen.addEventListener('click', function () { setTab('memory'); setSub('stream'); });
+    }
+
+    // 概览面板：默认收一行摘要，点击展开（面板由 v2 注入，需等其就绪）
+    function syncOverviewFold(btn) {
+        var get = function (id) { var e = document.getElementById(id); return e ? e.textContent : '0'; };
+        var text = btn.querySelector('.fold-text');
+        if (text) {
+            text.innerHTML = '真实消息 <b>' + get('memory-stat-messages') + '</b> · 长期记忆 <b>' +
+                get('memory-stat-long') + '</b> · 待确认 <b>' + get('memory-stat-pending') + '</b>';
+        }
+    }
+    function setupOverviewFold(ov) {
+        if (ov.querySelector('.mem-overview-fold')) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mem-overview-fold';
+        btn.innerHTML = '<span class="fold-text"></span><span class="fold-mark">展开 +</span>';
+        ov.insertBefore(btn, ov.firstChild);
+        syncOverviewFold(btn);
+        btn.addEventListener('click', function () {
+            var open = ov.classList.toggle('open');
+            btn.querySelector('.fold-mark').textContent = open ? '收起 −' : '展开 +';
+        });
+        if (window.MutationObserver) {
+            var obs = new MutationObserver(function () { syncOverviewFold(btn); });
+            ['memory-stat-messages', 'memory-stat-long', 'memory-stat-pending'].forEach(function (id) {
+                var e = document.getElementById(id);
+                if (e) obs.observe(e, { childList: true, characterData: true, subtree: true });
+            });
+        }
+    }
+    function whenOverviewReady(tries) {
+        var ov = document.getElementById('memory-overview');
+        if (ov) { setupOverviewFold(ov); return; }
+        if (tries > 0) setTimeout(function () { whenOverviewReady(tries - 1); }, 150);
+    }
+    whenOverviewReady(20);
 })();
 </script>
 <script src="../../shared/js/phone/memory_space_v2.js?v=20261024v1"></script>
