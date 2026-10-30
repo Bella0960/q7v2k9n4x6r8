@@ -1860,11 +1860,20 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     openDialog('让 TA 写一本', '这一步还没有接通。等它准备好，会在这里把写好的书放进你的书架。');
   });
 
-  /* ===== 启动 ===== */
-  renderShelf();
-  renderHome();
-  applySettings();
-  applyRoute(location.hash.replace(/^#/, '') || 'home');
+  /* ===== 启动：恢复已导入书籍、段评，再渲染书架 ===== */
+  Promise.all([restoreLocalBooks(), loadReaderComments()]).then(function () {
+    renderRoleOptions();
+    renderShelf();
+    renderHome();
+    applySettings();
+    applyRoute(location.hash.replace(/^#/, '') || 'home');
+  }).catch(function () {
+    renderRoleOptions();
+    renderShelf();
+    renderHome();
+    applySettings();
+    applyRoute(location.hash.replace(/^#/, '') || 'home');
+  });
 })();
 </script>
 </body>
