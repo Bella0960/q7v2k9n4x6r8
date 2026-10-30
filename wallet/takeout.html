@@ -181,6 +181,12 @@
   .cart-row:last-child { border-bottom: none; }
   .cart-row-name { font-size: 0.875rem; }
   .cart-row-price { font-size: 0.875rem; font-weight: 600; }
+  .cart-row-meta { margin-top: 3px; font-size: 0.688rem; color: #999; }
+  .cart-clear-btn {
+    width: 100%; height: 40px; margin-top: 14px; border: 1px solid #E5E5EA;
+    border-radius: 12px; background: #F7F7F9; color: #666;
+    font-size: 0.813rem; cursor: pointer;
+  }
 
   /* 支付方式 */
   .pay-method {
@@ -381,12 +387,53 @@
   let currentCat = 'all';
   let currentShop = null;
   let cart = {}; // { dishId: {dish, qty} }
+  let cartShopId = '';
+
+  function getShopById(shopId) {
+    return SHOPS.find(function (shop) { return shop.id === shopId; }) || null;
+  }
+  function getDishShopId(dishId) {
+    var shop = SHOPS.find(function (item) {
+      return item.dishes.some(function (dish) { return dish.id === dishId; });
+    });
+    return shop ? shop.id : '';
+  }
+  function getCartShop() {
+    return cartShopId && cartShopId !== 'mixed' ? getShopById(cartShopId) : null;
+  }
 
   function loadCart() {
-    try { cart = JSON.parse(localStorage.getItem('takeout_cart') || '{}'); } catch(e) { cart = {}; }
+    try {
+      var stored = JSON.parse(localStorage.getItem('takeout_cart') || '{}');
+      cart = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+    } catch(e) { cart = {}; }
+    cartShopId = localStorage.getItem('takeout_cart_shop_id') || '';
+    var ownerIds = [];
+    Object.keys(cart).forEach(function (key) {
+      var entry = cart[key];
+      var qty = Math.floor(Number(entry && entry.qty) || 0);
+      var dishId = entry && entry.dish && entry.dish.id ? entry.dish.id : key;
+      var owner = SHOPS.find(function (shop) {
+        return shop.dishes.some(function (dish) { return dish.id === dishId; });
+      });
+      if (!owner || qty <= 0) { delete cart[key]; return; }
+      var canonicalDish = owner.dishes.find(function (dish) { return dish.id === dishId; });
+      cart[key] = { dish: canonicalDish, qty: qty };
+      if (ownerIds.indexOf(owner.id) === -1) ownerIds.push(owner.id);
+    });
+    if (ownerIds.length > 1) cartShopId = 'mixed';
+    else if (ownerIds.length === 1) {
+      cartShopId = cartShopId && cartShopId !== ownerIds[0] ? 'mixed' : ownerIds[0];
+    } else cartShopId = '';
   }
   function saveCart() {
-    localStorage.setItem('takeout_cart', JSON.stringify(cart));
+    try {
+      localStorage.setItem('takeout_cart', JSON.stringify(cart));
+      if (cartCount() > 0 && cartShopId) localStorage.setItem('takeout_cart_shop_id', cartShopId);
+      else localStorage.removeItem('takeout_cart_shop_id');
+    } catch(e) {
+      toast('购物车保存失败，请检查手机存储空间');
+    }
     updateCartUI();
   }
 
@@ -519,21 +566,45 @@
   // ===== 购物车操作 =====
   function addDish(dishId) {
     if (!currentShop) return;
-    var dish = currentShop.dishes.find(d => d.id === dishId);
-    if (!dish) return;
+    var dish = currentShop.dishes.find(function (item) { return item.id === dishId; });
+    var ownerShopId = getDishShopId(dishId);
+    if (!dish || !ownerShopId || ownerShopId !== currentShop.id) return;
+
+    if (cartCount() > 0 && cartShopId !== currentShop.id) {
+      var previousShop = getCartShop();
+      var previousName = previousShop ? previousShop.name : '其他餐厅';
+      var shouldReplace = window.confirm(
+        '购物车中已有「' + previousName + '」的商品。\n外卖订单一次只能结算一家店铺，是否清空旧购物车并添加「' + currentShop.name + '」？'
+      );
+      if (!shouldReplace) return;
+      cart = {};
+    }
+
+    cartShopId = currentShop.id;
     if (!cart[dishId]) cart[dishId] = { dish: dish, qty: 0 };
     cart[dishId].qty++;
-    saveCart(); renderDishes();
+    saveCart();
+    renderDishes();
   }
   function decDish(dishId) {
     if (!cart[dishId]) return;
     cart[dishId].qty--;
     if (cart[dishId].qty <= 0) delete cart[dishId];
-    saveCart(); renderDishes();
+    if (cartCount() === 0) cartShopId = '';
+    saveCart();
+    renderDishes();
   }
 
   function cartItems() {
-    return Object.values(cart);
+    return Object.keys(cart).map(function (key) {
+      var item = cart[key];
+      return {
+        dish: item.dish,
+        qty: item.qty,
+        dishId: key,
+        shopId: getDishShopId(item.dish && item.dish.id ? item.dish.id : key)
+      };
+    });
   }
   function cartTotal() {
     return cartItems().reduce((s, it) => s + it.dish.price * it.qty, 0);
@@ -562,20 +633,35 @@
   }
 
   // ===== 购物车弹层 =====
+  function clearCart() {
+    if (!cartCount()) return;
+    cart = {};
+    cartShopId = '';
+    saveCart();
+    openCart();
+    toast('购物车已清空');
+  }
   function openCart() {
     var box = document.getElementById('cartItems');
     var items = cartItems();
-    if (!items.length) { box.innerHTML = '<div style="text-align:center;color:#999;padding:30px 0;font-size:0.875rem;">购物车是空的</div>'; }
-    else {
-      box.innerHTML = items.map(it =>
-        '<div class="cart-row">' +
-          '<div><div class="cart-row-name">' + it.dish.name + ' × ' + it.qty + '</div></div>' +
+    if (!items.length) {
+      box.innerHTML = '<div style="text-align:center;color:#999;padding:30px 0;font-size:0.875rem;">购物车是空的</div>';
+    } else {
+      var mixedNote = cartShopId === 'mixed'
+        ? '<div style="padding:10px 12px;margin-bottom:8px;border-radius:10px;background:#F4F4F6;color:#666;font-size:0.75rem;line-height:1.5;">检测到旧购物车中有多家店铺的商品。请先清空，再从同一家店重新添加，避免订单店铺与商品不一致。</div>'
+        : '';
+      box.innerHTML = mixedNote + items.map(function (it) {
+        var shop = getShopById(it.shopId);
+        return '<div class="cart-row">' +
+          '<div><div class="cart-row-name">' + it.dish.name + ' × ' + it.qty + '</div>' +
+          '<div class="cart-row-meta">' + (shop ? shop.name : '未知店铺') + '</div></div>' +
           '<div class="cart-row-price">¥' + (it.dish.price * it.qty) + '</div>' +
-        '</div>'
-      ).join('') +
+        '</div>';
+      }).join('') +
       '<div style="margin-top:14px;display:flex;justify-content:space-between;font-weight:700;">' +
         '<span>合计</span><span>¥' + cartTotal().toFixed(0) + '</span>' +
-      '</div>';
+      '</div>' +
+      '<button class="cart-clear-btn" onclick="clearCart()">清空购物车</button>';
     }
     document.getElementById('cartOverlay').classList.add('open');
   }
@@ -587,10 +673,17 @@
     closeCart();
     var items = cartItems();
     if (!items.length) { toast('购物车是空的'); return; }
+    var orderShop = getCartShop();
+    if (!orderShop) {
+      toast('购物车包含多家店铺，请清空后从同一家店重新添加');
+      return;
+    }
     var total = cartTotal();
 
     // 商品列表
-    document.getElementById('checkoutItems').innerHTML = items.map(it =>
+    document.getElementById('checkoutItems').innerHTML =
+      '<div style="font-size:0.75rem;color:#777;margin-bottom:8px;">' + orderShop.name + ' · ' + orderShop.delivery + '送达</div>' +
+      items.map(it =>
       '<div class="cart-row">' +
         '<div class="cart-row-name">' + it.dish.name + ' × ' + it.qty + '</div>' +
         '<div class="cart-row-price">¥' + (it.dish.price * it.qty) + '</div>' +
@@ -660,6 +753,12 @@
   function doPay() {
     var items = cartItems();
     if (!items.length) { toast('购物车是空的'); return; }
+    var orderShop = getCartShop();
+    if (!orderShop) {
+      toast('购物车包含多家店铺，请清空后重新添加');
+      closeCheckout();
+      return;
+    }
     var total = cartTotal();
     var roleFamilyCard = getRoleCardFromMethod(payMethod);
     if (payMethod.indexOf('role_card:') === 0) {
@@ -741,16 +840,18 @@
     try {
       var orders = JSON.parse(localStorage.getItem('takeout_orders') || '[]');
       orders.push({ items: items.map(it => ({name:it.dish.name, price:it.dish.price, qty:it.qty})),
-        total, shop: currentShop ? currentShop.name : '', payMethod, ts: Date.now() });
+        total, shop: orderShop.name, shopId: orderShop.id, delivery: orderShop.delivery, payMethod, ts: Date.now() });
       localStorage.setItem('takeout_orders', JSON.stringify(orders));
     } catch(e) {}
 
     // 清购物车
     cart = {};
+    cartShopId = '';
     saveCart();
     closeCheckout();
-    renderDishes();
-    toast('下单成功，预计 ' + (currentShop ? currentShop.delivery : '30分钟') + ' 送达');
+    if (currentShop) renderDishes();
+    else updateCartUI();
+    toast('下单成功，预计 ' + orderShop.delivery + ' 送达');
   }
 
   // ===== 转发给TA =====
