@@ -603,7 +603,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   'use strict';
 
   /* ===== 书籍数据：每本含多章，章内含段落 ===== */
-  var books = [
+  var seedBooks = [
     {
       id: 'b1', name: '月光与回声', author: '林远舟',
       chapters: [
@@ -653,7 +653,153 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }
   ];
 
+  var books = seedBooks.slice();
   var PLATE_LABELS = ['Plate 01 / Form', 'Plate 02 / Light', 'Plate 03 / Tide'];
+
+  /* ===== 本地书库：正文放 IndexedDB，避免占满 localStorage ===== */
+  var READER_DB_NAME = 'maomao-reading-library';
+  var READER_DB_VERSION = 1;
+  var READER_SETTINGS_KEY = 'maomao_reader_settings_v1';
+  var readerDbPromise = null;
+  var commentCache = Object.create(null);
+  var readerRoles = [];
+  var pendingImportedBook = null;
+  var activeParagraph = null;
+
+  function openReaderDb() {
+    if (readerDbPromise) return readerDbPromise;
+    readerDbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('当前浏览器不支持本地书库')); return; }
+      var request = indexedDB.open(READER_DB_NAME, READER_DB_VERSION);
+      request.onupgradeneeded = function () {
+        var db = request.result;
+        if (!db.objectStoreNames.contains('books')) db.createObjectStore('books', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('comments')) db.createObjectStore('comments', { keyPath: 'id' });
+      };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error || new Error('本地书库打开失败')); };
+      request.onblocked = function () { reject(new Error('本地书库正被其他页面占用，请关闭其他阅读页后重试')); };
+    });
+    return readerDbPromise;
+  }
+  function idbRequest(storeName, mode, action) {
+    return openReaderDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(storeName, mode);
+        var request = action(tx.objectStore(storeName));
+        request.onsuccess = function () { resolve(request.result); };
+        request.onerror = function () { reject(request.error || new Error('本地数据读写失败')); };
+        tx.onabort = function () { reject(tx.error || new Error('本地数据保存失败')); };
+      });
+    });
+  }
+  function idbGetAll(name) { return idbRequest(name, 'readonly', function (s) { return s.getAll(); }); }
+  function idbPut(name, value) { return idbRequest(name, 'readwrite', function (s) { return s.put(value); }); }
+  function idbDelete(name, id) { return idbRequest(name, 'readwrite', function (s) { return s.delete(id); }); }
+  function idbClear(name) { return idbRequest(name, 'readwrite', function (s) { return s.clear(); }); }
+
+  function readReaderSettings() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(READER_SETTINGS_KEY) || '{}');
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch (e) { return {}; }
+  }
+  function saveReaderSettings() {
+    try { localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
+  function readStoredBookFallback() {
+    try {
+      var list = JSON.parse(localStorage.getItem('maomao_reader_local_books_v1') || '[]');
+      return Array.isArray(list) ? list : [];
+    } catch (e) { return []; }
+  }
+  function restoreLocalBooks() {
+    return idbGetAll('books').then(function (stored) {
+      books = seedBooks.concat((stored || []).filter(function (b) {
+        return b && b.isLocal && b.id && Array.isArray(b.chapters);
+      }).sort(function (a, b) { return Number(b.createdAt || 0) - Number(a.createdAt || 0); }));
+    }).catch(function () {
+      books = seedBooks.concat(readStoredBookFallback());
+    });
+  }
+  function persistLocalBook(book) {
+    return idbPut('books', book).catch(function () {
+      var stored = readStoredBookFallback();
+      var index = stored.findIndex(function (b) { return b.id === book.id; });
+      if (index >= 0) stored[index] = book; else stored.unshift(book);
+      localStorage.setItem('maomao_reader_local_books_v1', JSON.stringify(stored));
+    });
+  }
+  function loadReaderComments() {
+    return idbGetAll('comments').then(function (items) {
+      commentCache = Object.create(null);
+      (items || []).forEach(function (item) { if (item && item.id) commentCache[item.id] = item; });
+    }).catch(function () {
+      commentCache = Object.create(null);
+      try {
+        var items = JSON.parse(localStorage.getItem('maomao_reader_comments_v1') || '[]');
+        if (Array.isArray(items)) items.forEach(function (item) { if (item && item.id) commentCache[item.id] = item; });
+      } catch (e) {}
+    });
+  }
+  function saveReaderComment(comment) {
+    return idbPut('comments', comment).catch(function () {
+      var items = [];
+      try { items = JSON.parse(localStorage.getItem('maomao_reader_comments_v1') || '[]') || []; } catch (e) {}
+      if (!Array.isArray(items)) items = [];
+      var index = items.findIndex(function (item) { return item.id === comment.id; });
+      if (index >= 0) items[index] = comment; else items.push(comment);
+      localStorage.setItem('maomao_reader_comments_v1', JSON.stringify(items));
+    }).then(function () { commentCache[comment.id] = comment; });
+  }
+  function getReaderRoles() {
+    try {
+      if (window.PhoneStorage && typeof PhoneStorage.getCharacters === 'function') {
+        return PhoneStorage.getCharacters().filter(function (r) { return r && r.name; });
+      }
+    } catch (e) {}
+    try {
+      var list = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]');
+      return Array.isArray(list) ? list.filter(function (r) { return r && r.name; }) : [];
+    } catch (e) { return []; }
+  }
+  function readerRoleId(role, index) {
+    return String(role && role.id != null ? role.id : (role && role.name ? role.name : index));
+  }
+  function roleReaderIdForAttr(role, index) {
+    return readerRoleId(role, index).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function readerRoleById(id) {
+    for (var i = 0; i < readerRoles.length; i++) {
+      if (readerRoleId(readerRoles[i], i) === String(id)) return readerRoles[i];
+    }
+    return null;
+  }
+  function renderRoleOptions() {
+    readerRoles = getReaderRoles();
+    var options = '<option value="">选择一个 AI 角色</option>';
+    readerRoles.forEach(function (role, index) {
+      options += '<option value="' + roleReaderIdForAttr(role, index) + '">' + esc(role.name) + '</option>';
+    });
+    rsCommentRole.innerHTML = options;
+    paragraphRoleSelect.innerHTML = options;
+    if (settings.commentRoleId && readerRoles.some(function (r, i) { return readerRoleId(r, i) === String(settings.commentRoleId); })) {
+      rsCommentRole.value = settings.commentRoleId;
+    } else if (readerRoles.length) {
+      settings.commentRoleId = readerRoleId(readerRoles[0], 0);
+      rsCommentRole.value = settings.commentRoleId;
+    } else {
+      settings.commentRoleId = '';
+      rsCommentRole.value = '';
+    }
+    paragraphRoleSelect.value = settings.commentRoleId;
+  }
+  function commentKey(bookId, chapterIndex, paragraphIndex, roleId) {
+    return String(bookId) + '|' + chapterIndex + '|' + paragraphIndex + '|' + String(roleId);
+  }
+  function getParagraphComment(bookId, chapterIndex, paragraphIndex, roleId) {
+    return commentCache[commentKey(bookId, chapterIndex, paragraphIndex, roleId)] || null;
+  }
   var MAIN_ROUTES = ['home', 'shelf', 'settings'];
 
   /* ===== 设置项（内存态） ===== */
@@ -668,17 +814,18 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     serif: '"Bodoni MT","Didot","Times New Roman","Songti SC","Noto Serif CJK SC","STSong",serif',
     mono: 'ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace'
   };
-  var settings = {
-    bg: 0,          /* 0 纯白 / 1 浅灰 / 2 米黄 / 3 纯黑 */
-    fs: 16,         /* 字号 14-22 */
-    bright: 1,      /* 亮度 0.4-1.4 */
-    lh: 1.8,        /* 行距 */
-    para: 1.5,      /* 段距（em） */
-    font: 'serif',  /* sans | serif | mono */
-    mode: 'scroll', /* scroll 上下 | smooth 平滑 | none 无动画 */
-    image: '',      /* 背景图 dataURL */
-    comments: false /* 显示段评 */
-  };
+  var settings = Object.assign({
+    bg: 0,
+    fs: 16,
+    bright: 1,
+    lh: 1.8,
+    para: 1.5,
+    font: 'serif',
+    mode: 'scroll',
+    image: '',
+    comments: false,
+    commentRoleId: ''
+  }, readReaderSettings());
 
   /* ===== DOM ===== */
   var phone = document.getElementById('phone');
@@ -700,6 +847,16 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   var rsFontChips = document.querySelectorAll('#rsFontChips .rs-chip');
   var rsModeChips = document.querySelectorAll('#rsModeChips .rs-chip');
   var rsComments = document.getElementById('rsComments');
+  var rsCommentRole = document.getElementById('rsCommentRole');
+  var paragraphSheet = document.getElementById('paragraphSheet');
+  var paragraphContext = document.getElementById('paragraphContext');
+  var paragraphRoleSelect = document.getElementById('paragraphRoleSelect');
+  var paragraphCommentThread = document.getElementById('paragraphCommentThread');
+  var generateParagraphCommentBtn = document.getElementById('generateParagraphComment');
+  var importDialog = document.getElementById('importDialog');
+  var importBookName = document.getElementById('importBookName');
+  var importBookAuthor = document.getElementById('importBookAuthor');
+  var importSummary = document.getElementById('importSummary');
   var rsUpload = document.getElementById('rsUpload');
   var rsImageInput = document.getElementById('rsImageInput');
   var tocSheet = document.getElementById('tocSheet');
