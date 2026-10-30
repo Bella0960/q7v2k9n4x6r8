@@ -550,6 +550,11 @@
   let realRoles = [];
   const pad = n => n < 10 ? '0' + n : '' + n;
   const periodOf = h => h < 6 ? '凌晨' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : '夜晚';
+  function escapeFootprintHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
   let currentRole = '宝宝';
   let currentRoleId = '';
   const todayKey = () => {
@@ -653,15 +658,16 @@
     const items = itemsOf(currentRole, currentDate);
     if (!items.length) { box.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
     box.innerHTML = items.map(it => {
-      const h = parseInt(it.time.split(':')[0], 10);
-      return `<div class="t-item" data-id="${it.id}">
+      const time = String(it.time || '09:00');
+      const h = parseInt(time.split(':')[0], 10) || 0;
+      return `<div class="t-item" data-id="${escapeFootprintHtml(it.id)}">
         <div class="t-content">
-          <div class="t-time">${it.time}　${periodOf(h)}</div>
-          <div class="t-title">${it.title}</div>
-          <div class="t-desc">${it.desc}</div>
-          <div class="t-tags">${it.tag}</div>
+          <div class="t-time">${escapeFootprintHtml(time)}　${periodOf(h)}</div>
+          <div class="t-title">${escapeFootprintHtml(it.title)}</div>
+          <div class="t-desc">${escapeFootprintHtml(it.desc)}</div>
+          <div class="t-tags">${escapeFootprintHtml(it.tag)}</div>
         </div>
-        <img class="t-img" src="${it.img}" alt="">
+        <img class="t-img" src="${escapeFootprintHtml(it.img)}" alt="">
       </div>`;
     }).join('');
   }
@@ -711,9 +717,9 @@
     document.querySelector('.cal-list-header span').textContent = items.length + ' 条';
     const list = document.querySelector('.cal-list');
     if (!items.length) { list.innerHTML = '<div class="t-empty">这一天还没有足迹。</div>'; return; }
-    list.innerHTML = items.map(it => `<div class="cal-list-item" data-id="${it.id}">
-      <time>${it.time}</time>
-      <span class="title">${it.title}</span>
+    list.innerHTML = items.map(it => `<div class="cal-list-item" data-id="${escapeFootprintHtml(it.id)}">
+      <time>${escapeFootprintHtml(it.time)}</time>
+      <span class="title">${escapeFootprintHtml(it.title)}</span>
       <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
     </div>`).join('');
   }
@@ -743,7 +749,7 @@
       document.querySelector('#page-detail .tag').textContent = it.tag;
       document.querySelector('#page-detail .main-photo-wrapper img:last-of-type').src = it.img;
       document.querySelector('#page-detail .date-text').innerHTML =
-        found.date.slice(5, 7) + ' / ' + found.date.slice(8, 10) + '<br>' + it.time;
+        escapeFootprintHtml(found.date.slice(5, 7) + ' / ' + found.date.slice(8, 10)) + '<br>' + escapeFootprintHtml(it.time);
       const loc = document.querySelector('#page-detail .location span');
       if (loc) loc.textContent = it.loc || '今日 · 珍藏';
     }
@@ -772,7 +778,7 @@
 
     if (canCallAI && roleBio) {
       // 调用 AI 根据人设生成行程
-      const systemPrompt = '你是一个行程规划助手。根据角色的人设，生成她/他今天一天的行程时间线。输出格式要求：每行一条，格式为"时间 | 标题 | 描述"，比如"08:30 | 起床 | 阳光透过窗帘洒进来，慢慢醒来"。生成4-6条行程，覆盖一天的不同时段（早上、中午、下午、晚上）。行程要符合角色的人设和生活习惯，不要千篇一律。只输出行程列表，不要其他解释。';
+      const systemPrompt = '你是一个行程规划助手。根据角色的人设，生成她/他在指定日期一天的行程时间线。输出格式要求：每行一条，格式为"时间 | 标题 | 描述"，比如"08:30 | 起床 | 阳光透过窗帘洒进来，慢慢醒来"。生成4-6条行程，覆盖一天的不同时段（早上、中午、下午、晚上）。行程要符合角色的人设和生活习惯，不要千篇一律。只输出行程列表，不要其他解释。';
       const userPrompt = '日期：' + requestDate + '\n角色名字：' + requestRoleName + '\n角色人设：' + roleBio + '\n\n请生成这个角色在该日期一天的行程时间线。';
       
       window.PhoneAPI.complete({
@@ -816,16 +822,16 @@
           }
         } else {
           // 解析失败，用默认数据
-          generateDefaultFootprint(requestRoleId, requestDate, true);
+          generateDefaultFootprint(requestRoleId, requestDate, false);
         }
       }).catch(function() {
         // 调用失败，用默认数据
-        generateDefaultFootprint(requestRoleId, requestDate, true);
+        generateDefaultFootprint(requestRoleId, requestDate, false);
       });
     } else {
       // 没有 API Key，直接用默认数据
       setTimeout(function() {
-        generateDefaultFootprint(requestRoleId, requestDate, true);
+        generateDefaultFootprint(requestRoleId, requestDate, false);
       }, 600);
     }
   }
@@ -836,7 +842,12 @@
     const dateKey = String(targetDate || currentDate || todayKey());
     if (!targetId) return;
     const localData = loadFootprintData(targetId);
-    if (forceReplace || !Array.isArray(localData[dateKey]) || !localData[dateKey].length) {
+    const hasExisting = Array.isArray(localData[dateKey]) && localData[dateKey].length > 0;
+    if (!forceReplace && hasExisting) {
+      if (String(currentRoleId) === targetId && currentDate === dateKey) showToast('未能生成新行程，已保留原有足迹');
+      return;
+    }
+    if (forceReplace || !hasExisting) {
       const dateSeed = Number(dateKey.replace(/-/g, '').slice(-4)) || 1;
       const variants = [
         { time: '09:00', title: '慢慢开始的一天', desc: '把今天要做的事理清楚，再按照自己的节奏出发。', tag: '♡ 日常 · 安静', loc: '日常 · 安静', img: IMG.meadow },
