@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-30T10:27:02.524Z",
+  "light": {
+    "url": "https://api.deepseek.com/v1/chat/completions",
+    "totalBytes": 16449,
+    "totalKB": 16.1,
+    "systemChars": 4884,
+    "historyMsgs": 20,
+    "historyChars": 797,
+    "model": "deepseek-chat",
+    "stream": true,
+    "max_tokens": null,
+    "temperature": 0.85
+  },
+  "mid": {
+    "url": "https://api.deepseek.com/v1/chat/completions",
+    "totalBytes": 22129,
+    "totalKB": 21.6,
+    "systemChars": 6842,
+    "historyMsgs": 20,
+    "historyChars": 797,
+    "model": "deepseek-chat",
+    "stream": true,
+    "max_tokens": null,
+    "temperature": 0.85
+  },
+  "heavy": {
+    "url": "https://api.deepseek.com/v1/chat/completions",
+    "totalBytes": 31154,
+    "totalKB": 30.4,
+    "systemChars": 9958,
+    "historyMsgs": 20,
+    "historyChars": 797,
+    "model": "deepseek-chat",
+    "stream": true,
+    "max_tokens": null,
+    "temperature": 0.85
+  }
+}

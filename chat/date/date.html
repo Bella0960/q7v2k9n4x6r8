@@ -1154,14 +1154,187 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 #myReplyPresetGroup .reply-preset-select input:checked,
 #characterReplyPresetGroup .reply-preset-select input:checked{background:#222;border-color:#222}
 
+/* ============================================================
+ * 沉浸式阅读器覆写（2026-10-30）
+ * 去掉杂志风：英文小标签 / 角色印章 / Chapter 分隔线 / 大标题
+ * 所有 class 钩子保留，只换视觉；尊重 --story-* 用户设置变量
+ * ============================================================ */
+:root{--sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+
+/* 顶部窄栏 */
+.masthead{
+  min-height:44px!important;
+  padding:calc(6px + env(safe-area-inset-top,0px)) 14px 6px!important;
+  border-bottom:1px solid #f0f0f0!important;
+  background:#fff!important;gap:10px!important;
+}
+.mast-link{
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  width:36px!important;height:36px!important;min-height:30px!important;
+  padding:0!important;color:#333!important;
+  font-family:var(--sans)!important;font-size:0!important;letter-spacing:0!important;
+  text-transform:none!important;
+}
+.mast-link svg{display:block;width:22px;height:22px}
+.mast-link:active{color:#000!important;opacity:.5}
+.mast-word{
+  font-family:var(--sans)!important;font-size:11px!important;
+  letter-spacing:.04em!important;color:#bbb!important;text-transform:none!important;
+}
+.mast-action{width:32px!important;height:32px!important;color:#555!important}
+.mast-action:active{background:#f5f5f5!important;color:#000!important}
+
+/* 一行角色信息：小圆头像 + 名字/场景垂直堆叠（不要分割线，直接融进正文） */
+.byline{
+  display:flex!important;align-items:center!important;gap:11px!important;
+  padding:14px 22px 6px!important;
+  border-bottom:0!important;background:#fff!important;
+  min-height:0!important;
+}
+.character-portrait{
+  flex:0 0 auto;width:30px;height:30px;border-radius:50%;
+  background:#f2f2f2;color:#666;overflow:hidden;position:relative;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-family:var(--sans);font-size:13px;font-weight:500;letter-spacing:0;
+}
+.character-portrait img{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  filter:none!important;
+}
+.by-text{
+  display:flex!important;flex-direction:column!important;gap:1px!important;
+  min-width:0!important;flex:1 1 auto!important;
+}
+.by-name{
+  font-family:var(--sans)!important;font-size:14px!important;font-weight:600!important;
+  color:#1a1a1a!important;letter-spacing:0!important;line-height:1.3!important;
+}
+.by-meta{
+  margin-left:0!important;font-family:var(--sans)!important;
+  font-size:11px!important;color:#999!important;letter-spacing:.02em!important;
+  text-transform:none!important;text-align:left!important;font-weight:400!important;
+  line-height:1.3!important;display:block!important;
+}
+
+/* 阅读区：大留白 */
+.story{
+  padding:14px 22px 36px!important;
+  font-size:15px!important;
+}
+
+/* 去掉 STORY / MY NOTE 英文小标签 */
+.msg-block::before{display:none!important}
+.msg-block{margin:0 0 1.3em!important;padding:0!important}
+
+/* 气泡退化成纯段落 */
+.bubble,.bubble.ai,.bubble.me{
+  background:transparent!important;border:0!important;border-radius:0!important;
+  padding:0!important;
+}
+/* 我的叙述：淡一档（颜色仍由 --story-user-color 控制），去掉左边竖线 */
+.bubble.me{border-left:0!important;padding-left:0!important}
+.bubble .spoken,.bubble.me .spoken{border-bottom-color:#dcdcdc!important}
+
+/* 场景切换：居中一行淡灰 */
+.scene-divider{
+  display:flex!important;align-items:center;justify-content:center;
+  gap:14px;margin:2.4em 0 2em!important;padding:0 12px;
+  font-family:var(--sans)!important;font-size:11px!important;
+  letter-spacing:.18em!important;color:#c2c2c2!important;
+  text-transform:none!important;line-height:1.6!important;
+}
+.scene-divider::before,.scene-divider::after{
+  content:"";flex:0 0 26px;height:1px;background:#ececec;
+}
+
+.p-sys{
+  font-family:var(--sans)!important;font-size:11px!important;
+  color:#c5c5c5!important;font-style:normal!important;margin:1.6em 0!important;
+}
+
+/* 摘要区安静 */
+.summary-box{
+  margin:24px 0 8px!important;padding:14px 0!important;
+  border-top:1px solid #f0f0f0!important;border-bottom:1px solid #f0f0f0!important;
+  background:transparent!important;backdrop-filter:none!important;
+}
+.summary-head{border-bottom:1px solid #f3f3f3!important}
+.summary-title{
+  font-family:var(--sans)!important;font-size:10px!important;
+  letter-spacing:.1em!important;color:#bbb!important;text-transform:none!important;
+}
+.summary-toggle{font-family:var(--sans)!important;font-size:11px!important;color:#888!important}
+.summary-body,.summary-box[data-mode="text"] .summary-body{
+  font-family:var(--sans)!important;font-size:12px!important;line-height:1.8!important;color:#999!important;
+}
+
+/* 底部书写台：一个胶囊输入条 */
+.composer{
+  display:flex!important;align-items:center!important;gap:8px!important;
+  padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px))!important;
+  border-top:1px solid #f0f0f0!important;background:#fff!important;
+}
+.composer textarea{
+  flex:1!important;min-width:0!important;
+  border:0!important;outline:none!important;
+  background:#f5f5f7!important;
+  border-radius:20px!important;
+  padding:9px 14px!important;
+  font-family:var(--sans)!important;font-size:14px!important;
+  color:#1a1a1a!important;line-height:1.5!important;
+  min-height:38px!important;max-height:80px!important;
+}
+.composer textarea::placeholder{color:#b0b0b0!important;font-style:normal!important}
+.continue-btn{display:none!important}
+.reply-options-trigger{
+  flex:0 0 auto!important;
+  width:38px!important;height:38px!important;min-width:38px!important;min-height:38px!important;
+  padding:0!important;margin:0!important;
+  border:0!important;border-radius:50%!important;
+  background:#f5f5f7!important;color:#666!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  gap:0!important;
+}
+.reply-options-trigger svg{width:18px!important;height:18px!important;flex:0 0 18px!important}
+.reply-options-trigger:active:not(:disabled){background:#e8e8e8!important}
+.reply-options-trigger:disabled{opacity:.45!important}
+.send-btn{
+  flex:0 0 auto!important;
+  min-height:38px!important;padding:0 16px!important;
+  border:0!important;border-radius:19px!important;
+  background:#1a1a1a!important;color:#fff!important;
+  font-family:var(--sans)!important;font-size:13px!important;font-weight:500!important;
+  letter-spacing:.05em!important;font-style:normal!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+}
+.send-btn:disabled{background:#e0e0e0!important;color:#fff!important}
+.send-btn:active:not(:disabled){opacity:.85!important}
+
+/* AI 回复候选 */
+.reply-suggestions{
+  border-top:1px solid #f0f0f0!important;background:#fff!important;backdrop-filter:none!important;
+}
+.reply-suggestions-kicker{
+  font-family:var(--sans)!important;font-size:10px!important;
+  letter-spacing:.1em!important;color:#c0c0c0!important;text-transform:none!important;
+}
+.reply-suggestions-head strong{
+  font-family:var(--sans)!important;font-size:13px!important;color:#1a1a1a!important;
+}
+
+/* 桌面宽度下页面外也保持白 */
+@media(min-width:561px){
+  body{background:#fff!important}
+  .page{border-left:1px solid #f0f0f0!important;border-right:1px solid #f0f0f0!important}
+}
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
 <body>
 <div class="page">
   <header class="masthead">
-    <a class="mast-link" id="backLink" href="../chat/chat-detail.html">‹ 返回线上</a>
-    <span class="mast-word">MAOMAO&ensp;/&ensp;OFFLINE STORY</span>
+    <a class="mast-link" id="backLink" href="../chat/chat-detail.html" aria-label="返回线上"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <span class="mast-word">线下</span>
     <div class="mast-right">
       <button class="mast-action menu-trigger" id="writingBtn" type="button" title="剧情功能与美化" aria-label="打开剧情功能与美化菜单" aria-expanded="false" aria-controls="writingPop">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><circle cx="8" cy="6" r="1.8" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="10" cy="18" r="1.8" fill="currentColor" stroke="none"/></svg>
@@ -1338,31 +1511,23 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     </div>
   </header>
 
-  <section class="title-wrap" aria-label="线下故事信息">
-    <div class="editorial-kicker"><span>OFFLINE / DAILY NOTES</span><span>FIELD NOTES</span></div>
-    <div class="editorial-headline">
-      <div class="editorial-copy">
-        <h1 class="title" id="dateTitle">线下模式</h1>
-        <p class="editorial-caption">在屏幕之外，继续你们的故事。</p>
-      </div>
-      <div class="character-stamp" id="characterPortrait" aria-hidden="true">
-        <span id="characterInitial">TA</span>
-        <i></i><i></i><i></i>
-      </div>
-    </div>
-  </section>
-
-  <!-- 元信息行：作者栏（角色名 + 场景类别） -->
+  <!-- 沉浸式阅读器：不要大标题/kicker/印章，只留一行安静的角色信息 -->
+  <h1 class="title" id="dateTitle" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;">线下模式</h1>
   <div class="byline" id="byline">
-    <span class="by-name" id="byName">TA</span>
-    <span class="by-meta" id="byMeta">OFFLINE MODE</span>
+    <span class="character-portrait" id="characterPortrait" aria-hidden="true">
+      <span id="characterInitial">TA</span>
+    </span>
+    <div class="by-text">
+      <span class="by-name" id="byName">TA</span>
+      <span class="by-meta" id="byMeta">面对面</span>
+    </div>
   </div>
 
   <main class="story" id="story"></main>
 
   <section class="reply-suggestions" id="replySuggestionsPanel" aria-label="AI 自动回复选项" hidden>
     <div class="reply-suggestions-head">
-      <div><span class="reply-suggestions-kicker">AI REPLY OPTIONS</span><strong>选择一条回应</strong></div>
+      <div><span class="reply-suggestions-kicker">替你回应</span><strong>选一条接话</strong></div>
       <div class="reply-suggestions-tools">
         <button type="button" id="refreshReplyOptions" aria-label="重新生成三种回复">换一组</button>
         <button type="button" id="closeReplyOptions" aria-label="收起回复选项">×</button>
@@ -1375,9 +1540,8 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     <textarea id="dateInput" rows="1" placeholder="写下你的行动与台词……"></textarea>
     <button type="button" class="reply-options-trigger" id="replyOptionsBtn" aria-label="根据当前剧情与已选文风生成回复候选" title="帮我回复">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.8 9l5.5 1.8-5.5 1.8-1.8 5.5-1.8-5.5-5.5-1.8L10.2 9 12 3.5Z"/><path d="m19 15 .9 2.6 2.6.9-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15Z"/></svg>
-      <span>帮我回复</span>
     </button>
-    <button class="send-btn" id="dateSend" type="submit">Send&thinsp;</button>
+    <button class="send-btn" id="dateSend" type="submit">发送</button>
   </form>
 
   <div class="date-toast" id="dateToast"></div>
@@ -2099,7 +2263,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 
     /* ---------- 顶栏 / 标题 / 元信息 / 返回 ---------- */
     if (byName) byName.textContent = charName;
-    if (byMeta) byMeta.textContent = 'OFFLINE MODE' + (sceneName ? ' · ' + sceneName.toUpperCase() : '');
+    if (byMeta) byMeta.textContent = sceneName ? sceneName : '面对面';
 
     var portrait = document.getElementById('characterPortrait');
     var portraitInitial = document.getElementById('characterInitial');
@@ -2262,7 +2426,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         sceneCount++;
         var d = document.createElement('div');
         d.className = 'scene-divider';
-        d.textContent = 'Chapter ' + sceneCount + ' | ' + name;
+        d.textContent = name;
         storyEl.appendChild(d);
     }
     /* 段落内的台词文字加下划线：引号内容包进 .spoken，其余为普通文本 */

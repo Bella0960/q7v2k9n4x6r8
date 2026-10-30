@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>重置案件进度</title>
+<style>
+  body{margin:0;padding:40px 24px;background:#fff;color:#1a1a1a;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;box-sizing:border-box;}
+  .card{max-width:380px;width:100%;text-align:center;}
+  h1{font-size:20px;font-weight:600;margin:0 0 12px;}
+  p{font-size:14px;line-height:1.8;color:#666;margin:8px 0;}
+  .ok{color:#2e7d32;font-weight:600;}
+  .btn{display:inline-block;margin-top:24px;padding:14px 32px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:14px;letter-spacing:.05em;border:none;cursor:pointer;border-radius:4px;}
+  .list{text-align:left;background:#f7f7f7;padding:14px 16px;border-radius:6px;margin-top:20px;font-size:12px;line-height:2;color:#555;}
+  .warn{background:#fff8e1;border:1px solid #ffe082;padding:12px 14px;border-radius:6px;margin-top:16px;font-size:12px;color:#8d6e00;text-align:left;line-height:1.8;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>彻底重置侦探案件</h1>
+  <p id="status">正在清除……</p>
+  <div class="list" id="list"></div>
+  <div class="warn">
+    清完后请：<br>
+    1. 完全关闭这个页面<br>
+    2. 再重新打开游戏大厅（从手机桌面图标进）<br>
+    3. 第一个案子就是全新状态了
+  </div>
+  <a class="btn" href="games.html" id="backBtn" style="display:none">回到游戏大厅</a>
+</div>
+<script>
+(function(){
+  var cleared = [];
+
+  // 1. 清案件相关 localStorage
+  var keys = [
+    'maomao_detective_progress_v1',
+    'immCasesDone',
+    'maomao_detective_immersive_progress_migrated_v1',
+    'maomao_detective_generated_cases_v1'
+  ];
+  keys.forEach(function(k){
+    try {
+      if (localStorage.getItem(k) !== null) {
+        localStorage.removeItem(k);
+        cleared.push('存档：' + k);
+      }
+    } catch(e){}
+  });
+
+  // 2. 注销所有 Service Worker（解决旧缓存不更新的问题）
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+      regs.forEach(function(r){ r.unregister(); });
+      cleared.push('已注销 ' + regs.length + ' 个 Service Worker');
+
+      // 3. 清所有 Cache Storage（旧版页面缓存）
+      if ('caches' in window) {
+        caches.keys().then(function(names){
+          var total = 0;
+          names.forEach(function(n){
+            caches.delete(n);
+            total++;
+          });
+          cleared.push('已清空 ' + total + ' 个浏览器缓存');
+          showResult(cleared);
+        });
+      } else {
+        showResult(cleared);
+      }
+    });
+  } else {
+    showResult(cleared);
+  }
+
+  function showResult(list) {
+    var status = document.getElementById('status');
+    var box = document.getElementById('list');
+    if (list.length) {
+      status.innerHTML = '<span class="ok">全部清除完毕（' + list.length + ' 项）</span>';
+      box.innerHTML = list.map(function(x){ return '· ' + x; }).join('<br>')
+        + '<br><br>所有案件已回到"未开始"状态，旧版页面缓存也已清空。';
+    } else {
+      status.innerHTML = '本来就没有需要清除的内容。';
+      box.innerHTML = '可以直接去玩。';
+    }
+    document.getElementById('backBtn').style.display = 'inline-block';
+  }
+})();
+</script>
+</body>
+</html>

@@ -49,7 +49,14 @@
             /* ---------- 出参组装 ---------- */
             var fullText = '';
             var result = { ok: false, fullText: '', error: null };
+            // settled 幂等锁：finish 只允许生效一次。
+            // 原因：HTTP 错误分支会先 finish(httpErr)，而链尾 `.then(function(){ finish(null) })`
+            // 无条件再跑一次。result 是闭包里的同一个对象，resolve 之后仍会被改写，
+            // 导致 ok 被改回 true、error 被清空 —— 401/429 在调用方表现为"成功但无内容"。
+            var settled = false;
             function finish(err) {
+                if (settled) return;
+                settled = true;
                 result.ok = !err;
                 result.fullText = fullText;
                 result.error = err || null;

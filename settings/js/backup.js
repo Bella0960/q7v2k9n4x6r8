@@ -19,6 +19,12 @@
 
     // 临时缓存排除表：不进备份（导入时它们也会被清掉，由系统自动重建）
     var EXCLUDE_KEYS = ['api_call_logs'];
+
+    // 敏感凭据排除表：这些 key 内含明文 API Key / Secret。
+    // 默认**永不导出**——备份文件常被用户分享给他人（"帮我看看我的角色设定"），
+    // 一旦打包进去就等于把密钥交出去。需要整机迁移时，由用户在 DATA 分组
+    // 显式勾选「导出时包含 API 密钥」，走 confirm 二次确认后才打包。
+    var SECRET_KEYS = ['api_settings', 'api_profiles_v1', 'minimax_tts_config'];
     // 核心键抽样前缀：快速判断"这像不像本应用的备份"
     var CORE_HINTS = ['ai_custom_characters', 'phone_data_v2', 'myProfile', 'chat_history_'];
 
@@ -32,16 +38,25 @@
         setTimeout(function () { t.classList.remove('show'); }, 2200);
     }
 
-    // 快照：{ key: 原始字符串值 }，exclude=true 时跳过临时缓存
-    function snapshot(exclude) {
+    // 快照：{ key: 原始字符串值 }
+    // @param {Boolean} dropCaches   为 true 时跳过临时缓存（EXCLUDE_KEYS）
+    // @param {Boolean} dropSecrets  为 true 时跳过敏感凭据（SECRET_KEYS）
+    function snapshot(dropCaches, dropSecrets) {
         var out = {};
         var keys = [];
         try { keys = Object.keys(localStorage); } catch (e) {}
         keys.forEach(function (k) {
-            if (exclude && EXCLUDE_KEYS.indexOf(k) !== -1) return;
+            if (dropCaches && EXCLUDE_KEYS.indexOf(k) !== -1) return;
+            if (dropSecrets && SECRET_KEYS.indexOf(k) !== -1) return;
             try { out[k] = localStorage.getItem(k); } catch (e) {}
         });
         return out;
+    }
+
+    // 当前是否允许把明文密钥打进备份。开关缺失时一律按「不含密钥」处理（安全默认）。
+    function includeSecretsEnabled() {
+        var box = $('chkExportSecrets');
+        return !!(box && box.checked);
     }
 
     function fmtSize(chars) {
@@ -80,10 +95,19 @@
 
     function doExport() {
         try {
-            var snap = snapshot(true);
+            // 默认剥掉密钥；只有用户显式勾选 + confirm 二次确认才打包
+            var withSecrets = includeSecretsEnabled();
+            if (withSecrets) {
+                var goOn = confirm('本次导出将包含明文 API Key。\n\n' +
+                    '任何拿到这个文件的人都能直接使用你的 API 额度。\n' +
+                    '仅在你要把这份备份导入到自己另一台设备时才勾选。\n\n确定继续？');
+                if (!goOn) return;
+            }
+            var snap = snapshot(true, !withSecrets);
             if (!Object.keys(snap).length) { toast('没有可导出的数据'); return; }
-            var r = downloadSnapshot(snap, '');
-            toast('已导出 ' + r.count + ' 项（' + fmtSize(r.chars) + '）');
+            var r = downloadSnapshot(snap, withSecrets ? 'with-secrets' : '');
+            toast('已导出 ' + r.count + ' 项（' + fmtSize(r.chars) + '）'
+                + (withSecrets ? '，含 API 密钥' : '，不含 API 密钥'));
         } catch (e) {
             toast('导出失败：' + ((e && e.message) || '未知错误'));
         }
@@ -118,6 +142,21 @@
         return !failed;
     }
 
+    // 导入兜底：备份文件通常不含 API 密钥（见 SECRET_KEYS），而 restore() 会先 clear()。
+    // 若不保留本机现有凭据，用户导入一份别人分享的备份就会静默丢掉自己的 API 配置。
+    // 规则：备份里带了凭据 → 以备份为准；没带 → 保留本机现有值。
+    function carryOverSecrets(incoming) {
+        var carried = 0;
+        SECRET_KEYS.forEach(function (k) {
+            if (Object.prototype.hasOwnProperty.call(incoming, k)) return;   // 备份自带，不覆盖
+            var cur = null;
+            try { cur = localStorage.getItem(k); } catch (e) {}
+            if (cur == null) return;
+            try { localStorage.setItem(k, cur); carried++; } catch (e) {}
+        });
+        return carried;
+    }
+
     function handleImportFile(file) {
         if (!file) return;
         var reader = new FileReader();
@@ -133,8 +172,10 @@
             var label = obj.__backup.exportedAt ? '（导出于 ' + String(obj.__backup.exportedAt).slice(0, 10) + '）' : '';
             if (!confirm('将用备份覆盖当前全部数据（' + count + ' 项）' + label + '。\n\n当前数据会先自动导出一份安全备份，导入失败会自动回滚。确定继续？')) return;
 
-            // 1. 保命备份：导入前把当前数据（含临时缓存）完整下载一份
-            var current = snapshot(false);
+            // 1. 保命备份：导入前把当前数据（含临时缓存与 API 密钥）完整下载一份。
+            //    这份只落本地、不分享，且要承担回滚职责——若剥掉密钥，
+            //    回滚后用户会静默丢失 API 配置，所以这里必须全量。
+            var current = snapshot(false, false);
             try { downloadSnapshot(current, 'auto-before-restore'); } catch (e) {}
 
             // 2. 覆盖写入；失败则用内存中的快照原样回滚
@@ -144,14 +185,16 @@
                 toast('导入失败（存储空间不足），已回滚到导入前状态');
                 return;
             }
-            toast('导入成功，正在刷新…');
+            // 3. 保留本机 API 凭据（备份未携带时），避免导入他人备份后丢失配置
+            var carried = carryOverSecrets(incoming);
+            toast('导入成功' + (carried ? '（已保留本机 API 配置）' : '') + '，正在刷新…');
             setTimeout(function () { location.reload(); }, 700);
         };
         reader.onerror = function () { toast('导入失败：文件读取失败'); };
         reader.readAsText(file);
     }
 
-    // 绑定 DATA 分组两个入口
+    // 绑定 DATA 分组入口
     var exp = $('rowExportData');
     var imp = $('rowImportData');
     var file = $('importFileInput');
@@ -163,5 +206,16 @@
             file.value = '';
             handleImportFile(f);
         });
+    }
+
+    // 「导出时包含 API 密钥」开关：整行可点；复选框自身的点击不再冒泡回整行，
+    // 否则会触发一次行切换 + 一次原生切换，互相抵消。
+    var secretRow = $('rowExportSecrets');
+    var secretBox = $('chkExportSecrets');
+    if (secretRow && secretBox) {
+        secretRow.addEventListener('click', function () {
+            secretBox.checked = !secretBox.checked;
+        });
+        secretBox.addEventListener('click', function (e) { e.stopPropagation(); });
     }
 })();

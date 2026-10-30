@@ -386,6 +386,40 @@
                   <span class="ds-del" title="移除组件">×</span>
                 </div>
 
+                <!-- ========== 社交资料卡（4×2）：照参考图清透风 ========== -->
+                <div class="ds-social ds-widget" data-drag="social">
+                  <div class="sc-head">
+                    <div class="sc-name" id="scName" contenteditable="true" spellcheck="false">@Stopcrying..X</div>
+                    <div class="sc-weather">
+                      <span id="scCity" contenteditable="true" spellcheck="false">北京</span>
+                      <span id="scTemp" contenteditable="true" spellcheck="false">22°</span>
+                      <span id="scCond" contenteditable="true" spellcheck="false">多云</span>
+                    </div>
+                  </div>
+                  <div class="sc-body">
+                    <div class="sc-avatar" id="scAvatar">
+                      <div class="sc-photo-inner"></div>
+                      <input type="file" accept="image/*" class="sc-file" hidden>
+                    </div>
+                    <div class="sc-stats">
+                      <div class="sc-stat"><span class="sc-stat-label">Friends:</span><span class="sc-stat-num" id="scFriends" contenteditable="true" spellcheck="false">99</span></div>
+                      <div class="sc-stat"><span class="sc-stat-label">Followers:</span><span class="sc-stat-num" id="scFollowers" contenteditable="true" spellcheck="false">999+</span></div>
+                      <div class="sc-stat"><span class="sc-stat-label">Likes:</span><span class="sc-stat-num" id="scLikes" contenteditable="true" spellcheck="false">999+</span></div>
+                    </div>
+                  </div>
+                  <div class="sc-polaroids">
+                    <div class="sc-polaroid" id="scP1">
+                      <div class="sc-p-photo"></div>
+                      <input type="file" accept="image/*" class="sc-file" hidden>
+                    </div>
+                    <div class="sc-polaroid sc-p-offset" id="scP2">
+                      <div class="sc-p-photo"></div>
+                      <input type="file" accept="image/*" class="sc-file" hidden>
+                    </div>
+                  </div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
               </div>
             </div>
 
@@ -393,6 +427,7 @@
             <div class="page-dots" aria-label="页面指示器">
               <span class="dot active" data-page="0"></span>
               <span class="dot" data-page="1"></span>
+              <span class="dot" data-page="2"></span>
             </div>
           </section>
 
@@ -486,16 +521,18 @@
           v: 12,
           pages: [
             [
-              'image',
-              'app_inspect', 'app_worldbook', 'app_memory', 'clock',
+              'app_inspect', 'app_worldbook', 'app_memory',
               'app_forum', 'app_wallet',
-              'polaroid',
               'app_music', 'app_beauty', 'app_characters', 'app_settings'
             ],
             [
               'app_finance', 'app_games', 'app_cafe', 'app_library',
-              'app_diary', 'app_dreamtravel',
-              'dialog', 'music'
+              'app_diary', 'app_dreamtravel'
+            ],
+            [
+              'social',
+              'image', 'clock', 'polaroid',
+              'dialog', 'music', 'todo', 'calendar', 'countdown', 'note'
             ]
           ],
           dock: ['app_chat', 'app_shop'],
@@ -518,12 +555,15 @@
         var v = readJSON(LS_KEY);
         if (isValidLayout(v)) {
           if (!Array.isArray(v.removed)) v.removed = [];
+          while (v.pages.length < 3) v.pages.push([]);
           return v;
         }
         // 从旧版 v5 迁移：保留各页应用/挂件的顺序和 Dock
         var old = readJSON(LS_KEY_OLD);
         if (isValidLayout(old)) {
-          return { v: 6, pages: old.pages, dock: old.dock, removed: [] };
+          var migrated = { v: 6, pages: old.pages, dock: old.dock, removed: [] };
+          while (migrated.pages.length < 3) migrated.pages.push([]);
+          return migrated;
         }
         return getDefaultLayout();
       }
@@ -554,6 +594,29 @@
         });
         // 若旧布局未把聊天/商店放在 Dock，保留用户选择；默认布局会提供这两个入口。
         saveLayout(currentLayout);
+      })();
+
+      // ===== 迁移：把组件（widget）从第 0/1 页统一挪到第 2 页，前两页只放应用图标 =====
+      (function migrateWidgetsToPage3() {
+        if (!currentLayout.pages || currentLayout.pages.length < 3) return;
+        var widgets = [];
+        [0, 1].forEach(function (pi) {
+          var page = currentLayout.pages[pi];
+          for (var i = page.length - 1; i >= 0; i--) {
+            var id = page[i];
+            if (id && id.indexOf('app_') !== 0 && id !== 'image' && id !== 'clock' && id !== 'polaroid' && id !== 'dialog' && id !== 'music' && id !== 'todo' && id !== 'calendar' && id !== 'countdown' && id !== 'note' && id !== 'postcard') continue;
+            if (['image','clock','polaroid','dialog','music','todo','calendar','countdown','note','postcard'].indexOf(id) !== -1) {
+              widgets.push(id);
+              page.splice(i, 1);
+            }
+          }
+        });
+        if (widgets.length) {
+          // 去重后追加到第 2 页
+          var existing = currentLayout.pages[2];
+          widgets.forEach(function (w) { if (existing.indexOf(w) === -1) existing.push(w); });
+          saveLayout(currentLayout);
+        }
       })();
 
       // ===== 隐藏仓库：被移除的应用/挂件放这里（保留在页面里，挂件的事件绑定才不会失效，之后可重新添加） =====
@@ -1946,6 +2009,69 @@
       body.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); body.blur(); }
       });
+    })();
+
+    // ===== 社交资料卡：文字可点改，照片可换 =====
+    (function () {
+      var KEY = 'ds_social_v1';
+      var data = load(KEY) || { name: '@Stopcrying..X', city: '北京', temp: '22°', cond: '多云', friends: '99', followers: '999+', likes: '999+', avatar: '', p1: '', p2: '' };
+      var card = document.querySelector('[data-drag="social"]');
+      if (!card) return;
+
+      // 还原文字
+      ['scName','scCity','scTemp','scCond','scFriends','scFollowers','scLikes'].forEach(function (id, i) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var keyMap = ['name','city','temp','cond','friends','followers','likes'];
+        el.textContent = data[keyMap[i]] || '';
+        el.addEventListener('blur', function () {
+          data[keyMap[i]] = el.textContent.trim();
+          save(KEY, data);
+        });
+        el.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); el.blur(); }
+        });
+      });
+
+      // 照片上传通用
+      function bindPhoto(container, dataKey, innerSelector) {
+        var file = container.querySelector('.sc-file');
+        var inner = container.querySelector(innerSelector);
+        if (data[dataKey]) inner.style.backgroundImage = 'url(' + data[dataKey] + ')';
+        container.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (document.body.classList.contains('home-editing')) return;
+          file.click();
+        });
+        file.addEventListener('change', function () {
+          var f = file.files[0];
+          if (!f) return;
+          var reader = new FileReader();
+          reader.onload = function () {
+            // 压缩到最长边 600
+            var img = new Image();
+            img.onload = function () {
+              var canvas = document.createElement('canvas');
+              var max = 600;
+              var w = img.width, h = img.height;
+              if (w > max || h > max) {
+                if (w > h) { h = h * max / w; w = max; } else { w = w * max / h; h = max; }
+              }
+              canvas.width = w; canvas.height = h;
+              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              var url = canvas.toDataURL('image/jpeg', 0.8);
+              data[dataKey] = url;
+              inner.style.backgroundImage = 'url(' + url + ')';
+              save(KEY, data);
+            };
+            img.src = reader.result;
+          };
+          reader.readAsDataURL(f);
+        });
+      }
+      bindPhoto(card.querySelector('.sc-avatar'), 'avatar', '.sc-photo-inner');
+      bindPhoto(document.getElementById('scP1'), 'p1', '.sc-p-photo');
+      bindPhoto(document.getElementById('scP2'), 'p2', '.sc-p-photo');
     })();
 
     // ===== 图片组件：点击上传图片（Canvas 压缩，最长边 900px，JPEG 0.7） =====

@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-30T10:30:08.837Z",
+  "N": 1000,
+  "throttle": 4,
+  "current": 514.9,
+  "improved": 487,
+  "floor": 0.6,
+  "FRAMES": 60,
+  "cv_current": 487.1,
+  "cv_improved": 470.7,
+  "cv_floor": 0.5,
+  "domNodes": 7001
+}

@@ -700,7 +700,7 @@ function statsFor(r){
   return all[key];
 }
 function saveStat(type,result){
-  var all=statsRoot();var key=String(activeRole&&activeRole.id||'default-partner');
+  var all=statsRoot();var key=activeRoleKey();
   if(!all[key])all[key]={plays:0,wins:0,wordWins:0,caseWins:0,ticWins:0,ticLosses:0,ticDraws:0,memoryWins:0,codeWins:0,quizWins:0};
   var s=all[key];s.plays=(s.plays||0)+1;
   if(result==='win')s.wins=(s.wins||0)+1;
@@ -890,18 +890,110 @@ function nextHint(){
 var CASES=[
  {title:'潮汐档案室的最后一夜',storyTitle:'潮汐档案室的最后一夜',story:'北岬海洋观测中心的一场风暴夜，档案工程师沈闻被发现倒在封闭的资料室内。初步检验排除了单纯意外的可能，死亡时间大致落在 21:05 至 21:25。暴雨让观测站暂时与外界隔绝，门禁、监控和服务器留下的记录，成了还原最后二十分钟的关键。沈闻生前正在复核三年前的一次海上事故：原始浮标数据表明，风暴预警比正式通报早了二十二分钟发出。',motive:'沈闻准备将未经改写的原始潮位序列提交给独立安全复核组。三年前，时任值班负责人贺知远为了避免观测中心因延误发布而承担责任，批准把内部预警时间改写成较晚的正式时间，并把事故原因归到通信故障上。档案工程师沈闻保存了原始数据，打算在当晚公开。贺知远既担心旧事故被重新调查，也害怕自己的职业生涯和曾经的隐瞒一并曝光，于是赶到档案室要求沈闻交出资料。争执演变成致命冲突后，他试图通过管理员权限中断监控、取消外发文件，并继续声称自己早已离站。',aftermath:'当门禁记录、管理员操作日志、原始浮标数据和夜间巡查记录被放到一起，贺知远关于“20:40 已经离站”的说法无法成立。面对被取消发送的复核材料和巡查员的证词，他最终承认自己进入档案室并与沈闻发生冲突。案件移交后，三年前的预警记录被重新调查，观测中心也启动独立审计。唐越承认自己早就察觉时间差，却因为自己曾在旧报告上签过技术复核而选择沉默；罗骁则为没有如实记录巡查情况作出补充说明。真相不仅揭开了当晚的凶案，也让旧事故中被掩盖的责任重新浮出水面。',truth:'真相由多条独立证据共同支持：现场复核排除了单纯意外；门禁记录将贺知远的门卡定位在关键时段；服务器审计显示他的专属管理员账号打开并删除了原始数据文件；监控中断不是暴雨造成，而是从本地控制台手动执行；未发送的复核材料指明作案动机；原始浮标序列说明沈闻掌握了被改写的预警时间；夜间巡查员则补上了贺知远离开档案室的时间线。单独一条记录都可能被解释，彼此交叉后才形成完整证据链。',intro:'暴雨封闭北岬海洋观测中心。档案工程师沈闻在资料室内死亡，现场并非单纯意外。三名最后与他有关联的人各有说法，而一份三年前被改写的预警记录，可能解释了这场死亡。',evidence:[{title:'门禁记录：21:16 的通行卡',detail:'资料室门禁显示，沈闻于 20:51 进入；21:16 又有一张编号 HY-02 的门卡开启资料室。HY-02 登记在副站长贺知远名下。贺知远却称自己 20:40 已经离开观测中心。记录无法单独证明发生了什么，但他的口供与门禁时间明显冲突。'},{title:'服务器审计：被删除的原始数据',detail:'服务器审计记录显示，21:09 有人使用专属管理员账号打开“原始潮位序列_复核件”，并于 21:21 将文件移入删除队列。该管理员账号只分配给副站长贺知远。贺知远称自己没有进入资料室，也没有操作服务器。'},{title:'监控日志：并非天气故障',detail:'资料室外走廊的影像在 21:11 至 21:19 中断。设备自检记录没有发现断电或受潮故障，控制日志反而记载了来自本地控制台的手动停用命令，执行账号与 HY-02 管理权限相符。'},{title:'浮标原始序列：相差二十二分钟',detail:'海上浮标的只读备份显示，系统在 03:08 已达到风暴预警阈值；对外正式报告却把预警时间记为 03:30。两份数据来自不同存储位置，原始备份没有被改写。沈闻近期申请复核的，正是这二十二分钟的差异。'},{title:'未发送的复核材料',detail:'资料室终端保留了一封准备发送给独立安全复核组的邮件草稿，附件是未经改写的浮标序列，计划于 21:30 发出。发送队列在 21:22 被管理员账号取消。草稿正文提到，沈闻会在复核会上说明旧报告的时间差。'},{title:'现场复核：不符合单纯意外',detail:'现场物证记录显示，资料室桌角有新鲜碰撞痕迹，椅子倒向与最初发现时的摆放状态不一致；沈闻的识别牌挂绳断裂。初步检验认为不能以自然病发或普通跌倒结案，仍需结合现场冲突和其他证据调查。现场痕迹本身不能指认凶手。'},{title:'夜间巡查记录：被遗漏的一段',detail:'值班巡查员罗骁补充说明，21:10 左右听见资料室方向有人争执；稍后在东侧楼梯看见贺知远从档案区出来。贺知远当时说自己只是在“处理一份文件”，并要求他不要把这段写进巡查记录。罗骁起初没有如实记录，后来才说明此事。'}],suspects:[{name:'唐越',job:'海洋数据分析师'},{name:'贺知远',job:'副站长'},{name:'罗骁',job:'夜间巡查员'}],answer:1,explain:'贺知远是唯一同时被关键时段门禁、专属管理员操作和取消外发记录指向的人。原始浮标备份揭示了他有理由阻止沈闻提交复核材料；现场复核确认这不是简单意外，罗骁的补充证词又将贺知远放回资料室附近。唐越虽然参与过旧报告复核，但没有证据显示他在关键时段进入资料室或执行删除操作；罗骁的失职在于隐瞒巡查情况，而不是现有证据所指向的致命冲突。'},
 {title:'走廊尽头的17号房',storyTitle:'走廊尽头的17号房',story:'10月28日早上8:30，望江宾馆三层走廊尽头的17号房被发现死人。死者周茂才，58岁，外地来江城做建材生意，倒在浴室门口，额头有伤。现场看起来像一起再普通不过的意外：客人半夜起夜，在湿滑的浴室门口踩空，一头撞在门框上。但法医在尸检时发现，死者额头的伤口是圆形钝器造成的，瓷砖和门框上都找不到对应的棱角。更奇怪的是，18号房住客林致远信誓旦旦说整晚没出过房门，走廊监控却清清楚楚拍到凌晨2点多一个穿浴袍的男人从18号房出来又缩了回去，而在他出门和回来之间，监控有整整四分钟的空白。',motive:'陈晓雨是半年前因债务自缢身亡的装修工陈建斌的独生女。她爸爸借了周茂才的钱，被利滚利逼到在自家阳台自缢，遗书只有一句话："雨啊，爸爸还不清了。"陈晓雨在晚报上看到那条豆腐块新闻后，花了三个月查到周茂才每月27号固定来江城收账、固定住望江宾馆17号房。她三个月前应聘进这家酒店上夜班，就是为了等这一天。',aftermath:'23点10分，陈晓雨以夜间赠水为由敲开17号房门。趁周茂才低头翻公文包想抽小费，她拿起床头铜台灯底座从后猛击其后脑。确认死亡后，她把尸体拖到浴室门口，泼了一滩水，放倒防滑垫，伪造踩空摔倒。然后她做了一件想了三天才想通的事——把空调从26℃拧到30℃，让房间像蒸笼一样烤9个小时。她知道法医看尸僵、尸斑、尸温，房间越热尸体冷得越慢、尸僵发展越快，法医按正常室温推断，就会把死亡时间提前到晚上8点——而晚上8点她还在出租屋和室友点外卖，有一百个证人。早上8点下班前，她借口问续房开门进去把空调调回26℃。她唯一没算到的是，那台破监控在它"坏掉"的四分钟前后，正好拍到了一个吓破胆的小偷林致远；而林致远在审讯中漏了一句"那房间热得像蒸笼"，让警察重新回到了空调前面。',truth:'铜台灯底座上没擦干净的暗红擦痕排除了意外；干防滑垫和一滩对不上的水说明现场被布置过；空调叶片转轴处被蹭掉的浮灰、加上林致远那句"像蒸笼"，证明有人故意加热房间加速尸体现象，法医最初判断的20:00—21:00死亡时间是错的。重新推算后真实死亡时间落在23:00—23:30之间，而监控在这个时间段唯一拍到进过17号房的人，是以送水为由进去6分钟的夜班服务员陈晓雨——送两瓶水用不了6分钟。储物柜里那张旧照片和背面的铅笔字，补上了她蹲守三个月的全部动机。那四分钟监控空白不是凶手搞的鬼，是这台老设备每天凌晨自动整理硬盘的老毛病；真正的杀人过程，全程被光明正大录了下来。',intro:'老式商务酒店走廊尽头的17号房发现一具男尸。现场像意外，可额头的圆形钝器伤对不上门框；18号房住客说整晚没出门，监控却拍到他凌晨两点多溜出去过，而他进出之间监控空白了四分钟。',evidence:[{title:'铜台灯底座',detail:'床头铜台灯底座和灯杆连接处有一道极细的擦痕，缝隙里残留一点暗红，被抹布擦过但没擦干净。伤口形状与圆形钝器吻合。'},{title:'浴室门口的水',detail:'防滑垫是干的，地漏附近却有一滩水。浴室里没有正在放水的龙头，毛巾也是干的。水从哪来？防滑垫为什么是干的？'},{title:'空调遥控器',detail:'屏幕显示26℃。但出风口金属叶片摸上去是温的，滤网边缘有一层均匀浮灰，唯独叶片转轴处的灰被蹭掉了——说明有人早上拧过叶片、调过温度。'},{title:'监控 23:12—23:18',detail:'走廊监控拍到夜班服务员陈晓雨推着服务车进17号房，6分钟后才出来。前台给客人送两瓶夜间赠水，用不了6分钟。'},{title:'监控 02:11—02:18',detail:'一个穿深色浴袍、趿拖鞋的男人从18号房出来，低着头快步走向走廊尽头。4分钟后画面恢复时，同一个男人几乎是撞回18号房的，刷卡时手在抖。浴袍左胸口有酒店logo。'},{title:'保安小张的证词',detail:'"这破监控啊，每天凌晨2:13到2:17会卡四分钟，自动整理硬盘，一年多了都这样，习惯了。"'},{title:'林致远被戳穿后的供述',detail:'他坦白是来偷借条的——他哥哥被周茂才利滚利逼了半年。"我刷开门，手机灯一照，地上躺着个人，一动不动。那房间……那房间热得不对劲，像个蒸笼，我进去没十秒就出来了，门都没敢关严。"'},{title:'陈晓雨储物柜',detail:'保洁员开储物柜时掉出一张旧照片：一个穿工装的中年男人搂着一个扎马尾的小女孩，背景是工地。那中年男人是本地晚报报道过的、因无力偿还债务在自家阳台自缢的装修工陈建斌。照片背面有一行铅笔字："爸爸，我来了。"'}],suspects:[{name:'林致远',job:'18号房住客'},{name:'陈晓雨',job:'夜班客房服务员'},{name:'老陈',job:'夜班前台'}],answer:1,explain:'陈晓雨是唯一同时被空调调温痕迹、23:10—23:18送水六分钟的监控记录、以及储物柜照片指向的人。林致远虽然撒谎说整晚没出门、监控也拍到他凌晨2点进出，但他自己供述进去时人已经死了、房间已经像蒸笼；他只是个碰巧撞见尸体的小偷，撒谎是怕偷配房卡的事暴露。老陈的证词恰恰说明陈晓雨在法医误判的死亡时间（20:00—21:00）有不在场证明——因为那时候她还没上班，这个不在场证明本身就是她设计的结果。'},
- {title:'图书馆的借书卡',intro:'一本稀有旧书的借书卡从柜台失踪。管理员只记得三位访客来过。',evidence:[{title:'值班表',detail:'管理员在 14:00—14:15 去书库归还书籍，柜台当时无人。'},{title:'纸张碎屑',detail:'柜台旁发现的纸屑边缘带有蓝色墨水，与访客留下的蓝色便签颜色相同。'},{title:'访客留言',detail:'林同学留下的便签使用蓝色墨水，而且他承认自己曾在柜台前找笔。'},{title:'监控画面',detail:'陈女士和小周进入大厅后一直在阅览区，只有林同学在管理员离开时靠近柜台。'}],suspects:[{name:'陈女士',job:'研究者'},{name:'小周',job:'学生'},{name:'林同学',job:'来访读者'}],answer:2,explain:'蓝色墨水碎屑与林同学的便签相符，监控也显示只有他在柜台无人时靠近。线索共同指向林同学。'},
+ {title:'午夜列车的第四位乘客',storyTitle:'午夜列车的第四位乘客',story:'10 月 18 日清晨 05:40，夜班 K888 次列车在湘南的大雨里跑了大半宿，列车员老周叫早时敲开软卧 4 号包间的门——下铺的钱伯钧已经硬了。死者 56 岁，跑了十年这条线的古董钟表商，有冠心病，和衣躺着，头歪向雨痕横流的车窗，胸口平摆着一块开盖的老怀表，指针停在 02:15。包间门从里面反锁，同包厢另两人说自己一觉睡死，什么都没听见。一切看起来像心脏不好的老商人在卧铺上悄无声息地走了。',motive:'胡国柱是十年前镇上修表匠胡德厚的独子。那年钱伯钧拎着一块“1962 年瑞士天文台表”进村，开价八万，是全村人的养老钱。村里人不敢信，请胡德厚掌眼。老实人把表贴在耳朵上听了半宿，信了钱伯钧的话，替合作社点了头。后来省城专家一句话：后改的壳，假表。钱伯钧早没了影，八万块却算在胡师傅作的证上。胡师傅从此不再说话，铺子关了，酒喝到两年前冬天，人没了，临终只留下一句：表不会骗人。胡国柱查了两年，查到钱伯钧每月 17 号坐这趟车，样品箱最上一格丝绒托里正放着那块换了壳的假表，准备再到怀化卖一次。',aftermath:'05:40 老周叫早时，胡国柱一次交回两块卧铺牌，说上铺的兄弟提前在渌口下了。铁路公安在怀化站的小餐馆找到他时，他正吃一碗热米粉、一屉小笼包，没有跑。他承认 00:10 动手：先递上一杯掺了安眠药的白酒，等人昏睡后闷压致死；然后拔出马甲口袋里的怀表，把指针拨到 02:15，用一截牙签卡死摆轮，开盖放在胸口；再把上铺的被子叠成豆腐块。样品箱打开时他盯着那块表看了很久，只说了一句：我爸修了一辈子表，表不会骗人，骗人的是拿表的人。老师傅把表冠轻轻拧了半圈，摆轮重新转了起来——这块表其实走了一整夜。',truth:'怀表玻璃完好、表冠却有新鲜指腹压痕，说明它不是摔停而是被人拧停的；钟表行老师傅验出摆轮被细物卡死，它是停给人看的。02:15 恰好落在渌口站车门敞开的那 17 分钟中间，胡国柱在站台上跟人聊天——那是他为自己布置的不在场证明。真实死亡窗口在 23:48 到 01:20 之间：23:48 湘乡站小贺看见钱伯钧还活着下车对表，01:20 娄底站他却没再出现，而按十年习惯他活着必下车对表。这段窗口里清醒的只有胡国柱一人，文珊珊 22:40 就吞了安眠药。所谓上铺兄弟从未存在：卧铺牌由胡国柱代领代还，被子叠成豆腐块、没有一丝压痕。他虚构一个第四位乘客，只为给谁在 02:15 进过反锁包间预置答案；而渌口站那个下车的人，只是个被家属接走的醉汉。',intro:'雨夜的夜班列车，软卧 4 号包间在反锁中死了一名钟表商。胸口怀表停在 02:15，恰好是车门敞开 17 分钟的渌口站——人人都记得那一刻胡国柱正站在站台上抽烟。而换票登记本上多出来的那第四个人，谁也没见过。',evidence:[{title:'停在 02:15 的怀表',detail:'表针停在 02:15，表盖翻开，平平摆在死者胸口。表冠边缘有一道新鲜的指腹压痕，表玻璃干干净净，没有一丝撞击裂纹。表是他自己的，要带到怀化交货。'},{title:'满瓶硝酸甘油',detail:'枕头边的小药瓶满满一瓶，未开封，伸手就能够到。他有冠心病。真要是心梗发作，他为什么一片都没吃？'},{title:'床头的玻璃杯',detail:'杯底残着一口白酒，送化验后检出微量安眠药成分。有人递过给他一杯睡前暖暖的酒。'},{title:'没人睡过的上铺 2',detail:'被子叠成方方正正的豆腐块，枕头放平，铺板平整，没有一丝压痕和褶皱。这个铺位从头到尾没人睡过。'},{title:'样品箱里的“1962 瑞士表”',detail:'黑色样品箱锁着，最上格丝绒托上稳稳躺着那块要交货的老怀表。市里钟表行老师傅鉴定：后改的壳，做工拙劣，是块假表。死者是个卖假表的。'},{title:'换票登记本',detail:'4 号包间 4 张票全部验票，4 块卧铺牌全部回收。回收记录显示：胡国柱在 05:40 一次交回了两块牌子。'},{title:'沿途三站的证词',detail:'湘乡站值班员小贺：23:48 停两分钟，那个穿皮夹克的老头举着表对着站房大钟，身边一个中年人给他递烟，精神得很。娄底站站务：01:20 停六分钟，下车透气的就一个中年人，没看见什么穿皮夹克的老头。渌口站上水工刘师傅：02 点多有个中年人在旁边抽烟聊天，另有个醉汉被家属从站台接走。'},{title:'列车时刻表',detail:'22:10 江城发车；23:48 湘乡站 2 分钟；01:20 娄底站 6 分钟；02:08—02:25 渌口站 17 分钟；05:55 怀化到达。02:15 正好落在车门敞开的那 17 分钟中间。'},{title:'钟表行老师傅的鉴定',detail:'铁路公安把怀表送去市里钟表行。老师傅的结论：这表不是摔停的。表冠最近被人拧过，指针是拨到 2:15 的，摆轮被细东西卡住。从 22:50 上弦到卡死，它正常走了没多久。这表停在 2:15，是给人看的。'}],suspects:[{name:'胡国柱',job:'自称建材推销员 · 下铺 2'},{name:'文珊珊',job:'小学老师 · 上铺 1'},{name:'老周',job:'软卧车厢列车员'}],answer:0,explain:'怀表是被拨停的，02:15 是胡国柱亲手布置的假死亡时间——那一刻他在站台上跟人聊天，证明不了他没机会。真实死亡窗口落在 23:48 到 01:20 之间，这段时间的 4 号包间里清醒的只有他一个人，文珊珊早已吞了安眠药。上铺从没睡过人、卧铺牌由他代领代还，说明那个“第四位乘客”是他编出来给反锁包间预置的答案。样品箱里的假表和他父亲胡德厚的遭遇，给出了完整的动机。'},
  {title:'谁关掉了展厅灯',intro:'艺术展闭馆时，一盏主展灯被人提前关闭。工作人员说自己都按流程工作。',evidence:[{title:'控制台日志',detail:'灯光在 19:42 被手动关闭，操作账号属于讲解员小陆。'},{title:'交接记录',detail:'小陆说自己 19:30 已离开展厅，但 19:45 的巡检单上有他的签名。'},{title:'备用钥匙',detail:'保管员周叔在 19:40 归还了控制台钥匙，交接本有双方签字。'},{title:'访客反馈',detail:'一位观众记得 19:40 左右见过小陆在控制台旁查看灯光。'}],suspects:[{name:'周叔',job:'保管员'},{name:'小乔',job:'策展助理'},{name:'小陆',job:'讲解员'}],answer:2,explain:'控制台日志记录了小陆的操作账号，巡检单和观众目击也证明他说自己提前离开并不属实。'} ,
  {title:'雨夜的空白车票',intro:'旧车站闭站前，一张盖过章的末班车票从失物招领柜里消失。值班员说那晚只有三个人进过办公室。',evidence:[{title:'站台时刻表',detail:'末班车在 21:18 发车，站台记录显示 21:12 后没有乘客进入办公室。'},{title:'潮湿的鞋印',detail:'办公室门口留下窄底鞋印，方向由档案柜通往后门。'},{title:'交班笔记',detail:'值班员写下 21:05 曾离开柜台三分钟，但口头称整晚没有离岗。'},{title:'车票存根',detail:'存根编号连续，只有失踪车票对应的那一格被提前撕开。'}],suspects:[{name:'许站长',job:'当班负责人'},{name:'小闻',job:'检票员'},{name:'顾客陈',job:'末班车乘客'}],answer:0,explain:'交班笔记与站长的说法矛盾，空白时段正好给了他接近档案柜的机会；鞋印方向也与办公室后门路线吻合。'},
  {title:'画廊里的错位签名',intro:'一场小型画展结束后，收藏登记簿上的一处签名被改动，导致作品归属出现争议。三位工作人员都接触过登记桌。',evidence:[{title:'墨水干燥程度',detail:'被改动的签名墨迹明显较新，覆盖在原本已干透的笔迹上。'},{title:'布展清单',detail:'策展助理在闭展前负责整理登记簿，清单时间为 18:40。'},{title:'访客留言',detail:'一名访客写道，闭展前看见保管员在登记桌旁寻找印章。'},{title:'印章收纳盒',detail:'盒盖内侧有新鲜墨迹，与登记簿改动处使用的墨水颜色一致。'}],suspects:[{name:'策展助理林',job:'整理登记簿'},{name:'保管员周',job:'保管印章'},{name:'讲解员苏',job:'负责闭展' }],answer:1,explain:'保管员曾在登记桌附近寻找印章，盒盖墨迹又与改动签名的墨水一致，证据共同指向他接触过并改动了登记簿。'},
  {title:'凌晨三点的来电',intro:'一位作家声称凌晨三点收到匿名电话，随后遗失了写有新书结局的手稿。电话记录、门禁和三份证词之间存在矛盾。',evidence:[{title:'电话清单',detail:'来电实际发生在 02:41，号码来自工作室内部线路，并非外部匿名号码。'},{title:'门禁记录',detail:'02:30 至 03:00 只有编辑唐的门卡打开过工作室走廊。'},{title:'稿纸纤维',detail:'桌边碎纸与编辑室专用稿纸纤维相同，但无法单独证明是谁撕碎。'},{title:'咖啡收据',detail:'咖啡在 02:36 被送到编辑室，收据签名与编辑唐的日常签名一致。'}],suspects:[{name:'编辑唐',job:'负责审稿'},{name:'邻居许',job:'住在隔壁'},{name:'作家本人',job:'手稿所有者'}],answer:0,explain:'内部线路排除了外部匿名来电，门禁和咖啡收据都把编辑唐放在关键时间与地点；稿纸纤维则补充了手稿被处理过的证据。'}
 ]; 
-var CASE_INTERVIEWS={0:[{'title':'唐越 · 海洋数据分析师','text':'沈闻让我帮忙核对三年前的原始潮位序列。我在 20:55 左右把一份比对结果发给他，之后留在实验室参加跨站视频会。旧报告上的签字是技术复核，不是批准对外发布时间。我知道那二十二分钟说不通，但我没有及时把疑点报告上去。'},{'title':'贺知远 · 副站长','text':'我 20:40 就离开观测中心了，没有进入资料室。服务器的记录未必能说明实际操作人，管理员权限也可能被人借用。旧预警记录早就复核过，沈闻不该在审核结束前把未确认的数据发给外部机构。'},{'title':'罗骁 · 夜间巡查员','text':'21:10 左右我听见资料室方向有争执声。后来在东侧楼梯附近看见贺副站长从档案区出来，他说自己只是处理文件，让我不要把这段写进巡查记录。我当时怕担责任，就没有登记，现在想想，这个遗漏很重要。'}],1:[{'title':'林致远 · 18号房住客','text':'我昨晚一路睡到天亮，哪儿也没去。做建材销售的，跑了一天业务，累得倒头就睡。'},{'title':'陈晓雨 · 夜班客房服务员','text':'我昨晚22点到早上8点上班。23点多给17号房送过一次夜间赠水，两瓶矿泉水，放下就走了。其他时间都在大堂和前台老陈对账、换饮用水，没上过三楼。'},{'title':'老陈 · 夜班前台','text':'小陈晓雨昨晚22点到8点一直在大堂啊，2点多我们还一起泡了泡面聊天，她哪儿也没去。那孩子话少、踏实，布草叠得最齐。'}],2:[{'title':'陈女士 · 研究者','text':'我一直在阅览区查资料，直到离开都没有去过柜台。'},{'title':'小周 · 学生','text':'我找过笔，但管理员还在柜台，我没有碰借书卡。'},{'title':'林同学 · 来访读者','text':'我确实靠近过柜台找笔，看到蓝色便签时还顺手拿起来看了看。'}],3:[{'title':'周叔 · 保管员','text':'钥匙按时归还了，我没有理由在闭馆前动灯光控制台。'},{'title':'小乔 · 策展助理','text':'我在整理访客反馈，没碰控制台，也没有操作权限。'},{'title':'小陆 · 讲解员','text':'我 19:30 就离开展厅了，之后发生什么我不清楚。'}],4:[{'title':'许站长 · 当班负责人','text':'我整晚都在柜台，没有离开过，也没有打开过失物招领柜。'},{'title':'小闻 · 检票员','text':'我在站台协助乘客，21:12 之后没有人再进办公室。'},{'title':'顾客陈 · 末班车乘客','text':'我在发车前等车，没有进过办公室，只经过了后门附近。'}],5:[{'title':'策展助理林 · 整理登记簿','text':'我按清单整理完登记簿就离开了，之后没有再碰它。'},{'title':'保管员周 · 保管印章','text':'我去登记桌找过印章，但没有改动签名。'},{'title':'讲解员苏 · 负责闭展','text':'我闭展时只检查灯光和展柜，没有查看登记簿。'}],6:[{'title':'编辑唐 · 负责审稿','text':'我凌晨就离开了工作室，那张咖啡收据可能是别人代签的。'},{'title':'邻居许 · 住在隔壁','text':'我听到过电话声，但隔着墙无法判断来自哪间房。'},{'title':'作家本人 · 手稿所有者','text':'我说是匿名电话，是因为不想让别人知道工作室内部线路出了问题。'}]};
+var CASE_INTERVIEWS={0:[{'title':'唐越 · 海洋数据分析师','text':'沈闻让我帮忙核对三年前的原始潮位序列。我在 20:55 左右把一份比对结果发给他，之后留在实验室参加跨站视频会。旧报告上的签字是技术复核，不是批准对外发布时间。我知道那二十二分钟说不通，但我没有及时把疑点报告上去。'},{'title':'贺知远 · 副站长','text':'我 20:40 就离开观测中心了，没有进入资料室。服务器的记录未必能说明实际操作人，管理员权限也可能被人借用。旧预警记录早就复核过，沈闻不该在审核结束前把未确认的数据发给外部机构。'},{'title':'罗骁 · 夜间巡查员','text':'21:10 左右我听见资料室方向有争执声。后来在东侧楼梯附近看见贺副站长从档案区出来，他说自己只是处理文件，让我不要把这段写进巡查记录。我当时怕担责任，就没有登记，现在想想，这个遗漏很重要。'}],1:[{'title':'林致远 · 18号房住客','text':'我昨晚一路睡到天亮，哪儿也没去。做建材销售的，跑了一天业务，累得倒头就睡。'},{'title':'陈晓雨 · 夜班客房服务员','text':'我昨晚22点到早上8点上班。23点多给17号房送过一次夜间赠水，两瓶矿泉水，放下就走了。其他时间都在大堂和前台老陈对账、换饮用水，没上过三楼。'},{'title':'老陈 · 夜班前台','text':'小陈晓雨昨晚22点到8点一直在大堂啊，2点多我们还一起泡了泡面聊天，她哪儿也没去。那孩子话少、踏实，布草叠得最齐。'}],2:[{'title':'胡国柱 · 自称建材推销员','text':'我跟大叔无冤无仇，上车还给他递过烟递过水。半夜里我睡得死死的，什么也没听见。02 点多我在渌口站站台上抽烟，跟上水工聊了十来分钟，他能给我作证。上铺那兄弟？他说不定半路就下了，我哪清楚。'},{'title':'文珊珊 · 小学老师','text':'我上车就吞了一片安眠药，拉上帘子睡到列车员叫早。上铺到底有没有人，我真的没注意，帘子一直是拉着的……我也没听见这屋里有动静。'},{'title':'老周 · 软卧车厢列车员','text':'我跑这条线二十年。4 号包间四张票我都验了，四块卧铺牌也是我发的。上铺那块牌子，是胡国柱说“我兄弟晚点从站台上来”，先替他拿走的。后来叫早，他一下递回来两块，说人提前在渌口下了。'}],3:[{'title':'周叔 · 保管员','text':'钥匙按时归还了，我没有理由在闭馆前动灯光控制台。'},{'title':'小乔 · 策展助理','text':'我在整理访客反馈，没碰控制台，也没有操作权限。'},{'title':'小陆 · 讲解员','text':'我 19:30 就离开展厅了，之后发生什么我不清楚。'}],4:[{'title':'许站长 · 当班负责人','text':'我整晚都在柜台，没有离开过，也没有打开过失物招领柜。'},{'title':'小闻 · 检票员','text':'我在站台协助乘客，21:12 之后没有人再进办公室。'},{'title':'顾客陈 · 末班车乘客','text':'我在发车前等车，没有进过办公室，只经过了后门附近。'}],5:[{'title':'策展助理林 · 整理登记簿','text':'我按清单整理完登记簿就离开了，之后没有再碰它。'},{'title':'保管员周 · 保管印章','text':'我去登记桌找过印章，但没有改动签名。'},{'title':'讲解员苏 · 负责闭展','text':'我闭展时只检查灯光和展柜，没有查看登记簿。'}],6:[{'title':'编辑唐 · 负责审稿','text':'我凌晨就离开了工作室，那张咖啡收据可能是别人代签的。'},{'title':'邻居许 · 住在隔壁','text':'我听到过电话声，但隔着墙无法判断来自哪间房。'},{'title':'作家本人 · 手稿所有者','text':'我说是匿名电话，是因为不想让别人知道工作室内部线路出了问题。'}]};
 function caseProgressRoot(){try{return JSON.parse(localStorage.getItem('maomao_detective_progress_v1')||'{}')||{};}catch(e){return {};}}
-function caseProgress(){var all=caseProgressRoot(),key=String(activeRole&&activeRole.id||'default-partner');if(!all[key])all[key]={completed:[],attempts:{},notes:{},campaign:{trust:{},flags:[],threads:[],choices:[]}};if(!all[key].campaign)all[key].campaign={trust:{},flags:[],threads:[],choices:[]};if(!all[key].campaign.trust)all[key].campaign.trust={};if(!Array.isArray(all[key].campaign.flags))all[key].campaign.flags=[];if(!Array.isArray(all[key].campaign.threads))all[key].campaign.threads=[];if(!Array.isArray(all[key].campaign.choices))all[key].campaign.choices=[];return all[key];}
+function activeRoleKey(){return String(activeRole&&activeRole.id||'default-partner');}
+// 结案状态的唯一计算入口。
+// 历史 Bug：外部脚本 maomao-case-closed-fullscreen-v12 读不到本 IIFE 内部的 caseProgress，
+// 抛错后被空 catch 吞掉，把 completed 当成空数组；它挂在 document.body 上的 MutationObserver
+// 会立刻把 startCase() 刚解锁的案件重新锁回去，所以改 startCase 怎么都看不见效果。
+// 现在 startCase / openCase / 外部刷新脚本统一走下面这几个函数，保证只有一套算法。
+function healCaseProgress(progress){
+ if(!progress||typeof progress!=='object')progress={};
+ if(!Array.isArray(progress.completed))progress.completed=[];
+ if(!progress.notes||typeof progress.notes!=='object')progress.notes={};
+ CASES.forEach(function(c,idx){
+  var n=progress.notes[c&&c.title];
+  if(n&&n.result==='solved'&&progress.completed.indexOf(idx)<0)progress.completed.push(idx);
+ });
+ // 沉浸式流程写入的全局 immCasesDone 可能与按角色存档错位（见 immersive-v21.js 的 key 漂移），这里做一次合并。
+ try{
+  var legacyDone=JSON.parse(localStorage.getItem('immCasesDone')||'[]');
+  if(Array.isArray(legacyDone)){
+   var today=new Date().toISOString().slice(0,10);
+   legacyDone.forEach(function(v){
+    var n=Number(v);
+    if(!isFinite(n)||n<0||Math.floor(n)!==n||!CASES[n])return;
+    if(progress.completed.indexOf(n)<0)progress.completed.push(n);
+    if(!progress.notes[CASES[n].title])progress.notes[CASES[n].title]={result:'solved',day:today,legacy:true};
+   });
+  }
+ }catch(e){}
+ var seen={},clean=[];
+ progress.completed.forEach(function(v){
+  var n=Number(v);
+  if(!isFinite(n)||n<0||Math.floor(n)!==n||!CASES[n]||seen[n])return;
+  seen[n]=1;clean.push(n);
+ });
+ progress.completed=clean;
+ return progress;
+}
+function caseSolvedIndexes(){return healCaseProgress(caseProgress()).completed.slice();}
+// 案件槽位原地替换的迁移：第 3 槽原本是「图书馆的借书卡」，现已换成「午夜列车的第四位 passengers」。
+// 存档是按槽位序号记的，老玩家在这一槽的通关状态会错误地指向新案子，必须清一次。
+function migrateReplacedCaseSlots(){
+ var marker='maomao_detective_slot_remap_v1',REPLACED={2:'图书馆的借书卡'};
+ function dropped(v){return Object.prototype.hasOwnProperty.call(REPLACED,String(Number(v)));}
+ try{
+  if(localStorage.getItem(marker)==='1')return;
+  var all=JSON.parse(localStorage.getItem('maomao_detective_progress_v1')||'{}')||{},changed=false;
+  Object.keys(all).forEach(function(roleKey){
+   var p=all[roleKey];if(!p||typeof p!=='object')return;
+   if(Array.isArray(p.completed)){
+    var next=p.completed.filter(function(v){return !dropped(v);});
+    if(next.length!==p.completed.length){p.completed=next;changed=true;}
+   }
+   if(p.notes&&typeof p.notes==='object'){
+    Object.keys(p.notes).forEach(function(t){
+     Object.keys(REPLACED).forEach(function(k){if(REPLACED[k]===t){delete p.notes[t];changed=true;}});
+    });
+   }
+   if(p.caseStates&&typeof p.caseStates==='object'){
+    Object.keys(p.caseStates).forEach(function(t){
+     Object.keys(REPLACED).forEach(function(k){if(REPLACED[k]===t){delete p.caseStates[t];changed=true;}});
+    });
+   }
+  });
+  if(changed)localStorage.setItem('maomao_detective_progress_v1',JSON.stringify(all));
+  try{
+   var done=JSON.parse(localStorage.getItem('immCasesDone')||'[]');
+   if(Array.isArray(done)){
+    var nd=done.filter(function(v){return !dropped(v);});
+    if(nd.length!==done.length)localStorage.setItem('immCasesDone',JSON.stringify(nd));
+   }
+  }catch(e){}
+  localStorage.setItem(marker,'1');
+ }catch(e){}
+}
+migrateReplacedCaseSlots();
+function isCaseSolved(i){return caseSolvedIndexes().indexOf(Number(i))>=0;}
+function readSolvedIndexesFromStorage(){
+ // 供主 IIFE 之外的脚本使用：不依赖内部函数，直接从 localStorage 还原已结案列表。
+ var key=activeRoleKey();
+ try{key=localStorage.getItem('maomao_game_role')||key;}catch(e){}
+ var done=[];
+ try{
+  var all=JSON.parse(localStorage.getItem('maomao_detective_progress_v1')||'{}')||{};
+  var p=all[key]&&typeof all[key]==='object'?all[key]:{};
+  if(Array.isArray(p.completed))done=p.completed;
+ }catch(e){}
+ try{
+  var legacy=JSON.parse(localStorage.getItem('immCasesDone')||'[]');
+  if(Array.isArray(legacy))legacy.forEach(function(v){var n=Number(v);if(isFinite(n)&&done.indexOf(n)<0)done.push(n);});
+ }catch(e){}
+ var out=[];done.forEach(function(v){var n=Number(v);if(isFinite(n)&&n>=0&&Math.floor(n)===n&&out.indexOf(n)<0)out.push(n);});
+ return out;
+}
+function caseProgress(){var all=caseProgressRoot(),key=activeRoleKey();if(!all[key])all[key]={completed:[],attempts:{},notes:{},campaign:{trust:{},flags:[],threads:[],choices:[]}};if(!all[key].campaign)all[key].campaign={trust:{},flags:[],threads:[],choices:[]};if(!all[key].campaign.trust)all[key].campaign.trust={};if(!Array.isArray(all[key].campaign.flags))all[key].campaign.flags=[];if(!Array.isArray(all[key].campaign.threads))all[key].campaign.threads=[];if(!Array.isArray(all[key].campaign.choices))all[key].campaign.choices=[];return all[key];}
 function saveCampaignChoice(caseTitle,choice,result){var p=caseProgress(),c=p.campaign;c.choices.push({caseTitle:caseTitle,choice:choice,result:result,at:new Date().toISOString()});var flag='choice:'+caseTitle+':'+choice;if(c.flags.indexOf(flag)<0)c.flags.push(flag);c.threads.push({caseTitle:caseTitle,summary:result,choice:choice});saveCaseProgress(p);}
 function campaignBrief(){var c=caseProgress().campaign,trust=Object.keys(c.trust||{}).map(function(k){return k+'：'+c.trust[k];}).join('；');return '过往选择：'+(c.choices.slice(-8).map(function(x){return x.caseTitle+'：选择 '+x.choice+'；结果 '+x.result;}).join('；')||'暂无')+'。持续伏笔：'+(c.threads.slice(-8).map(function(x){return x.caseTitle+'留下：'+x.summary;}).join('；')||'暂无')+'。调查队信任记录：'+(trust||'尚未形成')+'。';}
-function saveCaseProgress(progress){var all=caseProgressRoot();all[String(activeRole&&activeRole.id||'default-partner')]=progress||caseProgress();localStorage.setItem('maomao_detective_progress_v1',JSON.stringify(all));}
+function saveCaseProgress(progress){var all=caseProgressRoot();all[activeRoleKey()]=progress||caseProgress();localStorage.setItem('maomao_detective_progress_v1',JSON.stringify(all));}
 var detectiveGeneratedCasesLoaded=false;
 function loadGeneratedDetectiveCases(){if(detectiveGeneratedCasesLoaded)return;detectiveGeneratedCasesLoaded=true;try{var saved=JSON.parse(localStorage.getItem('maomao_detective_generated_cases_v1')||'[]');if(Array.isArray(saved))saved.forEach(function(c){if(c&&c.title&&Array.isArray(c.evidence)&&Array.isArray(c.suspects)&&!CASES.some(function(x){return x.title===c.title;}))CASES.push(c);});}catch(e){}}
 function detectiveTeamRoot(){try{return JSON.parse(localStorage.getItem('maomao_detective_team_v1')||'[]');}catch(e){return [];}}
@@ -924,10 +1016,9 @@ function toggleDetectiveRole(id){var ids=detectiveTeamRoot().map(String),key=Str
 function setDetectiveVersionBadge(visible){}
 function startCase(){
  document.body.classList.remove('detective-case-mode','case-modal-open');document.body.removeAttribute('data-case-theme');setDetectiveVersionBadge(true);
- loadGeneratedDetectiveCases();setRoundLabel();var progress=caseProgress(),team=detectiveTeam();
- CASES.forEach(function(c,idx){if(progress.notes[c.title]&&progress.notes[c.title].result==='solved'&&progress.completed.indexOf(idx)<0)progress.completed.push(idx);});
- saveCaseProgress(progress);
- byId('gameContent').innerHTML='<div class="board-panel detective-bureau-page"><div class="panel-kicker">DETECTIVE BUREAU / CASE ARCHIVE</div><div class="prompt-title">长线案件档案室</div><div class="prompt-copy">组建你的 AI 角色调查小队，从独立案件逐步追踪同一条暗线。证据、证词和时间线都会影响结案判断。</div><div class="case-progress-strip"><span>已结案件</span><strong>'+progress.completed.length+' / '+CASES.length+'</strong></div><div class="divider-label">调查小队 · 可同时加入多位角色</div><div class="detective-team-picker">'+roleList.map(function(r){var chosen=team.some(function(x){return String(x.id)===String(r.id);});return '<button type="button" class="detective-team-chip '+(chosen?'selected':'')+'" data-team-role="'+esc(r.id)+'" aria-pressed="'+chosen+'">'+avatarMarkup(r,'')+'<span>'+esc(roleName(r))+'</span><small>'+(chosen?'已加入小队':'点击加入')+'</small></button>';}).join('')+'</div><div class="team-caption">当前队伍：'+esc(team.map(roleName).join('、'))+'。不同角色将以各自的人设参与调查讨论。</div><div class="case-ai-create"><div><strong>AI SERIAL CASE / 连载案件生成</strong><p>需要已配置的角色 API 来生成新剧情、证据、证词和后续主线；未配置时仍可游玩内置案件。</p></div><button type="button" class="secondary-btn" id="generateDetectiveCase">生成新案</button></div><div class="case-archive-heading"><span class="panel-kicker">AVAILABLE FILES / 内置案件</span><span class="case-archive-count">先展示 3 宗 · 共 '+CASES.length+' 宗</span></div><div class="case-archive-list" id="caseArchiveList">'+CASES.map(function(c,i){var done=progress.completed.indexOf(i)>=0,locked=i>0&&progress.completed.indexOf(i-1)<0;return '<button class="case-archive-item '+(i>=3?'case-archive-hidden':'')+'" data-open-case="'+i+'" '+(locked?'disabled':'')+'><span class="case-archive-no">CASE / '+String(i+1).padStart(2,'0')+'</span><strong>'+esc(c.title)+'</strong><span class="case-archive-desc">'+esc(c.intro)+'</span><span class="case-archive-status">'+(done?'✓ 已结案':locked?'完成上一案后解锁':i===0?'可调查':'待调查')+'</span></button>';}).join('')+'</div><button type="button" class="case-archive-more" id="caseArchiveMore" aria-expanded="false">展开全部案件 <span>＋</span></button></div>';
+ loadGeneratedDetectiveCases();setRoundLabel();var progress=healCaseProgress(caseProgress()),team=detectiveTeam();
+ saveCaseProgress(progress);var solved=progress.completed.slice();
+ byId('gameContent').innerHTML='<div class="board-panel detective-bureau-page"><div class="panel-kicker">DETECTIVE BUREAU / CASE ARCHIVE</div><div class="prompt-title">长线案件档案室</div><div class="prompt-copy">组建你的 AI 角色调查小队，从独立案件逐步追踪同一条暗线。证据、证词和时间线都会影响结案判断。</div><div class="case-progress-strip"><span>已结案件</span><strong>'+progress.completed.length+' / '+CASES.length+'</strong></div><div class="divider-label">调查小队 · 可同时加入多位角色</div><div class="detective-team-picker">'+roleList.map(function(r){var chosen=team.some(function(x){return String(x.id)===String(r.id);});return '<button type="button" class="detective-team-chip '+(chosen?'selected':'')+'" data-team-role="'+esc(r.id)+'" aria-pressed="'+chosen+'">'+avatarMarkup(r,'')+'<span>'+esc(roleName(r))+'</span><small>'+(chosen?'已加入小队':'点击加入')+'</small></button>';}).join('')+'</div><div class="team-caption">当前队伍：'+esc(team.map(roleName).join('、'))+'。不同角色将以各自的人设参与调查讨论。</div><div class="case-ai-create"><div><strong>AI SERIAL CASE / 连载案件生成</strong><p>需要已配置的角色 API 来生成新剧情、证据、证词和后续主线；未配置时仍可游玩内置案件。</p></div><button type="button" class="secondary-btn" id="generateDetectiveCase">生成新案</button></div><div class="case-archive-heading"><span class="panel-kicker">AVAILABLE FILES / 内置案件</span><span class="case-archive-count">先展示 3 宗 · 共 '+CASES.length+' 宗</span></div><div class="case-archive-list" id="caseArchiveList">'+CASES.map(function(c,i){var done=solved.indexOf(i)>=0,locked=i>0&&solved.indexOf(i-1)<0;return '<button class="case-archive-item '+(i>=3?'case-archive-hidden':'')+'" data-open-case="'+i+'" '+(locked?'disabled':'')+'><span class="case-archive-no">CASE / '+String(i+1).padStart(2,'0')+'</span><strong>'+esc(c.title)+'</strong><span class="case-archive-desc">'+esc(c.intro)+'</span><span class="case-archive-status">'+(done?'✓ 已结案':locked?'完成上一案后解锁':i===0?'可调查':'待调查')+'</span></button>';}).join('')+'</div><button type="button" class="case-archive-more" id="caseArchiveMore" aria-expanded="false">展开全部案件 <span>＋</span></button></div>';
  var archiveMore=byId('caseArchiveMore'),archiveList=byId('caseArchiveList');if(archiveMore&&archiveList){archiveMore.addEventListener('click',function(){var expanded=archiveMore.getAttribute('aria-expanded')==='true';archiveMore.setAttribute('aria-expanded',String(!expanded));archiveList.classList.toggle('expanded',!expanded);archiveMore.innerHTML=expanded?'展开全部案件 <span>＋</span>':'收起案件列表 <span>−</span>';});}
  byId('gameContent').querySelectorAll('[data-team-role]').forEach(function(b){b.addEventListener('click',function(){toggleDetectiveRole(b.getAttribute('data-team-role'));});});
  byId('gameContent').querySelectorAll('[data-open-case]').forEach(function(b){b.addEventListener('click',function(){openCase(Number(b.getAttribute('data-open-case')));});});
@@ -981,13 +1072,13 @@ function showCaseEvidenceDetail(c,index){
 
 function openCase(index){document.body.classList.add("detective-case-mode");setDetectiveVersionBadge(true);
  byId('gameContent').classList.add('detective-chat-mode');
- var progress=caseProgress();if(index>0&&progress.completed.indexOf(index-1)<0){showToast('先完成上一宗案件。');return;}
+ var progress=healCaseProgress(caseProgress());if(index>0&&progress.completed.indexOf(index-1)<0){showToast('先完成上一宗案件。');return;}
  var c=CASES[index];if(!c)return;
  var savedCaseStates=progress.caseStates||{},savedCaseState=savedCaseStates[c.title]||{};gameState={caseIndex:index,item:c,revealed:Object.assign({},savedCaseState.revealed||{}),interviewed:Object.assign({},savedCaseState.interviewed||{}),ended:false,phase:'evidence'};
  var investigators=detectiveParty(detectiveTeam()),interviews=CASE_INTERVIEWS[index]||c.suspects.map(function(x){return {title:x.name+' · '+x.job,text:'我只知道自己负责的部分，其他情况需要更多证据才能判断。'};});
  installFloatingInvestigationTools();
- var sceneHeading=index===0?'北岬观测中心 · 档案室':(index===1?'望江宾馆 · 三层走廊':'案件现场 · 勘查区域'),spots=[[23,43],[58,77],[50,61],[45,24],[80,66],[70,89],[13,50],[35,82]];
- var sceneMarkup='<section class="case-scene-stage" aria-label="可交互案件现场"><div class="scene-stage-top"><span>SCENE OVERVIEW / 现场总览</span><span>点击编号调查</span></div><div class="scene-location">'+esc(sceneHeading)+'</div><div class="scene-art '+(index===0?'scene-art-tidal':(index===1?'scene-art-hotel':'scene-art-generic'))+'">'+(index===0?'<img class="scene-real-image" src="assets/tidal-archive-room-v18.webp" alt="潮汐档案室正式现场图">':(index===1?'<img class="scene-real-image" src="assets/bg-hotel-corridor.jpg" alt="望江宾馆三层走廊">':''))+'<div class="scene-window"><div class="scene-horizon"></div><div class="scene-rain"></div></div><div class="scene-clock"></div><div class="scene-shelves"><i></i><i></i><i></i></div><div class="scene-monitor"><b></b><i></i></div><div class="scene-door"></div><div class="scene-desk"></div><div class="scene-paper"></div><div class="scene-folder"></div><div class="scene-lamp"></div><div class="scene-shadow"></div><div class="scene-floor"></div>'+c.evidence.map(function(ev,i){var p=spots[i%spots.length];return '<button type="button" class="scene-hotspot" data-scene-evidence="'+i+'" style="left:'+p[0]+'%;top:'+p[1]+'%" aria-label="查看证物 '+String(i+1)+'：'+esc(ev.title)+'"><span>'+String(i+1).padStart(2,'0')+'</span></button>';}).join('')+'</div><div class="scene-stage-foot"><div><strong>现场勘查图</strong><span>选择编号，打开对应证物档案</span></div><strong id="sceneFoundCount">0 / '+c.evidence.length+' 已确认</strong></div></section>';
+ var sceneHeading=index===0?'北岬观测中心 · 档案室':(index===1?'望江宾馆 · 三层走廊':(index===2?'K888 次列车 · 软卧 4 号包间':'案件现场 · 勘查区域')),spots=[[23,43],[58,77],[50,61],[45,24],[80,66],[70,89],[13,50],[35,82],[20,15],[88,40],[62,33],[30,70]];
+ var sceneMarkup='<section class="case-scene-stage" aria-label="可交互案件现场"><div class="scene-stage-top"><span>SCENE OVERVIEW / 现场总览</span><span>点击编号调查</span></div><div class="scene-location">'+esc(sceneHeading)+'</div><div class="scene-art '+(index===0?'scene-art-tidal':(index===1?'scene-art-hotel':(index===2?'scene-art-train':'scene-art-generic')))+'">'+(index===0?'<img class="scene-real-image" src="assets/tidal-archive-room-v18.webp" alt="潮汐档案室正式现场图">':(index===1?'<img class="scene-real-image" src="assets/hotel-corridor-17-v22.jpg" alt="望江宾馆三层走廊尽头的17号房">':(index===2?'<img class="scene-real-image" src="assets/midnight-train-berth-v23.jpg" alt="K888 次列车软卧 4 号包间">':'')))+'<div class="scene-window"><div class="scene-horizon"></div><div class="scene-rain"></div></div><div class="scene-clock"></div><div class="scene-shelves"><i></i><i></i><i></i></div><div class="scene-monitor"><b></b><i></i></div><div class="scene-door"></div><div class="scene-desk"></div><div class="scene-paper"></div><div class="scene-folder"></div><div class="scene-lamp"></div><div class="scene-shadow"></div><div class="scene-floor"></div>'+c.evidence.map(function(ev,i){var p=spots[i%spots.length];return '<button type="button" class="scene-hotspot" data-scene-evidence="'+i+'" style="left:'+p[0]+'%;top:'+p[1]+'%" aria-label="查看证物 '+String(i+1)+'：'+esc(ev.title)+'"><span>'+String(i+1).padStart(2,'0')+'</span></button>';}).join('')+'</div><div class="scene-stage-foot"><div><strong>现场勘查图</strong><span>选择编号，打开对应证物档案</span></div><strong id="sceneFoundCount">0 / '+c.evidence.length+' 已确认</strong></div></section>';
  byId('gameContent').innerHTML='<div class="case-nav-line"><button class="back-text" id="caseArchiveBack">‹ 大厅</button><span class="game-code">案件 / '+String(index+1).padStart(2,'0')+'</span><button type="button" class="case-theme-toggle" id="caseThemeToggle">白色 ◐</button></div><div class="board-panel"><div class="panel-kicker">INVESTIGATION / '+String(index+1).padStart(2,'0')+'</div><div class="prompt-title">'+esc(c.title)+'</div><div class="prompt-copy">'+esc(c.intro)+'</div>'+sceneMarkup+'<div class="detective-livebar"><div><span class="panel-kicker">CASE ACTIVITY / 实时调查</span><strong id="detectiveLiveStatus">调查队已就位</strong></div><span class="live-dot"></span></div><div class="detective-livefeed" id="detectiveLiveFeed" aria-live="polite"><div class="livefeed-item"><span class="livefeed-time">NOW</span><p>案件档案已开启。队员正在等待你的第一个调查方向。</p></div></div><div class="case-team-presence"><span class="panel-kicker">YOUR INVESTIGATION TEAM</span><div class="case-team-avatars">'+investigators.map(function(r){return '<span class="case-team-member">'+avatarMarkup(r,'')+'<small>'+esc(roleName(r))+'</small></span>';}).join('')+'</div><p>队员会从现场、档案和人物关系等不同角度核对线索。所有判断以已掌握的证据为准。</p><button type="button" class="secondary-btn" id="teamDiscussionButton">听取小队讨论</button><div id="teamDiscussionPanel" class="team-discussion-panel" aria-live="polite"></div></div><div class="investigation-console"><div class="panel-kicker">OPEN INVESTIGATION / 自由调查</div><div class="detective-toolkit"><div class="detective-toolkit-head"><strong>调查工具箱</strong><span>FIELD TOOLS / 04</span></div><div class="detective-tool-buttons"><button type="button" data-investigation-tool="timeline">时间线核对</button><button type="button" data-investigation-tool="testimony">证词对照</button><button type="button" data-investigation-tool="scene">现场复查</button><button type="button" data-investigation-tool="note">调查笔记</button></div><div class="detective-tool-note" id="detectiveToolNote">选一个工具，快速整理下一步调查方向。</div></div><div class="prompt-copy">不必只按下面的按钮行动。你可以写下想追问的细节、想对质的人、想重新检查的物件，调查队会根据当前案情回应。队伍人数不足时会由案件档案中的调查员补位。</div><section class="case-notebook" aria-label="正式调查笔录"><div class="notebook-cover"><span class="notebook-kicker">CASE NOTEBOOK / 现场调查笔录</span><strong>调查记录簿</strong><small>案件编号 · '+String(index+1).padStart(2,'0')+'</small></div><div class="notebook-tabs"><button type="button" class="notebook-tab active" data-record-filter="all">全部记录</button><button type="button" class="notebook-tab" data-record-filter="action">调查行动</button><button type="button" class="notebook-tab" data-record-filter="analysis">分析意见</button></div><div id="investigationLog" class="investigation-log"><div class="investigation-entry"><span class="record-index">记录 01</span><strong>初始勘查</strong><p>现场已经封存。请先查看现场证据，或选择一名在场人员询问。</p><small>案件开启时 · 初始记录</small></div></div></section><section class="investigation-action-desk"><div class="action-desk-title"><span class="panel-kicker">NEXT ACTION / 下一步行动</span><strong>写下你的调查指令</strong></div><div class="investigation-actions"><input id="investigationInput" maxlength="500" placeholder="例如：核对小禾的时间说法……"><button class="primary-btn" id="investigationSubmit">提交</button></div></section><details class="npc-note"><summary>调查服务说明</summary><p>部分开放式调查回应依赖外部调查服务；服务不可用时仍可查看已发现的证据、证词和调查记录。</p></details></div><div class="case-phase-track"><span class="active" data-phase-mark="evidence">01 现场取证</span><span data-phase-mark="interview">02 询问证词</span><span data-phase-mark="accuse">03 最终指认</span></div><div class="case-progress-strip"><span id="caseStepText">现场线索</span><strong id="caseStepCount">0 / '+c.evidence.length+' 已查看</strong></div><div class="detective-progress"><div class="detective-progress-head"><span>案件调查进度</span><strong id="detectiveProgressLabel">0% 已完成</strong></div><div class="detective-progress-track"><span id="detectiveProgressFill"></span></div></div><div class="divider-label">证物档案 · 点击卡片查看</div><div class="clue-list" id="evidenceList">'+c.evidence.map(function(ev,i){return '<button class="evidence" data-evidence="'+i+'"><span class="evidence-num">0'+(i+1)+'</span><span class="evidence-text"><strong>'+esc(ev.title)+'</strong><span style="display:block;color:#888;margin-top:4px" id="evidenceDetail'+i+'">尚未检视 · 点击打开档案</span></span><span class="evidence-mark">+</span></button>';}).join('')+'</div><div class="divider-label">人物证词 · 逐一询问</div><div class="interview-list" id="interviewList">'+c.suspects.map(function(x,i){return '<button class="interview-item" data-interview="'+i+'"><span class="interview-number">0'+(i+1)+'</span><span><strong>'+esc(x.name)+'</strong><small>'+esc(x.job)+'</small><span class="interview-text" id="interviewText'+i+'">尚未询问</span></span><span class="interview-mark">+</span></button>';}).join('')+'</div><div class="divider-label">最终指认 · 调查材料齐全后开放</div><div class="suspect-list" id="suspectList">'+c.suspects.map(function(x,i){return '<button class="suspect" data-suspect="'+i+'" disabled><div class="suspect-name">'+esc(x.name)+'</div><div class="suspect-role">'+esc(x.job)+'</div></button>';}).join('')+'</div><div class="feedback" id="caseFeedback" aria-live="polite">先查看所有现场证据，并询问三位相关人物。</div><div class="btn-row"><button class="secondary-btn" id="caseTimeline">整理时间线</button><button class="secondary-btn" id="newCase">返回档案室</button></div><div id="timelinePanel"></div></div>';
  
  var visualRoot=byId('gameContent'),sceneNode=visualRoot.querySelector('.case-scene-stage'),progressNode=visualRoot.querySelector('.case-progress-strip'),meterNode=visualRoot.querySelector('.detective-progress'),cardsNode=byId('evidenceList'),cardsHeading=cardsNode&&cardsNode.previousElementSibling;
@@ -1682,6 +1773,13 @@ window.detectiveTeam=detectiveTeam;
 window.detectiveParty=detectiveParty;
 window.roleName=roleName;
 window.roleList=roleList;
+// 案件解锁相关：外部 script 标签（case-closed-fullscreen / immersive-v21）必须能读到这些，
+// 否则会退回到「读不到进度就当作全部未解锁」，把已结案件的下一案重新锁上。
+window.activeRoleKey=activeRoleKey;
+window.caseProgress=caseProgress;
+window.caseSolvedIndexes=caseSolvedIndexes;
+window.isCaseSolved=isCaseSolved;
+window.readSolvedIndexesFromStorage=readSolvedIndexesFromStorage;
 })();
 </script>
 <script src="../shared/js/nav.js"></script>
@@ -2105,7 +2203,19 @@ function showCaseClosedCelebration(caseTitle,onDismiss){
  var updating=false;
  function refreshArchiveStatuses(){
   if(updating)return;
-  var done=[];try{var p=caseProgress();done=p.completed||[];}catch(e){}
+  // 以前这里直接调用 IIFE 内部的 caseProgress()，跨 <script> 作用域取不到 → 抛 ReferenceError
+  // 被空 catch 吞掉 → done 恒为空数组 → 本脚本的 MutationObserver 把每张卡片重算回「锁定」。
+  // 现在优先用主脚本暴露的统一入口，拿不到时再自行从 localStorage 还原，不再静默退化。
+  function readDone(){
+   if(typeof window.caseSolvedIndexes==='function'){
+    try{var r=window.caseSolvedIndexes();if(Array.isArray(r))return r.map(Number);}catch(e){}
+   }
+   if(typeof window.readSolvedIndexesFromStorage==='function'){
+    try{var s=window.readSolvedIndexesFromStorage();if(Array.isArray(s))return s.map(Number);}catch(e){}
+   }
+   return [];
+  }
+  var done=readDone();
   updating=true;
   document.querySelectorAll('[data-open-case]').forEach(function(b){
    var i=Number(b.getAttribute('data-open-case')),status=b.querySelector('.case-archive-status');
@@ -2341,7 +2451,7 @@ body.detective-case-mode .case-modal-sheet{max-height:88dvh;overflow:auto}
 }
 @media(prefers-reduced-motion:reduce){body.detective-case-mode .evidence{transition:none}}
 </style>
-<style id="maomao-detective-v18-scene">.scene-art-tidal,.scene-art-hotel{height:auto;aspect-ratio:280/348;min-height:350px;max-height:520px;background:#171715}.scene-art-tidal .scene-real-image,.scene-art-hotel .scene-real-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}.scene-art-tidal>:not(.scene-hotspot):not(.scene-real-image),.scene-art-hotel>:not(.scene-hotspot):not(.scene-real-image){display:none!important}.scene-art-tidal .scene-hotspot,.scene-art-hotel .scene-hotspot{z-index:5}@media(max-width:360px){.scene-art-tidal,.scene-art-hotel{min-height:320px}}</style>
+<style id="maomao-detective-v18-scene">.scene-art-tidal,.scene-art-hotel,.scene-art-train{height:auto;aspect-ratio:280/348;min-height:350px;max-height:520px;background:#171715}.scene-art-tidal .scene-real-image,.scene-art-hotel .scene-real-image,.scene-art-train .scene-real-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}.scene-art-tidal>:not(.scene-hotspot):not(.scene-real-image),.scene-art-hotel>:not(.scene-hotspot):not(.scene-real-image),.scene-art-train>:not(.scene-hotspot):not(.scene-real-image){display:none!important}.scene-art-tidal .scene-hotspot,.scene-art-hotel .scene-hotspot,.scene-art-train .scene-hotspot{z-index:5}@media(max-width:360px){.scene-art-tidal,.scene-art-hotel,.scene-art-train{min-height:320px}}</style>
 
 <!-- ============================================ -->
 <!-- MAOMAO DETECTIVE · CLEAN REDESIGN v1.0       -->
@@ -3327,6 +3437,6 @@ body.detective-case-mode .detective-chat-mode .investigation-actions button{
 </style>
 
 <script src="js/interrogation-v20.js?v=20"></script>
-<script src="js/immersive-v21.js?v=45"></script>
+<script src="js/immersive-v21.js?v=49"></script>
 </body>
 </html>

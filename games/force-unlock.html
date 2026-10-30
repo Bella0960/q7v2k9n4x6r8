@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>强制解锁第二个案子</title>
+<style>
+  body{margin:0;padding:40px 24px;background:#fff;color:#1a1a1a;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;}
+  .card{max-width:360px;text-align:center;}
+  h1{font-size:20px;margin:0 0 12px;}
+  p{font-size:14px;line-height:1.8;color:#666;margin:8px 0;}
+  .ok{color:#2e7d32;font-weight:600;}
+  .btn{display:inline-block;margin-top:24px;padding:14px 32px;background:#1a1a1a;color:#fff;text-decoration:none;font-size:14px;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>强制解锁案件</h1>
+  <p id="status">正在处理……</p>
+  <a class="btn" href="games.html" id="backBtn" style="display:none">回到游戏大厅</a>
+</div>
+<script>
+(function(){
+  // 1. 确保 immCasesDone = [0]
+  localStorage.setItem('immCasesDone', JSON.stringify([0]));
+
+  // 2. 把 maomao_detective_progress_v1 里所有角色的 completed 都补上 0
+  var all = {};
+  try { all = JSON.parse(localStorage.getItem('maomao_detective_progress_v1') || '{}') || {}; } catch(e) { all = {}; }
+  var roleIds = Object.keys(all);
+  // 也把当前选中的角色 id 加进去（确保它有一个 key）
+  var curRole = localStorage.getItem('maomao_game_role') || 'default-partner';
+  if (roleIds.indexOf(curRole) < 0) roleIds.push(curRole);
+  roleIds.forEach(function(rid){
+    if (!all[rid] || typeof all[rid] !== 'object') all[rid] = {};
+    if (!Array.isArray(all[rid].completed)) all[rid].completed = [];
+    if (all[rid].completed.indexOf(0) < 0) all[rid].completed.push(0);
+    if (!all[rid].notes || typeof all[rid].notes !== 'object') all[rid].notes = {};
+    if (!all[rid].notes['潮汐档案室的最后一夜']) {
+      all[rid].notes['潮汐档案室的最后一夜'] = {
+        result: 'solved',
+        day: new Date().toISOString().slice(0,10),
+        source: 'force-unlock'
+      };
+    }
+  });
+  localStorage.setItem('maomao_detective_progress_v1', JSON.stringify(all));
+
+  document.getElementById('status').innerHTML =
+    '<span class="ok">已强制解锁</span><br>' +
+    '案件01 已标记为已结案（' + roleIds.length + ' 个角色槽）<br>' +
+    '案件02「走廊尽头的17号房」现在可以玩了。';
+  document.getElementById('backBtn').style.display = 'inline-block';
+})();
+</script>
+</body>
+</html>

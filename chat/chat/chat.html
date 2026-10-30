@@ -1169,6 +1169,24 @@
       });
     }
 
+    // URL 协议白名单：头像来源必须先过这道闸。
+    // 头像数据可能来自导入的备份文件，若含 `" onerror=...` 可直接闭合 src 属性注入脚本。
+    function safeImgSrc(u) {
+      var s = String(u == null ? '' : u).trim().replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+      if (!s) return '';
+      if (/^data\s*:\s*image\/(?:png|jpe?g|gif|webp|bmp|svg\+xml|avif)\s*;/i.test(s)) return s;
+      if (/^https?:\/\//i.test(s)) return s;
+      if (/^blob:/i.test(s)) return s;
+      if (/^(?:\.|\/)/.test(s)) return s;
+      return '';
+    }
+
+    // 生成头像 HTML：白名单不通过时回落到首字母占位，绝不把不可信值拼进 src
+    function avatarHtml(src, name) {
+      var s = safeImgSrc(src);
+      return s ? '<img src="' + escapeHtml(s) + '" alt="">' : escapeHtml(String(name || '?').slice(0, 1));
+    }
+
     function renderChatList() {
       var container = document.getElementById('chatListContainer');
       var hiddenStr = getHiddenChatIds().map(String);
@@ -1195,16 +1213,16 @@
 
       function groupAvatarHTML(g) {
         // 自定义群头像优先（与 chat-settings.html 的 renderGroupAvatar 保持一致）
-        if (g && g.avatar) {
-          return '<img src="' + g.avatar + '" alt="">';
+        if (g && g.avatar && safeImgSrc(g.avatar)) {
+          return '<img src="' + escapeHtml(safeImgSrc(g.avatar)) + '" alt="">';
         }
         var members = g.members || [];
         if (members.length === 0) {
           return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
         }
         return members.slice(0, 4).map(function(m) {
-          return m.avatar
-            ? '<img src="' + m.avatar + '" alt="">'
+          return safeImgSrc(m.avatar)
+            ? '<img src="' + escapeHtml(safeImgSrc(m.avatar)) + '" alt="">'
             : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
         }).join('');
       }
@@ -1232,8 +1250,8 @@
 
       var rolesHTML = roles.map(function (role) {
         var name = role.name || '角色';
-        var avatarInner = role.avatar
-          ? '<img src="' + role.avatar + '" alt="">'
+        var avatarInner = safeImgSrc(role.avatar)
+          ? '<img src="' + escapeHtml(safeImgSrc(role.avatar)) + '" alt="">'
           : USER_SVG_SMALL;
         var lastMsg = getLastMessage(role.id, name);
 

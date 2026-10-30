@@ -8,9 +8,22 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "node -e 'console.log(\"Lint passed\")'",
-    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs"
+    "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs",
+    "test:detective:unlock": "node --test tests/detective-case-unlock.test.mjs",
+    "perf:bench": "node perf/bench.mjs",
+    "perf:bench:mobile": "THROTTLE=4 node perf/bench.mjs",
+    "perf:ab": "THROTTLE=4 node perf/ab.mjs",
+    "perf:fixd": "THROTTLE=4 node perf/fixd.mjs",
+    "perf:curve": "THROTTLE=4 node perf/curve.mjs",
+    "perf:payload": "node perf/payload.mjs",
+    "perf:fixc": "node perf/fixc-regression.mjs",
+    "perf:fixc:mobile": "THROTTLE=4 node perf/fixc-regression.mjs",
+    "perf:fixab": "node perf/fixab-regression.mjs",
+    "perf:fixab:mobile": "THROTTLE=4 node perf/fixab-regression.mjs",
+    "perf:gate": "node perf/gate.mjs"
   },
   "devDependencies": {
+    "playwright": "^1.64.1",
     "vite": "^6.2.0"
   }
 }

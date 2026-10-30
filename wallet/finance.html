@@ -7,6 +7,7 @@
 <title>记账</title>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/phone_api.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -167,6 +168,8 @@
   .r-right { text-align: right; }
   .r-amount { font-size: 0.875rem; font-weight: 700; }
   .r-date { font-size: 0.688rem; color: #ccc; margin-top: 2px; }
+  .r-char-note { margin-top: 5px; font-size: 0.688rem; color: #aaa; line-height: 1.55; overflow-wrap: anywhere; }
+  .r-char-note .cc-role { color: #888; font-weight: 600; margin-right: 4px; }
 
   .empty {
     text-align: center; padding: 40px 20px; color: #999; font-size: 0.875rem;
@@ -262,7 +265,7 @@
         <div class="name">我的账本</div>
       </div>
     </div>
-    <div class="bell">
+    <div class="bell" id="bellBtn" title="Char 偷看开关">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
     </div>
   </div>
@@ -307,7 +310,7 @@
 
   <div class="section-head">
     <h3>Recent Transactions</h3>
-    <span class="see">See all</span>
+    <span class="see" id="peekStatus">See all</span>
   </div>
   <div class="record-list" id="recordList"></div>
 
@@ -350,7 +353,13 @@
 
   var _storage = window.PhoneStorage;
   function loadRecords() {
-    return _storage ? _storage.getFinanceRecords() : (function(){ try { return JSON.parse(localStorage.getItem('finance_records') || '[]'); } catch(e){ return []; } })();
+    var list = _storage ? _storage.getFinanceRecords() : (function(){ try { return JSON.parse(localStorage.getItem('finance_records') || '[]'); } catch(e){ return []; } })();
+    if (!Array.isArray(list)) return [];
+    // 给旧记录补稳定 id（按数组下标+时间+分类生成，保证多次 load 一致）
+    list.forEach(function(r, i) {
+      if (!r.id) r.id = 'f_legacy_' + i + '_' + (r.time || '') + '_' + (r.category || '');
+    });
+    return list;
   }
   function saveRecords(list) {
     if (_storage) { _storage.saveFinanceRecords(list); return; }
@@ -363,24 +372,35 @@
     list.forEach(r => { balance += r.type === 'income' ? r.amount : -r.amount; });
     document.getElementById('balanceNum').textContent = '¥' + balance.toFixed(2);
 
+    const ps = document.getElementById('peekStatus');
+    if (ps) {
+      const ccCount = list.reduce((n, r) => n + (Array.isArray(r.charComments) ? r.charComments.length : 0), 0);
+      ps.textContent = 'Char偷看' + (peekEnabled() ? '开' : '关') + ' · ' + ccCount + '条';
+    }
+
     const box = document.getElementById('recordList');
     if (list.length === 0) {
       box.innerHTML = '<div class="empty">还没有记录，点底部 + 记一笔</div>';
       return;
     }
-    box.innerHTML = list.slice().reverse().slice(0, 20).map(r => `
+    box.innerHTML = list.slice().reverse().slice(0, 20).map(r => {
+      const ccList = Array.isArray(r.charComments) ? r.charComments : [];
+      const ccLast = ccList[ccList.length - 1];
+      const ccHtml = ccLast ? `<div class="r-char-note"><span class="cc-role">${ccLast.characterName || 'TA'}</span>${String(ccLast.text || '').slice(0, 44)}</div>` : '';
+      return `
       <div class="record-item">
         <div class="r-icon">${CAT_ICONS[r.category] || CAT_ICONS['其他']}</div>
         <div class="r-info">
           <div class="r-name">${r.category}</div>
           <div class="r-merchant">${r.note || '—'}</div>
+          ${ccHtml}
         </div>
         <div class="r-right">
           <div class="r-amount">${r.type === 'income' ? '+' : '-'}¥${r.amount.toFixed(2)}</div>
           <div class="r-date">${r.time}</div>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   function renderCats() {
@@ -409,9 +429,10 @@
     const now = new Date();
     const time = (now.getMonth()+1) + '月' + now.getDate() + '日';
     const list = loadRecords();
-    list.push({ amount: amt, type: currentType, category: currentCat, note, time });
+    list.push({ id: 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6), amount: amt, type: currentType, category: currentCat, note, time, ts: now.getTime() });
     saveRecords(list);
     closeSheet(); render(); showToast('已记录');
+    setTimeout(maybeAutoPeek, 800);
   }
 
   function showToast(msg) {
@@ -420,7 +441,68 @@
     setTimeout(() => t.classList.remove('show'), 1500);
   }
 
+  // ===== Char 自动偷看账单（反向手机·便签涂鸦）=====
+  let peekBusy = false;
+  function peekEnabled() {
+    try { return localStorage.getItem('char_peek_enabled') !== '0'; } catch(e) { return true; }
+  }
+  function peekCurrentRole() {
+    let roles = [];
+    try { roles = window.PhoneStorage ? PhoneStorage.getCharacters() : []; } catch(e) {}
+    if (!roles || !roles.length) return null;
+    let cid = null;
+    try { cid = window.PhoneStorage && PhoneStorage.getCurrentContactId ? PhoneStorage.getCurrentContactId() : null; } catch(e) {}
+    if (cid) {
+      const hit = roles.find(r => String(r.id) === String(cid));
+      if (hit) return hit;
+    }
+    return roles[0];
+  }
+  function maybeAutoPeek() {
+    if (peekBusy || !peekEnabled()) return;
+    if (!window.PhoneAPI || typeof PhoneAPI.complete !== 'function') return;
+    const role = peekCurrentRole();
+    if (!role) return;
+    const list = loadRecords();
+    // 找最近一条：有 id、还没被当前角色批注过
+    const target = list.slice().reverse().find(r => {
+      if (!r.id) return false;
+      const cs = Array.isArray(r.charComments) ? r.charComments : [];
+      return !cs.some(c => String(c.characterId) === String(role.id));
+    });
+    if (!target) return;
+    peekBusy = true;
+    const setting = [role.persona, role.description, role.systemPrompt, role.prompt, role.characterPrompt, role.background, role.setting].filter(v => typeof v === 'string' && v.trim()).join('\n').slice(0, 2000);
+    const kind = target.type === 'income' ? '收入' : '支出';
+    const system = '你在偷看用户的手机账本。用角色「' + role.name + '」的身份，像在账单旁边随手写一句涂鸦批注。要求：20-50字，语气自然符合人设；支出可以吐槽乱花钱、心疼她省吃俭用、催她好好吃饭；收入可以开心、鼓励。不要加引号或标题，不要复述金额，直接写批注。\n角色设定：' + (setting || '根据角色名字自然回应。');
+    const user = '用户一笔账单：\n' + kind + ' ¥' + Number(target.amount).toFixed(2) + '\n分类：' + (target.category || '其他') + '\n备注：' + (target.note || '（无）');
+    PhoneAPI.complete({ system: system, user: user, temperature: 0.85, timeoutMs: 20000 }).then(function(text) {
+      text = String(text || '').trim().replace(/^["「『]+|["」』]+$/g, '').slice(0, 120);
+      if (!text) return;
+      const all = loadRecords();
+      const live = all.find(r => r.id === target.id);
+      if (!live) return;
+      if (!Array.isArray(live.charComments)) live.charComments = [];
+      live.charComments.push({ id: 'peek_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6), characterId: role.id, characterName: role.name, text: text, createdAt: new Date().toISOString(), auto: true });
+      saveRecords(all);
+      render();
+      console.log('[Char Peek] 已在账单旁涂鸦:', text);
+    }).catch(function(err) {
+      console.warn('[Char Peek] 账单偷看失败:', err && err.message ? err.message : err);
+      if (err && /API Key|未配置|api/i.test(String(err && err.message || ''))) showToast('Char 偷看失败：还没配 AI API Key，去设置配一下');
+    }).then(function() { peekBusy = false; });
+  }
+
+  document.getElementById('bellBtn').addEventListener('click', function() {
+    var willOn = !peekEnabled();
+    try { localStorage.setItem('char_peek_enabled', willOn ? '1' : '0'); } catch(e) {}
+    showToast(willOn ? '已开启 Char 偷看' : '已关闭 Char 偷看');
+    render();
+    if (willOn) setTimeout(maybeAutoPeek, 600);
+  });
+
   render();
+  setTimeout(maybeAutoPeek, 1800);
 </script>
 </body>
 </html>

@@ -237,6 +237,11 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 .reader-char-note-meta strong{font-weight:650;color:#222}
 .reader-char-note-meta time{font-size:9px;color:#aaa;white-space:nowrap}
 .reader-char-note p{font-size:12px;line-height:1.9;color:#555;white-space:pre-wrap;margin:7px 0 0;overflow-wrap:anywhere}
+.card-char-note{margin:10px 0 0;padding:6px 10px;border-left:2px solid #dcdcdc;background:#fafafa;border-radius:0 8px 8px 0;font-size:11px;line-height:1.75;color:#9a9a9a;overflow-wrap:anywhere}
+.card-char-note .cc-role{color:#7a7a7a;font-weight:600;margin-right:5px}
+.card-char-note .cc-text{color:#9a9a9a}
+.entry-card.char-written{border-left:3px solid #222;position:relative}
+.char-written-tag{position:absolute;top:11px;right:14px;font-size:9px;color:#fff;background:#222;border-radius:99px;padding:2px 8px;letter-spacing:.08em}
 .annotation-backdrop{position:fixed;inset:0;z-index:120;display:none;align-items:flex-end;justify-content:center;padding:12px;background:rgba(20,20,20,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .annotation-backdrop.show{display:flex;animation:backdropFade .2s ease}
 .annotation-sheet{width:min(100%,440px);max-height:min(82dvh,720px);overflow:auto;background:#fff;border-top:1px solid #171717;box-shadow:0 -12px 36px rgba(0,0,0,.12);padding:18px 20px calc(18px + env(safe-area-inset-bottom,0px));animation:sheetUp .28s var(--ease-apple)}
@@ -625,11 +630,18 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var tags=(e.tags||[]).slice(0,4).map(function(t){return '<span class="tiny-tag"># '+esc(t)+'</span>'}).join('');
     var text=(e.content||'').trim();
     if(!text)text='这一天，留下一点空白。';
-    return '<article class="entry-card" data-open-entry="'+esc(e.id)+'">'+
+    var ccList=Array.isArray(e.charComments)?e.charComments:[];
+    var ccLast=ccList.slice(-1)[0];
+    var ccHtml=ccLast?'<div class="card-char-note"><span class="cc-role">'+esc(ccLast.characterName||'TA')+'</span><span class="cc-text">'+esc(String(ccLast.text||'').slice(0,48))+(String(ccLast.text||'').length>48?'…':'')+'</span></div>':'';
+    var isChar=!!e.author&&e.author!=='me';
+    var cardClass='entry-card'+(isChar?' char-written':'');
+    var tagHtml=isChar?'<span class="char-written-tag">'+esc(e.authorName||'TA')+' 写</span>':'';
+    return '<article class="'+cardClass+'" data-open-entry="'+esc(e.id)+'">'+tagHtml+
       '<div class="entry-top"><div class="entry-date"><strong>'+esc(shortDate(e.date))+'</strong><span>'+esc(weekday(e.date))+'</span></div><div class="entry-labels">'+(e.pinned?'<span class="entry-pin-label">置顶</span>':'')+'<span class="entry-type-label">'+esc(e.noteType||'日记')+'</span><span class="entry-mood">'+esc(e.mood||'平静')+'</span></div></div>'+
       (e.title?'<h3 class="entry-title">'+esc(e.title)+'</h3>':'')+
       '<p class="entry-text">'+esc(text)+'</p>'+
       (photosFor(e).length?'<div class="entry-photo-grid '+(photosFor(e).length===1?'single':'')+'">'+photosFor(e).slice(0,2).map(function(photo,i){return '<img src="'+esc(photo)+'" alt="日记照片 '+(i+1)+'" loading="lazy">'}).join('')+'</div>'+(photosFor(e).length>2?'<span class="entry-photo-count">共 '+photosFor(e).length+' 张照片 · 打开查看</span>':''):'')+
+      ccHtml+
       '<div class="entry-bottom"><div class="entry-tags">'+tags+'</div><div class="entry-actions"><button class="mini-action '+(e.pinned?'active':'')+'" data-pin="'+esc(e.id)+'" aria-label="'+(e.pinned?'取消置顶':'置顶')+'" title="'+(e.pinned?'取消置顶':'置顶')+'">'+(e.pinned?'置顶中':'置顶')+'</button><button class="mini-action '+(e.favorite?'active':'')+'" data-favorite="'+esc(e.id)+'" aria-label="'+(e.favorite?'取消收藏':'收藏')+'" title="收藏">'+(e.favorite?'★':'☆')+'</button></div></div></article>';
   }
   function renderCards(list,emptyTitle,emptyText){
@@ -645,6 +657,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var filters=['全部','平静','开心','疲惫','低落','期待'];
     return '<section class="hero editorial-hero"><div class="eyebrow">THE PERSONAL JOURNAL <span class="hero-issue">VOL.01 — DAILY NOTES</span></div><h1><span class="hero-english">Today<span class="hero-period">.</span></span><span class="hero-cn">日记 / 留给自己的空白</span></h1><p>不必把每一天都写得完整。<br>把真正发生过的细小瞬间留下来。</p><div class="hero-date"><strong>'+String(d.getDate()).padStart(2,'0')+'</strong><span>'+d.getFullYear()+' / '+String(d.getMonth()+1).padStart(2,'0')+' · DAYBOOK</span></div><div class="hero-rule"><span>NOTES ON ORDINARY DAYS</span><i></i></div></section>'+
       '<div class="stats-row"><div class="stat"><div class="stat-label">已写下的片段</div><div class="stat-main"><strong>'+entries.length+'</strong><span>篇记录</span></div></div><div class="stat"><div class="stat-label">留下印记的日子</div><div class="stat-main"><strong>'+days+'</strong><span>天 · 今天 '+todayCount+' 篇</span></div></div></div>'+
+      (function(){var ccCount=entries.reduce(function(n,e){return n+(Array.isArray(e.charComments)?e.charComments.length:0)},0);var on=peekEnabled();return '<button type="button" id="peekToggle" style="display:block;width:100%;border:0;background:transparent;text-align:center;font-size:10px;color:#bbb;padding:2px 0 4px;cursor:pointer">· Char 偷看 '+(on?'已开启 点按关闭':'已关闭 点按开启')+' · 已涂鸦 '+ccCount+' 条 ·</button>'})()+
       '<aside class="prompt"><div class="prompt-mark">“</div><div class="prompt-copy"><div class="label">A SMALL PROMPT FOR TODAY</div><p>'+esc(prompts[promptIndex])+'</p></div><button class="prompt-refresh" id="refreshPrompt">换一句</button></aside>'+
       '<div class="section-head"><h2>最近记录</h2><span class="section-meta">'+(query?'搜索结果 '+list.length+' 篇':list.length+' ENTRIES')+'</span></div>'+
       '<div class="search-wrap" id="searchWrap">'+svg('search')+'<input id="diarySearch" type="search" value="'+esc(query)+'" placeholder="搜索标题、文字或标签" aria-label="搜索日记"><button class="mini-action" id="clearSearch" style="'+(query?'':'display:none')+'" aria-label="清除搜索">×</button></div>'+
@@ -757,6 +770,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     if(!persist()){if(isNew)entries.pop();return}
     savePhotosForEntry(record.id,photosToSave).then(function(){
       currentView='home';moodFilter='全部';query='';closeEditor();render();showToast(old?'日记已更新':'已保存到你的日记');
+      setTimeout(maybeAutoPeek,800);
     }).catch(function(error){
       if(isNew)entries=entries.filter(function(item){return item.id!==record.id});
       persist();showToast('照片保存失败：'+String(error&&error.message||error).slice(0,90)+'。文字已保留，请重新编辑并添加照片。');
@@ -851,6 +865,8 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   function openMenu(){menu.classList.add('show')}
   function closeMenu(){menu.classList.remove('show')}
   root.addEventListener('click',function(e){
+    var peekBtn=e.target.closest('#peekToggle');
+    if(peekBtn){var willOn=!peekEnabled();try{localStorage.setItem('char_peek_enabled',willOn?'1':'0')}catch(err){}showToast(willOn?'Char 偷看已开启':'Char 偷看已关闭');render();if(willOn){setTimeout(maybeAutoPeek,500);setTimeout(maybeAutoWriteCharEntry,1500)}return}
     var typeFilter=e.target.closest('[data-note-type-filter]');
     if(typeFilter){noteTypeFilter=typeFilter.dataset.noteTypeFilter;render();return}
     var pin=e.target.closest('[data-pin]');
@@ -915,6 +931,70 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   updateTime();setInterval(updateTime,30000);
   render();
   hydratePhotos().then(function(){return hydrateAllPhotoCounts()}).then(function(){render()});
+
+  // ===== Char 自动偷看备忘录（反向手机·便签涂鸦）=====
+  var peekBusy=false;
+  function peekEnabled(){
+    try{return localStorage.getItem('char_peek_enabled')!=='0'}catch(e){return true}
+  }
+  function peekCurrentRole(){
+    var roles=diaryCharacters();if(!roles.length)return null;
+    var cid=null;try{cid=window.PhoneStorage&&PhoneStorage.getCurrentContactId?PhoneStorage.getCurrentContactId():null}catch(e){}
+    if(cid){var hit=roles.find(function(r){return String(r.id)===String(cid)});if(hit)return hit}
+    return roles[0];
+  }
+  function maybeAutoPeek(){
+    if(peekBusy||!peekEnabled())return;
+    if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return;
+    var role=peekCurrentRole();if(!role)return;
+    var candidates=sorted(entries).filter(function(e){
+      var cs=Array.isArray(e.charComments)?e.charComments:[];
+      return !cs.some(function(c){return String(c.characterId)===String(role.id)});
+    });
+    if(!candidates.length)return;
+    var target=candidates[0];
+    peekBusy=true;
+    var diaryText=String(target.content||'').slice(0,1200);
+    var system='你在偷看用户的私人备忘录。用角色「'+role.name+'」的身份，像在便签角落随手涂鸦一样写一句短批注。要求：20-50字，语气自然、符合人设，可以是吐槽、关心、提醒或偷偷写情话；不要长篇大论，不要加引号或标题，不要复述原文，直接写批注内容。\n角色设定：'+(role.setting||'根据角色名字自然回应。');
+    var user='用户备忘录：\n日期：'+target.date+'\n标题：'+(target.title||'（无标题）')+'\n心情：'+target.mood+'\n正文：'+(diaryText||'（空白）');
+    PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:20000}).then(function(text){
+      text=String(text||'').trim().replace(/^["「『]+|["」』]+$/g,'').slice(0,120);
+      if(!text)return;
+      var live=entries.find(function(e){return e.id===target.id});if(!live)return;
+      if(!Array.isArray(live.charComments))live.charComments=[];
+      live.charComments.push({id:'peek_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),characterId:role.id,characterName:role.name,text:text,createdAt:new Date().toISOString(),auto:true});
+      if(persist()){render();console.log('[Char Peek] 已在日记旁涂鸦:',text)}
+    }).catch(function(err){
+      console.warn('[Char Peek] 备忘录偷看失败:',err&&err.message?err.message:err);
+      if(err&&/API Key|未配置|api/i.test(String(err.message||'')))showToast('Char 偷看失败：还没配 AI API Key，去设置配一下');
+    }).then(function(){peekBusy=false});
+  }
+  setTimeout(maybeAutoPeek,1800);
+
+  // ===== Char 自己往本子上写日记 =====
+  function maybeAutoWriteCharEntry(){
+    if(!peekEnabled())return;
+    if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return;
+    var role=peekCurrentRole();if(!role)return;
+    var lastKey='char_last_wrote_'+role.id;
+    var last=0;try{last=Number(localStorage.getItem(lastKey))||0}catch(e){}
+    if(Date.now()-last<6*3600*1000)return; // 6 小时内不重复写
+    var system='你在写自己的私人日记。用角色「'+role.name+'」的身份写今天的一篇日记。要求：200-400字，可以是心情、日常琐事、对用户的想念或观察；符合人设，自然真实，像真的在本子上随手写；不要标题、不要前言、不要分点，直接写正文。\n角色设定：'+(role.setting||'根据角色名字自然回应。');
+    var user='今天日期：'+new Date().toLocaleDateString('zh-CN')+'。写今天的日记。';
+    PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:25000}).then(function(text){
+      text=String(text||'').trim();
+      if(text.length<20)return;
+      var firstLine=text.split('\n')[0].slice(0,20);
+      var entry={id:'d_char_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),createdAt:new Date().toISOString(),date:todayKey(),title:'',content:text.slice(0,2000),mood:'平静',noteType:'日记',author:String(role.id),authorName:role.name,favorite:false,pinned:false,charWritten:true};
+      entries.push(entry);
+      if(persist()){
+        try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
+        render();
+        console.log('[Char Peek] Char 自己写了日记:',firstLine);
+      }
+    }).catch(function(err){console.warn('[Char Peek] Char 写日记失败:',err&&err.message?err.message:err)});
+  }
+  setTimeout(maybeAutoWriteCharEntry,3000);
 })();
 </script>
 </body>

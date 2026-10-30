@@ -1,30 +1,279 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#fff"><title>码字直播间 · 小说工坊</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f6f6f7;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}button,input,textarea,select{font:inherit}.app{max-width:960px;min-height:100dvh;margin:auto;background:#fff}.top{display:flex;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 22px 10px;border-bottom:1px solid #ececee;background:rgba(255,255,255,.97);position:sticky;top:0;z-index:5}.back{width:36px;height:36px;border:1px solid #ececee;border-radius:50%;background:#fff;font-size:20px;color:#333}.brand{font-size:11px;color:#666;font-weight:650;flex:1}.main{padding:0 24px 40px}.intro{padding:25px 0 19px;border-bottom:1px solid #ececee}.eyebrow{font-size:10px;color:#999;letter-spacing:.12em}.intro h1{font-size:25px;letter-spacing:-.04em;margin:9px 0 6px}.intro p{font-size:12px;line-height:1.8;color:#888;margin:0}.notice{display:flex;align-items:flex-start;gap:10px;padding:12px 13px;background:#f7f7f7;border:1px solid #ededed;border-radius:8px;margin:16px 0;font-size:10px;color:#777;line-height:1.8}.notice strong{color:#333}.layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(240px,.85fr);gap:18px;align-items:start}.panel{border:1px solid #e9e9eb;border-radius:10px;padding:16px;min-width:0}.panel+.panel{margin-top:12px}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}.panel-head h2{font-size:13px;margin:0}.sub{font-size:10px;color:#999}.field{display:flex;flex-direction:column;gap:7px;margin-bottom:13px}.field label{font-size:11px;color:#666}.field input,.field textarea,.field select{width:100%;border:1px solid #e5e5e7;border-radius:7px;background:#fff;padding:11px 12px;font-size:12px;color:#333;outline:none}.field textarea{resize:vertical;min-height:150px;line-height:1.8}.field input:focus,.field textarea:focus,.field select:focus{border-color:#999}.btn{border:1px solid #e4e4e6;background:#fff;border-radius:8px;padding:10px 12px;font-size:11px;color:#444;cursor:pointer}.btn.dark{background:#222;border-color:#222;color:#fff}.btn:disabled{opacity:.4;cursor:default}.buttons{display:flex;gap:8px;flex-wrap:wrap}.buttons .btn{flex:1}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}.stat{border:1px solid #ececee;border-radius:8px;padding:11px 9px;min-width:0}.stat small{display:block;font-size:9px;color:#999;margin-bottom:7px}.stat strong{font-size:18px;letter-spacing:-.03em;overflow-wrap:anywhere}.stat em{font-style:normal;font-size:9px;color:#999;display:block;margin-top:4px}.goal{height:4px;background:#eee;border-radius:4px;overflow:hidden;margin:10px 0 6px}.goal span{display:block;height:100%;background:#222;width:0;transition:width .2s}.feed{display:flex;flex-direction:column;gap:0;max-height:270px;overflow:auto}.feed-item{padding:11px 0;border-bottom:1px solid #f0f0f1}.feed-item:last-child{border-bottom:0}.feed-item strong{font-size:11px;font-weight:600}.feed-item p{font-size:11px;line-height:1.7;color:#666;margin:5px 0 0;overflow-wrap:anywhere}.feed-item small{font-size:9px;color:#aaa}.feed-empty{font-size:11px;line-height:1.8;color:#aaa;padding:8px 0}.quick{display:flex;flex-wrap:wrap;gap:7px}.quick button{border:1px solid #e8e8ea;border-radius:20px;padding:8px 10px;background:#fff;font-size:10px;color:#666}.chat-form{display:flex;gap:7px;margin-top:12px}.chat-form input{min-width:0;flex:1;border:1px solid #e5e5e7;border-radius:7px;padding:10px;font-size:11px}.history-row{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid #f0f0f1;font-size:10px;color:#666}.history-row:last-child{border-bottom:0}.history-row strong{color:#333}.small-note{font-size:10px;color:#aaa;line-height:1.8;margin-top:12px}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);padding:10px 15px;background:#222;color:#fff;border-radius:20px;font-size:11px;display:none;z-index:9}.toast.show{display:block}@media(max-width:650px){.main{padding:0 16px 30px}.layout{grid-template-columns:1fr;gap:12px}.intro h1{font-size:24px}.panel{padding:14px}.field textarea{min-height:130px}}
-</style></head><body><main class="app"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / 码字直播间</span><button class="btn" id="historyBtn">本机记录</button></header><div class="main" id="main"><section class="intro"><div class="eyebrow">FOCUS ROOM / WRITING SESSION</div><h1>码字直播间</h1><p>给自己一个安静的写作时段。可以设定目标、记录字数，并开启本地模拟互动。</p></section><div class="notice"><span>ⓘ</span><div><strong>本地模拟模式</strong><br>观众留言和互动均为演示内容，不会连接真实观众或联网直播。写作记录只保存在当前浏览器。</div></div><div class="layout"><div><section class="panel"><div class="panel-head"><h2>本场写作</h2><span class="sub" id="sessionState">尚未开始</span></div><div class="field"><label for="workSelect">选择作品</label><select id="workSelect"></select></div><div class="field"><label for="goal">本场目标字数</label><input id="goal" type="number" min="1" max="100000" step="100" value="500"></div><div class="stats"><div class="stat"><small>本场新增</small><strong id="sessionWords">0</strong><em>字 · 编辑器内容差值</em></div><div class="stat"><small>计时</small><strong id="elapsed">00:00</strong><em>本地计时</em></div><div class="stat"><small>目标进度</small><strong id="progressText">0%</strong><em>按目标估算</em></div></div><div class="goal"><span id="goalBar"></span></div><div class="field"><label for="draft">现场码字区</label><textarea id="draft" placeholder="从一句话开始写。内容保存在本机本场草稿中，结束时可以保存为写作记录。"></textarea></div><div class="buttons"><button class="btn dark" id="start">开始本场</button><button class="btn" id="pause" disabled>暂停</button><button class="btn" id="finish" disabled>结束并保存</button></div><div class="small-note">本场字数按码字区文本相对开始时的字数变化估算。这里的草稿与作品章节正文分开保存，不会自动覆盖正式章节。</div></section><section class="panel" id="historyPanel" hidden><div class="panel-head"><h2>最近写作记录</h2><button class="btn" id="closeHistory">收起</button></div><div id="history"></div></section></div><div><section class="panel"><div class="panel-head"><h2>模拟观众席</h2><span class="sub">LOCAL DEMO</span></div><div class="feed" id="feed"><div class="feed-empty">开始本场后，可以触发模拟观众留言或自己添加一条测试留言。</div></div><div class="quick" style="margin-top:12px"><button data-msg="安静陪伴">安静陪伴</button><button data-msg="加油打气">加油打气</button><button data-msg="进度播报">进度播报</button></div><form class="chat-form" id="chatForm"><input id="message" maxlength="160" placeholder="写一条模拟留言…" aria-label="模拟留言"><button class="btn" type="submit">发送</button></form><div class="small-note">所有留言均标记为模拟互动，只用于体验界面，不会发送到外部平台。</div></section><section class="panel"><div class="panel-head"><h2>本场小目标</h2><span class="sub">FOCUS NOTE</span></div><div class="field"><label for="focusNote">今天想完成什么</label><textarea id="focusNote" style="min-height:82px" placeholder="例如：写完章节开头，理顺两个人物的对话。"></textarea></div><button class="btn" id="saveFocus">保存目标备注</button><div class="small-note" id="focusStatus">备注保存在当前浏览器。</div></section></div></div></div></main><div class="toast" id="toast"></div>
+/* ===== 小说工坊统一设计系统 · 黑白灰 · 自包含 ===== */
+:root{
+  --bg:#F4F4F3;
+  --surface:#FFFFFF;
+  --ink-1:#1A1A1A;
+  --ink-2:#6E6E6E;
+  --ink-3:#9C9C9C;
+  --line:#E7E7E4;
+  --line-2:#D6D6D2;
+  --fill:#F0F0EE;
+  --radius-lg:14px;
+  --radius-md:10px;
+  --radius-sm:8px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--ink-1);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.5}
+.hidden{display:none!important}
+.visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+
+/* ---- 手机框 ---- */
+.phone{width:min(480px,100%);height:100dvh;min-height:600px;margin:0 auto;background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;padding:calc(11px + env(safe-area-inset-top)) 16px 11px;background:rgba(255,255,255,.92);border-bottom:1px solid var(--line);backdrop-filter:blur(12px)}
+.back{flex:0 0 34px;width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:#fff;color:var(--ink-1);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.brand{font-size:17px;font-weight:700;letter-spacing:.01em;color:var(--ink-1);flex:1}
+.scroll{flex:1;overflow:auto;width:100%;padding:0 16px calc(24px + env(safe-area-inset-bottom));background:var(--surface)}
+
+/* ---- 页面标题区 ---- */
+.shelf-heading{padding:22px 0 14px;border-bottom:1px solid var(--line)}
+.shelf-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.shelf-title-block{min-width:0}
+.shelf-list-kicker{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+.shelf-title-block h1{margin:0;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-.03em;color:var(--ink-1)}
+.hint{font-size:11px;line-height:1.75;color:var(--ink-3);margin:8px 0 0;max-width:520px}
+
+/* ---- 按钮 / 表单 ---- */
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:7px 12px;border:1px solid var(--line-2);border-radius:var(--radius-md);background:#fff;color:var(--ink-1);font:13px/1.2 var(--font);cursor:pointer}
+.btn:hover{background:var(--fill)}
+.btn.dark{background:var(--ink-1);border-color:var(--ink-1);color:#fff;font-weight:600}
+.btn.dark:hover{background:#000}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field label{font-size:11px;color:var(--ink-2);font-weight:600}
+.input,textarea,select{width:100%;border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;color:var(--ink-1);padding:11px 12px;font:13px/1.6 var(--font);outline:none;transition:border-color .16s,box-shadow .16s}
+.input:focus,textarea:focus,select:focus{border-color:var(--line-2);box-shadow:0 0 0 3px rgba(0,0,0,.04)}
+textarea{resize:vertical;min-height:88px}
+
+/* ===== 直播间专属（黑白灰） ===== */
+/* 直播标识 */
+.live-tag{display:none;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:var(--ink-1);color:#fff;font-size:10px;font-weight:700;letter-spacing:.1em}
+.live-tag.on{display:inline-flex}
+.live-tag .dot{width:6px;height:6px;border-radius:50%;background:#fff;animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* 舞台（直播画面） */
+.stage{position:relative;margin:16px 0 14px;border:1px solid var(--line-2);border-radius:var(--radius-lg);overflow:hidden;background:linear-gradient(180deg,#fff 0%,var(--fill) 100%)}
+.stage-host{display:flex;align-items:center;gap:10px;padding:13px 14px 10px}
+.host-avatar{width:38px;height:38px;flex:none;border-radius:50%;background:var(--ink-1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700}
+.host-name{font-size:14px;font-weight:650;color:var(--ink-1);display:flex;align-items:center;gap:7px}
+.host-live-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);opacity:0}
+.host-live-dot.on{opacity:1;background:var(--ink-1);animation:pulse 1.4s infinite}
+.host-sub{font-size:11px;color:var(--ink-3);margin-top:1px}
+.host-sub b{color:var(--ink-1);font-weight:650}
+.stage-session{margin-left:auto;font-size:10px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:4px 10px;white-space:nowrap}
+
+/* 当日 FLAG */
+.flag{margin:0 14px 12px;padding:9px 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);display:flex;align-items:center;gap:9px}
+.flag-label{flex:none;font-size:9px;letter-spacing:.12em;color:var(--ink-3);font-weight:700}
+.flag-text{font-size:13px;color:var(--ink-1);font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 实时稿面（直播内容） */
+.paper{position:relative;margin:0 14px 14px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden}
+.paper-label{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line);font-size:10px;color:var(--ink-3);letter-spacing:.04em}
+.paper-label .lv{display:inline-flex;align-items:center;gap:5px;font-weight:700}
+.paper-label .lv .dot{width:6px;height:6px;border-radius:50%;background:var(--ink-3)}
+.paper-label .lv.on .dot{background:var(--ink-1);animation:pulse 1.4s infinite}
+.paper-input{display:block;width:100%;min-height:210px;border:0;background:transparent;padding:14px;font:15px/1.9 var(--font);color:var(--ink-1);resize:vertical;outline:none}
+.paper-input::placeholder{color:var(--ink-3)}
+
+/* 弹幕层 */
+.danmaku{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.dm{position:absolute;left:100%;white-space:nowrap;padding:5px 11px;border-radius:16px;background:rgba(26,26,26,.84);color:#fff;font-size:12px;line-height:1.3;will-change:left,transform;animation:dm-move linear forwards}
+@keyframes dm-move{from{left:100%;transform:translateX(0)}to{left:0;transform:translateX(-100%)}}
+
+/* 赛博监工 HUD */
+.hud{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
+.hud-cell{border:1px solid var(--line);border-radius:var(--radius-md);padding:11px 6px;text-align:center;background:var(--surface)}
+.hud-cell small{display:block;font-size:9px;color:var(--ink-3);margin-bottom:5px;letter-spacing:.02em}
+.hud-cell strong{display:block;font-size:18px;font-weight:700;color:var(--ink-1);line-height:1.1}
+.hud-cell em{font-size:9px;color:var(--ink-3);font-style:normal}
+.goal-wrap{margin:0 0 16px}
+.goal-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin-bottom:6px}
+.goal-bar{height:8px;border-radius:6px;background:var(--fill);overflow:hidden}
+.goal-bar > span{display:block;height:100%;width:0;background:var(--ink-1);transition:width .4s}
+
+/* 卡片 */
+.card{border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px;margin-bottom:14px;background:var(--surface)}
+.card-title{font-size:13px;font-weight:650;color:var(--ink-1);margin:0 0 13px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-title small{font-size:9px;color:var(--ink-3);letter-spacing:.1em;font-weight:400}
+.btn-row{display:flex;gap:8px;margin-top:6px}
+.btn-row .btn{flex:1}
+.field-inline{display:flex;align-items:center;gap:10px}
+.field-inline .input{flex:1}
+.save-status{font-size:10px;color:var(--ink-3);white-space:nowrap}
+
+/* 模拟观众席 */
+.feed{border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);height:236px;overflow:auto;padding:10px 12px}
+.feed-empty{color:var(--ink-3);font-size:11px;line-height:1.7;padding:8px 2px}
+.feed-item{border-bottom:1px solid var(--fill);padding:9px 0}
+.feed-item:last-child{border-bottom:0}
+.feed-item strong{font-size:11px;font-weight:650;color:var(--ink-1)}
+.feed-item p{margin:3px 0 2px;font-size:12px;line-height:1.6;color:var(--ink-2)}
+.feed-item small{font-size:9px;color:var(--ink-3)}
+.aud-actions{display:flex;gap:8px;margin:10px 0}
+.aud-actions .btn{flex:1;font-size:12px}
+.chat-form{display:flex;gap:8px;margin-top:4px}
+.chat-form .input{flex:1}
+
+/* 本地模拟提示 */
+.notice{display:flex;gap:10px;padding:11px 13px;background:var(--fill);border:1px solid var(--line);border-radius:var(--radius-md);font-size:10px;line-height:1.8;color:var(--ink-2);margin:16px 0}
+.notice b{color:var(--ink-1)}
+
+/* 历史记录 */
+.history-row{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--fill);font-size:12px}
+.history-row:last-child{border-bottom:0}
+.history-row strong{font-weight:650;color:var(--ink-1)}
+.history-row .muted{color:var(--ink-3)}
+
+/* Toast */
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(10px);background:var(--ink-1);color:#fff;font-size:12px;padding:9px 14px;border-radius:20px;opacity:0;pointer-events:none;transition:.2s;z-index:60}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style></head><body><main class="phone">
+<header class="top">
+  <button class="back" id="back" aria-label="返回">‹</button>
+  <span class="brand">小说工坊</span>
+  <span class="live-tag" id="liveTag"><span class="dot"></span>LIVE</span>
+  <button class="btn" id="historyBtn">本机记录</button>
+</header>
+<div class="scroll">
+  <div class="shelf-heading">
+    <div class="shelf-title-row">
+      <div class="shelf-title-block">
+        <div class="shelf-list-kicker">LIVE WRITING ROOM</div>
+        <h1>码字直播间</h1>
+      </div>
+    </div>
+    <p class="hint">把写作过程开成直播：你打下的每一个字都会实时出现在直播间，观众在线「云监工」、发弹幕催更加油。</p>
+  </div>
+
+  <div class="notice"><span>ⓘ</span><div><b>本地模拟模式</b><br>观众留言、弹幕与在线人数均为演示内容，不会连接真实观众或联网直播。写作记录只保存在当前浏览器。</div></div>
+
+  <!-- 舞台：直播画面 -->
+  <section class="stage">
+    <div class="stage-host">
+      <div class="host-avatar">作</div>
+      <div class="host-meta">
+        <div class="host-name">我 · 码字直播 <span class="host-live-dot" id="liveDot"></span></div>
+        <div class="host-sub">在线 <b id="viewers">1,208</b> 人 · 云监工进行中</div>
+      </div>
+      <div class="stage-session" id="sessionState">未开播</div>
+    </div>
+    <div class="flag">
+      <span class="flag-label">今日 FLAG</span>
+      <span class="flag-text" id="flagText">写下今天这一章，让观众陪你一起完成</span>
+    </div>
+    <div class="paper">
+      <div class="paper-label"><span>现场码字区 · 实时直播</span><span class="lv" id="paperLv"><span class="dot"></span>待开播</span></div>
+      <textarea id="draft" class="paper-input" placeholder="从一句话开始写。你打下的每一个字，都会实时出现在直播间里，观众正在围观。"></textarea>
+    </div>
+    <div class="danmaku" id="danmaku" aria-hidden="true"></div>
+  </section>
+
+  <!-- 赛博监工 HUD -->
+  <div class="hud">
+    <div class="hud-cell"><small>本场新增</small><strong id="sessionWords">0</strong><em>字</em></div>
+    <div class="hud-cell"><small>直播计时</small><strong id="elapsed">00:00</strong><em>本地计时</em></div>
+    <div class="hud-cell"><small>目标进度</small><strong id="progressText">0%</strong><em id="goalEcho">目标 500</em></div>
+    <div class="hud-cell"><small>在线人数</small><strong id="viewers2">1,208</strong><em>云监工</em></div>
+  </div>
+  <div class="goal-wrap">
+    <div class="goal-meta"><span>本场目标完成度</span><span id="goalPctEcho">0%</span></div>
+    <div class="goal-bar"><span id="goalBar"></span></div>
+  </div>
+
+  <!-- 本场设置 -->
+  <section class="card">
+    <div class="card-title">本场设置 <small>SETUP</small></div>
+    <div class="field">
+      <label for="workSelect">选择作品</label>
+      <select id="workSelect" class="input"></select>
+    </div>
+    <div class="field">
+      <label for="goal">本场目标字数</label>
+      <input id="goal" class="input" type="number" min="1" max="100000" step="100" value="500">
+    </div>
+    <div class="field">
+      <label for="focusNote">今日 FLAG / 口号</label>
+      <textarea id="focusNote" class="input" rows="2" placeholder="写一句今天的FLAG，例如：治愈拖延症，写完这章再睡"></textarea>
+    </div>
+    <div class="field-inline" style="margin-bottom:12px">
+      <span class="save-status" id="focusStatus">未保存</span>
+      <button class="btn" id="saveFocus" style="margin-left:auto">保存 FLAG</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn dark" id="start">开始本场</button>
+      <button class="btn" id="pause" disabled>暂停</button>
+      <button class="btn" id="finish" disabled>结束并保存</button>
+    </div>
+  </section>
+
+  <!-- 模拟观众席 -->
+  <section class="card">
+    <div class="card-title">模拟观众席 <small>LOCAL DEMO</small></div>
+    <div class="feed" id="feed"></div>
+    <div class="aud-actions">
+      <button class="btn" data-msg="安静陪伴">安静陪伴</button>
+      <button class="btn" data-msg="加油打气">加油打气</button>
+      <button class="btn" data-msg="看看进度">看看进度</button>
+    </div>
+    <form class="chat-form" id="chatForm">
+      <input class="input" id="message" placeholder="发一条弹幕给观众…" autocomplete="off">
+      <button class="btn dark" type="submit">发送</button>
+    </form>
+  </section>
+
+  <!-- 本机记录 -->
+  <section class="card hidden" id="historyPanel">
+    <div class="card-title">最近写作记录 <button class="btn" id="closeHistory">收起</button></div>
+    <div id="history"></div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
 <script>
 (function(){
 'use strict';const KEY='maomao_novel_author_v1',ROOM='maomao_novel_live_room_v1';const $=id=>document.getElementById(id);let db={works:[],activeId:null},session=null,tick=null,feed=[];
 const wc=s=>(String(s||'').match(/[\u3400-\u9fff]|[a-zA-Z0-9]+/g)||[]).length;
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function toast(s){$('toast').textContent=s;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),1800)}
-function load(){try{const d=JSON.parse(localStorage.getItem(KEY)||'{}');if(Array.isArray(d.works))db=d}catch(e){}let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}$('focusNote').value=saved.focus||'';const sel=$('workSelect');sel.innerHTML=(db.works||[]).map(w=>'<option value="'+esc(w.id)+'">'+esc(w.title||'未命名的故事')+'</option>').join('');if(!db.works.length)sel.innerHTML='<option value="">暂时没有作品</option>';if(db.activeId)sel.value=String(db.activeId);renderHistory();renderFeed()}
-function start(){if(session&&!session.ended){toast('当前已有一场写作');return}if(!$('workSelect').value&&!($('draft').value.trim())){toast('先创建作品，或先输入写作内容');return;}const startText=$('draft').value;session={id:Date.now(),workId:$('workSelect').value||'',goal:Math.max(1,Number($('goal').value)||500),startWords:wc(startText),startedAt:Date.now(),elapsedBefore:0,lastResume:Date.now(),paused:false,ended:false,goalNote:$('focusNote').value.trim()};feed=[];$('feed').innerHTML='<div class="feed-empty">本场已开始。这里的观众消息为模拟互动。</div>';$('sessionState').textContent='进行中 · 本地模拟';$('start').disabled=true;$('pause').disabled=false;$('finish').disabled=false;$('goal').disabled=true;$('workSelect').disabled=true;$('draft').focus();tick=setInterval(update,1000);addFeed('系统','本场写作已开始，祝你专注完成目标。');update()}
+
+/* 在线人数模拟 */
+let viewers=1208;
+function renderViewers(){$('viewers').textContent=viewers.toLocaleString();$('viewers2').textContent=viewers.toLocaleString()}
+setInterval(()=>{const span=session&&!session.ended?180:60;viewers=Math.max(50,viewers+(Math.floor(Math.random()*span)-span/2));renderViewers()},3200);
+
+/* 直播标识 */
+function setLive(on){$('liveTag').classList.toggle('on',!!on);$('liveDot').classList.toggle('on',!!on);$('paperLv').classList.toggle('on',!!on);$('paperLv').lastChild.textContent=on?'直播中':'待开播'}
+
+/* 弹幕 */
+function spawnDanmaku(msg){const box=$('danmaku');if(!box)return;const el=document.createElement('div');el.className='dm';el.textContent=msg.length>40?msg.slice(0,40)+'…':msg;el.style.top=(58+Math.random()*150)+'px';el.style.animationDuration=(6+Math.random()*3)+'s';el.addEventListener('animationend',()=>el.remove());box.appendChild(el)}
+
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY)||'{}');if(Array.isArray(d.works))db=d}catch(e){}let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}$('focusNote').value=saved.focus||'';syncFlag();const sel=$('workSelect');sel.innerHTML=(db.works||[]).map(w=>'<option value="'+esc(w.id)+'">'+esc(w.title||'未命名的故事')+'</option>').join('');if(!db.works.length)sel.innerHTML='<option value="">暂时没有作品</option>';if(db.activeId)sel.value=String(db.activeId);renderHistory();renderFeed();renderViewers()}
+function syncFlag(){const v=$('focusNote').value.trim();$('flagText').textContent=v||'写下今天这一章，让观众陪你一起完成'}
+
+function start(){if(session&&!session.ended){toast('当前已有一场写作');return}if(!$('workSelect').value&&!($('draft').value.trim())){toast('先创建作品，或先输入写作内容');return;}const startText=$('draft').value;session={id:Date.now(),workId:$('workSelect').value||'',goal:Math.max(1,Number($('goal').value)||500),startWords:wc(startText),startedAt:Date.now(),elapsedBefore:0,lastResume:Date.now(),paused:false,ended:false,goalNote:$('focusNote').value.trim()};feed=[];$('feed').innerHTML='<div class="feed-empty">本场已开始。这里的观众消息为模拟互动。</div>';$('sessionState').textContent='进行中 · 本地模拟';$('start').disabled=true;$('pause').disabled=false;$('finish').disabled=false;$('goal').disabled=true;$('workSelect').disabled=true;$('draft').focus();setLive(true);$('goalEcho').textContent='目标 '+session.goal;$('goalPctEcho').textContent='0%';tick=setInterval(update,1000);addFeed('系统','本场写作已开始，祝你专注完成目标。');update()}
 function elapsed(){if(!session)return 0;return session.elapsedBefore+(session.paused?0:Date.now()-session.lastResume)}
-function update(){if(!session)return;const n=Math.max(0,wc($('draft').value)-session.startWords);$('sessionWords').textContent=n.toLocaleString();const sec=Math.floor(elapsed()/1000);$('elapsed').textContent=String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');const p=Math.min(100,Math.round(n/session.goal*100));$('progressText').textContent=p+'%';$('goalBar').style.width=p+'%'}
+function update(){if(!session)return;const n=Math.max(0,wc($('draft').value)-session.startWords);$('sessionWords').textContent=n.toLocaleString();const sec=Math.floor(elapsed()/1000);$('elapsed').textContent=String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');const p=Math.min(100,Math.round(n/session.goal*100));$('progressText').textContent=p+'%';$('goalPctEcho').textContent=p+'%';$('goalBar').style.width=p+'%'}
 function pause(){if(!session)return;if(session.paused){session.lastResume=Date.now();session.paused=false;$('pause').textContent='暂停';$('sessionState').textContent='进行中 · 本地模拟'}else{session.elapsedBefore=elapsed();session.paused=true;$('pause').textContent='继续';$('sessionState').textContent='已暂停'}update()}
-function finish(){if(!session)return;const total=elapsed(),n=Math.max(0,wc($('draft').value)-session.startWords);session.ended=true;if(tick)clearInterval(tick);tick=null;const record={id:session.id,workId:session.workId,workTitle:(db.works||[]).find(w=>String(w.id)===String(session.workId))?.title||'自由写作',goal:session.goal,words:n,seconds:Math.floor(total/1000),at:Date.now(),goalNote:session.goalNote};let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}saved.history=Array.isArray(saved.history)?saved.history:[];saved.history.unshift(record);saved.history=saved.history.slice(0,50);saved.focus=$('focusNote').value;try{localStorage.setItem(ROOM,JSON.stringify(saved))}catch(e){toast('记录保存失败：本机存储空间可能不足');return}$('sessionState').textContent='已结束';$('start').disabled=false;$('pause').disabled=true;$('finish').disabled=true;$('pause').textContent='暂停';$('goal').disabled=false;$('workSelect').disabled=false;addFeed('系统','本场结束：写作 '+n+' 字，用时 '+Math.floor(total/60000)+' 分钟。');renderHistory();update();session=null;toast('本场记录已保存到本机')}
-function addFeed(name,msg){const item={name,msg,at:Date.now()};feed.push(item);feed=feed.slice(-40);renderFeed()}
+function finish(){if(!session)return;const total=elapsed(),n=Math.max(0,wc($('draft').value)-session.startWords);session.ended=true;if(tick)clearInterval(tick);tick=null;const record={id:session.id,workId:session.workId,workTitle:(db.works||[]).find(w=>String(w.id)===String(session.workId))?.title||'自由写作',goal:session.goal,words:n,seconds:Math.floor(total/1000),at:Date.now(),goalNote:session.goalNote};let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}saved.history=Array.isArray(saved.history)?saved.history:[];saved.history.unshift(record);saved.history=saved.history.slice(0,50);saved.focus=$('focusNote').value;try{localStorage.setItem(ROOM,JSON.stringify(saved))}catch(e){toast('记录保存失败：本机存储空间可能不足');return}$('sessionState').textContent='已结束';$('start').disabled=false;$('pause').disabled=true;$('finish').disabled=true;$('pause').textContent='暂停';$('goal').disabled=false;$('workSelect').disabled=false;setLive(false);addFeed('系统','本场结束：写作 '+n+' 字，用时 '+Math.floor(total/60000)+' 分钟。');renderHistory();update();session=null;toast('本场记录已保存到本机')}
+function addFeed(name,msg){const item={name,msg,at:Date.now()};feed.push(item);feed=feed.slice(-40);renderFeed();spawnDanmaku(msg)}
 function renderFeed(){const el=$('feed');if(!feed.length){el.innerHTML='<div class="feed-empty">开始本场后，可以触发模拟观众留言或自己添加一条测试留言。</div>';return}el.innerHTML=feed.slice().reverse().map(x=>'<div class="feed-item"><strong>'+esc(x.name)+' <span style="font-size:9px;color:#aaa;font-weight:400">· 模拟</span></strong><p>'+esc(x.msg)+'</p><small>'+new Date(x.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</small></div>').join('')}
-function renderHistory(){let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}const list=Array.isArray(saved.history)?saved.history:[];$('history').innerHTML=list.length?list.slice(0,20).map(x=>'<div class="history-row"><div><strong>'+esc(x.workTitle)+'</strong><br>'+new Date(x.at).toLocaleString()+' · '+Math.floor((x.seconds||0)/60)+' 分钟</div><div style="text-align:right;white-space:nowrap"><strong>'+Number(x.words||0).toLocaleString()+' 字</strong><br>目标 '+Number(x.goal||0).toLocaleString()+'</div></div>').join(''):'<div class="feed-empty">还没有保存过的写作场次。</div>'}
+function renderHistory(){let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}const list=Array.isArray(saved.history)?saved.history:[];$('history').innerHTML=list.length?list.slice(0,20).map(x=>'<div class="history-row"><div><strong>'+esc(x.workTitle)+'</strong><br><span class="muted">'+new Date(x.at).toLocaleString()+' · '+Math.floor((x.seconds||0)/60)+' 分钟</span></div><div style="text-align:right;white-space:nowrap"><strong>'+Number(x.words||0).toLocaleString()+' 字</strong><br><span class="muted">目标 '+Number(x.goal||0).toLocaleString()+'</span></div></div>').join(''):'<div class="feed-empty">还没有保存过的写作场次。</div>'}
+
 $('back').onclick=()=>{if(session&&!session.ended){if(!confirm('本场还没结束，离开后计时不会继续。确定离开吗？'))return}if(history.length>1)history.back();else location.href='novel.html'};
 $('start').onclick=start;$('pause').onclick=pause;$('finish').onclick=finish;
 $('draft').addEventListener('input',update);
+$('focusNote').addEventListener('input',syncFlag);
 document.querySelectorAll('[data-msg]').forEach(b=>b.onclick=()=>{const v=b.dataset.msg;if(v==='安静陪伴')addFeed('模拟观众','我在这边安静陪你写，不用着急。');else if(v==='加油打气')addFeed('模拟观众','慢慢来，写下下一句就已经在前进了。');else addFeed('模拟观众','当前本场已写 '+Math.max(0,wc($('draft').value)-(session?.startWords||wc($('draft').value)))+' 字。继续保持自己的节奏。')});
 $('chatForm').onsubmit=e=>{e.preventDefault();const v=$('message').value.trim();if(!v)return;addFeed('本地测试留言',v);$('message').value=''};
-$('saveFocus').onclick=()=>{let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}saved.focus=$('focusNote').value;try{localStorage.setItem(ROOM,JSON.stringify(saved));$('focusStatus').textContent='已保存 · '+new Date().toLocaleTimeString();toast('目标备注已保存')}catch(e){toast('保存失败：本机存储空间可能不足')}};
-$('historyBtn').onclick=()=>{$('historyPanel').hidden=!$('historyPanel').hidden;if(!$('historyPanel').hidden)$('historyPanel').scrollIntoView({behavior:'smooth',block:'nearest'});renderHistory()};
-$('closeHistory').onclick=()=>$('historyPanel').hidden=true;load();
+$('saveFocus').onclick=()=>{let saved={};try{saved=JSON.parse(localStorage.getItem(ROOM)||'{}')}catch(e){}saved.focus=$('focusNote').value;syncFlag();try{localStorage.setItem(ROOM,JSON.stringify(saved));$('focusStatus').textContent='已保存 · '+new Date().toLocaleTimeString();toast('FLAG 已保存')}catch(e){toast('保存失败：本机存储空间可能不足')}};
+$('historyBtn').onclick=()=>{$('historyPanel').classList.toggle('hidden');if(!$('historyPanel').classList.contains('hidden'))$('historyPanel').scrollIntoView({behavior:'smooth',block:'nearest'});renderHistory()};
+$('closeHistory').onclick=()=>$('historyPanel').classList.add('hidden');
+load();
 })();
 </script></body></html>

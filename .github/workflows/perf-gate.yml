@@ -1,0 +1,41 @@
+name: Performance Budget Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'chat/**'
+      - 'shared/js/phone/**'
+      - 'perf/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/perf-gate.yml'
+  pull_request:
+    paths:
+      - 'chat/**'
+      - 'shared/js/phone/**'
+      - 'perf/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/perf-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  perf-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright (Edge channel) for performance gate
+        run: npx playwright install --with-deps msedge || npx playwright install msedge
+      - name: Run performance budget gate
+        run: npm run perf:gate

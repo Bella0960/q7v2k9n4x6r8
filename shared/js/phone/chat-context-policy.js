@@ -32,6 +32,8 @@
       if (!content) return; // Pure display cards (location/call etc.) do not enter model context.
       // Narration belongs to the UI layer and must not consume model dialogue turns.
       content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
+      // Bilingual chat: [中译:...] is a UI strip, not part of the dialogue the model sees.
+      content = content.replace(/\[中译[:：][^\]]{0,800}\]/g, '');
       content = content.replace(/\n{3,}/g, '\n\n').trim();
       if (!content) return;
 

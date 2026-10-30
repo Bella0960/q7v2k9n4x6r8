@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>案件进度诊断</title>
+<style>
+  body{margin:0;padding:20px;background:#fff;color:#1a1a1a;font-family:Consolas,Monaco,monospace;font-size:12px;line-height:1.6;}
+  h2{font-size:14px;margin:20px 0 6px;color:#8b3a3a;}
+  pre{background:#f5f5f5;padding:12px;border-radius:4px;white-space:pre-wrap;word-break:break-all;margin:0;}
+  .key{color:#1565c0;font-weight:bold;}
+</style>
+</head>
+<body>
+<h1 style="font-size:16px">案件进度诊断（请截图整页发给助手）</h1>
+
+<h2>1. 角色选择</h2>
+<pre id="roleInfo"></pre>
+
+<h2>2. 关键 localStorage</h2>
+<pre id="lsDump"></pre>
+
+<h2>3. Service Worker / 缓存</h2>
+<pre id="swInfo"></pre>
+
+<h2>4. 当前页面路径</h2>
+<pre id="pathInfo"></pre>
+
+<script>
+(function(){
+  // 角色
+  var roleId = localStorage.getItem('maomao_game_role');
+  document.getElementById('roleInfo').textContent = 'maomao_game_role = ' + roleId;
+
+  // 关键 key
+  var keys = [
+    'maomao_detective_progress_v1',
+    'immCasesDone',
+    'maomao_detective_immersive_progress_migrated_v1',
+    'maomao_detective_generated_cases_v1',
+    'maomao_detective_team_v1'
+  ];
+  var out = [];
+  keys.forEach(function(k){
+    var v = localStorage.getItem(k);
+    out.push(k + ' = ' + (v === null ? '(不存在)' : v));
+  });
+  document.getElementById('lsDump').textContent = out.join('\n\n');
+
+  // SW
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+      document.getElementById('swInfo').textContent =
+        '已注册 SW 数量: ' + regs.length + '\n' +
+        regs.map(function(r,i){ return '['+i+'] scope=' + r.scope; }).join('\n');
+    });
+  } else {
+    document.getElementById('swInfo').textContent = '不支持 SW';
+  }
+
+  // 路径
+  document.getElementById('pathInfo').textContent = location.href;
+})();
+</script>
+</body>
+</html>

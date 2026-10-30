@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v123';
+const CACHE_NAME = 'phone-app-pwa-v125';
 const APP_SHELL = [
   './',
   './index.html',
@@ -113,22 +113,22 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // HTML 导航缓存优先：有缓存立即秒开（不等网络），同时在后台悄悄更新缓存；
-  // 首次访问无缓存时才走网络，断网兜底回退到首页缓存。
+  // HTML 导航改为网络优先：先取最新 HTML 并写入缓存，失败时再回退缓存（离线仍可用）。
+  // 旧策略是缓存优先 + 后台更新，浏览器当次拿到的是旧 HTML，必须刷新第二次才生效，
+  // 这正是「改了 games.html 却像完全没改」的直接原因。
   if (req.mode === 'navigate') {
-    const fresh = fetch(req).then(response => {
-      if (response && response.ok) {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-      }
-      return response;
-    }).catch(() => null);
-    event.waitUntil(fresh);
     event.respondWith(
-      caches.match(req).then(cached =>
-        cached ||
-        fresh.then(r => r || caches.match('./index.html'))
-      )
+      fetch(req).then(function (response) {
+        if (response && response.ok) {
+          var copy = response.clone();
+          caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
+        }
+        return response;
+      }).catch(function () {
+        return caches.match(req).then(function (cached) {
+          return cached || caches.match('./index.html');
+        });
+      })
     );
     return;
   }

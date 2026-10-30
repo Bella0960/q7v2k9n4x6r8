@@ -37,6 +37,13 @@
 
   // Parse model output into narration blocks and visible chat bubbles.
   // The output shape intentionally matches parseReplyContent's legacy contract.
+  // Each bubble may carry a parallel Chinese translation extracted from [中译:...] markers.
+  var TRANSLATION_MARKER_REGEX = /\[中译[:：]([^\]]{1,800})\]/g;
+
+  function stripTranslationMarkers(raw) {
+    return String(raw || '').replace(TRANSLATION_MARKER_REGEX, '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function parseReplyContent(raw) {
     var text = stripInternalReasoning(raw);
     var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/gi;
@@ -49,11 +56,23 @@
     text = text.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
     var segments = text.replace(/\n{3,}/g, '\n\n').split(/\n\n+/);
     var bubbles = [];
+    var translations = [];
     segments.forEach(function (segment) {
       var bubble = segment.trim();
-      if (bubble) bubbles.push(bubble);
+      if (!bubble) return;
+      // Pull out [中译:...] from this bubble; the translation renders as a small grey strip under the bubble.
+      var translation = '';
+      TRANSLATION_MARKER_REGEX.lastIndex = 0;
+      bubble = bubble.replace(TRANSLATION_MARKER_REGEX, function (_, t) {
+        translation = String(t || '').trim();
+        return '';
+      }).replace(/[ \t]*\n[ \t]*(?=\n|$)/g, '\n').trim();
+      if (bubble) {
+        bubbles.push(bubble);
+        translations.push(translation);
+      }
     });
-    return { thinks: [], narrations: narrations, bubbles: bubbles };
+    return { thinks: [], narrations: narrations, bubbles: bubbles, translations: translations };
   }
 
   // Protect narration and think blocks while the existing page cleanup rules run.
@@ -84,7 +103,13 @@
   }
 
   function isHiddenFromOnlineTimeline(message) {
-    return !!(message && (message.mode === 'date' || message.silent));
+    if (!message) return false;
+    // 线下剧情消息、静默指令、线下到达开场（老数据可能没打 mode 但带 arrivalStart）
+    if (message.mode === 'date' || message.silent || message.arrivalStart) return true;
+    // 老数据里 type 没标 voice 但 text 以 [语音消息] 开头的占位文本，不进气泡流
+    var t = String(message.text || message.content || '');
+    if (t.indexOf('[语音消息]') === 0) return true;
+    return false;
   }
 
   // This is the historical search-index filter, not the final search-result check.
@@ -118,6 +143,7 @@
     stripInternalReasoning: stripInternalReasoning,
     extractMemoryMarkers: extractMemoryMarkers,
     parseReplyContent: parseReplyContent,
+    stripTranslationMarkers: stripTranslationMarkers,
     cleanupReplyPreservingBlocks: cleanupReplyPreservingBlocks,
     isHiddenFromOnlineTimeline: isHiddenFromOnlineTimeline,
     isOnlineSearchIndexVisible: isOnlineSearchIndexVisible,

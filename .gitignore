@@ -37,7 +37,11 @@ api_config*.json
 logs/
 *.tmp
 *.bak
+*.bak-*
 *.old
+
+# ===== AI / 工作代理目录 =====
+.workbuddy/
 
 # ===== 杂项 =====
 .zip

@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-30T10:24:59.799Z",
+  "N": 1000,
+  "throttle": 4,
+  "msgRows": 1000,
+  "domNodes": 6001,
+  "baseline": 666.6,
+  "fixA": 339.3,
+  "fixA_scrollHeight": 15103,
+  "fixAB": 161.3,
+  "fixB": 470.9,
+  "fixC": 0.2,
+  "fixD_before": 496.6,
+  "fixD_after": 0.6,
+  "fixD_perFrameBefore": 8.28,
+  "fixD_perFrameAfter": 0.01
+}

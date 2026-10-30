@@ -169,7 +169,9 @@
     accusation: -1,
     accused: false,
     currentHotspot: -1,
-    corkOpen: false
+    corkOpen: false,
+    sceneAutoTimer: null,
+    sceneAdvanced: false
   };
 
   var STEPS = ['开场', '现场', '证物', '人物', '盘问', '推理', '指认', '结案'];
@@ -199,6 +201,8 @@
       IMM.accused = false;
       IMM.currentHotspot = -1;
       IMM.corkOpen = false;
+      clearSceneAutoTimer();
+      IMM.sceneAdvanced = false;
       document.body.classList.add('detective-case-mode');
       // 隐藏旧游戏外壳元素（标题/搭档行/底部按钮/角色台词）
       ['detectiveVersionBadge','roleQuote','gameHeadingWrap','partnerLineWrap'].forEach(function(id){
@@ -221,6 +225,7 @@
 
   // 退出沉浸式时恢复旧游戏外壳
   function restoreShell() {
+    clearSceneAutoTimer();
     document.body.classList.remove('detective-case-mode');
     ['detectiveVersionBadge','roleQuote','gameHeadingWrap','partnerLineWrap'].forEach(function(id){
       var el = document.getElementById(id);
@@ -292,6 +297,28 @@
   }
 
   /* ---------- 主渲染 ---------- */
+  /* ---------- 现场勘查完毕后的自动推进 ---------- */
+  function clearSceneAutoTimer() {
+    if (IMM.sceneAutoTimer) {
+      clearTimeout(IMM.sceneAutoTimer);
+      IMM.sceneAutoTimer = null;
+    }
+  }
+
+  // 线索全部找齐后自动进入「见相关人员」这一步，不用玩家自己想起来点按钮。
+  // 每局只自动跳一次：之后按 ‹ 返回 回到现场页时不会被反复弹走。
+  function armSceneAutoAdvance() {
+    if (IMM.sceneAdvanced) return;
+    clearSceneAutoTimer();
+    IMM.sceneAutoTimer = setTimeout(function () {
+      IMM.sceneAutoTimer = null;
+      if (IMM.step !== 1) return;
+      IMM.sceneAdvanced = true;
+      IMM.step = 3; // 3 = 人物 / 见相关人员
+      render();
+    }, 2600);
+  }
+
   function render() {
     var root = document.createElement('div');
     root.id = 'immRoot';
@@ -309,6 +336,20 @@
     gc.appendChild(root);
     bind();
     root.scrollTop = 0;
+    syncSceneAutoAdvance();
+  }
+
+  // 只有在「现场」这一步、且线索已全部勘查完、且当前没有展开线索详情时才定时推进。
+  // 其余任何情况都取消已有定时器，避免玩家已经操作了页面还被自动跳走。
+  function syncSceneAutoAdvance() {
+    if (IMM.step !== 1) { clearSceneAutoTimer(); return; }
+    var cc = c();
+    var found = Object.keys(IMM.revealed).length;
+    if (found >= cc.evidence.length && IMM.currentHotspot < 0 && !IMM.sceneAdvanced) {
+      armSceneAutoAdvance();
+    } else {
+      clearSceneAutoTimer();
+    }
   }
 
   function renderStepNav() {
@@ -341,11 +382,26 @@
   }
 
   /* ---------- 01 开场 ---------- */
+
+  // 每个案件的现场配图。以前这里写死了案件01 的潮汐档案室图，
+  // 导致案件02 的开场背景是档案室、现场页更只剩「现场已封存」占位。
+  // 没有专属配图的案件返回空字符串，调用方回退到占位/纯色背景。
+  function sceneImageFor(idx) {
+    if (idx === 0) return 'assets/tidal-archive-room-v21.jpg';
+    if (idx === 1) return 'assets/hotel-corridor-17-v22.jpg';
+    if (idx === 2) return 'assets/midnight-train-berth-v23.jpg';
+    return '';
+  }
+
   function tplOpening() {
     var caseNo = String(IMM.caseIndex + 1).padStart(2, '0');
     var cc = c();
     var wrap = document.createElement('div');
-    wrap.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100%;color:#f2f1ee;display:flex;flex-direction:column;justify-content:space-between;padding:40px 28px 40px;box-sizing:border-box;background:linear-gradient(180deg,rgba(10,10,16,.55) 0%,rgba(10,10,16,.75) 50%,rgba(10,10,16,.92) 100%),url("assets/tidal-archive-room-v21.jpg") center/cover no-repeat fixed;';
+    var openingImg = sceneImageFor(IMM.caseIndex);
+    var openingBg = openingImg
+      ? 'url("' + openingImg + '") center/cover no-repeat fixed'
+      : 'rgba(10,10,16,.6)';
+    wrap.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100%;color:#f2f1ee;display:flex;flex-direction:column;justify-content:space-between;padding:40px 28px 40px;box-sizing:border-box;background:linear-gradient(180deg,rgba(10,10,16,.55) 0%,rgba(10,10,16,.75) 50%,rgba(10,10,16,.92) 100%),' + openingBg + ';';
     wrap.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
       '  <span style="font-size:10px;letter-spacing:.35em;color:#9a9aa2;">CASE FILE / NO.' + caseNo + '</span>' +
@@ -381,13 +437,39 @@
     page: 'padding:0 0 30px;min-height:100%;box-sizing:border-box;'
   };
 
+  // 每条证据一个热点坐标。
+  // 原来的写法是 spots[i % spots.length]，而手写坐标只有 7 个、案件02 却有 8 条证据，
+  // 于是第 8 个热点坐标和第 1 个完全相同，且它后渲染、盖在第 1 个上面，
+  // 1 号线索永远点不到 → 计数卡在 7/8 → allFound 永远为假 →
+  // 「现场已勘查完毕 · 见相关人员」入口永远不出现，页面看着就像卡死了。
+  var SCENE_SPOTS = [[18, 22], [68, 18], [40, 45], [78, 52], [25, 68], [55, 75], [85, 30]];
+  function sceneSpots(count) {
+    var out = [];
+    for (var i = 0; i < count; i++) {
+      if (i < SCENE_SPOTS.length) { out.push(SCENE_SPOTS[i].slice()); continue; }
+      // 预设坐标不够时按错位步长继续生成，并保证不与已有热点重合
+      var k = i - SCENE_SPOTS.length;
+      var x = 12 + ((k * 29) % 74);
+      var y = 16 + ((k * 37) % 66);
+      var guard = 0;
+      while (guard < 80 && out.some(function (q) { return Math.abs(q[0] - x) < 10 && Math.abs(q[1] - y) < 9; })) {
+        x = 12 + ((x + 13) % 74);
+        y = 16 + ((y + 17) % 66);
+        guard++;
+      }
+      out.push([Math.round(x), Math.round(y)]);
+    }
+    return out;
+  }
+
   /* ---------- 02 现场 ---------- */
   function tplScene() {
     var cc = c();
     var found = Object.keys(IMM.revealed).length;
-    var spots = [[18, 22], [68, 18], [40, 45], [78, 52], [25, 68], [55, 75], [85, 30]];
-    var imgHtml = IMM.caseIndex === 0
-      ? '<img src="assets/tidal-archive-room-v21.jpg" alt="现场" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;">'
+    var spots = sceneSpots(cc.evidence.length);
+    var sceneImg = sceneImageFor(IMM.caseIndex);
+    var imgHtml = sceneImg
+      ? '<img src="' + sceneImg + '" alt="现场" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;">'
       : '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#4a4a55;font-size:11px;letter-spacing:.2em;">CRIME SCENE · 现场已封存</div>';
     var wrap = document.createElement('div');
     wrap.style.cssText = S.page;
@@ -400,7 +482,7 @@
       '</div>' +
       '<div style="margin:0 16px;position:relative;width:calc(100% - 32px);aspect-ratio:4/5;max-height:460px;overflow:hidden;border:1px solid rgba(255,255,255,.15);background:#0a0e18;">' + imgHtml +
       cc.evidence.map(function (ev, i) {
-        var p = spots[i % spots.length];
+        var p = spots[i] || [50, 50];
         var f = IMM.revealed[i];
         return '<button data-hot="' + i + '" style="position:absolute;width:34px;height:34px;border-radius:50%;border:1.5px solid ' + (f ? '#e8c9a0' : '#f2f1ee') + ';background:' + (f ? '#e8c9a0' : 'rgba(10,10,20,.6)') + ';color:' + (f ? '#1a1a1f' : '#f2f1ee') + ';font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;font-family:inherit;left:' + p[0] + '%;top:' + p[1] + '%;">' +
           (f ? '✓' : String(i + 1).padStart(2, '0')) + '</button>';
@@ -426,7 +508,7 @@
         '<div style="position:sticky;bottom:0;background:rgba(20,20,28,.95);backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.15);padding:18px 20px 20px;z-index:30;margin-top:16px;animation:immSheetUp .35s cubic-bezier(.2,.8,.2,1) both;">' +
         '  <div style="' + S.kicker + '">SCENE CLEAR</div>' +
         '  <h3 style="font-family:Georgia,serif;font-size:18px;margin:8px 0 10px;font-weight:500;">现场已勘查完毕</h3>' +
-        '  <p style="font-size:12px;line-height:1.9;color:#b0b0b8;margin:0 0 14px;">所有位置都检查过了。带着这些线索，去见相关人员吧。</p>' +
+        '  <p style="font-size:12px;line-height:1.9;color:#b0b0b8;margin:0 0 14px;">所有位置都检查过了。带着这些线索，去见相关人员吧。' + (IMM.sceneAdvanced ? '' : '<br><span style="color:#e8c9a0;">线索已齐，即将自动前往相关人员…</span>') + '</p>' +
         '  <button style="' + S.btn + '" data-act="goto-suspects">见相关人员 →</button>' +
         '</div>';
     }
@@ -486,6 +568,147 @@
   }
 
   /* ---------- 05 盘问 ---------- */
+
+  // 盘问剧本：按「案件标题 → 人物姓名」分别写。
+  // 以前所有案件、所有证人都共用同一套通用问句（连"三年前那次事故"都会套在别的案子上），
+  // 答案也只有那几句，所以每个案子问起来都一模一样。
+  var INTERROGATION_SCRIPTS = {
+    '午夜列车的第四位乘客': {
+      '胡国柱': [
+        {
+          q: '「上车时，是你替“上铺的兄弟”代领的卧铺牌。那个人长什么样，你能说说吗？」',
+          a: '「他……他上车晚，我在站台碰见的，脸没看清。」他把烟按灭，「你也知道卧铺那地方，谁有空盯着别人看。」'
+        },
+        {
+          q: '「05:40 叫早，你一次交回了两块牌子——那块牌子，从头到尾只有你一个人碰过吧？」',
+          a: '「他提前在渌口下了，托我还不行吗？」他顿了顿，「……你们到底想问什么？」'
+        },
+        {
+          q: '「02:15，渌口站，你确实在站台上。可那是你选的时间，不是死亡时间——怀表是被拨停的。」',
+          a: '沉默了一会儿。「表是他的。他自己的表，停在哪儿，跟我有什么关系。」他的手在膝盖上停住不动。'
+        },
+        {
+          q: '「样品箱里那块“1962 年瑞士天文台表”，是后改的假表。十年前替它作证的那个修表匠，叫胡德厚。」',
+          a: '他抬起眼睛。「我爸修了一辈子表。」很久之后他才说下去，「表不会骗人。骗人的是拿表的人。」'
+        }
+      ],
+      '文珊珊': [
+        {
+          q: '「你说你一觉睡到叫早。上车后到入睡这段时间，包间里都有谁？」',
+          a: '「我吃了药就拉上帘子了，什么都记不清。」她摇头，「三个铺位嘛，下铺那位大叔，还有……对面下铺那位先生。」'
+        },
+        {
+          q: '「上铺 2 的被子叠得方方正正，一点压痕都没有——那一夜，上面真的有人躺过吗？」',
+          a: '「我……我看不见，帘子一直拉着。」她想了想，「不过从头到尾，我没听见上铺有过动静。」'
+        },
+        {
+          q: '「有人给你或那位大叔递过水、递过烟吗？」',
+          a: '「对面那位先生挺客气，上车就给我递过一瓶水。」她皱起眉，「烟我不抽，不知道。」'
+        }
+      ],
+      '老周': [
+        {
+          q: '「换票登记本上，4 号包间四张票全验、四块牌子全收。可上铺 2 从没睡过人。」',
+          a: '「票是真的，牌子也是真的。」他拍拍登记本，「我这二十年从没漏过一张票——可票上的人上没上床，我管不着。」'
+        },
+        {
+          q: '「卧铺牌是谁领的、谁还的？」',
+          a: '「上车那会儿，他说上铺兄弟晚点从站台上来，牌子我先替他拿。我也没多想。」他皱起眉头，「后来叫早，他一下递回来两块，说人提前在渌口下了。」'
+        },
+        {
+          q: '「02 点多渌口站，你在车上还是站台上？」',
+          a: '「停车十七分钟，我都在车门边上站着守着。」他想了想，「那会儿胡国柱是在站台上抽烟，跟一个上水工聊天来着。还有个醉汉，是家属上车接下去的，吵得很。」'
+        },
+        {
+          q: '「钱伯钧每站都下车对表，这个习惯你知道吗？」',
+          a: '「知道，十年了。他这人怪，说钟表商的表不能慢一秒。」他忽然沉默，「……可 01:20 娄底那站，我扫了一眼站台，没见着他。当时还当他睡沉了。」'
+        }
+      ]
+    },
+    '走廊尽头的17号房': {
+      '林致远': [
+        {
+          q: '「凌晨 2 点 11 分，走廊监控拍到一个穿浴袍的男人从 18 号房出来——那个人是你吧？」',
+          a: '「……监控哪有那么清楚。」他避开你的视线，手指在膝盖上敲了两下，「我昨晚一路睡到天亮，哪儿也没去过。」'
+        },
+        {
+          q: '「4 分钟后画面恢复，同一个人几乎是撞回房间的，刷卡时手在抖。你在怕什么？」',
+          a: '沉默了很久。「……行。我不是去杀人的。我是去偷东西的。」'
+        },
+        {
+          q: '「我们查过你哥哥林伟向周茂才借的那五万块。」',
+          a: '「五万滚到十二万，他还说要收房子。」他嗓子一下子哑了，「我配了张房卡，挑监控卡住的那四分钟进去——可我推开门的时候，人已经躺在地上了。」'
+        },
+        {
+          q: '「你说你进去时他已经死了——怎么证明？」',
+          a: '「手机灯照下去，地上有个人，一动不动。而且那房间……那房间热得不对劲，像个蒸笼，我进去没十秒就跑出来了，门都没敢关严。」'
+        }
+      ],
+      '陈晓雨': [
+        {
+          q: '「23 点 12 分你推着服务车进了 17 号房，18 分才出来。送两瓶水，用得了六分钟？」',
+          a: '「敲门的时候客人正在翻公文包，让我在外面等了一会儿。」她的语气很稳，「水放下我就走了，一分钟的事。」'
+        },
+        {
+          q: '「早上 8 点交班前，你又去过一次 17 号房。之后这台空调就回到了 26℃。」',
+          a: '「例行问客人要不要续房。敲了没人应，我就出来了。」她低头把围裙上的褶子抚平，「空调？我没碰过。」'
+        },
+        {
+          q: '「老陈说凌晨 2 点多你们一起在大堂泡方便面——那你 23 点 18 分才从三楼下来，中间这两三个小时在做什么？」',
+          a: '「整理账单、换桶装水，三层的布草也要补。」她答得很快，「泡面是后半夜的事，记不清几点了。」她的手在围裙上蹭了一下。'
+        },
+        {
+          q: '「出风口叶片转轴那处的灰被人蹭掉了。这台空调不是一直 26℃ 吧？」',
+          a: '「客人自己会调空调的，我做保洁的不管这个。」她顿了一下，「您要问就问吧，我只是个上夜班的。」'
+        },
+        {
+          q: '「这张照片是从你储物柜里掉出来的。背面写着——爸爸，我来了。」',
+          a: '很长时间的沉默。「照片上的人叫陈建斌。半年前，他因为还不上周茂才的钱，在自家阳台上吊死了。」她抬起眼睛，「我是他女儿。可这什么都说明不了，对吗？」'
+        }
+      ],
+      '老陈': [
+        {
+          q: '「22 点到早上 8 点，你一直在前台？」',
+          a: '「一步没离开过。」他拍了拍值班簿，「要进这栋楼的人，都得从我眼皮子底下过。」'
+        },
+        {
+          q: '「陈晓雨昨天夜里，离开过大堂吗？」',
+          a: '「小陈啊，昨晚一直在帮我整理账单、换饮用水。凌晨 2 点多我们还一块儿泡了碗方便面聊天，她哪儿也没去。」他想了想，「那孩子话少、踏实，布草叠得最齐。」'
+        },
+        {
+          q: '「凌晨 2 点 13 分到 2 点 17 分，三楼走廊监控整整黑了四分钟。」',
+          a: '「哦，那个啊。」他摆摆手，「这破机器每天凌晨那个点都要整理硬盘，卡四分钟，一年多了都这样，习惯了。跟案子没关系。」'
+        },
+        {
+          q: '「17 号房这台空调，最近有人上去清洗过过滤网吗？」',
+          a: '「三层的滤网半个月前刚统一洗过，早就结了一层灰。」他摇头，「那阵子没人专门动过它。」'
+        }
+      ]
+    }
+  };
+
+  // 取出当前案件 + 当前人物的盘问条目。
+  // 没有专门写剧本的案件，退化成「用本案自己的证据出题」，至少保证问句跟这个案子有关。
+  function interrogationEntries(si) {
+    var cc = c();
+    var s = cc.suspects && cc.suspects[si];
+    if (!s) return [];
+    var byCase = INTERROGATION_SCRIPTS[cc.title];
+    var authored = byCase && byCase[s.name];
+    if (authored && authored.length) return authored;
+    var neutral = [
+      '「……这件事我不太方便说。」',
+      '「你问的这些，我当时都不在场。」',
+      '「我只管自己经手的那一摊，剩下的你自己去查。」'
+    ];
+    return (cc.evidence || []).slice(0, 3).map(function (ev, i) {
+      return {
+        q: '「关于「' + ev.title + '」，你能解释一下吗？」',
+        a: '「' + ev.title + '……」' + s.name + '略一停顿，' + neutral[i % neutral.length]
+      };
+    });
+  }
+
   function tplInterrogate() {
     var cc = c();
     var si = IMM.activeSuspect;
@@ -516,15 +739,16 @@
       }).join('') +
       '</div>' +
       (function(){
-        var qs = [
-          {q:0, t:'「请再说明一遍你当晚的行踪。」'},
-          {q:1, t:'「你最后一次见到死者是什么时候？」'},
-          {q:2, t:'「关于三年前那次事故，你知道多少？」'}
-        ];
-        var btns = qs.filter(function(it){ return !IMM.asked[si + '_' + it.q]; }).map(function(it){
-          return '<button data-q="' + it.q + '" style="text-align:left;background:rgba(20,20,28,.92);border:1px solid rgba(255,255,255,.2);padding:14px 16px;font-size:13px;cursor:pointer;color:#f2f1ee;line-height:1.5;font-family:inherit;">' + it.t + '</button>';
+        var entries = interrogationEntries(si);
+        var btns = entries.map(function(it, idx){
+          if (IMM.asked[si + '_' + idx]) return '';
+          return '<button data-q="' + idx + '" style="text-align:left;background:rgba(20,20,28,.92);border:1px solid rgba(255,255,255,.2);padding:14px 16px;font-size:13px;cursor:pointer;color:#f2f1ee;line-height:1.5;font-family:inherit;">' + esc(it.q) + '</button>';
         }).join('');
-        if (btns === '') btns = '<div style="padding:14px 16px;font-size:11px;color:#666;line-height:1.7;text-align:center;">该人可问的都问完了。</div>';
+        if (entries.length === 0) {
+          btns = '<div style="padding:14px 16px;font-size:11px;color:#666;line-height:1.7;text-align:center;">本案暂无可盘问的内容。</div>';
+        } else if (btns === '') {
+          btns = '<div style="padding:14px 16px;font-size:11px;color:#666;line-height:1.7;text-align:center;">该人可问的都问完了。</div>';
+        }
         return '<div style="padding:0 16px 20px;display:flex;flex-direction:column;gap:8px;">' + btns + '</div>';
       })();
     return wrap;
@@ -725,10 +949,18 @@
 
   /* ---------- 统一案件结案进度 ---------- */
   function detectiveProgressKey() {
+    // 旧实现引用 games.html 主脚本作用域里的 activeRole，跨 IIFE 读不到，
+    // 导致无论当前搭档是谁，沉浸式的结案记录永远写进 'default-partner' 槽，
+    // 和档案室读取的槽不一致。改为走主脚本暴露的统一取值函数。
     try {
-      if (typeof activeRole !== 'undefined' && activeRole && activeRole.id != null) {
-        return String(activeRole.id);
+      if (typeof window.activeRoleKey === 'function') {
+        var key = window.activeRoleKey();
+        if (key) return String(key);
       }
+    } catch (e) {}
+    try {
+      var wanted = localStorage.getItem('maomao_game_role');
+      if (wanted) return String(wanted);
     } catch (e) {}
     return 'default-partner';
   }
@@ -941,14 +1173,11 @@
   function handleQuestion(q) {
     var cc = c();
     var s = cc.suspects[IMM.activeSuspect];
-    var safeReplies = [
-      '「我当时一直在自己的位置上，没有离开。」' + s.name + '低声说。',
-      '「死者？最后一次见是在傍晚，一切看起来都正常。」',
-      '「三年前的事……我以为早就结案了。」',
-      '「我没什么可说的，你们去查别的人吧。」'
-    ];
-    IMM.dialogue.push({ who: '你', me: true, text: ['请再说明一遍你当晚的行踪。', '你最后一次见到死者是什么时候？', '关于三年前那次事故，你知道多少？', '拿出证物对质'][q] });
-    IMM.dialogue.push({ who: s.name, me: false, text: safeReplies[q] });
+    var entry = interrogationEntries(IMM.activeSuspect)[Number(q)];
+    var askText = entry ? entry.q : '「请再说明一遍你当晚的行踪。」';
+    var replyText = entry ? entry.a : '「我当时一直在自己的位置上，没有离开。」' + s.name + '低声说。';
+    IMM.dialogue.push({ who: '你', me: true, text: askText });
+    IMM.dialogue.push({ who: s.name, me: false, text: replyText });
     IMM.asked[IMM.activeSuspect + '_' + q] = true;
     render();
     // 滚动到底部

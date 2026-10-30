@@ -27,6 +27,11 @@ h1{font-size:26px;letter-spacing:-.04em;line-height:1.35;margin:8px 0 6px;font-w
 .avatar:before{width:1px;height:100%;left:50%;top:0}
 .avatar:after{height:1px;width:100%;top:50%;left:0}
 .avatar strong{z-index:1;min-width:48px;height:48px;padding:0 6px;display:grid;place-items:center;background:#222;color:#fff;font:600 18px/1.1 Georgia,serif;letter-spacing:.02em;overflow-wrap:anywhere}
+.avatar.has-image:before,.avatar.has-image:after{display:none}
+.avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2}
+.avatar-upload{position:absolute;right:0;bottom:0;z-index:3;width:30px;height:30px;border-radius:50%;background:#222;color:#fff;border:2px solid #fff;display:grid;place-items:center;cursor:pointer;font-size:16px;line-height:1;padding:0}
+.avatar-remove{position:absolute;left:0;top:0;z-index:3;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;display:none;place-items:center;cursor:pointer;font-size:13px;line-height:1;padding:0}
+.avatar.has-image .avatar-remove{display:grid}
 .profile-name{font-size:22px;line-height:1.35;font-weight:650;letter-spacing:-.035em;overflow-wrap:anywhere}
 .profile-bio{font-size:12px;line-height:1.8;color:#777;margin:6px 0 10px;overflow-wrap:anywhere}
 .profile-tags{display:flex;flex-wrap:wrap;gap:6px}
@@ -98,7 +103,13 @@ textarea{resize:vertical;min-height:77px}
   </section>
 
   <section class="profile-hero" aria-label="作者资料预览">
-    <div class="avatar"><strong id="avatarPreview">写作</strong></div>
+    <div class="avatar" id="avatarBox">
+      <strong id="avatarPreview">写作</strong>
+      <img id="avatarImg" alt="作者头像" hidden>
+      <button class="avatar-upload" id="avatarUpload" type="button" aria-label="上传头像">＋</button>
+      <button class="avatar-remove" id="avatarRemove" type="button" aria-label="删除头像">×</button>
+      <input id="avatarFile" type="file" accept="image/*" hidden>
+    </div>
     <div>
       <div class="profile-name" id="namePreview">未命名作者</div>
       <p class="profile-bio" id="bioPreview">每一次落笔，都是故事开始的地方。</p>
@@ -120,7 +131,7 @@ textarea{resize:vertical;min-height:77px}
       <form id="profileForm">
         <div class="form-row">
           <div class="field"><label for="authorName">作者昵称</label><input class="input" id="authorName" name="authorName" maxlength="24" placeholder="给自己取个笔名"></div>
-          <div class="field"><label for="avatarText">头像文字</label><input class="input" id="avatarText" name="avatarText" maxlength="4" placeholder="2–4 字" aria-describedby="avatarHint"><span class="field-hint" id="avatarHint">使用文字标识，不会上传照片</span></div>
+          <div class="field"><label for="avatarText">头像文字</label><input class="input" id="avatarText" name="avatarText" maxlength="4" placeholder="2–4 字" aria-describedby="avatarHint"><span class="field-hint" id="avatarHint">可上传图片头像；留空则用文字标识</span></div>
         </div>
         <div class="field"><label for="authorBio">个人签名</label><textarea id="authorBio" name="authorBio" maxlength="160" placeholder="写一句介绍自己的话，或记下现在的创作心情。"></textarea><span class="field-hint">最多 160 字</span></div>
         <div class="form-row">
@@ -168,7 +179,7 @@ textarea{resize:vertical;min-height:77px}
 const WORK_KEY='maomao_novel_author_v1';
 const PROFILE_KEY='maomao_novel_author_profile_v1';
 const $=id=>document.getElementById(id);
-const defaults={name:'未命名作者',avatar:'写作',bio:'每一次落笔，都是故事开始的地方。',genre:'',dailyGoal:1000};
+const defaults={name:'未命名作者',avatar:'写作',bio:'每一次落笔，都是故事开始的地方。',genre:'',dailyGoal:1000,avatarImage:null};
 const esc=value=>String(value==null?'':value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const countWords=value=>(String(value||'').match(/[\u3400-\u9fff]|[a-zA-Z0-9]+/g)||[]).length;
 const fmt=value=>Number(value||0).toLocaleString('zh-CN');
@@ -179,7 +190,7 @@ function toast(message){const node=$('toast');node.textContent=message;node.clas
 function readProfile(){try{const value=JSON.parse(localStorage.getItem(PROFILE_KEY)||'null');if(value&&typeof value==='object')profile={...defaults,...value}}catch(error){}}
 function readWorks(){try{const value=JSON.parse(localStorage.getItem(WORK_KEY)||'{}');if(value&&Array.isArray(value.works))workDb=value}catch(error){}if(!Array.isArray(workDb.works))workDb.works=[]}
 function safeNumber(value,min,max,fallback){const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.round(n))):fallback}
-function setForm(){ $('authorName').value=profile.name||'';$('avatarText').value=profile.avatar||'';$('authorBio').value=profile.bio||'';$('favoriteGenre').value=profile.genre||'';$('dailyGoal').value=safeNumber(profile.dailyGoal,100,100000,1000);updatePreview()}
+function setForm(){ $('authorName').value=profile.name||'';$('avatarText').value=profile.avatar||'';$('authorBio').value=profile.bio||'';$('favoriteGenre').value=profile.genre||'';$('dailyGoal').value=safeNumber(profile.dailyGoal,100,100000,1000);updatePreview();renderAvatar()}
 function getMetrics(){
  let words=0,chapters=0,published=0;
  workDb.works.forEach(work=>{const list=Array.isArray(work.chapters)?work.chapters:[];chapters+=list.length;list.forEach(chapter=>{words+=countWords(chapter&&chapter.body);if(chapter&&chapter.published)published++})});
@@ -199,7 +210,7 @@ function updatePreview(){
  const genre=($('favoriteGenre').value||'').trim();
  const goal=safeNumber($('dailyGoal').value,100,100000,1000);
  $('namePreview').textContent=name;
- $('avatarPreview').textContent=avatar.slice(0,4);
+ if(!profile.avatarImage)$('avatarPreview').textContent=avatar.slice(0,4);
  $('bioPreview').textContent=bio;
  $('genrePreview').textContent='常写题材：'+(genre||'未设置');
  $('goalPreview').textContent='每日目标：'+fmt(goal)+' 字';
@@ -207,6 +218,37 @@ function updatePreview(){
  $('levelPreview').textContent='LV. '+stats.level;
  $('xpPreview').textContent=fmt(stats.xp)+' 成长值';
 }
+function renderAvatar(){
+ const box=$('avatarBox'),img=$('avatarImg'),text=$('avatarPreview');
+ if(profile.avatarImage){
+  img.src=profile.avatarImage;img.hidden=false;text.style.display='none';box.classList.add('has-image');
+ }else{
+  if(img.getAttribute('src'))img.removeAttribute('src');img.hidden=true;text.style.display='';box.classList.remove('has-image');
+ }
+}
+function handleAvatarFile(event){
+ const input=event.target;const file=input.files&&input.files[0];input.value='';
+ if(!file)return;
+ if(!/^image\//.test(file.type)){toast('请选择图片文件');return}
+ const reader=new FileReader();
+ reader.onerror=()=>toast('图片读取失败');
+ reader.onload=()=>{
+  const img=new Image();
+  img.onerror=()=>toast('图片解析失败');
+  img.onload=()=>{
+   const max=256;let w=img.naturalWidth,h=img.naturalHeight;
+   if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}
+   const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+   cv.getContext('2d').drawImage(img,0,0,w,h);
+   let out=cv.toDataURL('image/jpeg',0.82);
+   if(out.length>180000)out=cv.toDataURL('image/jpeg',0.6);
+   profile.avatarImage=out;renderAvatar();$('saveState').textContent='有未保存的修改';
+  };
+  img.src=reader.result;
+ };
+ reader.readAsDataURL(file);
+}
+function removeAvatar(){profile.avatarImage=null;renderAvatar();updatePreview();$('saveState').textContent='有未保存的修改';}
 function renderMetrics(){
  const s=getMetrics();
  $('worksCount').textContent=fmt(s.works);$('wordsCount').textContent=fmt(s.words);$('chaptersCount').textContent=fmt(s.chapters);$('publishedCount').textContent=fmt(s.published);
@@ -236,17 +278,21 @@ function saveProfile(event){
   avatar:($('avatarText').value||'').trim().slice(0,4)||'写作',
   bio:($('authorBio').value||'').trim().slice(0,160)||defaults.bio,
   genre:($('favoriteGenre').value||'').trim().slice(0,30),
-  dailyGoal:safeNumber($('dailyGoal').value,100,100000,1000)
+  dailyGoal:safeNumber($('dailyGoal').value,100,100000,1000),
+  avatarImage:profile.avatarImage||null
  };
  try{localStorage.setItem(PROFILE_KEY,JSON.stringify(profile));setForm();$('saveState').textContent='已保存到本机';toast('作者资料已保存')}catch(error){$('saveState').textContent='保存失败';toast('保存失败：请检查浏览器储存空间')}
 }
 function resetProfile(){
- profile={...defaults};
+ profile={...defaults};delete profile.avatarImage;
  try{localStorage.setItem(PROFILE_KEY,JSON.stringify(profile));setForm();$('saveState').textContent='已恢复默认资料';toast('已恢复默认资料')}catch(error){setForm();toast('本机储存空间不足，无法保存')}
 }
 $('back').addEventListener('click',()=>{location.href='novel.html'});
 $('profileForm').addEventListener('submit',saveProfile);
 $('resetProfile').addEventListener('click',resetProfile);
+$('avatarUpload').addEventListener('click',()=>$('avatarFile').click());
+$('avatarFile').addEventListener('change',handleAvatarFile);
+$('avatarRemove').addEventListener('click',removeAvatar);
 ['authorName','avatarText','authorBio','favoriteGenre','dailyGoal'].forEach(id=>$(id).addEventListener('input',()=>{$('saveState').textContent='有未保存的修改';updatePreview()}));
 readProfile();readWorks();setForm();renderMetrics();renderRecent();
 })();

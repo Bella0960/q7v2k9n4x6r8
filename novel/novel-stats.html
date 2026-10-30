@@ -1,18 +1,156 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#fff"><title>写作统计 · 小说工坊</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f6f6f7;color:#1c1c1e;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}button{font:inherit}.app{max-width:900px;min-height:100dvh;margin:auto;background:#fff}.top{display:flex;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top)) 22px 10px;border-bottom:1px solid #ececee;background:rgba(255,255,255,.97);position:sticky;top:0;z-index:5}.back{width:36px;height:36px;border:1px solid #ececee;border-radius:50%;background:#fff;font-size:20px;color:#333}.brand{font-size:11px;color:#666;font-weight:650;flex:1}.main{padding:0 24px 40px}.intro{padding:25px 0 20px;border-bottom:1px solid #ececee}.eyebrow{font-size:10px;color:#999;letter-spacing:.12em}.intro h1{font-size:25px;letter-spacing:-.04em;margin:9px 0 6px}.intro p{font-size:12px;line-height:1.8;color:#888;margin:0}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:18px 0}.metric{border:1px solid #ececee;border-radius:10px;padding:15px;min-width:0}.metric small{display:block;font-size:10px;color:#999;margin-bottom:9px}.metric strong{font-size:23px;letter-spacing:-.04em;overflow-wrap:anywhere}.metric em{display:block;font-size:10px;font-style:normal;color:#999;margin-top:6px}.section{padding:20px 0;border-top:1px solid #ececee}.head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}.head h2{font-size:14px;margin:0}.head span{font-size:10px;color:#999}.chart{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:end;min-height:160px;padding:14px 0 0}.day{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;min-width:0;height:150px}.bar-wrap{height:110px;width:100%;display:flex;align-items:flex-end;justify-content:center}.bar{width:min(28px,70%);min-height:3px;background:#242424;border-radius:4px 4px 0 0;transition:height .25s}.bar.zero{background:#e7e7e9}.day strong{font-size:10px;color:#666;font-weight:500}.day small{font-size:9px;color:#999;white-space:nowrap}.rows{display:flex;flex-direction:column}.row{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #f0f0f1}.row:last-child{border-bottom:0}.row-no{font-size:15px;color:#aaa;width:27px}.row-main{flex:1;min-width:0}.row-title{font-size:12px;overflow-wrap:anywhere}.row-sub{font-size:10px;color:#999;margin-top:4px}.row-value{font-size:11px;color:#666;white-space:nowrap}.empty{padding:15px 0;font-size:12px;line-height:1.8;color:#999}.note{font-size:10px;line-height:1.8;color:#aaa;padding-top:16px}.btn{border:1px solid #e5e5e7;border-radius:8px;background:#fff;padding:9px 12px;font-size:11px;color:#444}.btn.dark{background:#222;color:#fff;border-color:#222}@media(max-width:520px){.main{padding:0 17px 30px}.metrics{gap:7px}.metric{padding:11px 9px;border-radius:8px}.metric strong{font-size:20px}.metric small{font-size:9px}.chart{gap:4px}.bar-wrap{height:100px}.day{height:140px}.day small{font-size:8px}}
-</style></head><body><main class="app"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">MAOMAO / 写作统计</span><button class="btn" id="write">继续写作</button></header><div class="main" id="main"><section class="intro"><div class="eyebrow">WRITING RECORDS</div><h1>写作统计</h1><p>根据当前浏览器里已保存的作品与章节记录汇总。不会为了填满图表而编造写作数据。</p></section><div class="empty">正在读取创作记录…</div></div></main>
+/* ===== 小说工坊统一设计系统 · 黑白灰 · 自包含（与 novel.html 同源 Token） ===== */
+:root{
+  --bg:#F4F4F3;
+  --surface:#FFFFFF;
+  --ink-1:#1A1A1A;
+  --ink-2:#6E6E6E;
+  --ink-3:#9C9C9C;
+  --line:#E7E7E4;
+  --line-2:#D6D6D2;
+  --fill:#F0F0EE;
+  --radius-lg:14px;
+  --radius-md:10px;
+  --radius-sm:8px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--ink-1);font-family:var(--font);-webkit-font-smoothing:antialiased;line-height:1.5}
+.hidden{display:none!important}
+
+/* ---- 手机框 ---- */
+.phone{width:min(480px,100%);height:100dvh;min-height:600px;margin:0 auto;background:var(--surface);display:flex;flex-direction:column;overflow:hidden}
+@media(min-width:481px){
+  .phone{height:calc(100dvh - 24px);min-height:600px;margin:12px auto;border:1px solid var(--line);border-radius:24px;box-shadow:0 8px 40px rgba(0,0,0,.06)}
+}
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;padding:calc(11px + env(safe-area-inset-top)) 16px 11px;background:rgba(255,255,255,.92);border-bottom:1px solid var(--line);backdrop-filter:blur(12px)}
+.back{flex:0 0 34px;width:34px;height:34px;border:1px solid var(--line);border-radius:50%;background:#fff;color:var(--ink-1);font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.brand{flex:1;min-width:0;font-size:17px;font-weight:700;letter-spacing:.01em;color:var(--ink-1)}
+.scroll{flex:1;overflow:auto;width:100%;padding:0 16px calc(24px + env(safe-area-inset-bottom));background:var(--surface)}
+
+/* ---- 按钮（与 novel.html 同源）---- */
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:7px 14px;border:1px solid var(--line-2);border-radius:var(--radius-md);background:#fff;color:var(--ink-1);font:13px/1.2 var(--font);cursor:pointer}
+.btn:hover{background:var(--fill)}
+.btn.dark{background:var(--ink-1);border-color:var(--ink-1);color:#fff;font-weight:600}
+.btn.dark:hover{background:#000}
+
+/* ---- 主标题区（ bilingual：中文大标题 + 英文小标）---- */
+.intro{padding:22px 0 14px}
+.eyebrow{display:block;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin:0 0 9px;font-weight:600}
+.intro h1{margin:0 0 8px;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-.03em;color:var(--ink-1)}
+.intro p{margin:0;font-size:13px;line-height:1.7;color:var(--ink-2);max-width:520px}
+
+/* ---- 指标卡 ---- */
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:6px 0 4px}
+.metric{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px 12px}
+.metric small{display:block;font-size:10px;line-height:1.4;color:var(--ink-3);margin-bottom:8px}
+.metric strong{display:block;font-size:24px;font-weight:700;letter-spacing:-.02em;color:var(--ink-1);overflow-wrap:anywhere}
+.metric em{display:block;font-size:10px;font-style:normal;color:var(--ink-3);margin-top:6px}
+
+/* ---- 区块 ---- */
+.section{margin-top:24px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+.section.eyebrow{margin:0 0 4px}
+.section-eyebrow{display:block;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin:0 0 5px;font-weight:600}
+.section-head h2{margin:0;font-size:17px;line-height:1.4;font-weight:650;letter-spacing:-.01em;color:var(--ink-1)}
+.section-tag{font-size:11px;color:var(--ink-3);white-space:nowrap;flex:none}
+.note{font-size:11px;line-height:1.75;color:var(--ink-3);margin-top:12px}
+
+/* ---- 近 7 天柱状图 ---- */
+.chart{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px 12px}
+.day{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;min-width:0;height:100%}
+.day small{font-size:10px;color:var(--ink-3)}
+.bar-wrap{height:110px;width:100%;display:flex;align-items:flex-end;justify-content:center}
+.bar{width:min(22px,68%);min-height:4px;background:linear-gradient(180deg,#D8D8DC,#2C2C30);border-radius:6px 6px 0 0;transition:height .3s}
+.bar.zero{background:var(--fill)}
+.day strong{font-size:11px;color:var(--ink-2);font-weight:500}
+
+/* ---- 列表行 ---- */
+.rows{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);padding:14px}
+.row-no{width:22px;height:22px;flex:none;border-radius:7px;background:var(--fill);color:var(--ink-1);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.row-main{flex:1;min-width:0}
+.row-title{font-size:14px;font-weight:600;color:var(--ink-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-sub{font-size:11px;color:var(--ink-3);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-value{font-size:13px;font-weight:600;color:var(--ink-1);flex:none}
+
+/* ---- 读者互动 ---- */
+.reader-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px}
+.reader-cell{display:flex;flex-direction:column;gap:6px}
+.reader-num{font-size:22px;font-weight:700;color:var(--ink-1)}
+.reader-lab{font-size:11px;color:var(--ink-2)}
+
+/* ---- 空态 / 加载 ---- */
+.empty{text-align:center;color:var(--ink-3);font-size:13px;line-height:1.7;padding:28px 4px}
+
+/* ---- 动效 ---- */
+@media(prefers-reduced-motion:no-preference){
+  .btn,.back,.bar{transition:background .16s,border-color .16s,color .16s,transform .12s}
+  .btn:active{transform:scale(.985)}
+}
+</style></head><body><main class="phone"><header class="top"><button class="back" id="back" aria-label="返回">‹</button><span class="brand">写作统计</span><button class="btn dark" id="write">继续写作</button></header><div class="scroll" id="main"><div class="empty">正在读取创作记录…</div></div></main>
 <script>
 (function(){
-'use strict';const KEY='maomao_novel_author_v1';const $=id=>document.getElementById(id);let db={works:[],activeId:null};
+'use strict';
+const KEY='maomao_novel_author_v1'; // 保留旧存储键，避免已存作品无法读取
+const $=id=>document.getElementById(id);
+let db={works:[],activeId:null};
 const words=s=>(String(s||'').match(/[\u3400-\u9fff]|[a-zA-Z0-9]+/g)||[]).length;
 const dayKey=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
 const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'{}');if(Array.isArray(v.works))db=v}catch(e){}render()}
-function render(){const works=db.works||[];const chapters=works.flatMap(w=>(w.chapters||[]).map(c=>({work:w,chapter:c})));const total=chapters.reduce((n,x)=>n+words(x.chapter.body),0);const published=chapters.filter(x=>x.chapter.published).length;const notes=works.reduce((n,w)=>n+(w.notes||[]).length,0);const now=new Date();const today=dayKey(now);const days=[];for(let i=6;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-i);days.push({date:d,key:dayKey(d),label:['日','一','二','三','四','五','六'][d.getDay()],words:0,chapters:0})}const map=new Map(days.map(d=>[d.key,d]));chapters.forEach(x=>{const stamp=x.chapter.updated||x.chapter.created;if(!stamp)return;const d=map.get(dayKey(stamp));if(d){d.words+=words(x.chapter.body);d.chapters++}});const max=Math.max(1,...days.map(d=>d.words));let streak=0;const activeDates=new Set(chapters.map(x=>x.chapter.updated||x.chapter.created).filter(Boolean).map(dayKey));let cursor=new Date(now.getFullYear(),now.getMonth(),now.getDate());if(!activeDates.has(dayKey(cursor)))cursor.setDate(cursor.getDate()-1);while(activeDates.has(dayKey(cursor))&&streak<366){streak++;cursor.setDate(cursor.getDate()-1)}const mostRecent=works.slice().sort((a,b)=>(b.updated||b.created||0)-(a.updated||a.created||0));const recent=chapters.slice().sort((a,b)=>(b.chapter.updated||b.chapter.created||0)-(a.chapter.updated||a.chapter.created||0)).slice(0,8);
-$('main').innerHTML='<section class="intro"><div class="eyebrow">WRITING RECORDS</div><h1>写作统计</h1><p>数据来自本机保存的作品与章节。没有记录更新时间的旧章节不会被算作本周新增。</p></section><section class="metrics"><div class="metric"><small>累计正文</small><strong>'+total.toLocaleString()+'</strong><em>按当前正文计算</em></div><div class="metric"><small>作品数量</small><strong>'+works.length+'</strong><em>'+published+' 章已发布</em></div><div class="metric"><small>连续更新</small><strong>'+streak+'</strong><em>天 · 按章节更新时间估算</em></div></section><section class="section"><div class="head"><h2>近 7 天写作量</h2><span>WORDS / DAY</span></div><div class="chart">'+days.map(d=>'<div class="day"><small>'+d.words.toLocaleString()+'</small><div class="bar-wrap"><div class="bar '+(d.words?'':'zero')+'" style="height:'+Math.max(3,Math.round(d.words/max*100))+'px"></div></div><strong>'+d.label+'</strong></div>').join('')+'</div><div class="note">图表按章节最后保存时间统计；如果一章反复修改，当前整章字数会归入最近保存的那一天，因此它是写作活动参考，不是精确的每日新增字数。</div></section><section class="section"><div class="head"><h2>作品进度</h2><span>'+works.length+' WORKS</span></div><div class="rows">'+(works.length?works.map((w,i)=>{const cs=w.chapters||[],n=cs.reduce((v,c)=>v+words(c.body),0),p=cs.filter(c=>c.published).length;return '<div class="row"><div class="row-no">'+String(i+1).padStart(2,'0')+'</div><div class="row-main"><div class="row-title">'+esc(w.title||'未命名的故事')+'</div><div class="row-sub">'+esc(w.status||'构思中')+' · '+cs.length+' 章 · 已发布 '+p+' 章</div></div><div class="row-value">'+n.toLocaleString()+' 字</div></div>'}).join(''):'<div class="empty">书架还没有作品。创建作品并保存章节后，这里会自动汇总。</div>')+'</div></section><section class="section"><div class="head"><h2>最近编辑的章节</h2><span>RECENT CHANGES</span></div><div class="rows">'+(recent.length?recent.map((x,i)=>'<div class="row"><div class="row-no">'+String(i+1).padStart(2,'0')+'</div><div class="row-main"><div class="row-title">'+esc(x.chapter.title||'未命名章节')+'</div><div class="row-sub">'+esc(x.work.title||'未命名的故事')+' · '+(x.chapter.updated||x.chapter.created?new Date(x.chapter.updated||x.chapter.created).toLocaleString():'时间未记录')+'</div></div><div class="row-value">'+words(x.chapter.body).toLocaleString()+' 字</div></div>').join(''):'<div class="empty">还没有章节记录。</div>')+'</div></section><section class="section"><div class="head"><h2>读者互动汇总</h2><span>LOCAL SIMULATION</span></div><div class="content">读者反馈记录：'+notes.toLocaleString()+' 条\n累计阅读量：'+works.reduce((n,w)=>n+Number(w.views||0),0).toLocaleString()+'\n收藏：'+works.reduce((n,w)=>n+Number(w.likes||0),0).toLocaleString()+'\n追更：'+works.reduce((n,w)=>n+Number(w.follows||0),0).toLocaleString()+'</div><div class="note">读者互动数字来自本地模拟系统，并非真实联网平台数据。</div></section>');
+function render(){
+  const works=db.works||[];
+  const chapters=works.flatMap(w=>(w.chapters||[]).map(c=>({work:w,chapter:c})));
+  const total=chapters.reduce((n,x)=>n+words(x.chapter.body),0);
+  const published=chapters.filter(x=>x.chapter.published).length;
+  const notes=works.reduce((n,w)=>n+(w.notes||[]).length,0);
+  const now=new Date();
+  const days=[];
+  for(let i=6;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-i);days.push({date:d,key:dayKey(d),label:['日','一','二','三','四','五','六'][d.getDay()],words:0,chapters:0})}
+  const map=new Map(days.map(d=>[d.key,d]));
+  chapters.forEach(x=>{const stamp=x.chapter.updated||x.chapter.created;if(!stamp)return;const d=map.get(dayKey(stamp));if(d){d.words+=words(x.chapter.body);d.chapters++}});
+  const max=Math.max(1,...days.map(d=>d.words));
+  let streak=0;
+  const activeDates=new Set(chapters.map(x=>x.chapter.updated||x.chapter.created).filter(Boolean).map(dayKey));
+  let cursor=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  if(!activeDates.has(dayKey(cursor)))cursor.setDate(cursor.getDate()-1);
+  while(activeDates.has(dayKey(cursor))&&streak<366){streak++;cursor.setDate(cursor.getDate()-1)}
+  const recent=chapters.slice().sort((a,b)=>(b.chapter.updated||b.chapter.created||0)-(a.chapter.updated||a.chapter.created||0)).slice(0,8);
+
+  const dayBars=days.map(d=>'<div class="day"><small>'+d.words.toLocaleString()+'</small><div class="bar-wrap"><div class="bar '+(d.words?'':'zero')+'" style="height:'+Math.max(4,Math.round(d.words/max*100))+'px"></div></div><strong>'+d.label+'</strong></div>').join('');
+
+  const worksList=works.length?works.map((w,i)=>{const cs=w.chapters||[],n=cs.reduce((v,c)=>v+words(c.body),0),p=cs.filter(c=>c.published).length;return '<div class="row"><div class="row-no">'+String(i+1).padStart(2,'0')+'</div><div class="row-main"><div class="row-title">'+esc(w.title||'未命名的故事')+'</div><div class="row-sub">'+esc(w.status||'构思中')+' · '+cs.length+' 章 · 已发布 '+p+' 章</div></div><div class="row-value">'+n.toLocaleString()+' 字</div></div>'}).join(''):'<div class="empty">书架还没有作品。创建作品并保存章节后，这里会自动汇总。</div>';
+
+  const recentList=recent.length?recent.map((x,i)=>'<div class="row"><div class="row-no">'+String(i+1).padStart(2,'0')+'</div><div class="row-main"><div class="row-title">'+esc(x.chapter.title||'未命名章节')+'</div><div class="row-sub">'+esc(x.work.title||'未命名的故事')+' · '+(x.chapter.updated||x.chapter.created?new Date(x.chapter.updated||x.chapter.created).toLocaleString():'时间未记录')+'</div></div><div class="row-value">'+words(x.chapter.body).toLocaleString()+' 字</div></div>').join(''):'<div class="empty">还没有章节记录。</div>';
+
+  const views=works.reduce((n,w)=>n+Number(w.views||0),0).toLocaleString();
+  const likes=works.reduce((n,w)=>n+Number(w.likes||0),0).toLocaleString();
+  const follows=works.reduce((n,w)=>n+Number(w.follows||0),0).toLocaleString();
+
+  $('main').innerHTML=
+    '<section class="intro"><span class="eyebrow">Writing Stats</span><h1>写作统计</h1><p>数据来自本机保存的作品与章节，不会为了填满图表而编造写作数据。</p></section>'+
+    '<section class="metrics">'+
+      '<div class="metric"><small>累计正文</small><strong>'+total.toLocaleString()+'</strong><em>按当前正文计算</em></div>'+
+      '<div class="metric"><small>作品数量</small><strong>'+works.length+'</strong><em>'+published+' 章已发布</em></div>'+
+      '<div class="metric"><small>连续更新</small><strong>'+streak+'</strong><em>天 · 按更新时间估算</em></div>'+
+    '</section>'+
+    '<section class="section"><div class="section-head"><div><span class="section-eyebrow">Weekly Output</span><h2>近 7 天写作量</h2></div><span class="section-tag">近 7 日</span></div><div class="chart">'+dayBars+'</div><div class="note">图表按章节最后保存时间统计；若一章反复修改，整章字数会归入最近保存的那一天，因此它是写作活动参考，非精确每日新增。</div></section>'+
+    '<section class="section"><div class="section-head"><div><span class="section-eyebrow">Progress</span><h2>作品进度</h2></div><span class="section-tag">共 '+works.length+' 部</span></div><div class="rows">'+worksList+'</div></section>'+
+    '<section class="section"><div class="section-head"><div><span class="section-eyebrow">Recent</span><h2>最近编辑的章节</h2></div><span class="section-tag">最近 8 条</span></div><div class="rows">'+recentList+'</div></section>'+
+    '<section class="section"><div class="section-head"><div><span class="section-eyebrow">Audience</span><h2>读者互动汇总</h2></div><span class="section-tag">本地模拟</span></div><div class="reader-grid">'+
+      '<div class="reader-cell"><div class="reader-num">'+notes.toLocaleString()+'</div><div class="reader-lab">读者反馈</div></div>'+
+      '<div class="reader-cell"><div class="reader-num">'+views+'</div><div class="reader-lab">累计阅读</div></div>'+
+      '<div class="reader-cell"><div class="reader-num">'+likes+'</div><div class="reader-lab">收藏</div></div>'+
+      '<div class="reader-cell"><div class="reader-num">'+follows+'</div><div class="reader-lab">追更</div></div>'+
+    '</div><div class="note">读者互动数字来自本地模拟系统，并非真实联网平台数据。</div></section>';
 }
-$('back').onclick=()=>{if(history.length>1)history.back();else location.href='novel.html'};$('write').onclick=()=>{location.href='novel-editor.html'};load();
+$('back').onclick=()=>{if(history.length>1)history.back();else location.href='novel.html'};
+$('write').onclick=()=>{location.href='novel-editor.html'};
+load();
 })();
 </script></body></html>

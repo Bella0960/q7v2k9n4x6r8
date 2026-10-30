@@ -1527,3 +1527,115 @@ html[data-wallpaper-tone="dark"] body.maomao-home .gesture-bar {
 @media (prefers-reduced-motion: reduce) {
   .dock-reflow-enter { animation: none !important; }
 }
+
+/* ===== 社交资料卡（4×2）：参考图清透新拟态风 ===== */
+.ds-social {
+  grid-column: span 4 !important;
+  grid-row: span 3 !important;
+  background: #f5f5f7;
+  border-radius: 24px;
+  padding: 18px 16px 14px;
+  box-shadow: 6px 6px 12px rgba(0,0,0,0.06), -6px -6px 12px rgba(255,255,255,0.8);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ds-social .sc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ds-social .sc-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  outline: none;
+  cursor: text;
+}
+.ds-social .sc-name:focus { background: rgba(0,0,0,0.05); border-radius: 4px; padding: 2px 4px; margin: -2px -4px; }
+.ds-social .sc-weather {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #888;
+}
+.ds-social .sc-weather span {
+  outline: none;
+  cursor: text;
+}
+.ds-social .sc-weather span:focus { background: rgba(0,0,0,0.05); border-radius: 3px; padding: 1px 3px; margin: -1px -3px; }
+.ds-social .sc-body {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.ds-social .sc-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 16px;
+  background: #e8e8ed;
+  flex-shrink: 0;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.ds-social .sc-avatar .sc-photo-inner {
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+}
+.ds-social .sc-stats {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+}
+.ds-social .sc-stat {
+  flex: 1;
+  background: #e8e8ed;
+  border-radius: 12px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.ds-social .sc-stat-label {
+  font-size: 11px;
+  color: #666;
+}
+.ds-social .sc-stat-num {
+  font-size: 15px;
+  font-weight: 700;
+  color: #333;
+  outline: none;
+  cursor: text;
+}
+.ds-social .sc-stat-num:focus { background: rgba(0,0,0,0.08); border-radius: 4px; padding: 2px 4px; margin: -2px -4px; }
+.ds-social .sc-polaroids {
+  display: flex;
+  gap: 12px;
+  padding-left: 100px;
+}
+.ds-social .sc-polaroid {
+  width: 110px;
+  background: #fff;
+  padding: 6px 6px 22px;
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  transform: rotate(-2deg);
+  cursor: pointer;
+}
+.ds-social .sc-polaroid.sc-p-offset {
+  transform: rotate(3deg) translateY(6px);
+}
+.ds-social .sc-p-photo {
+  width: 100%;
+  height: 80px;
+  background: #e8e8ed;
+  border-radius: 2px;
+  background-size: cover;
+  background-position: center;
+}
