@@ -959,32 +959,44 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     var current = null;
     var hasHeading = false;
     var beforeHeading = [];
+    var paragraphLines = [];
+    function joinParagraph(linesInParagraph) {
+      // 合并 TXT 中为了排版而产生的硬换行，不把一句话切成很多段。
+      return linesInParagraph.join('').trim();
+    }
+    function flushParagraph() {
+      if (!paragraphLines.length) return;
+      var paragraph = joinParagraph(paragraphLines);
+      paragraphLines = [];
+      if (!paragraph) return;
+      if (current) current.paras.push(paragraph);
+      else beforeHeading.push(paragraph);
+    }
     function pushCurrent() {
       if (current && current.paras.length) chapters.push(current);
       current = null;
     }
     lines.forEach(function (raw) {
-      var line = String(raw || '').trim();
-      if (!line) return;
+      var line = String(raw || '').replace(/\u00a0/g, ' ').trim();
+      if (!line) {
+        flushParagraph();
+        return;
+      }
       var heading = detectTxtHeading(line);
       if (heading) {
+        flushParagraph();
         hasHeading = true;
         pushCurrent();
         current = { label: heading.label, title: heading.title, paras: [] };
         return;
       }
-      if (!current) {
-        if (hasHeading) current = { label: '正文', title: '正文', paras: [] };
-        else beforeHeading.push(line);
-        return;
-      }
-      current.paras.push(line);
+      paragraphLines.push(line);
     });
+    flushParagraph();
     pushCurrent();
     if (!hasHeading) {
-      var paras = beforeHeading;
-      if (!paras.length) throw new Error('文件内容为空，无法导入');
-      chapters = [{ label: '全文', title: fallbackTitle || '全文', paras: paras }];
+      if (!beforeHeading.length) throw new Error('文件内容为空，无法导入');
+      chapters = [{ label: '全文', title: fallbackTitle || '全文', paras: beforeHeading }];
     } else if (beforeHeading.length) {
       chapters.unshift({ label: '前言', title: '前言', paras: beforeHeading });
     }
