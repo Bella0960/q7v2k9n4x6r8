@@ -705,7 +705,10 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     } catch (e) { return {}; }
   }
   function saveReaderSettings() {
-    try { localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+    // 背景图可能是很大的 dataURL，不写入 localStorage，避免挤占角色聊天和其他应用数据。
+    var compact = Object.assign({}, settings);
+    delete compact.image;
+    try { localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(compact)); } catch (e) {}
   }
   function readStoredBookFallback() {
     try {
