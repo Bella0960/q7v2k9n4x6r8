@@ -270,6 +270,7 @@ body{
   }
   var contentCacheKey='inspect_phone_content_v2_'+encodeURIComponent(roleId)+'_'+localDateKey();
   var phoneContent=makeFallbackContent();
+  var hasCachedContent=false;
   function normalizePhoneContent(data){
     if(!data||typeof data!=='object')return null;
     var notes=Array.isArray(data.notes)?data.notes.slice(0,5).map(function(n){
@@ -302,7 +303,7 @@ body{
   try{
     var cached=JSON.parse(localStorage.getItem(contentCacheKey)||'null');
     var normalized=normalizePhoneContent(cached);
-    if(normalized)applyPhoneContent(normalized);
+    if(normalized){applyPhoneContent(normalized);hasCachedContent=true;}
   }catch(e){}
   var notes=phoneContent.notes;
   var chats=phoneContent.chats;
@@ -310,6 +311,7 @@ body{
   var history=phoneContent.history;
 
   function generateRolePhoneContent(){
+    if(hasCachedContent)return;
     var cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
     if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')return;
     var today=localDateKey();
