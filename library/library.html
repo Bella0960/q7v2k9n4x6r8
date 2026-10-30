@@ -1234,7 +1234,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       '</div>' +
       '<div class="book-meta">' +
         '<span class="book-name">' + esc(b.name) + '</span>' +
-        '<span class="book-author">' + esc(b.author) + '</span>' +
+        '<span class="book-author">' + esc(b.author || '未知作者') + '</span>' +
       '</div>' +
     '</button>';
   }
@@ -1244,10 +1244,162 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   }
 
   function renderHome() {
-    var picks = books.slice(0, 2);
+    var picks = books.slice(0, 3);
     homeGrid.innerHTML = picks.map(cardHtml).join('');
     homeCount.textContent = pad2(picks.length) + ' Volumes';
-    homeIndexLabel.innerHTML = (picks.length === 1 ? 'ONE' : 'TWO') + '<br>PICKS<br>TODAY';
+    homeIndexLabel.innerHTML = (picks.length === 1 ? 'ONE' : picks.length === 2 ? 'TWO' : 'THREE') + '<br>PICKS<br>TODAY';
+  }
+
+  /* ===== 阅读器：段落与角色段评 ===== */
+  function paragraphHtml(book, chapter, chapterIndex, paragraph, paragraphIndex) {
+    var html = '<div class="paragraph-block"><p class="reader-paragraph">' + esc(paragraph) + '</p>';
+    if (settings.comments) {
+      html += '<div class="paragraph-tools"><button class="paragraph-comment-trigger" type="button" data-paragraph-comment="' +
+        paragraphIndex + '" aria-label="让 AI 角色评论这一段">段评</button></div>';
+      var roleId = settings.commentRoleId || '';
+      var comment = roleId ? getParagraphComment(book.id, chapterIndex, paragraphIndex, roleId) : null;
+      if (comment) {
+        html += '<div class="paragraph-comment-preview"><strong>' + esc(comment.roleName || '角色') + '</strong><span>' +
+          esc(comment.text || '') + '</span></div>';
+      }
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function refreshReaderParagraphs() {
+    if (!state.book) return;
+    var current = state.ch;
+    buildReader(state.book);
+    renderToc();
+    setMode(settings.mode);
+    goChapter(current, true);
+  }
+
+  function openParagraphComment(chapterIndex, paragraphIndex) {
+    if (!state.book || !state.book.chapters[chapterIndex]) return;
+    var chapter = state.book.chapters[chapterIndex];
+    var paragraph = chapter.paras[paragraphIndex];
+    if (!paragraph) return;
+    activeParagraph = {
+      bookId: state.book.id,
+      bookName: state.book.name,
+      chapterIndex: chapterIndex,
+      chapterTitle: chapter.title || chapter.label,
+      paragraphIndex: paragraphIndex,
+      paragraph: paragraph,
+      previous: chapter.paras[paragraphIndex - 1] || '',
+      next: chapter.paras[paragraphIndex + 1] || ''
+    };
+    renderRoleOptions();
+    paragraphContext.textContent = '《' + state.book.name + '》 · ' + (chapter.title || chapter.label) + '\n\n' + paragraph;
+    paragraphRoleSelect.value = settings.commentRoleId || '';
+    renderParagraphCommentThread();
+    toggleControls(false);
+    tocSheet.classList.remove('is-open');
+    readSettings.classList.remove('is-open');
+    dialog.classList.remove('is-open');
+    importDialog.classList.remove('is-open');
+    paragraphSheet.classList.add('is-open');
+    sheetBackdrop.classList.add('is-open');
+  }
+
+  function renderParagraphCommentThread() {
+    if (!activeParagraph) return;
+    var roleId = String(settings.commentRoleId || paragraphRoleSelect.value || '');
+    var role = readerRoleById(roleId);
+    if (!role) {
+      paragraphCommentThread.innerHTML = '<div class="paragraph-no-role">还没有可用的 AI 角色。请先创建角色，再回来为这段文字生成评论。</div>';
+      generateParagraphCommentBtn.disabled = true;
+      generateParagraphCommentBtn.textContent = '暂无可用角色';
+      return;
+    }
+    generateParagraphCommentBtn.disabled = false;
+    var comment = getParagraphComment(activeParagraph.bookId, activeParagraph.chapterIndex,
+      activeParagraph.paragraphIndex, roleId);
+    if (comment) {
+      paragraphCommentThread.innerHTML = '<div class="paragraph-comment-author">' + esc(comment.roleName || role.name) +
+        ' · ' + (comment.createdAt ? new Date(comment.createdAt).toLocaleString() : '已保存') +
+        '</div><div class="paragraph-comment-content">' + esc(comment.text || '') + '</div>';
+      generateParagraphCommentBtn.textContent = '重新生成段评';
+    } else {
+      paragraphCommentThread.innerHTML = '<div class="paragraph-comment-empty">还没有这位角色的段评。让 TA 读读这一段，再说说自己的感受。</div>';
+      generateParagraphCommentBtn.textContent = '请 TA 评论这段';
+    }
+  }
+
+  async function generateParagraphComment() {
+    if (!activeParagraph) return;
+    var roleId = String(paragraphRoleSelect.value || settings.commentRoleId || '');
+    var role = readerRoleById(roleId);
+    if (!role) { showToast('先选择一位 AI 角色'); return; }
+    var cfg = window.PhoneStorage && PhoneStorage.getApiConfig ? PhoneStorage.getApiConfig() : {};
+    if (!cfg || !String(cfg.apiKey || '').trim() || !window.PhoneAPI || typeof PhoneAPI.complete !== 'function') {
+      showToast('请先在设置中配置 API');
+      return;
+    }
+    settings.commentRoleId = roleId;
+    rsCommentRole.value = roleId;
+    paragraphRoleSelect.value = roleId;
+    saveReaderSettings();
+    var rolePersona = [role.persona, role.prompt, role.description, role.bio, role.personality,
+      role.character, role.speechStyle, role.systemPrompt].filter(Boolean).join('\n').slice(0, 2600);
+    var recentChat = [];
+    var memories = [];
+    try {
+      if (window.PhoneStorage && typeof PhoneStorage.getChatHistory === 'function') {
+        recentChat = PhoneStorage.getChatHistory(roleId).slice(-8).map(function (m) {
+          return (m.role === 'user' || m.role === 'sent' ? '用户：' : '角色：') +
+            String(m.text || m.content || '').slice(0, 180);
+        });
+      }
+      if (window.PhoneStorage && typeof PhoneStorage.getMemories === 'function') {
+        memories = PhoneStorage.getMemories(roleId).slice(-5).map(function (m) {
+          return typeof m === 'string' ? m : String(m.text || m.content || m.title || '');
+        }).filter(Boolean);
+      }
+    } catch (e) {}
+    var systemPrompt = '你正在扮演一个虚构 AI 角色，和用户一起阅读一本书。请严格按照角色设定、说话方式和已有关系回应，不要变成书评机器人，也不要泛泛总结。你的任务是针对指定段落写一条自然的阅读段评：可以表达喜欢、不解、猜测、吐槽、联想到角色自己的经历，或提出一个值得讨论的问题。必须具体回应这段文字中的细节。只输出角色会说的话，2-4 句话，不要写旁白或分析说明。';
+    var userPrompt = '角色：' + role.name + '\n角色设定：' + (rolePersona || '保持自然、克制的日常表达') +
+      '\n近期聊天：\n' + (recentChat.join('\n') || '无') +
+      '\n角色记忆：\n' + (memories.join('\n') || '无') +
+      '\n\n书名：《' + activeParagraph.bookName + '》' +
+      '\n章节：' + activeParagraph.chapterTitle +
+      '\n上一段：' + (activeParagraph.previous || '（这是本章开头）') +
+      '\n【请评论的段落】\n' + activeParagraph.paragraph +
+      '\n下一段：' + (activeParagraph.next || '（这是本章结尾）') +
+      '\n\n请像你本人读到这里时顺手留下的一条评论，不要复述全文，也不要替作者续写。';
+    var oldText = generateParagraphCommentBtn.textContent;
+    generateParagraphCommentBtn.disabled = true;
+    generateParagraphCommentBtn.textContent = 'TA 正在读这一段…';
+    try {
+      var response = await PhoneAPI.complete({
+        system: systemPrompt,
+        user: userPrompt,
+        temperature: 0.82,
+        timeoutMs: 26000
+      });
+      var commentText = String(response || '').trim().replace(/^["“”]+|["“”]+$/g, '');
+      if (!commentText) throw new Error('角色没有返回评论');
+      var comment = {
+        id: commentKey(activeParagraph.bookId, activeParagraph.chapterIndex, activeParagraph.paragraphIndex, roleId),
+        bookId: activeParagraph.bookId,
+        chapterIndex: activeParagraph.chapterIndex,
+        paragraphIndex: activeParagraph.paragraphIndex,
+        roleId: roleId,
+        roleName: role.name,
+        text: commentText.slice(0, 900),
+        createdAt: Date.now()
+      };
+      await saveReaderComment(comment);
+      renderParagraphCommentThread();
+      refreshReaderParagraphs();
+      showToast('已保存 ' + role.name + ' 的段评');
+    } catch (error) {
+      showToast(error && error.message ? error.message.slice(0, 70) : '段评生成失败，请重试');
+      generateParagraphCommentBtn.disabled = false;
+      generateParagraphCommentBtn.textContent = oldText;
+    }
   }
 
   /* ===== 阅读器：章节渲染 + 三种翻页模式 ===== */
@@ -1259,7 +1411,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
         '<div class="chapter-no">' + esc(ch.label) + '</div>' +
         '<h3 class="chapter-title">' + esc(ch.title) + '</h3>' +
       '</div>' +
-      ch.paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') +
+      ch.paras.map(function (p, paragraphIndex) {
+        return paragraphHtml(book, ch, i, p, paragraphIndex);
+      }).join('') +
       '<div class="reader-divider"></div>' +
       '<div class="reader-foot">' +
         '<div class="foot-copy">' + esc(book.name) + '<br>' + pos + '</div>' +
