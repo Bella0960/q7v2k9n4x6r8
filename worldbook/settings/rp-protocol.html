@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>角色扮演协议 · 小手机</title>
+<title>全局伴侣协议 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
@@ -322,8 +322,8 @@
 
       <!-- 说明 -->
       <div class="rp-desc-card">
-        <div class="rp-desc-title">角色扮演协议</div>
-        <div class="rp-desc-text">这里是 AI 的最高优先级指令，会覆盖默认人设规则。你写的每一句话都会被当成角色的核心行为准则。</div>
+        <div class="rp-desc-title">全局伴侣协议</div>
+        <div class="rp-desc-text">应用级统一设置。保存后，所有 AI 角色的单聊与群聊都会遵循这份互动协议；每个角色的人设、记忆和世界书仍按各自资料注入。</div>
         <div class="var-row">
           <span class="var-chip"><b>{{char}}</b> 角色名</span>
           <span class="var-chip"><b>{{user}}</b> 你的名字</span>
@@ -368,18 +368,28 @@
     if (window.history.length > 1) {
       window.history.back();
     } else {
-      window.location.href = '../../chat/chat/chat-settings.html';
+      window.location.href = '../../settings/settings.html';
     }
   });
 
-  function getRoleIdFromUrl() {
+  // 伴侣协议属于应用级设置，所有单聊与群聊共用同一份内容。
+  var STORAGE_KEY = 'chat_rp_protocol_';
+
+  function migrateLegacyProtocol() {
     try {
-      var id = new URLSearchParams(window.location.search).get('roleId');
-      return id ? id : '';
-    } catch (e) { return ''; }
+      // 兼容旧版按角色保存的协议：只复制第一份可用内容，不删除旧键。
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (!key || key === STORAGE_KEY || key.indexOf(STORAGE_KEY) !== 0) continue;
+        var value = localStorage.getItem(key);
+        if (value && value.trim()) {
+          localStorage.setItem(STORAGE_KEY, value);
+          return value;
+        }
+      }
+    } catch (e) {}
+    return '';
   }
-  var roleId = getRoleIdFromUrl();
-  var STORAGE_KEY = 'chat_rp_protocol_' + roleId;
 
   var textarea = document.getElementById('protocolText');
 
@@ -508,14 +518,11 @@
     '你就是她/他，你直接说话。'
   ].join('\n');
 
-  // 加载回填
+  // 加载全局协议；若旧版本只保存过角色专属协议，则迁移一份为全局版本。
   try {
     var saved = localStorage.getItem(STORAGE_KEY);
-    if (saved != null && saved.trim()) {
-      textarea.value = saved;
-    } else {
-      textarea.value = DEFAULT_PROTOCOL;
-    }
+    if (saved == null || !saved.trim()) saved = migrateLegacyProtocol();
+    textarea.value = saved != null && saved.trim() ? saved : DEFAULT_PROTOCOL;
   } catch (e) {
     textarea.value = DEFAULT_PROTOCOL;
   }
