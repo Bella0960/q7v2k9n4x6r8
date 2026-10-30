@@ -9,6 +9,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const inspectPhone = read('inspect-phone/phone.html');
+const forumPage = read('forum/forum.html');
+const footprint = read('chat/footprint/footprint.html');
 const extras = read('chat/chat/js/chat-extras.js');
 const search = read('chat/chat/chat-search.html');
 const storage = read('shared/js/phone/phone_storage.js');
@@ -613,4 +616,39 @@ test('known external history writers remain on the migration inventory', () => {
       `${caller} no longer appears to use the documented chat-history contract; review before migrating it`
     );
   }
+});
+
+test('inspect phone generates and caches private content by character and local date', () => {
+  assert.match(inspectPhone, /phone_storage\.js/);
+  assert.match(inspectPhone, /phone_api\.js/);
+  assert.match(inspectPhone, /PhoneAPI\.completeJSON/);
+  assert.match(inspectPhone, /roleBio/);
+  assert.match(inspectPhone, /inspect_phone_content_v2_/);
+  assert.match(inspectPhone, /encodeURIComponent\(roleId\)/);
+  assert.match(inspectPhone, /function normalizePhoneContent/);
+  assert.match(inspectPhone, /escHtml/);
+});
+
+test('forum creates a fallback for every role and upgrades it with persona-based AI content', () => {
+  assert.match(forumPage, /phone_api\.js/);
+  assert.match(forumPage, /function forumRoleBio/);
+  assert.match(forumPage, /function ensureRolePosts/);
+  assert.match(forumPage, /function generateRolePosts/);
+  assert.match(forumPage, /PhoneAPI\.completeJSON/);
+  assert.match(forumPage, /post\.generatedBy !== 'ai'/);
+  assert.match(forumPage, /post\.generatedBy='ai'/);
+  assert.match(forumPage, /post\.roleId=roleId/);
+});
+
+test('footprint follows the local current date and keeps week, calendar and generated data role-scoped', () => {
+  assert.match(footprint, /const todayKey = \(\) =>/);
+  assert.ok(footprint.indexOf('const pad =') < footprint.indexOf('let currentDate = todayKey()'));
+  assert.match(footprint, /function renderWeekDays\(\)/);
+  assert.match(footprint, /data-date/);
+  assert.match(footprint, /currentDate = todayKey\(\)/);
+  assert.match(footprint, /loadFootprintData\(requestRoleId\)/);
+  assert.match(footprint, /localData\[requestDate\] = items/);
+  assert.match(footprint, /function findItem\(id\)/);
+  assert.doesNotMatch(footprint, /currentDate = '2025-04-16'/);
+  assert.doesNotMatch(footprint, /currentDate = '2025-04-' \+/);
 });
