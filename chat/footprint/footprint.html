@@ -103,7 +103,13 @@
   
   .week-days { display: flex; justify-content: space-between; padding: 10px 22px 20px; }
   
-  .w-day { 
+  .w-day {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    -webkit-appearance: none;
     display: flex; 
     flex-direction: column; 
     align-items: center; 
@@ -542,6 +548,8 @@
   // 真实角色列表：与项目其它页面共用 localStorage 键 ai_custom_characters
   // 每项形如 { id, name, avatar?(dataURL), memory? }
   let realRoles = [];
+  const pad = n => n < 10 ? '0' + n : '' + n;
+  const periodOf = h => h < 6 ? '凌晨' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : '夜晚';
   let currentRole = '宝宝';
   let currentRoleId = '';
   const todayKey = () => {
@@ -550,9 +558,6 @@
   };
   let currentDate = todayKey();
   let viewMonth = currentDate.slice(0, 7);
-
-  const pad = n => n < 10 ? '0' + n : '' + n;
-  const periodOf = h => h < 6 ? '凌晨' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : '夜晚';
   
   // 从 localStorage 读取角色足迹数据
   function loadFootprintData(roleId) {
@@ -953,7 +958,6 @@
       renderCalendar();
       renderTimeline();
       updateCount();
-      syncWeekCapsule();
       return;
     }
     // 日历列表 → 详情（带 ID）
@@ -1000,6 +1004,7 @@
 
   // ================= 初始化 =================
   renderRoles();      // 先按真实角色重渲两条角色条，并校正 currentRole
+  syncWeekCapsule();  // 首次打开就显示真实日期所在的一周
   renderTimeline();
   updateCount();
   renderCalendar();
