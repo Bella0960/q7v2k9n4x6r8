@@ -730,6 +730,33 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       localStorage.setItem('maomao_reader_local_books_v1', JSON.stringify(stored));
     });
   }
+  function removeLocalBooks() {
+    var removedIds = books.filter(function (b) { return b.isLocal; }).map(function (b) { return b.id; });
+    return idbGetAll('comments').catch(function () { return []; }).then(function (items) {
+      return Promise.all((items || []).filter(function (c) { return removedIds.indexOf(c.bookId) !== -1; })
+        .map(function (c) { return idbDelete('comments', c.id).catch(function () {}); }));
+    }).catch(function () {}).then(function () {
+      return Promise.all(removedIds.map(function (id) { return idbDelete('books', id).catch(function () {}); }));
+    }).catch(function () {}).then(function () {
+      var fallback = readStoredBookFallback().filter(function (b) { return removedIds.indexOf(b.id) === -1; });
+      try { localStorage.setItem('maomao_reader_local_books_v1', JSON.stringify(fallback)); } catch (e) {}
+      try {
+        var savedComments = JSON.parse(localStorage.getItem('maomao_reader_comments_v1') || '[]');
+        if (Array.isArray(savedComments)) {
+          savedComments = savedComments.filter(function (c) { return removedIds.indexOf(c.bookId) === -1; });
+          localStorage.setItem('maomao_reader_comments_v1', JSON.stringify(savedComments));
+        }
+      } catch (e) {}
+      Object.keys(commentCache).forEach(function (key) {
+        if (removedIds.some(function (id) { return key.indexOf(String(id) + '|') === 0; })) delete commentCache[key];
+      });
+      books = books.filter(function (b) { return !b.isLocal; });
+      renderShelf();
+      renderHome();
+      showToast('已清空本地书籍');
+    });
+  }
+
   function loadReaderComments() {
     return idbGetAll('comments').then(function (items) {
       commentCache = Object.create(null);
@@ -1520,12 +1547,17 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   function closeSheets() {
     tocSheet.classList.remove('is-open');
     dialog.classList.remove('is-open');
+    importDialog.classList.remove('is-open');
     readSettings.classList.remove('is-open');
+    paragraphSheet.classList.remove('is-open');
     sheetBackdrop.classList.remove('is-open');
+    pendingImportedBook = null;
   }
   function openToc() {
     toggleControls(false);
     dialog.classList.remove('is-open');
+    importDialog.classList.remove('is-open');
+    paragraphSheet.classList.remove('is-open');
     readSettings.classList.remove('is-open');
     tocSheet.classList.add('is-open');
     sheetBackdrop.classList.add('is-open');
@@ -1534,12 +1566,16 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     toggleControls(false);
     tocSheet.classList.remove('is-open');
     dialog.classList.remove('is-open');
+    importDialog.classList.remove('is-open');
+    paragraphSheet.classList.remove('is-open');
     readSettings.classList.add('is-open');
     sheetBackdrop.classList.add('is-open');
   }
   function openDialog(title, body) {
     toggleControls(false);
     tocSheet.classList.remove('is-open');
+    importDialog.classList.remove('is-open');
+    paragraphSheet.classList.remove('is-open');
     readSettings.classList.remove('is-open');
     document.getElementById('dialogTitle').textContent = title;
     document.getElementById('dialogBody').textContent = body;
@@ -1638,6 +1674,8 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     });
     rsComments.classList.toggle('is-on', settings.comments);
     rsComments.setAttribute('aria-checked', settings.comments ? 'true' : 'false');
+    if (rsCommentRole) rsCommentRole.value = settings.commentRoleId || '';
+    saveReaderSettings();
   }
 
   /* ===== 事件绑定 ===== */
@@ -1654,9 +1692,19 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     if (book) go('read-' + book.id);
   });
 
-  /* 阅读器：点击正文切换气泡控制栏 */
-  readerBody.addEventListener('click', function () {
-    if (tocSheet.classList.contains('is-open') || readSettings.classList.contains('is-open')) return;
+  /* 段评入口优先处理；普通正文点击才呼出阅读控制栏。 */
+  readerBody.addEventListener('click', function (e) {
+    var trigger = e.target.closest ? e.target.closest('[data-paragraph-comment]') : null;
+    if (trigger) {
+      e.preventDefault();
+      var page = trigger.closest('.chapter-page');
+      var chapterIndex = page ? parseInt(page.getAttribute('data-ch'), 10) : state.ch;
+      var paragraphIndex = parseInt(trigger.getAttribute('data-paragraph-comment'), 10);
+      openParagraphComment(chapterIndex, paragraphIndex);
+      return;
+    }
+    if (tocSheet.classList.contains('is-open') || readSettings.classList.contains('is-open') ||
+        paragraphSheet.classList.contains('is-open') || importDialog.classList.contains('is-open')) return;
     toggleControls();
   });
 
@@ -1722,11 +1770,28 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       setMode(el.dataset.mode);
     });
   });
-  /* 段评开关 */
+  /* 段评显示开关：每段显示入口，评论按书籍、章节、段落、角色分别保存。 */
   rsComments.addEventListener('click', function () {
     settings.comments = !settings.comments;
     applySettings();
+    saveReaderSettings();
+    refreshReaderParagraphs();
   });
+  rsCommentRole.addEventListener('change', function () {
+    settings.commentRoleId = String(rsCommentRole.value || '');
+    paragraphRoleSelect.value = settings.commentRoleId;
+    saveReaderSettings();
+    refreshReaderParagraphs();
+  });
+  paragraphRoleSelect.addEventListener('change', function () {
+    settings.commentRoleId = String(paragraphRoleSelect.value || '');
+    rsCommentRole.value = settings.commentRoleId;
+    saveReaderSettings();
+    renderParagraphCommentThread();
+    refreshReaderParagraphs();
+  });
+  generateParagraphCommentBtn.addEventListener('click', generateParagraphComment);
+  document.getElementById('closeParagraphSheet').addEventListener('click', closeSheets);
   /* 背景图片：静默上传本地图片 */
   rsUpload.addEventListener('click', function () {
     rsImageInput.value = '';
@@ -1752,6 +1817,13 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   });
   sheetBackdrop.addEventListener('click', closeSheets);
   document.getElementById('dialogOk').addEventListener('click', closeSheets);
+  document.getElementById('cancelBookImport').addEventListener('click', closeImportDialog);
+  document.getElementById('confirmBookImport').addEventListener('click', confirmImportedBook);
+  importInput.addEventListener('change', function () {
+    var file = importInput.files && importInput.files[0];
+    if (file) importBookFile(file);
+    importInput.value = '';
+  });
 
   /* 返回桌面 */
   Array.prototype.forEach.call(document.querySelectorAll('.js-to-desktop'), function (el) {
@@ -1773,60 +1845,14 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   document.getElementById('clearRow').addEventListener('click', function () {
     var hasLocal = books.some(function (b) { return b.isLocal; });
     if (!hasLocal) { showToast('没有本地书籍'); return; }
-    books = books.filter(function (b) { return !b.isLocal; });
-    renderShelf();
-    renderHome();
-    showToast('已清空本地书籍');
+    if (!confirm('清空后会移除所有导入的书籍和对应段评，示例书籍不会受影响。继续吗？')) return;
+    removeLocalBooks().catch(function () { showToast('清空失败，请稍后重试'); });
   });
 
-  /* ===== 数据与操作：导入本地 .txt ===== */
+  /* ===== 数据与操作：选择本地书籍 ===== */
   document.getElementById('importRow').addEventListener('click', function () {
-    importInput.value = '';          // 允许重复选择同一个文件
-    importInput.click();             // 触发隐藏的文件选择器
-  });
-
-  importInput.addEventListener('change', function () {
-    var file = importInput.files && importInput.files[0];
-    if (!file) return;
-
-    var reader = new FileReader();
-
-    reader.onload = function () {
-      var buf = reader.result;
-      var text = new TextDecoder('utf-8').decode(buf);
-      /* 中文 txt 常见 GBK 编码，出现替换字符时回退解码 */
-      if (text.indexOf('\uFFFD') !== -1) {
-        try { text = new TextDecoder('gbk').decode(buf); } catch (e) { /* 保持 utf-8 */ }
-      }
-
-      var paragraphs = text.replace(/\r\n?/g, '\n').split('\n')
-        .map(function (l) { return l.trim(); })
-        .filter(function (l) { return l.length > 0; });
-
-      if (paragraphs.length === 0) {
-        showToast('文件内容为空');
-        return;
-      }
-
-      var name = file.name.replace(/\.txt$/i, '').trim() || '未命名';
-      books.push({
-        id: 'local_' + Date.now(),
-        name: name,
-        author: '本地导入',
-        isLocal: true,
-        chapters: [
-          { label: '本地文本', title: name, paras: paragraphs }
-        ]
-      });
-
-      renderShelf();
-      renderHome();
-      showToast('已导入《' + name + '》');
-    };
-
-    reader.onerror = function () { showToast('文件读取失败'); };
-
-    reader.readAsArrayBuffer(file);
+    importInput.value = '';
+    importInput.click();
   });
 
   /* 让 TA 写一本：先给一个极简弹窗占位 */
