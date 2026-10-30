@@ -578,12 +578,9 @@
 
             showToast('发表成功');
             setTimeout(function () {
-                // 如果有 @好友，触发 AI 回复
-                if (post.mentions && post.mentions.length) {
-                    triggerMentionsReply(post);
-                }
-                location.href = '../chat/moments/moments.html';
-            }, 500);
+                // 在动态空间页面发起 AI 回复，避免跳转离开时请求被浏览器取消。
+                location.href = '../chat/moments/moments.html?publishedPostId=' + encodeURIComponent(post.id);
+            }, 250);
         });
 
         /* ========== @好友触发 AI 回复 ========== */
