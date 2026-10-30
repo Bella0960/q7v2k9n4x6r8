@@ -3,6 +3,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>MAOMAO · 角色足迹</title>
+<script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/phone_api.js"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 <style>
@@ -542,8 +544,12 @@
   let realRoles = [];
   let currentRole = '宝宝';
   let currentRoleId = '';
-  let currentDate = '2025-04-16';
-  let viewMonth = '2025-04';
+  const todayKey = () => {
+    const now = new Date();
+    return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  };
+  let currentDate = todayKey();
+  let viewMonth = currentDate.slice(0, 7);
 
   const pad = n => n < 10 ? '0' + n : '' + n;
   const periodOf = h => h < 6 ? '凌晨' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : '夜晚';
@@ -568,12 +574,11 @@
   
   // 获取某角色某天的足迹项：先从 localStorage 读，没有再从演示数据 DATA 读
   const itemsOf = (role, date) => {
-    // 先按角色 ID 从 localStorage 读
+    // 先按角色 ID 从 localStorage 读，真实行程优先于演示数据。
     if (currentRoleId) {
       const localData = loadFootprintData(currentRoleId);
-      if (localData[date]) return localData[date];
+      if (Array.isArray(localData[date])) return localData[date];
     }
-    // 再从演示数据 DATA 读
     return (DATA[role] && DATA[role][date]) || [];
   };
 
@@ -603,13 +608,12 @@
 
   function renderRoles() {
     realRoles = loadRealRoles();
-    // 如果当前选中的角色不在真实列表里，回退到第一个真实角色；都没有就保留演示名
-    const names = realRoles.map(r => r.name).filter(Boolean);
-    if (!names.includes(currentRole)) {
-      currentRole = names[0] || currentRole;
-      // 同时更新角色 ID
-      const matched = realRoles.find(r => r.name === currentRole);
-      currentRoleId = matched ? (matched.id || '') : '';
+    // 使用角色 ID 维持选择，避免重名角色串用足迹。
+    let selected = realRoles.find(r => String(r.id != null ? r.id : r.name) === String(currentRoleId));
+    if (!selected) selected = realRoles[0] || null;
+    if (selected) {
+      currentRole = selected.name || '角色';
+      currentRoleId = String(selected.id != null ? selected.id : selected.name);
     }
 
     const build = (containerId) => {
@@ -626,7 +630,7 @@
       }
       box.innerHTML = realRoles.map(r => {
         const nm = r.name || '角色';
-        const rid = r.id || '';
+        const rid = r.id != null ? String(r.id) : String(r.name || '');
         const active = nm === currentRole ? ' active' : '';
         return '<button class="role-item' + active + '" data-role-name="' + nm + '" data-role-id="' + rid + '">' +
                  avatarHTML(r) +
@@ -674,10 +678,11 @@
     const prevDays = new Date(y, m - 1, 0).getDate();
     const inMonth = viewMonth === currentDate.slice(0, 7);
     const curDay = Number(currentDate.slice(8, 10));
-    const roleDays = DATA[currentRole] || {};
+    const roleDays = Object.assign({}, DATA[currentRole] || {}, loadFootprintData(currentRoleId));
 
     let cells = '<div class="cal-head">一</div><div class="cal-head">二</div><div class="cal-head">三</div><div class="cal-head">四</div><div class="cal-head">五</div><div class="cal-head">六</div><div class="cal-head">日</div>';
-    for (let i = 0; i < 35; i++) {
+    const totalCells = Math.ceil((lead + daysIn) / 7) * 7;
+    for (let i = 0; i < totalCells; i++) {
       const dayNum = i - lead + 1;
       if (dayNum < 1) {
         cells += `<div class="cal-day outside">${prevDays + dayNum}</div>`;
@@ -710,10 +715,15 @@
 
   // ================= 详情联动（按 ID） =================
   function findItem(id) {
-    const role = DATA[currentRole];
-    if (!role) return null;
-    for (const date in role) {
-      const it = role[date].find(x => x.id === id);
+    const localRole = loadFootprintData(currentRoleId);
+    for (const date in localRole) {
+      const list = Array.isArray(localRole[date]) ? localRole[date] : [];
+      const it = list.find(x => x && String(x.id) === String(id));
+      if (it) return { item: it, date: date };
+    }
+    const demoRole = DATA[currentRole] || {};
+    for (const date in demoRole) {
+      const it = demoRole[date].find(x => String(x.id) === String(id));
       if (it) return { item: it, date: date };
     }
     return null;
@@ -739,22 +749,26 @@
   function refreshToday() {
     const icon = document.querySelector('.top-bar .icon-btn svg');
     if (icon) { icon.classList.remove('rot'); void icon.offsetWidth; icon.classList.add('rot'); }
-    
+
+    const requestRoleId = String(currentRoleId || '');
+    const requestDate = String(currentDate);
+    const roleInfo = realRoles.find(r => String(r.id != null ? r.id : r.name) === requestRoleId);
+    const requestRoleName = currentRole;
+    const roleBio = String((roleInfo && [roleInfo.description, roleInfo.bio, roleInfo.personality,
+      roleInfo.character, roleInfo.speechStyle, roleInfo.prompt, roleInfo.systemPrompt].filter(Boolean).join('\n')) || '');
+    if (!requestRoleId) {
+      showToast('请先选择一个角色');
+      return;
+    }
     showToast('正在生成今日行程...');
-    
-    // 获取当前角色的完整信息
-    const roleInfo = realRoles.find(r => String(r.id) === String(currentRoleId));
-    const roleName = currentRole;
-    const roleBio = String((roleInfo && (roleInfo.description || roleInfo.bio || roleInfo.personality || roleInfo.character)) || '');
-    
-    // 检查有没有配置 API
+
     const cfg = window.PhoneStorage && PhoneStorage.getApiConfig ? PhoneStorage.getApiConfig() : {};
     const canCallAI = cfg && String(cfg.apiKey || '').trim() && window.PhoneAPI && typeof window.PhoneAPI.complete === 'function';
-    
+
     if (canCallAI && roleBio) {
       // 调用 AI 根据人设生成行程
       const systemPrompt = '你是一个行程规划助手。根据角色的人设，生成她/他今天一天的行程时间线。输出格式要求：每行一条，格式为"时间 | 标题 | 描述"，比如"08:30 | 起床 | 阳光透过窗帘洒进来，慢慢醒来"。生成4-6条行程，覆盖一天的不同时段（早上、中午、下午、晚上）。行程要符合角色的人设和生活习惯，不要千篇一律。只输出行程列表，不要其他解释。';
-      const userPrompt = '角色名字：' + roleName + '\n角色人设：' + roleBio + '\n\n请生成这个角色今天一天的行程时间线。';
+      const userPrompt = '日期：' + requestDate + '\n角色名字：' + requestRoleName + '\n角色人设：' + roleBio + '\n\n请生成这个角色在该日期一天的行程时间线。';
       
       window.PhoneAPI.complete({
         system: systemPrompt,
@@ -774,7 +788,7 @@
           // 随机选一个配图
           const imgs = [IMG.meadow, IMG.plant, IMG.sea, IMG.star, IMG.flower];
           return {
-            id: currentRoleId + '-' + currentDate + '-' + idx,
+            id: requestRoleId + '-' + requestDate + '-' + idx,
             time: time,
             title: title,
             desc: desc,
@@ -786,47 +800,56 @@
         
         if (items.length >= 2) {
           // 保存到 localStorage
-          const localData = loadFootprintData(currentRoleId);
-          localData[currentDate] = items;
-          saveFootprintData(currentRoleId, localData);
-          renderTimeline();
-          updateCount();
-          renderCalendar();
-          showToast('已根据人设生成今日行程');
+          const localData = loadFootprintData(requestRoleId);
+          localData[requestDate] = items;
+          saveFootprintData(requestRoleId, localData);
+          if (String(currentRoleId) === requestRoleId && currentDate === requestDate) {
+            renderTimeline();
+            updateCount();
+            renderCalendar();
+            showToast('已根据人设生成今日行程');
+          }
         } else {
           // 解析失败，用默认数据
-          generateDefaultFootprint();
+          generateDefaultFootprint(requestRoleId, requestDate, true);
         }
       }).catch(function() {
         // 调用失败，用默认数据
-        generateDefaultFootprint();
+        generateDefaultFootprint(requestRoleId, requestDate, true);
       });
     } else {
       // 没有 API Key，直接用默认数据
       setTimeout(function() {
-        generateDefaultFootprint();
+        generateDefaultFootprint(requestRoleId, requestDate, true);
       }, 600);
     }
   }
   
   // 生成默认足迹（fallback）
-  function generateDefaultFootprint() {
-    if (currentRoleId) {
-      const localData = loadFootprintData(currentRoleId);
-      if (!localData[currentDate] || !localData[currentDate].length) {
-        const defaultItems = [
-          { id: currentRoleId + '-' + currentDate + '-1', time: '09:00', title: '早安时光', desc: '新的一天开始了，慢慢醒来。', tag: '♡ 家里 · 安静', loc: '家里 · 安静', img: IMG.meadow },
-          { id: currentRoleId + '-' + currentDate + '-2', time: '14:30', title: '午后小憩', desc: '阳光正好，喝杯茶休息一下。', tag: '⌖ 窗边 · 松弛', loc: '窗边 · 松弛', img: IMG.plant },
-          { id: currentRoleId + '-' + currentDate + '-3', time: '20:00', title: '夜晚散步', desc: '饭后走走，看看路灯和星星。', tag: '✦ 楼下 · 放松', loc: '楼下 · 放松', img: IMG.star }
-        ];
-        localData[currentDate] = defaultItems;
-        saveFootprintData(currentRoleId, localData);
-      }
+  function generateDefaultFootprint(targetRoleId, targetDate, forceReplace) {
+    const targetId = String(targetRoleId || currentRoleId || '');
+    const dateKey = String(targetDate || currentDate || todayKey());
+    if (!targetId) return;
+    const localData = loadFootprintData(targetId);
+    if (forceReplace || !Array.isArray(localData[dateKey]) || !localData[dateKey].length) {
+      const dateSeed = Number(dateKey.replace(/-/g, '').slice(-4)) || 1;
+      const variants = [
+        { time: '09:00', title: '慢慢开始的一天', desc: '把今天要做的事理清楚，再按照自己的节奏出发。', tag: '♡ 日常 · 安静', loc: '日常 · 安静', img: IMG.meadow },
+        { time: '14:30', title: '留一点空白', desc: '中途停下来休息一会儿，让思绪也有喘息的空间。', tag: '⌖ 午后 · 松弛', loc: '午后 · 松弛', img: IMG.plant },
+        { time: '20:00', title: '收好今天的心情', desc: '回想今天发生的小事，把值得记住的部分留下来。', tag: '✦ 夜晚 · 放松', loc: '夜晚 · 放松', img: IMG.star }
+      ];
+      const offset = dateSeed % variants.length;
+      localData[dateKey] = variants.map(function (item, idx) {
+        return Object.assign({ id: targetId + '-' + dateKey + '-' + (idx + 1) }, variants[(idx + offset) % variants.length]);
+      });
+      saveFootprintData(targetId, localData);
     }
-    renderTimeline();
-    updateCount();
-    renderCalendar();
-    showToast('已刷新今日行程');
+    if (String(currentRoleId) === targetId && currentDate === dateKey) {
+      renderTimeline();
+      updateCount();
+      renderCalendar();
+      showToast('已刷新今日行程');
+    }
   }
 
   function showToast(msg) {
@@ -855,14 +878,32 @@
     if (pageId === 'detail') navs[2].classList.add('active');
   }
 
-  // ================= 周历胶囊与日历同步 =================
-  function syncWeekCapsule() {
-    const dn = Number(currentDate.slice(8, 10));
-    document.querySelectorAll('.week-days .w-day').forEach(d => {
-      const span = d.querySelector('span:last-child');
-      d.classList.toggle('active', span && span.textContent === String(dn));
-    });
+  // ================= 周历胶囊与日历同步（始终围绕当前选中日期） =================
+  function renderWeekDays() {
+    const box = document.querySelector('.week-days');
+    if (!box) return;
+    const parts = currentDate.split('-').map(Number);
+    const selected = new Date(parts[0], parts[1] - 1, parts[2]);
+    const mondayOffset = (selected.getDay() + 6) % 7;
+    const monday = new Date(parts[0], parts[1] - 1, parts[2] - mondayOffset);
+    const weekdayNames = ['日', '一', '二', '三', '四', '五', '六'];
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+      const key = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      dates.push({ key: key, day: d.getDate(), weekday: weekdayNames[d.getDay()] });
+    }
+    box.innerHTML = dates.map(function (d) {
+      return '<button type="button" class="w-day' + (d.key === currentDate ? ' active' : '') +
+        '" data-date="' + d.key + '"><span>' + d.weekday + '</span><span>' + d.day + '</span></button>';
+    }).join('');
+    const monthLabel = document.querySelector('.week-header span');
+    if (monthLabel) {
+      monthLabel.textContent = new Date(parts[0], parts[1] - 1, parts[2])
+        .toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    }
   }
+  function syncWeekCapsule() { renderWeekDays(); }
 
   // ================= 详情页 ··· 浮动菜单开合 =================
   function toggleFpMenu() { document.body.classList.toggle('fp-menu-open'); }
@@ -882,7 +923,7 @@
       const rid = item.dataset.roleId || '';
       if (key) {
         currentRole = key;
-        currentRoleId = rid;
+        currentRoleId = String(rid || key);
         renderRoles();          // 重渲两条角色条，同步 active 高亮
         renderTimeline();
         updateCount();
@@ -892,16 +933,13 @@
     }
     // 周历胶囊切换（黑色胶囊移动，数据刷新为该日期）
     const day = e.target.closest('.w-day');
-    if (day) {
-      const span = day.querySelector('span:last-child');
-      if (span) {
-        currentDate = '2025-04-' + pad(Number(span.textContent));
-        viewMonth = '2025-04';
-        syncWeekCapsule();
-        renderTimeline();
-        updateCount();
-        renderCalendar();
-      }
+    if (day && day.dataset.date) {
+      currentDate = day.dataset.date;
+      viewMonth = currentDate.slice(0, 7);
+      syncWeekCapsule();
+      renderTimeline();
+      updateCount();
+      renderCalendar();
       return;
     }
     // 主页时间线 → 详情（带 ID）
@@ -911,6 +949,7 @@
     const calDay = e.target.closest('.cal-day');
     if (calDay && calDay.dataset.day) {
       currentDate = viewMonth + '-' + pad(Number(calDay.dataset.day));
+      syncWeekCapsule();
       renderCalendar();
       renderTimeline();
       updateCount();
@@ -944,8 +983,8 @@
       if (act === 'all') { switchPage('calendar'); }
       else if (act === 'role') { switchPage('home'); }
       else if (act === 'today') {
-        currentDate = '2025-04-16';
-        viewMonth = '2025-04';
+        currentDate = todayKey();
+        viewMonth = currentDate.slice(0, 7);
         syncWeekCapsule();
         renderTimeline();
         updateCount();
