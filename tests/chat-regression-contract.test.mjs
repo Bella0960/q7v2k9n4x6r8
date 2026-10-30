@@ -635,7 +635,7 @@ test('forum creates a fallback for every role and upgrades it with persona-based
   assert.match(forumPage, /function ensureRolePosts/);
   assert.match(forumPage, /function generateRolePosts/);
   assert.match(forumPage, /PhoneAPI\.completeJSON/);
-  assert.match(forumPage, /post\.generatedBy !== 'ai'/);
+  assert.match(forumPage, /post\.generatedBy\s*!==\s*'ai'/);
   assert.match(forumPage, /post\.generatedBy='ai'/);
   assert.match(forumPage, /post\.roleId=roleId/);
 });
