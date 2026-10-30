@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>查手机</title>
+<script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/phone_api.js"></script>
 <style>
 :root{color-scheme:light;--ink:#222226;--muted:#8d8d95;--line:#e5e5ea;--bg:#f7f7f9;--card:#fff;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 *{box-sizing:border-box}
@@ -221,42 +223,111 @@ body{
 
   var titles={album:'相册',chat:'聊天',notes:'备忘录',forum:'论坛',browser:'浏览器',settings:'设置'};
   
-  // 根据角色生成手机内容
-  var roleName=role.name||'角色';
-  var roleBio=String(role.description||role.bio||role.personality||'');
-  
-  // 备忘录：根据角色生成
-  var notes=[
-    {date:'10 月 28 日',text:'今天有点累，但看到窗外的阳光又觉得还好。生活嘛，就是这样断断续续的。'},
-    {date:'10 月 25 日',text:'突然想起以前的一些小事。时间过得真快，有些事好像就在昨天，却已经过去很久了。'},
-    {date:'10 月 20 日',text:'今天做了个决定。不管对不对，先做了再说。' + (roleBio?'':'')}
-  ];
-  
-  // 聊天记录：以角色的视角
-  var chats=[
-    {name:'老朋友',messages:[
-      {side:'ai',text:'最近怎么样？好久没联系了。'},
-      {side:'me',text:'还行吧，老样子。你呢？'},
-      {side:'ai',text:'我也差不多。有空出来坐坐？'}
-    ]},
-    {name:'家人',messages:[
-      {side:'ai',text:'记得按时吃饭，别总熬夜。'},
-      {side:'me',text:'知道啦，你也是。'},
-      {side:'ai',text:'天气凉了，多穿点。'}
-    ]},
-    {name:'同事',messages:[
-      {side:'ai',text:'那个文件你看了吗？'},
-      {side:'me',text:'还没，今天下班前给你。'},
-      {side:'ai',text:'不急，明天也行。'}
-    ]}
-  ];
-  
-  var posts=[
-    {title:'今天遇到一件小事',text:'虽然不大，但就是觉得心情好了一点。有时候幸福就是这么简单。'},
-    {title:'有没有人喜欢这种天气',text:'不冷不热的，风吹着很舒服。适合出去走走。'},
-    {title:'最近在看一本书',text:'还没看完，但已经觉得很值得了。'}
-  ];
-  var history=['天气查询','附近咖啡店推荐','电影票预订','快递单号查询'];
+  // 当前查看的角色：所有私人内容都按角色 ID 与日期隔离。
+  var roleName=String(role.name||'角色');
+  var roleBio=[role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
+    .filter(Boolean).join('\n').replace(/\s+/g,' ').trim().slice(0,2600);
+  var roleId=String(role.id!==undefined&&role.id!==null?role.id:(requestedId||roles.indexOf(role)));
+  function localDateKey(date){
+    var d=date||new Date();
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  }
+  function escHtml(value){
+    return String(value==null?'':value).replace(/[&<>"']/g,function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+  function safeText(value,max){
+    return String(value==null?'':value).replace(/[\u0000-\u001f]/g,' ').trim().slice(0,max||240);
+  }
+  function makeFallbackContent(){
+    var dateLabel=(new Date().getMonth()+1)+'月'+new Date().getDate()+'日';
+    return {
+      notes:[
+        {date:dateLabel,text:roleName+'把今天想记住的一件小事留在这里。'},
+        {date:'最近',text:'有空的时候，想把还没完成的事情慢慢整理好。'},
+        {date:'备忘',text:'不必把每一天都安排得很满，留一点时间给自己。'}
+      ],
+      chats:[
+        {name:'熟悉的人',messages:[
+          {side:'ai',text:'今天过得怎么样？'},
+          {side:'me',text:'还不错，刚好有一点自己的时间。'},
+          {side:'ai',text:'那就好，记得早点休息。'}
+        ]},
+        {name:'联系人',messages:[
+          {side:'ai',text:'上次说的事情，后来怎么样了？'},
+          {side:'me',text:'我记着呢，等忙完这阵再和你说。'},
+          {side:'ai',text:'好，不着急。'}
+        ]}
+      ],
+      posts:[
+        {title:'留给今天的一句话',text:'有些想法不需要马上得到答案，先把它记下来就好。'},
+        {title:'最近的小发现',text:'日常里总有一些不起眼的瞬间，回头想想却值得留下。'},
+        {title:'随手记录',text:'今天也有认真生活，剩下的事情明天再慢慢处理。'}
+      ],
+      history:['天气与出行','收藏的网页','最近查过的资料']
+    };
+  }
+  var contentCacheKey='inspect_phone_content_v2_'+encodeURIComponent(roleId)+'_'+localDateKey();
+  var phoneContent=makeFallbackContent();
+  function normalizePhoneContent(data){
+    if(!data||typeof data!=='object')return null;
+    var notes=Array.isArray(data.notes)?data.notes.slice(0,5).map(function(n){
+      return {date:safeText(n&&n.date,30)||'最近',text:safeText(n&&n.text,320)};
+    }).filter(function(n){return n.text;}):[];
+    var chats=Array.isArray(data.chats)?data.chats.slice(0,4).map(function(c){
+      var messages=Array.isArray(c&&c.messages)?c.messages.slice(0,8).map(function(m){
+        return {side:m&&m.side==='me'?'me':'ai',text:safeText(m&&m.text,220)};
+      }).filter(function(m){return m.text;}):[];
+      return {name:safeText(c&&c.name,36)||'联系人',messages:messages};
+    }).filter(function(c){return c.messages.length;}):[];
+    var posts=Array.isArray(data.posts)?data.posts.slice(0,5).map(function(p){
+      return {title:safeText(p&&p.title,80),text:safeText(p&&p.text,360)};
+    }).filter(function(p){return p.title||p.text;}):[];
+    var history=Array.isArray(data.history)?data.history.slice(0,6).map(function(v){return safeText(v,80);}).filter(Boolean):[];
+    if(!notes.length&&!chats.length&&!posts.length&&!history.length)return null;
+    return {notes:notes.length?notes:phoneContent.notes,chats:chats.length?chats:phoneContent.chats,
+      posts:posts.length?posts:phoneContent.posts,history:history.length?history:phoneContent.history};
+  }
+  function applyPhoneContent(data){
+    if(!data)return;
+    phoneContent=data;
+    notes=phoneContent.notes;
+    chats=phoneContent.chats;
+    posts=phoneContent.posts;
+    history=phoneContent.history;
+    if(currentApp)renderApp();
+  }
+  // 已生成的同角色、同日期内容直接复用，避免每次查看都消耗 API。
+  try{
+    var cached=JSON.parse(localStorage.getItem(contentCacheKey)||'null');
+    var normalized=normalizePhoneContent(cached);
+    if(normalized)applyPhoneContent(normalized);
+  }catch(e){}
+  var notes=phoneContent.notes;
+  var chats=phoneContent.chats;
+  var posts=phoneContent.posts;
+  var history=phoneContent.history;
+
+  function generateRolePhoneContent(){
+    var cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
+    if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')return;
+    var today=localDateKey();
+    var systemPrompt='你正在为一个虚构角色生成其私人手机里的日常内容。你必须严格依据角色设定写作，角色是手机主人；聊天记录中 side=me 的发言属于角色本人，side=ai 属于联系人。所有内容要像真实生活留下的记录，不要客服腔、不要说明你在生成数据，不要凭空写夸张剧情。只返回 JSON 对象，不要 Markdown。';
+    var userPrompt='今天日期：'+today+'\n角色姓名：'+roleName+'\n角色人设：'+(roleBio||'请根据角色姓名创作克制、可信的普通日常')+
+      '\n请生成以下 JSON：{"notes":[{"date":"日期","text":"备忘录内容"}],"chats":[{"name":"联系人昵称","messages":[{"side":"ai或me","text":"消息内容"}]}],"posts":[{"title":"帖子标题","text":"帖子正文"}],"history":["浏览记录"]}。'+
+      '\n要求：备忘录 3 条；聊天 2 组，每组 3-5 条来回消息；论坛帖子 3 条；浏览记录 3-5 条。语气、兴趣、作息、表达习惯必须符合该角色；不要所有角色都写海边、咖啡、天气等相同内容；内容自然、具体但日常，不要透露角色设定文本本身。';
+    PhoneAPI.completeJSON({system:systemPrompt,user:userPrompt,temperature:0.85,timeoutMs:22000}).then(function(result){
+      if(!result||!result.ok)return;
+      var normalized=normalizePhoneContent(result.data);
+      if(!normalized)return;
+      applyPhoneContent(normalized);
+      try{localStorage.setItem(contentCacheKey,JSON.stringify(normalized));}catch(e){}
+    }).catch(function(error){
+      console.warn('[InspectPhone] 角色内容生成失败，保留本地日常内容',error);
+    });
+  }
+  generateRolePhoneContent();
 
   function renderApp(){
     if(!currentApp)return;
@@ -267,32 +338,32 @@ body{
     }
     if(currentApp==='chat'){
       if(!chatOpen){
-        appBody.innerHTML='<h3 class="panel-title">聊天</h3><div class="list">'+chats.map(function(c,i){return '<button class="item" type="button" data-chat="'+i+'"><strong>'+c.name+'</strong><small>最新一条消息</small></button>';}).join('')+'</div>';
+        appBody.innerHTML='<h3 class="panel-title">聊天</h3><div class="list">'+chats.map(function(c,i){var last=(c.messages||[]).slice(-1)[0];return '<button class="item" type="button" data-chat="'+i+'"><strong>'+escHtml(c.name)+'</strong><small>'+escHtml(last&&last.text||'暂无消息')+'</small></button>';}).join('')+'</div>';
       }else{
         var c=chats[chatIndex]||chats[0];
-        appBody.innerHTML='<div class="bubbles">'+c.messages.map(function(m){return '<div class="row '+m.side+'"><div class="bubble">'+m.text+'</div></div>';}).join('')+'</div>';
+        appBody.innerHTML='<div class="bubbles">'+c.messages.map(function(m){return '<div class="row '+(m.side==='me'?'me':'ai')+'"><div class="bubble">'+escHtml(m.text)+'</div></div>';}).join('')+'</div>';
       }
       return;
     }
     if(currentApp==='notes'){
-      appBody.innerHTML='<h3 class="panel-title">备忘录</h3>'+notes.map(function(n){return '<article class="note"><time>'+n.date+'</time><p>'+n.text+'</p></article>';}).join('');
+      appBody.innerHTML='<h3 class="panel-title">备忘录</h3>'+notes.map(function(n){return '<article class="note"><time>'+escHtml(n.date)+'</time><p>'+escHtml(n.text)+'</p></article>';}).join('');
       return;
     }
     if(currentApp==='forum'){
       if(!forumOpen){
-        appBody.innerHTML='<h3 class="panel-title">论坛</h3><div class="list">'+posts.map(function(p,i){return '<button class="item" type="button" data-post="'+i+'"><strong>'+p.title+'</strong><small>'+p.text+'</small></button>';}).join('')+'</div>';
+        appBody.innerHTML='<h3 class="panel-title">论坛</h3><div class="list">'+posts.map(function(p,i){return '<button class="item" type="button" data-post="'+i+'"><strong>'+escHtml(p.title)+'</strong><small>'+escHtml(p.text)+'</small></button>';}).join('')+'</div>';
       }else{
         var p=posts[forumIndex]||posts[0];
-        appBody.innerHTML='<h3 class="panel-title">'+p.title+'</h3><p style="font-size:13px;line-height:1.7;color:#43434a">'+p.text+'</p>';
+        appBody.innerHTML='<h3 class="panel-title">'+escHtml(p.title)+'</h3><p style="font-size:13px;line-height:1.7;color:#43434a">'+escHtml(p.text)+'</p>';
       }
       return;
     }
     if(currentApp==='browser'){
-      appBody.innerHTML='<div class="browser"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg><span>武汉周末去</span></div><div class="list">'+history.map(function(h){return '<div class="item"><strong>'+h+'</strong></div>';}).join('')+'</div></div>';
+      appBody.innerHTML='<div class="browser"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg><span>最近浏览</span></div><div class="list">'+history.map(function(h){return '<div class="item"><strong>'+escHtml(h)+'</strong></div>';}).join('')+'</div></div>';
       return;
     }
     if(currentApp==='settings'){
-      appBody.innerHTML='<h3 class="panel-title">设置</h3><div class="simple"><div>Device Owner</div><strong>'+role.name+'</strong><div>System</div><strong>Phone OS 1.0</strong></div>';
+      appBody.innerHTML='<h3 class="panel-title">设置</h3><div class="simple"><div>Device Owner</div><strong>'+escHtml(roleName)+'</strong><div>System</div><strong>Phone OS 1.0</strong></div>';
       return;
     }
     appBody.innerHTML='<div class="empty">暂无内容</div>';
