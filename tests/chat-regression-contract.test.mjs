@@ -196,13 +196,13 @@ test('shared context policy preserves legacy history mapping rules without mutat
 });
 
 test('quoted chat messages carry their source into the model context', () => {
-  const mapped = contextPolicy.mapHistoryToApiMessages([
+  const mapped = JSON.parse(JSON.stringify(contextPolicy.mapHistoryToApiMessages([
     {
       role: 'user',
       text: '我觉得可以。',
       quote: { mid: 'm-source', authorName: 'TA', text: '那我们周末去看看？' }
     }
-  ]);
+  ])));
   assert.deepEqual(mapped, [{
     role: 'user',
     content: '[引用回复上下文，原消息来自TA：「那我们周末去看看？」]\n我觉得可以。'
