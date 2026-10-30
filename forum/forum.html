@@ -178,6 +178,62 @@ function refreshFeed(){
   seeds.forEach(s=>{if(!posts.some(p=>p.id===s.id))posts.push({...s})});
   save();render();
 }
+
+// 自动为角色生成帖子：每个角色至少发一条
+function ensureRolePosts(){
+  let roles=[];
+  try{
+    if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function'){
+      roles=PhoneStorage.getCharacters()||[];
+    }
+  }catch(e){}
+  if(!Array.isArray(roles)||!roles.length){
+    try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')}catch(e){roles=[]}
+  }
+  if(!Array.isArray(roles))return;
+  
+  const roleNames=['碎碎念','日常分享','心情记录','生活碎片','今天想到的事'];
+  const roleTitles=['今天的一点小感想','分享一下今天遇到的小事','随便写点什么','最近在想的一件事','今日份的小记录'];
+  const roleBodies=[
+    '今天天气挺好的，出门走了走，风很舒服。有时候觉得，不用特意做什么，只是随便逛逛也很好。',
+    '最近突然想到一个问题：我们每天忙忙碌碌的，到底是在追求什么呢？不过想归想，日子还是要好好过的。',
+    '刚才喝了一杯很不错的咖啡，坐在窗边发了一会儿呆。这样的时刻，其实也挺珍贵的。',
+    '有时候会突然想起以前的一些小事，明明已经过去很久了，却还是记得很清楚。大概这些就是生活留下的痕迹吧。',
+    '今天没什么特别的事，但就是觉得心情还不错。也许，平淡的日子里也藏着小小的幸福。'
+  ];
+  
+  roles.forEach(function(role,idx){
+    if(!role||!role.name)return;
+    const roleId=String(role.id||role.name);
+    const postId='role_'+roleId;
+    // 检查这个角色有没有发过帖子
+    if(posts.some(p=>p.id===postId))return;
+    // 生成一条默认帖子
+    const topicIdx=idx%roleNames.length;
+    const titleIdx=idx%roleTitles.length;
+    const bodyIdx=idx%roleBodies.length;
+    posts.unshift({
+      id:postId,
+      name:role.name,
+      avatar:(role.name||'?').slice(0,1),
+      role:'role',
+      topic:roleNames[topicIdx],
+      time:'刚刚',
+      title:roleTitles[titleIdx],
+      body:roleBodies[bodyIdx],
+      likes:Math.floor(Math.random()*5),
+      comments:Math.floor(Math.random()*3),
+      liked:false,
+      owner:'role',
+      roleId:roleId,
+      created:Date.now()-idx*86400000,
+      tag:'role',
+      content:roleTitles[titleIdx]+'\n'+roleBodies[bodyIdx]
+    });
+  });
+}
+
+ensureRolePosts();
 save();render();
 })();
 </script>

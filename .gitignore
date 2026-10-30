@@ -43,6 +43,12 @@ logs/
 # ===== AI / 工作代理目录 =====
 .workbuddy/
 
+# ===== 本地调试 / 测试产物 =====
+*-test*.png
+bug-fix-list.md
+perf/diag-hl.mjs
+perf/virtual-regression.mjs
+
 # ===== 杂项 =====
 .zip
 .rar

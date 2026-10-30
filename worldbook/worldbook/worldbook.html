@@ -697,6 +697,13 @@
           <label for="edName">名称</label>
           <input id="edName" type="text" maxlength="40" placeholder="输入条目名称">
         </div>
+        <div class="wb-field" id="edFieldScope" style="display:none;">
+          <label>范围</label>
+          <div class="wb-seg" id="edScopeSeg">
+            <button class="wb-seg-btn active" data-scope="global" type="button">全局</button>
+            <button class="wb-seg-btn" data-scope="local" type="button">局部</button>
+          </div>
+        </div>
         <div class="wb-field" id="edFieldType">
           <label>类型</label>
           <div class="wb-seg" id="edTypeSeg">
@@ -1100,7 +1107,8 @@
   var edProbValEl = document.getElementById('edProbVal');
   var edKeywordsField = document.getElementById('edKeywordsField');
   var edProbField = document.getElementById('edProbField');
-  var edType = 'text', edPos = 'middle', edMode = 'always';
+  var edScopeField = document.getElementById('edFieldScope');
+  var edType = 'text', edPos = 'middle', edMode = 'always', edScope = 'global';
 
   /* 触发关键词：字符串按中英文逗号分割 → 去空格 → 去空项 → 去重；空输入返回 [] */
   function parseKeywords(raw) {
@@ -1185,17 +1193,23 @@
       drawerBookId = bookId || null;
       drawerEntryIndex = null;
       drawerTitleEl.textContent = '编辑世界书';
-      btnEntryDeleteEl.style.display = 'none';
+      btnEntryDeleteEl.style.display = '';
+      btnEntryDeleteEl.textContent = '删除世界书';
       setEntryFieldsVisible(false);
       edKeywordsField.style.display = 'none';
       edProbField.style.display = 'none';
+      edScopeField.style.display = '';
       var bk = findBookById(loadBooks(), drawerBookId);
       edNameInput.value = bk ? String(bk.title == null ? '' : bk.title) : '';
+      edScope = bk && bk.scope === 'local' ? 'local' : 'global';
+      syncSeg('edScopeSeg', edScope, 'data-scope');
       openOverlay('editOverlay');
       setTimeout(function () { edNameInput.focus(); edNameInput.select(); }, 260);
       return;
     }
     setEntryFieldsVisible(true);
+    edScopeField.style.display = 'none';
+    btnEntryDeleteEl.textContent = '删除';
     drawerBookId = bookId || null;
     drawerEntryIndex = (typeof entryIndex === 'number' && !isNaN(entryIndex)) ? entryIndex : null;
     drawerMode = !drawerBookId ? 'newbook' : (drawerEntryIndex !== null ? 'edentry' : 'addentry');
@@ -1244,6 +1258,12 @@
     syncSeg('edModeSeg', edMode, 'data-mode');
     updateModeFields();
   });
+  document.getElementById('edScopeSeg').addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.wb-seg-btn') : null;
+    if (!btn) return;
+    edScope = btn.getAttribute('data-scope');
+    syncSeg('edScopeSeg', edScope, 'data-scope');
+  });
 
   edEnabledBtn.addEventListener('click', function () { this.classList.toggle('on'); });
   edProbInput.addEventListener('input', function () { edProbValEl.textContent = this.value + '%'; });
@@ -1266,6 +1286,7 @@
         return;
       }
       bk.title = form.name;
+      bk.scope = edScope === 'local' ? 'local' : 'global';
     } else if (drawerMode === 'newbook') {
       var entry = normalizeEntry(form);
       list.unshift({
@@ -1312,8 +1333,27 @@
 
   /* 删除条目：仅在编辑条目模式显示 */
   btnEntryDeleteEl.addEventListener('click', function () {
-    if (drawerMode !== 'edentry') return;
     var list = loadBooks();
+    if (drawerMode === 'edbook') {
+      // 删除整本书
+      var newList = list.filter(function (b) { return String(b.id) !== String(drawerBookId); });
+      if (newList.length === list.length) {
+        showToast('该世界书不存在');
+        return;
+      }
+      try {
+        saveBooks(newList);
+      } catch (err) {
+        showToast('保存失败，请重试');
+        return;
+      }
+      entryExpandedIds = {};
+      closeOverlay('editOverlay');
+      renderAll();
+      showToast('已删除世界书');
+      return;
+    }
+    if (drawerMode !== 'edentry') return;
     var book = findBookById(list, drawerBookId);
     if (book && Array.isArray(book.entries)) {
       book.entries.splice(drawerEntryIndex, 1);

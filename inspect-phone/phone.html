@@ -220,22 +220,43 @@ body{
   lock.addEventListener('click',unlockPhone);
 
   var titles={album:'相册',chat:'聊天',notes:'备忘录',forum:'论坛',browser:'浏览器',settings:'设置'};
-  var chats=[
-    {name:'周衍',messages:[{side:'ai',text:'今天应该没有人注意到我。'},{side:'me',text:'注意什么？'},{side:'ai',text:'先别问。到了就知道。'}]},
-    {name:'林知夏',messages:[{side:'ai',text:'我收到一张没有署名的票。'},{side:'me',text:'票在哪里？'},{side:'ai',text:'有人替我把它留下了。'}]},
-    {name:'陈屿',messages:[{side:'ai',text:'那个房间的门，其实一直是虚掩的。'},{side:'me',text:'门后面有什么？'},{side:'ai',text:'我还没想好怎么告诉你。'}]}
-  ];
+  
+  // 根据角色生成手机内容
+  var roleName=role.name||'角色';
+  var roleBio=String(role.description||role.bio||role.personality||'');
+  
+  // 备忘录：根据角色生成
   var notes=[
-    {date:'10 月 22 日',text:'今天比平时安静。我把要带走的东西放在门口，又收回来一次。'},
-    {date:'10 月 19 日',text:'有人问我是否记得三年前的地点。我说记得，其实我只记得那天的声音。'},
-    {date:'10 月 15 日',text:'如果时间可以折起来，我会把它夹在最普通的一页里。'}
+    {date:'10 月 28 日',text:'今天有点累，但看到窗外的阳光又觉得还好。生活嘛，就是这样断断续续的。'},
+    {date:'10 月 25 日',text:'突然想起以前的一些小事。时间过得真快，有些事好像就在昨天，却已经过去很久了。'},
+    {date:'10 月 20 日',text:'今天做了个决定。不管对不对，先做了再说。' + (roleBio?'':'')}
   ];
+  
+  // 聊天记录：以角色的视角
+  var chats=[
+    {name:'老朋友',messages:[
+      {side:'ai',text:'最近怎么样？好久没联系了。'},
+      {side:'me',text:'还行吧，老样子。你呢？'},
+      {side:'ai',text:'我也差不多。有空出来坐坐？'}
+    ]},
+    {name:'家人',messages:[
+      {side:'ai',text:'记得按时吃饭，别总熬夜。'},
+      {side:'me',text:'知道啦，你也是。'},
+      {side:'ai',text:'天气凉了，多穿点。'}
+    ]},
+    {name:'同事',messages:[
+      {side:'ai',text:'那个文件你看了吗？'},
+      {side:'me',text:'还没，今天下班前给你。'},
+      {side:'ai',text:'不急，明天也行。'}
+    ]}
+  ];
+  
   var posts=[
-    {title:'今天下雨忘带伞了',text:'在便利店门口站了二十分钟，雨一点没小。'},
-    {title:'有没有人推荐个耳机',text:'预算不高，平时通勤听点东西。'},
-    {title:'有人去过旧书店吗',text:'想找一本很老的书，不确定还能不能买到。'}
+    {title:'今天遇到一件小事',text:'虽然不大，但就是觉得心情好了一点。有时候幸福就是这么简单。'},
+    {title:'有没有人喜欢这种天气',text:'不冷不热的，风吹着很舒服。适合出去走走。'},
+    {title:'最近在看一本书',text:'还没看完，但已经觉得很值得了。'}
   ];
-  var history=['快递单号查询','咖啡热量','地铁末班车时间','租房注意事项'];
+  var history=['天气查询','附近咖啡店推荐','电影票预订','快递单号查询'];
 
   function renderApp(){
     if(!currentApp)return;

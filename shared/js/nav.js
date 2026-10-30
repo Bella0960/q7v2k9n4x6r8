@@ -17,7 +17,7 @@
             label: '聊天',
             href: appBase + 'chat/chat/chat.html',
             svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
-            badge: true
+            badge: false
         },
         {
             key: 'contacts',
@@ -167,4 +167,9 @@
         document.addEventListener('touchend', clearPress, { passive: true });
         document.addEventListener('touchcancel', clearPress, { passive: true });
     }
+
+    // 注入跨页未读角标 + 顶部消息弹窗模块（它会自己判断是否需要轮询）
+    var notifierScript = document.createElement('script');
+    notifierScript.src = appBase + 'shared/js/chat-notifier.js';
+    document.head.appendChild(notifierScript);
 })();

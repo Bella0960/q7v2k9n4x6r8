@@ -541,12 +541,41 @@
   // 每项形如 { id, name, avatar?(dataURL), memory? }
   let realRoles = [];
   let currentRole = '宝宝';
+  let currentRoleId = '';
   let currentDate = '2025-04-16';
   let viewMonth = '2025-04';
 
   const pad = n => n < 10 ? '0' + n : '' + n;
   const periodOf = h => h < 6 ? '凌晨' : h < 12 ? '上午' : h < 14 ? '中午' : h < 18 ? '下午' : '夜晚';
-  const itemsOf = (role, date) => (DATA[role] && DATA[role][date]) || [];
+  
+  // 从 localStorage 读取角色足迹数据
+  function loadFootprintData(roleId) {
+    if (!roleId) return {};
+    try {
+      const raw = localStorage.getItem('footprint_' + roleId);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {};
+  }
+  
+  // 保存角色足迹数据到 localStorage
+  function saveFootprintData(roleId, data) {
+    if (!roleId) return;
+    try {
+      localStorage.setItem('footprint_' + roleId, JSON.stringify(data));
+    } catch (e) {}
+  }
+  
+  // 获取某角色某天的足迹项：先从 localStorage 读，没有再从演示数据 DATA 读
+  const itemsOf = (role, date) => {
+    // 先按角色 ID 从 localStorage 读
+    if (currentRoleId) {
+      const localData = loadFootprintData(currentRoleId);
+      if (localData[date]) return localData[date];
+    }
+    // 再从演示数据 DATA 读
+    return (DATA[role] && DATA[role][date]) || [];
+  };
 
   function loadRealRoles() {
     try {
@@ -578,6 +607,9 @@
     const names = realRoles.map(r => r.name).filter(Boolean);
     if (!names.includes(currentRole)) {
       currentRole = names[0] || currentRole;
+      // 同时更新角色 ID
+      const matched = realRoles.find(r => r.name === currentRole);
+      currentRoleId = matched ? (matched.id || '') : '';
     }
 
     const build = (containerId) => {
@@ -594,8 +626,9 @@
       }
       box.innerHTML = realRoles.map(r => {
         const nm = r.name || '角色';
+        const rid = r.id || '';
         const active = nm === currentRole ? ' active' : '';
-        return '<button class="role-item' + active + '" data-role-name="' + nm + '">' +
+        return '<button class="role-item' + active + '" data-role-name="' + nm + '" data-role-id="' + rid + '">' +
                  avatarHTML(r) +
                  '<span class="role-name">' + nm + '</span>' +
                '</button>';
@@ -706,11 +739,94 @@
   function refreshToday() {
     const icon = document.querySelector('.top-bar .icon-btn svg');
     if (icon) { icon.classList.remove('rot'); void icon.offsetWidth; icon.classList.add('rot'); }
-    setTimeout(() => {
-      renderTimeline();
-      updateCount();
-      showToast('已刷新今日行程');
-    }, 600);
+    
+    showToast('正在生成今日行程...');
+    
+    // 获取当前角色的完整信息
+    const roleInfo = realRoles.find(r => String(r.id) === String(currentRoleId));
+    const roleName = currentRole;
+    const roleBio = String((roleInfo && (roleInfo.description || roleInfo.bio || roleInfo.personality || roleInfo.character)) || '');
+    
+    // 检查有没有配置 API
+    const cfg = window.PhoneStorage && PhoneStorage.getApiConfig ? PhoneStorage.getApiConfig() : {};
+    const canCallAI = cfg && String(cfg.apiKey || '').trim() && window.PhoneAPI && typeof window.PhoneAPI.complete === 'function';
+    
+    if (canCallAI && roleBio) {
+      // 调用 AI 根据人设生成行程
+      const systemPrompt = '你是一个行程规划助手。根据角色的人设，生成她/他今天一天的行程时间线。输出格式要求：每行一条，格式为"时间 | 标题 | 描述"，比如"08:30 | 起床 | 阳光透过窗帘洒进来，慢慢醒来"。生成4-6条行程，覆盖一天的不同时段（早上、中午、下午、晚上）。行程要符合角色的人设和生活习惯，不要千篇一律。只输出行程列表，不要其他解释。';
+      const userPrompt = '角色名字：' + roleName + '\n角色人设：' + roleBio + '\n\n请生成这个角色今天一天的行程时间线。';
+      
+      window.PhoneAPI.complete({
+        system: systemPrompt,
+        user: userPrompt,
+        temperature: 0.8,
+        timeoutMs: 15000
+      }).then(function(text) {
+        if (!text) throw new Error('empty');
+        // 解析 AI 输出的行程
+        const lines = String(text).split('\n').filter(l => l.trim());
+        const items = lines.map(function(line, idx) {
+          const parts = line.split('|').map(s => s.trim());
+          if (parts.length < 3) return null;
+          const time = parts[0] || ('09:' + pad(idx*15));
+          const title = parts[1] || '日常事项';
+          const desc = parts[2] || '';
+          // 随机选一个配图
+          const imgs = [IMG.meadow, IMG.plant, IMG.sea, IMG.star, IMG.flower];
+          return {
+            id: currentRoleId + '-' + currentDate + '-' + idx,
+            time: time,
+            title: title,
+            desc: desc,
+            tag: '♡ 今日行程',
+            loc: title,
+            img: imgs[idx % imgs.length]
+          };
+        }).filter(Boolean);
+        
+        if (items.length >= 2) {
+          // 保存到 localStorage
+          const localData = loadFootprintData(currentRoleId);
+          localData[currentDate] = items;
+          saveFootprintData(currentRoleId, localData);
+          renderTimeline();
+          updateCount();
+          renderCalendar();
+          showToast('已根据人设生成今日行程');
+        } else {
+          // 解析失败，用默认数据
+          generateDefaultFootprint();
+        }
+      }).catch(function() {
+        // 调用失败，用默认数据
+        generateDefaultFootprint();
+      });
+    } else {
+      // 没有 API Key，直接用默认数据
+      setTimeout(function() {
+        generateDefaultFootprint();
+      }, 600);
+    }
+  }
+  
+  // 生成默认足迹（fallback）
+  function generateDefaultFootprint() {
+    if (currentRoleId) {
+      const localData = loadFootprintData(currentRoleId);
+      if (!localData[currentDate] || !localData[currentDate].length) {
+        const defaultItems = [
+          { id: currentRoleId + '-' + currentDate + '-1', time: '09:00', title: '早安时光', desc: '新的一天开始了，慢慢醒来。', tag: '♡ 家里 · 安静', loc: '家里 · 安静', img: IMG.meadow },
+          { id: currentRoleId + '-' + currentDate + '-2', time: '14:30', title: '午后小憩', desc: '阳光正好，喝杯茶休息一下。', tag: '⌖ 窗边 · 松弛', loc: '窗边 · 松弛', img: IMG.plant },
+          { id: currentRoleId + '-' + currentDate + '-3', time: '20:00', title: '夜晚散步', desc: '饭后走走，看看路灯和星星。', tag: '✦ 楼下 · 放松', loc: '楼下 · 放松', img: IMG.star }
+        ];
+        localData[currentDate] = defaultItems;
+        saveFootprintData(currentRoleId, localData);
+      }
+    }
+    renderTimeline();
+    updateCount();
+    renderCalendar();
+    showToast('已刷新今日行程');
   }
 
   function showToast(msg) {
@@ -763,8 +879,10 @@
     const item = e.target.closest('.role-item');
     if (item) {
       const key = item.dataset.roleName || (item.querySelector('.role-name') || {}).textContent;
+      const rid = item.dataset.roleId || '';
       if (key) {
         currentRole = key;
+        currentRoleId = rid;
         renderRoles();          // 重渲两条角色条，同步 active 高亮
         renderTimeline();
         updateCount();
@@ -846,6 +964,16 @@
   renderTimeline();
   updateCount();
   renderCalendar();
+  
+  // 如果当天没有数据，自动根据人设生成行程
+  setTimeout(function() {
+    if (currentRoleId) {
+      const localData = loadFootprintData(currentRoleId);
+      if (!localData[currentDate] || !localData[currentDate].length) {
+        refreshToday();
+      }
+    }
+  }, 300);
 </script>
 
 <script>

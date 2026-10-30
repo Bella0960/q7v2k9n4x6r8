@@ -470,6 +470,12 @@
             color: #999999;
             padding: 12px 4px;
         }
+        .import-json-btn {
+            width: 100%; min-height: 48px; border: 1.5px dashed #D9D9D4; border-radius: 0;
+            background: transparent; color: #555; font: inherit; font-size: 0.875rem;
+            cursor: pointer; transition: border-color .2s, background .2s;
+        }
+        .import-json-btn:active { background: #F4F4F1; border-color: #222; color: #222; }
 
         /* 沉浸式头像编辑器：保留原头像，确认后才进入资料草稿 */
         .portrait-studio {
@@ -785,7 +791,14 @@
                     <div class="wb-bind-list" id="worldBookBindList"></div>
                 </div>
 
-                <!-- 6. 保存按钮 -->
+                <!-- 6. 导入角色 JSON -->
+                <div class="editor-field-group">
+                    <label class="field-label" style="color: #8E8E93;">导入角色</label>
+                    <button type="button" id="btnImportRole" class="import-json-btn">选择角色 JSON 文件</button>
+                    <input type="file" id="roleImportFile" accept=".json,.txt,application/json,text/plain" class="hidden">
+                </div>
+
+                <!-- 7. 保存按钮 -->
                 <div class="save-status" id="saveStatus" aria-live="polite" role="status"></div>
                 <button class="btn-save-fixed" id="btnSaveRole" type="button">保存设定</button>
             </main>

@@ -610,6 +610,59 @@ document.getElementById('btnConfirmPortrait').addEventListener('click', confirmP
 document.getElementById('btnRecoverDraft').addEventListener('click', recoverPendingDraft);
 document.getElementById('btnDiscardDraft').addEventListener('click', discardPendingDraft);
 
+// ====== 导入角色 JSON ======
+document.getElementById('btnImportRole').addEventListener('click', function() {
+    document.getElementById('roleImportFile').click();
+});
+document.getElementById('roleImportFile').addEventListener('change', function(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const isTxt = /\.txt$/i.test(file.name) || (file.type || '').indexOf('text/plain') === 0;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        try {
+            const text = String(ev.target.result || '');
+            if (isTxt) {
+                // txt：整段当人设，第一行若很短（<=20字）当姓名
+                const lines = text.split(/\r?\n/);
+                let name = '', persona = text;
+                if (lines.length > 1 && lines[0].trim() && lines[0].trim().length <= 20) {
+                    name = lines[0].trim();
+                    persona = lines.slice(1).join('\n').trim();
+                }
+                document.getElementById('editRoleName').value = name;
+                document.getElementById('editRolePersona').value = persona;
+                setSaveStatus('已导入 txt，检查后点保存', 'success');
+                persistEditorDraft();
+                return;
+            }
+            let data = JSON.parse(text);
+            if (Array.isArray(data)) data = data[0];
+            if (!data || typeof data !== 'object') throw new Error('文件不是角色数据');
+            // 兼容常见字段名
+            const name = data.name || data.char_name || data.title || '';
+            const persona = data.persona || data.description || data.personality || data.system || '';
+            const tone = data.tone || data.dialogue_example || data.culture_example || '';
+            const avatar = data.avatar || data.avatar_url || '';
+            if (!name && !persona) throw new Error('文件里没找到角色名或人设');
+            document.getElementById('editRoleName').value = String(name);
+            document.getElementById('editRolePersona').value = String(persona);
+            document.getElementById('editRoleTone').value = String(tone);
+            if (avatar && typeof avatar === 'string' && /^data:image\//.test(avatar)) {
+                avatarDataUrl = avatar;
+                updateAvatarPreview();
+            }
+            setSaveStatus('已导入「' + (name || '未命名') + '」，检查后点保存', 'success');
+            persistEditorDraft();
+        } catch (err) {
+            setSaveStatus('导入失败：' + (err && err.message ? err.message : '文件格式不对'), 'error');
+        }
+    };
+    reader.onerror = function() { setSaveStatus('文件读取失败', 'error'); };
+    reader.readAsText(file);
+});
+
 const cropCanvas = document.getElementById('portraitCropCanvas');
 if (cropCanvas) {
     cropCanvas.addEventListener('pointerdown', function(e) {

@@ -16,6 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v5"></script>
+    <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -162,9 +163,13 @@
             align-items: center;
             /* Fix A（内容可见性）：离屏的行跳过布局/绘制，长会话全量重渲染时
                只真实计算视口内气泡，开销从 O(N) 降为 O(可见行数)。
-               contain-intrinsic-size 预留滚动高度，避免滚动条跳动；
-               auto 关键字让浏览器记住上次真实渲染尺寸，首屏后几乎无偏差。
-               不支持的浏览器（旧 Safari/FF）会忽略此属性，行为回退为原样，无副作用。 */
+               不支持的浏览器（旧 Safari/FF）会忽略此属性，行为回退为原样。
+               ⚠️ 副作用：离屏行退化为 contain-intrinsic-size 的 64px 占位，
+               scrollHeight 只约等于真实值的一半（实测 162 条：4657px vs 9552px），
+               且新气泡进入视口前 scrollHeight 仍按占位计算。
+               因此任何「滚到底」都不能只写一次 scrollTop = scrollHeight，
+               必须走 scrollToBottom() 的多帧校正，否则会停在假底部
+               （Bug #4：发完消息视口往上跑）。 */
             content-visibility: auto;
             contain-intrinsic-size: auto 64px;
         }
@@ -617,34 +622,20 @@
         .msg-translation { font-size: 0.688rem; line-height: 1.45; color: #8E8E93; margin-top: 6px; padding-top: 6px; border-top: 0.5px solid rgba(0,0,0,0.08); }
         .msg-edited { font-size: 0.625rem; color: #C7C7CC; margin-top: 4px; }
 
-        /* 语音气泡：单行波形 + 时长，转文字入口放在气泡外 */
+        /* 语音气泡：单行波形 + 时长，转写文字常驻在气泡下方 */
         .bubble-voice { min-width: 104px; padding: 8px 12px; }
         .voice-row { display: flex; align-items: center; gap: 8px; height: 18px; }
         .voice-wave { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
         .voice-wave i { width: 2px; border-radius: 1px; background: currentColor; opacity: 0.4; }
         .voice-wave i.on { opacity: 1; }
         .voice-dur { font-size: 0.688rem; opacity: 0.7; }
-        .msg-voice { display: flex; flex-direction: column; gap: 1px; max-width: min(260px, 100%); }
+        .msg-voice { display: flex; flex-direction: column; gap: 4px; max-width: min(260px, 100%); }
         .msg-row.sent .msg-voice, .msg-row.right .msg-voice { align-items: flex-end; }
         .msg-row.received .msg-voice, .msg-row.left .msg-voice { align-items: flex-start; }
-        .voice-transcript-toggle summary {
-            list-style: none; display: inline-flex; align-items: center; gap: 3px;
-            font-size: 0.5rem; line-height: 1.2; color: #8E8E93; opacity: 0.9;
-            cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
-        }
-        .voice-transcript-toggle summary::-webkit-details-marker { display: none; }
-        .voice-transcript-toggle summary::after {
-            content: "›"; display: inline-block; font-size: 0.5rem; line-height: 1;
-            transform: rotate(90deg); transition: transform 0.15s ease; opacity: 0.8;
-        }
-        .voice-transcript-toggle[open] summary { opacity: 0.5; }
-        .voice-transcript-toggle[open] summary::after { transform: rotate(-90deg); }
-        .voice-transcript-toggle .vt-open { display: none; }
-        .voice-transcript-toggle[open] .vt-closed { display: none; }
-        .voice-transcript-toggle[open] .vt-open { display: inline; }
+        /* 转写常驻：不再用 <details> 折叠，直接铺开 */
         .voice-transcript {
             font-size: 0.688rem; line-height: 1.5; color: #66666B;
-            max-width: 220px; margin-top: 2px; text-align: left;
+            max-width: 220px; text-align: left; word-break: break-word;
         }
         .bubble-media { padding: 0 !important; background: transparent !important; border: none !important; }
         .msg-media-img { width: 180px; max-width: 100%; border-radius: 16px; display: block; }
@@ -738,6 +729,15 @@
         @keyframes heartIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
         @media (prefers-reduced-motion: reduce) { .bubble-heart { animation: none; } }
         .input-capsule.is-blocked { opacity: 0.5; pointer-events: none; }
+
+        /* 发送失败红色感叹号（拉黑/被对方拒收时） */
+        .msg-send-failed {
+            width: 18px; height: 18px; border-radius: 50%;
+            background: #FA5151; color: #fff;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: 700; flex-shrink: 0;
+            align-self: center; cursor: pointer;
+        }
 
         /* 名片消息 */
         .card-share { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
@@ -2516,9 +2516,60 @@
         const chatInput = document.getElementById('chat-input');
         const chatForm = document.getElementById('chat-form');
 
+        // ================= 底部吸附：修复「发完消息后视口往上跑」 =================
+        // 单次 `scrollTop = scrollHeight` 并不可靠：赋值那一刻新节点未必已完成布局
+        // （图片异步加载、字体切换、流式气泡换行），scrollHeight 偏小 → 停在假底部，
+        // 内容随后撑开，视口就相对往上跑，刚发的消息被顶出屏幕。
+        // 策略：① 立即置底；② 连续两帧校正（消化首轮布局 + 异步资源撑高）；
+        //      ③ 图片 load 事件捕获阶段再补一次；④ 用户上翻看历史时解除吸附，不被强行拽回。
+        const NEAR_BOTTOM_PX = 96;
+        let stickToBottom = true;
+
+        function isNearBottom(px) {
+            const tol = (typeof px === 'number') ? px : NEAR_BOTTOM_PX;
+            return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= tol;
+        }
+
+        // 同步置底（高频流式帧用，不做 rAF 排队）
+        function pinToBottom() {
+            if (!stickToBottom) return;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // force=true：主动置底（发送/收尾等），会重新建立吸附
+        function scrollToBottom(force) {
+            if (force) stickToBottom = true;
+            if (!stickToBottom) return;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            requestAnimationFrame(function () {
+                if (!stickToBottom) return;
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                requestAnimationFrame(function () {
+                    if (!stickToBottom) return;
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                });
+            });
+        }
+
+        // 用户手动上翻阅读历史时解除吸附；滚回底部附近自动恢复
+        chatMessages.addEventListener('scroll', function () {
+            stickToBottom = isNearBottom();
+        }, { passive: true });
+
+        // 图片等异步资源加载完成后高度会变，捕获阶段补一次吸附（load 不冒泡，只能捕获）
+        document.addEventListener('load', function (e) {
+            if (!stickToBottom) return;
+            var t = e && e.target;
+            if (t && t.tagName === 'IMG' && chatMessages.contains(t)) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }, true);
+
         // ================= 双方备注（只读应用：chat_alias_<roleId>） =================
         // 与 chat-settings.html 的 roleId（URL 的 id 参数）保持一致
         const aliasRoleId = currentRoleId || currentCharacter.id;
+        // 打开会话即视为全部已读：刷新未读指针，清掉本会话的角标
+        try { if (window.ChatNotifier) ChatNotifier.markOpen(aliasRoleId); } catch (e) {}
         function loadAlias() {
             try {
                 const raw = localStorage.getItem('chat_alias_' + aliasRoleId);
@@ -2534,19 +2585,29 @@
             } catch (e) {}
             return { myAlias: '', roleAlias: '' };
         }
-        const chatAlias = loadAlias();
-        // 群聊：优先显示群备注（chat_group_alias_<gid>），无备注回退群名
-        let groupAliasName = '';
-        if (isGroupChat) {
-            try {
-                groupAliasName = localStorage.getItem('chat_group_alias_' + aliasRoleId) || '';
-            } catch (e) {}
+        // 刷新聊天页顶部标题（双方备注 / 群备注）。
+        // 提取为函数，供初始化与 pageshow（从设置页 bfcache 返回）时复用，
+        // 避免设置备注后返回聊天页仍显示旧名字。
+        function refreshChatTitle() {
+            const alias = loadAlias();
+            let gAlias = '';
+            if (isGroupChat) {
+                try {
+                    gAlias = localStorage.getItem('chat_group_alias_' + aliasRoleId) || '';
+                } catch (e) {}
+            }
+            const displayName = (isGroupChat && gAlias) ? gAlias : (alias.roleAlias || contactName);
+            if (chatTitle) chatTitle.textContent = displayName;
         }
-        const roleDisplayName = (isGroupChat && groupAliasName) ? groupAliasName : (chatAlias.roleAlias || contactName);
-
-        if (chatTitle) {
-            chatTitle.textContent = roleDisplayName;
-        }
+        refreshChatTitle();
+        // 从对话设置页/线下剧情页 history.back() 返回时（bfcache 恢复），
+        // 重新读取备注刷新标题，并重新渲染消息列表（过滤掉线下模式消息）
+        window.addEventListener('pageshow', function (e) {
+            refreshChatTitle();
+            if (e.persisted && typeof renderAllMessages === 'function') {
+                renderAllMessages();
+            }
+        });
         // 群聊：副标题显示成员名单；普通聊天保持 ONLINE
         const chatStatusSub = document.getElementById('chat-status-sub');
         if (isGroupChat && chatStatusSub) {
@@ -2577,7 +2638,7 @@
             chatStatusSub.textContent = initialChatMode === 'narration' ? 'NARRATION · ACTIVE' : 'ONLINE · ACTIVE';
         }
 
-        // ================= 拉黑态（键 chat_blocked_ids：会话仍在列表，但不能聊） =================
+        // ================= 拉黑态（键 chat_blocked_ids：能发消息但显示红色感叹号，无回复） =================
         function isBlocked(id) {
             try {
                 var arr = JSON.parse(localStorage.getItem('chat_blocked_ids') || '[]');
@@ -2588,18 +2649,11 @@
 
         function applyBlockUI() {
             var blocked = isBlocked(aliasRoleId);
+            // 拉黑后不显示顶部提示条，不禁用输入框——发消息时自然变成红色感叹号
             var bar = document.getElementById('chat-notice-bar');
-            if (bar) {
-                if (blocked) {
-                    bar.textContent = '你已把 TA 拉黑，TA 不会再回复你（可在对话设置里解除）';
-                    bar.style.display = '';
-                } else if (!isGroupChat) {
-                    bar.style.display = 'none';
-                }
+            if (bar && !isGroupChat) {
+                bar.style.display = 'none';
             }
-            var cap = document.querySelector('.input-capsule');
-            if (cap) cap.classList.toggle('is-blocked', blocked);
-            if (chatInput) chatInput.disabled = blocked;
         }
         applyBlockUI();
 
@@ -2916,11 +2970,28 @@
                     var vWrap = document.createElement('div');
                     vWrap.className = 'msg-voice';
                     vWrap.appendChild(bubble);
-                    var vDetails = document.createElement('details');
-                    vDetails.className = 'voice-transcript-toggle';
-                    vDetails.innerHTML = '<summary><span class="vt-closed">转文字</span><span class="vt-open">收起</span></summary>' +
-                        '<div class="voice-transcript">' + escHtml(msg.text) + '</div>';
-                    vWrap.appendChild(vDetails);
+                    // 转写文字常驻显示：原来是 <details> 折叠（点"转文字"才展开、再点又收起），
+                    // 改为直接铺在波形气泡下面。双语模式下转写可能带 [中译:...]，
+                    // 拆成「原文 + 灰色中文」两行，与正文气泡的双语渲染保持一致。
+                    var vtRaw = String(msg.text);
+                    var vtMain = vtRaw, vtZh = '';
+                    var vtMatch = vtRaw.match(/\[中译[:：]([\s\S]*?)\]/);
+                    if (vtMatch) {
+                        vtZh = String(vtMatch[1] || '').trim();
+                        vtMain = vtRaw.replace(vtMatch[0], '').replace(/\n{2,}/g, '\n').trim();
+                    }
+                    if (vtMain || vtZh) {
+                        var vTranscript = document.createElement('div');
+                        vTranscript.className = 'voice-transcript';
+                        if (vtMain) vTranscript.textContent = vtMain;
+                        if (vtZh) {
+                            var vZh = document.createElement('div');
+                            vZh.className = 'msg-translation';
+                            vZh.textContent = vtZh;
+                            vTranscript.appendChild(vZh);
+                        }
+                        vWrap.appendChild(vTranscript);
+                    }
                     attachEl = vWrap;
                 }
             } else if (msg.type === 'sticker') {
@@ -3217,6 +3288,14 @@
             }
 
             if (isSent) {
+                // 发送失败（拉黑）：气泡前面加红色感叹号
+                if (msg.sendFailed) {
+                    var failedMark = document.createElement('span');
+                    failedMark.className = 'msg-send-failed';
+                    failedMark.textContent = '!';
+                    failedMark.title = '消息已发出，但被对方拒收了';
+                    row.appendChild(failedMark);
+                }
                 row.appendChild(attachEl);
                 row.appendChild(avatar);
             } else {
@@ -3299,9 +3378,27 @@
             return wrap;
         }
 
-        function vlCum(heights, from, to) {
+        // 行高策略：首屏一次性在「离屏、与聊天等宽」的容器里构建全部消息并测高，存入 heights[]。
+        // 之后窗口化渲染、滚动定位、hl= 跳转全部基于精确 heights，无估计误差、无抖动/漂移。
+        // 动态变更（流式收尾/新消息/删除）走增量测量（仅测尾部或重测当前窗口），不整表重测。
+        function vlMeasureRange(list, from, to) {
+            const probe = document.createElement('div');
+            const w = (chatMessages.clientWidth || 390);
+            probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;width:' + w + 'px;';
+            document.body.appendChild(probe);
+            for (let i = from; i < to; i++) probe.appendChild(vlBuildItem(list[i], i));
+            const nodes = probe.children;
+            const out = [];
+            for (let i = 0; i < nodes.length; i++) out.push(nodes[i].getBoundingClientRect().height || 64);
+            document.body.removeChild(probe);
+            return out;
+        }
+        function vlMeasureAll(list) { return vlMeasureRange(list, 0, list.length); }
+
+        function vlCum(from, to) {
+            const h = _vl.heights;
             let s = 0;
-            for (let i = from; i < to; i++) s += heights[i] || 64;
+            for (let i = from; i < to; i++) s += h[i] || 64;
             return s;
         }
 
@@ -3324,14 +3421,14 @@
             for (let i = start; i < end; i++) frag.appendChild(vlBuildItem(list[i], i));
             win.innerHTML = '';
             win.appendChild(frag);
-            topSpacer.style.height = vlCum(heights, 0, start) + 'px';
-            botSpacer.style.height = vlCum(heights, end, list.length) + 'px';
+            topSpacer.style.height = vlCum(0, start) + 'px';
+            botSpacer.style.height = vlCum(end, list.length) + 'px';
             _vl.start = start; _vl.end = end;
             vlScheduleMeasure();
         }
 
-        // 渲染后实测窗口内各行真实高度，回填 heights，并修正 spacer；
-        // 顶部 spacer 高度变化会平移视口，故按「窗口之上行」的高度差补偿 scrollTop，避免跳动。
+        // 渲染后实测当前窗口各行真实高度，回填 heights（修正动态内容如图片加载/流式收尾带来的变化）；
+        // 仅当变化发生在「当前视口之上」时补偿 scrollTop，避免跳动。因首屏已全量测高，[0,start) 通常不变，故无漂移。
         let _vlMeasurePending = false;
         function vlScheduleMeasure() {
             if (_vlMeasurePending) return;
@@ -3340,22 +3437,22 @@
                 _vlMeasurePending = false;
                 if (!_vl) return;
                 const items = _vl.win.children;
-                let topDelta = 0;
+                let delta = 0, changed = false;
                 for (let k = 0; k < items.length; k++) {
                     const idx = +items[k].dataset.idx;
                     const h = items[k].getBoundingClientRect().height;
-                    if (h) {
-                        const old = _vl.heights[idx] || 64;
-                        if (Math.abs(h - old) > 0.5) {
-                            const d = h - old;
-                            _vl.heights[idx] = h;
-                            if (idx < _vl.start) topDelta += d;
-                        }
+                    if (!h) continue;
+                    const old = _vl.heights[idx] || 64;
+                    if (Math.abs(h - old) > 0.5) {
+                        if (vlCum(0, idx) < chatMessages.scrollTop) delta += (h - old);
+                        _vl.heights[idx] = h; changed = true;
                     }
                 }
-                _vl.topSpacer.style.height = vlCum(_vl.heights, 0, _vl.start) + 'px';
-                _vl.botSpacer.style.height = vlCum(_vl.heights, _vl.end, _vl.list.length) + 'px';
-                if (topDelta) chatMessages.scrollTop += topDelta;
+                if (!changed) return;
+                _vl.topSpacer.style.height = vlCum(0, _vl.start) + 'px';
+                _vl.botSpacer.style.height = vlCum(_vl.end, _vl.list.length) + 'px';
+                // 跳转过程中不补偿 scrollTop：否则会抵消跳转、把视口拉回原位。
+                if (!_vl.jumping && delta) chatMessages.scrollTop += delta;
             });
         }
 
@@ -3366,8 +3463,12 @@
             start = Math.max(0, start - VL_BUFFER_ROWS);
             _vl.start = start; _vl.end = n;
             vlPaint();
-            // 布局稳定后再滚到底（rAF 后 spacer 已就位）
-            requestAnimationFrame(function () { chatMessages.scrollTop = chatMessages.scrollHeight; });
+            // 布局稳定后再滚到底（rAF 后 spacer 已就位）。若存在待处理的 hl= 跳转，则跳转而非回底。
+            requestAnimationFrame(function () {
+                if (!_vl) return;
+                if (_vl.pendingJump != null) { const j = _vl.pendingJump; _vl.pendingJump = null; vlJumpTo(j); }
+                else chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
         }
 
         function vlInit(list) {
@@ -3379,33 +3480,72 @@
             chatMessages.appendChild(top); chatMessages.appendChild(win); chatMessages.appendChild(bot);
             _vl = {
                 list: list,
-                heights: new Array(list.length).fill(64),
+                heights: vlMeasureAll(list),
                 start: 0, end: 0,
                 topSpacer: top, botSpacer: bot, win: win,
                 streaming: false,
+                jumping: false,
+                pendingJump: null,
             };
             vlRenderToBottom();
         }
 
-        // 重渲染到最新（流式收尾/红包卡插入等）：从存储重新派生可见列表，窗口化重建（仅渲染窗口，开销极低）。
+        // 重渲染到最新（发送/删除/插入等）：增量处理高度，避免每次 O(N) 整表重测。
+        // 长度增长（追加/流式开始）→ 仅测新增尾部；长度缩短（删除）→ 重测全表（低频）；等长（原地改写）→ 重测全表修正变化项。
         function vlRefresh() {
             if (!_vl) return;
-            vlInit(computeVisibleList());
+            const list = computeVisibleList();
+            const oldLen = _vl.heights.length;
+            const newLen = list.length;
+            if (newLen > oldLen) {
+                const tail = vlMeasureRange(list, oldLen, newLen);
+                const merged = _vl.heights.slice(0, oldLen);
+                for (let i = oldLen; i < newLen; i++) merged[i] = tail[i - oldLen];
+                _vl.heights = merged;
+            } else {
+                _vl.heights = vlMeasureAll(list);
+            }
+            _vl.list = list;
+            const atBottom = (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight) < 4;
+            if (atBottom) vlRenderToBottom();
+            else { const w = vlComputeWindow(chatMessages.scrollTop); _vl.start = w.start; _vl.end = w.end; vlPaint(); }
         }
 
-        // hl= 跳转：先把目标窗口渲染出来，再按累计高度把该行居中滚入视口（实测回填后再校正一次）。
+        // 流式收尾：仅重测最后一条（内容定稿，高度可能变化），O(1) 而非整表重测，避免逐条回复时的卡顿尖峰。
+        function vlFinalizeLast() {
+            if (!_vl || !_vl.list.length) return;
+            const i = _vl.list.length - 1;
+            _vl.heights[i] = vlMeasureRange(_vl.list, i, i + 1)[0] || _vl.heights[i] || 64;
+            const atBottom = (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight) < 4;
+            if (atBottom) vlRenderToBottom();
+            else { const w = vlComputeWindow(chatMessages.scrollTop); _vl.start = w.start; _vl.end = w.end; vlPaint(); }
+        }
+
+        // hl= 跳转：先把目标窗口渲染出来，再用「已渲染元素」的精确几何位置把该行居中滚入视口。
+        // 跳转期间挂起 vlOnScroll 重排与 scrollTop 补偿，使目标窗口稳定在 DOM 中；place() 多帧自收敛（即使
+        // 首屏测高与后续渲染上下文略有差异，也能在数帧内落到精确位置），收敛后恢复滚动响应。
         function vlJumpTo(idx) {
             if (!_vl || idx < 0 || idx >= _vl.list.length) return;
+            _vl.jumping = true;
             _vl.start = Math.max(0, idx - VL_BUFFER_ROWS);
             _vl.end = Math.min(_vl.list.length, idx + VL_BUFFER_ROWS + 1);
             vlPaint();
-            const center = function () {
-                const off = vlCum(_vl.heights, 0, idx);
-                const itemH = _vl.heights[idx] || 64;
-                chatMessages.scrollTop = Math.max(0, off - (chatMessages.clientHeight - itemH) / 2);
+            let guard = 0;
+            const place = function () {
+                if (!_vl) return;
+                const el = _vl.win.querySelector('.vl-item[data-idx="' + idx + '"]');
+                if (!el) { if (guard++ < 6) requestAnimationFrame(place); else _vl.jumping = false; return; }
+                const topOff = parseFloat(_vl.topSpacer.style.height) || 0;
+                const winRect = _vl.win.getBoundingClientRect();
+                const elRect = el.getBoundingClientRect();
+                const within = elRect.top - winRect.top; // 元素相对窗口顶的偏移（与容器滚动无关）
+                const target = topOff + within - (chatMessages.clientHeight - elRect.height) / 2;
+                chatMessages.scrollTop = Math.max(0, target);
+                if (guard++ < 6) requestAnimationFrame(place);
+                else _vl.jumping = false;
             };
-            center();
-            requestAnimationFrame(center);
+            place();
+            requestAnimationFrame(place);
         }
 
         let _vlScrollRaf = 0;
@@ -3413,11 +3553,18 @@
             if (_vlScrollRaf) return;
             _vlScrollRaf = requestAnimationFrame(function () {
                 _vlScrollRaf = 0;
-                if (!_vl || _vl.streaming) return; // 流式期间不重排窗口
-                const { start, end } = vlComputeWindow(chatMessages.scrollTop);
-                if (start !== _vl.start || end !== _vl.end) vlPaint();
+                if (!_vl || _vl.streaming || _vl.jumping) return; // 流式/跳转期间不重排窗口
+                const w = vlComputeWindow(chatMessages.scrollTop);
+                // 必须先写回 _vl.start/_vl.end：vlPaint 内部读取这两个字段决定渲染窗口，
+                // 否则会重绘旧窗口（此前 bug：滚动后窗口不刷新，始终停在底部）。
+                if (w.start !== _vl.start || w.end !== _vl.end) {
+                    _vl.start = w.start; _vl.end = w.end;
+                    vlPaint();
+                }
             });
         }
+
+        window.__vlDebug = function () { if (!_vl) return null; return { start: _vl.start, end: _vl.end, est: Math.round(_vl.est), st: _vl.scrollTopBefore ? Math.round(_vl.scrollTopBefore) : null, pending: _vl.pendingJump, scrollTop: Math.round(chatMessages.scrollTop), max: Math.round(chatMessages.scrollHeight - chatMessages.clientHeight) }; };
 
         function renderAllMessages() {
             // 有语音播放动画在跑就先掐断——气泡会被整批替换，旧节点已失效。
@@ -3435,15 +3582,17 @@
             var frag = document.createDocumentFragment();
             visibleList.forEach(function (m, i) { appendMessageToDOM(m, i, frag); });
             chatMessages.appendChild(frag);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom(true);
         }
 
         // ================= 搜索页跳转定位：读取 URL 的 hl=<序号>，滚动并闪烁提示 =================
         function highlightMessageFromUrl() {
             const hl = parseInt(new URLSearchParams(window.location.search).get('hl'), 10);
             if (isNaN(hl) || hl < 0) return;
-            // 虚拟列表模式：目标行此刻未必在 DOM 中，先渲染其所在窗口再定位
+            // 虚拟列表模式：目标行此刻未必在 DOM 中，先渲染其所在窗口再定位。
+            // 同时记录 pendingJump，避免 vlRenderToBottom 的「回底」rAF 覆盖本次跳转。
             if (_vl) {
+                _vl.pendingJump = hl;
                 vlJumpTo(hl);
                 requestAnimationFrame(function () {
                     const target = _vl.win.querySelector('.msg-row[data-idx="' + hl + '"] .msg-bubble');
@@ -3521,7 +3670,7 @@
                 vlRefresh();
             } else {
                 appendMessageToDOM(cardMsg);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                scrollToBottom(true);
             }
         }
         // 自动来电：仅当该角色独立开关 chat_auto_call_<roleId> 为 'true' 时，延迟 1.5s 进入来电页
@@ -3581,7 +3730,7 @@
                 saveMessages(historyList);
                 if (_vl) vlRefresh(); else appendMessageToDOM(card);
             });
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom(true);
         }
 
         // 心声卡日期格式化：2026年6月28日 14:30（iOS 备忘录风格）
@@ -3729,6 +3878,22 @@
             var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
             var inserted = false;
             cardSpecs.forEach(function (spec) {
+                // 先检查这个角色是否已有未撤销的卡（active/pending/paused）
+                // 如果有，就自动调整已有卡的额度，不创建新卡
+                var existing = window.RoleFamilyCards.findForRole(roleId).filter(function (c) {
+                    return ['active', 'pending', 'paused'].indexOf(c.status) !== -1;
+                });
+                if (existing.length > 0) {
+                    // 已有卡，自动调整额度
+                    window.RoleFamilyCards.applyRoleChange(roleId, {
+                        action: 'adjust',
+                        monthlyLimit: spec.monthlyLimit,
+                        singleLimit: spec.singleLimit,
+                        note: spec.note
+                    });
+                    inserted = true;
+                    return;
+                }
                 var card = window.RoleFamilyCards.createInvite({
                     roleId: roleId,
                     roleName: roleName,
@@ -4150,6 +4315,37 @@
 
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
+        // 正在流式输出中的半截消息快照：用户中途退出去刷空间/朋友圈时，
+        // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
+        // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
+        let inflightSnapshot = null;
+
+        // 页面被切走（返回列表/刷空间/发动态）时：如果 AI 还在说话，
+        // 把已经流出来的那半截消息立刻落库。localStorage 写入是同步的，
+        // 在页面卸载前一定完成，下一页轮询时就能读到未读 + 弹窗。
+        window.addEventListener('pagehide', function () {
+            try {
+                if (!aiSending || !inflightSnapshot) return;
+                var raw = String(inflightSnapshot.text || '').trim();
+                if (!raw) return;
+                var cleaned = stripInternalReasoning(raw)
+                    .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, '')
+                    .replace(/<\/?narratage\b[^>]*>/gi, '')
+                    .replace(/\[中译[:：][^\]]{0,800}\]/g, '')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+                if (!cleaned) return;
+                var list = loadMessages();
+                list.push({
+                    role: 'assistant',
+                    text: cleaned,
+                    time: Date.now(),
+                    name: inflightSnapshot.groupName,
+                    memberId: inflightSnapshot.memberId
+                });
+                saveMessages(list);
+            } catch (e) {}
+        });
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
@@ -4201,10 +4397,6 @@
                 } else preflightReason = 'ready';
             }
             if (preflightReason === 'empty') return;
-            if (preflightReason === 'blocked') {
-                if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法发送消息');
-                return;
-            }
             if (preflightReason === 'busy') {
                 if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
                 return;
@@ -4213,6 +4405,21 @@
                 if (typeof showToast === 'function') {
                     showToast(getGroupSettings().scheduleEnabled ? '当前时段没有可发言的群成员，大家都在休息' : '群成员都处于禁言状态');
                 }
+                return;
+            }
+            // blocked 不再拦截发送：消息照常发出，但标记为 sendFailed（渲染为红色感叹号），不调用 API
+            // 提前处理：不走 API Key 检查，直接落库显示
+            if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {
+                let blockedHistory = loadMessages();
+                const blockedMsg = { role: 'user', text: text, time: Date.now(), sendFailed: true };
+                blockedHistory.push(blockedMsg);
+                saveMessages(blockedHistory);
+                if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
+                input.value = '';
+                input.style.height = 'auto';
+                updateSendBtnState();
+                if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
+                scrollToBottom(true);
                 return;
             }
 
@@ -4237,7 +4444,9 @@
             let historyList = loadMessages();
             if (!isRegen) {
                 if (!contextOnly) {
+                    const blockedNow = isBlocked(aliasRoleId);
                     const userMsg = { role: 'user', text: text, time: Date.now(), silent: !!silent };
+                    if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
                     saveMessages(historyList);
                     if (!silent) {
@@ -4247,8 +4456,10 @@
                         updateSendBtnState();
                         if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                     }
+                    // 拉黑状态下：消息已显示为红色感叹号，不调用 API，直接结束
+                    if (blockedNow) return;
                 }
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                scrollToBottom(true);
 
                 // contextOnly 只发起 AI 回合，不创建普通用户文字消息。
             } else {
@@ -4815,7 +5026,7 @@
             statusDiv.className = 'loading-dots';
             statusDiv.innerText = '对方正在输入...';
             box.appendChild(statusDiv);
-            box.scrollTop = box.scrollHeight;
+            scrollToBottom(true);
 
             // API 调用计时起点（用于调用记录）
             const apiCallStart = Date.now();
@@ -4832,6 +5043,12 @@
             function paintStreamLive(text) {
                 // 保留原始累计文本：若流引擎意外抛错，收尾仍可走既有清洗与落库流程。
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
+                // 同步快照，供 pagehide 时把半截消息落库
+                inflightSnapshot = {
+                    text: lastPaintedStreamText,
+                    groupName: groupReplyPick ? groupReplyPick.name : undefined,
+                    memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
+                };
                 /* 推理标签可能先于正文到达；在真正有可见聊天文字前，不创建气泡。 */
                 var tmpText = stripInternalReasoning(extractVoiceCallMarker(text).text);
                 tmpText = tmpText
@@ -4864,7 +5081,7 @@
                     if (typeof SoundSystem !== 'undefined') SoundSystem.play('receive', currentRoleId || '');
                 }
                 if (streamBubble) streamBubble.textContent = tmpText;
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                pinToBottom();
             }
 
             aiSending = true;   // R3：进入请求阶段，到流式结束由收尾统一解锁（此前无 await，不存在并发窗口）
@@ -4966,6 +5183,9 @@
                         historyList.push(aiMsg);
                         window.__groupPrivateCardPending = false;
                         saveMessages(historyList);
+                        // 用户正在这个页面里看着这条回复流式出来 → 算已读，不算未读
+                        try { if (window.ChatNotifier) ChatNotifier.markSeen(aliasRoleId, aiMsg.time); } catch (e) {}
+                        inflightSnapshot = null;
                         // 删掉流式期间的临时气泡（它只显示了剥离标签后的原始文本）
                         if (streamBubble) {
                             var tempRow = streamBubble.closest('.msg-row');
@@ -4984,12 +5204,11 @@
                         // 语义一致，且自动跳过隐藏消息（语音/约会剧情等），搜索跳转 hl= 不会错位。
                         // 不能用 historyList.length-1：隐藏消息会让两者偏移，导致定位错行。
                         if (_vl) {
-                            // 虚拟列表：流式临时气泡已移除，按存储重新派生可见列表并窗口化重建到最新
-                            // （仅渲染窗口，开销极低；原 Fix C 的「只追加一条」在虚拟模式下等价于重窗口化）。
-                            vlRefresh();
+                            // 虚拟列表：流式收尾，仅重测最后一条（内容定稿）后重窗口化，O(1) 而非整表重测。
+                            vlFinalizeLast();
                         } else {
                             appendMessageToDOM(aiMsg, chatMessages.querySelectorAll('.msg-row[data-idx]').length);
-                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                            scrollToBottom(true);
                         }
                     } else if (streamBubble) {
                         // 模型只输出了标记：移除空白气泡、不落文本（来电卡/红包卡仍会插入）
@@ -5041,7 +5260,7 @@
                     saveMessages(historyList);
                     if (_vl) vlRefresh(); else appendMessageToDOM(errorMsg);
                 }
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                scrollToBottom(true);
             } catch (postErr) {
                 // 收尾处理自身的异常：仅记录，不伪装成网络错误
                 console.error('[chat-detail] 流式收尾处理异常:', postErr);
@@ -5115,7 +5334,7 @@
                 var regenFrag = document.createDocumentFragment();
                 list.forEach(function(m) { appendMessageToDOM(m, undefined, regenFrag); });
                 chatMessages.appendChild(regenFrag);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                scrollToBottom(true);
             }
             // 触发重新生成
             sendMsg({ isRegenerate: true, regenDirection: direction || '' });
@@ -5382,7 +5601,7 @@
                 var delOneFrag = document.createDocumentFragment();
                 keep.forEach(function (m, i) { appendMessageToDOM(m, i, delOneFrag); });
                 chatMessages.appendChild(delOneFrag);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                scrollToBottom(true);
             }
             if (typeof showToast === 'function') showToast('已删除 1 条消息');
         }
@@ -5667,7 +5886,7 @@
                 keep.forEach(function (m, i) { appendMessageToDOM(m, i, delManyFrag); });
                 chatMessages.appendChild(delManyFrag);
             }
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            scrollToBottom(true);
             exitSelection();
             if (typeof showToast === 'function') showToast('已删除 ' + selectedTimes.size + ' 条消息');
         });
@@ -6572,7 +6791,7 @@
                 list.push(msg);
                 saveMessages(list);
                 if (_vl) vlRefresh(); else appendMessageToDOM(msg);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+                scrollToBottom(true);
                 if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                 // 描述只留在表情消息数据中，供 AI 请求上下文读取；不另存、不显示成聊天文字。
                 sendMsg({
@@ -7058,19 +7277,19 @@
   box-shadow: 0 1px 6px rgba(10, 132, 255, 0.25) !important;
   color: #FFFFFF !important;
 }
-/* 底部输入栏：磨砂玻璃 */
+/* 底部输入栏：透明，只留椭圆输入框和圆形发送按钮 */
 .input-dock {
-  background: rgba(255, 255, 255, 0.8) !important;
-  backdrop-filter: blur(24px) saturate(1.8) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.4) !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-top: none !important;
 }
-/* 输入框：白色胶囊 */
+/* 输入框：白色椭圆胶囊 */
 .input-capsule {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border: 1px solid rgba(255, 255, 255, 0.8) !important;
-  border-radius: 20px !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: none !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
 }
 /* 功能面板：磨砂玻璃 */
 .plus-panel-sheet {
@@ -7454,11 +7673,12 @@
       header.style.setProperty('-webkit-backdrop-filter', 'none', 'important');
     });
     
-    // 强制输入栏透明
+    // 强制输入栏完全透明
     document.querySelectorAll('.input-dock').forEach(function(dock) {
-      dock.style.setProperty('background', 'rgba(255, 255, 255, 0.2)', 'important');
+      dock.style.setProperty('background', 'transparent', 'important');
       dock.style.setProperty('backdrop-filter', 'none', 'important');
       dock.style.setProperty('-webkit-backdrop-filter', 'none', 'important');
+      dock.style.setProperty('border-top', 'none', 'important');
     });
     
     // 强制消息区透明
@@ -7484,6 +7704,86 @@
     });
     observer.observe(chatMessages, { childList: true, subtree: true });
   }
+})();
+</script>
+<style>
+/* 最终强制：底部透明，只留白色椭圆输入框 + 白色圆形爱心按钮 */
+.chat-stage, #chat-messages {
+  background: #E8E8ED !important;
+}
+form#chat-form.input-dock {
+  background: transparent !important;
+  border-top: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+form#chat-form .input-capsule { margin-right: 48px !important; 
+  background: #ffffff !important;
+  border: none !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+  margin-right: 44px !important;
+}
+form#chat-form .send-icon-btn {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important;
+  color: #111111 !important;
+  position: absolute !important;
+  right: 16px !important;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  display: flex !important;
+  visibility: visible !important;
+  z-index: 5 !important;
+}
+form#chat-form .send-icon-btn svg { color: #111111 !important; }
+form#chat-form .send-icon-btn.disabled { opacity: 0.4 !important; display: flex !important; visibility: visible !important; }
+/* 强制 disabled 时也显示圆形发送按钮 */
+form#chat-form .send-icon-btn { display: flex !important; visibility: visible !important; }
+</style>
+<script>
+// 最后执行：强制输入栏容器透明
+(function(){
+  function force(){
+    var d = document.getElementById('chat-form');
+    if(!d) return;
+    d.style.setProperty('background','transparent','important');
+    d.style.setProperty('background-color','transparent','important');
+    d.style.setProperty('border-top','none','important');
+    d.style.setProperty('backdrop-filter','none','important');
+    d.style.setProperty('-webkit-backdrop-filter','none','important');
+    var sb = d.querySelector('.send-icon-btn');
+    if(sb){
+      sb.style.setProperty('display','flex','important');
+      sb.style.setProperty('visibility','visible','important');
+    }
+  }
+  force();
+  function fixAll(){
+    var d = document.getElementById('chat-form');
+    var cap = document.querySelector('.input-capsule');
+    if(cap) cap.style.marginRight = '50px';
+    if(d && !document.getElementById('myFloatSend')){
+      var old = d.querySelector('.send-icon-btn');
+      if(old) old.style.display = 'none';
+      var b = document.createElement('button');
+      b.id = 'myFloatSend';
+      b.type = 'button';
+      b.style.cssText = 'position:absolute;right:14px;bottom:8px;width:36px;height:36px;border-radius:50%;background:#fff;border:none;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;color:#111;';
+      b.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6c-2.2-2.2-5.7-2.2-7.9 0L12 5.5l-.9-.9c-2.2-2.2-5.7-2.2-7.9 0s-2.2 5.7 0 7.9L12 21l8.8-8.5c2.2-2.2 2.2-5.7 0-7.9Z"/></svg>';
+      b.onclick = function(){ if(typeof window.sendMsg==='function') window.sendMsg(); };
+      d.appendChild(b);
+    }
+  }
+  fixAll();
+  window.addEventListener('load', function(){ setTimeout(fixAll, 100); setTimeout(fixAll, 500); });
 })();
 </script>
 </body></html>

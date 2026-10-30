@@ -1590,29 +1590,14 @@
           </button>
         </div>
 
-        <div class="settings-card" id="deleteChatCard">
-          <button type="button" class="action-row" id="actionDeleteChat">
-            <span class="action-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </span>
-            <span class="action-body">
-              <span class="action-title">删除会话</span>
-              <span class="action-sub">从消息列表移除，聊天记录保留</span>
-            </span>
-            <span class="action-arrow">
-              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-            </span>
-          </button>
-        </div>
-
         <div class="settings-card" id="deleteChatForeverCard">
           <button type="button" class="action-row" id="actionDeleteChatForever">
             <span class="action-icon danger">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
             </span>
             <span class="action-body">
-              <span class="action-title danger">删除会话并清空记录</span>
-              <span class="action-sub">会话与聊天记录一起消失，不可恢复</span>
+              <span class="action-title danger">删除会话</span>
+              <span class="action-sub">从列表移除，聊天记录一起清空，不可恢复</span>
             </span>
             <span class="action-arrow">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
@@ -2181,17 +2166,6 @@
       if (!writeIdList(BLOCKED_KEY, arr)) return;
       refreshBlockUI();
       showToast(idx === -1 ? '已拉黑「' + contactName + '」' : '已解除拉黑');
-    });
-  }
-
-  var actionDeleteChatBtn = document.getElementById('actionDeleteChat');
-  if (actionDeleteChatBtn) {
-    actionDeleteChatBtn.addEventListener('click', function () {
-      var arr = readIdList(HIDDEN_KEY);
-      if (arr.indexOf(String(roleId)) === -1) arr.push(String(roleId));
-      if (!writeIdList(HIDDEN_KEY, arr)) return;
-      showToast('已从消息列表移除');
-      setTimeout(function () { window.location.href = 'chat.html'; }, 600);
     });
   }
 
