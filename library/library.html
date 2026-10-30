@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#ffffff">
 <title>书架 · MAOMAO</title>
 <script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/phone_api.js"></script>
 <style>
 /* ============================================================
    MAOMAO — Editorial Reading App
@@ -244,6 +246,38 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
 .dialog-title{font-family:var(--serif);font-weight:400;font-size:18px;letter-spacing:.02em}
 .dialog-body{font-size:10px;line-height:1.95;letter-spacing:.03em;color:#555;margin-top:10px}
 .dialog .text-action{margin-top:14px}
+.import-dialog{z-index:49}
+.import-fields{display:grid;gap:13px;margin-top:17px}
+.import-field{display:grid;gap:6px;font-size:10px;letter-spacing:.06em;color:#777}
+.import-field input{width:100%;height:42px;padding:0 11px;border:1px solid #dedede;background:#fafafa;color:#171717;font:13px var(--sans);outline:none}
+.import-field input:focus{border-color:#777;background:#fff}
+.import-hint{font-size:9px;line-height:1.8;color:#888;margin:10px 0 0}
+.import-actions{display:flex;justify-content:flex-end;gap:20px;align-items:center;margin-top:18px}
+.import-actions button{font-size:12px;padding:8px 0}
+.import-actions .primary{font-weight:600;border-bottom:1px solid #171717}
+.paragraph-block{position:relative;margin:0 0 var(--reader-para,1.5em)}
+.reader-content .paragraph-block p{margin:0}
+.paragraph-tools{display:flex;justify-content:flex-end;min-height:22px;margin-top:3px}
+.paragraph-comment-trigger{padding:2px 0 3px;color:#999;border-bottom:1px solid #d8d8d8;font-size:9px;letter-spacing:.08em;opacity:.72}
+.paragraph-comment-trigger:active{color:#171717;opacity:1}
+.paragraph-comment-preview{display:flex;gap:8px;margin-top:8px;padding:9px 10px;border-left:1px solid #999;background:rgba(0,0,0,.025);font-size:10px;line-height:1.8;color:#555}
+.paragraph-comment-preview strong{flex:0 0 auto;font-weight:600;color:#333}
+.paragraph-sheet{position:absolute;left:0;right:0;bottom:0;z-index:50;display:flex;flex-direction:column;max-height:78%;padding:0 22px calc(18px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #171717;transform:translateY(101%);visibility:hidden;transition:transform .34s cubic-bezier(.32,.72,0,1),visibility .34s}
+.paragraph-sheet.is-open{transform:translateY(0);visibility:visible}
+.paragraph-sheet-head{display:flex;justify-content:space-between;align-items:center;padding:17px 0 13px;border-bottom:1px solid #ddd;font-size:9px;letter-spacing:.2em;color:#777}
+.paragraph-sheet-head button{font-size:11px;letter-spacing:0;color:#777}
+.paragraph-context{max-height:112px;overflow:auto;padding:13px 0;border-bottom:1px solid #eee;font-family:var(--serif);font-size:13px;line-height:1.8;color:#444}
+.paragraph-role-row{display:grid;grid-template-columns:52px minmax(0,1fr);align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #eee}
+.paragraph-role-row label{font-size:10px;color:#777}
+.paragraph-role-row select{width:100%;height:36px;border:1px solid #dedede;background:#fff;padding:0 9px;color:#222;font-size:11px}
+.paragraph-comment-thread{flex:1;min-height:72px;overflow:auto;padding:12px 0;font-size:12px;line-height:1.9;color:#444;white-space:pre-wrap}
+.paragraph-comment-empty{font-size:10px;color:#999;line-height:1.8}
+.paragraph-comment-author{font-size:9px;letter-spacing:.08em;color:#888;margin-bottom:6px}
+.paragraph-comment-content{font-family:var(--serif);font-size:14px;line-height:1.9;color:#252525}
+.paragraph-generate{flex:0 0 auto;width:100%;padding:13px 12px;background:#171717;color:#fff;font-size:11px;letter-spacing:.08em}
+.paragraph-generate:disabled{opacity:.45}
+.rs-role-select{max-width:190px;min-width:0;height:32px;border:1px solid #dedede;background:#fff;padding:0 8px;font-size:10px;color:#333}
+.paragraph-no-role{font-size:10px;color:#888;line-height:1.8}
 
 /* ===== 轻提示（黑白灰，无圆角） ===== */
 .toast{position:absolute;left:50%;bottom:104px;transform:translate(-50%,10px);opacity:0;pointer-events:none;z-index:60;
@@ -402,7 +436,7 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     </div>
 
     <!-- 隐藏的本地文件选择器：仅接受 .txt -->
-    <input type="file" id="importFile" accept=".txt,text/plain" hidden>
+    <input type="file" id="importFile" accept=".txt,.epub,text/plain,application/epub+zip" hidden>
   </section>
 
   <!-- ==================== 底部状态栏导航 ==================== -->
@@ -456,6 +490,23 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
       <span id="tocCount">03</span>
     </div>
     <div class="toc-list" id="tocList"></div>
+  </div>
+  <div class="dialog import-dialog" id="importDialog" role="dialog" aria-modal="true" aria-labelledby="importDialogTitle">
+    <div class="dialog-title" id="importDialogTitle">添加到书架</div>
+    <div class="dialog-body" id="importSummary">请确认书名和导入章节。</div>
+    <div class="import-fields">
+      <label class="import-field">书籍名称（必填）
+        <input id="importBookName" type="text" maxlength="80" placeholder="给这本书起一个名字" autocomplete="off">
+      </label>
+      <label class="import-field">作者（选填）
+        <input id="importBookAuthor" type="text" maxlength="60" placeholder="未知作者">
+      </label>
+    </div>
+    <p class="import-hint">导入后会保存到本机书架。章节标题来自原书目录或 TXT 中识别到的章节标题；未识别到章节时会保留为“全文”，不会擅自拆章。</p>
+    <div class="import-actions">
+      <button type="button" id="cancelBookImport">取消</button>
+      <button type="button" class="primary" id="confirmBookImport">确认加入书架</button>
+    </div>
   </div>
   <div class="dialog" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
     <div class="dialog-title" id="dialogTitle">标题</div>
@@ -518,10 +569,31 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
         <span class="rs-label">显示段评</span>
         <button class="rs-switch" type="button" id="rsComments" role="switch" aria-checked="false" aria-label="显示段评"></button>
       </div>
+      <div class="rs-row">
+        <span class="rs-label">段评角色</span>
+        <select class="rs-role-select" id="rsCommentRole" aria-label="选择段评角色">
+          <option value="">正在读取角色…</option>
+        </select>
+      </div>
     </div>
     <input type="file" id="rsImageInput" accept="image/*" hidden>
   </div>
 
+  <div class="paragraph-sheet" id="paragraphSheet" role="dialog" aria-modal="true" aria-label="段落评论">
+    <div class="paragraph-sheet-head">
+      <span>PARAGRAPH COMMENT / 段评</span>
+      <button type="button" id="closeParagraphSheet">关闭</button>
+    </div>
+    <div class="paragraph-context" id="paragraphContext"></div>
+    <div class="paragraph-role-row">
+      <label for="paragraphRoleSelect">评论角色</label>
+      <select id="paragraphRoleSelect"></select>
+    </div>
+    <div class="paragraph-comment-thread" id="paragraphCommentThread">
+      <div class="paragraph-comment-empty">选择一个角色，让 TA 说说读到这一段时的想法。</div>
+    </div>
+    <button class="paragraph-generate" type="button" id="generateParagraphComment">请 TA 评论这段</button>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 </div>
