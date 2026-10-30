@@ -30,6 +30,15 @@
 
       var content = cleanReasoning(m.text || m.content || '').trim();
       if (!content) return; // Pure display cards (location/call etc.) do not enter model context.
+      // Keep a reply's source message in context so the character knows exactly what is being answered.
+      if (m.quote && typeof m.quote === 'object' && m.quote.text) {
+        var quoteText = String(m.quote.text).trim().slice(0, 500);
+        var quoteAuthor = String(m.quote.authorName || '').trim();
+        if (quoteText) {
+          content = '[引用回复上下文' + (quoteAuthor ? '，原消息来自' + quoteAuthor : '') +
+            '：「' + quoteText + '」]\\n' + content;
+        }
+      }
       // Narration belongs to the UI layer and must not consume model dialogue turns.
       content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
       // Bilingual chat: [中译:...] is a UI strip, not part of the dialogue the model sees.
