@@ -3252,6 +3252,21 @@
                 }
             }
 
+            // 引用回复：将原消息快照和本条文字一起显示，历史记录重载后也不会丢失。
+            if (msg.quote && msg.quote.text) {
+                var quoteBox = document.createElement('div');
+                quoteBox.className = 'msg-quoted-preview';
+                var quoteAuthor = document.createElement('div');
+                quoteAuthor.className = 'msg-quoted-author';
+                quoteAuthor.textContent = '引用 ' + String(msg.quote.authorName || '原消息');
+                var quoteText = document.createElement('div');
+                quoteText.className = 'msg-quoted-text';
+                quoteText.textContent = String(msg.quote.text);
+                quoteBox.appendChild(quoteAuthor);
+                quoteBox.appendChild(quoteText);
+                bubble.insertBefore(quoteBox, bubble.firstChild);
+            }
+
             // 译文小字（AI 翻译结果落库后随消息一起渲染）
             // 若 parseReplyContent 已经从 [中译:] 解析出翻译条（双语聊天模式），就不重复挂手动翻译
             if (msg.translation && !bubble.querySelector('.msg-translation')) {
@@ -4411,7 +4426,12 @@
             // 提前处理：不走 API Key 检查，直接落库显示
             if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {
                 let blockedHistory = loadMessages();
-                const blockedMsg = { role: 'user', text: text, time: Date.now(), sendFailed: true };
+                const blockedQuote = pendingQuote ? {
+                    mid: pendingQuote.mid, text: pendingQuote.text,
+                    fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
+                } : null;
+                const blockedMsg = { role: 'user', text: text, time: Date.now(), sendFailed: true, quote: blockedQuote };
+                if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 blockedHistory.push(blockedMsg);
                 saveMessages(blockedHistory);
                 if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
@@ -4445,7 +4465,15 @@
             if (!isRegen) {
                 if (!contextOnly) {
                     const blockedNow = isBlocked(aliasRoleId);
-                    const userMsg = { role: 'user', text: text, time: Date.now(), silent: !!silent };
+                    const quoteSnapshot = (!silent && pendingQuote) ? {
+                        mid: pendingQuote.mid, text: pendingQuote.text,
+                        fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
+                    } : null;
+                    const userMsg = {
+                        role: 'user', text: text, time: Date.now(), silent: !!silent,
+                        quote: quoteSnapshot
+                    };
+                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
                     saveMessages(historyList);
@@ -4995,6 +5023,12 @@
                     }
                     var content = stripInternalReasoning(m.text || m.content || '').trim();
                     if (!content) return; // 纯展示卡片消息（位置/通话等）无文本时不发给 AI
+                    if (m.quote && typeof m.quote === 'object' && m.quote.text) {
+                        var quoteText = String(m.quote.text).trim().slice(0, 500);
+                        var quoteAuthor = String(m.quote.authorName || '').trim();
+                        if (quoteText) content = '[引用回复上下文' + (quoteAuthor ? '，原消息来自' + quoteAuthor : '') +
+                            '：「' + quoteText + '」]\\n' + content;
+                    }
                     // 剥离 <narratage>...</narratage>（旁白是 UI 层，不占上下文序号）
                     content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
                     // 剥离 [中译:...] 双语翻译条（UI 层，不回灌给 AI）
@@ -5534,7 +5568,13 @@
                 if (act === 'copy') { copyMessageText(msg); return; }
                 if (act === 'forward') { openForwardSheet(mid); return; }
                 if (act === 'quote') {
-                    pendingQuote = { mid: mid, text: plainTextOf(msg), fromRole: msg.role };
+                    var quoteAuthorName = msg.name ||
+                        ((msg.role === 'sent' || msg.role === 'user') ? '我' :
+                        ((document.getElementById('chat-title') || {}).textContent || '对方'));
+                    pendingQuote = {
+                        mid: mid, text: plainTextOf(msg), fromRole: msg.role,
+                        authorName: String(quoteAuthorName || '原消息').trim()
+                    };
                     var qb = document.getElementById('quoteBar');
                     var qbt = document.getElementById('quoteBarText');
                     if (qb && qbt) {
@@ -7786,4 +7826,19 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
   window.addEventListener('load', function(){ setTimeout(fixAll, 100); setTimeout(fixAll, 500); });
 })();
 </script>
+<style id="maomao-quote-reply-fix">
+.msg-quoted-preview {
+  display:block; margin:0 0 8px; padding:7px 9px;
+  border-left:2px solid rgba(80,80,80,.45); border-radius:4px;
+  background:rgba(0,0,0,.045); color:#666; max-width:100%;
+}
+.msg-quoted-author {
+  font-size:10px; line-height:1.4; color:#888; margin-bottom:3px; font-weight:600;
+}
+.msg-quoted-text {
+  font-size:11px; line-height:1.5; color:#555;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+  overflow-wrap:anywhere; white-space:pre-wrap;
+}
+</style>
 </body></html>
