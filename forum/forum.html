@@ -8,6 +8,7 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/phone_api.js"></script>
 <script src="../shared/js/custom-css.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -180,61 +181,103 @@ function refreshFeed(){
 }
 
 // 自动为角色生成帖子：每个角色至少发一条
-function ensureRolePosts(){
+// 自动为每个角色保留一条帖子；有 API 时按该角色人设生成真实内容。
+function forumRoleList(){
   let roles=[];
   try{
-    if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function'){
-      roles=PhoneStorage.getCharacters()||[];
-    }
+    if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function')roles=PhoneStorage.getCharacters()||[];
   }catch(e){}
   if(!Array.isArray(roles)||!roles.length){
     try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')}catch(e){roles=[]}
   }
-  if(!Array.isArray(roles))return;
-  
-  const roleNames=['碎碎念','日常分享','心情记录','生活碎片','今天想到的事'];
-  const roleTitles=['今天的一点小感想','分享一下今天遇到的小事','随便写点什么','最近在想的一件事','今日份的小记录'];
-  const roleBodies=[
-    '今天天气挺好的，出门走了走，风很舒服。有时候觉得，不用特意做什么，只是随便逛逛也很好。',
-    '最近突然想到一个问题：我们每天忙忙碌碌的，到底是在追求什么呢？不过想归想，日子还是要好好过的。',
-    '刚才喝了一杯很不错的咖啡，坐在窗边发了一会儿呆。这样的时刻，其实也挺珍贵的。',
-    '有时候会突然想起以前的一些小事，明明已经过去很久了，却还是记得很清楚。大概这些就是生活留下的痕迹吧。',
-    '今天没什么特别的事，但就是觉得心情还不错。也许，平淡的日子里也藏着小小的幸福。'
+  return Array.isArray(roles)?roles.filter(r=>r&&r.name).slice(0,12):[];
+}
+function forumRoleId(role){
+  return String(role&&role.id!==undefined&&role.id!==null?role.id:(role&&role.name||''));
+}
+function forumRoleBio(role){
+  return [role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
+    .filter(Boolean).join('\n').replace(/\s+/g,' ').trim().slice(0,1800);
+}
+function forumFallbackPost(role,index){
+  const id=forumRoleId(role);
+  const titles=['今天的一点小感想','最近在想的一件事','留给今天的小记录','刚刚想到一个问题','生活里的小片段'];
+  const bodies=[
+    '今天没有刻意安排什么，只是按自己的节奏做了些事情。回头看，平常的日子也有值得记下来的地方。',
+    '有些事情不一定要马上想明白，先放在心里，等合适的时候再慢慢整理。',
+    '刚刚把一个小念头记了下来。比起把每件事都做好，有时候更想认真对待当下。',
+    '最近开始留意以前容易忽略的细节。生活好像没有突然改变，但看事情的方式有了一点不同。',
+    '今天也有一些没完成的事，不过不打算因此打乱自己的节奏。明天再继续。'
   ];
-  
-  roles.forEach(function(role,idx){
-    if(!role||!role.name)return;
-    const roleId=String(role.id||role.name);
+  return {
+    id:'role_'+id,name:role.name,avatar:String(role.name).slice(0,1),role:'role',
+    topic:['碎碎念','日常分享','心情记录','生活观察','随手分享'][index%5],
+    time:'刚刚',title:titles[index%titles.length],body:bodies[index%bodies.length],
+    likes:0,comments:[],liked:false,owner:'role',roleId:id,created:Date.now()-index*1000,
+    tag:'role',content:titles[index%titles.length]+'\n'+bodies[index%bodies.length],
+    generatedBy:'fallback'
+  };
+}
+function ensureRolePosts(){
+  const roles=forumRoleList();
+  let changed=false;
+  const pending=[];
+  roles.forEach(function(role,index){
+    const roleId=forumRoleId(role);
+    if(!roleId)return;
     const postId='role_'+roleId;
-    // 检查这个角色有没有发过帖子
-    if(posts.some(p=>p.id===postId))return;
-    // 生成一条默认帖子
-    const topicIdx=idx%roleNames.length;
-    const titleIdx=idx%roleTitles.length;
-    const bodyIdx=idx%roleBodies.length;
-    posts.unshift({
-      id:postId,
-      name:role.name,
-      avatar:(role.name||'?').slice(0,1),
-      role:'role',
-      topic:roleNames[topicIdx],
-      time:'刚刚',
-      title:roleTitles[titleIdx],
-      body:roleBodies[bodyIdx],
-      likes:Math.floor(Math.random()*5),
-      comments:Math.floor(Math.random()*3),
-      liked:false,
-      owner:'role',
-      roleId:roleId,
-      created:Date.now()-idx*86400000,
-      tag:'role',
-      content:roleTitles[titleIdx]+'\n'+roleBodies[bodyIdx]
+    let post=posts.find(p=>String(p.id)===postId);
+    if(!post){
+      post=forumFallbackPost(role,index);
+      posts.unshift(post);
+      changed=true;
+    }
+    // 旧版固定模板没有 AI 标记；API 配置好后会自动升级，不覆盖点赞/评论等互动数据。
+    if(post.generatedBy!=='ai'){
+      pending.push({roleId:roleId,name:String(role.name),persona:forumRoleBio(role)});
+    }
+  });
+  if(changed)save();
+  if(pending.length)generateRolePosts(pending);
+}
+function generateRolePosts(targets){
+  const cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
+  if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')return;
+  const requested=targets.slice(0,12);
+  const systemPrompt='你正在扮演一组独立的虚构角色，为他们各自的社区账号写一条帖子。每条必须严格符合对应角色的人设、经历、兴趣、表达习惯和语气；不同角色不能写成同一种声音。内容像真实用户随手发布的生活记录或想法，不要描述角色设定，不要提到AI，不要写营销文案。只返回 JSON，不要 Markdown。';
+  const userPrompt='请分别为以下角色写一条帖子。角色资料：'+JSON.stringify(requested)+
+    '\n返回结构：{"posts":[{"roleId":"必须原样对应角色 ID","title":"标题","body":"正文","topic":"从碎碎念、日常分享、心情记录、生活观察、随手分享中选一个"}]}'+
+    '\n每条标题 4-22 个汉字，正文 35-120 个汉字。内容应像角色真的在自己的账号里发动态；按角色人设选择题材，不要所有角色都写天气、咖啡、海边或泛泛感悟。';
+  PhoneAPI.completeJSON({system:systemPrompt,user:userPrompt,temperature:0.88,timeoutMs:26000}).then(function(result){
+    if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))return;
+    let changed=false;
+    result.data.posts.forEach(function(item){
+      if(!item)return;
+      const roleId=String(item.roleId==null?'':item.roleId);
+      if(!requested.some(r=>r.roleId===roleId))return;
+      const post=posts.find(p=>String(p.id)==='role_'+roleId);
+      if(!post)return;
+      const title=String(item.title||'').trim().slice(0,80);
+      const body=String(item.body||'').trim().slice(0,400);
+      if(!title&&!body)return;
+      post.title=title||'今天的一点记录';
+      post.body=body||'把今天想到的事情留在这里。';
+      post.topic=['碎碎念','日常分享','心情记录','生活观察','随手分享'].includes(item.topic)?item.topic:'日常分享';
+      post.content=post.title+'\n'+post.body;
+      post.generatedBy='ai';
+      post.time='刚刚';
+      post.created=Date.now();
+      changed=true;
     });
+    if(changed){save();render();}
+  }).catch(function(error){
+    console.warn('[Forum] 角色帖子生成人设内容失败，保留本地兜底帖子',error);
   });
 }
 
+
 ensureRolePosts();
-save();render();
+render();
 })();
 </script>
 </body>
