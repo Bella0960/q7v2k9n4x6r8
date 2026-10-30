@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v125';
+const CACHE_NAME = 'phone-app-pwa-v126';
 const APP_SHELL = [
   './',
   './index.html',
@@ -31,7 +31,7 @@ const APP_SHELL = [
   './assets/takeout/d16-bento.jpg',
   './shared/js/chat-beauty.js?v=20261026v11',
   './shared/js/wallpaper-store.js?v=20261026v2',
-  './shared/css/chat-beauty-runtime.css?v=20261026v16',
+  './shared/css/chat-beauty-runtime.css?v=20261031v1',
   './games/games.html',
   './games/cooking.html',
   './games/css/cooking.css?v=20261025v3',
