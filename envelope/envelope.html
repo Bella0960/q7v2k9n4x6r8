@@ -243,12 +243,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   filter:blur(4px);opacity:1;transition:all .9s cubic-bezier(.16,1,.3,1);z-index:0;
 }
 .letter-stage{
-  position:absolute;left:50%;top:50%;width:min(320px,90vw);height:170px;
+  --fold-height:190px;
+  position:absolute;left:50%;top:50%;width:min(320px,90vw);height:var(--fold-height);
   transform:translate(-50%,-50%) translateY(24px) scale(.96);
-  transform-origin:50% 50%;opacity:0;pointer-events:none;
+  transform-origin:50% 50%;opacity:0;pointer-events:none;overflow:hidden;
   transition:all .9s cubic-bezier(.16,1,.3,1);z-index:2;transform-style:preserve-3d;
 }
-.letter-stage.unfolded{height:570px}
+.letter-stage.unfolded{height:calc(var(--fold-height)*3);overflow:visible}
 .detail-main.paper-rising .letter-stage{
   opacity:1;pointer-events:auto;
   transform:translate(-50%,-50%) translateY(-26px) scale(1);z-index:8;
@@ -258,7 +259,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   width:min(320px,90vw);margin:max(20px,calc((100dvh - 570px)/2 - 8px)) auto 18px;
 }
 .detail-main.paper-opened .letter-stage.unfolded{height:570px}
-.fold-wrapper{position:absolute;inset:0;transform-style:preserve-3d}
+.fold-wrapper{
+  position:absolute;left:0;top:0;width:100%;height:calc(var(--fold-height)*3);
+  transform:translateY(calc(-1 * var(--fold-height)));
+  transition:transform .9s cubic-bezier(.16,1,.3,1);
+  transform-style:preserve-3d;
+}
+.letter-stage.unfolded .fold-wrapper{transform:translateY(0)}
 .panel{
   position:absolute;left:0;right:0;height:33.333%;
   transform-style:preserve-3d;backface-visibility:hidden;
@@ -305,15 +312,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .recipient-bottom{align-items:flex-end;border-top:1px solid rgba(178,164,145,.46);padding-top:7px}
 .recipient-from{font:italic 12px Georgia,serif;color:#74695D}
 .recipient-edition{font-size:6px;letter-spacing:.17em;text-transform:uppercase;color:#9A8E80;text-align:right}
-/* V7 收件人正面是完整信封面，不属于顶部三分之一折页 */
-.fold-wrapper>.panel-back{
-  position:absolute;inset:0;z-index:5;
-  transform:none;transform-origin:center;
-  width:100%;height:100%;border-radius:4px;
-  opacity:1;pointer-events:auto;
-  transition:opacity .28s ease;
-}
-.letter-stage.unfolded>.panel-back{opacity:0;pointer-events:none}
 
 .crease-shadow{
   position:absolute;inset:0;pointer-events:none;
@@ -344,9 +342,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .detail-main.paper-opened .detail-actions{width:min(90vw,540px);margin:0 auto 24px;flex-shrink:0}
 .detail-main.paper-opened .detail-actions button{min-width:0;padding:11px 10px;font-size:10px}
 @media(min-width:640px){
- .letter-stage,.detail-main.paper-opened .letter-stage{width:360px}
- .letter-stage{height:190px}
- .letter-stage.unfolded,.detail-main.paper-opened .letter-stage.unfolded{height:630px}
+ .letter-stage,.detail-main.paper-opened .letter-stage{width:360px;--fold-height:210px}
+ .letter-stage,.detail-main.paper-opened .letter-stage:not(.unfolded){height:var(--fold-height)}
+ .letter-stage.unfolded,.detail-main.paper-opened .letter-stage.unfolded{height:calc(var(--fold-height)*3)}
  .panel-content,.panel-top .content-inner,.panel-mid .content-inner,.panel-bottom .content-inner{padding:1.75rem 2rem}
  .copy,.mid-copy{font-size:14px}
 }
@@ -528,6 +526,19 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     <div class="letter-stage" id="letterStage" aria-label="三折信纸">
       <div class="letter-shadow" id="letterShadow"></div>
       <div class="fold-wrapper">
+<section id="panelTop" class="panel panel-top paper-texture">
+          <div id="shadeTop" class="crease-shadow"></div>
+          <div class="panel-content"><div class="content-inner">
+            <div>
+              <div class="meta">
+                <span class="meta-number" id="paperNumber">No. 001</span>
+                <span class="meta-date" id="paperDate">OCTOBER '26</span>
+              </div>
+              <h2 class="salutation" id="paperTitle">Dearest Mira,</h2>
+              <p class="copy" id="paperTopText"></p>
+            </div>
+          </div></div>
+
         <div class="panel-back paper-texture" aria-label="V7 收件人信封正面">
           <div class="recipient-top">
             <div>
@@ -549,18 +560,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
             <span class="recipient-edition">Private correspondence<br><span id="paperDateFront">Autumn · 2026</span></span>
           </div>
         </div>
-        <section id="panelTop" class="panel panel-top paper-texture">
-          <div id="shadeTop" class="crease-shadow"></div>
-          <div class="panel-content"><div class="content-inner">
-            <div>
-              <div class="meta">
-                <span class="meta-number" id="paperNumber">No. 001</span>
-                <span class="meta-date" id="paperDate">OCTOBER '26</span>
-              </div>
-              <h2 class="salutation" id="paperTitle">Dearest Mira,</h2>
-              <p class="copy" id="paperTopText"></p>
-            </div>
-          </div></div>
 
         </section>
 
