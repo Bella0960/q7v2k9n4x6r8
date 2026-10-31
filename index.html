@@ -237,6 +237,16 @@
             <div class="home-page" data-page="1">
               <div class="desktop-grid" id="gridPage1">
 
+
+                <!-- 信封：私人信件往来 -->
+                <button class="app-card app-tile" type="button" data-href="envelope/envelope.html" data-drag="app_envelope" data-name="信封" title="信封">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="1.8"/><path d="m3.5 6 8.5 7 8.5-7"/><path d="M3 18l6.2-5M21 18l-6.2-5"/></svg>
+                  </span>
+                  <span class="app-name">信封</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <!-- 日记 App：黑白极简私人手账 -->
                 <button class="app-card app-tile" type="button" data-href="diary/diary.html" data-drag="app_diary" data-name="日记" title="日记">
                   <span class="app-icon">
@@ -527,7 +537,7 @@
             ],
             [
               'app_finance', 'app_games', 'app_cafe', 'app_library',
-              'app_diary', 'app_dreamtravel'
+              'app_diary', 'app_envelope', 'app_dreamtravel'
             ],
             [
               'social',
@@ -593,6 +603,18 @@
           return !!valid[id];
         });
         // 若旧布局未把聊天/商店放在 Dock，保留用户选择；默认布局会提供这两个入口。
+        saveLayout(currentLayout);
+      })();
+
+      // 新增应用入口迁移：将“信封”加入现有自定义桌面，避免旧布局恢复时把新图标移入隐藏仓库。
+      (function addEnvelopeShortcutToExistingLayouts() {
+        var id = 'app_envelope';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        while (currentLayout.pages.length < 2) currentLayout.pages.push([]);
+        currentLayout.pages[1].push(id);
         saveLayout(currentLayout);
       })();
 
