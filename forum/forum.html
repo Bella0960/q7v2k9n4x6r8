@@ -244,9 +244,10 @@ scroll.addEventListener('touchend',()=>{
 function refreshFeed(){
   const cur=posts.slice();
   const mine=cur.filter(p=>p.owner==='me');
-  const others=cur.filter(p=>p.owner!=='me'&&String(p.id).indexOf('seed_')!==0);
+  const isThemeDemo=p=>/^p[1-6]$/.test(String(p.id));
+  const others=cur.filter(p=>p.owner!=='me'&&String(p.id).indexOf('seed_')!==0&&!isThemeDemo(p));
   const keepSeeds=cur.filter(p=>p.owner!=='me'&&String(p.id).indexOf('seed_')===0);
-  const seeds=seeded.map(s=>({...s}));
+  const seeds=getSeededPosts();
   posts=mine.concat(others).concat(keepSeeds);
   seeds.forEach(s=>{if(!posts.some(p=>p.id===s.id))posts.push({...s})});
   save();render();
@@ -272,26 +273,16 @@ function forumRoleBio(role){
     .filter(Boolean).join('\n').replace(/\s+/g,' ').trim().slice(0,1800);
 }
 function forumFallbackPost(role,index){
-  const id=forumRoleId(role);
-  const titles=['今天的一点小感想','最近在想的一件事','留给今天的小记录','刚刚想到一个问题','生活里的小片段'];
-  const bodies=[
-    '今天没有刻意安排什么，只是按自己的节奏做了些事情。回头看，平常的日子也有值得记下来的地方。',
-    '有些事情不一定要马上想明白，先放在心里，等合适的时候再慢慢整理。',
-    '刚刚把一个小念头记了下来。比起把每件事都做好，有时候更想认真对待当下。',
-    '最近开始留意以前容易忽略的细节。生活好像没有突然改变，但看事情的方式有了一点不同。',
-    '今天也有一些没完成的事，不过不打算因此打乱自己的节奏。明天再继续。'
-  ];
-  return {
-    id:'role_'+id,name:role.name,avatar:String(role.name).slice(0,1),role:'role',
-    topic:['碎碎念','日常分享','心情记录','生活观察','随手分享'][index%5],
-    time:'刚刚',title:titles[index%titles.length],body:bodies[index%bodies.length],
-    likes:0,comments:[],liked:false,owner:'role',roleId:id,created:Date.now()-index*1000,
-    tag:'role',content:titles[index%titles.length]+'\n'+bodies[index%bodies.length],
-    generatedBy:'fallback'
-  };
+  const id=forumRoleId(role),theme=getForumTheme(),topics=theme.roleTopics.length?theme.roleTopics:['日常交流'];
+  const baguaTitles=['这条消息我先存个疑问，等有出处再来更新','评论区的两种说法，感觉都还缺一点上下文','今天看到一个讨论，想听听大家怎么判断','先不急着站队，想看看有没有更早的原始信息','吃瓜之余也想提醒一句：别把猜测当实锤'];
+  const baguaBodies=['刷到一段转述，但暂时没找到最初来源。有没有人能补一下时间线？在证据完整前，先把它当作待核实信息。','同一件事被截成了不同版本，单看其中一张图很容易误会。有没有完整内容可以对照？','这件事目前看到的都是网友讨论，我更想知道最初发生了什么。欢迎贴出处，没证实的部分先不下结论。','评论区已经有好几种解释了，不过目前都缺少完整上下文。先把线索放这里，等可靠来源出来再聊。','转发之前最好先看看原帖和发布时间。讨论可以热闹，但别把未经证实的内容说成事实。'];
+  const titles=theme.id==='bagua'?baguaTitles:['今天在「'+theme.name+'」里遇到的一件小事','关于「'+theme.name+'」，有个问题想问问大家','刚刚看到一个和「'+theme.name+'」有关的讨论','留一条今天的主题观察','有没有人也关注「'+theme.name+'」这件事'];
+  const bodies=theme.id==='bagua'?baguaBodies:['刚刚遇到一个挺有意思的情况，想放到这里和大家交流。没有急着下结论，也欢迎补充不同经历。','最近在留意这方面的信息，发现每个人的体验差异还挺大。想听听大家怎么理解。','把刚看到的线索记一下，之后有新信息再回来补充。欢迎有经验的人分享具体情况。','事情不算大，但很符合这个主题。顺手记下来，也许能碰到有相同兴趣的人。','想问问大家平时会怎么处理这种情况？比起单一答案，更想看看不同做法背后的原因。'];
+  const title=titles[index%titles.length],body=bodies[index%bodies.length];
+  return {id:'role_'+id,name:role.name,avatar:String(role.name).slice(0,1),role:'role',topic:topics[index%topics.length],time:'刚刚',title:title,body:body,likes:0,comments:[],liked:false,owner:'role',roleId:id,created:Date.now()-index*1000,tag:'role',content:title+'\n'+body,generatedBy:'fallback',themeId:theme.id};
 }
 function ensureRolePosts(){
-  const roles=forumRoleList();
+  const roles=forumRoleList(),activeTheme=getForumTheme();
   let changed=false;
   const pending=[];
   roles.forEach(function(role,index){
@@ -299,12 +290,13 @@ function ensureRolePosts(){
     if(!roleId)return;
     const postId='role_'+roleId;
     let post=posts.find(p=>String(p.id)===postId);
-    if(!post){
-      post=forumFallbackPost(role,index);
-      posts.unshift(post);
+    if(!post||post.themeId!==activeTheme.id){
+      const replacement=forumFallbackPost(role,index);
+      if(post){replacement.likes=Number(post.likes||0);replacement.comments=Array.isArray(post.comments)?post.comments.slice():Number(post.comments||0);replacement.liked=!!post.liked;Object.assign(post,replacement)}
+      else {post=replacement;posts.unshift(post)}
       changed=true;
     }
-    // 旧版固定模板没有 AI 标记；API 配置好后会自动升级，不覆盖点赞/评论等互动数据。
+    // 主题切换后重新按当前论坛语境生成，原有互动数据保留。
     if(post.generatedBy!=='ai'){
       pending.push({roleId:roleId,name:String(role.name),persona:forumRoleBio(role)});
     }
@@ -315,11 +307,12 @@ function ensureRolePosts(){
 function generateRolePosts(targets){
   const cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
   if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')return;
-  const requested=targets.slice(0,12);
-  const systemPrompt='你正在扮演一组独立的虚构角色，为他们各自的社区账号写一条帖子。每条必须严格符合对应角色的人设、经历、兴趣、表达习惯和语气；不同角色不能写成同一种声音。内容像真实用户随手发布的生活记录或想法，不要描述角色设定，不要提到AI，不要写营销文案。只返回 JSON，不要 Markdown。';
-  const userPrompt='请分别为以下角色写一条帖子。角色资料：'+JSON.stringify(requested)+
-    '\n返回结构：{"posts":[{"roleId":"必须原样对应角色 ID","title":"标题","body":"正文","topic":"从碎碎念、日常分享、心情记录、生活观察、随手分享中选一个"}]}'+
-    '\n每条标题 4-22 个汉字，正文 35-120 个汉字。内容应像角色真的在自己的账号里发动态；按角色人设选择题材，不要所有角色都写天气、咖啡、海边或泛泛感悟。';
+  const requested=targets.slice(0,12),theme=getForumTheme(),allowedTopics=theme.roleTopics.length?theme.roleTopics:['日常交流'];
+  const systemPrompt='你正在扮演一组独立的虚构角色，为他们各自的社区账号写一条帖子。必须符合角色人设，也必须自然融入当前论坛主题「'+theme.name+'」。论坛世界书：'+(theme.world||'按当前主题自然交流')+'。不同角色不能写成同一种声音，不要写泛泛的生活感悟。只返回 JSON，不要 Markdown。';
+  const userPrompt='请分别为以下角色写一条符合论坛主题的帖子。角色资料：'+JSON.stringify(requested)+
+    '\n话题必须从以下列表中选择：'+JSON.stringify(allowedTopics)+
+    '\n返回结构：{"posts":[{"roleId":"必须原样对应角色 ID","title":"标题","body":"正文","topic":"必须使用上面列表中的一个话题"}]}'+
+    '\n每条标题 4-22 个汉字，正文 35-120 个汉字。内容像真实论坛用户发帖，有具体事件、观察或问题；遵循角色人设和论坛世界书。不要编造现实人物未经证实的负面事实。';
   PhoneAPI.completeJSON({system:systemPrompt,user:userPrompt,temperature:0.88,timeoutMs:26000}).then(function(result){
     if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))return;
     let changed=false;
@@ -334,7 +327,8 @@ function generateRolePosts(targets){
       if(!title&&!body)return;
       post.title=title||'今天的一点记录';
       post.body=body||'把今天想到的事情留在这里。';
-      post.topic=['碎碎念','日常分享','心情记录','生活观察','随手分享'].includes(item.topic)?item.topic:'日常分享';
+      post.topic=allowedTopics.includes(item.topic)?item.topic:allowedTopics[0];
+      post.themeId=theme.id;
       post.content=post.title+'\n'+post.body;
       post.generatedBy='ai';
       post.time='刚刚';
