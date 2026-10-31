@@ -243,7 +243,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   filter:blur(4px);opacity:1;transition:all .9s cubic-bezier(.16,1,.3,1);z-index:0;
 }
 .letter-stage{
-  --fold-height:clamp(210px,calc((100dvh - 142px)/3),270px);
+  --fold-height:180px;
   position:absolute;left:50%;top:50%;width:min(92vw,540px);height:var(--fold-height);
   transform:translate(-50%,-50%) translateY(24px) scale(.96);
   transform-origin:50% 50%;opacity:0;pointer-events:none;overflow:hidden;
@@ -298,6 +298,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .panel-back:before{content:"";position:absolute;inset:8px;border:1px solid rgba(171,155,132,.28);pointer-events:none}
 .panel-back:after{content:"";position:absolute;right:-16px;bottom:31px;width:82px;height:25px;opacity:.22;transform:rotate(-13deg);background:repeating-linear-gradient(to bottom,transparent 0 4px,#8E8170 4px 5px,transparent 5px 9px);pointer-events:none}
 .recipient-top,.recipient-bottom{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.recipient-top,.recipient-main,.recipient-bottom{flex-shrink:0}
 .recipient-kicker{font-size:7px;line-height:1.7;letter-spacing:.23em;text-transform:uppercase;color:#918678;font-weight:500}
 .recipient-number{margin-top:3px;font:italic 13px Georgia,serif;letter-spacing:.08em;color:#A69A89}
 .recipient-stamp{width:43px;height:49px;flex:none;display:flex;align-items:center;justify-content:center;padding:4px;border:1px dashed #B7A995;background:rgba(255,253,248,.42);transform:rotate(2deg);position:relative}
@@ -933,25 +934,31 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function fitPaperToContent(){
     var stage=$('letterStage');
     if(!stage) return;
-    var viewportHeight=window.innerHeight||document.documentElement.clientHeight||800;
-    // 默认接近屏幕高度，但上下仍保留呼吸空间
-    var baseHeight=Math.max(210,Math.min(270,(viewportHeight-142)/3));
+
+    // 每封信先回到紧凑的基础三折尺寸，再按实际文字排版逐块计算。
+    // 基础尺寸只负责容纳 V7 信封正面，不再按屏幕高度强制铺满。
+    var baseHeight=180;
     stage.style.setProperty('--fold-height',baseHeight+'px');
     void stage.offsetHeight;
 
     var topBlock=$('paperTopText') && $('paperTopText').parentElement;
+    var topContent=paperElementHeight(topBlock);
     var midText=paperElementHeight($('paperMidText'));
     var midImages=paperElementHeight($('paperImages'));
     var bottomText=paperElementHeight($('paperBottomText'));
     var signoff=paperElementHeight(document.querySelector('#panelBottom .signoff'));
-    // 三个折页各自预留原始字号正文的真实排版高度，不压扁、不缩字
+    // 三个折页等高；取内容最多的一折所需高度，再加纸张内边距。
+    // 文字保持原字号和行距，长信自然增加折页高度，短信用紧凑尺寸。
+    var innerSpace=60;
     var needed=Math.max(
       baseHeight,
-      (topBlock?topBlock.getBoundingClientRect().height:0)+72,
-      midText+midImages+72,
-      bottomText+signoff+72
+      topContent+innerSpace,
+      midText+midImages+innerSpace,
+      bottomText+signoff+innerSpace
     );
-    stage.style.setProperty('--fold-height',Math.ceil(needed)+'px');
+    // 以 8px 为单位平滑取整，避免折页高度出现零碎小数。
+    var fittedHeight=Math.ceil(needed/8)*8;
+    stage.style.setProperty('--fold-height',fittedHeight+'px');
   }
   function requestPaperFit(){
     var images=Array.prototype.slice.call(document.querySelectorAll('#paperImages img'));
