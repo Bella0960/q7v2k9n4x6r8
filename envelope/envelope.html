@@ -281,16 +281,30 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .panel-mid .content-inner{top:-100%;display:flex;flex-direction:column;justify-content:center}
 .panel-bottom .content-inner{top:-200%;display:flex;flex-direction:column;justify-content:space-between}
 .panel-back{
-  position:absolute;inset:0;transform:rotateX(180deg);backface-visibility:hidden;
-  background-color:#F4EFEB;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:1.5rem;border:1px solid rgba(212,203,189,.4);
-  border-radius:4px 4px 0 0;
+  position:absolute;inset:0;transform:rotateX(180deg);backface-visibility:hidden;overflow:hidden;
+  background:linear-gradient(132deg,#FBF8F1 0%,#F4EFE6 58%,#EEE7DC 100%);
+  display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;
+  padding:17px 21px 14px;border:1px solid #DED5C8;border-radius:4px 4px 0 0;color:#4B4741;
 }
-.panel-back .seal-mark{
-  width:32px;height:32px;border:1px solid #DCD5C9;border-radius:50%;
-  display:grid;place-items:center;margin-bottom:8px;color:#8E8E93;
-}
-.panel-back .to-line{font:500 10px Georgia,serif;letter-spacing:.2em;text-transform:uppercase;color:#8E8E93}
+.panel-back:before{content:"";position:absolute;inset:8px;border:1px solid rgba(171,155,132,.28);pointer-events:none}
+.panel-back:after{content:"";position:absolute;right:-16px;bottom:31px;width:82px;height:25px;opacity:.22;transform:rotate(-13deg);background:repeating-linear-gradient(to bottom,transparent 0 4px,#8E8170 4px 5px,transparent 5px 9px);pointer-events:none}
+.recipient-top,.recipient-bottom{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.recipient-kicker{font-size:7px;line-height:1.7;letter-spacing:.23em;text-transform:uppercase;color:#918678;font-weight:500}
+.recipient-number{margin-top:3px;font:italic 13px Georgia,serif;letter-spacing:.08em;color:#A69A89}
+.recipient-stamp{width:43px;height:49px;flex:none;display:flex;align-items:center;justify-content:center;padding:4px;border:1px dashed #B7A995;background:rgba(255,253,248,.42);transform:rotate(2deg);position:relative}
+.recipient-stamp:before{content:"";position:absolute;inset:3px;border:1px solid rgba(183,169,149,.62)}
+.stamp-inner{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#8A7D6D}
+.stamp-sun{font:18px Georgia,serif;line-height:1}
+.stamp-city{font-size:6px;letter-spacing:.18em;text-transform:uppercase}
+.stamp-year{font-size:6px;letter-spacing:.12em}
+.recipient-main{position:relative;z-index:1;align-self:flex-start;margin:0 0 0 9px;display:flex;flex-direction:column;align-items:flex-start}
+.recipient-to{font-size:7px;letter-spacing:.28em;text-transform:uppercase;color:#9B8E7D;font-weight:500;margin-bottom:1px}
+.recipient-name{font:500 clamp(37px,10vw,45px)/.92 Georgia,serif;letter-spacing:.025em;color:#37332F;margin:0}
+.recipient-rule{width:51px;height:1px;background:#C7B9A5;margin:8px 0 6px}
+.recipient-note{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:#8E8376}
+.recipient-bottom{align-items:flex-end;border-top:1px solid rgba(178,164,145,.46);padding-top:7px}
+.recipient-from{font:italic 12px Georgia,serif;color:#74695D}
+.recipient-edition{font-size:6px;letter-spacing:.17em;text-transform:uppercase;color:#9A8E80;text-align:right}
 .crease-shadow{
   position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(to bottom,rgba(0,0,0,.12),rgba(0,0,0,0) 50%,rgba(0,0,0,.08));
@@ -316,20 +330,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .warmly{font:italic 13px Georgia,serif;color:#8E8E93}
 .signature{font:500 25px Georgia,"Noto Serif SC",serif;letter-spacing:.03em;color:#2C2A29;margin-top:2px;overflow-wrap:anywhere}
 .place{font:10px Georgia,serif;letter-spacing:.15em;color:#8E8E93;text-transform:uppercase}
-.fold-controls{
-  display:none;width:min(320px,90vw);flex-direction:column;align-items:center;
-  gap:10px;margin:0 auto 16px;z-index:12;flex:none;
-}
-.fold-controls.visible{display:flex}
-.fold-action{
-  width:100%;border:0;border-radius:999px;background:#292825;color:#FCFBF7;
-  padding:16px 22px;box-shadow:0 4px 24px rgba(44,42,41,.12);
-  font-size:11px;letter-spacing:.2em;font-weight:500;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;gap:12px;
-}
-.fold-action:disabled{opacity:.58}
-.fold-action svg{width:14px;height:14px;transition:transform .5s cubic-bezier(.16,1,.3,1)}
-.fold-hint{font-size:10px;letter-spacing:.08em;color:#8E8E93;text-align:center;line-height:1.5;min-height:15px}
 .detail-main:not(.paper-opened) .detail-actions{display:none}
 .detail-main.paper-opened .detail-actions{width:min(90vw,540px);margin:0 auto 24px;flex-shrink:0}
 .detail-main.paper-opened .detail-actions button{min-width:0;padding:11px 10px;font-size:10px}
@@ -530,13 +530,26 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
               <p class="copy" id="paperTopText"></p>
             </div>
           </div></div>
-          <div class="panel-back paper-texture">
-            <div class="seal-mark" aria-hidden="true">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-              </svg>
+          <div class="panel-back paper-texture" aria-label="V7 收件人信封正面">
+            <div class="recipient-top">
+              <div>
+                <div class="recipient-kicker">Atelier Correspondence</div>
+                <div class="recipient-number" id="paperNumberFront">No. 001 &nbsp;·&nbsp; Paris</div>
+              </div>
+              <div class="recipient-stamp" aria-hidden="true">
+                <div class="stamp-inner"><span class="stamp-sun">02</span><span class="stamp-city">PARIS</span><span class="stamp-year">POST · 26</span></div>
+              </div>
             </div>
-            <span class="to-line" id="paperToLine">To: Mira</span>
+            <div class="recipient-main">
+              <span class="recipient-to">A letter for</span>
+              <h3 class="recipient-name" id="paperRecipientFront">—</h3>
+              <span class="recipient-rule"></span>
+              <span class="recipient-note">Written especially for you</span>
+            </div>
+            <div class="recipient-bottom">
+              <span class="recipient-from" id="paperSenderFront">From —</span>
+              <span class="recipient-edition">Private correspondence<br><span id="paperDateFront">Autumn · 2026</span></span>
+            </div>
           </div>
         </section>
 
@@ -561,16 +574,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
           </div></div>
         </section>
       </div>
-    </div>
-
-    <div class="fold-controls" id="foldControls">
-      <button class="fold-action" id="foldPaperButton" type="button">
-        <span id="foldPaperLabel">FOLD LETTER</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m5 15 7-7 7 7"/>
-        </svg>
-      </button>
-      <div class="fold-hint" id="foldPaperHint">信纸已展开 · 点击可重新折叠</div>
     </div>
 
     <div class="detail-actions" id="detailActions">
@@ -918,8 +921,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     $('shadeBottom').style.opacity='0';
     $('letterShadow').style.transform='scale(1) translateY(0px)';
     $('letterShadow').style.opacity='1';
-    $('foldControls').classList.remove('visible');
-    $('foldPaperButton').disabled=false;
   }
   function openLetter(id){
     var letter=currentData.letters.find(function(l){return l.id===id;});
@@ -939,7 +940,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     var sender=letter.sender || '未署名';
     var date=new Date(letter.createdAt || Date.now());
     var month=date.toLocaleString('en-US',{month:'short'}).toUpperCase();
-    $('paperNumber').textContent='No. '+String(currentData.letters.indexOf(letter)+1).padStart(3,'0');
+    var letterNumber=String(currentData.letters.indexOf(letter)+1).padStart(3,'0');
+    $('paperNumber').textContent='No. '+letterNumber;
+    $('paperNumberFront').innerHTML='No. '+letterNumber+' &nbsp;·&nbsp; Paris';
+    $('paperRecipientFront').textContent=recipient;
+    $('paperSenderFront').textContent='From '+sender;
+    $('paperDateFront').textContent=month+' · '+date.getFullYear();
     $('paperDate').textContent=month+" '"+String(date.getFullYear()).slice(-2);
     $('paperTitle').textContent=letter.title || ('Dearest '+recipient+',');
     $('paperTopText').textContent=parts[0] || '';
@@ -947,7 +953,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     $('paperBottomText').textContent=parts[2] || '';
     $('paperSender').textContent=sender;
     $('paperRecipient').textContent=recipient.toUpperCase();
-    $('paperToLine').textContent='To: '+recipient;
     $('detailRecipient').textContent=recipient;
     $('detailSender').textContent='FROM '+sender;
     var kicker=$('detailKicker');
@@ -983,27 +988,20 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     await animatePaperTransform($('panelBottom'),180,0,750,function(angle){
       $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.45;
     });
-    $('foldPaperHint').textContent='再展开上折页，信件即将完整呈现';
     await animatePaperTransform($('panelTop'),-180,0,750,function(angle){
       $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.45;
     });
-    $('foldPaperHint').textContent='信纸已展开 · 点击可重新折叠';
-    $('foldPaperLabel').textContent='FOLD LETTER';
-    $('foldPaperButton').querySelector('svg').style.transform='rotate(180deg)';
   }
   async function foldPaper(){
-    $('foldPaperHint').textContent='先收起信纸的上折页';
     await animatePaperTransform($('panelTop'),0,-180,650,function(angle){
       $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.45;
     });
-    $('foldPaperHint').textContent='再收起下折页';
     await animatePaperTransform($('panelBottom'),0,180,650,function(angle){
       $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.45;
     });
     $('letterStage').classList.remove('unfolded');
     $('letterShadow').style.transform='scale(1) translateY(0px)';
     $('letterShadow').style.opacity='1';
-    $('foldPaperButton').querySelector('svg').style.transform='rotate(0deg)';
   }
   async function revealLetter(){
     if(paperAnimationBusy) return;
@@ -1015,7 +1013,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     await wait(760);
 
     main.classList.add('paper-rising');
-    $('foldPaperHint').textContent='折叠信纸正从信封中抽出';
     await wait(520);
 
     main.classList.add('envelope-retiring');
@@ -1024,30 +1021,14 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 
     main.classList.add('paper-opened');
     await unfoldPaper();
-    $('foldControls').classList.add('visible');
-    $('foldPaperButton').disabled=false;
     $('detailEnvelope').setAttribute('aria-disabled','false');
     paperAnimationBusy=false;
   }
   async function closeEnvelope(){
     if(paperAnimationBusy || !$('detailMain').classList.contains('paper-opened')) return;
     paperAnimationBusy=true;
-    $('foldPaperButton').disabled=true;
     await foldPaper();
-    await wait(400);
-
-    var main=$('detailMain');
-    var env=$('detailEnvelope');
-    $('foldControls').classList.remove('visible');
-    main.classList.remove('paper-opened','paper-rising','envelope-retiring');
-    env.style.display='block';
-    env.style.opacity='';
-    env.style.transform='';
-    await wait(850);
-    main.classList.remove('envelope-open');
-    resetPaperFold();
-    $('detailMain').scrollTop=0;
-    $('foldPaperButton').disabled=false;
+    $('detailMain').classList.remove('paper-opened');
     paperAnimationBusy=false;
   }
   function editActiveLetter(){
@@ -1244,7 +1225,15 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   $('detailEnvelope').addEventListener('keydown',function(e){
     if(e.key==='Enter' || e.key===' '){e.preventDefault();revealLetter();}
   });
-  $('foldPaperButton').addEventListener('click',closeEnvelope);
+  $('letterStage').addEventListener('click',function(){
+    if(paperAnimationBusy || !$('detailMain').classList.contains('paper-opened')) return;
+    paperAnimationBusy=true;
+    if($('letterStage').classList.contains('unfolded')){
+      foldPaper().finally(function(){paperAnimationBusy=false;});
+    }else{
+      unfoldPaper().finally(function(){paperAnimationBusy=false;});
+    }
+  });
   $('replyButton').addEventListener('click',replyManually);
   $('askReplyButton').addEventListener('click',askCharacterToReply);
   $('deleteLetterButton').addEventListener('click',deleteActiveLetter);
