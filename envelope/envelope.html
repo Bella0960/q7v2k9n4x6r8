@@ -330,6 +330,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .fold-action:disabled{opacity:.58}
 .fold-action svg{width:14px;height:14px;transition:transform .5s cubic-bezier(.16,1,.3,1)}
 .fold-hint{font-size:10px;letter-spacing:.08em;color:#8E8E93;text-align:center;line-height:1.5;min-height:15px}
+.detail-main:not(.paper-opened) .detail-actions{display:none}
 .detail-main.paper-opened .detail-actions{width:min(90vw,540px);margin:0 auto 24px;flex-shrink:0}
 .detail-main.paper-opened .detail-actions button{min-width:0;padding:11px 10px;font-size:10px}
 @media(min-width:640px){
@@ -888,6 +889,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function splitLetterIntoPanels(content){
     var value=String(content||'').trim();
     if(!value) return ['','',''];
+    if(value.length<3) return [value,'',''];
     function boundaryAt(target,min,max){
       var best=-1,bestDistance=Infinity;
       var from=Math.max(min,target-90),to=Math.min(max,target+90);
