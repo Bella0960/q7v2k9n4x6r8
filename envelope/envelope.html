@@ -217,6 +217,135 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 @media(max-width:380px){.detail-recipient{bottom:19%}.detail-sender{bottom:21%}.detail-envelope{width:88vw}.paper-sheet{padding:25px 20px 23px}}
 @media(prefers-reduced-motion:reduce){.detail-envelope,.detail-envelope-flap,.open-paper{transition-duration:.01ms!important}}
 
+
+/* ===== V1 folded-paper restoration: three independent panels + original 3D motion ===== */
+.detail-view:not(.paper-opened) .detail-kicker{display:none}
+.detail-main{perspective:1600px;perspective-origin:50% 50%}
+.detail-main.paper-opened{
+  display:flex;flex-direction:column;align-items:center;
+  height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;
+  padding:calc(env(safe-area-inset-top,0px) + 58px) 0 34px;
+  scrollbar-width:none;
+}
+.detail-main.paper-opened::-webkit-scrollbar{display:none}
+.detail-main.envelope-open .detail-envelope-flap{transform:rotateX(180deg);opacity:.9}
+.detail-main.envelope-open .detail-envelope{pointer-events:none}
+.detail-main.envelope-retiring .detail-envelope{
+  transform:translate(-50%,-50%) translateY(105px) scale(.94);
+  opacity:0;pointer-events:none;
+}
+.detail-main.envelope-retiring .detail-ground-shadow{
+  transform:translateY(75px) scale(.92);opacity:.35;
+}
+.detail-ground-shadow{
+  position:absolute;left:9%;top:calc(50% + 108px);width:82%;height:28px;
+  border-radius:50%;background:radial-gradient(ellipse at center,rgba(44,42,41,.18) 0%,rgba(44,42,41,0) 70%);
+  filter:blur(4px);opacity:1;transition:all .9s cubic-bezier(.16,1,.3,1);z-index:0;
+}
+.letter-stage{
+  position:absolute;left:50%;top:50%;width:min(320px,90vw);height:170px;
+  transform:translate(-50%,-50%) translateY(24px) scale(.96);
+  transform-origin:50% 50%;opacity:0;pointer-events:none;
+  transition:all .9s cubic-bezier(.16,1,.3,1);z-index:2;transform-style:preserve-3d;
+}
+.letter-stage.unfolded{height:570px}
+.detail-main.paper-rising .letter-stage{
+  opacity:1;pointer-events:auto;
+  transform:translate(-50%,-50%) translateY(-26px) scale(1);z-index:8;
+}
+.detail-main.paper-opened .letter-stage{
+  position:relative;left:auto;top:auto;transform:none;opacity:1;pointer-events:auto;
+  width:min(320px,90vw);margin:max(20px,calc((100dvh - 570px)/2 - 8px)) auto 18px;
+}
+.detail-main.paper-opened .letter-stage.unfolded{height:570px}
+.fold-wrapper{position:absolute;inset:0;transform-style:preserve-3d}
+.panel{
+  position:absolute;left:0;right:0;height:33.333%;
+  transform-style:preserve-3d;backface-visibility:hidden;
+  box-shadow:inset 0 0 20px rgba(0,0,0,.012);
+  background-color:#FCFBF7;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+}
+.panel-top{top:0;transform-origin:bottom center;z-index:3;border:1px solid #E3DDD1;border-bottom:0;border-radius:4px 4px 0 0}
+.panel-mid{top:33.333%;z-index:1;border-left:1px solid #E3DDD1;border-right:1px solid #E3DDD1}
+.panel-bottom{top:66.666%;transform-origin:top center;z-index:2;border:1px solid #E3DDD1;border-top:0;border-radius:0 0 4px 4px}
+.panel-content{
+  position:absolute;inset:0;overflow:hidden;box-sizing:border-box;
+  padding:1.75rem 2rem;display:flex;flex-direction:column;justify-content:space-between;
+}
+.panel-top .content-inner,.panel-mid .content-inner,.panel-bottom .content-inner{
+  position:absolute;left:0;width:100%;height:300%;padding:1.75rem 2rem;
+  box-sizing:border-box;pointer-events:none;
+}
+.panel-top .content-inner{top:0;display:flex;flex-direction:column;justify-content:space-between}
+.panel-mid .content-inner{top:-100%;display:flex;flex-direction:column;justify-content:center}
+.panel-bottom .content-inner{top:-200%;display:flex;flex-direction:column;justify-content:space-between}
+.panel-back{
+  position:absolute;inset:0;transform:rotateX(180deg);backface-visibility:hidden;
+  background-color:#F4EFEB;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:1.5rem;border:1px solid rgba(212,203,189,.4);
+  border-radius:4px 4px 0 0;
+}
+.panel-back .seal-mark{
+  width:32px;height:32px;border:1px solid #DCD5C9;border-radius:50%;
+  display:grid;place-items:center;margin-bottom:8px;color:#8E8E93;
+}
+.panel-back .to-line{font:500 10px Georgia,serif;letter-spacing:.2em;text-transform:uppercase;color:#8E8E93}
+.crease-shadow{
+  position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(to bottom,rgba(0,0,0,.12),rgba(0,0,0,0) 50%,rgba(0,0,0,.08));
+  opacity:0;z-index:10;
+}
+.letter-shadow{
+  position:absolute;bottom:-24px;left:8%;width:84%;height:28px;
+  background:radial-gradient(ellipse at center,rgba(44,42,41,.18) 0%,rgba(44,42,41,0) 70%);
+  transition:all .9s cubic-bezier(.16,1,.3,1);z-index:0;
+}
+.meta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1rem;border-bottom:1px solid #EBE5DC;padding-bottom:.75rem}
+.meta-number{font:13px Georgia,serif;letter-spacing:.2em;text-transform:uppercase;color:#8E8E93}
+.meta-date{font:10px Georgia,serif;letter-spacing:.16em;color:#8E8E93}
+.salutation{
+  font:italic 400 clamp(27px,7vw,32px)/1.15 Georgia,"Noto Serif SC",serif;
+  color:#2C2A29;margin:0;
+}
+.copy{font:300 13px/1.75 Georgia,"Noto Serif SC",serif;color:#55524F;margin:12px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mid-copy{font:300 13px/1.8 Georgia,"Noto Serif SC",serif;color:#55524F;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.paper-images{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.paper-images img{width:calc(50% - 4px);max-height:110px;object-fit:contain;background:#F1EFEA;border:1px solid #E9E4DA}
+.signoff{padding-top:12px;border-top:1px solid #EBE5DC;display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
+.warmly{font:italic 13px Georgia,serif;color:#8E8E93}
+.signature{font:500 25px Georgia,"Noto Serif SC",serif;letter-spacing:.03em;color:#2C2A29;margin-top:2px;overflow-wrap:anywhere}
+.place{font:10px Georgia,serif;letter-spacing:.15em;color:#8E8E93;text-transform:uppercase}
+.fold-controls{
+  display:none;width:min(320px,90vw);flex-direction:column;align-items:center;
+  gap:10px;margin:0 auto 16px;z-index:12;flex:none;
+}
+.fold-controls.visible{display:flex}
+.fold-action{
+  width:100%;border:0;border-radius:999px;background:#292825;color:#FCFBF7;
+  padding:16px 22px;box-shadow:0 4px 24px rgba(44,42,41,.12);
+  font-size:11px;letter-spacing:.2em;font-weight:500;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:12px;
+}
+.fold-action:disabled{opacity:.58}
+.fold-action svg{width:14px;height:14px;transition:transform .5s cubic-bezier(.16,1,.3,1)}
+.fold-hint{font-size:10px;letter-spacing:.08em;color:#8E8E93;text-align:center;line-height:1.5;min-height:15px}
+.detail-main.paper-opened .detail-actions{width:min(90vw,540px);margin:0 auto 24px;flex-shrink:0}
+.detail-main.paper-opened .detail-actions button{min-width:0;padding:11px 10px;font-size:10px}
+@media(min-width:640px){
+ .letter-stage,.detail-main.paper-opened .letter-stage{width:360px}
+ .letter-stage{height:190px}
+ .letter-stage.unfolded,.detail-main.paper-opened .letter-stage.unfolded{height:630px}
+ .panel-content,.panel-top .content-inner,.panel-mid .content-inner,.panel-bottom .content-inner{padding:1.75rem 2rem}
+ .copy,.mid-copy{font-size:14px}
+}
+@media(max-height:760px){
+ .detail-main.paper-opened .letter-stage{margin:20px auto 18px}
+}
+@media(prefers-reduced-motion:reduce){
+ .letter-stage,.detail-envelope,.detail-envelope-flap,.letter-shadow,.fold-action svg{transition-duration:.01ms!important}
+}
+
 </style>
 </head>
 <body>
@@ -374,6 +503,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     <button class="detail-edit" id="detailEdit" type="button">编辑</button>
   </div>
   <main class="detail-main" id="detailMain">
+    <div class="detail-ground-shadow"></div>
     <div class="detail-kicker" id="detailKicker">PRIVATE LETTER · SEALED</div>
     <div class="detail-envelope" id="detailEnvelope" role="button" tabindex="0" aria-label="打开这封信">
       <div class="detail-envelope-flap"></div>
@@ -384,25 +514,71 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
       <div class="envelope-touch-hint">轻触信封，打开来信</div>
     </div>
 
-    <article class="open-paper" id="openPaper">
-      <div class="paper-sheet">
-        <div class="paper-topline"><span id="paperNumber">LETTER NO. 001</span><span id="paperDate">—</span></div>
-        <h2 class="paper-title" id="paperTitle">未命名信件</h2>
-        <div class="paper-body" id="paperBody"></div>
-        <div class="paper-images" id="paperImages"></div>
-        <div class="paper-signature">
-          <div><small>Yours,</small><strong id="paperSender">—</strong></div>
-          <span class="city" id="paperRecipient">TO —</span>
-        </div>
+    <div class="letter-stage" id="letterStage" aria-label="三折信纸">
+      <div class="letter-shadow" id="letterShadow"></div>
+      <div class="fold-wrapper">
+        <section id="panelTop" class="panel panel-top paper-texture">
+          <div id="shadeTop" class="crease-shadow"></div>
+          <div class="panel-content"><div class="content-inner">
+            <div>
+              <div class="meta">
+                <span class="meta-number" id="paperNumber">No. 001</span>
+                <span class="meta-date" id="paperDate">OCTOBER '26</span>
+              </div>
+              <h2 class="salutation" id="paperTitle">Dearest Mira,</h2>
+              <p class="copy" id="paperTopText"></p>
+            </div>
+          </div></div>
+          <div class="panel-back paper-texture">
+            <div class="seal-mark" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <span class="to-line" id="paperToLine">To: Mira</span>
+          </div>
+        </section>
+
+        <section id="panelMid" class="panel panel-mid paper-texture">
+          <div class="panel-content"><div class="content-inner">
+            <p class="mid-copy" id="paperMidText"></p>
+            <div class="paper-images" id="paperImages"></div>
+          </div></div>
+        </section>
+
+        <section id="panelBottom" class="panel panel-bottom paper-texture">
+          <div id="shadeBottom" class="crease-shadow"></div>
+          <div class="panel-content"><div class="content-inner">
+            <p class="copy" id="paperBottomText"></p>
+            <div class="signoff">
+              <div>
+                <div class="warmly">Warmly,</div>
+                <div class="signature" id="paperSender">Julian</div>
+              </div>
+              <div class="place" id="paperRecipient">PARIS</div>
+            </div>
+          </div></div>
+        </section>
       </div>
-      <div class="detail-actions" id="detailActions">
-        <button class="secondary-btn" id="replyButton" type="button">写一封回信</button>
-        <button class="secondary-btn" id="askReplyButton" type="button">请 TA 回信</button>
-        <button class="secondary-btn" id="deleteLetterButton" type="button">删除</button>
-      </div>
-    </article>
+    </div>
+
+    <div class="fold-controls" id="foldControls">
+      <button class="fold-action" id="foldPaperButton" type="button">
+        <span id="foldPaperLabel">FOLD LETTER</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m5 15 7-7 7 7"/>
+        </svg>
+      </button>
+      <div class="fold-hint" id="foldPaperHint">信纸已展开 · 点击可重新折叠</div>
+    </div>
+
+    <div class="detail-actions" id="detailActions">
+      <button class="secondary-btn" id="replyButton" type="button">写一封回信</button>
+      <button class="secondary-btn" id="askReplyButton" type="button">请 TA 回信</button>
+      <button class="secondary-btn" id="deleteLetterButton" type="button">删除</button>
+    </div>
   </main>
-</section>>
+</section>
 
 <div class="role-picker-panel" id="rolePickerPanel">
   <div class="role-picker-sheet">
@@ -709,41 +885,168 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     currentFilter=item.direction==='received'?'received':'sent';
     updateFilterButtons();setView('homeView');renderLetters();
   }
+  function splitLetterIntoPanels(content){
+    var value=String(content||'').trim();
+    if(!value) return ['','',''];
+    function boundaryAt(target,min,max){
+      var best=-1,bestDistance=Infinity;
+      var from=Math.max(min,target-90),to=Math.min(max,target+90);
+      for(var i=from;i<=to;i++){
+        if(/\s/.test(value.charAt(i))){
+          var distance=Math.abs(i-target);
+          if(distance<bestDistance){best=i;bestDistance=distance;}
+        }
+      }
+      return best>min ? best : Math.min(max,Math.max(min,target));
+    }
+    var first=boundaryAt(Math.round(value.length/3),1,value.length-2);
+    var second=boundaryAt(Math.round(value.length*2/3),first+1,value.length-1);
+    return [
+      value.slice(0,first).trim(),
+      value.slice(first,second).trim(),
+      value.slice(second).trim()
+    ];
+  }
+  function resetPaperFold(){
+    $('letterStage').classList.remove('unfolded');
+    $('panelTop').style.transform='rotateX(-180deg)';
+    $('panelBottom').style.transform='rotateX(180deg)';
+    $('panelMid').style.transform='';
+    $('shadeTop').style.opacity='0';
+    $('shadeBottom').style.opacity='0';
+    $('letterShadow').style.transform='scale(1) translateY(0px)';
+    $('letterShadow').style.opacity='1';
+    $('foldControls').classList.remove('visible');
+    $('foldPaperButton').disabled=false;
+  }
   function openLetter(id){
     var letter=currentData.letters.find(function(l){return l.id===id;});
     if(!letter) return;
     activeLetterId=id;
-    $('detailMain').classList.remove('paper-opened');
-    $('detailView').classList.remove('paper-opened');
+    var main=$('detailMain');
+    main.classList.remove('envelope-open','paper-rising','envelope-retiring','paper-opened');
     $('detailEnvelope').style.setProperty('--env',letterColor(letter));
     $('detailEnvelope').classList.remove('opening');
     $('detailEnvelope').style.display='block';
-    $('openPaper').classList.remove('visible');
-    $('paperTitle').textContent=letter.title || '未命名信件';
-    $('paperNumber').textContent='LETTER NO. '+String(currentData.letters.indexOf(letter)+1).padStart(3,'0');
-    $('paperDate').textContent=formatDate(letter.createdAt);
-    $('paperBody').textContent=letter.content || '（这封信附有图片，没有填写文字。）';
-    $('paperSender').textContent=letter.sender || '未署名';
-    $('paperRecipient').textContent='TO '+(letter.recipient || '—').toUpperCase();
-    $('detailRecipient').textContent=letter.recipient || '—';
-    $('detailSender').textContent='FROM '+(letter.sender || '—');
+    $('detailEnvelope').style.opacity='';
+    $('detailEnvelope').style.transform='';
+    resetPaperFold();
+
+    var parts=splitLetterIntoPanels(letter.content||'');
+    var recipient=letter.recipient || '—';
+    var sender=letter.sender || '未署名';
+    var date=new Date(letter.createdAt || Date.now());
+    var month=date.toLocaleString('en-US',{month:'short'}).toUpperCase();
+    $('paperNumber').textContent='No. '+String(currentData.letters.indexOf(letter)+1).padStart(3,'0');
+    $('paperDate').textContent=month+" '"+String(date.getFullYear()).slice(-2);
+    $('paperTitle').textContent=letter.title || ('Dearest '+recipient+',');
+    $('paperTopText').textContent=parts[0] || '';
+    $('paperMidText').textContent=parts[1] || '';
+    $('paperBottomText').textContent=parts[2] || '';
+    $('paperSender').textContent=sender;
+    $('paperRecipient').textContent=recipient.toUpperCase();
+    $('paperToLine').textContent='To: '+recipient;
+    $('detailRecipient').textContent=recipient;
+    $('detailSender').textContent='FROM '+sender;
     var kicker=$('detailKicker');
     if(kicker) kicker.textContent=(letter.direction==='received'?'RECEIVED LETTER':'SENT LETTER')+' · SEALED';
-    $('paperImages').innerHTML=(letter.images||[]).map(function(src){return '<img src="'+escapeHtml(src)+'" alt="信件附图">';}).join('');
+    $('paperImages').innerHTML=(letter.images||[]).map(function(src){
+      return '<img src="'+escapeHtml(src)+'" alt="信件附图">';
+    }).join('');
     $('replyButton').textContent='写一封回信';
     $('askReplyButton').style.display=letter.direction==='received'?'none':'';
     setView('detailView');
   }
-  function revealLetter(){
+  function wait(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}
+  function animatePaperTransform(element,startAngle,endAngle,duration,onUpdate){
+    return new Promise(function(resolve){
+      var startTime=performance.now();
+      function step(now){
+        var progress=Math.min((now-startTime)/duration,1);
+        var eased=1-Math.pow(1-progress,4);
+        var angle=startAngle+(endAngle-startAngle)*eased;
+        element.style.transform='rotateX('+angle+'deg)';
+        if(onUpdate) onUpdate(angle);
+        if(progress<1) requestAnimationFrame(step);
+        else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+  var paperAnimationBusy=false;
+  async function unfoldPaper(){
+    $('letterStage').classList.add('unfolded');
+    $('letterShadow').style.transform='scale(1.15) translateY(35px)';
+    $('letterShadow').style.opacity='.7';
+    await animatePaperTransform($('panelBottom'),180,0,750,function(angle){
+      $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.45;
+    });
+    $('foldPaperHint').textContent='再展开上折页，信件即将完整呈现';
+    await animatePaperTransform($('panelTop'),-180,0,750,function(angle){
+      $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.45;
+    });
+    $('foldPaperHint').textContent='信纸已展开 · 点击可重新折叠';
+    $('foldPaperLabel').textContent='FOLD LETTER';
+    $('foldPaperButton').querySelector('svg').style.transform='rotate(180deg)';
+  }
+  async function foldPaper(){
+    $('foldPaperHint').textContent='先收起信纸的上折页';
+    await animatePaperTransform($('panelTop'),0,-180,650,function(angle){
+      $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.45;
+    });
+    $('foldPaperHint').textContent='再收起下折页';
+    await animatePaperTransform($('panelBottom'),0,180,650,function(angle){
+      $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.45;
+    });
+    $('letterStage').classList.remove('unfolded');
+    $('letterShadow').style.transform='scale(1) translateY(0px)';
+    $('letterShadow').style.opacity='1';
+    $('foldPaperButton').querySelector('svg').style.transform='rotate(0deg)';
+  }
+  async function revealLetter(){
+    if(paperAnimationBusy) return;
+    paperAnimationBusy=true;
+    var main=$('detailMain');
     var env=$('detailEnvelope');
-    if(env.classList.contains('opening')) return;
-    env.classList.add('opening');
-    setTimeout(function(){
-      env.style.display='none';
-      $('detailMain').classList.add('paper-opened');
-      $('detailView').classList.add('paper-opened');
-      $('openPaper').classList.add('visible');
-    },820);
+    $('detailEnvelope').setAttribute('aria-disabled','true');
+    main.classList.add('envelope-open');
+    await wait(760);
+
+    main.classList.add('paper-rising');
+    $('foldPaperHint').textContent='折叠信纸正从信封中抽出';
+    await wait(520);
+
+    main.classList.add('envelope-retiring');
+    await wait(430);
+    env.style.display='none';
+
+    main.classList.add('paper-opened');
+    await unfoldPaper();
+    $('foldControls').classList.add('visible');
+    $('foldPaperButton').disabled=false;
+    $('detailEnvelope').setAttribute('aria-disabled','false');
+    paperAnimationBusy=false;
+  }
+  async function closeEnvelope(){
+    if(paperAnimationBusy || !$('detailMain').classList.contains('paper-opened')) return;
+    paperAnimationBusy=true;
+    $('foldPaperButton').disabled=true;
+    await foldPaper();
+    await wait(400);
+
+    var main=$('detailMain');
+    var env=$('detailEnvelope');
+    $('foldControls').classList.remove('visible');
+    main.classList.remove('paper-opened','paper-rising','envelope-retiring');
+    env.style.display='block';
+    env.style.opacity='';
+    env.style.transform='';
+    await wait(850);
+    main.classList.remove('envelope-open');
+    resetPaperFold();
+    $('detailMain').scrollTop=0;
+    $('foldPaperButton').disabled=false;
+    paperAnimationBusy=false;
   }
   function editActiveLetter(){
     var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
@@ -939,6 +1242,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   $('detailEnvelope').addEventListener('keydown',function(e){
     if(e.key==='Enter' || e.key===' '){e.preventDefault();revealLetter();}
   });
+  $('foldPaperButton').addEventListener('click',closeEnvelope);
   $('replyButton').addEventListener('click',replyManually);
   $('askReplyButton').addEventListener('click',askCharacterToReply);
   $('deleteLetterButton').addEventListener('click',deleteActiveLetter);
