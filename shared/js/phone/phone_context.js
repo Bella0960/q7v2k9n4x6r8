@@ -57,6 +57,79 @@
         return '【' + title + '】\n' + body + '\n\n';
     }
 
+    /* ========== 活人感世界书召回：共享给咖啡馆、信件等 PhoneContext 应用 ========== */
+
+    function buildWorldbookInjectionText(worldbooks, options) {
+        options = options || {};
+        var books = Array.isArray(worldbooks) ? worldbooks : [];
+        var recent = Array.isArray(options.recentMessages) ? options.recentMessages : [];
+        var searchable = [String(options.currentText || '')].concat(recent.slice(-8).map(function (message) {
+            return message && String(message.text != null ? message.text : (message.content || ''));
+        })).join('\n').toLocaleLowerCase();
+        var maxEntries = Math.max(1, parseInt(options.maxEntries, 10) || 32);
+        var maxChars = Math.max(1, parseInt(options.maxChars, 10) || 8000);
+        var selected = [];
+        var seen = Object.create(null);
+
+        books.forEach(function (book, bookIndex) {
+            if (!book || typeof book !== 'object' || book.enabled === false) return;
+            var title = String(book.title || book.name || '未命名世界书').trim();
+            var entries = Array.isArray(book.entries) && book.entries.length
+                ? book.entries
+                : (String(book.content || book.text || '').trim()
+                    ? [{ name: '正文', content: book.content || book.text, injectMode: 'always' }]
+                    : []);
+
+            entries.forEach(function (entry, entryIndex) {
+                if (!entry || typeof entry !== 'object' || entry.enabled === false) return;
+                var body = String(entry.content != null ? entry.content : (entry.text || '')).trim();
+                if (!body) return;
+                var mode = entry.injectMode === 'keyword' || entry.injectMode === 'probability'
+                    ? entry.injectMode : 'always';
+                var keywords = Array.isArray(entry.keywords)
+                    ? entry.keywords.map(function (word) { return String(word || '').trim().toLocaleLowerCase(); }).filter(Boolean)
+                    : [];
+                if (!keywords.length && Array.isArray(book.keywords)) {
+                    keywords = book.keywords.map(function (word) { return String(word || '').trim().toLocaleLowerCase(); }).filter(Boolean);
+                }
+                if (mode === 'keyword' && !keywords.some(function (word) { return word && searchable.indexOf(word) !== -1; })) return;
+                if (mode === 'probability') {
+                    var probability = Number(entry.probability);
+                    if (!isFinite(probability)) probability = 50;
+                    probability = Math.max(0, Math.min(100, probability));
+                    if (probability <= 0 || Math.random() * 100 >= probability) return;
+                }
+                var position = entry.position === 'front' ? 0 : (entry.position === 'back' ? 2 : 1);
+                var name = String(entry.name || entry.title || ('条目 ' + (entryIndex + 1))).trim();
+                var text = '【' + title + ' · ' + name + '】\n' + body;
+                var key = '::' + text;
+                if (seen[key]) return;
+                seen[key] = true;
+                selected.push({ position: position, bookIndex: bookIndex, entryIndex: entryIndex, text: text });
+            });
+        });
+
+        selected.sort(function (a, b) {
+            return a.position - b.position || a.bookIndex - b.bookIndex || a.entryIndex - b.entryIndex;
+        });
+        var output = [];
+        var used = 0;
+        selected.slice(0, maxEntries).forEach(function (item) {
+            if (used >= maxChars) return;
+            var prefix = output.length ? '\n\n' : '';
+            var remaining = maxChars - used - prefix.length;
+            if (remaining <= 0) return;
+            var value = item.text;
+            if (value.length > remaining) value = value.slice(0, Math.max(0, remaining - 1)).replace(/\\s+$/, '') + '…';
+            if (!value) return;
+            output.push(value);
+            used += prefix.length + value.length;
+        });
+        return output.join('\n\n');
+    }
+
+    NS.buildWorldbookInjectionText = buildWorldbookInjectionText;
+
     /* ========== 主函数 ========== */
 
     NS.buildPhoneRoleContext = function (contactId, currentAppId) {
@@ -78,14 +151,19 @@
         if (role.tone)    persona.push('语气风格：' + role.tone);
         parts.push(section('角色人设', persona.join('\n')));
 
-        // 2. 世界书
+        // 2. 世界书：只带入此刻相关的生活细节，不把整本设定反复塞给模型
         try {
             var wbs = Storage.getWorldbooks();
-            if (wbs && wbs.length) {
-                var wbText = wbs.map(function (w) {
-                    return (w.category || '一般') + '：' + (w.content || '');
-                }).join('\n');
-                parts.push(section('世界书', wbText));
+            var recentForWorldbook = Storage.getChatHistory(contactId) || [];
+            var wbText = NS.buildWorldbookInjectionText(wbs, {
+                recentMessages: recentForWorldbook.slice(-8),
+                maxEntries: 32,
+                maxChars: 8000
+            });
+            if (wbText) {
+                parts.push(section('世界书 · 生活背景', wbText));
+                parts.push(section('世界书的自然使用原则',
+                    '把设定当作角色真实生活的一部分，不要逐条背诵。只使用当前已触发、与角色有关且角色有理由知道的信息。日常习惯和偏好应自然体现在选择与细节里，不必每轮主动提起。未知、隐瞒或未发生的事情不可当成事实；关系与状态的变化必须有真实缘由。'));
             }
         } catch (e) {}
 
