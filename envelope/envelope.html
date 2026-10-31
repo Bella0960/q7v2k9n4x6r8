@@ -256,9 +256,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 }
 .detail-main.paper-opened .letter-stage{
   position:relative;left:auto;top:auto;transform:none;opacity:1;pointer-events:auto;
-  width:min(320px,90vw);margin:max(20px,calc((100dvh - 570px)/2 - 8px)) auto 18px;
+  width:min(320px,90vw);margin:max(20px,calc((100dvh - (var(--fold-height)*3))/2 - 8px)) auto 18px;
 }
-.detail-main.paper-opened .letter-stage.unfolded{height:570px}
+.detail-main.paper-opened .letter-stage.unfolded{height:calc(var(--fold-height)*3)}
 .fold-wrapper{
   position:absolute;left:0;top:0;width:100%;height:calc(var(--fold-height)*3);
   transform:translateY(calc(-1 * var(--fold-height)));
