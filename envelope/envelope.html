@@ -126,6 +126,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .image-remove{position:absolute;right:-7px;top:-7px;width:21px;height:21px;border:0;border-radius:50%;background:#292825;color:white;font-size:14px;line-height:1;cursor:pointer}
 .editor-bottom{position:fixed;bottom:0;left:0;right:0;padding:12px 22px calc(14px + env(safe-area-inset-bottom,0px));background:rgba(247,246,242,.96);backdrop-filter:blur(14px);border-top:1px solid rgba(40,38,34,.08);z-index:18}
 .editor-bottom-inner{width:min(100%,576px);margin:0 auto;display:flex;gap:10px}
+.editor-bottom .preview-btn{flex:.9;padding:13px 8px;white-space:nowrap}.editor-bottom .secondary-btn{flex:1}.editor-bottom .primary-btn{flex:1.25}
+.letter-preview-overlay{position:fixed;inset:0;z-index:80;background:rgba(247,246,242,.98);display:none;flex-direction:column;overflow:hidden}.letter-preview-overlay.show{display:flex}.letter-preview-head{height:calc(58px + var(--safe-top));padding:var(--safe-top) 18px 0;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(40,38,34,.08);flex-shrink:0}.letter-preview-head button{border:0;background:none;padding:8px 2px;color:#666;font-size:12px}.letter-preview-head strong{font-size:13px;font-weight:600;flex:1}.letter-preview-scroll{width:min(100%,580px);margin:0 auto;padding:26px 22px calc(35px + env(safe-area-inset-bottom,0px));overflow:auto;flex:1}.letter-preview-note{font:10px Georgia,serif;letter-spacing:.18em;color:#99958B;text-align:center;margin:4px 0 18px}.letter-preview-sheet{min-height:380px}.letter-preview-empty{color:#B5B1A8;font-style:italic}.letter-preview-images img{max-height:340px;object-fit:contain}
 .editor-bottom .secondary-btn{flex:1}
 .editor-bottom .primary-btn{flex:1.4;padding:13px 10px}
 .detail-main{width:min(100%,620px);margin:0 auto;padding:18px 22px 40px;flex:1}
@@ -336,10 +338,32 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   </main>
   <div class="editor-bottom">
     <div class="editor-bottom-inner">
+      <button class="secondary-btn preview-btn" id="previewLetterButton" type="button">预览信纸</button>
       <button class="secondary-btn" id="saveDraftButton" type="button">保存草稿</button>
       <button class="primary-btn" id="sendLetterButton" type="button">寄出信件</button>
     </div>
   </div>
+</section>
+
+<section class="letter-preview-overlay" id="letterPreviewOverlay" aria-hidden="true">
+  <header class="letter-preview-head">
+    <button type="button" id="closeLetterPreview">‹ 返回编辑</button>
+    <strong>信纸预览</strong>
+    <span class="topbar-kicker">PREVIEW</span>
+  </header>
+  <main class="letter-preview-scroll">
+    <div class="letter-preview-note">PREVIEW · 尚未寄出</div>
+    <article class="paper-sheet letter-preview-sheet">
+      <div class="paper-topline"><span id="previewPaperNumber">PRIVATE LETTER</span><span id="previewPaperDate">PREVIEW</span></div>
+      <h2 class="paper-title" id="previewPaperTitle">未命名信件</h2>
+      <div class="paper-body" id="previewPaperBody"></div>
+      <div class="paper-images letter-preview-images" id="previewPaperImages"></div>
+      <div class="paper-signature">
+        <div><small>Yours,</small><strong id="previewPaperSender">未署名</strong></div>
+        <div><span class="city" id="previewPaperRecipient">TO —</span></div>
+      </div>
+    </article>
+  </main>
 </section>
 
 <section class="view detail-view" id="detailView">
@@ -614,6 +638,27 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
       });
     });
   }
+  function openLetterPreview(){
+    var title=$('letterTitle').value.trim();
+    var sender=$('letterSender').value.trim() || '未署名';
+    var recipient=$('letterRecipient').value.trim() || '未填写收件人';
+    var content=$('letterContent').value;
+    $('previewPaperTitle').textContent=title || '未命名信件';
+    $('previewPaperSender').textContent=sender;
+    $('previewPaperRecipient').textContent='TO '+recipient.toUpperCase();
+    $('previewPaperBody').textContent=content || (draftImages.length ? '（这封信附有图片，没有填写文字。）' : '（信件正文将在这里显示。）');
+    $('previewPaperBody').classList.toggle('letter-preview-empty',!content && !draftImages.length);
+    $('previewPaperNumber').textContent='PRIVATE LETTER · '+recipient.toUpperCase();
+    $('previewPaperDate').textContent='JUST A PREVIEW';
+    $('previewPaperImages').innerHTML=draftImages.map(function(src){return '<img src="'+escapeHtml(src)+'" alt="信件附图预览">';}).join('');
+    $('letterPreviewOverlay').classList.add('show');
+    $('letterPreviewOverlay').setAttribute('aria-hidden','false');
+  }
+  function closeLetterPreview(){
+    $('letterPreviewOverlay').classList.remove('show');
+    $('letterPreviewOverlay').setAttribute('aria-hidden','true');
+  }
+
   function collectComposeData(){
     return {
       id:editingLetterId || editingDraftId || makeId(),
@@ -883,6 +928,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     handleImageFiles(this.files);
     this.value='';
   });
+  $('previewLetterButton').addEventListener('click',openLetterPreview);
+  $('closeLetterPreview').addEventListener('click',closeLetterPreview);
   $('saveDraftButton').addEventListener('click',saveDraft);
   $('sendLetterButton').addEventListener('click',sendLetter);
   $('detailEdit').addEventListener('click',editActiveLetter);
