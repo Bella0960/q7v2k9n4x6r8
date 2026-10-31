@@ -356,6 +356,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   var editingLetterId = null;
   var editingDraftId = null;
   var editingDirection = 'sent';
+  var editingIsSavedLetter = false;
   var selectedColor = '#292929';
   var draftImages = [];
   var toastTimer = null;
@@ -415,11 +416,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function persistData(){
     if(!currentContactId || !Storage){toast('请先选择一位角色');return false;}
     try{
+      var expectedJSON=JSON.stringify(currentData);
       Storage.setData(currentContactId,'letters',currentData);
       var saved=Storage.getData(currentContactId,'letters');
-      var expected=currentData.letters.length+currentData.drafts.length;
-      var actual=(saved && Array.isArray(saved.letters) ? saved.letters.length : 0)+(saved && Array.isArray(saved.drafts) ? saved.drafts.length : 0);
-      if(actual!==expected){toast('保存失败：本机储存空间可能不足，请减少图片后重试');return false;}
+      if(!saved || JSON.stringify(saved)!==expectedJSON){toast('保存失败：本机储存空间可能不足，请减少图片后重试');return false;}
       return true;
     }catch(e){
       toast('保存失败：本机储存空间可能不足');
@@ -517,8 +517,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function closeRolePicker(){$('rolePickerPanel').classList.remove('show');}
   function openComposer(letter,draftId){
     if(!currentRole){openRolePicker();toast('请先选择一位角色');return;}
-    editingLetterId=letter ? letter.id : null;
+    if(!letter && draftId) letter=currentData.drafts.find(function(d){return d.id===draftId;}) || null;
+    editingLetterId=(letter && !draftId) ? letter.id : null;
     editingDraftId=draftId || null;
+    editingIsSavedLetter=!!(editingLetterId && currentData.letters.some(function(l){return l.id===editingLetterId;}));
     editingDirection=letter ? (letter.direction || 'sent') : 'sent';
     draftImages=letter && Array.isArray(letter.images) ? letter.images.slice() : [];
     $('composeHeading').textContent=letter ? '继续整理这封信。' : '把想说的话写下来。';
@@ -527,6 +529,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     $('letterSender').value=letter ? (letter.sender || '') : currentUserName;
     $('letterRecipient').value=letter ? (letter.recipient || '') : (currentRole.name || '');
     $('letterContent').value=letter ? (letter.content || '') : '';
+    $('saveDraftButton').textContent=editingIsSavedLetter ? '保存修改' : '保存草稿';
+    $('sendLetterButton').textContent=editingIsSavedLetter ? '保存修改' : '寄出信件';
     selectedColor=letter ? letterColor(letter) : '#292929';
     updatePalette();
     renderImagePreviews();
@@ -569,12 +573,16 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function saveDraft(){
     var item=collectComposeData();
     if(editingDraftId) item.id=editingDraftId;
+    if(editingIsSavedLetter){
+      var existingIndex=currentData.letters.findIndex(function(l){return l.id===editingLetterId;});
+      if(existingIndex>=0) currentData.letters[existingIndex]=item;
+      if(!persistData()) return;
+      toast('信件修改已保存');
+      editingIsSavedLetter=false;editingLetterId=null;editingDraftId=null;
+      setView('homeView');renderLetters();return;
+    }
     var idx=currentData.drafts.findIndex(function(d){return d.id===item.id;});
     if(idx>=0) currentData.drafts[idx]=item; else currentData.drafts.unshift(item);
-    if(editingLetterId){
-      var li=currentData.letters.findIndex(function(l){return l.id===editingLetterId;});
-      if(li>=0) currentData.letters[li]=item;
-    }
     if(!persistData()) return;
     editingDraftId=item.id;editingLetterId=null;
     toast('草稿已保存');
@@ -614,7 +622,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     $('detailSender').textContent='FROM '+(letter.sender || '—');
     $('detailKicker').textContent=(letter.direction==='received'?'RECEIVED LETTER':'SENT LETTER')+' · SEALED';
     $('paperImages').innerHTML=(letter.images||[]).map(function(src){return '<img src="'+escapeHtml(src)+'" alt="信件附图">';}).join('');
-    $('replyButton').textContent=letter.direction==='received'?'写一封回信':'继续写信';
+    $('replyButton').textContent='写一封回信';
     $('askReplyButton').style.display=letter.direction==='received'?'none':'';
     setView('detailView');
   }
