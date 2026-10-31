@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v5"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
         * {
@@ -4642,12 +4642,13 @@
             } catch (e) {}
             rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
 
-            // 世界书内容：群聊优先读取群聊专属挂载列表；无旧记录时保留兼容回退
+            // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               if (rawWB) {
                 let wbList = JSON.parse(rawWB) || [];
+                if (!Array.isArray(wbList)) wbList = [];
                 if (isGroupChat) {
                   const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
                   if (mountRaw != null) {
@@ -4658,9 +4659,19 @@
                     }
                   }
                 }
-                worldbookText = wbList.map(function(b){
-                  return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
-                }).join('\n\n');
+                if (window.ChatContextPolicy &&
+                    typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
+                  worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
+                    currentText: text,
+                    recentMessages: historyList.slice(-8),
+                    maxEntries: 32,
+                    maxChars: CTX_CAP.worldbook
+                  });
+                } else {
+                  worldbookText = wbList.map(function(b){
+                    return '【' + (b.title || '未命名') + '】\\n' + (b.content || '');
+                  }).join('\\n\\n');
+                }
               }
             } catch(e) { worldbookText = ''; }
             worldbookText = capText(worldbookText, CTX_CAP.worldbook);
@@ -4875,10 +4886,17 @@
               '【以下为角色完整资料与对话背景】'
             ].join('\n');
             systemPrompt = IDENTITY_LOCK + systemPrompt;
-            // 世界书内容拼进 systemPrompt
+            // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
             if (worldbookText) {
-              systemPrompt += '\n\n【世界书 / 世界观设定】\n' + worldbookText;
+              systemPrompt += '\\n\\n【世界书 / 角色生活背景】\\n' + worldbookText;
             }
+            systemPrompt += '\\n\\n【活人感世界书使用原则】\\n' +
+              '把设定当成你真实生活过的背景，而不是每轮要复述的资料。\\n' +
+              '只使用当前已触发、与你有关、且你有理由知道的信息；未知、隐瞒或只属于作者视角的事实，不可擅自说出来。\\n' +
+              '日常习惯、偏好、关系和经历应体现在选择、语气与细节里，不要直接背诵条目。\\n' +
+              '合适时可以顺口提起一个生活细节或旧事；不必每轮主动提，不要为了证明记忆而硬提。\\n' +
+              '角色有自己的安排、注意力和短期事务；状态变化要有缘由，并与稳定性格一致。\\n' +
+              '不要把“可能发生”当成“已经发生”，不要替用户补写共同经历；设定冲突或不确定时，先自然询问。';
             // 重玩方向：用户对上次回复不满意，按新方向重写
             if (isRegen && regenDirection) {
                 systemPrompt += '\n\n[重玩要求]\n刚才那条回复不满意，请按这个方向重新回复：' + regenDirection + '。直接输出新的回复内容即可，不要解释为什么换了。';
