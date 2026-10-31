@@ -527,6 +527,10 @@
 
     function renderColor(color) {
         preview.style.color = color;
+        document.documentElement.style.setProperty('--global-font-color', color);
+        if (document.body && !document.documentElement.classList.contains('dark')) {
+            document.body.style.color = color;
+        }
         Array.prototype.forEach.call(colorChips, function (chip) {
             chip.classList.toggle('active', chip.getAttribute('data-color') === color);
         });
