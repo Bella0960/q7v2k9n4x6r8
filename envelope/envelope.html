@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F7F6F2">
+<title>信封 · 私人信件</title>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css?v=20261031-envelope1">
+<script src="../shared/js/font-loader.js?v=20261022v1"></script>
+<script src="../shared/js/native-feel.js?v=20261026-statusbar2"></script>
+<script src="../shared/js/phone/phone_storage.js?v=20261031-envelope1"></script>
+<script src="../shared/js/phone/phone_api.js?v=20261031-envelope1"></script>
+<script src="../shared/js/phone/phone_context.js?v=20261031-envelope1"></script>
+<style>
+:root{
+  --bg:#F7F6F2;--paper:#FCFBF7;--ink:#292825;--muted:#898781;--line:#E5E1D8;
+  --accent:#292825;--soft:#EFEEE9;--safe-top:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+body{min-height:100vh;overflow-x:hidden}
+button,input,textarea{font:inherit}
+button{color:inherit;-webkit-tap-highlight-color:transparent}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #8C8982;outline-offset:2px}
+.view{display:none;min-height:100vh;flex-direction:column}
+.view.active{display:flex}
+.topbar{height:calc(58px + var(--safe-top));padding:var(--safe-top) 19px 0;display:flex;align-items:center;gap:14px;background:rgba(247,246,242,.94);position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);border-bottom:1px solid rgba(40,38,34,.045)}
+.back-btn,.icon-btn{width:38px;height:38px;border:0;background:transparent;display:grid;place-items:center;flex-shrink:0;cursor:pointer}
+.back-btn svg,.icon-btn svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.topbar-title{font-size:14px;font-weight:600;letter-spacing:.03em;flex:1}
+.topbar-kicker{font:10px Georgia,serif;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+.topbar-action{border:0;background:none;font-size:12px;color:#66645E;padding:8px 2px;cursor:pointer}
+.scroll-area{width:min(100%,620px);margin:0 auto;padding:0 22px 34px;flex:1}
+.hero{padding:34px 0 24px}
+.eyebrow{font:10px Georgia,serif;letter-spacing:.22em;color:#929087;text-transform:uppercase}
+.hero-line{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:11px}
+.hero h1{font:500 46px/1.05 Georgia,"Noto Serif SC",serif;letter-spacing:-.045em;margin:0}
+.hero-english{font:italic 14px/1.45 Georgia,serif;color:#9C998F;text-align:right;letter-spacing:.04em}
+.hero-desc{max-width:290px;margin:14px 0 0;color:#77756E;font-size:12px;line-height:1.85}
+.hero-rule{height:1px;background:var(--line);margin-top:24px;position:relative}
+.hero-rule:before{content:"";position:absolute;left:0;top:-1px;width:42px;height:2px;background:#77746C}
+.role-strip{display:flex;align-items:center;justify-content:space-between;padding:13px 0 16px;border-bottom:1px solid var(--line);gap:12px}
+.role-picker{display:flex;align-items:center;gap:11px;border:0;background:transparent;padding:0;text-align:left;min-width:0;cursor:pointer}
+.role-avatar{width:38px;height:38px;border-radius:50%;background:#E6E3DC;display:grid;place-items:center;overflow:hidden;color:#68665F;font:16px Georgia,serif;flex-shrink:0}
+.role-avatar img{width:100%;height:100%;object-fit:cover}
+.role-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+.role-label{font-size:10px;color:#96938A;letter-spacing:.12em}
+.role-name{font-size:14px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.role-chevron{font-size:13px;color:#99968D;margin-left:3px}
+.role-count{text-align:right;flex-shrink:0}
+.role-count strong{font:24px Georgia,serif;font-weight:400;display:block}
+.role-count span{font-size:9px;letter-spacing:.14em;color:#99968D}
+.archive-head{display:flex;align-items:flex-end;justify-content:space-between;margin:28px 0 13px}
+.archive-head h2{font:22px Georgia,"Noto Serif SC",serif;font-weight:400;margin:0}
+.archive-sub{font-size:10px;letter-spacing:.16em;color:#96938A;text-transform:uppercase}
+.filter-row{display:flex;gap:20px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto;scrollbar-width:none}
+.filter-row::-webkit-scrollbar{display:none}
+.filter-btn{border:0;background:transparent;padding:0 0 11px;color:#99968D;font-size:12px;white-space:nowrap;position:relative;cursor:pointer}
+.filter-btn.active{color:#222;font-weight:600}
+.filter-btn.active:after{content:"";position:absolute;bottom:-1px;left:0;right:0;height:2px;background:#292825}
+.letter-list{display:flex;flex-direction:column;gap:15px}
+.letter-row{border-bottom:1px solid rgba(50,48,43,.09);padding-bottom:15px}
+.letter-open{width:100%;border:0;padding:0;background:transparent;text-align:left;display:flex;flex-direction:column;gap:10px;cursor:pointer}
+.envelope-thumb{height:122px;width:100%;position:relative;overflow:hidden;border:1px solid rgba(76,70,60,.13);background:var(--env,#F0EADF);box-shadow:0 5px 16px rgba(40,35,28,.045);isolation:isolate}
+.envelope-thumb:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.24),transparent 45%,rgba(0,0,0,.025));z-index:0}
+.envelope-flap{position:absolute;inset:0 0 auto;height:68%;background:linear-gradient(160deg,rgba(255,255,255,.22),rgba(0,0,0,.035));clip-path:polygon(0 0,100% 0,50% 78%);border-bottom:1px solid rgba(80,74,63,.12);z-index:1}
+.envelope-fold-left,.envelope-fold-right{position:absolute;inset:auto 0 0;height:72%;z-index:1;opacity:.2}
+.envelope-fold-left{background:linear-gradient(35deg,rgba(0,0,0,.1),transparent 55%);clip-path:polygon(0 100%,0 0,52% 100%)}
+.envelope-fold-right{background:linear-gradient(-35deg,rgba(0,0,0,.09),transparent 55%);clip-path:polygon(100% 100%,100% 0,48% 100%)}
+.envelope-inner{position:absolute;left:19px;right:19px;bottom:15px;z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.envelope-address{display:flex;flex-direction:column;gap:3px;min-width:0}
+.envelope-address small{font:9px Georgia,serif;letter-spacing:.2em;color:rgba(42,40,35,.55);text-transform:uppercase}
+.envelope-address strong{font:19px Georgia,"Noto Serif SC",serif;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(38,36,32,.91)}
+.envelope-stamp{width:42px;height:48px;border:1px dashed rgba(57,53,46,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:rgba(54,50,43,.65);font:8px Georgia,serif;letter-spacing:.12em;flex-shrink:0}
+.envelope-stamp:before{content:"";width:17px;height:11px;border:1px solid currentColor;clip-path:polygon(0 0,100% 0,50% 100%)}
+.letter-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.letter-meta-left{display:flex;align-items:center;gap:8px;min-width:0}
+.direction-label{font-size:10px;letter-spacing:.06em;color:#77746C}
+.letter-title{font:16px Georgia,"Noto Serif SC",serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.letter-date{font-size:10px;color:#A09D94;white-space:nowrap}
+.letter-snippet{font-size:11px;color:#8B8880;line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.letter-extra{display:flex;gap:8px;align-items:center;color:#99968D;font-size:10px}
+.letter-extra svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.5}
+.empty-state{padding:56px 12px 58px;text-align:center;border:1px dashed #DCD8CF;margin-top:8px}
+.empty-mark{width:42px;height:32px;margin:0 auto 18px;position:relative;border:1px solid #BEB9AD;opacity:.65}
+.empty-mark:after{content:"";position:absolute;left:0;right:0;top:-1px;height:20px;background:var(--bg);clip-path:polygon(0 0,100% 0,50% 100%);border-bottom:1px solid #BEB9AD}
+.empty-state h3{font:20px Georgia,"Noto Serif SC",serif;font-weight:400;margin:0 0 8px}
+.empty-state p{font-size:11px;line-height:1.8;color:#96938A;margin:0 auto;max-width:235px}
+.empty-state button{margin-top:19px;background:#292825;color:#fff;border:0;border-radius:999px;padding:11px 22px;font-size:11px;letter-spacing:.08em}
+.primary-btn{width:100%;border:0;background:#292825;color:#fff;border-radius:999px;padding:15px 20px;font-size:12px;letter-spacing:.16em;cursor:pointer;box-shadow:0 8px 22px rgba(25,24,22,.12)}
+.secondary-btn{border:1px solid #DCD8CF;background:transparent;color:#55524C;border-radius:999px;padding:12px 17px;font-size:11px;cursor:pointer}
+.home-footer{padding:24px 0 22px}
+.role-picker-panel{position:fixed;inset:0;background:rgba(26,25,23,.3);z-index:50;display:none;align-items:flex-end;justify-content:center;padding:20px}
+.role-picker-panel.show{display:flex}
+.role-picker-sheet{background:#FBFAF7;width:min(100%,480px);max-height:70vh;border-radius:22px 22px 10px 10px;padding:20px;overflow:auto;box-shadow:0 15px 60px rgba(0,0,0,.16)}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+.sheet-head h3{font:20px Georgia,serif;font-weight:400;margin:0}
+.role-option{width:100%;display:flex;align-items:center;gap:12px;border:0;border-bottom:1px solid #ECE9E2;background:none;padding:12px 2px;text-align:left;cursor:pointer}
+.role-option:last-child{border-bottom:0}
+.role-option .role-avatar{width:36px;height:36px}
+.role-option-name{font-size:13px;flex:1}
+.role-option-check{font-size:11px;color:#8B887F}
+.form-main{width:min(100%,620px);margin:0 auto;padding:18px 22px 130px;flex:1}
+.form-intro{margin:8px 0 25px}
+.form-intro .eyebrow{margin-bottom:9px}
+.form-intro h1{font:32px Georgia,"Noto Serif SC",serif;font-weight:400;margin:0 0 8px}
+.form-intro p{font-size:11px;line-height:1.8;color:#89867E;margin:0}
+.field{display:flex;flex-direction:column;gap:8px;margin-bottom:17px}
+.field label{font-size:10px;letter-spacing:.11em;color:#89867E}
+.field input,.field textarea{width:100%;border:0;border-bottom:1px solid #DCD8CF;background:transparent;padding:9px 1px 11px;color:#292825;border-radius:0;outline:none;font-size:14px}
+.field input:focus,.field textarea:focus{border-color:#292825}
+.field input::placeholder,.field textarea::placeholder{color:#B5B1A8}
+.field textarea{min-height:190px;resize:vertical;line-height:1.9;font-size:14px}
+.name-grid{display:grid;grid-template-columns:1fr 1fr;gap:17px}
+.palette{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.swatch{width:30px;height:30px;border-radius:50%;border:1px solid rgba(0,0,0,.12);position:relative;cursor:pointer;padding:0}
+.swatch.active:after{content:"";position:absolute;inset:-5px;border:1px solid #333;border-radius:50%}
+.swatch-label{font-size:10px;color:#918E85;margin-left:2px}
+.attach-row{display:flex;align-items:center;gap:12px}
+.attach-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid #DEDAD1;background:transparent;border-radius:999px;padding:9px 13px;font-size:11px;color:#66635C;cursor:pointer}
+.attach-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.5}
+.attach-note{font-size:10px;color:#A09D94}
+.image-previews{display:flex;gap:9px;flex-wrap:wrap;margin-top:10px}
+.image-preview{width:76px;height:76px;position:relative;border:1px solid #E2DED6;background:#EEECE7}
+.image-preview img{width:100%;height:100%;object-fit:cover}
+.image-remove{position:absolute;right:-7px;top:-7px;width:21px;height:21px;border:0;border-radius:50%;background:#292825;color:white;font-size:14px;line-height:1;cursor:pointer}
+.editor-bottom{position:fixed;bottom:0;left:0;right:0;padding:12px 22px calc(14px + env(safe-area-inset-bottom,0px));background:rgba(247,246,242,.96);backdrop-filter:blur(14px);border-top:1px solid rgba(40,38,34,.08);z-index:18}
+.editor-bottom-inner{width:min(100%,576px);margin:0 auto;display:flex;gap:10px}
+.editor-bottom .secondary-btn{flex:1}
+.editor-bottom .primary-btn{flex:1.4;padding:13px 10px}
+.detail-main{width:min(100%,620px);margin:0 auto;padding:18px 22px 40px;flex:1}
+.detail-kicker{font:10px Georgia,serif;letter-spacing:.2em;text-transform:uppercase;color:#99958B;margin:8px 0 15px}
+.detail-envelope{height:205px;position:relative;background:var(--env,#F0EADF);border:1px solid rgba(70,65,57,.16);box-shadow:0 12px 28px rgba(36,32,25,.08);overflow:hidden;perspective:1000px;transition:transform .8s cubic-bezier(.2,.75,.25,1),opacity .8s ease}
+.detail-envelope:before{content:"";position:absolute;inset:0;background:linear-gradient(130deg,rgba(255,255,255,.24),transparent 47%,rgba(0,0,0,.035));pointer-events:none}
+.detail-envelope-flap{position:absolute;top:0;left:0;right:0;height:62%;z-index:3;background:linear-gradient(150deg,rgba(255,255,255,.2),rgba(0,0,0,.045));clip-path:polygon(0 0,100% 0,50% 83%);transform-origin:top center;transition:transform .85s cubic-bezier(.2,.75,.25,1),opacity .7s ease;border-bottom:1px solid rgba(70,65,57,.16)}
+.detail-envelope-fold{position:absolute;inset:auto 0 0;height:80%;background:linear-gradient(35deg,rgba(0,0,0,.08),transparent 55%);clip-path:polygon(0 100%,0 0,52% 100%);opacity:.4}
+.detail-envelope-fold.right{background:linear-gradient(-35deg,rgba(0,0,0,.08),transparent 55%);clip-path:polygon(100% 100%,100% 0,48% 100%)}
+.detail-recipient{position:absolute;left:23px;bottom:24px;z-index:2}
+.detail-recipient small{font:9px Georgia,serif;letter-spacing:.2em;color:rgba(42,40,35,.56)}
+.detail-recipient strong{display:block;font:25px Georgia,"Noto Serif SC",serif;font-weight:400;margin-top:4px}
+.detail-sender{position:absolute;right:22px;bottom:25px;z-index:2;font-size:9px;letter-spacing:.12em;color:rgba(42,40,35,.58);text-transform:uppercase}
+.detail-envelope.opening .detail-envelope-flap{transform:rotateX(172deg);opacity:.6}
+.detail-envelope.opening{transform:translateY(-8px) scale(.98);opacity:.45}
+.open-prompt{text-align:center;padding:16px 0 22px;color:#8D8980;font:italic 13px Georgia,serif}
+.open-paper{opacity:0;transform:translateY(35px) scale(.98);max-height:0;overflow:hidden;transition:opacity .8s ease,transform .8s cubic-bezier(.16,1,.3,1),max-height 1s ease}
+.open-paper.visible{opacity:1;transform:translateY(0) scale(1);max-height:3000px}
+.paper-sheet{background:var(--paper);border:1px solid #E7E2D8;box-shadow:0 12px 35px rgba(42,38,30,.055);padding:28px 24px 25px;position:relative;overflow:hidden}
+.paper-sheet:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.16;background-image:repeating-linear-gradient(0deg,rgba(75,65,45,.025) 0,rgba(75,65,45,.025) 1px,transparent 1px,transparent 4px)}
+.paper-topline{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #E9E4DA;padding-bottom:13px;font:10px Georgia,serif;letter-spacing:.16em;color:#918D83;text-transform:uppercase;position:relative;z-index:1}
+.paper-title{font:italic 27px/1.25 Georgia,"Noto Serif SC",serif;font-weight:400;margin:22px 0 18px;position:relative;z-index:1}
+.paper-body{font:14px/2 Georgia,"Noto Serif SC",serif;color:#55524C;white-space:pre-wrap;overflow-wrap:anywhere;position:relative;z-index:1;min-height:100px}
+.paper-images{display:flex;flex-direction:column;gap:11px;margin-top:20px;position:relative;z-index:1}
+.paper-images img{width:100%;max-height:380px;object-fit:contain;background:#F1EFEA;border:1px solid #E9E4DA}
+.paper-signature{border-top:1px solid #E9E4DA;margin-top:32px;padding-top:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px;position:relative;z-index:1}
+.paper-signature small{font:italic 12px Georgia,serif;color:#99958B}
+.paper-signature strong{display:block;font:22px Georgia,"Noto Serif SC",serif;font-weight:400;margin-top:4px}
+.paper-signature .city{font:9px Georgia,serif;letter-spacing:.15em;color:#99958B;text-transform:uppercase}
+.detail-actions{display:flex;gap:9px;margin-top:18px;flex-wrap:wrap}
+.detail-actions button{flex:1;min-width:100px}
+.hidden{display:none!important}
+.toast{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0px));transform:translate(-50%,15px);padding:10px 16px;background:rgba(35,34,31,.94);color:#fff;font-size:11px;border-radius:999px;opacity:0;pointer-events:none;transition:.25s;z-index:100;white-space:nowrap}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-width:380px){
+ .scroll-area,.form-main,.detail-main{padding-left:17px;padding-right:17px}
+ .hero h1{font-size:42px}
+ .name-grid{gap:12px}
+ .paper-sheet{padding:24px 19px}
+ .detail-envelope{height:188px}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<section class="view active" id="homeView">
+  <header class="topbar">
+    <button class="back-btn" id="homeBack" aria-label="返回桌面">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="topbar-title">信封 <span class="topbar-kicker">/ Correspondence</span></div>
+    <button class="topbar-action" id="homeNew">写信</button>
+  </header>
+  <main class="scroll-area">
+    <section class="hero">
+      <div class="eyebrow">PRIVATE CORRESPONDENCE · 01</div>
+      <div class="hero-line">
+        <h1>信封</h1>
+        <div class="hero-english">Letters,<br>kept close.</div>
+      </div>
+      <p class="hero-desc">一些不必即时说出口的话，可以认真写下来，装进信封，寄给某个人。</p>
+      <div class="hero-rule"></div>
+    </section>
+
+    <div class="role-strip">
+      <button class="role-picker" id="rolePickerButton" type="button">
+        <span class="role-avatar" id="activeRoleAvatar">信</span>
+        <span class="role-meta">
+          <span class="role-label">当前通信对象</span>
+          <span class="role-name" id="activeRoleName">选择一位角色</span>
+        </span>
+        <span class="role-chevron">⌄</span>
+      </button>
+      <div class="role-count"><strong id="letterCount">00</strong><span>LETTERS</span></div>
+    </div>
+
+    <div class="archive-head">
+      <h2>私人信笺</h2>
+      <span class="archive-sub">THE MAILBOX</span>
+    </div>
+    <nav class="filter-row" aria-label="信件分类">
+      <button class="filter-btn active" data-filter="all">全部</button>
+      <button class="filter-btn" data-filter="sent">寄出的</button>
+      <button class="filter-btn" data-filter="received">收到的</button>
+      <button class="filter-btn" data-filter="draft">草稿</button>
+    </nav>
+    <div class="letter-list" id="letterList"></div>
+    <div class="home-footer">
+      <button class="primary-btn" id="writeButton" type="button">＋　写一封私人信件</button>
+    </div>
+  </main>
+</section>
+
+<section class="view" id="composeView">
+  <header class="topbar">
+    <button class="back-btn" id="composeBack" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="topbar-title" id="composeTopTitle">写一封信 <span class="topbar-kicker">/ New Letter</span></div>
+    <button class="topbar-action" id="composeCancel">取消</button>
+  </header>
+  <main class="form-main">
+    <div class="form-intro">
+      <div class="eyebrow">A LETTER, IN YOUR OWN WORDS</div>
+      <h1 id="composeHeading">把想说的话写下来。</h1>
+      <p>发信人、收件人和正文都可以自行修改。信件会保存在当前角色的私人信箱中。</p>
+    </div>
+
+    <div class="field">
+      <label for="letterTitle">信件标题</label>
+      <input id="letterTitle" maxlength="80" placeholder="给这封信一个名字（可不填）">
+    </div>
+    <div class="name-grid">
+      <div class="field">
+        <label for="letterSender">发信人</label>
+        <input id="letterSender" maxlength="40" placeholder="发信人">
+      </div>
+      <div class="field">
+        <label for="letterRecipient">收件人</label>
+        <input id="letterRecipient" maxlength="40" placeholder="收件人">
+      </div>
+    </div>
+    <div class="field">
+      <label for="letterContent">信件正文</label>
+      <textarea id="letterContent" maxlength="12000" placeholder="亲爱的……&#10;&#10;在这里写下你想寄出的内容。"></textarea>
+    </div>
+
+    <div class="field">
+      <label>信封颜色 · 只改变外面的信封</label>
+      <div class="palette" id="colorPalette">
+        <button class="swatch active" type="button" data-color="#292929" style="background:#292929" aria-label="黑色"></button>
+        <button class="swatch" type="button" data-color="#E4C9CE" style="background:#E4C9CE" aria-label="粉色"></button>
+        <button class="swatch" type="button" data-color="#F0EADF" style="background:#F0EADF" aria-label="米白色"></button>
+        <button class="swatch" type="button" data-color="#FFFFFF" style="background:#FFFFFF" aria-label="白色"></button>
+        <button class="swatch" type="button" data-color="#C9CAC7" style="background:#C9CAC7" aria-label="灰色"></button>
+        <span class="swatch-label" id="colorName">黑色</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>随信图片</label>
+      <div class="attach-row">
+        <button class="attach-btn" id="attachButton" type="button">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          添加图片
+        </button>
+        <span class="attach-note">最多 2 张，图片会随信保存</span>
+      </div>
+      <input id="imageInput" type="file" accept="image/*" multiple hidden>
+      <div class="image-previews" id="imagePreviews"></div>
+    </div>
+  </main>
+  <div class="editor-bottom">
+    <div class="editor-bottom-inner">
+      <button class="secondary-btn" id="saveDraftButton" type="button">保存草稿</button>
+      <button class="primary-btn" id="sendLetterButton" type="button">寄出信件</button>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="detailView">
+  <header class="topbar">
+    <button class="back-btn" id="detailBack" aria-label="返回信箱">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <div class="topbar-title">私人信件 <span class="topbar-kicker">/ Sealed Mail</span></div>
+    <button class="topbar-action" id="detailEdit">编辑</button>
+  </header>
+  <main class="detail-main">
+    <div class="detail-kicker" id="detailKicker">PRIVATE LETTER · SEALED</div>
+    <div class="detail-envelope" id="detailEnvelope">
+      <div class="detail-envelope-flap"></div>
+      <div class="detail-envelope-fold"></div>
+      <div class="detail-envelope-fold right"></div>
+      <div class="detail-recipient"><small>TO / 收件人</small><strong id="detailRecipient">—</strong></div>
+      <div class="detail-sender" id="detailSender">FROM —</div>
+    </div>
+    <div class="open-prompt" id="openPrompt">轻触下方，拆开这封信。</div>
+    <button class="primary-btn" id="openEnvelopeButton" type="button">打开信封</button>
+
+    <article class="open-paper" id="openPaper">
+      <div class="paper-sheet">
+        <div class="paper-topline"><span id="paperNumber">LETTER NO. 001</span><span id="paperDate">—</span></div>
+        <h2 class="paper-title" id="paperTitle">未命名信件</h2>
+        <div class="paper-body" id="paperBody"></div>
+        <div class="paper-images" id="paperImages"></div>
+        <div class="paper-signature">
+          <div><small>Yours,</small><strong id="paperSender">—</strong></div>
+          <span class="city" id="paperRecipient">TO —</span>
+        </div>
+      </div>
+      <div class="detail-actions" id="detailActions">
+        <button class="secondary-btn" id="replyButton" type="button">写一封回信</button>
+        <button class="secondary-btn" id="askReplyButton" type="button">请 TA 回信</button>
+        <button class="secondary-btn" id="deleteLetterButton" type="button">删除</button>
+      </div>
+    </article>
+  </main>
+</section>
+
+<div class="role-picker-panel" id="rolePickerPanel">
+  <div class="role-picker-sheet">
+    <div class="sheet-head">
+      <h3>选择通信对象</h3>
+      <button class="icon-btn" id="closeRolePicker" aria-label="关闭">
+        <svg viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="roleOptions"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+  var Storage = window.PhoneStorage;
+  var currentContactId = null;
+  var currentRole = null;
+  var currentUserName = '我';
+  var currentUserAvatar = '';
+  var currentData = {version:1,letters:[],drafts:[]};
+  var currentFilter = 'all';
+  var activeLetterId = null;
+  var editingLetterId = null;
+  var editingDraftId = null;
+  var editingDirection = 'sent';
+  var selectedColor = '#292929';
+  var draftImages = [];
+  var toastTimer = null;
+  var COLOR_NAMES = {'#292929':'黑色','#E4C9CE':'粉色','#F0EADF':'米白色','#FFFFFF':'白色','#C9CAC7':'灰色'};
+
+  function $(id){return document.getElementById(id);}
+  function escapeHtml(value){
+    return String(value == null ? '' : value).replace(/[&<>"']/g,function(ch){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+  function toast(message){
+    var el=$('toast');
+    el.textContent=message;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(function(){el.classList.remove('show');},1900);
+  }
+  function getRoles(){
+    try{return Storage ? Storage.getCharacters() : [];}catch(e){return [];}
+  }
+  function getRoleById(id){
+    var roles=getRoles();
+    for(var i=0;i<roles.length;i++) if(String(roles[i].id)===String(id)) return roles[i];
+    return null;
+  }
+  function getUserProfile(){
+    var p=null;
+    try{p=Storage && Storage.getMyProfile ? Storage.getMyProfile() : null;}catch(e){}
+    currentUserName=(p && (p.name || p.nickname || p.displayName || p.username)) || '我';
+    currentUserAvatar=(p && (p.avatar || p.avatarUrl)) || '';
+  }
+  function getContactIdFromUrl(){
+    try{return new URLSearchParams(location.search).get('id');}catch(e){return null;}
+  }
+  function chooseInitialRole(){
+    var roles=getRoles();
+    var requested=getContactIdFromUrl();
+    var active=(Storage && Storage.getCurrentContactId) ? Storage.getCurrentContactId() : null;
+    currentContactId=(requested && getRoleById(requested)) ? requested :
+      ((active && getRoleById(active)) ? active : (roles[0] ? String(roles[0].id) : null));
+    currentRole=currentContactId ? getRoleById(currentContactId) : null;
+  }
+  function loadRoleData(){
+    currentRole=currentContactId ? getRoleById(currentContactId) : null;
+    if(!currentRole){currentData={version:1,letters:[],drafts:[]};return;}
+    var value=Storage ? Storage.getData(currentContactId,'letters') : null;
+    if(!value || typeof value!=='object') value={};
+    currentData={
+      version:1,
+      letters:Array.isArray(value.letters) ? value.letters : [],
+      drafts:Array.isArray(value.drafts) ? value.drafts : []
+    };
+    currentData.letters.sort(function(a,b){return (b.updatedAt || b.createdAt || 0)-(a.updatedAt || a.createdAt || 0);});
+    currentData.drafts.sort(function(a,b){return (b.updatedAt || b.createdAt || 0)-(a.updatedAt || a.createdAt || 0);});
+  }
+  function persistData(){
+    if(!currentContactId || !Storage){toast('请先选择一位角色');return false;}
+    try{
+      Storage.setData(currentContactId,'letters',currentData);
+      var saved=Storage.getData(currentContactId,'letters');
+      var expected=currentData.letters.length+currentData.drafts.length;
+      var actual=(saved && Array.isArray(saved.letters) ? saved.letters.length : 0)+(saved && Array.isArray(saved.drafts) ? saved.drafts.length : 0);
+      if(actual!==expected){toast('保存失败：本机储存空间可能不足，请减少图片后重试');return false;}
+      return true;
+    }catch(e){
+      toast('保存失败：本机储存空间可能不足');
+      return false;
+    }
+  }
+  function formatDate(ts){
+    var d=new Date(ts || Date.now());
+    var pad=function(n){return n<10?'0'+n:n;};
+    return d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate())+'  '+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  function shortDate(ts){
+    var d=new Date(ts || Date.now());
+    return (d.getMonth()+1)+'.'+d.getDate();
+  }
+  function makeId(){
+    return 'letter_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);
+  }
+  function setView(name){
+    ['homeView','composeView','detailView'].forEach(function(id){$(id).classList.toggle('active',id===name);});
+    window.scrollTo(0,0);
+  }
+  function roleAvatarMarkup(role){
+    if(role && role.avatar) return '<img src="'+escapeHtml(role.avatar)+'" alt="">';
+    return escapeHtml((role && role.name ? role.name : '角').slice(0,1));
+  }
+  function updateRoleBar(){
+    $('activeRoleAvatar').innerHTML=currentRole ? roleAvatarMarkup(currentRole) : '信';
+    $('activeRoleName').textContent=currentRole ? currentRole.name : '尚未选择角色';
+  }
+  function renderRoleOptions(){
+    var roles=getRoles();
+    $('roleOptions').innerHTML=roles.length ? roles.map(function(role){
+      var chosen=String(role.id)===String(currentContactId);
+      return '<button class="role-option" type="button" data-role-id="'+escapeHtml(role.id)+'">'+
+        '<span class="role-avatar">'+roleAvatarMarkup(role)+'</span>'+
+        '<span class="role-option-name">'+escapeHtml(role.name || '未命名角色')+'</span>'+
+        '<span class="role-option-check">'+(chosen?'当前通信对象':'选择')+'</span></button>';
+    }).join('') : '<div class="empty-state"><h3>还没有角色</h3><p>先去角色库创建一位角色，再回来写信。</p><button type="button" id="goCharacters">前往角色库</button></div>';
+    var go=$('goCharacters');
+    if(go) go.addEventListener('click',function(){location.href='../worldbook/characters/characters.html';});
+  }
+  function updateCount(){
+    $('letterCount').textContent=String(currentData.letters.length).padStart(2,'0');
+  }
+  function letterColor(letter){return letter.envelopeColor || '#F0EADF';}
+  function renderLetterItem(letter,draft){
+    var receiver=letter.recipient || '未填写收件人';
+    var direction=draft ? '草稿' : (letter.direction==='received' ? '收到的信' : '寄出的信');
+    var preview=(letter.content || '').replace(/\s+/g,' ').trim();
+    if(!preview && letter.images && letter.images.length) preview='随信附有图片';
+    if(!preview) preview='还没有写下信件正文';
+    var sender=letter.sender || '未填写发信人';
+    var id=escapeHtml(letter.id);
+    return '<div class="letter-row"><button class="letter-open" type="button" data-letter-id="'+id+'" data-is-draft="'+(draft?'1':'0')+'">'+
+      '<div class="envelope-thumb" style="--env:'+escapeHtml(letterColor(letter))+'">'+
+        '<div class="envelope-flap"></div><div class="envelope-fold-left"></div><div class="envelope-fold-right"></div>'+
+        '<div class="envelope-inner"><div class="envelope-address"><small>TO / '+(draft?'DRAFT':'PRIVATE MAIL')+'</small><strong>'+escapeHtml(receiver)+'</strong></div>'+
+        '<div class="envelope-stamp">PRIVATE<br>LETTER</div></div></div>'+
+      '<div class="letter-meta-row"><div class="letter-meta-left"><span class="direction-label">'+direction+'</span><span class="letter-title">'+escapeHtml(letter.title || '未命名信件')+'</span></div><span class="letter-date">'+shortDate(letter.updatedAt || letter.createdAt)+'</span></div>'+
+      '<div class="letter-snippet">'+escapeHtml(preview)+'</div>'+
+      '<div class="letter-extra"><span>FROM '+escapeHtml(sender)+'</span>'+(letter.images && letter.images.length ? '<span>· '+letter.images.length+' 张图片</span>' : '')+'</div>'+
+      '</button></div>';
+  }
+  function renderLetters(){
+    updateRoleBar();
+    updateCount();
+    if(!currentRole){
+      $('letterList').innerHTML='<div class="empty-state"><div class="empty-mark"></div><h3>先选一位通信对象</h3><p>信件会分别保存在每位角色自己的信箱里，不会混在一起。</p><button type="button" id="chooseRoleEmpty">选择角色</button><button type="button" id="goCharactersEmpty" style="margin-left:6px;background:transparent;color:#555;border:1px solid #DCD8CF">角色库</button></div>';
+      $('chooseRoleEmpty').addEventListener('click',openRolePicker);
+      $('goCharactersEmpty').addEventListener('click',function(){location.href='../worldbook/characters/characters.html';});
+      return;
+    }
+    var entries=[];
+    if(currentFilter==='all' || currentFilter==='sent') currentData.letters.filter(function(l){return l.direction!=='received';}).forEach(function(l){entries.push({item:l,draft:false});});
+    if(currentFilter==='all' || currentFilter==='received') currentData.letters.filter(function(l){return l.direction==='received';}).forEach(function(l){entries.push({item:l,draft:false});});
+    if(currentFilter==='all' || currentFilter==='draft') currentData.drafts.forEach(function(l){entries.push({item:l,draft:true});});
+    entries.sort(function(a,b){return ((b.item.updatedAt||b.item.createdAt||0)-(a.item.updatedAt||a.item.createdAt||0));});
+    $('letterList').innerHTML=entries.length ? entries.map(function(entry){return renderLetterItem(entry.item,entry.draft);}).join('') :
+      '<div class="empty-state"><div class="empty-mark"></div><h3>这里还没有信件</h3><p>写下第一封私人信件吧。你可以先保存草稿，之后再继续编辑和寄出。</p><button type="button" id="emptyWrite">写下第一封信</button></div>';
+    var ew=$('emptyWrite');
+    if(ew) ew.addEventListener('click',function(){openComposer(null,null);});
+    $('letterList').querySelectorAll('[data-letter-id]').forEach(function(button){
+      button.addEventListener('click',function(){
+        var id=button.getAttribute('data-letter-id');
+        if(button.getAttribute('data-is-draft')==='1') openComposer(null,id);
+        else openLetter(id);
+      });
+    });
+  }
+  function openRolePicker(){
+    renderRoleOptions();
+    $('rolePickerPanel').classList.add('show');
+  }
+  function closeRolePicker(){$('rolePickerPanel').classList.remove('show');}
+  function openComposer(letter,draftId){
+    if(!currentRole){openRolePicker();toast('请先选择一位角色');return;}
+    editingLetterId=letter ? letter.id : null;
+    editingDraftId=draftId || null;
+    editingDirection=letter ? (letter.direction || 'sent') : 'sent';
+    draftImages=letter && Array.isArray(letter.images) ? letter.images.slice() : [];
+    $('composeHeading').textContent=letter ? '继续整理这封信。' : '把想说的话写下来。';
+    $('composeTopTitle').innerHTML=(letter?'编辑信件':'写一封信')+' <span class="topbar-kicker">/ '+(letter?'Edit Letter':'New Letter')+'</span>';
+    $('letterTitle').value=letter ? (letter.title || '') : '';
+    $('letterSender').value=letter ? (letter.sender || '') : currentUserName;
+    $('letterRecipient').value=letter ? (letter.recipient || '') : (currentRole.name || '');
+    $('letterContent').value=letter ? (letter.content || '') : '';
+    selectedColor=letter ? letterColor(letter) : '#292929';
+    updatePalette();
+    renderImagePreviews();
+    setView('composeView');
+  }
+  function updatePalette(){
+    $('colorPalette').querySelectorAll('.swatch').forEach(function(btn){
+      btn.classList.toggle('active',btn.getAttribute('data-color')===selectedColor);
+    });
+    $('colorName').textContent=COLOR_NAMES[selectedColor] || '自定义';
+  }
+  function renderImagePreviews(){
+    $('imagePreviews').innerHTML=draftImages.map(function(src,index){
+      return '<div class="image-preview"><img src="'+escapeHtml(src)+'" alt="随信图片"><button class="image-remove" type="button" data-remove-image="'+index+'" aria-label="移除图片">×</button></div>';
+    }).join('');
+    $('imagePreviews').querySelectorAll('[data-remove-image]').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        draftImages.splice(Number(btn.getAttribute('data-remove-image')),1);
+        renderImagePreviews();
+      });
+    });
+  }
+  function collectComposeData(){
+    return {
+      id:editingLetterId || editingDraftId || makeId(),
+      title:$('letterTitle').value.trim(),
+      sender:$('letterSender').value.trim() || '未署名',
+      recipient:$('letterRecipient').value.trim() || '未填写收件人',
+      content:$('letterContent').value,
+      images:draftImages.slice(),
+      envelopeColor:selectedColor,
+      direction:editingDirection,
+      createdAt:Date.now(),
+      updatedAt:Date.now()
+    };
+  }
+  function removeDraftById(id){
+    currentData.drafts=currentData.drafts.filter(function(d){return d.id!==id;});
+  }
+  function saveDraft(){
+    var item=collectComposeData();
+    if(editingDraftId) item.id=editingDraftId;
+    var idx=currentData.drafts.findIndex(function(d){return d.id===item.id;});
+    if(idx>=0) currentData.drafts[idx]=item; else currentData.drafts.unshift(item);
+    if(editingLetterId){
+      var li=currentData.letters.findIndex(function(l){return l.id===editingLetterId;});
+      if(li>=0) currentData.letters[li]=item;
+    }
+    if(!persistData()) return;
+    editingDraftId=item.id;editingLetterId=null;
+    toast('草稿已保存');
+    setView('homeView');renderLetters();
+  }
+  function sendLetter(){
+    var body=$('letterContent').value.trim();
+    if(!body && !draftImages.length){toast('先写一点内容，或添加一张图片');return;}
+    var item=collectComposeData();
+    if(editingDraftId) removeDraftById(editingDraftId);
+    var idx=currentData.letters.findIndex(function(l){return l.id===item.id;});
+    if(idx>=0) currentData.letters[idx]=item; else currentData.letters.unshift(item);
+    if(!persistData()) return;
+    editingLetterId=item.id;editingDraftId=null;
+    toast('信件已放进寄件箱');
+    currentFilter='sent';updateFilterButtons();setView('homeView');renderLetters();
+  }
+  function openLetter(id){
+    var letter=currentData.letters.find(function(l){return l.id===id;});
+    if(!letter) return;
+    activeLetterId=id;
+    $('detailEnvelope').style.setProperty('--env',letterColor(letter));
+    $('detailEnvelope').classList.remove('opening');
+    $('detailEnvelope').style.display='block';
+    $('openPrompt').classList.remove('hidden');
+    $('openPrompt').textContent='轻触下方，拆开这封信。';
+    $('openEnvelopeButton').classList.remove('hidden');
+    $('openEnvelopeButton').textContent='打开信封';
+    $('openPaper').classList.remove('visible');
+    $('paperTitle').textContent=letter.title || '未命名信件';
+    $('paperNumber').textContent='LETTER NO. '+String(currentData.letters.indexOf(letter)+1).padStart(3,'0');
+    $('paperDate').textContent=formatDate(letter.createdAt);
+    $('paperBody').textContent=letter.content || '（这封信附有图片，没有填写文字。）';
+    $('paperSender').textContent=letter.sender || '未署名';
+    $('paperRecipient').textContent='TO '+(letter.recipient || '—').toUpperCase();
+    $('detailRecipient').textContent=letter.recipient || '—';
+    $('detailSender').textContent='FROM '+(letter.sender || '—');
+    $('detailKicker').textContent=(letter.direction==='received'?'RECEIVED LETTER':'SENT LETTER')+' · SEALED';
+    $('paperImages').innerHTML=(letter.images||[]).map(function(src){return '<img src="'+escapeHtml(src)+'" alt="信件附图">';}).join('');
+    $('replyButton').textContent=letter.direction==='received'?'写一封回信':'继续写信';
+    $('askReplyButton').style.display=letter.direction==='received'?'none':'';
+    setView('detailView');
+  }
+  function revealLetter(){
+    var env=$('detailEnvelope');
+    if(env.classList.contains('opening')) return;
+    env.classList.add('opening');
+    $('openPrompt').textContent='正在拆开信封……';
+    $('openEnvelopeButton').disabled=true;
+    $('openEnvelopeButton').textContent='正在展开';
+    setTimeout(function(){
+      env.style.display='none';
+      $('openPrompt').classList.add('hidden');
+      $('openEnvelopeButton').classList.add('hidden');
+      $('openPaper').classList.add('visible');
+      $('openEnvelopeButton').disabled=false;
+    },780);
+  }
+  function editActiveLetter(){
+    var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
+    if(letter) openComposer(letter,null);
+  }
+  function replyManually(){
+    var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
+    if(!letter) return;
+    var draft={
+      id:makeId(),title:letter.title ? 'Re: '+letter.title : '',
+      sender:currentUserName,recipient:letter.sender || (currentRole && currentRole.name) || '',
+      content:'',images:[],envelopeColor:letterColor(letter),direction:'sent',
+      createdAt:Date.now(),updatedAt:Date.now()
+    };
+    openComposer(draft,null);
+  }
+  function askCharacterToReply(){
+    var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
+    if(!letter || !currentRole) return;
+    if(!window.PhoneAPI || !window.PhoneContext){toast('信件回信服务暂不可用');return;}
+    var button=$('askReplyButton');
+    button.disabled=true;button.textContent='正在等一封回信…';
+    var context='';
+    try{context=PhoneContext.buildPhoneRoleContext(currentContactId,'letters');}catch(e){}
+    var system=context+
+      '\n【当前任务：写一封私人回信】\n'+
+      '你现在就是角色本人，请按照你的人设、记忆、与你的对方的关系和说话习惯，亲自写一封私人信件。'+
+      '这不是聊天消息，不要写成即时对话，不要使用项目符号，不要解释你正在生成内容。'+
+      '可以自然地回应来信中的细节，也可以写自己的近况与想说的话；不要凭空编造重大共同经历。'+
+      '只输出信件正文，不要输出标题、发件人标签或任何系统说明。';
+    var user='【这封信的来信信息】\n发信人：'+(letter.sender||currentUserName)+
+      '\n收件人：'+(letter.recipient||currentRole.name)+
+      '\n标题：'+(letter.title||'未命名信件')+
+      '\n正文：\n'+(letter.content||'（来信附有图片）')+
+      '\n\n请以'+(currentRole.name||'角色本人')+'的身份，写一封自然、完整、有私人信件感觉的回信。';
+    PhoneAPI.complete({system:system,user:user,temperature:0.85,timeoutMs:30000}).then(function(text){
+      var content=String(text||'').trim();
+      if(!content) throw new Error('没有收到有效的回信内容');
+      var incoming={
+        id:makeId(),title:letter.title ? 'Re: '+letter.title : '一封回信',
+        sender:currentRole.name||'角色',recipient:letter.sender||currentUserName,
+        content:content,images:[],envelopeColor:letterColor(letter),
+        direction:'received',replyTo:letter.id,generated:true,createdAt:Date.now(),updatedAt:Date.now()
+      };
+      currentData.letters.unshift(incoming);
+      if(!persistData()) throw new Error('回信没有保存成功，请检查本机储存空间');
+      toast('收到一封新回信');
+      setView('homeView');currentFilter='received';updateFilterButtons();renderLetters();
+      openLetter(incoming.id);
+    }).catch(function(err){
+      toast('回信失败：'+(err && err.message ? err.message : '请检查 API 设置'));
+    }).finally(function(){
+      button.disabled=false;button.textContent='请 TA 回信';
+    });
+  }
+  function deleteActiveLetter(){
+    if(!activeLetterId) return;
+    var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
+    if(!letter) return;
+    if(!window.confirm('确定删除这封信吗？')) return;
+    currentData.letters=currentData.letters.filter(function(l){return l.id!==activeLetterId;});
+    if(persistData()){activeLetterId=null;setView('homeView');renderLetters();toast('信件已删除');}
+  }
+  function updateFilterButtons(){
+    document.querySelectorAll('[data-filter]').forEach(function(btn){
+      btn.classList.toggle('active',btn.getAttribute('data-filter')===currentFilter);
+    });
+  }
+  function compressImage(file){
+    return new Promise(function(resolve,reject){
+      if(!file || !/^image\//.test(file.type)){reject(new Error('请选择图片文件'));return;}
+      var reader=new FileReader();
+      reader.onerror=function(){reject(new Error('图片读取失败'));};
+      reader.onload=function(){
+        var img=new Image();
+        img.onerror=function(){reject(new Error('无法识别这张图片'));};
+        img.onload=function(){
+          var maxSide=1440,scale=Math.min(1,maxSide/Math.max(img.width,img.height));
+          var canvas=document.createElement('canvas');
+          canvas.width=Math.max(1,Math.round(img.width*scale));
+          canvas.height=Math.max(1,Math.round(img.height*scale));
+          var ctx=canvas.getContext('2d');
+          ctx.fillStyle='#FFFFFF';ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          var data=canvas.toDataURL('image/webp',0.82);
+          if(data.indexOf('data:image/webp')!==0) data=canvas.toDataURL('image/jpeg',0.78);
+          if(data.length>850000){
+            var smaller=document.createElement('canvas');
+            smaller.width=Math.max(1,Math.round(canvas.width*.78));
+            smaller.height=Math.max(1,Math.round(canvas.height*.78));
+            var sctx=smaller.getContext('2d');sctx.fillStyle='#FFFFFF';sctx.fillRect(0,0,smaller.width,smaller.height);
+            sctx.drawImage(canvas,0,0,smaller.width,smaller.height);
+            data=smaller.toDataURL('image/jpeg',0.68);
+          }
+          if(data.length>1000000){reject(new Error('图片太大，请换一张较小的图片'));return;}
+          resolve(data);
+        };
+        img.src=reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function handleImageFiles(files){
+    var chosen=Array.prototype.slice.call(files||[]).filter(function(f){return /^image\//.test(f.type);});
+    if(!chosen.length) return;
+    if(draftImages.length+chosen.length>2){toast('每封信最多添加 2 张图片');return;}
+    Promise.all(chosen.map(compressImage)).then(function(images){
+      var total=draftImages.reduce(function(sum,s){return sum+s.length;},0)+images.reduce(function(sum,s){return sum+s.length;},0);
+      if(total>1500000){toast('图片总量较大，请减少图片后再保存');return;}
+      draftImages=draftImages.concat(images);renderImagePreviews();
+    }).catch(function(err){toast(err.message||'图片添加失败');});
+  }
+
+  $('homeBack').addEventListener('click',function(){location.href='../index.html';});
+  $('composeBack').addEventListener('click',function(){setView('homeView');});
+  $('composeCancel').addEventListener('click',function(){setView('homeView');});
+  $('detailBack').addEventListener('click',function(){setView('homeView');});
+  $('homeNew').addEventListener('click',function(){openComposer(null,null);});
+  $('writeButton').addEventListener('click',function(){openComposer(null,null);});
+  $('rolePickerButton').addEventListener('click',openRolePicker);
+  $('closeRolePicker').addEventListener('click',closeRolePicker);
+  $('rolePickerPanel').addEventListener('click',function(e){if(e.target===$('rolePickerPanel')) closeRolePicker();});
+  $('roleOptions').addEventListener('click',function(e){
+    var button=e.target.closest('[data-role-id]');
+    if(!button) return;
+    currentContactId=button.getAttribute('data-role-id');
+    currentRole=getRoleById(currentContactId);
+    loadRoleData();currentFilter='all';updateFilterButtons();closeRolePicker();setView('homeView');renderLetters();
+  });
+  document.querySelectorAll('[data-filter]').forEach(function(btn){
+    btn.addEventListener('click',function(){currentFilter=btn.getAttribute('data-filter');updateFilterButtons();renderLetters();});
+  });
+  $('colorPalette').addEventListener('click',function(e){
+    var btn=e.target.closest('[data-color]');
+    if(!btn) return;
+    selectedColor=btn.getAttribute('data-color');updatePalette();
+  });
+  $('attachButton').addEventListener('click',function(){$('imageInput').click();});
+  $('imageInput').addEventListener('change',function(){
+    handleImageFiles(this.files);
+    this.value='';
+  });
+  $('saveDraftButton').addEventListener('click',saveDraft);
+  $('sendLetterButton').addEventListener('click',sendLetter);
+  $('detailEdit').addEventListener('click',editActiveLetter);
+  $('openEnvelopeButton').addEventListener('click',revealLetter);
+  $('replyButton').addEventListener('click',replyManually);
+  $('askReplyButton').addEventListener('click',askCharacterToReply);
+  $('deleteLetterButton').addEventListener('click',deleteActiveLetter);
+
+  getUserProfile();
+  chooseInitialRole();
+  loadRoleData();
+  updateFilterButtons();
+  renderLetters();
+})();
+</script>
+<script src="../shared/js/statusbar-control.js?v=20261031-envelope1"></script>
+</body>
+</html>
