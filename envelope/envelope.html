@@ -243,8 +243,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   filter:blur(4px);opacity:1;transition:all .9s cubic-bezier(.16,1,.3,1);z-index:0;
 }
 .letter-stage{
-  --fold-height:190px;
-  position:absolute;left:50%;top:50%;width:min(320px,90vw);height:var(--fold-height);
+  --fold-height:clamp(210px,calc((100dvh - 142px)/3),270px);
+  position:absolute;left:50%;top:50%;width:min(92vw,540px);height:var(--fold-height);
   transform:translate(-50%,-50%) translateY(24px) scale(.96);
   transform-origin:50% 50%;opacity:0;pointer-events:none;overflow:hidden;
   transition:all .9s cubic-bezier(.16,1,.3,1);z-index:2;transform-style:preserve-3d;
@@ -256,7 +256,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 }
 .detail-main.paper-opened .letter-stage{
   position:relative;left:auto;top:auto;transform:none;opacity:1;pointer-events:auto;
-  width:min(320px,90vw);margin:max(20px,calc((100dvh - (var(--fold-height)*3))/2 - 8px)) auto 18px;
+  width:min(92vw,540px);margin:max(20px,calc((100dvh - (var(--fold-height)*3))/2 - 8px)) auto 18px;
 }
 .detail-main.paper-opened .letter-stage.unfolded{height:calc(var(--fold-height)*3)}
 .fold-wrapper{
@@ -287,6 +287,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .panel-top .content-inner{top:0;display:flex;flex-direction:column;justify-content:space-between}
 .panel-mid .content-inner{top:-100%;display:flex;flex-direction:column;justify-content:center}
 .panel-bottom .content-inner{top:-200%;display:flex;flex-direction:column;justify-content:space-between}
+/* 正文保持原始字号与行距，不做自动缩字或 flex 挤压 */
+.panel-top .content-inner>div,.panel-mid .content-inner>*,.panel-bottom .content-inner>*{flex-shrink:0}
 .panel-back{
   position:absolute;inset:0;transform:rotateX(180deg);backface-visibility:hidden;overflow:hidden;
   background:linear-gradient(132deg,#FBF8F1 0%,#F4EFE6 58%,#EEE7DC 100%);
@@ -342,7 +344,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .detail-main.paper-opened .detail-actions{width:min(90vw,540px);margin:0 auto 24px;flex-shrink:0}
 .detail-main.paper-opened .detail-actions button{min-width:0;padding:11px 10px;font-size:10px}
 @media(min-width:640px){
- .letter-stage,.detail-main.paper-opened .letter-stage{width:360px;--fold-height:210px}
+ .letter-stage,.detail-main.paper-opened .letter-stage{width:min(92vw,540px)}
  .letter-stage,.detail-main.paper-opened .letter-stage:not(.unfolded){height:var(--fold-height)}
  .letter-stage.unfolded,.detail-main.paper-opened .letter-stage.unfolded{height:calc(var(--fold-height)*3)}
  .panel-content,.panel-top .content-inner,.panel-mid .content-inner,.panel-bottom .content-inner{padding:1.75rem 2rem}
@@ -922,6 +924,49 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
       value.slice(second).trim()
     ];
   }
+  function paperElementHeight(element){
+    if(!element) return 0;
+    var style=window.getComputedStyle(element);
+    return element.getBoundingClientRect().height+
+      (parseFloat(style.marginTop)||0)+(parseFloat(style.marginBottom)||0);
+  }
+  function fitPaperToContent(){
+    var stage=$('letterStage');
+    if(!stage) return;
+    var viewportHeight=window.innerHeight||document.documentElement.clientHeight||800;
+    // 默认接近屏幕高度，但上下仍保留呼吸空间
+    var baseHeight=Math.max(210,Math.min(270,(viewportHeight-142)/3));
+    stage.style.setProperty('--fold-height',baseHeight+'px');
+    void stage.offsetHeight;
+
+    var topBlock=$('paperTopText') && $('paperTopText').parentElement;
+    var midText=paperElementHeight($('paperMidText'));
+    var midImages=paperElementHeight($('paperImages'));
+    var bottomText=paperElementHeight($('paperBottomText'));
+    var signoff=paperElementHeight(document.querySelector('#panelBottom .signoff'));
+    // 三个折页各自预留原始字号正文的真实排版高度，不压扁、不缩字
+    var needed=Math.max(
+      baseHeight,
+      (topBlock?topBlock.getBoundingClientRect().height:0)+72,
+      midText+midImages+72,
+      bottomText+signoff+72
+    );
+    stage.style.setProperty('--fold-height',Math.ceil(needed)+'px');
+  }
+  function requestPaperFit(){
+    var images=Array.prototype.slice.call(document.querySelectorAll('#paperImages img'));
+    var pending=images.filter(function(img){return !img.complete;});
+    var apply=function(){
+      requestAnimationFrame(function(){requestAnimationFrame(fitPaperToContent);});
+    };
+    if(!pending.length){apply();return;}
+    Promise.all(pending.map(function(img){
+      return new Promise(function(resolve){
+        img.addEventListener('load',resolve,{once:true});
+        img.addEventListener('error',resolve,{once:true});
+      });
+    })).then(apply);
+  }
   function resetPaperFold(){
     $('letterStage').classList.remove('unfolded');
     $('panelTop').style.transform='rotateX(-180deg)';
@@ -973,6 +1018,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     $('replyButton').textContent='写一封回信';
     $('askReplyButton').style.display=letter.direction==='received'?'none':'';
     setView('detailView');
+    requestPaperFit();
   }
   function wait(ms){return new Promise(function(resolve){setTimeout(resolve,ms);});}
   function animatePaperTransform(element,startAngle,endAngle,duration,onUpdate){
@@ -1197,6 +1243,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   $('composeBack').addEventListener('click',function(){setView('homeView');});
   $('composeCancel').addEventListener('click',function(){setView('homeView');});
   $('detailBack').addEventListener('click',function(){setView('homeView');});
+  window.addEventListener('resize',function(){
+    if($('detailView').classList.contains('active')) requestPaperFit();
+  });
   $('homeNew').addEventListener('click',askCharacterForNewLetter);
   $('writeButton').addEventListener('click',function(){openComposer(null,null);});
   $('rolePickerButton').addEventListener('click',openRolePicker);
