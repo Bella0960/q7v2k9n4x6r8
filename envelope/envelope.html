@@ -362,6 +362,166 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
  .letter-stage,.detail-envelope,.detail-envelope-flap,.letter-shadow,.fold-action svg{transition-duration:.01ms!important}
 }
 
+
+/* ===== 信件详情最终布局修复：正常文档流 + 三折内容自适应 ===== */
+#detailView.paper-opened{
+  display:block !important;
+  width:100%;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  overflow:visible !important;
+  flex:none !important;
+}
+#detailView.paper-opened #detailMain{
+  position:relative;
+  display:block !important;
+  width:100%;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  margin:0;
+  padding:
+    calc(env(safe-area-inset-top,0px) + 58px)
+    0
+    calc(100px + env(safe-area-inset-bottom,0px)) !important;
+  flex:none !important;
+  overflow:visible !important;
+  box-sizing:border-box;
+}
+#detailView.paper-opened #detailMain .letter-stage,
+#detailView.paper-opened #detailMain .letter-stage.unfolded{
+  position:relative !important;
+  left:auto !important;
+  top:auto !important;
+  transform:none !important;
+  width:min(92vw,540px) !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  padding:0 0 calc(var(--fold-height) * 3) !important;
+  margin:12px auto 22px !important;
+  overflow:visible !important;
+  flex:none !important;
+  box-sizing:border-box;
+}
+#detailView.paper-opened #detailMain .fold-wrapper{
+  position:absolute !important;
+  left:0;
+  top:0;
+  width:100%;
+  height:calc(var(--fold-height) * 3) !important;
+  transform:translateY(0);
+  transform-style:preserve-3d;
+}
+#detailView.paper-opened #panelTop,
+#detailView.paper-opened #panelMid,
+#detailView.paper-opened #panelBottom{
+  position:absolute !important;
+  left:0;
+  right:0;
+  height:var(--fold-height) !important;
+  min-height:0 !important;
+  max-height:none !important;
+  flex:none !important;
+  box-sizing:border-box;
+}
+#detailView.paper-opened #panelTop{top:0 !important}
+#detailView.paper-opened #panelMid{top:var(--fold-height) !important}
+#detailView.paper-opened #panelBottom{top:calc(var(--fold-height) * 2) !important}
+
+/* 取消 space-between / flex 拉伸：三个折页都从顶部按正常文档流排版 */
+#detailView.paper-opened .panel-content{
+  position:absolute;
+  inset:0;
+  display:block !important;
+  width:100%;
+  height:100%;
+  padding:0 !important;
+  overflow:hidden;
+  box-sizing:border-box;
+}
+#detailView.paper-opened .panel-top .content-inner,
+#detailView.paper-opened .panel-mid .content-inner,
+#detailView.paper-opened .panel-bottom .content-inner{
+  position:absolute !important;
+  left:0;
+  top:0 !important;
+  width:100% !important;
+  height:100% !important;
+  min-height:0 !important;
+  max-height:none !important;
+  padding:24px !important;
+  display:block !important;
+  justify-content:flex-start !important;
+  align-items:flex-start !important;
+  overflow:hidden;
+  box-sizing:border-box;
+}
+#detailView.paper-opened .panel-top .content-inner > div,
+#detailView.paper-opened .panel-mid .content-inner > *,
+#detailView.paper-opened .panel-bottom .content-inner > *{
+  display:block;
+  height:auto;
+  min-height:0;
+  max-height:none;
+  margin-top:0;
+  flex:none !important;
+}
+#detailView.paper-opened #panelBottom .signoff{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  margin-top:20px !important;
+}
+
+/* V7 封面保留原有视觉；封面块不得被 Flex 压缩 */
+#detailView.paper-opened .panel-back{
+  box-sizing:border-box;
+}
+#detailView.paper-opened .recipient-top,
+#detailView.paper-opened .recipient-main,
+#detailView.paper-opened .recipient-bottom{
+  flex-shrink:0 !important;
+}
+
+/* 图片始终按原比例适配纸张宽度 */
+#detailView.paper-opened #paperImages{
+  display:block !important;
+  width:100%;
+  height:auto !important;
+  min-height:0 !important;
+  margin:14px 0 4px !important;
+  overflow:visible;
+}
+#detailView.paper-opened #paperImages img{
+  display:block;
+  width:100% !important;
+  max-width:100% !important;
+  height:auto !important;
+  max-height:360px;
+  object-fit:contain;
+  margin:0 0 14px !important;
+  box-sizing:border-box;
+}
+
+/* 正文保留字号和行距 */
+#detailView.paper-opened #paperTopText,
+#detailView.paper-opened #paperMidText,
+#detailView.paper-opened #paperBottomText{
+  height:auto !important;
+  min-height:0 !important;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  flex:none !important;
+}
+#detailView.paper-opened #detailActions{
+  width:min(90vw,540px);
+  margin:18px auto 0 !important;
+  padding:0;
+  flex:none !important;
+}
+
 </style>
 </head>
 <body>
@@ -939,11 +1099,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     var stage=$('letterStage');
     if(!stage) return;
 
-    // 关键：不能测量 height:300% 的 content-inner 父容器，
-    // 否则会把整张三折纸的高度误当成单折高度，造成短信用大纸。
-    // 只测每一折真实内容本身，先清除旧尺寸，保证切换信件重新计算。
-    var baseHeight=130;
-    stage.style.setProperty('--fold-height',baseHeight+'px');
+    // 先设置一个测量基准，再只测量每折真实内容和 V7 正面自身所需空间。
+    stage.style.setProperty('--fold-height','180px');
     void stage.offsetHeight;
 
     var topText=$('paperTopText');
@@ -954,14 +1111,27 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     var bottomHeight=paperElementHeight($('paperBottomText'))+
       paperElementHeight(document.querySelector('#panelBottom .signoff'));
 
-    // 每折分别留出上下纸边距；三折等高，取实际需要最多的一折。
-    // 空短信保留紧凑基础高度；长信按真实换行与图片高度增长。
-    var verticalPadding=42;
+    // V7 收件人面必须容纳顶部编号/邮票、收件人和底部寄件信息。
+    // 直接测量三个内容块与内边距，避免把整张 300% 内容层误算成折页高度。
+    var face=document.querySelector('#panelTop .panel-back');
+    var faceStyle=face ? window.getComputedStyle(face) : null;
+    var facePadding=faceStyle
+      ? (parseFloat(faceStyle.paddingTop)||0)+(parseFloat(faceStyle.paddingBottom)||0)
+      : 0;
+    var faceContent=face ? (
+      paperElementHeight(face.querySelector('.recipient-top'))+
+      paperElementHeight(face.querySelector('.recipient-main'))+
+      paperElementHeight(face.querySelector('.recipient-bottom'))+
+      facePadding+8
+    ) : 0;
+
+    // 三折等高；每一折只按本折真实排版需要增长，正文不缩字、不压行。
+    var innerSpace=42;
     var needed=Math.max(
-      baseHeight,
-      topHeight+verticalPadding,
-      midHeight+verticalPadding,
-      bottomHeight+verticalPadding
+      faceContent,
+      topHeight+innerSpace,
+      midHeight+innerSpace,
+      bottomHeight+innerSpace
     );
     var fittedHeight=Math.ceil(needed/4)*4;
     stage.style.setProperty('--fold-height',fittedHeight+'px');
@@ -995,6 +1165,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     if(!letter) return;
     activeLetterId=id;
     var main=$('detailMain');
+    $('detailView').classList.remove('paper-opened');
     main.classList.remove('envelope-open','paper-rising','envelope-retiring','paper-opened');
     $('detailEnvelope').style.setProperty('--env',letterColor(letter));
     $('detailEnvelope').classList.remove('opening');
@@ -1094,6 +1265,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     env.style.display='none';
 
     main.classList.add('paper-opened');
+    $('detailView').classList.add('paper-opened');
     await unfoldPaper();
     $('detailEnvelope').setAttribute('aria-disabled','false');
     paperAnimationBusy=false;
@@ -1103,6 +1275,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     paperAnimationBusy=true;
     await foldPaper();
     $('detailMain').classList.remove('paper-opened');
+    $('detailView').classList.remove('paper-opened');
     paperAnimationBusy=false;
   }
   function editActiveLetter(){
@@ -1258,7 +1431,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   $('homeBack').addEventListener('click',function(){location.href='../index.html';});
   $('composeBack').addEventListener('click',function(){setView('homeView');});
   $('composeCancel').addEventListener('click',function(){setView('homeView');});
-  $('detailBack').addEventListener('click',function(){setView('homeView');});
+  $('detailBack').addEventListener('click',function(){
+    $('detailMain').classList.remove('paper-opened');
+    $('detailView').classList.remove('paper-opened');
+    setView('homeView');
+  });
   window.addEventListener('resize',function(){
     if($('detailView').classList.contains('active')) requestPaperFit();
   });
