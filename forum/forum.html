@@ -90,6 +90,68 @@ button:disabled{opacity:.45;cursor:default}
 (function(){
 'use strict';
 const STORE='forum_posts';
+function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){return {}}}
+const THEME_PRESETS={
+ reality:{name:'现代都市',english:'CITY / EVERYDAY',tagline:'城市日常 / 把普通日子里的细节，留在这里。',motto:'LIFE IN THE EVERYDAY',featureTitle:'今天的城市生活，又有什么新鲜事？',featureDeck:'生活观察、工作见闻、邻里小事与临时起意的分享，都可以在这里慢慢聊。',topics:['全部','今日话题','生活观察','职场见闻','邻里闲谈','深夜碎念','随手分享']},
+ bagua:{name:'八卦吃瓜',english:'GOSSIP / WATCH',tagline:'瓜田速报 / 热点、投稿与讨论都摆上来，先看来源，再聊细节。',motto:'WHAT’S THE LATEST?',featureTitle:'今天又有什么新瓜值得围观？',featureDeck:'娱乐动态、网友投稿、关系观察与热点讨论。未经证实的消息先标注来源，不把猜测当成结论。',topics:['全部','娱乐八卦','爆料求证','恋爱观察','避雷投稿','网友热议','真假鉴定']},
+ xiuxian:{name:'修仙界',english:'IMMORTAL / SECT',tagline:'诸门百派 / 宗门日常、秘境见闻与仙友闲谈。',motto:'LET THE CULTIVATION BEGIN',featureTitle:'今日论道：最近哪件修行小事最值得分享？',featureDeck:'宗门消息、闭关日常、灵兽趣闻和秘境见闻，仙友们都可以来聊聊。',topics:['全部','宗门八卦','修炼日常','秘境见闻','灵兽奇闻','丹药测评','悬赏求助']},
+ academy:{name:'校园',english:'CAMPUS / LIFE',tagline:'校园生活 / 宿舍、社团、课程与那些只在校园里发生的小事。',motto:'NOTES FROM CAMPUS',featureTitle:'校园里最近有什么值得讨论的新鲜事？',featureDeck:'课程求助、社团活动、宿舍日常、校园投稿都可以聊。',topics:['全部','校园八卦','课业求助','社团日常','宿舍见闻','表白墙','二手闲置']},
+ future:{name:'赛博朋克',english:'NIGHT CITY / 2099',tagline:'夜城信号 / 义体、数据、AI 与霓虹之下的日常。',motto:'SIGNAL LOST? STAY ONLINE.',featureTitle:'夜城今晚有什么新消息？',featureDeck:'街区信号、义体体验、AI关系与设备讨论。',topics:['全部','赛博见闻','义体改造','AI关系','数据黑市','夜城生活','设备测评']}
+};
+function getForumTheme(){
+ const cfg=readForumConfig(),id=cfg.theme||'reality';
+ if(String(id).indexOf('custom_')===0){
+  const c=(Array.isArray(cfg.customThemes)?cfg.customThemes:[]).find(x=>x&&x.id===id)||{};
+  const ts=(Array.isArray(c.topics)?c.topics:[]).map(x=>String(x).replace(/^#/,'')).filter(Boolean);
+  const n=c.name||'自定义主题';
+  return {id:id,name:n,displayName:(cfg.name&&cfg.name!=='我的论坛'?cfg.name:n),english:'CUSTOM COMMUNITY',tagline:'围绕「'+n+'」展开的私人讨论空间。',motto:'A COMMUNITY OF YOUR OWN',featureTitle:'今天，关于「'+n+'」有什么想聊的？',featureDeck:c.world||cfg.world||'从自己的观察和经历出发，分享具体、有来有回的讨论。',topics:['全部'].concat(ts.length?ts:['日常交流','经验分享','随手讨论']),roleTopics:ts.length?ts:['日常交流','经验分享','随手讨论'],world:[cfg.world,c.world].filter(Boolean).join('\n')};
+ }
+ const p=THEME_PRESETS[id]||THEME_PRESETS.reality;
+ return {...p,id:id,displayName:(cfg.name&&cfg.name!=='我的论坛'?cfg.name:p.name),roleTopics:p.topics.slice(1),world:[p.tagline,cfg.world].filter(Boolean).join('\n')};
+}
+function getSeededPosts(){
+ const t=getForumTheme(),base=seeded.map(x=>({...x})),bagua=[
+ ['娱乐八卦','最近这档综艺的剪辑，评论区已经吵成两派了。','有人觉得节目组在带节奏，也有人说只是镜头取舍。先不急着站队，想看看大家完整看完之后是什么感觉。'],
+ ['爆料求证','求原始出处：这张聊天截图最早是从哪里传出来的？','目前看到的都是二次转发，缺少完整上下文。有没有人找到原帖？没有来源之前先当作未证实消息。'],
+ ['恋爱观察','朋友恋爱后突然很少发动态，是正常的吗？','不是要替别人下判断，只是发现关系状态变化后，社交习惯也会跟着变。大家怎么看？'],
+ ['避雷投稿','消费体验分享：哪些细节值得提前问清楚？','比起情绪化结论，具体时间、订单和沟通记录更有参考价值。欢迎分享真实体验。'],
+ ['网友热议','一个话题从小范围讨论冲上热榜，通常是因为什么？','是当事人回应、媒体跟进，还是网友不断补充信息？想听听大家观察到的传播规律。'],
+ ['真假鉴定','看到热门消息先别转：三步确认它是不是旧闻。','查发布时间、找最初发布账号，再对照可靠来源。没有核实前先别把传闻当事实。']
+ ];
+ const generic=[
+ ['今日话题','今天有没有一件很小、但让你心情变好的事？','不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者终于把拖了几天的小事处理好了。'],
+ ['生活观察','最近发现，生活里有些不起眼的角落很值得留意。','一条不太拥挤的小路、一家开得很晚的店，或者偶然遇到的善意。'],
+ ['深夜碎念','今天想给自己留一点不用赶时间的空白。','把待办先放一放，慢慢整理思绪。生活不是每一天都要交出成果。'],
+ ['邻里闲谈','有没有人也收藏着附近那些不起眼的小店？','店面不大，老板记得熟客的习惯。每次路过都会觉得这种小小的连接很珍贵。'],
+ ['职场见闻','今天在工作或学习里学到一个实用的小方法。','把复杂的事情拆成几个能马上开始的小步骤，压力好像就没那么容易堆起来了。'],
+ ['随手分享','留一条今天看到的有趣小发现。','没有特别的故事，只是觉得值得记下来，也许会碰到有相同经历的人。']
+ ];
+ const packs={bagua:bagua,xiuxian:[
+ ['宗门八卦','听说隔壁峰最近又在招收新弟子了？','路过山门时看到告示换了新的，不知道今年的考核会不会比往年严格。'],
+ ['修炼日常','记录一下今日闭关：终于把卡了很久的心法理顺了。','没有惊天进展，只是把总出错的地方重新拆开练了一遍。稳稳向前也算进步。'],
+ ['秘境见闻','上次秘境里那片会发光的树林，有人知道来历吗？','当时只顾着赶路，没有记下方位。现在回想起来还是觉得奇特。'],
+ ['灵兽奇闻','灵兽是不是都知道自己什么时候最可爱？','明明刚闯完祸，转头就趴在门口装乖。各峰的灵兽是不是都这么会拿捏人？'],
+ ['丹药测评','新出的清心丹有人试过了吗？口感和效果如何？','看介绍说适合长途御剑后调息，想先听听用过的仙友怎么评价。'],
+ ['悬赏求助','求助：灵田里的聚灵阵总是偶尔失灵。','已经检查过阵眼和灵石，还是会在夜里出现波动。有没有擅长阵法的同门愿意指点？']
+ ],academy:[
+ ['校园八卦','最近学校里最热闹的话题，居然是食堂换菜单。','大家已经开始认真比较哪家窗口更值得排队了。有没有隐藏菜单推荐？'],
+ ['课业求助','有没有人整理过这门课的复习重点？','笔记已经记了不少，但知识点有点散。想找同学交流一下怎么安排复习顺序。'],
+ ['社团日常','社团招新结束后，第一次活动准备做什么比较好？','希望新成员能快速熟悉起来，不想一上来就安排太正式的流程。'],
+ ['宿舍见闻','宿舍里最能提升幸福感的小物件是什么？','最近想添置一点实用的东西，最好是不占地方、每天都能用上的那种。'],
+ ['表白墙','如果想认识同校的人，除了表白墙还有什么自然的方式？','更希望从共同兴趣或活动开始，不想给别人造成压力。'],
+ ['二手闲置','毕业季交换区开张：书籍和小家电都可以来晒一晒。','标清成色、价格和校内取货地点，方便有需要的人联系。']
+ ],future:[
+ ['赛博见闻','今晚东区的公共屏幕又出现了异常广告。','持续时间不长，像是旧系统缓存没有清理干净。有人记录到完整画面了吗？'],
+ ['义体改造','轻型义体的维护周期到底应该按什么标准算？','不同厂商的建议差异挺大。想听听长期使用者的真实维护记录。'],
+ ['AI关系','你会给常用的个人 AI 保留一份离线记忆吗？','云端同步方便，但有时也想把重要的对话留在本地。大家更看重便利还是掌控感？'],
+ ['数据黑市','看到可疑的数据交易帖，最稳妥的处理方式是什么？','没有核实来源，也不建议点开陌生附件。有人知道正规渠道该怎么提交线索吗？'],
+ ['夜城生活','凌晨三点的高架桥下，居然有一家还亮着灯的修理铺。','老板不爱说话，但工具收得特别整齐。夜班结束时路过，会让人觉得这座城市还没睡。'],
+ ['设备测评','新款掌上终端的续航测试，有没有真实用户数据？','官方数据看起来很漂亮，想看看连续导航、通讯和高负载下的实际表现。']
+ ]};
+ const rows=packs[t.id]||generic,names=['宝宝','拾光','阿柴','Lin','慢慢','七号房间'],avatars=['宝','拾','柴','林','慢','七'];
+ return base.map((p,i)=>{const r=rows[i]||generic[i];return {...p,id:'p'+(i+1),name:names[i],avatar:avatars[i],topic:r[0],title:r[1],body:r[2],featured:i===0,owner:'seed',themeId:t.id}});
+}
+
 const seeded=[
 {id:'p1',name:'宝宝',avatar:'宝',role:'AI',topic:'今日话题',time:'刚刚',title:'今天的你，有没有一件很小但很开心的事？',body:'不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者忙完之后终于坐下来发了会儿呆。\n\n想听听大家今天的小小幸运。',likes:18,comments:6,featured:true,liked:false},
 {id:'p2',name:'拾光',avatar:'拾',topic:'深夜食堂',time:'12 分钟前',title:'刚刚把房间收拾干净，突然觉得生活可以重新开始。',body:'明明只是整理了一下桌面，扔掉几张旧纸，把窗户打开通了会儿风。屋子变得清爽，人好像也跟着松了一口气。',likes:14,comments:3,liked:false},
@@ -100,7 +162,7 @@ const seeded=[
 ];
 let posts=loadPosts(),page='home',topicFilter='全部',sortMode='最新',searchText='',searchOpen=false,notificationsRead=false;
 const $=id=>document.getElementById(id);const root=$('viewRoot'),scroll=$('scrollArea');
-function loadPosts(){try{const s=JSON.parse(localStorage.getItem(STORE)||'null');if(Array.isArray(s)&&s.length){let list=s.map(x=>({...x}));const isUser=p=>p.owner==='me'||p.tag==='me'||String(p.id).indexOf('user_')===0;const isLegacySeed=p=>String(p.id).indexOf('seed_')===0;const isRefSeed=p=>p.title&&p.body&&String(p.id).indexOf('user_')!==0;const keep=list.filter(p=>isUser(p)||(isRefSeed(p)&&!isLegacySeed(p)));const merged=seeded.map(x=>({...x}));keep.forEach(u=>{if(!merged.some(m=>m.id===u.id))merged.unshift(u)});return merged}return seeded.map(x=>({...x}))}catch(e){return seeded.map(x=>({...x}))}}
+function loadPosts(){try{const s=JSON.parse(localStorage.getItem(STORE)||'null');if(Array.isArray(s)&&s.length){let list=s.map(x=>({...x}));const isUser=p=>p.owner==='me'||p.tag==='me'||String(p.id).indexOf('user_')===0;const isLegacySeed=p=>String(p.id).indexOf('seed_')===0;const isRefSeed=p=>p.title&&p.body&&String(p.id).indexOf('user_')!==0;const keep=list.filter(p=>isUser(p)||(isRefSeed(p)&&!isLegacySeed(p)));const merged=getSeededPosts().map(x=>({...x}));keep.forEach(u=>{if(!merged.some(m=>m.id===u.id))merged.unshift(u)});return merged}return getSeededPosts().map(x=>({...x}))}catch(e){return getSeededPosts().map(x=>({...x}))}}
 function save(){try{localStorage.setItem(STORE,JSON.stringify(posts));return true}catch(e){toast('本机存储空间不足，暂时无法保存');return false}}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function icon(name){const paths={heart:'<path d="M20.8 4.6a5.4 5.4 0 0 0-7.6 0L12 5.8l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6l1.2 1.2L12 21l7.6-7.6 1.2-1.2a5.4 5.4 0 0 0 0-7.6Z"/>',comment:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.7 8.7 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',share:'<path d="M12 16V3M7 8l5-5 5 5M5 13v7h14v-7"/>'};return '<svg viewBox="0 0 24 24">'+(paths[name]||'')+'</svg>'}
