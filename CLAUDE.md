@@ -143,6 +143,7 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 | 赴约 / 线下剧情 | `chat/date/journey.html` 短线下路线模拟（动态地图、ETA 分阶段推进、途中消息写回同一角色历史）；`chat/date/date.html` 长线下小说叙事（serif 排版、`PhoneStream.chat` 流式续写）。聊天记录统一写入 `chat_history_<id>`；`mode:'date'` 只在小说页展示，线上与线下记忆互通 |
 | 正则过滤 / RP 协议 | AI 输出正则替换规则 / 角色扮演协议（worldbook/settings/） |
 | 群组 / 贴纸库 | 多角色群聊（群 id 以 `g` 开头）/ chat/sticker/ 表情包管理 |
+| 信封 / 私人信件 | `envelope/envelope.html`；按角色隔离保存寄件、收件和草稿，支持编辑发件人/收件人、附图，以及用户主动邀请角色写信或回信 |
 | 编辑控制 | forum-editorial 等页面的内容精选控制 |
 
 ### UI 约定
