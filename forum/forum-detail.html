@@ -291,7 +291,7 @@
       '评论之间要有真实的来回：可以接话、追问、补充、温和反驳，必要时纠正误解。不要把所有评论都写成总结。',
       '所有网友都是虚构社区角色。不得编造现实人物的负面事实、隐私或未经证实的指控；涉及传闻时应当求证。',
       '当前论坛主题：'+themeName,
-      '论坛世界书：'+String((custom&&custom.world)||cfg.world||'').slice(0,4200)
+      '论坛世界书：'+String([cfg.world,custom&&custom.world].filter(Boolean).join('\n')).slice(0,4200)
     ].join('\n');
   }
   async function forumAIJSON(userPrompt,temperature){
