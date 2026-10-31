@@ -402,7 +402,7 @@ test('living worldbook retrieval respects nested entries, trigger modes and lega
     { title: '旧版资料', content: '旧格式内容仍应保留。' }
   ];
   const result = contextPolicy.buildWorldbookInjectionText(books, {
-    currentText: '今天外面下雨了。',
+    currentText: '今天外面下雨了，我想去海边。',
     recentMessages: [],
     random: () => 0.2,
     maxEntries: 20,
