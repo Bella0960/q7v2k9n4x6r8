@@ -165,6 +165,14 @@
     theme = this.dataset.id;
     document.querySelectorAll('#themeOpts .opt-chip').forEach(c => c.classList.remove('active'));
     this.classList.add('active');
+    // 主题单独即时保存，避免选完刷新后退回旧主题；其他表单字段仍由“保存设置”统一保存。
+    try {
+      const cfg = loadConfig();
+      cfg.theme = theme;
+      saveConfig(cfg);
+    } catch (e) {
+      console.warn('[ForumSettings] theme save failed', e);
+    }
   }
 
   function render() {
