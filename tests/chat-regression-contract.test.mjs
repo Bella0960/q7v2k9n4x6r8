@@ -33,6 +33,10 @@ const contextPolicySource = read('shared/js/phone/chat-context-policy.js');
 const contextPolicyWindow = {};
 runInNewContext(contextPolicySource, { window: contextPolicyWindow, globalThis: {} });
 const contextPolicy = contextPolicyWindow.ChatContextPolicy;
+const phoneContextSource = read('shared/js/phone/phone_context.js');
+const phoneContextWindow = { PhoneStorage: {} };
+runInNewContext(phoneContextSource, { window: phoneContextWindow });
+const phoneContext = phoneContextWindow.PhoneContext;
 const sendPolicySource = read('shared/js/phone/chat-send-policy.js');
 const sendPolicyWindow = {};
 runInNewContext(sendPolicySource, { window: sendPolicyWindow, globalThis: {} });
@@ -428,6 +432,27 @@ test('living worldbook retrieval respects nested entries, trigger modes and lega
   assert.ok(recentTrigger.includes('最近换了一个项目。'), 'recent dialogue should keep a relevant entry available');
 });
 
+test('shared PhoneContext uses keyword-triggered living worldbook entries', () => {
+  assert.equal(typeof phoneContext.buildWorldbookInjectionText, 'function');
+  const result = phoneContext.buildWorldbookInjectionText([
+    {
+      title: '角色日常',
+      entries: [
+        { name: '固定习惯', content: '出门前总会检查钥匙。', injectMode: 'always' },
+        { name: '夜间安排', content: '夜班结束后会去便利店买热饮。', injectMode: 'keyword', keywords: ['夜班'] },
+        { name: '停用事项', content: '这条已停用。', enabled: false, injectMode: 'always' }
+      ]
+    }
+  ], {
+    recentMessages: [{ role: 'user', text: '我今天又要上夜班了。' }],
+    maxEntries: 10,
+    maxChars: 8000
+  });
+  assert.ok(result.includes('出门前总会检查钥匙。'));
+  assert.ok(result.includes('夜班结束后会去便利店买热饮。'));
+  assert.equal(result.includes('这条已停用'), false);
+});
+
 test('living worldbook retrieval applies entry and character-count budgets', () => {
   const entries = Array.from({ length: 6 }, (_, index) => ({
     name: '条目' + index,
@@ -553,7 +578,7 @@ test('send preflight keeps guard precedence and evaluates later checks lazily', 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v125/);
+  assert.match(serviceWorker, /phone-app-pwa-v127/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
