@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v128';
+const CACHE_NAME = 'phone-app-pwa-v129';
 const APP_SHELL = [
   './',
   './index.html',
@@ -129,6 +129,19 @@ self.addEventListener('fetch', event => {
       }).catch(function () {
         return caches.match(req).then(function (cached) {
           return cached || caches.match('./index.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // 所有历史版本参数的 font-loader 请求统一读取当前版本，避免旧 query URL 命中旧脚本。
+  if (url.pathname.endsWith('/shared/js/font-loader.js')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(function (cache) {
+        var currentLoaderUrl = new URL('shared/js/font-loader.js', self.registration.scope).href;
+        return cache.match(currentLoaderUrl).then(function (cached) {
+          return cached || fetch(req);
         });
       })
     );
