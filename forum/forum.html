@@ -152,6 +152,45 @@ function getSeededPosts(){
  return base.map((p,i)=>{const r=rows[i]||generic[i];return {...p,id:'p'+(i+1),name:names[i],avatar:avatars[i],topic:r[0],title:r[1],body:r[2],featured:i===0,owner:'seed',themeId:t.id}});
 }
 
+
+const FORUM_RESIDENTS=[
+ {id:'resident_latewind',name:'晚风',style:'慢热，观察细，常补充生活里的具体小细节，不爱长篇说教'},
+ {id:'resident_orange',name:'橘子海',style:'语气轻松，偶尔开玩笑，喜欢追问细节，不会每句话都哈哈'},
+ {id:'resident_north',name:'北岛来信',style:'理性谨慎，习惯先确认来源，表达克制但有自己的判断'},
+ {id:'resident_lime',name:'青柠汽水',style:'直爽活泼，短句多，偶尔吐槽，反应快但不刻薄'},
+ {id:'resident_mountain',name:'山顶洞人',style:'有点冷幽默，喜欢从不同角度看问题，不刻意迎合'},
+ {id:'resident_half',name:'半糖',style:'温和随和，愿意分享亲身经历，不会总是正能量'},
+ {id:'resident_seven',name:'七号公园',style:'爱聊流行话题，表达自然，有时只说一两句'},
+ {id:'resident_slow',name:'慢慢来',style:'认真倾听，常把话题拉回具体经验，语气平实'},
+ {id:'resident_cat',name:'猫不语',style:'话不多，有自己的偏好，偶尔一句话点中关键'},
+ {id:'resident_rain',name:'落雨天',style:'敏感细致，容易留意语气和关系里的微妙变化'},
+ {id:'resident_far',name:'远山',style:'有经验，愿意给实用建议，但不会摆出专家架子'},
+ {id:'resident_pick',name:'拾光者',style:'喜欢补充背景和时间线，表达清楚，偶尔提出不同意见'}
+];
+function forumResident(id,index){return FORUM_RESIDENTS.find(x=>x.id===String(id))||FORUM_RESIDENTS[(index||0)%FORUM_RESIDENTS.length]}
+function forumMakeAIComment(item,index){
+ const r=forumResident(item&&item.residentId,index),text=String(item&&item.text||'').trim().slice(0,260);
+ if(!text)return null;
+ const now=Date.now();
+ const replies=(Array.isArray(item.replies)?item.replies:[]).slice(0,2).map((x,j)=>{
+  const rr=forumResident(x.residentId,index+j+3),replyText=String(x.text||'').trim().slice(0,220);
+  return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*90000,replyTo:String(x.replyTo||r.name),likes:0}:null;
+ }).filter(Boolean);
+ return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*70000,likes:0,replies:replies};
+}
+function forumWorldbook(){
+ const theme=getForumTheme();
+ return [
+  '这是一个持续运转的虚构中文论坛。你要写的是一群有自己生活、记忆、兴趣和表达习惯的普通网友，不是客服，不是主持人，也不是整齐划一的AI评论员。',
+  '每个人有稳定的昵称和说话习惯。允许有人只回一句、有人认真补充、有人开玩笑、有人提出不同意见、有人先观望；不要所有人都赞同楼主，也不要每条都用“确实”“哈哈哈”“蹲后续”敷衍。',
+  '回复必须具体回应帖子中的某个细节，像看完内容后自然产生的反应。可以追问、补充经历、纠正信息、接住别人的话或提出温和反对。不要每个人都写成完整作文。',
+  '不要凭空制造现实人物的负面事实、隐私或未证实指控；涉及传闻时明确保持求证态度。所有网友均为虚构社区角色。',
+  '当前主题：'+theme.name,
+  '当前主题说明：'+theme.tagline,
+  '论坛世界书：'+String(theme.world||'').slice(0,4200)
+ ].join('\n');
+}
+
 const seeded=[
 {id:'p1',name:'宝宝',avatar:'宝',role:'AI',topic:'今日话题',time:'刚刚',title:'今天的你，有没有一件很小但很开心的事？',body:'不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者忙完之后终于坐下来发了会儿呆。\n\n想听听大家今天的小小幸运。',likes:18,comments:6,featured:true,liked:false},
 {id:'p2',name:'拾光',avatar:'拾',topic:'深夜食堂',time:'12 分钟前',title:'刚刚把房间收拾干净，突然觉得生活可以重新开始。',body:'明明只是整理了一下桌面，扔掉几张旧纸，把窗户打开通了会儿风。屋子变得清爽，人好像也跟着松了一口气。',likes:14,comments:3,liked:false},
@@ -177,7 +216,7 @@ function vm(p){
     topic:p.topic||'碎碎念',
     time:(typeof p.time==='number')?timeAgo(p.time):(p.time||'刚刚'),
     title:p.title||(p.body?'':(p.content||'')),body:p.body||(p.title?(p.content||''):''),
-    likes:Number(p.likes||0),comments:Array.isArray(p.comments)?p.comments.length:Number(p.comments||0),
+    likes:Number(p.likes||0),comments:(Number(p._seedCount)||0)+(Array.isArray(p.comments)?p.comments.length:Number(p.comments||0)),
     liked:!!p.liked,featured:!!p.featured,owner:p.owner||(p.tag==='me'?'me':''),
     created:p.created||(typeof p.time==='number'?p.time:0)}
 }
@@ -231,26 +270,64 @@ scroll.addEventListener('touchend',()=>{
     el.style.height='';
     prSpinner().style.transform='';
     prText().textContent='正在刷新';
-    refreshFeed();
-    setTimeout(()=>{
+    refreshFeed().then(ok=>{
       el.classList.remove('loading');
       el.classList.add('done');
-      prText().textContent='已更新';
-      setTimeout(()=>{el.classList.remove('show','done');prText().textContent='下拉刷新'},420);
-    },520);
+      prText().textContent=ok?'已更新':'暂未更新';
+      setTimeout(()=>{el.classList.remove('show','done');prText().textContent='下拉刷新'},900);
+    });
   }else if(el.classList.contains('show')){el.classList.remove('show');el.style.height=''}
   prPulling=false;prReady=false;
 },{passive:true});
-function refreshFeed(){
-  const cur=posts.slice();
-  const mine=cur.filter(p=>p.owner==='me');
-  const isThemeDemo=p=>/^p[1-6]$/.test(String(p.id));
-  const others=cur.filter(p=>p.owner!=='me'&&String(p.id).indexOf('seed_')!==0&&!isThemeDemo(p));
-  const keepSeeds=cur.filter(p=>p.owner!=='me'&&String(p.id).indexOf('seed_')===0);
-  const seeds=getSeededPosts();
-  posts=mine.concat(others).concat(keepSeeds);
-  seeds.forEach(s=>{if(!posts.some(p=>p.id===s.id))posts.push({...s})});
-  save();render();
+let forumRefreshBusy=false;
+async function refreshFeed(){
+ if(forumRefreshBusy)return false;
+ if(!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function'){toast('AI 接口暂不可用');return false}
+ const apiCfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
+ if(!apiCfg||!String(apiCfg.apiKey||'').trim()){toast('先配置 API，路人才会来发帖');return false}
+ forumRefreshBusy=true;
+ const theme=getForumTheme(),topics=theme.roleTopics&&theme.roleTopics.length?theme.roleTopics:['日常交流'];
+ const recent=posts.filter(p=>p&&p.title&&p.body).slice(0,8).map(p=>({id:p.id,name:p.name,title:p.title,body:String(p.body||'').slice(0,150),topic:p.topic}));
+ const roster=FORUM_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
+ const system=forumWorldbook()+'\n\n你现在负责维护论坛的真实讨论流。写作要像不同网友各自在空闲时间打开手机时发的内容：有具体细节，有不同脾气，有人简短，有人会追问；禁止模板化、排比式和客服式表达。';
+ const user='请为这个论坛生成一次新的社区动态。必须只输出 JSON。\n可用话题：'+JSON.stringify(topics)+'\n固定路人资料（请复用这些昵称，保持性格稳定）：'+JSON.stringify(roster)+'\n最近已经存在的帖子（不要改写、复刻这些内容）：'+JSON.stringify(recent)+'\n生成规则：\n1. 新增 2-3 篇全新帖子，每篇作者从固定路人中选一位；标题自然，正文约 35-140 字，不要都像公告。\n2. 每篇新帖子自带 1-3 条真实感评论；其中部分评论可以有 1 条楼中楼回复。评论彼此有呼应，允许观点不同，不要统一夸楼主。\n3. 再从最近帖子里挑 1 篇，追加 1-2 条新评论，postId 必须照抄给定的真实 id；不要重复已有评论。\n4. 所有 residentId 必须来自固定路人资料；话题必须从可用话题中选择。\nJSON 格式：{"posts":[{"residentId":"路人id","title":"标题","body":"正文","topic":"话题","likes":3,"comments":[{"residentId":"路人id","text":"评论","replies":[{"residentId":"路人id","text":"楼中楼回复","replyTo":"被回复昵称"}]}]}],"activity":[{"postId":"现有帖子id","comments":[{"residentId":"路人id","text":"追加评论","replies":[]}]}]}';
+ try{
+  toast('正在等社区成员发帖…');
+  const result=await PhoneAPI.completeJSON({system:system,user:user,temperature:0.92,timeoutMs:32000});
+  if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))throw new Error('AI 没有返回有效帖子');
+  const data=result.data,now=Date.now(),existingTitles=new Set(posts.map(p=>String(p.title||'').trim()).filter(Boolean));
+  const fresh=[];
+  data.posts.slice(0,3).forEach((item,i)=>{
+   if(!item||!item.title||!item.body)return;
+   const title=String(item.title).trim().slice(0,90),body=String(item.body).trim().slice(0,700);
+   if(!title||!body||existingTitles.has(title))return;
+   const author=forumResident(item.residentId,i);
+   const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map((c,j)=>forumMakeAIComment(c,j)).filter(Boolean);
+   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,aiCommentBatch:'v1'});
+   existingTitles.add(title);
+  });
+  if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
+  const before=posts.slice();
+  posts=fresh.concat(posts);
+  let activityCount=0;
+  (Array.isArray(data.activity)?data.activity:[]).slice(0,2).forEach(entry=>{
+   const target=posts.find(p=>String(p.id)===String(entry.postId));
+   if(!target||!Array.isArray(entry.comments))return;
+   if(!Array.isArray(target.comments)){target._seedCount=Number(target.comments)||Number(target._seedCount)||0;target.comments=[]}
+   entry.comments.slice(0,2).forEach((c,j)=>{
+    const normalized=forumMakeAIComment(c,j);
+    if(normalized&&!target.comments.some(old=>old.source==='forum-ai'&&old.text===normalized.text)){target.comments.push(normalized);activityCount++}
+   });
+  });
+  if(!save()){posts=before;return false}
+  render();scroll.scrollTop=0;
+  toast('社区又有 '+fresh.length+' 篇新帖'+(activityCount?'，旧帖也有新回复':''));
+  return true;
+ }catch(error){
+  console.warn('[Forum] 社区增量刷新失败',error);
+  toast('这次没能更新，检查 API 后再试试');
+  return false;
+ }finally{forumRefreshBusy=false}
 }
 
 // 自动为角色生成帖子：每个角色至少发一条
