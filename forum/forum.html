@@ -303,7 +303,7 @@ async function refreshFeed(){
    if(!title||!body||existingTitles.has(title))return;
    const author=forumResident(item.residentId,i);
    const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map((c,j)=>forumMakeAIComment(c,j)).filter(Boolean);
-   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,aiCommentBatch:'v1'});
+   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,aiCommentBatch:comments.length?'v1':''});
    existingTitles.add(title);
   });
   if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
