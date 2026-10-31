@@ -993,22 +993,24 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   }
   var paperAnimationBusy=false;
   async function unfoldPaper(){
+    // 先展开上折页，再展开下折页，让信纸像真实三折信笺一样逐层打开
     $('letterStage').classList.add('unfolded');
     $('letterShadow').style.transform='scale(1.15) translateY(35px)';
     $('letterShadow').style.opacity='.7';
-    await animatePaperTransform($('panelBottom'),180,0,750,function(angle){
-      $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.45;
+    await animatePaperTransform($('panelTop'),-180,0,780,function(angle){
+      $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.48;
     });
-    await animatePaperTransform($('panelTop'),-180,0,750,function(angle){
-      $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.45;
+    await animatePaperTransform($('panelBottom'),180,0,780,function(angle){
+      $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.48;
     });
   }
   async function foldPaper(){
-    await animatePaperTransform($('panelTop'),0,-180,650,function(angle){
-      $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.45;
+    // 折回时反向执行：先收下折页，再收上折页
+    await animatePaperTransform($('panelBottom'),0,180,680,function(angle){
+      $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.48;
     });
-    await animatePaperTransform($('panelBottom'),0,180,650,function(angle){
-      $('shadeBottom').style.opacity=Math.sin(angle*Math.PI/180)*.45;
+    await animatePaperTransform($('panelTop'),0,-180,680,function(angle){
+      $('shadeTop').style.opacity=Math.sin(Math.abs(angle)*Math.PI/180)*.48;
     });
     $('letterStage').classList.remove('unfolded');
     $('letterShadow').style.transform='scale(1) translateY(0px)';
