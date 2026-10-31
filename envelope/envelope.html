@@ -389,8 +389,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   overflow:visible !important;
   box-sizing:border-box;
 }
-#detailView.paper-opened #detailMain .letter-stage,
-#detailView.paper-opened #detailMain .letter-stage.unfolded{
+#detailView.paper-opened #detailMain .letter-stage{
   position:relative !important;
   left:auto !important;
   top:auto !important;
@@ -399,11 +398,16 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   height:auto !important;
   min-height:0 !important;
   max-height:none !important;
-  padding:0 0 calc(var(--fold-height) * 3) !important;
+  padding:0 0 var(--fold-height) !important;
   margin:12px auto 22px !important;
-  overflow:visible !important;
+  overflow:hidden !important;
   flex:none !important;
   box-sizing:border-box;
+}
+#detailView.paper-opened #detailMain .letter-stage.unfolded{
+  height:auto !important;
+  padding-bottom:calc(var(--fold-height) * 3) !important;
+  overflow:visible !important;
 }
 #detailView.paper-opened #detailMain .fold-wrapper{
   position:absolute !important;
@@ -411,8 +415,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   top:0;
   width:100%;
   height:calc(var(--fold-height) * 3) !important;
-  transform:translateY(0);
+  transform:translateY(calc(-1 * var(--fold-height))) !important;
   transform-style:preserve-3d;
+}
+#detailView.paper-opened #detailMain .letter-stage.unfolded .fold-wrapper{
+  transform:translateY(0) !important;
 }
 #detailView.paper-opened #panelTop,
 #detailView.paper-opened #panelMid,
