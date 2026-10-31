@@ -145,6 +145,132 @@
     return lines.length ? lines.join('\n') : '暂无记忆';
   }
 
+
+  // Select lore entries for the current conversational moment.
+  // Legacy books with only a top-level content field remain supported.
+  function buildWorldbookInjectionText(worldbooks, options) {
+    options = options || {};
+    var books = Array.isArray(worldbooks) ? worldbooks : [];
+    var recent = Array.isArray(options.recentMessages)
+      ? options.recentMessages
+      : (Array.isArray(options.history) ? options.history : []);
+    var contextParts = [String(options.currentText || '')];
+    recent.slice(-8).forEach(function (message) {
+      if (!message || typeof message !== 'object') return;
+      var value = message.text != null ? message.text : message.content;
+      if (value != null) contextParts.push(String(value));
+    });
+    var searchable = contextParts.join('\n').toLocaleLowerCase();
+    var random = typeof options.random === 'function' ? options.random : Math.random;
+    var maxEntries = parseInt(options.maxEntries, 10);
+    if (!isFinite(maxEntries) || maxEntries < 1) maxEntries = 32;
+    var maxChars = parseInt(options.maxChars, 10);
+    if (!isFinite(maxChars) || maxChars < 1) maxChars = 8000;
+    var selected = [];
+    var seen = Object.create(null);
+
+    books.forEach(function (book, bookIndex) {
+      if (!book || typeof book !== 'object' || book.enabled === false) return;
+      var bookTitle = String(book.title || book.name || '未命名世界书').trim();
+      var entries;
+      if (Array.isArray(book.entries) && book.entries.length) {
+        entries = book.entries;
+      } else if (String(book.content || book.text || '').trim()) {
+        entries = [{
+          name: '正文',
+          content: book.content || book.text,
+          injectMode: 'always',
+          position: 'middle'
+        }];
+      } else {
+        return;
+      }
+
+      entries.forEach(function (entry, entryIndex) {
+        if (!entry || typeof entry !== 'object' || entry.enabled === false) return;
+        var content = String(entry.content != null ? entry.content : (entry.text || '')).trim();
+        if (!content) return;
+
+        var mode = entry.injectMode === 'keyword' || entry.injectMode === 'probability'
+          ? entry.injectMode : 'always';
+        if (options.onlyAlways && mode !== 'always') return;
+
+        var entryKeywords = Array.isArray(entry.keywords)
+          ? entry.keywords.map(function (word) { return String(word || '').trim().toLocaleLowerCase(); }).filter(Boolean)
+          : [];
+        if (!entryKeywords.length && Array.isArray(book.keywords)) {
+          entryKeywords = book.keywords.map(function (word) {
+            return String(word || '').trim().toLocaleLowerCase();
+          }).filter(Boolean);
+        }
+
+        if (mode === 'keyword') {
+          var matched = entryKeywords.some(function (keyword) {
+            return keyword && searchable.indexOf(keyword) !== -1;
+          });
+          if (!matched) return;
+        } else if (mode === 'probability') {
+          var probability = Number(entry.probability);
+          if (!isFinite(probability)) probability = 50;
+          probability = Math.max(0, Math.min(100, probability));
+          if (probability <= 0 || random() * 100 >= probability) return;
+        }
+
+        var position = entry.position === 'front' ? 'front' : (entry.position === 'back' ? 'back' : 'middle');
+        var entryName = String(entry.name || entry.title || ('条目 ' + (entryIndex + 1))).trim();
+        var block = '【' + bookTitle + ' · ' + entryName + '】\n' + content;
+        var dedupeKey = '
+    mapHistoryToApiMessages: mapHistoryToApiMessages,
+    resolveMemoryLimit: resolveMemoryLimit,
+    selectRecentHistory: selectRecentHistory,
+    buildHistoricalRecallRequest: buildHistoricalRecallRequest,
+    filterUserMemoriesForRole: filterUserMemoriesForRole,
+    buildWeightedMemoryInjectionText: buildWeightedMemoryInjectionText,
+    buildWorldbookInjectionText: buildWorldbookInjectionText
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+ + block;
+        if (seen[dedupeKey]) return;
+        seen[dedupeKey] = true;
+        selected.push({
+          positionRank: position === 'front' ? 0 : (position === 'middle' ? 1 : 2),
+          bookIndex: bookIndex,
+          entryIndex: entryIndex,
+          text: block
+        });
+      });
+    });
+
+    selected.sort(function (a, b) {
+      return a.positionRank - b.positionRank ||
+        a.bookIndex - b.bookIndex ||
+        a.entryIndex - b.entryIndex;
+    });
+    selected = selected.slice(0, maxEntries);
+
+    var chunks = [];
+    var usedChars = 0;
+    selected.forEach(function (item) {
+      if (usedChars >= maxChars) return;
+      var separator = chunks.length ? '\n\n' : '';
+      var remaining = maxChars - usedChars - separator.length;
+      if (remaining <= 0) return;
+      var value = item.text;
+      if (value.length > remaining) {
+        var cut = Math.max(0, remaining - 1);
+        if (cut > 0) {
+          var code = value.charCodeAt(cut - 1);
+          if (code >= 0xD800 && code <= 0xDBFF) cut -= 1;
+        }
+        value = value.slice(0, cut).trimEnd() + '…';
+      }
+      if (!value) return;
+      chunks.push(value);
+      usedChars += separator.length + value.length;
+    });
+    return chunks.join('\n\n');
+  }
+
   global.ChatContextPolicy = {
     mapHistoryToApiMessages: mapHistoryToApiMessages,
     resolveMemoryLimit: resolveMemoryLimit,
