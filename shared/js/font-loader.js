@@ -125,7 +125,7 @@
 
         if (!activeId) {
             if (legacyUrl) {
-                var match = legacyUrl.toLowerCase().match(/\\.(ttf|woff2?)(?:[?#]|$)/);
+                var match = legacyUrl.toLowerCase().match(/\.(ttf|woff2?)(?:[?#]|$)/);
                 var format = match && match[1] === 'ttf' ? 'truetype' : (match && match[1] === 'woff2' ? 'woff2' : 'woff');
                 window.MAOMAOFontRuntime.applyUrl(legacyUrl, format);
             }
