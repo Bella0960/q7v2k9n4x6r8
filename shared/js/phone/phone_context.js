@@ -120,7 +120,7 @@
             var remaining = maxChars - used - prefix.length;
             if (remaining <= 0) return;
             var value = item.text;
-            if (value.length > remaining) value = value.slice(0, Math.max(0, remaining - 1)).replace(/\\s+$/, '') + '…';
+            if (value.length > remaining) value = value.slice(0, Math.max(0, remaining - 1)).replace(/\s+$/, '') + '…';
             if (!value) return;
             output.push(value);
             used += prefix.length + value.length;
