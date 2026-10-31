@@ -257,23 +257,8 @@
 
   async function callAI(prompt) {
     try {
-      const config = JSON.parse(localStorage.getItem('api_settings') || '{}');
-      if (!config.apiKey) return null;
-      const res = await fetch((config.baseUrl || 'https://api.openai.com/v1') + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + config.apiKey
-        },
-        body: JSON.stringify({
-          model: config.model || 'gpt-3.5-turbo',
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 100,
-          temperature: 0.9
-        })
-      });
-      const data = await res.json();
-      return data.choices[0].message.content.trim();
+      if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return null;
+      return await PhoneAPI.complete({system:getForumThreadWorldbook(),user:prompt,temperature:0.9,timeoutMs:20000});
     } catch(e) { return null; }
   }
 
@@ -326,7 +311,7 @@
     return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*50000,likes:0,replies:replies};
   }
   async function generateInitialAIComments(){
-    if(!post||post.aiCommentBatch==='v1'||post.comments.some(c=>c&&c.source==='forum-ai'))return;
+    if(!post||post.aiCommentBatch==='v1')return;
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='社区里有人正在看这条帖子…';
     try{
@@ -341,7 +326,7 @@
         post.aiCommentBatch='v1';
         post.aiCommentBatchAt=Date.now();
         saveNow();renderComments();renderPost();
-        if(status)status.textContent='又有 '+added.length+' 位网友加入了讨论';
+        if(status){status.textContent='又有 '+added.length+' 位网友加入了讨论';setTimeout(()=>{if(status.textContent.indexOf('又有 ')===0)status.textContent=''},4200)}
       }else if(status){status.textContent='暂时还没人接话，过会儿再来看看'}
     }catch(error){
       console.warn('[Forum] 首批路人评论生成失败',error);
@@ -381,7 +366,7 @@
     post._seedCount = (typeof rawComments === 'number' && rawComments > 0) ? rawComments : Number(post._seedCount || 0);
     renderPost();
     renderComments();
-    if(post.aiCommentBatch!=='v1'&&!post.comments.some(c=>c&&c.source==='forum-ai'))generateInitialAIComments();
+    if(post.aiCommentBatch!=='v1')generateInitialAIComments();
     if (new URLSearchParams(location.search).get('focus') === 'comment') {
       setTimeout(() => {
         const el = document.getElementById('commentInput');
@@ -560,7 +545,7 @@
         if(c)target.replies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
       });
       saveNow();renderComments();renderPost();
-      if(status)status.textContent='有网友回应了你的留言';
+      if(status){status.textContent='有网友回应了你的留言';setTimeout(()=>{if(status.textContent==='有网友回应了你的留言')status.textContent=''},4200)}
     }catch(error){
       console.warn('[Forum] 网友回应失败',error);
       if(status)status.textContent='暂时没有新的回应，稍后再看看';
