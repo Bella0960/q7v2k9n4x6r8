@@ -380,6 +380,74 @@ test('shared context policy preserves weighted long-term memory injection tiers'
   assert.ok(detail.includes('Compatibility fallback: preserve the original fixed/confirmed/pending and clear/vague rules'));
 });
 
+test('living worldbook retrieval respects nested entries, trigger modes and legacy books', () => {
+  assert.equal(typeof contextPolicy.buildWorldbookInjectionText, 'function');
+  const books = [
+    {
+      title: '日常生活',
+      content: '不应与嵌套条目重复注入',
+      keywords: ['海边'],
+      entries: [
+        { name: '雨天习惯', content: '下雨时会把窗户关小一点。', position: 'front', injectMode: 'keyword', keywords: ['下雨', '雨天'] },
+        { name: '固定习惯', content: '每天早上先喝一杯温水。', position: 'middle', injectMode: 'always' },
+        { name: '偶尔想起', content: '偶尔会去海边散步。', position: 'back', injectMode: 'keyword' },
+        { name: '概率碎片', content: '最近在学做面包。', injectMode: 'probability', probability: 30 },
+        { name: '已停用', content: '这条不能出现。', enabled: false, injectMode: 'always' }
+      ]
+    },
+    { title: '旧版资料', content: '旧格式内容仍应保留。' }
+  ];
+  const result = contextPolicy.buildWorldbookInjectionText(books, {
+    currentText: '今天外面下雨了。',
+    recentMessages: [],
+    random: () => 0.2,
+    maxEntries: 20,
+    maxChars: 8000
+  });
+  assert.ok(result.indexOf('雨天习惯') < result.indexOf('固定习惯'), 'front entries should appear first');
+  assert.ok(result.includes('每天早上先喝一杯温水。'));
+  assert.ok(result.includes('偶尔会去海边散步。'), 'book-level keywords should be inherited by entries');
+  assert.ok(result.includes('最近在学做面包。'), 'probability entries should honor the supplied random source');
+  assert.ok(result.includes('旧格式内容仍应保留。'));
+  assert.equal(result.includes('不应与嵌套条目重复注入'), false);
+  assert.equal(result.includes('这条不能出现'), false);
+
+  const noTrigger = contextPolicy.buildWorldbookInjectionText([{
+    title: '旧事',
+    entries: [{ name: '毕业旅行', content: '曾经去过山城。', injectMode: 'keyword', keywords: ['毕业旅行'] }]
+  }], { currentText: '晚饭吃什么', recentMessages: [], random: () => 0 });
+  assert.equal(noTrigger, '');
+
+  const recentTrigger = contextPolicy.buildWorldbookInjectionText([{
+    title: '近期话题',
+    entries: [{ name: '工作', content: '最近换了一个项目。', injectMode: 'keyword', keywords: ['新项目'] }]
+  }], {
+    currentText: '你今天忙吗？',
+    recentMessages: [{ role: 'user', text: '我接手了一个新项目。' }]
+  });
+  assert.ok(recentTrigger.includes('最近换了一个项目。'), 'recent dialogue should keep a relevant entry available');
+});
+
+test('living worldbook retrieval applies entry and character-count budgets', () => {
+  const entries = Array.from({ length: 6 }, (_, index) => ({
+    name: '条目' + index,
+    content: '设定内容' + index,
+    injectMode: 'always',
+    position: index === 5 ? 'back' : 'middle'
+  }));
+  const result = contextPolicy.buildWorldbookInjectionText([{ title: '预算', entries }], {
+    maxEntries: 2,
+    maxChars: 300
+  });
+  assert.equal((result.match(/【预算 ·/g) || []).length, 2);
+  const clipped = contextPolicy.buildWorldbookInjectionText([{
+    title: '长文本',
+    entries: [{ name: '长条目', content: '甲'.repeat(100), injectMode: 'always' }]
+  }], { maxChars: 24 });
+  assert.ok(clipped.length <= 24);
+  assert.ok(clipped.endsWith('…'));
+});
+
 test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
   assert.equal(typeof sendPolicy.normalizeOptions, 'function');
   const asPlainObject = (value) => JSON.parse(JSON.stringify(value));
