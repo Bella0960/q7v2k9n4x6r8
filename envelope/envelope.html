@@ -529,6 +529,132 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   flex:none !important;
 }
 
+
+/* ===== 三折信纸改用 CSS Grid：每折按 min-content 自然生长 ===== */
+#detailView.paper-opened #detailMain .letter-stage{
+  --top-fold-height:180px;
+  position:relative !important;
+  left:auto !important;
+  top:auto !important;
+  transform:none !important;
+  width:min(92vw,540px) !important;
+  height:var(--top-fold-height) !important;
+  min-height:0 !important;
+  max-height:none !important;
+  padding:0 !important;
+  margin:12px auto 22px !important;
+  overflow:hidden !important;
+  flex:none !important;
+  box-sizing:border-box;
+}
+#detailView.paper-opened #detailMain .letter-stage.unfolded{
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  overflow:visible !important;
+}
+#detailView.paper-opened #detailMain .fold-wrapper{
+  position:relative !important;
+  left:auto !important;
+  top:auto !important;
+  width:100%;
+  height:auto !important;
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:min-content min-content min-content;
+  align-items:start;
+  transform:translateY(calc(-1 * var(--top-fold-height))) !important;
+  transform-style:preserve-3d;
+  transition:transform .9s cubic-bezier(.16,1,.3,1);
+}
+#detailView.paper-opened #detailMain .letter-stage.unfolded .fold-wrapper{
+  transform:translateY(0) !important;
+}
+#detailView.paper-opened #panelTop,
+#detailView.paper-opened #panelMid,
+#detailView.paper-opened #panelBottom{
+  position:relative !important;
+  inset:auto !important;
+  left:auto !important;
+  right:auto !important;
+  width:100%;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  flex:none !important;
+  align-self:start;
+  box-sizing:border-box;
+}
+#detailView.paper-opened #panelTop{
+  grid-row:1;
+  min-height:var(--top-fold-height) !important;
+}
+#detailView.paper-opened #panelMid{grid-row:2}
+#detailView.paper-opened #panelBottom{grid-row:3}
+
+/* 折页内容回归普通文档流，Grid 根据实际内容决定每行高度 */
+#detailView.paper-opened .panel-content{
+  position:relative !important;
+  inset:auto !important;
+  display:block !important;
+  width:100%;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  padding:0 !important;
+  overflow:visible !important;
+  box-sizing:border-box;
+}
+#detailView.paper-opened .panel-top .content-inner,
+#detailView.paper-opened .panel-mid .content-inner,
+#detailView.paper-opened .panel-bottom .content-inner{
+  position:relative !important;
+  top:auto !important;
+  left:auto !important;
+  width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  padding:24px !important;
+  display:block !important;
+  justify-content:flex-start !important;
+  align-items:flex-start !important;
+  overflow:visible !important;
+  box-sizing:border-box;
+}
+#detailView.paper-opened #panelTop .panel-back{
+  position:absolute !important;
+  inset:0 !important;
+  min-height:100%;
+  box-sizing:border-box;
+}
+#detailView.paper-opened #panelBottom .signoff{
+  margin-top:22px !important;
+}
+#detailView.paper-opened #paperImages{
+  display:block !important;
+  width:100%;
+  height:auto !important;
+  margin:16px 0 4px !important;
+}
+#detailView.paper-opened #paperImages img{
+  display:block;
+  width:100% !important;
+  max-width:100% !important;
+  height:auto !important;
+  max-height:360px;
+  object-fit:contain;
+  margin:0 0 14px !important;
+}
+#detailView.paper-opened #paperTopText,
+#detailView.paper-opened #paperMidText,
+#detailView.paper-opened #paperBottomText{
+  height:auto !important;
+  min-height:0 !important;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
 </style>
 </head>
 <body>
@@ -1104,44 +1230,29 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   }
   function fitPaperToContent(){
     var stage=$('letterStage');
-    if(!stage) return;
-
-    // 先设置一个测量基准，再只测量每折真实内容和 V7 正面自身所需空间。
-    stage.style.setProperty('--fold-height','180px');
-    void stage.offsetHeight;
-
-    var topText=$('paperTopText');
-    var topGroup=topText ? topText.parentElement : null;
-    var topHeight=paperElementHeight(topGroup);
-    var midHeight=paperElementHeight($('paperMidText'))+
-      paperElementHeight($('paperImages'));
-    var bottomHeight=paperElementHeight($('paperBottomText'))+
-      paperElementHeight(document.querySelector('#panelBottom .signoff'));
-
-    // V7 收件人面必须容纳顶部编号/邮票、收件人和底部寄件信息。
-    // 直接测量三个内容块与内边距，避免把整张 300% 内容层误算成折页高度。
+    var wrapper=stage && stage.querySelector('.fold-wrapper');
     var face=document.querySelector('#panelTop .panel-back');
-    var faceStyle=face ? window.getComputedStyle(face) : null;
-    var facePadding=faceStyle
-      ? (parseFloat(faceStyle.paddingTop)||0)+(parseFloat(faceStyle.paddingBottom)||0)
-      : 0;
-    var faceContent=face ? (
+    if(!stage || !wrapper || !face) return;
+
+    // Grid 第一行需要同时容纳 V7 收件人正面；第二、三行由正文自然撑开。
+    var faceStyle=window.getComputedStyle(face);
+    var facePadding=(parseFloat(faceStyle.paddingTop)||0)+(parseFloat(faceStyle.paddingBottom)||0);
+    var faceContent=
       paperElementHeight(face.querySelector('.recipient-top'))+
       paperElementHeight(face.querySelector('.recipient-main'))+
       paperElementHeight(face.querySelector('.recipient-bottom'))+
-      facePadding+8
-    ) : 0;
+      facePadding+8;
+    var frontContent=paperElementHeight(document.querySelector('#panelTop .content-inner'))+24;
+    var firstRowHeight=Math.ceil(Math.max(faceContent,frontContent,150));
+    stage.style.setProperty('--top-fold-height',firstRowHeight+'px');
+    void wrapper.offsetHeight;
 
-    // 三折等高；每一折只按本折真实排版需要增长，正文不缩字、不压行。
-    var innerSpace=42;
-    var needed=Math.max(
-      faceContent,
-      topHeight+innerSpace,
-      midHeight+innerSpace,
-      bottomHeight+innerSpace
-    );
-    var fittedHeight=Math.ceil(needed/4)*4;
-    stage.style.setProperty('--fold-height',fittedHeight+'px');
+    // Grid 自己根据 min-content 计算中、下两行；这里只记录真实总高度供动画/滚动使用。
+    var rows=Array.prototype.slice.call(wrapper.children).filter(function(el){
+      return el.classList && el.classList.contains('panel');
+    });
+    var total=rows.reduce(function(sum,row){return sum+row.getBoundingClientRect().height;},0);
+    stage.style.setProperty('--grid-paper-height',Math.ceil(total)+'px');
   }
   function requestPaperFit(){
     var images=Array.prototype.slice.call(document.querySelectorAll('#paperImages img'));
