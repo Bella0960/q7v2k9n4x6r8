@@ -59,4 +59,105 @@
         if (document.body) applyBodyColor();
         else document.addEventListener('DOMContentLoaded', applyBodyColor);
     }
+
+    /* 3. 自定义字体：支持旧 URL 与 IndexedDB 中的 TTF / WOFF 文件方案 */
+    var fontObjectUrl = '';
+    var fontStyleId = 'maomao-global-custom-font-style';
+    var globalFontStack = '"MAOMAOUserFont", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif';
+
+    function getFontStyle() {
+        var tag = document.getElementById(fontStyleId);
+        if (!tag) {
+            tag = document.createElement('style');
+            tag.id = fontStyleId;
+            document.head.appendChild(tag);
+        }
+        return tag;
+    }
+
+    function safeFontUrl(url) {
+        return String(url || '').replace(/["'\\\r\n]/g, '');
+    }
+
+    function applyFontSource(url, format) {
+        if (!url) return;
+        var tag = getFontStyle();
+        var safeUrl = safeFontUrl(url);
+        var fontFormat = format || 'woff';
+        tag.textContent = '@font-face{font-family:"MAOMAOUserFont";src:url("' + safeUrl + '") format("' + fontFormat + '");font-style:normal;font-display:swap;}'
+            + 'body,body h1,body h2,body h3,body h4,body h5,body h6,body p,body span:not([class*="icon"]):not([class*="Icon"]),body a,body button,body input,body textarea,body select,body label,body small,body strong,body b,body em,body li,body td,body th,body div:not([class*="icon"]):not([class*="Icon"]):not([class*="symbol"])'
+            + '{font-family:' + globalFontStack + ' !important;}';
+    }
+
+    window.MAOMAOFontRuntime = {
+        applyUrl: function (url, format) {
+            if (fontObjectUrl) {
+                try { URL.revokeObjectURL(fontObjectUrl); } catch (e) {}
+                fontObjectUrl = '';
+            }
+            applyFontSource(url, format);
+        },
+        applyBlob: function (blob, format) {
+            if (!blob || !window.URL || !URL.createObjectURL) return;
+            if (fontObjectUrl) {
+                try { URL.revokeObjectURL(fontObjectUrl); } catch (e) {}
+            }
+            fontObjectUrl = URL.createObjectURL(blob);
+            applyFontSource(fontObjectUrl, format || 'truetype');
+        },
+        clear: function () {
+            var tag = document.getElementById(fontStyleId);
+            if (tag) tag.remove();
+            if (fontObjectUrl) {
+                try { URL.revokeObjectURL(fontObjectUrl); } catch (e) {}
+                fontObjectUrl = '';
+            }
+        }
+    };
+
+    function loadActiveFontPreset() {
+        var activeId = '';
+        var legacyUrl = '';
+        try {
+            activeId = localStorage.getItem('active_font_preset_id') || '';
+            legacyUrl = localStorage.getItem('custom_font_url') || '';
+        } catch (e) {}
+
+        if (!activeId) {
+            if (legacyUrl) {
+                var match = legacyUrl.toLowerCase().match(/\\.(ttf|woff2?)(?:[?#]|$)/);
+                var format = match && match[1] === 'ttf' ? 'truetype' : (match && match[1] === 'woff2' ? 'woff2' : 'woff');
+                window.MAOMAOFontRuntime.applyUrl(legacyUrl, format);
+            }
+            return;
+        }
+        if (!window.indexedDB) return;
+        var request;
+        try { request = indexedDB.open('maomao-font-presets', 1); }
+        catch (e) { return; }
+        request.onupgradeneeded = function () {
+            if (!request.result.objectStoreNames.contains('presets')) request.result.createObjectStore('presets', { keyPath: 'id' });
+        };
+        request.onsuccess = function () {
+            var db = request.result;
+            try {
+                var tx = db.transaction('presets', 'readonly');
+                var get = tx.objectStore('presets').get(activeId);
+                get.onsuccess = function () {
+                    var record = get.result;
+                    if (!record) return;
+                    if (record.type === 'file' && record.blob) {
+                        window.MAOMAOFontRuntime.applyBlob(record.blob, record.format || 'truetype');
+                    } else if (record.type === 'url' && record.url) {
+                        window.MAOMAOFontRuntime.applyUrl(record.url, record.format || 'woff');
+                    }
+                };
+                tx.oncomplete = function () { db.close(); };
+                tx.onerror = function () { db.close(); };
+            } catch (e) { try { db.close(); } catch (err) {} }
+        };
+    }
+
+    loadActiveFontPreset();
+
 })();
