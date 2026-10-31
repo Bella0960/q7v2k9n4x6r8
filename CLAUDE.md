@@ -41,7 +41,7 @@ worldbook/              # RP 设定中枢：characters/（角色库）、memory/
 wallet/                 # wallet / finance（记账）/ shop（商店）/ shop-admin（店铺管理）
 settings/               # settings（API 配置）/ appearance / font-settings / sound-settings
 profile/                # profile（我的）/ edit-profile
-cafe/ games/ diary/ travel/ beauty/ music/ library/ tools/   # 单页 App
+cafe/ games/ diary/ travel/ beauty/ music/ library/ tools/ envelope/   # 单页 App
 apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副本，待清理
 ```
 
@@ -70,7 +70,7 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 |---|---|
 | `ai_custom_characters` | 角色列表 `[{id, name, persona, avatar(dataURL), …}]`（全局共享） |
 | `phone_current_contact` | 当前选中角色 id |
-| `phone_data_v2` | 新版统一存储根 `phoneData[contactId][appId]` |
+| `phone_data_v2` | 新版统一存储根 `phoneData[contactId][appId]`；`letters` App 按角色保存寄出/收到/草稿信件与压缩后的图片 dataURL |
 | `chat_history_<id>` | 消息 `[{role:'user'\|'assistant', text, time}]`，扩展 `type:'call'\|'image'`、`mode:'date'`（赴约·线下剧情消息，含 `scene`；与线上聊天共用同一 key，记忆双向互通） |
 | `chat_memories_<id>` / `chat_last_summary_<id>` / `chat_summary_auto_<id>` / `chat_summary_interval_<id>` | 长期记忆 / 总结时间戳 / 自动总结开关与间隔 |
 | `phone_groups` | 群聊列表（群 id 以 `g` 开头）；`chat_group_alias_` / `chat_group_notice_` 群设置 |
