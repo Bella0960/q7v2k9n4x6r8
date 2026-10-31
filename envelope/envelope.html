@@ -374,6 +374,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     <button class="detail-edit" id="detailEdit" type="button">编辑</button>
   </div>
   <main class="detail-main" id="detailMain">
+    <div class="detail-kicker" id="detailKicker">PRIVATE LETTER · SEALED</div>
     <div class="detail-envelope" id="detailEnvelope" role="button" tabindex="0" aria-label="打开这封信">
       <div class="detail-envelope-flap"></div>
       <div class="detail-envelope-fold"></div>
@@ -726,7 +727,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     $('paperRecipient').textContent='TO '+(letter.recipient || '—').toUpperCase();
     $('detailRecipient').textContent=letter.recipient || '—';
     $('detailSender').textContent='FROM '+(letter.sender || '—');
-    $('detailKicker').textContent=(letter.direction==='received'?'RECEIVED LETTER':'SENT LETTER')+' · SEALED';
+    var kicker=$('detailKicker');
+    if(kicker) kicker.textContent=(letter.direction==='received'?'RECEIVED LETTER':'SENT LETTER')+' · SEALED';
     $('paperImages').innerHTML=(letter.images||[]).map(function(src){return '<img src="'+escapeHtml(src)+'" alt="信件附图">';}).join('');
     $('replyButton').textContent='写一封回信';
     $('askReplyButton').style.display=letter.direction==='received'?'none':'';
