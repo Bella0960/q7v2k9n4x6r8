@@ -219,17 +219,7 @@
         var position = entry.position === 'front' ? 'front' : (entry.position === 'back' ? 'back' : 'middle');
         var entryName = String(entry.name || entry.title || ('条目 ' + (entryIndex + 1))).trim();
         var block = '【' + bookTitle + ' · ' + entryName + '】\n' + content;
-        var dedupeKey = '
-    mapHistoryToApiMessages: mapHistoryToApiMessages,
-    resolveMemoryLimit: resolveMemoryLimit,
-    selectRecentHistory: selectRecentHistory,
-    buildHistoricalRecallRequest: buildHistoricalRecallRequest,
-    filterUserMemoriesForRole: filterUserMemoriesForRole,
-    buildWeightedMemoryInjectionText: buildWeightedMemoryInjectionText,
-    buildWorldbookInjectionText: buildWorldbookInjectionText
-  };
-})(typeof window !== 'undefined' ? window : globalThis);
- + block;
+        var dedupeKey = '::' + block;
         if (seen[dedupeKey]) return;
         seen[dedupeKey] = true;
         selected.push({
@@ -277,6 +267,7 @@
     selectRecentHistory: selectRecentHistory,
     buildHistoricalRecallRequest: buildHistoricalRecallRequest,
     filterUserMemoriesForRole: filterUserMemoriesForRole,
-    buildWeightedMemoryInjectionText: buildWeightedMemoryInjectionText
+    buildWeightedMemoryInjectionText: buildWeightedMemoryInjectionText,
+    buildWorldbookInjectionText: buildWorldbookInjectionText
   };
 })(typeof window !== 'undefined' ? window : globalThis);
