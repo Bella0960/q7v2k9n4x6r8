@@ -180,7 +180,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
       <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
     </button>
     <div class="topbar-title">信封 <span class="topbar-kicker">/ Correspondence</span></div>
-    <button class="topbar-action" id="homeNew">写信</button>
+    <button class="topbar-action" id="homeNew">请 TA 来信</button>
   </header>
   <main class="scroll-area">
     <section class="hero">
@@ -395,9 +395,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function chooseInitialRole(){
     var roles=getRoles();
     var requested=getContactIdFromUrl();
+    var savedEnvelopeRole=Storage && Storage.rawGet ? Storage.rawGet('maomao_envelope_selected_role_v1',null) : null;
     var active=(Storage && Storage.getCurrentContactId) ? Storage.getCurrentContactId() : null;
     currentContactId=(requested && getRoleById(requested)) ? requested :
-      ((active && getRoleById(active)) ? active : (roles[0] ? String(roles[0].id) : null));
+      ((savedEnvelopeRole && getRoleById(savedEnvelopeRole)) ? savedEnvelopeRole :
+      ((active && getRoleById(active)) ? active : (roles[0] ? String(roles[0].id) : null)));
     currentRole=currentContactId ? getRoleById(currentContactId) : null;
   }
   function loadRoleData(){
@@ -591,14 +593,16 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   function sendLetter(){
     var body=$('letterContent').value.trim();
     if(!body && !draftImages.length){toast('先写一点内容，或添加一张图片');return;}
+    var wasEditingSavedLetter=editingIsSavedLetter;
     var item=collectComposeData();
     if(editingDraftId) removeDraftById(editingDraftId);
     var idx=currentData.letters.findIndex(function(l){return l.id===item.id;});
     if(idx>=0) currentData.letters[idx]=item; else currentData.letters.unshift(item);
     if(!persistData()) return;
-    editingLetterId=item.id;editingDraftId=null;
-    toast('信件已放进寄件箱');
-    currentFilter='sent';updateFilterButtons();setView('homeView');renderLetters();
+    editingLetterId=item.id;editingDraftId=null;editingIsSavedLetter=false;
+    toast(wasEditingSavedLetter?'信件修改已保存':'信件已放进寄件箱');
+    currentFilter=item.direction==='received'?'received':'sent';
+    updateFilterButtons();setView('homeView');renderLetters();
   }
   function openLetter(id){
     var letter=currentData.letters.find(function(l){return l.id===id;});
@@ -695,6 +699,44 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
       button.disabled=false;button.textContent='请 TA 回信';
     });
   }
+  function askCharacterForNewLetter(){
+    if(!currentRole){openRolePicker();toast('请先选择一位角色');return;}
+    if(!window.PhoneAPI || !window.PhoneContext){toast('信件回信服务暂不可用');return;}
+    var button=$('homeNew');
+    var originalText=button.textContent;
+    button.disabled=true;button.textContent='等一封来信…';
+    var context='';
+    try{context=PhoneContext.buildPhoneRoleContext(currentContactId,'letters');}catch(e){}
+    var system=context+
+      '\n【当前任务：主动写一封私人信件】\n'+
+      '你现在就是角色本人，请按照你的人设、记忆、与你的对方的关系和说话习惯，主动写一封信给对方。'+
+      '这是一封独立的私人信件，不需要回复某一条具体消息。可以写近况、惦念、想分享的事或一直想说的话。'+
+      '不要编造重大共同经历，不要写成即时聊天，不要使用项目符号，不要解释生成过程。只输出信件正文。';
+    var user='请以'+(currentRole.name||'角色本人')+'的身份，给'+currentUserName+'写一封自然、真诚、有私人信件感觉的信。'+
+      '请结合你们已有的聊天、记忆与关系，不要使用固定模板。';
+    PhoneAPI.complete({system:system,user:user,temperature:0.88,timeoutMs:30000}).then(function(text){
+      var content=String(text||'').trim();
+      if(!content) throw new Error('没有收到有效的信件内容');
+      var incoming={
+        id:makeId(),title:'来自'+(currentRole.name||'TA')+'的一封信',
+        sender:currentRole.name||'角色',recipient:currentUserName,
+        content:content,images:[],envelopeColor:'#F0EADF',
+        direction:'received',generated:true,createdAt:Date.now(),updatedAt:Date.now()
+      };
+      currentData.letters.unshift(incoming);
+      if(!persistData()){
+        currentData.letters=currentData.letters.filter(function(l){return l.id!==incoming.id;});
+        throw new Error('信件没有保存成功，请检查本机储存空间');
+      }
+      toast('收到一封新来信');
+      currentFilter='received';updateFilterButtons();renderLetters();openLetter(incoming.id);
+    }).catch(function(err){
+      toast('来信失败：'+(err && err.message ? err.message : '请检查 API 设置'));
+    }).finally(function(){
+      button.disabled=false;button.textContent=originalText;
+    });
+  }
+
   function deleteActiveLetter(){
     if(!activeLetterId) return;
     var letter=currentData.letters.find(function(l){return l.id===activeLetterId;});
@@ -757,7 +799,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
   $('composeBack').addEventListener('click',function(){setView('homeView');});
   $('composeCancel').addEventListener('click',function(){setView('homeView');});
   $('detailBack').addEventListener('click',function(){setView('homeView');});
-  $('homeNew').addEventListener('click',function(){openComposer(null,null);});
+  $('homeNew').addEventListener('click',askCharacterForNewLetter);
   $('writeButton').addEventListener('click',function(){openComposer(null,null);});
   $('rolePickerButton').addEventListener('click',openRolePicker);
   $('closeRolePicker').addEventListener('click',closeRolePicker);
@@ -767,6 +809,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
     if(!button) return;
     currentContactId=button.getAttribute('data-role-id');
     currentRole=getRoleById(currentContactId);
+    if(Storage && Storage.rawSet) Storage.rawSet('maomao_envelope_selected_role_v1',currentContactId);
     loadRoleData();currentFilter='all';updateFilterButtons();closeRolePicker();setView('homeView');renderLetters();
   });
   document.querySelectorAll('[data-filter]').forEach(function(btn){
