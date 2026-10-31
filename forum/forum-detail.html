@@ -289,6 +289,8 @@
       '每个昵称都有相对稳定的性格和表达习惯。评论要具体回应帖子内容或前一条评论，有人简短，有人补充亲身经历，有人开玩笑，有人提出不同意见；不要整齐划一地赞同楼主。',
       '允许口语、省略、轻微错别字式的随手表达和自然停顿，但不要刻意堆网络梗。不要每个人都写成小作文，也不要重复同一种句式。',
       '评论之间要有真实的来回：可以接话、追问、补充、温和反驳，必要时纠正误解。不要把所有评论都写成总结。',
+      '讨论不需要每个人都立刻出现；有人路过留一句，有人隔一会儿回来补充。允许话题自然岔开，但要能看出前后关系。',
+      '避免重复使用同一开头、同一种语气和固定网络梗；不要每条都写得完整、漂亮或积极。细节比漂亮话重要。',
       '所有网友都是虚构社区角色。不得编造现实人物的负面事实、隐私或未经证实的指控；涉及传闻时应当求证。',
       '当前论坛主题：'+themeName,
       '论坛世界书：'+String([cfg.world,custom&&custom.world].filter(Boolean).join('\n')).slice(0,4200)
@@ -536,7 +538,8 @@
     if(status)status.textContent='有人看到你的留言，正在接话…';
     try{
       const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
-      const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话，不要泛泛夸赞；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
+      const threadContext={anchorName:target.name,anchorText:target.text,replies:(target.replies||[]).slice(-5).map(r=>({name:r.name,text:r.text}))};
+      const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
       const result=await forumAIJSON(prompt,0.94);
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
       if(!Array.isArray(target.replies))target.replies=[];
