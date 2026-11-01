@@ -273,10 +273,12 @@
       }).catch(function(){fontRecords=[];});
     }
     function activeFontId(){try{return localStorage.getItem('active_font_preset_id')||'';}catch(e){return '';}}
+    function activeFontUrl(){try{return localStorage.getItem('custom_font_url')||'';}catch(e){return '';}}
     function renderFonts(){
-      var active=activeFontId(),html='<div class="section-head"><div><h3>字体方案</h3></div><p>使用字体设置中已经保存的方案</p></div><div class="font-list">';
-      html+='<article class="font-card"><div class="font-specimen">Aa 字</div><div class="font-info"><strong>系统默认</strong><span>设备原生字体 · 不额外加载字体文件</span></div><button class="action-btn light" data-action="font-default" type="button" '+(!active?'disabled':'')+'>'+(!active?'正在使用':'恢复')+'</button></article>';
-      if(!fontRecords.length){
+      var active=activeFontId(),activeUrl=activeFontUrl(),html='<div class="section-head"><div><h3>字体方案</h3></div><p>使用字体设置中已经保存的方案</p></div><div class="font-list">';
+      html+='<article class="font-card"><div class="font-specimen">Aa 字</div><div class="font-info"><strong>系统默认</strong><span>设备原生字体 · 不额外加载字体文件</span></div><button class="action-btn light" data-action="font-default" type="button" '+(!active&&!activeUrl?'disabled':'')+'>'+(!active&&!activeUrl?'正在使用':'恢复')+'</button></article>';
+      if(activeUrl)html+='<article class="font-card"><div class="font-specimen">URL</div><div class="font-info"><strong>自定义链接字体</strong><span>当前通过字体链接应用</span></div><span class="mine-status">正在使用</span></article>';
+      if(!fontRecords.length&&!activeUrl){
         html+='</div><div class="empty-state" style="margin-top:12px"><strong>还没有保存的字体方案</strong><p>导入 TTF / WOFF 字体并保存后，这里就能直接切换。</p><button class="action-btn" type="button" data-action="open-font-settings">去字体设置</button></div>';
       }else{
         fontRecords.slice().sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);}).forEach(function(record,index){
@@ -305,7 +307,8 @@
       }
       defaultThemes.forEach(function(t){if(owned.indexOf(t.id)>=0||activeTheme===t.id)addMine('themes',t.name,'聊天主题',activeTheme===t.id,'T',t.id);});
       presets.forEach(function(p){addMine('bubbles',p.name||'未命名气泡预设', '来自聊天美化 · 气泡',isBubblePresetActive(p,scope),'B',p.id);});
-      addMine('fonts','系统默认','设备原生字体',!activeFontId(),'Aa','system');
+      addMine('fonts','系统默认','设备原生字体',!activeFontId()&&!activeFontUrl(),'Aa','system');
+      if(activeFontUrl())addMine('fonts','自定义链接字体','当前应用的字体链接',true,'URL','custom-url');
       fontRecords.forEach(function(record){addMine('fonts',record.name||'未命名字体',record.type==='file'?'本地字体文件':'字体链接',activeFontId()===record.id,'Aa',record.id);});
       html+='</div>';
       if(!count)html+='<div class="empty-state"><strong>还没有收录内容</strong><p>获取主题、保存气泡预设或导入字体后，它们都会集中显示在这里。</p></div>';
@@ -314,7 +317,7 @@
     }
     function updateOwnedCount(){
       var owned=getOwned(),presets=readVisualPresets();
-      document.getElementById('ownedCount').textContent=String(owned.length+presets.length+fontRecords.length).padStart(2,'0');
+      document.getElementById('ownedCount').textContent=String(owned.length+presets.length+fontRecords.length+(activeFontUrl()?1:0)).padStart(2,'0');
     }
     function render(){
       var content=document.getElementById('storeContent');
