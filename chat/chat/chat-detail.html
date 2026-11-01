@@ -16,7 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v2"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v3"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
@@ -268,6 +268,17 @@
             0% { box-shadow: 0 0 0 0 rgba(142,142,147,0); }
             25% { box-shadow: 0 0 0 3px rgba(142,142,147,0.95); }
             100% { box-shadow: 0 0 0 4px rgba(142,142,147,0); }
+        }
+        /* 多气泡回复：逐条轻微淡入，不改变消息本身的布局和内容。 */
+        .msg-row.chat-bubble-arrive {
+            animation: chatBubbleArrive 240ms cubic-bezier(.2,.75,.25,1) both;
+        }
+        @keyframes chatBubbleArrive {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .msg-row.chat-bubble-arrive { animation: none !important; }
         }
 
         /* ========== 底部输入舱 ========== */
@@ -3378,6 +3389,58 @@
             }
         }
 
+        // 多气泡回复逐条呈现。消息已经先完整落库；这里仅控制当前页面的显示节奏。
+        // 使用 DocumentFragment 复用原渲染器，避免复制气泡、旁白、群成员名和译文的 DOM 规则。
+        let aiBubblePacingRunId = 0;
+        async function appendAiMessageWithPacing(msg, idx) {
+            const fragment = document.createDocumentFragment();
+            appendMessageToDOM(msg, idx, fragment);
+            const nodes = Array.prototype.slice.call(fragment.childNodes);
+            const rowCount = nodes.filter(function (node) {
+                return node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
+            }).length;
+
+            const runId = ++aiBubblePacingRunId;
+            const presencePolicy = window.ChatPresencePolicy;
+            let reduceMotion = false;
+            try {
+                reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            } catch (e) {}
+
+            if (rowCount < 2 || reduceMotion ||
+                !presencePolicy || typeof presencePolicy.getBubbleDelayMs !== 'function') {
+                chatMessages.appendChild(fragment);
+                scrollToBottom(true);
+                return;
+            }
+
+            let shownRows = 0;
+            let previousText = '';
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                const isMessageRow = node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
+
+                // 只有下一条独立消息前才停顿；旁白节点沿用原有顺序，不额外制造空等。
+                if (isMessageRow && shownRows > 0) {
+                    const delay = presencePolicy.getBubbleDelayMs(previousText);
+                    await new Promise(function (resolve) { setTimeout(resolve, delay); });
+                }
+
+                // 全量重渲染发生时取消尚未显示的旧节点，防止重复气泡。
+                if (runId !== aiBubblePacingRunId) return;
+
+                if (isMessageRow) {
+                    node.classList.add('chat-bubble-arrive');
+                    const bubble = node.querySelector('.msg-bubble');
+                    previousText = bubble ? bubble.textContent : '';
+                    shownRows += 1;
+                }
+
+                chatMessages.appendChild(node);
+                scrollToBottom(true);
+            }
+        }
+
         // ================= 虚拟列表（P3）：长会话窗口化渲染 =================
         // 仅当可见消息数 > VL_THRESHOLD 时启用；URL 参数 ?vl=1 强制开启、?vl=0 强制关闭（调试/安全开关）。
         // 把已全量载入内存的 visibleList 按滚动位置窗口化：DOM 中只保留视口附近 ± buffer 的行，
@@ -3635,6 +3698,8 @@
         window.__vlDebug = function () { if (!_vl) return null; return { start: _vl.start, end: _vl.end, est: Math.round(_vl.est), st: _vl.scrollTopBefore ? Math.round(_vl.scrollTopBefore) : null, pending: _vl.pendingJump, scrollTop: Math.round(chatMessages.scrollTop), max: Math.round(chatMessages.scrollHeight - chatMessages.clientHeight) }; };
 
         function renderAllMessages() {
+            // 清空或全量重绘时终止尚未完成的逐条气泡呈现。
+            aiBubblePacingRunId += 1;
             // 有语音播放动画在跑就先掐断——气泡会被整批替换，旧节点已失效。
             if (typeof stopVoicePlay === 'function') stopVoicePlay();
             const visibleList = computeVisibleList();
@@ -5417,8 +5482,17 @@
                             // 虚拟列表：流式收尾，仅重测最后一条（内容定稿）后重窗口化，O(1) 而非整表重测。
                             vlFinalizeLast();
                         } else {
-                            appendMessageToDOM(aiMsg, chatMessages.querySelectorAll('.msg-row[data-idx]').length);
-                            scrollToBottom(true);
+                            var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                            var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
+                                activeChatModeForPrompt !== 'offline' &&
+                                activeChatModeForPrompt !== 'date' &&
+                                !(isGroupChat && currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline');
+                            if (shouldPaceBubbles) {
+                                await appendAiMessageWithPacing(aiMsg, aiMessageIndex);
+                            } else {
+                                appendMessageToDOM(aiMsg, aiMessageIndex);
+                                scrollToBottom(true);
+                            }
                         }
                     } else if (streamBubble) {
                         // 模型只输出了标记：移除空白气泡、不落文本（来电卡/红包卡仍会插入）
