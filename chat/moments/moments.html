@@ -633,7 +633,8 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
 
     </div>
 
-    <script src="../../shared/js/nav.js"></script>
+    <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
+        <script src="../../shared/js/nav.js"></script>
     <script>
         /* ================= 数据层 ================= */
         var MOMENTS_KEY = 'moments';
@@ -1093,6 +1094,10 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 (tone ? '。说话语气：' + tone : '') +
                 '。你正在使用自己的社交空间账号。请始终保持这个角色的性格、关系、语气和表达习惯，不要变成客服或通用助手。' +
                 '评论应像真实社交动态下的自然留言，简短、有针对性，不要解释规则，不要输出标题。';
+            if (window.RolePublicTimeline && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
+                var commentTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(role.id, loadMoments(), { maxEntries: 3 });
+                if (commentTimelinePrompt) systemPrompt += '\\n\\n' + commentTimelinePrompt;
+            }
             var userPrompt = '这条动态的内容：' + postText +
                 (recentComments ? newline + '这条动态下面最近的评论：' + newline + recentComments : '') +
                 (userComment ? newline + '现在需要你回复' + String(userComment.name || '用户') + '的这条评论：' + userText +
@@ -1221,6 +1226,10 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var systemPrompt = '你是' + (role.name || '一个角色') + '。角色设定：' + persona +
                 (tone ? '。说话语气：' + tone : '') +
                 '。现在要以第一人称发布一条社交空间动态。';
+            if (window.RolePublicTimeline && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
+                var postTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(role.id, loadMoments(), { maxEntries: 3 });
+                if (postTimelinePrompt) systemPrompt += '\\n\\n' + postTimelinePrompt;
+            }
             var userPrompt = '请结合你的人设，写一条此刻想发的生活动态（朋友圈风格）。' +
                 '要求：只输出动态正文本身，50个字以内，一句话，口语化、自然真实；' +
                 '不要使用任何表情符号，不要加引号或括号，不要解释，不要出现“动态：”之类的前缀。' +
