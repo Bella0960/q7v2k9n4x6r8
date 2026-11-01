@@ -685,6 +685,26 @@ test('group routing weighs topic relevance and each member talkativeness', () =>
   assert.equal(decision.fallback, false);
 });
 
+test('user messages do not inherit a previous role-to-role relationship weight', () => {
+  const members = [
+    { id: 'role-c', talkativeness: 0.5, replyThreshold: 30 },
+    { id: 'role-b', talkativeness: 0.5, replyThreshold: 30 }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    isFollowup: true,
+    previousSpeakerId: 'role-a',
+    relationshipTargetId: '',
+    relationships: {
+      '["role-a","role-c"]': { familiarity: 100 }
+    },
+    random: () => 0.4
+  });
+  assert.equal(decision.member.id, 'role-b');
+  assert.equal(decision.relationship, null);
+});
+
 test('group routing falls back to the most talkative member below all thresholds', () => {
   const members = [
     { id: 'quiet', talkativeness: 0.2, replyThreshold: 85 },
@@ -762,6 +782,9 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /recentSpeakerIds/);
   assert.match(detail, /群成员双向关系网/);
   assert.match(detail, /direction\.sharedEvents/);
+  assert.match(detail, /relationshipTargetId: isGroupFollowup && previousSpeaker/);
+  assert.doesNotMatch(detail, /relation\.familiarity = Math\.min\(100, Math\.max\(0, parseInt\(relation\.familiarity/);
+
 });
 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
