@@ -68,6 +68,48 @@
     return candidates[candidates.length - 1];
   }
 
+  function getPendingMentionIds(history, members, availableMembers, fallbackText) {
+    var messages = Array.isArray(history) ? history : [];
+    var memberList = Array.isArray(members) ? members : [];
+    var available = Array.isArray(availableMembers) ? availableMembers : [];
+    var lastUserIndex = -1;
+    var sourceText = String(fallbackText || '');
+    for (var i = messages.length - 1; i >= 0; i--) {
+      var message = messages[i];
+      if (message && (message.role === 'user' || message.role === 'sent')) {
+        lastUserIndex = i;
+        sourceText = String(message.text || message.content || '');
+        break;
+      }
+    }
+    var mentionedIds = extractMentionedMemberIds(sourceText, memberList);
+    if (!mentionedIds.length) return [];
+
+    var spoken = Object.create(null);
+    for (var j = lastUserIndex + 1; j < messages.length; j++) {
+      var reply = messages[j];
+      if (!reply || reply.type || (reply.role !== 'assistant' && reply.role !== 'received')) continue;
+      var speakerId = asId(reply.memberId);
+      if (!speakerId && reply.name) {
+        var matched = memberList.find(function (member) {
+          return memberAliases(member).some(function (alias) {
+            return alias.toLocaleLowerCase() === String(reply.name).trim().toLocaleLowerCase();
+          });
+        });
+        if (matched) speakerId = asId(matched.id);
+      }
+      if (speakerId) spoken[speakerId] = true;
+    }
+
+    var availableIds = Object.create(null);
+    available.forEach(function (member) {
+      if (member && member.id != null) availableIds[asId(member.id)] = true;
+    });
+    return mentionedIds.filter(function (id) {
+      return !!availableIds[id] && !spoken[id];
+    });
+  }
+
   function selectSpeaker(options) {
     options = options || {};
     var available = Array.isArray(options.availableMembers) ? options.availableMembers.filter(function (member) {
@@ -129,6 +171,7 @@
 
   global.GroupChatPolicy = {
     extractMentionedMemberIds: extractMentionedMemberIds,
+    getPendingMentionIds: getPendingMentionIds,
     selectSpeaker: selectSpeaker,
     isDuplicateWithinWindow: isDuplicateWithinWindow,
     getReplyDelayMs: getReplyDelayMs
