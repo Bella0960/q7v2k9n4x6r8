@@ -509,7 +509,7 @@
     }
 
     async function checkProactiveContacts() {
-        if (proactiveRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
+        if (proactiveRequestPending || followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
         var now = Date.now();
         var lockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
         if (lockAt && now - lockAt >= 0 && now - lockAt < 20 * 60 * 1000) return;
