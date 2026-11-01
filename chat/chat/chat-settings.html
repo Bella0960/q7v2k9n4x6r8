@@ -1432,6 +1432,15 @@
           <p style="padding:0 14px 12px 58px;font-size:10px;line-height:1.6;color:#999;">仅在 MAOMAO 前台打开时检查；至少安静 8 小时、每天全局最多一次判断。需要 API 额度，关闭后不再主动联系。</p>
         </div>
 
+        <div class="settings-card" id="followUpCard">
+          <button type="button" class="action-row" id="actionFollowUp">
+            <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M12 8v4l2.5 1.5"/></svg></span>
+            <span class="action-body"><span class="action-title">自然追问</span><span class="action-sub" id="followUpSub">开启后，TA 在你暂未回复时可能轻轻接续一次话题</span></span>
+            <span class="ios-switch"><input type="checkbox" id="followUpToggle" aria-label="自然追问"><span class="toggle-track"><span class="knob-wrapper"><span class="knob-inner"><span class="knob-txt knob-txt-on">ON</span><span class="knob-txt knob-txt-off">OFF</span></span></span></span></span>
+          </button>
+          <p style="padding:0 14px 12px 58px;font-size:10px;line-height:1.6;color:#999;">与主动联系独立。最多三次，09:00–23:00 之外不发送；你一回复就立即终止。每次追问会调用 API，默认关闭。</p>
+        </div>
+
         <div class="settings-card" id="autoCommentCard">
           <button type="button" class="action-row" id="actionAutoComment">
             <span class="action-icon">
@@ -2809,6 +2818,28 @@
         showToast('保存失败，请重试');
         proactiveContactInterval.value = String(readProactiveInterval());
       }
+    });
+  }
+
+  // ================= 私聊自然追问（独立于主动联系；默认关闭） =================
+  var FOLLOW_UP_KEY = 'chat_followup_enabled_' + roleId;
+  var actionFollowUp = document.getElementById('actionFollowUp');
+  var followUpToggle = document.getElementById('followUpToggle');
+  var followUpSub = document.getElementById('followUpSub');
+  function readFollowUpEnabled() { return localStorage.getItem(FOLLOW_UP_KEY) === 'true'; }
+  function refreshFollowUpUI(enabled) {
+    if (followUpToggle) followUpToggle.checked = !!enabled;
+    if (followUpSub) followUpSub.textContent = enabled ? '已开启，最多三次；你一回复就停止' : '开启后，TA 在你暂未回复时可能轻轻接续一次话题';
+  }
+  if (actionFollowUp && followUpToggle) {
+    refreshFollowUpUI(readFollowUpEnabled());
+    actionFollowUp.addEventListener('click', function () {
+      var next = !followUpToggle.checked;
+      try { localStorage.setItem(FOLLOW_UP_KEY, next ? 'true' : 'false'); }
+      catch (e) { showToast('保存失败，请重试'); return; }
+      refreshFollowUpUI(next);
+      if (!next) { try { localStorage.removeItem('chat_followup_state_private_' + roleId); } catch (e) {} }
+      showToast(next ? '已开启自然追问' : '已关闭自然追问');
     });
   }
 
