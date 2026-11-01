@@ -108,6 +108,7 @@
     state.followUpCount = 0;
     state.dueAt = 0;
     state.anchorMessageAt = 0;
+    if (!state.pausedByUser) state.cooldownUntil = 0;
     state.userReceptivityScore = Math.min(1, clamp(state.userReceptivityScore, 0, 1, 0.7) + 0.1);
     return state;
   }
