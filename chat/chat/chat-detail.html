@@ -16,7 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v2"></script>
+    <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v3"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
         * {
@@ -2472,6 +2472,8 @@
                 direction.moodToward = ['warm', 'neutral', 'cold'].indexOf(String(direction.moodToward || 'neutral')) !== -1 ? String(direction.moodToward || 'neutral') : 'neutral';
                 direction.note = String(direction.note || '').slice(0, 120);
                 if (!Array.isArray(direction.sharedEvents)) direction.sharedEvents = [];
+                if (direction.trustRecoveryDebt == null) direction.trustRecoveryDebt = 0;
+                if (!Array.isArray(direction.eventHistory)) direction.eventHistory = [];
             });
             return relation;
         }
@@ -2520,13 +2522,19 @@
                     var events = (Array.isArray(direction.sharedEvents) ? direction.sharedEvents : []).slice(-3).map(function (event) {
                         return String(event && event.summary || '').trim().slice(0, 100);
                     }).filter(Boolean);
+                    var relationshipEvents = (Array.isArray(direction.eventHistory) ? direction.eventHistory : []).slice(-3).map(function (event) {
+                        var summary = String(event && event.summary || '').trim().slice(0, 70);
+                        var intimacyDelta = Number(event && event.intimacyDelta) || 0;
+                        var trustDelta = Number(event && event.trustDelta) || 0;
+                        return summary ? summary + '（亲密 ' + (intimacyDelta > 0 ? '+' : '') + intimacyDelta + '；信任 ' + (trustDelta > 0 ? '+' : '') + trustDelta + '）' : '';
+                    }).filter(Boolean);
                     if (type === '未设定' && intimacy === 0 && trust === 50 && mood === 'neutral' && !note && !events.length) return;
                     lines.push({
                         priority: String(from.id) === String(speakerId) ? 0 : 1,
                         time: Number(direction.lastInteractionAt || rel.lastInteractionAt) || 0,
                         line: groupMemberDisplayName(from) + ' → ' + groupMemberDisplayName(to) +
                             '：关系=' + type + '；亲密度=' + intimacy + '/100；信任度=' + trust + '/100；情绪=' + mood +
-                            (note ? '；补充=' + note : '') + (events.length ? '；共同经历=' + events.join('；') : '')
+                            (note ? '；补充=' + note : '') + (events.length ? '；共同经历=' + events.join('；') : '') + (relationshipEvents.length ? '；近期关系变化=' + relationshipEvents.join('；') : '')
                     });
                 });
             });
@@ -4859,6 +4867,9 @@
                 }
                 const groupSettings = getGroupSettings();
                 systemPrompt += '\n\n[群成员自然互动]\n你们是在同一个群里的真实角色。先读懂最近几条群消息，再按自己的性格回应其中某一位成员；可以赞同、追问、补充、开玩笑或温和地不同意。不要每次都把话题拉回用户身上，不要机械复述上一句，不要替其他成员发言，也不要凭空编造人际关系或共同经历。回复保持简短自然，像群聊消息。若本条确实在回应上一位群成员，而不是主要回应用户，请在回复末尾添加隐藏标记 [群关系互动:准确角色ID:一句简短的真实互动记忆]；ID必须来自群成员名单，每轮最多一个。记忆只概括本轮确实发生的事或明确表达，不要推断情绪、关系升级或编造过去；建议 15-70 个汉字。没有明确回应对象时不要添加，系统会自动移除标记。';
+                if (groupSettings.relationshipDynamicsEnabled !== false) {
+                    systemPrompt += '\n\n[动态关系事件评估]\n每次回复前都要判断：你与刚刚发言的上一位群成员之间，是否真的发生了足以改变关系的事情。普通寒暄、礼貌回应、单纯分享信息、日常玩笑通常不改变数值，不要为了使用功能而制造事件。只有关系确实受到影响时，才在本轮正常回复末尾追加一个隐藏标记：[群关系变化:准确角色ID:等级:亲密度变化:信任度变化:简短依据]。等级只能是 micro、moderate、major、turning；对应单项变化绝对值上限分别为 2、5、10、18，系统还会再次限幅。变化使用整数，可只改变亲密度或只改变信任度；没有真实变化就不要输出标记。正负方向必须符合当前互动：被理解、兑现承诺、可靠支持等可能增加；明显失信、羞辱、伤害关系的行为可能降低。不要因不同意见或普通拒绝直接判定背叛。依据必须来自本轮实际发生的内容，不能引用虚构过去。目标ID只能是刚刚与你发生直接互动的上一位群成员，不能选择用户、自己或旁观成员。每轮最多一个关系变化标记，不得自动改变关系类型；系统会移除标记并按安全上限保存，不要向群聊展示标记。';
+                }
                 const groupRelationshipContext = getGroupRelationshipContext(groupReplyPick.id);
                 if (groupRelationshipContext) {
                     systemPrompt += '\n\n[群成员双向关系网]\n' + groupRelationshipContext + '\n箭头表示左侧角色对右侧角色的主观关系。亲密度、信任度与情绪倾向必须按方向分别理解；不要把 A 对 B 的态度套用到 B 对 A，也不要因为数值或关系标签自行升级关系、虚构共同经历。';
@@ -6576,6 +6587,33 @@
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
+            var relationshipEventSeen = false;
+            text = text.replace(/\\[群关系变化[:：]([^:：\\]]{1,100})[:：]([^:：\\]]{1,20})[:：]([+-]?\\d{1,3})[:：]([+-]?\\d{1,3})[:：]([^\\]]{1,120})\\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
+                if (relationshipEventSeen) return '';
+                relationshipEventSeen = true;
+                if (isRegeneration || !speaker || speaker.id == null || getGroupSettings().relationshipDynamicsEnabled === false) return '';
+                var targetId = String(targetKey || '').trim();
+                var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                if (!target || String(target.id) === String(speaker.id)) return '';
+                var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
+                var relation = getOrCreateGroupRelationship(speaker, target);
+                var direction = relation && relation.directions && relation.directions[String(speaker.id)];
+                var policy = window.GroupChatPolicy;
+                if (!direction || !policy || typeof policy.applyRelationshipEvent !== 'function') return '';
+                var applied = policy.applyRelationshipEvent(direction, {
+                    level: String(level || '').toLowerCase(),
+                    intimacyDelta: Number(intimacyDelta),
+                    trustDelta: Number(trustDelta),
+                    summary: String(summary || '').trim()
+                }, Date.now());
+                if (applied) {
+                    relation.lastInteractionAt = Date.now();
+                    saveCurrentGroupObject();
+                }
+                return '';
+            });
             text = text.replace(/\[群关系互动[:：]([^:：\]]{1,100})(?:[:：]([^\]]{1,160}))?\]/g, function (marker, targetKey, memorySummary) {
                 if (isRegeneration || !speaker || speaker.id == null) return '';
                 var targetId = String(targetKey || '').trim();
