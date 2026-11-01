@@ -348,14 +348,23 @@
       if (!signal) continue;
 
       var turnsSince = 0;
+      var signalIsFromAssistant = message.role === 'assistant' || message.role === 'received';
       for (var j = i + 1; j < list.length; j++) {
         var later = list[j];
         if (!isUsableEmotionMessage(later)) continue;
-        if (later.role === 'user' || later.role === 'sent') turnsSince += 1;
+        if (signalIsFromAssistant) {
+          // A role-authored signal stays relevant until the user responds.
+          if (later.role === 'user' || later.role === 'sent') turnsSince += 1;
+        } else if (later.role === 'assistant' || later.role === 'received') {
+          // A user-authored signal ages only when this target role actually replies.
+          // In a group, other members' replies must not consume this role's continuity window.
+          if (!matchesSpeaker(later, options)) continue;
+          turnsSince += 1;
+        }
       }
       if (turnsSince > 2) return null;
 
-      signal.speaker = (message.role === 'assistant' || message.role === 'received') ? 'self' : 'other';
+      signal.speaker = signalIsFromAssistant ? 'self' : 'other';
       signal.turnsSince = turnsSince;
       signal.messageTime = Number(message.time || message.timestamp) || 0;
       return signal;

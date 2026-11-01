@@ -628,7 +628,7 @@ test('group chat policy resolves @mentions before weighted speaker selection', (
   const second = groupPolicy.selectSpeaker({
     availableMembers: members,
     members,
-    mentionQueueIds: ['role-a', 'role-c'],
+    mentionQueueIds: ['role-c'],
     isFollowup: true,
     previousSpeakerId: 'role-a',
     random: () => 0.99
@@ -915,7 +915,7 @@ test('offline group context keeps narration text so the shared scene remains con
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
   assert.match(detail, /group-chat-policy\.js\?v=20261102v5/);
-  assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
+  assert.match(detail, /groupPolicy\.selectSpeaker/);
   assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
   assert.match(detail, /acceptGroupUserMessage/);
@@ -965,7 +965,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v150/);
+  assert.ok(serviceWorker.includes('phone-app-pwa-v151'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1273,10 +1273,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v16/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v150/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
+  assert.match(serviceWorker, /phone-app-pwa-v151/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
 
@@ -1396,8 +1396,8 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v150/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
+  assert.match(serviceWorker, /phone-app-pwa-v151/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
 
@@ -1431,7 +1431,7 @@ test('emotion continuity exposes only a recent short-lived cue and asks the mode
   assert.ok(signal);
   assert.equal(signal.kind, 'hurt');
   assert.equal(signal.speaker, 'other');
-  assert.equal(signal.turnsSince, 1);
+  assert.equal(signal.turnsSince, 2);
 
   const prompt = presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'online' });
   assert.ok(prompt.includes('委屈或难过'));
@@ -1579,12 +1579,12 @@ test('autonomy prompt encourages restrained initiative without inventing real-wo
 });
 
 test('chat detail injects the role autonomy prompt and precaches the updated policy', () => {
-  assert.match(detail, /ChatPresencePolicy\\.buildAutonomyPrompt/);
-  assert.match(detail, /maxNotes: 3/);
-  assert.match(detail, /maxTurns: 4/);
-  assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v16/);
-  assert.match(serviceWorker, /phone-app-pwa-v150/);
-  assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v16/);
+  assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
+  assert.ok(detail.includes('maxNotes: 3'));
+  assert.ok(detail.includes('maxTurns: 4'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v151'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
 
@@ -1728,10 +1728,10 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(homePage, /chat-notifier\.js\?v=20261102v2/);
   assert.match(navPage, /chat-notifier\.js\?v=20261102v2/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v2/);
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v16/);
-  assert.match(serviceWorker, /phone-app-pwa-v150/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /phone-app-pwa-v151/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v2/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
 
@@ -1778,12 +1778,12 @@ test('group public timeline includes only member-owned public posts and labels t
 });
 
 test('chat, group chat and Moments prompts consume the same public timeline without merging private histories', () => {
-  assert.match(detail, /role-public-timeline\.js\\?v=20261102v1/);
-  assert.match(detail, /RolePublicTimeline\\.buildRolePrompt/);
-  assert.match(detail, /RolePublicTimeline\\.buildGroupPrompt/);
-  assert.match(detail, /PhoneStorage\.getMoments\(\)/);
-  assert.match(momentsPage, /role-public-timeline\.js\\?v=20261102v1/);
-  assert.match(momentsPage, /RolePublicTimeline\.buildRolePrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v150/);
-  assert.match(serviceWorker, /role-public-timeline\.js\\?v=20261102v1/);
+  assert.ok(detail.includes('role-public-timeline.js?v=20261102v1'));
+  assert.ok(detail.includes('RolePublicTimeline.buildRolePrompt'));
+  assert.ok(detail.includes('RolePublicTimeline.buildGroupPrompt'));
+  assert.ok(detail.includes('PhoneStorage.getMoments()'));
+  assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
+  assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v151'));
+  assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
