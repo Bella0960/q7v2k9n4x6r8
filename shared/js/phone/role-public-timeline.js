@@ -10,7 +10,7 @@
   var DEFAULT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
   function normalizeTimestamp(value) {
-    if (typeof value === 'string' && !/^\\d+(?:\\.\\d+)?$/.test(value.trim())) {
+    if (typeof value === 'string' && !/^\d+(?:\.\d+)?$/.test(value.trim())) {
       var parsed = Date.parse(value);
       return isFinite(parsed) ? parsed : 0;
     }
@@ -21,17 +21,17 @@
 
   function cleanPublicText(value, maxChars) {
     var text = String(value == null ? '' : value)
-      .replace(/<(think|reasoning|analysis)\\b[^>]*>[\\s\\S]*?(?:<\\/\\1\\s*>|$)/gi, ' ')
-      .replace(/<narratage\\b[^>]*>[\\s\\S]*?(?:<\\/narratage\\s*>|$)/gi, ' ')
+      .replace(/<(think|reasoning|analysis)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
+      .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, ' ')
       .replace(/<[^>]*>/g, ' ')
-      .replace(/\\[(?:记住|心声|红包|转账|图片|亲属卡|亲密付|调整亲属卡|撤销亲属卡|群关系互动|群关系变化|群私聊|群动作|群投票|群接龙)[^\\]]*\\]/g, ' ')
-      .replace(/https?:\\/\\/\\S+/g, ' ')
-      .replace(/\\s+/g, ' ')
+      .replace(/\[(?:记住|心声|红包|转账|图片|亲属卡|亲密付|调整亲属卡|撤销亲属卡|群关系互动|群关系变化|群私聊|群动作|群投票|群接龙)[^\]]*\]/g, ' ')
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
     if (!text) return '';
     var limit = Math.max(20, Math.min(180, Number(maxChars) || 120));
     var chars = Array.from(text);
-    return chars.length > limit ? chars.slice(0, limit).join('').replace(/\\s+$/, '') + '…' : text;
+    return chars.length > limit ? chars.slice(0, limit).join('').replace(/\s+$/, '') + '…' : text;
   }
 
   function describeAge(timestamp, now) {
@@ -105,8 +105,8 @@
       '请结合发布时间判断是否仍然有效。过去的活动不要说成正在发生；不要机械复述，也不要为了提及而强行引入。',
       entries.map(function (entry) {
         return '· ' + entry.ageLabel + '：「' + entry.text + '」';
-      }).join('\\n')
-    ].join('\\n');
+      }).join('\n')
+    ].join('\n');
   }
 
   function buildGroupPrompt(members, moments, options) {
@@ -130,8 +130,8 @@
     return [
       '【群成员共享的公开动态】',
       '以下仅是群成员本人发布、公开或好友可见的动态。它们可以成为自然聊天话题，但不要假设每个人都看过，也不要把过去的活动说成正在发生；不包含任何私聊或群内私密内容。',
-      lines.join('\\n')
-    ].join('\\n');
+      lines.join('\n')
+    ].join('\n');
   }
 
   NS.collectRolePublicMoments = collectRolePublicMoments;

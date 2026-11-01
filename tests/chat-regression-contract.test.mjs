@@ -12,6 +12,7 @@ const detail = read('chat/chat/chat-detail.html');
 const chatNotifier = read('shared/js/chat-notifier.js');
 const navPage = read('shared/js/nav.js');
 const homePage = read('index.html');
+const momentsPage = read('chat/moments/moments.html');
 const groupPlay = read('chat/chat/group-play.html');
 const inspectPhone = read('inspect-phone/phone.html');
 const forumPage = read('forum/forum.html');
@@ -53,6 +54,10 @@ const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
 const presencePolicyWindow = {};
 runInNewContext(presencePolicySource, { window: presencePolicyWindow });
 const presencePolicy = presencePolicyWindow.ChatPresencePolicy;
+const rolePublicTimelineSource = read('shared/js/phone/role-public-timeline.js');
+const rolePublicTimelineWindow = {};
+runInNewContext(rolePublicTimelineSource, { window: rolePublicTimelineWindow, globalThis: rolePublicTimelineWindow });
+const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
 const packageJson = JSON.parse(read('package.json'));
@@ -960,7 +965,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /phone-app-pwa-v150/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1270,7 +1275,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v16/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /phone-app-pwa-v150/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
 });
 
@@ -1391,7 +1396,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /phone-app-pwa-v150/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
 });
 
@@ -1578,7 +1583,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.match(detail, /maxNotes: 3/);
   assert.match(detail, /maxTurns: 4/);
   assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v16/);
-  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /phone-app-pwa-v150/);
   assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v16/);
 });
 
@@ -1724,7 +1729,61 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v2/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v2/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v16/);
-  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /phone-app-pwa-v150/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v2/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
+});
+
+
+test('role public timeline shares only the role own recent public or friends-visible Moments', () => {
+  assert.equal(typeof rolePublicTimeline.collectRolePublicMoments, 'function');
+  assert.equal(typeof rolePublicTimeline.buildRolePrompt, 'function');
+  const now = new Date(2026, 10, 2, 12, 0, 0).getTime();
+  const moments = [
+    { id: 'a', authorId: 'role-a', visibility: 'public', content: '我明天准备去海边散步。', time: now - 2 * 60 * 60 * 1000 },
+    { id: 'b', authorId: 'role-a', visibility: 'private', content: '我不想让别人知道这件事。', time: now - 60 * 60 * 1000 },
+    { id: 'c', authorId: 'role-a', visibility: 'custom', content: '只对特定对象可见。', time: now - 50 * 60 * 1000 },
+    { id: 'd', authorId: 'role-b', visibility: 'public', content: '我今晚还得加班。', time: now - 40 * 60 * 1000 },
+    { id: 'e', authorId: 'role-a', visibility: 'friends', content: '我最近在学做甜点。', time: now - 30 * 60 * 1000 },
+    { id: 'f', authorId: 'role-a', visibility: 'public', content: '这条动态已经过期。', time: now - 20 * 24 * 60 * 60 * 1000 }
+  ];
+  const entries = rolePublicTimeline.collectRolePublicMoments('role-a', moments, { now, maxEntries: 5 });
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].text, '我最近在学做甜点。');
+  assert.equal(entries[1].text, '我明天准备去海边散步。');
+  const prompt = rolePublicTimeline.buildRolePrompt('role-a', moments, { now });
+  assert.ok(prompt.includes('角色跨场景公开近况'));
+  assert.ok(prompt.includes('我最近在学做甜点。'));
+  assert.ok(prompt.includes('不包含一对一私聊'));
+  assert.equal(prompt.includes('我不想让别人知道这件事。'), false);
+  assert.equal(prompt.includes('只对特定对象可见。'), false);
+  assert.equal(prompt.includes('我今晚还得加班。'), false);
+});
+
+test('group public timeline includes only member-owned public posts and labels their owners', () => {
+  assert.equal(typeof rolePublicTimeline.buildGroupPrompt, 'function');
+  const now = new Date(2026, 10, 2, 12, 0, 0).getTime();
+  const prompt = rolePublicTimeline.buildGroupPrompt(
+    [{ id: 'role-a', name: '小林' }, { id: 'role-b', name: '阿岚' }],
+    [
+      { authorId: 'role-a', visibility: 'public', content: '我明天准备去图书馆。', time: now - 3 * 60 * 60 * 1000 },
+      { authorId: 'role-b', visibility: 'private', content: '这件事不要告诉大家。', time: now - 2 * 60 * 60 * 1000 }
+    ],
+    { now }
+  );
+  assert.ok(prompt.includes('小林'));
+  assert.ok(prompt.includes('我明天准备去图书馆。'));
+  assert.equal(prompt.includes('阿岚'), false);
+  assert.equal(prompt.includes('不要告诉大家'), false);
+});
+
+test('chat, group chat and Moments prompts consume the same public timeline without merging private histories', () => {
+  assert.match(detail, /role-public-timeline\.js\\?v=20261102v1/);
+  assert.match(detail, /RolePublicTimeline\\.buildRolePrompt/);
+  assert.match(detail, /RolePublicTimeline\\.buildGroupPrompt/);
+  assert.match(detail, /PhoneStorage\.getMoments\(\)/);
+  assert.match(momentsPage, /role-public-timeline\.js\\?v=20261102v1/);
+  assert.match(momentsPage, /RolePublicTimeline\.buildRolePrompt/);
+  assert.match(serviceWorker, /phone-app-pwa-v150/);
+  assert.match(serviceWorker, /role-public-timeline\.js\\?v=20261102v1/);
 });
