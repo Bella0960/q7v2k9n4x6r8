@@ -801,7 +801,12 @@
             return;
         }
         var config = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
-        if (!config || !String(config.apiKey || '').trim()) return;
+        if (!config || !String(config.apiKey || '').trim()) {
+            var noKeyState = readFollowUpState(scope, contact.id);
+            noKeyState.dueAt = Date.now() + 30 * 60 * 1000;
+            saveFollowUpState(scope, contact.id, noKeyState);
+            return;
+        }
         var prompt = global.ChatFollowUpPolicy.buildPrompt({
             name: role.name,
             persona: role.persona,
@@ -819,7 +824,13 @@
             temperature: 0.72,
             timeoutMs: 15000
         });
-        if (!result || result.ok !== true || !result.data || result.data.send !== true) {
+        if (!result || result.ok !== true || !result.data) {
+            var retryState = readFollowUpState(scope, contact.id);
+            retryState.dueAt = Date.now() + 30 * 60 * 1000;
+            saveFollowUpState(scope, contact.id, retryState);
+            return;
+        }
+        if (result.data.send !== true) {
             var skipped = readFollowUpState(scope, contact.id);
             skipped.dueAt = 0;
             saveFollowUpState(scope, contact.id, skipped);
