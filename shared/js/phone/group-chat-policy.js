@@ -135,7 +135,7 @@
   var TOPIC_SYNONYMS = {
     programming: ['编程', '代码', '写代码', '敲代码', '写程序', '开发', '软件开发', '程序设计', '前端', '后端', '调试'],
     work: ['工作', '上班', '下班', '加班', '打工', '职场', '工时', '办公室', '通勤'],
-    fatigue: ['累', '好累', '累死', '很累', '疲惫', '疲劳', '困倦', '犯困', '精力不足', '压力大', '身心俱疲'],
+    fatigue: ['累', '好累', '累死', '很累', '很困', '疲惫', '疲劳', '困倦', '犯困', '精力不足', '压力大', '身心俱疲'],
     basketball: ['篮球', '打球', 'NBA', '投篮', '三分球', '球场'],
     coffee: ['咖啡', '拿铁', '美式', '手冲', '咖啡豆', '咖啡馆'],
     music: ['音乐', '听歌', '歌曲', '乐队', '演唱会', '作曲', '乐器'],
@@ -266,6 +266,9 @@
         var normalized = String(phrase).toLocaleLowerCase();
         if (normalized.length >= 2 && source.toLocaleLowerCase().indexOf(normalized) !== -1) add(normalized);
       });
+    });
+    result.sort(function (a, b) {
+      return source.toLocaleLowerCase().indexOf(a) - source.toLocaleLowerCase().indexOf(b);
     });
     return result.slice(0, 32);
   }
