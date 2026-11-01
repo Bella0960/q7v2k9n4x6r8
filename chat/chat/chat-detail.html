@@ -2716,8 +2716,31 @@
             return initial;
         }
 
+        // 失败提示冷却：按错误类型分，60 秒窗口内同类失败只提示一次；成功后重置。
+        // 只给"自动/高频"保存路径用，手动触发的（私聊发送、手动整理记忆、手动保存）不走这里。
+        var _warnCooldown = {};
+        var WARN_COOLDOWN_MS = 60 * 1000;
+        function _shouldWarnAgain(type) {
+            var now = Date.now();
+            var last = _warnCooldown[type] || 0;
+            if (now - last < WARN_COOLDOWN_MS) return false;
+            _warnCooldown[type] = now;
+            return true;
+        }
+        function _resetWarnCooldown(type) {
+            delete _warnCooldown[type];
+        }
+
         function saveMessages(list) {
-            if (_storage) { _storage.saveChatHistory(currentCharacter.id, list); return; }
+            if (_storage) {
+                var ok = _storage.saveChatHistory(currentCharacter.id, list);
+                if (ok) {
+                    _resetWarnCooldown('chat-save');
+                } else if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
+                    showToast('聊天记录未能保存，请检查本地存储空间');
+                }
+                return;
+            }
             try {
                 localStorage.setItem(storageKey, JSON.stringify(list));
             } catch (err) {
@@ -3984,15 +4007,21 @@
             if (!memories || !memories.length) return;
             const roleMemoryId = String(aliasRoleId || currentRoleId || '');
             if (window.MemoryRecall && roleMemoryId) {
+                var okCount = 0, failCount = 0;
                 memories.forEach(function(content) {
-                    window.MemoryRecall.upsertMemory(roleMemoryId, {
+                    var res = window.MemoryRecall.upsertMemory(roleMemoryId, {
                         content: String(content || '').trim(),
                         category: 'detail',
                         importance: 3,
                         status: 'confirmed',
                         source: 'ai-marker'
                     });
+                    if (res && res.ok) okCount++;
+                    else failCount++;
                 });
+                if (failCount > 0 && typeof showToast === 'function') {
+                    showToast(okCount > 0 ? (okCount + ' 条记忆已保存，' + failCount + ' 条未能写入') : '记忆未能保存，请检查本地存储空间');
+                }
                 return;
             }
             // Fallback for an older browser build: keep the memory role-scoped.
@@ -4146,7 +4175,15 @@
         }
         function saveWeightMemories(roleId, arr) {
             arr = trimMemoriesByWeight(arr, 300);   // M1：存储上限 300 条，按权重淘汰尾部
-            if (_storage) { _storage.saveMemories(roleId, arr); return; }
+            if (_storage) {
+                var ok = _storage.saveMemories(roleId, arr);
+                if (ok) {
+                    _resetWarnCooldown('mem-save');
+                } else if (_shouldWarnAgain('mem-save') && typeof showToast === 'function') {
+                    showToast('记忆未能保存，请检查本地存储空间');
+                }
+                return;
+            }
             try { localStorage.setItem('chat_memories_' + roleId, JSON.stringify(arr)); } catch (e) {}
         }
         function memoryWeight(m) {
@@ -6456,11 +6493,14 @@
                         if (Array.isArray(parsedPrivateHistory)) privateHistory = parsedPrivateHistory;
                     }
                     privateHistory.push(privateMsg);
+                    var saveOk = true;
                     if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-                        window.PhoneStorage.saveChatHistory(targetId, privateHistory);
+                        saveOk = !!window.PhoneStorage.saveChatHistory(targetId, privateHistory);
                     } else {
-                        localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory));
+                        try { localStorage.setItem('chat_history_' + targetId, JSON.stringify(privateHistory)); }
+                        catch (e) { saveOk = false; }
                     }
+                    if (!saveOk && typeof showToast === 'function') showToast('私聊记录未能保存，请检查本地存储空间');
                 } catch (e) {
                     if (typeof showToast === 'function') showToast('私聊记录未能保存，请检查本地存储空间');
                 }
@@ -7096,8 +7136,13 @@
           sourceStartIndex: startIndex, sourceEndIndex: endIndex - 1
         });
       });
-      if (window.MemoryRecall && window.MemoryRecall.saveMemories) window.MemoryRecall.saveMemories(rid, existing);
-      else localStorage.setItem('chat_memories_' + rid, JSON.stringify(existing));
+      if (window.MemoryRecall && window.MemoryRecall.saveMemories) {
+        var ok2 = window.MemoryRecall.saveMemories(rid, existing);
+        if (!ok2 && typeof sumToast === 'function') sumToast('记忆未能保存：' + (existing.length || 0) + ' 条新整理的记忆未落库，请检查本地存储空间');
+      } else {
+        try { localStorage.setItem('chat_memories_' + rid, JSON.stringify(existing)); }
+        catch (e) { if (typeof sumToast === 'function') sumToast('记忆未能保存，请检查本地存储空间'); }
+      }
       localStorage.setItem('chat_summary_processed_' + rid, String(endIndex));
       localStorage.setItem('chat_last_summary_' + rid, String(now));
       overlay.style.display = 'none';
