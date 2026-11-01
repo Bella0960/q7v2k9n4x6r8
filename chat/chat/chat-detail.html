@@ -16,7 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v3"></script>
+    <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v4"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
         * {
@@ -4625,6 +4625,7 @@
             // 群聊：合并全部成员人设，并随机选定本轮回复成员
             let rolePersona;
             let groupReplyPick = null;
+            let groupContextPrompt = '';
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
                 const availableMembers = getAvailableGroupMembers();
@@ -4653,6 +4654,13 @@
                         }
                     }
                     var groupPolicy = window.GroupChatPolicy;
+                    var detectedGroupContext = groupPolicy && typeof groupPolicy.analyzeMessageContext === 'function'
+                        ? groupPolicy.analyzeMessageContext(selectionText)
+                        : null;
+                    if (detectedGroupContext && detectedGroupContext.type !== 'casual') {
+                        groupContextPrompt = '本轮情境提示（本地识别，仅供参考）：' + detectedGroupContext.guidance +
+                            '请结合自己的角色人设、与发言者的关系和真实聊天上下文自然回应，不要为了匹配标签而强行接话。';
+                    }
                     if (groupPolicy && typeof groupPolicy.selectSpeaker === 'function') {
                         var mentionQueue = typeof groupPolicy.getPendingMentionIds === 'function'
                             ? groupPolicy.getPendingMentionIds(historyList, members, availableMembers, selectionText)
@@ -4679,7 +4687,8 @@
                             previousSpeakerId: previousSpeaker && previousSpeaker.id,
                             relationshipTargetId: isGroupFollowup && previousSpeaker ? previousSpeaker.id : '',
                             recentSpeakerIds: recentSpeakerIds,
-                            relationships: currentGroup.relationships
+                            relationships: currentGroup.relationships,
+                            context: detectedGroupContext
                         });
                         if (speakerDecision && speakerDecision.member) {
                             groupReplyPick = Object.assign({}, speakerDecision.member, {
@@ -4704,6 +4713,7 @@
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
                     || '你是一个善解人意、回复自然的AI助手。';
             }
+            if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             rolePersona = capText(rolePersona, CTX_CAP.persona);
 
             // 用户资料（myProfile 里可能有：nickname/age/hobbies/likes/dislikes/about/sign）
