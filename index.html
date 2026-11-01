@@ -122,6 +122,14 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <button class="app-card app-tile" type="button" data-href="theme-store/theme-store.html" data-drag="app_theme_store" data-name="主题商城" title="主题商城">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v13H4z"/><path d="M7.5 9h9M7.5 12h5M7.5 15h7"/><circle cx="17" cy="15" r="1.1"/></svg>
+                  </span>
+                  <span class="app-name">主题商城</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <button class="app-card app-tile" type="button" data-href="worldbook/characters/characters.html" data-drag="app_characters" data-name="角色库" title="角色库">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -236,6 +244,16 @@
             <!-- 元素仓库（续）：同样只是初始内容，不再规定“第二页放挂件” -->
             <div class="home-page" data-page="1">
               <div class="desktop-grid" id="gridPage1">
+
+
+                <!-- 信封：私人信件往来 -->
+                <button class="app-card app-tile" type="button" data-href="envelope/envelope.html" data-drag="app_envelope" data-name="信封" title="信封">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="1.8"/><path d="m3.5 6 8.5 7 8.5-7"/><path d="M3 18l6.2-5M21 18l-6.2-5"/></svg>
+                  </span>
+                  <span class="app-name">信封</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
 
                 <!-- 日记 App：黑白极简私人手账 -->
                 <button class="app-card app-tile" type="button" data-href="diary/diary.html" data-drag="app_diary" data-name="日记" title="日记">
@@ -523,11 +541,11 @@
             [
               'app_inspect', 'app_worldbook', 'app_memory',
               'app_forum', 'app_wallet',
-              'app_music', 'app_beauty', 'app_characters', 'app_settings'
+              'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_settings'
             ],
             [
               'app_finance', 'app_games', 'app_cafe', 'app_library',
-              'app_diary', 'app_dreamtravel'
+              'app_diary', 'app_envelope', 'app_dreamtravel'
             ],
             [
               'social',
@@ -593,6 +611,33 @@
           return !!valid[id];
         });
         // 若旧布局未把聊天/商店放在 Dock，保留用户选择；默认布局会提供这两个入口。
+        saveLayout(currentLayout);
+      })();
+
+      // 新增应用入口迁移：将“信封”加入现有自定义桌面，避免旧布局恢复时把新图标移入隐藏仓库。
+      (function addEnvelopeShortcutToExistingLayouts() {
+        var id = 'app_envelope';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        while (currentLayout.pages.length < 2) currentLayout.pages.push([]);
+        currentLayout.pages[1].push(id);
+        saveLayout(currentLayout);
+      })();
+
+      // 新增主题商城入口：保留用户已有的桌面排列，并把新入口放在聊天美化附近。
+      (function addThemeStoreShortcutToExistingLayouts() {
+        var id = 'app_theme_store';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_beauty') !== -1; });
+        if (pageIndex < 0) pageIndex = 0;
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        var beautyIndex = currentLayout.pages[pageIndex].indexOf('app_beauty');
+        currentLayout.pages[pageIndex].splice(beautyIndex >= 0 ? beautyIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
         saveLayout(currentLayout);
       })();
 

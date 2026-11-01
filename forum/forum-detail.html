@@ -7,6 +7,7 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/phone_api.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   :root{
@@ -91,6 +92,8 @@
 
   /* 评论区：参考 feed-header + post 行 */
   .comments { padding: 0 22px; }
+  .ai-community-status { padding: 10px 0 4px; color:#aaa; font-size:9px; letter-spacing:.04em; }
+  .ai-community-status:empty { display:none; }
   .c-title {
     display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
     margin: 12px 0 0; padding-bottom: 11px; border-bottom: 1px solid #202020;
@@ -227,6 +230,7 @@
 
   <div class="comments">
     <div class="c-title" data-count="0">评论与回复</div>
+    <div id="aiCommentStatus" class="ai-community-status" aria-live="polite"></div>
     <div id="commentList"></div>
   </div>
 
@@ -253,24 +257,83 @@
 
   async function callAI(prompt) {
     try {
-      const config = JSON.parse(localStorage.getItem('api_settings') || '{}');
-      if (!config.apiKey) return null;
-      const res = await fetch((config.baseUrl || 'https://api.openai.com/v1') + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + config.apiKey
-        },
-        body: JSON.stringify({
-          model: config.model || 'gpt-3.5-turbo',
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 100,
-          temperature: 0.9
-        })
-      });
-      const data = await res.json();
-      return data.choices[0].message.content.trim();
+      if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return null;
+      return await PhoneAPI.complete({system:getForumThreadWorldbook(),user:prompt,temperature:0.9,timeoutMs:20000});
     } catch(e) { return null; }
+  }
+
+
+  const DETAIL_RESIDENTS=[
+   {id:'resident_latewind',name:'晚风',style:'慢热细腻，留意具体细节'},
+   {id:'resident_orange',name:'橘子海',style:'轻松爱开玩笑，喜欢追问'},
+   {id:'resident_north',name:'北岛来信',style:'理性谨慎，先确认信息'},
+   {id:'resident_lime',name:'青柠汽水',style:'直爽活泼，短句多'},
+   {id:'resident_mountain',name:'山顶洞人',style:'冷幽默，有自己的看法'},
+   {id:'resident_half',name:'半糖',style:'温和随和，分享亲身经历'},
+   {id:'resident_seven',name:'七号公园',style:'爱聊流行话题，表达自然'},
+   {id:'resident_slow',name:'慢慢来',style:'认真倾听，表达平实'},
+   {id:'resident_cat',name:'猫不语',style:'话不多，偶尔一句点中关键'},
+   {id:'resident_rain',name:'落雨天',style:'敏感细致，留意关系变化'},
+   {id:'resident_far',name:'远山',style:'有经验，愿意给实际建议'},
+   {id:'resident_pick',name:'拾光者',style:'喜欢补充背景和时间线'}
+  ];
+  function detailResident(id,index){return DETAIL_RESIDENTS.find(x=>x.id===String(id))||DETAIL_RESIDENTS[(index||0)%DETAIL_RESIDENTS.length]}
+  function getForumThreadWorldbook(){
+    let cfg={};try{cfg=JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){}
+    const id=cfg.theme||'reality';
+    const custom=(Array.isArray(cfg.customThemes)?cfg.customThemes:[]).find(x=>x&&x.id===id);
+    const themeNames={reality:'现代都市',bagua:'八卦吃瓜',xiuxian:'修仙界',academy:'校园',future:'赛博朋克'};
+    const themeName=custom?(custom.name||'自定义主题'):(themeNames[id]||'现代都市');
+    return [
+      '你正在参与一个持续运转的虚构中文论坛。请扮演普通网友，而不是助手、客服或主持人。',
+      '每个昵称都有相对稳定的性格和表达习惯。评论要具体回应帖子内容或前一条评论，有人简短，有人补充亲身经历，有人开玩笑，有人提出不同意见；不要整齐划一地赞同楼主。',
+      '允许口语、省略、轻微错别字式的随手表达和自然停顿，但不要刻意堆网络梗。不要每个人都写成小作文，也不要重复同一种句式。',
+      '评论之间要有真实的来回：可以接话、追问、补充、温和反驳，必要时纠正误解。不要把所有评论都写成总结。',
+      '讨论不需要每个人都立刻出现；有人路过留一句，有人隔一会儿回来补充。允许话题自然岔开，但要能看出前后关系。',
+      '避免重复使用同一开头、同一种语气和固定网络梗；不要每条都写得完整、漂亮或积极。细节比漂亮话重要。',
+      '所有网友都是虚构社区角色。不得编造现实人物的负面事实、隐私或未经证实的指控；涉及传闻时应当求证。',
+      '当前论坛主题：'+themeName,
+      '论坛世界书：'+String([cfg.world,custom&&custom.world].filter(Boolean).join('\n')).slice(0,4200)
+    ].join('\n');
+  }
+  async function forumAIJSON(userPrompt,temperature){
+    if(!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')throw new Error('AI 接口尚未加载');
+    const config=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
+    if(!config||!String(config.apiKey||'').trim())throw new Error('尚未配置 API Key');
+    return PhoneAPI.completeJSON({system:getForumThreadWorldbook(),user:userPrompt,temperature:temperature==null?0.9:temperature,timeoutMs:28000});
+  }
+  function makeDetailAIComment(item,index){
+    const r=detailResident(item&&item.residentId,index),text=String(item&&item.text||'').trim().slice(0,260);
+    if(!text)return null;
+    const now=Date.now();
+    const replies=(Array.isArray(item.replies)?item.replies:[]).slice(0,2).map((x,j)=>{
+      const rr=detailResident(x.residentId,index+j+3),replyText=String(x.text||'').trim().slice(0,220);
+      return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*70000,replyTo:String(x.replyTo||r.name),likes:0}:null;
+    }).filter(Boolean);
+    return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*50000,likes:0,replies:replies};
+  }
+  async function generateInitialAIComments(){
+    if(!post||post.aiCommentBatch==='v1')return;
+    const status=document.getElementById('aiCommentStatus');
+    if(status)status.textContent='社区里有人正在看这条帖子…';
+    try{
+      const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
+      const existing=post.comments.slice(-5).map(c=>({name:c.name,text:c.text,replies:(c.replies||[]).map(x=>x.text)}));
+      const prompt='请为下面这条论坛帖子补上第一批自然的网友讨论。只返回 JSON。\n固定路人：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({author:post.name,title:postTitle(),body:postBody(),topic:post.topic||''})+'\n已有评论（不要重复）：'+JSON.stringify(existing)+'\n要求：生成 3-4 条评论，至少有两种不同态度；评论要抓住帖子细节，有人追问、有人分享经历、有人补充或温和反对。选择 1-2 条评论加一条楼中楼回复，让讨论有来有回。禁止每条都夸楼主或只说“确实”“哈哈”。所有 residentId 必须来自固定路人。格式：{"comments":[{"residentId":"路人id","text":"评论内容","replies":[{"residentId":"路人id","text":"回复内容","replyTo":"被回复昵称"}]}]}';
+      const result=await forumAIJSON(prompt,0.93);
+      if(!result||!result.ok||!result.data||!Array.isArray(result.data.comments))throw new Error('评论生成结果无效');
+      const added=result.data.comments.slice(0,4).map((x,i)=>makeDetailAIComment(x,i)).filter(Boolean);
+      if(added.length){
+        post.comments=post.comments.concat(added);
+        post.aiCommentBatch='v1';
+        post.aiCommentBatchAt=Date.now();
+        saveNow();renderComments();renderPost();
+        if(status){status.textContent='又有 '+added.length+' 位网友加入了讨论';setTimeout(()=>{if(status.textContent.indexOf('又有 ')===0)status.textContent=''},4200)}
+      }else if(status){status.textContent='暂时还没人接话，过会儿再来看看'}
+    }catch(error){
+      console.warn('[Forum] 首批路人评论生成失败',error);
+      if(status)status.textContent='路人暂时没有赶来，稍后重新打开帖子再试试';
+    }
   }
 
   function getPostId() {
@@ -302,9 +365,10 @@
     const rawComments = post.comments;
     if (!Array.isArray(post.comments)) post.comments = [];
     // 兼容旧数据结构：comments 为数字时保留其展示计数
-    post._seedCount = (typeof rawComments === 'number' && rawComments > 0) ? rawComments : 0;
+    post._seedCount = (typeof rawComments === 'number' && rawComments > 0) ? rawComments : Number(post._seedCount || 0);
     renderPost();
     renderComments();
+    if(post.aiCommentBatch!=='v1')generateInitialAIComments();
     if (new URLSearchParams(location.search).get('focus') === 'comment') {
       setTimeout(() => {
         const el = document.getElementById('commentInput');
@@ -468,40 +532,44 @@
     renderPost();
   }
 
-  function sendComment() {
-    const input = document.getElementById('commentInput');
-    const text = input.value.trim();
-    if (!text) { toast('先写下一点内容吧'); input.focus(); return; }
-    const replying = replyToIdx;
-    if (replying >= 0) {
-      const target = post.comments[replying];
-      if (!target.replies) target.replies = [];
-      target.replies.push({ name: '我', avatar: '#222', owner: 'me', text: text, time: Date.now(), replyTo: target.name });
-    } else {
-      post.comments.push({ name: '我', avatar: '#222', owner: 'me', text: text, time: Date.now() });
+  async function generateRepliesToUserComment(target,text){
+    if(!target)return;
+    const status=document.getElementById('aiCommentStatus');
+    if(status)status.textContent='有人看到你的留言，正在接话…';
+    try{
+      const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
+      const threadContext={anchorName:target.name,anchorText:target.text,replies:(target.replies||[]).slice(-5).map(r=>({name:r.name,text:r.text}))};
+      const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
+      const result=await forumAIJSON(prompt,0.94);
+      if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
+      if(!Array.isArray(target.replies))target.replies=[];
+      result.data.replies.slice(0,2).forEach((x,i)=>{
+        const c=makeDetailAIComment({residentId:x.residentId,text:x.text},i);
+        if(c)target.replies.push({name:c.name,avatar:c.avatar,residentId:c.residentId,owner:'community',source:'forum-ai',text:c.text,time:Date.now()+i*1000,replyTo:String(x.replyTo||'我'),likes:0});
+      });
+      saveNow();renderComments();renderPost();
+      if(status){status.textContent='有网友回应了你的留言';setTimeout(()=>{if(status.textContent==='有网友回应了你的留言')status.textContent=''},4200)}
+    }catch(error){
+      console.warn('[Forum] 网友回应失败',error);
+      if(status)status.textContent='暂时没有新的回应，稍后再看看';
     }
-    input.value = '';
-    cancelReply();
-    saveNow();
-    renderComments();
-    renderPost();
-
-    setTimeout(async () => {
-      const reply = REPLIES[Math.floor(Math.random() * REPLIES.length)];
-      const colors = ['#222','#333','#444','#555','#666'];
-      let replyText = reply;
-      const ctx = postBody() || postTitle();
-      const aiText = await callAI('你是论坛网友，楼主说："' + ctx + '"，我（' + (replying >= 0 ? post.comments[replying].name : RANDOM_NAMES[Math.floor(Math.random()*RANDOM_NAMES.length)]) + '）看到有人评论："' + text + '"，请用网友口吻写一条短回复，不超过20字，口语化。直接输出内容。');
-      if (aiText) replyText = aiText.replace(/^[""]|[""]$/g, '');
-      if (replying >= 0 && post.comments[replying] && post.comments[replying].replies) {
-        post.comments[replying].replies.push({ name: post.comments[replying].name, avatar: post.comments[replying].avatar, text: replyText, time: Date.now(), replyTo: post.comments[replying].name });
-      } else {
-        post.comments.push({ name: RANDOM_NAMES[Math.floor(Math.random()*RANDOM_NAMES.length)], avatar: colors[Math.floor(Math.random()*colors.length)], text: replyText, time: Date.now() });
-      }
-      saveNow();
-      renderComments();
-      renderPost();
-    }, 1000);
+  }
+  async function sendComment() {
+    const input=document.getElementById('commentInput'),text=input.value.trim();
+    if(!text){toast('先写下一点内容吧');input.focus();return}
+    const replying=replyToIdx;
+    let replyContainer;
+    if(replying>=0){
+      const target=post.comments[replying];
+      if(!target.replies)target.replies=[];
+      target.replies.push({name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replyTo:target.name});
+      replyContainer=target;
+    }else{
+      const mine={name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replies:[]};
+      post.comments.push(mine);replyContainer=mine;
+    }
+    input.value='';cancelReply();saveNow();renderComments();renderPost();
+    await generateRepliesToUserComment(replyContainer,text);
   }
 
   function sharePost() {
@@ -527,17 +595,14 @@
   }
 
   async function aiReply() {
-    const name = RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
-    const colors = ['#222','#333','#444','#555','#666'];
-    let text = REPLIES[Math.floor(Math.random() * REPLIES.length)];
-    const aiText = await callAI('你是论坛网友，看到这个帖子："' + (postBody() || postTitle()) + '"，请用' + name + '的口吻写一条短评论，不要超过20字，自然口语化，不要说"作为AI"。直接输出评论内容，不要加引号。');
-    if (aiText) text = aiText.replace(/^[""]|[""]$/g, '');
-    post.comments.push({ name: name, avatar: colors[Math.floor(Math.random()*colors.length)], text: text, time: Date.now() });
-    const posts = loadPosts();
-    const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
-    renderComments();
-    renderPost();
+    const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
+    try{
+      const prompt='你是一个固定社区成员，请读完这条帖子后写一条自然的网友评论。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n要求：选择一位路人，评论 12-60 字，回应具体细节，不要泛泛夸赞，也不要说自己是 AI。格式：{"residentId":"路人id","text":"评论"}';
+      const result=await forumAIJSON(prompt,0.93);
+      if(!result||!result.ok||!result.data)throw new Error('评论生成失败');
+      const c=makeDetailAIComment(result.data,post.comments.length);
+      if(c){post.comments.push(c);saveNow();renderComments();renderPost();toast('一位网友加入了讨论')}
+    }catch(error){console.warn('[Forum] 手动生成评论失败',error);toast('暂时没能生成回复')}
   }
 
   loadPost();

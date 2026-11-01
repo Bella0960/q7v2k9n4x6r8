@@ -125,6 +125,28 @@
         -webkit-user-select: text;
     }
     .url-input::placeholder { color: #AEAEB2; }
+
+    .font-divider { height: 1px; background: #EAEAEA; margin: 14px 0; }
+    .file-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    .file-pick {
+        flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+        min-height: 38px; padding: 0 14px; border: 1px solid #E1E1E5; border-radius: 999px;
+        background: #FFFFFF; color: #222; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+    }
+    .file-name { min-width: 0; color: #8E8E93; font-size: 0.72rem; line-height: 1.4; overflow-wrap: anywhere; }
+    .scheme-name { margin-top: 12px; }
+    .scheme-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .scheme-select {
+        min-width: 0; flex: 1; height: 42px; padding: 0 10px; border: 0; border-radius: 10px;
+        background: #F2F2F7; color: #333; font-family: inherit; font-size: 0.78rem; outline: none;
+    }
+    .text-action { border: 0; background: transparent; color: #8E8E93; font: inherit; font-size: 0.75rem; padding: 8px 2px; }
+    .text-action:disabled { opacity: 0.35; }
+    .restore-default {
+        width: 100%; flex-shrink: 0; padding: 16px 8px 20px; border: 0; background: transparent;
+        color: #D92D20; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    }
+    .restore-default:active { opacity: 0.55; }
     .apply-btn {
         width: 100%;
         margin-top: 10px;
@@ -259,16 +281,35 @@
         </header>
 
         <main class="stage">
-            <!-- 卡片一：自定义字体链接导入 -->
+            <!-- 卡片一：字体导入、方案与预览 -->
             <section class="card">
                 <h2 class="card-label">自定义字体</h2>
-                <input id="fontUrlInput" class="url-input" type="text"
-                       placeholder="请输入 .TTF / .WOFF 字体链接 (URL)" autocomplete="off" spellcheck="false">
-                <button id="applyFontBtn" class="apply-btn" type="button">应用字体</button>
+                <input id="fontUrlInput" class="url-input" type="url"
+                       placeholder="粘贴 TTF / WOFF 字体链接 URL" autocomplete="off" spellcheck="false">
+                <button id="applyFontBtn" class="apply-btn" type="button">应用链接字体</button>
+
+                <div class="font-divider"></div>
+                <div class="file-row">
+                    <label class="file-pick" for="fontFileInput">导入字体文件</label>
+                    <span id="fontFileName" class="file-name">支持 TTF / WOFF / WOFF2</span>
+                    <input id="fontFileInput" type="file" accept=".ttf,.woff,.woff2,font/ttf,font/woff,font/woff2" hidden>
+                </div>
+
+                <input id="fontSchemeName" class="url-input scheme-name" type="text"
+                       maxlength="30" placeholder="给字体方案起个名称，例如：清爽圆体" autocomplete="off">
+                <button id="saveFontPresetBtn" class="apply-btn" type="button">保存并应用字体方案</button>
+
+                <div class="scheme-row">
+                    <select id="fontPresetSelect" class="scheme-select" aria-label="已保存的字体方案">
+                        <option value="">选择已保存的字体方案</option>
+                    </select>
+                    <button id="deleteFontPresetBtn" class="text-action" type="button" disabled>删除</button>
+                </div>
+
                 <p id="fontHint" class="hint"></p>
                 <div class="preview-block">
-                    <span class="card-label">预览</span>
-                    <p id="fontPreview" class="preview-text">预览文字 Aa Bb Cc 123</p>
+                    <span class="card-label">字体预览</span>
+                    <p id="fontPreview" class="preview-text">你好，世界。让文字呈现自己的气质。<br>Aa Bb Cc · 1234567890</p>
                 </div>
             </section>
 
@@ -307,115 +348,415 @@
                     </button>
                 </div>
             </section>
+            <button id="restoreFontDefaults" class="restore-default" type="button">恢复默认</button>
         </main>
     </div>
 
 <script>
-    (function () {
-        var MIN = 12, MAX = 20, DEFAULT = 14, DEFAULT_COLOR = '#111111';
-        var input = document.getElementById('fontUrlInput');
-        var applyBtn = document.getElementById('applyFontBtn');
-        var hint = document.getElementById('fontHint');
-        var preview = document.getElementById('fontPreview');
-        var minusBtn = document.getElementById('fontMinus');
-        var plusBtn = document.getElementById('fontPlus');
-        var sizePreview = document.getElementById('fontSizePreview');
-        var sizeValue = document.getElementById('fontSizeValue');
-        var colorRow = document.getElementById('colorRow');
-        var colorChips = colorRow.querySelectorAll('.color-chip');
-        var FALLBACK_STACK = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang SC', sans-serif";
+(function () {
+    'use strict';
 
-        /* ---------- 全局字号 ---------- */
-        function getSize() {
-            try {
-                var n = parseInt(localStorage.getItem('font_size_global'), 10);
-                if (!isNaN(n)) return Math.min(MAX, Math.max(MIN, n));
-                /* 旧键迁移（旧范围 10-20，钳制到 12-20） */
-                n = parseInt(localStorage.getItem('font_size'), 10);
-                if (!isNaN(n)) return Math.min(MAX, Math.max(MIN, n));
-            } catch (e) { }
-            return DEFAULT;
-        }
+    var MIN = 12, MAX = 20, DEFAULT = 14, DEFAULT_COLOR = '#111111';
+    var DB_NAME = 'maomao-font-presets', DB_VERSION = 1, STORE_NAME = 'presets';
+    var FALLBACK_STACK = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang SC', sans-serif";
 
-        function renderSize(n) {
-            sizePreview.style.fontSize = n + 'px';
-            sizeValue.textContent = n + 'px';
-            minusBtn.disabled = n <= MIN;
-            plusBtn.disabled = n >= MAX;
-            document.documentElement.style.setProperty('--base-font-size', n + 'px');
-        }
+    var input = document.getElementById('fontUrlInput');
+    var applyBtn = document.getElementById('applyFontBtn');
+    var fileInput = document.getElementById('fontFileInput');
+    var fileName = document.getElementById('fontFileName');
+    var schemeName = document.getElementById('fontSchemeName');
+    var savePresetBtn = document.getElementById('saveFontPresetBtn');
+    var presetSelect = document.getElementById('fontPresetSelect');
+    var deletePresetBtn = document.getElementById('deleteFontPresetBtn');
+    var restoreBtn = document.getElementById('restoreFontDefaults');
+    var hint = document.getElementById('fontHint');
+    var preview = document.getElementById('fontPreview');
+    var minusBtn = document.getElementById('fontMinus');
+    var plusBtn = document.getElementById('fontPlus');
+    var sizePreview = document.getElementById('fontSizePreview');
+    var sizeValue = document.getElementById('fontSizeValue');
+    var colorRow = document.getElementById('colorRow');
+    var colorChips = colorRow.querySelectorAll('.color-chip');
 
-        function changeSize(delta) {
-            var n = Math.min(MAX, Math.max(MIN, getSize() + delta));
-            try { localStorage.setItem('font_size_global', String(n)); } catch (e) { }
-            renderSize(n);
-        }
+    var pendingSource = null;
+    var previewObjectUrl = '';
 
-        /* ---------- 自定义字体注入 ---------- */
-        function injectFont(url) {
-            var tag = document.getElementById('customFontStyle');
-            if (!tag) {
-                tag = document.createElement('style');
-                tag.id = 'customFontStyle';
-                document.head.appendChild(tag);
-            }
-            /* 覆盖同一标签，换链接时旧的 @font-face 被替换掉 */
-            tag.textContent = "@font-face { font-family: 'CustomFont'; src: url('" + url + "'); }"
-                + "#fontPreview { font-family: 'CustomFont', " + FALLBACK_STACK + "; }";
-        }
-
-        function showHint(text) {
-            hint.textContent = text;
-            hint.classList.add('show');
-        }
-
-        function applyFont() {
-            var url = (input.value || '').trim();
-            if (!url) { showHint('请先输入字体链接'); return; }
-            url = url.replace(/['"\\]/g, '');
-            try { localStorage.setItem('custom_font_url', url); } catch (e) { }
-            injectFont(url);
-            showHint('已应用（若预览无变化，请检查链接是否有效）');
-        }
-
-        /* ---------- 字体颜色 ---------- */
-        function getColor() {
-            try { return (localStorage.getItem('custom_font_color') || '').trim(); } catch (e) { return ''; }
-        }
-
-        function renderColor(color) {
-            preview.style.color = color;
-            Array.prototype.forEach.call(colorChips, function (chip) {
-                chip.classList.toggle('active', chip.getAttribute('data-color') === color);
-            });
-        }
-
-        function pickColor(e) {
-            var color = e.currentTarget.getAttribute('data-color');
-            try { localStorage.setItem('custom_font_color', color); } catch (err) { }
-            renderColor(color);
-        }
-
-        Array.prototype.forEach.call(colorChips, function (chip) {
-            chip.addEventListener('click', pickColor);
+    function openDB() {
+        return new Promise(function (resolve, reject) {
+            if (!window.indexedDB) { reject(new Error('当前浏览器不支持本地字体库')); return; }
+            var request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = function () {
+                var db = request.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            };
+            request.onsuccess = function () { resolve(request.result); };
+            request.onerror = function () { reject(request.error || new Error('字体库打开失败')); };
+            request.onblocked = function () { reject(new Error('字体库正在升级，请关闭其他页面后重试')); };
         });
+    }
 
-        minusBtn.addEventListener('click', function () { changeSize(-1); });
-        plusBtn.addEventListener('click', function () { changeSize(1); });
-        applyBtn.addEventListener('click', applyFont);
-        input.addEventListener('keydown', function (e) { if (e.key === 'Enter') applyFont(); });
+    function dbGetAll() {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = db.transaction(STORE_NAME, 'readonly');
+                var request = tx.objectStore(STORE_NAME).getAll();
+                request.onsuccess = function () { resolve(request.result || []); };
+                request.onerror = function () { reject(request.error || new Error('读取字体方案失败')); };
+                tx.oncomplete = function () { db.close(); };
+            });
+        });
+    }
 
-        /* ---------- 初始化：恢复已保存的设置 ---------- */
-        renderSize(getSize());
-        renderColor(getColor() || DEFAULT_COLOR);
+    function dbGet(id) {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = db.transaction(STORE_NAME, 'readonly');
+                var request = tx.objectStore(STORE_NAME).get(id);
+                request.onsuccess = function () { resolve(request.result || null); };
+                request.onerror = function () { reject(request.error || new Error('读取字体方案失败')); };
+                tx.oncomplete = function () { db.close(); };
+            });
+        });
+    }
+
+    function dbPut(record) {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).put(record);
+                tx.oncomplete = function () { db.close(); resolve(); };
+                tx.onerror = function () { db.close(); reject(tx.error || new Error('保存字体方案失败')); };
+                tx.onabort = function () { db.close(); reject(tx.error || new Error('保存字体方案失败')); };
+            });
+        });
+    }
+
+    function dbDelete(id) {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).delete(id);
+                tx.oncomplete = function () { db.close(); resolve(); };
+                tx.onerror = function () { db.close(); reject(tx.error || new Error('删除字体方案失败')); };
+            });
+        });
+    }
+
+    function showHint(message) {
+        hint.textContent = message;
+        hint.classList.add('show');
+    }
+
+    function getFormat(fileOrUrl) {
+        var name = typeof fileOrUrl === 'string' ? fileOrUrl : (fileOrUrl && fileOrUrl.name) || '';
+        var match = name.toLowerCase().match(/\.(ttf|woff2?|)(?:[?#]|$)/);
+        var ext = match && match[1] ? match[1] : '';
+        return ext === 'ttf' ? 'truetype' : (ext === 'woff2' ? 'woff2' : 'woff');
+    }
+
+    function revokePreviewUrl() {
+        if (previewObjectUrl) {
+            try { URL.revokeObjectURL(previewObjectUrl); } catch (e) {}
+            previewObjectUrl = '';
+        }
+    }
+
+    function previewSource(source) {
+        var url = '';
+        if (source.type === 'file') {
+            revokePreviewUrl();
+            previewObjectUrl = URL.createObjectURL(source.blob);
+            url = previewObjectUrl;
+        } else {
+            url = source.url;
+        }
+        var style = document.getElementById('fontPreviewStyle');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'fontPreviewStyle';
+            document.head.appendChild(style);
+        }
+        var safeUrl = String(url).replace(/["'\\\r\n]/g, '');
+        style.textContent = '@font-face{font-family:"MAOMAOUserFont";src:url("' + safeUrl + '") format("' + source.format + '");font-display:swap;}'
+            + '#fontPreview{font-family:"MAOMAOUserFont",' + FALLBACK_STACK + ' !important;}';
+    }
+
+    function applyGlobalSource(source) {
+        if (!window.MAOMAOFontRuntime) return;
+        if (source.type === 'file') window.MAOMAOFontRuntime.applyBlob(source.blob, source.format);
+        else window.MAOMAOFontRuntime.applyUrl(source.url, source.format);
+    }
+
+    function normalizeUrl(raw) {
+        var parsed;
+        try { parsed = new URL(raw, window.location.href); }
+        catch (e) { throw new Error('请输入有效的字体链接'); }
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('字体链接仅支持 HTTP 或 HTTPS');
+        return parsed.href;
+    }
+
+    function getSize() {
         try {
-            var savedUrl = (localStorage.getItem('custom_font_url') || '').trim().replace(/['"\\]/g, '');
-            if (savedUrl) {
-                input.value = savedUrl;
-                injectFont(savedUrl);
+            var n = parseInt(localStorage.getItem('font_size_global'), 10);
+            if (!isNaN(n)) return Math.min(MAX, Math.max(MIN, n));
+            n = parseInt(localStorage.getItem('font_size'), 10);
+            if (!isNaN(n)) return Math.min(MAX, Math.max(MIN, n));
+        } catch (e) {}
+        return DEFAULT;
+    }
+
+    function renderSize(n) {
+        sizePreview.style.fontSize = n + 'px';
+        sizeValue.textContent = n + 'px';
+        minusBtn.disabled = n <= MIN;
+        plusBtn.disabled = n >= MAX;
+        document.documentElement.style.setProperty('--base-font-size', n + 'px');
+        document.documentElement.style.setProperty('--global-font-scale', String(Math.round(n / 14 * 1000) / 1000));
+    }
+
+    function changeSize(delta) {
+        var n = Math.min(MAX, Math.max(MIN, getSize() + delta));
+        try { localStorage.setItem('font_size_global', String(n)); } catch (e) {}
+        renderSize(n);
+    }
+
+    function getColor() {
+        try { return (localStorage.getItem('custom_font_color') || '').trim(); }
+        catch (e) { return ''; }
+    }
+
+    function renderColor(color) {
+        preview.style.color = color;
+        document.documentElement.style.setProperty('--global-font-color', color);
+        if (document.body && !document.documentElement.classList.contains('dark')) {
+            document.body.style.color = color;
+        }
+        Array.prototype.forEach.call(colorChips, function (chip) {
+            chip.classList.toggle('active', chip.getAttribute('data-color') === color);
+        });
+    }
+
+    function pickColor(e) {
+        var color = e.currentTarget.getAttribute('data-color');
+        try { localStorage.setItem('custom_font_color', color); } catch (err) {}
+        renderColor(color);
+    }
+
+    function applyUrlFont() {
+        var raw = (input.value || '').trim();
+        if (!raw) { showHint('请先粘贴字体链接，或导入字体文件'); return; }
+        try {
+            var url = normalizeUrl(raw);
+            pendingSource = { type: 'url', url: url, format: getFormat(url) };
+            previewSource(pendingSource);
+            applyGlobalSource(pendingSource);
+            try {
+                localStorage.setItem('custom_font_url', url);
+                localStorage.removeItem('active_font_preset_id');
+            } catch (e) {}
+            presetSelect.value = '';
+            showHint('链接字体已应用。填写方案名称后，可保存为随时切换的预设。若预览无变化，请检查链接及字体服务器的跨域设置。');
+        } catch (e) {
+            showHint(e.message || '字体链接无效');
+        }
+    }
+
+    function handleFileImport() {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (!/\.(ttf|woff2?)$/i.test(file.name)) {
+            fileInput.value = '';
+            showHint('目前只支持 TTF、WOFF 或 WOFF2 字体文件');
+            return;
+        }
+        if (file.size > 30 * 1024 * 1024) {
+            fileInput.value = '';
+            showHint('字体文件较大，请选择 30 MB 以内的文件');
+            return;
+        }
+        pendingSource = { type: 'file', blob: file.slice(0, file.size, file.type || 'application/octet-stream'), format: getFormat(file), fileName: file.name };
+        fileName.textContent = file.name;
+        previewSource(pendingSource);
+        showHint('字体已导入并可预览。填写方案名称，再点“保存并应用字体方案”即可全局使用。');
+    }
+
+    function makeId() {
+        return 'font_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function renderPresetOptions(records) {
+        var activeId = '';
+        try { activeId = localStorage.getItem('active_font_preset_id') || ''; } catch (e) {}
+        presetSelect.innerHTML = '<option value="">选择已保存的字体方案</option>';
+        records.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+        records.forEach(function (record) {
+            var option = document.createElement('option');
+            option.value = record.id;
+            option.textContent = record.name || '未命名字体';
+            presetSelect.appendChild(option);
+        });
+        presetSelect.value = activeId;
+        deletePresetBtn.disabled = !presetSelect.value;
+    }
+
+    function refreshPresets() {
+        return dbGetAll().then(function (records) {
+            renderPresetOptions(records);
+            return records;
+        });
+    }
+
+    function activatePreset(record) {
+        if (!record) return;
+        pendingSource = record.type === 'file'
+            ? { type: 'file', blob: record.blob, format: record.format || 'truetype', fileName: record.fileName || '' }
+            : { type: 'url', url: record.url, format: record.format || getFormat(record.url) };
+        try {
+            localStorage.setItem('active_font_preset_id', record.id);
+            localStorage.removeItem('custom_font_url');
+        } catch (e) {}
+        previewSource(pendingSource);
+        applyGlobalSource(pendingSource);
+        if (record.fileName) fileName.textContent = record.fileName;
+        showHint('已应用字体方案：' + record.name);
+        deletePresetBtn.disabled = false;
+    }
+
+    function savePreset() {
+        var name = (schemeName.value || '').trim();
+        if (!name) { showHint('先给这套字体起一个方案名称'); schemeName.focus(); return; }
+
+        if (!pendingSource) {
+            var raw = (input.value || '').trim();
+            if (!raw) { showHint('请先输入字体链接，或导入一个字体文件'); return; }
+            try {
+                var url = normalizeUrl(raw);
+                pendingSource = { type: 'url', url: url, format: getFormat(url) };
+            } catch (e) { showHint(e.message || '字体链接无效'); return; }
+        }
+
+        var record = {
+            id: makeId(), name: name, type: pendingSource.type,
+            format: pendingSource.format, createdAt: Date.now()
+        };
+        if (pendingSource.type === 'file') {
+            record.blob = pendingSource.blob;
+            record.fileName = pendingSource.fileName || '';
+        } else {
+            record.url = pendingSource.url;
+        }
+
+        savePresetBtn.disabled = true;
+        dbPut(record).then(function () {
+            try {
+                localStorage.setItem('active_font_preset_id', record.id);
+                localStorage.removeItem('custom_font_url');
+            } catch (e) {}
+            activatePreset(record);
+            schemeName.value = '';
+            return refreshPresets();
+        }).then(function () {
+            showHint('字体方案已保存并应用，下次打开也会自动使用。');
+        }).catch(function (e) {
+            showHint(e.message || '保存失败，请检查浏览器本地存储空间');
+        }).then(function () {
+            savePresetBtn.disabled = false;
+        });
+    }
+
+    function choosePreset() {
+        var id = presetSelect.value;
+        deletePresetBtn.disabled = !id;
+        if (!id) return;
+        dbGet(id).then(activatePreset).catch(function () { showHint('读取字体方案失败'); });
+    }
+
+    function removePreset() {
+        var id = presetSelect.value;
+        if (!id) return;
+        dbDelete(id).then(function () {
+            var activeId = '';
+            try { activeId = localStorage.getItem('active_font_preset_id') || ''; } catch (e) {}
+            if (activeId === id) {
+                try { localStorage.removeItem('active_font_preset_id'); } catch (e) {}
+                if (window.MAOMAOFontRuntime) window.MAOMAOFontRuntime.clear();
+                var legacyUrl = '';
+                try { legacyUrl = localStorage.getItem('custom_font_url') || ''; } catch (e) {}
+                if (legacyUrl && window.MAOMAOFontRuntime) window.MAOMAOFontRuntime.applyUrl(legacyUrl);
             }
-        } catch (e) { }
+            return refreshPresets();
+        }).then(function () {
+            showHint('字体方案已删除');
+            presetSelect.value = '';
+            deletePresetBtn.disabled = true;
+        }).catch(function (e) { showHint(e.message || '删除失败'); });
+    }
+
+    function restoreDefaults() {
+        try {
+            localStorage.removeItem('custom_font_url');
+            localStorage.removeItem('active_font_preset_id');
+            localStorage.removeItem('font_size_global');
+            localStorage.removeItem('font_size');
+            localStorage.removeItem('custom_font_color');
+        } catch (e) {}
+        if (window.MAOMAOFontRuntime) window.MAOMAOFontRuntime.clear();
+        revokePreviewUrl();
+        var previewStyle = document.getElementById('fontPreviewStyle');
+        if (previewStyle) previewStyle.remove();
+        pendingSource = null;
+        input.value = '';
+        fileInput.value = '';
+        fileName.textContent = '支持 TTF / WOFF / WOFF2';
+        schemeName.value = '';
+        presetSelect.value = '';
+        deletePresetBtn.disabled = true;
+        renderSize(DEFAULT);
+        renderColor(DEFAULT_COLOR);
+        showHint('已恢复系统默认字体、字号和颜色；已保存的字体方案不会被删除。');
+    }
+
+    Array.prototype.forEach.call(colorChips, function (chip) { chip.addEventListener('click', pickColor); });
+    minusBtn.addEventListener('click', function () { changeSize(-1); });
+    plusBtn.addEventListener('click', function () { changeSize(1); });
+    applyBtn.addEventListener('click', applyUrlFont);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') applyUrlFont(); });
+    fileInput.addEventListener('change', handleFileImport);
+    savePresetBtn.addEventListener('click', savePreset);
+    presetSelect.addEventListener('change', choosePreset);
+    deletePresetBtn.addEventListener('click', removePreset);
+    restoreBtn.addEventListener('click', restoreDefaults);
+
+    renderSize(getSize());
+    renderColor(getColor() || DEFAULT_COLOR);
+    (function initFontSettings() {
+        var activeId = '';
+        var savedUrl = '';
+        try {
+            activeId = localStorage.getItem('active_font_preset_id') || '';
+            savedUrl = (localStorage.getItem('custom_font_url') || '').trim();
+        } catch (e) {}
+        if (savedUrl) {
+            input.value = savedUrl;
+            pendingSource = { type: 'url', url: savedUrl, format: getFormat(savedUrl) };
+            previewSource(pendingSource);
+        }
+        refreshPresets().then(function (records) {
+            if (activeId) {
+                return dbGet(activeId).then(function (record) {
+                    if (record) {
+                        presetSelect.value = record.id;
+                        activatePreset(record);
+                    } else {
+                        try { localStorage.removeItem('active_font_preset_id'); } catch (e) {}
+                    }
+                });
+            }
+        }).catch(function (e) {
+            showHint(e.message || '字体库暂不可用，仍可使用字体链接导入');
+        });
     })();
+})();
 </script>
 </body>
 </html>

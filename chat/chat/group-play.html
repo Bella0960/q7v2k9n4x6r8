@@ -56,6 +56,26 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 .relationship-meter strong{font-size:10px;color:#111;font-weight:600}
 .relationship input[type=range]{width:100%;accent-color:#111;display:block;height:22px;margin:0}
 .relationship-note{margin-top:10px}
+.relationship-direction{margin-top:12px;padding-top:11px;border-top:1px solid #f0f0f2}
+.relationship-direction:first-of-type{margin-top:0}
+.relationship-direction-head{font-size:11px;font-weight:600;color:#555;margin-bottom:9px}
+.relationship-direction .relationship-fields{margin-top:8px}
+.relationship-event-history{margin-top:9px;padding-top:8px;border-top:1px solid #f2f2f4}
+.relationship-event-history label{display:block;font-size:10px;color:#999;margin-bottom:5px}
+.relationship-event-item{font-size:10px;line-height:1.6;color:#666;padding:2px 0}
+.relationship-event-item strong{font-weight:600;color:#333}
+.relationship-event-empty{font-size:10px;color:#aaa;line-height:1.6}
+.speaking-settings{margin-top:12px;padding-top:11px;border-top:1px solid #f0f0f2}
+.speaking-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.topic-tag-details{margin-top:9px;color:#555}
+.topic-tag-details summary{display:flex;align-items:center;justify-content:space-between;gap:8px;list-style:none;cursor:pointer;font-size:10px;color:#777;padding:4px 0}
+.topic-tag-details summary::-webkit-details-marker{display:none}
+.topic-tag-details summary:after{content:"+";font-size:14px;color:#999}
+.topic-tag-details[open] summary:after{content:"−"}
+.topic-tag-details summary small{font-size:9px;color:#aaa}
+.topic-tag-grid{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}
+.speaking-settings input[type=range]{height:22px!important;padding:0!important;accent-color:#111}
+.speaking-settings .field input[type=text]{height:35px}
 .member{border:1px solid #ececf0;border-radius:15px;padding:14px;background:#fff}
 .member-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .avatar{width:38px;height:38px;border-radius:12px;background:#f0f0f3;overflow:hidden;display:grid;place-items:center;flex:none;font-size:14px;color:#777}
@@ -128,11 +148,22 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         <span class="switch"><input type="checkbox" data-setting="allowPrivateMessages"><span class="track"></span></span>
       </label>
       <label class="setting">
-        <span class="setting-copy"><span class="setting-title">角色自主接话</span><span class="setting-desc">你发完消息后，让另一位群成员顺着话题回应；可以设置 1–2 轮，避免每次自动聊太久。此功能会额外调用 API。</span></span>
+        <span class="setting-copy"><span class="setting-title">角色自主接话</span><span class="setting-desc">开启后，角色会在普通话题中自然接话；明确 @ 到的成员即使关闭此项，也会按顺序回复。每次追加接话都会额外调用 API。</span></span>
         <span class="switch"><input type="checkbox" data-setting="autoTalkEnabled"><span class="track"></span></span>
       </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">动态关系变化</span><span class="setting-desc">角色只在发生有意义的互动时微调亲密度与信任度；普通寒暄不涨分。信任受损后，修复会更慢，不额外增加 API 请求。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="relationshipDynamicsEnabled"><span class="track"></span></span>
+      </label>
       <div class="setting">
-        <span class="setting-copy"><span class="setting-title">最多自动接话次数</span><span class="setting-desc">每次你发消息后，最多追加几条角色回复。</span></span>
+        <span class="setting-copy"><span class="setting-title">群聊模式</span><span class="setting-desc">线上是隔着屏幕的短消息；线下是同一场景中的多人互动。两种模式共用这份群聊记录。</span></span>
+        <select id="groupChatMode" aria-label="群聊模式" style="width:92px;flex:none;height:36px;border:1px solid #e6e6eb;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;">
+          <option value="online">线上</option>
+          <option value="offline">线下</option>
+        </select>
+      </div>
+      <div class="setting">
+        <span class="setting-copy"><span class="setting-title">最多自动接话次数</span><span class="setting-desc">普通话题最多追加几条角色回复；明确 @ 到的成员不受此上限限制。</span></span>
         <select id="autoTalkRounds" style="width:88px;flex:none;height:36px;border:1px solid #e6e6eb;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;">
           <option value="0">关闭</option>
           <option value="1">1 轮</option>
@@ -163,7 +194,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 
     <div class="section"><h3>成员关系与熟悉度</h3><span>RELATIONSHIPS</span></div>
     <div id="relationshipsList" class="relationships"></div>
-    <p class="hint">关系按成员对独立保存。角色真正接着另一位成员的话题互动时，熟悉度会缓慢增长；关系类型和补充说明由你掌控。此功能不会额外调用 API。</p>
+    <p class="hint">每个方向分别保存亲密度、信任度、关系类型与情绪倾向；角色的发言频率、话题兴趣和触发阈值单独设置。关系数值当前为静态配置，不会被普通聊天自动改写。</p>
 
     <div class="section"><h3>邀请角色</h3><span>ADD MEMBERS</span></div>
     <div id="addList" class="add-list"></div>
@@ -199,10 +230,11 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     document.getElementById('groupTitle').textContent='群聊不存在';
   }else{
     if(!group.settings||typeof group.settings!=='object')group.settings={};
-    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false};
+    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true};
     Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
     var autoRounds=Number(group.settings.autoTalkRounds);
     if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
+    if(group.settings.chatMode!=='online'&&group.settings.chatMode!=='offline')group.settings.chatMode='online';
     document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
     function persist(message){
       var groups=readArray('phone_groups');
@@ -221,6 +253,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       });
       var roundsSelect=document.getElementById('autoTalkRounds');
       if(roundsSelect)roundsSelect.value=String(group.settings.autoTalkRounds);
+      var modeSelect=document.getElementById('groupChatMode');
+      if(modeSelect)modeSelect.value=group.settings.chatMode;
     }
     function renderOwner(){
       var select=document.getElementById('ownerSelect');
@@ -258,6 +292,10 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         persist('设置已保存');
       });
     });
+    document.getElementById('groupChatMode').addEventListener('change',function(){
+      group.settings.chatMode=this.value==='offline'?'offline':'online';
+      persist(group.settings.chatMode==='offline'?'已切换为线下群聊':'已切换为线上群聊');
+    });
     document.getElementById('autoTalkRounds').addEventListener('change',function(){
       var rounds=parseInt(this.value,10);
       group.settings.autoTalkRounds=[0,1,2].indexOf(rounds)!==-1?rounds:1;
@@ -271,6 +309,12 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       list.innerHTML=members.map(function(member){
         var id=String(member.id==null?'':member.id);
         var avatar=member.avatar?'<img src="'+escapeHtml(member.avatar)+'" alt="">':escapeHtml((member.nickname||member.name||'群').slice(0,1));
+        var talkativeness=Number(member.talkativeness);if(!isFinite(talkativeness))talkativeness=0.5;talkativeness=Math.max(0,Math.min(1,talkativeness));
+        var replyThreshold=Number(member.replyThreshold);if(!isFinite(replyThreshold))replyThreshold=talkativeness>=0.7?45:(talkativeness<=0.3?75:55);
+        var interestSource=Array.isArray(member.interestTags)&&member.interestTags.length?member.interestTags:member.interests;
+        var interests=Array.isArray(interestSource)?interestSource.join('、'):String(interestSource||'');
+        var expertiseTags=Array.isArray(member.expertiseTags)?member.expertiseTags.join('、'):String(member.expertiseTags||'');
+        var backgroundTags=Array.isArray(member.backgroundTags)?member.backgroundTags.join('、'):String(member.backgroundTags||'');
         return '<article class="member" data-member-id="'+escapeHtml(id)+'">'+
           '<div class="member-head"><div class="avatar">'+avatar+'</div><div class="member-heading"><div class="member-name">'+escapeHtml(member.nickname||member.name||'未命名成员')+'</div><div class="member-id">ID · '+escapeHtml(id)+'</div></div>'+
           '<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button></div>'+
@@ -278,6 +322,14 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
             '<div class="field"><label>群昵称</label><input type="text" maxlength="20" data-member-field="nickname" value="'+escapeHtml(member.nickname||'')+'" placeholder="'+escapeHtml(member.name||'原角色名')+'"></div>'+
             '<div class="field"><label>专属头衔</label><input type="text" maxlength="20" data-member-field="title" value="'+escapeHtml(member.title||'')+'" placeholder="例如：管理员 / 气氛组"></div>'+
           '</div>'+
+          '<div class="speaking-settings"><div class="schedule-head"><span>发言倾向</span><span>仅影响自动选人</span></div><div class="speaking-grid">'+
+            '<div class="field"><div class="relationship-meter"><label>话唠度</label><strong><span data-talkativeness-value>'+Math.round(talkativeness*100)+'</span> / 100</strong></div><input type="range" min="0" max="1" step="0.05" data-member-field="talkativeness" value="'+talkativeness+'"></div>'+
+            '<div class="field"><div class="relationship-meter"><label>发言阈值</label><strong><span data-threshold-value>'+Math.round(replyThreshold)+'</span></strong></div><input type="range" min="30" max="85" step="1" data-member-field="replyThreshold" value="'+Math.round(replyThreshold)+'"></div>'+
+          '</div><div class="field" style="margin-top:10px"><label>核心兴趣标签</label><input type="text" data-member-field="interestTags" maxlength="160" value="'+escapeHtml(interests)+'" placeholder="例如：音乐、推理、旅行"></div>'+
+          '<details class="topic-tag-details"><summary><span>补充匹配标签</span><small>专业领域 · 背景关联</small></summary><div class="topic-tag-grid">'+
+            '<div class="field"><label>专业领域</label><input type="text" data-member-field="expertiseTags" maxlength="160" value="'+escapeHtml(expertiseTags)+'" placeholder="例如：前端开发、心理学、摄影"></div>'+
+            '<div class="field"><label>背景关联</label><input type="text" data-member-field="backgroundTags" maxlength="160" value="'+escapeHtml(backgroundTags)+'" placeholder="例如：大学室友、医生、武汉"></div>'+
+          '</div></details></div>'+
           '<div class="member-options">'+
             '<label class="check-label"><input type="checkbox" data-member-field="isAdmin" '+(member.isAdmin?'checked':'')+'> 管理员</label>'+
             '<label class="check-label"><input type="checkbox" data-member-field="muted" '+(member.muted?'checked':'')+'> 禁言</label>'+
@@ -288,29 +340,80 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
           '</div></div></article>';
       }).join('');
     }
-    var relationshipTypes=['未设定','陌生人','刚认识','朋友','好友','亲密','暧昧','恋人','家人','竞争对手','互相看不顺眼','自定义'];
+    var relationshipTypes=['未设定','陌生人','刚认识','朋友','好友','亲密','暧昧','恋人','家人','兄妹','竞争对手','互相看不顺眼','自定义'];
+    var moodTypes=[{value:'warm',label:'温和'},{value:'neutral',label:'中性'},{value:'cold',label:'冷淡'}];
     function relationshipKey(idA,idB){return JSON.stringify([String(idA),String(idB)].sort());}
+    function ensureRelationshipPair(a,b){
+      if(!group.relationships||typeof group.relationships!=='object'||Array.isArray(group.relationships))group.relationships={};
+      var ids=[String(a.id),String(b.id)].sort(),key=relationshipKey(ids[0],ids[1]);
+      var rel=group.relationships[key],changed=false;
+      if(!rel||typeof rel!=='object'){rel=group.relationships[key]={memberAId:ids[0],memberBId:ids[1],type:'未设定',familiarity:0,interactions:0,note:'',memories:[],lastInteractionAt:0};changed=true;}
+      rel.memberAId=ids[0];rel.memberBId=ids[1];
+      if(!rel.directions||typeof rel.directions!=='object'||Array.isArray(rel.directions)){rel.directions={};changed=true;}
+      [ids[0],ids[1]].forEach(function(fromId,index){
+        var toId=ids[index===0?1:0];
+        var direction=rel.directions[fromId];
+        if(!direction||typeof direction!=='object'){
+          var legacyEvents=(Array.isArray(rel.memories)?rel.memories:[]).filter(function(item){
+            return item&&(!item.fromId||String(item.fromId)===fromId)&&(!item.toId||String(item.toId)===toId);
+          }).map(function(item){return {summary:String(item.summary||''),time:Number(item.time)||Date.now(),fromId:fromId,toId:toId};});
+          direction=rel.directions[fromId]={
+            fromId:fromId,toId:toId,
+            intimacy:Math.max(0,Math.min(100,parseInt(rel.familiarity,10)||0)),
+            trust:50,type:String(rel.type||'未设定'),moodToward:'neutral',
+            note:String(rel.note||'').slice(0,120),sharedEvents:legacyEvents.slice(-6)
+          };
+          changed=true;
+        }
+        direction.fromId=fromId;direction.toId=toId;
+        direction.intimacy=Math.max(0,Math.min(100,parseInt(direction.intimacy,10)||0));
+        var trustValue=direction.trust==null||direction.trust===''?50:Number(direction.trust);direction.trust=Math.max(0,Math.min(100,isFinite(trustValue)?trustValue:50));
+        direction.type=relationshipTypes.indexOf(String(direction.type||'未设定'))!==-1?String(direction.type||'未设定'):'自定义';
+        direction.moodToward=['warm','neutral','cold'].indexOf(String(direction.moodToward||'neutral'))!==-1?String(direction.moodToward||'neutral'):'neutral';
+        direction.note=String(direction.note||'').slice(0,120);
+        if(!Array.isArray(direction.sharedEvents))direction.sharedEvents=[];
+        if(direction.trustRecoveryDebt==null){direction.trustRecoveryDebt=0;changed=true;}
+        if(!Array.isArray(direction.eventHistory)){direction.eventHistory=[];changed=true;}
+      });
+      return {record:rel,key:key,changed:changed};
+    }
+    function renderDirection(from,to,direction){
+      var type=relationshipTypes.indexOf(String(direction.type||'未设定'))!==-1?String(direction.type||'未设定'):'自定义';
+      var typeOptions=relationshipTypes.map(function(option){return '<option value="'+escapeHtml(option)+'" '+(option===type?'selected':'')+'>'+escapeHtml(option)+'</option>';}).join('');
+      var mood=String(direction.moodToward||'neutral');
+      var moodOptions=moodTypes.map(function(option){return '<option value="'+option.value+'" '+(option.value===mood?'selected':'')+'>'+option.label+'</option>';}).join('');
+      var events=(Array.isArray(direction.sharedEvents)?direction.sharedEvents:[]).slice(-6).map(function(item){return String(item&&item.summary||'');}).filter(Boolean).join('\n');
+      var eventHistory=(Array.isArray(direction.eventHistory)?direction.eventHistory:[]).slice(-3).reverse();
+      var eventHtml=eventHistory.length?eventHistory.map(function(item){var i=Number(item.intimacyDelta)||0,t=Number(item.trustDelta)||0;var fmt=function(v){return (v>0?'+':'')+String(v);};return '<div class="relationship-event-item"><strong>'+escapeHtml(fmt(i)+' 亲密 · '+fmt(t)+' 信任')+'</strong>　'+escapeHtml(item.summary||'')+'</div>';}).join(''):'<div class="relationship-event-empty">暂无显著关系变化</div>';
+      var repairDebt=Math.round(Math.max(0,Number(direction.trustRecoveryDebt)||0));
+      return '<section class="relationship-direction" data-relationship-direction="'+escapeHtml(from.id)+'">'+
+        '<div class="relationship-direction-head">'+escapeHtml(groupMemberName(from))+' 对 '+escapeHtml(groupMemberName(to))+'</div>'+
+        '<div class="relationship-fields"><div class="field"><label>关系类型</label><select data-relationship-field="type">'+typeOptions+'</select></div>'+
+        '<div class="field"><label>当前情绪</label><select data-relationship-field="moodToward">'+moodOptions+'</select></div>'+
+        '<div class="field"><div class="relationship-meter"><label>亲密度</label><strong><span data-intimacy-value>'+direction.intimacy+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="intimacy" value="'+direction.intimacy+'"></div>'+
+        '<div class="field"><div class="relationship-meter"><label>信任度</label><strong><span data-trust-value>'+direction.trust+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="trust" value="'+direction.trust+'"></div></div>'+
+        '<div class="field relationship-note"><label>关系补充</label><input type="text" maxlength="120" data-relationship-field="note" value="'+escapeHtml(direction.note||'')+'" placeholder="例如：总是斗嘴，但会替对方收尾"></div>'+
+        '<div class="field relationship-note"><label>共同经历</label><textarea rows="2" maxlength="900" data-relationship-field="sharedEvents" placeholder="每行一条，只记录双方确实经历过的事。">'+escapeHtml(events)+'</textarea><span class="memory-hint">最多保留最近 6 条；共同经历按当前方向归属。</span></div>'+
+        '<div class="relationship-event-history"><label>近期关系变化</label>'+eventHtml+(repairDebt?'<div class="relationship-event-empty">信任修复阻力 · '+repairDebt+'</div>':'')+'</div></section>';
+    }
     function renderRelationships(){
       var list=document.getElementById('relationshipsList');
       var members=Array.isArray(group.members)?group.members:[];
       if(members.length<2){list.innerHTML='<div class="empty">至少邀请两位角色入群，才能设置他们之间的关系。</div>';return;}
-      var rows=[];
+      var rows=[],migrated=false;
       for(var i=0;i<members.length;i++){
         for(var j=i+1;j<members.length;j++){
-          var a=members[i],b=members[j],key=relationshipKey(a.id,b.id);
-          var rel=(group.relationships&&group.relationships[key])||{};
-          var type=relationshipTypes.indexOf(String(rel.type||'未设定'))!==-1?String(rel.type||'未设定'):'自定义';
-          var familiarity=Math.max(0,Math.min(100,parseInt(rel.familiarity,10)||0));
-          var options=relationshipTypes.map(function(option){return '<option value="'+escapeHtml(option)+'" '+(option===type?'selected':'')+'>'+escapeHtml(option)+'</option>';}).join('');
-          rows.push('<article class="relationship" data-relationship-key="'+escapeHtml(key)+'">'+
-            '<div class="relationship-head"><div class="relationship-pair">'+escapeHtml(groupMemberName(a))+' ↔ '+escapeHtml(groupMemberName(b))+'<small>双向关系 · '+(parseInt(rel.interactions,10)||0)+' 次明确互动</small></div></div>'+
-            '<div class="relationship-fields"><div class="field"><label>关系类型</label><select data-relationship-field="type">'+options+'</select></div>'+
-            '<div class="field"><div class="relationship-meter"><label>熟悉度</label><strong><span data-familiarity-value>'+familiarity+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="familiarity" value="'+familiarity+'" aria-label="'+escapeHtml(groupMemberName(a)+'与'+groupMemberName(b)+'的熟悉度')+'"></div></div>'+
-            '<div class="field relationship-note"><label>关系补充（可选）</label><input type="text" maxlength="120" data-relationship-field="note" value="'+escapeHtml(rel.note||'')+'" placeholder="例如：总是斗嘴，但会替对方收尾"></div>'+
-            '<div class="field relationship-note"><label>共同记忆</label><textarea rows="3" maxlength="900" data-relationship-field="memories" placeholder="每行一条，比如：第一次见面时一起处理了突发状况。">'+escapeHtml((Array.isArray(rel.memories)?rel.memories:[]).slice(-6).map(function(memory){return String(memory&&memory.summary||'');}).filter(Boolean).join('\n'))+'</textarea><span class="memory-hint">每行一条，最多保留最近 6 条；自动记录和手动修改都保存在这个群里。</span></div></article>');
+          var a=members[i],b=members[j],pair=ensureRelationshipPair(a,b),rel=pair.record;
+          migrated=migrated||pair.changed;
+          rows.push('<article class="relationship" data-relationship-key="'+escapeHtml(pair.key)+'">'+
+            '<div class="relationship-head"><div class="relationship-pair">'+escapeHtml(groupMemberName(a))+' ↔ '+escapeHtml(groupMemberName(b))+'<small>双向独立记录 · '+(parseInt(rel.interactions,10)||0)+' 次互动</small></div></div>'+
+            renderDirection(a,b,rel.directions[String(a.id)])+
+            renderDirection(b,a,rel.directions[String(b.id)])+
+            '</article>');
         }
       }
       list.innerHTML=rows.join('');
+      if(migrated)persist();
     }
     function groupMemberName(member){return String((member&&(member.nickname||member.name))||'未命名成员');}
     function renderCandidates(){
@@ -326,34 +429,45 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       }).join('');
     }
     document.getElementById('relationshipsList').addEventListener('input',function(event){
-      var input=event.target.closest('[data-relationship-field="familiarity"]');
+      var input=event.target.closest('[data-relationship-field="intimacy"],[data-relationship-field="trust"]');
       if(!input)return;
-      var label=input.closest('.field').querySelector('[data-familiarity-value]');
+      var field=input.getAttribute('data-relationship-field');
+      var label=input.closest('.field').querySelector(field==='trust'?'[data-trust-value]':'[data-intimacy-value]');
       if(label)label.textContent=String(input.value);
+    });
+    document.getElementById('membersList').addEventListener('input',function(event){
+      var input=event.target.closest('[data-member-field="talkativeness"],[data-member-field="replyThreshold"]');
+      if(!input)return;
+      var label=input.closest('.field').querySelector(input.getAttribute('data-member-field')==='talkativeness'?'[data-talkativeness-value]':'[data-threshold-value]');
+      if(label)label.textContent=input.getAttribute('data-member-field')==='talkativeness'?String(Math.round(Number(input.value)*100)):String(input.value);
     });
     document.getElementById('relationshipsList').addEventListener('change',function(event){
       var input=event.target.closest('[data-relationship-field]');
       if(!input)return;
       var card=input.closest('[data-relationship-key]');
-      if(!card)return;
+      var directionCard=input.closest('[data-relationship-direction]');
+      if(!card||!directionCard)return;
       var key=card.getAttribute('data-relationship-key');
       var ids;
       try{ids=JSON.parse(key);}catch(e){return;}
-      if(!group.relationships||typeof group.relationships!=='object'||Array.isArray(group.relationships))group.relationships={};
-      var rel=group.relationships[key];
-      if(!rel||typeof rel!=='object')rel=group.relationships[key]={memberAId:String(ids[0]),memberBId:String(ids[1]),type:'未设定',familiarity:0,interactions:0,note:'',lastInteractionAt:0};
+      var fromId=String(directionCard.getAttribute('data-relationship-direction')||'');
+      var from=(group.members||[]).find(function(member){return String(member.id)===fromId;});
+      var to=(group.members||[]).find(function(member){return String(member.id)!==fromId&&(String(member.id)===String(ids[0])||String(member.id)===String(ids[1]));});
+      if(!from||!to)return;
+      var pair=ensureRelationshipPair(from,to),direction=pair.record.directions[fromId];
       var field=input.getAttribute('data-relationship-field');
-      if(field==='familiarity')rel.familiarity=Math.max(0,Math.min(100,parseInt(input.value,10)||0));
-      else if(field==='type')rel.type=relationshipTypes.indexOf(input.value)!==-1?input.value:'自定义';
-      else if(field==='note')rel.note=String(input.value||'').trim().slice(0,120);
-      else if(field==='memories'){
-        var oldMemories=Array.isArray(rel.memories)?rel.memories.slice(-6):[];
-        rel.memories=String(input.value||'').split(/\r?\n/).map(function(line){return line.trim().slice(0,140);}).filter(Boolean).slice(-6).map(function(summary,index){
-          var old=oldMemories[index]||{};
-          return {summary:summary,time:Number(old.time)||Date.now(),fromId:old.fromId==null?'':String(old.fromId),toId:old.toId==null?'':String(old.toId)};
+      if(field==='intimacy'||field==='trust'){direction[field]=Math.max(0,Math.min(100,parseInt(input.value,10)||0));if(field==='trust')direction.trustRecoveryDebt=0;}
+      else if(field==='type')direction.type=relationshipTypes.indexOf(input.value)!==-1?input.value:'自定义';
+      else if(field==='moodToward')direction.moodToward=['warm','neutral','cold'].indexOf(input.value)!==-1?input.value:'neutral';
+      else if(field==='note')direction.note=String(input.value||'').trim().slice(0,120);
+      else if(field==='sharedEvents'){
+        var oldEvents=Array.isArray(direction.sharedEvents)?direction.sharedEvents.slice(-6):[];
+        direction.sharedEvents=String(input.value||'').split(/\r?\n/).map(function(line){return line.trim().slice(0,140);}).filter(Boolean).slice(-6).map(function(summary,index){
+          var old=oldEvents[index]||{};
+          return {summary:summary,time:Number(old.time)||Date.now(),fromId:fromId,toId:String(to.id)};
         });
       }
-      persist('成员关系已保存');
+      persist('关系网已保存');
       renderRelationships();
     });
     document.getElementById('transferOwnerBtn').addEventListener('click',function(){
@@ -376,6 +490,13 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!member)return;
       var field=input.getAttribute('data-member-field');
       if(input.type==='checkbox')member[field]=input.checked;
+      else if(field==='talkativeness')member.talkativeness=Math.max(0,Math.min(1,Number(input.value)||0));
+      else if(field==='replyThreshold')member.replyThreshold=Math.max(30,Math.min(85,parseInt(input.value,10)||55));
+      else if(field==='interests'||field==='interestTags'||field==='expertiseTags'||field==='backgroundTags'){
+        var tags=String(input.value||'').split(/[，,、;；|]/).map(function(value){return value.trim().slice(0,24);}).filter(Boolean).slice(0,12);
+        if(field==='interests'||field==='interestTags'){member.interestTags=tags;member.interests=tags;}
+        else member[field]=tags;
+      }
       else member[field]=input.value.trim();
       persist('成员资料已保存');
       renderMembers();renderOwner();renderRelationships();
@@ -397,7 +518,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!role)return;
       if(!Array.isArray(group.members))group.members=[];
       if(group.members.some(function(m){return String(m.id)===String(id);}))return;
-      group.members.push({id:String(role.id),name:role.name||'未命名角色',avatar:role.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00'});
+      group.members.push({id:String(role.id),name:role.name||'未命名角色',avatar:role.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00',talkativeness:0.5,replyThreshold:55,interests:[],interestTags:[],expertiseTags:[],backgroundTags:[]});
       persist('已邀请 '+(role.name||'角色')+' 入群');renderMembers();renderCandidates();renderOwner();renderRelationships();
     });
     renderSettings();renderMembers();renderCandidates();renderOwner();renderRelationships();

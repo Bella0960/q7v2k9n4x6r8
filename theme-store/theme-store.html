@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FFFFFF">
+  <title>主题商城</title>
+  <script src="../shared/js/font-loader.js?v=20261102v1"></script>
+  <script src="../shared/js/native-feel.js"></script>
+  <script src="../shared/js/chat-beauty.js?v=20261102v1"></script>
+  <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
+  <link rel="stylesheet" href="../shared/css/mobile-fit.css">
+  <style>
+    :root{color-scheme:light;--white:#fff;--ink:#111;--muted:#85858b;--soft:#f6f6f7;--soft2:#ededf0;--line:#e9e9ec}
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    html,body{width:100%;min-height:100%;background:#fff;color:var(--ink)}
+    body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif}
+    button,select{font:inherit}
+    button{color:inherit}
+    .store-app{width:min(100%,520px);min-height:100vh;margin:0 auto;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden}
+    .topbar{display:flex;align-items:center;gap:15px;padding:calc(18px + env(safe-area-inset-top,0px)) 22px 16px}
+    .back-mark{display:flex;align-items:center;gap:8px;min-width:58px;text-align:left;border:0;background:none;cursor:pointer;color:#555}
+    .back-mark svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor}
+    .back-copy{display:flex;flex-direction:column;gap:2px}
+    .back-copy small{font:8px/1 Georgia,serif;letter-spacing:.13em;color:#aaa}
+    .back-copy span{font-size:10px;color:#555}
+    .top-title{min-width:0;flex:1}
+    .top-title .kicker{font:9px/1.3 Georgia,serif;letter-spacing:.17em;color:#929298}
+    .top-title h1{font:400 24px/1.05 Georgia,"Songti SC",serif;letter-spacing:-.045em;margin-top:5px}
+    .top-count{display:flex;flex-direction:column;align-items:flex-end;gap:4px;cursor:pointer;border:0;background:none}
+    .top-count strong{font:400 21px/1 Georgia,serif}
+    .top-count span{font-size:9px;letter-spacing:.08em;color:#999}
+    .intro{padding:15px 22px 19px}
+    .intro-kicker{font:9px/1.4 Georgia,serif;letter-spacing:.16em;color:#8c8c92}
+    .intro h2{font:400 clamp(25px,7vw,31px)/1.17 Georgia,"Songti SC",serif;letter-spacing:-.05em;margin-top:9px;max-width:310px}
+    .intro p{max-width:320px;margin-top:9px;color:#85858b;font-size:11px;line-height:1.7}
+    .category-nav{display:flex;gap:21px;padding:8px 22px 15px;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+    .category-nav::-webkit-scrollbar{display:none}
+    .category-tab{position:relative;flex:0 0 auto;border:0;background:none;color:#999;font-size:12px;padding:7px 0;cursor:pointer}
+    .category-tab small{font:9px Georgia,serif;color:#aaa;margin-left:3px}
+    .category-tab.active{color:#111;font-weight:600}
+    .category-tab.active:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#111;border-radius:2px}
+    .main-content{flex:1;min-height:420px;padding:4px 22px calc(34px + env(safe-area-inset-bottom,0px));overflow-y:auto;overscroll-behavior:contain}
+    .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:13px 0 16px}
+    .section-head h3{font:400 20px/1.15 Georgia,"Songti SC",serif;letter-spacing:-.035em}
+    .section-head p{font-size:10px;line-height:1.5;color:#999;text-align:right;max-width:150px}
+    .product-grid{display:flex;gap:13px;overflow-x:auto;overflow-y:hidden;padding:1px 1px 8px;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;cursor:grab;touch-action:pan-y}.product-grid::-webkit-scrollbar{display:none}.product-grid.dragging{cursor:grabbing;scroll-snap-type:none}
+    .product-card{flex:0 0 min(72vw,248px);min-width:0;min-height:296px;scroll-snap-align:start;background:#f7f7f8;border-radius:17px;padding:12px 12px 13px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+    .product-art{height:112px;background:#fff;border-radius:12px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:15px 12px;overflow:hidden}
+    .product-art:before{content:"";position:absolute;left:12px;right:12px;top:11px;height:2px;background:#f0f0f2}
+    .art-bubble{position:relative;display:block;max-width:84%;padding:7px 9px;border-radius:12px;font-size:9px;line-height:1.5;z-index:1}
+    .art-bubble.left{align-self:flex-start;background:#ededf0;color:#222;border-bottom-left-radius:3px}
+    .art-bubble.right{align-self:flex-end;background:#111;color:#fff;border-bottom-right-radius:3px}
+    .theme-art-imessage{background:#f2f2f7}
+    .theme-art-imessage .art-bubble.right{background:#1687f8}
+    .theme-art-imessage .art-bubble.left{background:#e4e4e9}
+    .theme-art-qq{background:#fafafa}
+    .theme-art-qq .art-bubble.right{background:#b7b7bc;color:#111}
+    .theme-art-qq .art-bubble.left{background:#fff;border:1px solid #e8e8eb}
+    .product-meta{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .product-eyebrow{font:8px/1.3 Georgia,serif;letter-spacing:.14em;color:#999}
+    .product-title{font-size:13px;font-weight:600;line-height:1.4;color:#111;overflow-wrap:anywhere}
+    .product-desc{font-size:10px;line-height:1.55;color:#888;min-height:30px}
+    .product-foot{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-top:auto}
+    .product-price{font:10px Georgia,serif;color:#777}
+    .action-btn{min-height:31px;padding:0 11px;border:1px solid #111;border-radius:999px;background:#111;color:#fff;font-size:10px;cursor:pointer;white-space:nowrap}
+    .action-btn.light{background:#fff;color:#111}
+    .action-btn:disabled{background:#ededf0;border-color:#ededf0;color:#777;cursor:default}
+    .empty-state{padding:34px 18px 38px;text-align:center;background:#f8f8f9;border-radius:17px}
+    .empty-state strong{display:block;font:400 20px/1.2 Georgia,"Songti SC",serif}
+    .empty-state p{max-width:250px;margin:9px auto 15px;color:#888;font-size:11px;line-height:1.7}
+    .scope-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px 0 14px}
+    .scope-row label{font-size:10px;color:#888}
+    .scope-select{max-width:58%;height:32px;padding:0 9px;border:0;border-radius:9px;background:#f3f3f5;color:#333;font-size:10px;outline:none}
+    .bubble-list{display:flex;flex-direction:column;gap:11px}
+    .bubble-card{padding:13px;background:#f7f7f8;border-radius:16px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:11px}
+    .bubble-preview{min-width:0;display:flex;flex-direction:column;gap:7px}
+    .bubble-preview-label{font:8px Georgia,serif;letter-spacing:.13em;color:#999}
+    .sample-row{display:flex;align-items:flex-start;gap:6px}
+    .sample-row.mine{justify-content:flex-end}
+    .sample-avatar{width:17px;height:17px;border-radius:50%;background:#ddd;display:grid;place-items:center;color:#777;font-size:8px;flex:0 0 17px}
+    .sample-bubble{max-width:85%;font-size:10px;line-height:1.45;padding:6px 9px;overflow-wrap:anywhere}
+    .bubble-details{display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+    .bubble-details strong{max-width:118px;font-size:11px;font-weight:600;text-align:right;overflow-wrap:anywhere}
+    .bubble-details small{font-size:9px;color:#999}
+    .font-list{display:flex;flex-direction:column;gap:9px}
+    .font-card{display:flex;align-items:center;gap:12px;padding:14px 13px;background:#f7f7f8;border-radius:15px}
+    .font-specimen{width:76px;min-height:60px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#fff;font-size:20px;color:#111;flex:0 0 76px}
+    .font-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+    .font-info strong{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+    .font-info span{font-size:9px;color:#999;line-height:1.5}
+    .mine-filter{display:flex;gap:7px;overflow-x:auto;margin:0 0 15px;scrollbar-width:none}
+    .mine-filter::-webkit-scrollbar{display:none}
+    .filter-chip{flex:0 0 auto;padding:7px 11px;background:#f3f3f5;border:0;border-radius:999px;color:#777;font-size:10px}
+    .filter-chip.active{background:#111;color:#fff}
+    .mine-list{display:flex;flex-direction:column;gap:9px}
+    .mine-item{display:flex;align-items:center;gap:12px;padding:12px;background:#f7f7f8;border-radius:14px}
+    .mine-mark{width:42px;height:42px;border-radius:11px;background:#fff;display:grid;place-items:center;flex:0 0 42px;font:italic 17px Georgia,serif;color:#333}
+    .mine-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+    .mine-info strong{font-size:11px;font-weight:600;overflow-wrap:anywhere}
+    .mine-info small{font-size:9px;color:#999}
+    .mine-status{font-size:9px;color:#777;white-space:nowrap}
+    .helper-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:19px 0 0;padding:0 1px}
+    .helper-row p{font-size:9px;line-height:1.6;color:#999;max-width:210px}
+    .text-link{border:0;background:none;color:#333;text-decoration:underline;text-decoration-color:#c5c5c9;text-underline-offset:4px;font-size:10px;white-space:nowrap;cursor:pointer}
+    .store-foot{padding:0 22px 19px;color:#b0b0b5;font:8px/1.5 Georgia,serif;letter-spacing:.13em}
+    .toast{position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);background:rgba(17,17,17,.91);color:#fff;padding:10px 15px;border-radius:10px;font-size:11px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:20;white-space:nowrap}
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    @media(max-width:360px){.topbar{padding-left:17px;padding-right:17px}.intro{padding-left:17px;padding-right:17px}.category-nav{padding-left:17px;padding-right:17px;gap:17px}.main-content{padding-left:17px;padding-right:17px}.product-grid{gap:9px}.product-card{flex-basis:78vw;padding:9px}.product-art{height:104px}.store-foot{padding-left:17px;padding-right:17px}}
+  </style>
+</head>
+<body>
+  <div class="store-app">
+    <header class="topbar">
+      <button class="back-mark" type="button" id="backButton" aria-label="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+        <span class="back-copy"><small>RETURN</small><span>返回</span></span>
+      </button>
+      <div class="top-title"><div class="kicker">STYLE COLLECTION / 01</div><h1>主题商城</h1></div>
+      <button class="top-count" type="button" id="myThemesShortcut"><strong id="ownedCount">—</strong><span>我的主题</span></button>
+    </header>
+
+    <section class="intro">
+      <div class="intro-kicker">A LITTLE CHANGE, A NEW FEELING</div>
+      <h2>让每一次对话，<br>都有自己的样子。</h2>
+      <p>挑选聊天主题、气泡样式与字体。已经保存的美化预设和字体方案，会自动出现在这里。</p>
+    </section>
+
+    <nav class="category-nav" id="categoryNav" aria-label="商城分类">
+      <button class="category-tab active" data-category="themes" type="button">主题 <small>01</small></button>
+      <button class="category-tab" data-category="bubbles" type="button">聊天气泡 <small>02</small></button>
+      <button class="category-tab" data-category="fonts" type="button">字体 <small>03</small></button>
+      <button class="category-tab" data-category="mine" type="button">我的主题 <small>04</small></button>
+    </nav>
+
+    <main class="main-content" id="storeContent" aria-live="polite"></main>
+    <footer class="store-foot">LOCAL COLLECTION · YOUR SETTINGS STAY ON THIS DEVICE</footer>
+  </div>
+  <div class="toast" id="storeToast" role="status" aria-live="polite"></div>
+
+  <script>
+  (function(){
+    'use strict';
+    var OWN_KEY='maomao_theme_store_owned_v1';
+    var VISUAL_KEY='beauty_visual_presets_v1';
+    var DELETED_KEY='beauty_visual_presets_deleted_v1';
+    var FONT_DB='maomao-font-presets', FONT_STORE='presets';
+    var categories=['themes','bubbles','fonts','mine'];
+    var categoryNames={themes:'主题',bubbles:'聊天气泡',fonts:'字体',mine:'我的主题'};
+    var currentCategory='themes';
+    var mineFilter='all';
+    var fontRecords=[];
+    var fontPreviewUrls={};
+    var bubbleScopeValue='global';
+    var toastTimer=null;
+    var defaultThemes=[
+      {id:'default',name:'原生黑白',eyebrow:'01 / ORIGINAL',desc:'保留当前聊天界面的黑白基调与原有布局。'},
+      {id:'imessage',name:'iMessage 短信',eyebrow:'02 / MESSAGE',desc:'短信式消息布局与经典蓝灰气泡。'},
+      {id:'qq',name:'QQ 风格',eyebrow:'03 / CLASSIC',desc:'切换到项目已有的 QQ 聊天主题。'}
+    ];
+    var defaultOwned=['default'];
+
+    function readJSON(key,fallback){try{var v=JSON.parse(localStorage.getItem(key)||'null');return v==null?fallback:v;}catch(e){return fallback;}}
+    function writeJSON(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch(e){return false;}}
+    function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+    function toast(message){
+      var el=document.getElementById('storeToast');el.textContent=message;el.classList.add('show');
+      clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.classList.remove('show');},1900);
+    }
+    function getOwned(){
+      var list=readJSON(OWN_KEY,defaultOwned);if(!Array.isArray(list))list=defaultOwned.slice();
+      defaultOwned.forEach(function(id){if(list.indexOf(id)<0)list.push(id);});
+      var active=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default';
+      if(list.indexOf(active)<0)list.push(active);
+      return list;
+    }
+    function setOwned(list){return writeJSON(OWN_KEY,list);}
+    function readVisualPresets(){
+      var list=readJSON(VISUAL_KEY,[]),deleted=readJSON(DELETED_KEY,[]);
+      if(!Array.isArray(list))list=[];if(!Array.isArray(deleted))deleted=[];
+      return list.filter(function(p){return p&&typeof p==='object'&&p.id&&deleted.indexOf(p.id)<0&&p.data&&typeof p.data==='object';});
+    }
+    function readRoles(){
+      var roles=readJSON('ai_custom_characters',[]);return Array.isArray(roles)?roles.filter(function(r){return r&&r.id!=null;}):[];
+    }
+    function initialBubbleScope(){
+      var selected='';try{selected=localStorage.getItem('phone_current_contact')||'';}catch(e){}
+      return readRoles().some(function(role){return String(role.id)===String(selected);})?String(selected):'global';
+    }
+    bubbleScopeValue=initialBubbleScope();
+    function fillScope(){
+      var select=document.getElementById('bubbleScope');if(!select)return;
+      readRoles().forEach(function(role){
+        var option=document.createElement('option');option.value=String(role.id);option.textContent=role.name||('角色 '+role.id);select.appendChild(option);
+      });
+      select.value=bubbleScopeValue;
+      if(!select.value){bubbleScopeValue='global';select.value='global';}
+    }
+    function bubbleKeys(){
+      var defs=window.ChatBeauty&&ChatBeauty.getDefaults?ChatBeauty.getDefaults():{};
+      return Object.keys(defs).filter(function(key){return key!=='chatBg'&&key!=='chatBgDim'&&key!=='themePreset';});
+    }
+    function sameValue(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+    function isBubblePresetActive(preset,scope){
+      if(!window.ChatBeauty||!ChatBeauty.resolve)return false;
+      var current=ChatBeauty.resolve(scope==='global'?null:scope),keys=bubbleKeys(),data=preset.data||{};
+      var compared=0;
+      var matches=keys.every(function(key){if(!Object.prototype.hasOwnProperty.call(data,key))return true;compared++;return sameValue(current[key],data[key]);});
+      return matches&&compared>0;
+    }
+    function bubbleSampleMarkup(data){
+      var my=data.myBubbleBg||'#111111',myColor=data.myBubbleColor||'#fff';
+      var partner=data.partnerBubbleBg||'#fff',partnerColor=data.partnerBubbleColor||'#111';
+      var myRadius=data.myBubbleRadius||'15px 15px 4px 15px';
+      var partnerRadius=data.partnerBubbleRadius||'15px 15px 15px 4px';
+      var myFont=data.myBubbleFontSize||12,partnerFont=data.partnerBubbleFontSize||12;
+      var myPad=data.myBubblePadding||data.bubblePadding||10,partnerPad=data.partnerBubblePadding||data.bubblePadding||10;
+      var myOpacity=Number(data.myBubbleOpacity==null?100:data.myBubbleOpacity),partnerOpacity=Number(data.partnerBubbleOpacity==null?100:data.partnerBubbleOpacity);
+      var myFamily=data.myBubbleFontFamily==='serif'?'Georgia,"Songti SC",serif':(data.myBubbleFontFamily==='mono'?'monospace':'-apple-system,BlinkMacSystemFont,sans-serif');
+      var taFamily=data.partnerBubbleFontFamily==='serif'?'Georgia,"Songti SC",serif':(data.partnerBubbleFontFamily==='mono'?'monospace':'-apple-system,BlinkMacSystemFont,sans-serif');
+      return '<div class="sample-row"><span class="sample-avatar">对</span><span class="sample-bubble" style="background:color-mix(in srgb,'+esc(partner)+' '+partnerOpacity+'%,transparent);color:'+esc(partnerColor)+';border-radius:'+esc(partnerRadius)+';font-size:'+Number(partnerFont)+'px;padding:'+Math.max(2,Number(partnerPad)-.5)+'px '+(Number(partnerPad)+3)+'px;font-family:'+taFamily+'">今天有空吗？</span></div>'+
+        '<div class="sample-row mine"><span class="sample-bubble" style="background:color-mix(in srgb,'+esc(my)+' '+myOpacity+'%,transparent);color:'+esc(myColor)+';border-radius:'+esc(myRadius)+';font-size:'+Number(myFont)+'px;padding:'+Math.max(2,Number(myPad)-.5)+'px '+(Number(myPad)+3)+'px;font-family:'+myFamily+'">有呀，等会见。</span><span class="sample-avatar">我</span></div>';
+    }
+    function themeArt(theme){
+      return '<div class="product-art theme-art-'+theme.id+'"><span class="art-bubble left">今天下午一起吗？</span><span class="art-bubble right">好，等你。</span><span class="art-bubble left">那就老地方。</span></div>';
+    }
+    function renderThemes(){
+      var active=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default',owned=getOwned();
+      var html='<div class="section-head"><div><h3>整套聊天主题</h3></div><p>一键切换聊天页的整体呈现</p></div><div class="product-grid">';
+      defaultThemes.forEach(function(item){
+        var isOwned=owned.indexOf(item.id)>=0,isActive=active===item.id;
+        var label=isActive?'正在使用':(isOwned?'应用主题':'免费获取并应用');
+        html+='<article class="product-card">'+themeArt(item)+'<div class="product-meta"><span class="product-eyebrow">'+item.eyebrow+'</span><strong class="product-title">'+item.name+'</strong><span class="product-desc">'+item.desc+'</span></div><div class="product-foot"><span class="product-price">'+(isOwned?'已收录':'FREE')+'</span><button type="button" class="action-btn '+(isOwned?'light':'')+'" data-action="theme-apply" data-id="'+item.id+'" '+(isActive?'disabled':'')+'>'+label+'</button></div></article>';
+      });
+      html+='</div><div class="helper-row"><p>主题直接使用聊天系统已有的主题配置，不会覆盖单独保存的气泡细节。</p><button class="text-link" data-action="open-beauty" type="button">进入聊天美化</button></div>';
+      return html;
+    }
+    function renderBubbles(){
+      var presets=readVisualPresets(),scopeSelect='<div class="scope-row"><label for="bubbleScope">应用范围</label><select id="bubbleScope" class="scope-select"><option value="global">全部聊天 · 全局</option></select></div>';
+      var html='<div class="section-head"><div><h3>聊天气泡预设</h3></div><p>与聊天美化中的已保存预设同步</p></div>'+scopeSelect;
+      if(!presets.length){
+        html+='<div class="empty-state"><strong>这里还没有气泡预设</strong><p>在聊天美化里调好气泡样式，保存为预设后，就会自动出现在这里。</p><button class="action-btn" type="button" data-action="open-beauty">去创建气泡预设</button></div>';
+      }else{
+        html+='<div class="bubble-list">';
+        presets.forEach(function(p){
+          var active=isBubblePresetActive(p,bubbleScopeValue);
+          html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">BUBBLE PRESET</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':'已保存')+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
+        });
+        html+='</div>';
+      }
+      html+='<div class="helper-row"><p>应用后写入 ChatBeauty 的全局或角色配置，聊天页会读取同一份设置。</p><button class="text-link" data-action="open-beauty" type="button">调整更多细节</button></div>';
+      return html;
+    }
+    function openFontDB(){
+      return new Promise(function(resolve,reject){
+        if(!window.indexedDB){reject(new Error('当前浏览器不支持本地字体库'));return;}
+        var request;
+        try{request=indexedDB.open(FONT_DB,1);}catch(e){reject(e);return;}
+        request.onupgradeneeded=function(){if(!request.result.objectStoreNames.contains(FONT_STORE))request.result.createObjectStore(FONT_STORE,{keyPath:'id'});};
+        request.onsuccess=function(){resolve(request.result);};
+        request.onerror=function(){reject(request.error||new Error('字体库读取失败'));};
+      });
+    }
+    function loadFonts(){
+      return openFontDB().then(function(db){
+        return new Promise(function(resolve,reject){
+          var tx=db.transaction(FONT_STORE,'readonly'),req=tx.objectStore(FONT_STORE).getAll();
+          req.onsuccess=function(){fontRecords=req.result||[];};
+          req.onerror=function(){db.close();reject(req.error||new Error('读取字体失败'));};
+          tx.oncomplete=function(){db.close();resolve(fontRecords);};
+          tx.onerror=function(){db.close();reject(tx.error||new Error('读取字体失败'));};
+        });
+      }).catch(function(){fontRecords=[];});
+    }
+    function activeFontId(){try{return localStorage.getItem('active_font_preset_id')||'';}catch(e){return '';}}
+    function activeFontUrl(){try{return localStorage.getItem('custom_font_url')||'';}catch(e){return '';}}
+    function renderFonts(){
+      var active=activeFontId(),activeUrl=activeFontUrl(),html='<div class="section-head"><div><h3>字体方案</h3></div><p>使用字体设置中已经保存的方案</p></div><div class="font-list">';
+      html+='<article class="font-card"><div class="font-specimen">Aa 字</div><div class="font-info"><strong>系统默认</strong><span>设备原生字体 · 不额外加载字体文件</span></div><button class="action-btn light" data-action="font-default" type="button" '+(!active&&!activeUrl?'disabled':'')+'>'+(!active&&!activeUrl?'正在使用':'恢复')+'</button></article>';
+      if(activeUrl)html+='<article class="font-card"><div class="font-specimen">URL</div><div class="font-info"><strong>自定义链接字体</strong><span>当前通过字体链接应用</span></div><span class="mine-status">正在使用</span></article>';
+      if(!fontRecords.length&&!activeUrl){
+        html+='</div><div class="empty-state" style="margin-top:12px"><strong>还没有保存的字体方案</strong><p>导入 TTF / WOFF 字体并保存后，这里就能直接切换。</p><button class="action-btn" type="button" data-action="open-font-settings">去字体设置</button></div>';
+      }else{
+        fontRecords.slice().sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);}).forEach(function(record,index){
+          var isActive=active===record.id;
+          html+='<article class="font-card"><div class="font-specimen" data-font-specimen="'+esc(record.id)+'">Aa 字</div><div class="font-info"><strong>'+esc(record.name||'未命名字体')+'</strong><span>'+(record.type==='file'?'本地字体文件':'字体链接')+' · 已保存</span></div><button class="action-btn '+(isActive?'light':'')+'" data-action="font-apply" data-id="'+esc(record.id)+'" type="button" '+(isActive?'disabled':'')+'>'+(isActive?'正在使用':'应用')+'</button></article>';
+        });
+        html+='</div><div class="helper-row"><p>字体来自你在本机保存的方案，不会上传到商城。</p><button class="text-link" data-action="open-font-settings" type="button">管理字体</button></div>';
+      }
+      return html;
+    }
+    function currentBubbleName(presets,scope){
+      for(var i=0;i<presets.length;i++)if(isBubblePresetActive(presets[i],scope))return presets[i].name||'已保存气泡预设';
+      return '自定义气泡样式';
+    }
+    function renderMine(){
+      var owned=getOwned(),activeTheme=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default';
+      var presets=readVisualPresets(),scope=bubbleScopeValue;
+      var html='<div class="section-head"><div><h3>我的主题</h3></div><p>已收录、已保存与正在使用的样式</p></div><div class="mine-filter">';
+      [['all','全部'],['themes','主题'],['bubbles','气泡'],['fonts','字体']].forEach(function(pair){html+='<button class="filter-chip '+(mineFilter===pair[0]?'active':'')+'" type="button" data-filter="'+pair[0]+'">'+pair[1]+'</button>';});
+      html+='</div><div class="mine-list">';
+      var count=0;
+      function addMine(type,name,detail,active,mark,id){
+        if(mineFilter!=='all'&&mineFilter!==type)return;
+        count++;
+        html+='<article class="mine-item"><div class="mine-mark">'+mark+'</div><div class="mine-info"><strong>'+esc(name)+'</strong><small>'+esc(detail)+'</small></div><span class="mine-status">'+(active?'正在使用':'已收录')+'</span></article>';
+      }
+      defaultThemes.forEach(function(t){if(owned.indexOf(t.id)>=0||activeTheme===t.id)addMine('themes',t.name,'聊天主题',activeTheme===t.id,'T',t.id);});
+      presets.forEach(function(p){addMine('bubbles',p.name||'未命名气泡预设', '来自聊天美化 · 气泡',isBubblePresetActive(p,scope),'B',p.id);});
+      addMine('fonts','系统默认','设备原生字体',!activeFontId()&&!activeFontUrl(),'Aa','system');
+      if(activeFontUrl())addMine('fonts','自定义链接字体','当前应用的字体链接',true,'URL','custom-url');
+      fontRecords.forEach(function(record){addMine('fonts',record.name||'未命名字体',record.type==='file'?'本地字体文件':'字体链接',activeFontId()===record.id,'Aa',record.id);});
+      html+='</div>';
+      if(!count)html+='<div class="empty-state"><strong>还没有收录内容</strong><p>获取主题、保存气泡预设或导入字体后，它们都会集中显示在这里。</p></div>';
+      html+='<div class="helper-row"><p>已保存的聊天美化预设、字体方案会自动同步到本页。</p><button class="text-link" data-action="refresh" type="button">刷新列表</button></div>';
+      return html;
+    }
+    function updateOwnedCount(){
+      var owned=getOwned(),presets=readVisualPresets();
+      document.getElementById('ownedCount').textContent=String(owned.length+presets.length+fontRecords.length+(activeFontUrl()?1:0)).padStart(2,'0');
+    }
+    function enableProductDrag(){
+      var rail=document.querySelector('.product-grid');if(!rail||rail.dataset.dragReady)return;
+      rail.dataset.dragReady='1';var start=null;
+      rail.addEventListener('pointerdown',function(event){
+        if(event.pointerType==='touch'||event.button!==0||event.target.closest('button'))return;
+        start={x:event.clientX,scroll:rail.scrollLeft,moved:false};
+      });
+      rail.addEventListener('pointermove',function(event){
+        if(!start)return;var dx=event.clientX-start.x;
+        if(Math.abs(dx)>4){start.moved=true;rail.classList.add('dragging');rail.scrollLeft=start.scroll-dx;}
+      });
+      function end(){start=null;rail.classList.remove('dragging');}
+      rail.addEventListener('pointerup',end);rail.addEventListener('pointercancel',end);rail.addEventListener('pointerleave',end);
+    }
+    function render(){
+      var content=document.getElementById('storeContent');
+      document.querySelectorAll('.category-tab').forEach(function(button){button.classList.toggle('active',button.dataset.category===currentCategory);});
+      if(currentCategory==='themes')content.innerHTML=renderThemes();
+      else if(currentCategory==='bubbles')content.innerHTML=renderBubbles();
+      else if(currentCategory==='fonts')content.innerHTML=renderFonts();
+      else content.innerHTML=renderMine();
+      if(currentCategory==='bubbles')fillScope();
+      if(currentCategory==='fonts')bindFontSpecimens();
+      if(currentCategory==='mine')document.querySelectorAll('[data-filter]').forEach(function(button){button.classList.toggle('active',button.dataset.filter===mineFilter);});
+      if(currentCategory==='themes')enableProductDrag();
+      updateOwnedCount();
+    }
+    function setCategory(category){
+      if(categories.indexOf(category)<0)return;
+      currentCategory=category;render();
+      document.getElementById('storeContent').scrollTop=0;
+    }
+    function applyBubblePreset(id){
+      var preset=readVisualPresets().filter(function(p){return String(p.id)===String(id);})[0];
+      if(!preset||!window.ChatBeauty||!ChatBeauty.save){toast('没有找到这条预设，请刷新列表');return;}
+      var scope=bubbleScopeValue;
+      var data=preset.data||{},payload={},keys=bubbleKeys();
+      keys.forEach(function(key){if(Object.prototype.hasOwnProperty.call(data,key))payload[key]=data[key];});
+      if(!Object.keys(payload).length){toast('这条预设没有可应用的气泡参数');return;}
+      if(!ChatBeauty.save(scope,payload)){toast('应用失败，请检查本机存储空间');return;}
+      try{window.dispatchEvent(new CustomEvent('maomao:chat-theme-change',{detail:{scope:scope,presetId:preset.id}}));}catch(e){}
+      toast(scope==='global'?'已应用到全部聊天':'已应用到所选角色');
+      render();
+    }
+    function applyTheme(id){
+      if(!window.ChatBeauty||!ChatBeauty.setThemePreset){toast('聊天主题模块暂不可用');return;}
+      var owned=getOwned();
+      if(owned.indexOf(id)<0){owned.push(id);if(!setOwned(owned)){toast('收录失败，请检查本机存储空间');return;}}
+      if(!ChatBeauty.setThemePreset(id)){toast('主题应用失败');return;}
+      try{window.dispatchEvent(new CustomEvent('maomao:chat-theme-change',{detail:{theme:id}}));}catch(e){}
+      toast('已应用「'+(defaultThemes.filter(function(t){return t.id===id;})[0]||{}).name+'」');
+      render();
+    }
+    function openFontDBRecord(id){
+      return openFontDB().then(function(db){
+        return new Promise(function(resolve,reject){
+          var tx=db.transaction(FONT_STORE,'readonly'),req=tx.objectStore(FONT_STORE).get(id);
+          req.onsuccess=function(){resolve(req.result||null);};
+          req.onerror=function(){reject(req.error||new Error('字体读取失败'));};
+          tx.oncomplete=function(){db.close();};
+          tx.onerror=function(){db.close();reject(tx.error||new Error('字体读取失败'));};
+        });
+      });
+    }
+    function applyFont(id){
+      openFontDBRecord(id).then(function(record){
+        if(!record){toast('字体方案不存在，可能已被删除');return;}
+        try{localStorage.setItem('active_font_preset_id',record.id);localStorage.removeItem('custom_font_url');}catch(e){}
+        if(window.MAOMAOFontRuntime){
+          if(record.type==='file'&&record.blob)window.MAOMAOFontRuntime.applyBlob(record.blob,record.format||'truetype');
+          else if(record.url)window.MAOMAOFontRuntime.applyUrl(record.url,record.format||'woff');
+        }
+        toast('已应用字体「'+(record.name||'未命名字体')+'」');
+        render();
+      }).catch(function(){toast('读取字体方案失败');});
+    }
+    function useSystemFont(){
+      try{localStorage.removeItem('active_font_preset_id');localStorage.removeItem('custom_font_url');}catch(e){}
+      if(window.MAOMAOFontRuntime)window.MAOMAOFontRuntime.clear();
+      toast('已恢复系统默认字体');render();
+    }
+    function bindFontSpecimens(){
+      if(!window.FontFace||!window.URL||!URL.createObjectURL)return;
+      document.querySelectorAll('[data-font-specimen]').forEach(function(el){
+        var record=fontRecords.filter(function(r){return String(r.id)===el.dataset.fontSpecimen;})[0];
+        if(!record)return;
+        var cacheKey=String(record.id);
+        if(!fontPreviewUrls[cacheKey])fontPreviewUrls[cacheKey]=record.type==='file'&&record.blob?URL.createObjectURL(record.blob):(record.url||'');
+        var source=fontPreviewUrls[cacheKey];if(!source)return;
+        var family='StorePreview_'+String(record.id).replace(/[^a-z0-9_-]/gi,'');
+        var face=new FontFace(family,'url("'+String(source).replace(/["']/g,'')+'")');
+        face.load().then(function(loaded){document.fonts.add(loaded);el.style.fontFamily='"'+family+'",sans-serif';}).catch(function(){});
+      });
+    }
+    function openPage(relative){
+      window.location.href=relative;
+    }
+    document.getElementById('categoryNav').addEventListener('click',function(event){
+      var button=event.target.closest('[data-category]');if(button)setCategory(button.dataset.category);
+    });
+    document.getElementById('myThemesShortcut').addEventListener('click',function(){setCategory('mine');});
+    document.getElementById('backButton').addEventListener('click',function(){
+      if(window.history.length>1)window.history.back();else openPage('../index.html');
+    });
+    document.getElementById('storeContent').addEventListener('click',function(event){
+      var filter=event.target.closest('[data-filter]');
+      if(filter){mineFilter=filter.dataset.filter;render();return;}
+      var select=event.target.closest('#bubbleScope');
+      if(select){return;}
+      var action=event.target.closest('[data-action]');if(!action)return;
+      var id=action.dataset.id;
+      if(action.dataset.action==='theme-apply')applyTheme(id);
+      else if(action.dataset.action==='bubble-apply')applyBubblePreset(id);
+      else if(action.dataset.action==='font-apply')applyFont(id);
+      else if(action.dataset.action==='font-default')useSystemFont();
+      else if(action.dataset.action==='open-beauty')openPage('../beauty/beauty.html');
+      else if(action.dataset.action==='open-font-settings')openPage('../settings/font-settings.html');
+      else if(action.dataset.action==='refresh'){refreshAll();}
+    });
+    document.getElementById('storeContent').addEventListener('change',function(event){
+      if(event.target&&event.target.id==='bubbleScope'){bubbleScopeValue=event.target.value||'global';render();}
+    });
+    document.getElementById('storeContent').addEventListener('touchstart',function(event){
+      if(event.target.closest&&event.target.closest('.product-grid')){this._swipeX=null;this._swipeY=null;return;}
+      if(!event.touches||!event.touches.length)return;
+      this._swipeX=event.touches[0].clientX;this._swipeY=event.touches[0].clientY;
+    },{passive:true});
+    document.getElementById('storeContent').addEventListener('touchend',function(event){
+      if(this._swipeX==null||!event.changedTouches||!event.changedTouches.length)return;
+      var dx=event.changedTouches[0].clientX-this._swipeX,dy=event.changedTouches[0].clientY-this._swipeY;
+      this._swipeX=null;this._swipeY=null;
+      if(Math.abs(dx)>75&&Math.abs(dy)<55){
+        var index=categories.indexOf(currentCategory),next=index+(dx<0?1:-1);
+        if(next>=0&&next<categories.length)setCategory(categories[next]);
+      }
+    },{passive:true});
+    function refreshAll(){
+      loadFonts().then(function(){render();bindFontSpecimens();});
+      if(currentCategory==='bubbles'||currentCategory==='mine')render();
+    }
+    window.addEventListener('pageshow',refreshAll);
+    window.addEventListener('storage',function(event){
+      if(!event.key||[VISUAL_KEY,DELETED_KEY,'beauty_chat_global_v1','maomao_chat_theme_preset','active_font_preset_id',OWN_KEY].indexOf(event.key)>=0)refreshAll();
+    });
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)refreshAll();});
+    loadFonts().then(function(){render();bindFontSpecimens();});
+  })();
+  </script>
+</body>
+</html>

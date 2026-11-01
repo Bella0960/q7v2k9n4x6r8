@@ -6,11 +6,14 @@ import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-// Auto-detect all HTML entry points (root + feature subfolders) for multi-page setup
+// Auto-detect app HTML entry points only. Never scan dependency/build folders:
+// node_modules contains third-party demo HTML (e.g. Playwright's Vite dashboard)
+// that is not part of this app and may reference assets unavailable to this build.
 const htmlFiles = {};
+const excludedHtmlDirs = new Set(['node_modules', 'dist', '.wrangler']);
 (function collectHtml(dir, prefix) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
+    if (entry.name.startsWith('.') || excludedHtmlDirs.has(entry.name)) continue;
     const abs = resolve(dir, entry.name);
     if (entry.isDirectory()) {
       collectHtml(abs, prefix + entry.name + '/');

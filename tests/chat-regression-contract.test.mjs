@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const groupPlay = read('chat/chat/group-play.html');
 const inspectPhone = read('inspect-phone/phone.html');
 const forumPage = read('forum/forum.html');
 const footprint = read('chat/footprint/footprint.html');
@@ -33,10 +34,23 @@ const contextPolicySource = read('shared/js/phone/chat-context-policy.js');
 const contextPolicyWindow = {};
 runInNewContext(contextPolicySource, { window: contextPolicyWindow, globalThis: {} });
 const contextPolicy = contextPolicyWindow.ChatContextPolicy;
+const phoneContextSource = read('shared/js/phone/phone_context.js');
+const phoneContextWindow = { PhoneStorage: {} };
+runInNewContext(phoneContextSource, { window: phoneContextWindow });
+const phoneContext = phoneContextWindow.PhoneContext;
 const sendPolicySource = read('shared/js/phone/chat-send-policy.js');
 const sendPolicyWindow = {};
 runInNewContext(sendPolicySource, { window: sendPolicyWindow, globalThis: {} });
 const sendPolicy = sendPolicyWindow.ChatSendPolicy;
+const groupPolicySource = read('shared/js/phone/group-chat-policy.js');
+const groupPolicyWindow = {};
+runInNewContext(groupPolicySource, { window: groupPolicyWindow, globalThis: {} });
+const groupPolicy = groupPolicyWindow.GroupChatPolicy;
+const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
+const presencePolicyWindow = {};
+runInNewContext(presencePolicySource, { window: presencePolicyWindow });
+const presencePolicy = presencePolicyWindow.ChatPresencePolicy;
+
 const serviceWorker = read('sw.js');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -380,6 +394,95 @@ test('shared context policy preserves weighted long-term memory injection tiers'
   assert.ok(detail.includes('Compatibility fallback: preserve the original fixed/confirmed/pending and clear/vague rules'));
 });
 
+test('living worldbook retrieval respects nested entries, trigger modes and legacy books', () => {
+  assert.equal(typeof contextPolicy.buildWorldbookInjectionText, 'function');
+  const books = [
+    {
+      title: '日常生活',
+      content: '不应与嵌套条目重复注入',
+      keywords: ['海边'],
+      entries: [
+        { name: '雨天习惯', content: '下雨时会把窗户关小一点。', position: 'front', injectMode: 'keyword', keywords: ['下雨', '雨天'] },
+        { name: '固定习惯', content: '每天早上先喝一杯温水。', position: 'middle', injectMode: 'always' },
+        { name: '偶尔想起', content: '偶尔会去海边散步。', position: 'back', injectMode: 'keyword' },
+        { name: '概率碎片', content: '最近在学做面包。', injectMode: 'probability', probability: 30 },
+        { name: '已停用', content: '这条不能出现。', enabled: false, injectMode: 'always' }
+      ]
+    },
+    { title: '旧版资料', content: '旧格式内容仍应保留。' }
+  ];
+  const result = contextPolicy.buildWorldbookInjectionText(books, {
+    currentText: '今天外面下雨了，我想去海边。',
+    recentMessages: [],
+    random: () => 0.2,
+    maxEntries: 20,
+    maxChars: 8000
+  });
+  assert.ok(result.indexOf('雨天习惯') < result.indexOf('固定习惯'), 'front entries should appear first');
+  assert.ok(result.includes('每天早上先喝一杯温水。'));
+  assert.ok(result.includes('偶尔会去海边散步。'), 'book-level keywords should be inherited by entries');
+  assert.ok(result.includes('最近在学做面包。'), 'probability entries should honor the supplied random source');
+  assert.ok(result.includes('旧格式内容仍应保留。'));
+  assert.equal(result.includes('不应与嵌套条目重复注入'), false);
+  assert.equal(result.includes('这条不能出现'), false);
+
+  const noTrigger = contextPolicy.buildWorldbookInjectionText([{
+    title: '旧事',
+    entries: [{ name: '毕业旅行', content: '曾经去过山城。', injectMode: 'keyword', keywords: ['毕业旅行'] }]
+  }], { currentText: '晚饭吃什么', recentMessages: [], random: () => 0 });
+  assert.equal(noTrigger, '');
+
+  const recentTrigger = contextPolicy.buildWorldbookInjectionText([{
+    title: '近期话题',
+    entries: [{ name: '工作', content: '最近换了一个项目。', injectMode: 'keyword', keywords: ['新项目'] }]
+  }], {
+    currentText: '你今天忙吗？',
+    recentMessages: [{ role: 'user', text: '我接手了一个新项目。' }]
+  });
+  assert.ok(recentTrigger.includes('最近换了一个项目。'), 'recent dialogue should keep a relevant entry available');
+});
+
+test('shared PhoneContext uses keyword-triggered living worldbook entries', () => {
+  assert.equal(typeof phoneContext.buildWorldbookInjectionText, 'function');
+  const result = phoneContext.buildWorldbookInjectionText([
+    {
+      title: '角色日常',
+      entries: [
+        { name: '固定习惯', content: '出门前总会检查钥匙。', injectMode: 'always' },
+        { name: '夜间安排', content: '夜班结束后会去便利店买热饮。', injectMode: 'keyword', keywords: ['夜班'] },
+        { name: '停用事项', content: '这条已停用。', enabled: false, injectMode: 'always' }
+      ]
+    }
+  ], {
+    recentMessages: [{ role: 'user', text: '我今天又要上夜班了。' }],
+    maxEntries: 10,
+    maxChars: 8000
+  });
+  assert.ok(result.includes('出门前总会检查钥匙。'));
+  assert.ok(result.includes('夜班结束后会去便利店买热饮。'));
+  assert.equal(result.includes('这条已停用'), false);
+});
+
+test('living worldbook retrieval applies entry and character-count budgets', () => {
+  const entries = Array.from({ length: 6 }, (_, index) => ({
+    name: '条目' + index,
+    content: '设定内容' + index,
+    injectMode: 'always',
+    position: index === 5 ? 'back' : 'middle'
+  }));
+  const result = contextPolicy.buildWorldbookInjectionText([{ title: '预算', entries }], {
+    maxEntries: 2,
+    maxChars: 300
+  });
+  assert.equal((result.match(/【预算 ·/g) || []).length, 2);
+  const clipped = contextPolicy.buildWorldbookInjectionText([{
+    title: '长文本',
+    entries: [{ name: '长条目', content: '甲'.repeat(100), injectMode: 'always' }]
+  }], { maxChars: 24 });
+  assert.ok(clipped.length <= 24);
+  assert.ok(clipped.endsWith('…'));
+});
+
 test('send options normalization preserves legacy defaults and clamps group auto depth', () => {
   assert.equal(typeof sendPolicy.normalizeOptions, 'function');
   const asPlainObject = (value) => JSON.parse(JSON.stringify(value));
@@ -482,15 +585,386 @@ test('send preflight keeps guard precedence and evaluates later checks lazily', 
   assert.match(detail, /preflightReason === 'group-unavailable'/);
 });
 
+
+test('group chat policy resolves @mentions before weighted speaker selection', () => {
+  assert.equal(typeof groupPolicy.extractMentionedMemberIds, 'function');
+  assert.equal(typeof groupPolicy.selectSpeaker, 'function');
+  const members = [
+    { id: 'role-a', name: '小林', nickname: '林林' },
+    { id: 'role-b', name: '阿岚' },
+    { id: 'role-c', name: '夜班搭档' }
+  ];
+  assert.deepEqual(
+    Array.from(groupPolicy.extractMentionedMemberIds('这件事问问 @林林，再听听 @夜班搭档。@unknown', members)),
+    ['role-a', 'role-c']
+  );
+  assert.deepEqual(
+    Array.from(groupPolicy.getPendingMentionIds([
+      { role: 'user', text: '@林林 @阿岚 @夜班搭档' },
+      { role: 'assistant', memberId: 'role-a', text: '我来回答。' },
+      { role: 'assistant', memberId: 'role-b', text: '我也补充一句。' }
+    ], members, [members[0], members[1], members[2]], '')),
+    ['role-c']
+  );
+
+  const first = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    mentionQueueIds: ['role-a', 'role-c'],
+    isFollowup: false,
+    random: () => 0.99
+  });
+  assert.equal(first.member.id, 'role-a');
+  assert.equal(first.isMentioned, true);
+
+  const second = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    mentionQueueIds: ['role-a', 'role-c'],
+    isFollowup: true,
+    previousSpeakerId: 'role-a',
+    random: () => 0.99
+  });
+  assert.equal(second.member.id, 'role-c');
+  assert.equal(second.isMentioned, true);
+});
+
+test('an explicit @mention can select the immediately previous speaker', () => {
+  const members = [
+    { id: 'role-a', name: '小林' },
+    { id: 'role-b', name: '阿岚' }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    mentionQueueIds: ['role-a'],
+    isFollowup: true,
+    previousSpeakerId: 'role-a',
+    random: () => 0.99
+  });
+  assert.equal(decision.member.id, 'role-a');
+  assert.equal(decision.isMentioned, true);
+});
+
+test('group relationship familiarity affects which member is more likely to pick up a thread', () => {
+  const weighted = groupPolicy.selectSpeaker({
+    availableMembers: [{ id: 'role-c' }, { id: 'role-b' }],
+    members: [{ id: 'role-a' }, { id: 'role-b' }, { id: 'role-c' }],
+    previousSpeakerId: 'role-a',
+    relationships: {
+      '["role-a","role-b"]': { familiarity: 100, interactions: 0 }
+    },
+    random: () => 0.4
+  });
+  assert.equal(weighted.member.id, 'role-b');
+  assert.equal(weighted.isMentioned, false);
+});
+
+test('directional group relationships keep each character perspective independent', () => {
+  const relationships = {
+    '["role-a","role-b"]': {
+      directions: {
+        'role-a': { fromId: 'role-a', toId: 'role-b', intimacy: 82, trust: 24, type: '朋友', moodToward: 'warm' },
+        'role-b': { fromId: 'role-b', toId: 'role-a', intimacy: 16, trust: 91, type: '竞争对手', moodToward: 'cold' }
+      }
+    }
+  };
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-a', 'role-b').intimacy, 82);
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-a', 'role-b').trust, 24);
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-b', 'role-a').intimacy, 16);
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-b', 'role-a').trust, 91);
+});
+
+test('group routing weighs topic relevance and each member talkativeness', () => {
+  const members = [
+    { id: 'music', talkativeness: 1, replyThreshold: 30, interests: ['音乐'] },
+    { id: 'quiet', talkativeness: 0.1, replyThreshold: 85, interests: ['历史'] }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    text: '我们来聊聊音乐吧',
+    random: () => 0.5
+  });
+  assert.equal(decision.member.id, 'music');
+  assert.equal(decision.fallback, false);
+});
+
+test('group message keyword extraction filters filler words and retains useful short-message terms', () => {
+  const keywords = groupPolicy.extractKeywords('今天加班到十点累死了');
+  assert.ok(keywords.includes('加班'));
+  assert.ok(keywords.includes('十点'));
+  assert.ok(keywords.includes('累死'));
+  assert.equal(keywords.includes('今天'), false);
+  assert.equal(keywords.includes('到'), false);
+  assert.equal(keywords.includes('了'), false);
+});
+
+test('group keyword extraction improves synonym matching without breaking phrase tags', () => {
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['工作'] },
+    '今天加班到很晚'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { expertiseTags: ['心理学'] },
+    '我最近有点疲惫'
+  ) > 0, true);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['前端开发'] },
+    '今天在做前端开发'
+  ), 100);
+});
+
+test('keyword extraction keeps a fallback when Intl.Segmenter is unavailable', () => {
+  const fallbackWindow = {};
+  runInNewContext(groupPolicySource, {
+    window: fallbackWindow,
+    Intl: null,
+    globalThis: {}
+  });
+  const fallbackPolicy = fallbackWindow.GroupChatPolicy;
+  const keywords = fallbackPolicy.extractKeywords('今天加班到十点累死了');
+  assert.ok(keywords.includes('加班'));
+  assert.ok(keywords.includes('十点'));
+  assert.ok(keywords.includes('累死'));
+  assert.equal(fallbackPolicy.calculateTopicRelevance(
+    { interestTags: ['工作'] },
+    '今天加班了'
+  ), 100);
+});
+
+test('group topic matching supports synonym groups and keeps legacy interests readable', () => {
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['编程'] },
+    '我今天敲代码到很晚'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interests: ['篮球'] },
+    '晚上一起打球吧'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['篮球', '咖啡'] },
+    '周末打球'
+  ), 50);
+});
+
+test('expertise and background tags contribute independently to topic relevance', () => {
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { expertiseTags: ['React'] },
+    '这个 React 组件怎么写？'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { backgroundTags: ['大学室友'] },
+    '大学室友今天来找我了'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['音乐'], expertiseTags: ['React'] },
+    'React 组件怎么写？',
+    { type: 'help' }
+  ) > groupPolicy.calculateTopicRelevance(
+    { interestTags: ['音乐'], expertiseTags: ['React'] },
+    'React 组件怎么写？',
+    { type: 'casual' }
+  ), true);
+});
+
+test('local group message context detects emotion, invitations, help and conflict', () => {
+  assert.equal(groupPolicy.analyzeMessageContext('今天加班到很晚，真的好累').type, 'emotional');
+  assert.equal(groupPolicy.analyzeMessageContext('周末要不要一起去打球？').type, 'invitation');
+  assert.equal(groupPolicy.analyzeMessageContext('这个 React 组件为什么报错？').type, 'help');
+  assert.equal(groupPolicy.analyzeMessageContext('我和他昨天吵架了').type, 'conflict');
+  assert.equal(groupPolicy.analyzeMessageContext('晚上吃什么').type, 'casual');
+});
+
+test('user messages do not inherit a previous role-to-role relationship weight', () => {
+  const members = [
+    { id: 'role-c', talkativeness: 0.5, replyThreshold: 30 },
+    { id: 'role-b', talkativeness: 0.5, replyThreshold: 30 }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    isFollowup: true,
+    previousSpeakerId: 'role-a',
+    relationshipTargetId: '',
+    relationships: {
+      '["role-a","role-c"]': { familiarity: 100 }
+    },
+    random: () => 0.6
+  });
+  assert.equal(decision.member.id, 'role-b');
+  assert.equal(decision.relationship, null);
+});
+
+test('group routing falls back to the most talkative member below all thresholds', () => {
+  const members = [
+    { id: 'quiet', talkativeness: 0.2, replyThreshold: 85 },
+    { id: 'chatty', talkativeness: 0.9, replyThreshold: 85 }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    text: '随便聊聊',
+    random: () => 0
+  });
+  assert.equal(decision.member.id, 'chatty');
+  assert.equal(decision.fallback, true);
+});
+
+test('relationship event severity caps proposed changes and sanitizes its reason', () => {
+  const normalized = groupPolicy.normalizeRelationshipEvent({
+    level: 'micro',
+    intimacyDelta: 40,
+    trustDelta: -30,
+    summary: '兑现了承诺\n并按时出现'
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized)), {
+    level: 'micro',
+    intimacyDelta: 2,
+    trustDelta: -2,
+    summary: '兑现了承诺 并按时出现'
+  });
+  assert.equal(groupPolicy.normalizeRelationshipEvent({
+    level: 'ordinary', intimacyDelta: 5, trustDelta: 5, summary: '普通寒暄'
+  }), null);
+  assert.equal(groupPolicy.normalizeRelationshipEvent({
+    level: 'major', intimacyDelta: 0, trustDelta: 0, summary: '没有变化'
+  }), null);
+});
+
+test('negative trust changes create repair debt and slow later recovery', () => {
+  const direction = { intimacy: 50, trust: 60, trustRecoveryDebt: 0, eventHistory: [] };
+  const loss = groupPolicy.applyRelationshipEvent(direction, {
+    level: 'major', intimacyDelta: 0, trustDelta: -8, summary: '明确失信'
+  }, 1000);
+  assert.equal(loss.trustDelta, -8);
+  assert.equal(direction.trust, 52);
+  assert.equal(direction.trustRecoveryDebt, 12);
+
+  const recovery = groupPolicy.applyRelationshipEvent(direction, {
+    level: 'moderate', intimacyDelta: 0, trustDelta: 5, summary: '主动解释并兑现补救'
+  }, 2000);
+  assert.equal(recovery.trustDelta, 4);
+  assert.equal(direction.trust, 56);
+  assert.equal(direction.trustRecoveryDebt, 10);
+  assert.equal(direction.eventHistory.length, 2);
+});
+
+test('relationship event history is bounded and invalid events do not mutate scores', () => {
+  const direction = { intimacy: 50, trust: 50, trustRecoveryDebt: 0, eventHistory: [] };
+  assert.equal(groupPolicy.applyRelationshipEvent(direction, {
+    level: 'micro', intimacyDelta: 0, trustDelta: 0, summary: '普通聊天'
+  }, 1), null);
+  assert.equal(direction.intimacy, 50);
+  assert.equal(direction.trust, 50);
+  for (let i = 0; i < 25; i++) {
+    groupPolicy.applyRelationshipEvent(direction, {
+      level: 'micro', intimacyDelta: 1, trustDelta: 0, summary: '本轮确有新的互动 ' + i
+    }, 1000 + i);
+  }
+  assert.equal(direction.eventHistory.length, 20);
+  assert.equal(direction.intimacy, 75);
+});
+
+test('group duplicate guard is limited to the configured three-second window', () => {
+  assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same   text', 3999, 3000), true);
+  assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same text', 4000, 3000), false);
+  assert.equal(groupPolicy.isDuplicateWithinWindow('first', 1000, 'second', 1200, 3000), false);
+  assert.equal(groupPolicy.isDuplicateWithinWindow('', 1000, '', 1200, 3000), false);
+});
+
+test('group follow-up delay stays between one and five seconds', () => {
+  assert.equal(groupPolicy.getReplyDelayMs(() => 0), 1000);
+  assert.equal(groupPolicy.getReplyDelayMs(() => 0.999999), 5000);
+});
+
+test('group model context retains speaker identity and excludes group-private payloads', () => {
+  const mapped = contextPolicy.mapHistoryToApiMessages([
+    { role: 'assistant', memberId: 'role-a', text: '我刚到。' },
+    { role: 'assistant', type: 'group_private', text: '这句只属于私聊，不应进群上下文。' },
+    { role: 'assistant', name: '阿岚', text: '我也到了。' },
+    { role: 'user', text: '那我们开始吧。' }
+  ], null, {
+    isGroupChat: true,
+    groupMembers: [{ id: 'role-a', name: '小林', nickname: '林林' }]
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(mapped)), [
+    { role: 'assistant', content: '【群成员 林林】\n我刚到。' },
+    { role: 'assistant', content: '【群成员 阿岚】\n我也到了。' },
+    { role: 'user', content: '那我们开始吧。' }
+  ]);
+  assert.equal(mapped.some((item) => item.content.includes('只属于私聊')), false);
+});
+
+
+test('offline group context keeps narration text so the shared scene remains continuous', () => {
+  const mapped = contextPolicy.mapHistoryToApiMessages([
+    { role: 'assistant', name: '小林', text: '<narratage>门被推开了。</narratage>我到了。' },
+    { role: 'user', text: '先坐一会儿。' }
+  ], null, { isGroupChat: true, groupMode: 'offline' });
+  assert.equal(mapped[0].content, '【群成员 小林】\n门被推开了。我到了。');
+});
+
+test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
+  assert.match(detail, /group-chat-policy\.js\?v=20261102v5/);
+  assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
+  assert.match(detail, /getPendingMentionIds/);
+  assert.match(detail, /本轮被@点名/);
+  assert.match(detail, /acceptGroupUserMessage/);
+  assert.match(detail, /isDuplicateWithinWindow/);
+  assert.match(detail, /savedHistory = loadMessages\(\)/);
+  assert.match(detail, /savedMessage\.silent/);
+  assert.match(detail, /groupAutoFollowupToken/);
+  assert.match(detail, /getGroupReplyDelayMs/);
+  assert.match(detail, /群聊模式：线下共同场景/);
+  assert.match(detail, /mapHistoryToApiMessages\(recentHistory, stripInternalReasoning, \{/);
+  assert.match(groupPlay, /id="groupChatMode"/);
+  assert.match(groupPlay, /group\.settings\.chatMode/);
+  assert.match(groupPlay, /data-member-field="talkativeness"/);
+  assert.match(groupPlay, /data-member-field="replyThreshold"/);
+  assert.match(groupPlay, /data-relationship-field="trust"/);
+  assert.match(groupPlay, /data-relationship-direction/);
+  assert.match(detail, /getGroupRelationshipContext\(groupReplyPick\.id\)/);
+  assert.match(detail, /recentSpeakerIds/);
+  assert.match(detail, /群成员双向关系网/);
+  assert.match(detail, /direction\.sharedEvents/);
+  assert.match(detail, /relationshipTargetId: isGroupFollowup && previousSpeaker/);
+  assert.doesNotMatch(detail, /relation\.familiarity = Math\.min\(100, Math\.max\(0, parseInt\(relation\.familiarity/);
+  assert.match(detail, /relationshipDynamicsEnabled !== false/);
+  assert.match(groupPolicySource, /Intl\.Segmenter/);
+  assert.match(groupPolicySource, /function extractKeywords\(text\)/);
+  assert.match(groupPolicySource, /TOPIC_STOP_WORDS/);
+  assert.match(groupPolicySource, /function tagMatchesTopic\(tag, messageText, keywords\)/);
+  assert.match(groupPlay, /data-member-field="interestTags"/);
+  assert.match(groupPlay, /data-member-field="expertiseTags"/);
+  assert.match(groupPlay, /data-member-field="backgroundTags"/);
+  assert.match(groupPlay, /member\.interests=tags/);
+  assert.match(detail, /analyzeMessageContext\(selectionText\)/);
+  assert.match(detail, /groupContextPrompt/);
+  assert.match(detail, /relationshipDynamicsEnabled !== false && isGroupFollowup/);
+  assert.match(detail, /applyRelationshipEvent/);
+  assert.match(detail, /群关系变化/);
+  assert.match(detail, /processGroupInteractionMarkers\(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup\)/);
+  assert.match(detail, /!isGroupFollowup \|\| !speaker/);
+  assert.match(groupPlay, /data-setting="relationshipDynamicsEnabled"/);
+  assert.match(groupPlay, /近期关系变化/);
+  assert.match(groupPlay, /trustRecoveryDebt/);
+  assert.match(groupPlay, /field==='trust'\)direction\.trustRecoveryDebt=0/);
+
+
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v125/);
+  assert.match(serviceWorker, /phone-app-pwa-v140/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
-  assert.match(detail, /chat-context-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261029v5/);
+  assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
+  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261031v1/);
+  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v5/);
+  assert.match(serviceWorker, /phone_context\.js\?v=20261031v1/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
@@ -727,4 +1201,191 @@ test('partner protocol is managed globally from desktop settings and shared by e
   assert.match(detail, /localStorage\.getItem\(globalRpKey\)/);
   assert.match(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
   assert.doesNotMatch(detail, /localStorage\.getItem\('chat_rp_protocol_' \+ aliasRoleId\)/);
+});
+
+
+test('chat presence policy learns only the active character voice from ordinary replies', () => {
+  assert.equal(typeof presencePolicy.collectVoiceSamples, 'function');
+  assert.equal(typeof presencePolicy.buildPrompt, 'function');
+
+  const history = [
+    { role: 'assistant', text: '今天外面风好大。' },
+    { role: 'user', text: '我这边也有点冷。' },
+    { role: 'assistant', text: '你那边是不是还在下雨？' },
+    { role: 'assistant', mode: 'date', text: '（走到窗边）外面下雨了。' },
+    { role: 'assistant', voiceMode: 'narration', text: '这段旁白不能进入线上语气档案。' },
+    { role: 'assistant', silent: true, text: '隐藏指令不能当作语言样本。' },
+    { role: 'assistant', type: 'image', text: '图片描述不能当作语言样本。' },
+    { role: 'system_error', text: '错误提示不能当作语言样本。' }
+  ];
+
+  assert.deepEqual(
+    Array.from(presencePolicy.collectVoiceSamples(history, { maxSamples: 2 })),
+    ['今天外面风好大。', '你那边是不是还在下雨？']
+  );
+
+  const prompt = presencePolicy.buildPrompt({
+    mode: 'online',
+    history,
+    currentText: '那你忙完了吗？',
+    maxSamples: 2
+  });
+  assert.ok(prompt.includes('今天外面风好大。'));
+  assert.ok(prompt.includes('你那边是不是还在下雨？'));
+  assert.equal(prompt.includes('隐藏指令不能当作语言样本'), false);
+  assert.equal(prompt.includes('图片描述不能当作语言样本'), false);
+  assert.equal(prompt.includes('错误提示不能当作语言样本'), false);
+  assert.equal(prompt.includes('外面下雨了。'), false);
+});
+
+test('chat presence policy keeps group voice examples isolated to the selected speaker', () => {
+  const history = [
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '我刚到。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '我去买点东西。' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '你们先聊，我听着。' }
+  ];
+  const samples = presencePolicy.collectVoiceSamples(history, {
+    isGroupChat: true,
+    speakerId: 'role-a',
+    speakerName: '小林',
+    maxSamples: 2
+  });
+  assert.deepEqual(Array.from(samples), ['我刚到。', '你们先聊，我听着。']);
+});
+
+test('chat presence policy skips narration and face-to-face modes and avoids rigid message quotas', () => {
+  assert.equal(presencePolicy.buildPrompt({ mode: 'narration' }), '');
+  assert.equal(presencePolicy.buildPrompt({ mode: 'offline' }), '');
+
+  const prompt = presencePolicy.buildPrompt({ mode: 'online', history: [] });
+  assert.match(prompt, /不固定消息条数/);
+  assert.match(prompt, /不要为了拆气泡把完整的一句话硬切开/);
+  assert.match(prompt, /情绪连续性/);
+  assert.doesNotMatch(prompt, /18-26字|每条必须.*字/);
+});
+
+test('chat presence policy is loaded by chat detail and precached for PWA', () => {
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v6/);
+  assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
+  assert.match(serviceWorker, /phone-app-pwa-v140/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
+});
+
+
+test('chat presence policy derives a bounded pause from the previous bubble length', () => {
+  assert.equal(typeof presencePolicy.getBubbleDelayMs, 'function');
+  const shortPause = presencePolicy.getBubbleDelayMs('嗯。');
+  const longerPause = presencePolicy.getBubbleDelayMs('我刚刚还在想你说的那件事。');
+  const maximumPause = presencePolicy.getBubbleDelayMs('甲'.repeat(100));
+  assert.ok(shortPause >= 520 && shortPause <= 920);
+  assert.ok(longerPause > shortPause);
+  assert.equal(maximumPause, 920);
+});
+
+test('chat detail stages multi-bubble replies and preserves the existing stream path', () => {
+  assert.match(detail, /async function appendAiMessageWithPacing\(msg, idx\)/);
+  assert.match(detail, /await appendAiMessageWithPacing\(aiMsg, aiMessageIndex\)/);
+  assert.match(detail, /chatMessages\.appendChild\(node\)/);
+  assert.match(detail, /aiBubblePacingRunId \+= 1/);
+  assert.match(detail, /prefers-reduced-motion: reduce/);
+  assert.match(detail, /activeChatModeForPrompt !== 'narration'/);
+  assert.match(detail, /PhoneStream\.chat\(\{/);
+  assert.match(detail, /inflightSnapshot = null/);
+  assert.match(detail, /saveMessages\(historyList\)/);
+});
+
+
+test('voice habit profile stores aggregate language tendencies without retaining chat content', () => {
+  assert.equal(typeof presencePolicy.buildVoiceHabitProfile, 'function');
+  assert.equal(typeof presencePolicy.buildVoiceHabitPrompt, 'function');
+
+  const privatePhrase = '这句只用于测试，不应进入长期档案。';
+  const history = [
+    { role: 'assistant', text: '嗯，今天有点忙。' },
+    { role: 'assistant', text: '我刚刚才忙完呢。' },
+    { role: 'assistant', text: '啊？你已经到家啦？' },
+    { role: 'assistant', text: '哈哈，等我一下。' },
+    { role: 'assistant', text: '我在路上，马上就到。' },
+    { role: 'assistant', text: privatePhrase + '\n\n我晚点再和你说。' },
+    { role: 'assistant', mode: 'date', text: '（走到窗边）外面下雨了。' },
+    { role: 'assistant', silent: true, text: '隐藏任务不能加入统计。' },
+    { role: 'assistant', type: 'image', text: '图片消息不能加入统计。' },
+    { role: 'system_error', text: '错误消息不能加入统计。' }
+  ];
+
+  const profile = presencePolicy.buildVoiceHabitProfile(history, { maxMessages: 80 });
+  assert.ok(profile);
+  assert.equal(profile.sampleCount, 6);
+  assert.ok(profile.avgChars > 0);
+  assert.ok(Array.isArray(profile.particles));
+  assert.equal(JSON.stringify(profile).includes(privatePhrase), false);
+  assert.equal(JSON.stringify(profile).includes('隐藏任务不能加入统计'), false);
+  assert.equal(JSON.stringify(profile).includes('图片消息不能加入统计'), false);
+  assert.equal(JSON.stringify(profile).includes('外面下雨了'), false);
+  assert.equal(JSON.stringify(profile).includes('这段旁白不能进入线上语气档案'), false);
+
+  const prompt = presencePolicy.buildVoiceHabitPrompt(profile);
+  assert.ok(prompt.includes('角色长期表达习惯档案'));
+  assert.ok(prompt.includes('近期 6 条'));
+  assert.equal(prompt.includes(privatePhrase), false);
+});
+
+test('voice habit profile is isolated by group speaker and does not mix other members', () => {
+  const history = [
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '嗯，我刚到。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '今天真的太忙了，哈哈哈哈！' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '你们先聊，我听着呢。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '我马上过去！' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '好呀，我在这里等你。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '收到收到！' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '嗯，那就这么定吧。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '哈哈哈哈！' }
+  ];
+
+  const profile = presencePolicy.buildVoiceHabitProfile(history, {
+    isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.ok(profile);
+  assert.equal(profile.sampleCount, 4);
+  assert.ok(profile.questionRate <= 0.25);
+  assert.ok(profile.emojiRate <= 0.25);
+});
+
+test('voice habit profile cache is reused only while its source messages stay unchanged', () => {
+  const history = [
+    { role: 'assistant', mid: 'a', time: 1, text: '嗯，我知道了。' },
+    { role: 'assistant', mid: 'b', time: 2, text: '好呀，等我一下。' },
+    { role: 'assistant', mid: 'c', time: 3, text: '我刚刚出门呢。' },
+    { role: 'assistant', mid: 'd', time: 4, text: '哈哈，马上到。' }
+  ];
+  const first = presencePolicy.buildVoiceHabitProfile(history);
+  const reused = presencePolicy.buildVoiceHabitProfile(history, {}, first);
+  assert.ok(first);
+  assert.equal(reused.sourceSignature, first.sourceSignature);
+  assert.equal(reused.generatedAt, first.generatedAt);
+
+  const editedHistory = history.map((item, index) =>
+    index === 3 ? { ...item, text: '我还要再等十分钟。' } : item
+  );
+  const rebuilt = presencePolicy.buildVoiceHabitProfile(editedHistory, {}, first);
+  assert.notEqual(rebuilt.sourceSignature, first.sourceSignature);
+
+  const shortened = presencePolicy.buildVoiceHabitProfile(history.slice(0, 3), {}, first);
+  assert.equal(shortened, null);
+  assert.equal(presencePolicy.buildVoiceHabitPrompt(shortened), '');
+});
+
+test('chat detail persists voice habits per character and per group session without storing raw messages', () => {
+  assert.match(detail, /chat_voice_habits_v1_/);
+  assert.match(detail, /encodeURIComponent\(voiceProfileRoleId\)/);
+  assert.match(detail, /'group_' \+ encodeURIComponent\(String\(aliasRoleId \|\| currentRoleId \|\| ''\)\)/);
+  assert.match(detail, /localStorage\.setItem\(voiceProfileKey, JSON\.stringify\(voiceHabitProfile\)\)/);
+  assert.match(detail, /maxMessages: 80/);
+  assert.match(detail, /var presenceMode = isGroupChat/);
+  assert.match(detail, /voiceMode: presenceMode \|\| 'online'/);
+  assert.match(detail, /voiceMode: inflightSnapshot\.voiceMode \|\| 'online'/);
+  assert.match(detail, /localStorage\.removeItem\(voiceProfileKey\)/);
+  assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
+  assert.match(serviceWorker, /phone-app-pwa-v140/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
 });

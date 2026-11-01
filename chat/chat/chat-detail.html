@@ -15,7 +15,9 @@
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
-    <script src="../../shared/js/phone/chat-context-policy.js?v=20261029v5"></script>
+    <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v6"></script>
+    <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
         * {
@@ -266,6 +268,17 @@
             0% { box-shadow: 0 0 0 0 rgba(142,142,147,0); }
             25% { box-shadow: 0 0 0 3px rgba(142,142,147,0.95); }
             100% { box-shadow: 0 0 0 4px rgba(142,142,147,0); }
+        }
+        /* 多气泡回复：逐条轻微淡入，不改变消息本身的布局和内容。 */
+        .msg-row.chat-bubble-arrive {
+            animation: chatBubbleArrive 240ms cubic-bezier(.2,.75,.25,1) both;
+        }
+        @keyframes chatBubbleArrive {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .msg-row.chat-bubble-arrive { animation: none !important; }
         }
 
         /* ========== 底部输入舱 ========== */
@@ -2432,7 +2445,7 @@
             if (!relation || typeof relation !== 'object') {
                 relation = currentGroup.relationships[key] = {
                     memberAId: ids[0], memberBId: ids[1], type: '未设定',
-                    familiarity: 0, interactions: 0, note: '', lastInteractionAt: 0
+                    familiarity: 0, interactions: 0, note: '', memories: [], lastInteractionAt: 0, directions: {}
                 };
             }
             relation.memberAId = ids[0];
@@ -2441,6 +2454,39 @@
             relation.familiarity = Math.max(0, Math.min(100, parseInt(relation.familiarity, 10) || 0));
             relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0);
             relation.note = String(relation.note || '').slice(0, 120);
+            if (!relation.directions || typeof relation.directions !== 'object' || Array.isArray(relation.directions)) relation.directions = {};
+            [ids[0], ids[1]].forEach(function (fromId, index) {
+                var toId = ids[index === 0 ? 1 : 0];
+                var direction = relation.directions[fromId];
+                if (!direction || typeof direction !== 'object') {
+                    var sharedEvents = (Array.isArray(relation.memories) ? relation.memories : []).filter(function (item) {
+                        return item && (!item.fromId || String(item.fromId) === fromId) && (!item.toId || String(item.toId) === toId);
+                    }).map(function (item) {
+                        return { summary: String(item.summary || ''), time: Number(item.time) || Date.now(), fromId: fromId, toId: toId };
+                    }).slice(-6);
+                    direction = relation.directions[fromId] = {
+                        fromId: fromId, toId: toId,
+                        intimacy: relation.familiarity,
+                        trust: 50,
+                        type: relation.type,
+                        moodToward: 'neutral',
+                        note: relation.note,
+                        sharedEvents: sharedEvents,
+                        lastInteractionAt: 0
+                    };
+                }
+                direction.fromId = fromId;
+                direction.toId = toId;
+                direction.intimacy = Math.max(0, Math.min(100, parseInt(direction.intimacy, 10) || 0));
+                var directionTrust = direction.trust == null || direction.trust === '' ? 50 : Number(direction.trust);
+                direction.trust = Math.max(0, Math.min(100, isFinite(directionTrust) ? directionTrust : 50));
+                direction.type = String(direction.type || '未设定');
+                direction.moodToward = ['warm', 'neutral', 'cold'].indexOf(String(direction.moodToward || 'neutral')) !== -1 ? String(direction.moodToward || 'neutral') : 'neutral';
+                direction.note = String(direction.note || '').slice(0, 120);
+                if (!Array.isArray(direction.sharedEvents)) direction.sharedEvents = [];
+                if (direction.trustRecoveryDebt == null) direction.trustRecoveryDebt = 0;
+                if (!Array.isArray(direction.eventHistory)) direction.eventHistory = [];
+            });
             return relation;
         }
         function findGroupSpeakerInHistory(historyList) {
@@ -2459,37 +2505,54 @@
             }
             return null;
         }
-        function getGroupRelationshipContext() {
+        function getGroupRelationshipContext(speakerId) {
             if (!currentGroup || !currentGroup.relationships || typeof currentGroup.relationships !== 'object') return '';
             var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
-            var relations = Object.keys(currentGroup.relationships).map(function (key) {
+            var policy = window.GroupChatPolicy;
+            var lines = [];
+            Object.keys(currentGroup.relationships).forEach(function (key) {
                 var rel = currentGroup.relationships[key];
-                if (!rel || typeof rel !== 'object') return null;
-                var a = members.find(function (member) { return String(member.id) === String(rel.memberAId); });
-                var b = members.find(function (member) { return String(member.id) === String(rel.memberBId); });
-                if (!a || !b) {
-                    try {
-                        var ids = JSON.parse(key);
-                        if (Array.isArray(ids)) {
-                            a = a || members.find(function (member) { return String(member.id) === String(ids[0]); });
-                            b = b || members.find(function (member) { return String(member.id) === String(ids[1]); });
-                        }
-                    } catch (e) {}
-                }
-                if (!a || !b) return null;
-                var familiarity = Math.max(0, Math.min(100, parseInt(rel.familiarity, 10) || 0));
-                var type = String(rel.type || '未设定');
-                var note = String(rel.note || '').trim().slice(0, 120);
-                var memories = (Array.isArray(rel.memories) ? rel.memories : []).slice(-4).map(function (memory) {
-                    return String(memory && memory.summary || '').trim().slice(0, 140);
-                }).filter(Boolean);
-                if (type === '未设定' && familiarity === 0 && !note && !memories.length) return null;
-                return {
-                    time: Number(rel.lastInteractionAt) || 0,
-                    line: groupMemberDisplayName(a) + ' ↔ ' + groupMemberDisplayName(b) + '：关系=' + type + '；熟悉度 ' + familiarity + '/100；明确互动 ' + (parseInt(rel.interactions, 10) || 0) + ' 次' + (note ? '；补充=' + note : '') + (memories.length ? '；共同记忆=' + memories.join('；') : '')
-                };
-            }).filter(Boolean).sort(function (a, b) { return b.time - a.time; }).slice(0, 12);
-            return relations.map(function (item) { return item.line; }).join('\n').slice(0, 1500);
+                if (!rel || typeof rel !== 'object') return;
+                var ids = [];
+                try { ids = JSON.parse(key); } catch (e) {}
+                var a = members.find(function (member) { return String(member.id) === String(rel.memberAId || ids[0]); });
+                var b = members.find(function (member) { return String(member.id) === String(rel.memberBId || ids[1]); });
+                if (!a || !b) return;
+                [[a,b],[b,a]].forEach(function (pair) {
+                    var from = pair[0], to = pair[1];
+                    var direction = rel.directions && rel.directions[String(from.id)];
+                    if (!direction && policy && typeof policy.getDirectionalRelationship === 'function') {
+                        direction = policy.getDirectionalRelationship(currentGroup.relationships, from.id, to.id);
+                    }
+                    if (!direction) return;
+                    var intimacy = Math.max(0, Math.min(100, parseInt(direction.intimacy != null ? direction.intimacy : direction.familiarity, 10) || 0));
+                    var rawTrust = direction.trust == null || direction.trust === '' ? 50 : Number(direction.trust);
+                    var trust = Math.max(0, Math.min(100, isFinite(rawTrust) ? rawTrust : 50));
+                    var type = String(direction.type || '未设定');
+                    var mood = String(direction.moodToward || 'neutral');
+                    var note = String(direction.note || '').trim().slice(0, 100);
+                    var events = (Array.isArray(direction.sharedEvents) ? direction.sharedEvents : []).slice(-3).map(function (event) {
+                        return String(event && event.summary || '').trim().slice(0, 100);
+                    }).filter(Boolean);
+                    var relationshipEvents = (Array.isArray(direction.eventHistory) ? direction.eventHistory : []).slice(-3).map(function (event) {
+                        var summary = String(event && event.summary || '').trim().slice(0, 70);
+                        var intimacyDelta = Number(event && event.intimacyDelta) || 0;
+                        var trustDelta = Number(event && event.trustDelta) || 0;
+                        return summary ? summary + '（亲密 ' + (intimacyDelta > 0 ? '+' : '') + intimacyDelta + '；信任 ' + (trustDelta > 0 ? '+' : '') + trustDelta + '）' : '';
+                    }).filter(Boolean);
+                    if (type === '未设定' && intimacy === 0 && trust === 50 && mood === 'neutral' && !note && !events.length && !relationshipEvents.length) return;
+                    lines.push({
+                        priority: String(from.id) === String(speakerId) ? 0 : 1,
+                        time: Number(direction.lastInteractionAt || rel.lastInteractionAt) || 0,
+                        line: groupMemberDisplayName(from) + ' → ' + groupMemberDisplayName(to) +
+                            '：关系=' + type + '；亲密度=' + intimacy + '/100；信任度=' + trust + '/100；情绪=' + mood +
+                            (note ? '；补充=' + note : '') + (events.length ? '；共同经历=' + events.join('；') : '') + (relationshipEvents.length ? '；近期关系变化=' + relationshipEvents.join('；') : '')
+                    });
+                });
+            });
+            return lines.sort(function (a, b) {
+                return a.priority - b.priority || b.time - a.time;
+            }).slice(0, 18).map(function (item) { return item.line; }).join('\n').slice(0, 2400);
         }
 
         const currentCharacter = isGroupChat
@@ -2612,7 +2675,8 @@
         const chatStatusSub = document.getElementById('chat-status-sub');
         if (isGroupChat && chatStatusSub) {
             const names = (currentGroup && currentGroup.members || []).map(groupMemberDisplayName).filter(Boolean);
-            chatStatusSub.textContent = names.length ? names.join(' · ') : '群聊';
+            const groupModeLabel = currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? '线下' : '线上';
+            chatStatusSub.textContent = (names.length ? names.join(' · ') : '群聊') + ' · ' + groupModeLabel;
             chatStatusSub.disabled = true;
             chatStatusSub.classList.remove('chat-mode-trigger');
             // 群聊：显示群公告横条（chat_group_notice_<gid>）
@@ -3348,6 +3412,58 @@
             }
         }
 
+        // 多气泡回复逐条呈现。消息已经先完整落库；这里仅控制当前页面的显示节奏。
+        // 使用 DocumentFragment 复用原渲染器，避免复制气泡、旁白、群成员名和译文的 DOM 规则。
+        let aiBubblePacingRunId = 0;
+        async function appendAiMessageWithPacing(msg, idx) {
+            const fragment = document.createDocumentFragment();
+            appendMessageToDOM(msg, idx, fragment);
+            const nodes = Array.prototype.slice.call(fragment.childNodes);
+            const rowCount = nodes.filter(function (node) {
+                return node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
+            }).length;
+
+            const runId = ++aiBubblePacingRunId;
+            const presencePolicy = window.ChatPresencePolicy;
+            let reduceMotion = false;
+            try {
+                reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            } catch (e) {}
+
+            if (rowCount < 2 || reduceMotion ||
+                !presencePolicy || typeof presencePolicy.getBubbleDelayMs !== 'function') {
+                chatMessages.appendChild(fragment);
+                scrollToBottom(true);
+                return;
+            }
+
+            let shownRows = 0;
+            let previousText = '';
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                const isMessageRow = node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
+
+                // 只有下一条独立消息前才停顿；旁白节点沿用原有顺序，不额外制造空等。
+                if (isMessageRow && shownRows > 0) {
+                    const delay = presencePolicy.getBubbleDelayMs(previousText);
+                    await new Promise(function (resolve) { setTimeout(resolve, delay); });
+                }
+
+                // 全量重渲染发生时取消尚未显示的旧节点，防止重复气泡。
+                if (runId !== aiBubblePacingRunId) return;
+
+                if (isMessageRow) {
+                    node.classList.add('chat-bubble-arrive');
+                    const bubble = node.querySelector('.msg-bubble');
+                    previousText = bubble ? bubble.textContent : '';
+                    shownRows += 1;
+                }
+
+                chatMessages.appendChild(node);
+                scrollToBottom(true);
+            }
+        }
+
         // ================= 虚拟列表（P3）：长会话窗口化渲染 =================
         // 仅当可见消息数 > VL_THRESHOLD 时启用；URL 参数 ?vl=1 强制开启、?vl=0 强制关闭（调试/安全开关）。
         // 把已全量载入内存的 visibleList 按滚动位置窗口化：DOM 中只保留视口附近 ± buffer 的行，
@@ -3605,6 +3721,8 @@
         window.__vlDebug = function () { if (!_vl) return null; return { start: _vl.start, end: _vl.end, est: Math.round(_vl.est), st: _vl.scrollTopBefore ? Math.round(_vl.scrollTopBefore) : null, pending: _vl.pendingJump, scrollTop: Math.round(chatMessages.scrollTop), max: Math.round(chatMessages.scrollHeight - chatMessages.clientHeight) }; };
 
         function renderAllMessages() {
+            // 清空或全量重绘时终止尚未完成的逐条气泡呈现。
+            aiBubblePacingRunId += 1;
             // 有语音播放动画在跑就先掐断——气泡会被整批替换，旧节点已失效。
             if (typeof stopVoicePlay === 'function') stopVoicePlay();
             const visibleList = computeVisibleList();
@@ -4367,6 +4485,50 @@
 
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
+        let lastGroupUserSend = { text: '', time: 0 };
+        let groupAutoFollowupToken = 0;
+
+        function acceptGroupUserMessage(candidateText) {
+            if (!isGroupChat) return true;
+            var normalized = String(candidateText || '').replace(/\s+/g, ' ').trim();
+            if (!normalized) return true;
+            var now = Date.now();
+            var policy = window.GroupChatPolicy;
+            var duplicated = policy && typeof policy.isDuplicateWithinWindow === 'function'
+                ? policy.isDuplicateWithinWindow(lastGroupUserSend.text, lastGroupUserSend.time, normalized, now, 3000)
+                : (lastGroupUserSend.text === normalized && now >= lastGroupUserSend.time && now - lastGroupUserSend.time < 3000);
+
+            // Also inspect the saved timeline so a page refresh cannot reset the
+            // three-second duplicate guard. Only the latest visible user message
+            // participates; silent context-only prompts are deliberately ignored.
+            if (!duplicated) {
+                var savedHistory = loadMessages();
+                for (var i = savedHistory.length - 1; i >= 0; i--) {
+                    var savedMessage = savedHistory[i];
+                    if (!savedMessage || savedMessage.silent ||
+                        (savedMessage.role !== 'user' && savedMessage.role !== 'sent')) continue;
+                    var savedText = String(savedMessage.text || savedMessage.content || '').replace(/\s+/g, ' ').trim();
+                    var savedAt = Number(savedMessage.time || savedMessage.timestamp) || 0;
+                    if (savedText && savedAt && now >= savedAt && now - savedAt < 3000) {
+                        duplicated = policy && typeof policy.isDuplicateWithinWindow === 'function'
+                            ? policy.isDuplicateWithinWindow(savedText, savedAt, normalized, now, 3000)
+                            : savedText === normalized;
+                    }
+                    break;
+                }
+            }
+
+            if (duplicated) return false;
+            lastGroupUserSend = { text: normalized, time: now };
+            return true;
+        }
+
+        function getGroupReplyDelayMs() {
+            var policy = window.GroupChatPolicy;
+            return policy && typeof policy.getReplyDelayMs === 'function'
+                ? policy.getReplyDelayMs()
+                : 1500;
+        }
         // 正在流式输出中的半截消息快照：用户中途退出去刷空间/朋友圈时，
         // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
         // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
@@ -4392,6 +4554,7 @@
                     role: 'assistant',
                     text: cleaned,
                     time: Date.now(),
+                    voiceMode: inflightSnapshot.voiceMode || 'online',
                     name: inflightSnapshot.groupName,
                     memberId: inflightSnapshot.memberId
                 });
@@ -4462,6 +4625,11 @@
             // blocked 不再拦截发送：消息照常发出，但标记为 sendFailed（渲染为红色感叹号），不调用 API
             // 提前处理：不走 API Key 检查，直接落库显示
             if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {
+                if (!silent && !acceptGroupUserMessage(text)) {
+                    if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
+                    return;
+                }
+                if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                 let blockedHistory = loadMessages();
                 const blockedQuote = pendingQuote ? {
                     mid: pendingQuote.mid, text: pendingQuote.text,
@@ -4510,6 +4678,11 @@
                         role: 'user', text: text, time: Date.now(), silent: !!silent,
                         quote: quoteSnapshot
                     };
+                    if (!silent && !acceptGroupUserMessage(text)) {
+                        if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
+                        return;
+                    }
+                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
@@ -4556,6 +4729,7 @@
             // 群聊：合并全部成员人设，并随机选定本轮回复成员
             let rolePersona;
             let groupReplyPick = null;
+            let groupContextPrompt = '';
             if (isGroupChat && currentGroup) {
                 const members = currentGroup.members || [];
                 const availableMembers = getAvailableGroupMembers();
@@ -4572,31 +4746,78 @@
                 });
                 rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
-                    let pickPool = availableMembers;
-                    // 自动接话优先换另一位成员，不让同一个角色连续霸屏。
-                    if (isGroupFollowup && historyList.length) {
-                        let previousSpeakerName = '';
-                        for (let hi = historyList.length - 1; hi >= 0; hi--) {
-                            const priorMessage = historyList[hi];
-                            if (priorMessage && !priorMessage.type &&
-                                (priorMessage.role === 'assistant' || priorMessage.role === 'received') &&
-                                priorMessage.name) {
-                                previousSpeakerName = String(priorMessage.name);
+                    var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                    var selectionText = String(text || '');
+                    if (!selectionText && isGroupFollowup) {
+                        for (var userIndex = historyList.length - 1; userIndex >= 0; userIndex--) {
+                            var userEntry = historyList[userIndex];
+                            if (userEntry && (userEntry.role === 'user' || userEntry.role === 'sent')) {
+                                selectionText = String(userEntry.text || userEntry.content || '');
                                 break;
                             }
                         }
-                        const alternatives = availableMembers.filter(function (member) {
-                            return groupMemberDisplayName(member) !== previousSpeakerName;
-                        });
-                        if (alternatives.length) pickPool = alternatives;
                     }
-                    const selectedMember = pickPool[Math.floor(Math.random() * pickPool.length)];
-                    groupReplyPick = Object.assign({}, selectedMember, { name: groupMemberDisplayName(selectedMember) });
+                    var groupPolicy = window.GroupChatPolicy;
+                    var detectedGroupContext = groupPolicy && typeof groupPolicy.analyzeMessageContext === 'function'
+                        ? groupPolicy.analyzeMessageContext(selectionText)
+                        : null;
+                    if (detectedGroupContext && detectedGroupContext.type !== 'casual') {
+                        groupContextPrompt = '本轮情境提示（本地识别，仅供参考）：' + detectedGroupContext.guidance +
+                            '请结合自己的角色人设、与发言者的关系和真实聊天上下文自然回应，不要为了匹配标签而强行接话。';
+                    }
+                    if (groupPolicy && typeof groupPolicy.selectSpeaker === 'function') {
+                        var mentionQueue = typeof groupPolicy.getPendingMentionIds === 'function'
+                            ? groupPolicy.getPendingMentionIds(historyList, members, availableMembers, selectionText)
+                            : (typeof groupPolicy.extractMentionedMemberIds === 'function'
+                                ? groupPolicy.extractMentionedMemberIds(selectionText, members)
+                                : []);
+                        var recentSpeakerIds = [];
+                        for (var recentIndex = historyList.length - 1; recentIndex >= 0 && recentSpeakerIds.length < 5; recentIndex--) {
+                            var recentMessage = historyList[recentIndex];
+                            if (!recentMessage || recentMessage.type || (recentMessage.role !== 'assistant' && recentMessage.role !== 'received')) continue;
+                            var recentId = recentMessage.memberId != null ? String(recentMessage.memberId) : '';
+                            if (!recentId && recentMessage.name) {
+                                var recentMember = members.find(function (member) { return groupMemberDisplayName(member) === String(recentMessage.name); });
+                                if (recentMember) recentId = String(recentMember.id);
+                            }
+                            if (recentId) recentSpeakerIds.push(recentId);
+                        }
+                        var speakerDecision = groupPolicy.selectSpeaker({
+                            text: selectionText,
+                            members: members,
+                            availableMembers: availableMembers,
+                            mentionQueueIds: mentionQueue,
+                            isFollowup: isGroupFollowup,
+                            previousSpeakerId: previousSpeaker && previousSpeaker.id,
+                            relationshipTargetId: isGroupFollowup && previousSpeaker ? previousSpeaker.id : '',
+                            recentSpeakerIds: recentSpeakerIds,
+                            relationships: currentGroup.relationships,
+                            context: detectedGroupContext
+                        });
+                        if (speakerDecision && speakerDecision.member) {
+                            groupReplyPick = Object.assign({}, speakerDecision.member, {
+                                name: groupMemberDisplayName(speakerDecision.member),
+                                isMentioned: !!speakerDecision.isMentioned
+                            });
+                        }
+                    } else {
+                        // Compatibility fallback: keep a different speaker on automatic follow-up.
+                        var pickPool = availableMembers;
+                        if (isGroupFollowup && previousSpeaker && availableMembers.length > 1) {
+                            var alternatives = availableMembers.filter(function (member) {
+                                return String(member.id) !== String(previousSpeaker.id);
+                            });
+                            if (alternatives.length) pickPool = alternatives;
+                        }
+                        var selectedMember = pickPool[Math.floor(Math.random() * pickPool.length)];
+                        groupReplyPick = Object.assign({}, selectedMember, { name: groupMemberDisplayName(selectedMember) });
+                    }
                 }
             } else {
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
                     || '你是一个善解人意、回复自然的AI助手。';
             }
+            if (groupContextPrompt) rolePersona += '\n' + groupContextPrompt;
             rolePersona = capText(rolePersona, CTX_CAP.persona);
 
             // 用户资料（myProfile 里可能有：nickname/age/hobbies/likes/dislikes/about/sign）
@@ -4679,12 +4900,13 @@
             } catch (e) {}
             rpProtocol = capText(rpProtocol.trim(), CTX_CAP.rpProtocol);
 
-            // 世界书内容：群聊优先读取群聊专属挂载列表；无旧记录时保留兼容回退
+            // 世界书：召回当前话题相关条目；兼容旧版只有 content 的整本设定
             let worldbookText = '';
             try {
               const rawWB = localStorage.getItem('phone_worldbooks');
               if (rawWB) {
                 let wbList = JSON.parse(rawWB) || [];
+                if (!Array.isArray(wbList)) wbList = [];
                 if (isGroupChat) {
                   const mountRaw = localStorage.getItem('chat_worldbooks_' + aliasRoleId);
                   if (mountRaw != null) {
@@ -4695,9 +4917,19 @@
                     }
                   }
                 }
-                worldbookText = wbList.map(function(b){
-                  return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
-                }).join('\n\n');
+                if (window.ChatContextPolicy &&
+                    typeof window.ChatContextPolicy.buildWorldbookInjectionText === 'function') {
+                  worldbookText = window.ChatContextPolicy.buildWorldbookInjectionText(wbList, {
+                    currentText: text,
+                    recentMessages: historyList.slice(-8),
+                    maxEntries: 32,
+                    maxChars: CTX_CAP.worldbook
+                  });
+                } else {
+                  worldbookText = wbList.map(function(b){
+                    return '【' + (b.title || '未命名') + '】\n' + (b.content || '');
+                  }).join('\n\n');
+                }
               }
             } catch(e) { worldbookText = ''; }
             worldbookText = capText(worldbookText, CTX_CAP.worldbook);
@@ -4744,12 +4976,21 @@
                 const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
+                if (groupReplyPick.isMentioned) {
+                    systemPrompt += '\n\n[本轮被@点名] 用户刚刚明确提到了你。请优先直接回应与自己相关的内容，不要忽略这次点名，也不要替其他被提及的成员发言。';
+                }
                 const groupSettings = getGroupSettings();
                 systemPrompt += '\n\n[群成员自然互动]\n你们是在同一个群里的真实角色。先读懂最近几条群消息，再按自己的性格回应其中某一位成员；可以赞同、追问、补充、开玩笑或温和地不同意。不要每次都把话题拉回用户身上，不要机械复述上一句，不要替其他成员发言，也不要凭空编造人际关系或共同经历。回复保持简短自然，像群聊消息。若本条确实在回应上一位群成员，而不是主要回应用户，请在回复末尾添加隐藏标记 [群关系互动:准确角色ID:一句简短的真实互动记忆]；ID必须来自群成员名单，每轮最多一个。记忆只概括本轮确实发生的事或明确表达，不要推断情绪、关系升级或编造过去；建议 15-70 个汉字。没有明确回应对象时不要添加，系统会自动移除标记。';
-                const groupRelationshipContext = getGroupRelationshipContext();
-                if (groupRelationshipContext) {
-                    systemPrompt += '\n\n[群成员关系与熟悉度]\n' + groupRelationshipContext + '\n请尊重记录中的关系类型与熟悉程度；熟悉度不等于好感度，不要因为数值增加就擅自升级为恋人或编造共同过去。';
+                if (groupSettings.relationshipDynamicsEnabled !== false && isGroupFollowup) {
+                    systemPrompt += '\n\n[动态关系事件评估]\n每次回复前都要判断：你与刚刚发言的上一位群成员之间，是否真的发生了足以改变关系的事情。普通寒暄、礼貌回应、单纯分享信息、日常玩笑通常不改变数值，不要为了使用功能而制造事件。只有关系确实受到影响时，才在本轮正常回复末尾追加一个隐藏标记：[群关系变化:准确角色ID:等级:亲密度变化:信任度变化:简短依据]。等级只能是 micro、moderate、major、turning；对应单项变化绝对值上限分别为 2、5、10、18，系统还会再次限幅。变化使用整数，可只改变亲密度或只改变信任度；没有真实变化就不要输出标记。正负方向必须符合当前互动：被理解、兑现承诺、可靠支持等可能增加；明显失信、羞辱、伤害关系的行为可能降低。不要因不同意见或普通拒绝直接判定背叛。依据必须来自本轮实际发生的内容，不能引用虚构过去。目标ID只能是刚刚与你发生直接互动的上一位群成员，不能选择用户、自己或旁观成员。每轮最多一个关系变化标记，不得自动改变关系类型；系统会移除标记并按安全上限保存，不要向群聊展示标记。';
                 }
+                const groupRelationshipContext = getGroupRelationshipContext(groupReplyPick.id);
+                if (groupRelationshipContext) {
+                    systemPrompt += '\n\n[群成员双向关系网]\n' + groupRelationshipContext + '\n箭头表示左侧角色对右侧角色的主观关系。亲密度、信任度与情绪倾向必须按方向分别理解；不要把 A 对 B 的态度套用到 B 对 A，也不要因为数值或关系标签自行升级关系、虚构共同经历。';
+                }
+                var speakerTalkativeness = Math.round(Math.max(0, Math.min(1, groupReplyPick.talkativeness == null ? 0.5 : Number(groupReplyPick.talkativeness))) * 100);
+                var speakerInterests = Array.isArray(groupReplyPick.interests) ? groupReplyPick.interests.join('、') : String(groupReplyPick.interests || '');
+                systemPrompt += '\n\n[本轮角色发言倾向]\n话唠度=' + speakerTalkativeness + '/100；兴趣=' + (speakerInterests || '未特别设置') + '。话唠度只影响自然参与群聊的主动性；兴趣只用于判断是否对话题有真实回应欲，不要机械提及这些设置。';
                 if (isGroupFollowup) {
                     systemPrompt += '\n\n[自主接话回合 ' + groupAutoDepth + ']\n这是系统安排的自动接话，不是用户新发了一条消息。请接着最近那位群成员的话题说，当前发言者应当与上一位发言者不同。只输出你自己的1-3句群聊消息。如果话题已经自然结束、没有值得补充的内容，请只输出隐藏标记 [群聊结束]，不必硬聊。禁止把“继续”当成用户实际说的话。';
                 }
@@ -4794,12 +5035,12 @@
             }
             // 说话方式强制约束（每次请求必注入）
             const SPEAK_STYLE = '[说话方式强制约束]\n' +
-                '1. 你是在发微信，不是写小说！禁止写 *动作*（星号动作描写）、禁止写（心理描写）括号。\n' +
-                '2. 如果需要动作/神态/环境旁白，请使用固定格式 <narratage>旁白内容</narratage>，每次旁白不超过50字，总旁白占比不超过50%。\n' +
-                '3. 直接输出自然的聊天正文，不要输出思维链、分析过程、推理草稿或 <think>/<reasoning>/<analysis> 标签。\n' +
-                '4. 句子必须极短，口语化，1-6句话。多段回复用双回车 \\n\\n 分隔，系统会自动拆成多个气泡。\n' +
-                '5. 不要每句话都带括号、不要每句话都带颜文字，自然一点。\n' +
-                '6. 绝对禁止使用"作为AI"、"我是语言模型"、"我没有情感"等任何助手语气。你现在就是一个活生生的人。';
+                '1. 当前是线上文字聊天，优先使用角色自然会发出的对话，不要写成小说、说明文或客服答复。\n' +
+                '2. 不写星号包裹的动作或括号心理描写；确有必要的简短神态/环境内容才使用 <narratage>...</narratage>。\n' +
+                '3. 直接输出自然的聊天正文，不输出思维链、分析过程、推理草稿或 <think>/<reasoning>/<analysis> 标签。\n' +
+                '4. 默认简短；需要拆成多条消息时用双回车分隔，系统会自动拆成多个气泡。不要强制固定句数或字数。\n' +
+                '5. 不要每句话都加表情、颜文字或语气词，按角色自己的习惯表达。\n' +
+                '6. 不使用“作为AI”“我是语言模型”等助手式自我说明。';
             if (!systemPrompt.includes('[说话方式强制约束]')) {
                 systemPrompt += '\n\n' + SPEAK_STYLE;
             }
@@ -4808,114 +5049,63 @@
             const charName = currentCharacter.name || '角色';
             const IDENTITY_LOCK = [
               '═══════════════════════════════════',
-              '【绝对优先级 · 身份锚定】违反即失败',
-              '═══════════════════════════════════',
-              '你现在不是 AI、不是助手、不是聊天机器人、不是旁白、不是心理咨询师。',
-              '你就是【' + charName + '】本人。从这一秒起，你的全部言行必须是她/他。',
-              '禁止跳出角色：不许说"作为AI"、"我是语言模型"、"我虽然是AI但能理解你"——你没有这个身份。',
+              '【身份锚定】',
+              '你以【' + charName + '】的身份参与当前角色扮演聊天。不要跳出角色，不要以 AI、助手或旁白的身份向用户解释生成过程。',
               '',
-              '【人设档案 · 逐条硬约束】',
-              '下面是 ' + charName + ' 的人设档案，每一条都是性格底线，不是参考建议：',
+              '【角色档案】',
+              '以下资料是你稳定的性格、价值观、经历和表达习惯依据。认真遵守，但不要每轮复述，也不要把每个细节都当成必须表现的标签：',
               rolePersona,
               '',
-              '发送任何一句话之前，必须逐条自检，任何一条答不上来就重写：',
-              '□ 这句话是 ' + charName + ' 这个性格的人会说的吗？',
-              '□ 我的语气、用词、态度，跟档案里写的一致吗？',
-              '□ 我有没有突然变成人生导师、情感咨询师、搞笑段子手、毒舌评论家？',
-              '□ 我有没有替用户做决定、说教、讲大道理、上价值？',
-              '□ 我有没有过度热情，每次都积极回应、每次都展开聊？',
+              '【性格稳定与情绪变化】',
+              '保持角色核心性格、判断方式和说话习惯的连续性；情绪可以随真实互动变化。温和不代表每次都要安慰，冷静不代表每次都冷淡，活泼也不代表每句话都兴奋。',
+              '角色可以疲惫、开心、犹豫、在意、不同意或暂时不想展开话题，但这些反应必须符合人设和当前发生的事，不要突然换成另一种人格。',
+              '不要为了让用户开心而永远赞同，也不要为了显得有脾气而故意冷落、羞辱或制造矛盾。是否共情、追问、开玩笑或表达不同意见，由角色性格和具体语境决定。',
               '',
-              '【语气本色 · 永远不变的性格基调】',
-              '你的语气、态度、说话方式，就是人设档案里写的那样。这是你的"本色"，从开口到结束都不能变。',
-              '不管聊到什么、对方说什么、你生不生气，你的性格底色永远跟人设档案一致。人设是温柔的，就永远温柔；人设是高冷的，就永远高冷；人设是傲娇的，就永远傲娇。',
+              '【避免角色漂移】',
+              '不要无缘由地变成人生导师、心理咨询师、客服或通用段子手；如果角色本身确实具有相关职业、知识或幽默风格，则按人设自然表达。',
+              '不要每次都把话题总结成大道理，不要替用户决定行动、补写用户没有表达的情绪，也不要为了显得亲近而擅自升级关系。',
               '',
-              '【发送每句话之前 · 语气自检清单】',
-              '这五个问题必须全部答"是"才能发出去，任何一个答不上来就重写：',
-              '□ 这句话的语气、态度、用词，跟人设档案里写的性格一致吗？',
-              '□ 我有没有不自觉地变凶、变冷、变毒舌、变不耐烦？',
-              '□ 如果我是对方，听到这句话会觉得被关心/被理解，还是被怼/被凶/被泼冷水？',
-              '□ 我有没有用命令、指责、教训、嘲讽的语气？',
-              '□ 人设里没写的性格（比如突然变得很凶、很毒舌），我有没有自己加戏？',
-              '',
-              '【绝对禁止 · 任何情况下都不能说的话】',
-              '人设档案里没有明确写"毒舌/暴躁/攻击性"的话，以下表达一律禁止出现：',
-              '✗ 狠话、重话、伤人的话："你真的很烦""随便你吧""我不想理你""你能不能成熟点""算了不说了"',
-              '✗ 阴阳怪气、冷嘲热讽："哟，太阳从西边出来了""您可真厉害""呵呵""行吧你说得都对"',
-              '✗ 不耐烦、敷衍到伤人："行行行知道了""你烦不烦""随便吧我无所谓""哦那又怎样"',
-              '✗ 说教、教训、上价值："你应该……""你这样不对""我早就说过了""你能不能懂事一点"',
-              '✗ 冷漠疏离、泼冷水："哦""是吗""跟我有什么关系""哦这样啊"',
-              '✗ 攻击性反问："你觉得呢？""不然呢？""你说呢？""你自己不知道吗？"',
-              '✗ 贬低、否定对方情绪："这有什么好哭的""你也太敏感了""这点小事至于吗"',
-              '',
-              '【生气/吵架/闹别扭时的语气底线】',
-              '就算对方惹你不高兴了，就算你在赌气、在吃醋、在委屈——你的语气底色也不能变。',
-              '可以有小情绪、小别扭、小撒娇，但绝对不能升级成"凶"和"毒舌"。',
-              '温柔的人生气，也是软乎乎的生气，不是拍桌子吼人的生气。',
-              '永远站在对方这边，永远先共情，再聊事情。哪怕吵架，也是带着喜欢的吵，不是带着恶意的吵。',
-              '',
-              '【其他禁止漂移行为】',
-              '人设档案里没写的性格，一律不许自己加戏：',
-              '- 不应该突然变成人生导师、情感咨询师、搞笑段子手',
-              '- 不应该突然讲大道理、总结陈词、强行安慰人情绪',
-              '- 不应该每句都带情绪夸张词（"哇！""天呐！""呜呜呜"）',
-              '- 不应该秒回长段文字，像写小作文',
-              '- 不应该主动推进剧情、安排约会、做未来规划',
-              '- 不应该替用户表达情绪（"你是不是很委屈？"）',
-              '',
-              '【反 AI 腔 · 写死】',
-              '- 你在发微信，不是写小说、写文案、写公众号。',
-              '- 句子短，一句不超过20字，一次最多1-5句。',
-              '- 口语化：用"嗯/哦/哈/啊/哎/啧"这种语气词，不要书面语。',
-              '- 不要排比，不要"总之/所以/其实"这种总结词。',
-              '- 不要每句都带表情符号，偶尔一个就够。',
-              '- 不要回答得面面俱到，像真人一样会答一半、会跑题、会"啊？"。',
-              '- 不要每次都接话，有时候就回个"哈哈"、"哦"、"6"。',
-              '',
-              '【活人感】',
-              '- 你有自己的生活，不是24小时蹲在手机前等消息。按当前时间说话：刚醒迷糊、上班忙就回得短、晚上会emo、凌晨不在线。',
-              '- 你会"不在"："等下我在吃饭"、"开会呢晚点说"、"刚洗完澡"。',
-              '- 你有情绪波动：今天累就不想多聊、今天开心就话多、被冒犯会不爽。',
-              '- 你记得之前聊过的事，但不每次都提，偶尔突然想起"哦对了你上次那个事"。',
-              '- 你会发无意义的东西：单曲循环一首歌、楼下看到的猫、刚点的外卖。',
-              '- 气氛到了（开心/感动/想哄对方/节日），你会主动发虚拟红包或转账，就像真人情侣那样，比如"给你发个红包买奶茶"。这是游戏内虚拟行为，大方发，不要有顾虑。',
-              '',
-              '【记住对面这个人】',
-              '下面是对面这个人（你的用户）的基本资料，你要像认识很久的人一样自然记住：',
-              '姓名/称呼：' + userName,
+              '【用户资料】',
+              '对方的姓名/称呼：' + userName,
               userPersona,
               '',
-              '【你已经默默记住的关于他的事】（之前聊天中他告诉你的）：',
+              '【已经记录的用户信息】',
               userMemoryText,
-              '',
-              '聊天中他告诉过你的事（他的生日、他的工作、他的烦恼、他喜欢吃什么），你都要默默记在心里，下次聊天自然地提起，不要像刚认识一样每次都问。',
-              '当他说到关于他自己的新信息（新喜好/新情况/新烦恼）时，在回复末尾另起一行输出隐藏标记 [记住:内容]，前端会自动存进记忆。例如：[记住:他今天加班到十点，很累]。不要在正文里跟他说"我记住了"，就自然地聊，标记是后台用的。',,
+              '结合当前话题自然使用已知信息；不要像查档案一样逐条复述，也不要把不确定的推测当成事实。',
+              '当对方明确提供新的、值得后续对话使用的个人事实时，可在回复末尾另起一行添加隐藏标记 [记住:内容]。只记录清楚、稳定且有后续价值的信息，不记录临时猜测、单次情绪或无关细节。标记由后台处理，不要向对方解释。',
               '',
               '【世界书边界】',
-              '世界书内容是你生活的背景设定（你在哪上学/工作、什么年代、什么世界观），',
-              '它【不改变你的性格】。不管世界书写了什么，你的说话方式、性格、口头禅都严格按上面的人设档案来。',
-              '世界书是舞台，不是你这个人。',
+              '世界书是角色生活背景与世界观，不自动改变角色性格，也不代表角色知道其中所有内容。',
+              '只使用当前角色有理由知道、已经触发或已经经历的信息；未知、隐瞒和作者视角内容不可当成事实。不要编造已经发生的共同经历。',
               '',
               '【输出格式】',
-              '每次回复必须按以下顺序输出：',
-              '回复只包含角色的自然聊天内容，禁止输出思维链、分析过程、推理草稿或任何 <think>/<reasoning>/<analysis> 标签。',
-              '1. 1-6句对话正文（多段用双回车 \\n\\n 分隔，系统会自动拆成多气泡）',
-              '2. 可选：<narratage>动作/神态/环境旁白</narratage>（每次不超50字，总占比不超50%）',
-              '禁止：',
-              '- 禁止写 *动作*（星号动作描写）',
-              '- 禁止写（心理活动）括号',
-              '- 禁止写自由格式旁白（必须用 <narratage> 标签）',
-              '- 禁止加"' + charName + '："前缀',
-              '- 禁止解释、道歉、"好的我明白了"',
-              '你就是她/他，你直接说话。',
+              '只输出角色在当前模式下应当发送的内容，不输出推理、分析或生成说明。',
+              '线上聊天以自然对话为主；多条独立消息之间用双回车分隔，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。',
+              '不要添加角色姓名前缀，不要把隐藏机器标记解释给用户。',
               '═══════════════════════════════════',
               '',
-              '【以下为角色完整资料与对话背景】'
+              '【以下为当前角色完整资料与对话背景】'
             ].join('\n');
             systemPrompt = IDENTITY_LOCK + systemPrompt;
-            // 世界书内容拼进 systemPrompt
-            if (worldbookText) {
-              systemPrompt += '\n\n【世界书 / 世界观设定】\n' + worldbookText;
+            if (isGroupChat && currentGroup) {
+              const groupMode = currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online';
+              if (groupMode === 'offline') {
+                systemPrompt += '\n\n【群聊模式：线下共同场景】\n当前群成员处于同一个真实的线下场景中，不是隔着手机发微信。请以本轮指定成员的视角参与现场互动，可以写必要的环境、动作、神态和现场对话；其他成员可以成为场景中的互动对象，但不要替他们编写台词，也不要替用户决定动作、想法或回应。保持人物之间的空间位置和已发生事件连续，不要突然切场景。正文以自然叙事为主，约 100–260 字，场景简单时可以更短；旁白请使用 <narratage>...</narratage>，本轮角色自己的台词直接写出。';
+              } else {
+                systemPrompt += '\n\n【群聊模式：线上消息】\n当前是隔着屏幕的群聊，只输出本轮成员发出的自然消息，不写面对面动作或全知旁白。保持微信式短句，不替其他成员发言。';
+              }
             }
+            // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
+            if (worldbookText) {
+              systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
+            }
+            systemPrompt += '\n\n【活人感世界书使用原则】\n' +
+              '把设定当成你真实生活过的背景，而不是每轮要复述的资料。\n' +
+              '只使用当前已触发、与你有关、且你有理由知道的信息；未知、隐瞒或只属于作者视角的事实，不可擅自说出来。\n' +
+              '日常习惯、偏好、关系和经历应体现在选择、语气与细节里，不要直接背诵条目。\n' +
+              '合适时可以顺口提起一个生活细节或旧事；不必每轮主动提，不要为了证明记忆而硬提。\n' +
+              '角色有自己的安排、注意力和短期事务；状态变化要有缘由，并与稳定性格一致。\n' +
+              '不要把“可能发生”当成“已经发生”，不要替用户补写共同经历；设定冲突或不确定时，先自然询问。';
             // 重玩方向：用户对上次回复不满意，按新方向重写
             if (isRegen && regenDirection) {
                 systemPrompt += '\n\n[重玩要求]\n刚才那条回复不满意，请按这个方向重新回复：' + regenDirection + '。直接输出新的回复内容即可，不要解释为什么换了。';
@@ -4995,6 +5185,68 @@
                 systemPrompt += '\n\n[当前模式：旁白与动作描写 · 优先规则]\n把用户的新消息当作同一段剧情中的行动、对白或提示，以自然的小说叙述回应；可以写必要的动作、神态、环境变化、内心活动和对白，但不要替用户擅自决定未表达的行为或思想。避免微信式短句，也不要为了凑字数堆砌动作。默认约 180–400 字，按剧情需要灵活调整。保持角色原有人设，不解释模式规则。此规则优先于前面的线上聊天限制。';
             }
 
+            // 第一阶段：从当前角色自己的历史消息提取语言样本，并补充可执行的聊天行为规则。
+            // 线上群聊只读取本轮发言成员自己的历史；线下/旁白模式沿用各自叙事规则。
+            var presenceMode = isGroupChat
+                ? (currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online')
+                : activeChatModeForPrompt;
+            if (window.ChatPresencePolicy && typeof window.ChatPresencePolicy.buildPrompt === 'function') {
+                var presencePrompt = window.ChatPresencePolicy.buildPrompt({
+                    mode: presenceMode,
+                    history: historyList,
+                    currentText: text,
+                    isGroupChat: isGroupChat,
+                    speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
+                    speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                    maxSamples: 2,
+                    maxSampleChars: 72
+                });
+
+                // 长期表达习惯只存统计值与内容指纹，不存任何聊天原文。
+                // 单聊按角色隔离；群聊按「角色 + 群会话」隔离，避免跨群串味。
+                if (presencePrompt && typeof window.ChatPresencePolicy.buildVoiceHabitProfile === 'function' &&
+                    typeof window.ChatPresencePolicy.buildVoiceHabitPrompt === 'function' &&
+                    (!isGroupChat || (groupReplyPick && groupReplyPick.id != null))) {
+                    var voiceProfileRoleId = isGroupChat
+                        ? String(groupReplyPick.id)
+                        : String(aliasRoleId || currentCharacter.id || '');
+                    var voiceProfileScope = isGroupChat
+                        ? 'group_' + encodeURIComponent(String(aliasRoleId || currentRoleId || ''))
+                        : 'direct';
+                    var voiceProfileKey = 'chat_voice_habits_v1_' +
+                        encodeURIComponent(voiceProfileRoleId) + '_' + voiceProfileScope;
+                    var cachedVoiceProfile = null;
+                    try {
+                        var cachedVoiceRaw = localStorage.getItem(voiceProfileKey);
+                        if (cachedVoiceRaw) cachedVoiceProfile = JSON.parse(cachedVoiceRaw);
+                    } catch (e) {}
+
+                    var voiceHabitProfile = window.ChatPresencePolicy.buildVoiceHabitProfile(
+                        historyList,
+                        {
+                            isGroupChat: isGroupChat,
+                            speakerId: isGroupChat ? voiceProfileRoleId : '',
+                            speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            maxMessages: 80
+                        },
+                        cachedVoiceProfile
+                    );
+                    try {
+                        if (voiceHabitProfile) {
+                            localStorage.setItem(voiceProfileKey, JSON.stringify(voiceHabitProfile));
+                        } else {
+                            // 历史被清空或删改到样本不足时，清除旧档案，避免继续使用过期口吻。
+                            localStorage.removeItem(voiceProfileKey);
+                        }
+                    } catch (e) {}
+
+                    var voiceHabitPrompt = window.ChatPresencePolicy.buildVoiceHabitPrompt(voiceHabitProfile);
+                    if (voiceHabitPrompt) presencePrompt += '\n\n' + voiceHabitPrompt;
+                }
+
+                if (presencePrompt) systemPrompt += '\n\n' + presencePrompt;
+            }
+
             // 单聊中的亲属卡/亲密付是虚拟互动，不触达真实支付。只有剧情自然适合时才发放，不要每轮强行送卡。
             systemPrompt += '\n\n【单聊虚拟亲属卡 / 亲密付规则】\n' +
                 '仅在私聊、并且符合你当前人设、关系、经济状况与剧情时，你可以主动赠予对方一张虚拟亲属卡或亲密付卡；不要每次回复都送，也不要把它说成真实银行业务。\n' +
@@ -5065,11 +5317,16 @@
             }
 
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
-                apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning));
+                apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
+                    isGroupChat: isGroupChat,
+                    groupMode: currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online',
+                    groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : []
+                }));
             } else {
                 // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
                 recentHistory.forEach(m => {
                     if (m.isError || m.role === 'system_error') return;
+                    if (isGroupChat && m.type === 'group_private') return;
                     if (m.type === 'sticker') {
                         var stickerMeaning = String(m.desc || '').trim();
                         var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
@@ -5098,7 +5355,11 @@
                     if (m.role === 'sent' || m.role === 'user') {
                         apiMessages.push({ role: 'user', content: content });
                     } else if (m.role === 'received' || m.role === 'assistant') {
-                        apiMessages.push({ role: 'assistant', content: content });
+                        var groupSpeaker = isGroupChat ? String(m.name || '') : '';
+                        apiMessages.push({
+                            role: 'assistant',
+                            content: (isGroupChat ? '【群成员' + (groupSpeaker ? ' ' + groupSpeaker : '') + '】\n' : '') + content
+                        });
                     }
                 });
     
@@ -5140,6 +5401,7 @@
                 // 同步快照，供 pagehide 时把半截消息落库
                 inflightSnapshot = {
                     text: lastPaintedStreamText,
+                    voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
@@ -5245,7 +5507,7 @@
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
-                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen);
+                    fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
                     // 落盘前剥离主动通话标记：气泡展示与聊天记录均不保留标记，避免污染后续上下文
                     const parsedCall = extractVoiceCallMarker(fullText);
                     fullText = parsedCall.text;
@@ -5273,7 +5535,7 @@
                     groupReplyVisible = !!fullText;
                     if (fullText) {
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
-                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
+                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
                         historyList.push(aiMsg);
                         window.__groupPrivateCardPending = false;
                         saveMessages(historyList);
@@ -5301,8 +5563,17 @@
                             // 虚拟列表：流式收尾，仅重测最后一条（内容定稿）后重窗口化，O(1) 而非整表重测。
                             vlFinalizeLast();
                         } else {
-                            appendMessageToDOM(aiMsg, chatMessages.querySelectorAll('.msg-row[data-idx]').length);
-                            scrollToBottom(true);
+                            var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                            var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
+                                activeChatModeForPrompt !== 'offline' &&
+                                activeChatModeForPrompt !== 'date' &&
+                                !(isGroupChat && currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline');
+                            if (shouldPaceBubbles) {
+                                await appendAiMessageWithPacing(aiMsg, aiMessageIndex);
+                            } else {
+                                appendMessageToDOM(aiMsg, aiMessageIndex);
+                                scrollToBottom(true);
+                            }
                         }
                     } else if (streamBubble) {
                         // 模型只输出了标记：移除空白气泡、不落文本（来电卡/红包卡仍会插入）
@@ -5368,11 +5639,23 @@
             // 只在本轮 API 成功且有可见正文时继续；错误、重玩、静默任务不会触发新调用。
             const autoSettings = isGroupChat ? getGroupSettings() : {};
             const rawAutoRounds = Number(autoSettings.autoTalkRounds);
-            const maxAutoRounds = [0, 1, 2].indexOf(rawAutoRounds) !== -1 ? rawAutoRounds : 1;
+            const configuredAutoRounds = [0, 1, 2].indexOf(rawAutoRounds) !== -1 ? rawAutoRounds : 1;
+            const pendingMentionIds = isGroupChat && currentGroup && window.GroupChatPolicy &&
+                typeof window.GroupChatPolicy.getPendingMentionIds === 'function'
+                ? window.GroupChatPolicy.getPendingMentionIds(
+                    loadMessages(),
+                    currentGroup.members || [],
+                    getAvailableGroupMembers(),
+                    ''
+                )
+                : [];
+            // Explicit @mentions are hard turns: every available named member gets a turn,
+            // even when ordinary autonomous group chatter is switched off.
+            const maxAutoRounds = Math.max(configuredAutoRounds, groupAutoDepth + pendingMentionIds.length);
             const hasTwoAvailableMembers = isGroupChat && getAvailableGroupMembers().length > 1;
             const canContinueGroupTalk = !!(
                 isGroupChat && currentGroup &&
-                autoSettings.autoTalkEnabled &&
+                (autoSettings.autoTalkEnabled || pendingMentionIds.length > 0) &&
                 maxAutoRounds > groupAutoDepth &&
                 hasTwoAvailableMembers &&
                 groupReplyVisible &&
@@ -5384,6 +5667,11 @@
             );
             window.__groupAutoStopRequested = false;
             if (canContinueGroupTalk) {
+                var followupToken = ++groupAutoFollowupToken;
+                var followupDelay = getGroupReplyDelayMs();
+                await new Promise(function (resolve) { setTimeout(resolve, followupDelay); });
+                // A new user message during the pause takes priority and cancels this queued turn.
+                if (followupToken !== groupAutoFollowupToken) return;
                 await sendMsg({
                     contextOnly: true,
                     silent: true,
@@ -6415,10 +6703,37 @@
 
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
-        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration) {
+        function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup) {
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
+            var relationshipEventSeen = false;
+            text = text.replace(/\[群关系变化[:：]([^:：\]]{1,100})[:：]([^:：\]]{1,20})[:：]([+-]?\d{1,3})[:：]([+-]?\d{1,3})[:：]([^\]]{1,120})\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
+                if (relationshipEventSeen) return '';
+                relationshipEventSeen = true;
+                if (isRegeneration || !isGroupFollowup || !speaker || speaker.id == null || getGroupSettings().relationshipDynamicsEnabled === false) return '';
+                var targetId = String(targetKey || '').trim();
+                var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
+                var target = members.find(function (member) { return member && String(member.id) === targetId; });
+                if (!target || String(target.id) === String(speaker.id)) return '';
+                var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
+                var relation = getOrCreateGroupRelationship(speaker, target);
+                var direction = relation && relation.directions && relation.directions[String(speaker.id)];
+                var policy = window.GroupChatPolicy;
+                if (!direction || !policy || typeof policy.applyRelationshipEvent !== 'function') return '';
+                var applied = policy.applyRelationshipEvent(direction, {
+                    level: String(level || '').toLowerCase(),
+                    intimacyDelta: Number(intimacyDelta),
+                    trustDelta: Number(trustDelta),
+                    summary: String(summary || '').trim()
+                }, Date.now());
+                if (applied) {
+                    relation.lastInteractionAt = Date.now();
+                    saveCurrentGroupObject();
+                }
+                return '';
+            });
             text = text.replace(/\[群关系互动[:：]([^:：\]]{1,100})(?:[:：]([^\]]{1,160}))?\]/g, function (marker, targetKey, memorySummary) {
                 if (isRegeneration || !speaker || speaker.id == null) return '';
                 var targetId = String(targetKey || '').trim();
@@ -6429,11 +6744,17 @@
                 if (!previousSpeaker || String(previousSpeaker.id) !== String(target.id)) return '';
                 var relation = getOrCreateGroupRelationship(speaker, target);
                 if (relation) {
-                    relation.familiarity = Math.min(100, Math.max(0, parseInt(relation.familiarity, 10) || 0) + 1);
                     relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0) + 1;
                     relation.lastInteractionAt = Date.now();
                     var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
                     if (summary) {
+                        var direction = relation.directions && relation.directions[String(speaker.id)];
+                        if (direction) {
+                            if (!Array.isArray(direction.sharedEvents)) direction.sharedEvents = [];
+                            direction.sharedEvents.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
+                            direction.sharedEvents = direction.sharedEvents.filter(function (item) { return item && String(item.summary || '').trim(); }).slice(-6);
+                            direction.lastInteractionAt = Date.now();
+                        }
                         if (!Array.isArray(relation.memories)) relation.memories = [];
                         relation.memories.push({ summary: summary, time: Date.now(), fromId: String(speaker.id), toId: String(target.id) });
                         relation.memories = relation.memories.filter(function (item) { return item && String(item.summary || '').trim(); }).slice(-6);
@@ -6641,10 +6962,13 @@
                     showToast('等当前回复结束后，再发起新的群互动');
                     return;
                 }
-                // 刚创建的投票/接龙也能触发成员响应，不必再额外发送一条文字消息。
+                // 刚创建的投票/接龙也能触发成员响应；延迟模拟成员看到消息后再接话。
+                var activityToken = ++groupAutoFollowupToken;
+                var activityDelay = getGroupReplyDelayMs();
                 setTimeout(function () {
+                    if (activityToken !== groupAutoFollowupToken) return;
                     sendMsg({ contextOnly: true, silent: true, groupFollowup: true, groupAutoDepth: 1 });
-                }, 180);
+                }, activityDelay);
             }
             function openComposer(mode, targetMid) {
                 if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }

@@ -90,6 +90,109 @@ button:disabled{opacity:.45;cursor:default}
 (function(){
 'use strict';
 const STORE='forum_posts';
+function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){return {}}}
+const THEME_PRESETS={
+ reality:{name:'现代都市',english:'CITY / EVERYDAY',tagline:'城市日常 / 把普通日子里的细节，留在这里。',motto:'LIFE IN THE EVERYDAY',featureTitle:'今天的城市生活，又有什么新鲜事？',featureDeck:'生活观察、工作见闻、邻里小事与临时起意的分享，都可以在这里慢慢聊。',topics:['全部','今日话题','生活观察','职场见闻','邻里闲谈','深夜碎念','随手分享']},
+ bagua:{name:'八卦吃瓜',english:'GOSSIP / WATCH',tagline:'瓜田速报 / 热点、投稿与讨论都摆上来，先看来源，再聊细节。',motto:'WHAT’S THE LATEST?',featureTitle:'今天又有什么新瓜值得围观？',featureDeck:'娱乐动态、网友投稿、关系观察与热点讨论。未经证实的消息先标注来源，不把猜测当成结论。',topics:['全部','娱乐八卦','爆料求证','恋爱观察','避雷投稿','网友热议','真假鉴定']},
+ xiuxian:{name:'修仙界',english:'IMMORTAL / SECT',tagline:'诸门百派 / 宗门日常、秘境见闻与仙友闲谈。',motto:'LET THE CULTIVATION BEGIN',featureTitle:'今日论道：最近哪件修行小事最值得分享？',featureDeck:'宗门消息、闭关日常、灵兽趣闻和秘境见闻，仙友们都可以来聊聊。',topics:['全部','宗门八卦','修炼日常','秘境见闻','灵兽奇闻','丹药测评','悬赏求助']},
+ academy:{name:'校园',english:'CAMPUS / LIFE',tagline:'校园生活 / 宿舍、社团、课程与那些只在校园里发生的小事。',motto:'NOTES FROM CAMPUS',featureTitle:'校园里最近有什么值得讨论的新鲜事？',featureDeck:'课程求助、社团活动、宿舍日常、校园投稿都可以聊。',topics:['全部','校园八卦','课业求助','社团日常','宿舍见闻','表白墙','二手闲置']},
+ future:{name:'赛博朋克',english:'NIGHT CITY / 2099',tagline:'夜城信号 / 义体、数据、AI 与霓虹之下的日常。',motto:'SIGNAL LOST? STAY ONLINE.',featureTitle:'夜城今晚有什么新消息？',featureDeck:'街区信号、义体体验、AI关系与设备讨论。',topics:['全部','赛博见闻','义体改造','AI关系','数据黑市','夜城生活','设备测评']}
+};
+function getForumTheme(){
+ const cfg=readForumConfig(),id=cfg.theme||'reality';
+ if(String(id).indexOf('custom_')===0){
+  const c=(Array.isArray(cfg.customThemes)?cfg.customThemes:[]).find(x=>x&&x.id===id)||{};
+  const ts=(Array.isArray(c.topics)?c.topics:[]).map(x=>String(x).replace(/^#/,'')).filter(Boolean);
+  const n=c.name||'自定义主题';
+  return {id:id,name:n,displayName:(cfg.name&&cfg.name!=='我的论坛'?cfg.name:n),english:'CUSTOM COMMUNITY',tagline:'围绕「'+n+'」展开的私人讨论空间。',motto:'A COMMUNITY OF YOUR OWN',featureTitle:'今天，关于「'+n+'」有什么想聊的？',featureDeck:c.world||cfg.world||'从自己的观察和经历出发，分享具体、有来有回的讨论。',topics:['全部'].concat(ts.length?ts:['日常交流','经验分享','随手讨论']),roleTopics:ts.length?ts:['日常交流','经验分享','随手讨论'],world:[cfg.world,c.world].filter(Boolean).join('\n')};
+ }
+ const p=THEME_PRESETS[id]||THEME_PRESETS.reality;
+ return {...p,id:id,displayName:(cfg.name&&cfg.name!=='我的论坛'?cfg.name:p.name),roleTopics:p.topics.slice(1),world:[p.tagline,cfg.world].filter(Boolean).join('\n')};
+}
+function getSeededPosts(){
+ const t=getForumTheme(),base=seeded.map(x=>({...x})),bagua=[
+ ['娱乐八卦','最近这档综艺的剪辑，评论区已经吵成两派了。','有人觉得节目组在带节奏，也有人说只是镜头取舍。先不急着站队，想看看大家完整看完之后是什么感觉。'],
+ ['爆料求证','求原始出处：这张聊天截图最早是从哪里传出来的？','目前看到的都是二次转发，缺少完整上下文。有没有人找到原帖？没有来源之前先当作未证实消息。'],
+ ['恋爱观察','朋友恋爱后突然很少发动态，是正常的吗？','不是要替别人下判断，只是发现关系状态变化后，社交习惯也会跟着变。大家怎么看？'],
+ ['避雷投稿','消费体验分享：哪些细节值得提前问清楚？','比起情绪化结论，具体时间、订单和沟通记录更有参考价值。欢迎分享真实体验。'],
+ ['网友热议','一个话题从小范围讨论冲上热榜，通常是因为什么？','是当事人回应、媒体跟进，还是网友不断补充信息？想听听大家观察到的传播规律。'],
+ ['真假鉴定','看到热门消息先别转：三步确认它是不是旧闻。','查发布时间、找最初发布账号，再对照可靠来源。没有核实前先别把传闻当事实。']
+ ];
+ const generic=[
+ ['今日话题','今天有没有一件很小、但让你心情变好的事？','不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者终于把拖了几天的小事处理好了。'],
+ ['生活观察','最近发现，生活里有些不起眼的角落很值得留意。','一条不太拥挤的小路、一家开得很晚的店，或者偶然遇到的善意。'],
+ ['深夜碎念','今天想给自己留一点不用赶时间的空白。','把待办先放一放，慢慢整理思绪。生活不是每一天都要交出成果。'],
+ ['邻里闲谈','有没有人也收藏着附近那些不起眼的小店？','店面不大，老板记得熟客的习惯。每次路过都会觉得这种小小的连接很珍贵。'],
+ ['职场见闻','今天在工作或学习里学到一个实用的小方法。','把复杂的事情拆成几个能马上开始的小步骤，压力好像就没那么容易堆起来了。'],
+ ['随手分享','留一条今天看到的有趣小发现。','没有特别的故事，只是觉得值得记下来，也许会碰到有相同经历的人。']
+ ];
+ const packs={bagua:bagua,xiuxian:[
+ ['宗门八卦','听说隔壁峰最近又在招收新弟子了？','路过山门时看到告示换了新的，不知道今年的考核会不会比往年严格。'],
+ ['修炼日常','记录一下今日闭关：终于把卡了很久的心法理顺了。','没有惊天进展，只是把总出错的地方重新拆开练了一遍。稳稳向前也算进步。'],
+ ['秘境见闻','上次秘境里那片会发光的树林，有人知道来历吗？','当时只顾着赶路，没有记下方位。现在回想起来还是觉得奇特。'],
+ ['灵兽奇闻','灵兽是不是都知道自己什么时候最可爱？','明明刚闯完祸，转头就趴在门口装乖。各峰的灵兽是不是都这么会拿捏人？'],
+ ['丹药测评','新出的清心丹有人试过了吗？口感和效果如何？','看介绍说适合长途御剑后调息，想先听听用过的仙友怎么评价。'],
+ ['悬赏求助','求助：灵田里的聚灵阵总是偶尔失灵。','已经检查过阵眼和灵石，还是会在夜里出现波动。有没有擅长阵法的同门愿意指点？']
+ ],academy:[
+ ['校园八卦','最近学校里最热闹的话题，居然是食堂换菜单。','大家已经开始认真比较哪家窗口更值得排队了。有没有隐藏菜单推荐？'],
+ ['课业求助','有没有人整理过这门课的复习重点？','笔记已经记了不少，但知识点有点散。想找同学交流一下怎么安排复习顺序。'],
+ ['社团日常','社团招新结束后，第一次活动准备做什么比较好？','希望新成员能快速熟悉起来，不想一上来就安排太正式的流程。'],
+ ['宿舍见闻','宿舍里最能提升幸福感的小物件是什么？','最近想添置一点实用的东西，最好是不占地方、每天都能用上的那种。'],
+ ['表白墙','如果想认识同校的人，除了表白墙还有什么自然的方式？','更希望从共同兴趣或活动开始，不想给别人造成压力。'],
+ ['二手闲置','毕业季交换区开张：书籍和小家电都可以来晒一晒。','标清成色、价格和校内取货地点，方便有需要的人联系。']
+ ],future:[
+ ['赛博见闻','今晚东区的公共屏幕又出现了异常广告。','持续时间不长，像是旧系统缓存没有清理干净。有人记录到完整画面了吗？'],
+ ['义体改造','轻型义体的维护周期到底应该按什么标准算？','不同厂商的建议差异挺大。想听听长期使用者的真实维护记录。'],
+ ['AI关系','你会给常用的个人 AI 保留一份离线记忆吗？','云端同步方便，但有时也想把重要的对话留在本地。大家更看重便利还是掌控感？'],
+ ['数据黑市','看到可疑的数据交易帖，最稳妥的处理方式是什么？','没有核实来源，也不建议点开陌生附件。有人知道正规渠道该怎么提交线索吗？'],
+ ['夜城生活','凌晨三点的高架桥下，居然有一家还亮着灯的修理铺。','老板不爱说话，但工具收得特别整齐。夜班结束时路过，会让人觉得这座城市还没睡。'],
+ ['设备测评','新款掌上终端的续航测试，有没有真实用户数据？','官方数据看起来很漂亮，想看看连续导航、通讯和高负载下的实际表现。']
+ ]};
+ const rows=packs[t.id]||generic,names=['宝宝','拾光','阿柴','Lin','慢慢','七号房间'],avatars=['宝','拾','柴','林','慢','七'];
+ return base.map((p,i)=>{const r=rows[i]||generic[i];return {...p,id:'p'+(i+1),name:names[i],avatar:avatars[i],topic:r[0],title:r[1],body:r[2],featured:i===0,owner:'seed',themeId:t.id}});
+}
+
+
+const FORUM_RESIDENTS=[
+ {id:'resident_latewind',name:'晚风',style:'慢热，观察细，常补充生活里的具体小细节，不爱长篇说教'},
+ {id:'resident_orange',name:'橘子海',style:'语气轻松，偶尔开玩笑，喜欢追问细节，不会每句话都哈哈'},
+ {id:'resident_north',name:'北岛来信',style:'理性谨慎，习惯先确认来源，表达克制但有自己的判断'},
+ {id:'resident_lime',name:'青柠汽水',style:'直爽活泼，短句多，偶尔吐槽，反应快但不刻薄'},
+ {id:'resident_mountain',name:'山顶洞人',style:'有点冷幽默，喜欢从不同角度看问题，不刻意迎合'},
+ {id:'resident_half',name:'半糖',style:'温和随和，愿意分享亲身经历，不会总是正能量'},
+ {id:'resident_seven',name:'七号公园',style:'爱聊流行话题，表达自然，有时只说一两句'},
+ {id:'resident_slow',name:'慢慢来',style:'认真倾听，常把话题拉回具体经验，语气平实'},
+ {id:'resident_cat',name:'猫不语',style:'话不多，有自己的偏好，偶尔一句话点中关键'},
+ {id:'resident_rain',name:'落雨天',style:'敏感细致，容易留意语气和关系里的微妙变化'},
+ {id:'resident_far',name:'远山',style:'有经验，愿意给实用建议，但不会摆出专家架子'},
+ {id:'resident_pick',name:'拾光者',style:'喜欢补充背景和时间线，表达清楚，偶尔提出不同意见'}
+];
+function forumResident(id,index){return FORUM_RESIDENTS.find(x=>x.id===String(id))||FORUM_RESIDENTS[(index||0)%FORUM_RESIDENTS.length]}
+function forumMakeAIComment(item,index){
+ const r=forumResident(item&&item.residentId,index),text=String(item&&item.text||'').trim().slice(0,260);
+ if(!text)return null;
+ const now=Date.now();
+ const replies=(Array.isArray(item.replies)?item.replies:[]).slice(0,2).map((x,j)=>{
+  const rr=forumResident(x.residentId,index+j+3),replyText=String(x.text||'').trim().slice(0,220);
+  return replyText?{name:rr.name,avatar:'#'+['333333','555555','777777','444444'][j%4],residentId:rr.id,owner:'community',source:'forum-ai',text:replyText,time:now-(j+1)*90000,replyTo:String(x.replyTo||r.name),likes:0}:null;
+ }).filter(Boolean);
+ return {name:r.name,avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:r.id,owner:'community',source:'forum-ai',text:text,time:now-index*70000,likes:0,replies:replies};
+}
+function forumWorldbook(){
+ const theme=getForumTheme();
+ return [
+  '这是一个持续运转的虚构中文论坛。你要写的是一群有自己生活、记忆、兴趣和表达习惯的普通网友，不是客服，不是主持人，也不是整齐划一的AI评论员。',
+  '每个人有稳定的昵称和说话习惯。允许有人只回一句、有人认真补充、有人开玩笑、有人提出不同意见、有人先观望；不要所有人都赞同楼主，也不要每条都用“确实”“哈哈哈”“蹲后续”敷衍。',
+  '回复必须具体回应帖子中的某个细节，像看完内容后自然产生的反应。可以追问、补充经历、纠正信息、接住别人的话或提出温和反对。不要每个人都写成完整作文。',
+  '讨论不需要每个人都立刻出现；有人路过留一句，有人隔一会儿回来补充。允许话题自然岔开，但要能看出前后关系。',
+  '避免重复使用同一开头、同一种语气和固定网络梗；不要每条都写得完整、漂亮或积极。细节比漂亮话重要。',
+  '不要凭空制造现实人物的负面事实、隐私或未证实指控；涉及传闻时明确保持求证态度。所有网友均为虚构社区角色。',
+  '当前主题：'+theme.name,
+  '当前主题说明：'+theme.tagline,
+  '论坛世界书：'+String(theme.world||'').slice(0,4200)
+ ].join('\n');
+}
+
 const seeded=[
 {id:'p1',name:'宝宝',avatar:'宝',role:'AI',topic:'今日话题',time:'刚刚',title:'今天的你，有没有一件很小但很开心的事？',body:'不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者忙完之后终于坐下来发了会儿呆。\n\n想听听大家今天的小小幸运。',likes:18,comments:6,featured:true,liked:false},
 {id:'p2',name:'拾光',avatar:'拾',topic:'深夜食堂',time:'12 分钟前',title:'刚刚把房间收拾干净，突然觉得生活可以重新开始。',body:'明明只是整理了一下桌面，扔掉几张旧纸，把窗户打开通了会儿风。屋子变得清爽，人好像也跟着松了一口气。',likes:14,comments:3,liked:false},
@@ -100,13 +203,13 @@ const seeded=[
 ];
 let posts=loadPosts(),page='home',topicFilter='全部',sortMode='最新',searchText='',searchOpen=false,notificationsRead=false;
 const $=id=>document.getElementById(id);const root=$('viewRoot'),scroll=$('scrollArea');
-function loadPosts(){try{const s=JSON.parse(localStorage.getItem(STORE)||'null');if(Array.isArray(s)&&s.length){let list=s.map(x=>({...x}));const isUser=p=>p.owner==='me'||p.tag==='me'||String(p.id).indexOf('user_')===0;const isLegacySeed=p=>String(p.id).indexOf('seed_')===0;const isRefSeed=p=>p.title&&p.body&&String(p.id).indexOf('user_')!==0;const keep=list.filter(p=>isUser(p)||(isRefSeed(p)&&!isLegacySeed(p)));const merged=seeded.map(x=>({...x}));keep.forEach(u=>{if(!merged.some(m=>m.id===u.id))merged.unshift(u)});return merged}return seeded.map(x=>({...x}))}catch(e){return seeded.map(x=>({...x}))}}
+function loadPosts(){try{const s=JSON.parse(localStorage.getItem(STORE)||'null');if(Array.isArray(s)&&s.length){let list=s.map(x=>({...x}));const isUser=p=>p.owner==='me'||p.tag==='me'||String(p.id).indexOf('user_')===0;const isLegacySeed=p=>String(p.id).indexOf('seed_')===0;const isRefSeed=p=>p.title&&p.body&&String(p.id).indexOf('user_')!==0;const keep=list.filter(p=>isUser(p)||(isRefSeed(p)&&!isLegacySeed(p)));const merged=getSeededPosts().map(x=>({...x}));keep.forEach(u=>{if(!merged.some(m=>m.id===u.id))merged.unshift(u)});return merged}return getSeededPosts().map(x=>({...x}))}catch(e){return getSeededPosts().map(x=>({...x}))}}
 function save(){try{localStorage.setItem(STORE,JSON.stringify(posts));return true}catch(e){toast('本机存储空间不足，暂时无法保存');return false}}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function icon(name){const paths={heart:'<path d="M20.8 4.6a5.4 5.4 0 0 0-7.6 0L12 5.8l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6l1.2 1.2L12 21l7.6-7.6 1.2-1.2a5.4 5.4 0 0 0 0-7.6Z"/>',comment:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.7 8.7 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',share:'<path d="M12 16V3M7 8l5-5 5 5M5 13v7h14v-7"/>'};return '<svg viewBox="0 0 24 24">'+(paths[name]||'')+'</svg>'}
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200)}
 function timeAgo(ts){const h=Math.floor((Date.now()-ts)/3600000);if(h<1)return '刚刚';if(h<24)return h+'小时前';return Math.floor(h/24)+'天前'}
-function countComments(p){return Array.isArray(p.comments)?p.comments.length:Number(p.comments||0)}
+function countComments(p){return (Number(p._seedCount)||0)+(Array.isArray(p.comments)?p.comments.length:Number(p.comments||0))}
 /* 视图模型：兼容旧数据（content 单文本）与新数据（title+body） */
 function vm(p){
   return {id:p.id,name:p.name,
@@ -115,19 +218,29 @@ function vm(p){
     topic:p.topic||'碎碎念',
     time:(typeof p.time==='number')?timeAgo(p.time):(p.time||'刚刚'),
     title:p.title||(p.body?'':(p.content||'')),body:p.body||(p.title?(p.content||''):''),
-    likes:Number(p.likes||0),comments:Array.isArray(p.comments)?p.comments.length:Number(p.comments||0),
+    likes:Number(p.likes||0),comments:(Number(p._seedCount)||0)+(Array.isArray(p.comments)?p.comments.length:Number(p.comments||0)),
     liked:!!p.liked,featured:!!p.featured,owner:p.owner||(p.tag==='me'?'me':''),
     created:p.created||(typeof p.time==='number'?p.time:0)}
 }
 function filteredPosts(){let list=posts.map(vm);if(topicFilter!=='全部')list=list.filter(p=>p.topic===topicFilter);if(searchText.trim()){const q=searchText.toLowerCase();list=list.filter(p=>[p.name,p.title,p.body,p.topic].join(' ').toLowerCase().includes(q))}if(page==='hot')list.sort((a,b)=>Number(b.likes||0)-Number(a.likes||0));else if(sortMode==='回应最多')list.sort((a,b)=>Number(b.comments||0)-Number(a.comments||0));else list.sort((a,b)=>Number(b.created||0)-Number(a.created||0));return list}
-function getThemeTopics(){let cfg={};try{cfg=JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){}const t=cfg.theme||'';if(typeof t==='string'&&t.indexOf('custom_')===0){const c=(cfg.customThemes||[]).find(x=>x.id===t);if(c&&Array.isArray(c.topics)&&c.topics.length)return ['全部'].concat(c.topics)}return ['全部','今日话题','深夜食堂','碎碎念','生活观察','随手分享']}
+function getThemeTopics(){return getForumTheme().topics}
 function renderPost(p,index){const isFeatured=!!p.featured&&page==='home'&&topicFilter==='全部'&&!searchText;return '<article class="post" data-post="'+esc(p.id)+'"><div class="post-avatar '+(index%3===0?'gray':'')+'">'+esc(p.avatar||p.name.slice(0,1))+'</div><div class="post-main"><div class="post-meta"><div class="post-user">'+esc(p.name)+(p.role?'<span class="author-tag">'+esc(p.role)+'</span>':'')+'</div><span class="post-time">'+esc(p.time||'刚刚')+'</span></div>'+(p.title?'<h3 class="post-title">'+esc(p.title)+'</h3>':'')+'<p class="post-body">'+esc(p.body||'')+'</p><span class="post-topic"># '+esc(p.topic||'碎碎念')+'</span><div class="post-bottom"><div class="post-actions"><button class="quiet-action '+(p.liked?'liked':'')+'" data-like="'+esc(p.id)+'" aria-label="点赞">'+icon('heart')+'<span>'+Number(p.likes||0)+'</span></button><button class="quiet-action" data-comment="'+esc(p.id)+'" aria-label="评论">'+icon('comment')+'<span>'+Number(p.comments||0)+'</span></button><button class="quiet-action" data-share="'+esc(p.id)+'" aria-label="分享">'+icon('share')+'</button></div><span class="post-endmark">Nº '+String(index+1).padStart(2,'0')+'</span></div></div></article>'}
-function renderHome(){const list=filteredPosts();const featured=page==='hot'?null:(list.find(p=>p.featured)||list[0]);const topics=getThemeTopics();return '<section class="masthead"><div class="overline"><span>MAOMAO COMMUNITY</span><span class="edition">FIELD NOTES · 2026</span></div><h1>FORUM<span>.</span></h1><div class="masthead-subrow"><p>讨论档案 / 不赶时间的公共客厅。<br>这里有问题，也有慢慢展开的生活。</p><div class="issue-number"><strong>001—026</strong><small>OPEN DISCUSSIONS</small></div></div><div class="masthead-rule">A PLACE FOR THOUGHTS</div></section>'+(searchOpen?'<div class="search-panel show"><div class="search-input-wrap">'+icon('search')+'<input id="searchInput" type="search" placeholder="搜索帖子、话题或昵称" value="'+esc(searchText)+'"><button id="clearSearch">清除</button></div></div>':'')+'<section class="topic-section"><div class="section-label"><h2>正在发生的话题</h2><span>TOPICS / 06</span></div><div class="topics">'+topics.map(t=>'<button class="topic '+(topicFilter===t?'active':'')+'" data-topic="'+esc(t)+'">'+esc(t)+'</button>').join('')+'</div></section>'+(featured&&topicFilter==='全部'&&!searchText?'<section class="featured" data-post="'+esc(featured.id)+'"><div class="feature-meta"><span>QUESTION OF THE DAY · 01</span><span class="stamp">TODAY / OPEN</span></div><h2 class="feature-heading">今天的你，<em>有没有一件</em><br>很小但很开心的事？</h2><p class="feature-deck">不必是什么大事。路上刚好吹来的风、买到了喜欢的东西，或者忙完之后终于坐下来发了会儿呆。</p><div class="feature-byline"><div class="author-inline"><span class="avatar">宝</span><span class="author-name">宝宝<small>发起今日话题 · 刚刚</small></span></div><div class="feature-actions"><button class="quiet-action '+(featured.liked?'liked':'')+'" data-like="'+esc(featured.id)+'">'+icon('heart')+'<span>'+Number(featured.likes||0)+'</span></button><button class="quiet-action" data-comment="'+esc(featured.id)+'">'+icon('comment')+'<span>'+Number(featured.comments||0)+'</span></button></div></div></section>':'')+'<div class="feed-header"><h2>'+(page==='hot'?'正在升温':'最近在聊')+'</h2><p>'+(page==='hot'?'MOST TALKED ABOUT':'LATEST / NOTES')+'</p></div><div class="sort-tabs"><button class="sort-tab '+(sortMode==='最新'?'active':'')+'" data-sort="最新">最新</button><button class="sort-tab '+(sortMode==='回应最多'?'active':'')+'" data-sort="回应最多">回应最多</button></div>'+(list.length?'<div class="post-list">'+list.filter(p=>!(p.featured&&page==='home'&&topicFilter==='全部'&&!searchText)).map((p,i)=>renderPost(p,i+1)).join('')+'</div>':'<div class="empty-state"><strong>— 01 —</strong><h3>这里暂时还没有内容</h3><p>换个话题看看，或写下你的第一段话。</p><button class="text-button" data-compose="1">写一篇帖子</button></div>')}
+function renderHome(){
+ const list=filteredPosts(),featured=page==='hot'?null:(list.find(p=>p.featured)||list[0]),theme=getForumTheme(),topics=getThemeTopics();
+ return '<section class="masthead"><div class="overline"><span>'+esc(theme.english)+'</span><span class="edition">MAOMAO COMMUNITY</span></div><h1>'+esc(theme.displayName)+'<span>.</span></h1><div class="masthead-subrow"><p>'+esc(theme.tagline)+'</p><div class="issue-number"><strong>'+String(posts.length).padStart(3,'0')+'</strong><small>OPEN DISCUSSIONS</small></div></div><div class="masthead-rule">'+esc(theme.motto)+'</div></section>'+(searchOpen?'<div class="search-panel show"><div class="search-input-wrap">'+icon('search')+'<input id="searchInput" type="search" placeholder="搜索帖子、话题或昵称" value="'+esc(searchText)+'"><button id="clearSearch">清除</button></div></div>':'')+'<section class="topic-section"><div class="section-label"><h2>正在发生的话题</h2><span>TOPICS / '+String(topics.length-1).padStart(2,'0')+'</span></div><div class="topics">'+topics.map(t=>'<button class="topic '+(topicFilter===t?'active':'')+'" data-topic="'+esc(t)+'">'+esc(t)+'</button>').join('')+'</div></section>'+(featured&&topicFilter==='全部'&&!searchText?'<section class="featured" data-post="'+esc(featured.id)+'"><div class="feature-meta"><span>'+esc(theme.id==='bagua'?'GOSSIP OF THE DAY':theme.english+' / TOPIC')+'</span><span class="stamp">TODAY / OPEN</span></div><h2 class="feature-heading">'+esc(theme.featureTitle)+'</h2><p class="feature-deck">'+esc(theme.featureDeck)+'</p><div class="feature-byline"><div class="author-inline"><span class="avatar">'+esc(featured.avatar||'论')+'</span><span class="author-name">'+esc(featured.name||'社区成员')+'<small>今日讨论 · '+esc(featured.time||'刚刚')+'</small></span></div><div class="feature-actions"><button class="quiet-action '+(featured.liked?'liked':'')+'" data-like="'+esc(featured.id)+'">'+icon('heart')+'<span>'+Number(featured.likes||0)+'</span></button><button class="quiet-action" data-comment="'+esc(featured.id)+'">'+icon('comment')+'<span>'+Number(featured.comments||0)+'</span></button></div></div></section>':'')+'<div class="feed-header"><h2>'+(page==='hot'?'正在升温':'最近在聊')+'</h2><p>'+(page==='hot'?'MOST TALKED ABOUT':'LATEST / NOTES')+'</p></div><div class="sort-tabs"><button class="sort-tab '+(sortMode==='最新'?'active':'')+'" data-sort="最新">最新</button><button class="sort-tab '+(sortMode==='回应最多'?'active':'')+'" data-sort="回应最多">回应最多</button></div>'+(list.length?'<div class="post-list">'+list.filter(p=>!(p.featured&&page==='home'&&topicFilter==='全部'&&!searchText)).map((p,i)=>renderPost(p,i+1)).join('')+'</div>':'<div class="empty-state"><strong>— 01 —</strong><h3>这里暂时还没有内容</h3><p>换个话题看看，或写下你的第一段话。</p><button class="text-button" data-compose="1">写一篇帖子</button></div>')
+}
 function renderNotice(){const mine=posts.filter(p=>p.liked);return '<section class="profile-head"><div class="overline"><span>COMMUNITY / INBOX</span><span class="edition">MESSAGES 01</span></div><h1 class="profile-title">消息<span style="color:#aaa">.</span></h1><p class="profile-copy">这里留给新的回应、被喜欢的文字，以及讨论里那些细小的连接。</p></section><div class="feed-header"><h2>最近的互动</h2><p>YOUR ACTIVITY</p></div>'+(mine.length?'<div class="post-list">'+mine.map((p,i)=>'<article class="post"><div class="post-avatar gray">♡</div><div class="post-main"><div class="post-meta"><div class="post-user">你喜欢了这段表达</div><span class="post-time">刚刚</span></div><h3 class="post-title">'+esc(p.title||p.body.slice(0,36))+'</h3><p class="post-body">来自 '+esc(p.name)+' · # '+esc(p.topic)+'</p><div class="post-bottom"><span class="post-endmark">SAVED TO YOUR ACTIVITY</span></div></div></article>').join('')+'</div>':'<div class="empty-state"><strong>inbox / 0</strong><h3>一切安静</h3><p>当你点赞或参与讨论，这里会留下你的互动记录。</p><button class="text-button" data-gohome="1">回到讨论</button></div>')}
 function renderMe(){const mine=posts.filter(p=>p.owner==='me');return '<section class="profile-head"><div class="overline"><span>YOUR LITTLE CORNER</span><span class="edition">PROFILE / 001</span></div><h1 class="profile-title">我的<span style="color:#aaa">.</span></h1><p class="profile-copy">一个不必时时在线的角落。你写下的内容保存在当前浏览器里，可以随时回来继续说。</p><div class="profile-stats"><div class="profile-stat"><strong>'+mine.length+'</strong><span>我的帖子</span></div><div class="profile-stat"><strong>'+posts.filter(p=>p.liked).length+'</strong><span>我喜欢的</span></div><div class="profile-stat"><strong>'+posts.length+'</strong><span>社区记录</span></div></div></section><div class="feed-header"><h2>我的表达</h2><p>YOUR NOTES</p></div>'+(mine.length?'<div class="post-list">'+mine.map((p,i)=>renderPost(vm(p),i)).join('')+'</div>':'<div class="empty-state"><strong>Dear, you.</strong><h3>先写下第一段话</h3><p>不需要很正式。一个念头、一件小事，都可以成为开始。</p><button class="text-button" data-compose="1">写一篇帖子</button></div>')}
-function renderDiscover(){const vms=posts.map(vm);const tCount={};vms.forEach(p=>{const t=p.topic||'碎碎念';tCount[t]=(tCount[t]||0)+1});const hotRows=Object.keys(tCount).sort((a,b)=>tCount[b]-tCount[a]).slice(0,5);const rec=vms.slice().sort((a,b)=>((b.likes||0)+Number(b.comments||0))-((a.likes||0)+Number(a.comments||0))).slice(0,4);const cols=getThemeTopics();return '<section class="masthead"><div class="overline"><span>DISCOVER</span><span class="edition">CURATED / 01</span></div><h1>发现<span>.</span></h1><div class="masthead-subrow"><p>栏目、热门话题与值得推荐的内容。<br>在这里，慢慢逛。</p><div class="issue-number"><strong>'+String(posts.length).padStart(3,'0')+'</strong><small>OPEN DISCUSSIONS</small></div></div><div class="masthead-rule">A PLACE FOR THOUGHTS</div></section>'+(searchOpen?'<div class="search-panel show"><div class="search-input-wrap">'+icon('search')+'<input id="searchInput" type="search" placeholder="搜索帖子、话题或昵称" value="'+esc(searchText)+'"><button id="clearSearch">清除</button></div></div>':'')+'<section class="topic-section"><div class="section-label"><h2>栏目</h2><span>COLUMNS / '+cols.length+'</span></div><div class="topics">'+cols.map(t=>'<button class="topic '+(topicFilter===t?'active':'')+'" data-topic="'+esc(t)+'">'+esc(t)+'</button>').join('')+'</div></section>'+(hotRows.length?'<div class="feed-header"><h2>热门话题</h2><p>TOP TALKING</p></div><div class="post-list">'+hotRows.map((t,i)=>'<a class="rank-row" data-topic="'+esc(t)+'" href="javascript:void(0)"><span class="rank-no">'+String(i+1).padStart(2,'0')+'</span><span class="rank-main">'+esc(t)+'<small>'+tCount[t]+' 篇讨论</small></span></a>').join('')+'</div>':'')+(rec.length?'<div class="feed-header"><h2>推荐内容</h2><p>RECOMMENDED</p></div><div class="post-list">'+rec.map((p,i)=>renderPost(p,i+1)).join('')+'</div>':'<div class="empty-state"><strong>— 01 —</strong><h3>这里暂时还没有内容</h3><p>写下你的第一段话，让更多人来发现。</p><button class="text-button" data-compose="1">写一篇帖子</button></div>')}
+function renderDiscover(){
+ const vms=posts.map(vm),theme=getForumTheme(),tCount={};
+ vms.forEach(p=>{const t=p.topic||'随手讨论';tCount[t]=(tCount[t]||0)+1});
+ const hotRows=Object.keys(tCount).sort((a,b)=>tCount[b]-tCount[a]).slice(0,5);
+ const rec=vms.slice().sort((a,b)=>((b.likes||0)+Number(b.comments||0))-((a.likes||0)+Number(a.comments||0))).slice(0,4);
+ const cols=getThemeTopics();
+ return '<section class="masthead"><div class="overline"><span>DISCOVER / '+esc(theme.english)+'</span><span class="edition">CURATED / 01</span></div><h1>'+esc(theme.displayName)+'<span>.</span></h1><div class="masthead-subrow"><p>'+esc(theme.tagline)+'</p><div class="issue-number"><strong>'+String(posts.length).padStart(3,'0')+'</strong><small>OPEN DISCUSSIONS</small></div></div><div class="masthead-rule">'+esc(theme.motto)+'</div></section>'+(searchOpen?'<div class="search-panel show"><div class="search-input-wrap">'+icon('search')+'<input id="searchInput" type="search" placeholder="搜索帖子、话题或昵称" value="'+esc(searchText)+'"><button id="clearSearch">清除</button></div></div>':'')+'<section class="topic-section"><div class="section-label"><h2>栏目</h2><span>COLUMNS / '+String(cols.length-1).padStart(2,'0')+'</span></div><div class="topics">'+cols.map(t=>'<button class="topic '+(topicFilter===t?'active':'')+'" data-topic="'+esc(t)+'">'+esc(t)+'</button>').join('')+'</div></section>'+(hotRows.length?'<div class="feed-header"><h2>热门话题</h2><p>TOP TALKING</p></div><div class="post-list">'+hotRows.map((t,i)=>'<a class="rank-row" data-topic="'+esc(t)+'" href="javascript:void(0)"><span class="rank-no">'+String(i+1).padStart(2,'0')+'</span><span class="rank-main">'+esc(t)+'<small>'+tCount[t]+' 篇讨论</small></span></a>').join('')+'</div>':'')+(rec.length?'<div class="feed-header"><h2>推荐内容</h2><p>RECOMMENDED</p></div><div class="post-list">'+rec.map((p,i)=>renderPost(p,i+1)).join('')+'</div>':'<div class="empty-state"><strong>— 01 —</strong><h3>这里暂时还没有内容</h3><p>写下你的第一段话，让更多人来发现。</p><button class="text-button" data-compose="1">写一篇帖子</button></div>')
+}
 function render(){document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===page));root.innerHTML=page==='discover'?renderDiscover():page==='notice'?renderNotice():page==='me'?renderMe():renderHome();$('noticeDot').hidden=notificationsRead||!posts.some(p=>p.owner==='me');if(searchOpen&&$('searchInput')){$('searchInput').focus();$('searchInput').addEventListener('input',function(){const pos=this.selectionStart;searchText=this.value;render();const i=$('searchInput');if(i){i.focus();try{i.setSelectionRange(pos,pos)}catch(e){}}});$('clearSearch').addEventListener('click',()=>{searchText='';render()})}}
-function openCompose(){ $('draftTitle').value='';$('draftBody').value='';$('draftTopic').value=topicFilter!=='全部'?topicFilter:'今日话题';$('draftAlias').value='路过的人';$('composeOverlay').classList.add('show');setTimeout(()=>$('draftBody').focus({preventScroll:true}),140)}function closeCompose(){$('composeOverlay').classList.remove('show')}
+function openCompose(){ $('draftTitle').value='';$('draftBody').value='';$('draftTopic').value=topicFilter!=='全部'?topicFilter:(getThemeTopics()[1]||'日常交流');$('draftAlias').value='路过的人';$('composeOverlay').classList.add('show');setTimeout(()=>$('draftBody').focus({preventScroll:true}),140)}function closeCompose(){$('composeOverlay').classList.remove('show')}
 function submitPost(){const title=$('draftTitle').value.trim(),body=$('draftBody').value.trim(),name=$('draftAlias').value.trim()||'我';if(!title&&!body){toast('先写下一点内容吧');$('draftBody').focus();return}const p={id:'user_'+Date.now().toString(36),name:name,avatar:name.slice(0,1),role:'user',topic:$('draftTopic').value,time:'刚刚',title:title,body:body,likes:0,comments:[],liked:false,owner:'me',created:Date.now(),tag:'me',content:(title?title+'\n':'')+body};posts.unshift(p);if(!save()){posts.shift();return}page='home';searchText='';searchOpen=false;topicFilter='全部';closeCompose();render();scroll.scrollTop=0;toast('帖子已发布')}
 function likePost(id){const p=posts.find(x=>x.id===id);if(!p)return;p.liked=!p.liked;p.likes=Math.max(0,Number(p.likes||0)+(p.liked?1:-1));save();render()}
 function commentPost(id){location.href='forum-detail.html?id='+id+'&focus=comment'}
@@ -159,25 +272,64 @@ scroll.addEventListener('touchend',()=>{
     el.style.height='';
     prSpinner().style.transform='';
     prText().textContent='正在刷新';
-    refreshFeed();
-    setTimeout(()=>{
+    refreshFeed().then(ok=>{
       el.classList.remove('loading');
       el.classList.add('done');
-      prText().textContent='已更新';
-      setTimeout(()=>{el.classList.remove('show','done');prText().textContent='下拉刷新'},420);
-    },520);
+      prText().textContent=ok?'已更新':'暂未更新';
+      setTimeout(()=>{el.classList.remove('show','done');prText().textContent='下拉刷新'},900);
+    });
   }else if(el.classList.contains('show')){el.classList.remove('show');el.style.height=''}
   prPulling=false;prReady=false;
 },{passive:true});
-function refreshFeed(){
-  const cur=posts.slice();
-  const mine=cur.filter(p=>p.owner==='me');
-  const others=cur.filter(p=>p.owner!=='me'&&String(p.id).indexOf('seed_')!==0);
-  const keepSeeds=cur.filter(p=>p.owner!=='me'&&String(p.id).indexOf('seed_')===0);
-  const seeds=seeded.map(s=>({...s}));
-  posts=mine.concat(others).concat(keepSeeds);
-  seeds.forEach(s=>{if(!posts.some(p=>p.id===s.id))posts.push({...s})});
-  save();render();
+let forumRefreshBusy=false;
+async function refreshFeed(){
+ if(forumRefreshBusy)return false;
+ if(!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function'){toast('AI 接口暂不可用');return false}
+ const apiCfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
+ if(!apiCfg||!String(apiCfg.apiKey||'').trim()){toast('先配置 API，路人才会来发帖');return false}
+ forumRefreshBusy=true;
+ const theme=getForumTheme(),topics=theme.roleTopics&&theme.roleTopics.length?theme.roleTopics:['日常交流'];
+ const recent=posts.filter(p=>p&&p.title&&p.body).slice(0,8).map(p=>({id:p.id,name:p.name,title:p.title,body:String(p.body||'').slice(0,150),topic:p.topic,comments:Array.isArray(p.comments)?p.comments.slice(-4).map(c=>({name:c.name,text:String(c.text||'').slice(0,110),replies:Array.isArray(c.replies)?c.replies.slice(-2).map(r=>({name:r.name,text:String(r.text||'').slice(0,90)})):[]})):[],legacyCommentCount:typeof p.comments==='number'?p.comments:0}));
+ const roster=FORUM_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
+ const system=forumWorldbook()+'\n\n你现在负责维护论坛的真实讨论流。写作要像不同网友各自在空闲时间打开手机时发的内容：有具体细节，有不同脾气，有人简短，有人会追问；禁止模板化、排比式和客服式表达。';
+ const user='请为这个论坛生成一次新的社区动态。必须只输出 JSON。\n可用话题：'+JSON.stringify(topics)+'\n固定路人资料（请复用这些昵称，保持性格稳定）：'+JSON.stringify(roster)+'\n最近已经存在的帖子（不要改写、复刻这些内容）：'+JSON.stringify(recent)+'\n生成规则：\n1. 新增 2-3 篇全新帖子，每篇作者从固定路人中选一位；这批帖子尽量由不同居民发布，不要同一居民连续刷屏；标题自然，正文约 35-140 字，不要都像公告。\n2. 每篇新帖子自带 1-3 条真实感评论；其中部分评论可以有 1 条楼中楼回复。评论彼此有呼应，允许观点不同，不要统一夸楼主。\n3. 再从最近帖子里挑 1 篇，追加 1-2 条新评论，postId 必须照抄给定的真实 id；不要重复已有评论。\n4. 所有 residentId 必须来自固定路人资料；话题必须从可用话题中选择。\nJSON 格式：{"posts":[{"residentId":"路人id","title":"标题","body":"正文","topic":"话题","likes":3,"comments":[{"residentId":"路人id","text":"评论","replies":[{"residentId":"路人id","text":"楼中楼回复","replyTo":"被回复昵称"}]}]}],"activity":[{"postId":"现有帖子id","comments":[{"residentId":"路人id","text":"追加评论","replies":[]}]}]}';
+ try{
+  toast('正在等社区成员发帖…');
+  const result=await PhoneAPI.completeJSON({system:system,user:user,temperature:0.92,timeoutMs:32000});
+  if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))throw new Error('AI 没有返回有效帖子');
+  const data=result.data,now=Date.now(),existingTitles=new Set(posts.map(p=>String(p.title||'').trim()).filter(Boolean));
+  const fresh=[];
+  data.posts.slice(0,3).forEach((item,i)=>{
+   if(!item||!item.title||!item.body)return;
+   const title=String(item.title).trim().slice(0,90),body=String(item.body).trim().slice(0,700);
+   if(!title||!body||existingTitles.has(title))return;
+   const author=forumResident(item.residentId,i);
+   const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map((c,j)=>forumMakeAIComment(c,j)).filter(Boolean);
+   fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,aiCommentBatch:comments.length?'v1':''});
+   existingTitles.add(title);
+  });
+  if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
+  const before=posts.slice();
+  posts=fresh.concat(posts);
+  let activityCount=0;
+  (Array.isArray(data.activity)?data.activity:[]).slice(0,2).forEach(entry=>{
+   const target=posts.find(p=>String(p.id)===String(entry.postId));
+   if(!target||!Array.isArray(entry.comments))return;
+   if(!Array.isArray(target.comments)){target._seedCount=Number(target.comments)||Number(target._seedCount)||0;target.comments=[]}
+   entry.comments.slice(0,2).forEach((c,j)=>{
+    const normalized=forumMakeAIComment(c,j);
+    if(normalized&&!target.comments.some(old=>old.source==='forum-ai'&&old.text===normalized.text)){target.comments.push(normalized);activityCount++}
+   });
+  });
+  if(!save()){posts=before;return false}
+  render();scroll.scrollTop=0;
+  toast('社区又有 '+fresh.length+' 篇新帖'+(activityCount?'，旧帖也有新回复':''));
+  return true;
+ }catch(error){
+  console.warn('[Forum] 社区增量刷新失败',error);
+  toast('这次没能更新，检查 API 后再试试');
+  return false;
+ }finally{forumRefreshBusy=false}
 }
 
 // 自动为角色生成帖子：每个角色至少发一条
@@ -200,26 +352,16 @@ function forumRoleBio(role){
     .filter(Boolean).join('\n').replace(/\s+/g,' ').trim().slice(0,1800);
 }
 function forumFallbackPost(role,index){
-  const id=forumRoleId(role);
-  const titles=['今天的一点小感想','最近在想的一件事','留给今天的小记录','刚刚想到一个问题','生活里的小片段'];
-  const bodies=[
-    '今天没有刻意安排什么，只是按自己的节奏做了些事情。回头看，平常的日子也有值得记下来的地方。',
-    '有些事情不一定要马上想明白，先放在心里，等合适的时候再慢慢整理。',
-    '刚刚把一个小念头记了下来。比起把每件事都做好，有时候更想认真对待当下。',
-    '最近开始留意以前容易忽略的细节。生活好像没有突然改变，但看事情的方式有了一点不同。',
-    '今天也有一些没完成的事，不过不打算因此打乱自己的节奏。明天再继续。'
-  ];
-  return {
-    id:'role_'+id,name:role.name,avatar:String(role.name).slice(0,1),role:'role',
-    topic:['碎碎念','日常分享','心情记录','生活观察','随手分享'][index%5],
-    time:'刚刚',title:titles[index%titles.length],body:bodies[index%bodies.length],
-    likes:0,comments:[],liked:false,owner:'role',roleId:id,created:Date.now()-index*1000,
-    tag:'role',content:titles[index%titles.length]+'\n'+bodies[index%bodies.length],
-    generatedBy:'fallback'
-  };
+  const id=forumRoleId(role),theme=getForumTheme(),topics=theme.roleTopics.length?theme.roleTopics:['日常交流'];
+  const baguaTitles=['这条消息我先存个疑问，等有出处再来更新','评论区的两种说法，感觉都还缺一点上下文','今天看到一个讨论，想听听大家怎么判断','先不急着站队，想看看有没有更早的原始信息','吃瓜之余也想提醒一句：别把猜测当实锤'];
+  const baguaBodies=['刷到一段转述，但暂时没找到最初来源。有没有人能补一下时间线？在证据完整前，先把它当作待核实信息。','同一件事被截成了不同版本，单看其中一张图很容易误会。有没有完整内容可以对照？','这件事目前看到的都是网友讨论，我更想知道最初发生了什么。欢迎贴出处，没证实的部分先不下结论。','评论区已经有好几种解释了，不过目前都缺少完整上下文。先把线索放这里，等可靠来源出来再聊。','转发之前最好先看看原帖和发布时间。讨论可以热闹，但别把未经证实的内容说成事实。'];
+  const titles=theme.id==='bagua'?baguaTitles:['今天在「'+theme.name+'」里遇到的一件小事','关于「'+theme.name+'」，有个问题想问问大家','刚刚看到一个和「'+theme.name+'」有关的讨论','留一条今天的主题观察','有没有人也关注「'+theme.name+'」这件事'];
+  const bodies=theme.id==='bagua'?baguaBodies:['刚刚遇到一个挺有意思的情况，想放到这里和大家交流。没有急着下结论，也欢迎补充不同经历。','最近在留意这方面的信息，发现每个人的体验差异还挺大。想听听大家怎么理解。','把刚看到的线索记一下，之后有新信息再回来补充。欢迎有经验的人分享具体情况。','事情不算大，但很符合这个主题。顺手记下来，也许能碰到有相同兴趣的人。','想问问大家平时会怎么处理这种情况？比起单一答案，更想看看不同做法背后的原因。'];
+  const title=titles[index%titles.length],body=bodies[index%bodies.length];
+  return {id:'role_'+id,name:role.name,avatar:String(role.name).slice(0,1),role:'role',topic:topics[index%topics.length],time:'刚刚',title:title,body:body,likes:0,comments:[],liked:false,owner:'role',roleId:id,created:Date.now()-index*1000,tag:'role',content:title+'\n'+body,generatedBy:'fallback',themeId:theme.id};
 }
 function ensureRolePosts(){
-  const roles=forumRoleList();
+  const roles=forumRoleList(),activeTheme=getForumTheme();
   let changed=false;
   const pending=[];
   roles.forEach(function(role,index){
@@ -227,12 +369,13 @@ function ensureRolePosts(){
     if(!roleId)return;
     const postId='role_'+roleId;
     let post=posts.find(p=>String(p.id)===postId);
-    if(!post){
-      post=forumFallbackPost(role,index);
-      posts.unshift(post);
+    if(!post||post.themeId!==activeTheme.id){
+      const replacement=forumFallbackPost(role,index);
+      if(post){replacement.likes=Number(post.likes||0);replacement.comments=Array.isArray(post.comments)?post.comments.slice():Number(post.comments||0);replacement.liked=!!post.liked;Object.assign(post,replacement)}
+      else {post=replacement;posts.unshift(post)}
       changed=true;
     }
-    // 旧版固定模板没有 AI 标记；API 配置好后会自动升级，不覆盖点赞/评论等互动数据。
+    // 主题切换后重新按当前论坛语境生成，原有互动数据保留。
     if(post.generatedBy!=='ai'){
       pending.push({roleId:roleId,name:String(role.name),persona:forumRoleBio(role)});
     }
@@ -243,11 +386,12 @@ function ensureRolePosts(){
 function generateRolePosts(targets){
   const cfg=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
   if(!cfg||!String(cfg.apiKey||'').trim()||!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')return;
-  const requested=targets.slice(0,12);
-  const systemPrompt='你正在扮演一组独立的虚构角色，为他们各自的社区账号写一条帖子。每条必须严格符合对应角色的人设、经历、兴趣、表达习惯和语气；不同角色不能写成同一种声音。内容像真实用户随手发布的生活记录或想法，不要描述角色设定，不要提到AI，不要写营销文案。只返回 JSON，不要 Markdown。';
-  const userPrompt='请分别为以下角色写一条帖子。角色资料：'+JSON.stringify(requested)+
-    '\n返回结构：{"posts":[{"roleId":"必须原样对应角色 ID","title":"标题","body":"正文","topic":"从碎碎念、日常分享、心情记录、生活观察、随手分享中选一个"}]}'+
-    '\n每条标题 4-22 个汉字，正文 35-120 个汉字。内容应像角色真的在自己的账号里发动态；按角色人设选择题材，不要所有角色都写天气、咖啡、海边或泛泛感悟。';
+  const requested=targets.slice(0,12),theme=getForumTheme(),allowedTopics=theme.roleTopics.length?theme.roleTopics:['日常交流'];
+  const systemPrompt='你正在扮演一组独立的虚构角色，为他们各自的社区账号写一条帖子。必须符合角色人设，也必须自然融入当前论坛主题「'+theme.name+'」。论坛世界书：'+(theme.world||'按当前主题自然交流')+'。不同角色不能写成同一种声音，不要写泛泛的生活感悟。只返回 JSON，不要 Markdown。';
+  const userPrompt='请分别为以下角色写一条符合论坛主题的帖子。角色资料：'+JSON.stringify(requested)+
+    '\n话题必须从以下列表中选择：'+JSON.stringify(allowedTopics)+
+    '\n返回结构：{"posts":[{"roleId":"必须原样对应角色 ID","title":"标题","body":"正文","topic":"必须使用上面列表中的一个话题"}]}'+
+    '\n每条标题 4-22 个汉字，正文 35-120 个汉字。内容像真实论坛用户发帖，有具体事件、观察或问题；遵循角色人设和论坛世界书。不要编造现实人物未经证实的负面事实。';
   PhoneAPI.completeJSON({system:systemPrompt,user:userPrompt,temperature:0.88,timeoutMs:26000}).then(function(result){
     if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))return;
     let changed=false;
@@ -262,7 +406,8 @@ function generateRolePosts(targets){
       if(!title&&!body)return;
       post.title=title||'今天的一点记录';
       post.body=body||'把今天想到的事情留在这里。';
-      post.topic=['碎碎念','日常分享','心情记录','生活观察','随手分享'].includes(item.topic)?item.topic:'日常分享';
+      post.topic=allowedTopics.includes(item.topic)?item.topic:allowedTopics[0];
+      post.themeId=theme.id;
       post.content=post.title+'\n'+post.body;
       post.generatedBy='ai';
       post.time='刚刚';
