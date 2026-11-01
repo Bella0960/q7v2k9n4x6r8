@@ -828,6 +828,11 @@
             return;
         }
 
+        if (scope === 'private' && safeGet('chat_followup_enabled_' + contact.id) !== 'true') return;
+        if (scope === 'group') {
+            var currentGroup = readGroups().find(function (item) { return item && String(item.id) === String(contact.id); });
+            if (!currentGroup || !currentGroup.settings || currentGroup.settings.followUpEnabled !== true) return;
+        }
         var freshHistory = readHistory(contact.id);
         var freshMessages = followUpMessages(freshHistory);
         var freshLast = freshMessages[freshMessages.length - 1];
