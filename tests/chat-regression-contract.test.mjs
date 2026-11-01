@@ -593,6 +593,14 @@ test('group chat policy resolves @mentions before weighted speaker selection', (
     Array.from(groupPolicy.extractMentionedMemberIds('这件事问问 @林林，再听听 @夜班搭档。@unknown', members)),
     ['role-a', 'role-c']
   );
+  assert.deepEqual(
+    Array.from(groupPolicy.getPendingMentionIds([
+      { role: 'user', text: '@林林 @阿岚 @夜班搭档' },
+      { role: 'assistant', memberId: 'role-a', text: '我来回答。' },
+      { role: 'assistant', memberId: 'role-b', text: '我也补充一句。' }
+    ], members, [members[0], members[1], members[2]], '')),
+    ['role-c']
+  );
 
   const first = groupPolicy.selectSpeaker({
     availableMembers: members,
@@ -660,9 +668,19 @@ test('group model context retains speaker identity and excludes group-private pa
   assert.equal(mapped.some((item) => item.content.includes('只属于私聊')), false);
 });
 
+
+test('offline group context keeps narration text so the shared scene remains continuous', () => {
+  const mapped = contextPolicy.mapHistoryToApiMessages([
+    { role: 'assistant', name: '小林', text: '<narratage>门被推开了。</narratage>我到了。' },
+    { role: 'user', text: '先坐一会儿。' }
+  ], null, { isGroupChat: true, groupMode: 'offline' });
+  assert.equal(mapped[0].content, '【群成员 小林】\n门被推开了。我到了。');
+});
+
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
   assert.match(detail, /group-chat-policy\.js\?v=20261102v1/);
   assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
+  assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
   assert.match(detail, /acceptGroupUserMessage/);
   assert.match(detail, /isDuplicateWithinWindow/);
