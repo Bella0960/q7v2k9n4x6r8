@@ -624,6 +624,23 @@ test('group chat policy resolves @mentions before weighted speaker selection', (
   assert.equal(second.isMentioned, true);
 });
 
+test('an explicit @mention can select the immediately previous speaker', () => {
+  const members = [
+    { id: 'role-a', name: '小林' },
+    { id: 'role-b', name: '阿岚' }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    mentionQueueIds: ['role-a'],
+    isFollowup: true,
+    previousSpeakerId: 'role-a',
+    random: () => 0.99
+  });
+  assert.equal(decision.member.id, 'role-a');
+  assert.equal(decision.isMentioned, true);
+});
+
 test('group relationship familiarity affects which member is more likely to pick up a thread', () => {
   const weighted = groupPolicy.selectSpeaker({
     availableMembers: [{ id: 'role-c' }, { id: 'role-b' }],
@@ -684,6 +701,8 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /本轮被@点名/);
   assert.match(detail, /acceptGroupUserMessage/);
   assert.match(detail, /isDuplicateWithinWindow/);
+  assert.match(detail, /savedHistory = loadMessages\(\)/);
+  assert.match(detail, /savedMessage\.silent/);
   assert.match(detail, /groupAutoFollowupToken/);
   assert.match(detail, /getGroupReplyDelayMs/);
   assert.match(detail, /群聊模式：线下共同场景/);
