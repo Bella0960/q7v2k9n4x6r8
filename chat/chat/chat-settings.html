@@ -1400,6 +1400,38 @@
           </button>
         </div>
 
+        <div class="settings-card" id="proactiveContactCard">
+          <button type="button" class="action-row" id="actionProactiveContact">
+            <span class="action-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 8.7 3.9a8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></svg>
+            </span>
+            <span class="action-body">
+              <span class="action-title">主动联系</span>
+              <span class="action-sub" id="proactiveContactSub">开启后，TA 可能在合适时主动发来一条消息</span>
+            </span>
+            <span class="ios-switch">
+              <input type="checkbox" id="proactiveContactToggle" aria-label="主动联系">
+              <span class="toggle-track">
+                <span class="knob-wrapper">
+                  <span class="knob-inner">
+                    <span class="knob-txt knob-txt-on">ON</span>
+                    <span class="knob-txt knob-txt-off">OFF</span>
+                  </span>
+                </span>
+              </span>
+            </span>
+          </button>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 14px 10px 58px;">
+            <span style="font-size:11px;color:#888;">最短联系间隔</span>
+            <select id="proactiveContactInterval" aria-label="主动联系间隔" style="height:31px;min-width:112px;border:1px solid #e8e8ec;border-radius:8px;background:#fafafc;padding:0 8px;font:inherit;font-size:11px;color:#111;">
+              <option value="24">24 小时</option>
+              <option value="48">48 小时</option>
+              <option value="72">72 小时</option>
+            </select>
+          </div>
+          <p style="padding:0 14px 12px 58px;font-size:10px;line-height:1.6;color:#999;">仅在 MAOMAO 前台打开时检查；至少安静 8 小时、每天全局最多一次判断。需要 API 额度，关闭后不再主动联系。</p>
+        </div>
+
         <div class="settings-card" id="autoCommentCard">
           <button type="button" class="action-row" id="actionAutoComment">
             <span class="action-icon">
@@ -2727,6 +2759,56 @@
       }
       refreshAutoMomentUI(next);
       showToast(next ? '自动发动态已开启' : '自动发动态已关闭');
+    });
+  }
+
+  // ================= 角色主动联系（默认关闭；前台运行、按角色冷却） =================
+  var PROACTIVE_CONTACT_KEY = 'chat_proactive_contact_' + roleId;
+  var PROACTIVE_INTERVAL_KEY = 'chat_proactive_interval_' + roleId;
+  var actionProactiveContact = document.getElementById('actionProactiveContact');
+  var proactiveContactToggle = document.getElementById('proactiveContactToggle');
+  var proactiveContactSub = document.getElementById('proactiveContactSub');
+  var proactiveContactInterval = document.getElementById('proactiveContactInterval');
+
+  function readProactiveContact() {
+    return localStorage.getItem(PROACTIVE_CONTACT_KEY) === 'true';
+  }
+  function readProactiveInterval() {
+    var value = parseInt(localStorage.getItem(PROACTIVE_INTERVAL_KEY), 10);
+    return [24, 48, 72].indexOf(value) !== -1 ? value : 24;
+  }
+  function refreshProactiveContactUI(enabled) {
+    proactiveContactToggle.checked = enabled;
+    proactiveContactSub.textContent = enabled
+      ? '已开启，有合适话题时可能主动发来一条消息'
+      : '开启后，TA 可能在合适时主动发来一条消息';
+    proactiveContactInterval.value = String(readProactiveInterval());
+  }
+
+  if (actionProactiveContact && proactiveContactToggle && proactiveContactInterval) {
+    refreshProactiveContactUI(readProactiveContact());
+    actionProactiveContact.addEventListener('click', function () {
+      var next = !proactiveContactToggle.checked;
+      try {
+        localStorage.setItem(PROACTIVE_CONTACT_KEY, next ? 'true' : 'false');
+      } catch (e) {
+        showToast('操作失败，请重试');
+        return;
+      }
+      refreshProactiveContactUI(next);
+      showToast(next ? '已开启角色主动联系' : '已关闭角色主动联系');
+    });
+    proactiveContactInterval.addEventListener('change', function () {
+      var next = parseInt(proactiveContactInterval.value, 10);
+      if ([24, 48, 72].indexOf(next) === -1) next = 24;
+      try {
+        localStorage.setItem(PROACTIVE_INTERVAL_KEY, String(next));
+        proactiveContactInterval.value = String(next);
+        showToast('主动联系间隔已保存');
+      } catch (e) {
+        showToast('保存失败，请重试');
+        proactiveContactInterval.value = String(readProactiveInterval());
+      }
     });
   }
 
