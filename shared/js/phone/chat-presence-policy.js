@@ -622,6 +622,8 @@
     if (persona) lines.push('', '【角色设定】', persona);
     var voicePrompt = buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
     if (voicePrompt) lines.push('', voicePrompt);
+    var habitPrompt = buildVoiceHabitPrompt(options.voiceProfile);
+    if (habitPrompt) lines.push('', habitPrompt);
     var autonomyPrompt = buildAutonomyPrompt(history, { mode: 'online', maxScan: 60, maxNotes: 2, maxTurns: 4 });
     if (autonomyPrompt) lines.push('', autonomyPrompt);
     if (options.localTime) lines.push('', '【当前本地时间】' + String(options.localTime) + '。只能将其用于理解时间语境，不得声称在未知地点。');
