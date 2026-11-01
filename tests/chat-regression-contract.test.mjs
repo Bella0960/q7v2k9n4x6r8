@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v135/);
+  assert.match(serviceWorker, /phone-app-pwa-v136/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1212,6 +1212,7 @@ test('chat presence policy learns only the active character voice from ordinary 
     { role: 'assistant', text: '今天外面风好大。' },
     { role: 'user', text: '我这边也有点冷。' },
     { role: 'assistant', text: '你那边是不是还在下雨？' },
+    { role: 'assistant', mode: 'date', text: '（走到窗边）外面下雨了。' },
     { role: 'assistant', silent: true, text: '隐藏指令不能当作语言样本。' },
     { role: 'assistant', type: 'image', text: '图片描述不能当作语言样本。' },
     { role: 'system_error', text: '错误提示不能当作语言样本。' }
@@ -1233,6 +1234,7 @@ test('chat presence policy learns only the active character voice from ordinary 
   assert.equal(prompt.includes('隐藏指令不能当作语言样本'), false);
   assert.equal(prompt.includes('图片描述不能当作语言样本'), false);
   assert.equal(prompt.includes('错误提示不能当作语言样本'), false);
+  assert.equal(prompt.includes('外面下雨了。'), false);
 });
 
 test('chat presence policy keeps group voice examples isolated to the selected speaker', () => {
@@ -1262,8 +1264,8 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v1/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v2/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
   assert.match(serviceWorker, /phone-app-pwa-v135/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v1/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v2/);
 });
