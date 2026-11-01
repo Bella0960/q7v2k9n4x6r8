@@ -4583,9 +4583,11 @@
                     }
                     var groupPolicy = window.GroupChatPolicy;
                     if (groupPolicy && typeof groupPolicy.selectSpeaker === 'function') {
-                        var mentionQueue = typeof groupPolicy.extractMentionedMemberIds === 'function'
-                            ? groupPolicy.extractMentionedMemberIds(selectionText, members)
-                            : [];
+                        var mentionQueue = typeof groupPolicy.getPendingMentionIds === 'function'
+                            ? groupPolicy.getPendingMentionIds(historyList, members, availableMembers, selectionText)
+                            : (typeof groupPolicy.extractMentionedMemberIds === 'function'
+                                ? groupPolicy.extractMentionedMemberIds(selectionText, members)
+                                : []);
                         var speakerDecision = groupPolicy.selectSpeaker({
                             text: selectionText,
                             members: members,
@@ -5427,11 +5429,23 @@
             // 只在本轮 API 成功且有可见正文时继续；错误、重玩、静默任务不会触发新调用。
             const autoSettings = isGroupChat ? getGroupSettings() : {};
             const rawAutoRounds = Number(autoSettings.autoTalkRounds);
-            const maxAutoRounds = [0, 1, 2].indexOf(rawAutoRounds) !== -1 ? rawAutoRounds : 1;
+            const configuredAutoRounds = [0, 1, 2].indexOf(rawAutoRounds) !== -1 ? rawAutoRounds : 1;
+            const pendingMentionIds = isGroupChat && currentGroup && window.GroupChatPolicy &&
+                typeof window.GroupChatPolicy.getPendingMentionIds === 'function'
+                ? window.GroupChatPolicy.getPendingMentionIds(
+                    loadMessages(),
+                    currentGroup.members || [],
+                    getAvailableGroupMembers(),
+                    ''
+                )
+                : [];
+            // Explicit @mentions are hard turns: every available named member gets a turn,
+            // even when ordinary autonomous group chatter is switched off.
+            const maxAutoRounds = Math.max(configuredAutoRounds, groupAutoDepth + pendingMentionIds.length);
             const hasTwoAvailableMembers = isGroupChat && getAvailableGroupMembers().length > 1;
             const canContinueGroupTalk = !!(
                 isGroupChat && currentGroup &&
-                autoSettings.autoTalkEnabled &&
+                (autoSettings.autoTalkEnabled || pendingMentionIds.length > 0) &&
                 maxAutoRounds > groupAutoDepth &&
                 hasTwoAvailableMembers &&
                 groupReplyVisible &&
