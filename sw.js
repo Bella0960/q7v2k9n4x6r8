@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v134';
+const CACHE_NAME = 'phone-app-pwa-v135';
 const APP_SHELL = [
   './',
   './index.html',
@@ -68,6 +68,7 @@ const APP_SHELL = [
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261031v1',
+  './shared/js/phone/chat-presence-policy.js?v=20261102v1',
   './shared/js/phone/group-chat-policy.js?v=20261102v5',
   'shared/js/phone/phone_stream.js',
   'shared/js/phone/memory_recall.js?v=20261024v2',
