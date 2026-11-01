@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v147/);
+  assert.match(serviceWorker, /phone-app-pwa-v148/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1265,10 +1265,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v14/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v15/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v147/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v14/);
+  assert.match(serviceWorker, /phone-app-pwa-v148/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v15/);
 });
 
 
@@ -1388,8 +1388,8 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v147/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v14/);
+  assert.match(serviceWorker, /phone-app-pwa-v148/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v15/);
 });
 
 
@@ -1567,6 +1567,7 @@ test('autonomy prompt encourages restrained initiative without inventing real-wo
   assert.ok(prompt.includes('我最近在学做甜点。'));
   assert.ok(prompt.includes('没有已知安排时，不要编造'));
   assert.ok(prompt.includes('对方不接话题时自然放下'));
+  assert.ok(prompt.includes('不要连续重复'));
 });
 
 test('chat detail injects the role autonomy prompt and precaches the updated policy', () => {
@@ -1574,6 +1575,6 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.match(detail, /maxNotes: 3/);
   assert.match(detail, /maxTurns: 4/);
   assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v11/);
-  assert.match(serviceWorker, /phone-app-pwa-v147/);
+  assert.match(serviceWorker, /phone-app-pwa-v148/);
   assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v11/);
 });
