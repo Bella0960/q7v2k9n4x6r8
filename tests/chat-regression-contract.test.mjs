@@ -1625,6 +1625,10 @@ test('follow-up policy blocks quiet hours, persists a pause and ends a chain on 
   assert.equal(state.followUpCount, 0);
   assert.equal(state.dueAt, 0);
   assert.ok(state.userReceptivityScore > 0.7);
+  const noReplyCooldown = { ignoredCount: 3, pausedByUser: false };
+  followUpPolicy.shouldBlock(noReplyCooldown, night);
+  followUpPolicy.noteUserReply(noReplyCooldown);
+  assert.equal(noReplyCooldown.cooldownUntil, 0);
 });
 
 test('follow-up policy escalates no-reply cooldown and builds non-pressuring contextual prompts', () => {
