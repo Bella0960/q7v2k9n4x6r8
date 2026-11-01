@@ -128,6 +128,8 @@
                 var match = legacyUrl.toLowerCase().match(/\.(ttf|woff2?)(?:[?#]|$)/);
                 var format = match && match[1] === 'ttf' ? 'truetype' : (match && match[1] === 'woff2' ? 'woff2' : 'woff');
                 window.MAOMAOFontRuntime.applyUrl(legacyUrl, format);
+            } else {
+                window.MAOMAOFontRuntime.clear();
             }
             return;
         }
@@ -159,5 +161,13 @@
     }
 
     loadActiveFontPreset();
+
+    // 在历史页面从浏览器返回缓存恢复、或其他页面切换字体方案时，重新同步当前字体。
+    window.addEventListener('pageshow', loadActiveFontPreset);
+    window.addEventListener('storage', function (event) {
+        if (!event.key || event.key === 'active_font_preset_id' || event.key === 'custom_font_url') {
+            loadActiveFontPreset();
+        }
+    });
 
 })();
