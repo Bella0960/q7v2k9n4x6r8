@@ -60,6 +60,11 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 .relationship-direction:first-of-type{margin-top:0}
 .relationship-direction-head{font-size:11px;font-weight:600;color:#555;margin-bottom:9px}
 .relationship-direction .relationship-fields{margin-top:8px}
+.relationship-event-history{margin-top:9px;padding-top:8px;border-top:1px solid #f2f2f4}
+.relationship-event-history label{display:block;font-size:10px;color:#999;margin-bottom:5px}
+.relationship-event-item{font-size:10px;line-height:1.6;color:#666;padding:2px 0}
+.relationship-event-item strong{font-weight:600;color:#333}
+.relationship-event-empty{font-size:10px;color:#aaa;line-height:1.6}
 .speaking-settings{margin-top:12px;padding-top:11px;border-top:1px solid #f0f0f2}
 .speaking-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .speaking-settings input[type=range]{height:22px!important;padding:0!important;accent-color:#111}
@@ -139,6 +144,10 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         <span class="setting-copy"><span class="setting-title">角色自主接话</span><span class="setting-desc">开启后，角色会在普通话题中自然接话；明确 @ 到的成员即使关闭此项，也会按顺序回复。每次追加接话都会额外调用 API。</span></span>
         <span class="switch"><input type="checkbox" data-setting="autoTalkEnabled"><span class="track"></span></span>
       </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">动态关系变化</span><span class="setting-desc">角色只在发生有意义的互动时微调亲密度与信任度；普通寒暄不涨分。信任受损后，修复会更慢，不额外增加 API 请求。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="relationshipDynamicsEnabled"><span class="track"></span></span>
+      </label>
       <div class="setting">
         <span class="setting-copy"><span class="setting-title">群聊模式</span><span class="setting-desc">线上是隔着屏幕的短消息；线下是同一场景中的多人互动。两种模式共用这份群聊记录。</span></span>
         <select id="groupChatMode" aria-label="群聊模式" style="width:92px;flex:none;height:36px;border:1px solid #e6e6eb;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;">
@@ -214,7 +223,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     document.getElementById('groupTitle').textContent='群聊不存在';
   }else{
     if(!group.settings||typeof group.settings!=='object')group.settings={};
-    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false};
+    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true};
     Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
     var autoRounds=Number(group.settings.autoTalkRounds);
     if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
@@ -349,6 +358,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         direction.moodToward=['warm','neutral','cold'].indexOf(String(direction.moodToward||'neutral'))!==-1?String(direction.moodToward||'neutral'):'neutral';
         direction.note=String(direction.note||'').slice(0,120);
         if(!Array.isArray(direction.sharedEvents))direction.sharedEvents=[];
+        if(direction.trustRecoveryDebt==null){direction.trustRecoveryDebt=0;changed=true;}
+        if(!Array.isArray(direction.eventHistory)){direction.eventHistory=[];changed=true;}
       });
       return {record:rel,key:key,changed:changed};
     }
@@ -358,6 +369,9 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       var mood=String(direction.moodToward||'neutral');
       var moodOptions=moodTypes.map(function(option){return '<option value="'+option.value+'" '+(option.value===mood?'selected':'')+'>'+option.label+'</option>';}).join('');
       var events=(Array.isArray(direction.sharedEvents)?direction.sharedEvents:[]).slice(-6).map(function(item){return String(item&&item.summary||'');}).filter(Boolean).join('\n');
+      var eventHistory=(Array.isArray(direction.eventHistory)?direction.eventHistory:[]).slice(-3).reverse();
+      var eventHtml=eventHistory.length?eventHistory.map(function(item){var i=Number(item.intimacyDelta)||0,t=Number(item.trustDelta)||0;var fmt=function(v){return (v>0?'+':'')+String(v);};return '<div class="relationship-event-item"><strong>'+escapeHtml(fmt(i)+' 亲密 · '+fmt(t)+' 信任')+'</strong>　'+escapeHtml(item.summary||'')+'</div>';}).join(''):'<div class="relationship-event-empty">暂无显著关系变化</div>';
+      var repairDebt=Math.round(Math.max(0,Number(direction.trustRecoveryDebt)||0));
       return '<section class="relationship-direction" data-relationship-direction="'+escapeHtml(from.id)+'">'+
         '<div class="relationship-direction-head">'+escapeHtml(groupMemberName(from))+' 对 '+escapeHtml(groupMemberName(to))+'</div>'+
         '<div class="relationship-fields"><div class="field"><label>关系类型</label><select data-relationship-field="type">'+typeOptions+'</select></div>'+
@@ -365,7 +379,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         '<div class="field"><div class="relationship-meter"><label>亲密度</label><strong><span data-intimacy-value>'+direction.intimacy+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="intimacy" value="'+direction.intimacy+'"></div>'+
         '<div class="field"><div class="relationship-meter"><label>信任度</label><strong><span data-trust-value>'+direction.trust+'</span> / 100</strong></div><input type="range" min="0" max="100" step="1" data-relationship-field="trust" value="'+direction.trust+'"></div></div>'+
         '<div class="field relationship-note"><label>关系补充</label><input type="text" maxlength="120" data-relationship-field="note" value="'+escapeHtml(direction.note||'')+'" placeholder="例如：总是斗嘴，但会替对方收尾"></div>'+
-        '<div class="field relationship-note"><label>共同经历</label><textarea rows="2" maxlength="900" data-relationship-field="sharedEvents" placeholder="每行一条，只记录双方确实经历过的事。">'+escapeHtml(events)+'</textarea><span class="memory-hint">最多保留最近 6 条；共同经历按当前方向归属。</span></div></section>';
+        '<div class="field relationship-note"><label>共同经历</label><textarea rows="2" maxlength="900" data-relationship-field="sharedEvents" placeholder="每行一条，只记录双方确实经历过的事。">'+escapeHtml(events)+'</textarea><span class="memory-hint">最多保留最近 6 条；共同经历按当前方向归属。</span></div>'+
+        '<div class="relationship-event-history"><label>近期关系变化</label>'+eventHtml+(repairDebt?'<div class="relationship-event-empty">信任修复阻力 · '+repairDebt+'</div>':'')+'</div></section>';
     }
     function renderRelationships(){
       var list=document.getElementById('relationshipsList');
