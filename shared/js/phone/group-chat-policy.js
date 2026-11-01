@@ -250,7 +250,7 @@
       if (different.length) candidates = different;
     }
 
-    var relationshipTargetId = asId(options.relationshipTargetId || previousId);
+    var relationshipTargetId = options.relationshipTargetId != null ? asId(options.relationshipTargetId) : previousId;
     var scored = candidates.map(function (member) {
       return { member: member, details: scoreCandidate(member, options, relationshipTargetId) };
     });
