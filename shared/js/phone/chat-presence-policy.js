@@ -29,7 +29,7 @@
 
   function isUsableAssistantMessage(message) {
     if (!message || typeof message !== 'object') return false;
-    if (message.isError || message.role === 'system_error' || message.silent) return false;
+    if (message.isError || message.role === 'system_error' || message.silent || message.mode === 'date') return false;
     if (message.type && message.type !== 'text') return false;
     return message.role === 'assistant' || message.role === 'received';
   }
@@ -37,7 +37,9 @@
   function collectVoiceSamples(history, options) {
     options = options || {};
     var list = Array.isArray(history) ? history : [];
-    var maxSamples = Math.max(0, Math.min(4, parseInt(options.maxSamples, 10) || 2));
+    var requestedSamples = options.maxSamples == null ? 2 : parseInt(options.maxSamples, 10);
+    if (!isFinite(requestedSamples)) requestedSamples = 2;
+    var maxSamples = Math.max(0, Math.min(4, requestedSamples));
     if (!maxSamples) return [];
 
     var isGroupChat = options.isGroupChat === true;
