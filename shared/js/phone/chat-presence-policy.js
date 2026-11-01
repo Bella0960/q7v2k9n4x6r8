@@ -72,6 +72,11 @@
     return samples;
   }
 
+  function getBubbleDelayMs(previousText) {
+    var chars = Array.from(String(previousText == null ? '' : previousText).trim()).length;
+    return Math.max(520, Math.min(920, 440 + chars * 16));
+  }
+
   function buildPrompt(options) {
     options = options && typeof options === 'object' ? options : {};
     var mode = String(options.mode || 'online').toLowerCase();
@@ -114,5 +119,6 @@
   }
 
   NS.collectVoiceSamples = collectVoiceSamples;
+  NS.getBubbleDelayMs = getBubbleDelayMs;
   NS.buildPrompt = buildPrompt;
 })(window);
