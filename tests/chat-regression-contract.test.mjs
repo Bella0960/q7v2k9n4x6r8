@@ -50,6 +50,11 @@ const groupPolicySource = read('shared/js/phone/group-chat-policy.js');
 const groupPolicyWindow = {};
 runInNewContext(groupPolicySource, { window: groupPolicyWindow, globalThis: {} });
 const groupPolicy = groupPolicyWindow.GroupChatPolicy;
+const followUpPolicySource = read('shared/js/phone/chat-followup-policy.js');
+const followUpPolicyWindow = {};
+runInNewContext(followUpPolicySource, { window: followUpPolicyWindow, globalThis: followUpPolicyWindow });
+const followUpPolicy = followUpPolicyWindow.ChatFollowUpPolicy;
+
 const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
 const presencePolicyWindow = {};
 runInNewContext(presencePolicySource, { window: presencePolicyWindow });
@@ -1588,6 +1593,49 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
 });
 
 
+test('follow-up delay escalates by round, adds bounded jitter and respects relationship pace', () => {
+  assert.equal(followUpPolicy.calculateDelay(1, 'friend', 0.5), 30);
+  assert.equal(followUpPolicy.calculateDelay(2, 'friend', 0.5), 45);
+  assert.equal(followUpPolicy.calculateDelay(3, 'friend', 0.5), 60);
+  assert.equal(followUpPolicy.calculateDelay(1, 'stranger', 0), 23);
+  assert.equal(followUpPolicy.calculateDelay(1, 'close', 0.5), 23);
+  assert.equal(followUpPolicy.calculateDelay(1, 'lover', 0.5), 15);
+  assert.ok(followUpPolicy.calculateDelay(1, 'friend', 0) >= 15);
+  assert.ok(followUpPolicy.calculateDelay(1, 'friend', 0.999) <= 45);
+});
+
+test('follow-up policy blocks quiet hours, persists a pause and ends a chain on user reply', () => {
+  const night = new Date(2026, 10, 2, 23, 30, 0).getTime();
+  assert.equal(followUpPolicy.isQuietTime(night), true);
+  const nextMorning = followUpPolicy.nextAllowedTime(night);
+  assert.equal(new Date(nextMorning).getHours(), 9);
+  assert.equal(new Date(nextMorning).getMinutes(), 0);
+  const state = { ignoredCount: 0, userReceptivityScore: 0.7 };
+  followUpPolicy.applyUserIntent(state, '先别主动联系了', night);
+  assert.equal(state.pausedByUser, true);
+  assert.equal(state.cooldownUntil, night + 72 * 60 * 60 * 1000);
+  assert.equal(followUpPolicy.shouldBlock(state, night + 1000).blocked, true);
+  followUpPolicy.applyUserIntent(state, '可以继续主动联系', night + 2000);
+  assert.equal(state.pausedByUser, false);
+  assert.equal(state.cooldownUntil, 0);
+  state.followUpCount = 2; state.dueAt = night + 5000;
+  followUpPolicy.noteUserReply(state);
+  assert.equal(state.followUpCount, 0);
+  assert.equal(state.dueAt, 0);
+  assert.ok(state.userReceptivityScore > 0.7);
+});
+
+test('follow-up policy escalates no-reply cooldown and builds non-pressuring contextual prompts', () => {
+  const state = { ignoredCount: 3 };
+  const blocked = followUpPolicy.shouldBlock(state, 1000000);
+  assert.equal(blocked.reason, 'repeated-no-reply');
+  assert.equal(state.cooldownUntil, 1000000 + 24 * 60 * 60 * 1000);
+  const prompt = followUpPolicy.buildPrompt({ name: '小林', round: 2, relationship: '朋友', persona: '安静，喜欢阅读。', context: '用户：最近加班。\n角色：这周挺忙的。' });
+  assert.match(prompt, /最多20个汉字/);
+  assert.match(prompt, /不责备、不施压/);
+  assert.match(prompt, /send=false/);
+});
+
 test('proactive contact policy requires a complete, opted-in conversation and a quiet idle window', () => {
   assert.equal(typeof presencePolicy.evaluateProactiveContact, 'function');
   assert.equal(typeof presencePolicy.buildProactiveContactPrompt, 'function');
@@ -1716,6 +1764,12 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /document\.visibilityState === 'hidden'/);
   assert.match(chatNotifier, /PROACTIVE_GLOBAL_COOLDOWN_MS = 24 \* 60 \* 60 \* 1000/);
   assert.match(chatNotifier, /PROACTIVE_MIN_IDLE_MS = 8 \* 60 \* 60 \* 1000/);
+  assert.match(chatNotifier, /checkFollowUpTasks/);
+  assert.match(chatNotifier, /chat_followup_state_/);
+  assert.match(chatNotifier, /proactiveFollowUp: true/);
+  assert.match(chatSettings, /chat_followup_enabled_/);
+  assert.match(groupPlay, /followUpEnabled:false/);
+  assert.match(groupPlay, /data-setting="followUpEnabled"/);
   assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
   assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
   assert.match(chatNotifier, /proactiveContact: true/);
