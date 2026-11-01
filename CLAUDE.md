@@ -41,7 +41,7 @@ worldbook/              # RP 设定中枢：characters/（角色库）、memory/
 wallet/                 # wallet / finance（记账）/ shop（商店）/ shop-admin（店铺管理）
 settings/               # settings（API 配置）/ appearance / font-settings / sound-settings
 profile/                # profile（我的）/ edit-profile
-cafe/ games/ diary/ travel/ beauty/ music/ library/ tools/ envelope/   # 单页 App
+cafe/ games/ diary/ travel/ beauty/ theme-store/ music/ library/ tools/ envelope/   # 单页 App
 apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副本，待清理
 ```
 
@@ -85,7 +85,10 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 | `maomao_cafe_state_v1` / `maomao_cafe_partner` | 咖啡馆经营存档 / AI 搭档 |
 | `maomao_game_stats_v1` / `maomao_game_role` | 游戏战绩 / 对局角色 |
 | `maomao_diary_entries_v1` | 日记 |
-| `beauty_presets` / `beauty_active` | 深度自定义 CSS 预设（beauty/ Tab2 + custom-css.js 注入；`bubble_presets` 已随 bubble-theme.html 下线，数据残留无消费者） |
+| `beauty_presets` / `beauty_active` | 深度自定义 CSS 预设（beauty/ Tab2 + custom-css.js 注入；`bubble_presets` 已下线） |
+| `beauty_visual_presets_v1` / `beauty_visual_presets_deleted_v1` | 聊天美化中心保存的结构化气泡/视觉预设及删除记录；主题商城直接读取，不复制预设数据 |
+| `maomao_theme_store_owned_v1` | 主题商城本机已收录的内置聊天主题 ID（不涉及支付） |
+| `maomao-font-presets`（IndexedDB）/ `active_font_preset_id` | 字体设置保存的字体方案及当前激活方案；主题商城读取同一字体库并通过 `MAOMAOFontRuntime` 应用 |
 | `beauty_chat_global_v1` / `beauty_chat_<id>` | 聊天美化结构化参数（全局/单聊稀疏覆盖，shared/js/chat-beauty.js 统一管理；字段：avatarSize / avatarRadius / bubbleGap / bubbleGapX / bubbleMaxWidth / bubblePadding / myBubbleBg / myBubbleColor / partnerBubbleBg / partnerBubbleColor / chatBg / chatBgDim；旧 `theme_bubble_*` 加载时自动迁移） |
 | `regex_rules` | AI 输出正则过滤规则 |
 | `ds_layout_v12` | 主屏布局 `{v, pages[[id…]], dock[id…], removed[id…]}` |
@@ -138,7 +141,8 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 | 空间 / 朋友圈 | chat/moments/ 的动态 feed；也是"整机刷新"入口 |
 | 整机刷新 | PhoneEngine 一键重新生成某角色的全部 App 数据 |
 | 挂件 / 元素仓库 | 主屏 `.ds-widget` 小组件；被移除的项目进隐藏仓库，经 desktop/widgets.html 恢复 |
-| 聊天美化中心 | beauty.html 双 Tab：「可视化调节」（ChatBeauty 结构化参数 + Sticky 实时预览）+「深度自定义」（手写 CSS 预设，导入导出 + 校验）；已吸收下线的 bubble-theme 气泡主题 |
+| 聊天美化中心 | beauty.html：「可视化调节」（ChatBeauty 结构化参数 + 实时预览）、「深度自定义」（手写 CSS 预设）与整页主题切换；结构化气泡预设存于 `beauty_visual_presets_v1` |
+| 主题商城 | `theme-store/theme-store.html`：整页聊天主题、聊天气泡预设、字体方案与我的主题；气泡应用写回 `ChatBeauty.save` 的全局/角色配置，字体复用 `maomao-font-presets`，内置主题调用 `ChatBeauty.setThemePreset` |
 | 咖啡馆经营 / 游戏大厅 / 触梦旅行 | cafe、games（6 款 AI 伴玩小游戏）、travel 三个单页模拟 App |
 | 赴约 / 线下剧情 | `chat/date/journey.html` 短线下路线模拟（动态地图、ETA 分阶段推进、途中消息写回同一角色历史）；`chat/date/date.html` 长线下小说叙事（serif 排版、`PhoneStream.chat` 流式续写）。聊天记录统一写入 `chat_history_<id>`；`mode:'date'` 只在小说页展示，线上与线下记忆互通 |
 | 正则过滤 / RP 协议 | AI 输出正则替换规则 / 角色扮演协议（worldbook/settings/） |
