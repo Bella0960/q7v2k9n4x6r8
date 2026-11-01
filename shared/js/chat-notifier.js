@@ -920,6 +920,11 @@
         try {
             await runFollowUpCandidate(candidate);
         } catch (error) {
+            try {
+                var retryState = readFollowUpState(candidate.scope, candidate.contact.id);
+                retryState.dueAt = Date.now() + 30 * 60 * 1000;
+                saveFollowUpState(candidate.scope, candidate.contact.id, retryState);
+            } catch (stateError) {}
             try { console.warn('[ChatNotifier] follow-up skipped:', error && error.message ? error.message : error); } catch (e) {}
         } finally {
             followUpRequestPending = false;
