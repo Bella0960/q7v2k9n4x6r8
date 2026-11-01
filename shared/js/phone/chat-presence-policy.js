@@ -383,6 +383,122 @@
     ].join('\n');
   }
 
+
+  var LIFE_TIME_CUES = /(?:现在|正在|目前|此刻|今天|今晚|明天|后天|这周|本周|周末|下周|最近|等会儿|一会儿|待会儿|晚点|之后|回头|过几天|接下来|这两天)/;
+  var LIFE_ACTION_CUES = /(?:要|准备|打算|计划|安排|还得|得|需要|正在|还在|在忙|在做|约了|答应了|参加|去|回|看|学|练|读|写|完成|处理|收拾|整理|复习|开会|上班|上课|考试|面试|排练|训练|旅行|出差|见面|聚会|赶稿|交稿)/;
+
+  function isConversationTextMessage(message) {
+    if (!message || typeof message !== 'object' || message.silent || message.isError) return false;
+    if (message.type && message.type !== 'text') return false;
+    return message.role === 'user' || message.role === 'sent' ||
+      message.role === 'assistant' || message.role === 'received';
+  }
+
+  function extractLifeNoteSentences(value) {
+    var source = extractHabitText(value).replace(/\s+/g, ' ').trim();
+    if (!source) return [];
+    var sentences = source.split(/(?<=[。！？!?；;])\s*|\n+/).map(function (part) {
+      return part.trim();
+    }).filter(Boolean);
+    var result = [];
+
+    sentences.forEach(function (sentence) {
+      if (sentence.length < 7 || sentence.length > 120) return;
+      if (!/(?:我|自己)/.test(sentence)) return;
+      if (!LIFE_TIME_CUES.test(sentence) || !LIFE_ACTION_CUES.test(sentence)) return;
+      if (/(?:昨天|前天|上周|上个月|去年)/.test(sentence) &&
+          !/(?:今天|现在|目前|正在|还在|接下来)/.test(sentence)) return;
+      if (/^(?:你|对方|用户)/.test(sentence)) return;
+      result.push(sentence);
+    });
+    return result;
+  }
+
+  function collectLifeContinuityNotes(history, options) {
+    options = options || {};
+    var mode = String(options.mode || 'online').toLowerCase();
+    if (mode === 'narration' || mode === 'offline' || mode === 'date' || mode === 'face-to-face') return [];
+
+    var list = Array.isArray(history) ? history : [];
+    var maxScan = Math.max(12, Math.min(100, parseInt(options.maxScan, 10) || 60));
+    var maxNotes = Math.max(1, Math.min(4, parseInt(options.maxNotes, 10) || 3));
+    var maxTurns = Math.max(1, Math.min(12, parseInt(options.maxTurns, 10) || 8));
+    var speakerId = options.speakerId == null ? '' : String(options.speakerId);
+    var speakerName = String(options.speakerName || '').trim();
+    var notes = [];
+    var turnsSince = 0;
+    var scanned = 0;
+    var seen = Object.create(null);
+
+    for (var i = list.length - 1; i >= 0 && scanned < maxScan && notes.length < maxNotes; i--) {
+      var message = list[i];
+      if (!isConversationTextMessage(message)) continue;
+      scanned += 1;
+
+      var isAssistant = message.role === 'assistant' || message.role === 'received';
+      var belongsToSpeaker = !options.isGroupChat || !isAssistant || matchesSpeaker(message, {
+        isGroupChat: true,
+        speakerId: speakerId,
+        speakerName: speakerName
+      });
+
+      if (!isAssistant) {
+        turnsSince += 1;
+        if (turnsSince > maxTurns) break;
+        continue;
+      }
+      if (!belongsToSpeaker) {
+        turnsSince += 1;
+        if (turnsSince > maxTurns) break;
+        continue;
+      }
+      if (!isUsableAssistantMessage(message)) continue;
+      if (turnsSince > maxTurns) break;
+
+      var sentences = extractLifeNoteSentences(message.text || message.content || '');
+      for (var j = sentences.length - 1; j >= 0 && notes.length < maxNotes; j--) {
+        var sentence = sentences[j];
+        var key = sentence.replace(/\s+/g, '');
+        if (seen[key]) continue;
+        seen[key] = true;
+        notes.push({
+          text: sentence,
+          turnsSince: turnsSince,
+          time: Number(message.time || message.timestamp) || 0
+        });
+      }
+    }
+
+    notes.reverse();
+    return notes;
+  }
+
+  function buildAutonomyPrompt(history, options) {
+    options = options || {};
+    var notes = collectLifeContinuityNotes(history, options);
+    var lines = [
+      '【角色自主性与生活连续性】',
+      '你有自己的注意力、兴趣、习惯和生活节奏；聊天不是每轮都必须围绕用户提问展开。角色档案、世界书、明确的长期记忆和你自己此前说过的话，是生活细节的依据。',
+      '先自然回应对方当前真正表达的内容。只有在话题出现空隙、确实想到相关事情，或有合适的分享时，才主动带出一个自己的观察、兴趣、近况或后续安排；不是每轮都要主动发起新话题。',
+      '主动分享一次只带出一个重点即可。可以分享一件小事、一个偏好、一个正在关注的话题，或顺着双方共同谈过的事情继续；不要连续抛出多个话题，也不要每次都用问题结尾。',
+      '生活安排必须有来源：优先沿用角色设定、世界书和下方自己说过的近期安排。若后续对话显示事情已完成、取消、改期或不再相关，就不要再当作待办；不确定时不要装作记得准确进度。',
+      '没有已知安排时，不要编造已经发生的日常、现实地点、工作进展、他人邀约或具体时间。可以在符合人设的角色故事中自然形成一个小打算，但要让它成为当前叙事里的新发展，而不是伪称早已发生。',
+      '不要声称真的操作了用户设备、发送了现实消息、完成了现实付款或在现实世界执行了动作。不要用“我一直在等你”“你不来我就……”制造压力；对方不接话题时自然放下。'
+    ];
+
+    if (notes.length) {
+      lines.push('');
+      lines.push('【近期由角色本人提过的安排／正在做的事】');
+      lines.push('以下是历史表达摘录，不保证现在仍有效。先检查其后的聊天是否已完成、取消或改变；只有仍然相关时才自然延续，不要逐条汇报：');
+      notes.forEach(function (note) {
+        var age = note.turnsSince === 0 ? '最近刚提到' : '之后约经过 ' + note.turnsSince + ' 次交流';
+        lines.push('·「' + note.text + '」（' + age + '）');
+      });
+    }
+
+    return lines.join('\n');
+  }
+
   function getBubbleDelayMs(previousText) {
     var chars = Array.from(String(previousText == null ? '' : previousText).trim()).length;
     return Math.max(520, Math.min(920, 440 + chars * 16));
@@ -435,6 +551,9 @@
   NS.classifyExplicitEmotion = classifyExplicitEmotion;
   NS.findRecentEmotionalSignal = findRecentEmotionalSignal;
   NS.buildEmotionContinuityPrompt = buildEmotionContinuityPrompt;
+  NS.extractLifeNoteSentences = extractLifeNoteSentences;
+  NS.collectLifeContinuityNotes = collectLifeContinuityNotes;
+  NS.buildAutonomyPrompt = buildAutonomyPrompt;
   NS.getBubbleDelayMs = getBubbleDelayMs;
   NS.buildPrompt = buildPrompt;
 })(window);
