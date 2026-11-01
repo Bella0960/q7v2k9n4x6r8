@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const groupPlay = read('chat/chat/group-play.html');
 const inspectPhone = read('inspect-phone/phone.html');
 const forumPage = read('forum/forum.html');
 const footprint = read('chat/footprint/footprint.html');
@@ -41,6 +42,10 @@ const sendPolicySource = read('shared/js/phone/chat-send-policy.js');
 const sendPolicyWindow = {};
 runInNewContext(sendPolicySource, { window: sendPolicyWindow, globalThis: {} });
 const sendPolicy = sendPolicyWindow.ChatSendPolicy;
+const groupPolicySource = read('shared/js/phone/group-chat-policy.js');
+const groupPolicyWindow = {};
+runInNewContext(groupPolicySource, { window: groupPolicyWindow, globalThis: {} });
+const groupPolicy = groupPolicyWindow.GroupChatPolicy;
 const serviceWorker = read('sw.js');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -575,15 +580,110 @@ test('send preflight keeps guard precedence and evaluates later checks lazily', 
   assert.match(detail, /preflightReason === 'group-unavailable'/);
 });
 
+
+test('group chat policy resolves @mentions before weighted speaker selection', () => {
+  assert.equal(typeof groupPolicy.extractMentionedMemberIds, 'function');
+  assert.equal(typeof groupPolicy.selectSpeaker, 'function');
+  const members = [
+    { id: 'role-a', name: '小林', nickname: '林林' },
+    { id: 'role-b', name: '阿岚' },
+    { id: 'role-c', name: '夜班搭档' }
+  ];
+  assert.deepEqual(
+    Array.from(groupPolicy.extractMentionedMemberIds('这件事问问 @林林，再听听 @夜班搭档。@unknown', members)),
+    ['role-a', 'role-c']
+  );
+
+  const first = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    mentionQueueIds: ['role-a', 'role-c'],
+    isFollowup: false,
+    random: () => 0.99
+  });
+  assert.equal(first.member.id, 'role-a');
+  assert.equal(first.isMentioned, true);
+
+  const second = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    mentionQueueIds: ['role-a', 'role-c'],
+    isFollowup: true,
+    previousSpeakerId: 'role-a',
+    random: () => 0.99
+  });
+  assert.equal(second.member.id, 'role-c');
+  assert.equal(second.isMentioned, true);
+});
+
+test('group relationship familiarity affects which member is more likely to pick up a thread', () => {
+  const weighted = groupPolicy.selectSpeaker({
+    availableMembers: [{ id: 'role-c' }, { id: 'role-b' }],
+    members: [{ id: 'role-a' }, { id: 'role-b' }, { id: 'role-c' }],
+    previousSpeakerId: 'role-a',
+    relationships: {
+      '["role-a","role-b"]': { familiarity: 100, interactions: 0 }
+    },
+    random: () => 0.4
+  });
+  assert.equal(weighted.member.id, 'role-b');
+  assert.equal(weighted.isMentioned, false);
+});
+
+test('group duplicate guard is limited to the configured three-second window', () => {
+  assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same   text', 3999, 3000), true);
+  assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same text', 4000, 3000), false);
+  assert.equal(groupPolicy.isDuplicateWithinWindow('first', 1000, 'second', 1200, 3000), false);
+  assert.equal(groupPolicy.isDuplicateWithinWindow('', 1000, '', 1200, 3000), false);
+});
+
+test('group follow-up delay stays between one and five seconds', () => {
+  assert.equal(groupPolicy.getReplyDelayMs(() => 0), 1000);
+  assert.equal(groupPolicy.getReplyDelayMs(() => 0.999999), 5000);
+});
+
+test('group model context retains speaker identity and excludes group-private payloads', () => {
+  const mapped = contextPolicy.mapHistoryToApiMessages([
+    { role: 'assistant', memberId: 'role-a', text: '我刚到。' },
+    { role: 'assistant', type: 'group_private', text: '这句只属于私聊，不应进群上下文。' },
+    { role: 'assistant', name: '阿岚', text: '我也到了。' },
+    { role: 'user', text: '那我们开始吧。' }
+  ], null, {
+    isGroupChat: true,
+    groupMembers: [{ id: 'role-a', name: '小林', nickname: '林林' }]
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(mapped)), [
+    { role: 'assistant', content: '【群成员 林林】\n我刚到。' },
+    { role: 'assistant', content: '【群成员 阿岚】\n我也到了。' },
+    { role: 'user', content: '那我们开始吧。' }
+  ]);
+  assert.equal(mapped.some((item) => item.content.includes('只属于私聊')), false);
+});
+
+test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
+  assert.match(detail, /group-chat-policy\.js\?v=20261102v1/);
+  assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
+  assert.match(detail, /本轮被@点名/);
+  assert.match(detail, /acceptGroupUserMessage/);
+  assert.match(detail, /isDuplicateWithinWindow/);
+  assert.match(detail, /groupAutoFollowupToken/);
+  assert.match(detail, /getGroupReplyDelayMs/);
+  assert.match(detail, /群聊模式：线下共同场景/);
+  assert.match(detail, /mapHistoryToApiMessages\(recentHistory, stripInternalReasoning, \{/);
+  assert.match(groupPlay, /id="groupChatMode"/);
+  assert.match(groupPlay, /group\.settings\.chatMode/);
+});
+
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v127/);
+  assert.match(serviceWorker, /phone-app-pwa-v130/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
   assert.match(serviceWorker, /chat-context-policy\.js\?v=20261031v1/);
+  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v1/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261031v1/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
