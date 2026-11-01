@@ -314,7 +314,7 @@
     var level = String(event.level || '').toLowerCase();
     var caps = { micro: 2, moderate: 5, major: 10, turning: 18 };
     if (!Object.prototype.hasOwnProperty.call(caps, level)) return null;
-    var summary = String(event.summary || '').replace(/[\\r\\n]+/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 120);
+    var summary = String(event.summary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (summary.length < 3) return null;
     function delta(value) {
       var n = Number(value);
