@@ -5,34 +5,44 @@
   'use strict';
 
   var DB_NAME = 'maomao-media-store';
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;  // schema 2：新增 audio store 用于本地音乐持久化；wallpapers store 在 version 1 已创建，幂等检查即可
   var STORE_NAME = 'wallpapers';
   var WALLPAPER_KEY = 'home_custom_wallpaper';
   var dbPromise = null;
 
   function openDB() {
-    if (!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB is unavailable'));
     if (dbPromise) return dbPromise;
-    dbPromise = new Promise(function (resolve, reject) {
-      var request;
-      try {
-        request = window.indexedDB.open(DB_NAME, DB_VERSION);
-      } catch (error) {
-        reject(error);
-        return;
+    try {
+      if (!('indexedDB' in window)) {
+        dbPromise = null;
+        return Promise.reject(new Error('IndexedDB is unavailable'));
       }
-      request.onupgradeneeded = function () {
-        var db = request.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
-      };
-      request.onsuccess = function () { resolve(request.result); };
-      request.onerror = function () { reject(request.error || new Error('Could not open wallpaper storage')); };
-      request.onblocked = function () { reject(new Error('Wallpaper storage is blocked')); };
-    }).catch(function (error) {
+      dbPromise = new Promise(function (resolve, reject) {
+        var request;
+        try {
+          request = window.indexedDB.open(DB_NAME, DB_VERSION);
+        } catch (error) {
+          reject(error);
+          return;
+        }
+        request.onupgradeneeded = function () {
+          var db = request.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+          // 音乐模块的 audio store（幂等保障——不管哪个模块先升 v2，所有 store 都要存在）
+          if (!db.objectStoreNames.contains('audio')) db.createObjectStore('audio', { keyPath: 'id' });
+        };
+        request.onsuccess = function () { resolve(request.result); };
+        request.onerror = function () { reject(request.error || new Error('Could not open wallpaper storage')); };
+        request.onblocked = function () { reject(new Error('Wallpaper storage is blocked')); };
+      }).catch(function (error) {
+        dbPromise = null;
+        throw error;
+      });
+      return dbPromise;
+    } catch (e) {
       dbPromise = null;
-      throw error;
-    });
-    return dbPromise;
+      return Promise.reject(e);
+    }
   }
 
   function readDB(key) {
@@ -105,21 +115,29 @@
 
   function removeByKey(key) {
     key = String(key || WALLPAPER_KEY);
-    var legacyRemoved = false;
-    try {
-      window.localStorage.removeItem(key);
-      legacyRemoved = true;
-    } catch (error) {}
     return openDB().then(function (db) {
       return new Promise(function (resolve, reject) {
         var tx = db.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).delete(key);
-        tx.oncomplete = function () { resolve(true); };
-        tx.onerror = function () { reject(tx.error || new Error('Could not clear wallpaper')); };
-        tx.onabort = function () { reject(tx.error || new Error('Could not clear wallpaper')); };
+        var request = tx.objectStore(STORE_NAME).delete(key);
+        var settled = false;
+        function doResolve() {
+          if (settled) return; settled = true;
+          // IDB 确认删除成功后，再清 legacy localStorage 键。
+          // localStorage 清理失败不影响整体结果——权威数据在 IDB，
+          // legacy 键最多下次 getByKey 再被迁移覆盖。
+          try { window.localStorage.removeItem(key); } catch (e) {}
+          resolve(true);
+        }
+        function doReject(err) {
+          if (settled) return; settled = true;
+          reject(err || new Error('Could not clear wallpaper'));
+        }
+        request.onerror = function () { doReject(request.error); };
+        tx.oncomplete   = function () { doResolve(); };
+        tx.onerror      = function () { doReject(tx.error); };
+        tx.onabort      = function () { doReject(tx.error); };
       });
     }).catch(function (error) {
-      if (legacyRemoved) return true;
       throw error || new Error('无法清除已保存的壁纸');
     });
   }

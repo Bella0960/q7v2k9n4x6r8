@@ -3,12 +3,29 @@
  *
  * 职责：
  *   1. 统一 localStorage 读写（加 try/catch + JSON 安全）
- *   2. 新结构：phoneData[contactId][appId] = {...}
+ *   2. 新结构：phoneData[contactId][appId] = {...}（键名 phone_data_v2）
  *   3. 兼容旧 key：ai_custom_characters / chat_history_xxx / finance_records / moments ...
- *      旧 key 不会自动删除，读的时候两边都查，写的时候两边都写（渐进迁移）
+ *      旧 key 不会自动删除；读取时部分 getter 会先查新结构再回退旧 key，
+ *      但并非所有写入方法都双写——多数全局数据（角色/群组/世界书/财务等）
+ *      目前只写各自的旧键，phone_data_v2 主要承载 per-contact 的 appId 分桶。
  *
  * 被 phone_context / phone_api / phone_engine 等上层引用，
  * 不依赖任何业务页面。
+ *
+ * ─── 返回值契约（历史遗留，本阶段不改动）───────────────────
+ *   rawSet            → boolean（写入是否成功）
+ *   rawRemove         → undefined
+ *   _setRoot / setData / deleteData /
+ *   saveCharacters / saveGroups / saveWorldbooks /
+ *   saveMyProfile / saveFinanceRecords / ...
+ *                     → undefined（调用方无反馈）
+ *   getCharacters / getGroups / getWorldbooks /
+ *   getChatHistory / getMemories / getFinanceRecords ...
+ *                     → 数组（JSON 解析失败时退化为空数组，
+ *                        调用方无法区分"无数据"与"数据损坏"）
+ *
+ *   如需区分 NOT_FOUND / CORRUPT_DATA / QUOTA_EXCEEDED 等显式状态，
+ *   请使用追加在本文件末尾的 PhoneStorage.result 命名空间。
  * ============================================================ */
 
 (function (global) {
@@ -373,6 +390,460 @@
         while (logs.length > 50) logs.pop();
         NS.rawSet('api_call_logs', logs);
     };
+
+    /* ============================================================
+     * Result 协议：对现有 getter/setter 的显式状态封装
+     *
+     * 目标：
+     *   - 读路径区分三态：NOT_FOUND / CORRUPT_DATA / ok
+     *   - 写路径带回 QUOTA_EXCEEDED / DB_UNAVAILABLE 等真实结果
+     *   - 原有 rawSet/saveCharacters/getCharacters 等签名与返回值不变，
+     *     旧页面零改动即可继续工作
+     * ============================================================ */
+
+    NS.result = (function () {
+
+        /* ---------- 错误码集合 ---------- */
+        var ERR = {
+            NOT_FOUND:       'NOT_FOUND',
+            CORRUPT_DATA:    'CORRUPT_DATA',
+            QUOTA_EXCEEDED:  'QUOTA_EXCEEDED',
+            DB_BLOCKED:      'DB_BLOCKED',
+            DB_UNAVAILABLE:  'DB_UNAVAILABLE',
+            CONFLICT:        'CONFLICT',
+            VALIDATION_FAILED:'VALIDATION_FAILED'
+        };
+
+        /* ---------- 构造函数 ---------- */
+        function okResult(value, meta) {
+            return { ok: true, value: value, meta: meta || {} };
+        }
+        function failResult(code, message, retryable, extra) {
+            var r = {
+                ok: false,
+                error: {
+                    code: code,
+                    message: message || code,
+                    retryable: !!retryable
+                }
+            };
+            if (extra) r.meta = extra;
+            return r;
+        }
+
+        /* ---------- 私有：带状态的原始读取 ----------
+         * 返回 { state, raw, parsed, error, key }
+         *   state: 'missing' | 'unavailable' | 'corrupt' | 'ok'
+         */
+        function _probe(key) {
+            var result = { key: key, state: 'missing', raw: null, parsed: null, error: null };
+            try {
+                var raw = localStorage.getItem(key);
+                if (raw == null) { result.state = 'missing'; return result; }
+                try {
+                    result.parsed = JSON.parse(raw);
+                    result.raw = raw;
+                    result.state = 'ok';
+                } catch (pe) {
+                    result.raw = raw;
+                    result.state = 'corrupt';
+                    result.error = pe;
+                }
+            } catch (le) {
+                result.state = 'unavailable';
+                result.error = le;
+            }
+            return result;
+        }
+
+        /* ---------- 私有：写入，捕获配额 ---------- */
+        function _write(key, value) {
+            try {
+                var serialized = typeof value === 'string' ? value : JSON.stringify(value);
+                localStorage.setItem(key, serialized);
+                return { state: 'ok' };
+            } catch (e) {
+                var name = (e && e.name) || '';
+                if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+                    name === 'QUOTA_EXCEEDED_ERR') {
+                    return { state: 'quota', error: e };
+                }
+                return { state: 'error', error: e };
+            }
+        }
+
+        function _remove(key) {
+            try { localStorage.removeItem(key); return { state: 'ok' }; }
+            catch (e) { return { state: 'error', error: e }; }
+        }
+
+        /* ---------- 私有：把 probe 结果映射为最终 Result ---------- */
+        function _probeToResult(probe, expectedShape) {
+            expectedShape = expectedShape || 'any';
+            if (probe.state === 'missing') {
+                return failResult(ERR.NOT_FOUND, 'key not found: ' + probe.key, false);
+            }
+            if (probe.state === 'unavailable') {
+                return failResult(ERR.DB_UNAVAILABLE,
+                    'localStorage unavailable: ' + (probe.error && probe.error.message || probe.key), true);
+            }
+            if (probe.state === 'corrupt') {
+                return failResult(ERR.CORRUPT_DATA,
+                    'JSON parse failed: ' + probe.key, false, { raw: probe.raw });
+            }
+            // state === 'ok'，再检查形状
+            if (expectedShape === 'array' && !Array.isArray(probe.parsed)) {
+                return failResult(ERR.CORRUPT_DATA,
+                    'expected array, got ' + typeof probe.parsed + ': ' + probe.key, false,
+                    { raw: probe.raw });
+            }
+            if (expectedShape === 'object' &&
+                (probe.parsed == null || typeof probe.parsed !== 'object' || Array.isArray(probe.parsed))) {
+                return failResult(ERR.CORRUPT_DATA,
+                    'expected object, got ' + typeof probe.parsed + ': ' + probe.key, false,
+                    { raw: probe.raw });
+            }
+            return okResult(probe.parsed, { found: true, source: probe.key });
+        }
+
+        function _writeToResult(writeOutcome, key) {
+            if (writeOutcome.state === 'ok') {
+                return okResult(true, { written: key });
+            }
+            if (writeOutcome.state === 'quota') {
+                return failResult(ERR.QUOTA_EXCEEDED,
+                    'localStorage quota exceeded on ' + key, false);
+            }
+            // error 或 unavailable 都归 DB_UNAVAILABLE
+            return failResult(ERR.DB_UNAVAILABLE,
+                'localStorage write failed on ' + key + ': ' +
+                (writeOutcome.error && writeOutcome.error.message || 'unknown'),
+                true);
+        }
+
+        /* ============================================================
+         * 暴露方法
+         * ============================================================ */
+        var R = {};
+        R.ERR = ERR;  // 便于外部对照错误码
+
+        /* ---------- 原始读写 ---------- */
+
+        // rawGet: 返回结果对象，不再返回 fallback 或原始字符串
+        R.rawGet = function (key, expectedShape) {
+            var probe = _probe(key);
+            return _probeToResult(probe, expectedShape);
+        };
+
+        R.rawSet = function (key, value) {
+            var out = _write(key, value);
+            return _writeToResult(out, key);
+        };
+
+        R.rawRemove = function (key) {
+            var out = _remove(key);
+            if (out.state === 'ok') return okResult(true, { removed: key });
+            return failResult(ERR.DB_UNAVAILABLE,
+                'localStorage remove failed on ' + key, true);
+        };
+
+        /* ---------- phone_data_v2 根 ---------- */
+
+        function _probeRoot() { return _probe(NS._PHONE_DATA_KEY || 'phone_data_v2'); }
+
+        // getRoot —— 三态
+        R.getRoot = function () {
+            // 需要先知道 PHONE_DATA_KEY 的值，它在 NS 闭包里
+            // 用 NS._getRoot() 间接读取是可以的，但要先 probe
+            // 因为闭包外拿不到 PHONE_DATA_KEY 常量，所以用 _probe 里动态查找
+            var probe = _probe('phone_data_v2');
+            var r = _probeToResult(probe, 'object');
+            // 如果 NOT_FOUND，value 给 {} 方便调用方，meta 里仍然标记 found:false
+            if (!r.ok && r.error.code === ERR.NOT_FOUND) {
+                return okResult({}, { found: false, source: 'phone_data_v2' });
+            }
+            return r;
+        };
+
+        // setRoot
+        R.setRoot = function (root) {
+            return R.rawSet('phone_data_v2', root);
+        };
+
+        /* ---------- 角色 App 层级 ---------- */
+
+        // getData —— 重现 getData 的双查逻辑，但给结果对象
+        R.getData = function (contactId, appId) {
+            // 先查 phone_data_v2
+            var rootRes = R.getRoot();
+            var bucket;
+            if (rootRes.ok && rootRes.value) bucket = rootRes.value[contactId];
+
+            if (appId === 'chat') {
+                var hist = _probe('chat_history_' + contactId);
+                if (hist.state === 'ok') {
+                    if (Array.isArray(hist.parsed)) {
+                        return okResult({ history: hist.parsed },
+                            { found: true, source: 'chat_history_' + contactId });
+                    }
+                }
+                // 旧 key 损坏 → 直接返回 CORRUPT_DATA，不要回退到新 key 掩盖问题
+                if (hist.state === 'corrupt') {
+                    return failResult(ERR.CORRUPT_DATA,
+                        'chat_history_' + contactId + ' corrupt', false, { raw: hist.raw });
+                }
+                if (bucket && bucket.chat != null) {
+                    return okResult(bucket.chat, { found: true, source: 'phone_data_v2' });
+                }
+                return failResult(ERR.NOT_FOUND, 'chat data not found for ' + contactId, false);
+            }
+            if (appId === 'memories') {
+                var mem = _probe('chat_memories_' + contactId);
+                if (mem.state === 'ok') {
+                    if (Array.isArray(mem.parsed)) {
+                        return okResult({ items: mem.parsed },
+                            { found: true, source: 'chat_memories_' + contactId });
+                    }
+                }
+                if (mem.state === 'corrupt') {
+                    return failResult(ERR.CORRUPT_DATA,
+                        'chat_memories_' + contactId + ' corrupt', false, { raw: mem.raw });
+                }
+                if (bucket && bucket.memories != null) {
+                    return okResult(bucket.memories, { found: true, source: 'phone_data_v2' });
+                }
+                return failResult(ERR.NOT_FOUND, 'memories data not found for ' + contactId, false);
+            }
+
+            if (bucket && bucket[appId] != null) {
+                return okResult(bucket[appId],
+                    { found: true, source: 'phone_data_v2' });
+            }
+            return failResult(ERR.NOT_FOUND, appId + ' not found for ' + contactId, false);
+        };
+
+        // setData —— 写入 phone_data_v2
+        R.setData = function (contactId, appId, value) {
+            var rootRes = R.getRoot();
+            if (!rootRes.ok && rootRes.error.code !== ERR.NOT_FOUND) return rootRes;
+            var root = rootRes.value || {};
+            if (!root[contactId]) root[contactId] = {};
+            root[contactId][appId] = value;
+            return R.setRoot(root);
+        };
+
+        R.deleteData = function (contactId, appId) {
+            var rootRes = R.getRoot();
+            if (!rootRes.ok && rootRes.error.code !== ERR.NOT_FOUND) return rootRes;
+            var root = rootRes.value || {};
+            if (root[contactId] && root[contactId][appId] != null) {
+                delete root[contactId][appId];
+                if (!Object.keys(root[contactId]).length) delete root[contactId];
+                return R.setRoot(root);
+            }
+            return okResult(true, { deleted: false });  // 本来就没有
+        };
+
+        /* ---------- 全局数组：characters / groups / worldbooks / moments / financeRecords ---------- */
+
+        function _arrayGet(key) {
+            var probe = _probe(key);
+            return _probeToResult(probe, 'array');
+        }
+        function _arraySave(key, list) {
+            return R.rawSet(key, Array.isArray(list) ? list : []);
+        }
+
+        R.getCharacters = function ()    { return _arrayGet('ai_custom_characters'); };
+        R.saveCharacters = function (l)  { return _arraySave('ai_custom_characters', l); };
+
+        R.getGroups = function ()        { return _arrayGet('phone_groups'); };
+        R.saveGroups = function (l)      { return _arraySave('phone_groups', l); };
+
+        R.getWorldbooks = function ()    { return _arrayGet('phone_worldbooks'); };
+        R.saveWorldbooks = function (l)  { return _arraySave('phone_worldbooks', l); };
+
+        R.getMoments = function ()       { return _arrayGet('moments'); };
+        R.saveMoments = function (l)     { return _arraySave('moments', l); };
+
+        R.getFinanceRecords = function ()  { return _arrayGet('finance_records'); };
+        R.saveFinanceRecords = function (l){ return _arraySave('finance_records', l); };
+
+        R.getForumNotifications = function ()   { return _arrayGet('forum_notifications'); };
+        R.saveForumNotifications = function (l){ return _arraySave('forum_notifications', l); };
+
+        R.getMomentsNotifications = function ()   { return _arrayGet('moments_notifications'); };
+        R.saveMomentsNotifications = function (l){ return _arraySave('moments_notifications', l); };
+
+        /* ---------- MyProfile（对象） ---------- */
+
+        R.getMyProfile = function () {
+            var probe = _probe('myProfile');
+            if (probe.state === 'missing') {
+                // 历史行为：rawGet 返回 null。这里按对象处理，NOT_FOUND 返回 null 值便于调用方
+                return failResult(ERR.NOT_FOUND, 'myProfile not found', false);
+            }
+            if (probe.state === 'corrupt') {
+                return failResult(ERR.CORRUPT_DATA, 'myProfile corrupt', false, { raw: probe.raw });
+            }
+            if (probe.state === 'unavailable') {
+                return failResult(ERR.DB_UNAVAILABLE, 'localStorage unavailable', true);
+            }
+            return okResult(probe.parsed, { found: true, source: 'myProfile' });
+        };
+        R.saveMyProfile = function (profile) {
+            return R.rawSet('myProfile', profile || {});
+        };
+
+        /* ---------- Chat history / Memories（per-contact，旧 key 为主） ---------- */
+
+        R.getChatHistory = function (contactId) {
+            var probe = _probe('chat_history_' + contactId);
+            if (probe.state === 'corrupt') {
+                return failResult(ERR.CORRUPT_DATA,
+                    'chat_history_' + contactId + ' corrupt', false, { raw: probe.raw });
+            }
+            if (probe.state === 'ok' && Array.isArray(probe.parsed)) {
+                return okResult(probe.parsed,
+                    { found: true, source: 'chat_history_' + contactId });
+            }
+            // 回退到 phone_data_v2
+            var rootRes = R.getRoot();
+            if (rootRes.ok && rootRes.value) {
+                var bucket = rootRes.value[contactId];
+                if (bucket && bucket.chat && Array.isArray(bucket.chat.history)) {
+                    return okResult(bucket.chat.history,
+                        { found: true, source: 'phone_data_v2' });
+                }
+            }
+            return failResult(ERR.NOT_FOUND, 'chat history not found for ' + contactId, false);
+        };
+
+        R.saveChatHistory = function (contactId, list) {
+            var arr = Array.isArray(list) ? list : [];
+            var out = _write('chat_history_' + contactId, arr);
+            if (out.state !== 'ok') return _writeToResult(out, 'chat_history_' + contactId);
+            // 清除 phone_data_v2 中的重复副本（与原 saveChatHistory 行为一致）
+            var rootRes = R.getRoot();
+            if (rootRes.ok && rootRes.value) {
+                var root = rootRes.value;
+                var bucket = root[contactId];
+                if (bucket && bucket.chat != null) {
+                    delete bucket.chat;
+                    if (!Object.keys(bucket).length) delete root[contactId];
+                    var sub = _write('phone_data_v2', root);
+                    if (sub.state !== 'ok') {
+                        // 主 key 已写成功，phone_data_v2 写不回去不算致命
+                        console.warn('[PhoneStorage.result] phone_data_v2 cleanup failed', sub.error);
+                    }
+                }
+            }
+            return okResult(true, { written: 'chat_history_' + contactId });
+        };
+
+        R.getMemories = function (contactId) {
+            var probe = _probe('chat_memories_' + contactId);
+            if (probe.state === 'corrupt') {
+                return failResult(ERR.CORRUPT_DATA,
+                    'chat_memories_' + contactId + ' corrupt', false, { raw: probe.raw });
+            }
+            if (probe.state === 'ok' && Array.isArray(probe.parsed)) {
+                return okResult(probe.parsed,
+                    { found: true, source: 'chat_memories_' + contactId });
+            }
+            var rootRes = R.getRoot();
+            if (rootRes.ok && rootRes.value) {
+                var bucket = rootRes.value[contactId];
+                if (bucket && bucket.memories && Array.isArray(bucket.memories.items)) {
+                    return okResult(bucket.memories.items,
+                        { found: true, source: 'phone_data_v2' });
+                }
+            }
+            return failResult(ERR.NOT_FOUND, 'memories not found for ' + contactId, false);
+        };
+
+        R.saveMemories = function (contactId, list) {
+            var arr = Array.isArray(list) ? list : [];
+            var out = _write('chat_memories_' + contactId, arr);
+            if (out.state !== 'ok') return _writeToResult(out, 'chat_memories_' + contactId);
+            var rootRes = R.getRoot();
+            if (rootRes.ok && rootRes.value) {
+                var root = rootRes.value;
+                var bucket = root[contactId];
+                if (bucket && bucket.memories != null) {
+                    delete bucket.memories;
+                    if (!Object.keys(bucket).length) delete root[contactId];
+                    var sub = _write('phone_data_v2', root);
+                    if (sub.state !== 'ok') {
+                        console.warn('[PhoneStorage.result] phone_data_v2 cleanup failed', sub.error);
+                    }
+                }
+            }
+            return okResult(true, { written: 'chat_memories_' + contactId });
+        };
+
+        /* ---------- API profiles / config ---------- */
+
+        R.getApiProfiles = function () { return _arrayGet('api_profiles_v1'); };
+        R.saveApiProfiles = function (l) { return _arraySave('api_profiles_v1', l); };
+
+        R.getApiLogs = function () { return _arrayGet('api_call_logs'); };
+        R.saveApiLogs = function (l) { return _arraySave('api_call_logs', l); };
+
+        R.pushApiLog = function (entry) {
+            var logs;
+            var res = R.getApiLogs();
+            if (res.ok) logs = res.value;
+            else if (res.error.code === ERR.NOT_FOUND) logs = [];
+            else return res;
+            entry = entry || {};
+            if (entry.time == null) entry.time = Date.now();
+            if (entry.duration == null) entry.duration = 0;
+            logs.unshift(entry);
+            while (logs.length > 50) logs.pop();
+            return R.saveApiLogs(logs);
+        };
+
+        R.getApiConfig = function () {
+            var probe = _probe('api_settings');
+            if (probe.state === 'missing') {
+                return okResult({}, { found: false, source: 'api_settings' });
+            }
+            return _probeToResult(probe, 'object');
+        };
+        R.saveApiConfig = function (cfg) {
+            return R.rawSet('api_settings', cfg || {});
+        };
+
+        R.getActiveProfileId = function () {
+            var probe = _probe('api_active_profile');
+            if (probe.state === 'missing') return okResult('', { found: false });
+            if (probe.state === 'corrupt') {
+                // 这个 key 历史上可能直接存字符串而非 JSON，"corrupt" 不一定是真损坏
+                return okResult(probe.raw, { found: true, source: 'api_active_profile', raw: probe.raw });
+            }
+            return okResult(String(probe.parsed || ''),
+                { found: true, source: 'api_active_profile' });
+        };
+        R.setActiveProfileId = function (id) {
+            if (id) return R.rawSet('api_active_profile', String(id));
+            return R.rawRemove('api_active_profile');
+        };
+
+        R.pushMomentsNotification = function (entry) {
+            var res = R.getMomentsNotifications();
+            var arr;
+            if (res.ok) arr = res.value;
+            else if (res.error.code === ERR.NOT_FOUND) arr = [];
+            else return res;
+            entry = entry || {};
+            arr.unshift(entry);
+            while (arr.length > 100) arr.pop();
+            return R.saveMomentsNotifications(arr);
+        };
+
+        return R;
+    })();
 
     // 启动时安全回收旧版本双份保存的聊天/记忆数据，其他内容不作改动。
     try { NS.compactDuplicateData(); } catch (error) {

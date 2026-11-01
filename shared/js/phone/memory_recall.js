@@ -43,7 +43,7 @@
     if (!roleId) return false;
     try {
       if (global.PhoneStorage && global.PhoneStorage.saveMemories) {
-        global.PhoneStorage.saveMemories(roleId, list || []); return true;
+        return !!global.PhoneStorage.saveMemories(roleId, list || []);
       }
       global.localStorage.setItem('chat_memories_' + roleId, JSON.stringify(list || []));
       return true;
