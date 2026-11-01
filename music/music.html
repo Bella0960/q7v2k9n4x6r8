@@ -464,7 +464,7 @@
           <div class="a-title">Charcoal</div>
           <div class="a-meta">Brambles</div>
           <div class="play-btns">
-            <button class="btn-dark" onclick="playTrack(1)">
+            <button class="btn-dark" onclick="playTrack('demo_2')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               Play
             </button>
@@ -781,19 +781,19 @@
   // ===== 歌曲数据（带音频链接+歌词） =====
   // url 是示例音频链接，可自行替换成你的真实歌曲 mp3
   const tracks = [
-    { name: "To Speak Of Solitude", artist: "Brambles", dur: "4:21", durSec: 261,
+    { id: 'demo_1', name: "To Speak Of Solitude", artist: "Brambles", dur: "4:21", durSec: 261, source: 'remote',
       url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
       lyrics: ["Speak to me in whispers", "Let the silence fall", "In the quiet of the morning", "I can hear it all", "", "Solitude, my old friend", "You stay with me until the end"] },
-    { name: "Unsayable", artist: "Brambles", dur: "2:52", durSec: 172,
+    { id: 'demo_2', name: "Unsayable", artist: "Brambles", dur: "2:52", durSec: 172, source: 'remote',
       url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
       lyrics: ["There are words I cannot say", "Things I keep inside", "Every memory fades away", "In the dark I hide", "", "Unsayable, unspoken", "Broken words unbroken"] },
-    { name: "In The Androgynous Dark", artist: "Brambles", dur: "4:43", durSec: 283,
+    { id: 'demo_3', name: "In The Androgynous Dark", artist: "Brambles", dur: "4:43", durSec: 283, source: 'remote',
       url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
       lyrics: ["Step into the shadow", "Where the lines all blur", "Neither here nor there now", "Neither them nor her", "", "In the androgynous dark", "We forget who we are"] },
-    { name: "Salt Photographs", artist: "Brambles", dur: "6:54", durSec: 414,
+    { id: 'demo_4', name: "Salt Photographs", artist: "Brambles", dur: "6:54", durSec: 414, source: 'remote',
       url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
       lyrics: ["Salt on the windows", "Fading photographs", "Memories in slow motion", "All coming back", "", "Salt photographs of you", "Every shade of blue"] },
-    { name: "Pink And Golden Billows", artist: "Brambles", dur: "2:58", durSec: 178,
+    { id: 'demo_5', name: "Pink And Golden Billows", artist: "Brambles", dur: "2:58", durSec: 178, source: 'remote',
       url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
       lyrics: ["Pink and golden billows", "Roll across the sky", "Watch them as they're falling", "Watch them drift by", "", "Pink and golden light", "Holding you tonight"] },
   ];
@@ -805,6 +805,166 @@
     { name: "Warm Light", artist: "Piano Co.", plays: "980K" },
   ];
 
+  // ===== 本地音乐持久化常量（与 wallpaper-store.js / backup.js 一致） =====
+  const MEDIA_DB_NAME = 'maomao-media-store';
+  const MEDIA_DB_VERSION = 2;   // 含 wallpapers + audio store
+  const AUDIO_STORE_NAME = 'audio';
+  const LOCAL_TRACKS_KEY = 'music_local_tracks';  // localStorage 里本地曲元数据
+
+  // 当前持有的 Blob URL（每次换歌 revoke）
+  let currentBlobUrl = null;
+  function revokeCurrentUrl() {
+    if (currentBlobUrl) {
+      try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
+      currentBlobUrl = null;
+    }
+  }
+
+  // ===== IndexedDB：audio store（{id, name, mimeType, size, blob}） =====
+  var mediaDbPromise = null;
+  function openMediaDB() {
+    if (mediaDbPromise) return mediaDbPromise;
+    mediaDbPromise = new Promise(function (resolve, reject) {
+      if (!('indexedDB' in window)) { reject(new Error('IndexedDB unavailable')); return; }
+      var req;
+      try { req = indexedDB.open(MEDIA_DB_NAME, MEDIA_DB_VERSION); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        // wallpapers store（wallpaper-store.js 也会建，幂等保障）
+        if (!db.objectStoreNames.contains('wallpapers')) {
+          db.createObjectStore('wallpapers');
+        }
+        // audio store（音乐模块自己的）
+        if (!db.objectStoreNames.contains(AUDIO_STORE_NAME)) {
+          db.createObjectStore(AUDIO_STORE_NAME, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { mediaDbPromise = null; reject(req.error || new Error('Cannot open media DB')); };
+      req.onblocked = function () { mediaDbPromise = null; reject(new Error('Media DB blocked')); };
+    });
+    return mediaDbPromise;
+  }
+  function putAudioBlob(record) {
+    return openMediaDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(AUDIO_STORE_NAME, 'readwrite');
+        tx.objectStore(AUDIO_STORE_NAME).put(record);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+        tx.onabort = function () { reject(tx.error); };
+      });
+    });
+  }
+  function getAudioBlob(id) {
+    return openMediaDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(AUDIO_STORE_NAME, 'readonly');
+        var req = tx.objectStore(AUDIO_STORE_NAME).get(id);
+        req.onsuccess = function () { resolve(req.result && req.result.blob ? req.result.blob : null); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+  function deleteAudioBlob(id) {
+    return openMediaDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(AUDIO_STORE_NAME, 'readwrite');
+        tx.objectStore(AUDIO_STORE_NAME).delete(id);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    }).catch(function () {});
+  }
+  function clearAudioStore() {
+    return openMediaDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(AUDIO_STORE_NAME, 'readwrite');
+        tx.objectStore(AUDIO_STORE_NAME).clear();
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    }).catch(function () {});
+  }
+
+  // ===== localStorage：本地曲目元数据 + 向后兼容升级 =====
+  function readLocalTracksMeta() {
+    try {
+      var raw = localStorage.getItem(LOCAL_TRACKS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function saveLocalTracksMeta(list) {
+    try { localStorage.setItem(LOCAL_TRACKS_KEY, JSON.stringify(list || [])); } catch (e) {}
+  }
+  // 合并本地曲目到 tracks 数组（不覆盖示例曲）
+  function mergeLocalTracks() {
+    var localMeta = readLocalTracksMeta();
+    if (!Array.isArray(localMeta)) return;
+    localMeta.forEach(function (meta) {
+      if (!meta || !meta.id) return;
+      if (tracks.find(function (t) { return t.id === meta.id; })) return;
+      tracks.push(Object.assign({ source: 'local' }, meta));
+    });
+  }
+  // 读取并升级"最近播放"——旧格式是数字下标，新格式是 id 字符串
+  function readRecentIds() {
+    try {
+      var raw = JSON.parse(localStorage.getItem('music_recent') || '[]');
+      if (!Array.isArray(raw)) return [];
+      var upgraded = false;
+      var ids = raw.map(function (v) {
+        if (typeof v === 'number') {
+          upgraded = true;
+          return 'demo_' + (v + 1);
+        }
+        return String(v);
+      });
+      if (upgraded) localStorage.setItem('music_recent', JSON.stringify(ids));
+      return ids;
+    } catch (e) { return []; }
+  }
+  function readFavIds() {
+    try {
+      var raw = JSON.parse(localStorage.getItem('music_fav_list') || '[]');
+      if (!Array.isArray(raw)) return [];
+      var upgraded = false;
+      var ids = raw.map(function (v) {
+        if (typeof v === 'number') {
+          upgraded = true;
+          return 'demo_' + (v + 1);
+        }
+        return String(v);
+      });
+      if (upgraded) localStorage.setItem('music_fav_list', JSON.stringify(ids));
+      return ids;
+    } catch (e) { return []; }
+  }
+  function saveRecentIds(ids) {
+    try { localStorage.setItem('music_recent', JSON.stringify(ids || [])); } catch (e) {}
+  }
+  function saveFavIds(ids) {
+    try { localStorage.setItem('music_fav_list', JSON.stringify(ids || [])); } catch (e) {}
+  }
+  function removeTrackFromRecent(id) {
+    saveRecentIds(readRecentIds().filter(function (x) { return x !== id; }));
+  }
+  function removeTrackFromFav(id) {
+    saveFavIds(readFavIds().filter(function (x) { return x !== id; }));
+  }
+
+  // ===== Helper =====
+  function getTrackById(id) {
+    return tracks.find(function (t) { return t && t.id === id; }) || null;
+  }
+  function isLocalTrackPlayable(t) {
+    // 仅判断 blob 是否在 IndexedDB 里；async 检测在播放时做
+    return !t || t.source !== 'local' || !t.id ? true : true;  // 这里只能同步返回 true，实际在 playTrack 里 await getAudioBlob
+  }
+
+  // 启动时合并本地曲目（让所有 UI 都基于完整 tracks 数组工作）
+  mergeLocalTracks();
+
   let currentIdx = 1, playing = false;
   window.isShuffle = false;
   window.isHeart = false;
@@ -815,13 +975,14 @@
   // ===== 渲染最近播放（按历史排序） =====
   const recentList = document.getElementById('recent-list');
   function renderRecent() {
-    const recent = JSON.parse(localStorage.getItem('music_recent') || '[]');
-    const order = recent.length > 0 ? recent : tracks.map((_, i) => i);
+    var order = readRecentIds();
+    // 没有历史 → 默认展示全部曲目（示例曲在前、本地曲在后）
+    if (!order.length) order = tracks.map(function (t) { return t.id; });
     recentList.innerHTML = '';
-    order.forEach(i => {
-      const t = tracks[i];
+    order.forEach(function (tid) {
+      var t = getTrackById(tid);
       if (!t) return;
-      recentList.innerHTML += `<div class="track-item" onclick="playTrack(${i})">
+      recentList.innerHTML += `<div class="track-item" onclick="playTrack('${t.id}')">
         <div class="t-cover"><img src="covers/song-default.jpg" style="width:100%;height:100%;object-fit:cover;border-radius:12px;" alt=""></div>
         <div class="t-info"><div class="t-name">${t.name}</div><div class="t-artist">${t.artist}</div></div>
         <div class="t-dur">${t.dur}</div></div>`;
@@ -833,12 +994,12 @@
   const albumSongs = document.getElementById('album-songs');
   function renderAlbum() {
     albumSongs.innerHTML = '';
-    tracks.forEach((t, i) => {
-      const isCur = i === currentIdx;
-      const icon = isCur
+    tracks.forEach(function (t, i) {
+      var isCur = i === currentIdx;
+      var icon = isCur
         ? `<svg viewBox="0 0 24 24" width="16" height="16" fill="#000"><path d="M8 5v14l11-7z"/></svg>`
         : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#bbb" stroke-width="2" stroke-linecap="round"><path d="M5 8h14M5 12h14M5 16h14"/></svg>`;
-      albumSongs.innerHTML += `<div class="song-row ${isCur ? 'playing' : ''}" onclick="playTrack(${i})">
+      albumSongs.innerHTML += `<div class="song-row ${isCur ? 'playing' : ''}" onclick="playTrack('${t.id}')">
         <div class="num">${String(i+1).padStart(2,'0')}</div>
         <div><div class="s-name">${t.name}</div><div class="s-artist">${t.artist} · ${t.dur}</div></div>
         <div class="s-dur">${icon}</div></div>`;
@@ -850,11 +1011,9 @@
   const searchResults = document.getElementById('search-results');
   function renderSearch(list) {
     searchResults.innerHTML = '';
-    list.forEach((item) => {
-      const t = tracks.find(x => x.name === item.name);
-      const i = tracks.indexOf(t);
-      if (i < 0) return;
-      searchResults.innerHTML += `<div class="track-item" onclick="playTrack(${i})">
+    list.forEach(function (t) {
+      if (!t || !t.id) return;
+      searchResults.innerHTML += `<div class="track-item" onclick="playTrack('${t.id}')">
         <div class="t-cover"><img src="covers/song-default.jpg" style="width:100%;height:100%;object-fit:cover;border-radius:12px;" alt=""></div>
         <div class="t-info"><div class="t-name">${t.name}</div><div class="t-artist">${t.artist}</div></div></div>`;
     });
@@ -896,31 +1055,53 @@
 
   // ===== 真实音频播放 =====
 
-  function playTrack(i) {
-    currentIdx = i;
-    const t = tracks[i];
+  async function playTrack(trackId) {
+    var t = getTrackById(trackId);
+    if (!t) { toast('曲目不存在'); return; }
+    currentIdx = tracks.indexOf(t);
     document.getElementById('miniName').textContent = t.name;
     document.getElementById('miniArtist').textContent = t.artist;
     document.getElementById('npTitle').textContent = t.name;
     document.getElementById('npArtist').textContent = t.artist;
-    document.getElementById('lyrics').innerHTML = t.lyrics.map((l, idx) =>
-      l ? `<div class="lyric-line" data-idx="${idx}" style="padding:8px 0;transition:color .3s,font-weight .3s;">${l}</div>`
-        : `<div style="height:12px;"></div>`
-    ).join('');
+    document.getElementById('lyrics').innerHTML = (t.lyrics || []).map(function (l, idx) {
+      return l ? `<div class="lyric-line" data-idx="${idx}" style="padding:8px 0;transition:color .3s,font-weight .3s;">${l}</div>`
+        : `<div style="height:12px;"></div>`;
+    }).join('');
     window.lastLyricLine = -1;
-    window.audio.src = t.url;
-    window.audio.play().catch(() => {});
+    // 音频源赋值（本地曲需要 async 从 IndexedDB 取 blob）
+    revokeCurrentUrl();
+    if (t.source === 'local') {
+      try {
+        var blob = await getAudioBlob(t.id);
+        if (!blob) {
+          toast('本地音频文件缺失，已从历史/收藏中移除');
+          removeTrackFromRecent(t.id);
+          removeTrackFromFav(t.id);
+          renderRecent();
+          return;
+        }
+        var url = URL.createObjectURL(blob);
+        currentBlobUrl = url;
+        window.audio.src = url;
+      } catch (e) {
+        toast('音频加载失败');
+        return;
+      }
+    } else {
+      window.audio.src = t.url;
+    }
+    window.audio.play().catch(function () {});
     playing = true;
     renderAlbum();
     updatePlayIcon();
     updateHeartIcon();
     closeImportSheet();
-    // 记录播放历史
-    var recent = JSON.parse(localStorage.getItem('music_recent') || '[]');
-    recent = recent.filter(x => x !== i);
-    recent.unshift(i);
+    // 记录播放历史（存 id 不存下标）
+    var recent = readRecentIds();
+    recent = recent.filter(function (x) { return x !== t.id; });
+    recent.unshift(t.id);
     if (recent.length > 20) recent = recent.slice(0, 20);
-    localStorage.setItem('music_recent', JSON.stringify(recent));
+    saveRecentIds(recent);
     // 更新播放计数
     var played = parseInt(localStorage.getItem('music_played_count') || '0', 10) + 1;
     localStorage.setItem('music_played_count', String(played));
@@ -930,19 +1111,19 @@
   }
 
   function prevTrack() {
-    let i = currentIdx - 1;
+    var i = currentIdx - 1;
     if (i < 0) i = tracks.length - 1;
-    playTrack(i);
+    playTrack(tracks[i].id);
   }
   function nextTrack() {
     if (window.isShuffle && tracks.length > 1) {
-      let ni;
+      var ni;
       do { ni = Math.floor(Math.random() * tracks.length); } while (ni === currentIdx);
-      playTrack(ni);
+      playTrack(tracks[ni].id);
     } else {
-      let i = currentIdx + 1;
+      var i = currentIdx + 1;
       if (i >= tracks.length) i = 0;
-      playTrack(i);
+      playTrack(tracks[i].id);
     }
   }
 
@@ -1045,35 +1226,34 @@
   }
 
   // ===== 收藏逻辑 =====
-  function getFavList() { return JSON.parse(localStorage.getItem('music_fav_list') || '[]'); }
-  function isFav(idx) { return getFavList().includes(idx); }
+  function isFav(trackId) { return readFavIds().indexOf(trackId) !== -1; }
   function toggleHeart() {
-    window.isHeart = !window.isHeart;
+    var currentT = tracks[currentIdx];
+    if (!currentT) return;
+    var favs = readFavIds();
+    var newState = !isFav(currentT.id);
+    window.isHeart = newState;
     var p = document.querySelector('#heartIcon path');
-    if (window.isHeart) {
+    if (newState) {
       p.setAttribute('fill', '#000');
       p.setAttribute('stroke', '#000');
+      if (favs.indexOf(currentT.id) === -1) favs.push(currentT.id);
     } else {
       p.setAttribute('fill', 'none');
       p.setAttribute('stroke', '#ccc');
+      favs = favs.filter(function (x) { return x !== currentT.id; });
     }
+    saveFavIds(favs);
+    localStorage.setItem('music_fav_count', String(favs.length));
     var btn = document.getElementById('btnHeart');
     btn.style.transform = 'scale(1.2)';
-    setTimeout(() => btn.style.transform = '', 200);
+    setTimeout(function () { btn.style.transform = ''; }, 200);
     if (navigator.vibrate) navigator.vibrate(15);
-    // 保存到 localStorage
-    var favs = getFavList();
-    if (window.isHeart) {
-      if (!favs.includes(currentIdx)) favs.push(currentIdx);
-    } else {
-      favs = favs.filter(i => i !== currentIdx);
-    }
-    localStorage.setItem('music_fav_list', JSON.stringify(favs));
-    localStorage.setItem('music_fav_count', String(favs.length));
   }
   // 进入歌曲时更新 heart 状态
   function updateHeartIcon() {
-    window.isHeart = isFav(currentIdx);
+    var currentT = tracks[currentIdx];
+    window.isHeart = currentT ? isFav(currentT.id) : false;
     var p = document.querySelector('#heartIcon path');
     if (window.isHeart) {
       p.setAttribute('fill', '#000'); p.setAttribute('stroke', '#000');
@@ -1248,33 +1428,49 @@
     closeProfileEdit();
   }
 
-  document.getElementById('musicImport').addEventListener('change', function(e) {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
-      const url = URL.createObjectURL(file);
-      const name = file.name.replace(/\.[^.]+$/, ''); // 去掉后缀
-      tracks.push({
-        name: name,
-        artist: '本地导入',
-        dur: '本地',
-        durSec: 0,
-        url: url,
-        lyrics: ['[ 本地导入歌曲 ]', '', '在手机里静静播放', '属于你的那一首']
-      });
-    });
-    // 重新渲染歌单
-    renderAlbum();
-    // 自动播放最后导入的那首
-    if (files.length > 0) {
-      playTrack(tracks.length - files.length);
+  document.getElementById('musicImport').addEventListener('change', async function(e) {
+    var files = Array.from(e.target.files);
+    var localMeta = readLocalTracksMeta();
+    var tStart = Date.now();
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      var tid = 'local_' + tStart + '_' + i;
+      var name = file.name.replace(/\.[^.]+$/, '');
+      var track = {
+        id: tid, name: name, artist: '本地导入', dur: '本地', durSec: 0,
+        source: 'local', lyrics: ['[ 本地导入歌曲 ]', '', '在手机里静静播放', '属于你的那一首']
+      };
+      tracks.push(track);
+      try {
+        await putAudioBlob({
+          id: tid, name: name, artist: '本地导入',
+          mimeType: file.type || 'audio/mpeg', size: file.size, blob: file
+        });
+        localMeta.push({
+          id: tid, name: name, artist: '本地导入', dur: '本地', durSec: 0,
+          source: 'local', lyrics: track.lyrics.slice()
+        });
+      } catch (err) {
+        // blob 存失败 → 从 tracks 和 localMeta 里摘掉，不让它显示成无数据条目
+        tracks.pop();
+        toast('本地音频导入失败：' + (err && err.message ? err.message : '请检查存储空间'));
+      }
     }
-    e.target.value = ''; // 允许重复导入同一文件
+    saveLocalTracksMeta(localMeta);
+    renderAlbum();
+    if (files.length > 0 && tracks.length > 0) {
+      var lastLocal = tracks[tracks.length - 1];
+      if (lastLocal) playTrack(lastLocal.id);
+    }
+    e.target.value = '';
   });
 
   // ===== 断点续播 =====
   function saveState() {
     try {
+      var currentT = tracks[currentIdx];
       localStorage.setItem('music_state', JSON.stringify({
+        id: currentT ? currentT.id : null,
         idx: currentIdx,
         time: window.audio.currentTime || 0,
         playing: playing
@@ -1283,23 +1479,31 @@
   }
   function loadState() {
     try {
-      const s = JSON.parse(localStorage.getItem('music_state') || 'null');
-      if (s && s.idx != null && tracks[s.idx]) {
-        currentIdx = s.idx;
-        const t = tracks[s.idx];
-        document.getElementById('miniName').textContent = t.name;
-        document.getElementById('miniArtist').textContent = t.artist;
-        document.getElementById('npTitle').textContent = t.name;
-        document.getElementById('npArtist').textContent = t.artist;
-        document.getElementById('lyrics').innerHTML = t.lyrics.map((l, idx) =>
-          l ? `<div class="lyric-line" data-idx="${idx}" style="padding:8px 0;transition:color .3s,font-weight .3s;">${l}</div>`
-            : `<div style="height:12px;"></div>`
-        ).join('');
+      var s = JSON.parse(localStorage.getItem('music_state') || 'null');
+      if (!s) return;
+      // 按 id 找（新格式优先），找不到再 fallback 到 idx（旧格式）
+      var t = null;
+      if (s.id) t = getTrackById(s.id);
+      if (!t && typeof s.idx === 'number' && tracks[s.idx]) t = tracks[s.idx];
+      if (!t) return;
+      currentIdx = tracks.indexOf(t);
+      document.getElementById('miniName').textContent = t.name;
+      document.getElementById('miniArtist').textContent = t.artist;
+      document.getElementById('npTitle').textContent = t.name;
+      document.getElementById('npArtist').textContent = t.artist;
+      document.getElementById('lyrics').innerHTML = (t.lyrics || []).map(function (l, idx) {
+        return l ? `<div class="lyric-line" data-idx="${idx}" style="padding:8px 0;transition:color .3s,font-weight .3s;">${l}</div>`
+          : `<div style="height:12px;"></div>`;
+      }).join('');
+      // 本地曲的 audio.src 延迟到用户点击播放时再走 playTrack 的 async 分支
+      if (t.source !== 'local') {
         window.audio.src = t.url;
         if (s.time) window.audio.currentTime = s.time;
-        updateHeartIcon();
-        renderAlbum();
       }
+      updateHeartIcon();
+      renderAlbum();
+      // 立即把旧格式升级成新格式（存 id）
+      if (!s.id) saveState();
     } catch(e) {}
   }
 
@@ -1335,9 +1539,9 @@
   function renderQueue() {
     var body = document.getElementById('queueBody');
     body.innerHTML = '';
-    tracks.forEach((t, i) => {
+    tracks.forEach(function (t, i) {
       var isCur = i === currentIdx;
-      body.innerHTML += `<div class="queue-item ${isCur ? 'playing' : ''}" onclick="closeQueue();playTrack(${i})">
+      body.innerHTML += `<div class="queue-item ${isCur ? 'playing' : ''}" onclick="closeQueue();playTrack('${t.id}')">
         <div class="t-cover" style="width:40px;height:40px;flex-shrink:0;"><img src="covers/song-default.jpg" style="width:100%;height:100%;object-fit:cover;border-radius:10px;" alt=""></div>
         <div style="flex:1;"><div class="qi-name">${t.name}</div><div class="qi-artist">${t.artist} · ${t.dur}</div></div>
         ${isCur ? '<span style="color:#000;font-size:12px;">正在播放</span>' : ''}
@@ -1406,10 +1610,11 @@
   }
   function clearAllData() {
     ['music_profile_avatar','music_profile_name','music_profile_handle','music_profile_bg',
-     'music_fav_list','music_fav_count','music_played_count','music_recent','music_state'
-    ].forEach(k => localStorage.removeItem(k));
-    closeSetting();
-    location.reload();
+     'music_fav_list','music_fav_count','music_played_count','music_recent','music_state',
+     LOCAL_TRACKS_KEY
+    ].forEach(function (k) { localStorage.removeItem(k); });
+    revokeCurrentUrl();
+    clearAudioStore().then(function () { location.reload(); });
   }
 
   // ===== 关于 =====
@@ -1433,17 +1638,16 @@
     document.getElementById('favView').style.display = 'none';
   }
   function renderFav() {
-    var list = getFavList();
+    var favIds = readFavIds();
     var box = document.getElementById('favList');
+    var list = favIds.map(function (tid) { return getTrackById(tid); }).filter(function (t) { return t; });
     if (list.length === 0) {
       box.innerHTML = '<div class="fav-empty">还没有收藏的歌曲<br>点 Now Playing 里的心形按钮收藏吧</div>';
       return;
     }
     box.innerHTML = '';
-    list.forEach(i => {
-      var t = tracks[i];
-      if (!t) return;
-      box.innerHTML += `<div class="track-item" onclick="playTrack(${i})">
+    list.forEach(function (t) {
+      box.innerHTML += `<div class="track-item" onclick="playTrack('${t.id}')">
         <div class="t-cover"><img src="covers/song-default.jpg" style="width:100%;height:100%;object-fit:cover;border-radius:12px;" alt=""></div>
         <div class="t-info"><div class="t-name">${t.name}</div><div class="t-artist">${t.artist}</div></div>
         <div class="t-dur">${t.dur}</div></div>`;

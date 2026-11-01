@@ -125,7 +125,21 @@ let works;try{works=JSON.parse(localStorage.getItem(KEY))||seed.map(x=>({...x}))
 let filter='all',current=null;
 const grid=document.getElementById('grid'),modal=document.getElementById('modal');
 const typeName=t=>({portrait:'PORTRAIT',still:'STILL LIFE',space:'SPACE'})[t]||'PERSONAL';
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(works));}catch(e){alert('本地存储空间不足，请先移除较大的图片后再保存。');}}
+function persist(){
+  try{
+    var payload=JSON.stringify(works);
+    // 阈值：4,000,000 字符。localStorage 常见上限约 5MB，但各浏览器的实际配额口径（按字符数还是按 UTF-16 字节）和剩余空间都不统一，这里用 payload.length 本身做一个保守的提前提示，真正的写失败仍由下面的 try/catch 兜底。
+    if(payload.length>4000000){
+      alert('存储空间不足。档案累计约 '+Math.round(payload.length/1024)+' KB（字符数），请先删除或替换较大的作品图片后再保存。这次修改没有写入。');
+      return false;
+    }
+    localStorage.setItem(KEY,payload);
+    return true;
+  }catch(e){
+    alert('本地存储空间不足或读写异常，请先移除较大的图片后再保存。这次修改没有写入。');
+    return false;
+  }
+}
 function render(){
  grid.innerHTML='';
  const visible=works.filter(w=>filter==='all'||w.type===filter);
@@ -135,7 +149,7 @@ function render(){
   if(w.image){const img=document.createElement('img');img.className='item-image';img.src=w.image;img.alt=w.title;b.appendChild(img);}
   const shade=document.createElement('div');shade.className='item-shade';b.appendChild(shade);
   const copy=document.createElement('div');copy.className='item-copy';copy.innerHTML='<div class="item-no">NO. '+String(works.indexOf(w)+1).padStart(2,'0')+' / '+typeName(w.type)+'</div><div class="item-title"></div><div class="item-caption"></div>';copy.querySelector('.item-title').textContent=w.title;copy.querySelector('.item-caption').textContent=w.caption||typeName(w.type);b.appendChild(copy);
-  const star=document.createElement('button');star.type='button';star.className='star'+(w.favorite?' saved':'');star.textContent=w.favorite?'★':'☆';star.setAttribute('aria-label',w.favorite?'取消收藏':'收藏作品');star.onclick=e=>{e.stopPropagation();w.favorite=!w.favorite;persist();render();};b.appendChild(star);
+  const star=document.createElement('button');star.type='button';star.className='star'+(w.favorite?' saved':'');star.textContent=w.favorite?'★':'☆';star.setAttribute('aria-label',w.favorite?'取消收藏':'收藏作品');star.onclick=e=>{e.stopPropagation();var prev=w.favorite;w.favorite=!w.favorite;if(!persist()){w.favorite=prev;return;}render();};b.appendChild(star);
   b.onclick=()=>openWork(w.id);grid.appendChild(b);
  });
  document.getElementById('total').innerHTML=String(works.length).padStart(2,'0')+' <small style="font:10px Arial;letter-spacing:.15em">WORKS</small>';
@@ -159,14 +173,16 @@ document.getElementById('save').onclick=()=>{
  if(!current)return;const title=document.getElementById('editTitle').value.trim();if(!title){alert('请填写作品标题。');return;}
  current.title=title;current.desc=document.getElementById('editDesc').value.trim();
  const file=document.getElementById('editImage').files[0];
- const commit=()=>{persist();render();openWork(current.id);};
+ const commit=()=>{if(!persist())return;render();openWork(current.id);};
  if(file){if(file.size>1.5*1024*1024){alert('图片建议小于 1.5MB，避免占用过多手机存储。');return;}const reader=new FileReader();reader.onload=()=>{current.image=reader.result;commit();};reader.readAsDataURL(file);}else commit();
 };
-document.getElementById('favorite').onclick=()=>{if(!current)return;current.favorite=!current.favorite;persist();render();openWork(current.id);};
-document.getElementById('removeImage').onclick=()=>{if(!current)return;delete current.image;persist();render();openWork(current.id);};
+document.getElementById('favorite').onclick=()=>{if(!current)return;current.favorite=!current.favorite;if(!persist())return;render();openWork(current.id);};
+document.getElementById('removeImage').onclick=()=>{if(!current)return;var prevImg=current.image;delete current.image;if(!persist()){current.image=prevImg;return;}render();openWork(current.id);};
 document.getElementById('addWork').onclick=()=>{
  const id=works.reduce((m,w)=>Math.max(m,w.id),0)+1;
- const w={id,title:'New Fragment',caption:'PERSONAL NOTE',type:'still',desc:'',art:'a'+((id-1)%6+1),favorite:false};works.push(w);persist();filter='all';render();openWork(id);
+ const w={id,title:'New Fragment',caption:'PERSONAL NOTE',type:'still',desc:'',art:'a'+((id-1)%6+1),favorite:false};works.push(w);
+ if(!persist()){works.pop();return;}
+ filter='all';render();openWork(id);
 };
 render();
 </script>

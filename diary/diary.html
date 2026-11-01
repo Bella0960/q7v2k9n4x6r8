@@ -365,15 +365,17 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   var DIARY_PHOTO_DB='maomao_diary_photo_store_v1',DIARY_PHOTO_STORE='photos',photoDb=null,photoDbReady=null,photoDbError='';
   function openPhotoDB(){
     if(photoDbReady)return photoDbReady;
-    photoDbReady=new Promise(function(resolve,reject){
-      if(!window.indexedDB){photoDbError='当前浏览器不支持 IndexedDB';reject(new Error(photoDbError));return}
-      var request=indexedDB.open(DIARY_PHOTO_DB,1);
-      request.onupgradeneeded=function(){var db=request.result;if(!db.objectStoreNames.contains(DIARY_PHOTO_STORE))db.createObjectStore(DIARY_PHOTO_STORE,{keyPath:'key'})};
-      request.onsuccess=function(){photoDb=request.result;photoDb.onversionchange=function(){photoDb.close();photoDb=null};resolve(photoDb)};
-      request.onerror=function(){photoDbError='无法打开照片数据库';reject(request.error||new Error(photoDbError))};
-      request.onblocked=function(){photoDbError='照片数据库升级被其他页面占用';reject(new Error(photoDbError))}
-    });
-    return photoDbReady
+    try{
+      if(!window.indexedDB){photoDbError='当前浏览器不支持 IndexedDB';return Promise.reject(new Error(photoDbError))}
+      photoDbReady=new Promise(function(resolve,reject){
+        var request=indexedDB.open(DIARY_PHOTO_DB,1);
+        request.onupgradeneeded=function(){var db=request.result;if(!db.objectStoreNames.contains(DIARY_PHOTO_STORE))db.createObjectStore(DIARY_PHOTO_STORE,{keyPath:'key'})};
+        request.onsuccess=function(){photoDb=request.result;photoDb.onversionchange=function(){photoDb.close();photoDb=null};resolve(photoDb)};
+        request.onerror=function(){photoDbReady=null;photoDbError='无法打开照片数据库';reject(request.error||new Error(photoDbError))};
+        request.onblocked=function(){photoDbReady=null;photoDbError='照片数据库升级被其他页面占用';reject(new Error(photoDbError))}
+      }).catch(function(err){photoDbReady=null;throw err});
+      return photoDbReady
+    }catch(e){photoDbReady=null;return Promise.reject(e)}
   }
   function photoKey(entryId,index){return String(entryId)+'::'+String(index)}
   function photoDbRequest(mode,work){
@@ -411,7 +413,21 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     }).catch(function(error){photoDbError=String(error&&error.message||error);return {error:photoDbError}})
   }
   function savePhotosForEntry(entryId,photos){
-    return openPhotoDB().then(function(){var tasks=[];for(var i=0;i<8;i++){var photo=photos[i];if(photo)tasks.push(putPhoto(photoKey(entryId,i),photo));else tasks.push(deletePhoto(photoKey(entryId,i)))}return Promise.all(tasks)})
+    return openPhotoDB().then(function(db){return new Promise(function(resolve,reject){
+      var tx=db.transaction(DIARY_PHOTO_STORE,'readwrite'),store=tx.objectStore(DIARY_PHOTO_STORE),settled=false;
+      function doResolve(){if(!settled){settled=true;resolve(true)}}
+      function doReject(err){if(!settled){settled=true;reject(err||new Error('照片保存失败'))}}
+      try{
+        for(var i=0;i<8;i++){
+          var photo=photos&&photos[i];
+          if(photo!=null)store.put({key:photoKey(entryId,i),data:photo,updatedAt:Date.now()});
+          else store.delete(photoKey(entryId,i));
+        }
+      }catch(e){doReject(e);return}
+      tx.oncomplete=function(){doResolve(true)};
+      tx.onerror=function(){doReject(tx.error)};
+      tx.onabort=function(){doReject(tx.error)};
+    })})
   }
   function hydrateAllPhotoCounts(){
     return getAllPhotos().then(function(rows){
@@ -433,7 +449,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       return entries
     })
   }
-  function removeEntryPhotos(entryId){var tasks=[];for(var i=0;i<8;i++)tasks.push(deletePhoto(photoKey(entryId,i)).catch(function(){}));return Promise.all(tasks)}
+  function removeEntryPhotos(entryId){var tasks=[];for(var i=0;i<8;i++)tasks.push(deletePhoto(photoKey(entryId,i)));return Promise.all(tasks)}
   function estimatePhotoBytes(value){return typeof value==='string'?Math.floor(value.length*.75):0}
   function photoStorageStats(){
     var bytes=0,count=0;
@@ -761,27 +777,48 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var content=$('entryContent').value.trim();
     if(!title&&!content&&!activePhotos.length){showToast('先写下一点内容吧');$('entryContent').focus();return}
     var old=editId?entries.find(function(e){return e.id===editId}):null;
+    var isNew=!old;
+    var oldSnapshot=old?JSON.parse(JSON.stringify(old)):null;
     var record=old||{id:'d_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),createdAt:new Date().toISOString(),favorite:false};
     record.date=date;record.title=title;record.content=content;record.mood=selectedMood;record.noteType=$('entryType').value||'日记';
     record.tags=$('entryTags').value.split(/[,，、]/).map(function(t){return t.trim().replace(/^#+/,'')}).filter(Boolean).slice(0,12);
-    var photosToSave=activePhotos.slice(0,8),isNew=!old;
+    var photosToSave=activePhotos.slice(0,8);
     record.photoCount=photosToSave.length;record.updatedAt=new Date().toISOString();
-    if(!old)entries.push(record);
-    if(!persist()){if(isNew)entries.pop();return}
+    if(isNew)entries.push(record);else {var idx=entries.indexOf(old);if(idx>=0)entries[idx]=record}
+    if(!persist()){
+      if(isNew)entries.pop();
+      else if(oldSnapshot){var idx2=entries.indexOf(record);if(idx2>=0)entries[idx2]=oldSnapshot}
+      showToast('日记保存失败，请检查浏览器存储空间。');
+      return;
+    }
     savePhotosForEntry(record.id,photosToSave).then(function(){
       currentView='home';moodFilter='全部';query='';closeEditor();render();showToast(old?'日记已更新':'已保存到你的日记');
       setTimeout(maybeAutoPeek,800);
     }).catch(function(error){
-      if(isNew)entries=entries.filter(function(item){return item.id!==record.id});
-      persist();showToast('照片保存失败：'+String(error&&error.message||error).slice(0,90)+'。文字已保留，请重新编辑并添加照片。');
-    }); 
+      if(isNew){
+        entries=entries.filter(function(item){return item.id!==record.id});
+      }else if(oldSnapshot){
+        var idx3=entries.indexOf(record);if(idx3>=0)entries[idx3]=oldSnapshot;
+      }
+      persist();
+      showToast('照片保存失败：'+String(error&&error.message||error).slice(0,90)+'。已回滚到上一版本。');
+    });
   }
   function deleteCurrent(){
     if(!editId)return;
     if(!window.confirm('确定删除这篇日记吗？删除后无法撤销。'))return;
     var deletedId=editId;
+    var entriesBackup=entries.slice();
     entries=entries.filter(function(e){return e.id!==deletedId});
-    persist();removeEntryPhotos(deletedId);closeEditor();currentView='home';render();showToast('这篇日记已删除');
+    if(!persist()){
+      entries=entriesBackup;
+      showToast('删除失败：文字存储不可用，请先清理存储空间。');
+      return;
+    }
+    closeEditor();currentView='home';render();showToast('这篇日记已删除');
+    removeEntryPhotos(deletedId).catch(function(error){
+      showToast('记录文字已删除，但关联照片未完全清理：'+String(error&&error.message||error).slice(0,70));
+    });
   }
   function togglePinned(id){
     var e=entries.find(function(x){return x.id===id});if(!e)return;
