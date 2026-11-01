@@ -720,6 +720,61 @@ test('group routing falls back to the most talkative member below all thresholds
   assert.equal(decision.fallback, true);
 });
 
+test('relationship event severity caps proposed changes and sanitizes its reason', () => {
+  const normalized = groupPolicy.normalizeRelationshipEvent({
+    level: 'micro',
+    intimacyDelta: 40,
+    trustDelta: -30,
+    summary: '兑现了承诺\n并按时出现'
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(normalized)), {
+    level: 'micro',
+    intimacyDelta: 2,
+    trustDelta: -2,
+    summary: '兑现了承诺 并按时出现'
+  });
+  assert.equal(groupPolicy.normalizeRelationshipEvent({
+    level: 'ordinary', intimacyDelta: 5, trustDelta: 5, summary: '普通寒暄'
+  }), null);
+  assert.equal(groupPolicy.normalizeRelationshipEvent({
+    level: 'major', intimacyDelta: 0, trustDelta: 0, summary: '没有变化'
+  }), null);
+});
+
+test('negative trust changes create repair debt and slow later recovery', () => {
+  const direction = { intimacy: 50, trust: 60, trustRecoveryDebt: 0, eventHistory: [] };
+  const loss = groupPolicy.applyRelationshipEvent(direction, {
+    level: 'major', intimacyDelta: 0, trustDelta: -8, summary: '明确失信'
+  }, 1000);
+  assert.equal(loss.trustDelta, -8);
+  assert.equal(direction.trust, 52);
+  assert.equal(direction.trustRecoveryDebt, 12);
+
+  const recovery = groupPolicy.applyRelationshipEvent(direction, {
+    level: 'moderate', intimacyDelta: 0, trustDelta: 5, summary: '主动解释并兑现补救'
+  }, 2000);
+  assert.equal(recovery.trustDelta, 4);
+  assert.equal(direction.trust, 56);
+  assert.equal(direction.trustRecoveryDebt, 10);
+  assert.equal(direction.eventHistory.length, 2);
+});
+
+test('relationship event history is bounded and invalid events do not mutate scores', () => {
+  const direction = { intimacy: 50, trust: 50, trustRecoveryDebt: 0, eventHistory: [] };
+  assert.equal(groupPolicy.applyRelationshipEvent(direction, {
+    level: 'micro', intimacyDelta: 0, trustDelta: 0, summary: '普通聊天'
+  }, 1), null);
+  assert.equal(direction.intimacy, 50);
+  assert.equal(direction.trust, 50);
+  for (let i = 0; i < 25; i++) {
+    groupPolicy.applyRelationshipEvent(direction, {
+      level: 'micro', intimacyDelta: 1, trustDelta: 0, summary: '本轮确有新的互动 ' + i
+    }, 1000 + i);
+  }
+  assert.equal(direction.eventHistory.length, 20);
+  assert.equal(direction.intimacy, 75);
+});
+
 test('group duplicate guard is limited to the configured three-second window', () => {
   assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same   text', 3999, 3000), true);
   assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same text', 4000, 3000), false);
@@ -760,7 +815,7 @@ test('offline group context keeps narration text so the shared scene remains con
 });
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
-  assert.match(detail, /group-chat-policy\.js\?v=20261102v2/);
+  assert.match(detail, /group-chat-policy\.js\?v=20261102v3/);
   assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
   assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
@@ -790,13 +845,13 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v131/);
+  assert.match(serviceWorker, /phone-app-pwa-v132/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
   assert.match(serviceWorker, /chat-context-policy\.js\?v=20261031v1/);
-  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v2/);
+  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v3/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261031v1/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
