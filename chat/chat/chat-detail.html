@@ -16,7 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v5"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v6"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
@@ -5150,10 +5150,9 @@
 
             // 第一阶段：从当前角色自己的历史消息提取语言样本，并补充可执行的聊天行为规则。
             // 线上群聊只读取本轮发言成员自己的历史；线下/旁白模式沿用各自叙事规则。
-            var presenceMode = activeChatModeForPrompt;
-            if (isGroupChat && currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline') {
-                presenceMode = 'offline';
-            }
+            var presenceMode = isGroupChat
+                ? (currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online')
+                : activeChatModeForPrompt;
             if (window.ChatPresencePolicy && typeof window.ChatPresencePolicy.buildPrompt === 'function') {
                 var presencePrompt = window.ChatPresencePolicy.buildPrompt({
                     mode: presenceMode,
