@@ -1767,6 +1767,10 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /checkFollowUpTasks/);
   assert.match(chatNotifier, /chat_followup_state_/);
   assert.match(chatNotifier, /proactiveFollowUp: true/);
+  assert.match(chatNotifier, /startFollowUpScheduler/);
+  assert.match(chatNotifier, /maomao:followup-message/);
+  assert.match(chatNotifier, /FOLLOW_UP_LOCK_KEY/);
+  assert.match(chatNotifier, /isReplyToPendingChain/);
   assert.match(chatSettings, /chat_followup_enabled_/);
   assert.match(groupPlay, /followUpEnabled:false/);
   assert.match(groupPlay, /data-setting="followUpEnabled"/);
