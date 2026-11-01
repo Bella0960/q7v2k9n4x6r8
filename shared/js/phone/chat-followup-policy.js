@@ -28,7 +28,12 @@
     var base = BASE_INTERVAL_MINUTES[index];
     var random = clamp(randomValue, 0, 0.999999, 0.5);
     var jitter = Math.floor(random * (MAX_JITTER_MINUTES * 2 + 1)) - MAX_JITTER_MINUTES;
-    var multiplier = RELATIONSHIP_MULTIPLIERS[String(relationship || 'friend').toLowerCase()] || 1;
+    var relationshipKey = String(relationship || 'friend').toLowerCase();
+    if (/陌生|不熟/.test(relationshipKey)) relationshipKey = 'stranger';
+    else if (/恋人|情侣/.test(relationshipKey)) relationshipKey = 'lover';
+    else if (/亲密|熟悉|close/.test(relationshipKey)) relationshipKey = 'close';
+    else if (!RELATIONSHIP_MULTIPLIERS[relationshipKey]) relationshipKey = 'friend';
+    var multiplier = RELATIONSHIP_MULTIPLIERS[relationshipKey] || 1;
     var receptivity = clamp(receptivityScore, 0, 1, 0.7);
     var receptivityMultiplier = 1 + (0.7 - receptivity) * 0.5;
     return Math.max(MIN_DELAY_MINUTES, Math.round((base + jitter) * multiplier * receptivityMultiplier));
