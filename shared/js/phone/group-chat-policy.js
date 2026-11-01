@@ -307,6 +307,83 @@
     return 1000 + Math.floor(value * 4001);
   }
 
+  // AI-suggested relationship changes are bounded by event severity.
+  // Ordinary chat should not produce a marker at all.
+  function normalizeRelationshipEvent(event) {
+    event = event && typeof event === 'object' ? event : {};
+    var level = String(event.level || '').toLowerCase();
+    var caps = { micro: 2, moderate: 5, major: 10, turning: 18 };
+    if (!Object.prototype.hasOwnProperty.call(caps, level)) return null;
+    var summary = String(event.summary || '').replace(/[\\r\\n]+/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 120);
+    if (summary.length < 3) return null;
+    function delta(value) {
+      var n = Number(value);
+      if (!isFinite(n)) return 0;
+      n = Math.round(n);
+      return Math.max(-caps[level], Math.min(caps[level], n));
+    }
+    var intimacyDelta = delta(event.intimacyDelta);
+    var trustDelta = delta(event.trustDelta);
+    if (!intimacyDelta && !trustDelta) return null;
+    return {
+      level: level,
+      intimacyDelta: intimacyDelta,
+      trustDelta: trustDelta,
+      summary: summary
+    };
+  }
+
+  // Negative trust changes accumulate repair debt. Positive trust changes
+  // gradually pay it down, so reconciliation is possible but slower.
+  function applyRelationshipEvent(direction, event, now) {
+    if (!direction || typeof direction !== 'object') return null;
+    var normalized = normalizeRelationshipEvent(event);
+    if (!normalized) return null;
+
+    var timestamp = Number(now);
+    if (!isFinite(timestamp) || timestamp <= 0) timestamp = Date.now();
+    var currentIntimacy = clamp(direction.intimacy, 0, 100, 0);
+    var currentTrust = clamp(direction.trust, 0, 100, 50);
+    var currentDebt = clamp(direction.trustRecoveryDebt, 0, 60, 0);
+
+    var nextIntimacy = clamp(currentIntimacy + normalized.intimacyDelta, 0, 100, currentIntimacy);
+    var appliedIntimacyDelta = Math.round(nextIntimacy - currentIntimacy);
+    var appliedTrustDelta = 0;
+    var recoveryFactor = 1;
+
+    if (normalized.trustDelta < 0) {
+      appliedTrustDelta = -Math.min(currentTrust, Math.abs(normalized.trustDelta));
+      currentDebt = clamp(currentDebt + Math.abs(appliedTrustDelta) * 1.5, 0, 60, currentDebt);
+    } else if (normalized.trustDelta > 0) {
+      recoveryFactor = Math.max(0.2, 1 - currentDebt / 80);
+      appliedTrustDelta = Math.min(100 - currentTrust, Math.round(normalized.trustDelta * recoveryFactor));
+      currentDebt = clamp(currentDebt - appliedTrustDelta * 0.5, 0, 60, currentDebt);
+    }
+
+    direction.intimacy = nextIntimacy;
+    direction.trust = clamp(currentTrust + appliedTrustDelta, 0, 100, currentTrust);
+    direction.trustRecoveryDebt = currentDebt;
+    direction.lastInteractionAt = timestamp;
+
+    if (!Array.isArray(direction.eventHistory)) direction.eventHistory = [];
+    var record = {
+      time: timestamp,
+      level: normalized.level,
+      intimacyDelta: appliedIntimacyDelta,
+      trustDelta: appliedTrustDelta,
+      proposedIntimacyDelta: normalized.intimacyDelta,
+      proposedTrustDelta: normalized.trustDelta,
+      trustRecoveryFactor: Math.round(recoveryFactor * 100) / 100,
+      summary: normalized.summary
+    };
+    direction.eventHistory.push(record);
+    direction.eventHistory = direction.eventHistory.filter(function (item) {
+      return item && String(item.summary || '').trim();
+    }).slice(-20);
+
+    return record;
+  }
+
   global.GroupChatPolicy = {
     extractMentionedMemberIds: extractMentionedMemberIds,
     getPendingMentionIds: getPendingMentionIds,
@@ -315,6 +392,8 @@
     getRecentSpeakingPenalty: getRecentSpeakingPenalty,
     selectSpeaker: selectSpeaker,
     isDuplicateWithinWindow: isDuplicateWithinWindow,
-    getReplyDelayMs: getReplyDelayMs
+    getReplyDelayMs: getReplyDelayMs,
+    normalizeRelationshipEvent: normalizeRelationshipEvent,
+    applyRelationshipEvent: applyRelationshipEvent
   };
 })(typeof window !== 'undefined' ? window : globalThis);
