@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v137/);
+  assert.match(serviceWorker, /phone-app-pwa-v138/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1264,10 +1264,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v3/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v4/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v135/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v3/);
+  assert.match(serviceWorker, /phone-app-pwa-v138/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v4/);
 });
 
 
@@ -1291,4 +1291,96 @@ test('chat detail stages multi-bubble replies and preserves the existing stream 
   assert.match(detail, /PhoneStream\.chat\(\{/);
   assert.match(detail, /inflightSnapshot = null/);
   assert.match(detail, /saveMessages\(historyList\)/);
+});
+
+
+test('voice habit profile stores aggregate language tendencies without retaining chat content', () => {
+  assert.equal(typeof presencePolicy.buildVoiceHabitProfile, 'function');
+  assert.equal(typeof presencePolicy.buildVoiceHabitPrompt, 'function');
+
+  const privatePhrase = '这句只用于测试，不应进入长期档案。';
+  const history = [
+    { role: 'assistant', text: '嗯，今天有点忙。' },
+    { role: 'assistant', text: '我刚刚才忙完呢。' },
+    { role: 'assistant', text: '啊？你已经到家啦？' },
+    { role: 'assistant', text: '哈哈，等我一下。' },
+    { role: 'assistant', text: '我在路上，马上就到。' },
+    { role: 'assistant', text: privatePhrase + '\n\n我晚点再和你说。' },
+    { role: 'assistant', mode: 'date', text: '（走到窗边）外面下雨了。' },
+    { role: 'assistant', silent: true, text: '隐藏任务不能加入统计。' },
+    { role: 'assistant', type: 'image', text: '图片消息不能加入统计。' },
+    { role: 'system_error', text: '错误消息不能加入统计。' }
+  ];
+
+  const profile = presencePolicy.buildVoiceHabitProfile(history, { maxMessages: 80 });
+  assert.ok(profile);
+  assert.equal(profile.sampleCount, 6);
+  assert.ok(profile.avgChars > 0);
+  assert.ok(Array.isArray(profile.particles));
+  assert.equal(JSON.stringify(profile).includes(privatePhrase), false);
+  assert.equal(JSON.stringify(profile).includes('隐藏任务不能加入统计'), false);
+  assert.equal(JSON.stringify(profile).includes('图片消息不能加入统计'), false);
+  assert.equal(JSON.stringify(profile).includes('外面下雨了'), false);
+
+  const prompt = presencePolicy.buildVoiceHabitPrompt(profile);
+  assert.ok(prompt.includes('角色长期表达习惯档案'));
+  assert.ok(prompt.includes('近期 6 条'));
+  assert.equal(prompt.includes(privatePhrase), false);
+});
+
+test('voice habit profile is isolated by group speaker and does not mix other members', () => {
+  const history = [
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '嗯，我刚到。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '今天真的太忙了，哈哈哈哈！' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '你们先聊，我听着呢。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '我马上过去！' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '好呀，我在这里等你。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '收到收到！' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '嗯，那就这么定吧。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '哈哈哈哈！' }
+  ];
+
+  const profile = presencePolicy.buildVoiceHabitProfile(history, {
+    isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.ok(profile);
+  assert.equal(profile.sampleCount, 4);
+  assert.ok(profile.questionRate <= 0.25);
+  assert.ok(profile.emojiRate <= 0.25);
+});
+
+test('voice habit profile cache is reused only while its source messages stay unchanged', () => {
+  const history = [
+    { role: 'assistant', mid: 'a', time: 1, text: '嗯，我知道了。' },
+    { role: 'assistant', mid: 'b', time: 2, text: '好呀，等我一下。' },
+    { role: 'assistant', mid: 'c', time: 3, text: '我刚刚出门呢。' },
+    { role: 'assistant', mid: 'd', time: 4, text: '哈哈，马上到。' }
+  ];
+  const first = presencePolicy.buildVoiceHabitProfile(history);
+  const reused = presencePolicy.buildVoiceHabitProfile(history, {}, first);
+  assert.ok(first);
+  assert.equal(reused.sourceSignature, first.sourceSignature);
+  assert.equal(reused.generatedAt, first.generatedAt);
+
+  const editedHistory = history.map((item, index) =>
+    index === 3 ? { ...item, text: '我还要再等十分钟。' } : item
+  );
+  const rebuilt = presencePolicy.buildVoiceHabitProfile(editedHistory, {}, first);
+  assert.notEqual(rebuilt.sourceSignature, first.sourceSignature);
+
+  const shortened = presencePolicy.buildVoiceHabitProfile(history.slice(0, 3), {}, first);
+  assert.equal(shortened, null);
+  assert.equal(presencePolicy.buildVoiceHabitPrompt(shortened), '');
+});
+
+test('chat detail persists voice habits per character and per group session without storing raw messages', () => {
+  assert.match(detail, /chat_voice_habits_v1_/);
+  assert.match(detail, /encodeURIComponent\(voiceProfileRoleId\)/);
+  assert.match(detail, /'group_' \+ encodeURIComponent\(String\(aliasRoleId \|\| currentRoleId \|\| ''\)\)/);
+  assert.match(detail, /localStorage\.setItem\(voiceProfileKey, JSON\.stringify\(voiceHabitProfile\)\)/);
+  assert.match(detail, /maxMessages: 80/);
+  assert.match(detail, /localStorage\.removeItem\(voiceProfileKey\)/);
+  assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
+  assert.match(serviceWorker, /phone-app-pwa-v138/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v4/);
 });
