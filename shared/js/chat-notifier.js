@@ -88,6 +88,7 @@
                     id: String(c.id),
                     name: c.name || c.nickname || '角色',
                     avatar: c.avatar || '',
+                    persona: c.persona || c.prompt || '',
                     isGroup: false
                 };
             }
@@ -330,6 +331,272 @@
         }
     }
 
+
+    /* ---------- 自主联系：仅在 MAOMAO 前台打开时检查 ---------- */
+    var PROACTIVE_CHECK_MS = 5 * 60 * 1000;
+    var PROACTIVE_GLOBAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    var PROACTIVE_MIN_IDLE_MS = 8 * 60 * 60 * 1000;
+    var PROACTIVE_LOCK_KEY = 'chat_proactive_request_lock';
+    var proactiveSchedulerStarted = false;
+    var proactiveRequestPending = false;
+    var proactiveDependenciesPromise = null;
+
+    function loadProactiveScript(src, ready) {
+        if (ready()) return Promise.resolve(true);
+        return new Promise(function (resolve) {
+            var script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.onload = function () { resolve(!!ready()); };
+            script.onerror = function () { resolve(false); };
+            document.head.appendChild(script);
+        });
+    }
+
+    function ensureProactiveDependencies() {
+        if (global.PhoneStorage && global.PhoneAPI && global.ChatPresencePolicy) {
+            return Promise.resolve(true);
+        }
+        if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
+        proactiveDependenciesPromise = loadProactiveScript(
+            appBase + '/shared/js/phone/phone_storage.js',
+            function () { return !!global.PhoneStorage; }
+        ).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                appBase + '/shared/js/phone/phone_api.js',
+                function () { return !!global.PhoneAPI; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                appBase + '/shared/js/phone/chat-presence-policy.js?v=20261102v16',
+                function () { return !!global.ChatPresencePolicy; }
+            );
+        }).catch(function () { return false; });
+        return proactiveDependenciesPromise;
+    }
+
+    function proactiveIntervalHours(roleId) {
+        var value = parseInt(safeGet('chat_proactive_interval_' + roleId), 10);
+        return [24, 48, 72].indexOf(value) !== -1 ? value : 24;
+    }
+
+    function getBlockedIds() {
+        var ids = safeJsonParse(safeGet('chat_blocked_ids'));
+        return Array.isArray(ids) ? ids.map(String) : [];
+    }
+
+    function newestMeaningfulMessage(history) {
+        for (var i = history.length - 1; i >= 0; i--) {
+            var item = history[i];
+            if (!item || item.silent || item.isError || item.role === 'system_error') continue;
+            if (item.type && item.type !== 'text') continue;
+            if (item.mode === 'date' || item.mode === 'narration' || item.mode === 'offline' ||
+                item.voiceMode === 'date' || item.voiceMode === 'narration' || item.voiceMode === 'offline') continue;
+            if (item.role !== 'user' && item.role !== 'sent' &&
+                item.role !== 'assistant' && item.role !== 'received') continue;
+            var text = String(item.text || item.content || '').trim();
+            if (text.length < 2) continue;
+            return { time: Number(item.time || item.timestamp) || 0, text: text, role: item.role };
+        }
+        return null;
+    }
+
+    function chooseProactiveCandidate(now) {
+        var globalAttemptAt = Number(safeGet('chat_proactive_global_attempt_at')) || 0;
+        if (globalAttemptAt && now - globalAttemptAt >= 0 &&
+            now - globalAttemptAt < PROACTIVE_GLOBAL_COOLDOWN_MS) return null;
+
+        var blocked = getBlockedIds();
+        var contacts = buildContactIndex();
+        var candidates = [];
+        Object.keys(contacts).forEach(function (id) {
+            var contact = contacts[id];
+            if (!contact || contact.isGroup || safeGet('chat_proactive_contact_' + id) !== 'true') return;
+            if (blocked.indexOf(String(id)) !== -1) return;
+
+            var history = readHistory(id);
+            var intervalMs = proactiveIntervalHours(id) * 60 * 60 * 1000;
+            var roleAttemptAt = Number(safeGet('chat_proactive_last_attempt_' + id)) || 0;
+            var evaluation = global.ChatPresencePolicy.evaluateProactiveContact(history, {
+                enabled: true,
+                blocked: false,
+                pageVisible: true,
+                now: now,
+                minIdleMs: PROACTIVE_MIN_IDLE_MS,
+                maxInactiveMs: 30 * 24 * 60 * 60 * 1000,
+                globalCooldownMs: PROACTIVE_GLOBAL_COOLDOWN_MS,
+                roleCooldownMs: intervalMs,
+                globalLastAttemptAt: globalAttemptAt,
+                roleLastAttemptAt: roleAttemptAt,
+                quietStartHour: 9,
+                quietEndHour: 22
+            });
+            if (!evaluation.eligible) return;
+            var latest = newestMeaningfulMessage(history);
+            if (!latest || latest.time !== evaluation.lastMessageAt) return;
+            candidates.push({
+                contact: contact,
+                history: history,
+                evaluation: evaluation,
+                latest: latest,
+                lastUserMessageAt: evaluation.lastUserMessageAt
+            });
+        });
+
+        candidates.sort(function (a, b) {
+            return b.lastUserMessageAt - a.lastUserMessageAt;
+        });
+        return candidates[0] || null;
+    }
+
+    function historyForProactivePrompt(history) {
+        var result = [];
+        (Array.isArray(history) ? history : []).slice(-14).forEach(function (item) {
+            if (!item || item.silent || item.isError || item.role === 'system_error') return;
+            if (item.type && item.type !== 'text') return;
+            if (item.role !== 'user' && item.role !== 'sent' &&
+                item.role !== 'assistant' && item.role !== 'received') return;
+            var content = String(item.text || item.content || '')
+                .replace(/<(think|reasoning|analysis)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
+                .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, ' ')
+                .replace(/\[中译[:：][^\]]{0,800}\]/g, ' ')
+                .replace(/\[(?:记住|心声|红包|转账|图片|亲属卡|亲密付|发起语音通话)[^\]]*\]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (content.length < 2) return;
+            result.push({
+                role: item.role === 'user' || item.role === 'sent' ? 'user' : 'assistant',
+                content: content.slice(0, 700)
+            });
+        });
+        return result;
+    }
+
+    function cleanProactiveMessage(value) {
+        var text = String(value == null ? '' : value)
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\[(?:红包|转账|图片|亲属卡|亲密付|心声|记住|发起语音通话|群动作|群投票|群接龙|群私聊)[^\]]*\]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (text.length < 2 || text.length > 220) return '';
+        if (/\[[^\]]{1,100}\]/.test(text) || /https?:\/\//i.test(text)) return '';
+        return text;
+    }
+
+    async function checkProactiveContacts() {
+        if (proactiveRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
+        var now = Date.now();
+        var lockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
+        if (lockAt && now - lockAt >= 0 && now - lockAt < 20 * 60 * 1000) return;
+        if (safeGet(PROACTIVE_LOCK_KEY)) safeSet(PROACTIVE_LOCK_KEY, '');
+        if (!Object.keys(buildContactIndex()).some(function (id) {
+            return safeGet('chat_proactive_contact_' + id) === 'true';
+        })) return;
+
+        var globalAttemptAt = Number(safeGet('chat_proactive_global_attempt_at')) || 0;
+        if (globalAttemptAt && now - globalAttemptAt >= 0 &&
+            now - globalAttemptAt < PROACTIVE_GLOBAL_COOLDOWN_MS) return;
+
+        var ready = await ensureProactiveDependencies();
+        if (!ready || !global.ChatPresencePolicy ||
+            typeof global.ChatPresencePolicy.evaluateProactiveContact !== 'function' ||
+            typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
+            !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
+
+        var candidate = chooseProactiveCandidate(Date.now());
+        if (!candidate) return;
+        var config = global.PhoneStorage && global.PhoneStorage.getApiConfig
+            ? global.PhoneStorage.getApiConfig() : {};
+        if (!config || !String(config.apiKey || '').trim()) return;
+
+        proactiveRequestPending = true;
+        var requestAt = Date.now();
+        safeSet(PROACTIVE_LOCK_KEY, String(requestAt));
+        safeSet('chat_proactive_global_attempt_at', String(requestAt));
+        safeSet('chat_proactive_last_attempt_' + candidate.contact.id, String(requestAt));
+
+        try {
+            var voiceProfile = null;
+            try {
+                var voiceKey = 'chat_voice_habits_v1_' +
+                    encodeURIComponent(String(candidate.contact.id)) + '_direct';
+                voiceProfile = safeJsonParse(safeGet(voiceKey));
+            } catch (e) {}
+
+            var currentTime = new Date();
+            var localTime = currentTime.getFullYear() + '-' +
+                String(currentTime.getMonth() + 1).padStart(2, '0') + '-' +
+                String(currentTime.getDate()).padStart(2, '0') + ' ' +
+                String(currentTime.getHours()).padStart(2, '0') + ':' +
+                String(currentTime.getMinutes()).padStart(2, '0');
+
+            var system = global.ChatPresencePolicy.buildProactiveContactPrompt(
+                candidate.contact,
+                candidate.history,
+                { localTime: localTime, voiceProfile: voiceProfile }
+            );
+            var messages = [{ role: 'system', content: system }];
+            messages.push.apply(messages, historyForProactivePrompt(candidate.history));
+            messages.push({
+                role: 'user',
+                content: '请判断现在是否真的有值得主动分享的一件事。若没有，请明确返回 send=false。只按系统要求输出 JSON。'
+            });
+
+            var result = await global.PhoneAPI.completeJSON({
+                messages: messages,
+                temperature: 0.78,
+                timeoutMs: 15000
+            });
+            if (!result || result.ok !== true || !result.data || result.data.send !== true) return;
+
+            var content = cleanProactiveMessage(result.data.text);
+            if (!content || safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
+            if (document.visibilityState === 'hidden') return;
+
+            // 请求期间若用户又发了消息，放弃这条过时的主动联系。
+            var freshHistory = readHistory(candidate.contact.id);
+            var freshLatest = newestMeaningfulMessage(freshHistory);
+            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
+                freshLatest.text !== candidate.latest.text) return;
+
+            var newMessage = {
+                role: 'assistant',
+                text: content,
+                time: Date.now(),
+                voiceMode: 'online',
+                proactiveContact: true
+            };
+            freshHistory.push(newMessage);
+            var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
+                ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
+                : safeSet('chat_history_' + candidate.contact.id, freshHistory);
+            if (!saved) return;
+            tick();
+        } catch (error) {
+            // 自动联系失败不打断当前页面；本次尝试已有冷却记录，避免重复消耗 API。
+            try { console.warn('[ChatNotifier] proactive contact skipped:', error && error.message ? error.message : error); } catch (e) {}
+        } finally {
+            proactiveRequestPending = false;
+            safeSet(PROACTIVE_LOCK_KEY, '');
+        }
+    }
+
+    function startProactiveScheduler() {
+        if (proactiveSchedulerStarted) return;
+        proactiveSchedulerStarted = true;
+        checkProactiveContacts();
+        setInterval(checkProactiveContacts, PROACTIVE_CHECK_MS);
+        global.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') checkProactiveContacts();
+        });
+        global.addEventListener('storage', function (event) {
+            if (event && event.key && event.key.indexOf('chat_proactive_contact_') === 0 &&
+                event.newValue === 'true') checkProactiveContacts();
+        });
+    }
+
     var bootTs = Date.now();
 
     /* ---------- 启动 ---------- */
@@ -338,6 +605,7 @@
         if (currentDetailRoleId()) return;
         tick();
         setInterval(tick, POLL_MS);
+        startProactiveScheduler();
         // 其它标签页/localStorage 变化时立刻响应
         global.addEventListener('storage', function (e) {
             if (e && e.key && e.key.indexOf('chat_history_') === 0) tick();
