@@ -4344,6 +4344,27 @@
             var duplicated = policy && typeof policy.isDuplicateWithinWindow === 'function'
                 ? policy.isDuplicateWithinWindow(lastGroupUserSend.text, lastGroupUserSend.time, normalized, now, 3000)
                 : (lastGroupUserSend.text === normalized && now >= lastGroupUserSend.time && now - lastGroupUserSend.time < 3000);
+
+            // Also inspect the saved timeline so a page refresh cannot reset the
+            // three-second duplicate guard. Only the latest visible user message
+            // participates; silent context-only prompts are deliberately ignored.
+            if (!duplicated) {
+                var savedHistory = loadMessages();
+                for (var i = savedHistory.length - 1; i >= 0; i--) {
+                    var savedMessage = savedHistory[i];
+                    if (!savedMessage || savedMessage.silent ||
+                        (savedMessage.role !== 'user' && savedMessage.role !== 'sent')) continue;
+                    var savedText = String(savedMessage.text || savedMessage.content || '').replace(/\s+/g, ' ').trim();
+                    var savedAt = Number(savedMessage.time || savedMessage.timestamp) || 0;
+                    if (savedText && savedAt && now >= savedAt && now - savedAt < 3000) {
+                        duplicated = policy && typeof policy.isDuplicateWithinWindow === 'function'
+                            ? policy.isDuplicateWithinWindow(savedText, savedAt, normalized, now, 3000)
+                            : savedText === normalized;
+                    }
+                    break;
+                }
+            }
+
             if (duplicated) return false;
             lastGroupUserSend = { text: normalized, time: now };
             return true;
