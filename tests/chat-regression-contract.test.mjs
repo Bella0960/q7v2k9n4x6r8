@@ -1778,12 +1778,12 @@ test('group public timeline includes only member-owned public posts and labels t
 });
 
 test('chat, group chat and Moments prompts consume the same public timeline without merging private histories', () => {
-  assert.match(detail, /role-public-timeline\\.js\\?v=20261102v1/);
+  assert.match(detail, /role-public-timeline\.js\\?v=20261102v1/);
   assert.match(detail, /RolePublicTimeline\\.buildRolePrompt/);
   assert.match(detail, /RolePublicTimeline\\.buildGroupPrompt/);
   assert.match(detail, /PhoneStorage\.getMoments\(\)/);
-  assert.match(momentsPage, /role-public-timeline\\.js\\?v=20261102v1/);
+  assert.match(momentsPage, /role-public-timeline\.js\\?v=20261102v1/);
   assert.match(momentsPage, /RolePublicTimeline\.buildRolePrompt/);
   assert.match(serviceWorker, /phone-app-pwa-v150/);
-  assert.match(serviceWorker, /role-public-timeline\\.js\\?v=20261102v1/);
+  assert.match(serviceWorker, /role-public-timeline\.js\\?v=20261102v1/);
 });
