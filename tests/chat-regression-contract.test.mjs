@@ -926,10 +926,10 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /relationshipTargetId: isGroupFollowup && previousSpeaker/);
   assert.doesNotMatch(detail, /relation\.familiarity = Math\.min\(100, Math\.max\(0, parseInt\(relation\.familiarity/);
   assert.match(detail, /relationshipDynamicsEnabled !== false/);
-  assert.match(policy, /Intl\.Segmenter/);
-  assert.match(policy, /function extractKeywords\(text\)/);
-  assert.match(policy, /TOPIC_STOP_WORDS/);
-  assert.match(policy, /function tagMatchesTopic\(tag, messageText, keywords\)/);
+  assert.match(groupPolicySource, /Intl\.Segmenter/);
+  assert.match(groupPolicySource, /function extractKeywords\(text\)/);
+  assert.match(groupPolicySource, /TOPIC_STOP_WORDS/);
+  assert.match(groupPolicySource, /function tagMatchesTopic\(tag, messageText, keywords\)/);
   assert.match(groupPlay, /data-member-field="interestTags"/);
   assert.match(groupPlay, /data-member-field="expertiseTags"/);
   assert.match(groupPlay, /data-member-field="backgroundTags"/);
