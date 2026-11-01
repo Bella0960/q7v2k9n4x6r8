@@ -2466,7 +2466,8 @@
                 direction.fromId = fromId;
                 direction.toId = toId;
                 direction.intimacy = Math.max(0, Math.min(100, parseInt(direction.intimacy, 10) || 0));
-                direction.trust = Math.max(0, Math.min(100, parseInt(direction.trust, 10) || 0));
+                var directionTrust = direction.trust == null || direction.trust === '' ? 50 : Number(direction.trust);
+                direction.trust = Math.max(0, Math.min(100, isFinite(directionTrust) ? directionTrust : 50));
                 direction.type = String(direction.type || '未设定');
                 direction.moodToward = ['warm', 'neutral', 'cold'].indexOf(String(direction.moodToward || 'neutral')) !== -1 ? String(direction.moodToward || 'neutral') : 'neutral';
                 direction.note = String(direction.note || '').slice(0, 120);
