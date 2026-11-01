@@ -1429,7 +1429,7 @@ test('emotion continuity exposes only a recent short-lived cue and asks the mode
   assert.equal(prompt.includes('我有点委屈，刚才那句话让我不舒服'), false);
 });
 
-test('emotion continuity expires after three later user turns and is disabled in non-chat scenes', () => {
+test('emotion continuity expires after more than two later user turns and is disabled in non-chat scenes', () => {
   const history = [
     { role: 'user', text: '我真的很担心。' },
     { role: 'assistant', text: '我知道。' },
@@ -1437,9 +1437,7 @@ test('emotion continuity expires after three later user turns and is disabled in
     { role: 'assistant', text: '好。' },
     { role: 'user', text: '我回来了。' },
     { role: 'assistant', text: '嗯。' },
-    { role: 'user', text: '今天过得还行。' },
-    { role: 'assistant', text: '那就好。' },
-    { role: 'user', text: '你在做什么？' }
+    { role: 'user', text: '今天过得还行。' }
   ];
   assert.equal(presencePolicy.findRecentEmotionalSignal(history, { mode: 'online' }), null);
   assert.equal(presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'narration' }), '');
