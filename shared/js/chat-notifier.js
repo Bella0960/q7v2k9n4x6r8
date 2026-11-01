@@ -709,6 +709,13 @@
             return null;
         }
         if (userTime > assistantTime) return null;
+        // Do not resurrect a stale conversation when the app or feature was off for days.
+        if (now - assistantTime > 12 * 60 * 60 * 1000) {
+            state.dueAt = 0;
+            state.lastObservedAssistantAt = assistantTime;
+            saveFollowUpState(scope, contact.id, state);
+            return null;
+        }
         if (!state.anchorMessageAt || assistantTime > Number(state.lastObservedAssistantAt || 0)) {
             var isFollowUpMessage = lastAssistant.proactiveFollowUp === true;
             var messageRound = Math.max(0, Number(lastAssistant.followUpRound) || 0);
