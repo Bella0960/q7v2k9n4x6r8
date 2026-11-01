@@ -1790,6 +1790,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(serviceWorker, /phone-app-pwa-v152/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /chat-followup-policy/);
 });
 
 
