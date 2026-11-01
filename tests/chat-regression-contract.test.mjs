@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v143/);
+  assert.match(serviceWorker, /phone-app-pwa-v144/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1265,10 +1265,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v9/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v11/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v143/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v9/);
+  assert.match(serviceWorker, /phone-app-pwa-v144/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v11/);
 });
 
 
@@ -1388,8 +1388,8 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v143/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v9/);
+  assert.match(serviceWorker, /phone-app-pwa-v144/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v11/);
 });
 
 
@@ -1474,4 +1474,101 @@ test('emotion continuity keeps group speaker signals isolated', () => {
   assert.ok(ownSignal);
   assert.equal(ownSignal.speaker, 'self');
   assert.equal(ownSignal.kind, 'hurt');
+});
+
+
+test('life continuity extracts only explicit first-person plans, activities and interests', () => {
+  assert.equal(typeof presencePolicy.extractLifeNoteSentences, 'function');
+  assert.equal(typeof presencePolicy.collectLifeContinuityNotes, 'function');
+  assert.equal(typeof presencePolicy.buildAutonomyPrompt, 'function');
+
+  const cases = [
+    { text: '我明天准备去图书馆看书。', expected: true },
+    { text: '我今晚还得加班。', expected: true },
+    { text: '我最近在学做甜点。', expected: true },
+    { text: '我这周末有考试。', expected: true },
+    { text: '我平时喜欢烘焙。', expected: true },
+    { text: '我对电影很感兴趣。', expected: true },
+    { text: '我今天不开心。', expected: false },
+    { text: '我明天要不要去？', expected: false },
+    { text: '我今天不要去。', expected: false },
+    { text: '我昨天去看电影了。', expected: false },
+    { text: '我最近想你。', expected: false },
+    { text: '哈哈，今天吃了面条。', expected: false }
+  ];
+
+  for (const item of cases) {
+    assert.equal(
+      presencePolicy.extractLifeNoteSentences(item.text).length > 0,
+      item.expected,
+      item.text
+    );
+  }
+});
+
+test('life continuity only uses the active role own notes and expires old plans', () => {
+  const history = [
+    { role: 'user', text: '你周末有什么安排？' },
+    { role: 'assistant', text: '我明天准备去图书馆看书。' },
+    { role: 'user', text: '准备看什么？' },
+    { role: 'assistant', text: '可能看一本小说。' },
+    { role: 'user', text: '听起来不错。' }
+  ];
+  const notes = presencePolicy.collectLifeContinuityNotes(history, { mode: 'online' });
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].text, '我明天准备去图书馆看书。');
+  assert.equal(notes[0].kind, 'activity');
+  assert.equal(notes[0].turnsSince, 2);
+
+  const expired = [
+    { role: 'assistant', text: '我明天准备去图书馆看书。' },
+    { role: 'user', text: '1' }, { role: 'assistant', text: '2' },
+    { role: 'user', text: '3' }, { role: 'assistant', text: '4' },
+    { role: 'user', text: '5' }, { role: 'assistant', text: '6' },
+    { role: 'user', text: '7' }, { role: 'assistant', text: '8' },
+    { role: 'user', text: '9' }
+  ];
+  assert.deepEqual(Array.from(presencePolicy.collectLifeContinuityNotes(expired, {
+    mode: 'online', maxTurns: 4
+  })), []);
+});
+
+test('life continuity separates group members and disables offline scenes', () => {
+  const history = [
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '我明天准备去图书馆看书。' },
+    { role: 'assistant', memberId: 'role-b', name: '阿岚', text: '我今晚还得加班。' },
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '我平时喜欢烘焙。' }
+  ];
+  const notes = presencePolicy.collectLifeContinuityNotes(history, {
+    mode: 'online', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.deepEqual(
+    Array.from(notes.map((item) => item.text)),
+    ['我明天准备去图书馆看书。', '我平时喜欢烘焙。']
+  );
+  assert.equal(notes.some((item) => item.text.includes('加班')), false);
+  assert.deepEqual(Array.from(presencePolicy.collectLifeContinuityNotes(history, {
+    mode: 'offline', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  })), []);
+});
+
+test('autonomy prompt encourages restrained initiative without inventing real-world activity', () => {
+  const prompt = presencePolicy.buildAutonomyPrompt([
+    { role: 'assistant', text: '我最近在学做甜点。' },
+    { role: 'user', text: '原来如此。' }
+  ], { mode: 'online' });
+  assert.ok(prompt.includes('角色自主性与生活连续性'));
+  assert.ok(prompt.includes('不是每轮都要主动发起新话题'));
+  assert.ok(prompt.includes('我最近在学做甜点。'));
+  assert.ok(prompt.includes('没有已知安排时，不要编造'));
+  assert.ok(prompt.includes('对方不接话题时自然放下'));
+});
+
+test('chat detail injects the role autonomy prompt and precaches the updated policy', () => {
+  assert.match(detail, /ChatPresencePolicy\\.buildAutonomyPrompt/);
+  assert.match(detail, /maxNotes: 3/);
+  assert.match(detail, /maxTurns: 4/);
+  assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v11/);
+  assert.match(serviceWorker, /phone-app-pwa-v144/);
+  assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v11/);
 });
