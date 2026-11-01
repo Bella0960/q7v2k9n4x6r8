@@ -9,6 +9,7 @@
     var apiMessages = [];
     options = options && typeof options === 'object' ? options : {};
     var isGroupChat = options.isGroupChat === true;
+    var groupMode = options.groupMode === 'offline' ? 'offline' : 'online';
     var groupMembers = Array.isArray(options.groupMembers) ? options.groupMembers : [];
     var cleanReasoning = typeof stripInternalReasoning === 'function'
       ? stripInternalReasoning
@@ -58,8 +59,13 @@
             '：「' + quoteText + '」]\n' + content;
         }
       }
-      // Narration belongs to the UI layer and must not consume model dialogue turns.
-      content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
+      // In offline group mode, narration carries scene continuity and stays in context.
+      // Online narration remains a UI-only layer as before.
+      if (isGroupChat && groupMode === 'offline') {
+        content = content.replace(/<\/?narratage\b[^>]*>/gi, '');
+      } else {
+        content = content.replace(/<narratage>[\s\S]*?<\/narratage>/gi, '');
+      }
       // Bilingual chat: [中译:...] is a UI strip, not part of the dialogue the model sees.
       content = content.replace(/\[中译[:：][^\]]{0,800}\]/g, '');
       content = content.replace(/\n{3,}/g, '\n\n').trim();
