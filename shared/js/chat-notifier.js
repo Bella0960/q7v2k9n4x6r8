@@ -359,7 +359,8 @@
 
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
-            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
+            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
+            global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function') {
             return Promise.resolve(true);
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
@@ -377,6 +378,12 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261102v1'),
+                function () { return !!global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -597,13 +604,301 @@
         }
     }
 
+
+    /* ---------- 独立追问调度：私聊与群聊分别保存状态 ---------- */
+    var FOLLOW_UP_LOCK_KEY = 'chat_followup_request_lock';
+    var followUpRequestPending = false;
+
+    function followUpStateKey(scope, id) {
+        return 'chat_followup_state_' + scope + '_' + String(id);
+    }
+    function readFollowUpState(scope, id) {
+        var value = safeJsonParse(safeGet(followUpStateKey(scope, id)));
+        return value && typeof value === 'object' ? value : {
+            followUpCount: 0,
+            ignoredCount: 0,
+            userReceptivityScore: 0.7,
+            dueAt: 0,
+            anchorMessageAt: 0,
+            lastFollowUpAt: 0,
+            lastFollowUpTopic: '',
+            cooldownUntil: 0,
+            pausedByUser: false
+        };
+    }
+    function saveFollowUpState(scope, id, state) {
+        safeSet(followUpStateKey(scope, id), state);
+    }
+    function followUpMessages(history) {
+        return (Array.isArray(history) ? history : []).filter(function (item) {
+            if (!item || item.silent || item.isError || item.role === 'system_error') return false;
+            if (item.type && item.type !== 'text') return false;
+            if (item.mode === 'date' || item.mode === 'narration' || item.mode === 'offline' ||
+                item.voiceMode === 'date' || item.voiceMode === 'narration' || item.voiceMode === 'offline') return false;
+            if (item.role !== 'user' && item.role !== 'sent' && item.role !== 'assistant' && item.role !== 'received') return false;
+            return String(item.text || item.content || '').trim().length >= 2 && Number(item.time || item.timestamp) > 0;
+        });
+    }
+    function followUpHistoryContext(history, isGroup) {
+        return followUpMessages(history).slice(-8).map(function (item) {
+            var role = item.role === 'user' || item.role === 'sent' ? '用户' :
+                (isGroup && item.name ? String(item.name).slice(0, 24) : '角色');
+            var text = String(item.text || item.content || '')
+                .replace(/<(think|reasoning|analysis)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
+                .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, ' ')
+                .replace(/\[(?:记住|心声|红包|转账|图片|亲属卡|亲密付|发起语音通话|群关系互动|群关系变化|群动作|群投票|群接龙|群私聊)[^\]]*\]/g, ' ')
+                .replace(/\s+/g, ' ').trim().slice(0, 360);
+            return role + '：' + text;
+        }).join('\n');
+    }
+    function followUpRoleForGroup(group, lastAssistant) {
+        var memberId = String(lastAssistant && lastAssistant.memberId || '');
+        if (!memberId || !group || !Array.isArray(group.members)) return null;
+        var member = group.members.find(function (item) { return item && String(item.id) === memberId; });
+        if (!member) return null;
+        var characters = readCharacters();
+        var character = characters.find(function (item) { return item && String(item.id) === memberId; });
+        return {
+            id: memberId,
+            name: member.groupName || member.nickname || member.name || (character && character.name) || lastAssistant.name || '群成员',
+            persona: character && (character.persona || character.prompt || character.description) || '',
+            relationship: '群友'
+        };
+    }
+    function getFollowUpCandidate(scope, contact, history, now) {
+        var messages = followUpMessages(history);
+        if (messages.length < 2) return null;
+        var last = messages[messages.length - 1];
+        var lastUser = null;
+        var lastAssistant = null;
+        for (var i = messages.length - 1; i >= 0; i--) {
+            if (!lastUser && (messages[i].role === 'user' || messages[i].role === 'sent')) lastUser = messages[i];
+            if (!lastAssistant && (messages[i].role === 'assistant' || messages[i].role === 'received')) lastAssistant = messages[i];
+            if (lastUser && lastAssistant) break;
+        }
+        if (!lastUser || !lastAssistant) return null;
+        var state = readFollowUpState(scope, contact.id);
+        var policy = global.ChatFollowUpPolicy;
+        var userTime = Number(lastUser.time || lastUser.timestamp) || 0;
+        var assistantTime = Number(lastAssistant.time || lastAssistant.timestamp) || 0;
+
+        if (state.anchorMessageAt && userTime > Number(state.anchorMessageAt)) {
+            var intent = policy.applyUserIntent(state, lastUser.text || lastUser.content, now);
+            if (intent.intent === 'normal') policy.noteUserReply(state);
+            state.lastUserMessageAt = userTime;
+            saveFollowUpState(scope, contact.id, state);
+        }
+        if (last.role !== 'assistant' && last.role !== 'received') {
+            state.dueAt = 0;
+            saveFollowUpState(scope, contact.id, state);
+            return null;
+        }
+        if (userTime > assistantTime) return null;
+        if (!state.anchorMessageAt || assistantTime > Number(state.lastObservedAssistantAt || 0)) {
+            var isFollowUpMessage = lastAssistant.proactiveFollowUp === true;
+            var messageRound = Math.max(0, Number(lastAssistant.followUpRound) || 0);
+            if (!isFollowUpMessage) {
+                var newChain = assistantTime !== Number(state.anchorMessageAt);
+                if (newChain) {
+                    state.anchorMessageAt = assistantTime;
+                    state.followUpCount = 0;
+                    state.topicKey = policy.normalizeTopic((lastUser.text || '') + ' ' + (lastAssistant.text || ''));
+                    var sameTopic = state.lastFollowUpTopic && state.lastFollowUpTopic === state.topicKey &&
+                        now - Number(state.lastFollowUpAt || 0) < 12 * 60 * 60 * 1000;
+                    if (sameTopic) {
+                        state.dueAt = 0;
+                        state.lastObservedAssistantAt = assistantTime;
+                        saveFollowUpState(scope, contact.id, state);
+                        return null;
+                    }
+                    var firstDelay = policy.calculateDelay(1, contact.relationship || 'friend', Math.random());
+                    state.dueAt = now + firstDelay * 60 * 1000;
+                    state.nextRound = 1;
+                }
+            } else if (messageRound > 0) {
+                state.followUpCount = messageRound;
+                state.lastObservedAssistantAt = assistantTime;
+                if (messageRound >= 3) {
+                    state.cooldownUntil = now + 24 * 60 * 60 * 1000;
+                    state.dueAt = 0;
+                    state.ignoredCount = 0;
+                } else {
+                    var nextRound = messageRound + 1;
+                    state.nextRound = nextRound;
+                    state.dueAt = now + policy.calculateDelay(nextRound, contact.relationship || 'friend', Math.random()) * 60 * 1000;
+                }
+            }
+            state.lastObservedAssistantAt = assistantTime;
+            saveFollowUpState(scope, contact.id, state);
+        }
+        var blocked = policy.shouldBlock(state, now);
+        if (blocked.blocked) {
+            state.dueAt = 0;
+            saveFollowUpState(scope, contact.id, state);
+            return null;
+        }
+        if (!state.dueAt || Number(state.dueAt) > now) return null;
+        if (now - assistantTime < 15 * 60 * 1000) return null;
+        if (policy.isQuietTime(now)) {
+            state.dueAt = policy.nextAllowedTime(now);
+            saveFollowUpState(scope, contact.id, state);
+            return null;
+        }
+        return {
+            scope: scope,
+            contact: contact,
+            history: history,
+            state: state,
+            lastAssistantAt: assistantTime,
+            lastUserAt: userTime,
+            round: Math.max(1, Math.min(3, Number(state.nextRound) || 1)),
+            topic: state.topicKey || policy.normalizeTopic(lastUser.text || ''),
+            lastAssistant: lastAssistant,
+            lastUser: lastUser
+        };
+    }
+    function saveFollowUpHistory(id, history) {
+        if (global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function') {
+            return !!global.PhoneStorage.saveChatHistory(id, history);
+        }
+        return safeSet('chat_history_' + id, history);
+    }
+    function followUpContactList() {
+        var contacts = buildContactIndex();
+        var result = [];
+        Object.keys(contacts).forEach(function (id) {
+            var contact = contacts[id];
+            if (!contact) return;
+            if (contact.isGroup) {
+                var group = readGroups().find(function (item) { return item && String(item.id) === String(id); });
+                if (!group || !group.settings || group.settings.followUpEnabled !== true) return;
+                contact.group = group;
+                contact.relationship = 'friend';
+                result.push({ scope: 'group', contact: contact });
+            } else if (safeGet('chat_followup_enabled_' + id) === 'true') {
+                result.push({ scope: 'private', contact: contact });
+            }
+        });
+        return result;
+    }
+    async function runFollowUpCandidate(candidate) {
+        var scope = candidate.scope;
+        var contact = candidate.contact;
+        var role = scope === 'group' ? followUpRoleForGroup(contact.group, candidate.lastAssistant) : {
+            id: contact.id, name: contact.name, persona: contact.persona || '', relationship: contact.relationship || '朋友'
+        };
+        if (!role) return;
+        var config = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
+        if (!config || !String(config.apiKey || '').trim()) return;
+        var prompt = global.ChatFollowUpPolicy.buildPrompt({
+            name: role.name,
+            persona: role.persona,
+            relationship: role.relationship,
+            round: candidate.round,
+            context: followUpHistoryContext(candidate.history, scope === 'group')
+        });
+        var messages = [{ role: 'system', content: prompt }];
+        messages.push({
+            role: 'user',
+            content: '请根据上面的对话生成这一次追问。不要解释，只返回 JSON。'
+        });
+        var result = await global.PhoneAPI.completeJSON({
+            messages: messages,
+            temperature: 0.72,
+            timeoutMs: 15000
+        });
+        if (!result || result.ok !== true || !result.data || result.data.send !== true) {
+            var skipped = readFollowUpState(scope, contact.id);
+            skipped.dueAt = 0;
+            saveFollowUpState(scope, contact.id, skipped);
+            return;
+        }
+        var content = String(result.data.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (content.length < 2 || content.length > 60 || /\[[^\]]{1,100}\]/.test(content) || /https?:\/\//i.test(content)) return;
+
+        var freshHistory = readHistory(contact.id);
+        var freshMessages = followUpMessages(freshHistory);
+        var freshLast = freshMessages[freshMessages.length - 1];
+        if (!freshLast || Number(freshLast.time || freshLast.timestamp) !== candidate.lastAssistantAt ||
+            freshLast.proactiveFollowUp === true) return;
+        var freshUser = null;
+        for (var i = freshMessages.length - 1; i >= 0; i--) {
+            if (freshMessages[i].role === 'user' || freshMessages[i].role === 'sent') { freshUser = freshMessages[i]; break; }
+        }
+        if (!freshUser || Number(freshUser.time || freshUser.timestamp) !== candidate.lastUserAt) return;
+        if (global.document.visibilityState === 'hidden') return;
+
+        var now = Date.now();
+        var newMessage = {
+            role: 'assistant',
+            text: content,
+            time: now,
+            voiceMode: 'online',
+            name: scope === 'group' ? role.name : undefined,
+            memberId: scope === 'group' ? role.id : undefined,
+            proactiveFollowUp: true,
+            followUpRound: candidate.round,
+            followUpTopic: candidate.topic
+        };
+        freshHistory.push(newMessage);
+        if (!saveFollowUpHistory(contact.id, freshHistory)) return;
+        var state = readFollowUpState(scope, contact.id);
+        global.ChatFollowUpPolicy.noteFollowUpSent(state, candidate.round, now, candidate.topic);
+        state.lastObservedAssistantAt = now;
+        state.anchorMessageAt = candidate.state.anchorMessageAt;
+        state.nextRound = candidate.round >= 3 ? 0 : candidate.round + 1;
+        state.dueAt = 0;
+        if (candidate.round >= 3) {
+            state.cooldownUntil = now + 24 * 60 * 60 * 1000;
+            state.ignoredCount = 0;
+        }
+        saveFollowUpState(scope, contact.id, state);
+        tick();
+    }
+    async function checkFollowUpTasks() {
+        if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
+        var now = Date.now();
+        var lockAt = Number(safeGet(FOLLOW_UP_LOCK_KEY)) || 0;
+        if (lockAt && now - lockAt >= 0 && now - lockAt < 2 * 60 * 1000) return;
+        var enabled = followUpContactList();
+        if (!enabled.length) return;
+        var ready = await ensureProactiveDependencies();
+        if (!ready || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
+            typeof global.PhoneAPI.completeJSON !== 'function') return;
+        if (document.visibilityState === 'hidden') return;
+        var candidates = [];
+        enabled.forEach(function (entry) {
+            var history = readHistory(entry.contact.id);
+            var candidate = getFollowUpCandidate(entry.scope, entry.contact, history, Date.now());
+            if (candidate) candidates.push(candidate);
+        });
+        if (!candidates.length) return;
+        candidates.sort(function (a, b) { return Number(a.state.dueAt) - Number(b.state.dueAt); });
+        var candidate = candidates[0];
+        followUpRequestPending = true;
+        safeSet(FOLLOW_UP_LOCK_KEY, String(Date.now()));
+        try {
+            await runFollowUpCandidate(candidate);
+        } catch (error) {
+            try { console.warn('[ChatNotifier] follow-up skipped:', error && error.message ? error.message : error); } catch (e) {}
+        } finally {
+            followUpRequestPending = false;
+            safeSet(FOLLOW_UP_LOCK_KEY, '');
+        }
+    }
+
     function startProactiveScheduler() {
         if (proactiveSchedulerStarted) return;
         proactiveSchedulerStarted = true;
         checkProactiveContacts();
+        checkFollowUpTasks();
         setInterval(checkProactiveContacts, PROACTIVE_CHECK_MS);
+        setInterval(checkFollowUpTasks, PROACTIVE_CHECK_MS);
         global.addEventListener('visibilitychange', function () {
-            if (document.visibilityState === 'visible') checkProactiveContacts();
+            if (document.visibilityState === 'visible') {
+                checkProactiveContacts();
+                checkFollowUpTasks();
+            }
         });
         global.addEventListener('storage', function (event) {
             if (event && event.key && event.key.indexOf('chat_proactive_contact_') === 0 &&
@@ -622,7 +917,11 @@
         startProactiveScheduler();
         // 其它标签页/localStorage 变化时立刻响应
         global.addEventListener('storage', function (e) {
-            if (e && e.key && e.key.indexOf('chat_history_') === 0) tick();
+            if (e && e.key && e.key.indexOf('chat_history_') === 0) {
+                tick();
+                checkFollowUpTasks();
+            }
+            if (e && e.key && (e.key.indexOf('chat_followup_enabled_') === 0 || e.key === 'phone_groups')) checkFollowUpTasks();
         });
     };
 
