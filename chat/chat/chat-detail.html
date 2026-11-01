@@ -4337,7 +4337,7 @@
 
         function acceptGroupUserMessage(candidateText) {
             if (!isGroupChat) return true;
-            var normalized = String(candidateText || '').replace(/\\s+/g, ' ').trim();
+            var normalized = String(candidateText || '').replace(/\s+/g, ' ').trim();
             if (!normalized) return true;
             var now = Date.now();
             var policy = window.GroupChatPolicy;
@@ -4354,7 +4354,7 @@
                     var savedMessage = savedHistory[i];
                     if (!savedMessage || savedMessage.silent ||
                         (savedMessage.role !== 'user' && savedMessage.role !== 'sent')) continue;
-                    var savedText = String(savedMessage.text || savedMessage.content || '').replace(/\\s+/g, ' ').trim();
+                    var savedText = String(savedMessage.text || savedMessage.content || '').replace(/\s+/g, ' ').trim();
                     var savedAt = Number(savedMessage.time || savedMessage.timestamp) || 0;
                     if (savedText && savedAt && now >= savedAt && now - savedAt < 3000) {
                         duplicated = policy && typeof policy.isDuplicateWithinWindow === 'function'
