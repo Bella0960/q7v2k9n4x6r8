@@ -385,13 +385,26 @@
 
 
   var LIFE_TIME_CUES = /(?:现在|正在|目前|此刻|还在|在忙|在做|今天|今晚|明天|后天|这周|本周|周末|下周|最近|等会儿|一会儿|待会儿|晚点|之后|回头|过几天|接下来|这两天)/;
-  var LIFE_ACTION_CUES = /(?:要|准备|打算|计划|安排|还得|得|需要|正在|还在|在忙|在做|约了|答应了|参加|去|回|看|学|练|读|写|完成|处理|收拾|整理|复习|开会|上班|上课|考试|面试|排练|训练|旅行|出差|见面|聚会|赶稿|交稿)/;
+  var LIFE_ACTION_CUES = /(?:准备|打算|计划|安排|还得|需要|正在|还在|在忙|在做|约了|答应了|参加|去|回|看|学|练|读|写|听|做饭|运动|散步|逛|打扫|整理|工作|休息|追剧|玩|完成|处理|收拾|复习|开会|上班|上课|考试|面试|排练|训练|旅行|出差|见面|聚会|赶稿|交稿|要(?!不)|得(?!不))/;
 
   function isConversationTextMessage(message) {
     if (!message || typeof message !== 'object' || message.silent || message.isError) return false;
     if (message.type && message.type !== 'text') return false;
     return message.role === 'user' || message.role === 'sent' ||
       message.role === 'assistant' || message.role === 'received';
+  }
+
+  function isLifeInterestSentence(sentence) {
+    if (!/(?:我(?:一直|平时|最近|其实|很|特别|比较)?(?:喜欢|爱好|热衷于|感兴趣|最喜欢|最爱)|我对.{1,24}感兴趣|我最近迷上)/.test(sentence)) return false;
+    return !/(?:喜欢你|爱你|想你|在意你|舍不得|吃醋)/.test(sentence);
+  }
+
+  function isLifeActivitySentence(sentence) {
+    if (!LIFE_TIME_CUES.test(sentence) || !LIFE_ACTION_CUES.test(sentence)) return false;
+    if (/(?:昨天|前天|上周|上个月|去年)/.test(sentence) &&
+        !/(?:今天|现在|目前|正在|还在|接下来)/.test(sentence)) return false;
+    if (/(?:不要|不打算|不准备|不想|不去|没打算|不用|无需)/.test(sentence)) return false;
+    return true;
   }
 
   function extractLifeNoteSentences(value) {
@@ -406,10 +419,8 @@
       if (sentence.length < 7 || sentence.length > 120) return;
       if (/[?？]$/.test(sentence)) return;
       if (!/(?:我|自己)/.test(sentence)) return;
-      if (!LIFE_TIME_CUES.test(sentence) || !LIFE_ACTION_CUES.test(sentence)) return;
-      if (/(?:昨天|前天|上周|上个月|去年)/.test(sentence) &&
-          !/(?:今天|现在|目前|正在|还在|接下来)/.test(sentence)) return;
       if (/^(?:你|对方|用户)/.test(sentence)) return;
+      if (!isLifeActivitySentence(sentence) && !isLifeInterestSentence(sentence)) return;
       result.push(sentence);
     });
     return result;
@@ -423,7 +434,7 @@
     var list = Array.isArray(history) ? history : [];
     var maxScan = Math.max(12, Math.min(100, parseInt(options.maxScan, 10) || 60));
     var maxNotes = Math.max(1, Math.min(4, parseInt(options.maxNotes, 10) || 3));
-    var maxTurns = Math.max(1, Math.min(12, parseInt(options.maxTurns, 10) || 8));
+    var maxTurns = Math.max(1, Math.min(8, parseInt(options.maxTurns, 10) || 4));
     var speakerId = options.speakerId == null ? '' : String(options.speakerId);
     var speakerName = String(options.speakerName || '').trim();
     var notes = [];
@@ -464,6 +475,7 @@
         seen[key] = true;
         notes.push({
           text: sentence,
+          kind: isLifeInterestSentence(sentence) ? 'interest' : 'activity',
           turnsSince: turnsSince,
           time: Number(message.time || message.timestamp) || 0
         });
@@ -492,7 +504,8 @@
       lines.push('以下是历史表达摘录，不保证现在仍有效。先检查其后的聊天是否已完成、取消或改变；只有仍然相关时才自然延续，不要逐条汇报：');
       notes.forEach(function (note) {
         var age = note.turnsSince === 0 ? '最近刚提到' : '之后约经过 ' + note.turnsSince + ' 次交流';
-        lines.push('·「' + note.text + '」（' + age + '）');
+        var label = note.kind === 'interest' ? '近期兴趣线索' : '近期安排／正在做的事';
+        lines.push('·' + label + '：「' + note.text + '」（' + age + '）');
       });
     }
 
