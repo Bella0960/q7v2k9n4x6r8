@@ -5744,6 +5744,17 @@
 
         // 暴露给 chat-extras.js：重玩/重新生成
         window.sendMsg = sendMsg;
+        window.addEventListener('maomao:followup-message', function (event) {
+            var detail = event && event.detail ? event.detail : null;
+            if (!detail || String(detail.contactId) !== String(currentRoleId)) return;
+            if (_vl) vlRefresh(); else renderAllMessages();
+            try {
+                var latest = loadMessages();
+                var last = latest.length ? latest[latest.length - 1] : null;
+                if (last && window.ChatNotifier) ChatNotifier.markSeen(currentRoleId, last.time);
+            } catch (e) {}
+            scrollToBottom(true);
+        });
         window.regenerateReply = function(direction, mid) {
             if (aiSending) { if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下'); return; }
             if (isBlocked(aliasRoleId)) {
