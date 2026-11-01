@@ -360,8 +360,7 @@
 
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
-            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
-            global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function') {
+            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
             return Promise.resolve(true);
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
@@ -381,12 +380,6 @@
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
             );
         }).then(function (ok) {
-            if (!ok) return false;
-            return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261102v1'),
-                function () { return !!global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function'; }
-            );
-        }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
             return ok;
         }).catch(function () {
@@ -394,6 +387,17 @@
             return false;
         });
         return proactiveDependenciesPromise;
+    }
+
+    function ensureFollowUpDependencies() {
+        return ensureProactiveDependencies().then(function (ok) {
+            if (!ok) return false;
+            if (global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function') return true;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261102v1'),
+                function () { return !!global.ChatFollowUpPolicy && typeof global.ChatFollowUpPolicy.calculateDelay === 'function'; }
+            );
+        });
     }
 
     function proactiveIntervalHours(roleId) {
@@ -887,7 +891,7 @@
         if (lockAt && now - lockAt >= 0 && now - lockAt < 2 * 60 * 1000) return;
         var enabled = followUpContactList();
         if (!enabled.length) return;
-        var ready = await ensureProactiveDependencies();
+        var ready = await ensureFollowUpDependencies();
         if (!ready || !global.ChatFollowUpPolicy || !global.PhoneAPI ||
             typeof global.PhoneAPI.completeJSON !== 'function') return;
         if (document.visibilityState === 'hidden') return;
