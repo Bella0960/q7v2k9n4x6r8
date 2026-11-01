@@ -1577,9 +1577,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.match(detail, /ChatPresencePolicy\\.buildAutonomyPrompt/);
   assert.match(detail, /maxNotes: 3/);
   assert.match(detail, /maxTurns: 4/);
-  assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v11/);
+  assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v16/);
   assert.match(serviceWorker, /phone-app-pwa-v149/);
-  assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v11/);
+  assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v16/);
 });
 
 
