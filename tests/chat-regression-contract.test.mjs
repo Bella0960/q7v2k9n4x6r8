@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v145/);
+  assert.match(serviceWorker, /phone-app-pwa-v146/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1265,10 +1265,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v12/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v13/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v145/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v12/);
+  assert.match(serviceWorker, /phone-app-pwa-v146/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v13/);
 });
 
 
@@ -1388,8 +1388,8 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v145/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v12/);
+  assert.match(serviceWorker, /phone-app-pwa-v146/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v13/);
 });
 
 
@@ -1489,6 +1489,8 @@ test('life continuity extracts only explicit first-person plans, activities and 
     { text: '我这周末有考试。', expected: true },
     { text: '我平时喜欢烘焙。', expected: true },
     { text: '我对电影很感兴趣。', expected: true },
+    { text: '我最近挺喜欢画画。', expected: true },
+    { text: '我最近觉得很累。', expected: false },
     { text: '我今天不开心。', expected: false },
     { text: '我明天要不要去？', expected: false },
     { text: '我今天不要去。', expected: false },
@@ -1570,6 +1572,6 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.match(detail, /maxNotes: 3/);
   assert.match(detail, /maxTurns: 4/);
   assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v11/);
-  assert.match(serviceWorker, /phone-app-pwa-v145/);
+  assert.match(serviceWorker, /phone-app-pwa-v146/);
   assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v11/);
 });
