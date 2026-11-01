@@ -487,6 +487,8 @@
 
   function buildAutonomyPrompt(history, options) {
     options = options || {};
+    var mode = String(options.mode || 'online').toLowerCase();
+    if (mode === 'narration' || mode === 'offline' || mode === 'date' || mode === 'face-to-face') return '';
     var notes = collectLifeContinuityNotes(history, options);
     var lines = [
       '【角色自主性与生活连续性】',
