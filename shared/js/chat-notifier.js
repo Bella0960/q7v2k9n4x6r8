@@ -714,7 +714,7 @@
                         saveFollowUpState(scope, contact.id, state);
                         return null;
                     }
-                    var firstDelay = policy.calculateDelay(1, contact.relationship || 'friend', Math.random());
+                    var firstDelay = policy.calculateDelay(1, contact.relationship || 'friend', Math.random(), state.userReceptivityScore);
                     state.dueAt = assistantTime + firstDelay * 60 * 1000;
                     state.nextRound = 1;
                 }
@@ -728,7 +728,7 @@
                 } else {
                     var nextRound = messageRound + 1;
                     state.nextRound = nextRound;
-                    state.dueAt = assistantTime + policy.calculateDelay(nextRound, contact.relationship || 'friend', Math.random()) * 60 * 1000;
+                    state.dueAt = assistantTime + policy.calculateDelay(nextRound, contact.relationship || 'friend', Math.random(), state.userReceptivityScore) * 60 * 1000;
                 }
             }
             state.lastObservedAssistantAt = assistantTime;
