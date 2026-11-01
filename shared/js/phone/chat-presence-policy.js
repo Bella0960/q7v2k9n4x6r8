@@ -277,6 +277,109 @@
     return samples;
   }
 
+
+  var EMOTION_CUES = [
+    { kind: 'hurt', label: '委屈或难过', words: ['难过', '伤心', '委屈', '失落', '心酸', '难受', '受伤', '被忽略', '不被理解'] },
+    { kind: 'anger', label: '生气或烦躁', words: ['生气', '火大', '恼火', '烦死', '烦躁', '不爽', '讨厌'] },
+    { kind: 'worry', label: '担心或不安', words: ['担心', '害怕', '紧张', '焦虑', '不安', '慌张', '怕'] },
+    { kind: 'affection', label: '想念或在意', words: ['想你', '想念', '舍不得', '吃醋', '喜欢你', '在意你'] },
+    { kind: 'joy', label: '开心或期待', words: ['开心', '高兴', '幸福', '兴奋', '期待'] },
+    { kind: 'embarrassment', label: '害羞或尴尬', words: ['尴尬', '不好意思', '害羞', '难为情'] }
+  ];
+
+  function isUsableEmotionMessage(message) {
+    if (!message || typeof message !== 'object') return false;
+    if (message.silent || message.isError || message.role === 'system_error') return false;
+    if (message.type && message.type !== 'text') return false;
+    if (message.mode === 'date' || message.mode === 'narration' || message.mode === 'offline' ||
+        message.voiceMode === 'date' || message.voiceMode === 'narration' || message.voiceMode === 'offline') return false;
+    return message.role === 'user' || message.role === 'sent' ||
+      message.role === 'assistant' || message.role === 'received';
+  }
+
+  function classifyExplicitEmotion(value) {
+    var text = extractHabitText(value).replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+
+    var best = null;
+    EMOTION_CUES.forEach(function (group) {
+      group.words.forEach(function (word) {
+        var cueIndex = text.indexOf(word);
+        while (cueIndex !== -1) {
+          var prefix = text.slice(Math.max(0, cueIndex - 22), cueIndex);
+          var anchor = /(?:我|自己|让我|使我)(?:现在|今天|最近|其实|真的|有点|有些|很|特别|太|一直|已经|觉得|感觉)?[^，。！？!?；;\n]{0,14}$/.exec(prefix);
+          if (anchor) {
+            var bridge = anchor[0];
+            var negated = /(?:不|没|不是|并非|并不|没有|不算|谈不上|不再)(?:太|很|怎么|那么|特别)?\s*$/.test(bridge);
+            if (!negated) {
+              var intensity = /特别|非常|真的|很|太|气死|受不了/.test(bridge) ? 'strong' : 'moderate';
+              var candidate = { kind: group.kind, label: group.label, intensity: intensity };
+              if (!best || intensity === 'strong') best = candidate;
+            }
+          }
+          cueIndex = text.indexOf(word, cueIndex + word.length);
+        }
+      });
+    });
+    return best;
+  }
+
+  function findRecentEmotionalSignal(history, options) {
+    options = options || {};
+    var mode = String(options.mode || 'online').toLowerCase();
+    if (mode === 'narration' || mode === 'offline' || mode === 'date' || mode === 'face-to-face') return null;
+
+    var list = Array.isArray(history) ? history : [];
+    var maxScan = Math.max(4, Math.min(40, parseInt(options.maxScan, 10) || 24));
+    var scanned = 0;
+
+    for (var i = list.length - 1; i >= 0 && scanned < maxScan; i--) {
+      var message = list[i];
+      if (!isUsableEmotionMessage(message)) continue;
+      if (message.role === 'assistant' || message.role === 'received') {
+        if (!matchesSpeaker(message, options)) continue;
+      }
+      scanned += 1;
+
+      var signal = classifyExplicitEmotion(message.text || message.content || '');
+      if (!signal) continue;
+
+      var turnsSince = 0;
+      for (var j = i + 1; j < list.length; j++) {
+        var later = list[j];
+        if (!isUsableEmotionMessage(later)) continue;
+        if (later.role === 'user' || later.role === 'sent') turnsSince += 1;
+      }
+      if (turnsSince > 3) return null;
+
+      signal.speaker = (message.role === 'assistant' || message.role === 'received') ? 'self' : 'other';
+      signal.turnsSince = turnsSince;
+      signal.messageTime = Number(message.time || message.timestamp) || 0;
+      return signal;
+    }
+    return null;
+  }
+
+  function buildEmotionContinuityPrompt(history, options) {
+    options = options || {};
+    var signal = findRecentEmotionalSignal(history, options);
+    if (!signal) return '';
+
+    var subject = signal.speaker === 'self' ? '你此前' : '对方此前';
+    var timing = signal.turnsSince === 0
+      ? '就在当前这条消息中'
+      : '距今大约经过了 ' + signal.turnsSince + ' 次对方发言';
+    var intensity = signal.intensity === 'strong' ? '较强烈地' : '明确地';
+
+    return [
+      '【短期情绪连续性｜动态线索】',
+      subject + intensity + '表达过「' + signal.label + '」相关感受，' + timing + '。这只是最近互动中的一条线索，不代表这种情绪此刻仍然存在，也不构成角色的长期性格。',
+      '先结合这条线索之后的完整对话，判断是否已经得到回应、解释、道歉、安抚、解决，或被双方自然放下；如果已经缓和或话题已经转开，就正常交流，不要重新翻出旧情绪。',
+      '如果它仍未被回应，当前优先具体回应真正重要的部分，不使用套话，也不急着替对方下结论。回应后最多在接下来一到两轮保留轻微余韵，并根据对方实际反应更新；不要固定冷战、惩罚性沉默、反复追问或将情绪永久化。',
+      '若无法确定情绪是否仍在，宁可保持自然，不要臆测、夸大或主动制造情绪事件。'
+    ].join('\n');
+  }
+
   function getBubbleDelayMs(previousText) {
     var chars = Array.from(String(previousText == null ? '' : previousText).trim()).length;
     return Math.max(520, Math.min(920, 440 + chars * 16));
@@ -302,8 +405,8 @@
       '口头禅、标点和表情符号沿用角色自己的习惯，不要统一套用某一组语气词。',
       '',
       '【情绪连续性】',
-      '结合最近几轮真实对话判断情绪是否已经被回应、解释或自然缓和。若冲突、失望、担心或脆弱时刻尚未过去，可在后续约两到三轮保留适度余韵，再随互动自然变化。',
-      '情绪余韵表现为语气、主动程度或回应方式的细微变化，不等于固定冷战、惩罚性沉默、追问或突然改变核心性格。用户主动转场或事情已经说开时，不要强行延续。',
+      '只根据明确表达或连续上下文中的可靠线索判断情绪，不要把普通语气、玩笑或一次简短不悦放大成事件；判断之前先确认事情是否已经被回应或自然放下。',
+      '如果情绪确实尚未解决，只在接下来少数几轮保留轻微、可变化的余韵；用户主动转场、事情已经说开或缺乏把握时，不要强行延续。',
       '短暂情绪属于当前互动状态，不要把它直接变成永久性格，也不要仅凭一次情绪反应写入长期记忆。',
       '',
       '【生活细节与边界】',
@@ -326,6 +429,9 @@
   NS.collectVoiceSamples = collectVoiceSamples;
   NS.buildVoiceHabitProfile = buildVoiceHabitProfile;
   NS.buildVoiceHabitPrompt = buildVoiceHabitPrompt;
+  NS.classifyExplicitEmotion = classifyExplicitEmotion;
+  NS.findRecentEmotionalSignal = findRecentEmotionalSignal;
+  NS.buildEmotionContinuityPrompt = buildEmotionContinuityPrompt;
   NS.getBubbleDelayMs = getBubbleDelayMs;
   NS.buildPrompt = buildPrompt;
 })(window);
