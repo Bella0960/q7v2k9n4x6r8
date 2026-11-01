@@ -132,6 +132,13 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         <span class="switch"><input type="checkbox" data-setting="autoTalkEnabled"><span class="track"></span></span>
       </label>
       <div class="setting">
+        <span class="setting-copy"><span class="setting-title">群聊模式</span><span class="setting-desc">线上是隔着屏幕的短消息；线下是同一场景中的多人互动。两种模式共用这份群聊记录。</span></span>
+        <select id="groupChatMode" aria-label="群聊模式" style="width:92px;flex:none;height:36px;border:1px solid #e6e6eb;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;">
+          <option value="online">线上</option>
+          <option value="offline">线下</option>
+        </select>
+      </div>
+      <div class="setting">
         <span class="setting-copy"><span class="setting-title">最多自动接话次数</span><span class="setting-desc">每次你发消息后，最多追加几条角色回复。</span></span>
         <select id="autoTalkRounds" style="width:88px;flex:none;height:36px;border:1px solid #e6e6eb;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;">
           <option value="0">关闭</option>
@@ -203,6 +210,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
     var autoRounds=Number(group.settings.autoTalkRounds);
     if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
+    if(group.settings.chatMode!=='online'&&group.settings.chatMode!=='offline')group.settings.chatMode='online';
     document.getElementById('groupTitle').textContent=group.name||'未命名群聊';
     function persist(message){
       var groups=readArray('phone_groups');
@@ -221,6 +229,8 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       });
       var roundsSelect=document.getElementById('autoTalkRounds');
       if(roundsSelect)roundsSelect.value=String(group.settings.autoTalkRounds);
+      var modeSelect=document.getElementById('groupChatMode');
+      if(modeSelect)modeSelect.value=group.settings.chatMode;
     }
     function renderOwner(){
       var select=document.getElementById('ownerSelect');
@@ -257,6 +267,10 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         group.settings[input.getAttribute('data-setting')]=!!input.checked;
         persist('设置已保存');
       });
+    });
+    document.getElementById('groupChatMode').addEventListener('change',function(){
+      group.settings.chatMode=this.value==='offline'?'offline':'online';
+      persist(group.settings.chatMode==='offline'?'已切换为线下群聊':'已切换为线上群聊');
     });
     document.getElementById('autoTalkRounds').addEventListener('change',function(){
       var rounds=parseInt(this.value,10);
