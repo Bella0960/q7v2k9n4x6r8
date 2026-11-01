@@ -44,7 +44,8 @@
   function isUsableAssistantMessage(message) {
     if (!message || typeof message !== 'object') return false;
     if (message.isError || message.role === 'system_error' || message.silent ||
-        message.mode === 'date' || message.mode === 'narration' || message.mode === 'offline') return false;
+        message.mode === 'date' || message.mode === 'narration' || message.mode === 'offline' ||
+        message.voiceMode === 'date' || message.voiceMode === 'narration' || message.voiceMode === 'offline') return false;
     if (message.type && message.type !== 'text') return false;
     return message.role === 'assistant' || message.role === 'received';
   }
