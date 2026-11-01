@@ -5117,6 +5117,7 @@
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
+                    groupMode: currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online',
                     groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : []
                 }));
             } else {
