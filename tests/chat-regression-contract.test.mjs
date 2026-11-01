@@ -685,6 +685,49 @@ test('group routing weighs topic relevance and each member talkativeness', () =>
   assert.equal(decision.fallback, false);
 });
 
+test('group topic matching supports synonym groups and keeps legacy interests readable', () => {
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['编程'] },
+    '我今天敲代码到很晚'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interests: ['篮球'] },
+    '晚上一起打球吧'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['篮球', '咖啡'] },
+    '周末打球'
+  ), 50);
+});
+
+test('expertise and background tags contribute independently to topic relevance', () => {
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { expertiseTags: ['React'] },
+    '这个 React 组件怎么写？'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { backgroundTags: ['大学室友'] },
+    '大学室友今天来找我了'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['音乐'], expertiseTags: ['React'] },
+    'React 组件怎么写？',
+    { type: 'help' }
+  ) > groupPolicy.calculateTopicRelevance(
+    { interestTags: ['音乐'], expertiseTags: ['React'] },
+    'React 组件怎么写？',
+    { type: 'casual' }
+  ), true);
+});
+
+test('local group message context detects emotion, invitations, help and conflict', () => {
+  assert.equal(groupPolicy.analyzeMessageContext('今天加班到很晚，真的好累').type, 'emotional');
+  assert.equal(groupPolicy.analyzeMessageContext('周末要不要一起去打球？').type, 'invitation');
+  assert.equal(groupPolicy.analyzeMessageContext('这个 React 组件为什么报错？').type, 'help');
+  assert.equal(groupPolicy.analyzeMessageContext('我和他昨天吵架了').type, 'conflict');
+  assert.equal(groupPolicy.analyzeMessageContext('晚上吃什么').type, 'casual');
+});
+
 test('user messages do not inherit a previous role-to-role relationship weight', () => {
   const members = [
     { id: 'role-c', talkativeness: 0.5, replyThreshold: 30 },
@@ -815,7 +858,7 @@ test('offline group context keeps narration text so the shared scene remains con
 });
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
-  assert.match(detail, /group-chat-policy\.js\?v=20261102v3/);
+  assert.match(detail, /group-chat-policy\.js\?v=20261102v4/);
   assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
   assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
@@ -840,6 +883,12 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /relationshipTargetId: isGroupFollowup && previousSpeaker/);
   assert.doesNotMatch(detail, /relation\.familiarity = Math\.min\(100, Math\.max\(0, parseInt\(relation\.familiarity/);
   assert.match(detail, /relationshipDynamicsEnabled !== false/);
+  assert.match(groupPlay, /data-member-field="interestTags"/);
+  assert.match(groupPlay, /data-member-field="expertiseTags"/);
+  assert.match(groupPlay, /data-member-field="backgroundTags"/);
+  assert.match(groupPlay, /member\.interests=tags/);
+  assert.match(detail, /analyzeMessageContext\(selectionText\)/);
+  assert.match(detail, /groupContextPrompt/);
   assert.match(detail, /relationshipDynamicsEnabled !== false && isGroupFollowup/);
   assert.match(detail, /applyRelationshipEvent/);
   assert.match(detail, /群关系变化/);
@@ -856,13 +905,13 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v132/);
+  assert.match(serviceWorker, /phone-app-pwa-v133/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
   assert.match(serviceWorker, /chat-context-policy\.js\?v=20261031v1/);
-  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v3/);
+  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v4/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261031v1/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
