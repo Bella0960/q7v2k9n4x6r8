@@ -350,7 +350,7 @@
         if (!isUsableEmotionMessage(later)) continue;
         if (later.role === 'user' || later.role === 'sent') turnsSince += 1;
       }
-      if (turnsSince > 3) return null;
+      if (turnsSince > 2) return null;
 
       signal.speaker = (message.role === 'assistant' || message.role === 'received') ? 'self' : 'other';
       signal.turnsSince = turnsSince;
