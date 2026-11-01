@@ -9,6 +9,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const chatNotifier = read('shared/js/chat-notifier.js');
+const navPage = read('shared/js/nav.js');
+const homePage = read('index.html');
 const groupPlay = read('chat/chat/group-play.html');
 const inspectPhone = read('inspect-phone/phone.html');
 const forumPage = read('forum/forum.html');
@@ -957,7 +960,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v140/);
+  assert.match(serviceWorker, /phone-app-pwa-v149/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1265,10 +1268,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v6/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v16/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v140/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
+  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
 });
 
 
@@ -1386,6 +1389,342 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /voiceMode: inflightSnapshot\.voiceMode \|\| 'online'/);
   assert.match(detail, /localStorage\.removeItem\(voiceProfileKey\)/);
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
-  assert.match(serviceWorker, /phone-app-pwa-v140/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
+  assert.match(detail, /buildEmotionContinuityPrompt/);
+  assert.match(detail, /maxScan: 24/);
+  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
+});
+
+
+test('emotion continuity detects explicit first-person emotional signals but ignores negation and casual text', () => {
+  assert.equal(typeof presencePolicy.classifyExplicitEmotion, 'function');
+  assert.equal(typeof presencePolicy.findRecentEmotionalSignal, 'function');
+  assert.equal(typeof presencePolicy.buildEmotionContinuityPrompt, 'function');
+
+  assert.equal(presencePolicy.classifyExplicitEmotion('我有点委屈，刚才那句话让我不舒服。').kind, 'hurt');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我真的很担心你。').kind, 'worry');
+  assert.equal(presencePolicy.classifyExplicitEmotion('你让我很难过。').kind, 'hurt');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我好喜欢你。').kind, 'affection');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我不是很难过了。'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('我不开心。').kind, 'hurt');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我不高兴。').kind, 'hurt');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我开心吗？'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('我是不是很难过？'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('我没有生气。'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('哈哈我今天吃了面条。'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('你今天开心吗？'), null);
+});
+
+test('emotion continuity exposes only a recent short-lived cue and asks the model to verify resolution', () => {
+  const history = [
+    { role: 'user', text: '我有点委屈，刚才那句话让我不舒服。' },
+    { role: 'assistant', text: '我明白了，刚才没顾及你的感受。' },
+    { role: 'user', text: '嗯，我现在好多了。' },
+    { role: 'assistant', text: '那就好。' }
+  ];
+  const signal = presencePolicy.findRecentEmotionalSignal(history, { mode: 'online' });
+  assert.ok(signal);
+  assert.equal(signal.kind, 'hurt');
+  assert.equal(signal.speaker, 'other');
+  assert.equal(signal.turnsSince, 1);
+
+  const prompt = presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'online' });
+  assert.ok(prompt.includes('委屈或难过'));
+  assert.ok(prompt.includes('如果已经缓和或话题已经转开，就正常交流'));
+  assert.ok(prompt.includes('最多在接下来一到两轮'));
+  assert.ok(prompt.includes('不构成角色的长期性格'));
+  assert.equal(prompt.includes('我有点委屈，刚才那句话让我不舒服'), false);
+});
+
+test('emotion continuity expires after more than two later user turns and is disabled in non-chat scenes', () => {
+  const history = [
+    { role: 'user', text: '我真的很担心。' },
+    { role: 'assistant', text: '我知道。' },
+    { role: 'user', text: '那我先去忙了。' },
+    { role: 'assistant', text: '好。' },
+    { role: 'user', text: '我回来了。' },
+    { role: 'assistant', text: '嗯。' },
+    { role: 'user', text: '今天过得还行。' }
+  ];
+  assert.equal(presencePolicy.findRecentEmotionalSignal(history, { mode: 'online' }), null);
+  assert.equal(presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'narration' }), '');
+  assert.equal(presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'offline' }), '');
+  assert.equal(presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'date' }), '');
+});
+
+test('emotion continuity keeps group speaker signals isolated', () => {
+  const history = [
+    { role: 'user', text: '我有点担心这件事。' },
+    { role: 'assistant', memberId: 'role-b', name: '阿岚', text: '我真的很生气。' },
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '嗯，我听到了。' }
+  ];
+  const signal = presencePolicy.findRecentEmotionalSignal(history, {
+    mode: 'online', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.ok(signal);
+  assert.equal(signal.kind, 'worry');
+  assert.equal(signal.speaker, 'other');
+  assert.equal(signal.turnsSince, 1);
+
+  const ownSignalHistory = [
+    { role: 'user', text: '今天还好。' },
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '其实我有点失落。' },
+    { role: 'user', text: '怎么了？' }
+  ];
+  const ownSignal = presencePolicy.findRecentEmotionalSignal(ownSignalHistory, {
+    mode: 'online', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.ok(ownSignal);
+  assert.equal(ownSignal.speaker, 'self');
+  assert.equal(ownSignal.kind, 'hurt');
+});
+
+
+test('life continuity extracts only explicit first-person plans, activities and interests', () => {
+  assert.equal(typeof presencePolicy.extractLifeNoteSentences, 'function');
+  assert.equal(typeof presencePolicy.collectLifeContinuityNotes, 'function');
+  assert.equal(typeof presencePolicy.buildAutonomyPrompt, 'function');
+
+  const cases = [
+    { text: '我明天准备去图书馆看书。', expected: true },
+    { text: '我今晚还得加班。', expected: true },
+    { text: '我最近在学做甜点。', expected: true },
+    { text: '我这周末有考试。', expected: true },
+    { text: '我平时喜欢烘焙。', expected: true },
+    { text: '我对电影很感兴趣。', expected: true },
+    { text: '我最近挺喜欢画画。', expected: true },
+    { text: '我最近觉得很累。', expected: false },
+    { text: '我今天不开心。', expected: false },
+    { text: '我明天要不要去？', expected: false },
+    { text: '我今天不要去。', expected: false },
+    { text: '我昨天去看电影了。', expected: false },
+    { text: '我今天看了电影。', expected: false },
+    { text: '我今天准备把工作做完。', expected: true },
+    { text: '我最近想你。', expected: false },
+    { text: '哈哈，今天吃了面条。', expected: false }
+  ];
+
+  for (const item of cases) {
+    assert.equal(
+      presencePolicy.extractLifeNoteSentences(item.text).length > 0,
+      item.expected,
+      item.text
+    );
+  }
+});
+
+test('life continuity only uses the active role own notes and expires old plans', () => {
+  const history = [
+    { role: 'user', text: '你周末有什么安排？' },
+    { role: 'assistant', text: '我明天准备去图书馆看书。' },
+    { role: 'user', text: '准备看什么？' },
+    { role: 'assistant', text: '可能看一本小说。' },
+    { role: 'user', text: '听起来不错。' }
+  ];
+  const notes = presencePolicy.collectLifeContinuityNotes(history, { mode: 'online' });
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].text, '我明天准备去图书馆看书。');
+  assert.equal(notes[0].kind, 'activity');
+  assert.equal(notes[0].turnsSince, 2);
+
+  const expired = [
+    { role: 'assistant', text: '我明天准备去图书馆看书。' },
+    { role: 'user', text: '1' }, { role: 'assistant', text: '2' },
+    { role: 'user', text: '3' }, { role: 'assistant', text: '4' },
+    { role: 'user', text: '5' }, { role: 'assistant', text: '6' },
+    { role: 'user', text: '7' }, { role: 'assistant', text: '8' },
+    { role: 'user', text: '9' }
+  ];
+  assert.deepEqual(Array.from(presencePolicy.collectLifeContinuityNotes(expired, {
+    mode: 'online', maxTurns: 4
+  })), []);
+});
+
+test('life continuity separates group members and disables offline scenes', () => {
+  const history = [
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '我明天准备去图书馆看书。' },
+    { role: 'assistant', memberId: 'role-b', name: '阿岚', text: '我今晚还得加班。' },
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '我平时喜欢烘焙。' }
+  ];
+  const notes = presencePolicy.collectLifeContinuityNotes(history, {
+    mode: 'online', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.deepEqual(
+    Array.from(notes.map((item) => item.text)),
+    ['我平时喜欢烘焙。', '我明天准备去图书馆看书。']
+  );
+  assert.equal(notes.some((item) => item.text.includes('加班')), false);
+  assert.equal(presencePolicy.buildAutonomyPrompt(history, { mode: 'offline' }), '');
+  assert.deepEqual(Array.from(presencePolicy.collectLifeContinuityNotes(history, {
+    mode: 'offline', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  })), []);
+});
+
+test('autonomy prompt encourages restrained initiative without inventing real-world activity', () => {
+  const prompt = presencePolicy.buildAutonomyPrompt([
+    { role: 'assistant', text: '我最近在学做甜点。' },
+    { role: 'user', text: '原来如此。' }
+  ], { mode: 'online' });
+  assert.ok(prompt.includes('角色自主性与生活连续性'));
+  assert.ok(prompt.includes('不是每轮都要主动发起新话题'));
+  assert.ok(prompt.includes('我最近在学做甜点。'));
+  assert.ok(prompt.includes('没有已知安排时，不要编造'));
+  assert.ok(prompt.includes('对方不接话题时自然放下'));
+  assert.ok(prompt.includes('不要连续重复'));
+});
+
+test('chat detail injects the role autonomy prompt and precaches the updated policy', () => {
+  assert.match(detail, /ChatPresencePolicy\\.buildAutonomyPrompt/);
+  assert.match(detail, /maxNotes: 3/);
+  assert.match(detail, /maxTurns: 4/);
+  assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v16/);
+  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v16/);
+});
+
+
+test('proactive contact policy requires a complete, opted-in conversation and a quiet idle window', () => {
+  assert.equal(typeof presencePolicy.evaluateProactiveContact, 'function');
+  assert.equal(typeof presencePolicy.buildProactiveContactPrompt, 'function');
+
+  const now = new Date(2026, 10, 2, 12, 0, 0).getTime();
+  const history = [
+    { role: 'user', text: '你周末有什么安排？', time: now - 14 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '我明天准备去图书馆看书。', time: now - 13.8 * 60 * 60 * 1000 },
+    { role: 'user', text: '准备看什么？', time: now - 13.5 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '可能看一本小说，顺便找找资料。', time: now - 13 * 60 * 60 * 1000 }
+  ];
+  const options = {
+    enabled: true,
+    now,
+    localHour: 12,
+    minIdleMs: 8 * 60 * 60 * 1000,
+    maxInactiveMs: 30 * 24 * 60 * 60 * 1000,
+    globalCooldownMs: 24 * 60 * 60 * 1000,
+    roleCooldownMs: 24 * 60 * 60 * 1000,
+    quietStartHour: 9,
+    quietEndHour: 22
+  };
+
+  const eligible = presencePolicy.evaluateProactiveContact(history, options);
+  assert.equal(eligible.eligible, true);
+  assert.equal(eligible.reason, 'eligible');
+  assert.equal(eligible.historyCount, 4);
+
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, { ...options, enabled: false }).reason,
+    'disabled'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, { ...options, localHour: 23 }).reason,
+    'quiet-hours'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, {
+      ...options, globalLastAttemptAt: now - 4 * 60 * 60 * 1000
+    }).reason,
+    'global-cooldown'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, {
+      ...options, roleLastAttemptAt: now - 5 * 60 * 60 * 1000, roleCooldownMs: 48 * 60 * 60 * 1000
+    }).reason,
+    'role-cooldown'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, { ...options, minIdleMs: 20 * 60 * 60 * 1000 }).reason,
+    'not-idle-long-enough'
+  );
+});
+
+test('proactive contact waits for a reply, expires dormant history and never chains its own messages', () => {
+  const now = new Date(2026, 10, 2, 12, 0, 0).getTime();
+  const options = {
+    enabled: true, now, localHour: 12,
+    minIdleMs: 8 * 60 * 60 * 1000,
+    maxInactiveMs: 30 * 24 * 60 * 60 * 1000,
+    globalCooldownMs: 24 * 60 * 60 * 1000,
+    roleCooldownMs: 24 * 60 * 60 * 1000
+  };
+  const history = [
+    { role: 'user', text: '你周末有什么安排？', time: now - 14 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '我明天准备去图书馆看书。', time: now - 13.8 * 60 * 60 * 1000 },
+    { role: 'user', text: '准备看什么？', time: now - 13.5 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '你觉得看小说怎么样？', time: now - 13 * 60 * 60 * 1000 }
+  ];
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, options).reason,
+    'awaiting-answer'
+  );
+
+  const unanswered = [
+    { role: 'user', text: '你还好吗？', time: now - 14 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '嗯，还好。', time: now - 13 * 60 * 60 * 1000 },
+    { role: 'user', text: '那就好。', time: now - 12 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '我刚好想起一件事。', time: now - 11 * 60 * 60 * 1000, proactiveContact: true }
+  ];
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(unanswered, options).reason,
+    'awaiting-user-after-proactive-message'
+  );
+
+  const oldHistory = [
+    { role: 'user', text: '你好呀。', time: now - 32 * 24 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '你好。', time: now - 32 * 24 * 60 * 60 * 1000 + 1000 },
+    { role: 'user', text: '最近怎么样？', time: now - 31 * 24 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '还不错。', time: now - 31 * 24 * 60 * 60 * 1000 + 1000 }
+  ];
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(oldHistory, options).reason,
+    'inactive-too-long'
+  );
+});
+
+test('proactive contact prompt allows skipping and forbids guilt, pressure and invented actions', () => {
+  const prompt = presencePolicy.buildProactiveContactPrompt(
+    { name: '小林', persona: '安静，喜欢阅读。' },
+    [
+      { role: 'user', text: '你周末有什么安排？' },
+      { role: 'assistant', text: '我明天准备去图书馆看书。' },
+      { role: 'user', text: '准备看什么？' },
+      { role: 'assistant', text: '可能看一本小说。' }
+    ],
+    { localTime: '2026-11-02 12:00' }
+  );
+  assert.ok(prompt.includes('MAOMAO 主动联系时机判断'));
+  assert.ok(prompt.includes('宁可跳过'));
+  assert.ok(prompt.includes('为什么不理我'));
+  assert.ok(prompt.includes('{"send":false,"text":""}'));
+  assert.ok(prompt.includes('我明天准备去图书馆看书。'));
+  assert.ok(prompt.includes('当前本地时间'));
+});
+
+test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat history notifications', () => {
+  assert.match(chatSettings, /chat_proactive_contact_[' ]\s*\+\s*roleId/);
+  assert.match(chatSettings, /chat_proactive_interval_[' ]\s*\+\s*roleId/);
+  assert.match(chatSettings, /return localStorage\.getItem\(PROACTIVE_CONTACT_KEY\) === 'true'/);
+  assert.match(chatSettings, /proactiveContactInterval/);
+  assert.match(chatSettings, /value="24"/);
+  assert.match(chatSettings, /value="48"/);
+  assert.match(chatSettings, /value="72"/);
+
+  assert.match(chatNotifier, /document\.visibilityState === 'hidden'/);
+  assert.match(chatNotifier, /PROACTIVE_GLOBAL_COOLDOWN_MS = 24 \* 60 \* 60 \* 1000/);
+  assert.match(chatNotifier, /PROACTIVE_MIN_IDLE_MS = 8 \* 60 \* 60 \* 1000/);
+  assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
+  assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
+  assert.match(chatNotifier, /proactiveContact: true/);
+  assert.match(chatNotifier, /saveChatHistory\(candidate\.contact\.id, freshHistory\)/);
+  assert.match(chatNotifier, /tick\(\);/);
+  assert.match(chatNotifier, /startProactiveScheduler\(\)/);
+});
+
+test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
+  assert.match(homePage, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(detail, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v16/);
+  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
 });

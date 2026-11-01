@@ -170,6 +170,6 @@
 
     // 注入跨页未读角标 + 顶部消息弹窗模块（它会自己判断是否需要轮询）
     var notifierScript = document.createElement('script');
-    notifierScript.src = appBase + 'shared/js/chat-notifier.js';
+    notifierScript.src = appBase + 'shared/js/chat-notifier.js?v=20261102v2';
     document.head.appendChild(notifierScript);
 })();

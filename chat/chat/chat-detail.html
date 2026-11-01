@@ -16,9 +16,10 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v6"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v16"></script>
+    <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
-    <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
+    <script src="../../shared/js/chat-notifier.js?v=20261102v2"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -5244,8 +5245,68 @@
                     if (voiceHabitPrompt) presencePrompt += '\n\n' + voiceHabitPrompt;
                 }
 
+                // 情绪连续性只读取近期明确表达的线索；不写入长期记忆，也不额外调用 API。
+                if (presencePrompt && typeof window.ChatPresencePolicy.buildEmotionContinuityPrompt === 'function') {
+                    var emotionContinuityPrompt = window.ChatPresencePolicy.buildEmotionContinuityPrompt(
+                        historyList,
+                        {
+                            mode: presenceMode,
+                            isGroupChat: isGroupChat,
+                            speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
+                            speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            maxScan: 24
+                        }
+                    );
+                    if (emotionContinuityPrompt) presencePrompt += '\n\n' + emotionContinuityPrompt;
+                }
+
+                // 角色自主性只使用当前会话中角色本人明确提过的近期安排，不额外读写数据库或调用 API。
+                if (presencePrompt && typeof window.ChatPresencePolicy.buildAutonomyPrompt === 'function') {
+                    var autonomyPrompt = window.ChatPresencePolicy.buildAutonomyPrompt(
+                        historyList,
+                        {
+                            mode: presenceMode,
+                            isGroupChat: isGroupChat,
+                            speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
+                            speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            maxScan: 60,
+                            maxNotes: 3,
+                            maxTurns: 4
+                        }
+                    );
+                    if (autonomyPrompt) presencePrompt += '\n\n' + autonomyPrompt;
+                }
+
                 if (presencePrompt) systemPrompt += '\n\n' + presencePrompt;
             }
+
+            // 跨场景只同步角色本人公开/好友可见的动态；私聊、群聊记录仍留在各自会话内。
+            var sharedTimelineRoleId = isGroupChat
+                ? ''
+                : String(currentRoleId || currentCharacter.id || '');
+            var sharedTimelinePrompt = '';
+            var sharedTimelineMoments = [];
+            try {
+                sharedTimelineMoments = window.PhoneStorage && typeof window.PhoneStorage.getMoments === 'function'
+                    ? window.PhoneStorage.getMoments()
+                    : JSON.parse(localStorage.getItem('moments') || '[]');
+            } catch (e) { sharedTimelineMoments = []; }
+            if (window.RolePublicTimeline) {
+                if (isGroupChat && currentGroup && typeof window.RolePublicTimeline.buildGroupPrompt === 'function') {
+                    sharedTimelinePrompt = window.RolePublicTimeline.buildGroupPrompt(
+                        currentGroup.members || [],
+                        sharedTimelineMoments,
+                        { maxMembers: 8, maxChars: 100 }
+                    );
+                } else if (sharedTimelineRoleId && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
+                    sharedTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(
+                        sharedTimelineRoleId,
+                        sharedTimelineMoments,
+                        { maxEntries: 3, maxChars: 120 }
+                    );
+                }
+            }
+            if (sharedTimelinePrompt) systemPrompt += '\n\n' + sharedTimelinePrompt;
 
             // 单聊中的亲属卡/亲密付是虚拟互动，不触达真实支付。只有剧情自然适合时才发放，不要每轮强行送卡。
             systemPrompt += '\n\n【单聊虚拟亲属卡 / 亲密付规则】\n' +
