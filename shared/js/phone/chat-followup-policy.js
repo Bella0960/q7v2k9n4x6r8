@@ -23,13 +23,15 @@
     return Math.max(min, Math.min(max, number));
   }
 
-  function calculateDelay(round, relationship, randomValue) {
+  function calculateDelay(round, relationship, randomValue, receptivityScore) {
     var index = Math.max(0, Math.min(2, Math.floor(Number(round) || 1) - 1));
     var base = BASE_INTERVAL_MINUTES[index];
     var random = clamp(randomValue, 0, 0.999999, 0.5);
     var jitter = Math.floor(random * (MAX_JITTER_MINUTES * 2 + 1)) - MAX_JITTER_MINUTES;
     var multiplier = RELATIONSHIP_MULTIPLIERS[String(relationship || 'friend').toLowerCase()] || 1;
-    return Math.max(MIN_DELAY_MINUTES, Math.round((base + jitter) * multiplier));
+    var receptivity = clamp(receptivityScore, 0, 1, 0.7);
+    var receptivityMultiplier = 1 + (0.7 - receptivity) * 0.5;
+    return Math.max(MIN_DELAY_MINUTES, Math.round((base + jitter) * multiplier * receptivityMultiplier));
   }
 
   function isQuietTime(timestamp, quietStartHour, quietEndHour) {
