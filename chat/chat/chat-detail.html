@@ -2518,7 +2518,7 @@
                     var events = (Array.isArray(direction.sharedEvents) ? direction.sharedEvents : []).slice(-3).map(function (event) {
                         return String(event && event.summary || '').trim().slice(0, 100);
                     }).filter(Boolean);
-                    if (type === '未设定' && intimacy === 0 && trust === 50 && !note && !events.length) return;
+                    if (type === '未设定' && intimacy === 0 && trust === 50 && mood === 'neutral' && !note && !events.length) return;
                     lines.push({
                         priority: String(from.id) === String(speakerId) ? 0 : 1,
                         time: Number(direction.lastInteractionAt || rel.lastInteractionAt) || 0,
@@ -6574,7 +6574,7 @@
             var text = String(rawText || '');
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
-            text = text.replace(/\\[群关系互动[:：]([^:：\\]]{1,100})(?:[:：]([^\\]]{1,160}))?\\]/g, function (marker, targetKey, memorySummary) {
+            text = text.replace(/\[群关系互动[:：]([^:：\]]{1,100})(?:[:：]([^\]]{1,160}))?\]/g, function (marker, targetKey, memorySummary) {
                 if (isRegeneration || !speaker || speaker.id == null) return '';
                 var targetId = String(targetKey || '').trim();
                 var members = Array.isArray(currentGroup.members) ? currentGroup.members : [];
@@ -6586,7 +6586,7 @@
                 if (relation) {
                     relation.interactions = Math.max(0, parseInt(relation.interactions, 10) || 0) + 1;
                     relation.lastInteractionAt = Date.now();
-                    var summary = String(memorySummary || '').replace(/[\\r\\n]+/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 140);
+                    var summary = String(memorySummary || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
                     if (summary) {
                         var direction = relation.directions && relation.directions[String(speaker.id)];
                         if (direction) {
