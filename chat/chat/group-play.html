@@ -442,7 +442,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!from||!to)return;
       var pair=ensureRelationshipPair(from,to),direction=pair.record.directions[fromId];
       var field=input.getAttribute('data-relationship-field');
-      if(field==='intimacy'||field==='trust')direction[field]=Math.max(0,Math.min(100,parseInt(input.value,10)||0));
+      if(field==='intimacy'||field==='trust'){direction[field]=Math.max(0,Math.min(100,parseInt(input.value,10)||0));if(field==='trust')direction.trustRecoveryDebt=0;}
       else if(field==='type')direction.type=relationshipTypes.indexOf(input.value)!==-1?input.value:'自定义';
       else if(field==='moodToward')direction.moodToward=['warm','neutral','cold'].indexOf(input.value)!==-1?input.value:'neutral';
       else if(field==='note')direction.note=String(input.value||'').trim().slice(0,120);
