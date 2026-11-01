@@ -638,11 +638,17 @@
     function followUpMessages(history) {
         return (Array.isArray(history) ? history : []).filter(function (item) {
             if (!item || item.silent || item.isError || item.role === 'system_error') return false;
+            if (item.role !== 'user' && item.role !== 'sent' && item.role !== 'assistant' && item.role !== 'received') return false;
+            if (!(Number(item.time || item.timestamp) > 0)) return false;
+            var isUserMessage = item.role === 'user' || item.role === 'sent';
+            var text = String(item.text || item.content || '').trim();
+            // Any real user reply, including a one-character reply or an attachment,
+            // cancels the pending chain. Internal silent turns remain excluded above.
+            if (isUserMessage) return text.length >= 1 || !!item.type || !!item.image || !!item.voice;
             if (item.type && item.type !== 'text') return false;
             if (item.mode === 'date' || item.mode === 'narration' || item.mode === 'offline' ||
                 item.voiceMode === 'date' || item.voiceMode === 'narration' || item.voiceMode === 'offline') return false;
-            if (item.role !== 'user' && item.role !== 'sent' && item.role !== 'assistant' && item.role !== 'received') return false;
-            return String(item.text || item.content || '').trim().length >= 2 && Number(item.time || item.timestamp) > 0;
+            return text.length >= 2;
         });
     }
     function followUpHistoryContext(history, isGroup) {
@@ -653,7 +659,9 @@
                 .replace(/<(think|reasoning|analysis)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
                 .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, ' ')
                 .replace(/\[(?:记住|心声|红包|转账|图片|亲属卡|亲密付|发起语音通话|群关系互动|群关系变化|群动作|群投票|群接龙|群私聊)[^\]]*\]/g, ' ')
-                .replace(/\s+/g, ' ').trim().slice(0, 360);
+                .replace(/\s+/g, ' ').trim();
+            if (!text && item.type) text = item.type === 'image' ? '[图片]' : item.type === 'audio' ? '[语音]' : '[附件]';
+            text = text.slice(0, 360);
             return role + '：' + text;
         }).join('\n');
     }
