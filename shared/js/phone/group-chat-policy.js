@@ -75,22 +75,24 @@
     }) : [];
     if (!available.length) return null;
 
-    var queue = Array.isArray(options.mentionQueueIds)
-      ? options.mentionQueueIds.map(asId).filter(Boolean)
-      : extractMentionedMemberIds(options.text, options.members || available);
-    var mentioned = queue.find(function (id) {
-      return available.some(function (member) { return asId(member.id) === id; });
-    });
-    if (mentioned) {
-      var namedMember = available.find(function (member) { return asId(member.id) === mentioned; });
-      return { member: namedMember, isMentioned: true, mentionId: mentioned };
-    }
-
     var candidates = available.slice();
     var previousId = asId(options.previousSpeakerId);
     if (options.isFollowup && previousId && candidates.length > 1) {
       var different = candidates.filter(function (member) { return asId(member.id) !== previousId; });
       if (different.length) candidates = different;
+    }
+
+    // When several people are mentioned, successive turns pick the next
+    // available name rather than letting the first mentioned member repeat.
+    var queue = Array.isArray(options.mentionQueueIds)
+      ? options.mentionQueueIds.map(asId).filter(Boolean)
+      : extractMentionedMemberIds(options.text, options.members || available);
+    var mentioned = queue.find(function (id) {
+      return candidates.some(function (member) { return asId(member.id) === id; });
+    });
+    if (mentioned) {
+      var namedMember = candidates.find(function (member) { return asId(member.id) === mentioned; });
+      return { member: namedMember, isMentioned: true, mentionId: mentioned };
     }
 
     var random = typeof options.random === 'function' ? options.random : Math.random;
