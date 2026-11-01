@@ -517,6 +517,117 @@
     return lines.join('\n');
   }
 
+
+  function evaluateProactiveContact(history, options) {
+    options = options || {};
+    var now = Number(options.now) || Date.now();
+    var enabled = options.enabled === true;
+    if (!enabled) return { eligible: false, reason: 'disabled' };
+    if (options.blocked === true) return { eligible: false, reason: 'blocked' };
+    if (options.pageVisible === false) return { eligible: false, reason: 'page-hidden' };
+
+    var hour = options.localHour == null ? new Date(now).getHours() : Number(options.localHour);
+    var quietStart = Math.max(0, Math.min(23, Number(options.quietStartHour == null ? 9 : options.quietStartHour)));
+    var quietEnd = Math.max(1, Math.min(24, Number(options.quietEndHour == null ? 22 : options.quietEndHour)));
+    if (!isFinite(hour) || hour < quietStart || hour >= quietEnd) {
+      return { eligible: false, reason: 'quiet-hours' };
+    }
+
+    var globalCooldownMs = Math.max(1, Number(options.globalCooldownMs) || 24 * 60 * 60 * 1000);
+    var roleCooldownMs = Math.max(globalCooldownMs, Number(options.roleCooldownMs) || globalCooldownMs);
+    var minIdleMs = Math.max(1, Number(options.minIdleMs) || 8 * 60 * 60 * 1000);
+    var maxInactiveMs = Math.max(minIdleMs, Number(options.maxInactiveMs) || 30 * 24 * 60 * 60 * 1000);
+    var globalLastAttemptAt = Number(options.globalLastAttemptAt) || 0;
+    var roleLastAttemptAt = Number(options.roleLastAttemptAt) || 0;
+
+    if (globalLastAttemptAt && now - globalLastAttemptAt >= 0 && now - globalLastAttemptAt < globalCooldownMs) {
+      return { eligible: false, reason: 'global-cooldown' };
+    }
+    if (roleLastAttemptAt && now - roleLastAttemptAt >= 0 && now - roleLastAttemptAt < roleCooldownMs) {
+      return { eligible: false, reason: 'role-cooldown' };
+    }
+
+    var list = Array.isArray(history) ? history : [];
+    var meaningful = [];
+    for (var i = 0; i < list.length; i++) {
+      var message = list[i];
+      if (!message || message.silent || message.isError || message.role === 'system_error') continue;
+      if (message.type && message.type !== 'text') continue;
+      if (message.mode === 'date' || message.mode === 'narration' || message.mode === 'offline' ||
+          message.voiceMode === 'date' || message.voiceMode === 'narration' || message.voiceMode === 'offline') continue;
+      if (message.role !== 'user' && message.role !== 'sent' &&
+          message.role !== 'assistant' && message.role !== 'received') continue;
+      var text = String(message.text || message.content || '').trim();
+      if (text.length < 2) continue;
+      meaningful.push({
+        role: message.role === 'user' || message.role === 'sent' ? 'user' : 'assistant',
+        text: text,
+        time: Number(message.time || message.timestamp) || 0,
+        proactive: message.proactiveContact === true
+      });
+    }
+
+    if (meaningful.length < 4) return { eligible: false, reason: 'insufficient-history' };
+    var last = meaningful[meaningful.length - 1];
+    if (last.role !== 'assistant') return { eligible: false, reason: 'awaiting-reply' };
+    if (/[?？]\s*$/.test(last.text)) return { eligible: false, reason: 'awaiting-answer' };
+
+    var userCount = 0;
+    var assistantCount = 0;
+    var lastUser = null;
+    meaningful.forEach(function (item) {
+      if (item.role === 'user') {
+        userCount += 1;
+        lastUser = item;
+      } else {
+        assistantCount += 1;
+      }
+    });
+    if (userCount < 2 || assistantCount < 2 || !lastUser) {
+      return { eligible: false, reason: 'insufficient-exchange' };
+    }
+    if (last.proactive && (!lastUser || lastUser.time <= last.time)) {
+      return { eligible: false, reason: 'awaiting-user-after-proactive-message' };
+    }
+    if (!last.time || !lastUser.time) return { eligible: false, reason: 'missing-timestamps' };
+
+    var idleMs = now - last.time;
+    var userIdleMs = now - lastUser.time;
+    if (idleMs < minIdleMs) return { eligible: false, reason: 'not-idle-long-enough', idleMs: idleMs };
+    if (userIdleMs > maxInactiveMs) return { eligible: false, reason: 'inactive-too-long', idleMs: idleMs };
+
+    return {
+      eligible: true,
+      reason: 'eligible',
+      idleMs: idleMs,
+      lastMessageAt: last.time,
+      lastUserMessageAt: lastUser.time,
+      historyCount: meaningful.length
+    };
+  }
+
+  function buildProactiveContactPrompt(contact, history, options) {
+    options = options || {};
+    var name = String(contact && contact.name || '角色').trim() || '角色';
+    var persona = String(contact && (contact.persona || contact.prompt) || '').trim().slice(0, 5000);
+    var lines = [
+      '【MAOMAO 主动联系时机判断】',
+      '你是「' + name + '」，现在不是在回复一条新消息，而是在考虑是否值得主动发一条简短的线上聊天消息。',
+      '只有当你确实想到一件与自己有关、符合人设、且有上下文依据的事情时才发送；可以是对近期安排的小更新、一个自然想到的兴趣话题，或与之前谈话有关的补充。',
+      '如果没有值得分享的内容、上次对话已经自然结束、对方可能正在忙，或你只是为了刷存在感，就选择不发送。宁可跳过，也不要凑消息。',
+      '禁止责备、催促、制造愧疚或要求对方立即回复；不要说「为什么不理我」「你怎么不找我」等施压内容。不要伪称正在现实地点、已完成现实行动或已操作用户设备。',
+      '一次最多发一条自然短消息，不连续追发，不强行制造问题，不输出动作旁白、隐藏机器标记、红包/转账/通话/图片指令或 Markdown。',
+      '若确实适合发送，只输出 JSON：{"send":true,"text":"一条自然的消息"}；若不适合，输出 {"send":false,"text":""}。不要在 JSON 外添加任何文字。'
+    ];
+    if (persona) lines.push('', '【角色设定】', persona);
+    var voicePrompt = buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
+    if (voicePrompt) lines.push('', voicePrompt);
+    var autonomyPrompt = buildAutonomyPrompt(history, { mode: 'online', maxScan: 60, maxNotes: 2, maxTurns: 4 });
+    if (autonomyPrompt) lines.push('', autonomyPrompt);
+    if (options.localTime) lines.push('', '【当前本地时间】' + String(options.localTime) + '。只能将其用于理解时间语境，不得声称在未知地点。');
+    return lines.join('\n');
+  }
+
   function getBubbleDelayMs(previousText) {
     var chars = Array.from(String(previousText == null ? '' : previousText).trim()).length;
     return Math.max(520, Math.min(920, 440 + chars * 16));
@@ -572,6 +683,8 @@
   NS.extractLifeNoteSentences = extractLifeNoteSentences;
   NS.collectLifeContinuityNotes = collectLifeContinuityNotes;
   NS.buildAutonomyPrompt = buildAutonomyPrompt;
+  NS.evaluateProactiveContact = evaluateProactiveContact;
+  NS.buildProactiveContactPrompt = buildProactiveContactPrompt;
   NS.getBubbleDelayMs = getBubbleDelayMs;
   NS.buildPrompt = buildPrompt;
 })(window);
