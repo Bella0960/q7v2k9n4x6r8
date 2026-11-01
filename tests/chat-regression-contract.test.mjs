@@ -1431,7 +1431,7 @@ test('emotion continuity exposes only a recent short-lived cue and asks the mode
   assert.ok(signal);
   assert.equal(signal.kind, 'hurt');
   assert.equal(signal.speaker, 'other');
-  assert.equal(signal.turnsSince, 1);
+  assert.equal(signal.turnsSince, 2);
 
   const prompt = presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'online' });
   assert.ok(prompt.includes('委屈或难过'));
