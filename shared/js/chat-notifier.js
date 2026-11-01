@@ -608,6 +608,7 @@
     /* ---------- 独立追问调度：私聊与群聊分别保存状态 ---------- */
     var FOLLOW_UP_LOCK_KEY = 'chat_followup_request_lock';
     var followUpRequestPending = false;
+    var followUpSchedulerStarted = false;
 
     function followUpStateKey(scope, id) {
         return 'chat_followup_state_' + scope + '_' + String(id);
@@ -852,6 +853,13 @@
         };
         freshHistory.push(newMessage);
         if (!saveFollowUpHistory(contact.id, freshHistory)) return;
+        try {
+            if (typeof global.CustomEvent === 'function') {
+                global.dispatchEvent(new global.CustomEvent('maomao:followup-message', {
+                    detail: { contactId: String(contact.id), message: newMessage, scope: scope }
+                }));
+            }
+        } catch (eventError) {}
         var state = readFollowUpState(scope, contact.id);
         global.ChatFollowUpPolicy.noteFollowUpSent(state, candidate.round, now, candidate.topic);
         state.lastObservedAssistantAt = candidate.lastAssistantAt;
@@ -866,7 +874,7 @@
         tick();
     }
     async function checkFollowUpTasks() {
-        if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
+        if (followUpRequestPending || proactiveRequestPending || document.visibilityState === 'hidden') return;
         var now = Date.now();
         var lockAt = Number(safeGet(FOLLOW_UP_LOCK_KEY)) || 0;
         if (lockAt && now - lockAt >= 0 && now - lockAt < 2 * 60 * 1000) return;
@@ -897,18 +905,24 @@
         }
     }
 
+    function startFollowUpScheduler() {
+        if (followUpSchedulerStarted) return;
+        followUpSchedulerStarted = true;
+        checkFollowUpTasks();
+        setInterval(checkFollowUpTasks, PROACTIVE_CHECK_MS);
+        global.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') checkFollowUpTasks();
+        });
+    }
+
     function startProactiveScheduler() {
         if (proactiveSchedulerStarted) return;
         proactiveSchedulerStarted = true;
         checkProactiveContacts();
-        checkFollowUpTasks();
         setInterval(checkProactiveContacts, PROACTIVE_CHECK_MS);
-        setInterval(checkFollowUpTasks, PROACTIVE_CHECK_MS);
+        startFollowUpScheduler();
         global.addEventListener('visibilitychange', function () {
-            if (document.visibilityState === 'visible') {
-                checkProactiveContacts();
-                checkFollowUpTasks();
-            }
+            if (document.visibilityState === 'visible') checkProactiveContacts();
         });
         global.addEventListener('storage', function (event) {
             if (event && event.key && event.key.indexOf('chat_proactive_contact_') === 0 &&
@@ -920,8 +934,12 @@
 
     /* ---------- 启动 ---------- */
     ChatNotifier.start = function () {
-        // 聊天详情页本身不需要轮询（它就是"正在看"的那个会话）
-        if (currentDetailRoleId()) return;
+        // 聊天详情页不轮询未读角标/主动联系，但仍运行追问调度，
+        // 新追问通过自定义事件回到当前聊天界面。
+        if (currentDetailRoleId()) {
+            startFollowUpScheduler();
+            return;
+        }
         tick();
         setInterval(tick, POLL_MS);
         startProactiveScheduler();
@@ -937,12 +955,10 @@
 
     global.ChatNotifier = ChatNotifier;
 
-    // nav.js 动态注入时自动启动；chat-detail 直接引入时不启动轮询。
-    if (!currentDetailRoleId()) {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', ChatNotifier.start);
-        } else {
-            ChatNotifier.start();
-        }
+    // nav.js 动态注入与 chat-detail 直接引入时均启动；详情页只运行追问调度。
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', ChatNotifier.start);
+    } else {
+        ChatNotifier.start();
     }
 })(window);
