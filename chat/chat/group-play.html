@@ -67,6 +67,13 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
 .relationship-event-empty{font-size:10px;color:#aaa;line-height:1.6}
 .speaking-settings{margin-top:12px;padding-top:11px;border-top:1px solid #f0f0f2}
 .speaking-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.topic-tag-details{margin-top:9px;color:#555}
+.topic-tag-details summary{display:flex;align-items:center;justify-content:space-between;gap:8px;list-style:none;cursor:pointer;font-size:10px;color:#777;padding:4px 0}
+.topic-tag-details summary::-webkit-details-marker{display:none}
+.topic-tag-details summary:after{content:"+";font-size:14px;color:#999}
+.topic-tag-details[open] summary:after{content:"−"}
+.topic-tag-details summary small{font-size:9px;color:#aaa}
+.topic-tag-grid{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}
 .speaking-settings input[type=range]{height:22px!important;padding:0!important;accent-color:#111}
 .speaking-settings .field input[type=text]{height:35px}
 .member{border:1px solid #ececf0;border-radius:15px;padding:14px;background:#fff}
@@ -304,7 +311,10 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         var avatar=member.avatar?'<img src="'+escapeHtml(member.avatar)+'" alt="">':escapeHtml((member.nickname||member.name||'群').slice(0,1));
         var talkativeness=Number(member.talkativeness);if(!isFinite(talkativeness))talkativeness=0.5;talkativeness=Math.max(0,Math.min(1,talkativeness));
         var replyThreshold=Number(member.replyThreshold);if(!isFinite(replyThreshold))replyThreshold=talkativeness>=0.7?45:(talkativeness<=0.3?75:55);
-        var interests=Array.isArray(member.interests)?member.interests.join('、'):String(member.interests||'');
+        var interestSource=Array.isArray(member.interestTags)&&member.interestTags.length?member.interestTags:member.interests;
+        var interests=Array.isArray(interestSource)?interestSource.join('、'):String(interestSource||'');
+        var expertiseTags=Array.isArray(member.expertiseTags)?member.expertiseTags.join('、'):String(member.expertiseTags||'');
+        var backgroundTags=Array.isArray(member.backgroundTags)?member.backgroundTags.join('、'):String(member.backgroundTags||'');
         return '<article class="member" data-member-id="'+escapeHtml(id)+'">'+
           '<div class="member-head"><div class="avatar">'+avatar+'</div><div class="member-heading"><div class="member-name">'+escapeHtml(member.nickname||member.name||'未命名成员')+'</div><div class="member-id">ID · '+escapeHtml(id)+'</div></div>'+
           '<button type="button" class="remove" data-remove-member="'+escapeHtml(id)+'">移出群聊</button></div>'+
@@ -315,7 +325,11 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
           '<div class="speaking-settings"><div class="schedule-head"><span>发言倾向</span><span>仅影响自动选人</span></div><div class="speaking-grid">'+
             '<div class="field"><div class="relationship-meter"><label>话唠度</label><strong><span data-talkativeness-value>'+Math.round(talkativeness*100)+'</span> / 100</strong></div><input type="range" min="0" max="1" step="0.05" data-member-field="talkativeness" value="'+talkativeness+'"></div>'+
             '<div class="field"><div class="relationship-meter"><label>发言阈值</label><strong><span data-threshold-value>'+Math.round(replyThreshold)+'</span></strong></div><input type="range" min="30" max="85" step="1" data-member-field="replyThreshold" value="'+Math.round(replyThreshold)+'"></div>'+
-          '</div><div class="field" style="margin-top:10px"><label>兴趣关键词（用顿号或逗号分隔）</label><input type="text" data-member-field="interests" maxlength="160" value="'+escapeHtml(interests)+'" placeholder="例如：音乐、推理、旅行"></div></div>'+
+          '</div><div class="field" style="margin-top:10px"><label>核心兴趣标签</label><input type="text" data-member-field="interestTags" maxlength="160" value="'+escapeHtml(interests)+'" placeholder="例如：音乐、推理、旅行"></div>'+
+          '<details class="topic-tag-details"><summary><span>补充匹配标签</span><small>专业领域 · 背景关联</small></summary><div class="topic-tag-grid">'+
+            '<div class="field"><label>专业领域</label><input type="text" data-member-field="expertiseTags" maxlength="160" value="'+escapeHtml(expertiseTags)+'" placeholder="例如：前端开发、心理学、摄影"></div>'+
+            '<div class="field"><label>背景关联</label><input type="text" data-member-field="backgroundTags" maxlength="160" value="'+escapeHtml(backgroundTags)+'" placeholder="例如：大学室友、医生、武汉"></div>'+
+          '</div></details></div>'+
           '<div class="member-options">'+
             '<label class="check-label"><input type="checkbox" data-member-field="isAdmin" '+(member.isAdmin?'checked':'')+'> 管理员</label>'+
             '<label class="check-label"><input type="checkbox" data-member-field="muted" '+(member.muted?'checked':'')+'> 禁言</label>'+
@@ -478,7 +492,11 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(input.type==='checkbox')member[field]=input.checked;
       else if(field==='talkativeness')member.talkativeness=Math.max(0,Math.min(1,Number(input.value)||0));
       else if(field==='replyThreshold')member.replyThreshold=Math.max(30,Math.min(85,parseInt(input.value,10)||55));
-      else if(field==='interests')member.interests=String(input.value||'').split(/[，,、;；|]/).map(function(value){return value.trim().slice(0,24);}).filter(Boolean).slice(0,12);
+      else if(field==='interests'||field==='interestTags'||field==='expertiseTags'||field==='backgroundTags'){
+        var tags=String(input.value||'').split(/[，,、;；|]/).map(function(value){return value.trim().slice(0,24);}).filter(Boolean).slice(0,12);
+        if(field==='interests'||field==='interestTags'){member.interestTags=tags;member.interests=tags;}
+        else member[field]=tags;
+      }
       else member[field]=input.value.trim();
       persist('成员资料已保存');
       renderMembers();renderOwner();renderRelationships();
@@ -500,7 +518,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
       if(!role)return;
       if(!Array.isArray(group.members))group.members=[];
       if(group.members.some(function(m){return String(m.id)===String(id);}))return;
-      group.members.push({id:String(role.id),name:role.name||'未命名角色',avatar:role.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00',talkativeness:0.5,replyThreshold:55,interests:[]});
+      group.members.push({id:String(role.id),name:role.name||'未命名角色',avatar:role.avatar||'',nickname:'',title:'',isAdmin:false,muted:false,activeFrom:'08:00',activeTo:'23:00',talkativeness:0.5,replyThreshold:55,interests:[],interestTags:[],expertiseTags:[],backgroundTags:[]});
       persist('已邀请 '+(role.name||'角色')+' 入群');renderMembers();renderCandidates();renderOwner();renderRelationships();
     });
     renderSettings();renderMembers();renderCandidates();renderOwner();renderRelationships();
