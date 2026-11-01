@@ -6588,7 +6588,7 @@
             if (!isGroupChat || !currentGroup || !Array.isArray(historyList)) return text;
             var changedHistory = false;
             var relationshipEventSeen = false;
-            text = text.replace(/\\[群关系变化[:：]([^:：\\]]{1,100})[:：]([^:：\\]]{1,20})[:：]([+-]?\\d{1,3})[:：]([+-]?\\d{1,3})[:：]([^\\]]{1,120})\\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
+            text = text.replace(/\[群关系变化[:：]([^:：\]]{1,100})[:：]([^:：\]]{1,20})[:：]([+-]?\d{1,3})[:：]([+-]?\d{1,3})[:：]([^\]]{1,120})\]/gi, function (marker, targetKey, level, intimacyDelta, trustDelta, summary) {
                 if (relationshipEventSeen) return '';
                 relationshipEventSeen = true;
                 if (isRegeneration || !speaker || speaker.id == null || getGroupSettings().relationshipDynamicsEnabled === false) return '';
