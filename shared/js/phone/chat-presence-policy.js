@@ -279,7 +279,7 @@
 
 
   var EMOTION_CUES = [
-    { kind: 'hurt', label: '委屈或难过', words: ['难过', '伤心', '委屈', '失落', '心酸', '难受', '受伤', '被忽略', '不被理解'] },
+    { kind: 'hurt', label: '委屈或难过', words: ['不开心', '不高兴', '难过', '伤心', '委屈', '失落', '心酸', '难受', '受伤', '被忽略', '不被理解'] },
     { kind: 'anger', label: '生气或烦躁', words: ['生气', '火大', '恼火', '烦死', '烦躁', '不爽', '讨厌'] },
     { kind: 'worry', label: '担心或不安', words: ['担心', '害怕', '紧张', '焦虑', '不安', '慌张', '怕'] },
     { kind: 'affection', label: '想念或在意', words: ['想你', '想念', '舍不得', '吃醋', '喜欢你', '在意你'] },
@@ -310,8 +310,11 @@
           var anchor = /(?:我|自己|让我|使我)(?:现在|今天|最近|其实|真的|有点|有些|很|特别|太|一直|已经|觉得|感觉)?[^，。！？!?；;\n]{0,14}$/.exec(prefix);
           if (anchor) {
             var bridge = anchor[0];
+            var afterCue = text.slice(cueIndex + word.length).split(/[，。！？!?；;\n]/)[0];
             var negated = /(?:不|没|不是|并非|并不|没有|不算|谈不上|不再)(?:太|很|怎么|那么|特别)?\s*$/.test(bridge);
-            if (!negated) {
+            var questionLike = /(?:是不是|是否|难道|会不会|究竟|到底)$/.test(bridge) ||
+              /^(?:吗|么)/.test(afterCue);
+            if (!negated && !questionLike) {
               var intensity = /特别|非常|真的|很|太|气死|受不了/.test(bridge) ? 'strong' : 'moderate';
               var candidate = { kind: group.kind, label: group.label, intensity: intensity };
               if (!best || intensity === 'strong') best = candidate;
