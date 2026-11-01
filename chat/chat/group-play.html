@@ -155,6 +155,10 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
         <span class="setting-copy"><span class="setting-title">动态关系变化</span><span class="setting-desc">角色只在发生有意义的互动时微调亲密度与信任度；普通寒暄不涨分。信任受损后，修复会更慢，不额外增加 API 请求。</span></span>
         <span class="switch"><input type="checkbox" data-setting="relationshipDynamicsEnabled"><span class="track"></span></span>
       </label>
+      <label class="setting">
+        <span class="setting-copy"><span class="setting-title">群聊自然追问</span><span class="setting-desc">群聊暂时没有新消息时，最后发言的成员可在合适时轻轻接续话题；最多三次，你一回复就停止。独立于角色自主接话。</span></span>
+        <span class="switch"><input type="checkbox" data-setting="followUpEnabled"><span class="track"></span></span>
+      </label>
       <div class="setting">
         <span class="setting-copy"><span class="setting-title">群聊模式</span><span class="setting-desc">线上是隔着屏幕的短消息；线下是同一场景中的多人互动。两种模式共用这份群聊记录。</span></span>
         <select id="groupChatMode" aria-label="群聊模式" style="width:92px;flex:none;height:36px;border:1px solid #e6e6eb;border-radius:9px;background:#fafafc;padding:0 9px;font:inherit;font-size:12px;color:#111;">
@@ -230,7 +234,7 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     document.getElementById('groupTitle').textContent='群聊不存在';
   }else{
     if(!group.settings||typeof group.settings!=='object')group.settings={};
-    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true};
+    var defaults={scheduleEnabled:false,memorySharing:false,spectatorMode:false,allowRoleActions:false,allowPrivateMessages:true,autoTalkEnabled:false,relationshipDynamicsEnabled:true,followUpEnabled:false};
     Object.keys(defaults).forEach(function(key){if(typeof group.settings[key]!=='boolean')group.settings[key]=defaults[key];});
     var autoRounds=Number(group.settings.autoTalkRounds);
     if([0,1,2].indexOf(autoRounds)===-1)group.settings.autoTalkRounds=1;
