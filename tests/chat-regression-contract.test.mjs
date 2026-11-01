@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v139/);
+  assert.match(serviceWorker, /phone-app-pwa-v140/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1265,10 +1265,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v5/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v6/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v139/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v5/);
+  assert.match(serviceWorker, /phone-app-pwa-v140/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
 });
 
 
@@ -1381,10 +1381,11 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /'group_' \+ encodeURIComponent\(String\(aliasRoleId \|\| currentRoleId \|\| ''\)\)/);
   assert.match(detail, /localStorage\.setItem\(voiceProfileKey, JSON\.stringify\(voiceHabitProfile\)\)/);
   assert.match(detail, /maxMessages: 80/);
+  assert.match(detail, /var presenceMode = isGroupChat/);
   assert.match(detail, /voiceMode: presenceMode \|\| 'online'/);
   assert.match(detail, /voiceMode: inflightSnapshot\.voiceMode \|\| 'online'/);
   assert.match(detail, /localStorage\.removeItem\(voiceProfileKey\)/);
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
-  assert.match(serviceWorker, /phone-app-pwa-v139/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v5/);
+  assert.match(serviceWorker, /phone-app-pwa-v140/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
 });
