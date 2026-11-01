@@ -89,6 +89,7 @@
                     name: c.name || c.nickname || '角色',
                     avatar: c.avatar || '',
                     persona: c.persona || c.prompt || '',
+                    relationship: c.relationship || c.relationshipType || c.relationshipStage || 'friend',
                     isGroup: false
                 };
             }
@@ -821,7 +822,7 @@
             return;
         }
         var content = String(result.data.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (content.length < 2 || content.length > 60 || /\[[^\]]{1,100}\]/.test(content) || /https?:\/\//i.test(content)) {
+        if (content.length < 2 || Array.from(content).length > 20 || /\[[^\]]{1,100}\]/.test(content) || /https?:\/\//i.test(content)) {
             var invalidState = readFollowUpState(scope, contact.id);
             invalidState.dueAt = 0;
             saveFollowUpState(scope, contact.id, invalidState);
