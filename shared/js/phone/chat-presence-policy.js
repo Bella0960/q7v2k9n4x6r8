@@ -384,7 +384,7 @@
   }
 
 
-  var LIFE_TIME_CUES = /(?:现在|正在|目前|此刻|今天|今晚|明天|后天|这周|本周|周末|下周|最近|等会儿|一会儿|待会儿|晚点|之后|回头|过几天|接下来|这两天)/;
+  var LIFE_TIME_CUES = /(?:现在|正在|目前|此刻|还在|在忙|在做|今天|今晚|明天|后天|这周|本周|周末|下周|最近|等会儿|一会儿|待会儿|晚点|之后|回头|过几天|接下来|这两天)/;
   var LIFE_ACTION_CUES = /(?:要|准备|打算|计划|安排|还得|得|需要|正在|还在|在忙|在做|约了|答应了|参加|去|回|看|学|练|读|写|完成|处理|收拾|整理|复习|开会|上班|上课|考试|面试|排练|训练|旅行|出差|见面|聚会|赶稿|交稿)/;
 
   function isConversationTextMessage(message) {
@@ -457,7 +457,7 @@
       if (turnsSince > maxTurns) break;
 
       var sentences = extractLifeNoteSentences(message.text || message.content || '');
-      for (var j = sentences.length - 1; j >= 0 && notes.length < maxNotes; j--) {
+      for (var j = 0; j < sentences.length && notes.length < maxNotes; j++) {
         var sentence = sentences[j];
         var key = sentence.replace(/\s+/g, '');
         if (seen[key]) continue;
@@ -470,7 +470,6 @@
       }
     }
 
-    notes.reverse();
     return notes;
   }
 
