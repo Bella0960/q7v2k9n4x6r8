@@ -65,7 +65,7 @@
   function classifyUserIntent(text) {
     var value = String(text || '').replace(/\s+/g, '');
     if (/(别再发|别发了|不要再发|别主动联系|暂停追问|不要追问|先别联系)/.test(value)) return 'pause';
-    if (/(恢复主动联系|可以继续联系|继续追问|重新开启追问|可以再联系)/.test(value)) return 'resume';
+    if (/(恢复主动联系|可以继续主动联系|继续主动联系|可以继续联系|继续追问|重新开启追问|可以再联系)/.test(value)) return 'resume';
     return 'normal';
   }
 
