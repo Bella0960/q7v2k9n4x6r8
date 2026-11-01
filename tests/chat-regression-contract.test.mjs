@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v140/);
+  assert.match(serviceWorker, /phone-app-pwa-v141/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1265,10 +1265,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v6/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v7/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v140/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
+  assert.match(serviceWorker, /phone-app-pwa-v141/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v7/);
 });
 
 
@@ -1386,6 +1386,90 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /voiceMode: inflightSnapshot\.voiceMode \|\| 'online'/);
   assert.match(detail, /localStorage\.removeItem\(voiceProfileKey\)/);
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
-  assert.match(serviceWorker, /phone-app-pwa-v140/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v6/);
+  assert.match(detail, /buildEmotionContinuityPrompt/);
+  assert.match(detail, /maxScan: 24/);
+  assert.match(serviceWorker, /phone-app-pwa-v141/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v7/);
+});
+
+
+test('emotion continuity detects explicit first-person emotional signals but ignores negation and casual text', () => {
+  assert.equal(typeof presencePolicy.classifyExplicitEmotion, 'function');
+  assert.equal(typeof presencePolicy.findRecentEmotionalSignal, 'function');
+  assert.equal(typeof presencePolicy.buildEmotionContinuityPrompt, 'function');
+
+  assert.equal(presencePolicy.classifyExplicitEmotion('我有点委屈，刚才那句话让我不舒服。').kind, 'hurt');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我真的很担心你。').kind, 'worry');
+  assert.equal(presencePolicy.classifyExplicitEmotion('你让我很难过。').kind, 'hurt');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我好喜欢你。').kind, 'affection');
+  assert.equal(presencePolicy.classifyExplicitEmotion('我不是很难过了。'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('我没有生气。'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('哈哈我今天吃了面条。'), null);
+  assert.equal(presencePolicy.classifyExplicitEmotion('你今天开心吗？'), null);
+});
+
+test('emotion continuity exposes only a recent short-lived cue and asks the model to verify resolution', () => {
+  const history = [
+    { role: 'user', text: '我有点委屈，刚才那句话让我不舒服。' },
+    { role: 'assistant', text: '我明白了，刚才没顾及你的感受。' },
+    { role: 'user', text: '嗯，我现在好多了。' },
+    { role: 'assistant', text: '那就好。' }
+  ];
+  const signal = presencePolicy.findRecentEmotionalSignal(history, { mode: 'online' });
+  assert.ok(signal);
+  assert.equal(signal.kind, 'hurt');
+  assert.equal(signal.speaker, 'other');
+  assert.equal(signal.turnsSince, 1);
+
+  const prompt = presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'online' });
+  assert.ok(prompt.includes('委屈或难过'));
+  assert.ok(prompt.includes('如果已经缓和或话题已经转开，就正常交流'));
+  assert.ok(prompt.includes('最多在接下来一到两轮'));
+  assert.ok(prompt.includes('不构成角色的长期性格'));
+  assert.equal(prompt.includes('我有点委屈，刚才那句话让我不舒服'), false);
+});
+
+test('emotion continuity expires after three later user turns and is disabled in non-chat scenes', () => {
+  const history = [
+    { role: 'user', text: '我真的很担心。' },
+    { role: 'assistant', text: '我知道。' },
+    { role: 'user', text: '那我先去忙了。' },
+    { role: 'assistant', text: '好。' },
+    { role: 'user', text: '我回来了。' },
+    { role: 'assistant', text: '嗯。' },
+    { role: 'user', text: '今天过得还行。' },
+    { role: 'assistant', text: '那就好。' },
+    { role: 'user', text: '你在做什么？' }
+  ];
+  assert.equal(presencePolicy.findRecentEmotionalSignal(history, { mode: 'online' }), null);
+  assert.equal(presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'narration' }), '');
+  assert.equal(presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'offline' }), '');
+  assert.equal(presencePolicy.buildEmotionContinuityPrompt(history, { mode: 'date' }), '');
+});
+
+test('emotion continuity keeps group speaker signals isolated', () => {
+  const history = [
+    { role: 'user', text: '我有点担心这件事。' },
+    { role: 'assistant', memberId: 'role-b', name: '阿岚', text: '我真的很生气。' },
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '嗯，我听到了。' }
+  ];
+  const signal = presencePolicy.findRecentEmotionalSignal(history, {
+    mode: 'online', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.ok(signal);
+  assert.equal(signal.kind, 'worry');
+  assert.equal(signal.speaker, 'other');
+  assert.equal(signal.turnsSince, 1);
+
+  const ownSignalHistory = [
+    { role: 'user', text: '今天还好。' },
+    { role: 'assistant', memberId: 'role-a', name: '小林', text: '其实我有点失落。' },
+    { role: 'user', text: '怎么了？' }
+  ];
+  const ownSignal = presencePolicy.findRecentEmotionalSignal(ownSignalHistory, {
+    mode: 'online', isGroupChat: true, speakerId: 'role-a', speakerName: '小林'
+  });
+  assert.ok(ownSignal);
+  assert.equal(ownSignal.speaker, 'self');
+  assert.equal(ownSignal.kind, 'hurt');
 });
