@@ -1602,6 +1602,8 @@ test('follow-up delay escalates by round, adds bounded jitter and respects relat
   assert.equal(followUpPolicy.calculateDelay(1, 'lover', 0.5), 15);
   assert.ok(followUpPolicy.calculateDelay(1, 'friend', 0) >= 15);
   assert.ok(followUpPolicy.calculateDelay(1, 'friend', 0.999) <= 45);
+  assert.ok(followUpPolicy.calculateDelay(2, 'friend', 0.5, 0.2) >
+    followUpPolicy.calculateDelay(2, 'friend', 0.5, 0.7));
 });
 
 test('follow-up policy blocks quiet hours, persists a pause and ends a chain on user reply', () => {
@@ -1771,6 +1773,8 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /maomao:followup-message/);
   assert.match(chatNotifier, /FOLLOW_UP_LOCK_KEY/);
   assert.match(chatNotifier, /isReplyToPendingChain/);
+  assert.match(chatNotifier, /lastUserMessageAt/);
+  assert.match(chatNotifier, /assistantTime \+ firstDelay/);
   assert.match(chatSettings, /chat_followup_enabled_/);
   assert.match(groupPlay, /followUpEnabled:false/);
   assert.match(groupPlay, /data-setting="followUpEnabled"/);
