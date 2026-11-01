@@ -2511,7 +2511,8 @@
                     }
                     if (!direction) return;
                     var intimacy = Math.max(0, Math.min(100, parseInt(direction.intimacy != null ? direction.intimacy : direction.familiarity, 10) || 0));
-                    var trust = Math.max(0, Math.min(100, parseInt(direction.trust, 10) || 50));
+                    var rawTrust = direction.trust == null || direction.trust === '' ? 50 : Number(direction.trust);
+                    var trust = Math.max(0, Math.min(100, isFinite(rawTrust) ? rawTrust : 50));
                     var type = String(direction.type || '未设定');
                     var mood = String(direction.moodToward || 'neutral');
                     var note = String(direction.note || '').trim().slice(0, 100);
@@ -4667,7 +4668,7 @@
                             mentionQueueIds: mentionQueue,
                             isFollowup: isGroupFollowup,
                             previousSpeakerId: previousSpeaker && previousSpeaker.id,
-                            relationshipTargetId: previousSpeaker && previousSpeaker.id,
+                            relationshipTargetId: isGroupFollowup && previousSpeaker ? previousSpeaker.id : '',
                             recentSpeakerIds: recentSpeakerIds,
                             relationships: currentGroup.relationships
                         });
