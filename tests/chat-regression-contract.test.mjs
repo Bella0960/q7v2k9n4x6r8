@@ -915,7 +915,7 @@ test('offline group context keeps narration text so the shared scene remains con
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
   assert.match(detail, /group-chat-policy\.js\?v=20261102v5/);
-  assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
+  assert.match(detail, /groupPolicy\.selectSpeaker/);
   assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
   assert.match(detail, /acceptGroupUserMessage/);
