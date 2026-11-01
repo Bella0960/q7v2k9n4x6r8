@@ -1096,7 +1096,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 '评论应像真实社交动态下的自然留言，简短、有针对性，不要解释规则，不要输出标题。';
             if (window.RolePublicTimeline && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
                 var commentTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(role.id, loadMoments(), { maxEntries: 3 });
-                if (commentTimelinePrompt) systemPrompt += '\\n\\n' + commentTimelinePrompt;
+                if (commentTimelinePrompt) systemPrompt += '\n\n' + commentTimelinePrompt;
             }
             var userPrompt = '这条动态的内容：' + postText +
                 (recentComments ? newline + '这条动态下面最近的评论：' + newline + recentComments : '') +
@@ -1228,7 +1228,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 '。现在要以第一人称发布一条社交空间动态。';
             if (window.RolePublicTimeline && typeof window.RolePublicTimeline.buildRolePrompt === 'function') {
                 var postTimelinePrompt = window.RolePublicTimeline.buildRolePrompt(role.id, loadMoments(), { maxEntries: 3 });
-                if (postTimelinePrompt) systemPrompt += '\\n\\n' + postTimelinePrompt;
+                if (postTimelinePrompt) systemPrompt += '\n\n' + postTimelinePrompt;
             }
             var userPrompt = '请结合你的人设，写一条此刻想发的生活动态（朋友圈风格）。' +
                 '要求：只输出动态正文本身，50个字以内，一句话，口语化、自然真实；' +
