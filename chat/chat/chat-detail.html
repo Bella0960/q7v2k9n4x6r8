@@ -16,6 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
+    <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v1"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
         * {
@@ -4330,6 +4331,29 @@
 
         // R3 防重入锁：AI 回复期间（含流式）忽略重复发送，防止并发请求交错写坏聊天记录
         let aiSending = false;
+        let lastGroupUserSend = { text: '', time: 0 };
+        let groupAutoFollowupToken = 0;
+
+        function acceptGroupUserMessage(candidateText) {
+            if (!isGroupChat) return true;
+            var normalized = String(candidateText || '').replace(/\s+/g, ' ').trim();
+            if (!normalized) return true;
+            var now = Date.now();
+            var policy = window.GroupChatPolicy;
+            var duplicated = policy && typeof policy.isDuplicateWithinWindow === 'function'
+                ? policy.isDuplicateWithinWindow(lastGroupUserSend.text, lastGroupUserSend.time, normalized, now, 3000)
+                : (lastGroupUserSend.text === normalized && now >= lastGroupUserSend.time && now - lastGroupUserSend.time < 3000);
+            if (duplicated) return false;
+            lastGroupUserSend = { text: normalized, time: now };
+            return true;
+        }
+
+        function getGroupReplyDelayMs() {
+            var policy = window.GroupChatPolicy;
+            return policy && typeof policy.getReplyDelayMs === 'function'
+                ? policy.getReplyDelayMs()
+                : 1500;
+        }
         // 正在流式输出中的半截消息快照：用户中途退出去刷空间/朋友圈时，
         // 在 pagehide 里把它落库为一条 assistant 消息，从而变成未读 + 顶部弹窗，
         // 还原 QQ/微信里"你切出去对方消息照到"的真实感。
@@ -4425,6 +4449,10 @@
             // blocked 不再拦截发送：消息照常发出，但标记为 sendFailed（渲染为红色感叹号），不调用 API
             // 提前处理：不走 API Key 检查，直接落库显示
             if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {
+                if (!silent && !acceptGroupUserMessage(text)) {
+                    if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
+                    return;
+                }
                 let blockedHistory = loadMessages();
                 const blockedQuote = pendingQuote ? {
                     mid: pendingQuote.mid, text: pendingQuote.text,
@@ -4473,6 +4501,11 @@
                         role: 'user', text: text, time: Date.now(), silent: !!silent,
                         quote: quoteSnapshot
                     };
+                    if (!silent && !acceptGroupUserMessage(text)) {
+                        if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
+                        return;
+                    }
+                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
@@ -4535,26 +4568,49 @@
                 });
                 rolePersona = '你是群聊「' + currentGroup.name + '」中的成员之一，成员名单如下：\n' + (personaLines.join('\n') || '暂无成员');
                 if (availableMembers.length) {
-                    let pickPool = availableMembers;
-                    // 自动接话优先换另一位成员，不让同一个角色连续霸屏。
-                    if (isGroupFollowup && historyList.length) {
-                        let previousSpeakerName = '';
-                        for (let hi = historyList.length - 1; hi >= 0; hi--) {
-                            const priorMessage = historyList[hi];
-                            if (priorMessage && !priorMessage.type &&
-                                (priorMessage.role === 'assistant' || priorMessage.role === 'received') &&
-                                priorMessage.name) {
-                                previousSpeakerName = String(priorMessage.name);
+                    var previousSpeaker = findGroupSpeakerInHistory(historyList);
+                    var selectionText = String(text || '');
+                    if (!selectionText && isGroupFollowup) {
+                        for (var userIndex = historyList.length - 1; userIndex >= 0; userIndex--) {
+                            var userEntry = historyList[userIndex];
+                            if (userEntry && (userEntry.role === 'user' || userEntry.role === 'sent')) {
+                                selectionText = String(userEntry.text || userEntry.content || '');
                                 break;
                             }
                         }
-                        const alternatives = availableMembers.filter(function (member) {
-                            return groupMemberDisplayName(member) !== previousSpeakerName;
-                        });
-                        if (alternatives.length) pickPool = alternatives;
                     }
-                    const selectedMember = pickPool[Math.floor(Math.random() * pickPool.length)];
-                    groupReplyPick = Object.assign({}, selectedMember, { name: groupMemberDisplayName(selectedMember) });
+                    var groupPolicy = window.GroupChatPolicy;
+                    if (groupPolicy && typeof groupPolicy.selectSpeaker === 'function') {
+                        var mentionQueue = typeof groupPolicy.extractMentionedMemberIds === 'function'
+                            ? groupPolicy.extractMentionedMemberIds(selectionText, members)
+                            : [];
+                        var speakerDecision = groupPolicy.selectSpeaker({
+                            text: selectionText,
+                            members: members,
+                            availableMembers: availableMembers,
+                            mentionQueueIds: mentionQueue,
+                            isFollowup: isGroupFollowup,
+                            previousSpeakerId: previousSpeaker && previousSpeaker.id,
+                            relationships: currentGroup.relationships
+                        });
+                        if (speakerDecision && speakerDecision.member) {
+                            groupReplyPick = Object.assign({}, speakerDecision.member, {
+                                name: groupMemberDisplayName(speakerDecision.member),
+                                isMentioned: !!speakerDecision.isMentioned
+                            });
+                        }
+                    } else {
+                        // Compatibility fallback: keep a different speaker on automatic follow-up.
+                        var pickPool = availableMembers;
+                        if (isGroupFollowup && previousSpeaker && availableMembers.length > 1) {
+                            var alternatives = availableMembers.filter(function (member) {
+                                return String(member.id) !== String(previousSpeaker.id);
+                            });
+                            if (alternatives.length) pickPool = alternatives;
+                        }
+                        var selectedMember = pickPool[Math.floor(Math.random() * pickPool.length)];
+                        groupReplyPick = Object.assign({}, selectedMember, { name: groupMemberDisplayName(selectedMember) });
+                    }
                 }
             } else {
                 rolePersona = (currentCharacter.persona || currentCharacter.prompt || '').trim()
@@ -4718,6 +4774,9 @@
                 const memberNames = (currentGroup.members || []).map(function (m) { return groupMemberDisplayName(m); }).join('、') || '暂无成员';
                 systemPrompt = '你正在群聊「' + currentGroup.name + '」中，群成员有：' + memberNames + '。本轮由你（' + groupReplyPick.name + '）以第一人称发言。\n' + systemPrompt;
                 systemPrompt += '\n\n[群聊回复规则]\n直接输出' + groupReplyPick.name + '的聊天内容即可，不要输出名字前缀、不要用冒号开头、不要模拟其他成员发言，一次只由你一个人说话。';
+                if (groupReplyPick.isMentioned) {
+                    systemPrompt += '\n\n[本轮被@点名] 用户刚刚明确提到了你。请优先直接回应与自己相关的内容，不要忽略这次点名，也不要替其他被提及的成员发言。';
+                }
                 const groupSettings = getGroupSettings();
                 systemPrompt += '\n\n[群成员自然互动]\n你们是在同一个群里的真实角色。先读懂最近几条群消息，再按自己的性格回应其中某一位成员；可以赞同、追问、补充、开玩笑或温和地不同意。不要每次都把话题拉回用户身上，不要机械复述上一句，不要替其他成员发言，也不要凭空编造人际关系或共同经历。回复保持简短自然，像群聊消息。若本条确实在回应上一位群成员，而不是主要回应用户，请在回复末尾添加隐藏标记 [群关系互动:准确角色ID:一句简短的真实互动记忆]；ID必须来自群成员名单，每轮最多一个。记忆只概括本轮确实发生的事或明确表达，不要推断情绪、关系升级或编造过去；建议 15-70 个汉字。没有明确回应对象时不要添加，系统会自动移除标记。';
                 const groupRelationshipContext = getGroupRelationshipContext();
@@ -5046,11 +5105,15 @@
             }
 
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
-                apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning));
+                apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
+                    isGroupChat: isGroupChat,
+                    groupMembers: currentGroup && Array.isArray(currentGroup.members) ? currentGroup.members : []
+                }));
             } else {
                 // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
                 recentHistory.forEach(m => {
                     if (m.isError || m.role === 'system_error') return;
+                    if (isGroupChat && m.type === 'group_private') return;
                     if (m.type === 'sticker') {
                         var stickerMeaning = String(m.desc || '').trim();
                         var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
@@ -5079,7 +5142,11 @@
                     if (m.role === 'sent' || m.role === 'user') {
                         apiMessages.push({ role: 'user', content: content });
                     } else if (m.role === 'received' || m.role === 'assistant') {
-                        apiMessages.push({ role: 'assistant', content: content });
+                        var groupSpeaker = isGroupChat ? String(m.name || '') : '';
+                        apiMessages.push({
+                            role: 'assistant',
+                            content: (isGroupChat ? '【群成员' + (groupSpeaker ? ' ' + groupSpeaker : '') + '】\n' : '') + content
+                        });
                     }
                 });
     
@@ -5365,6 +5432,11 @@
             );
             window.__groupAutoStopRequested = false;
             if (canContinueGroupTalk) {
+                var followupToken = ++groupAutoFollowupToken;
+                var followupDelay = getGroupReplyDelayMs();
+                await new Promise(function (resolve) { setTimeout(resolve, followupDelay); });
+                // A new user message during the pause takes priority and cancels this queued turn.
+                if (followupToken !== groupAutoFollowupToken) return;
                 await sendMsg({
                     contextOnly: true,
                     silent: true,
