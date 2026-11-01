@@ -1544,7 +1544,7 @@ test('life continuity separates group members and disables offline scenes', () =
   });
   assert.deepEqual(
     Array.from(notes.map((item) => item.text)),
-    ['我明天准备去图书馆看书。', '我平时喜欢烘焙。']
+    ['我平时喜欢烘焙。', '我明天准备去图书馆看书。']
   );
   assert.equal(notes.some((item) => item.text.includes('加班')), false);
   assert.equal(presencePolicy.buildAutonomyPrompt(history, { mode: 'offline' }), '');
