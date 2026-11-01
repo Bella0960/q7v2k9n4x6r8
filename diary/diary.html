@@ -9,6 +9,8 @@
 <title>日记 · 小手机</title>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/storage/repository.js"></script>
+<script src="../shared/js/phone/storage/diary-repository.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <style>
 :root{color-scheme:light;--ink:#171717;--text:#444;--muted:#999;--line:#e9e9e9;--paper:#fff;--soft:#f6f6f6;--soft2:#f0f0f0;--shadow:0 12px 40px rgba(0,0,0,.07)}
@@ -344,7 +346,9 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 (function(){
   'use strict';
   var STORAGE_KEY='maomao_diary_entries_v1';
-  var entries=loadEntries();
+  // DiaryRepository：PhoneStorage 加载后可用，走 IndexedDB + localStorage 双存储
+  var DiaryRepo=(PhoneStorage&&PhoneStorage.DiaryRepository)?new PhoneStorage.DiaryRepository():null;
+  var entries=[];  // 启动时为空，由 DiaryRepo.list() 或 fallback loadEntries() 异步填充
   var currentView='home', query='', moodFilter='全部', noteTypeFilter='全部', selectedMood='平静';
   var editId=null, activePhoto='', activePhotos=[], calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), selectedCalendarDate=todayKey();
   var cardAnimQueued=true;
@@ -396,12 +400,91 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     catch(e){return []}
   }
   function persist(){
+    if(DiaryRepo){
+      // DiaryRepo 可用时：由 DiaryRepo.save/update/remove 负责持久化。
+      // 这里故意不写 localStorage——避免"两个写入者"竞争：
+      //   persist() 从内存全量写  vs  DiaryRepo 直接写 localStorage
+      // 如果两者同时存在，可能出现顺序错开后旧内存覆盖新写入。
+      // 单写入路径 = DiaryRepo 独占，persist() 仅保留 fallback。
+      return true;
+    }
+    // fallback：DiaryRepo 未加载时的同步写入（历史兼容）
     try{
       var safe=entries.map(function(entry){var copy=Object.assign({},entry);delete copy.photos;delete copy.photo;return copy});
       localStorage.setItem(STORAGE_KEY,JSON.stringify(safe));return true
     }catch(e){showToast('日记文字保存失败。请导出备份并检查浏览器存储空间；照片现在独立保存在照片数据库中。');return false}
   }
+
+  /**
+   * persistEntry(entry, onFail) — 单条目委托写。
+   * 返回 DiaryRepo.save 的 Promise（truthy，旧调用点 if(persistEntry(e)){...} 不崩）。
+   * DiaryRepo.save 异步成功：重置冷却。
+   * DiaryRepo.save 异步失败：冷却 toast（60s 窗口避免刷屏）+ 调用 onFail(entry) 做回滚。
+   * fallback：DiaryRepo 不可用时走 persist() 全量写（同步返回 true/false，不触发 toast/冷却）。
+   *
+   * 关于签名：保持"同步看起来返回 bool，实际返回 Promise"——
+   *   Promise 对象是 truthy，所以旧代码 if(persistEntry(e)){render();showToast('已置顶')} 不崩，
+   *   但真正的写入成功/失败是异步的，toast 和回滚都在 .then/.catch 里判。
+   */
+  persistEntry._lastWarnAt=0;
+  persistEntry.WARN_COOLDOWN_MS=60000;
+  function persistEntry(entry, onFail){
+    if(!entry||!entry.id)return false;
+    if(DiaryRepo){
+      try{
+        var result=DiaryRepo.save(entry);
+        result.then(function(r){
+          if(r.ok){
+            // 成功：重置冷却，以后的失败 toast 不会被之前的失败冷却挡掉
+            persistEntry._lastWarnAt=0;
+          }else{
+            // 仓库返回 ok:false（例如 DB_UNAVAILABLE / QUOTA_EXCEEDED / CORRUPT_DATA）
+            if(Date.now()-persistEntry._lastWarnAt>persistEntry.WARN_COOLDOWN_MS){
+              persistEntry._lastWarnAt=Date.now();
+              showToast('日记未能保存到本地。请检查浏览器存储空间后重试');
+            }
+            if(typeof onFail==='function'){try{onFail(entry)}catch(_){}}
+          }
+        });
+        result.catch(function(err){
+          console.warn('[DiaryRepo] persistEntry exception:',entry.id,err);
+          if(Date.now()-persistEntry._lastWarnAt>persistEntry.WARN_COOLDOWN_MS){
+            persistEntry._lastWarnAt=Date.now();
+            showToast('日记未能保存到本地。请检查浏览器存储空间后重试');
+          }
+          if(typeof onFail==='function'){try{onFail(entry)}catch(_){}}
+        });
+        return result;  // Promise truthy，旧调用点 if() 不崩
+      }catch(e){return persist()}
+    }
+    return persist();
+  }
   function hydratePhotos(){
+    // 优先 DiaryRepo.listPhotos；fallback 到原 getAllPhotos
+    if(DiaryRepo){
+      return Promise.all(entries.map(function(entry){
+        return DiaryRepo.listPhotos(entry.id).then(function(r){
+          if(r.ok&&r.value.length){entry.photos=r.value;entry.photo=r.value[0]}
+        }).catch(function(){});
+      })).then(function(){
+        // legacy 迁移：entry.photos / entry.photo 里可能还有 dataURL
+        var legacy=entries.filter(function(entry){return (Array.isArray(entry.photos)&&entry.photos.length)||(entry.photo&&/^data:image\//i.test(entry.photo))});
+        return legacy.reduce(function(chain,entry){
+          return chain.then(function(){
+            var photos=photosFor(entry);
+            return DiaryRepo.savePhotos(entry.id,photos).then(function(){delete entry.photos;delete entry.photo});
+          });
+        },Promise.resolve()).then(function(){
+          // legacy 迁移：把 strip 了 photos/photo 的 entry 重新写回 localStorage。
+          // 不能用 persist()——它现在是空壳（DiaryRepo 可用时不写）。
+          // 改成 DiaryRepo.save(entry) 单条委托。
+          var saveAll=legacy.reduce(function(c,e){
+            return c.then(function(){return DiaryRepo.save(e).catch(function(){});});
+          },Promise.resolve());
+          return saveAll.then(function(){return {migrated:legacy.length}});
+        });
+      }).catch(function(error){return {error:String(error&&error.message||error)}});
+    }
     return openPhotoDB().then(function(){return getAllPhotos()}).then(function(rows){
       var map={};rows.forEach(function(row){map[row.key]=row.data});
       entries.forEach(function(entry){
@@ -413,6 +496,12 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     }).catch(function(error){photoDbError=String(error&&error.message||error);return {error:photoDbError}})
   }
   function savePhotosForEntry(entryId,photos){
+    if(DiaryRepo){
+      return DiaryRepo.savePhotos(entryId,photos).then(function(r){
+        if(!r.ok)throw new Error(r.error&&r.error.message||'照片保存失败');
+        return true;
+      });
+    }
     return openPhotoDB().then(function(db){return new Promise(function(resolve,reject){
       var tx=db.transaction(DIARY_PHOTO_STORE,'readwrite'),store=tx.objectStore(DIARY_PHOTO_STORE),settled=false;
       function doResolve(){if(!settled){settled=true;resolve(true)}}
@@ -476,7 +565,15 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     function next(){
       if(index>=candidates.length){
         entries.forEach(function(entry){var photos=photosFor(entry);entry.photos=photos;entry.photo=photos[0]||''});
-        if(persist()){render();showToast('空间整理完成：已压缩 '+changed+' 张照片')}
+        if(DiaryRepo){
+          // 单写入路径：对每条被压缩的 entry 单独委托持久化
+          var touched={};
+          candidates.forEach(function(c){touched[c.entry.id]=c.entry});
+          Object.keys(touched).forEach(function(id){persistEntry(touched[id])});
+          render();
+          if(changed)showToast('空间整理完成：已压缩 '+changed+' 张照片');
+          else showToast('照片体积没有明显变化，可能已经是压缩过的格式');
+        }else if(persist()){render();showToast('空间整理完成：已压缩 '+changed+' 张照片')}
         else showToast('整理后空间仍不足。请先导出备份，再删除不需要的照片或记录。');
         return
       }
@@ -585,7 +682,13 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       if(!Array.isArray(live.charComments))live.charComments=[];
       var note={id:'char_note_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),characterId:role.id,characterName:role.name,text:text.slice(0,3000),createdAt:new Date().toISOString()};
       live.charComments.push(note);live.updatedAt=new Date().toISOString();
-      if(!persist()){live.charComments.pop();throw new Error('保存失败，请先导出备份并检查本机存储空间。')}
+      var noteIndex=live.charComments.length-1;
+      // onFail：仓库写入失败时把刚 push 的 note 从内存也撤掉，并重绘批注面板
+      persistEntry(live,function(){
+        live.charComments.splice(noteIndex,1);
+        renderAnnotationHistory(live);
+        if(readerId===entryId)renderReader();
+      });
       if(readerId===entryId)renderReader();
       renderAnnotationHistory(live);
       $('annotationStatus').textContent=role.name+' 的留言已保存在这篇日记里。';
@@ -784,24 +887,46 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     record.tags=$('entryTags').value.split(/[,，、]/).map(function(t){return t.trim().replace(/^#+/,'')}).filter(Boolean).slice(0,12);
     var photosToSave=activePhotos.slice(0,8);
     record.photoCount=photosToSave.length;record.updatedAt=new Date().toISOString();
-    if(isNew)entries.push(record);else {var idx=entries.indexOf(old);if(idx>=0)entries[idx]=record}
-    if(!persist()){
-      if(isNew)entries.pop();
-      else if(oldSnapshot){var idx2=entries.indexOf(record);if(idx2>=0)entries[idx2]=oldSnapshot}
-      showToast('日记保存失败，请检查浏览器存储空间。');
-      return;
+
+    // 1. 写入文字（优先 DiaryRepo.save，fallback persist）
+    var writePromise;
+    if(DiaryRepo){
+      writePromise=DiaryRepo.save(record).then(function(r){
+        if(!r.ok)throw new Error(r.error.message);
+        return true;
+      });
+    }else{
+      writePromise=Promise.resolve(persist());
     }
-    savePhotosForEntry(record.id,photosToSave).then(function(){
-      currentView='home';moodFilter='全部';query='';closeEditor();render();showToast(old?'日记已更新':'已保存到你的日记');
-      setTimeout(maybeAutoPeek,800);
-    }).catch(function(error){
-      if(isNew){
-        entries=entries.filter(function(item){return item.id!==record.id});
-      }else if(oldSnapshot){
-        var idx3=entries.indexOf(record);if(idx3>=0)entries[idx3]=oldSnapshot;
-      }
-      persist();
-      showToast('照片保存失败：'+String(error&&error.message||error).slice(0,90)+'。已回滚到上一版本。');
+
+    writePromise.then(function(ok){
+      if(!ok){showToast('日记保存失败，请检查浏览器存储空间。');return}
+
+      // 2. DiaryRepo.save 已写入 localStorage（单写入路径）。修改内存 entries。
+      if(isNew)entries.push(record);
+      else{var idx=entries.indexOf(old);if(idx>=0)entries[idx]=record}
+
+      // DiaryRepo 不可用时，writePromise 就是 Promise.resolve(persist())，
+      // persist() 已经做了全量写。单写入路径由 DiaryRepo 独占。
+
+      // 4. 保存照片
+      savePhotosForEntry(record.id,photosToSave).then(function(){
+        currentView='home';moodFilter='全部';query='';closeEditor();render();showToast(old?'日记已更新':'已保存到你的日记');
+        setTimeout(maybeAutoPeek,800);
+      }).catch(function(error){
+        // 照片失败时回滚 entries（单写入路径 → 用 DiaryRepo 委托）
+        if(isNew){
+          entries=entries.filter(function(item){return item.id!==record.id});
+          if(DiaryRepo)DiaryRepo.remove(record.id).catch(function(){});
+          else persist();
+        }else if(oldSnapshot){
+          var idx3=entries.indexOf(record);if(idx3>=0)entries[idx3]=oldSnapshot;
+          persistEntry(oldSnapshot);
+        }
+        showToast('照片保存失败：'+String(error&&error.message||error).slice(0,90)+'。已回滚到上一版本。');
+      });
+    }).catch(function(){
+      showToast('日记保存失败，请检查浏览器存储空间。');
     });
   }
   function deleteCurrent(){
@@ -809,26 +934,50 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     if(!window.confirm('确定删除这篇日记吗？删除后无法撤销。'))return;
     var deletedId=editId;
     var entriesBackup=entries.slice();
-    entries=entries.filter(function(e){return e.id!==deletedId});
-    if(!persist()){
-      entries=entriesBackup;
-      showToast('删除失败：文字存储不可用，请先清理存储空间。');
-      return;
+
+    // 优先 DiaryRepo.remove（自动清理照片），fallback persist
+    var deletePromise;
+    if(DiaryRepo){
+      deletePromise=DiaryRepo.remove(deletedId).then(function(r){
+        if(!r.ok)throw new Error(r.error.message);
+        return true;
+      });
+    }else{
+      entries=entries.filter(function(e){return e.id!==deletedId});
+      deletePromise=Promise.resolve(persist());
     }
-    closeEditor();currentView='home';render();showToast('这篇日记已删除');
-    removeEntryPhotos(deletedId).catch(function(error){
-      showToast('记录文字已删除，但关联照片未完全清理：'+String(error&&error.message||error).slice(0,70));
+
+    deletePromise.then(function(ok){
+      if(!ok){entries=entriesBackup;showToast('删除失败：文字存储不可用，请先清理存储空间。');return}
+      entries=entries.filter(function(e){return e.id!==deletedId});
+      closeEditor();currentView='home';render();showToast('这篇日记已删除');
+      if(DiaryRepo){
+        // DiaryRepo.remove() 已经清理了照片
+      }else{
+        removeEntryPhotos(deletedId).catch(function(error){
+          showToast('记录文字已删除，但关联照片未完全清理：'+String(error&&error.message||error).slice(0,70));
+        });
+      }
+    }).catch(function(){
+      entries=entriesBackup;
+      showToast('删除失败，请检查浏览器存储空间。');
     });
   }
   function togglePinned(id){
     var e=entries.find(function(x){return x.id===id});if(!e)return;
-    e.pinned=!e.pinned;e.updatedAt=new Date().toISOString();
-    if(persist()){render();showToast(e.pinned?'已置顶，记录会优先显示':'已取消置顶')}
+    var prev=!!e.pinned;
+    e.pinned=!prev;e.updatedAt=new Date().toISOString();
+    var wasPromise=persistEntry(e,function(){e.pinned=prev;e.updatedAt=undefined;render()});
+    if(wasPromise){render();showToast(e.pinned?'已置顶，记录会优先显示':'已取消置顶')}
+    else if(wasPromise===false){e.pinned=prev;render()}  // 同步失败（fallback persist() 返回 false）
   }
   function toggleFavorite(id){
     var e=entries.find(function(x){return x.id===id});if(!e)return;
-    e.favorite=!e.favorite;e.updatedAt=new Date().toISOString();
-    if(persist()){render();showToast(e.favorite?'已加入收藏':'已取消收藏')}
+    var prev=!!e.favorite;
+    e.favorite=!prev;e.updatedAt=new Date().toISOString();
+    var wasPromise=persistEntry(e,function(){e.favorite=prev;e.updatedAt=undefined;render()});
+    if(wasPromise){render();showToast(e.favorite?'已加入收藏':'已取消收藏')}
+    else if(wasPromise===false){e.favorite=prev;render()}
   }
   function renderPhotoPreview(){
     var box=$('photoPreview');if(!box)return;
@@ -891,10 +1040,27 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
           var clean={id:String(e.id),date:String(e.date),title:String(e.title||''),content:String(e.content||''),mood:String(e.mood||'平静'),noteType:e.noteType==='备忘'?'备忘':'日记',pinned:!!e.pinned,tags:Array.isArray(e.tags)?e.tags.map(String).slice(0,12):[],photo:importedPhotos[0]||'',photos:importedPhotos,charComments:Array.isArray(e.charComments)?e.charComments.filter(function(n){return n&&typeof n.text==='string'}).slice(0,80):[],favorite:!!e.favorite,createdAt:e.createdAt||new Date().toISOString(),updatedAt:e.updatedAt||new Date().toISOString()};
           entries.push(clean);seen[e.id]=1;added++;
         });
-        if(persist()){
-          var imported=entries.filter(function(entry){return !!seen[entry.id]&&Array.isArray(entry.photos)&&entry.photos.length});
-          Promise.all(imported.map(function(entry){var photos=entry.photos.slice(0,8);entry.photoCount=photos.length;delete entry.photos;delete entry.photo;return savePhotosForEntry(entry.id,photos)})).then(function(){return hydrateAllPhotoCounts()}).then(function(){persist();currentView='home';query='';render();menu.classList.remove('show');showToast('已导入 '+added+' 篇新记录')}).catch(function(){showToast('文字已导入，但部分照片保存失败；请保留原备份后重试')})
+        // 单写入路径：DiaryRepo 可用时逐 entry 委托保存，fallback persist() 全量写
+        var importStep;
+        if(DiaryRepo){
+          importStep=Promise.all(entries.filter(function(e){return seen[e.id]}).map(function(e){
+            return DiaryRepo.save(e).catch(function(err){console.warn('[DiaryRepo] import save skipped:',e.id,err);return null});
+          })).then(function(results){
+            if(!results.some(function(r){return r&&r.ok}))throw new Error('所有条目保存失败');
+            return true;
+          });
+        }else{
+          importStep=Promise.resolve(persist());
         }
+        importStep.then(function(){
+          var imported=entries.filter(function(entry){return !!seen[entry.id]&&Array.isArray(entry.photos)&&entry.photos.length});
+          return Promise.all(imported.map(function(entry){var photos=entry.photos.slice(0,8);entry.photoCount=photos.length;delete entry.photos;delete entry.photo;return savePhotosForEntry(entry.id,photos)}));
+        }).then(function(){return hydrateAllPhotoCounts()}).then(function(){
+          // hydrateAllPhotoCounts 可能更新了 photoCount 等字段，再次同步回写
+          if(DiaryRepo){entries.filter(function(e){return seen[e.id]}).forEach(function(e){persistEntry(e)})}
+          else persist();
+          currentView='home';query='';render();menu.classList.remove('show');showToast('已导入 '+added+' 篇新记录');
+        }).catch(function(){showToast('文字已导入，但部分照片保存失败；请保留原备份后重试')})
       }catch(e){showToast('备份文件格式不正确')}
     };
     reader.onerror=function(){showToast('读取备份失败')};reader.readAsText(file);
@@ -934,8 +1100,15 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     if(!window.confirm('确定删除这条角色留言吗？'))return;
     var entry=entries.find(function(item){return item.id===readerId});if(!entry||!Array.isArray(entry.charComments))return;
     var id=button.dataset.deleteCharComment,index=entry.charComments.findIndex(function(note){return String(note.id||'')===id});if(index<0)return;
-    entry.charComments.splice(index,1);entry.updatedAt=new Date().toISOString();
-    if(persist()){renderReader();renderAnnotationHistory(entry);showToast('已删除这条留言')}
+    var removedNote=entry.charComments.splice(index,1)[0];entry.updatedAt=new Date().toISOString();
+    var removedAt=index;
+    // onFail：写入失败时把删掉的 note 从内存恢复
+    persistEntry(entry,function(){
+      entry.charComments.splice(removedAt,0,removedNote);
+      renderReader();
+      renderAnnotationHistory(entry);
+    });
+    renderReader();renderAnnotationHistory(entry);showToast('已删除这条留言')
   });
   reader.addEventListener('click',function(e){if(e.target===reader)closeReader()});
   $('readerEdit').addEventListener('click',function(){var id=readerId;closeReader();openEditor(id)});
@@ -966,8 +1139,36 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   $('aboutImport')&&$('aboutImport').addEventListener('click',function(){$('importFile').click()});
   function updateTime(){var el=$('statusTime');if(!el)return;var d=new Date();el.textContent=d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false})}
   updateTime();setInterval(updateTime,30000);
-  render();
-  hydratePhotos().then(function(){return hydrateAllPhotoCounts()}).then(function(){render()});
+
+  // ===== 启动：优先 DiaryRepository，fallback 到原 localStorage + IndexedDB =====
+  function showStorageCorruptError(err){
+    var root=document.getElementById('viewRoot');
+    if(root){
+      root.innerHTML='<div style="padding:32px 24px;text-align:center;border-top:1px solid #e5e5e5;background:#fff">'
+        +'<div style="font-family:Georgia,serif;font-size:32px;font-weight:400;letter-spacing:-.06em;color:#171717;margin-bottom:14px">日记暂无法打开</div>'
+        +'<p style="font-size:12px;line-height:1.9;color:#888;max-width:240px;margin:0 auto 20px">浏览器里的日记数据已损坏，无法读取。'
+        +'请先导出一份备份文件，或者联系开发者恢复数据。</p>'
+        +'<p style="font-size:9px;color:#bbb;letter-spacing:.08em;margin-top:14px">错误码：'+(err&&err.error&&err.error.code||'UNKNOWN')+'</p>'
+        +'</div>';
+    }
+  }
+
+  if(DiaryRepo){
+    // 走 Repository：list() → 填充 entries → hydratePhotos → render
+    DiaryRepo.list().then(function(r){
+      if(!r.ok){
+        if(r.error.code==='CORRUPT_DATA'){showStorageCorruptError(r);return Promise.reject(r);}
+        if(r.error.code==='DB_UNAVAILABLE'){showToast('浏览器存储暂不可用');entries=loadEntries();return hydratePhotos();}
+        entries=loadEntries();return hydratePhotos();
+      }
+      entries=r.value||[];
+      return hydratePhotos();
+    }).then(function(){return hydrateAllPhotoCounts();}).then(function(){render();}).catch(function(){});
+  }else{
+    // Repository 未加载，回退到原逻辑
+    entries=loadEntries();
+    hydratePhotos().then(function(){return hydrateAllPhotoCounts()}).then(function(){render()});
+  }
 
   // ===== Char 自动偷看备忘录（反向手机·便签涂鸦）=====
   var peekBusy=false;
@@ -999,8 +1200,12 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       if(!text)return;
       var live=entries.find(function(e){return e.id===target.id});if(!live)return;
       if(!Array.isArray(live.charComments))live.charComments=[];
-      live.charComments.push({id:'peek_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),characterId:role.id,characterName:role.name,text:text,createdAt:new Date().toISOString(),auto:true});
-      if(persist()){render();console.log('[Char Peek] 已在日记旁涂鸦:',text)}
+      var noteId='peek_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
+      var noteAt=live.charComments.length;
+      live.charComments.push({id:noteId,characterId:role.id,characterName:role.name,text:text,createdAt:new Date().toISOString(),auto:true});
+      // onFail：写入失败时从内存撤掉刚 push 的 peek 涂鸦
+      persistEntry(live,function(){live.charComments.splice(noteAt,1);render()});
+      render();console.log('[Char Peek] 已在日记旁涂鸦:',text)
     }).catch(function(err){
       console.warn('[Char Peek] 备忘录偷看失败:',err&&err.message?err.message:err);
       if(err&&/API Key|未配置|api/i.test(String(err.message||'')))showToast('Char 偷看失败：还没配 AI API Key，去设置配一下');
@@ -1024,11 +1229,12 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
       var firstLine=text.split('\n')[0].slice(0,20);
       var entry={id:'d_char_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),createdAt:new Date().toISOString(),date:todayKey(),title:'',content:text.slice(0,2000),mood:'平静',noteType:'日记',author:String(role.id),authorName:role.name,favorite:false,pinned:false,charWritten:true};
       entries.push(entry);
-      if(persist()){
-        try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
-        render();
-        console.log('[Char Peek] Char 自己写了日记:',firstLine);
-      }
+      // onFail：写入失败时把刚 push 的新 entry 从内存撤掉
+      var entryIndex=entries.length-1;
+      persistEntry(entry,function(){entries.splice(entryIndex,1);render()});
+      try{localStorage.setItem(lastKey,String(Date.now()))}catch(e){}
+      render();
+      console.log('[Char Peek] Char 自己写了日记:',firstLine);
     }).catch(function(err){console.warn('[Char Peek] Char 写日记失败:',err&&err.message?err.message:err)});
   }
   setTimeout(maybeAutoWriteCharEntry,3000);
