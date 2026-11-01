@@ -16,7 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v3"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v4"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
@@ -5164,6 +5164,49 @@
                     maxSamples: 2,
                     maxSampleChars: 72
                 });
+
+                // 长期表达习惯只存统计值与内容指纹，不存任何聊天原文。
+                // 单聊按角色隔离；群聊按「角色 + 群会话」隔离，避免跨群串味。
+                if (presencePrompt && typeof window.ChatPresencePolicy.buildVoiceHabitProfile === 'function' &&
+                    typeof window.ChatPresencePolicy.buildVoiceHabitPrompt === 'function' &&
+                    (!isGroupChat || (groupReplyPick && groupReplyPick.id != null))) {
+                    var voiceProfileRoleId = isGroupChat
+                        ? String(groupReplyPick.id)
+                        : String(aliasRoleId || currentCharacter.id || '');
+                    var voiceProfileScope = isGroupChat
+                        ? 'group_' + encodeURIComponent(String(aliasRoleId || currentRoleId || ''))
+                        : 'direct';
+                    var voiceProfileKey = 'chat_voice_habits_v1_' +
+                        encodeURIComponent(voiceProfileRoleId) + '_' + voiceProfileScope;
+                    var cachedVoiceProfile = null;
+                    try {
+                        var cachedVoiceRaw = localStorage.getItem(voiceProfileKey);
+                        if (cachedVoiceRaw) cachedVoiceProfile = JSON.parse(cachedVoiceRaw);
+                    } catch (e) {}
+
+                    var voiceHabitProfile = window.ChatPresencePolicy.buildVoiceHabitProfile(
+                        historyList,
+                        {
+                            isGroupChat: isGroupChat,
+                            speakerId: isGroupChat ? voiceProfileRoleId : '',
+                            speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            maxMessages: 80
+                        },
+                        cachedVoiceProfile
+                    );
+                    try {
+                        if (voiceHabitProfile) {
+                            localStorage.setItem(voiceProfileKey, JSON.stringify(voiceHabitProfile));
+                        } else {
+                            // 历史被清空或删改到样本不足时，清除旧档案，避免继续使用过期口吻。
+                            localStorage.removeItem(voiceProfileKey);
+                        }
+                    } catch (e) {}
+
+                    var voiceHabitPrompt = window.ChatPresencePolicy.buildVoiceHabitPrompt(voiceHabitProfile);
+                    if (voiceHabitPrompt) presencePrompt += '\n\n' + voiceHabitPrompt;
+                }
+
                 if (presencePrompt) systemPrompt += '\n\n' + presencePrompt;
             }
 
