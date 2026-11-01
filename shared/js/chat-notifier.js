@@ -702,7 +702,7 @@
                 if (newChain) {
                     state.anchorMessageAt = assistantTime;
                     state.followUpCount = 0;
-                    state.topicKey = policy.normalizeTopic((lastUser.text || '') + ' ' + (lastAssistant.text || ''));
+                    state.topicKey = policy.normalizeTopic(lastUser.text || lastAssistant.text || '');
                     var sameTopic = state.lastFollowUpTopic && state.lastFollowUpTopic === state.topicKey &&
                         now - Number(state.lastFollowUpAt || 0) < 12 * 60 * 60 * 1000;
                     if (sameTopic) {
@@ -712,7 +712,7 @@
                         return null;
                     }
                     var firstDelay = policy.calculateDelay(1, contact.relationship || 'friend', Math.random());
-                    state.dueAt = now + firstDelay * 60 * 1000;
+                    state.dueAt = assistantTime + firstDelay * 60 * 1000;
                     state.nextRound = 1;
                 }
             } else if (messageRound > 0) {
@@ -725,7 +725,7 @@
                 } else {
                     var nextRound = messageRound + 1;
                     state.nextRound = nextRound;
-                    state.dueAt = now + policy.calculateDelay(nextRound, contact.relationship || 'friend', Math.random()) * 60 * 1000;
+                    state.dueAt = assistantTime + policy.calculateDelay(nextRound, contact.relationship || 'friend', Math.random()) * 60 * 1000;
                 }
             }
             state.lastObservedAssistantAt = assistantTime;
@@ -787,7 +787,12 @@
         var role = scope === 'group' ? followUpRoleForGroup(contact.group, candidate.lastAssistant) : {
             id: contact.id, name: contact.name, persona: contact.persona || '', relationship: contact.relationship || '朋友'
         };
-        if (!role) return;
+        if (!role) {
+            var missingRoleState = readFollowUpState(scope, contact.id);
+            missingRoleState.dueAt = 0;
+            saveFollowUpState(scope, contact.id, missingRoleState);
+            return;
+        }
         var config = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
         if (!config || !String(config.apiKey || '').trim()) return;
         var prompt = global.ChatFollowUpPolicy.buildPrompt({
@@ -814,7 +819,12 @@
             return;
         }
         var content = String(result.data.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (content.length < 2 || content.length > 60 || /\[[^\]]{1,100}\]/.test(content) || /https?:\/\//i.test(content)) return;
+        if (content.length < 2 || content.length > 60 || /\[[^\]]{1,100}\]/.test(content) || /https?:\/\//i.test(content)) {
+            var invalidState = readFollowUpState(scope, contact.id);
+            invalidState.dueAt = 0;
+            saveFollowUpState(scope, contact.id, invalidState);
+            return;
+        }
 
         var freshHistory = readHistory(contact.id);
         var freshMessages = followUpMessages(freshHistory);
