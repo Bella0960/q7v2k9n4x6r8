@@ -16,7 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v4"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
@@ -4517,6 +4517,7 @@
                     role: 'assistant',
                     text: cleaned,
                     time: Date.now(),
+                    voiceMode: inflightSnapshot.voiceMode || 'online',
                     name: inflightSnapshot.groupName,
                     memberId: inflightSnapshot.memberId
                 });
@@ -5364,6 +5365,7 @@
                 // 同步快照，供 pagehide 时把半截消息落库
                 inflightSnapshot = {
                     text: lastPaintedStreamText,
+                    voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
                 };
@@ -5497,7 +5499,7 @@
                     groupReplyVisible = !!fullText;
                     if (fullText) {
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
-                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
+                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
                         historyList.push(aiMsg);
                         window.__groupPrivateCardPending = false;
                         saveMessages(historyList);
