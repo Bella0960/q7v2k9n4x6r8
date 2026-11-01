@@ -9,6 +9,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const chatNotifier = read('shared/js/chat-notifier.js');
+const navPage = read('shared/js/nav.js');
+const homePage = read('index.html');
 const groupPlay = read('chat/chat/group-play.html');
 const inspectPhone = read('inspect-phone/phone.html');
 const forumPage = read('forum/forum.html');
@@ -1577,4 +1580,151 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v11/);
   assert.match(serviceWorker, /phone-app-pwa-v149/);
   assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v11/);
+});
+
+
+test('proactive contact policy requires a complete, opted-in conversation and a quiet idle window', () => {
+  assert.equal(typeof presencePolicy.evaluateProactiveContact, 'function');
+  assert.equal(typeof presencePolicy.buildProactiveContactPrompt, 'function');
+
+  const now = new Date(2026, 10, 2, 12, 0, 0).getTime();
+  const history = [
+    { role: 'user', text: '你周末有什么安排？', time: now - 14 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '我明天准备去图书馆看书。', time: now - 13.8 * 60 * 60 * 1000 },
+    { role: 'user', text: '准备看什么？', time: now - 13.5 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '可能看一本小说，顺便找找资料。', time: now - 13 * 60 * 60 * 1000 }
+  ];
+  const options = {
+    enabled: true,
+    now,
+    localHour: 12,
+    minIdleMs: 8 * 60 * 60 * 1000,
+    maxInactiveMs: 30 * 24 * 60 * 60 * 1000,
+    globalCooldownMs: 24 * 60 * 60 * 1000,
+    roleCooldownMs: 24 * 60 * 60 * 1000,
+    quietStartHour: 9,
+    quietEndHour: 22
+  };
+
+  const eligible = presencePolicy.evaluateProactiveContact(history, options);
+  assert.equal(eligible.eligible, true);
+  assert.equal(eligible.reason, 'eligible');
+  assert.equal(eligible.historyCount, 4);
+
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, { ...options, enabled: false }).reason,
+    'disabled'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, { ...options, localHour: 23 }).reason,
+    'quiet-hours'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, {
+      ...options, globalLastAttemptAt: now - 4 * 60 * 60 * 1000
+    }).reason,
+    'global-cooldown'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, {
+      ...options, roleLastAttemptAt: now - 5 * 60 * 60 * 1000, roleCooldownMs: 48 * 60 * 60 * 1000
+    }).reason,
+    'role-cooldown'
+  );
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, { ...options, minIdleMs: 20 * 60 * 60 * 1000 }).reason,
+    'not-idle-long-enough'
+  );
+});
+
+test('proactive contact waits for a reply, expires dormant history and never chains its own messages', () => {
+  const now = new Date(2026, 10, 2, 12, 0, 0).getTime();
+  const options = {
+    enabled: true, now, localHour: 12,
+    minIdleMs: 8 * 60 * 60 * 1000,
+    maxInactiveMs: 30 * 24 * 60 * 60 * 1000,
+    globalCooldownMs: 24 * 60 * 60 * 1000,
+    roleCooldownMs: 24 * 60 * 60 * 1000
+  };
+  const history = [
+    { role: 'user', text: '你周末有什么安排？', time: now - 14 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '我明天准备去图书馆看书。', time: now - 13.8 * 60 * 60 * 1000 },
+    { role: 'user', text: '准备看什么？', time: now - 13.5 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '你觉得看小说怎么样？', time: now - 13 * 60 * 60 * 1000 }
+  ];
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(history, options).reason,
+    'awaiting-answer'
+  );
+
+  const unanswered = [
+    { role: 'user', text: '你还好吗？', time: now - 14 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '嗯，还好。', time: now - 13 * 60 * 60 * 1000 },
+    { role: 'user', text: '那就好。', time: now - 12 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '我刚好想起一件事。', time: now - 11 * 60 * 60 * 1000, proactiveContact: true }
+  ];
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(unanswered, options).reason,
+    'awaiting-user-after-proactive-message'
+  );
+
+  const oldHistory = [
+    { role: 'user', text: '你好呀。', time: now - 32 * 24 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '你好。', time: now - 32 * 24 * 60 * 60 * 1000 + 1000 },
+    { role: 'user', text: '最近怎么样？', time: now - 31 * 24 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '还不错。', time: now - 31 * 24 * 60 * 60 * 1000 + 1000 }
+  ];
+  assert.equal(
+    presencePolicy.evaluateProactiveContact(oldHistory, options).reason,
+    'inactive-too-long'
+  );
+});
+
+test('proactive contact prompt allows skipping and forbids guilt, pressure and invented actions', () => {
+  const prompt = presencePolicy.buildProactiveContactPrompt(
+    { name: '小林', persona: '安静，喜欢阅读。' },
+    [
+      { role: 'user', text: '你周末有什么安排？' },
+      { role: 'assistant', text: '我明天准备去图书馆看书。' },
+      { role: 'user', text: '准备看什么？' },
+      { role: 'assistant', text: '可能看一本小说。' }
+    ],
+    { localTime: '2026-11-02 12:00' }
+  );
+  assert.ok(prompt.includes('MAOMAO 主动联系时机判断'));
+  assert.ok(prompt.includes('宁可跳过'));
+  assert.ok(prompt.includes('为什么不理我'));
+  assert.ok(prompt.includes('{"send":false,"text":""}'));
+  assert.ok(prompt.includes('我明天准备去图书馆看书。'));
+  assert.ok(prompt.includes('当前本地时间'));
+});
+
+test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat history notifications', () => {
+  assert.match(chatSettings, /chat_proactive_contact_[' ]\s*\+\s*roleId/);
+  assert.match(chatSettings, /chat_proactive_interval_[' ]\s*\+\s*roleId/);
+  assert.match(chatSettings, /return localStorage\.getItem\(PROACTIVE_CONTACT_KEY\) === 'true'/);
+  assert.match(chatSettings, /proactiveContactInterval/);
+  assert.match(chatSettings, /value="24"/);
+  assert.match(chatSettings, /value="48"/);
+  assert.match(chatSettings, /value="72"/);
+
+  assert.match(chatNotifier, /document\.visibilityState === 'hidden'/);
+  assert.match(chatNotifier, /PROACTIVE_GLOBAL_COOLDOWN_MS = 24 \* 60 \* 60 \* 1000/);
+  assert.match(chatNotifier, /PROACTIVE_MIN_IDLE_MS = 8 \* 60 \* 60 \* 1000/);
+  assert.match(chatNotifier, /PhoneAPI\.completeJSON/);
+  assert.match(chatNotifier, /chat_proactive_global_attempt_at/);
+  assert.match(chatNotifier, /proactiveContact: true/);
+  assert.match(chatNotifier, /saveChatHistory\(candidate\.contact\.id, freshHistory\)/);
+  assert.match(chatNotifier, /tick\(\);/);
+  assert.match(chatNotifier, /startProactiveScheduler\(\)/);
+});
+
+test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
+  assert.match(homePage, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(detail, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v16/);
+  assert.match(serviceWorker, /phone-app-pwa-v149/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v2/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v16/);
 });
