@@ -29,7 +29,7 @@
     var list = Array.isArray(members) ? members : [];
     var result = [];
     var seen = Object.create(null);
-    var pattern = /@([^\\s,，。！？!?；;：:、()[\\]{}<>]+)/g;
+    var pattern = /@([^\s,，。！？!?；;：:、()[\]{}<>]+)/g;
     var match;
     while ((match = pattern.exec(source))) {
       var token = String(match[1] || '').trim().replace(/[，。！？!?；;：:、]+$/, '');
@@ -183,16 +183,6 @@
     return candidates[candidates.length - 1];
   }
 
-  function getPendingMentionIdsForMember(member, options) {
-    options = options || {};
-    var queue = Array.isArray(options.mentionQueueIds)
-      ? options.mentionQueueIds.map(asId).filter(Boolean)
-      : extractMentionedMemberIds(options.text, options.members || options.availableMembers);
-    return queue.find(function (id) {
-      return member && asId(member.id) === id;
-    }) || '';
-  }
-
   function scoreCandidate(member, options, relationshipTargetId) {
     var relation = relationshipTargetId
       ? getDirectionalRelationship(options.relationships, member.id, relationshipTargetId)
@@ -233,12 +223,12 @@
     if (!available.length) return null;
 
     // Explicit @mentions always win, including when that member spoke last.
-    var mention = getPendingMentionIdsForMember(null, options);
-    if (!mention && Array.isArray(options.mentionQueueIds)) {
-      mention = options.mentionQueueIds.map(asId).find(function (id) {
-        return available.some(function (member) { return asId(member.id) === id; });
-      }) || '';
-    }
+    var mentionQueue = Array.isArray(options.mentionQueueIds)
+      ? options.mentionQueueIds.map(asId).filter(Boolean)
+      : extractMentionedMemberIds(options.text, options.members || available);
+    var mention = mentionQueue.find(function (id) {
+      return available.some(function (member) { return asId(member.id) === id; });
+    }) || '';
     if (mention) {
       var namedMember = available.find(function (member) { return asId(member.id) === mention; });
       if (namedMember) {
@@ -300,8 +290,8 @@
   }
 
   function isDuplicateWithinWindow(previousText, previousAt, nextText, now, windowMs) {
-    var previous = String(previousText == null ? '' : previousText).replace(/\\s+/g, ' ').trim();
-    var next = String(nextText == null ? '' : nextText).replace(/\\s+/g, ' ').trim();
+    var previous = String(previousText == null ? '' : previousText).replace(/\s+/g, ' ').trim();
+    var next = String(nextText == null ? '' : nextText).replace(/\s+/g, ' ').trim();
     var timestamp = Number(now) || Date.now();
     var lastAt = Number(previousAt) || 0;
     var limit = Number(windowMs);
