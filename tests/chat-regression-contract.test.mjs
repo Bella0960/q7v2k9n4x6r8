@@ -957,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v136/);
+  assert.match(serviceWorker, /phone-app-pwa-v137/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1264,8 +1264,31 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v2/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v3/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
   assert.match(serviceWorker, /phone-app-pwa-v135/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v2/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v3/);
+});
+
+
+test('chat presence policy derives a bounded pause from the previous bubble length', () => {
+  assert.equal(typeof presencePolicy.getBubbleDelayMs, 'function');
+  const shortPause = presencePolicy.getBubbleDelayMs('嗯。');
+  const longerPause = presencePolicy.getBubbleDelayMs('我刚刚还在想你说的那件事。');
+  const maximumPause = presencePolicy.getBubbleDelayMs('甲'.repeat(100));
+  assert.ok(shortPause >= 520 && shortPause <= 920);
+  assert.ok(longerPause > shortPause);
+  assert.equal(maximumPause, 920);
+});
+
+test('chat detail stages multi-bubble replies and preserves the existing stream path', () => {
+  assert.match(detail, /async function appendAiMessageWithPacing\(msg, idx\)/);
+  assert.match(detail, /await appendAiMessageWithPacing\(aiMsg, aiMessageIndex\)/);
+  assert.match(detail, /chatMessages\.appendChild\(node\)/);
+  assert.match(detail, /aiBubblePacingRunId \+= 1/);
+  assert.match(detail, /prefers-reduced-motion: reduce/);
+  assert.match(detail, /activeChatModeForPrompt !== 'narration'/);
+  assert.match(detail, /PhoneStream\.chat\(\{/);
+  assert.match(detail, /inflightSnapshot = null/);
+  assert.match(detail, /saveMessages\(historyList\)/);
 });
