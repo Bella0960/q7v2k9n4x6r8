@@ -130,29 +130,160 @@
     });
   }
 
-  function normalizeInterestList(member) {
+  // Small local synonym groups keep topic matching explainable and API-free.
+  // Tags remain user-editable; this dictionary only bridges common wording variants.
+  var TOPIC_SYNONYMS = {
+    programming: ['编程', '代码', '写代码', '敲代码', '写程序', '开发', '软件开发', '程序设计', '前端', '后端', '调试'],
+    basketball: ['篮球', '打球', 'NBA', '投篮', '三分球', '球场'],
+    coffee: ['咖啡', '拿铁', '美式', '手冲', '咖啡豆', '咖啡馆'],
+    music: ['音乐', '听歌', '歌曲', '乐队', '演唱会', '作曲', '乐器'],
+    film: ['电影', '影片', '观影', '电影院', '电影节'],
+    mystery: ['悬疑', '推理', '侦探', '谜题', '案件', '破案'],
+    travel: ['旅行', '旅游', '出游', '旅途', '行程', '旅行攻略'],
+    fitness: ['运动', '健身', '跑步', '游泳', '锻炼', '训练'],
+    reading: ['阅读', '看书', '读书', '小说', '书籍'],
+    photography: ['摄影', '拍照', '相机', '镜头', '修图'],
+    food: ['美食', '做饭', '烹饪', '菜谱', '餐厅', '探店'],
+    drawing: ['绘画', '画画', '插画', '素描', '绘图'],
+    games: ['游戏', '打游戏', '开黑', '电竞', '主机游戏'],
+    anime: ['动漫', '动画', '漫画', '番剧', '追番'],
+    pets: ['宠物', '猫咪', '小猫', '狗狗', '小狗', '养宠'],
+    technology: ['科技', '数码', '手机', '电脑', '硬件', '人工智能'],
+    history: ['历史', '朝代', '古代', '文物', '考古'],
+    science: ['科学', '实验', '物理', '化学', '生物', '天文'],
+    study: ['学习', '考试', '作业', '复习', '上课', '论文', '课程'],
+    emotionalSupport: ['情绪支持', '安慰', '倾听', '陪伴', '心理支持', '情绪', '压力', '疲惫', '难过', '委屈', '焦虑', '心情不好', '不开心', '失落', '心烦', '好累'],
+    planning: ['规划', '计划', '安排', '组织', '行程管理', '时间管理']
+  };
+
+  function normalizeTagList(member, fields) {
     if (!member) return [];
-    var source = member.interests;
-    if (source == null) source = member.interestsText;
-    var list = Array.isArray(source) ? source : String(source || '').split(/[，,、;；|]/);
+    var source = null;
+    for (var i = 0; i < fields.length; i++) {
+      var candidate = member[fields[i]];
+      if (candidate == null || candidate === '') continue;
+      var candidateList = Array.isArray(candidate) ? candidate : String(candidate).split(/[，,、;；|]/);
+      var cleaned = candidateList.map(function (item) {
+        return String(item == null ? '' : item).trim().toLocaleLowerCase();
+      }).filter(Boolean);
+      if (cleaned.length) {
+        source = cleaned;
+        break;
+      }
+    }
+    if (!source) return [];
     var seen = Object.create(null);
-    return list.map(function (item) {
-      return String(item == null ? '' : item).trim().toLocaleLowerCase();
-    }).filter(function (item) {
-      if (!item || item.length < 2 || seen[item]) return false;
+    return source.filter(function (item) {
+      if (item.length < 2 || seen[item]) return false;
       seen[item] = true;
       return true;
     }).slice(0, 12);
   }
 
-  function calculateTopicRelevance(member, text) {
-    var interests = normalizeInterestList(member);
-    // No configured interests means neutral relevance, not a penalty.
-    if (!interests.length) return 45;
+  function resolveTopicAliases(tag) {
+    var normalized = String(tag || '').trim().toLocaleLowerCase();
+    if (!normalized) return [];
+    var groups = Object.keys(TOPIC_SYNONYMS);
+    for (var i = 0; i < groups.length; i++) {
+      var aliases = TOPIC_SYNONYMS[groups[i]].map(function (value) { return value.toLocaleLowerCase(); });
+      if (aliases.some(function (alias) {
+        return alias === normalized ||
+          (normalized.length >= 2 && (normalized.indexOf(alias) !== -1 || alias.indexOf(normalized) !== -1));
+      })) return aliases;
+    }
+    return [normalized];
+  }
+
+  function tagMatchesTopic(tag, messageText) {
+    var normalized = String(tag || '').trim().toLocaleLowerCase();
+    if (!normalized || !messageText) return false;
+    if (messageText.indexOf(normalized) !== -1) return true;
+    var aliases = resolveTopicAliases(normalized);
+    return aliases.some(function (alias) {
+      return alias.length >= 2 && messageText.indexOf(alias) !== -1;
+    });
+  }
+
+  function analyzeMessageContext(text) {
+    var source = String(text || '').replace(/[\\r\\n]+/g, ' ').trim();
+    if (/难过|伤心|委屈|心情不好|不开心|焦虑|压力大|好累|累死|疲惫|烦死|崩溃|害怕|担心|失落|心烦|想哭/.test(source)) {
+      return {
+        type: 'emotional',
+        label: '情绪分享',
+        guidance: '先自然地接住对方的情绪，认真倾听或给予具体关心，不急着说教，也不要把普通疲惫过度解读。'
+      };
+    }
+    if (/吵架|争吵|生气|误会|冲突|背叛|欺骗|不信任|不同意|反对|讨厌|伤害/.test(source)) {
+      return {
+        type: 'conflict',
+        label: '分歧或冲突',
+        guidance: '结合角色自己的立场和彼此关系回应，允许不同意见，不默认所有人站在同一边，也不要刻意升级矛盾。'
+      };
+    }
+    if (/一起|要不要|来不来|约一下|陪我去|出来玩|吃饭吗|打球吗|玩不玩|有空吗/.test(source)) {
+      return {
+        type: 'invitation',
+        label: '邀请或活动',
+        guidance: '优先考虑角色的真实兴趣和关系，可以自然接受、婉拒或追问细节，不要让所有成员机械排队表态。'
+      };
+    }
+    if (/计划|打算|准备|安排|行程|规划|下周|周末|明天|方案/.test(source)) {
+      return {
+        type: 'planning',
+        label: '计划讨论',
+        guidance: '优先考虑相关专长、背景和共同经历，回应具体安排或提出可执行建议，不必无端扩展话题。'
+      };
+    }
+    if (/怎么|如何|怎么办|为什么|能不能|可不可以|有没有办法|求助|帮我|请教|教教我|解释一下|[?？]/.test(source)) {
+      return {
+        type: 'help',
+        label: '提问或求助',
+        guidance: '优先考虑真正具备相关专长的成员，先回应问题核心；不确定的内容要说明，不要为了显得专业而编造。'
+      };
+    }
+    return {
+      type: 'casual',
+      label: '日常闲聊',
+      guidance: '像真实群聊一样自然接话，可以分享、追问或轻松回应，不必每条消息都给建议或制造戏剧性。'
+    };
+  }
+
+  function calculateTopicRelevance(member, text, context) {
     var source = String(text || '').toLocaleLowerCase();
     if (!source) return 45;
-    var matches = interests.filter(function (interest) { return source.indexOf(interest) !== -1; });
-    return Math.round(matches.length / interests.length * 100);
+    context = context && typeof context === 'object' ? context : analyzeMessageContext(text);
+
+    var categories = [
+      { fields: ['interestTags', 'interests', 'interestsText'], weight: 1 },
+      { fields: ['expertiseTags'], weight: 1.35 },
+      { fields: ['backgroundTags'], weight: 0.85 }
+    ];
+    if (context.type === 'emotional') {
+      categories[0].weight = 1.1;
+      categories[2].weight = 1.2;
+    } else if (context.type === 'conflict') {
+      categories[2].weight = 1.2;
+    } else if (context.type === 'invitation') {
+      categories[0].weight = 1.4;
+    } else if (context.type === 'planning') {
+      categories[1].weight = 1.55;
+      categories[2].weight = 1.05;
+    } else if (context.type === 'help') {
+      categories[1].weight = 1.8;
+    }
+
+    var weightedHits = 0;
+    var configuredWeight = 0;
+    categories.forEach(function (category) {
+      var tags = normalizeTagList(member, category.fields);
+      if (!tags.length) return;
+      configuredWeight += category.weight;
+      var hits = tags.filter(function (tag) { return tagMatchesTopic(tag, source); }).length;
+      weightedHits += category.weight * (hits / tags.length);
+    });
+    // A member with no profile tags stays neutral instead of being excluded.
+    if (!configuredWeight) return 45;
+    return Math.max(0, Math.min(100, Math.round(weightedHits / configuredWeight * 100)));
   }
 
   function getRecentSpeakingPenalty(memberId, recentSpeakerIds) {
@@ -190,7 +321,8 @@
     var intimacy = relation
       ? clamp(relation.intimacy != null ? relation.intimacy : relation.familiarity, 0, 100, 0)
       : 0;
-    var relevance = calculateTopicRelevance(member, options.text);
+    var context = options.context && typeof options.context === 'object' ? options.context : analyzeMessageContext(options.text);
+    var relevance = calculateTopicRelevance(member, options.text, context);
     var talkativeness = clamp(member.talkativeness, 0, 1, 0.5);
     var cooldown = getRecentSpeakingPenalty(member.id, options.recentSpeakerIds);
     var score = intimacy * 0.4 + relevance * 0.25 + talkativeness * 20 + (15 - cooldown);
@@ -211,7 +343,8 @@
       topicRelevance: relevance,
       talkativeness: talkativeness,
       cooldownPenalty: cooldown,
-      relationship: relation
+      relationship: relation,
+      contextType: context.type
     };
   }
 
@@ -285,6 +418,7 @@
       topicRelevance: selected.details.topicRelevance,
       cooldownPenalty: selected.details.cooldownPenalty,
       relationship: selected.details.relationship,
+      contextType: selected.details.contextType,
       fallback: fallback
     } : null;
   }
@@ -389,6 +523,7 @@
     getPendingMentionIds: getPendingMentionIds,
     getDirectionalRelationship: getDirectionalRelationship,
     calculateTopicRelevance: calculateTopicRelevance,
+    analyzeMessageContext: analyzeMessageContext,
     getRecentSpeakingPenalty: getRecentSpeakingPenalty,
     selectSpeaker: selectSpeaker,
     isDuplicateWithinWindow: isDuplicateWithinWindow,
