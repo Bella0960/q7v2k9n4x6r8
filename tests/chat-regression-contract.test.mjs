@@ -46,6 +46,11 @@ const groupPolicySource = read('shared/js/phone/group-chat-policy.js');
 const groupPolicyWindow = {};
 runInNewContext(groupPolicySource, { window: groupPolicyWindow, globalThis: {} });
 const groupPolicy = groupPolicyWindow.GroupChatPolicy;
+const presencePolicySource = read('shared/js/phone/chat-presence-policy.js');
+const presencePolicyWindow = {};
+runInNewContext(presencePolicySource, { window: presencePolicyWindow });
+const presencePolicy = presencePolicyWindow.ChatPresencePolicy;
+
 const serviceWorker = read('sw.js');
 const packageJson = JSON.parse(read('package.json'));
 
@@ -952,7 +957,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v134/);
+  assert.match(serviceWorker, /phone-app-pwa-v135/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1196,4 +1201,69 @@ test('partner protocol is managed globally from desktop settings and shared by e
   assert.match(detail, /localStorage\.getItem\(globalRpKey\)/);
   assert.match(detail, /localStorage\.setItem\(globalRpKey, legacyValue\)/);
   assert.doesNotMatch(detail, /localStorage\.getItem\('chat_rp_protocol_' \+ aliasRoleId\)/);
+});
+
+
+test('chat presence policy learns only the active character voice from ordinary replies', () => {
+  assert.equal(typeof presencePolicy.collectVoiceSamples, 'function');
+  assert.equal(typeof presencePolicy.buildPrompt, 'function');
+
+  const history = [
+    { role: 'assistant', text: '今天外面风好大。' },
+    { role: 'user', text: '我这边也有点冷。' },
+    { role: 'assistant', text: '你那边是不是还在下雨？' },
+    { role: 'assistant', silent: true, text: '隐藏指令不能当作语言样本。' },
+    { role: 'assistant', type: 'image', text: '图片描述不能当作语言样本。' },
+    { role: 'system_error', text: '错误提示不能当作语言样本。' }
+  ];
+
+  assert.deepEqual(
+    Array.from(presencePolicy.collectVoiceSamples(history, { maxSamples: 2 })),
+    ['今天外面风好大。', '你那边是不是还在下雨？']
+  );
+
+  const prompt = presencePolicy.buildPrompt({
+    mode: 'online',
+    history,
+    currentText: '那你忙完了吗？',
+    maxSamples: 2
+  });
+  assert.ok(prompt.includes('今天外面风好大。'));
+  assert.ok(prompt.includes('你那边是不是还在下雨？'));
+  assert.equal(prompt.includes('隐藏指令不能当作语言样本'), false);
+  assert.equal(prompt.includes('图片描述不能当作语言样本'), false);
+  assert.equal(prompt.includes('错误提示不能当作语言样本'), false);
+});
+
+test('chat presence policy keeps group voice examples isolated to the selected speaker', () => {
+  const history = [
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '我刚到。' },
+    { role: 'assistant', name: '阿岚', memberId: 'role-b', text: '我去买点东西。' },
+    { role: 'assistant', name: '小林', memberId: 'role-a', text: '你们先聊，我听着。' }
+  ];
+  const samples = presencePolicy.collectVoiceSamples(history, {
+    isGroupChat: true,
+    speakerId: 'role-a',
+    speakerName: '小林',
+    maxSamples: 2
+  });
+  assert.deepEqual(Array.from(samples), ['我刚到。', '你们先聊，我听着。']);
+});
+
+test('chat presence policy skips narration and face-to-face modes and avoids rigid message quotas', () => {
+  assert.equal(presencePolicy.buildPrompt({ mode: 'narration' }), '');
+  assert.equal(presencePolicy.buildPrompt({ mode: 'offline' }), '');
+
+  const prompt = presencePolicy.buildPrompt({ mode: 'online', history: [] });
+  assert.match(prompt, /不固定消息条数/);
+  assert.match(prompt, /不要为了拆气泡把完整的一句话硬切开/);
+  assert.match(prompt, /情绪连续性/);
+  assert.doesNotMatch(prompt, /18-26字|每条必须.*字/);
+});
+
+test('chat presence policy is loaded by chat detail and precached for PWA', () => {
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v1/);
+  assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
+  assert.match(serviceWorker, /phone-app-pwa-v135/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v1/);
 });
