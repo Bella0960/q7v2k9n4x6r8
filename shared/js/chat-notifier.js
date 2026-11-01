@@ -341,6 +341,10 @@
     var proactiveRequestPending = false;
     var proactiveDependenciesPromise = null;
 
+    function proactiveAsset(path) {
+        return appBase + (appBase.charAt(appBase.length - 1) === '/' ? '' : '/') + path;
+    }
+
     function loadProactiveScript(src, ready) {
         if (ready()) return Promise.resolve(true);
         return new Promise(function (resolve) {
@@ -359,18 +363,18 @@
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
         proactiveDependenciesPromise = loadProactiveScript(
-            appBase + '/shared/js/phone/phone_storage.js',
+            proactiveAsset('shared/js/phone/phone_storage.js'),
             function () { return !!global.PhoneStorage; }
         ).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                appBase + '/shared/js/phone/phone_api.js',
+                proactiveAsset('shared/js/phone/phone_api.js'),
                 function () { return !!global.PhoneAPI; }
             );
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                appBase + '/shared/js/phone/chat-presence-policy.js?v=20261102v16',
+                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v16'),
                 function () { return !!global.ChatPresencePolicy; }
             );
         }).catch(function () { return false; });
@@ -462,7 +466,7 @@
                 .replace(/<(think|reasoning|analysis)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
                 .replace(/<narratage\b[^>]*>[\s\S]*?(?:<\/narratage\s*>|$)/gi, ' ')
                 .replace(/\[中译[:：][^\]]{0,800}\]/g, ' ')
-                .replace(/\[(?:记住|心声|红包|转账|图片|亲属卡|亲密付|发起语音通话)[^\]]*\]/g, ' ')
+                .replace(/\[(?:记住|心声|红包|转账|图片|亲属卡|亲密付|调整亲属卡|撤销亲属卡|发起语音通话|群关系互动|群关系变化|群私聊|群动作|群投票|群接龙)[^\]]*\]/g, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();
             if (content.length < 2) return;
@@ -505,6 +509,9 @@
             typeof global.ChatPresencePolicy.buildProactiveContactPrompt !== 'function' ||
             !global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
 
+        var currentLockAt = Number(safeGet(PROACTIVE_LOCK_KEY)) || 0;
+        if (currentLockAt && Date.now() - currentLockAt >= 0 &&
+            Date.now() - currentLockAt < 20 * 60 * 1000) return;
         var candidate = chooseProactiveCandidate(Date.now());
         if (!candidate) return;
         var config = global.PhoneStorage && global.PhoneStorage.getApiConfig
