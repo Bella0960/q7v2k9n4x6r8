@@ -293,6 +293,9 @@ body{background:#e7e7e9;color:var(--ink);font-family:-apple-system,BlinkMacSyste
     document.querySelectorAll('[data-setting]').forEach(function(input){
       input.addEventListener('change',function(){
         group.settings[input.getAttribute('data-setting')]=!!input.checked;
+        if(input.getAttribute('data-setting')==='followUpEnabled'&&!input.checked){
+          try{localStorage.removeItem('chat_followup_state_group_'+groupId);}catch(e){}
+        }
         persist('设置已保存');
       });
     });
