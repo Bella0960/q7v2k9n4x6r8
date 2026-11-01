@@ -844,7 +844,7 @@
         if (!saveFollowUpHistory(contact.id, freshHistory)) return;
         var state = readFollowUpState(scope, contact.id);
         global.ChatFollowUpPolicy.noteFollowUpSent(state, candidate.round, now, candidate.topic);
-        state.lastObservedAssistantAt = now;
+        state.lastObservedAssistantAt = candidate.lastAssistantAt;
         state.anchorMessageAt = candidate.state.anchorMessageAt;
         state.nextRound = candidate.round >= 3 ? 0 : candidate.round + 1;
         state.dueAt = 0;
