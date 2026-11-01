@@ -1579,12 +1579,12 @@ test('autonomy prompt encourages restrained initiative without inventing real-wo
 });
 
 test('chat detail injects the role autonomy prompt and precaches the updated policy', () => {
-  assert.match(detail, /ChatPresencePolicy\\.buildAutonomyPrompt/);
-  assert.match(detail, /maxNotes: 3/);
-  assert.match(detail, /maxTurns: 4/);
-  assert.match(detail, /chat-presence-policy\\.js\\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v151/);
-  assert.match(serviceWorker, /chat-presence-policy\\.js\\?v=20261102v17/);
+  assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
+  assert.ok(detail.includes('maxNotes: 3'));
+  assert.ok(detail.includes('maxTurns: 4'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v151'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
 
