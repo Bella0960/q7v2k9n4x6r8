@@ -134,6 +134,8 @@
   // Tags remain user-editable; this dictionary only bridges common wording variants.
   var TOPIC_SYNONYMS = {
     programming: ['编程', '代码', '写代码', '敲代码', '写程序', '开发', '软件开发', '程序设计', '前端', '后端', '调试'],
+    work: ['工作', '上班', '下班', '加班', '打工', '职场', '工时', '办公室', '通勤'],
+    fatigue: ['累', '好累', '累死', '很累', '疲惫', '疲劳', '困倦', '犯困', '精力不足', '压力大', '身心俱疲'],
     basketball: ['篮球', '打球', 'NBA', '投篮', '三分球', '球场'],
     coffee: ['咖啡', '拿铁', '美式', '手冲', '咖啡豆', '咖啡馆'],
     music: ['音乐', '听歌', '歌曲', '乐队', '演唱会', '作曲', '乐器'],
@@ -194,13 +196,99 @@
     return [normalized];
   }
 
-  function tagMatchesTopic(tag, messageText) {
+  // Stop words remove grammatical filler from short chat messages.
+  // Intl.Segmenter exposes word boundaries and isWordLike, but it does not
+  // provide part-of-speech tags; this filter intentionally stays language-light.
+  var TOPIC_STOP_WORDS = Object.create(null);
+  [
+    '我', '你', '他', '她', '它', '我们', '你们', '他们', '她们',
+    '的', '了', '啊', '吧', '吗', '呢', '就', '都', '是', '在', '和', '与', '及',
+    '一个', '今天', '这个', '那个', '怎么', '真的', '好', '很', '太', '也', '还',
+    '又', '着', '过', '到', '把', '被', '给', '跟', '而且', '但是', '然后',
+    '有点', '其实', '可能', '感觉', '一下', '已经', '还是', '就是', '不是',
+    '什么', '可以', '因为', '所以', '如果', '现在', '刚刚', '刚才',
+    'the', 'a', 'an', 'and', 'or', 'but', 'to', 'of', 'in', 'on', 'for',
+    'is', 'are', 'was', 'were', 'it', 'this', 'that', 'i', 'you', 'we', 'they'
+  ].forEach(function (word) { TOPIC_STOP_WORDS[word] = true; });
+
+  function isUsefulKeyword(word) {
+    var normalized = String(word || '').trim().toLocaleLowerCase();
+    if (!normalized || TOPIC_STOP_WORDS[normalized]) return false;
+    if (normalized.length < 2) return false;
+    if (/^\d+(?:[.:/-]\d+)?$/.test(normalized)) return false;
+    if (!/[a-z0-9\u3400-\u9fff]/i.test(normalized)) return false;
+    return true;
+  }
+
+  function extractKeywords(text) {
+    var source = String(text || '').trim();
+    if (!source) return [];
+    var result = [];
+    var seen = Object.create(null);
+    function add(word) {
+      var normalized = String(word || '').trim().toLocaleLowerCase();
+      if (!isUsefulKeyword(normalized) || seen[normalized]) return;
+      seen[normalized] = true;
+      result.push(normalized);
+    }
+
+    // Preferred path: native browser segmentation, no dependency and no API call.
+    try {
+      if (typeof Intl === 'undefined' || typeof Intl.Segmenter !== 'function') {
+        throw new Error('Intl.Segmenter unavailable');
+      }
+      var segmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' });
+      var segments = segmenter.segment(source);
+      for (var segment of segments) {
+        if (segment.isWordLike) add(segment.segment);
+      }
+    } catch (error) {
+      // Compatibility path: known domain phrases and Latin terms.
+      // Full-text matching remains active for custom Chinese labels.
+      Object.keys(TOPIC_SYNONYMS).forEach(function (group) {
+        TOPIC_SYNONYMS[group].forEach(function (phrase) {
+          var value = String(phrase);
+          if (value.length >= 2 && source.toLocaleLowerCase().indexOf(value.toLocaleLowerCase()) !== -1) add(value);
+        });
+      });
+      var latin = source.match(/[a-z][a-z0-9+#.-]{1,}/gi) || [];
+      latin.forEach(add);
+    }
+
+    // Chinese numeral/time phrases are often split into one-character tokens
+    // (for example "十点"); restore them before dropping single-character pieces.
+    var timePhrases = source.match(/(?:[零〇一二两三四五六七八九十百]+|[0-9]{1,2})(?:点半|点(?:[0-9]{1,2}分)?|时(?:[0-9]{1,2}分)?|分钟|小时)/g) || [];
+    timePhrases.forEach(add);
+
+    // Preserve important multi-character phrases even if Segmenter split them.
+    Object.keys(TOPIC_SYNONYMS).forEach(function (group) {
+      TOPIC_SYNONYMS[group].forEach(function (phrase) {
+        var normalized = String(phrase).toLocaleLowerCase();
+        if (normalized.length >= 2 && source.toLocaleLowerCase().indexOf(normalized) !== -1) add(normalized);
+      });
+    });
+    return result.slice(0, 32);
+  }
+
+  function tagMatchesTopic(tag, messageText, keywords) {
     var normalized = String(tag || '').trim().toLocaleLowerCase();
     if (!normalized || !messageText) return false;
+    // Keep phrase matching so labels such as "前端开发" and "心情不好"
+    // still work even when the segmenter returns shorter words.
     if (messageText.indexOf(normalized) !== -1) return true;
     var aliases = resolveTopicAliases(normalized);
-    return aliases.some(function (alias) {
+    if (aliases.some(function (alias) {
       return alias.length >= 2 && messageText.indexOf(alias) !== -1;
+    })) return true;
+
+    var tokens = Array.isArray(keywords) ? keywords : extractKeywords(messageText);
+    var aliasSet = Object.create(null);
+    aliases.forEach(function (alias) { aliasSet[String(alias).toLocaleLowerCase()] = true; });
+    return tokens.some(function (token) {
+      var word = String(token || '').toLocaleLowerCase();
+      return word === normalized || !!aliasSet[word] ||
+        (word.length >= 2 && normalized.indexOf(word) !== -1) ||
+        aliases.some(function (alias) { return alias.length >= 2 && alias.indexOf(word) !== -1; });
     });
   }
 
@@ -252,6 +340,7 @@
     var source = String(text || '').toLocaleLowerCase();
     if (!source) return 45;
     context = context && typeof context === 'object' ? context : analyzeMessageContext(text);
+    var keywords = extractKeywords(text);
 
     var categories = [
       { fields: ['interestTags', 'interests', 'interestsText'], weight: 1 },
@@ -278,7 +367,7 @@
       var tags = normalizeTagList(member, category.fields);
       if (!tags.length) return;
       configuredWeight += category.weight;
-      var hits = tags.filter(function (tag) { return tagMatchesTopic(tag, source); }).length;
+      var hits = tags.filter(function (tag) { return tagMatchesTopic(tag, source, keywords); }).length;
       weightedHits += category.weight * (hits / tags.length);
     });
     // A member with no profile tags stays neutral instead of being excluded.
@@ -523,6 +612,7 @@
     getPendingMentionIds: getPendingMentionIds,
     getDirectionalRelationship: getDirectionalRelationship,
     calculateTopicRelevance: calculateTopicRelevance,
+    extractKeywords: extractKeywords,
     analyzeMessageContext: analyzeMessageContext,
     getRecentSpeakingPenalty: getRecentSpeakingPenalty,
     selectSpeaker: selectSpeaker,
