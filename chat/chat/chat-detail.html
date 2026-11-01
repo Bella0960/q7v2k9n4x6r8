@@ -2613,7 +2613,8 @@
         const chatStatusSub = document.getElementById('chat-status-sub');
         if (isGroupChat && chatStatusSub) {
             const names = (currentGroup && currentGroup.members || []).map(groupMemberDisplayName).filter(Boolean);
-            chatStatusSub.textContent = names.length ? names.join(' · ') : '群聊';
+            const groupModeLabel = currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? '线下' : '线上';
+            chatStatusSub.textContent = (names.length ? names.join(' · ') : '群聊') + ' · ' + groupModeLabel;
             chatStatusSub.disabled = true;
             chatStatusSub.classList.remove('chat-mode-trigger');
             // 群聊：显示群公告横条（chat_group_notice_<gid>）
@@ -4453,6 +4454,7 @@
                     if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                     return;
                 }
+                if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                 let blockedHistory = loadMessages();
                 const blockedQuote = pendingQuote ? {
                     mid: pendingQuote.mid, text: pendingQuote.text,
@@ -4945,6 +4947,14 @@
               '【以下为角色完整资料与对话背景】'
             ].join('\n');
             systemPrompt = IDENTITY_LOCK + systemPrompt;
+            if (isGroupChat && currentGroup) {
+              const groupMode = currentGroup.settings && currentGroup.settings.chatMode === 'offline' ? 'offline' : 'online';
+              if (groupMode === 'offline') {
+                systemPrompt += '\\n\\n【群聊模式：线下共同场景】\\n当前群成员处于同一个真实的线下场景中，不是隔着手机发微信。请以本轮指定成员的视角参与现场互动，可以写必要的环境、动作、神态和现场对话；其他成员可以成为场景中的互动对象，但不要替他们编写台词，也不要替用户决定动作、想法或回应。保持人物之间的空间位置和已发生事件连续，不要突然切场景。正文以自然叙事为主，约 100–260 字，场景简单时可以更短；旁白请使用 <narratage>...</narratage>，本轮角色自己的台词直接写出。';
+              } else {
+                systemPrompt += '\\n\\n【群聊模式：线上消息】\\n当前是隔着屏幕的群聊，只输出本轮成员发出的自然消息，不写面对面动作或全知旁白。保持微信式短句，不替其他成员发言。';
+              }
+            }
             // 世界书内容拼进 systemPrompt；设定是生活背景，不是每轮背诵清单
             if (worldbookText) {
               systemPrompt += '\n\n【世界书 / 角色生活背景】\n' + worldbookText;
@@ -6691,10 +6701,13 @@
                     showToast('等当前回复结束后，再发起新的群互动');
                     return;
                 }
-                // 刚创建的投票/接龙也能触发成员响应，不必再额外发送一条文字消息。
+                // 刚创建的投票/接龙也能触发成员响应；延迟模拟成员看到消息后再接话。
+                var activityToken = ++groupAutoFollowupToken;
+                var activityDelay = getGroupReplyDelayMs();
                 setTimeout(function () {
+                    if (activityToken !== groupAutoFollowupToken) return;
                     sendMsg({ contextOnly: true, silent: true, groupFollowup: true, groupAutoDepth: 1 });
-                }, 180);
+                }, activityDelay);
             }
             function openComposer(mode, targetMid) {
                 if (!composerOverlay || !composerForm) { showToast('互动面板暂时无法打开'); return; }
