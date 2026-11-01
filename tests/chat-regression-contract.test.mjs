@@ -685,6 +685,49 @@ test('group routing weighs topic relevance and each member talkativeness', () =>
   assert.equal(decision.fallback, false);
 });
 
+test('group message keyword extraction filters filler words and retains useful short-message terms', () => {
+  const keywords = groupPolicy.extractKeywords('今天加班到十点累死了');
+  assert.ok(keywords.includes('加班'));
+  assert.ok(keywords.includes('十点'));
+  assert.ok(keywords.includes('累死'));
+  assert.equal(keywords.includes('今天'), false);
+  assert.equal(keywords.includes('到'), false);
+  assert.equal(keywords.includes('了'), false);
+});
+
+test('group keyword extraction improves synonym matching without breaking phrase tags', () => {
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['工作'] },
+    '今天加班到很晚'
+  ), 100);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { expertiseTags: ['心理学'] },
+    '我最近有点疲惫'
+  ) > 0, true);
+  assert.equal(groupPolicy.calculateTopicRelevance(
+    { interestTags: ['前端开发'] },
+    '今天在做前端开发'
+  ), 100);
+});
+
+test('keyword extraction keeps a fallback when Intl.Segmenter is unavailable', () => {
+  const fallbackWindow = {};
+  runInNewContext(groupPolicySource, {
+    window: fallbackWindow,
+    Intl: null,
+    globalThis: {}
+  });
+  const fallbackPolicy = fallbackWindow.GroupChatPolicy;
+  const keywords = fallbackPolicy.extractKeywords('今天加班到十点累死了');
+  assert.ok(keywords.includes('加班'));
+  assert.ok(keywords.includes('十点'));
+  assert.ok(keywords.includes('累死'));
+  assert.equal(fallbackPolicy.calculateTopicRelevance(
+    { interestTags: ['工作'] },
+    '今天加班了'
+  ), 100);
+});
+
 test('group topic matching supports synonym groups and keeps legacy interests readable', () => {
   assert.equal(groupPolicy.calculateTopicRelevance(
     { interestTags: ['编程'] },
@@ -858,7 +901,7 @@ test('offline group context keeps narration text so the shared scene remains con
 });
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
-  assert.match(detail, /group-chat-policy\.js\?v=20261102v4/);
+  assert.match(detail, /group-chat-policy\.js\?v=20261102v5/);
   assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
   assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
@@ -883,6 +926,10 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /relationshipTargetId: isGroupFollowup && previousSpeaker/);
   assert.doesNotMatch(detail, /relation\.familiarity = Math\.min\(100, Math\.max\(0, parseInt\(relation\.familiarity/);
   assert.match(detail, /relationshipDynamicsEnabled !== false/);
+  assert.match(policy, /Intl\.Segmenter/);
+  assert.match(policy, /function extractKeywords\(text\)/);
+  assert.match(policy, /TOPIC_STOP_WORDS/);
+  assert.match(policy, /function tagMatchesTopic\(tag, messageText, keywords\)/);
   assert.match(groupPlay, /data-member-field="interestTags"/);
   assert.match(groupPlay, /data-member-field="expertiseTags"/);
   assert.match(groupPlay, /data-member-field="backgroundTags"/);
@@ -905,13 +952,13 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v133/);
+  assert.match(serviceWorker, /phone-app-pwa-v134/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
   assert.match(serviceWorker, /chat-context-policy\.js\?v=20261031v1/);
-  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v4/);
+  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v5/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261031v1/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
