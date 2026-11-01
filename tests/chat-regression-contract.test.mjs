@@ -699,7 +699,7 @@ test('user messages do not inherit a previous role-to-role relationship weight',
     relationships: {
       '["role-a","role-c"]': { familiarity: 100 }
     },
-    random: () => 0.4
+    random: () => 0.6
   });
   assert.equal(decision.member.id, 'role-b');
   assert.equal(decision.relationship, null);
