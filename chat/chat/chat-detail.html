@@ -16,7 +16,7 @@
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
     <script src="../../shared/js/phone/chat-send-policy.js?v=20261029v2"></script>
     <script src="../../shared/js/phone/chat-context-policy.js?v=20261031v1"></script>
-    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v9"></script>
+    <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v10"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261030v1"></script>
     <style>
@@ -5220,6 +5220,23 @@
                         }
                     );
                     if (emotionContinuityPrompt) presencePrompt += '\n\n' + emotionContinuityPrompt;
+                }
+
+                // 角色自主性只使用当前会话中角色本人明确提过的近期安排，不额外读写数据库或调用 API。
+                if (presencePrompt && typeof window.ChatPresencePolicy.buildAutonomyPrompt === 'function') {
+                    var autonomyPrompt = window.ChatPresencePolicy.buildAutonomyPrompt(
+                        historyList,
+                        {
+                            mode: presenceMode,
+                            isGroupChat: isGroupChat,
+                            speakerId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : '',
+                            speakerName: groupReplyPick && groupReplyPick.name ? groupReplyPick.name : '',
+                            maxScan: 60,
+                            maxNotes: 3,
+                            maxTurns: 8
+                        }
+                    );
+                    if (autonomyPrompt) presencePrompt += '\n\n' + autonomyPrompt;
                 }
 
                 if (presencePrompt) systemPrompt += '\n\n' + presencePrompt;
