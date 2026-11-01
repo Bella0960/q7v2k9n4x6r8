@@ -683,9 +683,10 @@
         var userTime = Number(lastUser.time || lastUser.timestamp) || 0;
         var assistantTime = Number(lastAssistant.time || lastAssistant.timestamp) || 0;
 
-        if (state.anchorMessageAt && userTime > Number(state.anchorMessageAt)) {
+        if (userTime > Number(state.lastUserMessageAt || 0)) {
+            var isReplyToPendingChain = !!state.anchorMessageAt && userTime > Number(state.anchorMessageAt);
             var intent = policy.applyUserIntent(state, lastUser.text || lastUser.content, now);
-            if (intent.intent === 'normal') policy.noteUserReply(state);
+            if (intent.intent === 'normal' && isReplyToPendingChain) policy.noteUserReply(state);
             state.lastUserMessageAt = userTime;
             saveFollowUpState(scope, contact.id, state);
         }
