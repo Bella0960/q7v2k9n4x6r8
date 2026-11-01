@@ -840,6 +840,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /relationshipTargetId: isGroupFollowup && previousSpeaker/);
   assert.doesNotMatch(detail, /relation\.familiarity = Math\.min\(100, Math\.max\(0, parseInt\(relation\.familiarity/);
   assert.match(detail, /relationshipDynamicsEnabled !== false/);
+  assert.match(detail, /relationshipDynamicsEnabled !== false && isGroupFollowup/);
   assert.match(detail, /applyRelationshipEvent/);
   assert.match(detail, /群关系变化/);
   assert.match(detail, /processGroupInteractionMarkers\(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup\)/);
@@ -847,6 +848,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(groupPlay, /data-setting="relationshipDynamicsEnabled"/);
   assert.match(groupPlay, /近期关系变化/);
   assert.match(groupPlay, /trustRecoveryDebt/);
+  assert.match(groupPlay, /field==='trust'\)direction\.trustRecoveryDebt=0/);
 
 
 });
