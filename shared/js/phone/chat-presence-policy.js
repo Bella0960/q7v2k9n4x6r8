@@ -397,13 +397,14 @@
   function extractLifeNoteSentences(value) {
     var source = extractHabitText(value).replace(/\s+/g, ' ').trim();
     if (!source) return [];
-    var sentences = source.split(/(?<=[。！？!?；;])\s*|\n+/).map(function (part) {
+    var sentences = (source.match(/[^。！？!?；;\n]+[。！？!?；;\n]?/g) || []).map(function (part) {
       return part.trim();
     }).filter(Boolean);
     var result = [];
 
     sentences.forEach(function (sentence) {
       if (sentence.length < 7 || sentence.length > 120) return;
+      if (/[?？]$/.test(sentence)) return;
       if (!/(?:我|自己)/.test(sentence)) return;
       if (!LIFE_TIME_CUES.test(sentence) || !LIFE_ACTION_CUES.test(sentence)) return;
       if (/(?:昨天|前天|上周|上个月|去年)/.test(sentence) &&
