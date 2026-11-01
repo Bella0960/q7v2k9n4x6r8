@@ -786,7 +786,7 @@
             if (!contact) return;
             if (contact.isGroup) {
                 var group = readGroups().find(function (item) { return item && String(item.id) === String(id); });
-                if (!group || !group.settings || group.settings.followUpEnabled !== true) return;
+                if (!group || !group.settings || group.settings.followUpEnabled !== true || group.settings.chatMode === 'offline') return;
                 contact.group = group;
                 contact.relationship = 'friend';
                 result.push({ scope: 'group', contact: contact });
