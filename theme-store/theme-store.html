@@ -150,6 +150,8 @@
     var currentCategory='themes';
     var mineFilter='all';
     var fontRecords=[];
+    var fontPreviewUrls={};
+    var bubbleScopeValue='global';
     var toastTimer=null;
     var defaultThemes=[
       {id:'default',name:'原生黑白',eyebrow:'01 / ORIGINAL',desc:'保留当前聊天界面的黑白基调与原有布局。'},
@@ -181,16 +183,18 @@
     function readRoles(){
       var roles=readJSON('ai_custom_characters',[]);return Array.isArray(roles)?roles.filter(function(r){return r&&r.id!=null;}):[];
     }
+    function initialBubbleScope(){
+      var selected='';try{selected=localStorage.getItem('phone_current_contact')||'';}catch(e){}
+      return readRoles().some(function(role){return String(role.id)===String(selected);})?String(selected):'global';
+    }
+    bubbleScopeValue=initialBubbleScope();
     function fillScope(){
-      var selected=readJSON('phone_current_contact','');
-      var select=document.getElementById('bubbleScope');
-      if(!select)return;
-      var currentFound=false;
+      var select=document.getElementById('bubbleScope');if(!select)return;
       readRoles().forEach(function(role){
         var option=document.createElement('option');option.value=String(role.id);option.textContent=role.name||('角色 '+role.id);select.appendChild(option);
-        if(String(role.id)===String(selected))currentFound=true;
       });
-      if(currentFound)select.value=String(selected);
+      select.value=bubbleScopeValue;
+      if(!select.value){bubbleScopeValue='global';select.value='global';}
     }
     function bubbleKeys(){
       var defs=window.ChatBeauty&&ChatBeauty.getDefaults?ChatBeauty.getDefaults():{};
@@ -200,7 +204,9 @@
     function isBubblePresetActive(preset,scope){
       if(!window.ChatBeauty||!ChatBeauty.resolve)return false;
       var current=ChatBeauty.resolve(scope==='global'?null:scope),keys=bubbleKeys(),data=preset.data||{};
-      return keys.every(function(key){return !Object.prototype.hasOwnProperty.call(data,key)||sameValue(current[key],data[key]);});
+      var compared=0;
+      var matches=keys.every(function(key){if(!Object.prototype.hasOwnProperty.call(data,key))return true;compared++;return sameValue(current[key],data[key]);});
+      return matches&&compared>0;
     }
     function bubbleSampleMarkup(data){
       var my=data.myBubbleBg||'#111111',myColor=data.myBubbleColor||'#fff';
@@ -237,7 +243,7 @@
       }else{
         html+='<div class="bubble-list">';
         presets.forEach(function(p){
-          var active=isBubblePresetActive(p,document.getElementById('bubbleScope')?document.getElementById('bubbleScope').value:'global');
+          var active=isBubblePresetActive(p,bubbleScopeValue);
           html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">BUBBLE PRESET</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':'已保存')+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
         });
         html+='</div>';
@@ -287,7 +293,7 @@
     }
     function renderMine(){
       var owned=getOwned(),activeTheme=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default';
-      var presets=readVisualPresets(),scopeSelect=document.getElementById('bubbleScope'),scope=scopeSelect?scopeSelect.value:'global';
+      var presets=readVisualPresets(),scope=bubbleScopeValue;
       var html='<div class="section-head"><div><h3>我的主题</h3></div><p>已收录、已保存与正在使用的样式</p></div><div class="mine-filter">';
       [['all','全部'],['themes','主题'],['bubbles','气泡'],['fonts','字体']].forEach(function(pair){html+='<button class="filter-chip '+(mineFilter===pair[0]?'active':'')+'" type="button" data-filter="'+pair[0]+'">'+pair[1]+'</button>';});
       html+='</div><div class="mine-list">';
@@ -318,6 +324,7 @@
       else if(currentCategory==='fonts')content.innerHTML=renderFonts();
       else content.innerHTML=renderMine();
       if(currentCategory==='bubbles')fillScope();
+      if(currentCategory==='fonts')bindFontSpecimens();
       if(currentCategory==='mine')document.querySelectorAll('[data-filter]').forEach(function(button){button.classList.toggle('active',button.dataset.filter===mineFilter);});
       updateOwnedCount();
     }
@@ -329,7 +336,7 @@
     function applyBubblePreset(id){
       var preset=readVisualPresets().filter(function(p){return String(p.id)===String(id);})[0];
       if(!preset||!window.ChatBeauty||!ChatBeauty.save){toast('没有找到这条预设，请刷新列表');return;}
-      var scopeSelect=document.getElementById('bubbleScope'),scope=scopeSelect?scopeSelect.value:'global';
+      var scope=bubbleScopeValue;
       var data=preset.data||{},payload={},keys=bubbleKeys();
       keys.forEach(function(key){if(Object.prototype.hasOwnProperty.call(data,key))payload[key]=data[key];});
       if(!Object.keys(payload).length){toast('这条预设没有可应用的气泡参数');return;}
@@ -380,8 +387,9 @@
       document.querySelectorAll('[data-font-specimen]').forEach(function(el){
         var record=fontRecords.filter(function(r){return String(r.id)===el.dataset.fontSpecimen;})[0];
         if(!record)return;
-        var source=record.type==='file'&&record.blob?URL.createObjectURL(record.blob):record.url;
-        if(!source)return;
+        var cacheKey=String(record.id);
+        if(!fontPreviewUrls[cacheKey])fontPreviewUrls[cacheKey]=record.type==='file'&&record.blob?URL.createObjectURL(record.blob):(record.url||'');
+        var source=fontPreviewUrls[cacheKey];if(!source)return;
         var family='StorePreview_'+String(record.id).replace(/[^a-z0-9_-]/gi,'');
         var face=new FontFace(family,'url("'+String(source).replace(/["']/g,'')+'")');
         face.load().then(function(loaded){document.fonts.add(loaded);el.style.fontFamily='"'+family+'",sans-serif';}).catch(function(){});
@@ -413,7 +421,7 @@
       else if(action.dataset.action==='refresh'){refreshAll();}
     });
     document.getElementById('storeContent').addEventListener('change',function(event){
-      if(event.target&&event.target.id==='bubbleScope')render();
+      if(event.target&&event.target.id==='bubbleScope'){bubbleScopeValue=event.target.value||'global';render();}
     });
     document.getElementById('storeContent').addEventListener('touchstart',function(event){
       if(!event.touches||!event.touches.length)return;
