@@ -655,6 +655,51 @@ test('group relationship familiarity affects which member is more likely to pick
   assert.equal(weighted.isMentioned, false);
 });
 
+test('directional group relationships keep each character perspective independent', () => {
+  const relationships = {
+    '["role-a","role-b"]': {
+      directions: {
+        'role-a': { fromId: 'role-a', toId: 'role-b', intimacy: 82, trust: 24, type: '朋友', moodToward: 'warm' },
+        'role-b': { fromId: 'role-b', toId: 'role-a', intimacy: 16, trust: 91, type: '竞争对手', moodToward: 'cold' }
+      }
+    }
+  };
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-a', 'role-b').intimacy, 82);
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-a', 'role-b').trust, 24);
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-b', 'role-a').intimacy, 16);
+  assert.equal(groupPolicy.getDirectionalRelationship(relationships, 'role-b', 'role-a').trust, 91);
+});
+
+test('group routing weighs topic relevance and each member talkativeness', () => {
+  const members = [
+    { id: 'music', talkativeness: 1, replyThreshold: 30, interests: ['音乐'] },
+    { id: 'quiet', talkativeness: 0.1, replyThreshold: 85, interests: ['历史'] }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    text: '我们来聊聊音乐吧',
+    random: () => 0.5
+  });
+  assert.equal(decision.member.id, 'music');
+  assert.equal(decision.fallback, false);
+});
+
+test('group routing falls back to the most talkative member below all thresholds', () => {
+  const members = [
+    { id: 'quiet', talkativeness: 0.2, replyThreshold: 85 },
+    { id: 'chatty', talkativeness: 0.9, replyThreshold: 85 }
+  ];
+  const decision = groupPolicy.selectSpeaker({
+    availableMembers: members,
+    members,
+    text: '随便聊聊',
+    random: () => 0
+  });
+  assert.equal(decision.member.id, 'chatty');
+  assert.equal(decision.fallback, true);
+});
+
 test('group duplicate guard is limited to the configured three-second window', () => {
   assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same   text', 3999, 3000), true);
   assert.equal(groupPolicy.isDuplicateWithinWindow('same text', 1000, 'same text', 4000, 3000), false);
@@ -695,7 +740,7 @@ test('offline group context keeps narration text so the shared scene remains con
 });
 
 test('group chat wiring includes mention dispatch, paced replies, duplicate protection and shared-history modes', () => {
-  assert.match(detail, /group-chat-policy\.js\?v=20261102v1/);
+  assert.match(detail, /group-chat-policy\.js\?v=20261102v2/);
   assert.match(detail, /GroupChatPolicy\.selectSpeaker/);
   assert.match(detail, /getPendingMentionIds/);
   assert.match(detail, /本轮被@点名/);
@@ -709,18 +754,26 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
   assert.match(detail, /mapHistoryToApiMessages\(recentHistory, stripInternalReasoning, \{/);
   assert.match(groupPlay, /id="groupChatMode"/);
   assert.match(groupPlay, /group\.settings\.chatMode/);
+  assert.match(groupPlay, /data-member-field="talkativeness"/);
+  assert.match(groupPlay, /data-member-field="replyThreshold"/);
+  assert.match(groupPlay, /data-relationship-field="trust"/);
+  assert.match(groupPlay, /data-relationship-direction/);
+  assert.match(detail, /getGroupRelationshipContext\(groupReplyPick\.id\)/);
+  assert.match(detail, /recentSpeakerIds/);
+  assert.match(detail, /群成员双向关系网/);
+  assert.match(detail, /direction\.sharedEvents/);
 });
 
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.match(serviceWorker, /phone-app-pwa-v130/);
+  assert.match(serviceWorker, /phone-app-pwa-v131/);
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
   assert.match(serviceWorker, /chat-context-policy\.js\?v=20261031v1/);
-  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v1/);
+  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v2/);
   assert.match(serviceWorker, /phone_context\.js\?v=20261031v1/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
