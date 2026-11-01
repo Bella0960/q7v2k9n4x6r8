@@ -5,25 +5,44 @@
 (function (global) {
   'use strict';
 
-  function mapHistoryToApiMessages(history, stripInternalReasoning) {
+  function mapHistoryToApiMessages(history, stripInternalReasoning, options) {
     var apiMessages = [];
+    options = options && typeof options === 'object' ? options : {};
+    var isGroupChat = options.isGroupChat === true;
+    var groupMembers = Array.isArray(options.groupMembers) ? options.groupMembers : [];
     var cleanReasoning = typeof stripInternalReasoning === 'function'
       ? stripInternalReasoning
       : function (raw) { return String(raw || ''); };
 
+    function groupSpeakerPrefix(message) {
+      if (!isGroupChat) return '';
+      var speakerName = String(message && message.name || '').trim();
+      if (!speakerName && message && message.memberId != null) {
+        var member = groupMembers.find(function (item) {
+          return item && String(item.id) === String(message.memberId);
+        });
+        if (member) speakerName = String(member.nickname || member.name || '').trim();
+      }
+      return '【群成员' + (speakerName ? ' ' + speakerName : '') + '】\n';
+    }
+
     (Array.isArray(history) ? history : []).forEach(function (m) {
-      if (m.isError || m.role === 'system_error') return;
+      if (!m || m.isError || m.role === 'system_error') return;
+      // A group-private message belongs only to its author's direct conversation.
+      // Never feed this private payload into the shared group transcript.
+      if (isGroupChat && m.type === 'group_private') return;
 
       // Stickers are represented as short semantic instructions to the model,
       // not by sending the UI's image metadata into the text context.
       if (m.type === 'sticker') {
         var stickerMeaning = String(m.desc || '').trim();
         var stickerRole = (m.role === 'received' || m.role === 'assistant') ? 'assistant' : 'user';
+        var stickerContent = stickerMeaning
+          ? '[用户发送了一张表情包，表达的意思是：' + stickerMeaning + '。请理解其含义并自然回应，不要复述这段说明。]'
+          : '[用户发送了一张表情包，请结合语境自然回应。]';
         apiMessages.push({
           role: stickerRole,
-          content: stickerMeaning
-            ? '[用户发送了一张表情包，表达的意思是：' + stickerMeaning + '。请理解其含义并自然回应，不要复述这段说明。]'
-            : '[用户发送了一张表情包，请结合语境自然回应。]'
+          content: stickerRole === 'assistant' ? groupSpeakerPrefix(m) + stickerContent : stickerContent
         });
         return;
       }
@@ -49,7 +68,7 @@
       if (m.role === 'sent' || m.role === 'user') {
         apiMessages.push({ role: 'user', content: content });
       } else if (m.role === 'received' || m.role === 'assistant') {
-        apiMessages.push({ role: 'assistant', content: content });
+        apiMessages.push({ role: 'assistant', content: groupSpeakerPrefix(m) + content });
       }
     });
 
