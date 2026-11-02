@@ -71,6 +71,22 @@
       background:rgba(220,220,225,.82);color:#27272b;border:1px solid rgba(255,255,255,.92);
       backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)
     }
+    .theme-art-silver-butterfly{padding:8px;display:block}
+    .silver-mini-screens{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;width:100%;height:100%}
+    .silver-mini-screen{position:relative;display:flex;flex-direction:column;gap:5px;min-width:0;padding:8px 4px 5px;border:1px solid rgba(255,255,255,.96);border-radius:8px;background:rgba(255,255,255,.64);box-shadow:0 2px 7px rgba(60,60,70,.07);overflow:hidden}
+    .silver-mini-screen:before{content:"";position:absolute;top:3px;left:50%;width:16px;height:2px;border-radius:3px;background:rgba(110,110,118,.19);transform:translateX(-50%)}
+    .silver-mini-title{font:italic 8px/1 Georgia,serif;color:#35353b;white-space:nowrap}
+    .silver-mini-sub{height:2px;width:65%;margin-top:-1px;background:#d7d7dc;border-radius:2px}
+    .silver-mini-row{display:flex;align-items:center;gap:3px}
+    .silver-mini-dot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#fff,#c9c9d0);border:1px solid #fff}
+    .silver-mini-line{height:3px;flex:1;border-radius:3px;background:#d9d9de}
+    .silver-mini-line.short{width:50%;flex:0 0 50%;opacity:.65}
+    .silver-mini-bubble{height:9px;width:72%;border-radius:6px 6px 2px 6px;background:#e2e2e6;margin-left:auto}
+    .silver-mini-bubble.left{margin-left:0;background:rgba(255,255,255,.95);border:1px solid #e5e5e9}
+    .silver-mini-nav{height:7px;margin-top:auto;border-radius:5px;background:rgba(255,255,255,.85);border:1px solid #eeeef1}
+    .silver-mini-hero{position:relative;flex:1;border-radius:5px;background:linear-gradient(145deg,#fff,#ececf0);overflow:hidden}
+    .silver-mini-hero:after{content:"";position:absolute;width:35px;height:35px;right:-6px;top:7px;background:url("../shared/assets/silver-butterfly.svg") center/contain no-repeat;opacity:.85}
+    .silver-mini-feed{height:13px;border-radius:4px;background:rgba(255,255,255,.9);border:1px solid #eeeef1}
     .product-meta{display:flex;flex-direction:column;gap:4px;min-width:0}
     .product-eyebrow{font:8px/1.3 Georgia,serif;letter-spacing:.14em;color:#999}
     .product-title{font-size:13px;font-weight:600;line-height:1.4;color:#111;overflow-wrap:anywhere}
@@ -237,6 +253,15 @@
         '<div class="sample-row mine"><span class="sample-bubble" style="background:color-mix(in srgb,'+esc(my)+' '+myOpacity+'%,transparent);color:'+esc(myColor)+';border-radius:'+esc(myRadius)+';font-size:'+Number(myFont)+'px;padding:'+Math.max(2,Number(myPad)-.5)+'px '+(Number(myPad)+3)+'px;font-family:'+myFamily+'">有呀，等会见。</span><span class="sample-avatar">我</span></div>';
     }
     function themeArt(theme){
+      if(theme.id==='silver-butterfly'){
+        return '<div class="product-art theme-art-silver-butterfly" aria-label="聊天、对话、联系人和动态四页预览">'+
+          '<div class="silver-mini-screens">'+
+            '<span class="silver-mini-screen"><i class="silver-mini-title">Chat</i><i class="silver-mini-sub"></i><i class="silver-mini-row"><b class="silver-mini-dot"></b><b class="silver-mini-line"></b></i><i class="silver-mini-row"><b class="silver-mini-dot"></b><b class="silver-mini-line short"></b></i><i class="silver-mini-row"><b class="silver-mini-dot"></b><b class="silver-mini-line"></b></i><i class="silver-mini-nav"></i></span>'+
+            '<span class="silver-mini-screen"><i class="silver-mini-title">Marianne</i><i class="silver-mini-sub"></i><i class="silver-mini-bubble left"></i><i class="silver-mini-bubble"></i><i class="silver-mini-bubble left"></i><i class="silver-mini-nav"></i></span>'+
+            '<span class="silver-mini-screen"><i class="silver-mini-title">联系人</i><i class="silver-mini-sub"></i><i class="silver-mini-row"><b class="silver-mini-dot"></b><b class="silver-mini-line"></b></i><i class="silver-mini-row"><b class="silver-mini-dot"></b><b class="silver-mini-line"></b></i><i class="silver-mini-row"><b class="silver-mini-dot"></b><b class="silver-mini-line short"></b></i><i class="silver-mini-nav"></i></span>'+
+            '<span class="silver-mini-screen"><i class="silver-mini-title">动态</i><i class="silver-mini-hero"></i><i class="silver-mini-feed"></i><i class="silver-mini-nav"></i></span>'+
+          '</div></div>';
+      }
       return '<div class="product-art theme-art-'+theme.id+'"><span class="art-bubble left">今天下午一起吗？</span><span class="art-bubble right">好，等你。</span><span class="art-bubble left">那就老地方。</span></div>';
     }
     function renderThemes(){
