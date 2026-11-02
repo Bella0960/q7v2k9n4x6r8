@@ -1,0 +1,149 @@
+/* Profile / 我的 — shared chat page theme bridge.
+   The page keeps its own profile data and structure; only presentation changes. */
+
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-content{
+  background:transparent!important;
+  color:#202026;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-cover:has(.cover-placeholder){
+  position:relative;
+  background:
+    radial-gradient(ellipse at 76% 36%,rgba(255,255,255,.96),transparent 42%),
+    url("../assets/silver-butterfly.svg") 84% 46%/auto 150% no-repeat,
+    linear-gradient(135deg,#faf9fb 0%,#eeedf1 58%,#e3e2e7 100%);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-cover:has(.cover-placeholder) .cover-placeholder{opacity:.15}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-cover:has(.cover-placeholder)::after{
+  content:"MY SPACE  /  PERSONAL";
+  position:absolute;left:22px;top:37px;color:rgba(50,50,58,.52);
+  font:italic 9px/1 Georgia,"Times New Roman",serif;letter-spacing:.17em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .info-row{
+  margin-left:12px;margin-right:12px;padding:13px 13px 14px;
+  border:1px solid rgba(255,255,255,.94);border-radius:19px;
+  background:rgba(255,255,255,.62);
+  box-shadow:0 7px 24px rgba(70,70,80,.065);
+  backdrop-filter:blur(20px) saturate(1.18);-webkit-backdrop-filter:blur(20px) saturate(1.18);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-avatar{
+  width:62px;height:62px;border:1px solid rgba(255,255,255,.96);
+  background:#e8e7eb;box-shadow:0 3px 12px rgba(70,70,80,.08);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-name{
+  color:#202026;text-shadow:none;font:italic 21px/1.15 Georgia,"Songti SC",serif;letter-spacing:-.025em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-sign{
+  color:#85848c;text-shadow:none;font-size:10px!important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-edit-btn{
+  margin-top:0;padding:7px 10px!important;border:1px solid rgba(255,255,255,.96);
+  border-radius:999px;background:rgba(255,255,255,.7);color:#53525a;font:italic 10px Georgia,serif;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .menu-card{
+  margin:17px 1px 12px;background:rgba(255,255,255,.66);
+  border:1px solid rgba(255,255,255,.94);border-radius:19px;
+  box-shadow:0 7px 24px rgba(70,70,80,.055);
+  backdrop-filter:blur(18px) saturate(1.16);-webkit-backdrop-filter:blur(18px) saturate(1.16);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .menu-row{
+  min-height:53px;background:transparent;color:#28282e;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .menu-row:active{background:rgba(235,234,239,.45)}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .menu-icon{color:#777680}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .menu-arrow{color:#aaa9b0}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .menu-divider{background:rgba(120,120,130,.11)}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .floating-nav{
+  background:rgba(255,255,255,.72)!important;border-color:rgba(255,255,255,.94)!important;
+  box-shadow:0 5px 20px rgba(60,60,70,.075)!important;
+  backdrop-filter:blur(18px) saturate(1.25)!important;-webkit-backdrop-filter:blur(18px) saturate(1.25)!important;
+}
+
+/* QQ: cool neutral panels and a slightly more graphic profile header. */
+.phone-mockup[data-chat-theme-preset="qq"] .profile-content{background:#f3f3f5;color:#24242a}
+.phone-mockup[data-chat-theme-preset="qq"] .profile-cover:has(.cover-placeholder){
+  background:
+    radial-gradient(circle at 80% 28%,rgba(255,255,255,.95),transparent 30%),
+    linear-gradient(135deg,#f8f8fa 0%,#e6e6eb 58%,#d6d6de 100%);
+}
+.phone-mockup[data-chat-theme-preset="qq"] .profile-cover:has(.cover-placeholder) .cover-placeholder{opacity:.16}
+.phone-mockup[data-chat-theme-preset="qq"] .profile-cover:has(.cover-placeholder)::after{
+  content:"PERSONAL CENTER";
+  position:absolute;left:20px;top:34px;color:#8a8a94;
+  font:italic 10px Georgia,"Times New Roman",serif;letter-spacing:.14em;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .info-row{
+  margin-left:10px;margin-right:10px;padding:13px;
+  border-radius:16px;background:rgba(255,255,255,.9);
+  box-shadow:0 5px 17px rgba(45,45,55,.055);
+}
+.phone-mockup[data-chat-theme-preset="qq"] .profile-avatar{
+  width:64px;height:64px;border:2px solid #fff;background:#e8e8ed;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .profile-name{
+  color:#222228;text-shadow:none;font-size:19px;letter-spacing:-.02em;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .profile-sign{color:#85858e;text-shadow:none}
+.phone-mockup[data-chat-theme-preset="qq"] .profile-edit-btn{
+  margin-top:0;padding:7px 10px!important;border-radius:8px;
+  background:#ededf1;color:#42424a;font-size:10px;
+}
+.phone-mockup[data-chat-theme-preset="qq"] .menu-card{
+  margin:15px 1px 12px;background:#fff;border:1px solid #ededf0;
+  border-radius:16px;box-shadow:0 4px 17px rgba(40,40,50,.045);
+}
+.phone-mockup[data-chat-theme-preset="qq"] .menu-row{min-height:54px;color:#292930;background:#fff}
+.phone-mockup[data-chat-theme-preset="qq"] .menu-row:active{background:#f5f5f7}
+.phone-mockup[data-chat-theme-preset="qq"] .menu-icon{color:#777781}
+.phone-mockup[data-chat-theme-preset="qq"] .menu-arrow{color:#b6b6be}
+.phone-mockup[data-chat-theme-preset="qq"] .menu-divider{background:#f0f0f3}
+.phone-mockup[data-chat-theme-preset="qq"] .floating-nav{
+  background:rgba(255,255,255,.9)!important;border-color:#ededf0!important;
+  box-shadow:0 5px 18px rgba(40,40,50,.06)!important;
+}
+
+/* WeChat: the fourth tab follows the familiar "Me" information card and grouped rows. */
+.phone-mockup[data-chat-theme-preset="wechat"]{background:#f2f2f2!important;border-color:#f2f2f2}
+.phone-mockup[data-chat-theme-preset="wechat"]::before{display:none!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .status-bar{color:#111!important;text-shadow:none!important}
+.phone-mockup[data-chat-theme-preset="wechat"] .profile-content{
+  background:#f2f2f2!important;color:#191919;padding-top:64px;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] #profileCover:has(.cover-placeholder){display:none}
+.phone-mockup[data-chat-theme-preset="wechat"] .info-row{
+  margin-top:0;margin-left:-16px;margin-right:-16px;padding:20px 18px 21px;
+  min-height:112px;background:#fff;gap:14px;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .profile-avatar{
+  width:68px;height:68px;flex:0 0 68px;border-radius:5px;
+  border:1px solid #eee;background:#e5e5e5;box-shadow:none;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .profile-name{
+  color:#191919;text-shadow:none;font-size:18px;font-weight:650;letter-spacing:0;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .profile-sign{
+  color:#888;text-shadow:none;font-size:11px!important;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .profile-edit-btn{
+  margin-top:0;padding:6px 0!important;color:#888;font-size:10px;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .menu-card{
+  margin:12px 0 0;background:#fff;border:0;border-radius:7px;box-shadow:none;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .menu-row{
+  min-height:55px;padding:14px 16px;background:#fff;color:#191919;font-size:14px;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .menu-row:active{background:#f5f5f5}
+.phone-mockup[data-chat-theme-preset="wechat"] .menu-icon{color:#777}
+.phone-mockup[data-chat-theme-preset="wechat"] .menu-divider{
+  background:#f0f0f0;margin-left:46px;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .menu-arrow{color:#c8c8c8}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav{
+  left:0!important;right:0!important;bottom:0!important;width:100%!important;
+  max-width:100%!important;margin:0!important;padding:9px 10px calc(7px + env(safe-area-inset-bottom,0px))!important;
+  border:0!important;border-top:1px solid #ececec!important;border-radius:0!important;
+  background:rgba(255,255,255,.97)!important;box-shadow:none!important;
+  backdrop-filter:blur(14px)!important;-webkit-backdrop-filter:blur(14px)!important;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .nav-tab{color:#777}
+.phone-mockup[data-chat-theme-preset="wechat"] .nav-tab.active{color:#07c160}

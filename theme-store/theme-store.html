@@ -44,13 +44,26 @@
     .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:13px 0 16px}
     .section-head h3{font:400 20px/1.15 Georgia,"Songti SC",serif;letter-spacing:-.035em}
     .section-head p{font-size:10px;line-height:1.5;color:#999;text-align:right;max-width:150px}
-    .product-grid{display:flex;gap:13px;overflow-x:auto;overflow-y:hidden;padding:1px 1px 8px;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;cursor:grab;touch-action:pan-y}.product-grid::-webkit-scrollbar{display:none}.product-grid.dragging{cursor:grabbing;scroll-snap-type:none}
-    .product-card{flex:0 0 min(72vw,248px);min-width:0;min-height:296px;scroll-snap-align:start;background:#f7f7f8;border-radius:17px;padding:12px 12px 13px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
-    .product-art{height:112px;background:#fff;border-radius:12px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:15px 12px;overflow:hidden}
+    .product-grid{display:flex;gap:13px;overflow-x:auto;overflow-y:hidden;padding:1px 1px 12px;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;overscroll-behavior-x:contain;cursor:grab;touch-action:pan-x pan-y;user-select:none;-webkit-user-select:none}.product-grid::-webkit-scrollbar{display:none}.product-grid.dragging{cursor:grabbing;scroll-snap-type:none;scroll-behavior:auto}
+    .product-card{flex:0 0 min(72vw,248px);min-width:0;min-height:296px;scroll-snap-align:start;background:#f7f7f8;border-radius:17px;padding:12px 12px 13px;display:flex;flex-direction:column;gap:10px;overflow:hidden;transform:translateY(0);transition:transform .28s cubic-bezier(.2,.75,.25,1),box-shadow .28s ease,background .28s ease;will-change:transform}
+    .product-art{height:112px;background:#fff;border-radius:12px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:15px 12px;overflow:hidden;transition:background .28s ease,transform .28s ease}.product-art:after{content:"";position:absolute;inset:-40% auto -40% -65%;width:42%;transform:skewX(-18deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);opacity:0;pointer-events:none;transition:transform .65s ease,opacity .25s ease}
     .product-art:before{content:"";position:absolute;left:12px;right:12px;top:11px;height:2px;background:#f0f0f2}
-    .art-bubble{position:relative;display:block;max-width:84%;padding:7px 9px;border-radius:12px;font-size:9px;line-height:1.5;z-index:1}
+    .art-bubble{position:relative;display:block;max-width:84%;padding:7px 9px;border-radius:12px;font-size:9px;line-height:1.5;z-index:1;transition:transform .32s cubic-bezier(.2,.75,.25,1),box-shadow .32s ease}
     .art-bubble.left{align-self:flex-start;background:#ededf0;color:#222;border-bottom-left-radius:3px}
     .art-bubble.right{align-self:flex-end;background:#111;color:#fff;border-bottom-right-radius:3px}
+    @media (hover:hover) and (pointer:fine){
+      .product-card:hover{transform:translateY(-5px);background:#f8f8f9;box-shadow:0 13px 28px rgba(0,0,0,.075)}
+      .product-card:hover .product-art{transform:scale(1.012)}
+      .product-card:hover .product-art:after{opacity:1;transform:translateX(390%) skewX(-18deg)}
+      .product-card:hover .art-bubble.left{transform:translateX(4px);box-shadow:0 3px 9px rgba(0,0,0,.045)}
+      .product-card:hover .art-bubble.right{transform:translateX(-4px);box-shadow:0 3px 9px rgba(0,0,0,.06)}
+      .product-card:hover .product-title{letter-spacing:.01em}
+    }
+    .product-grid:focus-visible{outline:1px solid #b8b8bd;outline-offset:4px;border-radius:12px}
+    @media(prefers-reduced-motion:reduce){
+      .product-card,.product-art,.product-art:after,.art-bubble{transition:none!important;animation:none!important}
+    }
+
     .theme-art-imessage{background:#f2f2f7}
     .theme-art-imessage .art-bubble.right{background:#1687f8}
     .theme-art-imessage .art-bubble.left{background:#e4e4e9}
@@ -411,17 +424,37 @@
     }
     function enableProductDrag(){
       var rail=document.querySelector('.product-grid');if(!rail||rail.dataset.dragReady)return;
-      rail.dataset.dragReady='1';var start=null;
+      rail.dataset.dragReady='1';
+      rail.tabIndex=0;
+      rail.setAttribute('role','region');
+      rail.setAttribute('aria-label','主题预览横向列表，可左右滑动或使用键盘方向键浏览');
+      var start=null;
       rail.addEventListener('pointerdown',function(event){
-        if(event.pointerType==='touch'||event.button!==0||event.target.closest('button'))return;
-        start={x:event.clientX,scroll:rail.scrollLeft,moved:false};
+        if(event.pointerType!=='mouse'||event.button!==0||event.target.closest('button,a,input,select'))return;
+        start={x:event.clientX,scroll:rail.scrollLeft,pointerId:event.pointerId,moved:false};
+        try{rail.setPointerCapture(event.pointerId);}catch(e){}
       });
       rail.addEventListener('pointermove',function(event){
-        if(!start)return;var dx=event.clientX-start.x;
-        if(Math.abs(dx)>4){start.moved=true;rail.classList.add('dragging');rail.scrollLeft=start.scroll-dx;}
+        if(!start||event.pointerId!==start.pointerId)return;
+        var dx=event.clientX-start.x;
+        if(Math.abs(dx)>4){start.moved=true;rail.classList.add('dragging');event.preventDefault();rail.scrollLeft=start.scroll-dx;}
       });
-      function end(){start=null;rail.classList.remove('dragging');}
-      rail.addEventListener('pointerup',end);rail.addEventListener('pointercancel',end);rail.addEventListener('pointerleave',end);
+      function end(event){
+        if(!start|| (event&&event.pointerId!=null&&event.pointerId!==start.pointerId))return;
+        var pointerId=start.pointerId;
+        start=null;
+        rail.classList.remove('dragging');
+        try{if(rail.hasPointerCapture(pointerId))rail.releasePointerCapture(pointerId);}catch(e){}
+      }
+      rail.addEventListener('pointerup',end);
+      rail.addEventListener('pointercancel',end);
+      rail.addEventListener('lostpointercapture',end);
+      rail.addEventListener('keydown',function(event){
+        if(event.key==='ArrowRight'||event.key==='ArrowLeft'){
+          event.preventDefault();
+          rail.scrollBy({left:(event.key==='ArrowRight'?1:-1)*Math.max(180,rail.clientWidth*.72),behavior:'smooth'});
+        }
+      });
     }
     function render(){
       var content=document.getElementById('storeContent');
