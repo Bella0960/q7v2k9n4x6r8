@@ -295,7 +295,7 @@ html,body{background:#f7f7f8}
 .diary-result-count{font:9px Georgia,serif;letter-spacing:.12em;color:#c0c0c6}
 .entries{position:relative;gap:13px;padding:7px 0 28px 17px}
 .entries:before{content:"";position:absolute;left:3px;top:12px;bottom:37px;width:1px;background:repeating-linear-gradient(to bottom,#e4e4e9 0 2px,transparent 2px 10px)}
-.entry-card{position:relative;border:1px solid rgba(255,255,255,.96)!important;border-radius:24px!important;padding:17px 17px 13px!important;background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(248,248,251,.94))!important;box-shadow:0 9px 24px rgba(40,40,55,.055)!important;overflow:hidden;transition:transform .25s ease,box-shadow .25s ease!important}
+.entry-card{position:relative;background-image:none!important;border:1px solid rgba(255,255,255,.96)!important;border-radius:24px!important;padding:17px 17px 13px!important;background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(248,248,251,.94))!important;box-shadow:0 9px 24px rgba(40,40,55,.055)!important;overflow:hidden;transition:transform .25s ease,box-shadow .25s ease!important}
 .entry-card:before{content:"";position:absolute;left:-19px;top:23px;width:7px;height:7px;border-radius:50%;background:#d7d7df;box-shadow:0 0 0 4px #fff}
 .entry-card:active{transform:scale(.985)!important;background:#fff!important}
 .entry-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:11px}
@@ -760,7 +760,7 @@ html,body{background:#f7f7f8}
       ccHtml+
       '<div class="entry-card-foot"><div class="entry-tags">'+tags+'</div><div class="entry-actions"><button class="mini-action '+(e.pinned?'active':'')+'" data-pin="'+esc(e.id)+'" aria-label="'+(e.pinned?'取消置顶':'置顶')+'">'+(e.pinned?'已置顶':'置顶')+'</button><button class="mini-action '+(e.favorite?'active':'')+'" data-favorite="'+esc(e.id)+'" aria-label="'+(e.favorite?'取消收藏':'收藏')+'">'+(e.favorite?'★':'☆')+'</button></div></div></article>';
   }
-  function renderCards(list,emptyTitle,emptyText){  function renderCards(list,emptyTitle,emptyText){
+  function renderCards(list,emptyTitle,emptyText){
     if(!list.length)return '<div class="empty-state"><div class="empty-mark">01 / —</div><h3>'+esc(emptyTitle)+'</h3><p>'+esc(emptyText)+'</p><button class="text-btn" data-create="1">写下第一篇</button></div>';
     return '<div class="entries">'+list.map(renderEntryCard).join('')+'</div>';
   }
@@ -772,7 +772,7 @@ html,body{background:#f7f7f8}
       '<div class="diary-list-tools"><div class="diary-type-filter">'+filters.map(function(f){return '<button class="filter-chip '+(noteTypeFilter===f?'active':'')+'" data-note-type-filter="'+esc(f)+'">'+esc(f)+'</button>'}).join('')+'</div><span class="diary-result-count">'+list.length+' RECORDS</span></div>'+
       renderCards(list,'还没有日记','点一下左下角的笔，记下今天发生的小事。');
   }
-  function renderCalendar(){  function renderCalendar(){
+  function renderCalendar(){
     var first=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth(),1);
     var start=new Date(first);start.setDate(first.getDate()-first.getDay());
     var marked={};entries.forEach(function(e){marked[e.date]=true});
