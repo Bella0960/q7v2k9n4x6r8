@@ -590,5 +590,18 @@ test('09 Service Worker 导航改为网络优先，改完 HTML 不再需要刷�
     nav.slice(respondIndex, respondIndex + 120).includes('fetch(req)'),
     '导航应优先走网络，否则 overriding 的仍是旧缓存'
   );
-  assert.match(sw, /CACHE_NAME = 'phone-app-pwa-v125'/, '应提升缓存版本号以让旧缓存失效');
+  // CACHE_NAME 动态解析，验证格式与 activate 清理逻辑一致
+  const cacheNameMatch = sw.match(/CACHE_NAME\s*=\s*['"]([^'"]+)['"]/);
+  assert.ok(cacheNameMatch, 'sw.js 中应定义 CACHE_NAME 常量');
+  const cacheName = cacheNameMatch[1];
+  assert.ok(
+    cacheName.startsWith('phone-app-pwa-'),
+    `CACHE_NAME 应以 phone-app-pwa- 开头，当前是 ${cacheName}`
+  );
+  // activate 事件必须清理同前缀的旧缓存，否则版本号提升不会生效
+  assert.match(
+    sw,
+    /key\.startsWith\(['"]phone-app-['"]\)/,
+    'activate 事件应清理 phone-app- 前缀的旧缓存'
+  );
 });
