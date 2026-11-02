@@ -716,18 +716,7 @@ function updateAvatarPreview() {
 }
 
 // 切换视图
-function showView(view) {
-    const listView = document.getElementById('listView');
-    const editorView = document.getElementById('editorView');
-    if (view === 'editor') {
-        listView.classList.add('hidden');
-        editorView.classList.remove('hidden');
-    } else {
-        editorView.classList.add('hidden');
-        listView.classList.remove('hidden');
-        renderRoleList();
-    }
-}
+
 
 // 打开添加角色
 function openAddRole() {
@@ -981,7 +970,7 @@ function handleCancelEdit() {
         try { localStorage.removeItem(currentDraftKey); } catch (e) {}
     }
     closeRecoveryDialog();
-    showView('list');
+    showAppView(editorReturnView || 'listView');
 }
 
 
