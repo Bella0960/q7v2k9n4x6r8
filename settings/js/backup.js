@@ -30,8 +30,11 @@
     // 依据：备份是下载成文件的，不占 localStorage 配额；这里的上限只用于防止
     // 导出时内存峰值（JSON.stringify 大对象 + Blob 构造 + 下载）把浏览器尤其
     // 手机端搞崩。超限的字体整条跳过导出，在结果里明确提示。
-    var FONT_BLOB_MAX_BYTES = 30 * 1024 * 1024;   // 单条 Blob 原始字节上限
-    var FONT_STORE_MAX_BYTES = 90 * 1024 * 1024;  // store 总 Blob 原始字节上限
+    // assets Blob store（maomao-assets.blobs）与字体同源，复用同一套上限。
+    var BLOB_MAX_BYTES = 30 * 1024 * 1024;    // 单条 Blob 原始字节上限（字体 + assets）
+    var BLOB_STORE_MAX_BYTES = 90 * 1024 * 1024;  // store 总 Blob 原始字节上限
+    var FONT_BLOB_MAX_BYTES = BLOB_MAX_BYTES;       // 别名，向下兼容
+    var FONT_STORE_MAX_BYTES = BLOB_STORE_MAX_BYTES; // 别名，向下兼容
 
     // 导出前估算备份 JSON 总量超过此阈值时，提前告知用户等待。
     var EXPORT_WARN_CHARS = 30 * 1024 * 1024;  // 约 30MB
@@ -74,7 +77,23 @@
             version: 1,
             stores: [
                 { store: 'presets', keyPath: 'id', blobFields: ['blob'],
-                  blobMaxBytes: FONT_BLOB_MAX_BYTES, blobStoreMaxBytes: FONT_STORE_MAX_BYTES }
+                  blobMaxBytes: BLOB_MAX_BYTES, blobStoreMaxBytes: BLOB_STORE_MAX_BYTES }
+            ]
+        },
+        {
+            db: 'maomao-assets',
+            version: 1,
+            stores: [
+                // assets / refs 是纯元数据，keyPath 都是 assetId，无 Blob
+                { store: 'assets', keyPath: 'assetId' },
+                { store: 'refs',   keyPath: 'assetId' },
+                // blobs store：assetId → Blob（字段名就是 blob），需要 base64 往返
+                // attachFrom：dump 完 assets 后，把对应 assetId 的 mimeType 复制到
+                // blobs 记录的 __mimeType 字段（仅导出时附加，恢复时不写回原 store），
+                // 这样恢复 base64 → Blob 时能拿到正确 MIME，不会一律 octet-stream。
+                { store: 'blobs',  keyPath: 'assetId', blobFields: ['blob'],
+                  blobMaxBytes: BLOB_MAX_BYTES, blobStoreMaxBytes: BLOB_STORE_MAX_BYTES,
+                  attachFrom: { store: 'assets', key: 'assetId', fields: { mimeType: '__mimeType' } } }
             ]
         }
     ];
@@ -139,6 +158,23 @@
             fr.onerror = function () { reject(fr.error || new Error('Blob read failed')); };
             fr.readAsDataURL(blob);
         });
+    }
+
+    // 字体等场景的 format 字段是格式名（"truetype"、"opentype"、"woff"），不是合法 MIME。
+    // 这里做一层映射；如果 format 本身已经含 "/"（就是合法 MIME，如 "image/png"），直接返回。
+    function formatToMime(format) {
+        if (!format) return null;
+        if (format.indexOf('/') !== -1) return format;  // 已经是 MIME，直接用
+        var map = {
+            truetype: 'font/ttf',
+            ttf:      'font/ttf',
+            opentype: 'font/otf',
+            otf:      'font/otf',
+            woff:     'font/woff',
+            woff2:    'font/woff2'
+        };
+        var lower = String(format).toLowerCase();
+        return map[lower] || null;  // 映射不到返回 null，让调用方继续 fallback
     }
 
     // base64 → Blob。传入裸 base64 字符串 + MIME，返回 Blob 实例。
@@ -650,7 +686,43 @@
             var skippedAll = [];
             var i = 0;
             function next() {
-                if (i >= defs.length) { db.close(); return { data: out, skipped: skippedAll }; }
+                if (i >= defs.length) {
+                    // ---- attachFrom 后处理 ----
+                    // 某些 store（如 blobs）需要关联另一个已 dump store（如 assets）的字段。
+                    // 在所有 store dump 完之后统一做，避免依赖 dump 顺序。
+                    storeDefs.forEach(function (def) {
+                        if (!def.attachFrom || !out[def.store]) return;
+                        var srcName = def.attachFrom.store;
+                        var srcKey  = def.attachFrom.key;
+                        var map     = def.attachFrom.fields;  // { srcField: destField }
+                        var srcRecords = out[srcName];
+                        if (!srcRecords || !srcRecords.length) return;
+                        // 先把 source store 建成 key → record 映射（source store 的 records 自身就是 inline key，
+                        // 或者 { __key, __value } out-of-line 包装）
+                        var srcMap = {};
+                        srcRecords.forEach(function (rec) {
+                            var inner = (rec && Object.prototype.hasOwnProperty.call(rec, '__value'))
+                                ? rec.__value : rec;
+                            var k = inner ? inner[srcKey] : undefined;
+                            if (k != null) srcMap[k] = inner;
+                        });
+                        // 给当前 store 的每条记录附加字段
+                        out[def.store].forEach(function (rec) {
+                            var inner = (rec && Object.prototype.hasOwnProperty.call(rec, '__value'))
+                                ? rec.__value : rec;
+                            if (!inner) return;
+                            var src = srcMap[inner[srcKey]];
+                            if (!src) return;
+                            Object.keys(map).forEach(function (srcF) {
+                                if (src[srcF] !== undefined && src[srcF] !== null) {
+                                    inner[map[srcF]] = src[srcF];
+                                }
+                            });
+                        });
+                    });
+                    db.close();
+                    return { data: out, skipped: skippedAll };
+                }
                 var def = defs[i++];
                 return dumpStore(db, def).then(function (res) {
                     if (res.records.length) out[def.store] = res.records;
@@ -706,7 +778,16 @@
                             var v = value[f];
                             if (v && typeof v === 'string') {
                                 try {
-                                    value[f] = base64ToBlob(v, value.format || 'application/octet-stream');
+                                    // MIME 优先级：__mimeType（attachFrom 从关联 store 带过来的，最可靠）
+                                    // → format 字段经 formatToMime 映射（字体 preset 自身有 "truetype"/"opentype"）
+                                    // → application/octet-stream（兜底）
+                                    // formatToMime 遇到含 "/" 的值（本身已是合法 MIME，如 assets 的 "image/png"）直接返回原值，
+                                    // 所以 assets 那条 PNG 走 __mimeType 命中的情况下不会走到这一步；如果某条 assets 记录没有
+                                    // __mimeType 又恰好有合法 MIME 的 format，也能正确接住。
+                                    var mime = value.__mimeType
+                                        || formatToMime(value.format)
+                                        || 'application/octet-stream';
+                                    value[f] = base64ToBlob(v, mime);
                                 } catch (e) {
                                     skipped++;
                                     return;  // 整条跳过
@@ -991,4 +1072,5 @@
         });
         secretBox.addEventListener('click', function (e) { e.stopPropagation(); });
     }
+
 })();
