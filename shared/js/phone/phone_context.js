@@ -222,6 +222,8 @@
         if (role.prompt)  persona.push('系统提示：' + role.prompt);
         if (role.tone)    persona.push('语气风格：' + role.tone);
         parts.push(section('角色人设', persona.join('\n')));
+        var roleSpeechStyle = String(role.tone || role.speechStyle || role.speech || '').trim();
+        if (roleSpeechStyle) parts.push(section('说话与表达习惯', roleSpeechStyle));
 
         // 2. 每个主角色独立的人物关系网络与个人生活线
         var relationshipText = buildRelationshipNetworkText(role);
