@@ -1073,4 +1073,16 @@
         secretBox.addEventListener('click', function (e) { e.stopPropagation(); });
     }
 
+    // ==== 受控导出（仅供测试 / 手动验证使用，生产环境勿依赖 ====
+    // 只暴露四个在 IIFE 内已确定存在的标识符；不暴露 dumpStore / restoreStore / blobToBase64
+    // 等内部实现——体积上限与 base64 往返逻辑属于内部细节，后续另作安排。
+    // 此对象仅在 window 存在时挂载，避免非浏览器环境报错。
+    if (typeof window !== 'undefined') {
+        window.MAOMAOBackupInternals = {
+            formatToMime: formatToMime,
+            carryOverSecrets: carryOverSecrets,
+            verifyRestore: verifyRestore,
+            IDB_TARGETS: IDB_TARGETS
+        };
+    }
 })();
