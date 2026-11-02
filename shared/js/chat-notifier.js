@@ -337,8 +337,11 @@
     var PROACTIVE_GLOBAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
     var PROACTIVE_MIN_IDLE_MS = 8 * 60 * 60 * 1000;
     var PROACTIVE_LOCK_KEY = 'chat_proactive_request_lock';
+    var FOLLOWUP_STATE_KEY = 'chat_followup_state_v1';
+    var FOLLOWUP_LOCK_KEY = 'chat_followup_request_lock';
     var proactiveSchedulerStarted = false;
     var proactiveRequestPending = false;
+    var followUpRequestPending = false;
     var proactiveDependenciesPromise = null;
 
     function proactiveAsset(path) {
@@ -359,7 +362,8 @@
 
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
-            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
+            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
+            global.ChatFollowupPolicy && typeof global.ChatFollowupPolicy.shouldBlockFollowUp === 'function') {
             return Promise.resolve(true);
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
@@ -377,6 +381,12 @@
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+            );
+        }).then(function (ok) {
+            if (!ok) return false;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/phone/chat-followup-policy.js?v=20261102v1'),
+                function () { return !!global.ChatFollowupPolicy && typeof global.ChatFollowupPolicy.shouldBlockFollowUp === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) proactiveDependenciesPromise = null;
@@ -597,17 +607,284 @@
         }
     }
 
+    /* ---------- 主动追问节奏：持久化时间戳比对，不依赖 setTimeout 主线 ---------- */
+
+    function readFollowUpStates() {
+        return safeJsonParse(safeGet(FOLLOWUP_STATE_KEY)) || {};
+    }
+
+    function writeFollowUpStates(obj) {
+        try { localStorage.setItem(FOLLOWUP_STATE_KEY, JSON.stringify(obj)); return true; }
+        catch (e) { return false; }
+    }
+
+    function getFollowUpState(chatId) {
+        var all = readFollowUpStates();
+        var raw = all[String(chatId)];
+        return global.ChatFollowupPolicy
+            ? global.ChatFollowupPolicy.normalizeState(raw)
+            : (raw || null);
+    }
+
+    function setFollowUpState(chatId, state) {
+        var all = readFollowUpStates();
+        all[String(chatId)] = state;
+        writeFollowUpStates(all);
+    }
+
+    // 多标签页互斥：Web Locks API 优先，不支持时退回 localStorage 锁
+    // 降级风险：localStorage 锁在某些浏览器的隐私模式下可能不生效；锁过期时间设为 2 分钟
+    function acquireFollowUpLock(chatId) {
+        var lockKey = FOLLOWUP_LOCK_KEY + '_' + String(chatId);
+        if (global.navigator && navigator.locks && typeof navigator.locks.request === 'function') {
+            // Web Locks API：返回一个 Promise，持锁直到释放
+            return navigator.locks.request(lockKey, { mode: 'exclusive' }, function () {
+                // 在锁内执行，返回一个 release 函数标记持锁结束
+                return function webLockReleased() {};
+            }).then(function (release) {
+                return { ok: true, release: release };
+            }).catch(function () {
+                // 拿不到锁 → 视为被其它标签页持有
+                return { ok: false, release: null };
+            });
+        }
+        // 降级：localStorage 锁（2 分钟过期）
+        return new Promise(function (resolve) {
+            var now = Date.now();
+            var existing = Number(safeGet(lockKey)) || 0;
+            if (existing && now - existing >= 0 && now - existing < 2 * 60 * 1000) {
+                resolve({ ok: false, release: null });
+                return;
+            }
+            safeSet(lockKey, String(now));
+            resolve({
+                ok: true,
+                release: function () { safeSet(lockKey, ''); }
+            });
+        });
+    }
+
+    function chooseFollowUpCandidate(now) {
+        var blocked = getBlockedIds();
+        var contacts = buildContactIndex();
+        var candidates = [];
+        Object.keys(contacts).forEach(function (id) {
+            var contact = contacts[id];
+            if (!contact || contact.isGroup) return;
+            if (blocked.indexOf(String(id)) !== -1) return;
+
+            var state = getFollowUpState(id);
+            if (!state || !state.nextFollowUpAt || Number(state.nextFollowUpAt) > now) return;
+
+            var history = readHistory(id);
+            var latest = newestMeaningfulMessage(history);
+            if (!latest) return;
+
+            // 刚发过追问的会话不计入
+            if (latest.proactiveContact || latest.followUp) return;
+
+            var blockedResult = global.ChatFollowupPolicy.shouldBlockFollowUp(state, now, {
+                lastMessageAt: latest.time,
+                hasUserRepliedRecently: global.ChatFollowupPolicy.hasUserRepliedInWindow
+                    ? global.ChatFollowupPolicy.hasUserRepliedInWindow(history, now, 10 * 60 * 1000)
+                    : false
+            });
+            if (blockedResult.blocked) return;
+
+            candidates.push({
+                contact: contact,
+                history: history,
+                state: state,
+                latest: latest,
+                nextFollowUpAt: Number(state.nextFollowUpAt) || 0
+            });
+        });
+
+        // nextFollowUpAt 最早的优先（最急需追问的）
+        candidates.sort(function (a, b) {
+            return a.nextFollowUpAt - b.nextFollowUpAt;
+        });
+        return candidates[0] || null;
+    }
+
+    async function checkFollowUps() {
+        if (followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
+
+        var ready = await ensureProactiveDependencies();
+        if (!ready || !global.ChatFollowupPolicy ||
+            typeof global.ChatFollowupPolicy.shouldBlockFollowUp !== 'function' ||
+            typeof global.PhoneAPI !== 'undefined' && typeof global.PhoneAPI.completeJSON !== 'function') {
+            // PhoneAPI 未加载时也不阻塞——依赖可能还在加载
+            if (!global.PhoneAPI || typeof global.PhoneAPI.completeJSON !== 'function') return;
+        }
+
+        var now = Date.now();
+        var candidate = chooseFollowUpCandidate(now);
+        if (!candidate) return;
+        var config = global.PhoneStorage && global.PhoneStorage.getApiConfig
+            ? global.PhoneStorage.getApiConfig() : {};
+        if (!config || !String(config.apiKey || '').trim()) return;
+
+        // 获取多标签页互斥锁
+        var lockHandle = null;
+        try {
+            var lockResult = await acquireFollowUpLock(candidate.contact.id);
+            if (!lockResult.ok) return;
+            lockHandle = lockResult;
+        } catch (e) {
+            return;
+        }
+
+        followUpRequestPending = true;
+
+        try {
+            // 锁内二次检查（状态可能已被其它标签页更新）
+            var freshState = getFollowUpState(candidate.contact.id);
+            if (!freshState || Number(freshState.nextFollowUpAt) > Date.now()) return;
+
+            var tone = candidate.state.followUpRound >= 2 ? 'farewell'
+                : (candidate.state.followUpRound === 1 ? 'slight' : 'curious');
+            var template = global.ChatFollowupPolicy.pickTemplate(
+                candidate.state.followUpRound || 0,
+                candidate.state.lastTopic,
+                tone
+            );
+
+            if (!template || !template.text) return;
+
+            // 构造追问 prompt：轻量模式——只要求一条追问消息
+            var prompt = [
+                '【主动追问模式】',
+                '你是「' + String(candidate.contact.name || '角色').trim() + '」。',
+                '上一轮对话已经结束（最后一条是你的消息，对方没回）。现在是考虑是否值得再主动追一句。',
+                '语气要求：' + (template.tone === 'curious' ? '自然好奇，可以用问句'
+                    : template.tone === 'slight' ? '带点小在意的陈述，不要施压'
+                    : '告别收手，不要用问句，自然收尾即可'),
+                '长度：一句话，不超过 40 字。',
+                '禁止制造愧疚、催促、制造压力。如果真的没什么可说的，返回 send=false。',
+                '输出 JSON：{"send":true,"text":"一句话"} 或 {"send":false,"text":""}。'
+            ].join('\n');
+
+            var messages = [{ role: 'system', content: prompt }];
+            messages.push.apply(messages, historyForProactivePrompt(candidate.history));
+            messages.push({
+                role: 'user',
+                content: '这是上次对话的历史。如果你觉得值得追一句就回复 send=true；否则 send=false。'
+            });
+
+            var result = await global.PhoneAPI.completeJSON({
+                messages: messages,
+                temperature: 0.72,
+                timeoutMs: 15000
+            });
+
+            if (!result || result.ok !== true || !result.data || result.data.send !== true) {
+                // AI 说不值得发 → 推进轮次但设下一个时间点
+                var skipState = global.ChatFollowupPolicy.normalizeState(candidate.state);
+                var nextDelay = global.ChatFollowupPolicy.computeDelayMinutes(
+                    Math.min(skipState.followUpRound + 1, global.ChatFollowupPolicy.CONSTANTS.MAX_ROUNDS - 1),
+                    1.0 // relationshipMultiplier 固定 1.0，当前无关系等级字段
+                );
+                skipState.followUpRound = Math.min(skipState.followUpRound + 1,
+                    global.ChatFollowupPolicy.CONSTANTS.MAX_ROUNDS - 1);
+                skipState.nextFollowUpAt = Date.now() + nextDelay * 60 * 1000;
+                setFollowUpState(candidate.contact.id, skipState);
+                return;
+            }
+
+            var content = cleanProactiveMessage(result.data.text);
+            if (!content) return;
+            if (document.visibilityState === 'hidden') return;
+
+            // 请求期间用户若已回复，放弃
+            var freshHistory = readHistory(candidate.contact.id);
+            var replyNow = global.ChatFollowupPolicy.hasUserRepliedInWindow
+                ? global.ChatFollowupPolicy.hasUserRepliedInWindow(freshHistory, Date.now(), 10 * 60 * 1000)
+                : false;
+            if (replyNow) {
+                var clearedState = global.ChatFollowupPolicy.applyUserReply(candidate.state, Date.now());
+                setFollowUpState(candidate.contact.id, clearedState);
+                return;
+            }
+
+            // 同话题重复检测：即将发出的模板与 history 里最近一条 assistant 消息高度相似
+            // 只看"去掉标点后完全相同"的情况，避免误伤
+            var lastAssistantMsg = null;
+            for (var k = freshHistory.length - 1; k >= 0; k--) {
+                var _hm = freshHistory[k];
+                if (_hm && !_hm.silent && !_hm.isError &&
+                    (_hm.role === 'assistant' || _hm.role === 'received') &&
+                    (!_hm.type || _hm.type === 'text')) {
+                    lastAssistantMsg = _hm;
+                    break;
+                }
+            }
+            if (lastAssistantMsg) {
+                var _strippedNow = String(content).replace(/[\s\p{P}]/gu, '').toLowerCase();
+                var _strippedLast = String(lastAssistantMsg.text || lastAssistantMsg.content || '')
+                    .replace(/[\s\p{P}]/gu, '').toLowerCase();
+                // 8 字以上才做同话题检测，避免短词误伤
+                if (_strippedNow.length >= 8 && _strippedNow === _strippedLast) {
+                    var _sameTopicState = global.ChatFollowupPolicy.applySameTopicCooldown(candidate.state, Date.now());
+                    setFollowUpState(candidate.contact.id, _sameTopicState);
+                    return;
+                }
+            }
+
+            var newMessage = {
+                role: 'assistant',
+                text: content,
+                time: Date.now(),
+                voiceMode: 'online',
+                proactiveContact: true,  // 复用现有标记（追问本质上也是主动发起的消息）
+                followUp: true,          // 额外标记：这条是追问节奏里的
+                followUpRound: (candidate.state.followUpRound || 0)
+            };
+            freshHistory.push(newMessage);
+            var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
+                ? global.PhoneStorage.saveChatHistory(candidate.contact.id, freshHistory)
+                : safeSet('chat_history_' + candidate.contact.id, freshHistory);
+            if (!saved) return;
+
+            // 轮次推进：调 applyIgnore 算下一轮 nextFollowUpAt（或达上限后自动设冷却）
+            var newState = global.ChatFollowupPolicy.applyIgnore(candidate.state, Date.now());
+            newState.lastTopic = template.text;
+            setFollowUpState(candidate.contact.id, newState);
+
+            tick();
+        } catch (error) {
+            try { console.warn('[ChatNotifier] follow-up skipped:', error && error.message ? error.message : error); } catch (e) {}
+        } finally {
+            followUpRequestPending = false;
+            if (lockHandle && typeof lockHandle.release === 'function') {
+                try { lockHandle.release(); } catch (e) {}
+            }
+        }
+    }
+
     function startProactiveScheduler() {
         if (proactiveSchedulerStarted) return;
         proactiveSchedulerStarted = true;
         checkProactiveContacts();
-        setInterval(checkProactiveContacts, PROACTIVE_CHECK_MS);
+        checkFollowUps();
+        setInterval(function () {
+            checkProactiveContacts();
+            checkFollowUps();
+        }, PROACTIVE_CHECK_MS);
         global.addEventListener('visibilitychange', function () {
-            if (document.visibilityState === 'visible') checkProactiveContacts();
+            if (document.visibilityState === 'visible') {
+                checkProactiveContacts();
+                checkFollowUps();
+            }
         });
         global.addEventListener('storage', function (event) {
             if (event && event.key && event.key.indexOf('chat_proactive_contact_') === 0 &&
-                event.newValue === 'true') checkProactiveContacts();
+                event.newValue === 'true') {
+                checkProactiveContacts();
+                checkFollowUps();
+            }
+            // chat_followup_state_v1 被别的标签页更新时，本页立刻重新扫描
+            if (event && event.key === FOLLOWUP_STATE_KEY) checkFollowUps();
         });
     }
 

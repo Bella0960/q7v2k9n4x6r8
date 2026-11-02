@@ -19,6 +19,7 @@
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v17"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
+    <script src="../../shared/js/phone/chat-followup-policy.js?v=20261102v1"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261102v2"></script>
     <style>
         * {
@@ -4640,6 +4641,18 @@
                 if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 blockedHistory.push(blockedMsg);
                 saveMessages(blockedHistory);
+                // 用户发消息即终止追问链（含被拉黑时的发送）
+                try {
+                    if (globalThis.ChatFollowupPolicy && typeof globalThis.ChatFollowupPolicy.applyUserReply === 'function') {
+                        var _fuKey2 = 'chat_followup_state_v1';
+                        var _fuRaw2 = localStorage.getItem(_fuKey2);
+                        var _fuAll2 = _fuRaw2 ? JSON.parse(_fuRaw2) : {};
+                        if (_fuAll2 && _fuAll2[String(aliasRoleId)]) {
+                            _fuAll2[String(aliasRoleId)] = globalThis.ChatFollowupPolicy.applyUserReply(_fuAll2[String(aliasRoleId)], Date.now());
+                            localStorage.setItem(_fuKey2, JSON.stringify(_fuAll2));
+                        }
+                    }
+                } catch (_fuErr2) {}
                 if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
                 input.value = '';
                 input.style.height = 'auto';
@@ -4688,6 +4701,18 @@
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
                     saveMessages(historyList);
+                    // 用户发消息即终止追问链：清空该会话的 followUpRound / nextFollowUpAt
+                    try {
+                        if (globalThis.ChatFollowupPolicy && typeof globalThis.ChatFollowupPolicy.applyUserReply === 'function') {
+                            var _fuKey = 'chat_followup_state_v1';
+                            var _fuRaw = localStorage.getItem(_fuKey);
+                            var _fuAll = _fuRaw ? JSON.parse(_fuRaw) : {};
+                            if (_fuAll && _fuAll[String(aliasRoleId)]) {
+                                _fuAll[String(aliasRoleId)] = globalThis.ChatFollowupPolicy.applyUserReply(_fuAll[String(aliasRoleId)], Date.now());
+                                localStorage.setItem(_fuKey, JSON.stringify(_fuAll));
+                            }
+                        }
+                    } catch (_fuErr) {}
                     if (!silent) {
                         if (_vl) vlRefresh(); else appendMessageToDOM(userMsg);
                         input.value = '';
