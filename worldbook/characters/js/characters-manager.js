@@ -963,7 +963,7 @@ function handleCancelEdit() {
     const current = captureEditorState();
     const dirty = editorOriginalState && !editorStatesEqual(current, editorOriginalState);
     if (dirty) {
-        const shouldDiscard = confirm('当前有尚未保存的修改。放弃本次全部修改并返回角色列表吗？');
+        const shouldDiscard = confirm('当前有尚未保存的修改。放弃本次全部修改并返回上一层吗？');
         if (!shouldDiscard) return;
     }
     if (currentDraftKey) {
