@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>日记 · 预览</title>
+<style>
+:root{color-scheme:light;--ink:#171717;--body:#3f3f42;--muted:#929297;--line:#e9e9ea;--paper:#fff;--canvas:#fff;--serif:Georgia,"Songti SC","Noto Serif CJK SC",serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:#fff;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit}button{color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #777;outline-offset:3px}
+.app{width:min(100%,470px);min-height:100dvh;margin:0 auto;padding:calc(18px + env(safe-area-inset-top,0px)) 21px calc(88px + env(safe-area-inset-bottom,0px));background:#fff;position:relative}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:6px 0 17px;border-bottom:1px solid #ededee}
+.title-wrap{display:flex;align-items:baseline;gap:10px}
+h1{font:400 29px/1.1 var(--serif);letter-spacing:-.055em;margin:0}
+.subtle-date{font-size:10px;color:#aaa;letter-spacing:.05em}
+.actions{display:flex;align-items:center;gap:8px}
+.icon-btn{width:34px;height:34px;display:grid;place-items:center;border:0;border-bottom:1px solid #bcbcc0;background:transparent;color:#555;border-radius:0;padding:0}
+.icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}
+.icon-btn:active{transform:scale(.94)}
+.search-row{display:none;align-items:center;gap:9px;margin:13px 0 9px;padding:0 2px;border-bottom:1px solid #d8d8da}
+.search-row.show{display:flex}
+.search-row svg{width:16px;height:16px;stroke:#888;fill:none;stroke-width:1.5;flex:none}
+.search-row input{flex:1;min-width:0;height:37px;border:0;outline:0;background:transparent;font-size:12px;color:#222}
+.search-row input::placeholder{color:#b4b4b8}
+.list-head{display:flex;align-items:baseline;justify-content:space-between;padding:19px 0 10px}
+.list-head strong{font-size:12px;font-weight:600;letter-spacing:.015em}
+.list-head span{font:10px Georgia,serif;color:#aaa;letter-spacing:.1em}
+.entries{position:relative;display:flex;flex-direction:column;gap:8px;padding:2px 0 20px 14px}
+.entries:before{content:"";position:absolute;left:3px;top:14px;bottom:28px;width:1px;background:#ededee}
+.entry{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 58px;align-items:center;gap:11px;min-height:86px;padding:11px 12px 11px 13px;border:1px solid #eeeeef;border-radius:13px;background:#fff;cursor:pointer;transition:background .18s,border-color .18s,transform .18s;animation:appear .28s both}
+.entry:before{content:"";position:absolute;left:-14px;top:22px;width:5px;height:5px;border-radius:50%;background:#d5d5d8;box-shadow:0 0 0 3px #fff}
+.entry:active{background:#fafafa;transform:scale(.992)}
+.entry-main{min-width:0}
+.entry-meta{display:flex;align-items:center;gap:9px;min-width:0;margin-bottom:7px}
+.entry-date{font-size:10px;color:#9b9ba0;white-space:nowrap;letter-spacing:.02em}
+.entry-mood{font-size:9px;line-height:1.2;color:#666;padding-left:9px;border-left:1px solid #e3e3e5;white-space:nowrap}
+.entry-text{margin:0;color:#343438;font-size:12.5px;line-height:1.65;letter-spacing:.005em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.entry-photo{width:58px;height:58px;border-radius:9px;overflow:hidden;background:#f2f2f2;display:block}
+.entry-photo svg{width:100%;height:100%;display:block}
+.entry-photo.empty{visibility:hidden}
+.empty{padding:34px 8px;color:#999;font-size:12px;line-height:1.8}
+.empty button{border:0;border-bottom:1px solid #aaa;padding:3px 0;background:none;color:#333;font-size:11px}
+.write-fab{position:fixed;z-index:4;left:max(22px,calc(50% - 210px));bottom:calc(22px + env(safe-area-inset-bottom,0px));width:49px;height:49px;border:1px solid #e5e5e7;border-radius:50%;background:rgba(255,255,255,.96);display:grid;place-items:center;color:#555;box-shadow:0 2px 12px rgba(0,0,0,.035);transition:transform .18s}
+.write-fab:active{transform:scale(.94)}
+.write-fab svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round}
+.preview-mark{position:fixed;z-index:3;right:max(18px,calc(50% - 210px));bottom:calc(35px + env(safe-area-inset-bottom,0px));color:#b7b7bb;font-size:9px;letter-spacing:.04em;pointer-events:none}
+.editor{position:fixed;z-index:20;inset:0;background:#fff;display:none;flex-direction:column;padding:calc(17px + env(safe-area-inset-top,0px)) 21px calc(14px + env(safe-area-inset-bottom,0px));overflow:auto}
+.editor.show{display:flex;animation:fade .2s ease}
+.editor.paper-warm{background:#f7f2e9}.editor.paper-olive{background:#eef0e9}.editor.paper-stone{background:#f0efec}.editor.paper-clay{background:#f3e9df}
+.editor-head{display:flex;align-items:center;justify-content:space-between;padding-bottom:17px;border-bottom:1px solid rgba(80,80,80,.16)}
+.editor-head h2{font:400 27px/1.1 var(--serif);letter-spacing:-.04em;margin:0}
+.editor-head p{font-size:9px;color:#8e8e8e;letter-spacing:.12em;margin:6px 0 0}
+.editor-close{border:0;background:transparent;border-bottom:1px solid #aaa;padding:5px 0;color:#666;font-size:11px}
+.editor-scroll{flex:1;min-height:0;overflow:auto;padding:18px 0 22px}
+.field-label{font-size:10px;color:#868686;letter-spacing:.06em;margin:18px 0 8px;display:block}
+.date-input{border:0;border-bottom:1px solid rgba(90,90,90,.23);background:transparent;padding:9px 0;width:100%;font-size:12px;color:#555}
+.title-input{width:100%;border:0;border-bottom:1px solid rgba(90,90,90,.2);border-radius:0;background:transparent;padding:10px 0 13px;font:400 25px/1.3 var(--serif);color:#252525;outline:0}
+.title-input::placeholder{color:#b7b2aa}
+.content-input{width:100%;min-height:310px;resize:vertical;border:0;background:transparent;padding:13px 0;font:14px/2 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#3d3b38;outline:0}
+.content-input::placeholder{color:#aaa69f}
+.mood-row{display:flex;flex-wrap:wrap;gap:7px}
+.mood-choice{padding:7px 11px;border:1px solid rgba(80,80,80,.19);border-radius:999px;background:transparent;color:#777;font-size:10px;transition:background .18s,color .18s,border-color .18s}
+.mood-choice.active{background:#242424;color:#fff;border-color:#242424}
+.paper-options{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.paper-swatch{width:25px;height:25px;border:1px solid rgba(60,60,60,.19);border-radius:50%;position:relative;padding:0}
+.paper-swatch.active:after{content:"";position:absolute;inset:5px;border:1px solid rgba(0,0,0,.62);border-radius:50%}
+.paper-swatch[data-paper="white"]{background:#fff}.paper-swatch[data-paper="warm"]{background:#f7f2e9}.paper-swatch[data-paper="olive"]{background:#eef0e9}.paper-swatch[data-paper="stone"]{background:#f0efec}.paper-swatch[data-paper="clay"]{background:#f3e9df}
+.photo-row{display:flex;align-items:center;gap:10px;margin-top:18px}
+.photo-btn{border:1px solid rgba(80,80,80,.2);background:transparent;padding:8px 12px;border-radius:999px;font-size:10px;color:#666}
+.photo-preview{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+.photo-preview img{width:58px;height:58px;object-fit:cover;border-radius:7px}
+.editor-bottom{display:flex;align-items:center;gap:10px;padding-top:13px;border-top:1px solid rgba(80,80,80,.17)}
+.editor-bottom span{flex:1;color:#aaa;font-size:9px}
+.save-btn{border:1px solid #222;background:#222;color:#fff;padding:11px 20px;font-size:11px}
+.cancel-btn{border:1px solid rgba(80,80,80,.23);background:transparent;color:#555;padding:11px 14px;font-size:11px}
+.reader{position:fixed;z-index:25;inset:0;background:#fff;display:none;flex-direction:column;padding:calc(17px + env(safe-area-inset-top,0px)) 23px calc(15px + env(safe-area-inset-bottom,0px))}
+.reader.show{display:flex;animation:fade .2s ease}
+.reader-head{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #e8e8e9}
+.reader-head button{border:0;border-bottom:1px solid #aaa;background:transparent;color:#666;padding:5px 0;font-size:11px}
+.reader-body{flex:1;overflow:auto;padding:28px 0}
+.reader-meta{font-size:11px;color:#929297;display:flex;align-items:center;gap:9px}
+.reader-meta span{border-left:1px solid #ddd;padding-left:9px;color:#666}
+.reader-title{font:400 29px/1.35 var(--serif);margin:24px 0 18px;letter-spacing:-.04em}
+.reader-text{font-size:14px;line-height:2.05;color:#444;white-space:pre-wrap;overflow-wrap:anywhere}
+.reader-bottom{padding-top:12px;border-top:1px solid #e8e8e9;color:#999;font-size:10px}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes appear{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(min-width:600px){body{background:#f4f4f4}.app{min-height:100vh;box-shadow:0 0 0 1px #ebebeb}.editor,.reader{width:min(100%,470px);left:50%;right:auto;transform:translateX(-50%);box-shadow:0 0 0 1px #e6e6e6}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="topbar">
+    <div class="title-wrap"><h1>日记</h1></div>
+    <div class="actions">
+      <button class="icon-btn" id="searchToggle" aria-label="搜索"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></svg></button>
+      <button class="icon-btn" id="quickWrite" aria-label="写日记"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    </div>
+  </header>
+  <div class="search-row" id="searchRow"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></svg><input id="searchInput" placeholder="搜索日记内容或心情"><button id="clearSearch" class="editor-close">清除</button></div>
+  <div class="list-head"><strong>最近记录</strong><span id="entryCount">05 RECORDS</span></div>
+  <section class="entries" id="entries" aria-label="日记记录"></section>
+</main>
+<button class="write-fab" id="writeFab" aria-label="写日记"><svg viewBox="0 0 24 24"><path d="m4 20 4.1-1 10.8-10.8a2.15 2.15 0 0 0-3-3L5.1 16 4 20Z"/><path d="m14.5 6.5 3 3M4 20h5"/></svg></button>
+<div class="preview-mark">独立预览 · 不修改正式日记</div>
+
+<section class="editor" id="editor" aria-label="写日记">
+  <header class="editor-head"><div><h2>写下这一刻</h2><p>给生活留一点真实的痕迹</p></div><button class="editor-close" id="closeEditor">关闭</button></header>
+  <div class="editor-scroll">
+    <label class="field-label" for="entryDate">日期</label>
+    <input class="date-input" id="entryDate" type="date">
+    <label class="field-label" for="entryTitle">标题 · 可留空</label>
+    <input class="title-input" id="entryTitle" maxlength="80" placeholder="给今天一个名字">
+    <label class="field-label" for="entryContent">正文</label>
+    <textarea class="content-input" id="entryContent" placeholder="不用整理得很完整。想到什么，就从哪里开始。"></textarea>
+    <label class="field-label">此刻的心情</label>
+    <div class="mood-row" id="moodChoices">
+      <button class="mood-choice active" data-mood="平静">平静</button>
+      <button class="mood-choice" data-mood="开心">开心</button>
+      <button class="mood-choice" data-mood="疲惫">疲惫</button>
+      <button class="mood-choice" data-mood="低落">低落</button>
+      <button class="mood-choice" data-mood="期待">期待</button>
+    </div>
+    <label class="field-label">纸张色调</label>
+    <div class="paper-options" id="paperOptions">
+      <button class="paper-swatch active" data-paper="white" aria-label="素白"></button>
+      <button class="paper-swatch" data-paper="warm" aria-label="暖纸"></button>
+      <button class="paper-swatch" data-paper="olive" aria-label="灰绿"></button>
+      <button class="paper-swatch" data-paper="stone" aria-label="石灰"></button>
+      <button class="paper-swatch" data-paper="clay" aria-label="浅陶"></button>
+    </div>
+    <div class="photo-row"><label class="photo-btn" for="photoInput">添加照片</label><input id="photoInput" type="file" accept="image/*" multiple hidden><span style="font-size:9px;color:#aaa">仅在本预览中暂时显示</span></div>
+    <div class="photo-preview" id="photoPreview"></div>
+  </div>
+  <footer class="editor-bottom"><span>预览内容不会写入正式日记</span><button class="cancel-btn" id="cancelEditor">取消</button><button class="save-btn" id="saveEntry">保存预览</button></footer>
+</section>
+
+<section class="reader" id="reader" aria-label="日记阅读">
+  <header class="reader-head"><button id="readerBack">返回列表</button><button id="readerEdit">编辑这篇</button></header>
+  <article class="reader-body" id="readerBody"></article>
+  <footer class="reader-bottom">只记录，不急着整理。</footer>
+</section>
+
+<script>
+(function(){
+'use strict';
+var records=[
+{id:1,date:'2026-10-31',mood:'平静',title:'',text:'今天天气很好，去了海边散步，风吹过来的时候觉得一切都慢了下来。',photo:'sea'},
+{id:2,date:'2026-10-28',mood:'期待',title:'整理房间',text:'整理了房间，把夏天的衣服收起来了，翻到了去年的票根。',photo:''},
+{id:3,date:'2026-10-25',mood:'开心',title:'晚饭',text:'晚上煮了一碗面，加了蛋，很好吃。看了一集老电影就睡了。',photo:'meal'},
+{id:4,date:'2026-10-20',mood:'开心',title:'和朋友吃火锅',text:'和朋友吃了火锅，辣到流鼻涕。',photo:''},
+{id:5,date:'2026-10-18',mood:'平静',title:'雨天',text:'今天下雨，宅在家里听了一天的音乐。',photo:''}
+];
+var mood='平静',paper='white',photos=[],editingId=null,readerId=null;
+var $=function(id){return document.getElementById(id)};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function dateLabel(v){var p=v.split('-');return Number(p[1])+'月'+Number(p[2])+'日'}
+function photoArt(kind){
+ if(kind==='sea')return '<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#e5e5e5"/><path d="M0 44 Q25 38 48 44T100 42V100H0Z" fill="#c4c4c4"/><path d="M0 61 Q28 55 53 62T100 59" fill="none" stroke="#f8f8f8" stroke-width="3"/><path d="M0 74 Q25 69 48 74T100 72" fill="none" stroke="#aaa" stroke-width="1.5"/><circle cx="72" cy="24" r="10" fill="#f8f8f8" opacity=".8"/></svg>';
+ if(kind==='meal')return '<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" fill="#e7e4e0"/><circle cx="51" cy="53" r="31" fill="#aaa49d"/><circle cx="51" cy="53" r="25" fill="#eeeae5"/><ellipse cx="51" cy="53" rx="19" ry="15" fill="#c5b8a7"/><path d="M38 49q8-12 18 0t10 8" fill="none" stroke="#8c7d6a" stroke-width="3"/><circle cx="44" cy="57" r="3" fill="#8c7d6a"/><circle cx="58" cy="47" r="2.5" fill="#8c7d6a"/></svg>';
+ return '';
+}
+function render(){
+ var q=$('searchInput').value.trim().toLowerCase();
+ var filtered=records.filter(function(r){return !q||(r.text+' '+r.title+' '+r.mood+' '+dateLabel(r.date)).toLowerCase().includes(q)});
+ $('entryCount').textContent=String(filtered.length).padStart(2,'0')+' RECORDS';
+ $('entries').innerHTML=filtered.length?filtered.map(function(r,i){
+  var photo=r.photos&&r.photos[0]?'<img src="'+r.photos[0]+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:9px">':(r.photo?photoArt(r.photo):'');
+  return '<article class="entry" data-entry="'+r.id+'" style="animation-delay:'+(i*.035)+'s"><div class="entry-main"><div class="entry-meta"><time class="entry-date">'+dateLabel(r.date)+'</time><span class="entry-mood">'+esc(r.mood)+'</span></div><p class="entry-text">'+esc(r.text)+'</p></div><span class="entry-photo '+(photo?'':'empty')+'">'+photo+'</span></article>';
+ }).join(''):'<div class="empty">没有找到相关记录。<br><button id="emptyWrite">写下一篇</button></div>';
+}
+function openEditor(id){
+ var e=id==null?null:records.find(function(x){return x.id===id});
+ editingId=e?e.id:null;mood=e?e.mood:'平静';paper='white';photos=e&&e.photos?e.photos.slice():[];
+ $('entryDate').value=e?e.date:new Date().toISOString().slice(0,10);
+ $('entryTitle').value=e?(e.title||''):'';
+ $('entryContent').value=e?(e.text||''):'';
+ $('photoInput').value='';
+ $('photoPreview').innerHTML=photos.map(function(src){return '<img src="'+src+'" alt="">'}).join('');
+ $('saveEntry').textContent=e?'保存修改':'保存预览';
+ document.querySelectorAll('.mood-choice').forEach(function(b){b.classList.toggle('active',b.dataset.mood===mood)});
+ document.querySelectorAll('.paper-swatch').forEach(function(b){b.classList.toggle('active',b.dataset.paper===paper)});
+ applyPaper();
+ $('editor').classList.add('show');document.body.style.overflow='hidden';
+}
+function closeEditor(){$('editor').classList.remove('show');document.body.style.overflow='';}
+function applyPaper(){
+ $('editor').classList.remove('paper-warm','paper-olive','paper-stone','paper-clay');
+ if(paper!=='white')$('editor').classList.add('paper-'+paper);
+}
+function openReader(id){
+ var e=records.find(function(x){return x.id===id});if(!e)return;readerId=id;
+ $('readerBody').innerHTML='<div class="reader-meta">'+dateLabel(e.date)+'<span>'+esc(e.mood)+'</span></div>'+(e.title?'<h1 class="reader-title">'+esc(e.title)+'</h1>':'')+'<p class="reader-text">'+esc(e.text)+'</p>';
+ $('reader').classList.add('show');
+}
+$('entries').addEventListener('click',function(e){var card=e.target.closest('[data-entry]');if(card)openReader(Number(card.dataset.entry));var empty=e.target.closest('#emptyWrite');if(empty)openEditor()});
+$('searchToggle').addEventListener('click',function(){$('searchRow').classList.toggle('show');if($('searchRow').classList.contains('show'))$('searchInput').focus()});
+$('searchInput').addEventListener('input',render);
+$('clearSearch').addEventListener('click',function(){$('searchInput').value='';render()});
+$('quickWrite').addEventListener('click',function(){openEditor()});$('writeFab').addEventListener('click',function(){openEditor()});
+$('closeEditor').addEventListener('click',closeEditor);$('cancelEditor').addEventListener('click',closeEditor);
+$('moodChoices').addEventListener('click',function(e){var b=e.target.closest('[data-mood]');if(!b)return;mood=b.dataset.mood;document.querySelectorAll('.mood-choice').forEach(function(x){x.classList.toggle('active',x===b)})});
+$('paperOptions').addEventListener('click',function(e){var b=e.target.closest('[data-paper]');if(!b)return;paper=b.dataset.paper;document.querySelectorAll('.paper-swatch').forEach(function(x){x.classList.toggle('active',x===b)});applyPaper()});
+$('photoInput').addEventListener('change',function(){
+ Array.prototype.forEach.call(this.files||[],function(file){if(!file.type||file.type.indexOf('image/')!==0)return;var reader=new FileReader();reader.onload=function(ev){photos.push(ev.target.result);$('photoPreview').innerHTML=photos.map(function(src){return '<img src="'+src+'" alt="">'}).join('')};reader.readAsDataURL(file)});
+});
+$('saveEntry').addEventListener('click',function(){
+ var date=$('entryDate').value||new Date().toISOString().slice(0,10),title=$('entryTitle').value.trim(),text=$('entryContent').value.trim();
+ if(!title&&!text&&!photos.length){$('entryContent').focus();return}
+ if(editingId!=null){var old=records.find(function(x){return x.id===editingId});if(old){old.date=date;old.title=title;old.text=text;old.mood=mood;old.photos=photos.slice();old.photo=''}}
+ else records.unshift({id:Date.now(),date:date,title:title,text:text,mood:mood,photos:photos.slice(),photo:''});
+ closeEditor();$('searchInput').value='';render();
+});
+$('readerBack').addEventListener('click',function(){$('reader').classList.remove('show')});
+$('readerEdit').addEventListener('click',function(){if(readerId!=null){$('reader').classList.remove('show');openEditor(readerId)}});
+render();
+})();
+</script>
+</body>
+</html>
