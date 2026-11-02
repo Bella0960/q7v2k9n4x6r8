@@ -106,11 +106,15 @@
   height: 17px;
   display: block;
 }
-.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions .group-entry-btn svg {
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions .group-entry-btn svg,
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-plus svg {
   width: 16px;
   height: 16px;
   stroke: #26262b;
   fill: none;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .music-right #groupEntryBtn {
+  display: none !important;
 }
 .phone-mockup[data-chat-theme-preset="silver-butterfly"] .white-profile-stage .arch-avatar-bridge {
   position: static;
