@@ -6,7 +6,7 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/wallpaper-store.js?v=20261026v2"></script>
-<script src="../shared/js/chat-beauty.js?v=20261027v1"></script>
+<script src="../shared/js/chat-beauty.js?v=20261102v3"></script>
 <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -976,6 +976,11 @@
         <button class="theme-choice" type="button" id="chatThemeSilverButterflyOption" data-theme-value="silver-butterfly" aria-pressed="false">
           <span class="theme-choice-art theme-art-silver-butterfly" aria-hidden="true"><i class="art-top"></i><i class="art-left"></i><i class="art-right"></i><i class="art-bottom"></i></span>
           <span class="theme-choice-copy"><span class="theme-choice-index">04 / SILVER BUTTERFLY</span><strong>银蝶之境</strong><span class="theme-choice-desc">珍珠雾白、半透明玻璃与银色晶蝶，覆盖聊天、联系人和动态页面。</span></span>
+          <span class="theme-choice-mark" aria-hidden="true">✓</span>
+        </button>
+        <button class="theme-choice" type="button" id="chatThemeWechatOption" data-theme-value="wechat" aria-pressed="false">
+          <span class="theme-choice-art theme-art-wechat" aria-hidden="true"><i class="art-top"></i><i class="art-left"></i><i class="art-right"></i><i class="art-bottom"></i></span>
+          <span class="theme-choice-copy"><span class="theme-choice-index">05 / WECHAT</span><strong>微信</strong><span class="theme-choice-desc">整套微信风格页面；消息气泡独立选择，不会随页面主题强制改变。</span></span>
           <span class="theme-choice-mark" aria-hidden="true">✓</span>
         </button>
       </div>
@@ -2458,7 +2463,8 @@ document.getElementById('importFile').addEventListener('change', function(e){
     [[document.getElementById('chatThemeDefaultOption'), 'default'],
      [document.getElementById('chatThemeIMessageOption'), 'imessage'],
      [document.getElementById('chatThemeQQOption'), 'qq'],
-     [document.getElementById('chatThemeSilverButterflyOption'), 'silver-butterfly']].forEach(function (pair) {
+     [document.getElementById('chatThemeSilverButterflyOption'), 'silver-butterfly'],
+     [document.getElementById('chatThemeWechatOption'), 'wechat']].forEach(function (pair) {
       if (!pair[0]) return;
       var selected = current === pair[1];
       pair[0].classList.toggle('selected', selected);
@@ -2469,6 +2475,7 @@ document.getElementById('importFile').addEventListener('change', function(e){
       if (current === 'imessage') status.textContent = '当前全局主题：iMessage 短信。所有角色的聊天详情页都将使用这套整页布局。';
       else if (current === 'qq') status.textContent = '当前全局主题：QQ 风格。浅灰暖调背景、白色对方气泡、绿色自己气泡、蓝色发送按钮。';
       else if (current === 'silver-butterfly') status.textContent = '当前全局主题：银蝶之境。聊天首页、聊天详情、联系人和动态将统一使用珍珠白玻璃主题。';
+      else if (current === 'wechat') status.textContent = '当前全局主题：微信。聊天首页、单聊、通讯录和朋友圈统一切换；气泡在商城单独选择。';
       else status.textContent = '当前全局主题：默认聊天主题。原有气泡细节、CSS 预设与聊天记录均会保留。';
     }
   }
@@ -2484,13 +2491,14 @@ document.getElementById('importFile').addEventListener('change', function(e){
     }
     refreshChatThemeSelection();
     try { window.dispatchEvent(new CustomEvent('maomao:chat-theme-change', { detail: { theme: theme } })); } catch (e) {}
-    var msg = theme === 'silver-butterfly' ? '已应用银蝶之境主题' : (theme === 'imessage' ? '已应用 iMessage 短信主题' : (theme === 'qq' ? '已应用 QQ 风格主题' : '已恢复默认聊天主题'));
+    var msg = theme === 'wechat' ? '已应用微信页面主题' : (theme === 'silver-butterfly' ? '已应用银蝶之境主题' : (theme === 'imessage' ? '已应用 iMessage 短信主题' : (theme === 'qq' ? '已应用 QQ 风格主题' : '已恢复默认聊天主题')));
     if (typeof showToast === 'function') showToast(msg);
   }
   document.getElementById('chatThemeDefaultOption').addEventListener('click', function () { chooseChatTheme('default'); });
   document.getElementById('chatThemeIMessageOption').addEventListener('click', function () { chooseChatTheme('imessage'); });
   document.getElementById('chatThemeQQOption').addEventListener('click', function () { chooseChatTheme('qq'); });
   document.getElementById('chatThemeSilverButterflyOption').addEventListener('click', function () { chooseChatTheme('silver-butterfly'); });
+  document.getElementById('chatThemeWechatOption').addEventListener('click', function () { chooseChatTheme('wechat'); });
   window.addEventListener('pageshow', refreshChatThemeSelection);
 
   document.getElementById('beautyTabs').addEventListener('click', function (e) {

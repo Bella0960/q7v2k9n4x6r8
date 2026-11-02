@@ -204,7 +204,7 @@
         try {
             if (localStorage.getItem(CHAT_THEME_MIGRATED_FLAG) === '1') return;
             var saved = localStorage.getItem(CHAT_THEME_KEY);
-            if (saved !== 'default' && saved !== 'imessage' &&
+            if (saved !== 'default' && saved !== 'imessage' && saved !== 'qq' && saved !== 'silver-butterfly' && saved !== 'wechat' &&
                 readScope('global').themePreset === 'imessage') {
                 localStorage.setItem(CHAT_THEME_KEY, 'imessage');
             }
@@ -215,13 +215,13 @@
     NS.getThemePreset = function () {
         try {
             var saved = localStorage.getItem(CHAT_THEME_KEY);
-            if (saved === 'default' || saved === 'imessage' || saved === 'qq' || saved === 'silver-butterfly') return saved;
+            if (saved === 'default' || saved === 'imessage' || saved === 'qq' || saved === 'silver-butterfly' || saved === 'wechat') return saved;
         } catch (e) {}
         var legacy = readScope('global').themePreset;
         return legacy === 'imessage' ? 'imessage' : 'default';
     };
     NS.setThemePreset = function (theme) {
-        if (theme !== 'imessage' && theme !== 'qq' && theme !== 'silver-butterfly') theme = 'default';
+        if (theme !== 'imessage' && theme !== 'qq' && theme !== 'silver-butterfly' && theme !== 'wechat') theme = 'default';
         cleanupLegacyThemeValues();
         try {
             localStorage.setItem(CHAT_THEME_KEY, theme);
@@ -379,7 +379,7 @@
         var s = rootEl.style;
         // The page shell and the message stage share the same built-in theme.
         // This lets iMessage update the header/composer together with the bubbles.
-        var activeThemePreset = (v.themePreset === 'imessage' || v.themePreset === 'qq' || v.themePreset === 'silver-butterfly') ? v.themePreset : 'default';
+        var activeThemePreset = (v.themePreset === 'imessage' || v.themePreset === 'qq' || v.themePreset === 'silver-butterfly' || v.themePreset === 'wechat') ? v.themePreset : 'default';
         try {
             rootEl.setAttribute('data-chat-theme-preset', activeThemePreset);
             var phoneShell = rootEl.closest ? rootEl.closest('.phone-mockup') : null;

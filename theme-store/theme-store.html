@@ -7,7 +7,7 @@
   <title>主题商城</title>
   <script src="../shared/js/font-loader.js?v=20261102v1"></script>
   <script src="../shared/js/native-feel.js"></script>
-  <script src="../shared/js/chat-beauty.js?v=20261102v2"></script>
+  <script src="../shared/js/chat-beauty.js?v=20261102v3"></script>
   <link rel="stylesheet" href="../shared/css/chat-beauty-runtime.css?v=20261031v1">
   <link rel="stylesheet" href="../shared/css/mobile-fit.css">
   <style>
@@ -67,6 +67,19 @@
       background:rgba(255,255,255,.78);color:#34343a;border:1px solid rgba(255,255,255,.92);
       backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)
     }
+    .theme-art-wechat{padding:8px;display:block;background:#f4f4f4;border:1px solid #e5e5e5}
+    .wechat-mini-screens{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;width:100%;height:100%}
+    .wechat-mini-screen{display:flex;min-width:0;flex-direction:column;gap:5px;padding:8px 4px 5px;background:#f7f7f7;border:1px solid #e8e8e8;border-radius:7px;overflow:hidden}
+    .wechat-mini-title{font:600 7px/1.2 -apple-system,BlinkMacSystemFont,sans-serif;color:#222}
+    .wechat-mini-line{height:3px;width:70%;background:#dedede;border-radius:2px}
+    .wechat-mini-row{display:flex;align-items:center;gap:3px}
+    .wechat-mini-row b{width:9px;height:9px;flex:0 0 9px;border-radius:2px;background:#d5d5d5}
+    .wechat-mini-row em{height:3px;flex:1;background:#dedede;border-radius:2px}
+    .wechat-mini-cover{height:36px;background:linear-gradient(145deg,#d7d7d7,#aaa);border-radius:2px}
+    .wechat-mini-feed{height:9px;background:#fff;border:1px solid #e7e7e7}
+    .wechat-mini-chat{height:8px;width:70%;border-radius:3px;background:#fff;border:1px solid #e5e5e5}
+    .wechat-mini-chat.right{align-self:flex-end;background:#95ec69;border-color:#95ec69}
+    .wechat-mini-nav{height:7px;margin-top:auto;background:#fff;border-top:1px solid #e5e5e5}
     .theme-art-silver-butterfly .art-bubble.right{
       background:rgba(220,220,225,.82);color:#27272b;border:1px solid rgba(255,255,255,.92);
       backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)
@@ -187,9 +200,30 @@
       {id:'default',name:'原生黑白',eyebrow:'01 / ORIGINAL',desc:'保留当前聊天界面的黑白基调与原有布局。'},
       {id:'imessage',name:'iMessage 短信',eyebrow:'02 / MESSAGE',desc:'短信式消息布局与经典蓝灰气泡。'},
       {id:'qq',name:'QQ 风格',eyebrow:'03 / CLASSIC',desc:'切换到项目已有的 QQ 聊天主题。'},
-      {id:'silver-butterfly',name:'银蝶之境',eyebrow:'04 / SILVER BUTTERFLY',desc:'珍珠雾白与透光银蝶，统一覆盖聊天、联系人和动态页面。'}
+      {id:'silver-butterfly',name:'银蝶之境',eyebrow:'04 / SILVER BUTTERFLY',desc:'珍珠雾白与透光银蝶，统一覆盖聊天、联系人和动态页面。'},
+      {id:'wechat',name:'微信',eyebrow:'05 / WECHAT',desc:'微信式聊天列表、单聊界面、通讯录与朋友圈；气泡可以独立选择。'}
     ];
     var defaultOwned=['default'];
+    // Bubble-only preset: it is stored with ChatBeauty.save(), never as a page theme.
+    var builtinBubblePresets=[{
+      id:'builtin-wechat-bubble',name:'微信经典气泡',builtin:true,
+      data:{
+        avatarSize:34,avatarRadius:5,bubbleGap:13,bubbleGapX:0,bubbleMaxWidth:80,bubblePadding:9,
+        myBubbleBg:'#95EC69',myBubbleOpacity:100,myBubbleColor:'#1B1B1B',
+        myBubbleRadius:'6px',myBubbleRadiusTL:6,myBubbleRadiusTR:6,myBubbleRadiusBR:6,myBubbleRadiusBL:6,
+        myBubbleBorderColor:'#95EC69',myBubbleBorderWidth:0,myBubbleBorderStyle:'solid',myBubbleLineHeight:1.45,
+        myBubbleShadowVisible:false,myBubblePadding:9,myBubbleFontSize:14,myBubbleFontFamily:'system',
+        myBubbleTailSize:6,myBubbleTailX:-5,myBubbleTailY:10,myBubbleTailShape:'triangle',myBubbleTailColor:'#95EC69',
+        partnerBubbleBg:'#FFFFFF',partnerBubbleOpacity:100,partnerBubbleColor:'#1B1B1B',
+        partnerBubbleRadius:'6px',partnerBubbleRadiusTL:6,partnerBubbleRadiusTR:6,partnerBubbleRadiusBR:6,partnerBubbleRadiusBL:6,
+        partnerBubbleBorderColor:'#FFFFFF',partnerBubbleBorderWidth:0,partnerBubbleBorderStyle:'solid',partnerBubbleLineHeight:1.45,
+        partnerBubbleShadowVisible:false,partnerBubblePadding:9,partnerBubbleFontSize:14,partnerBubbleFontFamily:'system',
+        partnerBubbleTailSize:6,partnerBubbleTailX:-5,partnerBubbleTailY:10,partnerBubbleTailShape:'triangle',partnerBubbleTailColor:'#FFFFFF',
+        messageTimeVisible:true,messageTimeColor:'#8A8A8A',messageTimeSize:10,messageTimePosition:'above',
+        messageTimeShowRead:false,messageReadPosition:'inline',messageShowDate:false,imageBubbleRadius:6,
+        avatarBorderColor:'#FFFFFF',avatarBorderWidth:0
+      }
+    }];
 
     function readJSON(key,fallback){try{var v=JSON.parse(localStorage.getItem(key)||'null');return v==null?fallback:v;}catch(e){return fallback;}}
     function writeJSON(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch(e){return false;}}
@@ -210,6 +244,10 @@
       var list=readJSON(VISUAL_KEY,[]),deleted=readJSON(DELETED_KEY,[]);
       if(!Array.isArray(list))list=[];if(!Array.isArray(deleted))deleted=[];
       return list.filter(function(p){return p&&typeof p==='object'&&p.id&&deleted.indexOf(p.id)<0&&p.data&&typeof p.data==='object';});
+    }
+    function availableBubblePresets(){
+      var saved=readVisualPresets(),savedIds=saved.map(function(p){return String(p.id);});
+      return builtinBubblePresets.filter(function(p){return savedIds.indexOf(String(p.id))<0;}).concat(saved);
     }
     function readRoles(){
       var roles=readJSON('ai_custom_characters',[]);return Array.isArray(roles)?roles.filter(function(r){return r&&r.id!=null;}):[];
@@ -253,6 +291,15 @@
         '<div class="sample-row mine"><span class="sample-bubble" style="background:color-mix(in srgb,'+esc(my)+' '+myOpacity+'%,transparent);color:'+esc(myColor)+';border-radius:'+esc(myRadius)+';font-size:'+Number(myFont)+'px;padding:'+Math.max(2,Number(myPad)-.5)+'px '+(Number(myPad)+3)+'px;font-family:'+myFamily+'">有呀，等会见。</span><span class="sample-avatar">我</span></div>';
     }
     function themeArt(theme){
+      if(theme.id==='wechat'){
+        return '<div class="product-art theme-art-wechat" aria-label="微信聊天、通讯录、朋友圈和单聊四页预览">'+
+          '<div class="wechat-mini-screens">'+
+            '<span class="wechat-mini-screen"><i class="wechat-mini-title">微信</i><i class="wechat-mini-line"></i><i class="wechat-mini-row"><b></b><em></em></i><i class="wechat-mini-row"><b></b><em></em></i><i class="wechat-mini-row"><b></b><em></em></i><i class="wechat-mini-nav"></i></span>'+
+            '<span class="wechat-mini-screen"><i class="wechat-mini-title">通讯录</i><i class="wechat-mini-row"><b></b><em></em></i><i class="wechat-mini-row"><b></b><em></em></i><i class="wechat-mini-row"><b></b><em></em></i><i class="wechat-mini-nav"></i></span>'+
+            '<span class="wechat-mini-screen"><i class="wechat-mini-title">朋友圈</i><i class="wechat-mini-cover"></i><i class="wechat-mini-feed"></i><i class="wechat-mini-nav"></i></span>'+
+            '<span class="wechat-mini-screen"><i class="wechat-mini-title">聊天</i><i class="wechat-mini-chat left"></i><i class="wechat-mini-chat right"></i><i class="wechat-mini-chat left"></i><i class="wechat-mini-nav"></i></span>'+
+          '</div></div>';
+      }
       if(theme.id==='silver-butterfly'){
         return '<div class="product-art theme-art-silver-butterfly" aria-label="聊天、对话、联系人和动态四页预览">'+
           '<div class="silver-mini-screens">'+
@@ -276,19 +323,19 @@
       return html;
     }
     function renderBubbles(){
-      var presets=readVisualPresets(),scopeSelect='<div class="scope-row"><label for="bubbleScope">应用范围</label><select id="bubbleScope" class="scope-select"><option value="global">全部聊天 · 全局</option></select></div>';
-      var html='<div class="section-head"><div><h3>聊天气泡预设</h3></div><p>与聊天美化中的已保存预设同步</p></div>'+scopeSelect;
+      var presets=availableBubblePresets(),scopeSelect='<div class="scope-row"><label for="bubbleScope">应用范围</label><select id="bubbleScope" class="scope-select"><option value="global">全部聊天 · 全局</option></select></div>';
+      var html='<div class="section-head"><div><h3>聊天气泡预设</h3></div><p>页面主题与气泡完全独立，可任意组合</p></div>'+scopeSelect;
       if(!presets.length){
         html+='<div class="empty-state"><strong>这里还没有气泡预设</strong><p>在聊天美化里调好气泡样式，保存为预设后，就会自动出现在这里。</p><button class="action-btn" type="button" data-action="open-beauty">去创建气泡预设</button></div>';
       }else{
         html+='<div class="bubble-list">';
         presets.forEach(function(p){
           var active=isBubblePresetActive(p,bubbleScopeValue);
-          html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">BUBBLE PRESET</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':'已保存')+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
+          html+='<article class="bubble-card"><div class="bubble-preview"><span class="bubble-preview-label">'+(p.builtin?'BUILT-IN / WECHAT':'BUBBLE PRESET')+'</span>'+bubbleSampleMarkup(p.data)+'</div><div class="bubble-details"><strong>'+esc(p.name||'未命名预设')+'</strong><small>'+(active?'正在使用':(p.builtin?'内置预设':'已保存'))+'</small><button class="action-btn '+(active?'light':'')+'" type="button" data-action="bubble-apply" data-id="'+esc(p.id)+'" '+(active?'disabled':'')+'>'+(active?'正在使用':'应用')+'</button></div></article>';
         });
         html+='</div>';
       }
-      html+='<div class="helper-row"><p>应用后写入 ChatBeauty 的全局或角色配置，聊天页会读取同一份设置。</p><button class="text-link" data-action="open-beauty" type="button">调整更多细节</button></div>';
+      html+='<div class="helper-row"><p>页面外观与消息气泡独立保存。微信气泡也能搭配银蝶、QQ 等其他页面主题。</p><button class="text-link" data-action="open-beauty" type="button">调整更多细节</button></div>';
       return html;
     }
     function openFontDB(){
@@ -331,7 +378,8 @@
     }
     function currentBubbleName(presets,scope){
       for(var i=0;i<presets.length;i++)if(isBubblePresetActive(presets[i],scope))return presets[i].name||'已保存气泡预设';
-      return '自定义气泡样式';
+      var builtin=builtinBubblePresets.filter(function(p){return isBubblePresetActive(p,scope);})[0];
+      return builtin?builtin.name:'自定义气泡样式';
     }
     function renderMine(){
       var owned=getOwned(),activeTheme=window.ChatBeauty&&ChatBeauty.getThemePreset?ChatBeauty.getThemePreset():'default';
@@ -347,6 +395,7 @@
       }
       defaultThemes.forEach(function(t){if(owned.indexOf(t.id)>=0||activeTheme===t.id)addMine('themes',t.name,'聊天主题',activeTheme===t.id,'T',t.id);});
       presets.forEach(function(p){addMine('bubbles',p.name||'未命名气泡预设', '来自聊天美化 · 气泡',isBubblePresetActive(p,scope),'B',p.id);});
+      builtinBubblePresets.forEach(function(p){if(isBubblePresetActive(p,scope))addMine('bubbles',p.name,'商城内置 · 独立气泡预设',true,'W',p.id);});
       addMine('fonts','系统默认','设备原生字体',!activeFontId()&&!activeFontUrl(),'Aa','system');
       if(activeFontUrl())addMine('fonts','自定义链接字体','当前应用的字体链接',true,'URL','custom-url');
       fontRecords.forEach(function(record){addMine('fonts',record.name||'未命名字体',record.type==='file'?'本地字体文件':'字体链接',activeFontId()===record.id,'Aa',record.id);});
@@ -357,7 +406,8 @@
     }
     function updateOwnedCount(){
       var owned=getOwned(),presets=readVisualPresets();
-      document.getElementById('ownedCount').textContent=String(owned.length+presets.length+fontRecords.length+(activeFontUrl()?1:0)).padStart(2,'0');
+      var activeBuiltinCount=builtinBubblePresets.filter(function(p){return isBubblePresetActive(p,bubbleScopeValue);}).length;
+      document.getElementById('ownedCount').textContent=String(owned.length+presets.length+activeBuiltinCount+fontRecords.length+(activeFontUrl()?1:0)).padStart(2,'0');
     }
     function enableProductDrag(){
       var rail=document.querySelector('.product-grid');if(!rail||rail.dataset.dragReady)return;
@@ -392,7 +442,7 @@
       document.getElementById('storeContent').scrollTop=0;
     }
     function applyBubblePreset(id){
-      var preset=readVisualPresets().filter(function(p){return String(p.id)===String(id);})[0];
+      var preset=availableBubblePresets().filter(function(p){return String(p.id)===String(id);})[0];
       if(!preset||!window.ChatBeauty||!ChatBeauty.save){toast('没有找到这条预设，请刷新列表');return;}
       var scope=bubbleScopeValue;
       var data=preset.data||{},payload={},keys=bubbleKeys();

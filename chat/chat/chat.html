@@ -6,7 +6,7 @@
 <title>聊天 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
-<script src="../../shared/js/chat-beauty.js?v=20261102v2"></script>
+<script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <style>
   * {
@@ -724,7 +724,7 @@
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 <script src="../../shared/js/chat-page-theme.js?v=20261102v1"></script>
-<link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v2">
+<link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v3">
 </head>
 <body>
 
@@ -738,6 +738,13 @@
       <!-- 封面底图（默认深到浅灰渐变，上传后铺满） -->
       <div class="cover-gradient-banner" id="coverBox"></div>
       <div class="cover-click-area" id="coverClickArea" aria-label="更换封面"></div>
+      <div class="wechat-home-header">
+        <h1>微信</h1>
+        <div class="wechat-home-actions">
+          <button type="button" id="wechatHomeSearch" aria-label="搜索聊天"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg></button>
+          <button type="button" id="wechatGroupEntryBtn" aria-label="发起群聊"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+        </div>
+      </div>
       <div class="chat-theme-header">
         <div class="chat-theme-copy">
           <h1>Chat</h1>
@@ -837,6 +844,12 @@
       window.location.href = 'chat-search.html';
     });
     document.getElementById('silverGroupEntryBtn').addEventListener('click', function () {
+      document.getElementById('groupEntryBtn').click();
+    });
+    document.getElementById('wechatHomeSearch').addEventListener('click', function () {
+      window.location.href = 'chat-search.html';
+    });
+    document.getElementById('wechatGroupEntryBtn').addEventListener('click', function () {
       document.getElementById('groupEntryBtn').click();
     });
   </script>
