@@ -269,6 +269,104 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
 @keyframes readerTurnPrev{from{opacity:.45;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
 @media(prefers-reduced-motion:reduce){.reader-page.turn-next,.reader-page.turn-prev{animation:none}}
 @media(max-width:500px){.reader-backdrop{padding:0;background:#fff}.reader-book{width:100%;height:100dvh;border:0;box-shadow:none}.reader-toolbar{padding-top:calc(12px + env(safe-area-inset-top,0px))}.reader-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}.reader-page{padding-top:28px}}
+
+/* ===== Diary list redesign: quiet timeline, direct writing, fewer rules ===== */
+html,body{background:#f7f7f8}
+.phone-mockup{background:#fff;border:0;border-radius:0;box-shadow:none;width:min(430px,100vw);height:100dvh;min-height:0;margin:0 auto}
+.app-head{padding:calc(12px + env(safe-area-inset-top,0px)) 25px 8px}
+.brand-mark{font-size:27px;letter-spacing:-.06em;color:#222;font-weight:650}
+.app-head .head-left{gap:0}
+.app-head #backHome{margin-right:15px}
+.app-scroll{padding:0 25px 110px}
+.diary-list-head{display:flex;align-items:flex-end;justify-content:space-between;padding:18px 0 17px}
+.diary-kicker{display:block;font:9px/1.4 Georgia,serif;letter-spacing:.18em;color:#aaa;margin-bottom:7px}
+.diary-list-head h1{font-size:32px;line-height:1;margin:0;font-weight:650;letter-spacing:-.07em;color:#252530}
+.diary-total{font:11px Georgia,serif;letter-spacing:.08em;color:#aaa;padding-bottom:3px}
+.diary-search{display:none;align-items:center;gap:10px;padding:10px 0;margin:0 0 10px;border-bottom:1px solid #ececf0}
+.diary-search.is-open{display:flex}
+.diary-search svg{width:17px;height:17px;stroke:#9b9ba4;fill:none;stroke-width:1.6}
+.diary-search input{border:0;background:transparent;outline:0;flex:1;min-width:0;font-size:13px;color:#30303a}
+.diary-search input::placeholder{color:#b7b7c0}
+.diary-list-tools{display:flex;align-items:center;justify-content:space-between;margin:2px 0 13px}
+.diary-type-filter{display:flex;align-items:center;gap:17px}
+.diary-type-filter .filter-chip{font-size:11px;padding:5px 0 7px;color:#999}
+.diary-type-filter .filter-chip.active{color:#292932;font-weight:650}
+.diary-type-filter .filter-chip:after{bottom:1px}
+.diary-result-count{font:9px Georgia,serif;letter-spacing:.12em;color:#c0c0c6}
+.entries{position:relative;gap:13px;padding:7px 0 28px 17px}
+.entries:before{content:"";position:absolute;left:3px;top:12px;bottom:37px;width:1px;background:repeating-linear-gradient(to bottom,#e4e4e9 0 2px,transparent 2px 10px)}
+.entry-card{position:relative;border:1px solid rgba(255,255,255,.96)!important;border-radius:24px!important;padding:17px 17px 13px!important;background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(248,248,251,.94))!important;box-shadow:0 9px 24px rgba(40,40,55,.055)!important;overflow:hidden;transition:transform .25s ease,box-shadow .25s ease!important}
+.entry-card:before{content:"";position:absolute;left:-19px;top:23px;width:7px;height:7px;border-radius:50%;background:#d7d7df;box-shadow:0 0 0 4px #fff}
+.entry-card:active{transform:scale(.985)!important;background:#fff!important}
+.entry-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:11px}
+.entry-meta-line{display:flex;align-items:center;gap:9px;min-width:0}
+.entry-meta-line time{font-size:11px;color:#b1b1ba;letter-spacing:.025em;white-space:nowrap}
+.entry-mood{font-size:10px;padding:3px 8px;border:0;border-radius:99px;background:#f0f0f3;color:#777;white-space:nowrap}
+.entry-mood.mood-开心{background:#fff2df;color:#9c713f}
+.entry-mood.mood-平静{background:#eef1f4;color:#78828e}
+.entry-mood.mood-疲惫{background:#f1edf5;color:#897b95}
+.entry-mood.mood-低落{background:#edf0f6;color:#7a8295}
+.entry-mood.mood-期待{background:#edf4ef;color:#718d78}
+.entry-type-label{font-size:9px;letter-spacing:.04em;color:#b6b6be;border:0;padding:0}
+.entry-pin-label{font-size:9px;color:#999;border:0;padding:0}
+.entry-card-body{display:flex;align-items:flex-start;gap:13px}
+.entry-card-copy{flex:1;min-width:0}
+.entry-title{font-size:15px;font-weight:620;line-height:1.5;margin:0 0 5px;color:#30303a;letter-spacing:-.025em}
+.entry-text{font-size:13px;line-height:1.75;color:#42424c;-webkit-line-clamp:3;margin:0}
+.entry-thumb{width:76px;height:76px;flex:0 0 76px;object-fit:cover;border-radius:13px;background:#f0f0f2}
+.entry-photo-count{display:block;margin-top:7px;font-size:9px;color:#aaa}
+.entry-card-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}
+.entry-tags{display:flex;gap:5px;flex-wrap:wrap;min-width:0}
+.tiny-tag{font-size:9px;color:#a0a0a8;background:#f2f2f5;padding:3px 6px;border-radius:5px}
+.entry-actions{gap:10px}
+.entry-actions .mini-action{font-size:10px;color:#a0a0a8}
+.entry-actions .mini-action:after{display:none}
+.card-char-note{margin-top:9px;background:#f7f7f9;border-left:2px solid #d6d6dc;color:#8c8c96}
+.empty-state{padding:50px 16px 40px;border:0;background:transparent;text-align:left}
+.empty-mark{font:28px Georgia,serif;color:#d2d2d8}
+.empty-state h3{font-size:16px;margin:12px 0 6px}
+.empty-state p{font-size:12px;margin:0 0 13px}
+.text-btn{font-size:12px;text-decoration:none;border-bottom:1px solid #aaa;padding:0 0 4px}
+.diary-write-fab{position:absolute;z-index:8;left:25px;bottom:calc(76px + env(safe-area-inset-bottom,0px));width:54px;height:54px;border-radius:50%;margin:0;background:rgba(255,255,255,.88);color:#777;border:1px solid rgba(255,255,255,.98);box-shadow:0 8px 24px rgba(45,45,60,.11);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.diary-write-fab svg{width:20px;height:20px;stroke:currentColor;stroke-width:1.45;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.bottom-tabs{padding:7px 14px calc(7px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.92);border-top:1px solid #f0f0f2}
+.tab-btn{min-width:48px;padding:5px 9px}
+.tab-btn svg{width:18px;height:18px}
+@media(hover:hover){
+ .entry-card:hover{transform:translateY(-2px)!important;box-shadow:0 13px 28px rgba(40,40,55,.075)!important}
+ .diary-write-fab:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(45,45,60,.15)}
+}
+@media(max-width:360px){.app-scroll{padding-left:19px;padding-right:19px}.diary-write-fab{left:19px}.entry-card{padding:15px 14px 12px!important}.entry-thumb{width:66px;height:66px;flex-basis:66px}}
+/* A more expressive, color-washed writing canvas */
+.editor-backdrop{background:rgba(36,35,45,.24);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.editor-sheet{max-height:96%;border-radius:27px 27px 0 0;border-top:0;padding:17px 22px calc(18px + env(safe-area-inset-bottom,0px));background:linear-gradient(160deg,#fff 0%,#fbf9ff 48%,#fffaf4 100%);box-shadow:0 -15px 45px rgba(55,45,75,.13)}
+.sheet-grabber{background:#ddd9e5}
+.editor-heading{font-size:23px;font-weight:650;letter-spacing:-.055em}
+.editor-sub{color:#aaa0b5}
+.field-label{color:#938a9c;letter-spacing:.04em}
+.editor-date{border:1px solid #ebe6f0;background:rgba(255,255,255,.8);border-radius:13px}
+.editor-title{font-family:Georgia,"Songti SC",serif;font-size:25px;border:0;background:rgba(255,255,255,.52);border-radius:12px;padding:12px}
+.editor-content{min-height:190px;border-radius:14px;background:rgba(255,255,255,.48);padding:14px;font-size:14px;line-height:2}
+.editor-meta{grid-template-columns:1fr;gap:2px}
+.mood-choices{gap:7px}
+.mood-choice{border:1px solid transparent;border-radius:99px;padding:8px 12px;background:#f0f0f3;color:#777}
+.mood-choice[data-mood="平静"]{background:#edf1f5;color:#718092}
+.mood-choice[data-mood="开心"]{background:#fff0dc;color:#a2743f}
+.mood-choice[data-mood="疲惫"]{background:#f1edf5;color:#887998}
+.mood-choice[data-mood="低落"]{background:#e9edf6;color:#78829a}
+.mood-choice[data-mood="期待"]{background:#eaf3eb;color:#6e8d76}
+.mood-choice.active{outline:1px solid currentColor;box-shadow:0 2px 8px rgba(70,60,90,.06);font-weight:650}
+.tag-input{border:1px solid #ece6f0;border-radius:12px;background:rgba(255,255,255,.8);padding:11px}
+.photo-pick{border:1px solid #e8dfed;border-radius:99px;background:rgba(255,255,255,.8);color:#71657c;padding:10px 14px}
+.photo-preview-item img{filter:none!important;border-radius:13px}
+.photo-preview-item .photo-index{border-radius:6px}
+.photo-remove{box-shadow:0 2px 9px rgba(0,0,0,.08)}
+.editor-footer{border-top:0;padding-top:12px}
+.btn-secondary,.btn-primary{border-radius:13px;height:46px}
+.btn-secondary{border-color:#e7e2eb;background:rgba(255,255,255,.75)}
+.btn-primary{background:#34313d;border-color:#34313d}
+@media(prefers-reduced-motion:reduce){.entry-card,.diary-write-fab{transition:none!important}}
+
 </style>
 </head>
 <body>
@@ -276,7 +374,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   <header class="app-head">
     <div class="head-left">
       <button class="round-btn" id="backHome" aria-label="返回桌面" title="返回桌面"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></svg></button>
-      <div><div class="brand-mark">PERSONAL JOURNAL</div></div>
+      <div><div class="brand-mark">日记</div></div>
     </div>
     <div class="head-actions">
       <button class="round-btn" id="searchToggle" aria-label="搜索日记" title="搜索"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.5 4.5"/></svg></button>
@@ -287,7 +385,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   <nav class="bottom-tabs" aria-label="日记导航">
     <button class="tab-btn active" data-view="home"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v15H4z"/><path d="M8 3.5v4M16 3.5v4M4 10h16M8 14h4M8 17h7"/></svg><span>记录</span></button>
     <button class="tab-btn" data-view="calendar"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></svg><span>日历</span></button>
-    <button class="tab-add" id="newEntryBtn" aria-label="写日记" title="写一篇日记"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="tab-add diary-write-fab" id="newEntryBtn" aria-label="写日记" title="写一篇日记"><svg viewBox="0 0 24 24"><path d="m4 17.5 10.8-10.8a2.1 2.1 0 0 1 3 3L7 20.5 3 21z"/><path d="m13.5 8.5 3 3"/></svg></button>
     <button class="tab-btn" data-view="favorites"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/></svg><span>收藏</span></button>
     <button class="tab-btn" data-view="about"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg><span>关于</span></button>
   </nav>
@@ -345,7 +443,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   'use strict';
   var STORAGE_KEY='maomao_diary_entries_v1';
   var entries=loadEntries();
-  var currentView='home', query='', moodFilter='全部', noteTypeFilter='全部', selectedMood='平静';
+  var currentView='home', query='', searchOpen=false, moodFilter='全部', noteTypeFilter='全部', selectedMood='平静';
   var editId=null, activePhoto='', activePhotos=[], calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), selectedCalendarDate=todayKey();
   var cardAnimQueued=true;
   var prompts=[
@@ -643,7 +741,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     else if(e.key==='ArrowLeft')moveReader(-1);
   });
   function renderEntryCard(e){
-    var tags=(e.tags||[]).slice(0,4).map(function(t){return '<span class="tiny-tag"># '+esc(t)+'</span>'}).join('');
+    var tags=(e.tags||[]).slice(0,3).map(function(t){return '<span class="tiny-tag"># '+esc(t)+'</span>'}).join('');
     var text=(e.content||'').trim();
     if(!text)text='这一天，留下一点空白。';
     var ccList=Array.isArray(e.charComments)?e.charComments:[];
@@ -651,37 +749,30 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
     var ccHtml=ccLast?'<div class="card-char-note"><span class="cc-role">'+esc(ccLast.characterName||'TA')+'</span><span class="cc-text">'+esc(String(ccLast.text||'').slice(0,48))+(String(ccLast.text||'').length>48?'…':'')+'</span></div>':'';
     var isChar=!!e.author&&e.author!=='me';
     var cardClass='entry-card'+(isChar?' char-written':'');
-    var tagHtml=isChar?'<span class="char-written-tag">'+esc(e.authorName||'TA')+' 写</span>':'';
-    return '<article class="'+cardClass+'" data-open-entry="'+esc(e.id)+'">'+tagHtml+
-      '<div class="entry-top"><div class="entry-date"><strong>'+esc(shortDate(e.date))+'</strong><span>'+esc(weekday(e.date))+'</span></div><div class="entry-labels">'+(e.pinned?'<span class="entry-pin-label">置顶</span>':'')+'<span class="entry-type-label">'+esc(e.noteType||'日记')+'</span><span class="entry-mood">'+esc(e.mood||'平静')+'</span></div></div>'+
-      (e.title?'<h3 class="entry-title">'+esc(e.title)+'</h3>':'')+
-      '<p class="entry-text">'+esc(text)+'</p>'+
-      (photosFor(e).length?'<div class="entry-photo-grid '+(photosFor(e).length===1?'single':'')+'">'+photosFor(e).slice(0,2).map(function(photo,i){return '<img src="'+esc(photo)+'" alt="日记照片 '+(i+1)+'" loading="lazy">'}).join('')+'</div>'+(photosFor(e).length>2?'<span class="entry-photo-count">共 '+photosFor(e).length+' 张照片 · 打开查看</span>':''):'')+
+    var photo=photosFor(e)[0]||'';
+    var photoHtml=photo?'<img class="entry-thumb" src="'+esc(photo)+'" alt="日记照片" loading="lazy">':'';
+    var dateText=shortDate(e.date);
+    var typeLabel=e.noteType==='备忘'?'备忘':'日记';
+    return '<article class="'+cardClass+'" data-open-entry="'+esc(e.id)+'">'+
+      '<div class="entry-card-head"><div class="entry-meta-line"><time>'+esc(dateText)+'</time><span class="entry-mood mood-'+esc(e.mood||'平静')+'">'+esc(e.mood||'平静')+'</span>'+(e.pinned?'<span class="entry-pin-label">置顶</span>':'')+'</div><span class="entry-type-label">'+typeLabel+'</span></div>'+
+      '<div class="entry-card-body"><div class="entry-card-copy">'+(e.title?'<h3 class="entry-title">'+esc(e.title)+'</h3>':'')+'<p class="entry-text">'+esc(text)+'</p></div>'+photoHtml+'</div>'+
+      (photosFor(e).length>1?'<span class="entry-photo-count">+'+(photosFor(e).length-1)+' 张照片</span>':'')+
       ccHtml+
-      '<div class="entry-bottom"><div class="entry-tags">'+tags+'</div><div class="entry-actions"><button class="mini-action '+(e.pinned?'active':'')+'" data-pin="'+esc(e.id)+'" aria-label="'+(e.pinned?'取消置顶':'置顶')+'" title="'+(e.pinned?'取消置顶':'置顶')+'">'+(e.pinned?'置顶中':'置顶')+'</button><button class="mini-action '+(e.favorite?'active':'')+'" data-favorite="'+esc(e.id)+'" aria-label="'+(e.favorite?'取消收藏':'收藏')+'" title="收藏">'+(e.favorite?'★':'☆')+'</button></div></div></article>';
+      '<div class="entry-card-foot"><div class="entry-tags">'+tags+'</div><div class="entry-actions"><button class="mini-action '+(e.pinned?'active':'')+'" data-pin="'+esc(e.id)+'" aria-label="'+(e.pinned?'取消置顶':'置顶')+'">'+(e.pinned?'已置顶':'置顶')+'</button><button class="mini-action '+(e.favorite?'active':'')+'" data-favorite="'+esc(e.id)+'" aria-label="'+(e.favorite?'取消收藏':'收藏')+'">'+(e.favorite?'★':'☆')+'</button></div></div></article>';
   }
-  function renderCards(list,emptyTitle,emptyText){
+  function renderCards(list,emptyTitle,emptyText){  function renderCards(list,emptyTitle,emptyText){
     if(!list.length)return '<div class="empty-state"><div class="empty-mark">01 / —</div><h3>'+esc(emptyTitle)+'</h3><p>'+esc(emptyText)+'</p><button class="text-btn" data-create="1">写下第一篇</button></div>';
     return '<div class="entries">'+list.map(renderEntryCard).join('')+'</div>';
   }
   function renderHome(){
-    var d=new Date(), key=todayKey();
     var list=filteredEntries();
-    var todayCount=entries.filter(function(e){return e.date===key}).length;
-    var savedDays={};entries.forEach(function(e){savedDays[e.date]=1});
-    var days=Object.keys(savedDays).length;
-    var filters=['全部','平静','开心','疲惫','低落','期待'];
-    return '<section class="hero editorial-hero"><div class="eyebrow">THE PERSONAL JOURNAL <span class="hero-issue">VOL.01 — DAILY NOTES</span></div><h1><span class="hero-english">Today<span class="hero-period">.</span></span><span class="hero-cn">日记 / 留给自己的空白</span></h1><p>不必把每一天都写得完整。<br>把真正发生过的细小瞬间留下来。</p><div class="hero-date"><strong>'+String(d.getDate()).padStart(2,'0')+'</strong><span>'+d.getFullYear()+' / '+String(d.getMonth()+1).padStart(2,'0')+' · DAYBOOK</span></div><div class="hero-rule"><span>NOTES ON ORDINARY DAYS</span><i></i></div></section>'+
-      '<div class="stats-row"><div class="stat"><div class="stat-label">已写下的片段</div><div class="stat-main"><strong>'+entries.length+'</strong><span>篇记录</span></div></div><div class="stat"><div class="stat-label">留下印记的日子</div><div class="stat-main"><strong>'+days+'</strong><span>天 · 今天 '+todayCount+' 篇</span></div></div></div>'+
-      (function(){var ccCount=entries.reduce(function(n,e){return n+(Array.isArray(e.charComments)?e.charComments.length:0)},0);var on=peekEnabled();return '<button type="button" id="peekToggle" style="display:block;width:100%;border:0;background:transparent;text-align:center;font-size:10px;color:#bbb;padding:2px 0 4px;cursor:pointer">· Char 偷看 '+(on?'已开启 点按关闭':'已关闭 点按开启')+' · 已涂鸦 '+ccCount+' 条 ·</button>'})()+
-      '<aside class="prompt"><div class="prompt-mark">“</div><div class="prompt-copy"><div class="label">A SMALL PROMPT FOR TODAY</div><p>'+esc(prompts[promptIndex])+'</p></div><button class="prompt-refresh" id="refreshPrompt">换一句</button></aside>'+
-      '<div class="section-head"><h2>最近记录</h2><span class="section-meta">'+(query?'搜索结果 '+list.length+' 篇':list.length+' ENTRIES')+'</span></div>'+
-      '<div class="search-wrap" id="searchWrap">'+svg('search')+'<input id="diarySearch" type="search" value="'+esc(query)+'" placeholder="搜索标题、文字或标签" aria-label="搜索日记"><button class="mini-action" id="clearSearch" style="'+(query?'':'display:none')+'" aria-label="清除搜索">×</button></div>'+
-      '<div class="filter-row note-type-filters">'+['全部','日记','备忘'].map(function(f){return '<button class="filter-chip '+(noteTypeFilter===f?'active':'')+'" data-note-type-filter="'+esc(f)+'">'+esc(f)+'</button>'}).join('')+'</div>'+
-      '<div class="filter-row mood-filters">'+filters.map(function(f){return '<button class="filter-chip '+(moodFilter===f?'active':'')+'" data-mood-filter="'+esc(f)+'">'+esc(f)+'</button>'}).join('')+'</div>'+
-      renderCards(list,'这一页还是空白','给今天留下一点文字、一个心情，或者一张照片。');
+    var filters=['全部','日记','备忘'];
+    return '<section class="diary-list-head"><div><span class="diary-kicker">A LITTLE RECORD OF LIFE</span><h1>日记</h1></div><span class="diary-total">'+entries.length+' 篇</span></section>'+
+      '<div class="diary-search '+(searchOpen||query?'is-open':'')+'" id="searchWrap">'+svg('search')+'<input id="diarySearch" type="search" value="'+esc(query)+'" placeholder="搜索日记" aria-label="搜索日记"><button class="mini-action" id="clearSearch" style="'+(query?'':'display:none')+'" aria-label="清除搜索">×</button></div>'+
+      '<div class="diary-list-tools"><div class="diary-type-filter">'+filters.map(function(f){return '<button class="filter-chip '+(noteTypeFilter===f?'active':'')+'" data-note-type-filter="'+esc(f)+'">'+esc(f)+'</button>'}).join('')+'</div><span class="diary-result-count">'+list.length+' RECORDS</span></div>'+
+      renderCards(list,'还没有日记','点一下左下角的笔，记下今天发生的小事。');
   }
-  function renderCalendar(){
+  function renderCalendar(){  function renderCalendar(){
     var first=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth(),1);
     var start=new Date(first);start.setDate(first.getDate()-first.getDay());
     var marked={};entries.forEach(function(e){marked[e.date]=true});
@@ -945,7 +1036,7 @@ button{transition:color .22s,background-color .22s,border-color .22s,transform .
   $('readerFavorite').addEventListener('click',function(){if(readerId){toggleFavorite(readerId);renderReader()}});
   $('backHome').addEventListener('click',function(){location.href='../index.html'});
   $('newEntryBtn').addEventListener('click',function(){openEditor()});
-  $('searchToggle').addEventListener('click',function(){if(currentView!=='home'){currentView='home';render()}var inp=$('diarySearch');if(inp){inp.focus();inp.scrollIntoView({block:'nearest',behavior:'smooth'})}});
+  $('searchToggle').addEventListener('click',function(){if(currentView!=='home'){currentView='home';render()}searchOpen=!searchOpen;render();var inp=$('diarySearch');if(searchOpen&&inp){inp.focus({preventScroll:true})}});
   $('moreBtn').addEventListener('click',openMenu);$('closeMenu').addEventListener('click',closeMenu);
   menu.addEventListener('click',function(e){if(e.target===menu)closeMenu()});
   $('exportBtn').addEventListener('click',exportBackup);$('importBtn').addEventListener('click',function(){$('importFile').click()});
