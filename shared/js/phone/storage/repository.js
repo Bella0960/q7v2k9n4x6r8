@@ -77,11 +77,16 @@
     }
 
     // 给实体补全生命周期字段（在保存前调用）
+    // 语义（2026-11-02 修订）：
+    //   createdAt  —— isNew 或调用方未传 → 取 now；否则尊重调用方显式值
+    //   updatedAt  —— 每次保存都刷新为 now（表达"刚被写入"）
+    //   revision   —— 调用方未传 → 补 0；否则尊重显式值（不做 +1 自增，由调用方决定）
+    //   schemaVersion —— 总是刷新为仓库版本（不做 merge，尊重配置值）
     Repository.prototype._applyTimestamps = function (entity, isNew) {
         var now = _now();
         if (isNew || entity.createdAt == null) entity.createdAt = now;
         entity.updatedAt = now;
-        entity.revision = (entity.revision == null ? 0 : entity.revision + 1);
+        if (entity.revision == null) entity.revision = 0;
         entity.schemaVersion = this._schemaVersion;
         return entity;
     };
@@ -185,6 +190,16 @@
 
         var isNew = existingIdx < 0;
         var toSave = _clone(entity);
+
+        // 替换已有记录时：缺省字段从域里已有实体取，尊重调用方显式传入的值
+        //   revision  —— 调用方未传 → 保留域里已有值；传了就用传入值
+        //   createdAt —— 调用方未传 → 保留域里已有值；传了就用传入值
+        if (!isNew) {
+            var existingRec = list[existingIdx];
+            if (toSave.revision == null && existingRec.revision != null) toSave.revision = existingRec.revision;
+            if (toSave.createdAt == null && existingRec.createdAt != null) toSave.createdAt = existingRec.createdAt;
+        }
+
         this._applyTimestamps(toSave, isNew);
 
         if (isNew) {
@@ -226,10 +241,11 @@
             Object.keys(patch).forEach(function (k) { merged[k] = patch[k]; });
         }
 
-        // 移除旧实体，用 save 重新写回去（带 expectedRevision 避免递归冲突）
-        var rem = this._removeInDomain(id);
-        if (!rem.ok) return rem;
-
+        // 直接 save(merged)：merged 已保留旧 revision / createdAt，
+        // save 的 isNew=false 路径会让 _applyTimestamps 跳过这些字段的覆盖，
+        // updatedAt 仍会刷新为 now（表达"刚被更新"）。
+        // 去掉了之前 _removeInDomain 先删再存导致 isNew=true 的做法，
+        // 那条路径会让 createdAt 被误覆盖为 now。
         return this.save(merged);
     };
 
