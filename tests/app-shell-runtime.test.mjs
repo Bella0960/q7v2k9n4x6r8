@@ -139,7 +139,7 @@ test('app views mount once and remain alive while switching between apps', async
     homeDeactivate: 1,
     settingsMount: 1
   });
-  assert.deepEqual(shell.getLoadedApps().sort(), ['home', 'settings']);
+  assert.deepEqual(Array.from(shell.getLoadedApps()).sort(), ['home', 'settings']);
   assert.equal(env.root.children.length, 2);
   assert.equal(env.root.children.find((node) => node.attributes['data-maomao-app-view'] === 'home').hidden, false);
   assert.equal(env.root.children.find((node) => node.attributes['data-maomao-app-view'] === 'settings').hidden, true);
