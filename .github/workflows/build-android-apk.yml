@@ -39,6 +39,9 @@ jobs:
       - name: Install web dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Run contract tests before build
+        run: npm test
+
       - name: Install image compression dependency
         run: python -m pip install --disable-pip-version-check Pillow
 
