@@ -166,3 +166,12 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 - 改完 HTML/CSS/JS 若走静态托管缓存，记得 bump 页面引用的 `?v=` 参数。
 - 全量备份/恢复在设置页 DATA 分组（settings/js/backup.js）：JSON 带 `__backup.schema` 版本校验（当前 1，拒收更高版本），排除 `api_call_logs`；导入前自动下载当前数据作安全备份，写入失败自动回滚。
 - 无 README、无测试、lint 为空操作；`.trae/` 是 IDE 配置（git-ignored）。`docs/audit-report.html` 是历史审计报告，其中的旧路径已因目录重构失效，仅作参考。
+
+### Windows / PowerShell 开发环境注意事项
+
+- Node 可执行文件默认安装路径含空格：`C:\Program Files\nodejs\node.exe`。若 shell 未刷新 PATH（新开终端偶尔出现），用完整路径并加引号调用；以下示例可直接复制：
+  ```powershell
+  & "C:\Program Files\nodejs\node.exe" --test tests/storage-contract.test.mjs tests/chat-regression-contract.test.mjs
+  ```
+- `node --test` 多文件参数之间用**空格**分隔，不要用逗号。PowerShell 把逗号当作数组构造符会拼成单个参数导致 Node 报"找不到该测试文件"。
+- 新打开的 PowerShell 终端偶尔只读 Machine PATH 不读 User PATH（或反之），导致 `node`/`npm` 直接 `CommandNotFoundException`。遇到时在当前会话里手动合并：`$env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')`，关掉重开也能恢复。
