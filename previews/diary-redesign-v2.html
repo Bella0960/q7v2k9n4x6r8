@@ -27,7 +27,7 @@ h1{font:400 29px/1.1 var(--serif);letter-spacing:-.055em;margin:0}
 .search-row input::placeholder{color:#b4b4b8}
 .list-head{display:flex;align-items:baseline;justify-content:space-between;padding:19px 0 10px}
 .list-head strong{font-size:12px;font-weight:600;letter-spacing:.015em}
-.list-head span{font:10px Georgia,serif;color:#aaa;letter-spacing:.1em}
+.list-head span{font-size:10px;color:#aaa;letter-spacing:.04em}
 .entries{position:relative;display:flex;flex-direction:column;gap:8px;padding:2px 0 20px 14px}
 .entries:before{content:"";position:absolute;left:3px;top:14px;bottom:28px;width:1px;background:#ededee}
 .entry{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 58px;align-items:center;gap:11px;min-height:86px;padding:11px 12px 11px 13px;border:1px solid #eeeeef;border-radius:13px;background:#fff;cursor:pointer;transition:background .18s,border-color .18s,transform .18s;animation:appear .28s both}
@@ -167,7 +167,7 @@ function photoArt(kind){
 function render(){
  var q=$('searchInput').value.trim().toLowerCase();
  var filtered=records.filter(function(r){return !q||(r.text+' '+r.title+' '+r.mood+' '+dateLabel(r.date)).toLowerCase().includes(q)});
- $('entryCount').textContent=String(filtered.length).padStart(2,'0')+' RECORDS';
+ $('entryCount').textContent=String(filtered.length).padStart(2,'0')+' 篇记录';
  $('entries').innerHTML=filtered.length?filtered.map(function(r,i){
   var photo=r.photos&&r.photos[0]?'<img src="'+r.photos[0]+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:9px">':(r.photo?photoArt(r.photo):'');
   return '<article class="entry" data-entry="'+r.id+'" style="animation-delay:'+(i*.035)+'s"><div class="entry-main"><div class="entry-meta"><time class="entry-date">'+dateLabel(r.date)+'</time><span class="entry-mood">'+esc(r.mood)+'</span></div><p class="entry-text">'+esc(r.text)+'</p></div><span class="entry-photo '+(photo?'':'empty')+'">'+photo+'</span></article>';
