@@ -1639,7 +1639,7 @@ test('follow-up policy escalates no-reply cooldown and builds non-pressuring con
   const prompt = followUpPolicy.buildPrompt({ name: '小林', round: 2, relationship: '朋友', persona: '安静，喜欢阅读。', context: '用户：最近加班。\n角色：这周挺忙的。' });
   assert.match(prompt, /最多20个汉字/);
   assert.match(prompt, /不责备、不施压/);
-  assert.match(prompt, /["']send["']\\s*:\\s*false/);
+  assert.match(prompt, /["']send["']\s*:\s*false/);
 });
 
 test('proactive contact policy requires a complete, opted-in conversation and a quiet idle window', () => {
