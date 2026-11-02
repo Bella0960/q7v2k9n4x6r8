@@ -1,11 +1,15 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v152';
+const CACHE_NAME = 'phone-app-pwa-v153';
 const APP_SHELL = [
   './',
   './index.html',
   './beauty/beauty.html',
+  './theme-store/theme-store.html',
+  './chat/chat/chat.html',
+  './chat/contacts/contacts.html',
+  './chat/moments/moments.html',
   './chat/footprint/footprint.html',
   './wallet/takeout.html',
   './assets/takeout/s1-noodle.jpg',
@@ -29,9 +33,12 @@ const APP_SHELL = [
   './assets/takeout/d14-latte.jpg',
   './assets/takeout/d15-croissant.jpg',
   './assets/takeout/d16-bento.jpg',
-  './shared/js/chat-beauty.js?v=20261026v11',
+  './shared/js/chat-beauty.js?v=20261102v2',
+  './shared/js/chat-page-theme.js?v=20261102v1',
   './shared/js/wallpaper-store.js?v=20261026v2',
   './shared/css/chat-beauty-runtime.css?v=20261031v1',
+  './shared/css/silver-butterfly-theme.css?v=20261102v2',
+  './shared/assets/silver-butterfly.svg',
   './games/games.html',
   './games/cooking.html',
   './games/css/cooking.css?v=20261025v3',
