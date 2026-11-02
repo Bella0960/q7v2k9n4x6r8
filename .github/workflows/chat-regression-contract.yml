@@ -41,3 +41,5 @@ jobs:
           node-version: 22
       - name: Run chat regression contract tests
         run: npm run test:chat:contract
+      - name: Run app shell lifecycle tests
+        run: npm run test:app-shell
