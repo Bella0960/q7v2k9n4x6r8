@@ -714,6 +714,129 @@
             .slim-name { font-size:19px; }
         }
 
+    
+        /* 主角色主页 / 人物关系分支：保持角色库原有的黑白灰编辑风格 */
+        .profile-container,.relationship-container,.npc-profile-container,.npc-editor-container,.life-container {
+            flex:1; min-height:0; overflow-y:auto; padding:0 24px 28px; background:#fff;
+            scrollbar-width:none;
+        }
+        .profile-container::-webkit-scrollbar,.relationship-container::-webkit-scrollbar,
+        .npc-profile-container::-webkit-scrollbar,.npc-editor-container::-webkit-scrollbar,
+        .life-container::-webkit-scrollbar { display:none; }
+        .profile-hero {
+            display:grid; grid-template-columns:94px minmax(0,1fr); gap:17px; align-items:center;
+            padding:22px 0 24px; border-bottom:1px solid #D9D9D4;
+        }
+        .profile-hero-avatar {
+            width:94px; height:116px; object-fit:cover; background:#EEEEEE; display:flex;
+            align-items:center; justify-content:center; color:#777; font:400 30px Georgia,serif;
+        }
+        .profile-hero-meta { min-width:0; }
+        .profile-hero-kicker { color:#888; font-size:9px; letter-spacing:.16em; text-transform:uppercase; margin-bottom:9px; }
+        .profile-hero-name { font:400 clamp(25px,7vw,34px)/1.08 Georgia,"Noto Serif SC",serif; letter-spacing:-.045em; overflow-wrap:anywhere; }
+        .profile-hero-state { margin-top:10px; color:#777; font-size:10px; letter-spacing:.04em; }
+        .profile-hero-desc { grid-column:1/-1; color:#666; font-size:12px; line-height:1.75; white-space:pre-wrap; }
+        .profile-section-kicker { color:#898983; font-size:9px; letter-spacing:.16em; text-transform:uppercase; padding:22px 0 9px; }
+        .profile-branch-list { display:flex; flex-direction:column; }
+        .profile-branch {
+            width:100%; min-height:74px; display:grid; grid-template-columns:34px minmax(0,1fr) 18px;
+            align-items:center; gap:12px; padding:12px 0; text-align:left; color:#171717;
+            background:transparent; border:0; border-bottom:1px solid #E7E7E2; cursor:pointer; font:inherit;
+        }
+        .profile-branch:active { background:#F7F7F5; }
+        .profile-branch-index { color:#999; font:italic 15px Georgia,serif; }
+        .profile-branch-copy { display:flex; flex-direction:column; gap:5px; min-width:0; }
+        .profile-branch-title { font:400 17px Georgia,"Noto Serif SC",serif; }
+        .profile-branch-desc { color:#888; font-size:10px; line-height:1.5; }
+        .profile-branch-arrow { color:#999; font-size:17px; text-align:right; }
+        .profile-bottom-note { padding:18px 0 4px; color:#999; font-size:10px; line-height:1.7; }
+        .subpage-intro { padding:16px 0 18px; }
+        .subpage-kicker { color:#888; font-size:9px; letter-spacing:.16em; text-transform:uppercase; }
+        .subpage-heading { margin-top:8px; font:400 clamp(28px,8vw,38px)/1.05 Georgia,"Noto Serif SC",serif; letter-spacing:-.05em; }
+        .subpage-description { margin-top:8px; color:#888; font-size:11px; line-height:1.65; }
+        .subpage-count { color:#777; font-size:10px; letter-spacing:.08em; margin-top:12px; }
+        .relation-filter { display:flex; flex-wrap:wrap; gap:7px; padding:0 0 16px; }
+        .relation-filter button {
+            min-height:30px; padding:0 11px; border:1px solid #DCDCD7; border-radius:0;
+            background:#fff; color:#777; font:inherit; font-size:10px; cursor:pointer;
+        }
+        .relation-filter button.active { background:#171717; border-color:#171717; color:#fff; }
+        .npc-list { display:flex; flex-direction:column; }
+        .npc-card {
+            width:100%; display:grid; grid-template-columns:48px minmax(0,1fr) 16px; gap:12px;
+            align-items:center; padding:14px 0; border:0; border-top:1px solid #E2E2DD;
+            background:#fff; color:#171717; text-align:left; cursor:pointer; font:inherit;
+        }
+        .npc-card:active { background:#F7F7F5; }
+        .npc-avatar {
+            width:48px; height:58px; display:flex; align-items:center; justify-content:center;
+            background:#EEEEEA; color:#666; font:400 19px Georgia,"Noto Serif SC",serif;
+            object-fit:cover;
+        }
+        .npc-card-meta { display:flex; flex-direction:column; gap:5px; min-width:0; }
+        .npc-card-name { font:400 17px Georgia,"Noto Serif SC",serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .npc-card-relation { color:#555; font-size:10px; }
+        .npc-card-note { color:#999; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .npc-card-arrow { color:#999; font-size:16px; }
+        .subpage-empty { padding:28px 0; border-top:1px solid #D9D9D4; color:#888; font-size:12px; line-height:1.8; }
+        .npc-profile-hero { padding:22px 0 20px; border-bottom:1px solid #D9D9D4; }
+        .npc-profile-top { display:flex; align-items:center; gap:15px; }
+        .npc-profile-avatar {
+            width:72px; height:86px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+            background:#EEEEEA; color:#666; font:400 26px Georgia,"Noto Serif SC",serif; object-fit:cover;
+        }
+        .npc-profile-name { font:400 27px/1.12 Georgia,"Noto Serif SC",serif; letter-spacing:-.04em; overflow-wrap:anywhere; }
+        .npc-profile-relation { color:#777; font-size:10px; margin-top:8px; }
+        .npc-profile-awareness { color:#999; font-size:9px; letter-spacing:.06em; margin-top:7px; }
+        .npc-info-block { padding:16px 0; border-bottom:1px solid #E7E7E2; }
+        .npc-info-label { color:#888; font-size:9px; letter-spacing:.14em; text-transform:uppercase; margin-bottom:7px; }
+        .npc-info-value { color:#333; font-size:12px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere; }
+        .npc-profile-actions { display:flex; gap:10px; padding:20px 0 4px; }
+        .npc-profile-action {
+            min-height:44px; flex:1; border:1px solid #D3D3CE; border-radius:0; background:transparent;
+            color:#333; font:inherit; font-size:11px; cursor:pointer;
+        }
+        .npc-profile-action.primary { background:#171717; border-color:#171717; color:#fff; }
+        .npc-profile-action:active { opacity:.75; }
+        .branch-form { display:flex; flex-direction:column; gap:0; }
+        .branch-field { padding:15px 0 16px; border-bottom:1px solid #E5E5E0; display:flex; flex-direction:column; gap:8px; }
+        .branch-field label { color:#888; font-size:9px; letter-spacing:.14em; text-transform:uppercase; }
+        .branch-input,.branch-select,.branch-textarea {
+            width:100%; min-height:42px; border:0; border-bottom:1px solid #D9D9D4; border-radius:0;
+            outline:none; padding:8px 0; background:transparent; color:#222; font:inherit; font-size:14px;
+        }
+        .branch-select { appearance:auto; }
+        .branch-textarea { min-height:86px; padding:11px 12px; background:#F6F6F3; line-height:1.7; resize:vertical; }
+        .branch-textarea:focus { box-shadow:inset 0 0 0 1px #D5D5D0; }
+        .branch-input:focus,.branch-select:focus { border-bottom-color:#222; }
+        .branch-hint { color:#999; font-size:10px; line-height:1.6; }
+        .branch-save {
+            width:100%; min-height:48px; margin-top:19px; border:0; border-radius:0;
+            background:#171717; color:#fff; font:inherit; font-size:13px; cursor:pointer;
+        }
+        .branch-save:active { opacity:.8; }
+        .branch-status { min-height:18px; margin-top:9px; color:#777; font-size:10px; text-align:center; }
+        .life-line-card { padding:16px 0 19px; border-bottom:1px solid #D9D9D4; }
+        .life-line-card .branch-textarea { min-height:112px; }
+        .life-event-form { padding:18px 0 20px; border-bottom:1px solid #D9D9D4; }
+        .life-event-list { display:flex; flex-direction:column; }
+        .life-event {
+            position:relative; padding:15px 0 15px 17px; border-bottom:1px solid #E7E7E2;
+        }
+        .life-event:before { content:""; position:absolute; left:0; top:20px; width:5px; height:5px; border-radius:50%; background:#777; }
+        .life-event-top { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+        .life-event-title { font:400 16px Georgia,"Noto Serif SC",serif; }
+        .life-event-date { flex-shrink:0; color:#999; font-size:9px; }
+        .life-event-detail { margin-top:7px; color:#666; font-size:11px; line-height:1.75; white-space:pre-wrap; }
+        .life-event-meta { margin-top:8px; color:#999; font-size:9px; }
+        .life-event-delete { margin-top:8px; padding:3px 0; border:0; background:transparent; color:#999; font:inherit; font-size:9px; cursor:pointer; }
+        @media (max-width:360px) {
+            .profile-container,.relationship-container,.npc-profile-container,.npc-editor-container,.life-container { padding-left:19px; padding-right:19px; }
+            .profile-hero { grid-template-columns:78px minmax(0,1fr); gap:13px; }
+            .profile-hero-avatar { width:78px; height:100px; }
+            .npc-profile-avatar { width:62px; height:76px; }
+        }
+
     </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 </head>
@@ -738,6 +861,184 @@
                 </div>
             </section>
             <main class="role-list" id="roleListContainer"></main>
+        </div>
+
+
+        <!-- 主角色主页：NPC 不出现在外层角色列表 -->
+        <div class="view-section hidden" id="profileView">
+            <header class="header">
+                <button class="btn-header-cancel" id="btnBackProfile" type="button" aria-label="返回角色列表">‹</button>
+                <h1 class="header-title" id="profileHeaderTitle">Character</h1>
+                <button class="btn-header" id="btnUseFromProfile" type="button">使用角色</button>
+            </header>
+            <main class="profile-container" id="profileContent">
+                <div class="subpage-empty">正在载入角色档案…</div>
+            </main>
+        </div>
+
+        <!-- 人物关系网络 -->
+        <div class="view-section hidden" id="relationshipView">
+            <header class="header">
+                <button class="btn-header-cancel" id="btnBackRelationships" type="button" aria-label="返回主角色档案">‹</button>
+                <h1 class="header-title">RELATIONSHIPS</h1>
+                <button class="btn-header" id="btnAddNpc" type="button">＋ 添加人物</button>
+            </header>
+            <main class="relationship-container">
+                <section class="subpage-intro">
+                    <div class="subpage-kicker">PEOPLE AROUND THIS CHARACTER</div>
+                    <h2 class="subpage-heading">人物关系网络</h2>
+                    <p class="subpage-description" id="relationshipDescription">家人、朋友，以及在 TA 生活里出现的其他人。</p>
+                    <div class="subpage-count" id="relationshipCount">00 PEOPLE</div>
+                </section>
+                <div class="relation-filter" id="relationshipFilters">
+                    <button type="button" class="active" data-rel-filter="all">全部</button>
+                    <button type="button" data-rel-filter="family">家人</button>
+                    <button type="button" data-rel-filter="friend">朋友</button>
+                    <button type="button" data-rel-filter="work">工作 / 学习</button>
+                    <button type="button" data-rel-filter="other">其他</button>
+                </div>
+                <div class="npc-list" id="npcListContainer"></div>
+            </main>
+        </div>
+
+        <!-- NPC 独立人物档案 -->
+        <div class="view-section hidden" id="npcProfileView">
+            <header class="header">
+                <button class="btn-header-cancel" id="btnBackNpcProfile" type="button" aria-label="返回人物关系网络">‹</button>
+                <h1 class="header-title">PERSON FILE</h1>
+                <button class="btn-header" id="btnEditNpc" type="button">编辑</button>
+            </header>
+            <main class="npc-profile-container" id="npcProfileContent"></main>
+        </div>
+
+        <!-- NPC 人物资料编辑 -->
+        <div class="view-section hidden" id="npcEditorView">
+            <header class="header">
+                <button class="btn-header-cancel" id="btnCancelNpcEdit" type="button" aria-label="取消编辑">‹</button>
+                <h1 class="header-title" id="npcEditorTitle">New Person</h1>
+                <span style="width:36px"></span>
+            </header>
+            <main class="npc-editor-container">
+                <input type="hidden" id="npcId" value="">
+                <div class="branch-form">
+                    <div class="branch-field">
+                        <label for="npcName">姓名</label>
+                        <input class="branch-input" id="npcName" type="text" maxlength="40" placeholder="这个人的名字">
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcRelation">与主角色的关系</label>
+                        <input class="branch-input" id="npcRelation" type="text" maxlength="50" placeholder="例如：妹妹、大学好友、同事">
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcCategory">关系分类</label>
+                        <select class="branch-select" id="npcCategory">
+                            <option value="family">家人</option>
+                            <option value="friend">朋友</option>
+                            <option value="work">工作 / 学习</option>
+                            <option value="other">其他</option>
+                        </select>
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcAwareness">用户对这个人的认识程度</label>
+                        <select class="branch-select" id="npcAwareness">
+                            <option value="known">已认识</option>
+                            <option value="heard">听说过</option>
+                            <option value="unknown">尚未认识</option>
+                        </select>
+                        <div class="branch-hint">这会影响 AI 如何向你提起这个人，避免把陌生人说成你们的熟人。</div>
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcProfession">身份 / 职业</label>
+                        <input class="branch-input" id="npcProfession" type="text" maxlength="80" placeholder="职业、年级、目前身份">
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcPersonality">性格特点</label>
+                        <textarea class="branch-textarea" id="npcPersonality" placeholder="这个人是什么性格？"></textarea>
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcBackground">人物背景</label>
+                        <textarea class="branch-textarea" id="npcBackground" placeholder="成长经历、重要背景、个人故事…"></textarea>
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcRelationNotes">与主角色的相处方式</label>
+                        <textarea class="branch-textarea" id="npcRelationNotes" placeholder="认识多久、关系如何、共同经历、平时怎么相处…"></textarea>
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcConnections">与其他人物的关系</label>
+                        <textarea class="branch-textarea" id="npcConnections" placeholder="例如：也认识主角色的妹妹；和另一位朋友是同事…"></textarea>
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcSpeechStyle">说话习惯</label>
+                        <textarea class="branch-textarea" id="npcSpeechStyle" placeholder="口头禅、语气、表达习惯…"></textarea>
+                    </div>
+                    <div class="branch-field">
+                        <label for="npcCurrentStatus">自己的生活与近况</label>
+                        <textarea class="branch-textarea" id="npcCurrentStatus" placeholder="近期计划、正在经历的事情、生活状态…"></textarea>
+                    </div>
+                </div>
+                <div class="branch-status" id="npcSaveStatus" aria-live="polite"></div>
+                <button class="branch-save" id="btnSaveNpc" type="button">保存人物档案</button>
+            </main>
+        </div>
+
+        <!-- 主角色个人生活线 -->
+        <div class="view-section hidden" id="lifeView">
+            <header class="header">
+                <button class="btn-header-cancel" id="btnBackLife" type="button" aria-label="返回主角色档案">‹</button>
+                <h1 class="header-title">LIFE LINE</h1>
+                <span style="width:36px"></span>
+            </header>
+            <main class="life-container">
+                <section class="subpage-intro">
+                    <div class="subpage-kicker">A LIFE IN MOTION</div>
+                    <h2 class="subpage-heading">个人生活线</h2>
+                    <p class="subpage-description">记录主角色最近的生活状态、计划和正在发生的事情。</p>
+                </section>
+                <section class="life-line-card">
+                    <div class="branch-field" style="padding-top:0;border:0">
+                        <label for="roleLifeLine">生活状态与长期安排</label>
+                        <textarea class="branch-textarea" id="roleLifeLine" placeholder="例如：最近在忙什么、平时的生活节奏、正在努力的目标…"></textarea>
+                        <div class="branch-hint">这部分会作为角色生活背景提供给 AI，不要求每次聊天都主动提起。</div>
+                    </div>
+                    <button class="branch-save" id="btnSaveLifeLine" type="button">保存生活设定</button>
+                    <div class="branch-status" id="lifeSaveStatus" aria-live="polite"></div>
+                </section>
+                <section class="life-event-form">
+                    <div class="profile-section-kicker" style="padding-top:0">RECENT EVENTS / 新增生活事件</div>
+                    <div class="branch-form">
+                        <div class="branch-field">
+                            <label for="lifeEventTitle">事件名称</label>
+                            <input class="branch-input" id="lifeEventTitle" type="text" maxlength="80" placeholder="例如：准备摄影展">
+                        </div>
+                        <div class="branch-field">
+                            <label for="lifeEventDate">日期</label>
+                            <input class="branch-input" id="lifeEventDate" type="date">
+                        </div>
+                        <div class="branch-field">
+                            <label for="lifeEventPeople">涉及人物</label>
+                            <input class="branch-input" id="lifeEventPeople" type="text" maxlength="120" placeholder="可填写 NPC 姓名，多个名字用顿号分开">
+                        </div>
+                        <div class="branch-field">
+                            <label for="lifeEventStatus">进展状态</label>
+                            <select class="branch-select" id="lifeEventStatus">
+                                <option value="planned">计划中</option>
+                                <option value="ongoing">进行中</option>
+                                <option value="done">已发生</option>
+                            </select>
+                        </div>
+                        <div class="branch-field">
+                            <label for="lifeEventDetail">事件内容</label>
+                            <textarea class="branch-textarea" id="lifeEventDetail" placeholder="发生了什么？角色对此有什么想法？"></textarea>
+                        </div>
+                    </div>
+                    <button class="branch-save" id="btnAddLifeEvent" type="button">添加到生活线</button>
+                    <div class="branch-status" id="lifeEventStatusText" aria-live="polite"></div>
+                </section>
+                <section>
+                    <div class="profile-section-kicker">LIFE TIMELINE / 生活记录</div>
+                    <div class="life-event-list" id="lifeEventList"></div>
+                </section>
+            </main>
         </div>
 
         <!-- 角色卡编辑/新增界面 -->
@@ -835,7 +1136,8 @@
         </div>
 
     </div>
-    <script src="js/characters-manager.js"></script>
+    <script src="../../shared/js/phone/phone_storage.js?v=20261102a"></script>
+    <script src="js/characters-manager.js?v=20261102a"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
 </body>
