@@ -1,4 +1,4 @@
-// Production redeploy trigger for main source commit 12a537cf4adc58ed68cd7b84fae731c5207d5180.
+// Production redeploy trigger for main source commit 4be283839031dae52f5d35026a79b706d58b3337.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mao",
