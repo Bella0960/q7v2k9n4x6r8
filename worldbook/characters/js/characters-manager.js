@@ -267,6 +267,8 @@ function openRoleProfile(roleId) {
     const role = getRoleById(roleId);
     if (!role) return;
     currentProfileRoleId = String(role.id);
+    currentNpcId = '';
+    relationshipFilter = 'all';
     showAppView('profileView');
 }
 
