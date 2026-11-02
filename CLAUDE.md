@@ -152,6 +152,9 @@ AI 接口配置存 `api_settings`（默认 `https://api.openai.com/v1`，内置 
 
 ### UI 约定
 
+**开始任何 UI 设计或改造前，必须先阅读 docs/MAOMAO_VISUAL_DESIGN_CONSTITUTION.md。** 该文件记录用户明确的长期视觉偏好、参考图解读和禁止项；通用模板审美不得覆盖用户规范。
+
+
 - 手机壳三层：`.simulator-stage` > `.phone` > `.phone-screen`；真机下由 mobile-fit.css 重置为全屏。
 - 主屏部件：`.status-bar`（`#status-time` 实时时钟）、`.home-page` 宫格、`.app-card .app-tile`（`data-href` 跳转 + `data-drag` 拖拽 id）、`.ds-widget` 挂件、`.dock-wrapper`/`#dockBar`、`.gesture-bar`。
 - **底部导航由 shared/js/nav.js 自动注入**（`.floating-nav`，聊天/联系人/空间/我的四 tab）：从 `document.currentScript.src` 推导站点根（兼容子路径），`SKIP_PAGES` 数组按 pathname 子串匹配决定跳过页；高亮 = `currentPage.indexOf(tab.key)`。页面只需引脚本，无需写 HTML。
