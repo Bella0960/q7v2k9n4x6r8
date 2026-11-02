@@ -214,7 +214,7 @@
   }
 </style>
 <script src="../../shared/js/chat-page-theme.js?v=20261102v1"></script>
-<link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v3">
+<link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v4">
 </head>
 <body>
 
@@ -224,7 +224,7 @@
     <!-- 顶部 -->
     <div class="top-nav">
       <span class="top-nav-title">通讯录</span>
-      <span style="width:28px;"></span>
+      <button class="wechat-contact-add" type="button" id="wechatContactAdd" aria-label="添加联系人">+</button>
     </div>
 
     <!-- 搜索框 -->
@@ -261,10 +261,10 @@
         </div>
       </div>
 
-      <div class="contact-section-title">我的角色</div>
       <div id="contactList"></div>
 
     </div>
+    <nav class="wechat-contact-index" id="contactAlphabet" aria-label="联系人首字母索引"></nav>
 
   </div>
 
@@ -297,20 +297,35 @@
       return '<div class="contact-avatar">' + escapeHtml(ch) + '</div>';
     }
 
+    function contactInitial(role) {
+      var source = role.pinyin || role.py || role.initial || role.sortName || role.name || '';
+      var first = String(source).trim().charAt(0);
+      var letter = first.toUpperCase();
+      return /^[A-Z]$/.test(letter) ? letter : '#';
+    }
+
+    function compareContactNames(a,b) {
+      var left = String(a.pinyin || a.py || a.sortName || a.name || '');
+      var right = String(b.pinyin || b.py || b.sortName || b.name || '');
+      try { return new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'}).compare(left,right); }
+      catch(e) { return left.localeCompare(right,'zh-CN'); }
+    }
+
     function renderList(filter) {
       var list = document.getElementById('contactList');
+      var index = document.getElementById('contactAlphabet');
       var roles = loadCharacters();
+      var query = String(filter || '').trim().toLowerCase();
 
-      if (filter) {
-        var f = filter.toLowerCase().trim();
-        if (f) {
-          roles = roles.filter(function (r) {
-            return (r.name || '').toLowerCase().indexOf(f) !== -1;
-          });
-        }
+      if (query) {
+        roles = roles.filter(function (r) {
+          return String(r.name || '').toLowerCase().indexOf(query) !== -1 ||
+            String(r.pinyin || r.py || '').toLowerCase().indexOf(query) !== -1;
+        });
       }
+      roles.sort(compareContactNames);
 
-      if (roles.length === 0) {
+      if (!roles.length) {
         list.innerHTML =
           '<div class="empty-state">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
@@ -319,41 +334,62 @@
               '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>' +
               '<path d="M16 3.13a4 4 0 0 1 0 7.75"/>' +
             '</svg>' +
-            '<div class="empty-text">还没有角色<br>点击上方"添加 AI 角色"开始创建</div>' +
+            '<div class="empty-text">' + (query ? '没有找到匹配的联系人' : '还没有角色<br>点击上方"新的朋友"开始添加') + '</div>' +
           '</div>';
+        index.innerHTML = '';
         return;
       }
 
-      var html = roles.map(function (role) {
-        var name = role.name || '角色';
-        var avatar = role.avatar
-          ? '<div class="contact-avatar"><img src="' + escapeHtml(role.avatar) + '" alt=""></div>'
-          : avatarFallback(name);
-        return '' +
-          '<div class="contact-item" data-id="' + escapeHtml(role.id) + '">' +
-            avatar +
-            '<div class="contact-info">' +
-              '<div class="contact-name">' + escapeHtml(name) + '</div>' +
-            '</div>' +
-          '</div>';
-      }).join('');
-
-      list.innerHTML = html;
-
-      // 点击 → 进入聊天详情
-      list.querySelectorAll('.contact-item').forEach(function (el) {
-        el.addEventListener('click', function () {
-          var id = el.getAttribute('data-id');
-          if (id) {
-            window.location.href = '../chat/chat-detail.html?id=' + encodeURIComponent(id);
-          }
-        });
+      var groups = {};
+      roles.forEach(function(role){
+        var letter = contactInitial(role);
+        if(!groups[letter])groups[letter]=[];
+        groups[letter].push(role);
       });
+      var letters = Object.keys(groups).sort(function(a,b){
+        if(a==='#')return 1;if(b==='#')return -1;return a.localeCompare(b);
+      });
+      var html = '';
+      letters.forEach(function(letter){
+        html += '<section class="contact-letter-group" id="contactSection' + letter + '">' +
+          '<div class="contact-section-title">' + letter + '</div>';
+        html += groups[letter].map(function(role){
+          var name = role.name || '角色';
+          var avatar = role.avatar
+            ? '<div class="contact-avatar"><img src="' + escapeHtml(role.avatar) + '" alt=""></div>'
+            : avatarFallback(name);
+          return '<div class="contact-item" data-id="' + escapeHtml(role.id) + '">' +
+            avatar + '<div class="contact-info"><div class="contact-name">' + escapeHtml(name) + '</div></div>' +
+          '</div>';
+        }).join('');
+        html += '</section>';
+      });
+      list.innerHTML = html;
+      index.innerHTML = letters.map(function(letter){
+        return '<button type="button" class="wechat-index-letter" data-letter="' + letter + '">' + letter + '</button>';
+      }).join('');
     }
 
   /* mobile fullscreen: no rounded shell */
     document.getElementById('searchInput').addEventListener('input', function (e) {
       renderList(e.target.value);
+    });
+    document.getElementById('contactList').addEventListener('click',function(e){
+      var item=e.target.closest('.contact-item');
+      if(!item)return;
+      var id=item.getAttribute('data-id');
+      if(id)window.location.href='../chat/chat-detail.html?id='+encodeURIComponent(id);
+    });
+    document.getElementById('contactAlphabet').addEventListener('click',function(e){
+      var button=e.target.closest('[data-letter]');
+      if(!button)return;
+      var target=document.getElementById('contactSection'+button.dataset.letter);
+      if(!target)return;
+      var stage=document.getElementById('contactStage');
+      stage.scrollTo({top:target.getBoundingClientRect().top-stage.getBoundingClientRect().top+stage.scrollTop,behavior:'smooth'});
+    });
+    document.getElementById('wechatContactAdd').addEventListener('click',function(){
+      document.getElementById('goManageRole').click();
     });
 
   /* mobile fullscreen: no rounded shell */

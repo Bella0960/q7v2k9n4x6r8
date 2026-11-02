@@ -724,7 +724,7 @@
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
 <script src="../../shared/js/chat-page-theme.js?v=20261102v1"></script>
-<link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v3">
+<link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v4">
 </head>
 <body>
 
@@ -1167,39 +1167,45 @@
       }, 1800);
     }
 
-    function getLastMessage(roleId, fallbackName) {
+    function getConversationMeta(roleId, fallbackName) {
+      var arr = [];
       try {
-        var raw = localStorage.getItem('chat_history_' + roleId);
-        if (raw) {
-          var arr = JSON.parse(raw);
-          if (Array.isArray(arr) && arr.length > 0) {
-            // 跳过赴约剧情消息（mode:'date'）：会话列表预览的是线上聊天最后一条，
-            // 线下小说正文不应出现在微信风格的会话预览里。
-            var last = null;
-            for (var i = arr.length - 1; i >= 0; i--) {
-              if (arr[i] && arr[i].mode !== 'date') { last = arr[i]; break; }
-            }
-            if (last) {
-              if (last.text) return last.text;
-              // 无文本的特殊消息：按类型显示占位，避免显示兜底问候语
-              var placeholders = {
-                'redpacket': '[红包]',
-                'transfer': '[转账]',
-                'location': '[位置]',
-                'anniversary': '[纪念日]',
-                'todo': '[共享待办]',
-                'moment': '[特别时刻]',
-                'gift': '[礼物]'
-              };
-              if (placeholders[last.type]) return placeholders[last.type];
-              if (last.type === 'call') {
-                return last.call && last.call.type === 'video' ? '[视频通话]' : '[语音通话]';
-              }
-            }
-          }
+        if (_storage && typeof _storage.getChatHistory === 'function') arr = _storage.getChatHistory(roleId) || [];
+        else {
+          var raw = localStorage.getItem('chat_history_' + roleId);
+          arr = raw ? JSON.parse(raw) : [];
         }
-      } catch (e) {}
-      return '你好，我是' + fallbackName + '！';
+      } catch (e) { arr = []; }
+      if (!Array.isArray(arr)) arr = [];
+      var last = null;
+      // 跳过线下赴约正文；列表只显示线上聊天的最后一条。
+      for (var i = arr.length - 1; i >= 0; i--) {
+        if (arr[i] && arr[i].mode !== 'date') { last = arr[i]; break; }
+      }
+      var placeholders = {
+        redpacket:'[红包]',transfer:'[转账]',location:'[位置]',anniversary:'[纪念日]',
+        todo:'[共享待办]',moment:'[特别时刻]',gift:'[礼物]'
+      };
+      var preview = last ? (last.text || placeholders[last.type] ||
+        (last.type === 'call' ? (last.call && last.call.type === 'video' ? '[视频通话]' : '[语音通话]') : '')) :
+        ('你好，我是' + fallbackName + '！');
+      var time = last ? Number(last.time || last.timestamp || last.createdAt || 0) : 0;
+      if (time > 0 && time < 100000000000) time *= 1000;
+      return { preview:preview, time:isFinite(time) ? time : 0 };
+    }
+
+    function formatConversationTime(timestamp) {
+      var time = Number(timestamp || 0);
+      if (!time || !isFinite(time)) return '';
+      var date = new Date(time);
+      if (isNaN(date.getTime())) return '';
+      var now = new Date();
+      var pad = function(n){return String(n).padStart(2,'0');};
+      if (date.toDateString() === now.toDateString()) return pad(date.getHours()) + ':' + pad(date.getMinutes());
+      var yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      if (date.toDateString() === yesterday.toDateString()) return '昨天';
+      if (date.getFullYear() === now.getFullYear()) return (date.getMonth()+1) + '/' + date.getDate();
+      return date.getFullYear() + '/' + (date.getMonth()+1) + '/' + date.getDate();
     }
 
     function escapeHtml(str) {
@@ -1234,16 +1240,29 @@
       });
 
       // 置顶排序：chat_pin_<roleId> === 'true' 的排最前；组内保持原有顺序（稳定分区，不用 sort）
+      var metaCache = Object.create(null);
+      function cachedMeta(id,name) {
+        var key = String(id);
+        if (!Object.prototype.hasOwnProperty.call(metaCache,key)) metaCache[key] = getConversationMeta(id,name);
+        return metaCache[key];
+      }
       var pinnedRoles = roles.filter(function (r) {
         return localStorage.getItem('chat_pin_' + r.id) === 'true';
       });
       var otherRoles = roles.filter(function (r) {
         return localStorage.getItem('chat_pin_' + r.id) !== 'true';
       });
+      // 置顶分区内保持既有顺序；其他会话按最后一条线上消息时间排序。
+      otherRoles.sort(function(a,b){
+        return cachedMeta(b.id,b.name||'角色').time - cachedMeta(a.id,a.name||'角色').time;
+      });
       roles = pinnedRoles.concat(otherRoles);
 
-      // 群聊（放最前面，像微信一样群聊在消息列表里）
+      // 群聊放在普通角色之前；群内按最近一条线上消息排序。
       var groups = loadGroups();
+      groups.sort(function(a,b){
+        return cachedMeta(b.id,b.name||'群聊').time - cachedMeta(a.id,a.name||'群聊').time;
+      });
 
       if (roles.length === 0 && groups.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无聊天消息</div>';
@@ -1274,15 +1293,17 @@
           if (alias) displayName = alias;
         } catch (e) {}
         var isCustomAv = !!(g && g.avatar);
+        var groupMeta = cachedMeta(gid,displayName);
+        var groupPreview = groupMeta.time ? groupMeta.preview : (g.members || []).map(function(m) { return m.name; }).join('、');
         return '' +
           '<div class="chat-slim-card chat-group-card" data-gid="' + escapeHtml(gid) + '">' +
             '<div class="chat-avatar group-avatar' + (isCustomAv ? ' group-avatar-custom' : '') + '">' + groupAvatarHTML(g) + '</div>' +
             '<div class="chat-meta">' +
               '<div class="chat-title-row">' +
                 '<span class="chat-name">' + escapeHtml(displayName) + '</span>' +
-                '<span class="chat-time">Just now</span>' +
+                '<span class="chat-time">' + escapeHtml(formatConversationTime(groupMeta.time)) + '</span>' +
               '</div>' +
-              '<div class="chat-last-msg">' + escapeHtml((g.members || []).map(function(m) { return m.name; }).join('、')) + '</div>' +
+              '<div class="chat-last-msg">' + escapeHtml(groupPreview) + '</div>' +
             '</div>' +
           '</div>';
       }).join('');
@@ -1292,7 +1313,7 @@
         var avatarInner = safeImgSrc(role.avatar)
           ? '<img src="' + escapeHtml(safeImgSrc(role.avatar)) + '" alt="">'
           : USER_SVG_SMALL;
-        var lastMsg = getLastMessage(role.id, name);
+        var messageMeta = cachedMeta(role.id,name);
 
         return '' +
           '<div class="chat-slim-card" data-id="' + escapeHtml(role.id) + '">' +
@@ -1300,9 +1321,9 @@
             '<div class="chat-meta">' +
               '<div class="chat-title-row">' +
                 '<span class="chat-name">' + escapeHtml(name) + '</span>' +
-                '<span class="chat-time">Just now</span>' +
+                '<span class="chat-time">' + escapeHtml(formatConversationTime(messageMeta.time)) + '</span>' +
               '</div>' +
-              '<div class="chat-last-msg">' + escapeHtml(lastMsg) + '</div>' +
+              '<div class="chat-last-msg">' + escapeHtml(messageMeta.preview) + '</div>' +
             '</div>' +
           '</div>';
       }).join('');
