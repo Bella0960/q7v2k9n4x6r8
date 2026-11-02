@@ -46,6 +46,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .thumb.hotpot{background:radial-gradient(ellipse at 50% 56%,#9b3d2f 0 22%,#d7a26f 23% 34%,#6f4435 35% 41%,transparent 42%),linear-gradient(145deg,#5f4c45,#d9b59a)}
 .thumb.rain{background:linear-gradient(145deg,#c8d1d9,#eff1f2 60%,#b5bdc8)}
 .thumb.rain:before{inset:0;background:repeating-linear-gradient(110deg,transparent 0 12px,rgba(255,255,255,.5) 13px 14px)}
+.thumb-wrap{width:78px;height:78px;align-self:center;flex:none;border-radius:17px;overflow:hidden}.thumb-wrap .thumb{width:100%;height:100%}.reader-images img{max-height:260px;object-fit:cover}
 .empty{padding:55px 10px;text-align:center;color:#a5a9b5;font-size:13px;line-height:1.8}
 .empty strong{display:block;color:#686d7e;font-size:18px;font-weight:550;margin-bottom:7px}
 .fab{position:fixed;z-index:5;left:max(22px,calc(50% - 258px));bottom:calc(23px + env(safe-area-inset-bottom,0px));width:67px;height:67px;border:1px solid rgba(255,255,255,.95);border-radius:50%;background:rgba(255,255,255,.82);box-shadow:0 9px 28px rgba(50,60,90,.1);display:grid;place-items:center;color:#7d8499;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transition:transform .2s}
@@ -140,7 +141,7 @@ var entries=[
 {id:4,date:'2026-10-20',mood:'开心',title:'和朋友吃火锅',text:'和朋友吃了火锅，辣到流鼻涕。',thumb:'hotpot',photos:[]},
 {id:5,date:'2026-10-18',mood:'平静',title:'雨天',text:'今天下雨，宅在家里听了一天的音乐。',thumb:'rain',photos:[]}
 ];
-var selectedMood='平静',activePhotos=[],readerId=null;
+var selectedMood='平静',activePhotos=[],readerId=null,editingId=null;
 var $=function(id){return document.getElementById(id)};
 function escapeHTML(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function dateText(value){var p=value.split('-');return Number(p[1])+'月'+Number(p[2])+'日'}
@@ -153,10 +154,17 @@ function render(){
   return '<article class="card" data-id="'+e.id+'" style="animation-delay:'+Math.min(i,5)*.055+'s"><div class="card-copy"><div class="card-top"><time class="card-date">'+dateText(e.date)+'</time><span class="mood '+(moodClass[e.mood]||'calm')+'">'+escapeHTML(e.mood)+'</span></div>'+(e.title?'<h3 class="card-title">'+escapeHTML(e.title)+'</h3>':'')+'<p class="card-text">'+escapeHTML(e.text)+'</p></div>'+(thumb?'<div class="thumb-wrap">'+thumb+'</div>':'')+'</article>';
  }).join(''):'<div class="empty"><strong>还没有找到记录</strong>换个关键词试试看，或者写下今天的一件小事。</div>';
 }
-function openEditor(){
- selectedMood='平静';activePhotos=[];
- $('entryDate').value=new Date().toISOString().slice(0,10);
- $('entryTitle').value='';$('entryContent').value='';$('photos').value='';$('photoPreview').innerHTML='';
+function openEditor(id){
+ var entry=id==null?null:entries.find(function(e){return e.id===id});
+ editingId=entry?entry.id:null;
+ selectedMood=entry?(entry.mood||'平静'):'平静';
+ activePhotos=entry&&entry.photos?entry.photos.slice():[];
+ $('entryDate').value=entry?entry.date:new Date().toISOString().slice(0,10);
+ $('entryTitle').value=entry?(entry.title||''):'';
+ $('entryContent').value=entry?(entry.text||''):'';
+ $('photos').value='';
+ $('photoPreview').innerHTML=activePhotos.map(function(src){return '<img src="'+src+'" alt="照片预览">'}).join('');
+ $('saveEntry').textContent=entry?'保存修改':'保存到预览';
  document.querySelectorAll('.mood-btn').forEach(function(b){b.classList.toggle('active',b.dataset.mood===selectedMood)});
  $('editor').classList.add('show');document.body.style.overflow='hidden';
 }
@@ -180,11 +188,16 @@ $('photos').addEventListener('change',function(){
 $('saveEntry').addEventListener('click',function(){
  var date=$('entryDate').value||new Date().toISOString().slice(0,10),title=$('entryTitle').value.trim(),text=$('entryContent').value.trim();
  if(!text&&!title&&!activePhotos.length){$('entryContent').focus();return}
- entries.unshift({id:Date.now(),date:date,title:title,text:text,mood:selectedMood,photos:activePhotos.slice(),thumb:''});
- closeEditor();$('searchInput').value='';render();$('entries').scrollIntoView({behavior:'smooth',block:'start'});
+ if(editingId!=null){
+  var old=entries.find(function(e){return e.id===editingId});
+  if(old){old.date=date;old.title=title;old.text=text;old.mood=selectedMood;old.photos=activePhotos.slice();old.thumb=''}
+ }else{
+  entries.unshift({id:Date.now(),date:date,title:title,text:text,mood:selectedMood,photos:activePhotos.slice(),thumb:''});
+ }
+ closeEditor();editingId=null;$('searchInput').value='';render();$('entries').scrollIntoView({behavior:'smooth',block:'start'});
 });
 $('closeReader').addEventListener('click',function(){$('reader').classList.remove('show')});
-$('readerEdit').addEventListener('click',function(){if(readerId!=null){$('reader').classList.remove('show');openEditor()}});
+$('readerEdit').addEventListener('click',function(){if(readerId!=null){$('reader').classList.remove('show');openEditor(readerId)}});
 render();
 })();
 </script>
