@@ -130,6 +130,78 @@
 
     NS.buildWorldbookInjectionText = buildWorldbookInjectionText;
 
+
+    /* ========== 主角色社会关系与生活线 ========== */
+
+    function buildRelationshipNetworkText(role) {
+        var npcs = Array.isArray(role.npcCharacters) ? role.npcCharacters : [];
+        if (!npcs.length) return '';
+
+        var awarenessLabels = {
+            known: '用户已认识此人',
+            heard: '用户听说过此人，但不代表熟悉或见过',
+            unknown: '用户尚未认识此人'
+        };
+        var categoryLabels = {
+            family: '家人',
+            friend: '朋友',
+            work: '工作 / 学习',
+            other: '其他关系'
+        };
+
+        var lines = [];
+        npcs.slice(0, 35).forEach(function (npc) {
+            if (!npc || !String(npc.name || '').trim()) return;
+            var category = categoryLabels[npc.category] || '其他关系';
+            var awareness = awarenessLabels[npc.awareness] || awarenessLabels.known;
+            var relation = String(npc.relation || category).trim();
+            lines.push('人物：' + String(npc.name).trim() + '；主角色与其关系：' + relation + '；分类：' + category + '；' + awareness + '。');
+
+            [
+                ['身份 / 职业', npc.profession],
+                ['性格', npc.personality],
+                ['背景', npc.background],
+                ['与主角色的相处方式', npc.relationNotes],
+                ['与其他人物的关系', npc.connections],
+                ['说话习惯', npc.speechStyle],
+                ['个人生活与近况', npc.currentStatus]
+            ].forEach(function (field) {
+                var value = String(field[1] || '').trim();
+                if (value) lines.push(field[0] + '：' + value);
+            });
+        });
+
+        lines.push('使用原则：这些人物都是主角色生活中的独立个体，有自己的生活和关系。只依据档案中明确的信息，不要擅自编造已经发生的共同经历、关系或事实。用户已认识的人可以在合适语境中自然提起；用户只听说过的人不能默认熟悉；用户尚未认识的人若要进入对话，应先自然介绍，不可假设用户知道其身份。不要每轮强行提起人物，也不要把关系档案逐条复述。');
+        return lines.join('\n').slice(0, 5600);
+    }
+
+    function buildCharacterLifeText(role) {
+        var lines = [];
+        var lifeLine = String(role.lifeLine || '').trim();
+        if (lifeLine) lines.push('生活状态与长期安排：\n' + lifeLine);
+
+        var events = Array.isArray(role.lifeEvents) ? role.lifeEvents.slice() : [];
+        var statusLabels = { planned: '计划中', ongoing: '进行中', done: '已发生' };
+        events.sort(function (a, b) {
+            return String(b.date || '').localeCompare(String(a.date || ''))
+                || Number(b.createdAt || 0) - Number(a.createdAt || 0);
+        });
+        events.slice(0, 16).forEach(function (event) {
+            if (!event || !String(event.title || '').trim()) return;
+            var parts = [
+                String(event.date || '').trim(),
+                statusLabels[event.status] || ''
+            ].filter(Boolean);
+            lines.push('事件：' + String(event.title).trim()
+                + (parts.length ? '（' + parts.join(' · ') + '）' : ''));
+            if (event.people) lines.push('涉及人物：' + String(event.people).trim());
+            if (event.detail) lines.push('事件细节：' + String(event.detail).trim());
+        });
+        if (!lines.length) return '';
+        lines.push('生活线使用原则：把这些内容当作角色持续生活的一部分。计划中的事情不能说成已经完成，已经发生的事情不能随意改写。只在话题相关、角色确实会想到或适合分享时自然提及，不要把生活线变成每轮固定播报。');
+        return lines.join('\n\n').slice(0, 3800);
+    }
+
     /* ========== 主函数 ========== */
 
     NS.buildPhoneRoleContext = function (contactId, currentAppId) {
@@ -150,6 +222,13 @@
         if (role.prompt)  persona.push('系统提示：' + role.prompt);
         if (role.tone)    persona.push('语气风格：' + role.tone);
         parts.push(section('角色人设', persona.join('\n')));
+
+        // 2. 每个主角色独立的人物关系网络与个人生活线
+        var relationshipText = buildRelationshipNetworkText(role);
+        if (relationshipText) parts.push(section('人物关系网络', relationshipText));
+        var lifeText = buildCharacterLifeText(role);
+        if (lifeText) parts.push(section('个人生活线', lifeText));
+
 
         // 2. 世界书：只带入此刻相关的生活细节，不把整本设定反复塞给模型
         try {
