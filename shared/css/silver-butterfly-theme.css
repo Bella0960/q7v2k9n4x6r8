@@ -1,0 +1,484 @@
+/* Silver Butterfly / 银蝶之境
+ * One global theme for chat list, chat detail, contacts and moments.
+ * All existing page markup, data and interaction handlers remain in place.
+ */
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] {
+  --silver-ink: #19191d;
+  --silver-muted: #85858c;
+  --silver-glass: rgba(255,255,255,.64);
+  --silver-glass-strong: rgba(255,255,255,.78);
+  --silver-edge: rgba(255,255,255,.94);
+  --silver-shadow: 0 8px 28px rgba(70,70,80,.075);
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(145deg,#fbfafb 0%,#f5f4f6 54%,#ecebed 100%) !important;
+  border-color: rgba(255,255,255,.96);
+  box-shadow: 0 20px 54px rgba(57,57,66,.13);
+  color: var(--silver-ink);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"]::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  inset: 0;
+  opacity: .62;
+  background-image:
+    radial-gradient(ellipse at 52% 15%,rgba(255,255,255,.72),transparent 56%),
+    url("../assets/silver-butterfly.svg");
+  background-repeat: no-repeat;
+  background-size: 100% 100%, min(94%,420px) auto;
+  background-position: center, center 70px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .status-bar {
+  color: #17171b !important;
+  text-shadow: none !important;
+}
+
+/* Chat home */
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .main-stage {
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-gradient-banner:not([style*="background-image"]) {
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-gradient-banner::after {
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-header {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 38px 20px 0;
+  min-height: 92px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-copy {
+  min-width: 0;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-copy h1 {
+  color: #17171b;
+  font: italic 43px/.98 Georgia,"Times New Roman",serif;
+  letter-spacing: -.065em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-copy p {
+  margin-top: 8px;
+  color: #8a8990;
+  font: italic 10px/1.45 Georgia,"Times New Roman",serif;
+  letter-spacing: .015em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-action,
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions .group-entry-btn,
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions .arch-avatar-bridge {
+  position: static !important;
+  transform: none !important;
+  flex: 0 0 34px;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  margin: 0 !important;
+  color: #26262b;
+  background: rgba(255,255,255,.66) !important;
+  border: 1px solid rgba(255,255,255,.94) !important;
+  box-shadow: 0 3px 13px rgba(65,65,74,.07);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  cursor: pointer;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-action {
+  border: 1px solid rgba(255,255,255,.94);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-action svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions .group-entry-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: #26262b;
+  fill: none;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions .arch-avatar-bridge {
+  padding: 2px !important;
+  overflow: hidden;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-theme-actions .avatar-circle {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: #e6e5e8;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-spacer {
+  height: 135px;
+  flex-basis: 135px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .white-profile-stage {
+  align-items: stretch;
+  padding: 18px 13px 18px;
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .user-id-text {
+  align-self: flex-start;
+  margin: 0 10px 9px;
+  color: #96959c;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: .035em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .tier4-floating-stream {
+  gap: 10px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .floating-music-card {
+  min-height: 39px;
+  width: 100%;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.54);
+  border: 1px solid rgba(255,255,255,.88);
+  box-shadow: 0 3px 15px rgba(70,70,80,.045);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .vinyl-disc {
+  width: 23px;
+  height: 23px;
+  background: rgba(255,255,255,.76);
+  border: 1px solid rgba(150,150,158,.24);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-home-back svg {
+  stroke: #45454b;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .m-title {
+  color: #33333a;
+  font-size: 10px;
+  font-weight: 500;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .m-sub {
+  color: #9998a0;
+  font-size: 8px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .wave-bar {
+  background: #777780;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .play-toggle-btn svg {
+  stroke: #55555c;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] #chatListContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 7px 15px;
+  overflow: hidden;
+  border-radius: 23px;
+  background: rgba(255,255,255,.66);
+  border: 1px solid rgba(255,255,255,.92);
+  box-shadow: var(--silver-shadow);
+  backdrop-filter: blur(22px) saturate(1.18);
+  -webkit-backdrop-filter: blur(22px) saturate(1.18);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-slim-card {
+  padding: 11px 0;
+  gap: 11px;
+  border: 0;
+  border-bottom: 1px solid rgba(105,105,114,.075);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-slim-card:last-child {
+  border-bottom: 0;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-avatar {
+  width: 39px;
+  height: 39px;
+  border-radius: 50%;
+  background: #e7e6e9;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.7);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-name {
+  color: #202025;
+  font-size: 13px;
+  font-weight: 600;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-time {
+  color: #99989f;
+  font-size: 9px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-last-msg {
+  color: #88878e;
+  font-size: 11px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-slim-card:active {
+  background: rgba(240,239,242,.48);
+}
+
+/* Chat detail */
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-header {
+  background: rgba(255,255,255,.5) !important;
+  border-bottom: 1px solid rgba(255,255,255,.76);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-user-name {
+  color: #202025;
+  font: 500 15px/1.2 Georgia,"Songti SC",serif;
+  letter-spacing: 0;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-status-sub,
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-notice-bar {
+  color: #898890;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .chat-stage {
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .message-time {
+  color: #73727a;
+  background: rgba(255,255,255,.54);
+  border: 1px solid rgba(255,255,255,.76);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .msg-avatar {
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow: 0 2px 7px rgba(70,70,80,.09);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .input-dock {
+  background: rgba(255,255,255,.5);
+  border-top: 1px solid rgba(255,255,255,.78);
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .input-capsule {
+  background: rgba(255,255,255,.76);
+  border-color: rgba(255,255,255,.96);
+  border-radius: 999px;
+  box-shadow: 0 3px 14px rgba(70,70,80,.06), inset 0 1px 0 rgba(255,255,255,.85);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .input-capsule:focus-within {
+  background: rgba(255,255,255,.9);
+  border-color: #fff;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .send-icon-btn {
+  background: #323238;
+}
+
+/* Contacts */
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .top-nav {
+  padding: 58px 20px 6px;
+  background: transparent !important;
+  border: 0;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .top-nav-title {
+  color: #1b1b20;
+  font: 400 26px/1.15 Georgia,"Songti SC",serif;
+  letter-spacing: -.045em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .top-nav-title::after {
+  content: "遇见更多有趣的人。";
+  display: block;
+  margin-top: 7px;
+  color: #96949c;
+  font: 10px/1.4 Georgia,"Songti SC",serif;
+  letter-spacing: .02em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .search-wrap {
+  padding: 11px 20px 15px;
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .search-box {
+  height: 37px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.64);
+  border: 1px solid rgba(255,255,255,.92);
+  box-shadow: 0 3px 14px rgba(70,70,80,.035);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .search-box svg {
+  stroke: #77767e;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .contact-stage {
+  background: transparent !important;
+  padding: 0 14px 112px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .quick-entry-list {
+  margin: 0 0 15px;
+  padding: 7px 13px;
+  border-radius: 19px;
+  background: rgba(255,255,255,.65);
+  border: 1px solid rgba(255,255,255,.94);
+  box-shadow: 0 5px 20px rgba(70,70,80,.045);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .quick-entry {
+  padding: 9px 2px;
+  border: 0;
+  background: transparent;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .quick-entry-icon {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  margin-right: 11px;
+  background: rgba(255,255,255,.9);
+  border: 1px solid rgba(220,220,225,.72);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .quick-entry-icon svg {
+  stroke: #3c3c42;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .quick-entry-label {
+  color: #2a2a30;
+  font-size: 12px;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .quick-entry-arrow,
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .quick-entry-arrow svg {
+  color: #a3a2a9;
+  stroke: #a3a2a9;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .contact-section-title {
+  padding: 4px 4px 8px;
+  color: #98979e;
+  font: 10px/1.3 Georgia,"Songti SC",serif;
+  letter-spacing: .11em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] #contactList {
+  overflow: hidden;
+  border-radius: 19px;
+  background: rgba(255,255,255,.62);
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow: 0 6px 22px rgba(70,70,80,.045);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .contact-item {
+  padding: 10px 13px;
+  background: transparent;
+  border-bottom: 1px solid rgba(105,105,114,.07);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .contact-item:active {
+  background: rgba(240,239,242,.5);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .contact-avatar {
+  width: 39px;
+  height: 39px;
+  border-radius: 50%;
+  background: #e8e7ea;
+  border: 1px solid rgba(255,255,255,.88);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .contact-name {
+  color: #222228;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Moments */
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .space-stage {
+  padding: 57px 15px 104px;
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-block {
+  height: 192px;
+  padding: 0 15px;
+  margin-bottom: -5px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-block:not([style*="background-image"]) {
+  background: transparent !important;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-block::before {
+  content: "动态";
+  position: absolute;
+  left: 2px;
+  top: -5px;
+  color: #1c1c21;
+  font: 400 27px/1.2 Georgia,"Songti SC",serif;
+  letter-spacing: -.05em;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-block::after {
+  content: "记录生活的每一刻。";
+  position: absolute;
+  left: 2px;
+  top: 31px;
+  color: #99979f;
+  font: 10px/1.4 Georgia,"Songti SC",serif;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-avatar-left {
+  position: absolute;
+  left: 3px;
+  bottom: 18px;
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.95);
+  box-shadow: 0 4px 12px rgba(70,70,80,.08);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-add-btn {
+  top: -1px;
+  right: 1px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.66);
+  border: 1px solid rgba(255,255,255,.94);
+  box-shadow: 0 3px 13px rgba(65,65,74,.07);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-add-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: #36363c;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .moments-main-panel {
+  padding: 17px 16px;
+  border-radius: 21px;
+  background: rgba(255,255,255,.66);
+  border: 1px solid rgba(255,255,255,.94);
+  box-shadow: var(--silver-shadow);
+  backdrop-filter: blur(20px) saturate(1.18);
+  -webkit-backdrop-filter: blur(20px) saturate(1.18);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .post-item {
+  border-bottom-color: rgba(105,105,114,.075);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .post-item .moment-avatar {
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.9);
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .post-item:last-child {
+  border-bottom: 0;
+}
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .cover-menu {
+  border-color: rgba(255,255,255,.94);
+  border-radius: 15px;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 12px 30px rgba(60,60,70,.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* The existing injected navigation already uses a translucent floating pill;
+   keep its interaction and sizing, just soften the active surface slightly. */
+.phone-mockup[data-chat-theme-preset="silver-butterfly"] .floating-nav {
+  background: rgba(255,255,255,.78) !important;
+  border-color: rgba(255,255,255,.94) !important;
+  box-shadow: 0 5px 20px rgba(65,65,75,.075) !important;
+}

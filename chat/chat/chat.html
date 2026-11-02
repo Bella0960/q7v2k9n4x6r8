@@ -6,6 +6,7 @@
 <title>聊天 · 小手机</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/chat-beauty.js?v=20261102v2"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <style>
   * {
@@ -722,6 +723,8 @@
   }
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+<script src="../../shared/js/chat-page-theme.js?v=20261102v1"></script>
+<link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v1">
 </head>
 <body>
 
@@ -735,16 +738,33 @@
       <!-- 封面底图（默认深到浅灰渐变，上传后铺满） -->
       <div class="cover-gradient-banner" id="coverBox"></div>
       <div class="cover-click-area" id="coverClickArea" aria-label="更换封面"></div>
+      <div class="chat-theme-header">
+        <div class="chat-theme-copy">
+          <h1>Chat</h1>
+          <p>Talk to the world<br>in your own way.</p>
+        </div>
+        <div class="chat-theme-actions">
+          <button class="chat-theme-action" id="chatHomeSearch" type="button" aria-label="搜索聊天">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path>
+            </svg>
+          </button>
+          <button class="group-entry-btn" id="groupEntryBtn" type="button" aria-label="创建群聊">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+          </button>
+          <div class="arch-avatar-bridge" id="avatarBridge" title="点击上传头像">
+            <div class="avatar-circle" id="avatarBox"></div>
+          </div>
+          <input type="file" id="avatarInput" accept="image/*">
+        </div>
+      </div>
       <input type="file" id="coverInput" accept="image/*">
       <div class="cover-spacer" aria-hidden="true"></div>
 
       <!-- 白色拱形卡片：上方纯白，向下渐隐透出封面 -->
       <div class="white-profile-stage">
-        <div class="arch-avatar-bridge" id="avatarBridge" title="点击上传头像">
-          <div class="avatar-circle" id="avatarBox"></div>
-        </div>
-        <input type="file" id="avatarInput" accept="image/*">
-
         <div class="user-id-text" id="userHandle">@未设置</div>
 
         <div class="tier4-floating-stream">
@@ -764,9 +784,6 @@
             </div>
 
             <div class="music-right">
-              <button class="group-entry-btn" id="groupEntryBtn" type="button" aria-label="创建群聊">
-                <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              </button>
               <div class="sound-wave playing" id="soundWave">
                 <div class="wave-bar"></div>
                 <div class="wave-bar"></div>
@@ -812,6 +829,9 @@
     /* ===== 返回主页 ===== */
     document.getElementById('chatHomeBack').addEventListener('click', function () {
       window.location.href = '../../index.html';
+    });
+    document.getElementById('chatHomeSearch').addEventListener('click', function () {
+      window.location.href = 'chat-search.html';
     });
   </script>
   <script>

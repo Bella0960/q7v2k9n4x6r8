@@ -175,6 +175,28 @@
         messageShowDate: false, imageBubbleRadius: 16
     };
 
+    // Silver Butterfly supplies a quiet glass palette by default. Explicit global and per-role
+    // customizations still layer above these values in resolve(), so saved bubble work is preserved.
+    var SILVER_BUTTERFLY_BUBBLE_DEFAULTS = {
+        myBubbleBg: '#E7E7EA', myBubbleOpacity: 82, myBubbleColor: '#27272B',
+        myBubbleRadius: '18px 18px 5px 18px', myBubbleRadiusTL: 18, myBubbleRadiusTR: 18,
+        myBubbleRadiusBR: 5, myBubbleRadiusBL: 18, myBubbleBorderColor: 'rgba(255,255,255,.9)',
+        myBubbleBorderWidth: 1, myBubbleBorderStyle: 'solid', myBubbleLineHeight: 1.45,
+        myBubbleShadowVisible: true, myBubbleShadowColor: 'rgba(70,70,78,.07)',
+        myBubbleShadowX: 0, myBubbleShadowY: 3, myBubbleShadowBlur: 14, myBubbleShadowSpread: 0,
+        myBubblePadding: 11, myBubbleFontSize: 14, myBubbleFontFamily: 'system',
+        partnerBubbleBg: '#FFFFFF', partnerBubbleOpacity: 82, partnerBubbleColor: '#222226',
+        partnerBubbleRadius: '18px 18px 18px 5px', partnerBubbleRadiusTL: 18, partnerBubbleRadiusTR: 18,
+        partnerBubbleRadiusBR: 18, partnerBubbleRadiusBL: 5, partnerBubbleBorderColor: 'rgba(255,255,255,.94)',
+        partnerBubbleBorderWidth: 1, partnerBubbleBorderStyle: 'solid', partnerBubbleLineHeight: 1.45,
+        partnerBubbleShadowVisible: true, partnerBubbleShadowColor: 'rgba(70,70,78,.06)',
+        partnerBubbleShadowX: 0, partnerBubbleShadowY: 2, partnerBubbleShadowBlur: 12, partnerBubbleShadowSpread: 0,
+        partnerBubblePadding: 11, partnerBubbleFontSize: 14, partnerBubbleFontFamily: 'system',
+        messageTimeVisible: true, messageTimeColor: '#77777D', messageTimeSize: 10,
+        messageTimePosition: 'above', messageTimeShowRead: true, messageReadPosition: 'inline',
+        messageShowDate: false, imageBubbleRadius: 18
+    };
+
     var CHAT_THEME_MIGRATED_FLAG = 'maomao_chat_theme_migrated_v1';
     // Migrate the former page-wide preset into its own global key once, then detach
     // the exact built-in values it previously wrote into the bubble customization configs.
@@ -193,13 +215,13 @@
     NS.getThemePreset = function () {
         try {
             var saved = localStorage.getItem(CHAT_THEME_KEY);
-            if (saved === 'default' || saved === 'imessage' || saved === 'qq') return saved;
+            if (saved === 'default' || saved === 'imessage' || saved === 'qq' || saved === 'silver-butterfly') return saved;
         } catch (e) {}
         var legacy = readScope('global').themePreset;
         return legacy === 'imessage' ? 'imessage' : 'default';
     };
     NS.setThemePreset = function (theme) {
-        if (theme !== 'imessage' && theme !== 'qq') theme = 'default';
+        if (theme !== 'imessage' && theme !== 'qq' && theme !== 'silver-butterfly') theme = 'default';
         cleanupLegacyThemeValues();
         try {
             localStorage.setItem(CHAT_THEME_KEY, theme);
@@ -329,9 +351,11 @@
         var activeThemePreset = NS.getThemePreset();
         // A page theme supplies default bubble values only. Explicit global and per-role
         // bubble customizations are then layered over it, preserving the editor's purpose.
-        if (activeThemePreset === 'imessage') {
-            for (var themeKey in IMESSAGE_BUBBLE_DEFAULTS) {
-                if (themeKey in DEFAULTS) out[themeKey] = IMESSAGE_BUBBLE_DEFAULTS[themeKey];
+        var pageBubbleDefaults = activeThemePreset === 'imessage' ? IMESSAGE_BUBBLE_DEFAULTS :
+            (activeThemePreset === 'silver-butterfly' ? SILVER_BUTTERFLY_BUBBLE_DEFAULTS : null);
+        if (pageBubbleDefaults) {
+            for (var themeKey in pageBubbleDefaults) {
+                if (themeKey in DEFAULTS) out[themeKey] = pageBubbleDefaults[themeKey];
             }
         }
         var layers = [readScope('global')];
@@ -355,7 +379,7 @@
         var s = rootEl.style;
         // The page shell and the message stage share the same built-in theme.
         // This lets iMessage update the header/composer together with the bubbles.
-        var activeThemePreset = (v.themePreset === 'imessage' || v.themePreset === 'qq') ? v.themePreset : 'default';
+        var activeThemePreset = (v.themePreset === 'imessage' || v.themePreset === 'qq' || v.themePreset === 'silver-butterfly') ? v.themePreset : 'default';
         try {
             rootEl.setAttribute('data-chat-theme-preset', activeThemePreset);
             var phoneShell = rootEl.closest ? rootEl.closest('.phone-mockup') : null;
