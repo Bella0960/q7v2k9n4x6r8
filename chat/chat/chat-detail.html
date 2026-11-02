@@ -4827,6 +4827,8 @@
             function buildCharacterSocialPrompt(role) {
                 if (!role || typeof role !== 'object') return '';
                 var lines = [];
+                var speechStyle = String(role.tone || role.speechStyle || role.speech || '').trim();
+                if (speechStyle) lines.push('【主角色说话与表达习惯】\\n' + speechStyle.slice(0, 900));
                 var npcs = Array.isArray(role.npcCharacters) ? role.npcCharacters : [];
                 var awarenessLabels = {
                     known: '用户已认识此人',
