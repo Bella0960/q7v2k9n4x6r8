@@ -293,7 +293,7 @@ function renderRoleProfile() {
             '<h2 class="profile-hero-name">' + escapeHtml(role.name || '未命名角色') + '</h2>' +
             '<div class="profile-hero-state">' + (String(role.id) === String(currentId) ? '当前正在使用' : '独立主角色档案') + '</div></div>' +
             '<div class="profile-persona" data-persona-collapse>' +
-                '<div class="profile-persona-body" id="profilePersonaBody"><p class="profile-hero-desc">' + escapeHtml(role.personaRaw || role.persona || '还没有填写人物背景。可以从基本资料开始完善这个角色。') + '</p></div>' +
+                '<div class="profile-persona-body" id="profilePersonaBody"><p class="profile-hero-desc">' + escapeHtml(role.persona || '还没有填写人物背景。可以从基本资料开始完善这个角色。') + '</p></div>' +
                 '<button class="profile-persona-toggle" type="button" data-persona-toggle aria-expanded="false" aria-controls="profilePersonaBody" hidden>' +
                     '<span data-persona-toggle-text>展开全文</span>' +
                     '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
@@ -1056,14 +1056,24 @@ function resetPersonaOrganizePanel() {
 function updatePersonaOrganizeHint() {
     const hint = document.getElementById('personaOrganizeHint');
     if (!hint) return;
+    const rawPreview = document.getElementById('personaRawPreview');
     if (!pendingPersonaRaw) {
         hint.textContent = '导入人设文件后，可先本地预解析，再按需调用一次 AI 归类。';
+        if (rawPreview) {
+            rawPreview.classList.add('hidden');
+            rawPreview.textContent = '';
+        }
         return;
     }
     const parsed = parsePersonaSections(pendingPersonaRawKind === 'json' ? pendingPersonaAnalyzeText : pendingPersonaRaw);
     const labels = parsed.matchedKeys.map(personaSectionLabel);
     const coverage = labels.length ? ('本地识别到：' + labels.join('、')) : '未识别到明显标题';
     hint.textContent = '已读取原文（' + pendingPersonaRaw.length + ' 字）。' + coverage + '。本地预解析不是 AI 整理。';
+    // 原文只读展示在整理面板内；档案顶部折叠区仍只渲染 role.persona，保持 UI-001 契约。
+    if (rawPreview) {
+        rawPreview.textContent = pendingPersonaRaw;
+        rawPreview.classList.remove('hidden');
+    }
 }
 
 function buildPersonaOrganizeInput() {
