@@ -94,7 +94,7 @@ jobs:
           content = path.read_text(encoding="utf-8")
           version = os.environ["GITHUB_SHA"][:10]
           updated, count = re.subn(
-              r"const CACHE_NAME = ['\\"]phone-app-pwa-[^'\\"]+['\\"];",
+              r"""const CACHE_NAME = ['"]phone-app-pwa-[^'"]+['"];""",
               f"const CACHE_NAME = 'phone-app-pwa-apk-{version}';",
               content,
               count=1,
