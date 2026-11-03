@@ -54,10 +54,19 @@
     throw new Error('未配置原生加载方式的美化编辑器脚本：' + path);
   }
 
-  function scopeBeautyCss(source) {
-    return String(source || '')
+  function scopeBeautyCss(source, baseUrl) {
+    var scoped = String(source || '')
       .replace(/(^|[,{]\s*)(?:html|body)(?=[\s.#:[>+~,{])/gm, '$1:host')
       .replace(/:root\b/g, ':host');
+    return scoped.replace(/url\(\s*(?:(["'])(.*?)\1|([^)]*?))\s*\)/gi, function (whole, quote, quoted, plain) {
+      var value = String(quote ? quoted : plain || '').trim();
+      if (!value || /^(?:data:|blob:|https?:|\/\/|#|var\()/i.test(value)) return whole;
+      try {
+        return 'url("' + new URL(value, baseUrl || PAGE_URL).href.replace(/"/g, '%22') + '")';
+      } catch (error) {
+        return whole;
+      }
+    });
   }
 
   function createDocumentFacade(shadow, host, bodyElement) {
@@ -247,8 +256,12 @@
 
           shadow.innerHTML = '';
           var styleElement = document.createElement('style');
-          var styles = cssSources.map(function (item) { return item.source; });
-          styles.push.apply(styles, styleNodes.map(function (node) { return node.textContent || ''; }));
+          var styles = cssSources.map(function (item) {
+            return scopeBeautyCss(item.source, item.url);
+          });
+          styles.push.apply(styles, styleNodes.map(function (node) {
+            return scopeBeautyCss(node.textContent || '', PAGE_URL);
+          }));
           styles.push([
             '',
             ':host { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; background:#fff; }',
@@ -256,7 +269,7 @@
             ':host .phone { width:100% !important; max-width:none !important; height:100% !important; max-height:none !important; min-height:0 !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }',
             ':host .content { min-height:0; overscroll-behavior:contain; }'
           ].join('\n'));
-          styleElement.textContent = styles.map(scopeBeautyCss).join('\n\n');
+          styleElement.textContent = styles.join('\n\n');
           shadow.appendChild(styleElement);
 
           parsed.querySelectorAll('script, style, link[rel~="stylesheet"]').forEach(function (node) {
