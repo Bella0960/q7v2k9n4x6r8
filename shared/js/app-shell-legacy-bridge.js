@@ -17,8 +17,70 @@
     var records = [];
     var activeRecord = null;
     var activeRoute = null;
+    var activeNativeId = null;
+    var nativeShell = null;
+    var nativeRoutes = { 'settings/settings.html': 'settings' };
     var destroyed = false;
     var useSequence = 0;
+
+    function createNativeShell() {
+      if (!win.MAOMAOAppShell || typeof win.MAOMAOAppShell.create !== 'function') return null;
+      var emptyModule = { mount: function () {} };
+      try {
+        return win.MAOMAOAppShell.create({
+          root: root,
+          routeParam: 'maomao_internal',
+          apps: {
+            home: { module: emptyModule },
+            legacy: { module: emptyModule },
+            settings: { src: 'apps/settings/settings-module.js' }
+          },
+          onError: function (error, details) {
+            if (typeof options.onError === 'function') options.onError(error, details);
+          }
+        });
+      } catch (error) {
+        if (typeof options.onError === 'function') options.onError(error, { phase: 'native-shell-create' });
+        return null;
+      }
+    }
+
+    function activateNativeRoute(moduleId, route, url, openOptions) {
+      openOptions = openOptions || {};
+      if (activeRecord) {
+        activeRecord.frame.hidden = true;
+        activeRecord.frame.setAttribute('aria-hidden', 'true');
+        dispatchFrameEvent(activeRecord, 'maomao:app:deactivate', {
+          route: activeRecord.route,
+          nextRoute: route
+        });
+        activeRecord = null;
+      }
+      showHost();
+      root.removeAttribute('data-load-error');
+      activeNativeId = moduleId;
+      activeRoute = route;
+      if (openOptions.history !== false) writeParentRoute(route, openOptions.replace === true);
+      if (!nativeShell) return false;
+      nativeShell.open(moduleId, { route: route, url: url.href }, { history: false })
+        .then(function () {
+          if (activeNativeId === moduleId) root.setAttribute('data-active-route', route);
+        })
+        .catch(function (error) {
+          if (typeof options.onError === 'function') options.onError(error, { route: route, moduleId: moduleId });
+          root.setAttribute('data-load-error', 'true');
+        });
+      return true;
+    }
+
+    function activateLegacyRoute(url) {
+      if (nativeShell) {
+        nativeShell.open('legacy', {}, { history: false }).catch(function (error) {
+          if (typeof options.onError === 'function') options.onError(error, { phase: 'legacy-shell-activate' });
+        });
+      }
+      activeNativeId = 'legacy';
+    }
 
     function safeUrl(input, sourceWindow) {
       try {
@@ -188,6 +250,14 @@
         return;
       }
 
+      var relativePath = url.pathname.slice(basePath.length);
+      if (nativeRoutes[relativePath]) {
+        if (record.currentKey && routeMap.get(record.currentKey) === record) routeMap.delete(record.currentKey);
+        activateNativeRoute(nativeRoutes[relativePath], routeForUrl(url), url, { history: addHistory !== false });
+        removeRecord(record);
+        return;
+      }
+
       var nextKey = keyForUrl(url);
       if (record.currentKey && record.currentKey !== nextKey &&
           routeMap.get(record.currentKey) === record) {
@@ -290,6 +360,12 @@
       }
 
       var route = routeForUrl(url);
+      var relativePath = url.pathname.slice(basePath.length);
+      if (nativeRoutes[relativePath]) {
+        return activateNativeRoute(nativeRoutes[relativePath], route, url, openOptions);
+      }
+
+      activateLegacyRoute(url);
       var key = keyForUrl(url);
       var record = routeMap.get(key);
 
@@ -328,6 +404,8 @@
       });
       activeRecord = null;
       activeRoute = null;
+      activeNativeId = 'home';
+      if (nativeShell) nativeShell.open('home', {}, { history: false }).catch(function () {});
       hideHost();
       if (homeOptions.history !== false) writeParentRoute(null, homeOptions.replace === true);
       return true;
@@ -374,6 +452,7 @@
     }
 
     var desktopRoot = root.parentNode || doc;
+    nativeShell = createNativeShell();
     desktopRoot.addEventListener('click', onParentClick);
     win.addEventListener('popstate', onPopState);
     doc.addEventListener('visibilitychange', onVisibilityChange);
