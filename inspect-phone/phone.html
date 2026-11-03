@@ -12,7 +12,9 @@
 html,body{height:100%;margin:0}
 body{
   background:#e5e5e5;color:var(--ink);display:flex;justify-content:center;align-items:center;
-  min-height:100dvh;margin:0;overflow:hidden;touch-action:pan-y;
+  min-height:100dvh;margin:0;overflow:hidden;
+  /* 桌面预览：让浏览器尽快派发 tap 事件，不要等 300ms */
+  touch-action:manipulation;
 }
 .device{
   position:relative;flex:0 0 auto;
@@ -21,9 +23,15 @@ body{
   background:var(--bg);overflow:hidden;
   border:8px solid #fff;border-radius:45px;
   box-shadow:0 10px 25px rgba(0,0,0,.15);
+  /* 机身自身不允许系统手势滚动，避免上滑解锁时被抢占 */
+  touch-action:none;
 }
 .screen{position:absolute;inset:0}
-.lock{position:absolute;inset:0;z-index:6;display:grid;place-items:center;touch-action:pan-y;background:radial-gradient(circle at 25% 18%,rgba(255,255,255,.62),transparent 55%),repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 1px,transparent 1px 8px),linear-gradient(180deg,#ececef,#dedfe4);transition:opacity .28s ease,transform .28s ease}
+.lock{position:absolute;inset:0;z-index:6;display:grid;place-items:center;
+  /* 关键修复：把触摸事件完全交给 JS，不让浏览器把上滑识别为系统 pan 手势而吞掉 touchend。
+     原来是 touch-action:pan-y，浏览器会等待系统手势确认，首次上滑 touchend 被暂缓/丢弃。 */
+  touch-action:none;
+  background:radial-gradient(circle at 25% 18%,rgba(255,255,255,.62),transparent 55%),repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 1px,transparent 1px 8px),linear-gradient(180deg,#ececef,#dedfe4);transition:opacity .28s ease,transform .28s ease}
 .lock.hide{opacity:0;transform:translateY(-16px);pointer-events:none}
 .lock-top{position:absolute;top:64px;left:0;right:0;text-align:center}
 .lock-time{font-size:52px;font-weight:200;letter-spacing:.04em;line-height:1}
@@ -77,6 +85,53 @@ body{
 .simple div{font-size:12px;color:var(--muted)}
 .simple strong{display:block;margin-top:6px;font-size:15px;font-weight:500}
 .empty{text-align:center;margin-top:38px;font-size:13px;color:var(--muted);line-height:1.7}
+
+/* ============================================================
+ * 真机窄屏（≤480px）独立规则 —— 解决左右白边
+ *
+ * 根因分析：
+ *   手机真机（如 390px）打开时，body 用 flex 居中，.device 用
+ *   width:min(390px, calc(100vw-24px)) → 实际 366px，两侧各有
+ *   (390-366)/2 = 12px 白边（来自 body 背景 #e5e5e5）；再加 8px 白
+ *   border 视觉上更宽。本页面不引入 mobile-fit.css，所以 shared
+ *   里的窄屏壳覆盖一个都没命中。
+ *
+ * 桌面浏览器预览（>480px）保留原手机模拟器外壳（圆角、边框、
+ * 居中固定宽度），仅窄屏拉满。viewport-fit=cover 已在 meta 声明。
+ * ============================================================ */
+@media (max-width: 480px) {
+  html{
+    width:100%;
+    min-height:100%;
+    overflow-x:hidden;
+    overscroll-behavior:none;
+  }
+  body{
+    justify-content:flex-start !important;
+    align-items:stretch !important;
+    padding:0 !important;
+    margin:0 !important;
+    background:#fff !important;
+    overflow:hidden !important;
+    /* safe-area：iPhone 刘海/底部 Home Indicator 的内容区域 */
+    padding-top:env(safe-area-inset-top, 0px) !important;
+    padding-bottom:env(safe-area-inset-bottom, 0px) !important;
+    padding-left:env(safe-area-inset-left, 0px) !important;
+    padding-right:env(safe-area-inset-right, 0px) !important;
+  }
+  .device{
+    width:100vw !important;
+    height:100vh !important;
+    height:100dvh !important;
+    max-width:none !important;
+    max-height:none !important;
+    border:0 !important;
+    border-radius:0 !important;
+    box-shadow:none !important;
+    margin:0 !important;
+    padding:0 !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -149,6 +204,7 @@ body{
 </main>
 <script>
 (function(){
+  try{
   var params=new URLSearchParams(location.search);
   var requestedId=params.get('id')||'';
   var roles=[];
@@ -182,48 +238,75 @@ body{
 
   var lockStartY=0;
   var lockStartX=0;
+  var lockPointerId=null;
   var lockTracking=false;
+  var unlockFired=false;
   var unlocked=false;
   function unlockPhone(){
     if(unlocked)return;
     unlocked=true;
+    unlockFired=true;
     lock.classList.add('hide');
     phone.classList.add('show');
   }
-  // 真正支持向上滑动解锁；保留点击作为兼容兜底
-  lock.addEventListener('touchstart',function(e){
-    if(!e.touches||!e.touches[0])return;
-    lockStartY=e.touches[0].clientY;
-    lockStartX=e.touches[0].clientX;
-    lockTracking=true;
-  },{passive:true});
-  lock.addEventListener('touchend',function(e){
-    if(!lockTracking)return;
+  function resetLockState(){
     lockTracking=false;
-    var t=e.changedTouches&&e.changedTouches[0];
-    if(!t)return;
-    var dy=t.clientY-lockStartY;
-    var dx=t.clientX-lockStartX;
-    if(dy < -36 && Math.abs(dy)>Math.abs(dx)*1.15)unlockPhone();
-  },{passive:true});
+    lockStartY=0;
+    lockStartX=0;
+    lockPointerId=null;
+    unlockFired=false;
+  }
+  function checkSwipeUp(dy,dx){
+    if(dy < -36 && Math.abs(dy) > Math.abs(dx)*1.15 && !unlockFired){
+      unlockPhone();
+    }
+  }
+  // === 解锁手势 ===
+  // 根因修复：原来 .lock 上 touch-action:pan-y 导致浏览器把首次上滑当成
+  // 系统滚动手势暂缓派发 touchend。现在 CSS 已改为 touch-action:none，
+  // 浏览器完全不拦截手势事件。
+  //   - pointerdown/pointerup/pointercancel：覆盖鼠标 + 触摸 + 触控笔
+  //   - touchstart/touchend/touchcancel：老 WebView 兜底
+  //   - click：轻触辅助解锁
+  //   - unlockFired 标记：防止同一手势在多通道重复触发 unlockPhone()
+  //   - resetLockState：每次结束/取消事件都复位，避免 lockTracking 卡死
   lock.addEventListener('pointerdown',function(e){
-    if(e.pointerType==='touch')return;
+    if(unlocked)return;
+    lockPointerId=e.pointerId;
     lockStartY=e.clientY;
     lockStartX=e.clientX;
     lockTracking=true;
+    unlockFired=false;
+    try{lock.setPointerCapture(e.pointerId);}catch(_){}
   });
   lock.addEventListener('pointerup',function(e){
-    if(e.pointerType==='touch'||!lockTracking)return;
-    lockTracking=false;
-    var dy=e.clientY-lockStartY;
-    var dx=e.clientX-lockStartX;
-    if(dy < -36 && Math.abs(dy)>Math.abs(dx)*1.15)unlockPhone();
+    if(!lockTracking||e.pointerId!==lockPointerId)return;
+    resetLockState();
+    checkSwipeUp(e.clientY-lockStartY,e.clientX-lockStartX);
   });
+  lock.addEventListener('pointercancel',function(e){
+    if(e.pointerId!==lockPointerId)return;
+    resetLockState();
+  });
+  lock.addEventListener('touchstart',function(e){
+    if(unlocked||!e.touches||!e.touches[0])return;
+    lockStartY=e.touches[0].clientY;
+    lockStartX=e.touches[0].clientX;
+    lockTracking=true;
+    unlockFired=false;
+  },{passive:true});
+  lock.addEventListener('touchend',function(e){
+    if(!lockTracking)return;
+    var t=e.changedTouches&&e.changedTouches[0];
+    resetLockState();
+    if(t)checkSwipeUp(t.clientY-lockStartY,t.clientX-lockStartX);
+  },{passive:true});
+  lock.addEventListener('touchcancel',function(){
+    resetLockState();
+  },{passive:true});
   lock.addEventListener('click',unlockPhone);
 
   var titles={album:'相册',chat:'聊天',notes:'备忘录',forum:'论坛',browser:'浏览器',settings:'设置'};
-  
-  // 当前查看的角色：所有私人内容都按角色 ID 与日期隔离。
   var roleName=String(role.name||'角色');
   var roleBio=[role.description,role.bio,role.personality,role.character,role.speechStyle,role.prompt,role.systemPrompt]
     .filter(Boolean).join('\n').replace(/\s+/g,' ').trim().slice(0,2600);
@@ -299,7 +382,6 @@ body{
     history=phoneContent.history;
     if(currentApp)renderApp();
   }
-  // 已生成的同角色、同日期内容直接复用，避免每次查看都消耗 API。
   try{
     var cached=JSON.parse(localStorage.getItem(contentCacheKey)||'null');
     var normalized=normalizePhoneContent(cached);
@@ -403,6 +485,13 @@ body{
     appLayer.classList.remove('open');
     currentApp='';
   });
+  }catch(e){
+    // 任何未捕获异常都避免白屏：让用户能看到锁屏
+    try{
+      var lockE=document.getElementById('lock'), phoneE=document.getElementById('phone');
+      if(phoneE)phoneE.classList.add('show');
+    }catch(_){}
+  }
 })();
 </script>
 </body>
