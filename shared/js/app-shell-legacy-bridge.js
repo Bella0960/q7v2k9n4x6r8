@@ -155,11 +155,7 @@
         event.stopPropagation();
         if (event.stopImmediatePropagation) event.stopImmediatePropagation();
         navigateFromFrame(record, url.href);
-      }, true);
-
-      frameDocument.addEventListener('submit', function (event) {
-        // Native form submission stays inside the legacy frame; only page/app links are routed.
-      }, true);
+      }, false);
     }
 
     function syncFrameLocation(record, addHistory) {
@@ -361,7 +357,8 @@
       );
     }
 
-    doc.addEventListener('click', onParentClick, true);
+    var desktopRoot = root.parentNode || doc;
+    desktopRoot.addEventListener('click', onParentClick);
     win.addEventListener('popstate', onPopState);
     doc.addEventListener('visibilitychange', onVisibilityChange);
 
@@ -382,7 +379,7 @@
       destroy: function () {
         if (destroyed) return;
         destroyed = true;
-        doc.removeEventListener('click', onParentClick, true);
+        desktopRoot.removeEventListener('click', onParentClick);
         win.removeEventListener('popstate', onPopState);
         doc.removeEventListener('visibilitychange', onVisibilityChange);
         records.slice().forEach(function (record) {
