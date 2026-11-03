@@ -495,22 +495,6 @@
             font-size: 0.75rem;
             line-height: 1.65;
         }
-        /* 导入原文只读预览：放在整理面板内部，不进入档案顶部折叠区。 */
-        .persona-raw-preview {
-            max-height: 132px;
-            overflow-y: auto;
-            margin-top: 8px;
-            padding: 10px 0 0;
-            border-top: 1px solid #E5E5E5;
-            color: #8E8E93;
-            font-size: 0.72rem;
-            line-height: 1.7;
-            white-space: pre-wrap;
-            word-break: break-word;
-            scrollbar-width: none;
-        }
-        .persona-raw-preview::-webkit-scrollbar { display: none; }
-        .persona-raw-preview.hidden { display: none; }
         .persona-organize-status {
             min-height: 16px;
             color: #777777;
@@ -1208,7 +1192,6 @@
                 <div class="editor-field-group" id="personaOrganizeGroup">
                     <label class="field-label" style="color: #8E8E93;">人设整理</label>
                     <p class="persona-organize-hint" id="personaOrganizeHint">导入人设文件后，可先本地预解析，再按需调用一次 AI 归类。</p>
-                    <div class="persona-raw-preview hidden" id="personaRawPreview" aria-label="导入原文，只读"></div>
                     <div class="persona-organize-actions">
                         <button type="button" id="btnOrganizePersona" class="import-json-btn">智能整理</button>
                         <button type="button" id="btnApplyOrganize" class="import-json-btn" hidden>采用整理结果</button>

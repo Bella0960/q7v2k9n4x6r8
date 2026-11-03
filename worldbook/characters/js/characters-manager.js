@@ -293,7 +293,7 @@ function renderRoleProfile() {
             '<h2 class="profile-hero-name">' + escapeHtml(role.name || '未命名角色') + '</h2>' +
             '<div class="profile-hero-state">' + (String(role.id) === String(currentId) ? '当前正在使用' : '独立主角色档案') + '</div></div>' +
             '<div class="profile-persona" data-persona-collapse>' +
-                '<div class="profile-persona-body" id="profilePersonaBody"><p class="profile-hero-desc">' + escapeHtml(role.persona || '还没有填写人物背景。可以从基本资料开始完善这个角色。') + '</p></div>' +
+                '<div class="profile-persona-body" id="profilePersonaBody"><p class="profile-hero-desc">' + escapeHtml(role.personaRaw || role.persona || '还没有填写人物背景。可以从基本资料开始完善这个角色。') + '</p></div>' +
                 '<button class="profile-persona-toggle" type="button" data-persona-toggle aria-expanded="false" aria-controls="profilePersonaBody" hidden>' +
                     '<span data-persona-toggle-text>展开全文</span>' +
                     '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
@@ -1056,40 +1056,33 @@ function resetPersonaOrganizePanel() {
 function updatePersonaOrganizeHint() {
     const hint = document.getElementById('personaOrganizeHint');
     if (!hint) return;
-    const rawPreview = document.getElementById('personaRawPreview');
     if (!pendingPersonaRaw) {
         hint.textContent = '导入人设文件后，可先本地预解析，再按需调用一次 AI 归类。';
-        if (rawPreview) {
-            rawPreview.classList.add('hidden');
-            rawPreview.textContent = '';
-        }
         return;
     }
     const parsed = parsePersonaSections(pendingPersonaRawKind === 'json' ? pendingPersonaAnalyzeText : pendingPersonaRaw);
     const labels = parsed.matchedKeys.map(personaSectionLabel);
     const coverage = labels.length ? ('本地识别到：' + labels.join('、')) : '未识别到明显标题';
     hint.textContent = '已读取原文（' + pendingPersonaRaw.length + ' 字）。' + coverage + '。本地预解析不是 AI 整理。';
-    // 原文只读展示在整理面板内；档案顶部折叠区仍只渲染 role.persona，保持 UI-001 契约。
-    if (rawPreview) {
-        rawPreview.textContent = pendingPersonaRaw;
-        rawPreview.classList.remove('hidden');
-    }
 }
 
 function buildPersonaOrganizeInput() {
+    const limit = 12000;
+    let full = '';
     if (pendingPersonaFresh && pendingPersonaAnalyzeText) {
-        return pendingPersonaAnalyzeText.slice(0, 12000);
+        full = pendingPersonaAnalyzeText;
+    } else {
+        const parts = [];
+        const name = document.getElementById('editRoleName');
+        const persona = document.getElementById('editRolePersona');
+        const tone = document.getElementById('editRoleTone');
+        if (name && name.value.trim()) parts.push('姓名：' + name.value.trim());
+        if (persona && persona.value.trim()) parts.push('人物设定：' + persona.value.trim());
+        if (tone && tone.value.trim()) parts.push('说话方式：' + tone.value.trim());
+        if (parts.length) full = parts.join('\n\n');
+        else if (pendingPersonaRawKind !== 'json' && pendingPersonaRaw) full = pendingPersonaRaw;
     }
-    const parts = [];
-    const name = document.getElementById('editRoleName');
-    const persona = document.getElementById('editRolePersona');
-    const tone = document.getElementById('editRoleTone');
-    if (name && name.value.trim()) parts.push('姓名：' + name.value.trim());
-    if (persona && persona.value.trim()) parts.push('人物设定：' + persona.value.trim());
-    if (tone && tone.value.trim()) parts.push('说话方式：' + tone.value.trim());
-    if (parts.length) return parts.join('\n\n').slice(0, 12000);
-    if (pendingPersonaRawKind !== 'json' && pendingPersonaRaw) return pendingPersonaRaw.slice(0, 12000);
-    return '';
+    return { text: full.slice(0, limit), truncated: full.length > limit, originalLength: full.length };
 }
 
 function collectPersonaJsonText(data) {
@@ -1127,7 +1120,7 @@ function collectPersonaJsonText(data) {
     return parts.join('\n');
 }
 
-function renderPersonaOrganizePreview(data) {
+function renderPersonaOrganizePreview(data, truncationNote) {
     const preview = document.getElementById('personaOrganizePreview');
     if (!preview) return;
 
@@ -1179,6 +1172,7 @@ function renderPersonaOrganizePreview(data) {
         }).join('') + '</ul>'
         : '<p class="po-empty">没有待确认内容</p>'));
     html.push('<p class="persona-organize-footnote">采用整理结果只会填入当前为空的字段；不会覆盖已有姓名、人设、语气、头像或世界书，也不会创建人物关系或生活线。</p>');
+    if (truncationNote) html.push('<p class="persona-organize-footnote">' + organizeEscape(truncationNote) + '</p>');
 
     preview.innerHTML = html.join('');
     preview.classList.remove('hidden');
@@ -1189,17 +1183,19 @@ function renderPersonaOrganizePreview(data) {
 async function runPersonaOrganize() {
     if (personaOrganizeBusy) return;
 
-    const input = buildPersonaOrganizeInput();
+    const inputInfo = buildPersonaOrganizeInput();
+    const input = inputInfo.text;
+    const truncationNote = inputInfo.truncated ? '本次仅分析前 12000 字，原文未改动。' : '';
     const decision = resolvePersonaOrganizeRequest(personaOrganizeState, personaOrganizeCache, input);
     if (decision.action === 'reuse-state') {
-        renderPersonaOrganizePreview(decision.data);
-        setPersonaOrganizeStatus('已复用上次整理结果，未再次请求 AI。', 'success');
+        renderPersonaOrganizePreview(decision.data, truncationNote);
+        setPersonaOrganizeStatus('已复用上次整理结果，未再次请求 AI。' + truncationNote, 'success');
         return;
     }
     if (decision.action === 'reuse-cache') {
         personaOrganizeState = { hash: decision.hash, data: decision.data };
-        renderPersonaOrganizePreview(decision.data);
-        setPersonaOrganizeStatus('已复用上次整理结果，未再次请求 AI。', 'success');
+        renderPersonaOrganizePreview(decision.data, truncationNote);
+        setPersonaOrganizeStatus('已复用上次整理结果，未再次请求 AI。' + truncationNote, 'success');
         return;
     }
     if (!input.trim()) {
@@ -1267,8 +1263,8 @@ async function runPersonaOrganize() {
 
         personaOrganizeCache[hash] = data;
         personaOrganizeState = { hash: hash, data: data };
-        renderPersonaOrganizePreview(data);
-        setPersonaOrganizeStatus('整理完成。采用整理结果只会填入当前为空的字段。', 'success');
+        renderPersonaOrganizePreview(data, truncationNote);
+        setPersonaOrganizeStatus('整理完成。采用整理结果只会填入当前为空的字段。' + truncationNote, 'success');
         setSaveStatus('整理完成，确认后才进入待保存资料。', 'info');
     } catch (error) {
         hidePersonaOrganizePreview();
