@@ -307,3 +307,33 @@ test('a deep-linked native settings page routes its legacy location fallback ins
   assert.deepEqual(pageErrors, []);
   await context.close();
 });
+
+test('a direct-linked call settings page routes its fallback chat destination inside the shell', async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  await page.goto(
+    PREVIEW_URL + '/index.html?maomao_app=chat%2Fcall%2Fcall-settings.html',
+    { waitUntil: 'domcontentloaded' }
+  );
+
+  const host = page.locator('#maomao-app-host');
+  const callView = host.locator('.maomao-app-view[data-maomao-app-view="settings_call"]');
+  await callView.locator('#btnBack').waitFor();
+
+  // No previous history: call-settings uses its legacy location.href fallback to the chat screen.
+  await callView.locator('#btnBack').click();
+
+  const legacyFrame = host.locator('iframe').first();
+  await legacyFrame.waitFor();
+  assert.match(await legacyFrame.getAttribute('src'), /chat\/chat\/chat\.html$/);
+  assert.equal(
+    await page.evaluate(() => new URL(location.href).searchParams.get('maomao_app')),
+    'chat/chat/chat.html'
+  );
+  assert.equal(await page.evaluate(() => location.pathname.endsWith('/index.html')), true);
+  assert.deepEqual(pageErrors, []);
+  await context.close();
+});
