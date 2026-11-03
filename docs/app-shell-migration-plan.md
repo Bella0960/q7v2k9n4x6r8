@@ -1,7 +1,7 @@
 # MAOMAO 应用外壳迁移方案
 
 > 状态：架构审计与迁移边界已确认；尚未改动现有生产页面。
-> 分支：`feat/app-shell-migration`
+> 分支：`feat/app-shell-migration-v2`
 > 基线：从当前 `main` 分支创建。
 > 原则：先建立可验证的小步迁移，不做全站推倒重写。
 
@@ -145,4 +145,4 @@ MAOMAO 当前是原生 HTML/CSS/JS 的多页面应用（MPA）。每个主要功
 - **采用**：Miya 的单一外壳 + 按需应用加载思路。
 - **借鉴**：AI Virtual Phone 的统一运行时与应用状态边界。
 - **暂不采用**：全站 React/Next.js 重写、一次性合并全部 HTML、批量改写 localStorage、把所有应用静态导入首屏。
-- **当前代码状态**：在 `feat/app-shell-migration` 独立分支中，已新增原生模块生命周期运行时、旧页面桥接层、统一 Host 样式，并将现有 `index.html` 桌面入口接入 Host；Service Worker 已收敛为轻量外壳预缓存。聊天、设置等业务 HTML 和存储代码未重写；尚未部署到生产。自动化测试与构建结果待 CI 验证。
+- **当前代码状态**：在 `feat/app-shell-migration-v2` 独立分支中，已新增原生模块生命周期运行时、旧页面桥接层、统一 Host 样式，并将现有 `index.html` 桌面入口接入 Host；Service Worker 已收敛为轻量外壳预缓存。聊天、设置等业务 HTML 和存储代码未重写；尚未部署到生产。自动化测试与构建结果待 CI 验证。
