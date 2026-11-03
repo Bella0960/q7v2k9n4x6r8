@@ -25,7 +25,7 @@ test('GET /v1/models returns only providers with configured keys', async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.object, 'list');
-  assert.equal(body.data.length, 3);
+  assert.equal(body.data.length, 6);
   assert.ok(body.data.every(item => item.id.startsWith('maomao-free:groq:')));
   assert.equal(body.data[0].owned_by, 'groq');
 });
