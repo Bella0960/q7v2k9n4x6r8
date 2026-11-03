@@ -176,6 +176,22 @@ test('settings and its four major subviews run as native modules', async () => {
   await iconsView.locator('.back-btn').click();
   await settingsView.locator('.phone-mockup').waitFor();
 
+  await settingsView.getByText('MiniMax 语音合成', { exact: true }).click();
+  const ttsView = host.locator('.maomao-app-view[data-maomao-app-view="settings_tts"]');
+  await ttsView.locator('#apiKey').waitFor();
+  assert.equal(await ttsView.locator('#enableToggle').count(), 1);
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await ttsView.locator('a.back-btn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
+  await settingsView.getByText('API 调用记录', { exact: true }).click();
+  const logsView = host.locator('.maomao-app-view[data-maomao-app-view="settings_logs"]');
+  await logsView.locator('#logList').waitFor();
+  assert.equal(await logsView.locator('#clearBtn').count(), 1);
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await logsView.locator('.al-circle-btn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
   const historyBeforeDesktopBack = await page.evaluate(() => ({
     activeRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getActiveRoute(),
     previousRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getPreviousRoute(),
