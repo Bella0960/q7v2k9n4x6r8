@@ -88,17 +88,17 @@
 
   function scopePageCss(source) {
     var css = String(source || '');
-    css = css.replace(/html\\.dark\\s+body/g, ':host(.dark)');
-    css = css.replace(/html\\.dark/g, ':host(.dark)');
-    css = css.replace(/:root\\s*\\{/g, ':host {');
-    css = css.replace(/(^|[,\\s>+~])body(?=\\s*\\{)/gm, '$1:host');
+    css = css.replace(/html\.dark\s+body/g, ':host(.dark)');
+    css = css.replace(/html\.dark/g, ':host(.dark)');
+    css = css.replace(/:root\s*\{/g, ':host {');
+    css = css.replace(/(^|[,\s>+~])body(?=\s*\{)/gm, '$1:host');
     css += [
       '',
       ':host { display:flex; width:100%; height:100%; min-width:0; min-height:0; justify-content:stretch; align-items:stretch; overflow:hidden; background:var(--bg,#fff); }',
       ':host(.dark) { background:#000; }',
       '.phone-mockup { width:100% !important; max-width:none !important; height:100% !important; max-height:none !important; min-height:0 !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }',
       '.phone-mockup > .content, .phone-mockup > .stage { min-height:0; }'
-    ].join('\\n');
+    ].join('\n');
     return css;
   }
 
@@ -115,7 +115,7 @@
     var path = url.pathname;
     if (shouldSkipExternalScript(url, moduleWindow)) return;
     if (path.endsWith('/sound-system.js')) {
-      if (!global.SoundSystem) new Function('window', source + '\\n//# sourceURL=maomao-sound-system.js')(global);
+      if (!global.SoundSystem) new Function('window', source + '\n//# sourceURL=maomao-sound-system.js')(global);
       return;
     }
     if (path.endsWith('/liquid-glass-controls.js')) {
@@ -135,7 +135,7 @@
       var destination;
       try { destination = new URL(rawUrl, pageUrl); } catch (error) { return false; }
       if (destination.origin !== global.location.origin) return false;
-      if (!/^\\/settings\\/(?:settings|appearance|font-settings|sound-settings|icon-settings)\\.html$/.test(destination.pathname)) {
+      if (!/^\/settings\/(?:settings|appearance|font-settings|sound-settings|icon-settings)\.html$/.test(destination.pathname)) {
         return false;
       }
       if (event) event.preventDefault();
@@ -145,7 +145,7 @@
 
     shadow.querySelectorAll('[onclick]').forEach(function (element) {
       var expression = element.getAttribute('onclick') || '';
-      var match = expression.match(/(?:window\\.)?location\\.href\\s*=\\s*['"]([^'"]+)['"]/);
+      var match = expression.match(/(?:window\.)?location\.href\s*=\s*['"]([^'"]+)['"]/);
       if (!match) return;
       element.removeAttribute('onclick');
       element.addEventListener('click', function (event) { navigate(match[1], event); });
@@ -198,7 +198,7 @@
         if (cssTexts.length) styles.push.apply(styles, cssTexts);
         styles.push.apply(styles, styleTexts);
         var styleElement = document.createElement('style');
-        styleElement.textContent = scopePageCss(styles.join('\\n\\n'));
+        styleElement.textContent = scopePageCss(styles.join('\n\n'));
         shadow.appendChild(styleElement);
 
         var markup = document.createElement('div');
@@ -216,7 +216,7 @@
           if (item.url) {
             runExternalScript(item.url, item.source, documentFacade, moduleWindow);
           } else if (item.source.trim()) {
-            new Function('document', 'window', item.source + '\\n//# sourceURL=maomao-settings-' + page.id + '.js')(
+            new Function('document', 'window', item.source + '\n//# sourceURL=maomao-settings-' + page.id + '.js')(
               documentFacade,
               moduleWindow
             );
