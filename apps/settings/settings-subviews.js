@@ -9,7 +9,9 @@
     { id: 'settings_appearance', path: 'appearance.html', title: '外观' },
     { id: 'settings_font', path: 'font-settings.html', title: '字体设置' },
     { id: 'settings_sound', path: 'sound-settings.html', title: '音效设置' },
-    { id: 'settings_icons', path: 'icon-settings.html', title: '自定义图标' }
+    { id: 'settings_icons', path: 'icon-settings.html', title: '自定义图标' },
+    { id: 'settings_tts', path: 'minimax-tts.html', title: 'MiniMax 语音合成' },
+    { id: 'settings_logs', path: '../tools/api-logs.html', title: 'API 调用记录' }
   ];
 
   var scriptCache = new Map();
@@ -108,6 +110,7 @@
     if (path.endsWith('/wallpaper-store.js')) return !!moduleWindow.MAOMAOWallpaperStore;
     if (path.endsWith('/native-feel.js')) return true;
     if (path.endsWith('/statusbar-control.js')) return true;
+    if (path.endsWith('/phone_storage.js')) return !!moduleWindow.PhoneStorage;
     return false;
   }
 
@@ -125,6 +128,10 @@
         documentFacade,
         moduleWindow
       );
+      return;
+    }
+    if (path.endsWith('/phone_storage.js')) {
+      if (!global.PhoneStorage) new Function('window', 'document', source + '\n//# sourceURL=maomao-phone-storage.js')(global, document);
       return;
     }
     throw new Error('未配置原生加载方式的设置脚本：' + path);
