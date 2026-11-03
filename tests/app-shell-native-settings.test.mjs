@@ -278,7 +278,7 @@ test('settings and its native subviews run as native modules', async () => {
   await context.close();
 });
 
-test('a deep-linked native settings page routes its legacy location fallback inside the shell', async () => {
+test('a deep-linked native RP protocol page routes history.back to the settings parent', async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const pageErrors = [];
@@ -308,7 +308,7 @@ test('a deep-linked native settings page routes its legacy location fallback ins
   await context.close();
 });
 
-test('a direct-linked call settings page routes its fallback chat destination inside the shell', async () => {
+test('a deep-linked native call settings page routes history.back to the settings parent', async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const pageErrors = [];
@@ -322,16 +322,14 @@ test('a direct-linked call settings page routes its fallback chat destination in
   const host = page.locator('#maomao-app-host');
   const callView = host.locator('.maomao-app-view[data-maomao-app-view="settings_call"]');
   await callView.locator('#btnBack').waitFor();
-
-  // No previous history: call-settings uses its legacy location.href fallback to the chat screen.
   await callView.locator('#btnBack').click();
 
-  const legacyFrame = host.locator('iframe').first();
-  await legacyFrame.waitFor();
-  assert.match(await legacyFrame.getAttribute('src'), /chat\/chat\/chat\.html$/);
+  const settingsView = host.locator('.maomao-app-view[data-maomao-app-view="settings"]');
+  await settingsView.locator('.phone-mockup').waitFor();
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
   assert.equal(
     await page.evaluate(() => new URL(location.href).searchParams.get('maomao_app')),
-    'chat/chat/chat.html'
+    'settings/settings.html'
   );
   assert.equal(await page.evaluate(() => location.pathname.endsWith('/index.html')), true);
   assert.deepEqual(pageErrors, []);
