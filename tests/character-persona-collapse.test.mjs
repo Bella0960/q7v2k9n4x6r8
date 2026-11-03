@@ -54,8 +54,7 @@ test('展开入口轻量：纯文本 + 1.5px 细线箭头，且可再次收起',
 test('人设原文一字不改：完整转义渲染，没有截断', () => {
   const renderLine = js.split('\n').find(line => line.includes('class="profile-hero-desc"'));
   assert.ok(renderLine, '未找到人设原文渲染行');
-  // 人设整理功能批准后，折叠区显示 role.personaRaw || role.persona；无 personaRaw 的旧角色行为不变。
-  assert.match(renderLine, /escapeHtml\(role\.persona(Raw)? \|\| /);
+  assert.match(renderLine, /escapeHtml\(role\.persona \|\| /);
   assert.doesNotMatch(renderLine, /\.(slice|substring|substr|trim)\(/);
   assert.doesNotMatch(js, /role\.persona[^\n]*\.(slice|substring|substr)\(/);
 });
