@@ -100,8 +100,17 @@
           return function () {
             var hostBridge = global.__MAOMAO_LEGACY_HOST__;
             var settingsHome = new URL('settings.html', SETTINGS_BASE);
-            if (hostBridge && typeof hostBridge.backToParent === 'function'
-                && hostBridge.backToParent(settingsHome.href)) return;
+            if (hostBridge && typeof hostBridge.backToParent === 'function') {
+              var previousRoute = typeof hostBridge.getPreviousRoute === 'function'
+                ? hostBridge.getPreviousRoute()
+                : null;
+              if (previousRoute) {
+                var appBase = new URL('../', SETTINGS_BASE);
+                var previousUrl = new URL(previousRoute, appBase);
+                if (hostBridge.backToParent(previousUrl.href)) return;
+              }
+              if (hostBridge.backToParent(settingsHome.href)) return;
+            }
             return target.back();
           };
         }
