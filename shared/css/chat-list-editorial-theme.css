@@ -368,6 +368,13 @@
   }
 }
 
+/* The reference Messages list has no music-player module.
+   Hide this presentation only in this list theme; keep the existing music
+   state and controls untouched for every other chat theme. */
+.phone-mockup[data-chat-list-theme="editorial"] .floating-music-card {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .phone-mockup[data-chat-list-theme="editorial"] .chat-slim-card {
     transition: none !important;
