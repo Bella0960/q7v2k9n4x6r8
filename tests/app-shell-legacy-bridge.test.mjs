@@ -300,7 +300,7 @@ test('legacy scripts that navigate back to index return to desktop and release t
   assert.equal(env.host.getActiveRoute(), null);
   assert.equal(env.root.hidden, true);
   assert.equal(env.root.children.length, 0);
-  env.host.open('settings/settings.html');
+  env.host.open('settings/appearance.html');
   assert.equal(env.root.children.length, 1);
   assert.notEqual(env.root.children[0], frame);
 });
