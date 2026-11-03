@@ -245,17 +245,18 @@ async function scenarioFreshImport(browser, baseUrl) {
     await page.waitForSelector('.profile-persona-body');
     await sleep(60);
     const profileText = await page.textContent('.profile-persona-body');
-    check('档案顶部展示 persona（不含原始导入文本）', !!reloaded && profileText.includes('旧书店店主') &&
-      !profileText.includes('【人物关系】'), { profileHead: profileText.slice(0, 30) });
-    check('档案折叠行为仍可用', await page.locator('[data-persona-toggle]').count() >= 0, { note: '由 UI-001 测试覆盖' });
+    check('档案顶部展示完整 personaRaw', !!reloaded && profileText.trim() === reloaded.personaRaw.trim(),
+      { profileLength: profileText.length, rawLength: reloaded ? reloaded.personaRaw.length : -1 });
+    check('persona 与 personaRaw 互不覆盖', !!reloaded && reloaded.persona === AI_MOCK.persona && reloaded.personaRaw === TXT,
+      { persona: reloaded ? reloaded.persona.slice(0, 12) : '' });
 
     // 重新打开旧角色再保存，personaRaw 不得被清空。
     await page.click('[data-profile-action="basic"]');
     await page.waitForSelector('#btnOrganizePersona');
     await sleep(60);
-    const rawPreview = await page.textContent('#personaRawPreview');
-    check('整理面板内部展示导入原文', rawPreview.includes('【人物关系】') && rawPreview.includes('林晚'),
-      { rawPreview: rawPreview.slice(0, 24) });
+    const hintRaw = await page.textContent('#personaOrganizeHint');
+    check('编辑面板提示已读取原文（单一展示入口）', hintRaw.includes('已读取原文') && hintRaw.includes(String(TXT.length)),
+      { hintRaw });
     await page.click('#btnSaveRole');
     await sleep(100);
     const rolesAfterResave = await readRoles(page);
@@ -442,6 +443,61 @@ async function scenarioDraftRecovery(browser, baseUrl) {
   return { out, failures };
 }
 
+async function scenarioLongRaw(browser, baseUrl) {
+  const LONG_RAW = '【人物背景】' + '她'.repeat(12050) + '\n【性格】安静。\n【说话方式】语速慢。';
+  const { context, page, state } = await makePage(browser, baseUrl);
+  const { out, failures, check } = makeChecker('long-raw');
+  try {
+    await openAddRole(page);
+    await addTxt(page, 'long.txt', LONG_RAW);
+    check('超长原文完整进草稿', (await readDraft(page, 'maomao_character_draft_v1:new')).personaRaw === LONG_RAW,
+      { rawLength: LONG_RAW.length });
+
+    await page.click('#btnOrganizePersona');
+    await page.waitForSelector('.persona-organize-preview:not(.hidden)');
+    await sleep(60);
+    const status = await page.textContent('#personaOrganizeStatus');
+    const footnote = await page.textContent('.persona-organize-preview');
+    check('超长原文给出截断提示', status.includes('本次仅分析前 12000 字，原文未改动'), { status });
+    check('预览内同样标注截断', footnote.includes('本次仅分析前 12000 字，原文未改动'), {});
+    check('截断只影响分析，不动原文', state.bodies.length === 1 && state.bodies[0].messages[1].content.length < LONG_RAW.length,
+      { sentLength: state.bodies[0].messages[1].content.length });
+
+    await page.click('#btnApplyOrganize');
+    await sleep(80);
+    await page.click('#btnSaveRole');
+    await sleep(160);
+    const saved = (await readRoles(page)).find((r) => r.personaRaw === LONG_RAW);
+    check('保存后 personaRaw 仍是完整原文', !!saved && saved.personaRaw === LONG_RAW,
+      { rawLength: saved ? saved.personaRaw.length : -1 });
+
+    await page.reload({ waitUntil: 'load' });
+    await sleep(120);
+    await page.click(`.role-slim-bar[data-id="${saved.id}"]`);
+    await page.waitForSelector('.profile-persona-body');
+    await sleep(60);
+    const body = page.locator('.profile-persona-body');
+    const before = await body.textContent();
+    check('档案顶部展示完整超长 personaRaw', before.trim() === LONG_RAW.trim(), { length: before.length });
+
+    const toggle = page.locator('[data-persona-toggle]');
+    check('超长原文出现折叠开关', await toggle.isVisible(), {});
+    await toggle.click();
+    await sleep(200);
+    check('展开后原文不变', (await body.textContent()).trim() === before.trim(), {});
+    check('展开后 aria-expanded 为 true', (await toggle.getAttribute('aria-expanded')) === 'true', {});
+    await toggle.click();
+    await sleep(200);
+    check('收起后原文不变', (await body.textContent()).trim() === before.trim(), {});
+    check('收起后 aria-expanded 为 false', (await toggle.getAttribute('aria-expanded')) === 'false', {});
+  } catch (error) {
+    failures.push('exception: ' + error.message);
+  } finally {
+    await context.close();
+  }
+  return { out, failures };
+}
+
 const server = await startServer();
 const baseUrl = `http://127.0.0.1:${server.address().port}`;
 let browser;
@@ -454,6 +510,7 @@ try {
   results.push(await scenarioFailures(browser, baseUrl));
   results.push(await scenarioApiMissing(browser, baseUrl));
   results.push(await scenarioDraftRecovery(browser, baseUrl));
+  results.push(await scenarioLongRaw(browser, baseUrl));
 
   for (const result of results.flat()) {
     if (result.failures.length) {

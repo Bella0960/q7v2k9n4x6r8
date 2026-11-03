@@ -213,12 +213,14 @@ test('静态契约：旧角色保存路径不会清空 personaRaw', () => {
   assert.ok(!managerSource.includes('delete target.personaRaw'));
 });
 
-test('静态契约：档案顶部只展示 persona，导入原文放在整理面板内部', () => {
-  // UI-001 契约：顶部折叠区仍为 escapeHtml(role.persona || ...)，不得改成 personaRaw 优先。
-  assert.ok(managerSource.includes('escapeHtml(role.persona ||'));
-  assert.ok(!managerSource.includes('role.personaRaw || role.persona'));
-  // 原文只读预览在整理面板内部。
-  assert.ok(managerSource.includes("document.getElementById('personaRawPreview')"));
+test('静态契约：档案顶部按 personaRaw → persona 精确回退链渲染，且不进入聊天上下文', () => {
+  // 显示契约：完整原文优先，旧角色回退 persona，再回退空态文案。
+  assert.ok(managerSource.includes('escapeHtml(role.personaRaw || role.persona ||'));
+  // 不保留第二套并列展示入口（编辑面板原文预览已收敛到顶部折叠区）。
+  assert.ok(!managerSource.includes("document.getElementById('personaRawPreview')"));
+  // personaRaw 不得出现在聊天上下文构建代码中。
+  const contextSource = readFileSync(resolve(root, 'shared/js/phone/phone_context.js'), 'utf8');
+  assert.ok(!contextSource.includes('personaRaw'));
 });
 
 test('静态契约：草稿 payload 带 personaRaw，恢复时回填', () => {
