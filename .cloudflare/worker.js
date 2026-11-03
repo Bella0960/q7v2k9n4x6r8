@@ -263,7 +263,7 @@ const PROVIDERS = [
     envKey: 'FREE_GLHF_API_KEY',
     baseUrl: 'https://glhf.chat/api/openai/v1',
     freeType: 'free-model-pool',
-    notice: 'The directory lists unlimited use for selected free models, subject to availability and the provider's current fair-use rules.',
+    notice: 'The directory lists unlimited use for selected free models, subject to availability and the provider’s current fair-use rules.',
     models: ['meta-llama/Meta-Llama-3.1-70B-Instruct', 'mistralai/Mixtral-8x7B-Instruct-v0.1']
   },
   {
