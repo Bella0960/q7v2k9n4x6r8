@@ -30,7 +30,7 @@
 .phone-mockup[data-chat-list-theme="editorial"] .cover-click-area {
   display: grid !important;
   place-items: center;
-  top: 115px !important;
+  top: 128px !important;
   left: auto !important;
   right: 58px !important;
   width: 42px !important;
@@ -169,7 +169,7 @@
 
 .phone-mockup[data-chat-list-theme="editorial"] .user-id-text {
   align-self: flex-start;
-  max-width: calc(100% - 92px);
+  max-width: calc(100% - 150px);
   margin: 6px 0 8px !important;
   overflow: hidden;
   color: #777671 !important;
