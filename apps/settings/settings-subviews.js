@@ -46,6 +46,21 @@
     return pending;
   }
 
+  function resolveBackTarget(hostBridge) {
+    var previousRoute = hostBridge && typeof hostBridge.getPreviousRoute === 'function'
+      ? hostBridge.getPreviousRoute()
+      : null;
+    if (previousRoute) {
+      return new URL(previousRoute, new URL('../', SETTINGS_BASE));
+    }
+    return new URL('settings.html', SETTINGS_BASE);
+  }
+
+  function returnToSource(hostBridge) {
+    if (!hostBridge || typeof hostBridge.backToParent !== 'function') return false;
+    return hostBridge.backToParent(resolveBackTarget(hostBridge).href);
+  }
+
   function createModuleLocation(pageUrl) {
     function navigate(rawUrl, replace) {
       var next;
@@ -99,18 +114,7 @@
         if (key === 'back') {
           return function () {
             var hostBridge = global.__MAOMAO_LEGACY_HOST__;
-            var settingsHome = new URL('settings.html', SETTINGS_BASE);
-            if (hostBridge && typeof hostBridge.backToParent === 'function') {
-              var previousRoute = typeof hostBridge.getPreviousRoute === 'function'
-                ? hostBridge.getPreviousRoute()
-                : null;
-              if (previousRoute) {
-                var appBase = new URL('../', SETTINGS_BASE);
-                var previousUrl = new URL(previousRoute, appBase);
-                if (hostBridge.backToParent(previousUrl.href)) return;
-              }
-              if (hostBridge.backToParent(settingsHome.href)) return;
-            }
+            if (returnToSource(hostBridge)) return;
             return target.back();
           };
         }
@@ -226,7 +230,7 @@
       }
       if (event) event.preventDefault();
       if (relativePath === 'settings.html' && typeof hostBridge.backToParent === 'function') {
-        hostBridge.backToParent(destination.href);
+        returnToSource(hostBridge);
       } else {
         hostBridge.open(destination.href);
       }
@@ -266,7 +270,7 @@
         event.preventDefault();
         if (shadow.querySelector('#stage .sticker-grid')) return;
         if (hostBridge && typeof hostBridge.backToParent === 'function') {
-          hostBridge.backToParent(new URL('settings.html', SETTINGS_BASE).href);
+          returnToSource(hostBridge);
         }
       }, true);
     }
