@@ -144,17 +144,12 @@
     var pageHistory = {
       get length() { return global.history.length; },
       back: function () {
-        var bridge = global.__MAOMAO_LEGACY_HOST__;
-        if (!bridge) {
+        if (global.history.length > 1) {
           global.history.back();
           return;
         }
-        var previous = typeof bridge.getPreviousRoute === 'function'
-          ? bridge.getPreviousRoute()
-          : null;
-        if (previous && typeof bridge.backToParent === 'function') {
-          bridge.backToParent(new URL(previous, APP_BASE).href);
-        } else if (typeof bridge.home === 'function') {
+        var bridge = global.__MAOMAO_LEGACY_HOST__;
+        if (bridge && typeof bridge.home === 'function') {
           bridge.home();
         } else {
           global.history.back();
