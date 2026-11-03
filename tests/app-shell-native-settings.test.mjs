@@ -73,7 +73,8 @@ test('settings opens as a native shadow-root module and keeps its settings behav
   });
   assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
 
-  await settingsView.locator('#dark-mode-toggle').check();
+  await settingsView.locator('#dark-mode-toggle').evaluate((element) => element.click());
+  assert.equal(await settingsView.locator('#dark-mode-toggle').isChecked(), true);
   assert.equal(await page.evaluate(() => localStorage.getItem('settings_dark_mode')), '1');
   assert.equal(await settingsView.evaluate((view) => view.classList.contains('dark')), true);
 
