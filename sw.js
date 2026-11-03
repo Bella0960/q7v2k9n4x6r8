@@ -127,12 +127,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // HTML 导航改为网络优先：先取最新 HTML 并写入缓存，失败时再回退缓存（离线仍可用）。
-  // 旧策略是缓存优先 + 后台更新，浏览器当次拿到的是旧 HTML，必须刷新第二次才生效，
-  // 这正是「改了 games.html 却像完全没改」的直接原因。
+  // HTML 导航网络优先，但设置超时：网络连接一直挂起时，及时回退到本地首页缓存。
+  // fetch 的 AbortSignal 会覆盖整个重定向链，防止 /index.html 等导航长时间卡在重定向/边缘响应。
   if (req.mode === 'navigate') {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(function () { controller.abort(); }, 10000);
     event.respondWith(
-      fetch(req).then(function (response) {
+      fetch(req, { signal: controller.signal }).then(function (response) {
         if (response && response.ok) {
           var copy = response.clone();
           caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
@@ -142,6 +143,8 @@ self.addEventListener('fetch', event => {
         return caches.match(req).then(function (cached) {
           return cached || caches.match('./index.html');
         });
+      }).finally(function () {
+        clearTimeout(timeoutId);
       })
     );
     return;
