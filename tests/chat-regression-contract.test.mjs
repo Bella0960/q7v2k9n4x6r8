@@ -1857,3 +1857,15 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(serviceWorker.includes('phone-app-pwa-v156'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
+  
+test('PWA manifest is referenced from the deployment root so relative icon and start URLs resolve correctly', () => {
+  assert.ok(homePage.includes('href="%BASE_URL%manifest.json"'));
+  assert.ok(serviceWorker.includes("'./manifest.json'"));
+});
+
+test('Service Worker navigation fetch is time-bounded and falls back to the cached home page', () => {
+  assert.ok(serviceWorker.includes('new AbortController()'));
+  assert.ok(serviceWorker.includes('controller.abort()'));
+  assert.ok(serviceWorker.includes('setTimeout'));
+  assert.ok(serviceWorker.includes("caches.match('./index.html')"));
+});
