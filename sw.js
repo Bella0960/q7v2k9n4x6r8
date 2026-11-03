@@ -24,7 +24,7 @@ const APP_SHELL = [
   './shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0',
   './assets/icon-192.png',
   './assets/icon-512.png'
-];;
+];
 
 self.addEventListener('install', event => {
   event.waitUntil(
