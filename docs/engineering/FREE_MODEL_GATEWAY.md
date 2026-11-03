@@ -37,6 +37,7 @@ The model IDs and free-plan rules can change. The list is a curated snapshot, no
 | ModelScope | Daily free quota | Real-name/account binding may be required; source marks the free tier non-commercial. |
 | Scaleway | One-time free allowance | Check payment and overage settings. |
 | NVIDIA NIM | Evaluation tier | Phone verification; trial terms say evaluation-only. |
+| Vercel AI Gateway | Recurring monthly credit | The monthly credit amount is not published; confirm free-tier eligibility and spending controls. |
 | Typhoon / SCB 10X | Perpetual free showcase API | Usage data may be collected to improve the service/models. |
 
 Providers whose current free model IDs could not be confirmed are intentionally left out of the routable list until they can be verified. This avoids silently routing to paid models.
@@ -62,6 +63,7 @@ Optional provider secrets:
 - `FREE_MODELSCOPE_API_KEY`
 - `FREE_SCALEWAY_API_KEY`
 - `FREE_NVIDIA_NIM_API_KEY`
+- `FREE_VERCEL_AI_GATEWAY_API_KEY`
 - `FREE_TYPHOON_API_KEY`
 
 You can add them in Cloudflare Dashboard → Workers & Pages → MAOMAO Worker → Settings → Variables and Secrets, or with Wrangler:
