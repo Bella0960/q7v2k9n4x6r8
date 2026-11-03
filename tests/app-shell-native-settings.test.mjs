@@ -48,7 +48,7 @@ test.after(async () => {
   }
 });
 
-test('settings and its four major subviews run as native modules', async () => {
+test('settings and its native subviews run as native modules', async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const pageErrors = [];
