@@ -115,6 +115,23 @@ const PROVIDERS = [
     ]
   },
   {
+    slug: 'vercel-ai-gateway',
+    name: 'Vercel AI Gateway',
+    envKey: 'FREE_VERCEL_AI_GATEWAY_API_KEY',
+    baseUrl: 'https://ai-gateway.vercel.sh/v1',
+    freeType: 'recurring-credit',
+    notice: 'The source lists a monthly free credit, but does not publish the amount. Confirm a model is marked Free Tier eligible and set spending controls before use.',
+    models: [
+      'alibaba/qwen-3-14b',
+      'amazon/nova-2-lite',
+      'anthropic/claude-3-haiku',
+      'arcee-ai/trinity-large-thinking',
+      'bytedance/seed-1.6',
+      'cohere/command-a',
+      'deepseek/deepseek-r1'
+    ]
+  },
+  {
     slug: 'typhoon',
     name: 'Typhoon / SCB 10X',
     envKey: 'FREE_TYPHOON_API_KEY',
