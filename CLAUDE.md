@@ -2,13 +2,15 @@
 
 「小手机 (phone-simulator)」—— 纯原生 Web 项目，模拟一部手机：桌面浏览器显示带边框的手机机身（390×844），窄屏（≤480px）经 `shared/css/mobile-fit.css` 剥掉壳变全屏 PWA。内置聊天、论坛、钱包、咖啡馆、游戏等 App，全部围绕用户自定义的 **AI 角色** 运转（人设/世界书/记忆注入 prompt，调用 OpenAI 兼容 API 生成内容）。全站简体中文，黑白灰杂志风。
 
+> 工程协作入口：所有 AI/开发者先读根目录 AGENTS.md，再读 docs/engineering/README.md 及其架构、储存、开发治理和任务文档。当前事实以源码与工程手册为准；历史审查报告须按日期复核。
+
 ## 技术栈与架构
 
 - **纯原生 HTML/CSS/JS**：零框架（无 React/Vue/jQuery）、零运行时依赖、无 TypeScript。唯一 devDependency 是 vite。
 - **MPA 多页架构**：一个页面 = 一个自包含 HTML（内嵌 `<style>` 与 `<script>`）。导航 = 整页跳转 `window.location.href`，**无路由库、无 hash 路由、无 iframe**；参数走 query string（如 `chat-detail.html?id=xxx`）。
 - **共享 JS = IIFE + 全局命名空间**（如 `global.PhoneStorage = {}`），无 import/export；`package.json` 的 `"type": "module"` 仅作用于 vite.config.js。
 - **Vite 可选**：`vite.config.js` 自动扫描全部 HTML 作为多页入口；项目全用相对路径 + `?v=YYYYMMDD` 缓存参数，**静态托管仓库根目录即可运行**（nav.js 已适配 GitHub Pages 子路径部署）。
-- **PWA**：`manifest.json`（standalone/竖屏/快捷方式）+ `sw.js`（缓存优先+后台更新，缓存名 `phone-app-pwa-vN`）。⚠️ **SW 注册当前被禁用**：index.html 尾部注册代码已注释，且 head 内联脚本每次加载强制注销所有 SW（原因：PWA 缓存导致 HTML/JS 无法更新）。改 sw.js 时留意这个现状。
+- **PWA**：`manifest.json`（standalone/竖屏/快捷方式）+ `sw.js`（缓存优先+后台更新，缓存名 `phone-app-pwa-vN`）。当前 `index.html` 会在 load 后注册 `./sw.js`；修改 Service Worker 或缓存策略前，必须检查注册、更新、controllerchange 和真机缓存行为。
 
 ## 常用命令
 
@@ -19,11 +21,11 @@ npm run preview   # 预览构建产物
 # 项目无构建产物依赖：任何静态服务器指向仓库根即可
 ```
 
-## 目录结构（按功能划分，共 48 个 HTML 页面）
+## 目录结构（按功能划分；2026-11-03 main 快照共 88 个 HTML 页面）
 
 ```
 index.html              # ★ 入口：手机主屏/启动器（状态栏 + 应用宫格 + Dock + ~1180 行拖拽引擎）
-sw.js / manifest.json   # PWA（SW 注册已禁用，见上）
+sw.js / manifest.json   # PWA（index.html 当前会注册 SW，见上）
 vite.config.js          # 自动扫描全部 HTML 为多页入口
 shared/
   css/mobile-fit.css    # ≤480px 真机适配（剥手机壳、隐藏滚动条）
@@ -54,46 +56,61 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 - **shared/js/phone/**（AI 基础设施层，见下节）是模拟世界的"后端"。
 - 复合 App：forum/（9 页）、wallet/（4 页）、settings/（4 页）；其余为单页 App。
 
-## ★ 数据存储规则（localStorage）
+## ★ 数据存储规则（混合储存，渐进迁移中）
 
-**唯一持久化介质是 localStorage**（无 IndexedDB、无 cookie；sessionStorage 仅存通话结果 `call_result_<id>` 等会话级数据）。规则：
+**当前不是“只有 localStorage”的单一储存架构。** 项目已经混合使用 localStorage 与多个 IndexedDB 数据库，但各业务模块迁移程度不同。详细、权威的数据库清单和迁移规范见：
+- `docs/engineering/STORAGE_AND_MIGRATION.md`
+- `docs/engineering/PROJECT_ARCHITECTURE.md`
+- `docs/engineering/REMEDIATION_BACKLOG.md`
 
-1. **新代码必须经 `PhoneStorage`（shared/js/phone/phone_storage.js）读写**：JSON 安全 + try/catch 兜底。大量旧页面裸调 `localStorage.getItem`，属历史遗留，不要模仿。
-2. **新结构**：根 key `phone_data_v2` → `phoneData[contactId][appId] = {...}`。**按角色的数据一律以 contactId 一级隔离**；当前角色 id 存 `phone_current_contact`。
-3. **旧 key 渐进迁移（双读双写）**：读时先查新结构再查旧散装 key，写时两边都写，旧 key 不删除。涉及 `ai_custom_characters` / `chat_history_<id>` / `finance_records` / `moments` 等。重构期间新旧两套必须同时可用。
-4. **key 命名惯例**：`chat_*_<id>`（每会话独立）、`maomao_*_v1`（带版本号，升级时迁移）、`ds_*`（桌面/挂件）、全局偏好用固定 key。
-5. **二进制（头像、挂件图片、车票图）以 dataURL 字符串存储**。
+### 当前事实（不要把目标当成已实现）
 
-### 高频 key 速查
+1. **聊天历史仍以 localStorage 为主**：`chat_history_<id>` 每个角色/群组保存一个完整消息数组，当前没有整体历史上限。富消息可能包含图片/贴纸 dataURL。这是主要容量风险。
+2. **PhoneStorage 已存在，但并非所有页面都使用它**：`shared/js/phone/phone_storage.js` 提供安全读写、结果错误码和旧 key 兼容；部分旧页面仍直接读写 localStorage，修改存储前必须搜索所有读写调用方。
+3. **phone_data_v2 不是所有数据的唯一主库**：它按 `phoneData[contactId][appId]` 保存部分角色级 App 数据。角色、群组、世界书、聊天等仍有不同的旧 key/独立域；不得假定所有数据都双读双写。
+4. **IndexedDB 已用于部分大数据**：壁纸/本地音乐、日记照片、阅读书库、字体方案，以及新建的媒体仓库均有各自数据库。
+5. **MediaRepository 尚未等于全站媒体迁移完成**：`shared/js/phone/storage/media-repository.js` 使用 `maomao-assets`（assets/blobs/refs），支持 Blob 与内容哈希去重；当前聊天图片主链路尚未完成迁移。
+6. **备份覆盖有待补齐**：当前 `settings/js/backup.js` 的 IDB_TARGETS 没有包含 `maomao-assets`；`maomao-media-store` 的 audio store 配置排除了 blob 字段。本地音乐文件是否随完整备份导出必须明确，不能静默遗漏。
+7. **禁止破坏性迁移**：不删除旧 key、不裁剪历史、不重写角色/群组 ID。迁移必须先备份、复制、校验数量/顺序/字段/媒体引用，再切换；旧数据要保留到验证与用户确认后。
+
+### IndexedDB 当前数据库速查
+
+| 数据库 | 当前 stores | 主要使用方 | 备份状态 |
+|---|---|---|---|
+| `maomao-media-store` v2 | `wallpapers`, `audio` | `wallpaper-store.js`, `music/music.html` | 已列入；audio 的 blob 字段目前被排除 |
+| `maomao_diary_photo_store_v1` v1 | `photos` | `diary/diary.html` | 已列入 |
+| `maomao-reading-library` v1 | `books`, `comments` | `library/library.html` | 已列入 |
+| `maomao-font-presets` v1 | `presets` | `font-loader.js`, 字体设置、主题商城 | 已列入；Blob 有体积上限 |
+| `maomao-assets` v1 | `assets`, `blobs`, `refs` | `MediaRepository` | **尚未列入当前备份清单** |
+| `maomao-restore-point` v1 | 还原点辅助 store | `settings/js/backup.js` | 内部恢复安全机制，需在备份重构时一并核对 |
+
+### 高频 localStorage key 速查
 
 | key | 内容 / 结构 |
 |---|---|
-| `ai_custom_characters` | 角色列表 `[{id, name, persona, avatar(dataURL), …}]`（全局共享） |
-| `phone_current_contact` | 当前选中角色 id |
-| `phone_data_v2` | 新版统一存储根 `phoneData[contactId][appId]`；`letters` App 按角色保存寄出/收到/草稿信件与压缩后的图片 dataURL |
-| `chat_history_<id>` | 消息 `[{role:'user'\|'assistant', text, time}]`，扩展 `type:'call'\|'image'`、`mode:'date'`（赴约·线下剧情消息，含 `scene`；与线上聊天共用同一 key，记忆双向互通） |
-| `chat_memories_<id>` / `chat_last_summary_<id>` / `chat_summary_auto_<id>` / `chat_summary_interval_<id>` | 长期记忆 / 总结时间戳 / 自动总结开关与间隔 |
-| `phone_groups` | 群聊列表（群 id 以 `g` 开头）；`chat_group_alias_` / `chat_group_notice_` 群设置 |
-| `phone_worldbooks` | 世界书（lorebook）条目 |
-| `user_masks` / `active_mask_id` | 玩家身份面具（mask.js MaskSystem） |
-| `myProfile` | 玩家资料 |
-| `api_settings` / `api_call_logs` | AI 接口配置（激活方案的镜像，全站读取方零改动）/ 调用日志（tools/api-logs.html 查看） |
-| `api_profiles_v1` / `api_active_profile` | API 多方案库 + 激活指针（settings.js 管理；首次加载自动从旧 api_settings 迁移） |
-| `moments` / `moments_notifications` | 朋友圈动态 `{items:[{content,image,timestamp}]}` / 通知 |
-| `forum_posts` / `forum_config` / `forum_follows` / `forum_notifications` | 论坛数据 |
-| `finance_records` / `shop_products|shop_cart|shop_orders` / `workData` | 钱包记账 / 商店 / 打工 |
-| `maomao_cafe_state_v1` / `maomao_cafe_partner` | 咖啡馆经营存档 / AI 搭档 |
-| `maomao_game_stats_v1` / `maomao_game_role` | 游戏战绩 / 对局角色 |
-| `maomao_diary_entries_v1` | 日记 |
-| `beauty_presets` / `beauty_active` | 深度自定义 CSS 预设（beauty/ Tab2 + custom-css.js 注入；`bubble_presets` 已下线） |
-| `beauty_visual_presets_v1` / `beauty_visual_presets_deleted_v1` | 聊天美化中心保存的结构化气泡/视觉预设及删除记录；主题商城直接读取，不复制预设数据 |
-| `maomao_theme_store_owned_v1` | 主题商城本机已收录的内置聊天主题 ID（不涉及支付） |
-| `maomao-font-presets`（IndexedDB）/ `active_font_preset_id` | 字体设置保存的字体方案及当前激活方案；主题商城读取同一字体库并通过 `MAOMAOFontRuntime` 应用 |
-| `beauty_chat_global_v1` / `beauty_chat_<id>` | 聊天美化结构化参数（全局/单聊稀疏覆盖，shared/js/chat-beauty.js 统一管理；字段：avatarSize / avatarRadius / bubbleGap / bubbleGapX / bubbleMaxWidth / bubblePadding / myBubbleBg / myBubbleColor / partnerBubbleBg / partnerBubbleColor / chatBg / chatBgDim；旧 `theme_bubble_*` 加载时自动迁移） |
-| `regex_rules` | AI 输出正则过滤规则 |
-| `ds_layout_v12` | 主屏布局 `{v, pages[[id…]], dock[id…], removed[id…]}` |
-| `font_size_global` / `custom_font_url` / `sound_settings` / `settings_dark_mode` / `settings_statusbar_*` | 全局偏好（font-loader.js 等消费） |
-| `home_custom_wallpaper` / `home_custom_icon_bg` / `home_icon_style` | 桌面壁纸（Base64 dataURL）/ 图标底色 / 图标风格（appearance.html 写、desktop/js/script.js 读应用） |
+| `ai_custom_characters` | 全局角色列表；头像可能是 dataURL |
+| `phone_current_contact` | 当前选中角色 ID |
+| `phone_data_v2` | 部分角色 App 数据根 `phoneData[contactId][appId]`，不是所有域的唯一数据库 |
+| `chat_history_<id>` | 单聊/群聊完整消息数组；线上/赴约模式共享，赴约消息带 `mode:'date'` / `scene` |
+| `chat_memories_<id>` | 角色长期记忆；已有条目数治理，聊天历史本身仍无总量上限 |
+| `phone_groups` / `phone_worldbooks` | 群组列表 / 全局世界书 |
+| `myProfile` / `user_masks` | 玩家资料 / 面具 |
+| `api_settings` / `api_profiles_v1` | API 设置镜像 / 多方案配置；密钥不得写入日志或默认导出 |
+| `moments` / `forum_posts` | 朋友圈 / 论坛数据，检查其中的大图片字段 |
+| `maomao_diary_entries_v1` | 日记条目；照片单独进入 diary IndexedDB |
+| `music_local_tracks` | 本地音乐元数据；音频 Blob 存 IndexedDB |
+| `active_font_preset_id` | 当前激活字体方案 ID；字体 Blob 在 IndexedDB |
+| `home_custom_wallpaper` | 旧版桌面壁纸兼容 key；新路径使用 IndexedDB wallpaper store |
+
+### 新代码储存规则
+
+- 新的小型偏好可放 localStorage，并通过 PhoneStorage 或明确的设置仓储读写。
+- 大型结构化数据（聊天消息、导入书籍、长列表）使用 IndexedDB 仓储。
+- 图片、音频、附件使用 Blob 媒体仓储；消息记录只保留资源 ID。
+- 每次写入都必须检查成功/失败；不得 catch 后静默继续或提示成功。
+- 每个数据库/store 必须登记到统一数据库清单，并同步配置 export/import 与回归测试。
+- 不允许新页面自行创建未登记的 IndexedDB 数据库。
+- 所有迁移必须遵照 `docs/engineering/STORAGE_AND_MIGRATION.md`，不得删除或裁剪既有用户数据。
 
 ## ★ AI 基础设施层（shared/js/phone/）
 
