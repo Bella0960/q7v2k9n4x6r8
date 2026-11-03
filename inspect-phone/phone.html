@@ -23,8 +23,6 @@ body{
   background:var(--bg);overflow:hidden;
   border:8px solid #fff;border-radius:45px;
   box-shadow:0 10px 25px rgba(0,0,0,.15);
-  /* 机身自身不允许系统手势滚动，避免上滑解锁时被抢占 */
-  touch-action:none;
 }
 .screen{position:absolute;inset:0}
 .lock{position:absolute;inset:0;z-index:6;display:grid;place-items:center;
@@ -204,20 +202,37 @@ body{
 </main>
 <script>
 (function(){
-  try{
+  // ---- 初始化：角色解析 ----
   var params=new URLSearchParams(location.search);
   var requestedId=params.get('id')||'';
   var roles=[];
-  try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')||[];}catch(e){roles=[];}
+  try{
+    roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')||[];
+  }catch(e){
+    console.error('[inspect-phone] localStorage 中角色列表 JSON 损坏，用空列表继续', e);
+    roles=[];
+  }
   roles=roles.filter(function(r){return r&&r.name;});
   var role=roles.find(function(r,i){return String(r.id!==undefined&&r.id!==null?r.id:i)===String(requestedId);})||roles[0]||null;
   if(!role){location.href='select.html';return;}
 
-  var lock=document.getElementById('lock');
-  var phone=document.getElementById('phone');
-  var appLayer=document.getElementById('appLayer');
-  var appBody=document.getElementById('appBody');
-  var appTitle=document.getElementById('appTitle');
+  // ---- 初始化：DOM 查询 ----
+  var lock=null, phone=null, appLayer=null, appBody=null, appTitle=null;
+  try{
+    lock=document.getElementById('lock');
+    phone=document.getElementById('phone');
+    appLayer=document.getElementById('appLayer');
+    appBody=document.getElementById('appBody');
+    appTitle=document.getElementById('appTitle');
+    if(!lock||!phone||!appLayer){
+      throw new Error('缺少关键 DOM 元素: lock='+!!lock+' phone='+!!phone+' appLayer='+!!appLayer);
+    }
+  }catch(e){
+    console.error('[inspect-phone] DOM 初始化失败:', e.message);
+    // 没法继续了，至少让锁屏可见
+    try{ if(lock)lock.classList.remove('hide'); }catch(_){}
+    return;
+  }
   var currentApp='';
   var chatOpen=false;
   var forumOpen=false;
@@ -233,8 +248,13 @@ body{
     document.getElementById('lockDate').textContent=(now.getMonth()+1)+'月'+now.getDate()+'日 '+week;
     document.getElementById('clock').textContent=time;
   }
-  updateTime();
-  setInterval(updateTime,10000);
+  // 时间更新——独立 try/catch，因为 DOM 查询已在前面校验过
+  try{
+    updateTime();
+    setInterval(updateTime,10000);
+  }catch(e){
+    console.error('[inspect-phone] 时间更新初始化失败:', e.message);
+  }
 
   var lockStartY=0;
   var lockStartX=0;
@@ -256,20 +276,15 @@ body{
     lockPointerId=null;
     unlockFired=false;
   }
-  function checkSwipeUp(dy,dx){
-    if(dy < -36 && Math.abs(dy) > Math.abs(dx)*1.15 && !unlockFired){
-      unlockPhone();
-    }
+  /** 位移阈值判定：向上 ≥ 36px 且纵向位移明显大于横向，才算"上滑解锁" */
+  function shouldUnlock(dy,dx){
+    return dy < -36 && Math.abs(dy) > Math.abs(dx)*1.15;
   }
   // === 解锁手势 ===
-  // 根因修复：原来 .lock 上 touch-action:pan-y 导致浏览器把首次上滑当成
-  // 系统滚动手势暂缓派发 touchend。现在 CSS 已改为 touch-action:none，
-  // 浏览器完全不拦截手势事件。
-  //   - pointerdown/pointerup/pointercancel：覆盖鼠标 + 触摸 + 触控笔
-  //   - touchstart/touchend/touchcancel：老 WebView 兜底
-  //   - click：轻触辅助解锁
-  //   - unlockFired 标记：防止同一手势在多通道重复触发 unlockPhone()
-  //   - resetLockState：每次结束/取消事件都复位，避免 lockTracking 卡死
+  // 事件通道：pointer 为主（鼠标+触摸+触控笔），touch 为老 WebView 兜底。
+  // .lock 上 touch-action:none 让浏览器完全不拦截系统手势，事件立即派发。
+  // 幂等：unlockFired 标记确保多通道（pointer+touch+click）同时到达时只解锁一次。
+  // 复位顺序：先取出起点算好 dx/dy，再 resetLockState 清空，避免起点被清成 0 导致 dy 算错。
   lock.addEventListener('pointerdown',function(e){
     if(unlocked)return;
     lockPointerId=e.pointerId;
@@ -281,11 +296,15 @@ body{
   });
   lock.addEventListener('pointerup',function(e){
     if(!lockTracking||e.pointerId!==lockPointerId)return;
+    // 关键：先取出当前起点算位移，再复位。不能反过来——reset 会把起点清 0。
+    var dy=e.clientY-lockStartY;
+    var dx=e.clientX-lockStartX;
     resetLockState();
-    checkSwipeUp(e.clientY-lockStartY,e.clientX-lockStartX);
+    if(!unlockFired && shouldUnlock(dy,dx))unlockPhone();
   });
   lock.addEventListener('pointercancel',function(e){
     if(e.pointerId!==lockPointerId)return;
+    // cancel 不做判定，只复位状态。unlockFired 会被清，下一次手势可重新触发。
     resetLockState();
   });
   lock.addEventListener('touchstart',function(e){
@@ -298,13 +317,24 @@ body{
   lock.addEventListener('touchend',function(e){
     if(!lockTracking)return;
     var t=e.changedTouches&&e.changedTouches[0];
-    resetLockState();
-    if(t)checkSwipeUp(t.clientY-lockStartY,t.clientX-lockStartX);
+    if(t){
+      // 同样先算再复位，避免起点被提前清零
+      var dy=t.clientY-lockStartY;
+      var dx=t.clientX-lockStartX;
+      resetLockState();
+      if(!unlockFired && shouldUnlock(dy,dx))unlockPhone();
+    }else{
+      resetLockState();
+    }
   },{passive:true});
   lock.addEventListener('touchcancel',function(){
     resetLockState();
   },{passive:true});
-  lock.addEventListener('click',unlockPhone);
+  // 点击辅助解锁——独立路径，不受 gesture 状态影响
+  lock.addEventListener('click',function(){
+    // 幂等保护：避免 pointer 通道解锁后 click 再进来重复触发
+    if(!unlockFired)unlockPhone();
+  });
 
   var titles={album:'相册',chat:'聊天',notes:'备忘录',forum:'论坛',browser:'浏览器',settings:'设置'};
   var roleName=String(role.name||'角色');
@@ -479,18 +509,16 @@ body{
     if(postItem){forumIndex=+postItem.dataset.post;forumOpen=true;renderApp();}
   });
 
-  document.getElementById('appBack').addEventListener('click',function(){
-    if(currentApp==='chat'&&chatOpen){chatOpen=false;renderApp();return;}
-    if(currentApp==='forum'&&forumOpen){forumOpen=false;renderApp();return;}
-    appLayer.classList.remove('open');
-    currentApp='';
-  });
-  }catch(e){
-    // 任何未捕获异常都避免白屏：让用户能看到锁屏
-    try{
-      var lockE=document.getElementById('lock'), phoneE=document.getElementById('phone');
-      if(phoneE)phoneE.classList.add('show');
-    }catch(_){}
+  var appBack=document.getElementById('appBack');
+  if(appBack){
+    appBack.addEventListener('click',function(){
+      if(currentApp==='chat'&&chatOpen){chatOpen=false;renderApp();return;}
+      if(currentApp==='forum'&&forumOpen){forumOpen=false;renderApp();return;}
+      appLayer.classList.remove('open');
+      currentApp='';
+    });
+  }else{
+    console.warn('[inspect-phone] appBack 按钮未找到，返回功能不可用');
   }
 })();
 </script>
