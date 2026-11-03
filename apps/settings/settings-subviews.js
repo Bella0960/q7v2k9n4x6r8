@@ -115,7 +115,9 @@
     var path = url.pathname;
     if (shouldSkipExternalScript(url, moduleWindow)) return;
     if (path.endsWith('/sound-system.js')) {
-      if (!global.SoundSystem) new Function('window', source + '\n//# sourceURL=maomao-sound-system.js')(global);
+      if (!global.SoundSystem) {
+        global.SoundSystem = new Function('window', source + '\nreturn SoundSystem;\n//# sourceURL=maomao-sound-system.js')(global);
+      }
       return;
     }
     if (path.endsWith('/liquid-glass-controls.js')) {
