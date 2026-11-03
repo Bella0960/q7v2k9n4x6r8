@@ -340,10 +340,16 @@
     return new URLSearchParams(location.search).get('id');
   }
   function loadPosts() {
-    return JSON.parse(localStorage.getItem('forum_posts') || '[]');
+    try {
+      const arr = JSON.parse(localStorage.getItem('forum_posts') || '[]');
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
   }
   function savePosts(arr) {
-    localStorage.setItem('forum_posts', JSON.stringify(arr));
+    try {
+      localStorage.setItem('forum_posts', JSON.stringify(arr));
+      return true;
+    } catch (e) { return false; }
   }
   function timeAgo(ts) {
     const h = Math.floor((Date.now() - ts) / 3600000);
@@ -452,7 +458,7 @@
     c.likes = (c.likes || 0) + (c.liked ? 1 : -1);
     const posts = loadPosts();
     const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    if (idx >= 0) { posts[idx] = post; if (!savePosts(posts)) toast('保存失败，请重试'); }
     renderComments();
   }
 
@@ -462,7 +468,7 @@
     r.likes = (r.likes || 0) + (r.liked ? 1 : -1);
     const posts = loadPosts();
     const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    if (idx >= 0) { posts[idx] = post; if (!savePosts(posts)) toast('保存失败，请重试'); }
     renderComments();
   }
 
@@ -485,7 +491,11 @@
     try {
       const posts = loadPosts();
       const idx = posts.findIndex(p => p.id === post.id);
-      if (idx >= 0) { posts[idx] = post; savePosts(posts); return true; }
+      if (idx >= 0) {
+        posts[idx] = post;
+        if (!savePosts(posts)) { toast('保存失败，请重试'); return false; }
+        return true;
+      }
     } catch(e) {}
     toast('保存失败，请重试');
     return false;
@@ -528,7 +538,7 @@
     post.likes += post.liked ? 1 : -1;
     const posts = loadPosts();
     const idx = posts.findIndex(p => p.id === post.id);
-    if (idx >= 0) { posts[idx] = post; savePosts(posts); }
+    if (idx >= 0) { posts[idx] = post; if (!savePosts(posts)) toast('保存失败，请重试'); }
     renderPost();
   }
 
