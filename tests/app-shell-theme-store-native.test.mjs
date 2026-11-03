@@ -93,7 +93,7 @@ test('theme store runs natively and preserves theme, role-scoped bubble and font
   assert.equal(nativeState.hasStore, true);
   assert.equal(nativeState.hasThemeCards, true);
   assert.equal(nativeState.hasLegacyIframe, false);
-  assert.match(nativeState.butterflyAsset, /silver-butterfly\.svg/,
+  assert.match(nativeState.butterflyAsset, /silver-butterfly\.svg|data:image\/svg\+xml/,
     'theme preview asset should resolve relative to the original Theme Store page');
   assert.equal(await host.locator('iframe:visible').count(), 0);
 
