@@ -35,7 +35,7 @@
     }
 
     function isHomeUrl(url) {
-      return url.pathname === homePath && !url.searchParams.has(routeParam);
+      return (url.pathname === homePath || url.pathname === basePath) && !url.searchParams.has(routeParam);
     }
 
     function routeForUrl(url) {
