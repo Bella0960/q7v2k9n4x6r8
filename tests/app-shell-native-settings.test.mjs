@@ -49,7 +49,7 @@ test.after(async () => {
 });
 
 test('settings and its native subviews run as native modules', async () => {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ serviceWorkers: 'block' });
   const page = await context.newPage();
   const pageErrors = [];
   const consoleErrors = [];
