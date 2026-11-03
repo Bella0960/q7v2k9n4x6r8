@@ -192,6 +192,30 @@ test('settings and its four major subviews run as native modules', async () => {
   await logsView.locator('.al-circle-btn').click();
   await settingsView.locator('.phone-mockup').waitFor();
 
+  await settingsView.getByText('通话设置', { exact: true }).click();
+  const callView = host.locator('.maomao-app-view[data-maomao-app-view="settings_call"]');
+  await callView.locator('#btnBack').waitFor();
+  await callView.locator('.segmented[data-key="call_default_type"] button[data-value="video"]').click();
+  assert.equal(await page.evaluate(() => localStorage.getItem('call_default_type')), 'video');
+  await callView.locator('.ios-switch input[data-key="call_dnd"]').check();
+  assert.equal(await page.evaluate(() => localStorage.getItem('call_dnd')), 'true');
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await callView.locator('#btnBack').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
+  await settingsView.getByText('伴侣协议', { exact: true }).click();
+  const protocolView = host.locator('.maomao-app-view[data-maomao-app-view="settings_rp_protocol"]');
+  await protocolView.locator('#protocolText').waitFor();
+  await protocolView.locator('#btnReset').click();
+  await protocolView.locator('#btnSave').click();
+  assert.ok(await page.evaluate(() => !!localStorage.getItem('chat_rp_protocol_')));
+  await protocolView.locator('#btnPreview').click();
+  await protocolView.locator('#previewModal.show').waitFor();
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await protocolView.locator('#btnClosePreview').click();
+  await protocolView.locator('#btnBack').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
   const historyBeforeDesktopBack = await page.evaluate(() => ({
     activeRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getActiveRoute(),
     previousRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getPreviousRoute(),
