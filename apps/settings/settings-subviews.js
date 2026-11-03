@@ -14,7 +14,8 @@
     { id: 'settings_logs', path: '../tools/api-logs.html', title: 'API 调用记录' },
     { id: 'settings_call', path: '../chat/call/call-settings.html', title: '通话设置' },
     { id: 'settings_rp_protocol', path: '../worldbook/settings/rp-protocol.html', title: '全局伴侣协议' },
-    { id: 'settings_stickers', path: '../chat/sticker/sticker-manager.html', title: '贴纸管理' }
+    { id: 'settings_stickers', path: '../chat/sticker/sticker-manager.html', title: '贴纸管理' },
+    { id: 'settings_regex', path: '../worldbook/settings/regex-settings.html', title: '正则过滤' }
   ];
 
   var scriptCache = new Map();
@@ -140,7 +141,7 @@
     throw new Error('未配置原生加载方式的设置脚本：' + path);
   }
 
-  function bindNavigation(shadow, pageUrl, pageId) {
+  function bindNavigation(shadow, pageUrl, pageId, pageExports) {
     var hostBridge = global.__MAOMAO_LEGACY_HOST__;
     function navigate(rawUrl, event) {
       if (!hostBridge || !rawUrl || rawUrl === '#') return false;
@@ -163,9 +164,25 @@
     shadow.querySelectorAll('[onclick]').forEach(function (element) {
       var expression = element.getAttribute('onclick') || '';
       var match = expression.match(/(?:window\.)?location\.href\s*=\s*['"]([^'"]+)['"]/);
-      if (!match) return;
+      if (match) {
+        element.removeAttribute('onclick');
+        element.addEventListener('click', function (event) { navigate(match[1], event); });
+        return;
+      }
+
+      if (pageId !== 'settings_regex' || !pageExports) return;
       element.removeAttribute('onclick');
-      element.addEventListener('click', function (event) { navigate(match[1], event); });
+      if (expression.indexOf('event.target===this') !== -1) {
+        element.addEventListener('click', function (event) {
+          if (event.target === element && typeof pageExports.closeSheet === 'function') {
+            pageExports.closeSheet();
+          }
+        });
+        return;
+      }
+      var call = expression.match(/^\s*([A-Za-z_$][\w$]*)\s*\(\s*\)\s*;?\s*$/);
+      if (!call || typeof pageExports[call[1]] !== 'function') return;
+      element.addEventListener('click', function () { pageExports[call[1]](); });
     });
 
     if (pageId === 'settings_stickers') {
@@ -242,19 +259,28 @@
         var moduleWindow = createModuleWindow(pageUrl, localWindowValues);
 
         // 原页面脚本的执行顺序不变：头部依赖 → 页面初始化脚本 → 页面末尾控件脚本。
+        var pageExports = null;
         for (var i = 0; i < scriptSources.length; i++) {
           var item = scriptSources[i];
           if (item.url) {
             runExternalScript(item.url, item.source, documentFacade, moduleWindow);
           } else if (item.source.trim()) {
-            new Function('document', 'window', item.source + '\n//# sourceURL=maomao-settings-' + page.id + '.js')(
-              documentFacade,
-              moduleWindow
-            );
+            if (page.id === 'settings_regex') {
+              pageExports = new Function(
+                'document',
+                'window',
+                item.source + '\nreturn { render: render, openSheet: openSheet, closeSheet: closeSheet, saveRule: saveRule };\n//# sourceURL=maomao-settings-regex.js'
+              )(documentFacade, moduleWindow);
+            } else {
+              new Function('document', 'window', item.source + '\n//# sourceURL=maomao-settings-' + page.id + '.js')(
+                documentFacade,
+                moduleWindow
+              );
+            }
           }
         }
 
-        bindNavigation(shadow, pageUrl, page.id);
+        bindNavigation(shadow, pageUrl, page.id, pageExports);
         var themeListener = function () {
           var theme = global.MAOMAOTheme && global.MAOMAOTheme.get
             ? global.MAOMAOTheme.get()
