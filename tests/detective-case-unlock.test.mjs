@@ -580,15 +580,51 @@ test('15 槽位替换后，旧存档中被顶掉的通关状态会被迁移清�
   assert.equal(store.get('maomao_detective_slot_remap_v1'), '1', '迁移标记未写入');
 });
 
-test('09 Service Worker 导航改为网络优先，改完 HTML 不再需要刷两次', () => {
+test('09 导航分支：缓存优先 + 后台再验证并写回缓存，且版本机制仍有效', () => {
   const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
-  const nav = sw.slice(sw.indexOf("req.mode === 'navigate'"));
-  const respondIndex = nav.indexOf('event.respondWith(');
-  assert.ok(respondIndex !== -1, '未找到导航处理逻辑');
-  // respondWith 的第一个 promise 必须是网络请求，而不是 caches.match
-  assert.ok(
-    nav.slice(respondIndex, respondIndex + 120).includes('fetch(req)'),
-    '导航应优先走网络，否则 overriding 的仍是旧缓存'
-  );
-  assert.match(sw, /CACHE_NAME = 'phone-app-pwa-v125'/, '应提升缓存版本号以让旧缓存失效');
+
+  // 1) 取出导航分支的真实代码块（花括号配对，避免“全文 120 字符窗口”这种脆弱写法）。
+  const navStart = sw.indexOf("if (req.mode === 'navigate')");
+  assert.ok(navStart !== -1, '未找到导航分支判断 request.mode === navigate');
+  const braceStart = sw.indexOf('{', navStart);
+  assert.ok(braceStart !== -1, '导航分支缺少语句块');
+  let depth = 0;
+  let navEnd = -1;
+  for (let i = braceStart; i < sw.length; i += 1) {
+    if (sw[i] === '{') depth += 1;
+    else if (sw[i] === '}') {
+      depth -= 1;
+      if (depth === 0) { navEnd = i + 1; break; }
+    }
+  }
+  assert.ok(navEnd > braceStart, '导航分支花括号未闭合');
+  const nav = sw.slice(navStart, navEnd);
+
+  // 2) 导航请求由本 SW 的导航分支接管，而不是落到普通静态资源分支。
+  assert.ok(nav.includes('event.respondWith('), '导航分支必须调用 respondWith 接管请求');
+
+  // 3) 后台再验证：既有网络请求，也有写回 CACHE_NAME 的更新动作。
+  //    这一条专门区分“缓存优先但永不更新”风险：缺任一项都会红。
+  assert.ok(nav.includes('fetch(req)'), '导航分支必须发起网络请求做再验证');
+  assert.ok(nav.includes('caches.open(CACHE_NAME)'), '再验证后必须用 CACHE_NAME 打开缓存');
+  assert.ok(nav.includes('cache.put(req'), '再验证结果必须写回缓存');
+  assert.ok(nav.includes('event.waitUntil(updatePromise'), '再验证须后台完成，不阻塞首屏');
+
+  // 4) 命中缓存优先返回；网络失败与全不可用时仍有回退路径。
+  assert.ok(nav.includes('caches.match(req)'), '导航分支必须读取缓存');
+  const cachedReturn = nav.indexOf('if (cached) return cached');
+  const freshReturn = nav.indexOf('if (fresh) return fresh');
+  assert.ok(cachedReturn !== -1 && freshReturn !== -1 && cachedReturn < freshReturn,
+    '缓存命中必须先于网络结果返回（缓存优先）');
+  assert.ok(nav.includes('.catch(') && nav.includes('return null'), '网络失败需降级为空值');
+  assert.ok(nav.includes('return new Response('), '缓存与网络都不可用时必须返回兜底响应');
+
+  // 5) 版本提升机制：版本号只声明一次、符合命名模式、其余位置引用常量。
+  const declared = sw.match(/const CACHE_NAME = '([^']+)';/);
+  assert.ok(declared, '未找到 CACHE_NAME 声明');
+  const cacheName = declared[1];
+  assert.match(cacheName, /^phone-app-pwa-v\d+$/, '缓存名应遵循 phone-app-pwa-v<数字> 约定');
+  const literals = sw.match(/phone-app-pwa-v\d+/g) || [];
+  assert.equal(literals.length, 1, '版本号只应在 CACHE_NAME 声明处出现，其它位置必须引用常量');
+  assert.ok((sw.match(/caches\.open\(CACHE_NAME\)/g) || []).length >= 1, '缓存读写应使用 CACHE_NAME 常量');
 });
