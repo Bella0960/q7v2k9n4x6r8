@@ -388,6 +388,7 @@
   let currentShop = null;
   let cart = {}; // { dishId: {dish, qty} }
   let cartShopId = '';
+  let payAttempt = null; // 同一次提交的重试上下文，保证不会重复写订单
 
   function getShopById(shopId) {
     return SHOPS.find(function (shop) { return shop.id === shopId; }) || null;
@@ -406,7 +407,10 @@
     try {
       var stored = JSON.parse(localStorage.getItem('takeout_cart') || '{}');
       cart = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
-    } catch(e) { cart = {}; }
+    } catch(e) {
+      console.warn('[takeout] 购物车读取失败，已按空购物车处理', e);
+      cart = {};
+    }
     cartShopId = localStorage.getItem('takeout_cart_shop_id') || '';
     var ownerIds = [];
     Object.keys(cart).forEach(function (key) {
@@ -427,21 +431,27 @@
     } else cartShopId = '';
   }
   function saveCart() {
+    var ok = true;
     try {
       localStorage.setItem('takeout_cart', JSON.stringify(cart));
       if (cartCount() > 0 && cartShopId) localStorage.setItem('takeout_cart_shop_id', cartShopId);
       else localStorage.removeItem('takeout_cart_shop_id');
     } catch(e) {
+      ok = false;
+      console.error('[takeout] 购物车保存失败', e);
       toast('购物车保存失败，请检查手机存储空间');
     }
     updateCartUI();
+    return ok;
   }
 
   function getCharacters() {
     try {
       var raw = localStorage.getItem('ai_custom_characters');
       if (raw) return JSON.parse(raw);
-    } catch(e) {}
+    } catch(e) {
+      console.warn('[takeout] 角色列表读取失败', e);
+    }
     return [];
   }
 
@@ -449,7 +459,9 @@
     try {
       var d = JSON.parse(localStorage.getItem('close_pay') || 'null');
       if (d && typeof d === 'object') return d;
-    } catch(e) {}
+    } catch(e) {
+      console.warn('[takeout] 亲密付配置读取失败', e);
+    }
     return null;
   }
 
@@ -466,7 +478,7 @@
     return !!(window.RoleFamilyCards && window.RoleFamilyCards.canUse(card, total));
   }
   function notifyRoleCardIssuer(card, message) {
-    if (!card || !card.roleId) return;
+    if (!card || !card.roleId) return true;
     try {
       var list;
       if (window.PhoneStorage && typeof window.PhoneStorage.getChatHistory === 'function') {
@@ -477,11 +489,18 @@
       if (!Array.isArray(list)) list = [];
       list.push({ role: 'user', type: 'text', text: message, time: Date.now() });
       if (window.PhoneStorage && typeof window.PhoneStorage.saveChatHistory === 'function') {
-        window.PhoneStorage.saveChatHistory(card.roleId, list);
+        if (!window.PhoneStorage.saveChatHistory(card.roleId, list)) {
+          console.error('[takeout] 亲属卡通知保存失败 roleId=' + card.roleId);
+          return false;
+        }
       } else {
         localStorage.setItem('chat_history_' + card.roleId, JSON.stringify(list));
       }
-    } catch (e) {}
+      return true;
+    } catch (e) {
+      console.error('[takeout] 亲属卡通知保存失败 roleId=' + card.roleId, e);
+      return false;
+    }
   }
 
   function toast(msg) {
@@ -635,9 +654,17 @@
   // ===== 购物车弹层 =====
   function clearCart() {
     if (!cartCount()) return;
+    var prevCart = cart;
+    var prevShopId = cartShopId;
     cart = {};
     cartShopId = '';
-    saveCart();
+    if (!saveCart()) {
+      cart = prevCart;
+      cartShopId = prevShopId;
+      updateCartUI();
+      openCart();
+      return;
+    }
     openCart();
     toast('购物车已清空');
   }
@@ -750,6 +777,17 @@
   }
     function closeCheckout() { document.getElementById('checkoutOverlay').classList.remove('open'); }
 
+  function restoreStorageSnapshot(snapshot) {
+    Object.keys(snapshot).forEach(function (key) {
+      try {
+        if (snapshot[key] === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, snapshot[key]);
+      } catch (err) {
+        console.error('[takeout] 回滚存储失败 ' + key, err);
+      }
+    });
+  }
+
   function doPay() {
     var items = cartItems();
     if (!items.length) { toast('购物车是空的'); return; }
@@ -769,40 +807,57 @@
         openCheckout();
         return;
       }
-      var familySpend = window.RoleFamilyCards.consume(
-        roleFamilyCard.id, total, '外卖 · ' + items.map(function (it) { return it.dish.name + '×' + it.qty; }).join('、'), 'takeout'
-      );
-      if (!familySpend || !familySpend.ok) {
-        toast(familySpend && familySpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择');
-        closeCheckout();
-        openCheckout();
-        return;
-      }
-      roleFamilyCard = familySpend.card;
     }
     var now = new Date();
     var timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
     var itemsDesc = items.map(it => it.dish.name + '×' + it.qty).join('、');
 
-    // 1. 写记账
-    try {
-      var list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-      items.forEach(it => {
-        list.push({ amount: it.dish.price * it.qty, type: 'expense',
-          category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
-          note: (payMethod==='close_pay'
-            ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
-            : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
-          time: timeStr });
-      });
-      localStorage.setItem('finance_records', JSON.stringify(list));
-    } catch(e) {}
+    // 同一次提交（同一店铺、商品、金额、支付方式）复用同一个 ts，重试不会生成第二条订单
+    var signature = orderShop.id + '|' + payMethod + '|' + total + '|' +
+      items.map(function (it) { return (it.dish && it.dish.id || '') + 'x' + it.qty; }).join(',');
+    if (!payAttempt || payAttempt.signature !== signature) {
+      payAttempt = { signature: signature, ts: Date.now(), cardCharged: false, orderSaved: false };
+    }
+    var attempt = payAttempt;
+    var snapshot = {};
 
-    // 2. 亲密付：扣钱包 + 更新额度 + 发聊天
+    function remember(key) {
+      if (!key || Object.prototype.hasOwnProperty.call(snapshot, key)) return;
+      try { snapshot[key] = localStorage.getItem(key); }
+      catch (e) { console.error('[takeout] 读取存储快照失败 ' + key, e); }
+    }
+
+    function failPay(message) {
+      restoreStorageSnapshot(snapshot);
+      attempt.cardCharged = false;
+      attempt.orderSaved = false;
+      toast(message);
+    }
+
+    // 1. 亲属卡扣款（订单落库前完成，失败时回滚）
+    if (roleFamilyCard && !attempt.cardCharged) {
+      remember(window.RoleFamilyCards && window.RoleFamilyCards.key);
+      var familySpend = window.RoleFamilyCards.consume(
+        roleFamilyCard.id, total, '外卖 · ' + itemsDesc, 'takeout'
+      );
+      if (!familySpend || !familySpend.ok) {
+        console.error('[takeout] 亲属卡扣款失败', familySpend);
+        failPay(familySpend && familySpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择');
+        return;
+      }
+      attempt.cardCharged = true;
+      roleFamilyCard = familySpend.card;
+    }
+
+    // 2. 亲密付：扣钱包 + 更新额度 + 发聊天（失败时整体回滚）
     if (payMethod === 'close_pay') {
-      try {
-        var cp = getClosePay();
-        if (cp) {
+      var cp = getClosePay();
+      if (cp) {
+        var chatKey = cp.roleId ? 'chat_history_' + cp.roleId : '';
+        remember('workData');
+        remember('close_pay');
+        remember(chatKey);
+        try {
           var wd = JSON.parse(localStorage.getItem('workData') || 'null') || { balance: 1000, history: [] };
           if (typeof wd.balance !== 'number') wd.balance = 1000;
           if (!Array.isArray(wd.history)) wd.history = [];
@@ -817,40 +872,79 @@
           cp.history.push({ amount: total, note: '外卖 · ' + itemsDesc, time: Date.now() });
           localStorage.setItem('close_pay', JSON.stringify(cp));
 
-          if (cp.roleId) {
-            var key = 'chat_history_' + cp.roleId;
-            var arr = JSON.parse(localStorage.getItem(key) || '[]');
+          if (chatKey) {
+            var arr = JSON.parse(localStorage.getItem(chatKey) || '[]');
+            if (!Array.isArray(arr)) arr = [];
             arr.push({ role:'user', type:'text',
               text: '刚刚帮你点了外卖：' + itemsDesc + '，¥' + total + '，等好吃的到吧～',
               time: Date.now() });
-            localStorage.setItem(key, JSON.stringify(arr));
+            localStorage.setItem(chatKey, JSON.stringify(arr));
           }
+        } catch (e) {
+          console.error('[takeout] 亲密付记录保存失败', e);
+          failPay('亲密付记录保存失败，请重试');
+          return;
         }
-      } catch(e) {}
+      }
     }
 
+    // 3. 写记账（失败时回滚）
+    remember('finance_records');
+    try {
+      var list = JSON.parse(localStorage.getItem('finance_records') || '[]');
+      if (!Array.isArray(list)) throw new Error('finance_records 格式异常');
+      items.forEach(it => {
+        list.push({ amount: it.dish.price * it.qty, type: 'expense',
+          category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
+          note: (payMethod==='close_pay'
+            ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
+            : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
+          time: timeStr });
+      });
+      localStorage.setItem('finance_records', JSON.stringify(list));
+    } catch (e) {
+      console.error('[takeout] 记账保存失败', e);
+      failPay('记账保存失败，请重试');
+      return;
+    }
+
+    // 4. 写订单：提交点。失败则回滚前面的扣款/记账，保留购物车与结算弹窗
+    try {
+      var orders = JSON.parse(localStorage.getItem('takeout_orders') || '[]');
+      if (!Array.isArray(orders)) throw new Error('takeout_orders 格式异常');
+      if (!orders.some(function (o) { return o && o.ts === attempt.ts; })) {
+        orders.push({ items: items.map(it => ({name:it.dish.name, price:it.dish.price, qty:it.qty})),
+          total, shop: orderShop.name, shopId: orderShop.id, delivery: orderShop.delivery, payMethod, ts: attempt.ts });
+        localStorage.setItem('takeout_orders', JSON.stringify(orders));
+      }
+      attempt.orderSaved = true;
+    } catch (e) {
+      console.error('[takeout] 订单保存失败', e);
+      failPay('订单保存失败，请重试；购物车已保留');
+      return;
+    }
+
+    // 5. 通知亲属卡持有人：订单已提交，通知失败只提示，不撤销订单
     if (roleFamilyCard) {
-      notifyRoleCardIssuer(roleFamilyCard,
+      var notified = notifyRoleCardIssuer(roleFamilyCard,
         '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
         '点了外卖：' + itemsDesc + '，共 ¥' + total.toFixed(2) + '。本月已使用 ¥' +
         window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+      if (!notified) toast('订单已提交，但亲属卡通知发送失败');
     }
 
-    // 3. 写订单
-    try {
-      var orders = JSON.parse(localStorage.getItem('takeout_orders') || '[]');
-      orders.push({ items: items.map(it => ({name:it.dish.name, price:it.dish.price, qty:it.qty})),
-        total, shop: orderShop.name, shopId: orderShop.id, delivery: orderShop.delivery, payMethod, ts: Date.now() });
-      localStorage.setItem('takeout_orders', JSON.stringify(orders));
-    } catch(e) {}
-
-    // 清购物车
+    // 6. 清购物车（失败时如实提示，不谎报成功）
     cart = {};
     cartShopId = '';
-    saveCart();
+    var cartCleared = saveCart();
     closeCheckout();
     if (currentShop) renderDishes();
     else updateCartUI();
+    payAttempt = null;
+    if (!cartCleared) {
+      toast('订单已提交，但购物车未清空，刷新后可能恢复，请手动清空');
+      return;
+    }
     toast('下单成功，预计 ' + orderShop.delivery + ' 送达');
   }
 
@@ -885,14 +979,23 @@
     if (!items.length) { toast('购物车是空的'); return; }
     var total = cartTotal();
     var itemsDesc = items.map(it => it.dish.name + '×' + it.qty).join('、');
+    var forwarded = false;
     try {
       var key = 'chat_history_' + roleId;
       var arr = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(arr)) arr = [];
       arr.push({ role:'user', type:'text',
         text: '我在外卖上挑了这些：' + itemsDesc + '，一共 ¥' + total + '。想吃哪个？帮我点单～',
         time: Date.now() });
       localStorage.setItem(key, JSON.stringify(arr));
-    } catch(e) {}
+      forwarded = true;
+    } catch(e) {
+      console.error('[takeout] 转发消息保存失败 roleId=' + roleId, e);
+    }
+    if (!forwarded) {
+      toast('转发失败，消息未保存，请检查手机存储空间');
+      return;
+    }
     closeForward();
     closeCheckout();
     toast('已转发给 ' + roleName);
