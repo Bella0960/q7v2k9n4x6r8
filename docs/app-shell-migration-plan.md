@@ -108,6 +108,25 @@ MAOMAO 当前是原生 HTML/CSS/JS 的多页面应用（MPA）。每个主要功
 - Service Worker 安装预缓存从“预装一批应用页和图片”收敛到启动必需的手机外壳资源；应用页与静态资源在首次访问时再缓存。
 - 已加入旧页面桥接测试与外壳生命周期测试；必须再通过生产构建和浏览器实测，才能进入下一阶段。
 
+### Phase 1 — 统一外壳接管入口（已进入首轮实现）
+
+- 保留现有 `index.html` 作为唯一顶层手机文档和桌面；在 `.phone-screen` 内加入统一 App Host。
+- 桌面图标点击由外壳接管，应用打开时不再把顶层 `index.html` 整页导航到目标 HTML。
+- 旧 HTML 页面暂由同源 iframe 适配器隔离承载；每个目标路由首次打开时创建帧，切换应用时隐藏并复用，返回/前进通过顶层 History 路由恢复。
+- 旧页面内部的普通同源链接由适配器转交外壳；旧脚本直接修改 `window.location` 的行为仍留在 iframe 内，并由加载事件同步顶层路由。
+- Service Worker 安装预缓存从“预装一批应用页和图片”收敛到启动必需的手机外壳资源；应用页与静态资源在首次访问时再缓存。
+- 已加入旧页面桥接测试与外壳生命周期测试；必须再通过生产构建和浏览器实测，才能进入下一阶段。
+
+### Phase 1.5 — 设置应用原生模块迁移（当前实现）
+
+- `settings/settings.html` 作为旧页面兼容入口继续保留；桌面打开该路径时由路由表映射到原生 `settings` 模块，不创建设置 iframe。
+- `apps/settings/settings-module.js` 在首次打开时按需读取原设置 HTML、原设置 CSS、`settings/js/settings.js` 与 `settings/js/backup.js`；把真实页面 DOM 放进该应用自己的 Shadow DOM。
+- 通过模块级 Document Facade 将原脚本的 `getElementById/createElement/body/documentElement` 查询限定在设置 Shadow DOM，避免设置页 ID、样式和全局脚本与桌面及其他模块冲突。
+- 原 API 多方案、模型拉取/测试、备份/恢复、深色模式、状态栏设置和聊天语言设置逻辑继续复用；现有存储键与数据结构不迁移。
+- 设置应用的外观、字体、音效等独立子页暂留在兼容层；设置→子页→浏览器返回可以回到已挂载的设置视图。
+- 增加了浏览器级测试：验证设置页面由 Shadow DOM 原生模块承载、无设置 iframe、API 面板可开关、深色设置写入原存储键，以及进入兼容子页后可返回设置。
+- 尚未在真实浏览器/手机上执行该测试；CI 安装 Chromium 后会运行构建和测试。
+
 ### Phase 2 — 核心页面渐进迁移
 
 - 先迁移桌面周边轻页面，再处理设置。
@@ -145,4 +164,4 @@ MAOMAO 当前是原生 HTML/CSS/JS 的多页面应用（MPA）。每个主要功
 - **采用**：Miya 的单一外壳 + 按需应用加载思路。
 - **借鉴**：AI Virtual Phone 的统一运行时与应用状态边界。
 - **暂不采用**：全站 React/Next.js 重写、一次性合并全部 HTML、批量改写 localStorage、把所有应用静态导入首屏。
-- **当前代码状态**：在 `feat/app-shell-migration-v2` 独立分支中，已新增原生模块生命周期运行时、旧页面桥接层、统一 Host 样式，并将现有 `index.html` 桌面入口接入 Host；Service Worker 已收敛为轻量外壳预缓存。聊天、设置等业务 HTML 和存储代码未重写；尚未部署到生产。自动化测试与构建结果待 CI 验证。
+- **当前代码状态**：在 `feat/app-shell-migration-v2` 独立分支中，现有 `index.html` 已接入统一 Host；旧页面桥接与原生模块运行时已连接；设置主页面已完成第一版 Shadow DOM 原生模块迁移，设置子页面仍由兼容层承载；Service Worker 已收敛为轻量外壳预缓存。聊天业务、设置原 HTML/JS 和存储键没有被重写；尚未部署到生产。自动化测试、CI 构建和真机实测待验证。
