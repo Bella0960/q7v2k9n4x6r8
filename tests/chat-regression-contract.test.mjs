@@ -66,6 +66,10 @@ const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
 const packageJson = JSON.parse(read('package.json'));
+const chatListPage = read('chat/chat/chat.html');
+const contactsPage = read('chat/contacts/contacts.html');
+const profilePage = read('profile/profile.html');
+const wechatThemeCss = read('shared/css/wechat-theme-refinements.css');
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
   const ids = fixtures.cases.map((item) => item.id);
@@ -970,7 +974,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v158'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1283,7 +1287,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v158/);
+  assert.match(serviceWorker, /phone-app-pwa-v159/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1404,7 +1408,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v158/);
+  assert.match(serviceWorker, /phone-app-pwa-v159/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1591,7 +1595,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v158'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
@@ -1798,7 +1802,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v158/);
+  assert.match(serviceWorker, /phone-app-pwa-v159/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1854,7 +1858,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v158'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1873,4 +1877,48 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
 test('Cloudflare static assets retain default HTML routing for app navigation', () => {
   const wranglerConfig = read('wrangler.jsonc');
   assert.equal(wranglerConfig.includes('"html_handling"'), false);
+});
+
+test('WeChat page refinements load on all five core pages and stay isolated from other themes', () => {
+  const stylesheetVersion = 'wechat-theme-refinements.css?v=20261104v1';
+  for (const [pageName, source] of [
+    ['chat home', chatListPage],
+    ['chat detail', detail],
+    ['contacts', contactsPage],
+    ['Moments', momentsPage],
+    ['Me profile', profilePage]
+  ]) {
+    assert.equal(
+      source.split(stylesheetVersion).length - 1,
+      1,
+      pageName + ' must load the WeChat refinement layer exactly once'
+    );
+  }
+
+  const selectorLines = wechatThemeCss
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('.'));
+  assert.ok(selectorLines.length > 0, 'the WeChat refinement stylesheet should contain scoped selectors');
+  assert.ok(
+    selectorLines.every((line) => line.startsWith('.phone-mockup[data-chat-theme-preset="wechat"]')),
+    'every selector must be scoped to the active WeChat preset'
+  );
+  assert.equal(
+    wechatThemeCss.includes('.msg-bubble'),
+    false,
+    'message bubbles must remain under ChatBeauty customization'
+  );
+  assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261104v1'"));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+});
+
+test('WeChat Moments keeps the cover action menu available', () => {
+  assert.ok(momentsPage.includes('id="btnAdd"'));
+  assert.ok(momentsPage.includes('id="btnAiPost"'));
+  assert.ok(momentsPage.includes('id="roleSelect"'));
+  assert.ok(
+    wechatThemeCss.includes('.cover-add-btn {\n  display: flex !important;'),
+    'the visual refinement must not hide the cover action menu trigger'
+  );
 });
