@@ -16,7 +16,7 @@
         ? document.currentScript.src
         : new URL('apps/settings/settings-module.js', document.baseURI).href;
       var settingsUrl = new URL('../../settings/settings.html', moduleScriptUrl);
-      var cssUrl = new URL('css/settings.css', settingsUrl);
+      var cssUrl = new URL('settings.css', moduleScriptUrl);
       var settingsScriptUrl = new URL('js/settings.js', settingsUrl);
       var backupScriptUrl = new URL('js/backup.js', settingsUrl);
       var phoneStorageUrl = new URL('../shared/js/phone/phone_storage.js', settingsUrl);
