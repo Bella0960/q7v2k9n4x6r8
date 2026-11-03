@@ -70,6 +70,8 @@ test('编辑路径在落盘前同步被引用消息的最新文本', () => {
   // 原来的裸 saveMessages(list) 已被带复核的持久化函数取代
   assert.ok(!/^\s*saveMessages\(list\);\s*$/m.test(body), 'edit path must persist via _persistWithQuoteSync');
   assert.match(body, /if \(quoteSaved && typeof showToast === 'function'\) showToast\('已保存'\);/);
+  // 引用快照变化时必须整表重绘，否则其他消息里的引用预览仍显示旧文本
+  assert.match(body, /if \(Object\.keys\(quoteExpected\)\.length\) \{[\s\S]*?renderAllMessages\(\);[\s\S]*?return;/);
 });
 
 test('单条删除路径在保留历史的同时把引用标记为失效', () => {

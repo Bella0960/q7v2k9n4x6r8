@@ -6308,6 +6308,14 @@
             var quoteExpected = _syncQuotedTextsAfterEdit(list, mid, newText);
             var quoteSaved = _persistWithQuoteSync(list, quoteExpected);
 
+            // 有引用快照被同步时整表重绘，确保其他消息里的引用预览立即更新
+            if (Object.keys(quoteExpected).length) {
+                renderAllMessages();
+                closeEditSheet();
+                if (quoteSaved && typeof showToast === 'function') showToast('已保存');
+                return;
+            }
+
             var row = chatMessages.querySelector('.msg-row[data-mid="' + mid + '"]');
             var bubbleEl = row ? row.querySelector('.msg-bubble') : null;
             var textishOnly = !!bubbleEl;
