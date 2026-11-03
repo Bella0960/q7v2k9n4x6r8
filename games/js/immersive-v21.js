@@ -322,7 +322,7 @@
   function render() {
     var root = document.createElement('div');
     root.id = 'immRoot';
-    root.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;background:#13131a;color:#f2f1ee;font-family:Georgia,"Songti SC",serif;-webkit-font-smoothing:antialiased;';
+    root.style.cssText = 'position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:460px;height:100%;height:100dvh;overflow-y:auto;overflow-x:hidden;background:#13131a;color:#f2f1ee;font-family:Georgia,"Songti SC",serif;-webkit-font-smoothing:antialiased;z-index:50;';
     if (IMM.step !== 0) root.appendChild(renderPartnerBar());
     root.appendChild(renderStep());
 
