@@ -50,6 +50,10 @@
   background: #fff;
 }
 
+.maomao-app-view[hidden] {
+  display: none !important;
+}
+
 .maomao-app-view[data-maomao-app-view="legacy"] {
   display: none !important;
 }
