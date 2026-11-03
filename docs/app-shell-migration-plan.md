@@ -130,13 +130,25 @@ MAOMAO 当前是原生 HTML/CSS/JS 的多页面应用（MPA）。每个主要功
 - 修复原美化页视觉/CSS Tab 的左侧操作按钮被隐藏的问题；修复原生模块根节点覆盖外壳 `hidden` 状态的问题，切走后不再残留显示或拦截点击。
 - 美化模板和外壳路由脚本均增加缓存版本标识，避免 PWA 将旧模板/旧路由桥接代码继续用于新模块。
 - Chromium 测试覆盖全局/角色配置保存隔离、CSS 预设新增/启用/删除、聊天主题切换、主题商城内链与浏览器返回、桌面/设置两种入口及视图隐藏状态。
-- GitHub Actions 通过：Vite 生产构建、聊天合同测试 90/90、App Shell/Chromium 测试 18/18；记录：<https://github.com/Bella0960/MAOMAO/actions/runs/41570346937>。
+- GitHub Actions 最新通过：Vite 生产构建、聊天合同测试 90/90、App Shell/Chromium 测试 19/19；记录：<https://github.com/Bella0960/MAOMAO/actions/runs/41571098601>。
 - 旧 `beauty/beauty.html` 文件没有删除；原始业务数据格式和聊天主题运行时没有重写。真实手机/PWA 安装态、离线壁纸读取和不同浏览器仍待实测。
+
+### Phase 1.7 — 主题商城原生模块迁移（首轮完成，CI 已通过）
+
+- `theme-store/theme-store.html` 保留为兼容模板和旧 URL；桌面入口与美化编辑器内链均映射到 `apps/theme-store/theme-store-module.js`，不再创建主题商城 iframe。
+- 原主题目录、卡片与分类交互、触控横向切换、我的主题列表继续运行；整套聊天主题仍通过共享 `ChatBeauty` API 应用。
+- 微信内置气泡和已保存的视觉预设继续沿用 `beauty_visual_presets_v1`、删除标记和角色/全局配置键；商城收藏仍沿用 `maomao_theme_store_owned_v1`。
+- 字体方案继续从原 `maomao-font-presets` IndexedDB 数据库读取；应用字体仍走 `MAOMAOFontRuntime` 与 `active_font_preset_id` / `custom_font_url` 原存储契约。模块退出时会释放字体预览创建的 Blob URL。
+- CSS 进入 Shadow DOM 时按原页面/样式表 URL 解析资源路径，避免银蝶 SVG 等相对路径资源丢失；模块显隐由 App Shell 管理，不覆盖外壳的 `hidden` 状态。
+- 设置子页的返回目标改为优先回到实际来源路由；从设置首页打开时仍返回设置首页，直接深链无来源记录时也以设置首页兜底。
+- Chromium 测试覆盖商城原生挂载、银蝶预览资源、iMessage 主题应用、微信气泡角色/全局隔离、我的主题列表、字体设置子页回到商城，以及商城回桌面。
+- GitHub Actions 通过：Vite 生产构建、聊天合同测试 90/90、App Shell/Chromium 测试 19/19；记录：<https://github.com/Bella0960/MAOMAO/actions/runs/41571098601>。
+- 旧商城 HTML、字体 IndexedDB 数据、收藏键和主题/气泡数据格式继续保留；真机/PWA 离线验收仍待进行。
 
 ### Phase 2 — 继续迁移其他低风险应用
 
-- 设置主页面、十个设置子模块与大型美化编辑器均已接入原生模块；旧 HTML 继续作为兼容入口保留。
-- 下一批按独立性和共享依赖风险选择低风险应用；主题商城仍使用兼容层，需先审计字体、主题与商店数据依赖，再决定迁移范围。
+- 设置主页面、十个设置子模块、美化编辑器和主题商城均已接入原生模块；旧 HTML 继续作为兼容入口保留。
+- 下一批按独立性和共享依赖风险选择低风险应用；每个模块先审计共享状态、存储和跨应用返回，再迁移并补浏览器回归。
 - 大体量页面保持按需加载，不为追求原生化而一次性重写旧业务。
 - 聊天列表与聊天详情分开评估；聊天详情最后迁移。
 - 聊天采用单实例持有策略，保留滚动位置、草稿、当前角色与会话状态；迁移只改变承载方式，不顺便重写 AI 请求、记忆、消息存储或聊天 UI。
@@ -171,4 +183,4 @@ MAOMAO 当前是原生 HTML/CSS/JS 的多页面应用（MPA）。每个主要功
 - **采用**：Miya 的单一外壳 + 按需应用加载思路。
 - **借鉴**：AI Virtual Phone 的统一运行时与应用状态边界。
 - **暂不采用**：全站 React/Next.js 重写、一次性合并全部 HTML、批量改写 localStorage、把所有应用静态导入首屏。
-- **当前代码状态**：在 `feat/app-shell-migration-v2` 独立分支中，统一 Host、旧页面桥接、原生模块运行时、设置主页面、十个设置子模块和美化编辑器均已接入；Service Worker 保持轻量外壳预缓存。聊天业务、设置与美化编辑器原有存储键/数据结构未被重写。GitHub Actions 最新通过记录：Vite 生产构建成功、聊天合同测试 90/90、App Shell/Chromium 测试 18/18（<https://github.com/Bella0960/MAOMAO/actions/runs/41570346937>）。手机实测、PWA 安装态更新与离线验证仍待进行；当前没有部署到生产，也没有合并到 `main`。
+- **当前代码状态**：在 `feat/app-shell-migration-v2` 独立分支中，统一 Host、旧页面桥接、原生模块运行时、设置主页面、十个设置子模块、美化编辑器和主题商城均已接入；Service Worker 保持轻量外壳预缓存。聊天业务、设置与美化编辑器原有存储键/数据结构未被重写。GitHub Actions 最新通过记录：Vite 生产构建成功、聊天合同测试 90/90、App Shell/Chromium 测试 19/19（<https://github.com/Bella0960/MAOMAO/actions/runs/41571098601>）。手机实测、PWA 安装态更新与离线验证仍待进行；当前没有部署到生产，也没有合并到 `main`。
