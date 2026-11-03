@@ -9,6 +9,8 @@
     ? document.currentScript.src
     : 'apps/beauty/beauty-module.js', document.baseURI);
   var PAGE_URL = new URL('../../beauty/beauty.html', SCRIPT_URL);
+  var PAGE_FETCH_URL = new URL(PAGE_URL.href);
+  PAGE_FETCH_URL.searchParams.set('maomao_native', '20261103v1');
   var STYLE_CACHE = new Map();
   var SCRIPT_CACHE = new Map();
 
@@ -223,7 +225,7 @@
         host.setAttribute('aria-busy', 'true');
 
         try {
-          var html = await fetchText(PAGE_URL, '页面');
+          var html = await fetchText(PAGE_FETCH_URL, '页面');
           var parsed = new DOMParser().parseFromString(html, 'text/html');
           var scriptNodes = Array.from(parsed.querySelectorAll('script'));
           var styleNodes = Array.from(parsed.querySelectorAll('style'));
