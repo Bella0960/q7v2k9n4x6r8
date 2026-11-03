@@ -17,6 +17,7 @@
     var records = [];
     var activeRecord = null;
     var activeRoute = null;
+    var previousRoute = null;
     var activeNativeId = null;
     var nativeShell = null;
     var nativeRoutes = Object.create(null);
@@ -69,6 +70,7 @@
       }
       showHost();
       root.removeAttribute('data-load-error');
+      previousRoute = activeRoute;
       activeNativeId = moduleId;
       activeRoute = route;
       if (openOptions.history !== false) writeParentRoute(route, openOptions.replace === true);
@@ -352,6 +354,7 @@
         item.frame.setAttribute('aria-hidden', isActive ? 'false' : 'true');
       });
 
+      previousRoute = activeRoute;
       activeRecord = record;
       activeRoute = route;
       record.route = route;
@@ -400,6 +403,19 @@
       return true;
     }
 
+    function backToParent(input) {
+      if (destroyed) return false;
+      var url = input instanceof URL ? input : safeUrl(input);
+      if (!url) return false;
+      var targetRoute = routeForUrl(url);
+      if (previousRoute === targetRoute && win.history && win.history.length > 1
+              && typeof win.history.back === 'function') {
+        win.history.back();
+        return true;
+      }
+      return open(url, { replace: true });
+    }
+
     function goHome(homeOptions) {
       if (destroyed) return false;
       homeOptions = homeOptions || {};
@@ -415,6 +431,7 @@
       });
       activeRecord = null;
       activeRoute = null;
+      previousRoute = null;
       activeNativeId = 'home';
       if (nativeShell) nativeShell.open('home', {}, { history: false }).catch(function () {});
       hideHost();
@@ -478,6 +495,7 @@
     return {
       open: open,
       home: goHome,
+      backToParent: backToParent,
       getActiveRoute: function () { return activeRoute; },
       getLoadedRoutes: function () {
         return records.map(function (record) { return record.route; });
