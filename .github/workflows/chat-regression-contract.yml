@@ -20,6 +20,10 @@ on:
   pull_request:
     paths:
       - 'chat/**'
+      - 'desktop/**'
+      - 'index.html'
+      - 'shared/js/app-shell-*.js'
+      - 'shared/css/app-shell.css'
       - 'library/**'
       - 'shared/js/phone/**'
       - 'sw.js'
