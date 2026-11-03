@@ -245,6 +245,18 @@
   }
 
   PAGES.forEach(function (page) {
-    global.MAOMAOAppShell.registerModule(page.id, createPageModule(page));
+    var implementation = createPageModule(page);
+    global.MAOMAOAppShell.registerModule(page.id, {
+      mount: async function (host, context) {
+        try {
+          return await implementation.mount(host, context);
+        } catch (error) {
+          if (global.console && typeof global.console.error === 'function') {
+            global.console.error('[MAOMAO settings subview]', page.id, error);
+          }
+          throw error;
+        }
+      }
+    });
   });
 })(window, document);
