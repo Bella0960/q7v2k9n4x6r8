@@ -65,6 +65,11 @@ runInNewContext(rolePublicTimelineSource, { window: rolePublicTimelineWindow, gl
 const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
+const appShellStart = serviceWorker.indexOf('const APP_SHELL = [');
+const appShellEnd = serviceWorker.indexOf('];', appShellStart);
+const appShellBlock = appShellStart >= 0 && appShellEnd >= 0
+  ? serviceWorker.slice(appShellStart, appShellEnd + 2)
+  : '';
 const packageJson = JSON.parse(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
@@ -967,20 +972,19 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 
 });
 
-test('shared policy is loaded by both relevant pages and precached for PWA', () => {
+test('shared chat policies load on demand and use runtime caching instead of install pre-cache', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v155'));
-  assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
-  assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(detail, /chat-context-policy\.js\?v=20261031v1/);
   assert.match(detail, /function buildCharacterSocialPrompt\(role\)/);
   assert.match(detail, /role\.npcCharacters/);
   assert.match(detail, /relationshipRole/);
-  assert.match(serviceWorker, /chat-context-policy\.js\?v=20261031v1/);
-  assert.match(serviceWorker, /group-chat-policy\.js\?v=20261102v5/);
-  assert.match(serviceWorker, /phone_context\.js\?v=20261102npc1/);
+  assert.match(detail, /group-chat-policy\.js\?v=20261102v5/);
+  assert.match(detail, /phone_context\.js\?v=20261102npc1/);
+  assert.doesNotMatch(appShellBlock, /chat-message-policy|chat-send-policy|chat-context-policy|group-chat-policy|phone_context/);
+  assert.match(serviceWorker, /caches\.match\(req\)/);
+  assert.match(serviceWorker, /cache\.put\(req, copy\)/);
   assert.equal(
     packageJson.scripts['test:chat:contract'],
     'node --test tests/chat-regression-contract.test.mjs'
@@ -1280,13 +1284,13 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
   assert.doesNotMatch(prompt, /18-26字|每条必须.*字/);
 });
 
-test('chat presence policy is loaded by chat detail and precached for PWA', () => {
+test('chat presence policy loads with chat detail and is cached on first request', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v155/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.doesNotMatch(appShellBlock, /chat-presence-policy/);
+  assert.match(serviceWorker, /caches\.match\(req\)/);
+  assert.match(serviceWorker, /cache\.put\(req, copy\)/);
 });
-
 
 test('chat presence policy derives a bounded pause from the previous bubble length', () => {
   assert.equal(typeof presencePolicy.getBubbleDelayMs, 'function');
@@ -1404,10 +1408,8 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v155/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
 });
-
 
 test('emotion continuity detects explicit first-person emotional signals but ignores negation and casual text', () => {
   assert.equal(typeof presencePolicy.classifyExplicitEmotion, 'function');
@@ -1586,15 +1588,14 @@ test('autonomy prompt encourages restrained initiative without inventing real-wo
   assert.ok(prompt.includes('不要连续重复'));
 });
 
-test('chat detail injects the role autonomy prompt and precaches the updated policy', () => {
+test('chat detail injects the role autonomy prompt while the policy is cached on demand', () => {
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v155'));
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.doesNotMatch(appShellBlock, /chat-presence-policy/);
+  assert.match(serviceWorker, /cache\.put\(req, copy\)/);
 });
-
 
 test('follow-up delay escalates by round, adds bounded jitter and respects relationship pace', () => {
   assert.equal(followUpPolicy.calculateDelay(1, 'friend', 0.5), 30);
@@ -1793,17 +1794,15 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
 });
 
-test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
+test('proactive notifier stays in the shell while larger policies remain runtime-cached', () => {
   assert.match(homePage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v155/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /chat-followup-policy/);
+  assert.match(serviceWorker, /phone-app-pwa-v156-shell1/);
+  assert.match(appShellBlock, /chat-notifier\.js\?v=20261102v3/);
+  assert.doesNotMatch(appShellBlock, /chat-presence-policy|chat-followup-policy/);
 });
-
 
 test('role public timeline shares only the role own recent public or friends-visible Moments', () => {
   assert.equal(typeof rolePublicTimeline.collectRolePublicMoments, 'function');
@@ -1854,6 +1853,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v155'));
-  assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
+  assert.doesNotMatch(appShellBlock, /role-public-timeline/);
+  assert.match(serviceWorker, /caches\.match\(req\)/);
 });
+
