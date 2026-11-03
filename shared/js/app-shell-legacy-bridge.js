@@ -180,7 +180,11 @@
       }
       if (url.origin !== baseUrl.origin || url.pathname.indexOf(basePath) !== 0) return;
       if (isHomeUrl(url)) {
+        if (record.currentKey && routeMap.get(record.currentKey) === record) {
+          routeMap.delete(record.currentKey);
+        }
         if (record === activeRecord) goHome({ history: addHistory !== false });
+        removeRecord(record);
         return;
       }
 
