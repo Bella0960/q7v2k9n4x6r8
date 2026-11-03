@@ -263,8 +263,12 @@ function renderPresetChips() {
             var preset = PROVIDER_PRESETS[key];
             if (apiProviderSelect) apiProviderSelect.value = key;
             if (apiUrlInput) apiUrlInput.value = preset.url;
-            if (apiModelInput && preset.model) apiModelInput.value = preset.model;
-            showToast('已填入 ' + (PRESET_LABELS[key] || key) + ' 预设，Key 请自行填写');
+            if (apiModelInput) apiModelInput.value = preset.model || '';
+            syncFreeGatewayHint();
+            allModels = null;
+            var modelList = document.getElementById('model-list');
+            if (modelList) modelList.innerHTML = '';
+            showToast(key === 'maomao_free' ? '已填入统一网关，请拉取可用模型' : '已填入 ' + (PRESET_LABELS[key] || key) + ' 预设，Key 请自行填写');
         });
         box.appendChild(chip);
     });
