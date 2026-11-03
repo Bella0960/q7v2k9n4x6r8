@@ -172,7 +172,7 @@ test('legacy app links are routed by the host and browser back restores the cach
   const chatFrame = env.root.children[0];
   chatFrame.dispatchEvent({ type: 'load' });
 
-  const click = frameLinkClick(chatFrame, '../../settings/settings.html');
+  const click = frameLinkClick(chatFrame, '../../../settings/settings.html');
   assert.equal(click.defaultPrevented, true);
   assert.equal(env.host.getActiveRoute(), 'settings/settings.html');
   assert.equal(env.root.children.length, 2);
@@ -214,7 +214,7 @@ test('home navigation hides the app host without destroying cached app frames', 
 });
 
 test('external and out-of-scope destinations are not intercepted', () => {
-  const env = makeEnvironment();
+  const env = makeEnvironment('https://maomao.test/MAOMAO/index.html');
   env.host.open('chat/chat/chat.html');
   const frame = env.root.children[0];
   frame.dispatchEvent({ type: 'load' });
