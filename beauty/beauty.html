@@ -2443,8 +2443,10 @@ document.getElementById('importFile').addEventListener('change', function(e){
     document.getElementById('tabCss').classList.toggle('hide', tab !== 'css');
     document.getElementById('tabTheme').classList.toggle('hide', tab !== 'theme');
     var headerActions = document.querySelector('.header-actions');
+    var leftActionButton = document.getElementById('btnLeft');
     var pageTitle = document.querySelector('.header .title');
     if (headerActions) headerActions.style.display = tab === 'theme' ? 'none' : '';
+    if (leftActionButton) leftActionButton.style.display = tab === 'theme' ? 'none' : 'inline-block';
     if (pageTitle) pageTitle.textContent = tab === 'theme' ? '主题美化' : '美化';
     if (tab === 'visual') {
       document.getElementById('btnLeft').textContent = '恢复默认';
