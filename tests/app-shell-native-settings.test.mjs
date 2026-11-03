@@ -48,7 +48,7 @@ test.after(async () => {
   }
 });
 
-test('settings opens as a native shadow-root module and keeps its settings behavior', async () => {
+test('settings and its four major subviews run as native modules', async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const pageErrors = [];
@@ -57,7 +57,8 @@ test('settings opens as a native shadow-root module and keeps its settings behav
   await page.goto(PREVIEW_URL + '/index.html', { waitUntil: 'domcontentloaded' });
   await page.locator('#homeScreen [data-href="settings/settings.html"]').click();
 
-  const settingsView = page.locator('#maomao-app-host .maomao-app-view[data-maomao-app-view="settings"]');
+  const host = page.locator('#maomao-app-host');
+  const settingsView = host.locator('.maomao-app-view[data-maomao-app-view="settings"]');
   await settingsView.locator('.phone-mockup').waitFor();
   await settingsView.getByText('APPEARANCE', { exact: true }).waitFor();
 
@@ -83,12 +84,50 @@ test('settings opens as a native shadow-root module and keeps its settings behav
   await settingsView.locator('#api-panel .back-btn').click();
   await settingsView.locator('#api-panel').waitFor({ state: 'hidden' });
 
+  // Appearance is now a native module, and browser back restores the still-mounted settings module.
   await settingsView.getByText('外观', { exact: true }).click();
-  await page.locator('#maomao-app-host iframe[data-maomao-route="settings/appearance.html"]').waitFor();
-
+  const appearanceView = host.locator('.maomao-app-view[data-maomao-app-view="settings_appearance"]');
+  await appearanceView.locator('.phone-mockup').waitFor();
+  await appearanceView.locator('#homeIndicatorToggle').waitFor();
+  assert.equal(await appearanceView.evaluate((view) => !!view.shadowRoot), true);
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
   await page.goBack();
   await settingsView.locator('.phone-mockup').waitFor();
-  assert.equal(await settingsView.evaluate((view) => !view.hidden), true);
+
+  // The page's own back button replaces the subview route rather than creating a back-navigation loop.
+  await settingsView.getByText('外观', { exact: true }).click();
+  await appearanceView.locator('.phone-mockup').waitFor();
+  await appearanceView.locator('.header .icon-btn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
+  await settingsView.getByText('字体设置', { exact: true }).click();
+  const fontView = host.locator('.maomao-app-view[data-maomao-app-view="settings_font"]');
+  await fontView.locator('#fontUrlInput').waitFor();
+  await fontView.locator('#fontPlus').click();
+  assert.equal(await fontView.locator('#fontSizeValue').count(), 1);
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await fontView.locator('a.back-btn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
+  await settingsView.getByText('音效设置', { exact: true }).click();
+  const soundView = host.locator('.maomao-app-view[data-maomao-app-view="settings_sound"]');
+  await soundView.locator('.chip-row .chip').first().waitFor();
+  assert.ok(await soundView.locator('.chip-row .chip').count() > 0);
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await soundView.locator('a.back-btn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
+  await settingsView.getByText('自定义图标', { exact: true }).click();
+  const iconsView = host.locator('.maomao-app-view[data-maomao-app-view="settings_icons"]');
+  await iconsView.locator('#iconList').waitFor();
+  await iconsView.locator('#iconList .icon-row').first().waitFor();
+  assert.ok(await iconsView.locator('#iconList .icon-row').count() > 0);
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await iconsView.locator('.back-btn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
+  await page.goBack();
+  await page.locator('#maomao-app-host').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => localStorage.getItem('settings_dark_mode')), '1');
 
   assert.deepEqual(pageErrors, []);
