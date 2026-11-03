@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v155';
+const CACHE_NAME = 'phone-app-pwa-v156';
 const APP_SHELL = [
   './',
   './index.html',
@@ -86,7 +86,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_api.js',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',
-  'shared/js/nav.js',
+  'shared/js/nav.js?v=20261103v1',
   'shared/js/sound-system.js',
   'shared/js/memory.js',
   'shared/js/mask.js',

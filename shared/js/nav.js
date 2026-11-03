@@ -3,22 +3,41 @@
     // 从当前脚本位置推导站点根目录，兼容 GitHub Pages 的 /MAOMAO/ 子路径。
     var navScript = document.currentScript;
     var appBase = navScript ? new URL('../../', navScript.src).pathname : '/';
-    // 不注入导航的页面（手机桌面、聊天详情、设置页、编辑资料、记忆空间、角色管理）
-    var SKIP_PAGES = ['index.html', 'chat-detail.html', 'settings.html', 'edit-profile.html', 'memory.html', 'characters.html', 'games/games.html', 'cafe/cafe.html', 'shake.html'];
+
+    // 判断当前页面是否应跳过导航注入，并在必要时清除可能残留的聊天底部导航 DOM。
+    // 统一路径特征匹配：通过 path segments + 末段文件名精确覆盖所有 skip 场景，
+    // 避免依赖 SKIP_PAGES 子串匹配在特殊部署路径下漏判。
     var path = location.pathname.toLowerCase();
-    // 咖啡馆是独立经营界面：无论通过 cafe/cafe.html、目录路由或带部署前缀访问，
-    // 都不应出现聊天模块的悬浮底部导航。
     var pathParts = path.split('/').filter(Boolean);
-    var lastPathPart = pathParts.length ? pathParts[pathParts.length - 1] : '';
-    var isCafePage = pathParts.indexOf('cafe') !== -1 || lastPathPart === 'cafe.html';
-    if (isCafePage) {
+    var lastSeg = pathParts.length ? pathParts[pathParts.length - 1] : '';
+
+    // 目录级排除：任何路径段包含以下名称的页面都跳过导航注入
+    var SKIP_DIRS = ['cafe', 'games', 'settings', 'worldbook', 'memory'];
+    // 文件名级排除：末段文件名匹配以下任一值时跳过
+    var SKIP_FILES = ['index.html', 'chat-detail.html', 'settings.html', 'edit-profile.html', 'memory.html', 'characters.html', 'shake.html'];
+
+    var shouldSkip = false;
+    // 空路径 = 根目录（服务器会 rewrite 到 index.html），视为 skip
+    if (pathParts.length === 0) {
+        shouldSkip = true;
+    } else {
+        // 目录级匹配：任何路径段（包括末段作为文件名或目录名）命中即跳过
+        for (var d = 0; d < pathParts.length; d++) {
+            if (SKIP_DIRS.indexOf(pathParts[d]) !== -1) { shouldSkip = true; break; }
+        }
+        // 文件名级匹配（末段完整值匹配）
+        if (!shouldSkip && SKIP_FILES.indexOf(lastSeg) !== -1) shouldSkip = true;
+        // 末段就是 cafe.html 文件名本身（如 /cafe.html 或 cafe.html 直接访问）
+        if (!shouldSkip && lastSeg === 'cafe.html') shouldSkip = true;
+    }
+
+    // 某些页面（如咖啡馆）可能因旧版本脚本/缓存导致 .floating-nav 已在 DOM 中
+    // 注入过，这里主动清除，保证 skip 页面绝对干净。
+    if (shouldSkip) {
         document.querySelectorAll('.floating-nav, .bottom-nav, .chat-bottom-bar').forEach(function (el) {
             el.remove();
         });
         return;
-    }
-    for (var i = 0; i < SKIP_PAGES.length; i++) {
-        if (path.indexOf(SKIP_PAGES[i]) !== -1) return;
     }
 
     // Tab 配置（key 用于高亮匹配，href 为跳转目标）
