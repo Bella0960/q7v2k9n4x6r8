@@ -46,10 +46,57 @@
     return pending;
   }
 
+  function createModuleLocation(pageUrl) {
+    function navigate(rawUrl, replace) {
+      var next;
+      try { next = new URL(String(rawUrl), pageUrl); } catch (error) { return; }
+      if (next.origin !== global.location.origin) {
+        global.location.href = next.href;
+        return;
+      }
+      var hostBridge = global.__MAOMAO_LEGACY_HOST__;
+      if (!hostBridge) {
+        global.location.href = next.href;
+        return;
+      }
+      var settingsHome = new URL('settings.html', SETTINGS_BASE);
+      if (next.pathname === settingsHome.pathname && typeof hostBridge.backToParent === 'function') {
+        if (hostBridge.backToParent(next.href)) return;
+      }
+      if (!hostBridge.open(next.href, { replace: !!replace })) {
+        global.location.href = next.href;
+      }
+    }
+
+    var facade = {};
+    Object.defineProperties(facade, {
+      href: {
+        enumerable: true,
+        get: function () { return pageUrl.href; },
+        set: function (value) { navigate(value, false); }
+      },
+      origin: { enumerable: true, get: function () { return pageUrl.origin; } },
+      protocol: { enumerable: true, get: function () { return pageUrl.protocol; } },
+      host: { enumerable: true, get: function () { return pageUrl.host; } },
+      hostname: { enumerable: true, get: function () { return pageUrl.hostname; } },
+      port: { enumerable: true, get: function () { return pageUrl.port; } },
+      pathname: { enumerable: true, get: function () { return pageUrl.pathname; } },
+      search: { enumerable: true, get: function () { return pageUrl.search; } },
+      hash: { enumerable: true, get: function () { return pageUrl.hash; } },
+      searchParams: { enumerable: true, get: function () { return pageUrl.searchParams; } }
+    });
+    facade.assign = function (value) { navigate(value, false); };
+    facade.replace = function (value) { navigate(value, true); };
+    facade.toString = function () { return pageUrl.href; };
+    facade.valueOf = function () { return pageUrl.href; };
+    return facade;
+  }
+
   function createModuleWindow(pageUrl, localValues) {
+    var locationFacade = createModuleLocation(pageUrl);
     return new Proxy(global, {
       get: function (target, key) {
-        if (key === 'location') return pageUrl;
+        if (key === 'location') return locationFacade;
         if (Object.prototype.hasOwnProperty.call(localValues, key)) return localValues[key];
         var value = Reflect.get(target, key, target);
         if (typeof value === 'function' &&
