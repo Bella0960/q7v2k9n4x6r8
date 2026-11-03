@@ -112,6 +112,7 @@
 
   function createPageWindow(pageUrl, trackedListeners) {
     var location = createPageLocation(pageUrl);
+    var localValues = Object.create(null);
     var fetchForPage = function (input, init) {
       var url = input instanceof URL ? input : new URL(String(input), pageUrl);
       return global.fetch(url.href, init);
@@ -122,6 +123,7 @@
         if (key === 'location') return location;
         if (key === 'history') return global.history;
         if (key === 'fetch') return fetchForPage;
+        if (Object.prototype.hasOwnProperty.call(localValues, key)) return localValues[key];
         if (key === 'addEventListener') {
           return function (type, listener, options) {
             global.addEventListener(type, listener, options);
@@ -131,9 +133,11 @@
         if (key === 'removeEventListener') {
           return function (type, listener, options) {
             global.removeEventListener(type, listener, options);
-            trackedListeners = trackedListeners.filter(function (entry) {
+            var remaining = trackedListeners.filter(function (entry) {
               return entry.type !== type || entry.listener !== listener;
             });
+            trackedListeners.splice(0, trackedListeners.length);
+            remaining.forEach(function (entry) { trackedListeners.push(entry); });
           };
         }
         var value = Reflect.get(target, key, target);
@@ -145,6 +149,13 @@
           return value.bind(target);
         }
         return value;
+      },
+      set: function (target, key, value) {
+        localValues[key] = value;
+        return true;
+      },
+      has: function (target, key) {
+        return Object.prototype.hasOwnProperty.call(localValues, key) || key in target;
       }
     });
   }
