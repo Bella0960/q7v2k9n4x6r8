@@ -104,6 +104,8 @@ class FakeWindow extends FakeEventTarget {
 
 function makeEnvironment(initialUrl = 'https://maomao.test/index.html') {
   const root = new FakeElement('div');
+  const desktopRoot = new FakeElement('section');
+  desktopRoot.appendChild(root);
   const document = new FakeEventTarget();
   document.readyState = 'complete';
   document.hidden = false;
@@ -124,7 +126,7 @@ function makeEnvironment(initialUrl = 'https://maomao.test/index.html') {
     Object
   });
 
-  return { root, document, window, host: window.__MAOMAO_LEGACY_HOST__ };
+  return { root, desktopRoot, document, window, host: window.__MAOMAO_LEGACY_HOST__ };
 }
 
 function frameLinkClick(frame, href) {
@@ -148,6 +150,25 @@ function frameLinkClick(frame, href) {
   frame.contentDocument.dispatchEvent(event);
   return event;
 }
+
+test('desktop app tiles are opened by the shell without a top-level page navigation', () => {
+  const env = makeEnvironment();
+  const tile = { dataset: { href: 'chat/chat/chat.html' } };
+  const event = {
+    type: 'click',
+    button: 0,
+    target: { closest: (selector) => selector === '#homeScreen [data-href], .dock-wrapper [data-href]' ? tile : null },
+    defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() {}
+  };
+
+  env.desktopRoot.dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(env.host.getActiveRoute(), 'chat/chat/chat.html');
+  assert.equal(new URL(env.window.location.href).pathname, '/index.html');
+  assert.equal(env.root.children.length, 1);
+});
 
 test('desktop remains the top-level document while app tiles open inside the persistent host', () => {
   const env = makeEnvironment();
