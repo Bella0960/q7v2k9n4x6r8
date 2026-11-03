@@ -41,6 +41,7 @@ const helperNames = [
   '_syncQuotedTextsAfterEdit',
   '_invalidateQuotesForDeletedMids',
   '_messageBodyText',
+  '_collectAffectedQuotes',
   '_persistWithQuoteSync',
   '_sanitizeQuotesForPrompt'
 ];
@@ -68,6 +69,7 @@ function makeSandbox(overrides = {}) {
 test('编辑路径在落盘前同步被引用消息的最新文本', () => {
   const body = extractFunction(detail, 'saveEditedMessage');
   assert.match(body, /var quoteExpected = _syncQuotedTextsAfterEdit\(list, mid, newText\);/);
+  assert.match(body, /var quoteVerify = \{ messageTexts: \{\}, quoteMids: \[String\(mid\)\] \};/);
   assert.match(body, /var quoteSaved = _persistWithQuoteSync\(list, quoteExpected, quoteVerify\);/);
   // 原来的裸 saveMessages(list) 已被带复核的持久化函数取代
   assert.ok(!/^\s*saveMessages\(list\);\s*$/m.test(body), 'edit path must persist via _persistWithQuoteSync');
@@ -79,7 +81,7 @@ test('编辑路径在落盘前同步被引用消息的最新文本', () => {
 test('单条删除路径在保留历史的同时把引用标记为失效', () => {
   const body = extractFunction(detail, 'deleteOneMessage');
   assert.match(body, /var quoteExpected = _invalidateQuotesForDeletedMids\(keep, \[mid\]\);/);
-  assert.match(body, /var quoteSaved = _persistWithQuoteSync\(keep, quoteExpected, \{ deletedMids: \[mid\] \}\);/);
+  assert.match(body, /var quoteSaved = _persistWithQuoteSync\(keep, quoteExpected, \{ deletedMids: \[mid\], quoteMids: \[String\(mid\)\] \}\);/);
   assert.match(body, /if \(quoteSaved && typeof showToast === 'function'\) showToast\('已删除 1 条消息'\);/);
 });
 
@@ -89,7 +91,7 @@ test('批量删除路径同样让引用失效，且不会谎报成功', () => {
   const body = sliceFrom(detail, start);
   assert.match(body, /var deletedMids = list\.filter/);
   assert.match(body, /var quoteExpected = _invalidateQuotesForDeletedMids\(keep, deletedMids\);/);
-  assert.match(body, /var quoteSaved = _persistWithQuoteSync\(keep, quoteExpected, \{ deletedMids: deletedMids \}\);/);
+  assert.match(body, /var quoteSaved = _persistWithQuoteSync\(keep, quoteExpected, \{[\s\S]*?deletedMids: deletedMids,[\s\S]*?quoteMids: deletedMids\.map/);
   assert.match(body, /if \(quoteSaved && typeof showToast === 'function'\) showToast\('已删除 '/);
 });
 
@@ -103,7 +105,7 @@ test('重新生成路径先记录被移除消息的 mid，再让旧引用失效'
   assert.ok(invalidateIndex !== -1, 'quotes referring to the regenerated reply must be invalidated');
   assert.ok(removedIndex < spliceIndex, 'mid must be read before the message disappears from the list');
   assert.ok(spliceIndex < invalidateIndex, 'invalidation must run on the remaining history');
-  assert.match(body, /_persistWithQuoteSync\(list, quoteExpected, \{ deletedMids: \[removedMid\] \}\);/);
+  assert.match(body, /_persistWithQuoteSync\(list, quoteExpected, \{ deletedMids: \[removedMid\], quoteMids: \[String\(removedMid\)\] \}\);/);
   const savedIndex = body.indexOf('if (!quoteSaved) {');
   const sendIndex = body.indexOf('sendMsg({ isRegenerate: true');
   assert.ok(savedIndex !== -1, 'regenerate must inspect the save result');
@@ -364,4 +366,58 @@ test('重新生成保存失败时不发起 AI 请求，并按存储回滚界面'
   assert.equal(calls.send, 0, '保存失败时不得发起 sendMsg');
   assert.equal(calls.render, 1, '保存失败时必须按存储回滚界面');
   assert.deepEqual(calls.toasts, []);
+});
+
+test('同一原消息被两条回复引用：任一条丢失或未失效即失败，全部落盘才成功', () => {
+  const updated = [
+    { mid: 'target', text: '新文本' },
+    { mid: 'reply-a', text: 'A', quote: { mid: 'target', text: '新文本' } },
+    { mid: 'reply-b', text: 'B', quote: { mid: 'target', text: '新文本' } }
+  ];
+  const expected = { target: { text: '新文本' } };
+  const verify = { messageTexts: { target: '新文本' }, quoteMids: ['target'] };
+
+  // 先确认受影响集合是“全部收集”，不是首条或 some() 短路
+  const collectBox = makeSandbox();
+  assert.equal(collectBox._collectAffectedQuotes(updated, ['target'], []).length, 2);
+
+  // 第二条回复丢失引用：条数与正文仍一致，只靠逐条引用校验拦下
+  const toasts = [];
+  const lost = [updated[0], updated[1], { mid: 'reply-b', text: 'B' }];
+  const lostBox = makeSandbox({
+    _storage: { getChatHistory() { return lost; } },
+    saveMessages() {},
+    showToast(message) { toasts.push(message); },
+    _shouldWarnAgain() { return true; }
+  });
+  assert.equal(lostBox._persistWithQuoteSync(updated, expected, verify), false);
+  assert.equal(toasts.length, 1);
+
+  // 对照：两条引用都正确落盘 → 成功
+  const okBox = makeSandbox({ _storage: { getChatHistory() { return updated; } }, saveMessages() {} });
+  assert.equal(okBox._persistWithQuoteSync(updated, expected, verify), true);
+
+  // 删除场景同样穷尽：第二条引用未失效 → 整体失败
+  const deletedList = [
+    { mid: 'reply-a', text: 'A', quote: { mid: 'target', text: '旧', invalid: true } },
+    { mid: 'reply-b', text: 'B', quote: { mid: 'target', text: '旧', invalid: true } }
+  ];
+  const halfInvalid = [deletedList[0], { mid: 'reply-b', text: 'B', quote: { mid: 'target', text: '旧' } }];
+  const halfBox = makeSandbox({
+    _storage: { getChatHistory() { return halfInvalid; } },
+    saveMessages() {},
+    showToast() {},
+    _shouldWarnAgain() { return true; }
+  });
+  assert.equal(
+    halfBox._persistWithQuoteSync(deletedList, { target: { invalid: true } }, { deletedMids: ['target'], quoteMids: ['target'] }),
+    false
+  );
+
+  // 对照：两条引用都失效 → 成功
+  const allInvalidBox = makeSandbox({ _storage: { getChatHistory() { return deletedList; } }, saveMessages() {} });
+  assert.equal(
+    allInvalidBox._persistWithQuoteSync(deletedList, { target: { invalid: true } }, { deletedMids: ['target'], quoteMids: ['target'] }),
+    true
+  );
 });
