@@ -487,6 +487,10 @@
         records = [];
         routeMap.clear();
         activeRoute = null;
+        if (nativeShell && typeof nativeShell.destroy === 'function') {
+          nativeShell.destroy();
+          nativeShell = null;
+        }
         hideHost();
       }
     };
