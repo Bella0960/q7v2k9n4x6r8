@@ -26,6 +26,8 @@
     nativeRoutes['settings/font-settings.html'] = 'settings_font';
     nativeRoutes['settings/sound-settings.html'] = 'settings_sound';
     nativeRoutes['settings/icon-settings.html'] = 'settings_icons';
+    nativeRoutes['settings/minimax-tts.html'] = 'settings_tts';
+    nativeRoutes['tools/api-logs.html'] = 'settings_logs';
     var destroyed = false;
     var useSequence = 0;
 
@@ -43,7 +45,9 @@
             settings_appearance: { src: 'apps/settings/settings-subviews.js' },
             settings_font: { src: 'apps/settings/settings-subviews.js' },
             settings_sound: { src: 'apps/settings/settings-subviews.js' },
-            settings_icons: { src: 'apps/settings/settings-subviews.js' }
+            settings_icons: { src: 'apps/settings/settings-subviews.js' },
+            settings_tts: { src: 'apps/settings/settings-subviews.js' },
+            settings_logs: { src: 'apps/settings/settings-subviews.js' }
           },
           onError: function (error, details) {
             if (typeof options.onError === 'function') options.onError(error, details);
