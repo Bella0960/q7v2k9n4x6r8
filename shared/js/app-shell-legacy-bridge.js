@@ -23,6 +23,7 @@
     var nativeRoutes = Object.create(null);
     nativeRoutes['settings/settings.html'] = 'settings';
     nativeRoutes['beauty/beauty.html'] = 'beauty';
+    nativeRoutes['theme-store/theme-store.html'] = 'theme_store';
     nativeRoutes['settings/appearance.html'] = 'settings_appearance';
     nativeRoutes['settings/font-settings.html'] = 'settings_font';
     nativeRoutes['settings/sound-settings.html'] = 'settings_sound';
@@ -48,6 +49,7 @@
             legacy: { module: emptyModule },
             settings: { src: 'apps/settings/settings-module.js' },
             beauty: { src: 'apps/beauty/beauty-module.js' },
+            theme_store: { src: 'apps/theme-store/theme-store-module.js' },
             settings_appearance: { src: 'apps/settings/settings-subviews.js' },
             settings_font: { src: 'apps/settings/settings-subviews.js' },
             settings_sound: { src: 'apps/settings/settings-subviews.js' },
