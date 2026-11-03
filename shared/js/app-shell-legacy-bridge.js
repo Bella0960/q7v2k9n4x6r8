@@ -130,7 +130,7 @@
       style.textContent = [
         'html, body { width: 100% !important; height: 100% !important; min-height: 100% !important; max-width: none !important; margin: 0 !important; }',
         'body { box-sizing: border-box !important; }',
-        '.phone-mockup, .phone { width: 100vw !important; max-width: none !important; height: 100vh !important; height: 100dvh !important; max-height: none !important; min-height: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }'
+        '.phone-mockup { width: 100vw !important; max-width: none !important; height: 100vh !important; height: 100dvh !important; max-height: none !important; min-height: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }'
       ].join('\\n');
       (frameDocument.head || frameDocument.documentElement || frameDocument.body).appendChild(style);
     }
