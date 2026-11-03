@@ -76,6 +76,23 @@
                 { store: 'presets', keyPath: 'id', blobFields: ['blob'],
                   blobMaxBytes: FONT_BLOB_MAX_BYTES, blobStoreMaxBytes: FONT_STORE_MAX_BYTES }
             ]
+        },
+        // DATA-002: maomao-assets (MediaRepository)
+        // assets / refs: 纯 JSON，无 Blob 字段，直接序列化。
+        // blobs: keyPath assetId，每条 { assetId, blob } 中 blob 字段是 Blob 实例；
+        //   用 blobFields 机制转 base64 导出、还原时逆转回 Blob。
+        //   体积上限参考字体预设档次（单条 30 MB / 整库 90 MB）——
+        //   图片通常远小于字体文件，此上限已足够宽松；
+        //   超限的条目会出现在 skipped 报告中，不静默丢弃。
+        {
+            db: 'maomao-assets',
+            version: 1,
+            stores: [
+                { store: 'assets', keyPath: 'assetId' },
+                { store: 'blobs',  keyPath: 'assetId', blobFields: ['blob'],
+                  blobMaxBytes: FONT_BLOB_MAX_BYTES, blobStoreMaxBytes: FONT_STORE_MAX_BYTES },
+                { store: 'refs',   keyPath: 'assetId' }
+            ]
         }
     ];
 
@@ -612,10 +629,14 @@
                     }
 
                     // blobFields：Blob → base64（在事务外做，彻底没有事务失效风险）
+                    // 同时把 Blob 的 MIME 类型写入伴生字段 __blobMime_<fieldName>，
+                    // 恢复时凭此重建正确 MIME；若记录已有同名伴生字段则不覆盖（向前兼容）。
                     if (blobFields.length && inner) {
                         for (var j = 0; j < blobFields.length; j++) {
                             var bv = inner[blobFields[j]];
                             if (bv instanceof Blob) {
+                                var mimeKey = '__blobMime_' + blobFields[j];
+                                if (!inner[mimeKey]) inner[mimeKey] = bv.type || 'application/octet-stream';
                                 inner[blobFields[j]] = await blobToBase64(bv);
                             }
                         }
@@ -699,14 +720,21 @@
                         skipped++;
                         return;
                     }
-                    // blobFields 反向解码：base64 字符串 → Blob 实例；解码失败整条跳过
+                    // blobFields 反向解码：base64 字符串 → Blob 实例；解码失败整条跳过。
+                    // MIME 优先读伴生字段 __blobMime_<fieldName>（导出时写入），
+                    // 无伴生字段时 fallback 到 value.format（字体预设兼容），
+                    // 两者都没有才用 application/octet-stream。
                     if (value && typeof value === 'object' && blobFields.length) {
                         for (var j = 0; j < blobFields.length; j++) {
                             var f = blobFields[j];
                             var v = value[f];
                             if (v && typeof v === 'string') {
                                 try {
-                                    value[f] = base64ToBlob(v, value.format || 'application/octet-stream');
+                                    var mimeKey = '__blobMime_' + f;
+                                    var mime = value[mimeKey] || value.format || 'application/octet-stream';
+                                    value[f] = base64ToBlob(v, mime);
+                                    // 清理伴生字段，不写进 IndexedDB
+                                    delete value[mimeKey];
                                 } catch (e) {
                                     skipped++;
                                     return;  // 整条跳过
