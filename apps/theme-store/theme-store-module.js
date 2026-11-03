@@ -138,7 +138,7 @@
     return location;
   }
 
-  function createPageWindow(pageUrl, trackedListeners) {
+  function createPageWindow(pageUrl, trackedListeners, urlApi) {
     var location = createPageLocation(pageUrl);
     var localValues = Object.create(null);
     var pageHistory = {
@@ -166,6 +166,7 @@
       get: function (target, key) {
         if (key === 'location') return location;
         if (key === 'history') return pageHistory;
+        if (key === 'URL') return urlApi;
         if (Object.prototype.hasOwnProperty.call(localValues, key)) return localValues[key];
         if (key === 'addEventListener') {
           return function (type, listener, options) {
@@ -199,6 +200,26 @@
     });
   }
 
+  function createTrackedUrlApi(objectUrls) {
+    function TrackedURL() {
+      return Reflect.construct(global.URL, Array.prototype.slice.call(arguments), global.URL);
+    }
+    TrackedURL.prototype = global.URL.prototype;
+    TrackedURL.createObjectURL = function (value) {
+      var url = global.URL.createObjectURL(value);
+      objectUrls.push(url);
+      return url;
+    };
+    TrackedURL.revokeObjectURL = function (url) {
+      var index = objectUrls.indexOf(url);
+      if (index >= 0) objectUrls.splice(index, 1);
+      return global.URL.revokeObjectURL(url);
+    };
+    TrackedURL.canParse = global.URL.canParse ? global.URL.canParse.bind(global.URL) : undefined;
+    TrackedURL.parse = global.URL.parse ? global.URL.parse.bind(global.URL) : undefined;
+    return TrackedURL;
+  }
+
   function createThemeStoreModule() {
     return {
       async mount(host, context) {
@@ -210,7 +231,9 @@
         var pageUrl = params.url ? new URL(params.url, PAGE_URL) : new URL(PAGE_URL.href);
         var shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
         var trackedListeners = [];
-        var moduleWindow = createPageWindow(pageUrl, trackedListeners);
+        var objectUrls = [];
+        var urlApi = createTrackedUrlApi(objectUrls);
+        var moduleWindow = createPageWindow(pageUrl, trackedListeners, urlApi);
         host.setAttribute('aria-busy', 'true');
 
         try {
@@ -246,7 +269,7 @@
           }));
           styles.push([
             '',
-            ':host { display:flex; width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; background:#fff; }',
+            ':host { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; background:#fff; }',
             ':host > .maomao-theme-store-page { display:flex; width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }',
             ':host .store-app { width:100% !important; max-width:none !important; height:100% !important; min-height:0 !important; margin:0 !important; }',
             ':host .main-content { min-height:0 !important; }'
@@ -279,7 +302,7 @@
                 global.indexedDB,
                 global.CustomEvent,
                 global.FontFace,
-                global.URL,
+                urlApi,
                 global.setTimeout.bind(global),
                 global.clearTimeout.bind(global),
                 global.console
@@ -293,9 +316,10 @@
               entry.target.removeEventListener(entry.type, entry.listener, entry.options);
             });
             trackedListeners.length = 0;
-            if (global.URL && typeof global.URL.revokeObjectURL === 'function') {
-              shadow.querySelectorAll('[data-font-specimen]').forEach(function () {});
-            }
+            objectUrls.slice().forEach(function (url) {
+              try { urlApi.revokeObjectURL(url); } catch (error) {}
+            });
+            objectUrls.length = 0;
             shadow.innerHTML = '';
             host.removeAttribute('aria-busy');
           };
