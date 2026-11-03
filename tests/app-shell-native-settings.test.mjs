@@ -111,6 +111,21 @@ test('settings and its four major subviews run as native modules', async () => {
   await appearanceView.locator('#homeIndicatorToggle').waitFor();
   assert.equal(await appearanceView.evaluate((view) => !!view.shadowRoot), true);
   assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+
+  await page.evaluate(() => {
+    localStorage.setItem('settings_statusbar_time', '0');
+    if (window.__statusbarControlApply) window.__statusbarControlApply();
+  });
+  await page.waitForFunction(() => {
+    const view = document.querySelector('#maomao-app-host .maomao-app-view[data-maomao-app-view="settings_appearance"]');
+    const time = view && view.shadowRoot && view.shadowRoot.querySelector('.status-time');
+    return time && getComputedStyle(time).display === 'none';
+  });
+  await page.evaluate(() => {
+    localStorage.setItem('settings_statusbar_time', '1');
+    if (window.__statusbarControlApply) window.__statusbarControlApply();
+  });
+
   await page.goBack();
   await settingsView.locator('.phone-mockup').waitFor();
 
