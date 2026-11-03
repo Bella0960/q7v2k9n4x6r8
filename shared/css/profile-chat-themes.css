@@ -9,7 +9,7 @@
   position:relative;
   background:
     radial-gradient(ellipse at 76% 36%,rgba(255,255,255,.96),transparent 42%),
-    url("../assets/silver-butterfly.svg") 84% 46%/auto 150% no-repeat,
+    url("../assets/silver-butterfly-photo.webp") 84% 46%/auto 150% no-repeat,
     linear-gradient(135deg,#faf9fb 0%,#eeedf1 58%,#e3e2e7 100%);
 }
 .phone-mockup[data-chat-theme-preset="silver-butterfly"] .profile-cover:has(.cover-placeholder) .cover-placeholder{opacity:.15}
