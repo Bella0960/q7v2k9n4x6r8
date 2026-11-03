@@ -233,6 +233,24 @@ test('settings and its four major subviews run as native modules', async () => {
   await stickersView.locator('#backBtn').click();
   await settingsView.locator('.phone-mockup').waitFor();
 
+  await settingsView.getByText('正则过滤', { exact: true }).click();
+  const regexView = host.locator('.maomao-app-view[data-maomao-app-view="settings_regex"]');
+  await regexView.locator('#ruleList .rule-row').first().waitFor();
+  await regexView.locator('.add-fab').click();
+  await regexView.locator('#sheetMask.show').waitFor();
+  await regexView.locator('#fName').fill('原生模块回归规则');
+  await regexView.locator('#fPattern').fill('maomao-test');
+  await regexView.locator('#fReplace').fill('MAOMAO');
+  await regexView.locator('#sheetMask .btn-save').click();
+  const savedRegexRules = await page.evaluate(() => JSON.parse(localStorage.getItem('regex_rules') || '[]'));
+  assert.ok(savedRegexRules.some((rule) => rule.name === '原生模块回归规则' && rule.pattern === 'maomao-test'));
+  assert.equal(await regexView.locator('#ruleList .rule-name').filter({ hasText: '原生模块回归规则' }).count(), 1);
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  await regexView.locator('.refresh-btn').click();
+  assert.equal(await regexView.locator('#ruleList .rule-name').filter({ hasText: '原生模块回归规则' }).count(), 1);
+  await regexView.locator('.back-btn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
   const historyBeforeDesktopBack = await page.evaluate(() => ({
     activeRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getActiveRoute(),
     previousRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getPreviousRoute(),
