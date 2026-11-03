@@ -23,6 +23,8 @@ The gateway exposes only explicit model IDs from the reviewed catalog. Providers
 
 The model IDs and free-plan rules can change. The list is a curated snapshot, not a guarantee of future free availability. Check the provider's own terms and billing console before adding a key.
 
+**Scope clarification:** the upstream README advertises 513+ free model/API entries, but its public provider reference only exposes a small “best free models” sample for each provider. This gateway currently connects 30 provider endpoints and exposes the model IDs that can be explicitly identified from that published reference plus the structured provider dataset; it does **not** claim to contain all 513 model IDs. The remaining IDs are not guessed from each provider's general `/models` endpoint, because that endpoint can contain paid models. OpenRouter is not proxied because of the source-noted restriction on reselling/building a competing service; Cline is not included because the directory does not publish a standard Base URL for direct API routing.
+
 ## Providers currently included
 
 | Provider | Access type | Notes |
