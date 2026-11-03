@@ -235,6 +235,42 @@ Acceptance:
 - No runtime framework introduced.
 - Each module declares required global APIs in comments/tests.
 
+### DESK-001 — Hidden Dock must not reflow desktop app icons
+**Priority:** P1 · **Status:** OPEN
+
+Current evidence: Hiding the Dock makes app icons reflow/repack in the desktop grid instead of keeping their user-assigned positions. Dock visibility is toggled in shared/js/dock-control.js and styled in desktop/css/styles.css; the grid layout belongs to desktop/ and the desktop mount in index.html.
+
+Scope: desktop/ (grid, Dock, widget layout), the desktop mount in index.html, and the Dock visibility controller in shared/js/dock-control.js. Preserve the persisted desktop layout and drag/drop behavior. Do not reset, re-seed, or overwrite the user's desktop layout data, and do not change its storage key or schema.
+
+File ownership: This task owns the desktop-shell files above. Do not run it in parallel with any other task editing desktop/css/styles.css, desktop/js/script.js, desktop/widgets.html, index.html, or shared/js/dock-control.js. No work may start without a claimed Task ID.
+
+Acceptance:
+- Hiding and re-showing the Dock preserves every icon's page, slot, and order for filled, partially filled, and multi-page desktop grids.
+- Existing drag/drop, long-press, page paging, and layout persistence behave exactly as before.
+- The layout survives Dock hide/show and a page refresh; the toggle does not rewrite user desktop data.
+- Add a regression test (static contract or Playwright) for hide → show layout preservation and make it runnable through an existing or newly declared npm test script.
+- Verify at the phone viewport (375–430px) and the desktop shell before merge.
+
+### CHAT-001 — Quoted messages must stay in sync after edit/delete/regenerate
+**Priority:** P1 · **Status:** OPEN
+
+Current evidence: Chat write paths store a quote snapshot on the message (mid, text, fromRole, authorName) and render the quoted preview from that snapshot. Editing, deleting, or regenerating the source message does not update or invalidate the snapshot, so the quote shows stale content. Evidence: the quote bar and quote snapshot construction and rendering in chat/chat/chat-detail.html.
+
+Scope: chat-related pages and shared chat policy modules only (chat/chat/chat-detail.html, chat/date/*, shared/js/phone/chat-*-policy.js, and the quote helpers they call). Preserve every rich message field, including mid, mode, scene, memberId, and quote metadata. Do not change the chat storage schema, storage keys, serialization format, or migrate existing history.
+
+File ownership: One owner for chat-detail.html and the shared policy modules. Do not run it in parallel with ARCH-001, DATA-005/006/007, or any other task editing the same chat files. No work may start without a claimed Task ID.
+
+Dependency: DATA-005. Consult its chat-history read/write call-site matrix before changing any quote path; quote sync must not introduce a second writer.
+
+Acceptance:
+- Editing a source message updates or explicitly invalidates every quote that references it, using one documented policy (live reference or snapshot refresh).
+- Deleting a source message neutralizes its quotes without deleting or hiding unrelated history.
+- Regenerating a reply preserves quote references and rich fields (mid, mode, scene, memberId).
+- Private, group, and date-mode conversations remain isolated.
+- No storage schema or key change; legacy and newly written messages still render.
+- Add regression tests for quote resolution after edit/delete/regenerate plus static contract coverage that rich fields survive, and run them through the chat test script.
+- Complete manual acceptance on desktop and the phone viewport before merge.
+
 ## Phase 4 — Reliability, security, performance
 
 ### QA-001 — Expand real browser/mobile acceptance
