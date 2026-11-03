@@ -19,7 +19,8 @@
     var activeRoute = null;
     var activeNativeId = null;
     var nativeShell = null;
-    var nativeRoutes = { 'settings/settings.html': 'settings' };
+    var nativeRoutes = Object.create(null);
+    nativeRoutes['settings/settings.html'] = 'settings';
     var destroyed = false;
     var useSequence = 0;
 
@@ -251,7 +252,7 @@
       }
 
       var relativePath = url.pathname.slice(basePath.length);
-      if (nativeRoutes[relativePath]) {
+      if (Object.prototype.hasOwnProperty.call(nativeRoutes, relativePath)) {
         if (record.currentKey && routeMap.get(record.currentKey) === record) routeMap.delete(record.currentKey);
         activateNativeRoute(nativeRoutes[relativePath], routeForUrl(url), url, { history: addHistory !== false });
         removeRecord(record);
