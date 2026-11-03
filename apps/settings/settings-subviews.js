@@ -119,7 +119,7 @@
       return;
     }
     if (path.endsWith('/liquid-glass-controls.js')) {
-      new Function('document', 'window', source + '\\n//# sourceURL=maomao-liquid-glass-controls.js')(
+      new Function('document', 'window', source + '\n//# sourceURL=maomao-liquid-glass-controls.js')(
         documentFacade,
         moduleWindow
       );
