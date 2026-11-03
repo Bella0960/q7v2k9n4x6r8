@@ -70,6 +70,17 @@ export default defineConfig({
       };
 
       walk(__dirname, '');
+
+      // Publish a compact list of every multi-page HTML entry for the PWA installer.
+      // This keeps all app routes reachable from cache on unreliable mobile networks.
+      const pageList = Object.keys(htmlFiles)
+        .map(page => page + '.html')
+        .sort();
+      this.emitFile({
+        type: 'asset',
+        fileName: 'pwa-pages.json',
+        source: JSON.stringify(pageList)
+      });
     }
   }],
   server: {
