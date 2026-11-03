@@ -251,7 +251,7 @@
           styles.push.apply(styles, styleNodes.map(function (node) { return node.textContent || ''; }));
           styles.push([
             '',
-            ':host { display:flex !important; width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; background:#fff; }',
+            ':host { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; background:#fff; }',
             ':host > .maomao-beauty-page { display:flex; width:100%; height:100%; min-width:0; min-height:0; justify-content:center; align-items:stretch; overflow:hidden; }',
             ':host .phone { width:100% !important; max-width:none !important; height:100% !important; max-height:none !important; min-height:0 !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }',
             ':host .content { min-height:0; overscroll-behavior:contain; }'
