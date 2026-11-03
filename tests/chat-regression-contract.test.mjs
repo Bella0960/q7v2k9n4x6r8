@@ -1869,3 +1869,8 @@ test('Service Worker navigation fetch is time-bounded and falls back to the cach
   assert.ok(serviceWorker.includes('setTimeout'));
   assert.ok(serviceWorker.includes("caches.match('./index.html')"));
 });
+
+test('Cloudflare static assets do not rewrite or redirect explicit HTML page URLs', () => {
+  const wranglerConfig = read('wrangler.jsonc');
+  assert.match(wranglerConfig, /"html_handling"\s*:\s*"none"/);
+});
