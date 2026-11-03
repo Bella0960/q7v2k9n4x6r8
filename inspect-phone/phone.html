@@ -256,12 +256,26 @@ body{
     console.error('[inspect-phone] 时间更新初始化失败:', e.message);
   }
 
+  // --- 常量 ---
+  /** 上滑解锁的纵向位移硬阈值：严格 < -36px 才够，边界 -36 不触发 */
+  var SWIPE_UP_THRESHOLD_PX = 36;
+  /** 上滑方向判定：纵向位移必须明显大于横向（|dy| > |dx| * 1.15）才认作上滑 */
+  var SWIPE_DOMINANCE_RATIO = 1.15;
+  /** tap vs 滑动的位移容差：手指起点到本次手势末端的欧氏距离超过此值，
+   *  视为"不是轻点"，click 兜底一律不解锁。8px 落在 iOS/Android 常见 6-10px tap
+   *  容差区间中段，能有效拦截 Chrome 对 <15px 位移自动生成的 synthetic click。 */
+  var TAP_MOVE_TOLERANCE_PX = 8;
+
+  // --- 解锁手势状态 ---
   var lockStartY=0;
   var lockStartX=0;
   var lockPointerId=null;
   var lockTracking=false;
   var unlockFired=false;
   var unlocked=false;
+  /** 本次手势从起点到最远点的欧氏距离平方（避免 sqrt 开销）；reset 时清 0 */
+  var gestureMaxDistSq = 0;
+
   function unlockPhone(){
     if(unlocked)return;
     unlocked=true;
@@ -269,6 +283,9 @@ body{
     lock.classList.add('hide');
     phone.classList.add('show');
   }
+  /** 复位手势追踪状态（不含 gestureMaxDistSq）——pointerup/touchend 里先 reset 再等 click 到达。
+   *  gestureMaxDistSq 必须保留到 click 处理完，这样 synthetic click 到来时守卫能读到真实位移。
+   *  清零的地方有两处：下一次 pointerdown/touchstart 开始新手势时、click 处理完时。 */
   function resetLockState(){
     lockTracking=false;
     lockStartY=0;
@@ -276,15 +293,33 @@ body{
     lockPointerId=null;
     unlockFired=false;
   }
-  /** 位移阈值判定：向上 ≥ 36px 且纵向位移明显大于横向，才算"上滑解锁" */
-  function shouldUnlock(dy,dx){
-    return dy < -36 && Math.abs(dy) > Math.abs(dx)*1.15;
+  /** 更新本次手势的最大位移（欧氏距离平方），pointermove/touchmove 都调这个
+   *  双通道可能同时抵达（Chromium touch 也派发 pointer），取 max 即可，
+   *  平方值避免重复 sqrt 开销。 */
+  function updateMaxMove(curX,curY){
+    var dx=curX-lockStartX;
+    var dy=curY-lockStartY;
+    var d2=dx*dx+dy*dy;
+    if(d2>gestureMaxDistSq)gestureMaxDistSq=d2;
   }
+  /** tap 守卫：本次手势的最大位移是否在 tap 容差内（欧氏距离 ≤ TAP_MOVE_TOLERANCE_PX） */
+  function isTapGesture(){
+    return gestureMaxDistSq <= TAP_MOVE_TOLERANCE_PX*TAP_MOVE_TOLERANCE_PX;
+  }
+  /** 上滑解锁判定：向上 ≥ 36px 且纵向位移明显大于横向 */
+  function shouldUnlock(dy,dx){
+    return dy < -SWIPE_UP_THRESHOLD_PX && Math.abs(dy) > Math.abs(dx)*SWIPE_DOMINANCE_RATIO;
+  }
+
   // === 解锁手势 ===
   // 事件通道：pointer 为主（鼠标+触摸+触控笔），touch 为老 WebView 兜底。
   // .lock 上 touch-action:none 让浏览器完全不拦截系统手势，事件立即派发。
   // 幂等：unlockFired 标记确保多通道（pointer+touch+click）同时到达时只解锁一次。
   // 复位顺序：先取出起点算好 dx/dy，再 resetLockState 清空，避免起点被清成 0 导致 dy 算错。
+  // 位移守卫：click 通道只在本次手势的最大位移 ≤ 8px（tap）时才解锁；任何滑动手势
+  //  （包括 Chrome 对小位移自动生成的 synthetic click）都会被拦截，强制走 pointer/touch
+  //  的 shouldUnlock 通道。
+
   lock.addEventListener('pointerdown',function(e){
     if(unlocked)return;
     lockPointerId=e.pointerId;
@@ -292,11 +327,17 @@ body{
     lockStartX=e.clientX;
     lockTracking=true;
     unlockFired=false;
+    gestureMaxDistSq=0;
     try{lock.setPointerCapture(e.pointerId);}catch(_){}
+  });
+  lock.addEventListener('pointermove',function(e){
+    if(!lockTracking||e.pointerId!==lockPointerId)return;
+    updateMaxMove(e.clientX,e.clientY);
   });
   lock.addEventListener('pointerup',function(e){
     if(!lockTracking||e.pointerId!==lockPointerId)return;
     // 关键：先取出当前起点算位移，再复位。不能反过来——reset 会把起点清 0。
+    updateMaxMove(e.clientX,e.clientY);
     var dy=e.clientY-lockStartY;
     var dx=e.clientX-lockStartX;
     resetLockState();
@@ -307,17 +348,24 @@ body{
     // cancel 不做判定，只复位状态。unlockFired 会被清，下一次手势可重新触发。
     resetLockState();
   });
+
   lock.addEventListener('touchstart',function(e){
     if(unlocked||!e.touches||!e.touches[0])return;
     lockStartY=e.touches[0].clientY;
     lockStartX=e.touches[0].clientX;
     lockTracking=true;
     unlockFired=false;
+    gestureMaxDistSq=0;
+  },{passive:true});
+  lock.addEventListener('touchmove',function(e){
+    if(!lockTracking||!e.touches||!e.touches[0])return;
+    updateMaxMove(e.touches[0].clientX,e.touches[0].clientY);
   },{passive:true});
   lock.addEventListener('touchend',function(e){
     if(!lockTracking)return;
     var t=e.changedTouches&&e.changedTouches[0];
     if(t){
+      updateMaxMove(t.clientX,t.clientY);
       // 同样先算再复位，避免起点被提前清零
       var dy=t.clientY-lockStartY;
       var dx=t.clientX-lockStartX;
@@ -330,10 +378,18 @@ body{
   lock.addEventListener('touchcancel',function(){
     resetLockState();
   },{passive:true});
-  // 点击辅助解锁——独立路径，不受 gesture 状态影响
+
+  // 点击解锁——独立路径，但受"位移守卫"约束：
+  //   - 原地轻点（位移 ≤ 8px）：正常解锁
+  //   - 任何滑动手势导致的 click（包括 Chrome 对 <15px touch 自动生成的 synthetic click）：
+  //     本次 gestureMaxDistSq > 64，isTapGesture() 返回 false，click 被忽略，强制走上面
+  //     pointer/touch 的 shouldUnlock 通道（必须达到 -36px 阈值才解锁）
+  //   - 幂等：unlockFired 避免滑动通道已解锁后 click 再进来重复触发
   lock.addEventListener('click',function(){
-    // 幂等保护：避免 pointer 通道解锁后 click 再进来重复触发
-    if(!unlockFired)unlockPhone();
+    if(unlockFired)return;          // 幂等：滑动通道已解锁
+    if(!isTapGesture())return;      // 守卫：不是轻点，强制走滑动通道
+    resetLockState();               // click 处理完也必须清状态，防下次被污染
+    unlockPhone();
   });
 
   var titles={album:'相册',chat:'聊天',notes:'备忘录',forum:'论坛',browser:'浏览器',settings:'设置'};

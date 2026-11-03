@@ -63,19 +63,22 @@ jobs:
         run: |
           npm run preview -- --host 127.0.0.1 --port 3000 > preview.log 2>&1 &
           echo $! > preview.pid
-          # 等端口起来（最多 20s），失败直接退出
+          # 等端口起来（最多 40s，每次 sleep 1s）。用整数计数避免 Bash 浮点算术错误。
           READY=0
           for i in $(seq 1 40); do
             if curl -sf http://127.0.0.1:3000/ >/dev/null 2>&1; then
-              echo "preview server ready after $((i*0.5))s"
+              echo "preview server ready on attempt $i (after ${i}s)"
               READY=1
               break
             fi
-            sleep 0.5
+            sleep 1
           done
           if [ "$READY" -ne 1 ]; then
-            echo "preview server failed to start"
-            cat preview.log || true
+            echo "preview server failed to start after 40s — waiting script bailing out"
+            echo "=== preview.log tail ==="
+            tail -n 30 preview.log || true
+            # 这里 exit 1 会让后续 Run inspect-phone regression tests 步骤根本不执行，
+            # 日志里会明确显示是等待失败，不会出现"测试通过"的假阳性。
             exit 1
           fi
 
