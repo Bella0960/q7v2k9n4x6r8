@@ -59,6 +59,7 @@ class FakeElement extends FakeEventTarget {
   }
   get src() { return this._src; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
+  removeAttribute(name) { delete this.attributes[name]; }
   getAttribute(name) { return this.attributes[name] ?? null; }
   hasAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name); }
   appendChild(child) {
