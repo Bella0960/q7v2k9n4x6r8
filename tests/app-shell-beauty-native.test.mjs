@@ -69,8 +69,9 @@ test('beauty editor runs natively and preserves shared, role and preset data', a
 
   const host = page.locator('#maomao-app-host');
   const beautyView = host.locator('.maomao-app-view[data-maomao-app-view="beauty"]');
-  await beautyView.locator('.phone').waitFor();
-  await beautyView.locator('#vbPreview').waitFor();
+  await beautyView.waitFor({ state: 'visible' });
+  await beautyView.locator('.phone').waitFor({ state: 'visible' });
+  await beautyView.locator('#vbPreview').waitFor({ state: 'visible' });
   await page.waitForFunction(() => window.ChatBeauty &&
     typeof window.ChatBeauty.resolve === 'function' &&
     typeof window.ChatBeauty.save === 'function');
@@ -169,9 +170,10 @@ test('beauty editor runs natively and preserves shared, role and preset data', a
   // The same native module can also be opened from Settings and returns there.
   await page.locator('#homeScreen [data-href="settings/settings.html"]').click();
   const settingsView = host.locator('.maomao-app-view[data-maomao-app-view="settings"]');
-  await settingsView.locator('.phone-mockup').waitFor();
+  await settingsView.waitFor({ state: 'visible' });
   await settingsView.getByText('美化导入', { exact: true }).click();
-  await beautyView.locator('.phone').waitFor();
+  await beautyView.waitFor({ state: 'visible' });
+  await beautyView.locator('.phone').waitFor({ state: 'visible' });
   assert.equal(await host.locator('iframe').count(), 0);
   await beautyView.locator('.header .back-btn').click();
   await page.waitForFunction(() => {
