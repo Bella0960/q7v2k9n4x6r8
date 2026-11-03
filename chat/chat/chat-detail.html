@@ -2815,6 +2815,105 @@
             }
         }
 
+        // ================= 引用快照同步（CHAT-001） =================
+        // quote 结构：{ mid, text, fromRole, authorName }；可选 invalid:true 表示原消息已失效。
+        // 旧数据没有 invalid 字段时一律按有效引用处理，不做批量迁移。
+        function _forEachQuoteOfMid(list, mid, fn) {
+            var changed = 0;
+            if (!Array.isArray(list) || mid == null) return 0;
+            var target = String(mid);
+            list.forEach(function (m) {
+                var q = m && m.quote;
+                if (!q || typeof q !== 'object' || q.mid == null) return;
+                if (String(q.mid) !== target) return;
+                if (fn(q) === true) changed++;
+            });
+            return changed;
+        }
+
+        // 编辑原消息：把仍在生效的引用快照换成新文本；已失效的引用不会复活。
+        function _syncQuotedTextsAfterEdit(list, mid, newText) {
+            var expected = {};
+            var changed = _forEachQuoteOfMid(list, mid, function (q) {
+                if (q.invalid) return false;
+                if (q.text === newText) return false;
+                q.text = newText;
+                return true;
+            });
+            if (changed) expected[String(mid)] = { text: newText };
+            return expected;
+        }
+
+        // 删除/重生成原消息：引用快照保留文本，但标记失效，后续不再注入上下文。
+        function _invalidateQuotesForDeletedMids(list, mids) {
+            var expected = {};
+            (mids || []).forEach(function (mid) {
+                var changed = _forEachQuoteOfMid(list, mid, function (q) {
+                    if (q.invalid) return false;
+                    q.invalid = true;
+                    return true;
+                });
+                if (changed) expected[String(mid)] = { invalid: true };
+            });
+            return expected;
+        }
+
+        // 写入并复核引用同步结果：失败时沿用页面既有 toast/冷却，不谎报成功。
+        function _persistWithQuoteSync(list, expected) {
+            saveMessages(list);
+            var mids = expected ? Object.keys(expected) : [];
+            if (!mids.length) return true;
+            var persisted = null;
+            try {
+                persisted = _storage
+                    ? _storage.getChatHistory(currentCharacter.id)
+                    : JSON.parse(localStorage.getItem(storageKey) || 'null');
+            } catch (e) { persisted = null; }
+            var verified = Array.isArray(persisted);
+            if (verified) {
+                mids.forEach(function (mid) {
+                    var want = expected[mid];
+                    persisted.forEach(function (m) {
+                        var q = m && m.quote;
+                        if (!q || typeof q !== 'object' || q.mid == null) return;
+                        if (String(q.mid) !== mid) return;
+                        if (want.invalid) {
+                            if (q.invalid !== true) verified = false;
+                        } else if (!q.invalid && q.text !== want.text) {
+                            // 编辑同步只要求仍有效的引用更新，已失效引用保持原样
+                            verified = false;
+                        }
+                    });
+                });
+            }
+            if (!verified && typeof showToast === 'function'
+                && (typeof _shouldWarnAgain !== 'function' || _shouldWarnAgain('chat-save'))) {
+                showToast('引用同步未能保存，请检查本地存储空间');
+            }
+            return verified;
+        }
+
+        // AI 上下文：失效引用不再带旧文本进入 prompt（旧数据无 invalid 时原样保留）。
+        function _sanitizeQuotesForPrompt(history) {
+            if (!Array.isArray(history)) return history;
+            var need = false;
+            for (var i = 0; i < history.length; i++) {
+                var q = history[i] && history[i].quote;
+                if (q && typeof q === 'object' && q.invalid === true) { need = true; break; }
+            }
+            if (!need) return history;
+            return history.map(function (m) {
+                if (!m || !m.quote || typeof m.quote !== 'object' || m.quote.invalid !== true) return m;
+                var copy = {};
+                for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) copy[k] = m[k]; }
+                var quoteCopy = {};
+                for (var qk in m.quote) { if (Object.prototype.hasOwnProperty.call(m.quote, qk)) quoteCopy[qk] = m.quote[qk]; }
+                delete quoteCopy.text;
+                copy.quote = quoteCopy;
+                return copy;
+            });
+        }
+
         // 头像占位：极细线条 SVG 小人（黑白灰规范，无 Emoji）
         const USER_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
 
@@ -3343,15 +3442,21 @@
             }
 
             // 引用回复：将原消息快照和本条文字一起显示，历史记录重载后也不会丢失。
-            if (msg.quote && msg.quote.text) {
+            if (msg.quote && (msg.quote.text || msg.quote.invalid)) {
                 var quoteBox = document.createElement('div');
                 quoteBox.className = 'msg-quoted-preview';
                 var quoteAuthor = document.createElement('div');
                 quoteAuthor.className = 'msg-quoted-author';
-                quoteAuthor.textContent = '引用 ' + String(msg.quote.authorName || '原消息');
+                quoteAuthor.textContent = msg.quote.invalid
+                    ? '引用 ' + String(msg.quote.authorName || '原消息') + ' · 原消息已删除'
+                    : '引用 ' + String(msg.quote.authorName || '原消息');
                 var quoteText = document.createElement('div');
                 quoteText.className = 'msg-quoted-text';
-                quoteText.textContent = String(msg.quote.text);
+                quoteText.textContent = String(msg.quote.text || '');
+                if (msg.quote.invalid) {
+                    quoteBox.classList.add('msg-quoted-invalid');
+                    if (!quoteText.textContent) quoteText.textContent = '原消息已被删除';
+                }
                 quoteBox.appendChild(quoteAuthor);
                 quoteBox.appendChild(quoteText);
                 bubble.insertBefore(quoteBox, bubble.firstChild);
@@ -5457,6 +5562,9 @@
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
+            // 失效引用先剥掉旧文本，确保两条上下文拼装路径都不会把它注入 prompt
+            recentHistory = _sanitizeQuotesForPrompt(recentHistory);
+
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
@@ -5481,7 +5589,7 @@
                     }
                     var content = stripInternalReasoning(m.text || m.content || '').trim();
                     if (!content) return; // 纯展示卡片消息（位置/通话等）无文本时不发给 AI
-                    if (m.quote && typeof m.quote === 'object' && m.quote.text) {
+                    if (m.quote && typeof m.quote === 'object' && !m.quote.invalid && m.quote.text) {
                         var quoteText = String(m.quote.text).trim().slice(0, 500);
                         var quoteAuthor = String(m.quote.authorName || '').trim();
                         if (quoteText) content = '[引用回复上下文' + (quoteAuthor ? '，原消息来自' + quoteAuthor : '') +
@@ -5858,8 +5966,11 @@
                 if (typeof showToast === 'function') showToast(mid ? '这条消息已不存在' : '还没有 AI 回复可以重玩');
                 return;
             }
+            var removedMid = ensureMid(list[targetIdx]);
             list.splice(targetIdx, 1);
-            saveMessages(list);
+            // 旧引用失效，避免新回复沿用同一 mid 时被当成原引用内容
+            var quoteExpected = _invalidateQuotesForDeletedMids(list, [removedMid]);
+            _persistWithQuoteSync(list, quoteExpected);
             // 清空聊天区重新渲染
             if (_vl) {
                 vlRefresh();
@@ -6133,7 +6244,8 @@
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 return;
             }
-            saveMessages(keep);
+            var quoteExpected = _invalidateQuotesForDeletedMids(keep, [mid]);
+            var quoteSaved = _persistWithQuoteSync(keep, quoteExpected);
             if (_vl) {
                 vlRefresh();
             } else {
@@ -6143,7 +6255,7 @@
                 chatMessages.appendChild(delOneFrag);
                 scrollToBottom(true);
             }
-            if (typeof showToast === 'function') showToast('已删除 1 条消息');
+            if (quoteSaved && typeof showToast === 'function') showToast('已删除 1 条消息');
         }
 
         // ---------- 编辑消息（P0 只放开纯文本气泡） ----------
@@ -6193,7 +6305,8 @@
             if (msg.content != null && msg.text == null) msg.content = newText; else msg.text = newText;
             msg.edited = true;
             msg.editedAt = Date.now();
-            saveMessages(list);
+            var quoteExpected = _syncQuotedTextsAfterEdit(list, mid, newText);
+            var quoteSaved = _persistWithQuoteSync(list, quoteExpected);
 
             var row = chatMessages.querySelector('.msg-row[data-mid="' + mid + '"]');
             var bubbleEl = row ? row.querySelector('.msg-bubble') : null;
@@ -6215,7 +6328,7 @@
                 renderAllMessages();
             }
             closeEditSheet();
-            if (typeof showToast === 'function') showToast('已保存');
+            if (quoteSaved && typeof showToast === 'function') showToast('已保存');
         }
 
         if (editBackdrop) {
@@ -6414,10 +6527,14 @@
         document.getElementById('selectDeleteBtn').addEventListener('click', function () {
             if (!selectedTimes.size) { exitSelection(); return; }
             var list = loadMessages();
+            var deletedMids = list.filter(function (m) {
+                return selectedTimes.has(String(m.time || ''));
+            }).map(function (m) { return ensureMid(m); });
             var keep = list.filter(function (m) {
                 return !selectedTimes.has(String(m.time || ''));
             });
-            saveMessages(keep);
+            var quoteExpected = _invalidateQuotesForDeletedMids(keep, deletedMids);
+            var quoteSaved = _persistWithQuoteSync(keep, quoteExpected);
             if (_vl) {
                 vlRefresh();
             } else {
@@ -6428,7 +6545,7 @@
             }
             scrollToBottom(true);
             exitSelection();
-            if (typeof showToast === 'function') showToast('已删除 ' + selectedTimes.size + ' 条消息');
+            if (quoteSaved && typeof showToast === 'function') showToast('已删除 ' + selectedTimes.size + ' 条消息');
         });
 
         if (chatForm) {
@@ -8384,5 +8501,7 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
   overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
   overflow-wrap:anywhere; white-space:pre-wrap;
 }
+.msg-quoted-invalid { border-left-color:#C7C7CC; }
+.msg-quoted-invalid .msg-quoted-text { color:#8E8E93; }
 </style>
 </body></html>
