@@ -108,7 +108,7 @@ class FakeWindow extends FakeEventTarget {
   }
 }
 
-function makeEnvironment(initialUrl = 'https://maomao.test/index.html') {
+function makeEnvironment(initialUrl = 'https://maomao.test/index.html', nativeShellFactory = null) {
   const root = new FakeElement('div');
   const desktopRoot = new FakeElement('section');
   desktopRoot.appendChild(root);
@@ -119,6 +119,9 @@ function makeEnvironment(initialUrl = 'https://maomao.test/index.html') {
   document.getElementById = (id) => id === 'maomao-app-host' ? root : null;
   document.createElement = (tagName) => new FakeElement(tagName);
   const window = new FakeWindow(initialUrl);
+  if (nativeShellFactory) {
+    window.MAOMAOAppShell = { create: nativeShellFactory };
+  }
 
   runInNewContext(bridgeSource, {
     window,
@@ -176,6 +179,37 @@ test('desktop app tiles are opened by the shell without a top-level page navigat
   assert.equal(env.root.children.length, 1);
 });
 
+test('native settings route opens in the runtime instead of creating a legacy iframe', async () => {
+  const calls = [];
+  let optionsSeen = null;
+  const env = makeEnvironment('https://maomao.test/index.html', (options) => {
+    optionsSeen = options;
+    return {
+      open(id, params, navOptions) {
+        calls.push({ id, params, navOptions });
+        return Promise.resolve(true);
+      }
+    };
+  });
+
+  assert.equal(env.host.open('settings/settings.html'), true);
+  assert.equal(env.host.getActiveRoute(), 'settings/settings.html');
+  assert.equal(env.root.children.length, 0);
+  assert.equal(optionsSeen.routeParam, 'maomao_internal');
+  assert.equal(optionsSeen.apps.settings.src, 'apps/settings/settings-module.js');
+  assert.equal(calls[0].id, 'settings');
+  assert.equal(calls[0].navOptions.history, false);
+
+  assert.equal(env.host.open('chat/chat/chat.html'), true);
+  assert.equal(calls.some((call) => call.id === 'legacy'), true);
+  assert.equal(env.root.children.length, 1);
+  assert.equal(env.root.children[0].tagName, 'IFRAME');
+
+  env.host.home();
+  assert.equal(calls.some((call) => call.id === 'home'), true);
+  assert.equal(env.root.hidden, true);
+});
+
 test('desktop remains the top-level document while app tiles open inside the persistent host', () => {
   const env = makeEnvironment();
   assert.ok(env.host);
@@ -199,9 +233,9 @@ test('legacy app links are routed by the host and browser back restores the cach
   const chatFrame = env.root.children[0];
   chatFrame.dispatchEvent({ type: 'load' });
 
-  const click = frameLinkClick(chatFrame, '../../../settings/settings.html');
+  const click = frameLinkClick(chatFrame, '../../../settings/appearance.html');
   assert.equal(click.defaultPrevented, true);
-  assert.equal(env.host.getActiveRoute(), 'settings/settings.html');
+  assert.equal(env.host.getActiveRoute(), 'settings/appearance.html');
   assert.equal(env.root.children.length, 2);
 
   const settingsFrame = env.root.children[1];
@@ -255,7 +289,7 @@ test('external and out-of-scope destinations are not intercepted', () => {
 
 test('legacy scripts that navigate back to index return to desktop and release the old frame', () => {
   const env = makeEnvironment();
-  env.host.open('settings/settings.html');
+  env.host.open('settings/appearance.html');
   const frame = env.root.children[0];
   frame.dispatchEvent({ type: 'load' });
 
