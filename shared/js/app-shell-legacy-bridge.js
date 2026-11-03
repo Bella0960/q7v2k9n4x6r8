@@ -46,10 +46,12 @@
           },
           onError: function (error, details) {
             if (typeof options.onError === 'function') options.onError(error, details);
+            else if (win.console && typeof win.console.error === 'function') win.console.error('[MAOMAO App Shell]', error, details || {});
           }
         });
       } catch (error) {
         if (typeof options.onError === 'function') options.onError(error, { phase: 'native-shell-create' });
+        else if (win.console && typeof win.console.error === 'function') win.console.error('[MAOMAO App Shell] create failed', error);
         return null;
       }
     }
