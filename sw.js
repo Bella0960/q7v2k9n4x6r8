@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v156';
+const CACHE_NAME = 'phone-app-pwa-v157';
 const APP_SHELL = [
   './',
   './index.html',
@@ -127,13 +127,11 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // HTML 导航网络优先，但设置超时：网络连接一直挂起时，及时回退到本地首页缓存。
-  // fetch 的 AbortSignal 会覆盖整个重定向链，防止 /index.html 等导航长时间卡在重定向/边缘响应。
+  // HTML 导航采用网络优先：先取最新 HTML 并写入缓存，网络失败时再回退缓存。
+  // 不对整页导航设置短超时，避免移动网络/VPN 较慢时中断应用页面跳转。
   if (req.mode === 'navigate') {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(function () { controller.abort(); }, 10000);
     event.respondWith(
-      fetch(req, { signal: controller.signal }).then(function (response) {
+      fetch(req).then(function (response) {
         if (response && response.ok) {
           var copy = response.clone();
           caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
@@ -143,8 +141,6 @@ self.addEventListener('fetch', event => {
         return caches.match(req).then(function (cached) {
           return cached || caches.match('./index.html');
         });
-      }).finally(function () {
-        clearTimeout(timeoutId);
       })
     );
     return;
