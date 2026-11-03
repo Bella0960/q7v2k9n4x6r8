@@ -94,9 +94,25 @@
 
   function createModuleWindow(pageUrl, localValues) {
     var locationFacade = createModuleLocation(pageUrl);
+    var historyFacade = new Proxy(global.history, {
+      get: function (target, key) {
+        if (key === 'back') {
+          return function () {
+            var hostBridge = global.__MAOMAO_LEGACY_HOST__;
+            var settingsHome = new URL('settings.html', SETTINGS_BASE);
+            if (hostBridge && typeof hostBridge.backToParent === 'function'
+                && hostBridge.backToParent(settingsHome.href)) return;
+            return target.back();
+          };
+        }
+        var value = Reflect.get(target, key, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+    });
     return new Proxy(global, {
       get: function (target, key) {
         if (key === 'location') return locationFacade;
+        if (key === 'history') return historyFacade;
         if (Object.prototype.hasOwnProperty.call(localValues, key)) return localValues[key];
         var value = Reflect.get(target, key, target);
         if (typeof value === 'function' &&
