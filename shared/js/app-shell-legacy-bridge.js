@@ -497,6 +497,7 @@
       home: goHome,
       backToParent: backToParent,
       getActiveRoute: function () { return activeRoute; },
+      getPreviousRoute: function () { return previousRoute; },
       getLoadedRoutes: function () {
         return records.map(function (record) { return record.route; });
       },
