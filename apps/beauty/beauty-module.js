@@ -187,6 +187,27 @@
     });
   }
 
+  function bindAnchorNavigation(shadow, pageUrl) {
+    shadow.addEventListener('click', function (event) {
+      var target = event.target && event.target.closest
+        ? event.target.closest('a[href]')
+        : null;
+      if (!target || !shadow.contains(target)) return;
+      if (target.hasAttribute('download') || target.target === '_blank') return;
+      var href = target.getAttribute('href') || '';
+      if (!href || href.charAt(0) === '#' || /^(?:javascript:|mailto:|tel:)/i.test(href)) return;
+
+      var destination;
+      try { destination = new URL(href, pageUrl); } catch (error) { return; }
+      if (destination.origin !== global.location.origin) return;
+
+      var bridge = global.__MAOMAO_LEGACY_HOST__;
+      if (bridge && typeof bridge.open === 'function' && bridge.open(destination.href)) {
+        event.preventDefault();
+      }
+    }, true);
+  }
+
   function createBeautyModule() {
     return {
       async mount(host, context) {
@@ -315,6 +336,7 @@
             bindInlineActions(shadow, exports, moduleWindow);
             exports.renderList();
           }
+          bindAnchorNavigation(shadow, pageUrl);
 
           host.removeAttribute('aria-busy');
           return function dispose() {
