@@ -44,6 +44,12 @@ class FakeElement extends FakeEventTarget {
         constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
       };
       this.contentDocument = new FakeEventTarget();
+      this.contentDocument.head = new FakeElement('head');
+      this.contentDocument.documentElement = new FakeElement('html');
+      this.contentDocument.body = new FakeElement('body');
+      this.contentDocument.createElement = (name) => new FakeElement(name);
+      this.contentDocument.getElementById = (id) =>
+        this.contentDocument.head.children.find((node) => node.id === id) || null;
       this.contentDocument.__maomaoHostBound = false;
     }
   }
