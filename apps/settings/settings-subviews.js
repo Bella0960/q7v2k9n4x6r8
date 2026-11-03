@@ -142,7 +142,11 @@
         return false;
       }
       if (event) event.preventDefault();
-      hostBridge.open(destination.href, destination.pathname.endsWith('/settings/settings.html') ? { replace: true } : undefined);
+      if (relativePath === 'settings.html' && typeof hostBridge.backToParent === 'function') {
+        hostBridge.backToParent(destination.href);
+      } else {
+        hostBridge.open(destination.href);
+      }
       return true;
     }
 
