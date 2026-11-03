@@ -60,9 +60,17 @@
 }
 
 .phone-mockup[data-chat-list-theme="editorial"] .chat-theme-copy h1 {
-  color: var(--messages-ink) !important;
-  font: 700 31px/1.08 -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif !important;
-  letter-spacing: -.045em !important;
+  color: transparent !important;
+  font: 0/1 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif !important;
+  letter-spacing: 0 !important;
+}
+
+.phone-mockup[data-chat-list-theme="editorial"] .chat-theme-copy h1::before {
+  content: "Messages";
+  display: block;
+  color: var(--messages-ink);
+  font: 700 31px/1.08 -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+  letter-spacing: -.045em;
 }
 
 .phone-mockup[data-chat-list-theme="editorial"] .chat-theme-copy p {
