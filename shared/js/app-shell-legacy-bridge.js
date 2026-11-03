@@ -30,6 +30,7 @@
     nativeRoutes['tools/api-logs.html'] = 'settings_logs';
     nativeRoutes['chat/call/call-settings.html'] = 'settings_call';
     nativeRoutes['worldbook/settings/rp-protocol.html'] = 'settings_rp_protocol';
+    nativeRoutes['chat/sticker/sticker-manager.html'] = 'settings_stickers';
     var destroyed = false;
     var useSequence = 0;
 
@@ -51,7 +52,8 @@
             settings_tts: { src: 'apps/settings/settings-subviews.js' },
             settings_logs: { src: 'apps/settings/settings-subviews.js' },
             settings_call: { src: 'apps/settings/settings-subviews.js' },
-            settings_rp_protocol: { src: 'apps/settings/settings-subviews.js' }
+            settings_rp_protocol: { src: 'apps/settings/settings-subviews.js' },
+            settings_stickers: { src: 'apps/settings/settings-subviews.js' }
           },
           onError: function (error, details) {
             if (typeof options.onError === 'function') options.onError(error, details);
