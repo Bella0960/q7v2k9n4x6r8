@@ -1892,7 +1892,9 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
     assert.ok(listThemeCss.toUpperCase().includes(value), 'missing neutral token: ' + value);
   }
   assert.equal(listThemeCss.includes('#F7F6F2'), false, 'theme must not drift toward warm beige');
-  assert.ok(listThemeCss.includes('.phone-mockup[data-chat-list-theme="editorial"] .floating-music-card {\\n  display: none !important;'));
+  const musicRuleStart = listThemeCss.indexOf('.phone-mockup[data-chat-list-theme="editorial"] .floating-music-card {');
+  assert.notEqual(musicRuleStart, -1, 'music player selector must be scoped to the list theme');
+  assert.match(listThemeCss.slice(musicRuleStart, musicRuleStart + 180), /display: none !important;/);
   assert.ok(listThemeCss.includes('.phone-mockup[data-chat-list-theme="editorial"] #chatListContainer {'));
   assert.equal(listThemeCss.includes('data-chat-theme-preset='), false, 'list-only CSS must not target whole-chat themes');
 
