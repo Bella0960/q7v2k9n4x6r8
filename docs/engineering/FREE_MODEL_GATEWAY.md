@@ -16,8 +16,8 @@ This is a router, not a source of free credits: each provider still requires the
 
 The discovery references are:
 
-- [open-free-llm-api/awesome-freellm-apis](https://github.com/open-free-llm-api/awesome-freellm-apis), whose README advertises 513+ models across 30 providers and supplies provider signup links.
-- [pacocartones/free-llm-api-hub](https://github.com/pacocartones/free-llm-api-hub), an MIT-licensed, structured catalog. The reviewed dataset was v2.11.0, generated 2026-10-18. It contains 68 provider records; 31 were marked as verified OpenAI-compatible text APIs, but many did not have a confirmed free model ID.
+- [open-free-llm-api/awesome-freellm-apis](https://github.com/open-free-llm-api/awesome-freellm-apis), whose current README advertises 513+ free model/API entries across 30 providers and publishes a provider/Base URL/model reference.
+- [pacocartones/free-llm-api-hub](https://github.com/pacocartones/free-llm-api-hub), an MIT-licensed structured catalog. The reviewed dataset was v2.11.0, generated 2026-10-18. It contains 68 provider records; 31 were marked as verified OpenAI-compatible text APIs, but many did not have a confirmed free model ID.
 
 The gateway exposes only explicit model IDs from the reviewed catalog. Providers with missing/uncertain model IDs are not queried for their full paid model list: doing that could make a paid model appear free and unexpectedly consume a billable balance. OpenRouter is not routed through this proxy because the catalog records terms that prohibit reselling API access or building a competing service. It can still be configured separately as a normal direct API profile.
 
@@ -31,14 +31,32 @@ The model IDs and free-plan rules can change. The list is a curated snapshot, no
 | Groq | Renewable free quota | Model-specific limits; free quota is shared at organization level. |
 | Cloudflare Workers AI | Daily Neurons allocation | Requires account ID and API token; some models may require a paid plan. |
 | Cohere | Evaluation tier | Trial terms are evaluation-only, not production/commercial. |
-| Cerebras | Trial credits | Payment verification required; credits are time-limited. |
-| Z.ai / GLM | Perpetual $0 Flash models | Availability and terms can change. |
+| Cerebras | Trial credits / limited free tier | Payment verification and model-specific limits may apply. |
+| Z.ai / GLM | Perpetual $0 Flash models | GLM-4.5-Flash has a retirement notice; it is excluded. |
 | SambaNova | Rate-limited free tier | Its own pages differ on payment-method requirements; verify billing controls. |
 | ModelScope | Daily free quota | Real-name/account binding may be required; source marks the free tier non-commercial. |
 | Scaleway | One-time free allowance | Check payment and overage settings. |
 | NVIDIA NIM | Evaluation tier | Phone verification; trial terms say evaluation-only. |
-| Vercel AI Gateway | Recurring monthly credit | The monthly credit amount is not published; confirm free-tier eligibility and spending controls. |
-| Typhoon / SCB 10X | Perpetual free showcase API | Usage data may be collected to improve the service/models. |
+| Vercel AI Gateway | Recurring monthly credit | Credit amount is not published; confirm model eligibility and spending controls. |
+| OpenCode Zen | Selected free models | Free model set and limits can change. |
+| LLM7.io | Rate-limited free access | Directory lists request-per-minute and hourly limits. |
+| Kilo Code | Selected free models | Only models marked free in its catalog are exposed. |
+| Ollama Cloud | Monthly starter allocation | Free plan has limited usage and one concurrent request. |
+| Mistral AI | Evaluation free tier | Intended for evaluation/prototyping; training opt-out may be needed. |
+| OVHcloud AI Endpoints | Anonymous / account free access | Some anonymous endpoints have very low request limits. |
+| Aion Labs | Rate-limited free access | Confirm model IDs and daily token limits in the provider console. |
+| Hugging Face Inference Providers | Credit-metered free allowance | Free balance is limited; model/provider availability varies. |
+| Agnes AI | Free Flash models | Request limits and model availability may change. |
+| Alibaba Cloud Model Studio | Trial token quota | New-account and region eligibility apply; check stop-on-quota-exhaustion. |
+| SiliconFlow | Permanent $0 models / trial credits | Some $0 models require China-platform real-name verification. |
+| xAI | Credit-based promotional access | Credits and free eligibility are account-specific and may expire. |
+| Chutes.ai | Community-powered free models | Availability can vary; model licenses still apply. |
+| Glhf.chat | Selected free model pool | Subject to provider availability and fair-use rules. |
+| AI21 Labs | Trial credits | Credits are time-limited; billing may be required after expiry. |
+| DeepSeek | Promotional free quota | Quotas and eligible models can change. |
+| Nscale | Fair-use access | Model availability and concurrency are provider-controlled. |
+| Nebius AI Studio | Trial credits | Signup credit is limited; billing setup may require a bank card. |
+| Typhoon / SCB 10X | Free research showcase API | Usage data may be collected to improve the service/models. |
 
 Providers whose current free model IDs could not be confirmed are intentionally left out of the routable list until they can be verified. This avoids silently routing to paid models.
 
@@ -64,6 +82,24 @@ Optional provider secrets:
 - `FREE_SCALEWAY_API_KEY`
 - `FREE_NVIDIA_NIM_API_KEY`
 - `FREE_VERCEL_AI_GATEWAY_API_KEY`
+- `FREE_OPENCODE_ZEN_API_KEY`
+- `FREE_LLM7_API_KEY`
+- `FREE_KILO_CODE_API_KEY`
+- `FREE_OLLAMA_CLOUD_API_KEY`
+- `FREE_MISTRAL_API_KEY`
+- `FREE_OVHCLOUD_API_KEY`
+- `FREE_AION_LABS_API_KEY`
+- `FREE_HUGGINGFACE_API_KEY`
+- `FREE_AGNES_AI_API_KEY`
+- `FREE_ALIBABA_MODELS_API_KEY`
+- `FREE_SILICONFLOW_API_KEY`
+- `FREE_XAI_API_KEY`
+- `FREE_CHUTES_API_KEY`
+- `FREE_GLHF_API_KEY`
+- `FREE_AI21_API_KEY`
+- `FREE_DEEPSEEK_API_KEY`
+- `FREE_NSCALE_API_KEY`
+- `FREE_NEBIUS_API_KEY`
 - `FREE_TYPHOON_API_KEY`
 
 You can add them in Cloudflare Dashboard → Workers & Pages → MAOMAO Worker → Settings → Variables and Secrets, or with Wrangler:
