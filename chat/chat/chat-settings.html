@@ -532,7 +532,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    max-height: 190px;
+    max-height: 200px;
     overflow-y: auto;
     scrollbar-width: none;
     padding: 2px 0 4px;
@@ -2153,6 +2153,7 @@
         var open = !gpInviteBlock.classList.contains('is-open');
         gpInviteBlock.classList.toggle('is-open', open);
         gpInviteToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) gpInviteBlock.scrollIntoView({ block: 'nearest' });
       });
     }
     if (gpInvitePanel) {
