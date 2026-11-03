@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v157';
+const CACHE_NAME = 'phone-app-pwa-v158';
 const APP_SHELL = [
   './',
   './index.html',
@@ -97,11 +97,24 @@ const APP_SHELL = [
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_SHELL).catch(() => Promise.all(
-        APP_SHELL.map(url => cache.add(url).catch(() => undefined))
-      )))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(async cache => {
+      // Vite 在构建时生成全部 HTML 页面清单，避免手机端只缓存少数入口。
+      let pageEntries = [];
+      try {
+        const response = await fetch('./pwa-pages.json', { cache: 'no-store' });
+        if (response.ok) {
+          const entries = await response.json();
+          if (Array.isArray(entries)) {
+            pageEntries = entries.filter(entry => typeof entry === 'string' && entry.endsWith('.html'));
+          }
+        }
+      } catch (error) {
+        // 清单不可用时仍继续安装已有核心资源，不阻塞整个 PWA。
+      }
+
+      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
+      await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
+    }).then(() => self.skipWaiting())
   );
 });
 
@@ -127,22 +140,39 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // HTML 导航采用网络优先：先取最新 HTML 并写入缓存，网络失败时再回退缓存。
-  // 不对整页导航设置短超时，避免移动网络/VPN 较慢时中断应用页面跳转。
+  // 页面导航采用“缓存优先、后台更新”：
+  // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
+  // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
   if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).then(function (response) {
+    event.respondWith((async function () {
+      var cachedPromise = caches.match(req);
+      var updatePromise = fetch(req).then(function (response) {
         if (response && response.ok) {
           var copy = response.clone();
           caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
         }
         return response;
       }).catch(function () {
-        return caches.match(req).then(function (cached) {
-          return cached || caches.match('./index.html');
-        });
-      })
-    );
+        return null;
+      });
+
+      // 让后台更新在响应页面后继续完成。
+      event.waitUntil(updatePromise.then(function () { return undefined; }));
+
+      var cached = await cachedPromise;
+      if (cached) return cached;
+
+      var fresh = await updatePromise;
+      if (fresh) return fresh;
+
+      return new Response('此页面暂时无法连接，请检查网络后重试。', {
+        status: 503,
+        headers: {
+          'Content-Type': 'text/plain; charset=UTF-8',
+          'Cache-Control': 'no-store'
+        }
+      });
+    })());
     return;
   }
 
