@@ -8,8 +8,9 @@
     var path = location.pathname.toLowerCase();
     // 咖啡馆是独立经营界面：无论通过 cafe/cafe.html、目录路由或带部署前缀访问，
     // 都不应出现聊天模块的悬浮底部导航。
-    var isCafePage = /(?:^|\\/)cafe(?:\\/|$)/i.test(path) ||
-        /(?:^|\\/)cafe(?:\\.html)?$/i.test(path);
+    var pathParts = path.split('/').filter(Boolean);
+    var lastPathPart = pathParts.length ? pathParts[pathParts.length - 1] : '';
+    var isCafePage = pathParts.indexOf('cafe') !== -1 || lastPathPart === 'cafe.html';
     if (isCafePage) {
         document.querySelectorAll('.floating-nav, .bottom-nav, .chat-bottom-bar').forEach(function (el) {
             el.remove();
