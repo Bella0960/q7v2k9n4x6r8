@@ -11,7 +11,9 @@
     { id: 'settings_sound', path: 'sound-settings.html', title: '音效设置' },
     { id: 'settings_icons', path: 'icon-settings.html', title: '自定义图标' },
     { id: 'settings_tts', path: 'minimax-tts.html', title: 'MiniMax 语音合成' },
-    { id: 'settings_logs', path: '../tools/api-logs.html', title: 'API 调用记录' }
+    { id: 'settings_logs', path: '../tools/api-logs.html', title: 'API 调用记录' },
+    { id: 'settings_call', path: '../chat/call/call-settings.html', title: '通话设置' },
+    { id: 'settings_rp_protocol', path: '../worldbook/settings/rp-protocol.html', title: '全局伴侣协议' }
   ];
 
   var scriptCache = new Map();
