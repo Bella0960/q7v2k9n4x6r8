@@ -10,7 +10,7 @@ const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
   assert.match(viteConfig, /Object\.keys\(htmlFiles\)[\s\S]*\.map\(page => page \+ '\.html'\)/);
-  assert.match(viteConfig, /fileName: 'pwa-pages\\.json'/);
+  assert.match(viteConfig, /fileName: 'pwa-pages\.json'/);
   const pageManifest = JSON.parse(read('dist/pwa-pages.json'));
   assert.ok(pageManifest.includes('index.html'));
   assert.ok(pageManifest.includes('settings/settings.html'));
