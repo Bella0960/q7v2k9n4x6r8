@@ -234,9 +234,9 @@ test('legacy app links are routed by the host and browser back restores the cach
   const chatFrame = env.root.children[0];
   chatFrame.dispatchEvent({ type: 'load' });
 
-  const click = frameLinkClick(chatFrame, '../../../settings/appearance.html');
+  const click = frameLinkClick(chatFrame, '../../../settings/minimax-tts.html');
   assert.equal(click.defaultPrevented, true);
-  assert.equal(env.host.getActiveRoute(), 'settings/appearance.html');
+  assert.equal(env.host.getActiveRoute(), 'settings/minimax-tts.html');
   assert.equal(env.root.children.length, 2);
 
   const settingsFrame = env.root.children[1];
@@ -290,7 +290,7 @@ test('external and out-of-scope destinations are not intercepted', () => {
 
 test('legacy scripts that navigate back to index return to desktop and release the old frame', () => {
   const env = makeEnvironment();
-  env.host.open('settings/appearance.html');
+  env.host.open('settings/minimax-tts.html');
   const frame = env.root.children[0];
   frame.dispatchEvent({ type: 'load' });
 
@@ -300,7 +300,7 @@ test('legacy scripts that navigate back to index return to desktop and release t
   assert.equal(env.host.getActiveRoute(), null);
   assert.equal(env.root.hidden, true);
   assert.equal(env.root.children.length, 0);
-  env.host.open('settings/appearance.html');
+  env.host.open('settings/minimax-tts.html');
   assert.equal(env.root.children.length, 1);
   assert.notEqual(env.root.children[0], frame);
 });
