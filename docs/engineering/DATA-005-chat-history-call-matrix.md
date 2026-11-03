@@ -328,20 +328,23 @@
 
 ---
 
-## 5. CHAT-001 最小改动面
+## 5. 改动面与任务归属
 
-### 5.1 必须动（P0，不做就无法保证一致性）
+### 5.1 独立问题拆分（按问题，不按文件）
 
-| 文件 | 原因 | 最小改动 |
-|---|---|---|
-| `shared/js/phone/phone_storage.js` | 唯一主通道，损坏/失败语义分裂 | 统一读错误传播；提供增量追加/版本号；导出 key 工厂 |
-| `chat/chat/chat-detail.html` | 最大写入方，29 个覆盖写点；引用快照 | 集中到单一保存入口；区分损坏与空历史；引用回写/失效 |
-| `chat/chat/chat-settings.html` | 删除只删旧键，副本可复活 | 删除时同时清理 `phone_data_v2` 副本，或走统一 API |
-| `chat/date/date.html` + `chat/date/journey.html` | 与线上聊天共用键，忽略失败 | 改用同一追加 API，接入失败提示 |
-| `shared/js/chat-notifier.js` | 后台定时整数组写 | 改用增量追加/重读校验，避免覆盖前台消息 |
-| `settings/js/backup.js` | 恢复前 `clear()`，无自动回滚 | 恢复前校验快照，失败回滚；备份/恢复聊天键需可验证 |
+| 问题编号 | 涉及文件 | 具体风险（一行） | 建议归属任务 | 为什么不属于 CHAT-001 |
+|---|---|---|---|---|
+| **CHAT-001-a** | `chat/chat/chat-detail.html` | 引用快照在编辑、单删、批量删、重生成后不回写或失效（6176-6196、6129-6136、6414-6420、5838-5862） | **CHAT-001** | 唯一纳入项：引用快照同步 + 回归测试 |
+| CHAT-001-b | `chat/chat/chat-detail.html` | 29 处整数组覆盖写；损坏历史被欢迎语覆盖（2764-2783、2801-2816） | 独立任务（建议 `CHAT-002`） | 改的是保存/加载语义与聊天主链路，牵动全部发消息路径和回归范围，不是引用快照问题 |
+| STORE-001 | `shared/js/phone/phone_storage.js` | 读损坏返回 `[]`，旧/新 API 失败语义分裂（189-197、700-720） | 独立任务（建议 `STORE-001`） | 属存储层语义统一，影响所有消费者；CHAT-001 不做存储重构 |
+| STORE-002 | `chat/chat/chat-settings.html` | 清空/解散只删旧键，`phone_data_v2` 副本可复活（2054、2068） | 独立任务（建议 `STORE-002`） | 属删除/清空语义，不涉及引用同步 |
+| DATE-001 | `chat/date/date.html`、`chat/date/journey.html` | 与线上聊天共键整数组覆盖，`saveHistory` 静默失败（2308-2311、261-280） | 独立任务（建议 `DATE-001`） | 属线下约会/旅程链路，需要独立回归与验收 |
+| NOTIFY-001 | `shared/js/chat-notifier.js` | 后台定时整数组写，仅按最后一条消息判新鲜度（585-604、864-895） | 独立任务（建议 `NOTIFY-001`） | 属后台通知调度与多标签页行为，验证成本独立 |
+| DATA-002 | `settings/js/backup.js` | `restore` 先 `clear()` 后全量写，失败不自动回滚（354-362） | **DATA-002** | 已由 DATA-002 负责，禁止并行修改 |
 
-### 5.2 应改（P1，可与 CHAT-001 同批或紧随其后）
+**结论：CHAT-001 只覆盖 `CHAT-001-a`，实施范围只有 `chat/chat/chat-detail.html` + 回归测试。** 其余六项全部移交独立任务，不纳入本次修复。
+
+### 5.2 后续独立任务（P1，不纳入 CHAT-001）
 
 | 文件 | 原因 |
 |---|---|
@@ -361,6 +364,16 @@
 | `shared/js/phone/storage/conversation-repository.js`、`memory-repository.js` | 静态无调用；除非 CHAT-001 决定正式启用，否则不要顺手改签名 |
 | `chat/chat/chat-detail.html` 的 `chat_alias_*` / `chat_group_alias_*` 逻辑 | 别名不参与历史键，改动会扩大风险面 |
 
+### 5.4 用户已确认的范围决定（2026-11-04）
+
+以下决定已由用户确认，后续 CHAT-001 实施时直接引用，不再重新讨论：
+
+- CHAT-001 **只改** `chat/chat/chat-detail.html` + 回归测试；
+- `phone_storage.js`、`chat-settings.html`、`date.html`、`journey.html`、`chat-notifier.js`、`backup.js` 全部**排除**，拆成独立任务；
+- **不整批合并**存储接线分支，**不从该分支 cherry-pick**；
+- `backup.js` 由 **DATA-002** 单独负责，**禁止并行修改**；
+- **不做**聊天存储重构、**不做**全局写入入口迁移、**不改**数据 Schema、**不改**现有聊天记录结构。
+
 ---
 
 ## 6. 为什么不是 14 个文件
@@ -375,22 +388,40 @@
 
 全仓原始命中 43 个文件，扣除 docs/tests/perf 后为 25 个运行时文件。
 
+### 6.1 五类归类与数量核对
+
+按“文件主用途”归类；跨域路径（例如 `chat-detail` 也写 `chat_memories_`）在矩阵中已单列，这里不重复计数。
+
+| 类别 | 文件清单 | 文件数 | 入口数 |
+|---|---|---:|---:|
+| 1. 真实读写 `chat_history_*` | `chat-detail.html`、`chat-settings.html`、`call.html`、`date.html`、`journey.html`、`shake.html`、`forum-detail.html`、`takeout.html`、`shop.html`、`family-cards.html`、`phone_storage.js`、`chat-notifier.js` | 12 | 77 |
+| 2. 只读消费方（只读不写） | `chat.html`、`chat-search.html`、`library.html`、`phone_context.js`、`memory_space_v2.js` | 5 | 7 |
+| 3. `chat_memories_*` 记忆通道 | `worldbook/memory/memory.html`、`memory_recall.js` | 2 | 5 |
+| 4. 通用备份入口（全键遍历，不特指聊天） | `settings/js/backup.js` | 1 | 2 |
+| 5. 未被页面调用的仓储适配器 | `storage/conversation-repository.js`、`storage/memory-repository.js` | 2 | 0（22 个方法单列，不计入口） |
+| 五类合计 | — | **22** | **91** |
+| 仅注释/占位（不参与五类） | `phone_apps.js`、`shared/js/memory.js`、`chat-extras.js` | 3 | 0 |
+
+核对：文件数 `12 + 5 + 2 + 1 + 2 = 22`，加上仅注释 3 个，合计 **25**；入口数 `77 + 7 + 5 + 2 + 0 = 91`，与第 2 节逐文件计数一致。仓储适配器的 22 个方法单独列出，不混入 91 个运行时入口。
+
 ---
 
-## 7. 未核实事项
+## 7. 证据强度分级
 
-以下均为静态审计无法确认、需要运行时或额外信息验证：
+本次为纯静态审计，**没有启动浏览器或执行任何运行时实验**。因此本节没有“运行时已验证”项；未做运行验证的内容一律按静态证据标注。
 
-1. **多标签页并发。** 未实际验证 `storage` 事件与 `chat-notifier` 定时写同时发生时，谁覆盖谁；代码只做了“最后一条消息新鲜度”检查（`chat-notifier.js:585-589`）。
-2. **配额失败表现。** `saveChatHistory` 返回 `false` 后，各页面的 toast/DOM 是否与真实落库一致；未做浏览器配额实验。
-3. **`phone_data_v2` 副本复活。** 删除后再次进入聊天是否会读回旧记录，需运行时验证（静态路径已明确）。
-4. **损坏键覆盖。** `getChatHistory` 返回 `[]` 后写入欢迎语，需用损坏 JSON 实测确认覆盖范围。
-5. **群 ID 前缀。** 仅确认 `chat.html:1458` 生成 `'g' + Date.now()`；历史导入或旧群 ID 是否都满足 `g` 前缀，未穷举。
-6. **别名是否曾作为历史键。** 静态检索未见 `chat_history_<alias>`，但旧版本可能曾写入；未核对数据。
-7. **仓储适配器是否在运行时被动态注入。** 静态检索只看到 `phone_storage.js` 的 `_PS.repository` 注册，未发现页面调用；运行时未验证。
-8. **`chat_memories_` 的 groups。** 群聊是否应共享记忆、当前是否有人手动写 `chat_memories_<groupId>`，未完全穷举。
-9. **备份恢复范围。** `snapshot` 会带走所有 `chat_history_*`，但 `restore` 不校验版本；未做真实恢复演练。
-10. **测试覆盖。** `tests/chat-regression-contract.test.mjs` 等静态契约测试存在，但未覆盖上述写入竞争与损坏路径。
+| 编号 | 事项 | 证据强度 | 依据 / 说明 |
+|---|---|---|---|
+| 1 | 多标签页并发覆盖 | 静态代码证据（未运行时验证） | `chat-notifier.js:585-589` 仅比较最后一条消息；`storage` 监听 989-995 只刷新 UI，不做合并 |
+| 2 | 配额失败后的 UI 一致性 | 静态代码证据（未运行时验证） | `saveMessages` 失败只 toast（2801-2816），DOM 不回滚；未做配额实验 |
+| 3 | `phone_data_v2` 副本复活 | 静态代码证据（未运行时验证） | `chat-settings` 只 `removeItem`（2054/2068）；`getChatHistory` 有回退路径（189-197） |
+| 4 | 损坏键被欢迎语覆盖 | 静态代码证据（未运行时验证） | `getChatHistory` 损坏时返回 `[]`（189-197）；`loadMessages` 随后写欢迎语（2764-2783） |
+| 5 | 群 ID `g` 前缀 | 静态代码证据（未运行时验证） | 仅确认 `chat.html:1458` 的生成规则；旧群/导入群未穷举 |
+| 6 | 别名是否曾作为历史键 | 需要进一步验证 | 静态检索未见 `chat_history_<alias>`，但旧版本数据未核对 |
+| 7 | 仓储适配器是否被动态注入 | 需要进一步验证 | 静态只见 `_PS.repository` 注册，未见页面调用；运行时未验证 |
+| 8 | 群聊记忆是否共享 | 需要进一步验证 | 未穷举是否有人写 `chat_memories_<groupId>` |
+| 9 | 备份恢复范围与回滚 | 静态代码证据（未运行时验证） | `snapshot` 全键读取（106-116）；`restore` 先 `clear()`（354-362）；未做恢复演练 |
+| 10 | 现有测试覆盖 | 静态代码证据（未运行时验证） | 只有静态契约测试，未覆盖写入竞争与损坏路径；未实际运行测试 |
 
 ---
 
