@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'chat/**'
+      - 'desktop/**'
+      - 'index.html'
+      - 'shared/js/app-shell-*.js'
+      - 'shared/css/app-shell.css'
       - 'library/**'
       - 'shared/js/phone/**'
       - 'sw.js'
@@ -39,6 +43,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Build production assets
+        run: npm run build
       - name: Run chat regression contract tests
         run: npm run test:chat:contract
       - name: Run app shell lifecycle tests
