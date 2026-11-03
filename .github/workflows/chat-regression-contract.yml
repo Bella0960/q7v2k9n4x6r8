@@ -25,6 +25,8 @@ on:
       - 'chat/**'
       - 'desktop/**'
       - 'index.html'
+      - 'apps/**'
+      - 'settings/**'
       - 'shared/js/app-shell-*.js'
       - 'shared/css/app-shell.css'
       - 'library/**'
