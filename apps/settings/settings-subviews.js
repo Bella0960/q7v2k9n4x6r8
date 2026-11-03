@@ -137,7 +137,8 @@
       var destination;
       try { destination = new URL(rawUrl, pageUrl); } catch (error) { return false; }
       if (destination.origin !== global.location.origin) return false;
-      if (!/^\/settings\/(?:settings|appearance|font-settings|sound-settings|icon-settings)\.html$/.test(destination.pathname)) {
+      var relativePath = destination.pathname.slice(SETTINGS_BASE.pathname.length);
+      if (['settings.html', 'appearance.html', 'font-settings.html', 'sound-settings.html', 'icon-settings.html'].indexOf(relativePath) === -1) {
         return false;
       }
       if (event) event.preventDefault();
