@@ -64,7 +64,7 @@
     });
   }
 
-  function createDocumentFacade(shadow, host) {
+  function createDocumentFacade(shadow, host, bodyElement) {
     function getById(id) {
       if (typeof shadow.getElementById === 'function') return shadow.getElementById(id);
       return shadow.querySelector('[id="' + String(id).replace(/"/g, '\\\"') + '"]');
@@ -78,7 +78,7 @@
       addEventListener: function (type, listener, options) { shadow.addEventListener(type, listener, options); },
       removeEventListener: function (type, listener, options) { shadow.removeEventListener(type, listener, options); },
       dispatchEvent: function (event) { return shadow.dispatchEvent(event); },
-      get body() { return shadow; },
+      get body() { return bodyElement || shadow; },
       get documentElement() { return host; },
       get head() { return shadow; },
       get readyState() { return 'complete'; },
@@ -139,7 +139,7 @@
         return false;
       }
       if (event) event.preventDefault();
-      hostBridge.open(destination.href);
+      hostBridge.open(destination.href, destination.pathname.endsWith('/settings/settings.html') ? { replace: true } : undefined);
       return true;
     }
 
@@ -206,7 +206,7 @@
         markup.innerHTML = parsed.body.innerHTML;
         shadow.appendChild(markup);
 
-        var documentFacade = createDocumentFacade(shadow, host);
+        var documentFacade = createDocumentFacade(shadow, host, markup);
         var localWindowValues = Object.create(null);
         var moduleWindow = createModuleWindow(pageUrl, localWindowValues);
 
