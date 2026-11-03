@@ -177,7 +177,7 @@ test('beauty editor runs natively and preserves shared, role and preset data', a
     'browser back should restore beauty route: ' + JSON.stringify(beautyBackState)
   );
   await beautyView.waitFor({ state: 'visible' });
-  await beautyView.locator('#vbPreview').waitFor({ state: 'visible' });
+  await beautyView.locator('#tabTheme').waitFor({ state: 'visible' });
 
   // Opening from the desktop and going back returns to the desktop, not Settings.
   await beautyView.locator('.header .back-btn').click();
