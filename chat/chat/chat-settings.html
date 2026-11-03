@@ -483,6 +483,98 @@
     transition: background 0.15s ease;
   }
   .gp-member-remove:active { background: #E0E0E5; }
+
+  /* 群管理 · 邀请角色（默认收起） */
+  #gpManagePanel .alias-panel-inner {
+    max-height: 54vh;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  #gpManagePanel .alias-panel-inner::-webkit-scrollbar { display: none; }
+  .gp-invite-block {
+    border-top: 1px solid #E5E5E5;
+    margin-top: 4px;
+    padding-top: 2px;
+  }
+  .gp-invite-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 2px;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .gp-invite-title {
+    flex: 1;
+    font-size: 0.813rem;
+    color: #111111;
+  }
+  .gp-invite-count {
+    font-size: 0.688rem;
+    color: #8E8E93;
+  }
+  .gp-invite-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #999999;
+    transition: transform 0.2s ease;
+  }
+  .gp-invite-chevron svg { width: 13px; height: 13px; }
+  .gp-invite-block.is-open .gp-invite-chevron { transform: rotate(180deg); }
+  .gp-invite-panel { display: none; }
+  .gp-invite-block.is-open .gp-invite-panel { display: block; }
+  .gp-invite-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 190px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 2px 0 4px;
+  }
+  .gp-invite-list::-webkit-scrollbar { display: none; }
+  .gp-invite-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border: 1px solid #F0F0F0;
+    border-radius: 8px;
+    background: #FFFFFF;
+  }
+  .gp-invite-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.813rem;
+    color: #111111;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gp-invite-add {
+    flex: none;
+    font-size: 0.75rem;
+    color: #111111;
+    background: #FFFFFF;
+    border: 1px solid #111111;
+    border-radius: 8px;
+    padding: 4px 11px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .gp-invite-add:active { background: #111111; color: #FFFFFF; }
+  .gp-invite-empty {
+    font-size: 0.688rem;
+    color: #8E8E93;
+    line-height: 1.6;
+    padding: 4px 2px 6px;
+  }
   .gp-dismiss-btn {
     width: 100%;
     margin-top: 8px;
@@ -1128,6 +1220,16 @@
               <div class="alias-panel-inner">
                 <div class="gp-manage-label">群成员</div>
                 <div class="gp-members-list" id="gpMembersList"></div>
+                <div class="gp-invite-block" id="gpInviteBlock">
+                  <button type="button" class="gp-invite-toggle" id="gpInviteToggle" aria-expanded="false">
+                    <span class="gp-invite-title">邀请角色</span>
+                    <span class="gp-invite-count" id="gpInviteCount">读取中</span>
+                    <span class="gp-invite-chevron">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </span>
+                  </button>
+                  <div class="gp-invite-panel" id="gpInvitePanel"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -1858,6 +1960,10 @@
     var gpNoticeSub = document.getElementById('gpNoticeSub');
     var gpNoticeInput = document.getElementById('gpNoticeInput');
     var gpMembersList = document.getElementById('gpMembersList');
+    var gpInviteBlock = document.getElementById('gpInviteBlock');
+    var gpInviteToggle = document.getElementById('gpInviteToggle');
+    var gpInvitePanel = document.getElementById('gpInvitePanel');
+    var gpInviteCount = document.getElementById('gpInviteCount');
 
     var GP_ALIAS_KEY = 'chat_group_alias_' + roleId;
     var GP_NOTICE_KEY = 'chat_group_notice_' + roleId;
@@ -1889,6 +1995,67 @@
         localStorage.setItem('phone_groups', JSON.stringify(arr));
         return true;
       } catch (e) { return false; }
+    }
+
+    // ===== 邀请角色（群管理面板内，默认收起） =====
+    function gpEscape(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+    }
+    function readRolePool() {
+      try {
+        var raw = localStorage.getItem(ROLE_STORAGE_KEY);
+        var arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+      } catch (e) { return []; }
+    }
+    function getInvitableRoles() {
+      var g = loadCurrentGroup();
+      var members = (g && Array.isArray(g.members)) ? g.members : [];
+      var existing = members.map(function (m) { return String(m.id); });
+      return readRolePool().filter(function (r) {
+        return r && r.id != null && existing.indexOf(String(r.id)) < 0;
+      });
+    }
+    // 与 group-play.html 的成员默认结构保持一致
+    function defaultGroupMember(role) {
+      return {
+        id: String(role.id),
+        name: role.name || '未命名角色',
+        avatar: role.avatar || '',
+        nickname: '',
+        title: '',
+        isAdmin: false,
+        muted: false,
+        activeFrom: '08:00',
+        activeTo: '23:00',
+        talkativeness: 0.5,
+        replyThreshold: 55,
+        interests: [],
+        interestTags: [],
+        expertiseTags: [],
+        backgroundTags: []
+      };
+    }
+    function renderInviteCandidates() {
+      if (!gpInvitePanel || !gpInviteCount) return;
+      var roles = getInvitableRoles();
+      gpInviteCount.textContent = roles.length ? roles.length + ' 位可邀请' : '暂无可邀请角色';
+      if (!roles.length) {
+        gpInvitePanel.innerHTML = '<div class="gp-invite-empty">角色库中的角色都已在群里。</div>';
+        return;
+      }
+      gpInvitePanel.innerHTML = '<div class="gp-invite-list">' + roles.map(function (r) {
+        var av = r.avatar
+          ? '<img src="' + gpEscape(r.avatar) + '" alt="">'
+          : PERSON_SVG;
+        return '<div class="gp-invite-row" data-role-id="' + gpEscape(String(r.id)) + '">' +
+          '<div class="gp-member-avatar">' + av + '</div>' +
+          '<span class="gp-invite-name">' + gpEscape(r.name || '未命名角色') + '</span>' +
+          '<button type="button" class="gp-invite-add" data-invite-role="' + gpEscape(String(r.id)) + '">邀请</button>' +
+        '</div>';
+      }).join('') + '</div>';
     }
     function renderGroupAvatar(el, group) {
       if (!el) return;
@@ -1945,8 +2112,12 @@
           var g2 = loadCurrentGroup();
           if (!g2) return;
           g2.members = Array.isArray(g2.members) ? g2.members.filter(function (m) { return String(m.id) !== String(mid); }) : [];
-          saveCurrentGroup(g2);
+          if (!saveCurrentGroup(g2)) {
+            showToast('移除失败，请重试');
+            return;
+          }
           renderGroupInfo();
+          renderInviteCandidates();
           showToast('已移除成员');
         });
       });
@@ -1975,6 +2146,41 @@
     bindPanel('gpAliasCard', 'actionGroupAlias', 'gpAliasPanel');
     bindPanel('gpNoticeCard', 'actionGroupNotice', 'gpNoticePanel');
     bindPanel('gpManageCard', 'actionGroupManage', 'gpManagePanel');
+
+    // 邀请角色：独立入口，默认收起不铺开角色库
+    if (gpInviteToggle) {
+      gpInviteToggle.addEventListener('click', function () {
+        var open = !gpInviteBlock.classList.contains('is-open');
+        gpInviteBlock.classList.toggle('is-open', open);
+        gpInviteToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    }
+    if (gpInvitePanel) {
+      gpInvitePanel.addEventListener('click', function (event) {
+        var btn = event.target.closest('[data-invite-role]');
+        if (!btn) return;
+        var rid = btn.getAttribute('data-invite-role');
+        var g = loadCurrentGroup();
+        if (!g) { showToast('群聊已不存在，邀请失败'); return; }
+        if (!Array.isArray(g.members)) g.members = [];
+        if (g.members.some(function (m) { return String(m.id) === String(rid); })) {
+          showToast('该角色已在群中');
+          renderInviteCandidates();
+          return;
+        }
+        var target = readRolePool().filter(function (r) { return String(r.id) === String(rid); })[0];
+        if (!target) { showToast('角色不存在，邀请失败'); renderInviteCandidates(); return; }
+        g.members.push(defaultGroupMember(target));
+        if (!saveCurrentGroup(g)) {
+          showToast('邀请失败，本地存储写入失败');
+          renderInviteCandidates();
+          return;
+        }
+        renderGroupInfo();
+        renderInviteCandidates();
+        showToast('已邀请 ' + (target.name || '角色') + ' 入群');
+      });
+    }
 
     // 群头像上传（压缩 200px）
     document.getElementById('gpAvatarEditBtn').addEventListener('click', function () {
@@ -2080,6 +2286,7 @@
 
     groupInfoSection.style.display = '';
     renderGroupInfo();
+    renderInviteCandidates();
   }
   var storageKey = 'chat_history_' + role.id;
 
