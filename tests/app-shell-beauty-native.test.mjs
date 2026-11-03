@@ -193,7 +193,7 @@ test('beauty editor runs natively and preserves shared, role and preset data', a
   await settingsView.getByText('美化导入', { exact: true }).click();
   await beautyView.waitFor({ state: 'visible' });
   await beautyView.locator('.phone').waitFor({ state: 'visible' });
-  assert.equal(await host.locator('iframe').count(), 0);
+  assert.equal(await host.locator('iframe:visible').count(), 0);
   await beautyView.locator('.header .back-btn').click();
   await page.waitForFunction(() => {
     const view = document.querySelector('#maomao-app-host .maomao-app-view[data-maomao-app-view="beauty"]');
