@@ -338,7 +338,6 @@
 
       event.preventDefault();
       event.stopPropagation();
-      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
       open(tile.dataset.href);
     }
 
