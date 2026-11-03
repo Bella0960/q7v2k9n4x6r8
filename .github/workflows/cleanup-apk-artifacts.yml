@@ -1,0 +1,39 @@
+name: Clean old MAOMAO APK artifacts
+
+# 仅手动运行；只删除本仓库中名称精确匹配 MAOMAO-Android-APK 的旧构建产物。
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  clean-apk-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old MAOMAO APK artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t artifact_ids < <(
+            gh api --paginate "/repos/${REPOSITORY}/actions/artifacts?per_page=100" \
+              --jq '.artifacts[] | select(.name == "MAOMAO-Android-APK") | .id'
+          )
+
+          if [ "${#artifact_ids[@]}" -eq 0 ]; then
+            echo "No MAOMAO-Android-APK artifacts found in this repository."
+            exit 0
+          fi
+
+          deleted=0
+          for artifact_id in "${artifact_ids[@]}"; do
+            gh api --method DELETE "/repos/${REPOSITORY}/actions/artifacts/${artifact_id}"
+            echo "Deleted APK artifact: ${artifact_id}"
+            deleted=$((deleted + 1))
+          done
+
+          echo "Finished. Deleted ${deleted} MAOMAO-Android-APK artifact(s)."
