@@ -49,7 +49,7 @@ test.after(async () => {
 });
 
 test('beauty editor runs natively and preserves shared, role and preset data', async () => {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ serviceWorkers: 'block' });
   const page = await context.newPage();
   const pageErrors = [];
   const consoleErrors = [];
