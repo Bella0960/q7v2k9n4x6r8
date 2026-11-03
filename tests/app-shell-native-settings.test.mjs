@@ -128,6 +128,7 @@ test('settings and its four major subviews run as native modules', async () => {
 
   await page.goBack();
   await settingsView.locator('.phone-mockup').waitFor();
+  assert.equal(await appearanceView.isHidden(), true, 'inactive native view must not intercept clicks');
 
   // The page's own back button replaces the subview route rather than creating a back-navigation loop.
   await settingsView.getByText('外观', { exact: true }).click();
