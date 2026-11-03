@@ -2866,8 +2866,32 @@
             return '';
         }
 
+        // 按原始列表逐条收集所有受影响的引用（不使用 some()/首条短路）。
+        // 自身 mid 同时位于 deletedMids 的消息不在此集合中，由“目标必须缺失”单独校验。
+        function _collectAffectedQuotes(list, quoteMids, deletedMids) {
+            var targets = {};
+            (quoteMids || []).forEach(function (mid) { targets[String(mid)] = true; });
+            var removed = {};
+            (deletedMids || []).forEach(function (mid) { removed[String(mid)] = true; });
+            var affected = [];
+            (list || []).forEach(function (m, i) {
+                var q = m && m.quote;
+                if (!q || typeof q !== 'object' || q.mid == null) return;
+                if (!targets[String(q.mid)]) return;
+                if (m.mid != null && removed[String(m.mid)]) return;
+                affected.push({
+                    index: i,
+                    ownMid: m.mid != null ? String(m.mid) : null,
+                    quoteMid: String(q.mid),
+                    invalid: q.invalid === true,
+                    text: q.text
+                });
+            });
+            return affected;
+        }
+
         // 写入并正向复核：必须找到本次操作对应的实际数据并逐字段比对通过，找不到一律失败。
-        // verify 可选：{ messageTexts: {mid: 新文本}, deletedMids: [mid] }。
+        // verify 可选：{ messageTexts: {mid: 新文本}, deletedMids: [mid], quoteMids: [原 mid] }。
         function _persistWithQuoteSync(list, expected, verify) {
             saveMessages(list);
             verify = verify || {};
@@ -2893,43 +2917,45 @@
                     }
                 }
 
-                var index = {};
+                var byMid = {};
                 persisted.forEach(function (m) {
-                    if (m && m.mid != null) index[String(m.mid)] = m;
+                    if (m && m.mid != null) byMid[String(m.mid)] = m;
                 });
 
                 // 编辑：目标消息必须存在且正文已是新文本
                 var texts = verify.messageTexts || {};
                 Object.keys(texts).forEach(function (mid) {
-                    var found = index[mid];
+                    var found = byMid[mid];
                     if (!found || _messageBodyText(found) !== texts[mid]) verified = false;
                 });
 
                 // 删除/重生成：目标 mid 必须真的不在持久化结果里
                 (verify.deletedMids || []).forEach(function (mid) {
-                    if (index[String(mid)]) verified = false;
+                    if (byMid[String(mid)]) verified = false;
                 });
 
-                // 引用状态：逐条正向比对；目标列表里仍有引用时必须能在落盘结果里找到
-                Object.keys(expected || {}).forEach(function (mid) {
-                    var want = expected[mid];
-                    var intended = list.some(function (m) {
-                        var mq = m && m.quote;
-                        return mq && mq.mid != null && String(mq.mid) === mid;
-                    });
-                    var matched = 0;
-                    persisted.forEach(function (m) {
-                        var q = m && m.quote;
-                        if (!q || typeof q !== 'object' || q.mid == null) return;
-                        if (String(q.mid) !== mid) return;
-                        matched++;
-                        if (want.invalid) {
-                            if (q.invalid !== true) verified = false;
-                        } else if (!q.invalid && q.text !== want.text) {
-                            verified = false;
-                        }
-                    });
-                    if (intended && matched === 0) verified = false;
+                // 引用状态：逐条定位，任一条缺失或状态/文本不符即整体失败。
+                var quoteMids = verify.quoteMids || Object.keys(expected || {});
+                _collectAffectedQuotes(list, quoteMids, verify.deletedMids).forEach(function (affected) {
+                    var found = (affected.ownMid != null && byMid[affected.ownMid])
+                        ? byMid[affected.ownMid]
+                        : persisted[affected.index];
+                    if (!found) { verified = false; return; }
+                    var q = found.quote;
+                    if (!q || typeof q !== 'object' || q.mid == null || String(q.mid) !== affected.quoteMid) {
+                        verified = false;
+                        return;
+                    }
+                    var want = (expected && expected[affected.quoteMid]) || null;
+                    if (want && want.invalid) {
+                        if (q.invalid !== true) verified = false;
+                    } else if (affected.invalid) {
+                        // 原本已失效的引用不得被复活
+                        if (q.invalid !== true) verified = false;
+                    } else {
+                        var wantText = want ? want.text : affected.text;
+                        if (q.invalid === true || q.text !== wantText) verified = false;
+                    }
                 });
             }
             if (!verified && typeof showToast === 'function'
@@ -6016,7 +6042,7 @@
             list.splice(targetIdx, 1);
             // 旧引用失效，避免新回复沿用同一 mid 时被当成原引用内容
             var quoteExpected = _invalidateQuotesForDeletedMids(list, [removedMid]);
-            var quoteSaved = _persistWithQuoteSync(list, quoteExpected, { deletedMids: [removedMid] });
+            var quoteSaved = _persistWithQuoteSync(list, quoteExpected, { deletedMids: [removedMid], quoteMids: [String(removedMid)] });
             if (!quoteSaved) {
                 // 保存失败：存储里仍是旧消息，按存储回滚界面并立即停止，不发起 AI 请求
                 if (_vl) vlRefresh(); else renderAllMessages();
@@ -6297,7 +6323,7 @@
                 return;
             }
             var quoteExpected = _invalidateQuotesForDeletedMids(keep, [mid]);
-            var quoteSaved = _persistWithQuoteSync(keep, quoteExpected, { deletedMids: [mid] });
+            var quoteSaved = _persistWithQuoteSync(keep, quoteExpected, { deletedMids: [mid], quoteMids: [String(mid)] });
             if (!quoteSaved) {
                 // 落盘未确认：按存储回滚界面，不再展示未保存的删除结果
                 if (_vl) vlRefresh(); else renderAllMessages();
@@ -6364,7 +6390,7 @@
             msg.edited = true;
             msg.editedAt = Date.now();
             var quoteExpected = _syncQuotedTextsAfterEdit(list, mid, newText);
-            var quoteVerify = { messageTexts: {} };
+            var quoteVerify = { messageTexts: {}, quoteMids: [String(mid)] };
             quoteVerify.messageTexts[String(mid)] = newText;
             var quoteSaved = _persistWithQuoteSync(list, quoteExpected, quoteVerify);
             if (!quoteSaved) {
@@ -6608,7 +6634,10 @@
                 return !selectedTimes.has(String(m.time || ''));
             });
             var quoteExpected = _invalidateQuotesForDeletedMids(keep, deletedMids);
-            var quoteSaved = _persistWithQuoteSync(keep, quoteExpected, { deletedMids: deletedMids });
+            var quoteSaved = _persistWithQuoteSync(keep, quoteExpected, {
+                deletedMids: deletedMids,
+                quoteMids: deletedMids.map(function (m) { return String(m); })
+            });
             if (!quoteSaved) {
                 // 落盘未确认：按存储回滚界面，不显示删除成功
                 if (_vl) vlRefresh(); else renderAllMessages();
