@@ -580,15 +580,20 @@ test('15 槽位替换后，旧存档中被顶掉的通关状态会被迁移清�
   assert.equal(store.get('maomao_detective_slot_remap_v1'), '1', '迁移标记未写入');
 });
 
-test('09 Service Worker 导航改为网络优先，改完 HTML 不再需要刷两次', () => {
+test('09 Service Worker 导航缓存优先+后台更新，新版本经 SKIP_WAITING 自动接管', () => {
   const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
   const nav = sw.slice(sw.indexOf("req.mode === 'navigate'"));
   const respondIndex = nav.indexOf('event.respondWith(');
   assert.ok(respondIndex !== -1, '未找到导航处理逻辑');
-  // respondWith 的第一个 promise 必须是网络请求，而不是 caches.match
-  assert.ok(
-    nav.slice(respondIndex, respondIndex + 120).includes('fetch(req)'),
-    '导航应优先走网络，否则 overriding 的仍是旧缓存'
-  );
-  assert.match(sw, /CACHE_NAME = 'phone-app-pwa-v125'/, '应提升缓存版本号以让旧缓存失效');
+  // 缓存优先让慢网/断网也能秒开；后台仍会 fetch(req) 拉最新页面更新缓存，
+  // 配合 index.html 的 SKIP_WAITING + controllerchange 自动刷新，
+  // 改完 HTML 不再需要手动刷两次。
+  const handler = nav.slice(respondIndex, respondIndex + 700);
+  assert.ok(handler.includes('caches.match(req)'), '导航应优先读缓存');
+  assert.ok(handler.includes('if (cached) return cached'), '命中缓存应立即返回，不让慢网络阻塞页面');
+  assert.ok(handler.includes('fetch(req)'), '后台必须仍然拉取最新页面更新缓存');
+  assert.doesNotMatch(sw, /cached \|\| caches\.match\('\.\/index\.html'\)/, '导航失败不得兜底到桌面页');
+  assert.match(sw, /status: 503/, '完全离线时应返回 503 提示而非旧桌面');
+  const version = sw.match(/CACHE_NAME = 'phone-app-pwa-v(\d+)'/);
+  assert.ok(version && Number(version[1]) >= 158, '缓存版本号应不低于 v158 以让旧缓存失效');
 });
