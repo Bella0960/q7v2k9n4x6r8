@@ -97,6 +97,7 @@ let work=null;
 let chapters=[];
 let current=0;
 const MIN=15,MAX=21,STEP=1;
+const SIZE_KEY='maomao_novel_read_size_v1';
 const $=id=>document.getElementById(id);
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const countWords=s=>(String(s||'').match(/[\u3400-\u9fff]|[a-zA-Z0-9]+/g)||[]).length;
@@ -166,10 +167,20 @@ function syncScroll(){
   const el=chips[current];
   if(el&&el.scrollIntoView)el.scrollIntoView({inline:'center',block:'nearest'});
 }
+function applySize(s){
+  document.documentElement.style.setProperty('--read-size',s+'px');
+}
+function loadSize(){
+  try{
+    const saved=parseFloat(localStorage.getItem(SIZE_KEY));
+    if(saved>=MIN&&saved<=MAX)applySize(saved);
+  }catch(e){}
+}
 function stepSize(d){
   let s=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--read-size'))||17;
   s=Math.min(MAX,Math.max(MIN,s+d*STEP));
-  document.documentElement.style.setProperty('--read-size',s+'px');
+  applySize(s);
+  try{localStorage.setItem(SIZE_KEY,String(s))}catch(e){}
 }
 $('back').onclick=()=>{if(history.length>1)history.back();else location.href='novel.html'};
 $('write').onclick=()=>{location.href='novel-editor.html'};
@@ -177,6 +188,7 @@ $('prevCh').onclick=()=>{if(current>0){current--;renderChapter()}};
 $('nextCh').onclick=()=>{if(current<chapters.length-1){current++;renderChapter()}};
 $('fontMinus').onclick=()=>stepSize(-1);
 $('fontPlus').onclick=()=>stepSize(1);
+loadSize();
 load();
 })();
 </script></body></html>
