@@ -158,7 +158,26 @@ test('beauty editor runs natively and preserves shared, role and preset data', a
     return bridge && /theme-store\/theme-store\.html/.test(bridge.getActiveRoute() || '');
   });
   await page.goBack();
-  await beautyView.locator('#vbPreview').waitFor();
+  await page.waitForTimeout(100);
+  const beautyBackState = await page.evaluate(() => {
+    const bridge = window.__MAOMAO_LEGACY_HOST__;
+    const view = document.querySelector('#maomao-app-host .maomao-app-view[data-maomao-app-view="beauty"]');
+    return {
+      url: location.href,
+      routeParam: new URL(location.href).searchParams.get('maomao_app'),
+      activeRoute: bridge && bridge.getActiveRoute(),
+      previousRoute: bridge && bridge.getPreviousRoute(),
+      hostHidden: document.getElementById('maomao-app-host').hidden,
+      beautyHidden: !view || view.hidden
+    };
+  });
+  assert.equal(
+    beautyBackState.activeRoute,
+    'beauty/beauty.html',
+    'browser back should restore beauty route: ' + JSON.stringify(beautyBackState)
+  );
+  await beautyView.waitFor({ state: 'visible' });
+  await beautyView.locator('#vbPreview').waitFor({ state: 'visible' });
 
   // Opening from the desktop and going back returns to the desktop, not Settings.
   await beautyView.locator('.header .back-btn').click();
