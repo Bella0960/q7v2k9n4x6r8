@@ -362,7 +362,7 @@
 
       var route = routeForUrl(url);
       var relativePath = url.pathname.slice(basePath.length);
-      if (nativeRoutes[relativePath]) {
+      if (Object.prototype.hasOwnProperty.call(nativeRoutes, relativePath)) {
         return activateNativeRoute(nativeRoutes[relativePath], route, url, openOptions);
       }
 
