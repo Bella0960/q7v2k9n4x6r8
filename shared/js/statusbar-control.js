@@ -13,11 +13,17 @@
         try { return localStorage.getItem(key); } catch (e) { return null; }
     }
 
-    function apply() {
-        var hideTime = getPref('settings_statusbar_time') === '0';
-        var hideBattery = getPref('settings_statusbar_battery') === '0';
-        var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
-        var bars = document.querySelectorAll('.status-bar');
+    function collectRoots() {
+        var roots = [document];
+        var views = document.querySelectorAll('.maomao-app-view');
+        for (var i = 0; i < views.length; i++) {
+            if (views[i].shadowRoot) roots.push(views[i].shadowRoot);
+        }
+        return roots;
+    }
+
+    function applyRoot(root, hideTime, hideBattery, hideHomeIndicator) {
+        var bars = root.querySelectorAll('.status-bar');
         for (var i = 0; i < bars.length; i++) {
             var sb = bars[i];
             /* ---- 时间元素：优先 .status-time / time / 无 class 的第一个 span ---- */
@@ -26,31 +32,71 @@
                 var c0 = sb.children[0];
                 if (c0.tagName === 'SPAN' && !c0.className) timeEl = c0;
             }
-            if (timeEl) {
-                timeEl.style.display = hideTime ? 'none' : '';
-            }
+            if (timeEl) timeEl.style.display = hideTime ? 'none' : '';
+
             /* ---- 电量/状态图标组 ---- */
             var icons = sb.querySelector('.status-icons');
-            if (icons) {
-                icons.style.display = hideBattery ? 'none' : '';
-            }
+            if (icons) icons.style.display = hideBattery ? 'none' : '';
             var bat = sb.querySelector('.battery-icon');
-            if (bat) {
-                bat.style.display = hideBattery ? 'none' : '';
-            }
+            if (bat) bat.style.display = hideBattery ? 'none' : '';
         }
 
-        /* The bottom home indicator is separate from the top status bar and has its own setting. */
-        var homeIndicators = document.querySelectorAll('.gesture-bar');
+        var homeIndicators = root.querySelectorAll('.gesture-bar');
         for (var j = 0; j < homeIndicators.length; j++) {
             homeIndicators[j].style.display = hideHomeIndicator ? 'none' : '';
             homeIndicators[j].setAttribute('aria-hidden', 'true');
         }
     }
 
+    function apply() {
+        var hideTime = getPref('settings_statusbar_time') === '0';
+        var hideBattery = getPref('settings_statusbar_battery') === '0';
+        var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
+        collectRoots().forEach(function (root) {
+            applyRoot(root, hideTime, hideBattery, hideHomeIndicator);
+        });
+    }
+
+    var shadowObserver = null;
+    function observeAppViews() {
+        if (typeof MutationObserver === 'undefined') return;
+        if (!shadowObserver) {
+            shadowObserver = new MutationObserver(function () {
+                observeAppViews();
+                apply();
+            });
+        }
+        var views = document.querySelectorAll('.maomao-app-view');
+        for (var i = 0; i < views.length; i++) {
+            var shadow = views[i].shadowRoot;
+            if (shadow && !shadow.__maomaoStatusbarObserved) {
+                shadow.__maomaoStatusbarObserved = true;
+                shadowObserver.observe(shadow, { childList: true, subtree: true });
+                applyRoot(
+                    shadow,
+                    getPref('settings_statusbar_time') === '0',
+                    getPref('settings_statusbar_battery') === '0',
+                    getPref('settings_home_indicator_visible') === '0'
+                );
+            }
+        }
+    }
+
+    if (typeof MutationObserver !== 'undefined') {
+        shadowObserver = new MutationObserver(function () {
+            observeAppViews();
+            apply();
+        });
+        shadowObserver.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', apply);
+        document.addEventListener('DOMContentLoaded', function () {
+            observeAppViews();
+            apply();
+        });
     } else {
+        observeAppViews();
         apply();
     }
     window.addEventListener('pageshow', apply);
