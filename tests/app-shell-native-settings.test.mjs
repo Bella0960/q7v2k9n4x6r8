@@ -147,6 +147,20 @@ test('settings and its four major subviews run as native modules', async () => {
 
   await settingsView.getByText('音效设置', { exact: true }).click();
   const soundView = host.locator('.maomao-app-view[data-maomao-app-view="settings_sound"]');
+  await page.waitForTimeout(500);
+  const soundDiagnostics = await page.evaluate(() => {
+    const view = document.querySelector('#maomao-app-host .maomao-app-view[data-maomao-app-view="settings_sound"]');
+    return view ? {
+      hidden: view.hidden,
+      hasShadow: !!view.shadowRoot,
+      rows: view.shadowRoot ? view.shadowRoot.querySelectorAll('.chip-row').length : 0,
+      chips: view.shadowRoot ? view.shadowRoot.querySelectorAll('.chip-row .chip').length : 0,
+      hasSoundSystem: typeof window.SoundSystem !== 'undefined'
+    } : null;
+  });
+  assert.ok(soundDiagnostics && soundDiagnostics.chips > 0,
+    'Sound settings did not initialize: ' + JSON.stringify(soundDiagnostics) +
+    ' console=' + JSON.stringify(consoleErrors));
   await soundView.locator('.chip-row .chip').first().waitFor();
   assert.ok(await soundView.locator('.chip-row .chip').count() > 0);
   assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
