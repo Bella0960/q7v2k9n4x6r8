@@ -10,7 +10,7 @@
     "lint": "node -e 'console.log(\"Lint passed\")'",
     "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs",
     "test:detective:unlock": "node --test tests/detective-case-unlock.test.mjs",
-    "test:app-shell": "node --test tests/app-shell-runtime.test.mjs tests/app-shell-legacy-bridge.test.mjs tests/app-shell-native-settings.test.mjs",
+    "test:app-shell": "node --test tests/app-shell-runtime.test.mjs tests/app-shell-legacy-bridge.test.mjs tests/app-shell-native-settings.test.mjs tests/app-shell-beauty-native.test.mjs",
     "perf:bench": "node perf/bench.mjs",
     "perf:bench:mobile": "THROTTLE=4 node perf/bench.mjs",
     "perf:ab": "THROTTLE=4 node perf/ab.mjs",
