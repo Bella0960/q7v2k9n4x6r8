@@ -981,7 +981,7 @@ test('shared chat policies load on demand and use runtime caching instead of ins
   assert.match(detail, /role\.npcCharacters/);
   assert.match(detail, /relationshipRole/);
   assert.match(detail, /group-chat-policy\.js\?v=20261102v5/);
-  assert.match(detail, /phone_context\.js\?v=20261102npc1/);
+  assert.doesNotMatch(appShellBlock, /phone_context\.js/);
   assert.doesNotMatch(appShellBlock, /chat-message-policy|chat-send-policy|chat-context-policy|group-chat-policy|phone_context/);
   assert.match(serviceWorker, /caches\.match\(req\)/);
   assert.match(serviceWorker, /cache\.put\(req, copy\)/);
