@@ -216,6 +216,23 @@ test('settings and its four major subviews run as native modules', async () => {
   await protocolView.locator('#btnBack').click();
   await settingsView.locator('.phone-mockup').waitFor();
 
+  await settingsView.getByText('贴纸管理', { exact: true }).click();
+  const stickersView = host.locator('.maomao-app-view[data-maomao-app-view="settings_stickers"]');
+  await stickersView.locator('#stage').waitFor();
+  await stickersView.locator('#addBtn').click();
+  await stickersView.locator('#libOverlay.is-show').waitFor();
+  await stickersView.locator('#libNameInput').fill('原生迁移测试库');
+  await stickersView.locator('#libSaveBtn').click();
+  await stickersView.locator('#stage .sticker-grid').waitFor();
+  const savedStickerLibraries = await page.evaluate(() => JSON.parse(localStorage.getItem('sticker_libraries') || '[]'));
+  assert.ok(savedStickerLibraries.some((library) => library.name === '原生迁移测试库'));
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  // First back returns from a library to the library list; second back returns to settings.
+  await stickersView.locator('#backBtn').click();
+  await stickersView.locator('#stage .lib-row').waitFor();
+  await stickersView.locator('#backBtn').click();
+  await settingsView.locator('.phone-mockup').waitFor();
+
   const historyBeforeDesktopBack = await page.evaluate(() => ({
     activeRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getActiveRoute(),
     previousRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getPreviousRoute(),
