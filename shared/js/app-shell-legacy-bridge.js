@@ -123,6 +123,18 @@
       return open(input, { sourceWindow: record.frame.contentWindow });
     }
 
+    function normalizeLegacyFrameDocument(frameDocument) {
+      if (!frameDocument || frameDocument.getElementById('maomao-app-shell-frame-normalize')) return;
+      var style = frameDocument.createElement('style');
+      style.id = 'maomao-app-shell-frame-normalize';
+      style.textContent = [
+        'html, body { width: 100% !important; height: 100% !important; min-height: 100% !important; max-width: none !important; margin: 0 !important; }',
+        'body { box-sizing: border-box !important; }',
+        '.phone-mockup, .phone { width: 100vw !important; max-width: none !important; height: 100vh !important; height: 100dvh !important; max-height: none !important; min-height: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }'
+      ].join('\\n');
+      (frameDocument.head || frameDocument.documentElement || frameDocument.body).appendChild(style);
+    }
+
     function bindFrameDocument(record) {
       var frameDocument;
       try {
@@ -131,6 +143,7 @@
         return;
       }
       if (!frameDocument || frameDocument.__maomaoHostBound) return;
+      normalizeLegacyFrameDocument(frameDocument);
       frameDocument.__maomaoHostBound = true;
 
       frameDocument.addEventListener('click', function (event) {
