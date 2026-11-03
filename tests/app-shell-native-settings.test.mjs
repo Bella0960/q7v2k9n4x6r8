@@ -277,3 +277,33 @@ test('settings and its native subviews run as native modules', async () => {
   assert.deepEqual(pageErrors, []);
   await context.close();
 });
+
+test('a deep-linked native settings page routes its legacy location fallback inside the shell', async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  await page.goto(
+    PREVIEW_URL + '/index.html?maomao_app=worldbook%2Fsettings%2Frp-protocol.html',
+    { waitUntil: 'domcontentloaded' }
+  );
+
+  const host = page.locator('#maomao-app-host');
+  const protocolView = host.locator('.maomao-app-view[data-maomao-app-view="settings_rp_protocol"]');
+  await protocolView.locator('#btnBack').waitFor();
+
+  // With no previous history entry, the legacy page assigns window.location.href to settings.html.
+  // The module window must translate that assignment into an in-shell route, not a document reload.
+  await protocolView.locator('#btnBack').click();
+
+  const settingsView = host.locator('.maomao-app-view[data-maomao-app-view="settings"]');
+  await settingsView.locator('.phone-mockup').waitFor();
+  assert.equal(await page.locator('#maomao-app-host iframe').count(), 0);
+  assert.equal(
+    await page.evaluate(() => new URL(location.href).searchParams.get('maomao_app')),
+    'settings/settings.html'
+  );
+  assert.deepEqual(pageErrors, []);
+  await context.close();
+});
