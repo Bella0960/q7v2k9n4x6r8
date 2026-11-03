@@ -510,7 +510,23 @@
   font-weight: 600;
 }
 .phone-mockup[data-chat-theme-preset="wechat"] .cover-add-btn {
-  display: none !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  top: 13px;
+  right: 16px;
+  width: 31px;
+  height: 31px;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 50%;
+  background: rgba(0,0,0,.22);
+  color: #FFFFFF;
+  box-shadow: none;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .cover-add-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke: #FFFFFF;
 }
 .phone-mockup[data-chat-theme-preset="wechat"] .moments-main-panel {
   padding: 0 15px calc(76px + env(safe-area-inset-bottom, 0px));
