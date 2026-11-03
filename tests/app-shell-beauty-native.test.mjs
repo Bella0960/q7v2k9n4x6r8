@@ -150,6 +150,15 @@ test('beauty editor runs natively and preserves shared, role and preset data', a
   await beautyView.locator('#chatThemeDefaultOption').click();
   assert.equal(await page.evaluate(() => window.ChatBeauty.getThemePreset()), 'default');
 
+  // Internal links stay inside the app host; browser back restores this editor.
+  await beautyView.locator('.header-store-link').click();
+  await page.waitForFunction(() => {
+    const bridge = window.__MAOMAO_LEGACY_HOST__;
+    return bridge && /theme-store\/theme-store\.html/.test(bridge.getActiveRoute() || '');
+  });
+  await page.goBack();
+  await beautyView.locator('#vbPreview').waitFor();
+
   // Opening from the desktop and going back returns to the desktop, not Settings.
   await beautyView.locator('.header .back-btn').click();
   await page.waitForFunction(() => {
@@ -165,7 +174,10 @@ test('beauty editor runs natively and preserves shared, role and preset data', a
   await beautyView.locator('.phone').waitFor();
   assert.equal(await host.locator('iframe').count(), 0);
   await beautyView.locator('.header .back-btn').click();
-  await settingsView.locator('.phone-mockup').waitFor();
+  await page.waitForFunction(() => {
+    const view = document.querySelector('#maomao-app-host .maomao-app-view[data-maomao-app-view="beauty"]');
+    return view && view.hidden;
+  });
   assert.equal(await beautyView.isHidden(), true);
 
   assert.deepEqual(pageErrors, [], 'page errors: ' + JSON.stringify(pageErrors));
