@@ -147,7 +147,7 @@
       }
 
       host.classList.toggle('dark', global.localStorage.getItem('settings_dark_mode') === '1');
-      bindInlineActions(shadow, settingsApi, settingsUrl);
+      bindInlineActions(shadow, settingsApi, settingsUrl, moduleWindow);
 
       host.removeAttribute('aria-busy');
 
@@ -175,7 +175,7 @@
     return css;
   }
 
-  function bindInlineActions(shadow, settingsApi, settingsUrl) {
+  function bindInlineActions(shadow, settingsApi, settingsUrl, moduleWindow) {
     var hostBridge = global.__MAOMAO_LEGACY_HOST__;
     var inlineElements = Array.from(shadow.querySelectorAll('[onclick]'));
 
@@ -222,20 +222,20 @@
       }
       if (expression.indexOf('openChatLangSheet()') !== -1) {
         element.addEventListener('click', function () {
-          if (typeof global.openChatLangSheet === 'function') global.openChatLangSheet();
+          if (typeof moduleWindow.openChatLangSheet === 'function') moduleWindow.openChatLangSheet();
         });
         return;
       }
       if (expression.indexOf('closeChatLangSheet()') !== -1) {
         element.addEventListener('click', function () {
-          if (typeof global.closeChatLangSheet === 'function') global.closeChatLangSheet();
+          if (typeof moduleWindow.closeChatLangSheet === 'function') moduleWindow.closeChatLangSheet();
         });
         return;
       }
       if (expression.indexOf('event.target===this') !== -1) {
         element.addEventListener('click', function (event) {
-          if (event.target === element && typeof global.closeChatLangSheet === 'function') {
-            global.closeChatLangSheet();
+          if (event.target === element && typeof moduleWindow.closeChatLangSheet === 'function') {
+            moduleWindow.closeChatLangSheet();
           }
         });
       }
