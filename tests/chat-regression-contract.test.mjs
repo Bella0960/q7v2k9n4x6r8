@@ -1904,9 +1904,10 @@ test('WeChat page refinements load on all five core pages and stay isolated from
     selectorLines.every((line) => line.startsWith('.phone-mockup[data-chat-theme-preset="wechat"]')),
     'every selector must be scoped to the active WeChat preset'
   );
-  assert.equal(
-    wechatThemeCss.includes('.msg-bubble'),
-    false,
+  const activeStylesheetRules = wechatThemeCss.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(
+    activeStylesheetRules,
+    /\.msg-bubble\b/,
     'message bubbles must remain under ChatBeauty customization'
   );
   assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261104v1'"));
