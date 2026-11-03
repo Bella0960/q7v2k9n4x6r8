@@ -1,5 +1,5 @@
-/* 小手机 PWA Service Worker
- * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
+/* MAOMAO PWA Service Worker
+ * 安装阶段只缓存轻量手机外壳；各应用页面与资源首次访问时再进入运行时缓存。
  */
 const CACHE_NAME = 'phone-app-pwa-v156-shell1';
 const APP_SHELL = [
@@ -24,7 +24,7 @@ const APP_SHELL = [
   './shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0',
   './assets/icon-192.png',
   './assets/icon-512.png'
-];;
+];
 
 self.addEventListener('install', event => {
   event.waitUntil(
