@@ -84,7 +84,7 @@ const PROVIDERS = [
     baseUrl: 'https://api-inference.modelscope.cn/v1',
     freeType: 'renewing-quota',
     notice: 'Daily Magicubes are limited; Alibaba account binding and real-name verification may be required. The source lists this tier as non-commercial.',
-    models: ['MiniMax/MiniMax-M1-80k', 'OpenGVLab/InternVL3_5-241B-A28B', 'Tencent-Hunyuan/Hy3']
+    models: ['MiniMax/MiniMax-M2.5', 'MiniMax/MiniMax-M1-80k', 'OpenGVLab/InternVL3_5-241B-A28B', 'Tencent-Hunyuan/Hy3']
   },
   {
     slug: 'scaleway',
@@ -110,6 +110,9 @@ const PROVIDERS = [
     freeType: 'evaluation',
     notice: 'NVIDIA trial terms describe this access as evaluation-only, not production. Phone verification is required.',
     models: [
+      'z-ai/glm-5.2',
+      'z-ai/glm-5.1',
+      'poolside/laguna-xs-2.1',
       '01-ai/yi-large',
       'ai21labs/jamba-1.5-large-instruct',
       'databricks/dbrx-instruct',
