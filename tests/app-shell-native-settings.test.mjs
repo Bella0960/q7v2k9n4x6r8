@@ -52,7 +52,11 @@ test('settings and its four major subviews run as native modules', async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const pageErrors = [];
+  const consoleErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
 
   await page.goto(PREVIEW_URL + '/index.html', { waitUntil: 'domcontentloaded' });
   await page.locator('#homeScreen [data-href="settings/settings.html"]').click();
@@ -87,6 +91,22 @@ test('settings and its four major subviews run as native modules', async () => {
   // Appearance is now a native module, and browser back restores the still-mounted settings module.
   await settingsView.getByText('外观', { exact: true }).click();
   const appearanceView = host.locator('.maomao-app-view[data-maomao-app-view="settings_appearance"]');
+  await page.waitForTimeout(1200);
+  const appearanceDiagnostics = await host.evaluate((root) => ({
+    route: new URL(location.href).searchParams.get('maomao_app'),
+    loadError: root.getAttribute('data-load-error'),
+    views: Array.from(root.querySelectorAll('.maomao-app-view')).map((view) => ({
+      id: view.getAttribute('data-maomao-app-view'),
+      hidden: view.hidden,
+      hasShadow: !!view.shadowRoot,
+      errorText: view.shadowRoot && view.shadowRoot.textContent.slice(0, 160)
+    }))
+  }));
+  assert.ok(
+    await appearanceView.count(),
+    'Appearance module did not mount: ' + JSON.stringify(appearanceDiagnostics) +
+      ' console=' + JSON.stringify(consoleErrors)
+  );
   await appearanceView.locator('.phone-mockup').waitFor();
   await appearanceView.locator('#homeIndicatorToggle').waitFor();
   assert.equal(await appearanceView.evaluate((view) => !!view.shadowRoot), true);
