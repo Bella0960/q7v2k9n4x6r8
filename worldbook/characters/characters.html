@@ -477,6 +477,82 @@
         }
         .import-json-btn:active { background: #F4F4F1; border-color: #222; color: #222; }
 
+        /* 人设智能整理：内联预览，不做抽屉 */
+        .persona-organize-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .persona-organize-actions .import-json-btn {
+            min-height: 44px;
+            font-size: 0.813rem;
+        }
+        .persona-organize-actions .import-json-btn[hidden] { display: none; }
+        .persona-organize-hint {
+            margin: 0;
+            padding-left: 2px;
+            color: #8E8E93;
+            font-size: 0.75rem;
+            line-height: 1.65;
+        }
+        .persona-organize-status {
+            min-height: 16px;
+            color: #777777;
+            font-size: 0.75rem;
+            line-height: 1.6;
+        }
+        .persona-organize-status[data-state="error"] { color: #555555; }
+        .persona-organize-status[data-state="success"] { color: #333333; }
+        .persona-organize-preview {
+            border-top: 1px solid #E5E5E5;
+            margin-top: 2px;
+        }
+        .persona-organize-preview.hidden { display: none; }
+        .po-section {
+            padding: 14px 0;
+            border-bottom: 1px solid #EFEFEF;
+        }
+        .po-section-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 7px;
+        }
+        .po-section-title {
+            margin: 0;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 0.813rem;
+            font-weight: 400;
+            letter-spacing: 0.01em;
+            color: #111111;
+        }
+        .po-section-note {
+            flex: none;
+            color: #8E8E93;
+            font-size: 0.65rem;
+            letter-spacing: 0.04em;
+        }
+        .po-body {
+            margin: 0;
+            color: #333333;
+            font-size: 0.813rem;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .po-empty { margin: 0; color: #A0A0A0; font-size: 0.75rem; }
+        .po-list { margin: 0; padding-left: 16px; }
+        .po-list li { margin: 0 0 6px; color: #333333; font-size: 0.78rem; line-height: 1.6; }
+        .po-list li:last-child { margin-bottom: 0; }
+        .po-muted { color: #8E8E93; }
+        .persona-organize-footnote {
+            margin: 10px 0 0;
+            color: #8E8E93;
+            font-size: 0.7rem;
+            line-height: 1.6;
+        }
+
         /* 沉浸式头像编辑器：保留原头像，确认后才进入资料草稿 */
         .portrait-studio {
             position: absolute; inset: 0; z-index: 120;
@@ -1112,7 +1188,19 @@
                     <input type="file" id="roleImportFile" accept=".json,.txt,application/json,text/plain" class="hidden">
                 </div>
 
-                <!-- 7. 保存按钮 -->
+                <!-- 7. 人设智能整理 -->
+                <div class="editor-field-group" id="personaOrganizeGroup">
+                    <label class="field-label" style="color: #8E8E93;">人设整理</label>
+                    <p class="persona-organize-hint" id="personaOrganizeHint">导入人设文件后，可先本地预解析，再按需调用一次 AI 归类。</p>
+                    <div class="persona-organize-actions">
+                        <button type="button" id="btnOrganizePersona" class="import-json-btn">智能整理</button>
+                        <button type="button" id="btnApplyOrganize" class="import-json-btn" hidden>采用整理结果</button>
+                    </div>
+                    <div class="persona-organize-status" id="personaOrganizeStatus" aria-live="polite"></div>
+                    <div class="persona-organize-preview hidden" id="personaOrganizePreview"></div>
+                </div>
+
+                <!-- 8. 保存按钮 -->
                 <div class="save-status" id="saveStatus" aria-live="polite" role="status"></div>
                 <button class="btn-save-fixed" id="btnSaveRole" type="button">保存设定</button>
             </main>
@@ -1150,6 +1238,7 @@
 
     </div>
     <script src="../../shared/js/phone/phone_storage.js?v=20261102a"></script>
+    <script src="../../shared/js/phone/phone_api.js?v=20261102a"></script>
     <script src="js/characters-manager.js?v=20261102a"></script>
     <script src="../../shared/js/nav.js"></script>
 <script src="../../shared/js/statusbar-control.js"></script>
