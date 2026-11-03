@@ -253,6 +253,23 @@ test('external and out-of-scope destinations are not intercepted', () => {
   assert.equal(env.host.getActiveRoute(), 'chat/chat/chat.html');
 });
 
+test('legacy scripts that navigate back to index return to desktop and release the old frame', () => {
+  const env = makeEnvironment();
+  env.host.open('settings/settings.html');
+  const frame = env.root.children[0];
+  frame.dispatchEvent({ type: 'load' });
+
+  frame.contentWindow.location.href = 'https://maomao.test/index.html';
+  frame.dispatchEvent({ type: 'load' });
+
+  assert.equal(env.host.getActiveRoute(), null);
+  assert.equal(env.root.hidden, true);
+  assert.equal(env.root.children.length, 0);
+  env.host.open('settings/settings.html');
+  assert.equal(env.root.children.length, 1);
+  assert.notEqual(env.root.children[0], frame);
+});
+
 test('the host destroys its frames and event bindings cleanly', () => {
   const env = makeEnvironment();
   env.host.open('chat/chat/chat.html');
