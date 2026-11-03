@@ -13,7 +13,8 @@
     { id: 'settings_tts', path: 'minimax-tts.html', title: 'MiniMax 语音合成' },
     { id: 'settings_logs', path: '../tools/api-logs.html', title: 'API 调用记录' },
     { id: 'settings_call', path: '../chat/call/call-settings.html', title: '通话设置' },
-    { id: 'settings_rp_protocol', path: '../worldbook/settings/rp-protocol.html', title: '全局伴侣协议' }
+    { id: 'settings_rp_protocol', path: '../worldbook/settings/rp-protocol.html', title: '全局伴侣协议' },
+    { id: 'settings_stickers', path: '../chat/sticker/sticker-manager.html', title: '贴纸管理' }
   ];
 
   var scriptCache = new Map();
@@ -139,7 +140,7 @@
     throw new Error('未配置原生加载方式的设置脚本：' + path);
   }
 
-  function bindNavigation(shadow, pageUrl) {
+  function bindNavigation(shadow, pageUrl, pageId) {
     var hostBridge = global.__MAOMAO_LEGACY_HOST__;
     function navigate(rawUrl, event) {
       if (!hostBridge || !rawUrl || rawUrl === '#') return false;
@@ -166,6 +167,20 @@
       element.removeAttribute('onclick');
       element.addEventListener('click', function (event) { navigate(match[1], event); });
     });
+
+    if (pageId === 'settings_stickers') {
+      // Sticker manager has a two-level back control: sticker grid -> library list -> settings.
+      // Prevent the legacy javascript:history.back() href from skipping the library-list step.
+      shadow.addEventListener('click', function (event) {
+        var backButton = event.target && event.target.closest ? event.target.closest('#backBtn') : null;
+        if (!backButton || !shadow.contains(backButton)) return;
+        event.preventDefault();
+        if (shadow.querySelector('#stage .sticker-grid')) return;
+        if (hostBridge && typeof hostBridge.backToParent === 'function') {
+          hostBridge.backToParent(new URL('settings.html', SETTINGS_BASE).href);
+        }
+      }, true);
+    }
 
     shadow.addEventListener('click', function (event) {
       var target = event.target && event.target.closest ? event.target.closest('a[href]') : null;
@@ -239,7 +254,7 @@
           }
         }
 
-        bindNavigation(shadow, pageUrl);
+        bindNavigation(shadow, pageUrl, page.id);
         var themeListener = function () {
           var theme = global.MAOMAOTheme && global.MAOMAOTheme.get
             ? global.MAOMAOTheme.get()
