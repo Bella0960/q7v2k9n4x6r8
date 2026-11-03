@@ -90,7 +90,7 @@ function collectFormFields() {
         provider: apiProviderSelect.value,
         baseUrl: (apiUrlInput.value || '').trim() || 'https://api.openai.com/v1',
         apiKey: (apiKeyInput.value || '').trim(),
-        model: (apiModelInput.value || '').trim() || 'gpt-3.5-turbo',
+        model: (apiModelInput.value || '').trim() || (apiProviderSelect.value === 'maomao_free' ? '' : 'gpt-3.5-turbo'),
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),
         temperature: parseFloat(apiTemperatureInput.value) || 0.7,
         maxTokens: apiMaxTokensInput ? apiMaxTokensInput.value.trim() : '',
@@ -160,12 +160,18 @@ const PROVIDER_PRESETS = {
     deepseek:    { url: 'https://api.deepseek.com/v1',          model: 'deepseek-chat' },
     moonshot:    { url: 'https://api.moonshot.cn/v1',           model: 'moonshot-v1-8k' },
     zhipu:       { url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
-    siliconflow: { url: 'https://api.siliconflow.cn/v1',        model: 'deepseek-ai/DeepSeek-V3' }
+    siliconflow: { url: 'https://api.siliconflow.cn/v1',        model: 'deepseek-ai/DeepSeek-V3' },
+    maomao_free: { url: window.location.origin + '/v1',         model: '' }
 };
 const PRESET_LABELS = {
     openai: 'OpenAI', deepseek: 'DeepSeek', moonshot: 'Moonshot',
-    zhipu: '智谱 GLM', siliconflow: '硅基流动'
+    zhipu: '智谱 GLM', siliconflow: '硅基流动', maomao_free: 'MAOMAO 免费模型网关'
 };
+
+function syncFreeGatewayHint() {
+    const hint = document.getElementById('free-gateway-hint');
+    if (hint) hint.style.display = apiProviderSelect && apiProviderSelect.value === 'maomao_free' ? 'block' : 'none';
+}
 
 function showToast(text) {
     toastMsg.textContent = text;
@@ -184,8 +190,9 @@ if (apiProviderSelect) {
         const preset = PROVIDER_PRESETS[this.value];
         if (preset && apiUrlInput) {
             apiUrlInput.value = preset.url;
-            if (preset.model && apiModelInput) apiModelInput.value = preset.model;
+            if (apiModelInput) apiModelInput.value = preset.model || '';
         }
+        syncFreeGatewayHint();
     });
 }
 
@@ -525,7 +532,7 @@ function loadConfig() {
                 apiNameInput.value = parsed.name || '默认配置';
                 apiUrlInput.value = parsed.baseUrl || 'https://api.openai.com/v1';
                 apiKeyInput.value = parsed.apiKey || '';
-                apiModelInput.value = parsed.model || 'gpt-3.5-turbo';
+                apiModelInput.value = parsed.model || '';
                 window.__loadedPrompt = parsed.prompt || '';
                 if (apiPromptInput) apiPromptInput.value = parsed.prompt || '';
                 apiMemoryInput.value = parsed.memoryCount != null ? parsed.memoryCount : 20;
@@ -541,6 +548,8 @@ function loadConfig() {
                     }
                 }
                 apiProviderSelect.value = parsed.provider || matchedProvider;
+                if (!apiModelInput.value && apiProviderSelect.value !== 'maomao_free') apiModelInput.value = 'gpt-3.5-turbo';
+                syncFreeGatewayHint();
                 return;
             }
         }
@@ -559,6 +568,7 @@ function loadConfig() {
     if (apiMaxTokensInput) apiMaxTokensInput.value = '';
     if (apiTopPInput) apiTopPInput.value = 1;
     apiTimeAwareInput.checked = true;
+    syncFreeGatewayHint();
 }
 
 settingsForm.addEventListener('submit', function(e) {
@@ -587,7 +597,7 @@ settingsForm.addEventListener('submit', function(e) {
         provider: apiProviderSelect.value,
         baseUrl: apiUrlInput.value.trim() || 'https://api.openai.com/v1',
         apiKey: apiKey,
-        model: apiModelInput.value.trim() || 'gpt-3.5-turbo',
+        model: apiModelInput.value.trim() || (apiProviderSelect.value === 'maomao_free' ? '' : 'gpt-3.5-turbo'),
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),
         temperature: parseFloat(apiTemperatureInput.value) || 0.7,
         maxTokens: maxTokVal,
@@ -652,6 +662,7 @@ if (modelModalClose) {
 }
 
 loadConfig();
+syncFreeGatewayHint();
 syncParamLabels();
 renderProfilePills();
 renderPresetChips();
