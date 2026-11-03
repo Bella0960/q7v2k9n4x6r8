@@ -79,7 +79,8 @@
 
       var documentFacade = {
         getElementById: function (id) {
-          return shadow.getElementById(id);
+          if (typeof shadow.getElementById === 'function') return shadow.getElementById(id);
+          return shadow.querySelector('[id="' + String(id).replace(/"/g, '\\\"') + '"]');
         },
         createElement: function (tagName, options) {
           return document.createElement(tagName, options);
