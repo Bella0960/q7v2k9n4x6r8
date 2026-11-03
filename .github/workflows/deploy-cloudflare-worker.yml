@@ -44,6 +44,9 @@ jobs:
       - name: Build MAOMAO web pages
         run: npm run build
 
+      - name: Verify PWA navigation fallback
+        run: npm run test:pwa:navigation
+
       - name: Deploy Cloudflare Worker
         uses: cloudflare/wrangler-action@v3
         with:
