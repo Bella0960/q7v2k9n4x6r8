@@ -213,8 +213,12 @@ test('静态契约：旧角色保存路径不会清空 personaRaw', () => {
   assert.ok(!managerSource.includes('delete target.personaRaw'));
 });
 
-test('静态契约：档案顶部优先展示 personaRaw，且保留 persona 兜底', () => {
-  assert.ok(managerSource.includes('escapeHtml(role.personaRaw || role.persona ||'));
+test('静态契约：档案顶部只展示 persona，导入原文放在整理面板内部', () => {
+  // UI-001 契约：顶部折叠区仍为 escapeHtml(role.persona || ...)，不得改成 personaRaw 优先。
+  assert.ok(managerSource.includes('escapeHtml(role.persona ||'));
+  assert.ok(!managerSource.includes('role.personaRaw || role.persona'));
+  // 原文只读预览在整理面板内部。
+  assert.ok(managerSource.includes("document.getElementById('personaRawPreview')"));
 });
 
 test('静态契约：草稿 payload 带 personaRaw，恢复时回填', () => {

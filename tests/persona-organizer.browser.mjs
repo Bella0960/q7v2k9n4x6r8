@@ -245,13 +245,17 @@ async function scenarioFreshImport(browser, baseUrl) {
     await page.waitForSelector('.profile-persona-body');
     await sleep(60);
     const profileText = await page.textContent('.profile-persona-body');
-    check('档案顶部展示 personaRaw', !!reloaded && profileText.includes(reloaded.personaRaw),
-      { profileHead: profileText.slice(0, 30) });
+    check('档案顶部展示 persona（不含原始导入文本）', !!reloaded && profileText.includes('旧书店店主') &&
+      !profileText.includes('【人物关系】'), { profileHead: profileText.slice(0, 30) });
     check('档案折叠行为仍可用', await page.locator('[data-persona-toggle]').count() >= 0, { note: '由 UI-001 测试覆盖' });
 
     // 重新打开旧角色再保存，personaRaw 不得被清空。
     await page.click('[data-profile-action="basic"]');
     await page.waitForSelector('#btnOrganizePersona');
+    await sleep(60);
+    const rawPreview = await page.textContent('#personaRawPreview');
+    check('整理面板内部展示导入原文', rawPreview.includes('【人物关系】') && rawPreview.includes('林晚'),
+      { rawPreview: rawPreview.slice(0, 24) });
     await page.click('#btnSaveRole');
     await sleep(100);
     const rolesAfterResave = await readRoles(page);
