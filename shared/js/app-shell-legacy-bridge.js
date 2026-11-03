@@ -22,6 +22,7 @@
     var nativeShell = null;
     var nativeRoutes = Object.create(null);
     nativeRoutes['settings/settings.html'] = 'settings';
+    nativeRoutes['beauty/beauty.html'] = 'beauty';
     nativeRoutes['settings/appearance.html'] = 'settings_appearance';
     nativeRoutes['settings/font-settings.html'] = 'settings_font';
     nativeRoutes['settings/sound-settings.html'] = 'settings_sound';
@@ -46,6 +47,7 @@
             home: { module: emptyModule },
             legacy: { module: emptyModule },
             settings: { src: 'apps/settings/settings-module.js' },
+            beauty: { src: 'apps/beauty/beauty-module.js' },
             settings_appearance: { src: 'apps/settings/settings-subviews.js' },
             settings_font: { src: 'apps/settings/settings-subviews.js' },
             settings_sound: { src: 'apps/settings/settings-subviews.js' },
