@@ -203,6 +203,21 @@ Acceptance before implementation:
 
 ## Phase 3 — Shared architecture and feature safety
 
+### UI-001 — Complete the WeChat theme across core communication pages
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Scope: finish the WeChat preset across the chat home/list, conversation detail, contacts, Moments, and Me page. Presentation-only changes; keep existing routes, page data, storage keys, character/group identity, and interaction handlers intact.
+
+Boundary: every refinement must be scoped to `data-chat-theme-preset="wechat"`. ChatBeauty remains the owner of message bubble customization; the WeChat page theme must not overwrite per-role or global bubble preferences.
+
+Acceptance:
+- The five core pages share a coherent WeChat visual system at 375–430px, including status/header areas, list rhythm, contact index, Moments cover/feed/comment sheet, Me page groups, and bottom tabs.
+- Chat detail header, message canvas, quote bar, and composer match the WeChat page chrome without forcing a bubble preset.
+- Search, group creation, contact routing, Moments publish/like/comment/AI-post, profile editing, cover/avatar upload, and bottom navigation remain functional.
+- Other page themes and the default theme receive no visual overrides.
+- Build and chat contract tests pass; desktop shell and real-phone screenshots are recorded before closure.
+
+
 ### ARCH-001 — Reduce chat-detail coupling
 **Priority:** P1 · **Status:** OPEN
 
