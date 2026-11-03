@@ -127,7 +127,7 @@ MAOMAO 当前是原生 HTML/CSS/JS 的多页面应用（MPA）。每个主要功
 - 全局状态栏控制器已能扫描并观察原生应用 Shadow DOM；时间、电量和桌面底部横条开关继续使用原来的偏好键。
 - 子页返回优先回到历史栈中的设置页记录；旧页面的 `window.history.back()` 与 `window.location.href` 也会通过模块级适配器交给 App Shell，深链打开时不会误退到空白页或整页刷新。连续切换后浏览器后退可退出到桌面。未迁移页面仍由同一个兼容桥接层承载 iframe。
 - Chromium 浏览器测试覆盖原生设置页、十个子页、API 面板、深色模式、状态栏开关、通话设置读写、RP 协议保存/预览、贴纸库新建与两级返回、正则规则新增/保存/刷新、子页返回和兼容 iframe 回退。
-- GitHub Actions 已通过：Vite 生产构建成功、聊天合同测试 90/90、App Shell 测试 15/15；本轮设置八子页测试记录：<https://github.com/Bella0960/MAOMAO/actions/runs/41566316335>。
+- GitHub Actions 已通过：Vite 生产构建成功、聊天合同测试 90/90、App Shell/Chromium 测试 17/17；本轮十个原生设置子模块及深链返回测试记录：<https://github.com/Bella0960/MAOMAO/actions/runs/41567072388>。
 - 尚需真实手机/PWA 实测启动、连续切换、返回、离线资源和不同浏览器表现；当前没有部署生产，也没有合并到 `main`。
 
 ### Phase 2 — 继续迁移剩余设置入口与低风险应用
