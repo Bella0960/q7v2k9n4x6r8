@@ -21,6 +21,10 @@
     var nativeShell = null;
     var nativeRoutes = Object.create(null);
     nativeRoutes['settings/settings.html'] = 'settings';
+    nativeRoutes['settings/appearance.html'] = 'settings_appearance';
+    nativeRoutes['settings/font-settings.html'] = 'settings_font';
+    nativeRoutes['settings/sound-settings.html'] = 'settings_sound';
+    nativeRoutes['settings/icon-settings.html'] = 'settings_icons';
     var destroyed = false;
     var useSequence = 0;
 
@@ -34,7 +38,11 @@
           apps: {
             home: { module: emptyModule },
             legacy: { module: emptyModule },
-            settings: { src: 'apps/settings/settings-module.js' }
+            settings: { src: 'apps/settings/settings-module.js' },
+            settings_appearance: { src: 'apps/settings/settings-subviews.js' },
+            settings_font: { src: 'apps/settings/settings-subviews.js' },
+            settings_sound: { src: 'apps/settings/settings-subviews.js' },
+            settings_icons: { src: 'apps/settings/settings-subviews.js' }
           },
           onError: function (error, details) {
             if (typeof options.onError === 'function') options.onError(error, details);
