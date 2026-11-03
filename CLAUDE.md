@@ -6,7 +6,7 @@
 
 ## 技术栈与架构
 
-- **纯原生 HTML/CSS/JS**：零框架（无 React/Vue/jQuery）、零运行时依赖、无 TypeScript。唯一 devDependency 是 vite。
+- **纯原生 HTML/CSS/JS**：零框架（无 React/Vue/jQuery）、零运行时依赖、无 TypeScript。开发依赖包括 Vite 和 Playwright；项目没有 React/Vue 等前端运行时框架。
 - **MPA 多页架构**：一个页面 = 一个自包含 HTML（内嵌 `<style>` 与 `<script>`）。导航 = 整页跳转 `window.location.href`，**无路由库、无 hash 路由、无 iframe**；参数走 query string（如 `chat-detail.html?id=xxx`）。
 - **共享 JS = IIFE + 全局命名空间**（如 `global.PhoneStorage = {}`），无 import/export；`package.json` 的 `"type": "module"` 仅作用于 vite.config.js。
 - **Vite 可选**：`vite.config.js` 自动扫描全部 HTML 作为多页入口；项目全用相对路径 + `?v=YYYYMMDD` 缓存参数，**静态托管仓库根目录即可运行**（nav.js 已适配 GitHub Pages 子路径部署）。
@@ -31,13 +31,13 @@ shared/
   css/mobile-fit.css    # ≤480px 真机适配（剥手机壳、隐藏滚动条）
   js/                   # 通用层：font-loader / native-feel / nav / sound-system /
                         #   statusbar-control / mask（面具）/ memory（记忆）/ custom-css（美化注入）
-  js/phone/             # ★ AI 基础设施层（6 模块，见下）
+  js/phone/             # ★ AI 基础设施层（多模块，见下）
 desktop/                # "手机桌面"本身：css/styles.css（机身/宫格/挂件样式）、
                         #   js/script.js（时钟、data-href 跳转代理）、widgets.html（挂件管理）
-chat/                   # 聊天套件（13 页）：chat/（列表 + chat-detail 核心 + 搜索/设置/气泡主题）、
+chat/                   # 聊天套件（16 页）：chat/（列表 + chat-detail 核心 + 搜索/设置/气泡主题）、
                         #   contacts/、moments/（空间 + 整机刷新入口）、call/（模拟通话）、
                         #   footprint/（足迹）、sticker/（贴纸库）
-forum/                  # 论坛（9 页，含 forum-editorial 编辑控制）
+forum/                  # 论坛（8 页，含 forum-editorial 编辑控制）
 worldbook/              # RP 设定中枢：characters/（角色库）、memory/（记忆空间）、
                         #   mask/（设定/面具）、settings/（正则过滤 + RP 协议）、worldbook/（世界书）
 wallet/                 # wallet / finance（记账）/ shop（商店）/ shop-admin（店铺管理）
