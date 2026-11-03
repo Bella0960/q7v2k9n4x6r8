@@ -1882,8 +1882,8 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
   const listThemeCss = read('shared/css/chat-list-editorial-theme.css');
   const listThemeScript = read('shared/js/chat-list-theme.js');
 
-  assert.match(chatHome, /chat-list-editorial-theme\\.css\\?v=20261104v2/);
-  assert.match(chatHome, /chat-list-theme\\.js\\?v=20261104v2/);
+  assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
+  assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
   assert.match(serviceWorker, /phone-app-pwa-v159/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
@@ -1892,11 +1892,8 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
     assert.ok(listThemeCss.toUpperCase().includes(value), 'missing neutral token: ' + value);
   }
   assert.equal(listThemeCss.includes('#F7F6F2'), false, 'theme must not drift toward warm beige');
-  assert.match(
-    listThemeCss,
-    /\\.phone-mockup\\[data-chat-list-theme="editorial"\\] \\.floating-music-card\\s*\\{\\s*display:\\s*none\\s*!important/s
-  );
-  assert.match(listThemeCss, /\\.phone-mockup\\[data-chat-list-theme="editorial"\\] \\#chatListContainer/);
+  assert.ok(listThemeCss.includes('.phone-mockup[data-chat-list-theme="editorial"] .floating-music-card {\\n  display: none !important;'));
+  assert.ok(listThemeCss.includes('.phone-mockup[data-chat-list-theme="editorial"] #chatListContainer {'));
   assert.equal(listThemeCss.includes('data-chat-theme-preset='), false, 'list-only CSS must not target whole-chat themes');
 
   assert.ok(storePage.includes("CHAT_LIST_THEME_KEY='maomao_chat_list_theme_preset_v1'"));
