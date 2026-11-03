@@ -5,6 +5,8 @@ name: Inspect Phone Gesture & Layout
 #   - 首次上滑解锁（真实 CDP touch 事件，不是 click 兜底）
 #
 # 与 perf-gate 互不依赖、互不影响；失败只标记此 workflow 红灯。
+# Playwright 浏览器目录不通过 env: 字面量传（GitHub 不做 shell 变量展开），
+# 让 Playwright 使用默认缓存目录即可，安装与测试自然共用。
 
 on:
   push:
@@ -30,7 +32,7 @@ permissions:
 jobs:
   inspect-phone:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -44,34 +46,56 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 不通过 env: 写 PLAYWRIGHT_BROWSERS_PATH（GitHub Actions 的 env: 不展开
+      # $GITHUB_WORKSPACE 这种 shell 变量，字面量传给 Playwright 找不到浏览器）。
+      # 这里用默认缓存目录 ~/.cache/ms-playwright，安装与测试自然共用。
       - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install --with-deps chromium
+          echo "Playwright browsers at: $(npx playwright install --dry-run 2>&1 || true)"
+          # 打印默认路径供排查
+          node -e "console.log('PW default cache:', require('playwright-core').chromium.executablePath())" || true
 
       - name: Build production bundle
         run: npm run build
 
       - name: Start vite preview server
         run: |
-          npm run preview -- --host 127.0.0.1 --port 3000 &
+          npm run preview -- --host 127.0.0.1 --port 3000 > preview.log 2>&1 &
           echo $! > preview.pid
-          # 等端口起来（最多 15s）
-          for i in $(seq 1 30); do
+          # 等端口起来（最多 20s），失败直接退出
+          READY=0
+          for i in $(seq 1 40); do
             if curl -sf http://127.0.0.1:3000/ >/dev/null 2>&1; then
-              echo "preview server ready after ${i}*0.5s"
+              echo "preview server ready after $((i*0.5))s"
+              READY=1
               break
             fi
             sleep 0.5
           done
+          if [ "$READY" -ne 1 ]; then
+            echo "preview server failed to start"
+            cat preview.log || true
+            exit 1
+          fi
 
+      # BASE_URL 是纯字面量，无需 shell 展开，可以用 env:
       - name: Run inspect-phone regression tests
         env:
           BASE_URL: http://127.0.0.1:3000
-          PLAYWRIGHT_BROWSERS_PATH: $GITHUB_WORKSPACE/.cache/ms-playwright
-        run: node tests/inspect-phone-gesture.test.mjs
+        run: |
+          echo "Testing against $BASE_URL"
+          # 打印可观测信息：当前 Playwright 浏览器路径
+          node -e "const pw=require('playwright'); console.log('chromium executable:', pw.chromium.executablePath())" || true
+          node tests/inspect-phone-gesture.test.mjs
 
       - name: Stop preview server
         if: always()
         run: |
           if [ -f preview.pid ]; then
             kill $(cat preview.pid) || true
+          fi
+          if [ -f preview.log ]; then
+            echo "=== preview.log tail ==="
+            tail -n 20 preview.log || true
           fi

@@ -1,9 +1,17 @@
 /**
- * inspect-phone/phone.html 解锁手势与窄屏布局回归测试。
+ * inspect-phone/phone.html 解锁手势与窄屏布局回归测试（v2 重写）。
  *
- * 核心特性：用 Playwright CDP Input.dispatchTouchEvent 派发真实 trusted touch
- * 事件（pointerId 从 0 起、touchEnd 时 touchPoints 为空数组），不触发 click，
- * 真正验证 touch 通道是否独立生效——上一轮 mouse+click 兜底能"蒙对"的路径在这里被彻底切断。
+ * 核心：用 Playwright CDP Input.dispatchTouchEvent 派发真实 trusted touch
+ * 事件（pointerId 从 0 起、touchEnd/touchCancel 时 touchPoints 为空数组），
+ * 不产生 click 事件，不触发浏览器默认手势拦截。
+ *
+ * v2 变更（针对审查 #2 / #3 / #4）：
+ *   - Test 3: 从纯数学 shouldUnlock 断言 → 独立页面 + 真实 CDP touch 边界用例
+ *             （每个阈值 case 起独立页面，不跨 case 复用状态）
+ *   - Test 5: 用 CDP touchCancel 代替 mousePressed/mouseReleased
+ *             （后者会触发 click 兜底解锁，使 cancel 测试无效）
+ *   - 所有 touch 用例额外断言 clickCount === 0，证明不是 click 兜底蒙对
+ *   - 保留 Test 4/6/7/8/1 不变
  *
  * 运行：
  *   BASE_URL=http://localhost:3000 node tests/inspect-phone-gesture.test.mjs
@@ -37,17 +45,27 @@ async function freshPage(viewport = { width: 390, height: 844 }) {
   return { browser, page, cdp };
 }
 
+/** 开启 click 计数：给 .lock 的 click 加一条 window.__clickCount++ 监听 */
+async function installClickCounter(page) {
+  await page.evaluate(() => {
+    window.__clickCount = 0;
+    const lock = document.getElementById('lock');
+    if (lock) {
+      // passive: true 让 click 能继续触发 unlockPhone
+      lock.addEventListener('click', () => { window.__clickCount++; });
+    }
+  });
+}
+
 /**
  * CDP 真实触摸：touchStart → N×touchMove → touchEnd
- * 不产生 click 事件，不触发浏览器默认手势拦截，完全模拟手指滑动。
+ * 不产生 click 事件，不触发浏览器默认手势拦截。
  */
 async function touchSwipe(cdp, startX, startY, endX, endY, steps = 8) {
-  // touchStart
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [{ x: startX, y: startY, pointerId: 0 }],
   });
-  // touchMove 序列
   for (let i = 1; i <= steps; i++) {
     const x = startX + ((endX - startX) * i / steps);
     const y = startY + ((endY - startY) * i / steps);
@@ -56,19 +74,32 @@ async function touchSwipe(cdp, startX, startY, endX, endY, steps = 8) {
       touchPoints: [{ x, y, pointerId: 0 }],
     });
   }
-  // touchEnd：touchPoints 传空数组表示手指抬起
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
-/** 阈值条件（与源码 shouldUnlock 完全一致） */
-const shouldUnlock = (dy, dx) => dy < -36 && Math.abs(dy) > Math.abs(dx) * 1.15;
+/**
+ * CDP 纯 touchCancel：touchStart → touchCancel，**不发 touchEnd**。
+ * 空 touchPoints 让浏览器派发真实 touchcancel 事件，对应页面 JS 中
+ * lock.addEventListener('touchcancel', resetLockState) 的分支。
+ */
+async function touchCancel(cdp, x, y) {
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x, y, pointerId: 0 }],
+  });
+  // Playwright CDP 1.43+ 支持 touchCancel
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchCancel',
+    touchPoints: [],
+  });
+}
 
 async function main() {
-  console.log('\n=== inspect-phone 回归测试（真实 CDP touch）===');
+  console.log('\n=== inspect-phone 回归测试 v2（纯 CDP touch，无 click 兜底）===');
   console.log('BASE:', BASE);
 
-  // ---- 测试 1: 移动视口窄屏无白边（HTML/CSS 层）----
-  console.log('\n--- Test 1: 390x844 窄屏无白边 ---');
+  // ---- Test 1: 窄屏无白边（HTML/CSS 层）----
+  console.log('\n--- Test 1: 390x844 窄屏无白边 / 无溢出 / touch-action 收窄 ---');
   {
     const { browser, page } = await freshPage({ width: 390, height: 844 });
     await page.goto(URL, { waitUntil: 'networkidle' });
@@ -84,7 +115,6 @@ async function main() {
         d: { left: r.left, right: r.right, w: r.width, border: s.borderWidth, br: s.borderRadius },
         bg: getComputedStyle(document.body).backgroundColor,
         lockTA: lStyle.touchAction,
-        // .device touch-action 是否被收窄（应为 auto/manipulation 等，不是 none）
         deviceTA: getComputedStyle(d).touchAction,
       };
     });
@@ -94,168 +124,194 @@ async function main() {
     assert(l.d.border === '0px', `border 清零: ${l.d.border}`);
     assert(l.d.br === '0px', `border-radius 清零: ${l.d.br}`);
     assert(l.sw <= l.cw + 1, `无横向溢出: sw=${l.sw} cw=${l.cw}`);
-    assert(l.lockTA === 'none', `.lock touch-action=none (解锁手势接管): ${l.lockTA}`);
+    assert(l.lockTA === 'none', `.lock touch-action=none: ${l.lockTA}`);
     assert(l.deviceTA !== 'none', `.device touch-action 已收窄（不是 none）: ${l.deviceTA}`);
     assert(l.bg === 'rgb(255, 255, 255)', `body 白底: ${l.bg}`);
     await browser.close();
   }
 
-  // ---- 测试 2: 首次上滑解锁（真实 CDP touch，不触发 click）----
-  console.log('\n--- Test 2: 首次上滑解锁（CDP touch，无 click 兜底）---');
+  // ---- Test 2: 首次上滑解锁（真实 CDP touch，不触发 click）----
+  console.log('\n--- Test 2: 首次 touch 上滑解锁（全程无 click）---');
   {
     const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
     await page.goto(URL, { waitUntil: 'networkidle' });
-
-    // 全程不派发 click；额外监听 click 事件来证明它根本没到
-    const clickCountRef = { n: 0 };
-    await page.evaluate(() => {
-      window.__testClickCount = 0;
-      document.getElementById('lock').addEventListener('click', () => { window.__testClickCount++; });
-    });
+    await installClickCounter(page);
 
     const before = await page.evaluate(() =>
       document.getElementById('lock').classList.contains('hide'));
     assert(before === false, '初始锁屏可见');
 
-    // 上滑：(195, 700) → (195, 350), dy = -350
+    // 上滑 dy=-350: (195, 700) → (195, 350)
     await touchSwipe(cdp, 195, 700, 195, 350);
     await page.waitForTimeout(80);
 
     const after = await page.evaluate(() => ({
       lockHidden: document.getElementById('lock').classList.contains('hide'),
       phoneShown: document.getElementById('phone').classList.contains('show'),
-      clickCount: window.__testClickCount,
+      clickCount: window.__clickCount,
     }));
-    assert(after.lockHidden === true, '首次 touch 上滑后锁屏隐藏（pointer 通道生效）');
+    assert(after.lockHidden === true, '首次 touch 上滑后锁屏隐藏');
     assert(after.phoneShown === true, '桌面内容已显示');
-    assert(after.clickCount === 0, `click 通道未被触发（纯 touch 解锁）: clickCount=${after.clickCount}`);
+    assert(after.clickCount === 0, `clickCount=0（纯 touch 解锁，不是 click 兜底）: ${after.clickCount}`);
     await browser.close();
   }
 
-  // ---- 测试 3: 边界值 ----
-  console.log('\n--- Test 3: 边界值判定（shouldUnlock 源码条件）---');
-  {
-    const cases = [
-      { dy: -350, dx: 0,   expect: true,  label: '上滑 -350px 竖直' },
-      { dy: -37,  dx: 0,   expect: true,  label: '上滑 -37px 刚过阈值（> -36）' },
-      { dy: -36,  dx: 0,   expect: false, label: '上滑 -36px 边界不触发（严格 < -36）' },
-      { dy: -35,  dx: 0,   expect: false, label: '上滑 -35px 不够阈值' },
-      { dy: -20,  dx: 0,   expect: false, label: '上滑 -20px 远不够' },
-      { dy: 0,    dx: 300, expect: false, label: '横向滑动 dy=0' },
-      { dy: -20,  dx: 100, expect: false, label: '斜滑 近水平 |dy|=20 < 115' },
-      { dy: -300, dx: 350, expect: false, label: '斜滑 |dy|=300 < 350*1.15=402.5' },
-      { dy: -350, dx: 50,  expect: true,  label: '斜滑 略水平 |dy|=350 > 50*1.15=57.5' },
-      { dy: 350,  dx: 0,   expect: false, label: '向下滑动 dy > 0' },
-    ];
-    for (const c of cases) {
-      const got = shouldUnlock(c.dy, c.dx);
-      assert(got === c.expect,
-        `dy=${c.dy} dx=${c.dx} → ${got} (expect ${c.expect}) [${c.label}]`);
-    }
-  }
+  // ---- Test 3: 阈值边界真实触摸用例（每个 case 独立页面 + clickCount=0 断言）----
+  console.log('\n--- Test 3: 阈值边界（每个 case 独立页面，真实 CDP touch）---');
 
-  // ---- 测试 4: 横向滑动（真实 touch，dy 小 dx 大）不解锁 ----
-  console.log('\n--- Test 4: 真实 touch 横向滑动不解锁 ---');
+  // case: dy=-37 → 刚过阈值，应解锁
   {
     const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
     await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
+    // (195, 700) → (195, 663): dy = -37
+    await touchSwipe(cdp, 195, 700, 195, 663);
+    await page.waitForTimeout(80);
+    const r = await page.evaluate(() => ({ hidden: document.getElementById('lock').classList.contains('hide'), cc: window.__clickCount }));
+    assert(r.hidden === true && r.cc === 0, `dy=-37 → 解锁且 clickCount=0`);
+    await browser.close();
+  }
 
-    // 水平方向从 x=50 滑到 x=350，y=400 不动：dy=0, dx=300
+  // case: dy=-36 → 严格 < -36 才触发，边界不触发
+  {
+    const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
+    // (195, 700) → (195, 664): dy = -36
+    await touchSwipe(cdp, 195, 700, 195, 664);
+    await page.waitForTimeout(80);
+    const r = await page.evaluate(() => ({ hidden: document.getElementById('lock').classList.contains('hide'), cc: window.__clickCount }));
+    assert(r.hidden === false && r.cc === 0, `dy=-36 → 不解锁且 clickCount=0（边界不触发）`);
+    await browser.close();
+  }
+
+  // case: dy=-25 → 明显不够阈值（> Chrome ~10px tap 阈值，不会被当成 tap 生成 click）
+  {
+    const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
+    // (195, 700) → (195, 675): dy = -25，远低于 -36 阈值，但高于 Chrome ~10px tap 阈值
+    await touchSwipe(cdp, 195, 700, 195, 675);
+    await page.waitForTimeout(80);
+    const r = await page.evaluate(() => ({ hidden: document.getElementById('lock').classList.contains('hide'), cc: window.__clickCount }));
+    assert(r.hidden === false && r.cc === 0, `dy=-25 → 不解锁且 clickCount=0（没通过 click 兜底，也没达到 -36 阈值）`);
+    await browser.close();
+  }
+
+  // case: 横向滑动 dx=300 dy=0 → 不解锁
+  {
+    const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
     await touchSwipe(cdp, 50, 400, 350, 400);
     await page.waitForTimeout(80);
-
-    const stillLocked = await page.evaluate(() =>
-      !document.getElementById('lock').classList.contains('hide'));
-    assert(stillLocked === true, '横向滑动后锁屏仍在（未误判解锁）');
+    const r = await page.evaluate(() => ({ hidden: document.getElementById('lock').classList.contains('hide'), cc: window.__clickCount }));
+    assert(r.hidden === false && r.cc === 0, `横向 dx=300 → 不解锁且 clickCount=0`);
     await browser.close();
   }
 
-  // ---- 测试 5: pointercancel / touchcancel 后可再次解锁 ----
-  console.log('\n--- Test 5: cancel 后状态复位（pointercancel + touchcancel）---');
+  // ---- Test 4: 斜滑边界 |dy| ≈ |dx|*1.15 ----
+  console.log('\n--- Test 4: 斜滑边界（独立页面）---');
   {
     const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
     await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
+    // dx=300, dy=-300: |dy|=300 < 300*1.15=345 → 不解锁
+    await touchSwipe(cdp, 100, 500, 400, 200);
+    await page.waitForTimeout(80);
+    const r = await page.evaluate(() => ({ hidden: document.getElementById('lock').classList.contains('hide'), cc: window.__clickCount }));
+    assert(r.hidden === false && r.cc === 0, `斜滑 dy=-300 dx=300 → 不解锁`);
+    await browser.close();
+  }
 
-    // 先派发 pointerdown → pointercancel 模拟系统中断
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed', button: 'left', clickCount: 1, x: 195, y: 700,
-    });
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased', button: 'left', clickCount: 1, x: 195, y: 700,
-    });
-    // 派发真实 pointercancel（用 dispatchKeyEvent Escape 触发）
-    // CDP 没有直接的 pointercancel，改用 touch cancel 序列
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{ x: 195, y: 700, pointerId: 5 }],
-    });
-    // CDP 没有 touchCancel——但我们可以用 touchEnd + 然后立刻 touch 一个不同 pointerId
-    // 本质上 touchEnd 已经完成了 resetLockState，然后用新 touchStart 验证状态已清
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchEnd', touchPoints: [],
-    });
+  // ---- Test 5: touchCancel 后状态复位（独立页面，全程无 click）----
+  console.log('\n--- Test 5: CDP touchCancel 后状态复位 ---');
+  {
+    const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
 
-    // 现在完整上滑——这才是真正的解锁手势
+    // 取消阶段：touchStart → **touchCancel**（空 touchPoints），**不发 touchEnd**
+    // 这会触发 JS 里的 lock.addEventListener('touchcancel', resetLockState)
+    await touchCancel(cdp, 195, 700);
+    await page.waitForTimeout(80);
+
+    const afterCancel = await page.evaluate(() => ({
+      lockHidden: document.getElementById('lock').classList.contains('hide'),
+      clickCount: window.__clickCount,
+    }));
+    assert(afterCancel.lockHidden === false, 'touchCancel 后锁屏仍可见（未误解锁）');
+    assert(afterCancel.clickCount === 0, `touchCancel 后 clickCount=0（不是 click 打开）: ${afterCancel.clickCount}`);
+
+    // 紧接着做一次完整上滑（touchStart → N×touchMove → touchEnd）
+    // 断言解锁成功 → 状态没被 cancel 卡死
     await touchSwipe(cdp, 195, 700, 195, 350);
     await page.waitForTimeout(80);
 
-    const after = await page.evaluate(() =>
-      document.getElementById('lock').classList.contains('hide'));
-    assert(after === true, 'cancel 序列后完整上滑解锁成功（状态已复位）');
+    const afterSwipe = await page.evaluate(() => ({
+      lockHidden: document.getElementById('lock').classList.contains('hide'),
+      phoneShown: document.getElementById('phone').classList.contains('show'),
+    }));
+    assert(afterSwipe.lockHidden === true, 'touchCancel 后完整上滑解锁成功（状态已复位，未卡死）');
+    assert(afterSwipe.phoneShown === true, '桌面内容已显示');
     await browser.close();
   }
 
-  // ---- 测试 6: 解锁后重复事件不重复触发（幂等性）----
-  console.log('\n--- Test 6: 解锁后重复 touch 不重复触发 unlockPhone（幂等）---');
+  // ---- Test 6: 解锁后重复 touch 幂等 ----
+  console.log('\n--- Test 6: 解锁后重复 touch 幂等 ---');
   {
     const { browser, page, cdp } = await freshPage({ width: 390, height: 844 });
     await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
 
     // 第一次上滑解锁
     await touchSwipe(cdp, 195, 700, 195, 350);
     await page.waitForTimeout(80);
-    const afterFirst = await page.evaluate(() =>
-      document.getElementById('lock').classList.contains('hide'));
-    assert(afterFirst === true, '第一次上滑解锁成功');
+    const ok1 = await page.evaluate(() => ({
+      hidden: document.getElementById('lock').classList.contains('hide'),
+      cc: window.__clickCount,
+    }));
+    assert(ok1.hidden === true && ok1.cc === 0, '第一次 touch 解锁成功，clickCount=0');
 
-    // 第二次同样的 touch——lock 已经 hide + pointer-events:none，事件不再派发。
-    // 即使派发，unlockFired/unlocked 幂等也会拦住重复调用。
-    // 解锁状态应保持隐藏，不会白屏或卡住。
+    // 第二次同样的 touch——幂等：unlockFired 已 true，重复 touch 不破坏解锁状态
     await touchSwipe(cdp, 195, 700, 195, 350);
     await page.waitForTimeout(80);
-    const afterSecond = await page.evaluate(() => ({
-      lockHidden: document.getElementById('lock').classList.contains('hide'),
+    const ok2 = await page.evaluate(() => ({
+      hidden: document.getElementById('lock').classList.contains('hide'),
       phoneShown: document.getElementById('phone').classList.contains('show'),
-      // 幂等计数：如果 unlockPhone 真重复调用会抛错（lock.hide 已加）
-      // 这里检查 phone 仍然是 show 即可
+      cc: window.__clickCount,
     }));
-    assert(afterSecond.lockHidden === true && afterSecond.phoneShown === true,
-      '第二次 touch 不破坏解锁状态（幂等）');
+    assert(ok2.hidden === true && ok2.phoneShown === true, '第二次 touch 不破坏解锁状态（幂等）');
     await browser.close();
   }
 
-  // ---- 测试 7: 点击辅助路径（独立 mouse.click）----
-  console.log('\n--- Test 7: 点击辅助解锁（mouse click）---');
+  // ---- Test 7: click 辅助路径（独立 mouse.click）----
+  console.log('\n--- Test 7: 点击辅助解锁 ---');
   {
     const { browser, page } = await freshPage({ width: 390, height: 844 });
     await page.goto(URL, { waitUntil: 'networkidle' });
+    await installClickCounter(page);
     await page.locator('#lock').click();
-    const after = await page.evaluate(() =>
-      document.getElementById('lock').classList.contains('hide'));
-    assert(after === true, '点击后锁屏隐藏（辅助路径）');
+    const after = await page.evaluate(() => ({
+      hidden: document.getElementById('lock').classList.contains('hide'),
+      cc: window.__clickCount,
+    }));
+    assert(after.hidden === true && after.cc === 1, `点击后锁屏隐藏，clickCount=1`);
     await browser.close();
   }
 
-  // ---- 测试 8: 桌面 1280x900 外壳保留 ----
-  console.log('\n--- Test 8: 桌面视口保留模拟器外壳 ---');
+  // ---- Test 8: 桌面 1280x900 外壳保留 ----
+  console.log('\n--- Test 8: 桌面 1280x900 外壳保留 ---');
   {
     const { browser, page } = await freshPage({ width: 1280, height: 900 });
     await page.goto(URL, { waitUntil: 'networkidle' });
     const l = await page.evaluate(() => {
       const r = document.querySelector('.device').getBoundingClientRect();
       const s = getComputedStyle(document.querySelector('.device'));
-      return { w: r.width, border: s.borderWidth, br: s.borderRadius,
-               centered: Math.abs(r.left - (window.innerWidth - r.width) / 2) < 3 };
+      return {
+        w: r.width, border: s.borderWidth, br: s.borderRadius,
+        centered: Math.abs(r.left - (window.innerWidth - r.width) / 2) < 3,
+      };
     });
     assert(Math.abs(l.w - 390) < 3, `桌面外壳宽≈390: ${l.w}`);
     assert(l.border && l.border !== '0px', `桌面有 border: ${l.border}`);
