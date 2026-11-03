@@ -176,8 +176,27 @@ test('settings and its four major subviews run as native modules', async () => {
   await iconsView.locator('.back-btn').click();
   await settingsView.locator('.phone-mockup').waitFor();
 
+  const historyBeforeDesktopBack = await page.evaluate(() => ({
+    activeRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getActiveRoute(),
+    previousRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getPreviousRoute(),
+    length: history.length,
+    state: history.state,
+    search: location.search
+  }));
   await page.goBack();
-  await page.locator('#maomao-app-host').waitFor({ state: 'hidden' });
+  const historyAfterDesktopBack = await page.evaluate(() => ({
+    activeRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getActiveRoute(),
+    previousRoute: window.__MAOMAO_LEGACY_HOST__ && window.__MAOMAO_LEGACY_HOST__.getPreviousRoute(),
+    length: history.length,
+    state: history.state,
+    search: location.search
+  }));
+  assert.equal(
+    await page.locator('#maomao-app-host').isHidden(),
+    true,
+    'browser back should return to desktop; before=' + JSON.stringify(historyBeforeDesktopBack) +
+      ' after=' + JSON.stringify(historyAfterDesktopBack)
+  );
   assert.equal(await page.evaluate(() => localStorage.getItem('settings_dark_mode')), '1');
 
   assert.deepEqual(pageErrors, []);
