@@ -1,24 +1,9 @@
 name: Build MAOMAO Android APK
 
+# APK 目前仅在明确需要 Android 安装包时手动触发。
+# 日常代码更新只部署网页并运行测试，不自动消耗 Actions Artifact 储存额度。
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/build-android-apk.yml'
-      - 'vite.config.js'
-      - 'package.json'
-      - '**/*.html'
-      - '**/*.js'
-      - '**/*.css'
-      - '**/*.json'
-      - 'assets/**'
-      - 'games/assets/**'
-      - 'chat/**'
-      - 'shared/**'
-      - 'apps/**'
-      - 'android/**'
 
 permissions:
   contents: read
@@ -109,7 +94,7 @@ jobs:
           content = path.read_text(encoding="utf-8")
           version = os.environ["GITHUB_SHA"][:10]
           updated, count = re.subn(
-              r"const CACHE_NAME = ['\"]phone-app-pwa-[^'\"]+['\"];",
+              r"const CACHE_NAME = ['\\"]phone-app-pwa-[^'\\"]+['\\"];",
               f"const CACHE_NAME = 'phone-app-pwa-apk-{version}';",
               content,
               count=1,
@@ -159,4 +144,4 @@ jobs:
           name: MAOMAO-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
