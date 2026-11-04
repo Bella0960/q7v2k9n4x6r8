@@ -85,6 +85,32 @@ function createSandboxBase() {
   };
 }
 
+function loadEnsureMid() {
+  const start = chatDetail.indexOf('function ensureMid(');
+  const end = chatDetail.indexOf('\n        function findByMid', start);
+  assert.ok(start >= 0 && end > start, 'ensureMid helper should be isolated');
+  return runInNewContext(chatDetail.slice(start, end) + '\nensureMid;', {});
+}
+
+function loadSystemErrorDedupe() {
+  const start = chatDetail.indexOf('function _isRepeatedSystemError(');
+  const close = chatDetail.indexOf('\n        }', start);
+  assert.ok(start >= 0 && close > start, 'system_error dedupe helper should be isolated');
+  const end = close + '\n        }'.length;
+  return runInNewContext(chatDetail.slice(start, end) + '\n_isRepeatedSystemError;', {});
+}
+
+function loadRetryHelpers() {
+  const start = chatDetail.indexOf('function _locateRetryMessage(');
+  const end = chatDetail.indexOf('\n        window.retryFailedMessage', start);
+  assert.ok(start >= 0 && end > start, 'retry helpers should be isolated');
+  return runInNewContext(
+    chatDetail.slice(start, end) +
+    '\n({ _locateRetryMessage: _locateRetryMessage, _prepareRetryMessage: _prepareRetryMessage });',
+    {}
+  );
+}
+
 test('saveMessages reports success only after a matching read-back from the existing storage channel', () => {
   const target = [
     { role: 'assistant', text: '欢迎', time: 1 },
@@ -201,6 +227,8 @@ function runMissingApiKeyBranch(options) {
     lastGroupUserSend: { text: 'previous', time: 1 },
     groupAutoFollowupToken: 5,
     _vl: null,
+    ensureMid: loadEnsureMid(),
+    _isRepeatedSystemError: loadSystemErrorDedupe(),
     input,
     loadMessages: () => clone(options.history || [{ role: 'assistant', text: '旧消息' }]),
     saveMessages: (list) => {
@@ -262,6 +290,80 @@ test('missing API key without a new user message never renders an unsaved error 
   assert.equal(result.renders.length, 0);
 });
 
+test('new failed user messages persist a stable mid without duplicating the record on the second save', () => {
+  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+  const user = result.saves[0][1];
+  assert.equal(user.role, 'user');
+  assert.ok(typeof user.mid === 'string' && user.mid.length > 0, '用户消息必须带稳定 mid');
+  assert.equal(result.saves[1].filter((m) => m.role === 'user').length, 1, '第二次写入不得插入第二条用户消息');
+  assert.equal(result.saves[1][1].mid, user.mid, '错误记录写入时沿用同一个 mid');
+  assert.equal(result.saves[0].filter((m) => m.role === 'user').length, 1);
+});
+
+test('missing API key: repeated regen/contextOnly triggers do not accumulate the same system_error', () => {
+  const first = runMissingApiKeyBranch({ isRegen: true, saveResults: [true] });
+  assert.equal(first.saves.length, 1);
+  assert.equal(first.saves[0].filter((m) => m.role === 'system_error').length, 1);
+
+  const stored = clone(first.saves[first.saves.length - 1]);
+  const second = runMissingApiKeyBranch({ isRegen: true, history: stored, saveResults: [true] });
+  assert.equal(second.saves.length, 0, '相同错误已在历史尾部时不再重复写入');
+  assert.equal(second.renders.length, 0, '不得重复渲染相同错误提示');
+  assert.equal(stored.filter((m) => m.role === 'system_error').length, 1);
+
+  const contextFirst = runMissingApiKeyBranch({ contextOnly: true, saveResults: [true] });
+  assert.equal(contextFirst.saves.length, 1);
+  const contextStored = clone(contextFirst.saves[contextFirst.saves.length - 1]);
+  const contextSecond = runMissingApiKeyBranch({ contextOnly: true, history: contextStored, saveResults: [true] });
+  assert.equal(contextSecond.saves.length, 0, 'contextOnly 重复触发同样不得累积');
+  assert.equal(contextStored.filter((m) => m.role === 'system_error').length, 1);
+});
+
+test('retry reuses the original failed user message instead of appending a duplicate', () => {
+  const helpers = loadRetryHelpers();
+  const list = [
+    { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
+    { role: 'user', text: '在吗', time: 2, mid: 'm2', sendFailed: true, sendFailedReason: 'missing-api-key' }
+  ];
+  const before = clone(list);
+  const prepared = helpers._prepareRetryMessage(list, 'm2');
+  assert.ok(prepared, '按 mid 应能定位失败消息');
+  assert.equal(prepared.index, 1);
+  assert.equal(prepared.message, list[1], '必须复用同一条记录，而不是新建对象');
+  assert.equal(list.length, 2, '不得新增消息');
+  assert.equal(list[1].sendFailed, undefined);
+  assert.equal(list[1].sendFailedReason, undefined);
+  assert.equal(list[1].text, before[1].text);
+  assert.equal(list[1].mid, before[1].mid);
+  assert.deepEqual(list[0], before[0]);
+});
+
+test('retry is idempotent across repeated clicks and never leaves a duplicate unsent message', () => {
+  const helpers = loadRetryHelpers();
+  const list = [
+    { role: 'user', text: '在吗', time: 2, mid: 'm2', sendFailed: true, sendFailedReason: 'missing-api-key' }
+  ];
+  assert.ok(helpers._prepareRetryMessage(list, 'm2'));
+  assert.equal(list.length, 1);
+  assert.equal(list.filter((m) => m.role === 'user').length, 1);
+  // 第二次点击：失败标记已清除，不能再次触发重试，也不能插入新消息。
+  assert.equal(helpers._prepareRetryMessage(list, 'm2'), null);
+  assert.equal(list.length, 1);
+  assert.equal(list.filter((m) => m.role === 'user' && m.text === '在吗').length, 1);
+});
+
+test('retry locates legacy failed messages without mid by time and never migrates them', () => {
+  const helpers = loadRetryHelpers();
+  const list = [{ role: 'user', text: '旧失败消息', time: 2, sendFailed: true }];
+  const prepared = helpers._prepareRetryMessage(list, 'm_generated_at_render', 2);
+  assert.ok(prepared, '旧消息没有 mid 时应退回 time 匹配');
+  assert.equal(prepared.index, 0);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].mid, undefined, '不得为旧消息补写 mid 或迁移历史数据');
+  assert.equal(list[0].sendFailed, undefined);
+  assert.equal(list[0].text, '旧失败消息');
+});
+
 test('blocked send also stops when the user message cannot be persisted', () => {
   const saves = [];
   const renders = [];
@@ -279,6 +381,7 @@ test('blocked send also stops when the user message cannot be persisted', () => 
     lastGroupUserSend: { text: 'previous', time: 1 },
     groupAutoFollowupToken: 9,
     _vl: null,
+    ensureMid: loadEnsureMid(),
     input,
     acceptGroupUserMessage: () => true,
     loadMessages: () => clone([{ role: 'assistant', text: '旧消息' }]),
