@@ -196,13 +196,16 @@
   }
 
   /* 论坛 / 商城 / 记账等「body 直接排版」的页面：
-     原本跟随 390px 居中列的固定底栏与底部弹层，真机需同步全宽 */
+     原本跟随 390px 居中列的固定底栏与底部弹层，真机需同步全宽。
+     .add-btn 只在店铺管理页作为 body 直属的贴底全宽栏使用；
+     外卖菜品里的圆形加购按钮、自制剧本的表单按钮均是嵌套元素，
+     必须用 body > .add-btn 收紧作用域，避免被这里强制拉成 100% 宽。 */
   .tabbar,
   .comment-bar,
   .dock,
   .composer,
   .buy-bar,
-  .add-btn,
+  body > .add-btn,
   .add-backdrop,
   .modal-backdrop.show {
     left: 0 !important;
