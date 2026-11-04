@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>音乐 · Music</title>
+<script src="../shared/js/phone/phone_storage.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   /* ===== 音乐页自定义变量：想调大小/间距直接改这里 ===== */
@@ -82,10 +83,13 @@
   }
   .icon-btn:active { transform: translateY(1px); border-color: #171717; }
   .avatar {
-    width: 34px; height: 34px; border-radius: 50%;
+    width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
     background: linear-gradient(135deg,#333,#000);
     color: #fff; font-size: 12px; font-weight: 600;
     display: flex; align-items: center; justify-content: center;
+  }
+  .avatar img, .profile-head .p-avatar img {
+    width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit;
   }
 
   /* ===== Home ===== */
@@ -393,7 +397,7 @@
           <div class="greet">晚上好</div>
           <div class="greet-name">Discover</div>
         </div>
-        <div class="avatar" style="cursor:pointer" onclick="openProfile()">M</div>
+        <div class="avatar" id="musicHomeAvatar" style="cursor:pointer" onclick="openProfile()">M</div>
       </div>
       <div class="content">
         <div class="hero-card">
@@ -656,9 +660,8 @@
     <div id="profileEditMask" onclick="closeProfileEdit()" style="position:absolute;inset:0;background:rgba(0,0,0,0.4);opacity:0;pointer-events:none;transition:opacity .25s;z-index:120;"></div>
     <div id="profileEditSheet" style="position:absolute;left:50%;bottom:20px;transform:translate(-50%,100%) scale(0.95);opacity:0;pointer-events:none;transition:all .28s cubic-bezier(0.32,0.72,0,1);z-index:121;background:#fff;border-radius:20px;padding:20px;width:88%;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
       <div style="font-size:16px;font-weight:700;margin-bottom:16px;">编辑资料</div>
-      <div style="margin-bottom:12px;">
-        <div style="font-size:11px;color:#999;margin-bottom:5px;">头像字母（1-2个字符）</div>
-        <input id="editAvatar" maxlength="2" style="width:100%;padding:10px 12px;border:1px solid #e0e0e5;border-radius:12px;font-size:14px;outline:none;box-sizing:border-box;" placeholder="M">
+      <div style="margin-bottom:12px;padding:10px 0;font-size:12px;color:#888;line-height:1.6;">
+        头像与手机个人资料同步；更换头像请前往「我的 · 编辑资料」。
       </div>
       <div style="margin-bottom:12px;">
         <div style="font-size:11px;color:#999;margin-bottom:5px;">昵称</div>
@@ -1347,9 +1350,29 @@
       bg: localStorage.getItem('music_profile_bg') || BG_PRESETS[0].css
     };
   }
+  function getSharedUserAvatar() {
+    try {
+      var profile = window.PhoneStorage && typeof PhoneStorage.getMyProfile === 'function'
+        ? PhoneStorage.getMyProfile() : null;
+      return profile && typeof profile.avatar === 'string' ? profile.avatar : '';
+    } catch (e) { return ''; }
+  }
+  function renderMusicAvatar(element, fallback) {
+    if (!element) return;
+    var src = getSharedUserAvatar();
+    element.textContent = '';
+    if (src && /^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\+xml|avif);|https?:\/\/|blob:|\.|\/)/i.test(src)) {
+      var image = document.createElement('img');
+      image.src = src;
+      image.alt = '';
+      element.appendChild(image);
+    } else {
+      element.textContent = fallback || 'M';
+    }
+  }
   function renderProfile() {
     var p = getProfile();
-    document.getElementById('pAvatar').textContent = p.avatar;
+    renderMusicAvatar(document.getElementById('pAvatar'), p.avatar);
     document.getElementById('pName').textContent = p.name;
     document.getElementById('pHandle').textContent = p.handle;
     document.querySelector('.profile-head').style.background = p.bg;
@@ -1391,7 +1414,6 @@
   }
   function openProfileEdit() {
     var p = getProfile();
-    document.getElementById('editAvatar').value = p.avatar;
     document.getElementById('editName').value = p.name;
     document.getElementById('editHandle').value = p.handle;
     selectedBg = BG_PRESETS.findIndex(function(b){ return b.css === p.bg; });
@@ -1413,14 +1435,12 @@
     document.getElementById('profileEditMask').style.pointerEvents = 'none';
   }
   function saveProfileEdit() {
-    var av = document.getElementById('editAvatar').value.trim().toUpperCase() || 'M';
     var nm = document.getElementById('editName').value.trim() || 'Music Lover';
     var hd = document.getElementById('editHandle').value.trim();
     if (hd && hd.charAt(0) !== '@') hd = '@' + hd;
     if (!hd) hd = '@music_lover';
     var customColor = document.getElementById('editBgCustom').value;
     var bg = (customColor && customColor !== '#1a1a1a') ? customColor : BG_PRESETS[selectedBg].css;
-    localStorage.setItem('music_profile_avatar', av);
     localStorage.setItem('music_profile_name', nm);
     localStorage.setItem('music_profile_handle', hd);
     localStorage.setItem('music_profile_bg', bg);
@@ -1653,6 +1673,9 @@
         <div class="t-dur">${t.dur}</div></div>`;
     });
   }
+
+  // 音乐首页头像与手机全局个人资料保持一致
+  renderMusicAvatar(document.getElementById('musicHomeAvatar'), getProfile().avatar);
 
   // 初始渲染当前歌曲歌词
   (function initLyrics() {
