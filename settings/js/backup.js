@@ -84,9 +84,19 @@
         //   体积上限参考字体预设档次（单条 30 MB / 整库 90 MB）——
         //   图片通常远小于字体文件，此上限已足够宽松；
         //   超限的条目会出现在 skipped 报告中，不静默丢弃。
+        //
+        // atomicExport: true —— blobs 有任何条目被跳过时，整个库不纳入备份包。
+        //   原因：assets 和 refs 描述的是媒体元数据和引用关系，blobs 是对应的二进制内容。
+        //   若 blobs 缺失而 assets/refs 存在，恢复后会出现「有元数据但无实际图片」的
+        //   不一致状态。宁可整库排除并明确报告，也不制造残缺备份。
+        //
+        // clearOnRestore: true —— 即使备份中某 store 为空数组，恢复时也要执行 clear()，
+        //   确保恢复后的数据库状态与备份时完全一致，不残留原有数据。
         {
             db: 'maomao-assets',
             version: 1,
+            atomicExport: true,
+            clearOnRestore: true,
             stores: [
                 { store: 'assets', keyPath: 'assetId' },
                 { store: 'blobs',  keyPath: 'assetId', blobFields: ['blob'],
@@ -248,7 +258,16 @@
                 var tgt = IDB_TARGETS[i];
                 var part = await dumpDatabase(tgt.db, tgt.version, tgt.stores);
                 if (part === null) {
-                    dbWarnings.push(tgt.db);
+                    dbWarnings.push(tgt.db + '（读取失败）');
+                    continue;
+                }
+                // atomicExport 失败：blobs 有条目超限，整库排除以保持媒体数据一致性
+                if (part.atomicExportFailed) {
+                    var skipCount = part.skipped ? part.skipped.length : 0;
+                    dbWarnings.push(tgt.db + '（媒体 Blob ' + skipCount + ' 条超限，整库未纳入备份以防止残缺恢复）');
+                    (part.skipped || []).forEach(function (s) {
+                        allSkipped.push({ db: tgt.db, store: s.store, id: s.id, reason: s.reason, bytes: s.bytes });
+                    });
                     continue;
                 }
                 var stores = part.data;
@@ -662,8 +681,24 @@
     // dump 一个 DB：打开 → 逐 store dump → 关闭。
     // 任一环节失败都 catch，返回 null 表示"整个 DB 跳过"，由上层决定是否提示。
     // 成功返回 { data: { <storeName>: [records...] }, skipped: [ { store, id, reason, bytes } ] }
+    //
+    // atomicExport 选项（仅对 maomao-assets 启用）：
+    //   若该库的任何 store 有条目被跳过（如 Blob 超限），整个库从备份包中排除，
+    //   返回 { data: null, skipped: [...], atomicExportFailed: true }。
+    //   原因：媒体 assets/refs 依赖 blobs 的实际内容，部分缺失会导致恢复后不一致。
+    //
+    // clearOnRestore 选项：空 store 仍写入 out[store] = []，
+    //   使恢复时能执行 clear() 清空目标 store，而非因空数组被跳过。
     function dumpDatabase(dbName, version, storeDefs) {
         var db = null;
+        var targetDef = null;
+        // 从 IDB_TARGETS 中找到该库的顶层定义，获取 atomicExport / clearOnRestore 标记
+        for (var t = 0; t < IDB_TARGETS.length; t++) {
+            if (IDB_TARGETS[t].db === dbName) { targetDef = IDB_TARGETS[t]; break; }
+        }
+        var atomicExport = targetDef && targetDef.atomicExport;
+        var clearOnRestore = targetDef && targetDef.clearOnRestore;
+
         return idbOpen(dbName, version, storeDefs).then(function (_db) {
             db = _db;
             var defs = storeDefs.slice();
@@ -674,7 +709,8 @@
                 if (i >= defs.length) { db.close(); return { data: out, skipped: skippedAll }; }
                 var def = defs[i++];
                 return dumpStore(db, def).then(function (res) {
-                    if (res.records.length) out[def.store] = res.records;
+                    // clearOnRestore: 空 store 也写入 []，使恢复时能执行 clear()
+                    if (res.records.length || clearOnRestore) out[def.store] = res.records;
                     res.skipped.forEach(function (s) {
                         skippedAll.push({ store: def.store, id: s.id, reason: s.reason, bytes: s.bytes });
                     });
@@ -682,6 +718,14 @@
                 });
             }
             return next();
+        }).then(function (result) {
+            if (!result) return null; // catch 分支已处理
+            // atomicExport: 任何 store 有跳过 → 整库排除
+            if (atomicExport && result.skipped && result.skipped.length) {
+                if (db) { try { db.close(); } catch (e) {} }
+                return { data: null, skipped: result.skipped, atomicExportFailed: true };
+            }
+            return result;
         }).catch(function () {
             if (db) { try { db.close(); } catch (e) {} }
             return null;
@@ -696,14 +740,26 @@
     //   base64 非法导致解码失败 → 整条跳过，不计入成功数。
     // 记录损坏（缺少必要字段）时静默跳过，不 throw。
     // 返回 Promise<{ written: number, skipped: number }>：实际写进 DB 的条数 / 跳过的条数。
-    function restoreStore(db, storeDef, records) {
+    // clearOnRestore: 空数组时也执行 clear()，确保恢复后 store 与备份状态完全一致。
+    function restoreStore(db, storeDef, records, clearOnRestore) {
         var blobFields = storeDef.blobFields || [];
         return new Promise(function (resolve, reject) {
-            if (!Array.isArray(records) || !records.length) { resolve({ written: 0, skipped: 0 }); return; }
+            // 无 clearOnRestore 且记录为空 → 跳过（原有行为，不影响非媒体库）
+            if (!Array.isArray(records) || (!records.length && !clearOnRestore)) {
+                resolve({ written: 0, skipped: 0 });
+                return;
+            }
             var storeName = storeDef.store;
             var tx = db.transaction(storeName, 'readwrite');
             var store = tx.objectStore(storeName);
             store.clear();
+            // 空数组 + clearOnRestore：只执行 clear()，不 put 任何记录
+            if (!records.length) {
+                tx.oncomplete = function () { resolve({ written: 0, skipped: 0 }); };
+                tx.onerror = function () { reject(tx.error || new Error('Store clear failed')); };
+                tx.onabort = function () { reject(tx.error || new Error('Store clear aborted')); };
+                return;
+            }
             var written = 0;
             var skipped = 0;
             records.forEach(function (rec) {
@@ -762,6 +818,12 @@
     function restoreDatabase(dbName, version, storeDefs, incomingDb) {
         if (!incomingDb || typeof incomingDb !== 'object') return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
         var db = null;
+        // 从 IDB_TARGETS 中读取 clearOnRestore 标记
+        var targetDef = null;
+        for (var t = 0; t < IDB_TARGETS.length; t++) {
+            if (IDB_TARGETS[t].db === dbName) { targetDef = IDB_TARGETS[t]; break; }
+        }
+        var clearOnRestore = targetDef && targetDef.clearOnRestore;
         return idbOpen(dbName, version, storeDefs).then(function (_db) {
             db = _db;
             var storeMap = {};
@@ -774,8 +836,9 @@
                 var def = storeMap[sn];
                 if (!def) return next();
                 var records = incomingDb[sn];
-                if (!Array.isArray(records) || !records.length) return next();
-                return restoreStore(db, def, records).then(function (res) {
+                // clearOnRestore: 空数组也调用 restoreStore（会执行 clear()），确保恢复状态与备份一致
+                if (!Array.isArray(records) || (!records.length && !clearOnRestore)) return next();
+                return restoreStore(db, def, records, clearOnRestore).then(function (res) {
                     totalWritten += res.written;
                     totalSkipped += res.skipped;
                     return next();
