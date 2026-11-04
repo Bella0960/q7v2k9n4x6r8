@@ -3398,7 +3398,7 @@
                     var failedMark = document.createElement('span');
                     failedMark.className = 'msg-send-failed';
                     failedMark.textContent = '!';
-                    failedMark.title = '消息已发出，但被对方拒收了';
+                    failedMark.title = msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : '消息已发出，但被对方拒收了';
                     row.appendChild(failedMark);
                 }
                 row.appendChild(attachEl);
@@ -4658,11 +4658,45 @@
             const customPrompt = (config.prompt || '').trim();
 
             if (!apiKey) {
-                const errMsg = { role: 'system_error', isError: true, text: '请先到【设置页 → API 设置】配置 API Key', time: Date.now() };
                 const historyList = loadMessages();
+                let userMsg = null;
+                if (!isRegen && !contextOnly) {
+                    if (!silent && !acceptGroupUserMessage(text)) {
+                        if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
+                        return;
+                    }
+                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                    const quoteSnapshot = (!silent && pendingQuote) ? {
+                        mid: pendingQuote.mid, text: pendingQuote.text,
+                        fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
+                    } : null;
+                    userMsg = {
+                        role: 'user', text: text, time: Date.now(), silent: !!silent,
+                        quote: quoteSnapshot, sendFailed: true, sendFailedReason: 'missing-api-key'
+                    };
+                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
+                    historyList.push(userMsg);
+                    if (!silent) {
+                        input.value = '';
+                        input.style.height = 'auto';
+                        updateSendBtnState();
+                        if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
+                    }
+                }
+                const errMsg = {
+                    role: 'system_error', isError: true,
+                    text: '请先到【设置页 → API 设置】配置 API Key',
+                    time: Date.now()
+                };
                 historyList.push(errMsg);
                 saveMessages(historyList);
-                if (_vl) vlRefresh(); else appendMessageToDOM(errMsg);
+                if (_vl) {
+                    vlRefresh();
+                } else {
+                    if (userMsg && !silent) appendMessageToDOM(userMsg);
+                    appendMessageToDOM(errMsg);
+                }
+                scrollToBottom(true);
                 return;
             }
 
