@@ -28,7 +28,7 @@
     }
 
     (Array.isArray(history) ? history : []).forEach(function (m) {
-      if (!m || m.isError || m.role === 'system_error') return;
+      if (!m || m.isError || m.role === 'system_error' || m.sendFailed) return;
       // A group-private message belongs only to its author's direct conversation.
       // Never feed this private payload into the shared group transcript.
       if (isGroupChat && m.type === 'group_private') return;

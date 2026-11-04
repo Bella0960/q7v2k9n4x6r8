@@ -2798,37 +2798,72 @@
             delete _warnCooldown[type];
         }
 
-        function saveMessages(list) {
+        // ================= 写后读回校验（数据可信） =================
+        // 写入后必须从既有读取通道读回（PhoneStorage.getChatHistory / localStorage），
+        // 逐条按 角色 / 标识(mid|time) / 正文 做归属校验；读不回来、长度不一致、
+        // 任意一条不一致或抛异常，都视为保存失败。
+        function _readBackHistory() {
             if (_storage) {
                 try {
-                    var ok = _storage.saveChatHistory(currentCharacter.id, list);
-                    if (ok) {
-                        _resetWarnCooldown('chat-save');
-                        return true;
-                    }
-                    if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
-                        showToast('聊天记录未能保存，请检查本地存储空间');
-                    }
-                    return false;
+                    var stored = _storage.getChatHistory(currentCharacter.id);
+                    return Array.isArray(stored) ? stored : null;
                 } catch (err) {
-                    console.warn('保存聊天记录失败:', err);
-                    if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
-                        showToast('聊天记录未能保存，请检查本地存储空间');
-                    }
-                    return false;
+                    return null;
                 }
             }
             try {
-                localStorage.setItem(storageKey, JSON.stringify(list));
+                const raw = localStorage.getItem(storageKey);
+                if (raw == null) return null;
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : null;
+            } catch (err) {
+                return null;
+            }
+        }
+
+        function _messageIdentity(msg) {
+            if (!msg || typeof msg !== 'object') return '';
+            var body = msg.text != null ? msg.text : (msg.content != null ? msg.content : '');
+            var marker = msg.mid != null ? msg.mid : (msg.time != null ? msg.time : '');
+            return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' + String(body);
+        }
+
+        function _verifyHistoryRoundTrip(list) {
+            var written = Array.isArray(list) ? list : [];
+            var stored = _readBackHistory();
+            if (!stored || stored.length !== written.length) return false;
+            for (var i = 0; i < written.length; i++) {
+                if (_messageIdentity(written[i]) !== _messageIdentity(stored[i])) return false;
+            }
+            return true;
+        }
+
+        function saveMessages(list) {
+            var wrote = false;
+            if (_storage) {
+                try {
+                    wrote = !!_storage.saveChatHistory(currentCharacter.id, list);
+                } catch (err) {
+                    console.warn('保存聊天记录失败:', err);
+                    wrote = false;
+                }
+            } else {
+                try {
+                    localStorage.setItem(storageKey, JSON.stringify(list));
+                    wrote = true;
+                } catch (err) {
+                    console.warn('保存聊天记录失败:', err);
+                    wrote = false;
+                }
+            }
+            if (wrote && _verifyHistoryRoundTrip(list)) {
                 _resetWarnCooldown('chat-save');
                 return true;
-            } catch (err) {
-                console.warn('保存聊天记录失败:', err);
-                if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
-                    showToast('聊天记录未能保存，请检查本地存储空间');
-                }
-                return false;
             }
+            if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
+                showToast('聊天记录未能保存，请检查本地存储空间');
+            }
+            return false;
         }
 
         // 头像占位：极细线条 SVG 小人（黑白灰规范，无 Emoji）
@@ -4644,20 +4679,27 @@
             // blocked 不再拦截发送：消息照常发出，但标记为 sendFailed（渲染为红色感叹号），不调用 API
             // 提前处理：不走 API Key 检查，直接落库显示
             if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {
+                const previousGroupUserSend = (isGroupChat && !silent) ? { ...lastGroupUserSend } : null;
+                const previousGroupAutoFollowupToken = groupAutoFollowupToken;
                 if (!silent && !acceptGroupUserMessage(text)) {
                     if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                     return;
                 }
-                if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                 let blockedHistory = loadMessages();
                 const blockedQuote = pendingQuote ? {
                     mid: pendingQuote.mid, text: pendingQuote.text,
                     fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                 } : null;
                 const blockedMsg = { role: 'user', text: text, time: Date.now(), sendFailed: true, quote: blockedQuote };
-                if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 blockedHistory.push(blockedMsg);
-                saveMessages(blockedHistory);
+                // P0：用户消息必须真正落库后才生效；写失败就终止，保留输入与引用。
+                if (!saveMessages(blockedHistory)) {
+                    if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
+                    groupAutoFollowupToken = previousGroupAutoFollowupToken;
+                    return;
+                }
+                if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
                 input.value = '';
                 input.style.height = 'auto';
@@ -4698,20 +4740,21 @@
 
                     // 先单独确认用户消息已落库；只有成功后才清空输入与引用。
                     userSaved = saveMessages(historyList);
-                    if (userSaved) {
-                        if (isGroupChat && !silent) groupAutoFollowupToken += 1;
-                        if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
-                        if (!silent) {
-                            input.value = '';
-                            input.style.height = 'auto';
-                            updateSendBtnState();
-                            if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
-                        }
-                    } else {
-                        // 保存失败时保留输入与引用，并撤销内存中的未保存消息及群聊防重复占位。
+                    if (!userSaved) {
+                        // P0：用户消息没有真正落库 → 立即终止本次发送。
+                        // 不写 system_error、不渲染任何气泡，输入框原文与引用状态保持原样。
                         historyList.pop();
                         if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
                         groupAutoFollowupToken = previousGroupAutoFollowupToken;
+                        return;
+                    }
+                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
+                    if (!silent) {
+                        input.value = '';
+                        input.style.height = 'auto';
+                        updateSendBtnState();
+                        if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
                     }
                 }
 
@@ -4721,12 +4764,14 @@
                     time: Date.now()
                 };
                 historyList.push(errMsg);
-                saveMessages(historyList);
+                // 第二次写入同样以读回结果为准；失败则不保留、不渲染无名错误记录。
+                const errSaved = saveMessages(historyList);
+                if (!errSaved) historyList.pop();
                 if (_vl) {
                     vlRefresh();
                 } else {
                     if (userMsg && userSaved && !silent) appendMessageToDOM(userMsg);
-                    appendMessageToDOM(errMsg);
+                    if (errSaved) appendMessageToDOM(errMsg);
                 }
                 scrollToBottom(true);
                 return;
@@ -4747,15 +4792,23 @@
                         role: 'user', text: text, time: Date.now(), silent: !!silent,
                         quote: quoteSnapshot
                     };
+                    const previousGroupUserSend = (isGroupChat && !silent) ? { ...lastGroupUserSend } : null;
+                    const previousGroupAutoFollowupToken = groupAutoFollowupToken;
                     if (!silent && !acceptGroupUserMessage(text)) {
                         if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                         return;
                     }
-                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
-                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
-                    saveMessages(historyList);
+                    // P0：用户消息必须真正落库后才继续；写失败立即终止，保留输入与引用。
+                    if (!saveMessages(historyList)) {
+                        historyList.pop();
+                        if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
+                        groupAutoFollowupToken = previousGroupAutoFollowupToken;
+                        return;
+                    }
+                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
                         if (_vl) vlRefresh(); else appendMessageToDOM(userMsg);
                         input.value = '';
@@ -5532,7 +5585,7 @@
             } else {
                 // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
                 recentHistory.forEach(m => {
-                    if (m.isError || m.role === 'system_error') return;
+                    if (m.isError || m.role === 'system_error' || m.sendFailed) return;
                     if (isGroupChat && m.type === 'group_private') return;
                     if (m.type === 'sticker') {
                         var stickerMeaning = String(m.desc || '').trim();
