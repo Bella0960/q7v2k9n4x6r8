@@ -1,0 +1,503 @@
+/* MAOMAO in-chat call experience: monochrome, text-first, no hardware capture. */
+.maomao-call-layer {
+  --call-ink: #111111;
+  --call-muted: #8E8E93;
+  --call-line: #E3E3E7;
+  position: absolute;
+  inset: 0;
+  z-index: 9900;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--call-ink);
+  background: #F7F7F9;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+  overscroll-behavior: contain;
+}
+.maomao-call-layer.is-fixed { position: fixed; }
+.maomao-call-layer[hidden] { display: none !important; }
+.maomao-call-topbar {
+  min-height: 58px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 10px;
+  display: grid;
+  grid-template-columns: 42px 1fr 62px;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  background: #F7F7F9;
+}
+.maomao-call-icon-button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--call-line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--call-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.maomao-call-icon-button svg,
+.maomao-call-action svg,
+.maomao-call-send svg,
+.maomao-call-mini svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.maomao-call-heading { min-width: 0; text-align: center; }
+.maomao-call-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: #99999F;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 1.6px;
+}
+.maomao-call-title {
+  display: block;
+  overflow: hidden;
+  color: #171719;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maomao-call-timer {
+  min-width: 58px;
+  color: #77777E;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.maomao-call-stage {
+  position: relative;
+  min-height: 168px;
+  height: clamp(178px, 28vh, 238px);
+  flex: 0 0 auto;
+  margin: 0 14px 8px;
+  overflow: hidden;
+  border: 1px solid #E6E6EA;
+  border-radius: 20px;
+  background: #EEEEF1;
+}
+.maomao-call-voice-view,
+.maomao-call-video-view {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+.maomao-call-layer:not(.is-video) .maomao-call-voice-view { display: flex; }
+.maomao-call-layer.is-video .maomao-call-video-view { display: block; }
+.maomao-call-voice-view {
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 18px;
+  background: #F0F0F3;
+}
+.maomao-call-avatar-wrap {
+  position: relative;
+  width: 94px;
+  height: 94px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 9px;
+}
+.maomao-call-avatar {
+  position: relative;
+  z-index: 2;
+  width: 78px;
+  height: 78px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(17,17,17,.12);
+  border-radius: 50%;
+  background: #D8D8DD;
+  color: #303035;
+  font-size: 25px;
+  font-weight: 600;
+}
+.maomao-call-avatar img,
+.maomao-call-self-avatar img,
+.maomao-call-video-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.maomao-call-ripple {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(17,17,17,.22);
+  border-radius: 50%;
+  animation: maomaoCallPulse 2.4s ease-out infinite;
+}
+.maomao-call-ripple.r2 { animation-delay: 1.2s; }
+.maomao-call-layer.is-connected .maomao-call-ripple { animation-duration: 3.4s; opacity: .45; }
+@keyframes maomaoCallPulse {
+  0% { transform: scale(.84); opacity: .68; }
+  100% { transform: scale(1.24); opacity: 0; }
+}
+.maomao-call-voice-name {
+  margin-top: 1px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: .2px;
+}
+.maomao-call-state {
+  margin-top: 4px;
+  color: #77777E;
+  font-size: 11px;
+}
+.maomao-call-wave {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 8px;
+}
+.maomao-call-wave i {
+  display: block;
+  width: 2px;
+  height: 5px;
+  border-radius: 2px;
+  background: #77777E;
+  animation: maomaoCallWave .8s ease-in-out infinite alternate;
+}
+.maomao-call-wave i:nth-child(2n) { animation-delay: -.28s; }
+.maomao-call-wave i:nth-child(3n) { animation-delay: -.48s; }
+.maomao-call-wave i:nth-child(4n) { animation-delay: -.15s; }
+@keyframes maomaoCallWave { to { height: 17px; opacity: .45; } }
+.maomao-call-video-image {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #DADAE0;
+  color: #3B3B40;
+  font-size: 58px;
+  font-weight: 600;
+}
+.maomao-call-video-image img { position: absolute; inset: 0; }
+.maomao-call-video-image::after {
+  content: "";
+  position: absolute;
+  inset: 45% 0 0;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.42));
+  pointer-events: none;
+}
+.maomao-call-video-label {
+  position: absolute;
+  z-index: 2;
+  left: 14px;
+  top: 13px;
+  color: rgba(255,255,255,.88);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.25px;
+  text-shadow: 0 1px 5px rgba(0,0,0,.3);
+}
+.maomao-call-video-caption {
+  position: absolute;
+  z-index: 2;
+  left: 15px;
+  right: 125px;
+  bottom: 14px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 650;
+  text-shadow: 0 1px 6px rgba(0,0,0,.42);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maomao-call-self-pip {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  right: 12px;
+  width: 76px;
+  height: 100px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 12px;
+  background: rgba(240,240,243,.94);
+  box-shadow: 0 3px 14px rgba(0,0,0,.13);
+}
+.maomao-call-self-avatar {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #333338;
+  font-size: 21px;
+  font-weight: 600;
+}
+.maomao-call-self-label {
+  position: absolute;
+  left: 6px;
+  bottom: 5px;
+  color: #FFFFFF;
+  font-size: 9px;
+  text-shadow: 0 1px 4px rgba(0,0,0,.7);
+}
+.maomao-call-self-pip.is-hidden .maomao-call-self-avatar { display: none; }
+.maomao-call-self-pip.is-hidden::after {
+  content: "画面已关闭";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #55555B;
+  font-size: 10px;
+}
+.maomao-call-conversation {
+  min-height: 96px;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 16px 2px;
+  overflow: hidden;
+}
+.maomao-call-conversation-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 1px 8px;
+}
+.maomao-call-conversation-title {
+  color: #222226;
+  font-size: 12px;
+  font-weight: 700;
+}
+.maomao-call-conversation-note {
+  color: #9A9AA0;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.maomao-call-transcript {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 2px 1px 12px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #D0D0D5 transparent;
+}
+.maomao-call-empty {
+  width: 100%;
+  margin: auto;
+  padding: 16px 12px;
+  color: #99999F;
+  font-size: 11px;
+  line-height: 1.7;
+  text-align: center;
+}
+.maomao-call-message {
+  max-width: 84%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+.maomao-call-message.is-mine { align-self: flex-end; align-items: flex-end; }
+.maomao-call-message-meta {
+  padding: 0 5px;
+  color: #99999F;
+  font-size: 9px;
+}
+.maomao-call-message-bubble {
+  padding: 9px 11px;
+  border: 1px solid #E5E5E9;
+  border-radius: 13px 13px 13px 4px;
+  background: #FFFFFF;
+  color: #29292E;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.maomao-call-message.is-mine .maomao-call-message-bubble {
+  border-color: #171719;
+  border-radius: 13px 13px 4px 13px;
+  background: #171719;
+  color: #FFFFFF;
+}
+.maomao-call-message.is-error .maomao-call-message-bubble {
+  border-color: #D0D0D5;
+  background: #EEEEF1;
+  color: #66666D;
+}
+.maomao-call-composer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 5px 14px 7px;
+  padding: 7px 7px 7px 13px;
+  border: 1px solid #E1E1E5;
+  border-radius: 17px;
+  background: #FFFFFF;
+  box-shadow: 0 2px 12px rgba(0,0,0,.035);
+}
+.maomao-call-input {
+  min-width: 0;
+  min-height: 31px;
+  max-height: 76px;
+  flex: 1 1 auto;
+  border: 0;
+  outline: 0;
+  resize: none;
+  padding: 6px 0 4px;
+  background: transparent;
+  color: #171719;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  user-select: text;
+}
+.maomao-call-input::placeholder { color: #A0A0A6; }
+.maomao-call-input:disabled { opacity: .5; }
+.maomao-call-send {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  background: #171719;
+  color: #FFFFFF;
+  cursor: pointer;
+}
+.maomao-call-send:disabled { opacity: .35; cursor: default; }
+.maomao-call-actions {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(18px, 6vw, 34px);
+  padding: 4px 14px calc(13px + env(safe-area-inset-bottom, 0px));
+}
+.maomao-call-action {
+  min-width: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: #626269;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+.maomao-call-action-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #DEDEE3;
+  border-radius: 50%;
+  background: #FFFFFF;
+  color: #222226;
+}
+.maomao-call-action.is-primary .maomao-call-action-icon {
+  border-color: #171719;
+  background: #171719;
+  color: #FFFFFF;
+}
+.maomao-call-action.is-end .maomao-call-action-icon {
+  border-color: #171719;
+  background: #171719;
+  color: #FFFFFF;
+}
+.maomao-call-action.is-end svg { transform: rotate(135deg); }
+.maomao-call-layer.is-video .maomao-call-video-only { display: flex; }
+.maomao-call-layer:not(.is-video) .maomao-call-video-only { display: none; }
+.maomao-call-mini {
+  position: absolute;
+  z-index: 9899;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px 8px 13px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 15px;
+  background: #171719;
+  color: #FFFFFF;
+  box-shadow: 0 8px 28px rgba(0,0,0,.2);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+}
+.maomao-call-mini.is-fixed { position: fixed; }
+.maomao-call-mini[hidden] { display: none !important; }
+.maomao-call-mini-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.maomao-call-mini-name {
+  overflow: hidden;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maomao-call-mini-meta {
+  color: #B4B4BA;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.maomao-call-mini button {
+  min-width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 11px;
+  background: transparent;
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.maomao-call-mini button[data-call-action="end"] {
+  width: 34px;
+  min-width: 34px;
+  border-color: rgba(255,255,255,.38);
+}
+.maomao-call-layer button:focus-visible,
+.maomao-call-mini button:focus-visible,
+.maomao-call-input:focus-visible {
+  outline: 2px solid #77777E;
+  outline-offset: 2px;
+}
+@media (max-height: 720px) {
+  .maomao-call-stage { height: 170px; min-height: 150px; }
+  .maomao-call-avatar-wrap { width: 78px; height: 78px; }
+  .maomao-call-avatar { width: 64px; height: 64px; }
+  .maomao-call-conversation { min-height: 80px; }
+  .maomao-call-actions { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .maomao-call-ripple, .maomao-call-wave i { animation: none !important; }
+}
