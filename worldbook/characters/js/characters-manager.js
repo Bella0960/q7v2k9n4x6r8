@@ -292,7 +292,13 @@ function renderRoleProfile() {
             '<div class="profile-hero-meta"><div class="profile-hero-kicker">MAIN CHARACTER / ARCHIVE</div>' +
             '<h2 class="profile-hero-name">' + escapeHtml(role.name || '未命名角色') + '</h2>' +
             '<div class="profile-hero-state">' + (String(role.id) === String(currentId) ? '当前正在使用' : '独立主角色档案') + '</div></div>' +
-            '<p class="profile-hero-desc">' + escapeHtml(role.persona || '还没有填写人物背景。可以从基本资料开始完善这个角色。') + '</p>' +
+            '<div class="profile-persona" data-persona-collapse>' +
+                '<div class="profile-persona-body" id="profilePersonaBody"><p class="profile-hero-desc">' + escapeHtml(role.persona || '还没有填写人物背景。可以从基本资料开始完善这个角色。') + '</p></div>' +
+                '<button class="profile-persona-toggle" type="button" data-persona-toggle aria-expanded="false" aria-controls="profilePersonaBody" hidden>' +
+                    '<span data-persona-toggle-text>展开全文</span>' +
+                    '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
+                '</button>' +
+            '</div>' +
         '</section>' +
         '<div class="profile-section-kicker">CHARACTER SETTINGS / 角色设定</div>' +
         '<div class="profile-branch-list">' +
@@ -315,6 +321,47 @@ function renderRoleProfile() {
         if (action === 'relationships') showAppView('relationshipView');
         if (action === 'life') showAppView('lifeView');
     };
+
+    initPersonaCollapse(content);
+}
+
+/**
+ * 顶部人设原文折叠：默认只露出固定高度预览，短/空人设不显示入口。
+ * 原文由 role.persona 直接转义渲染，不做任何截断或改写。
+ */
+function initPersonaCollapse(root) {
+    const wrap = root.querySelector('[data-persona-collapse]');
+    if (!wrap) return;
+    const body = wrap.querySelector('.profile-persona-body');
+    const toggle = wrap.querySelector('[data-persona-toggle]');
+    const label = wrap.querySelector('[data-persona-toggle-text]');
+    if (!body || !toggle || !label) return;
+
+    const preview = parseFloat(getComputedStyle(wrap).getPropertyValue('--persona-preview')) || 0;
+    if (!preview) return;
+
+    body.style.maxHeight = 'none';
+    const fullHeight = body.scrollHeight;
+    // 内容不超过预览高度：保持完整展示，不渲染“展开”入口。
+    if (fullHeight <= preview + 2) return;
+
+    body.style.maxHeight = preview + 'px';
+    toggle.hidden = false;
+    toggle.addEventListener('click', function () {
+        if (wrap.classList.contains('is-expanded')) {
+            body.style.maxHeight = body.scrollHeight + 'px';
+            void body.offsetHeight;
+            body.style.maxHeight = preview + 'px';
+            wrap.classList.remove('is-expanded');
+            toggle.setAttribute('aria-expanded', 'false');
+            label.textContent = '展开全文';
+        } else {
+            body.style.maxHeight = body.scrollHeight + 'px';
+            wrap.classList.add('is-expanded');
+            toggle.setAttribute('aria-expanded', 'true');
+            label.textContent = '收起';
+        }
+    });
 }
 
 function openMainRoleEditor(focusTone) {
