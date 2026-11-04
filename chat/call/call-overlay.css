@@ -501,3 +501,176 @@
 @media (prefers-reduced-motion: reduce) {
   .maomao-call-ripple, .maomao-call-wave i { animation: none !important; }
 }
+
+/* Group call: every stored group role gets its own tile; last group speaker is highlighted. */
+.maomao-call-layer.is-group .maomao-call-stage {
+  height: clamp(210px, 34vh, 278px);
+  min-height: 196px;
+  background: #ECECEF;
+}
+.maomao-call-layer.is-group .maomao-call-voice-view,
+.maomao-call-layer.is-group .maomao-call-video-view { display: none !important; }
+.maomao-call-layer.is-group .maomao-call-group-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 10px 9px;
+  background: #ECECEF;
+}
+.maomao-call-group-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #88888F;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.25px;
+}
+.maomao-call-group-head strong {
+  color: #66666D;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.maomao-call-group-grid {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(70px, 1fr);
+  align-content: center;
+  gap: 7px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #C7C7CD transparent;
+}
+.maomao-call-group-tile {
+  position: relative;
+  min-width: 0;
+  min-height: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+  padding: 6px 3px;
+  border: 1px solid #DCDCE1;
+  border-radius: 12px;
+  background: rgba(255,255,255,.76);
+  color: #222226;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.maomao-call-group-avatar {
+  width: 39px;
+  height: 39px;
+  flex: 0 0 39px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(17,17,17,.1);
+  border-radius: 50%;
+  background: #D9D9DE;
+  color: #303035;
+  font-size: 14px;
+  font-weight: 650;
+}
+.maomao-call-group-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.maomao-call-group-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: inherit;
+  font-size: 9px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maomao-call-group-role {
+  max-width: 100%;
+  overflow: hidden;
+  color: #929299;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maomao-call-group-tile.is-speaking {
+  border-color: #77777E;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 1px rgba(17,17,17,.08);
+}
+.maomao-call-group-tile.is-speaking .maomao-call-group-role {
+  color: #222226;
+  font-weight: 700;
+}
+.maomao-call-group-state {
+  flex: 0 0 auto;
+  min-height: 13px;
+  color: #85858C;
+  font-size: 9px;
+  text-align: center;
+}
+.maomao-call-layer.is-group.is-video .maomao-call-stage,
+.maomao-call-layer.is-group.is-video .maomao-call-group-view {
+  background: #202024;
+}
+.maomao-call-layer.is-group.is-video .maomao-call-group-head,
+.maomao-call-layer.is-group.is-video .maomao-call-group-state {
+  color: #B7B7BE;
+}
+.maomao-call-layer.is-group.is-video .maomao-call-group-head strong { color: #E6E6E9; }
+.maomao-call-layer.is-group.is-video .maomao-call-group-tile {
+  min-height: 74px;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0 4px 7px;
+  border-color: rgba(255,255,255,.18);
+  background: #3A3A40;
+  color: #FFFFFF;
+}
+.maomao-call-layer.is-group.is-video .maomao-call-group-avatar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: #45454B;
+  color: #FFFFFF;
+  font-size: 25px;
+  opacity: .94;
+}
+.maomao-call-layer.is-group.is-video .maomao-call-group-tile::after {
+  content: "";
+  position: absolute;
+  inset: 42% 0 0;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.62));
+  pointer-events: none;
+}
+.maomao-call-layer.is-group.is-video .maomao-call-group-name,
+.maomao-call-layer.is-group.is-video .maomao-call-group-role {
+  position: relative;
+  z-index: 1;
+  color: #FFFFFF;
+  text-shadow: 0 1px 4px rgba(0,0,0,.65);
+}
+.maomao-call-layer.is-group.is-video .maomao-call-group-role { opacity: .84; }
+.maomao-call-layer.is-group.is-video .maomao-call-group-tile.is-speaking {
+  border-color: rgba(255,255,255,.82);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+}
+@media (max-width: 360px) {
+  .maomao-call-layer.is-group .maomao-call-group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .maomao-call-group-tile { transition: none; }
+}
+
