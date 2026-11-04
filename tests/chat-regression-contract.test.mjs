@@ -971,7 +971,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v161'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1284,7 +1284,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v160/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1405,7 +1405,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v160/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1592,7 +1592,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v161'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
@@ -1799,7 +1799,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v160/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1855,7 +1855,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v161'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1885,7 +1885,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v160/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -1961,4 +1961,38 @@ test('MAo uses the bunny as its installed app icon and exposes the three default
   }
   assert.ok(serviceWorker.includes('./assets/mao-bunny-192.png'));
   assert.ok(serviceWorker.includes('./assets/mao-bunny-512.png'));
+});
+
+
+test('PhoneStorage automatically assigns one of the three default avatars only when the profile avatar is empty', () => {
+  function bootStorage(initialProfile, randomValue) {
+    const data = new Map();
+    if (initialProfile !== undefined) data.set('myProfile', JSON.stringify(initialProfile));
+    const localStorage = {
+      getItem(key) { return data.has(key) ? data.get(key) : null; },
+      setItem(key, value) { data.set(key, String(value)); },
+      removeItem(key) { data.delete(key); },
+      key(index) { return Array.from(data.keys())[index] || null; },
+      get length() { return data.size; }
+    };
+    const windowLike = {};
+    runInNewContext(storage, {
+      window: windowLike,
+      localStorage,
+      console: { warn() {} },
+      Math: { floor: Math.floor, random: () => randomValue }
+    });
+    return { api: windowLike.PhoneStorage, data };
+  }
+
+  const fresh = bootStorage(undefined, 0.5);
+  const presets = fresh.api.getDefaultAvatarPresets();
+  assert.equal(presets.length, 3);
+  const assigned = fresh.api.getMyProfile();
+  assert.ok(presets.some(item => item.dataUrl === assigned.avatar), 'fresh profile receives one of the three built-in avatars');
+  assert.equal(JSON.parse(fresh.data.get('myProfile')).avatar, assigned.avatar, 'default avatar is persisted');
+  assert.equal(fresh.api.getMyProfile().avatar, assigned.avatar, 'the assigned default stays stable between pages');
+
+  const existing = bootStorage({ nickname: '已有用户', avatar: 'data:image/png;base64,custom-avatar' }, 0.1);
+  assert.equal(existing.api.getMyProfile().avatar, 'data:image/png;base64,custom-avatar', 'existing custom avatar must never be overwritten');
 });
