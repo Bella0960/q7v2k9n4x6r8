@@ -35,11 +35,15 @@ test('the simulated call does not request real microphone or camera access', () 
   assert.match(styles, /\.maomao-call-layer\.is-video/);
 });
 
-test('group calls render real group members and keep their speaker identities', () => {
+test('group calls load the saved group roster and keep participant identities', () => {
+  assert.match(detail, /data-feat="group-call"/);
   assert.match(extras, /case 'group-call': featCall\('group'\)/);
+  assert.match(overlay, /readGroupData\(character\.id\)/);
+  assert.match(overlay, /phone_groups/);
+  assert.match(overlay, /ai_custom_characters/);
   assert.match(overlay, /resolveGroupParticipants/);
   assert.match(overlay, /maomao-call-group-grid/);
   assert.match(overlay, /message\.memberId/);
-  assert.match(overlay, /group:\s*!!isGroupCall/);
+  assert.match(overlay, /participants:\s*isGroupCall \? groupParticipants/);
   assert.match(overlay, /群视频通话/);
 });
