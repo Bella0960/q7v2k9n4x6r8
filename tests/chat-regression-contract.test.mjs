@@ -2004,6 +2004,7 @@ test('the shared default portrait is displayed across music, chat calls, setting
   const finance = read('wallet/finance.html');
   const forum = read('forum/forum.html');
   const forumDetail = read('forum/forum-detail.html');
+  const couple = read('couple/couple.html');
 
   assert.ok(music.includes('phone_storage.js'));
   assert.ok(music.includes("renderMusicAvatar(document.getElementById('musicHomeAvatar')"));
@@ -2027,4 +2028,7 @@ test('the shared default portrait is displayed across music, chat calls, setting
   assert.ok(forumDetail.includes('function avatarContent(item, isUserPost)'));
   assert.ok(forumDetail.includes('avatarContent(c, false)'));
   assert.ok(forumDetail.includes('avatarContent(r, false)'));
+
+  assert.ok(couple.includes('phone_storage.js'));
+  assert.ok(couple.includes('const myPortrait = profile.myAvatar || sharedAvatar;'), 'couple profile keeps its own uploaded portrait, otherwise inherits the shared default');
 });
