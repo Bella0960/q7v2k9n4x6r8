@@ -65,6 +65,7 @@ runInNewContext(rolePublicTimelineSource, { window: rolePublicTimelineWindow, gl
 const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
+const profileEditor = read('profile/edit-profile.html');
 const packageJson = JSON.parse(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
@@ -970,7 +971,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1283,7 +1284,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1404,7 +1405,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1591,7 +1592,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
@@ -1798,7 +1799,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1854,7 +1855,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1884,7 +1885,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -1938,4 +1939,25 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
   assert.equal(windowLike.MAOMAOChatListTheme.set('default'), true);
   assert.equal(state.has('maomao_chat_list_theme_preset_v1'), false);
   assert.equal(attributes.has('data-chat-list-theme'), false);
+});
+
+
+test('MAo uses the bunny as its installed app icon and exposes the three default avatar presets', () => {
+  const manifest = JSON.parse(read('manifest.json'));
+  assert.equal(manifest.name, 'MAo');
+  assert.equal(manifest.short_name, 'MAo');
+  assert.ok(manifest.icons.some(icon => icon.src === './assets/mao-bunny-192.png' && icon.sizes === '192x192'));
+  assert.ok(manifest.icons.some(icon => icon.src === './assets/mao-bunny-512.png' && icon.purpose === 'maskable'));
+
+  assert.match(homePage, /<title>MAo<\\/title>/);
+  assert.match(homePage, /name="apple-mobile-web-app-title" content="MAo"/);
+  assert.match(homePage, /apple-touch-icon[^>]+mao-bunny-192\\.png/);
+
+  for (const asset of ['avatar-bunny.svg', 'avatar-cat.svg', 'avatar-cat-dark.svg']) {
+    assert.ok(profileEditor.includes('data-avatar-src="../assets/' + asset + '"'), 'missing selectable avatar: ' + asset);
+    assert.ok(serviceWorker.includes('./assets/' + asset), 'avatar must be available offline: ' + asset);
+    assert.ok(read('assets/' + asset).includes('<svg'), 'avatar SVG asset should exist: ' + asset);
+  }
+  assert.ok(serviceWorker.includes('./assets/mao-bunny-192.png'));
+  assert.ok(serviceWorker.includes('./assets/mao-bunny-512.png'));
 });
