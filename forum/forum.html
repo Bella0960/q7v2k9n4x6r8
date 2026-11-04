@@ -210,7 +210,7 @@ function icon(name){const paths={heart:'<path d="M20.8 4.6a5.4 5.4 0 0 0-7.6 0L1
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200)}
 function timeAgo(ts){const h=Math.floor((Date.now()-ts)/3600000);if(h<1)return '刚刚';if(h<24)return h+'小时前';return Math.floor(h/24)+'天前'}
 function countComments(p){return (Number(p._seedCount)||0)+(Array.isArray(p.comments)?p.comments.length:Number(p.comments||0))}
-function isMyForumPost(p){return !!p && p.owner==='me'}
+function isMyForumPost(p){return !!p && (p.owner==='me'||p.tag==='me'||String(p.id||'').indexOf('user_')===0)}
 function getMyForumAvatar(){
  try {
   const profile=window.PhoneStorage&&typeof PhoneStorage.getMyProfile==='function'?PhoneStorage.getMyProfile():null;
@@ -219,7 +219,7 @@ function getMyForumAvatar(){
 }
 function forumAvatarContent(p){
  const candidate=isMyForumPost(p)?getMyForumAvatar():(p&&p.avatar);
- if(typeof candidate==='string'&&/^(?:data:image\\/(?:png|jpe?g|gif|webp|bmp|svg\\+xml|avif);|https?:\\/\\/|blob:|\\.|\\/)/i.test(candidate))
+ if(typeof candidate==='string'&&/^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\\+xml|avif);|https?:\/\/|blob:|\\.|\/)/i.test(candidate))
   return '<img src="'+esc(candidate)+'" alt="">';
  const value=p&&typeof p.avatar==='string'&&p.avatar.length===1?p.avatar:(p&&p.name?p.name.slice(0,1):'?');
  return esc(value);
