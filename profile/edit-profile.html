@@ -131,7 +131,46 @@
         .ep-avatar-row {
             display: flex;
             justify-content: center;
-            margin-bottom: 24px;
+            margin-bottom: 10px;
+        }
+        .ep-avatar-presets {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 9px;
+            margin: 0 0 24px;
+        }
+        .ep-avatar-presets-label {
+            color: #8E8E93;
+            font-size: .688rem;
+            letter-spacing: .08em;
+        }
+        .ep-avatar-preset-list {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+        }
+        .ep-avatar-preset {
+            width: 54px;
+            height: 54px;
+            padding: 3px;
+            border: 1px solid transparent;
+            border-radius: 50%;
+            background: transparent;
+            cursor: pointer;
+            transition: border-color .16s ease, transform .16s ease;
+        }
+        .ep-avatar-preset[aria-pressed="true"] {
+            border-color: #222222;
+        }
+        .ep-avatar-preset:active { transform: scale(.95); }
+        .ep-avatar-preset img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
         }
         .ep-avatar {
             width: 80px;
@@ -299,6 +338,20 @@
                 </div>
             </div>
             <input type="file" id="avatarInput" accept="image/*" style="display:none;">
+            <div class="ep-avatar-presets" aria-label="选择默认头像">
+                <span class="ep-avatar-presets-label">默认头像</span>
+                <div class="ep-avatar-preset-list">
+                    <button class="ep-avatar-preset" type="button" data-avatar-src="../assets/avatar-bunny.svg" aria-label="兔子头像" aria-pressed="false">
+                        <img src="../assets/avatar-bunny.svg" alt="">
+                    </button>
+                    <button class="ep-avatar-preset" type="button" data-avatar-src="../assets/avatar-cat.svg" aria-label="猫咪头像" aria-pressed="false">
+                        <img src="../assets/avatar-cat.svg" alt="">
+                    </button>
+                    <button class="ep-avatar-preset" type="button" data-avatar-src="../assets/avatar-cat-dark.svg" aria-label="深色猫咪头像" aria-pressed="false">
+                        <img src="../assets/avatar-cat-dark.svg" alt="">
+                    </button>
+                </div>
+            </div>
 
             <!-- 可扩展表单：新增字段只需在 form 内加带 name 的控件 -->
             <form id="profileForm" onsubmit="return false;">
@@ -443,6 +496,13 @@
             } else {
                 box.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
             }
+            document.querySelectorAll('.ep-avatar-preset').forEach(function (button) {
+                var selected = false;
+                try {
+                    selected = !!dataUrl && new URL(button.getAttribute('data-avatar-src'), window.location.href).href === dataUrl;
+                } catch (err) {}
+                button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
         }
         function renderCover(dataUrl) {
             var box = document.getElementById('coverBox');
@@ -458,6 +518,16 @@
         /* ================= 上传绑定 ================= */
         document.getElementById('avatarBox').addEventListener('click', function () {
             document.getElementById('avatarInput').click();
+        });
+        document.querySelectorAll('.ep-avatar-preset').forEach(function (button) {
+            button.addEventListener('click', function () {
+                try {
+                    pendingAvatar = new URL(button.getAttribute('data-avatar-src'), window.location.href).href;
+                    renderAvatar(pendingAvatar);
+                } catch (err) {
+                    alert('默认头像加载失败，请刷新后重试');
+                }
+            });
         });
         document.getElementById('coverBox').addEventListener('click', function () {
             document.getElementById('coverInput').click();
