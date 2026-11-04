@@ -649,6 +649,7 @@
       case 'todo': featTodo(); break;
       case 'voice': featCall('voice'); break;
       case 'video': featCall('video'); break;
+      case 'group-call': featCall('group'); break;
       case 'moment': featMoment(); break;
       case 'redpacket': featRedpacket(); break;
       case 'transfer': featTransfer(); break;
