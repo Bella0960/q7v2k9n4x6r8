@@ -13,24 +13,25 @@ const forumDetail = read('forum/forum-detail.html');
 const chatDetail = read('chat/chat/chat-detail.html');
 
 test('forum detail loads the same theme-aware seeded posts as the list and persists first initialization', () => {
-  assert.match(forumHome, /function getSeededPosts\(\)/);
-  assert.match(forumDetail, /function getSeededPosts\(\)/);
+  assert.match(forumHome, /function getSeededPosts\(themeOverride\)/);
+  assert.match(forumDetail, /function getSeededPosts\(themeOverride\)/);
   assert.match(forumDetail, /const seeded=\[/);
   assert.match(forumHome, /localStorage\.setItem\(STORE,JSON\.stringify\(seedPosts\)\)/);
   assert.match(forumDetail, /if \(raw === null\)[\s\S]*?savePosts\(seedPosts\)/);
-  assert.match(forumDetail, /function loadPosts\(\)[\s\S]*?mergeForumPosts\(stored,seedPosts\)/);
+  assert.match(forumDetail, /function loadPosts\(\)[\s\S]*?mergeForumPosts\(stored, seedPosts, buildPreviousSeedSets\(stored, seedIds\)\)/);
 });
 
-test('forum seed merge keeps existing comments/likes and user posts while refreshing themed seed copy', () => {
+test('forum seed merge keeps user-edited fields, comments/likes and user posts while refreshing untouched defaults', () => {
   const start = forumDetail.indexOf('function mergeForumPosts(');
-  const end = forumDetail.indexOf('\nfunction loadPosts()', start);
+  const rest = forumDetail.slice(start);
+  const end = start + rest.search(/\n\s*function loadPosts\(\)/);
   assert.ok(start >= 0 && end > start, 'detail page should expose the shared merge implementation');
   const mergeSource = forumDetail.slice(start, end) + '\nmergeForumPosts;';
   const mergeForumPosts = runInNewContext(mergeSource, { Map, Set });
 
   const merged = mergeForumPosts(
     [
-      { id: 'p1', title: '旧主题标题', likes: 99, comments: [{ id: 'c1', text: '保留评论' }], liked: true },
+      { id: 'p1', title: '我改过的标题', likes: 99, comments: [{ id: 'c1', text: '保留评论' }], liked: true },
       { id: 'user_abc', owner: 'me', title: '我的帖子', body: '用户正文' }
     ],
     [
@@ -40,7 +41,8 @@ test('forum seed merge keeps existing comments/likes and user posts while refres
   );
 
   const p1 = merged.find((item) => item.id === 'p1');
-  assert.equal(p1.title, '当前主题标题');
+  assert.equal(p1.title, '我改过的标题', '与默认值不同的字段视为用户修改，必须保留');
+  assert.equal(p1.name, '宝宝', '未出现在存储中的默认字段同步为新默认值');
   assert.equal(p1.likes, 99);
   assert.equal(p1.liked, true);
   assert.equal(p1.comments[0].text, '保留评论');
@@ -445,4 +447,260 @@ test('blocked-send and error-message context isolation contracts remain intact',
   assert.match(chatDetail, /if \(isBlocked\(aliasRoleId\) && !isRegen && !contextOnly\)/);
   assert.match(chatDetail, /if \(m\.isError \|\| m\.role === 'system_error' \|\| m\.sendFailed\) return/);
   assert.match(chatDetail, /sendFailedReason === 'missing-api-key'/);
+});
+
+/* ===== 论坛合并/加载的行为级测试（在 node:vm 中执行页面里的真实函数） ===== */
+
+function createForumEnv(initialStore) {
+  const data = Object.assign({}, initialStore || {});
+  const writes = [];
+  const warns = [];
+  const toasts = [];
+  let failWrites = false;
+  const env = {
+    localStorage: {
+      getItem(key) {
+        return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+      },
+      setItem(key, value) {
+        if (failWrites) throw new Error('quota exceeded');
+        data[key] = String(value);
+        writes.push({ key, value: data[key] });
+      },
+      removeItem(key) { delete data[key]; }
+    },
+    console: {
+      warn() {
+        warns.push(Array.prototype.map.call(arguments, (v) => String(v && v.message ? v.message : v)).join(' '));
+      }
+    },
+    toast(message) { toasts.push(String(message)); },
+    Map,
+    Set
+  };
+  env.forum = {
+    data,
+    writes,
+    warns,
+    toasts,
+    setFailWrites(value) { failWrites = !!value; }
+  };
+  return env;
+}
+
+function sliceBetween(source, startMarker, endMarker, label) {
+  const start = source.indexOf(startMarker);
+  assert.ok(start >= 0, 'missing forum start marker: ' + label);
+  const rest = source.slice(start);
+  const offset = rest.indexOf(endMarker);
+  assert.ok(offset > 0, 'missing forum end marker: ' + label);
+  return rest.slice(0, offset);
+}
+
+function loadHomeForumCore(env) {
+  const parts = [
+    sliceBetween(forumHome, "const STORE='forum_posts';", '\nfunction getForumTheme(', 'store'),
+    sliceBetween(forumHome, 'function getForumTheme(themeOverride){', '\nfunction getSeededPosts(', 'theme'),
+    sliceBetween(forumHome, 'function getSeededPosts(themeOverride){', '\nconst FORUM_RESIDENTS=[', 'seeds'),
+    sliceBetween(forumHome, 'const seeded=[', '\nconst $=id=>document.getElementById(id);', 'seed base'),
+    sliceBetween(forumHome, 'function buildPreviousSeedSets(', '\nfunction save(){', 'merge/load')
+  ];
+  return runInNewContext(
+    parts.join('\n') + '\n({ getForumTheme, getSeededPosts, mergeForumPosts, loadPosts });',
+    env
+  );
+}
+
+function loadDetailForumCore(env) {
+  const source = sliceBetween(
+    forumDetail,
+    'function readForumConfig()',
+    '\n  function timeAgo(',
+    'detail forum core'
+  );
+  return runInNewContext(
+    source + '\n({ getForumTheme, getSeededPosts, mergeForumPosts, loadPosts });',
+    env
+  );
+}
+
+const forumCores = [
+  { name: 'list page', load: loadHomeForumCore },
+  { name: 'detail page', load: loadDetailForumCore }
+];
+
+for (const core of forumCores) {
+  test(core.name + ' only overwrites seed defaults that the user never touched', () => {
+    const env = createForumEnv({});
+    const page = core.load(env);
+
+    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'reality' }));
+    const previousSeeds = clone(page.getSeededPosts());
+
+    const stored = clone(previousSeeds);
+    stored[0].title = '我自己改过的标题';
+    stored[0].likes = 99;
+    stored[0].liked = true;
+    stored[0].comments = [{ name: '我', owner: 'me', text: '我自己的评论' }];
+    const userPost = {
+      id: 'user_keep',
+      owner: 'me',
+      title: '用户自己发的帖子',
+      body: '用户自己写的正文',
+      liked: false,
+      comments: [{ name: '我', owner: 'me', text: '用户自建评论' }]
+    };
+    stored.push(userPost);
+
+    env.localStorage.setItem('forum_config', JSON.stringify({ theme: 'bagua' }));
+    env.localStorage.setItem('forum_posts', JSON.stringify(stored));
+    const loaded = page.loadPosts();
+    const nextSeeds = clone(page.getSeededPosts());
+
+    const p1 = loaded.find((item) => item.id === 'p1');
+    const p2 = loaded.find((item) => item.id === 'p2');
+    assert.equal(p1.title, '我自己改过的标题', '用户改过的标题必须保留');
+    assert.equal(p1.body, nextSeeds[0].body, '未改过的正文同步到新主题默认值');
+    assert.equal(p1.topic, nextSeeds[0].topic, '未改过的话题同步到新主题默认值');
+    assert.equal(p1.themeId, 'bagua', '派生字段 themeId 跟随当前主题');
+    assert.equal(p1.likes, 99, '点赞数保留');
+    assert.equal(p1.liked, true, '点赞状态保留');
+    assert.equal(p1.comments[0].text, '我自己的评论', '用户评论保留');
+    assert.equal(p2.title, nextSeeds[1].title, '完全未改过的种子帖同步到新默认标题');
+    assert.equal(p2.body, nextSeeds[1].body);
+
+    const keptUser = loaded.find((item) => item.id === 'user_keep');
+    assert.equal(keptUser.title, userPost.title, '用户自建帖子标题不被覆盖');
+    assert.equal(keptUser.body, userPost.body, '用户自建帖子正文不被覆盖');
+    assert.equal(keptUser.comments[0].text, '用户自建评论', '用户自建评论不被覆盖');
+    assert.equal(loaded.filter((item) => String(item.id).indexOf('p') === 0).length, 6, '种子帖不重复');
+  });
+
+  test(core.name + ' stays idempotent across repeated initialization', () => {
+    const env = createForumEnv({});
+    const page = core.load(env);
+    const first = clone(page.loadPosts());
+    const second = clone(page.loadPosts());
+    const third = clone(page.loadPosts());
+
+    assert.equal(first.length, 6, '首次初始化应得到 6 条种子帖');
+    assert.equal(new Set(first.map((item) => item.id)).size, 6, '种子帖 ID 不得重复');
+    assert.deepEqual(second, first, '第二次加载不得改变内容');
+    assert.deepEqual(third, second, '第三次加载不得改变内容');
+    assert.equal(
+      env.forum.writes.filter((entry) => entry.key === 'forum_posts').length,
+      1,
+      '内容稳定后不得每次都重写存储'
+    );
+    assert.equal(JSON.parse(env.forum.data.forum_posts).length, 6, '存储里只保留一份种子帖');
+  });
+
+  test(core.name + ' keeps the document shell when stored data is corrupt or not a list', () => {
+    for (const raw of ['{broken json', JSON.stringify({ notAList: true })]) {
+      const env = createForumEnv({ forum_posts: raw });
+      const page = core.load(env);
+      const loaded = page.loadPosts();
+      assert.ok(Array.isArray(loaded), '损坏数据不得让加载抛出或返回非数组');
+      assert.deepEqual(Array.from(loaded, (item) => item.id), ['p1', 'p2', 'p3', 'p4', 'p5', 'p6']);
+      assert.ok(env.forum.warns.length >= 1, '读取失败必须显式记录');
+      assert.ok(env.forum.toasts.length >= 1, '读取失败必须给出用户可见提示');
+      assert.equal(
+        env.forum.writes.filter((entry) => entry.key === 'forum_posts').length,
+        0,
+        '损坏数据不得被静默覆盖'
+      );
+    }
+  });
+
+  test(core.name + ' still shows already-read user posts when write-back fails', () => {
+    const env = createForumEnv({});
+    const page = core.load(env);
+    const userPost = { id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文' };
+    env.localStorage.setItem('forum_posts', JSON.stringify([userPost]));
+    env.forum.setFailWrites(true);
+
+    const loaded = page.loadPosts();
+    assert.ok(loaded.some((item) => item.id === 'user_keep'), '回写失败不得退回只剩种子的视图');
+    assert.equal(loaded.length, 7, '用户帖子与 6 条种子帖都应继续展示');
+    assert.ok(env.forum.warns.length >= 1, '回写失败必须显式记录');
+    assert.ok(
+      env.forum.toasts.some((message) => message.indexOf('未写入') >= 0),
+      '回写失败必须提示本次改动可能不会保留'
+    );
+  });
+}
+
+function fakeElement() {
+  return { style: {}, textContent: '', innerHTML: '', value: '', placeholder: '', disabled: false };
+}
+
+function loadDetailLoadPost(env) {
+  const source = sliceBetween(forumDetail, 'let post = null;', '\n  function renderPost()', 'loadPost');
+  return runInNewContext(source + '\nloadPost;', env);
+}
+
+test('detail invalid post id keeps the shell and an unreadable store still renders the seed post', () => {
+  const head = fakeElement();
+  const actions = fakeElement();
+  const content = fakeElement();
+  const commentList = fakeElement();
+  const commentInput = fakeElement();
+  const sendButton = fakeElement();
+  const topbar = fakeElement();
+  topbar.textContent = 'The Forum';
+  const document = {
+    querySelector(selector) {
+      if (selector === '.p-head') return head;
+      if (selector === '.p-actions') return actions;
+      if (selector === '.comment-bar .send-btn') return sendButton;
+      if (selector === '.topbar') return topbar;
+      return null;
+    },
+    getElementById(id) {
+      const map = { pContent: content, commentList: commentList, commentInput: commentInput };
+      return map[id] || null;
+    }
+  };
+
+  const renders = [];
+  const coreEnv = createForumEnv({ forum_posts: '{broken json' });
+  const core = loadDetailForumCore(coreEnv);
+  const seeds = clone(core.loadPosts());
+  const baseStubs = {
+    document,
+    URLSearchParams,
+    setTimeout,
+    renderPost: () => renders.push('post'),
+    renderComments: () => renders.push('comments'),
+    generateInitialAIComments: () => {}
+  };
+
+  const env = createForumEnv({});
+  Object.assign(env, baseStubs, {
+    location: { search: '?id=missing_post' },
+    getPostId: () => 'missing_post',
+    loadPosts: () => clone(seeds)
+  });
+  const loadPost = loadDetailLoadPost(env);
+  loadPost();
+
+  assert.equal(head.style.display, 'none');
+  assert.equal(actions.style.display, 'none');
+  assert.ok(content.textContent.indexOf('这条帖子暂时无法找到') >= 0, '应显示帖子找不到的说明');
+  assert.ok(commentList.textContent.indexOf('暂时无法加载') >= 0, '评论列应显示降级提示');
+  assert.equal(commentInput.disabled, true);
+  assert.equal(commentInput.placeholder, '帖子暂不可用');
+  assert.equal(sendButton.disabled, true);
+  assert.equal(renders.length, 0, '无效帖子 ID 不得进入正常渲染流程');
+  assert.equal(topbar.textContent, 'The Forum', '页面外壳（顶栏）必须保留');
+
+  const okEnv = createForumEnv({});
+  Object.assign(okEnv, baseStubs, {
+    location: { search: '?id=p1' },
+    getPostId: () => 'p1',
+    loadPosts: () => clone(seeds)
+  });
+  const loadSeedPost = loadDetailLoadPost(okEnv);
+  loadSeedPost();
+  assert.deepEqual(renders, ['post', 'comments'], '存储损坏时仍可展示已读出的种子帖，页面外壳不崩溃');
 });
