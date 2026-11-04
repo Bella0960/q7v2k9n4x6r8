@@ -376,8 +376,11 @@
         var hasError = nextHistory.some(function (item) { return item && item.isError; });
         renderTranscript();
         if (accepted) stateEl.textContent = '已连接 · 文字交流';
-        else if (hasError) stateEl.textContent = '聊天服务暂不可用';
-        else {
+        else if (hasError) {
+          stateEl.textContent = '聊天服务暂不可用，消息已保留';
+          input.value = text;
+          input.style.height = 'auto';
+        } else {
           stateEl.textContent = 'TA 正在回复中，请稍后再发';
           input.value = text;
           input.style.height = 'auto';
