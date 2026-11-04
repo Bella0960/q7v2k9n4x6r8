@@ -16,7 +16,11 @@ import { runInNewContext } from 'node:vm';
  * 于是每次 startCase() 刚解锁的卡片都会被立刻重新算回「锁定 / 完成上一案后解锁」，
  * 表现为：案件01 显示「可调查」而不是「✓ 已结案」，案件02 永远点不进去。
  */
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// 源码根目录：默认按测试文件自身位置推导仓库根；可用 MAOMAO_TEST_ROOT 指向隔离副本，
+// 便于在副本上验证断言确实会变红。仅影响“从哪里读源码”，不改变任何断言语义。
+const root = process.env.MAOMAO_TEST_ROOT
+  ? resolve(process.env.MAOMAO_TEST_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const gamesHtml = readFileSync(resolve(root, 'games/games.html'), 'utf8');
 
 /* ---------- 源码提取工具 ---------- */

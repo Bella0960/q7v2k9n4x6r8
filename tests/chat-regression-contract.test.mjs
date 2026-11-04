@@ -5,7 +5,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// 源码根目录：默认按测试文件自身位置推导；可用 MAOMAO_TEST_ROOT 指向隔离副本。
+const root = process.env.MAOMAO_TEST_ROOT
+  ? resolve(process.env.MAOMAO_TEST_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');

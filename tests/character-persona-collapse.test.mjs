@@ -13,7 +13,10 @@ import { fileURLToPath } from 'node:url';
  * 3) 下方结构化档案（角色设定 / 人物关系 / 个人生活线）不进入折叠容器；
  * 4) 短人设与空人设不出现点了没反应的「展开」入口。
  */
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// 源码根目录：默认按测试文件自身位置推导；可用 MAOMAO_TEST_ROOT 指向隔离副本。
+const root = process.env.MAOMAO_TEST_ROOT
+  ? resolve(process.env.MAOMAO_TEST_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(resolve(root, 'worldbook/characters/characters.html'), 'utf8');
 const js = readFileSync(resolve(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
 const indexHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
