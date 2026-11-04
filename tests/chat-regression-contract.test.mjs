@@ -2005,25 +2005,26 @@ test('the shared default portrait is displayed across music, chat calls, setting
   const forum = read('forum/forum.html');
   const forumDetail = read('forum/forum-detail.html');
 
-  assert.match(music, /phone_storage\\.js/);
-  assert.match(music, /renderMusicAvatar\\(document\\.getElementById\\('musicHomeAvatar'\\)/);
-  assert.match(music, /renderMusicAvatar\\(document\\.getElementById\\('pAvatar'\\)/);
-  assert.doesNotMatch(music, /editAvatar|setItem\\('music_profile_avatar'/, 'music must not keep a separate letter-avatar editor');
+  assert.ok(music.includes('phone_storage.js'));
+  assert.ok(music.includes("renderMusicAvatar(document.getElementById('musicHomeAvatar')"));
+  assert.ok(music.includes("renderMusicAvatar(document.getElementById('pAvatar')"));
+  assert.equal(music.includes('editAvatar'), false, 'music must not keep a separate letter-avatar editor');
+  assert.equal(music.includes("setItem('music_profile_avatar'"), false);
 
-  assert.match(detail, /fillAvatar\\(avatar, getMyAvatar\\(\\), USER_SVG\\)/, 'outgoing chat messages use the shared user portrait');
-  assert.match(callUi, /phone_storage\\.js/);
-  assert.match(callUi, /PhoneStorage\\.getMyProfile\\(\\)/, 'outgoing call UI initializes and reads the shared profile');
+  assert.ok(detail.includes('fillAvatar(avatar, getMyAvatar(), USER_SVG)'), 'outgoing chat messages use the shared user portrait');
+  assert.ok(callUi.includes('phone_storage.js'));
+  assert.ok(callUi.includes('PhoneStorage.getMyProfile()'), 'outgoing call UI initializes and reads the shared profile');
 
-  assert.match(settings, /PhoneStorage\\.getMyProfile\\(\\)/);
-  assert.match(settings, /avatarImage\\.src = avatarSrc/);
-  assert.match(finance, /PhoneStorage\\.getMyProfile\\(\\)/);
-  assert.match(finance, /financeUserAvatar/);
-  assert.match(finance, /image\\.src = src/);
+  assert.ok(settings.includes('PhoneStorage.getMyProfile()'));
+  assert.ok(settings.includes('avatarImage.src = avatarSrc'));
+  assert.ok(finance.includes('PhoneStorage.getMyProfile()'));
+  assert.ok(finance.includes('financeUserAvatar'));
+  assert.ok(finance.includes('image.src = src'));
 
-  assert.match(forum, /function forumAvatarContent\\(p\\)/);
-  assert.match(forum, /forumAvatarContent\\(p\\)/);
-  assert.match(forum, /function getMyForumAvatar\\(\\)/);
-  assert.match(forumDetail, /function avatarContent\\(item, isUserPost\\)/);
-  assert.match(forumDetail, /avatarContent\\(c, false\\)/);
-  assert.match(forumDetail, /avatarContent\\(r, false\\)/);
+  assert.ok(forum.includes('function forumAvatarContent(p)'));
+  assert.ok(forum.includes('forumAvatarContent(p)'));
+  assert.ok(forum.includes('function getMyForumAvatar()'));
+  assert.ok(forumDetail.includes('function avatarContent(item, isUserPost)'));
+  assert.ok(forumDetail.includes('avatarContent(c, false)'));
+  assert.ok(forumDetail.includes('avatarContent(r, false)'));
 });
