@@ -12,6 +12,9 @@
   function insertChatMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
     if (!msg.time) msg.time = Date.now();
+    // 稳定 mid：单条删除/转发等操作按 mid 定位，新消息直接落库 mid，
+    // 避免渲染期临时生成的 mid 与存储中的消息对不上。
+    if (!msg.mid) msg.mid = 'm' + msg.time + Math.random().toString(36).slice(2, 5);
     if (!msg.role) msg.role = 'user';
     const list = loadMessages();
     list.push(msg);
@@ -468,23 +471,298 @@
     img.src = url;
   }
 
+  // 附件扩展（CHAT-002）：同一个入口同时接受图片与视频（含手机相册短视频）。
+  // 视频二进制只走 IndexedDB（ChatMedia.storeVideo），消息里只存 assetId 引用。
   let chatImgInput = null;
+
+  // 当前会话 ID：角色 ID 或群 ID（群 ID 以 g 开头），附件按会话隔离
+  function mediaConversationId() {
+    if (typeof currentCharacter !== 'undefined' && currentCharacter && currentCharacter.id) {
+      return String(currentCharacter.id);
+    }
+    return '';
+  }
+  function mediaHistoryKey() {
+    var id = mediaConversationId();
+    return id ? ('chat_history_' + id) : '';
+  }
+  function mediaLastMessage() {
+    if (typeof loadMessages !== 'function') return null;
+    var list = loadMessages();
+    return (list && list.length) ? list[list.length - 1] : null;
+  }
+
+  // 发送中的临时气泡：不落库，失败时原地换成可重试气泡
+  function insertMediaStatus(text, retry) {
+    var row = document.createElement('div');
+    row.className = 'msg-row sent cm-status-row';
+    var bubble = document.createElement('div');
+    bubble.className = 'msg-bubble cm-status-bubble';
+    var label = document.createElement('span');
+    label.className = 'cm-status-text';
+    label.textContent = text;
+    bubble.appendChild(label);
+    if (typeof retry === 'function') {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cm-retry';
+      btn.textContent = '重试';
+      btn.addEventListener('click', function () {
+        if (row.parentNode) row.parentNode.removeChild(row);
+        retry();
+      });
+      bubble.appendChild(btn);
+    }
+    var avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    row.appendChild(bubble);
+    row.appendChild(avatar);
+    if (typeof chatMessages !== 'undefined' && chatMessages) {
+      chatMessages.appendChild(row);
+      if (typeof scrollToBottom === 'function') scrollToBottom(true);
+    }
+    return row;
+  }
+
+  // 一批媒体只发一条系统动作，避免一次多选触发多次 API 请求
+  var mediaNotifyState = { images: 0, videos: 0, lives: 0, timer: null };
+  function notifyMediaSent(kind) {
+    mediaNotifyState[kind] += 1;
+    if (mediaNotifyState.timer) clearTimeout(mediaNotifyState.timer);
+    mediaNotifyState.timer = setTimeout(function () {
+      var parts = [];
+      if (mediaNotifyState.images) parts.push(mediaNotifyState.images + ' 张图片');
+      if (mediaNotifyState.videos) parts.push(mediaNotifyState.videos + ' 段视频');
+      if (mediaNotifyState.lives) parts.push(mediaNotifyState.lives + ' 张实况照片');
+      var counts = parts.join('、');
+      mediaNotifyState.images = 0;
+      mediaNotifyState.videos = 0;
+      mediaNotifyState.lives = 0;
+      if (!counts) return;
+      sendSilentInstruction('[系统动作：我发了 ' + counts + '给你。你无法读取视频画面，不要声称看过视频内容]');
+    }, 900);
+  }
+
+  function sendImageItem(item) {
+    return new Promise(function (resolve) {
+      var row = insertMediaStatus('正在发送图片…');
+      compressChatImage(item.file, function (dataUrl) {
+        if (!dataUrl) {
+          if (row.parentNode) row.parentNode.removeChild(row);
+          insertMediaStatus('发送失败：图片处理失败', function () { sendImageItem(item); });
+          showToast('图片处理失败');
+          resolve(false);
+          return;
+        }
+        if (typeof insertChatMessage !== 'function') {
+          if (row.parentNode) row.parentNode.removeChild(row);
+          showToast('发送失败：聊天模块未就绪');
+          resolve(false);
+          return;
+        }
+        var msg = { role: 'user', type: 'image', img: dataUrl, desc: '', text: '[图片]' };
+        if (row.parentNode) row.parentNode.removeChild(row);
+        insertChatMessage(msg);
+        var last = mediaLastMessage();
+        // 以“最后一条”核对是否真的写进了 localStorage，避免假成功
+        if (!last || last.type !== 'image' || last.img !== dataUrl) {
+          setMediaStatusFailed(item, '发送失败：本地存储写入失败', function () { sendImageItem(item); });
+          showToast('发送失败：本地存储写入失败');
+          resolve(false);
+          return;
+        }
+        notifyMediaSent('images');
+        resolve(true);
+      });
+    });
+  }
+
+  function setMediaStatusFailed(item, text, retry) {
+    insertMediaStatus(text, retry);
+  }
+
+  function sendVideoItem(item) {
+    return new Promise(function (resolve) {
+      var owner = mediaConversationId();
+      if (!owner || !window.ChatMedia) {
+        showToast('发送失败：媒体模块未就绪');
+        resolve(false);
+        return;
+      }
+      var row = insertMediaStatus('正在发送视频…');
+      ChatMedia.storeVideo(item.file, owner, item).then(function (res) {
+        if (!res.ok) {
+          if (row.parentNode) row.parentNode.removeChild(row);
+          var reason = ChatMedia.errorMessage(res.error);
+          insertMediaStatus('发送失败：' + reason, function () { sendVideoItem(item); });
+          showToast('发送失败：' + reason);
+          resolve(false);
+          return;
+        }
+        var v = res.value;
+        var msg = {
+          role: 'user',
+          type: 'video',
+          assetId: v.assetId,
+          posterId: v.posterId || null,
+          mime: v.mime,
+          filename: v.filename,
+          size: v.size,
+          duration: v.duration,
+          width: v.width,
+          height: v.height,
+          text: '[视频] ' + ChatMedia.mmss(v.duration) + '（模型无法读取视频画面）'
+        };
+        if (row.parentNode) row.parentNode.removeChild(row);
+        insertChatMessage(msg);
+        var last = mediaLastMessage();
+        if (!last || last.type !== 'video' || last.assetId !== v.assetId) {
+          // 消息没落库：回收刚写入且已无人引用的资产，避免留下孤儿 Blob
+          var bot = { ownerId: owner, remainingMessages: (typeof loadMessages === 'function' ? loadMessages() : []), historyKey: mediaHistoryKey() };
+          ChatMedia.releaseIfUnused(v.assetId, bot);
+          if (v.posterId) ChatMedia.releaseIfUnused(v.posterId, bot);
+          insertMediaStatus('发送失败：本地存储写入失败', function () { sendVideoItem(item); });
+          showToast('发送失败：本地存储写入失败');
+          resolve(false);
+          return;
+        }
+        notifyMediaSent('videos');
+        resolve(true);
+      });
+    });
+  }
+
+  // 实况照片：照片走原有压缩路径，伴生视频走资产引用；只在用户明确勾选时组合
+  function sendLivePhotoItem(imageItem, videoItem) {
+    return new Promise(function (resolve) {
+      var owner = mediaConversationId();
+      if (!owner || !window.ChatMedia) {
+        showToast('发送失败：媒体模块未就绪');
+        resolve(false);
+        return;
+      }
+      var row = insertMediaStatus('正在发送实况照片…');
+      compressChatImage(imageItem.file, function (dataUrl) {
+        if (!dataUrl) {
+          if (row.parentNode) row.parentNode.removeChild(row);
+          insertMediaStatus('实况照片处理失败，改为单独发送视频', function () { sendVideoItem(videoItem); });
+          showToast('照片处理失败，视频将单独发送');
+          resolve(false);
+          return;
+        }
+        ChatMedia.storeVideo(videoItem.file, owner, videoItem).then(function (res) {
+          if (!res.ok) {
+            if (row.parentNode) row.parentNode.removeChild(row);
+            var reason = ChatMedia.errorMessage(res.error);
+            insertMediaStatus('发送失败：' + reason, function () { sendLivePhotoItem(imageItem, videoItem); });
+            showToast('发送失败：' + reason);
+            resolve(false);
+            return;
+          }
+          var v = res.value;
+          var msg = {
+            role: 'user',
+            type: 'live_photo',
+            img: dataUrl,
+            liveVideoId: v.assetId,
+            liveVideoMime: v.mime,
+            liveVideoDuration: v.duration,
+            liveVideoSize: v.size,
+            text: '[实况照片]（模型无法读取动态视频内容）'
+          };
+          if (row.parentNode) row.parentNode.removeChild(row);
+          insertChatMessage(msg);
+          var last = mediaLastMessage();
+          if (!last || last.type !== 'live_photo' || last.liveVideoId !== v.assetId) {
+            var bot = { ownerId: owner, remainingMessages: (typeof loadMessages === 'function' ? loadMessages() : []), historyKey: mediaHistoryKey() };
+            ChatMedia.releaseIfUnused(v.assetId, bot);
+            insertMediaStatus('发送失败：本地存储写入失败', function () { sendLivePhotoItem(imageItem, videoItem); });
+            showToast('发送失败：本地存储写入失败');
+            resolve(false);
+            return;
+          }
+          notifyMediaSent('lives');
+          resolve(true);
+        });
+      });
+    });
+  }
+
+  function sendBatchSequentially(items, livePair) {
+    if (livePair && items.length === 2) {
+      var imgItem = items.filter(function (it) { return it.kind === 'image'; })[0];
+      var vidItem = items.filter(function (it) { return it.kind === 'video'; })[0];
+      if (imgItem && vidItem) {
+        sendLivePhotoItem(imgItem, vidItem);
+        return;
+      }
+    }
+    var chain = Promise.resolve();
+    items.forEach(function (item) {
+      chain = chain.then(function () {
+        return item.kind === 'video' ? sendVideoItem(item) : sendImageItem(item);
+      });
+    });
+    return chain;
+  }
+
+  function handleSelectedMedia(files) {
+    var items = [];
+    var rejected = [];
+    files.forEach(function (file, index) {
+      var kind = window.ChatMedia ? ChatMedia.fileKind(file) : 'other';
+      if (kind === 'other') { rejected.push(file.name || '未命名文件'); return; }
+      items.push({ kind: kind, file: file, name: file.name || '', size: file.size || 0, order: index });
+    });
+    if (rejected.length) showToast('已跳过不支持的文件：' + rejected.slice(0, 3).join('、'));
+    if (!items.length) return;
+
+    // 纯图片：保持原有“选中即发送”，多选按选择顺序连发
+    if (!items.some(function (it) { return it.kind === 'video'; })) {
+      sendBatchSequentially(items, false);
+      return;
+    }
+    if (!window.ChatMedia) { showToast('发送失败：媒体模块未就绪'); return; }
+
+    // 含视频：先真实解码探测（MOV 能否播放由浏览器实际解码结果决定），再进发送前预览
+    var probes = items.map(function (it) {
+      if (it.kind !== 'video') { it.valid = true; return Promise.resolve(); }
+      return ChatMedia.probeVideo(it.file).then(function (p) {
+        it.playable = !!p.ok;
+        it.valid = !!p.ok;
+        it.poster = p.ok ? p.poster : null;
+        it.duration = p.ok ? p.duration : 0;
+        it.width = p.ok ? p.width : 0;
+        it.height = p.ok ? p.height : 0;
+        it.reason = p.reason || '';
+      });
+    });
+    Promise.all(probes).then(function () {
+      var bad = items.filter(function (it) { return it.kind === 'video' && !it.playable; });
+      if (bad.length) {
+        showToast('有 ' + bad.length + ' 段视频当前浏览器无法解码（常见于 MOV），已标为不可发送');
+      }
+      ChatMedia.openPreview(items).then(function (res) {
+        if (!res.confirmed) return;
+        sendBatchSequentially(res.items, res.livePair);
+      });
+    });
+  }
+
   function featImage() {
     if (!chatImgInput) {
       chatImgInput = document.createElement('input');
       chatImgInput.type = 'file';
-      chatImgInput.accept = 'image/*';
+      chatImgInput.multiple = true;
+      chatImgInput.accept = window.ChatMedia ? ChatMedia.ACCEPT
+        : 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime';
       chatImgInput.style.display = 'none';
       document.body.appendChild(chatImgInput);
       chatImgInput.addEventListener('change', function () {
-        const file = chatImgInput.files && chatImgInput.files[0];
+        const files = Array.prototype.slice.call(chatImgInput.files || []);
         chatImgInput.value = '';
-        if (!file) return;
-        compressChatImage(file, function (dataUrl) {
-          if (!dataUrl) { showToast('图片处理失败'); return; }
-          insertChatMessage({ role: 'user', type: 'image', img: dataUrl, desc: '', text: '[图片]' });
-          sendSilentInstruction('[系统动作：我发了一张图片给你]');
-        });
+        if (!files.length) return;
+        handleSelectedMedia(files);
       });
     }
     chatImgInput.click();
