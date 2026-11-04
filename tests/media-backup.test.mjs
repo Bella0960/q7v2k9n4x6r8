@@ -134,22 +134,20 @@ function makeIDB(name, version, storeDefs) {
                     return { onsuccess: null, result: undefined };
                 },
                 put(value, key) {
-                    // keyPath 判断
                     const def = storeDefs.find(d => d.store === storeName);
                     let k;
                     if (def && def.keyPath) k = value[def.keyPath];
                     else k = key;
                     if (k === undefined || k === null) k = String(Date.now()) + '_' + Math.random();
-                    // 查找现有
+                    // 非 keyPath store：把生成的 key 存到 record 上（getAllKeys 需要）
+                    if (!(def && def.keyPath)) value.__mock_key = k;
                     const idx = data[storeName].findIndex(r => {
-                        const def2 = storeDefs.find(d => d.store === storeName);
-                        if (def2 && def2.keyPath) return r[def2.keyPath] === k;
+                        if (def && def.keyPath) return r[def.keyPath] === k;
                         return r.__mock_key === k;
                     });
-                    // toJSON 负责把 SandboxBlob 序列化成 { __isMockBlob, type, size, _b64 }
-                    const clone = JSON.parse(JSON.stringify(value));
-                    if (idx >= 0) data[storeName][idx] = clone;
-                    else data[storeName].push(clone);
+                    // 直接存引用，不做 JSON 序列化（Blob 保持 instanceof Blob，_data 保留）
+                    if (idx >= 0) data[storeName][idx] = value;
+                    else data[storeName].push(value);
                     return { onsuccess: null, result: k };
                 },
                 getAllKeys() {
@@ -163,26 +161,12 @@ function makeIDB(name, version, storeDefs) {
                     return req;
                 },
                 get(key) {
-                    let match = data[storeName].find(r => {
+                    const match = data[storeName].find(r => {
                         const def = storeDefs.find(d => d.store === storeName);
                         if (def && def.keyPath) return r[def.keyPath] === key;
                         return r.__mock_key === key;
                     });
-                    // 把 { __isMockBlob, _b64 } 还原成 SandboxBlob 实例（dumpStore 需要 instanceof Blob）
-                    if (match) {
-                        const restoreBlobs = (obj) => {
-                            if (!obj || typeof obj !== 'object') return obj;
-                            if (Array.isArray(obj)) return obj.map(restoreBlobs);
-                            if (obj.__isMockBlob) {
-                                const buf = Buffer.from(obj._b64 || '', 'base64');
-                                return new SandboxBlob([buf], { type: obj.type });
-                            }
-                            const restored = {};
-                            Object.keys(obj).forEach(k => { restored[k] = restoreBlobs(obj[k]); });
-                            return restored;
-                        };
-                        match = restoreBlobs(match);
-                    }
+                    // 直接返回引用——Blob 仍是 SandboxBlob 实例，_data 完整
                     const req = { result: match || undefined, onsuccess: null };
                     Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
                     return req;
@@ -506,7 +490,7 @@ test('06 dumpDatabase：blobs 超限 → 整库 atomicExportFailed', async () =>
 /* ═══════════════════════════════════════════════
    7. 完整 dumpDatabase + restoreDatabase 往返（真全链路）
    ═══════════════════════════════════════════════ */
-test('07 dump→restore 完整往返：三个 store 数据无损恢复', async () => {
+test('07 dump→restore 完整往返：字节级一致 + refs 完整关系保持', async () => {
     clearAllDBs();
     const ctx = buildCtxFull();
 
@@ -517,54 +501,81 @@ test('07 dump→restore 完整往返：三个 store 数据无损恢复', async (
     const blobsDef  = maomaoAssetsDef.stores.find(s => s.store === 'blobs');
     const refsDef   = maomaoAssetsDef.stores.find(s => s.store === 'refs');
 
+    // 预先构造明确的原始字节（不同长度，不同 pattern，方便比对）
+    const ORIG_BYTES_1 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    const ORIG_BYTES_2 = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 127, 0, 127]);
+
     await injectRecords(db, 'assets', assetsDef, [
-        { assetId: 'img001', type: 'image', mimeType: 'image/jpeg', width: 800, height: 600 },
-        { assetId: 'img002', type: 'image', mimeType: 'image/png', width: 400, height: 300 }
+        { assetId: 'img001', type: 'image', mimeType: 'image/jpeg', width: 800, height: 600, sha256: 'abc123' },
+        { assetId: 'img002', type: 'image', mimeType: 'image/png',  width: 400, height: 300, sha256: 'def456' }
     ]);
     await injectRecords(db, 'blobs', blobsDef, [
-        { assetId: 'img001', blob: new SandboxBlob([Buffer.from('BLOB_DATA_1')], { type: 'image/jpeg' }) },
-        { assetId: 'img002', blob: new SandboxBlob([Buffer.from('BLOB_DATA_2')], { type: 'image/png' }) }
+        { assetId: 'img001', blob: new SandboxBlob([ORIG_BYTES_1], { type: 'image/jpeg' }) },
+        { assetId: 'img002', blob: new SandboxBlob([ORIG_BYTES_2], { type: 'image/png' }) }
     ]);
     await injectRecords(db, 'refs', refsDef, [
-        { assetId: 'img001', ownerType: 'character', ownerId: 'char_alice' },
-        { assetId: 'img002', ownerType: 'chat', ownerId: 'room_99' }
+        { assetId: 'img001', ownerType: 'character', ownerId: 'char_alice', role: 'avatar' },
+        { assetId: 'img002', ownerType: 'chat',      ownerId: 'room_99',    role: 'background' }
     ]);
 
     const dumpResult = await ctx.dumpDatabase('maomao-assets', 1, maomaoAssetsDef.stores);
-    assert.ok(dumpResult !== null, 'dump 成功');
-    assert.ok(!dumpResult.atomicExportFailed, '正常场景不应 atomicExportFailed');
-    assert.ok(dumpResult.data !== null, 'data 不应是 null');
-    assert.equal(Object.keys(dumpResult.data).length, 3, '应有 assets + blobs + refs 三个 store');
-
+    assert.ok(dumpResult !== null);
+    assert.ok(!dumpResult.atomicExportFailed);
+    assert.equal(Object.keys(dumpResult.data).length, 3);
     assert.equal(dumpResult.data.assets.length, 2);
     assert.equal(dumpResult.data.refs.length, 2);
     assert.equal(dumpResult.data.blobs.length, 2);
+
+    // dump 层验证：blob 是 base64 字符串、有伴生 MIME 字段
     dumpResult.data.blobs.forEach(b => {
-        assert.equal(typeof b.blob, 'string', 'blob 应是 base64 字符串');
-        assert.ok(b.__blobMime_blob, '应有 __blobMime_blob 伴生字段');
+        assert.equal(typeof b.blob, 'string');
+        assert.ok(b.__blobMime_blob);
     });
 
     const db2 = registerDB('maomao-assets-restored', 1, maomaoAssetsDef.stores);
     const restoreResult = await ctx.restoreDatabase(
         'maomao-assets-restored', 1, maomaoAssetsDef.stores, dumpResult.data
     );
-    assert.ok(restoreResult.dbRestored, 'restore 完成');
-    assert.ok(restoreResult.written >= 6, '共 6 条记录（2+2+2）');
-    assert.equal(restoreResult.skipped, 0, '无跳过');
+    assert.ok(restoreResult.dbRestored);
+    assert.equal(restoreResult.written, 6, '2+2+2=6 条');
+    assert.equal(restoreResult.skipped, 0);
 
     const restored = openDbs['maomao-assets-restored']._data;
     assert.equal(restored.assets.length, 2);
     assert.equal(restored.blobs.length, 2);
     assert.equal(restored.refs.length, 2);
 
-    restored.blobs.forEach(b => {
-        assert.ok(isBlobLike(b.blob), 'blob 应是 Blob');
-        assert.ok(b.blob.type === 'image/jpeg' || b.blob.type === 'image/png',
-            'MIME 应正确');
-    });
+    // ====== Byte-level 完全一致 ======
+    const blobMap = {};
+    restored.blobs.forEach(b => { blobMap[b.assetId] = b.blob; });
+    // img001 → jpeg
+    assert.ok(isBlobLike(blobMap['img001']), 'img001 blob 应是 Blob 实例');
+    assert.equal(blobMap['img001'].type, 'image/jpeg', 'img001 MIME 还原正确');
+    assert.ok(Buffer.compare(blobMap['img001']._data, ORIG_BYTES_1) === 0,
+        'img001 Blob 原始字节应与注入时完全一致');
+    // img002 → png
+    assert.ok(isBlobLike(blobMap['img002']));
+    assert.equal(blobMap['img002'].type, 'image/png', 'img002 MIME 还原正确');
+    assert.ok(Buffer.compare(blobMap['img002']._data, ORIG_BYTES_2) === 0,
+        'img002 Blob 原始字节应与注入时完全一致');
 
-    const ref1 = restored.refs.find(r => r.assetId === 'img001');
-    assert.equal(ref1.ownerId, 'char_alice');
+    // ====== assets 全字段一致 ======
+    const assetMap = {};
+    restored.assets.forEach(a => { assetMap[a.assetId] = a; });
+    assert.deepEqual(assetMap['img001'],
+        { assetId: 'img001', type: 'image', mimeType: 'image/jpeg', width: 800, height: 600, sha256: 'abc123' },
+        'assets 全字段应逐字一致');
+    assert.deepEqual(assetMap['img002'],
+        { assetId: 'img002', type: 'image', mimeType: 'image/png',  width: 400, height: 300, sha256: 'def456' });
+
+    // ====== refs 完整关系保持 ======
+    const refMap = {};
+    restored.refs.forEach(r => { refMap[r.assetId] = r; });
+    assert.deepEqual(refMap['img001'],
+        { assetId: 'img001', ownerType: 'character', ownerId: 'char_alice', role: 'avatar' },
+        'refs 全字段 + ownerType/ownerId/role 完整关系应保持');
+    assert.deepEqual(refMap['img002'],
+        { assetId: 'img002', ownerType: 'chat', ownerId: 'room_99', role: 'background' });
 });
 
 /* ═══════════════════════════════════════════════
@@ -614,18 +625,24 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
     clearAllDBs();
     const ctx = buildCtxFull();
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
+    const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
     const blobStoreMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobStoreMaxBytes;
 
     const db = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
     const blobsDef = maomaoAssetsDef.stores.find(s => s.store === 'blobs');
     const assetsDef = maomaoAssetsDef.stores.find(s => s.store === 'assets');
 
-    // 4 条 blob，每条 ~1/3 blobStoreMax → 前 3 条累积越过总量上限
-    const chunkSize = Math.floor(blobStoreMax / 3) + 1024;
+    // 关键约束：每条 blob < blobMax（不走单条超限），但累计 > blobStoreMax（走总量超限）
+    // blobMax = 30MB，blobStoreMax = 90MB
+    // 4 条 × 25MB = 100MB 总和越过 90MB；每条 25MB < 30MB blobMax
+    const perBlobBytes = 25 * 1024 * 1024;  // 25MB，低于 blobMax (30MB)
+    assert.ok(perBlobBytes < blobMax, 'precondition: 每条必须低于 blobMax');
+    assert.ok(perBlobBytes * 4 > blobStoreMax, 'precondition: 4 条总和必须超过 blobStoreMax');
+
     const blobRecs = [];
     const assetRecs = [];
     for (let i = 0; i < 4; i++) {
-        const data = Buffer.alloc(chunkSize, 0x41 + i);
+        const data = Buffer.alloc(perBlobBytes, 0x41 + i);
         blobRecs.push({ assetId: 'over_' + i, blob: new SandboxBlob([data], { type: 'image/jpeg' }) });
         assetRecs.push({ assetId: 'over_' + i, type: 'image' });
     }
@@ -639,41 +656,121 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
     assert.ok(result.skipped.length >= 1, '至少有 1 条被跳过');
     assert.ok(result.skipped.every(s => s.store === 'blobs'),
         'skipped 条目应全部来自 blobs store');
+    // 验证跳过原因包含 store 总量超限关键词（而非单条超限）
+    assert.ok(result.skipped.some(s => /store 总 Blob 体积超过/.test(s.reason)),
+        '被跳过的原因应是 store 总量超限（而非单条超限）');
+    assert.ok(!result.skipped.some(s => /单条/.test(s.reason)),
+        '不应出现单条超限原因（precondition 已确认每条低于 blobMax）');
 });
 
 /* ═══════════════════════════════════════════════
-  10. assets/refs 正常 + blobs 单条超限 → 整库排除（跨 store atomic）
+  10. 真 doExport 循环：maomao-assets atomicExportFailed → 整库排除；
+      其他 DB（maomao-media-store / maomao-font-presets）正常 → 仍进 dbData；
+      dbWarnings 显示明确提示，allSkipped 记录超限条目
    ═══════════════════════════════════════════════ */
-test('10 assets+refs 正常 + blobs 超限 → 整库排除（跨 store atomic）', async () => {
+test('10 doExport 层 atomicExport：资源库整库排除，但其他库 + localStorage 不受影响', async () => {
     clearAllDBs();
     const ctx = buildCtxFull();
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
     const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
 
-    const db = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
-    const assetsDef = maomaoAssetsDef.stores.find(s => s.store === 'assets');
-    const refsDef   = maomaoAssetsDef.stores.find(s => s.store === 'refs');
-    const blobsDef  = maomaoAssetsDef.stores.find(s => s.store === 'blobs');
-
-    await injectRecords(db, 'assets', assetsDef, [
+    // ── 1. 注册 maomao-assets：blobs 有一条超限 → 会触发 atomicExportFailed ──
+    const assetsDb = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    await injectRecords(assetsDb, 'assets', maomaoAssetsDef.stores.find(s => s.store === 'assets'), [
         { assetId: 'a1', type: 'image', mimeType: 'image/jpeg', size: 1024 },
-        { assetId: 'a2', type: 'image', mimeType: 'image/png', size: 2048 }
+        { assetId: 'a2', type: 'image', mimeType: 'image/png',  size: 2048 }
     ]);
-    await injectRecords(db, 'refs', refsDef, [
+    await injectRecords(assetsDb, 'refs', maomaoAssetsDef.stores.find(s => s.store === 'refs'), [
         { assetId: 'a1', ownerType: 'character', ownerId: 'c1' },
         { assetId: 'a2', ownerType: 'character', ownerId: 'c2' }
     ]);
-
-    // blobs 只有一条但它超限
     const tooBig = Buffer.alloc(blobMax + 2048, 0x42);
-    await injectRecords(db, 'blobs', blobsDef, [
+    await injectRecords(assetsDb, 'blobs', maomaoAssetsDef.stores.find(s => s.store === 'blobs'), [
         { assetId: 'a1', blob: new SandboxBlob([tooBig], { type: 'image/jpeg' }) }
     ]);
 
-    const result = await ctx.dumpDatabase('maomao-assets', 1, maomaoAssetsDef.stores);
+    // ── 2. 注册 maomao-media-store：完全正常，没有 blobMax 配置 ──
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { id: 'wp1', name: 'ocean.jpg', color: '#1a5e20' }
+    ]);
+    // audio store 有 excludeFields: ['blob']，blob 不进 JSON（但 dumpStore 不会报错）
+    await injectRecords(mediaDb, 'audio', mediaDef.stores.find(s => s.store === 'audio'), [
+        { id: 'song1', title: 'Morning Breeze', artist: 'Alice' }
+    ]);
 
-    assert.ok(result.atomicExportFailed === true,
-        '哪怕只有 blobs 里的一条超限，assets/refs 正常，整个 maomao-assets 也必须 atomicExportFailed');
-    assert.ok(result.data === null, '整库排除 → data 必须是 null');
-    assert.ok(result.skipped.some(s => s.store === 'blobs'), 'skipped 里应标记超限的 blobs');
+    // ── 3. 注册 maomao-font-presets：也有 blob，但正常 ──
+    const fontDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-font-presets');
+    const fontDb = registerDB('maomao-font-presets', fontDef.version, fontDef.stores);
+    await injectRecords(fontDb, 'presets', fontDef.stores.find(s => s.store === 'presets'), [
+        { id: 'f1', label: 'Editorial', family: 'Georgia', blob: new SandboxBlob([Buffer.from('FONT_BYTEZ')], { type: 'font/ttf' }) }
+    ]);
+
+    // ── 4. 模拟 doExport 中对 IDB_TARGETS 的循环（只处理我们预注册过的三个 DB） ──
+    const dbData = {};
+    const dbWarnings = [];
+    const allSkipped = [];
+    const preRegistered = new Set(['maomao-assets', 'maomao-media-store', 'maomao-font-presets']);
+
+    for (let i = 0; i < ctx.IDB_TARGETS.length; i++) {
+        const tgt = ctx.IDB_TARGETS[i];
+        if (!preRegistered.has(tgt.db)) continue;  // 跳过未预注册的其他 DB
+        const part = await ctx.dumpDatabase(tgt.db, tgt.version, tgt.stores);
+        if (part === null) {
+            dbWarnings.push(tgt.db + '（读取失败）');
+            continue;
+        }
+        if (part.atomicExportFailed) {
+            const skipCount = part.skipped ? part.skipped.length : 0;
+            dbWarnings.push(tgt.db + '（媒体 Blob ' + skipCount + ' 条超限，整库未纳入备份以防止残缺恢复）');
+            (part.skipped || []).forEach(function (s) {
+                allSkipped.push({ db: tgt.db, store: s.store, id: s.id, reason: s.reason, bytes: s.bytes });
+            });
+            continue;
+        }
+        const stores = part.data;
+        if (!stores || !Object.keys(stores).length) continue;
+        dbData[tgt.db] = stores;
+        (part.skipped || []).forEach(function (s) {
+            allSkipped.push({ db: tgt.db, store: s.store, id: s.id, reason: s.reason, bytes: s.bytes });
+        });
+    }
+
+    // ====== 5. 验证：maomao-assets 被完全排除 ======
+    assert.ok(!('maomao-assets' in dbData),
+        'atomicExportFailed 的库不应进入 dbData');
+    assert.ok(dbWarnings.some(w => w.startsWith('maomao-assets') && w.includes('整库未纳入备份')),
+        'dbWarnings 应有 maomao-assets 的 atomicExport 提示');
+
+    // ====== 6. 验证：其他库正常保留 ======
+    assert.ok('maomao-media-store' in dbData,
+        '正常的 maomao-media-store 必须保留');
+    assert.ok('maomao-font-presets' in dbData,
+        '正常的 maomao-font-presets 必须保留');
+
+    // wallpapers 是 out-of-line key，backup.js 源码会包装成 { __key, __value }
+    const wp = dbData['maomao-media-store'].wallpapers;
+    assert.equal(wp.length, 1, 'wallpapers 应只有 1 条');
+    assert.ok(wp[0].hasOwnProperty('__key') && wp[0].hasOwnProperty('__value'),
+        'out-of-line key 的 store 记录应被包装成 { __key, __value }');
+    assert.equal(wp[0].__value.id, 'wp1');
+    assert.equal(wp[0].__value.name, 'ocean.jpg');
+    assert.equal(wp[0].__value.color, '#1a5e20');
+
+    // presets 是 in-line key（keyPath='id'），直接是原始 record
+    const presets = dbData['maomao-font-presets'].presets;
+    assert.equal(presets.length, 1);
+    assert.equal(presets[0].id, 'f1');
+    assert.equal(presets[0].label, 'Editorial');
+
+    // ====== 7. 验证 allSkipped：maomao-assets 的超限条目被正确记录 ======
+    const assetSkips = allSkipped.filter(s => s.db === 'maomao-assets');
+    assert.ok(assetSkips.length >= 1, 'allSkipped 应至少有 maomao-assets 的一条');
+    assert.ok(assetSkips.every(s => s.store === 'blobs'),
+        '应只跳过 blobs store 的条目');
+    assert.ok(assetSkips.every(s => s.id === 'a1'),
+        '跳过的应是 assetId=a1（我们唯一超限的 blob）');
+    assert.ok(assetSkips.every(s => typeof s.bytes === 'number' && s.bytes > blobMax),
+        'bytes 应真实记录超限 blob 的体积');
 });
