@@ -412,7 +412,7 @@
     } catch (e) { return ''; }
   }
   function isSafeAvatarImage(src) {
-    return typeof src === 'string' && /^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\\+xml|avif);|https?:\/\/|blob:|\\.|\/)/i.test(src);
+     return typeof src === 'string' && /^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\+xml|avif);|https?:\/\/|blob:|\.|\/)/i.test(src);
   }
   function avatarContent(item, isUserPost) {
     const own = !!isUserPost || isOwn(item);
