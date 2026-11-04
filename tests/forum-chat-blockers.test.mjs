@@ -55,42 +55,291 @@ test('invalid forum post IDs never replace the document shell', () => {
   assert.match(forumDetail, /帖子暂不可用/);
 });
 
-test('missing API key saves the user message before clearing input, then saves the system error', () => {
-  const sendStart = chatDetail.indexOf('async function sendMsg(opts)');
-  assert.ok(sendStart >= 0, 'sendMsg should exist');
-  const branchStart = chatDetail.indexOf('if (!apiKey)', sendStart);
-  const branchEnd = chatDetail.indexOf('\n            baseUrl = baseUrl.replace', branchStart);
-  assert.ok(branchStart > sendStart && branchEnd > branchStart, 'missing-key branch should be found within sendMsg');
-  const branch = chatDetail.slice(branchStart, branchEnd);
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 
-  const userPush = branch.indexOf('historyList.push(userMsg)');
-  const userSave = branch.indexOf('userSaved = saveMessages(historyList)');
-  const inputClear = branch.indexOf("input.value = ''");
-  const errorPush = branch.indexOf('historyList.push(errMsg)');
-  const errorSave = branch.indexOf('\n                saveMessages(historyList);', errorPush);
-  assert.ok(userPush >= 0 && userPush < userSave, 'user message must be added before its first persistence attempt');
-  assert.ok(userSave < inputClear && inputClear < errorPush && errorPush < errorSave,
-    'the user must be saved before clearing input, and the system error saved afterward');
-  assert.ok(branch.includes('!isRegen && !contextOnly'));
-  assert.ok(branch.includes('acceptGroupUserMessage(text)'));
-  assert.ok(branch.includes('quoteSnapshot'));
-  assert.ok(branch.includes("sendFailedReason: 'missing-api-key'"));
-  assert.ok(branch.includes('if (userSaved)'));
-  assert.ok(branch.includes('historyList.pop()'));
-  assert.ok(branch.includes('lastGroupUserSend = previousGroupUserSend'));
-  assert.ok(branch.includes('if (userMsg && userSaved && !silent)'));
-  assert.ok(branch.includes("role: 'system_error', isError: true"));
-  assert.ok(branch.includes('if (_vl)'));
+function extractBlock(source, startMarker, endMarker, fromIndex) {
+  const start = source.indexOf(startMarker, fromIndex || 0);
+  assert.ok(start >= 0, 'missing start marker: ' + startMarker);
+  const end = source.indexOf(endMarker, start);
+  assert.ok(end > start, 'missing end marker: ' + endMarker);
+  return source.slice(start, end);
+}
 
-  const saveStart = chatDetail.indexOf('function saveMessages(list)');
-  const saveEnd = chatDetail.indexOf('\n        // 头像占位', saveStart);
-  assert.ok(saveStart >= 0 && saveEnd > saveStart, 'saveMessages should be isolated');
-  const saveSource = chatDetail.slice(saveStart, saveEnd);
-  assert.ok(saveSource.includes('return true;'));
-  assert.ok(saveSource.includes('return false;'));
+function loadSaveMessages(sandbox) {
+  const start = chatDetail.indexOf('function _readBackHistory()');
+  const end = chatDetail.indexOf('\n        // 头像占位', start);
+  assert.ok(start >= 0 && end > start, 'saveMessages read-back helpers should be isolated');
+  return runInNewContext(chatDetail.slice(start, end) + '\nsaveMessages;', sandbox);
+}
+
+function createSandboxBase() {
+  return {
+    currentCharacter: { id: 'role-1' },
+    storageKey: 'chat_history_role-1',
+    showToast: () => {},
+    _resetWarnCooldown: () => {},
+    _shouldWarnAgain: () => false,
+    console: { warn: () => {} }
+  };
+}
+
+test('saveMessages reports success only after a matching read-back from the existing storage channel', () => {
+  const target = [
+    { role: 'assistant', text: '欢迎', time: 1 },
+    { role: 'user', text: '你好', time: 2, mid: 'm2' }
+  ];
+
+  // 正常写入并读回一致
+  let stored = null;
+  const okSandbox = createSandboxBase();
+  okSandbox._storage = {
+    saveChatHistory: (id, list) => { stored = clone(list); return true; },
+    getChatHistory: () => clone(stored)
+  };
+  assert.equal(loadSaveMessages(okSandbox)(target), true);
+
+  // 底层写入报成功，但读回为空（静默未持久化）
+  const emptySandbox = createSandboxBase();
+  emptySandbox._storage = {
+    saveChatHistory: () => true,
+    getChatHistory: () => []
+  };
+  assert.equal(loadSaveMessages(emptySandbox)(target), false);
+
+  // 读回条数一致但内容不一致
+  const wrongSandbox = createSandboxBase();
+  wrongSandbox._storage = {
+    saveChatHistory: () => true,
+    getChatHistory: () => clone([target[0], { role: 'user', text: '被吞掉的内容', time: 2, mid: 'm2' }])
+  };
+  assert.equal(loadSaveMessages(wrongSandbox)(target), false);
+
+  // 读回条数不一致
+  const shortSandbox = createSandboxBase();
+  shortSandbox._storage = {
+    saveChatHistory: () => true,
+    getChatHistory: () => clone(target.slice(0, 1))
+  };
+  assert.equal(loadSaveMessages(shortSandbox)(target), false);
+
+  // 底层写入返回 false / 抛异常 / 读取抛异常
+  const rejectSandbox = createSandboxBase();
+  rejectSandbox._storage = { saveChatHistory: () => false, getChatHistory: () => clone(target) };
+  assert.equal(loadSaveMessages(rejectSandbox)(target), false);
+
+  const throwSandbox = createSandboxBase();
+  throwSandbox._storage = {
+    saveChatHistory: () => { throw new Error('quota exceeded'); },
+    getChatHistory: () => clone(target)
+  };
+  assert.equal(loadSaveMessages(throwSandbox)(target), false);
+
+  const readThrowSandbox = createSandboxBase();
+  readThrowSandbox._storage = {
+    saveChatHistory: () => true,
+    getChatHistory: () => { throw new Error('read failed'); }
+  };
+  assert.equal(loadSaveMessages(readThrowSandbox)(target), false);
 });
+
+test('saveMessages read-back verification also covers the localStorage fallback channel', () => {
+  const target = [{ role: 'user', text: '你好', time: 2, mid: 'm2' }];
+  const store = {};
+  const workingLocalStorage = {
+    getItem: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null),
+    setItem: (key, value) => { store[key] = String(value); },
+    removeItem: (key) => { delete store[key]; }
+  };
+
+  const okSandbox = createSandboxBase();
+  okSandbox._storage = null;
+  okSandbox.localStorage = workingLocalStorage;
+  assert.equal(loadSaveMessages(okSandbox)(target), true);
+
+  // setItem 抛异常
+  const throwSandbox = createSandboxBase();
+  throwSandbox._storage = null;
+  throwSandbox.localStorage = {
+    getItem: () => null,
+    setItem: () => { throw new Error('quota exceeded'); },
+    removeItem: () => {}
+  };
+  assert.equal(loadSaveMessages(throwSandbox)(target), false);
+
+  // setItem 静默丢弃，读回不到
+  const discardSandbox = createSandboxBase();
+  discardSandbox._storage = null;
+  discardSandbox.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+  assert.equal(loadSaveMessages(discardSandbox)(target), false);
+
+  // 读回内容被截断/改写
+  const staleSandbox = createSandboxBase();
+  staleSandbox._storage = null;
+  staleSandbox.localStorage = {
+    getItem: () => JSON.stringify([{ role: 'user', text: '旧内容', time: 2, mid: 'm2' }]),
+    setItem: () => {},
+    removeItem: () => {}
+  };
+  assert.equal(loadSaveMessages(staleSandbox)(target), false);
+});
+
+function runMissingApiKeyBranch(options) {
+  const saves = [];
+  const renders = [];
+  let quoteClears = 0;
+  const input = { value: options.inputValue == null ? '未发送原文' : options.inputValue, style: {} };
+  const context = {
+    apiKey: '',
+    isRegen: !!options.isRegen,
+    contextOnly: !!options.contextOnly,
+    silent: !!options.silent,
+    text: '未发送原文',
+    isGroupChat: false,
+    pendingQuote: options.pendingQuote === undefined ? { mid: 'q1', text: '被引用的原文' } : options.pendingQuote,
+    lastGroupUserSend: { text: 'previous', time: 1 },
+    groupAutoFollowupToken: 5,
+    _vl: null,
+    input,
+    loadMessages: () => clone(options.history || [{ role: 'assistant', text: '旧消息' }]),
+    saveMessages: (list) => {
+      saves.push(clone(list));
+      return options.saveResults[Math.min(saves.length - 1, options.saveResults.length - 1)];
+    },
+    acceptGroupUserMessage: () => true,
+    appendMessageToDOM: (msg) => renders.push(msg),
+    vlRefresh: () => {},
+    scrollToBottom: () => {},
+    updateSendBtnState: () => {},
+    SoundSystem: { play: () => {} },
+    showToast: () => {},
+    window: { clearQuote: () => { quoteClears += 1; } }
+  };
+  const sendStart = chatDetail.indexOf('async function sendMsg(opts)');
+  const branch = extractBlock(chatDetail, 'if (!apiKey)', '\n            baseUrl = baseUrl.replace', sendStart);
+  new Function('context', 'with (context) { ' + branch + ' }')(context);
+  return { saves, renders, input, quoteClears, context };
+}
+
+test('missing API key: a failed user-message save stops the send and writes no error record', () => {
+  const result = runMissingApiKeyBranch({ saveResults: [false] });
+  assert.equal(result.saves.length, 1, '只有用户消息的一次写入尝试');
+  assert.equal(result.saves[0].length, 2);
+  assert.equal(result.saves[0][1].role, 'user');
+  assert.equal(result.saves[0][1].sendFailed, true);
+  assert.ok(result.saves[0].every((m) => m.role !== 'system_error'), '失败时不得把 system_error 写进存储');
+  assert.equal(result.renders.length, 0, '失败时不得渲染任何气泡');
+  assert.equal(result.input.value, '未发送原文', '输入框原文必须保留');
+  assert.equal(result.quoteClears, 0, '引用状态必须保留');
+  assert.equal(result.context.groupAutoFollowupToken, 5, '群聊防重复占位必须回滚');
+});
+
+test('missing API key: a failed second save never leaves an error bubble that storage does not contain', () => {
+  const result = runMissingApiKeyBranch({ saveResults: [true, false] });
+  assert.equal(result.saves.length, 2);
+  assert.equal(result.renders.length, 1);
+  assert.equal(result.renders[0].role, 'user');
+  assert.ok(!result.renders.some((m) => m.role === 'system_error'), '第二次写入失败时错误气泡不得出现');
+  assert.equal(result.input.value, '');
+});
+
+test('missing API key: successful saves keep the existing user-then-error behavior', () => {
+  const result = runMissingApiKeyBranch({ saveResults: [true, true] });
+  assert.equal(result.saves.length, 2);
+  assert.equal(result.renders.length, 2);
+  assert.equal(result.renders[0].role, 'user');
+  assert.equal(result.renders[1].role, 'system_error');
+  assert.equal(result.renders[1].isError, true);
+  assert.equal(result.saves[1][result.saves[1].length - 1].role, 'system_error');
+  assert.equal(result.input.value, '');
+  assert.equal(result.quoteClears, 1);
+});
+
+test('missing API key without a new user message never renders an unsaved error record', () => {
+  const result = runMissingApiKeyBranch({ isRegen: true, saveResults: [false] });
+  assert.equal(result.saves.length, 1);
+  assert.equal(result.renders.length, 0);
+});
+
+test('blocked send also stops when the user message cannot be persisted', () => {
+  const saves = [];
+  const renders = [];
+  let quoteClears = 0;
+  const input = { value: '未发送原文', style: {} };
+  const context = {
+    isBlocked: () => true,
+    aliasRoleId: 'role-1',
+    isRegen: false,
+    contextOnly: false,
+    silent: false,
+    text: '未发送原文',
+    isGroupChat: false,
+    pendingQuote: { mid: 'q1', text: '被引用的原文' },
+    lastGroupUserSend: { text: 'previous', time: 1 },
+    groupAutoFollowupToken: 9,
+    _vl: null,
+    input,
+    acceptGroupUserMessage: () => true,
+    loadMessages: () => clone([{ role: 'assistant', text: '旧消息' }]),
+    saveMessages: (list) => { saves.push(clone(list)); return false; },
+    appendMessageToDOM: (msg) => renders.push(msg),
+    vlRefresh: () => {},
+    updateSendBtnState: () => {},
+    scrollToBottom: () => {},
+    SoundSystem: { play: () => {} },
+    showToast: () => {},
+    window: { clearQuote: () => { quoteClears += 1; } }
+  };
+  const branch = extractBlock(
+    chatDetail,
+    'if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {',
+    '\n            const config = getAiConfig();'
+  );
+  new Function('context', 'with (context) { ' + branch + ' }')(context);
+  assert.equal(saves.length, 1);
+  assert.equal(renders.length, 0);
+  assert.equal(input.value, '未发送原文');
+  assert.equal(quoteClears, 0);
+  assert.equal(context.groupAutoFollowupToken, 9);
+});
+
+test('shared context policy filters sendFailed messages out of the model context', () => {
+  const sandbox = {};
+  runInNewContext(read('shared/js/phone/chat-context-policy.js'), sandbox);
+  const mapped = clone(sandbox.ChatContextPolicy.mapHistoryToApiMessages([
+    { role: 'user', text: '这条发送失败了', sendFailed: true },
+    { role: 'assistant', text: '收到' },
+    { role: 'user', text: '正常发送' }
+  ], (raw) => String(raw || '')));
+  assert.deepEqual(mapped, [
+    { role: 'assistant', content: '收到' },
+    { role: 'user', content: '正常发送' }
+  ]);
+});
+
+test('chat detail fallback context mapping also filters sendFailed messages', () => {
+  const forEachStart = chatDetail.indexOf('recentHistory.forEach(m => {');
+  assert.ok(forEachStart >= 0, 'fallback mapping should exist');
+  const forEachEnd = chatDetail.indexOf('\n                });', forEachStart);
+  assert.ok(forEachEnd > forEachStart, 'fallback mapping block should be isolated');
+  const forEachBlock = chatDetail.slice(forEachStart, forEachEnd) + '\n                });';
+  const context = {
+    recentHistory: [
+      { role: 'user', text: '这条发送失败了', sendFailed: true },
+      { role: 'user', text: '正常发送' }
+    ],
+    apiMessages: [],
+    isGroupChat: false,
+    currentGroup: null,
+    stripInternalReasoning: (raw) => String(raw || '')
+  };
+  new Function('context', 'with (context) { ' + forEachBlock + ' }')(context);
+  assert.deepEqual(context.apiMessages, [{ role: 'user', content: '正常发送' }]);
+});
+
 test('blocked-send and error-message context isolation contracts remain intact', () => {
   assert.match(chatDetail, /if \(isBlocked\(aliasRoleId\) && !isRegen && !contextOnly\)/);
-  assert.match(chatDetail, /if \(m\.isError \|\| m\.role === 'system_error'\) return/);
+  assert.match(chatDetail, /if \(m\.isError \|\| m\.role === 'system_error' \|\| m\.sendFailed\) return/);
   assert.match(chatDetail, /sendFailedReason === 'missing-api-key'/);
 });
