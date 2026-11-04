@@ -882,3 +882,144 @@ test('detail invalid post id keeps the shell and an unreadable store still rende
   loadSeedPost();
   assert.deepEqual(renders, ['post', 'comments'], '存储损坏时仍可展示已读出的种子帖，页面外壳不崩溃');
 });
+
+/* ===== 论坛静默 catch 收口：注入抛错桩验证退化语义与 warn 上下文 ===== */
+
+function loadReadForumConfig(source, env) {
+  return runInNewContext(extractBracedBlock(source, 'function readForumConfig()') + '\nreadForumConfig;', env);
+}
+
+function loadForumRoleList(env) {
+  return runInNewContext(
+    sliceBetween(forumHome, 'function forumRoleList(){', '\nfunction forumRoleId(', 'forumRoleList') + '\nforumRoleList;',
+    env
+  );
+}
+
+function loadCallAI(env) {
+  return runInNewContext(
+    sliceBetween(forumDetail, 'async function callAI(prompt) {', '\n  const DETAIL_RESIDENTS=[', 'callAI') + '\ncallAI;',
+    env
+  );
+}
+
+function loadThreadWorldbook(env) {
+  return runInNewContext(
+    sliceBetween(forumDetail, 'function getForumThreadWorldbook(){', '\n  async function forumAIJSON(', 'thread worldbook') +
+      '\ngetForumThreadWorldbook;',
+    env
+  );
+}
+
+function loadSharePost(env) {
+  return runInNewContext(
+    sliceBetween(forumDetail, 'function sharePost() {', '\n  function getFollows()', 'share post') + '\nsharePost;',
+    env
+  );
+}
+
+const forumConfigPages = [
+  { label: 'forum.html', source: forumHome },
+  { label: 'forum-detail.html', source: forumDetail }
+];
+
+for (const page of forumConfigPages) {
+  test(page.label + ' readForumConfig keeps returning the default config and logs locatable context on read failure', () => {
+    const corruptEnv = createForumEnv({ forum_config: '{broken json' });
+    const corrupt = loadReadForumConfig(page.source, corruptEnv);
+    const corruptConfig = corrupt();
+    assert.equal(Object.keys(corruptConfig).length, 0, '解析失败仍返回空配置（默认配置）');
+    assert.equal(corruptEnv.forum.warns.length, 1);
+    assert.ok(corruptEnv.forum.warns[0].includes('readForumConfig'), '日志必须包含函数名');
+    assert.ok(corruptEnv.forum.warns[0].includes('forum_config'), '日志必须包含存储键');
+
+    const deniedEnv = createForumEnv({});
+    deniedEnv.localStorage.getItem = () => { throw new Error('storage denied'); };
+    const denied = loadReadForumConfig(page.source, deniedEnv);
+    assert.equal(Object.keys(denied()).length, 0, '读取抛错仍返回空配置');
+    assert.ok(deniedEnv.forum.warns[0].includes('storage denied'), '日志必须带上原始错误');
+
+    const okEnv = createForumEnv({ forum_config: JSON.stringify({ theme: 'bagua' }) });
+    const ok = loadReadForumConfig(page.source, okEnv);
+    assert.equal(ok().theme, 'bagua', '正常路径不得被新增日志分支影响');
+    assert.equal(okEnv.forum.warns.length, 0, '正常读取不得产生 warn');
+  });
+}
+
+test('forumRoleList falls back to the local character cache when PhoneStorage fails', () => {
+  const env = createForumEnv({ ai_custom_characters: JSON.stringify([{ name: '晚风' }, { id: 'no-name' }]) });
+  const throwingStorage = { getCharacters() { throw new Error('contacts unavailable'); } };
+  env.window = { PhoneStorage: throwingStorage };
+  env.PhoneStorage = throwingStorage;
+  const before = env.forum.warns.length;
+  const roles = loadForumRoleList(env)();
+  assert.equal(roles.length, 1, '角色列表仍退化为可用的本地缓存');
+  assert.equal(roles[0].name, '晚风');
+  assert.equal(env.forum.warns.length, before + 1, '只有失败的 PhoneStorage 来源需要记录');
+  assert.ok(env.forum.warns[before].includes('PhoneStorage.getCharacters'), '日志必须指向调用点');
+});
+
+test('forumRoleList degrades to an empty list but logs both failed role sources', () => {
+  const env = createForumEnv({ ai_custom_characters: '{broken json' });
+  const throwingStorage = { getCharacters() { throw new Error('contacts unavailable'); } };
+  env.window = { PhoneStorage: throwingStorage };
+  env.PhoneStorage = throwingStorage;
+  const before = env.forum.warns.length;
+  const roles = loadForumRoleList(env)();
+  assert.equal(roles.length, 0, '两个来源都失败时仍返回空列表且不抛错');
+  const logs = env.forum.warns.slice(before);
+  assert.equal(logs.length, 2);
+  assert.ok(logs[0].includes('PhoneStorage.getCharacters') && logs[0].includes('contacts unavailable'));
+  assert.ok(logs[1].includes('ai_custom_characters'), '解析失败日志必须带上存储键');
+});
+
+test('callAI keeps returning null on API failure, logs context once and never prompts the user itself', async () => {
+  const env = createForumEnv({});
+  env.getForumThreadWorldbook = () => '测试世界书';
+  const api = { complete: async () => { throw new Error('network down'); } };
+  env.window = { PhoneAPI: api };
+  env.PhoneAPI = api;
+  const before = env.forum.warns.length;
+  assert.equal(await loadCallAI(env)('写一条评论'), null, '失败仍返回 null 交给调用方');
+  assert.equal(env.forum.warns.length, before + 1);
+  assert.ok(env.forum.warns[before].includes('callAI'), '日志必须包含调用点');
+  assert.ok(env.forum.warns[before].includes('network down'));
+  assert.equal(env.forum.toasts.length, 0, 'callAI 不得自行弹提示，提示责任在调用方');
+});
+
+test('callAI without a loaded PhoneAPI still degrades quietly on the normal path', async () => {
+  const env = createForumEnv({});
+  env.window = {};
+  const before = env.forum.warns.length;
+  assert.equal(await loadCallAI(env)('写一条评论'), null);
+  assert.equal(env.forum.warns.length, before, '未加载 API 属于正常降级，不得产生失败日志');
+});
+
+test('getForumThreadWorldbook falls back to the default theme persona and logs the forum_config read failure', () => {
+  const env = createForumEnv({ forum_config: '{broken json' });
+  const before = env.forum.warns.length;
+  const worldbook = loadThreadWorldbook(env)();
+  assert.ok(worldbook.includes('当前论坛主题：现代都市'), '配置读失败时仍使用默认主题人设');
+  assert.ok(worldbook.includes('论坛世界书：'));
+  assert.equal(env.forum.warns.length, before + 1);
+  assert.ok(env.forum.warns[before].includes('getForumThreadWorldbook'));
+  assert.ok(env.forum.warns[before].includes('forum_config'));
+
+  const okEnv = createForumEnv({ forum_config: JSON.stringify({ theme: 'xiuxian' }) });
+  assert.ok(loadThreadWorldbook(okEnv)().includes('当前论坛主题：修仙界'), '正常路径不得受影响');
+  assert.equal(okEnv.forum.warns.length, 0);
+});
+
+test('sharePost degrades to the no-contact prompt and logs the unreadable character cache', () => {
+  const alerts = [];
+  const env = createForumEnv({ ai_custom_characters: '{broken json' });
+  env.alert = (message) => alerts.push(String(message));
+  const before = env.forum.warns.length;
+  loadSharePost(env)();
+  assert.deepEqual(alerts, ['还没有联系人，先去加好友吧'], '解析失败仍按无联系人处理');
+  assert.equal(env.forum.warns.length, before + 1);
+  assert.ok(env.forum.warns[before].includes('sharePost'));
+  assert.ok(env.forum.warns[before].includes('ai_custom_characters'));
+  assert.equal(env.forum.writes.length, 0, '角色缓存不可读时不得写入聊天记录');
+});
+
