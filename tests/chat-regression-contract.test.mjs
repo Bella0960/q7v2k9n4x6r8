@@ -1955,6 +1955,7 @@ test('MAo uses the bunny as its installed app icon and exposes the three default
 
   for (const asset of ['avatar-bunny.svg', 'avatar-cat.svg', 'avatar-cat-dark.svg']) {
     assert.ok(profileEditor.includes('data-avatar-src="../assets/' + asset + '"'), 'missing selectable avatar: ' + asset);
+    assert.ok(profileEditor.includes('"../assets/' + asset + '": "data:image/svg+xml;charset=UTF-8,%3Csvg'), 'preset should persist as a portable data URL: ' + asset);
     assert.ok(serviceWorker.includes('./assets/' + asset), 'avatar must be available offline: ' + asset);
     assert.ok(read('assets/' + asset).includes('<svg'), 'avatar SVG asset should exist: ' + asset);
   }
