@@ -255,9 +255,13 @@
     /* ---------- 五、Service Worker 更新后自动刷新一次 ----------
        本地开发改了代码，浏览器可能仍被旧 SW 缓存命中。
        新 SW 接管页面时 controllerchange 触发，自动刷新一次拿到最新版。
+       首访安装时本来没有 controller，skipWaiting + clients.claim() 会让本页
+       立刻收到 controllerchange；此时缓存已就绪，跳过刷新，避免二次文档加载。
        sessionStorage 标记防循环刷新。 */
     if ('serviceWorker' in navigator) {
+        var swHadController = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (!swHadController) { swHadController = true; return; }
             try {
                 if (sessionStorage.getItem('sw_reloaded')) return;
                 sessionStorage.setItem('sw_reloaded', '1');
