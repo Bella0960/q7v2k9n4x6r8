@@ -219,7 +219,7 @@ function getMyForumAvatar(){
 }
 function forumAvatarContent(p){
  const candidate=isMyForumPost(p)?getMyForumAvatar():(p&&p.avatar);
- if(typeof candidate==='string'&&/^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\\+xml|avif);|https?:\/\/|blob:|\\.|\/)/i.test(candidate))
+ if(typeof candidate==='string'&&/^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\+xml|avif);|https?:\/\/|blob:|\.|\/)/i.test(candidate))
   return '<img src="'+esc(candidate)+'" alt="">';
  const value=p&&typeof p.avatar==='string'&&p.avatar.length===1?p.avatar:(p&&p.name?p.name.slice(0,1):'?');
  return esc(value);
