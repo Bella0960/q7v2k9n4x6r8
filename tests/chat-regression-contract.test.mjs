@@ -1996,3 +1996,34 @@ test('PhoneStorage automatically assigns one of the three default avatars only w
   const existing = bootStorage({ nickname: '已有用户', avatar: 'data:image/png;base64,custom-avatar' }, 0.1);
   assert.equal(existing.api.getMyProfile().avatar, 'data:image/png;base64,custom-avatar', 'existing custom avatar must never be overwritten');
 });
+
+test('the shared default portrait is displayed across music, chat calls, settings, finance and forum identity surfaces', () => {
+  const music = read('music/music.html');
+  const callUi = read('chat/call/call-ui.html');
+  const settings = read('settings/settings.html');
+  const finance = read('wallet/finance.html');
+  const forum = read('forum/forum.html');
+  const forumDetail = read('forum/forum-detail.html');
+
+  assert.match(music, /phone_storage\\.js/);
+  assert.match(music, /renderMusicAvatar\\(document\\.getElementById\\('musicHomeAvatar'\\)/);
+  assert.match(music, /renderMusicAvatar\\(document\\.getElementById\\('pAvatar'\\)/);
+  assert.doesNotMatch(music, /editAvatar|setItem\\('music_profile_avatar'/, 'music must not keep a separate letter-avatar editor');
+
+  assert.match(detail, /fillAvatar\\(avatar, getMyAvatar\\(\\), USER_SVG\\)/, 'outgoing chat messages use the shared user portrait');
+  assert.match(callUi, /phone_storage\\.js/);
+  assert.match(callUi, /PhoneStorage\\.getMyProfile\\(\\)/, 'outgoing call UI initializes and reads the shared profile');
+
+  assert.match(settings, /PhoneStorage\\.getMyProfile\\(\\)/);
+  assert.match(settings, /avatarImage\\.src = avatarSrc/);
+  assert.match(finance, /PhoneStorage\\.getMyProfile\\(\\)/);
+  assert.match(finance, /financeUserAvatar/);
+  assert.match(finance, /image\\.src = src/);
+
+  assert.match(forum, /function forumAvatarContent\\(p\\)/);
+  assert.match(forum, /forumAvatarContent\\(p\\)/);
+  assert.match(forum, /function getMyForumAvatar\\(\\)/);
+  assert.match(forumDetail, /function avatarContent\\(item, isUserPost\\)/);
+  assert.match(forumDetail, /avatarContent\\(c, false\\)/);
+  assert.match(forumDetail, /avatarContent\\(r, false\\)/);
+});
