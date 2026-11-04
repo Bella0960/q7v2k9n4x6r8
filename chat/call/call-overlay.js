@@ -291,6 +291,8 @@
         else global.dispatchEvent(new CustomEvent('maomao:followup-message', {
           detail: { contactId: String(character.id) }
         }));
+        var chatList = global.document.getElementById('chat-messages');
+        if (chatList) chatList.scrollTop = chatList.scrollHeight;
       } catch (error) {
         if (global.console && typeof global.console.warn === 'function') {
           global.console.warn('[MAOMAO call] call record was not saved', error);
@@ -349,6 +351,7 @@
       sendButton.disabled = true;
       input.disabled = true;
       stateEl.textContent = '对方正在回复…';
+      var beforeSendCount = readHistory().length;
       var request;
       try {
         request = global.sendMsg({ text: text });
@@ -360,8 +363,19 @@
       var pending = request && typeof request.then === 'function' ? request : Promise.resolve();
       pending.then(function () {
         if (finished) return;
+        var nextHistory = readHistory().slice(beforeSendCount);
+        var accepted = nextHistory.some(function (item) {
+          return item && (item.role === 'user' || item.role === 'sent') && String(item.text || '').trim() === text;
+        });
+        var hasError = nextHistory.some(function (item) { return item && item.isError; });
         renderTranscript();
-        stateEl.textContent = '已连接 · 文字交流';
+        if (accepted) stateEl.textContent = '已连接 · 文字交流';
+        else if (hasError) stateEl.textContent = '聊天服务暂不可用';
+        else {
+          stateEl.textContent = 'TA 正在回复中，请稍后再发';
+          input.value = text;
+          input.style.height = 'auto';
+        }
       }).catch(function (error) {
         if (finished) return;
         stateEl.textContent = '回复暂时中断';
@@ -372,9 +386,9 @@
       }).finally(function () {
         sending = false;
         if (!finished && connected) {
-          sendButton.disabled = false;
           input.disabled = false;
-          input.focus();
+          sendButton.disabled = !input.value.trim();
+          try { input.focus(); } catch (error) {}
         }
       });
     });
@@ -386,7 +400,7 @@
     });
 
     input.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
         event.preventDefault();
         if (typeof form.requestSubmit === 'function') form.requestSubmit();
         else sendButton.click();
