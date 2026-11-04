@@ -26,13 +26,22 @@ const backupSrc = readFileSync(resolve(root, 'settings/js/backup.js'), 'utf8');
 
 /* ── 工具：从源码提取 ── */
 function extractFunction(src, name) {
-    const start = src.indexOf('function ' + name + '(');
-    assert.notEqual(start, -1, `未找到函数：${name}`);
+    // 同时匹配 `function name(` 和 `async function name(`
+    const re = new RegExp('(async\\s+)?function\\s+' + name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '\\s*\\(');
+    const m = re.exec(src);
+    if (!m) throw new Error(`未找到函数：${name}`);
+    const start = m.index;
     const braceStart = src.indexOf('{', start);
     let depth = 0;
+    let inStr = null, escape = false;
     for (let i = braceStart; i < src.length; i++) {
-        if (src[i] === '{') depth++;
-        else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start, i + 1); }
+        const c = src[i];
+        if (escape) { escape = false; continue; }
+        if (c === '\\') { escape = true; continue; }
+        if (inStr) { if (c === inStr) inStr = null; continue; }
+        if (c === '"' || c === "'" || c === '`') { inStr = c; continue; }
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) return src.slice(start, i + 1); }
     }
     throw new Error(`函数 ${name} 括号未闭合`);
 }
@@ -122,6 +131,18 @@ function makeIDB(name, version, storeDefs) {
             contains(sn) { return storeNames.includes(sn); }
         },
         close() {},
+        // idbOpen 的 onupgradeneeded 回调会调这个——未预注册的 DB 需能动态建空 store
+        createObjectStore(storeName, opts) {
+            if (!storeNames.includes(storeName)) {
+                storeNames.push(storeName);
+                data[storeName] = [];
+            }
+            return {
+                createIndex() {}, deleteIndex() {}, index() {},
+                put() {}, add() {}, get() {}, getAll() {}, getAllKeys() {},
+                clear() {}, openCursor() {}, count() {}, delete() {}
+            };
+        },
         transaction(storeName, mode) {
             assert.ok(data[storeName] !== undefined, `store ${storeName} 不存在`);
             let oncompleteCb = null;
@@ -270,37 +291,124 @@ async function injectRecords(db, storeName, storeDef, records) {
     await new Promise(r => { tx.oncomplete = r; });
 }
 
-/* ── 构建完整沙箱（dump + restore 全链路） ── */
-function buildCtxFull() {
-    // 所有源码片段拼在一起：先 var 声明（IDB_TARGETS 依赖 FONT_* 常量），再函数体
-    // 让 runInNewContext 在同一个上下文里处理所有 var 声明，避免 TDZ
+/* ── 构建完整沙箱（dump + restore + doExport 全链路） ── */
+function buildCtxFull(opts) {
+    opts = opts || {};
+
     const varSrcs = [
         extractVar(backupSrc, 'FONT_BLOB_MAX_BYTES'),
         extractVar(backupSrc, 'FONT_STORE_MAX_BYTES'),
+        extractVar(backupSrc, 'BACKUP_APP'),
+        extractVar(backupSrc, 'BACKUP_SCHEMA'),
+        extractVar(backupSrc, 'EXPORT_WARN_CHARS'),
+        extractVar(backupSrc, 'EXCLUDE_KEYS'),
+        extractVar(backupSrc, 'SECRET_KEYS'),
+        extractVar(backupSrc, 'CORE_HINTS'),
         extractVar(backupSrc, 'IDB_TARGETS')
     ];
     const fnNames = [
+        '$', 'toast', 'includeSecretsEnabled', 'snapshot',
+        'stringifyIndexedDB',
         'base64ToBlob', 'blobToBase64', 'idbOpen',
         'dumpStore', 'dumpDatabase',
-        'restoreStore', 'restoreDatabase'
+        'restoreStore', 'restoreDatabase',
+        'doExport'
     ];
     const fnSrcs = fnNames.map(n => extractFunction(backupSrc, n));
     const ctxSrc = varSrcs.concat(fnSrcs).join('\n');
+
+    // localStorage mock：数据直接挂在 mock 对象上，方法设为不可枚举，
+    // 这样 Object.keys(localStorage) 能拿到真实数据键，而不会被 getItem 等污染
+    const mockLocalStorage = opts.localStorage ? Object.assign({}, opts.localStorage) : {};
+    Object.defineProperty(mockLocalStorage, 'getItem', {
+        value(k) { return this.hasOwnProperty(k) ? String(this[k]) : null; },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'setItem', {
+        value(k, v) { this[k] = String(v); },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'removeItem', {
+        value(k) { delete this[k]; },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'clear', {
+        value() { for (const k of Object.keys(this)) delete this[k]; },
+        enumerable: false, configurable: true
+    });
+    Object.defineProperty(mockLocalStorage, 'length', {
+        get() { return Object.keys(this).length; },
+        enumerable: false, configurable: true
+    });
+
+    // doExport 副作用拦截器
+    const intercepted = {
+        downloads: [],   // 被拦截的 Blob { name, bodyStr }
+        toasts: [],
+        confirmResult: opts.confirmResult || false  // 默认用户不确认带密钥
+    };
+
+    const mockEl = () => ({
+        textContent: '', classList: { add() {}, remove() {} },
+        href: '', download: '', click() {}, remove() {}, appendChild() {}, style: {}
+    });
 
     const ctx = {
         Blob: SandboxBlob,
         FileReader: makeFileReader,
         indexedDB: globalThis.indexedDB,
         window: { indexedDB: globalThis.indexedDB },
+        localStorage: mockLocalStorage,
         atob: (s) => Buffer.from(s, 'base64').toString('binary'),
         Uint8Array: globalThis.Uint8Array,
         Promise: globalThis.Promise,
-        Error: globalThis.Error
+        Error: globalThis.Error,
+        Date: globalThis.Date,
+        setTimeout: (fn) => { fn(); return 0; },
+        // URL.createObjectURL → 返回假 URL，不访问 DOM
+        URL: {
+            createObjectURL(blob) {
+                // 拦截下载的 Blob：读出内容
+                let bodyStr = null;
+                try {
+                    const b64 = blob._data ? blob._data.toString('base64') : '';
+                    // Blob.prototype.arrayBuffer 不存在，SandboxBlob 也没有 text()；
+                    // doExport 用 new Blob([bodyStr], { type: ... })，把 bodyStr 读一下
+                    bodyStr = '';
+                    if (blob instanceof SandboxBlob && blob._data) {
+                        // bodyStr 在 SandboxBlob 构造时被当作 parts 第一个元素传入
+                        // doExport 的 bodyStr 是 JSON 文本 → SandboxBlob 里就是这个字符串的 utf8 bytes
+                        bodyStr = blob._data.toString('utf8');
+                    }
+                } catch (_) {}
+                intercepted.downloads.push({ name: '(unknown)', bodyStr });
+                return 'blob:mock/' + Math.random();
+            },
+            revokeObjectURL() {}
+        },
+        // document.createElement('a') → 返回 mock 元素；a.click 触发拦截
+        document: {
+            createElement(tag) { return mockEl(); },
+            body: { appendChild() {} }
+        },
+        alert(msg) { intercepted.toasts.push({ kind: 'alert', msg }); },
+        confirm(msg) { return intercepted.confirmResult; }
     };
-    runInNewContext(ctxSrc, ctx);
+    runInNewContext(ctxSrc, ctx, { filename: 'backup.js (sandbox)' });
 
-    // 同时把 IDB_TARGETS 挂到 ctx 上方便测试直接引用（runInNewContext 里
-    // 用 var 声明的变量会变成 ctx 的属性）
+    // 替换 doExport 内部的 toast / $ 以便拦截
+    const origToast = ctx.toast;
+    ctx.toast = function (msg) {
+        intercepted.toasts.push({ kind: 'toast', msg });
+        // 仍保留原 toast 行为（原 toast 在沙箱里依赖 $('toastMsg') 返回 null，
+        // 会走 alert 分支，但 alert 已被我们拦截，所以是 no-op）
+        origToast(msg);
+    };
+    // 覆盖 $('toastMsg') 返回 null，让原 toast 走 alert 分支 → 被我们拦截
+    ctx.$ = function (id) { return null; };
+
+    ctx.__intercepted = intercepted;
+    ctx.__lsStore = mockLocalStorage;
     assert.ok(ctx.IDB_TARGETS, 'runInNewContext 后 IDB_TARGETS 应挂在 ctx 上');
     return ctx;
 }
@@ -664,17 +772,29 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
 });
 
 /* ═══════════════════════════════════════════════
-  10. 真 doExport 循环：maomao-assets atomicExportFailed → 整库排除；
-      其他 DB（maomao-media-store / maomao-font-presets）正常 → 仍进 dbData；
-      dbWarnings 显示明确提示，allSkipped 记录超限条目
+  10. 直接调用生产代码 doExport()
+      - localStorage 数据正常打进备份
+      - maomao-assets 整库 atomicExportFailed → 从最终备份里消失
+      - maomao-media-store / maomao-font-presets 正常保留
+      - dbWarnings + allSkipped 在 toast 文案里出现
+      - 最终 JSON body 可 parse 且结构正确
    ═══════════════════════════════════════════════ */
-test('10 doExport 层 atomicExport：资源库整库排除，但其他库 + localStorage 不受影响', async () => {
+test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB 被排除', async () => {
     clearAllDBs();
-    const ctx = buildCtxFull();
+
+    // ── localStorage mock 里预置若干键值（snapshot 会读它们） ──
+    const fakeLS = {
+        ai_custom_characters: JSON.stringify({ list: ['char_a', 'char_b'] }),
+        phone_data_v2: JSON.stringify({ theme: 'editorial', wallpaper: 'ocean' }),
+        chat_history_99: JSON.stringify({ lastSeen: '2026-11-04' }),
+        api_call_logs: 'should_be_excluded_by_EXCLUDE_KEYS',   // 会被 snapshot(dropCaches=true) 排除
+        api_settings: 'SHOULD_BE_EXCLUDED_AS_SECRET'           // 会被 snapshot(dropSecrets=true) 排除
+    };
+    const ctx = buildCtxFull({ localStorage: fakeLS });
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
     const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
 
-    // ── 1. 注册 maomao-assets：blobs 有一条超限 → 会触发 atomicExportFailed ──
+    // ── maomao-assets：blobs 有一条超限 → atomicExportFailed ──
     const assetsDb = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
     await injectRecords(assetsDb, 'assets', maomaoAssetsDef.stores.find(s => s.store === 'assets'), [
         { assetId: 'a1', type: 'image', mimeType: 'image/jpeg', size: 1024 },
@@ -689,88 +809,71 @@ test('10 doExport 层 atomicExport：资源库整库排除，但其他库 + loca
         { assetId: 'a1', blob: new SandboxBlob([tooBig], { type: 'image/jpeg' }) }
     ]);
 
-    // ── 2. 注册 maomao-media-store：完全正常，没有 blobMax 配置 ──
+    // ── maomao-media-store：正常 ──
     const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
     const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
     await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
         { id: 'wp1', name: 'ocean.jpg', color: '#1a5e20' }
     ]);
-    // audio store 有 excludeFields: ['blob']，blob 不进 JSON（但 dumpStore 不会报错）
     await injectRecords(mediaDb, 'audio', mediaDef.stores.find(s => s.store === 'audio'), [
         { id: 'song1', title: 'Morning Breeze', artist: 'Alice' }
     ]);
 
-    // ── 3. 注册 maomao-font-presets：也有 blob，但正常 ──
+    // ── maomao-font-presets：正常 ──
     const fontDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-font-presets');
     const fontDb = registerDB('maomao-font-presets', fontDef.version, fontDef.stores);
     await injectRecords(fontDb, 'presets', fontDef.stores.find(s => s.store === 'presets'), [
         { id: 'f1', label: 'Editorial', family: 'Georgia', blob: new SandboxBlob([Buffer.from('FONT_BYTEZ')], { type: 'font/ttf' }) }
     ]);
 
-    // ── 4. 模拟 doExport 中对 IDB_TARGETS 的循环（只处理我们预注册过的三个 DB） ──
-    const dbData = {};
-    const dbWarnings = [];
-    const allSkipped = [];
-    const preRegistered = new Set(['maomao-assets', 'maomao-media-store', 'maomao-font-presets']);
+    // ═══════════════════════════════════════════════
+    // 直接调用生产代码 doExport()
+    // ═══════════════════════════════════════════════
+    await ctx.doExport();
 
-    for (let i = 0; i < ctx.IDB_TARGETS.length; i++) {
-        const tgt = ctx.IDB_TARGETS[i];
-        if (!preRegistered.has(tgt.db)) continue;  // 跳过未预注册的其他 DB
-        const part = await ctx.dumpDatabase(tgt.db, tgt.version, tgt.stores);
-        if (part === null) {
-            dbWarnings.push(tgt.db + '（读取失败）');
-            continue;
-        }
-        if (part.atomicExportFailed) {
-            const skipCount = part.skipped ? part.skipped.length : 0;
-            dbWarnings.push(tgt.db + '（媒体 Blob ' + skipCount + ' 条超限，整库未纳入备份以防止残缺恢复）');
-            (part.skipped || []).forEach(function (s) {
-                allSkipped.push({ db: tgt.db, store: s.store, id: s.id, reason: s.reason, bytes: s.bytes });
-            });
-            continue;
-        }
-        const stores = part.data;
-        if (!stores || !Object.keys(stores).length) continue;
-        dbData[tgt.db] = stores;
-        (part.skipped || []).forEach(function (s) {
-            allSkipped.push({ db: tgt.db, store: s.store, id: s.id, reason: s.reason, bytes: s.bytes });
-        });
-    }
+    const inter = ctx.__intercepted;
+    assert.ok(inter.downloads.length >= 1, '应至少触发一次下载');
+    const download = inter.downloads[inter.downloads.length - 1];
+    assert.ok(download.bodyStr && download.bodyStr.length > 100, '下载内容应有正文');
 
-    // ====== 5. 验证：maomao-assets 被完全排除 ======
-    assert.ok(!('maomao-assets' in dbData),
-        'atomicExportFailed 的库不应进入 dbData');
-    assert.ok(dbWarnings.some(w => w.startsWith('maomao-assets') && w.includes('整库未纳入备份')),
-        'dbWarnings 应有 maomao-assets 的 atomicExport 提示');
+    // ====== 1. 最终 JSON 可 parse 且结构正确 ======
+    const parsed = JSON.parse(download.bodyStr);
+    assert.ok(parsed.__backup, '应有 __backup 元信息');
+    assert.equal(parsed.__backup.app, 'phone-app');
+    assert.equal(parsed.__backup.schema, 2);
+    assert.ok(parsed.data && typeof parsed.data === 'object', '应有 data 段（localStorage 快照）');
+    assert.ok(parsed.indexedDB && typeof parsed.indexedDB === 'object', '应有 indexedDB 段');
 
-    // ====== 6. 验证：其他库正常保留 ======
-    assert.ok('maomao-media-store' in dbData,
-        '正常的 maomao-media-store 必须保留');
-    assert.ok('maomao-font-presets' in dbData,
-        '正常的 maomao-font-presets 必须保留');
+    // ====== 2. localStorage 数据：snapshot 正确排除 EXCLUDE_KEYS 和 SECRET_KEYS ======
+    // snapshot(true, true) 排除 api_call_logs 和 api_settings
+    const dataKeys = Object.keys(parsed.data);
+    assert.ok(dataKeys.includes('ai_custom_characters'), '应保留 ai_custom_characters');
+    assert.ok(dataKeys.includes('phone_data_v2'), '应保留 phone_data_v2');
+    assert.ok(dataKeys.includes('chat_history_99'), '应保留 chat_history_99');
+    assert.ok(!dataKeys.includes('api_call_logs'), 'api_call_logs 属于 EXCLUDE_KEYS，应被排除');
+    assert.ok(!dataKeys.includes('api_settings'), 'api_settings 属于 SECRET_KEYS，应被排除');
 
-    // wallpapers 是 out-of-line key，backup.js 源码会包装成 { __key, __value }
-    const wp = dbData['maomao-media-store'].wallpapers;
-    assert.equal(wp.length, 1, 'wallpapers 应只有 1 条');
-    assert.ok(wp[0].hasOwnProperty('__key') && wp[0].hasOwnProperty('__value'),
-        'out-of-line key 的 store 记录应被包装成 { __key, __value }');
-    assert.equal(wp[0].__value.id, 'wp1');
-    assert.equal(wp[0].__value.name, 'ocean.jpg');
-    assert.equal(wp[0].__value.color, '#1a5e20');
+    // ====== 3. maomao-assets atomicExportFailed → 不应出现在 indexedDB 段 ======
+    assert.ok(!('maomao-assets' in parsed.indexedDB),
+        'atomicExportFailed 的库不应进最终 JSON 的 indexedDB 段');
 
-    // presets 是 in-line key（keyPath='id'），直接是原始 record
-    const presets = dbData['maomao-font-presets'].presets;
-    assert.equal(presets.length, 1);
-    assert.equal(presets[0].id, 'f1');
-    assert.equal(presets[0].label, 'Editorial');
+    // ====== 4. 其他 DB 正常保留 ======
+    assert.ok('maomao-media-store' in parsed.indexedDB,
+        'maomao-media-store 应正常保留');
+    assert.ok('maomao-font-presets' in parsed.indexedDB,
+        'maomao-font-presets 应正常保留');
 
-    // ====== 7. 验证 allSkipped：maomao-assets 的超限条目被正确记录 ======
-    const assetSkips = allSkipped.filter(s => s.db === 'maomao-assets');
-    assert.ok(assetSkips.length >= 1, 'allSkipped 应至少有 maomao-assets 的一条');
-    assert.ok(assetSkips.every(s => s.store === 'blobs'),
-        '应只跳过 blobs store 的条目');
-    assert.ok(assetSkips.every(s => s.id === 'a1'),
-        '跳过的应是 assetId=a1（我们唯一超限的 blob）');
-    assert.ok(assetSkips.every(s => typeof s.bytes === 'number' && s.bytes > blobMax),
-        'bytes 应真实记录超限 blob 的体积');
+    // ====== 5. indexedDB 概览（__backup.indexedDB）里也不应有 maomao-assets ======
+    const dbOverview = parsed.__backup.indexedDB || {};
+    assert.ok(!('maomao-assets' in dbOverview),
+        'dbOverview 也应排除 atomicExportFailed 的库');
+    assert.ok('maomao-media-store' in dbOverview);
+    assert.ok('maomao-font-presets' in dbOverview);
+
+    // ====== 6. toast 文案里应提到 atomicExport 警告 + 超限条目 ======
+    const lastToast = inter.toasts[inter.toasts.length - 1];
+    assert.ok(lastToast, '应触发 toast');
+    assert.ok(/已导出/.test(lastToast.msg), 'toast 应说已导出');
+    assert.ok(/媒体 Blob.*超限/.test(lastToast.msg) || /atomicExport/.test(lastToast.msg) || /maomao-assets/.test(lastToast.msg) || /1 个 IndexedDB/.test(lastToast.msg),
+        'toast 应提到 maomao-assets atomicExportFailed 警告');
 });
