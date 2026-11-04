@@ -1957,6 +1957,20 @@ test('theme store uses a bounded viewport scroll area on mobile', () => {
   assert.match(scrollRule[1], /-webkit-overflow-scrolling:touch/);
 });
 
+
+test('chat contacts page uses the shared full-screen mobile layout', () => {
+  const contacts = read('chat/contacts/contacts.html');
+  const chatHome = read('chat/chat/chat.html');
+  const mobileFit = read('shared/css/mobile-fit.css');
+
+  assert.ok(chatHome.includes('shared/css/mobile-fit.css'), 'chat home should load shared mobile layout');
+  assert.ok(contacts.includes('shared/css/mobile-fit.css'), 'contacts must use the same mobile layout');
+  assert.ok(contacts.indexOf('shared/css/mobile-fit.css') > contacts.indexOf('</style>'), 'shared overrides must load after page-local CSS');
+  assert.match(mobileFit, /\.phone-mockup,[\s\S]*?height: 100vh !important;[\s\S]*?height: 100dvh !important;/);
+  assert.ok(contacts.includes('.contact-stage'), 'contacts scroll stage should remain present');
+});
+
+
 test('whole-chat theme is refreshed when a chat page is restored from browser history', () => {
   const themeScript = read('shared/js/chat-page-theme.js');
   const state = new Map([['maomao_chat_theme_preset', 'default']]);
