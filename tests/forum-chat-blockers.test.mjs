@@ -17,7 +17,7 @@ test('forum detail loads the same theme-aware seeded posts as the list and persi
   assert.match(forumDetail, /function getSeededPosts\(\)/);
   assert.match(forumDetail, /const seeded=\[/);
   assert.match(forumHome, /localStorage\.setItem\(STORE,JSON\.stringify\(seedPosts\)\)/);
-  assert.match(forumDetail, /if \\(raw === null\\)[\\s\\S]*?savePosts\\(seedPosts\\)/);
+  assert.match(forumDetail, /if \(raw === null\)[\s\S]*?savePosts\(seedPosts\)/);
   assert.match(forumDetail, /function loadPosts\(\)[\s\S]*?mergeForumPosts\(stored,seedPosts\)/);
 });
 
