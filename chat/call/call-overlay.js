@@ -62,9 +62,46 @@
     target.textContent = Array.from(String(name || '聊'))[0] || '聊';
   }
 
+  function readGroupData(groupId) {
+    try {
+      var groups = JSON.parse(global.localStorage.getItem('phone_groups') || '[]');
+      if (!Array.isArray(groups)) return null;
+      return groups.find(function (group) { return group && String(group.id) === String(groupId); }) || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function readCharacters() {
+    try {
+      var roles = JSON.parse(global.localStorage.getItem('ai_custom_characters') || '[]');
+      return Array.isArray(roles) ? roles : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function resolveGroupParticipants(group) {
+    var roles = readCharacters();
+    var members = group && Array.isArray(group.members) ? group.members : [];
+    return members.filter(Boolean).map(function (member) {
+      var id = String(member.id != null ? member.id : member.roleId || '');
+      var role = roles.find(function (item) { return item && String(item.id) === id; }) || null;
+      return {
+        id: id,
+        name: String(member.nickname || member.name || (role && role.name) || '群成员'),
+        avatar: safeImageSource(member.avatar || member.avatarUrl || (role && (role.avatar || role.avatarUrl)) || ''),
+        title: String(member.title || (member.isAdmin ? '管理员' : '群成员'))
+      };
+    });
+  }
+
   function start(mode, character) {
-    var type = mode === 'video' ? 'video' : 'voice';
+    var isGroupCall = mode === 'group' || mode === 'group-video';
+    var type = mode === 'video' || mode === 'group-video' ? 'video' : 'voice';
     if (!character || !character.id) return false;
+    var groupData = isGroupCall ? readGroupData(character.id) : null;
+    var groupParticipants = isGroupCall ? resolveGroupParticipants(groupData) : [];
 
     if (activeSession) {
       activeSession.open();
@@ -92,7 +129,7 @@
     var callType = type;
 
     var layer = document.createElement('section');
-    layer.className = 'maomao-call-layer' + (fixedLayer ? ' is-fixed' : '') + (type === 'video' ? ' is-video' : '');
+    layer.className = 'maomao-call-layer' + (fixedLayer ? ' is-fixed' : '') + (type === 'video' ? ' is-video' : '') + (isGroupCall ? ' is-group' : '');
     layer.setAttribute('role', 'dialog');
     layer.setAttribute('aria-modal', 'true');
     layer.setAttribute('aria-label', type === 'video' ? '视频通话' : '语音通话');
@@ -125,6 +162,11 @@
             '<div class="maomao-call-self-avatar" data-self-avatar></div>',
             '<span class="maomao-call-self-label">我</span>',
           '</div>',
+        '</div>',
+        '<div class="maomao-call-group-view" data-group-view hidden>',
+          '<div class="maomao-call-group-head"><span>GROUP / PARTICIPANTS</span><strong data-group-count></strong></div>',
+          '<div class="maomao-call-group-grid" data-group-grid></div>',
+          '<div class="maomao-call-group-state" data-group-state>正在邀请群成员…</div>',
         '</div>',
       '</section>',
       '<section class="maomao-call-conversation">',
@@ -189,6 +231,10 @@
     var input = layer.querySelector('[data-call-input]');
     var sendButton = layer.querySelector('[data-call-send]');
     var switchLabel = layer.querySelector('[data-switch-label]');
+    var groupView = layer.querySelector('[data-group-view]');
+    var groupGrid = layer.querySelector('[data-group-grid]');
+    var groupCount = layer.querySelector('[data-group-count]');
+    var groupState = layer.querySelector('[data-group-state]');
     var selfPip = layer.querySelector('[data-self-pip]');
     var selfLabel = layer.querySelector('[data-self-label]');
     var miniName = mini.querySelector('[data-mini-name]');
@@ -200,6 +246,35 @@
     createAvatar(layer.querySelector('[data-role-avatar]'), roleAvatar, displayName);
     createAvatar(layer.querySelector('[data-role-video]'), roleAvatar, displayName);
     createAvatar(layer.querySelector('[data-self-avatar]'), myAvatar, myName);
+    if (isGroupCall) {
+      titleEl.textContent = type === 'video' ? '群视频通话' : '群语音通话';
+      layer.querySelector('.maomao-call-kicker').textContent = 'MAOMAO / GROUP CALL';
+      groupView.hidden = false;
+      groupCount.textContent = groupParticipants.length + ' 位角色';
+      var roster = groupParticipants.concat([{ id: '__self__', name: myName, avatar: safeImageSource(myAvatar), title: '你' }]);
+      if (!roster.length) {
+        groupGrid.textContent = '还没有群成员';
+      } else {
+        roster.forEach(function (participant) {
+          var tile = global.document.createElement('div');
+          tile.className = 'maomao-call-group-tile';
+          tile.setAttribute('data-participant-id', participant.id);
+          var avatar = global.document.createElement('div');
+          avatar.className = 'maomao-call-group-avatar';
+          createAvatar(avatar, participant.avatar, participant.name);
+          var name = global.document.createElement('strong');
+          name.className = 'maomao-call-group-name';
+          name.textContent = participant.name;
+          var status = global.document.createElement('span');
+          status.className = 'maomao-call-group-role';
+          status.textContent = participant.title || '已加入';
+          tile.appendChild(avatar);
+          tile.appendChild(name);
+          tile.appendChild(status);
+          groupGrid.appendChild(tile);
+        });
+      }
+    }
 
     function currentMessages() {
       return readHistory().slice(historyStart).filter(function (item) {
@@ -225,7 +300,12 @@
         row.className = 'maomao-call-message' + (mine ? ' is-mine' : '') + (message.isError ? ' is-error' : '');
         var meta = document.createElement('span');
         meta.className = 'maomao-call-message-meta';
-        meta.textContent = message.isError ? '系统提示' : (mine ? '我' : displayName);
+        var speakerName = String(message.name || '');
+        if (isGroupCall && !mine && !message.isError && message.memberId != null) {
+          var matchedSpeaker = groupParticipants.find(function (participant) { return participant.id === String(message.memberId); });
+          if (matchedSpeaker) speakerName = matchedSpeaker.name;
+        }
+        meta.textContent = message.isError ? '系统提示' : (mine ? '我' : (speakerName || displayName));
         var bubble = document.createElement('div');
         bubble.className = 'maomao-call-message-bubble';
         bubble.textContent = text || '暂时无法显示这条消息';
@@ -234,15 +314,48 @@
         transcriptEl.appendChild(row);
       });
       transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      if (isGroupCall) {
+        var messagesForSpeaker = currentMessages();
+        var latestSpeaker = null;
+        for (var i = messagesForSpeaker.length - 1; i >= 0; i--) {
+          var latest = messagesForSpeaker[i];
+          if (!latest || latest.isError || (latest.role !== 'assistant' && latest.role !== 'received')) continue;
+          latestSpeaker = latest;
+          break;
+        }
+        var latestSpeakerId = latestSpeaker && latestSpeaker.memberId != null ? String(latestSpeaker.memberId) : '';
+        var latestSpeakerName = String(latestSpeaker && latestSpeaker.name || '');
+        Array.prototype.forEach.call(groupGrid.querySelectorAll('[data-participant-id]'), function (tile) {
+          tile.classList.remove('is-speaking');
+          var id = tile.getAttribute('data-participant-id');
+          var match = groupParticipants.find(function (participant) { return participant.id === id; });
+          var isSpeaker = !!latestSpeaker && ((latestSpeakerId && id === latestSpeakerId) || (latestSpeakerName && match && match.name === latestSpeakerName));
+          var role = tile.querySelector('.maomao-call-group-role');
+          if (isSpeaker) {
+            tile.classList.add('is-speaking');
+            if (role) role.textContent = '刚刚发言';
+          } else if (role) {
+            role.textContent = id === '__self__' ? '你' : ((match && match.title) || '已加入');
+          }
+        });
+        groupState.textContent = connected
+          ? (latestSpeakerName ? latestSpeakerName + ' 刚刚发言 · 文字交流中' : groupParticipants.length + ' 位角色已加入 · 文字交流中')
+          : '正在邀请群成员…';
+      }
     }
 
     function updateMode(nextType) {
       callType = nextType === 'video' ? 'video' : 'voice';
       layer.classList.toggle('is-video', callType === 'video');
-      titleEl.textContent = callType === 'video' ? '视频通话' : '语音通话';
+      titleEl.textContent = isGroupCall
+        ? (callType === 'video' ? '群视频通话' : '群语音通话')
+        : (callType === 'video' ? '视频通话' : '语音通话');
       switchLabel.textContent = callType === 'video' ? '切换语音' : '切换视频';
       layer.setAttribute('aria-label', titleEl.textContent);
-      if (connected) stateEl.textContent = '已连接 · 文字交流';
+      if (connected) {
+        stateEl.textContent = '已连接 · 文字交流';
+        if (isGroupCall) groupState.textContent = groupParticipants.length + ' 位角色已加入 · 文字交流中';
+      }
     }
 
     function updateTimer() {
@@ -275,11 +388,15 @@
         time: Date.now(),
         call: {
           type: callType,
+          title: isGroupCall ? (callType === 'video' ? '群视频通话' : '群语音通话') : (callType === 'video' ? '视频通话' : '语音通话'),
+          group: !!isGroupCall,
+          participants: isGroupCall ? groupParticipants.map(function (participant) { return participant.name; }) : [],
+          participantCount: isGroupCall ? groupParticipants.length + 1 : 2,
           connected: !!connected,
           duration: connected ? duration : 0,
           messageCount: visibleMessages.length,
           text: connected
-            ? '通话时长 ' + formatTime(duration) + ' · 文字交流 ' + visibleMessages.length + ' 条'
+            ? (isGroupCall ? groupParticipants.length + ' 位角色参与 · ' : '') + '通话时长 ' + formatTime(duration) + ' · 文字交流 ' + visibleMessages.length + ' 条'
             : '已取消'
         }
       };
