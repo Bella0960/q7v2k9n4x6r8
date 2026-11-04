@@ -1941,6 +1941,17 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 });
 
 
+
+test('Netlify Deploy Previews skip the full PWA app-shell installation', () => {
+  const home = read('index.html');
+  const previewGuard = home.indexOf("if (/^deploy-preview-\\\\d+--.+\\\\.netlify\\\\.app$/i.test(location.hostname)) return;");
+  const registration = home.indexOf("navigator.serviceWorker.register('./sw.js'");
+  assert.notEqual(previewGuard, -1, 'deploy preview should bypass service worker registration');
+  assert.ok(registration > previewGuard, 'production PWA registration must remain available outside preview hosts');
+  assert.match(home, /swHadController|hadController/, 'first installation must not trigger a duplicate document reload');
+});
+
+
 test('theme store uses a bounded viewport scroll area on mobile', () => {
   const storePage = read('theme-store/theme-store.html');
   const appRule = storePage.match(/\.store-app\{([^}]*)\}/);
@@ -2015,6 +2026,6 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.ok(serviceWorker.includes('./shared/js/chat-page-theme.js?v=20261105v1'));
-  assert.match(serviceWorker, /phone-app-pwa-v160/);
+  assert.match(serviceWorker, /phone-app-pwa-v159/, 'do not force a full production cache-version reset for a theme bridge update');
+  assert.doesNotMatch(serviceWorker, /phone-app-pwa-v160/);
 });
