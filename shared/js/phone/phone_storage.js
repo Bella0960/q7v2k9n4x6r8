@@ -155,13 +155,51 @@
     };
 
     // 我（玩家 profile）
+    // 新安装或旧资料没有头像时，从三款内置头像中自动分配一款。
+    // 只补空头像；用户已上传或选择的头像永远优先。
+    var DEFAULT_AVATAR_PRESETS = [
+        { id: "bunny", name: "兔子", dataUrl: "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%20width%3D%22200%22%20height%3D%22200%22%3E%0A%20%20%3Cellipse%20cx%3D%2268.75%22%20cy%3D%2250%22%20rx%3D%2215.625%22%20ry%3D%2243.75%22%20fill%3D%22%23e8e8ea%22%20transform%3D%22rotate(-8%2068.75%2050)%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22131.25%22%20cy%3D%2250%22%20rx%3D%2215.625%22%20ry%3D%2243.75%22%20fill%3D%22%23e8e8ea%22%20transform%3D%22rotate(8%20131.25%2050)%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22100%22%20cy%3D%22118.75%22%20rx%3D%2262.5%22%20ry%3D%2256.25%22%20fill%3D%22%23f5f5f6%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2278.125%22%20cy%3D%22118.75%22%20r%3D%226.25%22%20fill%3D%22%23555%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22121.875%22%20cy%3D%22118.75%22%20r%3D%226.25%22%20fill%3D%22%23555%22%2F%3E%0A%3C%2Fsvg%3E" },
+        { id: "cat", name: "眼镜猫", dataUrl: "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%20width%3D%22200%22%20height%3D%22200%22%3E%0A%20%20%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%22100%22%20fill%3D%22%23f5f5f6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M44%2068%20L32%2020%20L76%2044%20Z%22%20fill%3D%22%23e8e8ea%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M156%2068%20L168%2020%20L124%2044%20Z%22%20fill%3D%22%23e8e8ea%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22100%22%20cy%3D%22106%22%20rx%3D%2268%22%20ry%3D%2262%22%20fill%3D%22%23fafafb%22%2F%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23222%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Crect%20x%3D%22106%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23222%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Cline%20x1%3D%2294%22%20y1%3D%22103%22%20x2%3D%22106%22%20y2%3D%22103%22%20stroke%3D%22%23222%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2272%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23222%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22128%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23222%22%2F%3E%0A%3C%2Fsvg%3E" },
+        { id: "cat-dark", name: "深色眼镜猫", dataUrl: "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%20width%3D%22200%22%20height%3D%22200%22%3E%0A%20%20%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%22100%22%20fill%3D%22%23e8e8ea%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M44%2068%20L32%2020%20L76%2044%20Z%22%20fill%3D%22%23c8c8ca%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M156%2068%20L168%2020%20L124%2044%20Z%22%20fill%3D%22%23c8c8ca%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22100%22%20cy%3D%22106%22%20rx%3D%2268%22%20ry%3D%2262%22%20fill%3D%22%23e0e0e2%22%2F%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23333%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Crect%20x%3D%22106%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23333%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Cline%20x1%3D%2294%22%20y1%3D%22103%22%20x2%3D%22106%22%20y2%3D%22103%22%20stroke%3D%22%23333%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2272%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23333%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22128%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23333%22%2F%3E%0A%3C%2Fsvg%3E" }
+    ];
+
+    NS.getDefaultAvatarPresets = function () {
+        return DEFAULT_AVATAR_PRESETS.map(function (item) {
+            return { id: item.id, name: item.name, dataUrl: item.dataUrl };
+        });
+    };
+
+    NS.ensureDefaultMyAvatar = function () {
+        var profile = NS.rawGet('myProfile', null);
+        if (!profile || typeof profile !== 'object' || Array.isArray(profile)) profile = {};
+        if (typeof profile.avatar === 'string' && profile.avatar.trim()) return profile;
+
+        var index = 0;
+        try {
+            index = Math.floor(Math.random() * DEFAULT_AVATAR_PRESETS.length);
+        } catch (error) {}
+        if (index < 0 || index >= DEFAULT_AVATAR_PRESETS.length) index = 0;
+
+        profile.avatar = DEFAULT_AVATAR_PRESETS[index].dataUrl;
+        if (!NS.rawSet('myProfile', profile)) {
+            console.warn('[PhoneStorage] default avatar could not be persisted');
+        }
+        return profile;
+    };
+
     NS.getMyProfile = function () {
-        return NS.rawGet('myProfile', null);
+        return NS.ensureDefaultMyAvatar();
     };
 
     NS.saveMyProfile = function (profile) {
         NS.rawSet('myProfile', profile || {});
     };
+
+    // 早期初始化：让同一页面里直接读取 localStorage('myProfile') 的旧页面
+    // 也能立即读到自动分配的默认头像，而不必逐页改写头像渲染逻辑。
+    try { NS.ensureDefaultMyAvatar(); } catch (error) {
+        console.warn('[PhoneStorage] default avatar initialization skipped', error);
+    }
 
     // 世界书
     NS.getWorldbooks = function () {
