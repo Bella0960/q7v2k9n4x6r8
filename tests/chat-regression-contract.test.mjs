@@ -1944,7 +1944,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
 test('Netlify Deploy Previews skip the full PWA app-shell installation', () => {
   const home = read('index.html');
-  const previewGuard = home.indexOf("if (/^deploy-preview-\\\\d+--.+\\\\.netlify\\\\.app$/i.test(location.hostname)) return;");
+  const previewGuard = home.indexOf("var previewHost = location.hostname.indexOf('deploy-preview-') === 0");
   const registration = home.indexOf("navigator.serviceWorker.register('./sw.js'");
   assert.notEqual(previewGuard, -1, 'deploy preview should bypass service worker registration');
   assert.ok(registration > previewGuard, 'production PWA registration must remain available outside preview hosts');
