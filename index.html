@@ -2217,7 +2217,9 @@
         if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
         // Netlify Deploy Preview is a temporary review environment, not an installed PWA.
         // Do not download the full offline app shell for each preview deployment.
-        if (/^deploy-preview-\\d+--.+\\.netlify\\.app$/i.test(location.hostname)) return;
+        var previewHost = location.hostname.indexOf('deploy-preview-') === 0 &&
+          location.hostname.slice(-'.netlify.app'.length) === '.netlify.app';
+        if (previewHost) return;
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
             .then(function (registration) {
