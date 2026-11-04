@@ -1949,9 +1949,9 @@ test('MAo uses the bunny as its installed app icon and exposes the three default
   assert.ok(manifest.icons.some(icon => icon.src === './assets/mao-bunny-192.png' && icon.sizes === '192x192'));
   assert.ok(manifest.icons.some(icon => icon.src === './assets/mao-bunny-512.png' && icon.purpose === 'maskable'));
 
-  assert.match(homePage, /<title>MAo<\\/title>/);
+  assert.ok(homePage.includes('<title>MAo</title>'));
   assert.match(homePage, /name="apple-mobile-web-app-title" content="MAo"/);
-  assert.match(homePage, /apple-touch-icon[^>]+mao-bunny-192\\.png/);
+  assert.ok(homePage.includes('apple-touch-icon') && homePage.includes('mao-bunny-192.png'));
 
   for (const asset of ['avatar-bunny.svg', 'avatar-cat.svg', 'avatar-cat-dark.svg']) {
     assert.ok(profileEditor.includes('data-avatar-src="../assets/' + asset + '"'), 'missing selectable avatar: ' + asset);
