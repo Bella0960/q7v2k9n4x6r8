@@ -67,7 +67,7 @@ test('missing API key saves the user message before clearing input, then saves t
   const userSave = branch.indexOf('userSaved = saveMessages(historyList)');
   const inputClear = branch.indexOf("input.value = ''");
   const errorPush = branch.indexOf('historyList.push(errMsg)');
-  const errorSave = branch.indexOf('saveMessages(historyList)', userSave + 1);
+  const errorSave = branch.indexOf('\n                saveMessages(historyList);', errorPush);
   assert.ok(userPush >= 0 && userPush < userSave, 'user message must be added before its first persistence attempt');
   assert.ok(userSave < inputClear && inputClear < errorPush && errorPush < errorSave,
     'the user must be saved before clearing input, and the system error saved afterward');
