@@ -2800,18 +2800,34 @@
 
         function saveMessages(list) {
             if (_storage) {
-                var ok = _storage.saveChatHistory(currentCharacter.id, list);
-                if (ok) {
-                    _resetWarnCooldown('chat-save');
-                } else if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
-                    showToast('聊天记录未能保存，请检查本地存储空间');
+                try {
+                    var ok = _storage.saveChatHistory(currentCharacter.id, list);
+                    if (ok) {
+                        _resetWarnCooldown('chat-save');
+                        return true;
+                    }
+                    if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
+                        showToast('聊天记录未能保存，请检查本地存储空间');
+                    }
+                    return false;
+                } catch (err) {
+                    console.warn('保存聊天记录失败:', err);
+                    if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
+                        showToast('聊天记录未能保存，请检查本地存储空间');
+                    }
+                    return false;
                 }
-                return;
             }
             try {
                 localStorage.setItem(storageKey, JSON.stringify(list));
+                _resetWarnCooldown('chat-save');
+                return true;
             } catch (err) {
                 console.warn('保存聊天记录失败:', err);
+                if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
+                    showToast('聊天记录未能保存，请检查本地存储空间');
+                }
+                return false;
             }
         }
 
@@ -4660,12 +4676,16 @@
             if (!apiKey) {
                 const historyList = loadMessages();
                 let userMsg = null;
+                let userSaved = null;
+                const previousGroupUserSend = (isGroupChat && !silent)
+                    ? { ...lastGroupUserSend } : null;
+                const previousGroupAutoFollowupToken = groupAutoFollowupToken;
+
                 if (!isRegen && !contextOnly) {
                     if (!silent && !acceptGroupUserMessage(text)) {
                         if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                         return;
                     }
-                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                     const quoteSnapshot = (!silent && pendingQuote) ? {
                         mid: pendingQuote.mid, text: pendingQuote.text,
                         fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
@@ -4674,15 +4694,27 @@
                         role: 'user', text: text, time: Date.now(), silent: !!silent,
                         quote: quoteSnapshot, sendFailed: true, sendFailedReason: 'missing-api-key'
                     };
-                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     historyList.push(userMsg);
-                    if (!silent) {
-                        input.value = '';
-                        input.style.height = 'auto';
-                        updateSendBtnState();
-                        if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
+
+                    // 先单独确认用户消息已落库；只有成功后才清空输入与引用。
+                    userSaved = saveMessages(historyList);
+                    if (userSaved) {
+                        if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                        if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
+                        if (!silent) {
+                            input.value = '';
+                            input.style.height = 'auto';
+                            updateSendBtnState();
+                            if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
+                        }
+                    } else {
+                        // 保存失败时保留输入与引用，并撤销内存中的未保存消息及群聊防重复占位。
+                        historyList.pop();
+                        if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
+                        groupAutoFollowupToken = previousGroupAutoFollowupToken;
                     }
                 }
+
                 const errMsg = {
                     role: 'system_error', isError: true,
                     text: '请先到【设置页 → API 设置】配置 API Key',
@@ -4693,7 +4725,7 @@
                 if (_vl) {
                     vlRefresh();
                 } else {
-                    if (userMsg && !silent) appendMessageToDOM(userMsg);
+                    if (userMsg && userSaved && !silent) appendMessageToDOM(userMsg);
                     appendMessageToDOM(errMsg);
                 }
                 scrollToBottom(true);
