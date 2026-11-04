@@ -970,7 +970,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1283,7 +1283,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1404,7 +1404,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1591,7 +1591,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
@@ -1798,7 +1798,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1854,7 +1854,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v160'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1884,7 +1884,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -1938,4 +1938,69 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
   assert.equal(windowLike.MAOMAOChatListTheme.set('default'), true);
   assert.equal(state.has('maomao_chat_list_theme_preset_v1'), false);
   assert.equal(attributes.has('data-chat-list-theme'), false);
+});
+
+
+test('theme store uses a bounded viewport scroll area on mobile', () => {
+  const storePage = read('theme-store/theme-store.html');
+  const appRule = storePage.match(/\.store-app\{([^}]*)\}/);
+  const scrollRule = storePage.match(/\.main-content\{([^}]*)\}/);
+
+  assert.ok(appRule, 'store app shell rule should exist');
+  assert.match(appRule[1], /height:100vh/);
+  assert.match(appRule[1], /height:100dvh/, 'dynamic viewport height should track mobile browser chrome');
+  assert.ok(scrollRule, 'main content scroll rule should exist');
+  assert.match(scrollRule[1], /flex:1 1 auto/);
+  assert.match(scrollRule[1], /min-height:0/, 'flex child must be allowed to shrink into the viewport');
+  assert.match(scrollRule[1], /overflow-y:auto/);
+  assert.match(scrollRule[1], /overscroll-behavior-y:contain/);
+  assert.match(scrollRule[1], /-webkit-overflow-scrolling:touch/);
+});
+
+test('whole-chat theme is refreshed when a chat page is restored from browser history', () => {
+  const themeScript = read('shared/js/chat-page-theme.js');
+  const state = new Map([['maomao_chat_theme_preset', 'default']]);
+  const listeners = Object.create(null);
+  const attributes = new Map();
+  const shell = {
+    setAttribute: (key, value) => attributes.set(key, value),
+    removeAttribute: (key) => attributes.delete(key)
+  };
+  const windowLike = {
+    localStorage: {
+      getItem: (key) => state.has(key) ? state.get(key) : null
+    },
+    addEventListener: (name, callback) => { listeners[name] = callback; }
+  };
+  const documentLike = {
+    readyState: 'complete',
+    querySelectorAll: (selector) => {
+      assert.equal(selector, '.phone-mockup');
+      return [shell];
+    }
+  };
+
+  runInNewContext(themeScript, { window: windowLike, document: documentLike });
+  assert.equal(attributes.get('data-chat-theme-preset'), 'default', 'saved theme should apply at initial load');
+
+  state.set('maomao_chat_theme_preset', 'wechat');
+  assert.equal(typeof listeners.pageshow, 'function', 'theme bridge should listen for bfcache/page restoration');
+  listeners.pageshow({ persisted: true });
+  assert.equal(attributes.get('data-chat-theme-preset'), 'wechat', 'restored page should read the latest saved theme');
+
+  state.set('maomao_chat_theme_preset', 'imessage');
+  listeners['maomao:chat-theme-change']();
+  assert.equal(attributes.get('data-chat-theme-preset'), 'imessage', 'same-page theme changes should still apply');
+
+  for (const path of [
+    'chat/chat/chat.html',
+    'chat/chat/chat-detail.html',
+    'chat/contacts/contacts.html',
+    'chat/moments/moments.html',
+    'profile/profile.html'
+  ]) {
+    assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
+  }
+  assert.ok(serviceWorker.includes('./shared/js/chat-page-theme.js?v=20261105v1'));
+  assert.match(serviceWorker, /phone-app-pwa-v160/);
 });
