@@ -55,26 +55,39 @@ test('invalid forum post IDs never replace the document shell', () => {
   assert.match(forumDetail, /帖子暂不可用/);
 });
 
-test('missing API key persists the user message and quote before the system error', () => {
+test('missing API key saves the user message before clearing input, then saves the system error', () => {
   const sendStart = chatDetail.indexOf('async function sendMsg(opts)');
   assert.ok(sendStart >= 0, 'sendMsg should exist');
   const branchStart = chatDetail.indexOf('if (!apiKey)', sendStart);
-  const branchEnd = chatDetail.indexOf('\n            baseUrl = baseUrl.replace', branchStart);
+  const branchEnd = chatDetail.indexOf('\\n            baseUrl = baseUrl.replace', branchStart);
   assert.ok(branchStart > sendStart && branchEnd > branchStart, 'missing-key branch should be found within sendMsg');
   const branch = chatDetail.slice(branchStart, branchEnd);
 
   const userPush = branch.indexOf('historyList.push(userMsg)');
+  const userSave = branch.indexOf('userSaved = saveMessages(historyList)');
+  const inputClear = branch.indexOf("input.value = ''");
   const errorPush = branch.indexOf('historyList.push(errMsg)');
-  assert.ok(userPush >= 0 && errorPush > userPush, 'user message must be queued before the system error');
+  const errorSave = branch.indexOf('saveMessages(historyList)', userSave + 1);
+  assert.ok(userPush >= 0 && userPush < userSave, 'user message must be added before its first persistence attempt');
+  assert.ok(userSave < inputClear && inputClear < errorPush && errorPush < errorSave,
+    'the user must be saved before clearing input, and the system error saved afterward');
   assert.match(branch, /!isRegen && !contextOnly/);
-  assert.match(branch, /acceptGroupUserMessage\(text\)/);
+  assert.match(branch, /acceptGroupUserMessage\\(text\\)/);
   assert.match(branch, /quoteSnapshot/);
   assert.match(branch, /sendFailedReason: 'missing-api-key'/);
-  assert.match(branch, /input\.value = ''/);
+  assert.match(branch, /if \(userSaved\)\\s*\\{/);
+  assert.match(branch, /historyList\\.pop\\(\\)/);
+  assert.match(branch, /lastGroupUserSend = previousGroupUserSend/);
+  assert.match(branch, /if \(userMsg && userSaved && !silent\)/);
   assert.match(branch, /role: 'system_error', isError: true/);
-  assert.match(branch, /if \(_vl\)\s*\{\s*vlRefresh\(\)/);
-});
+  assert.match(branch, /if \\(_vl\\)\\s*\\{\\s*vlRefresh\\(\\)/);
 
+  const saveStart = chatDetail.indexOf('function saveMessages(list)');
+  const saveEnd = chatDetail.indexOf('\\n        // 头像占位', saveStart);
+  const saveSource = chatDetail.slice(saveStart, saveEnd);
+  assert.match(saveSource, /return true/);
+  assert.match(saveSource, /return false/);
+});
 test('blocked-send and error-message context isolation contracts remain intact', () => {
   assert.match(chatDetail, /if \(isBlocked\(aliasRoleId\) && !isRegen && !contextOnly\)/);
   assert.match(chatDetail, /if \(m\.isError \|\| m\.role === 'system_error'\) return/);
