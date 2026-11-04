@@ -147,7 +147,7 @@ self.addEventListener('fetch', event => {
   // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
   if (req.mode === 'navigate') {
     event.respondWith((async function () {
-      var cachedPromise = caches.match(req);
+      var cachedPromise = caches.match(req).catch(function () { return null; });
       var cacheWritePromise = null;
       var networkPromise = fetch(req).then(function (response) {
         if (response && response.ok) {
