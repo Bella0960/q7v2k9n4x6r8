@@ -25,6 +25,7 @@ test('call messages go through the existing chat send pipeline and are recorded'
   assert.match(overlay, /type:\s*'call'/);
   assert.match(overlay, /saveMessages\(history\)/);
   assert.match(overlay, /appendMessageToDOM\(record\)/);
+  assert.match(overlay, /聊天服务暂不可用，消息已保留[\\s\\S]*?input\\.value = text/);
 });
 
 test('the simulated call does not request real microphone or camera access', () => {
