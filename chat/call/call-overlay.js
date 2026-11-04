@@ -352,6 +352,8 @@
       input.disabled = true;
       stateEl.textContent = '对方正在回复…';
       var beforeSendCount = readHistory().length;
+      var chatDraftInput = global.document.getElementById('chat-input');
+      var savedChatDraft = chatDraftInput ? chatDraftInput.value : '';
       var request;
       try {
         request = global.sendMsg({ text: text });
@@ -362,6 +364,10 @@
       input.style.height = 'auto';
       var pending = request && typeof request.then === 'function' ? request : Promise.resolve();
       pending.then(function () {
+        if (chatDraftInput && savedChatDraft && !chatDraftInput.value) {
+          chatDraftInput.value = savedChatDraft;
+          chatDraftInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
         if (finished) return;
         var nextHistory = readHistory().slice(beforeSendCount);
         var accepted = nextHistory.some(function (item) {
@@ -377,6 +383,10 @@
           input.style.height = 'auto';
         }
       }).catch(function (error) {
+        if (chatDraftInput && savedChatDraft && !chatDraftInput.value) {
+          chatDraftInput.value = savedChatDraft;
+          chatDraftInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
         if (finished) return;
         stateEl.textContent = '回复暂时中断';
         if (global.console && typeof global.console.warn === 'function') {
