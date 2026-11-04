@@ -69,6 +69,21 @@ function extractBlock(source, startMarker, endMarker, fromIndex) {
   return source.slice(start, end);
 }
 
+function extractBracedBlock(source, startMarker) {
+  const start = source.indexOf(startMarker);
+  assert.ok(start >= 0, 'missing braced block: ' + startMarker);
+  const open = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error('unbalanced braced block: ' + startMarker);
+}
+
 function loadSaveMessages(sandbox) {
   const start = chatDetail.indexOf('function _readBackHistory()');
   const end = chatDetail.indexOf('\n        // 头像占位', start);
@@ -111,6 +126,38 @@ function loadRetryHelpers() {
     '\n({ _locateRetryMessage: _locateRetryMessage, _prepareRetryMessage: _prepareRetryMessage });',
     {}
   );
+}
+
+function loadRetryLifecycleHelpers(saveMessages) {
+  const start = chatDetail.indexOf('function _locateRetryMessage(');
+  const end = chatDetail.indexOf('\n        // 一键重试', start);
+  assert.ok(start >= 0 && end > start, 'retry lifecycle helpers should be isolated');
+  return runInNewContext(
+    chatDetail.slice(start, end) +
+    '\n({ _locateRetryMessage: _locateRetryMessage, _prepareRetryMessage: _prepareRetryMessage,' +
+    ' _locateUserMessageIndex: _locateUserMessageIndex, _markUserSendFailed: _markUserSendFailed });',
+    { saveMessages: saveMessages || (() => true) }
+  );
+}
+
+function runErrorTipBranch(marker, options) {
+  const renders = [];
+  const toasts = [];
+  const saves = [];
+  const historyList = clone(options.history);
+  const context = {
+    historyList: historyList,
+    tipText: options.text,
+    errText: options.text,
+    _isRepeatedSystemError: loadSystemErrorDedupe(),
+    saveMessages: (list) => { saves.push(clone(list)); return !!options.saved; },
+    appendMessageToDOM: (msg) => renders.push(clone(msg)),
+    showToast: (message) => toasts.push(String(message)),
+    _vl: null,
+    vlRefresh: () => { throw new Error('virtual list refresh should not run in this branch'); }
+  };
+  new Function('context', 'with (context) { ' + extractBracedBlock(chatDetail, marker) + ' }')(context);
+  return { historyList, renders, toasts, saves };
 }
 
 test('saveMessages reports success only after a matching read-back from the existing storage channel', () => {
@@ -364,6 +411,137 @@ test('retry locates legacy failed messages without mid by time and never migrate
   assert.equal(list[0].mid, undefined, '不得为旧消息补写 mid 或迁移历史数据');
   assert.equal(list[0].sendFailed, undefined);
   assert.equal(list[0].text, '旧失败消息');
+});
+
+test('streaming interruption tip is written and rendered only when persistence succeeds', () => {
+  const text = '连接中断（30 秒未收到新内容），以上为已收到的回复';
+  const history = [
+    { role: 'assistant', text: '欢迎', time: 1 },
+    { role: 'user', text: '在吗', time: 2, mid: 'm2' },
+    { role: 'assistant', text: '已收到的半截回复', time: 3 }
+  ];
+
+  const failed = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
+    history, text, saved: false
+  });
+  assert.equal(failed.historyList.filter((m) => m.role === 'system_error').length, 0,
+    '保存失败时不得把错误提示留在历史里');
+  assert.equal(failed.renders.length, 0, '保存失败时不得渲染历史气泡');
+  assert.deepEqual(failed.toasts, [text], '保存失败时用 toast 保留可见提示');
+  assert.equal(failed.saves.length, 1);
+
+  const saved = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, tipText)) {', {
+    history, text, saved: true
+  });
+  assert.equal(saved.historyList.filter((m) => m.role === 'system_error').length, 1);
+  assert.equal(saved.renders.length, 1, '保存成功时正常渲染错误气泡');
+  assert.equal(saved.renders[0].role, 'system_error');
+  assert.equal(saved.renders[0].text, text);
+  assert.deepEqual(saved.toasts, []);
+});
+
+test('zero-content API error bubble is written and rendered only when persistence succeeds', () => {
+  const text = '连接失败: 503 Service Unavailable';
+  const history = [
+    { role: 'assistant', text: '欢迎', time: 1 },
+    { role: 'user', text: '在吗', time: 2, mid: 'm2' }
+  ];
+
+  const failed = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
+    history, text, saved: false
+  });
+  assert.equal(failed.historyList.filter((m) => m.role === 'system_error').length, 0);
+  assert.equal(failed.renders.length, 0);
+  assert.deepEqual(failed.toasts, [text]);
+  assert.equal(failed.saves.length, 1);
+
+  const saved = runErrorTipBranch('if (!_isRepeatedSystemError(historyList, errText)) {', {
+    history, text, saved: true
+  });
+  assert.equal(saved.historyList.filter((m) => m.role === 'system_error').length, 1);
+  assert.equal(saved.renders.length, 1);
+  assert.equal(saved.renders[0].role, 'system_error');
+  assert.equal(saved.renders[0].text, text);
+  assert.deepEqual(saved.toasts, []);
+});
+
+test('retry API failure re-marks the same user message instead of creating a new one', () => {
+  const writes = [];
+  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
+  const original = [
+    { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
+    { role: 'user', text: '在吗', time: 2, mid: 'm2' }
+  ];
+  const historyList = clone(original);
+  const context = {
+    historyList,
+    streamResult: { ok: false, error: { kind: 'http', status: 503 } },
+    retryTarget: { mid: 'm2', time: 2 },
+    _markUserSendFailed: helpers._markUserSendFailed
+  };
+  new Function('context', 'with (context) { ' +
+    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')(context);
+
+  assert.equal(historyList.length, 2, '不得新增第二条用户消息');
+  assert.equal(historyList.filter((m) => m.role === 'user').length, 1);
+  assert.equal(historyList[1].mid, 'm2', 'mid 必须保持不变');
+  assert.equal(historyList[1].sendFailed, true, 'API 失败后必须重新打失败标记');
+  assert.equal(historyList[1].sendFailedReason, 'api-error');
+  assert.deepEqual(historyList[0], original[0], '已成功的历史不得改动');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].filter((m) => m.role === 'user').length, 1);
+
+  // API 成功时不得误打失败标记。
+  const okList = clone(original);
+  new Function('context', 'with (context) { ' +
+    extractBlock(chatDetail, 'var retryRemarked = false;', '\n            try {') + ' }')({
+    historyList: okList,
+    streamResult: { ok: true },
+    retryTarget: { mid: 'm2', time: 2 },
+    _markUserSendFailed: helpers._markUserSendFailed
+  });
+  assert.equal(okList[1].sendFailed, undefined);
+  assert.equal(writes.length, 1, '成功路径不得写入失败标记');
+});
+
+test('two consecutive retry failures keep exactly one failed user message', () => {
+  const writes = [];
+  const helpers = loadRetryLifecycleHelpers((list) => { writes.push(clone(list)); return true; });
+  const list = [
+    { role: 'assistant', text: '欢迎', time: 1, mid: 'm1' },
+    { role: 'user', text: '在吗', time: 2, mid: 'm2', sendFailed: true, sendFailedReason: 'missing-api-key' }
+  ];
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const prepared = helpers._prepareRetryMessage(list, 'm2');
+    assert.ok(prepared, '第 ' + (attempt + 1) + ' 次重试必须能接管上一条失败消息');
+    assert.equal(list.filter((m) => m.role === 'user').length, 1);
+    assert.ok(helpers._markUserSendFailed(list, 'm2', undefined, 'api-error'));
+    assert.equal(list.length, 2, '连续重试不得产生重复记录');
+    assert.equal(list[1].mid, 'm2');
+    assert.equal(list[1].text, '在吗');
+    assert.equal(list[1].sendFailed, true);
+  }
+
+  assert.equal(writes.length, 2);
+  assert.ok(writes.every((snapshot) => snapshot.filter((m) => m.role === 'user').length === 1));
+});
+
+test('retry API failure re-marks legacy messages without mid by time and never migrates them', () => {
+  const helpers = loadRetryLifecycleHelpers(() => true);
+  const list = [
+    { role: 'assistant', text: '欢迎', time: 1 },
+    { role: 'user', text: '旧失败消息', time: 2, sendFailed: true, sendFailedReason: 'missing-api-key' }
+  ];
+
+  assert.ok(helpers._prepareRetryMessage(list, 'm_generated_at_render', 2), '旧消息按 time 进入重试');
+  assert.equal(list[1].sendFailed, undefined);
+  assert.ok(helpers._markUserSendFailed(list, 'm_generated_at_render', 2, 'api-error'),
+    'API 失败后按 time 回退重新标记');
+  assert.equal(list.length, 2);
+  assert.equal(list[1].sendFailed, true);
+  assert.equal(list[1].mid, undefined, '不得为旧消息补写 mid 或迁移历史数据');
+  assert.equal(list[1].text, '旧失败消息');
 });
 
 test('blocked send also stops when the user message cannot be persisted', () => {
