@@ -385,7 +385,7 @@
       cover.innerHTML = `<img src="${post.img}" style="width:100%;display:block">`;
     } else if (cover) cover.style.display = 'none';
     const avatarEl = document.getElementById('pAvatar');
-    const ownPost = post.owner === 'me' || post.tag === 'me';
+    const ownPost = post.owner === 'me' || post.tag === 'me' || String(post.id || '').indexOf('user_') === 0;
     const postAvatar = ownPost ? getMyForumAvatar() : post.avatar;
     avatarEl.style.background = !ownPost && typeof postAvatar === 'string' && postAvatar.indexOf('#') === 0 ? postAvatar : '#ececec';
     avatarEl.innerHTML = avatarContent(post, ownPost);
@@ -412,7 +412,7 @@
     } catch (e) { return ''; }
   }
   function isSafeAvatarImage(src) {
-    return typeof src === 'string' && /^(?:data:image\\/(?:png|jpe?g|gif|webp|bmp|svg\\+xml|avif);|https?:\\/\\/|blob:|\\.|\\/)/i.test(src);
+    return typeof src === 'string' && /^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\\+xml|avif);|https?:\/\/|blob:|\\.|\/)/i.test(src);
   }
   function avatarContent(item, isUserPost) {
     const own = !!isUserPost || isOwn(item);
