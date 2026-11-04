@@ -29,6 +29,7 @@
     applyTheme();
   }
 
+  global.addEventListener('pageshow', applyTheme);
   global.addEventListener('maomao:chat-theme-change', applyTheme);
   global.addEventListener('storage', function (event) {
     if (!event || event.key === 'maomao_chat_theme_preset') applyTheme();
