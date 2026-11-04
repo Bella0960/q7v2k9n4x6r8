@@ -90,7 +90,7 @@ button:disabled{opacity:.45;cursor:default}
 (function(){
 'use strict';
 const STORE='forum_posts';
-function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){return {}}}
+function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] readForumConfig 读取 forum_config 失败，按默认配置继续',e);return {}}}
 const THEME_PRESETS={
  reality:{name:'现代都市',english:'CITY / EVERYDAY',tagline:'城市日常 / 把普通日子里的细节，留在这里。',motto:'LIFE IN THE EVERYDAY',featureTitle:'今天的城市生活，又有什么新鲜事？',featureDeck:'生活观察、工作见闻、邻里小事与临时起意的分享，都可以在这里慢慢聊。',topics:['全部','今日话题','生活观察','职场见闻','邻里闲谈','深夜碎念','随手分享']},
  bagua:{name:'八卦吃瓜',english:'GOSSIP / WATCH',tagline:'瓜田速报 / 热点、投稿与讨论都摆上来，先看来源，再聊细节。',motto:'WHAT’S THE LATEST?',featureTitle:'今天又有什么新瓜值得围观？',featureDeck:'娱乐动态、网友投稿、关系观察与热点讨论。未经证实的消息先标注来源，不把猜测当成结论。',topics:['全部','娱乐八卦','爆料求证','恋爱观察','避雷投稿','网友热议','真假鉴定']},
@@ -408,9 +408,9 @@ function forumRoleList(){
   let roles=[];
   try{
     if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function')roles=PhoneStorage.getCharacters()||[];
-  }catch(e){}
+  }catch(e){console.warn('[Forum] forumRoleList 读取 PhoneStorage.getCharacters 失败，改用本地角色缓存',e)}
   if(!Array.isArray(roles)||!roles.length){
-    try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')}catch(e){roles=[]}
+    try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')}catch(e){console.warn('[Forum] forumRoleList 解析 ai_custom_characters 失败，角色列表按空值继续',e);roles=[]}
   }
   return Array.isArray(roles)?roles.filter(r=>r&&r.name).slice(0,12):[];
 }

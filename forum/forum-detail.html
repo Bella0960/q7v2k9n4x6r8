@@ -247,7 +247,7 @@
   </div>
 
 <script>
-function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){return {}}}
+function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] readForumConfig 读取 forum_config 失败，按默认配置继续',e);return {}}}
 const THEME_PRESETS={
  reality:{name:'现代都市',english:'CITY / EVERYDAY',tagline:'城市日常 / 把普通日子里的细节，留在这里。',motto:'LIFE IN THE EVERYDAY',featureTitle:'今天的城市生活，又有什么新鲜事？',featureDeck:'生活观察、工作见闻、邻里小事与临时起意的分享，都可以在这里慢慢聊。',topics:['全部','今日话题','生活观察','职场见闻','邻里闲谈','深夜碎念','随手分享']},
  bagua:{name:'八卦吃瓜',english:'GOSSIP / WATCH',tagline:'瓜田速报 / 热点、投稿与讨论都摆上来，先看来源，再聊细节。',motto:'WHAT’S THE LATEST?',featureTitle:'今天又有什么新瓜值得围观？',featureDeck:'娱乐动态、网友投稿、关系观察与热点讨论。未经证实的消息先标注来源，不把猜测当成结论。',topics:['全部','娱乐八卦','爆料求证','恋爱观察','避雷投稿','网友热议','真假鉴定']},
@@ -377,7 +377,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     try {
       if(!window.PhoneAPI||typeof PhoneAPI.complete!=='function')return null;
       return await PhoneAPI.complete({system:getForumThreadWorldbook(),user:prompt,temperature:0.9,timeoutMs:20000});
-    } catch(e) { return null; }
+    } catch(e) {
+      // 失败提示由调用方按场景处理（status 文案或 toast），这里只记录可定位的上下文，不中断流程。
+      console.warn('[Forum] callAI 调用 PhoneAPI.complete 失败，降级返回 null 交给调用方', e);
+      return null;
+    }
   }
 
 
@@ -397,7 +401,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   ];
   function detailResident(id,index){return DETAIL_RESIDENTS.find(x=>x.id===String(id))||DETAIL_RESIDENTS[(index||0)%DETAIL_RESIDENTS.length]}
   function getForumThreadWorldbook(){
-    let cfg={};try{cfg=JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){}
+    let cfg={};try{cfg=JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] getForumThreadWorldbook 解析 forum_config 失败，使用默认主题人设',e)}
     const id=cfg.theme||'reality';
     const custom=(Array.isArray(cfg.customThemes)?cfg.customThemes:[]).find(x=>x&&x.id===id);
     const themeNames={reality:'现代都市',bagua:'八卦吃瓜',xiuxian:'修仙界',academy:'校园',future:'赛博朋克'};
@@ -450,6 +454,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       }else if(status){status.textContent='暂时还没人接话，过会儿再来看看'}
     }catch(error){
       console.warn('[Forum] 首批路人评论生成失败',error);
+      // 打开帖子时自动触发的后台生成：评论区内联 status 已是可见提示，再弹 toast 会在每次打开帖子时重复打扰，故此处只用状态文案。
       if(status)status.textContent='路人暂时没有赶来，稍后重新打开帖子再试试';
     }
   }
@@ -719,6 +724,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       if(status){status.textContent='有网友回应了你的留言';setTimeout(()=>{if(status.textContent==='有网友回应了你的留言')status.textContent=''},4200)}
     }catch(error){
       console.warn('[Forum] 网友回应失败',error);
+      // 用户留言本身已发送成功，失败的只是追加的 AI 回应；内联 status 已就地说明，再弹 toast 会与「留言已发出」混淆，故保持状态文案。
       if(status)status.textContent='暂时没有新的回应，稍后再看看';
     }
   }
@@ -742,7 +748,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   function sharePost() {
     let roles = [];
-    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch(e){}
+    try { roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]'); } catch(e){ console.warn('[Forum] sharePost 解析 ai_custom_characters 失败，按无联系人继续', e); }
     if (!roles.length) { alert('还没有联系人，先去加好友吧'); return; }
     const name = roles[0].name;
     const msg = '【分享帖子】' + (postBody() || postTitle()).substring(0, 50);
