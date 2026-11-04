@@ -305,11 +305,16 @@
       return /^[A-Z]$/.test(letter) ? letter : '#';
     }
 
+    var contactNameCollator = (function () {
+      try { return new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'}); }
+      catch(e) { return null; }
+    })();
+
     function compareContactNames(a,b) {
       var left = String(a.pinyin || a.py || a.sortName || a.name || '');
       var right = String(b.pinyin || b.py || b.sortName || b.name || '');
-      try { return new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'}).compare(left,right); }
-      catch(e) { return left.localeCompare(right,'zh-CN'); }
+      if (contactNameCollator) return contactNameCollator.compare(left,right);
+      return left.localeCompare(right,'zh-CN');
     }
 
     function renderList(filter) {
