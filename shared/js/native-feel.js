@@ -77,7 +77,7 @@
         '    -webkit-tap-highlight-color: transparent;',
         '    overscroll-behavior-y: none;',            /* 防止页面橡皮筋回弹/下拉刷新 */
         '    -webkit-overflow-scrolling: touch;',      /* 继承属性，所有滚动容器获得 iOS 惯性滚动 */
-        '    transition: opacity 0.2s ease, transform 0.2s ease;',  /* 淡入/淡出/微缩共用过渡 */
+        '    transition: opacity 0.08s ease, transform 0.08s ease;',  /* 淡入/淡出/微缩共用过渡（缩短以免跳转白屏） */
         '    opacity: 1;',
         '}',
         /* 页面入场动画三选一：push 从右滑入 / pop 从左滑回 / tab 原地淡入 */
@@ -85,7 +85,7 @@
         '@keyframes nfPopIn  { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: none; } }',
         '@keyframes nfTabIn  { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }',
         'html.nf-enter {',
-        '    animation-duration: 0.28s;',
+        '    animation-duration: 0.12s;',
         '    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);',
         '    animation-fill-mode: backwards;',
         '    will-change: transform, opacity;',
@@ -176,7 +176,7 @@
     });
 
     /* ---------- 三、跳转淡出：仅点击链接/跳转按钮时触发，刷新与返回键不触发 ---------- */
-    var FADE_MS = 200;
+    var FADE_MS = 80;
     var hideTimer = null;
     var navigating = false;   /* 跳转已发起后忽略后续点击，防双击竞态 */
 
@@ -217,7 +217,7 @@
         if (e.defaultPrevented || e.button !== 0 ||
             e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 
-        /* 1. 普通 <a> 链接：接管跳转，先淡出 200ms 再真正跳转 */
+        /* 1. 普通 <a> 链接：接管跳转，先淡出 80ms 再真正跳转 */
         var link = (e.target.closest) ? e.target.closest('a[href]') : null;
         if (link && !isPlainHref(link.getAttribute('href')) &&
             link.target !== '_blank' && !link.hasAttribute('download') &&
