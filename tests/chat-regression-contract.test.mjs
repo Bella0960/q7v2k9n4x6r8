@@ -1,14 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 
 // 源码根目录：默认按测试文件自身位置推导；可用 MAOMAO_TEST_ROOT 指向隔离副本。
-const root = process.env.MAOMAO_TEST_ROOT
+const rootOverride = process.env.MAOMAO_TEST_ROOT
   ? resolve(process.env.MAOMAO_TEST_ROOT)
-  : resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  : '';
+if (rootOverride && !existsSync(rootOverride)) {
+  throw new Error(`MAOMAO_TEST_ROOT 指向的目录不存在：${rootOverride}`);
+}
+const root = rootOverride || resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');

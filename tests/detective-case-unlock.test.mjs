@@ -18,9 +18,13 @@ import { runInNewContext } from 'node:vm';
  */
 // 源码根目录：默认按测试文件自身位置推导仓库根；可用 MAOMAO_TEST_ROOT 指向隔离副本，
 // 便于在副本上验证断言确实会变红。仅影响“从哪里读源码”，不改变任何断言语义。
-const root = process.env.MAOMAO_TEST_ROOT
+const rootOverride = process.env.MAOMAO_TEST_ROOT
   ? resolve(process.env.MAOMAO_TEST_ROOT)
-  : resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  : '';
+if (rootOverride && !existsSync(rootOverride)) {
+  throw new Error(`MAOMAO_TEST_ROOT 指向的目录不存在：${rootOverride}`);
+}
+const root = rootOverride || resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const gamesHtml = readFileSync(resolve(root, 'games/games.html'), 'utf8');
 
 /* ---------- 源码提取工具 ---------- */
@@ -584,7 +588,95 @@ test('15 槽位替换后，旧存档中被顶掉的通关状态会被迁移清�
   assert.equal(store.get('maomao_detective_slot_remap_v1'), '1', '迁移标记未写入');
 });
 
-test('09 导航分支：缓存优先 + 后台再验证并写回缓存，且版本机制仍有效', () => {
+test('16 导航分支行为：缓存命中先返回、网络仍再验证并写回、失败可回退', async () => {
+  const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
+
+  // 用模拟的 Cache API / fetch / SW 事件真实执行 sw.js 的导航分支，
+  // 断言的是响应行为本身，而不是源码字符串。
+  function loadFetchHandler(options) {
+    const handlers = {};
+    const putCalls = [];
+    let fetchCalls = 0;
+    const cachesMock = {
+      match: () => Promise.resolve(options.cached || undefined),
+      open: async () => ({ put: async (req, res) => { putCalls.push({ req, res }); } })
+    };
+    runInNewContext(sw, {
+      self: {
+        addEventListener: (type, fn) => { handlers[type] = fn; },
+        location: { origin: 'https://maomao.test' },
+        registration: { scope: 'https://maomao.test/' },
+        clients: { claim: () => Promise.resolve() },
+        skipWaiting: () => Promise.resolve()
+      },
+      caches: cachesMock,
+      fetch: (req) => {
+        fetchCalls += 1;
+        return options.network ? options.network(req, fetchCalls) : Promise.reject(new Error('offline'));
+      },
+      Response,
+      URL
+    }, { filename: 'sw.js' });
+    return { handler: handlers.fetch, putCalls, fetchCalls: () => fetchCalls };
+  }
+
+  function navigate(handler) {
+    let responded = null;
+    const waited = [];
+    handler({
+      request: { mode: 'navigate', method: 'GET', url: 'https://maomao.test/index.html' },
+      respondWith: (promise) => { responded = promise; },
+      waitUntil: (promise) => { waited.push(promise); }
+    });
+    return { response: responded, waited };
+  }
+
+  // 场景 1：缓存命中且网络成功 → 缓存响应必须先返回；网络仍发生；新响应写回缓存。
+  let resolveNetwork;
+  const cached = { ok: true, kind: 'cached' };
+  const network = { ok: true, kind: 'network', clone() { return { ok: true, kind: 'network-clone' }; } };
+  const first = loadFetchHandler({
+    cached,
+    network: () => new Promise((r) => { resolveNetwork = r; })
+  });
+  const nav = navigate(first.handler);
+  let settled = 0;
+  nav.response.then(() => { settled += 1; });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(settled, 1, '缓存命中时必须先于网络返回');
+  assert.equal((await nav.response).kind, 'cached', '缓存命中应返回缓存响应');
+  assert.equal(first.fetchCalls(), 1, '命中缓存后仍必须发起网络再验证');
+
+  resolveNetwork(network);
+  await nav.waited[0];
+  await new Promise((r) => setImmediate(r));
+  assert.equal(first.putCalls.length, 1, '网络成功后必须写回缓存');
+  assert.equal(first.putCalls[0].res.kind, 'network-clone', '写回的必须是网络响应副本');
+
+  // 场景 2：缓存命中但网络失败 → 回退缓存，不抛错、不写缓存。
+  const second = loadFetchHandler({ cached });
+  const offline = navigate(second.handler);
+  assert.equal((await offline.response).kind, 'cached', '网络失败时应回退到已有缓存');
+  await Promise.allSettled(offline.waited);
+  assert.equal(second.putCalls.length, 0, '网络失败不应写缓存');
+
+  // 场景 3：缓存未命中、网络成功 → 返回网络响应并写回缓存。
+  const third = loadFetchHandler({ cached: undefined, network: async () => network });
+  const miss = navigate(third.handler);
+  assert.equal((await miss.response).kind, 'network', '无缓存时应使用网络响应');
+  await Promise.allSettled(miss.waited);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(third.putCalls.length, 1, '无缓存且网络成功时应写回缓存');
+
+  // 场景 4：缓存与网络都不可用 → 503 兜底响应。
+  const fourth = loadFetchHandler({ cached: undefined });
+  const dead = navigate(fourth.handler);
+  const fallback = await dead.response;
+  assert.equal(fallback.status, 503, '全不可用时应返回 503 兜底');
+  assert.match(await fallback.text(), /暂时无法连接/, '兜底响应应提示网络问题');
+});
+
+test('17 导航分支结构：缓存优先 + 后台再验证并写回缓存，且版本机制仍有效', () => {
   const sw = readFileSync(resolve(root, 'sw.js'), 'utf8');
 
   // 1) 取出导航分支的真实代码块（花括号配对，避免“全文 120 字符窗口”这种脆弱写法）。

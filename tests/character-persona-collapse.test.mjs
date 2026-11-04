@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,9 +14,13 @@ import { fileURLToPath } from 'node:url';
  * 4) 短人设与空人设不出现点了没反应的「展开」入口。
  */
 // 源码根目录：默认按测试文件自身位置推导；可用 MAOMAO_TEST_ROOT 指向隔离副本。
-const root = process.env.MAOMAO_TEST_ROOT
+const rootOverride = process.env.MAOMAO_TEST_ROOT
   ? resolve(process.env.MAOMAO_TEST_ROOT)
-  : resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  : '';
+if (rootOverride && !existsSync(rootOverride)) {
+  throw new Error(`MAOMAO_TEST_ROOT 指向的目录不存在：${rootOverride}`);
+}
+const root = rootOverride || resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(resolve(root, 'worldbook/characters/characters.html'), 'utf8');
 const js = readFileSync(resolve(root, 'worldbook/characters/js/characters-manager.js'), 'utf8');
 const indexHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
