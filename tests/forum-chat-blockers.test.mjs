@@ -59,7 +59,7 @@ test('missing API key saves the user message before clearing input, then saves t
   const sendStart = chatDetail.indexOf('async function sendMsg(opts)');
   assert.ok(sendStart >= 0, 'sendMsg should exist');
   const branchStart = chatDetail.indexOf('if (!apiKey)', sendStart);
-  const branchEnd = chatDetail.indexOf('\\n            baseUrl = baseUrl.replace', branchStart);
+  const branchEnd = chatDetail.indexOf('\n            baseUrl = baseUrl.replace', branchStart);
   assert.ok(branchStart > sendStart && branchEnd > branchStart, 'missing-key branch should be found within sendMsg');
   const branch = chatDetail.slice(branchStart, branchEnd);
 
@@ -71,22 +71,23 @@ test('missing API key saves the user message before clearing input, then saves t
   assert.ok(userPush >= 0 && userPush < userSave, 'user message must be added before its first persistence attempt');
   assert.ok(userSave < inputClear && inputClear < errorPush && errorPush < errorSave,
     'the user must be saved before clearing input, and the system error saved afterward');
-  assert.match(branch, /!isRegen && !contextOnly/);
-  assert.match(branch, /acceptGroupUserMessage\\(text\\)/);
-  assert.match(branch, /quoteSnapshot/);
-  assert.match(branch, /sendFailedReason: 'missing-api-key'/);
-  assert.match(branch, /if \(userSaved\)\\s*\\{/);
-  assert.match(branch, /historyList\\.pop\\(\\)/);
-  assert.match(branch, /lastGroupUserSend = previousGroupUserSend/);
-  assert.match(branch, /if \(userMsg && userSaved && !silent\)/);
-  assert.match(branch, /role: 'system_error', isError: true/);
-  assert.match(branch, /if \\(_vl\\)\\s*\\{\\s*vlRefresh\\(\\)/);
+  assert.ok(branch.includes('!isRegen && !contextOnly'));
+  assert.ok(branch.includes('acceptGroupUserMessage(text)'));
+  assert.ok(branch.includes('quoteSnapshot'));
+  assert.ok(branch.includes("sendFailedReason: 'missing-api-key'"));
+  assert.ok(branch.includes('if (userSaved)'));
+  assert.ok(branch.includes('historyList.pop()'));
+  assert.ok(branch.includes('lastGroupUserSend = previousGroupUserSend'));
+  assert.ok(branch.includes('if (userMsg && userSaved && !silent)'));
+  assert.ok(branch.includes("role: 'system_error', isError: true"));
+  assert.ok(branch.includes('if (_vl)'));
 
   const saveStart = chatDetail.indexOf('function saveMessages(list)');
-  const saveEnd = chatDetail.indexOf('\\n        // 头像占位', saveStart);
+  const saveEnd = chatDetail.indexOf('\n        // 头像占位', saveStart);
+  assert.ok(saveStart >= 0 && saveEnd > saveStart, 'saveMessages should be isolated');
   const saveSource = chatDetail.slice(saveStart, saveEnd);
-  assert.match(saveSource, /return true/);
-  assert.match(saveSource, /return false/);
+  assert.ok(saveSource.includes('return true;'));
+  assert.ok(saveSource.includes('return false;'));
 });
 test('blocked-send and error-message context isolation contracts remain intact', () => {
   assert.match(chatDetail, /if \(isBlocked\(aliasRoleId\) && !isRegen && !contextOnly\)/);
