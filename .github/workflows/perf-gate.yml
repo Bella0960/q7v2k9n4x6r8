@@ -5,16 +5,22 @@ on:
     branches: [main]
     paths:
       - 'chat/**'
+      - 'wallet/**'
       - 'shared/js/phone/**'
+      - 'shared/css/**'
       - 'perf/**'
+      - 'tests/takeout-add-button.browser.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/perf-gate.yml'
   pull_request:
     paths:
       - 'chat/**'
+      - 'wallet/**'
       - 'shared/js/phone/**'
+      - 'shared/css/**'
       - 'perf/**'
+      - 'tests/takeout-add-button.browser.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/perf-gate.yml'
@@ -39,3 +45,5 @@ jobs:
         run: npx playwright install --with-deps msedge || npx playwright install msedge
       - name: Run performance budget gate
         run: npm run perf:gate
+      - name: Run BUG-P1-02 takeout add button browser regression (msedge)
+        run: node tests/takeout-add-button.browser.mjs
