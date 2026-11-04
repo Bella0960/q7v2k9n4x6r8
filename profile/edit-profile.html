@@ -426,6 +426,12 @@
         // 图片数据独立暂存（编辑中），保存时合并进 myProfile
         var pendingAvatar = '';
         var pendingCover = '';
+        // Store built-in SVG avatars as data URLs, matching the existing uploaded-avatar format.
+        var AVATAR_PRESET_DATA = {
+            "../assets/avatar-bunny.svg": "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%20width%3D%22200%22%20height%3D%22200%22%3E%0A%20%20%3Cellipse%20cx%3D%2268.75%22%20cy%3D%2250%22%20rx%3D%2215.625%22%20ry%3D%2243.75%22%20fill%3D%22%23e8e8ea%22%20transform%3D%22rotate(-8%2068.75%2050)%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22131.25%22%20cy%3D%2250%22%20rx%3D%2215.625%22%20ry%3D%2243.75%22%20fill%3D%22%23e8e8ea%22%20transform%3D%22rotate(8%20131.25%2050)%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22100%22%20cy%3D%22118.75%22%20rx%3D%2262.5%22%20ry%3D%2256.25%22%20fill%3D%22%23f5f5f6%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2278.125%22%20cy%3D%22118.75%22%20r%3D%226.25%22%20fill%3D%22%23555%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22121.875%22%20cy%3D%22118.75%22%20r%3D%226.25%22%20fill%3D%22%23555%22%2F%3E%0A%3C%2Fsvg%3E",
+            "../assets/avatar-cat.svg": "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%20width%3D%22200%22%20height%3D%22200%22%3E%0A%20%20%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%22100%22%20fill%3D%22%23f5f5f6%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M44%2068%20L32%2020%20L76%2044%20Z%22%20fill%3D%22%23e8e8ea%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M156%2068%20L168%2020%20L124%2044%20Z%22%20fill%3D%22%23e8e8ea%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22100%22%20cy%3D%22106%22%20rx%3D%2268%22%20ry%3D%2262%22%20fill%3D%22%23fafafb%22%2F%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23222%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Crect%20x%3D%22106%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23222%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Cline%20x1%3D%2294%22%20y1%3D%22103%22%20x2%3D%22106%22%20y2%3D%22103%22%20stroke%3D%22%23222%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2272%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23222%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22128%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23222%22%2F%3E%0A%3C%2Fsvg%3E",
+            "../assets/avatar-cat-dark.svg": "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20200%20200%22%20width%3D%22200%22%20height%3D%22200%22%3E%0A%20%20%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%22100%22%20fill%3D%22%23e8e8ea%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M44%2068%20L32%2020%20L76%2044%20Z%22%20fill%3D%22%23c8c8ca%22%2F%3E%0A%20%20%3Cpath%20d%3D%22M156%2068%20L168%2020%20L124%2044%20Z%22%20fill%3D%22%23c8c8ca%22%2F%3E%0A%20%20%3Cellipse%20cx%3D%22100%22%20cy%3D%22106%22%20rx%3D%2268%22%20ry%3D%2262%22%20fill%3D%22%23e0e0e2%22%2F%3E%0A%20%20%3Crect%20x%3D%2244%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23333%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Crect%20x%3D%22106%22%20y%3D%2286%22%20width%3D%2250%22%20height%3D%2238%22%20rx%3D%2212%22%20fill%3D%22none%22%20stroke%3D%22%23333%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Cline%20x1%3D%2294%22%20y1%3D%22103%22%20x2%3D%22106%22%20y2%3D%22103%22%20stroke%3D%22%23333%22%20stroke-width%3D%226%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%2272%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23333%22%2F%3E%0A%20%20%3Ccircle%20cx%3D%22128%22%20cy%3D%22103%22%20r%3D%226%22%20fill%3D%22%23333%22%2F%3E%0A%3C%2Fsvg%3E"
+        };
 
         /* 当前设定入口显示 */
         (function initMaskEntry() {
@@ -499,7 +505,7 @@
             document.querySelectorAll('.ep-avatar-preset').forEach(function (button) {
                 var selected = false;
                 try {
-                    selected = !!dataUrl && new URL(button.getAttribute('data-avatar-src'), window.location.href).href === dataUrl;
+                    selected = !!dataUrl && AVATAR_PRESET_DATA[button.getAttribute('data-avatar-src')] === dataUrl;
                 } catch (err) {}
                 button.setAttribute('aria-pressed', selected ? 'true' : 'false');
             });
@@ -522,7 +528,8 @@
         document.querySelectorAll('.ep-avatar-preset').forEach(function (button) {
             button.addEventListener('click', function () {
                 try {
-                    pendingAvatar = new URL(button.getAttribute('data-avatar-src'), window.location.href).href;
+                    pendingAvatar = AVATAR_PRESET_DATA[button.getAttribute('data-avatar-src')] || '';
+                    if (!pendingAvatar) throw new Error('Unknown avatar preset');
                     renderAvatar(pendingAvatar);
                 } catch (err) {
                     alert('默认头像加载失败，请刷新后重试');
