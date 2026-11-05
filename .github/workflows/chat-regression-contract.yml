@@ -53,6 +53,7 @@ jobs:
           npm run test:bugfix:blockers
           npm run test:media:backup
           npm run test:cloud:push
+          npm run test:schedule
           npm run test:forum:media
           npm run test:api:image
           npm run test:forum:seed
