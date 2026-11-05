@@ -94,62 +94,45 @@ function runForumDetailCode(coreCode, initialStore = null, initialCfg = null) {
 
 /* ====== 以下是六项验收测试 ====== */
 
-/* --- 验收 1：新用户首访，种子帖 comments 是数组 length === 3 --- */
-test('forum.html / 新用户首访：6 条种子帖，每条 comments.length === 3，seedCommentsFilled === true', () => {
+/* --- 验收 1：新用户首访，论坛从空内容开始 --- */
+test('forum.html / 新用户首访：不再注入种子帖，论坛从空内容开始', () => {
   const core = extractForumHomeCore();
   const ctx = runForumHomeCode(core, null, null); /* store 全空 */
   const posts = ctx.__exports__.loadPosts();
-  assert.equal(posts.length, 6, '应返回 6 条种子帖');
-  for (const p of posts) {
-    assert.equal(p.owner, 'seed');
-    assert.ok(Array.isArray(p.comments), `${p.id}: comments 必须是数组`);
-    assert.equal(p.comments.length, 3, `${p.id}: 预置 3 条评论`);
-    assert.equal(p.seedCommentsFilled, true, `${p.id}: 应设置 seedCommentsFilled`);
-    assert.equal(typeof p._seedCount, 'undefined', `${p.id}: 不应再写入 _seedCount`);
-    assert.equal(p.comments[0].owner, 'seed');
-    assert.equal(p.comments[0].source, 'seed-comments');
-  }
+  assert.equal(posts.length, 0, '空 store 不应生成任何预置帖子');
+  assert.equal(ctx.__exports__.getSeededPosts().length, 0, '种子帖列表应为空');
+  assert.equal(ctx.__store.get('forum_posts'), '[]', '首次访问应写入空列表而不是种子内容');
 });
 
-/* --- 验收 2：幂等 × 3，评论数不累积 --- */
-test('forum.html / 幂等：loadPosts 连续执行 3 次，comments.length 始终为 3，seedCommentsFilled 保持 true', () => {
+/* --- 验收 2：幂等 × 3，空论坛不会产生内容 --- */
+test('forum.html / 幂等：loadPosts 连续执行 3 次，论坛保持为空且不回填', () => {
   const core = extractForumHomeCore();
   const ctx = runForumHomeCode(core, null, null);
-  let p1 = ctx.__exports__.loadPosts().find(x => x.id === 'p1');
-  const firstLen = p1.comments.length;
-  /* 写回 store */
-  ctx.__store.set('forum_posts', JSON.stringify(ctx.__exports__.loadPosts()));
-  ctx.__exports__.loadPosts(); /* 第 2 次 */
-  ctx.__store.set('forum_posts', JSON.stringify(ctx.__exports__.loadPosts()));
-  ctx.__exports__.loadPosts(); /* 第 3 次 */
-  ctx.__store.set('forum_posts', JSON.stringify(ctx.__exports__.loadPosts()));
-  const finalPosts = ctx.__exports__.loadPosts();
-  for (const p of finalPosts) {
-    assert.equal(p.comments.length, firstLen, `${p.id}: 三次加载后 comments 不应累积（当前 ${p.comments.length}，期望 ${firstLen}）`);
-    assert.equal(p.seedCommentsFilled, true);
-  }
+  const first = ctx.__exports__.loadPosts();
+  const second = ctx.__exports__.loadPosts();
+  const third = ctx.__exports__.loadPosts();
+  assert.equal(first.length, 0, '首次加载应为空');
+  assert.equal(second.length, 0, '第二次加载不得产生内容');
+  assert.equal(third.length, 0, '第三次加载不得产生内容');
+  assert.equal(ctx.__store.get('forum_posts'), '[]', '存储中只应保留空列表');
 });
 
-/* --- 验收 3：用户删除种子评论后重新打开，不回填 --- */
-test('forum.html / 用户删除尊重：删光种子评论但保留 seedCommentsFilled → 再 load 不会被补回', () => {
+/* --- 验收 3：用户删除评论后重新打开，不回填 --- */
+test('forum.html / 用户删除尊重：旧种子帖清空评论并保留 seedCommentsFilled → 再 load 不会被补回', () => {
   const core = extractForumHomeCore();
-  const ctx = runForumHomeCode(core, null, null);
-  /* 第一次初始化 */
+  const stored = JSON.stringify([
+    { id: 'p1', name: '宝宝', owner: 'seed', themeId: 'reality', title: '旧 p1', likes: 5, comments: [], seedCommentsFilled: true }
+  ]);
+  const ctx = runForumHomeCode(core, stored, null);
   let posts = ctx.__exports__.loadPosts();
-  assert.equal(posts[0].comments.length, 3);
-  assert.equal(posts[0].seedCommentsFilled, true);
-  /* 模拟用户删掉所有评论：comments 清空，但 seedCommentsFilled 保留为 true */
-  posts[0].comments = [];
-  ctx.__store.set('forum_posts', JSON.stringify(posts));
-  /* 再次 load */
-  posts = ctx.__exports__.loadPosts();
   const p1 = posts.find(x => x.id === 'p1');
+  assert.ok(p1, '旧种子帖应继续保留在列表中');
   assert.equal(p1.comments.length, 0, '用户删光后，评论必须保持空，不能被自动补回');
   assert.equal(p1.seedCommentsFilled, true, '幂等标记应保留，后续也不会再填');
 });
 
-/* --- 验收 4：旧数据迁移（数字型 comments → 预置数组） --- */
-test('forum.html / 旧数据迁移：store 里 comments 是数字 → 迁移为长度为 3 的数组', () => {
+/* --- 验收 4：旧数据迁移（数字型 comments → 空数组） --- */
+test('forum.html / 旧数据迁移：store 里 comments 是数字 → 安全迁移为空数组', () => {
   const core = extractForumHomeCore();
   /* 构造旧 store：p2.comments = 3（数字），p3.comments = 2（数字） */
   const oldStore = JSON.stringify([
@@ -162,10 +145,10 @@ test('forum.html / 旧数据迁移：store 里 comments 是数字 → 迁移为�
   ]);
   const ctx = runForumHomeCode(core, oldStore, null);
   const posts = ctx.__exports__.loadPosts();
-  assert.equal(posts.length, 6);
+  assert.equal(posts.length, 6, '旧数据必须完整保留，不得丢失');
   for (const p of posts) {
     assert.ok(Array.isArray(p.comments), `${p.id}: 迁移后 comments 必须是数组（当前 ${typeof p.comments}）`);
-    assert.equal(p.comments.length, 3, `${p.id}: 迁移后预置 3 条`);
+    assert.equal(p.comments.length, 0, `${p.id}: 旧数字评论应迁移为空数组，不再生成占位评论`);
     assert.equal(p.seedCommentsFilled, true, `${p.id}: 迁移后应写入幂等标记`);
   }
 });
@@ -193,21 +176,15 @@ test('forum.html / 不覆盖真实评论：源码守卫 + 非种子帖 comments 
   assert.equal(userPost.comments[1].text, '第 2 条真实评论');
 });
 
-/* --- 验收 6：无 API Key 也能显示种子评论（loadPosts 不依赖 fetch） --- */
-test('forum.html / 无 API Key：预置评论从本地池生成，loadPosts 内没有任何 fetch 调用', () => {
+/* --- 验收 6：无 API Key 也能正常加载（loadPosts 不依赖 fetch） --- */
+test('forum.html / 无 API Key：空论坛加载不依赖 fetch，也不会生成占位评论', () => {
   const core = extractForumHomeCore();
   /* 源码确认 loadPosts 不依赖 fetch */
   const hasFetch = core.match(/\bfetch\s*\(/g);
   assert.equal(hasFetch, null, 'forum.html 的 loadPosts 上下文中不应出现 fetch 调用');
   const ctx = runForumHomeCode(core, null, null);
   const posts = ctx.__exports__.loadPosts();
-  for (const p of posts) {
-    assert.ok(Array.isArray(p.comments) && p.comments.length === 3);
-    /* 预置评论必须有可读文本，不是空字符串或占位 */
-    for (const c of p.comments) {
-      assert.ok(c.text && c.text.length >= 5, `${p.id} 的预置评论必须有完整文本`);
-    }
-  }
+  assert.equal(posts.length, 0, '没有 API Key 时不应生成任何帖子或占位评论');
 });
 
 /* --- 列表页 countComments / vm 已彻底移除 _seedCount 路径 --- */
@@ -281,20 +258,23 @@ test('forum-detail.html 源码：已彻底移除 _seedCount 读取与写入', ()
   assert.doesNotMatch(forumDetail, /_seedCount/, 'forum-detail.html 源码不应再出现任何 _seedCount 引用');
 });
 
-test('forum.html 源码：已彻底移除数字型 comments 字段（种子数据里不再硬编码 comments: N）', () => {
-  /* 种子数组里不应再出现 comments: */
+test('forum.html 源码：种子数据保持为空，不再硬编码数字型 comments', () => {
   const seededStart = forumHome.indexOf('const seeded=[');
-  const seededEnd = forumHome.indexOf('\n];', seededStart);
-  assert.ok(seededStart >= 0 && seededEnd > seededStart, '种子数据 section 边界应存在');
-  const seededSection = forumHome.slice(seededStart, seededEnd);
-  assert.doesNotMatch(seededSection, /comments\s*:/, '种子数组不应再硬编码数字型 comments');
+  assert.ok(seededStart >= 0, '种子数据 section 应存在');
+  const seededEnd = forumHome.indexOf('\n', seededStart);
+  const seededLine = forumHome.slice(seededStart, seededEnd).trim();
+  assert.equal(seededLine, 'const seeded=[];', '种子帖数组应保持为空');
+  assert.match(forumHome, /const SEED_COMMENT_POOL=\{\};/, '种子评论池应保持为空');
+  assert.doesNotMatch(seededLine, /comments\s*:/, '种子数组不应再硬编码数字型 comments');
 });
 
-test('forum.html / forum-detail.html 预置评论文本：reality.p1 必须有完整、可读的预置回应', () => {
+test('forum.html / 旧种子帖不再补预置评论：不会生成硬编码文案或占位文本', () => {
   const core = extractForumHomeCore();
-  const ctx = runForumHomeCode(core, null, null);
-  const posts = ctx.__exports__.loadPosts();
-  const p1 = posts.find(x => x.id === 'p1');
-  const texts = p1.comments.map(c => c.text);
-  assert.ok(texts.some(t => t.indexOf('路过花店') >= 0 || t.indexOf('小开心') >= 0), '预置评论应对应帖子内容，不能是通用 placeholder');
+  const ctx = runForumHomeCode(core, JSON.stringify([
+    { id: 'p1', name: '宝宝', owner: 'seed', themeId: 'reality', title: '旧 p1', likes: 5, comments: 6 }
+  ]), null);
+  const p1 = ctx.__exports__.loadPosts().find(x => x.id === 'p1');
+  assert.ok(p1, '旧种子帖应继续保留');
+  assert.equal(p1.comments.length, 0, '旧数字评论应迁移为空数组');
+  assert.doesNotMatch(forumHome, /路过花店/, '不应保留旧的预置评论文案');
 });
