@@ -38,17 +38,17 @@
       'appearance:none!important;-webkit-appearance:none!important;position:fixed!important;' +
       'left:50%!important;bottom:calc(3px + env(safe-area-inset-bottom,0px))!important;' +
       'transform:translateX(-50%)!important;display:flex;align-items:center!important;' +
-      'justify-content:center!important;width:140px!important;min-width:140px!important;' +
-      'max-width:140px!important;height:30px!important;min-height:30px!important;margin:0!important;' +
+      'justify-content:center!important;width:84px!important;min-width:84px!important;' +
+      'max-width:84px!important;height:4px!important;min-height:4px!important;margin:0!important;' +
       'padding:0!important;border:0!important;outline:0!important;border-radius:0!important;' +
       'background:transparent!important;background-image:none!important;box-shadow:none!important;' +
       'color:transparent!important;z-index:2147483000!important;cursor:pointer!important;' +
-      'pointer-events:none!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;}' +
+      'pointer-events:auto!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;}' +
       '.maomao-global-home-indicator::before {' +
       'content:""!important;display:block!important;width:84px!important;height:4px!important;' +
       'border:0!important;outline:0!important;border-radius:999px!important;' +
       'background:rgba(28,28,33,.76)!important;box-shadow:0 1px 0 rgba(255,255,255,.32)!important;' +
-      'pointer-events:auto!important;transition:opacity .16s ease,transform .16s ease!important;}' +
+      'pointer-events:none!important;transition:opacity .16s ease,transform .16s ease!important;}' +
       '.maomao-global-home-indicator:active::before {opacity:.56!important;transform:scaleX(.9)!important;}' +
       '@media(prefers-color-scheme:dark){.maomao-global-home-indicator::before{' +
       'background:rgba(255,255,255,.88)!important;box-shadow:0 1px 0 rgba(0,0,0,.18)!important;}}' +
