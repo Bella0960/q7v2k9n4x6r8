@@ -259,7 +259,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       const groupCard = page.locator('.chat-group-card[data-gid="g1"]');
       await groupCard.waitFor({ state: 'visible', timeout: 15000 });
       await Promise.all([
-        page.waitForURL(/chat-detail\\.html/, { timeout: 15000 }),
+        page.waitForURL(/chat-detail\.html/, { timeout: 15000 }),
         groupCard.click()
       ]);
       assert.ok(page.url().includes('id=g1'), 'fresh detail page must retain the selected group id');
