@@ -27,6 +27,7 @@
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
     "test:media:backup": "node --test tests/media-backup.test.mjs",
     "test:forum:media": "node --test tests/forum-media.test.mjs",
+    "test:api:image": "node --test tests/phone-api-image-generation.test.mjs",
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",

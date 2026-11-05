@@ -91,6 +91,8 @@ function collectFormFields() {
         baseUrl: (apiUrlInput.value || '').trim() || 'https://api.openai.com/v1',
         apiKey: (apiKeyInput.value || '').trim(),
         model: (apiModelInput.value || '').trim() || 'gpt-3.5-turbo',
+        imageModel: apiImageModelInput ? apiImageModelInput.value.trim() : '',
+        imageEndpoint: apiImageEndpointInput ? apiImageEndpointInput.value.trim() : '',
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),
         temperature: parseFloat(apiTemperatureInput.value) || 0.7,
         maxTokens: apiMaxTokensInput ? apiMaxTokensInput.value.trim() : '',
@@ -109,6 +111,8 @@ function writeMirrorFromProfile(profile, extra) {
         baseUrl: profile.baseUrl || 'https://api.openai.com/v1',
         apiKey: profile.apiKey || '',
         model: profile.model || '',
+        imageModel: profile.imageModel || '',
+        imageEndpoint: profile.imageEndpoint || '',
         prompt: profile.prompt || '',
         temperature: profile.temperature != null ? profile.temperature : 0.7,
         maxTokens: profile.maxTokens != null ? profile.maxTokens : '',
@@ -144,6 +148,8 @@ let allModels = null;
 const apiUrlInput = document.getElementById('api-url');
 const apiKeyInput = document.getElementById('api-key');
 const apiModelInput = document.getElementById('api-model');
+const apiImageModelInput = document.getElementById('api-image-model');
+const apiImageEndpointInput = document.getElementById('api-image-endpoint');
 const apiPromptInput = document.getElementById('api-prompt');
 const keyError = document.getElementById('key-error');
 const settingsForm = document.getElementById('settingsForm');
@@ -275,6 +281,8 @@ function createProfile() {
         baseUrl: fields.baseUrl,
         apiKey: fields.apiKey,
         model: fields.model,
+        imageModel: fields.imageModel,
+        imageEndpoint: fields.imageEndpoint,
         temperature: fields.temperature,
         maxTokens: fields.maxTokens,
         topP: fields.topP,
@@ -526,6 +534,8 @@ function loadConfig() {
                 apiUrlInput.value = parsed.baseUrl || 'https://api.openai.com/v1';
                 apiKeyInput.value = parsed.apiKey || '';
                 apiModelInput.value = parsed.model || 'gpt-3.5-turbo';
+                if (apiImageModelInput) apiImageModelInput.value = parsed.imageModel || '';
+                if (apiImageEndpointInput) apiImageEndpointInput.value = parsed.imageEndpoint || '';
                 window.__loadedPrompt = parsed.prompt || '';
                 if (apiPromptInput) apiPromptInput.value = parsed.prompt || '';
                 apiMemoryInput.value = parsed.memoryCount != null ? parsed.memoryCount : 20;
@@ -553,6 +563,8 @@ function loadConfig() {
     apiUrlInput.value = 'https://api.openai.com/v1';
     apiKeyInput.value = '';
     apiModelInput.value = 'gpt-3.5-turbo';
+    if (apiImageModelInput) apiImageModelInput.value = '';
+    if (apiImageEndpointInput) apiImageEndpointInput.value = '';
     if (apiPromptInput) apiPromptInput.value = '';
     apiMemoryInput.value = 20;
     apiTemperatureInput.value = 0.7;
@@ -588,6 +600,8 @@ settingsForm.addEventListener('submit', function(e) {
         baseUrl: apiUrlInput.value.trim() || 'https://api.openai.com/v1',
         apiKey: apiKey,
         model: apiModelInput.value.trim() || 'gpt-3.5-turbo',
+        imageModel: apiImageModelInput ? apiImageModelInput.value.trim() : '',
+        imageEndpoint: apiImageEndpointInput ? apiImageEndpointInput.value.trim() : '',
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),
         temperature: parseFloat(apiTemperatureInput.value) || 0.7,
         maxTokens: maxTokVal,

@@ -165,3 +165,24 @@ test('forum inline scripts parse without syntax errors', () => {
     });
   }
 });
+
+test('AI role posts can request optional generated images and persist them through ForumMedia', () => {
+  const settingsHtml = read('settings/settings.html');
+  const settingsJs = read('settings/js/settings.js');
+  const phoneApi = read('shared/js/phone/phone_api.js');
+  assert.match(settingsHtml, /id="api-image-model"/);
+  assert.match(settingsHtml, /id="api-image-endpoint"/);
+  assert.match(settingsJs, /imageModel:/);
+  assert.match(settingsJs, /imageEndpoint:/);
+  assert.match(phoneApi, /NS\.generateImage\s*=/);
+  assert.match(forumHome, /imagePrompt/);
+  assert.match(forumHome, /PhoneAPI\.generateImage/);
+  assert.match(forumHome, /ForumMedia\.upload\(\[file\],'forum-post'/);
+  assert.match(forumHome, /slice\(0,3\)/);
+  assert.match(forumHome, /data-generate-image/);
+  assert.match(forumHome, /generatedBy:p\.generatedBy/);
+  assert.match(forumHome, /ForumMedia\.markup\(featured\.mediaAssetIds/);
+  assert.match(forumHome, /post\.imageGenerationStatus==='generating'/);
+  assert.match(forumHome, /post\.imageGenerationStatus='failed'/);
+  assert.match(forumHome, /页面刷新时生成中断，请重试/);
+});
