@@ -38,12 +38,12 @@
       'appearance:none!important;-webkit-appearance:none!important;position:fixed!important;' +
       'left:50%!important;bottom:calc(3px + env(safe-area-inset-bottom,0px))!important;' +
       'transform:translateX(-50%)!important;display:flex;align-items:center!important;' +
-      'justify-content:center!important;width:84px!important;min-width:84px!important;' +
-      'max-width:84px!important;height:4px!important;min-height:4px!important;margin:0!important;' +
+      'justify-content:center!important;width:140px!important;min-width:140px!important;' +
+      'max-width:140px!important;height:30px!important;min-height:30px!important;margin:0!important;' +
       'padding:0!important;border:0!important;outline:0!important;border-radius:0!important;' +
       'background:transparent!important;background-image:none!important;box-shadow:none!important;' +
       'color:transparent!important;z-index:2147483000!important;cursor:pointer!important;' +
-      'pointer-events:auto!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;}' +
+      'pointer-events:none!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;}' +
       '.maomao-global-home-indicator::before {' +
       'content:""!important;display:block!important;width:84px!important;height:4px!important;' +
       'border:0!important;outline:0!important;border-radius:999px!important;' +
@@ -126,6 +126,16 @@
     button.setAttribute('title', '返回桌面');
     button.setAttribute('data-maomao-global-home-indicator', '1');
     button.style.display = getPreference() ? 'flex' : 'none';
+    // Keep the visual/measurement shell roomy, but make only the visible line clickable.
+    // The child receives pointer events and bubbles the click to the button handler.
+    var hitTarget = document.createElement('span');
+    hitTarget.className = 'maomao-home-indicator-hit-target';
+    hitTarget.setAttribute('aria-hidden', 'true');
+    hitTarget.style.cssText = 'position:absolute!important;left:50%!important;top:50%!important;' +
+      'transform:translate(-50%,-50%)!important;width:84px!important;height:4px!important;' +
+      'display:block!important;padding:0!important;margin:0!important;border:0!important;' +
+      'background:transparent!important;pointer-events:auto!important;cursor:pointer!important;';
+    button.appendChild(hitTarget);
     button.addEventListener('click', function (event) {
       event.preventDefault();
       event.stopPropagation();
