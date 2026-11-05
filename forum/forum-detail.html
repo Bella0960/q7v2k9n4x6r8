@@ -7,6 +7,9 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
+<script src="../shared/js/phone/storage/repository.js"></script>
+<script src="../shared/js/phone/storage/media-repository.js"></script>
+<script src="forum-media.js"></script>
 <script src="../shared/js/phone/phone_api.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
@@ -132,6 +135,7 @@
   .c-replies .c-time { margin-top: 3px; }
 
   /* 评论输入栏：毛玻璃 + 下划线字段 */
+  .forum-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:12px;max-width:100%}.forum-media-item{margin:0;min-width:0;overflow:hidden;background:#f1f1f1;aspect-ratio:4/3}.forum-media-item img{display:block;width:100%;height:100%;object-fit:cover}.forum-media-item img.media-load-failed{object-fit:contain;padding:12px;color:#888;font-size:9px}.post-detail-media{margin-top:15px}.comment-media{max-width:230px;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:9px}.comment-media .forum-media-item{aspect-ratio:1/1}.forum-preview-item{width:58px;height:58px;flex:0 0 58px;margin:0;overflow:hidden;background:#f1f1f1}.forum-preview-item img{width:100%;height:100%;object-fit:cover}.forum-image-preview{display:flex;gap:7px;overflow-x:auto;max-width:100%}.comment-bar{flex-direction:column;align-items:stretch;gap:7px}.comment-input-row{display:flex;align-items:center;gap:8px;width:100%}.comment-input-row input{min-width:0}.comment-image-button{width:30px;height:30px;flex:0 0 30px;border:1px solid #ddd;background:#fff;color:#555;font-size:17px;line-height:1}.comment-bar .forum-image-preview:empty{display:none}
   .comment-bar {
     position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
     width: 100%; max-width: 390px;
@@ -240,10 +244,13 @@
   </div>
 
   <div class="comment-bar">
-    <input type="text" id="commentInput" placeholder="给这段表达留一句回应…">
+    <div class="comment-input-row"><input type="text" id="commentInput" placeholder="给这段表达留一句回应…">
+    <button type="button" class="comment-image-button" id="commentImageButton" aria-label="添加图片">＋</button>
     <button class="send-btn" onclick="sendComment()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-    </button>
+    </button></div>
+    <input type="file" id="commentImages" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden>
+    <div class="forum-image-preview" id="commentImagePreview" aria-live="polite"></div>
   </div>
 
 <script>
@@ -418,11 +425,20 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       '论坛世界书：'+String([cfg.world,custom&&custom.world].filter(Boolean).join('\n')).slice(0,4200)
     ].join('\n');
   }
-  async function forumAIJSON(userPrompt,temperature){
+  async function forumAIJSON(userPrompt,temperature,imageAssetIds){
     if(!window.PhoneAPI||typeof PhoneAPI.completeJSON!=='function')throw new Error('AI 接口尚未加载');
     const config=window.PhoneStorage&&PhoneStorage.getApiConfig?PhoneStorage.getApiConfig():{};
     if(!config||!String(config.apiKey||'').trim())throw new Error('尚未配置 API Key');
-    return PhoneAPI.completeJSON({system:getForumThreadWorldbook(),user:userPrompt,temperature:temperature==null?0.9:temperature,timeoutMs:28000});
+    const system=getForumThreadWorldbook();
+    const options={system:system,user:userPrompt,temperature:temperature==null?0.9:temperature,timeoutMs:28000};
+    const ids=Array.from(new Set((Array.isArray(imageAssetIds)?imageAssetIds:[]).filter(Boolean))).slice(0,2);
+    if(ids.length){
+      if(!window.ForumMedia||typeof ForumMedia.toDataUrls!=='function')throw new Error('图片读取模块尚未加载');
+      const dataUrls=await ForumMedia.toDataUrls(ids);
+      const content=[{type:'text',text:userPrompt}].concat(dataUrls.map(function(url){return {type:'image_url',image_url:{url:url}}}));
+      options.messages=[{role:'system',content:system},{role:'user',content:content}];
+    }
+    return PhoneAPI.completeJSON(options);
   }
   function makeDetailAIComment(item,index){
     const r=detailResident(item&&item.residentId,index),text=String(item&&item.text||'').trim().slice(0,260);
@@ -442,7 +458,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
       const existing=post.comments.slice(-5).map(c=>({name:c.name,text:c.text,replies:(c.replies||[]).map(x=>x.text)}));
       const prompt='请为下面这条论坛帖子补上第一批自然的网友讨论。只返回 JSON。\n固定路人：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({author:post.name,title:postTitle(),body:postBody(),topic:post.topic||''})+'\n已有评论（不要重复）：'+JSON.stringify(existing)+'\n要求：生成 3-4 条评论，至少有两种不同态度；评论要抓住帖子细节，有人追问、有人分享经历、有人补充或温和反对。选择 1-2 条评论加一条楼中楼回复，让讨论有来有回。禁止每条都夸楼主或只说“确实”“哈哈”。所有 residentId 必须来自固定路人。格式：{"comments":[{"residentId":"路人id","text":"评论内容","replies":[{"residentId":"路人id","text":"回复内容","replyTo":"被回复昵称"}]}]}';
-      const result=await forumAIJSON(prompt,0.93);
+      const result=await forumAIJSON(prompt,0.93,post.mediaAssetIds);
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.comments))throw new Error('评论生成结果无效');
       const added=result.data.comments.slice(0,4).map((x,i)=>makeDetailAIComment(x,i)).filter(Boolean);
       if(added.length){
@@ -516,6 +532,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   function postBody(){ return post.body || post.content || ''; }
 
   let post = null;
+  let commentImageFiles=[];
   function loadPost() {
     const id = getPostId();
     const posts = loadPosts();
@@ -564,9 +581,13 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     document.getElementById('pName').innerHTML = esc(post.name) + tagHtml;
     document.getElementById('pTime').textContent = safeTime(post.time);
     const title = postTitle(), body = postBody();
-    document.getElementById('pContent').innerHTML =
+    const pContent=document.getElementById('pContent');
+    if(window.ForumMedia)ForumMedia.revokeIn(pContent);
+    pContent.innerHTML =
       (title ? '<div class="p-title">' + esc(title) + '</div>' : '') +
-      (body ? '<p class="p-body">' + esc(body) + '</p>' : '');
+      (body ? '<p class="p-body">' + esc(body) + '</p>' : '') +
+      (window.ForumMedia?ForumMedia.markup(post.mediaAssetIds,'post-detail-media'):'');
+    if(window.ForumMedia)ForumMedia.hydrate(pContent);
     document.getElementById('likeCount').textContent = post.likes || 0;
     const shownCount = (post._seedCount || 0) + post.comments.length;
     document.getElementById('commentCount').textContent = shownCount;
@@ -582,12 +603,14 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       list.innerHTML = '<div style="color:#b8b8b8;font-size:11px;padding:20px 0;text-align:center;">还没有回应——做第一个说点什么的人</div>';
       return;
     }
+    if(window.ForumMedia)ForumMedia.revokeIn(list);
     list.innerHTML = post.comments.map((c, i) => `
       <div class="comment">
         <div class="c-avatar" style="background:${(c.avatar||'').indexOf('#')===0 ? c.avatar : '#ececec'}">${esc((c.avatar && c.avatar.length === 1) ? c.avatar : (c.name||'?')[0])}</div>
         <div class="c-body">
           <div class="c-name">${esc(c.name)}</div>
           <div class="c-text">${esc(c.text)}</div>
+          ${window.ForumMedia?ForumMedia.markup(c.mediaAssetIds,"comment-media"):""}
           <div class="c-actions">
             <span class="c-time">${safeTime(c.time)}</span>
             <span class="c-reply" onclick="replyTo(${i})">回复</span>
@@ -603,6 +626,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
               <div class="c-body">
                 <div class="c-name">${esc(r.name)}${r.replyTo ? ' <span class="c-at">回复 ' + esc(r.replyTo) + '</span>' : ''}</div>
                 <div class="c-text">${esc(r.text)}</div>
+                ${window.ForumMedia?ForumMedia.markup(r.mediaAssetIds,"comment-media"):""}
                 <div class="c-actions">
                   <span class="c-time">${safeTime(r.time)}</span>
                   <span class="c-like ${r.liked ? 'liked' : ''}" onclick="likeReply(${i},${j})">
@@ -617,6 +641,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
         </div>
       </div>
     `).join('');
+    if(window.ForumMedia)ForumMedia.hydrate(list);
   }
 
   function likeComment(i) {
@@ -705,15 +730,16 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     renderPost();
   }
 
-  async function generateRepliesToUserComment(target,text){
+  async function generateRepliesToUserComment(target,text,submittedImageIds){
     if(!target)return;
     const status=document.getElementById('aiCommentStatus');
     if(status)status.textContent='有人看到你的留言，正在接话…';
     try{
       const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
-      const threadContext={anchorName:target.name,anchorText:target.text,replies:(target.replies||[]).slice(-5).map(r=>({name:r.name,text:r.text}))};
+      const threadContext={anchorName:target.name,anchorText:target.text,hasAttachedImages:!!((target.mediaAssetIds||[]).length||(submittedImageIds||[]).length),replies:(target.replies||[]).slice(-5).map(r=>({name:r.name,text:r.text}))};
       const prompt='论坛里刚出现一条新留言，请让 1-2 位不同的路人自然回应它。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n当前讨论串：'+JSON.stringify(threadContext)+'\n用户刚刚说：'+JSON.stringify(text)+'\n要求：回复要直接回应这句话和上下文，不要泛泛夸赞或重复已有内容；可以追问、分享相似经历或有礼貌地提出不同看法。最多两条，第二条可以接第一条的话。每条 10-55 字，保持口语和各自性格。格式：{"replies":[{"residentId":"路人id","text":"回复","replyTo":"我"}]}';
-      const result=await forumAIJSON(prompt,0.94);
+      const imageIds=Array.from(new Set([].concat(post.mediaAssetIds||[],target.mediaAssetIds||[],submittedImageIds||[]))).slice(0,2);
+      const result=await forumAIJSON(prompt,0.94,imageIds);
       if(!result||!result.ok||!result.data||!Array.isArray(result.data.replies))throw new Error('回复生成结果无效');
       if(!Array.isArray(target.replies))target.replies=[];
       result.data.replies.slice(0,2).forEach((x,i)=>{
@@ -728,22 +754,54 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       if(status)status.textContent='暂时没有新的回应，稍后再看看';
     }
   }
+  function clearCommentImages(){
+    commentImageFiles=[];
+    const input=document.getElementById('commentImages');
+    if(input)input.value='';
+    if(window.ForumMedia)ForumMedia.clearPreview(document.getElementById('commentImagePreview'));
+    const bar=document.querySelector('.comment-bar');
+    if(bar)bar.classList.remove('has-images');
+  }
   async function sendComment() {
     const input=document.getElementById('commentInput'),text=input.value.trim();
-    if(!text){toast('先写下一点内容吧');input.focus();return}
+    const files=commentImageFiles.slice();
+    if(!text&&!files.length){toast('写一句话或添加一张图片吧');input.focus();return}
+    const button=document.querySelector('.comment-bar .send-btn');
+    if(button&&button.disabled)return;
+    if(button)button.disabled=true;
     const replying=replyToIdx;
-    let replyContainer;
-    if(replying>=0){
-      const target=post.comments[replying];
-      if(!target.replies)target.replies=[];
-      target.replies.push({name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replyTo:target.name});
-      replyContainer=target;
-    }else{
-      const mine={name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replies:[]};
-      post.comments.push(mine);replyContainer=mine;
+    const commentId='forum_comment_'+Date.now().toString(36);
+    let assetIds=[];
+    try{
+      assetIds=await ForumMedia.upload(files,'forum-comment',commentId);
+      let replyContainer,savedItem;
+      if(replying>=0){
+        const target=post.comments[replying];
+        if(!target.replies)target.replies=[];
+        savedItem={id:commentId,name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replyTo:target.name,mediaAssetIds:assetIds};
+        target.replies.push(savedItem);
+        replyContainer=target;
+      }else{
+        savedItem={id:commentId,name:'我',avatar:'#222',owner:'me',text:text,time:Date.now(),replies:[],mediaAssetIds:assetIds};
+        post.comments.push(savedItem);
+        replyContainer=savedItem;
+      }
+      if(!saveNow()){
+        if(replying>=0){const target=post.comments[replying];target.replies=target.replies.filter(item=>item!==savedItem)}
+        else post.comments=post.comments.filter(item=>item!==savedItem);
+        await ForumMedia.release(assetIds,'forum-comment',commentId);
+        return;
+      }
+      input.value='';
+      clearCommentImages();
+      cancelReply();
+      renderComments();renderPost();
+      await generateRepliesToUserComment(replyContainer,text||'（只附了一张图片）',assetIds);
+    }catch(error){
+      toast(error&&error.message?error.message:'评论图片保存失败，请重试');
+    }finally{
+      if(button)button.disabled=false;
     }
-    input.value='';cancelReply();saveNow();renderComments();renderPost();
-    await generateRepliesToUserComment(replyContainer,text);
   }
 
   function sharePost() {
@@ -772,13 +830,19 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     const residents=DETAIL_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
     try{
       const prompt='你是一个固定社区成员，请读完这条帖子后写一条自然的网友评论。只返回 JSON。\n路人资料：'+JSON.stringify(residents)+'\n帖子：'+JSON.stringify({title:postTitle(),body:postBody(),topic:post.topic||''})+'\n要求：选择一位路人，评论 12-60 字，回应具体细节，不要泛泛夸赞，也不要说自己是 AI。格式：{"residentId":"路人id","text":"评论"}';
-      const result=await forumAIJSON(prompt,0.93);
+      const result=await forumAIJSON(prompt,0.93,post.mediaAssetIds);
       if(!result||!result.ok||!result.data)throw new Error('评论生成失败');
       const c=makeDetailAIComment(result.data,post.comments.length);
       if(c){post.comments.push(c);saveNow();renderComments();renderPost();toast('一位网友加入了讨论')}
     }catch(error){console.warn('[Forum] 手动生成评论失败',error);toast('暂时没能生成回复')}
   }
 
+  const commentImageButton=document.getElementById('commentImageButton');
+  const commentImagesInput=document.getElementById('commentImages');
+  if(commentImageButton&&commentImagesInput){
+    commentImageButton.addEventListener('click',function(){commentImagesInput.click()});
+    commentImagesInput.addEventListener('change',function(){commentImageFiles=Array.from(this.files||[]);ForumMedia.preview(commentImageFiles,document.getElementById('commentImagePreview'));document.querySelector('.comment-bar').classList.toggle('has-images',commentImageFiles.length>0)});
+  }
   loadPost();
 </script>
 </body>
