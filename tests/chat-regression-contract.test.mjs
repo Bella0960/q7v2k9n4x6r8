@@ -66,6 +66,10 @@ const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
 const profileEditor = read('profile/edit-profile.html');
+const chatListPage = read('chat/chat/chat.html');
+const contactsPage = read('chat/contacts/contacts.html');
+const profilePage = read('profile/profile.html');
+const wechatThemeCss = read('shared/css/wechat-theme-refinements.css');
 const packageJson = JSON.parse(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
