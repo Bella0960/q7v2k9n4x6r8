@@ -123,7 +123,7 @@ async function openGroupPlay(page, seed) {
 before(async () => {
   await startServer();
   baseUrl = 'http://127.0.0.1:' + server.address().port;
-  browser = await chromium.launch({ channel: 'msedge' });
+  browser = await chromium.launch({ headless: true });
 });
 
 after(async () => {
