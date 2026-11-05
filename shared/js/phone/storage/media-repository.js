@@ -1,16 +1,13 @@
 /* ============================================================
  * media-repository.js  —— 媒体资源仓储（IndexedDB）
  *
- * 底层：独立数据库 maomao-assets (version 1)
+ * 底层：独立数据库 maomao-assets (version 2)
  *   stores:
- *     assets   → { assetId (pk), type, mimeType, size, ownerType, ownerId,
- *                  createdAt, hash }                 keyPath: assetId, index: hash
- *     blobs    → { assetId (pk), blob }               keyPath: assetId
- *     refs     → { assetId, ownerType, ownerId }      keyPath: assetId,
- *                                                     compound index: [ownerType, ownerId]
+ *     assets / blobs / refs → Blob 资源及引用关系
+ *     image_records → 按角色索引的生图记录（只存 assetId，不存图片二进制）
  *
  *   与 maomao-media-store / diary 等库完全独立，谁也不依赖谁。
- *   备份脚本（backup.js）本批不纳入此库，后续版本再接入。
+ *   整库由 settings/js/backup.js 备份，Blob 超限时按 atomicExport 规则整体跳过并报告。
  *
  * 契约：
  *   - 业务方只保存 assetId，不保存 DataURL / objectURL / Blob 引用
@@ -33,11 +30,12 @@
     };
 
     var DB_NAME = 'maomao-assets';
-    var DB_VERSION = 1;
+    var DB_VERSION = 2;
     var STORES = {
         ASSETS: 'assets',   // keyPath: assetId, index on hash
         BLOBS:  'blobs',    // keyPath: assetId
-        REFS:   'refs'      // keyPath: assetId, compound index owner
+        REFS:   'refs',     // keyPath: assetId, compound index owner
+        IMAGES: 'image_records' // keyPath: id; role/time indexed metadata only
     };
 
     var _dbPromise = null;
@@ -64,6 +62,12 @@
                     if (!db.objectStoreNames.contains(STORES.REFS)) {
                         var s3 = db.createObjectStore(STORES.REFS, { keyPath: 'assetId' });
                         s3.createIndex('owner', ['ownerType', 'ownerId'], { unique: false });
+                    }
+                    if (!db.objectStoreNames.contains(STORES.IMAGES)) {
+                        var imageStore = db.createObjectStore(STORES.IMAGES, { keyPath: 'id' });
+                        imageStore.createIndex('characterId', 'characterId', { unique: false });
+                        imageStore.createIndex('characterCreatedAt', ['characterId', 'createdAt'], { unique: false });
+                        imageStore.createIndex('createdAt', 'createdAt', { unique: false });
                     }
                 };
                 req.onsuccess = function () { resolve(req.result); };
@@ -810,6 +814,147 @@
         }).catch(function (err) { return { ok: false, error: _mapError(err) }; });
     };
 
+    /* ============================================================
+     * ImageRepository —— 生成图片记录（同库 metadata store）
+     *
+     * 记录只持有 assetId；实际图片始终保存在 blobs store。
+     * isPrivate 默认为 true，图库筛选只影响展示，不改变媒体引用。
+     * ============================================================ */
+
+    function ImageRepository(mediaRepository) {
+        this._media = mediaRepository || new MediaRepository();
+    }
+
+    ImageRepository.prototype.save = function (record) {
+        if (!record || !record.id || !record.characterId || !record.assetId) {
+            return Promise.resolve({ ok: false, error: {
+                code: _ERR.VALIDATION_FAILED,
+                message: 'image record requires id, characterId and assetId',
+                retryable: false
+            } });
+        }
+        if (!_isValidAssetId(record.assetId)) {
+            return Promise.resolve({ ok: false, error: {
+                code: _ERR.VALIDATION_FAILED,
+                message: 'image record assetId format is invalid',
+                retryable: false
+            } });
+        }
+        var value = {
+            id: String(record.id),
+            characterId: String(record.characterId),
+            assetId: String(record.assetId),
+            prompt: String(record.prompt || ''),
+            sceneDescription: String(record.sceneDescription || ''),
+            isPrivate: record.isPrivate !== false,
+            createdAt: Number(record.createdAt) || Date.now()
+        };
+        return _openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var tx;
+                try {
+                    tx = db.transaction([STORES.IMAGES], 'readwrite');
+                    tx.objectStore(STORES.IMAGES).put(value);
+                } catch (error) {
+                    resolve({ ok: false, error: _mapError(error) });
+                    return;
+                }
+                tx.oncomplete = function () { resolve({ ok: true, value: value }); };
+                tx.onerror = function () { resolve({ ok: false, error: _mapError(tx.error) }); };
+                tx.onabort = function () { resolve({ ok: false, error: _mapError(tx.error) }); };
+            });
+        }).catch(function (error) { return { ok: false, error: _mapError(error) }; });
+    };
+
+    ImageRepository.prototype.get = function (imageId) {
+        if (!imageId) return Promise.resolve({ ok: false, error: {
+            code: _ERR.VALIDATION_FAILED, message: 'image id is required', retryable: false
+        } });
+        return _openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var tx = db.transaction([STORES.IMAGES], 'readonly');
+                var req = tx.objectStore(STORES.IMAGES).get(String(imageId));
+                req.onsuccess = function () {
+                    if (!req.result) {
+                        resolve({ ok: false, error: { code: _ERR.NOT_FOUND,
+                            message: 'image record not found', retryable: false } });
+                    } else resolve({ ok: true, value: req.result });
+                };
+                req.onerror = function () { resolve({ ok: false, error: _mapError(req.error) }); };
+            });
+        }).catch(function (error) { return { ok: false, error: _mapError(error) }; });
+    };
+
+    ImageRepository.prototype.listByCharacter = function (characterId, type) {
+        if (!characterId) return Promise.resolve({ ok: false, error: {
+            code: _ERR.VALIDATION_FAILED, message: 'characterId is required', retryable: false
+        } });
+        type = type === 'public' || type === 'private' ? type : 'all';
+        return _openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var tx = db.transaction([STORES.IMAGES], 'readonly');
+                var store = tx.objectStore(STORES.IMAGES);
+                var req;
+                try {
+                    req = store.index('characterId').getAll(String(characterId));
+                } catch (error) {
+                    resolve({ ok: false, error: _mapError(error) });
+                    return;
+                }
+                req.onsuccess = function () {
+                    var list = (req.result || []).filter(function (item) {
+                        if (type === 'private') return item.isPrivate !== false;
+                        if (type === 'public') return item.isPrivate === false;
+                        return true;
+                    });
+                    list.sort(function (a, b) { return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0); });
+                    resolve({ ok: true, value: list, meta: { count: list.length, type: type } });
+                };
+                req.onerror = function () { resolve({ ok: false, error: _mapError(req.error) }); };
+            });
+        }).catch(function (error) { return { ok: false, error: _mapError(error) }; });
+    };
+
+    ImageRepository.prototype.setPrivacy = function (imageId, isPrivate) {
+        var self = this;
+        return this.get(imageId).then(function (result) {
+            if (!result.ok) return result;
+            var record = Object.assign({}, result.value, { isPrivate: !!isPrivate });
+            return self.save(record);
+        });
+    };
+
+    ImageRepository.prototype.remove = function (imageId) {
+        var self = this;
+        return this.get(imageId).then(function (found) {
+            if (!found.ok) return found;
+            return _openDB().then(function (db) {
+                return new Promise(function (resolve) {
+                    var tx = db.transaction([STORES.IMAGES], 'readwrite');
+                    tx.objectStore(STORES.IMAGES).delete(String(imageId));
+                    tx.oncomplete = function () { resolve({ ok: true, value: found.value }); };
+                    tx.onerror = function () { resolve({ ok: false, error: _mapError(tx.error) }); };
+                    tx.onabort = function () { resolve({ ok: false, error: _mapError(tx.error) }); };
+                });
+            }).then(function (deleted) {
+                if (!deleted.ok) return deleted;
+                return self._media.removeRef(found.value.assetId, 'generated-image', String(imageId))
+                    .then(function (refResult) {
+                        if (!refResult.ok) return { ok: false, error: refResult.error, value: found.value };
+                        return self._media.removeAsset(found.value.assetId).then(function (assetResult) {
+                            // A chat message or another feature may still reference this asset.
+                            // In that case removeAsset safely refuses; the gallery record is still removed.
+                            if (!assetResult.ok && assetResult.error && assetResult.error.code === _ERR.VALIDATION_FAILED) {
+                                return { ok: true, value: found.value, meta: { assetRetained: true } };
+                            }
+                            if (!assetResult.ok) return { ok: false, error: assetResult.error, value: found.value };
+                            return { ok: true, value: found.value };
+                        });
+                    });
+            });
+        }).catch(function (error) { return { ok: false, error: _mapError(error) }; });
+    };
+
     /* ---------- 手动关闭（供测试用） ---------- */
 
     MediaRepository._forceClose = function () {
@@ -819,7 +964,9 @@
     /* ---------- 导出 ---------- */
 
     _PS.MediaRepository = MediaRepository;
+    _PS.ImageRepository = ImageRepository;
     _PS.repository = _PS.repository || {};
     _PS.repository.media = function (storage) { return new MediaRepository(storage); };
+    _PS.repository.images = function (media) { return new ImageRepository(media); };
 
 })(window);
