@@ -435,56 +435,40 @@
 .maomao-call-mini {
   position: absolute;
   z-index: 9899;
-  left: 12px;
-  right: 12px;
-  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-  min-height: 58px;
+  width: 52px;
+  height: 52px;
+  left: 16px;
+  top: 120px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 9px 8px 13px;
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 15px;
-  background: #171719;
+  justify-content: center;
+  border-radius: 50%;
+  background: #111111;
   color: #FFFFFF;
-  box-shadow: 0 8px 28px rgba(0,0,0,.2);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 .maomao-call-mini.is-fixed { position: fixed; }
 .maomao-call-mini[hidden] { display: none !important; }
-.maomao-call-mini-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.maomao-call-mini-name {
-  overflow: hidden;
-  color: #FFFFFF;
-  font-size: 11px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.maomao-call-mini-copy { display: none; }
+.maomao-call-mini::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
-.maomao-call-mini-meta {
-  color: #B4B4BA;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-}
-.maomao-call-mini button {
-  min-width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255,255,255,.2);
-  border-radius: 11px;
-  background: transparent;
-  color: #FFFFFF;
-  font: inherit;
-  font-size: 10px;
-  cursor: pointer;
-}
-.maomao-call-mini button[data-call-action="end"] {
-  width: 34px;
-  min-width: 34px;
-  border-color: rgba(255,255,255,.38);
-}
+.maomao-call-mini-name { display: none; }
+.maomao-call-mini-meta { display: none; }
+.maomao-call-mini button { display: none; }
+.maomao-call-mini button[data-call-action="open"] { display: none; }
+.maomao-call-mini button[data-call-action="end"] { display: none; }
 .maomao-call-layer button:focus-visible,
 .maomao-call-mini button:focus-visible,
 .maomao-call-input:focus-visible {

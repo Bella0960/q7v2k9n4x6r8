@@ -1216,10 +1216,71 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
   line-height:1.3!important;display:block!important;
 }
 
+/* ===== 角色信息毛玻璃卡片 ===== */
+.role-info-card{
+  width:calc(100% - 32px)!important;
+  margin:12px 16px 8px!important;
+  padding:20px 20px 18px!important;
+  text-align:center!important;
+  display:block!important;
+  border-radius:20px!important;
+  background:rgba(255,255,255,0.7)!important;
+  border:1px solid rgba(0,0,0,0.06)!important;
+  box-shadow:0 4px 20px rgba(0,0,0,0.04)!important;
+  backdrop-filter:blur(20px) saturate(140%)!important;
+  -webkit-backdrop-filter:blur(20px) saturate(140%)!important;
+  flex-shrink:0!important;
+  gap:0!important;
+  min-height:0!important;
+}
+.card-status{
+  font-size:10px!important;
+  font-weight:500!important;
+  letter-spacing:2px!important;
+  text-transform:uppercase!important;
+  color:rgba(0,0,0,0.45)!important;
+  margin-bottom:8px!important;
+  font-family:var(--sans)!important;
+}
+.card-quote{
+  font-size:13px!important;
+  line-height:1.6!important;
+  color:rgba(0,0,0,0.75)!important;
+  font-style:italic!important;
+  margin-bottom:12px!important;
+  font-family:Georgia,"Noto Serif SC",serif!important;
+}
+.card-name{
+  font-size:20px!important;
+  font-weight:700!important;
+  letter-spacing:1px!important;
+  color:#111!important;
+  margin-bottom:6px!important;
+  font-family:var(--sans)!important;
+}
+.card-desc{
+  font-size:12px!important;
+  line-height:1.5!important;
+  color:rgba(0,0,0,0.5)!important;
+  font-family:var(--sans)!important;
+}
+.role-info-card .character-portrait{
+  width:48px!important;height:48px!important;
+  border-radius:50%!important;
+  background:#f2f2f2!important;color:#666!important;
+  margin:0 auto 12px!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  font-family:var(--sans)!important;font-size:18px!important;font-weight:600!important;
+  overflow:hidden!important;position:relative!important;
+}
+.role-info-card .character-portrait img{
+  position:absolute!important;inset:0!important;
+  width:100%!important;height:100%!important;object-fit:cover!important;
+}
+
 /* 阅读区：大留白 */
 .story{
   padding:14px 22px 36px!important;
-  font-size:15px!important;
 }
 
 /* 去掉 STORY / MY NOTE 英文小标签 */
@@ -1231,8 +1292,44 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
   background:transparent!important;border:0!important;border-radius:0!important;
   padding:0!important;
 }
-/* 我的叙述：淡一档（颜色仍由 --story-user-color 控制），去掉左边竖线 */
-.bubble.me{border-left:0!important;padding-left:0!important}
+
+/* 角色台词：卡片式样式 */
+.bubble.ai{
+  background:rgba(255,255,255,0.75)!important;
+  border:1px solid rgba(0,0,0,0.05)!important;
+  border-radius:16px!important;
+  padding:16px 18px!important;
+  box-shadow:0 2px 12px rgba(0,0,0,0.03)!important;
+  backdrop-filter:blur(10px) saturate(140%)!important;
+  -webkit-backdrop-filter:blur(10px) saturate(140%)!important;
+  margin-bottom:12px!important;
+}
+.bubble.ai p{
+  margin:0 0 .8em!important;
+  text-indent:var(--story-text-indent, 2em)!important;
+}
+.bubble.ai p:last-child{
+  margin-bottom:0!important;
+}
+
+/* 我的叙述：卡片式，和角色卡片区分开 */
+.bubble.me{
+  background:rgba(0,0,0,0.04)!important;
+  border:1px solid rgba(0,0,0,0.04)!important;
+  border-radius:16px!important;
+  padding:16px 18px!important;
+  box-shadow:0 2px 12px rgba(0,0,0,0.02)!important;
+  margin-bottom:12px!important;
+  border-left:0!important;
+  padding-left:18px!important;
+}
+.bubble.me p{
+  margin:0 0 .8em!important;
+  text-indent:var(--story-text-indent, 2em)!important;
+}
+.bubble.me p:last-child{
+  margin-bottom:0!important;
+}
 .bubble .spoken,.bubble.me .spoken{border-bottom-color:#dcdcdc!important}
 
 /* 场景切换：居中一行淡灰 */
@@ -1334,7 +1431,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 <div class="page">
   <header class="masthead">
     <a class="mast-link" id="backLink" href="../chat/chat-detail.html" aria-label="返回线上"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
-    <span class="mast-word">线下</span>
+    <span class="mast-word">OFFLINE</span>
     <div class="mast-right">
       <button class="mast-action menu-trigger" id="writingBtn" type="button" title="剧情功能与美化" aria-label="打开剧情功能与美化菜单" aria-expanded="false" aria-controls="writingPop">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><circle cx="8" cy="6" r="1.8" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="10" cy="18" r="1.8" fill="currentColor" stroke="none"/></svg>
@@ -1435,8 +1532,9 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
  </div>
 </details>
 <details class="drawer-subaccordion" id="typeAlignGroup">
- <summary class="drawer-subaccordion-summary"><span>正文对齐与背景柔化</span><small>对齐 · 清晰度</small><b>⌄</b></summary>
+ <summary class="drawer-subaccordion-summary"><span>正文排版与背景柔化</span><small>排版模式 · 对齐 · 清晰度</small><b>⌄</b></summary>
  <div class="drawer-subaccordion-panel">
+  <div class="wp-group"><div class="wp-label">排版模式</div><div class="wp-chips" id="layoutModeChips"></div></div>
   <div class="wp-group"><div class="wp-label">正文对齐</div><div class="wp-chips" id="textAlignChips"></div></div>
   <div class="wp-group"><div class="wp-label">背景柔化</div><div class="wp-slider"><input type="range" id="backgroundWashRange" min="0" max="0.75" step="0.05" value="0.24"><span class="wp-range" id="backgroundWashVal">24%</span></div></div>
  </div>
@@ -1511,16 +1609,15 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     </div>
   </header>
 
-  <!-- 沉浸式阅读器：不要大标题/kicker/印章，只留一行安静的角色信息 -->
+  <!-- 沉浸式阅读器：角色信息毛玻璃卡片 -->
   <h1 class="title" id="dateTitle" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;">线下模式</h1>
-  <div class="byline" id="byline">
+  <div class="role-info-card" id="byline">
     <span class="character-portrait" id="characterPortrait" aria-hidden="true">
       <span id="characterInitial">TA</span>
     </span>
-    <div class="by-text">
-      <span class="by-name" id="byName">TA</span>
-      <span class="by-meta" id="byMeta">面对面</span>
-    </div>
+    <div class="card-quote" id="cardQuote">"The soul never dies."</div>
+    <div class="card-name" id="byName">TA</div>
+    <div class="card-desc" id="byMeta">面对面</div>
   </div>
 
   <main class="story" id="story"></main>
@@ -1599,6 +1696,7 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
     var paragraphGapVal = document.getElementById('paragraphGapVal');
     var letterSpacingRange = document.getElementById('letterSpacingRange');
     var letterSpacingVal = document.getElementById('letterSpacingVal');
+    var layoutModeChips = document.getElementById('layoutModeChips');
     var textAlignChips = document.getElementById('textAlignChips');
     var backgroundWashRange = document.getElementById('backgroundWashRange');
     var backgroundWashVal = document.getElementById('backgroundWashVal');
@@ -2004,6 +2102,24 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
             { key: '500', label: '中等' },
             { key: '600', label: '加粗' }
         ], String(writingOpts.fontWeight), function (k) { writingOpts.fontWeight = parseInt(k, 10); applyReadingStyle(); });
+        renderChips(layoutModeChips, [
+            { key: 'novel', label: '小说标准' },
+            { key: 'center', label: '居中排版' },
+            { key: 'plain', label: '顶格无缩进' },
+            { key: 'justify', label: '两端对齐' }
+        ], writingOpts.layoutMode || 'novel', function (k) {
+            writingOpts.layoutMode = k;
+            // 自动同步对齐方式
+            if (k === 'center') writingOpts.textAlign = 'center';
+            else if (k === 'justify') writingOpts.textAlign = 'justify';
+            else writingOpts.textAlign = 'left';
+            applyReadingStyle();
+            // 重新渲染对齐 chips 的高亮
+            renderChips(textAlignChips, [
+                { key: 'left', label: '左对齐' },
+                { key: 'justify', label: '两端对齐' }
+            ], writingOpts.textAlign, function (k2) { writingOpts.textAlign = k2; applyReadingStyle(); });
+        });
         renderChips(textAlignChips, [
             { key: 'left', label: '左对齐' },
             { key: 'justify', label: '两端对齐' }
@@ -2039,7 +2155,11 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         root.style.setProperty('--story-line-height', String(writingOpts.lineHeight || 1.95));
         root.style.setProperty('--story-paragraph-gap', String(writingOpts.paragraphGap == null ? 0.9 : writingOpts.paragraphGap) + 'em');
         root.style.setProperty('--story-letter-spacing', String(writingOpts.letterSpacing || 0) + 'em');
-        root.style.setProperty('--story-text-align', writingOpts.textAlign === 'justify' ? 'justify' : 'left');
+        root.style.setProperty('--story-text-align', writingOpts.textAlign === 'justify' ? 'justify' : (writingOpts.textAlign === 'center' ? 'center' : 'left'));
+        // 排版模式：控制首行缩进
+        var layoutMode = writingOpts.layoutMode || 'novel';
+        var textIndent = (layoutMode === 'novel' || layoutMode === 'justify') ? '2em' : '0em';
+        root.style.setProperty('--story-text-indent', textIndent);
         root.style.setProperty('--story-overlay-opacity', String(writingOpts.backgroundWash == null ? 0.24 : writingOpts.backgroundWash));
         root.style.setProperty('--story-bg', writingOpts.bgColor || '#FFFFFF');
         root.style.setProperty('--story-bg-image', writingOpts.bgImage ? 'url("' + writingOpts.bgImage + '")' : 'none');
@@ -2280,15 +2400,9 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
         portrait.appendChild(portraitImg);
     }
 
-    // 线下剧情与线上聊天共用记录：返回时直接回到当前角色的线上对话。
-    if (!isPreview && roleId) {
-        backLink.href = '../chat/chat-detail.html?v=20261028modes1&id=' + encodeURIComponent(roleId);
-        backLink.addEventListener('click', function () {
-            try { localStorage.setItem('chat_mode_' + roleId, 'online'); } catch (e) {}
-        });
-    } else {
-        backLink.href = '../../index.html';
-    }
+    // 线下剧情：退出时直接回到手机桌面，不回线上聊天
+    backLink.href = '../../index.html';
+    backLink.setAttribute('aria-label', '返回桌面');
 
     /* ---------- 存取：与线上聊天共用 chat_history_<id> ---------- */
     var HISTORY_KEY = 'chat_history_' + roleId;

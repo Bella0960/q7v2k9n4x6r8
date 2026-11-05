@@ -1068,6 +1068,11 @@
             min-width: 160px;
             max-width: 240px;
         }
+        .msg-card-compact {
+            min-width: 0 !important;
+            width: fit-content !important;
+            max-width: 100% !important;
+        }
         .msg-card-title {
             font-size: 0.75rem;
             font-weight: 700;
@@ -1977,7 +1982,6 @@
   cursor:pointer;line-height:1.5;border-radius:4px;
   transition:opacity .16s ease,color .16s ease;
 }
-.chat-status-sub.chat-mode-trigger:not(:disabled)::after{content:"  ↕";font:inherit;color:#777}
 .chat-status-sub.chat-mode-trigger:active{opacity:.55}
 .chat-status-sub.chat-mode-trigger:focus-visible{outline:1px solid #999;outline-offset:2px}
 .chat-mode-overlay{
@@ -3359,13 +3363,25 @@
             } else if (msg.type === 'call') {
                 const c = msg.call || {};
                 if (c.theme === 'dark') bubble.classList.add('bubble-call-in');
-                const cardTitle = c.title || (c.type === 'video' ? '视频通话' : '语音通话');
-                bubble.innerHTML = `<div class="msg-card">
+                // 区分语音/视频通话：文字和图标都不一样
+                const isVideo = c.type === 'video';
+                // 标准化时间格式：转成 MM:SS
+                let duration = c.duration || (c.text && c.text.match(/通话时长\s*([0-9:]+)/)?.[1]) || '';
+                if (duration && /^\d+$/.test(duration)) {
+                    // 如果是纯秒数，转成 MM:SS
+                    const sec = parseInt(duration, 10);
+                    const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+                    const ss = String(sec % 60).padStart(2, '0');
+                    duration = mm + ':' + ss;
+                }
+                const callIcon = isVideo
+                    ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>'
+                    : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+                bubble.innerHTML = `<div class="msg-card msg-card-compact">
                     <div class="msg-card-title">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                        <span>${escHtml(cardTitle)}</span>
+                        ${callIcon}
+                        <span>${isVideo ? '视频通话' : '语音通话'}结束${duration ? ' · ' + duration : ''}</span>
                     </div>
-                    ${c.text ? `<div class="msg-card-body">${escHtml(c.text)}</div>` : ''}
                 </div>`;
             } else if (msg.type === 'redpacket') {
                 // 红包卡：纯黑底圆角卡 + 白色细线条金币图标（黑白灰极简，无红黄配色）

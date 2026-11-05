@@ -281,6 +281,7 @@ html,body{background:#f7f7f8}
 .diary-list-head{display:flex;align-items:flex-end;justify-content:space-between;padding:18px 0 17px}
 .diary-kicker{display:block;font:9px/1.4 Georgia,serif;letter-spacing:.18em;color:#aaa;margin-bottom:7px}
 .diary-list-head h1{font-size:32px;line-height:1;margin:0;font-weight:650;letter-spacing:-.07em;color:#252530}
+.diary-list-head h1.head-en{font-family:Georgia,"Times New Roman",serif;font-size:44px;font-weight:400;letter-spacing:-.01em;color:#1a1a1a;font-style:normal}
 .diary-total{font:11px Georgia,serif;letter-spacing:.08em;color:#aaa;padding-bottom:3px}
 .diary-search{display:none;align-items:center;gap:10px;padding:10px 0;margin:0 0 10px;border-bottom:1px solid #ececf0}
 .diary-search.is-open{display:flex}
@@ -514,7 +515,6 @@ html,body{background:#f7f7f8}
   <header class="app-head">
     <div class="head-left">
       <button class="round-btn" id="backHome" aria-label="返回桌面" title="返回桌面"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></svg></button>
-      <div><div class="brand-mark">日记</div></div>
     </div>
     <div class="head-actions">
       <button class="round-btn" id="searchToggle" aria-label="搜索日记" title="搜索"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.5 4.5"/></svg></button>
@@ -947,7 +947,7 @@ html,body{background:#f7f7f8}
   function renderHome(){
     var list=filteredEntries();
     var filters=['日记','备忘'];
-    return '<section class="diary-list-head"><div><span class="diary-kicker">A LITTLE RECORD OF LIFE</span><h1>日记</h1></div><span class="diary-total">'+entries.length+' 篇</span></section>'+
+    return '<section class="diary-list-head"><div><span class="diary-kicker">A LITTLE RECORD OF LIFE</span><h1 class="head-en">Journal</h1></div><span class="diary-total">'+entries.length+' 篇</span></section>'+
       '<div class="diary-search '+(searchOpen||query?'is-open':'')+'" id="searchWrap">'+svg('search')+'<input id="diarySearch" type="search" value="'+esc(query)+'" placeholder="搜索日记" aria-label="搜索日记"><button class="mini-action" id="clearSearch" style="'+(query?'':'display:none')+'" aria-label="清除搜索">×</button></div>'+
       '<div class="diary-list-tools"><div class="diary-type-filter">'+filters.map(function(f){return '<button class="filter-chip '+(noteTypeFilter===f?'active':'')+'" data-note-type-filter="'+esc(f)+'" aria-pressed="'+(noteTypeFilter===f)+'">'+esc(f)+'</button>'}).join('')+'</div><span class="type-en" aria-hidden="true">DAILY NOTES</span></div>'+
       renderCards(list,'还没有日记','点一下左下角的笔，记下今天发生的小事。');
