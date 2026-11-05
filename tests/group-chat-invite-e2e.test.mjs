@@ -263,6 +263,12 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
         groupCard.click()
       ]);
       assert.ok(page.url().includes('id=g1'), 'fresh detail page must retain the selected group id');
+      // The composer exists before group metadata finishes rendering; wait for the real group status
+      // before sending, matching the already-passing C6-C8 flow.
+      await page.waitForFunction(() => {
+        const status = document.getElementById('chat-status-sub');
+        return status && status.textContent.trim().length > 0;
+      });
       await page.waitForFunction(() => document.querySelectorAll('#chat-input').length === 1);
       await page.locator('#chat-input').fill('继续剧情');
       await page.locator('#myFloatSend').click();
