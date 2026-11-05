@@ -8,6 +8,7 @@ on:
       - 'vite.config.js'
       - 'package.json'
       - 'tests/pwa-navigation-cache.test.mjs'
+      - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - '.github/workflows/pwa-navigation-regression.yml'
   push:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - 'vite.config.js'
       - 'package.json'
       - 'tests/pwa-navigation-cache.test.mjs'
+      - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - '.github/workflows/pwa-navigation-regression.yml'
 
 permissions:
@@ -35,3 +37,5 @@ jobs:
         run: npm run build
       - name: Verify route precache and mobile navigation
         run: npm run test:pwa:navigation
+      - name: Verify navigation cache write lifecycle
+        run: node --test tests/sw-navigation-cache-lifecycle.test.mjs
