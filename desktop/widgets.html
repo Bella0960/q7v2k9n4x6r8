@@ -112,6 +112,17 @@
         letter-spacing: 0.03em;
         color: #111;
       }
+      .w-size {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 500;
+        color: #999;
+        letter-spacing: 0.05em;
+        margin-right: 6px;
+        padding: 2px 5px;
+        background: #f2f2f4;
+        border-radius: 4px;
+      }
       .w-desc {
         display: block;
         margin-top: 3px;
@@ -169,8 +180,15 @@
           { id: 'postcard', name: '明信片', cols: 4, rows: 2, desc: '头像、昵称与个性签名' },
           { id: 'image', name: '图片', cols: 4, rows: 2, desc: '点击上传一张图片' },
           { id: 'clock', name: '时钟', cols: 2, rows: 2, desc: '实时时间与日期' },
+          { id: 'clock-lg', name: '大时钟天气', cols: 4, rows: 2, desc: '时间+日期+天气+地址，全部可编辑' },
           { id: 'polaroid', name: '拍立得相框', cols: 2, rows: 2, desc: '点击上传一张照片' },
           { id: 'dialog', name: '小对话', cols: 2, rows: 2, desc: '两个头像的聊天气泡' },
+          { id: 'duo', name: '双人头像', cols: 2, rows: 2, desc: '两个圆头像挨在一起，昵称可改' },
+          { id: 'triple', name: '三图横排', cols: 4, rows: 2, desc: '三张图片横向排列，点击上传' },
+          { id: 'photowall', name: '照片墙', cols: 2, rows: 2, desc: '2×2 四张图片，点击上传' },
+          { id: 'ins', name: 'ins 信息卡', cols: 4, rows: 2, desc: '头像+天数+消息+天气，灰粉色调' },
+          { id: 'profile', name: 'ins 资料卡', cols: 4, rows: 2, desc: '头像+id+文案+粉丝获赞数据' },
+          { id: 'stack', name: 'ins 堆叠照片', cols: 4, rows: 2, desc: '六张错落排列，每张底下可编辑小字' },
           { id: 'music', name: '音乐箱', cols: 2, rows: 2, desc: '歌名、歌手与播放条' },
           { id: 'todo', name: '待办', cols: 2, rows: 2, desc: '勾选今日要做的小事' },
           { id: 'calendar', name: '月历', cols: 2, rows: 2, desc: '当月迷你日历，今天高亮' },
@@ -206,7 +224,20 @@
           var ri = layout.removed.indexOf(id);
           if (ri !== -1) layout.removed.splice(ri, 1);
           if (!isOnDesktop(layout, id)) {
-            layout.pages[layout.pages.length - 1].push(id);
+            // 每个页面最多 8 个项目，找第一个有空位的页面
+            var MAX_PER_PAGE = 8;
+            var placed = false;
+            for (var i = 0; i < layout.pages.length; i++) {
+              if (layout.pages[i].length < MAX_PER_PAGE) {
+                layout.pages[i].push(id);
+                placed = true;
+                break;
+              }
+            }
+            // 都满了就新建一页
+            if (!placed) {
+              layout.pages.push([id]);
+            }
           }
           saveLayout(layout);
         }
@@ -235,7 +266,7 @@
 
             var meta = document.createElement('span');
             meta.className = 'w-meta';
-            meta.innerHTML = '<span class="w-name">' + w.name + '</span><span class="w-desc">' + w.desc + '</span>';
+            meta.innerHTML = '<span class="w-name"><span class="w-size">' + w.cols + '×' + w.rows + '</span> ' + w.name + '</span><span class="w-desc">' + w.desc + '</span>';
 
             var state = document.createElement('span');
             state.className = 'w-state';

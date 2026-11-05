@@ -5,6 +5,28 @@
   --screen: #ffffff;
   --purple: #444444;
   --cyan: #666666;
+
+  /* ===== 组件设计规范（8pt 栅格 + 黑白灰清透感） ===== */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-lg: 18px;
+  --text-xl: 32px;
+
+  --card-bg: #ffffff;
+  --card-border: #f0f0f0;
+  --card-radius: 18px;
+  --card-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+
+/* 组件默认透明无底，由各组件自行选择白底或透明 */
+.ds-widget {
+  position: relative;
 }
 
 * { box-sizing: border-box; scrollbar-width: none; -ms-overflow-style: none; }
@@ -42,9 +64,9 @@ button { color: inherit; font: inherit; }
   display: flex;
   flex-direction: column;
   width: min(390px, calc(100vw - 24px));
-  height: min(844px, calc(100vh - 70px));
-  border: 10px solid #1c1c1e !important;
-  border-radius: 48px !important;
+  height: min(800px, calc(100vh - 40px));
+  border: 8px solid #1c1c1e !important;
+  border-radius: 44px !important;
   background: #ffffff !important;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18), 0 2px 10px rgba(0,0,0,0.08) !important;
   overflow: hidden;
@@ -193,6 +215,8 @@ button { color: inherit; font: inherit; }
   height: 100%;
   scroll-snap-align: start;
   scroll-snap-stop: always;
+  overflow-y: hidden;
+  overflow-x: hidden;
   white-space: normal;
   vertical-align: top;
   box-sizing: border-box;
@@ -706,11 +730,12 @@ button { color: inherit; font: inherit; }
   font-size: 0.813rem; color: #999999; letter-spacing: 1px;
 }
 
-/* ===== 桌面网格：4列标准手机桌面网格 ===== */
+/* ===== 桌面网格：4列标准手机桌面网格，行高统一 ===== */
 .desktop-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px 10px;
+  grid-auto-rows: 72px;
+  gap: 10px 10px;
   padding: 2px 2px 20px;
   width: 100%;
   box-sizing: border-box;
@@ -1004,7 +1029,7 @@ button { color: inherit; font: inherit; }
   z-index: 4;
 }
 
-/* ===== 小对话组件（2×2） ===== */
+/* ===== 小对话组件（2×2）：透明底气泡 ===== */
 .ds-dialog {
   grid-column: span 2;
   grid-row: span 2;
@@ -1015,6 +1040,7 @@ button { color: inherit; font: inherit; }
   flex-direction: column;
   justify-content: center;
   gap: 8px;
+  background: transparent;
 }
 .ds-dialog .dl-row {
   display: flex;
@@ -1057,6 +1083,239 @@ button { color: inherit; font: inherit; }
   background: #F0F0F3;
   color: #333;
   border-bottom-left-radius: 4px;
+}
+
+/* ===== 双人头像（2×2）：两个圆头像挨在一起 ===== */
+.ds-duo {
+  grid-column: span 2;
+  grid-row: span 2;
+  aspect-ratio: 1/1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: transparent;
+}
+.ds-duo .duo-avatars {
+  display: flex;
+}
+.ds-duo .duo-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #e8e8ed;
+  border: 3px solid #fff;
+  margin-left: -12px;
+}
+.ds-duo .duo-avatar:first-child {
+  margin-left: 0;
+}
+.ds-duo .duo-names {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: 0.02em;
+}
+
+/* ===== 三图横排（4×2）：三张图片横向排列 ===== */
+.ds-triple {
+  grid-column: span 4 !important;
+  grid-row: span 2 !important;
+  display: flex;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+}
+.ds-triple .triple-item {
+  flex: 1;
+  border-radius: 12px;
+  background: #f0f0f3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #999;
+  cursor: pointer;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+/* ===== 四图照片墙（2×2）：2×2 四张图片 ===== */
+.ds-photowall {
+  grid-column: span 2;
+  grid-row: span 2;
+  aspect-ratio: 1/1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+  background: transparent;
+  padding: 0;
+}
+.ds-photowall .pw-item {
+  border-radius: 8px;
+  background: #f0f0f3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #999;
+  cursor: pointer;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+/* ===== ins 风信息卡（4×2）：灰粉色调，透明底 ===== */
+.ds-ins {
+  grid-column: span 4 !important;
+  grid-row: span 2 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: transparent;
+}
+.ds-ins .ins-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ds-ins .ins-avatars {
+  display: flex;
+}
+.ds-ins .ins-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f8e1e7;
+  border: 2px solid #fff;
+  margin-left: -8px;
+}
+.ds-ins .ins-avatar:first-child {
+  margin-left: 0;
+}
+.ds-ins .ins-days {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d48a9c;
+  letter-spacing: 0.02em;
+}
+.ds-ins .ins-right {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ds-ins .ins-msg {
+  align-self: flex-start;
+  padding: 6px 12px;
+  background: #fce4ec;
+  border-radius: 14px 14px 14px 4px;
+  font-size: 12px;
+  color: #8d6e63;
+  max-width: 70%;
+}
+.ds-ins .ins-msg.me {
+  align-self: flex-end;
+  background: #f8bbd0;
+  border-radius: 14px 14px 4px 14px;
+  color: #fff;
+}
+.ds-ins .ins-msg-time {
+  font-size: 10px;
+  color: #c9a0a8;
+  margin-left: 8px;
+}
+.ds-ins .ins-msg-time.me {
+  align-self: flex-end;
+  margin-right: 8px;
+}
+.ds-ins .ins-weather {
+  font-size: 11px;
+  color: #b0a0a8;
+  letter-spacing: 0.03em;
+  margin-top: auto;
+}
+
+/* ===== ins 个人资料卡（4×2）：灰粉色调，透明底 ===== */
+.ds-profile {
+  grid-column: span 4 !important;
+  grid-row: span 2 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: transparent;
+}
+.ds-profile .pf-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.ds-profile .pf-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: #f8e1e7;
+  flex-shrink: 0;
+}
+.ds-profile .pf-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ds-profile .pf-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #8d6e63;
+}
+.ds-profile .pf-id {
+  font-size: 12px;
+  color: #c9a0a8;
+}
+.ds-profile .pf-bio {
+  font-size: 13px;
+  color: #a08888;
+  line-height: 1.5;
+}
+.ds-profile .pf-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 10px;
+}
+.ds-profile .pf-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: center;
+}
+.ds-profile .pf-num {
+  font-size: 20px;
+  font-weight: 700;
+  color: #d48a9c;
+}
+.ds-profile .pf-label {
+  font-size: 11px;
+  color: #b0a0a8;
+}
+
+/* ===== ins 堆叠照片（4×2）：六张互相重叠堆叠，像叠卡片 ===== */
+.ds-stack {
+  grid-column: span 4 !important;
+  grid-row: span 2 !important;
+  position: relative;
+  background: transparent;
+}
+.ds-stack .stack-img {
+  border-radius: 10px;
+  background: #f8e1e7;
+  cursor: pointer;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 /* ===== 音乐箱组件（2×2） ===== */
@@ -1142,7 +1401,7 @@ button { color: inherit; font: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== 挂件共享：全部无底透明，直接浮在壁纸上 ===== */
+/* ===== 挂件共享：默认透明无底，需要白底的组件自行加卡片样式 ===== */
 .ds-todo,
 .ds-cal,
 .ds-count,
@@ -1150,40 +1409,119 @@ button { color: inherit; font: inherit; }
   grid-row: span 2 !important;
   aspect-ratio: 1 / 1;
   background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-  border: none;
-  border-radius: 0;
   position: relative;
   overflow: visible;
 }
 
-/* ===== 时钟组件（2×2）：纯时间大字，无任何容器 ===== */
+/* ===== 时钟组件（2×2）：透明底，深色大字 ===== */
 .ds-clock {
   grid-row: span 2 !important;
   aspect-ratio: 1 / 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: 4px;
+  padding: var(--space-2);
   background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
 }
 .ds-clock .cl-time {
   font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
-  font-size: 4rem;
+  font-size: 3.2rem;
   font-weight: 700;
   line-height: 1;
-  color: #ffffff;
-  letter-spacing: 0.02em;
+  color: #1a1a1a;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.3);
+}
+.ds-clock .cl-date {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+
+/* ===== 时钟调色盘 ===== */
+.clock-palette {
+  position: fixed;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  z-index: 9999;
+}
+.clock-palette .palette-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #f0f0f0;
+  transition: transform 0.15s;
+}
+.clock-palette .palette-dot:hover {
+  transform: scale(1.2);
+}
+
+/* ===== 大时钟天气组件（4×2）：时间+日期+天气+地址，全部可编辑 ===== */
+.ds-clock-lg {
+  grid-column: span 4 !important;
+  grid-row: span 2 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-2);
+  background: transparent;
+  position: relative;
+}
+.ds-clock-lg .clg-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ds-clock-lg .clg-time {
+  font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #1a1a1a;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.ds-clock-lg .clg-date {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+.ds-clock-lg .clg-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.ds-clock-lg .clg-weather {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ds-clock-lg .clg-temp {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.ds-clock-lg .clg-cond {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.ds-clock-lg .clg-city {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+/* 可编辑元素的 hover 反馈 */
+.ds-clock-lg [contenteditable]:hover {
+  background: rgba(0,0,0,0.04);
+  border-radius: 4px;
 }
 
 /* ===== 今日待办（2×2） ===== */
@@ -1419,8 +1757,6 @@ button { color: inherit; font: inherit; }
 .ds-image {
   grid-column: span 4 !important;
   grid-row: span 2 !important;
-  height: 100%;
-  min-height: 120px;
   border-radius: 0;
   border: none;
   background: transparent;

@@ -336,6 +336,94 @@
                   <span class="ds-del" title="移除组件">×</span>
                 </div>
 
+                <!-- ========== 双人头像（2×2）：两个圆头像挨在一起 ========== -->
+                <div class="ds-duo ds-widget" data-drag="duo">
+                  <div class="duo-avatars">
+                    <div class="duo-avatar" id="duoAvatar1" data-upload></div>
+                    <div class="duo-avatar" id="duoAvatar2" data-upload></div>
+                  </div>
+                  <div class="duo-names" id="duoNames" data-editable>我 & 你</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 三图横排（4×2）：三张图片横向排列 ========== -->
+                <div class="ds-triple ds-widget" data-drag="triple">
+                  <div class="triple-item" id="triple1" data-upload><span>点击添加</span></div>
+                  <div class="triple-item" id="triple2" data-upload><span>点击添加</span></div>
+                  <div class="triple-item" id="triple3" data-upload><span>点击添加</span></div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 四图照片墙（2×2）：2×2 四张图片 ========== -->
+                <div class="ds-photowall ds-widget" data-drag="photowall">
+                  <div class="pw-item" id="pw1" data-upload><span>+</span></div>
+                  <div class="pw-item" id="pw2" data-upload><span>+</span></div>
+                  <div class="pw-item" id="pw3" data-upload><span>+</span></div>
+                  <div class="pw-item" id="pw4" data-upload><span>+</span></div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== ins 风信息卡（4×2）：头像+天数+消息+天气 ========== -->
+                <div class="ds-ins ds-widget" data-drag="ins">
+                  <div class="ins-left">
+                    <div class="ins-avatars">
+                      <div class="ins-avatar" id="insAvatar1" data-upload></div>
+                      <div class="ins-avatar" id="insAvatar2" data-upload></div>
+                    </div>
+                    <div class="ins-days" id="insDays" data-editable>在一起 123 天</div>
+                  </div>
+                  <div class="ins-right">
+                    <div class="ins-msg" id="insMsg1" data-editable>今天的晚霞很好看</div>
+                    <div class="ins-msg-time" id="insTime1" data-editable>18:30</div>
+                    <div class="ins-msg me" id="insMsg2" data-editable>我也觉得</div>
+                    <div class="ins-msg-time me" id="insTime2" data-editable>18:32</div>
+                  </div>
+                  <div class="ins-weather" id="insWeather" data-editable>北京 · 晴 · 22°</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== ins 资料卡（4×2）：头像+id+文案+数据 ========== -->
+                <div class="ds-profile ds-widget" data-drag="profile">
+                  <div class="pf-top">
+                    <div class="pf-avatar" id="pfAvatar" data-upload></div>
+                    <div class="pf-info">
+                      <div class="pf-name" id="pfName" data-editable>@username</div>
+                      <div class="pf-id" id="pfId" data-editable>ID: 12345678</div>
+                    </div>
+                  </div>
+                  <div class="pf-bio" id="pfBio" data-editable>记录生活里的小美好 ✿</div>
+                  <div class="pf-stats">
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfPosts" data-editable>128</span>
+                      <span class="pf-label">帖子</span>
+                    </div>
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfFollow" data-editable>356</span>
+                      <span class="pf-label">关注</span>
+                    </div>
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfFollowers" data-editable>1.2k</span>
+                      <span class="pf-label">粉丝</span>
+                    </div>
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfLikes" data-editable>8.6k</span>
+                      <span class="pf-label">获赞</span>
+                    </div>
+                  </div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== ins 堆叠照片（4×2）：六张互相重叠堆叠，分布全宽 ========== -->
+                <div class="ds-stack ds-widget" data-drag="stack">
+                  <div class="stack-img" data-upload style="position:absolute; top:15px; left:5px; width:70px; height:85px; transform:rotate(-6deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:30px; left:60px; width:70px; height:85px; transform:rotate(3deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:10px; left:115px; width:70px; height:85px; transform:rotate(-2deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:25px; left:170px; width:70px; height:85px; transform:rotate(5deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:15px; left:225px; width:70px; height:85px; transform:rotate(-4deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:30px; left:280px; width:70px; height:85px; transform:rotate(2deg);"></div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
                 <!-- ========== 音乐箱组件（2×2） ========== -->
                 <div class="ds-music ds-widget" data-drag="music">
                   <div class="ms-title">♫ 正在播放</div>
@@ -359,6 +447,22 @@
                 <!-- ========== 时钟组件（2×2）：纯时间，无容器 ========== -->
                 <div class="ds-clock ds-widget" data-drag="clock">
                   <div class="cl-time" id="clTime">--:--</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 大时钟天气组件（4×2）：时间+日期+天气+地址，全部可编辑 ========== -->
+                <div class="ds-clock-lg ds-widget" data-drag="clock-lg">
+                  <div class="clg-left">
+                    <div class="clg-time" id="clgTime" contenteditable="false">--:--</div>
+                    <div class="clg-date" id="clgDate" contenteditable="false">--月--日 周-</div>
+                  </div>
+                  <div class="clg-right">
+                    <div class="clg-weather">
+                      <span class="clg-temp" id="clgTemp" contenteditable="false">22°</span>
+                      <span class="clg-cond" id="clgCond" contenteditable="false">多云</span>
+                    </div>
+                    <div class="clg-city" id="clgCity" contenteditable="false">北京</div>
+                  </div>
                   <span class="ds-del" title="移除组件">×</span>
                 </div>
 
@@ -751,19 +855,25 @@
           }
         });
 
-        // 4. 既没被放置、也没被移除的（例如以后新增的应用）：补到布局的最后一页末尾
+        // 4. 既没被放置、也没被移除的：
+        //    - 应用（app_ 开头）：补到最后一页（以后新增的应用自动出现在桌面）
+        //    - 挂件（非 app_ 开头）：藏进 shelf，不自动上桌面（必须用户主动添加）
         var remainingIds = Object.keys(itemMap);
         if (remainingIds.length > 0) {
           pages = getPages();
           var lastPage = pages[requiredPages - 1] || pages[pages.length - 1];
           var lastGrid = lastPage ? lastPage.querySelector('.desktop-grid') : null;
-          if (lastGrid) {
-            remainingIds.forEach(function (id) {
-              var el = itemMap[id];
+          remainingIds.forEach(function (id) {
+            var el = itemMap[id];
+            if (!el) return;
+            if (id.indexOf('app_') === 0) {
               setElementAsDesktop(el);
-              lastGrid.appendChild(el);
-            });
-          }
+              if (lastGrid) lastGrid.appendChild(el);
+            } else {
+              // 挂件：不在 pages 里就藏进 shelf，不自动出现在桌面
+              moveToShelf(el);
+            }
+          });
         }
 
         // 5. 清掉 HTML 里多余的空页（例如布局只有 1 页时，原来写死的第二页）
@@ -1863,8 +1973,237 @@
         timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
       }
 
+      // 调色盘：读取保存的颜色
+      var savedColor = localStorage.getItem('ds_clock_color') || '#1a1a1a';
+      timeEl.style.color = savedColor;
+
+      // 点击弹出颜色选择器（原生色盘）
+      var palette = null;
+      var colorInput = null;
+
+      timeEl.addEventListener('click', function(e){
+        if (document.body.classList.contains('home-editing')) return;
+        e.stopPropagation();
+        if (palette) { palette.remove(); palette = null; return; }
+
+        palette = document.createElement('div');
+        palette.className = 'clock-palette';
+
+        colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = savedColor;
+        colorInput.style.width = '120px';
+        colorInput.style.height = '40px';
+        colorInput.style.border = 'none';
+        colorInput.style.padding = '0';
+        colorInput.style.cursor = 'pointer';
+
+        colorInput.addEventListener('input', function(){
+          timeEl.style.color = colorInput.value;
+          var clg = document.getElementById('clgTime');
+          if (clg) clg.style.color = colorInput.value;
+        });
+        colorInput.addEventListener('change', function(){
+          savedColor = colorInput.value;
+          localStorage.setItem('ds_clock_color', savedColor);
+          palette.remove();
+          palette = null;
+        });
+
+        palette.appendChild(colorInput);
+        document.body.appendChild(palette);
+
+        // 定位到时钟下方
+        var rect = timeEl.getBoundingClientRect();
+        palette.style.left = (rect.left + rect.width/2 - 60) + 'px';
+        palette.style.top = (rect.bottom + 8) + 'px';
+
+        // 自动打开原生色盘
+        setTimeout(function(){ colorInput.click(); }, 50);
+      });
+
       tick();
       setInterval(tick, 1000);
+    })();
+
+    // ===== 大时钟天气组件（4×2）：时间+日期+天气+地址，全部可编辑 =====
+    (function () {
+      var timeEl = document.getElementById('clgTime');
+      if (!timeEl) return;
+      var dateEl = document.getElementById('clgDate');
+      var week = ['日','一','二','三','四','五','六'];
+
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+      function tick() {
+        var d = new Date();
+        timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+        if (dateEl) dateEl.textContent = (d.getMonth()+1) + '月' + d.getDate() + '日 周' + week[d.getDay()];
+      }
+
+      // 读取保存的颜色
+      var savedColor = localStorage.getItem('ds_clock_color') || '#1a1a1a';
+      timeEl.style.color = savedColor;
+
+      // 可编辑：天气、温度、天气状况、城市
+      ['clgTemp','clgCond','clgCity'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', function(){
+          if (document.body.classList.contains('home-editing')) return;
+          el.contentEditable = 'true';
+          el.focus();
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+        el.addEventListener('blur', function(){
+          el.contentEditable = 'false';
+        });
+      });
+
+      // 点击时间弹出色盘调色
+      var palette = null;
+      timeEl.addEventListener('click', function(e){
+        if (document.body.classList.contains('home-editing')) return;
+        e.stopPropagation();
+        if (palette) { palette.remove(); palette = null; return; }
+
+        palette = document.createElement('div');
+        palette.className = 'clock-palette';
+
+        var colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = savedColor;
+        colorInput.style.width = '120px';
+        colorInput.style.height = '40px';
+        colorInput.style.border = 'none';
+        colorInput.style.padding = '0';
+        colorInput.style.cursor = 'pointer';
+
+        colorInput.addEventListener('input', function(){
+          timeEl.style.color = colorInput.value;
+          var small = document.getElementById('clTime');
+          if (small) small.style.color = colorInput.value;
+        });
+        colorInput.addEventListener('change', function(){
+          savedColor = colorInput.value;
+          localStorage.setItem('ds_clock_color', savedColor);
+          var small = document.getElementById('clTime');
+          if (small) small.style.color = savedColor;
+          palette.remove();
+          palette = null;
+        });
+
+        palette.appendChild(colorInput);
+        document.body.appendChild(palette);
+
+        var rect = timeEl.getBoundingClientRect();
+        palette.style.left = (rect.left + rect.width/2 - 60) + 'px';
+        palette.style.top = (rect.bottom + 8) + 'px';
+
+        setTimeout(function(){ colorInput.click(); }, 50);
+      });
+
+      tick();
+      setInterval(tick, 1000);
+    })();
+
+    // ===== ins 资料卡（4×2）：全部可编辑 =====
+    (function () {
+      // 所有文字元素点击编辑
+      ['pfName','pfId','pfBio','pfPosts','pfFollow','pfFollowers','pfLikes'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', function(){
+          if (document.body.classList.contains('home-editing')) return;
+          el.contentEditable = 'true';
+          el.focus();
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+        el.addEventListener('blur', function(){
+          el.contentEditable = 'false';
+        });
+      });
+
+      // 头像点击上传图片
+      var avatar = document.getElementById('pfAvatar');
+      if (avatar) {
+        var fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.hidden = true;
+        document.body.appendChild(fileInput);
+
+        avatar.addEventListener('click', function(){
+          if (document.body.classList.contains('home-editing')) return;
+          fileInput.click();
+        });
+        fileInput.addEventListener('change', function(){
+          if (fileInput.files && fileInput.files[0]) {
+            var reader = new FileReader();
+            reader.onload = function(e){
+              avatar.style.backgroundImage = 'url(' + e.target.result + ')';
+              avatar.style.backgroundSize = 'cover';
+              avatar.style.backgroundPosition = 'center';
+            };
+            reader.readAsDataURL(fileInput.files[0]);
+          }
+        });
+      }
+    })();
+
+    // ===== 通用可编辑组件：所有文字/图片元素点击即可编辑 =====
+    (function () {
+      // 所有带 data-editable 的文字元素，点击进入编辑
+      document.querySelectorAll('[data-editable]').forEach(function(el){
+        el.addEventListener('click', function(){
+          if (document.body.classList.contains('home-editing')) return;
+          el.contentEditable = 'true';
+          el.focus();
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+        el.addEventListener('blur', function(){
+          el.contentEditable = 'false';
+        });
+      });
+
+      // 所有带 data-upload 的图片区域，点击上传
+      document.querySelectorAll('[data-upload]').forEach(function(el){
+        var fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.hidden = true;
+        document.body.appendChild(fileInput);
+
+        el.addEventListener('click', function(){
+          if (document.body.classList.contains('home-editing')) return;
+          fileInput.click();
+        });
+        fileInput.addEventListener('change', function(){
+          if (fileInput.files && fileInput.files[0]) {
+            var reader = new FileReader();
+            reader.onload = function(e){
+              el.style.backgroundImage = 'url(' + e.target.result + ')';
+              el.style.backgroundSize = 'cover';
+              el.style.backgroundPosition = 'center';
+              var hint = el.querySelector('span');
+              if (hint) hint.style.display = 'none';
+            };
+            reader.readAsDataURL(fileInput.files[0]);
+          }
+        });
+      });
     })();
 
     // ===== 今日待办组件：勾选/编辑/添加，localStorage 持久化 =====
