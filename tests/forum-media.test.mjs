@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
+import { Script, runInNewContext } from 'node:vm';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
@@ -144,4 +144,20 @@ test('MediaRepository writes a shared refs array and retains compatibility with 
   assert.match(mediaRepositorySource, /兼容早期 v1 写入的扁平/);
   assert.match(mediaRepositorySource, /Array\.isArray\(ref\.refs\)/);
   assert.match(mediaRepositorySource, /ownerType:\s*primary\.ownerType/);
+});
+
+
+test('forum inline scripts parse without syntax errors', () => {
+  for (const [name, source] of [['forum/forum.html', forumHome], ['forum/forum-detail.html', forumDetail]]) {
+    const blocks = Array.from(source.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi))
+      .map((match) => match[1])
+      .filter((body) => body.trim());
+    assert.ok(blocks.length > 0, name + ' should contain an inline application script');
+    blocks.forEach((body, index) => {
+      assert.doesNotThrow(
+        () => new Script(body, { filename: name + '#inline-' + index }),
+        name + ' inline script ' + index + ' should parse'
+      );
+    });
+  }
 });
