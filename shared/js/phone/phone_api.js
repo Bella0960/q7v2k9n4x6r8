@@ -120,7 +120,8 @@
             return Promise.reject(promptError);
         }
 
-        var baseUrl = String(config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\\/+$/, '');
+        var baseUrl = String(config.baseUrl || 'https://api.openai.com/v1').trim();
+        while (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
         var endpoint = String(opts.endpoint || config.imageEndpoint || (baseUrl + '/images/generations')).trim();
         var endpointUrl;
         try {
@@ -147,7 +148,12 @@
 
         function decodeBase64Image(encoded, mimeType) {
             var binary;
-            try { binary = global.atob(String(encoded).replace(/\\s/g, '')); }
+            var cleanEncoded = '';
+            var encodedText = String(encoded);
+            for (var j = 0; j < encodedText.length; j++) {
+                if (encodedText.charCodeAt(j) > 32) cleanEncoded += encodedText.charAt(j);
+            }
+            try { binary = global.atob(cleanEncoded); }
             catch (error) { throw new Error('图片生成服务返回了无效的 Base64 图片数据'); }
             var bytes = new Uint8Array(binary.length);
             for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -196,7 +202,7 @@
             }
             throw new Error('图片生成服务返回格式不受支持（需要 data[0].b64_json 或 data[0].url）');
         }).then(function (blob) {
-            if (!blob || !blob.size || !/^image\\//i.test(blob.type || '')) {
+            if (!blob || !blob.size || String(blob.type || '').toLowerCase().indexOf('image/') !== 0) {
                 throw new Error('图片生成服务返回了无效图片文件');
             }
             clearTimeout(timer);
