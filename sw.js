@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v161';
+const CACHE_NAME = 'phone-app-pwa-v162';
 const APP_SHELL = [
   './',
   './index.html',
@@ -38,7 +38,7 @@ const APP_SHELL = [
   './shared/js/wallpaper-store.js?v=20261026v2',
   './shared/css/chat-beauty-runtime.css?v=20261031v1',
   './shared/css/silver-butterfly-theme.css?v=20261102v5',
-  './shared/css/wechat-theme-refinements.css?v=20261104v1',
+  './shared/css/wechat-theme-refinements.css?v=20261105v2',
   './shared/css/chat-list-editorial-theme.css?v=20261104v2',
   './shared/js/chat-list-theme.js?v=20261104v2',
   './shared/assets/silver-butterfly-photo.webp',
