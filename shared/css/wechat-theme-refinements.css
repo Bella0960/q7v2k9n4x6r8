@@ -20,49 +20,115 @@
   text-shadow: none !important;
 }
 
-/* Shared bottom tab bar */
+/* Shared bottom tab bar: four equal cells, with icon and label centered independently. */
 .phone-mockup[data-chat-theme-preset="wechat"] .floating-nav {
-  min-height: 59px;
-  padding: 6px 8px calc(5px + env(safe-area-inset-bottom, 0px)) !important;
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+  margin: 0 !important;
+  padding: 3px 8px env(safe-area-inset-bottom, 0px) !important;
+  gap: 0 !important;
   background: rgba(249, 249, 249, .98) !important;
+  border: 0 !important;
   border-top: 1px solid #E7E7E7 !important;
+  border-radius: 0 !important;
   box-shadow: none !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
 .phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab {
-  min-height: 45px;
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 0 !important;
   gap: 3px !important;
   color: #777777 !important;
   font-size: 0 !important;
+  line-height: 1 !important;
 }
 .phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab .nav-ico {
-  width: 24px;
-  height: 24px;
+  display: flex !important;
+  flex: 0 0 24px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  margin: 0 auto !important;
+  padding: 0 !important;
   background: transparent !important;
   transform: none !important;
 }
 .phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-ico svg {
+  display: block !important;
+  flex: 0 0 21px !important;
   width: 21px !important;
   height: 21px !important;
   stroke-width: 1.7 !important;
 }
-.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab.active,
-.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab.active > span:last-child::after {
-  color: var(--wechat-green) !important;
-  font-weight: 600 !important;
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab > span:nth-of-type(2) {
+  display: block !important;
+  flex: 0 0 13px !important;
+  width: 100% !important;
+  height: 13px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 0 !important;
+  line-height: 13px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  color: inherit !important;
 }
-.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab > span:last-child::after {
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab > span:nth-of-type(2)::after {
   display: block;
   font-size: 10px;
-  line-height: 1.25;
+  line-height: 13px;
+  text-align: center;
   color: inherit;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab .nav-badge {
+  position: absolute !important;
+  top: 3px !important;
+  left: calc(50% + 5px) !important;
+  right: auto !important;
+  margin: 0 !important;
+  z-index: 2 !important;
+  pointer-events: none;
+}
+/* Neutralize the old fallback rule that used :last-child and could print the label on the badge. */
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(1) > span.nav-badge:last-child::after,
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(2) > span.nav-badge:last-child::after,
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(3) > span.nav-badge:last-child::after,
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab:nth-child(4) > span.nav-badge:last-child::after {
+  content: none !important;
+  display: none !important;
+}
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab.active,
+.phone-mockup[data-chat-theme-preset="wechat"] .floating-nav .nav-tab.active > span:nth-of-type(2)::after {
+  color: var(--wechat-green) !important;
+  font-weight: 600 !important;
 }
 
 /* WeChat home / conversation list */
 .phone-mockup[data-chat-theme-preset="wechat"] .main-stage {
-  padding: 0 0 calc(76px + env(safe-area-inset-bottom, 0px)) !important;
-  background: var(--wechat-page) !important;
+  padding: 0 0 calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+  background: #FFFFFF !important;
 }
 .phone-mockup[data-chat-theme-preset="wechat"] .wechat-home-header {
   position: sticky;
