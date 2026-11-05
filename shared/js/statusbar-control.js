@@ -1,8 +1,7 @@
 /* ============================================================
  * statusbar-control.js
- * 全局状态栏控制：根据 localStorage 开关隐藏/显示 时间 与 电量图标
- *   settings_statusbar_time    = '0' 时隐藏时间
- *   settings_statusbar_battery = '0' 时隐藏电量/状态图标
+ * 全局状态栏控制：根据 localStorage 开关隐藏/显示整个状态栏
+ *   settings_statusbar = '0' 时隐藏整个状态栏（时间+电量全部隐藏）
  *   settings_home_indicator_visible = '0' 时隐藏桌面最底部的小横条
  * 所有页面在 </body> 前引入本脚本即可自动生效。
  * ============================================================ */
@@ -14,30 +13,12 @@
     }
 
     function apply() {
-        var hideTime = getPref('settings_statusbar_time') === '0';
-        var hideBattery = getPref('settings_statusbar_battery') === '0';
+        var hideStatusbar = getPref('settings_statusbar') === '0';
         var hideHomeIndicator = getPref('settings_home_indicator_visible') === '0';
         var bars = document.querySelectorAll('.status-bar');
         for (var i = 0; i < bars.length; i++) {
             var sb = bars[i];
-            /* ---- 时间元素：优先 .status-time / time / 无 class 的第一个 span ---- */
-            var timeEl = sb.querySelector('.status-time') || sb.querySelector('time');
-            if (!timeEl && sb.children && sb.children.length) {
-                var c0 = sb.children[0];
-                if (c0.tagName === 'SPAN' && !c0.className) timeEl = c0;
-            }
-            if (timeEl) {
-                timeEl.style.display = hideTime ? 'none' : '';
-            }
-            /* ---- 电量/状态图标组 ---- */
-            var icons = sb.querySelector('.status-icons');
-            if (icons) {
-                icons.style.display = hideBattery ? 'none' : '';
-            }
-            var bat = sb.querySelector('.battery-icon');
-            if (bat) {
-                bat.style.display = hideBattery ? 'none' : '';
-            }
+            sb.style.display = hideStatusbar ? 'none' : '';
         }
 
         /* The bottom home indicator is separate from the top status bar and has its own setting. */
@@ -56,7 +37,7 @@
     window.addEventListener('pageshow', apply);
     window.addEventListener('storage', function (event) {
         if (!event.key || event.key === 'settings_home_indicator_visible' ||
-            event.key === 'settings_statusbar_time' || event.key === 'settings_statusbar_battery') apply();
+            event.key === 'settings_statusbar') apply();
     });
     /* 暴露给设置页开关联动 */
     window.__statusbarControlApply = apply;
