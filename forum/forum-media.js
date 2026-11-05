@@ -44,12 +44,12 @@
   }
 
   function release(assetIds, ownerType, ownerId) {
-    var list = Array.isArray(assetIds) ? assetIds.slice() : [];
+    var list = Array.from(new Set(Array.isArray(assetIds) ? assetIds : []));
     if (!list.length) return Promise.resolve([]);
     var repo;
     try { repo = getRepository(); } catch (error) { return Promise.resolve([]); }
     return Promise.all(list.map(function (assetId) {
-      return repo.removeRef(assetId, ownerType, ownerId).catch(function () { return null; });
+      return repo.removeRef(assetId, ownerType, ownerId).then(function () { return repo.removeAsset(assetId); }).catch(function () { return null; });
     }));
   }
 
@@ -78,7 +78,7 @@
             throw new Error(result && result.error && result.error.message
               ? result.error.message : '图片保存失败');
           }
-          assetIds.push(result.value.assetId);
+          if (assetIds.indexOf(result.value.assetId) < 0) assetIds.push(result.value.assetId);
         });
       });
     });
