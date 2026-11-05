@@ -59,11 +59,39 @@ try {
         await page.waitForSelector('.phone-mockup[data-chat-theme-preset="wechat"]', { timeout: 15000 });
         const metrics = await page.evaluate(() => {
           const shell = document.querySelector('.phone-mockup');
+          const viewportWidth = document.documentElement.clientWidth;
+          const overflowElements = Array.from(document.querySelectorAll('body *'))
+            .map((element) => {
+              const rect = element.getBoundingClientRect();
+              const style = getComputedStyle(element);
+              return {
+                tag: element.tagName.toLowerCase(),
+                id: element.id || '',
+                className: typeof element.className === 'string' ? element.className.slice(0, 100) : '',
+                left: Math.round(rect.left * 10) / 10,
+                right: Math.round(rect.right * 10) / 10,
+                width: Math.round(rect.width * 10) / 10,
+                cssWidth: style.width,
+                minWidth: style.minWidth,
+                padding: style.padding,
+                margin: style.margin,
+                position: style.position,
+                transform: style.transform,
+                display: style.display,
+                visibility: style.visibility
+              };
+            })
+            .filter((item) => item.display !== 'none' && item.visibility !== 'hidden'
+              && (item.right > viewportWidth + 1 || item.left < -1))
+            .sort((a, b) => b.right - a.right)
+            .slice(0, 25);
           return {
             stylesheetCount: document.querySelectorAll('link[href*="wechat-theme-refinements.css"]').length,
             green: getComputedStyle(shell).getPropertyValue('--wechat-green').trim(),
             documentWidth: document.documentElement.scrollWidth,
-            bodyWidth: document.body.scrollWidth
+            bodyWidth: document.body.scrollWidth,
+            viewportWidth,
+            overflowElements
           };
         });
         assert.equal(metrics.stylesheetCount, 1, label + ' loads the WeChat layer exactly once');
