@@ -162,5 +162,5 @@ test('settings, backup, and chat are connected to the assetId-based image record
     assert.match(chatSource, /assetId: result\.assetId/);
     assert.match(chatSource, /resolveGeneratedImage\(bubble, String\(msg\.assetId\)/);
     assert.match(chatSource, /image-action-button/);
-    assert.match(chatSource, /maomao-character-image\\.png/);
+    assert.match(chatSource, /maomao-character-image\.png/);
 });
