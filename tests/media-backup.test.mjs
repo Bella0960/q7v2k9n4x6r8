@@ -303,6 +303,7 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'EXPORT_WARN_CHARS'),
         extractVar(backupSrc, 'EXCLUDE_KEYS'),
         extractVar(backupSrc, 'SECRET_KEYS'),
+        extractVar(backupSrc, 'DEVICE_BOUND_KEYS'),
         extractVar(backupSrc, 'CORE_HINTS'),
         extractVar(backupSrc, 'IDB_TARGETS')
     ];
@@ -788,7 +789,8 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
         phone_data_v2: JSON.stringify({ theme: 'editorial', wallpaper: 'ocean' }),
         chat_history_99: JSON.stringify({ lastSeen: '2026-11-04' }),
         api_call_logs: 'should_be_excluded_by_EXCLUDE_KEYS',   // 会被 snapshot(dropCaches=true) 排除
-        api_settings: 'SHOULD_BE_EXCLUDED_AS_SECRET'           // 会被 snapshot(dropSecrets=true) 排除
+        api_settings: 'SHOULD_BE_EXCLUDED_AS_SECRET',           // 会被 snapshot(dropSecrets=true) 排除
+        cloud_device_v1: JSON.stringify({ deviceId: 'device-secret-should-never-export' })
     };
     const ctx = buildCtxFull({ localStorage: fakeLS });
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
@@ -852,6 +854,8 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     assert.ok(dataKeys.includes('chat_history_99'), '应保留 chat_history_99');
     assert.ok(!dataKeys.includes('api_call_logs'), 'api_call_logs 属于 EXCLUDE_KEYS，应被排除');
     assert.ok(!dataKeys.includes('api_settings'), 'api_settings 属于 SECRET_KEYS，应被排除');
+    assert.ok(!dataKeys.includes('cloud_device_v1'),
+        '设备凭据属于 DEVICE_BOUND_KEYS，即使勾选包含密钥也永不应导出');
 
     // ====== 3. maomao-assets atomicExportFailed → 不应出现在 indexedDB 段 ======
     assert.ok(!('maomao-assets' in parsed.indexedDB),
