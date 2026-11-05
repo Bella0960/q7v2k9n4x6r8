@@ -272,6 +272,20 @@
                         <div id="model-fetch-msg" class="model-fetch-msg">输入 API Key 后点击拉取</div>
                     </div>
 
+                    <h3 class="api-section-title">图片生成</h3>
+
+                    <div class="api-row">
+                        <label for="api-image-model">图片生成模型</label>
+                        <input id="api-image-model" placeholder="例如 gpt-image-1；留空则关闭自动配图">
+                        <div class="param-hint">仅用于论坛 AI 角色帖配图，不影响聊天模型。填写后，符合条件的新角色帖子才会自动生成图片；每批最多 3 张。</div>
+                    </div>
+
+                    <div class="api-row">
+                        <label for="api-image-endpoint">图片生成接口 URL（可选）</label>
+                        <input id="api-image-endpoint" type="url" placeholder="留空使用 Base URL + /images/generations">
+                        <div class="param-hint">需要服务商兼容 OpenAI Images API；图片模型使用同一 API Key。支持 Base64 图片或可下载的图片 URL。</div>
+                    </div>
+
                     <h3 class="api-section-title">高级参数</h3>
 
                     <div class="api-row">
