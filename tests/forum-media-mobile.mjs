@@ -109,7 +109,6 @@ async function runViewport(browser, width) {
     await page.locator('#commentInput').fill('这张图片也在评论里。');
     await page.locator('#commentImages').setInputFiles(imageFile);
     await page.locator('#commentList .comment').count();
-    await page.locator('.comment-image-button').click();
     // setInputFiles dispatches the change event on the hidden input; the preview confirms it.
     await page.locator('#commentImagePreview img').waitFor({ state: 'visible' });
     await page.locator('.send-btn').click();
