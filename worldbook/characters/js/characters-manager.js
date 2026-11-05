@@ -821,7 +821,7 @@ function handleSaveRole() {
     const toneVal = document.getElementById('editRoleTone').value;
     const appearanceVal = document.getElementById('editRoleAppearance').value.trim();
     const styleKeywordsVal = document.getElementById('editRoleStyleKeywords').value
-        .split(/[,，、\\n]/).map(function (item) { return item.trim(); })
+        .split(/[,，、\n]/).map(function (item) { return item.trim(); })
         .filter(Boolean).slice(0, 20);
 
     if (!nameVal) {
