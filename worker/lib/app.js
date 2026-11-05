@@ -1,0 +1,380 @@
+import {
+  ApiError, fail, ok, readJsonBody
+} from './http.js';
+import {
+  base64UrlToBytes, randomToken, sha256Hex, timingSafeEqualHex
+} from './crypto.js';
+import {
+  PushConfigError, parseVapidKeys, sendWebPush
+} from './webpush.js';
+
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
+const MAX_SUBSCRIPTIONS_PER_DEVICE = 10;
+const REGISTRATIONS_PER_IP_PER_HOUR = 20;
+const TEST_PUSH_PER_10_MINUTES = 3;
+
+export const MILESTONE = '1';
+
+function deviceAuthHeader(request) {
+  const raw = String(request.headers.get('x-device-auth') || '').trim();
+  const point = raw.indexOf('.');
+  if (point <= 0) return null;
+  const deviceId = raw.slice(0, point);
+  const secret = raw.slice(point + 1);
+  if (!DEVICE_ID_PATTERN.test(deviceId) || !DEVICE_SECRET_PATTERN.test(secret)) return null;
+  return { deviceId, secret };
+}
+
+async function secretHash(env, deviceId, secret) {
+  const pepper = String(env?.DEVICE_SECRET_PEPPER || '');
+  return sha256Hex(`${pepper}|${deviceId}|${secret}`);
+}
+
+async function clientIpHash(request, env) {
+  const ip = String(request.headers.get('cf-connecting-ip') || '').trim();
+  if (!ip) return 'unavailable';
+  return (await sha256Hex(`${String(env?.DEVICE_SECRET_PEPPER || '')}|ip|${ip}`)).slice(0, 32);
+}
+
+function validateSubscription(input) {
+  if (!input || typeof input !== 'object') {
+    throw new ApiError(400, 'INVALID_SUBSCRIPTION', '缺少 subscription 对象');
+  }
+  const endpoint = String(input.endpoint || '').trim();
+  if (!endpoint || endpoint.length > 1024) {
+    throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'endpoint 非法');
+  }
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch (error) {
+    throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'endpoint 不是合法 URL');
+  }
+  if (url.protocol !== 'https:') {
+    throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'endpoint 必须是 https');
+  }
+  const keys = input.keys || {};
+  const p256dhBytes = base64UrlToBytes(String(keys.p256dh || ''));
+  const authBytes = base64UrlToBytes(String(keys.auth || ''));
+  if (!p256dhBytes || p256dhBytes.length !== 65 || p256dhBytes[0] !== 4) {
+    throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'keys.p256dh 非法');
+  }
+  if (!authBytes || authBytes.length !== 16) {
+    throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'keys.auth 非法');
+  }
+  let expirationTime = null;
+  if (input.expirationTime !== null && input.expirationTime !== undefined) {
+    expirationTime = Number(input.expirationTime);
+    if (!Number.isFinite(expirationTime) || expirationTime <= 0) expirationTime = null;
+  }
+  return {
+    endpoint,
+    p256dh: String(keys.p256dh),
+    authKey: String(keys.auth),
+    expirationTime
+  };
+}
+
+function vapidSummary(env) {
+  return {
+    configured: Boolean(env?.VAPID_PUBLIC_KEY && env?.VAPID_PRIVATE_KEY && env?.VAPID_SUBJECT),
+    publicKey: String(env?.VAPID_PUBLIC_KEY || '')
+  };
+}
+
+/**
+ * 创建 API 处理器。不依赖 Workerd 专有 API，便于用 node:sqlite 直接跑契约测试。
+ */
+export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
+  async function authenticate(request) {
+    const parsed = deviceAuthHeader(request);
+    if (!parsed) throw new ApiError(401, 'UNAUTHORIZED', '缺少或非法的设备凭据');
+    const device = await store.getDevice(parsed.deviceId);
+    if (!device) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
+    if (device.revoked_at) throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
+    const expected = await secretHash(env, parsed.deviceId, parsed.secret);
+    if (!timingSafeEqualHex(expected, device.secret_hash)) {
+      throw new ApiError(401, 'UNAUTHORIZED', '设备凭据校验失败');
+    }
+    const timestamp = now();
+    if (timestamp - Number(device.last_seen_at || 0) > 300000) {
+      await store.touchDevice(device.id, timestamp);
+    }
+    return device;
+  }
+
+  async function registerDevice(request) {
+    const body = await readJsonBody(request);
+    const deviceId = String(body.deviceId || '').trim();
+    const secret = String(body.secret || '').trim();
+    if (!DEVICE_ID_PATTERN.test(deviceId) || !DEVICE_SECRET_PATTERN.test(secret)) {
+      throw new ApiError(400, 'INVALID_DEVICE_CREDENTIALS', '设备凭据格式不合法');
+    }
+    const timestamp = now();
+    const existing = await store.getDevice(deviceId);
+    const hash = await secretHash(env, deviceId, secret);
+    if (existing) {
+      if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '该设备授权已被撤销');
+      if (!timingSafeEqualHex(hash, existing.secret_hash)) {
+        throw new ApiError(409, 'DEVICE_CONFLICT', '设备 ID 已被其他凭据占用');
+      }
+      await store.updateDeviceProfile(deviceId, {
+        label: String(body.label || '').slice(0, 64),
+        platform: String(body.platform || '').slice(0, 64)
+      });
+      await store.touchDevice(deviceId, timestamp);
+      return ok({ device: { id: deviceId, createdAt: Number(existing.created_at), reenrolled: true } });
+    }
+
+    const ipHash = await clientIpHash(request, env);
+    const recent = await store.countDevicesByIp(ipHash, timestamp - 3600000);
+    if (recent >= REGISTRATIONS_PER_IP_PER_HOUR) {
+      throw new ApiError(429, 'REGISTRATION_RATE_LIMITED', '注册过于频繁，请稍后再试');
+    }
+
+    await store.insertDevice({
+      id: deviceId,
+      secretHash: hash,
+      label: String(body.label || '').slice(0, 64),
+      platform: String(body.platform || '').slice(0, 64),
+      userAgent: String(request.headers.get('user-agent') || '').slice(0, 200),
+      ipHash,
+      now: timestamp
+    });
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId,
+      kind: 'device_register',
+      status: 'success',
+      reasonCode: 'enrolled',
+      detail: { platform: String(body.platform || '').slice(0, 64) },
+      now: timestamp
+    });
+    return ok({ device: { id: deviceId, createdAt: timestamp, reenrolled: false } });
+  }
+
+  async function subscribe(request) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    const validated = validateSubscription(body.subscription || body);
+    const existing = await store.listSubscriptions(device.id, { includeDisabled: true });
+    if (existing.length >= MAX_SUBSCRIPTIONS_PER_DEVICE && !existing.some(item => item.endpoint === validated.endpoint)) {
+      throw new ApiError(409, 'SUBSCRIPTION_LIMIT', '该设备订阅数量已达上限');
+    }
+    const timestamp = now();
+    const result = await store.upsertSubscription({
+      id: randomToken(12),
+      deviceId: device.id,
+      endpoint: validated.endpoint,
+      p256dh: validated.p256dh,
+      authKey: validated.authKey,
+      expirationTime: validated.expirationTime,
+      now: timestamp
+    });
+    return ok({
+      subscription: {
+        id: result.id,
+        endpoint: validated.endpoint,
+        created: !result.resurrected
+      }
+    });
+  }
+
+  async function unsubscribe(request) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    const endpoint = String(body.endpoint || '').trim();
+    const timestamp = now();
+    if (endpoint) {
+      const found = await store.getSubscriptionByEndpoint(device.id, endpoint);
+      if (!found) throw new ApiError(404, 'SUBSCRIPTION_NOT_FOUND', '订阅不存在');
+      await store.disableSubscriptionByEndpoint(device.id, endpoint, 'user', timestamp);
+      return ok({ disabled: 1 });
+    }
+    await store.disableAllSubscriptions(device.id, 'user', timestamp);
+    return ok({ disabled: 'all' });
+  }
+
+  async function listSubscriptions(request) {
+    const device = await authenticate(request);
+    const rows = await store.listSubscriptions(device.id, { includeDisabled: true });
+    return ok({
+      subscriptions: rows.map(row => ({
+        id: row.id,
+        endpoint: row.endpoint,
+        createdAt: Number(row.created_at),
+        updatedAt: Number(row.updated_at),
+        lastSuccessAt: row.last_success_at ? Number(row.last_success_at) : null,
+        failureCount: Number(row.failure_count || 0),
+        disabledAt: row.disabled_at ? Number(row.disabled_at) : null,
+        disabledReason: row.disabled_reason || ''
+      }))
+    });
+  }
+
+  async function testPush(request) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    const timestamp = now();
+    const recent = await store.countRecentExecutions(device.id, 'test_push', timestamp - 600000);
+    if (recent >= TEST_PUSH_PER_10_MINUTES) {
+      throw new ApiError(429, 'PUSH_RATE_LIMITED', '测试推送过于频繁，请稍后再试');
+    }
+    let keys;
+    try {
+      keys = parseVapidKeys(env);
+    } catch (error) {
+      if (error instanceof PushConfigError) {
+        throw new ApiError(503, 'PUSH_NOT_CONFIGURED', error.message);
+      }
+      throw error;
+    }
+
+    const subscriptions = await store.listSubscriptions(device.id);
+    if (!subscriptions.length) {
+      throw new ApiError(409, 'NO_ACTIVE_SUBSCRIPTIONS', '当前设备没有有效推送订阅');
+    }
+
+    const dedupeKey = String(body.dedupeKey || `test:${device.id}:${timestamp}`).slice(0, 96);
+    const payload = JSON.stringify({
+      type: 'test',
+      title: 'MAOMAO 云端连接测试',
+      body: '如果你看到这条通知，说明推送链路已经打通。',
+      url: './settings/settings.html',
+      tag: 'cloud-test',
+      dedupeKey,
+      timestamp
+    });
+
+    const startedAt = now();
+    const results = [];
+    let sent = 0;
+    let skipped = 0;
+    let failed = 0;
+    let gone = 0;
+
+    for (const subscription of subscriptions) {
+      if (await store.findDelivery(dedupeKey, subscription.id)) {
+        results.push({ subscriptionId: subscription.id, status: 'duplicate' });
+        skipped += 1;
+        continue;
+      }
+      try {
+        const outcome = await sendWebPush(
+          { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth_key },
+          payload,
+          keys,
+          { nowMs: timestamp, fetchImpl }
+        );
+        await store.recordDelivery({
+          id: randomToken(12),
+          dedupeKey,
+          subscriptionId: subscription.id,
+          status: outcome.ok ? 'sent' : outcome.gone ? 'gone' : 'failed',
+          httpStatus: outcome.statusCode,
+          now: timestamp
+        });
+        if (outcome.ok) {
+          sent += 1;
+          await store.markPushSuccess(subscription.id, timestamp);
+        } else {
+          failed += 1;
+          if (outcome.gone) {
+            gone += 1;
+            await store.disableSubscriptionById(subscription.id, 'gone', timestamp);
+          } else {
+            await store.markPushFailure(subscription.id);
+          }
+        }
+        results.push({
+          subscriptionId: subscription.id,
+          status: outcome.ok ? 'sent' : outcome.gone ? 'gone' : 'failed',
+          httpStatus: outcome.statusCode
+        });
+      } catch (error) {
+        failed += 1;
+        await store.recordDelivery({
+          id: randomToken(12),
+          dedupeKey,
+          subscriptionId: subscription.id,
+          status: 'error',
+          httpStatus: 0,
+          now: timestamp
+        });
+        await store.markPushFailure(subscription.id);
+        results.push({ subscriptionId: subscription.id, status: 'error' });
+      }
+    }
+
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId: device.id,
+      kind: 'test_push',
+      status: sent > 0 ? 'success' : 'failed',
+      reasonCode: sent > 0 ? 'delivered' : 'no_delivery',
+      detail: { sent, skipped, failed, gone },
+      durationMs: Math.max(0, now() - startedAt),
+      now: timestamp
+    });
+    await store.cleanupSubscriptions(timestamp);
+
+    return ok({ dedupeKey, results, summary: { sent, skipped, failed, gone } });
+  }
+
+  async function revokeDevice(request) {
+    const device = await authenticate(request);
+    const timestamp = now();
+    await store.revokeDevice(device.id, timestamp);
+    await store.disableAllSubscriptions(device.id, 'revoked', timestamp);
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId: device.id,
+      kind: 'device_revoke',
+      status: 'success',
+      reasonCode: 'revoked',
+      now: timestamp
+    });
+    return ok({ revoked: true });
+  }
+
+  return async function handleApi(request) {
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/\/+$/, '');
+    const method = request.method.toUpperCase();
+    try {
+      if (path === '/api/health' && method === 'GET') {
+        const counts = await store.counts();
+        const vapid = vapidSummary(env);
+        return ok({
+          service: 'maomao-cloud',
+          milestone: MILESTONE,
+          storage: 'durable-object-sqlite',
+          vapidConfigured: vapid.configured,
+          counts,
+          time: now()
+        });
+      }
+      if (path === '/api/push/config' && method === 'GET') {
+        const vapid = vapidSummary(env);
+        if (!vapid.configured) {
+          throw new ApiError(503, 'PUSH_NOT_CONFIGURED', '云端尚未配置 VAPID 密钥');
+        }
+        return ok({ publicKey: vapid.publicKey, subjectConfigured: true });
+      }
+      if (path === '/api/devices/register' && method === 'POST') return await registerDevice(request);
+      if (path === '/api/devices/revoke' && method === 'POST') return await revokeDevice(request);
+      if (path === '/api/push/subscriptions' && method === 'POST') return await subscribe(request);
+      if (path === '/api/push/subscriptions' && method === 'GET') return await listSubscriptions(request);
+      if (path === '/api/push/unsubscribe' && method === 'POST') return await unsubscribe(request);
+      if (path === '/api/push/test' && method === 'POST') return await testPush(request);
+      if (path.startsWith('/api/')) throw new ApiError(404, 'NOT_FOUND', '接口不存在');
+      throw new ApiError(405, 'METHOD_NOT_ALLOWED', '不支持该请求方法');
+    } catch (error) {
+      if (error instanceof ApiError) return fail(error.status, error.code, error.message);
+      if (error instanceof PushConfigError) return fail(503, 'PUSH_NOT_CONFIGURED', error.message);
+      console.error('[cloud-api]', error?.code || 'INTERNAL', error?.message || String(error));
+      return fail(500, 'INTERNAL_ERROR', '云端处理失败');
+    }
+  };
+}
