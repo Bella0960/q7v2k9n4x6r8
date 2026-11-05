@@ -65,6 +65,7 @@ runInNewContext(rolePublicTimelineSource, { window: rolePublicTimelineWindow, gl
 const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
+const profileEditor = read('profile/edit-profile.html');
 const packageJson = JSON.parse(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
@@ -970,7 +971,7 @@ test('group chat wiring includes mention dispatch, paced replies, duplicate prot
 test('shared policy is loaded by both relevant pages and precached for PWA', () => {
   assert.match(detail, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(search, /chat-message-policy\.js\?v=20261029v5/);
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v161'));
   assert.match(serviceWorker, /chat-message-policy\.js\?v=20261029v5/);
   assert.match(detail, /chat-send-policy\.js\?v=20261029v2/);
   assert.match(serviceWorker, /chat-send-policy\.js\?v=20261029v2/);
@@ -1283,7 +1284,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1404,7 +1405,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildVoiceHabitPrompt\(voiceHabitProfile\)/);
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1591,7 +1592,7 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
   assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v161'));
   assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
 });
 
@@ -1798,7 +1799,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -1854,7 +1855,7 @@ test('chat, group chat and Moments prompts consume the same public timeline with
   assert.ok(detail.includes('PhoneStorage.getMoments()'));
   assert.ok(momentsPage.includes('role-public-timeline.js?v=20261102v1'));
   assert.ok(momentsPage.includes('RolePublicTimeline.buildRolePrompt'));
-  assert.ok(serviceWorker.includes('phone-app-pwa-v159'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v161'));
   assert.ok(serviceWorker.includes('role-public-timeline.js?v=20261102v1'));
 });
   
@@ -1884,7 +1885,7 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
 
   assert.ok(chatHome.includes('chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(chatHome.includes('chat-list-theme.js?v=20261104v2'));
-  assert.match(serviceWorker, /phone-app-pwa-v159/);
+  assert.match(serviceWorker, /phone-app-pwa-v161/);
   assert.ok(serviceWorker.includes('./shared/css/chat-list-editorial-theme.css?v=20261104v2'));
   assert.ok(serviceWorker.includes('./shared/js/chat-list-theme.js?v=20261104v2'));
 
@@ -2026,5 +2027,97 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
   ]) {
     assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
   }
-  assert.match(serviceWorker, /phone-app-pwa-v159/, 'do not force a full production cache-version reset for a theme bridge update');
+  assert.match(serviceWorker, /phone-app-pwa-v161/, 'do not force a full production cache-version reset for a theme bridge update');
+});
+
+
+test('MAo uses the bunny as its installed app icon and exposes the three default avatar presets', () => {
+  const manifest = JSON.parse(read('manifest.json'));
+  assert.equal(manifest.name, 'MAo');
+  assert.equal(manifest.short_name, 'MAo');
+  assert.ok(manifest.icons.some(icon => icon.src === './assets/mao-bunny-192.png' && icon.sizes === '192x192'));
+  assert.ok(manifest.icons.some(icon => icon.src === './assets/mao-bunny-512.png' && icon.purpose === 'maskable'));
+
+  assert.ok(homePage.includes('<title>MAo</title>'));
+  assert.match(homePage, /name="apple-mobile-web-app-title" content="MAo"/);
+  assert.ok(homePage.includes('apple-touch-icon') && homePage.includes('mao-bunny-192.png'));
+
+  for (const asset of ['avatar-bunny.svg', 'avatar-cat.svg', 'avatar-cat-dark.svg']) {
+    assert.ok(profileEditor.includes('data-avatar-src="../assets/' + asset + '"'), 'missing selectable avatar: ' + asset);
+    assert.ok(profileEditor.includes('"../assets/' + asset + '": "data:image/svg+xml;charset=UTF-8,%3Csvg'), 'preset should persist as a portable data URL: ' + asset);
+    assert.ok(serviceWorker.includes('./assets/' + asset), 'avatar must be available offline: ' + asset);
+    assert.ok(read('assets/' + asset).includes('<svg'), 'avatar SVG asset should exist: ' + asset);
+  }
+  assert.ok(serviceWorker.includes('./assets/mao-bunny-192.png'));
+  assert.ok(serviceWorker.includes('./assets/mao-bunny-512.png'));
+});
+
+
+test('PhoneStorage automatically assigns one of the three default avatars only when the profile avatar is empty', () => {
+  function bootStorage(initialProfile, randomValue) {
+    const data = new Map();
+    if (initialProfile !== undefined) data.set('myProfile', JSON.stringify(initialProfile));
+    const localStorage = {
+      getItem(key) { return data.has(key) ? data.get(key) : null; },
+      setItem(key, value) { data.set(key, String(value)); },
+      removeItem(key) { data.delete(key); },
+      key(index) { return Array.from(data.keys())[index] || null; },
+      get length() { return data.size; }
+    };
+    const windowLike = {};
+    runInNewContext(storage, {
+      window: windowLike,
+      localStorage,
+      console: { warn() {} },
+      Math: { floor: Math.floor, random: () => randomValue }
+    });
+    return { api: windowLike.PhoneStorage, data };
+  }
+
+  const fresh = bootStorage(undefined, 0.5);
+  const presets = fresh.api.getDefaultAvatarPresets();
+  assert.equal(presets.length, 3);
+  const assigned = fresh.api.getMyProfile();
+  assert.ok(presets.some(item => item.dataUrl === assigned.avatar), 'fresh profile receives one of the three built-in avatars');
+  assert.equal(JSON.parse(fresh.data.get('myProfile')).avatar, assigned.avatar, 'default avatar is persisted');
+  assert.equal(fresh.api.getMyProfile().avatar, assigned.avatar, 'the assigned default stays stable between pages');
+
+  const existing = bootStorage({ nickname: '已有用户', avatar: 'data:image/png;base64,custom-avatar' }, 0.1);
+  assert.equal(existing.api.getMyProfile().avatar, 'data:image/png;base64,custom-avatar', 'existing custom avatar must never be overwritten');
+});
+
+test('the shared default portrait is displayed across music, chat calls, settings, finance and forum identity surfaces', () => {
+  const music = read('music/music.html');
+  const callUi = read('chat/call/call-ui.html');
+  const settings = read('settings/settings.html');
+  const finance = read('wallet/finance.html');
+  const forum = read('forum/forum.html');
+  const forumDetail = read('forum/forum-detail.html');
+  const couple = read('couple/couple.html');
+
+  assert.ok(music.includes('phone_storage.js'));
+  assert.ok(music.includes("renderMusicAvatar(document.getElementById('musicHomeAvatar')"));
+  assert.ok(music.includes("renderMusicAvatar(document.getElementById('pAvatar')"));
+  assert.equal(music.includes('editAvatar'), false, 'music must not keep a separate letter-avatar editor');
+  assert.equal(music.includes("setItem('music_profile_avatar'"), false);
+
+  assert.ok(detail.includes('fillAvatar(avatar, getMyAvatar(), USER_SVG)'), 'outgoing chat messages use the shared user portrait');
+  assert.ok(callUi.includes('phone_storage.js'));
+  assert.ok(callUi.includes('PhoneStorage.getMyProfile()'), 'outgoing call UI initializes and reads the shared profile');
+
+  assert.ok(settings.includes('PhoneStorage.getMyProfile()'));
+  assert.ok(settings.includes('avatarImage.src = avatarSrc'));
+  assert.ok(finance.includes('PhoneStorage.getMyProfile()'));
+  assert.ok(finance.includes('financeUserAvatar'));
+  assert.ok(finance.includes('image.src = src'));
+
+  assert.ok(forum.includes('function forumAvatarContent(p)'));
+  assert.ok(forum.includes('forumAvatarContent(p)'));
+  assert.ok(forum.includes('function getMyForumAvatar()'));
+  assert.ok(forumDetail.includes('function avatarContent(item, isUserPost)'));
+  assert.ok(forumDetail.includes('avatarContent(c, false)'));
+  assert.ok(forumDetail.includes('avatarContent(r, false)'));
+
+  assert.ok(couple.includes('phone_storage.js'));
+  assert.ok(couple.includes('const myPortrait = profile.myAvatar || sharedAvatar;'), 'couple profile keeps its own uploaded portrait, otherwise inherits the shared default');
 });

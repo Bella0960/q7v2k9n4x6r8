@@ -6,6 +6,7 @@
 <title>语音通话</title>
 <script src="../../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/sound-system.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -344,7 +345,8 @@
   var roleAvatar = (role && role.avatar) ? role.avatar : '';
 
   // 我自己的资料（呼出态白卡头像用我的头像）
-  var myProfile = readJSON('myProfile') || {};
+  var myProfile = window.PhoneStorage && typeof PhoneStorage.getMyProfile === 'function'
+    ? (PhoneStorage.getMyProfile() || {}) : (readJSON('myProfile') || {});
   var myAvatar = myProfile.avatar || '';
 
   // 无头像时的默认灰色细线条小人 SVG

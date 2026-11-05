@@ -343,7 +343,11 @@
     (function () {
         try {
             var profile = {};
-            try { profile = JSON.parse(localStorage.getItem('myProfile') || '{}') || {}; } catch (e) {}
+            try {
+                profile = window.PhoneStorage && typeof PhoneStorage.getMyProfile === 'function'
+                    ? (PhoneStorage.getMyProfile() || {})
+                    : (JSON.parse(localStorage.getItem('myProfile') || '{}') || {});
+            } catch (e) {}
             var name = profile.nickname || '未设置昵称';
             var id = profile.wechatId ? ('ID ' + profile.wechatId) : 'ID 未设置';
             var nameEl = document.getElementById('settingsName');
@@ -351,7 +355,20 @@
             var avatarEl = document.getElementById('settingsAvatar');
             if (nameEl) nameEl.textContent = name;
             if (idEl) idEl.textContent = id;
-            if (avatarEl) avatarEl.textContent = (name || '简').trim().charAt(0);
+            if (avatarEl) {
+                var avatarSrc = typeof profile.avatar === 'string' ? profile.avatar : '';
+                avatarEl.textContent = '';
+                avatarEl.style.overflow = 'hidden';
+                if (avatarSrc && /^(?:data:image\/(?:png|jpe?g|gif|webp|bmp|svg\+xml|avif);|https?:\/\/|blob:|\.|\/)/i.test(avatarSrc)) {
+                    var avatarImage = document.createElement('img');
+                    avatarImage.src = avatarSrc;
+                    avatarImage.alt = '';
+                    avatarImage.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;';
+                    avatarEl.appendChild(avatarImage);
+                } else {
+                    avatarEl.textContent = (name || '简').trim().charAt(0);
+                }
+            }
         } catch (e) {}
 
         var darkToggle = document.getElementById('dark-mode-toggle');
