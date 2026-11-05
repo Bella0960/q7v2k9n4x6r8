@@ -80,6 +80,29 @@
                 </div>
             </section>
 
+            <!-- 云端分组（Milestone 1：设备连接、推送订阅与测试） -->
+            <div class="group-title">CLOUD</div>
+            <section class="card">
+                <div class="menu-row" style="cursor:default;">
+                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 18a3.5 3.5 0 0 1 0-7 5 5 0 0 1 9.7-1.3A4 4 0 0 1 19 18Z"/><path d="M12 14v5"/><path d="M9.5 17.5 12 20l2.5-2.5"/></svg></div>
+                    <div class="menu-title"><span class="t-cn">云端连接</span><span class="t-en">Cloud</span></div>
+                    <div class="menu-meta" id="cloudStatusText" style="font-size:12px;color:var(--aux);max-width:56%;text-align:right;line-height:1.45;">未连接</div>
+                </div>
+                <div class="menu-row">
+                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+                    <div class="menu-title"><span class="t-cn">推送通知</span><span class="t-en">Push</span></div>
+                    <label class="switch"><input type="checkbox" id="cloudPushToggle"><span class="slider"></span></label>
+                </div>
+                <div class="menu-row" id="cloudTestRow" role="button" tabindex="0">
+                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></div>
+                    <div class="menu-title"><span class="t-cn">发送测试推送</span><span class="t-en">Test</span></div>
+                </div>
+                <div class="menu-row" id="cloudRevokeRow" role="button" tabindex="0">
+                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></div>
+                    <div class="menu-title"><span class="t-cn">断开云连接</span><span class="t-en">Disconnect</span></div>
+                </div>
+            </section>
+
             <!-- 外观分组 -->
             <div class="group-title">APPEARANCE</div>
             <section class="card">
@@ -352,6 +375,14 @@
     </div>
     <script src="js/settings.js"></script>
     <script src="js/backup.js"></script>
+    <script src="../shared/js/cloud-push-client.js"></script>
+    <script>
+    (function () {
+        if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {
+            window.MaomaoCloud.mountSettings();
+        }
+    })();
+    </script>
     <script>
     // 设置页用户卡片 + 深色模式开关
     (function () {
