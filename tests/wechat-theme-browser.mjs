@@ -85,13 +85,62 @@ try {
               && (item.right > viewportWidth + 1 || item.left < -1))
             .sort((a, b) => b.right - a.right)
             .slice(0, 25);
+          const overflowContainers = Array.from(document.querySelectorAll('*'))
+            .filter((element) => element.scrollWidth > element.clientWidth + 1)
+            .map((element) => {
+              const rect = element.getBoundingClientRect();
+              return {
+                tag: element.tagName.toLowerCase(),
+                id: element.id || '',
+                className: typeof element.className === 'string' ? element.className.slice(0, 100) : '',
+                clientWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+                left: Math.round(rect.left * 10) / 10,
+                right: Math.round(rect.right * 10) / 10,
+                overflowX: getComputedStyle(element).overflowX
+              };
+            })
+            .slice(0, 30);
+          const pseudoElements = ['html::before', 'html::after', 'body::before', 'body::after']
+            .map((selector) => {
+              const element = selector.startsWith('html') ? document.documentElement : document.body;
+              const pseudo = getComputedStyle(element, selector.endsWith('before') ? '::before' : '::after');
+              return {
+                selector,
+                content: pseudo.content,
+                display: pseudo.display,
+                position: pseudo.position,
+                left: pseudo.left,
+                right: pseudo.right,
+                width: pseudo.width,
+                transform: pseudo.transform
+              };
+            });
+          const rootChildren = Array.from(document.documentElement.children).map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              tag: element.tagName.toLowerCase(),
+              id: element.id || '',
+              className: typeof element.className === 'string' ? element.className.slice(0, 100) : '',
+              left: Math.round(rect.left * 10) / 10,
+              right: Math.round(rect.right * 10) / 10,
+              width: Math.round(rect.width * 10) / 10,
+              scrollWidth: element.scrollWidth,
+              clientWidth: element.clientWidth
+            };
+          });
           return {
             stylesheetCount: document.querySelectorAll('link[href*="wechat-theme-refinements.css"]').length,
             green: getComputedStyle(shell).getPropertyValue('--wechat-green').trim(),
             documentWidth: document.documentElement.scrollWidth,
             bodyWidth: document.body.scrollWidth,
             viewportWidth,
-            overflowElements
+            rootLeft: document.documentElement.getBoundingClientRect().left,
+            rootRight: document.documentElement.getBoundingClientRect().right,
+            overflowElements,
+            overflowContainers,
+            pseudoElements,
+            rootChildren
           };
         });
         assert.equal(metrics.stylesheetCount, 1, label + ' loads the WeChat layer exactly once');
