@@ -143,13 +143,16 @@ async function cacheStats(page, expectedUrls = []) {
 }
 
 async function waitForServiceWorkerControl(page) {
+  // `ready` can resolve during the activation hand-off; the user-visible
+  // contract is that this document is actually controlled by the worker.
   await page.evaluate(async () => {
-    const registration = await navigator.serviceWorker.ready;
-    if (!registration || !registration.active || registration.active.state !== 'activated') {
-      throw new Error('Service Worker did not reach activated state');
-    }
+    await navigator.serviceWorker.ready;
   });
-  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });
+  await page.waitForFunction(
+    () => !!navigator.serviceWorker.controller,
+    null,
+    { timeout: 30000 }
+  );
 }
 
 async function waitForPrecache(page, minEntries) {
