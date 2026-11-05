@@ -495,6 +495,13 @@ function forumFallbackPost(role,index){
 function ensureRolePosts(){
   const roles=forumRoleList(),activeTheme=getForumTheme();
   let changed=false;
+  posts.forEach(function(post){
+    if(post&&post.imageGenerationStatus==='generating'){
+      post.imageGenerationStatus='failed';
+      post.imageGenerationError='页面刷新时生成中断，请重试';
+      changed=true;
+    }
+  });
   const pending=[];
   roles.forEach(function(role,index){
     const roleId=forumRoleId(role);
