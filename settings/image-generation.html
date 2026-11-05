@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>角色生图 · MAOMAO</title>
+    <script src="../shared/js/font-loader.js"></script>
+    <script src="../shared/js/native-feel.js"></script>
+    <script src="../shared/js/phone/phone_storage.js"></script>
+    <script src="../shared/js/phone/phone_api.js"></script>
+    <script src="../shared/js/phone/storage/repository.js"></script>
+    <script src="../shared/js/phone/storage/media-repository.js?v=20261106v1"></script>
+    <script src="../shared/js/phone/image-generation.js?v=20261106v1"></script>
+    <link rel="stylesheet" href="../shared/css/mobile-fit.css">
+    <style>
+        * { box-sizing: border-box; }
+        :root { color-scheme: light; --ink:#171717; --muted:#77777D; --line:#E6E6E9; --soft:#F7F7F8; }
+        body { margin:0; min-height:100vh; background:#F2F2F4; color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif; }
+        .phone-shell { width:min(100%,520px); min-height:100vh; margin:0 auto; background:#fff; display:flex; flex-direction:column; }
+        .status { height:38px; padding:10px 24px 0; font-size:12px; color:#555; display:flex; justify-content:space-between; }
+        header { padding:14px 22px 18px; display:flex; align-items:center; gap:14px; }
+        .back { border:0; background:transparent; color:#222; padding:4px 8px 4px 0; font-size:28px; line-height:1; cursor:pointer; }
+        h1 { font-family:"Songti SC","Noto Serif SC",serif; font-weight:500; font-size:27px; letter-spacing:-.6px; margin:0; }
+        main { padding:0 22px calc(32px + env(safe-area-inset-bottom)); }
+        .intro { color:#77777D; font-size:13px; line-height:1.7; margin:0 0 22px; max-width:420px; }
+        .section-title { font-family:"Songti SC","Noto Serif SC",serif; font-size:19px; font-weight:500; margin:24px 0 13px; }
+        .field { margin:0 0 16px; }
+        label { display:block; font-size:13px; color:#55555B; margin-bottom:8px; }
+        select, textarea, input[type=text] { display:block; width:100%; border:1px solid var(--line); border-radius:12px; background:#FAFAFB; color:#171717; padding:12px 13px; font:14px/1.65 inherit; outline:none; }
+        select:focus, textarea:focus, input:focus { border-color:#9B9BA1; background:#fff; }
+        textarea { min-height:88px; resize:vertical; }
+        #appearance { min-height:104px; }
+        #styleKeywords { min-height:72px; }
+        .hint { margin:7px 0 0; color:#8A8A90; font-size:11px; line-height:1.6; }
+        .row-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px; }
+        button { font:inherit; cursor:pointer; }
+        .primary { min-height:44px; padding:0 18px; border:0; border-radius:12px; background:#171717; color:#fff; font-size:14px; }
+        .primary:disabled { opacity:.45; cursor:wait; }
+        .secondary { min-height:38px; border:1px solid var(--line); border-radius:10px; padding:0 13px; background:#fff; color:#333; font-size:12px; }
+        .status-note { min-height:20px; color:#77777D; font-size:12px; line-height:1.6; margin:10px 0 0; }
+        .scene { min-height:90px; }
+        .privacy-row { display:flex; align-items:center; gap:9px; margin:13px 0 16px; color:#55555B; font-size:13px; }
+        .privacy-row input { width:16px; height:16px; accent-color:#171717; }
+        .api-note { margin:12px 0 0; padding:12px 13px; border-radius:12px; background:var(--soft); color:#66666D; font-size:12px; line-height:1.7; }
+        .api-note a { color:#171717; text-decoration:underline; text-underline-offset:3px; }
+        .gallery-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:27px 0 13px; }
+        .gallery-head .section-title { margin:0; }
+        .filters { display:flex; gap:5px; }
+        .filter { border:0; background:transparent; color:#88888E; padding:6px 9px; font-size:12px; border-radius:20px; }
+        .filter[aria-pressed=true] { background:#171717; color:#fff; }
+        .gallery { display:flex; flex-direction:column; }
+        .image-item { display:grid; grid-template-columns:92px minmax(0,1fr); gap:13px; padding:13px 0; border-top:1px solid #EFEFF1; }
+        .thumb { width:92px; height:112px; object-fit:cover; display:block; border-radius:10px; background:#F2F2F4; }
+        .image-copy { min-width:0; display:flex; flex-direction:column; align-items:flex-start; }
+        .image-scene { color:#28282C; font-size:13px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+        .image-meta { color:#99999F; font-size:11px; margin-top:7px; }
+        .image-buttons { display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:9px; }
+        .image-buttons button { border:0; padding:4px 0; margin-right:9px; background:transparent; color:#55555B; font-size:11px; text-decoration:underline; text-underline-offset:3px; }
+        .empty { padding:25px 0; text-align:center; color:#9A9AA0; font-size:12px; line-height:1.8; }
+        @media (min-width:600px) { .phone-shell { min-height:100vh; box-shadow:0 8px 36px rgba(0,0,0,.05); } }
+    </style>
+</head>
+<body>
+<div class="phone-shell">
+    <div class="status"><span>09:41</span><span>◦ ◦ ◦</span></div>
+    <header>
+        <button class="back" type="button" onclick="location.href='settings.html'" aria-label="返回设置">‹</button>
+        <h1>角色生图</h1>
+    </header>
+    <main>
+        <p class="intro">为每个角色保存稳定的外貌与画风。生成时会结合近期聊天和你填写的场景，先整理画面描述，再调用图片模型。</p>
+
+        <section aria-labelledby="roleTitle">
+            <h2 class="section-title" id="roleTitle">角色设定</h2>
+            <div class="field">
+                <label for="characterSelect">选择角色</label>
+                <select id="characterSelect"><option value="">正在读取角色…</option></select>
+            </div>
+            <div class="field">
+                <label for="appearance">固定外貌描述</label>
+                <textarea id="appearance" maxlength="1600" placeholder="例如：银白色短发、琥珀色瞳孔、左耳银色圆环耳钉。这里只写稳定外貌，不写临时场景。"></textarea>
+                <p class="hint">这是每次生图都会带上的固定身份描述。未填写时不会开始生成。</p>
+            </div>
+            <div class="field">
+                <label for="styleKeywords">画风关键词</label>
+                <textarea id="styleKeywords" maxlength="600" placeholder="anime, soft lighting, cinematic portrait"></textarea>
+            </div>
+            <div class="row-actions">
+                <span class="hint" id="roleSaveStatus" aria-live="polite"></span>
+                <button class="secondary" id="saveRole" type="button">保存角色设定</button>
+            </div>
+        </section>
+
+        <section aria-labelledby="generateTitle">
+            <h2 class="section-title" id="generateTitle">生成一张图片</h2>
+            <div class="field">
+                <label for="scene">场景补充</label>
+                <textarea class="scene" id="scene" maxlength="1200" placeholder="例如：傍晚在咖啡店靠窗的位置，刚结束一天的工作，抬头看向镜头。"></textarea>
+                <p class="hint">场景描述会和该角色最近的文字聊天上下文一起用于组织画面，不会改变已保存的外貌设定。</p>
+            </div>
+            <label class="privacy-row"><input id="privateImage" type="checkbox" checked> 默认保存为私密图片</label>
+            <button class="primary" id="generateImage" type="button">生成图片</button>
+            <p class="status-note" id="generationStatus" role="status" aria-live="polite"></p>
+            <div class="api-note" id="apiNote" hidden>
+                需要先配置图片模型。打开 <a href="settings.html#api">设置中的 API 设置</a>，在「图片生成」里填写模型名称；图片模型与聊天模型分别配置，但共用当前 API Key。
+            </div>
+        </section>
+
+        <section aria-labelledby="galleryTitle">
+            <div class="gallery-head">
+                <h2 class="section-title" id="galleryTitle">角色图库</h2>
+                <div class="filters" role="group" aria-label="图库筛选">
+                    <button class="filter" data-filter="all" aria-pressed="true" type="button">全部</button>
+                    <button class="filter" data-filter="private" aria-pressed="false" type="button">私密</button>
+                    <button class="filter" data-filter="public" aria-pressed="false" type="button">公开</button>
+                </div>
+            </div>
+            <div class="gallery" id="gallery"><div class="empty">选择角色后，这里会显示生成的图片。</div></div>
+        </section>
+    </main>
+</div>
+<script src="js/image-generation.js?v=20261106v1"></script>
+</body>
+</html>
