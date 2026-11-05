@@ -113,9 +113,18 @@ async function hitStack(page, x, y) {
       const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
       return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
     };
+    const hitTarget = document.querySelector('.maomao-global-home-indicator-hit-target');
+    const hitRect = hitTarget ? hitTarget.getBoundingClientRect() : null;
+    const hitStyle = hitTarget ? getComputedStyle(hitTarget) : null;
     return {
       top: describe(document.elementFromPoint(cx, cy)),
-      stack: document.elementsFromPoint(cx, cy).slice(0, 4).map(describe)
+      stack: document.elementsFromPoint(cx, cy).slice(0, 4).map(describe),
+      hitTarget: hitRect ? {
+        left: hitRect.left, top: hitRect.top, width: hitRect.width, height: hitRect.height,
+        right: hitRect.right, bottom: hitRect.bottom,
+        position: hitStyle.position, pointerEvents: hitStyle.pointerEvents,
+        cssWidth: hitStyle.width, cssHeight: hitStyle.height, cssBottom: hitStyle.bottom
+      } : null
     };
   }, [x, y]);
 }
