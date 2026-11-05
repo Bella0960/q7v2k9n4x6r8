@@ -243,6 +243,14 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
 
     const captureSystem = async () => {
       const page = await context.newPage();
+      const pageErrors = [];
+      const failedRequests = [];
+      const requestUrls = [];
+      page.on('pageerror', error => pageErrors.push(error.message));
+      page.on('requestfailed', request => failedRequests.push({ url: request.url(), error: request.failure()?.errorText || '' }));
+      page.on('request', request => {
+        if (request.url().includes('mock.local') || request.url().includes('chat/completions')) requestUrls.push(request.url());
+      });
       await page.route('https://mock.local/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
       let resolveBody;
       const bodyPromise = new Promise((resolve) => { resolveBody = resolve; });
@@ -276,10 +284,41 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       await page.evaluate(async () => {
         await window.sendMsg({ text: '继续剧情' });
       });
-      const body = await Promise.race([
-        bodyPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
-      ]);
+      let body;
+      try {
+        body = await Promise.race([
+          bodyPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 12000))
+        ]);
+      } catch (error) {
+        const diagnostics = await page.evaluate(() => {
+          let groups = [], api = {};
+          try { groups = JSON.parse(localStorage.getItem('phone_groups') || '[]'); } catch {}
+          try { api = JSON.parse(localStorage.getItem('api_settings') || '{}'); } catch {}
+          const group = groups.find(item => String(item.id) === 'g1') || null;
+          const input = document.getElementById('chat-input');
+          return {
+            url: location.href,
+            status: document.getElementById('chat-status-sub')?.textContent || '',
+            inputValue: input?.value || '',
+            apiKeyPresent: !!(api.apiKey && String(api.apiKey).trim()),
+            apiBaseUrl: api.baseUrl || '',
+            apiModel: api.model || '',
+            groupSettings: group?.settings || null,
+            members: (group?.members || []).map(member => ({
+              id: member.id, muted: !!member.muted, nickname: member.nickname || '',
+              activeFrom: member.activeFrom || '', activeTo: member.activeTo || ''
+            })),
+            loadingCount: document.querySelectorAll('.loading-dots').length,
+            sendButton: !!document.getElementById('myFloatSend'),
+            messageKeys: Object.keys(localStorage).filter(key => key.includes('chat') || key.includes('history')).slice(0, 30)
+          };
+        });
+        await page.close();
+        throw new Error(error.message + '; diagnostics=' + JSON.stringify({
+          ...diagnostics, pageErrors, failedRequests, requestUrls
+        }));
+      }
       const system = (body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || '')).join('\n\n');
       await page.close();
       return system;
