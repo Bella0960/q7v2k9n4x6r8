@@ -230,8 +230,12 @@
         AI
       </div>
       <div class="p-act" onclick="sharePost()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V3M7 8l5-5 5 5M5 13v7h14v-7"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
         分享
+      </div>
+      <div class="p-act" onclick="deletePost()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        删除
       </div>
     </div>
   </div>
@@ -875,6 +879,19 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     history.push({ role: 'user', text: msg, time: Date.now(), type: 'text' });
     localStorage.setItem('chat_history_' + roles[0].id, JSON.stringify(history));
     alert('已分享给 ' + name);
+  }
+
+  function deletePost() {
+    if (!confirm('确定要删除这条帖子吗？')) return;
+    try {
+      const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
+      const filtered = posts.filter(p => p.id !== post.id);
+      localStorage.setItem('forum_posts', JSON.stringify(filtered));
+      alert('帖子已删除');
+      window.location.href = 'forum.html';
+    } catch(e) {
+      alert('删除失败，请重试');
+    }
   }
 
   function getFollows() { return JSON.parse(localStorage.getItem('forum_follows') || '[]'); }
