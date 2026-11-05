@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'chat/**'
+      - 'forum/**'
       - 'library/**'
       - 'shared/js/phone/**'
       - 'sw.js'
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - 'chat/**'
+      - 'forum/**'
       - 'library/**'
       - 'shared/js/phone/**'
       - 'sw.js'
@@ -39,7 +41,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium for mobile viewport checks
+        run: npx playwright install --with-deps chromium
       - name: Run chat regression contract tests
         run: |
           npm run test:chat:contract
           npm run test:bugfix:blockers
+          npm run test:media:backup
+          npm run test:forum:media
+          npm run test:forum:seed
+          npm run build
+          npm run test:forum:mobile
