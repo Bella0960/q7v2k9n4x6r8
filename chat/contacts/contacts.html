@@ -213,7 +213,8 @@
     }
   }
 </style>
-<script src="../../shared/js/chat-page-theme.js?v=20261102v1"></script>
+<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+<script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
 </head>
 <body>
@@ -304,11 +305,16 @@
       return /^[A-Z]$/.test(letter) ? letter : '#';
     }
 
+    var contactNameCollator = (function () {
+      try { return new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'}); }
+      catch(e) { return null; }
+    })();
+
     function compareContactNames(a,b) {
       var left = String(a.pinyin || a.py || a.sortName || a.name || '');
       var right = String(b.pinyin || b.py || b.sortName || b.name || '');
-      try { return new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'}).compare(left,right); }
-      catch(e) { return left.localeCompare(right,'zh-CN'); }
+      if (contactNameCollator) return contactNameCollator.compare(left,right);
+      return left.localeCompare(right,'zh-CN');
     }
 
     function renderList(filter) {

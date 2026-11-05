@@ -1939,3 +1939,92 @@ test('Messages chat-list theme is isolated, cache-busted, grayscale and hides in
   assert.equal(state.has('maomao_chat_list_theme_preset_v1'), false);
   assert.equal(attributes.has('data-chat-list-theme'), false);
 });
+
+
+
+test('Netlify Deploy Previews skip the full PWA app-shell installation', () => {
+  const home = read('index.html');
+  const previewGuard = home.indexOf("var previewHost = location.hostname.indexOf('deploy-preview-') === 0");
+  const registration = home.indexOf("navigator.serviceWorker.register('./sw.js'");
+  assert.notEqual(previewGuard, -1, 'deploy preview should bypass service worker registration');
+  assert.ok(registration > previewGuard, 'production PWA registration must remain available outside preview hosts');
+  assert.match(home, /swHadController|hadController/, 'first installation must not trigger a duplicate document reload');
+});
+
+
+test('theme store uses a bounded viewport scroll area on mobile', () => {
+  const storePage = read('theme-store/theme-store.html');
+  const appRule = storePage.match(/\.store-app\{([^}]*)\}/);
+  const scrollRule = storePage.match(/\.main-content\{([^}]*)\}/);
+
+  assert.ok(appRule, 'store app shell rule should exist');
+  assert.match(appRule[1], /height:100vh/);
+  assert.match(appRule[1], /height:100dvh/, 'dynamic viewport height should track mobile browser chrome');
+  assert.ok(scrollRule, 'main content scroll rule should exist');
+  assert.match(scrollRule[1], /flex:1 1 auto/);
+  assert.match(scrollRule[1], /min-height:0/, 'flex child must be allowed to shrink into the viewport');
+  assert.match(scrollRule[1], /overflow-y:auto/);
+  assert.match(scrollRule[1], /overscroll-behavior-y:contain/);
+  assert.match(scrollRule[1], /-webkit-overflow-scrolling:touch/);
+});
+
+
+test('chat contacts page uses the shared full-screen mobile layout', () => {
+  const contacts = read('chat/contacts/contacts.html');
+  const chatHome = read('chat/chat/chat.html');
+  const mobileFit = read('shared/css/mobile-fit.css');
+
+  assert.ok(chatHome.includes('shared/css/mobile-fit.css'), 'chat home should load shared mobile layout');
+  assert.ok(contacts.includes('shared/css/mobile-fit.css'), 'contacts must use the same mobile layout');
+  assert.ok(contacts.indexOf('shared/css/mobile-fit.css') > contacts.indexOf('</style>'), 'shared overrides must load after page-local CSS');
+  assert.match(mobileFit, /\.phone-mockup,[\s\S]*?height: 100vh !important;[\s\S]*?height: 100dvh !important;/);
+  assert.ok(contacts.includes('.contact-stage'), 'contacts scroll stage should remain present');
+});
+
+
+test('whole-chat theme is refreshed when a chat page is restored from browser history', () => {
+  const themeScript = read('shared/js/chat-page-theme.js');
+  const state = new Map([['maomao_chat_theme_preset', 'default']]);
+  const listeners = Object.create(null);
+  const attributes = new Map();
+  const shell = {
+    setAttribute: (key, value) => attributes.set(key, value),
+    removeAttribute: (key) => attributes.delete(key)
+  };
+  const windowLike = {
+    localStorage: {
+      getItem: (key) => state.has(key) ? state.get(key) : null
+    },
+    addEventListener: (name, callback) => { listeners[name] = callback; }
+  };
+  const documentLike = {
+    readyState: 'complete',
+    querySelectorAll: (selector) => {
+      assert.equal(selector, '.phone-mockup');
+      return [shell];
+    }
+  };
+
+  runInNewContext(themeScript, { window: windowLike, document: documentLike });
+  assert.equal(attributes.get('data-chat-theme-preset'), 'default', 'saved theme should apply at initial load');
+
+  state.set('maomao_chat_theme_preset', 'wechat');
+  assert.equal(typeof listeners.pageshow, 'function', 'theme bridge should listen for bfcache/page restoration');
+  listeners.pageshow({ persisted: true });
+  assert.equal(attributes.get('data-chat-theme-preset'), 'wechat', 'restored page should read the latest saved theme');
+
+  state.set('maomao_chat_theme_preset', 'imessage');
+  listeners['maomao:chat-theme-change']();
+  assert.equal(attributes.get('data-chat-theme-preset'), 'imessage', 'same-page theme changes should still apply');
+
+  for (const path of [
+    'chat/chat/chat.html',
+    'chat/chat/chat-detail.html',
+    'chat/contacts/contacts.html',
+    'chat/moments/moments.html',
+    'profile/profile.html'
+  ]) {
+    assert.ok(read(path).includes('chat-page-theme.js?v=20261105v1'), path + ' should load the refreshed theme bridge');
+  }
+  assert.match(serviceWorker, /phone-app-pwa-v159/, 'do not force a full production cache-version reset for a theme bridge update');
+});
