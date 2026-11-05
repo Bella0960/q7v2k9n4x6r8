@@ -57,6 +57,13 @@ try {
       for (const [label, path] of pages) {
         await page.goto(origin + path, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('.phone-mockup[data-chat-theme-preset="wechat"]', { timeout: 15000 });
+        // native-feel animates the document root for 120ms on page entry.
+        // Measure the stable phone layout, not the temporary translated frame.
+        await page.waitForFunction(() => {
+          const root = document.documentElement;
+          return !root.classList.contains('nf-enter')
+            && !root.classList.contains('nf-hide');
+        }, null, { timeout: 2000 });
         const metrics = await page.evaluate(() => {
           const shell = document.querySelector('.phone-mockup');
           const viewportWidth = document.documentElement.clientWidth;
