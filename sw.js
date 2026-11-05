@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v159';
+const CACHE_NAME = 'phone-app-pwa-v161';
 const APP_SHELL = [
   './',
   './index.html',
@@ -94,7 +94,12 @@ const APP_SHELL = [
   'shared/js/mask.js',
   'settings/js/settings.js',
   './assets/icon-192.png',
-  './assets/icon-512.png'
+  './assets/icon-512.png',
+  './assets/mao-bunny-192.png',
+  './assets/mao-bunny-512.png',
+  './assets/avatar-bunny.svg',
+  './assets/avatar-cat.svg',
+  './assets/avatar-cat-dark.svg'
 ];
 
 self.addEventListener('install', event => {

@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#f5f0eb">
 <title>情侣空间</title>
 <script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/phone_storage.js"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -394,7 +395,14 @@
 
   function renderProfile(){
     let avA = $('avA'), avB = $('avB');
-    if(profile.myAvatar){ avA.innerHTML = '<img src="'+profile.myAvatar+'" style="width:100%;height:100%;object-fit:cover;">'; }
+    let sharedAvatar = '';
+    try {
+      const me = window.PhoneStorage && typeof PhoneStorage.getMyProfile === 'function'
+        ? PhoneStorage.getMyProfile() : null;
+      sharedAvatar = me && typeof me.avatar === 'string' ? me.avatar : '';
+    } catch(e) {}
+    const myPortrait = profile.myAvatar || sharedAvatar;
+    if(myPortrait){ avA.innerHTML = '<img src="'+myPortrait+'" alt="" style="width:100%;height:100%;object-fit:cover;">'; }
     else { avA.textContent = (profile.nameA||'我')[0]; }
     if(profile.taAvatar){ avB.innerHTML = '<img src="'+profile.taAvatar+'" style="width:100%;height:100%;object-fit:cover;">'; }
     else { avB.textContent = (profile.nameB||'TA')[0]; }
