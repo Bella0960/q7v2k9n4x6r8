@@ -13,7 +13,9 @@
     'image/png': true,
     'image/webp': true,
     'image/gif': true,
-    'image/avif': true
+    'image/avif': true,
+    'image/heic': true,
+    'image/heif': true
   };
 
   function getRepository() {
@@ -30,7 +32,7 @@
     var total = 0;
     list.forEach(function (file) {
       if (!file || !ALLOWED_TYPES[file.type]) {
-        throw new Error('图片仅支持 JPG、PNG、WebP、GIF 和 AVIF 格式');
+        throw new Error('图片仅支持 JPG、PNG、WebP、GIF、AVIF 和 HEIC 格式');
       }
       if (file.size <= 0 || file.size > MAX_FILE_BYTES) {
         throw new Error('单张图片需大于 0 且不超过 8 MB');
