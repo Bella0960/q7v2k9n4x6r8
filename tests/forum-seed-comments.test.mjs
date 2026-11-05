@@ -247,7 +247,9 @@ test('forum-detail.html / ensureSeedCommentsDetail：新帖、旧数字迁移、
   /* 情况 C：用户删光 → 再 load 不回填 */
   ctx.__store.set('forum_posts', JSON.stringify([{ ...p2, comments: [], seedCommentsFilled: true }]));
   posts = ctx.__exports__.loadPosts();
-  assert.equal(posts[0].comments.length, 0, 'forum-detail 应尊重用户删除');
+  const p2AfterDelete = posts.find(item => item.id === 'p2');
+  assert.ok(p2AfterDelete, 'p2 should remain in detail storage');
+  assert.equal(p2AfterDelete.comments.length, 0, 'forum-detail 应尊重用户删除');
 });
 
 test('forum-detail.html / 不覆盖真实评论 + 幂等 × 2', () => {
@@ -282,7 +284,7 @@ test('forum-detail.html 源码：已彻底移除 _seedCount 读取与写入', ()
 test('forum.html 源码：已彻底移除数字型 comments 字段（种子数据里不再硬编码 comments: N）', () => {
   /* 种子数组里不应再出现 comments: */
   const seededStart = forumHome.indexOf('const seeded=[');
-  const seededEnd = forumHome.indexOf('\\n];', seededStart);
+  const seededEnd = forumHome.indexOf('\n];', seededStart);
   assert.ok(seededStart >= 0 && seededEnd > seededStart, '种子数据 section 边界应存在');
   const seededSection = forumHome.slice(seededStart, seededEnd);
   assert.doesNotMatch(seededSection, /comments\s*:/, '种子数组不应再硬编码数字型 comments');
