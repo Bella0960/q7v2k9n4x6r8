@@ -471,7 +471,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }catch(error){
       console.warn('[Forum] 首批路人评论生成失败',error);
       // 打开帖子时自动触发的后台生成：评论区内联 status 已是可见提示，再弹 toast 会在每次打开帖子时重复打扰，故此处只用状态文案。
-      if(status)status.textContent='路人暂时没有赶来，稍后重新打开帖子再试试';
+      if(status)status.textContent=(post.mediaAssetIds||[]).length?'图片已经保留；当前 API 或模型可能不支持看图，暂时无法生成图片讨论':'路人暂时没有赶来，稍后重新打开帖子再试试';
     }
   }
 
@@ -599,11 +599,11 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
 
   function renderComments() {
     const list = document.getElementById('commentList');
+    if(window.ForumMedia)ForumMedia.revokeIn(list);
     if (!post.comments.length) {
       list.innerHTML = '<div style="color:#b8b8b8;font-size:11px;padding:20px 0;text-align:center;">还没有回应——做第一个说点什么的人</div>';
       return;
     }
-    if(window.ForumMedia)ForumMedia.revokeIn(list);
     list.innerHTML = post.comments.map((c, i) => `
       <div class="comment">
         <div class="c-avatar" style="background:${(c.avatar||'').indexOf('#')===0 ? c.avatar : '#ececec'}">${esc((c.avatar && c.avatar.length === 1) ? c.avatar : (c.name||'?')[0])}</div>
@@ -703,19 +703,20 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
   }
 
   function deleteComment(i) {
-    if (!isOwn(post.comments[i])) return;
+    const removed=post.comments[i];
+    if (!isOwn(removed)) return;
     post.comments.splice(i, 1);
     if (replyToIdx >= i) { replyToIdx = -1; cancelReply(); }
-    saveNow();
+    if(saveNow()&&removed.id&&Array.isArray(removed.mediaAssetIds))ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
     renderComments();
     renderPost();
     toast('评论已删除');
   }
   function deleteReply(i, j) {
-    const c = post.comments[i];
-    if (!c || !c.replies || !isOwn(c.replies[j])) return;
+    const c = post.comments[i],removed=c&&c.replies&&c.replies[j];
+    if (!removed || !isOwn(removed)) return;
     c.replies.splice(j, 1);
-    saveNow();
+    if(saveNow()&&removed.id&&Array.isArray(removed.mediaAssetIds))ForumMedia.release(removed.mediaAssetIds,'forum-comment',removed.id);
     renderComments();
     renderPost();
     toast('回复已删除');
@@ -751,7 +752,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     }catch(error){
       console.warn('[Forum] 网友回应失败',error);
       // 用户留言本身已发送成功，失败的只是追加的 AI 回应；内联 status 已就地说明，再弹 toast 会与「留言已发出」混淆，故保持状态文案。
-      if(status)status.textContent='暂时没有新的回应，稍后再看看';
+      if(status)status.textContent=((post.mediaAssetIds||[]).length||(target.mediaAssetIds||[]).length||(submittedImageIds||[]).length)?'评论和图片已经保存；当前 API 或模型可能不支持看图，暂时无法生成图片回复':'暂时没有新的回应，稍后再看看';
     }
   }
   function clearCommentImages(){
@@ -834,7 +835,7 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
       if(!result||!result.ok||!result.data)throw new Error('评论生成失败');
       const c=makeDetailAIComment(result.data,post.comments.length);
       if(c){post.comments.push(c);saveNow();renderComments();renderPost();toast('一位网友加入了讨论')}
-    }catch(error){console.warn('[Forum] 手动生成评论失败',error);toast('暂时没能生成回复')}
+    }catch(error){console.warn('[Forum] 手动生成评论失败',error);toast((post.mediaAssetIds||[]).length?'图片已保留；当前 API 或模型可能不支持看图':'暂时没能生成回复')}
   }
 
   const commentImageButton=document.getElementById('commentImageButton');
