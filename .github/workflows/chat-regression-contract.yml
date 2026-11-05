@@ -8,6 +8,7 @@ on:
       - 'forum/**'
       - 'library/**'
       - 'shared/js/phone/**'
+      - 'worker/**'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -20,6 +21,7 @@ on:
       - 'forum/**'
       - 'library/**'
       - 'shared/js/phone/**'
+      - 'worker/**'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -50,6 +52,7 @@ jobs:
           npm run test:chat:contract
           npm run test:bugfix:blockers
           npm run test:media:backup
+          npm run test:cloud:push
           npm run test:forum:media
           npm run test:api:image
           npm run test:forum:seed
