@@ -267,12 +267,15 @@
 
   // ============================================================
   // 功能 4 / 5：语音 / 视频通话
-  // 语音跳 call-ui.html（白卡接听 UI）；视频跳 call.html（全屏模拟）
-  // 不调用真实麦克风/摄像头；视频挂断后仅插入通话卡片，不发 AI 指令
+  // 统一在当前聊天页内打开文字通话层，复用原有 sendMsg 与角色上下文。
+  // 旧通话页保留为兼容回退；此入口不调用真实麦克风或摄像头。
   // ============================================================
   function featCall(mode) {
-    // 语音：跳转白卡接听 UI（call-ui.html）；视频：跳转全屏模拟通话页（call.html）
     if (typeof currentCharacter === 'undefined' || !currentCharacter || !currentCharacter.id) return;
+    if (window.MAOMAOCallExperience && typeof window.MAOMAOCallExperience.start === 'function') {
+      window.MAOMAOCallExperience.start(mode, currentCharacter);
+      return;
+    }
     var cid = encodeURIComponent(currentCharacter.id);
     if (mode === 'video') {
       window.location.href = '../call/call.html?id=' + cid + '&type=video';
@@ -646,6 +649,7 @@
       case 'todo': featTodo(); break;
       case 'voice': featCall('voice'); break;
       case 'video': featCall('video'); break;
+      case 'group-call': featCall('group'); break;
       case 'moment': featMoment(); break;
       case 'redpacket': featRedpacket(); break;
       case 'transfer': featTransfer(); break;
