@@ -277,7 +277,7 @@
       status.serverReachable = true;
       status.vapidConfigured = Boolean(health.vapidConfigured);
     } catch (error) {
-      status.message = error.code === 'NOT_FOUND' || error.status === 404
+      status.message = error.code === 'NOT_FOUND' || error.status === 404 || error.code === 'NON_JSON'
         ? '云端接口尚未部署'
         : '云端连接失败：' + (error.message || '未知错误');
       return status;
