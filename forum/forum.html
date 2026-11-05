@@ -194,22 +194,82 @@ function forumWorldbook(){
 }
 
 const seeded=[
-{id:'p1',name:'宝宝',avatar:'宝',role:'AI',topic:'今日话题',time:'刚刚',title:'今天的你，有没有一件很小但很开心的事？',body:'不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者忙完之后终于坐下来发了会儿呆。\n\n想听听大家今天的小小幸运。',likes:18,comments:6,featured:true,liked:false},
-{id:'p2',name:'拾光',avatar:'拾',topic:'深夜食堂',time:'12 分钟前',title:'刚刚把房间收拾干净，突然觉得生活可以重新开始。',body:'明明只是整理了一下桌面，扔掉几张旧纸，把窗户打开通了会儿风。屋子变得清爽，人好像也跟着松了一口气。',likes:14,comments:3,liked:false},
-{id:'p3',name:'阿柴',avatar:'柴',topic:'碎碎念',time:'28 分钟前',title:'成年人的快乐，有时候就是不用马上回复任何消息。',body:'把手机倒扣在桌上，给自己留半小时空白。没有错过什么，也没有落下什么。今天想先照顾一下自己的节奏。',likes:9,comments:2,liked:false},
-{id:'p4',name:'Lin',avatar:'林',topic:'生活观察',time:'1 小时前',title:'发现一家很安静的小店。',body:'靠窗的位置能看见树影，店里放着音量很轻的音乐。点一杯热饮就可以坐很久。想把这种不被催促的下午收藏起来。',likes:23,comments:8,liked:false},
-{id:'p5',name:'慢慢',avatar:'慢',topic:'今日话题',time:'2 小时前',title:'如果今天能给自己放一个小假，你会去哪里？',body:'我想去没有太多人的海边，坐着看一会儿水。什么也不用完成，也不急着把心情整理好。',likes:11,comments:4,liked:false},
-{id:'p6',name:'七号房间',avatar:'七',topic:'随手分享',time:'昨天',title:'最近喜欢上了记录不完整的生活。',body:'不修图，不一定写结尾，有时候只是记下一句没说完的话。以前觉得记录要有意义，现在觉得它只要是真的，就很好。',likes:7,comments:1,liked:false}
+{id:'p1',name:'宝宝',avatar:'宝',role:'AI',topic:'今日话题',time:'刚刚',title:'今天的你，有没有一件很小但很开心的事？',body:'不一定是什么大事。可能是路上刚好吹来的风，买到了喜欢的东西，或者忙完之后终于坐下来发了会儿呆。\n\n想听听大家今天的小小幸运。',likes:18,featured:true,liked:false},
+{id:'p2',name:'拾光',avatar:'拾',topic:'深夜食堂',time:'12 分钟前',title:'刚刚把房间收拾干净，突然觉得生活可以重新开始。',body:'明明只是整理了一下桌面，扔掉几张旧纸，把窗户打开通了会儿风。屋子变得清爽，人好像也跟着松了一口气。',likes:14,liked:false},
+{id:'p3',name:'阿柴',avatar:'柴',topic:'碎碎念',time:'28 分钟前',title:'成年人的快乐，有时候就是不用马上回复任何消息。',body:'把手机倒扣在桌上，给自己留半小时空白。没有错过什么，也没有落下什么。今天想先照顾一下自己的节奏。',likes:9,liked:false},
+{id:'p4',name:'Lin',avatar:'林',topic:'生活观察',time:'1 小时前',title:'发现一家很安静的小店。',body:'靠窗的位置能看见树影，店里放着音量很轻的音乐。点一杯热饮就可以坐很久。想把这种不被催促的下午收藏起来。',likes:23,liked:false},
+{id:'p5',name:'慢慢',avatar:'慢',topic:'今日话题',time:'2 小时前',title:'如果今天能给自己放一个小假，你会去哪里？',body:'我想去没有太多人的海边，坐着看一会儿水。什么也不用完成，也不急着把心情整理好。',likes:11,liked:false},
+{id:'p6',name:'七号房间',avatar:'七',topic:'随手分享',time:'昨天',title:'最近喜欢上了记录不完整的生活。',body:'不修图，不一定写结尾，有时候只是记下一句没说完的话。以前觉得记录要有意义，现在觉得它只要是真的，就很好。',likes:7,liked:false}
 ];
+
+/* ===== 种子帖预置评论（不依赖 AI / API Key） ===== */
+const SEED_COMMENT_RESIDENTS=['晚风','橘子海','北岛来信','青柠汽水','山顶洞人','半糖','七号公园','慢慢来','猫不语','落雨天','远山','拾光者'];
+const SEED_COMMENT_POOL={reality:{p1:[['晚风','今天路过花店，闻到一阵特别香的味道。具体是什么花没看清，那十分钟心情特别好。'],['半糖','我最近也在试着留心这些小开心。连续下了一周雨之后终于放晴，晒被子的时候觉得特别满足。'],['山顶洞人','很好奇大家最近都遇到过什么，想多看看不同人的小事清单。']],p2:[['北岛来信','太懂了。我每次收拾完也会有类似的感觉。好像乱的不是房间，是自己的状态。'],['落雨天','上周也收拾了一次，扔掉了一袋旧衣服。不是断舍离，就是突然觉得这些东西以后不会穿了。'],['慢慢来','好奇楼主的房间一般是怎么变乱的。我是做设计的，工作和休息在同一个地方，特别容易堆东西。']],p3:[['晚风','这条直接戳中。我上周六早上醒了没看手机，在床上躺了半小时，感觉最近一段时间的疲劳都退了一点。'],['半糖','我试过把手机放在另一个房间充电，真的不一样。不是不回消息，是知道自己可以等。'],['橘子海','我反而会因为不及时回复焦虑……可能还是要找到自己舒服的节奏。']],p4:[['山顶洞人','这种店真的像秘密基地。我家附近有一家很小的书店，店里只有老板一个人，进去之后可以安静地坐一下午。'],['慢慢来','能说说是卖什么的吗？我平时也会找这种安静的地方，想存一份清单。'],['半糖','想起以前学校附近有一家旧书店，每次考完试都会去坐一会儿，什么也不买，就是翻书。']],p5:[['晚风','想去一个不认识的地铁站下车，沿着周围走一会儿。不用找景点，就是随便走走。'],['落雨天','我想找个没人的湖边坐一下午。带一本书，不一定看。'],['北岛来信','去年秋天给自己放了半天假，一个人去看了银杏。旁边都是拍照的人，但站得远一点就感觉自己在另一个世界。']],p6:[['半糖','我一直觉得生活不一定要有结果。有些事记得开头和中间就够了。'],['慢慢来','我有一个拍得断断续续的相册，不是日记，就是随手拍下来觉得有意思的瞬间。翻的时候会想起当时的心情。'],['橘子海','我反而会强迫自己把想做的事做完。不做就会一直惦记。可能也是一种强迫症。']]}};
+const SEED_COMMENT_POOL_FALLBACK=[['晚风','这件事挺有意思，让我想想。'],['半糖','我之前也遇到过类似的情况。'],['山顶洞人','能展开说说吗？想多了解一点。'],['青柠汽水','觉得楼主说的有道理。'],['橘子海','不一定吧，我有个朋友就是另一种情况。'],['慢慢来','想起以前也有过类似的感受。'],['落雨天','这件事放在我身上可能反应会不一样。'],['北岛来信','我注意到一个细节，想问问…'],['远山','整体来说挺有共鸣，但有一点想补充。'],['拾光者','这让我想起前几天看到的一件事。']];
+function buildSeedComment(post,themeId,index){
+ const pool=SEED_COMMENT_POOL[themeId]&&SEED_COMMENT_POOL[themeId][post.id]||SEED_COMMENT_POOL_FALLBACK;
+ const pair=pool[index%pool.length];
+ const now=Date.now();
+ return {name:pair[0],avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:'seed_'+post.id+'_'+index,owner:'seed',source:'seed-comments',text:pair[1],time:now-(index+1)*180000,likes:0,replies:[]};
+}
+function ensureSeedComments(post,themeId){
+ if(!post||typeof post!=='object')return;
+ const isSeed=post.owner==='seed'||String(post.id||'').indexOf('p')===0;
+ if(!isSeed)return;
+ /* 幂等标记已设置 → 尊重现状，不管 comments 是空还是已有数组 */
+ if(post.seedCommentsFilled)return;
+ /* comments 已经是数组 → 用户可能之前加过/删过评论，不覆盖 */
+ if(Array.isArray(post.comments)&&post.comments.length){post.seedCommentsFilled=true;return}
+ /* 迁移前：数字型 comments → 预置评论 */
+ if(typeof post.comments==='number'&&post.comments>0){/* 继续下面填充预置评论 */}
+ /* comments 是空数组或非数组 → 填充预置评论 */
+ const count=3;
+ const built=[];
+ for(let i=0;i<count;i++){const c=buildSeedComment(post,themeId,i);if(c)built.push(c)}
+ post.comments=built;
+ post.seedCommentsFilled=true;
+}
 let posts=loadPosts(),page='home',topicFilter='全部',sortMode='最新',searchText='',searchOpen=false,notificationsRead=false;
 const $=id=>document.getElementById(id);const root=$('viewRoot'),scroll=$('scrollArea');
-function loadPosts(){try{const s=JSON.parse(localStorage.getItem(STORE)||'null');if(Array.isArray(s)&&s.length){let list=s.map(x=>({...x}));const isUser=p=>p.owner==='me'||p.tag==='me'||String(p.id).indexOf('user_')===0;const isLegacySeed=p=>String(p.id).indexOf('seed_')===0;const isRefSeed=p=>p.title&&p.body&&String(p.id).indexOf('user_')!==0;const keep=list.filter(p=>isUser(p)||(isRefSeed(p)&&!isLegacySeed(p)));const merged=getSeededPosts().map(x=>({...x}));keep.forEach(u=>{if(!merged.some(m=>m.id===u.id))merged.unshift(u)});return merged}return getSeededPosts().map(x=>({...x}))}catch(e){return getSeededPosts().map(x=>({...x}))}}
+function loadPosts(){
+ const seedPosts=getSeededPosts().map(x=>({...x}));
+ const themeId=getForumTheme().id||'reality';
+ let storedList=null;
+ try{const raw=localStorage.getItem(STORE);if(raw){try{storedList=JSON.parse(raw)}catch(e){storedList=null}}}catch(e){storedList=null}
+ const hasStore=Array.isArray(storedList)&&storedList.length;
+ let merged;
+ if(hasStore){
+  const isUser=p=>p.owner==='me'||p.tag==='me'||String(p.id).indexOf('user_')===0;
+  const isLegacySeed=p=>String(p.id).indexOf('seed_')===0;
+  const isRefSeed=p=>p.title&&p.body&&String(p.id).indexOf('user_')!==0;
+  const keep=storedList.filter(p=>isUser(p)||(isRefSeed(p)&&!isLegacySeed(p)));
+  merged=seedPosts.map(x=>({...x}));
+  /* store 里的种子帖子（含用户改动）覆盖 fresh clone 版本 */
+  keep.forEach(u=>{const existing=merged.find(m=>m.id===u.id);if(existing){Object.assign(existing,u)}else{merged.unshift({...u})}});
+ }else{merged=seedPosts.map(x=>({...x}))}
+ merged.forEach(p=>{
+  /* 存量：不是种子但 comments 是数字 → 归零并标记 */
+  if(!(p.owner==='seed'||String(p.id||'').indexOf('p')===0)){
+   if(typeof p.comments==='number'){p.comments=[];p.seedCommentsFilled=true}
+   else if(!Array.isArray(p.comments)){p.comments=[]}
+   return;
+  }
+  /* 种子帖：填充预置评论（如果 store 里已有 seedCommentsFilled=true，会被跳过） */
+  ensureSeedComments(p,themeId);
+  if(!Array.isArray(p.comments))p.comments=[];
+ });
+ try{
+  const serialized=JSON.stringify(merged);
+  if(serialized!==localStorage.getItem(STORE))localStorage.setItem(STORE,serialized);
+ }catch(e){console.warn('[Forum] 帖子回写失败，当前视图不受影响',e)}
+ return merged;
+}
 function save(){try{localStorage.setItem(STORE,JSON.stringify(posts));return true}catch(e){toast('本机存储空间不足，暂时无法保存');return false}}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function icon(name){const paths={heart:'<path d="M20.8 4.6a5.4 5.4 0 0 0-7.6 0L12 5.8l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6l1.2 1.2L12 21l7.6-7.6 1.2-1.2a5.4 5.4 0 0 0 0-7.6Z"/>',comment:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.7 8.7 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',share:'<path d="M12 16V3M7 8l5-5 5 5M5 13v7h14v-7"/>'};return '<svg viewBox="0 0 24 24">'+(paths[name]||'')+'</svg>'}
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200)}
 function timeAgo(ts){const h=Math.floor((Date.now()-ts)/3600000);if(h<1)return '刚刚';if(h<24)return h+'小时前';return Math.floor(h/24)+'天前'}
-function countComments(p){return (Number(p._seedCount)||0)+(Array.isArray(p.comments)?p.comments.length:Number(p.comments||0))}
+function countComments(p){return Array.isArray(p.comments)?p.comments.length:0}
 /* 视图模型：兼容旧数据（content 单文本）与新数据（title+body） */
 function vm(p){
   return {id:p.id,name:p.name,
@@ -218,7 +278,7 @@ function vm(p){
     topic:p.topic||'碎碎念',
     time:(typeof p.time==='number')?timeAgo(p.time):(p.time||'刚刚'),
     title:p.title||(p.body?'':(p.content||'')),body:p.body||(p.title?(p.content||''):''),
-    likes:Number(p.likes||0),comments:(Number(p._seedCount)||0)+(Array.isArray(p.comments)?p.comments.length:Number(p.comments||0)),
+    likes:Number(p.likes||0),comments:Array.isArray(p.comments)?p.comments.length:0,
     liked:!!p.liked,featured:!!p.featured,owner:p.owner||(p.tag==='me'?'me':''),
     created:p.created||(typeof p.time==='number'?p.time:0)}
 }
@@ -315,7 +375,7 @@ async function refreshFeed(){
   (Array.isArray(data.activity)?data.activity:[]).slice(0,2).forEach(entry=>{
    const target=posts.find(p=>String(p.id)===String(entry.postId));
    if(!target||!Array.isArray(entry.comments))return;
-   if(!Array.isArray(target.comments)){target._seedCount=Number(target.comments)||Number(target._seedCount)||0;target.comments=[]}
+   if(!Array.isArray(target.comments)){target.comments=[]}
    entry.comments.slice(0,2).forEach((c,j)=>{
     const normalized=forumMakeAIComment(c,j);
     if(normalized&&!target.comments.some(old=>old.source==='forum-ai'&&old.text===normalized.text)){target.comments.push(normalized);activityCount++}

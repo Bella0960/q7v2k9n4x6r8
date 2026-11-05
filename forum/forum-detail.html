@@ -247,6 +247,27 @@
   </div>
 
 <script>
+  /* ===== 种子帖预置评论（不依赖 AI / API Key，与 forum.html 共享同一套文本） ===== */
+  const SEED_COMMENT_POOL_DETAIL={reality:{p1:[['晚风','今天路过花店，闻到一阵特别香的味道。具体是什么花没看清，那十分钟心情特别好。'],['半糖','我最近也在试着留心这些小开心。连续下了一周雨之后终于放晴，晒被子的时候觉得特别满足。'],['山顶洞人','很好奇大家最近都遇到过什么，想多看看不同人的小事清单。']],p2:[['北岛来信','太懂了。我每次收拾完也会有类似的感觉。好像乱的不是房间，是自己的状态。'],['落雨天','上周也收拾了一次，扔掉了一袋旧衣服。不是断舍离，就是突然觉得这些东西以后不会穿了。'],['慢慢来','好奇楼主的房间一般是怎么变乱的。我是做设计的，工作和休息在同一个地方，特别容易堆东西。']],p3:[['晚风','这条直接戳中。我上周六早上醒了没看手机，在床上躺了半小时，感觉最近一段时间的疲劳都退了一点。'],['半糖','我试过把手机放在另一个房间充电，真的不一样。不是不回消息，是知道自己可以等。'],['橘子海','我反而会因为不及时回复焦虑……可能还是要找到自己舒服的节奏。']],p4:[['山顶洞人','这种店真的像秘密基地。我家附近有一家很小的书店，店里只有老板一个人，进去之后可以安静地坐一下午。'],['慢慢来','能说说是卖什么的吗？我平时也会找这种安静的地方，想存一份清单。'],['半糖','想起以前学校附近有一家旧书店，每次考完试都会去坐一会儿，什么也不买，就是翻书。']],p5:[['晚风','想去一个不认识的地铁站下车，沿着周围走一会儿。不用找景点，就是随便走走。'],['落雨天','我想找个没人的湖边坐一下午。带一本书，不一定看。'],['北岛来信','去年秋天给自己放了半天假，一个人去看了银杏。旁边都是拍照的人，但站得远一点就感觉自己在另一个世界。']],p6:[['半糖','我一直觉得生活不一定要有结果。有些事记得开头和中间就够了。'],['慢慢来','我有一个拍得断断续续的相册，不是日记，就是随手拍下来觉得有意思的瞬间。翻的时候会想起当时的心情。'],['橘子海','我反而会强迫自己把想做的事做完。不做就会一直惦记。可能也是一种强迫症。']]}};
+  const SEED_COMMENT_POOL_FALLBACK_DETAIL=[['晚风','这件事挺有意思，让我想想。'],['半糖','我之前也遇到过类似的情况。'],['山顶洞人','能展开说说吗？想多了解一点。'],['青柠汽水','觉得楼主说的有道理。'],['橘子海','不一定吧，我有个朋友就是另一种情况。'],['慢慢来','想起以前也有过类似的感受。'],['落雨天','这件事放在我身上可能反应会不一样。'],['北岛来信','我注意到一个细节，想问问…'],['远山','整体来说挺有共鸣，但有一点想补充。'],['拾光者','这让我想起前几天看到的一件事。']];
+  function buildSeedCommentDetail(post,themeId,index){
+    const pool=SEED_COMMENT_POOL_DETAIL[themeId]&&SEED_COMMENT_POOL_DETAIL[themeId][post.id]||SEED_COMMENT_POOL_FALLBACK_DETAIL;
+    const pair=pool[index%pool.length];
+    const now=Date.now();
+    return {name:pair[0],avatar:'#'+['333333','555555','777777','444444'][index%4],residentId:'seed_'+post.id+'_'+index,owner:'seed',source:'seed-comments',text:pair[1],time:now-(index+1)*180000,likes:0,replies:[]};
+  }
+  function ensureSeedCommentsDetail(post,themeId){
+    if(!post||typeof post!=='object')return;
+    const isSeed=post.owner==='seed'||String(post.id||'').indexOf('p')===0;
+    if(!isSeed)return;
+    if(post.seedCommentsFilled)return;
+    if(Array.isArray(post.comments)&&post.comments.length){post.seedCommentsFilled=true;return}
+    const count=3,built=[];
+    for(let i=0;i<count;i++){const c=buildSeedCommentDetail(post,themeId,i);if(c)built.push(c)}
+    post.comments=built;
+    post.seedCommentsFilled=true;
+  }
+
   const RANDOM_NAMES = ['晚风', '橘子海', '七号公园', '北岛', '半糖', '青柠', '山顶洞人', '猫不语', '夏目', '木苏里', '阿柴', '远山', '七海', '星野', '落雨', '拾光'];
   const REPLIES = [
     '说得太对了！', '同感同感', '哈哈哈哈', '真的假的？',
@@ -340,7 +361,26 @@
     return new URLSearchParams(location.search).get('id');
   }
   function loadPosts() {
-    return JSON.parse(localStorage.getItem('forum_posts') || '[]');
+    let list = null;
+    try { list = JSON.parse(localStorage.getItem('forum_posts') || '[]'); } catch(e) { list = []; }
+    if (!Array.isArray(list)) list = [];
+    let cfg = {};
+    try { cfg = JSON.parse(localStorage.getItem('forum_config') || '{}'); } catch(e) {}
+    const themeId = cfg.theme || 'reality';
+    list.forEach(p => {
+      if (!(p.owner === 'seed' || String(p.id || '').indexOf('p') === 0)) {
+        if (typeof p.comments === 'number') { p.comments = []; p.seedCommentsFilled = true; }
+        else if (!Array.isArray(p.comments)) { p.comments = []; }
+        return;
+      }
+      ensureSeedCommentsDetail(p, themeId);
+      if (!Array.isArray(p.comments)) p.comments = [];
+    });
+    try {
+      const serialized = JSON.stringify(list);
+      if (serialized !== localStorage.getItem('forum_posts')) localStorage.setItem('forum_posts', serialized);
+    } catch(e) { console.warn('[Forum-detail] 帖子回写失败，当前视图不受影响', e); }
+    return list;
   }
   function savePosts(arr) {
     localStorage.setItem('forum_posts', JSON.stringify(arr));
@@ -362,10 +402,7 @@
     const posts = loadPosts();
     post = posts.find(p => p.id === id);
     if (!post) { document.body.innerHTML = '<div style="padding:40px;text-align:center;">帖子不存在</div>'; return; }
-    const rawComments = post.comments;
     if (!Array.isArray(post.comments)) post.comments = [];
-    // 兼容旧数据结构：comments 为数字时保留其展示计数
-    post._seedCount = (typeof rawComments === 'number' && rawComments > 0) ? rawComments : Number(post._seedCount || 0);
     renderPost();
     renderComments();
     if(post.aiCommentBatch!=='v1')generateInitialAIComments();
@@ -395,7 +432,7 @@
       (title ? '<div class="p-title">' + esc(title) + '</div>' : '') +
       (body ? '<p class="p-body">' + esc(body) + '</p>' : '');
     document.getElementById('likeCount').textContent = post.likes || 0;
-    const shownCount = (post._seedCount || 0) + post.comments.length;
+    const shownCount = post.comments.length;
     document.getElementById('commentCount').textContent = shownCount;
     const ct = document.querySelector('.c-title'); if (ct) ct.setAttribute('data-count', shownCount);
     document.getElementById('likeBtn').classList.toggle('liked', !!post.liked);
