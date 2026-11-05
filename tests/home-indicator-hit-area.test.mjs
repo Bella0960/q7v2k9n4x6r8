@@ -335,7 +335,7 @@ let browser;
 let anyFail = false;
 const report = [];
 try {
-  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  browser = await chromium.launch({ headless: true });
   for (const viewport of VIEWPORTS) {
     let checks;
     try {
