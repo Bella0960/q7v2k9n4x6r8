@@ -4940,6 +4940,10 @@
             // /photo [场景补充]：生成请求不作为普通聊天消息发送，也不进入 AI 对话正文。
             var photoCommand = !isRegen && !contextOnly && !silent
                 ? String(text || '').match(/^\/photo(?:\s+([\s\S]*))?$/i) : null;
+            if (photoCommand && isGroupChat) {
+                if (typeof showToast === 'function') showToast('角色生图目前支持单人聊天，请在单人聊天中使用 /photo');
+                return;
+            }
             if (photoCommand && preflightReason === 'ready') {
                 generateRoleImageFromChat((photoCommand[1] || '').trim());
                 return;
