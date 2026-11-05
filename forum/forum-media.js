@@ -94,7 +94,8 @@
       return typeof id === 'string' && /^as_[A-Z2-7]{32}$/.test(id);
     }).slice(0, MAX_FILES);
     if (!ids.length) return '';
-    var className = extraClass === 'comment-media' ? ' comment-media' : '';
+    var allowedClasses = { 'comment-media': true, 'post-media': true, 'post-detail-media': true };
+    var className = allowedClasses[extraClass] ? ' ' + extraClass : '';
     return '<div class="forum-media-grid' + className + '">' + ids.map(function (id, index) {
       return '<figure class="forum-media-item"><img data-forum-media-asset="' + id +
         '" alt="图片 ' + (index + 1) + '" loading="lazy" decoding="async"></figure>';
