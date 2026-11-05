@@ -158,7 +158,7 @@ test('settings, backup, and chat are connected to the assetId-based image record
     assert.match(mediaSource, /IMAGES: 'image_records'/);
     assert.match(backupSource, /db: 'maomao-assets',[\s\S]*?version: 2,[\s\S]*?store: 'image_records'/);
     assert.match(chatSource, /type: 'image-pending'/);
-    assert.match(chatSource, /match\(\^?\/photo|match\(\/\^\\?\/photo|\/photo/);
+    assert.ok(chatSource.includes("match(/^\\/photo"), 'the chat trigger is the explicit /photo command');
     assert.match(chatSource, /assetId: result\.assetId/);
     assert.match(chatSource, /resolveGeneratedImage\(bubble, String\(msg\.assetId\)/);
 });
