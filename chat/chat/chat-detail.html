@@ -2015,6 +2015,7 @@
 
 <script src="../../shared/js/chat-page-theme.js?v=20261105v1"></script>
 <link rel="stylesheet" href="../../shared/css/silver-butterfly-theme.css?v=20261102v5">
+<link rel="stylesheet" href="../../shared/css/wechat-theme-refinements.css?v=20261104v1">
 </head>
 <body>
     <div class="phone-mockup">
@@ -8618,14 +8619,21 @@ form#chat-form .send-icon-btn.disabled { opacity: 0.4 !important; display: flex 
 form#chat-form .send-icon-btn { display: flex !important; visibility: visible !important; }
 </style>
 <script>
-// 最后执行：强制输入栏容器透明
+// 最后执行：保留旧主题的悬浮发送按钮；微信主题切换为微信式发送控件。
 (function(){
+  var HEART_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6c-2.2-2.2-5.7-2.2-7.9 0L12 5.5l-.9-.9c-2.2-2.2-5.7-2.2-7.9 0s-2.2 5.7 0 7.9L12 21l8.8-8.5c2.2-2.2 2.2-5.7 0-7.9Z"/></svg>';
+  var SEND_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>';
+  function isWechat(){
+    var shell = document.querySelector('.phone-mockup');
+    return !!(shell && shell.getAttribute('data-chat-theme-preset') === 'wechat');
+  }
   function force(){
     var d = document.getElementById('chat-form');
     if(!d) return;
-    d.style.setProperty('background','transparent','important');
-    d.style.setProperty('background-color','transparent','important');
-    d.style.setProperty('border-top','none','important');
+    var wechat = isWechat();
+    d.style.setProperty('background', wechat ? '#F7F7F7' : 'transparent', 'important');
+    d.style.setProperty('background-color', wechat ? '#F7F7F7' : 'transparent', 'important');
+    d.style.setProperty('border-top', wechat ? '1px solid #E2E2E2' : 'none', 'important');
     d.style.setProperty('backdrop-filter','none','important');
     d.style.setProperty('-webkit-backdrop-filter','none','important');
     var sb = d.querySelector('.send-icon-btn');
@@ -8634,27 +8642,36 @@ form#chat-form .send-icon-btn { display: flex !important; visibility: visible !i
       sb.style.setProperty('visibility','visible','important');
     }
   }
-  force();
   function fixAll(){
     var d = document.getElementById('chat-form');
     var cap = document.querySelector('.input-capsule');
+    var wechat = isWechat();
     if(cap) cap.style.marginRight = '50px';
-    if(d && !document.getElementById('myFloatSend')){
-      var old = d.querySelector('.send-icon-btn');
-      if(old) old.style.display = 'none';
-      var b = document.createElement('button');
+    if(!d) return;
+    var old = d.querySelector('.send-icon-btn');
+    if(old) old.style.display = 'none';
+    var b = document.getElementById('myFloatSend');
+    if(!b){
+      b = document.createElement('button');
       b.id = 'myFloatSend';
       b.type = 'button';
-      b.style.cssText = 'position:absolute;right:14px;bottom:8px;width:36px;height:36px;border-radius:50%;background:#fff;border:none;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;color:#111;';
-      b.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6c-2.2-2.2-5.7-2.2-7.9 0L12 5.5l-.9-.9c-2.2-2.2-5.7-2.2-7.9 0s-2.2 5.7 0 7.9L12 21l8.8-8.5c2.2-2.2 2.2-5.7 0-7.9Z"/></svg>';
       b.onclick = function(){ if(typeof window.sendMsg==='function') window.sendMsg(); };
       d.appendChild(b);
     }
+    b.style.cssText = wechat
+      ? 'position:absolute;right:14px;bottom:8px;width:36px;height:36px;border-radius:6px;background:#07C160;border:none;box-shadow:none;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;color:#fff;'
+      : 'position:absolute;right:14px;bottom:8px;width:36px;height:36px;border-radius:50%;background:#fff;border:none;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:60;color:#111;';
+    b.innerHTML = wechat ? SEND_ICON : HEART_ICON;
   }
-  fixAll();
-  window.addEventListener('load', function(){ setTimeout(fixAll, 100); setTimeout(fixAll, 500); });
-})();
-</script>
+  function sync(){ force(); fixAll(); }
+  sync();
+  window.addEventListener('load', function(){ setTimeout(sync, 100); setTimeout(sync, 500); });
+  window.addEventListener('pageshow', function(){ setTimeout(sync, 0); });
+  window.addEventListener('maomao:chat-theme-change', function(){ setTimeout(sync, 0); });
+  window.addEventListener('storage', function(event){
+    if(!event || event.key === 'maomao_chat_theme_preset') setTimeout(sync, 0);
+  });
+})();</script>
 <style id="maomao-quote-reply-fix">
 .msg-quoted-preview {
   display:block; margin:0 0 8px; padding:7px 9px;

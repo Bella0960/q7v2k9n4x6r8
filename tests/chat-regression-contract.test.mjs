@@ -66,6 +66,10 @@ const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
 const profileEditor = read('profile/edit-profile.html');
+const chatListPage = read('chat/chat/chat.html');
+const contactsPage = read('chat/contacts/contacts.html');
+const profilePage = read('profile/profile.html');
+const wechatThemeCss = read('shared/css/wechat-theme-refinements.css');
 const packageJson = JSON.parse(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
@@ -2148,4 +2152,49 @@ test('forum detail post and comment avatars retain their own sizing and clipping
   assert.ok(commentAvatarRule.includes('overflow: hidden;'), 'comment avatar clips its image');
   assert.equal(css.includes('.p-avatar{.p-avatar'), false, 'post avatar selector must not be nested');
   assert.equal(css.includes('.c-avatar{.c-avatar'), false, 'comment avatar selector must not be nested');
+});
+
+test('WeChat page refinements load on all five core pages and stay isolated from other themes', () => {
+  const stylesheetVersion = 'wechat-theme-refinements.css?v=20261104v1';
+  for (const [pageName, source] of [
+    ['chat home', chatListPage],
+    ['chat detail', detail],
+    ['contacts', contactsPage],
+    ['Moments', momentsPage],
+    ['Me profile', profilePage]
+  ]) {
+    assert.equal(
+      source.split(stylesheetVersion).length - 1,
+      1,
+      pageName + ' must load the WeChat refinement layer exactly once'
+    );
+  }
+
+  const selectorLines = wechatThemeCss
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('.'));
+  assert.ok(selectorLines.length > 0, 'the WeChat refinement stylesheet should contain scoped selectors');
+  assert.ok(
+    selectorLines.every((line) => line.startsWith('.phone-mockup[data-chat-theme-preset="wechat"]')),
+    'every selector must be scoped to the active WeChat preset'
+  );
+  const activeStylesheetRules = wechatThemeCss.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(
+    activeStylesheetRules,
+    /\.msg-bubble\b/,
+    'message bubbles must remain under ChatBeauty customization'
+  );
+  assert.ok(serviceWorker.includes("'./shared/css/wechat-theme-refinements.css?v=20261104v1'"));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v161'));
+});
+
+test('WeChat Moments keeps the cover action menu available', () => {
+  assert.ok(momentsPage.includes('id="btnAdd"'));
+  assert.ok(momentsPage.includes('id="btnAiPost"'));
+  assert.ok(momentsPage.includes('id="roleSelect"'));
+  assert.ok(
+    wechatThemeCss.includes('.cover-add-btn {\n  display: flex !important;'),
+    'the visual refinement must not hide the cover action menu trigger'
+  );
 });

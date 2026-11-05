@@ -117,16 +117,42 @@ const readClickMetrics = () => {
   };
 };
 
-async function cacheStats(page) {
-  return page.evaluate(async () => {
+async function cacheStats(page, expectedUrls = []) {
+  return page.evaluate(async (expected) => {
     const keys = await caches.keys();
-    let entries = 0;
-    for (const key of keys) {
-      const cache = await caches.open(key);
-      entries += (await cache.keys()).length;
+    const appCaches = keys.filter((key) => key.startsWith('phone-app-pwa-')).sort();
+    const cacheName = appCaches[appCaches.length - 1] || '';
+    const cache = cacheName ? await caches.open(cacheName) : null;
+    const entries = cache ? await cache.keys() : [];
+    const missing = [];
+    for (const url of expected) {
+      if (!cache || !(await cache.match(url))) missing.push(url);
     }
-    return { keys, entries, controlled: !!navigator.serviceWorker.controller };
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    const registration = registrations.find((item) => item.active && item.active.scriptURL.includes('/sw.js')) || null;
+    return {
+      keys,
+      cacheName,
+      entries: entries.length,
+      controlled: !!navigator.serviceWorker.controller,
+      activeState: registration && registration.active ? registration.active.state : 'missing',
+      expectedCount: expected.length,
+      missing
+    };
+  }, expectedUrls);
+}
+
+async function waitForServiceWorkerControl(page) {
+  // `ready` can resolve during the activation hand-off; the user-visible
+  // contract is that this document is actually controlled by the worker.
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
   });
+  await page.waitForFunction(
+    () => !!navigator.serviceWorker.controller,
+    null,
+    { timeout: 30000 }
+  );
 }
 
 async function waitForPrecache(page, minEntries) {
@@ -141,7 +167,7 @@ async function waitForPrecache(page, minEntries) {
   }, minEntries, { timeout: 20000 });
 }
 
-async function sectionA(browser, baseUrl, report) {
+async function sectionA(browser, baseUrl, report, expectedPrecacheUrls) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await context.addInitScript(() => {
     if (localStorage.getItem('__seeded')) return;
@@ -154,18 +180,19 @@ async function sectionA(browser, baseUrl, report) {
   page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) mainFrameNavigations += 1; });
 
   await page.goto(baseUrl + '/index.html', { waitUntil: 'load' });
-  await waitForPrecache(page, 150);
-  await sleep(1200);
+  await waitForServiceWorkerControl(page);
+  await sleep(100);
 
   const navEntries = await page.evaluate(() => performance.getEntriesByType('navigation').map((entry) => entry.type));
-  const stats = await cacheStats(page);
+  const stats = await cacheStats(page, expectedPrecacheUrls);
   const navCountAtSwReady = mainFrameNavigations;
 
   const checks = [];
   checks.push(['首访只有一次文档导航', navCountAtSwReady === 1, { navigations: navCountAtSwReady }]);
   checks.push(['首访文档未被 reload', navEntries.length === 1 && navEntries[0] === 'navigate', { navEntries }]);
   checks.push(['首访页面已受 SW 控制', stats.controlled === true, { controlled: stats.controlled }]);
-  checks.push(['预缓存条数未减少（基线 151）', stats.entries >= 150, { entries: stats.entries, keys: stats.keys }]);
+  checks.push(['活动 SW 缓存完整覆盖 APP_SHELL 与全部 HTML 页面清单', stats.missing.length === 0,
+    { cacheName: stats.cacheName, entries: stats.entries, expected: stats.expectedCount, activeState: stats.activeState, missing: stats.missing }]);
 
   // 离线仍能打开聊天页
   await page.goto(baseUrl + '/index.html', { waitUntil: 'load' });
@@ -331,13 +358,23 @@ async function sectionC(browser, baseUrl, report) {
 
 const { server, pages } = await startServer();
 const baseUrl = `http://127.0.0.1:${server.address().port}`;
+const swSource = await readFile(resolve(root, 'sw.js'), 'utf8');
+const appShellMatch = swSource.match(/const APP_SHELL = \[([\s\S]*?)\n\];/);
+if (!appShellMatch) throw new Error('Unable to read APP_SHELL from sw.js');
+const appShellPaths = Array.from(appShellMatch[1].matchAll(/['"]([^'"]+)['"]/g), (match) => match[1]);
+const expectedPrecacheUrls = Array.from(new Set(
+  appShellPaths
+    .concat(pages.map((page) => './' + page))
+    .filter((path) => path !== './')
+    .map((path) => new URL(path, baseUrl + '/').href)
+));
 const report = {};
 let browser;
 let failed = false;
 const failures = [];
 try {
   browser = await chromium.launch({ channel: 'msedge', headless: true });
-  await sectionA(browser, baseUrl, report);
+  await sectionA(browser, baseUrl, report, expectedPrecacheUrls);
   await sectionB(browser, baseUrl, report);
   await sectionC(browser, baseUrl, report);
   for (const key of ['A', 'B', 'C']) {
