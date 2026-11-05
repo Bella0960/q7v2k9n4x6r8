@@ -505,16 +505,18 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     let forumCfg={};
     try { forumCfg=JSON.parse(localStorage.getItem('forum_config')||'{}'); } catch(error) {}
     const seedThemeId=forumCfg.theme||'reality';
-    seedPosts.forEach(item=>ensureSeedCommentsDetail(item,seedThemeId));
+    const fillSeedDefaults=()=>seedPosts.forEach(item=>ensureSeedCommentsDetail(item,seedThemeId));
     const seedIds = new Set(seedPosts.map(p => String(p.id)));
     let raw;
     try { raw = localStorage.getItem('forum_posts'); }
     catch (error) {
       console.warn('[Forum] 读取本地帖子失败，先展示默认内容', error);
       toast('读取本机帖子失败，先显示默认内容');
+      fillSeedDefaults();
       return seedPosts;
     }
     if (raw === null) {
+      fillSeedDefaults();
       try { savePosts(seedPosts); }
       catch (error) {
         console.warn('[Forum] 首次写入种子帖子失败，默认内容仍可浏览', error);
@@ -527,11 +529,13 @@ function mergeForumPosts(stored,seedPosts,previousSeedSets){
     catch (error) {
       console.warn('[Forum] 帖子数据损坏，保留页面外壳并展示默认内容', error);
       toast('本地帖子数据无法读取，先显示默认内容');
+      fillSeedDefaults();
       return seedPosts;
     }
     if (!Array.isArray(stored)) {
       console.warn('[Forum] 帖子数据不是列表，保留页面外壳并展示默认内容');
       toast('本地帖子数据格式异常，先显示默认内容');
+      fillSeedDefaults();
       return seedPosts;
     }
     const merged = mergeForumPosts(stored, seedPosts, buildPreviousSeedSets(stored, seedIds));
