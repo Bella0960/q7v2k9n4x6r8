@@ -2798,21 +2798,80 @@
             delete _warnCooldown[type];
         }
 
-        function saveMessages(list) {
+        // ================= 写后读回校验（数据可信） =================
+        // 写入后必须从既有读取通道读回（PhoneStorage.getChatHistory / localStorage），
+        // 逐条按 角色 / 标识(mid|time) / 正文 做归属校验；读不回来、长度不一致、
+        // 任意一条不一致或抛异常，都视为保存失败。
+        function _readBackHistory() {
             if (_storage) {
-                var ok = _storage.saveChatHistory(currentCharacter.id, list);
-                if (ok) {
-                    _resetWarnCooldown('chat-save');
-                } else if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
-                    showToast('聊天记录未能保存，请检查本地存储空间');
+                try {
+                    var stored = _storage.getChatHistory(currentCharacter.id);
+                    return Array.isArray(stored) ? stored : null;
+                } catch (err) {
+                    return null;
                 }
-                return;
             }
             try {
-                localStorage.setItem(storageKey, JSON.stringify(list));
+                const raw = localStorage.getItem(storageKey);
+                if (raw == null) return null;
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : null;
             } catch (err) {
-                console.warn('保存聊天记录失败:', err);
+                return null;
             }
+        }
+
+        function _messageIdentity(msg) {
+            if (!msg || typeof msg !== 'object') return '';
+            var body = msg.text != null ? msg.text : (msg.content != null ? msg.content : '');
+            var marker = msg.mid != null ? msg.mid : (msg.time != null ? msg.time : '');
+            return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' + String(body);
+        }
+
+        function _verifyHistoryRoundTrip(list) {
+            var written = Array.isArray(list) ? list : [];
+            var stored = _readBackHistory();
+            if (!stored || stored.length !== written.length) return false;
+            for (var i = 0; i < written.length; i++) {
+                if (_messageIdentity(written[i]) !== _messageIdentity(stored[i])) return false;
+            }
+            return true;
+        }
+
+        function saveMessages(list) {
+            var wrote = false;
+            if (_storage) {
+                try {
+                    wrote = !!_storage.saveChatHistory(currentCharacter.id, list);
+                } catch (err) {
+                    console.warn('保存聊天记录失败:', err);
+                    wrote = false;
+                }
+            } else {
+                try {
+                    localStorage.setItem(storageKey, JSON.stringify(list));
+                    wrote = true;
+                } catch (err) {
+                    console.warn('保存聊天记录失败:', err);
+                    wrote = false;
+                }
+            }
+            if (wrote && _verifyHistoryRoundTrip(list)) {
+                _resetWarnCooldown('chat-save');
+                return true;
+            }
+            if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
+                showToast('聊天记录未能保存，请检查本地存储空间');
+            }
+            return false;
+        }
+
+        // system_error 去重：最后一条已经是相同提示时不再重复追加/保存。
+        // 主要覆盖 isRegen / contextOnly 反复触发同一错误（如未配置 API Key）时历史累积的问题。
+        function _isRepeatedSystemError(list, text) {
+            if (!Array.isArray(list) || !list.length) return false;
+            var last = list[list.length - 1];
+            return !!last && last.role === 'system_error' && String(last.text || '') === String(text || '');
         }
 
         // 头像占位：极细线条 SVG 小人（黑白灰规范，无 Emoji）
@@ -2858,6 +2917,106 @@
             }
             return null;
         }
+
+        // ================= 发送失败重试：按 mid 复用原用户消息，不新增重复记录 =================
+        // 旧数据可能没有 mid：找不到 mid 时退回 time 匹配，只为定位，不补写、不迁移历史数据。
+        function _locateRetryMessage(list, mid, time) {
+            if (!Array.isArray(list)) return -1;
+            for (var i = 0; i < list.length; i++) {
+                var m = list[i];
+                if (!m || m.role !== 'user' || !m.sendFailed) continue;
+                if (mid && m.mid === mid) return i;
+                if (mid && !m.mid && time != null && String(m.time) === String(time)) return i;
+                if (!mid && time != null && String(m.time) === String(time)) return i;
+            }
+            return -1;
+        }
+
+        // 只清除原记录上的失败标记并交给调用方落库；返回 previous 供保存失败时回滚。
+        function _prepareRetryMessage(list, mid, time) {
+            var idx = _locateRetryMessage(list, mid, time);
+            if (idx === -1) return null;
+            var message = list[idx];
+            var previous = { sendFailed: message.sendFailed, sendFailedReason: message.sendFailedReason };
+            delete message.sendFailed;
+            delete message.sendFailedReason;
+            return { index: idx, message: message, previous: previous };
+        }
+
+        // 重试后 API 请求失败：按 mid（旧数据回退 time）在同一条用户消息上重新打失败标记。
+        // 只更新现有记录，不新增消息、不迁移历史。
+        function _locateUserMessageIndex(list, mid, time) {
+            if (!Array.isArray(list)) return -1;
+            var timeIndex = -1;
+            for (var i = 0; i < list.length; i++) {
+                var m = list[i];
+                if (!m || m.role !== 'user') continue;
+                if (mid && m.mid === mid) return i;
+                if (timeIndex === -1 && time != null && String(m.time) === String(time)) timeIndex = i;
+            }
+            return timeIndex;
+        }
+
+        function _markUserSendFailed(list, mid, time, reason) {
+            var idx = _locateUserMessageIndex(list, mid, time);
+            if (idx === -1) return false;
+            var message = list[idx];
+            var previousFailed = message.sendFailed;
+            var previousReason = message.sendFailedReason;
+            message.sendFailed = true;
+            message.sendFailedReason = reason || 'api-error';
+            if (!saveMessages(list)) {
+                // 标记只在真正落库后才生效；写失败就回滚内存状态，交由调用方继续按既有规则处理错误提示。
+                if (previousFailed) message.sendFailed = true;
+                else delete message.sendFailed;
+                if (previousReason != null) message.sendFailedReason = previousReason;
+                else delete message.sendFailedReason;
+                return false;
+            }
+            return true;
+        }
+
+        // 一键重试：复用已落库的原用户消息，只发起 AI 回合（contextOnly），不会插入第二条用户消息。
+        window.retryFailedMessage = function (mid, time) {
+            if (aiSending) {
+                if (typeof showToast === 'function') showToast('TA 正在回复中，稍等一下');
+                return;
+            }
+            if (isBlocked(aliasRoleId)) {
+                if (typeof showToast === 'function') showToast('你已把 TA 拉黑，无法重试');
+                return;
+            }
+            var config = getAiConfig();
+            if (!((config && config.apiKey) || '').trim()) {
+                if (typeof showToast === 'function') showToast('请先到【设置页 → API 设置】配置 API Key');
+                return;
+            }
+            var list = loadMessages();
+            var prepared = _prepareRetryMessage(list, mid, time);
+            if (!prepared) {
+                if (typeof showToast === 'function') showToast('这条消息已不存在或无需重试');
+                return;
+            }
+            if (!saveMessages(list)) {
+                // 失败标记只在保存成功后移除；写失败就原样回滚，避免界面与存储不一致。
+                prepared.message.sendFailed = true;
+                if (prepared.previous.sendFailedReason != null) {
+                    prepared.message.sendFailedReason = prepared.previous.sendFailedReason;
+                }
+                return;
+            }
+            var rowMid = mid || prepared.message.mid || '';
+            var row = rowMid ? chatMessages.querySelector('.msg-row[data-mid="' + rowMid + '"]') : null;
+            if (!row && time != null) {
+                row = chatMessages.querySelector('.msg-row[data-time="' + String(time) + '"]');
+            }
+            if (row) {
+                var mark = row.querySelector('.msg-send-failed');
+                if (mark) mark.remove();
+            }
+            // 把重试目标交给 sendMsg：API 失败时据此重新标记同一条用户消息。
+            sendMsg({ contextOnly: true, retryTarget: { mid: rowMid, time: time } });
+        };
 
         // ================= 礼物拆开动画 =================
         function openGiftUnwrap(msg) {
@@ -3398,7 +3557,19 @@
                     var failedMark = document.createElement('span');
                     failedMark.className = 'msg-send-failed';
                     failedMark.textContent = '!';
-                    failedMark.title = '消息已发出，但被对方拒收了';
+                    failedMark.title = (msg.sendFailedReason === 'missing-api-key' ? '尚未配置 API Key；消息已保存' : '消息已发出，但被对方拒收了') + '，点击重试';
+                    failedMark.setAttribute('role', 'button');
+                    failedMark.setAttribute('tabindex', '0');
+                    var startRetry = function (event) {
+                        if (event) { event.preventDefault(); event.stopPropagation(); }
+                        if (typeof window.retryFailedMessage === 'function') {
+                            window.retryFailedMessage(row.dataset.mid, msg.time);
+                        }
+                    };
+                    failedMark.addEventListener('click', startRetry);
+                    failedMark.addEventListener('keydown', function (event) {
+                        if (event && (event.key === 'Enter' || event.key === ' ')) startRetry(event);
+                    });
                     row.appendChild(failedMark);
                 }
                 row.appendChild(attachEl);
@@ -4592,6 +4763,13 @@
             const isGroupFollowup = sendState.isGroupFollowup;
             const groupAutoDepth = sendState.groupAutoDepth;
             const text = sendState.text;
+            // 重试调用携带的目标：API 失败时据此把原用户消息重新标记为可重试。
+            const retryTarget = (opts && opts.retryTarget && typeof opts.retryTarget === 'object')
+                ? {
+                    mid: opts.retryTarget.mid ? String(opts.retryTarget.mid) : '',
+                    time: opts.retryTarget.time
+                }
+                : null;
             window.__groupAutoStopRequested = false;
             let preflightReason;
             if (window.ChatSendPolicy && typeof window.ChatSendPolicy.evaluatePreflight === 'function') {
@@ -4628,20 +4806,28 @@
             // blocked 不再拦截发送：消息照常发出，但标记为 sendFailed（渲染为红色感叹号），不调用 API
             // 提前处理：不走 API Key 检查，直接落库显示
             if (isBlocked(aliasRoleId) && !isRegen && !contextOnly) {
+                const previousGroupUserSend = (isGroupChat && !silent) ? { ...lastGroupUserSend } : null;
+                const previousGroupAutoFollowupToken = groupAutoFollowupToken;
                 if (!silent && !acceptGroupUserMessage(text)) {
                     if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                     return;
                 }
-                if (isGroupChat && !silent) groupAutoFollowupToken += 1;
                 let blockedHistory = loadMessages();
                 const blockedQuote = pendingQuote ? {
                     mid: pendingQuote.mid, text: pendingQuote.text,
                     fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
                 } : null;
                 const blockedMsg = { role: 'user', text: text, time: Date.now(), sendFailed: true, quote: blockedQuote };
-                if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
+                ensureMid(blockedMsg);
                 blockedHistory.push(blockedMsg);
-                saveMessages(blockedHistory);
+                // P0：用户消息必须真正落库后才生效；写失败就终止，保留输入与引用。
+                if (!saveMessages(blockedHistory)) {
+                    if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
+                    groupAutoFollowupToken = previousGroupAutoFollowupToken;
+                    return;
+                }
+                if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                if (blockedQuote && typeof window.clearQuote === 'function') window.clearQuote();
                 if (_vl) vlRefresh(); else appendMessageToDOM(blockedMsg);
                 input.value = '';
                 input.style.height = 'auto';
@@ -4658,11 +4844,68 @@
             const customPrompt = (config.prompt || '').trim();
 
             if (!apiKey) {
-                const errMsg = { role: 'system_error', isError: true, text: '请先到【设置页 → API 设置】配置 API Key', time: Date.now() };
                 const historyList = loadMessages();
-                historyList.push(errMsg);
-                saveMessages(historyList);
-                if (_vl) vlRefresh(); else appendMessageToDOM(errMsg);
+                let userMsg = null;
+                let userSaved = null;
+                const previousGroupUserSend = (isGroupChat && !silent)
+                    ? { ...lastGroupUserSend } : null;
+                const previousGroupAutoFollowupToken = groupAutoFollowupToken;
+
+                if (!isRegen && !contextOnly) {
+                    if (!silent && !acceptGroupUserMessage(text)) {
+                        if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
+                        return;
+                    }
+                    const quoteSnapshot = (!silent && pendingQuote) ? {
+                        mid: pendingQuote.mid, text: pendingQuote.text,
+                        fromRole: pendingQuote.fromRole, authorName: pendingQuote.authorName
+                    } : null;
+                    userMsg = {
+                        role: 'user', text: text, time: Date.now(), silent: !!silent,
+                        quote: quoteSnapshot, sendFailed: true, sendFailedReason: 'missing-api-key'
+                    };
+                    ensureMid(userMsg);
+                    historyList.push(userMsg);
+
+                    // 先单独确认用户消息已落库；只有成功后才清空输入与引用。
+                    userSaved = saveMessages(historyList);
+                    if (!userSaved) {
+                        // P0：用户消息没有真正落库 → 立即终止本次发送。
+                        // 不写 system_error、不渲染任何气泡，输入框原文与引用状态保持原样。
+                        historyList.pop();
+                        if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
+                        groupAutoFollowupToken = previousGroupAutoFollowupToken;
+                        return;
+                    }
+                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
+                    if (!silent) {
+                        input.value = '';
+                        input.style.height = 'auto';
+                        updateSendBtnState();
+                        if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
+                    }
+                }
+
+                const errMsg = {
+                    role: 'system_error', isError: true,
+                    text: '请先到【设置页 → API 设置】配置 API Key',
+                    time: Date.now()
+                };
+                // isRegen / contextOnly 反复触发时，相同错误已经在历史尾部就不再重复入库、渲染。
+                if (!_isRepeatedSystemError(historyList, errMsg.text)) {
+                    historyList.push(errMsg);
+                    // 第二次写入同样以读回结果为准；失败则不保留、不渲染无名错误记录。
+                    const errSaved = saveMessages(historyList);
+                    if (!errSaved) historyList.pop();
+                    if (_vl) {
+                        vlRefresh();
+                    } else {
+                        if (userMsg && userSaved && !silent) appendMessageToDOM(userMsg);
+                        if (errSaved) appendMessageToDOM(errMsg);
+                    }
+                }
+                scrollToBottom(true);
                 return;
             }
 
@@ -4681,15 +4924,24 @@
                         role: 'user', text: text, time: Date.now(), silent: !!silent,
                         quote: quoteSnapshot
                     };
+                    ensureMid(userMsg);
+                    const previousGroupUserSend = (isGroupChat && !silent) ? { ...lastGroupUserSend } : null;
+                    const previousGroupAutoFollowupToken = groupAutoFollowupToken;
                     if (!silent && !acceptGroupUserMessage(text)) {
                         if (typeof showToast === 'function') showToast('这条群消息刚刚发送过了');
                         return;
                     }
-                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
-                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (blockedNow) userMsg.sendFailed = true;
                     historyList.push(userMsg);
-                    saveMessages(historyList);
+                    // P0：用户消息必须真正落库后才继续；写失败立即终止，保留输入与引用。
+                    if (!saveMessages(historyList)) {
+                        historyList.pop();
+                        if (previousGroupUserSend) lastGroupUserSend = previousGroupUserSend;
+                        groupAutoFollowupToken = previousGroupAutoFollowupToken;
+                        return;
+                    }
+                    if (isGroupChat && !silent) groupAutoFollowupToken += 1;
+                    if (quoteSnapshot && typeof window.clearQuote === 'function') window.clearQuote();
                     if (!silent) {
                         if (_vl) vlRefresh(); else appendMessageToDOM(userMsg);
                         input.value = '';
@@ -5466,7 +5718,7 @@
             } else {
                 // Compatibility fallback: keep the legacy context mapping intact if the shared module fails to load.
                 recentHistory.forEach(m => {
-                    if (m.isError || m.role === 'system_error') return;
+                    if (m.isError || m.role === 'system_error' || m.sendFailed) return;
                     if (isGroupChat && m.type === 'group_private') return;
                     if (m.type === 'sticker') {
                         var stickerMeaning = String(m.desc || '').trim();
@@ -5644,6 +5896,13 @@
                 logApiCall(apiModel, 'success', apiCallStart);
             }
 
+            // 重试后 API 失败：先把同一条用户消息重新标记为失败并落库，
+            // 再按既有 _isRepeatedSystemError 去重规则处理错误提示。
+            var retryRemarked = false;
+            if (!streamResult.ok && retryTarget) {
+                retryRemarked = _markUserSendFailed(historyList, retryTarget.mid, retryTarget.time);
+            }
+
             try {
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
@@ -5754,17 +6013,41 @@
                                 ? '回复较长已截断（120 秒上限），以上为已收到的内容'
                                 : '连接中断（' + (e.reason === 'watchdog' ? '30 秒未收到新内容' : '连接超时') + '），以上为已收到的回复')
                             : '连接中断：' + (e.detail || '网络错误');
-                        const tipMsg = { role: 'system_error', isError: true, text: tipText, time: Date.now() };
-                        historyList.push(tipMsg);
-                        saveMessages(historyList);
-                        if (_vl) vlRefresh(); else appendMessageToDOM(tipMsg);
+                        if (!_isRepeatedSystemError(historyList, tipText)) {
+                            const tipMsg = { role: 'system_error', isError: true, text: tipText, time: Date.now() };
+                            historyList.push(tipMsg);
+                            // 保存成功才渲染气泡；写失败则回退历史并用 toast 保留可见提示。
+                            const tipSaved = saveMessages(historyList);
+                            if (!tipSaved) {
+                                historyList.pop();
+                                if (typeof showToast === 'function') showToast(tipText);
+                            } else if (_vl) {
+                                vlRefresh();
+                            } else {
+                                appendMessageToDOM(tipMsg);
+                            }
+                        }
                     }
                 } else if (!streamResult.ok) {
                     // 零内容错误：HTTP/超时/网络 → 错误气泡（文案已在上方按类别组装）
-                    const errorMsg = { role: 'system_error', isError: true, text: errText, time: Date.now() };
-                    historyList.push(errorMsg);
-                    saveMessages(historyList);
-                    if (_vl) vlRefresh(); else appendMessageToDOM(errorMsg);
+                    if (!_isRepeatedSystemError(historyList, errText)) {
+                        const errorMsg = { role: 'system_error', isError: true, text: errText, time: Date.now() };
+                        historyList.push(errorMsg);
+                        // 保存成功才渲染气泡；写失败则回退历史并用 toast 保留可见提示。
+                        const errSaved = saveMessages(historyList);
+                        if (!errSaved) {
+                            historyList.pop();
+                            if (typeof showToast === 'function') showToast(errText);
+                        } else if (_vl) {
+                            vlRefresh();
+                        } else {
+                            appendMessageToDOM(errorMsg);
+                        }
+                    }
+                }
+                if (retryRemarked) {
+                    // 失败标记已落库：重新渲染一次，让用户消息重新出现可点击的重试入口。
+                    if (_vl) vlRefresh(); else renderAllMessages();
                 }
                 scrollToBottom(true);
             } catch (postErr) {

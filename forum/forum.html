@@ -90,7 +90,7 @@ button:disabled{opacity:.45;cursor:default}
 (function(){
 'use strict';
 const STORE='forum_posts';
-function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){return {}}}
+function readForumConfig(){try{return JSON.parse(localStorage.getItem('forum_config')||'{}')}catch(e){console.warn('[Forum] readForumConfig 读取 forum_config 失败，按默认配置继续',e);return {}}}
 const THEME_PRESETS={
  reality:{name:'现代都市',english:'CITY / EVERYDAY',tagline:'城市日常 / 把普通日子里的细节，留在这里。',motto:'LIFE IN THE EVERYDAY',featureTitle:'今天的城市生活，又有什么新鲜事？',featureDeck:'生活观察、工作见闻、邻里小事与临时起意的分享，都可以在这里慢慢聊。',topics:['全部','今日话题','生活观察','职场见闻','邻里闲谈','深夜碎念','随手分享']},
  bagua:{name:'八卦吃瓜',english:'GOSSIP / WATCH',tagline:'瓜田速报 / 热点、投稿与讨论都摆上来，先看来源，再聊细节。',motto:'WHAT’S THE LATEST?',featureTitle:'今天又有什么新瓜值得围观？',featureDeck:'娱乐动态、网友投稿、关系观察与热点讨论。未经证实的消息先标注来源，不把猜测当成结论。',topics:['全部','娱乐八卦','爆料求证','恋爱观察','避雷投稿','网友热议','真假鉴定']},
@@ -98,8 +98,8 @@ const THEME_PRESETS={
  academy:{name:'校园',english:'CAMPUS / LIFE',tagline:'校园生活 / 宿舍、社团、课程与那些只在校园里发生的小事。',motto:'NOTES FROM CAMPUS',featureTitle:'校园里最近有什么值得讨论的新鲜事？',featureDeck:'课程求助、社团活动、宿舍日常、校园投稿都可以聊。',topics:['全部','校园八卦','课业求助','社团日常','宿舍见闻','表白墙','二手闲置']},
  future:{name:'赛博朋克',english:'NIGHT CITY / 2099',tagline:'夜城信号 / 义体、数据、AI 与霓虹之下的日常。',motto:'SIGNAL LOST? STAY ONLINE.',featureTitle:'夜城今晚有什么新消息？',featureDeck:'街区信号、义体体验、AI关系与设备讨论。',topics:['全部','赛博见闻','义体改造','AI关系','数据黑市','夜城生活','设备测评']}
 };
-function getForumTheme(){
- const cfg=readForumConfig(),id=cfg.theme||'reality';
+function getForumTheme(themeOverride){
+ const cfg=readForumConfig(),id=themeOverride||cfg.theme||'reality';
  if(String(id).indexOf('custom_')===0){
   const c=(Array.isArray(cfg.customThemes)?cfg.customThemes:[]).find(x=>x&&x.id===id)||{};
   const ts=(Array.isArray(c.topics)?c.topics:[]).map(x=>String(x).replace(/^#/,'')).filter(Boolean);
@@ -109,8 +109,8 @@ function getForumTheme(){
  const p=THEME_PRESETS[id]||THEME_PRESETS.reality;
  return {...p,id:id,displayName:(cfg.name&&cfg.name!=='我的论坛'?cfg.name:p.name),roleTopics:p.topics.slice(1),world:[p.tagline,cfg.world].filter(Boolean).join('\n')};
 }
-function getSeededPosts(){
- const t=getForumTheme(),base=seeded.map(x=>({...x})),bagua=[
+function getSeededPosts(themeOverride){
+ const t=getForumTheme(themeOverride),base=seeded.map(x=>({...x})),bagua=[
  ['娱乐八卦','最近这档综艺的剪辑，评论区已经吵成两派了。','有人觉得节目组在带节奏，也有人说只是镜头取舍。先不急着站队，想看看大家完整看完之后是什么感觉。'],
  ['爆料求证','求原始出处：这张聊天截图最早是从哪里传出来的？','目前看到的都是二次转发，缺少完整上下文。有没有人找到原帖？没有来源之前先当作未证实消息。'],
  ['恋爱观察','朋友恋爱后突然很少发动态，是正常的吗？','不是要替别人下判断，只是发现关系状态变化后，社交习惯也会跟着变。大家怎么看？'],
@@ -201,10 +201,80 @@ const seeded=[
 {id:'p5',name:'慢慢',avatar:'慢',topic:'今日话题',time:'2 小时前',title:'如果今天能给自己放一个小假，你会去哪里？',body:'我想去没有太多人的海边，坐着看一会儿水。什么也不用完成，也不急着把心情整理好。',likes:11,comments:4,liked:false},
 {id:'p6',name:'七号房间',avatar:'七',topic:'随手分享',time:'昨天',title:'最近喜欢上了记录不完整的生活。',body:'不修图，不一定写结尾，有时候只是记下一句没说完的话。以前觉得记录要有意义，现在觉得它只要是真的，就很好。',likes:7,comments:1,liked:false}
 ];
-let posts=loadPosts(),page='home',topicFilter='全部',sortMode='最新',searchText='',searchOpen=false,notificationsRead=false;
 const $=id=>document.getElementById(id);const root=$('viewRoot'),scroll=$('scrollArea');
-function loadPosts(){try{const s=JSON.parse(localStorage.getItem(STORE)||'null');if(Array.isArray(s)&&s.length){let list=s.map(x=>({...x}));const isUser=p=>p.owner==='me'||p.tag==='me'||String(p.id).indexOf('user_')===0;const isLegacySeed=p=>String(p.id).indexOf('seed_')===0;const isRefSeed=p=>p.title&&p.body&&String(p.id).indexOf('user_')!==0;const keep=list.filter(p=>isUser(p)||(isRefSeed(p)&&!isLegacySeed(p)));const merged=getSeededPosts().map(x=>({...x}));keep.forEach(u=>{if(!merged.some(m=>m.id===u.id))merged.unshift(u)});return merged}return getSeededPosts().map(x=>({...x}))}catch(e){return getSeededPosts().map(x=>({...x}))}}
-function save(){try{localStorage.setItem(STORE,JSON.stringify(posts));return true}catch(e){toast('本机存储空间不足，暂时无法保存');return false}}
+let posts=loadPosts(),page='home',topicFilter='全部',sortMode='最新',searchText='',searchOpen=false,notificationsRead=false;
+function buildPreviousSeedSets(stored,seedIds){
+ const themes=new Set();
+ (Array.isArray(stored)?stored:[]).forEach(item=>{
+  if(!item||typeof item!=='object'||Array.isArray(item)||item.id==null)return;
+  if(!seedIds.has(String(item.id)))return;
+  const themeId=typeof item.themeId==='string'?item.themeId.trim():'';
+  if(themeId)themes.add(themeId);
+ });
+ const previous=new Map();
+ themes.forEach(themeId=>{
+  const seeds=getSeededPosts(themeId).map(p=>({...p}));
+  previous.set(themeId,new Map(seeds.map(p=>[String(p.id),p])));
+ });
+ return previous;
+}
+/* 按字段判断种子帖是否被用户改过：只有存储值仍等于「上一次种子默认值」时才同步为新默认值。 */
+function mergeForumPosts(stored,seedPosts,previousSeedSets){
+ const syncFields=['id','name','avatar','topic','title','body','featured','owner','themeId'];
+ const seedById=new Map(seedPosts.map(p=>[String(p.id),p]));
+ const previousByTheme=previousSeedSets instanceof Map?previousSeedSets:new Map();
+ const seenSeeds=new Set(),merged=[];
+ (Array.isArray(stored)?stored:[]).forEach(item=>{
+  if(!item||typeof item!=='object'||Array.isArray(item)||item.id==null)return;
+  const id=String(item.id),seed=seedById.get(id);
+  if(seed){
+   const themeId=typeof item.themeId==='string'?item.themeId.trim():'';
+   const previousSeeds=previousByTheme.get(themeId);
+   const previousSeed=previousSeeds instanceof Map?previousSeeds.get(id):null;
+   const combined={...seed,...item};
+   syncFields.forEach(key=>{
+    if(!Object.prototype.hasOwnProperty.call(seed,key))return;
+    const nextDefault=seed[key];
+    const hasValue=Object.prototype.hasOwnProperty.call(item,key);
+    const previousDefault=previousSeed&&Object.prototype.hasOwnProperty.call(previousSeed,key)?previousSeed[key]:nextDefault;
+    const untouched=hasValue?item[key]===previousDefault:true;
+    if(untouched)combined[key]=nextDefault;
+    else if(hasValue)combined[key]=item[key];
+    else combined[key]=nextDefault;
+   });
+   merged.push(combined);seenSeeds.add(id);return;
+  }
+  if(id.indexOf('seed_')===0&&item.owner!=='me'&&item.tag!=='me')return;
+  merged.push({...item});
+ });
+ seedPosts.forEach(seed=>{if(!seenSeeds.has(String(seed.id)))merged.push({...seed})});
+ return merged;
+}
+function loadPosts(){
+ const seedPosts=getSeededPosts().map(x=>({...x}));
+ const seedIds=new Set(seedPosts.map(p=>String(p.id)));
+ let raw;
+ try{raw=localStorage.getItem(STORE)}
+ catch(error){console.warn('[Forum] 读取本地帖子失败，先展示默认内容',error);toast('读取本机帖子失败，先显示默认内容');return seedPosts}
+ if(raw===null){
+  try{localStorage.setItem(STORE,JSON.stringify(seedPosts))}
+  catch(error){console.warn('[Forum] 首次写入种子帖子失败，默认内容仍可浏览',error);toast('本机存储暂时无法写入，本次内容不会保留')}
+  return seedPosts;
+ }
+ let stored;
+ try{stored=JSON.parse(raw)}
+ catch(error){console.warn('[Forum] 帖子数据损坏，保留页面外壳并展示默认内容',error);toast('本地帖子数据无法读取，先显示默认内容');return seedPosts}
+ if(!Array.isArray(stored)){console.warn('[Forum] 帖子数据不是列表，保留页面外壳并展示默认内容');toast('本地帖子数据格式异常，先显示默认内容');return seedPosts}
+ const merged=mergeForumPosts(stored,seedPosts,buildPreviousSeedSets(stored,seedIds));
+ try{
+  if(JSON.stringify(merged)!==JSON.stringify(stored))localStorage.setItem(STORE,JSON.stringify(merged));
+ }catch(error){
+  console.warn('[Forum] 合并结果回写失败，已读出的帖子继续展示',error);
+  toast('本次改动未写入本机，下次打开可能不会保留');
+ }
+ return merged;
+}
+function save(){try{localStorage.setItem(STORE,JSON.stringify(posts));return true}catch(e){console.warn('[Forum] 保存帖子失败，当前页面继续显示已读出的内容',e);toast('本机存储空间不足，暂时无法保存');return false}}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function icon(name){const paths={heart:'<path d="M20.8 4.6a5.4 5.4 0 0 0-7.6 0L12 5.8l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6l1.2 1.2L12 21l7.6-7.6 1.2-1.2a5.4 5.4 0 0 0 0-7.6Z"/>',comment:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.7 8.7 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3h.5a8.5 8.5 0 0 1 8 8v.5Z"/>',share:'<path d="M12 16V3M7 8l5-5 5 5M5 13v7h14v-7"/>'};return '<svg viewBox="0 0 24 24">'+(paths[name]||'')+'</svg>'}
 function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200)}
@@ -338,9 +408,9 @@ function forumRoleList(){
   let roles=[];
   try{
     if(window.PhoneStorage&&typeof PhoneStorage.getCharacters==='function')roles=PhoneStorage.getCharacters()||[];
-  }catch(e){}
+  }catch(e){console.warn('[Forum] forumRoleList 读取 PhoneStorage.getCharacters 失败，改用本地角色缓存',e)}
   if(!Array.isArray(roles)||!roles.length){
-    try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')}catch(e){roles=[]}
+    try{roles=JSON.parse(localStorage.getItem('ai_custom_characters')||'[]')}catch(e){console.warn('[Forum] forumRoleList 解析 ai_custom_characters 失败，角色列表按空值继续',e);roles=[]}
   }
   return Array.isArray(roles)?roles.filter(r=>r&&r.name).slice(0,12):[];
 }

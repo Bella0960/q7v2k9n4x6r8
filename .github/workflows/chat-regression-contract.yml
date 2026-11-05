@@ -40,4 +40,6 @@ jobs:
         with:
           node-version: 22
       - name: Run chat regression contract tests
-        run: npm run test:chat:contract
+        run: |
+          npm run test:chat:contract
+          npm run test:bugfix:blockers
