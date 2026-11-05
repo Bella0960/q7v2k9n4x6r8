@@ -900,6 +900,8 @@
     function saveChatListCover(dataUrl) {
       try {
         localStorage.setItem(CHAT_LIST_COVER_KEY, dataUrl || '');
+        // 显式保存后终止一次性迁移，避免后续读取再从 myProfile.cover 静默覆盖。
+        localStorage.setItem(CHAT_LIST_COVER_MIGRATED_KEY, '1');
         return true;
       } catch (err) {
         alert('封面保存失败：本机存储空间不足');
