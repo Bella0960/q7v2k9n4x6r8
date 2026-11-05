@@ -34,7 +34,8 @@ test('forum media upload stores Blob assets through MediaRepository and returns 
       calls.push({ file, options });
       return { ok: true, value: { assetId, reused: false } };
     },
-    removeRef: async () => ({ ok: true })
+    removeRef: async () => ({ ok: true }),
+    removeAsset: async () => ({ ok: true })
   };
   const media = loadForumMedia(repository);
   const files = [{ name: 'photo.jpg', type: 'image/jpeg', size: 1024 }];
@@ -83,7 +84,8 @@ test('a partial multi-image failure releases references already created by this 
     removeRef: async (id, ownerType, ownerId) => {
       removed.push({ id, ownerType, ownerId });
       return { ok: true };
-    }
+    },
+    removeAsset: async () => ({ ok: true })
   };
   const media = loadForumMedia(repository);
   const files = [
