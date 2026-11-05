@@ -23,7 +23,11 @@
     "perf:fixab:mobile": "THROTTLE=4 node perf/fixab-regression.mjs",
     "perf:gate": "node perf/gate.mjs",
     "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs",
-    "test:chat:call": "node --test tests/chat-call-experience.test.mjs"
+    "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
+    "test:media:backup": "node --test tests/media-backup.test.mjs",
+    "test:forum:media": "node --test tests/forum-media.test.mjs",
+    "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
+    "test:forum:mobile": "node tests/forum-media-mobile.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
