@@ -105,6 +105,8 @@ test('render markup accepts only canonical asset IDs and never embeds user-provi
   assert.match(html, new RegExp(good));
   assert.doesNotMatch(html, /javascript:|<img src=x>/);
   assert.match(html, /data-forum-media-asset=/);
+  assert.match(media.markup([good], 'post-media'), /class="forum-media-grid post-media"/);
+  assert.match(media.markup([good], 'post-detail-media'), /class="forum-media-grid post-detail-media"/);
 });
 
 test('vision payloads read image data from MediaRepository rather than forum_posts storage', async () => {
