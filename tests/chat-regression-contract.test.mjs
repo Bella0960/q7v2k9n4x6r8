@@ -2121,3 +2121,20 @@ test('the shared default portrait is displayed across music, chat calls, setting
   assert.ok(couple.includes('phone_storage.js'));
   assert.ok(couple.includes('const myPortrait = profile.myAvatar || sharedAvatar;'), 'couple profile keeps its own uploaded portrait, otherwise inherits the shared default');
 });
+
+
+test('forum detail post and comment avatars retain their own sizing and clipping rules', () => {
+  const source = read('forum/forum-detail.html');
+  const styleMatch = source.match(/<style[^>]*>([\\s\\S]*?)<\\/style>/i);
+  assert.ok(styleMatch, 'forum detail page should contain its stylesheet');
+  const css = styleMatch[1];
+
+  assert.match(css, /\\.p-avatar\\s*\\{\\s*width:\\s*27px;[\\s\\S]*?overflow:\\s*hidden;[\\s\\S]*?\\}/,
+    'post avatar rule must own its dimensions and image clipping');
+  assert.match(css, /\\.c-avatar\\s*\\{\\s*width:\\s*27px;[\\s\\S]*?overflow:\\s*hidden;[\\s\\S]*?\\}/,
+    'comment avatar rule must own its dimensions and image clipping');
+  assert.doesNotMatch(css, /\\.p-avatar\\s*\\{\\s*\\.p-avatar/,
+    'post avatar selector must not be accidentally nested');
+  assert.doesNotMatch(css, /\\.c-avatar\\s*\\{\\s*\\.c-avatar/,
+    'comment avatar selector must not be accidentally nested');
+});
