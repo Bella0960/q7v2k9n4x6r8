@@ -270,10 +270,12 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
         return status && status.textContent.trim().length > 0;
       });
       await page.waitForFunction(() => document.querySelectorAll('#chat-input').length === 1);
-      await page.locator('#chat-input').fill('继续剧情');
-      await page.locator('#myFloatSend').click();
-      // 浮层发送按钮触发的是异步发送链路，留出建连时间，避免两次捕获相互抢占
-      await page.waitForTimeout(1500);
+      // C6 already covers the visible send-button click. Here call the same page-owned
+      // sendMsg pipeline directly so this assertion isolates spectator prompt injection.
+      await page.waitForFunction(() => typeof window.sendMsg === 'function');
+      await page.evaluate(async () => {
+        await window.sendMsg({ text: '继续剧情' });
+      });
       const body = await Promise.race([
         bodyPromise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('no /chat/completions request captured')), 20000))
