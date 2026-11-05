@@ -149,7 +149,7 @@ test('MediaRepository writes a shared refs array and retains compatibility with 
 
 test('forum inline scripts parse without syntax errors', () => {
   for (const [name, source] of [['forum/forum.html', forumHome], ['forum/forum-detail.html', forumDetail]]) {
-    const blocks = Array.from(source.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi))
+    const blocks = Array.from(source.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi))
       .map((match) => match[1])
       .filter((body) => body.trim());
     assert.ok(blocks.length > 0, name + ' should contain an inline application script');
