@@ -12,38 +12,31 @@ const forumHome = read('forum/forum.html');
 const forumDetail = read('forum/forum-detail.html');
 
 /* ----- 从 forum.html 抽取纯逻辑函数与常量 ----- */
+function extractNamedFunction(source, signature) {
+  const start = source.indexOf(signature);
+  assert.ok(start >= 0, signature + ' should exist');
+  const open = source.indexOf('{', start);
+  let depth = 0, end = -1;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) { end = i + 1; break; }
+  }
+  assert.ok(end > 0, signature + ' should be closed');
+  return source.slice(start, end);
+}
+
 function extractForumHomeCore() {
-  /* 从 STORE 定义开始，到 ensureSeedComments 闭合大括号为止 */
   const start = forumHome.indexOf("const STORE='forum_posts'");
-  const ensStart = forumHome.indexOf('function ensureSeedComments(', start);
-  assert.ok(start >= 0 && ensStart > start, 'forum.html core section bounds invalid');
-  let eb = forumHome.indexOf('{', ensStart);
-  let d = 0, ee = -1;
-  for (let i = eb; i < forumHome.length; i++) {
-    if (forumHome[i] === '{') d++;
-    else if (forumHome[i] === '}') { d--; if (d === 0) { ee = i + 1; break; } }
-  }
-  assert.ok(ee > 0, 'ensureSeedComments brace not closed');
-  let core = forumHome.slice(start, ee);
-  /* 跳过 DOM 初始化行（let posts=loadPosts() 与 const $=id=>document...），直接切 loadPosts */
-  const lpStart = forumHome.indexOf('function loadPosts()', ee);
-  assert.ok(lpStart > ee, 'forum.html loadPosts must come after ensureSeedComments');
-  let braceStart = forumHome.indexOf('{', lpStart);
-  let depth = 0, braceEnd = -1;
-  for (let i = braceStart; i < forumHome.length; i++) {
-    if (forumHome[i] === '{') depth++;
-    else if (forumHome[i] === '}') { depth--; if (depth === 0) { braceEnd = i + 1; break; } }
-  }
-  assert.ok(braceEnd > 0, 'forum.html loadPosts brace not closed');
-  core += '\n' + forumHome.slice(lpStart, braceEnd);
-  /* 追加 countComments 和 vm */
-  const ccStart = forumHome.indexOf('function countComments(', braceEnd);
-  const vmStart = forumHome.indexOf('function vm(', braceEnd);
-  assert.ok(ccStart >= 0 && vmStart >= 0, 'forum.html countComments/vm missing');
-  let ccEnd = forumHome.indexOf('\nfunction vm(', ccStart);
-  let vmEnd = forumHome.indexOf('\nfunction', vmStart + 10);
-  if (vmEnd < 0) vmEnd = forumHome.indexOf('\nlet ', vmStart + 10);
-  core += '\n' + forumHome.slice(ccStart, ccEnd) + '\n' + forumHome.slice(vmStart, vmEnd);
+  const ensure = extractNamedFunction(forumHome, 'function ensureSeedComments(');
+  const ensureStart = forumHome.indexOf('function ensureSeedComments(', start);
+  const ensureEnd = ensureStart + ensure.length;
+  assert.ok(start >= 0 && ensureStart > start, 'forum.html core section bounds invalid');
+  let core = forumHome.slice(start, ensureEnd);
+  core += '\n' + extractNamedFunction(forumHome, 'function loadPosts()');
+  core += '\n' + extractNamedFunction(forumHome, 'function buildPreviousSeedSets(');
+  core += '\n' + extractNamedFunction(forumHome, 'function mergeForumPosts(');
+  core += '\n' + extractNamedFunction(forumHome, 'function countComments(');
+  core += '\n' + extractNamedFunction(forumHome, 'function vm(');
   return core;
 }
 
@@ -69,32 +62,13 @@ function runForumHomeCode(coreCode, initialStore = null, initialCfg = null) {
 
 /* ----- forum-detail.html 抽取 ----- */
 function extractForumDetailCore() {
-  const start = forumDetail.indexOf('SEED_COMMENT_POOL_DETAIL');
-  const ensureEnd = forumDetail.indexOf('function loadPosts()', start);
-  assert.ok(start >= 0 && ensureEnd > start, 'forum-detail.html core bounds invalid');
-  let core = forumDetail.slice(forumDetail.lastIndexOf('const SEED_COMMENT_POOL_DETAIL', start), ensureEnd);
-  /* loadPosts 函数 */
-  const lpStart = forumDetail.indexOf('function loadPosts()', ensureEnd);
-  assert.ok(lpStart >= 0, 'forum-detail.html loadPosts missing');
-  let braceStart = forumDetail.indexOf('{', lpStart);
-  let depth = 0, braceEnd = -1;
-  for (let i = braceStart; i < forumDetail.length; i++) {
-    if (forumDetail[i] === '{') depth++;
-    else if (forumDetail[i] === '}') { depth--; if (depth === 0) { braceEnd = i + 1; break; } }
-  }
-  assert.ok(braceEnd > 0, 'forum-detail.html loadPosts brace not closed');
-  core += '\n' + forumDetail.slice(lpStart, braceEnd);
-  /* 追加 ensureSeedCommentsDetail 函数引用测试 */
-  const ensureStart = forumDetail.indexOf('function ensureSeedCommentsDetail(', start);
-  if (ensureStart >= 0) {
-    let eb = forumDetail.indexOf('{', ensureStart);
-    let d = 0, ee = -1;
-    for (let i = eb; i < forumDetail.length; i++) {
-      if (forumDetail[i] === '{') d++;
-      else if (forumDetail[i] === '}') { d--; if (d === 0) { ee = i + 1; break; } }
-    }
-    core += '\n' + forumDetail.slice(ensureStart, ee);
-  }
+  const configStart = forumDetail.indexOf('function readForumConfig');
+  const poolStart = forumDetail.indexOf('const SEED_COMMENT_POOL_DETAIL');
+  const poolEnd = forumDetail.indexOf('const RANDOM_NAMES', poolStart);
+  assert.ok(configStart >= 0 && poolStart > configStart && poolEnd > poolStart, 'forum-detail.html core section bounds invalid');
+  let core = forumDetail.slice(configStart, poolStart) + '\n' + forumDetail.slice(poolStart, poolEnd);
+  core += '\n' + extractNamedFunction(forumDetail, 'function loadPosts()');
+  core += '\n' + extractNamedFunction(forumDetail, 'function savePosts(');
   return core;
 }
 
@@ -264,8 +238,8 @@ test('forum-detail.html / ensureSeedCommentsDetail：新帖、旧数字迁移、
   ]);
   let ctx = runForumDetailCode(core, storeWithNumber, null);
   let posts = ctx.__exports__.loadPosts();
-  assert.equal(posts.length, 1);
-  const p2 = posts[0];
+  const p2 = posts.find(item => item.id === 'p2');
+  assert.ok(p2, 'detail merge should retain the migrated p2 seed post');
   assert.ok(Array.isArray(p2.comments) && p2.comments.length === 3, '数字 comments 应迁移为 3 条预置评论');
   assert.equal(p2.seedCommentsFilled, true);
   assert.equal(typeof p2._seedCount, 'undefined', 'forum-detail 不应产生 _seedCount');
@@ -283,15 +257,20 @@ test('forum-detail.html / 不覆盖真实评论 + 幂等 × 2', () => {
   ]);
   let ctx = runForumDetailCode(core, store, null);
   let posts = ctx.__exports__.loadPosts();
-  assert.equal(posts[0].comments.length, 1, '真实评论不应被预置覆盖');
-  assert.equal(posts[0].comments[0].text, '这条评论是真实的');
-  assert.equal(posts[0].seedCommentsFilled, true);
+  const p4 = posts.find(item => item.id === 'p4');
+  assert.ok(p4, 'detail merge should retain p4');
+  assert.equal(p4.comments.length, 1, '真实评论不应被预置覆盖');
+  assert.equal(p4.comments[0].text, '这条评论是真实的');
+  assert.equal(p4.seedCommentsFilled, true);
   /* 幂等：连续 load 两次 */
   ctx.__store.set('forum_posts', JSON.stringify(posts));
   posts = ctx.__exports__.loadPosts();
+  const p4AfterFirstReload = posts.find(item => item.id === 'p4');
   ctx.__store.set('forum_posts', JSON.stringify(posts));
   posts = ctx.__exports__.loadPosts();
-  assert.equal(posts[0].comments.length, 1, '幂等后真实评论不应变化');
+  const p4AfterSecondReload = posts.find(item => item.id === 'p4');
+  assert.equal(p4AfterFirstReload.comments.length, 1, '首次重载后真实评论不应变化');
+  assert.equal(p4AfterSecondReload.comments.length, 1, '幂等后真实评论不应变化');
 });
 
 /* ====== 源码层硬性约束检查 ====== */
@@ -302,9 +281,10 @@ test('forum-detail.html 源码：已彻底移除 _seedCount 读取与写入', ()
 
 test('forum.html 源码：已彻底移除数字型 comments 字段（种子数据里不再硬编码 comments: N）', () => {
   /* 种子数组里不应再出现 comments: */
-  const seededSectionMatch = forumHome.match(/const seeded=\[([\s\S]*?)\];\s*\n\s*\/\* =====/);
-  assert.ok(seededSectionMatch, '种子数据 section 边界应存在');
-  const seededSection = seededSectionMatch[1];
+  const seededStart = forumHome.indexOf('const seeded=[');
+  const seededEnd = forumHome.indexOf('\\n];', seededStart);
+  assert.ok(seededStart >= 0 && seededEnd > seededStart, '种子数据 section 边界应存在');
+  const seededSection = forumHome.slice(seededStart, seededEnd);
   assert.doesNotMatch(seededSection, /comments\s*:/, '种子数组不应再硬编码数字型 comments');
 });
 
