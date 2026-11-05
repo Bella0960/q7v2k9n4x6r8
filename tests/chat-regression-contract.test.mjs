@@ -2125,16 +2125,27 @@ test('the shared default portrait is displayed across music, chat calls, setting
 
 test('forum detail post and comment avatars retain their own sizing and clipping rules', () => {
   const source = read('forum/forum-detail.html');
-  const styleMatch = source.match(/<style[^>]*>([\\s\\S]*?)<\\/style>/i);
-  assert.ok(styleMatch, 'forum detail page should contain its stylesheet');
-  const css = styleMatch[1];
+  const styleStart = source.indexOf('<style');
+  const styleBodyStart = source.indexOf('>', styleStart) + 1;
+  const styleEnd = source.indexOf('</style>', styleBodyStart);
+  assert.ok(styleStart >= 0 && styleBodyStart > 0 && styleEnd > styleBodyStart,
+    'forum detail page should contain a readable stylesheet');
+  const css = source.slice(styleBodyStart, styleEnd);
 
-  assert.match(css, /\\.p-avatar\\s*\\{\\s*width:\\s*27px;[\\s\\S]*?overflow:\\s*hidden;[\\s\\S]*?\\}/,
-    'post avatar rule must own its dimensions and image clipping');
-  assert.match(css, /\\.c-avatar\\s*\\{\\s*width:\\s*27px;[\\s\\S]*?overflow:\\s*hidden;[\\s\\S]*?\\}/,
-    'comment avatar rule must own its dimensions and image clipping');
-  assert.doesNotMatch(css, /\\.p-avatar\\s*\\{\\s*\\.p-avatar/,
-    'post avatar selector must not be accidentally nested');
-  assert.doesNotMatch(css, /\\.c-avatar\\s*\\{\\s*\\.c-avatar/,
-    'comment avatar selector must not be accidentally nested');
+  function getAvatarRule(selector) {
+    const start = css.indexOf(selector + ' {');
+    assert.ok(start >= 0, selector + ' rule must exist as a standalone rule');
+    const end = css.indexOf('}', start);
+    assert.ok(end > start, selector + ' rule must close');
+    return css.slice(start, end + 1);
+  }
+
+  const postAvatarRule = getAvatarRule('.p-avatar');
+  const commentAvatarRule = getAvatarRule('.c-avatar');
+  assert.ok(postAvatarRule.includes('width: 27px;'), 'post avatar keeps its width');
+  assert.ok(postAvatarRule.includes('overflow: hidden;'), 'post avatar clips its image');
+  assert.ok(commentAvatarRule.includes('width: 27px;'), 'comment avatar keeps its width');
+  assert.ok(commentAvatarRule.includes('overflow: hidden;'), 'comment avatar clips its image');
+  assert.equal(css.includes('.p-avatar{.p-avatar'), false, 'post avatar selector must not be nested');
+  assert.equal(css.includes('.c-avatar{.c-avatar'), false, 'comment avatar selector must not be nested');
 });
