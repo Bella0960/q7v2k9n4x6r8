@@ -241,7 +241,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     assert.equal(stored[0].settings.spectatorMode, true, 'spectatorMode must be persisted by the settings page');
     await settings.close();
 
-    const captureSystem = async () => {
+    const captureSystem = async (expectedSpectatorMode) => {
       const page = await context.newPage();
       const pageErrors = [];
       const failedRequests = [];
@@ -264,6 +264,10 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       });
       // Use the same real navigation path as the user: chat list -> group card -> detail.
       await page.goto(baseUrl + '/chat/chat/chat.html', { waitUntil: 'load' });
+      const listGroups = await read(page, 'phone_groups');
+      const listGroup = listGroups.find((item) => String(item.id) === 'g1');
+      assert.equal(listGroup?.settings?.spectatorMode, expectedSpectatorMode,
+        'chat list must preserve the spectator setting saved in group settings');
       const groupCard = page.locator('.chat-group-card[data-gid="g1"]');
       await groupCard.waitFor({ state: 'visible', timeout: 15000 });
       await Promise.all([
@@ -271,6 +275,10 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
         groupCard.click()
       ]);
       assert.ok(page.url().includes('id=g1'), 'fresh detail page must retain the selected group id');
+      const detailGroups = await read(page, 'phone_groups');
+      const detailGroup = detailGroups.find((item) => String(item.id) === 'g1');
+      assert.equal(detailGroup?.settings?.spectatorMode, expectedSpectatorMode,
+        'fresh chat-detail must load the persisted spectator setting before sending');
       // The composer exists before group metadata finishes rendering; wait for the real group status
       // before sending, matching the already-passing C6-C8 flow.
       await page.waitForFunction(() => {
@@ -278,12 +286,12 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
         return status && status.textContent.trim().length > 0;
       });
       await page.waitForFunction(() => document.querySelectorAll('#chat-input').length === 1);
-      // C6 already covers the visible send-button click. Here call the same page-owned
-      // sendMsg pipeline directly so this assertion isolates spectator prompt injection.
-      await page.waitForFunction(() => typeof window.sendMsg === 'function');
-      await page.evaluate(async () => {
-        await window.sendMsg({ text: '继续剧情' });
-      });
+      // Exercise the actual user path: enter text in the composer and tap its send control.
+      await page.locator('#chat-input').fill('继续剧情');
+      const inputBeforeSend = await page.locator('#chat-input').inputValue();
+      assert.equal(inputBeforeSend, '继续剧情', 'the real composer must contain the test message');
+      await page.locator('#myFloatSend').waitFor({ state: 'visible', timeout: 10000 });
+      await page.locator('#myFloatSend').click();
       let body;
       try {
         body = await Promise.race([
@@ -316,7 +324,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
         });
         await page.close();
         throw new Error(error.message + '; diagnostics=' + JSON.stringify({
-          ...diagnostics, pageErrors, failedRequests, requestUrls
+          ...diagnostics, pageErrors, failedRequests, requestUrls, inputBeforeSend
         }));
       }
       const system = (body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || '')).join('\n\n');
@@ -324,7 +332,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       return system;
     };
 
-    const onText = await captureSystem();
+    const onText = await captureSystem(true);
     assert.ok(onText.includes('[旁观模式]'), 'spectator rule must be present when enabled');
     assert.ok(onText.includes('用户当前是旁观者'), 'spectator rule sentence present');
 
@@ -337,7 +345,7 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
     assert.equal(stored[0].settings.spectatorMode, false);
     await settings2.close();
 
-    const offText = await captureSystem();
+    const offText = await captureSystem(false);
     assert.ok(!offText.includes('[旁观模式]'), 'spectator rule must disappear after disabling');
     assert.ok(!offText.includes('用户当前是旁观者'));
   } finally {

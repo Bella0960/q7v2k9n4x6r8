@@ -66,10 +66,6 @@ const rolePublicTimeline = rolePublicTimelineWindow.RolePublicTimeline;
 
 const serviceWorker = read('sw.js');
 const profileEditor = read('profile/edit-profile.html');
-const chatListPage = read('chat/chat/chat.html');
-const contactsPage = read('chat/contacts/contacts.html');
-const profilePage = read('profile/profile.html');
-const wechatThemeCss = read('shared/css/wechat-theme-refinements.css');
 const packageJson = JSON.parse(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
@@ -2126,6 +2122,33 @@ test('the shared default portrait is displayed across music, chat calls, setting
   assert.ok(couple.includes('const myPortrait = profile.myAvatar || sharedAvatar;'), 'couple profile keeps its own uploaded portrait, otherwise inherits the shared default');
 });
 
+
+test('forum detail post and comment avatars retain their own sizing and clipping rules', () => {
+  const source = read('forum/forum-detail.html');
+  const styleStart = source.indexOf('<style');
+  const styleBodyStart = source.indexOf('>', styleStart) + 1;
+  const styleEnd = source.indexOf('</style>', styleBodyStart);
+  assert.ok(styleStart >= 0 && styleBodyStart > 0 && styleEnd > styleBodyStart,
+    'forum detail page should contain a readable stylesheet');
+  const css = source.slice(styleBodyStart, styleEnd);
+
+  function getAvatarRule(selector) {
+    const start = css.indexOf(selector + ' {');
+    assert.ok(start >= 0, selector + ' rule must exist as a standalone rule');
+    const end = css.indexOf('}', start);
+    assert.ok(end > start, selector + ' rule must close');
+    return css.slice(start, end + 1);
+  }
+
+  const postAvatarRule = getAvatarRule('.p-avatar');
+  const commentAvatarRule = getAvatarRule('.c-avatar');
+  assert.ok(postAvatarRule.includes('width: 27px;'), 'post avatar keeps its width');
+  assert.ok(postAvatarRule.includes('overflow: hidden;'), 'post avatar clips its image');
+  assert.ok(commentAvatarRule.includes('width: 27px;'), 'comment avatar keeps its width');
+  assert.ok(commentAvatarRule.includes('overflow: hidden;'), 'comment avatar clips its image');
+  assert.equal(css.includes('.p-avatar{.p-avatar'), false, 'post avatar selector must not be nested');
+  assert.equal(css.includes('.c-avatar{.c-avatar'), false, 'comment avatar selector must not be nested');
+});
 
 test('WeChat page refinements load on all five core pages and stay isolated from other themes', () => {
   const stylesheetVersion = 'wechat-theme-refinements.css?v=20261104v1';
