@@ -2219,6 +2219,11 @@
       // 检测到新 SW 已 waiting 时自动刷新一次，让用户立刻拿到新版，不用手动清缓存。
       (function () {
         if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+        // Netlify Deploy Preview is a temporary review environment, not an installed PWA.
+        // Do not download the full offline app shell for each preview deployment.
+        var previewHost = location.hostname.indexOf('deploy-preview-') === 0 &&
+          location.hostname.slice(-'.netlify.app'.length) === '.netlify.app';
+        if (previewHost) return;
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
             .then(function (registration) {
@@ -2242,9 +2247,13 @@
               console.warn('PWA 更新检查失败：', error);
             });
         });
-        // 收到 SW 发过来的"已接管"消息，刷新页面拿新资源
+        // 收到 SW 发过来的"已接管"消息，刷新页面拿新资源。
+        // 首访安装时 sw.js 会 clients.claim() 让本页立刻收到 controllerchange，
+        // 此时预缓存已就绪，无需重载；只有本页加载时已有旧 controller（真正更新）才刷新。
+        var hadController = !!navigator.serviceWorker.controller;
         var reloaded = false;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (!hadController) { hadController = true; return; }
           if (reloaded) return;
           reloaded = true;
           location.reload();
