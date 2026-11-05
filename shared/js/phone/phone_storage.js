@@ -195,8 +195,7 @@
         NS.rawSet('myProfile', profile || {});
     };
 
-    // 早期初始化：让同一页面里直接读取 localStorage('myProfile') 的旧页面
-    // 也能立即读到自动分配的默认头像，而不必逐页改写头像渲染逻辑。
+    // 早期初始化：让直接读取 myProfile 的旧页面也能拿到已分配头像。
     try { NS.ensureDefaultMyAvatar(); } catch (error) {
         console.warn('[PhoneStorage] default avatar initialization skipped', error);
     }
