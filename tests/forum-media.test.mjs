@@ -182,4 +182,7 @@ test('AI role posts can request optional generated images and persist them throu
   assert.match(forumHome, /data-generate-image/);
   assert.match(forumHome, /generatedBy:p\.generatedBy/);
   assert.match(forumHome, /ForumMedia\.markup\(featured\.mediaAssetIds/);
+  assert.match(forumHome, /post\.imageGenerationStatus==='generating'/);
+  assert.match(forumHome, /post\.imageGenerationStatus='failed'/);
+  assert.match(forumHome, /页面刷新时生成中断，请重试/);
 });
