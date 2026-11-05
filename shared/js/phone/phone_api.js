@@ -94,6 +94,122 @@
         });
     };
 
+
+    /* ========== 图片生成（OpenAI-compatible Images API） ========== */
+    // 图片模型单独配置；未配置时拒绝请求，避免聊天模型误触发计费。
+    NS.generateImage = function (opts) {
+        opts = opts || {};
+        var config = Storage ? Storage.getApiConfig() : {};
+        var apiKey = String(config.apiKey || '').trim();
+        var model = String(opts.model || config.imageModel || '').trim();
+        var prompt = String(opts.prompt || '').trim();
+        var start = Date.now();
+        if (!apiKey) {
+            var keyError = new Error('未配置 API Key');
+            log('error', model || config.model, 0, keyError.message);
+            return Promise.reject(keyError);
+        }
+        if (!model) {
+            var modelError = new Error('请先在设置中配置图片生成模型');
+            log('error', 'image-generation', 0, modelError.message);
+            return Promise.reject(modelError);
+        }
+        if (!prompt) {
+            var promptError = new Error('图片描述不能为空');
+            log('error', model, 0, promptError.message);
+            return Promise.reject(promptError);
+        }
+
+        var baseUrl = String(config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\\/+$/, '');
+        var endpoint = String(opts.endpoint || config.imageEndpoint || (baseUrl + '/images/generations')).trim();
+        var endpointUrl;
+        try {
+            endpointUrl = new URL(endpoint);
+            if (endpointUrl.protocol !== 'https:' && endpointUrl.protocol !== 'http:') {
+                throw new Error('图片生成接口必须使用 HTTP 或 HTTPS');
+            }
+        } catch (urlError) {
+            var endpointError = new Error('图片生成接口地址无效，请填写完整的 HTTP(S) URL');
+            log('error', model, start, endpointError.message);
+            return Promise.reject(endpointError);
+        }
+
+        var timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : 90000;
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+        var body = {
+            model: model,
+            prompt: prompt,
+            n: 1,
+            size: String(opts.size || config.imageSize || '1024x1024')
+        };
+        if (opts.quality) body.quality = String(opts.quality);
+
+        function decodeBase64Image(encoded, mimeType) {
+            var binary;
+            try { binary = global.atob(String(encoded).replace(/\\s/g, '')); }
+            catch (error) { throw new Error('图片生成服务返回了无效的 Base64 图片数据'); }
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return new Blob([bytes], { type: mimeType || 'image/png' });
+        }
+
+        return fetch(endpointUrl.href, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + apiKey
+            },
+            signal: controller.signal,
+            body: JSON.stringify(body)
+        }).then(function (response) {
+            if (!response.ok) {
+                return response.text().then(function (txt) {
+                    throw new Error('图片生成接口 HTTP ' + response.status + ' ' + txt.slice(0, 220));
+                });
+            }
+            return response.json();
+        }).then(function (payload) {
+            var item = payload && Array.isArray(payload.data) ? payload.data[0] : null;
+            if (!item) throw new Error('图片生成服务没有返回图片');
+            if (item.b64_json) {
+                return decodeBase64Image(item.b64_json, item.mime_type || 'image/png');
+            }
+            if (item.url) {
+                // 图片 URL 通常为临时地址。立即下载为 Blob，随后交给 MediaRepository 持久化。
+                return fetch(String(item.url), { method: 'GET', signal: controller.signal }).then(function (imageResponse) {
+                    if (!imageResponse.ok) throw new Error('生成图片下载失败（HTTP ' + imageResponse.status + '）');
+                    return imageResponse.blob();
+                }).then(function (blob) {
+                    var type = blob && blob.type ? blob.type.toLowerCase() : '';
+                    if (type && type.indexOf('image/') !== 0) {
+                        throw new Error('图片生成服务返回的链接不是图片文件');
+                    }
+                    if (!blob || !blob.size) throw new Error('生成图片为空');
+                    if (!type) blob = new Blob([blob], { type: item.mime_type || 'image/png' });
+                    return blob;
+                }).catch(function (downloadError) {
+                    if (downloadError && downloadError.name === 'AbortError') throw downloadError;
+                    throw new Error('图片已生成，但浏览器无法下载结果；请检查图片服务的跨域设置，或改用 Base64 响应：' +
+                        String(downloadError && downloadError.message || downloadError).slice(0, 120));
+                });
+            }
+            throw new Error('图片生成服务返回格式不受支持（需要 data[0].b64_json 或 data[0].url）');
+        }).then(function (blob) {
+            if (!blob || !blob.size || !/^image\\//i.test(blob.type || '')) {
+                throw new Error('图片生成服务返回了无效图片文件');
+            }
+            clearTimeout(timer);
+            log('success', model, start);
+            return { blob: blob, mimeType: blob.type, model: model };
+        }).catch(function (error) {
+            clearTimeout(timer);
+            if (error && error.name === 'AbortError') error = new Error('图片生成请求超时（' + timeoutMs + 'ms）');
+            log('error', model, start, error && error.message ? error.message : String(error));
+            throw error;
+        });
+    };
+
     /* ========== JSON 输出请求 ========== */
     // 约定：prompt 里已经告诉 AI 只返回 JSON。
     // 这里负责清洗 + 解析 + 失败兜底。
