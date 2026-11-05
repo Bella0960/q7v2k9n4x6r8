@@ -94,14 +94,15 @@
         //   确保恢复后的数据库状态与备份时完全一致，不残留原有数据。
         {
             db: 'maomao-assets',
-            version: 1,
+            version: 2,
             atomicExport: true,
             clearOnRestore: true,
             stores: [
                 { store: 'assets', keyPath: 'assetId' },
                 { store: 'blobs',  keyPath: 'assetId', blobFields: ['blob'],
                   blobMaxBytes: FONT_BLOB_MAX_BYTES, blobStoreMaxBytes: FONT_STORE_MAX_BYTES },
-                { store: 'refs',   keyPath: 'assetId' }
+                { store: 'refs',   keyPath: 'assetId' },
+                { store: 'image_records', keyPath: 'id' }
             ]
         }
     ];
