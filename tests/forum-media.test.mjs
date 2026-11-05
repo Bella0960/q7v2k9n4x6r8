@@ -180,4 +180,6 @@ test('AI role posts can request optional generated images and persist them throu
   assert.match(forumHome, /ForumMedia\.upload\(\[file\],'forum-post'/);
   assert.match(forumHome, /slice\(0,3\)/);
   assert.match(forumHome, /data-generate-image/);
+  assert.match(forumHome, /generatedBy:p\.generatedBy/);
+  assert.match(forumHome, /ForumMedia\.markup\(featured\.mediaAssetIds/);
 });
