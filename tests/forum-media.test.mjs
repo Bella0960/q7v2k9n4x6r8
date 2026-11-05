@@ -58,7 +58,7 @@ test('forum media upload rejects unsupported, oversized and excessive image sele
 
   await assert.rejects(
     media.upload([{ type: 'image/svg+xml', size: 20 }], 'forum-post', 'p1'),
-    /仅支持 JPG、PNG、WebP、GIF 和 AVIF/
+    /仅支持 JPG、PNG、WebP、GIF、AVIF 和 HEIC/
   );
   await assert.rejects(
     media.upload([{ type: 'image/jpeg', size: 9 * 1024 * 1024 }], 'forum-post', 'p1'),
