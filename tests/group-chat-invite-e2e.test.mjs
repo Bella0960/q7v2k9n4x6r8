@@ -254,7 +254,15 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
           body: 'data: {"choices":[{"delta":{"content":"收到"}}]}\n\ndata: [DONE]\n\n'
         });
       });
-      await page.goto(baseUrl + '/chat/chat/chat-detail.html?id=g1', { waitUntil: 'load' });
+      // Use the same real navigation path as the user: chat list -> group card -> detail.
+      await page.goto(baseUrl + '/chat/chat/chat.html', { waitUntil: 'load' });
+      const groupCard = page.locator('.chat-group-card[data-gid="g1"]');
+      await groupCard.waitFor({ state: 'visible', timeout: 15000 });
+      await Promise.all([
+        page.waitForURL(/chat-detail\\.html/, { timeout: 15000 }),
+        groupCard.click()
+      ]);
+      assert.ok(page.url().includes('id=g1'), 'fresh detail page must retain the selected group id');
       await page.waitForFunction(() => document.querySelectorAll('#chat-input').length === 1);
       await page.locator('#chat-input').fill('继续剧情');
       await page.locator('#myFloatSend').click();
