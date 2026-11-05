@@ -43,7 +43,7 @@
       'padding:0!important;border:0!important;outline:0!important;border-radius:0!important;' +
       'background:transparent!important;background-image:none!important;box-shadow:none!important;' +
       'color:transparent!important;z-index:2147483000!important;cursor:pointer!important;' +
-      'pointer-events:auto!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;}' +
+      'pointer-events:none!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent!important;}' +
       '.maomao-global-home-indicator::before {' +
       'content:""!important;display:block!important;width:84px!important;height:4px!important;' +
       'border:0!important;outline:0!important;border-radius:999px!important;' +
@@ -126,12 +126,31 @@
     button.setAttribute('title', '返回桌面');
     button.setAttribute('data-maomao-global-home-indicator', '1');
     button.style.display = getPreference() ? 'flex' : 'none';
-    button.addEventListener('click', function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      returnToHome();
-    });
+    button.setAttribute('aria-hidden', 'true');
     document.body.appendChild(button);
+
+    if (!document.querySelector('.comment-bar')) {
+      // while only the 84x4 visible-line footprint can return to the home screen.
+      var hitButton = document.createElement('button');
+      hitButton.type = 'button';
+      hitButton.className = 'maomao-global-home-indicator-hit-target';
+      hitButton.setAttribute('aria-label', '点击返回桌面');
+      hitButton.setAttribute('title', '点击返回桌面');
+      hitButton.style.cssText = 'appearance:none!important;-webkit-appearance:none!important;' +
+        'position:fixed!important;left:50%!important;bottom:calc(16px + env(safe-area-inset-bottom,0px))!important;' +
+        'transform:translateX(-50%)!important;width:84px!important;min-width:84px!important;max-width:84px!important;' +
+        'height:4px!important;min-height:4px!important;max-height:4px!important;padding:0!important;margin:0!important;' +
+        'border:0!important;border-radius:999px!important;background:transparent!important;box-shadow:none!important;' +
+        'z-index:2147483001!important;pointer-events:auto!important;cursor:pointer!important;' +
+        '-webkit-tap-highlight-color:transparent!important;';
+      hitButton.style.display = getPreference() ? 'block' : 'none';
+      hitButton.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        returnToHome();
+      });
+      document.body.appendChild(hitButton);
+    }
   }
 
   function applyPreference() {
@@ -141,6 +160,8 @@
     });
     var appBar = document.querySelector('.maomao-global-home-indicator');
     if (appBar) appBar.style.display = visible ? 'flex' : 'none';
+    var appHitTarget = document.querySelector('.maomao-global-home-indicator-hit-target');
+    if (appHitTarget) appHitTarget.style.display = visible ? 'block' : 'none';
   }
 
   function init() {
