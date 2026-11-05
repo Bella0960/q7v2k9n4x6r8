@@ -243,6 +243,20 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
 
     const captureSystem = async (expectedSpectatorMode) => {
       const page = await context.newPage();
+      await page.addInitScript(() => {
+        window.__phoneGroupWrites = [];
+        const originalSetItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key, value) {
+          if (key === 'phone_groups') {
+            let snapshot = null;
+            try { snapshot = JSON.parse(value).map((group) => ({
+              id: String(group.id), spectatorMode: !!(group.settings && group.settings.spectatorMode)
+            })); } catch {}
+            window.__phoneGroupWrites.push({ snapshot, stack: new Error().stack });
+          }
+          return originalSetItem.call(this, key, value);
+        };
+      });
       const pageErrors = [];
       const failedRequests = [];
       const requestUrls = [];
@@ -287,6 +301,19 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
       });
       await page.waitForFunction(() => document.querySelectorAll('#chat-input').length === 1);
       // Exercise the actual user path: enter text in the composer and tap its send control.
+      await page.evaluate(() => {
+        const originalSend = window.sendMsg;
+        window.__sendMsgCalls = [];
+        window.sendMsg = function (options) {
+          window.__sendMsgCalls.push({
+            options: options || null,
+            inputValue: document.getElementById('chat-input')?.value || '',
+            time: Date.now()
+          });
+          return originalSend.apply(this, arguments);
+        };
+      });
+      const groupBeforeSend = await read(page, 'phone_groups');
       await page.locator('#chat-input').fill('继续剧情');
       const inputBeforeSend = await page.locator('#chat-input').inputValue();
       assert.equal(inputBeforeSend, '继续剧情', 'the real composer must contain the test message');
@@ -313,6 +340,8 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
             apiBaseUrl: api.baseUrl || '',
             apiModel: api.model || '',
             groupSettings: group?.settings || null,
+            groupStorageWrites: window.__phoneGroupWrites || [],
+            sendMsgCalls: window.__sendMsgCalls || [],
             members: (group?.members || []).map(member => ({
               id: member.id, muted: !!member.muted, nickname: member.nickname || '',
               activeFrom: member.activeFrom || '', activeTo: member.activeTo || ''
@@ -324,7 +353,8 @@ test('C9 spectatorMode saved in settings page is reflected in a fresh chat-detai
         });
         await page.close();
         throw new Error(error.message + '; diagnostics=' + JSON.stringify({
-          ...diagnostics, pageErrors, failedRequests, requestUrls, inputBeforeSend
+          ...diagnostics, pageErrors, failedRequests, requestUrls, inputBeforeSend,
+          groupBeforeSend
         }));
       }
       const system = (body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || '')).join('\n\n');
