@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'chat/**'
+      - 'forum/**'
       - 'library/**'
       - 'shared/js/phone/**'
       - 'sw.js'
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - 'chat/**'
+      - 'forum/**'
       - 'library/**'
       - 'shared/js/phone/**'
       - 'sw.js'
