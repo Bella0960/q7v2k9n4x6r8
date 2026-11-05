@@ -603,7 +603,7 @@ test('07 dump→restore 完整往返：字节级一致 + refs 完整关系保持
     const ctx = buildCtxFull();
 
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
-    const db = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    const db = registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
 
     const assetsDef = maomaoAssetsDef.stores.find(s => s.store === 'assets');
     const blobsDef  = maomaoAssetsDef.stores.find(s => s.store === 'blobs');
@@ -635,7 +635,7 @@ test('07 dump→restore 完整往返：字节级一致 + refs 完整关系保持
         }
     ]);
 
-    const dumpResult = await ctx.dumpDatabase('maomao-assets', 1, maomaoAssetsDef.stores);
+    const dumpResult = await ctx.dumpDatabase('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     assert.ok(dumpResult !== null);
     assert.ok(!dumpResult.atomicExportFailed);
     assert.equal(Object.keys(dumpResult.data).length, 4);
@@ -654,7 +654,7 @@ test('07 dump→restore 完整往返：字节级一致 + refs 完整关系保持
 
     const db2 = registerDB('maomao-assets-restored', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     const restoreResult = await ctx.restoreDatabase(
-        'maomao-assets-restored', 1, maomaoAssetsDef.stores, dumpResult.data
+        'maomao-assets-restored', maomaoAssetsDef.version, maomaoAssetsDef.stores, dumpResult.data
     );
     assert.ok(restoreResult.dbRestored);
     assert.equal(restoreResult.written, 7, '2+2+2+1=7 条');
@@ -712,7 +712,7 @@ test('08 restoreDatabase clearOnRestore：空 store 仍 clear，不残留旧数�
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
 
     // 旧 DB 里有残留
-    registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     openDbs['maomao-assets']._data['assets'].push(
         { assetId: 'old', type: 'image', mimeType: 'image/gif' }
     );
@@ -730,7 +730,7 @@ test('08 restoreDatabase clearOnRestore：空 store 仍 clear，不残留旧数�
         refs: []      // clearOnRestore → 执行 clear
     };
 
-    const result = await ctx.restoreDatabase('maomao-assets', 1, maomaoAssetsDef.stores, incomingData);
+    const result = await ctx.restoreDatabase('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores, incomingData);
     assert.ok(result.dbRestored);
 
     // assets 和 refs 应为空（clearOnRestore 触发 clear）
@@ -753,7 +753,7 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
     const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
     const blobStoreMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobStoreMaxBytes;
 
-    const db = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    const db = registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     const blobsDef = maomaoAssetsDef.stores.find(s => s.store === 'blobs');
     const assetsDef = maomaoAssetsDef.stores.find(s => s.store === 'assets');
 
@@ -774,7 +774,7 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
     await injectRecords(db, 'blobs', blobsDef, blobRecs);
     await injectRecords(db, 'assets', assetsDef, assetRecs);
 
-    const result = await ctx.dumpDatabase('maomao-assets', 1, maomaoAssetsDef.stores);
+    const result = await ctx.dumpDatabase('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
 
     assert.ok(result.atomicExportFailed === true,
         'store 总 Blob 超限 → 应 atomicExportFailed');
@@ -812,7 +812,7 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
 
     // ── maomao-assets：blobs 有一条超限 → atomicExportFailed ──
-    const assetsDb = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    const assetsDb = registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     await injectRecords(assetsDb, 'assets', maomaoAssetsDef.stores.find(s => s.store === 'assets'), [
         { assetId: 'a1', type: 'image', mimeType: 'image/jpeg', size: 1024 },
         { assetId: 'a2', type: 'image', mimeType: 'image/png',  size: 2048 }
