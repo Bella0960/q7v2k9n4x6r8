@@ -126,22 +126,30 @@
     button.setAttribute('title', '返回桌面');
     button.setAttribute('data-maomao-global-home-indicator', '1');
     button.style.display = getPreference() ? 'flex' : 'none';
-    // Keep the visual/measurement shell roomy, but make only the visible line clickable.
-    // The child receives pointer events and bubbles the click to the button handler.
-    var hitTarget = document.createElement('span');
-    hitTarget.className = 'maomao-home-indicator-hit-target';
-    hitTarget.setAttribute('aria-hidden', 'true');
-    hitTarget.style.cssText = 'position:absolute!important;left:50%!important;top:50%!important;' +
-      'transform:translate(-50%,-50%)!important;width:84px!important;height:4px!important;' +
-      'display:block!important;padding:0!important;margin:0!important;border:0!important;' +
-      'background:transparent!important;pointer-events:auto!important;cursor:pointer!important;';
-    button.appendChild(hitTarget);
-    button.addEventListener('click', function (event) {
+    button.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(button);
+
+    // Separate fixed hit target: the visual shell stays transparent to pointer events,
+    // while only the 84x4 visible-line footprint can return to the home screen.
+    var hitButton = document.createElement('button');
+    hitButton.type = 'button';
+    hitButton.className = 'maomao-global-home-indicator-hit-target';
+    hitButton.setAttribute('aria-label', '点击返回桌面');
+    hitButton.setAttribute('title', '点击返回桌面');
+    hitButton.style.cssText = 'appearance:none!important;-webkit-appearance:none!important;' +
+      'position:fixed!important;left:50%!important;bottom:calc(16px + env(safe-area-inset-bottom,0px))!important;' +
+      'transform:translateX(-50%)!important;width:84px!important;min-width:84px!important;max-width:84px!important;' +
+      'height:4px!important;min-height:4px!important;max-height:4px!important;padding:0!important;margin:0!important;' +
+      'border:0!important;border-radius:999px!important;background:transparent!important;box-shadow:none!important;' +
+      'z-index:2147483001!important;pointer-events:auto!important;cursor:pointer!important;' +
+      '-webkit-tap-highlight-color:transparent!important;';
+    hitButton.style.display = getPreference() ? 'block' : 'none';
+    hitButton.addEventListener('click', function (event) {
       event.preventDefault();
       event.stopPropagation();
       returnToHome();
     });
-    document.body.appendChild(button);
+    document.body.appendChild(hitButton);
   }
 
   function applyPreference() {
@@ -151,6 +159,8 @@
     });
     var appBar = document.querySelector('.maomao-global-home-indicator');
     if (appBar) appBar.style.display = visible ? 'flex' : 'none';
+    var appHitTarget = document.querySelector('.maomao-global-home-indicator-hit-target');
+    if (appHitTarget) appHitTarget.style.display = visible ? 'block' : 'none';
   }
 
   function init() {
