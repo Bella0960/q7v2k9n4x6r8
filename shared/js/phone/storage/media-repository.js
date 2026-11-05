@@ -264,14 +264,31 @@
                         var blobs  = tx.objectStore(STORES.BLOBS);
                         var refs   = tx.objectStore(STORES.REFS);
 
-                        // 先查 hash 索引（assets）
+                        // 先查 hash 索引（assets）；同一 asset 可以被多个帖子/评论引用。
                         var hashIdx = assets.index('hash');
                         var checkReq = hashIdx.get(hash);
+                        var settled = false;
+                        function finishError(error) {
+                            if (settled) return;
+                            settled = true;
+                            resolve({ ok: false, error: _mapError(error || new Error('media transaction failed')) });
+                        }
+                        tx.oncomplete = function () {
+                            if (settled) return;
+                            settled = true;
+                            var existing = checkReq.result;
+                            resolve({ ok: true,
+                                value: { assetId: finalAssetId, size: size, hash: hash, reused: reused, type: type },
+                                meta: { reused: reused } });
+                        };
+                        tx.onerror = function () { finishError(tx.error); };
+                        tx.onabort = function () { finishError(tx.error); };
+                        var finalAssetId = assetId;
+                        var reused = false;
                         checkReq.onsuccess = function () {
                             var existing = checkReq.result;
-                            var finalAssetId = existing ? existing.assetId : assetId;
-                            var reused = !!existing;
-
+                            finalAssetId = existing ? existing.assetId : assetId;
+                            reused = !!existing;
                             if (!existing) {
                                 assets.put({
                                     assetId: assetId, type: type, mimeType: mimeType,
@@ -280,30 +297,29 @@
                                 });
                                 blobs.put({ assetId: assetId, blob: blob });
                             }
-
-                            // 添加 ref（不管复用与否）
-                            refs.put({
-                                assetId: finalAssetId, ownerType: opts.ownerType, ownerId: opts.ownerId
-                            });
-
-                            tx.oncomplete = function () {
-                                resolve({ ok: true,
-                                    value: { assetId: finalAssetId, size: size, hash: hash, reused: reused, type: type },
-                                    meta: { reused: reused } });
+                            var refReq = refs.get(finalAssetId);
+                            refReq.onsuccess = function () {
+                                var record = refReq.result || null;
+                                var refList = record && Array.isArray(record.refs) ? record.refs.slice() : [];
+                                // 兼容早期 v1 写入的扁平 { ownerType, ownerId } 记录。
+                                if (record && !Array.isArray(record.refs) && record.ownerType && record.ownerId) {
+                                    refList.push({ ownerType: record.ownerType, ownerId: record.ownerId });
+                                }
+                                var exists = refList.some(function (item) {
+                                    return item && item.ownerType === opts.ownerType && item.ownerId === opts.ownerId;
+                                });
+                                if (!exists) refList.push({ ownerType: opts.ownerType, ownerId: opts.ownerId });
+                                var primary = refList[0] || { ownerType: opts.ownerType, ownerId: opts.ownerId };
+                                refs.put({
+                                    assetId: finalAssetId,
+                                    refs: refList,
+                                    ownerType: primary.ownerType,
+                                    ownerId: primary.ownerId
+                                });
                             };
-                            tx.onerror = function () {
-                                var mapped = _mapError(tx.error);
-                                resolve({ ok: false, error: mapped });
-                            };
-                            tx.onabort = function () {
-                                var mapped = _mapError(tx.error);
-                                resolve({ ok: false, error: mapped });
-                            };
+                            refReq.onerror = function () { finishError(refReq.error); };
                         };
-                        checkReq.onerror = function () {
-                            var mapped = _mapError(checkReq.error);
-                            resolve({ ok: false, error: mapped });
-                        };
+                        checkReq.onerror = function () { finishError(checkReq.error); };
                     });
                 });
             });
@@ -524,16 +540,17 @@
                     for (var i = 0; i < all.length; i++) {
                         if (all[i] && all[i].assetId === assetId) { found = all[i]; break; }
                     }
-                    var refList = found ? (found.refs || []) : [];
-                    var exists = false;
-                    for (var j = 0; j < refList.length; j++) {
-                        if (refList[j].ownerType === ownerType && refList[j].ownerId === ownerId) {
-                            exists = true; break;
-                        }
+                    var refList = found && Array.isArray(found.refs) ? found.refs.slice() : [];
+                    // 兼容 putBlob 旧版本写入的扁平引用。
+                    if (found && !Array.isArray(found.refs) && found.ownerType && found.ownerId) {
+                        refList.push({ ownerType: found.ownerType, ownerId: found.ownerId });
                     }
+                    var exists = refList.some(function (item) {
+                        return item && item.ownerType === ownerType && item.ownerId === ownerId;
+                    });
                     if (!exists) refList.push({ ownerType: ownerType, ownerId: ownerId });
-                    var record = { assetId: assetId, refs: refList };
-                    refs.put(record);
+                    var primary = refList[0] || { ownerType: ownerType, ownerId: ownerId };
+                    refs.put({ assetId: assetId, refs: refList, ownerType: primary.ownerType, ownerId: primary.ownerId });
                     tx.oncomplete = function () {
                         resolve({ ok: true,
                             value: { added: !exists, refCount: refList.length },
@@ -574,17 +591,22 @@
                         resolve({ ok: true, value: { removed: false, reason: 'no refs for this asset' } });
                         return;
                     }
-                    var refList = found.refs || [];
+                    var refList = Array.isArray(found.refs) ? found.refs.slice() : [];
+                    // 扁平 v1 引用在第一次编辑时迁移成 refs 数组。
+                    if (!Array.isArray(found.refs) && found.ownerType && found.ownerId) {
+                        refList.push({ ownerType: found.ownerType, ownerId: found.ownerId });
+                    }
                     var before = refList.length;
                     refList = refList.filter(function (r) {
-                        return !(r.ownerType === ownerType && r.ownerId === ownerId);
+                        return !(r && r.ownerType === ownerType && r.ownerId === ownerId);
                     });
                     var after = refList.length;
 
                     if (after === 0) {
                         refs.delete(assetId);
                     } else {
-                        refs.put({ assetId: assetId, refs: refList });
+                        var primary = refList[0];
+                        refs.put({ assetId: assetId, refs: refList, ownerType: primary.ownerType, ownerId: primary.ownerId });
                     }
 
                     tx.oncomplete = function () {
@@ -618,9 +640,13 @@
                     var matchedAssetIds = [];
                     for (var i = 0; i < allRefs.length; i++) {
                         var ref = allRefs[i];
-                        if (!ref || !ref.refs) continue;
-                        for (var j = 0; j < ref.refs.length; j++) {
-                            if (ref.refs[j].ownerType === ownerType && ref.refs[j].ownerId === ownerId) {
+                        if (!ref) continue;
+                        var refList = Array.isArray(ref.refs) ? ref.refs : [];
+                        if (!refList.length && ref.ownerType && ref.ownerId) {
+                            refList = [{ ownerType: ref.ownerType, ownerId: ref.ownerId }];
+                        }
+                        for (var j = 0; j < refList.length; j++) {
+                            if (refList[j].ownerType === ownerType && refList[j].ownerId === ownerId) {
                                 matchedAssetIds.push(ref.assetId); break;
                             }
                         }
