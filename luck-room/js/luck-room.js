@@ -500,6 +500,7 @@ function drawTarot() {
       return { roman:card.roman || card[0], name:card.name || card[1], suit:card.suit || '大阿卡纳', keywords:card.keywords || card[2], upright:card.upright || card[3], reversed:card.reversed || card[4], glyph:card.glyph || card[5], reversedDraw:randomIndex(100)<30, revealed:false };
     });
     tarotDraw = selected;
+    $('tarotDeckCount').textContent = '本次抽取 ' + selected.length + ' 张 · 全牌组 78 张';
     $('tarotDeckScene').classList.remove('shuffling');
     $('tarotDeckScene').hidden = true;
     $('tarotSpread').hidden = false;
