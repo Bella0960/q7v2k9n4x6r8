@@ -201,7 +201,7 @@
     });
   }
 
-  // 解析已存消息（固定按 auto，兼容上一轮/更早的多气泡单条消息）。
+  // 解析已存消息时不套用生成上限，兼容旧记录中超过 5 段的正文。
   function getMessageBubbles(message) {
     var mid = String((message && message.mid) || '');
     var raw = String((message && (message.text || message.content)) || '');
