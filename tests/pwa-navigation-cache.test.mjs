@@ -7,6 +7,8 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const viteConfig = read('vite.config.js');
+const desktopScript = read('desktop/js/script.js');
+const homePage = read('index.html');
 
 test('build emits a manifest containing every HTML entry point', () => {
   assert.match(viteConfig, /Object\.keys\(htmlFiles\)[\s\S]*\.map\(page => page \+ '\.html'\)/);
@@ -44,6 +46,15 @@ test('mobile navigation serves cached app pages before waiting for network', () 
   assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
   assert.match(serviceWorker, /if \(cached\) return cached/);
   assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+});
+
+
+test('desktop app navigation has one handler and a valid URL guard', () => {
+  assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
+    'desktop/js/script.js must not install a second app navigation listener');
+  assert.match(homePage,
+    /target\.closest\('\.app-tile\[data-href\]'\)[\s\S]*?href\.indexOf\('\/\/'\)\s*===\s*0[\s\S]*?window\.location\.assign\(new URL\(href, document\.baseURI\)\.href\);[\s\S]*?\}, true\);/,
+    'index.html must contain a valid single capture-phase navigation handler');
 });
 
 test('failed app navigation never falls back to the desktop index page', () => {
