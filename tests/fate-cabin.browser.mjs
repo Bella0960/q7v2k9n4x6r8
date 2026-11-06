@@ -79,6 +79,11 @@ try {
   await page.locator('[data-action="draw-tarot"]').click();
   assert.equal(await page.locator('#crystalStage .crystal-card').count(), 3, 'three-card spread should reveal three crystal cards');
   assert.deepEqual(await page.locator('#tarotResults .position').allTextContents(), ['过去 · 来处', '现在 · 此刻', '未来 · 可能']);
+  assert.equal(await page.locator('#tarotHistory [data-tarot-history-index]').count(), 2,
+    'recent tarot draws should be visible as a history list');
+  await page.locator('#tarotHistory [data-tarot-history-index="0"]').click();
+  assert.equal(await page.locator('#crystalStage .crystal-card').count(), 3,
+    'a saved tarot history item should reopen its original spread');
 
   await page.locator('[data-go-home]').first().click();
   await page.locator('[data-open="wheel"]').first().click();
@@ -126,6 +131,12 @@ try {
   await page.locator('[data-action="draw-oracle"]').click();
   assert.ok((await page.locator('#oraclePaper').innerText()).includes('学业'), 'oracle should use the selected category');
   assert.equal(await page.locator('#oraclePaper h3').count(), 1, 'oracle should reveal a reading');
+  assert.equal(await page.locator('#oracleHistory [data-oracle-history-index]').count(), 1,
+    'recent oracle readings should be visible as a history list');
+  const historyTitle = await page.locator('#oraclePaper h3').innerText();
+  await page.locator('#oracleHistory [data-oracle-history-index="0"]').click();
+  assert.equal(await page.locator('#oraclePaper h3').innerText(), historyTitle,
+    'an oracle history item should reopen its full reading');
   const afterOracle = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), 'maomao_fate_cabin_v1');
   assert.ok(afterOracle.dailyOracle[Object.keys(afterOracle.dailyOracle).find(key => key.endsWith('_学业'))],
     'daily oracle selection should persist locally');
@@ -135,6 +146,8 @@ try {
   await page.locator('[data-oracle-category="学业"]').click();
   assert.equal(await page.locator('#oraclePaper h3').innerText(), savedOracleTitle,
     'the saved daily oracle should be restored after a full reload');
+  assert.equal(await page.locator('#oracleHistory [data-oracle-history-index]').count(), 1,
+    'oracle history should remain available after a full reload');
 
   assert.deepEqual(errors, [], 'Fate Cabin interactions must not throw browser errors');
 
