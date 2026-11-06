@@ -368,6 +368,110 @@ scroll.addEventListener('touchend',()=>{
   }else if(el.classList.contains('show')){el.classList.remove('show');el.style.height=''}
   prPulling=false;prReady=false;
 },{passive:true});
+
+function cloneForumRefreshPost(post){
+ if(!post||typeof post!=='object')return post;
+ const copy=Object.assign({},post);
+ if(Array.isArray(post.comments)){
+  copy.comments=post.comments.map(function(comment){
+   if(!comment||typeof comment!=='object')return comment;
+   const next=Object.assign({},comment);
+   if(Array.isArray(comment.replies)){
+    next.replies=comment.replies.map(function(reply){
+     return reply&&typeof reply==='object'?Object.assign({},reply):reply;
+    });
+   }
+   return next;
+  });
+ }
+ return copy;
+}
+
+/* Merge new forum activity into the latest snapshot without mutating existing posts.
+ * This is deliberately pure so preservation and duplicate handling can be tested.
+ */
+function mergeForumRefreshData(currentPosts,freshPosts,activity,normalizeComment){
+ const existing=Array.isArray(currentPosts)?currentPosts.map(cloneForumRefreshPost):[];
+ const knownIds=new Set();
+ const knownTitles=new Set();
+ existing.forEach(function(post){
+  if(!post||typeof post!=='object')return;
+  if(post.id!=null)knownIds.add(String(post.id));
+  const title=String(post.title||'').trim().toLocaleLowerCase();
+  if(title)knownTitles.add(title);
+ });
+ const accepted=[];
+ (Array.isArray(freshPosts)?freshPosts:[]).slice(0,3).forEach(function(post){
+  if(!post||typeof post!=='object'||post.id==null)return;
+  const id=String(post.id),title=String(post.title||'').trim().toLocaleLowerCase();
+  if(!id||!title||!String(post.body||'').trim()||knownIds.has(id)||knownTitles.has(title))return;
+  accepted.push(cloneForumRefreshPost(post));
+  knownIds.add(id);
+  knownTitles.add(title);
+ });
+ const nextPosts=accepted.concat(existing);
+ let activityCount=0;
+ (Array.isArray(activity)?activity:[]).slice(0,2).forEach(function(entry){
+  if(!entry||entry.postId==null||!Array.isArray(entry.comments))return;
+  const target=nextPosts.find(function(post){return post&&String(post.id)===String(entry.postId)});
+  if(!target||!Array.isArray(target.comments))return;
+  entry.comments.slice(0,2).forEach(function(item,index){
+   if(typeof normalizeComment!=='function')return;
+   const normalized=normalizeComment(item,index);
+   if(!normalized||!String(normalized.text||'').trim())return;
+   const author=String(normalized.residentId||normalized.name||'');
+   const text=String(normalized.text||'').trim().toLocaleLowerCase();
+   const source=String(normalized.source||'forum-ai');
+   const duplicate=target.comments.some(function(old){
+    if(!old||typeof old!=='object')return false;
+    return String(old.source||'')===source&&
+      String(old.residentId||old.name||'')===author&&
+      String(old.text||'').trim().toLocaleLowerCase()===text;
+   });
+   if(!duplicate){
+    target.comments.push(normalized);
+    activityCount++;
+   }
+  });
+ });
+ return {
+  posts:nextPosts,
+  addedPostCount:accepted.length,
+  activityCount:activityCount,
+  changed:accepted.length>0||activityCount>0
+ };
+}
+
+/* Persist against the newest local snapshot. If another forum page writes while
+ * the AI request is in flight, retry the merge instead of overwriting that edit.
+ * localStorage.setItem is the single atomic persistence operation for the snapshot.
+ */
+function commitForumRefreshData(freshPosts,activity,normalizeComment,storage){
+ const targetStorage=storage||localStorage;
+ for(let attempt=0;attempt<3;attempt++){
+  let raw,current;
+  try{
+   raw=targetStorage.getItem(STORE);
+   current=raw===null?[]:JSON.parse(raw);
+  }catch(error){
+   return {ok:false,reason:'storage-read'};
+  }
+  if(!Array.isArray(current))return {ok:false,reason:'invalid-store'};
+  const merged=mergeForumRefreshData(current,freshPosts,activity,normalizeComment);
+  if(!merged.changed){
+   return Object.assign({ok:true,changed:false},merged);
+  }
+  try{
+   if(targetStorage.getItem(STORE)!==raw)continue;
+   targetStorage.setItem(STORE,JSON.stringify(merged.posts));
+   return Object.assign({ok:true},merged);
+  }catch(error){
+   return {ok:false,reason:'storage-write'};
+  }
+ }
+ return {ok:false,reason:'storage-conflict'};
+}
+
 let forumRefreshBusy=false;
 async function refreshFeed(){
  if(forumRefreshBusy)return false;
@@ -379,38 +483,33 @@ async function refreshFeed(){
  const recent=posts.filter(p=>p&&p.title&&p.body).slice(0,8).map(p=>({id:p.id,name:p.name,title:p.title,body:String(p.body||'').slice(0,150),topic:p.topic,comments:Array.isArray(p.comments)?p.comments.slice(-4).map(c=>({name:c.name,text:String(c.text||'').slice(0,110),replies:Array.isArray(c.replies)?c.replies.slice(-2).map(r=>({name:r.name,text:String(r.text||'').slice(0,90)})):[]})):[],legacyCommentCount:typeof p.comments==='number'?p.comments:0}));
  const roster=FORUM_RESIDENTS.map(r=>({id:r.id,name:r.name,style:r.style}));
  const system=forumWorldbook()+'\n\n你现在负责维护论坛的真实讨论流。写作要像不同网友各自在空闲时间打开手机时发的内容：有具体细节，有不同脾气，有人简短，有人会追问；禁止模板化、排比式和客服式表达。';
- const user='请为这个论坛生成一次新的社区动态。必须只输出 JSON。\n可用话题：'+JSON.stringify(topics)+'\n固定路人资料（请复用这些昵称，保持性格稳定）：'+JSON.stringify(roster)+'\n最近已经存在的帖子（不要改写、复刻这些内容）：'+JSON.stringify(recent)+'\n生成规则：\n1. 新增 2-3 篇全新帖子，每篇作者从固定路人中选一位；这批帖子尽量由不同居民发布，不要同一居民连续刷屏；标题自然，正文约 35-140 字，不要都像公告。\n2. 每篇新帖子自带 1-3 条真实感评论；其中部分评论可以有 1 条楼中楼回复。评论彼此有呼应，允许观点不同，不要统一夸楼主。\n3. 再从最近帖子里挑 1 篇，追加 1-2 条新评论，postId 必须照抄给定的真实 id；不要重复已有评论。\n4. 所有 residentId 必须来自固定路人资料；话题必须从可用话题中选择。\nJSON 格式：{"posts":[{"residentId":"路人id","title":"标题","body":"正文","topic":"话题","likes":3,"comments":[{"residentId":"路人id","text":"评论","replies":[{"residentId":"路人id","text":"楼中楼回复","replyTo":"被回复昵称"}]}]}],"activity":[{"postId":"现有帖子id","comments":[{"residentId":"路人id","text":"追加评论","replies":[]}]}]}';
+ const user='请为这个论坛生成一次新的社区动态。必须只输出 JSON。\n可用话题：'+JSON.stringify(topics)+'\n固定路人资料（请复用这些昵称，保持性格稳定）：'+JSON.stringify(roster)+'\n最近已经存在的帖子（不要改写、复刻这些内容）：'+JSON.stringify(recent)+'\n生成规则：\n1. 新增 2-3 篇全新帖子，每篇作者从固定路人中选一位；这批帖子尽量由不同居民发布，不要同一居民连续刷屏；标题自然，正文约 35-140 字，不要都像公告。\n2. 每篇新帖子自带 1-3 条真实感评论；其中部分评论可以有 1 条楼中楼回复。评论彼此有呼应，允许观点不同，不要统一夸楼主。\n3. 再从最近帖子里挑 1 篇，追加 1-2 条新评论，postId 必须照抄给定的真实 id；不要重复已有评论。\n4. 所有 residentId 必须来自固定路人资料；话题必须从可用话题中选择。\nJSON 格式：{\"posts\":[{\"residentId\":\"路人id\",\"title\":\"标题\",\"body\":\"正文\",\"topic\":\"话题\",\"likes\":3,\"comments\":[{\"residentId\":\"路人id\",\"text\":\"评论\",\"replies\":[{\"residentId\":\"路人id\",\"text\":\"楼中楼回复\",\"replyTo\":\"被回复昵称\"}]}]}],\"activity\":[{\"postId\":\"现有帖子id\",\"comments\":[{\"residentId\":\"路人id\",\"text\":\"追加评论\",\"replies\":[]}]}]}';
  try{
   toast('正在等社区成员发帖…');
   const result=await PhoneAPI.completeJSON({system:system,user:user,temperature:0.92,timeoutMs:32000});
   if(!result||!result.ok||!result.data||!Array.isArray(result.data.posts))throw new Error('AI 没有返回有效帖子');
-  const data=result.data,now=Date.now(),existingTitles=new Set(posts.map(p=>String(p.title||'').trim()).filter(Boolean));
+  const data=result.data,now=Date.now();
   const fresh=[];
-  data.posts.slice(0,3).forEach((item,i)=>{
+  data.posts.slice(0,3).forEach(function(item,i){
    if(!item||!item.title||!item.body)return;
    const title=String(item.title).trim().slice(0,90),body=String(item.body).trim().slice(0,700);
-   if(!title||!body||existingTitles.has(title))return;
+   if(!title||!body)return;
    const author=forumResident(item.residentId,i);
-   const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map((c,j)=>forumMakeAIComment(c,j)).filter(Boolean);
+   const comments=(Array.isArray(item.comments)?item.comments:[]).slice(0,3).map(function(comment,j){return forumMakeAIComment(comment,j)}).filter(Boolean);
    fresh.push({id:'forum_ai_'+now.toString(36)+'_'+i,name:author.name,avatar:'#333333',residentId:author.id,role:'社区成员',tag:'resident',owner:'community',topic:topics.includes(item.topic)?item.topic:topics[i%topics.length],time:now-i*5*60000,created:now-i*5*60000,title:title,body:body,likes:Math.max(0,Math.min(30,Number(item.likes)||0)),comments:comments,liked:false,generatedBy:'community-ai',themeId:theme.id,aiCommentBatch:comments.length?'v1':''});
-   existingTitles.add(title);
   });
-  if(!fresh.length)throw new Error('这次没有生成新的帖子，请稍后再刷新');
-  const before=posts.slice();
-  posts=fresh.concat(posts);
-  let activityCount=0;
-  (Array.isArray(data.activity)?data.activity:[]).slice(0,2).forEach(entry=>{
-   const target=posts.find(p=>String(p.id)===String(entry.postId));
-   if(!target||!Array.isArray(entry.comments))return;
-   if(!Array.isArray(target.comments)){target.comments=[]}
-   entry.comments.slice(0,2).forEach((c,j)=>{
-    const normalized=forumMakeAIComment(c,j);
-    if(normalized&&!target.comments.some(old=>old.source==='forum-ai'&&old.text===normalized.text)){target.comments.push(normalized);activityCount++}
-   });
-  });
-  if(!save()){posts=before;return false}
+  const commit=commitForumRefreshData(fresh,data.activity,forumMakeAIComment);
+  if(!commit.ok){
+   toast(commit.reason==='storage-conflict'?'论坛刚刚有其他页面更新，请再刷新一次':'本次动态没有写入，请检查本机存储空间');
+   return false;
+  }
+  if(!commit.changed){
+   toast('这次没有新的帖子或回复，再试一次看看');
+   return false;
+  }
+  posts=commit.posts;
   render();scroll.scrollTop=0;
-  toast('社区又有 '+fresh.length+' 篇新帖'+(activityCount?'，旧帖也有新回复':''));
+  toast('社区又有 '+commit.addedPostCount+' 篇新帖'+(commit.activityCount?'，旧帖也有新回复':''));
   return true;
  }catch(error){
   console.warn('[Forum] 社区增量刷新失败',error);
