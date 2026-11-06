@@ -2624,7 +2624,7 @@
       if (!href || /^(?:[a-z][a-z0-9+.-]*:|\\/\\/)/i.test(href)) return;
       event.preventDefault();
       window.location.assign(new URL(href, document.baseURI).href);
-    });
+    }, true);
   })();
 </script>
 
