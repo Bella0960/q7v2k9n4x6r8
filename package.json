@@ -25,6 +25,7 @@
     "perf:gate": "node perf/gate.mjs",
     "test:desktop:layout": "node --test tests/default-desktop-layout.test.mjs",
     "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs",
+    "test:font:runtime": "node --test tests/font-runtime-performance.test.mjs",
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
     "test:media:backup": "node --test tests/media-backup.test.mjs",
     "test:forum:media": "node --test tests/forum-media.test.mjs",
