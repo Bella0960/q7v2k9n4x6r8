@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v169';
+const CACHE_NAME = 'phone-app-pwa-v170';
 const APP_SHELL = [
   './',
   './index.html',
@@ -69,6 +69,8 @@ const APP_SHELL = [
   './manifest.json',
   'desktop/css/styles.css',
   './settings/font-settings.html',
+  './settings/image-generation.html',
+  './settings/js/image-generation.js?v=20261106v1',
   'settings/css/settings.css',
   'shared/css/mobile-fit.css',
   'shared/js/font-loader.js',
@@ -86,7 +88,10 @@ const APP_SHELL = [
   'shared/js/phone/memory_recall.js?v=20261024v2',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   './shared/js/chat-notifier.js?v=20261102v3',
-  'shared/js/phone/phone_api.js',
+  'shared/js/phone/storage/repository.js',
+  'shared/js/phone/storage/media-repository.js?v=20261106v1',
+  'shared/js/phone/phone_api.js?v=20261106v1',
+  'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',
   'shared/js/nav.js',
