@@ -775,6 +775,8 @@ function openAddRole() {
     document.getElementById('editRoleName').value = '';
     document.getElementById('editRolePersona').value = '';
     document.getElementById('editRoleTone').value = '';
+    document.getElementById('editRoleAppearance').value = '';
+    document.getElementById('editRoleStyleKeywords').value = '';
     selectedColor = getRandomColor();
     avatarDataUrl = '';
     updateAvatarPreview();
@@ -797,6 +799,9 @@ function openEditRole(id) {
     document.getElementById('editRoleName').value = target.name || '';
     document.getElementById('editRolePersona').value = target.persona || '';
     document.getElementById('editRoleTone').value = target.tone || '';
+    document.getElementById('editRoleAppearance').value = target.appearanceDescription || '';
+    document.getElementById('editRoleStyleKeywords').value = Array.isArray(target.styleKeywords)
+        ? target.styleKeywords.join(', ') : (target.styleKeywords || '');
     selectedColor = target.avatarBg || AVATAR_COLORS[0];
     avatarDataUrl = target.avatar || '';
     updateAvatarPreview();
@@ -814,6 +819,10 @@ function handleSaveRole() {
     const nameVal = document.getElementById('editRoleName').value.trim();
     const personaVal = document.getElementById('editRolePersona').value;
     const toneVal = document.getElementById('editRoleTone').value;
+    const appearanceVal = document.getElementById('editRoleAppearance').value.trim();
+    const styleKeywordsVal = document.getElementById('editRoleStyleKeywords').value
+        .split(/[,，、\n]/).map(function (item) { return item.trim(); })
+        .filter(Boolean).slice(0, 20);
 
     if (!nameVal) {
         setSaveStatus('请先填写角色名称。', 'error');
@@ -833,6 +842,8 @@ function handleSaveRole() {
         target.name = nameVal;
         target.persona = personaVal;
         target.tone = toneVal;
+        target.appearanceDescription = appearanceVal;
+        target.styleKeywords = styleKeywordsVal;
         target.avatar = avatarDataUrl || '';
         target.avatarBg = selectedColor;
         target.worldBookIds = selectedWorldBookIds.slice();
@@ -845,6 +856,8 @@ function handleSaveRole() {
             avatarBg: selectedColor,
             persona: personaVal,
             tone: toneVal,
+            appearanceDescription: appearanceVal,
+            styleKeywords: styleKeywordsVal,
             worldBookIds: selectedWorldBookIds.slice()
         });
     }
@@ -901,6 +914,8 @@ function captureEditorState() {
         name: document.getElementById('editRoleName').value,
         persona: document.getElementById('editRolePersona').value,
         tone: document.getElementById('editRoleTone').value,
+        appearanceDescription: document.getElementById('editRoleAppearance').value,
+        styleKeywords: document.getElementById('editRoleStyleKeywords').value,
         avatar: avatarDataUrl || '',
         avatarBg: selectedColor,
         worldBookIds: selectedWorldBookIds.slice()
@@ -949,6 +964,8 @@ function applyEditorState(state) {
     document.getElementById('editRoleName').value = state.name || '';
     document.getElementById('editRolePersona').value = state.persona || '';
     document.getElementById('editRoleTone').value = state.tone || '';
+    document.getElementById('editRoleAppearance').value = state.appearanceDescription || '';
+    document.getElementById('editRoleStyleKeywords').value = state.styleKeywords || '';
     avatarDataUrl = state.avatar || '';
     selectedColor = state.avatarBg || AVATAR_COLORS[0];
     selectedWorldBookIds = Array.isArray(state.worldBookIds) ? state.worldBookIds.map(String) : [];
