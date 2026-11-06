@@ -22,9 +22,14 @@ function makeVapidKeys() {
   const ecdh = createECDH('prime256v1');
   ecdh.generateKeys();
   const publicBytes = ecdh.getPublicKey();
+  // OpenSSL may return a minimally encoded scalar (30–32 bytes). VAPID's
+  // P-256 JWK requires the fixed-width 32-byte private scalar.
+  const privateBytes = ecdh.getPrivateKey();
+  const normalizedPrivateBytes = Buffer.alloc(32);
+  privateBytes.copy(normalizedPrivateBytes, 32 - privateBytes.length);
   return {
     publicB64: Buffer.from(publicBytes).toString('base64url'),
-    privateB64: Buffer.from(ecdh.getPrivateKey()).toString('base64url'),
+    privateB64: normalizedPrivateBytes.toString('base64url'),
     publicBytes: new Uint8Array(publicBytes)
   };
 }
