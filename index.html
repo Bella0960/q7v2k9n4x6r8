@@ -692,34 +692,43 @@
 
       var currentLayout = loadLayout();
 
-      // Migrate known built-in defaults only. User-arranged layouts with widgets are preserved.
-      (function migratePreviousBuiltInDefaultLayout() {
-        var previousDefault = {
-          pages: [
-            ['clock-lg', 'duo', 'polaroid', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty'],
-            ['app_theme_store', 'app_characters', 'app_settings', 'app_finance', 'app_games', 'app_cafe', 'app_library'],
-            ['app_diary', 'app_envelope', 'app_dreamtravel']
-          ],
-          dock: ['app_chat', 'app_shop'],
-          removed: ['photowall', 'postcard', 'image', 'clock', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note']
-        };
-        var legacyIconOnlyRemoved = ['photowall', 'postcard', 'image', 'clock', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note'];
+      // Migrate only exact built-in layouts from known releases.
+      // Any user-arranged layout (including app-only custom pages) remains untouched.
+      (function migrateKnownBuiltInDefaultLayouts() {
+        var builtInDefaults = [
+          {
+            // Legacy default from the widget-introduction release: apps on pages 1–2,
+            // widgets on page 3. This is the layout that the old migration missed.
+            pages: [
+              ['app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_settings'],
+              ['app_finance', 'app_games', 'app_cafe', 'app_library', 'app_diary', 'app_envelope', 'app_dreamtravel'],
+              ['social', 'image', 'clock', 'polaroid', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note']
+            ],
+            dock: ['app_chat', 'app_shop'],
+            removed: ['postcard']
+          },
+          {
+            // Immediately previous component-first default.
+            pages: [
+              ['clock-lg', 'duo', 'polaroid', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty'],
+              ['app_theme_store', 'app_characters', 'app_settings', 'app_finance', 'app_games', 'app_cafe', 'app_library'],
+              ['app_diary', 'app_envelope', 'app_dreamtravel']
+            ],
+            dock: ['app_chat', 'app_shop'],
+            removed: ['photowall', 'postcard', 'image', 'clock', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note']
+          }
+        ];
         function sameArray(a, b) {
           return Array.isArray(a) && a.length === b.length && a.every(function (v, i) { return v === b[i]; });
         }
-        var isPreviousDefault = currentLayout &&
-          currentLayout.pages && currentLayout.pages.length === 3 &&
-          previousDefault.pages.every(function (page, i) { return sameArray(currentLayout.pages[i], page); }) &&
-          sameArray(currentLayout.dock, previousDefault.dock) &&
-          sameArray(currentLayout.removed || [], previousDefault.removed);
-        var isLegacyIconOnlyDefault = currentLayout &&
-          currentLayout.pages && currentLayout.pages.length === 3 &&
-          currentLayout.pages.every(function (page) {
-            return page.every(function (id) { return /^app_/.test(id); });
-          }) &&
-          sameArray(currentLayout.dock, ['app_chat', 'app_shop']) &&
-          sameArray(currentLayout.removed || [], legacyIconOnlyRemoved);
-        if (isPreviousDefault || isLegacyIconOnlyDefault) {
+        var isKnownBuiltInDefault = !!(currentLayout && Array.isArray(currentLayout.pages) &&
+          builtInDefaults.some(function (layout) {
+            return currentLayout.pages.length === layout.pages.length &&
+              layout.pages.every(function (page, i) { return sameArray(currentLayout.pages[i], page); }) &&
+              sameArray(currentLayout.dock, layout.dock) &&
+              sameArray(currentLayout.removed || [], layout.removed);
+          }));
+        if (isKnownBuiltInDefault) {
           currentLayout = getDefaultLayout();
           saveLayout(currentLayout);
         }
