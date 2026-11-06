@@ -127,6 +127,32 @@ test('老角色基线：不传模式时与显式 auto 的拆分结果逐字一�
   });
 });
 
+test('缺少 replyBubbleMode 的老角色：6 段以上不设上限；显式 auto 仍最多 5 条', () => {
+  const segments = ['一', '二', '三', '四', '五', '六', '七'];
+  const raw = segments.join('\n\n');
+
+  const legacy = policy.parseReplyContent(raw, 'legacy');
+  assert.deepEqual(Array.from(legacy.bubbles), segments);
+
+  const explicitAuto = policy.parseReplyContent(raw, 'auto');
+  assert.equal(explicitAuto.bubbles.length, 5);
+  assert.deepEqual(Array.from(explicitAuto.bubbles.slice(0, 4)), segments.slice(0, 4));
+  assert.equal(explicitAuto.bubbles[4], '五\n六\n七');
+
+  const legacyMessages = policy.buildReplyMessages(raw, 'legacy', { time: 1000, turnId: 'legacy-turn' });
+  assert.equal(legacyMessages.length, 7);
+  assert.deepEqual(legacyMessages.map((message) => message.text), segments);
+  assert.ok(legacyMessages.every((message) => message.turnId === 'legacy-turn'));
+
+  const autoMessages = policy.buildReplyMessages(raw, 'auto', { time: 2000, turnId: 'auto-turn' });
+  assert.equal(autoMessages.length, 5);
+  assert.equal(autoMessages[4].text, '五\n六\n七');
+
+  const storedLegacy = policy.getMessageBubbles({ mid: 'm-legacy', text: raw });
+  assert.equal(storedLegacy.bubbles.length, 7);
+  assert.deepEqual(Array.from(storedLegacy.bubbles, (bubble) => bubble.text), segments);
+});
+
 test('短文本不会被机械切分：标点、空格、单句都保持 1 条', () => {
   ['你好。', '好。', '嗯……好。', '在吗，今天过得怎么样？', '  OK  '].forEach((input) => {
     const result = policy.parseReplyContent(input, 'auto');
