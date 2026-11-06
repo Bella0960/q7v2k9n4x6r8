@@ -52,7 +52,7 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v167'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v168'/);
 });
 
 test('all desktop app tiles have valid relative destinations and delegated click navigation', () => {
@@ -65,6 +65,7 @@ test('all desktop app tiles have valid relative destinations and delegated click
     assert.ok(existsSync(new URL('../' + href, import.meta.url)), 'missing app destination: ' + href);
   }
   assert.match(index, /target\.closest\('\.app-tile\[data-href\]'\)/);
+  assert.match(index, /window\.location\.assign\(new URL\(href, document\.baseURI\)\.href\);\s*\}, true\);/, 'navigation must run in capture phase before legacy gesture handlers can stop propagation');
   assert.match(index, /window\.location\.assign\(new URL\(href, document\.baseURI\)\.href\)/);
   assert.match(index, /home-editing/);
 });
