@@ -3289,7 +3289,7 @@
             return count > 1 ? base + '#' + index : base;
         }
 
-        // 已存内容按 auto 渲染：回复模式只影响生成/落库，不会在切换模式后重排历史气泡。
+        // 已存内容按原文分段渲染：回复模式只影响新生成/落库，不重排或截断历史气泡。
         function parseReplyContent(raw) {
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseReplyContent === 'function') {
                 return window.ChatMessagePolicy.parseReplyContent(raw, 'legacy');
