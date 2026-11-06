@@ -7,6 +7,8 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const viteConfig = read('vite.config.js');
+const desktopScript = read('desktop/js/script.js');
+const homePage = read('index.html');
 
 test('build emits a manifest containing every HTML entry point', () => {
   assert.match(viteConfig, /Object\.keys\(htmlFiles\)[\s\S]*\.map\(page => page \+ '\.html'\)/);
@@ -44,6 +46,15 @@ test('mobile navigation serves cached app pages before waiting for network', () 
   assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
   assert.match(serviceWorker, /if \(cached\) return cached/);
   assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+});
+
+
+test('desktop app shortcuts have exactly one navigation owner', () => {
+  assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
+    'the legacy bubble-phase handler must not compete with the home capture-phase handler');
+  assert.match(homePage,
+    /document\.addEventListener\('click', function \(event\) \{[\s\S]*?target\.closest\('\.app-tile\[data-href\]'\)[\s\S]*?window\.location\.assign\(new URL\(href, document\.baseURI\)\.href\);[\s\S]*?\}, true\);/,
+    'index.html must retain the single capture-phase app navigation handler');
 });
 
 test('failed app navigation never falls back to the desktop index page', () => {
