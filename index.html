@@ -701,6 +701,31 @@
 
       var currentLayout = loadLayout();
 
+      // 仅迁移“完全等于旧版内置默认布局”的数据；绝不覆盖用户自行摆放的自定义桌面。
+      (function migrateLegacyBuiltInDefaultLayout() {
+        var legacyDefault = {
+          pages: [
+            ['app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_settings'],
+            ['app_finance', 'app_games', 'app_cafe', 'app_library', 'app_diary', 'app_envelope', 'app_dreamtravel'],
+            ['social', 'image', 'clock', 'polaroid', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note']
+          ],
+          dock: ['app_chat', 'app_shop'],
+          removed: ['postcard']
+        };
+        function sameArray(a, b) {
+          return Array.isArray(a) && a.length === b.length && a.every(function (v, i) { return v === b[i]; });
+        }
+        var isLegacyDefault = currentLayout &&
+          currentLayout.pages && currentLayout.pages.length === 3 &&
+          legacyDefault.pages.every(function (page, i) { return sameArray(currentLayout.pages[i], page); }) &&
+          sameArray(currentLayout.dock, legacyDefault.dock) &&
+          sameArray(currentLayout.removed || [], legacyDefault.removed);
+        if (isLegacyDefault) {
+          currentLayout = getDefaultLayout();
+          saveLayout(currentLayout);
+        }
+      })();
+
       // 迁移旧桌面布局：通话/通讯录归入聊天应用，不再作为 Dock 独立应用。
       // 仅过滤已经移除的入口 ID，保留其他应用和用户自定义排列，不清空整个布局。
       (function migrateRemovedShortcuts() {
