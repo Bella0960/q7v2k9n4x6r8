@@ -230,6 +230,7 @@ async function main() {
 
   // API mock：真实 sendMsg -> PhoneStream -> fetch，本地 SSE 回包。
   let mockReplyText = '';
+  let mockTranslation = '';
   await page.route(MOCK_BASE + '/**', async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') {
@@ -240,6 +241,22 @@ async function main() {
           'Access-Control-Allow-Headers': '*',
           'Access-Control-Allow-Methods': 'POST, OPTIONS'
         }
+      });
+    }
+    // AI 翻译走非流式调用（stream:false），回 JSON；其余对话走 SSE。
+    let wantsStream = true;
+    try {
+      const payload = JSON.parse(req.postData() || '{}');
+      wantsStream = payload.stream !== false;
+    } catch (err) {}
+    if (!wantsStream) {
+      return route.fulfill({
+        status: 200,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ choices: [{ message: { content: mockTranslation } }] })
       });
     }
     return route.fulfill({
@@ -496,6 +513,43 @@ async function main() {
     );
     results.push('多气泡下删除单个气泡：兄弟气泡保留，刷新后仍保留');
 
+    // 3d. 翻译第一个气泡：译文只写回目标段，兄弟气泡不受影响。
+    mockTranslation = '旧气泡一译文';
+    await longPress(page, 'm_legacy#0');
+    await clickMenuAction(page, 'translate');
+    await page.waitForFunction(
+      () => {
+        const history = JSON.parse(localStorage.getItem('chat_history_bubA') || '[]');
+        const msg = history.find((m) => m && m.mid === 'm_legacy');
+        return !!msg && msg.text.indexOf('[中译:旧气泡一译文]') !== -1;
+      },
+      { timeout: 8000 }
+    );
+    const translatedHistory = await readHistory(page, 'chat_history_bubA');
+    const translatedMsg = translatedHistory.filter((m) => m && m.mid === 'm_legacy');
+    assert.equal(translatedMsg.length, 1, '翻译不应拆分老记录');
+    assert.equal(translatedMsg[0].text, '旧气泡一\n[中译:旧气泡一译文]\n\n旧气泡三·已编辑');
+    const legacyTextAfterTranslate = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('#chat-messages .msg-row'))
+        .filter((row) => (row.dataset.bubbleId || '').indexOf('m_legacy') === 0)
+        .map((row) => {
+          const clone = row.querySelector('.msg-bubble').cloneNode(true);
+          const strip = clone.querySelector('.msg-translation');
+          if (strip) strip.remove();
+          return clone.textContent.trim();
+        });
+    });
+    assert.deepEqual(legacyTextAfterTranslate, ['旧气泡一', '旧气泡三·已编辑'], '翻译后正文与气泡数量不变');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForRows(page, 4);
+    const legacyTranslationText = await page.evaluate(() => {
+      const row = document.querySelector('#chat-messages .msg-row[data-bubble-id="m_legacy#0"]');
+      const el = row && row.querySelector('.msg-translation');
+      return el ? el.textContent.trim() : '';
+    });
+    assert.equal(legacyTranslationText, '旧气泡一译文', '刷新后译文仍只挂在目标气泡下');
+    results.push('多气泡下翻译单个气泡：老记录译文只写回目标段，兄弟气泡不变');
+
     // ================= 4. 新记录：编辑 / 删除 / 重生成 =================
     const splitHistory = JSON.stringify([
       { role: 'user', text: '开始', time: 2000, mid: 'm_u2' },
@@ -565,6 +619,42 @@ async function main() {
       ['开始', '新气泡一', '新气泡二·已编辑', '再问', '第二轮回复']
     );
     results.push('新记录编辑 / 删除结果刷新后保持');
+
+    // 4d. 翻译第二个气泡：只写入该条消息的 translation，其他气泡不受影响。
+    mockTranslation = '新气泡二译文';
+    await longPress(page, 'm_n2');
+    await clickMenuAction(page, 'translate');
+    await page.waitForFunction(
+      () => {
+        const history = JSON.parse(localStorage.getItem('chat_history_bubA') || '[]');
+        const msg = history.find((m) => m && m.mid === 'm_n2');
+        return !!msg && msg.translation === '新气泡二译文';
+      },
+      { timeout: 8000 }
+    );
+    const afterTranslateHistory = await readHistory(page, 'chat_history_bubA');
+    assert.equal(afterTranslateHistory.length, 5, '翻译不应新增或合并消息');
+    assert.deepEqual(
+      afterTranslateHistory.map((m) => m.text),
+      ['开始', '新气泡一', '新气泡二·已编辑', '再问', '第二轮回复']
+    );
+    assert.equal(afterTranslateHistory.find((m) => m.mid === 'm_n2').translation, '新气泡二译文');
+    assert.equal(afterTranslateHistory.find((m) => m.mid === 'm_n1').translation, undefined, '兄弟气泡不应被写入译文');
+    const freshTranslationText = await page.evaluate(() => {
+      const row = document.querySelector('#chat-messages .msg-row[data-bubble-id="m_n2"]');
+      const el = row && row.querySelector('.msg-translation');
+      return el ? el.textContent.trim() : '';
+    });
+    assert.equal(freshTranslationText, '新气泡二译文', '译文应挂在目标气泡下');
+    results.push('多气泡下翻译单个气泡：新记录只写目标消息，其他气泡不受影响');
+
+    // 4e. 引用第二个气泡：引用栏只带该气泡文本，不串到兄弟气泡。
+    await longPress(page, 'm_n2');
+    await clickMenuAction(page, 'quote');
+    const freshQuoteText = await page.textContent('#quoteBarText');
+    assert.match(freshQuoteText, /新气泡二·已编辑/);
+    assert.doesNotMatch(freshQuoteText, /新气泡一|新气泡三/);
+    results.push('多气泡下引用：新记录只取目标气泡文本，兄弟气泡不串号');
 
     // 4c. 重生成：走真实菜单 -> 改写 -> 确认重玩，整轮 turn-new 被替换，其他轮次不动。
     await longPress(page, 'm_n1');

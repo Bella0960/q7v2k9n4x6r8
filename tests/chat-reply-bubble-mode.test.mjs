@@ -165,6 +165,17 @@ test('缺少 replyBubbleMode 的老角色：6 段以上不设上限；显式 aut
   const translatedLegacy = policy.parseReplyContent(translatedLegacyText, 'legacy');
   assert.equal(translatedLegacy.bubbles.length, 7);
   assert.equal(translatedLegacy.translations[6], 'seventh translation');
+
+  // 8 段：老角色同样不封顶；显式 auto 仍把第 5 段之后的正文并入第 5 条。
+  const eightSegments = ['一', '二', '三', '四', '五', '六', '七', '八'];
+  const eightRaw = eightSegments.join('\n\n');
+  const legacyEight = policy.parseReplyContent(eightRaw, 'legacy');
+  assert.equal(legacyEight.bubbles.length, 8);
+  assert.deepEqual(Array.from(legacyEight.bubbles), eightSegments);
+  const autoEight = policy.parseReplyContent(eightRaw, 'auto');
+  assert.equal(autoEight.bubbles.length, 5);
+  assert.equal(autoEight.bubbles[4], '五\n六\n七\n八');
+  assert.equal(Number(Array.from(autoEight.bubbles).join('\n').split('八').length - 1), 1);
 });
 
 test('短文本不会被机械切分：标点、空格、单句都保持 1 条', () => {
@@ -471,15 +482,19 @@ test('设置页三模式：multi 可保存并刷新读取；非法值回落 auto
   assert.equal(JSON.parse(storage.getItem('ai_custom_characters'))[0].replyBubbleMode, 'auto');
 });
 
-test('聊天页接线：读角色字段、按模式生成、已存内容固定按 auto 渲染', () => {
+test('聊天页接线：缺字段走 legacy、按模式生成、已存内容不套生成上限', () => {
   assert.match(detailSource, /function getActiveReplyBubbleMode\(\)/);
+  assert.match(detailSource, /hasOwnProperty\.call\(currentCharacter, 'replyBubbleMode'\)/);
   assert.match(detailSource, /currentCharacter\.replyBubbleMode/);
   assert.match(detailSource, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\)/);
-  assert.match(detailSource, /parseReplyContent\(raw, 'auto'\)/);
+  assert.match(detailSource, /parseReplyContent\(raw, 'legacy'\)/);
+  // 历史展示不得套用 5 条上限：上限只在生成侧（policy 的 legacyUncapped 守卫）生效。
+  assert.ok(!/bubbles\.length > 5/.test(detailSource), '已存内容渲染不得截断到 5 条');
+  assert.match(policySource, /!legacyUncapped && bubbles\.length > REPLY_BUBBLE_MAX/);
   assert.match(detailSource, /本轮只输出一条完整消息，不要用空行分隔多个气泡/);
   assert.match(detailSource, /本轮必须拆成 2–5 条连续消息/);
   assert.match(detailSource, /单次回复最多 5 条/);
-  assert.match(detailSource, /bubbles\.length > 5/);
+  assert.match(detailSource, /不设置固定条数上限/);
 });
 
 test('设置页接线：复用 ai_custom_characters，三选一模式，不新增独立存储键', () => {
