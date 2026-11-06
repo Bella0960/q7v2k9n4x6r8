@@ -52,6 +52,8 @@ test('role participation uses existing MAOMAO character and AI APIs', () => {
   assert.match(js, /requestRoleStart\('大转盘'\)/);
   assert.match(js, /requestRoleStart\('塔罗牌'\)/);
   assert.match(js, /requestRoleStart\('今日运势'\)/);
+  assert.match(js, /button\.textContent = '正在整理/);
+  assert.match(js, /$('lotResult').hidden = true/);
   assert.match(js, /roleStartToken\+\+/);
   assert.match(html, /id="rolePrompt"/);
 });
