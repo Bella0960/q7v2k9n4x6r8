@@ -2,6 +2,7 @@
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
 const CACHE_NAME = 'phone-app-pwa-v172';
+// v172 release: refresh the installed app shell for deferred fonts and the unified desktop clock palette.
 const APP_SHELL = [
   './',
   './index.html',
