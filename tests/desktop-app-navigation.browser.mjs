@@ -63,12 +63,26 @@ try {
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
     isMobile: true,
-    hasTouch: true,
-    serviceWorkers: 'block'
+    hasTouch: true
   });
   const page = await context.newPage();
-  const homeResponse = await page.goto(`${baseUrl}/index.html`, { waitUntil: 'domcontentloaded' });
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  const homeResponse = await page.goto(`${baseUrl}/index.html`, { waitUntil: 'load' });
   assert.equal(homeResponse?.status(), 200, 'desktop home should load from the production build');
+  const serviceWorkerState = await page.evaluate(async () => {
+    if (!('serviceWorker' in navigator)) return { supported: false, controller: false };
+    const registration = await navigator.serviceWorker.ready;
+    return {
+      supported: true,
+      scope: registration.scope,
+      activeState: registration.active?.state || 'none',
+      controller: !!navigator.serviceWorker.controller
+    };
+  });
+  assert.equal(serviceWorkerState.supported, true, 'mobile browser must support the app service worker');
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
+
 
   const builtHome = fs.readFileSync(path.join(distRoot, 'index.html'), 'utf8');
   const routes = [...builtHome.matchAll(/data-href="([^"]+)"/g)].map(match => match[1]);
@@ -88,18 +102,18 @@ try {
   const firstRoute = await tile.getAttribute('data-href');
   assert.ok(firstRoute, 'first app tile should declare its destination');
 
-  const navigationResponse = page.waitForResponse(response =>
-    new URL(response.url()).pathname === `/${firstRoute}`,
-    { timeout: 10000 }
-  );
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 });
   await tile.tap({ timeout: 10000 });
-  const appResponse = await navigationResponse;
-  assert.equal(appResponse.status(), 200, 'tapping an app icon should load its actual page');
+  const appResponse = await navigation;
+  assert.equal(appResponse?.status(), 200,
+    'tapping an app icon with the service worker active must load its actual page');
   await page.waitForURL(url => new URL(url).pathname === `/${firstRoute}`, { timeout: 10000 });
   assert.equal(new URL(page.url()).pathname, `/${firstRoute}`,
     'mobile app icon tap should navigate to the declared app page');
+  assert.equal(pageErrors.length, 0,
+    'desktop home and app navigation must not throw JavaScript errors: ' + pageErrors.join(' | '));
 
-  console.log(`PASS: ${routes.length} app routes exist in the production build and the first mobile app tap navigates successfully.`);
+  console.log(`PASS: service worker ${serviceWorkerState.activeState}; ${routes.length} app routes exist in the production build; the first mobile app tap navigates successfully without page errors.`);
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));
