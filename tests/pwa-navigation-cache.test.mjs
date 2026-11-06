@@ -6,6 +6,7 @@ import path from 'node:path';
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v169'/);
 const viteConfig = read('vite.config.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
