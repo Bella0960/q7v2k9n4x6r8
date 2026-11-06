@@ -53,3 +53,9 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config wrangler.jsonc
+
+      - name: Install Chromium for live production verification
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify real production app routes and mobile taps
+        run: node tests/production-worker-navigation.browser.mjs
