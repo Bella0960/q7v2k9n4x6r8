@@ -274,7 +274,7 @@ function drawWheel() {
   if (!ctx) return;
   var size = canvas.width, center = size / 2, radius = size / 2 - 5, count = Math.max(1, wheel.items.length);
   ctx.clearRect(0, 0, size, size);
-  ctx.save(); ctx.translate(center, center); ctx.rotate(wheelRotation * Math.PI / 180);
+  ctx.save(); ctx.translate(center, center);
   var shades = ['#f5f5f6', '#e6e6e9', '#d8d8dc', '#eeeeef', '#e0e0e3', '#fafafa'];
   for (var i = 0; i < count; i++) {
     var start = -Math.PI / 2 + i * Math.PI * 2 / count;
@@ -451,6 +451,7 @@ document.querySelectorAll('.play-tab').forEach(function (button) {
   button.addEventListener('click', function () { setTab(button.dataset.tab); });
 });
 $('roleSelect').addEventListener('change', function () {
+  roleRequestToken++;
   selectedRole = roles.find(function (role) { return String(role.id) === this.value; }, this) || null;
   saveSettings(); renderRoleOptions(); renderHistory();
 });
