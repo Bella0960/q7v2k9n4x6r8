@@ -20,6 +20,20 @@ test('build emits a manifest containing every HTML entry point', () => {
   assert.ok(pageManifest.every(page => typeof page === 'string' && page.endsWith('.html')));
 });
 
+
+test('every desktop app shortcut is emitted as a real HTML page in the production build', () => {
+  const builtHome = read('dist/index.html');
+  const pageManifest = JSON.parse(read('dist/pwa-pages.json'));
+  const routes = [...builtHome.matchAll(/data-href="([^"]+\.html)"/g)].map(match => match[1]);
+
+  assert.ok(routes.length >= 20, 'the built desktop must retain all app shortcuts');
+  assert.equal(new Set(routes).size, routes.length, 'desktop app routes must be unique');
+  for (const route of routes) {
+    assert.ok(pageManifest.includes(route), 'app route missing from the PWA page manifest: ' + route);
+    assert.ok(fs.existsSync(path.join(root, 'dist', route)), 'app route missing from production build output: ' + route);
+  }
+});
+
 test('service worker precaches all HTML routes listed by the build manifest', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
