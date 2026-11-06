@@ -13,15 +13,15 @@ function extractDefaultPages(source) {
   );
 }
 
-test('default home keeps the three requested widgets on a compact first page', () => {
+test('default home is component-first with clock, image, photo wall and utility widgets', () => {
   const pages = extractDefaultPages(index);
   assert.equal(pages.length, 3);
   assert.deepEqual(pages[0], [
-    'clock-lg', 'duo', 'polaroid',
-    'app_inspect', 'app_worldbook', 'app_memory', 'app_forum'
+    'clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'
   ]);
   assert.ok(pages[1].every((id) => id.startsWith('app_')));
   assert.ok(pages[2].every((id) => id.startsWith('app_')));
+  assert.match(index, /isLegacyIconOnlyDefault/);
 });
 
 test('every desktop app is assigned exactly once and dock apps stay in the dock', () => {
