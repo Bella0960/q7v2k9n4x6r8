@@ -68,7 +68,7 @@ function rolesWith(mode) {
   return JSON.stringify([
     Object.assign({}, ROLE_A, { replyBubbleMode: mode }),
     { id: 'bubB', name: '测试角色B', avatar: '', persona: '另一个角色。', replyBubbleMode: 'auto', createdAt: 2 },
-    // 老角色兼容：非法值 / 缺字段都应按 auto 处理。
+    // 非法的显式值归一到 auto；完全缺字段的角色由聊天页走 legacy 兼容路径。
     { id: 'bubC', name: '测试角色C', avatar: '', persona: '老角色。', replyBubbleMode: 'weird', createdAt: 3 }
   ]);
 }
@@ -317,11 +317,13 @@ async function main() {
     const MODE_CASES = [
       { mode: 'multi', reply: '第一句。\n第二句。\n第三句。', expected: ['第一句。', '第二句。', '第三句。'] },
       { mode: 'auto', reply: '甲段。\n\n乙段。\n\n丙段。', expected: ['甲段。', '乙段。', '丙段。'] },
-      { mode: 'single', reply: '甲段。\n\n乙段。\n\n丙段。', expected: ['甲段。\n乙段。\n丙段。'] }
+      { mode: 'single', reply: '甲段。\n\n乙段。\n\n丙段。', expected: ['甲段。\n乙段。\n丙段。'] },
+      { label: 'legacy', mode: undefined, reply: '老角色第一段。\n\n老角色第二段。\n\n老角色第三段。\n\n老角色第四段。\n\n老角色第五段。\n\n老角色第六段。\n\n老角色第七段。', expected: ['老角色第一段。', '老角色第二段。', '老角色第三段。', '老角色第四段。', '老角色第五段。', '老角色第六段。', '老角色第七段。'] }
     ];
     const generatedIds = {};
 
     for (const item of MODE_CASES) {
+      const caseName = item.label || item.mode;
       await setSeed(page, {
         ai_custom_characters: rolesWith(item.mode),
         api_settings: API_SETTINGS,
@@ -334,8 +336,8 @@ async function main() {
       const observed = await sendAndObserve(page, 'chat_history_bubA', '请回我三句', item.expected.length);
       const history = await readHistory(page, 'chat_history_bubA');
       const turn = history.filter((m) => m && m.role === 'assistant' && m.turnId);
-      assert.equal(turn.length, item.expected.length, `${item.mode} 模式落库气泡数`);
-      assert.deepEqual(turn.map((m) => m.text), item.expected, `${item.mode} 模式正文`);
+      assert.equal(turn.length, item.expected.length, `${caseName} 模式落库气泡数`);
+      assert.deepEqual(turn.map((m) => m.text), item.expected, `${caseName} 模式正文`);
       assert.equal(new Set(turn.map((m) => m.mid)).size, turn.length, '每个气泡应有独立 mid');
       assert.equal(new Set(turn.map((m) => m.turnId)).size, 1, '同一轮应共享 turnId');
       assert.deepEqual(turn.map((m) => m.bubbleIndex), item.expected.map((_, i) => i));
@@ -344,13 +346,13 @@ async function main() {
       // 逐条显示：MutationObserver 记录的行数序列必须出现「尚未全部上屏」的中间态。
       assert.ok(
         observed.counts.some((n) => n > observed.before && n < observed.finalRows),
-        `${item.mode} 模式应逐条上屏（行数序列=${observed.counts.join(',')}）`
+        `${caseName} 模式应逐条上屏（行数序列=${observed.counts.join(',')}）`
       );
       assert.equal(observed.counts[observed.counts.length - 1], observed.finalRows);
 
       const rowsBeforeReload = await getBubbleRows(page);
       const turnRows = rowsBeforeReload.filter((row) => turn.some((m) => row.bubbleId === m.mid));
-      assert.equal(turnRows.length, turn.length, `${item.mode} 模式 DOM 行数`);
+      assert.equal(turnRows.length, turn.length, `${caseName} 模式 DOM 行数`);
       assert.deepEqual(turnRows.map((row) => row.text), item.expected);
 
       // 刷新恢复：身份与文本不变。
@@ -358,12 +360,12 @@ async function main() {
       await waitForRows(page, 1 + 1 + item.expected.length);
       const rowsAfterReload = await getBubbleRows(page);
       const turnRowsAfter = rowsAfterReload.filter((row) => turn.some((m) => row.bubbleId === m.mid));
-      assert.equal(turnRowsAfter.length, turn.length, `${item.mode} 模式刷新后气泡数`);
+      assert.equal(turnRowsAfter.length, turn.length, `${caseName} 模式刷新后气泡数`);
       assert.deepEqual(turnRowsAfter.map((row) => row.bubbleId), turnRows.map((row) => row.bubbleId));
       assert.deepEqual(turnRowsAfter.map((row) => row.text), item.expected);
 
-      generatedIds[item.mode] = turn.map((m) => m.mid);
-      results.push(`${item.mode} 模式：落库 ${turn.length} 条、逐条上屏、刷新后身份与文本不变`);
+      generatedIds[caseName] = turn.map((m) => m.mid);
+      results.push(`${caseName} 模式：落库 ${turn.length} 条、逐条上屏、刷新后身份与文本不变`);
     }
 
     // ================= 3. 老记录：单条消息多气泡的显示与四类操作 =================
@@ -372,7 +374,7 @@ async function main() {
       { role: 'user', text: '你好', time: 1000, mid: 'm_u_legacy' },
       { role: 'assistant', text: legacyText, time: 1001, mid: 'm_legacy' }
     ]);
-    // 角色模式设为 multi：历史渲染必须固定按 auto 解析，不能被设置重排。
+    // 角色模式设为 multi：历史渲染必须保持存储文本原样，不被当前生成模式或 5 条上限重排。
     await setSeed(page, {
       ai_custom_characters: rolesWith('multi'),
       api_settings: API_SETTINGS,
