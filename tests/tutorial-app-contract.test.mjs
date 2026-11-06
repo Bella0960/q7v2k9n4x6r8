@@ -18,6 +18,28 @@ function readExtraLessons(source) {
   return JSON.parse(match[1]);
 }
 
+function readPage(relativePath) {
+  const path = resolve(dirname(tutorialPath), relativePath);
+  assert.ok(existsSync(path), 'guided tour page does not exist: ' + relativePath);
+  return readFileSync(path, 'utf8');
+}
+
+function assertSelectorExists(source, selector, label) {
+  const ids = [...selector.matchAll(/#([A-Za-z_][\w-]*)/g)].map((m) => m[1]);
+  for (const id of ids) {
+    assert.match(source, new RegExp('id=["\\']' + id + '["\\']'), label + ' missing #' + id);
+  }
+  const attrs = [...selector.matchAll(/\[([a-zA-Z_-][\w-]*)(?:=["\\']([^"\\']+)["\\'])?\]/g)];
+  for (const [, attr, value] of attrs) {
+    assert.ok(source.includes(attr), label + ' missing [' + attr + ']');
+    if (value) assert.ok(source.includes(value), label + ' missing selector value ' + value);
+  }
+  const classes = [...selector.matchAll(/\.([A-Za-z_-][\w-]*)/g)].map((m) => m[1]);
+  for (const name of classes) {
+    assert.ok(source.includes(name), label + ' missing .' + name);
+  }
+}
+
 test('tutorial app is linked from the desktop and included in the default layout', () => {
   assert.match(index, /data-href="tutorial\/tutorial\.html"[^>]*data-drag="app_tutorial"[^>]*data-name="教程"/);
   assert.match(index, /'app_tutorial'\s*\]/);
@@ -25,7 +47,7 @@ test('tutorial app is linked from the desktop and included in the default layout
   assert.equal(existsSync(tutorialPath), true);
 });
 
-test('tutorial offers the learning path, progress tracking and at least 45 lessons', () => {
+test('tutorial offers the learning path, progress tracking and at least 50 lessons', () => {
   assert.match(html, /maomao_tutorial_progress_v1/);
   assert.match(html, /学习进度/);
   assert.match(html, /从这里，学会使用小手机/);
@@ -33,40 +55,55 @@ test('tutorial offers the learning path, progress tracking and at least 45 lesso
   assert.match(html, /data-answer/);
   assert.match(html, /continueBtn/);
   const extra = readExtraLessons(html);
-  assert.ok(extra.length >= 18, 'expected detailed app-by-app lessons in addition to the core course');
+  assert.ok(extra.length >= 26, 'expected detailed app-by-app lessons in addition to the core course');
   const ids = new Set(extra.map((lesson) => lesson.id));
   for (const id of [
     'forum-post', 'music-player', 'takeout-order', 'couple-space',
     'growth-progress', 'daily-companion', 'cafe-management',
     'reading-workflow', 'envelope-letter', 'diary-journal',
     'novel-workshop', 'dream-travel', 'game-hall', 'offline-mode',
-    'chat-rich-features', 'theme-store-guide', 'poster-archive', 'live-room'
+    'chat-rich-features', 'theme-store-guide', 'poster-archive', 'live-room',
+    'desktop-widgets', 'chat-compose-and-media', 'chat-settings-and-autonomy',
+    'group-chat-interactions', 'character-network', 'novel-author-tools',
+    'cafe-menu-stock', 'novel-workflow'
   ]) assert.ok(ids.has(id), 'missing detailed lesson: ' + id);
 });
 
-test('guided tours load real same-origin pages and highlight their actual controls', () => {
+test('guided tours load same-origin pages and their selector targets exist in real source files', () => {
   assert.match(html, /id="tourModal"/);
   assert.match(html, /id="tourFrame"/);
   assert.match(html, /function openGuidedTour\(lesson\)/);
   assert.match(html, /frame\.contentDocument/);
-  assert.match(html, /data-maomao-tour-focus/);
-  assert.match(html, /addTourConfig\('api-connect'/);
-  assert.match(html, /addTourConfig\('image-config'/);
-  assert.match(html, /addTourConfig\('minimax-tts'/);
-  assert.match(html, /addTourConfig\('image-generate'/);
-  assert.match(html, /addTourConfig\('worldbook'/);
-  assert.match(html, /addTourConfig\('fonts'/);
-  assert.match(html, /addTourConfig\('character-create'/);
+  assert.match(html, /data-maomao-tour-old-style/);
+  assert.match(html, /library-settings/);
+  const baseTours = [
+    { path: '../settings/settings.html', selectors: ['#api-provider','#api-url','#api-key','#api-model','#btn-fetch-models','#settingsForm button[type="submit"]','#btn-test-connection','#api-image-model','#api-image-endpoint'] },
+    { path: '../settings/minimax-tts.html', selectors: ['#enableToggle','#versionRow','#apiKey','#groupId','#modelGrid','#saveBtn'] },
+    { path: '../settings/image-generation.html', selectors: ['#characterSelect','#appearance','#styleKeywords','#saveRole','#scene','#privateImage','#generateImage','#gallery'] },
+    { path: '../worldbook/worldbook/worldbook.html', selectors: ['#btnAddFooter','#edName','#btnEditSave'] },
+    { path: '../settings/font-settings.html', selectors: ['#fontUrlInput','#applyFontBtn','.file-pick','#fontSchemeName','#saveFontPresetBtn','#fontSizePreview','#restoreFontDefaults'] },
+    { path: '../worldbook/characters/characters.html', selectors: ['#editRoleName','#editRolePersona','#editRoleTone','#editRoleAppearance','#editRoleStyleKeywords','#btnSaveRole'] }
+  ];
+  for (const tour of baseTours) {
+    const page = readPage(tour.path);
+    for (const selector of tour.selectors) assertSelectorExists(page, selector, tour.path);
+  }
   const extra = readExtraLessons(html);
-  for (const id of ['forum-post','takeout-order','couple-space','cafe-management','reading-workflow','envelope-letter','diary-journal']) {
-    const lesson = extra.find((item) => item.id === id);
-    assert.ok(lesson && lesson.tour && lesson.tour.steps.length >= 3, 'missing real-page guided tour: ' + id);
-    assert.ok(lesson.tour.url.startsWith('../'), 'tour must stay on the MAOMAO origin');
+  const tourLessons = extra.filter((lesson) => lesson.tour);
+  assert.ok(tourLessons.length >= 13, 'expected at least 13 detailed real-page tours');
+  for (const lesson of tourLessons) {
+    assert.ok(lesson.tour.url.startsWith('../'), 'tour must stay on the MAOMAO origin: ' + lesson.id);
+    const page = readPage(lesson.tour.url);
+    assert.ok(lesson.tour.steps.length >= 3, 'tour too short: ' + lesson.id);
+    for (const step of lesson.tour.steps) {
+      assert.ok(step.selector, 'tour step has no selector: ' + lesson.id);
+      assertSelectorExists(page, step.selector, lesson.id);
+    }
   }
   assert.match(html, /右侧是真实 MAOMAO 页面/);
 });
 
-test('tutorial app directory contains all desktop app shortcuts with valid local routes', () => {
+test('tutorial app directory contains every desktop app shortcut with valid local routes', () => {
   const appBlock = html.match(/var apps=\[([\s\S]*?)\n\];/);
   assert.ok(appBlock, 'app directory must declare its desktop app map');
   const entries = [...appBlock[1].matchAll(/\['([^']+)','([^']+)','([^']+)'\]/g)];
@@ -87,7 +124,16 @@ test('API practice stays local-only and MIX is not given invented connection det
   assert.match(html, /教程不会读取或显示输入框里的密钥/);
 });
 
-test('PWA caches the tutorial app and the dedicated test command is registered', () => {
+test('novel workshop guide reflects current local-template behavior', () => {
+  const extra = readExtraLessons(html);
+  const lesson = extra.find((item) => item.id === 'novel-workshop');
+  assert.ok(lesson);
+  const body = [lesson.lead, ...lesson.steps.map((step) => step.join(' ')), ...lesson.tips.map((tip) => tip.join(' '))].join(' ');
+  assert.match(body, /本地/);
+  assert.match(body, /真实 AI 生成尚未接入/);
+});
+
+test('PWA caches the tutorial app and dedicated CI runs tests, layout check and build', () => {
   assert.match(sw, /phone-app-pwa-v175/);
   assert.match(sw, /'\.\/tutorial\/tutorial\.html'/);
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-app-contract.test.mjs');
