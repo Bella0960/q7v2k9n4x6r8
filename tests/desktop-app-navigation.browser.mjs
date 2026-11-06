@@ -104,7 +104,7 @@ try {
     assert.ok((response.headers()['content-type'] || '').includes('text/html'),
       `app page should be HTML: ${route}`);
     const body = await response.text();
-    assert.match(body, /<html[\s>]/i, \`app route returned no HTML document: \${route}\`);
+    assert.match(body, /<html[\s>]/i, `app route returned no HTML document: ${route}`);
   }
 
   const page = await context.newPage();
