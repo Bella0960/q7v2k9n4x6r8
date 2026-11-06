@@ -151,6 +151,20 @@ test('缺少 replyBubbleMode 的老角色：6 段以上不设上限；显式 aut
   const storedLegacy = policy.getMessageBubbles({ mid: 'm-legacy', text: raw });
   assert.equal(storedLegacy.bubbles.length, 7);
   assert.deepEqual(Array.from(storedLegacy.bubbles, (bubble) => bubble.text), segments);
+
+  const editedLegacyText = policy.replaceBubbleInText(raw, 6, '七·已编辑');
+  const editedLegacy = policy.parseReplyContent(editedLegacyText, 'legacy');
+  assert.equal(editedLegacy.bubbles.length, 7);
+  assert.equal(editedLegacy.bubbles[6], '七·已编辑');
+
+  const removedLegacyText = policy.removeBubbleFromText(raw, 6);
+  const removedLegacy = policy.parseReplyContent(removedLegacyText, 'legacy');
+  assert.deepEqual(Array.from(removedLegacy.bubbles), segments.slice(0, 6));
+
+  const translatedLegacyText = policy.applyBubbleTranslation(raw, 6, 'seventh translation');
+  const translatedLegacy = policy.parseReplyContent(translatedLegacyText, 'legacy');
+  assert.equal(translatedLegacy.bubbles.length, 7);
+  assert.equal(translatedLegacy.translations[6], 'seventh translation');
 });
 
 test('短文本不会被机械切分：标点、空格、单句都保持 1 条', () => {
