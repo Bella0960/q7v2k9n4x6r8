@@ -482,9 +482,10 @@
     }
 
     function applyGlobalSource(source) {
-        if (!window.MAOMAOFontRuntime) return;
-        if (source.type === 'file') window.MAOMAOFontRuntime.applyBlob(source.blob, source.format);
-        else window.MAOMAOFontRuntime.applyUrl(source.url, source.format);
+        if (!window.MAOMAOFontRuntime) return Promise.resolve(false);
+        if (source.type === 'file') return window.MAOMAOFontRuntime.applyBlob(source.blob, source.format);
+        window.MAOMAOFontRuntime.applyUrl(source.url, source.format);
+        return Promise.resolve(true);
     }
 
     function normalizeUrl(raw) {
@@ -616,10 +617,11 @@
             localStorage.removeItem('custom_font_url');
         } catch (e) {}
         previewSource(pendingSource);
-        applyGlobalSource(pendingSource);
+        var applied = applyGlobalSource(pendingSource);
         if (record.fileName) fileName.textContent = record.fileName;
-        showHint('已应用字体方案：' + record.name);
+        showHint('正在应用字体方案：' + record.name);
         deletePresetBtn.disabled = false;
+        return applied;
     }
 
     function savePreset() {
@@ -647,16 +649,20 @@
         }
 
         savePresetBtn.disabled = true;
+        showHint('正在保存字体方案，并准备跨应用字体缓存…');
         dbPut(record).then(function () {
             try {
                 localStorage.setItem('active_font_preset_id', record.id);
                 localStorage.removeItem('custom_font_url');
             } catch (e) {}
-            activatePreset(record);
-            schemeName.value = '';
-            return refreshPresets();
-        }).then(function () {
-            showHint('字体方案已保存并应用，下次打开也会自动使用。');
+            return Promise.resolve(activatePreset(record)).then(function (cacheReady) {
+                schemeName.value = '';
+                return refreshPresets().then(function () { return cacheReady; });
+            });
+        }).then(function (cacheReady) {
+            showHint(cacheReady === false
+                ? '字体方案已保存并应用。当前浏览器未能建立字体缓存，仍会使用兼容加载方式。'
+                : '字体方案已保存并应用，跨应用字体缓存已准备好。之后打开其他应用不必重复读取字体文件。');
         }).catch(function (e) {
             showHint(e.message || '保存失败，请检查浏览器本地存储空间');
         }).then(function () {
@@ -675,6 +681,9 @@
         var id = presetSelect.value;
         if (!id) return;
         dbDelete(id).then(function () {
+            if (window.MAOMAOFontRuntime && window.MAOMAOFontRuntime.removeCached) {
+                window.MAOMAOFontRuntime.removeCached(id);
+            }
             var activeId = '';
             try { activeId = localStorage.getItem('active_font_preset_id') || ''; } catch (e) {}
             if (activeId === id) {
