@@ -166,7 +166,7 @@ h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5p
     <button class="module-link" type="button" data-open="wheel"><span class="module-no">02</span><span class="module-copy"><strong>大转盘</strong><small>自定义选项 · 随机决定 · 结果记录</small></span></button>
     <button class="module-link" type="button" data-open="oracle"><span class="module-no">03</span><span class="module-copy"><strong>今日灵签</strong><small>综合 · 关系 · 学业 · 心情</small></span></button>
   </nav>
-  <div class="home-note"><span>所有抽取结果仅保存在当前手机浏览器。</span><span>不会上传聊天内容。</span></div>
+  <div class="home-note"><span id="homeRecent">结果会留在这台设备的浏览器。</span><span>只保存在本地。</span></div>
 </section>
 
 <section class="view" id="tarotView" hidden>
@@ -368,7 +368,7 @@ function drawTarot(){
   article.appendChild(pos);article.appendChild(name);article.appendChild(latin);article.appendChild(meaning);article.appendChild(advice);results.appendChild(article);
  });
  state.tarotHistory.unshift({date:dateKey(),question:question,cards:indices.map(function(i){return tarotDeck[i].name;})});
- state.tarotHistory=state.tarotHistory.slice(0,20);saveState();
+ state.tarotHistory=state.tarotHistory.slice(0,20);saveState();updateHomeNote();
  message('#tarotMessage',question?'这次抽取围绕的问题：'+question:'已完成一次水晶抽取。');
 }
 function drawWheel(){
@@ -435,7 +435,7 @@ function spinWheel(){
   var value=state.wheelOptions[chosen];$('#wheelResult').textContent='这次的结果：'+value;
   var now=new Date(),time=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
   state.wheelHistory.unshift({value:value,time:time,date:dateKey()});state.wheelHistory=state.wheelHistory.slice(0,30);
-  saveState();renderWheelHistory();renderWheelOptions();message('#wheelMessage','结果已记录。');
+  saveState();renderWheelHistory();renderWheelOptions();updateHomeNote();message('#wheelMessage','结果已记录。');
  }
  disc.addEventListener('transitionend',function onEnd(event){if(event.propertyName!=='transform')return;disc.removeEventListener('transitionend',onEnd);finish();});
  disc.style.transform='rotate('+wheelRotation+'deg)';
@@ -464,14 +464,15 @@ function drawOracle(){
  var entry={category:selectedOracleCategory,date:dateKey(),title:item[0],message:item[1],advice:item[2]};
  state.dailyOracle[dateKey()+'_'+selectedOracleCategory]=entry;
  state.oracleHistory.unshift(entry);state.oracleHistory=state.oracleHistory.slice(0,30);
- saveState();renderOracleResult(entry);message('#oracleMessage','今日灵签已经记下，可以随时回来重读。');
+ saveState();renderOracleResult(entry);updateHomeNote();message('#oracleMessage','今日灵签已经记下，可以随时回来重读。');
 }
 function updateHomeNote(){
  var notes=[];
- if(state.wheelHistory.length)notes.push('转盘最近一次：'+state.wheelHistory[0].value);
- if(state.tarotHistory.length)notes.push('最近一次水晶抽取：'+state.tarotHistory[0].cards.join('、'));
+ if(state.wheelHistory.length)notes.push('转盘：'+state.wheelHistory[0].value);
+ if(state.tarotHistory.length)notes.push('塔罗：'+state.tarotHistory[0].cards.join('、'));
+ if(state.oracleHistory.length)notes.push('灵签：'+state.oracleHistory[0].title);
  var el=$('#homeRecent');
- if(el)el.textContent=notes.join('　／　');
+ if(el)el.textContent=notes.length?notes.slice(0,3).join('　／　'):'结果会留在这台设备的浏览器。';
 }
 app.addEventListener('click',function(event){
  var open=event.target.closest('[data-open]');
