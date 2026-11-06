@@ -1099,7 +1099,28 @@
                     ></textarea>
                 </div>
 
-                <!-- 5. 绑定世界书（多选） -->
+                <!-- 5. 生图身份：与角色人设分开保存，作为每次生图的稳定外貌前缀 -->
+                <div class="editor-field-group">
+                    <label class="field-label" for="editRoleAppearance">固定外貌描述</label>
+                    <textarea
+                        class="form-textarea"
+                        id="editRoleAppearance"
+                        maxlength="1600"
+                        placeholder="填写不会随场景变化的外貌特征，例如发色、发型、瞳色、标志性配饰。每次生图都会优先保留这些特征。"
+                    ></textarea>
+                </div>
+
+                <div class="editor-field-group">
+                    <label class="field-label" for="editRoleStyleKeywords">画风关键词</label>
+                    <textarea
+                        class="form-textarea tone"
+                        id="editRoleStyleKeywords"
+                        maxlength="600"
+                        placeholder="例如 anime, soft lighting, editorial portrait（可用逗号或换行分隔）"
+                    ></textarea>
+                </div>
+
+                <!-- 6. 绑定世界书（多选） -->
                 <div class="editor-field-group">
                     <label class="field-label" style="color: #8E8E93;">绑定世界书</label>
                     <div class="wb-bind-list" id="worldBookBindList"></div>

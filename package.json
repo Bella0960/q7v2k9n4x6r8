@@ -24,7 +24,7 @@
     "perf:fixab:mobile": "THROTTLE=4 node perf/fixab-regression.mjs",
     "perf:gate": "node perf/gate.mjs",
     "test:desktop:layout": "node --test tests/default-desktop-layout.test.mjs",
-    "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs",
+    "test:pwa:navigation": "node --test tests/pwa-navigation-cache.test.mjs tests/icon-presets-contract.test.mjs",
     "test:chat:call": "node --test tests/chat-call-experience.test.mjs",
     "test:media:backup": "node --test tests/media-backup.test.mjs",
     "test:forum:media": "node --test tests/forum-media.test.mjs",
@@ -34,7 +34,9 @@
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
-    "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs"
+    "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
+    "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
+    "test:images": "node --test tests/image-generation-pipeline.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
