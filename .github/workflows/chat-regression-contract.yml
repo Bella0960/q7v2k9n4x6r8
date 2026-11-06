@@ -52,6 +52,7 @@ jobs:
       - name: Run chat regression contract tests
         run: |
           npm run test:chat:contract
+          npm run test:desktop:layout
           npm run test:bugfix:blockers
           npm run test:media:backup
           npm run test:forum:media
