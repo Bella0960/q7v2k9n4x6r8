@@ -80,8 +80,7 @@ try {
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
     isMobile: true,
-    hasTouch: true,
-    serviceWorkers: 'block'
+    hasTouch: true
   });
 
   const indexResponse = await context.request.get(`${baseUrl}/index.html`);
@@ -110,6 +109,20 @@ try {
   const page = await context.newPage();
   const homeResponse = await page.goto(`${baseUrl}/index.html`, { waitUntil: 'domcontentloaded' });
   assert.equal(homeResponse?.status(), 200, 'mobile home should load');
+
+  const serviceWorkerState = await page.evaluate(async () => {
+    if (!('serviceWorker' in navigator)) return { supported: false, controller: false };
+    const registration = await navigator.serviceWorker.ready;
+    return {
+      supported: true,
+      controller: !!navigator.serviceWorker.controller,
+      activeState: registration.active?.state || 'none',
+      scriptURL: registration.active?.scriptURL || ''
+    };
+  });
+  console.log('MOBILE SERVICE WORKER:', JSON.stringify(serviceWorkerState));
+  assert.equal(serviceWorkerState.supported, true, 'mobile browser must support the app service worker');
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
 
   assert.equal(await page.locator('body').evaluate(node => node.classList.contains('home-editing')), false,
     'fresh home should not start in edit mode');
