@@ -222,10 +222,13 @@ function renderPoolSelect() {
   });
   if (!state.pools.some(function (pool) { return pool.id === activePool; })) activePool = state.pools[0].id;
   select.value = activePool;
+  $('lotPoolTitleInput').value = activePoolData() ? activePoolData().name : '';
+  $('deleteLotPoolBtn').disabled = state.pools.length <= 1;
 }
 function renderLotItems() {
   var list = $('lotItems'), pool = activePoolData();
   list.textContent = '';
+  $('lotPoolTitleInput').value = pool ? pool.name : '';
   if (!pool) return;
   pool.items.forEach(function (item, index) {
     var row = document.createElement('div'); row.className = 'item-row';
@@ -249,11 +252,13 @@ function renderWheelSelect() {
   });
   if (!state.wheels.some(function (wheel) { return wheel.id === activeWheel; })) activeWheel = state.wheels[0].id;
   select.value = activeWheel;
+  $('deleteWheelBtn').disabled = state.wheels.length <= 1;
   renderWheelEditor();
 }
 function renderWheelEditor() {
   var wheel = activeWheelData(); if (!wheel) return;
   $('wheelTitleInput').value = wheel.name;
+  $('deleteWheelBtn').disabled = state.wheels.length <= 1;
   var list = $('wheelItems'); list.textContent = '';
   wheel.items.forEach(function (item, index) {
     var row = document.createElement('div'); row.className = 'item-row';
@@ -458,8 +463,25 @@ $('roleSelect').addEventListener('change', function () {
 $('lotPoolSelect').addEventListener('change', function () {
   activePool = this.value; renderLotItems(); $('lotResult').hidden = true;
 });
+$('lotPoolTitleInput').addEventListener('change', function () {
+  var pool = activePoolData(), value = this.value.trim();
+  if (!pool || !value) { this.value = pool ? pool.name : ''; return; }
+  pool.name = value; saveState(); renderPoolSelect();
+});
+$('deleteLotPoolBtn').addEventListener('click', function () {
+  if (state.pools.length <= 1) return;
+  state.pools = state.pools.filter(function (pool) { return pool.id !== activePool; });
+  activePool = state.pools[0].id; saveState(); renderPoolSelect(); renderLotItems();
+  $('lotResult').hidden = true; showToast('签筒已删除。');
+});
 $('wheelTemplateSelect').addEventListener('change', function () {
   activeWheel = this.value; renderWheelEditor(); $('wheelResult').hidden = true;
+});
+$('deleteWheelBtn').addEventListener('click', function () {
+  if (state.wheels.length <= 1) return;
+  state.wheels = state.wheels.filter(function (wheel) { return wheel.id !== activeWheel; });
+  activeWheel = state.wheels[0].id; wheelRotation = 0; saveState(); renderWheelSelect();
+  $('wheelResult').hidden = true; showToast('转盘模板已删除。');
 });
 $('addLotForm').addEventListener('submit', function (event) {
   event.preventDefault(); var value = $('newLotItem').value.trim(), pool = activePoolData();
