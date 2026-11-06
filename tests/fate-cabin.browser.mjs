@@ -92,12 +92,21 @@ try {
   await page.locator('[data-go-home]').first().click();
   await page.locator('[data-open="wheel"]').first().click();
   assert.equal(await page.locator('#wheelCount').innerText(), '08 / 16', 'wheel option counter should reflect the loaded option count');
+  assert.equal(await page.locator('#spinButton .spin-icon').count(), 1, 'the spin icon should survive the initial wheel render');
+  assert.equal(await page.locator('#wheelResult span').count(), 1, 'the wheel result subtitle should remain visible');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
     'wheel view should not overflow horizontally on a narrow mobile screen');
   await page.locator('#newWheelOption').fill('浏览器测试选项');
   await page.locator('[data-action="add-option"]').click();
   assert.ok((await page.locator('#wheelOptions').innerText()).includes('浏览器测试选项'), 'custom wheel option should appear');
   assert.equal(await page.locator('#wheelCount').innerText(), '09 / 16', 'wheel option counter should update after an addition');
+  await page.locator('[data-edit-option="8"]').click();
+  await page.locator('#wheelEditInput').fill('浏览器改名选项');
+  await page.locator('[data-save-option="8"]').click();
+  assert.ok((await page.locator('#wheelOptions').innerText()).includes('浏览器改名选项'),
+    'a wheel option can be renamed inline');
+  assert.ok(!(await page.locator('#wheelOptions').innerText()).includes('浏览器测试选项'),
+    'renaming removes the old label');
   await page.evaluate(() => { Math.random = () => 0; });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.locator('[data-action="spin"]').click();
@@ -106,14 +115,16 @@ try {
   assert.equal(await page.locator('[data-action="add-option"]').isDisabled(), true,
     'the add action must lock while the wheel is rotating');
   await page.waitForFunction(() => {
-    const node = document.querySelector('#wheelResult');
+    const node = document.querySelector('#wheelResultText');
     return node && node.textContent !== '正在转动…' && node.textContent.indexOf('这次的结果：') === 0;
   }, null, { timeout: 8000 });
   assert.equal(await page.locator('#newWheelOption').isDisabled(), false,
     'wheel option editing should unlock after the spin completes');
   assert.equal(await page.locator('#wheelHistory li').count(), 1, 'wheel result should be recorded');
-  assert.equal(await page.locator('#wheelResult').innerText(), '这次的结果：出门走走',
+  assert.equal(await page.locator('#spinButton .spin-icon').count(), 1, 'the spin icon should remain after the wheel stops');
+  assert.equal(await page.locator('#wheelResultText').innerText(), '这次的结果：出门走走',
     'the result under the pointer must match the selected first wheel segment');
+  assert.equal(await page.locator('#wheelResult span').count(), 1, 'the result subtitle should remain after spinning');
   const wheelAlignment = await page.evaluate(() => {
     const matrix = new DOMMatrixReadOnly(getComputedStyle(document.getElementById('wheelDisc')).transform);
     const rotation = (Math.atan2(matrix.b, matrix.a) * 180 / Math.PI + 360) % 360;
@@ -129,10 +140,19 @@ try {
 
   await page.reload({ waitUntil: 'load' });
   await page.locator('[data-open="wheel"]').first().click();
-  assert.ok((await page.locator('#wheelOptions').innerText()).includes('浏览器测试选项'),
-    'custom wheel option should still exist after a full reload');
+  assert.ok((await page.locator('#wheelOptions').innerText()).includes('浏览器改名选项'),
+    'renamed wheel option should still exist after a full reload');
   assert.equal(await page.locator('#wheelHistory li').count(), 1,
     'wheel result history should still exist after a full reload');
+  await page.locator('[data-action="reset-options"]').click();
+  assert.equal(await page.locator('#wheelCount').innerText(), '08 / 16',
+    'restoring defaults should return the wheel to eight options');
+  assert.ok(!(await page.locator('#wheelOptions').innerText()).includes('浏览器改名选项'),
+    'restoring defaults should remove custom options');
+  await page.reload({ waitUntil: 'load' });
+  await page.locator('[data-open="wheel"]').first().click();
+  assert.equal(await page.locator('#wheelCount').innerText(), '08 / 16',
+    'restored defaults should persist after reload');
   await page.locator('[data-go-home]').first().click();
   await page.locator('[data-open="oracle"]').first().click();
   await page.locator('[data-oracle-category="关系"]').click();
