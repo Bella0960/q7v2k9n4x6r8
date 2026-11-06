@@ -1878,7 +1878,10 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
 });
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
-  const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\/\/.*\n/, ''));
+  // 工作区在 Windows 上可能是 CRLF（i/lf w/crlf），这里只统一行尾，断言内容不变。
+  const wranglerRaw = read('wrangler.jsonc');
+  assert.match(wranglerRaw, /^\/\/[^\r\n]*(\r?\n|$)/, 'wrangler.jsonc 首行应为注释，测试必须先剥离注释');
+  const wranglerConfig = JSON.parse(wranglerRaw.replace(/\r\n/g, '\n').replace(/^\/\/.*\n/, ''));
   const worker = read('worker.js');
 
   assert.equal(wranglerConfig.main, 'worker.js');

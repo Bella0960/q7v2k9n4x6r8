@@ -575,6 +575,113 @@ async function main() {
     assert.ok(afterLegacyRegen.some((m) => m && m.mid === 'm_u_legacy'), '更早的用户消息不应被误删');
     results.push('多气泡下重生成：老记录只替换目标消息，其他消息保留');
 
+    // ================= 3f. 历史记录 8 条：编辑/删除/翻译/重生成都不得合并或截断 =================
+    const EIGHT = ['一', '二', '三', '四', '五', '六', '七', '八'];
+    const eightText = EIGHT.join('\n\n');
+    await setSeed(page, {
+      // 缺 replyBubbleMode 的老角色：生成与历史展示都走 legacy，不受 5 条上限约束。
+      ai_custom_characters: JSON.stringify([ROLE_A]),
+      api_settings: API_SETTINGS,
+      chat_history_bubA: JSON.stringify([
+        { role: 'user', text: '八段开始', time: 3000, mid: 'm_u8' },
+        { role: 'assistant', name: '测试角色A', text: eightText, time: 4000, mid: 'm8' }
+      ])
+    });
+    await page.goto(origin + '/chat/chat/chat-detail.html?id=bubA', { waitUntil: 'domcontentloaded' });
+    await waitForRows(page, 9);
+    const eightIds = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('#chat-messages .msg-row[data-bubble-id^="m8#"]')).map((row) => row.dataset.bubbleId)
+    );
+    assert.deepEqual(eightIds, EIGHT.map((_, i) => 'm8#' + i), '8 段历史应渲染为 8 个独立气泡');
+
+    // 3f-1 编辑第 7 条：其余 7 条保持原样，不合并、不截断。
+    await longPress(page, 'm8#6');
+    await clickMenuAction(page, 'edit');
+    await page.locator('#editOverlay').waitFor({ state: 'visible', timeout: 4000 });
+    assert.equal(await page.inputValue('#editInput'), '七');
+    await page.fill('#editInput', '七·改');
+    await page.locator('#editConfirm').click();
+    await page.waitForFunction(
+      () => {
+        const history = JSON.parse(localStorage.getItem('chat_history_bubA') || '[]');
+        const msg = history.find((m) => m && m.mid === 'm8');
+        return !!msg && msg.text.indexOf('七·改') !== -1;
+      },
+      { timeout: 8000 }
+    );
+    const eightAfterEdit = (await readHistory(page, 'chat_history_bubA')).filter((m) => m && m.mid === 'm8');
+    assert.equal(eightAfterEdit.length, 1, '编辑不应拆分老记录');
+    assert.deepEqual(
+      eightAfterEdit[0].text.split('\n\n'),
+      ['一', '二', '三', '四', '五', '六', '七·改', '八'],
+      '编辑后仍是 8 条，未合并'
+    );
+    results.push('历史 8 条：编辑第 7 条后仍保留 8 条，其余内容不变');
+
+    // 3f-2 翻译第 8 条：条数仍为 8，译文只落在第 8 条。
+    mockTranslation = '八译文';
+    await longPress(page, 'm8#7');
+    await clickMenuAction(page, 'translate');
+    await page.waitForFunction(
+      () => {
+        const history = JSON.parse(localStorage.getItem('chat_history_bubA') || '[]');
+        const msg = history.find((m) => m && m.mid === 'm8');
+        return !!msg && msg.text.indexOf('[中译:八译文]') !== -1;
+      },
+      { timeout: 8000 }
+    );
+    const eightAfterTranslate = (await readHistory(page, 'chat_history_bubA')).filter((m) => m && m.mid === 'm8');
+    const translatedParts = eightAfterTranslate[0].text.split('\n\n');
+    assert.equal(translatedParts.length, 8, '翻译后仍是 8 条');
+    assert.deepEqual(translatedParts.slice(0, 7), ['一', '二', '三', '四', '五', '六', '七·改']);
+    assert.match(translatedParts[7], /八\n\[中译:八译文\]/, '译文只写回第 8 条');
+    results.push('历史 8 条：翻译第 8 条后仍保留 8 条，译文不扩散');
+
+    // 3f-3 删除第 6 条：剩 7 条，不合并、不截断。
+    await longPress(page, 'm8#5');
+    await clickMenuAction(page, 'delete');
+    await page.waitForFunction(
+      () => {
+        const history = JSON.parse(localStorage.getItem('chat_history_bubA') || '[]');
+        const msg = history.find((m) => m && m.mid === 'm8');
+        return !!msg && msg.text.indexOf('六') === -1;
+      },
+      { timeout: 8000 }
+    );
+    const eightAfterDelete = (await readHistory(page, 'chat_history_bubA')).filter((m) => m && m.mid === 'm8');
+    assert.equal(eightAfterDelete.length, 1, '删除单个气泡不应拆分老记录');
+    const deletedParts = eightAfterDelete[0].text.split('\n\n');
+    assert.equal(deletedParts.length, 7, '删除后剩 7 条，未合并');
+    assert.deepEqual(deletedParts.slice(0, 5), ['一', '二', '三', '四', '五']);
+    assert.equal(deletedParts[5], '七·改');
+    assert.match(deletedParts[6], /八\n\[中译:八译文\]/);
+    const rowsAfterDelete8 = await getBubbleRows(page);
+    assert.equal(rowsAfterDelete8.filter((row) => row.bubbleId.indexOf('m8') === 0).length, 7);
+    results.push('历史 8 条：删除第 6 条后剩 7 条，其余气泡不合并不截断');
+
+    // 3f-4 重生成：老角色 8 段回复仍落 8 条，更早的用户消息保留。
+    mockReplyText = EIGHT.map((s) => s + '。').join('\n\n');
+    await longPress(page, 'm8#0');
+    await clickMenuAction(page, 'rewrite');
+    await page.locator('#regenOverlay').waitFor({ state: 'visible', timeout: 4000 });
+    await page.locator('#regenConfirm').click();
+    await page.waitForFunction(
+      () => {
+        const history = JSON.parse(localStorage.getItem('chat_history_bubA') || '[]');
+        const fresh = history.filter((m) => m && m.role === 'assistant');
+        return fresh.length === 8 && !history.some((m) => m && m.mid === 'm8');
+      },
+      null,
+      { timeout: 15000 }
+    );
+    const afterRegen8 = await readHistory(page, 'chat_history_bubA');
+    const fresh8 = afterRegen8.filter((m) => m && m.role === 'assistant');
+    assert.equal(fresh8.length, 8, '老角色 8 段重生成必须是 8 条');
+    assert.deepEqual(fresh8.map((m) => m.text), EIGHT.map((s) => s + '。'));
+    assert.equal(new Set(fresh8.map((m) => m.turnId)).size, 1, '同一轮共享 turnId');
+    assert.ok(afterRegen8.some((m) => m && m.mid === 'm_u8'), '更早用户消息保留');
+    results.push('历史 8 条：重生成后老角色仍落 8 条，未被 5 条上限合并');
+
     // ================= 4. 新记录：编辑 / 删除 / 重生成 =================
     const splitHistory = JSON.stringify([
       { role: 'user', text: '开始', time: 2000, mid: 'm_u2' },
