@@ -597,21 +597,44 @@
             syncShellWallpaper();
         }
 
-        // 角色专属美化背景若使用 IndexedDB 引用，读取真实图片后再刷新舞台和 iMessage 壳层。
-        // 只解析角色专属背景，避免把全局美化图自动铺给所有聊天角色。
-        if (hasRoleSpecificBeautyBg && typeof v.chatBg === 'string' && v.chatBg.indexOf('idb-image:') === 0) {
-            var referencedBgKey = v.chatBg.slice('idb-image:'.length);
+        // 把真实图片写回舞台（复用 applyVars 的遮罩与 iMessage 壳层同步逻辑）。
+        function applyBeautyBackground(imageData) {
+            v.chatBg = imageData;
+            NS.applyVars(v, rootEl);
+            syncShellWallpaper();
+        }
+
+        // 读取 idb-image: 引用对应的图片。失败或为空时不做任何覆盖，保留已有背景。
+        function applyBeautyIdbBackground(referencedBgKey) {
             var backgroundStore = window.MAOMAOWallpaperStore;
-            if (backgroundStore && typeof backgroundStore.getByKey === 'function') {
-                try {
-                    backgroundStore.getByKey(referencedBgKey).then(function (imageData) {
-                        if (!imageData) return;
-                        v.chatBg = imageData;
-                        NS.applyVars(v, rootEl);
-                        syncShellWallpaper();
-                    }).catch(function () {});
-                } catch (e) {}
+            if (!backgroundStore || typeof backgroundStore.getByKey !== 'function') return false;
+            try {
+                var pendingBeautyBg = backgroundStore.getByKey(referencedBgKey);
+                if (!pendingBeautyBg || typeof pendingBeautyBg.then !== 'function') return false;
+                pendingBeautyBg.then(function (imageData) {
+                    if (!imageData) return;
+                    applyBeautyBackground(imageData);
+                }).catch(function () {});
+                return true;
+            } catch (e) {
+                return false;
             }
+        }
+
+        // 无角色专属背景时，回落到全局美化背景（beauty_chat_bg_global / 旧式 data URL）。
+        // 优先级：角色专属美化背景 > 旧 chat_bg_<id> > 全局美化背景 > 无。
+        function applyGlobalBeautyBackground() {
+            if (typeof v.chatBg !== 'string' || !v.chatBg) return false;
+            if (v.chatBg.indexOf('idb-image:') === 0) {
+                return applyBeautyIdbBackground(v.chatBg.slice('idb-image:'.length));
+            }
+            applyBeautyBackground(v.chatBg);
+            return true;
+        }
+
+        // 角色专属美化背景若使用 IndexedDB 引用，读取真实图片后再刷新舞台和 iMessage 壳层。
+        if (hasRoleSpecificBeautyBg && typeof v.chatBg === 'string' && v.chatBg.indexOf('idb-image:') === 0) {
+            applyBeautyIdbBackground(v.chatBg.slice('idb-image:'.length));
         }
 
         // 先同步显示仍存在于 localStorage 的旧壁纸，随后从独立图片存储读取最新版。
@@ -629,13 +652,21 @@
                     if (pendingBg && typeof pendingBg.then === 'function') {
                         pendingBg.then(function (storedBg) {
                             applyLegacyWallpaper(storedBg || '');
+                            // 单聊旧背景不存在时，才让全局美化背景生效。
+                            if (!storedBg) applyGlobalBeautyBackground();
                         }).catch(function () {
                             applyLegacyWallpaper(legacyBg);
+                            if (!legacyBg) applyGlobalBeautyBackground();
                         });
+                    } else if (!legacyBg) {
+                        applyGlobalBeautyBackground();
                     }
                 } catch (e) {
                     applyLegacyWallpaper(legacyBg);
+                    if (!legacyBg) applyGlobalBeautyBackground();
                 }
+            } else if (!legacyBg) {
+                applyGlobalBeautyBackground();
             }
         } else {
             syncShellWallpaper();

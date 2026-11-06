@@ -95,6 +95,16 @@ PhoneStorage 当前读取聊天历史时优先读取 chat_history_<id>，不存�
 3. 每次保存必须保留当前的角色/群会话作用域；写入失败不能伪装成成功。
 4. 不在本阶段改变 key 名、清除旧 key、合并群与个人历史，或对既有消息做破坏性批量转换。
 
+### 3.4.1 数据隔离契约（聊天背景 / 封面 / 名片）
+
+以下键按作用域独立保存，任何页面不得跨作用域覆盖：
+
+- 聊天背景（ChatBeauty）：全局配置 beauty_chat_global_v1，单聊配置 beauty_chat_<roleId>；图片资产使用 beauty_chat_bg_global / beauty_chat_bg_role_<roleId>，配置只存 idb-image: 引用。渲染优先级固定为：单聊美化背景 > 旧单聊键 chat_bg_<roleId>（IDB wallpapers + localStorage 兜底） > 全局美化背景。删除单聊覆盖后必须重新继承全局设置，且不得删除全局图片资产。
+- 聊天列表封面：chat_list_cover_v1；我的主页封面：my_home_cover_v1。两者各自一次性从旧共享字段 myProfile.cover 迁移，迁移或显式保存后必须写入对应 *_migrated_v1 标记，后续编辑 myProfile.cover 不得覆盖任何一套独立封面。
+- 聊天名片：不设独立存储键，快照保存在 chat_history_<conversationId> 的 msg.card（id/name/avatar）中；不同会话的历史互不可见，渲染只读取消息内快照，不实时回读其他页面的 profile 数据。
+
+回归测试：tests/chat-data-isolation.test.mjs（行为级 node:vm）与 tests/chat-data-isolation-browser.mjs（真实浏览器读写）。
+
 ### 3.5 AI 请求与错误语义
 
 1. 主聊天流式请求通过 PhoneStream.chat。其约定是返回包含 ok、fullText、error 的结果，并将 HTTP、网络、超时和流内错误作为结果描述；已接收的部分文本需要保留。

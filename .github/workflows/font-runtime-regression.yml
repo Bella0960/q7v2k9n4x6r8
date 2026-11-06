@@ -1,0 +1,40 @@
+name: Custom Font Runtime Regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'shared/js/font-loader.js'
+      - 'settings/font-settings.html'
+      - 'sw.js'
+      - 'tests/font-runtime-performance.test.mjs'
+      - 'package.json'
+      - '.github/workflows/font-runtime-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'shared/js/font-loader.js'
+      - 'settings/font-settings.html'
+      - 'sw.js'
+      - 'tests/font-runtime-performance.test.mjs'
+      - 'package.json'
+      - '.github/workflows/font-runtime-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  font-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run custom font cache and navigation regression tests
+        run: npm run test:font:runtime
+      - name: Build production app
+        run: npm run build

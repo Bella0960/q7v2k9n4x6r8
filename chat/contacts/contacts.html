@@ -226,7 +226,6 @@
     <!-- 顶部 -->
     <div class="top-nav">
       <span class="top-nav-title">通讯录</span>
-      <button class="wechat-contact-add" type="button" id="wechatContactAdd" aria-label="添加联系人">+</button>
     </div>
 
     <!-- 搜索框 -->
@@ -394,9 +393,6 @@
       if(!target)return;
       var stage=document.getElementById('contactStage');
       stage.scrollTo({top:target.getBoundingClientRect().top-stage.getBoundingClientRect().top+stage.scrollTop,behavior:'smooth'});
-    });
-    document.getElementById('wechatContactAdd').addEventListener('click',function(){
-      document.getElementById('goManageRole').click();
     });
 
   /* mobile fullscreen: no rounded shell */

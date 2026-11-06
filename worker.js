@@ -11,11 +11,30 @@
  *  随部署自动创建，属于同一套持久化能力）。
  */
 
-import { createApp } from './lib/app.js';
-import { createStore } from './lib/store.js';
-import { applyMigrations } from './lib/migrations.js';
+import { createApp } from './worker/lib/app.js';
+import { createStore } from './worker/lib/store.js';
+import { applyMigrations } from './worker/lib/migrations.js';
+import { runTick } from './worker/lib/scheduler.js';
 
 const INSTANCE_NAME = 'maomao-global';
+
+/**
+ * 调度参数全部来自显式环境配置，不设产品默认值。
+ * 缺失时 runTick 会 fail-closed 并写入 missing_config 日志。
+ */
+function readSchedulerConfig(env) {
+  const config = {};
+  if (env?.AUTONOMY_LEASE_MS != null) config.leaseMs = Number(env.AUTONOMY_LEASE_MS);
+  if (env?.AUTONOMY_TICK_LIMIT != null) config.tickLimit = Number(env.AUTONOMY_TICK_LIMIT);
+  if (env?.AUTONOMY_RETRY_BACKOFF_MS != null) {
+    config.retryBackoffMs = String(env.AUTONOMY_RETRY_BACKOFF_MS)
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean)
+      .map(Number);
+  }
+  return config;
+}
 
 export class CloudDatabase {
   constructor(ctx, env) {
@@ -37,6 +56,15 @@ export class CloudDatabase {
       const removed = this.store.cleanupSubscriptions(Date.now());
       return Response.json({ ok: true, removed });
     }
+    if (url.pathname === '/internal/tick' && request.method === 'POST') {
+      // gate 未接入：生产环境默认全部 defer，不会认领任何活动。
+      const result = runTick({
+        store: this.store,
+        now: Date.now(),
+        config: readSchedulerConfig(this.env)
+      });
+      return Response.json({ ok: true, result });
+    }
     return new Response('Not found', { status: 404 });
   }
 }
@@ -54,6 +82,11 @@ export default {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
       return stub.fetch(request);
     }
+    // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
+    if (url.pathname === "/" && request.method === "GET") {
+      const indexUrl = new URL("/index.html", url);
+      return env.ASSETS.fetch(new Request(indexUrl, request));
+    }
     if (env.ASSETS) return env.ASSETS.fetch(request);
     return new Response('Not found', { status: 404 });
   },
@@ -63,6 +96,7 @@ export default {
     ctx.waitUntil((async () => {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
       await stub.fetch(new Request('https://maomao.internal/internal/maintenance', { method: 'POST' }));
+      await stub.fetch(new Request('https://maomao.internal/internal/tick', { method: 'POST' }));
     })());
   }
 };

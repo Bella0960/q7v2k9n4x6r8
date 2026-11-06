@@ -9,6 +9,8 @@ on:
       - 'library/**'
       - 'shared/js/phone/**'
       - 'worker/**'
+      - 'shared/js/chat-beauty.js'
+      - 'shared/js/wallpaper-store.js'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -22,6 +24,8 @@ on:
       - 'library/**'
       - 'shared/js/phone/**'
       - 'worker/**'
+      - 'shared/js/chat-beauty.js'
+      - 'shared/js/wallpaper-store.js'
       - 'sw.js'
       - 'tests/**'
       - 'docs/chat-architecture-contract.md'
@@ -50,15 +54,22 @@ jobs:
       - name: Run chat regression contract tests
         run: |
           npm run test:chat:contract
+          npm run test:desktop:layout
           npm run test:bugfix:blockers
           npm run test:media:backup
           npm run test:cloud:push
           npm run test:schedule
+          npm run test:autonomy
           npm run test:forum:media
           npm run test:api:image
+          npm run test:images
           npm run test:forum:seed
           npm run build
           npm run test:forum:mobile
           npm run test:group:ui
           npm run test:group:invite-e2e
           npm run test:wechat:browser
+      - name: Run chat data isolation behavior tests
+        run: |
+          npm run test:chat:isolation
+          npm run test:chat:isolation:browser

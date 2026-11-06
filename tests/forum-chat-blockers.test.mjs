@@ -702,12 +702,12 @@ function loadDetailForumCore(env) {
   );
 }
 
-const forumCores = [
-  { name: 'list page', load: loadHomeForumCore },
+/* 详情页仍保留旧种子帖合并逻辑；列表页已改为空论坛，单独覆盖。 */
+const forumSeedCores = [
   { name: 'detail page', load: loadDetailForumCore }
 ];
 
-for (const core of forumCores) {
+for (const core of forumSeedCores) {
   test(core.name + ' only overwrites seed defaults that the user never touched', () => {
     const env = createForumEnv({});
     const page = core.load(env);
@@ -807,6 +807,88 @@ for (const core of forumCores) {
     );
   });
 }
+
+test('list page starts empty and never injects demo seed posts', () => {
+  const env = createForumEnv({});
+  const page = loadHomeForumCore(env);
+  const loaded = page.loadPosts();
+  assert.deepEqual(Array.from(loaded, (item) => item.id), [], '空 store 不应生成种子帖');
+  assert.deepEqual(Array.from(page.getSeededPosts(), (item) => item.id), [], '列表页种子来源应为空');
+  assert.equal(env.forum.data.forum_posts, '[]', '首次加载应写入空列表而不是种子内容');
+});
+
+test('list page keeps legacy stored posts untouched and stays idempotent', () => {
+  const env = createForumEnv({});
+  const page = loadHomeForumCore(env);
+  const stored = [
+    {
+      id: 'p1', name: '宝宝', owner: 'seed', themeId: 'reality',
+      title: '我自己改过的标题', body: '旧正文', topic: '旧话题',
+      likes: 99, liked: true,
+      comments: [{ name: '我', owner: 'me', text: '我自己的评论' }],
+      seedCommentsFilled: true
+    },
+    {
+      id: 'user_keep', owner: 'me', title: '用户自己发的帖子',
+      body: '用户正文', comments: [{ name: '我', owner: 'me', text: '用户自建评论' }]
+    }
+  ];
+  env.localStorage.setItem('forum_posts', JSON.stringify(stored));
+  const first = clone(page.loadPosts());
+  const second = clone(page.loadPosts());
+  const third = clone(page.loadPosts());
+
+  assert.equal(first.length, 2, '只应保留用户已有内容，不新增种子帖');
+  assert.deepEqual(second, first, '第二次加载不得改变内容');
+  assert.deepEqual(third, second, '第三次加载不得改变内容');
+
+  const p1 = first.find((item) => item.id === 'p1');
+  assert.equal(p1.title, '我自己改过的标题', '旧帖子标题必须保留');
+  assert.equal(p1.likes, 99, '点赞数保留');
+  assert.equal(p1.liked, true, '点赞状态保留');
+  assert.equal(p1.comments[0].text, '我自己的评论', '用户评论保留');
+
+  const keptUser = first.find((item) => item.id === 'user_keep');
+  assert.equal(keptUser.title, '用户自己发的帖子', '用户自建帖子标题不被覆盖');
+  assert.equal(keptUser.comments[0].text, '用户自建评论', '用户自建评论不被覆盖');
+  assert.equal(first.filter((item) => String(item.id).indexOf('p') === 0).length, 1, '种子帖不得重复或新增');
+});
+
+test('list page keeps the document shell when stored data is corrupt or not a list', () => {
+  for (const raw of ['{broken json', JSON.stringify({ notAList: true })]) {
+    const env = createForumEnv({ forum_posts: raw });
+    const page = loadHomeForumCore(env);
+    const loaded = page.loadPosts();
+    assert.ok(Array.isArray(loaded), '损坏数据不得让加载抛出或返回非数组');
+    assert.deepEqual(Array.from(loaded, (item) => item.id), [], '损坏数据且无种子时应返回空列表');
+    assert.ok(env.forum.warns.length >= 1, '读取失败必须显式记录');
+    assert.ok(env.forum.toasts.length >= 1, '读取失败必须给出用户可见提示');
+    assert.equal(
+      env.forum.writes.filter((entry) => entry.key === 'forum_posts').length,
+      0,
+      '损坏数据不得被静默覆盖'
+    );
+  }
+});
+
+test('list page still shows already-read user posts when write-back fails', () => {
+  const env = createForumEnv({});
+  const page = loadHomeForumCore(env);
+  const userPost = { id: 'user_keep', owner: 'me', title: '仍在的帖子', body: '用户正文', comments: 3 };
+  env.localStorage.setItem('forum_posts', JSON.stringify([userPost]));
+  env.forum.setFailWrites(true);
+
+  const loaded = page.loadPosts();
+  assert.ok(loaded.some((item) => item.id === 'user_keep'), '回写失败不得退回空视图');
+  assert.equal(loaded.length, 1, '用户帖子应继续展示');
+  assert.ok(Array.isArray(loaded[0].comments), '旧数字评论应迁移为数组');
+  assert.equal(loaded[0].comments.length, 0, '旧数字评论应安全迁移为空数组');
+  assert.ok(env.forum.warns.length >= 1, '回写失败必须显式记录');
+  assert.ok(
+    env.forum.toasts.some((message) => message.indexOf('未写入') >= 0),
+    '回写失败必须提示本次改动可能不会保留'
+  );
+});
 
 function fakeElement() {
   return { style: {}, textContent: '', innerHTML: '', value: '', placeholder: '', disabled: false };

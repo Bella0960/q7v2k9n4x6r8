@@ -51,7 +51,7 @@ apps/settings/          # ⚠️ 孤儿目录：无任何引用的旧样式副�
 
 ## 入口与核心模块
 
-- **index.html** = 手机主屏：`.status-bar`（实时时钟）→ 最多 4 页 `.home-page` 宫格（15 个 App 图标 + `.ds-widget` 挂件混排）→ Dock（聊天、商店）。内嵌拖拽引擎（实时让位 + 跨页流转 + Dock 自由布局），布局存 `ds_layout_v12`；编辑模式 `body.home-editing` 抑制跳转。
+- **index.html** = 手机主屏：第一页默认组件优先（大时钟、图片、照片墙、待办、月历、倒数日、便签），第二/三页放应用图标，Dock 为聊天和商店。内嵌拖拽引擎（实时让位 + 跨页流转 + Dock 自由布局），布局存 `ds_layout_v13`；编辑模式 `body.home-editing` 抑制跳转。
 - **chat/chat/chat-detail.html**（4800+ 行，项目心脏）：AI 对话核心——流式响应、群聊、心形编辑器（`.bubble-heart`）、通话/图片消息、正则过滤、自动总结记忆。
 - **shared/js/phone/**（AI 基础设施层，见下节）是模拟世界的"后端"。
 - 复合 App：forum/（9 页）、wallet/（4 页）、settings/（4 页）；其余为单页 App。

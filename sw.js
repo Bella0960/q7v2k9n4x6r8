@@ -1,7 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v163';
+const CACHE_NAME = 'phone-app-pwa-v173';
+const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
+// v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
 const APP_SHELL = [
   './',
   './index.html',
@@ -69,6 +71,8 @@ const APP_SHELL = [
   './manifest.json',
   'desktop/css/styles.css',
   './settings/font-settings.html',
+  './settings/image-generation.html',
+  './settings/js/image-generation.js?v=20261106v1',
   'settings/css/settings.css',
   'shared/css/mobile-fit.css',
   'shared/js/font-loader.js',
@@ -87,7 +91,10 @@ const APP_SHELL = [
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   './shared/js/chat-notifier.js?v=20261102v3',
   './shared/js/cloud-push-client.js',
-  'shared/js/phone/phone_api.js',
+  'shared/js/phone/storage/repository.js',
+  'shared/js/phone/storage/media-repository.js?v=20261106v1',
+  'shared/js/phone/phone_api.js?v=20261106v1',
+  'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',
   'shared/js/nav.js',
@@ -148,6 +155,23 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // User-imported fonts are cached once by font-loader.js and served as same-origin
+  // font resources. Keep this cache separate from the versioned app-shell cache.
+  const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
+  if (url.pathname.startsWith(fontAssetPrefix)) {
+    event.respondWith(
+      caches.open(FONT_ASSET_CACHE).then(function (cache) {
+        return cache.match(req).then(function (cached) {
+          return cached || new Response('', {
+            status: 404,
+            headers: { 'Cache-Control': 'no-store' }
+          });
+        });
+      })
+    );
+    return;
+  }
 
   // 页面导航采用“缓存优先、后台更新”：
   // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。

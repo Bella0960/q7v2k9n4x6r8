@@ -215,6 +215,100 @@ class CloudStore {
     )[0] || null;
   }
 
+  getActivity(id) {
+    return this.exec('SELECT * FROM activity_queue WHERE id = ?', id)[0] || null;
+  }
+
+  /** 幂等入队：id 即幂等键，重复入队不产生第二条记录。 */
+  enqueueActivity(activity) {
+    const existing = this.getActivity(activity.id);
+    if (existing) return { inserted: false, activity: existing };
+    this.exec(
+      `INSERT INTO activity_queue
+        (id, device_id, character_id, kind, status, scheduled_at, next_attempt_at,
+         attempt_count, max_attempts, locked_by, locked_until, payload_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'waiting', ?, NULL, 0, ?, NULL, NULL, ?, ?, ?)`,
+      activity.id,
+      activity.deviceId,
+      activity.characterId,
+      activity.kind || 'contact',
+      activity.scheduledAt,
+      activity.maxAttempts,
+      JSON.stringify(activity.payload || {}).slice(0, 4000),
+      activity.now,
+      activity.now
+    );
+    return { inserted: true, activity: this.getActivity(activity.id) };
+  }
+
+  listDueActivities(now, limit) {
+    return this.exec(
+      `SELECT * FROM activity_queue
+       WHERE status IN ('waiting', 'retry')
+         AND COALESCE(next_attempt_at, scheduled_at) <= ?
+         AND (locked_until IS NULL OR locked_until <= ?)
+       ORDER BY COALESCE(next_attempt_at, scheduled_at) ASC
+       LIMIT ?`,
+      now,
+      now,
+      limit
+    );
+  }
+
+  /** CAS 认领：只有 attempt_count 未被他人推进时才成功，避免双执行。 */
+  claimActivity({ id, expectedAttemptCount, owner, leaseUntil, now }) {
+    return this.exec(
+      `UPDATE activity_queue
+       SET status = 'running', attempt_count = attempt_count + 1,
+           locked_by = ?, locked_until = ?, updated_at = ?
+       WHERE id = ? AND attempt_count = ?
+         AND status IN ('waiting', 'retry')
+         AND (locked_until IS NULL OR locked_until <= ?)
+       RETURNING *`,
+      owner,
+      leaseUntil,
+      now,
+      id,
+      expectedAttemptCount,
+      now
+    )[0] || null;
+  }
+
+  completeActivity(id, now) {
+    this.exec(
+      `UPDATE activity_queue
+       SET status = 'completed', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?
+       WHERE id = ?`,
+      now,
+      id
+    );
+  }
+
+  failActivity({ id, now, nextAttemptAt }) {
+    const retryable = Number.isFinite(nextAttemptAt) && nextAttemptAt > now;
+    this.exec(
+      `UPDATE activity_queue
+       SET status = ?, locked_by = NULL, locked_until = NULL,
+           next_attempt_at = ?, updated_at = ?
+       WHERE id = ?`,
+      retryable ? 'retry' : 'failed',
+      retryable ? nextAttemptAt : null,
+      now,
+      id
+    );
+  }
+
+  supersedeActivity(id, now) {
+    this.exec(
+      `UPDATE activity_queue
+       SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ?
+       WHERE id = ?`,
+      now,
+      id
+    );
+  }
+
   counts() {
     const devices = this.exec('SELECT COUNT(*) AS total FROM devices')[0];
     const subscriptions = this.exec(

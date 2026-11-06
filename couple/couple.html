@@ -134,13 +134,13 @@
   .fn-section { margin:0 28px; }
   .fn-item {
     display:flex; align-items:center; padding:18px 0;
-    border-bottom:1px solid #e8e5e1; cursor:pointer;
+    border-bottom:1px solid #e8e8e8; cursor:pointer;
     transition:padding-left 0.2s;
   }
   .fn-item:active { padding-left:6px; }
-  .fn-item:first-child { border-top:1px solid #e8e5e1; }
+  .fn-item:first-child { border-top:1px solid #e8e8e8; }
   .fn-icon {
-    width:36px; height:36px; border:1px solid #d8d4d0;
+    width:36px; height:36px; border:1px solid #e0e0e0;
     display:flex; align-items:center; justify-content:center;
     margin-right:14px; flex-shrink:0;
   }
@@ -370,13 +370,16 @@
 
 <script>
 (function(){
+  // 读取当前角色ID，绑定到具体角色
+  const urlParams = new URLSearchParams(window.location.search);
+  const roleId = urlParams.get('id') || localStorage.getItem('currentRoleId') || 'default';
   const K = {
-    profile:'maoer_couple_profile_v1',
-    bucket:'maoer_couple_bucket_v1',
-    moments:'maoer_couple_moments_v1',
-    msgs:'maoer_couple_msgs_v1',
-    checkin:'maoer_couple_checkin_v1',
-    mood:'maoer_couple_mood_v1'
+    profile:'maoer_couple_profile_'+roleId,
+    bucket:'maoer_couple_bucket_'+roleId,
+    moments:'maoer_couple_moments_'+roleId,
+    msgs:'maoer_couple_msgs_'+roleId,
+    checkin:'maoer_couple_checkin_'+roleId,
+    mood:'maoer_couple_mood_'+roleId
   };
   const $ = id => document.getElementById(id);
   const read = (k,d) => { try { let v = JSON.parse(localStorage.getItem(k)); return v==null?d:v; } catch(e){ return d; } };
@@ -415,8 +418,8 @@
       $('coupleSince').textContent = 'Our Story Begins';
     } else {
       $('daysNum').textContent = '0';
-      $('loveDate').textContent = '';
-      $('coupleSince').textContent = 'Tap Settings to Begin';
+      $('loveDate').textContent = '邀请TA，开启我们的情侣空间';
+      $('coupleSince').textContent = 'Tap Invite to Begin';
     }
     renderIntimacy();
   }
@@ -481,7 +484,11 @@
       + '<div class="msg-time">'+(x.who==='me'?esc(profile.nameA||'我'):esc(profile.nameB||'TA'))+' · '+esc(x.time)+'</div></div>'
     ).join('');
     return '<div class="sheet-head"><h3>Whispers</h3><button class="sheet-close" onclick="closeSheet()">✕</button></div>'
-      + '<div class="input-row"><input id="msgInput" placeholder="写下想对TA说的话…" maxlength="100"><button onclick="addMsg()">发送</button></div>'
+      + '<div style="display:flex;gap:6px;margin-bottom:10px;">'
+      + '<button id="msgWhoMe" onclick="switchMsgWho(\'me\')" style="flex:1;padding:8px;border:1px solid #2a1f1f;background:#2a1f1f;color:#fff;font-size:0.7rem;cursor:pointer;">以'+esc(profile.nameA||'我')+'发送</button>'
+      + '<button id="msgWhoTa" onclick="switchMsgWho(\'ta\')" style="flex:1;padding:8px;border:1px solid #d8c8b8;background:#fff;color:#8a7060;font-size:0.7rem;cursor:pointer;">以'+esc(profile.nameB||'TA')+'发送</button>'
+      + '</div>'
+      + '<div class="input-row"><input id="msgInput" placeholder="写下悄悄话…" maxlength="100"><button onclick="addMsg()">发送</button></div>'
       + (list || '<div class="empty">— 还没有留言 —</div>');
   }
   function moodHTML(){
@@ -499,7 +506,19 @@
   window.delBucket = function(id){ if(!confirm('删除这项？')) return; bucket=bucket.filter(x=>x.id!==id); write(K.bucket,bucket); $('sheetBody').innerHTML=bucketHTML(); renderDesc(); };
   window.addMoment = function(){ let v=$('momentInput').value.trim(); if(!v) return; moments.push({id:Date.now().toString(36),text:v,created:today()}); write(K.moments,moments); $('sheetBody').innerHTML=momentsHTML(); renderDesc(); toast('已保存'); };
   window.delMoment = function(id){ if(!confirm('删除这段记忆？')) return; moments=moments.filter(x=>x.id!==id); write(K.moments,moments); $('sheetBody').innerHTML=momentsHTML(); renderDesc(); };
-  window.addMsg = function(){ let v=$('msgInput').value.trim(); if(!v) return; let now=new Date(); msgs.push({who:'me',text:v,time:String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),ts:Date.now()}); write(K.msgs,msgs); $('sheetBody').innerHTML=msgHTML(); renderDesc(); };
+  let currentMsgWho = 'me';
+  window.switchMsgWho = function(who){
+    currentMsgWho = who;
+    const me = $('msgWhoMe'), ta = $('msgWhoTa');
+    if(who==='me'){
+      me.style.background = '#2a1f1f'; me.style.color = '#fff'; me.style.borderColor = '#2a1f1f';
+      ta.style.background = '#fff'; ta.style.color = '#8a7060'; ta.style.borderColor = '#d8c8b8';
+    } else {
+      ta.style.background = '#2a1f1f'; ta.style.color = '#fff'; ta.style.borderColor = '#2a1f1f';
+      me.style.background = '#fff'; me.style.color = '#8a7060'; me.style.borderColor = '#d8c8b8';
+    }
+  };
+  window.addMsg = function(){ let v=$('msgInput').value.trim(); if(!v) return; let now=new Date(); msgs.push({who:currentMsgWho,text:v,time:String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),ts:Date.now()}); write(K.msgs,msgs); $('sheetBody').innerHTML=msgHTML(); currentMsgWho='me'; renderDesc(); };
   window.saveMood = function(){ mood[today()]=[$('moodA').value.trim(),$('moodB').value.trim()]; write(K.mood,mood); toast('已保存'); };
 
   window.openSet = function(){
@@ -525,12 +544,26 @@
   });
 
   window.saveSet = function(){
+    const hadPartner = !!profile.partnerId;
     profile = { nameA:$('setNameA').value.trim(), nameB:$('setNameB').value.trim(), startDate:$('setDate').value, partnerId:$('setPartner').value, myAvatar:profile.myAvatar||'', taAvatar:profile.taAvatar||'' };
     write(K.profile, profile); renderProfile(); closeSet();
     $('chatBtn').style.display = profile.partnerId ? 'inline-block' : 'none';
+    
+    // 新绑定：自动给对方发邀请消息
+    if(!hadPartner && profile.partnerId){
+      try {
+        const msg = '♡ 邀请你绑定我们的情侣空间，从此以后，我们的纪念日、回忆、心愿清单，都存在这里啦。';
+        let history = JSON.parse(localStorage.getItem('chat_history_' + profile.partnerId) || '[]');
+        history.push({ role: 'user', text: msg, time: Date.now(), type: 'text' });
+        localStorage.setItem('chat_history_' + profile.partnerId, JSON.stringify(history));
+      } catch(e){}
+    }
+    
     toast('已保存');
   };
   window.closeSheet = closeSheet;
+  window.openSheet = openSheet;
+  window.closeSet = closeSet;
 
   renderProfile(); renderDesc();
   $('chatBtn').style.display = profile.partnerId ? 'inline-block' : 'none';

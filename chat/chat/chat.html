@@ -86,6 +86,45 @@
     background-position: center;
     z-index: 0;
     pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  /* 全透明模式：完整显示壁纸原貌，不裁剪，无遮罩 */
+  .cover-gradient-banner.transparent {
+    background: transparent;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  .cover-gradient-banner.transparent::after {
+    display: none;
+  }
+
+  /* 弹出菜单：白色背景，小巧精致 */
+  .wechat-menu {
+    position: absolute;
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 4px 0;
+    z-index: 100;
+    min-width: 110px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  }
+  .wechat-menu .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    color: #111;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .wechat-menu .menu-item:hover {
+    background: #f5f5f5;
+  }
+  .wechat-menu .menu-icon {
+    font-size: 13px;
+    width: 16px;
+    text-align: center;
   }
 
   /* 只有顶部封面区域响应点击上传，透明卡片区域不抢交互 */
@@ -741,11 +780,23 @@
       <!-- 封面底图（默认深到浅灰渐变，上传后铺满） -->
       <div class="cover-gradient-banner" id="coverBox"></div>
       <div class="cover-click-area" id="coverClickArea" aria-label="更换封面"></div>
+
+      <!-- 右上角弹出菜单 -->
+      <div class="wechat-menu" id="wechatMenu" style="display:none;">
+        <div class="menu-item" id="menuBgToggle">
+          <span class="menu-icon">◐</span>
+          <span class="menu-text">切换背景</span>
+        </div>
+        <div class="menu-item" id="menuGroup">
+          <span class="menu-icon">＋</span>
+          <span class="menu-text">添加群聊</span>
+        </div>
+      </div>
       <div class="wechat-home-header">
         <h1>微信</h1>
         <div class="wechat-home-actions">
           <button type="button" id="wechatHomeSearch" aria-label="搜索聊天"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg></button>
-          <button type="button" id="wechatGroupEntryBtn" aria-label="发起群聊"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+          <button type="button" id="wechatGroupEntryBtn" aria-label="更多操作"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
         </div>
       </div>
       <div class="chat-theme-header">
@@ -846,15 +897,15 @@
     document.getElementById('chatHomeSearch').addEventListener('click', function () {
       window.location.href = 'chat-search.html';
     });
-    document.getElementById('silverGroupEntryBtn').addEventListener('click', function () {
-      document.getElementById('groupEntryBtn').click();
+    document.getElementById('silverGroupEntryBtn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      var menu = document.getElementById('wechatMenu');
+      menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
     });
     document.getElementById('wechatHomeSearch').addEventListener('click', function () {
       window.location.href = 'chat-search.html';
     });
-    document.getElementById('wechatGroupEntryBtn').addEventListener('click', function () {
-      document.getElementById('groupEntryBtn').click();
-    });
+    // wechatGroupEntryBtn 的点击逻辑已改到下面的弹出菜单里
   </script>
   <script>
     /* ================= 数据键名（与项目现有逻辑一致） ================= */
@@ -900,6 +951,8 @@
     function saveChatListCover(dataUrl) {
       try {
         localStorage.setItem(CHAT_LIST_COVER_KEY, dataUrl || '');
+        // 显式保存后终止一次性迁移，避免后续读取再从 myProfile.cover 静默覆盖。
+        localStorage.setItem(CHAT_LIST_COVER_MIGRATED_KEY, '1');
         return true;
       } catch (err) {
         alert('封面保存失败：本机存储空间不足');
@@ -989,6 +1042,55 @@
       var name = getNickname(profile);
       document.getElementById('userHandle').textContent = name ? '@' + name : '@未设置';
     }
+
+    // ===== 右上角弹出菜单 + 背景模式切换 =====
+    (function () {
+      var menuBtn = document.getElementById('wechatGroupEntryBtn');
+      var menu = document.getElementById('wechatMenu');
+      var coverBox = document.getElementById('coverBox');
+      if (!menuBtn || !menu) return;
+
+      // 读取保存的背景模式
+      var saved = localStorage.getItem('chat_bg_mode') || 'gradient';
+      applyMode(saved);
+
+      function applyMode(mode) {
+        if (mode === 'transparent') {
+          coverBox.classList.add('transparent');
+        } else {
+          coverBox.classList.remove('transparent');
+        }
+      }
+
+      // 点击 + 号弹出菜单
+      menuBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+      });
+
+      // 点外面关闭菜单
+      document.addEventListener('click', function () {
+        menu.style.display = 'none';
+      });
+      menu.addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+
+      // 菜单选项：切换背景
+      document.getElementById('menuBgToggle').addEventListener('click', function () {
+        var current = localStorage.getItem('chat_bg_mode') || 'gradient';
+        var next = current === 'gradient' ? 'transparent' : 'gradient';
+        localStorage.setItem('chat_bg_mode', next);
+        applyMode(next);
+        menu.style.display = 'none';
+      });
+
+      // 菜单选项：添加群聊
+      document.getElementById('menuGroup').addEventListener('click', function () {
+        menu.style.display = 'none';
+        document.getElementById('groupEntryBtn').click();
+      });
+    })();
 
     /* ================= 上传绑定 ================= */
     document.getElementById('coverClickArea').addEventListener('click', function () {
@@ -1434,7 +1536,19 @@
         backdrop.classList.remove('show');
       }
 
-      document.getElementById('groupEntryBtn').addEventListener('click', openModal);
+      document.getElementById('groupEntryBtn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        var menu = document.getElementById('wechatMenu');
+        var btnRect = e.currentTarget.getBoundingClientRect();
+        var parentRect = menu.parentElement.getBoundingClientRect();
+
+        // 定位到按钮正下方
+        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        if (menu.style.display === 'block') {
+          menu.style.left = (btnRect.left - parentRect.left - 50) + 'px';
+          menu.style.top = (btnRect.bottom - parentRect.top + 8) + 'px';
+        }
+      });
       document.getElementById('groupModalCancel').addEventListener('click', closeModal);
       backdrop.addEventListener('click', function(e) {
         if (e.target === backdrop) closeModal();

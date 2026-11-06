@@ -43,7 +43,7 @@ const API_STORAGE_KEY = 'api_settings';
             provider: legacy.provider || 'openai',
             baseUrl: legacy.baseUrl || 'https://api.openai.com/v1',
             apiKey: legacy.apiKey || '',
-            model: legacy.model || 'gpt-3.5-turbo',
+            model: legacy.model || '',
             temperature: legacy.temperature != null ? legacy.temperature : 0.7,
             maxTokens: legacy.maxTokens != null ? legacy.maxTokens : '',
             topP: legacy.topP != null ? legacy.topP : '',
@@ -90,7 +90,7 @@ function collectFormFields() {
         provider: apiProviderSelect.value,
         baseUrl: (apiUrlInput.value || '').trim() || 'https://api.openai.com/v1',
         apiKey: (apiKeyInput.value || '').trim(),
-        model: (apiModelInput.value || '').trim() || 'gpt-3.5-turbo',
+        model: (apiModelInput.value || '').trim() || '',
         imageModel: apiImageModelInput ? apiImageModelInput.value.trim() : '',
         imageEndpoint: apiImageEndpointInput ? apiImageEndpointInput.value.trim() : '',
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),
@@ -533,7 +533,7 @@ function loadConfig() {
                 apiNameInput.value = parsed.name || '默认配置';
                 apiUrlInput.value = parsed.baseUrl || 'https://api.openai.com/v1';
                 apiKeyInput.value = parsed.apiKey || '';
-                apiModelInput.value = parsed.model || 'gpt-3.5-turbo';
+                apiModelInput.value = parsed.model || '';
                 if (apiImageModelInput) apiImageModelInput.value = parsed.imageModel || '';
                 if (apiImageEndpointInput) apiImageEndpointInput.value = parsed.imageEndpoint || '';
                 window.__loadedPrompt = parsed.prompt || '';
@@ -562,7 +562,7 @@ function loadConfig() {
     apiProviderSelect.value = 'openai';
     apiUrlInput.value = 'https://api.openai.com/v1';
     apiKeyInput.value = '';
-    apiModelInput.value = 'gpt-3.5-turbo';
+    apiModelInput.value = '';
     if (apiImageModelInput) apiImageModelInput.value = '';
     if (apiImageEndpointInput) apiImageEndpointInput.value = '';
     if (apiPromptInput) apiPromptInput.value = '';
@@ -599,7 +599,7 @@ settingsForm.addEventListener('submit', function(e) {
         provider: apiProviderSelect.value,
         baseUrl: apiUrlInput.value.trim() || 'https://api.openai.com/v1',
         apiKey: apiKey,
-        model: apiModelInput.value.trim() || 'gpt-3.5-turbo',
+        model: apiModelInput.value.trim() || '',
         imageModel: apiImageModelInput ? apiImageModelInput.value.trim() : '',
         imageEndpoint: apiImageEndpointInput ? apiImageEndpointInput.value.trim() : '',
         prompt: apiPromptInput ? apiPromptInput.value.trim() : (window.__loadedPrompt || ''),

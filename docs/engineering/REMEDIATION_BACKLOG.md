@@ -201,6 +201,23 @@ Acceptance before implementation:
 - Compare browser-local IndexedDB-first versus server-sync architecture.
 - No infrastructure added before decision.
 
+## Feature implementation
+
+### AI-IMG-001 — Complete role-based image generation and gallery
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Scope: add stable per-role appearance/style data, an image-generation orchestration service using the existing PhoneAPI Images API, IndexedDB image records backed by MediaRepository, a Settings entry and role gallery, an explicit `/photo` chat trigger, and native image-message rendering by assetId.
+
+Acceptance:
+- Existing role records and chat messages remain readable; new role fields are additive.
+- Image binaries stay in MediaRepository/IndexedDB; image records and chat messages store assetId references, never new Base64 payloads.
+- `maomao-assets` backup includes image_records and the referenced Blob; failed/oversized exports are reported atomically.
+- Each generated image is scoped to one character, stores prompt/scene/privacy/time metadata, and defaults to private.
+- Chat generation is user-triggered only; no unsolicited automatic or probability-based generation.
+- Legacy `type:image` messages using `img` continue rendering unchanged.
+- Settings gallery supports per-character and public/private filtering, and generation/persistence failures are visible.
+- Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
+
 ## Phase 3 — Shared architecture and feature safety
 
 ### ARCH-001 — Reduce chat-detail coupling

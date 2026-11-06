@@ -15,15 +15,17 @@
     <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%assets/mao-bunny-192.png" />
     <link rel="apple-touch-icon" href="%BASE_URL%assets/mao-bunny-192.png" />
     <script>
-      // 只清理旧版主屏布局配置；保留壁纸、挂件、聊天和其他本地数据。
+      // Start with the approved component-first desktop. Remove obsolete layout records only;
+      // wallpaper, widget content, chat, profiles, and other app data remain untouched.
       (function () {
         try {
-          var keys = Object.keys(localStorage);
-          keys.forEach(function (k) {
-            if (/^ds_layout_v/.test(k) && k !== 'ds_layout_v12') {
-              localStorage.removeItem(k);
+          Object.keys(localStorage).forEach(function (key) {
+            if (/^ds_layout_v\d+$/.test(key) && key !== 'ds_layout_v14') {
+              localStorage.removeItem(key);
             }
           });
+          localStorage.removeItem('ds_home_default_revision');
+          localStorage.removeItem('maomao_home_layout_backup_20261106');
         } catch (err) {}
       })();
     </script>
@@ -34,8 +36,8 @@
     <script src="shared/js/font-loader.js?v=20261022v1"></script>
     <script src="shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="shared/js/native-feel.js?v=20261026-statusbar2"></script>
-    <link rel="stylesheet" href="desktop/css/styles.css?v=20261025v2">
-  <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261025v1">
+    <link rel="stylesheet" href="desktop/css/styles.css?v=20261106-home-layout2">
+  <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
     <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', observe: true, debug: false };</script>
     <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0"></script>
@@ -336,6 +338,94 @@
                   <span class="ds-del" title="移除组件">×</span>
                 </div>
 
+                <!-- ========== 双人头像（2×2）：两个圆头像挨在一起 ========== -->
+                <div class="ds-duo ds-widget" data-drag="duo">
+                  <div class="duo-avatars">
+                    <div class="duo-avatar" id="duoAvatar1" data-upload></div>
+                    <div class="duo-avatar" id="duoAvatar2" data-upload></div>
+                  </div>
+                  <div class="duo-names" id="duoNames" data-editable>我 & 你</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 三图横排（4×2）：三张图片横向排列 ========== -->
+                <div class="ds-triple ds-widget" data-drag="triple">
+                  <div class="triple-item" id="triple1" data-upload><span>点击添加</span></div>
+                  <div class="triple-item" id="triple2" data-upload><span>点击添加</span></div>
+                  <div class="triple-item" id="triple3" data-upload><span>点击添加</span></div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 四图照片墙（2×2）：2×2 四张图片 ========== -->
+                <div class="ds-photowall ds-widget" data-drag="photowall">
+                  <div class="pw-item" id="pw1" data-upload><span>+</span></div>
+                  <div class="pw-item" id="pw2" data-upload><span>+</span></div>
+                  <div class="pw-item" id="pw3" data-upload><span>+</span></div>
+                  <div class="pw-item" id="pw4" data-upload><span>+</span></div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== ins 风信息卡（4×2）：头像+天数+消息+天气 ========== -->
+                <div class="ds-ins ds-widget" data-drag="ins">
+                  <div class="ins-left">
+                    <div class="ins-avatars">
+                      <div class="ins-avatar" id="insAvatar1" data-upload></div>
+                      <div class="ins-avatar" id="insAvatar2" data-upload></div>
+                    </div>
+                    <div class="ins-days" id="insDays" data-editable>在一起 123 天</div>
+                  </div>
+                  <div class="ins-right">
+                    <div class="ins-msg" id="insMsg1" data-editable>今天的晚霞很好看</div>
+                    <div class="ins-msg-time" id="insTime1" data-editable>18:30</div>
+                    <div class="ins-msg me" id="insMsg2" data-editable>我也觉得</div>
+                    <div class="ins-msg-time me" id="insTime2" data-editable>18:32</div>
+                  </div>
+                  <div class="ins-weather" id="insWeather" data-editable>北京 · 晴 · 22°</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== ins 资料卡（4×2）：头像+id+文案+数据 ========== -->
+                <div class="ds-profile ds-widget" data-drag="profile">
+                  <div class="pf-top">
+                    <div class="pf-avatar" id="pfAvatar" data-upload></div>
+                    <div class="pf-info">
+                      <div class="pf-name" id="pfName" data-editable>@username</div>
+                      <div class="pf-id" id="pfId" data-editable>ID: 12345678</div>
+                    </div>
+                  </div>
+                  <div class="pf-bio" id="pfBio" data-editable>记录生活里的小美好 ✿</div>
+                  <div class="pf-stats">
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfPosts" data-editable>128</span>
+                      <span class="pf-label">帖子</span>
+                    </div>
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfFollow" data-editable>356</span>
+                      <span class="pf-label">关注</span>
+                    </div>
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfFollowers" data-editable>1.2k</span>
+                      <span class="pf-label">粉丝</span>
+                    </div>
+                    <div class="pf-stat">
+                      <span class="pf-num" id="pfLikes" data-editable>8.6k</span>
+                      <span class="pf-label">获赞</span>
+                    </div>
+                  </div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== ins 堆叠照片（4×2）：六张互相重叠堆叠，分布全宽 ========== -->
+                <div class="ds-stack ds-widget" data-drag="stack">
+                  <div class="stack-img" data-upload style="position:absolute; top:15px; left:5px; width:70px; height:85px; transform:rotate(-6deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:30px; left:60px; width:70px; height:85px; transform:rotate(3deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:10px; left:115px; width:70px; height:85px; transform:rotate(-2deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:25px; left:170px; width:70px; height:85px; transform:rotate(5deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:15px; left:225px; width:70px; height:85px; transform:rotate(-4deg);"></div>
+                  <div class="stack-img" data-upload style="position:absolute; top:30px; left:280px; width:70px; height:85px; transform:rotate(2deg);"></div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
                 <!-- ========== 音乐箱组件（2×2） ========== -->
                 <div class="ds-music ds-widget" data-drag="music">
                   <div class="ms-title">♫ 正在播放</div>
@@ -359,6 +449,22 @@
                 <!-- ========== 时钟组件（2×2）：纯时间，无容器 ========== -->
                 <div class="ds-clock ds-widget" data-drag="clock">
                   <div class="cl-time" id="clTime">--:--</div>
+                  <span class="ds-del" title="移除组件">×</span>
+                </div>
+
+                <!-- ========== 大时钟天气组件（4×2）：时间+日期+天气+地址，全部可编辑 ========== -->
+                <div class="ds-clock-lg ds-widget" data-drag="clock-lg">
+                  <div class="clg-left">
+                    <div class="clg-time" id="clgTime" contenteditable="false">--:--</div>
+                    <div class="clg-date" id="clgDate" contenteditable="false">--月--日 周-</div>
+                  </div>
+                  <div class="clg-right">
+                    <div class="clg-weather">
+                      <span class="clg-temp" id="clgTemp" contenteditable="false">22°</span>
+                      <span class="clg-cond" id="clgCond" contenteditable="false">多云</span>
+                    </div>
+                    <div class="clg-city" id="clgCity" contenteditable="false">北京</div>
+                  </div>
                   <span class="ds-del" title="移除组件">×</span>
                 </div>
 
@@ -532,33 +638,20 @@
       }
 
       // ===== 布局数据：统一网格，每一页都可混放应用和挂件 =====
-      // v12 格式：{ v: 12, pages: [[id,...], ...], dock: [id,...], removed: [id,...] }
+      // v14 default home: full-width clock; four app icons + duo avatars; photo wall + four app icons.
       // removed = 用户从桌面移除的应用/挂件（元素暂存在隐藏仓库里，之后可以重新添加）
-      var LS_KEY = 'ds_layout_v12';
-      var LS_KEY_OLD = 'ds_layout_v5'; // 旧版本，只读取用于迁移，不会被删除
+      var LS_KEY = 'ds_layout_v14';
 
       function getDefaultLayout() {
-        // 默认布局（参考参考图分布）：正上方大幅图片上传组件(4×2整行)；中间左侧4个应用+右侧时钟(2×2)；下方左侧一个组件(2×2)+右侧4个应用
         return {
-          v: 12,
+          v: 14,
           pages: [
-            [
-              'app_inspect', 'app_worldbook', 'app_memory',
-              'app_forum', 'app_wallet',
-              'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_settings'
-            ],
-            [
-              'app_finance', 'app_games', 'app_cafe', 'app_library',
-              'app_diary', 'app_envelope', 'app_dreamtravel'
-            ],
-            [
-              'social',
-              'image', 'clock', 'polaroid',
-              'dialog', 'music', 'todo', 'calendar', 'countdown', 'note'
-            ]
+            ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
+            ['app_characters', 'app_footprint', 'app_settings', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
+            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
           ],
           dock: ['app_chat', 'app_shop'],
-          removed: ['postcard']
+          removed: ['image', 'postcard', 'polaroid', 'dialog', 'music', 'clock', 'todo', 'calendar', 'countdown', 'note', 'social', 'triple', 'ins', 'profile', 'stack']
         };
       }
 
@@ -579,13 +672,6 @@
           if (!Array.isArray(v.removed)) v.removed = [];
           while (v.pages.length < 3) v.pages.push([]);
           return v;
-        }
-        // 从旧版 v5 迁移：保留各页应用/挂件的顺序和 Dock
-        var old = readJSON(LS_KEY_OLD);
-        if (isValidLayout(old)) {
-          var migrated = { v: 6, pages: old.pages, dock: old.dock, removed: [] };
-          while (migrated.pages.length < 3) migrated.pages.push([]);
-          return migrated;
         }
         return getDefaultLayout();
       }
@@ -645,28 +731,8 @@
         saveLayout(currentLayout);
       })();
 
-      // ===== 迁移：把组件（widget）从第 0/1 页统一挪到第 2 页，前两页只放应用图标 =====
-      (function migrateWidgetsToPage3() {
-        if (!currentLayout.pages || currentLayout.pages.length < 3) return;
-        var widgets = [];
-        [0, 1].forEach(function (pi) {
-          var page = currentLayout.pages[pi];
-          for (var i = page.length - 1; i >= 0; i--) {
-            var id = page[i];
-            if (id && id.indexOf('app_') !== 0 && id !== 'image' && id !== 'clock' && id !== 'polaroid' && id !== 'dialog' && id !== 'music' && id !== 'todo' && id !== 'calendar' && id !== 'countdown' && id !== 'note' && id !== 'postcard') continue;
-            if (['image','clock','polaroid','dialog','music','todo','calendar','countdown','note','postcard'].indexOf(id) !== -1) {
-              widgets.push(id);
-              page.splice(i, 1);
-            }
-          }
-        });
-        if (widgets.length) {
-          // 去重后追加到第 2 页
-          var existing = currentLayout.pages[2];
-          widgets.forEach(function (w) { if (existing.indexOf(w) === -1) existing.push(w); });
-          saveLayout(currentLayout);
-        }
-      })();
+      // 不再强制把第一页、第二页的组件迁移到第三页。
+      // 用户确认的默认桌面允许组件与应用图标按布局混排；旧布局保持原位。
 
       // ===== 隐藏仓库：被移除的应用/挂件放这里（保留在页面里，挂件的事件绑定才不会失效，之后可重新添加） =====
       function getShelf() {
@@ -751,19 +817,25 @@
           }
         });
 
-        // 4. 既没被放置、也没被移除的（例如以后新增的应用）：补到布局的最后一页末尾
+        // 4. 既没被放置、也没被移除的：
+        //    - 应用（app_ 开头）：补到最后一页（以后新增的应用自动出现在桌面）
+        //    - 挂件（非 app_ 开头）：藏进 shelf，不自动上桌面（必须用户主动添加）
         var remainingIds = Object.keys(itemMap);
         if (remainingIds.length > 0) {
           pages = getPages();
           var lastPage = pages[requiredPages - 1] || pages[pages.length - 1];
           var lastGrid = lastPage ? lastPage.querySelector('.desktop-grid') : null;
-          if (lastGrid) {
-            remainingIds.forEach(function (id) {
-              var el = itemMap[id];
+          remainingIds.forEach(function (id) {
+            var el = itemMap[id];
+            if (!el) return;
+            if (id.indexOf('app_') === 0) {
               setElementAsDesktop(el);
-              lastGrid.appendChild(el);
-            });
-          }
+              if (lastGrid) lastGrid.appendChild(el);
+            } else {
+              // 挂件：不在 pages 里就藏进 shelf，不自动出现在桌面
+              moveToShelf(el);
+            }
+          });
         }
 
         // 5. 清掉 HTML 里多余的空页（例如布局只有 1 页时，原来写死的第二页）
@@ -1851,20 +1923,334 @@
       })();
     })();
 
-    // ===== 时钟组件：纯时间大字 =====
+    // ===== 时钟组件：统一颜色控制（小/大时钟共用） =====
     (function () {
-      var timeEl = document.getElementById('clTime');
-      if (!timeEl) return;
+      var smallTime = document.getElementById('clTime');
+      var largeTime = document.getElementById('clgTime');
+      var dateEl = document.getElementById('clgDate');
+      var week = ['日','一','二','三','四','五','六'];
+      var DEFAULT_CLOCK_COLOR = '#1a1a1a';
+      var CLOCK_SWATCHES = [
+        { name: '默认黑', color: '#1a1a1a' },
+        { name: '深灰', color: '#444444' },
+        { name: '中灰', color: '#777777' },
+        { name: '浅灰', color: '#b8b8b8' },
+        { name: '白色', color: '#ffffff' },
+        { name: '暖米', color: '#c5b69d' },
+        { name: '浅棕', color: '#a9856b' },
+        { name: '咖啡', color: '#765747' },
+        { name: '橄榄绿', color: '#788466' },
+        { name: '鼠尾草', color: '#8a9b8b' },
+        { name: '雾蓝', color: '#718da3' },
+        { name: '蓝灰', color: '#536b82' },
+        { name: '灰紫', color: '#8b819c' },
+        { name: '豆沙', color: '#ad7e83' },
+        { name: '琥珀', color: '#bd8a3e' },
+        { name: '砖红', color: '#a95f50' }
+      ];
+      var savedColor = DEFAULT_CLOCK_COLOR;
+      var palette = null;
 
-      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      try {
+        var storedColor = localStorage.getItem('ds_clock_color') || '';
+        if (/^#[0-9a-f]{6}$/i.test(storedColor)) savedColor = storedColor;
+      } catch (e) {}
 
-      function tick() {
-        var d = new Date();
-        timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+      function applyClockColor(color, persist) {
+        if (!/^#[0-9a-f]{6}$/i.test(color || '')) return;
+        savedColor = color;
+        [smallTime, largeTime].forEach(function (el) {
+          if (el) el.style.color = color;
+        });
+        if (persist) {
+          try { localStorage.setItem('ds_clock_color', color); } catch (e) {}
+        }
+        if (palette) {
+          Array.prototype.forEach.call(palette.querySelectorAll('.palette-dot'), function (button) {
+            button.setAttribute('aria-pressed', button.getAttribute('data-color') === color ? 'true' : 'false');
+          });
+        }
       }
 
+      function closePalette() {
+        if (palette) {
+          palette.remove();
+          palette = null;
+        }
+      }
+
+      function openPalette(anchor, event) {
+        if (!anchor || document.body.classList.contains('home-editing')) return;
+        if (event) event.stopPropagation();
+        if (palette) { closePalette(); return; }
+
+        palette = document.createElement('div');
+        palette.className = 'clock-palette';
+        palette.setAttribute('role', 'group');
+        palette.setAttribute('aria-label', '时钟颜色');
+
+        var title = document.createElement('div');
+        title.className = 'clock-palette-title';
+        title.textContent = '时钟颜色';
+        palette.appendChild(title);
+
+        var grid = document.createElement('div');
+        grid.className = 'clock-palette-grid';
+        CLOCK_SWATCHES.forEach(function (item) {
+          var swatch = document.createElement('button');
+          swatch.type = 'button';
+          swatch.className = 'palette-dot';
+          swatch.style.backgroundColor = item.color;
+          swatch.setAttribute('data-color', item.color);
+          swatch.setAttribute('aria-label', item.name);
+          swatch.setAttribute('aria-pressed', item.color.toLowerCase() === savedColor.toLowerCase() ? 'true' : 'false');
+          swatch.addEventListener('click', function (e) {
+            e.stopPropagation();
+            applyClockColor(item.color, true);
+            closePalette();
+          });
+          grid.appendChild(swatch);
+        });
+        palette.appendChild(grid);
+
+        var actions = document.createElement('div');
+        actions.className = 'clock-palette-actions';
+
+        var customLabel = document.createElement('label');
+        customLabel.className = 'palette-custom';
+        customLabel.textContent = '自定义颜色';
+        var customInput = document.createElement('input');
+        customInput.type = 'color';
+        customInput.value = savedColor;
+        customInput.setAttribute('aria-label', '选择自定义时钟颜色');
+        customInput.addEventListener('click', function (e) { e.stopPropagation(); });
+        customInput.addEventListener('input', function () {
+          applyClockColor(customInput.value, false);
+        });
+        customInput.addEventListener('change', function () {
+          applyClockColor(customInput.value, true);
+          closePalette();
+        });
+        customLabel.appendChild(customInput);
+        actions.appendChild(customLabel);
+
+        var resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'palette-reset';
+        resetButton.textContent = '恢复默认';
+        resetButton.addEventListener('click', function (e) {
+          e.stopPropagation();
+          try { localStorage.removeItem('ds_clock_color'); } catch (err) {}
+          applyClockColor(DEFAULT_CLOCK_COLOR, false);
+          closePalette();
+        });
+        actions.appendChild(resetButton);
+        palette.appendChild(actions);
+
+        document.body.appendChild(palette);
+        var rect = anchor.getBoundingClientRect();
+        var panelWidth = Math.min(264, window.innerWidth - 24);
+        var left = Math.max(12, Math.min(window.innerWidth - panelWidth - 12, rect.left + rect.width / 2 - panelWidth / 2));
+        palette.style.width = panelWidth + 'px';
+        palette.style.left = left + 'px';
+        var panelHeight = palette.offsetHeight;
+        var top = rect.bottom + 8;
+        if (top + panelHeight > window.innerHeight - 12) top = Math.max(12, rect.top - panelHeight - 8);
+        palette.style.top = top + 'px';
+      }
+
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      function tick() {
+        var d = new Date();
+        var time = pad(d.getHours()) + ':' + pad(d.getMinutes());
+        if (smallTime) smallTime.textContent = time;
+        if (largeTime) largeTime.textContent = time;
+        if (dateEl) dateEl.textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + week[d.getDay()];
+      }
+
+      applyClockColor(savedColor, false);
       tick();
-      setInterval(tick, 1000);
+      if (smallTime || largeTime) window.setInterval(tick, 1000);
+
+      [smallTime, largeTime].forEach(function (el) {
+        if (el) el.addEventListener('click', function (e) { openPalette(el, e); });
+      });
+
+      ['clgTemp','clgCond','clgCity'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', function () {
+          if (document.body.classList.contains('home-editing')) return;
+          el.contentEditable = 'true';
+          el.focus();
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+        el.addEventListener('blur', function () { el.contentEditable = 'false'; });
+      });
+
+      document.addEventListener('click', function (e) {
+        if (palette && !palette.contains(e.target)) closePalette();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closePalette();
+      });
+      window.addEventListener('resize', closePalette);
+    })();
+
+    // ===== ins 资料卡（4×2）：全部可编辑 =====
+    (function () {
+      // 所有文字元素点击编辑
+      ['pfName','pfId','pfBio','pfPosts','pfFollow','pfFollowers','pfLikes'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', function(){
+          if (document.body.classList.contains('home-editing')) return;
+          el.contentEditable = 'true';
+          el.focus();
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+        el.addEventListener('blur', function(){
+          el.contentEditable = 'false';
+        });
+      });
+
+      // pfAvatar is handled by the shared persistent [data-upload] binding below.
+    })();
+
+    // ===== 通用可编辑组件：所有文字/图片元素点击即可编辑 =====
+    (function () {
+      // 所有带 data-editable 的文字元素，点击进入编辑
+      document.querySelectorAll('[data-editable]').forEach(function(el){
+        el.addEventListener('click', function(){
+          if (document.body.classList.contains('home-editing')) return;
+          el.contentEditable = 'true';
+          el.focus();
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
+        el.addEventListener('blur', function(){
+          el.contentEditable = 'false';
+        });
+      });
+
+      // All data-upload photo slots share IndexedDB persistence. The previous handler
+      // only changed inline CSS, so a rebuilt/reloaded home silently lost every image.
+      (function bindPersistentHomePhotos() {
+        var imageStore = window.MAOMAOWallpaperStore;
+        var slots = document.querySelectorAll('[data-upload]');
+
+        function notifySaveFailure(error) {
+          console.error('[MAOMAO home photo] Unable to save uploaded image:', error);
+          if (typeof window.showToast === 'function') {
+            window.showToast('图片保存失败，请检查本机存储空间后重试');
+          }
+        }
+
+        function applyPhoto(el, dataUrl) {
+          el.style.backgroundImage = 'url("' + dataUrl + '")';
+          el.style.backgroundSize = 'cover';
+          el.style.backgroundPosition = 'center';
+          el.style.backgroundRepeat = 'no-repeat';
+          var hint = el.querySelector('span');
+          if (hint) hint.style.display = 'none';
+        }
+
+        function preparePhoto(file) {
+          return new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onerror = function() { reject(reader.error || new Error('图片读取失败')); };
+            reader.onload = function() {
+              var image = new Image();
+              image.onerror = function() { reject(new Error('无法识别这张图片')); };
+              image.onload = function() {
+                try {
+                  var maxEdge = 1000;
+                  var scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+                  var width = Math.max(1, Math.round(image.naturalWidth * scale));
+                  var height = Math.max(1, Math.round(image.naturalHeight * scale));
+                  var canvas = document.createElement('canvas');
+                  canvas.width = width;
+                  canvas.height = height;
+                  var context = canvas.getContext('2d');
+                  if (!context) throw new Error('图片压缩画布不可用');
+                  context.drawImage(image, 0, 0, width, height);
+                  var dataUrl = canvas.toDataURL('image/webp', 0.82);
+                  if (!/^data:image\//i.test(dataUrl)) {
+                    dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                  }
+                  resolve(dataUrl);
+                } catch (error) {
+                  reject(error);
+                }
+              };
+              image.src = reader.result;
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+
+        slots.forEach(function(el) {
+          var owner = el.closest('[data-drag]');
+          var widgetId = owner ? owner.getAttribute('data-drag') : 'desktop';
+          var siblingSlots = owner ? owner.querySelectorAll('[data-upload]') : slots;
+          var slotIndex = Array.prototype.indexOf.call(siblingSlots, el);
+          var slotId = el.id || ('slot-' + (slotIndex + 1));
+          var storageKey = 'home_widget_upload_v1_' + widgetId + '_' + slotId;
+          var revision = 0;
+          var fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.accept = 'image/*';
+          fileInput.hidden = true;
+          fileInput.setAttribute('aria-hidden', 'true');
+          document.body.appendChild(fileInput);
+
+          // Restore previously saved photos whenever the desktop is rebuilt.
+          var restoreRevision = revision;
+          var restorePromise = imageStore && typeof imageStore.getByKey === 'function'
+            ? imageStore.getByKey(storageKey)
+            : Promise.resolve((function() {
+                try { return localStorage.getItem(storageKey) || ''; } catch (error) { return ''; }
+              })());
+          Promise.resolve(restorePromise).then(function(dataUrl) {
+            if (dataUrl && revision === restoreRevision) applyPhoto(el, dataUrl);
+          }).catch(function(error) {
+            console.warn('[MAOMAO home photo] Unable to restore ' + storageKey, error);
+          });
+
+          el.addEventListener('click', function(event) {
+            event.stopPropagation();
+            if (document.body.classList.contains('home-editing')) return;
+            fileInput.value = '';
+            fileInput.click();
+          });
+
+          fileInput.addEventListener('change', function() {
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            var currentRevision = ++revision;
+            preparePhoto(file).then(function(dataUrl) {
+              if (imageStore && typeof imageStore.saveByKey === 'function') {
+                return imageStore.saveByKey(storageKey, dataUrl).then(function() { return dataUrl; });
+              }
+              localStorage.setItem(storageKey, dataUrl);
+              return dataUrl;
+            }).then(function(dataUrl) {
+              if (revision === currentRevision) applyPhoto(el, dataUrl);
+            }).catch(notifySaveFailure);
+          });
+        });
+      })();
     })();
 
     // ===== 今日待办组件：勾选/编辑/添加，localStorage 持久化 =====
@@ -2184,14 +2570,23 @@
 
       function applyIcon(appId, iconEl) {
         store.getByKey(KEY_PREFIX + appId).then(function (dataUrl) {
-          if (!dataUrl) return;
+          var svg = iconEl.querySelector('svg');
+          if (!dataUrl) {
+            // 预设切换或单个恢复为默认图标时，清除上一次自定义图标留下的内联样式。
+            iconEl.style.removeProperty('background-image');
+            iconEl.style.removeProperty('background-size');
+            iconEl.style.removeProperty('background-position');
+            iconEl.style.removeProperty('background-color');
+            iconEl.style.removeProperty('border-radius');
+            if (svg) svg.style.removeProperty('display');
+            return;
+          }
           /* CSS 里 .app-icon 有 background: var(--icon-bg) !important，必须用 !important 内联样式才能覆盖 */
           iconEl.style.setProperty('background-image', 'url("' + dataUrl + '")', 'important');
           iconEl.style.setProperty('background-size', 'cover', 'important');
           iconEl.style.setProperty('background-position', 'center', 'important');
           iconEl.style.setProperty('background-color', 'transparent', 'important');
           iconEl.style.borderRadius = '22%';
-          var svg = iconEl.querySelector('svg');
           if (svg) svg.style.display = 'none';
         }).catch(function () {});
       }
@@ -2307,6 +2702,29 @@
   window.MAOMAOApplyDesktopWallpaper = applyDesktopWallpaper;
 })();
 </script>
+<script>
+  // Desktop app tiles are buttons, so explicitly route taps to their declared app pages.
+  // Keep long-press/edit interactions and widget controls out of normal app navigation.
+  (function () {
+    'use strict';
+    document.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var tile = target.closest('.app-tile[data-href]');
+      if (!tile) return;
+      if (document.body.classList.contains('home-editing')) return;
+      if (target.closest('.ds-del')) return;
+      var href = tile.getAttribute('data-href');
+      if (!href) return;
+      var destination;
+      try { destination = new URL(href, document.baseURI); } catch (error) { return; }
+      if (destination.origin !== window.location.origin) return;
+      event.preventDefault();
+      window.location.assign(destination.href);
+    }, true);
+  })();
+</script>
+
 <script src="shared/js/dock-control.js?v=20261023v1"></script>
 <script src="shared/js/liquid-glass-controls.js?v=20261023v11"></script>
 <script src="shared/js/chat-notifier.js?v=20261102v3"></script>
