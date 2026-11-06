@@ -278,3 +278,193 @@ test('forum.html / 旧种子帖不再补预置评论：不会生成硬编码文�
   assert.equal(p1.comments.length, 0, '旧数字评论应迁移为空数组');
   assert.doesNotMatch(forumHome, /路过花店/, '不应保留旧的预置评论文案');
 });
+
+
+/* ====== Forum refresh append / persistence safety ====== */
+function extractForumRefreshCore(){
+  const parts = [
+    "const STORE='forum_posts';",
+    extractNamedFunction(forumHome,'function cloneForumRefreshPost('),
+    extractNamedFunction(forumHome,'function mergeForumRefreshData('),
+    extractNamedFunction(forumHome,'function commitForumRefreshData(')
+  ];
+  return parts.join('\n');
+}
+
+function runForumRefreshCore(){
+  const context = { Array, Object, String, Set, Number, JSON };
+  runInNewContext(
+    extractForumRefreshCore() +
+    '\n__exports__={mergeForumRefreshData,commitForumRefreshData};',
+    context
+  );
+  return context.__exports__;
+}
+
+test('forum refresh / 增量追加：保留所有旧帖、用户编辑和旧评论，不修改原始快照', () => {
+  const api = runForumRefreshCore();
+  const current = [
+    {
+      id: 'user_post_1',
+      owner: 'me',
+      title: '我自己写的帖子',
+      body: '我后来编辑过的正文',
+      likes: 7,
+      mediaAssetIds: ['asset_keep'],
+      comments: [{ name: '朋友', text: '原有评论', replies: [{ name: '我', text: '原有楼中楼' }] }]
+    },
+    {
+      id: 'old_ai_post',
+      owner: 'community',
+      title: '昨天的社区动态',
+      body: '旧正文不能消失',
+      comments: [{ residentId: 'resident_old', source: 'forum-ai', text: '原有路人评论', replies: [] }]
+    }
+  ];
+  const fresh = [{
+    id: 'forum_ai_new_1',
+    title: '今天的新帖子',
+    body: '一条真正新增的社区内容',
+    owner: 'community',
+    comments: [{ residentId: 'resident_new', source: 'forum-ai', text: '新帖自带评论', replies: [] }]
+  }];
+  const activity = [{
+    postId: 'old_ai_post',
+    comments: [{ residentId: 'resident_reply', text: '回到旧帖补充一句' }]
+  }];
+  const normalize = (item) => ({
+    residentId: item.residentId,
+    source: 'forum-ai',
+    text: item.text,
+    replies: []
+  });
+
+  const result = api.mergeForumRefreshData(current, fresh, activity, normalize);
+  const plain = JSON.parse(JSON.stringify(result.posts));
+
+  assert.equal(result.addedPostCount, 1);
+  assert.equal(result.activityCount, 1);
+  assert.equal(plain.length, 3, '刷新只能增加内容，不得删除任何旧帖子');
+  assert.equal(plain[0].id, 'forum_ai_new_1', '新增帖子排在最前面');
+  assert.equal(plain[1].id, 'user_post_1');
+  assert.equal(plain[1].body, '我后来编辑过的正文');
+  assert.deepEqual(plain[1].mediaAssetIds, ['asset_keep']);
+  assert.equal(plain[1].comments[0].text, '原有评论');
+  assert.equal(plain[1].comments[0].replies[0].text, '原有楼中楼');
+  assert.equal(plain[2].id, 'old_ai_post');
+  assert.deepEqual(
+    plain[2].comments.map((comment) => comment.text),
+    ['原有路人评论', '回到旧帖补充一句']
+  );
+  assert.equal(current[1].comments.length, 1, '合并不能提前修改页面内原始帖子对象');
+});
+
+test('forum refresh / 重复响应：相同新帖标题和相同旧帖评论不会重复插入', () => {
+  const api = runForumRefreshCore();
+  const current = [{
+    id: 'old_post',
+    title: '已经存在的标题',
+    body: '旧正文',
+    comments: [{
+      residentId: 'resident_same',
+      source: 'forum-ai',
+      text: '这条评论已经出现',
+      replies: []
+    }]
+  }];
+  const fresh = [{
+    id: 'new_id_but_duplicate_title',
+    title: '已经存在的标题',
+    body: '模型重复生成的内容'
+  }];
+  const activity = [{
+    postId: 'old_post',
+    comments: [{ residentId: 'resident_same', text: '这条评论已经出现' }]
+  }];
+  const normalize = (item) => ({
+    residentId: item.residentId,
+    source: 'forum-ai',
+    text: item.text,
+    replies: []
+  });
+
+  const result = api.mergeForumRefreshData(current, fresh, activity, normalize);
+  assert.equal(result.changed, false);
+  assert.equal(result.addedPostCount, 0);
+  assert.equal(result.activityCount, 0);
+  assert.equal(result.posts.length, 1);
+  assert.equal(result.posts[0].comments.length, 1);
+});
+
+test('forum refresh / 并发页面更新：提交前检测到存储变化，会重读并保留另一页的新帖子', () => {
+  const api = runForumRefreshCore();
+  const initialRaw = JSON.stringify([{
+    id: 'before',
+    title: '原有帖子',
+    body: '正文',
+    comments: []
+  }]);
+  const concurrentRaw = JSON.stringify([{
+    id: 'before',
+    title: '原有帖子',
+    body: '正文被另一页更新',
+    comments: [{ name: '另一页用户', text: '刚刚新增的评论', replies: [] }]
+  }, {
+    id: 'concurrent_post',
+    title: '另一页刚发布的帖子',
+    body: '并发写入内容',
+    comments: []
+  }]);
+  let reads = 0;
+  let saved = '';
+  const storage = {
+    getItem: () => {
+      reads += 1;
+      if (reads === 1) return initialRaw;
+      return concurrentRaw;
+    },
+    setItem: (key, value) => { saved = String(value); }
+  };
+  const fresh = [{ id: 'fresh_post', title: 'AI 新帖子', body: '增量内容', comments: [] }];
+  const result = api.commitForumRefreshData(fresh, [], () => null, storage);
+  const plain = JSON.parse(saved);
+
+  assert.equal(result.ok, true);
+  assert.ok(reads >= 4, '检测到并发变化后应重新读取最新快照');
+  assert.ok(plain.some((post) => post.id === 'concurrent_post'), '不能覆盖另一页面刚写入的帖子');
+  assert.ok(plain.some((post) => post.id === 'fresh_post'), '本次 AI 新帖子仍应被追加');
+  assert.equal(plain.find((post) => post.id === 'before').body, '正文被另一页更新');
+  assert.equal(plain.find((post) => post.id === 'before').comments[0].text, '刚刚新增的评论');
+});
+
+test('forum refresh / 存储写入失败：不改写旧帖快照，也不报告成功', () => {
+  const api = runForumRefreshCore();
+  const originalRaw = JSON.stringify([{
+    id: 'keep_me',
+    title: '必须保留的旧帖子',
+    body: '不能丢失',
+    comments: [{ name: '旧评论', text: '仍然存在', replies: [] }]
+  }]);
+  const storage = {
+    getItem: () => originalRaw,
+    setItem: () => { throw new Error('quota exceeded'); }
+  };
+  const result = api.commitForumRefreshData(
+    [{ id: 'fresh', title: '新帖子', body: '新内容' }],
+    [],
+    () => null,
+    storage
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'storage-write');
+  assert.equal(originalRaw.includes('必须保留的旧帖子'), true, '原存储字符串保持不变');
+});
+
+test('forum refresh / 页面入口：刷新流程使用最新存储快照合并，而不是浅拷贝回滚', () => {
+  assert.match(forumHome, /function mergeForumRefreshData\\(/);
+  assert.match(forumHome, /function commitForumRefreshData\\(/);
+  assert.match(forumHome, /const commit=commitForumRefreshData\\(fresh,data\\.activity,forumMakeAIComment\\)/);
+  assert.doesNotMatch(forumHome, /const before=posts\\.slice\\(\\)/);
+  assert.match(forumHome, /posts=commit\\.posts/);
+});
