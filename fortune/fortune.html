@@ -362,14 +362,20 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
     <div><div class="hero-kicker">01 / THE CRYSTAL CARDS</div><h2>水晶塔罗</h2><p>让三枚水晶分别照见来处、此刻与可能。牌面是自我整理的提示，不替你做决定。</p></div>
     <button class="back-room" type="button" data-go-home>回到小屋</button>
   </div>
-  <label class="control-label" for="tarotQuestion">你想带着什么问题来？（可留空）</label>
-  <input class="question-input" id="tarotQuestion" maxlength="120" placeholder="写下此刻最在意的事">
-  <div class="spread-switch" aria-label="选择牌阵">
-    <button type="button" data-spread="single">单张启示</button>
-    <button type="button" class="active" data-spread="three">三张牌阵</button>
+  <div class="ritual-note"><span class="ritual-note-index">A MOMENT TO REFLECT&nbsp; / &nbsp;01</span><p>先把问题放在心里。不必写得完整，也不需要立刻找到答案。</p></div>
+  <div class="question-panel">
+    <label class="control-label" for="tarotQuestion">此刻想问的事 <span>OPTIONAL</span></label>
+    <input class="question-input" id="tarotQuestion" maxlength="120" placeholder="写下一件你正在思考的事……">
+    <div class="spread-switch" aria-label="选择牌阵">
+      <button type="button" data-spread="single">单张启示</button>
+      <button type="button" class="active" data-spread="three">三张牌阵</button>
+    </div>
   </div>
-  <div class="tarot-tools"><span class="control-label" id="spreadDescription">过去 · 现在 · 未来</span><button class="primary-action" type="button" data-action="draw-tarot">抽取三张</button></div>
-  <div class="crystal-stage" id="crystalStage" aria-live="polite"><div class="tarot-empty">水晶尚未翻开<br>准备好时，抽取属于你的牌。</div></div>
+  <div class="tarot-tools">
+    <div class="tarot-tools-copy"><span class="control-label" id="spreadDescription">过去 · 现在 · 未来</span><span class="tarot-tools-hint">让水晶替你整理思绪</span></div>
+    <button class="primary-action" type="button" data-action="draw-tarot">抽取三张</button>
+  </div>
+  <div class="crystal-stage" id="crystalStage" aria-live="polite"><div class="empty-altar"><div class="empty-crystals"><i></i><i></i><i></i></div><span>THE CRYSTAL ALTAR</span><p>水晶尚未翻开<br>准备好时，抽取属于你的牌。</p></div></div>
   <div class="reading-results" id="tarotResults"></div>
   <section class="record-section" aria-label="塔罗历史记录">
     <h3>最近的抽取</h3>
@@ -386,19 +392,21 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
   <div class="wheel-layout">
     <section class="wheel-panel">
       <div class="wheel-stage">
+        <div class="wheel-stage-caption"><span>THE WHEEL OF CHOICE</span><span>01 — 16</span></div>
         <div class="wheel-marker" aria-hidden="true"></div>
         <div class="wheel-disc" id="wheelDisc"><canvas id="wheelCanvas" width="600" height="600" aria-label="可旋转的大转盘"></canvas></div>
-        <div class="wheel-center" aria-hidden="true">命运</div>
+        <div class="wheel-center" aria-hidden="true"><span>命运</span></div>
+        <div class="wheel-stage-foot"><span>LET THE MOMENT DECIDE</span><span>公平随机 · 等分扇区</span></div>
       </div>
-      <div class="wheel-controls"><button class="primary-action" type="button" data-action="spin" id="spinButton">开始转动</button></div>
-      <div class="wheel-result" id="wheelResult" aria-live="polite">转盘准备好了。</div>
+      <div class="wheel-controls"><button class="primary-action" type="button" data-action="spin" id="spinButton"><span class="spin-icon" aria-hidden="true"></span>开始转动</button></div>
+      <div class="wheel-result" id="wheelResult" aria-live="polite">转盘准备好了。<span>每个选项拥有相同的机会</span></div>
       <div class="wheel-history"><h4>最近结果</h4><ol id="wheelHistory"><li>还没有转动记录。</li></ol></div>
     </section>
     <aside class="wheel-side">
-      <div class="hero-kicker">CUSTOM OPTIONS</div>
+      <div class="wheel-side-top"><div class="hero-kicker">CUSTOM OPTIONS</div><span id="wheelCount">08 / 16</span></div>
       <h3>转盘内容</h3>
-      <p>每一项的机会相同。至少保留两项，最多添加十六项。</p>
-      <div class="add-row"><input id="newWheelOption" maxlength="18" placeholder="添加一个选项"><button type="button" data-action="add-option">添加</button></div>
+      <p>亲手写下想做的事。至少保留两项，最多十六项。</p>
+      <div class="add-row"><input id="newWheelOption" maxlength="18" placeholder="添加一个选项"><button type="button" data-action="add-option">＋ 添加</button></div>
       <ul class="option-list" id="wheelOptions"></ul>
       <div class="message-line" id="wheelMessage" aria-live="polite"></div>
     </aside>
@@ -410,14 +418,18 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
     <div><div class="hero-kicker">03 / THE ORACLE</div><h2>今日灵签</h2><p>选一个你正在思考的方向，抽一支签。读完它，再回到自己的判断。</p></div>
     <button class="back-room" type="button" data-go-home>回到小屋</button>
   </div>
+  <div class="oracle-preface"><span>CHOOSE A SUBJECT</span><p>把注意力留给一个方向，再抽取今天的提醒。</p></div>
   <div class="oracle-controls" aria-label="灵签主题">
     <button type="button" class="active" data-oracle-category="综合">综合</button>
     <button type="button" data-oracle-category="关系">关系</button>
     <button type="button" data-oracle-category="学业">学业</button>
     <button type="button" data-oracle-category="心情">心情</button>
   </div>
-  <div class="oracle-paper" id="oraclePaper" aria-live="polite"><div class="oracle-placeholder">签筒安静地放在桌上。<br>准备好时，抽一支签。</div></div>
-  <div style="display:flex;justify-content:center;margin-top:18px"><button class="primary-action" type="button" data-action="draw-oracle">抽取今日灵签</button></div>
+  <div class="oracle-paper-wrap">
+    <div class="oracle-paper" id="oraclePaper" aria-live="polite"><div class="oracle-placeholder"><span class="oracle-placeholder-seal">签</span><span>THE DAILY ORACLE</span><p>签筒安静地放在桌上。<br>准备好时，抽一支签。</p></div></div>
+    <span class="oracle-paper-caption">A SMALL NOTE FOR TODAY</span>
+  </div>
+  <div class="oracle-action"><span>READ SLOWLY&nbsp; / &nbsp;KEEP YOUR OWN JUDGMENT</span><button class="primary-action" type="button" data-action="draw-oracle">抽取今日灵签</button></div>
   <section class="record-section" aria-label="灵签历史记录">
     <h3>最近的灵签</h3>
     <ol class="record-list" id="oracleHistory"></ol>
@@ -540,7 +552,7 @@ function showView(name){
 function renderCrystalPlaceholders(){
  var stage=$('#crystalStage');
  if(stage.querySelector('.crystal-card'))return;
- stage.innerHTML='<div class="tarot-empty">水晶尚未翻开<br>准备好时，抽取属于你的牌。</div>';
+ stage.innerHTML='<div class="empty-altar"><div class="empty-crystals"><i></i><i></i><i></i></div><span>THE CRYSTAL ALTAR</span><p>水晶尚未翻开<br>准备好时，抽取属于你的牌。</p></div>';
 }
 function setSpread(value){
  spread=value;
@@ -559,10 +571,12 @@ function renderTarotReading(indices,question){
  indices.forEach(function(index){
   var card=tarotDeck[index],node=document.createElement('div');node.className='crystal-card';
   var face=document.createElement('div');face.className='crystal-face';
+  var facet=document.createElement('span');facet.className='crystal-facet';facet.setAttribute('aria-hidden','true');
+  facet.innerHTML='<svg viewBox="0 0 80 112" focusable="false"><path d="M40 3 70 22 76 54 40 108 4 54 10 22Z"/><path d="M10 22 40 36 70 22M4 54 40 36 76 54M40 3 40 36 40 108M10 22 4 54M70 22 76 54"/><path d="m22 17 18 19 18-19M22 83l18-47 18 47"/></svg>';
   var mark=document.createElement('span');mark.className='crystal-index';mark.textContent=card.mark;
   var name=document.createElement('strong');name.className='crystal-name';name.textContent=card.name;
   var latin=document.createElement('span');latin.className='crystal-latin';latin.textContent=card.latin;
-  face.appendChild(mark);face.appendChild(name);face.appendChild(latin);node.appendChild(face);stage.appendChild(node);
+  face.appendChild(facet);face.appendChild(mark);face.appendChild(name);face.appendChild(latin);node.appendChild(face);stage.appendChild(node);
  });
  results.innerHTML='';
  indices.forEach(function(index,i){
@@ -627,6 +641,7 @@ function renderWheelOptions(){
  var input=$('#newWheelOption'),addButton=$('[data-action="add-option"]');
  input.disabled=spinning;
  addButton.disabled=spinning;
+ var countLabel=$('#wheelCount');if(countLabel)countLabel.textContent=String(state.wheelOptions.length).padStart(2,'0')+' / 16';
  state.wheelOptions.forEach(function(value,index){
   var item=document.createElement('li'),label=document.createElement('span');label.textContent=(index+1)+'. '+value;
   var remove=document.createElement('button');remove.type='button';remove.className='remove-option';remove.setAttribute('data-remove-option',String(index));remove.setAttribute('aria-label','删除选项 '+value);remove.textContent='×';remove.disabled=spinning||state.wheelOptions.length<=2;
@@ -689,11 +704,12 @@ function setOracleCategory(category){
 }
 function renderOracleResult(entry){
  var paper=$('#oraclePaper');paper.innerHTML='';
- var number=document.createElement('div');number.className='oracle-number';number.textContent=entry.category+' · '+entry.date;
+ var seal=document.createElement('span');seal.className='oracle-seal';seal.setAttribute('aria-hidden','true');seal.textContent='签';
+  var number=document.createElement('div');number.className='oracle-number';number.textContent=entry.category+' · '+entry.date;
  var title=document.createElement('h3');title.textContent=entry.title;
  var text=document.createElement('p');text.textContent=entry.message;
  var advice=document.createElement('div');advice.className='oracle-advice';advice.textContent='今日提醒 · '+entry.advice;
- paper.appendChild(number);paper.appendChild(title);paper.appendChild(text);paper.appendChild(advice);
+ paper.appendChild(seal);paper.appendChild(number);paper.appendChild(title);paper.appendChild(text);paper.appendChild(advice);
 }
 function renderSavedOracle(){
  var key=dateKey()+'_'+selectedOracleCategory,entry=state.dailyOracle[key];
