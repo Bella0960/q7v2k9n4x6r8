@@ -209,6 +209,14 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <button class="app-card app-tile" type="button" data-href="fortune/fortune.html" data-drag="app_fate_cabin" data-name="命运小屋" title="命运小屋">
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 8l2.5 12h11L20 8z"/><path d="m4 8 8 4 8-4M12 12v8"/></svg>
+                  </span>
+                  <span class="app-name">命运小屋</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <button class="app-card app-tile" type="button" data-href="cafe/cafe.html" data-drag="app_cafe" data-name="咖啡馆" title="咖啡馆经营">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13v7a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h2a3 3 0 0 1 0 6h-3"/><path d="M8 3c0 1.5 1.5 1.5 1.5 3M13 3c0 1.5 1.5 1.5 1.5 3"/><path d="M3 22h17"/></svg>
@@ -648,7 +656,7 @@
           pages: [
             ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
             ['app_characters', 'app_footprint', 'app_settings', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
-            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
+            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date', 'app_fate_cabin']
           ],
           dock: ['app_chat', 'app_shop'],
           removed: ['image', 'postcard', 'polaroid', 'dialog', 'music', 'clock', 'todo', 'calendar', 'countdown', 'note', 'social', 'triple', 'ins', 'profile', 'stack']
@@ -728,6 +736,21 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var beautyIndex = currentLayout.pages[pageIndex].indexOf('app_beauty');
         currentLayout.pages[pageIndex].splice(beautyIndex >= 0 ? beautyIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 新增命运小屋入口：旧用户保留原有桌面顺序，新图标放在游戏大厅附近；若用户曾主动移除则尊重其选择。
+      (function addFateCabinShortcutToExistingLayouts() {
+        var id = 'app_fate_cabin';
+        var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+          || (currentLayout.dock || []).indexOf(id) !== -1
+          || (currentLayout.removed || []).indexOf(id) !== -1;
+        if (exists) return;
+        var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_games') !== -1; });
+        if (pageIndex < 0) pageIndex = 1;
+        while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+        var gamesIndex = currentLayout.pages[pageIndex].indexOf('app_games');
+        currentLayout.pages[pageIndex].splice(gamesIndex >= 0 ? gamesIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
         saveLayout(currentLayout);
       })();
 
