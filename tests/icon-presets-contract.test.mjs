@@ -19,6 +19,41 @@ test('icon preset controls live at the bottom of the existing icon upload page',
   assert.match(iconSettings, /data-act="restore"/);
 });
 
+
+test('icon upload rows are generated from every launcher app instead of a separate hard-coded list', () => {
+  assert.match(iconSettings, /fetch\('\.\.\/index\.html'/);
+  assert.match(iconSettings, /querySelectorAll\('button\[data-drag\^="app_"\]'\)/);
+  assert.match(iconSettings, /\.app-name/);
+  assert.match(iconSettings, /\.app-icon svg/);
+  assert.match(iconSettings, /var APPS = \[\]/);
+  assert.doesNotMatch(iconSettings, /id:\s*'app_shopadmin'/,
+    'the removed 商店管理 tile must not remain as a stale upload row');
+
+  const openTags = [...home.matchAll(/<button\b[^>]*\bdata-drag="app_[^"]+"[^>]*>/g)];
+  assert.ok(openTags.length > 0, 'launcher must expose app tiles');
+  const ids = [];
+  for (const match of openTags) {
+    const tag = match[0];
+    const id = tag.match(/\bdata-drag="(app_[^"]+)"/)?.[1];
+    const end = home.indexOf('</button>', match.index);
+    assert.ok(id && end > match.index, 'each launcher app tile must be a complete button');
+    const block = home.slice(match.index, end);
+    assert.match(tag, /\bdata-name="[^"]+"/, id + ' must keep its data-name fallback');
+    assert.match(block, /class="app-name"/, id + ' must expose its visible label');
+    assert.match(block, /class="app-icon"/, id + ' must expose its icon wrapper');
+    assert.match(block, /<svg\b/, id + ' must expose a default SVG icon');
+    ids.push(id);
+  }
+  assert.equal(new Set(ids).size, ids.length, 'launcher app IDs must be unique');
+  for (const id of [
+    'app_theme_store', 'app_footprint', 'app_takeout', 'app_couple', 'app_growth',
+    'app_companion', 'app_live_room', 'app_poster', 'app_envelope',
+    'app_novelstudio', 'app_date'
+  ]) {
+    assert.ok(ids.includes(id), id + ' must remain represented in the launcher inventory');
+  }
+});
+
 test('preset metadata stays small while image copies use the existing IndexedDB wallpaper store', () => {
   assert.match(iconSettings, /PRESET_LIST_KEY = 'home_icon_presets_v1'/);
   assert.match(iconSettings, /ACTIVE_PRESET_KEY = 'home_icon_active_preset_v1'/);
@@ -47,5 +82,5 @@ test('switching and resetting icons can roll back, while deleting a preset does 
 });
 
 test('service worker cache version changes so installed PWA users receive the updated icon page', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v173'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v174'/);
 });
