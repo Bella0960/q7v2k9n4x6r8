@@ -249,7 +249,7 @@
 
   // 老记录（一条消息含多个气泡）编辑单个气泡：只替换该段，其余段原样重建。
   function replaceBubbleInText(raw, index, newText) {
-    var parsed = parseReplyContent(raw, 'auto');
+    var parsed = parseReplyContent(raw, 'legacy');
     if (index < 0 || index >= parsed.bubbles.length) return String(raw || '');
     var bubbles = parsed.bubbles.slice();
     var translations = parsed.translations.slice();
@@ -262,7 +262,7 @@
   }
 
   function removeBubbleFromText(raw, index) {
-    var parsed = parseReplyContent(raw, 'auto');
+    var parsed = parseReplyContent(raw, 'legacy');
     if (index < 0 || index >= parsed.bubbles.length) return String(raw || '');
     var bubbles = parsed.bubbles.slice();
     var translations = parsed.translations.slice();
@@ -273,7 +273,7 @@
   }
 
   function applyBubbleTranslation(raw, index, translation) {
-    var parsed = parseReplyContent(raw, 'auto');
+    var parsed = parseReplyContent(raw, 'legacy');
     if (index < 0 || index >= parsed.bubbles.length) return String(raw || '');
     var translations = parsed.translations.slice();
     translations[index] = String(translation || '').trim();
