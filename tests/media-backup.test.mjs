@@ -8,7 +8,7 @@
  *   4. base64 解码失败整条跳过，不破坏其他记录
  *   5. MIME fallback：无伴生字段时读 value.format
  *   6. 真 dumpDatabase：blobs 超限 → atomicExportFailed 整库排除
- *   7. 真 dumpDatabase + restoreDatabase：完整往返恢复三个 store
+ *   7. 真 dumpDatabase + restoreDatabase：完整往返恢复四个 store（含 image_records）
  *   8. clearOnRestore 在 restoreDatabase 层生效（空 store 仍 clear）
  *   9. 体积边界：store 总 Blob 超限 → 最后几条被跳过 → 触发 atomicExport
  *  10. doExport 层：atomicExportFailed 的库不进 dbData，进 dbWarnings + allSkipped
@@ -565,7 +565,7 @@ test('06 dumpDatabase：blobs 超限 → 整库 atomicExportFailed', async () =>
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
     const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
 
-    const db = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    const db = registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
 
     // 走 put() 路径：Blob 会被序列化 → __isMockBlob → get() 时还原成 instanceof Blob
     await injectRecords(db, 'assets', maomaoAssetsDef.stores.find(s => s.store === 'assets'), [
@@ -583,7 +583,7 @@ test('06 dumpDatabase：blobs 超限 → 整库 atomicExportFailed', async () =>
         { assetId: 'img002', blob: new SandboxBlob([Buffer.from('hello')], { type: 'image/png' }) }
     ]);
 
-    const result = await ctx.dumpDatabase('maomao-assets', 1, maomaoAssetsDef.stores);
+    const result = await ctx.dumpDatabase('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
 
     assert.ok(result !== null, 'dumpDatabase 不应该 null（DB 能打开）');
     assert.ok(result.atomicExportFailed === true,
@@ -603,11 +603,12 @@ test('07 dump→restore 完整往返：字节级一致 + refs 完整关系保持
     const ctx = buildCtxFull();
 
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
-    const db = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    const db = registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
 
     const assetsDef = maomaoAssetsDef.stores.find(s => s.store === 'assets');
     const blobsDef  = maomaoAssetsDef.stores.find(s => s.store === 'blobs');
     const refsDef   = maomaoAssetsDef.stores.find(s => s.store === 'refs');
+    const imageRecordsDef = maomaoAssetsDef.stores.find(s => s.store === 'image_records');
 
     // 预先构造明确的原始字节（不同长度，不同 pattern，方便比对）
     const ORIG_BYTES_1 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
@@ -625,14 +626,25 @@ test('07 dump→restore 完整往返：字节级一致 + refs 完整关系保持
         { assetId: 'img001', ownerType: 'character', ownerId: 'char_alice', role: 'avatar' },
         { assetId: 'img002', ownerType: 'chat',      ownerId: 'room_99',    role: 'background' }
     ]);
+    await injectRecords(db, 'image_records', imageRecordsDef, [
+        {
+            id: 'image_record_001', characterId: 'char_alice', assetId: 'img001',
+            prompt: 'Fixed silver hair; quiet garden portrait',
+            sceneDescription: 'A quiet garden in late afternoon',
+            isPrivate: true, createdAt: 1793900000000
+        }
+    ]);
 
-    const dumpResult = await ctx.dumpDatabase('maomao-assets', 1, maomaoAssetsDef.stores);
+    const dumpResult = await ctx.dumpDatabase('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     assert.ok(dumpResult !== null);
     assert.ok(!dumpResult.atomicExportFailed);
-    assert.equal(Object.keys(dumpResult.data).length, 3);
+    assert.equal(Object.keys(dumpResult.data).length, 4);
     assert.equal(dumpResult.data.assets.length, 2);
     assert.equal(dumpResult.data.refs.length, 2);
     assert.equal(dumpResult.data.blobs.length, 2);
+    assert.equal(dumpResult.data.image_records.length, 1);
+    assert.equal(dumpResult.data.image_records[0].id, 'image_record_001');
+    assert.equal(dumpResult.data.image_records[0].assetId, 'img001');
 
     // dump 层验证：blob 是 base64 字符串、有伴生 MIME 字段
     dumpResult.data.blobs.forEach(b => {
@@ -640,18 +652,23 @@ test('07 dump→restore 完整往返：字节级一致 + refs 完整关系保持
         assert.ok(b.__blobMime_blob);
     });
 
-    const db2 = registerDB('maomao-assets-restored', 1, maomaoAssetsDef.stores);
+    const db2 = registerDB('maomao-assets-restored', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     const restoreResult = await ctx.restoreDatabase(
-        'maomao-assets-restored', 1, maomaoAssetsDef.stores, dumpResult.data
+        'maomao-assets-restored', maomaoAssetsDef.version, maomaoAssetsDef.stores, dumpResult.data
     );
     assert.ok(restoreResult.dbRestored);
-    assert.equal(restoreResult.written, 6, '2+2+2=6 条');
+    assert.equal(restoreResult.written, 7, '2+2+2+1=7 条');
     assert.equal(restoreResult.skipped, 0);
 
     const restored = openDbs['maomao-assets-restored']._data;
     assert.equal(restored.assets.length, 2);
     assert.equal(restored.blobs.length, 2);
     assert.equal(restored.refs.length, 2);
+    assert.equal(restored.image_records.length, 1);
+    assert.equal(restored.image_records[0].characterId, 'char_alice');
+    assert.equal(restored.image_records[0].prompt, 'Fixed silver hair; quiet garden portrait');
+    assert.equal(restored.image_records[0].isPrivate, true);
+    assert.equal(restored.image_records[0].assetId, 'img001');
 
     // ====== Byte-level 完全一致 ======
     const blobMap = {};
@@ -695,7 +712,7 @@ test('08 restoreDatabase clearOnRestore：空 store 仍 clear，不残留旧数�
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
 
     // 旧 DB 里有残留
-    registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     openDbs['maomao-assets']._data['assets'].push(
         { assetId: 'old', type: 'image', mimeType: 'image/gif' }
     );
@@ -713,7 +730,7 @@ test('08 restoreDatabase clearOnRestore：空 store 仍 clear，不残留旧数�
         refs: []      // clearOnRestore → 执行 clear
     };
 
-    const result = await ctx.restoreDatabase('maomao-assets', 1, maomaoAssetsDef.stores, incomingData);
+    const result = await ctx.restoreDatabase('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores, incomingData);
     assert.ok(result.dbRestored);
 
     // assets 和 refs 应为空（clearOnRestore 触发 clear）
@@ -736,7 +753,7 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
     const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
     const blobStoreMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobStoreMaxBytes;
 
-    const db = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    const db = registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     const blobsDef = maomaoAssetsDef.stores.find(s => s.store === 'blobs');
     const assetsDef = maomaoAssetsDef.stores.find(s => s.store === 'assets');
 
@@ -757,7 +774,7 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
     await injectRecords(db, 'blobs', blobsDef, blobRecs);
     await injectRecords(db, 'assets', assetsDef, assetRecs);
 
-    const result = await ctx.dumpDatabase('maomao-assets', 1, maomaoAssetsDef.stores);
+    const result = await ctx.dumpDatabase('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
 
     assert.ok(result.atomicExportFailed === true,
         'store 总 Blob 超限 → 应 atomicExportFailed');
@@ -795,7 +812,7 @@ test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     const blobMax = maomaoAssetsDef.stores.find(s => s.store === 'blobs').blobMaxBytes;
 
     // ── maomao-assets：blobs 有一条超限 → atomicExportFailed ──
-    const assetsDb = registerDB('maomao-assets', 1, maomaoAssetsDef.stores);
+    const assetsDb = registerDB('maomao-assets', maomaoAssetsDef.version, maomaoAssetsDef.stores);
     await injectRecords(assetsDb, 'assets', maomaoAssetsDef.stores.find(s => s.store === 'assets'), [
         { assetId: 'a1', type: 'image', mimeType: 'image/jpeg', size: 1024 },
         { assetId: 'a2', type: 'image', mimeType: 'image/png',  size: 2048 }
