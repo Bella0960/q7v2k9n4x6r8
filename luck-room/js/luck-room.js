@@ -587,6 +587,9 @@ document.querySelectorAll('.play-tab').forEach(function (button) {
 });
 $('roleSelect').addEventListener('change', function () {
   roleRequestToken++;
+  roleStartToken++;
+  $('rolePrompt').hidden = true;
+  $('rolePrompt').textContent = '';
   selectedRole = roles.find(function (role) { return String(role.id) === this.value; }, this) || null;
   saveSettings(); renderRoleOptions(); renderHistory();
 });
