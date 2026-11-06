@@ -107,7 +107,7 @@ var DAILY = [
   { keyword: '一点点好心情', headline: '今天可以认真享受小事。', description: '一顿喜欢的饭、一段喜欢的音乐，都值得被好好对待。', categories: [['灵感','轻盈开放'],['沟通','分享心情'],['休息','补充能量']] },
   { keyword: '稳稳地向前', headline: '不必赶路，方向更重要。', description: '把注意力放在自己能掌握的部分，慢慢推进就很好。', categories: [['灵感','保持专注'],['沟通','耐心回应'],['休息','适度停顿']] }
 ];
-var state = { pools: clone(DEFAULT_POOLS), wheels: clone(DEFAULT_WHEELS), history: [] };
+var state = { pools: clone(DEFAULT_POOLS), wheels: clone(DEFAULT_WHEELS), history: [], lotDrawMode: 'user' };
 var roles = [];
 var selectedRole = null;
 var activePool = 'meal';
@@ -157,6 +157,7 @@ function loadState() {
   if (Array.isArray(saved.pools)) state.pools = saved.pools.filter(validTemplate);
   if (Array.isArray(saved.wheels)) state.wheels = saved.wheels.filter(validTemplate);
   if (Array.isArray(saved.history)) state.history = saved.history.slice(-100);
+  if (['user', 'role', 'alternate'].indexOf(saved.lotDrawMode) >= 0) state.lotDrawMode = saved.lotDrawMode;
   if (!state.pools.length) state.pools = clone(DEFAULT_POOLS);
   if (!state.wheels.length) state.wheels = clone(DEFAULT_WHEELS);
 }
@@ -183,6 +184,38 @@ function loadRoles() {
 function roleName(role) {
   return role ? String(role.name || role.nickname || role.charName || '聊天角色') : '独自体验';
 }
+function nextLotActorType() {
+  if (!selectedRole || state.lotDrawMode === 'user') return 'user';
+  if (state.lotDrawMode === 'role') return 'role';
+  var count = state.history.filter(function (entry) {
+    return String(entry.roleId || '') === currentRoleId() && entry.game === '抽签';
+  }).length;
+  return count % 2 === 0 ? 'user' : 'role';
+}
+function updateLotDrawModeUI() {
+  var select = $('lotDrawMode');
+  if (!select) return;
+  var roleOption = select.querySelector('option[value="role"]');
+  var alternateOption = select.querySelector('option[value="alternate"]');
+  if (roleOption) roleOption.disabled = !selectedRole;
+  if (alternateOption) alternateOption.disabled = !selectedRole;
+  select.value = selectedRole ? state.lotDrawMode : 'user';
+  var hint = $('lotDrawHint');
+  if (!selectedRole) {
+    hint.textContent = '独自体验中。选择角色后，可开启角色代抽或轮流抽取。';
+  } else if (state.lotDrawMode === 'role') {
+    hint.textContent = '这一轮由' + roleName(selectedRole) + '代抽，结果仍由本地随机产生。';
+  } else if (state.lotDrawMode === 'alternate') {
+    var nextName = nextLotActorType() === 'role' ? roleName(selectedRole) : '你';
+    hint.textContent = '下一次由' + nextName + '抽取，之后自动轮换。';
+  } else {
+    hint.textContent = '这一轮由你亲自抽取。';
+  }
+}
+function getLotActor() {
+  var type = nextLotActorType();
+  return { type: type, name: type === 'role' && selectedRole ? roleName(selectedRole) : '你' };
+}
 function renderRoleOptions() {
   var select = $('roleSelect');
   select.textContent = '';
@@ -196,6 +229,7 @@ function renderRoleOptions() {
   });
   select.value = selectedRole ? String(selectedRole.id) : '';
   $('roleStatus').textContent = selectedRole ? '已邀请 ' + roleName(selectedRole) + ' 一起参与。' : '可以自己玩，也可以叫一个角色来陪你。';
+  updateLotDrawModeUI();
   var avatar = $('companionAvatar'), fallback = $('companionFallback');
   var source = selectedRole ? roleAvatar(selectedRole) : '';
   if (source) {
@@ -218,7 +252,7 @@ function showToast(message) {
   toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 2300);
 }
 function currentRoleId() { return selectedRole ? String(selectedRole.id) : ''; }
-function addHistory(game, result, detail) {
+function addHistory(game, result, detail, actorName) {
   state.history.push({
     id: 'luck_' + Date.now() + '_' + randomIndex(99999),
     game: game,
@@ -226,10 +260,12 @@ function addHistory(game, result, detail) {
     roleName: roleName(selectedRole),
     result: String(result || ''),
     detail: String(detail || ''),
+    actorName: String(actorName || ''),
     createdAt: Date.now()
   });
   state.history = state.history.slice(-100);
   saveState();
+  if (game === '抽签') updateLotDrawModeUI();
   renderHistory();
 }
 function roleFallback(game) {
@@ -248,22 +284,24 @@ function roleContextFor(role) {
   } catch (error) {}
   return '';
 }
-function requestRoleStart(game) {
+function requestRoleStart(game, actorType) {
   var target = $('rolePrompt');
   if (!target) return;
   if (!selectedRole) { target.hidden = true; target.textContent = ''; return; }
   var role = selectedRole;
   var roleId = String(role.id);
   var token = ++roleStartToken;
-  var fallback = roleName(role) + '：我准备好了。来看看这次会遇到什么。';
+  var roleDraw = actorType === 'role';
+  var fallback = roleName(role) + (roleDraw ? '：这次我来抽。' : '：我准备好了。来看看这次会遇到什么。');
   target.hidden = false;
   target.textContent = fallback;
   if (!window.PhoneAPI || typeof PhoneAPI.complete !== 'function') return;
   var context = roleContextFor(role);
   var system = '你正在 MAOMAO 的轻量娱乐互动应用里与用户一起参与小游戏。严格保持所选角色的人设、语气、称呼和表达习惯。现在是揭晓前的准备阶段，还没有产生任何随机结果。不要替用户做选择、猜测结果、操纵概率或提前编造牌面。只用一句简短自然的话表示你正在参与、准备好了，或向用户问一句轻松的话。不要输出分析报告。' + (context ? '\n\n' + context : '');
+  var actionLine = roleDraw ? '这一轮由你代替用户抽签，请自然表达“我来抽”或类似意思，但不要选择、猜测或编造签文。' : '现在还没有结果，请以角色身份自然地说一句揭晓前的参与话语。';
   PhoneAPI.complete({
     system: system,
-    user: '玩法：' + game + '\n现在还没有结果。请以角色身份自然地说一句揭晓前的参与话语。',
+    user: '玩法：' + game + '\n' + actionLine,
     temperature: 0.85,
     timeoutMs: 9000
   }).then(function (reply) {
@@ -273,7 +311,7 @@ function requestRoleStart(game) {
     if (token === roleStartToken && selectedRole && String(selectedRole.id) === roleId) target.textContent = fallback;
   });
 }
-function askRole(game, detail, targetId) {
+function askRole(game, detail, targetId, actorType) {
   var target = $(targetId);
   if (!target) return;
   if (!selectedRole) { target.textContent = ''; return; }
@@ -288,7 +326,7 @@ function askRole(game, detail, targetId) {
   var system = '你正在 MAOMAO 的轻量娱乐互动应用里与用户一起玩。请严格保持所选角色的人设、语气、称呼和表达习惯。你只是在独立随机机制已经确定结果后自然回应，不得改变、质疑、重抽或操纵结果。不要把塔罗、运势、抽签说成真实预言，不对健康、法律、财务或重大人生决定作判断或指令。回复简短自然，像真实聊天，不要输出分析报告。' + (context ? '\n\n' + context : '');
   PhoneAPI.complete({
     system: system,
-    user: '玩法：' + game + '\n已经由独立随机机制确定的结果：' + detail + '\n请以角色身份自然接一句话。',
+    user: '玩法：' + game + '\n已经由独立随机机制确定的结果：' + detail + (actorType === 'role' ? '\n这一轮由你代替用户抽取。' : actorType === 'user' ? '\n这一轮由用户亲自抽取。' : '') + '\n请以角色身份自然接一句话。',
     temperature: 0.85,
     timeoutMs: 12000
   }).then(function (reply) {
@@ -433,6 +471,7 @@ function renderHistory() {
     var date = new Date(entry.createdAt);
     meta.textContent = entry.roleName + ' · ' + date.toLocaleString();
     if (entry.detail) meta.textContent += ' · ' + entry.detail;
+    if (entry.actorName) meta.textContent += ' · 由' + entry.actorName + '抽取';
     row.append(title, meta); list.appendChild(row);
   });
 }
@@ -441,7 +480,8 @@ function drawLot() {
   if (!pool || !pool.items.length) { showToast('先往签筒里添加至少一条内容。'); return; }
   var button = $('drawLotBtn');
   if (button.disabled) return;
-  requestRoleStart('抽签');
+  var actor = getLotActor();
+  requestRoleStart('抽签', actor.type);
   var result = pool.items[randomIndex(pool.items.length)];
   $('lotResult').hidden = true;
   $('lotResultText').textContent = '';
@@ -453,8 +493,8 @@ function drawLot() {
     $('lotResultText').textContent = result;
     $('lotResult').hidden = false;
     button.disabled = false;
-    addHistory('抽签', result, pool.name);
-    askRole('抽签', result, 'lotRoleReaction');
+    addHistory('抽签', result, pool.name, actor.name);
+    askRole('抽签', result, 'lotRoleReaction', actor.type);
   }, 1250);
 }
 function spinWheel() {
@@ -608,6 +648,13 @@ $('roleSelect').addEventListener('change', function () {
   selectedRole = roles.find(function (role) { return String(role.id) === this.value; }, this) || null;
   saveSettings(); renderRoleOptions(); renderHistory();
 });
+$('lotDrawMode').addEventListener('change', function () {
+  var value = this.value;
+  if (['user', 'role', 'alternate'].indexOf(value) < 0 || (!selectedRole && value !== 'user')) return;
+  state.lotDrawMode = value;
+  saveState();
+  updateLotDrawModeUI();
+});
 $('lotPoolSelect').addEventListener('change', function () {
   activePool = this.value; renderLotItems(); $('lotResult').hidden = true;
 });
@@ -673,7 +720,7 @@ $('historyDrawer').addEventListener('click', function (event) {
 $('clearHistoryBtn').addEventListener('click', function () {
   var roleId = currentRoleId();
   state.history = state.history.filter(function (entry) { return String(entry.roleId || '') !== roleId; });
-  saveState(); renderHistory(); showToast('当前视图的记录已清除。');
+  saveState(); updateLotDrawModeUI(); renderHistory(); showToast('当前视图的记录已清除。');
 });
 loadState(); loadRoles(); renderInitial();
 })();
