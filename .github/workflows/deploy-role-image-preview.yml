@@ -55,6 +55,7 @@ jobs:
           command: deploy --config wrangler.ai-img-preview.jsonc
 
       - name: Publish exact preview URL
+        id: publish
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
           COMMAND_OUTPUT: ${{ steps.deploy.outputs.command-output }}
@@ -77,3 +78,18 @@ jobs:
             echo "This is an isolated Worker. Production Worker mao is unchanged."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Preview URL: $URL"
+
+      - name: Smoke-test deployed mobile pages
+        env:
+          PREVIEW_URL: ${{ steps.publish.outputs.url }}
+        run: |
+          set -euo pipefail
+          for path in "/" "/settings/settings.html" "/settings/image-generation.html" "/worldbook/characters/characters.html" "/chat/chat/chat-detail.html" "/shared/js/phone/image-generation.js"; do
+            status="$(curl --retry 2 --retry-delay 2 --silent --show-error --output /tmp/preview-response --write-out '%{http_code}' "${PREVIEW_URL}${path}")"
+            if [ "$status" != "200" ]; then
+              echo "Preview route failed: $path (HTTP $status)" >&2
+              head -c 500 /tmp/preview-response >&2 || true
+              exit 1
+            fi
+            echo "PASS HTTP 200: $path"
+          done
