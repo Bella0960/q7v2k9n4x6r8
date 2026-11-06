@@ -93,11 +93,11 @@ test('guided tours load same-origin pages and their selector targets exist in re
   assert.ok(tourLessons.length >= 13, 'expected at least 13 detailed real-page tours');
   for (const lesson of tourLessons) {
     assert.ok(lesson.tour.url.startsWith('../'), 'tour must stay on the MAOMAO origin: ' + lesson.id);
-    const page = readPage(lesson.tour.url);
     assert.ok(lesson.tour.steps.length >= 3, 'tour too short: ' + lesson.id);
     for (const step of lesson.tour.steps) {
       assert.ok(step.selector, 'tour step has no selector: ' + lesson.id);
-      assertSelectorExists(page, step.selector, lesson.id);
+      const stepPage = readPage(step.page || lesson.tour.url);
+      assertSelectorExists(stepPage, step.selector, lesson.id + ' / ' + (step.page || lesson.tour.url));
     }
   }
   assert.match(html, /右侧是真实 MAOMAO 页面/);
@@ -122,6 +122,7 @@ test('API practice stays local-only and MIX is not given invented connection det
   assert.doesNotMatch(html, /XMLHttpRequest|navigator\.sendBeacon|fetch\s*\(/);
   assert.match(html, /API Key 是账户凭证/);
   assert.match(html, /教程不会读取或显示输入框里的密钥/);
+  assert.doesNotMatch(html, /getElementById\(['\"]api-key['\"]\)\s*\.value/);
 });
 
 test('novel workshop guide reflects current local-template behavior', () => {
