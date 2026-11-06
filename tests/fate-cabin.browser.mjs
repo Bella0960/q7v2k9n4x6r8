@@ -72,6 +72,8 @@ try {
   await page.locator('[data-open="tarot"]').first().click();
   await page.locator('#tarotView').waitFor({ state: 'visible' });
   assert.equal(await page.locator('.empty-crystals i').count(), 3, 'the tarot altar should show its three crystal objects');
+  assert.ok((await page.locator('.tarot-tools-hint').innerText()).includes('78 张牌组'),
+    'the tarot interface should advertise the complete 78-card deck');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
     'tarot view should not overflow horizontally on a narrow mobile screen');
   await page.locator('[data-spread="single"]').click();
@@ -110,6 +112,8 @@ try {
   await page.evaluate(() => { Math.random = () => 0; });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.locator('[data-action="spin"]').click();
+  assert.equal(await page.locator('[data-action="reset-options"]').isDisabled(), true,
+    'restoring defaults must be locked during a spin');
   assert.equal(await page.locator('#newWheelOption').isDisabled(), true,
     'wheel options must lock while the wheel is rotating');
   assert.equal(await page.locator('[data-action="add-option"]').isDisabled(), true,
@@ -135,7 +139,7 @@ try {
   const pointerDistance = Math.min(Math.abs(wheelAlignment.center - 270), 360 - Math.abs(wheelAlignment.center - 270));
   assert.ok(pointerDistance < 1, 'selected wheel segment should stop centered under the top pointer');
   const stored = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), 'maomao_fate_cabin_v1');
-  assert.ok(stored.wheelOptions.includes('浏览器测试选项'), 'wheel option should persist locally');
+  assert.ok(stored.wheelOptions.includes('浏览器改名选项'), 'renamed wheel option should persist locally');
   assert.equal(stored.wheelHistory[0].value.length > 0, true, 'wheel result should persist locally');
 
   await page.reload({ waitUntil: 'load' });
