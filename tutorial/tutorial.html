@@ -191,11 +191,11 @@ addTourConfig('image-generate', {
   ]
 });
 addTourConfig('worldbook', {
-  url:'../worldbook/worldbook/worldbook.html', prepare:'worldbook-new',
+  url:'../worldbook/worldbook/worldbook.html',
   steps:[
     {selector:'#btnAddFooter',title:'新建世界书',text:'底部按钮用于建立一本新的世界书。',hint:'先设置书名。'},
     {selector:'#edName',title:'填写世界书名称',text:'给这本世界书起一个容易识别的名字。',hint:'例如人物背景、世界设定。'},
-    {selector:'#edFieldScope',title:'设置作用范围',text:'根据用途选择全局或本地范围。角色专属内容不要误设成全局。',hint:'检查 scope。'},
+    
     {selector:'#btnEditSave',title:'保存世界书',text:'确认名称和范围后保存。之后再展开书本添加具体条目。',hint:'真实写入世界书数据。'}
   ]
 });
@@ -212,7 +212,7 @@ addTourConfig('fonts', {
   ]
 });
 addTourConfig('character-create', {
-  url:'../worldbook/characters/characters.html',
+  url:'../worldbook/characters/characters.html', prepare:'role-editor',
   steps:[
     {selector:'#editRoleName',title:'角色名称',text:'填写角色显示名称，便于在角色列表和聊天中识别。',hint:'名称尽量清楚。'},
     {selector:'#editRolePersona',title:'角色人设',text:'写明身份、性格、背景与行为方式。具体习惯比单一形容词更有帮助。',hint:'描述角色如何说话和做决定。'},
@@ -281,8 +281,8 @@ function prepareGuidedPage(tour,doc){
       if(panel&&panel.style.display==='none'&&apiButton)apiButton.click();
     }else if(tour.prepare==='forum-compose'){
       var compose=doc.getElementById('composeTop');if(compose)compose.click();
-    }else if(tour.prepare==='worldbook-new'){
-      var add=doc.getElementById('btnAddFooter');if(add)add.click();
+    }else if(tour.prepare==='role-editor'){
+      var roleAdd=doc.getElementById('btnAddRole');if(roleAdd)roleAdd.click();
     }else if(tour.prepare==='diary-new'){
       var newEntry=doc.getElementById('newEntryBtn');if(newEntry)newEntry.click();
     }else if(tour.prepare==='library-import'){
