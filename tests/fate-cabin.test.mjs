@@ -50,3 +50,13 @@ test('navigation, wheel editing and persistence failures have explicit safe beha
   assert.match(page, /setStorageNotice/, 'storage read/write failures must have a visible global message');
   assert.match(page, /本地保存失败/, 'failed writes must not be reported as successful persistence');
 });
+
+
+test('tarot and oracle history have visible reopenable entries', () => {
+  assert.match(page, /id="tarotHistory"/);
+  assert.match(page, /data-tarot-history-index/);
+  assert.match(page, /function openTarotHistory/);
+  assert.match(page, /id="oracleHistory"/);
+  assert.match(page, /data-oracle-history-index/);
+  assert.match(page, /function openOracleHistory/);
+});
