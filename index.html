@@ -733,6 +733,38 @@
           saveLayout(currentLayout);
         }
       })();
+      // One-time upgrade to the component-first home. Existing v12 data currently wins over
+      // getDefaultLayout(), so changing only the default object is not enough for returning users.
+      // Keep one backup of the previous arrangement, then switch the home page to the new default.
+      (function ensureComponentFirstHomeRevision() {
+        var revision = 'component-first-home-20261106-v2';
+        var revisionKey = 'ds_home_default_revision';
+        var backupKey = 'maomao_home_layout_backup_20261106';
+        var requiredHomeWidgets = ['clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'];
+        var firstPage = currentLayout && Array.isArray(currentLayout.pages) ? (currentLayout.pages[0] || []) : [];
+        var alreadyComponentFirst = requiredHomeWidgets.every(function (id) {
+          return firstPage.indexOf(id) !== -1;
+        });
+        var appliedRevision = '';
+        try { appliedRevision = localStorage.getItem(revisionKey) || ''; } catch (e) {}
+
+        if (appliedRevision === revision) return;
+
+        if (!alreadyComponentFirst) {
+          // Preserve the user's former layout for recovery; this is separate from chat/media/app data.
+          try {
+            if (!localStorage.getItem(backupKey)) {
+              var previous = localStorage.getItem(LS_KEY);
+              if (previous) localStorage.setItem(backupKey, previous);
+            }
+          } catch (e) {}
+          currentLayout = getDefaultLayout();
+          saveLayout(currentLayout);
+        }
+
+        try { localStorage.setItem(revisionKey, revision); } catch (e) {}
+      })();
+
       // 迁移旧桌面布局：通话/通讯录归入聊天应用，不再作为 Dock 独立应用。
       // 仅过滤已经移除的入口 ID，保留其他应用和用户自定义排列，不清空整个布局。
       (function migrateRemovedShortcuts() {
