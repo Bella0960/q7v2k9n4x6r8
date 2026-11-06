@@ -20,7 +20,7 @@
       (function () {
         try {
           Object.keys(localStorage).forEach(function (key) {
-            if (/^ds_layout_v\d+$/.test(key) && key !== 'ds_layout_v13') {
+            if (/^ds_layout_v\d+$/.test(key) && key !== 'ds_layout_v14') {
               localStorage.removeItem(key);
             }
           });
@@ -36,8 +36,8 @@
     <script src="shared/js/font-loader.js?v=20261022v1"></script>
     <script src="shared/js/wallpaper-store.js?v=20261026v2"></script>
 <script src="shared/js/native-feel.js?v=20261026-statusbar2"></script>
-    <link rel="stylesheet" href="desktop/css/styles.css?v=20261106-home-layout1">
-  <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout1">
+    <link rel="stylesheet" href="desktop/css/styles.css?v=20261106-home-layout2">
+  <link rel="stylesheet" href="shared/css/mobile-fit.css?v=20261106-home-layout2">
     <link rel="stylesheet" href="shared/vendor/liquid-glass/liquid-glass.css?v=1.2.0">
     <script>window.LiquidGlassConfig = { selector: '.maomao-liquid-glass-icon', preset: 'ios26', refraction: 'auto', observe: true, debug: false };</script>
     <script defer src="shared/vendor/liquid-glass/liquid-glass.js?v=1.2.0"></script>
@@ -638,22 +638,20 @@
       }
 
       // ===== 布局数据：统一网格，每一页都可混放应用和挂件 =====
-      // v13 格式：使用本地确认的组件优先默认桌面。
+      // v14 default home: full-width clock; four app icons + duo avatars; photo wall + four app icons.
       // removed = 用户从桌面移除的应用/挂件（元素暂存在隐藏仓库里，之后可以重新添加）
-      var LS_KEY = 'ds_layout_v13';
+      var LS_KEY = 'ds_layout_v14';
 
       function getDefaultLayout() {
-        // Component-first home: large clock, personal image, photo wall, then compact utility widgets.
-        // App shortcuts live on the following pages so the first page reads as a designed home screen.
         return {
-          v: 13,
+          v: 14,
           pages: [
-            ['clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'],
-            ['app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_footprint', 'app_settings', 'app_finance'],
-            ['app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster', 'app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
+            ['clock-lg', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'duo', 'photowall', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'],
+            ['app_characters', 'app_footprint', 'app_settings', 'app_finance', 'app_takeout', 'app_couple', 'app_growth', 'app_companion', 'app_games', 'app_cafe', 'app_live_room', 'app_poster'],
+            ['app_library', 'app_envelope', 'app_diary', 'app_novelstudio', 'app_dreamtravel', 'app_date']
           ],
           dock: ['app_chat', 'app_shop'],
-          removed: ['postcard', 'polaroid', 'duo', 'dialog', 'music', 'clock', 'social', 'triple', 'ins', 'profile', 'stack']
+          removed: ['image', 'postcard', 'polaroid', 'dialog', 'music', 'clock', 'todo', 'calendar', 'countdown', 'note', 'social', 'triple', 'ins', 'profile', 'stack']
         };
       }
 
