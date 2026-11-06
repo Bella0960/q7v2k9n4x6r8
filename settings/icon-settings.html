@@ -49,6 +49,41 @@
       .icon-btns button:active { opacity: 0.6; }
       .icon-btns button.restore { color: #c0392b; border-color: rgba(192,57,43,0.3); }
       .tip { font-size: 12px; color: var(--aux, #888); padding: 0 4px 12px; line-height: 1.6; }
+      .icon-presets-card { gap: 12px; padding: 14px; }
+      .icon-preset-current { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .icon-preset-current-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+      .icon-preset-current-copy span { font-size: 11px; color: var(--aux, #888); }
+      .icon-preset-current-copy strong { font-size: 14px; font-weight: 600; color: var(--text, #111); overflow-wrap: anywhere; }
+      .icon-preset-save { display: flex; align-items: center; gap: 8px; }
+      .icon-preset-save input {
+        flex: 1; min-width: 0; height: 40px; padding: 0 12px;
+        border: 0; border-radius: 10px; outline: none;
+        background: var(--card-2, #F4F4F6); color: var(--text, #111);
+        font: inherit; font-size: 13px;
+      }
+      .icon-preset-save input:focus { box-shadow: 0 0 0 1px var(--text, #111); }
+      .icon-preset-button {
+        min-height: 36px; padding: 0 12px; border: 1px solid rgba(128,128,128,.25);
+        border-radius: 999px; background: transparent; color: var(--text, #111);
+        font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
+      }
+      .icon-preset-button.primary { min-height: 40px; border-color: var(--text, #111); background: var(--text, #111); color: var(--bg, #fff); }
+      .icon-preset-button:disabled { opacity: .45; cursor: default; }
+      .icon-preset-list { display: flex; flex-direction: column; }
+      .icon-preset-row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid rgba(128,128,128,.12); }
+      .icon-preset-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+      .icon-preset-name { color: var(--text, #111); font-size: 13px; overflow-wrap: anywhere; }
+      .icon-preset-meta { color: var(--aux, #888); font-size: 11px; }
+      .icon-preset-actions { display: flex; flex: none; gap: 6px; }
+      .icon-preset-actions .icon-preset-button { min-height: 32px; padding: 0 10px; }
+      .icon-preset-actions .delete { color: var(--aux, #888); }
+      .icon-preset-empty { padding: 4px 0 2px; color: var(--aux, #888); font-size: 12px; }
+      .icon-preset-feedback { min-height: 15px; color: var(--aux, #888); font-size: 11px; line-height: 1.4; }
+      @media (max-width: 360px) {
+        .icon-preset-current { align-items: flex-start; flex-direction: column; }
+        .icon-preset-save { align-items: stretch; flex-direction: column; }
+        .icon-preset-save .icon-preset-button { width: 100%; }
+      }
     </style>
 </head>
 <body>
@@ -74,6 +109,23 @@
             <div class="group-title">APP ICONS</div>
             <p class="tip">点右边「更换」上传一张图片作为该应用图标；点「恢复」回到默认图标。设置完返回桌面即可看到。</p>
             <section class="card" id="iconList"></section>
+
+            <div class="group-title">图标套装</div>
+            <section class="card icon-presets-card" aria-label="图标套装预设">
+                <div class="icon-preset-current">
+                    <div class="icon-preset-current-copy">
+                        <span>当前使用</span>
+                        <strong id="currentIconPresetName">正在读取…</strong>
+                    </div>
+                    <button type="button" class="icon-preset-button" id="resetAllIconsBtn">全部恢复默认</button>
+                </div>
+                <div class="icon-preset-save">
+                    <input id="iconPresetNameInput" type="text" maxlength="24" autocomplete="off" placeholder="给这套图标起个名字" aria-label="图标套装名称">
+                    <button type="button" class="icon-preset-button primary" id="saveIconPresetBtn">保存当前套装</button>
+                </div>
+                <div class="icon-preset-list" id="iconPresetList" aria-live="polite"></div>
+                <p class="icon-preset-feedback" id="iconPresetFeedback" role="status"></p>
+            </section>
         </main>
     </div>
 
@@ -101,8 +153,41 @@
       ];
 
       var KEY_PREFIX = 'home_icon_img_';
+      var PRESET_LIST_KEY = 'home_icon_presets_v1';
+      var ACTIVE_PRESET_KEY = 'home_icon_active_preset_v1';
+      var PRESET_IMAGE_PREFIX = 'home_icon_preset_img_v1_';
       var store = window.MAOMAOWallpaperStore;
       var listEl = document.getElementById('iconList');
+      var presetListEl = document.getElementById('iconPresetList');
+      var presetNameInput = document.getElementById('iconPresetNameInput');
+      var savePresetBtn = document.getElementById('saveIconPresetBtn');
+      var resetAllIconsBtn = document.getElementById('resetAllIconsBtn');
+      var currentPresetNameEl = document.getElementById('currentIconPresetName');
+      var presetFeedbackEl = document.getElementById('iconPresetFeedback');
+      var presetBusy = false;
+      var iconRowRefs = Object.create(null);
+
+      function paintIconRow(app, dataUrl) {
+        var refs = iconRowRefs[app.id];
+        if (!refs) return;
+        if (dataUrl) {
+          refs.preview.style.backgroundImage = 'url("' + dataUrl + '")';
+          refs.preview.textContent = '';
+          refs.state.textContent = '已自定义';
+        } else {
+          refs.preview.style.backgroundImage = '';
+          refs.preview.innerHTML = '<svg viewBox="0 0 24 24">' + app.svg + '</svg>';
+          refs.state.textContent = '默认图标';
+        }
+      }
+
+      function refreshIconRow(app) {
+        if (!store || typeof store.getByKey !== 'function') return Promise.resolve('');
+        return store.getByKey(KEY_PREFIX + app.id).then(function (dataUrl) {
+          paintIconRow(app, dataUrl || '');
+          return dataUrl || '';
+        });
+      }
 
       function renderRow(app) {
         var row = document.createElement('div');
@@ -123,13 +208,8 @@
         var preview = row.querySelector('.icon-preview');
         var state = row.querySelector('[data-state]');
 
-        store.getByKey(KEY_PREFIX + app.id).then(function (dataUrl) {
-          if (dataUrl) {
-            preview.style.backgroundImage = 'url("' + dataUrl + '")';
-            preview.textContent = '';
-            state.textContent = '已自定义';
-          }
-        });
+        iconRowRefs[app.id] = { preview: preview, state: state };
+        refreshIconRow(app);
 
         row.querySelector('[data-act="change"]').addEventListener('click', function () {
           var fi = document.createElement('input');
@@ -155,9 +235,9 @@
               ctx.drawImage(img, 0, 0, w, h);
               var dataUrl = canvas.toDataURL('image/jpeg', 0.82);
               store.saveByKey(KEY_PREFIX + app.id, dataUrl).then(function () {
-                preview.style.backgroundImage = 'url("' + dataUrl + '")';
-                preview.textContent = '';
-                state.textContent = '已自定义';
+                writeActivePresetId('');
+                paintIconRow(app, dataUrl);
+                afterManualIconChange();
               }).catch(function (err) {
                 alert('保存失败：' + (err && err.message ? err.message : err));
               });
@@ -170,9 +250,9 @@
 
         row.querySelector('[data-act="restore"]').addEventListener('click', function () {
           store.removeByKey(KEY_PREFIX + app.id).then(function () {
-            preview.style.backgroundImage = '';
-            preview.innerHTML = '<svg viewBox="0 0 24 24">' + app.svg + '</svg>';
-            state.textContent = '默认图标';
+            writeActivePresetId('');
+            paintIconRow(app, '');
+            afterManualIconChange();
           }).catch(function () {
             alert('恢复失败');
           });
@@ -181,7 +261,333 @@
         listEl.appendChild(row);
       }
 
+      function readPresetList() {
+        try {
+          var parsed = JSON.parse(localStorage.getItem(PRESET_LIST_KEY) || '[]');
+          if (!Array.isArray(parsed)) return [];
+          return parsed.filter(function (item) {
+            return item && typeof item.id === 'string' && typeof item.name === 'string' && Array.isArray(item.appIds);
+          });
+        } catch (error) {
+          return [];
+        }
+      }
+
+      function writePresetList(presets) {
+        try {
+          var value = JSON.stringify(presets);
+          localStorage.setItem(PRESET_LIST_KEY, value);
+          return localStorage.getItem(PRESET_LIST_KEY) === value;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function getActivePresetId() {
+        try { return localStorage.getItem(ACTIVE_PRESET_KEY) || ''; }
+        catch (error) { return ''; }
+      }
+
+      function writeActivePresetId(id) {
+        try {
+          if (id) localStorage.setItem(ACTIVE_PRESET_KEY, id);
+          else localStorage.removeItem(ACTIVE_PRESET_KEY);
+          return localStorage.getItem(ACTIVE_PRESET_KEY) === (id || null);
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function presetImageKey(presetId, appId) {
+        return PRESET_IMAGE_PREFIX + presetId + '_' + appId;
+      }
+
+      function setPresetFeedback(message) {
+        if (presetFeedbackEl) presetFeedbackEl.textContent = message || '';
+      }
+
+      function setPresetBusy(busy) {
+        presetBusy = !!busy;
+        if (savePresetBtn) savePresetBtn.disabled = presetBusy;
+        if (resetAllIconsBtn) resetAllIconsBtn.disabled = presetBusy;
+        if (presetNameInput) presetNameInput.disabled = presetBusy;
+        renderPresetList();
+      }
+
+      function readCurrentIconSnapshot() {
+        if (!store || typeof store.getByKey !== 'function') {
+          return Promise.reject(new Error('图标存储暂不可用'));
+        }
+        return Promise.all(APPS.map(function (app) {
+          return store.getByKey(KEY_PREFIX + app.id).then(function (dataUrl) {
+            return { appId: app.id, dataUrl: dataUrl || '' };
+          });
+        }));
+      }
+
+      function restoreIconSnapshot(snapshot, activeId) {
+        return snapshot.reduce(function (chain, item) {
+          return chain.then(function () {
+            if (item.dataUrl) return store.saveByKey(KEY_PREFIX + item.appId, item.dataUrl);
+            return store.removeByKey(KEY_PREFIX + item.appId);
+          });
+        }, Promise.resolve()).then(function () {
+          if (!writeActivePresetId(activeId || '')) throw new Error('当前套装状态无法恢复');
+        });
+      }
+
+      function afterManualIconChange() {
+        renderPresetList();
+        syncCurrentPresetLabel();
+      }
+
+      function syncCurrentPresetLabel() {
+        if (!currentPresetNameEl) return;
+        var activeId = getActivePresetId();
+        var activePreset = readPresetList().find(function (item) { return item.id === activeId; });
+        if (activePreset) {
+          currentPresetNameEl.textContent = activePreset.name;
+          return;
+        }
+        readCurrentIconSnapshot().then(function (snapshot) {
+          var hasCustom = snapshot.some(function (item) { return !!item.dataUrl; });
+          currentPresetNameEl.textContent = hasCustom ? '自定义图标' : '系统默认';
+        }).catch(function () {
+          currentPresetNameEl.textContent = '自定义图标';
+        });
+      }
+
+      function renderPresetList() {
+        if (!presetListEl) return;
+        presetListEl.textContent = '';
+        var presets = readPresetList();
+        var activeId = getActivePresetId();
+        if (!presets.length) {
+          var empty = document.createElement('div');
+          empty.className = 'icon-preset-empty';
+          empty.textContent = '保存后的图标套装会显示在这里';
+          presetListEl.appendChild(empty);
+          return;
+        }
+        presets.forEach(function (preset) {
+          var isActive = preset.id === activeId;
+          var row = document.createElement('div');
+          row.className = 'icon-preset-row';
+
+          var copy = document.createElement('div');
+          copy.className = 'icon-preset-copy';
+          var name = document.createElement('div');
+          name.className = 'icon-preset-name';
+          name.textContent = preset.name;
+          var meta = document.createElement('div');
+          meta.className = 'icon-preset-meta';
+          meta.textContent = isActive ? '正在使用' : (preset.createdAt ? new Date(preset.createdAt).toLocaleDateString('zh-CN') : '已保存');
+          copy.appendChild(name);
+          copy.appendChild(meta);
+
+          var actions = document.createElement('div');
+          actions.className = 'icon-preset-actions';
+          var applyBtn = document.createElement('button');
+          applyBtn.type = 'button';
+          applyBtn.className = 'icon-preset-button';
+          applyBtn.textContent = isActive ? '使用中' : '应用';
+          applyBtn.disabled = presetBusy || isActive;
+          applyBtn.addEventListener('click', function () { applyIconPreset(preset); });
+
+          var deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'icon-preset-button delete';
+          deleteBtn.textContent = '删除';
+          deleteBtn.disabled = presetBusy;
+          deleteBtn.addEventListener('click', function () { deleteIconPreset(preset); });
+
+          actions.appendChild(applyBtn);
+          actions.appendChild(deleteBtn);
+          row.appendChild(copy);
+          row.appendChild(actions);
+          presetListEl.appendChild(row);
+        });
+      }
+
+      async function saveCurrentIconPreset() {
+        if (presetBusy) return;
+        var name = String(presetNameInput.value || '').trim();
+        if (!name) {
+          setPresetFeedback('先给这套图标起个名字。');
+          presetNameInput.focus();
+          return;
+        }
+        if (!store || typeof store.saveByKey !== 'function' || typeof store.removeByKey !== 'function') {
+          setPresetFeedback('图标存储暂不可用，请稍后重试。');
+          return;
+        }
+
+        setPresetBusy(true);
+        setPresetFeedback('正在保存整套图标…');
+        var savedAppIds = [];
+        var previousActiveId = getActivePresetId();
+        var previousPresets = readPresetList();
+        var presetId = 'icons_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+
+        try {
+          var snapshot = await readCurrentIconSnapshot();
+          for (var i = 0; i < snapshot.length; i++) {
+            if (!snapshot[i].dataUrl) continue;
+            await store.saveByKey(presetImageKey(presetId, snapshot[i].appId), snapshot[i].dataUrl);
+            savedAppIds.push(snapshot[i].appId);
+          }
+
+          var preset = {
+            id: presetId,
+            name: name,
+            createdAt: Date.now(),
+            appIds: savedAppIds
+          };
+          if (!writePresetList(previousPresets.concat([preset]))) {
+            throw new Error('套装信息保存失败，可能是浏览器存储空间不足');
+          }
+          if (!writeActivePresetId(presetId)) {
+            writePresetList(previousPresets);
+            throw new Error('当前套装状态保存失败');
+          }
+
+          presetNameInput.value = '';
+          renderPresetList();
+          syncCurrentPresetLabel();
+          setPresetFeedback('已保存「' + name + '」，以后可以一键切换。');
+        } catch (error) {
+          for (var j = 0; j < savedAppIds.length; j++) {
+            try { await store.removeByKey(presetImageKey(presetId, savedAppIds[j])); } catch (cleanupError) {}
+          }
+          writeActivePresetId(previousActiveId);
+          setPresetFeedback(error && error.message ? error.message : '保存失败，请重试。');
+        } finally {
+          setPresetBusy(false);
+          syncCurrentPresetLabel();
+        }
+      }
+
+      async function applyIconPreset(preset) {
+        if (presetBusy) return;
+        setPresetBusy(true);
+        setPresetFeedback('正在切换图标套装…');
+        var previousActiveId = getActivePresetId();
+        var snapshot = [];
+        try {
+          snapshot = await readCurrentIconSnapshot();
+          var presetImages = Object.create(null);
+          var availableIds = APPS.map(function (app) { return app.id; });
+          for (var i = 0; i < preset.appIds.length; i++) {
+            var appId = preset.appIds[i];
+            if (availableIds.indexOf(appId) < 0) continue;
+            var image = await store.getByKey(presetImageKey(preset.id, appId));
+            if (!image) throw new Error('套装图片不完整，未更改当前图标。');
+            presetImages[appId] = image;
+          }
+
+          for (var j = 0; j < APPS.length; j++) {
+            var app = APPS[j];
+            if (Object.prototype.hasOwnProperty.call(presetImages, app.id)) {
+              await store.saveByKey(KEY_PREFIX + app.id, presetImages[app.id]);
+            } else {
+              await store.removeByKey(KEY_PREFIX + app.id);
+            }
+          }
+          if (!writeActivePresetId(preset.id)) throw new Error('套装状态保存失败');
+          APPS.forEach(function (app) {
+            paintIconRow(app, presetImages[app.id] || '');
+          });
+          renderPresetList();
+          syncCurrentPresetLabel();
+          setPresetFeedback('已切换到「' + preset.name + '」。');
+        } catch (error) {
+          var rollbackOk = true;
+          try { await restoreIconSnapshot(snapshot, previousActiveId); }
+          catch (rollbackError) { rollbackOk = false; }
+          APPS.forEach(function (app) {
+            var previous = snapshot.find(function (item) { return item.appId === app.id; });
+            paintIconRow(app, previous ? previous.dataUrl : '');
+          });
+          setPresetFeedback(rollbackOk
+            ? (error && error.message ? error.message : '切换失败，已保留原图标。')
+            : '切换失败，原图标恢复未完整完成，请检查各应用图标。');
+        } finally {
+          setPresetBusy(false);
+          syncCurrentPresetLabel();
+        }
+      }
+
+      async function deleteIconPreset(preset) {
+        if (presetBusy) return;
+        if (!window.confirm('删除「' + preset.name + '」这套预设？当前桌面图标不会改变。')) return;
+        setPresetBusy(true);
+        var previousPresets = readPresetList();
+        var nextPresets = previousPresets.filter(function (item) { return item.id !== preset.id; });
+        var previousActiveId = getActivePresetId();
+        try {
+          if (!writePresetList(nextPresets)) throw new Error('删除失败，预设列表未能保存。');
+          if (previousActiveId === preset.id && !writeActivePresetId('')) {
+            writePresetList(previousPresets);
+            throw new Error('删除失败，当前套装状态未能更新。');
+          }
+          var cleanupOk = true;
+          for (var i = 0; i < preset.appIds.length; i++) {
+            try { await store.removeByKey(presetImageKey(preset.id, preset.appIds[i])); }
+            catch (cleanupError) { cleanupOk = false; }
+          }
+          renderPresetList();
+          syncCurrentPresetLabel();
+          setPresetFeedback(cleanupOk ? '已删除预设，当前桌面图标保持不变。' : '预设已删除，但部分旧图片未能清理。');
+        } catch (error) {
+          setPresetFeedback(error && error.message ? error.message : '删除失败，请重试。');
+        } finally {
+          setPresetBusy(false);
+        }
+      }
+
+      async function resetAllIconsToDefault() {
+        if (presetBusy) return;
+        if (!window.confirm('将所有应用图标恢复为系统默认？已保存的图标套装不会删除。')) return;
+        setPresetBusy(true);
+        setPresetFeedback('正在恢复默认图标…');
+        var previousActiveId = getActivePresetId();
+        var snapshot = [];
+        try {
+          snapshot = await readCurrentIconSnapshot();
+          for (var i = 0; i < APPS.length; i++) {
+            await store.removeByKey(KEY_PREFIX + APPS[i].id);
+          }
+          if (!writeActivePresetId('')) throw new Error('默认图标已恢复，但当前状态未能保存。');
+          APPS.forEach(function (app) { paintIconRow(app, ''); });
+          renderPresetList();
+          syncCurrentPresetLabel();
+          setPresetFeedback('已恢复系统默认图标；保存的套装仍然保留。');
+        } catch (error) {
+          var rollbackOk = true;
+          try { await restoreIconSnapshot(snapshot, previousActiveId); }
+          catch (rollbackError) { rollbackOk = false; }
+          APPS.forEach(function (app) {
+            var previous = snapshot.find(function (item) { return item.appId === app.id; });
+            paintIconRow(app, previous ? previous.dataUrl : '');
+          });
+          setPresetFeedback(rollbackOk
+            ? (error && error.message ? error.message : '恢复失败，已保留原图标。')
+            : '恢复失败，原图标恢复未完整完成，请检查各应用图标。');
+        } finally {
+          setPresetBusy(false);
+          syncCurrentPresetLabel();
+        }
+      }
+
+      savePresetBtn.addEventListener('click', saveCurrentIconPreset);
+      presetNameInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') saveCurrentIconPreset();
+      });
+      resetAllIconsBtn.addEventListener('click', resetAllIconsToDefault);
+
       APPS.forEach(renderRow);
+      renderPresetList();
+      syncCurrentPresetLabel();
     </script>
 </body>
 </html>
