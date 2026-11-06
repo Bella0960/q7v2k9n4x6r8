@@ -86,11 +86,18 @@ try {
   await page.locator('[data-action="add-option"]').click();
   assert.ok((await page.locator('#wheelOptions').innerText()).includes('浏览器测试选项'), 'custom wheel option should appear');
   await page.evaluate(() => { Math.random = () => 0; });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.locator('[data-action="spin"]').click();
+  assert.equal(await page.locator('#newWheelOption').isDisabled(), true,
+    'wheel options must lock while the wheel is rotating');
+  assert.equal(await page.locator('[data-action="add-option"]').isDisabled(), true,
+    'the add action must lock while the wheel is rotating');
   await page.waitForFunction(() => {
     const node = document.querySelector('#wheelResult');
     return node && node.textContent !== '正在转动…' && node.textContent.indexOf('这次的结果：') === 0;
-  }, null, { timeout: 3000 });
+  }, null, { timeout: 8000 });
+  assert.equal(await page.locator('#newWheelOption').isDisabled(), false,
+    'wheel option editing should unlock after the spin completes');
   assert.equal(await page.locator('#wheelHistory li').count(), 1, 'wheel result should be recorded');
   assert.equal(await page.locator('#wheelResult').innerText(), '这次的结果：出门走走',
     'the result under the pointer must match the selected first wheel segment');
