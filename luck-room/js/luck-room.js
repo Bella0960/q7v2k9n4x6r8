@@ -133,6 +133,19 @@ function renderRoleOptions() {
   });
   select.value = selectedRole ? String(selectedRole.id) : '';
   $('roleStatus').textContent = selectedRole ? '已邀请 ' + roleName(selectedRole) + ' 一起参与。' : '可以自己玩，也可以叫一个角色来陪你。';
+  var avatar = $('companionAvatar'), fallback = $('companionFallback');
+  var source = selectedRole ? roleAvatar(selectedRole) : '';
+  if (source) {
+    avatar.src = source; avatar.hidden = false; fallback.hidden = true;
+  } else {
+    avatar.removeAttribute('src'); avatar.hidden = true; fallback.hidden = false;
+  }
+}
+function roleAvatar(role) {
+  if (!role) return '';
+  var source = String(role.avatar || role.avatarUrl || role.avatarData || role.image || role.icon || '').trim();
+  if (!source) return '';
+  return /^(?:https?:\/\/|data:image\/|blob:|\/|\.\/|\.\.\/)/i.test(source) ? source : '';
 }
 function showToast(message) {
   var toast = $('toast');
