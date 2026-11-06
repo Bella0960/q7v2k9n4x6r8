@@ -25,6 +25,7 @@ async function probe(pathname) {
       path: pathname,
       status: response.status,
       finalUrl: response.url,
+      redirected: response.redirected,
       contentType,
       isHtml: /text\/html/i.test(contentType) && /<html[\s>]/i.test(text),
       sample: response.ok && /text\/html/i.test(contentType) ? (text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() || '') : text.slice(0, 180).replace(/\s+/g, ' ')
@@ -52,12 +53,22 @@ for (let i = 0; i < routes.length; i += 5) {
 }
 for (const result of results) console.log('APP ROUTE:', JSON.stringify(result));
 
+const canonicalResults = [];
+for (let i = 0; i < routes.length; i += 5) {
+  const batch = await Promise.all(routes.slice(i, i + 5).map(route => probe('/' + route.replace(/\\.html$/, ''))));
+  canonicalResults.push(...batch);
+}
+for (const result of canonicalResults) console.log('CANONICAL APP ROUTE:', JSON.stringify(result));
+
 const failures = [];
 if (home.status !== 200 || !home.isHtml) failures.push('root homepage');
 if (index.status !== 200 || !index.isHtml) failures.push('/index.html');
 if (sw.status !== 200) failures.push('/sw.js');
 for (const result of results) {
   if (result.status !== 200 || !result.isHtml) failures.push(result.path);
+}
+for (const result of canonicalResults) {
+  if (result.status !== 200 || !result.isHtml) failures.push('canonical ' + result.path);
 }
 if (sw.status === 200) {
   const swBody = await (await fetch(new URL('/sw.js', baseUrl + '/'), { signal: AbortSignal.timeout(20000) })).text();
