@@ -58,6 +58,15 @@
       <select id="lotPoolSelect"></select>
       <button class="template-delete" id="deleteLotPoolBtn" type="button">删除</button>
     </div>
+    <div class="lot-draw-control">
+      <label for="lotDrawMode">这次由谁抽</label>
+      <select id="lotDrawMode">
+        <option value="user">我来抽</option>
+        <option value="role">角色代抽</option>
+        <option value="alternate">我们轮流抽</option>
+      </select>
+      <p id="lotDrawHint">选择角色后，可以让角色代抽或与你轮流抽取。</p>
+    </div>
     <div class="lot-vessel" id="lotVessel" aria-label="签筒">
       <div class="lot-sticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <div class="vessel-rim"></div><div class="vessel-body"><span>签</span></div>
