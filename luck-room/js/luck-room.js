@@ -214,7 +214,12 @@ function updateLotDrawModeUI() {
 }
 function getLotActor() {
   var type = nextLotActorType();
-  return { type: type, name: type === 'role' && selectedRole ? roleName(selectedRole) : '你' };
+  return {
+    type: type,
+    name: type === 'role' && selectedRole ? roleName(selectedRole) : '你',
+    roleId: currentRoleId(),
+    roleName: roleName(selectedRole)
+  };
 }
 function renderRoleOptions() {
   var select = $('roleSelect');
@@ -252,15 +257,17 @@ function showToast(message) {
   toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 2300);
 }
 function currentRoleId() { return selectedRole ? String(selectedRole.id) : ''; }
-function addHistory(game, result, detail, actorName) {
+function addHistory(game, result, detail, actor) {
+  var recordedRoleId = actor && typeof actor.roleId === 'string' ? actor.roleId : currentRoleId();
+  var recordedRoleName = actor && typeof actor.roleName === 'string' ? actor.roleName : roleName(selectedRole);
   state.history.push({
     id: 'luck_' + Date.now() + '_' + randomIndex(99999),
     game: game,
-    roleId: currentRoleId(),
-    roleName: roleName(selectedRole),
+    roleId: recordedRoleId,
+    roleName: recordedRoleName,
     result: String(result || ''),
     detail: String(detail || ''),
-    actorName: String(actorName || ''),
+    actorName: actor ? String(actor.name || '') : '',
     createdAt: Date.now()
   });
   state.history = state.history.slice(-100);
@@ -493,8 +500,8 @@ function drawLot() {
     $('lotResultText').textContent = result;
     $('lotResult').hidden = false;
     button.disabled = false;
-    addHistory('抽签', result, pool.name, actor.name);
-    askRole('抽签', result, 'lotRoleReaction', actor.type);
+    addHistory('抽签', result, pool.name, actor);
+    if (currentRoleId() === actor.roleId) askRole('抽签', result, 'lotRoleReaction', actor.type);
   }, 1250);
 }
 function spinWheel() {
