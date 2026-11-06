@@ -120,6 +120,9 @@ h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5p
 .oracle-advice{font-size:10px;color:#777777;margin-top:15px;letter-spacing:1px}
 .oracle-placeholder{font:14px var(--serif);color:#777777}
 .message-line{min-height:19px;margin-top:11px;font-size:10px;color:#adadad;line-height:1.7}
+.storage-notice{margin:12px 0 0;padding:10px 12px;border-left:2px solid #969696;background:#262626;color:#dedede;font-size:11px;line-height:1.7}
+.storage-notice[hidden]{display:none!important}
+button:disabled{opacity:.42;cursor:not-allowed}
 .bottom-note{margin-top:30px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:10px;line-height:1.8;color:var(--dim)}
 .toast{position:fixed;z-index:50;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,14px);opacity:0;pointer-events:none;padding:10px 15px;background:#e6e6e6;color:#232323;font-size:11px;transition:opacity .2s,transform .2s;max-width:90vw}
 .toast.show{opacity:1;transform:translate(-50%,0)}
@@ -131,9 +134,10 @@ h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5p
 <body>
 <main class="fate-app" id="fateApp">
 <header class="topbar">
-  <button class="back-home" type="button" data-go-home>返回桌面</button>
+  <button class="back-home" type="button" data-exit>返回桌面</button>
   <div class="top-label">A SMALL ROOM FOR CHOICES</div>
 </header>
+<div class="storage-notice" id="fateStorageNotice" role="status" aria-live="polite" hidden></div>
 
 <section id="homeView">
   <div class="hero">
@@ -300,26 +304,41 @@ var $$=function(selector){return Array.prototype.slice.call(app.querySelectorAll
 function message(selector,text){var el=$(selector);if(el)el.textContent=text;}
 function showToast(text){var el=$('#fateToast');if(!el)return;el.textContent=text;el.classList.add('show');if(toastTimer)window.clearTimeout(toastTimer);toastTimer=window.setTimeout(function(){el.classList.remove('show');},1900);}
 function dateKey(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function setStorageNotice(text){
+ var notice=$('#fateStorageNotice');
+ if(!notice)return;
+ notice.textContent=text||'';
+ notice.hidden=!text;
+}
 function loadState(){
  try{
   var raw=window.localStorage.getItem(STORE_KEY);
   if(!raw)return;
   var saved=JSON.parse(raw);
   if(!saved||typeof saved!=='object'||Array.isArray(saved))throw new Error('invalid state');
-  if(Array.isArray(saved.wheelOptions)&&saved.wheelOptions.length>=2&&saved.wheelOptions.every(function(x){return typeof x==='string'&&x.trim();}))state.wheelOptions=saved.wheelOptions.slice(0,16);
-  if(Array.isArray(saved.wheelHistory))state.wheelHistory=saved.wheelHistory.slice(0,30);
-  if(Array.isArray(saved.tarotHistory))state.tarotHistory=saved.tarotHistory.slice(0,20);
-  if(Array.isArray(saved.oracleHistory))state.oracleHistory=saved.oracleHistory.slice(0,30);
-  if(saved.dailyOracle&&typeof saved.dailyOracle==='object')state.dailyOracle=saved.dailyOracle;
+  if(Array.isArray(saved.wheelOptions)&&saved.wheelOptions.length>=2&&saved.wheelOptions.length<=16&&saved.wheelOptions.every(function(x){return typeof x==='string'&&x.trim()&&x.length<=18;}))state.wheelOptions=saved.wheelOptions.slice();
+  if(Array.isArray(saved.wheelHistory))state.wheelHistory=saved.wheelHistory.filter(function(x){return x&&typeof x.value==='string'&&typeof x.time==='string';}).slice(0,30);
+  if(Array.isArray(saved.tarotHistory))state.tarotHistory=saved.tarotHistory.filter(function(x){return x&&Array.isArray(x.cards);}).slice(0,20);
+  if(Array.isArray(saved.oracleHistory))state.oracleHistory=saved.oracleHistory.filter(function(x){return x&&typeof x.title==='string'&&typeof x.category==='string';}).slice(0,30);
+  if(saved.dailyOracle&&typeof saved.dailyOracle==='object'&&!Array.isArray(saved.dailyOracle))state.dailyOracle=saved.dailyOracle;
  }catch(error){
   storageHealthy=false;
-  message('#wheelMessage','本地记录暂时无法读取；原始数据没有被覆盖，本次修改不会写入。');
+  setStorageNotice('本地记录读取失败。原始数据不会被覆盖，本次操作只能临时使用，离开页面后可能无法保留。');
  }
 }
 function saveState(){
- if(!storageHealthy){message('#wheelMessage','本地记录未能读取，已保留原始数据；本次修改仅在当前页面有效。');return false;}
- try{window.localStorage.setItem(STORE_KEY,JSON.stringify(state));return true;}
- catch(error){message('#wheelMessage','保存失败，浏览器存储空间或权限可能不足。请先不要关闭此页面。');return false;}
+ if(!storageHealthy){
+  setStorageNotice('本地记录暂时无法读取，原始数据已保留；本次操作不会写入本机。');
+  return false;
+ }
+ try{
+  window.localStorage.setItem(STORE_KEY,JSON.stringify(state));
+  setStorageNotice('');
+  return true;
+ }catch(error){
+  setStorageNotice('本地保存失败，可能是浏览器存储空间或权限不足。当前页面仍可继续使用，但新结果不会可靠保留。');
+  return false;
+ }
 }
 function showView(name){
  var ids={home:'homeView',tarot:'tarotView',wheel:'wheelView',oracle:'oracleView'};
@@ -368,8 +387,9 @@ function drawTarot(){
   article.appendChild(pos);article.appendChild(name);article.appendChild(latin);article.appendChild(meaning);article.appendChild(advice);results.appendChild(article);
  });
  state.tarotHistory.unshift({date:dateKey(),question:question,cards:indices.map(function(i){return tarotDeck[i].name;})});
- state.tarotHistory=state.tarotHistory.slice(0,20);saveState();updateHomeNote();
- message('#tarotMessage',question?'这次抽取围绕的问题：'+question:'已完成一次水晶抽取。');
+ state.tarotHistory=state.tarotHistory.slice(0,20);
+ var saved=saveState();updateHomeNote();
+ message('#tarotMessage',(question?'这次抽取围绕的问题：'+question+'。':'已完成一次水晶抽取。')+(saved?' 已保存在本机。':' 本次牌面已显示，但保存失败。'));
 }
 function drawWheel(){
  var canvas=$('#wheelCanvas');if(!canvas)return;
@@ -393,12 +413,16 @@ function drawWheel(){
 }
 function renderWheelOptions(){
  var list=$('#wheelOptions');list.innerHTML='';
+ var input=$('#newWheelOption'),addButton=$('[data-action="add-option"]');
+ input.disabled=spinning;
+ addButton.disabled=spinning;
  state.wheelOptions.forEach(function(value,index){
   var item=document.createElement('li'),label=document.createElement('span');label.textContent=(index+1)+'. '+value;
   var remove=document.createElement('button');remove.type='button';remove.className='remove-option';remove.setAttribute('data-remove-option',String(index));remove.setAttribute('aria-label','删除选项 '+value);remove.textContent='×';remove.disabled=spinning||state.wheelOptions.length<=2;
   item.appendChild(label);item.appendChild(remove);list.appendChild(item);
  });
  $('#spinButton').disabled=spinning||state.wheelOptions.length<2;
+ $('#spinButton').textContent=spinning?'转动中…':'开始转动';
 }
 function renderWheelHistory(){
  var list=$('#wheelHistory');list.innerHTML='';
@@ -410,16 +434,21 @@ function renderWheelHistory(){
  });
 }
 function addWheelOption(){
+ if(spinning)return;
  var input=$('#newWheelOption'),value=input.value.trim();
  if(!value){message('#wheelMessage','先写下一个选项。');return;}
  if(value.length>18){message('#wheelMessage','每个选项最多十八个字。');return;}
  if(state.wheelOptions.length>=16){message('#wheelMessage','最多添加十六个选项。');return;}
  if(state.wheelOptions.some(function(x){return x.toLowerCase()===value.toLowerCase();})){message('#wheelMessage','这个选项已经在转盘里了。');return;}
- state.wheelOptions.push(value);input.value='';saveState();drawWheel();message('#wheelMessage','已添加：'+value);
+ state.wheelOptions.push(value);input.value='';
+ var saved=saveState();drawWheel();
+ message('#wheelMessage',saved?'已添加：'+value:'选项已加入当前页面，但本地保存失败；离开页面后可能丢失。');
 }
 function removeWheelOption(index){
  if(spinning||state.wheelOptions.length<=2)return;
- state.wheelOptions.splice(index,1);saveState();drawWheel();message('#wheelMessage','已移除一个选项。');
+ state.wheelOptions.splice(index,1);
+ var saved=saveState();drawWheel();
+ message('#wheelMessage',saved?'已移除一个选项。':'选项已从当前页面移除，但本地保存失败；刷新后可能恢复。');
 }
 function spinWheel(){
  if(spinning||state.wheelOptions.length<2)return;
@@ -435,7 +464,8 @@ function spinWheel(){
   var value=state.wheelOptions[chosen];$('#wheelResult').textContent='这次的结果：'+value;
   var now=new Date(),time=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
   state.wheelHistory.unshift({value:value,time:time,date:dateKey()});state.wheelHistory=state.wheelHistory.slice(0,30);
-  saveState();renderWheelHistory();renderWheelOptions();updateHomeNote();message('#wheelMessage','结果已记录。');
+  var saved=saveState();renderWheelHistory();renderWheelOptions();updateHomeNote();
+  message('#wheelMessage',saved?'结果已记录。':'结果已经产生，但本地保存失败；刷新后可能无法找回。');
  }
  disc.addEventListener('transitionend',function onEnd(event){if(event.propertyName!=='transform')return;disc.removeEventListener('transitionend',onEnd);finish();});
  disc.style.transform='rotate('+wheelRotation+'deg)';
@@ -464,7 +494,8 @@ function drawOracle(){
  var entry={category:selectedOracleCategory,date:dateKey(),title:item[0],message:item[1],advice:item[2]};
  state.dailyOracle[dateKey()+'_'+selectedOracleCategory]=entry;
  state.oracleHistory.unshift(entry);state.oracleHistory=state.oracleHistory.slice(0,30);
- saveState();renderOracleResult(entry);updateHomeNote();message('#oracleMessage','今日灵签已经记下，可以随时回来重读。');
+ var saved=saveState();renderOracleResult(entry);updateHomeNote();
+ message('#oracleMessage',saved?'今日灵签已经保存，可以随时回来重读。':'灵签已显示，但本地保存失败；刷新后可能无法找回。');
 }
 function updateHomeNote(){
  var notes=[];
@@ -477,6 +508,7 @@ function updateHomeNote(){
 app.addEventListener('click',function(event){
  var open=event.target.closest('[data-open]');
  if(open){showView(open.getAttribute('data-open'));return;}
+ if(event.target.closest('[data-exit]')){window.location.assign('../index.html');return;}
  if(event.target.closest('[data-go-home]')){showView('home');return;}
  var spreadButton=event.target.closest('[data-spread]');
  if(spreadButton){setSpread(spreadButton.getAttribute('data-spread'));return;}
