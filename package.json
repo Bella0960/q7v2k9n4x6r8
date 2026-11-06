@@ -37,7 +37,8 @@
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
-    "test:images": "node --test tests/image-generation-pipeline.test.mjs"
+    "test:images": "node --test tests/image-generation-pipeline.test.mjs",
+    "test:tutorial": "node --test tests/tutorial-app-contract.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
