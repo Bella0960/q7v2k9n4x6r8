@@ -2094,31 +2094,7 @@
         });
       });
 
-      // 头像点击上传图片
-      var avatar = document.getElementById('pfAvatar');
-      if (avatar) {
-        var fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
-        fileInput.hidden = true;
-        document.body.appendChild(fileInput);
-
-        avatar.addEventListener('click', function(){
-          if (document.body.classList.contains('home-editing')) return;
-          fileInput.click();
-        });
-        fileInput.addEventListener('change', function(){
-          if (fileInput.files && fileInput.files[0]) {
-            var reader = new FileReader();
-            reader.onload = function(e){
-              avatar.style.backgroundImage = 'url(' + e.target.result + ')';
-              avatar.style.backgroundSize = 'cover';
-              avatar.style.backgroundPosition = 'center';
-            };
-            reader.readAsDataURL(fileInput.files[0]);
-          }
-        });
-      }
+      // pfAvatar is handled by the shared persistent [data-upload] binding below.
     })();
 
     // ===== 通用可编辑组件：所有文字/图片元素点击即可编辑 =====
@@ -2140,32 +2116,113 @@
         });
       });
 
-      // 所有带 data-upload 的图片区域，点击上传
-      document.querySelectorAll('[data-upload]').forEach(function(el){
-        var fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
-        fileInput.hidden = true;
-        document.body.appendChild(fileInput);
+      // All data-upload photo slots share IndexedDB persistence. The previous handler
+      // only changed inline CSS, so a rebuilt/reloaded home silently lost every image.
+      (function bindPersistentHomePhotos() {
+        var imageStore = window.MAOMAOWallpaperStore;
+        var slots = document.querySelectorAll('[data-upload]');
 
-        el.addEventListener('click', function(){
-          if (document.body.classList.contains('home-editing')) return;
-          fileInput.click();
-        });
-        fileInput.addEventListener('change', function(){
-          if (fileInput.files && fileInput.files[0]) {
-            var reader = new FileReader();
-            reader.onload = function(e){
-              el.style.backgroundImage = 'url(' + e.target.result + ')';
-              el.style.backgroundSize = 'cover';
-              el.style.backgroundPosition = 'center';
-              var hint = el.querySelector('span');
-              if (hint) hint.style.display = 'none';
-            };
-            reader.readAsDataURL(fileInput.files[0]);
+        function notifySaveFailure(error) {
+          console.error('[MAOMAO home photo] Unable to save uploaded image:', error);
+          if (typeof window.showToast === 'function') {
+            window.showToast('图片保存失败，请检查本机存储空间后重试');
           }
+        }
+
+        function applyPhoto(el, dataUrl) {
+          el.style.backgroundImage = 'url("' + dataUrl + '")';
+          el.style.backgroundSize = 'cover';
+          el.style.backgroundPosition = 'center';
+          el.style.backgroundRepeat = 'no-repeat';
+          var hint = el.querySelector('span');
+          if (hint) hint.style.display = 'none';
+        }
+
+        function preparePhoto(file) {
+          return new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onerror = function() { reject(reader.error || new Error('图片读取失败')); };
+            reader.onload = function() {
+              var image = new Image();
+              image.onerror = function() { reject(new Error('无法识别这张图片')); };
+              image.onload = function() {
+                try {
+                  var maxEdge = 1000;
+                  var scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+                  var width = Math.max(1, Math.round(image.naturalWidth * scale));
+                  var height = Math.max(1, Math.round(image.naturalHeight * scale));
+                  var canvas = document.createElement('canvas');
+                  canvas.width = width;
+                  canvas.height = height;
+                  var context = canvas.getContext('2d');
+                  if (!context) throw new Error('图片压缩画布不可用');
+                  context.drawImage(image, 0, 0, width, height);
+                  var dataUrl = canvas.toDataURL('image/webp', 0.82);
+                  if (!/^data:image\//i.test(dataUrl)) {
+                    dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                  }
+                  resolve(dataUrl);
+                } catch (error) {
+                  reject(error);
+                }
+              };
+              image.src = reader.result;
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+
+        slots.forEach(function(el) {
+          var owner = el.closest('[data-drag]');
+          var widgetId = owner ? owner.getAttribute('data-drag') : 'desktop';
+          var siblingSlots = owner ? owner.querySelectorAll('[data-upload]') : slots;
+          var slotIndex = Array.prototype.indexOf.call(siblingSlots, el);
+          var slotId = el.id || ('slot-' + (slotIndex + 1));
+          var storageKey = 'home_widget_upload_v1_' + widgetId + '_' + slotId;
+          var revision = 0;
+          var fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.accept = 'image/*';
+          fileInput.hidden = true;
+          fileInput.setAttribute('aria-hidden', 'true');
+          document.body.appendChild(fileInput);
+
+          // Restore previously saved photos whenever the desktop is rebuilt.
+          var restoreRevision = revision;
+          var restorePromise = imageStore && typeof imageStore.getByKey === 'function'
+            ? imageStore.getByKey(storageKey)
+            : Promise.resolve((function() {
+                try { return localStorage.getItem(storageKey) || ''; } catch (error) { return ''; }
+              })());
+          Promise.resolve(restorePromise).then(function(dataUrl) {
+            if (dataUrl && revision === restoreRevision) applyPhoto(el, dataUrl);
+          }).catch(function(error) {
+            console.warn('[MAOMAO home photo] Unable to restore ' + storageKey, error);
+          });
+
+          el.addEventListener('click', function(event) {
+            event.stopPropagation();
+            if (document.body.classList.contains('home-editing')) return;
+            fileInput.value = '';
+            fileInput.click();
+          });
+
+          fileInput.addEventListener('change', function() {
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            var currentRevision = ++revision;
+            preparePhoto(file).then(function(dataUrl) {
+              if (imageStore && typeof imageStore.saveByKey === 'function') {
+                return imageStore.saveByKey(storageKey, dataUrl).then(function() { return dataUrl; });
+              }
+              localStorage.setItem(storageKey, dataUrl);
+              return dataUrl;
+            }).then(function(dataUrl) {
+              if (revision === currentRevision) applyPhoto(el, dataUrl);
+            }).catch(notifySaveFailure);
+          });
         });
-      });
+      })();
     })();
 
     // ===== 今日待办组件：勾选/编辑/添加，localStorage 持久化 =====
