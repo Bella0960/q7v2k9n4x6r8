@@ -160,15 +160,46 @@
     scroll-snap-stop: always !important;
   }
 
-  /* 桌面 4 列网格 */
-  .desktop-grid {
+  /* 桌面 4 列网格：统一行高，组件尺寸随真实手机宽度稳定排列 */
+  .maomao-home .desktop-grid {
     display: grid !important;
-    grid-template-columns: repeat(4, 1fr) !important;
-    gap: 14px 10px !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-auto-rows: 68px !important;
+    gap: 10px 8px !important;
     width: 100% !important;
+    min-width: 0 !important;
     box-sizing: border-box !important;
     align-content: start !important;
-    padding: 2px 2px 16px !important;
+    padding: 4px 2px 20px !important;
+  }
+
+  /* 默认桌面组件不允许撑破列宽；首页纵向空间不足时由页面自身滚动承接 */
+  .maomao-home .home-page {
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+  }
+  .maomao-home .ds-clock-lg {
+    min-width: 0 !important;
+    padding: 12px 10px !important;
+  }
+  .maomao-home .ds-clock-lg .clg-time {
+    font-size: clamp(2.35rem, 10vw, 3.2rem) !important;
+  }
+  .maomao-home .ds-clock-lg .clg-right {
+    min-width: 0;
+  }
+  .maomao-home .ds-duo {
+    min-width: 0 !important;
+    gap: 8px !important;
+  }
+  .maomao-home .ds-duo .duo-avatar {
+    width: clamp(44px, 14vw, 52px) !important;
+    height: clamp(44px, 14vw, 52px) !important;
+  }
+  .maomao-home .po-wrapper {
+    min-width: 0 !important;
   }
 
   /* 底部固定 Dock 栏：贴合真机安全区底部 */
