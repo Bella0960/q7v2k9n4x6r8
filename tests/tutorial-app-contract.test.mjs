@@ -10,6 +10,7 @@ const html = readFileSync(tutorialPath, 'utf8');
 const index = readFileSync(resolve(here, '../index.html'), 'utf8');
 const sw = readFileSync(resolve(here, '../sw.js'), 'utf8');
 const packageJson = JSON.parse(readFileSync(resolve(here, '../package.json'), 'utf8'));
+const tutorialWorkflow = readFileSync(resolve(here, '../.github/workflows/tutorial-regression.yml'), 'utf8');
 
 function readExtraLessons(source) {
   const match = source.match(/var extraLessons=(\[[\s\S]*?\]);\nlessons=lessons\.concat\(extraLessons\);/);
@@ -90,4 +91,7 @@ test('PWA caches the tutorial app and the dedicated test command is registered',
   assert.match(sw, /phone-app-pwa-v175/);
   assert.match(sw, /'\.\/tutorial\/tutorial\.html'/);
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-app-contract.test.mjs');
+  assert.match(tutorialWorkflow, /npm run test:tutorial/);
+  assert.match(tutorialWorkflow, /npm run test:desktop:layout/);
+  assert.match(tutorialWorkflow, /npm run build/);
 });
