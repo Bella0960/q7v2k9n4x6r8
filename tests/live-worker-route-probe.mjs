@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const baseUrl = (process.env.MAOMAO_BASE_URL || 'https://mao.miamor520000.workers.dev').replace(/\\/+$/, '');
+const baseUrl = (process.env.MAOMAO_BASE_URL || 'https://mao.miamor520000.workers.dev').replace(/\/+$/, '');
 const distHome = fs.readFileSync('dist/index.html', 'utf8');
-const routes = [...distHome.matchAll(/data-href="([^"]+\\.html)"/g)].map(match => match[1]);
+const routes = [...distHome.matchAll(/data-href="([^"]+\.html)"/g)].map(match => match[1]);
 assert.ok(routes.length >= 20, `expected at least 20 built app routes, got ${routes.length}`);
 assert.equal(new Set(routes).size, routes.length, 'built app routes must be unique');
 
@@ -26,8 +26,8 @@ async function probe(pathname) {
       status: response.status,
       finalUrl: response.url,
       contentType,
-      isHtml: /text\\/html/i.test(contentType) && /<html[\\s>]/i.test(text),
-      sample: response.ok && /text\\/html/i.test(contentType) ? text.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1]?.trim() || '' : text.slice(0, 180).replace(/\\s+/g, ' ')
+      isHtml: /text\/html/i.test(contentType) && /<html[\s>]/i.test(text),
+      sample: response.ok && /text\/html/i.test(contentType) ? (text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() || '') : text.slice(0, 180).replace(/\s+/g, ' ')
     };
   } catch (error) {
     return { path: pathname, status: 'NETWORK_ERROR', error: error?.cause?.code || error?.message || String(error) };
