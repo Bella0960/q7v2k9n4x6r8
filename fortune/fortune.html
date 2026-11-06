@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#171816">
+<title>命运小屋</title>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css?v=20261107fate1">
+<script src="../shared/js/native-feel.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#171816;--panel:#20211e;--panel2:#292a25;--ink:#f0eee8;--muted:#aaa99e;--dim:#77786f;--line:#46473f;--line-soft:#34352f;--metal:#c9bd9c;--paper:#e9e6dc;--serif:Georgia,"Songti SC","Noto Serif CJK SC",serif;--sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+body{overscroll-behavior-y:none}
+button,input{font:inherit}
+button{color:inherit}
+button:focus-visible,input:focus-visible{outline:2px solid var(--metal);outline-offset:3px}
+.fate-app{width:min(1080px,100%);margin:0 auto;padding:20px clamp(14px,3vw,30px) 42px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:4px 0 17px;border-bottom:1px solid var(--line-soft)}
+.back-home{border:0;background:none;padding:8px 0;color:var(--muted);font-size:12px;letter-spacing:1px}
+.top-label{font:10px Arial,sans-serif;color:var(--dim);letter-spacing:2px}
+.hero{padding:30px 0 22px}
+.hero-kicker{font:9px Arial,sans-serif;letter-spacing:3px;color:var(--metal)}
+h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5px;margin:12px 0 9px}
+.hero-copy{font:13px/1.9 var(--serif);color:#b5b2a7;margin:0;max-width:570px}
+.room-scene{position:relative;height:clamp(290px,43vw,430px);min-height:290px;overflow:hidden;border:1px solid #565448;background:radial-gradient(ellipse at 50% 32%,#77725a3a 0,transparent 43%),linear-gradient(160deg,#30332d 0%,#1d211d 56%,#171916 100%);isolation:isolate}
+.room-scene:before{content:"";position:absolute;z-index:-1;left:0;right:0;bottom:0;height:34%;background:linear-gradient(180deg,#36342c,#24231f);clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
+.room-scene:after{content:"";position:absolute;z-index:-1;left:0;right:0;bottom:0;height:32%;background:repeating-linear-gradient(0deg,transparent 0 37px,#c1ae8020 38px,#c1ae800d 39px),linear-gradient(90deg,#171a17,#393329 50%,#171a17);clip-path:polygon(0 10%,100% 0,100% 100%,0 100%)}
+.window-frame{position:absolute;left:50%;top:7%;transform:translateX(-50%);width:min(35%,260px);height:57%;border:8px solid #4b493d;background:linear-gradient(180deg,#161d20,#596354 72%,#857760);clip-path:polygon(50% 0,100% 17%,100% 100%,0 100%,0 17%);box-shadow:0 0 0 1px #c4b48a55,0 0 45px #c6b78a18}
+.window-frame:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#d7ccaa66}
+.window-frame:after{content:"";position:absolute;left:0;right:0;top:52%;height:1px;background:#d7ccaa66}
+.moon{position:absolute;left:50%;top:18%;width:49px;height:49px;transform:translateX(-50%);border-radius:50%;background:#d8d1b5;box-shadow:0 0 33px #dfd2ac77}
+.shelf{position:absolute;left:6%;right:6%;top:57%;height:5px;background:#76664d;box-shadow:0 2px 0 #161815}
+.shelf span{position:absolute;bottom:5px;width:15px;height:34px;border:1px solid #a79775;background:linear-gradient(90deg,#343c33,#8e8a70,#30372e)}
+.shelf span:nth-child(1){left:13%}.shelf span:nth-child(2){left:23%;height:28px}.shelf span:nth-child(3){left:33%;height:39px}.shelf span:nth-child(4){right:19%;height:31px}.shelf span:nth-child(5){right:9%;height:42px}
+.desk{position:absolute;left:50%;bottom:-4%;transform:translateX(-50%);width:min(78%,780px);height:35%;background:linear-gradient(180deg,#8f7957 0 11%,#5c4934 12%,#342b22 100%);clip-path:polygon(7% 0,93% 0,100% 100%,0 100%);box-shadow:0 -10px 35px #0008}
+.desk-edge{position:absolute;left:50%;bottom:29%;transform:translateX(-50%);width:64%;height:2px;background:#d0bd8b77}
+.scene-entry{position:absolute;z-index:3;display:flex;flex-direction:column;align-items:center;gap:7px;border:0;background:transparent;color:#e2dccb;text-shadow:0 2px 6px #000;padding:7px;min-width:78px}
+.scene-entry .entry-mark{display:grid;place-items:center;width:53px;height:53px;border:1px solid #d1c39d99;background:#222720a8;clip-path:polygon(50% 0,94% 21%,100% 78%,50% 100%,0 78%,6% 21%);transition:transform .2s,background .2s}
+.scene-entry:hover .entry-mark,.scene-entry:focus-visible .entry-mark{transform:translateY(-4px);background:#505040}
+.scene-entry svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}
+.scene-entry strong{font:12px var(--serif);font-weight:400;letter-spacing:1px}
+.scene-entry small{font:9px Arial,sans-serif;color:#c5bda9;letter-spacing:1.5px}
+.entry-tarot{left:16%;bottom:13%}.entry-wheel{left:50%;bottom:12%;transform:translateX(-50%)}.entry-oracle{right:15%;bottom:13%}
+.scene-entry.entry-wheel:hover,.scene-entry.entry-wheel:focus-visible{transform:translate(-50%,-3px)}
+.scene-caption{position:absolute;top:12px;left:15px;color:#c3b994;font:9px Arial,sans-serif;letter-spacing:2px}
+.module-index{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:22px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.module-link{display:flex;align-items:center;gap:12px;text-align:left;padding:17px 12px 17px 0;background:none;border:0;color:var(--ink);min-width:0}
+.module-link+.module-link{border-left:1px solid var(--line-soft);padding-left:16px}
+.module-no{font:10px Georgia,serif;color:var(--metal)}
+.module-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.module-copy strong{font:17px var(--serif);font-weight:400}
+.module-copy small{font-size:10px;color:var(--dim);white-space:nowrap}
+.module-link:hover strong{color:var(--metal)}
+.home-note{display:flex;justify-content:space-between;gap:12px;margin-top:16px;color:var(--dim);font-size:10px;line-height:1.7}
+.view{padding-top:24px}
+.view[hidden]{display:none!important}
+.view-head{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:18px}
+.view-head h2{font:clamp(27px,4vw,38px) var(--serif);font-weight:400;margin:8px 0 5px;letter-spacing:2px}
+.view-head p{font-size:11px;line-height:1.8;color:var(--muted);margin:0}
+.back-room{border:1px solid var(--line);background:transparent;color:var(--muted);font-size:11px;padding:9px 13px;white-space:nowrap}
+.control-label{display:block;font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:8px}
+.question-input{width:100%;padding:12px 13px;border:1px solid var(--line);background:#20211e;color:var(--ink);font-size:12px;border-radius:0}
+.spread-switch{display:flex;gap:7px;margin-top:14px}
+.spread-switch button{border:1px solid var(--line);padding:8px 15px;background:transparent;color:var(--muted);font-size:11px}
+.spread-switch button.active{background:var(--paper);border-color:var(--paper);color:#1a1b18}
+.primary-action{border:1px solid var(--metal);background:var(--metal);color:#20211e;padding:12px 23px;font-size:11px;letter-spacing:1px}
+.primary-action:disabled{opacity:.45;cursor:not-allowed}
+.secondary-action{border:1px solid var(--line);background:transparent;color:var(--muted);padding:11px 17px;font-size:11px}
+.tarot-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0}
+.crystal-stage{min-height:300px;display:flex;justify-content:center;align-items:center;gap:clamp(10px,3vw,26px);padding:22px 10px 30px;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);background:radial-gradient(ellipse at center,#88816a14,transparent 62%)}
+.crystal-card{width:clamp(88px,16vw,142px);aspect-ratio:.62;padding:3px;border:0;background:linear-gradient(145deg,#e8dfc7,#8b8061 24%,#2c342b 55%,#d1bf96 82%);clip-path:polygon(50% 0,100% 17%,100% 82%,50% 100%,0 82%,0 17%);filter:drop-shadow(0 13px 12px #0008);transition:transform .28s}
+.crystal-card:nth-child(2){transform:translateY(-12px)}
+.crystal-card:nth-child(3){transform:translateY(8px)}
+.crystal-face{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;gap:9px;padding:13px 5px;background:radial-gradient(ellipse at 50% 35%,#73735d,#202820 72%);clip-path:polygon(50% 1%,98% 17%,98% 82%,50% 99%,2% 82%,2% 17%);color:#e5d8b6}
+.crystal-face:after{content:"";position:absolute;inset:8px;border:1px solid #d2c39c9c;clip-path:polygon(50% 0,100% 17%,100% 83%,50% 100%,0 83%,0 17%);pointer-events:none}
+.crystal-index{font:10px Georgia,serif;letter-spacing:2px;color:#d3c29a}
+.crystal-name{font:clamp(14px,2.2vw,18px) var(--serif);font-weight:400;max-width:95%;text-align:center}
+.crystal-latin{font:8px Arial,sans-serif;letter-spacing:1px;color:#bbb294;text-align:center}
+.crystal-empty{opacity:.85}.crystal-revealed .crystal-card{transform:translateY(-5px)}
+.reading-results{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-top:20px}
+.reading-result{border-top:1px solid var(--metal);padding:13px 2px 0;min-width:0}
+.reading-result .position{font-size:9px;letter-spacing:1px;color:var(--metal)}
+.reading-result h3{font:22px var(--serif);font-weight:400;margin:10px 0 3px}
+.reading-result .latin{font:9px Arial,sans-serif;color:var(--dim);letter-spacing:1px}
+.reading-result p{font-size:12px;line-height:1.9;color:#d0cec4;margin:12px 0}
+.reading-result .reflection{border-top:1px solid var(--line-soft);padding-top:10px;color:#b9b4a3;font-size:11px;line-height:1.8}
+.tarot-empty{font:13px var(--serif);color:var(--dim);text-align:center;width:100%}
+.wheel-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:25px;align-items:start}
+.wheel-panel{min-width:0}
+.wheel-stage{position:relative;width:min(100%,540px);margin:0 auto;padding:18px}
+.wheel-disc{width:100%;aspect-ratio:1;border-radius:50%;border:7px solid #b6aa87;background:#292a25;box-shadow:0 12px 45px #0008,0 0 0 1px #e3d9c366;transition:transform 5.2s cubic-bezier(.12,.72,.08,1);overflow:hidden}
+#wheelCanvas{display:block;width:100%;height:100%;border-radius:50%}
+.wheel-marker{position:absolute;z-index:3;left:50%;top:7px;transform:translateX(-50%);width:19px;height:19px;border-radius:50%;background:#d6c69f;border:4px solid #252820;box-shadow:0 1px 8px #0009}
+.wheel-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:66px;height:66px;border-radius:50%;border:4px solid #9d906e;background:#242720;display:grid;place-items:center;color:#e4d6b4;font:18px Georgia,serif;box-shadow:0 2px 8px #0008;pointer-events:none}
+.wheel-controls{display:flex;justify-content:center;margin:12px 0}
+.wheel-result{min-height:49px;text-align:center;padding:13px 8px;color:var(--metal);font:18px var(--serif)}
+.wheel-side{border-left:1px solid var(--line-soft);padding-left:19px}
+.wheel-side h3{font:20px var(--serif);font-weight:400;margin:0 0 6px}
+.wheel-side p{font-size:10px;line-height:1.8;color:var(--dim);margin:0 0 14px}
+.add-row{display:flex;gap:6px;margin:12px 0}
+.add-row input{min-width:0;flex:1;background:#20211e;border:1px solid var(--line);padding:10px;color:var(--ink);font-size:11px}
+.add-row button{border:1px solid var(--line);background:#30312b;color:var(--ink);padding:0 12px;font-size:11px}
+.option-list{list-style:none;padding:0;margin:0;max-height:300px;overflow:auto;border-top:1px solid var(--line-soft)}
+.option-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line-soft);font-size:11px}
+.option-list .remove-option{border:0;background:none;color:#8c8b80;padding:3px 8px;font-size:16px}
+.wheel-history{margin-top:18px;border-top:1px solid var(--line-soft);padding-top:12px}
+.wheel-history h4{font:15px var(--serif);font-weight:400;margin:0 0 9px}
+.wheel-history ol{margin:0;padding:0;list-style:none}
+.wheel-history li{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #34352f;font-size:10px;color:var(--muted)}
+.wheel-history time{color:var(--dim);white-space:nowrap}
+.oracle-controls{display:flex;gap:7px;flex-wrap:wrap;margin:16px 0}
+.oracle-controls button{border:1px solid var(--line);background:transparent;color:var(--muted);padding:8px 14px;font-size:11px}
+.oracle-controls button.active{background:var(--paper);color:#1b1c19;border-color:var(--paper)}
+.oracle-paper{max-width:650px;margin:18px auto 0;padding:29px clamp(20px,5vw,52px);border:1px solid #c3b797;background:#e9e6dc;color:#272821;text-align:center;min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+.oracle-paper:before{content:"";position:absolute;inset:8px;border:1px solid #aaa187;pointer-events:none}
+.oracle-number{font:10px Arial,sans-serif;letter-spacing:3px;color:#81775f}
+.oracle-paper h3{font:clamp(28px,4vw,40px) var(--serif);font-weight:400;margin:15px 0 9px}
+.oracle-paper p{font:13px/2 var(--serif);color:#4f4e43;max-width:440px;margin:0}
+.oracle-advice{font-size:10px;color:#77715e;margin-top:15px;letter-spacing:1px}
+.oracle-placeholder{font:14px var(--serif);color:#77715e}
+.message-line{min-height:19px;margin-top:11px;font-size:10px;color:#c6b58c;line-height:1.7}
+.bottom-note{margin-top:30px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:10px;line-height:1.8;color:var(--dim)}
+.toast{position:fixed;z-index:50;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,14px);opacity:0;pointer-events:none;padding:10px 15px;background:#eee9da;color:#24251f;font-size:11px;transition:opacity .2s,transform .2s;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-width:720px){.wheel-layout{grid-template-columns:1fr}.wheel-side{border-left:0;border-top:1px solid var(--line-soft);padding:18px 0 0}.wheel-stage{width:min(100%,470px)}.module-copy small{white-space:normal}}
+@media(max-width:560px){.fate-app{padding:13px 13px 32px}.hero{padding:25px 0 18px}.room-scene{height:310px}.scene-entry .entry-mark{width:43px;height:43px}.scene-entry svg{width:20px;height:20px}.entry-tarot{left:7%;bottom:14%}.entry-wheel{bottom:13%}.entry-oracle{right:6%;bottom:14%}.module-index{grid-template-columns:1fr}.module-link{padding:13px 0}.module-link+.module-link{border-left:0;border-top:1px solid var(--line-soft);padding-left:0}.module-copy strong{font-size:16px}.view-head{align-items:start;flex-direction:column}.back-room{align-self:end}.crystal-stage{min-height:245px;gap:7px;padding-left:0;padding-right:0}.crystal-card{width:clamp(80px,25vw,112px)}.reading-results{grid-template-columns:1fr;gap:17px}.reading-result{padding-top:10px}.wheel-stage{padding:12px}.wheel-center{width:54px;height:54px}.top-label{display:none}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition-duration:.01ms!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="fate-app" id="fateApp">
+<header class="topbar">
+  <button class="back-home" type="button" data-go-home>返回桌面</button>
+  <div class="top-label">A SMALL ROOM FOR CHOICES</div>
+</header>
+
+<section id="homeView">
+  <div class="hero">
+    <div class="hero-kicker">THE FATE CABIN</div>
+    <h1>命运小屋</h1>
+    <p class="hero-copy">有时需要一点提示，有时只需要一个决定。进来坐一会儿，剩下的交给水晶、签筒和转盘。</p>
+  </div>
+
+  <section class="room-scene" aria-label="命运小屋互动场景">
+    <div class="scene-caption">灯还亮着 · 小屋一直在这里</div>
+    <div class="window-frame"><span class="moon"></span></div>
+    <div class="shelf"><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="desk"></div><div class="desk-edge"></div>
+    <button class="scene-entry entry-tarot" type="button" data-open="tarot">
+      <span class="entry-mark"><svg viewBox="0 0 24 24"><path d="M12 2 4 8l2.5 11h11L20 8z"/><path d="m4 8 8 4 8-4M12 12v7"/></svg></span>
+      <strong>水晶塔罗</strong><small>THE CARDS</small>
+    </button>
+    <button class="scene-entry entry-wheel" type="button" data-open="wheel">
+      <span class="entry-mark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M20 8l-6 3M18 18l-5-4M6 18l5-4M4 8l6 3"/></svg></span>
+      <strong>大转盘</strong><small>THE WHEEL</small>
+    </button>
+    <button class="scene-entry entry-oracle" type="button" data-open="oracle">
+      <span class="entry-mark"><svg viewBox="0 0 24 24"><path d="M7 3h10l2 4-2 14H7L5 7z"/><path d="M8 10h8M9 14h6M10 17h4"/></svg></span>
+      <strong>今日灵签</strong><small>THE ORACLE</small>
+    </button>
+  </section>
+
+  <nav class="module-index" aria-label="小屋功能">
+    <button class="module-link" type="button" data-open="tarot"><span class="module-no">01</span><span class="module-copy"><strong>水晶塔罗</strong><small>单张启示 · 过去 / 现在 / 未来</small></span></button>
+    <button class="module-link" type="button" data-open="wheel"><span class="module-no">02</span><span class="module-copy"><strong>大转盘</strong><small>自定义选项 · 随机决定 · 结果记录</small></span></button>
+    <button class="module-link" type="button" data-open="oracle"><span class="module-no">03</span><span class="module-copy"><strong>今日灵签</strong><small>综合 · 关系 · 学业 · 心情</small></span></button>
+  </nav>
+  <div class="home-note"><span>所有抽取结果仅保存在当前手机浏览器。</span><span>不会上传聊天内容。</span></div>
+</section>
+
+<section class="view" id="tarotView" hidden>
+  <div class="view-head">
+    <div><div class="hero-kicker">01 / THE CRYSTAL CARDS</div><h2>水晶塔罗</h2><p>让三枚水晶分别照见来处、此刻与可能。牌面是自我整理的提示，不替你做决定。</p></div>
+    <button class="back-room" type="button" data-go-home>回到小屋</button>
+  </div>
+  <label class="control-label" for="tarotQuestion">你想带着什么问题来？（可留空）</label>
+  <input class="question-input" id="tarotQuestion" maxlength="120" placeholder="写下此刻最在意的事">
+  <div class="spread-switch" aria-label="选择牌阵">
+    <button type="button" data-spread="single">单张启示</button>
+    <button type="button" class="active" data-spread="three">三张牌阵</button>
+  </div>
+  <div class="tarot-tools"><span class="control-label" id="spreadDescription">过去 · 现在 · 未来</span><button class="primary-action" type="button" data-action="draw-tarot">抽取三张</button></div>
+  <div class="crystal-stage" id="crystalStage" aria-live="polite"><div class="tarot-empty">水晶尚未翻开<br>准备好时，抽取属于你的牌。</div></div>
+  <div class="reading-results" id="tarotResults"></div>
+  <div class="message-line" id="tarotMessage" aria-live="polite"></div>
+</section>
+
+<section class="view" id="wheelView" hidden>
+  <div class="view-head">
+    <div><div class="hero-kicker">02 / THE WHEEL</div><h2>大转盘</h2><p>把想做的事放进转盘，剩下的交给一次公平的随机选择。选项可以随时增删。</p></div>
+    <button class="back-room" type="button" data-go-home>回到小屋</button>
+  </div>
+  <div class="wheel-layout">
+    <section class="wheel-panel">
+      <div class="wheel-stage">
+        <div class="wheel-marker" aria-hidden="true"></div>
+        <div class="wheel-disc" id="wheelDisc"><canvas id="wheelCanvas" width="600" height="600" aria-label="可旋转的大转盘"></canvas></div>
+        <div class="wheel-center" aria-hidden="true">命运</div>
+      </div>
+      <div class="wheel-controls"><button class="primary-action" type="button" data-action="spin" id="spinButton">开始转动</button></div>
+      <div class="wheel-result" id="wheelResult" aria-live="polite">转盘准备好了。</div>
+      <div class="wheel-history"><h4>最近结果</h4><ol id="wheelHistory"><li>还没有转动记录。</li></ol></div>
+    </section>
+    <aside class="wheel-side">
+      <div class="hero-kicker">CUSTOM OPTIONS</div>
+      <h3>转盘内容</h3>
+      <p>每一项的机会相同。至少保留两项，最多添加十六项。</p>
+      <div class="add-row"><input id="newWheelOption" maxlength="18" placeholder="添加一个选项"><button type="button" data-action="add-option">添加</button></div>
+      <ul class="option-list" id="wheelOptions"></ul>
+      <div class="message-line" id="wheelMessage" aria-live="polite"></div>
+    </aside>
+  </div>
+</section>
+
+<section class="view" id="oracleView" hidden>
+  <div class="view-head">
+    <div><div class="hero-kicker">03 / THE ORACLE</div><h2>今日灵签</h2><p>选一个你正在思考的方向，抽一支签。读完它，再回到自己的判断。</p></div>
+    <button class="back-room" type="button" data-go-home>回到小屋</button>
+  </div>
+  <div class="oracle-controls" aria-label="灵签主题">
+    <button type="button" class="active" data-oracle-category="综合">综合</button>
+    <button type="button" data-oracle-category="关系">关系</button>
+    <button type="button" data-oracle-category="学业">学业</button>
+    <button type="button" data-oracle-category="心情">心情</button>
+  </div>
+  <div class="oracle-paper" id="oraclePaper" aria-live="polite"><div class="oracle-placeholder">签筒安静地放在桌上。<br>准备好时，抽一支签。</div></div>
+  <div style="display:flex;justify-content:center;margin-top:18px"><button class="primary-action" type="button" data-action="draw-oracle">抽取今日灵签</button></div>
+  <div class="message-line" id="oracleMessage" style="text-align:center" aria-live="polite"></div>
+</section>
+
+<footer class="bottom-note">命运小屋是一处娱乐与自我反思空间。塔罗、灵签和随机转盘的内容不构成现实预测，也不替代个人判断。</footer>
+</main>
+<div class="toast" id="fateToast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+var app=document.getElementById('fateApp');
+if(!app)return;
+var STORE_KEY='maomao_fate_cabin_v1';
+var defaultOptions=['出门走走','看一部电影','整理一下房间','做点好吃的','读一会儿书','早点休息','听听音乐','留给明天'];
+var tarotDeck=[
+ {name:'愚者',latin:'THE FOOL',mark:'0',meaning:'新的开始未必需要完整的地图。你可以先迈出一小步，在行动里认识真正的方向。',reflection:'允许自己尝试，但给重要决定留出确认的时间。'},
+ {name:'魔术师',latin:'THE MAGICIAN',mark:'I',meaning:'你手边已经有一些可以使用的资源。把分散的想法收拢，先完成最关键的一件事。',reflection:'列出现在真正拥有的三样资源，并选一个马上开始。'},
+ {name:'女祭司',latin:'THE HIGH PRIESTESS',mark:'II',meaning:'还有一些信息尚未浮现。直觉值得倾听，但也可以让事实慢慢补齐画面。',reflection:'先观察，不急着替未知下结论。'},
+ {name:'皇后',latin:'THE EMPRESS',mark:'III',meaning:'照料、创造和耐心会带来新的空间。你不需要靠持续用力证明每一件事。',reflection:'为一件重要的事留出稳定而舒服的时间。'},
+ {name:'皇帝',latin:'THE EMPEROR',mark:'IV',meaning:'边界和秩序能让复杂的事情变得清楚。稳定不是僵化，而是知道什么值得优先。',reflection:'把眼前的事情分成现在、稍后和暂时不做。'},
+ {name:'教皇',latin:'THE HIEROPHANT',mark:'V',meaning:'经验和可靠的方法可以成为参考。借鉴他人的路径，同时保留自己的判断。',reflection:'找一个可信的资料来源，核对最重要的信息。'},
+ {name:'恋人',latin:'THE LOVERS',mark:'VI',meaning:'选择背后常常藏着真正重视的东西。比起迎合外界，更重要的是看清自己的价值排序。',reflection:'问问自己：这个选择和我在意的事情一致吗？'},
+ {name:'战车',latin:'THE CHARIOT',mark:'VII',meaning:'方向明确时，行动会逐渐积累力量。遇到阻力不一定要停下，也可以调整路线。',reflection:'把目标拆成一个今天能完成的小步骤。'},
+ {name:'力量',latin:'STRENGTH',mark:'VIII',meaning:'坚定不一定需要很大的声音。耐心、温和与清楚的边界，也是一种力量。',reflection:'在不勉强自己的前提下，坚持一件重要的事。'},
+ {name:'隐者',latin:'THE HERMIT',mark:'IX',meaning:'独处可以帮助你听见自己的想法。暂时放慢，并不是落后，而是在重新辨认方向。',reflection:'留一段不被打扰的时间，整理自己的真实感受。'},
+ {name:'命运之轮',latin:'WHEEL OF FORTUNE',mark:'X',meaning:'局面总会变化。你无法控制每个变量，但可以留意新的线索并保持一点弹性。',reflection:'为计划准备一个可调整的版本。'},
+ {name:'正义',latin:'JUSTICE',mark:'XI',meaning:'清楚的事实能帮助你做出更稳妥的判断。把感受、推测和已经确认的信息分开。',reflection:'先写下事实，再写下自己的解释。'},
+ {name:'倒吊人',latin:'THE HANGED MAN',mark:'XII',meaning:'换一个角度，也许能看见原本忽略的部分。暂时停顿可以让思路重新排列。',reflection:'试着从另一个人的角度复述眼前的问题。'},
+ {name:'死神',latin:'DEATH',mark:'XIII',meaning:'结束一个旧阶段，也是在为新的空间腾出位置。变化可以慢慢发生，不必一次完成。',reflection:'找出一件已经不再适合自己的旧习惯。'},
+ {name:'节制',latin:'TEMPERANCE',mark:'XIV',meaning:'现在适合调整，而不是推翻。给不同的想法一点时间，让节奏重新对齐。',reflection:'今天只调整一个环节，不必要求全部立刻改变。'},
+ {name:'恶魔',latin:'THE DEVIL',mark:'XV',meaning:'某些习惯或期待可能正在占据太多注意力。看见它们，就多了一点重新选择的空间。',reflection:'辨认一件让自己分心的事，并为它设一个边界。'},
+ {name:'高塔',latin:'THE TOWER',mark:'XVI',meaning:'原有安排出现变化时，先稳住自己，再判断哪些部分需要重建。变化本身不等于失败。',reflection:'先处理最实际、最可控的一件事。'},
+ {name:'星星',latin:'THE STAR',mark:'XVII',meaning:'希望有时来自很小的恢复。你可以不急着得到答案，先让自己重新积累一点能量。',reflection:'记下最近一件让你感觉安定的小事。'},
+ {name:'月亮',latin:'THE MOON',mark:'XVIII',meaning:'眼前也许还有模糊的地方。未知不必马上被解释，等信息更完整再行动也可以。',reflection:'把担心和已知事实分开写下来。'},
+ {name:'太阳',latin:'THE SUN',mark:'XIX',meaning:'清晰、坦率和简单的快乐值得被认真对待。让自己看见已经完成的部分。',reflection:'给一件做得不错的小事一个明确的肯定。'},
+ {name:'审判',latin:'JUDGEMENT',mark:'XX',meaning:'回顾过去不是为了责备自己，而是看清已经学会了什么。你可以带着新的理解继续向前。',reflection:'回顾一次经历，写下现在会采用的不同做法。'},
+ {name:'世界',latin:'THE WORLD',mark:'XXI',meaning:'一个阶段可以被好好收尾。完成并不意味着停止，而是让下一段旅程有更清楚的起点。',reflection:'收好手头的一件事，再开始新的计划。'}
+];
+var oracleDeck={
+ '综合':[
+  ['静水','先让心绪沉下来，答案会比匆忙时更清楚。','今天给自己留一点安静的时间。'],
+  ['微光','很小的进展也值得记录，它正在把你带向更稳的地方。','完成一件十分钟内可以做完的事。'],
+  ['缓行','慢一点不代表错过。先确认方向，再决定速度。','把手头的事按重要程度重新排一遍。'],
+  ['新页','旧的经验可以留下，新的尝试也可以开始。','给一个搁置的想法十分钟。'],
+  ['回声','你曾经认真做过的事，仍然会留下影响。','回看一件已经完成的事情。'],
+  ['留白','暂时没有答案，也是一种真实的状态。','今天不急着填满所有空隙。']
+ ],
+ '关系':[
+  ['倾听','理解不一定来自立刻回应，有时先听完就已经很重要。','把想说的话放慢一点，也给对方表达的空间。'],
+  ['边界','舒服的关系允许彼此有自己的节奏。','想清楚一件自己愿意和不愿意的事。'],
+  ['坦诚','清楚表达比反复猜测更容易靠近事实。','用简单直接的话说出自己的需要。'],
+  ['耐心','关系需要时间，也需要双方都愿意投入。','观察行动与承诺是否一致。']
+ ],
+ '学业':[
+  ['积累','知识会在反复使用中变得牢固，不必追求一次记住全部。','选一个知识点，做一次主动回忆。'],
+  ['专注','把注意力放在当前的一件事上，减少同时开始的任务。','设定一个短时段，只做一件事。'],
+  ['求证','遇到不懂的地方，提出具体问题往往比盲目重复更有效。','把卡住的步骤写成一个明确问题。'],
+  ['复盘','错误可以成为线索，帮助你找到下一次更好的方法。','回顾一次练习，找出最值得改进的一点。']
+ ],
+ '心情':[
+  ['呼吸','先照顾此刻的自己，不必把所有事情同时解决。','喝点水，离开屏幕几分钟。'],
+  ['松弛','休息不是奖励，而是日常生活的一部分。','为今天安排一段没有任务的时间。'],
+  ['接纳','情绪会变化，不需要因为某个瞬间就给自己下结论。','用一句话描述现在的感受，不评价它。'],
+  ['回暖','状态可以慢慢恢复。先做一件让生活容易一点的小事。','整理一个小角落，给自己一点空间。']
+ ]
+};
+var positions=['过去 · 来处','现在 · 此刻','未来 · 可能'];
+var state={wheelOptions:defaultOptions.slice(),wheelHistory:[],tarotHistory:[],oracleHistory:[],dailyOracle:{}};
+var storageHealthy=true,spread='three',selectedOracleCategory='综合',wheelRotation=0,spinning=false,toastTimer=null;
+var $=function(selector){return app.querySelector(selector);};
+var $$=function(selector){return Array.prototype.slice.call(app.querySelectorAll(selector));};
+function message(selector,text){var el=$(selector);if(el)el.textContent=text;}
+function showToast(text){var el=$('#fateToast');if(!el)return;el.textContent=text;el.classList.add('show');if(toastTimer)window.clearTimeout(toastTimer);toastTimer=window.setTimeout(function(){el.classList.remove('show');},1900);}
+function dateKey(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function loadState(){
+ try{
+  var raw=window.localStorage.getItem(STORE_KEY);
+  if(!raw)return;
+  var saved=JSON.parse(raw);
+  if(!saved||typeof saved!=='object'||Array.isArray(saved))throw new Error('invalid state');
+  if(Array.isArray(saved.wheelOptions)&&saved.wheelOptions.length>=2&&saved.wheelOptions.every(function(x){return typeof x==='string'&&x.trim();}))state.wheelOptions=saved.wheelOptions.slice(0,16);
+  if(Array.isArray(saved.wheelHistory))state.wheelHistory=saved.wheelHistory.slice(0,30);
+  if(Array.isArray(saved.tarotHistory))state.tarotHistory=saved.tarotHistory.slice(0,20);
+  if(Array.isArray(saved.oracleHistory))state.oracleHistory=saved.oracleHistory.slice(0,30);
+  if(saved.dailyOracle&&typeof saved.dailyOracle==='object')state.dailyOracle=saved.dailyOracle;
+ }catch(error){
+  storageHealthy=false;
+  message('#wheelMessage','本地记录暂时无法读取；原始数据没有被覆盖，本次修改不会写入。');
+ }
+}
+function saveState(){
+ if(!storageHealthy){message('#wheelMessage','本地记录未能读取，已保留原始数据；本次修改仅在当前页面有效。');return false;}
+ try{window.localStorage.setItem(STORE_KEY,JSON.stringify(state));return true;}
+ catch(error){message('#wheelMessage','保存失败，浏览器存储空间或权限可能不足。请先不要关闭此页面。');return false;}
+}
+function showView(name){
+ var ids={home:'homeView',tarot:'tarotView',wheel:'wheelView',oracle:'oracleView'};
+ Object.keys(ids).forEach(function(key){var el=$('#'+ids[key]);if(el)el.hidden=key!==name;});
+ if(name==='wheel')drawWheel();
+ if(name==='tarot')renderCrystalPlaceholders();
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+function renderCrystalPlaceholders(){
+ var stage=$('#crystalStage');
+ if(stage.querySelector('.crystal-card'))return;
+ stage.innerHTML='<div class="tarot-empty">水晶尚未翻开<br>准备好时，抽取属于你的牌。</div>';
+}
+function setSpread(value){
+ spread=value;
+ $$('[data-spread]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-spread')===spread);});
+ message('#spreadDescription',spread==='three'?'过去 · 现在 · 未来':'一张牌 · 此刻的提示');
+ $('[data-action="draw-tarot"]').textContent=spread==='three'?'抽取三张':'抽取一张';
+}
+function shufflePick(count){
+ var pool=tarotDeck.map(function(_,i){return i;});
+ for(var i=pool.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=pool[i];pool[i]=pool[j];pool[j]=tmp;}
+ return pool.slice(0,count);
+}
+function drawTarot(){
+ var count=spread==='three'?3:1,indices=shufflePick(count),question=$('#tarotQuestion').value.trim();
+ var stage=$('#crystalStage'),results=$('#tarotResults');
+ stage.innerHTML='';
+ indices.forEach(function(index,i){
+  var card=tarotDeck[index],button=document.createElement('div');
+  button.className='crystal-card';
+  var face=document.createElement('div');face.className='crystal-face';
+  var mark=document.createElement('span');mark.className='crystal-index';mark.textContent=card.mark;
+  var name=document.createElement('strong');name.className='crystal-name';name.textContent=card.name;
+  var latin=document.createElement('span');latin.className='crystal-latin';latin.textContent=card.latin;
+  face.appendChild(mark);face.appendChild(name);face.appendChild(latin);button.appendChild(face);stage.appendChild(button);
+ });
+ results.innerHTML='';
+ indices.forEach(function(index,i){
+  var card=tarotDeck[index],article=document.createElement('article');article.className='reading-result';
+  var pos=document.createElement('div');pos.className='position';pos.textContent=count===1?'此刻 · 启示':positions[i];
+  var name=document.createElement('h3');name.textContent=card.name;
+  var latin=document.createElement('div');latin.className='latin';latin.textContent=card.latin;
+  var meaning=document.createElement('p');meaning.textContent=card.meaning;
+  var advice=document.createElement('div');advice.className='reflection';advice.textContent='给自己的提醒：'+card.reflection;
+  article.appendChild(pos);article.appendChild(name);article.appendChild(latin);article.appendChild(meaning);article.appendChild(advice);results.appendChild(article);
+ });
+ state.tarotHistory.unshift({date:dateKey(),question:question,cards:indices.map(function(i){return tarotDeck[i].name;})});
+ state.tarotHistory=state.tarotHistory.slice(0,20);saveState();
+ message('#tarotMessage',question?'这次抽取围绕的问题：'+question:'已完成一次水晶抽取。');
+}
+function drawWheel(){
+ var canvas=$('#wheelCanvas');if(!canvas)return;
+ var ctx=canvas.getContext('2d');if(!ctx)return;
+ var values=state.wheelOptions, count=values.length, size=canvas.width,center=size/2,radius=size/2-7,step=Math.PI*2/count,start=-Math.PI/2;
+ ctx.clearRect(0,0,size,size);ctx.save();ctx.translate(center,center);
+ var colors=['#e8e5dc','#d1cec3','#f1eee4','#bcb9ae'];
+ for(var i=0;i<count;i++){
+  var a=start+i*step;
+  ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,radius,a,a+step);ctx.closePath();
+  ctx.fillStyle=colors[i%colors.length];ctx.fill();
+  ctx.strokeStyle='#6c6a60';ctx.lineWidth=2;ctx.stroke();
+  ctx.save();ctx.rotate(a+step/2);ctx.translate(radius*.64,0);ctx.rotate(Math.PI/2);
+  ctx.fillStyle='#252720';ctx.textAlign='center';ctx.textBaseline='middle';
+  var fontSize=Math.max(10,Math.min(16,190/count));ctx.font='500 '+fontSize+'px "Microsoft YaHei",sans-serif';
+  var label=values[i].length>9?values[i].slice(0,8)+'…':values[i];
+  ctx.fillText(label,0,0,Math.max(45,radius*.55));ctx.restore();
+ }
+ ctx.beginPath();ctx.arc(0,0,radius-3,0,Math.PI*2);ctx.strokeStyle='#4b493f';ctx.lineWidth=3;ctx.stroke();ctx.restore();
+ renderWheelOptions();renderWheelHistory();
+}
+function renderWheelOptions(){
+ var list=$('#wheelOptions');list.innerHTML='';
+ state.wheelOptions.forEach(function(value,index){
+  var item=document.createElement('li'),label=document.createElement('span');label.textContent=(index+1)+'. '+value;
+  var remove=document.createElement('button');remove.type='button';remove.className='remove-option';remove.setAttribute('data-remove-option',String(index));remove.setAttribute('aria-label','删除选项 '+value);remove.textContent='×';remove.disabled=spinning||state.wheelOptions.length<=2;
+  item.appendChild(label);item.appendChild(remove);list.appendChild(item);
+ });
+ $('#spinButton').disabled=spinning||state.wheelOptions.length<2;
+}
+function renderWheelHistory(){
+ var list=$('#wheelHistory');list.innerHTML='';
+ if(!state.wheelHistory.length){var empty=document.createElement('li');empty.textContent='还没有转动记录。';list.appendChild(empty);return;}
+ state.wheelHistory.slice(0,8).forEach(function(entry){
+  var item=document.createElement('li'),name=document.createElement('span'),time=document.createElement('time');
+  name.textContent=entry.value;time.textContent=entry.time;
+  item.appendChild(name);item.appendChild(time);list.appendChild(item);
+ });
+}
+function addWheelOption(){
+ var input=$('#newWheelOption'),value=input.value.trim();
+ if(!value){message('#wheelMessage','先写下一个选项。');return;}
+ if(value.length>18){message('#wheelMessage','每个选项最多十八个字。');return;}
+ if(state.wheelOptions.length>=16){message('#wheelMessage','最多添加十六个选项。');return;}
+ if(state.wheelOptions.some(function(x){return x.toLowerCase()===value.toLowerCase();})){message('#wheelMessage','这个选项已经在转盘里了。');return;}
+ state.wheelOptions.push(value);input.value='';saveState();drawWheel();message('#wheelMessage','已添加：'+value);
+}
+function removeWheelOption(index){
+ if(spinning||state.wheelOptions.length<=2)return;
+ state.wheelOptions.splice(index,1);saveState();drawWheel();message('#wheelMessage','已移除一个选项。');
+}
+function spinWheel(){
+ if(spinning||state.wheelOptions.length<2)return;
+ spinning=true;renderWheelOptions();message('#wheelMessage','转盘正在转动。');$('#wheelResult').textContent='正在转动…';
+ var chosen=Math.floor(Math.random()*state.wheelOptions.length),step=360/state.wheelOptions.length;
+ var desired=((360-((chosen+.5)*step))%360+360)%360;
+ var current=((wheelRotation%360)+360)%360,delta=(desired-current+360)%360;
+ var reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ wheelRotation+= (reduced?1:6)*360+delta;
+ var disc=$('#wheelDisc'),finished=false;
+ function finish(){
+  if(finished)return;finished=true;spinning=false;
+  var value=state.wheelOptions[chosen];$('#wheelResult').textContent='这次的结果：'+value;
+  var now=new Date(),time=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
+  state.wheelHistory.unshift({value:value,time:time,date:dateKey()});state.wheelHistory=state.wheelHistory.slice(0,30);
+  saveState();renderWheelHistory();renderWheelOptions();message('#wheelMessage','结果已记录。');
+ }
+ disc.addEventListener('transitionend',function onEnd(event){if(event.propertyName!=='transform')return;disc.removeEventListener('transitionend',onEnd);finish();});
+ disc.style.transform='rotate('+wheelRotation+'deg)';
+ window.setTimeout(finish,reduced?80:5500);
+}
+function setOracleCategory(category){
+ selectedOracleCategory=category;
+ $$('[data-oracle-category]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-oracle-category')===category);});
+ renderSavedOracle();
+}
+function renderOracleResult(entry){
+ var paper=$('#oraclePaper');paper.innerHTML='';
+ var number=document.createElement('div');number.className='oracle-number';number.textContent=entry.category+' · '+entry.date;
+ var title=document.createElement('h3');title.textContent=entry.title;
+ var text=document.createElement('p');text.textContent=entry.message;
+ var advice=document.createElement('div');advice.className='oracle-advice';advice.textContent='今日提醒 · '+entry.advice;
+ paper.appendChild(number);paper.appendChild(title);paper.appendChild(text);paper.appendChild(advice);
+}
+function renderSavedOracle(){
+ var key=dateKey()+'_'+selectedOracleCategory,entry=state.dailyOracle[key];
+ if(entry)renderOracleResult(entry);
+ else $('#oraclePaper').innerHTML='<div class="oracle-placeholder">签筒安静地放在桌上。<br>准备好时，抽一支签。</div>';
+}
+function drawOracle(){
+ var pool=oracleDeck[selectedOracleCategory],index=Math.floor(Math.random()*pool.length),item=pool[index];
+ var entry={category:selectedOracleCategory,date:dateKey(),title:item[0],message:item[1],advice:item[2]};
+ state.dailyOracle[dateKey()+'_'+selectedOracleCategory]=entry;
+ state.oracleHistory.unshift(entry);state.oracleHistory=state.oracleHistory.slice(0,30);
+ saveState();renderOracleResult(entry);message('#oracleMessage','今日灵签已经记下，可以随时回来重读。');
+}
+function updateHomeNote(){
+ var notes=[];
+ if(state.wheelHistory.length)notes.push('转盘最近一次：'+state.wheelHistory[0].value);
+ if(state.tarotHistory.length)notes.push('最近一次水晶抽取：'+state.tarotHistory[0].cards.join('、'));
+ var el=$('#homeRecent');
+ if(el)el.textContent=notes.join('　／　');
+}
+app.addEventListener('click',function(event){
+ var open=event.target.closest('[data-open]');
+ if(open){showView(open.getAttribute('data-open'));return;}
+ if(event.target.closest('[data-go-home]')){showView('home');return;}
+ var spreadButton=event.target.closest('[data-spread]');
+ if(spreadButton){setSpread(spreadButton.getAttribute('data-spread'));return;}
+ var category=event.target.closest('[data-oracle-category]');
+ if(category){setOracleCategory(category.getAttribute('data-oracle-category'));return;}
+ var remove=event.target.closest('[data-remove-option]');
+ if(remove){removeWheelOption(Number(remove.getAttribute('data-remove-option')));return;}
+ var action=event.target.closest('[data-action]');
+ if(!action)return;
+ var type=action.getAttribute('data-action');
+ if(type==='draw-tarot')drawTarot();
+ if(type==='spin')spinWheel();
+ if(type==='add-option')addWheelOption();
+ if(type==='draw-oracle')drawOracle();
+});
+$('#newWheelOption').addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();addWheelOption();}});
+loadState();setSpread('three');drawWheel();setOracleCategory('综合');updateHomeNote();
+})();
+</script>
+</body>
+</html>
