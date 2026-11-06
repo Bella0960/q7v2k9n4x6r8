@@ -27,7 +27,17 @@ test('tarot uses a tall six-corner crystal silhouette, not rectangular playing c
   assert.match(js, /var TAROT_MINOR = \[/);
   assert.match(js, /var TAROT = TAROT_MAJOR\.concat\(TAROT_MINOR\)/);
   assert.match(html, /完整 78 张牌组/);
-  assert.match(html, /塔罗.*?/);
+  const majorStart = js.indexOf('var TAROT_MAJOR = [');
+  const minorStart = js.indexOf('var TAROT_MINOR = [');
+  const allCardsStart = js.indexOf('var TAROT = TAROT_MAJOR.concat(TAROT_MINOR)');
+  const majorDeck = js.slice(majorStart, minorStart);
+  const minorDeck = js.slice(minorStart, allCardsStart);
+  assert.equal((majorDeck.match(/^  \['/gm) || []).length, 22, 'Major Arcana must contain 22 cards');
+  for (const suit of ['权杖', '圣杯', '宝剑', '星币']) {
+    assert.equal((minorDeck.match(new RegExp("suit:'" + suit + "'", 'g')) || []).length, 14, suit + ' must contain 14 cards');
+  }
+  assert.equal((minorDeck.match(/name:'/g) || []).length, 56, 'Minor Arcana must contain 56 cards');
+  assert.match(html, /tarotDeckCount/);
 });
 
 test('role participation uses existing MAOMAO character and AI APIs', () => {
@@ -42,6 +52,8 @@ test('role participation uses existing MAOMAO character and AI APIs', () => {
   assert.match(js, /requestRoleStart\('大转盘'\)/);
   assert.match(js, /requestRoleStart\('塔罗牌'\)/);
   assert.match(js, /requestRoleStart\('今日运势'\)/);
+  assert.match(js, /roleStartToken\+\+/);
+  assert.match(html, /id="rolePrompt"/);
 });
 
 test('random results are generated locally before character response', () => {
