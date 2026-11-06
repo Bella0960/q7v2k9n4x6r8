@@ -40,7 +40,7 @@ PhoneStorage provides a common API and error-result namespace, but not every exi
 | maomao_diary_photo_store_v1 | v1: photos (keyPath key) | diary/diary.html | Listed in backup.js |
 | maomao-reading-library | v1: books (keyPath id), comments (keyPath id) | library/library.html | Listed in backup.js |
 | maomao-font-presets | v1: presets (keyPath id, includes Blob) | shared/js/font-loader.js, settings/font-settings.html, theme-store/theme-store.html | Listed in backup.js; Blob serialized as Base64 with 30 MiB per-record and 90 MiB per-store source limits |
-| maomao-assets | v1: assets, blobs, refs | shared/js/phone/storage/media-repository.js | Not present in backup.js IDB_TARGETS at this baseline; must be added and tested before the repository is used for irreplaceable chat media |
+| maomao-assets | v2: assets, blobs, refs, image_records | shared/js/phone/storage/media-repository.js | Listed in backup.js; assets/blobs/refs and generated-image records are exported together; Blob payloads use Base64 limits with atomic whole-database exclusion when a limit is exceeded |
 | maomao-restore-point | v1, restore-point helper store | settings/js/backup.js | Internal restore safety mechanism, not ordinary user content; inspect its lifecycle during backup refactor |
 
 The database register is a code-derived inventory, not a complete audit of every browser profile's live IndexedDB data. Add a startup/runtime diagnostic to enumerate actual databases where supported and report database names, versions, stores, record counts, and approximate sizes without exposing message content.
@@ -49,7 +49,7 @@ The database register is a code-derived inventory, not a complete audit of every
 
 - ConversationRepository currently uses the configured result storage adapter around chat_history_<id>; it is not yet backed by IndexedDB.
 - Its getPage method currently reads the complete history array and slices it in memory. This is not disk-level paging.
-- MediaRepository already supports Blob storage, SHA-256-based IDs, de-duplication, and reference records. Verify its deletion/reference semantics and add it to backup/restore before connecting chat images.
+- MediaRepository supports Blob storage, SHA-256-based IDs, de-duplication, and reference records. The registered `maomao-assets` v2 database also stores generated-image metadata in `image_records`; image bytes remain in `blobs` and chat/gallery records reference them by assetId.
 - Diary photos use IndexedDB but store a data field (source currently uses strings/data URLs), not necessarily Blob.
 - Local music files use IndexedDB audio records, but backup.js excludes the blob field. Decide whether music should be included in a full backup or separately exportable.
 - Backup.js includes several fixed IndexedDB database/store definitions. Any new DB/store must be registered and covered by restore tests at the same time it is introduced.

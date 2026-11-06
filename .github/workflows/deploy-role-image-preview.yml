@@ -1,0 +1,95 @@
+name: Deploy role-image acceptance preview
+
+on:
+  push:
+    branches:
+      - preview/role-image-20261106
+    paths:
+      - '.github/workflows/deploy-role-image-preview.yml'
+      - '**/*.html'
+      - '**/*.js'
+      - '**/*.css'
+      - '**/*.json'
+      - 'assets/**'
+      - 'games/assets/**'
+      - 'shared/**'
+      - 'apps/**'
+      - 'diary/**'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'wrangler.ai-img-preview.jsonc'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact preview commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build MAOMAO preview
+        run: npm run build
+
+      - name: Deploy isolated role-image Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.ai-img-preview.jsonc
+
+      - name: Publish exact preview URL
+        id: publish
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+          COMMAND_OUTPUT: ${{ steps.deploy.outputs.command-output }}
+        run: |
+          URL="$DEPLOYMENT_URL"
+          if [ -z "$URL" ]; then
+            URL="$(printf '%s' "$COMMAND_OUTPUT" | grep -Eo 'https://[^[:space:]]+\.workers\.dev' | tail -n 1 || true)"
+          fi
+          if [ -z "$URL" ]; then
+            echo "Cloudflare deploy did not expose a workers.dev URL; inspect the deploy step output." >&2
+            printf '%s\n' "$COMMAND_OUTPUT"
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Role-image mobile acceptance preview"
+            echo ""
+            echo "$URL"
+            echo ""
+            echo "This is an isolated Worker. Production Worker mao is unchanged."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Preview URL: $URL"
+
+      - name: Smoke-test deployed mobile pages
+        env:
+          PREVIEW_URL: ${{ steps.publish.outputs.url }}
+        run: |
+          set -euo pipefail
+          for path in "/" "/settings/settings.html" "/settings/image-generation.html" "/worldbook/characters/characters.html" "/chat/chat/chat-detail.html" "/shared/js/phone/image-generation.js"; do
+            status="$(curl --retry 2 --retry-delay 2 --silent --show-error --output /tmp/preview-response --write-out '%{http_code}' "${PREVIEW_URL}${path}")"
+            if [ "$status" != "200" ]; then
+              echo "Preview route failed: $path (HTTP $status)" >&2
+              head -c 500 /tmp/preview-response >&2 || true
+              exit 1
+            fi
+            echo "PASS HTTP 200: $path"
+          done

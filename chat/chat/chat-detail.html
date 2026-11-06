@@ -11,6 +11,10 @@
     <link rel="stylesheet" href="../../shared/css/chat-beauty-runtime.css?v=20261031v1">
     <link rel="stylesheet" href="../call/call-overlay.css?v=20261105v1">
     <script src="../../shared/js/phone/phone_storage.js"></script>
+    <script src="../../shared/js/phone/storage/repository.js"></script>
+    <script src="../../shared/js/phone/storage/media-repository.js?v=20261106v1"></script>
+    <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
+    <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
@@ -654,6 +658,28 @@
         }
         .bubble-media { padding: 0 !important; background: transparent !important; border: none !important; }
         .msg-media-img { width: 180px; max-width: 100%; border-radius: 16px; display: block; }
+        .image-actions {
+            display: flex; align-items: center; gap: 12px;
+            padding: 6px 2px 0; max-width: 180px;
+        }
+        .image-action-button {
+            border: 0; padding: 3px 0; background: transparent;
+            color: #77777D; font-size: 11px; line-height: 1.4;
+            text-decoration: underline; text-underline-offset: 3px;
+        }
+
+        .bubble-image-pending {
+            min-width: 150px; padding: 12px 14px !important;
+            color: #77777D !important; background: #F7F7F8 !important;
+            border: 1px solid #E7E7EA !important; font-size: 0.75rem;
+        }
+        .image-pending-mark {
+            display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+            background: #999; margin-right: 8px; vertical-align: middle;
+            animation: imagePendingPulse 1.1s ease-in-out infinite;
+        }
+        @keyframes imagePendingPulse { 50% { opacity: .25; } }
+
         .msg-media-desc { font-size: 0.688rem; color: #8E8E93; margin-top: 6px; }
         /* 虚拟图片：AI 描述 + 可见的图片框 */
         .vimg-box {
@@ -2872,6 +2898,94 @@
             return false;
         }
 
+        // /photo 为用户显式触发，不自动判断意图、不随机生成；仅支持单人角色聊天。
+        var _chatImageGenerationRunning = false;
+        async function generateRoleImageFromChat(sceneHint) {
+            if (_chatImageGenerationRunning) {
+                if (typeof showToast === 'function') showToast('上一张图片还在生成，请稍等');
+                return;
+            }
+            if (isGroupChat) {
+                if (typeof showToast === 'function') showToast('角色生图目前支持单人聊天，请在单人聊天中使用 /photo');
+                return;
+            }
+            if (!window.PhoneImageGeneration) {
+                if (typeof showToast === 'function') showToast('生图模块未加载，请刷新页面后重试');
+                return;
+            }
+            var input = document.getElementById('chat-input');
+            var prior = loadMessages();
+            var context = prior.slice(-14).map(function (message) {
+                if (!message || typeof message !== 'object') return '';
+                var type = String(message.type || '');
+                if (type === 'image' || type === 'virtual-image' || type === 'sticker' || type === 'voice') return '';
+                var body = String(message.text != null ? message.text : (message.content || '')).trim();
+                if (!body) return '';
+                var speaker = message.role === 'sent' || message.role === 'user' ? 'User' :
+                    (message.name || currentCharacter.name || 'Character');
+                return speaker + ': ' + body.slice(0, 900);
+            }).filter(Boolean).join('\n').slice(-6500);
+            var pending = {
+                role: 'assistant',
+                type: 'image-pending',
+                text: '正在生成图片…',
+                time: Date.now()
+            };
+            ensureMid(pending);
+            var withPending = prior.slice();
+            withPending.push(pending);
+            if (!saveMessages(withPending)) {
+                if (typeof showToast === 'function') showToast('聊天记录无法保存，暂未开始生图');
+                return;
+            }
+            if (input) input.value = '';
+            renderAllMessages();
+            _chatImageGenerationRunning = true;
+            try {
+                var result = await window.PhoneImageGeneration.generate({
+                    characterId: currentCharacter.id,
+                    conversationContext: context,
+                    sceneHint: sceneHint || '',
+                    isPrivate: true,
+                    chatMessageId: pending.mid
+                });
+                if (!result.chatReferenceAdded) {
+                    throw new Error('图片已保存到角色图库，但聊天引用没有写入；请到设置中的角色图库查看。');
+                }
+                var latest = loadMessages();
+                var index = latest.findIndex(function (item) { return String(item.mid || '') === String(pending.mid); });
+                if (index < 0) return;
+                latest[index] = Object.assign({}, latest[index], {
+                    type: 'image',
+                    assetId: result.assetId,
+                    imageRecordId: result.record.id,
+                    desc: result.sceneDescription,
+                    isPrivate: true
+                });
+                if (!saveMessages(latest)) {
+                    if (typeof showToast === 'function') showToast('图片已生成并保存到图库，但聊天记录保存失败');
+                }
+                renderAllMessages();
+            } catch (error) {
+                var failed = loadMessages();
+                var pendingIndex = failed.findIndex(function (item) {
+                    return String(item.mid || '') === String(pending.mid);
+                });
+                if (pendingIndex >= 0) {
+                    failed.splice(pendingIndex, 1);
+                    failed.push({
+                        role: 'system_error',
+                        text: '图片生成失败：' + window.PhoneImageGeneration.safeFailure(error),
+                        time: Date.now()
+                    });
+                    saveMessages(failed);
+                    renderAllMessages();
+                }
+            } finally {
+                _chatImageGenerationRunning = false;
+            }
+        }
+
         // system_error 去重：最后一条已经是相同提示时不再重复追加/保存。
         // 主要覆盖 isRegen / contextOnly 反复触发同一错误（如未配置 API Key）时历史累积的问题。
         function _isRepeatedSystemError(list, text) {
@@ -3163,6 +3277,59 @@
         // @param {Node} [container] 插入容器，默认 chatMessages。
         //   传入 DocumentFragment 即可把整批消息先离屏组装、再一次挂到文档，
         //   避免 N 次 live-DOM append 触发 N 次布局（消息多时这是主要卡顿源）。
+        // 新生图片仅在消息中保存 assetId；渲染时从 MediaRepository 解出 Blob URL。
+        // URL 按 assetId 缓存，页面退出时统一 revoke；旧版 img/dataURL 消息仍走原分支。
+        var _chatImageMediaRepo = (window.PhoneStorage && window.PhoneStorage.MediaRepository)
+            ? new window.PhoneStorage.MediaRepository() : null;
+        var _chatImageObjectUrls = Object.create(null);
+        function resolveGeneratedImage(bubble, assetId, description) {
+            if (!assetId || !_chatImageMediaRepo) return;
+            var box = bubble.querySelector('.vimg-box');
+            if (!box) return;
+            function attach(url) {
+                if (!box.isConnected) return;
+                box.innerHTML = '';
+                var image = document.createElement('img');
+                image.className = 'msg-media-img';
+                image.alt = description || '角色图片';
+                image.src = url;
+                box.appendChild(image);
+
+                var actions = document.createElement('div');
+                actions.className = 'image-actions';
+                var save = document.createElement('button');
+                save.type = 'button';
+                save.className = 'image-action-button';
+                save.textContent = '保存图片';
+                save.addEventListener('click', function () {
+                    var link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'maomao-character-image.png';
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                });
+                actions.appendChild(save);
+                box.appendChild(actions);
+            }
+            var cached = _chatImageObjectUrls[assetId];
+            if (cached) { attach(cached.url); return; }
+            _chatImageMediaRepo.toObjectUrl(assetId).then(function (result) {
+                if (!result || !result.ok || !result.value) return;
+                _chatImageObjectUrls[assetId] = result.value;
+                attach(result.value.url);
+            }).catch(function (error) {
+                console.warn('[ChatImage] 图片资源读取失败:', error && error.message ? error.message : 'unknown');
+            });
+        }
+        window.addEventListener('pagehide', function () {
+            Object.keys(_chatImageObjectUrls).forEach(function (assetId) {
+                try { _chatImageObjectUrls[assetId].revoke(); } catch (e) {}
+                delete _chatImageObjectUrls[assetId];
+            });
+        });
+
         function appendMessageToDOM(msg, idx, container) {
             // 虚拟列表模式：无显式容器（或明确指向 chatMessages）的单条追加，重定向进窗口容器，
             // 避免行被挂到窗口之外、脱离虚拟列表管理。传入 DocumentFragment 的批量渲染不受影响。
@@ -3184,16 +3351,20 @@
             var attachEl = bubble;
 
             // 特殊类型消息渲染为卡片，复用同一套气泡与左右对齐
-            if (msg.type === 'image' || msg.type === 'virtual-image') {
-                // 图片消息：先过协议白名单，再转义进属性。
-                // 白名单不通过（含 javascript: / 引号闭合尝试）一律降级为图片占位框，
-                // 绝不把不可信值拼进 src。
+            if (msg.type === 'image-pending') {
+                bubble.classList.add('bubble-image-pending');
+                bubble.innerHTML = '<span class="image-pending-mark"></span>' + escHtml(msg.text || '正在生成图片…');
+            } else if (msg.type === 'image' || msg.type === 'virtual-image') {
+                // 兼容旧消息中的 img URL / dataURL；新消息优先通过 assetId 读取 Blob。
                 const mediaSrc = safeUrl(msg.img);
                 bubble.classList.add('bubble-media');
-                bubble.innerHTML = mediaSrc
-                    ? '<img class="msg-media-img" src="' + escHtml(mediaSrc) + '" alt="">'
-                    : '<div class="vimg-box">' +
+                if (mediaSrc) {
+                    bubble.innerHTML = '<img class="msg-media-img" src="' + escHtml(mediaSrc) + '" alt="">';
+                } else {
+                    bubble.innerHTML = '<div class="vimg-box">' +
                         '<span class="vimg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg></span></div>';
+                    if (msg.assetId) resolveGeneratedImage(bubble, String(msg.assetId), msg.desc || '');
+                }
             } else if (msg.type === 'heart') {
                 // 心声卡：iOS 备忘录风格卡片（方案 B · 黑白灰）
                 bubble.classList.add('bubble-heart');
@@ -4809,6 +4980,17 @@
                 else if (isGroupChat && currentGroup && !isRegen && !contextOnly && !getAvailableGroupMembers().length) {
                     preflightReason = 'group-unavailable';
                 } else preflightReason = 'ready';
+            }
+            // /photo [场景补充]：生成请求不作为普通聊天消息发送，也不进入 AI 对话正文。
+            var photoCommand = !isRegen && !contextOnly && !silent
+                ? String(text || '').match(/^\/photo(?:\s+([\s\S]*))?$/i) : null;
+            if (photoCommand && isGroupChat) {
+                if (typeof showToast === 'function') showToast('角色生图目前支持单人聊天，请在单人聊天中使用 /photo');
+                return;
+            }
+            if (photoCommand && preflightReason === 'ready') {
+                generateRoleImageFromChat((photoCommand[1] || '').trim());
+                return;
             }
             if (preflightReason === 'empty') return;
             if (preflightReason === 'busy') {
