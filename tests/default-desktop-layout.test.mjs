@@ -7,6 +7,7 @@ const widgetManager = readFileSync(new URL('../desktop/widgets.html', import.met
 const desktopCss = readFileSync(new URL('../desktop/css/styles.css', import.meta.url), 'utf8');
 const mobileCss = readFileSync(new URL('../shared/css/mobile-fit.css', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const desktopScript = readFileSync(new URL('../desktop/js/script.js', import.meta.url), 'utf8');
 
 function extractDefaultPages(source) {
   const match = source.match(/function getDefaultLayout\(\)\s*\{[\s\S]*?pages:\s*\[([\s\S]*?)\],\s*dock:/);
@@ -65,7 +66,12 @@ test('all desktop app tiles have valid relative destinations and delegated click
     assert.ok(existsSync(new URL('../' + href, import.meta.url)), 'missing app destination: ' + href);
   }
   assert.match(index, /target\.closest\('\.app-tile\[data-href\]'\)/);
-  assert.match(index, /window\.location\.assign\(new URL\(href, document\.baseURI\)\.href\);\s*\}, true\);/, 'navigation must run in capture phase before legacy gesture handlers can stop propagation');
-  assert.match(index, /window\.location\.assign\(new URL\(href, document\.baseURI\)\.href\)/);
+  assert.match(index, /new URL\(href, document\.baseURI\)/);
+  assert.match(index, /destination\.origin !== window\.location\.origin/,
+    'app navigation must reject cross-origin destinations');
+  assert.match(index, /window\.location\.assign\(destination\.href\);\s*\}, true\);/,
+    'navigation must run in capture phase before legacy gesture handlers can stop propagation');
+  assert.doesNotMatch(desktopScript, /target\.closest\('\[data-href\]'\)/,
+    'the legacy bubble-phase handler must not duplicate the capture-phase navigation');
   assert.match(index, /home-editing/);
 });
