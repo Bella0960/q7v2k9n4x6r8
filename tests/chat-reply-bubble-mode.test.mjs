@@ -141,7 +141,7 @@ test('缺少 replyBubbleMode 的老角色：6 段以上不设上限；显式 aut
 
   const legacyMessages = policy.buildReplyMessages(raw, 'legacy', { time: 1000, turnId: 'legacy-turn' });
   assert.equal(legacyMessages.length, 7);
-  assert.deepEqual(legacyMessages.map((message) => message.text), segments);
+  assert.deepEqual(Array.from(legacyMessages, (message) => message.text), segments);
   assert.ok(legacyMessages.every((message) => message.turnId === 'legacy-turn'));
 
   const autoMessages = policy.buildReplyMessages(raw, 'auto', { time: 2000, turnId: 'auto-turn' });
