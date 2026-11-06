@@ -30,6 +30,7 @@ Browser storage is scoped to the origin, browser profile, and device. Changing d
 | home_icon_presets_v1 / home_icon_active_preset_v1 | Saved icon-set metadata and currently selected preset ID | Icon image copies are stored separately in the shared wallpapers IndexedDB store |
 | music_local_tracks | Local music metadata | Audio Blob itself is in IndexedDB, metadata remains in localStorage |
 | maomao_reader_bg_v1 | Reading background | Source comments cap the data URL at 600,000 characters |
+| maomao_fate_cabin_v1 | Fate Cabin wheel options, local history, and daily oracle selections | Small text-only state; included automatically because backup.js exports the complete localStorage keyspace |
 
 PhoneStorage provides a common API and error-result namespace, but not every existing caller uses it. Some legacy pages still access localStorage directly. Do not assume all keys have already migrated.
 
