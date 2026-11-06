@@ -16,7 +16,7 @@ const serviceWorkerSource = fs.readFileSync(path.resolve('sw.js'), 'utf8');
 const expectedCacheName = serviceWorkerSource.match(/const CACHE_NAME = ['"]([^'"]+)['"]/)?.[1];
 assert.ok(expectedCacheName, 'source service worker must declare its cache version');
 
-const configuredBaseUrl = (process.env.MAOMAO_BASE_URL || '').trim().replace(/\\/+$/, '');
+const configuredBaseUrl = (process.env.MAOMAO_BASE_URL || '').trim().replace(/\/+$/, '');
 let server = null;
 let baseUrl = configuredBaseUrl;
 
@@ -104,7 +104,7 @@ try {
     assert.ok((response.headers()['content-type'] || '').includes('text/html'),
       `app page should be HTML: ${route}`);
     const body = await response.text();
-    assert.match(body, /<html[\\s>]/i, `app route returned no HTML document: ${route}`);
+    assert.match(body, /<html[\s>]/i, \`app route returned no HTML document: \${route}\`);
   }
 
   const page = await context.newPage();
