@@ -20,7 +20,7 @@
       (function () {
         try {
           Object.keys(localStorage).forEach(function (key) {
-            if (/^ds_layout_v\\d+$/.test(key) && key !== 'ds_layout_v13') {
+            if (/^ds_layout_v\d+$/.test(key) && key !== 'ds_layout_v13') {
               localStorage.removeItem(key);
             }
           });
