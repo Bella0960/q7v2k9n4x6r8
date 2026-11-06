@@ -38,6 +38,30 @@ var TAROT_MAJOR = [
   ['XX','审判','回顾 · 醒悟 · 新阶段','回顾经验，挑一件真正想继续的事。','觉察与重启','自我苛责与犹豫','⌁'],
   ['XXI','世界','完成 · 整合 · 旅程','认可已经走过的路，再开始下一段。','收获与完整','未完成感与分散','◎']
 ];
+var TAROT_MAJOR_REVERSED = {
+  '愚者':'容易轻率或分心，先确认准备是否充分，再决定是否开始。',
+  '魔术师':'想法可能分散，或一下答应太多。收拢目标后再行动。',
+  '女祭司':'容易因为猜测或信息不完整而迟疑，先确认事实。',
+  '皇后':'可能忽略自己的需求，或把照顾别人放在第一位。',
+  '皇帝':'过于强调控制或规则，容易让安排失去弹性。',
+  '教皇':'过度依赖惯例或他人意见，记得保留独立判断。',
+  '恋人':'期待不一致或难以取舍时，先说清自己的真实在意。',
+  '战车':'节奏太急或方向摇摆时，先停一下重新聚焦。',
+  '力量':'急于证明自己容易带来消耗，耐心调整节奏。',
+  '隐者':'独处过多可能让人封闭，适度与可信任的人交流。',
+  '命运之轮':'变化反复或充满不确定时，先处理眼前可控事项。',
+  '正义':'信息缺口或主观偏见可能影响判断，多核对再决定。',
+  '倒吊人':'等待过久可能变成拖延，找一个小步骤重新开始。',
+  '死神':'可能抗拒必要的变化，先辨认什么已经不适合现在。',
+  '节制':'节奏失衡或做得太多时，重新安排轻重缓急。',
+  '恶魔':'旧习惯或短期诱惑可能分散注意力，重新拿回主动。',
+  '高塔':'变化带来慌乱时，先确认事实与安全，再一步步调整。',
+  '星星':'疲惫或失望时，先给自己恢复空间，不必急于乐观。',
+  '月亮':'误解与不安可能来自未知，先分辨事实与想象。',
+  '太阳':'过度乐观或忽略休息时，记得让期待贴近现实。',
+  '审判':'容易自我苛责或犹豫，允许自己从经验中调整。',
+  '世界':'未完成感或注意力分散时，重新确认当下优先事项。'
+};
 var TAROT_MINOR = [
   { roman:'A', name:'权杖王牌', suit:'权杖', keywords:'灵感 · 起步', upright:'新的兴趣或创作冲动正在出现。先迈出一个小步，看看它会带你去哪里。', reversed:'热情暂时分散，或计划还没有准备好。先整理资源，不必急着证明什么。', glyph:'Ⅰ' },
   { roman:'II', name:'权杖二', suit:'权杖', keywords:'规划 · 视野', upright:'你正在比较不同方向。把眼前选择写下来，再决定下一步。', reversed:'计划可能过于宽泛，或因顾虑而迟迟没有行动。先缩小范围。', glyph:'Ⅱ' },
@@ -548,7 +572,18 @@ function drawTarot() {
   setTimeout(function () {
     var count = Number($('tarotSpreadSelect').value) === 3 ? 3 : 1;
     var selected = shuffle(TAROT).slice(0, count).map(function (card) {
-      return { roman:card.roman || card[0], name:card.name || card[1], suit:card.suit || '大阿卡纳', keywords:card.keywords || card[2], upright:card.upright || card[3], reversed:card.reversed || card[4], glyph:card.glyph || card[5], reversedDraw:randomIndex(100)<30, revealed:false };
+      var isMajor = Array.isArray(card);
+      return {
+        roman:isMajor ? card[0] : card.roman,
+        name:isMajor ? card[1] : card.name,
+        suit:isMajor ? '大阿卡纳' : card.suit,
+        keywords:isMajor ? card[2] : card.keywords,
+        upright:isMajor ? card[3] + '（方向：' + card[4] + '）' : card.upright,
+        reversed:isMajor ? TAROT_MAJOR_REVERSED[card[1]] : card.reversed,
+        glyph:isMajor ? card[6] : card.glyph,
+        reversedDraw:randomIndex(100)<30,
+        revealed:false
+      };
     });
     tarotDraw = selected;
     $('tarotDeckCount').textContent = '本次抽取 ' + selected.length + ' 张 · 全牌组 78 张';
