@@ -87,3 +87,22 @@ test('custom templates and history have a dedicated persistent data domain', () 
   assert.match(js, /function delete|deleteLotPoolBtn/);
   assert.match(js, /localStorage\.setItem\(DATA_KEY/);
 });
+
+
+test('lot draw actor modes support user, character, and persistent alternating turns', () => {
+  assert.match(html, /id="lotDrawMode"/);
+  assert.match(html, /value="user"/);
+  assert.match(html, /value="role"/);
+  assert.match(html, /value="alternate"/);
+  assert.match(html, /id="lotDrawHint"/);
+  assert.match(js, /lotDrawMode: 'user'/);
+  assert.match(js, /saved\.lotDrawMode/);
+  assert.match(js, /function nextLotActorType\(\)/);
+  assert.match(js, /function updateLotDrawModeUI\(\)/);
+  assert.match(js, /function getLotActor\(\)/);
+  assert.match(js, /entry\.game === '抽签'/);
+  assert.match(js, /requestRoleStart\('抽签', actor\.type\)/);
+  assert.match(js, /addHistory\('抽签', result, pool\.name, actor\.name\)/);
+  assert.match(js, /askRole\('抽签', result, 'lotRoleReaction', actor\.type\)/);
+  assert.match(js, /entry\.actorName/);
+});
