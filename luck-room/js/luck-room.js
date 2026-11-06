@@ -233,7 +233,11 @@ function renderLotItems() {
   pool.items.forEach(function (item, index) {
     var row = document.createElement('div'); row.className = 'item-row';
     var number = document.createElement('span'); number.className = 'item-index'; number.textContent = String(index + 1).padStart(2, '0');
-    var text = document.createElement('span'); text.className = 'item-text'; text.textContent = item;
+    var text = document.createElement('input'); text.className = 'item-edit-input'; text.type = 'text'; text.maxLength = 36; text.value = item; text.setAttribute('aria-label', '编辑签文');
+    text.addEventListener('change', function () {
+      var value = text.value.trim(); if (!value) { text.value = pool.items[index]; return; }
+      pool.items[index] = value; saveState(); renderLotItems();
+    });
     var remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.setAttribute('aria-label', '删除签文');
     remove.addEventListener('click', function () {
       pool.items.splice(index, 1); saveState(); renderLotItems(); $('lotResult').hidden = true;
@@ -263,7 +267,11 @@ function renderWheelEditor() {
   wheel.items.forEach(function (item, index) {
     var row = document.createElement('div'); row.className = 'item-row';
     var number = document.createElement('span'); number.className = 'item-index'; number.textContent = String(index + 1).padStart(2, '0');
-    var text = document.createElement('span'); text.className = 'item-text'; text.textContent = item;
+    var text = document.createElement('input'); text.className = 'item-edit-input'; text.type = 'text'; text.maxLength = 24; text.value = item; text.setAttribute('aria-label', '编辑转盘选项');
+    text.addEventListener('change', function () {
+      var value = text.value.trim(); if (!value) { text.value = wheel.items[index]; return; }
+      wheel.items[index] = value; saveState(); drawWheel();
+    });
     var remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.setAttribute('aria-label', '删除转盘选项');
     remove.addEventListener('click', function () {
       wheel.items.splice(index, 1); saveState(); renderWheelEditor(); drawWheel(); $('wheelResult').hidden = true;
@@ -370,21 +378,32 @@ function addCardSvg() {
 }
 function tarotPosition(index, count) { return count === 1 ? '此刻' : ['过去','现在','未来'][index]; }
 function drawTarot() {
-  var count = Number($('tarotSpreadSelect').value) === 3 ? 3 : 1;
-  var selected = shuffle(TAROT).slice(0, count).map(function (card) {
-    return { roman:card[0], name:card[1], keywords:card[2], upright:card[3], reversed:card[4], glyph:card[5], reversedDraw:randomIndex(100)<30, revealed:false };
-  });
-  tarotDraw = selected;
-  $('tarotDeckScene').hidden = true;
-  $('tarotSpread').hidden = false;
-  $('tarotReadings').hidden = false;
-  $('tarotRoleReaction').hidden = true;
-  $('tarotDisclaimer').hidden = false;
-  $('tarotHint').textContent = '点击每一枚水晶牌，翻开它。';
-  $('drawTarotBtn').textContent = '重新洗牌抽取';
-  $('drawTarotBtn').disabled = false;
-  renderTarotSpread();
-  addHistory('塔罗', selected.map(function (card) { return card.name + (card.reversedDraw ? '（逆位）' : '（正位）'); }).join('、'), count === 1 ? '单张牌' : '过去 / 现在 / 未来');
+  var button = $('drawTarotBtn');
+  if (button.disabled) return;
+  button.disabled = true;
+  $('tarotDeckScene').hidden = false;
+  $('tarotDeckScene').classList.remove('shuffling');
+  void $('tarotDeckScene').offsetWidth;
+  $('tarotDeckScene').classList.add('shuffling');
+  $('tarotHint').textContent = '正在洗牌……';
+  setTimeout(function () {
+    var count = Number($('tarotSpreadSelect').value) === 3 ? 3 : 1;
+    var selected = shuffle(TAROT).slice(0, count).map(function (card) {
+      return { roman:card[0], name:card[1], keywords:card[2], upright:card[3], reversed:card[4], glyph:card[5], reversedDraw:randomIndex(100)<30, revealed:false };
+    });
+    tarotDraw = selected;
+    $('tarotDeckScene').classList.remove('shuffling');
+    $('tarotDeckScene').hidden = true;
+    $('tarotSpread').hidden = false;
+    $('tarotReadings').hidden = false;
+    $('tarotRoleReaction').hidden = true;
+    $('tarotDisclaimer').hidden = false;
+    $('tarotHint').textContent = '点击每一枚水晶牌，翻开它。';
+    button.textContent = '重新洗牌抽取';
+    button.disabled = false;
+    renderTarotSpread();
+    addHistory('塔罗', selected.map(function (card) { return card.name + (card.reversedDraw ? '（逆位）' : '（正位）'); }).join('、'), count === 1 ? '单张牌' : '过去 / 现在 / 未来');
+  }, 780);
 }
 function renderTarotSpread() {
   var spread = $('tarotSpread'); spread.textContent = ''; spread.dataset.count = String(tarotDraw.length);
