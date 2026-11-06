@@ -259,7 +259,6 @@ function requestRoleStart(game) {
   target.hidden = false;
   target.textContent = fallback;
   if (!window.PhoneAPI || typeof PhoneAPI.complete !== 'function') return;
-  target.textContent = roleName(role) + ' 正在一起准备……';
   var context = roleContextFor(role);
   var system = '你正在 MAOMAO 的轻量娱乐互动应用里与用户一起参与小游戏。严格保持所选角色的人设、语气、称呼和表达习惯。现在是揭晓前的准备阶段，还没有产生任何随机结果。不要替用户做选择、猜测结果、操纵概率或提前编造牌面。只用一句简短自然的话表示你正在参与、准备好了，或向用户问一句轻松的话。不要输出分析报告。' + (context ? '\n\n' + context : '');
   PhoneAPI.complete({
@@ -440,18 +439,23 @@ function renderHistory() {
 function drawLot() {
   var pool = activePoolData();
   if (!pool || !pool.items.length) { showToast('先往签筒里添加至少一条内容。'); return; }
+  var button = $('drawLotBtn');
+  if (button.disabled) return;
   requestRoleStart('抽签');
   var result = pool.items[randomIndex(pool.items.length)];
-  $('lotResult').hidden = false;
-  $('lotResultText').textContent = result;
-  $('lotRoleReaction').textContent = selectedRole ? roleFallback('抽签') : '';
+  $('lotResult').hidden = true;
+  $('lotResultText').textContent = '';
+  $('lotRoleReaction').textContent = '';
   $('lotVessel').classList.remove('shaking'); void $('lotVessel').offsetWidth; $('lotVessel').classList.add('shaking');
-  $('drawLotBtn').disabled = true;
+  button.disabled = true;
   setTimeout(function () {
-    $('lotVessel').classList.remove('shaking'); $('drawLotBtn').disabled = false;
+    $('lotVessel').classList.remove('shaking');
+    $('lotResultText').textContent = result;
+    $('lotResult').hidden = false;
+    button.disabled = false;
+    addHistory('抽签', result, pool.name);
     askRole('抽签', result, 'lotRoleReaction');
   }, 1250);
-  addHistory('抽签', result, pool.name);
 }
 function spinWheel() {
   var wheel = activeWheelData();
@@ -556,25 +560,35 @@ function renderTarotReadings() {
   });
 }
 function drawDaily() {
+  var button = $('dailyDrawBtn');
+  if (button.disabled) return;
   requestRoleStart('今日运势');
   var item = DAILY[randomIndex(DAILY.length)];
   var score = 60 + randomIndex(41);
-  $('dailyScore').textContent = String(score);
-  $('dailyKeyword').textContent = '“' + item.keyword + '”';
-  $('dailyHeadline').textContent = item.headline;
-  $('dailyDescription').textContent = item.description;
-  var categories = $('dailyCategories'); categories.textContent = '';
-  item.categories.forEach(function (entry) {
-    var node = document.createElement('div'); node.className = 'daily-category';
-    var label = document.createElement('span'); label.textContent = entry[0];
-    var value = document.createElement('strong'); value.textContent = entry[1];
-    node.append(label, value); categories.appendChild(node);
-  });
-  $('dailyResult').hidden = false;
-  $('dailyRoleReaction').textContent = selectedRole ? roleFallback('今日运势') : '';
-  var resultText = score + ' · ' + item.keyword;
-  addHistory('今日运势', resultText, item.headline);
-  askRole('今日运势', resultText + '；趣味提示：' + item.description, 'dailyRoleReaction');
+  $('dailyResult').hidden = true;
+  $('dailyScore').textContent = '—';
+  button.disabled = true;
+  button.textContent = '正在整理……';
+  setTimeout(function () {
+    $('dailyScore').textContent = String(score);
+    $('dailyKeyword').textContent = '“' + item.keyword + '”';
+    $('dailyHeadline').textContent = item.headline;
+    $('dailyDescription').textContent = item.description;
+    var categories = $('dailyCategories'); categories.textContent = '';
+    item.categories.forEach(function (entry) {
+      var node = document.createElement('div'); node.className = 'daily-category';
+      var label = document.createElement('span'); label.textContent = entry[0];
+      var value = document.createElement('strong'); value.textContent = entry[1];
+      node.append(label, value); categories.appendChild(node);
+    });
+    $('dailyResult').hidden = false;
+    $('dailyRoleReaction').textContent = selectedRole ? roleFallback('今日运势') : '';
+    var resultText = score + ' · ' + item.keyword;
+    addHistory('今日运势', resultText, item.headline);
+    button.disabled = false;
+    button.textContent = '测测今天的运气';
+    askRole('今日运势', resultText + '；趣味提示：' + item.description, 'dailyRoleReaction');
+  }, 560);
 }
 function renderInitial() {
   renderPoolSelect(); renderLotItems(); renderWheelSelect(); drawWheel(); renderHistory();
