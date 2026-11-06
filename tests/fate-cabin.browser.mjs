@@ -135,6 +135,9 @@ try {
     'wheel result history should still exist after a full reload');
   await page.locator('[data-go-home]').first().click();
   await page.locator('[data-open="oracle"]').first().click();
+  await page.locator('[data-oracle-category="关系"]').click();
+  assert.equal(await page.locator('#oraclePaper .oracle-placeholder-seal').count(), 1,
+    'switching categories before drawing should preserve the decorated empty slip');
   await page.locator('[data-oracle-category="学业"]').click();
   await page.locator('[data-action="draw-oracle"]').click();
   assert.equal(await page.locator('#oraclePaper .oracle-seal').count(), 1, 'revealed oracle should show its printed seal');
