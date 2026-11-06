@@ -19,6 +19,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'wrangler.jsonc'
+      - 'tests/production-worker-navigation.browser.mjs'
   workflow_dispatch:
 
 permissions:

@@ -36,8 +36,13 @@ try {
 
   const routeResults = [];
   for (const route of routes) {
-    const response = await context.request.get(new URL(route, origin + '/').href, { timeout: 20000 });
-    routeResults.push({ route, status: response.status(), type: response.headers()['content-type'] || '' });
+    const response = await context.request.get(new URL(route, origin + '/').href, { timeout: 20000, maxRedirects: 0 });
+    routeResults.push({
+      route,
+      status: response.status(),
+      location: response.headers()['location'] || '',
+      type: response.headers()['content-type'] || ''
+    });
   }
   const failedRoutes = routeResults.filter(item => item.status !== 200 || !item.type.includes('text/html'));
   if (failedRoutes.length) {
@@ -48,14 +53,30 @@ try {
 
   const firstTile = tiles.first();
   const firstRoute = routes[0];
-  const navigationResponse = page.waitForResponse(response =>
-    new URL(response.url()).pathname === new URL(firstRoute, origin + '/').pathname,
-    { timeout: 15000 }
-  );
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 });
   await firstTile.tap({ timeout: 15000 });
-  const response = await navigationResponse;
-  assert.equal(response.status(), 200, 'real mobile tap must load the first production app');
-  await page.waitForURL(url => url.pathname === new URL(firstRoute, origin + '/').pathname, { timeout: 15000 });
+  const response = await navigation;
+  const finalUrl = page.url();
+  const redirectChain = [];
+  if (response) {
+    let request = response.request();
+    while (request) {
+      const prior = request.redirectedFrom();
+      if (!prior) break;
+      redirectChain.unshift({ from: prior.url(), to: request.url() });
+      request = prior;
+    }
+  }
+  console.log('MOBILE_NAVIGATION=' + JSON.stringify({
+    finalStatus: response?.status() ?? null,
+    finalUrl,
+    redirectChain,
+    pageErrors
+  }));
+  assert.equal(response?.status(), 200,
+    'real mobile tap must finish on HTTP 200; final URL: ' + finalUrl);
+  assert.equal(new URL(finalUrl).pathname, new URL(firstRoute, origin + '/').pathname,
+    'real mobile tap must finish at its declared app route');
   assert.equal(pageErrors.length, 0, 'production home must not throw JavaScript errors: ' + pageErrors.join(' | '));
 
   console.log(`PASS: live Worker returned HTTP 200 HTML for home and all ${routes.length} app routes; mobile tap opened ${firstRoute}.`);
