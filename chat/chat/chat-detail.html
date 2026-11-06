@@ -3273,7 +3273,8 @@
             return 'auto';
         }
         function getActiveReplyBubbleMode() {
-            if (!currentCharacter || !Object.prototype.hasOwnProperty.call(currentCharacter, 'replyBubbleMode')) {
+            if (!currentCharacter) return 'auto';
+            if (!Object.prototype.hasOwnProperty.call(currentCharacter, 'replyBubbleMode')) {
                 return 'legacy';
             }
             return normalizeReplyBubbleMode(currentCharacter.replyBubbleMode);
