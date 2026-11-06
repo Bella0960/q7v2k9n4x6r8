@@ -87,7 +87,7 @@ test('API practice stays local-only and MIX is not given invented connection det
 });
 
 test('PWA caches the tutorial app and the dedicated test command is registered', () => {
-  assert.match(sw, /phone-app-pwa-v174/);
+  assert.match(sw, /phone-app-pwa-v175/);
   assert.match(sw, /'\.\/tutorial\/tutorial\.html'/);
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-app-contract.test.mjs');
 });
