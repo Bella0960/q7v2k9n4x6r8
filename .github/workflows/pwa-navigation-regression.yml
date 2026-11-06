@@ -41,7 +41,9 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify route precache and mobile navigation
         run: npm run test:pwa:navigation
-      - name: Verify desktop app taps in a mobile browser
+      - name: Verify desktop app taps against the live production Worker
+        env:
+          MAOMAO_BASE_URL: https://mao.miamor520000.workers.dev
         run: node tests/desktop-app-navigation.browser.mjs
       - name: Verify navigation cache write lifecycle
         run: node --test tests/sw-navigation-cache-lifecycle.test.mjs
