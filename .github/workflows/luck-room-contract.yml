@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: luck-room-\${{ github.event.pull_request.number || github.ref }}
+  group: luck-room-feature-contract
   cancel-in-progress: true
 
 jobs:
