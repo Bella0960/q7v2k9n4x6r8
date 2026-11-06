@@ -120,7 +120,7 @@ try {
   assert.ok(firstRoute, 'first app tile should declare its destination');
 
   const expectedPath = `/${firstRoute}`;
-  const canonicalPath = expectedPath.replace(/\\.html$/, '');
+  const canonicalPath = expectedPath.replace(/\.html$/, '');
   const navigationResponses = [];
   page.on('response', response => {
     const url = new URL(response.url());
