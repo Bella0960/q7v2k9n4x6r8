@@ -2608,6 +2608,26 @@
   window.MAOMAOApplyDesktopWallpaper = applyDesktopWallpaper;
 })();
 </script>
+<script>
+  // Desktop app tiles are buttons, so explicitly route taps to their declared app pages.
+  // Keep long-press/edit interactions and widget controls out of normal app navigation.
+  (function () {
+    'use strict';
+    document.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var tile = target.closest('.app-tile[data-href]');
+      if (!tile) return;
+      if (document.body.classList.contains('home-editing')) return;
+      if (target.closest('.ds-del')) return;
+      var href = tile.getAttribute('data-href');
+      if (!href || /^(?:[a-z][a-z0-9+.-]*:|\\/\\/)/i.test(href)) return;
+      event.preventDefault();
+      window.location.assign(new URL(href, document.baseURI).href);
+    });
+  })();
+</script>
+
 <script src="shared/js/dock-control.js?v=20261023v1"></script>
 <script src="shared/js/liquid-glass-controls.js?v=20261023v11"></script>
 <script src="shared/js/chat-notifier.js?v=20261102v3"></script>
