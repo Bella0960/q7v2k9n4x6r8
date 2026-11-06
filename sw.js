@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v175';
+const CACHE_NAME = 'phone-app-pwa-v176';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v175 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
+// v176 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
 const APP_SHELL = [
   './',
   './index.html',
