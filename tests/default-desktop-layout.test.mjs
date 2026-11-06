@@ -56,12 +56,12 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
 });
 
 test('all desktop app tiles have valid relative destinations and delegated click navigation', () => {
-  const hrefs = [...index.matchAll(/<button\\b(?=[^>]*\\bapp-tile\\b)[^>]*\\bdata-href="([^"]+)"[^>]*>/g)]
+  const hrefs = [...index.matchAll(/<button\b(?=[^>]*\bapp-tile\b)[^>]*\bdata-href="([^"]+)"[^>]*>/g)]
     .map((match) => match[1]);
   assert.ok(hrefs.length >= 20, 'expected all desktop app tiles to expose destinations');
   assert.equal(new Set(hrefs).size, hrefs.length, 'app destinations should be unique');
   for (const href of hrefs) {
-    assert.doesNotMatch(href, /^(?:[a-z][a-z0-9+.-]*:|\\/\\/)/i, 'app routes must remain same-origin relative paths');
+    assert.doesNotMatch(href, /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i, 'app routes must remain same-origin relative paths');
     assert.ok(existsSync(new URL('../' + href, import.meta.url)), 'missing app destination: ' + href);
   }
   assert.match(index, /target\.closest\('\.app-tile\[data-href\]'\)/);
