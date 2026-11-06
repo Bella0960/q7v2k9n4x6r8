@@ -1875,9 +1875,17 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
   assert.equal(serviceWorker.includes('controller.abort()'), false);
 });
 
-test('Cloudflare static assets retain default HTML routing for app navigation', () => {
-  const wranglerConfig = read('wrangler.jsonc');
-  assert.equal(wranglerConfig.includes('"html_handling"'), false);
+test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
+  const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\/\/.*\n/, ''));
+  const worker = read('worker.js');
+
+  assert.equal(wranglerConfig.main, 'worker.js');
+  assert.equal(wranglerConfig.assets.binding, 'ASSETS');
+  assert.equal(wranglerConfig.assets.html_handling, 'none');
+  assert.equal(wranglerConfig.assets.run_worker_first, true);
+  assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
+  assert.match(worker, /return env\.ASSETS\.fetch\(request\)/,
+    'non-root app routes must be passed through unchanged instead of falling back to index.html');
 });
 
 
