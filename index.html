@@ -15,15 +15,17 @@
     <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%assets/mao-bunny-192.png" />
     <link rel="apple-touch-icon" href="%BASE_URL%assets/mao-bunny-192.png" />
     <script>
-      // 只清理旧版主屏布局配置；保留壁纸、挂件、聊天和其他本地数据。
+      // Start with the approved component-first desktop. Remove obsolete layout records only;
+      // wallpaper, widget content, chat, profiles, and other app data remain untouched.
       (function () {
         try {
-          var keys = Object.keys(localStorage);
-          keys.forEach(function (k) {
-            if (/^ds_layout_v/.test(k) && k !== 'ds_layout_v12') {
-              localStorage.removeItem(k);
+          Object.keys(localStorage).forEach(function (key) {
+            if (/^ds_layout_v\\d+$/.test(key) && key !== 'ds_layout_v13') {
+              localStorage.removeItem(key);
             }
           });
+          localStorage.removeItem('ds_home_default_revision');
+          localStorage.removeItem('maomao_home_layout_backup_20261106');
         } catch (err) {}
       })();
     </script>
@@ -636,16 +638,15 @@
       }
 
       // ===== 布局数据：统一网格，每一页都可混放应用和挂件 =====
-      // v12 格式：{ v: 12, pages: [[id,...], ...], dock: [id,...], removed: [id,...] }
+      // v13 格式：使用本地确认的组件优先默认桌面。
       // removed = 用户从桌面移除的应用/挂件（元素暂存在隐藏仓库里，之后可以重新添加）
-      var LS_KEY = 'ds_layout_v12';
-      var LS_KEY_OLD = 'ds_layout_v5'; // 旧版本，只读取用于迁移，不会被删除
+      var LS_KEY = 'ds_layout_v13';
 
       function getDefaultLayout() {
         // Component-first home: large clock, personal image, photo wall, then compact utility widgets.
         // App shortcuts live on the following pages so the first page reads as a designed home screen.
         return {
-          v: 12,
+          v: 13,
           pages: [
             ['clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'],
             ['app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_footprint', 'app_settings', 'app_finance'],
@@ -674,13 +675,6 @@
           while (v.pages.length < 3) v.pages.push([]);
           return v;
         }
-        // 从旧版 v5 迁移：保留各页应用/挂件的顺序和 Dock
-        var old = readJSON(LS_KEY_OLD);
-        if (isValidLayout(old)) {
-          var migrated = { v: 6, pages: old.pages, dock: old.dock, removed: [] };
-          while (migrated.pages.length < 3) migrated.pages.push([]);
-          return migrated;
-        }
         return getDefaultLayout();
       }
 
@@ -691,79 +685,6 @@
       }
 
       var currentLayout = loadLayout();
-
-      // Migrate only exact built-in layouts from known releases.
-      // Any user-arranged layout (including app-only custom pages) remains untouched.
-      (function migrateKnownBuiltInDefaultLayouts() {
-        var builtInDefaults = [
-          {
-            // Legacy default from the widget-introduction release: apps on pages 1–2,
-            // widgets on page 3. This is the layout that the old migration missed.
-            pages: [
-              ['app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_settings'],
-              ['app_finance', 'app_games', 'app_cafe', 'app_library', 'app_diary', 'app_envelope', 'app_dreamtravel'],
-              ['social', 'image', 'clock', 'polaroid', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note']
-            ],
-            dock: ['app_chat', 'app_shop'],
-            removed: ['postcard']
-          },
-          {
-            // Immediately previous component-first default.
-            pages: [
-              ['clock-lg', 'duo', 'polaroid', 'app_inspect', 'app_worldbook', 'app_memory', 'app_forum', 'app_wallet', 'app_music', 'app_beauty'],
-              ['app_theme_store', 'app_characters', 'app_settings', 'app_finance', 'app_games', 'app_cafe', 'app_library'],
-              ['app_diary', 'app_envelope', 'app_dreamtravel']
-            ],
-            dock: ['app_chat', 'app_shop'],
-            removed: ['photowall', 'postcard', 'image', 'clock', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note']
-          }
-        ];
-        function sameArray(a, b) {
-          return Array.isArray(a) && a.length === b.length && a.every(function (v, i) { return v === b[i]; });
-        }
-        var isKnownBuiltInDefault = !!(currentLayout && Array.isArray(currentLayout.pages) &&
-          builtInDefaults.some(function (layout) {
-            return currentLayout.pages.length === layout.pages.length &&
-              layout.pages.every(function (page, i) { return sameArray(currentLayout.pages[i], page); }) &&
-              sameArray(currentLayout.dock, layout.dock) &&
-              sameArray(currentLayout.removed || [], layout.removed);
-          }));
-        if (isKnownBuiltInDefault) {
-          currentLayout = getDefaultLayout();
-          saveLayout(currentLayout);
-        }
-      })();
-      // One-time upgrade to the component-first home. Existing v12 data currently wins over
-      // getDefaultLayout(), so changing only the default object is not enough for returning users.
-      // Keep one backup of the previous arrangement, then switch the home page to the new default.
-      (function ensureComponentFirstHomeRevision() {
-        var revision = 'component-first-home-20261106-v2';
-        var revisionKey = 'ds_home_default_revision';
-        var backupKey = 'maomao_home_layout_backup_20261106';
-        var requiredHomeWidgets = ['clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'];
-        var firstPage = currentLayout && Array.isArray(currentLayout.pages) ? (currentLayout.pages[0] || []) : [];
-        var alreadyComponentFirst = requiredHomeWidgets.every(function (id) {
-          return firstPage.indexOf(id) !== -1;
-        });
-        var appliedRevision = '';
-        try { appliedRevision = localStorage.getItem(revisionKey) || ''; } catch (e) {}
-
-        if (appliedRevision === revision) return;
-
-        if (!alreadyComponentFirst) {
-          // Preserve the user's former layout for recovery; this is separate from chat/media/app data.
-          try {
-            if (!localStorage.getItem(backupKey)) {
-              var previous = localStorage.getItem(LS_KEY);
-              if (previous) localStorage.setItem(backupKey, previous);
-            }
-          } catch (e) {}
-          currentLayout = getDefaultLayout();
-          saveLayout(currentLayout);
-        }
-
-        try { localStorage.setItem(revisionKey, revision); } catch (e) {}
-      })();
 
       // 迁移旧桌面布局：通话/通讯录归入聊天应用，不再作为 Dock 独立应用。
       // 仅过滤已经移除的入口 ID，保留其他应用和用户自定义排列，不清空整个布局。
