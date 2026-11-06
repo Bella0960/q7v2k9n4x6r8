@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const widgetManager = readFileSync(new URL('../desktop/widgets.html', import.meta.url), 'utf8');
+const desktopCss = readFileSync(new URL('../desktop/css/styles.css', import.meta.url), 'utf8');
 const mobileCss = readFileSync(new URL('../shared/css/mobile-fit.css', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 
@@ -48,6 +49,8 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
 test('the mobile home grid keeps four columns and supports vertical page scrolling', () => {
   assert.match(mobileCss, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
   assert.match(mobileCss, /grid-auto-rows:\s*68px\s*!important/);
+  assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
+  assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
   assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v166'/);
 });
