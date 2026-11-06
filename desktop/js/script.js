@@ -21,21 +21,7 @@ function showToast(msg) {
   toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
 }
 
-// ===== 统一事件委托：所有 data-href 点击跳转 =====
-document.addEventListener('click', function (e) {
-  if (document.body.classList.contains('home-editing')) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
-  var target = e.target.closest('[data-href]');
-  if (!target) return;
-  var href = target.dataset.href;
-  if (!href) return;
-  e.preventDefault();
-  if (e.button === 2) return; // 右键不跳转
-  window.location.href = href;
-});
+// App shortcut navigation is handled once, in the capture phase by index.html.
 
 // ===== 桌面主题：应用外观页保存的壁纸与图标底色（写入方为 settings/appearance.html） =====
 (function () {
