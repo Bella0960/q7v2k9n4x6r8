@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&display=swap');
 :root{color-scheme:light;--ink:#171717;--body:#333;--muted:#888;--line:#dedee2;--paper:#fff;--soft:#f7f7f9;--wash:#f0f0f3;--serif:"Noto Serif SC","Songti SC","STSong",serif;--sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--soft);color:var(--ink);font-family:var(--sans);-webkit-tap-highlight-color:transparent}
