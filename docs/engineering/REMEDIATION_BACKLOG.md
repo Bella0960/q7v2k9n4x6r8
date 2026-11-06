@@ -219,7 +219,7 @@ Acceptance:
 - Tests cover prompt construction, record persistence, privacy filtering, backup inclusion, and chat command/render contracts.
 
 ### FTR-001 — Role-linked random playroom (lots / wheel / tarot / daily luck)
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** IN PROGRESS
 
 Scope: add one MAOMAO app containing four entertainment experiences—lots, a customizable spinning wheel, tarot, and daily luck—with optional participation by any existing character. Reuse current character/API/storage systems and preserve the native multi-page architecture.
 
