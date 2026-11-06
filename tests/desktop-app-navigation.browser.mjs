@@ -71,14 +71,14 @@ try {
   assert.equal(homeResponse?.status(), 200, 'desktop home should load from the production build');
 
   const builtHome = fs.readFileSync(path.join(distRoot, 'index.html'), 'utf8');
-  const routes = [...builtHome.matchAll(/data-href="([^"]+\\.html)"/g)].map(match => match[1]);
+  const routes = [...builtHome.matchAll(/data-href="([^"]+)"/g)].map(match => match[1]);
   assert.ok(routes.length >= 20, 'production home should expose all app shortcuts');
   assert.equal(new Set(routes).size, routes.length, 'app shortcut routes should be unique');
 
   for (const route of routes) {
     const response = await context.request.get(`${baseUrl}/${route}`);
     assert.equal(response.status(), 200, `app page should be served: ${route}`);
-    assert.match(response.headers()['content-type'] || '', /text\\/html/i, `app page should be HTML: ${route}`);
+    assert.ok((response.headers()['content-type'] || '').includes('text/html'), `app page should be HTML: ${route}`);
   }
 
   assert.equal(await page.locator('body').evaluate(node => node.classList.contains('home-editing')), false,
