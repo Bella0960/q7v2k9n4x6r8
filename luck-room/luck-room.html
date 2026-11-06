@@ -24,7 +24,7 @@
   </header>
 
   <section class="intro">
-    <p class="eyebrow">A LITTLE RANDOMNESS</p>
+    <p class="eyebrow">随机小决定</p>
     <h1>今天，<br><em>交给一点运气。</em></h1>
     <p class="intro-note">不必每件事都想很久。偶尔，让随机替你做个小决定。</p>
   </section>
@@ -49,7 +49,7 @@
 
   <section class="play-panel active" id="panel-lots" data-panel="lots">
     <div class="panel-heading">
-      <div><p class="eyebrow">DRAW A LOT</p><h2>抽一支签。</h2></div>
+      <div><p class="eyebrow">01 / 抽签</p><h2>抽一支签。</h2></div>
       <p>把选择写进签筒，<br>今天由它替你回答。</p>
     </div>
     <div class="template-line">
@@ -59,7 +59,7 @@
     </div>
     <div class="lot-vessel" id="lotVessel" aria-label="签筒">
       <div class="lot-sticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <div class="vessel-rim"></div><div class="vessel-body"><span>LOT</span></div>
+      <div class="vessel-rim"></div><div class="vessel-body"><span>签</span></div>
       <div class="vessel-foot"></div>
     </div>
     <div class="result-sheet" id="lotResult" hidden aria-live="polite">
@@ -68,7 +68,7 @@
       <p class="role-reaction" id="lotRoleReaction"></p>
       <p class="disclaimer">以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。</p>
     </div>
-    <button class="primary-action" id="drawLotBtn" type="button">摇一摇，抽一支 <span>✳</span></button>
+    <button class="primary-action" id="drawLotBtn" type="button">摇一摇，抽一支</button>
     <div class="editor-block">
       <div class="editor-heading"><span>签筒内容</span><span class="editor-hint">自己添加，随时修改</span></div>
       <label class="field-label" for="lotPoolTitleInput">签筒名称</label>
@@ -87,7 +87,7 @@
 
   <section class="play-panel" id="panel-wheel" data-panel="wheel" hidden>
     <div class="panel-heading">
-      <div><p class="eyebrow">SPIN TO DECIDE</p><h2>让它转一圈。</h2></div>
+      <div><p class="eyebrow">02 / 转盘</p><h2>让它转一圈。</h2></div>
       <p>纠结的时候，<br>把选项交给转盘。</p>
     </div>
     <div class="template-line">
@@ -106,7 +106,7 @@
       <p class="role-reaction" id="wheelRoleReaction"></p>
       <p class="disclaimer">以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。</p>
     </div>
-    <button class="primary-action" id="spinWheelBtn" type="button">开始旋转 <span>⟳</span></button>
+    <button class="primary-action" id="spinWheelBtn" type="button">开始旋转</button>
     <div class="editor-block">
       <div class="editor-heading"><span>转盘选项</span><span class="editor-hint">最多 12 项</span></div>
       <label class="field-label" for="wheelTitleInput">转盘名称</label>
@@ -125,7 +125,7 @@
 
   <section class="play-panel" id="panel-tarot" data-panel="tarot" hidden>
     <div class="panel-heading">
-      <div><p class="eyebrow">A QUIET READING</p><h2>翻开一张牌。</h2></div>
+      <div><p class="eyebrow">03 / 塔罗</p><h2>翻开一张牌。</h2></div>
       <p>给此刻一个不同的视角，<br>不替你决定未来。</p>
     </div>
     <div class="tarot-controls">
@@ -152,7 +152,7 @@
     <div class="tarot-spread" id="tarotSpread" hidden></div>
     <div class="tarot-readings" id="tarotReadings" hidden></div>
     <p class="role-reaction tarot-reaction" id="tarotRoleReaction" hidden></p>
-    <button class="primary-action" id="drawTarotBtn" type="button">洗牌并抽取 <span>◇</span></button>
+    <button class="primary-action" id="drawTarotBtn" type="button">洗牌并抽取</button>
     <div class="tarot-disclaimer" id="tarotDisclaimer" hidden>
       以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。
     </div>
@@ -160,7 +160,7 @@
 
   <section class="play-panel" id="panel-daily" data-panel="daily" hidden>
     <div class="panel-heading">
-      <div><p class="eyebrow">A DAY IN NUMBERS</p><h2>今天运气如何？</h2></div>
+      <div><p class="eyebrow">04 / 今日</p><h2>今天运气如何？</h2></div>
       <p>给今天一点轻松的期待，<br>也给自己一个好心情。</p>
     </div>
     <div class="daily-stage">
@@ -177,11 +177,11 @@
       <p class="role-reaction" id="dailyRoleReaction"></p>
       <p class="disclaimer">以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。</p>
     </div>
-    <button class="primary-action" id="dailyDrawBtn" type="button">测测今天的运气 <span>✳</span></button>
+    <button class="primary-action" id="dailyDrawBtn" type="button">测测今天的运气</button>
   </section>
 
   <section class="history-drawer" id="historyDrawer" hidden>
-    <div class="history-head"><div><p class="eyebrow">YOUR LITTLE ARCHIVE</p><h2>最近的结果</h2></div><button id="closeHistory" type="button" aria-label="关闭记录">×</button></div>
+    <div class="history-head"><div><p class="eyebrow">游戏记录</p><h2>最近的结果</h2></div><button id="closeHistory" type="button" aria-label="关闭记录">×</button></div>
     <div class="history-list" id="historyList"></div>
     <button class="clear-history" id="clearHistoryBtn" type="button">清除当前视图记录</button>
   </section>
