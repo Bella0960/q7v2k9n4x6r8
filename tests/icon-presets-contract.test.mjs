@@ -15,8 +15,8 @@ test('icon preset controls live at the bottom of the existing icon upload page',
   assert.match(iconSettings, /id="saveIconPresetBtn"/);
   assert.match(iconSettings, /id="iconPresetList"/);
   assert.match(iconSettings, /id="resetAllIconsBtn"/);
-  assert.match(iconSettings, /data-act="change"/);
-  assert.match(iconSettings, /data-act="restore"/);
+  assert.match(iconSettings, /changeButton\.dataset\.act = 'change'/);
+  assert.match(iconSettings, /restoreButton\.dataset\.act = 'restore'/);
 });
 
 
