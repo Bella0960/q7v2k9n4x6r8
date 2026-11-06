@@ -215,7 +215,7 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
 .module-copy{gap:7px}
 .module-copy strong{font:22px var(--serif);letter-spacing:1px}
 .module-copy small{font-size:10px;color:#999;white-space:normal;line-height:1.6}
-.module-arrow{position:absolute;right:18px;top:16px;color:#888;font:16px Georgia,serif;transition:transform .2s,color .2s}
+.module-arrow{position:absolute;right:18px;top:16px;width:16px;height:16px;color:#888;transition:transform .2s,color .2s}.module-arrow:before{content:"+";font:16px Georgia,serif}
 .module-link:hover{background:linear-gradient(145deg,#303030,#202020)}
 .module-link:hover .module-arrow{transform:translate(3px,-3px);color:#eee}
 .home-note{margin-top:14px;color:#747474;font:8px Arial,sans-serif;letter-spacing:1.1px}
@@ -341,7 +341,7 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
     <button class="module-link" type="button" data-open="tarot">
       <span class="module-no">01 <i>／</i> CARDS</span>
       <span class="module-copy"><strong>水晶塔罗</strong><small>单张启示，或展开过去、现在与未来。</small></span>
-      <span class="module-arrow" aria-hidden="true">↗</span>
+      <span class="module-arrow" aria-hidden="true"></span>
     </button>
     <button class="module-link" type="button" data-open="wheel">
       <span class="module-no">02 <i>／</i> CHOICE</span>
