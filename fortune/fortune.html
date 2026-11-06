@@ -446,6 +446,23 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
  .scene-entry,.scene-entry .entry-mark,.module-link,.primary-action{transition:none!important}
 }
 
+
+/* Editable wheel options */
+.wheel-footer-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.wheel-footer-actions button{border:0;border-bottom:1px solid #666;background:transparent;color:#bcbcbc;padding:6px 0;font:10px var(--serif);cursor:pointer}
+.wheel-footer-actions button:hover{color:#fff;border-color:#ddd}
+.wheel-footer-actions span{font:8px Arial,sans-serif;letter-spacing:.6px;color:#777}
+.option-actions{display:flex;align-items:center;gap:5px;flex:0 0 auto}
+.option-list li{min-height:40px}
+.option-label{min-width:0;overflow-wrap:anywhere}
+.edit-option,.save-option,.cancel-option{border:1px solid #484848;background:transparent;color:#aaa;padding:5px 8px;font-size:9px;transition:background .2s,color .2s,border-color .2s}
+.edit-option:hover,.save-option:hover,.cancel-option:hover{border-color:#aaa;background:#e5e5e5;color:#222}
+.save-option{background:#d6d6d6;border-color:#d6d6d6;color:#222}
+.wheel-edit-input{min-width:0;flex:1;width:100%;background:#171717;color:#eee;border:1px solid #777;padding:7px 8px;font-size:11px}
+.wheel-edit-input:focus{outline:1px solid #ddd;outline-offset:1px}
+.option-list li.is-editing{gap:5px}
+@media(max-width:560px){.wheel-footer-actions{align-items:flex-start;flex-direction:column;gap:5px}.wheel-edit-input{font-size:12px}}
+
 </style>
 </head>
 <body>
@@ -548,7 +565,7 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
     </div>
   </div>
   <div class="tarot-tools">
-    <div class="tarot-tools-copy"><span class="control-label" id="spreadDescription">过去 · 现在 · 未来</span><span class="tarot-tools-hint">让水晶替你整理思绪</span></div>
+    <div class="tarot-tools-copy"><span class="control-label" id="spreadDescription">过去 · 现在 · 未来</span><span class="tarot-tools-hint">完整 78 张牌组 · 让水晶替你整理思绪</span></div>
     <button class="primary-action" type="button" data-action="draw-tarot">抽取三张</button>
   </div>
   <div class="crystal-stage" id="crystalStage" aria-live="polite"><div class="empty-altar"><div class="empty-crystals"><i></i><i></i><i></i></div><span>THE CRYSTAL ALTAR</span><p>水晶尚未翻开<br>准备好时，抽取属于你的牌。</p></div></div>
@@ -574,8 +591,8 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
         <div class="wheel-center" aria-hidden="true"><span>命运</span></div>
         <div class="wheel-stage-foot"><span>LET THE MOMENT DECIDE</span><span>公平随机 · 等分扇区</span></div>
       </div>
-      <div class="wheel-controls"><button class="primary-action" type="button" data-action="spin" id="spinButton"><span class="spin-icon" aria-hidden="true"></span>开始转动</button></div>
-      <div class="wheel-result" id="wheelResult" aria-live="polite">转盘准备好了。<span>每个选项拥有相同的机会</span></div>
+      <div class="wheel-controls"><button class="primary-action" type="button" data-action="spin" id="spinButton"><span class="spin-icon" aria-hidden="true"></span><span id="spinButtonLabel">开始转动</span></button></div>
+      <div class="wheel-result" id="wheelResult" aria-live="polite"><strong id="wheelResultText">转盘准备好了。</strong><span>每个选项拥有相同的机会</span></div>
       <div class="wheel-history"><h4>最近结果</h4><ol id="wheelHistory"><li>还没有转动记录。</li></ol></div>
     </section>
     <aside class="wheel-side">
@@ -584,6 +601,7 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
       <p>亲手写下想做的事。至少保留两项，最多十六项。</p>
       <div class="add-row"><input id="newWheelOption" maxlength="18" placeholder="添加一个选项"><button type="button" data-action="add-option">＋ 添加</button></div>
       <ul class="option-list" id="wheelOptions"></ul>
+      <div class="wheel-footer-actions"><button type="button" data-action="reset-options">恢复默认选项</button><span>可编辑每一项 · 最多 16 项</span></div>
       <div class="message-line" id="wheelMessage" aria-live="polite"></div>
     </aside>
   </div>
@@ -675,9 +693,47 @@ var oracleDeck={
   ['回暖','状态可以慢慢恢复。先做一件让生活容易一点的小事。','整理一个小角落，给自己一点空间。']
  ]
 };
+function buildMinorArcana(){
+ var suits=[
+  {name:'权杖',en:'WANDS',focus:'行动、创造与热情',reading:'这张牌提醒你留意正在萌芽的动力，以及你愿意为之投入的方向。'},
+  {name:'圣杯',en:'CUPS',focus:'情感、关系与直觉',reading:'这张牌邀请你辨认自己的感受，也看看关系里是否保留了真诚与流动。'},
+  {name:'宝剑',en:'SWORDS',focus:'思考、沟通与判断',reading:'这张牌把重点放在事实、表达和边界上，清晰往往来自诚实面对问题。'},
+  {name:'星币',en:'PENTACLES',focus:'现实、资源与长期积累',reading:'这张牌提醒你观察手边的资源，并把想法落实到能持续推进的小事上。'}
+ ];
+ var ranks=[
+  {name:'王牌',en:'ACE',mark:'A',meaning:'一个新的机会或念头正在出现。它还很小，但值得认真看见。',reflection:'先给这个开端一点空间，不必急着要求结果。'},
+  {name:'二',en:'TWO',mark:'II',meaning:'两个方向需要被放在一起衡量。选择前，先确认各自真正代表什么。',reflection:'写下两个选项各自的收获与代价，再决定下一步。'},
+  {name:'三',en:'THREE',mark:'III',meaning:'成长正在发生，也可能需要合作、练习或把想法表达出来。',reflection:'寻找一个可以交流、试做或共同推进的切入口。'},
+  {name:'四',en:'FOUR',mark:'IV',meaning:'稳定和结构变得重要。先建立可靠的基础，再考虑扩张。',reflection:'整理现有安排，找出最需要稳定下来的一环。'},
+  {name:'五',en:'FIVE',mark:'V',meaning:'摩擦或不适提醒你，旧办法可能需要调整。困难并不是最终结论。',reflection:'先辨认真正的问题，不要把一时的挫折当成全部。'},
+  {name:'六',en:'SIX',mark:'VI',meaning:'分享、修复或重新调整正在成为主题。留意付出与接受是否平衡。',reflection:'看看哪里需要表达感谢、寻求支持或重新分配精力。'},
+  {name:'七',en:'SEVEN',mark:'VII',meaning:'耐心和坚持正在接受检验。继续之前，确认目标仍然值得投入。',reflection:'回顾目前的进展，再决定要坚持、修正还是暂缓。'},
+  {name:'八',en:'EIGHT',mark:'VIII',meaning:'熟练来自持续练习。把注意力放回过程，细节会逐渐积累成能力。',reflection:'选一个具体步骤，认真完成，而不是同时铺开很多事。'},
+  {name:'九',en:'NINE',mark:'IX',meaning:'一个阶段已经积累了不少成果，也需要留意是否过度消耗。',reflection:'确认自己已经走到哪里，并为接下来的节奏留出余地。'},
+  {name:'十',en:'TEN',mark:'X',meaning:'某个循环接近收束。完成、交接或放下，可能比继续增加任务更重要。',reflection:'把可以结束的事情收好，为下一阶段腾出空间。'},
+  {name:'侍从',en:'PAGE',mark:'P',meaning:'好奇心和学习意愿带来新的线索。先观察、提问，再逐渐形成自己的方法。',reflection:'允许自己从基础开始，给新知识一次实践机会。'},
+  {name:'骑士',en:'KNIGHT',mark:'KNI',meaning:'行动速度正在加快。热情很有力量，也需要方向和节奏来承接。',reflection:'行动前确认目标，避免只顾向前而忘记检查路线。'},
+  {name:'王后',en:'QUEEN',mark:'Q',meaning:'成熟的照料与理解正在发挥作用。温和也可以有清楚的边界。',reflection:'用耐心照顾重要的事，同时尊重自己的需要。'},
+  {name:'国王',en:'KING',mark:'K',meaning:'经验、责任和掌控力成为重点。真正的稳定来自清楚地承担选择。',reflection:'明确优先级，并为自己的决定负责。'}
+ ];
+ var cards=[];
+ suits.forEach(function(suit){
+  ranks.forEach(function(rank){
+   cards.push({
+    name:suit.name+rank.name,latin:rank.en+' OF '+suit.en,mark:rank.mark,
+    meaning:rank.meaning+'在'+suit.focus+'的主题里，'+suit.reading,
+    reflection:'给自己的提醒：'+rank.reflection+'可以从'+suit.focus+'中找到一个今天就能实践的动作。'
+   });
+  });
+ });
+ return cards;
+}
+var TAROT_DECK_TOTAL=78;
+tarotDeck=tarotDeck.concat(buildMinorArcana());
+if(tarotDeck.length!==TAROT_DECK_TOTAL)throw new Error('Tarot deck must contain 78 unique cards.');
 var positions=['过去 · 来处','现在 · 此刻','未来 · 可能'];
 var state={wheelOptions:defaultOptions.slice(),wheelHistory:[],tarotHistory:[],oracleHistory:[],dailyOracle:{}};
-var storageHealthy=true,spread='three',selectedOracleCategory='综合',wheelRotation=0,spinning=false;
+var storageHealthy=true,spread='three',selectedOracleCategory='综合',wheelRotation=0,spinning=false,editingWheelIndex=null;
 var $=function(selector){return app.querySelector(selector);};
 var $$=function(selector){return Array.prototype.slice.call(app.querySelectorAll(selector));};
 function message(selector,text){var el=$(selector);if(el)el.textContent=text;}
@@ -819,12 +875,24 @@ function renderWheelOptions(){
  addButton.disabled=spinning;
  var countLabel=$('#wheelCount');if(countLabel)countLabel.textContent=String(state.wheelOptions.length).padStart(2,'0')+' / 16';
  state.wheelOptions.forEach(function(value,index){
-  var item=document.createElement('li'),label=document.createElement('span');label.textContent=(index+1)+'. '+value;
-  var remove=document.createElement('button');remove.type='button';remove.className='remove-option';remove.setAttribute('data-remove-option',String(index));remove.setAttribute('aria-label','删除选项 '+value);remove.textContent='×';remove.disabled=spinning||state.wheelOptions.length<=2;
-  item.appendChild(label);item.appendChild(remove);list.appendChild(item);
+  var item=document.createElement('li');
+  if(editingWheelIndex===index){
+   item.className='is-editing';
+   var editor=document.createElement('input');editor.type='text';editor.id='wheelEditInput';editor.className='wheel-edit-input';editor.maxLength=18;editor.value=value;editor.setAttribute('aria-label','编辑第 '+(index+1)+' 项');editor.disabled=spinning;
+   var save=document.createElement('button');save.type='button';save.className='save-option';save.setAttribute('data-save-option',String(index));save.textContent='保存';save.disabled=spinning;
+   var cancel=document.createElement('button');cancel.type='button';cancel.className='cancel-option';cancel.setAttribute('data-cancel-option','');cancel.textContent='取消';cancel.disabled=spinning;
+   item.appendChild(editor);item.appendChild(save);item.appendChild(cancel);
+  }else{
+   var label=document.createElement('span');label.className='option-label';label.textContent=(index+1)+'. '+value;
+   var actions=document.createElement('div');actions.className='option-actions';
+   var edit=document.createElement('button');edit.type='button';edit.className='edit-option';edit.setAttribute('data-edit-option',String(index));edit.setAttribute('aria-label','编辑选项 '+value);edit.textContent='编辑';edit.disabled=spinning;
+   var remove=document.createElement('button');remove.type='button';remove.className='remove-option';remove.setAttribute('data-remove-option',String(index));remove.setAttribute('aria-label','删除选项 '+value);remove.textContent='×';remove.disabled=spinning||state.wheelOptions.length<=2;
+   actions.appendChild(edit);actions.appendChild(remove);item.appendChild(label);item.appendChild(actions);
+  }
+  list.appendChild(item);
  });
  $('#spinButton').disabled=spinning||state.wheelOptions.length<2;
- $('#spinButton').textContent=spinning?'转动中…':'开始转动';
+ $('#spinButtonLabel').textContent=spinning?'转动中…':'开始转动';
 }
 function renderWheelHistory(){
  var list=$('#wheelHistory');list.innerHTML='';
@@ -846,15 +914,39 @@ function addWheelOption(){
  var saved=saveState();drawWheel();
  message('#wheelMessage',saved?'已添加：'+value:'选项已加入当前页面，但本地保存失败；离开页面后可能丢失。');
 }
+function beginWheelEdit(index){
+ if(spinning||index<0||index>=state.wheelOptions.length)return;
+ editingWheelIndex=index;renderWheelOptions();
+ var editor=$('#wheelEditInput');if(editor){editor.focus();editor.select();}
+}
+function cancelWheelEdit(){editingWheelIndex=null;renderWheelOptions();}
+function saveWheelEdit(index){
+ if(spinning||editingWheelIndex!==index)return;
+ var editor=$('#wheelEditInput'),value=editor?editor.value.trim():'';
+ if(!value){message('#wheelMessage','选项名称不能为空。');if(editor)editor.focus();return;}
+ if(value.length>18){message('#wheelMessage','每个选项最多十八个字。');return;}
+ if(state.wheelOptions.some(function(x,i){return i!==index&&x.toLowerCase()===value.toLowerCase();})){message('#wheelMessage','这个选项已经在转盘里了。');return;}
+ state.wheelOptions[index]=value;editingWheelIndex=null;
+ var saved=saveState();drawWheel();
+ message('#wheelMessage',saved?'已更新选项：'+value:'选项已修改，但本地保存失败；刷新后可能恢复旧名称。');
+}
+function resetWheelOptions(){
+ if(spinning)return;
+ editingWheelIndex=null;state.wheelOptions=defaultOptions.slice();
+ var saved=saveState();drawWheel();$('#wheelResultText').textContent='转盘已恢复默认选项。';
+ message('#wheelMessage',saved?'已恢复初始的八个选项。':'已恢复当前页面的默认选项，但本地保存失败。');
+}
 function removeWheelOption(index){
  if(spinning||state.wheelOptions.length<=2)return;
  state.wheelOptions.splice(index,1);
+ if(editingWheelIndex===index)editingWheelIndex=null;
+ else if(editingWheelIndex!==null&&editingWheelIndex>index)editingWheelIndex--;
  var saved=saveState();drawWheel();
  message('#wheelMessage',saved?'已移除一个选项。':'选项已从当前页面移除，但本地保存失败；刷新后可能恢复。');
 }
 function spinWheel(){
  if(spinning||state.wheelOptions.length<2)return;
- spinning=true;renderWheelOptions();message('#wheelMessage','转盘正在转动。');$('#wheelResult').textContent='正在转动…';
+ spinning=true;renderWheelOptions();message('#wheelMessage','转盘正在转动。');$('#wheelResultText').textContent='正在转动…';
  var chosen=Math.floor(Math.random()*state.wheelOptions.length),step=360/state.wheelOptions.length;
  var desired=((360-((chosen+.5)*step))%360+360)%360;
  var current=((wheelRotation%360)+360)%360,delta=(desired-current+360)%360;
@@ -863,7 +955,7 @@ function spinWheel(){
  var disc=$('#wheelDisc'),finished=false;
  function finish(){
   if(finished)return;finished=true;spinning=false;
-  var value=state.wheelOptions[chosen];$('#wheelResult').textContent='这次的结果：'+value;
+  var value=state.wheelOptions[chosen];$('#wheelResultText').textContent='这次的结果：'+value;
   var now=new Date(),time=now.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
   state.wheelHistory.unshift({value:value,time:time,date:dateKey()});state.wheelHistory=state.wheelHistory.slice(0,30);
   var saved=saveState();renderWheelHistory();renderWheelOptions();updateHomeNote();
@@ -939,6 +1031,12 @@ app.addEventListener('click',function(event){
  if(spreadButton){setSpread(spreadButton.getAttribute('data-spread'));return;}
  var category=event.target.closest('[data-oracle-category]');
  if(category){setOracleCategory(category.getAttribute('data-oracle-category'));return;}
+ var edit=event.target.closest('[data-edit-option]');
+ if(edit){beginWheelEdit(Number(edit.getAttribute('data-edit-option')));return;}
+ var saveEdit=event.target.closest('[data-save-option]');
+ if(saveEdit){saveWheelEdit(Number(saveEdit.getAttribute('data-save-option')));return;}
+ var cancelEdit=event.target.closest('[data-cancel-option]');
+ if(cancelEdit){cancelWheelEdit();return;}
  var remove=event.target.closest('[data-remove-option]');
  if(remove){removeWheelOption(Number(remove.getAttribute('data-remove-option')));return;}
  var action=event.target.closest('[data-action]');
@@ -947,9 +1045,15 @@ app.addEventListener('click',function(event){
  if(type==='draw-tarot')drawTarot();
  if(type==='spin')spinWheel();
  if(type==='add-option')addWheelOption();
+ if(type==='reset-options')resetWheelOptions();
  if(type==='draw-oracle')drawOracle();
 });
 $('#newWheelOption').addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();addWheelOption();}});
+$('#wheelOptions').addEventListener('keydown',function(event){
+ if(!event.target||event.target.id!=='wheelEditInput')return;
+ if(event.key==='Enter'){event.preventDefault();saveWheelEdit(editingWheelIndex);}
+ if(event.key==='Escape'){event.preventDefault();cancelWheelEdit();}
+});
 loadState();setSpread('three');drawWheel();renderTarotHistory();renderOracleHistory();setOracleCategory('综合');updateHomeNote();
 })();
 </script>
