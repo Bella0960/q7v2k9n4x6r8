@@ -221,7 +221,7 @@ Acceptance:
 ### FTR-001 — Role-linked random playroom (lots / wheel / tarot / daily luck)
 **Priority:** P1 · **Status:** IN PROGRESS
 
-Scope: add one MAOMAO app containing four entertainment experiences—lots, a customizable spinning wheel, tarot, and daily luck—with optional participation by any existing character. Reuse current character/API/storage systems and preserve the native multi-page architecture.
+Scope: add one MAOMAO app containing four entertainment experiences—lots, a customizable spinning wheel, a complete 78-card tarot deck, and daily luck—with optional participation by any existing character. Characters participate naturally before each draw and after the result is revealed. Reuse current character/API/storage systems and preserve the native multi-page architecture.
 
 Special visual requirement: tarot cards must be tall, faceted, six-corner crystal-shaped forms (pointed top, angled/faceted lower end), not standard playing-card rectangles or rounded rectangles. Maintain the crystal silhouette on card backs, faces, shuffle, and flip.
 
@@ -232,6 +232,8 @@ Detailed implementation scope and acceptance criteria: `docs/engineering/tasks/F
 
 Acceptance:
 - All four experiences are interactive and usable on phone and desktop; custom pools/templates persist after refresh.
+- Tarot includes 22 Major Arcana and four Minor Arcana suits of 14 cards each, with structured upright/reversed interpretations.
+- Character warm-up and post-result response are both exercised; neither can affect the local random outcome.
 - Any real existing role can participate; role-scoped records do not leak between characters; no fake chat-history writes.
 - AI dialogue never decides or changes random outcomes.
 - All result pages show the exact mandatory disclaimer.
