@@ -550,6 +550,31 @@ async function main() {
     assert.equal(legacyTranslationText, '旧气泡一译文', '刷新后译文仍只挂在目标气泡下');
     results.push('多气泡下翻译单个气泡：老记录译文只写回目标段，兄弟气泡不变');
 
+    // 3e. 重生成：老记录没有 turnId，只替换被点击的那条消息，不误删其他消息。
+    mockReplyText = '重写后一。\n\n重写后二。';
+    await longPress(page, 'm_legacy#0');
+    await clickMenuAction(page, 'rewrite');
+    await page.locator('#regenOverlay').waitFor({ state: 'visible', timeout: 4000 });
+    await page.locator('#regenConfirm').click();
+    await page.waitForFunction(
+      () => {
+        const history = JSON.parse(localStorage.getItem('chat_history_bubA') || '[]');
+        const fresh = history.filter((m) => m && m.role === 'assistant' && m.turnId);
+        return fresh.length >= 2 && !history.some((m) => m && m.mid === 'm_legacy');
+      },
+      { timeout: 15000 }
+    );
+    const afterLegacyRegen = await readHistory(page, 'chat_history_bubA');
+    const legacyRegenTurn = afterLegacyRegen.filter(
+      (m) => m && m.role === 'assistant' && (m.text === '重写后一。' || m.text === '重写后二。')
+    );
+    assert.equal(legacyRegenTurn.length, 2, '老记录重生成应按当前模式落库新气泡');
+    assert.deepEqual(legacyRegenTurn.map((m) => m.text), ['重写后一。', '重写后二。']);
+    assert.equal(legacyRegenTurn[0].turnId, legacyRegenTurn[1].turnId, '新回复共享一轮 turnId');
+    assert.ok(!afterLegacyRegen.some((m) => m && m.mid === 'm_legacy'), '被重生成的老消息应被移除');
+    assert.ok(afterLegacyRegen.some((m) => m && m.mid === 'm_u_legacy'), '更早的用户消息不应被误删');
+    results.push('多气泡下重生成：老记录只替换目标消息，其他消息保留');
+
     // ================= 4. 新记录：编辑 / 删除 / 重生成 =================
     const splitHistory = JSON.stringify([
       { role: 'user', text: '开始', time: 2000, mid: 'm_u2' },
