@@ -23,9 +23,16 @@ on:
       - 'sw.js'
       - 'vite.config.js'
       - 'package.json'
+      - 'fortune/**'
+      - 'settings/icon-settings.html'
+      - 'index.html'
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - 'tests/desktop-app-navigation.browser.mjs'
+      - 'tests/fate-cabin.test.mjs'
+      - 'tests/fate-cabin.browser.mjs'
+      - 'tests/icon-presets-contract.test.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
       - '.github/workflows/pwa-navigation-regression.yml'
 
 permissions:
