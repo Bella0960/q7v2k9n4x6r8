@@ -27,7 +27,12 @@
       return '【群成员' + (speakerName ? ' ' + speakerName : '') + '】\n';
     }
 
+    // 多气泡回复逐条落库后，同一 turnId 的连续 assistant 消息要合并回一条，
+    // 保持改动前的上下文语义；老记录没有 turnId，行为完全不变。
+    var lastAssistantTurnId = null;
     (Array.isArray(history) ? history : []).forEach(function (m) {
+      var previousAssistantTurnId = lastAssistantTurnId;
+      lastAssistantTurnId = null;
       if (!m || m.isError || m.role === 'system_error' || m.sendFailed) return;
       // A group-private message belongs only to its author's direct conversation.
       // Never feed this private payload into the shared group transcript.
@@ -45,6 +50,7 @@
           role: stickerRole,
           content: stickerRole === 'assistant' ? groupSpeakerPrefix(m) + stickerContent : stickerContent
         });
+        if (stickerRole === 'assistant' && m.turnId) lastAssistantTurnId = String(m.turnId);
         return;
       }
 
@@ -74,7 +80,17 @@
       if (m.role === 'sent' || m.role === 'user') {
         apiMessages.push({ role: 'user', content: content });
       } else if (m.role === 'received' || m.role === 'assistant') {
-        apiMessages.push({ role: 'assistant', content: groupSpeakerPrefix(m) + content });
+        var previous = apiMessages[apiMessages.length - 1];
+        if (m.turnId && String(m.turnId) === previousAssistantTurnId && previous && previous.role === 'assistant') {
+          // 同一轮回复的后续气泡：并入上一条 assistant，群成员前缀只保留一次。
+          previous.content = previous.content + '\n\n' + content;
+        } else {
+          apiMessages.push({ role: 'assistant', content: groupSpeakerPrefix(m) + content });
+        }
+        lastAssistantTurnId = m.turnId ? String(m.turnId) : null;
+      } else {
+        // 其它角色（如系统提示）不参与合并。
+        lastAssistantTurnId = null;
       }
     });
 
@@ -95,7 +111,19 @@
   }
 
   function selectRecentHistory(history, memoryLimit) {
-    return (Array.isArray(history) ? history : []).slice(-memoryLimit);
+    var list = Array.isArray(history) ? history : [];
+    var slice = list.slice(-memoryLimit);
+    if (!slice.length) return slice;
+    // 多气泡逐条落库会让一轮回复占用多个历史槽位；
+    // 若窗口起点落在某轮回复中间，向前补齐整轮，避免上下文被截断。
+    var firstIndex = list.length - slice.length;
+    var first = list[firstIndex];
+    if (first && first.turnId && firstIndex > 0) {
+      var start = firstIndex;
+      while (start > 0 && list[start - 1] && list[start - 1].turnId === first.turnId) start--;
+      slice = list.slice(start);
+    }
+    return slice;
   }
 
   function buildHistoricalRecallRequest(history, currentText, recentHistoryLength) {

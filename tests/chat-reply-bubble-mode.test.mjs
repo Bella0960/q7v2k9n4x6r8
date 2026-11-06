@@ -66,13 +66,14 @@ function loadSettingsHelpers(storage) {
   };
   const saveFn = extractFunction(settingsSource, 'function saveReplyBubbleMode(mode)', '\n  }');
   const readFn = extractFunction(settingsSource, 'function readReplyBubbleMode()', '\n  }');
+  const normalizeFn = extractFunction(settingsSource, 'function normalizeReplyBubbleMode(value)', '\n  }');
   const getRoleFn = 'function getRoleById(id) {'
     + ' var raw = localStorage.getItem(ROLE_STORAGE_KEY);'
     + ' var roles = raw ? JSON.parse(raw) : [];'
     + ' var found = roles.filter(function (r) { return r && String(r.id) === String(id); })[0];'
     + ' return found || null; }';
   runInNewContext(
-    `${getRoleFn}\n${saveFn}\n${readFn}\nglobalThis.__save = saveReplyBubbleMode; globalThis.__read = readReplyBubbleMode;`,
+    `${normalizeFn}\n${getRoleFn}\n${saveFn}\n${readFn}\nglobalThis.__save = saveReplyBubbleMode; globalThis.__read = readReplyBubbleMode;`,
     context
   );
   return { save: context.__save, read: context.__read };
@@ -98,14 +99,16 @@ const fullRole = {
   schemaVersion: 1
 };
 
-test('字段核查：缺失、空值与未知值都归一到 auto，只有显式 single 关闭多气泡', () => {
+test('字段核查：缺失、空值与未知值都归一到 auto；single/multi 各自生效', () => {
   assert.equal(policy.REPLY_BUBBLE_MAX, 5);
   assert.equal(policy.normalizeReplyBubbleMode(undefined), 'auto');
   assert.equal(policy.normalizeReplyBubbleMode(null), 'auto');
   assert.equal(policy.normalizeReplyBubbleMode(''), 'auto');
   assert.equal(policy.normalizeReplyBubbleMode('auto'), 'auto');
   assert.equal(policy.normalizeReplyBubbleMode('SINGLE'), 'single');
-  assert.equal(policy.normalizeReplyBubbleMode('multi'), 'auto');
+  assert.equal(policy.normalizeReplyBubbleMode('multi'), 'multi');
+  assert.equal(policy.normalizeReplyBubbleMode(' MULTI '), 'multi');
+  assert.equal(policy.normalizeReplyBubbleMode('weird'), 'auto');
 });
 
 test('老角色基线：不传模式时与显式 auto 的拆分结果逐字一致（1/2/3/5 段）', () => {
@@ -265,18 +268,186 @@ test('聊天记录整条往返：气泡顺序正确、每条恰好出现一次',
   });
 });
 
-test('聊天页接线：读角色字段、按模式解析、提示词与 fallback 同步', () => {
+// 本轮续修：三模式、气泡级身份、逐条持久化、老记录兼容、未读与上下文。
+const contextWindow = {};
+runInNewContext(read('shared/js/phone/chat-context-policy.js'), { window: contextWindow, globalThis: {} });
+const contextPolicy = contextWindow.ChatContextPolicy;
+
+test('三种模式的实际输出差异：single=1 条，auto 保留单换行，multi 按单换行拆', () => {
+  const raw = '第一句\n第二句\n\n第三句';
+  const single = policy.buildReplyMessages(raw, 'single', { time: 1000, turnId: 't1' });
+  assert.equal(single.length, 1);
+  assert.equal(single[0].text, '第一句\n第二句\n第三句');
+
+  const auto = policy.buildReplyMessages(raw, 'auto', { time: 1000, turnId: 't1' });
+  assert.equal(auto.length, 2);
+  assert.deepEqual(Array.from(auto, (m) => m.text), ['第一句\n第二句', '第三句']);
+
+  const multi = policy.buildReplyMessages(raw, 'multi', { time: 1000, turnId: 't1' });
+  assert.equal(multi.length, 3);
+  assert.deepEqual(Array.from(multi, (m) => m.text), ['第一句', '第二句', '第三句']);
+});
+
+test('逐气泡落库：身份唯一，写入 chat_history_* 后重读（模拟刷新）身份与文本不变', () => {
+  const messages = policy.buildReplyMessages(
+    '<narratage>夜色沉了下来</narratage>\n\n第一句\n\n第二句',
+    'auto',
+    { time: 2000, turnId: 'turn-1', voiceMode: 'online' }
+  );
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].turnId, 'turn-1');
+  assert.equal(messages[0].bubbleIndex, 0);
+  assert.equal(messages[1].bubbleIndex, 1);
+  assert.equal(messages[0].bubbleCount, 2);
+  assert.ok(messages[0].text.startsWith('<narratage>夜色沉了下来</narratage>'));
+  assert.equal(messages[1].text, '第二句');
+
+  const storage = makeLocalStorage();
+  storage.setItem('chat_history_role_1', JSON.stringify(messages));
+  const loaded = JSON.parse(storage.getItem('chat_history_role_1'));
+  const ids = loaded.map((m) => policy.bubbleIdFor(m.mid, 0, 1));
+  assert.equal(ids.length, 2);
+  assert.equal(new Set(ids).size, 2, '每个气泡身份必须唯一');
+  assert.deepEqual(ids, [loaded[0].mid, loaded[1].mid], '单气泡消息身份等于自身 mid');
+
+  const reloaded = loadSettingsHelpers(storage); // 触发一次独立的重新读取环境
+  const again = JSON.parse(storage.getItem('chat_history_role_1')).map((m) => policy.bubbleIdFor(m.mid, 0, 1));
+  assert.deepEqual(again, ids, '刷新后同一气泡身份不变');
+  assert.ok(reloaded.read() === 'auto');
+});
+
+test('老记录兼容：一条消息多气泡仍解析为多气泡，身份 mid#index 且刷新稳定', () => {
+  const legacy = { mid: 'm1700000000000', role: 'assistant', text: '甲\n\n乙\n\n丙', time: 1700000000000 };
+  const group = policy.getMessageBubbles(legacy);
+  assert.equal(group.bubbles.length, 3);
+  assert.deepEqual(Array.from(group.bubbles, (b) => b.id), ['m1700000000000#0', 'm1700000000000#1', 'm1700000000000#2']);
+  assert.deepEqual(Array.from(group.bubbles, (b) => b.text), ['甲', '乙', '丙']);
+  // 重新解析（模拟刷新）身份与文本完全一致
+  const again = policy.getMessageBubbles(JSON.parse(JSON.stringify(legacy)));
+  assert.deepEqual(Array.from(again.bubbles, (b) => b.id), Array.from(group.bubbles, (b) => b.id));
+});
+
+test('引用/编辑/删除/翻译只作用于目标气泡，不误伤兄弟气泡', () => {
+  const legacy = [{ mid: 'm1', role: 'assistant', text: '甲\n\n乙\n\n丙', time: 1 }];
+  assert.equal(policy.resolveBubble(legacy, 'm1#1').text, '乙');
+  assert.equal(policy.resolveBubble(legacy, 'm1#1').count, 3);
+
+  const editedText = policy.replaceBubbleInText(legacy[0].text, 1, '乙已改');
+  const edited = policy.getMessageBubbles({ mid: 'm1', text: editedText });
+  assert.deepEqual(Array.from(edited.bubbles, (b) => b.text), ['甲', '乙已改', '丙']);
+
+  const removed = policy.removeBubblesFromHistory(legacy, ['m1#1']);
+  assert.equal(removed.length, 1);
+  assert.deepEqual(Array.from(policy.getMessageBubbles(removed[0]).bubbles, (b) => b.text), ['甲', '丙']);
+
+  const translatedText = policy.applyBubbleTranslation(legacy[0].text, 1, '第二句译文');
+  const translated = policy.getMessageBubbles({ mid: 'm1', text: translatedText });
+  assert.deepEqual(Array.from(translated.bubbles, (b) => b.text), ['甲', '乙', '丙']);
+  assert.equal(translated.bubbles[1].translation, '第二句译文');
+  assert.equal(translated.bubbles[0].translation, '');
+
+  // 新存储：每个气泡一条消息，删一条只删该消息
+  const fresh = [
+    { mid: 'a', text: '甲', turnId: 't', bubbleCount: 1 },
+    { mid: 'b', text: '乙', turnId: 't', bubbleCount: 1 }
+  ];
+  assert.deepEqual(Array.from(policy.removeBubblesFromHistory(fresh, ['b']), (m) => m.mid), ['a']);
+});
+
+test('重生成按整轮删除：新记录同 turnId 全部移除；老记录只删目标消息', () => {
+  const fresh = [
+    { mid: 'a', turnId: 't1', bubbleCount: 1 },
+    { mid: 'b', turnId: 't1', bubbleCount: 1 },
+    { mid: 'c', turnId: 't2', bubbleCount: 1 }
+  ];
+  assert.deepEqual(policy.removeTurnFromHistory(fresh, 'b').map((m) => m.mid), ['c']);
+  const legacy = [{ mid: 'l1', text: '一\n\n二' }, { mid: 'l2', text: '三' }];
+  assert.deepEqual(policy.removeTurnFromHistory(legacy, 'l1#1').map((m) => m.mid), ['l2']);
+});
+
+test('未读按 turn 去重：一轮 3 气泡算 1 条未读；老记录仍逐条计数', () => {
+  const notifierSource = read('shared/js/chat-notifier.js');
+  const safeGet = extractFunction(notifierSource, 'function safeGet(key)', '\n    }');
+  const safeJsonParse = extractFunction(notifierSource, 'function safeJsonParse(s)', '\n    }');
+  const readHistory = extractFunction(notifierSource, 'function readHistory(roleId)', '\n    }');
+  const unreadOf = extractFunction(notifierSource, 'function unreadOf(contact)', '\n    }');
+  const storage = makeLocalStorage({
+    'chat_lastread_role_1': '100',
+    'chat_history_role_1': JSON.stringify([
+      { role: 'assistant', text: '一', time: 101, turnId: 't1' },
+      { role: 'assistant', text: '二', time: 102, turnId: 't1' },
+      { role: 'assistant', text: '三', time: 103, turnId: 't1' },
+      { role: 'assistant', text: '老记录一', time: 104 },
+      { role: 'assistant', text: '老记录二', time: 105 }
+    ])
+  });
+  const context = { localStorage: storage, JSON, Object, Array, Number };
+  runInNewContext(
+    `${safeGet}\n${safeJsonParse}\n${readHistory}\n${unreadOf}\nglobalThis.__unread = unreadOf;`,
+    context
+  );
+  const result = context.__unread({ id: 'role_1' });
+  assert.equal(result.count, 3, '一轮 3 气泡算 1 条 + 2 条老记录');
+  assert.equal(result.newest.text, '老记录二');
+});
+
+test('上下文拼接：同 turnId 合并回一条 assistant；老记录不受影响', () => {
+  const history = [
+    { role: 'user', text: '在吗', time: 1 },
+    { role: 'assistant', text: '在', time: 2, turnId: 't1' },
+    { role: 'assistant', text: '怎么了', time: 3, turnId: 't1' },
+    { role: 'assistant', text: '老记录回复', time: 4 }
+  ];
+  const api = contextPolicy.mapHistoryToApiMessages(history, null, {});
+  const mapped = Array.from(api, (m) => ({ role: m.role, content: m.content }));
+  // 末尾 "(继续)" 是既有的历史收尾保护，不属于本轮回复内容。
+  assert.equal(mapped[0].content, '在吗');
+  assert.equal(mapped[1].role, 'assistant');
+  assert.equal(mapped[1].content, '在\n\n怎么了');
+  assert.equal(mapped[2].content, '老记录回复');
+  assert.equal(mapped.length, 4);
+
+  const recent = contextPolicy.selectRecentHistory([
+    { role: 'user', text: '问', time: 1 },
+    { role: 'assistant', text: '一', time: 2, turnId: 't2' },
+    { role: 'assistant', text: '二', time: 3, turnId: 't2' },
+    { role: 'user', text: '再问', time: 4 }
+  ], 2);
+  assert.equal(recent.length, 3, '窗口落在一轮回复中间时向前补齐整轮');
+});
+
+test('设置页三模式：multi 可保存并刷新读取；非法值回落 auto；其他字段不变', () => {
+  const storage = makeLocalStorage({ ai_custom_characters: JSON.stringify([fullRole]) });
+  const helpers = loadSettingsHelpers(storage);
+  assert.equal(helpers.read(), 'auto');
+  assert.ok(helpers.save('multi'));
+  const after = JSON.parse(storage.getItem('ai_custom_characters'))[0];
+  assert.equal(after.replyBubbleMode, 'multi');
+  const expected = Object.assign({}, fullRole, { replyBubbleMode: 'multi' });
+  assert.deepEqual(after, expected);
+  const reloaded = loadSettingsHelpers(storage);
+  assert.equal(reloaded.read(), 'multi');
+  assert.ok(reloaded.save('garbage'));
+  assert.equal(JSON.parse(storage.getItem('ai_custom_characters'))[0].replyBubbleMode, 'auto');
+});
+
+test('聊天页接线：读角色字段、按模式生成、已存内容固定按 auto 渲染', () => {
   assert.match(detailSource, /function getActiveReplyBubbleMode\(\)/);
   assert.match(detailSource, /currentCharacter\.replyBubbleMode/);
-  assert.match(detailSource, /parseReplyContent\(raw, getActiveReplyBubbleMode\(\)\)/);
+  assert.match(detailSource, /buildReplyMessages\(fullText, getActiveReplyBubbleMode\(\)/);
+  assert.match(detailSource, /parseReplyContent\(raw, 'auto'\)/);
   assert.match(detailSource, /本轮只输出一条完整消息，不要用空行分隔多个气泡/);
+  assert.match(detailSource, /本轮必须拆成 2–5 条连续消息/);
   assert.match(detailSource, /单次回复最多 5 条/);
   assert.match(detailSource, /bubbles\.length > 5/);
 });
 
-test('设置页接线：复用 ai_custom_characters，不新增独立存储键', () => {
+test('设置页接线：复用 ai_custom_characters，三选一模式，不新增独立存储键', () => {
   assert.match(settingsSource, /function saveReplyBubbleMode\(mode\)/);
-  assert.match(settingsSource, /target\.replyBubbleMode = mode === 'single' \? 'single' : 'auto'/);
+  assert.match(settingsSource, /target\.replyBubbleMode = normalized/);
   assert.match(settingsSource, /var ROLE_STORAGE_KEY = 'ai_custom_characters'/);
+  assert.match(settingsSource, /data-mode="single"/);
+  assert.match(settingsSource, /data-mode="auto"/);
+  assert.match(settingsSource, /data-mode="multi"/);
   assert.ok(!/localStorage\.setItem\('chat_reply_bubble/.test(settingsSource));
 });

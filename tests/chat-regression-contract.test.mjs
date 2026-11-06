@@ -1012,7 +1012,8 @@ test('online rendering and search preserve date/silent filtering and error exclu
 
 test('message identity and model-context mapping keep compatibility fields', () => {
   assert.match(detail, /function ensureMid\(msg\)/);
-  assert.match(detail, /row\.dataset\.mid = ensureMid\(msg\)/);
+  assert.match(detail, /row\.dataset\.mid = msgMid/);
+  assert.match(detail, /const msgMid = ensureMid\(msg\)/);
   assert.match(detail, /m\.text \|\| m\.content/);
   assert.match(detail, /m\.role === 'sent' \|\| m\.role === 'user'/);
   assert.match(detail, /ChatMessagePolicy\.stripInternalReasoning/);
@@ -1305,9 +1306,10 @@ test('chat presence policy derives a bounded pause from the previous bubble leng
 
 test('chat detail stages multi-bubble replies and preserves the existing stream path', () => {
   assert.match(detail, /async function appendAiMessageWithPacing\(msg, idx\)/);
-  assert.match(detail, /await appendAiMessageWithPacing\(aiMsg, aiMessageIndex\)/);
+  assert.match(detail, /async function appendReplyMessagesWithPacing\(messages, startIdx\)/);
+  assert.match(detail, /await appendReplyMessagesWithPacing\(replyMessages, aiMessageIndex\)/);
   assert.match(detail, /chatMessages\.appendChild\(node\)/);
-  assert.match(detail, /aiBubblePacingRunId \+= 1/);
+  assert.match(detail, /\+\+aiBubblePacingRunId/);
   assert.match(detail, /prefers-reduced-motion: reduce/);
   assert.match(detail, /activeChatModeForPrompt !== 'narration'/);
   assert.match(detail, /PhoneStream\.chat\(\{/);
