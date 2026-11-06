@@ -6,6 +6,9 @@ import path from 'node:path';
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
+const desktopScript = read('desktop/js/script.js');
+const homePage = read('index.html');
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v169'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -44,6 +47,15 @@ test('mobile navigation serves cached app pages before waiting for network', () 
   assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
   assert.match(serviceWorker, /if \(cached\) return cached/);
   assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+});
+
+
+test('desktop app navigation has one valid capture-phase owner', () => {
+  assert.doesNotMatch(desktopScript, /data-href 点击跳转|target\.closest\('\[data-href\]'\)/,
+    'desktop/js/script.js must not register a second bubble-phase app navigator');
+  assert.match(homePage,
+    /target\.closest\('\.app-tile\[data-href\]'\)[\s\S]*?new URL\(href, document\.baseURI\)[\s\S]*?destination\.origin !== window\.location\.origin[\s\S]*?window\.location\.assign\(destination\.href\);[\s\S]*?\}, true\);/,
+    'index.html must retain the valid same-origin capture-phase app navigation handler');
 });
 
 test('failed app navigation never falls back to the desktop index page', () => {
