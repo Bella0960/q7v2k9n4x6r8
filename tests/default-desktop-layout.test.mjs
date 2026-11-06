@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const mobileCss = readFileSync(new URL('../shared/css/mobile-fit.css', import.meta.url), 'utf8');
+const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 
 function extractDefaultPages(source) {
   const match = source.match(/function getDefaultLayout\(\)\s*\{[\s\S]*?pages:\s*\[([\s\S]*?)\],\s*dock:/);
@@ -32,6 +33,15 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   assert.equal(new Set(assigned).size, assigned.length, 'default pages must not contain duplicate items');
   assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appIds].sort());
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
+});
+
+test('returning phones receive the component-first home once and keep a recoverable prior layout', () => {
+  assert.match(index, /function ensureComponentFirstHomeRevision\(\)/);
+  assert.match(index, /requiredHomeWidgets = \['clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'\]/);
+  assert.match(index, /ds_home_default_revision/);
+  assert.match(index, /ds_layout_v12_before_component_home_20261106/);
+  assert.match(index, /currentLayout = getDefaultLayout\(\)/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v164'/);
 });
 
 test('only exact known built-in defaults migrate; custom arrangements are preserved', () => {
