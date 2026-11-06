@@ -1,0 +1,96 @@
+name: Deploy FTR-001 preview to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - FTR-001/role-play-luck-room
+    paths:
+      - '.github/workflows/deploy-ftr001-cloudflare-preview.yml'
+      - '**/*.html'
+      - '**/*.js'
+      - '**/*.css'
+      - '**/*.json'
+      - 'assets/**'
+      - 'games/assets/**'
+      - 'shared/**'
+      - 'luck-room/**'
+      - 'apps/**'
+      - 'diary/**'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'wrangler.jsonc'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact feature branch commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build feature branch
+        run: npm run build
+
+      - name: Stamp preview build
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > dist/ftr001-preview-build.txt
+
+      - name: Create isolated preview Worker config
+        run: |
+          cat > wrangler.ftr001-preview.jsonc <<'EOF'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "maomao-ftr001-preview",
+            "compatibility_date": "2026-11-07",
+            "workers_dev": true,
+            "assets": {
+              "directory": "./dist"
+            }
+          }
+          EOF
+
+      - name: Deploy isolated preview Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.ftr001-preview.jsonc
+
+      - name: Publish preview URL in job summary
+        env:
+          DEPLOY_OUTPUT: ${{ steps.deploy.outputs.command-output }}
+        run: |
+          printf '%s\n' "$DEPLOY_OUTPUT" | tee deploy-output.txt
+          PREVIEW_URL="$(printf '%s\n' "$DEPLOY_OUTPUT" | grep -Eo 'https://[[:alnum:].-]+\.workers\.dev' | tail -n 1 || true)"
+          {
+            echo "## MAOMAO FTR-001 preview"
+            echo
+            if [ -n "$PREVIEW_URL" ]; then
+              echo "Preview: $PREVIEW_URL"
+              echo
+              echo "Test page: $PREVIEW_URL/luck-room/luck-room.html"
+              echo
+              echo "Build: $GITHUB_SHA"
+            else
+              echo "Cloudflare deploy step completed. Check the Deploy isolated preview Worker logs for the exact workers.dev hostname."
+              echo
+              echo "Build: $GITHUB_SHA"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
