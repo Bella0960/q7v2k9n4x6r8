@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const widgetManager = readFileSync(new URL('../desktop/widgets.html', import.meta.url), 'utf8');
 const mobileCss = readFileSync(new URL('../shared/css/mobile-fit.css', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 
@@ -14,7 +15,7 @@ function extractDefaultPages(source) {
   );
 }
 
-test('default home is component-first with clock, image, photo wall and utility widgets', () => {
+test('the local-approved default opens on the component page, not the app grid', () => {
   const pages = extractDefaultPages(index);
   assert.equal(pages.length, 3);
   assert.deepEqual(pages[0], [
@@ -22,7 +23,18 @@ test('default home is component-first with clock, image, photo wall and utility 
   ]);
   assert.ok(pages[1].every((id) => id.startsWith('app_')));
   assert.ok(pages[2].every((id) => id.startsWith('app_')));
-  assert.match(index, /migrateKnownBuiltInDefaultLayouts/);
+  assert.match(index, /v:\s*13,/);
+  assert.match(index, /var LS_KEY = 'ds_layout_v13'/);
+});
+
+test('the previous v12 layout and backup migration are removed instead of restored', () => {
+  assert.match(index, /key !== 'ds_layout_v13'/, 'startup must delete obsolete desktop layout versions');
+  assert.match(index, /localStorage\.removeItem\('maomao_home_layout_backup_20261106'\)/);
+  assert.match(index, /localStorage\.removeItem\('ds_home_default_revision'\)/);
+  assert.doesNotMatch(index, /ds_layout_v12|LS_KEY_OLD|migrateKnownBuiltInDefaultLayouts|ensureComponentFirstHomeRevision/);
+  assert.doesNotMatch(index, /localStorage\.setItem\([^;]*maomao_home_layout_backup_20261106/);
+  assert.match(widgetManager, /var LS_KEY = 'ds_layout_v13'/);
+  assert.doesNotMatch(widgetManager, /ds_layout_v12/);
 });
 
 test('every desktop app is assigned exactly once and dock apps stay in the dock', () => {
@@ -35,25 +47,9 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
 });
 
-test('returning phones receive the component-first home once and keep a recoverable prior layout', () => {
-  assert.match(index, /function ensureComponentFirstHomeRevision\(\)/);
-  assert.match(index, /requiredHomeWidgets = \['clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'\]/);
-  assert.match(index, /ds_home_default_revision/);
-  assert.match(index, /maomao_home_layout_backup_20261106/);
-  assert.match(index, /currentLayout = getDefaultLayout\(\)/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v164'/);
-});
-
-test('only exact known built-in defaults migrate; custom arrangements are preserved', () => {
-  const migration = index.match(/function migrateKnownBuiltInDefaultLayouts\(\)\s*\{[\s\S]*?\}\)\(\);/);
-  assert.ok(migration, 'known-default migration must be present');
-  assert.match(migration[0], /'social', 'image', 'clock', 'polaroid'/);
-  assert.match(migration[0], /removed: \['postcard'\]/);
-  assert.match(migration[0], /builtInDefaults\.some/);
-  assert.match(migration[0], /sameArray\(currentLayout\.pages\[i\], page\)/);
-  assert.match(migration[0], /if \(isKnownBuiltInDefault\)\s*\{\s*currentLayout = getDefaultLayout\(\)/);
-  assert.doesNotMatch(migration[0], /page\.every/);
+test('the mobile home grid fits narrow screens and the PWA downloads the new home', () => {
   assert.match(mobileCss, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
   assert.match(mobileCss, /grid-auto-rows:\s*68px\s*!important/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v165'/);
 });
