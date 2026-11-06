@@ -61,6 +61,7 @@ async function main() {
 
   await page.locator('#drawLotBtn').click();
   assert(await page.locator('#rolePrompt').isVisible(), 'Selected role should participate before the lot result');
+  assert(await page.locator('#lotResult').isHidden(), 'Lot result must stay concealed while the character participates and the vessel shakes');
   assert((await page.locator('#rolePrompt').textContent()).includes('测试角色'), 'Pre-draw response should belong to the selected role');
   await page.locator('#lotResult').waitFor({ state: 'visible', timeout: 4000 });
   assert((await page.locator('#lotResultText').textContent()).trim().length > 0, 'Lot result should be populated');
@@ -111,6 +112,7 @@ async function main() {
   await page.locator('[data-tab="daily"]').click();
   await page.locator('#dailyDrawBtn').click();
   assert(await page.locator('#rolePrompt').isVisible(), 'Selected role should participate before daily luck is revealed');
+  assert(await page.locator('#dailyResult').isHidden(), 'Daily result should remain concealed during the short preparation phase');
   await page.locator('#dailyResult').waitFor({ state: 'visible', timeout: 2000 });
   const score = Number((await page.locator('#dailyScore').textContent()).trim());
   assert(score >= 60 && score <= 100, 'Daily fun score should be within its declared range');
