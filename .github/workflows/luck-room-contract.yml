@@ -6,6 +6,7 @@ on:
     paths:
       - 'luck-room/**'
       - 'tests/luck-room-contract.test.mjs'
+      - 'tests/luck-room-browser.mjs'
       - 'tests/default-desktop-layout.test.mjs'
       - '.github/workflows/luck-room-contract.yml'
       - 'index.html'
@@ -36,5 +37,16 @@ jobs:
         run: npm ci
       - name: Production build
         run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
       - name: Luck room contract tests
         run: npm run test:luck-room
+      - name: Mobile browser smoke test
+        run: node tests/luck-room-browser.mjs
+      - name: Upload mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: luck-room-mobile-smoke
+          path: artifacts/luck-room-*.png
+          if-no-files-found: ignore
