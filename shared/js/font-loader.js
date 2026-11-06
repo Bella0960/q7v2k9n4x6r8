@@ -96,6 +96,7 @@
                 fontObjectUrl = '';
             }
             applyFontSource(url, format);
+            lastLoadedFontKey = readActiveFontSource().key;
         },
         applyBlob: function (blob, format) {
             if (!blob || !window.URL || !URL.createObjectURL) return;
@@ -104,6 +105,7 @@
             }
             fontObjectUrl = URL.createObjectURL(blob);
             applyFontSource(fontObjectUrl, format || 'truetype');
+            lastLoadedFontKey = readActiveFontSource().key;
         },
         clear: function () {
             var tag = document.getElementById(fontStyleId);
@@ -112,6 +114,7 @@
                 try { URL.revokeObjectURL(fontObjectUrl); } catch (e) {}
                 fontObjectUrl = '';
             }
+            lastLoadedFontKey = 'none';
         }
     };
 
