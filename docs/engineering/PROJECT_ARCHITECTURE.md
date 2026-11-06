@@ -35,6 +35,7 @@ The app is not currently backed by a server-side user database. Cloudflare deplo
 | worldbook/ | Characters, memory, masks, worldbooks, RP protocol/regex settings | Core AI context/identity data |
 | wallet/ | Wallet, finance, shop, takeout, family cards | Some actions write into chat history |
 | games/ | Game hall, cooking, story/interactive content, diagnostics | Contains largest character art assets |
+| fortune/ | Fate Cabin: crystal tarot, configurable decision wheel, daily oracle | Local-only reflection and random-choice tools |
 | novel/ | Novel workshop pages and writing/reader/social features | Many pages; shared AI helpers should be reused |
 | companion/ | Companion/live/rituals | Timed and generated interactions |
 | settings/ | Main settings, appearance, icons, fonts, sound, TTS | Also contains backup code under settings/js |
@@ -58,7 +59,7 @@ The app is not currently backed by a server-side user database. Cloudflare deplo
 | android/ | Android WebView wrapper sources | Not the current primary delivery channel |
 | .github/workflows/ | CI, web deployment, manual APK/cleanup workflows | Workflow changes require exact trigger review |
 
-## 4. App/page inventory (88 HTML files at baseline)
+## 4. App/page inventory (88 HTML files at baseline; 89 after FATE-001)
 
 This is grouped by functional ownership, not a promise that every page is linked from the launcher.
 
@@ -100,6 +101,9 @@ This is grouped by functional ownership, not a promise that every page is linked
 ### Games and interactive features
 - games/games.html, games/cooking.html, games/story.html, games/story-create.html
 - games/diagnose.html, games/reset-cases.html, games/force-unlock.html (diagnostic/maintenance pages; do not assume normal launcher pages)
+
+### Personal reflection and random choice
+- fortune/fortune.html — 命运小屋：水晶塔罗、大转盘、今日灵签；localStorage key `maomao_fate_cabin_v1`
 
 ### Lifestyle, creation, and content
 - cafe/cafe.html
