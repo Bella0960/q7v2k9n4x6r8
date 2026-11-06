@@ -21,7 +21,7 @@ test('default home is component-first with clock, image, photo wall and utility 
   ]);
   assert.ok(pages[1].every((id) => id.startsWith('app_')));
   assert.ok(pages[2].every((id) => id.startsWith('app_')));
-  assert.match(index, /isLegacyIconOnlyDefault/);
+  assert.match(index, /migrateKnownBuiltInDefaultLayouts/);
 });
 
 test('every desktop app is assigned exactly once and dock apps stay in the dock', () => {
@@ -34,10 +34,16 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
 });
 
-test('only the exact previous built-in default is migrated; mobile grid is width-safe', () => {
-  assert.match(index, /currentLayout\.pages\.length === 3/);
-  assert.match(index, /if \(isPreviousDefault\)\s*\{\s*currentLayout = getDefaultLayout\(\)/);
+test('only exact known built-in defaults migrate; custom arrangements are preserved', () => {
+  const migration = index.match(/function migrateKnownBuiltInDefaultLayouts\(\)\s*\{[\s\S]*?\}\)\(\);/);
+  assert.ok(migration, 'known-default migration must be present');
+  assert.match(migration[0], /'social', 'image', 'clock', 'polaroid'/);
+  assert.match(migration[0], /removed: \['postcard'\]/);
+  assert.match(migration[0], /builtInDefaults\.some/);
+  assert.match(migration[0], /sameArray\(currentLayout\.pages\[i\], page\)/);
+  assert.match(migration[0], /if \(isKnownBuiltInDefault\)\s*\{\s*currentLayout = getDefaultLayout\(\)/);
+  assert.doesNotMatch(migration[0], /page\.every/);
   assert.match(mobileCss, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
   assert.match(mobileCss, /grid-auto-rows:\s*68px\s*!important/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-});
+});;
