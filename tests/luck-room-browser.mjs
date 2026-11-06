@@ -41,8 +41,20 @@ async function main() {
   });
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    const avatar = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%2210%22 fill=%22%23111%22/%3E%3C/svg%3E';
+    localStorage.setItem('ai_custom_characters', JSON.stringify([
+      { id: 'luck-room-smoke-role', name: '测试角色', avatar: avatar }
+    ]));
+  });
 
   await page.goto(baseUrl + '/luck-room/luck-room.html', { waitUntil: 'networkidle' });
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role');
+  assert(await page.locator('#companionAvatar').isVisible(), 'Selected character avatar should be shown');
+  assert((await page.locator('#roleStatus').textContent()).includes('测试角色'), 'Selected character name should be shown');
+  await page.locator('#roleSelect').selectOption('');
+  assert(await page.locator('#companionFallback').isVisible(), 'Solo mode should restore the neutral companion mark');
+  await page.locator('#roleSelect').selectOption('luck-room-smoke-role');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-home.png'), fullPage: true });
   assert(await page.locator('.play-tab').count() === 4, 'Expected four play tabs');
   assert(await page.locator('#roleSelect option').count() >= 1, 'Solo option should always exist');
