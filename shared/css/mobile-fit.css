@@ -110,6 +110,8 @@
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    box-sizing: border-box !important;
   }
 
   /* 状态栏：贴合真机安全区顶部；背景透明、无分割线/阴影，让内容延伸到顶部 */

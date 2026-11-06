@@ -240,6 +240,95 @@
     var miniName = mini.querySelector('[data-mini-name]');
     var miniMeta = mini.querySelector('[data-mini-meta]');
 
+    // 悬浮窗拖动功能
+    var isDragging = false;
+    var dragStartX = 0, dragStartY = 0;
+    var initialLeft = 0, initialTop = 0;
+    var hasMoved = false;
+    var parentRect = null;
+
+    function getParentRect() {
+      if (mini.classList.contains('is-fixed')) return { left: 0, top: 0 };
+      return mini.parentElement.getBoundingClientRect();
+    }
+
+    mini.addEventListener('mousedown', function(e) {
+      isDragging = true;
+      hasMoved = false;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      parentRect = getParentRect();
+      var rect = mini.getBoundingClientRect();
+      initialLeft = rect.left - parentRect.left;
+      initialTop = rect.top - parentRect.top;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      var dx = e.clientX - dragStartX;
+      var dy = e.clientY - dragStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+      var newLeft = initialLeft + dx;
+      var newTop = initialTop + dy;
+      // 边界限制
+      var maxLeft = (mini.classList.contains('is-fixed') ? window.innerWidth : mini.parentElement.clientWidth) - 52;
+      var maxTop = (mini.classList.contains('is-fixed') ? window.innerHeight : mini.parentElement.clientHeight) - 52;
+      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+      newTop = Math.max(0, Math.min(newTop, maxTop));
+      mini.style.left = newLeft + 'px';
+      mini.style.top = newTop + 'px';
+      mini.style.right = 'auto';
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      if (!hasMoved) {
+        var openBtn = mini.querySelector('[data-call-action="open"]');
+        if (openBtn) openBtn.click();
+      }
+    });
+
+    // 触屏拖动
+    mini.addEventListener('touchstart', function(e) {
+      isDragging = true;
+      hasMoved = false;
+      var touch = e.touches[0];
+      dragStartX = touch.clientX;
+      dragStartY = touch.clientY;
+      parentRect = getParentRect();
+      var rect = mini.getBoundingClientRect();
+      initialLeft = rect.left - parentRect.left;
+      initialTop = rect.top - parentRect.top;
+    }, { passive: true });
+
+    mini.addEventListener('touchmove', function(e) {
+      if (!isDragging) return;
+      var touch = e.touches[0];
+      var dx = touch.clientX - dragStartX;
+      var dy = touch.clientY - dragStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+      var newLeft = initialLeft + dx;
+      var newTop = initialTop + dy;
+      var maxLeft = (mini.classList.contains('is-fixed') ? window.innerWidth : mini.parentElement.clientWidth) - 52;
+      var maxTop = (mini.classList.contains('is-fixed') ? window.innerHeight : mini.parentElement.clientHeight) - 52;
+      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+      newTop = Math.max(0, Math.min(newTop, maxTop));
+      mini.style.left = newLeft + 'px';
+      mini.style.top = newTop + 'px';
+      mini.style.right = 'auto';
+      e.preventDefault();
+    }, { passive: false });
+
+    mini.addEventListener('touchend', function() {
+      isDragging = false;
+      if (!hasMoved) {
+        var openBtn = mini.querySelector('[data-call-action="open"]');
+        if (openBtn) openBtn.click();
+      }
+    });
+
     roleNameEl.textContent = displayName;
     videoCaptionEl.textContent = displayName;
     miniName.textContent = displayName;

@@ -59,7 +59,9 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
 </head>
 <body>
 <main class="page">
-  <header class="top"><a class="back" href="../index.html">← 返回小手机</a><span>MAOER / COMPANION</span><span>01—02</span></header>
+  <header class="top"><a class="back" href="../index.html">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+</a><span>MAOER / COMPANION</span><span>01—02</span></header>
   <div class="kicker">A small place for us</div>
   <h1>陪伴<br>日历。</h1>
   <p class="intro">把想问的话、认真回答的瞬间，以及值得记住的日期，留在同一个地方。</p>
@@ -92,7 +94,10 @@ footer{border-top:1px solid var(--ink);margin-top:38px;padding-top:12px;display:
 <script>
 (function(){
   'use strict';
-  const KEY_Q='maoer_daily_questions_v1', KEY_E='maoer_anniversaries_v1';
+  // 读取当前角色ID，绑定到具体角色
+  const urlParams = new URLSearchParams(window.location.search);
+  const roleId = urlParams.get('id') || localStorage.getItem('currentRoleId') || 'default';
+  const KEY_Q='maoer_daily_questions_'+roleId, KEY_E='maoer_anniversaries_'+roleId;
   const bank=[
     ['今天有什么小事让你觉得还不错？','如果今天可以重来一次，你会想改变什么？','现在最想和我分享的一件事是什么？'],
     ['最近有没有什么事情一直放在心上？','什么样的陪伴会让你觉得安心？','今天想给未来的自己留一句什么话？'],

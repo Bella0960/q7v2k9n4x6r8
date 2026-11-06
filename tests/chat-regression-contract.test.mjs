@@ -2210,8 +2210,9 @@ test('WeChat Moments keeps the cover action menu available', () => {
   assert.ok(momentsPage.includes('id="btnAdd"'));
   assert.ok(momentsPage.includes('id="btnAiPost"'));
   assert.ok(momentsPage.includes('id="roleSelect"'));
-  assert.ok(
-    wechatThemeCss.includes('.cover-add-btn {\n  display: flex !important;'),
+  assert.match(
+    wechatThemeCss,
+    /\.cover-add-btn \{\r?\n  display: flex !important;/,
     'the visual refinement must not hide the cover action menu trigger'
   );
 });
