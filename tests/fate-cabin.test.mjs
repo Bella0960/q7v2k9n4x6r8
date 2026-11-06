@@ -74,3 +74,23 @@ test('Fate Cabin ritual interiors include responsive crystal, wheel and oracle t
   assert.match(page, /@media\(max-width:560px\)/);
   assert.match(page, /prefers-reduced-motion:reduce/);
 });
+
+
+test('the tarot deck contains all 78 major and minor arcana cards', () => {
+  assert.match(page, /var TAROT_DECK_TOTAL=78/);
+  assert.match(page, /function buildMinorArcana\(\)/);
+  assert.match(page, /name:suit\.name\+rank\.name/);
+  assert.match(page, /tarotDeck=tarotDeck\.concat\(buildMinorArcana\(\)\)/);
+  assert.match(page, /new Set\(tarotDeck\.map\(function\(card\)\{return card\.name;\}\)\)\.size!==TAROT_DECK_TOTAL/);
+  assert.match(page, /完整的 78 张牌组/);
+});
+
+test('wheel options can be renamed, reset, and keep their action decorations', () => {
+  assert.match(page, /data-edit-option/);
+  assert.match(page, /data-save-option/);
+  assert.match(page, /function saveWheelEdit/);
+  assert.match(page, /data-action="reset-options"/);
+  assert.match(page, /function resetWheelOptions/);
+  assert.match(page, /id="spinButtonLabel"/);
+  assert.match(page, /id="wheelResultText"/);
+});
