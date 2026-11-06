@@ -55,6 +55,8 @@ async function main() {
   await page.locator('#roleSelect').selectOption('');
   assert(await page.locator('#companionFallback').isVisible(), 'Solo mode should restore the neutral companion mark');
   await page.locator('#roleSelect').selectOption('luck-room-smoke-role');
+  await page.locator('#lotDrawMode').selectOption('alternate');
+  assert((await page.locator('#lotDrawHint').textContent()).includes('下一次由你抽取'), 'Alternating lot mode should start with the user');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-home.png'), fullPage: true });
   assert(await page.locator('.play-tab').count() === 4, 'Expected four play tabs');
   assert(await page.locator('#roleSelect option').count() >= 1, 'Solo option should always exist');
@@ -67,6 +69,16 @@ async function main() {
   assert((await page.locator('#lotResultText').textContent()).trim().length > 0, 'Lot result should be populated');
   assert((await page.locator('#lotResult .disclaimer').textContent()).trim() === '以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。', 'Lot disclaimer mismatch');
   assert((await page.locator('#lotRoleReaction').textContent()).includes('测试角色'), 'Character should respond after the lot result');
+  assert((await page.locator('#lotDrawHint').textContent()).includes('下一次由测试角色抽取'), 'Alternating mode should hand the next draw to the selected character');
+  await page.locator('#drawLotBtn').click();
+  assert(await page.locator('#lotResult').isHidden(), 'Second alternating lot result must remain hidden during the draw animation');
+  await page.locator('#lotResult').waitFor({ state: 'visible', timeout: 4000 });
+  assert((await page.locator('#lotDrawHint').textContent()).includes('下一次由你抽取'), 'Alternating mode should return the next draw to the user');
+  await page.locator('#historyToggle').click();
+  const lotHistory = await page.locator('#historyList .history-entry').allTextContents();
+  assert(lotHistory.some((entry) => entry.includes('由你抽取')), 'History should record user draws');
+  assert(lotHistory.some((entry) => entry.includes('由测试角色抽取')), 'History should record character draws');
+  await page.locator('#closeHistory').click();
 
   await page.locator('[data-tab="wheel"]').click();
   await page.locator('#spinWheelBtn').click();
