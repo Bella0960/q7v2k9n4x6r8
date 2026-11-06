@@ -2621,7 +2621,7 @@
       if (document.body.classList.contains('home-editing')) return;
       if (target.closest('.ds-del')) return;
       var href = tile.getAttribute('data-href');
-      if (!href || /^(?:[a-z][a-z0-9+.-]*:|\\/\\/)/i.test(href)) return;
+      if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.indexOf('//') === 0) return;
       event.preventDefault();
       window.location.assign(new URL(href, document.baseURI).href);
     }, true);
