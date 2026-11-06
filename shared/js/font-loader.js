@@ -176,6 +176,13 @@
         tag.textContent = '@font-face{font-family:"MAOMAOUserFont";src:url("' + safeUrl + '") format("' + fontFormat + '");font-style:normal;font-display:swap;}'
             + 'body,body h1,body h2,body h3,body h4,body h5,body h6,body p,body span:not([class*="icon"]):not([class*="Icon"]),body a,body button,body input,body textarea,body select,body label,body small,body strong,body b,body em,body li,body td,body th'
             + '{font-family:' + globalFontStack + ' !important;}';
+        /* Start fetching and decoding while the page is still parsing, not after the user taps an app. */
+        try {
+            if (document.fonts && typeof document.fonts.load === 'function') {
+                var warmPromise = document.fonts.load('14px "MAOMAOUserFont"', '小手机 MAOMAO Aa 0123456789');
+                if (warmPromise && typeof warmPromise.catch === 'function') warmPromise.catch(function () {});
+            }
+        } catch (e) {}
     }
 
     function readActiveFontSource() {
