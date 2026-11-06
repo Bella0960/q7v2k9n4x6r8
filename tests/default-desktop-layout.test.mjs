@@ -53,7 +53,21 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v169'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v170'/);
+});
+
+
+test('all home photo upload slots persist and restore through IndexedDB', () => {
+  assert.match(index, /home_widget_upload_v1_/,
+    'every photo slot must have a stable widget-scoped storage key');
+  assert.match(index, /imageStore\.getByKey\(storageKey\)/,
+    'saved photos must be restored from the shared IndexedDB image store');
+  assert.match(index, /imageStore\.saveByKey\(storageKey, dataUrl\)/,
+    'newly uploaded photos must be persisted before being treated as saved');
+  assert.match(index, /function preparePhoto\(file\)/,
+    'uploaded photos must be resized before storage');
+  assert.doesNotMatch(index, /var avatar = document\.getElementById\('pfAvatar'\)/,
+    'the profile avatar must not install a second upload listener');
 });
 
 test('all desktop app tiles have valid relative destinations and delegated click navigation', () => {

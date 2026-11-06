@@ -89,6 +89,59 @@ try {
   assert.ok(routes.length >= 20, 'production home should expose all app shortcuts');
   assert.equal(new Set(routes).size, routes.length, 'app shortcut routes should be unique');
 
+
+  // A default-home photo upload must survive paging away/back and a full reload.
+  const photoSlot = page.locator('#pw1');
+  const photoChooserPromise = page.waitForEvent('filechooser', { timeout: 10000 });
+  await photoSlot.scrollIntoViewIfNeeded();
+  await photoSlot.click();
+  const photoChooser = await photoChooserPromise;
+  await photoChooser.setFiles({
+    name: 'maomao-widget-photo.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#333333"/></svg>'
+    )
+  });
+
+  const photoKey = 'home_widget_upload_v1_photowall_pw1';
+  await page.waitForFunction(async (key) => {
+    const store = window.MAOMAOWallpaperStore;
+    const slot = document.querySelector('#pw1');
+    if (!store || !slot) return false;
+    const saved = await store.getByKey(key);
+    return !!saved && slot.style.backgroundImage.includes('data:image/');
+  }, photoKey, { timeout: 15000 });
+
+  await page.evaluate(() => {
+    const home = document.getElementById('homeScreen');
+    home.scrollLeft = home.clientWidth;
+  });
+  await page.waitForFunction(() => document.getElementById('homeScreen').scrollLeft > 0,
+    null, { timeout: 5000 });
+  await page.evaluate(() => {
+    document.getElementById('homeScreen').scrollLeft = 0;
+  });
+  await page.waitForFunction(() => document.getElementById('homeScreen').scrollLeft === 0,
+    null, { timeout: 5000 });
+
+  assert.equal(
+    await photoSlot.evaluate(el => el.style.backgroundImage.includes('data:image/')),
+    true,
+    'the photo wall image must remain visible after swiping to another page and back'
+  );
+
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(async (key) => {
+    const store = window.MAOMAOWallpaperStore;
+    const slot = document.querySelector('#pw1');
+    if (!store || !slot) return false;
+    const saved = await store.getByKey(key);
+    return !!saved && slot.style.backgroundImage.includes('data:image/');
+  }, photoKey, { timeout: 15000 });
+  assert.equal(pageErrors.length, 0,
+    'photo upload, page swipe, and reload must not throw JavaScript errors: ' + pageErrors.join(' | '));
+
   for (const route of routes) {
     const response = await context.request.get(`${baseUrl}/${route}`);
     assert.equal(response.status(), 200, `app page should be served: ${route}`);
