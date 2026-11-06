@@ -330,8 +330,8 @@ function loadState(){
   if(!saved||typeof saved!=='object'||Array.isArray(saved))throw new Error('invalid state');
   if(Array.isArray(saved.wheelOptions)&&saved.wheelOptions.length>=2&&saved.wheelOptions.length<=16&&saved.wheelOptions.every(function(x){return typeof x==='string'&&x.trim()&&x.length<=18;}))state.wheelOptions=saved.wheelOptions.slice();
   if(Array.isArray(saved.wheelHistory))state.wheelHistory=saved.wheelHistory.filter(function(x){return x&&typeof x.value==='string'&&typeof x.time==='string';}).slice(0,30);
-  if(Array.isArray(saved.tarotHistory))state.tarotHistory=saved.tarotHistory.filter(function(x){return x&&Array.isArray(x.cards);}).slice(0,20);
-  if(Array.isArray(saved.oracleHistory))state.oracleHistory=saved.oracleHistory.filter(function(x){return x&&typeof x.title==='string'&&typeof x.category==='string';}).slice(0,30);
+  if(Array.isArray(saved.tarotHistory))state.tarotHistory=saved.tarotHistory.filter(function(x){return x&&Array.isArray(x.cards)&&x.cards.length>=1&&x.cards.length<=3&&x.cards.every(function(name){return typeof name==='string'&&tarotDeck.some(function(card){return card.name===name;});});}).slice(0,20);
+  if(Array.isArray(saved.oracleHistory))state.oracleHistory=saved.oracleHistory.filter(function(x){return x&&typeof x.title==='string'&&typeof x.category==='string'&&Object.prototype.hasOwnProperty.call(oracleDeck,x.category)&&typeof x.date==='string'&&typeof x.message==='string'&&typeof x.advice==='string';}).slice(0,30);
   if(saved.dailyOracle&&typeof saved.dailyOracle==='object'&&!Array.isArray(saved.dailyOracle))state.dailyOracle=saved.dailyOracle;
  }catch(error){
   storageHealthy=false;
@@ -535,7 +535,7 @@ function renderOracleHistory(){
 }
 function openOracleHistory(index){
  var entry=state.oracleHistory[index];if(!entry)return;
- selectedOracleCategory=entry.category||'综合';
+ selectedOracleCategory=Object.prototype.hasOwnProperty.call(oracleDeck,entry.category)?entry.category:'综合';
  $$('[data-oracle-category]').forEach(function(button){button.classList.toggle('active',button.getAttribute('data-oracle-category')===selectedOracleCategory);});
  renderOracleResult(entry);
  message('#oracleMessage','已重新打开 '+(entry.date||'')+' 的灵签记录。');
