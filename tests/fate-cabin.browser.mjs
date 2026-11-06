@@ -71,10 +71,14 @@ try {
   await page.locator('#homeView').waitFor({ state: 'visible' });
   await page.locator('[data-open="tarot"]').first().click();
   await page.locator('#tarotView').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.empty-crystals i').count(), 3, 'the tarot altar should show its three crystal objects');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    'tarot view should not overflow horizontally on a narrow mobile screen');
   await page.locator('[data-spread="single"]').click();
   await page.locator('[data-action="draw-tarot"]').click();
   assert.equal(await page.locator('#crystalStage .crystal-card').count(), 1, 'single spread should reveal one crystal card');
   assert.equal(await page.locator('#tarotResults .reading-result').count(), 1, 'single spread should produce one interpretation');
+  assert.equal(await page.locator('#crystalStage .crystal-facet').count(), 1, 'revealed crystal should include its faceted line art');
   await page.locator('[data-spread="three"]').click();
   await page.locator('[data-action="draw-tarot"]').click();
   assert.equal(await page.locator('#crystalStage .crystal-card').count(), 3, 'three-card spread should reveal three crystal cards');
@@ -87,9 +91,13 @@ try {
 
   await page.locator('[data-go-home]').first().click();
   await page.locator('[data-open="wheel"]').first().click();
+  assert.equal(await page.locator('#wheelCount').innerText(), '08 / 16', 'wheel option counter should reflect the loaded option count');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    'wheel view should not overflow horizontally on a narrow mobile screen');
   await page.locator('#newWheelOption').fill('浏览器测试选项');
   await page.locator('[data-action="add-option"]').click();
   assert.ok((await page.locator('#wheelOptions').innerText()).includes('浏览器测试选项'), 'custom wheel option should appear');
+  assert.equal(await page.locator('#wheelCount').innerText(), '09 / 16', 'wheel option counter should update after an addition');
   await page.evaluate(() => { Math.random = () => 0; });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.locator('[data-action="spin"]').click();
@@ -129,6 +137,9 @@ try {
   await page.locator('[data-open="oracle"]').first().click();
   await page.locator('[data-oracle-category="学业"]').click();
   await page.locator('[data-action="draw-oracle"]').click();
+  assert.equal(await page.locator('#oraclePaper .oracle-seal').count(), 1, 'revealed oracle should show its printed seal');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    'oracle view should not overflow horizontally on a narrow mobile screen');
   assert.ok((await page.locator('#oraclePaper').innerText()).includes('学业'), 'oracle should use the selected category');
   assert.equal(await page.locator('#oraclePaper h3').count(), 1, 'oracle should reveal a reading');
   assert.equal(await page.locator('#oracleHistory [data-oracle-history-index]').count(), 1,
