@@ -9,8 +9,7 @@ try {
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
     isMobile: true,
-    hasTouch: true,
-    serviceWorkers: 'block'
+    hasTouch: true
   });
   const page = await context.newPage();
   const pageErrors = [];
@@ -20,6 +19,20 @@ try {
   assert.equal(homeResponse?.status(), 200, 'production Worker home must return HTTP 200');
   assert.ok((homeResponse.headers()['content-type'] || '').includes('text/html'),
     'production Worker home must return HTML');
+
+  const serviceWorkerState = await page.evaluate(async () => {
+    if (!('serviceWorker' in navigator)) return { supported: false, controller: false };
+    const registration = await navigator.serviceWorker.ready;
+    return {
+      supported: true,
+      scope: registration.scope,
+      activeState: registration.active?.state || 'none',
+      controller: !!navigator.serviceWorker.controller
+    };
+  });
+  assert.equal(serviceWorkerState.supported, true, 'production browser must support the app service worker');
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
+
 
   const tiles = page.locator('.app-tile[data-href]');
   const count = await tiles.count();
@@ -51,9 +64,17 @@ try {
   assert.equal(failedRoutes.length, 0,
     `all production app routes must return HTTP 200 HTML; failed ${failedRoutes.length}/${routes.length}`);
 
+
+  const missingRoute = await context.request.get(new URL('/__maomao_missing_app_probe__.html', origin + '/').href, {
+    timeout: 20000,
+    maxRedirects: 0
+  });
+  assert.equal(missingRoute.status(), 404,
+    'unknown app routes must remain 404 rather than falling back to the desktop homepage');
+
   const firstTile = tiles.first();
   const firstRoute = routes[0];
-  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 });
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 });
   await firstTile.tap({ timeout: 15000 });
   const response = await navigation;
   const finalUrl = page.url();
@@ -71,7 +92,8 @@ try {
     finalStatus: response?.status() ?? null,
     finalUrl,
     redirectChain,
-    pageErrors
+    pageErrors,
+    serviceWorkerState
   }));
   assert.equal(response?.status(), 200,
     'real mobile tap must finish on HTTP 200; final URL: ' + finalUrl);
@@ -79,7 +101,7 @@ try {
     'real mobile tap must finish at its declared app route');
   assert.equal(pageErrors.length, 0, 'production home must not throw JavaScript errors: ' + pageErrors.join(' | '));
 
-  console.log(`PASS: live Worker returned HTTP 200 HTML for home and all ${routes.length} app routes; mobile tap opened ${firstRoute}.`);
+  console.log(`PASS: live Worker returned HTTP 200 HTML for home and all ${routes.length} app routes; active service-worker mobile tap opened ${firstRoute} without page errors.`);
 } finally {
   await browser.close();
 }
