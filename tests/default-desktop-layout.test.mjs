@@ -15,26 +15,24 @@ function extractDefaultPages(source) {
   );
 }
 
-test('the local-approved default opens on the component page, not the app grid', () => {
+test('default home has the clock, duo avatars, photo wall and app quadrants in the requested order', () => {
   const pages = extractDefaultPages(index);
-  assert.equal(pages.length, 3);
   assert.deepEqual(pages[0], [
-    'clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'
+    'clock-lg',
+    'app_inspect', 'app_worldbook', 'app_memory', 'app_forum',
+    'duo', 'photowall',
+    'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'
   ]);
-  assert.ok(pages[1].every((id) => id.startsWith('app_')));
-  assert.ok(pages[2].every((id) => id.startsWith('app_')));
-  assert.match(index, /v:\s*13,/);
-  assert.match(index, /var LS_KEY = 'ds_layout_v13'/);
+  assert.equal(pages.length, 3);
+  assert.match(index, /v:\s*14,/);
+  assert.match(index, /var LS_KEY = 'ds_layout_v14'/);
 });
 
-test('the previous v12 layout and backup migration are removed instead of restored', () => {
-  assert.match(index, /key !== 'ds_layout_v13'/, 'startup must delete obsolete desktop layout versions');
-  assert.match(index, /localStorage\.removeItem\('maomao_home_layout_backup_20261106'\)/);
-  assert.match(index, /localStorage\.removeItem\('ds_home_default_revision'\)/);
-  assert.doesNotMatch(index, /ds_layout_v12|LS_KEY_OLD|migrateKnownBuiltInDefaultLayouts|ensureComponentFirstHomeRevision/);
-  assert.doesNotMatch(index, /localStorage\.setItem\([^;]*maomao_home_layout_backup_20261106/);
-  assert.match(widgetManager, /var LS_KEY = 'ds_layout_v13'/);
-  assert.doesNotMatch(widgetManager, /ds_layout_v12/);
+test('obsolete layout keys are cleared and the widget manager uses the current layout key', () => {
+  assert.match(index, /key !== 'ds_layout_v14'/);
+  assert.doesNotMatch(index, /ds_layout_v13|ds_layout_v12/);
+  assert.match(widgetManager, /var LS_KEY = 'ds_layout_v14'/);
+  assert.doesNotMatch(widgetManager, /ds_layout_v13|ds_layout_v12/);
 });
 
 test('every desktop app is assigned exactly once and dock apps stay in the dock', () => {
@@ -47,9 +45,9 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
 });
 
-test('the mobile home grid fits narrow screens and the PWA downloads the new home', () => {
+test('the mobile home grid keeps four columns and supports vertical page scrolling', () => {
   assert.match(mobileCss, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
   assert.match(mobileCss, /grid-auto-rows:\s*68px\s*!important/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v165'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v166'/);
 });
