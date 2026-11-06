@@ -890,7 +890,7 @@ function renderOracleResult(entry){
 function renderSavedOracle(){
  var key=dateKey()+'_'+selectedOracleCategory,entry=state.dailyOracle[key];
  if(entry)renderOracleResult(entry);
- else $('#oraclePaper').innerHTML='<div class="oracle-placeholder">签筒安静地放在桌上。<br>准备好时，抽一支签。</div>';
+ else $('#oraclePaper').innerHTML='<div class="oracle-placeholder"><span class="oracle-placeholder-seal">签</span><span>THE DAILY ORACLE</span><p>签筒安静地放在桌上。<br>准备好时，抽一支签。</p></div>';
 }
 function renderOracleHistory(){
  var list=$('#oracleHistory');list.innerHTML='';
