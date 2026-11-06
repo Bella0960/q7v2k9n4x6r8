@@ -39,3 +39,14 @@ test('the updated PWA shell caches Fate Cabin and advances the service worker ve
   assert.match(sw, /phone-app-pwa-v174/);
   assert.match(sw, /'\.\/fortune\/fortune\.html'/);
 });
+
+
+test('navigation, wheel editing and persistence failures have explicit safe behavior', () => {
+  assert.match(page, /data-exit/, 'the desktop exit action must be separate from the in-cabin back action');
+  assert.match(page, /window\.location\.assign\('\.\.\/index\.html'\)/,
+    'the exit control must navigate to the MAOMAO launcher');
+  assert.match(page, /if\(spinning\)return/, 'wheel options cannot change while the wheel is moving');
+  assert.match(page, /input\.disabled=spinning/, 'wheel option entry must be disabled while spinning');
+  assert.match(page, /setStorageNotice/, 'storage read/write failures must have a visible global message');
+  assert.match(page, /本地保存失败/, 'failed writes must not be reported as successful persistence');
+});
