@@ -39,7 +39,7 @@ test('returning phones receive the component-first home once and keep a recovera
   assert.match(index, /function ensureComponentFirstHomeRevision\(\)/);
   assert.match(index, /requiredHomeWidgets = \['clock-lg', 'image', 'photowall', 'todo', 'calendar', 'countdown', 'note'\]/);
   assert.match(index, /ds_home_default_revision/);
-  assert.match(index, /ds_layout_v12_before_component_home_20261106/);
+  assert.match(index, /maomao_home_layout_backup_20261106/);
   assert.match(index, /currentLayout = getDefaultLayout\(\)/);
   assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v164'/);
 });
