@@ -27,7 +27,7 @@ function readPage(relativePath) {
 function assertSelectorExists(source, selector, label) {
   const ids = [...selector.matchAll(/#([A-Za-z_][\w-]*)/g)].map((m) => m[1]);
   for (const id of ids) {
-    assert.match(source, new RegExp('id=["\\']' + id + '["\\']'), label + ' missing #' + id);
+    assert.ok(source.includes('id="' + id + '"') || source.includes("id='" + id + "'"), label + ' missing #' + id);
   }
   const attrs = [...selector.matchAll(/\[([a-zA-Z_-][\w-]*)(?:=["\\']([^"\\']+)["\\'])?\]/g)];
   for (const [, attr, value] of attrs) {
