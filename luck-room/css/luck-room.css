@@ -152,3 +152,5 @@ button{color:inherit}
 @media(min-width:600px){body{background:#e9e9eb}.luck-app{margin:18px auto;min-height:calc(100vh - 36px);box-shadow:0 12px 40px #0000000b}}
 @media(max-width:370px){.luck-app{padding-left:16px;padding-right:16px}.panel-heading h2{font-size:24px}.panel-heading>p{font-size:9px}.play-tab{font-size:12px}.tarot-spread{gap:4px;margin-left:-9px;margin-right:-9px}.tarot-spread[data-count="3"] .tarot-crystal-card{max-width:100px}.tarot-card-name{font-size:10px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+.template-delete{border:0;border-left:1px solid #e5e5e7;background:transparent;color:#999;font-size:10px;padding:7px 0 7px 10px;white-space:nowrap;cursor:pointer}.template-delete:active{color:#222}
