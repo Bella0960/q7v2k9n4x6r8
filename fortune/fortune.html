@@ -123,7 +123,15 @@ h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5p
 .storage-notice{margin:12px 0 0;padding:10px 12px;border-left:2px solid #969696;background:#262626;color:#dedede;font-size:11px;line-height:1.7}
 .storage-notice[hidden]{display:none!important}
 button:disabled{opacity:.42;cursor:not-allowed}
-.bottom-note{margin-top:30px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:10px;line-height:1.8;color:var(--dim)}
+.record-section{margin-top:22px;padding-top:13px;border-top:1px solid var(--line-soft)}
+.record-section h3{font:16px var(--serif);font-weight:400;margin:0 0 7px}
+.record-list{list-style:none;padding:0;margin:0}
+.record-list li{border-bottom:1px solid var(--line-soft)}
+.record-trigger{display:flex;flex-direction:column;align-items:flex-start;gap:5px;width:100%;padding:10px 2px;border:0;background:transparent;text-align:left;color:var(--ink)}
+.record-trigger:hover .record-title{color:var(--metal)}
+.record-meta{font:9px Arial,sans-serif;letter-spacing:.8px;color:var(--dim)}
+.record-title{font:14px var(--serif);color:#d7d7d7}
+.record-detail{font-size:10px;line-height:1.7;color:var(--muted)}
 @media(max-width:720px){.wheel-layout{grid-template-columns:1fr}.wheel-side{border-left:0;border-top:1px solid var(--line-soft);padding:18px 0 0}.wheel-stage{width:min(100%,470px)}.module-copy small{white-space:normal}}
 @media(max-width:560px){.fate-app{padding:13px 13px 32px}.hero{padding:25px 0 18px}.room-scene{height:310px}.scene-entry .entry-mark{width:43px;height:43px}.scene-entry svg{width:20px;height:20px}.entry-tarot{left:7%;bottom:14%}.entry-wheel{bottom:13%}.entry-oracle{right:6%;bottom:14%}.module-index{grid-template-columns:1fr}.module-link{padding:13px 0}.module-link+.module-link{border-left:0;border-top:1px solid var(--line-soft);padding-left:0}.module-copy strong{font-size:16px}.view-head{align-items:start;flex-direction:column}.back-room{align-self:end}.crystal-stage{min-height:245px;gap:7px;padding-left:0;padding-right:0}.crystal-card{width:clamp(80px,25vw,112px)}.reading-results{grid-template-columns:1fr;gap:17px}.reading-result{padding-top:10px}.wheel-stage{padding:12px}.wheel-center{width:54px;height:54px}.top-label{display:none}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition-duration:.01ms!important;scroll-behavior:auto!important}}
@@ -185,6 +193,10 @@ button:disabled{opacity:.42;cursor:not-allowed}
   <div class="tarot-tools"><span class="control-label" id="spreadDescription">过去 · 现在 · 未来</span><button class="primary-action" type="button" data-action="draw-tarot">抽取三张</button></div>
   <div class="crystal-stage" id="crystalStage" aria-live="polite"><div class="tarot-empty">水晶尚未翻开<br>准备好时，抽取属于你的牌。</div></div>
   <div class="reading-results" id="tarotResults"></div>
+  <section class="record-section" aria-label="塔罗历史记录">
+    <h3>最近的抽取</h3>
+    <ol class="record-list" id="tarotHistory"></ol>
+  </section>
   <div class="message-line" id="tarotMessage" aria-live="polite"></div>
 </section>
 
@@ -228,6 +240,10 @@ button:disabled{opacity:.42;cursor:not-allowed}
   </div>
   <div class="oracle-paper" id="oraclePaper" aria-live="polite"><div class="oracle-placeholder">签筒安静地放在桌上。<br>准备好时，抽一支签。</div></div>
   <div style="display:flex;justify-content:center;margin-top:18px"><button class="primary-action" type="button" data-action="draw-oracle">抽取今日灵签</button></div>
+  <section class="record-section" aria-label="灵签历史记录">
+    <h3>最近的灵签</h3>
+    <ol class="record-list" id="oracleHistory"></ol>
+  </section>
   <div class="message-line" id="oracleMessage" style="text-align:center" aria-live="polite"></div>
 </section>
 
@@ -359,18 +375,16 @@ function shufflePick(count){
  for(var i=pool.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=pool[i];pool[i]=pool[j];pool[j]=tmp;}
  return pool.slice(0,count);
 }
-function drawTarot(){
- var count=spread==='three'?3:1,indices=shufflePick(count),question=$('#tarotQuestion').value.trim();
- var stage=$('#crystalStage'),results=$('#tarotResults');
+function renderTarotReading(indices,question){
+ var stage=$('#crystalStage'),results=$('#tarotResults'),count=indices.length;
  stage.innerHTML='';
- indices.forEach(function(index,i){
-  var card=tarotDeck[index],button=document.createElement('div');
-  button.className='crystal-card';
+ indices.forEach(function(index){
+  var card=tarotDeck[index],node=document.createElement('div');node.className='crystal-card';
   var face=document.createElement('div');face.className='crystal-face';
   var mark=document.createElement('span');mark.className='crystal-index';mark.textContent=card.mark;
   var name=document.createElement('strong');name.className='crystal-name';name.textContent=card.name;
   var latin=document.createElement('span');latin.className='crystal-latin';latin.textContent=card.latin;
-  face.appendChild(mark);face.appendChild(name);face.appendChild(latin);button.appendChild(face);stage.appendChild(button);
+  face.appendChild(mark);face.appendChild(name);face.appendChild(latin);node.appendChild(face);stage.appendChild(node);
  });
  results.innerHTML='';
  indices.forEach(function(index,i){
@@ -382,9 +396,32 @@ function drawTarot(){
   var advice=document.createElement('div');advice.className='reflection';advice.textContent='给自己的提醒：'+card.reflection;
   article.appendChild(pos);article.appendChild(name);article.appendChild(latin);article.appendChild(meaning);article.appendChild(advice);results.appendChild(article);
  });
+}
+function renderTarotHistory(){
+ var list=$('#tarotHistory');list.innerHTML='';
+ if(!state.tarotHistory.length){var empty=document.createElement('li');empty.className='record-detail';empty.textContent='还没有抽取记录。';list.appendChild(empty);return;}
+ state.tarotHistory.slice(0,8).forEach(function(entry,index){
+  var item=document.createElement('li'),button=document.createElement('button');button.type='button';button.className='record-trigger';button.setAttribute('data-tarot-history-index',String(index));
+  var meta=document.createElement('span');meta.className='record-meta';meta.textContent=entry.date||'历史记录';
+  var title=document.createElement('span');title.className='record-title';title.textContent=(entry.cards||[]).join(' · ');
+  var detail=document.createElement('span');detail.className='record-detail';detail.textContent=entry.question?'问题：'+entry.question:'点击重新查看这次牌阵';
+  button.appendChild(meta);button.appendChild(title);button.appendChild(detail);item.appendChild(button);list.appendChild(item);
+ });
+}
+function openTarotHistory(index){
+ var entry=state.tarotHistory[index];if(!entry||!Array.isArray(entry.cards))return;
+ var indices=entry.cards.map(function(name){return tarotDeck.findIndex(function(card){return card.name===name;});}).filter(function(i){return i>=0;});
+ if(!indices.length)return;
+ setSpread(indices.length===1?'single':'three');
+ renderTarotReading(indices,entry.question||'');
+ message('#tarotMessage','已重新打开 '+(entry.date||'')+' 的抽取记录。');
+}
+function drawTarot(){
+ var count=spread==='three'?3:1,indices=shufflePick(count),question=$('#tarotQuestion').value.trim();
+ renderTarotReading(indices,question);
  state.tarotHistory.unshift({date:dateKey(),question:question,cards:indices.map(function(i){return tarotDeck[i].name;})});
  state.tarotHistory=state.tarotHistory.slice(0,20);
- var saved=saveState();updateHomeNote();
+ var saved=saveState();renderTarotHistory();updateHomeNote();
  message('#tarotMessage',(question?'这次抽取围绕的问题：'+question+'。':'已完成一次水晶抽取。')+(saved?' 已保存在本机。':' 本次牌面已显示，但保存失败。'));
 }
 function drawWheel(){
@@ -485,12 +522,30 @@ function renderSavedOracle(){
  if(entry)renderOracleResult(entry);
  else $('#oraclePaper').innerHTML='<div class="oracle-placeholder">签筒安静地放在桌上。<br>准备好时，抽一支签。</div>';
 }
+function renderOracleHistory(){
+ var list=$('#oracleHistory');list.innerHTML='';
+ if(!state.oracleHistory.length){var empty=document.createElement('li');empty.className='record-detail';empty.textContent='还没有抽签记录。';list.appendChild(empty);return;}
+ state.oracleHistory.slice(0,8).forEach(function(entry,index){
+  var item=document.createElement('li'),button=document.createElement('button');button.type='button';button.className='record-trigger';button.setAttribute('data-oracle-history-index',String(index));
+  var meta=document.createElement('span');meta.className='record-meta';meta.textContent=(entry.date||'')+' · '+(entry.category||'综合');
+  var title=document.createElement('span');title.className='record-title';title.textContent=entry.title||'灵签';
+  var detail=document.createElement('span');detail.className='record-detail';detail.textContent=entry.message||'点击查看这条灵签';
+  button.appendChild(meta);button.appendChild(title);button.appendChild(detail);item.appendChild(button);list.appendChild(item);
+ });
+}
+function openOracleHistory(index){
+ var entry=state.oracleHistory[index];if(!entry)return;
+ selectedOracleCategory=entry.category||'综合';
+ $$('[data-oracle-category]').forEach(function(button){button.classList.toggle('active',button.getAttribute('data-oracle-category')===selectedOracleCategory);});
+ renderOracleResult(entry);
+ message('#oracleMessage','已重新打开 '+(entry.date||'')+' 的灵签记录。');
+}
 function drawOracle(){
  var pool=oracleDeck[selectedOracleCategory],index=Math.floor(Math.random()*pool.length),item=pool[index];
  var entry={category:selectedOracleCategory,date:dateKey(),title:item[0],message:item[1],advice:item[2]};
  state.dailyOracle[dateKey()+'_'+selectedOracleCategory]=entry;
  state.oracleHistory.unshift(entry);state.oracleHistory=state.oracleHistory.slice(0,30);
- var saved=saveState();renderOracleResult(entry);updateHomeNote();
+ var saved=saveState();renderOracleResult(entry);renderOracleHistory();updateHomeNote();
  message('#oracleMessage',saved?'今日灵签已经保存，可以随时回来重读。':'灵签已显示，但本地保存失败；刷新后可能无法找回。');
 }
 function updateHomeNote(){
@@ -506,6 +561,10 @@ app.addEventListener('click',function(event){
  if(open){showView(open.getAttribute('data-open'));return;}
  if(event.target.closest('[data-exit]')){window.location.assign('../index.html');return;}
  if(event.target.closest('[data-go-home]')){showView('home');return;}
+ var tarotRecord=event.target.closest('[data-tarot-history-index]');
+ if(tarotRecord){openTarotHistory(Number(tarotRecord.getAttribute('data-tarot-history-index')));return;}
+ var oracleRecord=event.target.closest('[data-oracle-history-index]');
+ if(oracleRecord){openOracleHistory(Number(oracleRecord.getAttribute('data-oracle-history-index')));return;}
  var spreadButton=event.target.closest('[data-spread]');
  if(spreadButton){setSpread(spreadButton.getAttribute('data-spread'));return;}
  var category=event.target.closest('[data-oracle-category]');
@@ -521,7 +580,7 @@ app.addEventListener('click',function(event){
  if(type==='draw-oracle')drawOracle();
 });
 $('#newWheelOption').addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();addWheelOption();}});
-loadState();setSpread('three');drawWheel();setOracleCategory('综合');updateHomeNote();
+loadState();setSpread('three');drawWheel();renderTarotHistory();renderOracleHistory();setOracleCategory('综合');updateHomeNote();
 })();
 </script>
 </body>
