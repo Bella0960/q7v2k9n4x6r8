@@ -2542,14 +2542,23 @@
 
       function applyIcon(appId, iconEl) {
         store.getByKey(KEY_PREFIX + appId).then(function (dataUrl) {
-          if (!dataUrl) return;
+          var svg = iconEl.querySelector('svg');
+          if (!dataUrl) {
+            // 预设切换或单个恢复为默认图标时，清除上一次自定义图标留下的内联样式。
+            iconEl.style.removeProperty('background-image');
+            iconEl.style.removeProperty('background-size');
+            iconEl.style.removeProperty('background-position');
+            iconEl.style.removeProperty('background-color');
+            iconEl.style.removeProperty('border-radius');
+            if (svg) svg.style.removeProperty('display');
+            return;
+          }
           /* CSS 里 .app-icon 有 background: var(--icon-bg) !important，必须用 !important 内联样式才能覆盖 */
           iconEl.style.setProperty('background-image', 'url("' + dataUrl + '")', 'important');
           iconEl.style.setProperty('background-size', 'cover', 'important');
           iconEl.style.setProperty('background-position', 'center', 'important');
           iconEl.style.setProperty('background-color', 'transparent', 'important');
           iconEl.style.borderRadius = '22%';
-          var svg = iconEl.querySelector('svg');
           if (svg) svg.style.display = 'none';
         }).catch(function () {});
       }
