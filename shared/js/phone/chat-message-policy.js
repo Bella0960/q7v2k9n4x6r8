@@ -66,7 +66,7 @@
     return normalized.split(/\n\n+/);
   }
 
-  function mergeReplyBubbles(bubbles, translations, mode) {
+  function mergeReplyBubbles(bubbles, translations, mode, legacyUncapped) {
     if (!bubbles.length) return { bubbles: bubbles, translations: translations };
     if (mode === 'single' && bubbles.length > 1) {
       return {
@@ -74,7 +74,9 @@
         translations: [translations.filter(Boolean).join('\n')]
       };
     }
-    if (bubbles.length > REPLY_BUBBLE_MAX) {
+    // Missing replyBubbleMode is passed as 'legacy' by the chat page.
+    // Keep its original segment count; the five-bubble cap applies only to explicit modes.
+    if (!legacyUncapped && bubbles.length > REPLY_BUBBLE_MAX) {
       var keep = REPLY_BUBBLE_MAX - 1;
       var head = bubbles.slice(0, keep).concat([bubbles.slice(keep).join('\n')]);
       var headTr = translations.slice(0, keep).concat([translations.slice(keep).filter(Boolean).join('\n')]);
@@ -83,11 +85,14 @@
     return { bubbles: bubbles, translations: translations };
   }
 
-  // @param {String|Object} [modeOrOptions] 'auto' | 'single'，或 { mode: ... }
+  // @param {String|Object} [modeOrOptions] 'auto' | 'single' | 'multi' | internal 'legacy'
+  // or { mode: ..., legacyUncapped: true } for stored legacy content.
   function parseReplyContent(raw, modeOrOptions) {
-    var mode = normalizeReplyBubbleMode(
-      modeOrOptions && typeof modeOrOptions === 'object' ? modeOrOptions.mode : modeOrOptions
-    );
+    var isOptions = !!(modeOrOptions && typeof modeOrOptions === 'object');
+    var requestedMode = isOptions ? modeOrOptions.mode : modeOrOptions;
+    var legacyUncapped = requestedMode === 'legacy' ||
+      (isOptions && modeOrOptions.legacyUncapped === true);
+    var mode = normalizeReplyBubbleMode(requestedMode);
     var text = stripInternalReasoning(raw);
     var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/gi;
     var narrations = [];
@@ -115,7 +120,7 @@
         translations.push(translation);
       }
     });
-    var merged = mergeReplyBubbles(bubbles, translations, mode);
+    var merged = mergeReplyBubbles(bubbles, translations, mode, legacyUncapped);
     return { thinks: [], narrations: narrations, bubbles: merged.bubbles, translations: merged.translations };
   }
 
@@ -147,7 +152,7 @@
   // 新增字段 turnId / bubbleIndex / bubbleCount 全部是可选的，老记录读取不受影响。
   function buildReplyMessages(rawText, mode, meta) {
     meta = meta && typeof meta === 'object' ? meta : {};
-    var parsed = parseReplyContent(rawText, normalizeReplyBubbleMode(mode));
+    var parsed = parseReplyContent(rawText, mode);
     var baseTime = Number(meta.time) || Date.now();
     var turnId = String(meta.turnId || ('t' + baseTime));
     var pass = {};
@@ -200,7 +205,7 @@
   function getMessageBubbles(message) {
     var mid = String((message && message.mid) || '');
     var raw = String((message && (message.text || message.content)) || '');
-    var parsed = parseReplyContent(raw, 'auto');
+    var parsed = parseReplyContent(raw, 'legacy');
     var bubbles = parsed.bubbles;
     var translations = parsed.translations;
     if (!bubbles.length) {
