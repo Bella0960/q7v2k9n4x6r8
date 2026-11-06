@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import worker from '../worker.js';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -9,6 +10,38 @@ const serviceWorker = read('sw.js');
 const viteConfig = read('vite.config.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
+const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\/\/.*\n/, ''));
+
+
+test('Worker serves index.html at the root and preserves exact app paths', async () => {
+  assert.equal(wranglerConfig.main, './worker.js');
+  assert.equal(wranglerConfig.assets.binding, 'ASSETS');
+  assert.equal(wranglerConfig.assets.html_handling, 'none');
+  assert.deepEqual(wranglerConfig.assets.run_worker_first, ['/']);
+
+  const requestedPaths = [];
+  const env = {
+    ASSETS: {
+      fetch: async request => {
+        const pathname = new URL(request.url).pathname;
+        requestedPaths.push(pathname);
+        return new Response(pathname, { status: pathname === '/missing-app.html' ? 404 : 200 });
+      }
+    }
+  };
+
+  const homeResponse = await worker.fetch(new Request('https://mao.example/'), env);
+  assert.equal(homeResponse.status, 200);
+  assert.equal(requestedPaths[0], '/index.html');
+
+  const appResponse = await worker.fetch(new Request('https://mao.example/chat/chat/chat.html'), env);
+  assert.equal(appResponse.status, 200);
+  assert.equal(requestedPaths[1], '/chat/chat/chat.html');
+
+  const missingResponse = await worker.fetch(new Request('https://mao.example/missing-app.html'), env);
+  assert.equal(missingResponse.status, 404);
+  assert.equal(requestedPaths[2], '/missing-app.html');
+});
 
 test('build emits a manifest containing every HTML entry point', () => {
   assert.match(viteConfig, /Object\.keys\(htmlFiles\)[\s\S]*\.map\(page => page \+ '\.html'\)/);
