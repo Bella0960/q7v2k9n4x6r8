@@ -504,10 +504,12 @@
           var rollbackOk = true;
           try { await restoreIconSnapshot(snapshot, previousActiveId); }
           catch (rollbackError) { rollbackOk = false; }
-          APPS.forEach(function (app) {
-            var previous = snapshot.find(function (item) { return item.appId === app.id; });
-            paintIconRow(app, previous ? previous.dataUrl : '');
-          });
+          if (snapshot.length) {
+            APPS.forEach(function (app) {
+              var previous = snapshot.find(function (item) { return item.appId === app.id; });
+              paintIconRow(app, previous ? previous.dataUrl : '');
+            });
+          }
           setPresetFeedback(rollbackOk
             ? (error && error.message ? error.message : '切换失败，已保留原图标。')
             : '切换失败，原图标恢复未完整完成，请检查各应用图标。');
@@ -566,10 +568,12 @@
           var rollbackOk = true;
           try { await restoreIconSnapshot(snapshot, previousActiveId); }
           catch (rollbackError) { rollbackOk = false; }
-          APPS.forEach(function (app) {
-            var previous = snapshot.find(function (item) { return item.appId === app.id; });
-            paintIconRow(app, previous ? previous.dataUrl : '');
-          });
+          if (snapshot.length) {
+            APPS.forEach(function (app) {
+              var previous = snapshot.find(function (item) { return item.appId === app.id; });
+              paintIconRow(app, previous ? previous.dataUrl : '');
+            });
+          }
           setPresetFeedback(rollbackOk
             ? (error && error.message ? error.message : '恢复失败，已保留原图标。')
             : '恢复失败，原图标恢复未完整完成，请检查各应用图标。');
