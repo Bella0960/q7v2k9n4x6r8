@@ -92,7 +92,7 @@ try {
     new URL(response.url()).pathname === `/${firstRoute}`,
     { timeout: 10000 }
   );
-  await tile.click({ timeout: 10000 });
+  await tile.tap({ timeout: 10000 });
   const appResponse = await navigationResponse;
   assert.equal(appResponse.status(), 200, 'tapping an app icon should load its actual page');
   await page.waitForURL(url => new URL(url).pathname === `/${firstRoute}`, { timeout: 10000 });
