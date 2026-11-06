@@ -23,6 +23,7 @@ test('tarot uses a tall six-corner crystal silhouette, not rectangular playing c
   assert.ok(css.includes(polygon));
   assert.match(css, /\.tarot-flip-inner[\s\S]*?transform-style:preserve-3d/);
   assert.match(html, /tarot-deck-scene/);
+  assert.match(css, /\.tarot-deck-scene\.shuffling[\s\S]*?shuffle-main/);
 });
 
 test('role participation uses existing MAOMAO character and AI APIs', () => {
@@ -57,5 +58,7 @@ test('custom templates and history have a dedicated persistent data domain', () 
   assert.match(html, /deleteLotPoolBtn/);
   assert.match(html, /deleteWheelBtn/);
   assert.match(js, /function saveState\(\)/);
+  assert.match(js, /className = 'item-edit-input'/);
+  assert.match(js, /function delete|deleteLotPoolBtn/);
   assert.match(js, /localStorage\.setItem\(DATA_KEY/);
 });
