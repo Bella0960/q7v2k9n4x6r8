@@ -54,5 +54,8 @@ test('custom templates and history have a dedicated persistent data domain', () 
   assert.match(js, /state\.pools/);
   assert.match(js, /state\.wheels/);
   assert.match(js, /state\.history/);
+  assert.match(html, /deleteLotPoolBtn/);
+  assert.match(html, /deleteWheelBtn/);
+  assert.match(js, /function saveState\(\)/);
   assert.match(js, /localStorage\.setItem\(DATA_KEY/);
 });
