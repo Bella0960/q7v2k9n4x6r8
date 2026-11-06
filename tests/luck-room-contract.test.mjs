@@ -24,6 +24,10 @@ test('tarot uses a tall six-corner crystal silhouette, not rectangular playing c
   assert.match(css, /\.tarot-flip-inner[\s\S]*?transform-style:preserve-3d/);
   assert.match(html, /tarot-deck-scene/);
   assert.match(css, /\.tarot-deck-scene\.shuffling[\s\S]*?shuffle-main/);
+  assert.match(js, /var TAROT_MINOR = \[/);
+  assert.match(js, /var TAROT = TAROT_MAJOR\.concat\(TAROT_MINOR\)/);
+  assert.match(html, /完整 78 张牌组/);
+  assert.match(html, /塔罗.*?/);
 });
 
 test('role participation uses existing MAOMAO character and AI APIs', () => {
@@ -33,6 +37,11 @@ test('role participation uses existing MAOMAO character and AI APIs', () => {
   assert.match(js, /PhoneStorage\.getCharacters/);
   assert.match(js, /PhoneContext\.buildPhoneRoleContext/);
   assert.match(js, /PhoneAPI\.complete/);
+  assert.match(js, /function requestRoleStart\(game\)/);
+  assert.match(js, /requestRoleStart\('抽签'\)/);
+  assert.match(js, /requestRoleStart\('大转盘'\)/);
+  assert.match(js, /requestRoleStart\('塔罗牌'\)/);
+  assert.match(js, /requestRoleStart\('今日运势'\)/);
 });
 
 test('random results are generated locally before character response', () => {
@@ -40,6 +49,7 @@ test('random results are generated locally before character response', () => {
   assert.match(js, /function spinWheel\(\)/);
   assert.match(js, /function drawTarot\(\)/);
   assert.match(js, /function drawDaily\(\)/);
+  assert.match(js, /reversedDraw:randomIndex\(100\)<30/);
   assert.match(js, /function askRole\(game, detail, target\)/);
   assert.ok(js.indexOf('var index = randomIndex(wheel.items.length)') < js.indexOf("askRole('大转盘'"));
 });
@@ -55,6 +65,7 @@ test('custom templates and history have a dedicated persistent data domain', () 
   assert.match(js, /state\.pools/);
   assert.match(js, /state\.wheels/);
   assert.match(js, /state\.history/);
+  assert.match(js, /suit:card\.suit/);
   assert.match(html, /deleteLotPoolBtn/);
   assert.match(html, /deleteWheelBtn/);
   assert.match(js, /function saveState\(\)/);
