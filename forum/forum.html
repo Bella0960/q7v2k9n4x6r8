@@ -503,11 +503,12 @@ async function refreshFeed(){
    toast(commit.reason==='storage-conflict'?'论坛刚刚有其他页面更新，请再刷新一次':'本次动态没有写入，请检查本机存储空间');
    return false;
   }
+  posts=commit.posts;
   if(!commit.changed){
+   render();
    toast('这次没有新的帖子或回复，再试一次看看');
    return false;
   }
-  posts=commit.posts;
   render();scroll.scrollTop=0;
   toast('社区又有 '+commit.addedPostCount+' 篇新帖'+(commit.activityCount?'，旧帖也有新回复':''));
   return true;
