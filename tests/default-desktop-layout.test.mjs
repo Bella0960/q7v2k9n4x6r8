@@ -26,6 +26,7 @@ test('default home has the clock, duo avatars, photo wall and app quadrants in t
     'app_wallet', 'app_music', 'app_beauty', 'app_theme_store'
   ]);
   assert.equal(pages.length, 3);
+  assert.ok(pages[2].includes('app_tutorial'), 'tutorial app must be visible in the default desktop layout');
   assert.match(index, /v:\s*14,/);
   assert.match(index, /var LS_KEY = 'ds_layout_v14'/);
 });
@@ -53,7 +54,7 @@ test('the mobile home grid keeps four columns and supports vertical page scrolli
   assert.match(desktopCss, /#gridPage0 > \[data-drag\]:nth-child\(6\)[^{]*\{ grid-column: 3 \/ 5 !important; grid-row: 3 \/ 5 !important;/);
   assert.match(mobileCss, /#gridPage0 > \[data-drag\]:nth-child\(7\)[^{]*\{ grid-column: 1 \/ 3 !important; grid-row: 5 \/ 7 !important;/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v173'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v174'/);
 });
 
 
