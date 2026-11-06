@@ -38,7 +38,7 @@ jobs:
       - name: Build all MAOMAO pages
         run: npm run build
       - name: Install Chromium for real mobile tap checks
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Verify route precache and mobile navigation
         run: npm run test:pwa:navigation
       - name: Verify desktop app taps against the live production Worker
