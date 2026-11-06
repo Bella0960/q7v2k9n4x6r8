@@ -636,10 +636,16 @@
 
       function initializeIconSettings() {
         listEl.textContent = '正在读取桌面应用…';
+        savePresetBtn.disabled = true;
+        resetAllIconsBtn.disabled = true;
+        presetNameInput.disabled = true;
         loadDesktopApps().then(function (apps) {
           APPS = apps;
           listEl.textContent = '';
           APPS.forEach(renderRow);
+          savePresetBtn.disabled = false;
+          resetAllIconsBtn.disabled = false;
+          presetNameInput.disabled = false;
           renderPresetList();
           syncCurrentPresetLabel();
         }).catch(function (error) {
