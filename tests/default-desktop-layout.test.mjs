@@ -42,8 +42,15 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
   const assigned = pages.flat();
   const appIds = [...new Set([...index.matchAll(/data-drag="(app_[^"]+)"/g)].map((m) => m[1]))]
     .filter((id) => id !== 'app_chat' && id !== 'app_shop');
+  const incrementallyMigratedApps = ['app_luckroom'];
+  const appsInStaticDefaultPages = appIds.filter((id) => !incrementallyMigratedApps.includes(id));
   assert.equal(new Set(assigned).size, assigned.length, 'default pages must not contain duplicate items');
-  assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appIds].sort());
+  assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appsInStaticDefaultPages].sort());
+  for (const id of incrementallyMigratedApps) {
+    assert.match(index, new RegExp('data-drag="' + id + '"'));
+  }
+  assert.match(index, /addLuckRoomShortcutToExistingLayouts/);
+  assert.match(index, /currentLayout\.pages\[pageIndex\]\.splice\(gamesIndex/);
   assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
 });
 
