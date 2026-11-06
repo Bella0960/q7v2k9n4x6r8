@@ -121,6 +121,12 @@ test('all 22 Major Arcana have correct glyph and dedicated reversed interpretati
   assert.ok(mapStart >= 0 && mapEnd > mapStart, 'Major Arcana reverse map should exist');
   const reverseMap = js.slice(mapStart, mapEnd);
   assert.equal((reverseMap.match(/^  '/gm) || []).length, 22, 'Major Arcana should have 22 dedicated reversed meanings');
+  const majorStart = js.indexOf('var TAROT_MAJOR = [');
+  const minorStart = js.indexOf('var TAROT_MINOR = [', majorStart);
+  const majorDeck = js.slice(majorStart, minorStart);
+  const majorNames = Array.from(majorDeck.matchAll(/^  \['[^']+','([^']+)'/gm), (match) => match[1]).sort();
+  const reverseNames = Array.from(reverseMap.matchAll(/^  '([^']+)':/gm), (match) => match[1]).sort();
+  assert.deepEqual(reverseNames, majorNames, 'Every Major Arcana card must have exactly one dedicated reversed meaning');
   assert.match(js, /upright:isMajor \? card\[3\] \+ '（方向：' \+ card\[4\] \+ '）'/);
   assert.match(js, /reversed:isMajor \? TAROT_MAJOR_REVERSED\[card\[1\]\] : card\.reversed/);
   assert.match(js, /glyph:isMajor \? card\[6\] : card\.glyph/);
