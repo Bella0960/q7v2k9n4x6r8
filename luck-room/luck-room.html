@@ -55,6 +55,7 @@
     <div class="template-line">
       <label for="lotPoolSelect">当前签筒</label>
       <select id="lotPoolSelect"></select>
+      <button class="template-delete" id="deleteLotPoolBtn" type="button">删除</button>
     </div>
     <div class="lot-vessel" id="lotVessel" aria-label="签筒">
       <div class="lot-sticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -70,6 +71,8 @@
     <button class="primary-action" id="drawLotBtn" type="button">摇一摇，抽一支 <span>✳</span></button>
     <div class="editor-block">
       <div class="editor-heading"><span>签筒内容</span><span class="editor-hint">自己添加，随时修改</span></div>
+      <label class="field-label" for="lotPoolTitleInput">签筒名称</label>
+      <input class="wide-input" id="lotPoolTitleInput" maxlength="20" autocomplete="off">
       <div class="item-list" id="lotItems"></div>
       <form class="inline-add" id="addLotForm">
         <input id="newLotItem" type="text" maxlength="36" placeholder="添加一条签文" autocomplete="off">
@@ -90,6 +93,7 @@
     <div class="template-line">
       <label for="wheelTemplateSelect">当前转盘</label>
       <select id="wheelTemplateSelect"></select>
+      <button class="template-delete" id="deleteWheelBtn" type="button">删除</button>
     </div>
     <div class="wheel-stage">
       <div class="wheel-pointer" aria-hidden="true"></div>
@@ -125,7 +129,7 @@
       <p>给此刻一个不同的视角，<br>不替你决定未来。</p>
     </div>
     <div class="tarot-controls">
-      <label for="tarotSpreadSelect">抽牌方式</label>
+      <label for="tarotSpreadSelect">抽牌方式 · 大阿卡纳 22 张</label>
       <select id="tarotSpreadSelect">
         <option value="1">单张 · 此刻的提示</option>
         <option value="3">三张 · 过去 / 现在 / 未来</option>
