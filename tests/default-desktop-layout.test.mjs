@@ -46,4 +46,4 @@ test('only exact known built-in defaults migrate; custom arrangements are preser
   assert.match(mobileCss, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
   assert.match(mobileCss, /grid-auto-rows:\s*68px\s*!important/);
   assert.match(mobileCss, /\.maomao-home \.home-page[\s\S]*?overflow-y:\s*auto\s*!important/);
-});;
+});
