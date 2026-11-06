@@ -36,7 +36,7 @@ test('Fate Cabin contains the three requested usable modules and persists only i
 });
 
 test('the updated PWA shell caches Fate Cabin and advances the service worker version', () => {
-  assert.match(sw, /phone-app-pwa-v174/);
+  assert.match(sw, /phone-app-pwa-v175/);
   assert.match(sw, /'\.\/fortune\/fortune\.html'/);
 });
 
