@@ -7,6 +7,7 @@ const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 const APP_SHELL = [
   './',
   './index.html',
+  './tutorial/tutorial.html',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
