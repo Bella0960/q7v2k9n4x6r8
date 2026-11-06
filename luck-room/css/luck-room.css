@@ -156,3 +156,10 @@ button{color:inherit}
 .template-delete{border:0;border-left:1px solid #e5e5e7;background:transparent;color:#999;font-size:10px;padding:7px 0 7px 10px;white-space:nowrap;cursor:pointer}.template-delete:active{color:#222}
 
 .companion-mark img{width:100%;height:100%;display:block;border-radius:50%;object-fit:cover}.companion-mark img[hidden],.companion-mark svg[hidden]{display:none}
+
+.role-prompt{font-size:11px;line-height:1.7;color:#777;padding:8px 0 0;margin:0;border-bottom:1px solid #eee}
+.role-prompt[hidden]{display:none}
+.tarot-deck-note,.tarot-pool-count{font-size:10px;color:#999;text-align:center;margin:9px 0 0;line-height:1.6}
+.tarot-pool-count{margin:2px 0 5px}
+.tarot-card-suit{font-size:8px;line-height:1.3;color:#888;margin-top:4px;letter-spacing:.08em}
+.tarot-reading-suit{font-size:10px!important;color:#999!important;margin:0 0 4px!important}
