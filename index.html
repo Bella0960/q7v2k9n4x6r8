@@ -642,27 +642,26 @@
       var LS_KEY_OLD = 'ds_layout_v5'; // 旧版本，只读取用于迁移，不会被删除
 
       function getDefaultLayout() {
-        // 默认布局（参考参考图分布）：正上方大幅图片上传组件(4×2整行)；中间左侧4个应用+右侧时钟(2×2)；下方左侧一个组件(2×2)+右侧4个应用
+        // 用户确认的默认桌面：第一页为大时钟、双人头像、拍立得及应用图标；
+        // 第二、三页只放应用图标；照片墙保留在“已移除”中，供用户主动添加。
         return {
           v: 12,
           pages: [
             [
+              'clock-lg', 'duo', 'polaroid',
               'app_inspect', 'app_worldbook', 'app_memory',
-              'app_forum', 'app_wallet',
-              'app_music', 'app_beauty', 'app_theme_store', 'app_characters', 'app_settings'
+              'app_forum', 'app_wallet', 'app_music', 'app_beauty'
             ],
             [
-              'app_finance', 'app_games', 'app_cafe', 'app_library',
+              'app_theme_store', 'app_characters', 'app_settings',
+              'app_finance', 'app_games', 'app_cafe', 'app_library'
+            ],
+            [
               'app_diary', 'app_envelope', 'app_dreamtravel'
-            ],
-            [
-              'social',
-              'image', 'clock', 'polaroid',
-              'dialog', 'music', 'todo', 'calendar', 'countdown', 'note'
             ]
           ],
           dock: ['app_chat', 'app_shop'],
-          removed: ['postcard']
+          removed: ['photowall', 'postcard', 'image', 'clock', 'dialog', 'music', 'todo', 'calendar', 'countdown', 'note']
         };
       }
 
@@ -749,28 +748,8 @@
         saveLayout(currentLayout);
       })();
 
-      // ===== 迁移：把组件（widget）从第 0/1 页统一挪到第 2 页，前两页只放应用图标 =====
-      (function migrateWidgetsToPage3() {
-        if (!currentLayout.pages || currentLayout.pages.length < 3) return;
-        var widgets = [];
-        [0, 1].forEach(function (pi) {
-          var page = currentLayout.pages[pi];
-          for (var i = page.length - 1; i >= 0; i--) {
-            var id = page[i];
-            if (id && id.indexOf('app_') !== 0 && id !== 'image' && id !== 'clock' && id !== 'polaroid' && id !== 'dialog' && id !== 'music' && id !== 'todo' && id !== 'calendar' && id !== 'countdown' && id !== 'note' && id !== 'postcard') continue;
-            if (['image','clock','polaroid','dialog','music','todo','calendar','countdown','note','postcard'].indexOf(id) !== -1) {
-              widgets.push(id);
-              page.splice(i, 1);
-            }
-          }
-        });
-        if (widgets.length) {
-          // 去重后追加到第 2 页
-          var existing = currentLayout.pages[2];
-          widgets.forEach(function (w) { if (existing.indexOf(w) === -1) existing.push(w); });
-          saveLayout(currentLayout);
-        }
-      })();
+      // 不再强制把第一页、第二页的组件迁移到第三页。
+      // 用户确认的默认桌面允许组件与应用图标按布局混排；旧布局保持原位。
 
       // ===== 隐藏仓库：被移除的应用/挂件放这里（保留在页面里，挂件的事件绑定才不会失效，之后可重新添加） =====
       function getShelf() {
