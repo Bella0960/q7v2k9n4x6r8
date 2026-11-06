@@ -3240,9 +3240,20 @@
         }
 
         // ===== 解析 AI 回复：移除所有内部推理标记，只渲染聊天正文与角色旁白 =====
+        // 角色级回复模式：ai_custom_characters 的 replyBubbleMode，缺失按 auto（与老角色现状一致）。
+        function normalizeReplyBubbleMode(value) {
+            if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.normalizeReplyBubbleMode === 'function') {
+                return window.ChatMessagePolicy.normalizeReplyBubbleMode(value);
+            }
+            return String(value || '').trim().toLowerCase() === 'single' ? 'single' : 'auto';
+        }
+        function getActiveReplyBubbleMode() {
+            return normalizeReplyBubbleMode(currentCharacter && currentCharacter.replyBubbleMode);
+        }
+
         function parseReplyContent(raw) {
             if (window.ChatMessagePolicy && typeof window.ChatMessagePolicy.parseReplyContent === 'function') {
-                return window.ChatMessagePolicy.parseReplyContent(raw);
+                return window.ChatMessagePolicy.parseReplyContent(raw, getActiveReplyBubbleMode());
             }
             // Compatibility fallback: preserve the original parser if the shared module is unavailable.
             var text = stripInternalReasoning(raw);
@@ -3262,6 +3273,12 @@
                 var s = seg.trim();
                 if (s) bubbles.push(s);
             });
+            var mode = getActiveReplyBubbleMode();
+            if (mode === 'single' && bubbles.length > 1) {
+                bubbles = [bubbles.join('\n')];
+            } else if (bubbles.length > 5) {
+                bubbles = bubbles.slice(0, 4).concat([bubbles.slice(4).join('\n')]);
+            }
 
             return { thinks: [], narrations: narrations, bubbles: bubbles };
         }
@@ -5567,11 +5584,15 @@
                 systemPrompt += `\n补充要求: ${customPrompt}`;
             }
             // 说话方式强制约束（每次请求必注入）
+            const replyBubbleMode = getActiveReplyBubbleMode();
+            const bubbleSplitRule = replyBubbleMode === 'single'
+                ? '本轮只输出一条完整消息，不要用空行分隔多个气泡。'
+                : '需要拆成多条消息时用双回车分隔，系统会自动拆成多个气泡；单次回复最多 5 条，通常 2–3 条，内容简短或只有一个意思时保持 1 条，禁止按字数或标点机械拆分。';
             const SPEAK_STYLE = '[说话方式强制约束]\n' +
                 '1. 当前是线上文字聊天，优先使用角色自然会发出的对话，不要写成小说、说明文或客服答复。\n' +
                 '2. 不写星号包裹的动作或括号心理描写；确有必要的简短神态/环境内容才使用 <narratage>...</narratage>。\n' +
                 '3. 直接输出自然的聊天正文，不输出思维链、分析过程、推理草稿或 <think>/<reasoning>/<analysis> 标签。\n' +
-                '4. 默认简短；需要拆成多条消息时用双回车分隔，系统会自动拆成多个气泡。不要强制固定句数或字数。\n' +
+                '4. 默认简短；' + bubbleSplitRule + '不要强制固定句数或字数。\n' +
                 '5. 不要每句话都加表情、颜文字或语气词，按角色自己的习惯表达。\n' +
                 '6. 不使用“作为AI”“我是语言模型”等助手式自我说明。';
             if (!systemPrompt.includes('[说话方式强制约束]')) {
@@ -5613,7 +5634,9 @@
               '',
               '【输出格式】',
               '只输出角色在当前模式下应当发送的内容，不输出推理、分析或生成说明。',
-              '线上聊天以自然对话为主；多条独立消息之间用双回车分隔，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。',
+              replyBubbleMode === 'single'
+                ? '线上聊天以自然对话为主；本轮只输出一条完整消息，不要用空行分隔多个气泡，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。'
+                : '线上聊天以自然对话为主；多意思、连续动作或语气变化时用双回车分隔成多条独立消息，单次最多 5 条，动作/神态旁白仅在必要时使用 <narratage>...</narratage>。',
               '不要添加角色姓名前缀，不要把隐藏机器标记解释给用户。',
               '═══════════════════════════════════',
               '',

@@ -44,7 +44,36 @@
     return String(raw || '').replace(TRANSLATION_MARKER_REGEX, '').replace(/\n{3,}/g, '\n\n').trim();
   }
 
-  function parseReplyContent(raw) {
+  // 单次回复的气泡上限。超出部分合并进最后一条，保证正文不丢失。
+  var REPLY_BUBBLE_MAX = 5;
+
+  // 角色级回复模式：只有显式 single 才关闭多气泡；缺失或未知值一律按 auto。
+  function normalizeReplyBubbleMode(value) {
+    return String(value || '').trim().toLowerCase() === 'single' ? 'single' : 'auto';
+  }
+
+  function mergeReplyBubbles(bubbles, translations, mode) {
+    if (!bubbles.length) return { bubbles: bubbles, translations: translations };
+    if (mode === 'single' && bubbles.length > 1) {
+      return {
+        bubbles: [bubbles.join('\n')],
+        translations: [translations.filter(Boolean).join('\n')]
+      };
+    }
+    if (bubbles.length > REPLY_BUBBLE_MAX) {
+      var keep = REPLY_BUBBLE_MAX - 1;
+      var head = bubbles.slice(0, keep).concat([bubbles.slice(keep).join('\n')]);
+      var headTr = translations.slice(0, keep).concat([translations.slice(keep).filter(Boolean).join('\n')]);
+      return { bubbles: head, translations: headTr };
+    }
+    return { bubbles: bubbles, translations: translations };
+  }
+
+  // @param {String|Object} [modeOrOptions] 'auto' | 'single'，或 { mode: ... }
+  function parseReplyContent(raw, modeOrOptions) {
+    var mode = normalizeReplyBubbleMode(
+      modeOrOptions && typeof modeOrOptions === 'object' ? modeOrOptions.mode : modeOrOptions
+    );
     var text = stripInternalReasoning(raw);
     var narrRegex = /<narratage>([\s\S]*?)<\/narratage>/gi;
     var narrations = [];
@@ -72,7 +101,8 @@
         translations.push(translation);
       }
     });
-    return { thinks: [], narrations: narrations, bubbles: bubbles, translations: translations };
+    var merged = mergeReplyBubbles(bubbles, translations, mode);
+    return { thinks: [], narrations: narrations, bubbles: merged.bubbles, translations: merged.translations };
   }
 
   // Protect narration and think blocks while the existing page cleanup rules run.
@@ -140,6 +170,8 @@
   }
 
   global.ChatMessagePolicy = {
+    REPLY_BUBBLE_MAX: REPLY_BUBBLE_MAX,
+    normalizeReplyBubbleMode: normalizeReplyBubbleMode,
     stripInternalReasoning: stripInternalReasoning,
     extractMemoryMarkers: extractMemoryMarkers,
     parseReplyContent: parseReplyContent,
