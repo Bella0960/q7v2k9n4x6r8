@@ -549,11 +549,11 @@
             var url = normalizeUrl(raw);
             pendingSource = { type: 'url', url: url, format: getFormat(url) };
             previewSource(pendingSource);
-            applyGlobalSource(pendingSource);
             try {
                 localStorage.setItem('custom_font_url', url);
                 localStorage.removeItem('active_font_preset_id');
             } catch (e) {}
+            applyGlobalSource(pendingSource);
             presetSelect.value = '';
             showHint('链接字体已应用。填写方案名称后，可保存为随时切换的预设。若预览无变化，请检查链接及字体服务器的跨域设置。');
         } catch (e) {

@@ -1923,95 +1923,163 @@
       })();
     })();
 
-    // ===== 时钟组件：纯时间大字 =====
+    // ===== 时钟组件：统一颜色控制（小/大时钟共用） =====
     (function () {
-      var timeEl = document.getElementById('clTime');
-      if (!timeEl) return;
+      var smallTime = document.getElementById('clTime');
+      var largeTime = document.getElementById('clgTime');
+      var dateEl = document.getElementById('clgDate');
+      var week = ['日','一','二','三','四','五','六'];
+      var DEFAULT_CLOCK_COLOR = '#1a1a1a';
+      var CLOCK_SWATCHES = [
+        { name: '默认黑', color: '#1a1a1a' },
+        { name: '深灰', color: '#444444' },
+        { name: '中灰', color: '#777777' },
+        { name: '浅灰', color: '#b8b8b8' },
+        { name: '白色', color: '#ffffff' },
+        { name: '暖米', color: '#c5b69d' },
+        { name: '浅棕', color: '#a9856b' },
+        { name: '咖啡', color: '#765747' },
+        { name: '橄榄绿', color: '#788466' },
+        { name: '鼠尾草', color: '#8a9b8b' },
+        { name: '雾蓝', color: '#718da3' },
+        { name: '蓝灰', color: '#536b82' },
+        { name: '灰紫', color: '#8b819c' },
+        { name: '豆沙', color: '#ad7e83' },
+        { name: '琥珀', color: '#bd8a3e' },
+        { name: '砖红', color: '#a95f50' }
+      ];
+      var savedColor = DEFAULT_CLOCK_COLOR;
+      var palette = null;
 
-      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      try {
+        var storedColor = localStorage.getItem('ds_clock_color') || '';
+        if (/^#[0-9a-f]{6}$/i.test(storedColor)) savedColor = storedColor;
+      } catch (e) {}
 
-      function tick() {
-        var d = new Date();
-        timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
+      function applyClockColor(color, persist) {
+        if (!/^#[0-9a-f]{6}$/i.test(color || '')) return;
+        savedColor = color;
+        [smallTime, largeTime].forEach(function (el) {
+          if (el) el.style.color = color;
+        });
+        if (persist) {
+          try { localStorage.setItem('ds_clock_color', color); } catch (e) {}
+        }
+        if (palette) {
+          Array.prototype.forEach.call(palette.querySelectorAll('.palette-dot'), function (button) {
+            button.setAttribute('aria-pressed', button.getAttribute('data-color') === color ? 'true' : 'false');
+          });
+        }
       }
 
-      // 调色盘：读取保存的颜色
-      var savedColor = localStorage.getItem('ds_clock_color') || '#1a1a1a';
-      timeEl.style.color = savedColor;
+      function closePalette() {
+        if (palette) {
+          palette.remove();
+          palette = null;
+        }
+      }
 
-      // 点击弹出颜色选择器（原生色盘）
-      var palette = null;
-      var colorInput = null;
-
-      timeEl.addEventListener('click', function(e){
-        if (document.body.classList.contains('home-editing')) return;
-        e.stopPropagation();
-        if (palette) { palette.remove(); palette = null; return; }
+      function openPalette(anchor, event) {
+        if (!anchor || document.body.classList.contains('home-editing')) return;
+        if (event) event.stopPropagation();
+        if (palette) { closePalette(); return; }
 
         palette = document.createElement('div');
         palette.className = 'clock-palette';
+        palette.setAttribute('role', 'group');
+        palette.setAttribute('aria-label', '时钟颜色');
 
-        colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.value = savedColor;
-        colorInput.style.width = '120px';
-        colorInput.style.height = '40px';
-        colorInput.style.border = 'none';
-        colorInput.style.padding = '0';
-        colorInput.style.cursor = 'pointer';
+        var title = document.createElement('div');
+        title.className = 'clock-palette-title';
+        title.textContent = '时钟颜色';
+        palette.appendChild(title);
 
-        colorInput.addEventListener('input', function(){
-          timeEl.style.color = colorInput.value;
-          var clg = document.getElementById('clgTime');
-          if (clg) clg.style.color = colorInput.value;
+        var grid = document.createElement('div');
+        grid.className = 'clock-palette-grid';
+        CLOCK_SWATCHES.forEach(function (item) {
+          var swatch = document.createElement('button');
+          swatch.type = 'button';
+          swatch.className = 'palette-dot';
+          swatch.style.backgroundColor = item.color;
+          swatch.setAttribute('data-color', item.color);
+          swatch.setAttribute('aria-label', item.name);
+          swatch.setAttribute('aria-pressed', item.color.toLowerCase() === savedColor.toLowerCase() ? 'true' : 'false');
+          swatch.addEventListener('click', function (e) {
+            e.stopPropagation();
+            applyClockColor(item.color, true);
+            closePalette();
+          });
+          grid.appendChild(swatch);
         });
-        colorInput.addEventListener('change', function(){
-          savedColor = colorInput.value;
-          localStorage.setItem('ds_clock_color', savedColor);
-          palette.remove();
-          palette = null;
-        });
+        palette.appendChild(grid);
 
-        palette.appendChild(colorInput);
+        var actions = document.createElement('div');
+        actions.className = 'clock-palette-actions';
+
+        var customLabel = document.createElement('label');
+        customLabel.className = 'palette-custom';
+        customLabel.textContent = '自定义颜色';
+        var customInput = document.createElement('input');
+        customInput.type = 'color';
+        customInput.value = savedColor;
+        customInput.setAttribute('aria-label', '选择自定义时钟颜色');
+        customInput.addEventListener('click', function (e) { e.stopPropagation(); });
+        customInput.addEventListener('input', function () {
+          applyClockColor(customInput.value, false);
+        });
+        customInput.addEventListener('change', function () {
+          applyClockColor(customInput.value, true);
+          closePalette();
+        });
+        customLabel.appendChild(customInput);
+        actions.appendChild(customLabel);
+
+        var resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'palette-reset';
+        resetButton.textContent = '恢复默认';
+        resetButton.addEventListener('click', function (e) {
+          e.stopPropagation();
+          try { localStorage.removeItem('ds_clock_color'); } catch (err) {}
+          applyClockColor(DEFAULT_CLOCK_COLOR, false);
+          closePalette();
+        });
+        actions.appendChild(resetButton);
+        palette.appendChild(actions);
+
         document.body.appendChild(palette);
-
-        // 定位到时钟下方
-        var rect = timeEl.getBoundingClientRect();
-        palette.style.left = (rect.left + rect.width/2 - 60) + 'px';
-        palette.style.top = (rect.bottom + 8) + 'px';
-
-        // 自动打开原生色盘
-        setTimeout(function(){ colorInput.click(); }, 50);
-      });
-
-      tick();
-      setInterval(tick, 1000);
-    })();
-
-    // ===== 大时钟天气组件（4×2）：时间+日期+天气+地址，全部可编辑 =====
-    (function () {
-      var timeEl = document.getElementById('clgTime');
-      if (!timeEl) return;
-      var dateEl = document.getElementById('clgDate');
-      var week = ['日','一','二','三','四','五','六'];
-
-      function pad(n) { return (n < 10 ? '0' : '') + n; }
-
-      function tick() {
-        var d = new Date();
-        timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes());
-        if (dateEl) dateEl.textContent = (d.getMonth()+1) + '月' + d.getDate() + '日 周' + week[d.getDay()];
+        var rect = anchor.getBoundingClientRect();
+        var panelWidth = Math.min(264, window.innerWidth - 24);
+        var left = Math.max(12, Math.min(window.innerWidth - panelWidth - 12, rect.left + rect.width / 2 - panelWidth / 2));
+        palette.style.width = panelWidth + 'px';
+        palette.style.left = left + 'px';
+        var panelHeight = palette.offsetHeight;
+        var top = rect.bottom + 8;
+        if (top + panelHeight > window.innerHeight - 12) top = Math.max(12, rect.top - panelHeight - 8);
+        palette.style.top = top + 'px';
       }
 
-      // 读取保存的颜色
-      var savedColor = localStorage.getItem('ds_clock_color') || '#1a1a1a';
-      timeEl.style.color = savedColor;
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      function tick() {
+        var d = new Date();
+        var time = pad(d.getHours()) + ':' + pad(d.getMinutes());
+        if (smallTime) smallTime.textContent = time;
+        if (largeTime) largeTime.textContent = time;
+        if (dateEl) dateEl.textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + week[d.getDay()];
+      }
 
-      // 可编辑：天气、温度、天气状况、城市
-      ['clgTemp','clgCond','clgCity'].forEach(function(id){
+      applyClockColor(savedColor, false);
+      tick();
+      if (smallTime || largeTime) window.setInterval(tick, 1000);
+
+      [smallTime, largeTime].forEach(function (el) {
+        if (el) el.addEventListener('click', function (e) { openPalette(el, e); });
+      });
+
+      ['clgTemp','clgCond','clgCity'].forEach(function (id) {
         var el = document.getElementById(id);
         if (!el) return;
-        el.addEventListener('click', function(){
+        el.addEventListener('click', function () {
           if (document.body.classList.contains('home-editing')) return;
           el.contentEditable = 'true';
           el.focus();
@@ -2021,56 +2089,16 @@
           sel.removeAllRanges();
           sel.addRange(range);
         });
-        el.addEventListener('blur', function(){
-          el.contentEditable = 'false';
-        });
+        el.addEventListener('blur', function () { el.contentEditable = 'false'; });
       });
 
-      // 点击时间弹出色盘调色
-      var palette = null;
-      timeEl.addEventListener('click', function(e){
-        if (document.body.classList.contains('home-editing')) return;
-        e.stopPropagation();
-        if (palette) { palette.remove(); palette = null; return; }
-
-        palette = document.createElement('div');
-        palette.className = 'clock-palette';
-
-        var colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.value = savedColor;
-        colorInput.style.width = '120px';
-        colorInput.style.height = '40px';
-        colorInput.style.border = 'none';
-        colorInput.style.padding = '0';
-        colorInput.style.cursor = 'pointer';
-
-        colorInput.addEventListener('input', function(){
-          timeEl.style.color = colorInput.value;
-          var small = document.getElementById('clTime');
-          if (small) small.style.color = colorInput.value;
-        });
-        colorInput.addEventListener('change', function(){
-          savedColor = colorInput.value;
-          localStorage.setItem('ds_clock_color', savedColor);
-          var small = document.getElementById('clTime');
-          if (small) small.style.color = savedColor;
-          palette.remove();
-          palette = null;
-        });
-
-        palette.appendChild(colorInput);
-        document.body.appendChild(palette);
-
-        var rect = timeEl.getBoundingClientRect();
-        palette.style.left = (rect.left + rect.width/2 - 60) + 'px';
-        palette.style.top = (rect.bottom + 8) + 'px';
-
-        setTimeout(function(){ colorInput.click(); }, 50);
+      document.addEventListener('click', function (e) {
+        if (palette && !palette.contains(e.target)) closePalette();
       });
-
-      tick();
-      setInterval(tick, 1000);
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closePalette();
+      });
+      window.addEventListener('resize', closePalette);
     })();
 
     // ===== ins 资料卡（4×2）：全部可编辑 =====
