@@ -418,7 +418,7 @@ function renderTarotSpread() {
     var roman = document.createElement('span'); roman.className = 'tarot-roman'; roman.textContent = card.roman;
     var glyph = document.createElement('span'); glyph.className = 'tarot-glyph'; glyph.textContent = card.glyph;
     var name = document.createElement('span'); name.className = 'tarot-card-name'; name.textContent = card.name;
-    var orientation = document.createElement('span'); orientation.className = 'tarot-orientation'; orientation.textContent = card.reversedDraw ? 'REVERSED' : 'UPRIGHT';
+    var orientation = document.createElement('span'); orientation.className = 'tarot-orientation'; orientation.textContent = card.reversedDraw ? '逆位' : '正位';
     front.append(roman, glyph, name, orientation); inner.append(back, front); button.appendChild(inner);
     button.addEventListener('click', function () {
       if (card.revealed) return;
