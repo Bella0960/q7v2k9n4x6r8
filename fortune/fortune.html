@@ -135,6 +135,141 @@ button:disabled{opacity:.42;cursor:not-allowed}
 @media(max-width:720px){.wheel-layout{grid-template-columns:1fr}.wheel-side{border-left:0;border-top:1px solid var(--line-soft);padding:18px 0 0}.wheel-stage{width:min(100%,470px)}.module-copy small{white-space:normal}}
 @media(max-width:560px){.fate-app{padding:13px 13px 32px}.hero{padding:25px 0 18px}.room-scene{height:310px}.scene-entry .entry-mark{width:43px;height:43px}.scene-entry svg{width:20px;height:20px}.entry-tarot{left:7%;bottom:14%}.entry-wheel{bottom:13%}.entry-oracle{right:6%;bottom:14%}.module-index{grid-template-columns:1fr}.module-link{padding:13px 0}.module-link+.module-link{border-left:0;border-top:1px solid var(--line-soft);padding-left:0}.module-copy strong{font-size:16px}.view-head{align-items:start;flex-direction:column}.back-room{align-self:end}.crystal-stage{min-height:245px;gap:7px;padding-left:0;padding-right:0}.crystal-card{width:clamp(80px,25vw,112px)}.reading-results{grid-template-columns:1fr;gap:17px}.reading-result{padding-top:10px}.wheel-stage{padding:12px}.wheel-center{width:54px;height:54px}.top-label{display:none}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* Fate Cabin home refresh — architectural layers, object-led navigation */
+.fate-app{width:min(1220px,100%);padding:22px clamp(16px,3.2vw,38px) 48px}
+.topbar{padding:7px 0 18px}
+.back-home{display:inline-flex;align-items:center;gap:9px;letter-spacing:.6px}
+.back-home:before{content:"←";font:16px Georgia,serif;color:#d1d1d1;transition:transform .2s}
+.back-home:hover:before{transform:translateX(-3px)}
+.top-label{font-size:9px;letter-spacing:2.6px}
+.hero{display:grid;grid-template-columns:minmax(0,1fr) 190px;align-items:end;gap:36px;padding:42px 0 29px}
+.hero-kicker{display:flex;align-items:center;gap:13px;font-size:9px;letter-spacing:3px}
+.hero-edition{color:#777;letter-spacing:1.4px}
+h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
+.hero-copy{font-size:14px;line-height:2;color:#b9b9b9;max-width:590px}
+.hero-side{border-left:1px solid #4a4a4a;padding:2px 0 4px 20px;margin-bottom:5px}
+.hero-side-top{display:flex;align-items:center;justify-content:space-between;color:#777;font:9px Arial,sans-serif;letter-spacing:2px}
+.hero-side-top strong{font:24px Georgia,serif;color:#cfcfcf;font-weight:400}
+.hero-side-rule{height:1px;background:#4a4a4a;margin:11px 0 12px}
+.hero-side-kicker{font:8px Arial,sans-serif;letter-spacing:1.8px;color:#888}
+.hero-side p{font:15px/1.9 var(--serif);color:#dedede;margin:7px 0 0;letter-spacing:2px}
+.room-scene{height:clamp(390px,43vw,510px);min-height:390px;border:1px solid #555;background:radial-gradient(ellipse at 50% 28%,#bcbcbc20 0,transparent 43%),radial-gradient(ellipse at 50% 80%,#a0a0a012 0,transparent 52%),linear-gradient(180deg,#343434 0%,#272727 55%,#1b1b1b 100%);box-shadow:inset 0 0 0 8px #ffffff04,inset 0 22px 65px #0005;isolation:isolate}
+.room-scene:before{height:38%;bottom:0;background:linear-gradient(180deg,#343434 0%,#242424 100%);clip-path:polygon(0 0,100% 0,100% 100%,0 100%);border-top:1px solid #666}
+.room-scene:after{height:33%;bottom:0;background:repeating-linear-gradient(0deg,transparent 0 42px,#a5a5a515 43px,#a5a5a505 44px),linear-gradient(90deg,#1b1b1b,#333 50%,#1b1b1b);clip-path:polygon(0 5%,100% 0,100% 100%,0 100%);opacity:.95}
+.scene-caption{top:19px;left:22px;font:9px Arial,sans-serif;letter-spacing:1.8px;color:#c0c0c0}
+.scene-light{display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;background:#d7d7d7;box-shadow:0 0 12px #eee;vertical-align:1px}
+.scene-coordinate{position:absolute;right:22px;top:19px;color:#777;font:8px Arial,sans-serif;letter-spacing:2px}
+.wall-panel{position:absolute;top:10%;bottom:35%;width:18%;border:1px solid #8a8a8a18;opacity:.8}
+.wall-panel:before,.wall-panel:after{content:"";position:absolute;background:#9e9e9e16}
+.wall-panel:before{top:0;bottom:0;left:50%;width:1px}
+.wall-panel:after{left:0;right:0;top:48%;height:1px}
+.wall-panel-left{left:4%}.wall-panel-right{right:4%}
+.wall-sconce{position:absolute;top:34%;width:30px;height:50px;border:1px solid #777;border-top:0;border-radius:0 0 18px 18px;background:linear-gradient(90deg,#333,#777 50%,#333);opacity:.85}
+.wall-sconce:before{content:"";position:absolute;left:50%;top:-8px;transform:translateX(-50%);width:1px;height:9px;background:#888}
+.wall-sconce i{position:absolute;left:50%;top:10px;transform:translateX(-50%);width:9px;height:19px;border-radius:50% 50% 35% 35%;background:#ddd;box-shadow:0 0 18px 6px #ddd4}
+.wall-sconce-left{left:13%}.wall-sconce-right{right:13%}
+.window-frame{left:50%;top:7%;width:min(31%,340px);height:59%;border:1px solid #888;border-bottom:0;border-radius:48% 48% 0 0;clip-path:none;background:radial-gradient(ellipse at 50% 34%,#a5a5a528,transparent 56%),linear-gradient(180deg,#191919 0%,#333 61%,#555 100%);box-shadow:0 0 0 8px #7777770c,0 0 55px #d0d0d014}
+.window-frame:before{left:50%;right:auto;top:7%;bottom:0;width:1px;height:auto;background:#c2c2c25c}
+.window-frame:after{left:4%;right:4%;top:58%;height:1px;background:#c2c2c25c}
+.moon{top:17%;width:58px;height:58px;background:radial-gradient(circle at 36% 35%,#f0f0f0,#bdbdbd 70%);box-shadow:0 0 25px 7px #d9d9d91d,0 0 70px #ddd2}
+.window-star{position:absolute;width:3px;height:3px;border-radius:50%;background:#ddd;box-shadow:0 0 9px #eee}
+.star-one{top:23%;left:25%}.star-two{top:36%;right:24%;width:2px;height:2px}
+.shelf{left:7%;right:7%;top:61%;height:4px;background:linear-gradient(180deg,#b4b4b4,#555);box-shadow:0 3px 0 #111,0 8px 18px #0006}
+.shelf span{width:14px;border:1px solid #9d9d9d;background:linear-gradient(90deg,#333,#a4a4a4 45%,#4b4b4b);box-shadow:inset 2px 0 3px #fff2}
+.shelf span:nth-child(1){left:10%;height:39px}.shelf span:nth-child(2){left:13%;height:30px}.shelf span:nth-child(3){left:16%;height:44px}.shelf span:nth-child(4){right:15%;height:35px}.shelf span:nth-child(5){right:11%;height:43px}
+.shelf-detail{position:absolute;top:59%;width:58px;height:9px;border-top:1px solid #a0a0a055;border-bottom:1px solid #a0a0a033}
+.shelf-detail-left{left:6%}.shelf-detail-right{right:6%}
+.desk{bottom:-2%;height:33%;width:82%;background:linear-gradient(180deg,#777 0%,#555 6%,#303030 16%,#202020 100%);clip-path:polygon(6% 0,94% 0,100% 100%,0 100%);box-shadow:0 -12px 45px #0008}
+.desk:before{content:"";position:absolute;left:7%;right:7%;top:10%;height:1px;background:#eee5}
+.desk-edge{bottom:31%;height:2px;width:72%;background:linear-gradient(90deg,transparent,#d8d8d8aa 14%,#d8d8d8aa 86%,transparent);box-shadow:0 2px 5px #0008}
+.desk-front-line{position:absolute;z-index:2;left:50%;bottom:7%;transform:translateX(-50%);width:44%;height:1px;background:#aaa3}
+.scene-floor-note{position:absolute;z-index:2;left:50%;bottom:3%;transform:translateX(-50%);font:7px Arial,sans-serif;letter-spacing:2px;color:#747474;white-space:nowrap}
+.scene-floor-note span{padding:0 7px;color:#aaa}
+.scene-entry{z-index:4;bottom:8%;min-width:0;width:19%;gap:6px;padding:8px 5px 5px;transition:transform .24s ease,color .24s ease}
+.entry-tarot{left:13%}.entry-wheel{left:50%;transform:translateX(-50%)}.entry-oracle{right:13%}
+.scene-entry .entry-mark{position:relative;display:grid;place-items:center;width:108px;height:106px;border:0;background:transparent;clip-path:none;transition:transform .25s ease,filter .25s ease}
+.scene-entry .entry-mark:after{content:"";position:absolute;z-index:1;left:8px;right:8px;bottom:1px;height:18px;border:1px solid #bcbcbc66;border-radius:50%;background:radial-gradient(ellipse,#ddd4 0%,#7775 48%,transparent 73%);box-shadow:0 5px 13px #0007}
+.scene-entry .object-shape{position:absolute;z-index:2;display:block;filter:drop-shadow(0 8px 10px #0009)}
+.object-crystal{top:4px;width:48px;height:83px;clip-path:polygon(50% 0,89% 15%,100% 58%,50% 100%,0 58%,11% 15%);background:linear-gradient(105deg,#f0f0f0 0%,#777 16%,#d7d7d7 31%,#555 48%,#e6e6e6 66%,#777 82%,#eee 100%)}
+.object-crystal:before{content:"";position:absolute;inset:0;background:linear-gradient(72deg,transparent 48%,#fff7 49%,transparent 51%),linear-gradient(155deg,transparent 45%,#1118 46%,transparent 48%);clip-path:polygon(50% 0,100% 58%,50% 100%,0 58%)}
+.object-wheel{top:8px;width:76px;height:76px;border:5px solid #aaa;border-radius:50%;background:repeating-conic-gradient(from -15deg,#d7d7d7 0deg 28deg,#686868 28deg 58deg);box-shadow:inset 0 0 0 3px #303030,0 5px 15px #0009}
+.object-wheel:before{content:"";position:absolute;left:50%;top:50%;width:19px;height:19px;transform:translate(-50%,-50%);border:3px solid #bbb;border-radius:50%;background:#292929;box-shadow:0 0 0 3px #555}
+.object-oracle{top:9px;width:53px;height:76px;clip-path:polygon(0 0,78% 0,100% 16%,100% 100%,0 100%);border:1px solid #aaa;background:linear-gradient(90deg,#777,#e1e1e1 23%,#aaa 55%,#efefef 72%,#777);box-shadow:0 8px 15px #0009}
+.object-oracle:before{content:"";position:absolute;right:0;top:0;border-top:12px solid #555;border-left:12px solid transparent}
+.scene-entry svg{position:relative;z-index:3;width:29px;height:29px;stroke:#282828;stroke-width:1.05;filter:drop-shadow(0 1px 1px #fff8)}
+.entry-wheel svg{stroke:#222}.entry-oracle svg{stroke:#333}
+.scene-entry strong{font:14px var(--serif);letter-spacing:1.5px;color:#eee;text-shadow:0 2px 7px #000}
+.scene-entry small{font:8px Arial,sans-serif;color:#c2c2c2;letter-spacing:1.5px}
+.scene-entry .entry-hint{margin-top:3px;color:#8f8f8f;font:9px var(--serif);letter-spacing:.5px;opacity:0;transform:translateY(4px);transition:opacity .2s,transform .2s}
+.scene-entry:hover,.scene-entry:focus-visible{color:#fff}
+.scene-entry:hover .entry-mark,.scene-entry:focus-visible .entry-mark{transform:translateY(-7px);filter:brightness(1.12)}
+.scene-entry:hover .entry-hint,.scene-entry:focus-visible .entry-hint{opacity:1;transform:translateY(0)}
+.scene-entry.entry-wheel:hover,.scene-entry.entry-wheel:focus-visible{transform:translate(-50%,-5px)}
+.index-heading{display:flex;justify-content:space-between;gap:12px;margin:28px 0 11px;color:#777;font:8px Arial,sans-serif;letter-spacing:2px}
+.module-index{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0;border-top:1px solid #575757;border-bottom:1px solid #575757}
+.module-link{position:relative;align-items:flex-start;flex-direction:column;gap:18px;min-height:142px;padding:19px 30px 18px 17px;background:linear-gradient(145deg,#232323,#1a1a1a);transition:background .2s}
+.module-link+.module-link{border-left:1px solid #424242;padding-left:22px}
+.module-no{font:8px Arial,sans-serif;color:#999;letter-spacing:1.8px}
+.module-no i{font-style:normal;color:#666;padding:0 3px}
+.module-copy{gap:7px}
+.module-copy strong{font:22px var(--serif);letter-spacing:1px}
+.module-copy small{font-size:10px;color:#999;white-space:normal;line-height:1.6}
+.module-arrow{position:absolute;right:18px;top:16px;color:#888;font:16px Georgia,serif;transition:transform .2s,color .2s}
+.module-link:hover{background:linear-gradient(145deg,#303030,#202020)}
+.module-link:hover .module-arrow{transform:translate(3px,-3px);color:#eee}
+.home-note{margin-top:14px;color:#747474;font:8px Arial,sans-serif;letter-spacing:1.1px}
+.home-note span:first-child{font:10px var(--serif);letter-spacing:.4px;color:#aaa}
+@media(max-width:760px){
+ .hero{grid-template-columns:1fr;gap:15px;padding:30px 0 22px}
+ .hero-side{display:none}
+ .room-scene{height:410px;min-height:410px}
+ .window-frame{width:38%;height:57%}
+ .wall-panel{width:13%}
+ .wall-sconce-left{left:8%}.wall-sconce-right{right:8%}
+ .scene-entry{width:25%}.entry-tarot{left:7%}.entry-oracle{right:7%}
+ .module-link{min-height:132px;padding:17px 24px 16px 13px}
+ .module-link+.module-link{padding-left:17px}
+}
+@media(max-width:560px){
+ .fate-app{padding:13px 13px 32px}
+ .hero{padding:25px 0 18px}
+ .hero-edition{display:none}
+ h1{font-size:clamp(40px,12vw,54px);letter-spacing:.12em}
+ .hero-copy{font-size:12px}
+ .room-scene{height:345px;min-height:345px}
+ .scene-coordinate{display:none}
+ .window-frame{width:44%;height:55%;top:8%}
+ .moon{width:39px;height:39px}
+ .wall-panel{top:17%;bottom:40%;width:10%}
+ .wall-sconce{top:36%;transform:scale(.78)}
+ .shelf{top:59%;left:5%;right:5%}
+ .shelf span{width:9px}
+ .desk{height:34%;width:94%}
+ .desk-edge{bottom:32%;width:86%}
+ .scene-entry{width:31%;bottom:8%;gap:5px}
+ .entry-tarot{left:1%}.entry-oracle{right:1%}
+ .scene-entry .entry-mark{width:76px;height:76px}
+ .scene-entry .entry-mark:after{left:4px;right:4px;height:13px}
+ .object-crystal{width:35px;height:60px;top:1px}
+ .object-wheel{width:56px;height:56px;top:6px}
+ .object-wheel:before{width:14px;height:14px}
+ .object-oracle{width:41px;height:58px;top:5px}
+ .scene-entry svg{width:22px;height:22px}
+ .scene-entry strong{font-size:12px}
+ .scene-entry small{font-size:7px;letter-spacing:.8px}
+ .scene-entry .entry-hint{display:none}
+ .scene-floor-note{font-size:6px;letter-spacing:1px}
+ .index-heading{margin-top:22px;font-size:7px}
+ .module-index{grid-template-columns:1fr}
+ .module-link{min-height:0;gap:9px;padding:15px 27px 15px 11px}
+ .module-link+.module-link{border-left:0;border-top:1px solid #424242;padding-left:11px}
+ .module-copy strong{font-size:18px}
+ .module-copy small{font-size:9px}
+ .module-arrow{right:11px;top:17px}
+ .home-note{flex-direction:column}
+}
+
 </style>
 </head>
 <body>
@@ -147,36 +282,79 @@ button:disabled{opacity:.42;cursor:not-allowed}
 
 <section id="homeView">
   <div class="hero">
-    <div class="hero-kicker">THE FATE CABIN</div>
-    <h1>命运小屋</h1>
-    <p class="hero-copy">有时需要一点提示，有时只需要一个决定。进来坐一会儿，剩下的交给水晶、签筒和转盘。</p>
+    <div class="hero-main">
+      <div class="hero-kicker">THE FATE CABIN <span class="hero-edition">／ A QUIET ROOM FOR CHOICES</span></div>
+      <h1>命运小屋</h1>
+      <p class="hero-copy">把犹豫暂时放在门外，给直觉一点说话的时间。今晚，想把哪件事交给命运？</p>
+    </div>
+    <aside class="hero-side" aria-label="小屋的三种方式">
+      <div class="hero-side-top"><span>ROOM NO.</span><strong>01</strong></div>
+      <div class="hero-side-rule"></div>
+      <span class="hero-side-kicker">THREE QUIET WAYS</span>
+      <p>一张牌<br>一次选择<br>一支签</p>
+    </aside>
   </div>
 
   <section class="room-scene" aria-label="命运小屋互动场景">
-    <div class="scene-caption">灯还亮着 · 小屋一直在这里</div>
-    <div class="window-frame"><span class="moon"></span></div>
+    <div class="scene-caption"><span class="scene-light"></span>灯还亮着 · 小屋一直在这里</div>
+    <div class="scene-coordinate">NIGHT ROOM&nbsp;&nbsp; / &nbsp;&nbsp;NO. 01</div>
+    <div class="wall-panel wall-panel-left"></div>
+    <div class="wall-panel wall-panel-right"></div>
+    <div class="wall-sconce wall-sconce-left"><i></i></div>
+    <div class="wall-sconce wall-sconce-right"><i></i></div>
+    <div class="window-frame"><span class="moon"></span><span class="window-star star-one"></span><span class="window-star star-two"></span></div>
     <div class="shelf"><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="shelf-detail shelf-detail-left"></div>
+    <div class="shelf-detail shelf-detail-right"></div>
     <div class="desk"></div><div class="desk-edge"></div>
+    <div class="desk-front-line"></div>
+    <div class="scene-floor-note">A ROOM TO THINK IN <span>·</span> THREE OBJECTS WAITING FOR YOU</div>
+
     <button class="scene-entry entry-tarot" type="button" data-open="tarot">
-      <span class="entry-mark"><svg viewBox="0 0 24 24"><path d="M12 2 4 8l2.5 11h11L20 8z"/><path d="m4 8 8 4 8-4M12 12v7"/></svg></span>
-      <strong>水晶塔罗</strong><small>THE CARDS</small>
+      <span class="entry-mark">
+        <span class="object-shape object-crystal"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 8l2.5 11h11L20 8z"/><path d="m4 8 8 4 8-4M12 12v7"/></svg>
+      </span>
+      <strong>水晶塔罗</strong><small>THE CRYSTAL CARDS</small>
+      <span class="entry-hint">翻开一张启示</span>
     </button>
     <button class="scene-entry entry-wheel" type="button" data-open="wheel">
-      <span class="entry-mark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M20 8l-6 3M18 18l-5-4M6 18l5-4M4 8l6 3"/></svg></span>
-      <strong>大转盘</strong><small>THE WHEEL</small>
+      <span class="entry-mark">
+        <span class="object-shape object-wheel"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M20 8l-6 3M18 18l-5-4M6 18l5-4M4 8l6 3"/></svg>
+      </span>
+      <strong>大转盘</strong><small>THE DECISION WHEEL</small>
+      <span class="entry-hint">把选择交给偶然</span>
     </button>
     <button class="scene-entry entry-oracle" type="button" data-open="oracle">
-      <span class="entry-mark"><svg viewBox="0 0 24 24"><path d="M7 3h10l2 4-2 14H7L5 7z"/><path d="M8 10h8M9 14h6M10 17h4"/></svg></span>
-      <strong>今日灵签</strong><small>THE ORACLE</small>
+      <span class="entry-mark">
+        <span class="object-shape object-oracle"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l2 4-2 14H7L5 7z"/><path d="M8 10h8M9 14h6M10 17h4"/></svg>
+      </span>
+      <strong>今日灵签</strong><small>THE DAILY ORACLE</small>
+      <span class="entry-hint">读一段今日提醒</span>
     </button>
   </section>
 
+  <div class="index-heading"><span>ENTER THE ROOM</span><span>SELECT ONE TO BEGIN</span></div>
   <nav class="module-index" aria-label="小屋功能">
-    <button class="module-link" type="button" data-open="tarot"><span class="module-no">01</span><span class="module-copy"><strong>水晶塔罗</strong><small>单张启示 · 过去 / 现在 / 未来</small></span></button>
-    <button class="module-link" type="button" data-open="wheel"><span class="module-no">02</span><span class="module-copy"><strong>大转盘</strong><small>自定义选项 · 随机决定 · 结果记录</small></span></button>
-    <button class="module-link" type="button" data-open="oracle"><span class="module-no">03</span><span class="module-copy"><strong>今日灵签</strong><small>综合 · 关系 · 学业 · 心情</small></span></button>
+    <button class="module-link" type="button" data-open="tarot">
+      <span class="module-no">01 <i>／</i> CARDS</span>
+      <span class="module-copy"><strong>水晶塔罗</strong><small>单张启示，或展开过去、现在与未来。</small></span>
+      <span class="module-arrow" aria-hidden="true">↗</span>
+    </button>
+    <button class="module-link" type="button" data-open="wheel">
+      <span class="module-no">02 <i>／</i> CHOICE</span>
+      <span class="module-copy"><strong>大转盘</strong><small>写下自己的选项，让指针替你停下。</small></span>
+      <span class="module-arrow" aria-hidden="true">↗</span>
+    </button>
+    <button class="module-link" type="button" data-open="oracle">
+      <span class="module-no">03 <i>／</i> ORACLE</span>
+      <span class="module-copy"><strong>今日灵签</strong><small>综合、关系、学业与心情的每日一签。</small></span>
+      <span class="module-arrow" aria-hidden="true">↗</span>
+    </button>
   </nav>
-  <div class="home-note"><span id="homeRecent">结果会留在这台设备的浏览器。</span><span>只保存在本地。</span></div>
+  <div class="home-note"><span id="homeRecent">结果会留在这台设备的浏览器。</span><span>PRIVATE ROOM&nbsp;&nbsp;／&nbsp;&nbsp;LOCAL RECORDS ONLY</span></div>
 </section>
 
 <section class="view" id="tarotView" hidden>
