@@ -10,6 +10,7 @@ on:
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - 'tests/desktop-app-navigation.browser.mjs'
+      - 'tests/live-worker-route-probe.mjs'
       - '.github/workflows/pwa-navigation-regression.yml'
   push:
     branches: [main]
@@ -20,6 +21,7 @@ on:
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - 'tests/desktop-app-navigation.browser.mjs'
+      - 'tests/live-worker-route-probe.mjs'
       - '.github/workflows/pwa-navigation-regression.yml'
 
 permissions:
@@ -37,6 +39,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Build all MAOMAO pages
         run: npm run build
+      - name: Probe every app route on the live production Worker
+        env:
+          MAOMAO_BASE_URL: https://mao.miamor520000.workers.dev
+        run: node tests/live-worker-route-probe.mjs
       - name: Install Chromium for real mobile tap checks
         run: npx playwright install --with-deps chromium
       - name: Verify route precache and mobile navigation
