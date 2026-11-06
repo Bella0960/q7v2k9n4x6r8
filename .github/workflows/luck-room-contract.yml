@@ -45,6 +45,7 @@ jobs:
         run: node tests/luck-room-browser.mjs
       - name: Upload mobile screenshots
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: luck-room-mobile-smoke
