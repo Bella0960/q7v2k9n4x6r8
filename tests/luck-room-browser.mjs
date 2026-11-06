@@ -80,6 +80,16 @@ async function main() {
   assert(lotHistory.some((entry) => entry.includes('由测试角色抽取')), 'History should record character draws');
   await page.locator('#closeHistory').click();
 
+  await page.locator('#lotDrawMode').selectOption('role');
+  await page.locator('#drawLotBtn').click();
+  await page.locator('#lotResult').waitFor({ state: 'visible', timeout: 4000 });
+  assert((await page.locator('#lotDrawHint').textContent()).includes('这一轮由测试角色代抽'), 'Character-only draw mode should remain selected');
+  await page.reload({ waitUntil: 'networkidle' });
+  assert(await page.locator('#lotDrawMode').inputValue() === 'role', 'Lot draw mode should persist after reload');
+  await page.locator('#historyToggle').click();
+  assert(await page.locator('#historyList .history-entry').count() === 3, 'Lottery history should persist after reload');
+  await page.locator('#closeHistory').click();
+
   await page.locator('[data-tab="wheel"]').click();
   await page.locator('#spinWheelBtn').click();
   assert(await page.locator('#rolePrompt').isVisible(), 'Selected role should participate before the wheel result');
