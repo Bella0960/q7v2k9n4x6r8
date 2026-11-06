@@ -552,7 +552,7 @@ h1{font-size:clamp(46px,6.4vw,76px);letter-spacing:.15em;margin:13px 0 12px}
 
 <section class="view" id="tarotView" hidden>
   <div class="view-head">
-    <div><div class="hero-kicker">01 / THE CRYSTAL CARDS</div><h2>水晶塔罗</h2><p>让三枚水晶分别照见来处、此刻与可能。牌面是自我整理的提示，不替你做决定。</p></div>
+    <div><div class="hero-kicker">01 / THE CRYSTAL CARDS</div><h2>水晶塔罗</h2><p>从完整的 78 张牌组中抽取单张启示，或让三张牌分别照见过去、现在与未来。牌意用于自我整理，不替你做决定。</p></div>
     <button class="back-room" type="button" data-go-home>回到小屋</button>
   </div>
   <div class="ritual-note"><span class="ritual-note-index">A MOMENT TO REFLECT&nbsp; / &nbsp;01</span><p>先把问题放在心里。不必写得完整，也不需要立刻找到答案。</p></div>
@@ -730,7 +730,7 @@ function buildMinorArcana(){
 }
 var TAROT_DECK_TOTAL=78;
 tarotDeck=tarotDeck.concat(buildMinorArcana());
-if(tarotDeck.length!==TAROT_DECK_TOTAL)throw new Error('Tarot deck must contain 78 unique cards.');
+if(tarotDeck.length!==TAROT_DECK_TOTAL||new Set(tarotDeck.map(function(card){return card.name;})).size!==TAROT_DECK_TOTAL)throw new Error('Tarot deck must contain 78 unique cards.');
 var positions=['过去 · 来处','现在 · 此刻','未来 · 可能'];
 var state={wheelOptions:defaultOptions.slice(),wheelHistory:[],tarotHistory:[],oracleHistory:[],dailyOracle:{}};
 var storageHealthy=true,spread='three',selectedOracleCategory='综合',wheelRotation=0,spinning=false,editingWheelIndex=null;
