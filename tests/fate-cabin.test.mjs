@@ -60,3 +60,17 @@ test('tarot and oracle history have visible reopenable entries', () => {
   assert.match(page, /data-oracle-history-index/);
   assert.match(page, /function openOracleHistory/);
 });
+
+
+test('Fate Cabin ritual interiors include responsive crystal, wheel and oracle treatments', () => {
+  assert.match(page, /class="ritual-note"/);
+  assert.match(page, /class="empty-crystals"/);
+  assert.match(page, /class="crystal-facet"/);
+  assert.match(page, /class="wheel-stage-caption"/);
+  assert.match(page, /id="wheelCount"/);
+  assert.match(page, /class="oracle-paper-wrap"/);
+  assert.match(page, /class="oracle-placeholder-seal"/);
+  assert.match(page, /className='oracle-seal'/);
+  assert.match(page, /@media\(max-width:560px\)/);
+  assert.match(page, /prefers-reduced-motion:reduce/);
+});
