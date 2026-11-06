@@ -65,10 +65,14 @@ async function main() {
   await page.locator('#lotResult').waitFor({ state: 'visible', timeout: 4000 });
   assert((await page.locator('#lotResultText').textContent()).trim().length > 0, 'Lot result should be populated');
   assert((await page.locator('#lotResult .disclaimer').textContent()).trim() === '以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。', 'Lot disclaimer mismatch');
+  assert((await page.locator('#lotRoleReaction').textContent()).includes('测试角色'), 'Character should respond after the lot result');
 
   await page.locator('[data-tab="wheel"]').click();
   await page.locator('#spinWheelBtn').click();
+  assert(await page.locator('#rolePrompt').isVisible(), 'Selected role should participate before the wheel result');
+  assert((await page.locator('#rolePrompt').textContent()).includes('测试角色'), 'Wheel warm-up should use the selected character');
   await page.locator('#wheelResult').waitFor({ state: 'visible', timeout: 8500 });
+  assert((await page.locator('#wheelRoleReaction').textContent()).includes('测试角色'), 'Character should respond after the wheel result');
   assert((await page.locator('#wheelResultText').textContent()).trim().length > 0, 'Wheel result should be populated');
   assert((await page.locator('#wheelResult .disclaimer').textContent()).trim().length > 0, 'Wheel disclaimer should be visible');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-wheel.png'), fullPage: true });
@@ -87,6 +91,8 @@ async function main() {
   await page.locator('#tarotDisclaimer').waitFor({ state: 'visible', timeout: 2000 });
   assert((await page.locator('#tarotDisclaimer').textContent()).trim() === '以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。', 'Tarot disclaimer mismatch');
   assert(await page.locator('.tarot-reading').count() === 1, 'Single-card reading should render one structured interpretation');
+  assert((await page.locator('#tarotDeckCount').textContent()).includes('78'), 'Deck counter should retain the full pool size');
+  assert(await page.locator('#tarotRoleReaction').isVisible(), 'Character should respond after the single-card reveal');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-tarot-single-face.png'), fullPage: true });
 
   await page.locator('#tarotSpreadSelect').selectOption('3');
@@ -98,6 +104,7 @@ async function main() {
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-tarot-three-card-back.png'), fullPage: true });
   for (let i = 0; i < 3; i++) await page.locator('.tarot-crystal-card').nth(i).click();
   assert(await page.locator('.tarot-reading').count() === 3, 'Three-card spread should render three structured interpretations');
+  assert(await page.locator('#tarotRoleReaction').isVisible(), 'Character should respond after the three-card reading');
   assert((await page.locator('#tarotDisclaimer').textContent()).trim() === '以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。', 'Tarot spread disclaimer mismatch');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-tarot-three-card-face.png'), fullPage: true });
 
@@ -107,6 +114,7 @@ async function main() {
   await page.locator('#dailyResult').waitFor({ state: 'visible', timeout: 2000 });
   const score = Number((await page.locator('#dailyScore').textContent()).trim());
   assert(score >= 60 && score <= 100, 'Daily fun score should be within its declared range');
+  assert((await page.locator('#dailyRoleReaction').textContent()).includes('测试角色'), 'Character should respond after daily luck is revealed');
   assert((await page.locator('#dailyResult .disclaimer').textContent()).trim() === '以上内容均为娱乐体验，不具备预测未来或指导现实决策的作用，请勿当真，一切仅供娱乐参考。', 'Daily luck disclaimer mismatch');
   await page.screenshot({ path: path.join(artifactDir, 'luck-room-daily.png'), fullPage: true });
 
