@@ -106,3 +106,11 @@ test('lot draw actor modes support user, character, and persistent alternating t
   assert.match(js, /askRole\('抽签', result, 'lotRoleReaction', actor\.type\)/);
   assert.match(js, /entry\.actorName/);
 });
+
+
+test('lot draw history remains attached to the role selected when the draw started', () => {
+  assert.match(js, /roleId: currentRoleId\(\),\s*roleName: roleName\(selectedRole\)/);
+  assert.match(js, /roleId: recordedRoleId/);
+  assert.match(js, /roleName: recordedRoleName/);
+  assert.match(js, /if \(currentRoleId\(\) === actor\.roleId\) askRole/);
+});
