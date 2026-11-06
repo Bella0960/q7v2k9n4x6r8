@@ -62,7 +62,7 @@ test('random results are generated locally before character response', () => {
   assert.match(js, /function drawTarot\(\)/);
   assert.match(js, /function drawDaily\(\)/);
   assert.match(js, /reversedDraw:randomIndex\(100\)<30/);
-  assert.match(js, /function askRole\(game, detail, target\)/);
+  assert.match(js, /function askRole\(game, detail, targetId\)/);
   assert.ok(js.indexOf('var index = randomIndex(wheel.items.length)') < js.indexOf("askRole('大转盘'"));
 });
 
