@@ -48,7 +48,7 @@ if (sw.status === 200) {
 
 const results = [];
 for (let i = 0; i < routes.length; i += 5) {
-  const batch = await Promise.all(routes.slice(i, i + 5).map(route => probe('/' + route.replace(/\.html$/, ''))));
+  const batch = await Promise.all(routes.slice(i, i + 5).map(route => probe('/' + route)));
   results.push(...batch);
 }
 for (const result of results) console.log('APP ROUTE:', JSON.stringify(result));
