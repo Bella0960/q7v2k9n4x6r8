@@ -39,6 +39,7 @@
       <option value="">独自体验</option>
     </select>
   </section>
+  <p class="role-prompt" id="rolePrompt" hidden aria-live="polite"></p>
 
   <nav class="play-nav" aria-label="选择玩法">
     <button type="button" class="play-tab active" data-tab="lots" aria-selected="true"><span>01</span>抽签</button>
@@ -129,12 +130,13 @@
       <p>给此刻一个不同的视角，<br>不替你决定未来。</p>
     </div>
     <div class="tarot-controls">
-      <label for="tarotSpreadSelect">抽牌方式 · 大阿卡纳 22 张</label>
+      <label for="tarotSpreadSelect">抽牌方式 · 完整 78 张牌组</label>
       <select id="tarotSpreadSelect">
         <option value="1">单张 · 此刻的提示</option>
         <option value="3">三张 · 过去 / 现在 / 未来</option>
       </select>
     </div>
+    <p class="tarot-deck-note">大阿卡纳 22 张 · 权杖、圣杯、宝剑、星币各 14 张</p>
     <div class="tarot-deck-scene" id="tarotDeckScene">
       <div class="deck-halo"></div>
       <div class="deck-stack deck-back-one"></div>
@@ -148,6 +150,7 @@
         </svg>
       </div>
     </div>
+    <p class="tarot-pool-count" id="tarotDeckCount">牌组共 78 张 · 每次随机洗牌</p>
     <p class="tarot-hint" id="tarotHint">洗好牌后，抽取一张。点击水晶牌翻开它。</p>
     <div class="tarot-spread" id="tarotSpread" hidden></div>
     <div class="tarot-readings" id="tarotReadings" hidden></div>
