@@ -91,7 +91,7 @@ h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5p
 .wheel-stage{position:relative;width:min(100%,540px);margin:0 auto;padding:18px}
 .wheel-disc{width:100%;aspect-ratio:1;border-radius:50%;border:7px solid #a2a2a2;background:#282828;box-shadow:0 12px 45px #0008,0 0 0 1px #d5d5d566;transition:transform 5.2s cubic-bezier(.12,.72,.08,1);overflow:hidden}
 #wheelCanvas{display:block;width:100%;height:100%;border-radius:50%}
-.wheel-marker{position:absolute;z-index:3;left:50%;top:7px;transform:translateX(-50%);width:19px;height:19px;border-radius:50%;background:#bebebe;border:4px solid #242424;box-shadow:0 1px 8px #0009}
+.wheel-marker{position:absolute;z-index:3;left:50%;top:4px;transform:translateX(-50%);width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-top:22px solid #c4c4c4;filter:drop-shadow(0 1px 3px #0009)}
 .wheel-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:66px;height:66px;border-radius:50%;border:4px solid #9d9d9d;background:#242424;display:grid;place-items:center;color:#cfcfcf;font:18px Georgia,serif;box-shadow:0 2px 8px #0008;pointer-events:none}
 .wheel-controls{display:flex;justify-content:center;margin:12px 0}
 .wheel-result{min-height:49px;text-align:center;padding:13px 8px;color:var(--metal);font:18px var(--serif)}
@@ -124,8 +124,6 @@ h1{font:clamp(34px,6vw,58px)/1.12 var(--serif);font-weight:400;letter-spacing:5p
 .storage-notice[hidden]{display:none!important}
 button:disabled{opacity:.42;cursor:not-allowed}
 .bottom-note{margin-top:30px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:10px;line-height:1.8;color:var(--dim)}
-.toast{position:fixed;z-index:50;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,14px);opacity:0;pointer-events:none;padding:10px 15px;background:#e6e6e6;color:#232323;font-size:11px;transition:opacity .2s,transform .2s;max-width:90vw}
-.toast.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:720px){.wheel-layout{grid-template-columns:1fr}.wheel-side{border-left:0;border-top:1px solid var(--line-soft);padding:18px 0 0}.wheel-stage{width:min(100%,470px)}.module-copy small{white-space:normal}}
 @media(max-width:560px){.fate-app{padding:13px 13px 32px}.hero{padding:25px 0 18px}.room-scene{height:310px}.scene-entry .entry-mark{width:43px;height:43px}.scene-entry svg{width:20px;height:20px}.entry-tarot{left:7%;bottom:14%}.entry-wheel{bottom:13%}.entry-oracle{right:6%;bottom:14%}.module-index{grid-template-columns:1fr}.module-link{padding:13px 0}.module-link+.module-link{border-left:0;border-top:1px solid var(--line-soft);padding-left:0}.module-copy strong{font-size:16px}.view-head{align-items:start;flex-direction:column}.back-room{align-self:end}.crystal-stage{min-height:245px;gap:7px;padding-left:0;padding-right:0}.crystal-card{width:clamp(80px,25vw,112px)}.reading-results{grid-template-columns:1fr;gap:17px}.reading-result{padding-top:10px}.wheel-stage{padding:12px}.wheel-center{width:54px;height:54px}.top-label{display:none}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition-duration:.01ms!important;scroll-behavior:auto!important}}
@@ -235,7 +233,6 @@ button:disabled{opacity:.42;cursor:not-allowed}
 
 <footer class="bottom-note">命运小屋是一处娱乐与自我反思空间。塔罗、灵签和随机转盘的内容不构成现实预测，也不替代个人判断。</footer>
 </main>
-<div class="toast" id="fateToast" role="status" aria-live="polite"></div>
 
 <script>
 (function(){
@@ -298,11 +295,10 @@ var oracleDeck={
 };
 var positions=['过去 · 来处','现在 · 此刻','未来 · 可能'];
 var state={wheelOptions:defaultOptions.slice(),wheelHistory:[],tarotHistory:[],oracleHistory:[],dailyOracle:{}};
-var storageHealthy=true,spread='three',selectedOracleCategory='综合',wheelRotation=0,spinning=false,toastTimer=null;
+var storageHealthy=true,spread='three',selectedOracleCategory='综合',wheelRotation=0,spinning=false;
 var $=function(selector){return app.querySelector(selector);};
 var $$=function(selector){return Array.prototype.slice.call(app.querySelectorAll(selector));};
 function message(selector,text){var el=$(selector);if(el)el.textContent=text;}
-function showToast(text){var el=$('#fateToast');if(!el)return;el.textContent=text;el.classList.add('show');if(toastTimer)window.clearTimeout(toastTimer);toastTimer=window.setTimeout(function(){el.classList.remove('show');},1900);}
 function dateKey(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function setStorageNotice(text){
  var notice=$('#fateStorageNotice');
