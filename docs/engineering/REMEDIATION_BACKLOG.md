@@ -203,6 +203,25 @@ Acceptance before implementation:
 
 ## Feature implementation
 
+### FATE-001 — 命运小屋：水晶塔罗、大转盘与今日灵签
+**Priority:** P2 · **Status:** IN PROGRESS
+
+Scope: add a standalone Fate Cabin page to the MAOMAO multi-page app and a desktop shortcut. Provide crystal-shaped tarot cards (single and three-card spread), a large configurable wheel with persistent options/result history, and a categorized daily oracle. Keep all state local to the browser; do not add cloud sync or send questions to an AI provider.
+
+Acceptance:
+- The launcher includes a unique `app_fate_cabin` route; old saved layouts receive the shortcut without resetting user arrangement, while an intentionally removed shortcut stays removed.
+- The new app ID appears in the individual icon upload and saved icon-preset registry alongside every existing desktop shortcut.
+- Tarot supports single-card and past/present/future draws; cards use the agreed pointed crystal silhouette rather than ordinary playing-card rectangles.
+- The wheel supports 2–16 editable options, an animated spin, a result display, and a small local history.
+- Daily oracle supports 综合、关系、学业、心情 categories and stores readings locally.
+- The app uses only its own small localStorage key, reports storage failures, and does not change existing chat/role data.
+- The PWA shell version changes and includes the new page; Vite discovers it as a separate page entry.
+- Relevant Node contract tests and `npm run build` pass; mobile and desktop browser behavior is checked before merge.
+
+Non-goals: modifying the existing game hall, changing chat context, AI-generated predictions, cloud sync, or automatic APK builds.
+
+
+
 ### AI-IMG-001 — Complete role-based image generation and gallery
 **Priority:** P1 · **Status:** IN PROGRESS
 
