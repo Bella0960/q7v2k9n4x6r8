@@ -2626,7 +2626,7 @@
       try { destination = new URL(href, document.baseURI); } catch (error) { return; }
       if (destination.origin !== window.location.origin) return;
       event.preventDefault();
-      window.location.assign(new URL(href, document.baseURI).href);
+      window.location.assign(destination.href);
     }, true);
   })();
 </script>
