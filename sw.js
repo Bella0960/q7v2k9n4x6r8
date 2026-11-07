@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v203';
+const CACHE_NAME = 'phone-app-pwa-v204';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
