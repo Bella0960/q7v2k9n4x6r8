@@ -6497,6 +6497,11 @@
         // 取消息的可读文本（非文本消息给等价占位文案）
         function plainTextOf(msg) {
             if (!msg) return '';
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation() &&
+                (msg.type === 'redpacket' || msg.type === 'transfer' || msg.type === 'role_family_card' ||
+                 msg.type === 'gift' || msg.type === 'wallet' || msg.type === 'transaction_record')) {
+                return '[真人聊天不支持的扩展内容]';
+            }
             if (msg.type === 'group_private') return '[群成员私聊] ' + String(msg.senderName || msg.name || '群成员') + '：' + String(msg.text || '');
             if (msg.type === 'group_poll' && msg.poll) return '[群投票] ' + String(msg.poll.question || '') + '：' + (msg.poll.options || []).join(' / ');
             if (msg.type === 'group_chain' && msg.chain) return '[群接龙] ' + String(msg.chain.title || '') + '：' + (msg.chain.entries || []).map(function (entry) { return String(entry.name || '成员') + '：' + String(entry.text || ''); }).join('；');
