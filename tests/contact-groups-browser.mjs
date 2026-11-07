@@ -150,13 +150,14 @@ async function main() {
     await page.evaluate((groupId) => {
       const records = JSON.parse(localStorage.getItem('contact_groups_v1') || '[]');
       const group = records.find((item) => item.id === groupId);
-      group.memberRefs.push('real_user:user-123');
+      group.memberRefs.push('real_user:user-123', 'real_user:user-pending');
       localStorage.setItem('contact_groups_v1', JSON.stringify(records));
       const directory = window.PhoneContactDirectory;
       const savedUsers = directory.saveMany([
         { id: 'user-123', displayName: '已加入分组的真人好友', status: 'accepted', createdAt: 10, updatedAt: 20 },
         { id: 'user-456', displayName: '单独选择的真人好友', status: 'accepted', createdAt: 11, updatedAt: 21 },
-        { id: 'user-789', displayName: '新加入分组的真人好友', status: 'accepted', createdAt: 12, updatedAt: 22 }
+        { id: 'user-789', displayName: '新加入分组的真人好友', status: 'accepted', createdAt: 12, updatedAt: 22 },
+        { id: 'user-pending', displayName: '尚未接受的好友请求', status: 'pending_incoming', createdAt: 13, updatedAt: 23 }
       ]);
       if (!savedUsers.ok) throw new Error('failed to seed real-user directory');
       // Simulate a missing identity helper while the group editor is still open.
@@ -165,12 +166,24 @@ async function main() {
     await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
     assert.equal(await page.locator('[data-contact-ref="real_user:user-123"]').isChecked(), true,
       'accepted real-user members are visible in the Contacts group editor');
+    assert.equal(await page.locator('[data-contact-ref="real_user:user-pending"]').isChecked(), true,
+      'a pending or unverified real-user member remains checked until explicitly removed');
     await page.locator('[data-contact-ref="real_user:user-789"]').check();
     await page.locator('#contactGroupName').fill('亲近朋友');
     await page.locator('#btnSaveContactGroup').click();
     groups = await readJson(page, 'contact_groups_v1');
-    assert.ok(groups.find((group) => group.id === friendsGroup.id).memberRefs.includes('real_user:user-123'),
-      'typed non-role members survive group edits even when the identity helper is unavailable');
+    let updatedFriendsGroup = groups.find((group) => group.id === friendsGroup.id);
+    assert.ok(updatedFriendsGroup.memberRefs.includes('real_user:user-123'),
+      'typed accepted-user references survive group edits even when the identity helper is unavailable');
+    assert.ok(updatedFriendsGroup.memberRefs.includes('real_user:user-pending'),
+      'unresolved real-user references are preserved by default instead of being silently deleted');
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    await page.locator('[data-contact-ref="real_user:user-pending"]').uncheck();
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    updatedFriendsGroup = groups.find((group) => group.id === friendsGroup.id);
+    assert.equal(updatedFriendsGroup.memberRefs.includes('real_user:user-pending'), false,
+      'unresolved real-user membership is removed only after an explicit uncheck');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.locator('.contact-item[data-id="role-a"]').waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#btnManageContactGroups').click();
