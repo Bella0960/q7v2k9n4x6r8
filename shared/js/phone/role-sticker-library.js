@@ -126,7 +126,8 @@
   function parseReply(text, catalog, maxCount) {
     var raw = String(text == null ? '' : text);
     var items = Array.isArray(catalog) ? catalog : [];
-    var cap = Math.max(0, Math.min(2, parseInt(maxCount, 10) || 1));
+    var requestedCap = parseInt(maxCount, 10);
+    var cap = isNaN(requestedCap) ? 1 : Math.max(0, Math.min(2, requestedCap));
     var selected = [];
     var marker = /\[\[MAOMAO_STICKER:(\d{1,2})\]\]/gi;
     var cleaned = raw.replace(marker, function (match, number) {
