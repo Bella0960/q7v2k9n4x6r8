@@ -1161,6 +1161,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           friendRequestActionMatch[2] === 'accept' ? 'accepted' : 'rejected'
         );
       }
+      const friendMessagesMatch = /^\/api\/friends\/([^/]+)\/messages$/.exec(path);
+      if (friendMessagesMatch) {
+        const friendId = friendMessagesMatch[1];
+        if (method === 'GET') return await getFriendMessages(request, friendId);
+        if (method === 'POST') return await sendFriendMessage(request, friendId);
+      }
+
       const removeFriendMatch = /^\/api\/friends\/([^/]+)$/.exec(path);
       if (removeFriendMatch && method === 'DELETE') return await removeFriend(request, removeFriendMatch[1]);
 
