@@ -111,6 +111,21 @@ async function main() {
 
     page = await context.newPage();
     page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.route('**/api/real-user-chat/capabilities', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          service: 'maomao-real-user-chat',
+          protocolVersion: 1,
+          enabled: false,
+          accountAuth: { enabled: false, status: 'disabled' },
+          friends: { enabled: false, status: 'disabled' },
+          delivery: { enabled: false }
+        })
+      });
+    });
     await page.route('https://mock.local/**', async (route) => {
       apiRequests += 1;
       apiRequestBodies.push(route.request().postData() || '');
@@ -123,6 +138,13 @@ async function main() {
 
     // Contacts: create overlapping groups, filter, rename and delete.
     await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => {
+      const status = document.getElementById('ruSummaryStatus');
+      return status && status.textContent === '服务未开通';
+    }, null, { timeout: 5000 });
+    assert.equal(await page.locator('#ruAuthArea').isVisible(), false,
+      'registration and login controls stay hidden when the Worker advertises account auth as disabled');
+
     await page.locator('.contact-item[data-id="role-a"]').waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#btnManageContactGroups').click();
     await page.locator('#btnNewContactGroup').click();
