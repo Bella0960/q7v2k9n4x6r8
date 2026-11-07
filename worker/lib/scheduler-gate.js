@@ -82,6 +82,9 @@ export function createSchedulerGate({ store, now = Date.now, config = {} } = {})
     // silently evaluate another account's task under the legacy "owner" user.
     const userId = String(task?.user_id || task?.userId || '').trim();
     if (!userId) return deny(REASON_CODES.GATE_DATA_MISSING);
+    if (task?.source_device_revoked_at != null) {
+      return deny(REASON_CODES.SOURCE_DEVICE_REVOKED, { supersede: true });
+    }
 
     if (!store || typeof store.getSchedulerGateSnapshot !== 'function') {
       return deny(REASON_CODES.GATE_DATA_SOURCE_MISSING);
