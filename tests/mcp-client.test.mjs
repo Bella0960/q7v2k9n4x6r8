@@ -123,3 +123,28 @@ test('MCP response reader cancels an oversized stream before buffering the full 
   await assert.rejects(client.initialize(), /返回内容过大/);
   assert.equal(cancelled, true);
 });
+
+test('MCP tool arguments follow required fields, types, ranges and additionalProperties rules', () => {
+  const context = createContext(async () => { throw new Error('unexpected fetch'); });
+  const validate = context.MaoMcpClient.validateToolArguments;
+  const schema = {
+    type: 'object',
+    required: ['query', 'limit'],
+    additionalProperties: false,
+    properties: {
+      query: { type: 'string', minLength: 1, maxLength: 80 },
+      limit: { type: 'integer', minimum: 1, maximum: 20 },
+      filters: {
+        type: 'array',
+        maxItems: 4,
+        items: { type: 'string', maxLength: 20 }
+      }
+    }
+  };
+  assert.equal(validate(schema, { query: 'books', limit: 5, filters: ['history'] }), true);
+  assert.throws(() => validate(schema, { query: 'books' }), /缺少必填字段/);
+  assert.throws(() => validate(schema, { query: 'books', limit: '5' }), /类型不符合/);
+  assert.throws(() => validate(schema, { query: 'books', limit: 21 }), /大于允许范围/);
+  assert.throws(() => validate(schema, { query: 'books', limit: 5, unexpected: true }), /未声明字段/);
+  assert.throws(() => validate(schema, { query: 'books', limit: 5, filters: ['x', 'x', 'x', 'x', 'x'] }), /超过最大限制/);
+});
