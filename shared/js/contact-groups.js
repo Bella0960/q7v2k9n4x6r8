@@ -33,17 +33,31 @@
         }, []);
     }
 
-    function getGroups() {
+    function readStoredGroups() {
+        var raw;
         try {
-            var raw = root.localStorage.getItem(STORAGE_KEY);
-            if (!raw) return [];
-            return normalizeGroups(JSON.parse(raw));
+            raw = root.localStorage.getItem(STORAGE_KEY);
         } catch (error) {
-            return [];
+            return { ok: false, error: 'storage_unavailable', cause: error };
+        }
+        if (raw == null || raw === '') return { ok: true, groups: [] };
+        try {
+            var parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return { ok: false, error: 'corrupt_data' };
+            return { ok: true, groups: normalizeGroups(parsed) };
+        } catch (error) {
+            return { ok: false, error: 'corrupt_data', cause: error };
         }
     }
 
+    function getGroups() {
+        var result = readStoredGroups();
+        return result.ok ? result.groups : [];
+    }
+
     function saveGroups(groups) {
+        var current = readStoredGroups();
+        if (!current.ok) return current;
         var normalized = normalizeGroups(groups);
         try {
             root.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
@@ -106,6 +120,7 @@
         buildAudienceSnapshot: buildAudienceSnapshot,
         canViewPost: canViewPost,
         getGroupIdsForContact: getGroupIdsForContact,
-        normalizeGroups: normalizeGroups
+        normalizeGroups: normalizeGroups,
+        readStoredGroups: readStoredGroups
     };
 })(window);
