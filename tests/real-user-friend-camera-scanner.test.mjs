@@ -125,6 +125,65 @@ test('hiding the page stops the camera and invalidates the active session', asyn
   assert.equal(app.overlay.hidden, true);
 });
 
+
+test('closing while the browser permission prompt is pending stops the late stream', async () => {
+  let resolvePermission;
+  let stopped = 0;
+  const pendingStream = { getTracks: () => [{ stop() { stopped += 1; } }] };
+  const listeners = {};
+  const documentListeners = {};
+  const intervals = new Map();
+  const video = { srcObject: null, setAttribute() {}, async play() {}, pause() {} };
+  const overlay = { hidden: true };
+  const closeButton = { addEventListener(type, fn) { listeners[type] = fn; }, removeEventListener(type) { delete listeners[type]; } };
+  const document = {
+    hidden: false,
+    createElement() { return {}; },
+    addEventListener(type, fn) { documentListeners[type] = fn; },
+    removeEventListener(type) { delete documentListeners[type]; }
+  };
+  const window = {
+    location: { href: 'https://mao.example/chat/contacts/contacts.html', origin: 'https://mao.example' },
+    navigator: {},
+    BarcodeDetector: class {},
+    setInterval(fn) { intervals.set(1, fn); return 1; },
+    clearInterval(id) { intervals.delete(id); },
+    addEventListener() {}, removeEventListener() {}
+  };
+  const mediaDevices = {
+    getUserMedia() {
+      return new Promise(resolve => { resolvePermission = resolve; });
+    }
+  };
+  vm.runInNewContext(SOURCE, { window, Promise, Error, String, Number, Math, URL }, {
+    filename: 'real-user-camera-scanner.js'
+  });
+  const scanner = window.PhoneRealUserCameraScanner.create({
+    document, video, overlay, closeButton, mediaDevices,
+    fallbackScriptUrl: '/jsQR.js',
+    onStatus() {}
+  });
+  const started = scanner.start();
+  await Promise.resolve();
+  await Promise.resolve();
+  scanner.stop();
+  assert.equal(overlay.hidden, true);
+  resolvePermission(pendingStream);
+  assert.equal(await started, false);
+  assert.equal(stopped, 1);
+  assert.equal(video.srcObject, null);
+  assert.equal(intervals.size, 0);
+});
+
+
+test('unsupported browsers keep the scan overlay closed and do not request a camera', async () => {
+  const app = makeRuntime({ mediaDevices: {} });
+  assert.equal(await app.scanner.start(), false);
+  assert.equal(app.requests, 0);
+  assert.equal(app.overlay.hidden, true);
+  assert.ok(app.messages.some(message => String(message).includes('无法使用摄像头')));
+});
+
 test('camera permission errors leave manual invitation entry available', async () => {
   const denied = Object.assign(new Error('permission denied'), { name: 'NotAllowedError' });
   const app = makeRuntime({ cameraError: denied });
