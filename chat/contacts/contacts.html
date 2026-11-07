@@ -8,6 +8,8 @@
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/phone_api.js"></script>
+<script src="../../shared/js/phone/npc-friend-discovery.js?v=20261108b"></script>
 <script src="../../shared/js/phone/contact-identity.js?v=20261107v1"></script>
 <script src="../../shared/js/phone/contact-directory.js?v=20261107v4"></script>
 <script src="../../shared/js/contact-groups.js?v=20261107v2"></script>
@@ -222,6 +224,7 @@
   .quick-entry-label { font-size: 13px; color: #111111; letter-spacing: -0.2px; }
   .quick-entry-arrow { margin-left: auto; color: #CCC; }
   .quick-entry-arrow svg { width: 11px; height: 11px; stroke: #CCC; }
+  .npc-request-badge { margin-left:auto; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:#111; color:#fff; font-size:10px; line-height:18px; text-align:center; }
 
   /* mobile fullscreen: no rounded shell */
 
@@ -281,6 +284,18 @@
 
       <!-- 快捷入口 -->
       <div class="quick-entry-list">
+        <div class="quick-entry" id="goNpcRequests">
+          <div class="quick-entry-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5A5.5 5.5 0 0 1 8 13h2a5.5 5.5 0 0 1 5.5 5.5V20"/><path d="M18 8v6M15 11h6"/>
+            </svg>
+          </div>
+          <span class="quick-entry-label">NPC 好友申请</span>
+          <span class="npc-request-badge" id="npcRequestBadge" hidden>0</span>
+          <span class="quick-entry-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </span>
+        </div>
         <div class="quick-entry" id="goManageRole">
           <div class="quick-entry-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -775,6 +790,18 @@
     document.getElementById('goManageRole').addEventListener('click', function () {
       window.location.href = '../../worldbook/characters/characters.html?from=contacts';
     });
+    function refreshNpcRequestBadge() {
+      var badge = document.getElementById('npcRequestBadge');
+      if (!badge || !window.MaoNpcFriends) return;
+      var count = window.MaoNpcFriends.getPendingCount();
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.hidden = count < 1;
+    }
+    document.getElementById('goNpcRequests').addEventListener('click', function () {
+      window.location.href = 'npc-friends.html';
+    });
+    window.addEventListener('maomao:npc-requests-changed', refreshNpcRequestBadge);
+
 
   /* mobile fullscreen: no rounded shell */
     document.getElementById('contactGroupBar').addEventListener('click', function (e) {
@@ -831,6 +858,12 @@
 
     renderGroupBar();
     renderList();
+    refreshNpcRequestBadge();
+    if (window.MaoNpcFriends) {
+      window.MaoNpcFriends.start().then(function () {
+        refreshNpcRequestBadge();
+      }).catch(function () {});
+    }
   </script>
   <script src="../../shared/js/phone/qrcode-generator.js?v=20261107v3"></script>
   <script src="../../shared/js/phone/real-user-friend-invite.js?v=20261107v3"></script>
