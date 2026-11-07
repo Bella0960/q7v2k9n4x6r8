@@ -96,6 +96,11 @@ test('avatar intent is classified from current user text and rejects negated or 
   assert.equal(api.classifyAvatarIntent('给我们配一对情侣头像'), 'pair');
   assert.equal(api.classifyAvatarIntent('我们做一组情头'), 'pair');
   assert.equal(api.classifyAvatarIntent('把这俩弄成一对情头'), 'pair');
+  assert.equal(api.classifyAvatarIntent('我想配一组情头'), 'pair');
+  assert.equal(api.classifyAvatarIntent('我想要一对情头'), 'pair');
+  assert.equal(api.classifyAvatarIntent('我想看看这组情头'), 'none');
+  assert.equal(api.classifyAvatarIntent('我要看看一组情头'), 'none');
+  assert.equal(api.classifyAvatarIntent('我想看看怎么换头像'), 'none');
   assert.equal(api.classifyAvatarIntent('这张适合做头像吗？'), 'none');
   assert.equal(api.classifyAvatarIntent('这张能当头像吗？'), 'none');
   assert.equal(api.classifyAvatarIntent('怎么换头像？'), 'none');
