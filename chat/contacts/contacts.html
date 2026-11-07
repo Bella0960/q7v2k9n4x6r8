@@ -436,8 +436,10 @@
       if (!roles.length) { picker.innerHTML = '<div class="contact-group-empty">目前还没有可加入分组的联系人</div>'; return; }
       picker.innerHTML = roles.map(function (role) {
         var id = String(role.id), checked = editingContactGroupMembers.indexOf(id) !== -1 ? ' checked' : '';
+        var identity = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole(role);
+        var contactKey = identity ? identity.key : 'ai_role:' + encodeURIComponent(id);
         return '<label class="contact-group-member"><input type="checkbox" data-contact-member="' +
-          escapeHtml(id) + '"' + checked + '><span>' + escapeHtml(role.name || '角色') + '</span></label>';
+          escapeHtml(id) + '" data-contact-key="' + escapeHtml(contactKey) + '"' + checked + '><span>' + escapeHtml(role.name || '角色') + '</span></label>';
       }).join('');
     }
     function openContactGroupEditor(group) {
@@ -576,7 +578,9 @@
           var avatar = role.avatar
             ? '<div class="contact-avatar"><img src="' + escapeHtml(role.avatar) + '" alt=""></div>'
             : avatarFallback(name);
-          return '<div class="contact-item" data-id="' + escapeHtml(role.id) + '">' +
+          var contactRef = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole(role);
+          var contactKey = contactRef ? contactRef.key : 'ai_role:' + encodeURIComponent(String(role.id));
+          return '<div class="contact-item" data-id="' + escapeHtml(role.id) + '" data-contact-key="' + escapeHtml(contactKey) + '">' +
             avatar + '<div class="contact-info"><div class="contact-name">' + escapeHtml(name) + '</div></div>' +
           '</div>';
         }).join('');
