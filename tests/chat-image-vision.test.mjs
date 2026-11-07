@@ -101,7 +101,7 @@ test('ordinary image sharing, invalid indexes, interrupted replies and partial m
 test('context policy emits OpenAI-compatible multimodal user content only when a vision URL is attached', () => {
   const policy = createContextPolicy();
   const history = [
-    { role: 'user', type: 'image', mid: 'image-1', text: '[图片]', visionDataUrl: dataUrl('PHOTO') },
+    { role: 'user', type: 'image', mid: 'image-1', text: '[图片]', visionDataUrl: dataUrl('PHOTO'), visionIndex: 3 },
     { role: 'user', text: '这是什么？' },
     { role: 'user', type: 'image', mid: 'image-2', text: '[图片]' }
   ];
@@ -110,6 +110,7 @@ test('context policy emits OpenAI-compatible multimodal user content only when a
   assert.equal(mapped[0].content[0].type, 'text');
   assert.equal(mapped[0].content[1].type, 'image_url');
   assert.equal(mapped[0].content[1].image_url.url, dataUrl('PHOTO'));
+  assert.ok(mapped[0].content[0].text.includes('[本轮图片编号：3]'));
   assert.equal(mapped[1].content, '这是什么？');
   assert.equal(mapped.length, 2, 'legacy images without an explicitly resolved vision URL stay textual');
 });
