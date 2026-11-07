@@ -467,19 +467,30 @@
                 return availableContactIds.indexOf(String(id)) === -1;
             });
             if (groups.length) {
-                return { ok: false, error: 'module_unavailable', groupIds: groups.slice(), contactIds: contacts.slice(), memberIds: [] };
+                return { ok: false, error: 'module_unavailable', groupIds: groups.slice(), contactIds: contacts.slice(), memberIds: [], memberRefs: [] };
             }
             if (missingContacts.length) {
-                return { ok: false, error: 'missing_contacts', missingContactIds: missingContacts, groupIds: [], contactIds: contacts.slice(), memberIds: [] };
+                return { ok: false, error: 'missing_contacts', missingContactIds: missingContacts, groupIds: [], contactIds: contacts.slice(), memberIds: [], memberRefs: [] };
             }
-            return { ok: true, groupIds: [], contactIds: contacts.slice(), memberIds: contacts.slice(), staleMemberIds: [] };
+            var directRefs = contacts.map(function (id) {
+                var identity = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole({ id: id });
+                return identity ? identity.key : 'ai_role:' + encodeURIComponent(id);
+            });
+            return { ok: true, groupIds: [], contactIds: contacts.slice(), memberIds: contacts.slice(),
+                memberRefs: directRefs, memberCount: directRefs.length, staleMemberIds: [], staleMemberRefs: [] };
+        }
+        function getAudienceMemberCount(snapshot) {
+            if (!snapshot || !snapshot.ok) return 0;
+            if (typeof snapshot.memberCount === 'number') return snapshot.memberCount;
+            if (Array.isArray(snapshot.memberRefs)) return snapshot.memberRefs.length;
+            return Array.isArray(snapshot.memberIds) ? snapshot.memberIds.length : 0;
         }
         function updatePermissionValue() {
             var option = PERM_OPTIONS.find(function (item) { return item.key === currentPerm; });
             var label = option ? option.label : '公开';
             if (currentPerm === 'custom' || currentPerm === 'excluded') {
                 var snapshot = getAudienceSnapshot(currentPerm);
-                label += !snapshot.ok ? ' · 需重新确认' : (snapshot.memberIds.length ? ' · ' + snapshot.memberIds.length + '人' : ' · 未选择');
+                label += !snapshot.ok ? ' · 需重新确认' : (getAudienceMemberCount(snapshot) ? ' · ' + getAudienceMemberCount(snapshot) + '人' : ' · 未选择');
             }
             document.getElementById('permValue').textContent = label;
         }
@@ -559,7 +570,7 @@
             }
             var snapshot = getAudienceSnapshot(currentPerm);
             html += snapshot.ok
-                ? '<div class="audience-count">已选择 ' + snapshot.memberIds.length + ' 位联系人 · ' + chosenGroups.length + ' 个分组</div>'
+                ? '<div class="audience-count">已选择 ' + getAudienceMemberCount(snapshot) + ' 位联系人 · ' + chosenGroups.length + ' 个分组</div>'
                 : '<div class="audience-count">受众名单暂不可确认 · 请处理失效分组后再继续</div>';
 
             // Show the resolved, deduplicated recipient list before publishing so a group
@@ -582,8 +593,9 @@
             });
             var previewParts = previewNames.map(function (name) { return escapeHtml(name); });
             if (missingCount) previewParts.push('未匹配联系人 ' + missingCount + ' 人');
-            if (snapshot.ok && snapshot.staleMemberIds && snapshot.staleMemberIds.length) {
-                previewParts.push('分组内 ' + snapshot.staleMemberIds.length + ' 位已失效联系人不会计入名单');
+            var staleAudienceCount = (snapshot.staleMemberIds || []).length + (snapshot.staleMemberRefs || []).length;
+            if (snapshot.ok && staleAudienceCount) {
+                previewParts.push('分组内 ' + staleAudienceCount + ' 位已失效联系人不会计入名单');
             }
             if (overflowCount) previewParts.push('另有 ' + overflowCount + ' 人');
             var snapshotErrorText = snapshot.error === 'missing_groups'
@@ -650,7 +662,7 @@
                     if (audienceBody) audienceBody.scrollTop = previousAudienceScrollTop;
                     return;
                 }
-                if (!audienceCheck.memberIds.length) {
+                if (!getAudienceMemberCount(audienceCheck)) {
                     showToast(currentPerm === 'custom' ? '部分可见至少选择一位联系人' : '不给谁看至少选择一位联系人');
                     return;
                 }
@@ -767,8 +779,8 @@
                 openAudienceSelection(currentPerm);
                 return;
             }
-            if ((currentPerm === 'custom' && !visibleAudience.memberIds.length) ||
-                (currentPerm === 'excluded' && !hiddenAudience.memberIds.length)) {
+            if ((currentPerm === 'custom' && !getAudienceMemberCount(visibleAudience)) ||
+                (currentPerm === 'excluded' && !getAudienceMemberCount(hiddenAudience))) {
                 showToast(currentPerm === 'custom' ? '部分可见至少选择一位联系人' : '不给谁看至少选择一位联系人');
                 openPermSheet();
                 return;
