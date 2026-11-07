@@ -1239,14 +1239,34 @@ class CloudStore {
     return { kind: 'created', message: inserted || null };
   }
 
-  listFriendMessages({ userId, friendId, cursor = null, limit = 50 } = {}) {
+  listFriendMessages({ userId, friendId, after = null, before = null, limit = 50 } = {}) {
     const safeLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 50));
     const pairFilter = `((sender_id = ? AND recipient_id = ?) OR
                           (sender_id = ? AND recipient_id = ?))`;
-    let rows;
-    if (cursor && Number.isSafeInteger(cursor.createdAt) && cursor.createdAt >= 0 &&
-        typeof cursor.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(cursor.id)) {
-      rows = this.exec(
+    if (before && Number.isSafeInteger(before.createdAt) && before.createdAt >= 0 &&
+        typeof before.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(before.id)) {
+      const rows = this.exec(
+        `SELECT id, sender_id, recipient_id, body, created_at
+         FROM friend_messages
+         WHERE ${pairFilter}
+           AND (created_at < ? OR (created_at = ? AND id < ?))
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?`,
+        userId,
+        friendId,
+        friendId,
+        userId,
+        before.createdAt,
+        before.createdAt,
+        before.id,
+        safeLimit
+      );
+      return rows.reverse();
+    }
+
+    if (after && Number.isSafeInteger(after.createdAt) && after.createdAt >= 0 &&
+        typeof after.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(after.id)) {
+      return this.exec(
         `SELECT id, sender_id, recipient_id, body, created_at
          FROM friend_messages
          WHERE ${pairFilter}
@@ -1257,15 +1277,14 @@ class CloudStore {
         friendId,
         friendId,
         userId,
-        cursor.createdAt,
-        cursor.createdAt,
-        cursor.id,
+        after.createdAt,
+        after.createdAt,
+        after.id,
         safeLimit
       );
-      return rows;
     }
 
-    rows = this.exec(
+    const rows = this.exec(
       `SELECT id, sender_id, recipient_id, body, created_at
        FROM friend_messages
        WHERE ${pairFilter}
