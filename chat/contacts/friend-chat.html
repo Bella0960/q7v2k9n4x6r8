@@ -17,7 +17,8 @@
   .phone { width:min(430px,100vw); height:100dvh; min-height:0; margin:0 auto; display:flex; flex-direction:column; overflow:hidden; background:#F7F7F9; position:relative; }
   .status-bar { flex:0 0 auto; height:42px; padding:13px 22px 0; font-size:12px; font-weight:650; background:rgba(247,247,249,.94); }
   .topbar { flex:0 0 auto; min-height:54px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 16px 8px; border-bottom:1px solid #E8E8EB; background:rgba(247,247,249,.94); }
-  .topbar button { border:0; background:transparent; color:#222; padding:8px 2px; font-size:13px; cursor:pointer; }
+  .topbar button { border:0; background:transparent; color:#222; padding:8px 2px; font-size:12px; cursor:pointer; }
+  .topbar-actions { display:flex; align-items:center; gap:10px; flex:0 0 auto; }
   .title-block { min-width:0; text-align:center; }
   .title { font-size:15px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px; }
   .subtitle { margin-top:3px; color:#999; font-size:10px; }
@@ -32,7 +33,13 @@
   .bubble { padding:10px 13px; border-radius:16px 16px 16px 4px; border:1px solid #E9E9ED; background:#fff; color:#171717; font-size:13px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; box-shadow:0 1px 5px rgba(0,0,0,.025); }
   .mine .bubble { color:#fff; background:#171717; border-color:#171717; border-radius:16px 16px 4px 16px; }
   .msg-meta { color:#A0A0A5; font-size:9px; padding:0 3px; }
+  .message-tools { display:flex; align-items:center; gap:6px; min-height:22px; }
+  .message-more { border:0; background:transparent; color:#999; font-size:15px; line-height:1; padding:2px 5px; cursor:pointer; }
+  .message-menu { display:flex; align-items:center; gap:5px; }
+  .message-menu[hidden] { display:none; }
+  .message-hide { border:1px solid #E5E5E9; border-radius:999px; background:#fff; color:#555; font-size:9px; padding:4px 8px; cursor:pointer; }
   .pending .bubble { opacity:.62; }
+  .pending .message-tools { display:none; }
   .composer { flex:0 0 auto; display:flex; align-items:flex-end; gap:9px; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid #E8E8EB; background:rgba(255,255,255,.94); }
   .input-wrap { flex:1; min-width:0; background:#F2F2F5; border:1px solid #E9E9ED; border-radius:18px; padding:9px 12px; }
   textarea { display:block; resize:none; width:100%; max-height:116px; min-height:22px; outline:none; border:0; background:transparent; color:#111; font-size:13px; line-height:1.55; }
@@ -54,9 +61,12 @@
       <div class="title" id="friendName">真人好友</div>
       <div class="subtitle">MAOMAO · DIRECT CHAT</div>
     </div>
-    <button type="button" id="refreshBtn">刷新</button>
+    <div class="topbar-actions">
+      <button type="button" id="refreshBtn">刷新</button>
+      <button type="button" id="clearChatBtn">清空</button>
+    </div>
   </header>
-  <div class="notice">真人好友文字消息会保存在 MAOMAO 云端，用于多设备同步。本阶段不是端到端加密，也暂不支持图片、语音和附件。</div>
+  <div class="notice">消息保存在 MAOMAO 云端，尚未端到端加密。隐藏或清空只影响你自己的账号，好友仍保留原记录。</div>
   <div class="history-action" id="historyAction" hidden><button type="button" id="loadOlderBtn">载入更早的消息</button></div>
   <main class="messages" id="messages" aria-live="polite">
     <div class="empty" id="emptyState">正在连接好友聊天…</div>
@@ -149,14 +159,39 @@
     var row = document.createElement('div');
     row.className = 'msg-row' + (message.senderId === myUserId ? ' mine' : '') + (pending ? ' pending' : '');
     row.dataset.messageId = message.id || '';
+    row.dataset.senderId = message.senderId || '';
+    row.dataset.recipientId = message.recipientId || '';
+    row.dataset.createdAt = String(Number(message.createdAt) || 0);
     var bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.textContent = String(message.body || '');
+    var tools = document.createElement('div');
+    tools.className = 'message-tools';
     var meta = document.createElement('div');
     meta.className = 'msg-meta';
     meta.textContent = formatTime(message.createdAt) + (pending ? ' · 正在发送' : '');
+    tools.appendChild(meta);
+    if (!pending && message.id) {
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'message-more';
+      more.setAttribute('aria-label', '消息管理');
+      more.setAttribute('aria-expanded', 'false');
+      more.textContent = '···';
+      var menu = document.createElement('div');
+      menu.className = 'message-menu';
+      menu.hidden = true;
+      var hide = document.createElement('button');
+      hide.type = 'button';
+      hide.className = 'message-hide';
+      hide.dataset.hideMessage = message.id;
+      hide.textContent = '仅在我这里隐藏';
+      menu.appendChild(hide);
+      tools.appendChild(more);
+      tools.appendChild(menu);
+    }
     row.appendChild(bubble);
-    row.appendChild(meta);
+    row.appendChild(tools);
     return row;
   }
   function appendMessage(message, pending) {
