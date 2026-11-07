@@ -10,6 +10,7 @@ function createLibrary(seed, options = {}) {
   const values = new Map(Object.entries(seed || {}));
   const assets = new Map();
   const refs = new Set();
+  const contentAssets = new Map();
   let sequence = 0;
   const localStorage = {
     getItem(key) { return values.has(key) ? values.get(key) : null; },
@@ -25,10 +26,16 @@ function createLibrary(seed, options = {}) {
   class MediaRepository {
     putBlob(input, opts) {
       if (options.failMedia) return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'offline' } });
+      if (typeof input === 'string' && contentAssets.has(input)) {
+        const existingAssetId = contentAssets.get(input);
+        refs.add(existingAssetId + '|' + opts.ownerType + '|' + opts.ownerId);
+        return Promise.resolve({ ok: true, value: { assetId: existingAssetId, reused: true } });
+      }
       sequence += 1;
       const suffix = sequence.toString(2).replace(/0/g, 'A').replace(/1/g, 'B');
       const assetId = 'as_' + suffix.padStart(32, 'A');
       assets.set(assetId, input);
+      if (typeof input === 'string') contentAssets.set(input, assetId);
       refs.add(assetId + '|' + opts.ownerType + '|' + opts.ownerId);
       const result = { ok: true, value: { assetId, reused: false } };
       if (options.deferPutBlob) {
@@ -385,7 +392,7 @@ test('avatar gallery revokes object URLs and prevents removal of the active port
 
 test('deleting a character releases only that character avatar references after profile deletion succeeds', () => {
   assert.ok(managerSource.includes('if (!saveRoles(updatedRoles))'));
-  assert.ok(managerSource.includes('RoleAvatarLibrary.removeRole(String(id))'));
+  assert.ok(managerSource.includes('await library.removeRole(String(id))'));
   assert.ok(managerSource.includes('角色删除失败，原有资料和头像均已保留。'));
 });
 
