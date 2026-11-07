@@ -1288,7 +1288,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v173/);
+  assert.match(serviceWorker, /phone-app-pwa-v174/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1796,6 +1796,14 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /saveChatHistory\(candidate\.contact\.id, freshHistory\)/);
   assert.match(chatNotifier, /tick\(\);/);
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
+  assert.match(chatNotifier, /executeCloudProactiveCandidate/);
+  assert.match(chatNotifier, /getCharacterContextVersion\(roleId\)/);
+  assert.match(chatNotifier, /enqueueAutonomyActivity\(roleId, Number\(context\.version\)\)/);
+  assert.match(chatNotifier, /claimAutonomyActivity\(roleId\)/);
+  assert.match(chatNotifier, /completeAutonomyActivity\(activity, content\)/);
+  assert.match(chatNotifier, /skipAutonomyActivity\(activity, 'no_worthy_message'\)/);
+  assert.match(chatNotifier, /localMessage\.serverMessageId = serverMessageId|serverMessageId: serverMessageId/);
+
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
