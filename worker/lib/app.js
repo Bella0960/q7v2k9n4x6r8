@@ -126,25 +126,37 @@ function validateScheduleInput(body) {
     throw new ApiError(400, 'INVALID_SCHEDULE', '必须提供角色作息对象');
   }
   const allowed = ['active', 'busy', 'asleep', 'away'];
+  const normalizedSchedule = {};
   for (const key of Object.keys(schedule)) {
     if (!allowed.includes(key)) {
       throw new ApiError(400, 'INVALID_SCHEDULE', '角色作息包含未知状态');
     }
+    if (key === 'away' && typeof schedule.away === 'boolean') {
+      normalizedSchedule.away = schedule.away;
+      continue;
+    }
     const windows = Array.isArray(schedule[key]) ? schedule[key] : [schedule[key]];
+    const normalizedWindows = [];
     for (const windowValue of windows) {
-      if (!policy.normalizeWindow(windowValue)) {
+      const normalized = policy.normalizeWindow(windowValue);
+      if (!normalized) {
         throw new ApiError(400, 'INVALID_SCHEDULE', '作息时间窗口格式无效');
       }
+      normalizedWindows.push({
+        startMinute: normalized.startMinute,
+        endMinute: normalized.endMinute
+      });
     }
+    normalizedSchedule[key] = normalizedWindows;
   }
   if (!Object.prototype.hasOwnProperty.call(schedule, 'active')) {
     throw new ApiError(400, 'INVALID_SCHEDULE', '必须明确提供 active 时间窗口；留空数组表示当前不允许主动活动');
   }
-  const serialized = JSON.stringify(schedule);
+  const serialized = JSON.stringify(normalizedSchedule);
   if (serialized.length > 4000) {
     throw new ApiError(413, 'SCHEDULE_TOO_LARGE', '作息配置过长');
   }
-  return { timeZone, schedule };
+  return { timeZone, schedule: normalizedSchedule };
 }
 
 /**
