@@ -124,6 +124,8 @@ test('typed contact identity is loaded before chat notification and stored in ch
   assert.ok(composerPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(momentsPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(detailPage.includes('phone/contact-identity.js?v=20261107v1'));
+  assert.ok(detailPage.includes('window.PhoneCurrentContactRef'));
+  assert.ok(contactsPage.includes('data-contact-key'));
   assert.ok(navPage.includes('contact-identity.js?v=20261107v1'));
   assert.ok(notifierSource.includes("contactRef: contactIdentity('ai_role', roleId)"));
   assert.ok(notifierSource.includes("contactRef: contactIdentity('chat_group', groupId)"));
