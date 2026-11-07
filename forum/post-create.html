@@ -790,10 +790,12 @@
                 visibleTo: visibleAudience.memberIds,
                 visibleGroupIds: visibleAudience.groupIds,
                 visibleContactIds: visibleAudience.contactIds,
+                visibleContactRefs: visibleAudience.memberRefs || [],
                 hiddenTo: hiddenAudience.memberIds,
                 hiddenGroupIds: hiddenAudience.groupIds,
                 hiddenContactIds: hiddenAudience.contactIds,
-                audienceVersion: 1,
+                hiddenContactRefs: hiddenAudience.memberRefs || [],
+                audienceVersion: 2,
                 mentions: mentionsList.slice()
             };
 
