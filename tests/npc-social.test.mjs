@@ -21,6 +21,7 @@ function createHarness() {
     setItem(key, value) { data.set(key, String(value)); },
     removeItem(key) { data.delete(key); }
   };
+  data.set('phone_current_contact', 'main-role');
   const phoneStorage = {
     getCharacters() { return roles.slice(); },
     getWorldbooks() { return []; },
