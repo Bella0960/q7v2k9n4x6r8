@@ -25,7 +25,7 @@
     }
 
     function emptyState() {
-        return { version: 1, activeId: '', items: [] };
+        return { version: 2, activeId: '', items: [], pairs: [] };
     }
 
     function normalizeState(raw) {
@@ -49,7 +49,35 @@
         items.sort(function (a, b) { return b.createdAt - a.createdAt; });
         var activeId = String(input.activeId || '');
         if (!items.some(function (item) { return item.id === activeId; })) activeId = '';
-        return { version: 1, activeId: activeId, items: items };
+
+        // Pair metadata links two existing portraits; it never duplicates image bytes.
+        var itemById = Object.create(null);
+        items.forEach(function (item) { itemById[item.id] = item; });
+        var pairSeen = Object.create(null);
+        var pairedAvatarIds = Object.create(null);
+        var pairs = [];
+        (Array.isArray(input.pairs) ? input.pairs : []).forEach(function (pair) {
+            if (!pair || typeof pair !== 'object' || !Array.isArray(pair.avatarIds) || pair.avatarIds.length !== 2) return;
+            var firstId = String(pair.avatarIds[0] || '');
+            var secondId = String(pair.avatarIds[1] || '');
+            if (!firstId || !secondId || firstId === secondId || !itemById[firstId] || !itemById[secondId]) return;
+            if (pairedAvatarIds[firstId] || pairedAvatarIds[secondId]) return;
+            var canonical = [firstId, secondId].sort();
+            var key = canonical.join('|');
+            if (pairSeen[key]) return;
+            pairSeen[key] = true;
+            pairedAvatarIds[firstId] = true;
+            pairedAvatarIds[secondId] = true;
+            pairs.push({
+                id: 'pair_' + canonical.map(function (id) { return id.replace(/^avatar_/, ''); }).join('_'),
+                avatarIds: [firstId, secondId],
+                label: String(pair.label || '配对头像').replace(/[\\u0000-\\u001F<>]/g, '').trim().slice(0, 36) || '配对头像',
+                source: pair.source === 'chat' ? 'chat' : 'manual',
+                createdAt: Math.max(0, Number(pair.createdAt) || 0)
+            });
+        });
+        pairs.sort(function (a, b) { return b.createdAt - a.createdAt; });
+        return { version: 2, activeId: activeId, items: items, pairs: pairs };
     }
 
     function readState(roleId) {
@@ -106,6 +134,74 @@
         return item ? copyItem(item, state.activeId) : null;
     }
 
+    function copyPair(pair, state) {
+        return {
+            id: pair.id,
+            label: pair.label,
+            avatarIds: pair.avatarIds.slice(),
+            avatars: pair.avatarIds.map(function (avatarId) {
+                var item = state.items.find(function (entry) { return entry.id === avatarId; });
+                return item ? copyItem(item, state.activeId) : null;
+            }),
+            source: pair.source,
+            createdAt: pair.createdAt
+        };
+    }
+
+    function getPairs(roleId) {
+        var state = readState(roleId);
+        return state.pairs.map(function (pair) { return copyPair(pair, state); });
+    }
+
+    function linkPair(roleId, firstAvatarId, secondAvatarId, options) {
+        options = options || {};
+        if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
+        firstAvatarId = String(firstAvatarId || '');
+        secondAvatarId = String(secondAvatarId || '');
+        if (!firstAvatarId || !secondAvatarId || firstAvatarId === secondAvatarId) {
+            return failure('VALIDATION_FAILED', 'a pair must contain two different portraits');
+        }
+        var state = readState(roleId);
+        var first = state.items.find(function (item) { return item.id === firstAvatarId; });
+        var second = state.items.find(function (item) { return item.id === secondAvatarId; });
+        if (!first || !second) return failure('NOT_FOUND', 'both portraits must belong to this character library');
+        var canonical = [firstAvatarId, secondAvatarId].sort();
+        var key = canonical.join('|');
+        var duplicate = state.pairs.find(function (pair) { return pair.avatarIds.slice().sort().join('|') === key; });
+        if (duplicate) return { ok: true, value: copyPair(duplicate, state), meta: { reused: true } };
+        var conflict = state.pairs.find(function (pair) {
+            return pair.avatarIds.indexOf(firstAvatarId) >= 0 || pair.avatarIds.indexOf(secondAvatarId) >= 0;
+        });
+        if (conflict) return failure('PAIR_CONFLICT', 'a portrait can belong to only one pair; unlink its existing pair first');
+
+        var pair = {
+            id: 'pair_' + canonical.map(function (id) { return id.replace(/^avatar_/, ''); }).join('_'),
+            avatarIds: [firstAvatarId, secondAvatarId],
+            label: String(options.label || '配对头像').replace(/[\\u0000-\\u001F<>]/g, '').trim().slice(0, 36) || '配对头像',
+            source: options.source === 'chat' ? 'chat' : 'manual',
+            createdAt: Number(options.createdAt) || Date.now()
+        };
+        var next = { version: 2, activeId: state.activeId, items: state.items, pairs: state.pairs.concat([pair]) };
+        if (!writeState(roleId, next)) return failure('STORAGE_FAILED', 'pair relationship could not be saved');
+        return { ok: true, value: copyPair(pair, next), meta: { reused: false } };
+    }
+
+    function unlinkPair(roleId, pairId) {
+        if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
+        var state = readState(roleId);
+        pairId = String(pairId || '');
+        var pair = state.pairs.find(function (item) { return item.id === pairId; });
+        if (!pair) return failure('NOT_FOUND', 'paired avatar set was not found');
+        var next = {
+            version: 2,
+            activeId: state.activeId,
+            items: state.items,
+            pairs: state.pairs.filter(function (item) { return item.id !== pairId; })
+        };
+        if (!writeState(roleId, next)) return failure('STORAGE_FAILED', 'pair relationship could not be removed');
+        return { ok: true, value: copyPair(pair, state), meta: { portraitsRetained: true } };
+    }
+
     function setActive(roleId, avatarId) {
         if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
         var state = readState(roleId);
@@ -159,7 +255,7 @@
                 source: options.source === 'legacy' ? 'legacy' : 'upload',
                 createdAt: Number(options.createdAt) || Date.now()
             };
-            var next = { version: 1, activeId: previous.activeId, items: [item].concat(previous.items) };
+            var next = { version: 2, activeId: previous.activeId, items: [item].concat(previous.items), pairs: previous.pairs };
             if (!writeState(roleId, next)) {
                 return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function () {
                     return media.removeAsset(assetId);
@@ -206,7 +302,7 @@
                     source: options.source === 'legacy' ? 'legacy' : (options.source === 'chat' ? 'chat' : 'upload'),
                     createdAt: Number(options.createdAt) || Date.now()
                 };
-                var next = { version: 1, activeId: previous.activeId, items: [item].concat(previous.items) };
+                var next = { version: 2, activeId: previous.activeId, items: [item].concat(previous.items), pairs: previous.pairs };
                 if (!writeState(roleId, next)) {
                     return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function () {
                         return failure('STORAGE_FAILED', 'avatar candidate metadata could not be saved');
@@ -239,15 +335,19 @@
         var item = previous.items.find(function (entry) { return entry.id === String(avatarId || ''); });
         if (!item) return Promise.resolve(failure('NOT_FOUND', 'avatar not found in this character library'));
         if (previous.activeId === item.id) return Promise.resolve(failure('VALIDATION_FAILED', 'select another avatar before removing the current one'));
+        if (previous.pairs.some(function (pair) { return pair.avatarIds.indexOf(item.id) >= 0; })) {
+            return Promise.resolve(failure('PAIR_EXISTS', 'unlink this portrait pair before removing an image'));
+        }
 
         var media = mediaRepository();
         if (!media || typeof media.removeRef !== 'function') return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
         return media.removeRef(item.assetId, OWNER_TYPE, String(roleId)).then(function (removedRef) {
             if (!removedRef || !removedRef.ok) return removedRef || failure('STORAGE_FAILED', 'avatar reference could not be removed');
             var next = {
-                version: 1,
+                version: 2,
                 activeId: previous.activeId,
-                items: previous.items.filter(function (entry) { return entry.id !== item.id; })
+                items: previous.items.filter(function (entry) { return entry.id !== item.id; }),
+                pairs: previous.pairs
             };
             if (!writeState(roleId, next)) {
                 if (typeof media.addRef === 'function') {
@@ -337,6 +437,9 @@
         list: list,
         getActive: getActive,
         find: find,
+        getPairs: getPairs,
+        linkPair: linkPair,
+        unlinkPair: unlinkPair,
         add: add,
         addAsset: addAsset,
         setActive: setActive,
