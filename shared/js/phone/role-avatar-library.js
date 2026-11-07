@@ -295,7 +295,6 @@
             return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
         }
 
-        var previous = readState(roleId);
         return media.putBlob(input, {
             ownerType: OWNER_TYPE,
             ownerId: String(roleId),
@@ -307,17 +306,20 @@
             }
 
             var assetId = String(saved.value.assetId);
-            var existing = previous.items.find(function (item) { return item.assetId === assetId; });
-            if (existing) return { ok: true, value: copyItem(existing, previous.activeId), meta: { reused: true } };
+            // Re-read after the asynchronous media write so parallel uploads cannot overwrite
+            // another portrait added to this role while putBlob was pending.
+            var latest = readState(roleId);
+            var existing = latest.items.find(function (item) { return item.assetId === assetId; });
+            if (existing) return { ok: true, value: copyItem(existing, latest.activeId), meta: { reused: true } };
 
             var item = {
                 id: 'avatar_' + assetId.slice(3),
                 assetId: assetId,
-                label: String(options.label || ('头像 ' + String(previous.items.length + 1))).replace(/[\u0000-\u001F<>]/g, '').trim().slice(0, 36) || '角色头像',
+                label: String(options.label || ('头像 ' + String(latest.items.length + 1))).replace(/[\u0000-\u001F<>]/g, '').trim().slice(0, 36) || '角色头像',
                 source: options.source === 'legacy' ? 'legacy' : 'upload',
                 createdAt: Number(options.createdAt) || Date.now()
             };
-            var next = { version: 2, activeId: previous.activeId, items: [item].concat(previous.items), pairs: previous.pairs };
+            var next = { version: 2, activeId: latest.activeId, items: [item].concat(latest.items), pairs: latest.pairs };
             if (!writeState(roleId, next)) {
                 return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function () {
                     return media.removeAsset(assetId);
@@ -357,6 +359,11 @@
 
             return media.addRef(assetId, OWNER_TYPE, String(roleId)).then(function (linked) {
                 if (!linked || !linked.ok) return linked || failure('STORAGE_FAILED', 'avatar asset reference could not be created');
+                // Another async upload/link may have committed while getAsset/addRef was pending.
+                // Merge into that latest role state instead of writing the stale preflight snapshot.
+                var latest = readState(roleId);
+                var current = latest.items.find(function (entry) { return entry.assetId === assetId; });
+                if (current) return { ok: true, value: copyItem(current, latest.activeId), meta: { reused: true } };
                 var item = {
                     id: 'avatar_' + assetId.slice(3),
                     assetId: assetId,
@@ -364,7 +371,7 @@
                     source: options.source === 'legacy' ? 'legacy' : (options.source === 'chat' ? 'chat' : 'upload'),
                     createdAt: Number(options.createdAt) || Date.now()
                 };
-                var next = { version: 2, activeId: previous.activeId, items: [item].concat(previous.items), pairs: previous.pairs };
+                var next = { version: 2, activeId: latest.activeId, items: [item].concat(latest.items), pairs: latest.pairs };
                 if (!writeState(roleId, next)) {
                     return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function () {
                         return failure('STORAGE_FAILED', 'avatar candidate metadata could not be saved');
