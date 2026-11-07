@@ -5,6 +5,28 @@
  * 这样迁移与查询都能跑真实 SQL，而不是被 mock 掉。
  */
 
+function requireStoreString(value, field) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new TypeError(`${field} 必须是非空字符串`);
+  }
+  return value;
+}
+
+function serializeStoreJson(value, maxBytes, field) {
+  let serialized;
+  try {
+    serialized = JSON.stringify(value == null ? {} : value);
+  } catch {
+    throw new TypeError(`${field} 必须是可序列化的 JSON`);
+  }
+  if (typeof serialized !== 'string') serialized = '{}';
+  const byteLength = new TextEncoder().encode(serialized).byteLength;
+  if (byteLength > maxBytes) {
+    throw new RangeError(`${field} 超过 ${maxBytes} 字节上限`);
+  }
+  return serialized;
+}
+
 export function createStore(exec) {
   return new CloudStore(exec);
 }
@@ -417,7 +439,7 @@ class CloudStore {
       entry.kind,
       entry.status,
       entry.reasonCode || '',
-      JSON.stringify(entry.detail || {}).slice(0, 4000),
+      serializeStoreJson(entry.detail, 4000, 'execution.detail'),
       entry.durationMs || 0,
       entry.now
     );
@@ -462,23 +484,29 @@ class CloudStore {
     return Number(row?.total || 0);
   }
 
-  /** 幂等写入：同一 server message id 只落一条，返回 { inserted, message }。 */
+  /** 幂等写入：唯一约束在 INSERT 内处理并发重复，不截断消息 JSON。 */
   insertOutboundMessage(message) {
-    const existing = this.getOutboundMessage(message.serverMessageId);
-    if (existing) return { inserted: false, message: existing };
-    this.exec(
+    const id = requireStoreString(message?.id, 'message.id');
+    const deviceId = requireStoreString(message?.deviceId, 'message.deviceId');
+    const characterId = requireStoreString(message?.characterId, 'message.characterId');
+    const serverMessageId = requireStoreString(message?.serverMessageId, 'message.serverMessageId');
+    const payloadJson = serializeStoreJson(message.payload, 8000, 'message.payload');
+    const inserted = this.exec(
       `INSERT INTO outbound_messages
         (id, device_id, character_id, payload_json, server_message_id, dedupe_key, created_at, delivery_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
-      message.id,
-      message.deviceId,
-      message.characterId,
-      JSON.stringify(message.payload || {}).slice(0, 8000),
-      message.serverMessageId,
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+        ON CONFLICT(server_message_id) DO NOTHING
+        RETURNING *`,
+      id,
+      deviceId,
+      characterId,
+      payloadJson,
+      serverMessageId,
       message.dedupeKey ?? null,
       message.now
-    );
-    return { inserted: true, message: this.getOutboundMessage(message.serverMessageId) };
+    )[0];
+    if (inserted) return { inserted: true, message: inserted };
+    return { inserted: false, message: this.getOutboundMessage(serverMessageId) };
   }
 
   getOutboundMessage(serverMessageId) {
@@ -910,26 +938,31 @@ class CloudStore {
     return this.exec('SELECT * FROM activity_queue WHERE id = ?', id)[0] || null;
   }
 
-  /** 幂等入队：id 即幂等键，重复入队不产生第二条记录。 */
+  /** 幂等入队：单条 INSERT 负责去重，绝不截断 JSON 破坏数据。 */
   enqueueActivity(activity) {
-    const existing = this.getActivity(activity.id);
-    if (existing) return { inserted: false, activity: existing };
-    this.exec(
+    const id = requireStoreString(activity?.id, 'activity.id');
+    const deviceId = requireStoreString(activity?.deviceId, 'activity.deviceId');
+    const characterId = requireStoreString(activity?.characterId, 'activity.characterId');
+    const payloadJson = serializeStoreJson(activity.payload, 4000, 'activity.payload');
+    const inserted = this.exec(
       `INSERT INTO activity_queue
         (id, device_id, character_id, kind, status, scheduled_at, next_attempt_at,
          attempt_count, max_attempts, locked_by, locked_until, payload_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'waiting', ?, NULL, 0, ?, NULL, NULL, ?, ?, ?)`,
-      activity.id,
-      activity.deviceId,
-      activity.characterId,
+        VALUES (?, ?, ?, ?, 'waiting', ?, NULL, 0, ?, NULL, NULL, ?, ?, ?)
+        ON CONFLICT(id) DO NOTHING
+        RETURNING *`,
+      id,
+      deviceId,
+      characterId,
       activity.kind || 'contact',
       activity.scheduledAt,
       activity.maxAttempts,
-      JSON.stringify(activity.payload || {}).slice(0, 4000),
+      payloadJson,
       activity.now,
       activity.now
-    );
-    return { inserted: true, activity: this.getActivity(activity.id) };
+    )[0];
+    if (inserted) return { inserted: true, activity: inserted };
+    return { inserted: false, activity: this.getActivity(id) };
   }
 
   listDueActivities(now, limit) {
