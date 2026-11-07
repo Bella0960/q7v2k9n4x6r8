@@ -146,6 +146,22 @@
     $('messages').appendChild(messageNode(message, pending));
     return true;
   }
+
+  function appendPendingMessage(body, clientMessageId) {
+    removeEmpty();
+    var node = messageNode({
+      senderId: myUserId,
+      body: body,
+      createdAt: Date.now()
+    }, true);
+    node.dataset.clientMessageId = clientMessageId;
+    $('messages').appendChild(node);
+    scrollToBottom();
+    return node;
+  }
+  function removePendingMessage(node) {
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+  }
   function prependMessages(list) {
     var box = $('messages');
     var oldHeight = box.scrollHeight;
@@ -265,8 +281,10 @@
     $('sendBtn').disabled = true;
     $('messageInput').disabled = true;
     setStatus('正在发送…');
+    var pendingNode = appendPendingMessage(text, clientId);
     try {
       var result = await api.sendMessage(friendId, text, clientId);
+      removePendingMessage(pendingNode);
       appendMessage(result.message, false);
       cursor = cursorFor(result.message) || cursor;
       pendingSend = null;
@@ -276,6 +294,7 @@
       scrollToBottom();
       setStatus(result.duplicate ? '消息已确认送达' : '已发送');
     } catch (error) {
+      removePendingMessage(pendingNode);
       if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法继续发送消息。');
       else {
         setStatus((error.message || '发送失败') + '。再次点击发送会安全重试，不会重复落库。', true);
