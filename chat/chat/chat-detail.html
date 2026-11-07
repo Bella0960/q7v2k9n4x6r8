@@ -2944,6 +2944,7 @@
         // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
         // 本地写入并读回验证成功之前，绝不向云端 ACK。
         function persistCloudOutboundMessage(payload, envelope) {
+            if (document.visibilityState === 'hidden') return false;
             if (isGroupChat || !payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
             var serverMessageId = String(envelope && envelope.serverMessageId || '');
             if (!/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId)) return false;
@@ -3090,21 +3091,37 @@
                 intervalId = null;
             }
 
+            function refreshHistoryFromOtherTab() {
+                if (!chatMessages || typeof renderAllMessages !== 'function') return;
+                var oldScrollTop = chatMessages.scrollTop;
+                var wasNearBottom = chatMessages.scrollHeight - oldScrollTop - chatMessages.clientHeight <= 120;
+                renderAllMessages();
+                // Do not yank someone away from an older part of the conversation.
+                if (!wasNearBottom) chatMessages.scrollTop = oldScrollTop;
+            }
+
             function onVisibilityChange() {
                 if (document.visibilityState === 'hidden') pause();
-                else activate();
+                else {
+                    refreshHistoryFromOtherTab();
+                    activate();
+                }
+            }
+
+            function onPageShow() {
+                if (document.visibilityState !== 'hidden') refreshHistoryFromOtherTab();
+                activate();
             }
 
             function onOtherTabNotice(event) {
-                if (event && event.key === noticeKey && document.visibilityState !== 'hidden' &&
-                    typeof renderAllMessages === 'function') {
-                    renderAllMessages();
+                if (event && event.key === noticeKey && document.visibilityState !== 'hidden') {
+                    refreshHistoryFromOtherTab();
                 }
             }
 
             document.addEventListener('visibilitychange', onVisibilityChange);
             window.addEventListener('online', syncNow);
-            window.addEventListener('pageshow', activate);
+            window.addEventListener('pageshow', onPageShow);
             window.addEventListener('pagehide', pause);
             window.addEventListener('storage', onOtherTabNotice);
             activate();
