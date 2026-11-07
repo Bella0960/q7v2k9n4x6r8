@@ -153,11 +153,12 @@ async function main() {
       group.memberRefs.push('real_user:user-123');
       localStorage.setItem('contact_groups_v1', JSON.stringify(records));
       const directory = window.PhoneContactDirectory;
-      assert.equal(directory.saveMany([
+      const savedUsers = directory.saveMany([
         { id: 'user-123', displayName: '已加入分组的真人好友', status: 'accepted', createdAt: 10, updatedAt: 20 },
         { id: 'user-456', displayName: '单独选择的真人好友', status: 'accepted', createdAt: 11, updatedAt: 21 },
         { id: 'user-789', displayName: '新加入分组的真人好友', status: 'accepted', createdAt: 12, updatedAt: 22 }
-      ]).ok, true);
+      ]);
+      if (!savedUsers.ok) throw new Error('failed to seed real-user directory');
       // Simulate a missing identity helper while the group editor is still open.
       window.PhoneContactIdentity = null;
     }, friendsGroup.id);
