@@ -74,12 +74,14 @@
         var type = cleanText(value.type, 24).toLowerCase();
         if (!mid || !ALLOWED_TYPES[type]) return null;
 
+        var createdAt = Number(value.createdAt);
+        if (!Number.isFinite(createdAt) || createdAt <= 0) return null;
         var message = {
             mid: mid,
             type: type,
             sender: 'self',
             deliveryState: 'local_only',
-            createdAt: Number(value.createdAt) > 0 ? Number(value.createdAt) : 0
+            createdAt: createdAt
         };
 
         if (type === 'text') {
@@ -105,7 +107,6 @@
             if (caption) message.caption = caption;
         }
 
-        if (!message.createdAt) return null;
         return message;
     }
 
@@ -126,7 +127,7 @@
                 ok: true,
                 conversationRef: clone(ref),
                 messages: [],
-                meta: { found: false, localOnly: true, schemaVersion: VERSION }
+                meta: { found: false, localOnly: true, syncState: 'not_connected', schemaVersion: VERSION }
             };
         }
 
@@ -142,8 +143,13 @@
         }
 
         var messages = [];
+        var seenMids = Object.create(null);
         for (var i = 0; i < parsed.messages.length; i++) {
             var normalized = normalizeMessage(parsed.messages[i]);
+            if (normalized && seenMids[normalized.mid]) {
+                return resultError('corrupt_history', { invalidIndex: i, reason: 'duplicate_message_id' });
+            }
+            if (normalized) seenMids[normalized.mid] = true;
             if (!normalized || normalized.mid !== parsed.messages[i].mid ||
                 normalized.type !== parsed.messages[i].type ||
                 parsed.messages[i].sender !== 'self' ||
