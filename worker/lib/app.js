@@ -8,6 +8,8 @@ import {
   PushConfigError, parseVapidKeys, sendWebPush
 } from './webpush.js';
 import '../../shared/js/phone/character-schedule-policy.js';
+import { planTask, nextRetryAt } from './scheduler-policy.js';
+import { createSchedulerGate } from './scheduler-gate.js';
 
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -133,6 +135,21 @@ function parseNonNegativeEnv(env, name) {
   if (raw == null || String(raw).trim() === '') return null;
   const value = Number(raw);
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function readActivityExecutionConfig(env) {
+  const leaseMs = parsePositiveEnv(env, 'AUTONOMY_LEASE_MS');
+  const tickLimit = parsePositiveEnv(env, 'AUTONOMY_TICK_LIMIT');
+  const rawBackoff = String(env?.AUTONOMY_RETRY_BACKOFF_MS || '').trim();
+  const retryBackoffMs = rawBackoff
+    ? rawBackoff.split(',').map(value => Number(value.trim()))
+    : [];
+  if (
+    leaseMs == null || tickLimit == null || tickLimit > 50 ||
+    retryBackoffMs.length === 0 || retryBackoffMs.length > 8 ||
+    !retryBackoffMs.every(value => Number.isSafeInteger(value) && value > 0)
+  ) return null;
+  return { leaseMs, tickLimit, retryBackoffMs, maxAttempts: retryBackoffMs.length + 1 };
 }
 
 function readPresenceConfig(env) {
@@ -815,6 +832,278 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     return ok(result);
   }
 
+  async function enqueueAutonomyActivity(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).some(key => key !== 'contextVersion')) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_REQUEST', '活动请求只允许包含 contextVersion，不接受聊天正文或角色设定');
+    }
+    const contextVersion = Number(body.contextVersion);
+    if (!Number.isSafeInteger(contextVersion) || contextVersion < 1) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_CONTEXT', 'contextVersion 必须是正整数');
+    }
+
+    const userId = device.user_id || OWNER_USER_ID;
+    const globalAutonomy = await store.getUserAutonomy(userId);
+    const characterAutonomy = await store.getCharacterAutonomy(userId, characterId);
+    const characterEnabled = characterAutonomy?.enabled == null
+      ? globalAutonomy?.enabled === 1
+      : characterAutonomy.enabled === 1;
+    if (globalAutonomy?.enabled !== 1 || !characterEnabled) {
+      throw new ApiError(403, 'AUTONOMY_NOT_AUTHORIZED', '当前账号或角色尚未授权自主活动');
+    }
+
+    const currentVersion = await store.getCharacterContextVersion(userId, characterId);
+    if (!currentVersion || Number(currentVersion.version) !== contextVersion) {
+      throw new ApiError(409, 'STALE_CONTEXT', '本机聊天上下文版本已变化，请刷新后重新评估');
+    }
+    const config = readActivityExecutionConfig(env);
+    if (!config) {
+      throw new ApiError(503, 'ACTIVITY_EXECUTOR_NOT_CONFIGURED', '缺少自主活动租约、批量或重试配置');
+    }
+    if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
+      throw new ApiError(429, 'ACTIVITY_QUEUE_FULL', '该角色已有过多待处理活动');
+    }
+
+    const timestamp = now();
+    const dedupeKey = [
+      'autonomy-v1', encodeURIComponent(userId), encodeURIComponent(characterId),
+      'contact', String(contextVersion)
+    ].join(':');
+    const result = await store.enqueueActivity({
+      id: randomToken(16),
+      deviceId: device.id,
+      characterId,
+      kind: 'contact',
+      scheduledAt: timestamp,
+      maxAttempts: config.maxAttempts,
+      payload: { contextVersion },
+      dedupeKey,
+      now: timestamp
+    });
+    if (result.conflict) {
+      throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '该活动幂等键已被不同任务占用');
+    }
+    return ok({
+      queued: true,
+      duplicate: result.duplicate === true,
+      activityId: result.activity?.id || null,
+      scheduledAt: result.activity ? Number(result.activity.scheduled_at) : timestamp
+    });
+  }
+
+  async function claimAutonomyActivity(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 0) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_CLAIM', '认领请求不接受额外字段');
+    }
+    const config = readActivityExecutionConfig(env);
+    if (!config) {
+      throw new ApiError(503, 'ACTIVITY_EXECUTOR_NOT_CONFIGURED', '缺少自主活动租约、批量或重试配置');
+    }
+
+    const timestamp = now();
+    const userId = device.user_id || OWNER_USER_ID;
+    const gate = createSchedulerGate({
+      store,
+      now: () => timestamp,
+      config: readPresenceConfig(env) || {}
+    });
+    const tasks = await store.listDueActivitiesForUser({
+      userId,
+      characterId,
+      now: timestamp,
+      limit: Math.min(config.tickLimit, 20)
+    });
+
+    let blockedReason = 'no_due_activity';
+    for (const task of tasks) {
+      const decision = planTask(task, {
+        now: timestamp,
+        config,
+        gate,
+        owner: device.id
+      });
+      if (decision.action === 'supersede') {
+        await store.supersedeActivity({
+          id: decision.taskId,
+          expectedAttemptCount: decision.expectedAttemptCount,
+          expectedStatus: decision.expectedStatus,
+          now: timestamp
+        });
+        blockedReason = decision.reason;
+        continue;
+      }
+      if (decision.action === 'fail') {
+        await store.failExhaustedActivity({
+          id: decision.taskId,
+          expectedAttemptCount: decision.expectedAttemptCount,
+          expectedStatus: decision.expectedStatus,
+          expectedLockedBy: decision.expectedLockedBy,
+          expectedLockedUntil: decision.expectedLockedUntil,
+          now: timestamp
+        });
+        blockedReason = decision.reason;
+        continue;
+      }
+      if (decision.action !== 'claim') {
+        blockedReason = decision.reason || blockedReason;
+        continue;
+      }
+
+      const claimed = await store.claimActivityForDevice({
+        id: decision.taskId,
+        expectedAttemptCount: decision.expectedAttemptCount,
+        expectedStatus: decision.expectedStatus,
+        expectedDeviceId: task.device_id,
+        expectedLockedBy: decision.expectedLockedBy || null,
+        expectedLockedUntil: decision.expectedLockedUntil,
+        deviceId: device.id,
+        userId,
+        owner: device.id,
+        leaseUntil: decision.leaseUntil,
+        now: timestamp
+      });
+      if (!claimed) {
+        blockedReason = 'claim_lost';
+        continue;
+      }
+
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId: device.id,
+        kind: 'autonomy_device_executor',
+        status: 'claimed',
+        reasonCode: 'device_executor_claimed',
+        detail: { activityId: claimed.id, characterId, attemptCount: Number(claimed.attempt_count) },
+        now: timestamp
+      });
+      let payload;
+      try {
+        payload = JSON.parse(claimed.payload_json);
+      } catch {
+        payload = null;
+      }
+      if (!payload || !Number.isSafeInteger(Number(payload.contextVersion)) || Number(payload.contextVersion) < 1) {
+        await store.failActivity({
+          id: claimed.id,
+          owner: device.id,
+          attemptCount: Number(claimed.attempt_count),
+          now: timestamp,
+          nextAttemptAt: null
+        });
+        throw new ApiError(500, 'ACTIVITY_PAYLOAD_INVALID', '活动上下文元数据无法解析');
+      }
+      return ok({
+        activity: {
+          id: claimed.id,
+          characterId: claimed.character_id,
+          kind: claimed.kind,
+          attemptCount: Number(claimed.attempt_count),
+          leaseUntil: Number(claimed.locked_until),
+          payload: { contextVersion: Number(payload.contextVersion) }
+        }
+      });
+    }
+    return ok({ activity: null, reasonCode: blockedReason });
+  }
+
+  async function completeAutonomyActivity(request, activityId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).some(key => !['attemptCount', 'text'].includes(key)) ||
+        !Object.prototype.hasOwnProperty.call(body, 'attemptCount') ||
+        !Object.prototype.hasOwnProperty.call(body, 'text')) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '完成请求只允许包含 attemptCount 和 text');
+    }
+    const attemptCount = Number(body.attemptCount);
+    const messageText = String(body.text || '').trim();
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 ||
+        messageText.length < 2 || Array.from(messageText).length > 220 ||
+        /[<>\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(messageText) ||
+        /https?:\/\//i.test(messageText)) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息必须是 2–220 字的普通文字');
+    }
+
+    const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
+    const timestamp = now();
+    const result = await store.completeActivityWithOutbound({
+      id: activityId,
+      owner: device.id,
+      attemptCount,
+      now: timestamp,
+      serverMessageId,
+      dedupeKey: 'autonomy:' + activityId + ':' + attemptCount,
+      payload: { type: 'text', text: messageText }
+    });
+    if (!result) {
+      throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
+    }
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId: device.id,
+      kind: 'autonomy_device_executor',
+      status: 'success',
+      reasonCode: result.alreadyCompleted ? 'activity_already_completed' : 'activity_message_enqueued',
+      detail: { activityId, serverMessageId },
+      now: timestamp
+    });
+    return ok(result);
+  }
+
+  async function failAutonomyActivity(request, activityId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).some(key => !['attemptCount', 'reasonCode'].includes(key)) ||
+        !Object.prototype.hasOwnProperty.call(body, 'attemptCount') ||
+        !Object.prototype.hasOwnProperty.call(body, 'reasonCode')) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_FAILURE', '失败请求只允许包含 attemptCount 和 reasonCode');
+    }
+    const attemptCount = Number(body.attemptCount);
+    const allowedReasons = new Set([
+      'model_unavailable', 'generation_failed', 'generation_empty', 'local_context_unavailable'
+    ]);
+    const reasonCode = String(body.reasonCode || '');
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || !allowedReasons.has(reasonCode)) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_FAILURE', '活动失败原因或 attemptCount 无效');
+    }
+    const config = readActivityExecutionConfig(env);
+    if (!config) {
+      throw new ApiError(503, 'ACTIVITY_EXECUTOR_NOT_CONFIGURED', '缺少自主活动重试配置');
+    }
+    const timestamp = now();
+    const nextAttemptAt = nextRetryAt({
+      attemptCount,
+      now: timestamp,
+      retryBackoffMs: config.retryBackoffMs,
+      maxAttempts: config.maxAttempts
+    });
+    const failed = await store.failActivity({
+      id: activityId,
+      owner: device.id,
+      attemptCount,
+      now: timestamp,
+      nextAttemptAt
+    });
+    if (!failed) {
+      throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
+    }
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId: device.id,
+      kind: 'autonomy_device_executor',
+      status: nextAttemptAt ? 'retry' : 'failed',
+      reasonCode,
+      detail: { activityId, attemptCount, retryScheduled: Boolean(nextAttemptAt) },
+      now: timestamp
+    });
+    return ok({ failed: true, retryScheduled: Boolean(nextAttemptAt), nextAttemptAt });
+  }
+
   async function getCharacterSchedule(request, characterId) {
     const device = await authenticate(request);
     const row = await store.getCharacterSchedule(device.user_id || OWNER_USER_ID, characterId);
@@ -979,6 +1268,28 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         if (method === 'POST') {
           return await acknowledgeCharacterOutboundMessage(request, characterId, characterOutboundAckMatch[2]);
         }
+      }
+
+      const autonomyActivityMatch = /^\/api\/autonomy\/characters\/([^/]+)\/activities$/.exec(path);
+      if (autonomyActivityMatch && readCharacterId(autonomyActivityMatch[1])) {
+        const characterId = readCharacterId(autonomyActivityMatch[1]);
+        if (method === 'POST') return await enqueueAutonomyActivity(request, characterId);
+      }
+
+      const autonomyClaimMatch = /^\/api\/autonomy\/characters\/([^/]+)\/activities\/claim$/.exec(path);
+      if (autonomyClaimMatch && readCharacterId(autonomyClaimMatch[1])) {
+        const characterId = readCharacterId(autonomyClaimMatch[1]);
+        if (method === 'POST') return await claimAutonomyActivity(request, characterId);
+      }
+
+      const autonomyCompleteMatch = /^\/api\/autonomy\/activities\/([A-Za-z0-9_-]{16,64})\/complete$/.exec(path);
+      if (autonomyCompleteMatch && method === 'POST') {
+        return await completeAutonomyActivity(request, autonomyCompleteMatch[1]);
+      }
+
+      const autonomyFailMatch = /^\/api\/autonomy\/activities\/([A-Za-z0-9_-]{16,64})\/fail$/.exec(path);
+      if (autonomyFailMatch && method === 'POST') {
+        return await failAutonomyActivity(request, autonomyFailMatch[1]);
       }
 
       const characterScheduleMatch = /^\/api\/characters\/([^/]+)\/schedule$/.exec(path);
