@@ -179,6 +179,12 @@ async function main() {
       { kind: 'contact', id: 'role-c' }
     ]);
     assert.match(await page.locator('#permValue').innerText(), /部分可见/);
+    const visibleReview = await page.locator('.audience-review').innerText();
+    assert.match(visibleReview, /角色甲/);
+    assert.match(visibleReview, /角色乙/);
+    assert.match(visibleReview, /角色丙/);
+    assert.doesNotMatch(visibleReview, /角色丁/,
+      'the @mentioned contact must not be implied to be in the visible audience');
     await page.locator('#permClose').click();
     await page.locator('#rowMentions').click();
     await page.locator('.mention-option[data-cid="role-d"]').click();
@@ -209,6 +215,11 @@ async function main() {
       { kind: 'group', id: friendsGroup.id },
       { kind: 'contact', id: 'role-d' }
     ]);
+    const excludedReview = await page.locator('.audience-review').innerText();
+    assert.match(excludedReview, /角色甲/);
+    assert.match(excludedReview, /角色乙/);
+    assert.match(excludedReview, /角色丁/);
+    assert.doesNotMatch(excludedReview, /角色丙/);
     await page.locator('#permClose').click();
     const excludedPost = await publishAndRead(page, '排除名单动态：家人和单独联系人不可见');
     assert.equal(excludedPost.visibility, 'excluded');
