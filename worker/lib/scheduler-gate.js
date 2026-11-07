@@ -11,7 +11,6 @@ import '../../shared/js/phone/character-schedule-policy.js';
 import { REASON_CODES } from './scheduler-policy.js';
 
 const POLICY = globalThis.CharacterSchedulePolicy;
-const OWNER_USER_ID = 'owner';
 const CONTEXT_TASK_KINDS = new Set(['contact', 'follow_up', 'busy_reply', 'diary']);
 
 function deny(reasonCode, extra = {}) {
@@ -79,6 +78,10 @@ export function createSchedulerGate({ store, now = Date.now, config = {} } = {})
 
     const characterId = String(task?.character_id || task?.characterId || '');
     if (!characterId) return deny(REASON_CODES.INVALID_TASK);
+    // Tenant scope must come from the queue row's owning device join. Never
+    // silently evaluate another account's task under the legacy "owner" user.
+    const userId = String(task?.user_id || task?.userId || '').trim();
+    if (!userId) return deny(REASON_CODES.GATE_DATA_MISSING);
 
     if (!store || typeof store.getSchedulerGateSnapshot !== 'function') {
       return deny(REASON_CODES.GATE_DATA_SOURCE_MISSING);
@@ -87,14 +90,14 @@ export function createSchedulerGate({ store, now = Date.now, config = {} } = {})
     let snapshot;
     try {
       snapshot = store.getSchedulerGateSnapshot({
-        userId: OWNER_USER_ID,
+        userId,
         characterId
       });
     } catch {
       return deny(REASON_CODES.GATE_PROVIDER_ERROR);
     }
 
-    if (!hasRequiredSnapshot(snapshot)) {
+    if (!hasRequiredSnapshot(snapshot) || snapshot.userId !== userId) {
       return deny(REASON_CODES.GATE_DATA_MISSING);
     }
     if (!POLICY || typeof POLICY.evaluate !== 'function') {
@@ -105,7 +108,7 @@ export function createSchedulerGate({ store, now = Date.now, config = {} } = {})
     try {
       evaluated = POLICY.evaluate({
         nowMs: timestamp,
-        userId: snapshot.userId || OWNER_USER_ID,
+        userId,
         characterId,
         timeZone: snapshot.timeZone,
         schedule: snapshot.schedule,
