@@ -2769,3 +2769,20 @@ test('出站消息不能跨设备或跨角色读取与确认', async () => {
   const ownerPull = await ctx.asJson('/api/characters/char-a/outbound', { device: deviceA });
   assert.equal(ownerPull.payload.messages.length, 1);
 });
+
+
+test('客户端只在消息持久化回调确认成功后才确认云端出站消息', () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const start = clientSource.indexOf('async function receiveCharacterOutboundMessages(');
+  const end = clientSource.indexOf('  function flushCharacterContextVersion(', start);
+  assert.ok(start >= 0 && end > start, '客户端必须提供独立的出站接收处理器');
+  const receiver = clientSource.slice(start, end);
+  const persistIndex = receiver.indexOf('await persistMessage(message.payload, message)');
+  const guardIndex = receiver.indexOf('if (persisted !== true)');
+  const ackIndex = receiver.indexOf('await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId)');
+  assert.ok(persistIndex >= 0 && guardIndex > persistIndex && ackIndex > guardIndex,
+    '必须先持久化、检查成功，再确认云端消息');
+  assert.ok(receiver.includes('deferred += 1'), '本地保存失败时必须保留云端待确认消息');
+  assert.ok(clientSource.includes('getCharacterOutboundMessages: getCharacterOutboundMessages'));
+  assert.ok(clientSource.includes('acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage'));
+});
