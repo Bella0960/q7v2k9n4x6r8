@@ -1097,8 +1097,12 @@ class CloudStore {
     )[0];
     if (updated) return { received: true, alreadyReceived: false, ...updated };
     const latest = this.exec(
-      'SELECT device_received_at, local_saved_at, read_at, push_accepted_at FROM outbound_messages WHERE server_message_id = ? AND device_id = ? AND character_id = ?',
-      serverMessageId, deviceId, characterId
+      `SELECT o.device_received_at, o.local_saved_at, o.read_at, o.push_accepted_at
+       FROM outbound_messages o
+       INNER JOIN devices d ON d.id = o.device_id
+       WHERE o.server_message_id = ? AND o.device_id = ? AND o.character_id = ?
+         AND d.user_id = ? AND d.revoked_at IS NULL`,
+      serverMessageId, deviceId, characterId, userId
     )[0];
     return latest
       ? { received: true, alreadyReceived: true, ...latest }
