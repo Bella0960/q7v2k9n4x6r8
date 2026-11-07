@@ -262,3 +262,18 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 **当前 production gate：** Worker 的 scheduled 与 `/internal/tick` 路径没有消息生成 executor，因此 `runTick` 默认 `executorAvailable=false`。即使资格 gate 通过，也会记录 `executor_unavailable` 并保持任务 waiting/retry，不会提前占用成 running。只有未来真实执行器接入并显式声明可执行后，才允许认领任务。
 
 新增 scheduler 契约覆盖：过期 running 回收、并发 CAS、旧 worker completion/failure fencing、lease 过期后的迟到写入拒绝、stale supersede 竞争、重试耗尽终止，以及无 executor 时保持 waiting / 释放过期 lease 且不消耗 attempt。源码语法解析和独立 SQLite SQL 场景检查通过；完整 Node 测试/build 与 Cloudflare runtime 仍需实际执行。
+
+
+### 8.12 Web Push 投递租约、幂等与失败恢复
+
+新增迁移 `0005_push_delivery_retries`，把原本“只要有投递记录就永久跳过”的逻辑改成按 `dedupe_key + subscription_id` 管理的投递状态：
+
+- 投递前先通过 SQLite 原子 UPSERT 取得该订阅的 `sending` 租约；相同事件并发到达时，只有一个请求能取得租约，其他请求返回 `in_progress`，不重复发送。
+- 每次租约包含 owner 与截止时间（60 秒）。Worker 中断后，租约过期的记录可以被另一个请求接管；旧 owner 迟到提交结果时会被 CAS 拒绝。
+- 推送服务成功后记录 `sent`，同一事件之后只做幂等跳过；永久失效的订阅记录为 `gone` 并停用订阅。
+- 网络异常、408、425、429、5xx 被视为临时故障，进入 `error` 并按 30 秒起步的指数退避重试，最多 5 次；410 / 404 不重试，其他永久 4xx 不自动重试。到达退避时间前会返回 `retry_deferred`，不会频繁敲推送服务。
+- 达到最大次数的失败和过期的最终发送租约会进入终态 `failed`。每设备的测试推送速率限制现在统计所有尝试，不再只统计成功请求，避免连续失败时绕过限制。
+- 迁移会将旧版明确属于网络错误或 408 / 425 / 429 / 5xx 的失败记录恢复为可重试；已成功、gone 和其他永久失败记录继续保留去重语义。
+- 外部推送服务可能已接收请求、但 Worker 在收到响应前断线；这种不确定结果只能按 at-least-once 恢复，极端情况下仍可能重复显示一条通知。不能把第三方 Web Push 宣称成严格 exactly-once。
+
+这只是 Web Push 投递底座加固，不会生成消息、不读取聊天正文、不调用模型，也不表示角色已经开始主动发消息。测试、Worker 部署和锁屏真机投递仍需独立验收。
