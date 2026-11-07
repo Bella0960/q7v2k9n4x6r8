@@ -487,3 +487,56 @@ test('invalid, incomplete, duplicate, or stale server snapshots never partially 
   assert.equal(stale.error, 'stale_server_snapshot');
   assert.equal(directory.get('account_friend_05').displayName, '服务器好友');
 });
+
+test('legacy ownerless accepted rows migrate only after the active server account confirms the relationship', () => {
+  const legacy = JSON.stringify([{
+    id: 'account_friend_06',
+    displayName: '旧本地昵称',
+    status: 'accepted',
+    source: 'server',
+    requestId: 'legacy_request_006',
+    createdAt: 4900,
+    updatedAt: 4900,
+    acceptedAt: 4900
+  }]);
+  const { directory } = createDirectoryRuntime({ initialDirectory: legacy });
+  directory.setActiveAccountId('account_owner_06');
+
+  const synced = directory.syncServerSnapshot(serverRoster('account_owner_06', [
+    acceptedServerFriend('account_friend_06', 'server_request_006', 5000, {
+      displayName: '服务器确认的新昵称'
+    })
+  ], 5100), 'account_owner_06', { now: 5200 });
+
+  assert.equal(synced.ok, true);
+  const all = directory.readResult().contacts;
+  assert.equal(all.length, 1);
+  assert.equal(all[0].ownerAccountId, 'account_owner_06');
+  assert.equal(all[0].displayName, '服务器确认的新昵称');
+  assert.equal(all[0].requestId, 'server_request_006');
+
+  directory.setActiveAccountId('account_owner_07');
+  assert.equal(directory.read({ status: 'accepted' }).contacts.length, 0);
+});
+
+test('lifecycle changes for one account never mutate the same friend ID stored for another account', () => {
+  const { directory } = createDirectoryRuntime();
+  const friendId = 'account_friend_08';
+  directory.setActiveAccountId('account_owner_08');
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_08', [
+    acceptedServerFriend(friendId, 'server_request_owner8', 5300)
+  ], 5400), 'account_owner_08', { now: 5500 }).ok, true);
+
+  directory.setActiveAccountId('account_owner_09');
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_09', [
+    acceptedServerFriend(friendId, 'server_request_owner9', 5600)
+  ], 5700), 'account_owner_09', { now: 5800 }).ok, true);
+
+  directory.setActiveAccountId('account_owner_08');
+  const removed = directory.removeFriend(friendId, { requestId: 'server_request_owner8', now: 5900 });
+  assert.equal(removed.ok, true);
+  const records = directory.readResult().contacts.filter(item => item.id === friendId);
+  assert.equal(records.length, 2);
+  assert.equal(records.find(item => item.ownerAccountId === 'account_owner_08').status, 'removed');
+  assert.equal(records.find(item => item.ownerAccountId === 'account_owner_09').status, 'accepted');
+});
