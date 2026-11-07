@@ -190,3 +190,12 @@ test('PWA shell and package contracts include the chat vision runtime', () => {
   assert.ok(packageJson.scripts['test:chat:image-vision']);
   assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-image-vision.test.mjs'));
 });
+
+
+test('forwarding an asset-backed chat image adds a destination chat reference', () => {
+  assert.ok(chatDetailSource.includes('async function forwardMessage(msg, targetId, targetName)'));
+  assert.ok(chatDetailSource.includes("_chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid))"));
+  assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
+  assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
+  assert.ok(chatDetailSource.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
+});
