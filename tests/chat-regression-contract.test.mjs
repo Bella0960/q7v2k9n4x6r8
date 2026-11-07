@@ -2250,3 +2250,14 @@ test('WeChat Moments keeps the cover action menu available', () => {
     'the visual refinement must not hide the cover action menu trigger'
   );
 });
+
+
+test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡触发', () => {
+  assert.match(detail, /row\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
+  assert.match(detail, /new IntersectionObserver\(/);
+  assert.match(detail, /root: chatMessages, threshold: \[0\.18, 0\.5\]/);
+  assert.match(detail, /cloud\.markCharacterOutboundRead\(roleId, serverMessageId\)/);
+  assert.match(detail, /\}, 700\);/);
+  assert.match(detail, /document\.visibilityState === 'hidden'/);
+  assert.match(detail, /OUTBOUND/);
+});
