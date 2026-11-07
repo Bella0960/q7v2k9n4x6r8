@@ -85,6 +85,7 @@ test('avatar candidate prompts are issued only for explicit single-avatar or cou
 test('avatar intent is classified from current user text and rejects negated or ambiguous requests', () => {
   const api = createVision();
   assert.equal(api.classifyAvatarIntent('帮你换头像'), 'single');
+  assert.equal(api.classifyAvatarIntent('能不能帮你换头像？'), 'single');
   assert.equal(api.classifyAvatarIntent('帮我们把这两张配成一组情头'), 'pair');
   assert.equal(api.classifyAvatarIntent('我要一对情侣头像'), 'pair');
   assert.equal(api.classifyAvatarIntent('给我们配一对情侣头像'), 'pair');
