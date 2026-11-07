@@ -32,12 +32,13 @@ Voice messages are file attachments. Live voice/video calls are not included and
 ## Activation prerequisites
 
 1. Create a D1 database in the user's Cloudflare account and configure a real `DB` binding; this change does not add a placeholder database ID to `wrangler.jsonc`.
-2. Apply the migration to a staging database first and validate all triggers and foreign keys.
-3. Implement password hashing and constant-time verification, opaque random session tokens stored only as hashes, CSRF/origin protections for cookie sessions, rate limiting, account recovery, and session revocation.
-4. Implement server-owned friend-code rotation and friend-request transitions with idempotency.
-5. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
-6. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
-7. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
-8. Only then change the Worker capability endpoint to report messaging enabled.
+2. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER` and explicitly set `REAL_USER_AUTH_ENABLED=true` only after the D1 migration has been applied and reviewed.
+3. Apply the migration to a staging database first and validate all triggers and foreign keys.
+4. The Worker now implements PBKDF2-HMAC-SHA256 password derivation (600,000 iterations), opaque random session tokens stored only as hashes, HttpOnly/Secure/SameSite=Strict cookies, same-origin checks, mandatory IP/handle rate limiting, and logout revocation. Account recovery, email verification, and native two-factor support remain unimplemented.
+5. Implement server-owned friend-code rotation and friend-request transitions with idempotency.
+6. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
+7. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
+8. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
+9. Only then change the Worker capability endpoint to report messaging enabled.
 
 This is schema groundwork, not a working account or messaging service. Until the above work is completed and verified, the Worker remains disabled and the local repository remains `local_only`.
