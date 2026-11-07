@@ -499,7 +499,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 | `POST /api/characters/:id/outbound/:messageId/ack` | 原有接口不变；写后读回成功后确认本地保存，同时兼容补记 received |
 | `POST /api/characters/:id/outbound/:messageId/read` | 本地保存后才可确认用户已读；只允许原目标设备、原角色回执 |
 
-出站 GET 仍返回原 payload，并附带 `lifecycle`：`pushAcceptedAt`、`deviceReceivedAt`、`localSavedAt`、`readAt`。所有时间均是服务端时间戳；没有相应事件时为 null。 消息保存后不再出现在 pending 列表，但目标设备仍可通过 status GET 查询完整生命周期及 `readByDeviceId`；客户端 `MaomaoCloud.getCharacterOutboundLifecycle()` 暴露该只读查询。
+出站 GET 仍返回原 payload，并附带 `lifecycle`：`pushAcceptedAt`、`deviceReceivedAt`、`localSavedAt`、`readAt`。所有时间均是服务端时间戳；没有相应事件时为 null。 消息保存后不再出现在 pending 列表，但目标设备仍可通过 status GET 查询完整生命周期及 `readByDeviceId`；客户端 `MaomaoCloud.getCharacterOutboundLifecycle()` 暴露该只读查询。 该查询包括 `deliveryStatus` 和四个服务端时间戳，且只接受原目标设备的鉴权凭据。
 
 ### 16.3 用户已读的判定方式
 
@@ -515,7 +515,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 未保存消息不能被标记已读；错误设备或错误角色不能伪造收到、保存或已读回执。
 - 重复 received/read 回执必须幂等；时间戳恰好相同的快速重复请求不会误判首次/重复状态。
 - 客户端接收顺序固定为 received → persist → check true → local-saved ACK；聊天页面只有实际可视消息气泡才能上报 read。
-- Service Worker shell cache 更新至 `phone-app-pwa-v178`，聊天页云端回执客户端资源版本为 `20261107v1`。
+- Service Worker shell cache 更新至 `phone-app-pwa-v179`，聊天页云端回执客户端资源版本为 `20261107v1`。
 
 ### 16.5 语义边界
 
