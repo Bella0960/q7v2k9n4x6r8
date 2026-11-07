@@ -80,12 +80,23 @@
     }
 
     /* ---------- 会话展示信息（角色/群聊统一） ---------- */
+    function contactIdentity(type, id) {
+        var identity = global.PhoneContactIdentity;
+        if (identity && typeof identity.create === 'function') return identity.create(type, id);
+        var safeId = String(id == null ? '' : id).trim();
+        return safeId ? { type: type, id: safeId, key: type + ':' + encodeURIComponent(safeId), conversationId: type === 'real_user' ? type + ':' + encodeURIComponent(safeId) : safeId } : null;
+    }
+
     function buildContactIndex() {
-        var map = {}; // id -> {id, name, avatar, isGroup}
+        var map = {}; // legacy conversation ID -> contact, with a typed identity attached
         readCharacters().forEach(function (c) {
             if (c && c.id != null) {
-                map[String(c.id)] = {
-                    id: String(c.id),
+                var roleId = String(c.id);
+                map[roleId] = {
+                    id: roleId,
+                    contactRef: contactIdentity('ai_role', roleId),
+                    contactKey: contactIdentity('ai_role', roleId).key,
+                    contactType: 'ai_role',
                     name: c.name || c.nickname || '角色',
                     avatar: c.avatar || '',
                     persona: c.persona || c.prompt || '',
@@ -96,8 +107,12 @@
         });
         readGroups().forEach(function (g) {
             if (g && g.id != null) {
-                map[String(g.id)] = {
-                    id: String(g.id),
+                var groupId = String(g.id);
+                map[groupId] = {
+                    id: groupId,
+                    contactRef: contactIdentity('chat_group', groupId),
+                    contactKey: contactIdentity('chat_group', groupId).key,
+                    contactType: 'chat_group',
                     name: g.name || '群聊',
                     avatar: g.avatar || '',
                     isGroup: true
@@ -106,6 +121,42 @@
         });
         return map;
     }
+
+    // Resolve typed references without changing existing chat_history_<id> keys.
+    // A bare legacy ID is only resolved when it maps to exactly one contact type.
+    ChatNotifier.getContactIdentity = function (value, type) {
+        var identity = global.PhoneContactIdentity;
+        if (value && typeof value === 'object') {
+            return identity && typeof identity.normalize === 'function' ? identity.normalize(value) : null;
+        }
+        if (typeof value === 'string' && value.indexOf(':') > 0 && identity && typeof identity.parseKey === 'function') {
+            return identity.parseKey(value);
+        }
+        var id = String(value == null ? '' : value).trim();
+        if (!id) return null;
+        if (type) return contactIdentity(type, id);
+        var matches = [];
+        if (readCharacters().some(function (item) { return item && String(item.id) === id; })) matches.push(contactIdentity('ai_role', id));
+        if (readGroups().some(function (item) { return item && String(item.id) === id; })) matches.push(contactIdentity('chat_group', id));
+        return matches.length === 1 ? matches[0] : null;
+    };
+
+    ChatNotifier.resolveContact = function (value) {
+        var ref = ChatNotifier.getContactIdentity(value);
+        if (!ref) return null;
+        var source = ref.type === 'ai_role' ? readCharacters() : (ref.type === 'chat_group' ? readGroups() : []);
+        var record = source.find(function (item) { return item && String(item.id) === ref.id; });
+        if (!record) return null;
+        return {
+            id: ref.id,
+            contactRef: ref,
+            contactKey: ref.key,
+            contactType: ref.type,
+            name: record.name || record.nickname || (ref.type === 'chat_group' ? '群聊' : '角色'),
+            avatar: record.avatar || '',
+            isGroup: ref.type === 'chat_group'
+        };
+    };
 
     /* ---------- 未读统计 ---------- */
     // 统计单个会话未读：该会话里 time > lastread 的 assistant 消息条数
