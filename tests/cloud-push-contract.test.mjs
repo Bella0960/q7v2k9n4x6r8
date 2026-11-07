@@ -675,6 +675,107 @@ test('前台心跳续期间隔限制在浏览器安全定时器范围内', () =>
   assert.equal(getInterval(Number.POSITIVE_INFINITY, 60000), null, '非有限配置必须 fail-closed');
 });
 
+test('前台聊天页会响应跨标签页保存和网络恢复事件重试版本同步', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const documentListeners = new Map();
+  const windowListeners = new Map();
+  const local = new Map([[
+    'cloud_device_v1',
+    JSON.stringify({ deviceId: 'device-id-123456', secret: 's'.repeat(32) })
+  ]]);
+  const calls = [];
+  let clearedInterval = null;
+  const browserWindow = {
+    addEventListener(name, callback) { windowListeners.set(name, callback); },
+    removeEventListener(name, callback) {
+      if (windowListeners.get(name) === callback) windowListeners.delete(name);
+    },
+    setInterval(callback, delay) {
+      assert.equal(delay, 40000);
+      return 55;
+    },
+    clearInterval(id) { clearedInterval = id; }
+  };
+  const browserDocument = {
+    currentScript: null,
+    visibilityState: 'visible',
+    addEventListener(name, callback) { documentListeners.set(name, callback); },
+    removeEventListener(name, callback) {
+      if (documentListeners.get(name) === callback) documentListeners.delete(name);
+    }
+  };
+  const localStorageStub = {
+    getItem(key) { return local.has(key) ? local.get(key) : null; },
+    setItem(key, value) { local.set(key, String(value)); },
+    removeItem(key) { local.delete(key); }
+  };
+  const response = (payload, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => payload
+  });
+  const fetchStub = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url, body });
+    if (url === '/api/presence/config') {
+      return response({ ok: true, heartbeatTtlMs: 120000, leaseDurationMs: 120000 });
+    }
+    if (url === '/api/presence/heartbeat') return response({ ok: true });
+    if (url === '/api/characters/role-123/lease') {
+      return body.action === 'renew'
+        ? response({ ok: false, error: { code: 'LEASE_NOT_OWNED', message: 'not owner' } }, 409)
+        : response({ ok: true, acquired: true });
+    }
+    if (url === '/api/characters/role-123/context-version' && options.method === 'POST') {
+      return response({ ok: true, changed: true, version: 1, updatedAt: Date.now() });
+    }
+    throw new Error('Unexpected request: ' + url);
+  };
+
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: browserDocument,
+    localStorage: localStorageStub,
+    fetch: fetchStub,
+    console: { warn() {}, log() {}, error() {} },
+    URL,
+    btoa
+  });
+
+  const manager = await browserWindow.MaomaoCloud.startCharacterPresence('role-123');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(windowListeners.has('storage'), true, '聊天页应监听其他标签页的待同步事件');
+  assert.equal(windowListeners.has('online'), true, '聊天页应监听浏览器网络恢复事件');
+
+  const pendingKey = 'cloud_context_pending_v1:role-123';
+  local.set(pendingKey, 'cross_tab_context_event_0001');
+  windowListeners.get('storage')({
+    key: pendingKey,
+    newValue: 'cross_tab_context_event_0001'
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  local.set(pendingKey, 'network_restore_event_0002');
+  windowListeners.get('online')();
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  const contextCalls = calls.filter(call =>
+    call.url === '/api/characters/role-123/context-version'
+  );
+  assert.deepEqual(contextCalls.map(call => call.body.eventId), [
+    'cross_tab_context_event_0001',
+    'network_restore_event_0002'
+  ]);
+  assert.ok(contextCalls.every(call =>
+    Object.keys(call.body).length === 1 && Object.keys(call.body)[0] === 'eventId'
+  ), '重试仍然只提交随机事件 ID');
+
+  manager.stop();
+  assert.equal(windowListeners.has('storage'), false, '停止管理器时必须移除 storage 监听');
+  assert.equal(windowListeners.has('online'), false, '停止管理器时必须移除 online 监听');
+  assert.equal(clearedInterval, 55);
+});
+
 test('首次心跳临时失败后前台管理器仍会在下一轮自动重试', async () => {
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   const listeners = new Map();
