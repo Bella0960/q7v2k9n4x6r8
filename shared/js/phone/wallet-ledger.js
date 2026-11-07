@@ -109,6 +109,22 @@
     return !!verified && !verified.some(function (item) { return item.id === transactionId; });
   }
 
+  function getPendingCheckout(channel) {
+    channel = String(channel || '').trim().slice(0, 32);
+    if (!channel) return null;
+    var rows = readPendingCheckouts();
+    if (!rows) return null;
+    var item = rows.find(function (row) { return row.channel === channel; });
+    if (!item) return undefined;
+    return {
+      id: item.id,
+      channel: item.channel,
+      signature: item.signature,
+      paymentMethod: item.paymentMethod || 'normal',
+      createdAt: item.createdAt
+    };
+  }
+
   function isPendingCheckout(transactionId) {
     transactionId = String(transactionId || '');
     if (!transactionId) return false;
@@ -145,6 +161,7 @@
     getOrCreatePendingCheckout: getOrCreatePendingCheckout,
     cancelPendingCheckout: cancelPendingCheckout,
     isPendingCheckout: isPendingCheckout,
+    getPendingCheckout: getPendingCheckout,
     completePendingCheckout: completePendingCheckout,
     supportsCrossTabLock: function () {
       return !!(global.navigator && global.navigator.locks &&
