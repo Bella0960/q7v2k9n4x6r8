@@ -206,7 +206,7 @@ test('character profile loads the shared media stack before the avatar library a
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
   const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v6');
-  const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v6');
+  const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v10');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
   assert.ok(characterPage.includes('id="avatarLibraryGrid"') === false,
@@ -258,9 +258,9 @@ test('deleting a character releases only that character avatar references after 
 });
 
 test('PWA shell caches the role portrait archive and its runtime at v178', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v184'"));
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v190'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
-  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v6'"));
+  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v10'"));
   assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v6'"));
 });
 
