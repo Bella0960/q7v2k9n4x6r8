@@ -330,7 +330,29 @@ async function main() {
       'the owner can still see their own post even when it excludes a group');
     console.log('PASS Moments: excluded group/contact blocks opted-in AI recipients');
 
-    // Changing group membership later must not rewrite an already-published post's recipient snapshot.
+    // If the current contact roster is unreadable, renaming a group must preserve all stored members.
+    await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      window.__originalGetCharacters = PhoneStorage.getCharacters;
+      window.__originalResultGetCharacters = PhoneStorage.result.getCharacters;
+      PhoneStorage.getCharacters = () => [];
+      PhoneStorage.result.getCharacters = () => ({
+        ok: false,
+        error: { code: 'DB_UNAVAILABLE', message: 'simulated unavailable roster' }
+      });
+    });
+    await page.locator('#btnManageContactGroups').click();
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    assert.match(await page.locator('#contactGroupEditStatus').innerText(), /当前联系人列表暂时无法读取/);
+    await page.locator('#contactGroupName').fill('家人（保留成员）');
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    assert.deepEqual(groups.find((group) => group.id === friendsGroup.id).memberIds,
+      ['role-a', 'role-b', 'role-ghost'],
+      'an unreadable contact roster cannot be interpreted as every member being deleted');
+    console.log('PASS Contacts: preserve existing group members when contact roster is unavailable');
+
+    // With a readable roster, editing can safely clean dangling members.
     await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
     await page.locator('#btnManageContactGroups').click();
     await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
