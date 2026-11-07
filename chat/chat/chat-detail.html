@@ -3348,6 +3348,28 @@
             });
         });
 
+        // Release only the chat-message reference after a deletion has been saved.
+        // If a role avatar or another feature still uses the same asset, removeAsset safely refuses.
+        function releaseDeletedChatImageReferences(messages) {
+            if (!_chatImageMediaRepo || !Array.isArray(messages)) return Promise.resolve();
+            return messages.reduce(function (chain, message) {
+                return chain.then(function () {
+                    if (!message || message.type !== 'image' || !message.assetId || !message.mid) return;
+                    return _chatImageMediaRepo.removeRef(
+                        String(message.assetId),
+                        'chat-message',
+                        String(message.mid)
+                    ).then(function (released) {
+                        if (released && released.ok) {
+                            return _chatImageMediaRepo.removeAsset(String(message.assetId));
+                        }
+                    }).catch(function (error) {
+                        console.warn('[ChatImage] 删除消息后的图片引用清理失败:', error && error.message ? error.message : 'unknown');
+                    });
+                });
+            }, Promise.resolve());
+        }
+
         function appendMessageToDOM(msg, idx, container) {
             // 虚拟列表模式：无显式容器（或明确指向 chatMessages）的单条追加，重定向进窗口容器，
             // 避免行被挂到窗口之外、脱离虚拟列表管理。传入 DocumentFragment 的批量渲染不受影响。
@@ -7069,10 +7091,17 @@
         document.getElementById('selectDeleteBtn').addEventListener('click', function () {
             if (!selectedTimes.size) { exitSelection(); return; }
             var list = loadMessages();
+            var removedMessages = list.filter(function (m) {
+                return selectedTimes.has(String(m.time || ''));
+            });
             var keep = list.filter(function (m) {
                 return !selectedTimes.has(String(m.time || ''));
             });
-            saveMessages(keep);
+            if (!saveMessages(keep)) {
+                if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
+                return;
+            }
+            releaseDeletedChatImageReferences(removedMessages);
             if (_vl) {
                 vlRefresh();
             } else {
@@ -7083,7 +7112,7 @@
             }
             scrollToBottom(true);
             exitSelection();
-            if (typeof showToast === 'function') showToast('已删除 ' + selectedTimes.size + ' 条消息');
+            if (typeof showToast === 'function') showToast('已删除 ' + removedMessages.length + ' 条消息');
         });
 
         if (chatForm) {
