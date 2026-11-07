@@ -646,7 +646,7 @@
       cleaned.push(bubble);
     }
     var result = cleaned.join('\n\n');
-    return Array.from(result).length <= 220 ? result : '';
+    return result.length <= 220 && Array.from(result).length <= 220 ? result : '';
   }
   function buildProactiveContactPrompt(contact, history, options) {
     options = options || {};
