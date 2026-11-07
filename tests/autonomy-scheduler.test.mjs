@@ -1151,3 +1151,74 @@ test('活动幂等冲突不允许用不同载荷覆盖原任务', () => {
   assert.equal(conflict.conflict, true);
   assert.deepEqual(JSON.parse(store.getActivity('act_immutable_context_0001').payload_json), { contextVersion: 7 });
 });
+
+
+test('活动结果先不可变落库，收件箱短暂失败后可用同一正文幂等修复', () => {
+  const { store, query } = freshStore();
+  store.insertDevice({
+    id: 'device_recovery_123456',
+    userId: 'owner',
+    secretHash: 'recovery-test',
+    now: NOW
+  });
+  const queued = store.enqueueActivity({
+    id: 'act_result_recovery_0001',
+    deviceId: 'device_recovery_123456',
+    characterId: 'char_recovery',
+    kind: 'contact',
+    scheduledAt: NOW,
+    maxAttempts: 3,
+    payload: { contextVersion: 7 },
+    dedupeKey: 'autonomy-v1:owner:char_recovery:contact:7',
+    now: NOW
+  });
+  assert.equal(queued.inserted, true);
+  const claimed = store.claimActivity({
+    id: queued.activity.id,
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'device_recovery_123456',
+    leaseUntil: NOW + CONFIG.leaseMs,
+    now: NOW
+  });
+  assert.ok(claimed);
+
+  const originalEnqueue = store.enqueueOutboundMessage.bind(store);
+  let rejectOnce = true;
+  store.enqueueOutboundMessage = message => {
+    if (rejectOnce) {
+      rejectOnce = false;
+      return { inserted: false, conflict: true, message: null };
+    }
+    return originalEnqueue(message);
+  };
+
+  const result = {
+    id: claimed.id,
+    owner: 'device_recovery_123456',
+    attemptCount: 1,
+    serverMessageId: 'autonomy_act_result_recovery_0001_1',
+    dedupeKey: 'autonomy:act_result_recovery_0001:1',
+    payload: { type: 'text', text: '这条生成结果必须保持不变。' }
+  };
+  assert.equal(store.completeActivityWithOutbound({ ...result, now: NOW + 1 }), null);
+  const staged = store.getActivity(claimed.id);
+  assert.equal(staged.status, 'completed');
+  assert.equal(staged.result_server_message_id, result.serverMessageId);
+  assert.deepEqual(JSON.parse(staged.result_json), result.payload);
+  assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 0);
+
+  const repaired = store.completeActivityWithOutbound({ ...result, now: NOW + 2 });
+  assert.equal(repaired.completed, true);
+  assert.equal(repaired.alreadyCompleted, true);
+  assert.equal(repaired.outboundInserted, true);
+  assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 1);
+
+  const changedText = store.completeActivityWithOutbound({
+    ...result,
+    now: NOW + 3,
+    payload: { type: 'text', text: '不允许替换已经暂存的结果。' }
+  });
+  assert.equal(changedText, null);
+  assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 1);
+});
