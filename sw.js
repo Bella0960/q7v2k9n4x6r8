@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v191';
+const CACHE_NAME = 'phone-app-pwa-v192';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v191 release: revalidate account and friend profiles when Contacts resumes.
+// v192 release: sync account-scoped server friends into the Contacts roster.
 const APP_SHELL = [
   './',
   './index.html',
@@ -85,9 +85,9 @@ const APP_SHELL = [
   './shared/js/phone/real-user-friend-invite.js?v=20261107v3',
   './shared/js/phone/real-user-camera-scanner.js?v=20261107v3',
   './shared/js/phone/jsQR.js?v=20261107v3',
-  './shared/js/phone/real-user-account-client.js?v=20261108v1',
-  './chat/contacts/real-user-account-panel.js?v=20261108v1',
-  './shared/js/phone/contact-directory.js?v=20261107v4',
+  './shared/js/phone/real-user-account-client.js?v=20261108v2',
+  './chat/contacts/real-user-account-panel.js?v=20261108v2',
+  './shared/js/phone/contact-directory.js?v=20261108v1',
   './shared/js/contact-groups.js?v=20261107v2',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
