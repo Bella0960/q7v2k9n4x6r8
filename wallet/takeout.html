@@ -780,6 +780,17 @@
               return;
             }
             var total = cartTotal();
+            var checkoutSignature = JSON.stringify({
+              items: items.map(function (item) {
+                return { id: item.dish.id || item.dish.name, name: item.dish.name, price: item.dish.price, qty: item.qty };
+              }),
+              total: total,
+            });
+            var transactionId = ledger.getOrCreatePendingCheckout('takeout', checkoutSignature, payMethod);
+            if (!transactionId) {
+              toast('存在未完成的同一笔结算或结算编号未能保存；请使用上次支付方式继续');
+              return;
+            }
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
             if (payMethod.indexOf('role_card:') === 0) {
               if (!roleFamilyCard) {
@@ -807,17 +818,6 @@
             var now = new Date();
             var timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
             var itemsDesc = items.map(it => it.dish.name + '×' + it.qty).join('、');
-            var checkoutSignature = JSON.stringify({
-              items: items.map(function (item) {
-                return { id: item.dish.id || item.dish.name, name: item.dish.name, price: item.dish.price, qty: item.qty };
-              }),
-              total: total,
-            });
-            var transactionId = ledger.getOrCreatePendingCheckout('takeout', checkoutSignature, payMethod);
-            if (!transactionId) {
-              toast('存在未完成的同一笔结算或结算编号未能保存；请使用上次支付方式继续');
-              return;
-            }
         
             // 2. 亲密付：扣钱包 + 更新额度 + 发聊天
             if (payMethod === 'close_pay') {
