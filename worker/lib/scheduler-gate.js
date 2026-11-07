@@ -62,10 +62,10 @@ function hasRequiredSnapshot(snapshot) {
  * Create the gate consumed by scheduler-policy.planTask.
  *
  * store.getSchedulerGateSnapshot({ userId, characterId }) reads only the
- * explicitly persisted non-chat metadata tables. Missing global authorization
- * is interpreted as OFF; missing schedules fail closed. The store deliberately
- * reports contextVersion=null until a trusted server-side chat event source is
- * separately authorized and implemented.
+ * persisted non-chat scheduling metadata plus the server-observed role
+ * revision. Missing global authorization is OFF; missing schedules or role
+ * revisions fail closed. The revision endpoint accepts only an authenticated
+ * random event ID and never receives chat content.
  *
  * Tests may provide synthetic snapshots, but production never fabricates
  * context versions or infers permission from device connectivity.
