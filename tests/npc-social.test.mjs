@@ -19,6 +19,15 @@ function createHarness() {
   }];
   let aiCalls = 0;
   let capturedPrompt = '';
+  let completeJSONHandler = async () => ({ ok: true, data: {
+    create: true,
+    name: '林知夏',
+    profession: '独立书店店员',
+    persona: '在海边城市经营小书店，喜欢整理旧书，性格温和但有自己的主见。',
+    greeting: '你好，我好像在共同的读书活动里见过你。',
+    reason: '你们都参加了同一个读书活动，后来又在附近书店碰到。',
+    speechStyle: '说话自然，句子简洁，偶尔分享书和日常。'
+  } });
   const histories = Object.create(null);
   const localStorage = {
     getItem(key) { return data.has(key) ? data.get(key) : null; },
@@ -62,15 +71,7 @@ function createHarness() {
       completeJSON: async (options) => {
         aiCalls += 1;
         capturedPrompt = (options && options.messages || []).map(function (item) { return item.content || ''; }).join('\n');
-        return { ok: true, data: {
-          create: true,
-          name: '林知夏',
-          profession: '独立书店店员',
-          persona: '在海边城市经营小书店，喜欢整理旧书，性格温和但有自己的主见。',
-          greeting: '你好，我好像在共同的读书活动里见过你。',
-          reason: '你们都参加了同一个读书活动，后来又在附近书店碰到。',
-          speechStyle: '说话自然，句子简洁，偶尔分享书和日常。'
-        } };
+        return completeJSONHandler(options);
       }
     },
     crypto: { getRandomValues(bytes) { bytes.fill(7); return bytes; } },
@@ -93,7 +94,12 @@ function createHarness() {
   };
   context.window = context;
   vm.runInNewContext(source, context);
-  return { context, data, roles, histories, get aiCalls() { return aiCalls; }, get capturedPrompt() { return capturedPrompt; } };
+  return {
+    context, data, roles, histories,
+    setCompleteJSONHandler(handler) { completeJSONHandler = handler; },
+    get aiCalls() { return aiCalls; },
+    get capturedPrompt() { return capturedPrompt; }
+  };
 }
 
 test('NPC discovery is opt-in and does not run in the background when the page is hidden', async () => {
@@ -231,4 +237,47 @@ test('corrupted role-scoped request data is preserved instead of being overwritt
   h.data.set(key, '{not-valid-json');
   assert.throws(() => h.context.NPCSocial.getRequests(), /无法读取/);
   assert.equal(h.data.get(key), '{not-valid-json');
+});
+
+test('switching main roles while AI discovery is pending still writes to the originating role', async () => {
+  const h = createHarness();
+  let signalStarted;
+  const started = new Promise(resolve => { signalStarted = resolve; });
+  let releaseResponse;
+  h.setCompleteJSONHandler(() => {
+    signalStarted();
+    return new Promise(resolve => { releaseResponse = resolve; });
+  });
+
+  const discovery = h.context.NPCSocial.discoverNow();
+  await started;
+  h.roles.push({
+    id: 'second-role',
+    name: '第二主角色',
+    persona: '另一套人物设定。',
+    worldBookIds: [],
+    npcCharacters: []
+  });
+  h.context.localStorage.setItem('phone_current_contact', 'second-role');
+  releaseResponse({ ok: true, data: {
+    create: true,
+    name: '林知夏',
+    profession: '独立书店店员',
+    persona: '一位友善的虚构人物。',
+    greeting: '你好。',
+    reason: '因为共同的阅读活动认识。',
+    speechStyle: '表达自然。'
+  } });
+
+  const result = await discovery;
+  assert.equal(result.created, true);
+  assert.equal(result.mainRoleId, 'main-role');
+  assert.equal(result.request.mainRoleId, 'main-role');
+  assert.equal(h.context.NPCSocial.getPendingCount(), 0, 'the newly selected role must not receive the in-flight request');
+
+  h.context.localStorage.setItem('phone_current_contact', 'main-role');
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1, 'the originating role must receive its own request');
+  assert.ok(h.context.NPCSocial.getSettings().lastAttemptAt > 0);
+  h.context.localStorage.setItem('phone_current_contact', 'second-role');
+  assert.equal(h.context.NPCSocial.getSettings().lastAttemptAt, 0, 'the other role must not inherit the attempt timestamp');
 });
