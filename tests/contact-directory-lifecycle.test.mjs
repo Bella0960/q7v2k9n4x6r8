@@ -196,3 +196,39 @@ test('legacy directory records remain readable and terminal states are normalize
   assert.equal(directory.get('legacy-user').acceptedAt, 11);
   assert.equal(directory.get('legacy-user').declinedAt, null);
 });
+
+test('server responses accept or decline outgoing requests only for the matching request ID', () => {
+  const { directory } = createDirectoryRuntime();
+  const outgoing = directory.requestOutgoing(
+    { id: 'user-7', displayName: '申请对象' },
+    { requestId: 'outgoing-7', now: 700 }
+  );
+  assert.equal(outgoing.ok, true);
+
+  assert.equal(directory.confirmOutgoingAccepted('user-7', { now: 701 }).error, 'missing_request_id');
+  assert.equal(directory.confirmOutgoingAccepted('user-7', { requestId: 'old-id', now: 701 }).error, 'stale_request');
+
+  const accepted = directory.confirmOutgoingAccepted('user-7', { requestId: 'outgoing-7', now: 702 });
+  assert.equal(accepted.ok, true);
+  assert.equal(accepted.action, 'outgoing_request_accepted');
+  assert.equal(accepted.contact.status, 'accepted');
+
+  const acceptedReplay = directory.confirmOutgoingAccepted('user-7', { requestId: 'outgoing-7', now: 703 });
+  assert.equal(acceptedReplay.ok, true);
+  assert.equal(acceptedReplay.action, 'already_accepted');
+
+  const declinedRequest = directory.requestOutgoing(
+    { id: 'user-8', displayName: '另一位申请对象' },
+    { requestId: 'outgoing-8', now: 800 }
+  );
+  assert.equal(declinedRequest.ok, true);
+  const declined = directory.applyOutgoingDeclined('user-8', { requestId: 'outgoing-8', now: 801 });
+  assert.equal(declined.ok, true);
+  assert.equal(declined.action, 'outgoing_request_declined');
+  assert.equal(declined.contact.status, 'declined');
+
+  const declinedReplay = directory.applyOutgoingDeclined('user-8', { requestId: 'outgoing-8', now: 802 });
+  assert.equal(declinedReplay.ok, true);
+  assert.equal(declinedReplay.action, 'already_declined');
+  assert.equal(directory.getAcceptedRefs().refs.length, 1);
+});
