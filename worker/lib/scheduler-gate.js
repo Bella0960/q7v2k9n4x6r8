@@ -37,6 +37,7 @@ function readPayload(task) {
 }
 
 function readVersion(value) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
   const version = Number(value);
   return Number.isSafeInteger(version) && version >= 0 ? version : null;
 }
