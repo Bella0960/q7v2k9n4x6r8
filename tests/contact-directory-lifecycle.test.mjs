@@ -249,3 +249,83 @@ test('server responses accept or decline outgoing requests only for the matching
   assert.equal(declinedReplay.action, 'already_declined');
   assert.equal(directory.getAcceptedRefs().refs.length, 1);
 });
+
+test('low-level save cannot change an existing relationship state or request ID', () => {
+  const { directory } = createDirectoryRuntime();
+  incoming(directory, 'guarded-user', 'guarded-request', 900);
+  directory.acceptIncoming('guarded-user', { requestId: 'guarded-request', now: 901 });
+
+  const accepted = directory.get('guarded-user');
+  const attemptedBlock = directory.save({
+    ...accepted,
+    status: 'blocked',
+    blockedAt: 902,
+    updatedAt: 902
+  });
+  assert.equal(attemptedBlock.ok, false);
+  assert.equal(attemptedBlock.error, 'lifecycle_transition_required');
+  assert.equal(directory.get('guarded-user').status, 'accepted');
+
+  const attemptedRestart = directory.save({
+    ...accepted,
+    requestId: 'forged-new-request',
+    updatedAt: 903
+  });
+  assert.equal(attemptedRestart.ok, false);
+  assert.equal(attemptedRestart.error, 'lifecycle_transition_required');
+  assert.equal(directory.get('guarded-user').requestId, 'guarded-request');
+});
+
+test('low-level save cannot revive blocked or removed relationship tombstones', () => {
+  const { directory } = createDirectoryRuntime();
+  incoming(directory, 'blocked-user', 'blocked-request', 910);
+  directory.acceptIncoming('blocked-user', { requestId: 'blocked-request', now: 911 });
+  directory.block('blocked-user', { now: 912 });
+
+  const blocked = directory.get('blocked-user');
+  const blockedRevival = directory.save({
+    ...blocked,
+    status: 'accepted',
+    acceptedAt: 913,
+    updatedAt: 913
+  });
+  assert.equal(blockedRevival.ok, false);
+  assert.equal(blockedRevival.error, 'lifecycle_transition_required');
+  assert.equal(directory.get('blocked-user').status, 'blocked');
+
+  incoming(directory, 'removed-user', 'removed-request', 914);
+  directory.acceptIncoming('removed-user', { requestId: 'removed-request', now: 915 });
+  directory.removeFriend('removed-user', { now: 916 });
+  const removed = directory.get('removed-user');
+  const removedRevival = directory.save({
+    ...removed,
+    status: 'accepted',
+    requestId: 'new-but-unverified-request',
+    acceptedAt: 917,
+    updatedAt: 917
+  });
+  assert.equal(removedRevival.ok, false);
+  assert.equal(removedRevival.error, 'lifecycle_transition_required');
+  assert.equal(directory.get('removed-user').status, 'removed');
+});
+
+test('saveMany is atomic when one snapshot attempts a lifecycle transition', () => {
+  const { directory } = createDirectoryRuntime();
+  incoming(directory, 'batch-one', 'batch-one-request', 920);
+  directory.acceptIncoming('batch-one', { requestId: 'batch-one-request', now: 921 });
+  incoming(directory, 'batch-two', 'batch-two-request', 922);
+  directory.acceptIncoming('batch-two', { requestId: 'batch-two-request', now: 923 });
+
+  const first = directory.get('batch-one');
+  const second = directory.get('batch-two');
+  const result = directory.saveMany([
+    { ...first, displayName: '不应部分写入的新名称', updatedAt: 924 },
+    { ...second, status: 'blocked', blockedAt: 925, updatedAt: 925 }
+  ]);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'lifecycle_transition_required');
+  assert.equal(result.invalidIndex, 1);
+  assert.equal(directory.get('batch-one').displayName, '真人好友');
+  assert.equal(directory.get('batch-two').status, 'accepted');
+});
