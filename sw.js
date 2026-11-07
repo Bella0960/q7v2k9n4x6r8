@@ -3,7 +3,7 @@
  */
 const CACHE_NAME = 'phone-app-pwa-v179';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v178 release: separate outbound receipt states and visible-bubble read acknowledgements.
+// v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
   './',
   './index.html',
