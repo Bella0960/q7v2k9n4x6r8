@@ -757,7 +757,7 @@ class CloudStore {
 
   getCharacterContextVersion(userId, characterId) {
     return this.exec(
-      'SELECT version, updated_at FROM character_context_versions WHERE user_id = ? AND character_id = ?',
+      'SELECT version, updated_at, updated_by_device_id FROM character_context_versions WHERE user_id = ? AND character_id = ?',
       userId,
       characterId
     )[0] || null;
@@ -813,20 +813,24 @@ class CloudStore {
 
     if (inserted) {
       const row = this.exec(
-        `INSERT INTO character_context_versions (user_id, character_id, version, updated_at)
-         VALUES (?, ?, 1, ?)
+        `INSERT INTO character_context_versions
+           (user_id, character_id, version, updated_at, updated_by_device_id)
+         VALUES (?, ?, 1, ?, ?)
          ON CONFLICT(user_id, character_id) DO UPDATE
            SET version = character_context_versions.version + 1,
-               updated_at = excluded.updated_at
-         RETURNING version, updated_at`,
+               updated_at = excluded.updated_at,
+               updated_by_device_id = excluded.updated_by_device_id
+         RETURNING version, updated_at, updated_by_device_id`,
         userId,
         characterId,
-        now
+        now,
+        deviceId
       )[0];
       return {
         changed: true,
         version: Number(row.version),
-        updatedAt: Number(row.updated_at)
+        updatedAt: Number(row.updated_at),
+        updatedByDeviceId: row.updated_by_device_id || null
       };
     }
 
@@ -930,7 +934,8 @@ class CloudStore {
       presence: { devices, leases },
       contextVersion: contextVersionRow?.version == null
         ? null
-        : Number(contextVersionRow.version)
+        : Number(contextVersionRow.version),
+      contextSourceDeviceId: contextVersionRow?.updated_by_device_id || null
     };
   }
 
