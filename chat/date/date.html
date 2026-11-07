@@ -1450,12 +1450,79 @@ body {
   border-bottom: 0 !important;
 }
 #byline.role-info-card {
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
+  width: min(var(--profile-card-width, calc(100% - 32px)), 520px) !important;
+  margin: 12px auto 8px !important;
+  padding: var(--profile-card-padding, 20px) !important;
+  text-align: var(--profile-card-align, center) !important;
+  background: var(--profile-card-background, transparent) !important;
+  border: 1px solid var(--profile-card-border, transparent) !important;
+  border-radius: var(--profile-card-radius, 0px) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,var(--profile-card-shadow-opacity,0)) !important;
+  -webkit-backdrop-filter: blur(var(--profile-card-blur,0px)) saturate(140%) !important;
+  backdrop-filter: blur(var(--profile-card-blur,0px)) saturate(140%) !important;
+}
+#byline.role-info-card .card-name {
+  color: var(--profile-card-text-color, #111111) !important;
+}
+#byline.role-info-card .card-quote,
+#byline.role-info-card .card-desc {
+  color: var(--profile-card-muted-text-color, #777777) !important;
+}
+#byline.role-info-card .character-portrait {
+  display: var(--profile-card-avatar-display, flex) !important;
+  width: var(--profile-card-avatar-size, 48px) !important;
+  height: var(--profile-card-avatar-size, 48px) !important;
+  margin: 0 auto var(--profile-card-info-gap, 12px) !important;
+  background: rgba(127,127,127,.12) !important;
+  color: var(--profile-card-text-color, #111111) !important;
+  border-color: var(--profile-card-border, transparent) !important;
+  border-radius: var(--profile-card-avatar-radius, 50%) !important;
+}
+#byline.role-info-card[data-profile-card-align="row"] {
+  display: grid !important;
+  grid-template-columns: var(--profile-card-row-columns, 48px minmax(0,1fr)) !important;
+  align-items: center !important;
+  column-gap: 16px !important;
+  text-align: left !important;
+}
+#byline.role-info-card[data-profile-card-align="row"] .character-portrait {
+  grid-column: 1 !important;
+  grid-row: 1 / span 3 !important;
+  margin: 0 !important;
+  align-self: center !important;
+}
+#byline.role-info-card[data-profile-card-align="row"] .card-quote {
+  grid-column: var(--profile-card-row-text-column, 2) !important;
+  grid-row: 1 !important;
+  margin-bottom: 4px !important;
+}
+#byline.role-info-card[data-profile-card-align="row"] .card-name {
+  grid-column: var(--profile-card-row-text-column, 2) !important;
+  grid-row: 2 !important;
+  margin: 0 0 3px !important;
+}
+#byline.role-info-card[data-profile-card-align="row"] .card-desc {
+  grid-column: var(--profile-card-row-text-column, 2) !important;
+  grid-row: 3 !important;
+}
+#byline.role-info-card .card-quote {
+  display: var(--profile-card-quote-display, block) !important;
+  font-size: var(--profile-card-quote-size, 13px) !important;
+  margin-bottom: var(--profile-card-info-gap, 12px) !important;
+}
+#byline.role-info-card .card-name {
+  font-size: var(--profile-card-name-size, 20px) !important;
+  margin-bottom: calc(var(--profile-card-info-gap, 12px) / 2) !important;
+}
+#byline.role-info-card[data-profile-card-align="left"] .character-portrait {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+#byline.role-info-card .card-status,
+#byline.role-info-card .card-quote,
+#byline.role-info-card .card-name,
+#byline.role-info-card .card-desc {
+  text-shadow: none !important;
 }
 /* The image now belongs to .page, so the scrolling story must not paint a second copy. */
 #story.story {
@@ -1613,6 +1680,44 @@ body {
 </details>
   </div>
 </details>
+<details class="drawer-accordion" id="drawerProfileCard">
+  <summary class="drawer-accordion-summary">
+    <span class="drawer-accordion-title">角色卡片美化</span>
+    <small>卡片样式 · 颜色 · 圆角 · 毛玻璃</small>
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+  </summary>
+  <div class="drawer-accordion-panel">
+    <div class="wp-group">
+      <div class="wp-label">卡片预设</div>
+      <div class="wp-chips" id="profileCardPresetChips"></div>
+    </div>
+    <div class="wp-group">
+      <div class="wp-label">卡片底色与文字</div>
+      <div class="wp-color-controls">
+        <label class="wp-color-field" for="profileCardColorInput"><span>卡片底色</span><input type="color" id="profileCardColorInput" value="#ffffff"></label>
+        <label class="wp-color-field" for="profileCardTextColorInput"><span>主文字</span><input type="color" id="profileCardTextColorInput" value="#111111"></label>
+        <label class="wp-color-field" for="profileCardMutedTextColorInput"><span>辅助文字</span><input type="color" id="profileCardMutedTextColorInput" value="#777777"></label>
+        <label class="wp-color-field" for="profileCardBorderColorInput"><span>边框颜色</span><input type="color" id="profileCardBorderColorInput" value="#222222"></label>
+      </div>
+    </div>
+    <div class="wp-group"><div class="wp-label">卡片透明度</div><div class="wp-slider"><input type="range" id="profileCardOpacityRange" min="0" max="100" step="1" value="0"><span class="wp-range" id="profileCardOpacityVal">0%</span></div></div>
+    <div class="wp-group"><div class="wp-label">边框透明度</div><div class="wp-slider"><input type="range" id="profileCardBorderOpacityRange" min="0" max="50" step="1" value="0"><span class="wp-range" id="profileCardBorderOpacityVal">0%</span></div></div>
+    <div class="wp-group"><div class="wp-label">圆角大小</div><div class="wp-slider"><input type="range" id="profileCardRadiusRange" min="0" max="36" step="1" value="0"><span class="wp-range" id="profileCardRadiusVal">0px</span></div></div>
+    <div class="wp-group"><div class="wp-label">毛玻璃模糊</div><div class="wp-slider"><input type="range" id="profileCardBlurRange" min="0" max="30" step="1" value="0"><span class="wp-range" id="profileCardBlurVal">0px</span></div></div>
+    <div class="wp-group"><div class="wp-label">卡片宽度</div><div class="wp-slider"><input type="range" id="profileCardWidthRange" min="60" max="100" step="1" value="100"><span class="wp-range" id="profileCardWidthVal">100%</span></div></div>
+    <div class="wp-group"><div class="wp-label">卡片内边距</div><div class="wp-slider"><input type="range" id="profileCardPaddingRange" min="8" max="36" step="1" value="20"><span class="wp-range" id="profileCardPaddingVal">20px</span></div></div>
+    <div class="wp-group"><div class="wp-label">阴影强度</div><div class="wp-slider"><input type="range" id="profileCardShadowRange" min="0" max="30" step="1" value="0"><span class="wp-range" id="profileCardShadowVal">0%</span></div></div>
+    <div class="wp-group"><div class="wp-label">卡片排版</div><div class="wp-chips" id="profileCardLayoutChips"></div></div>
+    <div class="wp-group"><div class="wp-label">头像显示</div><div class="wp-chips" id="profileCardAvatarVisibilityChips"></div></div>
+    <div class="wp-group"><div class="wp-label">英文签名显示</div><div class="wp-chips" id="profileCardQuoteVisibilityChips"></div></div>
+    <div class="wp-group"><div class="wp-label">头像尺寸</div><div class="wp-slider"><input type="range" id="profileCardAvatarSizeRange" min="32" max="88" step="1" value="48"><span class="wp-range" id="profileCardAvatarSizeVal">48px</span></div></div>
+    <div class="wp-group"><div class="wp-label">头像形状</div><div class="wp-chips" id="profileCardAvatarShapeChips"></div></div>
+    <div class="wp-group"><div class="wp-label">角色名字号</div><div class="wp-slider"><input type="range" id="profileCardNameSizeRange" min="14" max="32" step="1" value="20"><span class="wp-range" id="profileCardNameSizeVal">20px</span></div></div>
+    <div class="wp-group"><div class="wp-label">英文签名字号</div><div class="wp-slider"><input type="range" id="profileCardQuoteSizeRange" min="10" max="20" step="1" value="13"><span class="wp-range" id="profileCardQuoteSizeVal">13px</span></div></div>
+    <div class="wp-group"><div class="wp-label">信息间距</div><div class="wp-slider"><input type="range" id="profileCardInfoGapRange" min="0" max="28" step="1" value="12"><span class="wp-range" id="profileCardInfoGapVal">12px</span></div></div>
+    <button type="button" class="wp-chip" id="profileCardResetBtn">恢复默认卡片样式</button>
+  </div>
+</details>
 <details class="drawer-accordion" id="drawerReplyStyles">
   <summary class="drawer-accordion-summary">
     <span class="drawer-accordion-title">双方文风预设</span>
@@ -1746,6 +1851,38 @@ body {
     var backgroundWashRange = document.getElementById('backgroundWashRange');
     var backgroundWashVal = document.getElementById('backgroundWashVal');
     var bgColorInput = document.getElementById('bgColorInput');
+    var profileCardPresetChips = document.getElementById('profileCardPresetChips');
+    var profileCardColorInput = document.getElementById('profileCardColorInput');
+    var profileCardTextColorInput = document.getElementById('profileCardTextColorInput');
+    var profileCardMutedTextColorInput = document.getElementById('profileCardMutedTextColorInput');
+    var profileCardBorderColorInput = document.getElementById('profileCardBorderColorInput');
+    var profileCardOpacityRange = document.getElementById('profileCardOpacityRange');
+    var profileCardOpacityVal = document.getElementById('profileCardOpacityVal');
+    var profileCardBorderOpacityRange = document.getElementById('profileCardBorderOpacityRange');
+    var profileCardBorderOpacityVal = document.getElementById('profileCardBorderOpacityVal');
+    var profileCardRadiusRange = document.getElementById('profileCardRadiusRange');
+    var profileCardRadiusVal = document.getElementById('profileCardRadiusVal');
+    var profileCardBlurRange = document.getElementById('profileCardBlurRange');
+    var profileCardBlurVal = document.getElementById('profileCardBlurVal');
+    var profileCardWidthRange = document.getElementById('profileCardWidthRange');
+    var profileCardWidthVal = document.getElementById('profileCardWidthVal');
+    var profileCardPaddingRange = document.getElementById('profileCardPaddingRange');
+    var profileCardPaddingVal = document.getElementById('profileCardPaddingVal');
+    var profileCardShadowRange = document.getElementById('profileCardShadowRange');
+    var profileCardShadowVal = document.getElementById('profileCardShadowVal');
+    var profileCardLayoutChips = document.getElementById('profileCardLayoutChips');
+    var profileCardAvatarVisibilityChips = document.getElementById('profileCardAvatarVisibilityChips');
+    var profileCardAvatarShapeChips = document.getElementById('profileCardAvatarShapeChips');
+    var profileCardQuoteVisibilityChips = document.getElementById('profileCardQuoteVisibilityChips');
+    var profileCardAvatarSizeRange = document.getElementById('profileCardAvatarSizeRange');
+    var profileCardAvatarSizeVal = document.getElementById('profileCardAvatarSizeVal');
+    var profileCardNameSizeRange = document.getElementById('profileCardNameSizeRange');
+    var profileCardNameSizeVal = document.getElementById('profileCardNameSizeVal');
+    var profileCardQuoteSizeRange = document.getElementById('profileCardQuoteSizeRange');
+    var profileCardQuoteSizeVal = document.getElementById('profileCardQuoteSizeVal');
+    var profileCardInfoGapRange = document.getElementById('profileCardInfoGapRange');
+    var profileCardInfoGapVal = document.getElementById('profileCardInfoGapVal');
+    var profileCardResetBtn = document.getElementById('profileCardResetBtn');
     var bgImageBtn = document.getElementById('bgImageBtn');
     var bgClearBtn = document.getElementById('bgClearBtn');
     var bgImageFile = document.getElementById('bgImageFile');
@@ -1816,6 +1953,14 @@ body {
                 { id: 'character-dialogue', name: '对话优先', prompt: '主要通过自然、有辨识度的台词和少量必要动作推动故事，减少冗长环境描写，不使用机械重复的动作模板。', selected: false }
             ],
             bgColor: '#FFFFFF', bgImage: '',
+            profileCardPreset: 'transparent',
+            profileCardColor: '#FFFFFF', profileCardOpacity: 0,
+            profileCardTextColor: '#111111', profileCardMutedTextColor: '#777777',
+            profileCardBorderColor: '#222222', profileCardBorderOpacity: 0,
+            profileCardRadius: 0, profileCardBlur: 0,
+            profileCardWidth: 100, profileCardPadding: 20, profileCardShadowOpacity: 0,
+            profileCardLayout: 'center', profileCardShowAvatar: true, profileCardShowQuote: true,
+            profileCardAvatarShape: 'circle', profileCardAvatarSize: 48, profileCardNameSize: 20, profileCardQuoteSize: 13, profileCardInfoGap: 12,
             breakMode: 'none', summaryMode: 'card'
         };
         try {
@@ -1890,6 +2035,35 @@ body {
             }
             if (v.bgColor && /^#[0-9a-fA-F]{6}$/.test(v.bgColor)) d.bgColor = v.bgColor;
             if (v.bgImage && /^data:image\//.test(v.bgImage)) d.bgImage = v.bgImage;
+            if (['white','transparent','black','custom'].indexOf(v.profileCardPreset) >= 0) d.profileCardPreset = v.profileCardPreset;
+            ['profileCardColor','profileCardTextColor','profileCardMutedTextColor','profileCardBorderColor'].forEach(function (key) {
+                if (v[key] && /^#[0-9a-fA-F]{6}$/.test(v[key])) d[key] = v[key];
+            });
+            [
+                ['profileCardOpacity', 0, 100],
+                ['profileCardBorderOpacity', 0, 50],
+                ['profileCardRadius', 0, 36],
+                ['profileCardBlur', 0, 30],
+                ['profileCardWidth', 60, 100],
+                ['profileCardPadding', 8, 36],
+                ['profileCardShadowOpacity', 0, 30]
+            ].forEach(function (rule) {
+                var value = Number(v[rule[0]]);
+                if (Number.isFinite(value) && value >= rule[1] && value <= rule[2]) d[rule[0]] = value;
+            });
+            if (v.profileCardLayout === 'center' || v.profileCardLayout === 'left' || v.profileCardLayout === 'row') d.profileCardLayout = v.profileCardLayout;
+            if (v.profileCardAvatarShape === 'circle' || v.profileCardAvatarShape === 'rounded' || v.profileCardAvatarShape === 'square') d.profileCardAvatarShape = v.profileCardAvatarShape;
+            if (typeof v.profileCardShowAvatar === 'boolean') d.profileCardShowAvatar = v.profileCardShowAvatar;
+            if (typeof v.profileCardShowQuote === 'boolean') d.profileCardShowQuote = v.profileCardShowQuote;
+            [
+                ['profileCardAvatarSize', 32, 88],
+                ['profileCardNameSize', 14, 32],
+                ['profileCardQuoteSize', 10, 20],
+                ['profileCardInfoGap', 0, 28]
+            ].forEach(function (rule) {
+                var value = Number(v[rule[0]]);
+                if (Number.isFinite(value) && value >= rule[1] && value <= rule[2]) d[rule[0]] = value;
+            });
             if (v.breakMode && ['none', 'line', 'space'].indexOf(v.breakMode) >= 0) d.breakMode = v.breakMode;
             if (v.summaryMode === 'card' || v.summaryMode === 'text') d.summaryMode = v.summaryMode;
         } catch (e) {}
@@ -1910,6 +2084,7 @@ body {
             var b = document.createElement('button');
             b.type = 'button';
             b.className = 'wp-chip' + (it.key === activeKey ? ' active' : '');
+            b.dataset.key = it.key;
             b.textContent = it.label;
             b.addEventListener('click', function (e) {
                 e.stopPropagation();
@@ -2178,8 +2353,153 @@ body {
         if (backgroundWashRange) backgroundWashRange.value = writingOpts.backgroundWash;
         if (backgroundWashVal) backgroundWashVal.textContent = Math.round(writingOpts.backgroundWash * 100) + '%';
         if (bgColorInput) bgColorInput.value = writingOpts.bgColor;
+        renderChips(profileCardPresetChips, [
+            { key: 'white', label: '白卡片' },
+            { key: 'transparent', label: '透明' },
+            { key: 'black', label: '黑卡片' },
+            { key: 'custom', label: '自定义' }
+        ], writingOpts.profileCardPreset, function (key) {
+            writingOpts.profileCardPreset = key;
+            applyProfileCardPreset(key);
+            saveWritingOpts();
+        });
+        if (profileCardColorInput) profileCardColorInput.value = writingOpts.profileCardColor;
+        if (profileCardTextColorInput) profileCardTextColorInput.value = writingOpts.profileCardTextColor;
+        if (profileCardMutedTextColorInput) profileCardMutedTextColorInput.value = writingOpts.profileCardMutedTextColor;
+        if (profileCardBorderColorInput) profileCardBorderColorInput.value = writingOpts.profileCardBorderColor;
+        setRangeUI(profileCardOpacityRange, profileCardOpacityVal, writingOpts.profileCardOpacity, function (v) { return Math.round(v) + '%'; });
+        setRangeUI(profileCardBorderOpacityRange, profileCardBorderOpacityVal, writingOpts.profileCardBorderOpacity, function (v) { return Math.round(v) + '%'; });
+        setRangeUI(profileCardRadiusRange, profileCardRadiusVal, writingOpts.profileCardRadius, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardBlurRange, profileCardBlurVal, writingOpts.profileCardBlur, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardWidthRange, profileCardWidthVal, writingOpts.profileCardWidth, function (v) { return Math.round(v) + '%'; });
+        setRangeUI(profileCardPaddingRange, profileCardPaddingVal, writingOpts.profileCardPadding, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardShadowRange, profileCardShadowVal, writingOpts.profileCardShadowOpacity, function (v) { return Math.round(v) + '%'; });
+        renderChips(profileCardLayoutChips, [
+            { key: 'center', label: '居中排版' },
+            { key: 'left', label: '左对齐' },
+            { key: 'row', label: '横向排版' }
+        ], writingOpts.profileCardLayout, function (key) {
+            writingOpts.profileCardLayout = key;
+            markProfileCardCustom();
+            applyReadingStyle();
+        });
+        renderChips(profileCardAvatarVisibilityChips, [
+            { key: 'show', label: '显示头像' },
+            { key: 'hide', label: '隐藏头像' }
+        ], writingOpts.profileCardShowAvatar ? 'show' : 'hide', function (key) {
+            writingOpts.profileCardShowAvatar = key === 'show';
+            markProfileCardCustom();
+            applyReadingStyle();
+        });
+        renderChips(profileCardQuoteVisibilityChips, [
+            { key: 'show', label: '显示签名' },
+            { key: 'hide', label: '隐藏签名' }
+        ], writingOpts.profileCardShowQuote ? 'show' : 'hide', function (key) {
+            writingOpts.profileCardShowQuote = key === 'show';
+            markProfileCardCustom();
+            applyReadingStyle();
+        });
+        renderChips(profileCardAvatarShapeChips, [
+            { key: 'circle', label: '圆形' },
+            { key: 'rounded', label: '圆角方形' },
+            { key: 'square', label: '方形' }
+        ], writingOpts.profileCardAvatarShape, function (key) {
+            writingOpts.profileCardAvatarShape = key;
+            markProfileCardCustom();
+            applyReadingStyle();
+        });
+        setRangeUI(profileCardAvatarSizeRange, profileCardAvatarSizeVal, writingOpts.profileCardAvatarSize, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardNameSizeRange, profileCardNameSizeVal, writingOpts.profileCardNameSize, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardQuoteSizeRange, profileCardQuoteSizeVal, writingOpts.profileCardQuoteSize, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardInfoGapRange, profileCardInfoGapVal, writingOpts.profileCardInfoGap, function (v) { return Math.round(v) + 'px'; });
         bindReplyStyleControls();
         applyReadingStyle();
+    }
+
+    function setRangeUI(inputEl, labelEl, value, format) {
+        if (inputEl) inputEl.value = value;
+        if (labelEl) labelEl.textContent = format(value);
+    }
+    function clampNumber(value, min, max, fallback) {
+        value = Number(value);
+        return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+    }
+    function profileHexToRgba(hex, opacity) {
+        var safe = /^#[0-9a-fA-F]{6}$/.test(String(hex || '')) ? hex : '#FFFFFF';
+        var alpha = clampNumber(opacity, 0, 100, 0) / 100;
+        var red = parseInt(safe.slice(1, 3), 16);
+        var green = parseInt(safe.slice(3, 5), 16);
+        var blue = parseInt(safe.slice(5, 7), 16);
+        return 'rgba(' + red + ',' + green + ',' + blue + ',' + alpha.toFixed(2) + ')';
+    }
+    function markProfileCardCustom() {
+        writingOpts.profileCardPreset = 'custom';
+        if (profileCardPresetChips) {
+            Array.prototype.forEach.call(profileCardPresetChips.children, function (button) {
+                button.classList.toggle('active', button.dataset.key === 'custom');
+            });
+        }
+    }
+    function applyProfileCardPreset(key) {
+        if (key === 'white') {
+            writingOpts.profileCardColor = '#FFFFFF';
+            writingOpts.profileCardOpacity = 94;
+            writingOpts.profileCardTextColor = '#171717';
+            writingOpts.profileCardMutedTextColor = '#777777';
+            writingOpts.profileCardBorderColor = '#222222';
+            writingOpts.profileCardBorderOpacity = 8;
+            writingOpts.profileCardRadius = 20;
+            writingOpts.profileCardBlur = 12;
+            writingOpts.profileCardWidth = 100;
+            writingOpts.profileCardPadding = 20;
+            writingOpts.profileCardShadowOpacity = 6;
+        } else if (key === 'transparent') {
+            writingOpts.profileCardColor = '#FFFFFF';
+            writingOpts.profileCardOpacity = 0;
+            writingOpts.profileCardTextColor = '#111111';
+            writingOpts.profileCardMutedTextColor = '#777777';
+            writingOpts.profileCardBorderColor = '#222222';
+            writingOpts.profileCardBorderOpacity = 0;
+            writingOpts.profileCardRadius = 0;
+            writingOpts.profileCardBlur = 0;
+            writingOpts.profileCardWidth = 100;
+            writingOpts.profileCardPadding = 20;
+            writingOpts.profileCardShadowOpacity = 0;
+        } else if (key === 'black') {
+            writingOpts.profileCardColor = '#111111';
+            writingOpts.profileCardOpacity = 94;
+            writingOpts.profileCardTextColor = '#FFFFFF';
+            writingOpts.profileCardMutedTextColor = '#D2D2D2';
+            writingOpts.profileCardBorderColor = '#FFFFFF';
+            writingOpts.profileCardBorderOpacity = 14;
+            writingOpts.profileCardRadius = 20;
+            writingOpts.profileCardBlur = 12;
+            writingOpts.profileCardWidth = 100;
+            writingOpts.profileCardPadding = 20;
+            writingOpts.profileCardShadowOpacity = 12;
+        }
+    }
+
+    function bindProfileCardColor(element, key) {
+        if (!element) return;
+        element.addEventListener('input', function () {
+            writingOpts[key] = element.value;
+            markProfileCardCustom();
+            applyReadingStyle();
+            saveWritingOpts();
+        });
+    }
+    function bindProfileCardRange(element, key, label, format) {
+        if (!element) return;
+        element.addEventListener('input', function () {
+            var value = parseFloat(element.value);
+            if (!Number.isFinite(value)) return;
+            writingOpts[key] = value;
+            if (label) label.textContent = format(value);
+            markProfileCardCustom();
+            applyReadingStyle();
+            saveWritingOpts();
+        });
     }
 
     /* 将全部阅读美化配置即时应用；选项写入 date_writing_opts，重进页面仍保留。 */
@@ -2208,6 +2528,28 @@ body {
         root.style.setProperty('--story-overlay-opacity', String(writingOpts.backgroundWash == null ? 0.24 : writingOpts.backgroundWash));
         root.style.setProperty('--story-bg', writingOpts.bgColor || '#FFFFFF');
         root.style.setProperty('--story-bg-image', writingOpts.bgImage ? 'url("' + writingOpts.bgImage + '")' : 'none');
+        root.style.setProperty('--profile-card-background', profileHexToRgba(writingOpts.profileCardColor, writingOpts.profileCardOpacity));
+        root.style.setProperty('--profile-card-border', profileHexToRgba(writingOpts.profileCardBorderColor, writingOpts.profileCardBorderOpacity));
+        root.style.setProperty('--profile-card-text-color', writingOpts.profileCardTextColor || '#111111');
+        root.style.setProperty('--profile-card-muted-text-color', writingOpts.profileCardMutedTextColor || '#777777');
+        root.style.setProperty('--profile-card-radius', clampNumber(writingOpts.profileCardRadius, 0, 36, 0) + 'px');
+        root.style.setProperty('--profile-card-blur', clampNumber(writingOpts.profileCardBlur, 0, 30, 0) + 'px');
+        var profileCardWidth = clampNumber(writingOpts.profileCardWidth, 60, 100, 100);
+        root.style.setProperty('--profile-card-width', 'calc(' + profileCardWidth + '% - ' + (32 * profileCardWidth / 100).toFixed(2) + 'px)');
+        root.style.setProperty('--profile-card-padding', clampNumber(writingOpts.profileCardPadding, 8, 36, 20) + 'px');
+        root.style.setProperty('--profile-card-shadow-opacity', String(clampNumber(writingOpts.profileCardShadowOpacity, 0, 30, 0) / 100));
+        root.style.setProperty('--profile-card-align', writingOpts.profileCardLayout === 'center' ? 'center' : 'left');
+        root.style.setProperty('--profile-card-row-columns', writingOpts.profileCardShowAvatar ? 'var(--profile-card-avatar-size) minmax(0,1fr)' : 'minmax(0,1fr)');
+        root.style.setProperty('--profile-card-row-text-column', writingOpts.profileCardShowAvatar ? '2' : '1');
+        root.style.setProperty('--profile-card-avatar-radius', writingOpts.profileCardAvatarShape === 'circle' ? '50%' : (writingOpts.profileCardAvatarShape === 'rounded' ? '16px' : '4px'));
+        var profileCard = document.getElementById('byline');
+        if (profileCard) profileCard.setAttribute('data-profile-card-align', writingOpts.profileCardLayout || 'center');
+        root.style.setProperty('--profile-card-avatar-display', writingOpts.profileCardShowAvatar ? 'flex' : 'none');
+        root.style.setProperty('--profile-card-quote-display', writingOpts.profileCardShowQuote ? 'block' : 'none');
+        root.style.setProperty('--profile-card-avatar-size', clampNumber(writingOpts.profileCardAvatarSize, 32, 88, 48) + 'px');
+        root.style.setProperty('--profile-card-name-size', clampNumber(writingOpts.profileCardNameSize, 14, 32, 20) + 'px');
+        root.style.setProperty('--profile-card-quote-size', clampNumber(writingOpts.profileCardQuoteSize, 10, 20, 13) + 'px');
+        root.style.setProperty('--profile-card-info-gap', clampNumber(writingOpts.profileCardInfoGap, 0, 28, 12) + 'px');
         if (storyEl) storyEl.setAttribute('data-break', writingOpts.breakMode || 'none');
     }
     if (wordBase) {
@@ -2246,6 +2588,36 @@ body {
     }
     bindColorInput(charTextColorInput, 'charTextColor');
     bindColorInput(userTextColorInput, 'userTextColor');
+    bindProfileCardColor(profileCardColorInput, 'profileCardColor');
+    bindProfileCardColor(profileCardTextColorInput, 'profileCardTextColor');
+    bindProfileCardColor(profileCardMutedTextColorInput, 'profileCardMutedTextColor');
+    bindProfileCardColor(profileCardBorderColorInput, 'profileCardBorderColor');
+    bindProfileCardRange(profileCardOpacityRange, 'profileCardOpacity', profileCardOpacityVal, function (v) { return Math.round(v) + '%'; });
+    bindProfileCardRange(profileCardBorderOpacityRange, 'profileCardBorderOpacity', profileCardBorderOpacityVal, function (v) { return Math.round(v) + '%'; });
+    bindProfileCardRange(profileCardRadiusRange, 'profileCardRadius', profileCardRadiusVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardBlurRange, 'profileCardBlur', profileCardBlurVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardWidthRange, 'profileCardWidth', profileCardWidthVal, function (v) { return Math.round(v) + '%'; });
+    bindProfileCardRange(profileCardPaddingRange, 'profileCardPadding', profileCardPaddingVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardShadowRange, 'profileCardShadowOpacity', profileCardShadowVal, function (v) { return Math.round(v) + '%'; });
+    bindProfileCardRange(profileCardAvatarSizeRange, 'profileCardAvatarSize', profileCardAvatarSizeVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardNameSizeRange, 'profileCardNameSize', profileCardNameSizeVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardQuoteSizeRange, 'profileCardQuoteSize', profileCardQuoteSizeVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardInfoGapRange, 'profileCardInfoGap', profileCardInfoGapVal, function (v) { return Math.round(v) + 'px'; });
+    if (profileCardResetBtn) profileCardResetBtn.addEventListener('click', function () {
+        applyProfileCardPreset('transparent');
+        writingOpts.profileCardPreset = 'transparent';
+        writingOpts.profileCardLayout = 'center';
+        writingOpts.profileCardShowAvatar = true;
+        writingOpts.profileCardShowQuote = true;
+        writingOpts.profileCardAvatarShape = 'circle';
+        writingOpts.profileCardAvatarSize = 48;
+        writingOpts.profileCardNameSize = 20;
+        writingOpts.profileCardQuoteSize = 13;
+        writingOpts.profileCardInfoGap = 12;
+        renderWritingUI();
+        saveWritingOpts();
+        toast('角色卡片样式已恢复默认');
+    });
     function bindRange(element, key, valueLabel, format) {
         if (!element) return;
         element.addEventListener('input', function () {

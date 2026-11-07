@@ -2224,3 +2224,41 @@ test('WeChat Moments keeps the cover action menu available', () => {
     'the visual refinement must not hide the cover action menu trigger'
   );
 });
+
+
+test('offline face-to-face role card customizer exposes persisted styles and content layout controls', () => {
+  const sectionStart = date.indexOf('id="drawerProfileCard"');
+  const sectionEnd = date.indexOf('id="drawerReplyStyles"', sectionStart);
+  assert.notEqual(sectionStart, -1, 'offline menu should include its own role-card customizer');
+  assert.ok(sectionEnd > sectionStart, 'role-card customizer should stay inside the existing settings drawer');
+  const section = date.slice(sectionStart, sectionEnd);
+
+  for (const label of ['白卡片', '透明', '黑卡片', '自定义', '居中排版', '左对齐', '横向排版', '圆形', '圆角方形', '方形']) {
+    assert.ok(date.includes(label), 'customizer should expose ' + label);
+  }
+  for (const id of [
+    'profileCardColorInput', 'profileCardTextColorInput', 'profileCardMutedTextColorInput',
+    'profileCardBorderColorInput', 'profileCardOpacityRange', 'profileCardBorderOpacityRange',
+    'profileCardRadiusRange', 'profileCardBlurRange', 'profileCardWidthRange',
+    'profileCardPaddingRange', 'profileCardShadowRange', 'profileCardLayoutChips',
+    'profileCardAvatarVisibilityChips', 'profileCardAvatarShapeChips',
+    'profileCardQuoteVisibilityChips', 'profileCardAvatarSizeRange',
+    'profileCardNameSizeRange', 'profileCardQuoteSizeRange', 'profileCardInfoGapRange',
+    'profileCardResetBtn'
+  ]) {
+    assert.equal(date.split('id="' + id + '"').length - 1, 1, id + ' should exist exactly once');
+  }
+
+  assert.match(date, /profileCardPreset: 'transparent'/, 'the default should keep the previously approved transparent card');
+  assert.match(date, /localStorage\.getItem\(WOPT_KEY\)/, 'card settings should load with the existing offline settings');
+  assert.match(date, /localStorage\.setItem\(WOPT_KEY, JSON\.stringify\(writingOpts\)\)/, 'card settings should persist in the existing offline settings key');
+  assert.match(date, /v\.profileCardLayout === 'row'/, 'horizontal layout should survive reload');
+  assert.match(date, /v\.profileCardAvatarShape === 'square'/, 'avatar shape should survive reload');
+  assert.match(date, /data-profile-card-align="row"/, 'horizontal layout should use its dedicated layout rules');
+  assert.match(date, /--profile-card-row-columns/, 'hiding the avatar should remove the empty grid column');
+  assert.match(date, /function bindProfileCardRange/, 'fine controls should update the card live');
+  assert.match(date, /function bindProfileCardColor/, 'color controls should update the card live');
+  assert.match(date, /applyProfileCardPreset\('transparent'\)/, 'reset should restore the transparent style');
+  assert.ok(date.includes('id="dateForm"') && date.includes('id="replyOptionsBtn"') && date.includes('id="bgImageFile"'),
+    'existing story composer, reply helper, and background upload should remain present');
+});
