@@ -89,6 +89,28 @@
         });
     }
 
+    function cleanupRejectedRoleAsset(media, assetId, roleId, rejectedResult) {
+        return Promise.resolve().then(function () {
+            return media.removeRef(assetId, OWNER_TYPE, String(roleId));
+        }).then(function (released) {
+            if (!released || !released.ok) {
+                return failure('PARTIAL_ROLLBACK', 'the portrait operation was rejected, but its new media reference could not be rolled back');
+            }
+            if (typeof media.removeAsset !== 'function') {
+                return failure('PARTIAL_ROLLBACK', 'the portrait operation was rejected, but its media asset could not be checked for cleanup');
+            }
+            return Promise.resolve(media.removeAsset(assetId)).then(function (removed) {
+                if (removed && removed.ok) return rejectedResult;
+                var meta = removed && removed.meta ? removed.meta : {};
+                var retainedRefs = Array.isArray(meta.refs) ? meta.refs.length : 0;
+                if (Number(meta.refCount) > 0 || retainedRefs > 0) return rejectedResult;
+                return failure('PARTIAL_ROLLBACK', 'the portrait operation was rejected and an unowned media asset still needs cleanup');
+            });
+        }).catch(function () {
+            return failure('PARTIAL_ROLLBACK', 'the portrait operation was rejected, but media cleanup could not be completed');
+        });
+    }
+
     function emptyState() {
         return { version: 2, activeId: '', items: [], pairs: [] };
     }
@@ -145,14 +167,21 @@
         return { version: 2, activeId: activeId, items: items, pairs: pairs };
     }
 
-    function readState(roleId) {
-        if (!validRoleId(roleId) || !global.localStorage) return emptyState();
+    function readStateResult(roleId) {
+        if (!validRoleId(roleId) || !global.localStorage) {
+            return failure('STORAGE_FAILED', 'role avatar data cannot be read');
+        }
         try {
             var raw = global.localStorage.getItem(storageKey(roleId));
-            return raw ? normalizeState(JSON.parse(raw)) : emptyState();
+            return { ok: true, value: raw ? normalizeState(JSON.parse(raw)) : emptyState() };
         } catch (error) {
-            return emptyState();
+            return failure('STORAGE_FAILED', 'role avatar data cannot be read');
         }
+    }
+
+    function readState(roleId) {
+        var result = readStateResult(roleId);
+        return result && result.ok ? result.value : emptyState();
     }
 
     function writeState(roleId, state) {
@@ -237,7 +266,9 @@
         if (!firstAvatarId || !secondAvatarId || firstAvatarId === secondAvatarId) {
             return failure('VALIDATION_FAILED', 'a pair must contain two different portraits');
         }
-        var state = readState(roleId);
+        var stateResult = readStateResult(roleId);
+        if (!stateResult.ok) return stateResult;
+        var state = stateResult.value;
         var first = state.items.find(function (item) { return item.id === firstAvatarId; });
         var second = state.items.find(function (item) { return item.id === secondAvatarId; });
         if (!first || !second) return failure('NOT_FOUND', 'both portraits must belong to this character library');
@@ -266,7 +297,9 @@
         if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
         var blocked = roleMutationBlock(roleId);
         if (blocked) return blocked;
-        var state = readState(roleId);
+        var stateResult = readStateResult(roleId);
+        if (!stateResult.ok) return stateResult;
+        var state = stateResult.value;
         pairId = String(pairId || '');
         var pair = state.pairs.find(function (item) { return item.id === pairId; });
         if (!pair) return failure('NOT_FOUND', 'paired avatar set was not found');
@@ -291,7 +324,9 @@
             .slice(0, 36);
         if (!label) return failure('VALIDATION_FAILED', 'pair name cannot be empty');
 
-        var state = readState(roleId);
+        var stateResult = readStateResult(roleId);
+        if (!stateResult.ok) return stateResult;
+        var state = stateResult.value;
         var pair = state.pairs.find(function (item) { return item.id === pairId; });
         if (!pair) return failure('NOT_FOUND', 'paired avatar set was not found');
         var renamed = {
@@ -315,7 +350,9 @@
         if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
         var blocked = roleMutationBlock(roleId);
         if (blocked) return blocked;
-        var state = readState(roleId);
+        var stateResult = readStateResult(roleId);
+        if (!stateResult.ok) return stateResult;
+        var state = stateResult.value;
         pairId = String(pairId || '');
         var pair = state.pairs.find(function (item) { return item.id === pairId; });
         if (!pair) return failure('NOT_FOUND', 'paired avatar set was not found');
@@ -341,7 +378,9 @@
         if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
         var blocked = roleMutationBlock(roleId);
         if (blocked) return blocked;
-        var state = readState(roleId);
+        var stateResult = readStateResult(roleId);
+        if (!stateResult.ok) return stateResult;
+        var state = stateResult.value;
         avatarId = String(avatarId || '');
         if (avatarId && !state.items.some(function (item) { return item.id === avatarId; })) {
             return failure('NOT_FOUND', 'avatar does not belong to this character');
@@ -384,10 +423,17 @@
 
             var assetId = String(saved.value.assetId);
             var deletedBlock = roleMutationBlock(roleId);
-            if (deletedBlock) return cleanupStaleRoleAsset(media, assetId, roleId);
+            if (deletedBlock) {
+                if (deletedBlock.error && deletedBlock.error.code === 'ROLE_DELETED') {
+                    return cleanupStaleRoleAsset(media, assetId, roleId);
+                }
+                return cleanupRejectedRoleAsset(media, assetId, roleId, deletedBlock);
+            }
             // Re-read after the asynchronous media write so parallel uploads cannot overwrite
             // another portrait added to this role while putBlob was pending.
-            var latest = readState(roleId);
+            var latestResult = readStateResult(roleId);
+            if (!latestResult.ok) return cleanupRejectedRoleAsset(media, assetId, roleId, latestResult);
+            var latest = latestResult.value;
             var existing = latest.items.find(function (item) { return item.assetId === assetId; });
             if (existing) return { ok: true, value: copyItem(existing, latest.activeId), meta: { reused: true } };
 
@@ -425,7 +471,9 @@
             return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository cannot link an existing image asset'));
         }
 
-        var previous = readState(roleId);
+        var previousResult = readStateResult(roleId);
+        if (!previousResult.ok) return Promise.resolve(previousResult);
+        var previous = previousResult.value;
         var existing = previous.items.find(function (item) { return item.assetId === assetId; });
         if (existing) {
             return Promise.resolve({ ok: true, value: copyItem(existing, previous.activeId), meta: { reused: true } });
@@ -462,7 +510,17 @@
                 }
                 // Another async upload/link may have committed while getAsset/addRef was pending.
                 // Merge into that latest role state instead of writing the stale preflight snapshot.
-                var latest = readState(roleId);
+                var latestResult = readStateResult(roleId);
+                if (!latestResult.ok) {
+                    if (linked.value && linked.value.added === false) return latestResult;
+                    return Promise.resolve(media.removeRef(assetId, OWNER_TYPE, String(roleId))).then(function (released) {
+                        return released && released.ok ? latestResult
+                            : failure('PARTIAL_ROLLBACK', 'role library could not be read and the new media reference could not be rolled back');
+                    }).catch(function () {
+                        return failure('PARTIAL_ROLLBACK', 'role library could not be read and the new media reference could not be rolled back');
+                    });
+                }
+                var latest = latestResult.value;
                 var current = latest.items.find(function (entry) { return entry.assetId === assetId; });
                 if (current) return { ok: true, value: copyItem(current, latest.activeId), meta: { reused: true } };
                 var item = {
@@ -474,8 +532,13 @@
                 };
                 var next = { version: 2, activeId: latest.activeId, items: [item].concat(latest.items), pairs: latest.pairs };
                 if (!writeState(roleId, next)) {
-                    return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function () {
-                        return failure('STORAGE_FAILED', 'avatar candidate metadata could not be saved');
+                    if (linked.value && linked.value.added === false) {
+                        return failure('STORAGE_FAILED', 'avatar candidate metadata could not be saved; an existing media reference was left intact');
+                    }
+                    return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function (released) {
+                        return released && released.ok
+                            ? failure('STORAGE_FAILED', 'avatar candidate metadata could not be saved')
+                            : failure('PARTIAL_ROLLBACK', 'avatar candidate metadata could not be saved and its new media reference could not be rolled back');
                     });
                 }
                 return { ok: true, value: copyItem(item, next.activeId), meta: { linked: true } };
@@ -679,7 +742,9 @@
         // Persist deletion intent before the first async media operation. Any request that
         // resumes later sees this marker and cannot repopulate the just-deleted library.
         if (!markRoleDeleted(roleId)) return Promise.resolve(failure('STORAGE_FAILED', 'role deletion marker could not be saved'));
-        var state = readState(roleId);
+        var stateResult = readStateResult(roleId);
+        if (!stateResult.ok) return Promise.resolve(stateResult);
+        var state = stateResult.value;
         var media = mediaRepository();
         if (!media || typeof media.removeRef !== 'function') return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
 
