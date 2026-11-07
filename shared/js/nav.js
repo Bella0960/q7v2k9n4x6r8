@@ -184,7 +184,7 @@
     var notifierScript = document.createElement('script');
     notifierScript.src = appBase + 'shared/js/chat-notifier.js?v=20261107v4';
     var directoryScript = document.createElement('script');
-    directoryScript.src = appBase + 'shared/js/phone/contact-directory.js?v=20261107v1';
+    directoryScript.src = appBase + 'shared/js/phone/contact-directory.js?v=20261107v2';
     var identityScript = document.createElement('script');
     identityScript.src = appBase + 'shared/js/phone/contact-identity.js?v=20261107v1';
     directoryScript.onload = function () { document.head.appendChild(notifierScript); };
