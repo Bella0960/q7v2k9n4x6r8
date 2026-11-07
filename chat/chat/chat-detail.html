@@ -7006,7 +7006,7 @@
         }
 
         // 只携带白名单字段，避免把本地状态（mid/status/translation/isError）带过去引发二次余额逻辑
-        function forwardMessage(msg, targetId, targetName) {
+        async function forwardMessage(msg, targetId, targetName) {
             var key = 'chat_history_' + targetId;
             var arr = [];
             try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
@@ -7018,15 +7018,42 @@
                 forwardFrom: { id: String(aliasRoleId), name: roleDisplayName },
                 text: plainTextOf(msg)
             };
-            if (msg.type === 'image' && msg.img) { fwd.type = 'image'; fwd.img = msg.img; fwd.desc = msg.desc || ''; }
-            else if (msg.type === 'voice') { fwd.type = 'voice'; fwd.duration = msg.duration || 3; }
+            var linkedImageRef = false;
+            if (msg.type === 'image' && msg.assetId) {
+                if (!_chatImageMediaRepo || typeof _chatImageMediaRepo.addRef !== 'function') {
+                    if (typeof showToast === 'function') showToast('图片资源不可用，转发未完成');
+                    return;
+                }
+                fwd.type = 'image';
+                fwd.assetId = String(msg.assetId);
+                fwd.desc = msg.desc || '';
+                ensureMid(fwd);
+                var linked = await _chatImageMediaRepo.addRef(fwd.assetId, 'chat-message', String(fwd.mid));
+                if (!linked || !linked.ok) {
+                    if (typeof showToast === 'function') showToast('图片引用建立失败，转发未完成');
+                    return;
+                }
+                linkedImageRef = true;
+            } else if (msg.type === 'image' && msg.img) {
+                fwd.type = 'image'; fwd.img = msg.img; fwd.desc = msg.desc || '';
+            } else if (msg.type === 'voice') { fwd.type = 'voice'; fwd.duration = msg.duration || 3; }
             else if (msg.type === 'location' && msg.location) { fwd.type = 'location'; fwd.location = msg.location; }
             else if (msg.type === 'card' && msg.card) { fwd.type = 'card'; fwd.card = msg.card; }
             else if (msg.type === 'sticker' && msg.img) { fwd.type = 'sticker'; fwd.img = msg.img; fwd.desc = msg.desc || ''; }
+
             arr.push(fwd);
             try {
                 localStorage.setItem(key, JSON.stringify(arr));
+                var readBack = JSON.parse(localStorage.getItem(key) || '[]');
+                if (!Array.isArray(readBack) || !readBack.some(function (item) {
+                    return String(item && item.mid || '') === String(fwd.mid || '');
+                })) throw new Error('转发记录读回校验失败');
             } catch (e) {
+                if (linkedImageRef) {
+                    try {
+                        await _chatImageMediaRepo.removeRef(fwd.assetId, 'chat-message', String(fwd.mid));
+                    } catch (cleanupError) {}
+                }
                 if (typeof showToast === 'function') showToast('转发失败：本地存储空间不足');
                 return;
             }
