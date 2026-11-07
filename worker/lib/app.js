@@ -42,6 +42,35 @@ async function clientIpHash(request, env) {
   return (await sha256Hex(`${String(env?.DEVICE_SECRET_PEPPER || '')}|ip|${ip}`)).slice(0, 32);
 }
 
+function isSafePushEndpointUrl(url) {
+  const hostname = String(url?.hostname || '').toLowerCase().replace(/\.$/, '');
+  if (
+    url?.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    (url.port && url.port !== '443')
+  ) return false;
+
+  // Browser push services use DNS hostnames, not IP literals or local names.
+  // URL canonicalization also normalizes alternate IPv4 spellings before this check.
+  if (!hostname || hostname.startsWith('[') || hostname.includes(':') || /^[0-9.]+$/.test(hostname)) {
+    return false;
+  }
+  if (!hostname.includes('.')) return false;
+  if (
+    hostname === 'localhost' ||
+    ['.localhost', '.local', '.internal', '.lan', '.home', '.test', '.invalid', '.onion']
+      .some(suffix => hostname.endsWith(suffix))
+  ) return false;
+
+  return hostname.split('.').every(label =>
+    label.length > 0 &&
+    label.length <= 63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+  );
+}
+
 function validateSubscription(input) {
   if (!input || typeof input !== 'object') {
     throw new ApiError(400, 'INVALID_SUBSCRIPTION', '缺少 subscription 对象');
@@ -56,8 +85,8 @@ function validateSubscription(input) {
   } catch (error) {
     throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'endpoint 不是合法 URL');
   }
-  if (url.protocol !== 'https:') {
-    throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'endpoint 必须是 https');
+  if (!isSafePushEndpointUrl(url)) {
+    throw new ApiError(400, 'INVALID_SUBSCRIPTION', 'endpoint 必须是有效的公网 HTTPS 推送服务地址');
   }
   const keys = input.keys || {};
   const p256dhBytes = base64UrlToBytes(String(keys.p256dh || ''));
