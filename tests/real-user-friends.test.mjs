@@ -8,6 +8,7 @@ import { sha256Hex } from "../worker/real-user-auth.js";
 class FakeD1 {
   constructor() {
     this.schemaReady = true;
+    this.friendCodeIndexReady = true;
     this.accounts = new Map();
     this.sessions = new Map();
     this.codes = new Map();
@@ -32,6 +33,12 @@ class FakeD1 {
   }
 
   async first(sql, values) {
+    if (sql.includes("FROM sqlite_master") && sql.includes("ready_tables")) {
+      return {
+        ready_tables: this.schemaReady ? 4 : 0,
+        ready_index: this.friendCodeIndexReady ? 1 : 0
+      };
+    }
     if (sql.includes("FROM sqlite_master")) {
       return { ready: this.schemaReady ? 4 : 0 };
     }
@@ -335,6 +342,9 @@ test("friend service stays disabled without its explicit flag and complete schem
   const noSchema = await setup();
   noSchema.db.schemaReady = false;
   assert.equal(await isRealUserFriendsConfigured(noSchema.env), false);
+  const noRotationIndex = await setup();
+  noRotationIndex.db.friendCodeIndexReady = false;
+  assert.equal(await isRealUserFriendsConfigured(noRotationIndex.env), false);
 });
 
 test("QR rotation returns a short-lived one-time code and revokes the previous code", async () => {
