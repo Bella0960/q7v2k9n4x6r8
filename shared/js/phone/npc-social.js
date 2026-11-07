@@ -36,13 +36,15 @@
     return String(roleId || '__unselected__');
   }
   function scopedKey(prefix, roleId) {
-    return prefix + encodeURIComponent(String(roleId || activeRoleId()));
+    var scope = roleId == null ? activeRoleId() : String(roleId || '__unselected__');
+    return prefix + encodeURIComponent(scope);
   }
-  function writeRequests(rows) {
-    return writeJson(scopedKey(REQUEST_KEY_PREFIX), rows);
+  function writeRequests(rows, roleId) {
+    return writeJson(scopedKey(REQUEST_KEY_PREFIX, roleId), rows);
   }
-  function readRequests() {
-    var key = scopedKey(REQUEST_KEY_PREFIX);
+  function readRequests(roleId) {
+    var scopeId = roleId == null ? activeRoleId() : String(roleId || '__unselected__');
+    var key = scopedKey(REQUEST_KEY_PREFIX, scopeId);
     var raw = null;
     try { raw = localStorage.getItem(key); }
     catch (error) { throw new Error('当前主角色的 NPC 申请数据无法读取，已停止写入以保护原数据。'); }
@@ -56,15 +58,14 @@
     // The old global key is deliberately retained as a backup.
     var legacy = readJson(LEGACY_REQUEST_KEY, []);
     if (!Array.isArray(legacy)) throw new Error('旧版 NPC 申请数据无法读取，已停止迁移以保护原数据。');
-    var roleId = activeRoleId();
-    var migrated = roleId === '__unselected__' ? [] : legacy.filter(function (row) {
-      return row && String(row.mainRoleId || '') === roleId;
+    var migrated = scopeId === '__unselected__' ? [] : legacy.filter(function (row) {
+      return row && String(row.mainRoleId || '') === scopeId;
     });
     if (!writeRequests(migrated)) throw new Error('NPC 申请迁移保存失败，旧数据未被删除。');
     return migrated;
   }
-  function readSettings() {
-    var value = readJson(scopedKey(SETTINGS_KEY_PREFIX), {});
+  function readSettings(roleId) {
+    var value = readJson(scopedKey(SETTINGS_KEY_PREFIX, roleId), {});
     if (!value || typeof value !== 'object' || Array.isArray(value)) value = {};
     var interval = Number(value.intervalHours);
     return {
@@ -74,8 +75,8 @@
       updatedAt: Number(value.updatedAt) || 0
     };
   }
-  function saveSettings(value) {
-    return writeJson(scopedKey(SETTINGS_KEY_PREFIX), {
+  function saveSettings(value, roleId) {
+    return writeJson(scopedKey(SETTINGS_KEY_PREFIX, roleId), {
       enabled: value.enabled === true,
       intervalHours: [12, 24, 48].indexOf(Number(value.intervalHours)) !== -1 ? Number(value.intervalHours) : 24,
       lastAttemptAt: Number(value.lastAttemptAt) || 0,
@@ -266,29 +267,30 @@
     }
     return { name: name, profession: profession, persona: persona, greeting: greeting, reason: reason, speechStyle: speechStyle };
   }
-  function acquireLock(now) {
-    var key = scopedKey(LOCK_KEY_PREFIX);
+  function acquireLock(now, roleId) {
+    var key = scopedKey(LOCK_KEY_PREFIX, roleId);
     var previous = Number(readJson(key, 0)) || 0;
     if (previous && now - previous >= 0 && now - previous < 2 * 60 * 1000) return false;
     try { localStorage.setItem(key, String(now)); return true; } catch (error) { return false; }
   }
-  function releaseLock() {
-    try { localStorage.removeItem(scopedKey(LOCK_KEY_PREFIX)); } catch (error) {}
+  function releaseLock(roleId) {
+    try { localStorage.removeItem(scopedKey(LOCK_KEY_PREFIX, roleId)); } catch (error) {}
   }
-  function updateLastAttempt(settings, timestamp) {
+  function updateLastAttempt(settings, timestamp, roleId) {
     settings.lastAttemptAt = timestamp;
-    return saveSettings(settings);
+    return saveSettings(settings, roleId);
   }
 
   NS.getSettings = readSettings;
-  NS.getRequests = function () { return readRequests().slice().sort(function (a, b) { return Number(b.createdAt) - Number(a.createdAt); }); };
-  NS.getPendingCount = function () { return countPending(readRequests()); };
+  NS.getRequests = function (roleId) { return readRequests(roleId).slice().sort(function (a, b) { return Number(b.createdAt) - Number(a.createdAt); }); };
+  NS.getPendingCount = function (roleId) { return countPending(readRequests(roleId)); };
   NS.setSettings = function (patch) {
-    var current = readSettings();
+    var roleId = activeRoleId();
+    var current = readSettings(roleId);
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'enabled')) current.enabled = patch.enabled === true;
     if (patch && Object.prototype.hasOwnProperty.call(patch, 'intervalHours')) current.intervalHours = Number(patch.intervalHours);
-    if (!saveSettings(current)) throw new Error('设置保存失败，请检查设备存储空间。');
-    return readSettings();
+    if (!saveSettings(current, roleId)) throw new Error('设置保存失败，请检查设备存储空间。');
+    return readSettings(roleId);
   };
 
   NS.discoverNow = async function () { return runDiscovery(true); };
@@ -301,9 +303,10 @@
       if (manual) throw new Error('请先在小手机中选择一个主角色，再寻找新朋友。');
       return { created: false, reason: 'no-active-role' };
     }
-    var requests = readRequests();
+    var roleId = String(role.id);
+    var requests = readRequests(roleId);
     if (countPending(requests) >= 1) return { created: false, reason: 'pending-exists' };
-    var settings = readSettings();
+    var settings = readSettings(roleId);
     var now = Date.now();
     if (!manual && (!settings.enabled || now - settings.lastAttemptAt < settings.intervalHours * 60 * 60 * 1000)) {
       return { created: false, reason: 'disabled-or-cooldown' };
@@ -313,11 +316,11 @@
       if (manual) throw new Error('请先在设置中配置 AI API，才能生成 NPC。');
       return { created: false, reason: 'api-not-configured' };
     }
-    if (!acquireLock(now)) return { created: false, reason: 'locked' };
+    if (!acquireLock(now, roleId)) return { created: false, reason: 'locked' };
     busy = true;
-    if (!updateLastAttempt(settings, now)) {
+    if (!updateLastAttempt(settings, now, roleId)) {
       busy = false;
-      releaseLock();
+      releaseLock(roleId);
       throw new Error('自动发现状态保存失败，已停止生成以避免重复请求。');
     }
     try {
@@ -366,13 +369,17 @@
         introduction: npc.greeting
       };
       requests.unshift(request);
-      if (!writeRequests(requests)) throw new Error('好友申请保存失败，请检查设备存储空间。');
-      emit('mao:npc-friend-request', request);
-      showIncomingToast(request);
-      return { created: true, request: request };
+      if (!writeRequests(requests, roleId)) throw new Error('好友申请保存失败，请检查设备存储空间。');
+      // Do not surface role A's result in role B's UI if the user switched while
+      // the AI request was in flight. The originating role will see it on return.
+      if (activeRoleId() === roleId) {
+        emit('mao:npc-friend-request', request);
+        showIncomingToast(request);
+      }
+      return { created: true, request: request, mainRoleId: roleId };
     } finally {
       busy = false;
-      releaseLock();
+      releaseLock(roleId);
     }
   }
 
