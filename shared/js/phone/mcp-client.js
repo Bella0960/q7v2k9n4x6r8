@@ -116,7 +116,6 @@
         cache: 'no-store',
         redirect: 'error'
       }).then(function (response) {
-        clearTimeout(timer);
         if (response.status === 401 || response.status === 403) {
           throw new Error('MCP 服务拒绝了授权。请检查令牌或服务权限。');
         }
@@ -128,8 +127,11 @@
         }
         var newSession = response.headers.get('Mcp-Session-Id');
         if (newSession) sessionId = newSession;
-        if (response.status === 202) return null;
-        return parseResponse(response, payload.id);
+        if (response.status === 202) { clearTimeout(timer); return null; }
+        return parseResponse(response, payload.id).then(function (message) {
+          clearTimeout(timer);
+          return message;
+        });
       }).then(function (message) {
         if (message && message.error) {
           throw new Error(String(message.error.message || 'MCP JSON-RPC 请求失败。').slice(0, 240));
