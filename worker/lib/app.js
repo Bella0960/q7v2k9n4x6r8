@@ -1042,6 +1042,27 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
 
     const timestamp = now();
     const activity = await store.getActivity(activityId);
+    const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
+    const outboundDedupeKey = 'autonomy:' + activityId + ':' + attemptCount;
+    const outboundPayload = { type: 'text', text: messageText };
+
+    // A retry after a lost HTTP response is accepted only when it is byte-for-byte
+    // the same completed message; different text cannot replace the first result.
+    if (activity && activity.device_id === device.id && activity.status === 'completed' &&
+        Number(activity.attempt_count) === attemptCount) {
+      const repeated = await store.completeActivityWithOutbound({
+        id: activityId,
+        owner: device.id,
+        attemptCount,
+        now: timestamp,
+        serverMessageId,
+        dedupeKey: outboundDedupeKey,
+        payload: outboundPayload
+      });
+      if (repeated) return ok(repeated);
+      throw new ApiError(409, 'ACTIVITY_RESULT_CONFLICT', '已完成任务的消息内容不可修改');
+    }
+
     if (!activity || activity.device_id !== device.id ||
         activity.status !== 'running' || activity.locked_by !== device.id ||
         Number(activity.attempt_count) !== attemptCount ||
@@ -1095,15 +1116,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       return ok({ completed: true, skipped: true, reasonCode });
     }
 
-    const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
     const result = await store.completeActivityWithOutbound({
       id: activityId,
       owner: device.id,
       attemptCount,
       now: timestamp,
       serverMessageId,
-      dedupeKey: 'autonomy:' + activityId + ':' + attemptCount,
-      payload: { type: 'text', text: messageText }
+      dedupeKey: outboundDedupeKey,
+      payload: outboundPayload
     });
     if (!result) {
       throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
