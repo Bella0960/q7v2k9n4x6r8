@@ -131,6 +131,24 @@ class FakeD1 {
         }).filter(Boolean);
       return { results: rows };
     }
+    if (sql.includes("FROM real_user_blocks b JOIN real_user_accounts a")) {
+      const [ownerId, limit] = values;
+      const rows = Array.from(this.blocks.values())
+        .filter(block => block.blocker_id === ownerId)
+        .sort((a, b) => a.created_at - b.created_at)
+        .slice(0, limit)
+        .map(block => {
+          const peer = this.accounts.get(block.blocked_id);
+          return peer ? {
+            id: peer.id,
+            handle: peer.handle,
+            display_name: peer.display_name,
+            avatar_asset_id: peer.avatar_asset_id || null,
+            created_at: block.created_at
+          } : null;
+        }).filter(Boolean);
+      return { results: rows };
+    }
     if (sql.includes("FROM real_user_friendships f")) {
       const [caseAccount, lowAccount, highAccount, blockerA, blockerB, limit] = values;
       const rows = Array.from(this.friendships.values())
@@ -528,6 +546,10 @@ test("friend removal, block and unblock update the authoritative relationship", 
   assert.equal(blocked.body.blocked, true);
   const blockedList = await call(context, "/", "GET");
   assert.equal(blockedList.body.friends.length, 0);
+  const ownBlockList = await call(context, "/blocks", "GET", undefined, "alice");
+  const otherBlockList = await call(context, "/blocks", "GET", undefined, "bob");
+  assert.deepEqual(ownBlockList.body.blocked.map(item => item.id), ["account-bob-001"]);
+  assert.equal(otherBlockList.body.blocked.length, 0);
   const blockedCode = await call(context, "/codes/rotate", "POST", undefined, "bob");
   const blockedRequest = await call(context, "/requests", "POST", {
     requestId: "request_blocked_0001", code: blockedCode.body.code
@@ -535,6 +557,8 @@ test("friend removal, block and unblock update the authoritative relationship", 
   assert.equal(blockedRequest.response.status, 403);
   const unblocked = await call(context, "/account-bob-001/block", "DELETE");
   assert.equal(unblocked.body.blocked, false);
+  const emptyBlockList = await call(context, "/blocks", "GET");
+  assert.equal(emptyBlockList.body.blocked.length, 0);
   const freshCode = await call(context, "/codes/rotate", "POST", undefined, "bob");
   const freshRequest = await call(context, "/requests", "POST", {
     requestId: "request_fresh_001", code: freshCode.body.code
