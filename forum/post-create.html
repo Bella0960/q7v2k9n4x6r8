@@ -551,8 +551,10 @@
 
         document.getElementById('rowVisibility').addEventListener('click', openPermSheet);
         document.getElementById('permClose').addEventListener('click', function () {
-            if (permissionSheetStage === 'audience' && currentPerm === 'custom' && !getAudienceSnapshot('custom').memberIds.length) {
-                showToast('部分可见至少选择一位联系人');
+            if (permissionSheetStage === 'audience' &&
+                (currentPerm === 'custom' || currentPerm === 'excluded') &&
+                !getAudienceSnapshot(currentPerm).memberIds.length) {
+                showToast(currentPerm === 'custom' ? '部分可见至少选择一位联系人' : '不给谁看至少选择一位联系人');
                 return;
             }
             closePermSheet(permissionSheetStage === 'audience');
@@ -656,8 +658,9 @@
             var myId = me.id;
             var visibleAudience = currentPerm === 'custom' ? getAudienceSnapshot('custom') : { groupIds: [], contactIds: [], memberIds: [] };
             var hiddenAudience = currentPerm === 'excluded' ? getAudienceSnapshot('excluded') : { groupIds: [], contactIds: [], memberIds: [] };
-            if (currentPerm === 'custom' && !visibleAudience.memberIds.length) {
-                showToast('部分可见至少选择一位联系人');
+            if ((currentPerm === 'custom' && !visibleAudience.memberIds.length) ||
+                (currentPerm === 'excluded' && !hiddenAudience.memberIds.length)) {
+                showToast(currentPerm === 'custom' ? '部分可见至少选择一位联系人' : '不给谁看至少选择一位联系人');
                 openPermSheet();
                 return;
             }
