@@ -3570,10 +3570,19 @@
         });
 
         var _cloudOutboundReadObserver = null;
+        var _cloudOutboundReadVisibilityBound = false;
 
         function ensureCloudOutboundReadObserver() {
             if (_cloudOutboundReadObserver) return _cloudOutboundReadObserver;
             if (typeof window.IntersectionObserver !== 'function' || !chatMessages) return null;
+            if (!_cloudOutboundReadVisibilityBound) {
+                _cloudOutboundReadVisibilityBound = true;
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'visible') {
+                        observeVisibleCloudOutboundRows(chatMessages);
+                    }
+                });
+            }
             _cloudOutboundReadObserver = new IntersectionObserver(function (entries) {
                 entries.forEach(function (entry) {
                     var row = entry.target;
