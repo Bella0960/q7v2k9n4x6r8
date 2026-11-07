@@ -184,6 +184,21 @@ test('portrait removal revalidates pair state after asynchronous reference relea
   assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), true);
 });
 
+test('portrait removal revalidates the active avatar after asynchronous reference release', async () => {
+  const { api, refs } = createLibrary();
+  const current = await api.add('role-a', 'data:image/jpeg;base64,CURRENT');
+  const candidate = await api.add('role-a', 'data:image/jpeg;base64,CANDIDATE');
+
+  const removalPending = api.remove('role-a', candidate.value.id);
+  assert.equal(api.setActive('role-a', candidate.value.id).ok, true);
+
+  const removed = await removalPending;
+  assert.equal(removed.ok, false);
+  assert.equal(removed.error.code, 'VALIDATION_FAILED');
+  assert.equal(api.getActive('role-a').id, candidate.value.id);
+  assert.equal(refs.has(candidate.value.assetId + '|role-avatar|role-a'), true);
+});
+
 test('shared assets remain available when another feature still references them', async () => {
   const { api, refs, assets } = createLibrary({}, { retainAssets: true });
   const a = await api.add('role-a', 'data:image/jpeg;base64,AAA');
