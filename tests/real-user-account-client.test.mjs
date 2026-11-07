@@ -477,6 +477,7 @@ test('friend roster pagination collects every page under one stable snapshot', a
   await app.client.restore();
   const roster = await app.client.listFriendRoster();
   assert.equal(roster.complete, true);
+  assert.equal(roster.ownerAccountId, 'self-page-1');
   assert.equal(roster.snapshotAt, 500);
   assert.deepEqual(roster.friends.map((friend) => friend.id), ['account_friend_01', 'account_friend_02']);
   assert.deepEqual(roster.relationships.map((friend) => friend.acceptedRequestId),
