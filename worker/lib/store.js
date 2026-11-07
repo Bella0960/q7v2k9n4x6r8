@@ -1419,7 +1419,7 @@ class CloudStore {
       friendId,
       userId
     )[0];
-    if (!latest) return { kind: 'empty', cleared: false };
+    if (!latest) return { kind: 'empty', cleared: false, clearedThrough: null };
 
     const updated = this.exec(
       `INSERT INTO friend_conversation_clears
@@ -1439,7 +1439,14 @@ class CloudStore {
       latest.id,
       now
     )[0];
-    return { kind: updated ? 'cleared' : 'already_cleared', cleared: Boolean(updated) };
+    return {
+      kind: updated ? 'cleared' : 'already_cleared',
+      cleared: Boolean(updated),
+      clearedThrough: {
+        createdAt: Number(updated?.clear_before_created_at || latest.created_at),
+        messageId: String(updated?.clear_before_message_id || latest.id)
+      }
+    };
   }
 
   markFriendConversationRead({ userId, friendId, messageId, now }) {
