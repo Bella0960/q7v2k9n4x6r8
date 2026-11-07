@@ -207,7 +207,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增设备鉴权端点 `GET /api/autonomy/readiness`，返回配置状态、当前设备的活动推送订阅数量、全局授权、上下文版本状态、执行器状态，以及当前用户队列的匿名状态汇总。
 - 队列只暴露 `total / waiting / retry / running / completed / failed / superseded / other` 数量（未知或历史状态归入 `other`）；按已鉴权设备所属用户过滤。不会返回任务 ID、角色 ID、设备 ID、任务载荷或聊天内容。
 - 新增最近 24 小时调度阻塞 / 作废原因计数：仅统计 `deferred / failed / superseded / skipped`，不把成功认领的 `claimed` 误报为阻塞；Scheduler 日志写入任务所属的 `device_id`，readiness 仅按已鉴权设备所属用户分组返回原因码与次数，不返回执行日志详情、任务 ID 或时间戳；旧的未关联设备日志不会跨账号展示。
-- readiness 在心跳/租约参数齐全时，额外返回匿名 `presenceSummary`：授权设备总数、TTL 内有效前台心跳设备数、有效角色租约数、grace 缓冲期租约数。查询按用户隔离，并排除已撤销设备、过期心跳和非本账号租约；不返回设备 ID、角色 ID 或原始心跳时间。缺少前台参数时该汇总为 `null`，不会把未知状态伪装成离线。
+- readiness 在心跳/租约参数齐全时，额外返回匿名 `presenceSummary`：授权设备总数、TTL 内有效前台心跳设备数、有效角色租约数、grace 缓冲期租约数。查询按用户隔离，并排除已撤销设备、过期或未来时间戳的心跳和非本账号租约；不返回设备 ID、角色 ID 或原始心跳时间。缺少前台参数时该汇总为 `null`，不会把未知状态伪装成离线。
 - 设备撤销在同一个同步 Store 操作内先停用其全部推送订阅，再标记设备撤销并清除 presence、租约和未使用配对码，避免撤销与停订阅分成两次调用造成的短暂推送窗口。
 - 当前 `activityExecutorAvailable=false`、`contextVersionReady=false`，主动消息生成继续为 false；阻塞原因明确为 `executor_unavailable` 与 `context_version_unavailable`。这不是“已能主动发消息”的状态。
 - 不返回 VAPID 私钥、设备 pepper、初始认领码、配对码或任何 Secret。
