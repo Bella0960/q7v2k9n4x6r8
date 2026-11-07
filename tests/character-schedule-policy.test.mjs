@@ -247,6 +247,21 @@ test('presence and character state are computed independently', () => {
   assert.equal(result.execution.contactAllowed, true);
 });
 
+test('未来时间戳不会被当作当前前台在线心跳', () => {
+  const nowMs = Date.parse('2026-06-01T02:00:00Z');
+  const result = P.evaluate(makeInput({
+    nowMs,
+    presence: {
+      devices: [{ deviceId: 'future', userId: USER, authorized: true, lastHeartbeatAt: nowMs + 1000 }],
+      leases: []
+    }
+  }));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.presence.state, 'background_or_offline');
+  assert.deepEqual(result.presence.activeDeviceIds, []);
+});
+
 test('an offline device never turns into away, asleep or paused', () => {
   const result = P.evaluate(makeInput({
     schedule: {},
