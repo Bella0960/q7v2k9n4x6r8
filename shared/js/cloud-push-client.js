@@ -808,6 +808,26 @@
               ' / 已作废 ' + Number(ready.activityQueue && ready.activityQueue.superseded || 0) +
               ' / 其他 ' + Number(ready.activityQueue && ready.activityQueue.other || 0) + '）',
             '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
+            '最近 24 小时调度阻塞原因：' + (Array.isArray(ready.recentSchedulerReasons) && ready.recentSchedulerReasons.length
+              ? ready.recentSchedulerReasons.map(function (item) {
+                  var labels = {
+                    executor_unavailable: '执行器未接入',
+                    context_version_unavailable: '缺少可信上下文版本',
+                    autonomy_denied: '自主活动授权未通过',
+                    character_not_active: '角色当前不在主动时段',
+                    foreground_lease_held: '角色正在前台聊天',
+                    foreground_lease_grace: '前台租约缓冲期内',
+                    stale_context: '任务上下文已过期',
+                    gate_data_missing: '缺少调度配置',
+                    gate_provider_error: '调度数据读取失败',
+                    gate_policy_unavailable: '作息策略不可用',
+                    gate_policy_invalid: '调度规则校验失败',
+                    gate_data_source_missing: '调度数据源不可用',
+                    claim_lost: '任务认领发生竞争'
+                  };
+                  return (labels[item.reasonCode] || '其他原因') + ' × ' + Number(item.count || 0);
+                }).join('、')
+              : '暂无记录'),
             '可信聊天上下文版本：' + (ready.contextVersionReady ? '已就绪' : '未就绪'),
             'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
             '',
