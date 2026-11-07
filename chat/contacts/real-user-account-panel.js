@@ -166,6 +166,8 @@
   var pendingInviteCode = inviteLinks ? inviteLinks.captureCurrentInvite(root.location, root.history, document.title) : '';
   var codeExpiryTimer = null;
   var cameraScanner = null;
+  var profileRefreshPromise = null;
+  var lastResumeRefreshAt = 0;
 
   function el(id) { return document.getElementById(id); }
   function setStatus(message, kind) {
@@ -407,6 +409,49 @@
     renderRequests(el('ruOutgoing'), results[2], 'outgoing');
     renderBlocked(results[3]);
     return results;
+  }
+
+  // Keep the self profile and the friend roster aligned with the authenticated
+  // server state. A single in-flight refresh avoids stale responses racing each other.
+  async function refreshProfileAndFriends() {
+    if (profileRefreshPromise) return profileRefreshPromise;
+    profileRefreshPromise = (async function () {
+      var account = await client.refreshAccount();
+      renderAccount(account);
+      await refreshServerData();
+      return account;
+    })();
+    try {
+      return await profileRefreshPromise;
+    } finally {
+      profileRefreshPromise = null;
+    }
+  }
+
+  function handleSessionExpired(error) {
+    if (!error || (error.status !== 401 && error.code !== 'authentication_required')) return false;
+    clearCodeExpiryTimer();
+    currentCode = null;
+    el('ruCodeArea').hidden = true;
+    el('ruFriendsArea').hidden = true;
+    showSessionArea(false);
+    showAuthArea(true);
+    setAuthMode('login');
+    setStatus('登录状态已失效，请重新登录。', 'error');
+    el('ruSummaryStatus').textContent = '未登录';
+    return true;
+  }
+
+  function refreshOnResume() {
+    if (!panel.open || el('ruSessionArea').hidden || document.visibilityState === 'hidden') return;
+    var now = Date.now();
+    if (now - lastResumeRefreshAt < 20000) return;
+    lastResumeRefreshAt = now;
+    refreshProfileAndFriends().then(function () {
+      setStatus('账号资料与好友资料已从服务器同步。');
+    }).catch(function (error) {
+      if (!handleSessionExpired(error)) setStatus(explainError(error), 'error');
+    });
   }
 
   function renderCode(payload) {
@@ -785,10 +830,10 @@
     var button = el('ruRefreshFriends');
     setBusy(button, true, '刷新中…');
     try {
-      await refreshServerData();
-      setStatus('好友列表和申请已刷新。');
+      await refreshProfileAndFriends();
+      setStatus('账号资料、好友头像和申请已同步。');
     } catch (error) {
-      setStatus(explainError(error), 'error');
+      if (!handleSessionExpired(error)) setStatus(explainError(error), 'error');
     } finally {
       setBusy(button, false);
     }
@@ -818,6 +863,15 @@
     } finally {
       setBusy(button, false);
     }
+  });
+
+  panel.addEventListener('toggle', function () {
+    if (panel.open) refreshOnResume();
+  });
+  root.addEventListener('pageshow', refreshOnResume);
+  root.addEventListener('focus', refreshOnResume);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') refreshOnResume();
   });
 
   root.addEventListener('pagehide', function () {
