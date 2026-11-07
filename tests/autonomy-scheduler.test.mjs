@@ -555,3 +555,53 @@ test('runTick 将 context version 变化的任务标记 superseded，不认领',
   assert.equal(result.superseded, 1);
   assert.equal(store.getActivity('act_gate_stale').status, 'superseded');
 });
+
+
+test('真实 SQLite store gate snapshot 只读取非聊天元数据，缺少上下文版本保持 null', () => {
+  const { store } = freshStore();
+  const empty = store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-real' });
+  assert.equal(empty.authorization.globalAutonomyEnabled, false);
+  assert.equal(empty.authorization.characterAutonomyEnabled, null);
+  assert.equal(empty.schedule, null);
+  assert.equal(empty.contextVersion, null);
+  assert.deepEqual(empty.presence.devices, []);
+  assert.deepEqual(empty.presence.leases, []);
+
+  store.setUserAutonomy('owner', true, NOW);
+  store.setCharacterAutonomy('owner', 'char-real', null, NOW);
+  store.setCharacterSchedule('owner', 'char-real', 'UTC', {
+    active: [{ startMinute: 0, endMinute: 1440 }],
+    busy: [],
+    asleep: []
+  }, NOW);
+
+  const configured = store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-real' });
+  assert.equal(configured.authorization.globalAutonomyEnabled, true);
+  assert.equal(configured.authorization.characterAutonomyEnabled, null);
+  assert.equal(configured.schedule.active.length, 1);
+  assert.equal(configured.timeZone, 'UTC');
+  assert.equal(configured.contextVersion, null, '不得从时间戳或任务字段伪造服务端上下文版本');
+});
+
+test('真实 SQLite store snapshot 不会把后台心跳视为前台活跃设备', () => {
+  const { store } = freshStore();
+  store.insertDevice({
+    id: 'device_background_123',
+    secretHash: 'hash-only-test',
+    label: '',
+    platform: '',
+    userAgent: '',
+    ipHash: '',
+    now: NOW
+  });
+  store.upsertDevicePresence({
+    userId: 'owner',
+    deviceId: 'device_background_123',
+    foregroundActive: false,
+    now: NOW
+  });
+
+  const snapshot = store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-real' });
+  assert.equal(snapshot.presence.devices[0].foregroundActive, false);
+  assert.equal(snapshot.presence.devices[0].lastHeartbeatAt, 0);
+});
