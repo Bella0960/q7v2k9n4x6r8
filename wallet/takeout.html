@@ -789,7 +789,7 @@
             });
             var transactionId = ledger.getOrCreatePendingCheckout('takeout', checkoutSignature, payMethod);
             if (!transactionId) {
-              toast('存在未完成的同一笔结算或结算编号未能保存；请使用上次支付方式继续');
+              toast('存在未完成的结算；请恢复上次商品和支付方式后继续，避免重复扣款');
               return;
             }
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
