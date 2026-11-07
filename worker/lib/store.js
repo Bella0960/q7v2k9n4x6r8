@@ -1190,13 +1190,27 @@ class CloudStore {
            LEFT JOIN friend_conversation_reads r
              ON r.user_id = ? AND r.friend_id =
                CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+           LEFT JOIN friend_conversation_clears c
+             ON c.user_id = ? AND c.friend_id =
+               CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
            WHERE m.sender_id =
                  CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
              AND m.recipient_id = ?
+             AND NOT EXISTS (
+               SELECT 1 FROM friend_message_hides h
+               WHERE h.user_id = ?
+                 AND h.friend_id = CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+                 AND h.message_id = m.id
+             )
              AND (
                r.last_read_created_at IS NULL
                OR m.created_at > r.last_read_created_at
                OR (m.created_at = r.last_read_created_at AND m.id > r.last_read_message_id)
+             )
+             AND (
+               c.clear_before_created_at IS NULL
+               OR m.created_at > c.clear_before_created_at
+               OR (m.created_at = c.clear_before_created_at AND m.id > c.clear_before_message_id)
              )
          ) AS unread_count
        FROM friendships f
@@ -1205,6 +1219,10 @@ class CloudStore {
        WHERE f.user_low_id = ? OR f.user_high_id = ?
        ORDER BY f.created_at DESC
        LIMIT 500`,
+      userId,
+      userId,
+      userId,
+      userId,
       userId,
       userId,
       userId,
@@ -1286,21 +1304,34 @@ class CloudStore {
 
   listFriendMessages({ userId, friendId, after = null, before = null, limit = 50 } = {}) {
     const safeLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 50));
-    const pairFilter = `((sender_id = ? AND recipient_id = ?) OR
-                          (sender_id = ? AND recipient_id = ?))`;
+    const pairFilter = `((m.sender_id = ? AND m.recipient_id = ?) OR
+                          (m.sender_id = ? AND m.recipient_id = ?))`;
+    const visibilityJoin = `LEFT JOIN friend_conversation_clears c
+      ON c.user_id = ? AND c.friend_id = ?`;
+    const visibilityFilter = `
+      AND (
+        c.clear_before_created_at IS NULL
+        OR m.created_at > c.clear_before_created_at
+        OR (m.created_at = c.clear_before_created_at AND m.id > c.clear_before_message_id)
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM friend_message_hides h
+        WHERE h.user_id = ? AND h.friend_id = ? AND h.message_id = m.id
+      )`;
+    const baseParams = [userId, friendId, userId, friendId, friendId, userId, userId, friendId];
+
     if (before && Number.isSafeInteger(before.createdAt) && before.createdAt >= 0 &&
         typeof before.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(before.id)) {
       const rows = this.exec(
-        `SELECT id, sender_id, recipient_id, body, created_at
-         FROM friend_messages
+        `SELECT m.id, m.sender_id, m.recipient_id, m.body, m.created_at
+         FROM friend_messages m
+         ${visibilityJoin}
          WHERE ${pairFilter}
-           AND (created_at < ? OR (created_at = ? AND id < ?))
-         ORDER BY created_at DESC, id DESC
+         ${visibilityFilter}
+           AND (m.created_at < ? OR (m.created_at = ? AND m.id < ?))
+         ORDER BY m.created_at DESC, m.id DESC
          LIMIT ?`,
-        userId,
-        friendId,
-        friendId,
-        userId,
+        ...baseParams,
         before.createdAt,
         before.createdAt,
         before.id,
@@ -1312,16 +1343,15 @@ class CloudStore {
     if (after && Number.isSafeInteger(after.createdAt) && after.createdAt >= 0 &&
         typeof after.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(after.id)) {
       return this.exec(
-        `SELECT id, sender_id, recipient_id, body, created_at
-         FROM friend_messages
+        `SELECT m.id, m.sender_id, m.recipient_id, m.body, m.created_at
+         FROM friend_messages m
+         ${visibilityJoin}
          WHERE ${pairFilter}
-           AND (created_at > ? OR (created_at = ? AND id > ?))
-         ORDER BY created_at ASC, id ASC
+         ${visibilityFilter}
+           AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
+         ORDER BY m.created_at ASC, m.id ASC
          LIMIT ?`,
-        userId,
-        friendId,
-        friendId,
-        userId,
+        ...baseParams,
         after.createdAt,
         after.createdAt,
         after.id,
@@ -1330,32 +1360,114 @@ class CloudStore {
     }
 
     const rows = this.exec(
-      `SELECT id, sender_id, recipient_id, body, created_at
-       FROM friend_messages
+      `SELECT m.id, m.sender_id, m.recipient_id, m.body, m.created_at
+       FROM friend_messages m
+       ${visibilityJoin}
        WHERE ${pairFilter}
-       ORDER BY created_at DESC, id DESC
+       ${visibilityFilter}
+       ORDER BY m.created_at DESC, m.id DESC
        LIMIT ?`,
-      userId,
-      friendId,
-      friendId,
-      userId,
+      ...baseParams,
       safeLimit
     );
     return rows.reverse();
   }
 
+  hideFriendMessage({ userId, friendId, messageId, now }) {
+    if (!this.getFriendship(userId, friendId)) {
+      return { kind: 'not_friends' };
+    }
+    const message = this.exec(
+      `SELECT id FROM friend_messages
+       WHERE id = ? AND (
+         (sender_id = ? AND recipient_id = ?)
+         OR (sender_id = ? AND recipient_id = ?)
+       )`,
+      messageId,
+      userId,
+      friendId,
+      friendId,
+      userId
+    )[0];
+    if (!message) return { kind: 'message_not_found' };
+    const inserted = this.exec(
+      `INSERT INTO friend_message_hides (user_id, friend_id, message_id, hidden_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, message_id) DO NOTHING
+       RETURNING message_id`,
+      userId,
+      friendId,
+      messageId,
+      now
+    )[0];
+    return { kind: inserted ? 'hidden' : 'already_hidden' };
+  }
+
+  clearFriendConversation({ userId, friendId, now }) {
+    if (!this.getFriendship(userId, friendId)) {
+      return { kind: 'not_friends', cleared: false };
+    }
+    const latest = this.exec(
+      `SELECT id, created_at
+       FROM friend_messages
+       WHERE (sender_id = ? AND recipient_id = ?)
+          OR (sender_id = ? AND recipient_id = ?)
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      userId,
+      friendId,
+      friendId,
+      userId
+    )[0];
+    if (!latest) return { kind: 'empty', cleared: false };
+
+    const updated = this.exec(
+      `INSERT INTO friend_conversation_clears
+        (user_id, friend_id, clear_before_created_at, clear_before_message_id, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, friend_id) DO UPDATE SET
+         clear_before_created_at = excluded.clear_before_created_at,
+         clear_before_message_id = excluded.clear_before_message_id,
+         updated_at = excluded.updated_at
+       WHERE excluded.clear_before_created_at > friend_conversation_clears.clear_before_created_at
+          OR (excluded.clear_before_created_at = friend_conversation_clears.clear_before_created_at
+              AND excluded.clear_before_message_id > friend_conversation_clears.clear_before_message_id)
+       RETURNING clear_before_created_at, clear_before_message_id`,
+      userId,
+      friendId,
+      Number(latest.created_at),
+      latest.id,
+      now
+    )[0];
+    return { kind: updated ? 'cleared' : 'already_cleared', cleared: Boolean(updated) };
+  }
 
   markFriendConversationRead({ userId, friendId, messageId, now }) {
     if (!this.getFriendship(userId, friendId)) {
       return { kind: 'not_friends', read: null };
     }
     const target = this.exec(
-      `SELECT id, created_at
-       FROM friend_messages
-       WHERE id = ? AND sender_id = ? AND recipient_id = ?`,
+      `SELECT m.id, m.created_at
+       FROM friend_messages m
+       LEFT JOIN friend_conversation_clears c
+         ON c.user_id = ? AND c.friend_id = ?
+       WHERE m.id = ? AND m.sender_id = ? AND m.recipient_id = ?
+         AND (
+           c.clear_before_created_at IS NULL
+           OR m.created_at > c.clear_before_created_at
+           OR (m.created_at = c.clear_before_created_at AND m.id > c.clear_before_message_id)
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM friend_message_hides h
+           WHERE h.user_id = ? AND h.friend_id = ? AND h.message_id = m.id
+         )`,
+      userId,
+      friendId,
       messageId,
       friendId,
-      userId
+      userId,
+      userId,
+      friendId
     )[0];
     if (!target) return { kind: 'message_not_found', read: null };
 
