@@ -309,3 +309,10 @@ test('duplicate stored message IDs are rejected as corrupt history', () => {
   }));
   assert.equal(runtime.repository.readHistory(ref).error, 'corrupt_history');
 });
+
+
+test('PWA shell caches the isolated local repository and current capability contract', () => {
+  assert.match(serviceWorker, /phone-app-pwa-v181/);
+  assert.match(serviceWorker, /real-user-conversation-repository\.js/);
+  assert.match(serviceWorker, /contact-capabilities\.js\?v=20261107v1/);
+});
