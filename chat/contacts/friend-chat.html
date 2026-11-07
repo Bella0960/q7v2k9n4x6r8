@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F7F7F9">
+<title>真人好友聊天 · MAOMAO</title>
+<script src="../../shared/js/font-loader.js"></script>
+<script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/friends-client.js?v=friend2"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width:100%; height:100%; margin:0; background:#F7F7F9; color:#111; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif; }
+  body { overflow:hidden; }
+  button, textarea { font:inherit; }
+  .phone { width:min(430px,100vw); height:100dvh; min-height:0; margin:0 auto; display:flex; flex-direction:column; overflow:hidden; background:#F7F7F9; position:relative; }
+  .status-bar { flex:0 0 auto; height:42px; padding:13px 22px 0; font-size:12px; font-weight:650; background:rgba(247,247,249,.94); }
+  .topbar { flex:0 0 auto; min-height:54px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 16px 8px; border-bottom:1px solid #E8E8EB; background:rgba(247,247,249,.94); }
+  .topbar button { border:0; background:transparent; color:#222; padding:8px 2px; font-size:13px; cursor:pointer; }
+  .title-block { min-width:0; text-align:center; }
+  .title { font-size:15px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px; }
+  .subtitle { margin-top:3px; color:#999; font-size:10px; }
+  .notice { flex:0 0 auto; padding:8px 15px; border-bottom:1px solid #ECECEF; color:#8A8A90; font-size:10px; line-height:1.55; background:#F7F7F9; }
+  .messages { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:16px 14px 20px; display:flex; flex-direction:column; gap:11px; scrollbar-width:thin; }
+  .empty { margin:auto; max-width:240px; text-align:center; color:#A0A0A5; font-size:12px; line-height:1.8; padding:25px 10px; }
+  .history-action { flex:0 0 auto; padding:8px 12px 0; text-align:center; background:#F7F7F9; }
+  .history-action button { border:1px solid #E2E2E6; border-radius:999px; background:#fff; color:#666; padding:7px 15px; font-size:10px; }
+  .history-action button:disabled { opacity:.5; }
+  .msg-row { display:flex; flex-direction:column; align-items:flex-start; max-width:84%; gap:4px; }
+  .msg-row.mine { align-self:flex-end; align-items:flex-end; }
+  .bubble { padding:10px 13px; border-radius:16px 16px 16px 4px; border:1px solid #E9E9ED; background:#fff; color:#171717; font-size:13px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; box-shadow:0 1px 5px rgba(0,0,0,.025); }
+  .mine .bubble { color:#fff; background:#171717; border-color:#171717; border-radius:16px 16px 4px 16px; }
+  .msg-meta { color:#A0A0A5; font-size:9px; padding:0 3px; }
+  .pending .bubble { opacity:.62; }
+  .composer { flex:0 0 auto; display:flex; align-items:flex-end; gap:9px; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid #E8E8EB; background:rgba(255,255,255,.94); }
+  .input-wrap { flex:1; min-width:0; background:#F2F2F5; border:1px solid #E9E9ED; border-radius:18px; padding:9px 12px; }
+  textarea { display:block; resize:none; width:100%; max-height:116px; min-height:22px; outline:none; border:0; background:transparent; color:#111; font-size:13px; line-height:1.55; }
+  textarea::placeholder { color:#A0A0A5; }
+  .send { flex:0 0 auto; width:42px; height:42px; border:0; border-radius:50%; background:#111; color:#fff; font-size:12px; font-weight:650; cursor:pointer; }
+  .send:disabled { opacity:.35; cursor:default; }
+  .status { min-height:16px; padding:0 14px 7px; color:#999; background:#fff; font-size:10px; line-height:1.4; }
+  .status.error { color:#8B3030; }
+  @media (min-width:600px) { body { background:#E6E6E9; } .phone { height:min(900px,100dvh); box-shadow:0 12px 55px rgba(0,0,0,.1); } }
+</style>
+<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+</head>
+<body>
+<div class="phone">
+  <div class="status-bar">09:41</div>
+  <header class="topbar">
+    <button type="button" id="backBtn">‹ 返回</button>
+    <div class="title-block">
+      <div class="title" id="friendName">真人好友</div>
+      <div class="subtitle">MAOMAO · DIRECT CHAT</div>
+    </div>
+    <button type="button" id="refreshBtn">刷新</button>
+  </header>
+  <div class="notice">真人好友文字消息会保存在 MAOMAO 云端，用于多设备同步。本阶段不是端到端加密，也暂不支持图片、语音和附件。</div>
+  <div class="history-action" id="historyAction" hidden><button type="button" id="loadOlderBtn">载入更早的消息</button></div>
+  <main class="messages" id="messages" aria-live="polite">
+    <div class="empty" id="emptyState">正在连接好友聊天…</div>
+  </main>
+  <div class="status" id="statusText" role="status" aria-live="polite"></div>
+  <form class="composer" id="composer">
+    <div class="input-wrap"><textarea id="messageInput" rows="1" maxlength="2000" placeholder="发送一条消息…" aria-label="消息内容"></textarea></div>
+    <button class="send" id="sendBtn" type="submit" disabled>发送</button>
+  </form>
+</div>
+<script src="../../shared/js/nav.js"></script>
+<script src="../../shared/js/statusbar-control.js"></script>
+<script>
+(function () {
+  'use strict';
+  var api = window.MaomaoFriends;
+  var params = new URLSearchParams(window.location.search);
+  var friendId = String(params.get('friendId') || '').trim();
+  var $ = function (id) { return document.getElementById(id); };
+  var cursor = null;
+  var olderCursor = null;
+  var hasOlder = false;
+  var known = Object.create(null);
+  var pollTimer = 0;
+  var pollBusy = false;
+  var ready = false;
+  var pendingSend = null;
+  var blocked = false;
+
+  function setStatus(message, error) {
+    $('statusText').textContent = message || '';
+    $('statusText').classList.toggle('error', Boolean(error));
+  }
+  function formatTime(value) {
+    try {
+      return new Date(Number(value)).toLocaleString('zh-CN', {
+        month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'
+      });
+    } catch (error) { return ''; }
+  }
+  function scrollToBottom() {
+    var box = $('messages');
+    box.scrollTop = box.scrollHeight;
+  }
+  function isNearBottom() {
+    var box = $('messages');
+    return box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+  }
+  function updateComposer() {
+    $('messageInput').disabled = blocked || !ready;
+    $('sendBtn').disabled = blocked || !ready || !$('messageInput').value.trim();
+  }
+  function showEmpty(message) {
+    if (Object.keys(known).length) return;
+    var node = $('emptyState');
+    if (node) node.textContent = message;
+    else {
+      node = document.createElement('div');
+      node.className = 'empty';
+      node.id = 'emptyState';
+      node.textContent = message;
+      $('messages').appendChild(node);
+    }
+  }
+  function removeEmpty() {
+    var node = $('emptyState');
+    if (node) node.remove();
+  }
+  function messageNode(message, pending) {
+    var row = document.createElement('div');
+    row.className = 'msg-row' + (message.senderId === myUserId ? ' mine' : '') + (pending ? ' pending' : '');
+    row.dataset.messageId = message.id || '';
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = String(message.body || '');
+    var meta = document.createElement('div');
+    meta.className = 'msg-meta';
+    meta.textContent = formatTime(message.createdAt) + (pending ? ' · 正在发送' : '');
+    row.appendChild(bubble);
+    row.appendChild(meta);
+    return row;
+  }
+  function appendMessage(message, pending) {
+    if (!message || !message.id || known[message.id]) return false;
+    removeEmpty();
+    known[message.id] = true;
+    $('messages').appendChild(messageNode(message, pending));
+    return true;
+  }
+  function prependMessages(list) {
+    var box = $('messages');
+    var oldHeight = box.scrollHeight;
+    var oldTop = box.scrollTop;
+    var fragment = document.createDocumentFragment();
+    var added = 0;
+    (list || []).forEach(function (message) {
+      if (!message || !message.id || known[message.id]) return;
+      known[message.id] = true;
+      fragment.appendChild(messageNode(message, false));
+      added += 1;
+    });
+    if (added) {
+      removeEmpty();
+      box.insertBefore(fragment, box.firstChild);
+      box.scrollTop = oldTop + (box.scrollHeight - oldHeight);
+    }
+  }
+  function cursorFor(message) {
+    return message ? String(Number(message.createdAt)) + '.' + String(message.id) : null;
+  }
+  function setBlocked(message) {
+    blocked = true;
+    updateComposer();
+    setStatus(message || '你们已经不是好友，暂时无法继续聊天。', true);
+  }
+
+  var myUserId = '';
+  async function initialize() {
+    if (!api) {
+      setStatus('真人好友模块加载失败，请返回好友页后刷新。', true);
+      showEmpty('聊天模块暂不可用');
+      return;
+    }
+    if (!/^u_[A-Za-z0-9_-]{16,48}$/.test(friendId)) {
+      setStatus('好友 ID 不正确。', true);
+      showEmpty('没有找到这位好友');
+      return;
+    }
+    try {
+      var localProfile = window.PhoneStorage ? (window.PhoneStorage.getMyProfile() || {}) : {};
+      var displayName = localProfile.nickname || localProfile.displayName || localProfile.name || 'MAOMAO 用户';
+      await api.ensureAccount(displayName);
+      var me = await api.getMe();
+      myUserId = me.account.userId;
+      var result = await api.getMessages(friendId);
+      $('friendName').textContent = result.friend.displayName || 'MAOMAO 用户';
+      (result.messages || []).forEach(function (message) { appendMessage(message, false); });
+      cursor = result.nextCursor || cursorFor((result.messages || []).slice(-1)[0]);
+      olderCursor = result.olderCursor || cursorFor((result.messages || [])[0]);
+      hasOlder = Boolean(result.hasMore);
+      $('historyAction').hidden = !hasOlder;
+      ready = true;
+      updateComposer();
+      setStatus('已连接 · 新消息自动同步');
+      if (!result.messages || !result.messages.length) showEmpty('你们已经成为好友了。\n从第一条消息开始聊吧。');
+      scrollToBottom();
+      pollTimer = window.setInterval(pollMessages, 4500);
+    } catch (error) {
+      if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法查看聊天记录。');
+      else setStatus((error.message || '聊天连接失败') + '。请检查网络或好友账号状态。', true);
+      showEmpty('暂时无法载入聊天记录');
+    }
+  }
+
+  async function pollMessages() {
+    if (!ready || blocked || pollBusy || document.hidden) return;
+    pollBusy = true;
+    var shouldStick = isNearBottom();
+    try {
+      var page;
+      var guard = 0;
+      do {
+        page = await api.getMessages(friendId, cursor, 'after');
+        var list = page.messages || [];
+        list.forEach(function (message) { appendMessage(message, false); });
+        if (page.nextCursor) cursor = page.nextCursor;
+        guard += 1;
+      } while (page.hasMore && guard < 5);
+      if (shouldStick && page && page.messages && page.messages.length) scrollToBottom();
+      if (page && page.messages && page.messages.length) setStatus('刚刚同步');
+    } catch (error) {
+      if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法继续聊天。');
+      else setStatus(error.message || '同步暂时失败，稍后会自动重试。', true);
+    } finally {
+      pollBusy = false;
+    }
+  }
+
+  async function loadOlder() {
+    if (!ready || !hasOlder || !olderCursor) return;
+    var button = $('loadOlderBtn');
+    button.disabled = true;
+    try {
+      var page = await api.getMessages(friendId, olderCursor, 'before');
+      prependMessages(page.messages || []);
+      olderCursor = page.olderCursor || olderCursor;
+      hasOlder = Boolean(page.hasMore);
+      $('historyAction').hidden = !hasOlder;
+      setStatus('更早的消息已载入');
+    } catch (error) {
+      setStatus(error.message || '载入历史消息失败', true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function sendCurrentMessage(event) {
+    event.preventDefault();
+    if (!ready || blocked) return;
+    var text = $('messageInput').value.replace(/\r\n?/g, '\n').trim();
+    if (!text) return;
+    var clientId = pendingSend && pendingSend.body === text
+      ? pendingSend.id
+      : api.createMessageId();
+    pendingSend = { body: text, id: clientId };
+    $('sendBtn').disabled = true;
+    $('messageInput').disabled = true;
+    setStatus('正在发送…');
+    try {
+      var result = await api.sendMessage(friendId, text, clientId);
+      appendMessage(result.message, false);
+      cursor = cursorFor(result.message) || cursor;
+      pendingSend = null;
+      $('messageInput').value = '';
+      $('messageInput').style.height = '22px';
+      updateComposer();
+      scrollToBottom();
+      setStatus(result.duplicate ? '消息已确认送达' : '已发送');
+    } catch (error) {
+      if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法继续发送消息。');
+      else {
+        setStatus((error.message || '发送失败') + '。再次点击发送会安全重试，不会重复落库。', true);
+        $('messageInput').disabled = false;
+        $('messageInput').focus();
+        $('sendBtn').disabled = false;
+      }
+    }
+  }
+
+  $('backBtn').addEventListener('click', function () {
+    window.location.href = 'friend-center.html';
+  });
+  $('refreshBtn').addEventListener('click', function () {
+    pollMessages().then(function () {
+      if (!blocked) setStatus('聊天已刷新');
+    });
+  });
+  $('loadOlderBtn').addEventListener('click', loadOlder);
+  $('composer').addEventListener('submit', sendCurrentMessage);
+  $('messageInput').addEventListener('input', function () {
+    var area = $('messageInput');
+    area.style.height = '22px';
+    area.style.height = Math.min(area.scrollHeight, 116) + 'px';
+    updateComposer();
+    if (pendingSend && pendingSend.body !== area.value.trim()) pendingSend = null;
+  });
+  $('messageInput').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      $('composer').requestSubmit();
+    }
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) pollMessages();
+  });
+  window.addEventListener('pagehide', function () {
+    if (pollTimer) window.clearInterval(pollTimer);
+  });
+  initialize();
+})();
+</script>
+</body>
+</html>
