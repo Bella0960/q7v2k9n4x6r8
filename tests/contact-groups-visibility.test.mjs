@@ -93,6 +93,36 @@ test('typed audience snapshots keep same-ID role and real account membership sep
   assert.equal(snapshot.ok, true);
   assert.deepEqual(JSON.parse(JSON.stringify(snapshot.memberIds)), ['same-id']);
   assert.deepEqual(JSON.parse(JSON.stringify(snapshot.memberRefs)), ['real_user:same-id', 'ai_role:same-id']);
+  assert.equal(snapshot.memberCount, 2);
+});
+
+test('typed contact roster rejects deleted direct users and omits deleted user refs left in groups', () => {
+  const { api } = createRuntime();
+  api.saveGroups([{
+    id: 'mixed',
+    name: '混合联系人',
+    memberIds: ['role-a'],
+    memberRefs: ['ai_role:role-a', 'real_user:user-deleted']
+  }]);
+
+  const missingDirect = api.buildAudienceSnapshot([], [], {
+    selectedContactRefs: ['real_user:user-deleted'],
+    availableContactIds: ['role-a'],
+    availableContactRefs: ['ai_role:role-a', 'real_user:user-live']
+  });
+  assert.equal(missingDirect.ok, false);
+  assert.equal(missingDirect.error, 'missing_contacts');
+  assert.deepEqual(JSON.parse(JSON.stringify(missingDirect.missingContactRefs)), ['real_user:user-deleted']);
+
+  const groupSnapshot = api.buildAudienceSnapshot(['mixed'], [], {
+    availableContactIds: ['role-a'],
+    availableContactRefs: ['ai_role:role-a', 'real_user:user-live']
+  });
+  assert.equal(groupSnapshot.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(groupSnapshot.memberIds)), ['role-a']);
+  assert.deepEqual(JSON.parse(JSON.stringify(groupSnapshot.memberRefs)), ['ai_role:role-a']);
+  assert.deepEqual(JSON.parse(JSON.stringify(groupSnapshot.staleMemberRefs)), ['real_user:user-deleted']);
+  assert.equal(groupSnapshot.memberCount, 1);
 });
 
 test('typed Moments privacy never matches a real account to a role with the same raw ID', () => {
@@ -164,7 +194,9 @@ test('audience snapshots merge selected groups and individual contacts without d
     contactIds: ['c', 'd', 'a'],
     memberIds: ['c', 'd', 'a', 'b'],
     memberRefs: ['ai_role:c', 'ai_role:d', 'ai_role:a', 'ai_role:b'],
-    staleMemberIds: []
+    memberCount: 4,
+    staleMemberIds: [],
+    staleMemberRefs: []
   });
   const stale = api.buildAudienceSnapshot(['family', 'missing'], ['c', 'd', 'a']);
   assert.equal(stale.ok, false);
