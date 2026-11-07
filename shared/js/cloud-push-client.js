@@ -313,6 +313,94 @@
     );
   }
 
+  /**
+   * Starts a character-scoped foreground lease while this chat page is visible.
+   * All timing comes from the authenticated server config; no client defaults.
+   * A hidden tab only marks its device heartbeat inactive. Its role lease is
+   * allowed to expire naturally so another visible tab on the same device is
+   * not accidentally unlocked.
+   */
+  async function startCharacterPresence(characterId) {
+    var encodedId = characterPath(characterId);
+    if (typeof document === 'undefined') throw new Error('当前页面不支持前台状态同步');
+    if (!readDevice()) throw new Error('设备尚未连接云端');
+
+    var config = await requestDeviceMetadata('/api/presence/config');
+    var ttl = Number(config.heartbeatTtlMs);
+    if (!Number.isSafeInteger(ttl) || ttl <= 0) {
+      throw new Error('云端没有提供有效的心跳 TTL 配置');
+    }
+
+    var stopped = false;
+    var running = false;
+    var intervalId = null;
+    var leasePath = '/api/characters/' + encodedId + '/lease';
+
+    async function syncVisibleSession() {
+      if (stopped || running || document.visibilityState === 'hidden') return;
+      running = true;
+      try {
+        await updatePresenceHeartbeat(true);
+        try {
+          await requestDeviceMetadata(leasePath, 'POST', { action: 'renew' });
+        } catch (renewError) {
+          if (renewError.code !== 'LEASE_NOT_OWNED') throw renewError;
+          try {
+            await requestDeviceMetadata(leasePath, 'POST', { action: 'acquire' });
+          } catch (acquireError) {
+            if (acquireError.code !== 'CHARACTER_LEASE_HELD') throw acquireError;
+          }
+        }
+      } finally {
+        running = false;
+      }
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        updatePresenceHeartbeat(false).catch(function () {});
+      } else {
+        syncVisibleSession().catch(function (error) {
+          console.warn('[cloud] 角色前台租约续期失败', error);
+        });
+      }
+    }
+
+    function onPageHide() {
+      updatePresenceHeartbeat(false).catch(function () {});
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    global.addEventListener('pagehide', onPageHide);
+
+    try {
+      await syncVisibleSession();
+      intervalId = global.setInterval(
+        function () {
+          syncVisibleSession().catch(function (error) {
+            console.warn('[cloud] 角色前台租约续期失败', error);
+          });
+        },
+        Math.max(1, Math.floor(ttl / 3))
+      );
+    } catch (error) {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      global.removeEventListener('pagehide', onPageHide);
+      throw error;
+    }
+
+    return {
+      stop: function () {
+        if (stopped) return;
+        stopped = true;
+        if (intervalId != null) global.clearInterval(intervalId);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        global.removeEventListener('pagehide', onPageHide);
+        updatePresenceHeartbeat(false).catch(function () {});
+      }
+    };
+  }
+
   async function disconnect() {
     var device = readDevice();
     try {
@@ -486,6 +574,7 @@
     setCharacterSchedule: setCharacterSchedule,
     updatePresenceHeartbeat: updatePresenceHeartbeat,
     updateCharacterLease: updateCharacterLease,
+    startCharacterPresence: startCharacterPresence,
     disconnect: disconnect,
     getStatus: getStatus,
     refreshSettings: refreshSettings,
