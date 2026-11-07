@@ -866,11 +866,30 @@ test('真实 SQLite due queue 将任务绑定到设备所属用户，孤儿任�
     now: GATE_NOW,
     payload: { contextVersion: 1, synthetic: true }
   });
+  store.insertDevice({
+    id: 'device_revoked_account',
+    userId: 'another-user',
+    secretHash: 'synthetic-revoked-device-hash',
+    now: GATE_NOW
+  });
+  store.enqueueActivity({
+    id: 'activity_revoked_device',
+    deviceId: 'device_revoked_account',
+    characterId: 'character-other',
+    kind: 'contact',
+    scheduledAt: GATE_NOW,
+    maxAttempts: 3,
+    now: GATE_NOW,
+    payload: { contextVersion: 1, synthetic: true }
+  });
+  store.revokeDevice('device_revoked_account', GATE_NOW);
 
   const tasks = store.listDueActivities(GATE_NOW, 10);
   const otherTask = tasks.find(task => task.id === 'activity_other_account');
   const orphanTask = tasks.find(task => task.id === 'activity_orphan_device');
+  const revokedTask = tasks.find(task => task.id === 'activity_revoked_device');
   assert.equal(otherTask.user_id, 'another-user');
+  assert.equal(revokedTask.source_device_revoked_at, GATE_NOW);
 
   const gate = createSchedulerGate({
     store,
@@ -882,6 +901,9 @@ test('真实 SQLite due queue 将任务绑定到设备所属用户，孤儿任�
     '应读取 another-user 的已开启授权与作息，而不是 owner 的关闭授权');
   const orphanResult = gate(orphanTask);
   assert.equal(orphanResult.reasonCode, REASON_CODES.GATE_DATA_MISSING);
+  const revokedResult = gate(revokedTask);
+  assert.equal(revokedResult.reasonCode, REASON_CODES.SOURCE_DEVICE_REVOKED);
+  assert.equal(revokedResult.supersede, true);
 });
 
 test('真实 SQLite store snapshot 不会把后台心跳视为前台活跃设备', () => {
