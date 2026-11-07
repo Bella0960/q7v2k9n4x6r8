@@ -678,6 +678,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       cleared: result.cleared,
       empty: result.kind === 'empty',
       alreadyCleared: result.kind === 'already_cleared',
+      clearedThrough: result.clearedThrough || null,
       scope: 'current_user_only'
     });
   }
