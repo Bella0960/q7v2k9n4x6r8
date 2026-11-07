@@ -1799,12 +1799,12 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261107v4/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261107v4/);
+  assert.match(detail, /chat-notifier\.js\?v=20261107v4/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /phone-app-pwa-v175/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v4/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
