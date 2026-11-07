@@ -387,6 +387,54 @@ function cloneForumRefreshPost(post){
  return copy;
 }
 
+/* Stable identity for AI-generated comments and replies. A repeated root comment
+ * may still carry new nested replies, so dedupe the root without discarding its delta.
+ */
+function forumRefreshCommentKey(item){
+ if(!item||typeof item!=='object')return '';
+ const author=String(item.residentId||item.name||'').trim();
+ const text=String(item.text||'').trim().toLocaleLowerCase();
+ if(!author||!text)return '';
+ return [String(item.source||'forum-ai'),author,text].join('\\u0000');
+}
+function mergeForumRefreshReplies(existingReplies,incomingReplies){
+ const replies=Array.isArray(existingReplies)?existingReplies.map(function(reply){
+  return reply&&typeof reply==='object'?Object.assign({},reply):reply;
+ }):[];
+ const known=new Set();
+ replies.forEach(function(reply){
+  const key=forumRefreshCommentKey(reply);
+  if(key)known.add(key);
+ });
+ let added=0;
+ (Array.isArray(incomingReplies)?incomingReplies:[]).forEach(function(reply){
+  const key=forumRefreshCommentKey(reply);
+  if(!key||known.has(key))return;
+  replies.push(Object.assign({},reply));
+  known.add(key);
+  added++;
+ });
+ return {replies:replies,added:added};
+}
+function appendForumRefreshComment(comments,incoming){
+ if(!Array.isArray(comments)||!incoming||typeof incoming!=='object')return 0;
+ const key=forumRefreshCommentKey(incoming);
+ if(!key)return 0;
+ const existing=comments.find(function(comment){return forumRefreshCommentKey(comment)===key});
+ if(!existing){
+  const next=Object.assign({},incoming);
+  const nested=mergeForumRefreshReplies([],incoming.replies);
+  if(Array.isArray(incoming.replies))next.replies=nested.replies;
+  comments.push(next);
+  return 1+nested.added;
+ }
+ const nested=mergeForumRefreshReplies(existing.replies,incoming.replies);
+ if(nested.added){
+  existing.replies=nested.replies;
+ }
+ return nested.added;
+}
+
 /* Merge new forum activity into the latest snapshot without mutating existing posts.
  * This is deliberately pure so preservation and duplicate handling can be tested.
  */
@@ -405,7 +453,15 @@ function mergeForumRefreshData(currentPosts,freshPosts,activity,normalizeComment
   if(!post||typeof post!=='object'||post.id==null)return;
   const id=String(post.id),title=String(post.title||'').trim().toLocaleLowerCase();
   if(!id||!title||!String(post.body||'').trim()||knownIds.has(id)||knownTitles.has(title))return;
-  accepted.push(cloneForumRefreshPost(post));
+  const nextPost=cloneForumRefreshPost(post);
+  if(Array.isArray(nextPost.comments)){
+   const uniqueComments=[];
+   nextPost.comments.forEach(function(comment){
+    appendForumRefreshComment(uniqueComments,comment);
+   });
+   nextPost.comments=uniqueComments;
+  }
+  accepted.push(nextPost);
   knownIds.add(id);
   knownTitles.add(title);
  });
@@ -419,19 +475,7 @@ function mergeForumRefreshData(currentPosts,freshPosts,activity,normalizeComment
    if(typeof normalizeComment!=='function')return;
    const normalized=normalizeComment(item,index);
    if(!normalized||!String(normalized.text||'').trim())return;
-   const author=String(normalized.residentId||normalized.name||'');
-   const text=String(normalized.text||'').trim().toLocaleLowerCase();
-   const source=String(normalized.source||'forum-ai');
-   const duplicate=target.comments.some(function(old){
-    if(!old||typeof old!=='object')return false;
-    return String(old.source||'')===source&&
-      String(old.residentId||old.name||'')===author&&
-      String(old.text||'').trim().toLocaleLowerCase()===text;
-   });
-   if(!duplicate){
-    target.comments.push(normalized);
-    activityCount++;
-   }
+   activityCount+=appendForumRefreshComment(target.comments,normalized);
   });
  });
  return {
