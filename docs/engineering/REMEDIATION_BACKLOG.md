@@ -219,7 +219,7 @@ Acceptance:
 
 Storage: small group metadata in `contact_groups_v1`; post audience snapshots are additive fields on new Moments records. No server sync or new database is introduced.
 
-Verification note (2026-11-07): source and inline-script syntax parsing passed; the audience policy module was executed against synthetic storage data. The PR-triggered GitHub Actions jobs report failure with `runner_id=0` and no steps, and their downloadable log objects are unavailable, so CI has not actually verified the build or tests. Desktop/phone manual acceptance remains open.
+Verification note (2026-11-07): shared module and all affected inline scripts pass syntax parsing; 14/14 new contact-group/privacy test cases passed in an isolated V8 compatibility harness, including audience snapshot stability, backup inclusion, and AI-recipient privacy boundaries. This does not replace running the project's Node test command or production build. PR-triggered GitHub Actions jobs report failure with `runner_id=0` and zero executed steps; downloadable logs are unavailable, so CI has not verified the build/tests. Desktop/phone manual acceptance remains open.
 
 
 ### AI-IMG-001 — Complete role-based image generation and gallery
