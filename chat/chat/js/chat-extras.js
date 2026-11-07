@@ -957,7 +957,21 @@
   function coreClearChat() {
     openModal('清空聊天记录','<div class="x-core-card">此操作会清除此角色当前会话的聊天记录，无法撤销。<div class="x-core-actions"><button class="x-btn x-btn-ghost" id="clearNo">取消</button><button class="x-btn x-btn-primary" id="clearYes">确认清空</button></div></div>');
     document.getElementById('clearNo').onclick=closeModal;
-    document.getElementById('clearYes').onclick=function(){closeModal();if(typeof saveMessages==='function'){saveMessages([]);if(typeof renderAllMessages==='function')renderAllMessages();else if(chatMessages)chatMessages.innerHTML='';if(typeof showToast==='function')showToast('当前聊天记录已清空');}};
+    document.getElementById('clearYes').onclick=function(){
+      closeModal();
+      if(typeof saveMessages!=='function')return;
+      var previousMessages=typeof loadMessages==='function'?(loadMessages()||[]):[];
+      if(!saveMessages([])){
+        if(typeof showToast==='function')showToast('清空失败，聊天记录和图片均已保留');
+        return;
+      }
+      if(typeof window.releaseDeletedChatImageReferences==='function') {
+        window.releaseDeletedChatImageReferences(previousMessages);
+      }
+      if(typeof renderAllMessages==='function')renderAllMessages();
+      else if(chatMessages)chatMessages.innerHTML='';
+      if(typeof showToast==='function')showToast('当前聊天记录已清空');
+    };
   }
   function coreCopyLast() {
     var list=loadMessages()||[], last=list[list.length-1]; if(!last){if(typeof showToast==='function')showToast('没有可复制的消息');return;}
