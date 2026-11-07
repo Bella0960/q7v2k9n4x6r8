@@ -21,9 +21,13 @@
   }
 
   // 隐藏指令：作为 user 消息进入 AI 上下文，但不在界面渲染气泡（sendMsg silent 模式）
-  function sendSilentInstruction(text) {
+  function sendSilentInstruction(text, visionImageMids) {
     if (typeof sendMsg === 'function') {
-      sendMsg({ text: text, silent: true });
+      var options = { text: text, silent: true };
+      if (Array.isArray(visionImageMids) && visionImageMids.length) {
+        options.visionImageMids = visionImageMids.map(function (mid) { return String(mid); });
+      }
+      sendMsg(options);
     }
   }
 
@@ -444,50 +448,170 @@
   // ============================================================
   // 功能：发送图片（真实图片：相册选择 + Canvas 压缩为 JPEG）
   // ============================================================
-  function compressChatImage(file, cb) {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = function () {
-      try {
-        const max = 400;
-        const w = img.naturalWidth, h = img.naturalHeight;
-        const scale = Math.min(1, max / Math.max(w, h));
-        const cw = Math.max(1, Math.round(w * scale));
-        const ch = Math.max(1, Math.round(h * scale));
-        const c = document.createElement('canvas');
-        c.width = cw; c.height = ch;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, cw, ch);
-        ctx.drawImage(img, 0, 0, cw, ch);
-        URL.revokeObjectURL(url);
-        cb(c.toDataURL('image/jpeg', 0.7));
-      } catch (e) {
-        URL.revokeObjectURL(url);
-        cb('');
+  function compressChatImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//i.test(String(file.type || ''))) {
+        reject(new Error('请选择有效的图片文件'));
+        return;
       }
-    };
-    img.onerror = function () { URL.revokeObjectURL(url); cb(''); };
-    img.src = url;
+      if (file.size > 12 * 1024 * 1024) {
+        reject(new Error('单张图片不能超过 12MB'));
+        return;
+      }
+
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      var settled = false;
+      function finish(error, value) {
+        if (settled) return;
+        settled = true;
+        try { URL.revokeObjectURL(url); } catch (e) {}
+        if (error) reject(error);
+        else resolve(value);
+      }
+
+      img.onload = function () {
+        try {
+          var maxEdge = 1600;
+          var width = img.naturalWidth || img.width;
+          var height = img.naturalHeight || img.height;
+          if (!width || !height) throw new Error('图片尺寸无法读取');
+          var scale = Math.min(1, maxEdge / Math.max(width, height));
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(width * scale));
+          canvas.height = Math.max(1, Math.round(height * scale));
+          var context = canvas.getContext('2d');
+          if (!context) throw new Error('图片处理器不可用');
+          context.fillStyle = '#FFFFFF';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(function (blob) {
+            if (!blob) {
+              finish(new Error('图片压缩失败'));
+              return;
+            }
+            if (blob.size > 3 * 1024 * 1024) {
+              finish(new Error('压缩后的图片仍然过大，请换一张图片'));
+              return;
+            }
+            finish(null, blob);
+          }, 'image/jpeg', 0.84);
+        } catch (error) {
+          finish(error);
+        }
+      };
+      img.onerror = function () { finish(new Error('图片无法读取，请换一张照片')); };
+      img.src = url;
+    });
   }
 
-  let chatImgInput = null;
+  var chatImgInput = null;
+  var chatImageMediaRepo = null;
+  var CHAT_IMAGE_PRIVACY_KEY = 'maomao_chat_image_privacy_v1';
+
+  function confirmChatImagePrivacy() {
+    try {
+      if (localStorage.getItem(CHAT_IMAGE_PRIVACY_KEY) === 'confirmed') return true;
+    } catch (e) {}
+    var approved = window.confirm(
+      '图片会保存在本机聊天记录中；发送后，本轮图片还会传给你配置的 AI 模型服务用于识图和回复。是否继续？'
+    );
+    if (!approved) return false;
+    try { localStorage.setItem(CHAT_IMAGE_PRIVACY_KEY, 'confirmed'); } catch (e) {}
+    return true;
+  }
+
+  function imageMessageId() {
+    return 'chat_image_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+  }
+
+  async function saveChatImageBatch(files) {
+    if (!window.PhoneStorage || typeof window.PhoneStorage.MediaRepository !== 'function') {
+      if (typeof showToast === 'function') showToast('图片存储模块未加载，请刷新页面后重试');
+      return;
+    }
+    if (!chatImageMediaRepo) chatImageMediaRepo = new window.PhoneStorage.MediaRepository();
+
+    var messages = [];
+    var storedAssets = [];
+    var maxFiles = 4;
+    if (files.length > maxFiles && typeof showToast === 'function') {
+      showToast('一次最多发送 4 张图片，已选取前 4 张');
+    }
+
+    for (var i = 0; i < Math.min(files.length, maxFiles); i++) {
+      var file = files[i];
+      var mid = imageMessageId();
+      try {
+        var blob = await compressChatImage(file);
+        var stored = await chatImageMediaRepo.putBlob(blob, {
+          ownerType: 'chat-message',
+          ownerId: mid,
+          type: 'image',
+          mimeType: 'image/jpeg'
+        });
+        if (!stored || !stored.ok || !stored.value || !stored.value.assetId) {
+          throw new Error(stored && stored.error && stored.error.message
+            ? stored.error.message : '图片没有成功保存');
+        }
+        storedAssets.push({ assetId: stored.value.assetId, mid: mid });
+        messages.push({
+          role: 'user',
+          type: 'image',
+          assetId: String(stored.value.assetId),
+          desc: '',
+          text: '[图片]',
+          time: Date.now(),
+          mid: mid,
+          attachmentSource: 'upload'
+        });
+      } catch (error) {
+        if (typeof showToast === 'function') {
+          showToast((file && file.name ? file.name + '：' : '') + (error && error.message ? error.message : '图片处理失败'));
+        }
+      }
+    }
+
+    if (!messages.length) return;
+
+    var history = loadMessages();
+    var next = history.concat(messages);
+    if (!saveMessages(next)) {
+      await storedAssets.reduce(function (chain, item) {
+        return chain.then(function () {
+          return chatImageMediaRepo.removeRef(item.assetId, 'chat-message', item.mid).then(function () {
+            return chatImageMediaRepo.removeAsset(item.assetId);
+          });
+        }).catch(function () {});
+      }, Promise.resolve());
+      if (typeof showToast === 'function') showToast('聊天记录保存失败，图片未发送');
+      return;
+    }
+
+    if (typeof renderAllMessages === 'function') renderAllMessages();
+    else messages.forEach(function (message) { appendMessageToDOM(message); });
+
+    var mids = messages.map(function (message) { return String(message.mid); });
+    sendSilentInstruction(
+      '我刚刚分享了' + messages.length + '张图片给你，请看一看图片内容，再自然回应。',
+      mids
+    );
+  }
+
   function featImage() {
+    if (!confirmChatImagePrivacy()) return;
     if (!chatImgInput) {
       chatImgInput = document.createElement('input');
       chatImgInput.type = 'file';
-      chatImgInput.accept = 'image/*';
+      chatImgInput.accept = 'image/jpeg,image/png,image/webp,image/gif,image/avif';
+      chatImgInput.multiple = true;
       chatImgInput.style.display = 'none';
       document.body.appendChild(chatImgInput);
       chatImgInput.addEventListener('change', function () {
-        const file = chatImgInput.files && chatImgInput.files[0];
+        var files = Array.prototype.slice.call(chatImgInput.files || []);
         chatImgInput.value = '';
-        if (!file) return;
-        compressChatImage(file, function (dataUrl) {
-          if (!dataUrl) { showToast('图片处理失败'); return; }
-          insertChatMessage({ role: 'user', type: 'image', img: dataUrl, desc: '', text: '[图片]' });
-          sendSilentInstruction('[系统动作：我发了一张图片给你]');
-        });
+        if (!files.length) return;
+        saveChatImageBatch(files);
       });
     }
     chatImgInput.click();
