@@ -9,6 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const roleFamilyCardsSource = read('shared/js/phone/role_family_cards.js');
 const chatNotifier = read('shared/js/chat-notifier.js');
 const navPage = read('shared/js/nav.js');
 const homePage = read('index.html');
@@ -2556,4 +2557,97 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
   assert.equal(history.length, 1, 'the unsaved chat invitation must be rolled back');
   assert.equal(rendered, 0, 'the unsaved chat card must not be displayed as persisted');
   assert.match(toast, /聊天记录未能保存/);
+});
+
+
+test('钱包流水已落库但聊天状态写入失败时，下一次点击只补状态、不重复入账', () => {
+  const start = detail.indexOf('function handlePayCardClick(event)');
+  const end = detail.indexOf('// ===== 群投票', start);
+  assert.ok(start >= 0 && end > start, 'payment-card click handler must be present');
+  const handlerSource = detail.slice(start, end);
+
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  let wallet = { balance: 20, history: [] };
+  let persistedHistory = [
+    { role: 'user', type: 'transfer', amount: '12.00', status: 'returning', mid: 'user-transfer-1' },
+    { role: 'assistant', type: 'transfer', amount: '12.00', message: '退还给你', status: 'unopened', mid: 'role-return-1' }
+  ];
+  let failHistorySave = true;
+  let financeRecords = '[]';
+  let renders = 0;
+  let resultPopups = 0;
+  const toastMessages = [];
+
+  const sandbox = {
+    loadMessages: () => clone(persistedHistory),
+    ensureMid: (message) => {
+      if (!message.mid) message.mid = 'payment-mid';
+      return message.mid;
+    },
+    getWorkData: () => clone(wallet),
+    saveWorkData: (next) => { wallet = clone(next); return true; },
+    saveMessages: (next) => {
+      if (failHistorySave) return false;
+      persistedHistory = clone(next);
+      return true;
+    },
+    showToast: (message) => toastMessages.push(message),
+    renderAllMessages: () => { renders += 1; },
+    openPayResult: () => { resultPopups += 1; },
+    localStorage: {
+      getItem: (key) => key === 'finance_records' ? financeRecords : null,
+      setItem: (key, value) => { if (key === 'finance_records') financeRecords = String(value); }
+    },
+    currentCharacter: { name: '角色' }
+  };
+  runInNewContext(handlerSource, sandbox);
+  const event = {
+    currentTarget: {
+      getAttribute: (name) => name === 'data-mid' ? 'role-return-1' : ''
+    }
+  };
+
+  sandbox.handlePayCardClick(event);
+  assert.equal(wallet.balance, 32, 'the confirmed wallet operation adds the amount once');
+  assert.equal(wallet.history.length, 1, 'the wallet stores one idempotent payment row');
+  assert.equal(persistedHistory[1].status, 'unopened', 'failed chat save must not be represented as persisted');
+  assert.equal(persistedHistory[0].status, 'returning', 'the original transfer remains unchanged until chat save succeeds');
+  assert.equal(renders, 0, 'failed chat save must not render a success state');
+  assert.equal(resultPopups, 0, 'failed chat save must not show the normal success popup');
+  assert.match(toastMessages.at(-1), /款项已入账，但聊天卡片状态未同步/);
+
+  failHistorySave = false;
+  sandbox.handlePayCardClick(event);
+  assert.equal(wallet.balance, 32, 'retry must not credit the wallet a second time');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(persistedHistory[1].status, 'received', 'retry completes the payment card status');
+  assert.equal(persistedHistory[0].status, 'returned', 'retry also completes the original transfer return status');
+  assert.equal(JSON.parse(financeRecords).length, 1, 'retry restores the missing finance ledger detail once');
+  assert.equal(renders, 1);
+});
+
+test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
+  let stored = '[]';
+  let silentlyDropWrites = false;
+  const sandbox = {
+    window: {},
+    localStorage: {
+      getItem: () => stored,
+      setItem: (key, value) => {
+        if (!silentlyDropWrites) stored = String(value);
+      }
+    }
+  };
+  runInNewContext(roleFamilyCardsSource, sandbox);
+  const cards = sandbox.window.RoleFamilyCards;
+  assert.equal(cards.writeAll([{
+    id: 'family-card-1', roleId: 'role-1', status: 'pending', createdAt: 1,
+    monthlyLimit: 500, singleLimit: 100
+  }]), true);
+  silentlyDropWrites = true;
+  const updateResult = cards.update('family-card-1', 'accept');
+  assert.equal(updateResult.ok, false, 'a silently dropped storage write must not report a successful state transition');
+  assert.equal(updateResult.reason, 'storage');
+  assert.equal(cards.find('family-card-1').status, 'pending',
+    'the visible stored state remains pending after an unconfirmed write');
 });
