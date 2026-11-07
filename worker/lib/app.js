@@ -501,6 +501,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const pairingTtl = parsePositiveEnv(env, 'DEVICE_PAIRING_TOKEN_TTL_MS');
     const enrollmentToken = String(env?.ENROLLMENT_TOKEN || '');
     const globalAutonomy = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
+    const activityQueue = await store.getActivityQueueSummary({
+      userId: device.user_id || OWNER_USER_ID
+    });
     return ok({
       deviceAuthorized: true,
       deviceAuthConfigured: pepper.length >= 32,
@@ -511,9 +514,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       testPushReady: vapid.configured && activeSubscriptions.length > 0,
       presenceConfigured: Boolean(presenceConfig),
       globalAutonomyEnabled: globalAutonomy?.enabled === 1,
+      activityQueue,
+      // No generation executor is wired into the scheduled Worker yet.
+      activityExecutorAvailable: false,
       contextVersionReady: false,
       autonomousMessageGenerationReady: false,
-      note: '此检查只核对配置与订阅状态，不会生成角色消息或触发推送。'
+      autonomyExecutionBlockers: ['executor_unavailable', 'context_version_unavailable'],
+      note: '此检查只核对配置与匿名队列汇总；当前没有 AI 执行器，不会生成角色消息、读取聊天正文或触发主动推送。'
     });
   }
 
