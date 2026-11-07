@@ -26,7 +26,8 @@ function createLibrary(seed, options = {}) {
     putBlob(input, opts) {
       if (options.failMedia) return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'offline' } });
       sequence += 1;
-      const assetId = 'as_' + String(sequence).padStart(32, 'A').slice(-32);
+      const suffix = sequence.toString(2).replace(/0/g, 'A').replace(/1/g, 'B');
+      const assetId = 'as_' + suffix.padStart(32, 'A');
       assets.set(assetId, input);
       refs.add(assetId + '|' + opts.ownerType + '|' + opts.ownerId);
       return Promise.resolve({ ok: true, value: { assetId, reused: false } });
