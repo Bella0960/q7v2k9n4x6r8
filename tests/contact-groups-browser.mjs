@@ -189,14 +189,36 @@ async function main() {
     await page.locator('#btnManageContactGroups').click();
 
     await page.locator('#btnCloseContactGroups').click();
+    assert.equal(await page.locator('#contactList .contact-item').count(), 7,
+      'all contacts includes the four AI roles and three accepted real users, but not pending requests');
+    assert.equal(await page.locator('#contactGroupBar [data-contact-group="all"] .contact-group-count').innerText(), '7');
+    assert.equal(await page.locator('#contactGroupBar [data-contact-group="ungrouped"] .contact-group-count').innerText(), '2',
+      'ungrouped count includes the one ungrouped AI role and one ungrouped accepted real user');
+
+    await page.locator('#searchInput').fill('已加入分组的真人好友');
+    assert.equal(await page.locator('#contactList .contact-item').count(), 1,
+      'search includes accepted real-user display names');
+    assert.equal(await page.locator('#contactList [data-contact-type="real_user"]').count(), 1);
+    const contactsUrl = page.url();
+    await page.locator('#contactList [data-contact-key="real_user:user-123"]').click();
+    assert.equal(page.url(), contactsUrl,
+      'a real-user contact must not be routed into the AI-role conversation page');
+    await page.locator('#searchInput').fill('');
+
     await page.locator('[data-contact-group="' + friendsGroup.id + '"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('#contactList .contact-item').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('#contactList .contact-item').length === 4);
+    assert.equal(await page.locator('#contactList [data-id="role-a"]').count(), 1);
     assert.equal(await page.locator('#contactList [data-id="role-b"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-contact-key="real_user:user-123"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-contact-key="real_user:user-789"]').count(), 1);
     assert.equal(await page.locator('#contactList [data-id="role-c"]').count(), 0);
+    assert.equal(await page.locator('#contactList [data-id="role-d"]').count(), 0);
 
     await page.locator('[data-contact-group="ungrouped"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('#contactList .contact-item').length === 1);
+    await page.waitForFunction(() => document.querySelectorAll('#contactList .contact-item').length === 2);
     assert.equal(await page.locator('#contactList [data-id="role-d"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-contact-key="real_user:user-456"]').count(), 1,
+      'ungrouped filtering also includes accepted real users');
 
     await page.locator('#btnManageContactGroups').click();
     await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
