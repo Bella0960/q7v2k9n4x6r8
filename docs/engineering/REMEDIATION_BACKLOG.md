@@ -358,6 +358,7 @@ Product boundary:
 
 Implemented groundwork:
 - `PhoneContactCapabilities` defines an allowlist for `real_user`; unknown future capabilities fail closed.
+- `PhoneRealUserConversationRepository` stores per-contact local messages under `real_user_chat_history_v1_<encoded account ID>`, never under AI `chat_history_<id>` keys. Only accepted typed real-user contacts can read/write; ordinary text and asset-referenced image/file/voice/sticker messages are allowlisted; message IDs are idempotent; corrupt data and storage failures fail closed. Stored entries are explicitly `local_only` / `not_connected`; no incoming delivery or sync is simulated.
 - Chat plus-menu actions, direct payment drawer submission, payment-card clicks/rendering, payment marker parsing, virtual-card parsing, and call overlay entry have real-user guards.
 - Voice call is represented as planned and disabled; video call is disabled.
 - The chat capability policy does not apply to the standalone Wallet app or existing AI-role chats.
