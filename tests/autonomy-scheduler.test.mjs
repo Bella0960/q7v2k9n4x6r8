@@ -186,6 +186,7 @@ test('到期查询排除未到点与租约未过期的活动', () => {
   store.claimActivity({
     id: 'act_leased',
     expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
     owner: 'foreground',
     leaseUntil: NOW + 30_000,
     now: NOW
@@ -201,6 +202,7 @@ test('CAS 认领只有一个赢家，第二个认领返回 null', () => {
   const first = store.claimActivity({
     id: 'act_cas',
     expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
     owner: 'cloud',
     leaseUntil: NOW + CONFIG.leaseMs,
     now: NOW
@@ -225,6 +227,7 @@ test('失败后按退避进入 retry，耗尽后进入 failed', () => {
   store.claimActivity({
     id: 'act_retry',
     expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
     owner: 'cloud',
     leaseUntil: NOW + CONFIG.leaseMs,
     now: NOW
@@ -236,7 +239,7 @@ test('失败后按退避进入 retry，耗尽后进入 failed', () => {
     retryBackoffMs: CONFIG.retryBackoffMs,
     maxAttempts: 2
   });
-  store.failActivity({ id: 'act_retry', now: NOW, nextAttemptAt: retryAt });
+  store.failActivity({ id: 'act_retry', owner: 'cloud', attemptCount: 1, now: NOW, nextAttemptAt: retryAt });
   assert.equal(store.getActivity('act_retry').status, 'retry');
   assert.equal(store.listDueActivities(NOW + 59_999, 10).length, 0);
   assert.equal(store.listDueActivities(NOW + 60_000, 10).length, 1);
@@ -244,6 +247,7 @@ test('失败后按退避进入 retry，耗尽后进入 failed', () => {
   store.claimActivity({
     id: 'act_retry',
     expectedAttemptCount: 1,
+    expectedStatus: 'retry',
     owner: 'cloud',
     leaseUntil: NOW + CONFIG.leaseMs,
     now: NOW + 60_000
@@ -255,16 +259,99 @@ test('失败后按退避进入 retry，耗尽后进入 failed', () => {
     maxAttempts: 2
   });
   assert.equal(exhausted, null);
-  store.failActivity({ id: 'act_retry', now: NOW + 60_000, nextAttemptAt: exhausted });
+  store.failActivity({ id: 'act_retry', owner: 'cloud', attemptCount: 2, now: NOW + 60_000, nextAttemptAt: exhausted });
   assert.equal(store.getActivity('act_retry').status, 'failed');
 });
 
 test('作废后不再出现在到期列表', () => {
   const { store } = freshStore();
   enqueue(store, { id: 'act_stale' });
-  store.supersedeActivity('act_stale', NOW);
+  store.supersedeActivity({ id: 'act_stale', expectedAttemptCount: 0, expectedStatus: 'waiting', now: NOW });
   assert.equal(store.getActivity('act_stale').status, 'superseded');
   assert.equal(store.listDueActivities(NOW, 10).length, 0);
+});
+
+
+
+test('没有消息执行器时 tick 不认领活动，避免制造孤儿 running 任务', () => {
+  const { store, query } = freshStore();
+  enqueue(store, { id: 'act_without_executor' });
+  const result = runTick({
+    store,
+    now: NOW,
+    config: CONFIG,
+    gate: () => ({ autonomyAllowed: true, characterState: 'active' })
+  });
+  assert.equal(result.claimed, 0);
+  assert.equal(result.deferred, 1);
+  assert.equal(store.getActivity('act_without_executor').status, 'waiting');
+  assert.equal(query('SELECT * FROM execution_log WHERE reason_code = ?', REASON_CODES.EXECUTOR_UNAVAILABLE).length, 1);
+});
+
+test('过期 running 租约会被重新列入并安全 CAS 认领，旧 worker 写入被 fencing 拒绝', () => {
+  const { store } = freshStore();
+  enqueue(store, { id: 'act_recover' });
+  const first = store.claimActivity({
+    id: 'act_recover',
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'worker-old',
+    leaseUntil: NOW + 30_000,
+    now: NOW
+  });
+  assert.ok(first);
+  assert.equal(store.listDueActivities(NOW + 29_999, 10).length, 0);
+  const expiredTasks = store.listDueActivities(NOW + 30_000, 10);
+  assert.equal(expiredTasks.length, 1);
+  assert.equal(expiredTasks[0].status, 'running');
+
+  const recovered = runTick({
+    store,
+    now: NOW + 30_000,
+    config: CONFIG,
+    owner: 'worker-new',
+    executorAvailable: true,
+    gate: () => ({ autonomyAllowed: true, characterState: 'active' })
+  });
+  assert.equal(recovered.claimed, 1);
+  const current = store.getActivity('act_recover');
+  assert.equal(current.status, 'running');
+  assert.equal(current.locked_by, 'worker-new');
+  assert.equal(current.attempt_count, 2);
+
+  assert.equal(store.completeActivity({
+    id: 'act_recover', owner: 'worker-old', attemptCount: 1, now: NOW + 31_000
+  }), false, '旧 worker 不得完成新 worker 的任务');
+  assert.equal(store.failActivity({
+    id: 'act_recover', owner: 'worker-old', attemptCount: 1,
+    now: NOW + 31_000, nextAttemptAt: NOW + 60_000
+  }), false, '旧 worker 不得把新 worker 的任务改成 retry');
+
+  assert.equal(store.completeActivity({
+    id: 'act_recover', owner: 'worker-new', attemptCount: 2, now: NOW + 32_000
+  }), true);
+  assert.equal(store.getActivity('act_recover').status, 'completed');
+});
+
+test('过期 running 任务耗尽重试次数后会终止为 failed', () => {
+  const { store } = freshStore();
+  enqueue(store, { id: 'act_reclaim_exhausted', maxAttempts: 1 });
+  store.claimActivity({
+    id: 'act_reclaim_exhausted',
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'worker-crashed',
+    leaseUntil: NOW + 10_000,
+    now: NOW
+  });
+  const result = runTick({
+    store,
+    now: NOW + 10_000,
+    config: CONFIG,
+    gate: () => ({ autonomyAllowed: true, characterState: 'active' })
+  });
+  assert.equal(result.failed, 1);
+  assert.equal(store.getActivity('act_reclaim_exhausted').status, 'failed');
 });
 
 test('配置缺失时 tick 跳过并写入日志，不认领活动', () => {
@@ -299,7 +386,8 @@ test('gate 允许时 tick 认领一次，且不写消息或推送记录', () => 
     store,
     now: NOW,
     config: CONFIG,
-    gate: () => ({ autonomyAllowed: true, characterState: 'active', latestContextVersion: 1 })
+    gate: () => ({ autonomyAllowed: true, characterState: 'active', latestContextVersion: 1 }),
+    executorAvailable: true
   });
   assert.equal(result.claimed, 1);
   assert.equal(result.lost, 0);
@@ -522,7 +610,8 @@ test('runTick 真实调用 scheduler gate；仅合成且合格的同版本任务
       store,
       now: () => GATE_NOW,
       config: GATE_POLICY_CONFIG
-    })
+    }),
+    executorAvailable: true
   });
 
   assert.equal(result.claimed, 1);
