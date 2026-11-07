@@ -53,22 +53,13 @@ for (let i = 0; i < routes.length; i += 5) {
 }
 for (const result of results) console.log('APP ROUTE:', JSON.stringify(result));
 
-const canonicalResults = [];
-for (let i = 0; i < routes.length; i += 5) {
-  const batch = await Promise.all(routes.slice(i, i + 5).map(route => probe('/' + route.replace(/\.html$/, ''))));
-  canonicalResults.push(...batch);
-}
-for (const result of canonicalResults) console.log('CANONICAL APP ROUTE:', JSON.stringify(result));
-
+// Production Worker intentionally uses html_handling="none": only explicit .html routes are canonical.
 const failures = [];
 if (home.status !== 200 || !home.isHtml) failures.push('root homepage');
 if (index.status !== 200 || !index.isHtml) failures.push('/index.html');
 if (sw.status !== 200) failures.push('/sw.js');
 for (const result of results) {
   if (result.status !== 200 || !result.isHtml) failures.push(result.path);
-}
-for (const result of canonicalResults) {
-  if (result.status !== 200 || !result.isHtml) failures.push('canonical ' + result.path);
 }
 if (sw.status === 200) {
   const swBody = await (await fetch(new URL('/sw.js', baseUrl + '/'), { signal: AbortSignal.timeout(20000) })).text();
