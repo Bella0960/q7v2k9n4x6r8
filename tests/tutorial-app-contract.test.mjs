@@ -113,8 +113,8 @@ test('chat guided tours follow the real list, detail and settings pages', () => 
   const tourBlock = (id) => {
     const start = html.indexOf("addTourConfig('" + id + "'");
     assert.ok(start >= 0, 'missing guided tour config: ' + id);
-    const next = html.indexOf("\\naddTourConfig('", start + 1);
-    const end = next >= 0 ? next : html.indexOf('\\nvar apps=', start);
+    const next = html.indexOf("\naddTourConfig('", start + 1);
+    const end = next >= 0 ? next : html.indexOf('\nvar apps=', start);
     assert.ok(end > start, 'unterminated guided tour config: ' + id);
     return html.slice(start, end);
   };
