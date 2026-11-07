@@ -51,9 +51,24 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
       // The current Worker has no message-generation executor. Do not reserve
       // a task and leave it in "running" until an executor is actually wired.
       if (executorAvailable !== true) {
+        if (decision.expectedStatus === 'running') {
+          const released = store.releaseExpiredActivity({
+            id: decision.taskId,
+            expectedAttemptCount: decision.expectedAttemptCount,
+            expectedLockedBy: decision.expectedLockedBy,
+            expectedLockedUntil: decision.expectedLockedUntil,
+            now
+          });
+          if (!released) {
+            summary.lost += 1;
+            log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId });
+            continue;
+          }
+        }
         summary.deferred += 1;
         log(store, now, 'deferred', REASON_CODES.EXECUTOR_UNAVAILABLE, {
-          taskId: decision.taskId
+          taskId: decision.taskId,
+          releasedExpiredLease: decision.expectedStatus === 'running'
         });
         continue;
       }
