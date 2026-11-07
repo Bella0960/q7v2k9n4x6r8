@@ -330,7 +330,19 @@
     var editingContactGroupId = '';
     var editingContactGroupMembers = [];
 
-    function getContactGroups() { return contactGroupApi ? contactGroupApi.getGroups() : []; }
+    function getContactGroups() {
+      if (!contactGroupApi) return [];
+      var result = typeof contactGroupApi.readStoredGroups === 'function'
+        ? contactGroupApi.readStoredGroups() : { ok: true, groups: contactGroupApi.getGroups() };
+      if (!result.ok) {
+        var status = document.getElementById('contactGroupManageStatus');
+        if (status) status.textContent = result.error === 'corrupt_data'
+          ? '分组数据无法读取，原始数据已保留，没有覆盖。'
+          : '浏览器存储暂不可用，分组数据未更改。';
+        return [];
+      }
+      return result.groups || [];
+    }
     function persistContactGroups(groups) {
       return contactGroupApi ? contactGroupApi.saveGroups(groups) : { ok: false, error: 'storage_unavailable' };
     }
@@ -448,7 +460,12 @@
         name: name.slice(0,24), memberIds: editingContactGroupMembers.slice() };
       if (index >= 0) next[index] = record; else next.push(record);
       var saved = persistContactGroups(next);
-      if (!saved.ok) { status.textContent = saved.error === 'storage_full' ? '存储空间不足，分组没有保存' : '保存失败，请检查浏览器存储权限'; return; }
+      if (!saved.ok) {
+        status.textContent = saved.error === 'storage_full' ? '存储空间不足，分组没有保存'
+          : saved.error === 'corrupt_data' ? '分组数据无法读取，为保护原数据没有覆盖它'
+          : '保存失败，请检查浏览器存储权限';
+        return;
+      }
       currentContactGroupFilter = record.id; renderGroupBar(); renderList(document.getElementById('searchInput').value);
       renderContactGroupManager(); showContactGroupPanel('manage');
       document.getElementById('contactGroupManageStatus').textContent = '已保存';
