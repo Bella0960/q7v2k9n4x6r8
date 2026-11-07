@@ -8,7 +8,7 @@
 <script src="../../shared/js/font-loader.js"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
-<script src="../../shared/js/friends-client.js?v=friend1"></script>
+<script src="../../shared/js/friends-client.js?v=friend2"></script>
 <script src="../../shared/js/friend-qr.js?v=friend1"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -150,7 +150,7 @@
       </div>
       <div class="list" id="friendList"><div class="empty">你还没有真人好友</div></div>
     </section>
-    <div class="footnote">当前版本先完成账号身份、二维码与好友关系。真人聊天窗口将在下一阶段接入。</div>
+    <div class="footnote">真人好友的文字消息会在独立聊天窗口中同步；图片、语音和推送尚未接入。</div>
   </main>
 </div>
 
@@ -225,7 +225,7 @@
         '<div class="small-avatar">' + escapeHtml(initials(friend.displayName)) + '</div>' +
         '<div class="list-main"><div class="list-name">' + escapeHtml(friend.displayName || 'MAOMAO 用户') + '</div>' +
         '<div class="list-sub">' + escapeHtml(friend.userId) + ' · 已成为好友</div></div>' +
-        '<div class="list-actions"><button class="btn" type="button" data-remove-friend="' + escapeHtml(friend.userId) + '">删除</button></div>' +
+        '<div class="list-actions"><button class="btn primary" type="button" data-open-chat="' + escapeHtml(friend.userId) + '">聊天</button><button class="btn" type="button" data-remove-friend="' + escapeHtml(friend.userId) + '">删除</button></div>' +
         '</div>';
     }).join('');
   }
@@ -409,6 +409,14 @@
     }
   });
   $('friendList').addEventListener('click', async function (event) {
+    var openChat = event.target.closest('[data-open-chat]');
+    if (openChat) {
+      var chatFriendId = openChat.getAttribute('data-open-chat');
+      if (chatFriendId) {
+        window.location.href = 'friend-chat.html?friendId=' + encodeURIComponent(chatFriendId);
+      }
+      return;
+    }
     var remove = event.target.closest('[data-remove-friend]');
     if (!remove) return;
     if (!window.confirm('确定删除这位好友吗？')) return;
