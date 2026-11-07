@@ -8,6 +8,7 @@ const contactsPage = readFileSync(new URL('../chat/contacts/contacts.html', impo
 const composerPage = readFileSync(new URL('../forum/post-create.html', import.meta.url), 'utf8');
 const momentsPage = readFileSync(new URL('../chat/moments/moments.html', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
 
 function createRuntime(initialValue, options = {}) {
   const data = new Map();
@@ -71,6 +72,19 @@ test('a saved audience snapshot is not changed when a contact group is edited la
   assert.deepEqual(JSON.parse(JSON.stringify(post.visibleTo)), ['a', 'b']);
   assert.equal(api.canViewPost(post, 'b'), true);
   assert.equal(api.canViewPost(post, 'c'), false);
+});
+
+test('deleting a group later does not rewrite the audience snapshot saved on an older post', () => {
+  const { api } = createRuntime();
+  api.saveGroups([{ id: 'family', name: '家人', memberIds: ['a', 'b'] }]);
+  const oldPost = {
+    visibility: 'excluded',
+    hiddenTo: api.buildAudienceSnapshot(['family'], []).memberIds
+  };
+  api.saveGroups([]);
+  assert.deepEqual(JSON.parse(JSON.stringify(oldPost.hiddenTo)), ['a', 'b']);
+  assert.equal(api.canViewPost(oldPost, 'a'), false);
+  assert.equal(api.canViewPost(oldPost, 'c'), true);
 });
 
 test('visibility policy covers public, friends, private, selected, and excluded contacts', () => {
@@ -142,6 +156,14 @@ test('AI audience checks apply only to user-authored posts and fail closed for r
   assert.equal(api.canRoleReceivePost(excludedPost, 'friend-a', profile), true);
   assert.equal(api.canRoleReceivePost({ authorId: 'role-author', visibility: 'private' }, 'friend-a', profile), true);
   assert.equal(api.canRoleReceivePost({ author: '我', visibility: 'private' }, 'friend-a', profile), false);
+});
+
+test('contact group metadata is covered by the existing full localStorage backup without adding secrets', () => {
+  assert.match(backup, /function snapshot\\(dropCaches, dropSecrets\\)/);
+  assert.match(backup, /keys\\.forEach\\(function \\(k\\)/);
+  assert.match(backup, /out\\[k\\] = localStorage\\.getItem\\(k\\)/);
+  assert.match(backup, /var EXCLUDE_KEYS = \\['api_call_logs'\\]/);
+  assert.doesNotMatch(backup, /contact_groups_v1/);
 });
 
 test('PWA cache contains the contact group policy module and has a new cache version', () => {
