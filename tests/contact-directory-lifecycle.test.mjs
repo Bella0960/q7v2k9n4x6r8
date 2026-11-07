@@ -186,6 +186,23 @@ test('terminal transitions are idempotent and storage failures never claim succe
   assert.equal(unavailable.read().contacts.length, 0);
 });
 
+test('pending request queues remain separated and exclude terminal relationship records', () => {
+  const { directory } = createDirectoryRuntime();
+  incoming(directory, 'incoming-user', 'incoming-req', 100);
+  directory.requestOutgoing({
+    id: 'outgoing-user',
+    displayName: '待确认联系人'
+  }, { requestId: 'outgoing-req', now: 101 });
+  incoming(directory, 'declined-user', 'declined-req', 102);
+  directory.declineIncoming('declined-user', { requestId: 'declined-req', now: 103 });
+
+  const pending = directory.getPendingRequests();
+  assert.equal(pending.ok, true);
+  assert.deepEqual(pending.incoming.map((item) => item.id), ['incoming-user']);
+  assert.deepEqual(pending.outgoing.map((item) => item.id), ['outgoing-user']);
+  assert.equal(directory.get('declined-user').status, 'declined');
+});
+
 test('legacy directory records remain readable and terminal states are normalized', () => {
   const legacy = JSON.stringify([{
     id: 'legacy-user', displayName: '旧好友', status: 'accepted',
