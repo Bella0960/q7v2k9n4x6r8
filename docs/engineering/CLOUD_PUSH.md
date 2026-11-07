@@ -112,10 +112,37 @@ Cron / 内部 tick
 
 本阶段新增的 gate 集成测试只使用合成授权、合成角色日程、合成 lease 和合成 context version；测试中的放行只证明调度器接线和策略判断，不代表生产已有这些数据源。没有上传聊天正文、persona、关系资料或附件；没有调用模型、创建真实出站消息或触发真实推送。
 
-### M2.2b 尚未完成 / BLOCKED
+### M2.2b 元数据持久化与受鉴权 API（已实现；前端接入仍待做）
 
-1. 需要用户确认是否允许把全局/角色 autonomy 开关、角色时区/作息等非聊天元数据同步到云端，以及这些值的默认/继承规则。未确认前不新增自动授权、不把 localStorage 设置上传。
-2. 需要批准设备 presence/lease 元数据的云端存储与前台续租接口；不能把普通设备在线状态等同于进入某角色聊天页的前台 lease。
-3. 需要用户决定可信 context version 如何建立。当前没有 server-side chat event/version source；在此之前所有依赖聊天上下文的任务保持 BLOCKED。
+用户已明确允许同步以下**非聊天元数据**：全局/角色自主活动开关、角色 IANA 时区与作息、设备前台心跳、角色级前台租约。
+
+新增向前兼容迁移 `0002_autonomy_metadata`，不修改 `0001_init`：
+
+| 表 | 用途 | 主键 / 约束 |
+| --- | --- | --- |
+| `user_autonomy` | 全局自主活动开关；没有记录即关闭 | `user_id` |
+| `character_autonomy` | 单角色开关；NULL / 缺失表示继承全局 | `(user_id, character_id)` |
+| `character_schedules` | 显式 IANA 时区与 active/busy/asleep/away 时间窗口 | `(user_id, character_id)` |
+| `device_presence` | 设备前台状态与最近一次心跳时间 | `(user_id, device_id)` |
+| `character_leases` | 同一用户 + 角色的唯一前台执行租约 | `(user_id, character_id)` |
+
+旧设备在迁移时归属现有单用户 `owner`，不删除设备、订阅或消息记录。设备撤销时会删除该设备的 presence 与角色租约，防止撤销设备继续占锁。
+
+受现有 `X-Device-Auth` 保护的 API：
+
+- `GET/PUT /api/autonomy/global`：全局开关。
+- `GET/PUT /api/autonomy/characters/:characterId`：角色开关；`null` 表示继承全局。
+- `GET/PUT /api/characters/:characterId/schedule`：IANA 时区与显式作息窗口。
+- `POST /api/presence/heartbeat`：仅记录前台状态布尔值与时间；不采集 GPS、位置或聊天内容。
+- `POST /api/characters/:characterId/lease`：按 `acquire / renew / release` 申请、续期或释放角色租约。只有租约 owner device 可续期/释放；新设备必须等待旧租约到期并经过 grace 才能接管。
+- 心跳 TTL、lease 时长和 grace 通过 `AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS` 显式配置；缺失时 API 不会发放租约。
+
+**当前仍未完成：**
+
+1. 现有 MAOMAO 前端尚未调用这些设置 / heartbeat / lease API；本轮先完成了云端存储和接口，尚不能把“设备前台状态已在 PWA 自动同步”报告为 DONE。
+2. Worker gate 已连接真实 store snapshot。全局开关没有显式记录时按关闭处理；角色作息缺失、时区无效或 policy 配置缺失时 fail-closed。
+3. 当前没有可信 server-side chat event/context version 来源。Store 明确返回 `contextVersion: null`；所有 contact / follow_up / busy_reply / diary 上下文任务因此保持 `context_version_unavailable`，不会执行。没有伪造版本，也没有上传聊天正文。
 4. 一次性 `ENROLLMENT_TOKEN` 的首次设备认领仍需单独审查；当前注册接口不能仅凭 M1 device-auth 测试视作已落实该要求。
 5. GitHub Actions、Cloudflare Worker 部署、真实设备锁屏推送仍分别需要独立验证；本地/合成测试不能替代这些验收。
+
+以上 API 只处理开关、作息、时区、设备心跳与租约元数据；不保存消息正文、角色 persona、关系资料、摘要、图片或附件。
