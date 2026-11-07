@@ -221,7 +221,8 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - `completeActivity` 和 `failActivity` 必须同时匹配 `locked_by + attempt_count`，并且提交时 lease 仍未过期。旧 worker 即使迟到返回，也不能完成或重试新 worker 当前持有的任务，也不能在 lease 到期后继续提交结果。
 - stale-context 作废同样要求匹配读取时的 status 与 attempt_count，不能覆盖并发 worker 已经认领的任务。
 - 已耗尽重试次数的任务会用 status/attempt/原 lease 信息 CAS 终止为 failed，不会无限留在候选队列。
+- 没有 generation executor 时，过期 running lease 会按原 owner/attempt/lease 时间 CAS 释放回 retry，不增加 attempt_count；普通 waiting 任务仍保持 waiting。
 
 **当前 production gate：** Worker 的 scheduled 与 `/internal/tick` 路径没有消息生成 executor，因此 `runTick` 默认 `executorAvailable=false`。即使资格 gate 通过，也会记录 `executor_unavailable` 并保持任务 waiting/retry，不会提前占用成 running。只有未来真实执行器接入并显式声明可执行后，才允许认领任务。
 
-新增 scheduler 契约覆盖：过期 running 回收、并发 CAS、旧 worker completion/failure fencing、stale supersede 竞争、重试耗尽终止，以及无 executor 时保持 waiting。源码语法解析和独立 SQLite SQL 场景检查通过；完整 Node 测试/build 与 Cloudflare runtime 仍需实际执行。
+新增 scheduler 契约覆盖：过期 running 回收、并发 CAS、旧 worker completion/failure fencing、lease 过期后的迟到写入拒绝、stale supersede 竞争、重试耗尽终止，以及无 executor 时保持 waiting / 释放过期 lease 且不消耗 attempt。源码语法解析和独立 SQLite SQL 场景检查通过；完整 Node 测试/build 与 Cloudflare runtime 仍需实际执行。
