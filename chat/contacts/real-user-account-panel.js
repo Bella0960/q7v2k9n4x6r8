@@ -234,6 +234,9 @@
       fallback.hidden = false;
       return;
     }
+    target.loading = 'lazy';
+    target.decoding = 'async';
+    target.referrerPolicy = 'no-referrer';
     target.onerror = function () {
       target.hidden = true;
       target.removeAttribute('src');
@@ -286,6 +289,21 @@
     parent.appendChild(button);
   }
 
+  function createAvatarWrap(assetId, displayName, large) {
+    var wrap = document.createElement('div');
+    wrap.className = 'ru-avatar-wrap ' + (large ? 'ru-avatar-wrap-large' : 'ru-contact-avatar');
+    var image = document.createElement('img');
+    image.className = 'ru-avatar-image';
+    image.alt = '';
+    image.hidden = true;
+    var fallback = document.createElement('span');
+    fallback.className = 'ru-avatar-fallback';
+    wrap.appendChild(image);
+    wrap.appendChild(fallback);
+    renderAvatar(image, fallback, assetId, displayName);
+    return wrap;
+  }
+
   function renderRequests(container, requests, direction) {
     container.textContent = '';
     if (!requests.length) {
@@ -295,12 +313,17 @@
     requests.forEach(function (item) {
       var row = document.createElement('div');
       row.className = 'ru-list-row';
+      var peer = item.peer || {};
       var main = document.createElement('div');
-      main.className = 'ru-list-main';
-      addText(main, 'ru-list-name', item.peer && item.peer.displayName || 'MAOMAO 用户');
-      addText(main, 'ru-list-meta',
-        (item.peer && item.peer.handle ? '@' + item.peer.handle : '') +
+      main.className = 'ru-list-main ru-list-main-with-avatar';
+      main.appendChild(createAvatarWrap(peer.avatarAssetId, peer.displayName, false));
+      var textWrap = document.createElement('div');
+      textWrap.className = 'ru-list-text';
+      addText(textWrap, 'ru-list-name', peer.displayName || 'MAOMAO 用户');
+      addText(textWrap, 'ru-list-meta',
+        (peer.handle ? '@' + peer.handle : '') +
         (item.note ? ' · ' + item.note : ''));
+      main.appendChild(textWrap);
       var actions = document.createElement('div');
       actions.className = 'ru-list-actions';
       if (direction === 'incoming') {
@@ -328,18 +351,7 @@
       row.className = 'ru-list-row';
       var main = document.createElement('div');
       main.className = 'ru-list-main ru-list-main-with-avatar';
-      var avatarWrap = document.createElement('div');
-      avatarWrap.className = 'ru-avatar-wrap ru-contact-avatar';
-      var avatarImage = document.createElement('img');
-      avatarImage.className = 'ru-avatar-image';
-      avatarImage.alt = '';
-      avatarImage.hidden = true;
-      var avatarFallback = document.createElement('span');
-      avatarFallback.className = 'ru-avatar-fallback';
-      avatarWrap.appendChild(avatarImage);
-      avatarWrap.appendChild(avatarFallback);
-      renderAvatar(avatarImage, avatarFallback, friend.avatarAssetId, friend.displayName);
-      main.appendChild(avatarWrap);
+      main.appendChild(createAvatarWrap(friend.avatarAssetId, friend.displayName, false));
       var textWrap = document.createElement('div');
       textWrap.className = 'ru-list-text';
       addText(textWrap, 'ru-list-name', friend.displayName || 'MAOMAO 用户');
@@ -366,9 +378,13 @@
       var row = document.createElement('div');
       row.className = 'ru-list-row';
       var main = document.createElement('div');
-      main.className = 'ru-list-main';
-      addText(main, 'ru-list-name', account.displayName || 'MAOMAO 用户');
-      addText(main, 'ru-list-meta', account.handle ? '@' + account.handle : account.id);
+      main.className = 'ru-list-main ru-list-main-with-avatar';
+      main.appendChild(createAvatarWrap(account.avatarAssetId, account.displayName, false));
+      var textWrap = document.createElement('div');
+      textWrap.className = 'ru-list-text';
+      addText(textWrap, 'ru-list-name', account.displayName || 'MAOMAO 用户');
+      addText(textWrap, 'ru-list-meta', account.handle ? '@' + account.handle : account.id);
+      main.appendChild(textWrap);
       var actions = document.createElement('div');
       actions.className = 'ru-list-actions';
       addAction(actions, '解除屏蔽', 'unblock-user', account.id);
