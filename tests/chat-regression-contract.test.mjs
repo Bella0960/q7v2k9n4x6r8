@@ -1289,7 +1289,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v188/);
+  assert.match(serviceWorker, /phone-app-pwa-v189/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1880,7 +1880,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v188/);
+  assert.match(serviceWorker, /phone-app-pwa-v189/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2740,10 +2740,11 @@ test('多个标签页并发领取时，全局钱包锁串行化不同交易并�
 test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨页面限制', async () => {
   const start = detail.indexOf('const pendingPaymentOperations = new Set();');
   const end = detail.indexOf('// ===== 群投票', start);
+  let walletReads = 0;
   const sandbox = {
     loadMessages: () => [{ role: 'assistant', type: 'redpacket', amount: '1.00', status: 'unopened', mid: 'fallback-pay' }],
     ensureMid: (message) => message.mid,
-    getWorkData: () => ({ balance: 0, history: [] }),
+    getWorkData: () => { walletReads += 1; return { balance: 0, history: [] }; },
     saveWorkData: () => true,
     saveMessages: () => true,
     showToast: (message) => { sandbox.toasts.push(message); },
@@ -2754,6 +2755,11 @@ test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨
     toasts: []
   };
   runInNewContext(detail.slice(start, end), sandbox);
-  await sandbox.handlePayCardClick({ currentTarget: { getAttribute: () => 'fallback-pay' } });
+  const event = { currentTarget: { getAttribute: () => 'fallback-pay' } };
+  await Promise.all([
+    sandbox.handlePayCardClick(event),
+    sandbox.handlePayCardClick(event)
+  ]);
   assert.match(sandbox.toasts[0], /不支持跨页面钱包锁/);
+  assert.equal(walletReads, 2, 'the second same-page click must be blocked before it can read or mutate the wallet');
 });
