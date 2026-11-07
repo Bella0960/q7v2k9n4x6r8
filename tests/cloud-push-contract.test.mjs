@@ -265,6 +265,8 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(clientSource.includes("'/api/autonomy/readiness'"));
   assert.ok(clientSource.includes('function createDevicePairingToken()'));
   assert.ok(clientSource.includes('function connectDeviceWithPairingCode('));
+  assert.ok(clientSource.includes('仅在用户主动输入一次性配对码时'));
+  assert.ok(clientSource.includes("['DEVICE_REVOKED', 'DEVICE_CONFLICT', 'DEVICE_UNKNOWN']"));
   assert.ok(clientSource.includes('pushSupported: false'));
   assert.ok(clientSource.includes('error.deviceRegistered = true'));
   assert.ok(clientSource.includes("Web Push 不可用不应阻止设备配对状态"));
