@@ -1218,11 +1218,30 @@ test('活动结果先不可变落库，收件箱短暂失败后可用同一正�
   assert.deepEqual(JSON.parse(staged.result_json), result.payload);
   assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 0);
 
-  const repaired = store.completeActivityWithOutbound({ ...result, now: NOW + 2 });
-  assert.equal(repaired.completed, true);
-  assert.equal(repaired.alreadyCompleted, true);
-  assert.equal(repaired.outboundInserted, true);
+  const wrongDeviceRepair = store.repairStagedActivityOutbox({
+    userId: 'owner',
+    deviceId: 'device_other_123456',
+    characterId: 'char_recovery',
+    now: NOW + 2,
+    limit: 10
+  });
+  assert.deepEqual(wrongDeviceRepair, { repaired: 0, deferred: 0 });
+
+  const repaired = store.repairStagedActivityOutbox({
+    userId: 'owner',
+    deviceId: 'device_recovery_123456',
+    characterId: 'char_recovery',
+    now: NOW + 2,
+    limit: 10
+  });
+  assert.deepEqual(repaired, { repaired: 1, deferred: 0 });
   assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 1);
+
+  const repeated = store.completeActivityWithOutbound({ ...result, now: NOW + 3 });
+  assert.equal(repeated.completed, true);
+  assert.equal(repeated.alreadyCompleted, true);
+  assert.equal(repeated.outboundInserted, false);
+  assert.equal(repeated.outboundIdempotent, true);
 
   const changedText = store.completeActivityWithOutbound({
     ...result,
