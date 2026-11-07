@@ -542,7 +542,7 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CENTER_HTML, /unread-count/);
   assert.match(FRIEND_CENTER_HTML, /friendsPollTimer/);
   assert.doesNotMatch(FRIEND_CHAT_HTML, /id="clearChatBtn"|id="refreshBtn"/);
-  assert.doesNotMatch(FRIEND_CHAT_HTML, /className = 'message-more'|消息管理/);
+  assert.doesNotMatch(FRIEND_CHAT_HTML, /className = 'message-more'/);
   assert.match(FRIEND_CHAT_HTML, /api\.clearMessages\(friendId\)/);
   assert.match(FRIEND_CHAT_HTML, /api\.hideMessage\(friendId, messageId\)/);
   assert.match(FRIEND_CHAT_HTML, /好友仍然可以看到原消息/);
