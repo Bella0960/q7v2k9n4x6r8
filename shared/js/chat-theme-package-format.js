@@ -114,14 +114,15 @@
     if(typeof theme.name!=="string"||!theme.name||theme.name.length>80)fail("主题名称无效。");
     if(!theme.pages||!Array.isArray(theme.pages.chatList)||!Array.isArray(theme.pages.chatDetail))fail("主题必须同时包含聊天列表和聊天详情布局。");
     var assets=Object.create(null),paths=[];
-    (theme.assetIndex||[]).forEach(function(a){if(!a||!safeAssetPath(a.path)||!files[a.path]||own(assets,a.path))fail("主题素材缺失或路径无效。");
+    if(theme.assetIndex!=null&&!Array.isArray(theme.assetIndex))fail("主题素材清单格式无效。");
+    (Array.isArray(theme.assetIndex)?theme.assetIndex:[]).forEach(function(a){if(!a||!safeAssetPath(a.path)||!files[a.path]||own(assets,a.path))fail("主题素材缺失或路径无效。");
       if(!/^(image\/(png|jpeg|webp|gif)|font\/(woff|woff2|ttf|otf)|application\/octet-stream)$/i.test(a.mimeType||""))fail("主题素材类型不支持。");
       assets[a.path]={bytes:files[a.path],name:String(a.name||a.path.split("/").pop()),mimeType:a.mimeType,type:a.type||"file"};paths.push(a.path)
     });
     Object.keys(files).forEach(function(p){if(p.indexOf("assets/")===0&&!own(assets,p))fail("存在未登记素材："+p);if(["manifest.json","theme.json","custom.css"].indexOf(p)<0&&p.indexOf("assets/")!==0)fail("未知主题文件："+p)});
     var cleanPages={chatList:[],chatDetail:[]},ids={chatList:[],chatDetail:[]};
     ["chatList","chatDetail"].forEach(function(page){cleanPages[page]=theme.pages[page].slice(0,80).filter(function(x){var ok=x&&typeof x.id==="string"&&(COMPONENTS[page].indexOf(x.id)>=0||x.id.indexOf("custom-")===0);if(ok&&!ids[page].includes(x.id))ids[page].push(x.id);return ok}).map(function(x){return{id:x.id,name:String(x.name||x.id).slice(0,80),type:COMPONENTS[page].indexOf(x.id)>=0?"core":"custom",visible:x.visible!==false}});
-      (theme.blocks&&theme.blocks[page]||[]).forEach(function(b){if(b&&typeof b.id==="string"&&!ids[page].includes(b.id))ids[page].push(b.id)})
+      (Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).forEach(function(b){if(b&&typeof b.id==="string"&&!ids[page].includes(b.id))ids[page].push(b.id)})
     });
     var clean={format:FORMAT,schemaVersion:VERSION,target:"maomao-chat",id:String(theme.id||"chat-theme").slice(0,120),name:theme.name,version:String(theme.version||"1.0.0"),pages:cleanPages,styles:{chatList:{},chatDetail:{}},blocks:{chatList:[],chatDetail:[]},layerOrder:{chatList:[],chatDetail:[]},motions:[],assetIndex:[]};
     ["chatList","chatDetail"].forEach(function(page){Object.keys(theme.styles&&theme.styles[page]||{}).forEach(function(id){if(!ids[page].includes(id))return;var st={};Object.keys(PROPS).forEach(function(k){var v=cleanValue(theme.styles[page][id][k]);if(v!==null&&v!==undefined)st[k]=v});clean.styles[page][id]=st});
