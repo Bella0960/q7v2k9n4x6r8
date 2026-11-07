@@ -519,6 +519,8 @@ test("only the recipient can accept or decline; accepting creates the friendship
   assert.equal(accepted.body.request.status, "accepted");
   const friendsA = await call(context, "/", "GET", undefined, "alice");
   const friendsB = await call(context, "/", "GET", undefined, "bob");
+  assert.equal(friendsA.body.ownerAccountId, "account-alice-001");
+  assert.equal(friendsB.body.ownerAccountId, "account-bob-001");
   assert.equal(friendsA.body.friends[0].id, "account-bob-001");
   assert.equal(friendsB.body.friends[0].id, "account-alice-001");
   assert.equal(friendsA.body.friends[0].acceptedRequestId, "request_accept_alice_01");
@@ -652,6 +654,7 @@ test("friend roster pages by stable account ID and returns relationship tombston
     });
   });
   const first = await call(context, "/?limit=1", "GET");
+  assert.equal(first.body.ownerAccountId, "account-alice-001");
   assert.equal(first.body.relationships.length, 1);
   assert.equal(first.body.hasMore, true);
   assert.ok(first.body.nextCursor);
