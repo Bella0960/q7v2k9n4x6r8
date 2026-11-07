@@ -7796,6 +7796,7 @@
                 }
 
                 function persistReceiptStatus() {
+                    var changed = false;
                     // 角色退回的转账只有在用户真正收款后，原转账才改为「已退回」。
                     if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
                         for (let ri = list.length - 1; ri >= 0; ri--) {
@@ -7805,11 +7806,17 @@
                                 Number(previous.amount) === amountNum) {
                                 previous.status = 'returned';
                                 previous.returnedAt = Date.now();
+                                changed = true;
                                 break;
                             }
                         }
                     }
-                    msg.status = isRed ? 'opened' : 'received';
+                    var targetStatus = isRed ? 'opened' : 'received';
+                    if (msg.status !== targetStatus) {
+                        msg.status = targetStatus;
+                        changed = true;
+                    }
+                    if (!changed) return null;
                     if (!saveMessages(list)) {
                         showToast('款项已入账，但聊天卡片状态未同步；再次点击可补齐，不会重复入账');
                         return false;
@@ -7830,21 +7837,23 @@
                         return;
                     }
                     // 已完成卡再次被打开时，也顺手修复可能尚未同步的原转账退回状态。
-                    if (!persistReceiptStatus()) return;
+                    var completedStatusRepair = persistReceiptStatus();
+                    if (completedStatusRepair === false) return;
                     if (!ensureFinanceRecord()) {
                         showToast('款项已入账，账本明细暂未同步');
                     } else {
                         showToast('这笔款项已经入账');
                     }
-                    renderAllMessages();
+                    if (completedStatusRepair === true) renderAllMessages();
                     return;
                 }
 
                 // 钱包流水是幂等依据：聊天状态写入失败后，只补状态和财务明细。
                 if (existingPayment) {
-                    if (!persistReceiptStatus()) return;
+                    var receiptStatusRepair = persistReceiptStatus();
+                    if (receiptStatusRepair === false) return;
                     const financeSaved = ensureFinanceRecord();
-                    renderAllMessages();
+                    if (receiptStatusRepair === true) renderAllMessages();
                     if (!financeSaved) showToast('款项已入账，账本明细暂未同步');
                     else showToast('这笔款项已经入账，卡片状态已恢复');
                     return;
@@ -7875,7 +7884,7 @@
                     return;
                 }
 
-                if (!persistReceiptStatus()) return;
+                if (persistReceiptStatus() === false) return;
                 const financeSaved = ensureFinanceRecord();
                 renderAllMessages();
                 openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
