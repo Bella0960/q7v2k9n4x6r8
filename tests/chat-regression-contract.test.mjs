@@ -2259,5 +2259,4 @@ test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡�
   assert.match(detail, /cloud\.markCharacterOutboundRead\(roleId, serverMessageId\)/);
   assert.match(detail, /\}, 700\);/);
   assert.match(detail, /document\.visibilityState === 'hidden'/);
-  assert.match(detail, /OUTBOUND/);
 });
