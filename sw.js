@@ -3,7 +3,7 @@
  */
 const CACHE_NAME = 'phone-app-pwa-v183';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v181 release: cache isolated local-only real-user conversation storage.
+// v183 release: precache the guarded Contacts account client and its panel.
 const APP_SHELL = [
   './',
   './index.html',
