@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#ffffff">
 <title>MCP 连接 · 设置</title>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/phone/mcp-client.js?v=20261108a"></script>
+<script src="../shared/js/phone/mcp-client.js?v=20261108b"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
 :root{--ink:#111;--muted:#777;--line:#e4e4e7;--paper:#fff}
@@ -133,30 +133,41 @@ button,input,textarea{font:inherit}
     if (old) old.disconnect();
   }
   $('connectBtn').addEventListener('click', async function () {
+    disconnect();
     var url = $('serverUrl').value.trim();
     var name = $('serverName').value.trim() || 'MCP 服务';
     var token = $('serverToken').value;
-    disconnect();
-    var nextClient = null;
+    var candidateClient = null;
+    $('connectBtn').disabled = true;
     try {
       var validatedUrl = MaoMcpClient.validateEndpoint(url);
-      $('connectBtn').disabled = true;
       setStatus('正在连接并协商 MCP 协议…');
-      nextClient = MaoMcpClient.createClient({url:validatedUrl,token:token});
-      var init = await nextClient.initialize();
-      var tools = await nextClient.listTools();
+      candidateClient = MaoMcpClient.createClient({url:validatedUrl, token:token});
+      var init = await candidateClient.initialize();
+      var tools = await candidateClient.listTools();
       var id = 'mcp_' + Date.now().toString(36);
       var rows = safeRead().filter(function (x) { return x.url !== validatedUrl; });
       rows.unshift({id:id,name:name.slice(0,60),url:validatedUrl,updatedAt:Date.now()});
-      if (!safeWrite(rows.slice(0,30))) { await nextClient.disconnect(); return; }
-      client = nextClient; activeTools = tools; serverInfo = init.serverInfo || null;
+      if (!safeWrite(rows.slice(0,30))) {
+        await candidateClient.disconnect();
+        candidateClient = null;
+        return;
+      }
+      client = candidateClient;
+      candidateClient = null;
+      activeId = id;
+      activeTools = tools;
+      serverInfo = init.serverInfo || null;
+      $('serverToken').value = '';
       $('disconnectBtn').disabled = false;
       setStatus('已连接 · 发现 ' + tools.length + ' 个工具。');
-      renderSaved(); renderTools();
+      renderSaved();
+      renderTools();
     } catch (error) {
-      if (nextClient) await nextClient.disconnect();
+      if (candidateClient) await candidateClient.disconnect();
       setStatus(error && error.message ? error.message : '连接失败。', true);
     } finally {
+      $('serverToken').value = '';
       $('connectBtn').disabled = false;
     }
   });
