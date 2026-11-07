@@ -206,13 +206,16 @@ Acceptance before implementation:
 ### SOC-001 — Contact groups and Moments audience privacy
 **Priority:** P1 · **Status:** IN PROGRESS (implementation committed to task branch; automated runner unavailable; build/browser verification pending)
 
-Scope: add user-managed contact groups to the existing Contacts page and connect them to WeChat-style Moments audience selection. Keep the current native MPA pages, existing role/contact IDs, legacy Moments records, and the separate @mention feature.
+Scope: add user-managed contact groups to the existing Contacts page, connect them to WeChat-style Moments audience selection, and establish a typed contact identity adapter for AI roles, real-user accounts, and chat groups. Keep the current native MPA pages, existing role/contact IDs, legacy Moments records, and the separate @mention feature.
 
 Acceptance:
 - Contacts can create, rename, delete groups, assign multiple contacts to groups, and filter the contact list by all / ungrouped / group.
 - Moments composer supports public, all contacts, private, selected groups + selected contacts, and excluded groups + excluded contacts.
 - The audience selected at publish time is snapshotted into the post; later group membership edits do not retroactively change old posts.
 - @mentions remain independent from visibility selection.
+- Contact references use separate typed identities for AI roles, real-user accounts, and chat groups; existing conversation IDs and chat-history keys remain compatible.
+- Groups preserve typed `memberRefs` alongside legacy AI-only `memberIds`; new Moments records include typed `visibleContactRefs` / `hiddenContactRefs` so equal raw IDs cannot cross identity types.
+- When a typed real-user roster is supplied, stale direct selections fail closed and stale group members are excluded from new audience snapshots.
 - AI roles excluded from a user's post never receive its body through mention replies or automatic comments.
 - Existing Moments records and visibility values remain readable; no chat history, role ID, or existing storage key is migrated or deleted.
 - Group and audience policy have unit tests; build and affected page acceptance are recorded accurately.
