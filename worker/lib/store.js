@@ -95,40 +95,66 @@ class CloudStore {
     return Number(row?.total || 0);
   }
 
-  countRecentPairingTokensByDevice(deviceId, since) {
+  createDevicePairingTokenWithLimit(token, { since, limit }) {
     const row = this.exec(
-      'SELECT COUNT(*) AS total FROM device_pairing_tokens WHERE created_by_device_id = ? AND created_at >= ?',
-      deviceId,
-      since
-    )[0];
-    return Number(row?.total || 0);
-  }
-
-  createDevicePairingToken(token) {
-    this.exec(
       `INSERT INTO device_pairing_tokens
         (token_hash, user_id, created_by_device_id, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?
+       WHERE (
+         SELECT COUNT(*) FROM device_pairing_tokens
+         WHERE created_by_device_id = ? AND created_at >= ?
+       ) < ?
+       AND EXISTS (
+         SELECT 1 FROM devices
+         WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+       )
+       RETURNING token_hash`,
       token.tokenHash,
       token.userId || 'owner',
       token.createdByDeviceId,
       token.createdAt,
-      token.expiresAt
-    );
+      token.expiresAt,
+      token.createdByDeviceId,
+      since,
+      limit,
+      token.createdByDeviceId,
+      token.userId || 'owner'
+    )[0];
+    return Boolean(row);
   }
 
-  consumeDevicePairingToken(tokenHash, now) {
-    return this.exec(
+  consumePairingTokenAndInsertDevice(tokenHash, now, device) {
+    // Consumption and device insertion run synchronously in one store call,
+    // so a concurrent issuer revocation cannot interleave between them.
+    const pairing = this.exec(
       `UPDATE device_pairing_tokens
        SET consumed_at = ?
        WHERE token_hash = ?
          AND consumed_at IS NULL
          AND expires_at > ?
+         AND EXISTS (
+           SELECT 1 FROM devices
+           WHERE id = device_pairing_tokens.created_by_device_id
+             AND user_id = device_pairing_tokens.user_id
+             AND revoked_at IS NULL
+         )
        RETURNING user_id`,
       now,
       tokenHash,
       now
-    )[0] || null;
+    )[0];
+    if (!pairing) return false;
+    try {
+      this.insertDevice({ ...device, userId: pairing.user_id || 'owner' });
+      return true;
+    } catch (error) {
+      this.exec(
+        'UPDATE device_pairing_tokens SET consumed_at = NULL WHERE token_hash = ? AND consumed_at = ?',
+        tokenHash,
+        now
+      );
+      throw error;
+    }
   }
 
   cleanupDevicePairingTokens(now) {
