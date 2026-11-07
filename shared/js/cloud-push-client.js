@@ -1277,6 +1277,6 @@
     getStatus: getStatus,
     refreshSettings: refreshSettings,
     mountSettings: mountSettings,
-    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice, getPresenceRenewInterval: getPresenceRenewInterval }
+    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice, getPresenceRenewInterval: getPresenceRenewInterval, fingerprintCharacterHistory: fingerprintCharacterHistory }
   };
 })(typeof window !== 'undefined' ? window : self);
