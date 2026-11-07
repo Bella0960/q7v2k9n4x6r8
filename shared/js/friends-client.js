@@ -150,6 +150,16 @@
     );
   }
 
+  function markRead(friendId, messageId) {
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/read',
+      {
+        method: 'POST',
+        body: { messageId: String(messageId || '').trim() }
+      }
+    );
+  }
+
   global.MaomaoFriends = {
     ensureAccount: ensureAccount,
     getMe: getMe,
@@ -164,6 +174,7 @@
     createMessageId: createMessageId,
     getMessages: getMessages,
     sendMessage: sendMessage,
+    markRead: markRead,
     _readAccount: readAccount
   };
 })(typeof window !== 'undefined' ? window : self);
