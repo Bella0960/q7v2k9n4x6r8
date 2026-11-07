@@ -297,6 +297,7 @@
         var selectedVisibleContactIds = [];
         var selectedHiddenGroupIds = [];
         var selectedHiddenContactIds = [];
+        var permissionDraft = null;
 
         /* ========== 工具函数 ========== */
         function escapeHtml(str) {
@@ -522,11 +523,26 @@
             renderAudienceSelection();
         }
         function openPermSheet() {
+            permissionDraft = {
+                visibility: currentPerm,
+                visibleGroups: selectedVisibleGroupIds.slice(),
+                visibleContacts: selectedVisibleContactIds.slice(),
+                hiddenGroups: selectedHiddenGroupIds.slice(),
+                hiddenContacts: selectedHiddenContactIds.slice()
+            };
             showPermissionModes();
             permBackdrop.classList.add('show');
             permSheet.classList.add('show');
         }
-        function closePermSheet() {
+        function closePermSheet(commit) {
+            if (!commit && permissionDraft) {
+                currentPerm = permissionDraft.visibility;
+                selectedVisibleGroupIds = permissionDraft.visibleGroups;
+                selectedVisibleContactIds = permissionDraft.visibleContacts;
+                selectedHiddenGroupIds = permissionDraft.hiddenGroups;
+                selectedHiddenContactIds = permissionDraft.hiddenContacts;
+            }
+            permissionDraft = null;
             permBackdrop.classList.remove('show');
             permSheet.classList.remove('show');
             permissionSheetStage = 'modes';
@@ -539,9 +555,9 @@
                 showToast('部分可见至少选择一位联系人');
                 return;
             }
-            closePermSheet();
+            closePermSheet(permissionSheetStage === 'audience');
         });
-        permBackdrop.addEventListener('click', closePermSheet);
+        permBackdrop.addEventListener('click', function () { closePermSheet(false); });
         document.getElementById('permBody').addEventListener('click', function (e) {
             var back = e.target.closest('[data-audience-back]');
             if (back) { showPermissionModes(); return; }
@@ -562,7 +578,7 @@
             var mode = item.getAttribute('data-perm');
             if (mode === 'custom' || mode === 'excluded') { openAudienceSelection(mode); return; }
             currentPerm = mode;
-            closePermSheet();
+            closePermSheet(true);
         });
 
         /* ========== @好友 sheet ========== */
