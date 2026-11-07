@@ -3128,3 +3128,112 @@ test('结算确认失败时，商店与外卖只在原交易仍待恢复时保�
       name + ' must retain the previously persisted cart snapshot');
   }
 });
+
+
+test('钱包充值/提现重试沿用原 paymentId，不会重复改动余额或明细', async () => {
+  const helperStart = walletPage.indexOf('  function getWorkDataForMutation()');
+  const helperEnd = walletPage.indexOf('  function getWorkData()', helperStart);
+  const handlerStart = walletPage.indexOf('  // 确认：充值 / 提现使用交易 ID');
+  const handlerEnd = walletPage.indexOf('  // 初始化：页面加载即渲染真实余额与交易明细', handlerStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'strict wallet data reader must be present');
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart, 'wallet adjustment handler must be present');
+
+  const values = new Map();
+  let blockCompletionWrite = true;
+  let capturedHandler = null;
+  let closed = 0;
+  let balanceRenders = 0;
+  let historyRenders = 0;
+  const storage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      if (key === 'maomao_wallet_pending_checkouts_v1' && blockCompletionWrite &&
+          JSON.parse(String(value)).some((item) => item.status === 'completed')) return;
+      values.set(key, String(value));
+    },
+    removeItem: (key) => { values.delete(key); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  const amountConfirm = {
+    disabled: false,
+    addEventListener: (event, callback) => {
+      if (event === 'click') capturedHandler = callback;
+    }
+  };
+  const sandbox = {
+    window,
+    localStorage: storage,
+    amountMode: 'charge',
+    amountInput: { value: '20.00' },
+    amountError: { textContent: '' },
+    amountConfirm,
+    renderBalance: () => { balanceRenders += 1; },
+    renderHistory: () => { historyRenders += 1; },
+    closeAmountModal: () => { closed += 1; },
+    console: { warn: () => {} }
+  };
+  runInNewContext(walletLedgerSource, sandbox);
+  const code = walletPage.slice(helperStart, helperEnd) + '\n' +
+    walletPage.slice(handlerStart, handlerEnd);
+  runInNewContext(code, sandbox);
+  assert.equal(typeof capturedHandler, 'function');
+
+  await capturedHandler();
+  let wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 1020);
+  assert.equal(wallet.history.length, 1);
+  assert.ok(wallet.history[0].paymentId, 'the wallet receipt must include a stable paymentId');
+  assert.equal(closed, 0, 'failed completion confirmation must leave recovery available');
+  assert.match(sandbox.amountError.textContent, /再次点击会恢复原交易/);
+
+  blockCompletionWrite = false;
+  await capturedHandler();
+  wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 1020, 'retry must not credit the balance twice');
+  assert.equal(wallet.history.length, 1, 'retry must not duplicate the income record');
+  assert.equal(closed, 1, 'the modal closes after the original transaction is completed');
+  assert.equal(balanceRenders, 2);
+  assert.equal(historyRenders, 2);
+});
+
+test('钱包数据损坏时，充值和提现都不能把余额静默重置成 1000 元', async () => {
+  const helperStart = walletPage.indexOf('  function getWorkDataForMutation()');
+  const helperEnd = walletPage.indexOf('  function getWorkData()', helperStart);
+  const handlerStart = walletPage.indexOf('  // 确认：充值 / 提现使用交易 ID');
+  const handlerEnd = walletPage.indexOf('  // 初始化：页面加载即渲染真实余额与交易明细', handlerStart);
+  const values = new Map([['workData', '{broken-json']]);
+  let capturedHandler = null;
+  const storage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { values.set(key, String(value)); },
+    removeItem: (key) => { values.delete(key); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  const amountConfirm = {
+    disabled: false,
+    addEventListener: (event, callback) => { if (event === 'click') capturedHandler = callback; }
+  };
+  const sandbox = {
+    window, localStorage: storage, amountMode: 'charge',
+    amountInput: { value: '20' }, amountError: { textContent: '' }, amountConfirm,
+    renderBalance: () => {}, renderHistory: () => {}, closeAmountModal: () => {},
+    console: { warn: () => {} }
+  };
+  runInNewContext(walletLedgerSource, sandbox);
+  runInNewContext(walletPage.slice(helperStart, helperEnd) + '\n' +
+    walletPage.slice(handlerStart, handlerEnd), sandbox);
+  await capturedHandler();
+  assert.equal(values.get('workData'), '{broken-json',
+    'corrupt wallet data must never be overwritten with a fabricated default balance');
+  assert.match(sandbox.amountError.textContent, /钱包数据异常/);
+  assert.equal(window.MaoMaoWalletLedger.getPendingCheckout('wallet-adjustment'), undefined,
+    'a rejected operation before any balance write must clear its temporary ID');
+});
+
+test('钱包界面在存在未完成的充值/提现时会提示并预填原操作', () => {
+  assert.match(walletPage, /getPendingCheckout\('wallet-adjustment'\)/);
+  assert.match(walletPage, /检测到一笔未完成的/);
+  assert.match(walletPage, /pending\.paymentMethod/);
+  assert.match(walletPage, /amountInput\.value = Number\(detail\.amount\)\.toFixed\(2\)/);
+  assert.match(walletPage, /数据异常/);
+});
