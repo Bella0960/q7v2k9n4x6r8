@@ -179,6 +179,9 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /id="roleNote"/);
   assert.match(page, /当前主角色：/);
   assert.match(page, /尚未选择主角色/);
+  assert.match(page, /window\.addEventListener\('storage'/);
+  assert.match(page, /npc_friend_requests_v2_/);
+  assert.match(page, /NPCSocial\.reconcileAccepted\(\)/);
   assert.match(page, /data-action="accept"/);
   assert.match(page, /data-action="decline"/);
   assert.match(page, /data-action="block"/);
