@@ -40,8 +40,18 @@ function createLibrary(seed, options = {}) {
       return Promise.resolve({ ok: true, value: { removed } });
     }
     addRef(assetId, ownerType, ownerId) {
+      if (options.failAddRefFor === assetId) {
+        return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'link failed' } });
+      }
       refs.add(assetId + '|' + ownerType + '|' + ownerId);
       return Promise.resolve({ ok: true });
+    }
+    getAsset(assetId) {
+      if (!assets.has(assetId)) return Promise.resolve({ ok: false, error: { code: 'NOT_FOUND' } });
+      const stored = assets.get(assetId);
+      const mimeType = stored && stored.type ? stored.type : 'image/jpeg';
+      const blob = stored instanceof Blob ? stored : new Blob([String(stored)], { type: mimeType });
+      return Promise.resolve({ ok: true, value: { asset: { mimeType }, blob } });
     }
     removeAsset(assetId) {
       const stillReferenced = Array.from(refs).some(ref => ref.startsWith(assetId + '|'));
@@ -265,4 +275,67 @@ test('role removal restores already released references when a later cleanup ste
   assert.equal(failAtSecond.api.list('role-a').length, 2);
   assert.equal(failAtSecond.refs.has(a.value.assetId + '|role-avatar|role-a'), true);
   assert.equal(failAtSecond.refs.has(b.value.assetId + '|role-avatar|role-a'), true);
+});
+
+
+test('chat image assets are linked into a role avatar library without copying image bytes', async () => {
+  const { api, assets, refs } = createLibrary();
+  const source = await api.add('chat-owner', 'data:image/jpeg;base64,PHOTO');
+  const before = assets.size;
+  const candidate = await api.addAsset('role-a', source.value.assetId, {
+    label: '聊天候选头像',
+    source: 'chat'
+  });
+  assert.equal(candidate.ok, true);
+  assert.equal(api.list('role-a').length, 1);
+  assert.equal(api.list('role-a')[0].source, 'chat');
+  assert.equal(assets.size, before, 'the existing media asset is reused');
+  assert.equal(refs.has(source.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(api.getActive('role-a'), null, 'a candidate never changes the active avatar');
+});
+
+test('chat avatar candidate linking is role-isolated and deduplicates the same source asset', async () => {
+  const { api } = createLibrary();
+  const source = await api.add('chat-owner', 'data:image/jpeg;base64,PHOTO');
+  const a = await api.addAsset('role-a', source.value.assetId, { source: 'chat' });
+  const duplicate = await api.addAsset('role-a', source.value.assetId, { source: 'chat' });
+  const b = await api.addAsset('role-b', source.value.assetId, { source: 'chat' });
+  assert.equal(a.ok, true);
+  assert.equal(duplicate.ok, true);
+  assert.equal(b.ok, true);
+  assert.equal(api.list('role-a').length, 1);
+  assert.equal(api.list('role-b').length, 1);
+  assert.equal(a.value.id, duplicate.value.id);
+  assert.equal(api.list('role-a')[0].active, false);
+  assert.equal(api.list('role-b')[0].active, false);
+});
+
+test('chat avatar candidate linking rejects unavailable and non-image assets', async () => {
+  const { api, assets } = createLibrary();
+  const unavailable = await api.addAsset('role-a', 'as_' + 'Z'.repeat(32), { source: 'chat' });
+  assert.equal(unavailable.ok, false);
+
+  const nonImageId = 'as_' + 'B'.repeat(32);
+  assets.set(nonImageId, new Blob(['not an image'], { type: 'application/octet-stream' }));
+  const invalid = await api.addAsset('role-a', nonImageId, { source: 'chat' });
+  assert.equal(invalid.ok, false);
+  assert.equal(api.list('role-a').length, 0);
+});
+
+test('chat avatar candidate reference is released if role library metadata cannot be saved', async () => {
+  const { api, assets, refs } = createLibrary();
+  const source = await api.add('chat-owner', 'data:image/jpeg;base64,PHOTO');
+  const originalSetItem = globalThis.__unused;
+  assert.equal(assets.has(source.value.assetId), true);
+  const library = api;
+  const originalStorage = library;
+  // Use a separate quota-failing library with the same valid source asset seeded into its mock media store.
+  const failing = createLibrary({}, { failWrites: true });
+  failing.assets.set(source.value.assetId, new Blob(['photo'], { type: 'image/jpeg' }));
+  const result = await failing.api.addAsset('role-a', source.value.assetId, { source: 'chat' });
+  assert.equal(result.ok, false);
+  assert.equal(failing.refs.has(source.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(failing.assets.has(source.value.assetId), true, 'chat still owns the original asset');
+  void originalSetItem;
+  void originalStorage;
 });
