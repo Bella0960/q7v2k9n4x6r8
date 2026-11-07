@@ -328,7 +328,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - 仅单角色会话启用；群聊不申请该收件箱。
 - 设备完成配对后，聊天页可见时立即拉取，随后每 15 秒拉取一次；切到后台或页面离开时暂停，重新回到前台时刷新本地历史并恢复拉取。
-- 同一角色优先使用浏览器 Web Locks 保证同源标签页之间串行接收；不支持 Web Locks 时使用短期 localStorage 租约并复核 owner token。若租约存储不可用则不启动降级接收，避免无锁并发写历史。
+- 同一角色优先使用浏览器 Web Locks 保证同源标签页之间串行接收；不支持 Web Locks 时使用短期 localStorage 租约并复核 owner token。由于 localStorage 没有原子 compare-and-swap，降级租约只能尽量减少碰撞，不等价于 Web Locks 的强互斥；租约存储不可用时会 fail-closed，不启动降级接收。
 - 接收成功只通过 localStorage storage 事件广播服务端消息 ID，不广播正文；其他标签页再读取同一份本地聊天历史刷新界面，并尽量保留用户当前滚动位置。
 - 轮询仅在聊天页面前台运行。**这不是应用关闭或手机锁屏后的后台拉取**；后台真实 Web Push 仍需单独完成通知点击后唤起页面、收件箱同步和真机验收。
 
