@@ -205,6 +205,8 @@ test('character profile loads the shared media stack before the avatar library a
 
 test('role manager imports legacy avatar data only into that role library and keeps legacy consumers compatible', () => {
   assert.ok(managerSource.includes('ensureLegacyAvatarInLibrary(role)'));
+  assert.ok(managerSource.includes('const synchronized = library.setActive(role.id, linked.id)'));
+  assert.ok(managerSource.includes('if (token === avatarLibraryRenderToken && legacyReady)'));
   assert.ok(managerSource.includes('const previousActive = library.getActive(role.id)'));
   assert.ok(managerSource.includes("library.setActive(role.id, previousActive ? previousActive.id : '')"));
   assert.ok(managerSource.includes("source: 'legacy'"));
