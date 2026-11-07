@@ -214,11 +214,35 @@ function enqueueRoleAvatarCleanup(roleId) {
 async function retryPendingRoleAvatarCleanup() {
     const library = window.RoleAvatarLibrary;
     if (!library || typeof library.removeRole !== 'function') return { attempted: 0, pending: readRoleAvatarCleanupQueue().length };
+
+    // Merge the persisted queue with deletion tombstones. The tombstone is the durable
+    // source of truth, so a page close between delete and queue-write cannot strand media.
     const queue = readRoleAvatarCleanupQueue();
-    if (!queue.length) return { attempted: 0, pending: 0 };
+    const byRoleId = Object.create(null);
+    queue.forEach(function (item) { byRoleId[item.roleId] = item; });
+    if (typeof library.listPendingRoleCleanups === 'function') {
+        try {
+            const discovered = library.listPendingRoleCleanups();
+            if (discovered && discovered.ok && Array.isArray(discovered.value)) {
+                discovered.value.forEach(function (roleId) {
+                    roleId = String(roleId || '').trim();
+                    if (roleId && !byRoleId[roleId]) {
+                        byRoleId[roleId] = { roleId: roleId, queuedAt: Date.now() };
+                    }
+                });
+            } else {
+                console.warn('角色头像清理标记暂时无法扫描，将继续处理已有重试队列。');
+            }
+        } catch (error) {
+            console.warn('角色头像清理标记扫描失败，将继续处理已有重试队列:', error);
+        }
+    }
+    const tasks = Object.keys(byRoleId).map(function (roleId) { return byRoleId[roleId]; });
+    if (!tasks.length) return { attempted: 0, pending: 0 };
+
     const pending = [];
     let attempted = 0;
-    for (const item of queue) {
+    for (const item of tasks) {
         attempted += 1;
         try {
             const result = await library.removeRole(item.roleId);
@@ -232,7 +256,7 @@ async function retryPendingRoleAvatarCleanup() {
         }
     }
     if (!writeRoleAvatarCleanupQueue(pending)) {
-        return { attempted: attempted, pending: queue.length, queueWriteFailed: true };
+        return { attempted: attempted, pending: pending.length, queueWriteFailed: true };
     }
     return { attempted: attempted, pending: pending.length };
 }
