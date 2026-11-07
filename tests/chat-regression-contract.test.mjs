@@ -2811,7 +2811,7 @@ test('商店旧订单按原时间线补齐进度且损坏订单存储不被空�
   assert.match(shopPage, /const SHOP_ORDER_STAGES = \[[\s\S]*?offset: 72 \* 3600000/);
   assert.match(shopPage, /function syncShopOrders\(\)/);
   assert.match(shopPage, /const stored = syncShopOrders\(\)/);
-  assert.match(shopPage, /物流进度为应用内模拟时间推进/);
+  assert.match(shopPage, /进度按应用内模拟时间推进/);
   assert.match(shopPage, /function loadOrders\(\)[\s\S]*?return null;/);
   assert.match(shopPage, /订单数据异常，已停止覆盖保存/);
 });
