@@ -16,6 +16,12 @@
   var basePath = scriptEl ? new URL('../../', scriptEl.src).pathname : '/';
   basePath = basePath.replace(/\/+$/, '');
   var DEVICE_STORAGE_KEY = 'cloud_device_v1';
+  var CONTEXT_FINGERPRINT_PREFIX = 'cloud_context_fingerprint_v1:';
+  var CONTEXT_PENDING_PREFIX = 'cloud_context_pending_v1:';
+  var contextSyncPromises = Object.create(null);
+  var activeContextEventIds = Object.create(null);
+  var localContextFingerprints = Object.create(null);
+  var localContextPendingEvents = Object.create(null);
 
   function apiPath(path) {
     return basePath + path;
@@ -319,6 +325,152 @@
     );
   }
 
+  function contextMetadataKey(prefix, characterId) {
+    return prefix + encodeURIComponent(String(characterId || ''));
+  }
+
+  function readContextMetadata(key, memory) {
+    try {
+      var value = localStorage.getItem(key);
+      if (typeof value === 'string' && value) return value;
+    } catch (error) {
+      // Fall back to this page's in-memory copy when storage is unavailable.
+    }
+    return memory[key] || null;
+  }
+
+  function writeContextMetadata(key, value, memory) {
+    if (value == null || value === '') delete memory[key];
+    else memory[key] = String(value);
+    try {
+      if (value == null || value === '') localStorage.removeItem(key);
+      else localStorage.setItem(key, String(value));
+    } catch (error) {
+      // The in-memory pending event is still sent during this page lifetime.
+    }
+  }
+
+  // A local-only fingerprint detects whether the saved history changed.
+  // The fingerprint itself is never sent to the Worker; only a random event ID is.
+  function fingerprintCharacterHistory(history) {
+    if (!Array.isArray(history)) return null;
+    var hashA = 2166136261;
+    var hashB = 2246822519;
+    var fieldCount = 0;
+
+    function absorb(value) {
+      var text = value == null ? '' : String(value);
+      fieldCount += 1;
+      for (var i = 0; i < text.length; i += 1) {
+        var code = text.charCodeAt(i);
+        hashA = Math.imul(hashA ^ code, 16777619);
+        hashB = Math.imul(hashB ^ code, 3266489917);
+      }
+      hashA = Math.imul(hashA ^ 31, 16777619);
+      hashB = Math.imul(hashB ^ 47, 3266489917);
+    }
+
+    history.forEach(function (message) {
+      if (!message || typeof message !== 'object') {
+        absorb('');
+        return;
+      }
+      absorb(message.role);
+      absorb(message.mid);
+      absorb(message.time);
+      absorb(message.type);
+      absorb(message.memberId);
+      absorb(message.name);
+      var body = message.text != null ? message.text : message.content;
+      if (typeof body === 'string' && /^data:[^,]*;base64,/i.test(body)) {
+        absorb('[embedded-media]');
+      } else {
+        absorb(body);
+      }
+      absorb(message.desc);
+      absorb(message.mediaId);
+      absorb(message.assetId);
+      absorb(message.attachmentId);
+      absorb(message.fileId);
+      absorb(message.duration);
+      absorb(message.replyTo);
+    });
+
+    return String(history.length) + ':' +
+      (hashA >>> 0).toString(16) + ':' +
+      (hashB >>> 0).toString(16) + ':' + String(fieldCount);
+  }
+
+  function getCharacterContextVersion(characterId) {
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/context-version'
+    );
+  }
+
+  function flushCharacterContextVersion(characterId) {
+    var value = String(characterId || '');
+    if (!value) return Promise.reject(new Error('角色 ID 无效'));
+    var key = value;
+    if (contextSyncPromises[key]) return contextSyncPromises[key];
+
+    var pendingKey = contextMetadataKey(CONTEXT_PENDING_PREFIX, value);
+    var eventId = readContextMetadata(pendingKey, localContextPendingEvents);
+    if (!eventId) return Promise.resolve(null);
+
+    activeContextEventIds[key] = eventId;
+    var promise = requestDeviceMetadata(
+      '/api/characters/' + characterPath(value) + '/context-version',
+      'POST',
+      { eventId: eventId }
+    ).then(function (payload) {
+      if (readContextMetadata(pendingKey, localContextPendingEvents) === eventId) {
+        writeContextMetadata(pendingKey, null, localContextPendingEvents);
+      }
+      return payload;
+    }).finally(function () {
+      if (activeContextEventIds[key] === eventId) delete activeContextEventIds[key];
+      if (contextSyncPromises[key] === promise) delete contextSyncPromises[key];
+      var nextEventId = readContextMetadata(pendingKey, localContextPendingEvents);
+      if (nextEventId && nextEventId !== eventId) {
+        flushCharacterContextVersion(value).catch(function () {});
+      }
+    });
+    contextSyncPromises[key] = promise;
+    return promise;
+  }
+
+  function noteCharacterContextChanged(characterId, history) {
+    var value = String(characterId || '');
+    if (!value) return Promise.reject(new Error('角色 ID 无效'));
+    var fingerprint = fingerprintCharacterHistory(history);
+    if (fingerprint == null) return Promise.resolve({ changed: false });
+
+    var fingerprintKey = contextMetadataKey(CONTEXT_FINGERPRINT_PREFIX, value);
+    var pendingKey = contextMetadataKey(CONTEXT_PENDING_PREFIX, value);
+    var previous = readContextMetadata(fingerprintKey, localContextFingerprints);
+    if (previous === fingerprint) {
+      return flushCharacterContextVersion(value).then(function (payload) {
+        return { changed: false, synced: Boolean(payload), payload: payload };
+      });
+    }
+
+    // Coalesce offline edits into one pending event. If an event is already
+    // in flight, keep a second token so changes made during that request are
+    // not accidentally cleared by its late response.
+    var pendingEventId = readContextMetadata(pendingKey, localContextPendingEvents);
+    if (activeContextEventIds[value] && pendingEventId === activeContextEventIds[value]) {
+      pendingEventId = null;
+    }
+    if (!pendingEventId) pendingEventId = randomBase64Url(18);
+
+    writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
+    writeContextMetadata(pendingKey, pendingEventId, localContextPendingEvents);
+
+    return flushCharacterContextVersion(value).then(function (payload) {
+      return { changed: true, synced: Boolean(payload), payload: payload };
+    });
+  }
+
   function updatePresenceHeartbeat(foregroundActive, signal) {
     if (typeof foregroundActive !== 'boolean') {
       return Promise.reject(new Error('foregroundActive 必须是布尔值'));
@@ -435,6 +587,11 @@
         if (activeRequestController) activeRequestController.abort();
         return;
       }
+      flushCharacterContextVersion(characterId).catch(function (error) {
+        if (!stopped && document.visibilityState !== 'hidden') {
+          console.warn('[cloud] 角色上下文版本同步失败，将保留待同步事件', error);
+        }
+      });
       syncVisibleSession().catch(function (error) {
         if (!stopped && document.visibilityState !== 'hidden' && error?.name !== 'AbortError') {
           console.warn('[cloud] 角色前台租约续期失败', error);
@@ -450,6 +607,11 @@
     try {
       intervalId = global.setInterval(
         function () {
+          flushCharacterContextVersion(characterId).catch(function (error) {
+            if (!stopped && document.visibilityState !== 'hidden') {
+              console.warn('[cloud] 角色上下文版本同步失败，将保留待同步事件', error);
+            }
+          });
           syncVisibleSession().catch(function (error) {
             if (!stopped && document.visibilityState !== 'hidden' && error?.name !== 'AbortError') {
               console.warn('[cloud] 角色前台租约续期失败', error);
@@ -462,6 +624,12 @@
       document.removeEventListener('visibilitychange', onVisibilityChange);
       throw error;
     }
+
+    // Flush any content-free revision event left pending from an earlier
+    // offline session. This never includes a message body or a local fingerprint.
+    flushCharacterContextVersion(characterId).catch(function (error) {
+      console.warn('[cloud] 角色上下文版本暂未同步，后续会重试', error);
+    });
 
     // Do not make chat initialization wait for the first network round-trip.
     // The manager is usable immediately; failures are handled by the same retry
@@ -1032,6 +1200,9 @@
     setCharacterAutonomy: setCharacterAutonomy,
     getCharacterSchedule: getCharacterSchedule,
     setCharacterSchedule: setCharacterSchedule,
+    getCharacterContextVersion: getCharacterContextVersion,
+    noteCharacterContextChanged: noteCharacterContextChanged,
+    flushCharacterContextVersion: flushCharacterContextVersion,
     updatePresenceHeartbeat: updatePresenceHeartbeat,
     updateCharacterLease: updateCharacterLease,
     startCharacterPresence: startCharacterPresence,
