@@ -155,7 +155,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 ### 8.4 仍然 BLOCKED 的边界
 
 1. **前端 heartbeat/lease 调用：CODE WIRED / RUNTIME NOT VERIFIED。** 单角色 chat-detail 已加载云端客户端并按当前 role ID 启动前台心跳/租约；群聊未接入。必须配置服务端 TTL/lease 参数，并通过构建、浏览器与真机测试确认。
-2. **真实上下文版本：BLOCKED。** 当前没有可信 server-side chat event/version source。Store 明确返回 `contextVersion: null`；所有 `contact / follow_up / busy_reply / diary` 上下文任务均返回 `context_version_unavailable` 并 defer。没有伪造版本、没有把时间戳当版本、没有上传聊天正文。
+2. **角色上下文版本：CODE IMPLEMENTED / RUNTIME NOT VERIFIED。** 新增服务端每角色单调版本计数器和设备鉴权事件 API；聊天页仅在本地聊天记录写入并读回校验成功后提交随机 `eventId`，Worker 不接收正文、摘要、persona、图片或附件。Scheduler gate 对每个角色读取服务端版本，并要求任务携带完全匹配的 `payload.contextVersion`；缺少版本或版本不一致仍 fail-closed。完整 Node/SQLite 测试、构建、部署和多设备运行验收尚未完成。
 3. **设备安全配对：CODE IMPLEMENTED / DEPLOY CONFIG NOT VERIFIED。** 新增 `0003_device_pairing`：首台设备通过 Worker secret `ENROLLMENT_TOKEN` 完成一次初始认领；现有授权设备可以签发短时单次配对码；新设备设置页可输入配对码；已知设备保留原凭据重连路径，不会因服务端未知而自动清除本机凭据。生产环境仍需设置 `ENROLLMENT_TOKEN` 与 `DEVICE_PAIRING_TOKEN_TTL_MS`，并在真实 Cloudflare Worker 上验证迁移、首次认领、配对和撤销行为。
 4. **云端模型凭据：NOT AUTHORIZED。** 不读取或上传浏览器 API Key，不配置/使用模型凭据。
 5. **AI 生成 / outbound / 真正角色主动推送：NOT STARTED。** 本阶段没有创建真实出站消息、没有调用模型、没有发真实推送。
@@ -220,12 +220,26 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 前台心跳是设备级、角色租约是角色级：单个聊天标签页隐藏、pagehide 或停止本地续期时不再主动写入 `foregroundActive=false`，避免一个后台标签页覆盖同一手机另一个可见标签页的心跳。所有可见页面都停止续期后，readiness 与 scheduler policy 会依显式 TTL 自然将旧心跳视为过期；角色租约仍按 lease + grace 到期。
 - 设备撤销在同一个同步 Store 操作内先停用其全部推送订阅，再标记设备撤销并清除 presence、租约和未使用配对码，避免撤销与停订阅分成两次调用造成的短暂推送窗口。
 - 推送订阅写入会在 Store 写入边界重新检查设备是否仍有效；即使请求在鉴权后被并发撤销，也不能重新激活订阅。endpoint 已属于另一台仍有效设备时拒绝转移；只有原设备已撤销后，配对完成的新设备才可接管该 endpoint。
-- 当前 `activityExecutorAvailable=false`、`contextVersionReady=false`，主动消息生成继续为 false；阻塞原因明确为 `executor_unavailable` 与 `context_version_unavailable`。这不是“已能主动发消息”的状态。
+- 当前 `activityExecutorAvailable=false`，因此 `autonomousMessageGenerationReady=false` 始终保持 false。readiness 的 `contextVersionReady` / `contextVersionTrackedRoles` 是账号级汇总；具体任务仍由 scheduler gate 按对应角色版本逐一核对。没有任何角色版本时仍报告 `context_version_unavailable`。
 - 不返回 VAPID 私钥、设备 pepper、初始认领码、配对码或任何 Secret。
 - 设置页“检查云端准备情况”显示设备鉴权、首次认领、配对、VAPID 配置、推送订阅、presence 参数、全局授权、队列计数、最近 24 小时调度原因、执行器、上下文版本和 AI 生成链路状态。
 - 诊断接口不会发通知、不会创建任务，也不会触发模型调用；只读取配置与匿名队列汇总。
 - `testPushReady` 仅表示 VAPID 配置存在且当前设备至少有一个活动订阅；真实 APNs/浏览器推送可达性仍需用“发送测试推送”和真机锁屏验收确认。
 
+
+### 8.11 角色上下文版本计数（只同步版本元数据）
+
+本阶段按用户明确授权，只同步每个角色的上下文版本计数，不同步聊天内容。
+
+- 新增迁移 `0004_character_context_version`：`character_context_versions` 保存 `user_id + character_id + version + updated_at`；`character_context_events` 保存设备鉴权的随机事件 ID，用于请求重试去重。版本表不含聊天正文、摘要、角色设定、关系记忆或媒体字段。
+- 新增设备鉴权 API：`GET /api/characters/:characterId/context-version` 读取版本；`POST /api/characters/:characterId/context-version` 只允许一个字段 `eventId`。服务端拒绝额外字段，因此不能借该端点提交消息正文或其他内容。
+- 每个新的事件 ID 由服务端为对应账号与角色原子递增版本；相同事件 ID 重试会返回当前版本，不会重复递增。不同账号、不同角色的版本互相隔离。
+- 单角色聊天页只在现有本地聊天记录保存成功、且写后读回校验成功后，通知版本变化。客户端在本机计算历史指纹，仅用于判断历史是否变化；指纹不会上传。网络请求正文只有随机 `eventId`，不含消息、摘要、persona、图片、附件或指纹。
+- 离线时客户端在本机保留待同步事件 ID，并将连续离线改动合并成一个待同步版本事件；下一次保存、重新进入前台或心跳周期会重试。事件请求失败不会影响本地聊天保存。
+- 群聊暂不映射到单角色上下文版本，避免将群会话 ID 误作角色 ID。
+- 服务器端版本可供 scheduler gate 使用，但上下文任务必须在入队时携带当时读取到的角色版本，并在执行前与当前版本完全匹配；缺失或过期仍会 defer / supersede。
+- 事件 ID 去重记录由维护任务清理 90 天以前的条目。版本计数本身长期保留；极旧的离线重试在去重记录清理后可能产生一次额外递增，只会让旧任务更保守地失效，不会恢复旧上下文。
+- 这只建立了可核对的版本信号，不代表云端已获得聊天上下文或已经可以生成消息。AI 执行器仍未接入，模型凭据未读取，真实主动消息与推送仍未启动。
 
 ### 8.10 Activity queue lease recovery 与 worker fencing
 
