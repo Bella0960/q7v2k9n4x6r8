@@ -70,7 +70,7 @@ function hasRequiredSnapshot(snapshot) {
  * Tests may provide synthetic snapshots, but production never fabricates
  * context versions or infers permission from device connectivity.
  */
-export function createSchedulerGate({ store, now = Date.now, config = {} } = {}) {
+export function createSchedulerGate({ store, now = Date.now, config = {}, executorDeviceId = null } = {}) {
   return function schedulerGate(task) {
     const timestamp = Number(typeof now === 'function' ? now() : now);
     if (!Number.isFinite(timestamp) || timestamp <= 0) {
@@ -130,20 +130,39 @@ export function createSchedulerGate({ store, now = Date.now, config = {} } = {})
     if (evaluated.autonomy?.allowed !== true) {
       return deny(REASON_CODES.AUTONOMY_DENIED);
     }
-    if (evaluated.presence?.hasValidForegroundLease) {
-      return deny(REASON_CODES.FOREGROUND_LEASE_HELD);
-    }
-    if (evaluated.presence?.gracePending) {
-      return deny(REASON_CODES.FOREGROUND_LEASE_GRACE);
-    }
-    if (
-      evaluated.character?.state !== 'active' ||
-      evaluated.execution?.owner !== POLICY.EXECUTION_OWNERS.CLOUD ||
-      evaluated.execution?.contactAllowed !== true
-    ) {
-      return deny(REASON_CODES.CHARACTER_NOT_ACTIVE, {
-        characterState: evaluated.character?.state || 'inactive'
-      });
+    if (executorDeviceId != null) {
+      // The device-side model executor may run only for the exact foreground
+      // device that owns this character lease. A sibling device cannot borrow
+      // another device's lease, and an active heartbeat alone is insufficient.
+      const deviceId = String(executorDeviceId);
+      const hasFreshHeartbeat = Array.isArray(evaluated.presence?.activeDeviceIds) &&
+        evaluated.presence.activeDeviceIds.includes(deviceId);
+      const ownsCharacterLease = Array.isArray(evaluated.presence?.validLeaseDeviceIds) &&
+        evaluated.presence.validLeaseDeviceIds.includes(deviceId);
+      if (!hasFreshHeartbeat || !ownsCharacterLease) {
+        return deny(REASON_CODES.DEVICE_EXECUTOR_LEASE_REQUIRED);
+      }
+      if (evaluated.character?.state !== 'active') {
+        return deny(REASON_CODES.CHARACTER_NOT_ACTIVE, {
+          characterState: evaluated.character?.state || 'inactive'
+        });
+      }
+    } else {
+      if (evaluated.presence?.hasValidForegroundLease) {
+        return deny(REASON_CODES.FOREGROUND_LEASE_HELD);
+      }
+      if (evaluated.presence?.gracePending) {
+        return deny(REASON_CODES.FOREGROUND_LEASE_GRACE);
+      }
+      if (
+        evaluated.character?.state !== 'active' ||
+        evaluated.execution?.owner !== POLICY.EXECUTION_OWNERS.CLOUD ||
+        evaluated.execution?.contactAllowed !== true
+      ) {
+        return deny(REASON_CODES.CHARACTER_NOT_ACTIVE, {
+          characterState: evaluated.character?.state || 'inactive'
+        });
+      }
     }
 
     if (CONTEXT_TASK_KINDS.has(String(task?.kind || ''))) {
