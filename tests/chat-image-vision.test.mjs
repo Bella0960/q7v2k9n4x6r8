@@ -232,9 +232,10 @@ test('paired avatar markers resolve two distinct current images and never collap
 
 test('pair recognition rejects two message rows that reference the same underlying media asset', () => {
   const api = createVision();
+  const sharedAssetId = 'as_' + 'A'.repeat(32);
   const images = [
-    { index: 1, mid: 'message-a', assetId: 'as_same_asset' },
-    { index: 2, mid: 'message-b', assetId: 'as_same_asset' }
+    { index: 1, mid: 'message-a', assetId: sharedAssetId },
+    { index: 2, mid: 'message-b', assetId: sharedAssetId }
   ];
   const parsed = api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2]]', images, 1);
   assert.equal(parsed.pairs.length, 0);
