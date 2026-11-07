@@ -6,11 +6,12 @@ This contract is for ordinary human-to-human communication between accepted MAOM
 
 ## 1. Current runtime truth
 
-The current Cloudflare Worker serves the static application only. `wrangler.jsonc` has no authentication service, D1, KV, or Durable Object binding for real-user accounts or messages. The browser's `PhoneRealUserConversationRepository` is a local-only store and is not a transport.
+The Cloudflare Worker serves the static application and now contains dormant account-auth handlers. `wrangler.jsonc` still has no D1 or Rate Limiting binding for real-user accounts, so those handlers remain disabled by default. The browser's `PhoneRealUserConversationRepository` is a local-only store and is not a transport.
 
 The Worker exposes:
 
-- `GET /api/real-user-chat/capabilities`: returns a no-store capability document with `enabled: false`.
+- `GET /api/real-user-chat/capabilities`: returns a no-store capability document; full messaging `enabled` remains `false`, while `accountAuth.enabled` separately reports whether the guarded account-auth prerequisites are present.
+- `/api/real-user-chat/v1/auth/register`, `/login`, `/me`, and `/logout`: route to account-auth handlers, but return HTTP 503 until `REAL_USER_AUTH_ENABLED`, D1 `DB`, and `AUTH_LIMITER` are all configured.
 - Other paths under `/api/real-user-chat`: return HTTP 503 with `real_user_chat_service_unavailable`.
 
 The gate must not parse a message request, persist it, or return a success-shaped acknowledgement. This is intentional. A client must not infer that a message was sent merely because it exists in local storage.
