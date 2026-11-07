@@ -25,10 +25,23 @@ export async function isRealUserFriendsConfigured(env) {
       "(SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (" +
       "'real_user_friend_codes', 'real_user_friend_requests', " +
       "'real_user_friendships', 'real_user_blocks')) AS ready_tables, " +
-      "(SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND " +
-      "name = 'idx_real_user_friend_codes_one_unrevoked_per_account') AS ready_index"
+      "(SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (" +
+      "'idx_real_user_friend_codes_one_unrevoked_per_account', " +
+      "'idx_real_user_friend_requests_pending_pair')) AS ready_indexes, " +
+      "(SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name IN (" +
+      "'trg_real_user_friend_request_insert_guard', " +
+      "'trg_real_user_friend_request_transition_guard', " +
+      "'trg_real_user_friend_request_accept_guard', " +
+      "'trg_real_user_friend_request_accepted', " +
+      "'trg_real_user_friendship_source_guard', " +
+      "'trg_real_user_friendship_update_guard', " +
+      "'trg_real_user_block_removes_friendship', " +
+      "'trg_real_user_block_terminates_pending_requests')) AS ready_triggers"
     ).first();
-    return !!schema && Number(schema.ready_tables) === 4 && Number(schema.ready_index) === 1;
+    return !!schema &&
+      Number(schema.ready_tables) === 4 &&
+      Number(schema.ready_indexes) === 2 &&
+      Number(schema.ready_triggers) === 8;
   } catch {
     return false;
   }
