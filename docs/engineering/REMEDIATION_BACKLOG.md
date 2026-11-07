@@ -346,6 +346,28 @@ Acceptance:
 - No user data, routes, assets, backup code, or build dependencies removed.
 - No blanket cleanup.
 
+### SOC-002 — Keep real-user conversations strictly communication-only
+**Priority:** P0 · **Status:** IN PROGRESS (client capability contract added; real-user messaging service not yet implemented)
+
+Product boundary:
+- Real-user conversations are for ordinary communication only: text, image/file sharing, voice messages, and stickers.
+- Do not expose or process red packets, transfers, payment/collection, wallet actions, transaction history/records, virtual family-card or intimate-pay balances, or gift-commerce actions between real users.
+- The separate MAOMAO Wallet app remains an independent app and is not removed or rewritten by this restriction.
+- Existing AI-role simulated interactions remain unchanged; the real-user policy must never inherit those capabilities by default.
+- One-to-one real-user voice calling may be evaluated later, but remains disabled until genuine real-time signaling, peer connectivity, authorization, and device-consent handling exist. The current text-simulated AI call overlay is not a real telephone call and must not be reused for human calls.
+
+Implemented groundwork:
+- `PhoneContactCapabilities` defines an allowlist for `real_user`; unknown future capabilities fail closed.
+- Chat plus-menu actions, direct payment drawer submission, payment-card clicks/rendering, payment marker parsing, virtual-card parsing, and call overlay entry have real-user guards.
+- Voice call is represented as planned and disabled; video call is disabled.
+- The chat capability policy does not apply to the standalone Wallet app or existing AI-role chats.
+
+Acceptance:
+- No real-user chat route or message adapter may enable red packets, transfers, payment/collection, wallet, or transaction records.
+- Any future server/API must enforce the same policy server-side; a client-side check alone is not authorization.
+- Real-user calls must use a separate genuine call service and explicit permission flow; no simulated call cards may be presented as completed live calls.
+- Automated and device tests must prove blocked message types and UI actions stay blocked, while normal chat and existing AI-role features remain intact.
+
 ## Parallel work plan
 
 Safe to parallelize:
