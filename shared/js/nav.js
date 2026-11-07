@@ -197,7 +197,7 @@
     // The engine performs no AI request unless the user enabled discovery.
     if (currentPage === 'chat.html' || currentPage === 'contacts.html') {
         var npcSocialScript = document.createElement('script');
-        npcSocialScript.src = appBase + 'shared/js/phone/npc-social.js?v=20261108f';
+        npcSocialScript.src = appBase + 'shared/js/phone/npc-social.js?v=20261108h';
         document.head.appendChild(npcSocialScript);
     }
 })();
