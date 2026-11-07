@@ -440,10 +440,19 @@
     }
     function openContactGroupEditor(group) {
       editingContactGroupId = group ? String(group.id) : '';
-      editingContactGroupMembers = group ? (group.memberIds || []).map(String) : [];
+      var availableContactIds = loadCharacters().map(function (role) { return String(role.id); });
+      var storedMemberIds = group ? (group.memberIds || []).map(String) : [];
+      var staleMemberCount = 0;
+      editingContactGroupMembers = storedMemberIds.filter(function (id) {
+        var exists = availableContactIds.indexOf(id) !== -1;
+        if (!exists) staleMemberCount += 1;
+        return exists;
+      });
       document.getElementById('contactGroupEditorTitle').textContent = group ? '编辑分组' : '新建分组';
       document.getElementById('contactGroupName').value = group ? group.name : '';
-      document.getElementById('contactGroupEditStatus').textContent = '';
+      document.getElementById('contactGroupEditStatus').textContent = staleMemberCount
+        ? '发现 ' + staleMemberCount + ' 位已不存在的联系人；保存时会从分组中清除，取消则保留原数据。'
+        : '';
       renderContactGroupMembers(); showContactGroupPanel('edit');
       setTimeout(function () { document.getElementById('contactGroupName').focus(); }, 0);
     }
