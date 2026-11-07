@@ -56,9 +56,11 @@ Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机
    npx wrangler secret put VAPID_PUBLIC_KEY     # 公开公钥（客户端订阅需要）
    npx wrangler secret put VAPID_PRIVATE_KEY    # 私钥，仅服务端使用
    npx wrangler secret put VAPID_SUBJECT        # mailto: 或 https: 联系地址
-   npx wrangler secret put DEVICE_SECRET_PEPPER # 设备凭据哈希 pepper
+   npx wrangler secret put DEVICE_SECRET_PEPPER # 至少 32 字符的随机设备凭据哈希 pepper
    npx wrangler secret put ENROLLMENT_TOKEN      # 首台设备一次性初始认领码，至少 32 字符
    ```
+
+   `DEVICE_SECRET_PEPPER` 必须至少 32 字符；缺失或过短时，设备注册与鉴权都会 fail-closed。
 
    另外必须显式配置正整数 Worker 变量 `DEVICE_PAIRING_TOKEN_TTL_MS`（一次性配对码有效期，毫秒）；缺失时服务端不会签发配对码。不要把 `ENROLLMENT_TOKEN` 写入仓库、前端或公开日志。
 
