@@ -247,6 +247,22 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
 });
 
+test('设备 pepper 缺失或过短时注册与鉴权 fail-closed', async () => {
+  const missing = setupTestStore(openTestDb(), {
+    DEVICE_SECRET_PEPPER: ''
+  });
+  const response = await registerDevice(missing, makeDevice());
+  assert.equal(response.status, 503);
+  assert.equal(response.payload.error.code, 'DEVICE_AUTH_NOT_CONFIGURED');
+
+  const weak = setupTestStore(openTestDb(), {
+    DEVICE_SECRET_PEPPER: 'too-short'
+  });
+  const weakResponse = await registerDevice(weak, makeDevice());
+  assert.equal(weakResponse.status, 503);
+  assert.equal(weakResponse.payload.error.code, 'DEVICE_AUTH_NOT_CONFIGURED');
+});
+
 test('初始认领与配对码配置缺失或过期时均 fail-closed', async () => {
   const noBootstrap = setupTestStore(openTestDb(), { ENROLLMENT_TOKEN: '' });
   const first = await registerDevice(noBootstrap, makeDevice());
