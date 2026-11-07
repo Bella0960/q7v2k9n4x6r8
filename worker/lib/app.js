@@ -1224,7 +1224,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           friendRequestActionMatch[2] === 'accept' ? 'accepted' : 'rejected'
         );
       }
-      const friendReadMatch = /^\\/api\\/friends\\/([^/]+)\\/read$/.exec(path);
+      const friendReadMatch = /^\/api\/friends\/([^/]+)\/read$/.exec(path);
       if (friendReadMatch && method === 'POST') return await markFriendMessagesRead(request, friendReadMatch[1]);
 
       const friendMessagesMatch = /^\/api\/friends\/([^/]+)\/messages$/.exec(path);
