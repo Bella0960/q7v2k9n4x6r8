@@ -170,6 +170,198 @@
         return writeContacts(next);
     }
 
+    function resultWithContact(result, contact, action) {
+        if (!result.ok) return result;
+        return {
+            ok: true,
+            action: action,
+            contact: contact || null,
+            contacts: result.contacts
+        };
+    }
+
+    function readContactForTransition(id) {
+        var result = readResult();
+        if (!result.ok) return result;
+        var key = cleanText(id, 160);
+        if (!key) return { ok: false, error: 'invalid_contact_id', contacts: [] };
+        var contact = result.contacts.find(function (item) { return item.id === key; }) || null;
+        return { ok: true, contact: contact, contacts: result.contacts, id: key };
+    }
+
+    function transitionTime(options) {
+        options = options && typeof options === 'object' ? options : {};
+        var value = Number(options.now);
+        return Number.isFinite(value) && value > 0 ? value : Date.now();
+    }
+
+    function makeRequestId(options, now) {
+        options = options && typeof options === 'object' ? options : {};
+        return cleanText(options.requestId, 160) ||
+            ('fr_' + Number(now).toString(36) + '_' + Math.random().toString(36).slice(2, 10));
+    }
+
+    // Local state transitions are workflow primitives only. A remote adapter
+    // must authenticate the other account and confirm server-side state before
+    // calling applyIncomingRequest() or saving an accepted relationship.
+    function requestOutgoing(value, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readResult();
+        if (!current.ok) return current;
+        var now = transitionTime(options);
+        var input = normalizeRecord({
+            id: value && (value.id != null ? value.id : value.userId),
+            displayName: value && (value.displayName != null ? value.displayName : value.name),
+            avatarUrl: value && value.avatarUrl,
+            avatarAssetId: value && value.avatarAssetId,
+            status: STATUS.PENDING_OUTGOING,
+            source: value && value.source || 'manual',
+            requestId: makeRequestId(options, now),
+            createdAt: now,
+            updatedAt: now
+        }, now);
+        if (!input) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
+        var existing = current.contacts.find(function (item) { return item.id === input.id; });
+        if (existing) {
+            if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
+            if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
+            if (existing.status === STATUS.PENDING_INCOMING) return { ok: false, error: 'incoming_request_exists', contact: existing, contacts: current.contacts };
+            return { ok: true, action: 'already_pending', contact: existing, contacts: current.contacts };
+        }
+        var next = current.contacts.concat([input]);
+        return resultWithContact(writeContacts(next), input, 'request_created');
+    }
+
+    // This entry point is intended for a future authenticated server event;
+    // it does not discover accounts or send a request over the network itself.
+    function applyIncomingRequest(value, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readResult();
+        if (!current.ok) return current;
+        var now = transitionTime(options);
+        var input = normalizeRecord({
+            id: value && (value.id != null ? value.id : value.userId),
+            displayName: value && (value.displayName != null ? value.displayName : value.name),
+            avatarUrl: value && value.avatarUrl,
+            avatarAssetId: value && value.avatarAssetId,
+            status: STATUS.PENDING_INCOMING,
+            source: value && value.source || 'server',
+            requestId: cleanText(value && value.requestId, 160) || makeRequestId(options, now),
+            createdAt: now,
+            updatedAt: now
+        }, now);
+        if (!input) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
+        var existing = current.contacts.find(function (item) { return item.id === input.id; });
+        if (existing) {
+            if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
+            if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
+            if (existing.status === STATUS.PENDING_OUTGOING) return { ok: false, error: 'request_collision', contact: existing, contacts: current.contacts };
+            if (existing.requestId === input.requestId) return { ok: true, action: 'duplicate_delivery', contact: existing, contacts: current.contacts };
+            return { ok: false, error: 'incoming_request_exists', contact: existing, contacts: current.contacts };
+        }
+        return resultWithContact(writeContacts(current.contacts.concat([input])), input, 'incoming_request_received');
+    }
+
+    function acceptIncoming(id, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        if (existing.status === STATUS.ACCEPTED) return { ok: true, action: 'already_accepted', contact: existing, contacts: current.contacts };
+        if (existing.status !== STATUS.PENDING_INCOMING) {
+            return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
+        }
+        if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
+            return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
+        }
+        if (options.expectedUpdatedAt != null && Number(options.expectedUpdatedAt) !== existing.updatedAt) {
+            return { ok: false, error: 'stale_snapshot', contact: existing, contacts: current.contacts };
+        }
+        var now = transitionTime(options);
+        var accepted = normalizeRecord(Object.assign({}, existing, {
+            status: STATUS.ACCEPTED,
+            acceptedAt: now,
+            blockedAt: null,
+            updatedAt: Math.max(now, existing.updatedAt)
+        }), now);
+        var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
+        return resultWithContact(writeContacts(next), accepted, 'request_accepted');
+    }
+
+    function declineIncoming(id, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        if (existing.status !== STATUS.PENDING_INCOMING) {
+            return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
+        }
+        if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
+            return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
+        }
+        var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
+        return resultWithContact(writeContacts(next), existing, 'request_declined');
+    }
+
+    function cancelOutgoing(id, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        if (existing.status !== STATUS.PENDING_OUTGOING) {
+            return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
+        }
+        if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
+            return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
+        }
+        var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
+        return resultWithContact(writeContacts(next), existing, 'request_cancelled');
+    }
+
+    function blockContact(id, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (existing && existing.status === STATUS.BLOCKED) {
+            return { ok: true, action: 'already_blocked', contact: existing, contacts: current.contacts };
+        }
+        var displayName = cleanText(options.displayName || options.name || (existing && existing.displayName), 48);
+        if (!displayName) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
+        var now = transitionTime(options);
+        var blocked = normalizeRecord({
+            id: current.id,
+            displayName: displayName,
+            avatarUrl: options.avatarUrl != null ? options.avatarUrl : (existing && existing.avatarUrl),
+            avatarAssetId: options.avatarAssetId != null ? options.avatarAssetId : (existing && existing.avatarAssetId),
+            status: STATUS.BLOCKED,
+            source: existing ? existing.source : 'manual',
+            requestId: existing ? existing.requestId : '',
+            createdAt: existing ? existing.createdAt : now,
+            updatedAt: Math.max(now, existing ? existing.updatedAt : now),
+            acceptedAt: existing ? existing.acceptedAt : null,
+            blockedAt: now
+        }, now);
+        var next = current.contacts.filter(function (item) { return item.id !== current.id; });
+        next.push(blocked);
+        return resultWithContact(writeContacts(next), blocked, 'contact_blocked');
+    }
+
+    function unblockContact(id) {
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        if (existing.status !== STATUS.BLOCKED) {
+            return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
+        }
+        var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
+        return resultWithContact(writeContacts(next), existing, 'contact_unblocked');
+    }
+
     function getContactRef(value) {
         var identity = root.PhoneContactIdentity;
         var id = value && typeof value === 'object' ? (value.id != null ? value.id : value.userId) : value;
@@ -205,6 +397,13 @@
         save: save,
         saveMany: saveMany,
         remove: remove,
+        requestOutgoing: requestOutgoing,
+        applyIncomingRequest: applyIncomingRequest,
+        acceptIncoming: acceptIncoming,
+        declineIncoming: declineIncoming,
+        cancelOutgoing: cancelOutgoing,
+        block: blockContact,
+        unblock: unblockContact,
         getContactRef: getContactRef,
         getAcceptedRefs: getAcceptedRefs
     };
