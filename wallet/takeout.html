@@ -797,20 +797,6 @@
             var timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
             var itemsDesc = items.map(it => it.dish.name + '×' + it.qty).join('、');
         
-            // 1. 写记账
-            try {
-              var list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-              items.forEach(it => {
-                list.push({ amount: it.dish.price * it.qty, type: 'expense',
-                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
-                  note: (payMethod==='close_pay'
-                    ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
-                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
-                  time: timeStr });
-              });
-              localStorage.setItem('finance_records', JSON.stringify(list));
-            } catch(e) {}
-        
             // 2. 亲密付：扣钱包 + 更新额度 + 发聊天
             if (payMethod === 'close_pay') {
               try {
@@ -866,6 +852,25 @@
                 }
               } catch(e) {}
             }
+        
+            // 1. 写记账
+            try {
+              var list = JSON.parse(localStorage.getItem('finance_records') || '[]');
+              items.forEach(it => {
+                list.push({ amount: it.dish.price * it.qty, type: 'expense',
+                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
+                  note: (payMethod==='close_pay'
+                    ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
+                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
+                  time: timeStr });
+              });
+              var financeSerialized = JSON.stringify(list);
+              localStorage.setItem('finance_records', financeSerialized);
+              if (localStorage.getItem('finance_records') !== financeSerialized) {
+                toast('订单记账未能保存，请稍后检查');
+                return;
+              }
+            } catch(e) {}
         
             if (roleFamilyCard) {
               notifyRoleCardIssuer(roleFamilyCard,
