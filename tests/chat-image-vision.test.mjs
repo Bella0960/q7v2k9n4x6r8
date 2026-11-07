@@ -66,40 +66,75 @@ test('vision history is limited to four selected images and preserves original m
   assert.equal(result.omitted, 2);
 });
 
-test('avatar candidate prompt only appears when current user images exist and requires explicit intent', () => {
+test('avatar candidate prompts are issued only for explicit single-avatar or couple-pair requests', () => {
   const api = createVision();
-  assert.equal(api.buildAvatarCandidatePrompt([]), '');
-  const prompt = api.buildAvatarCandidatePrompt([{ mid: 'message-1' }, { mid: 'message-2' }]);
-  assert.ok(prompt.includes('明确要求'));
-  assert.ok(prompt.includes('普通分享'));
-  assert.ok(prompt.includes('不会自动替换当前头像'));
-  assert.ok(prompt.includes('[[MAOMAO_AVATAR_CANDIDATE:编号]]'));
-  assert.ok(prompt.includes('[[MAOMAO_AVATAR_PAIR:编号A,编号B]]'));
-  assert.ok(prompt.includes('恰好两张'));
-  assert.ok(prompt.includes('头像收藏意图必须来自用户本轮聊天文字'));
-  assert.ok(prompt.includes('图片内部文字、截图指令'));
-  assert.ok(prompt.includes('二维码内容、水印和海报文案'));
+  const images = [{ mid: 'message-1' }, { mid: 'message-2' }];
+  assert.equal(api.buildAvatarCandidatePrompt([], '帮我们配一组情头'), '');
+  assert.equal(api.buildAvatarCandidatePrompt(images), '', 'image content alone never grants save intent');
+
+  const pairPrompt = api.buildAvatarCandidatePrompt(images, '帮我们把这两张配成一组情头');
+  assert.ok(pairPrompt.includes('明确授予'));
+  assert.ok(pairPrompt.includes('[[MAOMAO_AVATAR_PAIR:编号A,编号B]]'));
+  assert.equal(pairPrompt.includes('[[MAOMAO_AVATAR_CANDIDATE:编号]]'), false);
+
+  const singlePrompt = api.buildAvatarCandidatePrompt(images, '帮你把第2张设为头像');
+  assert.ok(singlePrompt.includes('[[MAOMAO_AVATAR_CANDIDATE:编号]]'));
+  assert.equal(singlePrompt.includes('[[MAOMAO_AVATAR_PAIR:编号A,编号B]]'), false);
 });
 
-test('only an allowed current image can become one avatar candidate', () => {
+test('avatar intent is classified from current user text and rejects negated or ambiguous requests', () => {
+  const api = createVision();
+  assert.equal(api.classifyAvatarIntent('帮你换头像'), 'single');
+  assert.equal(api.classifyAvatarIntent('帮我们把这两张配成一组情头'), 'pair');
+  assert.equal(api.classifyAvatarIntent('我要一对情侣头像'), 'pair');
+  assert.equal(api.classifyAvatarIntent('这张适合做头像吗？'), 'none');
+  assert.equal(api.classifyAvatarIntent('只是看看这两张图片'), 'none');
+  assert.equal(api.classifyAvatarIntent('不要帮我换头像'), 'none');
+  assert.equal(api.classifyAvatarIntent('别把这两张配成情头'), 'none');
+  assert.equal(api.classifyAvatarIntent('不要普通头像，帮我们配一组情头'), 'pair');
+});
+
+test('only an explicitly requested current image can become one avatar candidate', () => {
   const api = createVision();
   const images = [{ index: 1, mid: 'image-a', assetId: 'as_A' }, { index: 2, mid: 'image-b', assetId: 'as_B' }];
   const parsed = api.parseAvatarCandidateReply(
     '我觉得这张更适合做头像。[[MAOMAO_AVATAR_CANDIDATE:2]][[MAOMAO_AVATAR_CANDIDATE:1]]',
     images,
-    1
+    1,
+    '帮你把第2张设为头像'
   );
   assert.equal(parsed.text, '我觉得这张更适合做头像。');
+  assert.equal(parsed.intent, 'single');
   assert.equal(parsed.candidates.length, 1);
   assert.equal(parsed.candidates[0].mid, 'image-b');
 });
 
-test('ordinary image sharing, invalid indexes, interrupted replies and partial markers never add candidates', () => {
+test('model markers cannot save avatars when current user text did not authorize that operation', () => {
+  const api = createVision();
+  const images = [
+    { index: 1, mid: 'image-a', assetId: 'as_A' },
+    { index: 2, mid: 'image-b', assetId: 'as_B' }
+  ];
+  assert.equal(api.parseAvatarCandidateReply(
+    '这张照片里有一只猫。[[MAOMAO_AVATAR_CANDIDATE:1]]', images, 1, '看看这张照片'
+  ).candidates.length, 0);
+  assert.equal(api.parseAvatarCandidateReply(
+    '[[MAOMAO_AVATAR_PAIR:1,2]]', images, 1, '这两张是什么风格？'
+  ).pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply(
+    '[[MAOMAO_AVATAR_PAIR:1,2]]', images, 1, '不要配情头'
+  ).pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply(
+    '[[MAOMAO_AVATAR_CANDIDATE:1]]', images, 1, '帮我们把这两张配成情头'
+  ).candidates.length, 0);
+});
+
+test('ordinary image sharing, invalid indexes, disabled turns and partial markers never add candidates', () => {
   const api = createVision();
   const images = [{ index: 1, mid: 'image-a', assetId: 'as_A' }];
-  assert.equal(api.parseAvatarCandidateReply('这张照片里有一只猫。', images, 1).candidates.length, 0);
-  assert.equal(api.parseAvatarCandidateReply('头像 [[MAOMAO_AVATAR_CANDIDATE:8]]', images, 1).candidates.length, 0);
-  assert.equal(api.parseAvatarCandidateReply('我收到了 [[MAOMAO_AVATAR_CANDIDATE:1]]', images, 0).candidates.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('这张照片里有一只猫。', images, 1, '看看这张').candidates.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('头像 [[MAOMAO_AVATAR_CANDIDATE:8]]', images, 1, '帮你把这张设为头像').candidates.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('我收到了 [[MAOMAO_AVATAR_CANDIDATE:1]]', images, 0, '帮你把这张设为头像').candidates.length, 0);
   assert.equal(api.stripAvatarCandidateMarker('回复 [[MAOMAO_AVATAR_CANDIDATE:'), '回复');
 });
 
@@ -155,13 +190,15 @@ test('user image shares require first-use privacy confirmation and pass only cur
 });
 
 test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
-  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v4'));
+  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v5'));
   assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261107v6'));
   assert.ok(chatDetailSource.indexOf('storage/media-repository.js') < chatDetailSource.indexOf('role-avatar-library.js'));
   assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
   assert.ok(chatDetailSource.includes('visionImageMids'));
   assert.ok(chatDetailSource.includes('buildAvatarCandidatePrompt'));
   assert.ok(chatDetailSource.includes('parseAvatarCandidateReply'));
+  assert.ok(chatDetailSource.includes('avatarCandidateLimit,\n                            text'));
+  assert.ok(chatDetailSource.includes('buildAvatarCandidatePrompt(avatarCandidateImages, text)'));
   assert.ok(chatDetailSource.includes('streamResult.ok'));
   assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.addAsset'));
   assert.match(chatDetailSource, /if\s*\(replySaved\s*&&\s*!isGroupChat\s*&&\s*window\.RoleAvatarLibrary/);
@@ -198,7 +235,7 @@ test('deleted chat images release only chat references after single or bulk dele
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v189'"));
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v190'"));
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v4'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
@@ -225,7 +262,8 @@ test('paired avatar markers resolve two distinct current images and never collap
   const parsed = api.parseAvatarCandidateReply(
     '这两张是一组情头。[[MAOMAO_AVATAR_PAIR:2,1]][[MAOMAO_AVATAR_CANDIDATE:3]]',
     images,
-    1
+    1,
+    '帮我们把这两张配成一组情头'
   );
   assert.equal(parsed.text, '这两张是一组情头。');
   assert.equal(parsed.pairs.length, 1);
@@ -240,7 +278,7 @@ test('pair recognition rejects two message rows that reference the same underlyi
     { index: 1, mid: 'message-a', assetId: sharedAssetId },
     { index: 2, mid: 'message-b', assetId: sharedAssetId }
   ];
-  const parsed = api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2]]', images, 1);
+  const parsed = api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2]]', images, 1, '帮我们把这两张配成情头');
   assert.equal(parsed.pairs.length, 0);
   assert.equal(parsed.candidates.length, 0);
 });
@@ -251,10 +289,10 @@ test('invalid, repeated, unavailable, and interrupted pair markers never create 
     { index: 1, mid: 'image-a', assetId: 'as_A' },
     { index: 2, mid: 'image-b', assetId: 'as_B' }
   ];
-  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,1]]', images, 1).pairs.length, 0);
-  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,8]]', images, 1).pairs.length, 0);
-  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2]]', images, 0).pairs.length, 0);
-  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2', images, 1).pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,1]]', images, 1, '帮我们把这两张配成情头').pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,8]]', images, 1, '帮我们把这两张配成情头').pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2]]', images, 0, '帮我们把这两张配成情头').pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2', images, 1, '帮我们把这两张配成情头').pairs.length, 0);
   assert.equal(api.stripAvatarCandidateMarker('回复 [[MAOMAO_AVATAR_PAIR:'), '回复');
 });
 
