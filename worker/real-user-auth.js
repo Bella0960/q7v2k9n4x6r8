@@ -1,7 +1,7 @@
 const AUTH_PREFIX = "/api/real-user-chat/v1/auth";
 const SESSION_COOKIE = "__Host-mao_session";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const PASSWORD_ITERATIONS = 310000;
+const PASSWORD_ITERATIONS = 600000;
 const PASSWORD_MIN_BYTES = 12;
 const PASSWORD_MAX_BYTES = 256;
 const MAX_BODY_BYTES = 8192;
@@ -281,7 +281,7 @@ async function register(request, env) {
     ]);
   } catch (error) {
     // The unique handle constraint is intentionally the only account-existence signal.
-    if (/unique constraint failed: real_user_accounts\\.handle/i.test(String(error && error.message || ""))) {
+    if (/unique constraint failed: real_user_accounts\.handle/i.test(String(error && error.message || ""))) {
       return authJson({ ok: false, error: "handle_unavailable" }, 409);
     }
     return authJson({ ok: false, error: "authentication_temporarily_unavailable" }, 503);
