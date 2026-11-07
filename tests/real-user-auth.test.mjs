@@ -33,6 +33,13 @@ class FakeD1 {
           const handle = String(values[0]).toLowerCase();
           return Array.from(db.accounts.values()).find(account => account.handle === handle) || null;
         }
+        if (sql.includes("FROM real_user_accounts WHERE id = ?")) {
+          const account = db.accounts.get(values[0]);
+          return account && account.status === "active" ? {
+            id: account.id, handle: account.handle,
+            display_name: account.display_name, status: account.status
+          } : null;
+        }
         if (sql.includes("FROM real_user_sessions s JOIN real_user_accounts")) {
           const [tokenHash, now] = values;
           const session = db.sessions.get(tokenHash);
@@ -82,6 +89,13 @@ class FakeD1 {
         id, handle, display_name, password_hash, password_salt,
         password_iterations, status: "active", created_at, updated_at
       });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE real_user_accounts SET display_name")) {
+      const [display_name, updated_at, id] = values;
+      const account = this.accounts.get(id);
+      if (!account || account.status !== "active") return { success: true, meta: { changes: 0 } };
+      this.accounts.set(id, { ...account, display_name, updated_at });
       return { success: true, meta: { changes: 1 } };
     }
     if (sql.includes("INSERT INTO real_user_sessions")) {
@@ -360,4 +374,61 @@ test("server-only auth modules are excluded from Vite static assets but remain i
   const workerEntry = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
   assert.match(viteConfig, /const excludedDirs = new Set\(\[[^\]]*'worker'[^\]]*\]\)/);
   assert.match(workerEntry, /from "\.\/worker\/real-user-auth\.js"/);
+});
+
+
+test("profile updates change only the authenticated account display name and survive session refresh", async () => {
+  const { env, db, limiterCalls } = createEnv();
+  const register = await handleRealUserAuth(request(AUTH + "/register", "POST", {
+    handle: "profile_1", displayName: "Before", password: "correct horse battery"
+  }), env);
+  const cookie = cookieFrom(register);
+  const accountId = (await register.json()).account.id;
+
+  const update = await handleRealUserAuth(request(AUTH + "/me", "PATCH", {
+    displayName: "  New Nick\n"
+  }, { cookie }), env);
+  const updatedBody = await update.json();
+
+  assert.equal(update.status, 200);
+  assert.equal(updatedBody.account.id, accountId);
+  assert.equal(updatedBody.account.displayName, "New Nick");
+  assert.equal(db.accounts.get(accountId).display_name, "New Nick");
+  assert.equal(db.accounts.get(accountId).handle, "profile_1");
+  assert.equal(limiterCalls.length, 4, "registration and profile update are each limited by IP and handle");
+
+  const refreshed = await handleRealUserAuth(request(AUTH + "/me", "GET", undefined, { cookie }), env);
+  assert.equal((await refreshed.json()).account.displayName, "New Nick");
+});
+
+test("profile update rejects missing sessions, cross-origin writes, invalid names and spoofed account IDs", async () => {
+  const { env, db } = createEnv();
+  const register = await handleRealUserAuth(request(AUTH + "/register", "POST", {
+    handle: "profile_2", displayName: "Profile", password: "correct horse battery"
+  }), env);
+  const cookie = cookieFrom(register);
+  const accountId = (await register.json()).account.id;
+
+  const anonymous = await handleRealUserAuth(request(AUTH + "/me", "PATCH", {
+    displayName: "Changed"
+  }), env);
+  assert.equal(anonymous.status, 401);
+
+  const crossOrigin = await handleRealUserAuth(request(AUTH + "/me", "PATCH", {
+    displayName: "Changed"
+  }, { cookie, origin: "https://attacker.example" }), env);
+  assert.equal(crossOrigin.status, 403);
+
+  const blank = await handleRealUserAuth(request(AUTH + "/me", "PATCH", {
+    displayName: "   "
+  }, { cookie }), env);
+  assert.equal(blank.status, 400);
+  assert.equal((await blank.json()).error, "invalid_display_name");
+
+  const spoofed = await handleRealUserAuth(request(AUTH + "/me", "PATCH", {
+    displayName: "Changed", accountId: "another-account"
+  }, { cookie }), env);
+  assert.equal(spoofed.status, 400);
+  assert.equal((await spoofed.json()).error, "unexpected_fields");
+  assert.equal(db.accounts.get(accountId).display_name, "Profile");
 });
