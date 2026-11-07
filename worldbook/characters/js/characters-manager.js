@@ -329,7 +329,7 @@ async function renderAvatarLibrary(roleId) {
                 '<span class="avatar-library-select-label">' + (active ? '当前头像' : '设为当前') + '</span>' +
             '</button>' +
             '<button class="avatar-pair-pick' + (isPairPicked ? ' is-selected' : '') + '" type="button" data-avatar-pair-action="pick" data-avatar-id="' + id + '"' + (isPaired ? ' disabled title="这张头像已经属于一组配对"' : '') + '>' + (isPaired ? '已配对' : (isPairPicked ? '已选入配对' : '选择配对')) + '</button>' +
-            '<button class="avatar-library-remove" type="button" data-avatar-action="remove" data-avatar-id="' + id + '"' + (active ? ' disabled aria-disabled="true" title="先切换当前头像再移除"' : '') + '>移除</button>' +
+            '<button class="avatar-library-remove" type="button" data-avatar-action="remove" data-avatar-id="' + id + '"' + (active || isPaired ? ' disabled aria-disabled="true" title="' + (active ? '先切换当前头像再移除' : '先解除配对再移除') + '"' : '') + '>移除</button>' +
         '</article>';
     }).join('');
 
