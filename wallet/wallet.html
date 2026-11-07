@@ -7,6 +7,7 @@
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261107v1"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261107v1"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body {
@@ -798,36 +799,65 @@
   });
 
   // 确认：充值加余额、提现减余额（余额不足提示），并把这笔操作写进明细最前面
-  amountConfirm.addEventListener('click', function () {
+  var walletAmountMutationInProgress = false;
+  amountConfirm.addEventListener('click', async function () {
+    if (walletAmountMutationInProgress) return;
     var raw = amountInput.value.trim();
     var val = parseFloat(raw);
     if (raw === '' || !isFinite(val) || val <= 0) {
       amountError.textContent = '请输入有效金额';
       return;
     }
-    val = Math.round(val * 100) / 100; // 金额保留两位
-
-    var wd = getWorkData();
-    if (amountMode === 'withdraw' && val > wd.balance) {
-      amountError.textContent = '余额不足';
-      return;
-    }
-    if (amountMode === 'charge') {
-      wd.balance = Math.round((wd.balance + val) * 100) / 100;
-      wd.history.unshift({ type: 'income', category: 'charge', title: '充值', amount: val, time: Date.now() });
-    } else {
-      wd.balance = Math.round((wd.balance - val) * 100) / 100;
-      wd.history.unshift({ type: 'expense', category: 'withdraw', title: '提现', amount: val, time: Date.now() });
-    }
+    val = Math.round(val * 100) / 100;
+    var selectedMode = amountMode;
+    walletAmountMutationInProgress = true;
+    amountConfirm.disabled = true;
     try {
-      localStorage.setItem('workData', JSON.stringify(wd));
-    } catch (e) {
-      amountError.textContent = '保存失败：本地存储空间不足';
-      return;
+      var ledger = window.MaoMaoWalletLedger;
+      if (!ledger || typeof ledger.runExclusive !== 'function') {
+        amountError.textContent = '钱包保护模块尚未加载，请刷新页面后重试';
+        return;
+      }
+      await ledger.runExclusive(function () {
+        // 取得钱包锁后重新读余额，不能使用锁外的旧快照。
+        var wd = getWorkData();
+        if (selectedMode === 'withdraw' && val > wd.balance) {
+          amountError.textContent = '余额不足';
+          return;
+        }
+        if (selectedMode === 'charge') {
+          wd.balance = Math.round((wd.balance + val) * 100) / 100;
+          wd.history.unshift({ type: 'income', category: 'charge', title: '充值', amount: val, time: Date.now() });
+        } else {
+          wd.balance = Math.round((wd.balance - val) * 100) / 100;
+          wd.history.unshift({ type: 'expense', category: 'withdraw', title: '提现', amount: val, time: Date.now() });
+        }
+        var serialized = JSON.stringify(wd);
+        try {
+          localStorage.setItem('workData', serialized);
+          if (localStorage.getItem('workData') !== serialized) {
+            amountError.textContent = '钱包记录未能确认，请稍后重试';
+            return;
+          }
+        } catch (e) {
+          amountError.textContent = '保存失败：本地存储空间不足';
+          return;
+        }
+        renderBalance();
+        renderHistory();
+        closeAmountModal();
+      }, {
+        onFallback: function () {
+          amountError.textContent = '当前浏览器不支持跨页面钱包锁，请避免同时在多个页面修改余额';
+        }
+      });
+    } catch (error) {
+      console.warn('[wallet] 余额操作未完成', error);
+      amountError.textContent = '钱包操作暂未完成，请稍后重试';
+    } finally {
+      walletAmountMutationInProgress = false;
+      amountConfirm.disabled = false;
     }
-    renderBalance();
-    renderHistory();
-    closeAmountModal();
   });
 
   // 初始化：页面加载即渲染真实余额与交易明细
