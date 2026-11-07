@@ -6009,8 +6009,8 @@
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
-            if (!isGroupChat && !isRegen && !contextOnly && !silent && presenceMode === 'online' &&
-                avatarCandidateImages.length && window.ChatImageVision &&
+            if (!isGroupChat && !isRegen && !contextOnly && (!silent || visionImageMids.length) &&
+                presenceMode === 'online' && avatarCandidateImages.length && window.ChatImageVision &&
                 typeof window.ChatImageVision.buildAvatarCandidatePrompt === 'function') {
                 var avatarCandidatePrompt = window.ChatImageVision.buildAvatarCandidatePrompt(avatarCandidateImages);
                 if (avatarCandidatePrompt) apiMessages[0].content += '\n\n' + avatarCandidatePrompt;
@@ -6246,7 +6246,7 @@
                     var parsedAvatarCandidate = { text: fullText, candidates: [] };
                     if (window.ChatImageVision && typeof window.ChatImageVision.parseAvatarCandidateReply === 'function') {
                         var avatarCandidateLimit = streamResult.ok && !isGroupChat && !isRegen &&
-                            !contextOnly && !silent && presenceMode === 'online' ? 1 : 0;
+                            !contextOnly && (!silent || visionImageMids.length) && presenceMode === 'online' ? 1 : 0;
                         parsedAvatarCandidate = window.ChatImageVision.parseAvatarCandidateReply(
                             fullText,
                             avatarCandidateImages,
