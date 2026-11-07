@@ -531,3 +531,36 @@ test('transactional pair saver never removes an existing single avatar when its 
   assert.equal(failing.api.list('role-a')[0].id, existing.value.id);
   assert.equal(failing.refs.has(first.value.assetId + '|role-avatar|role-a'), true);
 });
+
+test('transactional pair saver rejects duplicate or malformed source assets without writing pair records', async () => {
+  const { api } = createLibrary();
+  const source = await api.add('role-a', 'data:image/jpeg;base64,SAME');
+  const same = await api.addAssetPair('role-a', source.value.assetId, source.value.assetId);
+  const invalid = await api.addAssetPair('role-a', 'not-an-asset', source.value.assetId);
+  assert.equal(same.ok, false);
+  assert.equal(same.error.code, 'VALIDATION_FAILED');
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error.code, 'VALIDATION_FAILED');
+  assert.equal(api.list('role-a').length, 1);
+  assert.equal(api.getPairs('role-a').length, 0);
+});
+
+test('transactional pair saver reports partial rollback instead of hiding a stranded new portrait', async () => {
+  const secondAssetId = 'as_' + 'D'.repeat(32);
+  const failing = createLibrary({}, {
+    failAddRefFor: secondAssetId,
+    failRemoveRefFor: 'as_' + 'A'.repeat(32)
+  });
+  const first = await failing.api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
+  const firstAssetId = first.value.assetId;
+  // Configure the failure against the actual generated first ID as well.
+  failing.refs.add(firstAssetId + '|chat-owner|role-avatar');
+  const originalRemoveGuard = failing.api.remove;
+  const result = await failing.api.addAssetPair('role-a', firstAssetId, secondAssetId);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'PARTIAL_ROLLBACK');
+  assert.equal(result.meta.cleanupRequired, true);
+  assert.equal(failing.api.getPairs('role-a').length, 0);
+  assert.equal(failing.api.list('role-a').length, 1);
+  assert.equal(typeof originalRemoveGuard, 'function');
+});
