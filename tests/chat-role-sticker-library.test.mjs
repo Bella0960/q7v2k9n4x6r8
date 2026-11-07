@@ -125,7 +125,7 @@ test('AI marker becomes one real sticker selection and never remains in visible 
     { img: 'data:image/png;base64,TWO', desc: '安慰' }
   ];
   const parsed = api.parseReply(
-    '今天看到你就好多了。 [[MAOMAO_STICKER:2]]\\n[[MAOMAO_STICKER:1]]',
+    '今天看到你就好多了。 [[MAOMAO_STICKER:2]]\n[[MAOMAO_STICKER:1]]',
     catalog,
     1
   );
