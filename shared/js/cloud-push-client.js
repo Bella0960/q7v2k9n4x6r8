@@ -411,8 +411,10 @@
 
     document.addEventListener('visibilitychange', onVisibilityChange);
 
+    // Start the retry loop before the first network round-trip. A transient
+    // failure on initial heartbeat/lease acquisition must not permanently
+    // disable presence for this chat page.
     try {
-      await syncVisibleSession();
       intervalId = global.setInterval(
         function () {
           syncVisibleSession().catch(function (error) {
@@ -424,6 +426,13 @@
     } catch (error) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       throw error;
+    }
+
+    try {
+      await syncVisibleSession();
+    } catch (error) {
+      // Keep the manager alive; the next interval or visible transition retries.
+      console.warn('[cloud] 首次角色前台同步失败，将自动重试', error);
     }
 
     return {
