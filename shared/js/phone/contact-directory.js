@@ -494,6 +494,16 @@
         };
     }
 
+    function getPendingRequests() {
+        var result = readResult();
+        if (!result.ok) return result;
+        return {
+            ok: true,
+            incoming: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_INCOMING; }),
+            outgoing: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_OUTGOING; })
+        };
+    }
+
     root.PhoneContactDirectory = {
         version: VERSION,
         storageKey: STORAGE_KEY,
@@ -513,6 +523,7 @@
         block: blockContact,
         unblock: unblockContact,
         removeFriend: removeFriend,
+        getPendingRequests: getPendingRequests,
         getContactRef: getContactRef,
         getAcceptedRefs: getAcceptedRefs
     };
