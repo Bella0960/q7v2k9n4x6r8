@@ -13,6 +13,7 @@
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261106v1"></script>
+    <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
@@ -486,15 +487,23 @@
         }
         .sticker-panel-overlay.is-show .sticker-panel { transform: translateY(0); }
         .sticker-panel-handle { width: 36px; height: 4px; border-radius: 999px; background: #E5E5EA; margin: 0 auto 12px; }
+        .sticker-panel-heading { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:2px 2px 10px; }
+        .sticker-panel-heading-title { font-size:15px; font-weight:700; color:#111; }
+        .sticker-panel-heading-sub { min-width:0; font-size:11px; color:#999; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .sticker-panel-tabs { display:flex; gap:7px; padding:0 0 12px; }
+        .sticker-panel-tab { flex:1; min-width:0; border:1px solid #E5E5EA; border-radius:10px; background:#fff; color:#666; padding:8px 6px; font:inherit; font-size:12px; cursor:pointer; }
+        .sticker-panel-tab.is-active { color:#fff; background:#111; border-color:#111; }
         .sticker-panel-grid {
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
             max-height: 340px; overflow-y: auto; scrollbar-width: none;
         }
         .sticker-panel-grid::-webkit-scrollbar { display: none; }
         .sticker-panel-item {
-            background: #F8F8FA; border-radius: 14px; padding: 8px;
+            position:relative; background: #F8F8FA; border-radius: 14px; padding: 8px;
             cursor: pointer; display: flex; flex-direction: column; gap: 4px;
         }
+        .sticker-favorite-toggle { align-self:stretch; margin-top:3px; border:1px solid #D0D0D5; border-radius:8px; background:#fff; color:#555; padding:5px 4px; font:inherit; font-size:10px; cursor:pointer; }
+        .sticker-favorite-toggle.is-saved { background:#111; border-color:#111; color:#fff; }
         .sticker-panel-item:active { background: #EFEFF2; }
         .sticker-panel-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
         .sticker-panel-item span { font-size: 0.65rem; color: #888; text-align: center; }
@@ -2200,6 +2209,14 @@
         <div class="sticker-panel-overlay" id="stickerPanelOverlay">
             <div class="sticker-panel">
                 <div class="sticker-panel-handle"></div>
+                <div class="sticker-panel-heading">
+                    <div class="sticker-panel-heading-title">表情库</div>
+                    <div class="sticker-panel-heading-sub" id="stickerPanelScope">当前角色独立收藏</div>
+                </div>
+                <div class="sticker-panel-tabs" role="tablist" aria-label="表情库范围">
+                    <button type="button" class="sticker-panel-tab" id="stickerRoleTab" role="tab">角色表情</button>
+                    <button type="button" class="sticker-panel-tab" id="stickerAllTab" role="tab">全部表情</button>
+                </div>
                 <div class="sticker-panel-grid" id="stickerPanelGrid"></div>
                 <div style="padding:10px 16px 16px;border-top:1px solid #F0F0F3;text-align:center;">
                     <button onclick="location.href='../sticker/sticker-manager.html'" style="padding:6px 16px;border:1px solid #D0D0D5;border-radius:10px;background:#fff;color:#333;font-size:0.75rem;cursor:pointer;">管理 / 添加表情包</button>
@@ -7792,17 +7809,31 @@
             } catch (e) { }
         })();
 
-        // ================= 表情包：挂载库浏览与发送 =================
+        // ================= 表情包：角色专属收藏与发送 =================
         (function setupStickers() {
             var overlay = document.getElementById('stickerPanelOverlay');
             var grid = document.getElementById('stickerPanelGrid');
             var openBtn = document.getElementById('stickerOpenBtn');
+            var roleTab = document.getElementById('stickerRoleTab');
+            var allTab = document.getElementById('stickerAllTab');
+            var scopeLabel = document.getElementById('stickerPanelScope');
+            var roleLibrary = window.RoleStickerLibrary || null;
+            var roleId = (!isGroupChat && roleLibrary)
+                ? String((currentCharacter && currentCharacter.id) || currentRoleId || '')
+                : '';
+            var activeView = roleId && roleLibrary && roleLibrary.list(roleId).length ? 'role' : 'all';
+
             if (!overlay || !grid || !openBtn) return;
 
-            // 表情包管理页把所有库统一保存在 sticker_libraries。
-            // 旧逻辑还要求每个角色额外存在 chat_sticker_libs_<roleId> 挂载列表，
-            // 但管理页没有提供挂载操作，导致已上传的表情在聊天选择器里永远是空的。
-            // 这里直接读取已保存的表情库，让上传内容立即可选、可发送。
+            if (roleId) {
+                if (roleTab) roleTab.textContent = (contactName || 'TA') + '的表情';
+                if (scopeLabel) scopeLabel.textContent = (contactName || '当前角色') + '的收藏只在本角色聊天中使用';
+            } else {
+                if (roleTab) roleTab.style.display = 'none';
+                if (scopeLabel) scopeLabel.textContent = '从现有表情库中选择';
+                activeView = 'all';
+            }
+
             function getAvailableStickers() {
                 try {
                     var libs = JSON.parse(localStorage.getItem('sticker_libraries') || '[]');
@@ -7810,55 +7841,164 @@
                     var out = [];
                     libs.forEach(function (lib) {
                         if (!lib || !Array.isArray(lib.stickers)) return;
-                        lib.stickers.forEach(function (s) {
-                            if (s && s.img) out.push(s);
+                        lib.stickers.forEach(function (sticker) {
+                            if (!sticker || !sticker.img) return;
+                            out.push({
+                                sticker: sticker,
+                                key: roleLibrary ? roleLibrary.stickerKey(lib.id, sticker.id) : '',
+                                libraryName: String(lib.name || '')
+                            });
                         });
                     });
                     return out;
-                } catch (e) { return []; }
+                } catch (error) {
+                    return [];
+                }
+            }
+
+            function setEmpty(message, actionLabel, action) {
+                var empty = document.createElement('div');
+                empty.className = 'sticker-panel-empty';
+                empty.textContent = message;
+                if (actionLabel && typeof action === 'function') {
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.textContent = actionLabel;
+                    button.style.cssText = 'display:block;margin:12px auto 0;padding:8px 18px;border:1px solid #D0D0D5;border-radius:10px;background:#fff;color:#333;font-size:12px;cursor:pointer;';
+                    button.addEventListener('click', action);
+                    empty.appendChild(button);
+                }
+                grid.appendChild(empty);
+            }
+
+            function updateTabs() {
+                if (roleTab) {
+                    roleTab.classList.toggle('is-active', activeView === 'role');
+                    roleTab.setAttribute('aria-pressed', activeView === 'role' ? 'true' : 'false');
+                }
+                if (allTab) {
+                    allTab.classList.toggle('is-active', activeView === 'all');
+                    allTab.setAttribute('aria-pressed', activeView === 'all' ? 'true' : 'false');
+                }
             }
 
             function render() {
-                var stickers = getAvailableStickers();
+                var entries = getAvailableStickers();
+                if (activeView === 'role' && roleId && roleLibrary) {
+                    var favorites = roleLibrary.list(roleId);
+                    entries = entries.filter(function (entry) {
+                        return entry.key && favorites.indexOf(entry.key) !== -1;
+                    });
+                }
                 grid.innerHTML = '';
-                if (!stickers.length) {
-                    grid.innerHTML = '<div class="sticker-panel-empty">还没有表情包<br><button onclick="location.href=\'../sticker/sticker-manager.html\'" style="margin-top:12px;padding:8px 20px;border:none;border-radius:10px;background:#111;color:#fff;font-size:0.8rem;cursor:pointer;">+ 添加表情包</button></div>';
+                updateTabs();
+
+                if (!entries.length) {
+                    if (activeView === 'role' && roleId) {
+                        setEmpty(
+                            '这个角色还没有专属表情。切换到「全部表情」，点收藏按钮就能加入。',
+                            '查看全部表情',
+                            function () { activeView = 'all'; render(); }
+                        );
+                    } else {
+                        setEmpty(
+                            '还没有可用的表情包。可以先去管理页添加。',
+                            '管理 / 添加表情包',
+                            function () { location.href = '../sticker/sticker-manager.html'; }
+                        );
+                    }
                     return;
                 }
-                stickers.forEach(function (s) {
+
+                entries.forEach(function (entry) {
+                    var sticker = entry.sticker;
                     var item = document.createElement('div');
                     item.className = 'sticker-panel-item';
+
                     var stickerThumb = document.createElement('img');
-                    stickerThumb.src = String(s.img || '');
-                    stickerThumb.alt = '';
+                    stickerThumb.src = String(sticker.img || '');
+                    stickerThumb.alt = String(sticker.desc || '');
+                    stickerThumb.loading = 'lazy';
                     item.appendChild(stickerThumb);
+
+                    if (sticker.desc) {
+                        var caption = document.createElement('span');
+                        caption.textContent = String(sticker.desc);
+                        item.appendChild(caption);
+                    }
+
+                    if (roleId && roleLibrary && entry.key) {
+                        var selected = roleLibrary.has(roleId, entry.key);
+                        var favoriteButton = document.createElement('button');
+                        favoriteButton.type = 'button';
+                        favoriteButton.className = 'sticker-favorite-toggle' + (selected ? ' is-saved' : '');
+                        favoriteButton.textContent = selected ? '已收藏' : '收藏给TA';
+                        favoriteButton.setAttribute('aria-pressed', selected ? 'true' : 'false');
+                        favoriteButton.addEventListener('click', function (event) {
+                            event.stopPropagation();
+                            var result = roleLibrary.toggle(roleId, entry.key);
+                            if (!result.ok) {
+                                if (typeof showToast === 'function') showToast('角色表情收藏保存失败，请检查本地存储空间');
+                                return;
+                            }
+                            if (activeView === 'role' && !result.selected) {
+                                render();
+                                return;
+                            }
+                            favoriteButton.textContent = result.selected ? '已收藏' : '收藏给TA';
+                            favoriteButton.classList.toggle('is-saved', result.selected);
+                            favoriteButton.setAttribute('aria-pressed', result.selected ? 'true' : 'false');
+                        });
+                        item.appendChild(favoriteButton);
+                    }
+
                     item.addEventListener('click', function () {
                         overlay.classList.remove('is-show');
-                        sendSticker(s);
+                        sendSticker(sticker);
                     });
                     grid.appendChild(item);
                 });
             }
 
+            if (roleTab && roleId && roleLibrary) {
+                roleTab.addEventListener('click', function () {
+                    activeView = 'role';
+                    render();
+                });
+            }
+            if (allTab) {
+                allTab.addEventListener('click', function () {
+                    activeView = 'all';
+                    render();
+                });
+            }
+
             openBtn.addEventListener('click', function () {
+                activeView = roleId && roleLibrary && roleLibrary.list(roleId).length ? 'role' : 'all';
                 render();
                 overlay.classList.add('is-show');
             });
-            overlay.addEventListener('click', function (e) {
-                if (e.target === overlay) overlay.classList.remove('is-show');
+            overlay.addEventListener('click', function (event) {
+                if (event.target === overlay) overlay.classList.remove('is-show');
             });
 
-            function sendSticker(s) {
-                var msg = { role: 'user', type: 'sticker', img: s.img, desc: s.desc, time: Date.now() };
+            function sendSticker(sticker) {
+                var msg = {
+                    role: 'user',
+                    type: 'sticker',
+                    img: sticker.img,
+                    desc: sticker.desc,
+                    time: Date.now()
+                };
                 var list = loadMessages();
                 list.push(msg);
                 saveMessages(list);
                 if (_vl) vlRefresh(); else appendMessageToDOM(msg);
                 scrollToBottom(true);
                 if (typeof SoundSystem !== 'undefined') SoundSystem.play('send');
-                // 描述只留在表情消息数据中，供 AI 请求上下文读取；不另存、不显示成聊天文字。
+                // 描述仍只作为上下文信息，不额外显示成聊天文字。
                 sendMsg({
-                    text: '[用户发送了一张表情包，表达的意思是：' + String(s.desc || '') + '。]',
+                    text: '[用户发送了一张表情包，表达的意思是：' + String(sticker.desc || '') + '。]',
                     silent: true,
                     contextOnly: true
                 });
