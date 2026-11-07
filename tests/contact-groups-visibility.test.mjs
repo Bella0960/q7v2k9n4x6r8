@@ -8,6 +8,7 @@ const identitySource = readFileSync(new URL('../shared/js/phone/contact-identity
 const directorySource = readFileSync(new URL('../shared/js/phone/contact-directory.js', import.meta.url), 'utf8');
 const notifierSource = readFileSync(new URL('../shared/js/chat-notifier.js', import.meta.url), 'utf8');
 const detailPage = readFileSync(new URL('../chat/chat/chat-detail.html', import.meta.url), 'utf8');
+const indexPage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const navPage = readFileSync(new URL('../shared/js/nav.js', import.meta.url), 'utf8');
 const contactsPage = readFileSync(new URL('../chat/contacts/contacts.html', import.meta.url), 'utf8');
 const composerPage = readFileSync(new URL('../forum/post-create.html', import.meta.url), 'utf8');
@@ -240,6 +241,7 @@ test('typed contact identity is loaded before chat notification and stored in ch
   assert.ok(momentsPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(detailPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(detailPage.includes('phone/contact-directory.js?v=20261107v1'));
+  assert.ok(indexPage.includes('phone/contact-directory.js?v=20261107v1'));
   assert.ok(notifierSource.includes('PhoneContactDirectory'));
   assert.ok(detailPage.includes('window.PhoneCurrentContactRef'));
   assert.ok(contactsPage.includes('data-contact-key'));
