@@ -61,10 +61,7 @@
       <div class="title" id="friendName">真人好友</div>
       <div class="subtitle">MAOMAO · DIRECT CHAT</div>
     </div>
-    <div class="topbar-actions">
-      <button type="button" id="refreshBtn">刷新</button>
-      <button type="button" id="clearChatBtn">清空</button>
-    </div>
+    <!-- 低频管理操作不放在聊天窗口表面；聊天同步由后台自动完成。 -->
   </header>
   <div class="notice">消息保存在 MAOMAO 云端，尚未端到端加密。隐藏或清空只影响你自己的账号，好友仍保留原记录。</div>
   <div class="history-action" id="historyAction" hidden><button type="button" id="loadOlderBtn">载入更早的消息</button></div>
@@ -174,25 +171,7 @@
     meta.className = 'msg-meta';
     meta.textContent = formatTime(message.createdAt) + (pending ? ' · 正在发送' : '');
     tools.appendChild(meta);
-    if (!pending && message.id) {
-      var more = document.createElement('button');
-      more.type = 'button';
-      more.className = 'message-more';
-      more.setAttribute('aria-label', '消息管理');
-      more.setAttribute('aria-expanded', 'false');
-      more.textContent = '···';
-      var menu = document.createElement('div');
-      menu.className = 'message-menu';
-      menu.hidden = true;
-      var hide = document.createElement('button');
-      hide.type = 'button';
-      hide.className = 'message-hide';
-      hide.dataset.hideMessage = message.id;
-      hide.textContent = '仅在我这里隐藏';
-      menu.appendChild(hide);
-      tools.appendChild(more);
-      tools.appendChild(menu);
-    }
+    // 消息管理入口不显示在聊天气泡旁；相关能力保留在功能管理层。
     row.appendChild(bubble);
     row.appendChild(tools);
     return row;
@@ -531,26 +510,6 @@
   $('backBtn').addEventListener('click', function () {
     window.location.href = 'friend-center.html';
   });
-  $('refreshBtn').addEventListener('click', function () {
-    pollMessages().then(function () {
-      if (!blocked) setStatus('聊天已刷新');
-    });
-  });
-  $('messages').addEventListener('click', function (event) {
-    var more = event.target.closest('.message-more');
-    if (more) {
-      var row = more.closest('.msg-row');
-      var menu = row && row.querySelector('.message-menu');
-      if (menu) {
-        menu.hidden = !menu.hidden;
-        more.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
-      }
-      return;
-    }
-    var hide = event.target.closest('[data-hide-message]');
-    if (hide) hideMessageForMe(hide);
-  });
-  $('clearChatBtn').addEventListener('click', clearCurrentConversation);
   $('messages').addEventListener('scroll', function () {
     if (readReceiptTimer) window.clearTimeout(readReceiptTimer);
     readReceiptTimer = window.setTimeout(markVisibleIncomingRead, 140);
