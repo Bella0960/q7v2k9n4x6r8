@@ -152,10 +152,19 @@ async function main() {
       const group = records.find((item) => item.id === groupId);
       group.memberRefs.push('real_user:user-123');
       localStorage.setItem('contact_groups_v1', JSON.stringify(records));
+      const directory = window.PhoneContactDirectory;
+      assert.equal(directory.saveMany([
+        { id: 'user-123', displayName: '已加入分组的真人好友', status: 'accepted', createdAt: 10, updatedAt: 20 },
+        { id: 'user-456', displayName: '单独选择的真人好友', status: 'accepted', createdAt: 11, updatedAt: 21 },
+        { id: 'user-789', displayName: '新加入分组的真人好友', status: 'accepted', createdAt: 12, updatedAt: 22 }
+      ]).ok, true);
       // Simulate a missing identity helper while the group editor is still open.
       window.PhoneContactIdentity = null;
     }, friendsGroup.id);
     await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    assert.equal(await page.locator('[data-contact-ref="real_user:user-123"]').isChecked(), true,
+      'accepted real-user members are visible in the Contacts group editor');
+    await page.locator('[data-contact-ref="real_user:user-789"]').check();
     await page.locator('#contactGroupName').fill('亲近朋友');
     await page.locator('#btnSaveContactGroup').click();
     groups = await readJson(page, 'contact_groups_v1');
@@ -293,11 +302,15 @@ async function main() {
       { kind: 'group', id: friendsGroup.id },
       { kind: 'contact', id: 'role-c' }
     ]);
+    await page.locator('[data-audience-kind="real_user"][data-audience-id="user-456"]').click();
     assert.match(await page.locator('#permValue').innerText(), /部分可见/);
     const visibleReview = await page.locator('.audience-review').innerText();
     assert.match(visibleReview, /角色甲/);
     assert.match(visibleReview, /角色乙/);
     assert.match(visibleReview, /角色丙/);
+    assert.match(visibleReview, /已加入分组的真人好友/);
+    assert.match(visibleReview, /新加入分组的真人好友/);
+    assert.match(visibleReview, /单独选择的真人好友/);
     assert.match(visibleReview, /分组内 1 位已失效联系人不会计入名单/);
     assert.doesNotMatch(visibleReview, /role-ghost/);
     assert.doesNotMatch(visibleReview, /角色丁/,
@@ -314,6 +327,11 @@ async function main() {
     assert.deepEqual(selectedPost.visibleContactIds, ['role-c']);
     assert.ok(selectedPost.visibleContactRefs.includes('real_user:user-123'),
       'the audience snapshot preserves typed real-user membership from the selected group');
+    assert.ok(selectedPost.visibleContactRefs.includes('real_user:user-789'),
+      'a real-user friend can be added to a Contacts group and flow into the audience');
+    assert.ok(selectedPost.visibleContactRefs.includes('real_user:user-456'),
+      'a real-user friend can also be selected directly for a Moments audience');
+    assert.deepEqual(selectedPost.visibleRealUserIds.slice().sort(), ['user-123', 'user-456', 'user-789']);
     assert.ok(selectedPost.visibleContactRefs.includes('ai_role:role-a'));
     assert.deepEqual(selectedPost.mentions, ['role-d'],
       '@mention list is stored separately from the selected audience');
