@@ -304,7 +304,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - `GET /api/characters/:characterId/outbound?limit=50`：只返回当前设备该角色尚未确认的消息，limit 为 1–50，按创建时间稳定排序。
 - `POST /api/characters/:characterId/outbound/:serverMessageId/ack`：当前目标设备确认消息。首次确认写入 `delivered_at`；重复确认返回 `alreadyAcknowledged`，不会重复改变状态。
 - 未授权请求返回 401；消息不属于当前设备或角色时返回 404，避免暴露其他设备的消息是否存在。
-- `MaomaoCloud.receiveCharacterOutboundMessages()` 提供串行处理辅助方法。调用方必须在本地聊天记录成功持久化并读回验证后返回 `true`，客户端才会确认；保存失败或回调返回其他值时消息仍留在云端待重试。
+- `MaomaoCloud.receiveCharacterOutboundMessages()` 提供串行处理辅助方法。调用方必须用 `serverMessageId` 做本地幂等键，并在本地聊天记录成功持久化、读回验证后返回 `true`，客户端才会确认；保存失败或回调返回其他值时消息仍留在云端待重试。若本地保存成功但确认请求断网，下一次拉取会再次交付同一 ID，回调必须识别并复用已有消息，不能重复插入气泡。
 
 ### 9.3 当前完成边界
 
