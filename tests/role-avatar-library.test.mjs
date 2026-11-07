@@ -10,7 +10,7 @@ const mediaRepositorySource = fs.readFileSync(
 );
 
 function createLibrary(seed, options = {}) {
-  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor'];
+  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'failListByOwner', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor'];
   if (seed && Object.keys(seed).some(key => optionKeys.includes(key)) && !Object.keys(options).length) {
     options = seed;
     seed = {};
@@ -117,6 +117,9 @@ function createLibrary(seed, options = {}) {
       return Promise.resolve({ ok: true });
     }
     listByOwner(ownerType, ownerId) {
+      if (options.failListByOwner) {
+        return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'owner index read failed' } });
+      }
       const value = [];
       const missingIds = [];
       Array.from(refs).forEach(ref => {
@@ -998,4 +1001,56 @@ test('renaming truncates pair names to the library display limit', async () => {
   const renamed = api.renamePair('role-a', pair.value.id, '名'.repeat(50));
   assert.equal(renamed.ok, true);
   assert.equal(renamed.value.label.length, 36);
+});
+
+
+test('role deletion stops before releasing refs when the owner index cannot be listed, then retries cleanly', async () => {
+  const options = {};
+  const { api, values, refs, assets } = createLibrary({}, options);
+  const avatar = await api.add('role-a', 'data:image/jpeg;base64,OWNER_INDEX_FAILURE');
+  assert.equal(avatar.ok, true);
+  options.failListByOwner = true;
+
+  const firstAttempt = await api.removeRole('role-a');
+  assert.equal(firstAttempt.ok, false);
+  assert.equal(firstAttempt.error.code, 'DB_UNAVAILABLE');
+  assert.equal(refs.has(avatar.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(values.has(api._storageKey('role-a')), true);
+  assert.equal(assets.has(avatar.value.assetId), true);
+
+  options.failListByOwner = false;
+  const retry = await api.removeRole('role-a');
+  assert.equal(retry.ok, true);
+  assert.equal(refs.has(avatar.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(values.has(api._storageKey('role-a')), false);
+  assert.equal(assets.has(avatar.value.assetId), false);
+});
+
+test('role deletion reports PARTIAL_ROLLBACK when a released portrait reference cannot be restored', async () => {
+  const options = {};
+  const { api, values, refs } = createLibrary({}, options);
+  const first = await api.add('role-a', 'data:image/jpeg;base64,ROLLBACK_FIRST');
+  const second = await api.add('role-a', 'data:image/jpeg;base64,ROLLBACK_SECOND');
+  const orderedAssetIds = api.list('role-a').map(item => item.assetId);
+  assert.equal(orderedAssetIds.length, 2);
+
+  // The library removes portraits in index order. Let the first reference release,
+  // fail the second release, then fail restoration of that first reference.
+  options.failRemoveRefFor = orderedAssetIds[1];
+  options.failAddRefFor = orderedAssetIds[0];
+
+  const failed = await api.removeRole('role-a');
+  assert.equal(failed.ok, false);
+  assert.equal(failed.error.code, 'PARTIAL_ROLLBACK');
+  assert.equal(values.has(api._storageKey('role-a')), true, 'the role index stays available for cleanup retry');
+  assert.equal(refs.has(orderedAssetIds[0] + '|role-avatar|role-a'), false, 'failed restoration is not hidden');
+  assert.equal(refs.has(orderedAssetIds[1] + '|role-avatar|role-a'), true, 'the reference whose release failed remains intact');
+
+  options.failAddRefFor = null;
+  options.failRemoveRefFor = null;
+  const retry = await api.removeRole('role-a');
+  assert.equal(retry.ok, true);
+  assert.equal(refs.has(first.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(values.has(api._storageKey('role-a')), false);
 });
