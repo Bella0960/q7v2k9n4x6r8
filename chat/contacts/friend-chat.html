@@ -63,7 +63,7 @@
   </main>
   <div class="status" id="statusText" role="status" aria-live="polite"></div>
   <form class="composer" id="composer">
-    <div class="input-wrap"><textarea id="messageInput" rows="1" maxlength="2000" placeholder="发送一条消息…" aria-label="消息内容"></textarea></div>
+    <div class="input-wrap"><textarea id="messageInput" rows="1" maxlength="4000" placeholder="发送一条消息…" aria-label="消息内容"></textarea></div>
     <button class="send" id="sendBtn" type="submit" disabled>发送</button>
   </form>
 </div>
@@ -298,6 +298,10 @@
   $('composer').addEventListener('submit', sendCurrentMessage);
   $('messageInput').addEventListener('input', function () {
     var area = $('messageInput');
+    var characters = Array.from(area.value);
+    if (characters.length > 2000) {
+      area.value = characters.slice(0, 2000).join('');
+    }
     area.style.height = '22px';
     area.style.height = Math.min(area.scrollHeight, 116) + 'px';
     updateComposer();
