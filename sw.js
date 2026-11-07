@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v180';
+const CACHE_NAME = 'phone-app-pwa-v181';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v180 release: add real-user chat-only capability policy and transaction suppression.
+// v181 release: cache isolated local-only real-user conversation storage.
 const APP_SHELL = [
   './',
   './index.html',
@@ -80,6 +80,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_storage.js',
   './shared/js/phone/contact-identity.js?v=20261107v1',
   './shared/js/phone/contact-capabilities.js?v=20261107v1',
+  './shared/js/phone/real-user-conversation-repository.js',
   './shared/js/phone/contact-directory.js?v=20261107v4',
   './shared/js/contact-groups.js?v=20261107v2',
   './shared/js/phone/phone_context.js?v=20261102npc1',
