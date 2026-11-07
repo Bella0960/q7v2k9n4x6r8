@@ -99,8 +99,12 @@ export function evaluateTask(task, { now } = {}) {
   if (!task || typeof task.id !== 'string' || !task.id) {
     return { due: false, reason: REASON_CODES.INVALID_TASK };
   }
-  if (task.status === 'superseded') return { due: false, reason: REASON_CODES.SUPERSEDED };
-  if (task.status !== 'waiting' && task.status !== 'retry') {
+  if (task.status === 'superseded' || task.status === 'completed' || task.status === 'failed') {
+    return { due: false, reason: REASON_CODES.SUPERSEDED };
+  }
+  const reclaimingExpiredRun = task.status === 'running' &&
+    task.locked_until != null && Number(task.locked_until) <= now;
+  if (task.status !== 'waiting' && task.status !== 'retry' && !reclaimingExpiredRun) {
     return { due: false, reason: REASON_CODES.NOT_DUE };
   }
   if (task.locked_until != null && Number(task.locked_until) > now) {
@@ -161,7 +165,8 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
       action: 'supersede',
       reason: REASON_CODES.STALE_CONTEXT,
       taskId: task.id,
-      expectedAttemptCount: Number(task.attempt_count || 0)
+      expectedAttemptCount: Number(task.attempt_count || 0),
+      expectedStatus: task.status
     };
   }
 
