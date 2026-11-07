@@ -583,7 +583,8 @@ function makeGate(snapshot, options = {}) {
   return createSchedulerGate({
     store,
     now: options.now || (() => GATE_NOW),
-    config: options.config || GATE_POLICY_CONFIG
+    config: options.config || GATE_POLICY_CONFIG,
+    executorDeviceId: options.executorDeviceId || null
   });
 }
 
@@ -614,6 +615,50 @@ test('scheduler gate 使用队列所属设备的用户范围，不会退回 owne
   })(contactTask({ user_id: 'another-user' }));
   assert.equal(mismatchedSnapshot.autonomyAllowed, false);
   assert.equal(mismatchedSnapshot.reasonCode, REASON_CODES.GATE_DATA_MISSING);
+});
+
+test('本机执行器只能在自己持有有效前台心跳与角色租约时通过门禁', () => {
+  const snapshot = validGateSnapshot({
+    presence: {
+      devices: [{
+        deviceId: 'device_local_executor',
+        userId: 'owner',
+        authorized: true,
+        foregroundActive: true,
+        lastHeartbeatAt: GATE_NOW
+      }],
+      leases: [{
+        deviceId: 'device_local_executor',
+        userId: 'owner',
+        characterId: 'character-a',
+        authorized: true,
+        leaseUntil: GATE_NOW + 60_000
+      }]
+    }
+  });
+
+  const localGate = makeGate(snapshot, { executorDeviceId: 'device_local_executor' });
+  const allowed = localGate(contactTask());
+  assert.equal(allowed.autonomyAllowed, true);
+  assert.equal(allowed.characterState, 'active');
+  assert.equal(allowed.latestContextVersion, 7);
+
+  const wrongDevice = makeGate(snapshot, { executorDeviceId: 'device_other_executor' })(contactTask());
+  assert.equal(wrongDevice.autonomyAllowed, false);
+  assert.equal(wrongDevice.reasonCode, REASON_CODES.DEVICE_EXECUTOR_LEASE_REQUIRED);
+
+  const noLease = makeGate(validGateSnapshot({
+    presence: {
+      devices: snapshot.presence.devices,
+      leases: []
+    }
+  }), { executorDeviceId: 'device_local_executor' })(contactTask());
+  assert.equal(noLease.autonomyAllowed, false);
+  assert.equal(noLease.reasonCode, REASON_CODES.DEVICE_EXECUTOR_LEASE_REQUIRED);
+
+  const cloudGate = makeGate(snapshot)(contactTask());
+  assert.equal(cloudGate.autonomyAllowed, false);
+  assert.equal(cloudGate.reasonCode, REASON_CODES.FOREGROUND_LEASE_HELD);
 });
 
 test('scheduler gate 缺少持久化数据源时明确 fail-closed', () => {
