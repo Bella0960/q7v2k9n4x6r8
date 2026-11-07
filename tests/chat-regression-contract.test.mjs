@@ -10,6 +10,7 @@ const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8')
 
 const detail = read('chat/chat/chat-detail.html');
 const walletLedgerSource = read('shared/js/phone/wallet-ledger.js');
+const orderAfterSalesSource = read('shared/js/phone/order-after-sales.js');
 const chatExtrasSource = read('chat/chat/js/chat-extras.js');
 const shopPage = read('wallet/shop.html');
 const takeoutPage = read('wallet/takeout.html');
@@ -1295,7 +1296,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v203/);
+  assert.match(serviceWorker, /phone-app-pwa-v204/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1886,7 +1887,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v203/);
+  assert.match(serviceWorker, /phone-app-pwa-v204/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2766,6 +2767,157 @@ test('旧退回卡缺少原交易编号且有多笔等额候选时，必须停�
   assert.equal(wallet.history.length, 0);
   assert.equal(JSON.parse(finance).length, 0);
   assert.match(toasts.at(-1), /原转账对应关系不明确/);
+});
+
+test('订单售后申请关联原支付流水且重复提交保持同一申请编号', async () => {
+  const state = new Map([
+    ['shop_orders', JSON.stringify([{
+      paymentId: 'shop-payment-1', total: 12, payMethod: 'normal', ts: 1000,
+      items: [{ cn: '商品A', price: 5 }, { cn: '商品B', price: 7 }]
+    }])],
+    ['finance_records', JSON.stringify([
+      { paymentId: 'shop-payment-1', paymentLineIndex: 0, amount: 5, type: 'expense', category: '购物' },
+      { paymentId: 'shop-payment-1', paymentLineIndex: 1, amount: 7, type: 'expense', category: '购物' }
+    ])],
+    ['workData', JSON.stringify({ balance: 88, history: [] })]
+  ]);
+  const sandboxWindow = {
+    localStorage: {
+      getItem: key => state.has(key) ? state.get(key) : null,
+      setItem: (key, value) => state.set(key, String(value))
+    },
+    MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
+    crypto: { randomUUID: () => 'stable-after-sales-id' },
+    console
+  };
+  runInNewContext(orderAfterSalesSource, { window: sandboxWindow });
+  const api = sandboxWindow.MaoMaoOrderAfterSales;
+  const input = {
+    channel: 'shop', ordersKey: 'shop_orders', financeKey: 'finance_records',
+    paymentId: 'shop-payment-1', amount: 12, paymentMethod: 'normal',
+    type: 'cancel', reason: '下错订单'
+  };
+  assert.equal(api.canSubmit(input).ok, true);
+  const first = await api.submit(input);
+  assert.equal(first.ok, true);
+  assert.equal(first.request.status, 'pending_review');
+  assert.equal(first.request.journalStatus, 'linked');
+  assert.equal(first.request.paymentId, 'shop-payment-1');
+  assert.equal(first.request.amount, 12);
+
+  const orders = JSON.parse(state.get('shop_orders'));
+  assert.equal(orders[0].afterSales.status, 'pending_review');
+  assert.equal(orders[0].afterSales.requestId, first.request.requestId);
+  const finance = JSON.parse(state.get('finance_records'));
+  assert.equal(finance.length, 2, 'no fake refund or extra cash movement row is added');
+  assert.ok(finance.every(row => row.afterSalesRequestId === first.request.requestId));
+  assert.ok(finance.every(row => row.afterSalesStatus === 'pending_review'));
+  assert.equal(JSON.parse(state.get('workData')).balance, 88,
+    'a request does not credit the wallet or claim that money has been returned');
+
+  const replay = await api.submit(input);
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(replay.request.requestId, first.request.requestId);
+  assert.equal(JSON.parse(state.get('finance_records')).length, 2);
+});
+
+test('订单售后在财务流水已关联但订单最终确认失败时，可用原编号恢复', async () => {
+  const state = new Map([
+    ['takeout_orders', JSON.stringify([{
+      paymentId: 'takeout-payment-1', total: 18, payMethod: 'close_pay', ts: 2000,
+      items: [{ name: '面', price: 9, qty: 2 }]
+    }])],
+    ['finance_records', JSON.stringify([
+      { paymentId: 'takeout-payment-1', paymentLineIndex: 0, amount: 18, type: 'expense', category: '亲密付' }
+    ])]
+  ]);
+  let orderWrites = 0;
+  let blockFinalOrderWrite = true;
+  const sandboxWindow = {
+    localStorage: {
+      getItem: key => state.has(key) ? state.get(key) : null,
+      setItem: (key, value) => {
+        if (key === 'takeout_orders') {
+          orderWrites += 1;
+          if (blockFinalOrderWrite && orderWrites === 2) throw new Error('simulated final order write failure');
+        }
+        state.set(key, String(value));
+      }
+    },
+    MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
+    crypto: { randomUUID: () => 'takeout-after-sales-id' },
+    console
+  };
+  runInNewContext(orderAfterSalesSource, { window: sandboxWindow });
+  const api = sandboxWindow.MaoMaoOrderAfterSales;
+  const input = {
+    channel: 'takeout', ordersKey: 'takeout_orders', financeKey: 'finance_records',
+    paymentId: 'takeout-payment-1', amount: 18, paymentMethod: 'close_pay',
+    type: 'cancel', reason: '下错订单'
+  };
+
+  const partial = await api.submit(input);
+  assert.equal(partial.ok, false);
+  assert.equal(partial.reason, 'orders-finalize');
+  const partialOrder = JSON.parse(state.get('takeout_orders'))[0];
+  assert.equal(partialOrder.afterSales.status, 'recording');
+  const financeAfterPartial = JSON.parse(state.get('finance_records'));
+  assert.equal(financeAfterPartial[0].afterSalesRequestId, 'takeout-after-sales-id');
+
+  blockFinalOrderWrite = false;
+  const recovered = await api.submit(input);
+  assert.equal(recovered.ok, true);
+  assert.equal(recovered.request.requestId, 'takeout-after-sales-id');
+  assert.equal(recovered.request.status, 'pending_review');
+  assert.equal(JSON.parse(state.get('finance_records')).length, 1);
+  assert.equal(JSON.parse(state.get('takeout_orders'))[0].afterSales.journalStatus, 'linked');
+});
+
+test('原支出流水缺失或金额不匹配时，不创建售后申请', async () => {
+  const state = new Map([
+    ['shop_orders', JSON.stringify([{
+      paymentId: 'shop-payment-bad', total: 20, payMethod: 'normal', ts: 3000,
+      items: [{ cn: '商品', price: 20 }]
+    }])],
+    ['finance_records', JSON.stringify([
+      { paymentId: 'shop-payment-bad', paymentLineIndex: 0, amount: 19, type: 'expense', category: '购物' }
+    ])]
+  ]);
+  const sandboxWindow = {
+    localStorage: {
+      getItem: key => state.has(key) ? state.get(key) : null,
+      setItem: (key, value) => state.set(key, String(value))
+    },
+    MaoMaoWalletLedger: { runExclusive: task => Promise.resolve().then(task) },
+    console
+  };
+  runInNewContext(orderAfterSalesSource, { window: sandboxWindow });
+  const api = sandboxWindow.MaoMaoOrderAfterSales;
+  const input = {
+    channel: 'shop', ordersKey: 'shop_orders', financeKey: 'finance_records',
+    paymentId: 'shop-payment-bad', amount: 20, paymentMethod: 'normal',
+    type: 'cancel', reason: '下错订单'
+  };
+  assert.equal(api.canSubmit(input).ok, false);
+  assert.equal(api.canSubmit(input).reason, 'payment-amount-mismatch');
+  const result = await api.submit(input);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'payment-amount-mismatch');
+  assert.equal(JSON.parse(state.get('shop_orders'))[0].afterSales, undefined,
+    'failed preflight must not leave an orphan pending request');
+});
+
+test('商店与外卖售后入口只对可核验的原始支付流水开放，且明确不自动退款', () => {
+  for (const [name, page] of [['shop', shopPage], ['takeout', takeoutPage]]) {
+    assert.match(page, /order-after-sales\.js\?v=20261107v1/);
+    assert.match(page, /MaoMaoOrderAfterSales\.canSubmit/);
+    assert.match(page, /MaoMaoOrderAfterSales|journal\.submit/);
+    assert.match(page, /不会自动退款/);
+  }
+  assert.match(orderAfterSalesSource, /afterSalesRequestId/);
+  assert.match(orderAfterSalesSource, /journalStatus = 'linked'/);
+  assert.match(orderAfterSalesSource, /never changes balances/i);
 });
 
 test('商店订单列表与详情共用同一条72小时模拟物流时间线', () => {
