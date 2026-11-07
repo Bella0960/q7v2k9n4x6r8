@@ -9,6 +9,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
 
 const detail = read('chat/chat/chat-detail.html');
+const walletLedgerSource = read('shared/js/phone/wallet-ledger.js');
+const shopPage = read('wallet/shop.html');
+const takeoutPage = read('wallet/takeout.html');
+const walletPage = read('wallet/wallet.html');
 const roleFamilyCardsSource = read('shared/js/phone/role_family_cards.js');
 const chatNotifier = read('shared/js/chat-notifier.js');
 const navPage = read('shared/js/nav.js');
@@ -1289,7 +1293,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v189/);
+  assert.match(serviceWorker, /phone-app-pwa-v190/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1880,7 +1884,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v189/);
+  assert.match(serviceWorker, /phone-app-pwa-v190/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2762,4 +2766,107 @@ test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨
   ]);
   assert.match(sandbox.toasts[0], /不支持跨页面钱包锁/);
   assert.equal(walletReads, 2, 'the second same-page click must be blocked before it can read or mutate the wallet');
+});
+
+
+test('统一钱包锁会串行化同源不同页面的入账与支出', async () => {
+  let queue = Promise.resolve();
+  const requested = [];
+  let active = 0;
+  let maxActive = 0;
+  const sandbox = {
+    window: {
+      navigator: {
+        locks: {
+          request(name, options, callback) {
+            requested.push({ name, mode: options.mode });
+            const run = queue.then(async () => {
+              active += 1;
+              maxActive = Math.max(maxActive, active);
+              try {
+                return await callback();
+              } finally {
+                active -= 1;
+              }
+            });
+            queue = run.catch(() => {});
+            return run;
+          }
+        }
+      }
+    }
+  };
+  runInNewContext(walletLedgerSource, sandbox);
+  const ledger = sandbox.window.MaoMaoWalletLedger;
+  assert.equal(ledger.lockName, 'maomao-wallet-ledger-v1');
+  assert.equal(ledger.supportsCrossTabLock(), true);
+
+  const operations = [];
+  await Promise.all([
+    ledger.runExclusive(async () => {
+      operations.push('chat-in');
+      await Promise.resolve();
+      operations.push('chat-out');
+    }),
+    ledger.runExclusive(async () => {
+      operations.push('shop-in');
+      await Promise.resolve();
+      operations.push('shop-out');
+    }),
+    ledger.runExclusive(async () => {
+      operations.push('wallet-in');
+      await Promise.resolve();
+      operations.push('wallet-out');
+    })
+  ]);
+  assert.equal(maxActive, 1, 'wallet mutations must never execute concurrently while the shared lock is available');
+  assert.equal(requested.length, 3);
+  assert.ok(requested.every(item => item.name === 'maomao-wallet-ledger-v1' && item.mode === 'exclusive'));
+  assert.deepEqual(operations, ['chat-in', 'chat-out', 'shop-in', 'shop-out', 'wallet-in', 'wallet-out']);
+});
+
+test('不支持 Web Locks 的浏览器只提供页面内队列并明确暴露降级', async () => {
+  const sandbox = { window: { navigator: {} } };
+  runInNewContext(walletLedgerSource, sandbox);
+  const ledger = sandbox.window.MaoMaoWalletLedger;
+  assert.equal(ledger.supportsCrossTabLock(), false);
+  const notices = [];
+  const order = [];
+  await Promise.all([
+    ledger.runExclusive(async () => {
+      order.push('first-start');
+      await Promise.resolve();
+      order.push('first-end');
+    }, { onFallback: () => notices.push('fallback') }),
+    ledger.runExclusive(async () => {
+      order.push('second-start');
+      order.push('second-end');
+    }, { onFallback: () => notices.push('fallback') })
+  ]);
+  assert.deepEqual(order, ['first-start', 'first-end', 'second-start', 'second-end']);
+  assert.deepEqual(notices, ['fallback'], 'fallback warning is emitted only once per page');
+});
+
+test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包锁', () => {
+  for (const [name, source] of [
+    ['chat detail', detail],
+    ['shop', shopPage],
+    ['takeout', takeoutPage],
+    ['wallet', walletPage]
+  ]) {
+    assert.match(source, /wallet-ledger\.js\?v=20261107v1/,
+      name + ' must load the shared wallet ledger coordinator');
+    assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
+      name + ' must route balance mutations through the shared lock');
+  }
+  assert.match(shopPage, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+    'shop intimacy-pay must read back the wallet debit');
+  assert.match(takeoutPage, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+    'takeout intimacy-pay must read back the wallet debit');
+  assert.match(walletPage, /localStorage\.getItem\('workData'\) !== serialized/,
+    'manual charge / withdrawal must read back the new balance');
+  assert.match(shopPage, /wd\.balance < total/,
+    'shop must not spend more than the wallet balance');
+  assert.match(takeoutPage, /wd\.balance < total/,
+    'takeout must not spend more than the wallet balance');
 });
