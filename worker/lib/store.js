@@ -596,6 +596,83 @@ class CloudStore {
     )[0] || null;
   }
 
+  getCharacterContextVersion(userId, characterId) {
+    return this.exec(
+      'SELECT version, updated_at FROM character_context_versions WHERE user_id = ? AND character_id = ?',
+      userId,
+      characterId
+    )[0] || null;
+  }
+
+  /**
+   * A device-authenticated, content-free event advances the role revision.
+   * Event IDs make request retries idempotent across network timeouts.
+   */
+  recordCharacterContextEvent({ userId, characterId, eventId, deviceId, now }) {
+    const inserted = this.exec(
+      `INSERT OR IGNORE INTO character_context_events
+        (user_id, character_id, event_id, device_id, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       RETURNING event_id`,
+      userId,
+      characterId,
+      eventId,
+      deviceId,
+      now
+    )[0];
+
+    if (inserted) {
+      const row = this.exec(
+        `INSERT INTO character_context_versions (user_id, character_id, version, updated_at)
+         VALUES (?, ?, 1, ?)
+         ON CONFLICT(user_id, character_id) DO UPDATE
+           SET version = character_context_versions.version + 1,
+               updated_at = excluded.updated_at
+         RETURNING version, updated_at`,
+        userId,
+        characterId,
+        now
+      )[0];
+      return {
+        changed: true,
+        version: Number(row.version),
+        updatedAt: Number(row.updated_at)
+      };
+    }
+
+    const current = this.getCharacterContextVersion(userId, characterId);
+    return {
+      changed: false,
+      version: current ? Number(current.version) : 0,
+      updatedAt: current ? Number(current.updated_at) : null
+    };
+  }
+
+  getCharacterContextVersionSummary(userId) {
+    const row = this.exec(
+      `SELECT COUNT(*) AS role_count,
+              COALESCE(MAX(version), 0) AS max_version,
+              MAX(updated_at) AS latest_updated_at
+       FROM character_context_versions
+       WHERE user_id = ?`,
+      userId
+    )[0] || {};
+    return {
+      roleCount: Number(row.role_count || 0),
+      maxVersion: Number(row.max_version || 0),
+      latestUpdatedAt: row.latest_updated_at == null ? null : Number(row.latest_updated_at)
+    };
+  }
+
+  cleanupCharacterContextEvents(now, retentionMs = 90 * 24 * 60 * 60 * 1000) {
+    const cutoff = Number(now) - Number(retentionMs);
+    if (!Number.isFinite(cutoff) || cutoff < 0) return 0;
+    return this.exec(
+      'DELETE FROM character_context_events WHERE created_at < ? RETURNING event_id',
+      cutoff
+    ).length;
+  }
+
   /**
    * Gate snapshot contains scheduling metadata only. No chat rows, message
    * bodies, persona, summaries, or attachments are queried here.
@@ -660,8 +737,9 @@ class CloudStore {
           : characterAutonomy.enabled === 1
       },
       presence: { devices, leases },
-      // No authoritative server-side chat event/version stream exists yet.
-      contextVersion: null
+      contextVersion: this.getCharacterContextVersion(userId, characterId)?.version == null
+        ? null
+        : Number(this.getCharacterContextVersion(userId, characterId).version)
     };
   }
 
