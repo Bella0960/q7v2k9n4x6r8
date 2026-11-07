@@ -823,7 +823,13 @@
                     gate_policy_unavailable: '作息策略不可用',
                     gate_policy_invalid: '调度规则校验失败',
                     gate_data_source_missing: '调度数据源不可用',
-                    claim_lost: '任务认领发生竞争'
+                    claim_lost: '任务认领发生竞争',
+                    task_lease_held: '任务租约仍有效',
+                    retry_exhausted: '任务已达到重试上限',
+                    invalid_task: '任务数据无效',
+                    invalid_config: '调度参数无效',
+                    missing_config: '调度参数未配置',
+                    not_due: '任务尚未到执行时间'
                   };
                   return (labels[item.reasonCode] || '其他原因') + ' × ' + Number(item.count || 0);
                 }).join('、')
