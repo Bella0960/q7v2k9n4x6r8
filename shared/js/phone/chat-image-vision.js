@@ -69,7 +69,10 @@
                         return;
                     }
 
-                    var copy = Object.assign({}, message, { visionDataUrl: dataUrl });
+                    var copy = Object.assign({}, message, {
+                        visionDataUrl: dataUrl,
+                        visionIndex: images.length + 1
+                    });
                     var index = enriched.indexOf(message);
                     if (index >= 0) enriched[index] = copy;
                     images.push({
