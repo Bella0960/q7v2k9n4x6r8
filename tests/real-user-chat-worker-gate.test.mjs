@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const source = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
-const { default: worker } = await import(
-  "data:text/javascript;base64," + Buffer.from(source, "utf8").toString("base64")
-);
+const { default: worker } = await import("../worker.js");
 
 function createEnv() {
   const forwarded = [];
@@ -40,7 +37,8 @@ test("capability endpoint reports the real-user service as explicitly disabled",
   assert.equal(body.enabled, false);
   assert.equal(body.networkingEnabled, false);
   assert.equal(body.status, "disabled");
-  assert.equal(body.reason, "server_authentication_and_persistence_not_configured");
+  assert.equal(body.reason, "real_user_message_delivery_not_configured");
+  assert.equal(body.accountAuth.enabled, false);
   assert.deepEqual(body.policyAllowlist, ["text", "image", "file", "voice", "sticker"]);
   for (const denied of [
     "redpacket", "transfer", "payment", "collection", "wallet",
@@ -136,4 +134,29 @@ test("existing root and regular static asset forwarding remain unchanged", async
     env.forwarded.map((item) => item.pathname),
     ["/index.html", "/chat/chat.html"]
   );
+});
+
+
+test("account-auth routes remain unavailable without explicit D1, limiter and feature configuration", async () => {
+  const env = createEnv();
+  const response = await worker.fetch(
+    new Request("https://maomao.example/api/real-user-chat/v1/auth/register", {
+      method: "POST",
+      headers: {
+        "Origin": "https://maomao.example",
+        "Content-Type": "application/json",
+        "CF-Connecting-IP": "203.0.113.10"
+      },
+      body: JSON.stringify({
+        handle: "blocked_1",
+        displayName: "Blocked",
+        password: "correct horse battery"
+      })
+    }),
+    env
+  );
+  const body = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(body.error, "real_user_auth_unavailable");
+  assert.equal(env.forwarded.length, 0);
 });
