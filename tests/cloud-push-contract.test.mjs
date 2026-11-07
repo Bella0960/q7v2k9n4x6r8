@@ -3136,6 +3136,92 @@ test('客户端收件箱真实运行：断网后从持久化游标续收，失�
   assert.equal(acknowledged.size, 4);
 });
 
+test('本地存储额度不足时，页面内存游标仍可让连续轮询越过前 30 条', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const deviceId = 'test-device-0000000001';
+  const cursorKey = 'cloud_outbound_cursor_v1:char-memory-cursor:' + deviceId;
+  const values = new Map([['cloud_device_v1', JSON.stringify({
+    deviceId,
+    secret: 'test-secret-000000000000000000000001'
+  })]]);
+  const localStorageMock = {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) {
+      if (String(key).startsWith('cloud_outbound_cursor_v1:')) throw new Error('simulated storage quota exceeded');
+      values.set(key, String(value));
+    },
+    removeItem(key) { values.delete(key); }
+  };
+  const rows = Array.from({ length: 32 }, (_, index) => ({
+    id: 'outbound_row_' + String(index + 1).padStart(12, '0'),
+    serverMessageId: 'server_message_' + String(index + 1).padStart(12, '0'),
+    createdAt: 1800000000000,
+    payload: { text: 'message-' + (index + 1) }
+  }));
+  const acknowledged = new Set();
+  const documentMock = { currentScript: null };
+  const windowMock = { document: documentMock };
+  const fetchMock = async (input, init = {}) => {
+    const url = new URL(String(input), 'https://mao.test');
+    const method = init.method || 'GET';
+    if (url.pathname.endsWith('/outbound') && method === 'GET') {
+      const rawTime = url.searchParams.get('afterCreatedAt');
+      const afterId = url.searchParams.get('afterId');
+      const limit = Number(url.searchParams.get('limit') || 50);
+      const pending = rows
+        .filter(row => !acknowledged.has(row.serverMessageId))
+        .filter(row => !rawTime ||
+          row.createdAt > Number(rawTime) ||
+          (row.createdAt === Number(rawTime) && row.id > afterId))
+        .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+      const page = pending.slice(0, limit);
+      const last = page.length === limit ? page[page.length - 1] : null;
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          messages: page.map(row => ({
+            serverMessageId: row.serverMessageId,
+            characterId: 'char-memory-cursor',
+            createdAt: row.createdAt,
+            payload: row.payload
+          })),
+          nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null
+        })
+      };
+    }
+    if (url.pathname.endsWith('/received') && method === 'POST') {
+      return { ok: true, json: async () => ({ ok: true }) };
+    }
+    if (url.pathname.endsWith('/ack') && method === 'POST') {
+      acknowledged.add(url.pathname.split('/').slice(-2, -1)[0]);
+      return { ok: true, json: async () => ({ ok: true, acknowledged: true }) };
+    }
+    throw new Error('unexpected mock request: ' + method + ' ' + url.pathname);
+  };
+  runInNewContext(clientSource, {
+    window: windowMock,
+    document: documentMock,
+    localStorage: localStorageMock,
+    fetch: fetchMock,
+    URL,
+    console: { warn() {}, error() {} },
+    navigator: {}
+  });
+  const client = windowMock.MaomaoCloud;
+  const persist = async () => true;
+
+  const firstRound = await client.receiveCharacterOutboundMessages('char-memory-cursor', persist, 2);
+  assert.equal(firstRound.saved, 30);
+  assert.equal(firstRound.pagesProcessed, 15);
+  assert.equal(values.has(cursorKey), false, 'the simulated storage failure must prevent disk cursor persistence');
+
+  const secondRound = await client.receiveCharacterOutboundMessages('char-memory-cursor', persist, 2);
+  assert.equal(secondRound.saved, 2, 'the in-memory cursor must resume after row 30');
+  assert.equal(acknowledged.size, 32);
+  assert.equal(values.has(cursorKey), false);
+});
+
 test('客户端收件箱游标按角色和设备持久化，并在有限批次中继续翻页', () => {
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   assert.ok(clientSource.includes('function getCharacterOutboundPage(characterId, limit, cursor)'));
