@@ -119,11 +119,27 @@ test('Moments audience controls do not reuse @mentions as the visible-to list', 
   assert.doesNotMatch(composerPage, /post\.visibleTo\s*=\s*mentionsList/);
 });
 
-test('excluded contacts are filtered from the feed and blocked from AI comment/mention requests', () => {
-  assert.match(momentsPage, /if \(v === 'excluded'\)/);
+test('owner feed remains visible while excluded AI contacts are blocked from comment/mention requests', () => {
+  assert.match(momentsPage, /朋友圈页面是当前手机主人的动态流/);
+  assert.match(momentsPage, /if \(isMine\) return true/);
+  assert.doesNotMatch(momentsPage, /hiddenTo\.indexOf\(String\(me\.id/);
   assert.match(momentsPage, /function canRoleViewPost\(post, roleId\)/);
+  assert.match(momentsPage, /policy\.canRoleReceivePost\(post, roleId, me\)/);
   assert.match(momentsPage, /if \(!canRoleViewPost\(post, role\.id\)\) return;/);
   assert.match(momentsPage, /!canRoleViewPost\(post, id\)/);
+});
+
+test('AI audience checks apply only to user-authored posts and fail closed for restricted users', () => {
+  const { api } = createRuntime();
+  const profile = { id: 'owner', name: '我' };
+  const customPost = { authorId: 'owner', visibility: 'custom', visibleTo: ['friend-a'] };
+  const excludedPost = { authorId: 'owner', visibility: 'excluded', hiddenTo: ['friend-b'] };
+  assert.equal(api.canRoleReceivePost(customPost, 'friend-a', profile), true);
+  assert.equal(api.canRoleReceivePost(customPost, 'friend-b', profile), false);
+  assert.equal(api.canRoleReceivePost(excludedPost, 'friend-b', profile), false);
+  assert.equal(api.canRoleReceivePost(excludedPost, 'friend-a', profile), true);
+  assert.equal(api.canRoleReceivePost({ authorId: 'role-author', visibility: 'private' }, 'friend-a', profile), true);
+  assert.equal(api.canRoleReceivePost({ author: '我', visibility: 'private' }, 'friend-a', profile), false);
 });
 
 test('PWA cache contains the contact group policy module and has a new cache version', () => {
