@@ -904,6 +904,19 @@ test('真实 SQLite due queue 将任务绑定到设备所属用户，孤儿任�
   const revokedResult = gate(revokedTask);
   assert.equal(revokedResult.reasonCode, REASON_CODES.SOURCE_DEVICE_REVOKED);
   assert.equal(revokedResult.supersede, true);
+
+  const tick = runTick({
+    store,
+    now: GATE_NOW,
+    config: CONFIG,
+    gate,
+    executorAvailable: true
+  });
+  assert.equal(tick.claimed, 0);
+  assert.equal(tick.superseded, 1);
+  assert.equal(store.getActivity('activity_revoked_device').status, 'superseded');
+  assert.equal(store.getActivity('activity_other_account').status, 'waiting');
+  assert.equal(store.getActivity('activity_orphan_device').status, 'waiting');
 });
 
 test('真实 SQLite store snapshot 不会把后台心跳视为前台活跃设备', () => {
