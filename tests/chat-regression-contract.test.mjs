@@ -1295,7 +1295,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v194/);
+  assert.match(serviceWorker, /phone-app-pwa-v195/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1886,7 +1886,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v194/);
+  assert.match(serviceWorker, /phone-app-pwa-v195/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -3008,7 +3008,15 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
     null,
     'an unfinished transaction cannot silently switch payment methods'
   );
+  assert.equal(
+    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":2}]', 'close_pay'),
+    null,
+    'changing cart contents cannot bypass an unresolved checkout on the same channel'
+  );
   assert.equal(secondLedger.completePendingCheckout(firstId), true);
+  const storedAfterCompletion = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
+  assert.equal(storedAfterCompletion.find((item) => item.id === firstId).status, 'completed',
+    'completion must be persisted before a checkout can be discarded');
   const nextId = secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal');
   assert.ok(nextId);
   assert.notEqual(nextId, firstId, 'a completed checkout allows a new intentional purchase');
