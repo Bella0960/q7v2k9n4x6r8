@@ -204,7 +204,7 @@ Acceptance before implementation:
 ## Feature implementation
 
 ### SOC-001 — Contact groups and Moments audience privacy
-**Priority:** P1 · **Status:** IN PROGRESS
+**Priority:** P1 · **Status:** IN PROGRESS (implementation committed to task branch; build/browser verification pending)
 
 Scope: add user-managed contact groups to the existing Contacts page and connect them to WeChat-style Moments audience selection. Keep the current native MPA pages, existing role/contact IDs, legacy Moments records, and the separate @mention feature.
 
