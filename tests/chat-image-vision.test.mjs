@@ -195,7 +195,7 @@ test('deleted chat images release only chat references after single or bulk dele
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v184'"));
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v185'"));
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v3'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
@@ -263,6 +263,10 @@ test('profile archive renders paired previews and supports switching either side
   assert.ok(characterManagerSource.includes('data-avatar-pair-action="swap"'));
   assert.ok(characterManagerSource.includes('swapRoleAvatarPair'));
   assert.ok(characterManagerSource.includes('data-avatar-pair-label-input'));
+  assert.ok(characterManagerSource.includes('data-saved-value'));
+  assert.ok(characterManagerSource.includes('content.onkeydown = function (event)'));
+  assert.ok(characterManagerSource.includes("if (event.key === 'Enter')"));
+  assert.ok(characterManagerSource.includes("else if (event.key === 'Escape')"));
   assert.ok(characterManagerSource.includes('renameRoleAvatarPair'));
   assert.ok(characterManagerSource.includes('library.renamePair(roleId, pairId, label)'));
   assert.ok(avatarLibrarySource.includes('renamePair: renamePair'));
