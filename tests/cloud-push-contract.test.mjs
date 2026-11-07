@@ -363,6 +363,38 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   enqueueDiagnostic('readiness-failed');
   enqueueDiagnostic('readiness-superseded');
 
+  const otherDevice = makeDevice();
+  await registerDevice(ctx, otherDevice);
+  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-user', otherDevice.deviceId);
+  ctx.store.enqueueActivity({
+    id: 'readiness-other-user',
+    deviceId: otherDevice.deviceId,
+    characterId: 'another-private-character',
+    kind: 'contact',
+    scheduledAt: base - 1000,
+    maxAttempts: 3,
+    now: base,
+    payload: { privateText: 'other-user-private-payload' }
+  });
+  ctx.store.logExecution({
+    id: 'readiness-own-reason',
+    deviceId: device.deviceId,
+    kind: 'autonomy_tick',
+    status: 'deferred',
+    reasonCode: 'context_version_unavailable',
+    detail: { taskId: 'private-task-id' },
+    now: base
+  });
+  ctx.store.logExecution({
+    id: 'readiness-other-reason',
+    deviceId: otherDevice.deviceId,
+    kind: 'autonomy_tick',
+    status: 'deferred',
+    reasonCode: 'another_users_reason',
+    detail: { taskId: 'another-private-task-id' },
+    now: base
+  });
+
   const claim = (id, owner) => ctx.store.claimActivity({
     id,
     expectedAttemptCount: 0,
@@ -429,14 +461,26 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     'executor_unavailable',
     'context_version_unavailable'
   ]);
+  assert.deepEqual(readiness.payload.recentSchedulerReasons, [
+    { reasonCode: 'context_version_unavailable', count: 1 }
+  ]);
+  assert.equal(readiness.payload.schedulerDiagnosticsWindowMs, 86400000);
   const readinessJson = JSON.stringify(readiness.payload);
   assert.equal(readinessJson.includes('private-test-key'), false);
   assert.equal(readinessJson.includes('private-character-id'), false);
   assert.equal(readinessJson.includes('do-not-return-this-chat-like-payload'), false);
+  assert.equal(readinessJson.includes('another-private-character'), false);
+  assert.equal(readinessJson.includes('other-user-private-payload'), false);
+  assert.equal(readinessJson.includes('another_users_reason'), false);
+  assert.equal(readinessJson.includes('private-task-id'), false);
   assert.deepEqual(ctx.store.getActivityQueueSummary({ userId: 'another-user' }), {
     total: 0, waiting: 0, retry: 0, running: 0,
     completed: 0, failed: 0, superseded: 0, other: 0
   });
+  assert.deepEqual(ctx.store.getRecentAutonomyReasonSummary({
+    userId: 'another-user',
+    since: base - 86400000
+  }), [{ reasonCode: 'another_users_reason', count: 1 }]);
 
   const anonymous = await ctx.asJson('/api/autonomy/readiness');
   assert.equal(anonymous.status, 401);
