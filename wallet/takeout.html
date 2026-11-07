@@ -9,6 +9,7 @@
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
 <script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
+<script src="../shared/js/phone/order-after-sales.js?v=20261107v1"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -29,6 +30,22 @@
   }
   .header-left { display: flex; align-items: center; gap: 12px; }
   .header-right { display:flex; align-items:center; gap:10px; }
+  .order-after-sales {
+    background:#fff; border:1px solid #ECECEF; border-radius:14px;
+    padding:14px; margin:12px 0 16px;
+  }
+  .order-after-sales-title { font-size:.813rem; font-weight:700; }
+  .order-after-sales-note { margin-top:7px; color:#888; font-size:.688rem; line-height:1.6; }
+  .order-after-sales-select {
+    width:100%; height:40px; margin-top:10px; padding:0 10px;
+    border:1px solid #E5E5EA; border-radius:9px; background:#F7F7F9;
+    color:#333; font-size:.75rem;
+  }
+  .order-after-sales-button {
+    width:100%; height:40px; margin-top:10px; border:0;
+    border-radius:10px; background:#111; color:#fff;
+    font-size:.813rem; font-weight:600; cursor:pointer;
+  }
   .order-card { background:#fff; border:1px solid #ECECEF; border-radius:14px; padding:14px; margin-bottom:10px; cursor:pointer; }
   .order-card-top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .order-card-shop { font-size:.875rem; font-weight:700; min-width:0; }
@@ -677,11 +694,85 @@
         '<strong>¥' + Number(order.total).toFixed(2) + '</strong></div></div>';
     }).join('');
   }
+  var currentTakeoutOrderPaymentId = '';
+
+  function takeoutAfterSalesPanel(order, stageIndex) {
+    var afterSales = order.afterSales;
+    if (afterSales && afterSales.status === 'pending_review' && afterSales.journalStatus === 'linked') {
+      var kindLabel = afterSales.type === 'cancel' ? '取消订单申请' : '售后申请';
+      return '<div class="order-after-sales"><div class="order-after-sales-title">' +
+        kindLabel + ' · 待处理</div><div class="order-after-sales-note">申请编号：' +
+        escapeFamilyCardText(afterSales.requestId) +
+        '<br>已关联原支付流水，当前还没有发生退款或订单取消。</div></div>';
+    }
+    if (afterSales && afterSales.status === 'recording') {
+      return '<div class="order-after-sales"><div class="order-after-sales-title">申请记录待同步</div>' +
+        '<div class="order-after-sales-note">已生成申请编号，正在恢复与原支付流水的关联。请继续同步，不要重复下单。</div>' +
+        '<button class="order-after-sales-button" onclick="submitTakeoutAfterSales()">继续同步申请</button></div>';
+    }
+    if (afterSales) {
+      return '<div class="order-after-sales"><div class="order-after-sales-title">售后申请状态待核对</div>' +
+        '<div class="order-after-sales-note">检测到已有申请记录，为避免重复申请，暂时不开放再次提交。</div></div>';
+    }
+    var isCancelable = stageIndex <= 1;
+    return '<div class="order-after-sales"><div class="order-after-sales-title">订单售后</div>' +
+      '<select class="order-after-sales-select" id="takeoutAfterSalesReason" aria-label="申请原因">' +
+      '<option value="下错订单">下错订单</option><option value="暂时不需要了">暂时不需要了</option>' +
+      '<option value="餐品或配送有问题">餐品或配送有问题</option><option value="其他原因">其他原因</option></select>' +
+      '<button class="order-after-sales-button" onclick="submitTakeoutAfterSales()">' +
+      (isCancelable ? '申请取消订单' : '申请售后') + '</button>' +
+      '<div class="order-after-sales-note">申请会关联原支付流水并进入待处理状态；不会自动退款、修改钱包余额或直接取消模拟配送。</div></div>';
+  }
+
+  async function submitTakeoutAfterSales() {
+    var journal = window.MaoMaoOrderAfterSales;
+    if (!journal || typeof journal.submit !== 'function') {
+      toast('售后模块尚未加载，请刷新页面后重试');
+      return;
+    }
+    var rows = syncTakeoutOrders();
+    if (!rows) { toast('订单数据无法读取，未提交售后申请'); return; }
+    var order = rows.find(function (row) { return row && row.paymentId === currentTakeoutOrderPaymentId; });
+    if (!order) { toast('找不到原订单，未提交售后申请'); return; }
+    var stages = takeoutOrderStages(order);
+    var stageIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+    var type = order.afterSales ? order.afterSales.type : (stageIndex <= 1 ? 'cancel' : 'after_sales');
+    var reasonEl = document.getElementById('takeoutAfterSalesReason');
+    var reason = order.afterSales ? order.afterSales.reason : (reasonEl ? reasonEl.value : '');
+    var result = await journal.submit({
+      channel: 'takeout',
+      ordersKey: 'takeout_orders',
+      financeKey: 'finance_records',
+      paymentId: order.paymentId,
+      amount: Number(order.total),
+      paymentMethod: String(order.payMethod || ''),
+      type: type,
+      reason: reason
+    });
+    if (!result.ok) {
+      var messages = {
+        'payment-lines-missing': '找不到这笔订单的原支出明细，已停止申请',
+        'payment-amount-mismatch': '原订单金额与支出明细不一致，已停止申请',
+        'another-request-linked': '这笔支付流水已关联其他售后申请',
+        'order-payment-conflict': '订单支付信息与原流水不一致，已停止申请',
+        'finance-invalid': '财务记录异常，已停止申请',
+        'finance-missing': '找不到财务记录，已停止申请',
+        'request-conflict': '已有售后申请与当前信息冲突'
+      };
+      toast(messages[result.reason] || '申请暂未同步成功，可再次点击恢复');
+    } else {
+      toast(result.replayed ? '原售后申请已存在' : '申请已关联原支付流水，等待处理');
+    }
+    var updatedRows = syncTakeoutOrders();
+    if (updatedRows) openTakeoutOrderDetail(currentTakeoutOrderPaymentId);
+  }
+
   function openTakeoutOrderDetail(orderId) {
     var rows = syncTakeoutOrders();
     if (!rows) { toast('订单数据异常，无法打开详情'); return; }
     var order = rows.find(function (row) { return row.paymentId === String(orderId); });
     if (!order) { toast('找不到这笔订单，请刷新订单列表'); return; }
+    currentTakeoutOrderPaymentId = String(order.paymentId);
     var stages = takeoutOrderStages(order);
     var currentIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
     currentIndex = Math.max(0, currentIndex);
@@ -714,7 +805,8 @@
       '订单编号：' + escapeFamilyCardText(order.paymentId) + '<br>' +
       '支付方式：' + escapeFamilyCardText(order.payMethod === 'normal' ? '日常账户' : (order.payMethod === 'close_pay' ? '亲密付' : '角色赠予额度')) + '<br>' +
       '下单时间：' + new Date(order.ts).toLocaleString('zh-CN') + '</div>' +
-      '<div style="font-size:.625rem;color:#aaa;padding:0 2px 12px;">配送节点为应用内模拟进度，按预计送达时长自动推进，不代表真实骑手或平台配送状态。</div>';
+      '<div style="font-size:.625rem;color:#aaa;padding:0 2px 12px;">配送节点为应用内模拟进度，按预计送达时长自动推进，不代表真实骑手或平台配送状态。</div>' +
+      takeoutAfterSalesPanel(order, currentIndex);
     document.getElementById('viewOrders').classList.remove('active');
     document.getElementById('viewOrderDetail').classList.add('active');
     window.scrollTo(0, 0);
