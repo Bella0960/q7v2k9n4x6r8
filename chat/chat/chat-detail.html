@@ -3371,6 +3371,8 @@
             }, Promise.resolve());
         }
 
+        window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences;
+
         function appendMessageToDOM(msg, idx, container) {
             // 虚拟列表模式：无显式容器（或明确指向 chatMessages）的单条追加，重定向进窗口容器，
             // 避免行被挂到窗口之外、脱离虚拟列表管理。传入 DocumentFragment 的批量渲染不受影响。
