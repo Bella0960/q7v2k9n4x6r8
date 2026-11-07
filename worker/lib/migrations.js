@@ -2,6 +2,7 @@ import { SQL as INIT_SQL, VERSION as INIT_VERSION } from '../migrations/0001_ini
 import { SQL as AUTONOMY_SQL, VERSION as AUTONOMY_VERSION } from '../migrations/0002_autonomy_metadata.js';
 import { SQL as DEVICE_PAIRING_SQL, VERSION as DEVICE_PAIRING_VERSION } from '../migrations/0003_device_pairing.js';
 import { SQL as CONTEXT_VERSION_SQL, VERSION as CONTEXT_VERSION_VERSION } from '../migrations/0004_character_context_version.js';
+import { SQL as FRIEND_ACCOUNTS_SQL, VERSION as FRIEND_ACCOUNTS_VERSION } from '../migrations/0005_friend_accounts.js';
 
 /**
  * 版本化迁移。exec(sql, ...params) 与存储层（Durable Object SQLite）保持同一签名，
@@ -11,7 +12,8 @@ export const MIGRATIONS = [
   { version: INIT_VERSION, sql: INIT_SQL },
   { version: AUTONOMY_VERSION, sql: AUTONOMY_SQL },
   { version: DEVICE_PAIRING_VERSION, sql: DEVICE_PAIRING_SQL },
-  { version: CONTEXT_VERSION_VERSION, sql: CONTEXT_VERSION_SQL }
+  { version: CONTEXT_VERSION_VERSION, sql: CONTEXT_VERSION_SQL },
+  { version: FRIEND_ACCOUNTS_VERSION, sql: FRIEND_ACCOUNTS_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */
