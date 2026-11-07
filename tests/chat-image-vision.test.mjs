@@ -19,7 +19,7 @@ function createContextPolicy() {
   return window.ChatContextPolicy;
 }
 
-const dataUrl = (value) => 'data:image/jpeg;base64,' + value;
+const dataUrl = (value) => 'data:image/jpeg;base64,' + String(value).replace(/[^A-Za-z0-9+/=]/g, 'A');
 
 test('only explicitly selected user image messages are hydrated for the current request', async () => {
   const api = createVision();
@@ -52,7 +52,7 @@ test('image hydration rejects unresolved, non-image, and oversized data URLs', a
   }));
   assert.equal(result.images.length, 0);
   assert.equal(result.failed, 3);
-  assert.equal(result.omitted, 0);
+  assert.equal(result.omitted, 1, 'the selected assistant image is not an eligible user image');
 });
 
 test('vision history is limited to four selected images and preserves original message order', async () => {
@@ -362,7 +362,7 @@ test('portrait archive provides a two-image manual pairing fallback for AI recog
 test('paired avatar library operations preserve isolated references and never change the active portrait', () => {
   assert.ok(avatarLibrarySource.includes('function linkPair(roleId, firstAvatarId, secondAvatarId, options)'));
   assert.ok(avatarLibrarySource.includes('function unlinkPair(roleId, pairId)'));
-  assert.ok(avatarLibrarySource.includes('pairs: previous.pairs'));
+  assert.ok(avatarLibrarySource.includes('pairs: latest.pairs'));
   assert.ok(avatarLibrarySource.includes("return Promise.resolve(failure('PAIR_EXISTS'"));
   assert.ok(avatarLibrarySource.includes('getPairs: getPairs'));
   assert.ok(avatarLibrarySource.includes('unlinkPair: unlinkPair'));
