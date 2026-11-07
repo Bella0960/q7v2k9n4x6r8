@@ -564,6 +564,7 @@ function validGateSnapshot(overrides = {}) {
 function contactTask(overrides = {}) {
   return {
     id: 'gate_contact_1',
+    user_id: 'owner',
     kind: 'contact',
     character_id: 'character-a',
     payload_json: JSON.stringify({ contextVersion: 7, synthetic: true }),
@@ -585,6 +586,35 @@ function makeGate(snapshot, options = {}) {
     config: options.config || GATE_POLICY_CONFIG
   });
 }
+
+test('scheduler gate 使用队列所属设备的用户范围，不会退回 owner', () => {
+  const requested = [];
+  const store = {
+    getSchedulerGateSnapshot(options) {
+      requested.push(options);
+      return validGateSnapshot({ userId: options.userId });
+    }
+  };
+  const gate = makeGate(null, { store });
+  const allowed = gate(contactTask({ user_id: 'another-user' }));
+  assert.equal(allowed.autonomyAllowed, true);
+  assert.deepEqual(requested, [{ userId: 'another-user', characterId: 'character-a' }]);
+
+  const missingTenant = gate(contactTask({ user_id: null }));
+  assert.equal(missingTenant.autonomyAllowed, false);
+  assert.equal(missingTenant.reasonCode, REASON_CODES.GATE_DATA_MISSING);
+  assert.equal(requested.length, 1, '缺少设备用户归属时不得读取任何用户的快照');
+
+  const mismatchedSnapshot = makeGate(validGateSnapshot({ userId: 'owner' }), {
+    store: {
+      getSchedulerGateSnapshot() {
+        return validGateSnapshot({ userId: 'owner' });
+      }
+    }
+  })(contactTask({ user_id: 'another-user' }));
+  assert.equal(mismatchedSnapshot.autonomyAllowed, false);
+  assert.equal(mismatchedSnapshot.reasonCode, REASON_CODES.GATE_DATA_MISSING);
+});
 
 test('scheduler gate 缺少持久化数据源时明确 fail-closed', () => {
   const gate = makeGate(null, { store: {} });
@@ -712,6 +742,12 @@ test('上下文任务缺少可信版本时阻止，版本变化则作废旧任�
 
 test('runTick 真实调用 scheduler gate；仅合成且合格的同版本任务可被 CAS 认领', () => {
   const { store, query } = freshStore();
+  store.insertDevice({
+    id: 'dev_test',
+    userId: 'owner',
+    secretHash: 'synthetic-test-hash',
+    now: NOW
+  });
   enqueue(store, {
     id: 'act_gate_integration',
     kind: 'contact',
@@ -739,6 +775,12 @@ test('runTick 真实调用 scheduler gate；仅合成且合格的同版本任务
 
 test('runTick 将 context version 变化的任务标记 superseded，不认领', () => {
   const { store } = freshStore();
+  store.insertDevice({
+    id: 'dev_test',
+    userId: 'owner',
+    secretHash: 'synthetic-test-hash',
+    now: NOW
+  });
   enqueue(store, {
     id: 'act_gate_stale',
     kind: 'contact',
