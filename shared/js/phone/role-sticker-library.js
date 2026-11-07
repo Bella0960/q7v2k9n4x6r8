@@ -137,17 +137,14 @@
       }
       return '';
     });
+    cleaned = cleaned.replace(/\[\[MAOMAO_STICKER:[^\]\r\n]{0,24}(?:\]\])?/gi, '');
     cleaned = cleaned.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     return { text: cleaned, stickers: selected };
   }
 
   function stripStreamMarker(text) {
     var value = String(text == null ? '' : text);
-    value = value.replace(/\[\[MAOMAO_STICKER:\d{1,2}\]\]/gi, '');
-    var openAt = value.toUpperCase().lastIndexOf('[[MAOMAO_STICKER:');
-    if (openAt >= 0 && value.indexOf(']]', openAt) === -1) {
-      value = value.slice(0, openAt);
-    }
+    value = value.replace(/\[\[MAOMAO_STICKER:[^\]\r\n]{0,24}(?:\]\])?/gi, '');
     return value.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
