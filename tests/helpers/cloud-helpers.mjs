@@ -35,7 +35,7 @@ export function setupTestStore(testDb, env = {}) {
       VAPID_PUBLIC_KEY: '',
       VAPID_PRIVATE_KEY: '',
       VAPID_SUBJECT: '',
-      DEVICE_SECRET_PEPPER: 'test-pepper',
+      DEVICE_SECRET_PEPPER: 'test-device-secret-pepper-for-contract-tests-32chars',
       ENROLLMENT_TOKEN: 'test-enrollment-token-for-contract-tests',
       DEVICE_PAIRING_TOKEN_TTL_MS: '300000'
     }, env),
