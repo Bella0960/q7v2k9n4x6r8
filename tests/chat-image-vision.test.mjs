@@ -198,7 +198,7 @@ test('deleted chat images release only chat references after single or bulk dele
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v188'"));
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v189'"));
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v4'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
@@ -315,5 +315,7 @@ test('role deletion waits for portrait cleanup and persists retryable failures',
   assert.ok(characterManagerSource.includes('ROLE_AVATAR_CLEANUP_QUEUE_KEY'));
   assert.ok(characterManagerSource.includes('enqueueRoleAvatarCleanup(id)'));
   assert.ok(characterManagerSource.includes('retryPendingRoleAvatarCleanup()'));
+  assert.ok(characterManagerSource.includes("try {\n        renderRoleList();\n    } catch (error)"));
+  assert.ok(characterManagerSource.includes("角色已删除，但当前联系人状态暂时无法清理"));
   assert.ok(characterManagerSource.includes('function writeRoleAvatarCleanupQueue(queue)'));
 });
