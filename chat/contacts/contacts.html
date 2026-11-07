@@ -328,6 +328,7 @@
     var CHARACTERS_KEY = 'ai_custom_characters';
     var _storage = window.PhoneStorage;
     var contactGroupApi = window.PhoneContactGroups;
+    var contactDirectoryApi = window.PhoneContactDirectory;
     var currentContactGroupFilter = 'all';
     var editingContactGroupId = '';
     var editingContactGroupMembers = [];
@@ -392,8 +393,31 @@
       return left.localeCompare(right,'zh-CN');
     }
 
+    function readAcceptedRealUsers() {
+      if (!contactDirectoryApi || typeof contactDirectoryApi.readResult !== 'function') {
+        return { ok: false, error: 'module_unavailable', contacts: [] };
+      }
+      var result = contactDirectoryApi.readResult();
+      if (!result.ok) return { ok: false, error: result.error, contacts: [] };
+      return {
+        ok: true,
+        contacts: result.contacts.filter(function (contact) {
+          return contact && contact.status === contactDirectoryApi.statuses.ACCEPTED;
+        })
+      };
+    }
     function getFilteredGroupCount(group) {
-      return loadCharacters().filter(function (role) { return (group.memberIds || []).indexOf(String(role.id)) !== -1; }).length;
+      var roleCount = loadCharacters().filter(function (role) {
+        return (group.memberIds || []).indexOf(String(role.id)) !== -1;
+      }).length;
+      var users = readAcceptedRealUsers();
+      if (!users.ok) return roleCount;
+      var refs = Array.isArray(group.memberRefs) ? group.memberRefs : [];
+      var userCount = users.contacts.filter(function (contact) {
+        var ref = contactDirectoryApi.getContactRef(contact);
+        return ref && refs.indexOf(ref.key) !== -1;
+      }).length;
+      return roleCount + userCount;
     }
     function renderGroupBar() {
       var bar = document.getElementById('contactGroupBar');
@@ -434,14 +458,35 @@
     function renderContactGroupMembers() {
       var picker = document.getElementById('contactGroupMemberPicker');
       var roles = loadCharacters().slice().sort(compareContactNames);
-      if (!roles.length) { picker.innerHTML = '<div class="contact-group-empty">目前还没有可加入分组的联系人</div>'; return; }
-      picker.innerHTML = roles.map(function (role) {
-        var id = String(role.id), checked = editingContactGroupMembers.indexOf(id) !== -1 ? ' checked' : '';
-        var identity = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole(role);
-        var contactKey = identity ? identity.key : 'ai_role:' + encodeURIComponent(id);
-        return '<label class="contact-group-member"><input type="checkbox" data-contact-member="' +
-          escapeHtml(id) + '" data-contact-key="' + escapeHtml(contactKey) + '"' + checked + '><span>' + escapeHtml(role.name || '角色') + '</span></label>';
-      }).join('');
+      var usersRead = readAcceptedRealUsers();
+      var parts = [];
+      if (roles.length) {
+        parts.push('<div class="contact-group-member-section">AI 角色</div>');
+        parts.push(roles.map(function (role) {
+          var id = String(role.id), checked = editingContactGroupMembers.indexOf(id) !== -1 ? ' checked' : '';
+          var identity = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole(role);
+          var contactKey = identity ? identity.key : 'ai_role:' + encodeURIComponent(id);
+          return '<label class="contact-group-member"><input type="checkbox" data-contact-member="' +
+            escapeHtml(id) + '" data-contact-key="' + escapeHtml(contactKey) + '"' + checked + '><span>' +
+            escapeHtml(role.name || '角色') + '</span></label>';
+        }).join(''));
+      }
+      if (usersRead.ok && usersRead.contacts.length) {
+        parts.push('<div class="contact-group-member-section">真人好友</div>');
+        parts.push(usersRead.contacts.map(function (contact) {
+          var ref = contactDirectoryApi.getContactRef(contact);
+          if (!ref) return '';
+          var checked = editingContactGroupOtherRefs.indexOf(ref.key) !== -1 ? ' checked' : '';
+          return '<label class="contact-group-member"><input type="checkbox" data-contact-ref="' +
+            escapeHtml(ref.key) + '"' + checked + '><span>' + escapeHtml(contact.displayName || '好友') + '</span></label>';
+        }).join(''));
+      }
+      if (!parts.length) {
+        parts.push('<div class="contact-group-empty">目前还没有可加入分组的联系人</div>');
+      } else if (!usersRead.ok && contactDirectoryApi) {
+        parts.push('<div class="contact-group-empty">真人好友列表暂时无法读取；已有真人好友成员会保留。</div>');
+      }
+      picker.innerHTML = parts.join('');
     }
     function openContactGroupEditor(group) {
       editingContactGroupId = group ? String(group.id) : '';
@@ -454,7 +499,6 @@
           var ref = window.PhoneContactIdentity && window.PhoneContactIdentity.normalize(value);
           var isRoleRef = ref ? ref.type === 'ai_role' : rawRef.indexOf('ai_role:') === 0;
           if (!isRoleRef && rawRef.indexOf(':') > 0 && editingContactGroupOtherRefs.indexOf(rawRef) === -1) {
-            // Preserve typed non-role references even if the identity helper itself failed to load.
             editingContactGroupOtherRefs.push(ref ? ref.key : rawRef);
           }
         });
@@ -483,14 +527,35 @@
           return exists;
         });
       } else {
-        // Do not remove members when the current contact roster itself cannot be verified.
         editingContactGroupMembers = storedMemberIds.slice();
       }
+
+      var usersRead = readAcceptedRealUsers();
+      if (usersRead.ok) {
+        var availableUserKeys = usersRead.contacts.map(function (contact) {
+          var ref = contactDirectoryApi.getContactRef(contact);
+          return ref ? ref.key : '';
+        });
+        editingContactGroupOtherRefs = editingContactGroupOtherRefs.filter(function (rawRef) {
+          var ref = window.PhoneContactIdentity && window.PhoneContactIdentity.normalize(rawRef);
+          var isRealUserRef = ref ? ref.type === 'real_user' : rawRef.indexOf('real_user:') === 0;
+          if (!isRealUserRef) return true;
+          var key = ref ? ref.key : rawRef;
+          var exists = availableUserKeys.indexOf(key) !== -1;
+          if (!exists) staleMemberCount += 1;
+          return exists;
+        });
+      }
+
       document.getElementById('contactGroupEditorTitle').textContent = group ? '编辑分组' : '新建分组';
       document.getElementById('contactGroupName').value = group ? group.name : '';
-      document.getElementById('contactGroupEditStatus').textContent = !rosterRead.ok
-        ? '当前联系人列表暂时无法读取；保存时会保留原分组成员，避免误删。'
-        : (staleMemberCount ? '发现 ' + staleMemberCount + ' 位已不存在的联系人；保存时会从分组中清除，取消则保留原数据。' : '');
+      var statusParts = [];
+      if (!rosterRead.ok) statusParts.push('当前 AI 联系人列表暂时无法读取；保存时会保留原分组成员。');
+      if (!usersRead.ok && editingContactGroupOtherRefs.some(function (value) { return value.indexOf('real_user:') === 0; })) {
+        statusParts.push('真人好友目录暂时无法读取；保存时会保留原真人好友成员。');
+      }
+      if (staleMemberCount) statusParts.push('发现 ' + staleMemberCount + ' 位已不存在或未接受的联系人；保存时会从分组中清除，取消则保留原数据。');
+      document.getElementById('contactGroupEditStatus').textContent = statusParts.join(' ');
       renderContactGroupMembers(); showContactGroupPanel('edit');
       setTimeout(function () { document.getElementById('contactGroupName').focus(); }, 0);
     }
@@ -639,10 +704,18 @@
     });
     document.getElementById('btnSaveContactGroup').addEventListener('click', saveContactGroupFromEditor);
     document.getElementById('contactGroupMemberPicker').addEventListener('change', function (e) {
-      var input = e.target.closest('[data-contact-member]'); if (!input) return;
-      var id = input.getAttribute('data-contact-member'), index = editingContactGroupMembers.indexOf(id);
-      if (input.checked && index < 0) editingContactGroupMembers.push(id);
-      else if (!input.checked && index >= 0) editingContactGroupMembers.splice(index, 1);
+      var roleInput = e.target.closest('[data-contact-member]');
+      if (roleInput) {
+        var id = roleInput.getAttribute('data-contact-member'), index = editingContactGroupMembers.indexOf(id);
+        if (roleInput.checked && index < 0) editingContactGroupMembers.push(id);
+        else if (!roleInput.checked && index >= 0) editingContactGroupMembers.splice(index, 1);
+        return;
+      }
+      var userInput = e.target.closest('[data-contact-ref]');
+      if (!userInput) return;
+      var key = userInput.getAttribute('data-contact-ref'), refIndex = editingContactGroupOtherRefs.indexOf(key);
+      if (userInput.checked && refIndex < 0) editingContactGroupOtherRefs.push(key);
+      else if (!userInput.checked && refIndex >= 0) editingContactGroupOtherRefs.splice(refIndex, 1);
     });
     document.getElementById('contactGroupManageList').addEventListener('click', function (e) {
       var button = e.target.closest('[data-group-action]'); if (!button) return;
