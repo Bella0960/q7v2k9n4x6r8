@@ -94,6 +94,9 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /window\.confirm\(confirmText\)/);
   assert.match(html, /仅本次页面会话使用/);
   assert.match(html, /MaoMcpClient\.validateToolArguments\(tool\.inputSchema/);
+  assert.match(html, /window\.addEventListener\('pagehide'/);
+  assert.match(html, /window\.addEventListener\('pageshow'/);
+  assert.match(html, /页面已恢复。为保护连接凭据/);
   assert.match(html, /参数 JSON 超过 32 KB 限制/);
   assert.match(html, /activeServiceName = name\.slice\(0, 60\)/);
   assert.match(html, /MCP 服务：/);
