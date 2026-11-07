@@ -15,8 +15,8 @@ function jsonResponse(payload, status, extraHeaders) {
   return new Response(JSON.stringify(payload), { status, headers });
 }
 
-function realUserChatCapabilities(env) {
-  const accountAuthEnabled = isRealUserAuthConfigured(env);
+async function realUserChatCapabilities(env) {
+  const accountAuthEnabled = await isRealUserAuthConfigured(env);
   return {
     ok: true,
     service: "maomao-real-user-chat",
@@ -81,7 +81,7 @@ export default {
           error: "method_not_allowed"
         }, 405, { Allow: "GET" });
       }
-      return jsonResponse(realUserChatCapabilities(env), 200);
+      return jsonResponse(await realUserChatCapabilities(env), 200);
     }
 
     if (url.pathname.startsWith(REAL_USER_AUTH_PREFIX + "/")) {
