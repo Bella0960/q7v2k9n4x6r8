@@ -1288,7 +1288,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v185/);
+  assert.match(serviceWorker, /phone-app-pwa-v186/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1879,7 +1879,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v185/);
+  assert.match(serviceWorker, /phone-app-pwa-v186/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2446,4 +2446,114 @@ test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡�
   assert.match(detail, /cloud\.markCharacterOutboundRead\(roleId, serverMessageId\)/);
   assert.match(detail, /\}, 700\);/);
   assert.match(detail, /document\.visibilityState === 'hidden'/);
+});
+
+
+test('来电卡只有在聊天记录写入成功后才显示或触发自动来电', () => {
+  const start = detail.indexOf('function insertIncomingCallCard(historyList)');
+  const end = detail.indexOf('// 自动来电：', start);
+  assert.ok(start >= 0 && end > start, 'incoming call card handler must be present');
+  const source = detail.slice(start, end);
+  let renders = 0;
+  let toast = '';
+  const sandbox = {
+    _vl: false,
+    saveMessages: () => false,
+    appendMessageToDOM: () => { renders += 1; },
+    scrollToBottom: () => {},
+    vlRefresh: () => { renders += 1; },
+    showToast: (message) => { toast = message; }
+  };
+  runInNewContext(source, sandbox);
+  const history = [{ mid: 'existing' }];
+  assert.equal(sandbox.insertIncomingCallCard(history), false);
+  assert.equal(history.length, 1, 'failed call card must be rolled back from the in-memory history');
+  assert.equal(renders, 0, 'failed call card must not be rendered');
+  assert.match(toast, /来电卡片未能保存/);
+
+  sandbox.saveMessages = () => true;
+  assert.equal(sandbox.insertIncomingCallCard(history), true);
+  assert.equal(history.length, 2);
+  assert.equal(renders, 1, 'the call card renders only after verified persistence');
+  assert.match(detail, /if \(insertIncomingCallCard\(historyList\)\) maybeAutoIncomingCall\(\)/,
+    'automatic navigation must also be gated by successful call-card persistence');
+});
+
+test('图片卡批量保存失败时不显示半批内容，红包转账失败时恢复原转账状态', () => {
+  const imageStart = detail.indexOf('function insertVImageCards(historyList, descs)');
+  const imageEnd = detail.indexOf('// 心声卡日期格式化', imageStart);
+  assert.ok(imageStart >= 0 && imageEnd > imageStart, 'virtual image card handler must be present');
+  const imageSandbox = {
+    _vl: false,
+    saveMessages: () => false,
+    appendMessageToDOM: () => { imageSandbox.rendered += 1; },
+    scrollToBottom: () => {},
+    vlRefresh: () => { imageSandbox.rendered += 1; },
+    showToast: (message) => { imageSandbox.toast = message; },
+    rendered: 0,
+    toast: ''
+  };
+  runInNewContext(detail.slice(imageStart, imageEnd), imageSandbox);
+  const imageHistory = [{ mid: 'existing' }];
+  assert.equal(imageSandbox.insertVImageCards(imageHistory, ['第一张', '第二张']), false);
+  assert.equal(imageHistory.length, 1, 'failed image batch must be removed as a whole');
+  assert.equal(imageSandbox.rendered, 0, 'failed image cards must not appear in the chat UI');
+  assert.match(imageSandbox.toast, /图片卡片未能保存/);
+
+  const payStart = detail.indexOf('function insertPayCards(historyList, items)');
+  const payEnd = detail.indexOf('// ===== AI 回复清洗', payStart);
+  assert.ok(payStart >= 0 && payEnd > payStart, 'red packet / transfer card handler must be present');
+  const paySandbox = {
+    saveMessages: () => false,
+    renderAllMessages: () => { paySandbox.rendered += 1; },
+    showToast: (message) => { paySandbox.toast = message; },
+    rendered: 0,
+    toast: ''
+  };
+  runInNewContext(detail.slice(payStart, payEnd), paySandbox);
+  const originalTransfer = { role: 'user', type: 'transfer', amount: '12.00', status: 'unopened' };
+  const payHistory = [originalTransfer];
+  assert.equal(paySandbox.insertPayCards(payHistory, [{
+    type: 'transfer', amount: '12.00', message: '退还给你'
+  }]), false);
+  assert.equal(payHistory.length, 1, 'failed payment card must be rolled back');
+  assert.equal(originalTransfer.status, 'unopened', 'failed persistence must restore the transfer status');
+  assert.equal(Object.prototype.hasOwnProperty.call(originalTransfer, 'returnRequestedAt'), false,
+    'rollback must remove the timestamp introduced by the failed return request');
+  assert.equal(paySandbox.rendered, 0, 'failed payment cards must not be rendered');
+  assert.match(paySandbox.toast, /红包\/转账卡片未能保存/);
+});
+
+test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡片已保存', () => {
+  const start = detail.indexOf('function insertRoleFamilyCardInvitations(historyList, cardSpecs)');
+  const end = detail.indexOf('\n\n        window.handle', start);
+  assert.ok(start >= 0 && end > start, 'role-family invitation handler must be present');
+  let createdExternalCard = false;
+  let rendered = 0;
+  let toast = '';
+  const sandbox = {
+    isGroupChat: false,
+    aliasRoleId: 'role-1',
+    currentRoleId: 'role-1',
+    currentCharacter: { id: 'role-1', name: '角色' },
+    contactName: '角色',
+    window: {
+      RoleFamilyCards: {
+        findForRole: () => [],
+        createInvite: () => { createdExternalCard = true; return { id: 'family-card-1' }; }
+      }
+    },
+    saveMessages: () => false,
+    renderAllMessages: () => { rendered += 1; },
+    showToast: (message) => { toast = message; }
+  };
+  runInNewContext(detail.slice(start, end), sandbox);
+  const history = [{ mid: 'existing' }];
+  assert.equal(sandbox.insertRoleFamilyCardInvitations(history, [{
+    kind: 'standard', monthlyLimit: 500, singleLimit: 100, note: '测试'
+  }]), false);
+  assert.equal(createdExternalCard, true, 'the separate role-family store may already contain the invite');
+  assert.equal(history.length, 1, 'the unsaved chat invitation must be rolled back');
+  assert.equal(rendered, 0, 'the unsaved chat card must not be displayed as persisted');
+  assert.match(toast, /聊天记录未能保存/);
 });
