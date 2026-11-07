@@ -3005,6 +3005,12 @@
             if (!cloud || isGroupChat || !currentRoleId ||
                 typeof cloud.receiveCharacterOutboundMessages !== 'function') return;
 
+            function hasDeviceCredentials() {
+                return !!(cloud._internal &&
+                    typeof cloud._internal.readDevice === 'function' &&
+                    cloud._internal.readDevice());
+            }
+
             var roleId = String(currentCharacter.id || currentRoleId);
             var lockName = 'maomao-cloud-outbound:' + roleId;
             var storageLockKey = 'cloud_outbound_lock_v1:' + roleId;
@@ -3079,7 +3085,7 @@
             }
 
             function activate() {
-                if (active || document.visibilityState === 'hidden') return;
+                if (active || document.visibilityState === 'hidden' || !hasDeviceCredentials()) return;
                 active = true;
                 syncNow();
                 intervalId = window.setInterval(syncNow, 15000);
