@@ -11,6 +11,7 @@ const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8')
 const detail = read('chat/chat/chat-detail.html');
 const walletLedgerSource = read('shared/js/phone/wallet-ledger.js');
 const orderAfterSalesSource = read('shared/js/phone/order-after-sales.js');
+const financePage = read('wallet/finance.html');
 const chatExtrasSource = read('chat/chat/js/chat-extras.js');
 const shopPage = read('wallet/shop.html');
 const takeoutPage = read('wallet/takeout.html');
@@ -2906,6 +2907,19 @@ test('原支出流水缺失或金额不匹配时，不创建售后申请', async
   assert.equal(result.reason, 'payment-amount-mismatch');
   assert.equal(JSON.parse(state.get('shop_orders'))[0].afterSales, undefined,
     'failed preflight must not leave an orphan pending request');
+});
+
+test('记账页能从原支出行追溯订单售后申请，且申请期间不伪装退款', () => {
+  assert.match(financePage, /function renderAfterSalesNote\(record\)/);
+  assert.match(financePage, /afterSalesStatus === 'pending_review'/);
+  assert.match(financePage, /仍按原支出记账/);
+  assert.match(financePage, /不会自动退款或改动余额/);
+  assert.match(financePage, /afterSalesRequestId/);
+  assert.match(financePage, /afterSalesChannel === 'takeout'/);
+  assert.match(financePage, /afterSalesChannel === 'shop'/);
+  assert.match(orderAfterSalesSource, /line\.afterSalesChannel = channel/);
+  assert.match(storage, /NS\.getFinanceRecords = function \(\)[\s\S]*?NS\.rawGet\('finance_records'/);
+  assert.match(storage, /NS\.saveFinanceRecords = function \(list\)[\s\S]*?NS\.rawSet\('finance_records', list/);
 });
 
 test('商店与外卖售后入口只对可核验的原始支付流水开放，且明确不自动退款', () => {
