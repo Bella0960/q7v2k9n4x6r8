@@ -157,6 +157,9 @@ test('friend code, request list and friend list use only the authenticated API',
     if (url.includes('/v1/friends/requests?direction=incoming')) {
       return jsonResponse({ ok: true, requests: [{ id: 'request_123456', peer: { id: 'peer-1' } }] });
     }
+    if (url.endsWith('/v1/friends/blocks')) {
+      return jsonResponse({ ok: true, blocked: [{ id: 'blocked-1', displayName: 'Blocked' }] });
+    }
     if (url.endsWith('/v1/friends/codes/rotate')) {
       return jsonResponse({ ok: true, code: 'a'.repeat(64), qrPayload: 'mao://friend/add?code=' + 'a'.repeat(64) }, 201);
     }
@@ -169,10 +172,12 @@ test('friend code, request list and friend list use only the authenticated API',
   await app.client.restore();
   const friends = await app.client.listFriends();
   const incoming = await app.client.listRequests('incoming');
+  const blocked = await app.client.listBlocked();
   const code = await app.client.rotateFriendCode();
 
   assert.equal(friends[0].id, 'friend-1');
   assert.equal(incoming[0].id, 'request_123456');
+  assert.equal(blocked[0].id, 'blocked-1');
   assert.equal(code.code.length, 64);
   assert.ok(app.calls.every((call) => call.options.credentials === 'same-origin'));
   assert.ok(app.calls.every((call) => call.options.cache === 'no-store'));
