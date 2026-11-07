@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>NPC 好友申请 · 通讯录</title>
+<script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/phone_api.js"></script>
+<script src="../../shared/js/phone/npc-friend-discovery.js?v=20261108b"></script>
+<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+<style>
+:root{--ink:#111;--muted:#777;--line:#e5e5e7;--paper:#fff;--soft:#f5f5f6}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#f3f3f4;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif}
+button,input{font:inherit}
+.page{width:min(440px,100%);min-height:100dvh;margin:0 auto;background:var(--paper);padding:calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 28px)}
+.head{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding-bottom:17px}
+.back{border:0;background:none;font-size:25px;padding:0 5px 0 0;cursor:pointer;color:var(--ink)}
+.head-title{font-size:19px;font-weight:600;letter-spacing:-.3px}
+.kicker{font-size:10px;letter-spacing:.19em;color:var(--muted);margin:23px 0 8px}
+.lead{font-size:12px;line-height:1.7;color:#666;margin:0 0 16px}
+.settings{border:1px solid var(--line);padding:13px;margin:14px 0 18px}
+.setting-row{display:flex;align-items:center;gap:12px}
+.setting-copy{flex:1;min-width:0}
+.setting-title{font-size:13px}
+.setting-sub{font-size:10px;line-height:1.5;color:#888;margin-top:3px}
+.switch{appearance:none;width:38px;height:22px;border-radius:20px;background:#d8d8dc;position:relative;cursor:pointer;transition:background .15s}
+.switch:before{content:"";position:absolute;width:18px;height:18px;left:2px;top:2px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch:checked{background:#111}
+.switch:checked:before{transform:translateX(16px)}
+.actions{display:flex;gap:8px;align-items:center;margin-top:12px}
+.btn{border:1px solid #111;background:#111;color:#fff;padding:9px 13px;border-radius:6px;font-size:11px;cursor:pointer}
+.btn.secondary{background:#fff;color:#111;border-color:#ccc}
+.btn:disabled{opacity:.45;cursor:default}
+.status{font-size:11px;line-height:1.6;color:#777;min-height:18px;margin:10px 0 0;white-space:pre-wrap}
+.status.error{color:#8b2929}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin:23px 0 9px}
+.section-title{font-size:14px;font-weight:600}
+.section-count{font-size:10px;color:#999;letter-spacing:.12em}
+.request{border:1px solid var(--line);padding:14px;margin:9px 0;background:#fff}
+.request-top{display:flex;gap:11px;align-items:center}
+.avatar{width:42px;height:42px;flex:0 0 42px;background:#eeeef0;display:flex;align-items:center;justify-content:center;font-size:16px;color:#666;overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.meta{min-width:0;flex:1}
+.name{font-size:14px;font-weight:600}
+.role{font-size:10px;color:#888;margin-top:4px}
+.note{font-size:12px;line-height:1.7;color:#333;margin:12px 0 7px}
+.reason{font-size:11px;line-height:1.6;color:#777}
+.request-actions{display:flex;gap:7px;margin-top:13px;flex-wrap:wrap}
+.request-actions .btn{min-width:68px}
+.request-actions .btn.quiet{background:#fff;border-color:#ddd;color:#555}
+.empty{padding:22px 8px;text-align:center;font-size:12px;line-height:1.8;color:#999;border:1px dashed #e1e1e4}
+.history-row{display:flex;align-items:center;gap:9px;border-top:1px solid var(--line);padding:12px 0}
+.history-row:first-child{border-top:0}
+.history-meta{flex:1;min-width:0}
+.history-name{font-size:12px;font-weight:500}
+.history-sub{font-size:10px;color:#999;margin-top:4px}
+.history-action{border:0;background:none;text-decoration:underline;color:#666;font-size:11px;padding:6px}
+.badge{font-size:9px;color:#777;border:1px solid #ddd;padding:2px 6px}
+.footnote{font-size:10px;line-height:1.7;color:#999;margin-top:22px}
+.hidden{display:none!important}
+@media(min-width:600px){.page{margin:18px auto;min-height:calc(100dvh - 36px);border:1px solid #e5e5e5}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <button class="back" type="button" aria-label="返回通讯录" onclick="location.href='contacts.html'">‹</button>
+    <div class="head-title">NPC 好友申请</div>
+  </header>
+  <div class="kicker">NEW AI FRIENDS</div>
+  <p class="lead">这里收到的是 AI 虚构人物发来的好友申请。你接受后，他们才会成为通讯录里的独立聊天联系人；拒绝或屏蔽都不会创建聊天角色。</p>
+
+  <section class="settings">
+    <div class="setting-row">
+      <div class="setting-copy">
+        <div class="setting-title">自动发现新朋友</div>
+        <div class="setting-sub">打开通讯录时尝试发现；每个主角色成功生成后至少间隔 7 天，同时最多保留 1 条待处理申请。</div>
+      </div>
+      <input class="switch" type="checkbox" id="autoEnabled" aria-label="启用自动发现新朋友">
+    </div>
+    <div class="actions">
+      <button class="btn secondary" type="button" id="discoverNow">现在发现一位</button>
+    </div>
+    <div class="status" id="discoveryStatus" role="status" aria-live="polite"></div>
+  </section>
+
+  <div class="section-head">
+    <div class="section-title">待处理申请</div>
+    <div class="section-count" id="pendingCount">00</div>
+  </div>
+  <section id="pendingList"></section>
+
+  <div class="section-head">
+    <div class="section-title">处理记录</div>
+    <div class="section-count" id="historyCount">00</div>
+  </div>
+  <section id="historyList"></section>
+
+  <p class="footnote">自动发现使用你在设置中配置的 AI API，可能产生正常的 API 用量。当前版本在你打开通讯录时检查，不是手机关闭网页后的后台推送。AI 人物与真人账号严格分开。</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var api = window.MaoNpcFriends;
+  var $ = function (id) { return document.getElementById(id); };
+  var status = $('discoveryStatus');
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+  function setStatus(message, error) {
+    status.textContent = message || '';
+    status.classList.toggle('error', !!error);
+  }
+  function dateLabel(value) {
+    var time = Number(value) || 0;
+    if (!time) return '';
+    try { return new Date(time).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+    catch (error) { return ''; }
+  }
+  function avatarHtml(character) {
+    if (character && character.avatar) {
+      return '<div class="avatar"><img src="' + esc(character.avatar) + '" alt=""></div>';
+    }
+    return '<div class="avatar">' + esc(String(character && character.name || '新').slice(0,1)) + '</div>';
+  }
+  function render() {
+    if (!api) { setStatus('NPC 好友模块尚未加载，请刷新页面。', true); return; }
+    var requests = api.getRequests();
+    var pending = requests.filter(function (item) { return item.status === 'pending'; });
+    var history = requests.filter(function (item) { return item.status !== 'pending'; });
+    $('pendingCount').textContent = String(pending.length).padStart(2,'0');
+    $('historyCount').textContent = String(history.length).padStart(2,'0');
+    $('autoEnabled').checked = api.getSettings().enabled;
+    $('discoverNow').disabled = pending.length > 0;
+    if (!pending.length) {
+      $('pendingList').innerHTML = '<div class="empty">暂时没有新的好友申请。<br>自动发现已开启时，系统会按频率寻找合适的新朋友。</div>';
+    } else {
+      $('pendingList').innerHTML = pending.map(function (request) {
+        var character = request.character || {};
+        return '<article class="request" data-request-id="' + esc(request.id) + '">' +
+          '<div class="request-top">' + avatarHtml(character) +
+            '<div class="meta"><div class="name">' + esc(character.name || '新朋友') + '</div>' +
+            '<div class="role">' + esc(character.profession || 'AI 新朋友') + ' · ' + esc(dateLabel(request.createdAt)) + '</div></div>' +
+            '<span class="badge">待处理</span></div>' +
+          '<div class="note">' + esc(request.applicationMessage || '想和你认识一下。') + '</div>' +
+          '<div class="reason">认识缘由：' + esc(request.reasonForAdding || '希望通过共同兴趣认识你。') + '</div>' +
+          '<div class="request-actions">' +
+            '<button class="btn" type="button" data-action="accept">接受好友申请</button>' +
+            '<button class="btn quiet" type="button" data-action="decline">拒绝</button>' +
+            '<button class="btn quiet" type="button" data-action="block">屏蔽</button>' +
+          '</div></article>';
+      }).join('');
+    }
+    if (!history.length) {
+      $('historyList').innerHTML = '<div class="empty">处理过的申请会保留在这里。</div>';
+    } else {
+      $('historyList').innerHTML = history.map(function (request) {
+        var character = request.character || {};
+        var accepted = request.status === 'accepted';
+        var label = accepted ? '已添加' : (request.status === 'blocked' ? '已屏蔽' : '已拒绝');
+        var action = accepted
+          ? '<button class="history-action" type="button" data-action="chat" data-id="' + esc(character.id) + '">去聊天</button>'
+          : '';
+        return '<div class="history-row"><div class="history-meta"><div class="history-name">' +
+          esc(character.name || '新朋友') + '</div><div class="history-sub">' + esc(label) + ' · ' + esc(dateLabel(request.updatedAt || request.createdAt)) +
+          '</div></div>' + action + '</div>';
+      }).join('');
+    }
+  }
+  $('autoEnabled').addEventListener('change', function () {
+    var result = api.updateSettings({enabled:$('autoEnabled').checked});
+    setStatus(result.ok ? ($('autoEnabled').checked ? '自动发现已开启。' : '自动发现已关闭。') : '设置保存失败。', !result.ok);
+    if (result.ok && result.settings.enabled) {
+      api.start().then(function (outcome) {
+        if (outcome.ok) setStatus('已收到一份新的好友申请。');
+        else if (outcome.error !== 'COOLDOWN' && outcome.error !== 'PENDING_REQUEST_EXISTS') setStatus('暂时没有生成申请：' + outcome.error, true);
+        render();
+      });
+    }
+  });
+  $('discoverNow').addEventListener('click', function () {
+    $('discoverNow').disabled = true;
+    setStatus('正在为你寻找一位合适的新朋友…');
+    api.generateNow({force:true}).then(function (result) {
+      if (result.ok) setStatus('新的好友申请已送达。');
+      else {
+        var messages = {
+          API_NOT_CONFIGURED:'请先在设置中配置 AI API。',
+          NO_ACTIVE_ROLE:'请先选择一个当前主角色。',
+          ACTIVE_MAIN_ROLE_NOT_FOUND:'当前主角色不存在，暂时无法发现新朋友。',
+          PENDING_REQUEST_EXISTS:'先处理当前这条好友申请吧。',
+          DUPLICATE_NPC:'生成的人物与现有联系人重复，暂时没有创建申请。',
+          INVALID_NPC_PROFILE:'AI 返回的人物资料不完整，本次没有创建申请。'
+        };
+        setStatus(messages[result.error] || ('暂时没有生成申请：' + result.error), true);
+      }
+      render();
+    }).catch(function () {
+      setStatus('生成申请失败，请检查网络和 API 配置。', true);
+      render();
+    });
+  });
+  $('pendingList').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-action]');
+    if (!button) return;
+    var card = button.closest('[data-request-id]');
+    if (!card) return;
+    var id = card.getAttribute('data-request-id');
+    var action = button.getAttribute('data-action');
+    button.disabled = true;
+    var result = action === 'accept' ? api.accept(id) :
+      action === 'decline' ? api.decline(id) : api.block(id);
+    if (!result.ok) {
+      setStatus('处理失败：' + result.error, true);
+      button.disabled = false;
+      return;
+    }
+    setStatus(action === 'accept' ? '已添加到通讯录。' : (action === 'block' ? '已屏蔽这个申请。' : '已拒绝这份申请。'));
+    render();
+  });
+  $('historyList').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-action="chat"]');
+    if (!button) return;
+    var id = button.getAttribute('data-id');
+    if (id) location.href = '../chat/chat-detail.html?id=' + encodeURIComponent(id);
+  });
+  window.addEventListener('maomao:npc-requests-changed', render);
+  render();
+})();
+</script>
+</body>
+</html>
