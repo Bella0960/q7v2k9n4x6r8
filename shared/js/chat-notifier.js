@@ -600,8 +600,9 @@
             resetProactiveAttempt(roleId);
             return true;
         }
-        if (!context || context.configured !== true || !Number.isSafeInteger(Number(context.version)) ||
-            Number(context.version) < 1) {
+        if (!context || context.configured !== true ||
+            context.ownedByCurrentDevice !== true ||
+            !Number.isSafeInteger(Number(context.version)) || Number(context.version) < 1) {
             resetProactiveAttempt(roleId);
             return true;
         }
