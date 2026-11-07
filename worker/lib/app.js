@@ -798,8 +798,16 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
       throw new ApiError(400, 'INVALID_OUTBOUND_LIMIT', 'limit 必须是 1 到 50 的整数');
     }
+    const userId = device.user_id || OWNER_USER_ID;
+    await store.repairStagedActivityOutbox({
+      userId,
+      deviceId: device.id,
+      characterId,
+      now: now(),
+      limit
+    });
     const rows = await store.listPendingOutboundMessages({
-      userId: device.user_id || OWNER_USER_ID,
+      userId,
       deviceId: device.id,
       characterId,
       limit
@@ -927,6 +935,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       now: () => timestamp,
       config: readPresenceConfig(env) || {},
       executorDeviceId: device.id
+    });
+    await store.repairStagedActivityOutbox({
+      userId,
+      deviceId: device.id,
+      characterId,
+      now: timestamp,
+      limit: Math.min(config.tickLimit, 10)
     });
     const tasks = await store.listDueActivitiesForUser({
       userId,
