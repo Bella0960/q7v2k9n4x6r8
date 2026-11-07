@@ -260,7 +260,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
 
   function normalizeDisplayName(value) {
     return String(value || '')
-      .replace(/[\\u0000-\\u001F\\u007F]/g, '')
+      .replace(/[\u0000-\u001F\u007F]/g, '')
       .trim()
       .slice(0, 24);
   }
@@ -398,7 +398,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!target || target.revoked_at) {
       throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '没有找到这个 MAOMAO 用户');
     }
-    const message = String(body.message || '').replace(/[\\u0000-\\u001F\\u007F]/g, '').trim().slice(0, 120);
+    const message = String(body.message || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 120);
     const timestamp = now();
     const result = await store.createFriendRequest({
       id: randomToken(16),
@@ -1030,7 +1030,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (path === '/api/accounts/me' && method === 'GET') return await getFriendAccountMe(request);
       if (path === '/api/accounts/me' && method === 'PUT') return await updateFriendAccountMe(request);
 
-      const publicFriendProfileMatch = /^\\/api\\/friend-profiles\\/([^/]+)$/.exec(path);
+      const publicFriendProfileMatch = /^\/api\/friend-profiles\/([^/]+)$/.exec(path);
       if (publicFriendProfileMatch && method === 'GET' && FRIEND_ACCOUNT_ID_PATTERN.test(publicFriendProfileMatch[1])) {
         return await getPublicFriendProfile(publicFriendProfileMatch[1]);
       }
@@ -1038,7 +1038,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (path === '/api/friend-requests' && method === 'GET') return await getFriendRequestList(request);
       if (path === '/api/friend-requests' && method === 'POST') return await sendFriendRequest(request);
 
-      const friendRequestActionMatch = /^\\/api\\/friend-requests\\/([A-Za-z0-9_-]{16,64})\\/(accept|reject)$/.exec(path);
+      const friendRequestActionMatch = /^\/api\/friend-requests\/([A-Za-z0-9_-]{16,64})\/(accept|reject)$/.exec(path);
       if (friendRequestActionMatch && method === 'POST') {
         return await respondFriendRequest(
           request,
@@ -1046,7 +1046,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           friendRequestActionMatch[2] === 'accept' ? 'accepted' : 'rejected'
         );
       }
-      const removeFriendMatch = /^\\/api\\/friends\\/([^/]+)$/.exec(path);
+      const removeFriendMatch = /^\/api\/friends\/([^/]+)$/.exec(path);
       if (removeFriendMatch && method === 'DELETE') return await removeFriend(request, removeFriendMatch[1]);
 
       if (path === '/api/health' && method === 'GET') {
