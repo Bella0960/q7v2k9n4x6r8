@@ -2268,7 +2268,7 @@ test('aes128gcm 载荷可被订阅方的私钥解密（真实往返）', async (
   );
 });
 
-test('云端消息幂等：同一 server message id 只落一条', async () => {
+test('云端消息幂等：原子插入保留首次内容，重复 server id 不覆盖', async () => {
   const testDb = openTestDb();
   const ctx = setupTestStore(testDb);
   const message = {
@@ -2276,17 +2276,71 @@ test('云端消息幂等：同一 server message id 只落一条', async () => {
     serverMessageId: 'srv_1',
     deviceId: 'dev',
     characterId: 'heroine',
-    payload: { text: 'hi' },
+    payload: { text: 'first payload' },
     dedupeKey: 'dedupe_1',
     now: Date.now()
   };
   const first = ctx.store.insertOutboundMessage(message);
   assert.equal(first.inserted, true);
-  const second = ctx.store.insertOutboundMessage({ ...message, id: randomToken(12) });
+  assert.deepEqual(JSON.parse(first.message.payload_json), { text: 'first payload' });
+
+  const second = ctx.store.insertOutboundMessage({
+    ...message,
+    id: randomToken(12),
+    payload: { text: 'late conflicting payload' },
+    dedupeKey: 'different_dedupe'
+  });
   assert.equal(second.inserted, false);
   assert.equal(second.message.server_message_id, 'srv_1');
-  const rows = testDb.query('SELECT COUNT(*) AS total FROM outbound_messages');
-  assert.equal(Number(rows[0].total), 1);
+  assert.deepEqual(JSON.parse(second.message.payload_json), { text: 'first payload' });
+  assert.equal(Number(testDb.query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total), 1);
+
+  assert.throws(() => ctx.store.insertOutboundMessage({
+    ...message,
+    id: randomToken(12),
+    serverMessageId: 'srv_2'
+  }), /UNIQUE constraint failed/);
+
+  assert.throws(() => ctx.store.insertOutboundMessage({
+    ...message,
+    id: randomToken(12),
+    serverMessageId: 'srv_oversized',
+    dedupeKey: 'dedupe_oversized',
+    payload: { text: 'x'.repeat(8100) }
+  }), /8000 字节上限/);
+  assert.equal(Number(testDb.query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total), 1);
+});
+
+test('活动队列幂等入队是原子的，重复 ID 不覆盖首次任务数据', () => {
+  const testDb = openTestDb();
+  const ctx = setupTestStore(testDb);
+  const activity = {
+    id: 'activity_atomic_1',
+    deviceId: 'dev',
+    characterId: 'heroine',
+    kind: 'contact',
+    scheduledAt: 1000,
+    maxAttempts: 3,
+    now: 1000,
+    payload: { marker: 'first' }
+  };
+  const first = ctx.store.enqueueActivity(activity);
+  assert.equal(first.inserted, true);
+  const second = ctx.store.enqueueActivity({
+    ...activity,
+    payload: { marker: 'second' },
+    scheduledAt: 2000
+  });
+  assert.equal(second.inserted, false);
+  assert.deepEqual(JSON.parse(second.activity.payload_json), { marker: 'first' });
+  assert.equal(Number(testDb.query('SELECT COUNT(*) AS total FROM activity_queue')[0].total), 1);
+
+  assert.throws(() => ctx.store.enqueueActivity({
+    ...activity,
+    id: 'activity_oversized',
+    payload: { text: 'x'.repeat(4100) }
+  }), /4000 字节上限/);
+  assert.equal(Number(testDb.query('SELECT COUNT(*) AS total FROM activity_queue')[0].total), 1);
 });
 
 /* ------------------------------------------------------------------ */
