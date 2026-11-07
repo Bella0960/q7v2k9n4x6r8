@@ -220,6 +220,191 @@ function validateScheduleInput(body) {
 /**
  * 创建 API 处理器。不依赖 Workerd 专有 API，便于用 node:sqlite 直接跑契约测试。
  */
+/**
+ * Build a privacy-safe notification for an already-persisted chat outbox row.
+ * Message text is intentionally omitted so lock-screen previews reveal no chat content.
+ */
+export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp }) {
+  const roleId = String(characterId || '');
+  const messageId = String(serverMessageId || '');
+  if (!roleId || roleId.length > 96 || !/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
+    throw new TypeError('outbound push target is invalid');
+  }
+  return {
+    type: 'chat_message',
+    title: 'MAOMAO',
+    body: '有一条新消息。打开小手机查看。',
+    url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
+    tag: 'maomao-chat-' + messageId,
+    dedupeKey: ('outbound:' + messageId).slice(0, 96),
+    timestamp: Number(timestamp)
+  };
+}
+
+/**
+ * Send due notifications for pending outbound chat rows. Every subscription
+ * has its own durable lease/dedupe row, so Cron recovery and an API-triggered
+ * immediate attempt can race safely.
+ */
+export async function dispatchPendingOutboundPushes({
+  store,
+  env = {},
+  now = Date.now(),
+  fetchImpl = fetch,
+  limit = 50
+} = {}) {
+  const timestamp = Number(typeof now === 'function' ? now() : now);
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0 || !store ||
+      typeof store.listOutboundPushCandidates !== 'function') {
+    return { configured: false, reason: 'dispatcher_unavailable', attempted: 0, sent: 0, failed: 0 };
+  }
+
+  let keys;
+  try {
+    keys = parseVapidKeys(env);
+  } catch (error) {
+    return {
+      configured: false,
+      reason: error instanceof PushConfigError ? 'push_not_configured' : 'push_configuration_error',
+      attempted: 0,
+      sent: 0,
+      failed: 0
+    };
+  }
+
+  const candidates = store.listOutboundPushCandidates({ now: timestamp, limit });
+  const summary = {
+    configured: true,
+    attempted: 0,
+    sent: 0,
+    failed: 0,
+    gone: 0,
+    skipped: 0,
+    inProgress: 0,
+    retryDeferred: 0,
+    retryScheduled: 0,
+    retryExhausted: 0
+  };
+  const maxDeliveryAttempts = 5;
+  const deliveryLeaseMs = 60000;
+
+  for (const candidate of candidates) {
+    const dedupeKey = 'outbound:' + String(candidate.server_message_id);
+    const deliveryOwner = randomToken(12);
+    const claim = store.claimDelivery({
+      id: randomToken(12),
+      dedupeKey,
+      subscriptionId: candidate.subscription_id,
+      outboundMessageId: candidate.outbound_message_id,
+      owner: deliveryOwner,
+      now: timestamp,
+      leaseUntil: timestamp + deliveryLeaseMs,
+      maxAttempts: maxDeliveryAttempts
+    });
+
+    if (!claim) {
+      const existing = store.findDelivery(dedupeKey, candidate.subscription_id);
+      if (existing?.status === 'sending') summary.inProgress += 1;
+      else if (existing?.status === 'error' &&
+               Number(existing.next_attempt_at || 0) > timestamp) summary.retryDeferred += 1;
+      else if (existing?.status === 'failed' ||
+               Number(existing?.attempt_count || 0) >= maxDeliveryAttempts) summary.retryExhausted += 1;
+      else summary.skipped += 1;
+      continue;
+    }
+
+    summary.attempted += 1;
+    let outcome;
+    try {
+      const payload = buildOutboundPushPayload({
+        characterId: candidate.character_id,
+        serverMessageId: candidate.server_message_id,
+        timestamp: Number(candidate.created_at || timestamp)
+      });
+      outcome = await sendWebPush(
+        {
+          endpoint: candidate.endpoint,
+          p256dh: candidate.p256dh,
+          auth: candidate.auth_key
+        },
+        JSON.stringify(payload),
+        keys,
+        { nowMs: timestamp, fetchImpl }
+      );
+    } catch (error) {
+      outcome = {
+        ok: false,
+        statusCode: error instanceof PushConfigError ? 400 : Number(error?.statusCode || 0),
+        gone: false
+      };
+    }
+
+    const statusCode = Number(outcome.statusCode || 0);
+    const retryable = !outcome.ok && !outcome.gone && (
+      statusCode === 0 || statusCode === 408 || statusCode === 425 ||
+      statusCode === 429 || statusCode >= 500
+    );
+    const canRetry = retryable && Number(claim.attempt_count) < maxDeliveryAttempts;
+    const deliveryStatus = outcome.ok
+      ? 'sent'
+      : outcome.gone
+        ? 'gone'
+        : canRetry
+          ? 'error'
+          : 'failed';
+    const retryDelayMs = Math.min(
+      6 * 60 * 60 * 1000,
+      30000 * (2 ** Math.max(0, Number(claim.attempt_count) - 1))
+    );
+    const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+    const nextAttemptAt = canRetry ? finishedAt + retryDelayMs : null;
+    const finalized = store.finishDelivery({
+      dedupeKey,
+      subscriptionId: candidate.subscription_id,
+      owner: deliveryOwner,
+      status: deliveryStatus,
+      httpStatus: Number.isFinite(statusCode) ? statusCode : 0,
+      nextAttemptAt,
+      now: finishedAt
+    });
+
+    if (!finalized) {
+      summary.failed += 1;
+      continue;
+    }
+    if (outcome.ok) {
+      summary.sent += 1;
+      store.markPushSuccess(candidate.subscription_id, finishedAt);
+    } else if (outcome.gone) {
+      summary.failed += 1;
+      summary.gone += 1;
+      store.disableSubscriptionById(candidate.subscription_id, 'gone', finishedAt);
+      store.markPushFailure(candidate.subscription_id);
+    } else {
+      summary.failed += 1;
+      store.markPushFailure(candidate.subscription_id);
+      if (canRetry) summary.retryScheduled += 1;
+    }
+
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId: candidate.device_id,
+      kind: 'outbound_push',
+      status: outcome.ok ? 'success' : canRetry ? 'retry' : 'failed',
+      reasonCode: outcome.ok ? 'delivered' : outcome.gone ? 'subscription_gone' : 'push_delivery_failed',
+      detail: {
+        outboundMessageId: candidate.outbound_message_id,
+        serverMessageId: candidate.server_message_id,
+        subscriptionId: candidate.subscription_id,
+        httpStatus: Number.isFinite(statusCode) ? statusCode : 0,
+        retryScheduled: Boolean(canRetry)
+      },
+      now: finishedAt
+    });
+  }
+  return summary;
+}
+
 export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
   async function authenticate(request) {
     const parsed = deviceAuthHeader(request);
