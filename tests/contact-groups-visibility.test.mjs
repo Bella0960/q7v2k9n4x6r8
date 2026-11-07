@@ -120,17 +120,17 @@ test('typed Moments privacy never matches a real account to a role with the same
 });
 
 test('typed contact identity is loaded before chat notification and stored in chat relationship snapshots', () => {
-  assert.match(contactsPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
-  assert.match(composerPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
-  assert.match(momentsPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
-  assert.match(detailPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
-  assert.match(navPage, /contact-identity\\.js\\?v=20261107v1/);
-  assert.match(notifierSource, /contactRef: contactIdentity\\('ai_role', roleId\\)/);
-  assert.match(notifierSource, /contactRef: contactIdentity\\('chat_group', groupId\\)/);
-  assert.match(notifierSource, /ChatNotifier\\.getContactIdentity/);
-  assert.match(composerPage, /visibleContactRefs: visibleAudience\\.memberRefs/);
-  assert.match(composerPage, /hiddenContactRefs: hiddenAudience\\.memberRefs/);
-  assert.match(composerPage, /audienceVersion: 2/);
+  assert.ok(contactsPage.includes('phone/contact-identity.js?v=20261107v1'));
+  assert.ok(composerPage.includes('phone/contact-identity.js?v=20261107v1'));
+  assert.ok(momentsPage.includes('phone/contact-identity.js?v=20261107v1'));
+  assert.ok(detailPage.includes('phone/contact-identity.js?v=20261107v1'));
+  assert.ok(navPage.includes('contact-identity.js?v=20261107v1'));
+  assert.ok(notifierSource.includes("contactRef: contactIdentity('ai_role', roleId)"));
+  assert.ok(notifierSource.includes("contactRef: contactIdentity('chat_group', groupId)"));
+  assert.ok(notifierSource.includes('ChatNotifier.getContactIdentity'));
+  assert.ok(composerPage.includes('visibleContactRefs: visibleAudience.memberRefs'));
+  assert.ok(composerPage.includes('hiddenContactRefs: hiddenAudience.memberRefs'));
+  assert.ok(composerPage.includes('audienceVersion: 2'));
 });
 
 test('contact groups normalize IDs and permit one contact to belong to multiple groups', () => {
