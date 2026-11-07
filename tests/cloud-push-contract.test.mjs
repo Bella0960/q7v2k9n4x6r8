@@ -2786,3 +2786,51 @@ test('客户端只在消息持久化回调确认成功后才确认云端出站�
   assert.ok(clientSource.includes('getCharacterOutboundMessages: getCharacterOutboundMessages'));
   assert.ok(clientSource.includes('acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage'));
 });
+
+
+test('单角色聊天页接收出站消息并在原历史写后读回成功后才确认', () => {
+  const chatPath = path.join(rootDir, 'chat/chat/chat-detail.html');
+  const chat = fs.readFileSync(chatPath, 'utf8');
+  const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
+
+  assert.ok(chat.includes('../../shared/js/cloud-push-client.js'),
+    '聊天页必须加载云端收件箱客户端');
+  assert.ok(chat.includes('function persistCloudOutboundMessage(payload, envelope)'),
+    '聊天页必须有写入现有消息历史的适配器');
+  assert.ok(chat.includes("item && String(item.serverMessageId || '') === serverMessageId"),
+    '重复投递必须先按稳定 serverMessageId 查重');
+  assert.ok(chat.includes("mid: 'cloud_' + serverMessageId"),
+    '云端消息必须有稳定本地 mid');
+  assert.ok(chat.includes("msg.serverMessageId != null"),
+    '写后读回校验必须包含云端服务端消息 ID');
+
+  const adapterStart = chat.indexOf('function persistCloudOutboundMessage(payload, envelope)');
+  const adapterEnd = chat.indexOf('// 同一角色只允许一个标签页拉取/确认。', adapterStart);
+  assert.ok(adapterStart >= 0 && adapterEnd > adapterStart);
+  const adapter = chat.slice(adapterStart, adapterEnd);
+  const saveIndex = adapter.indexOf('if (!saveMessages(history))');
+  const renderIndex = adapter.indexOf('if (_vl) vlRefresh();');
+  assert.ok(saveIndex >= 0 && renderIndex > saveIndex,
+    '必须先验证本地保存成功，再渲染消息');
+  assert.ok(adapter.includes('if (isGroupChat'),
+    '群聊不得误接单角色的出站收件箱');
+  assert.ok(adapter.includes('payloadType !== \'text\''),
+    '未知载荷类型必须保持未确认，不能误写成普通文字');
+
+  const syncStart = chat.indexOf('(function startCloudOutboundSyncForActiveRole()');
+  const syncEnd = chat.indexOf("        // /photo 为用户显式触发", syncStart);
+  assert.ok(syncStart >= 0 && syncEnd > syncStart);
+  const sync = chat.slice(syncStart, syncEnd);
+  assert.ok(sync.includes('navigator.locks.request'), '优先使用 Web Locks 防止多标签页并发接收');
+  assert.ok(sync.includes('runWithStorageLease'), '不支持 Web Locks 时应使用本地租约降级');
+  assert.ok(sync.includes("window.setInterval(syncNow, 15000)"),
+    '前台聊天页应定期拉取待同步消息');
+  assert.ok(sync.includes("document.visibilityState === 'hidden'"),
+    '页面隐藏时应暂停拉取');
+  assert.ok(sync.includes('window.addEventListener(\'storage\', onOtherTabNotice)'),
+    '其他标签页保存消息后应刷新当前历史');
+
+  assert.match(serviceWorker, /phone-app-pwa-v174/);
+  assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
+    'PWA shell 应继续预缓存现有聊天详情页');
+});
