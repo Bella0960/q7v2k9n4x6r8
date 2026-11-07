@@ -1,9 +1,10 @@
 /**
  * M2.2b scheduler eligibility adapter.
  *
- * This is deliberately fail-closed until explicit metadata has been written
- * through the authenticated APIs and a trustworthy chat context version exists.
- * It adapts persisted non-chat metadata through the existing M2.1 policy.
+ * This is deliberately fail-closed until explicit authorization, schedules,
+ * presence leases, and a server-observed role context revision exist.
+ * It adapts persisted non-chat metadata and the content-free revision counter
+ * through the existing M2.1 policy.
  *
  * It never reads chat bodies, persona data, browser storage, or secrets.
  */
