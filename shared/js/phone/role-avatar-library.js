@@ -328,7 +328,7 @@
         }
 
         var roleKey = String(roleId);
-        var label = String(options.label || '聊天配对头像').replace(/[\\u0000-\\u001F<>]/g, '').trim().slice(0, 36) || '聊天配对头像';
+        var label = String(options.label || '聊天配对头像').replace(/[\u0000-\u001F<>]/g, '').trim().slice(0, 36) || '聊天配对头像';
         var pairItems = [];
         var pairFailure = null;
         var linkedPair = null;
