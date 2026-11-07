@@ -88,7 +88,9 @@
   function setActiveDirectoryAccount(account) {
     var directory = root.PhoneContactDirectory;
     if (!directory || typeof directory.setActiveAccountId !== 'function') return;
-    directory.setActiveAccountId(account && account.id ? account.id : '');
+    directory.setActiveAccountId(
+      account && account.id && featureEnabled('friends') ? account.id : ''
+    );
   }
 
   function featureEnabled(name) {
