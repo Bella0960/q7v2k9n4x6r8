@@ -29,11 +29,11 @@ function log(store, now, status, reasonCode, detail) {
   });
 }
 
-export function runTick({ store, now, config, gate = null, owner = 'cloud' } = {}) {
+export function runTick({ store, now, config, gate = null, owner = 'cloud', executorAvailable = false } = {}) {
   const validated = validateConfig(config);
   if (!validated.ok) {
     log(store, now, 'skipped', validated.reason, {});
-    return { ok: false, reason: validated.reason, due: 0, claimed: 0, deferred: 0, superseded: 0, lost: 0 };
+    return { ok: false, reason: validated.reason, due: 0, claimed: 0, deferred: 0, superseded: 0, failed: 0, lost: 0 };
   }
 
   const tasks = store.listDueActivities(now, validated.config.tickLimit);
@@ -44,10 +44,20 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud' } = {
     owner
   });
 
-  const summary = { ok: true, due: tasks.length, claimed: 0, deferred: 0, superseded: 0, lost: 0 };
+  const summary = { ok: true, due: tasks.length, claimed: 0, deferred: 0, superseded: 0, failed: 0, lost: 0 };
 
   for (const decision of decisions) {
     if (decision.action === 'claim') {
+      // The current Worker has no message-generation executor. Do not reserve
+      // a task and leave it in "running" until an executor is actually wired.
+      if (executorAvailable !== true) {
+        summary.deferred += 1;
+        log(store, now, 'deferred', REASON_CODES.EXECUTOR_UNAVAILABLE, {
+          taskId: decision.taskId
+        });
+        continue;
+      }
+
       const claimed = store.claimActivity({
         id: decision.taskId,
         expectedAttemptCount: decision.expectedAttemptCount,
@@ -66,6 +76,23 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud' } = {
         summary.lost += 1;
         log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId });
       }
+      continue;
+    }
+
+    if (decision.action === 'fail') {
+      const failed = store.failExhaustedActivity({
+        id: decision.taskId,
+        expectedAttemptCount: decision.expectedAttemptCount,
+        expectedStatus: decision.expectedStatus,
+        expectedLockedBy: decision.expectedLockedBy,
+        expectedLockedUntil: decision.expectedLockedUntil,
+        now
+      });
+      if (failed) summary.failed += 1;
+      else summary.lost += 1;
+      log(store, now, failed ? 'failed' : 'deferred',
+        failed ? decision.reason : REASON_CODES.CLAIM_LOST,
+        { taskId: decision.taskId });
       continue;
     }
 
