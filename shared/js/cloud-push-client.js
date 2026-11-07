@@ -476,6 +476,60 @@
     );
   }
 
+  function enqueueAutonomyActivity(characterId, contextVersion) {
+    var version = Number(contextVersion);
+    if (!Number.isSafeInteger(version) || version < 1) {
+      return Promise.reject(new Error('角色上下文版本无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/autonomy/characters/' + characterPath(characterId) + '/activities',
+      'POST',
+      { contextVersion: version }
+    );
+  }
+
+  function claimAutonomyActivity(characterId) {
+    return requestDeviceMetadata(
+      '/api/autonomy/characters/' + characterPath(characterId) + '/activities/claim',
+      'POST',
+      {}
+    ).then(function (payload) {
+      return payload.activity || null;
+    });
+  }
+
+  function completeAutonomyActivity(activity, text) {
+    if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
+      return Promise.reject(new Error('自主活动 ID 无效'));
+    }
+    var attemptCount = Number(activity.attemptCount);
+    var message = String(text || '').trim();
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || message.length < 2) {
+      return Promise.reject(new Error('自主活动结果无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/autonomy/activities/' + encodeURIComponent(activity.id) + '/complete',
+      'POST',
+      { attemptCount: attemptCount, text: message }
+    );
+  }
+
+  function failAutonomyActivity(activity, reasonCode) {
+    if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
+      return Promise.reject(new Error('自主活动 ID 无效'));
+    }
+    var attemptCount = Number(activity.attemptCount);
+    var allowed = ['model_unavailable', 'generation_failed', 'generation_empty', 'local_context_unavailable'];
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || allowed.indexOf(reasonCode) === -1) {
+      return Promise.reject(new Error('自主活动失败原因无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/autonomy/activities/' + encodeURIComponent(activity.id) + '/fail',
+      'POST',
+      { attemptCount: attemptCount, reasonCode: reasonCode }
+    );
+  }
+
   function getCharacterOutboundMessages(characterId, limit) {
     var safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
     return requestDeviceMetadata(
@@ -1353,6 +1407,10 @@
     getCharacterSchedule: getCharacterSchedule,
     setCharacterSchedule: setCharacterSchedule,
     getCharacterContextVersion: getCharacterContextVersion,
+    enqueueAutonomyActivity: enqueueAutonomyActivity,
+    claimAutonomyActivity: claimAutonomyActivity,
+    completeAutonomyActivity: completeAutonomyActivity,
+    failAutonomyActivity: failAutonomyActivity,
     getCharacterOutboundMessages: getCharacterOutboundMessages,
     acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage,
     receiveCharacterOutboundMessages: receiveCharacterOutboundMessages,
