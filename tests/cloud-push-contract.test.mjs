@@ -415,6 +415,7 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
   let markHeartbeatStarted;
   const heartbeatStarted = new Promise(resolve => { markHeartbeatStarted = resolve; });
   const browserWindow = {
+    AbortController,
     setInterval(callback) {
       intervalCallback = callback;
       return 23;
