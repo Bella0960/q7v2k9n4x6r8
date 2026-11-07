@@ -15,6 +15,7 @@ const FRIENDS_PREFIX = "/api/real-user-chat/v1/friends";
 const FRIEND_CODE_TTL_MS = 15 * 60 * 1000;
 const FRIEND_CODE_BYTES = 32;
 const MAX_LIST_LIMIT = 50;
+const MAX_FRIEND_PAGE_SIZE = 100;
 
 export async function isRealUserFriendsConfigured(env) {
   if (!await isRealUserAuthConfigured(env) ||
@@ -331,27 +332,76 @@ async function transitionFriendRequest(request, env, account, requestId, action)
   }
 }
 
-async function listFriends(env, account) {
+async function listFriends(env, account, url) {
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit == null ? MAX_FRIEND_PAGE_SIZE : Number(rawLimit);
+  const rawCursor = String(url.searchParams.get("after") || "").trim();
+  const cursor = rawCursor || "";
+  const rawSnapshotAt = url.searchParams.get("snapshotAt");
+  const snapshotAt = rawSnapshotAt == null ? Date.now() : Number(rawSnapshotAt);
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_FRIEND_PAGE_SIZE) {
+    return authJson({ ok: false, error: "invalid_friend_page_limit" }, 400);
+  }
+  if (cursor && !validAccountId(cursor)) {
+    return authJson({ ok: false, error: "invalid_friend_cursor" }, 400);
+  }
+  if (!Number.isSafeInteger(snapshotAt) || snapshotAt <= 0 || snapshotAt > Date.now()) {
+    return authJson({ ok: false, error: "invalid_friend_snapshot" }, 400);
+  }
+
   try {
+    // One stable, ID-ordered snapshot contains both live and removed friendship
+    // rows. The client can page without treating a partial roster as complete.
+    // Removed/blocked rows carry relationship metadata only, never private profile data.
     const result = await env.DB.prepare(
-      "SELECT a.id, a.handle, a.display_name, a.avatar_asset_id, f.accepted_at " +
+      "SELECT a.id, a.handle, a.display_name, a.avatar_asset_id, a.status AS account_status, " +
+      "f.status AS friendship_status, f.accepted_request_id, f.accepted_at, f.updated_at, " +
+      "CASE WHEN EXISTS (SELECT 1 FROM real_user_blocks b WHERE " +
+      "(b.blocker_id = ? AND b.blocked_id = a.id) OR (b.blocker_id = a.id AND b.blocked_id = ?)) " +
+      "THEN 1 ELSE 0 END AS is_blocked " +
       "FROM real_user_friendships f " +
       "JOIN real_user_accounts a ON a.id = CASE WHEN f.pair_low = ? THEN f.pair_high ELSE f.pair_low END " +
-      "WHERE (f.pair_low = ? OR f.pair_high = ?) AND f.status = 'accepted' " +
-      "AND a.status = 'active' " +
-      "AND NOT EXISTS (SELECT 1 FROM real_user_blocks b WHERE " +
-      "(b.blocker_id = ? AND b.blocked_id = a.id) OR (b.blocker_id = a.id AND b.blocked_id = ?)) " +
-      "ORDER BY a.display_name COLLATE NOCASE LIMIT ?"
-    ).bind(account.id, account.id, account.id, account.id, account.id, MAX_LIST_LIMIT).all();
+      "WHERE (f.pair_low = ? OR f.pair_high = ?) AND f.updated_at <= ? AND a.id > ? " +
+      "ORDER BY a.id COLLATE BINARY LIMIT ?"
+    ).bind(
+      account.id, account.id, account.id, account.id, account.id,
+      snapshotAt, cursor, limit + 1
+    ).all();
+    const rows = result.results || [];
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const relationships = pageRows.map(row => {
+      const accepted = row.friendship_status === "accepted" &&
+        row.account_status === "active" && Number(row.is_blocked) !== 1;
+      const relationship = {
+        id: row.id,
+        status: accepted ? "accepted" : "removed",
+        acceptedRequestId: row.accepted_request_id,
+        acceptedAt: row.accepted_at,
+        updatedAt: row.updated_at
+      };
+      if (accepted) {
+        relationship.handle = row.handle;
+        relationship.displayName = row.display_name;
+        relationship.avatarAssetId = row.avatar_asset_id || null;
+      }
+      return relationship;
+    });
+    const friends = relationships.filter(item => item.status === "accepted").map(item => ({
+      id: item.id,
+      handle: item.handle,
+      displayName: item.displayName,
+      avatarAssetId: item.avatarAssetId,
+      acceptedRequestId: item.acceptedRequestId,
+      acceptedAt: item.acceptedAt
+    }));
     return authJson({
       ok: true,
-      friends: (result.results || []).map(row => ({
-        id: row.id,
-        handle: row.handle,
-        displayName: row.display_name,
-        avatarAssetId: row.avatar_asset_id || null,
-        acceptedAt: row.accepted_at
-      }))
+      friends,
+      relationships,
+      snapshotAt,
+      hasMore,
+      nextCursor: hasMore && pageRows.length ? pageRows[pageRows.length - 1].id : null
     }, 200);
   } catch {
     return authJson({ ok: false, error: "friends_temporarily_unavailable" }, 503);
@@ -464,7 +514,7 @@ export async function handleRealUserFriends(request, env) {
     return transitionFriendRequest(request, env, account, requestId, action);
   }
   if (path === "/" || path === "") {
-    if (request.method === "GET") return listFriends(env, account);
+    if (request.method === "GET") return listFriends(env, account, url);
     return authJson({ ok: false, error: "method_not_allowed" }, 405, { Allow: "GET" });
   }
   const segments = path.slice(1).split("/");
@@ -492,5 +542,5 @@ export const realUserFriendsTestHelpers = {
   normalizeNote,
   validRequestId,
   pairFor,
-  constants: { FRIEND_CODE_TTL_MS, FRIEND_CODE_BYTES, MAX_LIST_LIMIT }
+  constants: { FRIEND_CODE_TTL_MS, FRIEND_CODE_BYTES, MAX_LIST_LIMIT, MAX_FRIEND_PAGE_SIZE }
 };
