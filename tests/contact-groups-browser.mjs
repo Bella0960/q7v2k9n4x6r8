@@ -256,6 +256,15 @@ async function main() {
       'no AI request is made to a contact that was only present in a now-deleted group');
     console.log('PASS Moments: stale group selection blocks confirmation until explicitly cleared');
 
+    // A group can contain a dangling member ID after a role was deleted elsewhere.
+    // Such an ID is never included in the live audience and is visible in the review.
+    await page.evaluate((groupId) => {
+      const groups = JSON.parse(localStorage.getItem('contact_groups_v1') || '[]');
+      const group = groups.find((item) => item.id === groupId);
+      group.memberIds.push('role-ghost');
+      localStorage.setItem('contact_groups_v1', JSON.stringify(groups));
+    }, friendsGroup.id);
+
     // Moments: a mixed group + direct-contact audience is snapshotted; an outside @mention is blocked.
     await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
     await page.locator('#contentInput').fill('部分可见动态：家人分组和单独联系人可见');
@@ -268,6 +277,8 @@ async function main() {
     assert.match(visibleReview, /角色甲/);
     assert.match(visibleReview, /角色乙/);
     assert.match(visibleReview, /角色丙/);
+    assert.match(visibleReview, /分组内 1 位已失效联系人不会计入名单/);
+    assert.doesNotMatch(visibleReview, /role-ghost/);
     assert.doesNotMatch(visibleReview, /角色丁/,
       'the @mentioned contact must not be implied to be in the visible audience');
     await page.locator('#permClose').click();
@@ -276,7 +287,8 @@ async function main() {
     await page.locator('#mentionClose').click();
     const selectedPost = await publishAndRead(page, '部分可见动态：家人分组和单独联系人可见');
     assert.equal(selectedPost.visibility, 'custom');
-    assert.deepEqual(selectedPost.visibleTo, ['role-a', 'role-b', 'role-c']);
+    assert.deepEqual(selectedPost.visibleTo, ['role-a', 'role-b', 'role-c'],
+      'a deleted role left in a group is not a live recipient');
     assert.deepEqual(selectedPost.visibleGroupIds, [friendsGroup.id]);
     assert.deepEqual(selectedPost.visibleContactIds, ['role-c']);
     assert.deepEqual(selectedPost.mentions, ['role-d'],
@@ -328,6 +340,8 @@ async function main() {
     groups = await readJson(page, 'contact_groups_v1');
     const editedFamily = groups.find((group) => group.id === friendsGroup.id);
     assert.deepEqual(editedFamily.memberIds, ['role-b', 'role-c']);
+    assert.equal(editedFamily.memberIds.includes('role-ghost'), false,
+      'saving a group edit removes dangling member IDs that no longer match a contact');
 
     await page.goto(origin + '/chat/moments/moments.html', { waitUntil: 'domcontentloaded' });
     const policyResult = await page.evaluate(({ postId }) => {
