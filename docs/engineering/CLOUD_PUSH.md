@@ -205,7 +205,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 ### 8.9 云端准备情况诊断
 
 - 新增设备鉴权端点 `GET /api/autonomy/readiness`，返回配置状态、当前设备的活动推送订阅数量、全局授权、上下文版本状态、执行器状态，以及当前用户队列的匿名状态汇总。
-- 队列只暴露 `total / waiting / retry / running / completed / failed / superseded` 数量；按已鉴权设备所属用户过滤。不会返回任务 ID、角色 ID、设备 ID、任务载荷或聊天内容。
+- 队列只暴露 `total / waiting / retry / running / completed / failed / superseded / other` 数量（未知或历史状态归入 `other`）；按已鉴权设备所属用户过滤。不会返回任务 ID、角色 ID、设备 ID、任务载荷或聊天内容。
 - 当前 `activityExecutorAvailable=false`、`contextVersionReady=false`，主动消息生成继续为 false；阻塞原因明确为 `executor_unavailable` 与 `context_version_unavailable`。这不是“已能主动发消息”的状态。
 - 不返回 VAPID 私钥、设备 pepper、初始认领码、配对码或任何 Secret。
 - 设置页“检查云端准备情况”显示设备鉴权、首次认领、配对、VAPID 配置、推送订阅、presence 参数、全局授权、队列计数、执行器、上下文版本和 AI 生成链路状态。
