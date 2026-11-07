@@ -13,6 +13,7 @@ const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const MAX_SUBSCRIPTIONS_PER_DEVICE = 10;
 const REGISTRATIONS_PER_IP_PER_HOUR = 20;
+const PAIRING_TOKENS_PER_DEVICE_PER_HOUR = 5;
 const TEST_PUSH_PER_10_MINUTES = 3;
 
 export const MILESTONE = '1';
@@ -198,7 +199,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const existing = await store.getDevice(deviceId);
     const hash = await secretHash(env, deviceId, secret);
     if (existing) {
-      if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '该设备授权已被撤销');
+      if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
       if (!timingSafeEqualHex(hash, existing.secret_hash)) {
         throw new ApiError(409, 'DEVICE_CONFLICT', '设备 ID 已被其他凭据占用');
       }
@@ -216,7 +217,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(429, 'REGISTRATION_RATE_LIMITED', '注册过于频繁，请稍后再试');
     }
 
-    await store.insertDevice({
+    const commonDevice = {
       id: deviceId,
       secretHash: hash,
       label: String(body.label || '').slice(0, 64),
@@ -224,17 +225,77 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userAgent: String(request.headers.get('user-agent') || '').slice(0, 200),
       ipHash,
       now: timestamp
-    });
+    };
+
+    let userId = OWNER_USER_ID;
+    let enrollmentMode = '';
+    const pairingToken = String(body.pairingToken || '').trim();
+    if (pairingToken) {
+      if (pairingToken.length < 32 || pairingToken.length > 128) {
+        throw new ApiError(403, 'PAIRING_TOKEN_INVALID', '配对码无效或已过期');
+      }
+      const tokenHash = await sha256Hex(
+        `${String(env?.DEVICE_SECRET_PEPPER || '')}|pairing|${pairingToken}`
+      );
+      const pairing = await store.consumeDevicePairingToken(tokenHash, timestamp);
+      if (!pairing) throw new ApiError(403, 'PAIRING_TOKEN_INVALID', '配对码无效、已使用或已过期');
+      userId = pairing.user_id || OWNER_USER_ID;
+      enrollmentMode = 'paired';
+      await store.insertDevice({ ...commonDevice, userId });
+    } else {
+      const configuredToken = String(env?.ENROLLMENT_TOKEN || '');
+      const suppliedToken = String(body.enrollmentToken || '').trim();
+      if (configuredToken.length < 32 || suppliedToken.length < 32 || suppliedToken.length > 512) {
+        throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '新设备需要由已连接设备生成的一次性配对码');
+      }
+      const expected = await sha256Hex(`bootstrap|${configuredToken}`);
+      const supplied = await sha256Hex(`bootstrap|${suppliedToken}`);
+      if (!timingSafeEqualHex(expected, supplied)) {
+        throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '新设备需要有效的一次性配对码');
+      }
+      const inserted = await store.insertBootstrapDevice({ ...commonDevice, userId });
+      if (!inserted) {
+        throw new ApiError(409, 'DEVICE_BOOTSTRAP_CLOSED', '首次设备认领已经完成，请使用已连接设备生成配对码');
+      }
+      enrollmentMode = 'bootstrap';
+    }
+
     await store.logExecution({
       id: randomToken(12),
       deviceId,
       kind: 'device_register',
       status: 'success',
-      reasonCode: 'enrolled',
-      detail: { platform: String(body.platform || '').slice(0, 64) },
+      reasonCode: enrollmentMode === 'paired' ? 'paired' : 'bootstrap_enrolled',
+      detail: { platform: String(body.platform || '').slice(0, 64), enrollmentMode },
       now: timestamp
     });
-    return ok({ device: { id: deviceId, createdAt: timestamp, reenrolled: false } });
+    return ok({ device: { id: deviceId, createdAt: timestamp, reenrolled: false, enrollmentMode } });
+  }
+
+  async function createDevicePairingToken(request) {
+    const device = await authenticate(request);
+    const ttlMs = parsePositiveEnv(env, 'DEVICE_PAIRING_TOKEN_TTL_MS');
+    if (ttlMs == null) {
+      throw new ApiError(503, 'PAIRING_NOT_CONFIGURED', '缺少一次性配对码有效期配置');
+    }
+    const timestamp = now();
+    const recent = await store.countRecentPairingTokensByDevice(device.id, timestamp - 3600000);
+    if (recent >= PAIRING_TOKENS_PER_DEVICE_PER_HOUR) {
+      throw new ApiError(429, 'PAIRING_RATE_LIMITED', '配对码生成过于频繁，请稍后再试');
+    }
+    const pairingToken = randomToken(32);
+    const tokenHash = await sha256Hex(
+      `${String(env?.DEVICE_SECRET_PEPPER || '')}|pairing|${pairingToken}`
+    );
+    await store.cleanupDevicePairingTokens(timestamp);
+    await store.createDevicePairingToken({
+      tokenHash,
+      userId: device.user_id || OWNER_USER_ID,
+      createdByDeviceId: device.id,
+      createdAt: timestamp,
+      expiresAt: timestamp + ttlMs
+    });
+    return ok({ pairingToken, expiresAt: timestamp + ttlMs, ttlMs });
   }
 
   async function subscribe(request) {
@@ -598,6 +659,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         return ok({ publicKey: vapid.publicKey, subjectConfigured: true });
       }
       if (path === '/api/devices/register' && method === 'POST') return await registerDevice(request);
+      if (path === '/api/devices/pairing-token' && method === 'POST') return await createDevicePairingToken(request);
       if (path === '/api/devices/revoke' && method === 'POST') return await revokeDevice(request);
       if (path === '/api/autonomy/global' && method === 'GET') return await getGlobalAutonomy(request);
       if (path === '/api/autonomy/global' && method === 'PUT') return await setGlobalAutonomy(request);
