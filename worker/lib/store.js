@@ -423,6 +423,32 @@ class CloudStore {
     );
   }
 
+  reserveExecutionAttempt(entry, { since, limit }) {
+    // One SQLite statement both checks the rolling window and writes the
+    // reservation. Separate SELECT + INSERT calls can race when requests
+    // interleave at an await boundary in the Worker handler.
+    const row = this.exec(
+      `INSERT INTO execution_log
+        (id, device_id, kind, status, reason_code, detail_json, duration_ms, created_at)
+       SELECT ?, ?, ?, 'started', ?, '{}', 0, ?
+       WHERE (
+         SELECT COUNT(*) FROM execution_log
+         WHERE device_id = ? AND kind = ? AND status = 'started' AND created_at >= ?
+       ) < ?
+       RETURNING id`,
+      entry.id,
+      entry.deviceId,
+      entry.kind,
+      entry.reasonCode || 'attempt_started',
+      entry.now,
+      entry.deviceId,
+      entry.kind,
+      since,
+      limit
+    )[0];
+    return Boolean(row);
+  }
+
   countRecentExecutions(deviceId, kind, since) {
     // Count every attempt, not only successful sends. Otherwise repeated
     // failures could bypass the per-device rate limit by never succeeding.
