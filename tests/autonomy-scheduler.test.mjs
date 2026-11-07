@@ -619,6 +619,7 @@ test('scheduler gate 使用队列所属设备的用户范围，不会退回 owne
 
 test('本机执行器只能在自己持有有效前台心跳与角色租约时通过门禁', () => {
   const snapshot = validGateSnapshot({
+    contextSourceDeviceId: 'device_local_executor',
     presence: {
       devices: [{
         deviceId: 'device_local_executor',
@@ -643,11 +644,12 @@ test('本机执行器只能在自己持有有效前台心跳与角色租约时�
   assert.equal(allowed.characterState, 'active');
   assert.equal(allowed.latestContextVersion, 7);
 
-  const wrongDevice = makeGate(snapshot, { executorDeviceId: 'device_other_executor' })(contactTask());
-  assert.equal(wrongDevice.autonomyAllowed, false);
-  assert.equal(wrongDevice.reasonCode, REASON_CODES.DEVICE_EXECUTOR_LEASE_REQUIRED);
+  const wrongContextDevice = makeGate(snapshot, { executorDeviceId: 'device_other_executor' })(contactTask());
+  assert.equal(wrongContextDevice.autonomyAllowed, false);
+  assert.equal(wrongContextDevice.reasonCode, REASON_CODES.DEVICE_CONTEXT_NOT_LOCAL);
 
   const noLease = makeGate(validGateSnapshot({
+    contextSourceDeviceId: 'device_local_executor',
     presence: {
       devices: snapshot.presence.devices,
       leases: []
