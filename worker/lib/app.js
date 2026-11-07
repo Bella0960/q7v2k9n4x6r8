@@ -530,6 +530,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const cursorOf = row => row
       ? String(Number(row.created_at)) + '.' + String(row.id)
       : null;
+    const viewState = await store.getFriendConversationViewState({
+      userId: account.user_id,
+      friendId
+    });
     return ok({
       friend: {
         userId: friend.user_id,
@@ -538,7 +542,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       messages: rows.map(friendMessageView),
       nextCursor: cursorOf(last) || afterRaw || null,
       olderCursor: cursorOf(first) || beforeRaw || null,
-      hasMore
+      hasMore,
+      viewState
     });
   }
 
