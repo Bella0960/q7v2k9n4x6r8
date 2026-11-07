@@ -921,7 +921,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const gate = createSchedulerGate({
       store,
       now: () => timestamp,
-      config: readPresenceConfig(env) || {}
+      config: readPresenceConfig(env) || {},
+      executorDeviceId: device.id
     });
     const tasks = await store.listDueActivitiesForUser({
       userId,
@@ -1083,7 +1084,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const gate = createSchedulerGate({
       store,
       now: () => timestamp,
-      config: readPresenceConfig(env) || {}
+      config: readPresenceConfig(env) || {},
+      executorDeviceId: device.id
     });
     const gateResult = contextStillCurrent
       ? gate({
