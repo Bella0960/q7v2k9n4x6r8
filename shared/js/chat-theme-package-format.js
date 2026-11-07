@@ -100,6 +100,7 @@
         sel=sel.trim();if(!sel)return"";
         if(/^(from|to|\d+(?:\.\d+)?%)$/.test(sel))return sel;
         if(/^(html|body|:root)\b/.test(sel))sel=sel.replace(/^(html|body|:root)/,prefix);
+        else if(sel.indexOf(".phone-mockup")===0)sel=sel.replace(/^\.phone-mockup/,prefix);
         else if(sel.indexOf(prefix)!==0)sel=prefix+" "+sel;
         return sel;
       });
@@ -110,6 +111,12 @@
     var out=[],prefix='.phone-mockup[data-maomao-chat-theme-active="1"]';
     ["chatList","chatDetail"].forEach(function(page){
       var styles=theme.styles&&theme.styles[page]||{},blocks=Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[];
+      (theme.pages&&theme.pages[page]||[]).forEach(function(item){
+        if(item&&item.visible===false){
+          var hidden=TARGETS[item.id]||'[data-maomao-theme-block="'+item.id+'"]';
+          out.push(hidden.split(",").map(function(x){return prefix+" "+x.trim()}).join(",")+"{display:none !important}");
+        }
+      });
       Object.keys(styles).forEach(function(id){
         var decl=declarations(styles[id]||{}),sel=TARGETS[id]||'[data-maomao-theme-block="'+id+'"]';
         if(decl)out.push(sel.split(",").map(function(x){return prefix+" "+x.trim()}).join(",")+"{"+decl+"}");
