@@ -13,6 +13,7 @@ import {
   validateConfig
 } from '../worker/lib/scheduler-policy.js';
 import { runTick } from '../worker/lib/scheduler.js';
+import { createSchedulerGate } from '../worker/lib/scheduler-gate.js';
 
 const NOW = 1_800_000_000_000;
 const CONFIG = Object.freeze({
@@ -324,4 +325,233 @@ test('tick 的 stale 任务被作废且不认领', () => {
   assert.equal(result.superseded, 1);
   assert.equal(result.claimed, 0);
   assert.equal(store.getActivity('act_stale_tick').status, 'superseded');
+});
+
+
+const GATE_NOW = Date.UTC(2026, 0, 15, 12, 0, 0);
+const GATE_POLICY_CONFIG = Object.freeze({
+  heartbeatTtlMs: 60_000,
+  leaseDurationMs: 60_000,
+  graceMs: 30_000
+});
+
+function validGateSnapshot(overrides = {}) {
+  return {
+    userId: 'owner',
+    timeZone: 'UTC',
+    schedule: {
+      active: [{ start: '00:00', end: '24:00' }]
+    },
+    authorization: {
+      globalAutonomyEnabled: true,
+      characterAutonomyEnabled: null
+    },
+    presence: {
+      devices: [],
+      leases: []
+    },
+    policyConfig: GATE_POLICY_CONFIG,
+    contextVersion: 7,
+    ...overrides
+  };
+}
+
+function contactTask(overrides = {}) {
+  return {
+    id: 'gate_contact_1',
+    kind: 'contact',
+    character_id: 'character-a',
+    payload_json: JSON.stringify({ contextVersion: 7, synthetic: true }),
+    status: 'waiting',
+    scheduled_at: GATE_NOW,
+    attempt_count: 0,
+    max_attempts: 3,
+    ...overrides
+  };
+}
+
+function makeGate(snapshot, options = {}) {
+  const store = options.store || {
+    getSchedulerGateSnapshot: () => snapshot
+  };
+  return createSchedulerGate({
+    store,
+    now: options.now || (() => GATE_NOW),
+    config: options.config || GATE_POLICY_CONFIG
+  });
+}
+
+test('scheduler gate 缺少持久化数据源时明确 fail-closed', () => {
+  const gate = makeGate(null, { store: {} });
+  const result = gate(contactTask());
+  assert.equal(result.autonomyAllowed, false);
+  assert.equal(result.reasonCode, REASON_CODES.GATE_DATA_SOURCE_MISSING);
+});
+
+test('scheduler gate 对缺失快照和读取异常分别 fail-closed', () => {
+  const missing = makeGate(null)(contactTask());
+  assert.equal(missing.reasonCode, REASON_CODES.GATE_DATA_MISSING);
+
+  const broken = makeGate(null, {
+    store: { getSchedulerGateSnapshot() { throw new Error('synthetic read failure'); } }
+  })(contactTask());
+  assert.equal(broken.reasonCode, REASON_CODES.GATE_PROVIDER_ERROR);
+});
+
+test('scheduler gate 只在明确全局授权、角色继承授权、active 作息和同版本上下文时放行', () => {
+  const result = makeGate(validGateSnapshot())(contactTask());
+  assert.equal(result.autonomyAllowed, true);
+  assert.equal(result.characterState, 'active');
+  assert.equal(result.latestContextVersion, 7);
+  assert.equal(result.policyChecked, true);
+});
+
+test('scheduler gate 拒绝全局未授权和角色显式关闭', () => {
+  const globalOff = makeGate(validGateSnapshot({
+    authorization: { globalAutonomyEnabled: false, characterAutonomyEnabled: true }
+  }))(contactTask());
+  assert.equal(globalOff.autonomyAllowed, false);
+  assert.equal(globalOff.reasonCode, REASON_CODES.AUTONOMY_DENIED);
+
+  const roleOff = makeGate(validGateSnapshot({
+    authorization: { globalAutonomyEnabled: true, characterAutonomyEnabled: false }
+  }))(contactTask());
+  assert.equal(roleOff.autonomyAllowed, false);
+  assert.equal(roleOff.reasonCode, REASON_CODES.AUTONOMY_DENIED);
+});
+
+test('scheduler gate 拒绝无 active 作息、无效时区和不允许的角色状态', () => {
+  const noSchedule = makeGate(validGateSnapshot({ schedule: {} }))(contactTask());
+  assert.equal(noSchedule.autonomyAllowed, false);
+  assert.equal(noSchedule.reasonCode, REASON_CODES.CHARACTER_NOT_ACTIVE);
+
+  const invalidTimeZone = makeGate(validGateSnapshot({ timeZone: 'Not/A_Real_Zone' }))(contactTask());
+  assert.equal(invalidTimeZone.autonomyAllowed, false);
+  assert.equal(invalidTimeZone.reasonCode, REASON_CODES.GATE_POLICY_INVALID);
+
+  for (const state of ['busy', 'asleep', 'away']) {
+    const schedule = {
+      active: [{ start: '00:00', end: '24:00' }],
+      [state]: [{ start: '12:00', end: '13:00' }]
+    };
+    const result = makeGate(validGateSnapshot({ schedule }))(contactTask());
+    assert.equal(result.autonomyAllowed, false, state);
+    assert.equal(result.reasonCode, REASON_CODES.CHARACTER_NOT_ACTIVE, state);
+  }
+});
+
+test('任一设备持有角色前台租约时云端 defer，不受另一设备离线影响', () => {
+  const result = makeGate(validGateSnapshot({
+    presence: {
+      devices: [{ deviceId: 'device-b', authorized: true, userId: 'owner', lastHeartbeatAt: GATE_NOW - 600_000 }],
+      leases: [{
+        deviceId: 'device-a',
+        authorized: true,
+        userId: 'owner',
+        characterId: 'character-a',
+        leaseUntil: GATE_NOW + 10_000
+      }]
+    }
+  }))(contactTask());
+  assert.equal(result.autonomyAllowed, false);
+  assert.equal(result.reasonCode, REASON_CODES.FOREGROUND_LEASE_HELD);
+});
+
+test('前台租约 grace 期内 defer，超过 grace 且无其他 lease 后才允许', () => {
+  const grace = makeGate(validGateSnapshot({
+    presence: {
+      devices: [],
+      leases: [{
+        deviceId: 'device-a',
+        authorized: true,
+        userId: 'owner',
+        characterId: 'character-a',
+        leaseUntil: GATE_NOW - 1_000
+      }]
+    }
+  }))(contactTask());
+  assert.equal(grace.autonomyAllowed, false);
+  assert.equal(grace.reasonCode, REASON_CODES.FOREGROUND_LEASE_GRACE);
+
+  const expired = makeGate(validGateSnapshot({
+    presence: {
+      devices: [],
+      leases: [{
+        deviceId: 'device-a',
+        authorized: true,
+        userId: 'owner',
+        characterId: 'character-a',
+        leaseUntil: GATE_NOW - 60_000
+      }]
+    }
+  }))(contactTask());
+  assert.equal(expired.autonomyAllowed, true);
+});
+
+test('上下文任务缺少可信版本时阻止，版本变化则作废旧任务', () => {
+  const noVersion = makeGate(validGateSnapshot({ contextVersion: null }))(contactTask());
+  assert.equal(noVersion.autonomyAllowed, false);
+  assert.equal(noVersion.reasonCode, REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
+
+  const taskNoVersion = makeGate(validGateSnapshot())(contactTask({
+    payload_json: JSON.stringify({ synthetic: true })
+  }));
+  assert.equal(taskNoVersion.autonomyAllowed, false);
+  assert.equal(taskNoVersion.reasonCode, REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
+
+  const stale = makeGate(validGateSnapshot({ contextVersion: 8 }))(contactTask());
+  assert.equal(stale.autonomyAllowed, false);
+  assert.equal(stale.supersede, true);
+  assert.equal(stale.reasonCode, REASON_CODES.STALE_CONTEXT);
+});
+
+test('runTick 真实调用 scheduler gate；仅合成且合格的同版本任务可被 CAS 认领', () => {
+  const { store, query } = freshStore();
+  enqueue(store, {
+    id: 'act_gate_integration',
+    kind: 'contact',
+    payload: { contextVersion: 7, synthetic: true }
+  });
+  store.getSchedulerGateSnapshot = () => validGateSnapshot();
+
+  const result = runTick({
+    store,
+    now: GATE_NOW,
+    config: CONFIG,
+    gate: createSchedulerGate({
+      store,
+      now: () => GATE_NOW,
+      config: GATE_POLICY_CONFIG
+    })
+  });
+
+  assert.equal(result.claimed, 1);
+  assert.equal(store.getActivity('act_gate_integration').status, 'running');
+  assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 0);
+  assert.equal(query('SELECT COUNT(*) AS total FROM push_deliveries')[0].total, 0);
+});
+
+test('runTick 将 context version 变化的任务标记 superseded，不认领', () => {
+  const { store } = freshStore();
+  enqueue(store, {
+    id: 'act_gate_stale',
+    kind: 'contact',
+    payload: { contextVersion: 7, synthetic: true }
+  });
+  store.getSchedulerGateSnapshot = () => validGateSnapshot({ contextVersion: 8 });
+
+  const result = runTick({
+    store,
+    now: GATE_NOW,
+    config: CONFIG,
+    gate: createSchedulerGate({
+      store,
+      now: () => GATE_NOW,
+      config: GATE_POLICY_CONFIG
+    })
+  });
+
+  assert.equal(result.claimed, 0);
+  assert.equal(result.superseded, 1);
+  assert.equal(store.getActivity('act_gate_stale').status, 'superseded');
 });
