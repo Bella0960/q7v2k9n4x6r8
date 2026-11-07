@@ -164,7 +164,8 @@ test('AI sees current-turn images and can only add an explicit avatar candidate 
   assert.match(chatDetailSource, /if\s*\(replySaved\s*&&\s*!isGroupChat\s*&&\s*window\.RoleAvatarLibrary/);
   assert.ok(chatDetailSource.includes("source: 'chat'"));
   assert.ok(chatDetailSource.includes('var avatarPairs = parsedAvatarCandidate.pairs || [];'));
-  assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.linkPair'));
+  assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.addAssetPair'));
+  assert.ok(avatarLibrarySource.includes('function addAssetPair(roleId, firstAssetId, secondAssetId, options)'));
 });
 
 test('ordinary group, background and non-image silent turns cannot add avatar candidates', () => {
@@ -257,6 +258,8 @@ test('portrait archive provides a two-image manual pairing fallback for AI recog
   assert.ok(characterManagerSource.includes('data-avatar-pair-action="pick"'));
   assert.ok(characterManagerSource.includes('data-avatar-pair-action="create"'));
   assert.ok(characterManagerSource.includes('data-avatar-pair-action="cancel"'));
+  assert.ok(characterManagerSource.includes("if (viewId !== 'profileView')"));
+  assert.ok(characterManagerSource.includes("avatarPairDraftIds = [];"));
   assert.ok(characterManagerSource.includes('avatarPairDraftIds.length >= 2'));
   assert.ok(characterManagerSource.includes("label: '手动配对'"));
   assert.ok(characterManagerSource.includes('const originLabel = item.source === \'chat\''));
