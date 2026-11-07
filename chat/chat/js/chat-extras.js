@@ -575,7 +575,7 @@
           assetId: String(stored.value.assetId),
           desc: '',
           text: '[图片]',
-          time: Date.now(),
+          time: Date.now() + i,
           mid: mid,
           attachmentSource: 'upload'
         });
