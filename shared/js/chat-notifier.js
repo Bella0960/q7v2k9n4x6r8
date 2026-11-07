@@ -562,18 +562,6 @@
             !cloud._internal.readDevice()) return false;
 
         var roleId = String(candidate.contact.id);
-        try {
-            await ensureCloudExecutorPresence(roleId, cloud);
-            // Flush content-free revision events from this device before the
-            // task captures a version, so a just-sent user message is not stale.
-            if (typeof cloud.flushCharacterContextVersion === 'function') {
-                await cloud.flushCharacterContextVersion(roleId);
-            }
-        } catch (presenceError) {
-            resetProactiveAttempt(roleId);
-            return true;
-        }
-
         var globalSetting;
         try {
             globalSetting = await cloud.getGlobalAutonomy();
@@ -592,6 +580,18 @@
             return true;
         }
         if (roleSetting && roleSetting.enabled === false) return true;
+
+        try {
+            await ensureCloudExecutorPresence(roleId, cloud);
+            // Flush content-free revision events from this device before the
+            // task captures a version, so a just-sent user message is not stale.
+            if (typeof cloud.flushCharacterContextVersion === 'function') {
+                await cloud.flushCharacterContextVersion(roleId);
+            }
+        } catch (presenceError) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
 
         var context;
         try {
