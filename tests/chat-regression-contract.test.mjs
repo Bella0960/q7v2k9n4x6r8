@@ -1295,7 +1295,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v201/);
+  assert.match(serviceWorker, /phone-app-pwa-v202/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1886,7 +1886,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v201/);
+  assert.match(serviceWorker, /phone-app-pwa-v202/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2630,6 +2630,129 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
   assert.equal(persistedHistory[0].status, 'returned', 'retry also completes the original transfer return status');
   assert.equal(JSON.parse(financeRecords).length, 1, 'retry restores the missing finance ledger detail once');
   assert.equal(renders, 1);
+});
+
+test('角色退回聊天转账必须关联唯一原卡，重复生成不能创建第二张退回卡', () => {
+  const start = detail.indexOf('function insertPayCards(historyList, items)');
+  const end = detail.indexOf('// ===== AI 回复清洗', start);
+  assert.ok(start >= 0 && end > start, 'transfer return card writer must be present');
+  const source = detail.slice(start, end);
+  let idCounter = 0;
+  let saved = null;
+  let renders = 0;
+  const toasts = [];
+  const sandbox = {
+    ensureMid(message) {
+      if (!message.mid) message.mid = 'generated-' + (++idCounter);
+      return message.mid;
+    },
+    saveMessages(next) { saved = JSON.parse(JSON.stringify(next)); return true; },
+    renderAllMessages() { renders += 1; },
+    showToast(message) { toasts.push(message); }
+  };
+  runInNewContext(source, sandbox);
+  const history = [
+    { role: 'user', type: 'transfer', amount: '12.00', status: 'unopened', mid: 'source-old' },
+    { role: 'user', type: 'transfer', amount: '12.00', status: 'unopened', mid: 'source-new' }
+  ];
+  const returnedItem = [{ type: 'transfer', amount: '12.00', message: '退还给你' }];
+  assert.equal(sandbox.insertPayCards(history, returnedItem), true);
+  assert.equal(history[0].status, 'unopened', 'the older equal-amount transfer must remain untouched');
+  assert.equal(history[1].status, 'returning', 'the latest eligible original transfer is linked');
+  const returnCard = history.find(row => row.role === 'assistant' && row.type === 'transfer');
+  assert.ok(returnCard);
+  assert.equal(returnCard.returnOfPaymentId, 'source-new');
+  assert.equal(history[1].returnCardId, returnCard.mid);
+  const firstLength = history.length;
+  assert.equal(sandbox.insertPayCards(history, returnedItem), true);
+  assert.equal(history.length, firstLength, 'reprocessing the same return marker must not append another card');
+  assert.equal(history.filter(row => row.returnOfPaymentId === 'source-new').length, 1);
+  assert.equal(renders, 1, 'a duplicate return marker must not redraw or persist another card');
+  assert.equal(saved.length, firstLength);
+});
+
+test('退回卡按 returnOfPaymentId 更新原转账，等额的另一笔转账不受影响', async () => {
+  const start = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const end = detail.indexOf('// ===== 群投票', start);
+  assert.ok(start >= 0 && end > start, 'payment-card handler must be present');
+  const source = detail.slice(start, end);
+  const clone = value => JSON.parse(JSON.stringify(value));
+  let wallet = { balance: 10, history: [] };
+  let persisted = [
+    { role: 'user', type: 'transfer', amount: '8.00', status: 'returning', mid: 'source-a', returnCardId: 'return-a' },
+    { role: 'user', type: 'transfer', amount: '8.00', status: 'returning', mid: 'source-b', returnCardId: 'return-b' },
+    { role: 'assistant', type: 'transfer', amount: '8.00', message: '退还给你', status: 'unopened', mid: 'return-a', returnOfPaymentId: 'source-a' }
+  ];
+  let finance = '[]';
+  const sandbox = {
+    window: { MaoMaoWalletLedger: { runExclusive: task => task() } },
+    loadMessages: () => clone(persisted),
+    ensureMid: message => message.mid,
+    getWorkData: () => clone(wallet),
+    saveWorkData: next => { wallet = clone(next); return true; },
+    saveMessages: next => { persisted = clone(next); return true; },
+    showToast: () => {},
+    renderAllMessages: () => {},
+    openPayResult: () => {},
+    currentCharacter: { name: '角色' },
+    localStorage: {
+      getItem: key => key === 'finance_records' ? finance : null,
+      setItem: (key, value) => { if (key === 'finance_records') finance = String(value); }
+    }
+  };
+  runInNewContext(source, sandbox);
+  const event = { currentTarget: { getAttribute: name => name === 'data-mid' ? 'return-a' : '' } };
+  await sandbox.handlePayCardClick(event);
+  assert.equal(wallet.balance, 18);
+  assert.equal(wallet.history.length, 1);
+  assert.equal(wallet.history[0].reversalOfPaymentId, 'source-a');
+  assert.equal(persisted[0].status, 'returned');
+  assert.equal(persisted[1].status, 'returning', 'the same amount must not cause the other original transfer to be marked returned');
+  assert.equal(persisted[2].status, 'received');
+  const financeRows = JSON.parse(finance);
+  assert.equal(financeRows.length, 1);
+  assert.equal(financeRows[0].reversalOfPaymentId, 'source-a');
+  await sandbox.handlePayCardClick(event);
+  assert.equal(wallet.balance, 18, 'reopening the completed return card must not credit again');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(JSON.parse(finance).length, 1);
+});
+
+test('旧退回卡缺少原交易编号且有多笔等额候选时，必须停止入账', async () => {
+  const start = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const end = detail.indexOf('// ===== 群投票', start);
+  const source = detail.slice(start, end);
+  const clone = value => JSON.parse(JSON.stringify(value));
+  let wallet = { balance: 25, history: [] };
+  const persisted = [
+    { role: 'user', type: 'transfer', amount: '6.00', status: 'returning', mid: 'source-a' },
+    { role: 'user', type: 'transfer', amount: '6.00', status: 'returning', mid: 'source-b' },
+    { role: 'assistant', type: 'transfer', amount: '6.00', message: '退还给你', status: 'unopened', mid: 'legacy-return' }
+  ];
+  let finance = '[]';
+  const toasts = [];
+  const sandbox = {
+    window: { MaoMaoWalletLedger: { runExclusive: task => task() } },
+    loadMessages: () => clone(persisted),
+    ensureMid: message => message.mid,
+    getWorkData: () => clone(wallet),
+    saveWorkData: next => { wallet = clone(next); return true; },
+    saveMessages: () => true,
+    showToast: message => toasts.push(message),
+    renderAllMessages: () => {},
+    openPayResult: () => {},
+    currentCharacter: { name: '角色' },
+    localStorage: {
+      getItem: key => key === 'finance_records' ? finance : null,
+      setItem: (key, value) => { if (key === 'finance_records') finance = String(value); }
+    }
+  };
+  runInNewContext(source, sandbox);
+  await sandbox.handlePayCardClick({ currentTarget: { getAttribute: name => name === 'data-mid' ? 'legacy-return' : '' } });
+  assert.equal(wallet.balance, 25, 'ambiguous legacy association must not credit the wallet');
+  assert.equal(wallet.history.length, 0);
+  assert.equal(JSON.parse(finance).length, 0);
+  assert.match(toasts.at(-1), /原转账对应关系不明确/);
 });
 
 test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
