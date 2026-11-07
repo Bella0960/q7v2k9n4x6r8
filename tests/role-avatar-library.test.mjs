@@ -205,8 +205,8 @@ test('character profile loads the shared media stack before the avatar library a
   const storage = characterPage.indexOf('phone_storage.js');
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
-  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v5');
-  const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v5');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v6');
+  const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v6');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
   assert.ok(characterPage.includes('id="avatarLibraryGrid"') === false,
@@ -258,10 +258,10 @@ test('deleting a character releases only that character avatar references after 
 });
 
 test('PWA shell caches the role portrait archive and its runtime at v178', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v183'"));
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v184'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
-  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v5'"));
-  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v5'"));
+  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v6'"));
+  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v6'"));
 });
 
 
@@ -607,4 +607,46 @@ test('direct pair lookup returns the matching role-scoped relationship for eithe
   assert.equal(api.getPairForAvatar('role-a', b.value.id).id, pair.value.id);
   assert.equal(api.getPairForAvatar('role-b', a.value.id), null);
   assert.equal(api.getPairForAvatar('role-a', other.value.id), null);
+});
+
+test('renaming a pair sanitizes and saves only its label while preserving images, order and active avatar', async () => {
+  const { api, assets, refs } = createLibrary();
+  const first = await api.add('role-a', 'data:image/jpeg;base64,FIRST');
+  const second = await api.add('role-a', 'data:image/jpeg;base64,SECOND');
+  const active = await api.add('role-a', 'data:image/jpeg;base64,ACTIVE');
+  api.setActive('role-a', active.value.id);
+  const pair = api.linkPair('role-a', first.value.id, second.value.id, {
+    label: '初始名称', source: 'chat', createdAt: 123
+  });
+  const assetCount = assets.size;
+  const firstRef = refs.has(first.value.assetId + '|role-avatar|role-a');
+  const secondRef = refs.has(second.value.assetId + '|role-avatar|role-a');
+
+  const renamed = api.renamePair('role-a', pair.value.id, '  <新情头>  ');
+  assert.equal(renamed.ok, true);
+  assert.equal(renamed.value.label, '新情头');
+  assert.deepEqual(Array.from(renamed.value.avatarIds), [first.value.id, second.value.id]);
+  assert.equal(renamed.value.source, 'chat');
+  assert.equal(renamed.value.createdAt, 123);
+  assert.equal(api.getPairForAvatar('role-a', first.value.id).label, '新情头');
+  assert.equal(api.getActive('role-a').id, active.value.id);
+  assert.equal(assets.size, assetCount);
+  assert.equal(refs.has(first.value.assetId + '|role-avatar|role-a'), firstRef);
+  assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), secondRef);
+
+  const blank = api.renamePair('role-a', pair.value.id, '  ');
+  assert.equal(blank.ok, false);
+  assert.equal(blank.error.code, 'VALIDATION_FAILED');
+  assert.equal(api.getPairs('role-a')[0].label, '新情头');
+  assert.equal(api.renamePair('role-a', 'pair_missing', '新名字').error.code, 'NOT_FOUND');
+});
+
+test('renaming truncates pair names to the library display limit', async () => {
+  const { api } = createLibrary();
+  const first = await api.add('role-a', 'data:image/jpeg;base64,FIRST');
+  const second = await api.add('role-a', 'data:image/jpeg;base64,SECOND');
+  const pair = api.linkPair('role-a', first.value.id, second.value.id);
+  const renamed = api.renamePair('role-a', pair.value.id, '名'.repeat(50));
+  assert.equal(renamed.ok, true);
+  assert.equal(renamed.value.label.length, 36);
 });
