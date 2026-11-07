@@ -410,9 +410,8 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
   const listeners = new Map();
   const calls = [];
   let intervalCallback = null;
-  let resolveHeartbeat;
+  let heartbeatSignal = null;
   let markHeartbeatStarted;
-  const heartbeatPending = new Promise(resolve => { resolveHeartbeat = resolve; });
   const heartbeatStarted = new Promise(resolve => { markHeartbeatStarted = resolve; });
   const browserWindow = {
     setInterval(callback) {
@@ -446,7 +445,18 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
     }
     if (url === '/api/presence/heartbeat') {
       markHeartbeatStarted();
-      return heartbeatPending;
+      heartbeatSignal = options.signal;
+      return new Promise((resolve, reject) => {
+        if (!options.signal) {
+          reject(new Error('presence heartbeat should support AbortSignal'));
+          return;
+        }
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true });
+      });
     }
     throw new Error('Hidden page must not write a role lease: ' + url);
   };
@@ -464,10 +474,10 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
   await heartbeatStarted;
   browserDocument.visibilityState = 'hidden';
   listeners.get('visibilitychange')();
-  resolveHeartbeat(response({ ok: true }));
 
   const manager = await startPromise;
   assert.ok(manager && typeof manager.stop === 'function');
+  assert.equal(heartbeatSignal.aborted, true, '标签页隐藏时应取消自己的在途请求');
   assert.equal(calls.filter(call => call.url === '/api/presence/heartbeat').length, 1);
   assert.equal(
     calls.some(call => call.url === '/api/characters/role-123/lease'),
