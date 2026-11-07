@@ -280,6 +280,28 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
 });
 
+test('清理任务不会提前删除超过一小时但仍有效的配对码', async () => {
+  const ctx = setupTestStore(openTestDb(), {
+    DEVICE_PAIRING_TOKEN_TTL_MS: String(2 * 60 * 60 * 1000)
+  });
+  const owner = makeDevice();
+  await registerDevice(ctx, owner);
+
+  const issued = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: owner
+  });
+  assert.equal(issued.status, 200);
+
+  ctx.store.cleanupDevicePairingTokens(Date.now() + 60 * 60 * 1000 + 1000);
+  const newDevice = makeDevice();
+  const paired = await registerDevice(ctx, newDevice, {
+    pairingToken: issued.payload.pairingToken
+  });
+  assert.equal(paired.status, 200);
+  assert.equal(paired.payload.device.enrollmentMode, 'paired');
+});
+
 test('单设备每小时配对签发上限包含已消费配对码且由原子存储约束', async () => {
   const ctx = setupTestStore(openTestDb());
   const owner = makeDevice();
