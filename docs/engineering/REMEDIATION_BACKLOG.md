@@ -219,7 +219,7 @@ Acceptance:
 
 Storage: small group metadata in `contact_groups_v1`; post audience snapshots are additive fields on new Moments records. No server sync or new database is introduced.
 
-Verification note (2026-11-07): shared module and all affected inline scripts pass syntax parsing; 14/14 new contact-group/privacy test cases passed in an isolated V8 compatibility harness, including audience snapshot stability, backup inclusion, and AI-recipient privacy boundaries. This does not replace running the project's Node test command or production build. PR-triggered GitHub Actions jobs report failure with `runner_id=0` and zero executed steps; downloadable logs are unavailable, so CI has not verified the build/tests. Desktop/phone manual acceptance remains open.
+Verification note (2026-11-07): shared module, affected inline scripts, Node contract test file, and Playwright browser test file pass syntax parsing; 14/14 policy/UI contract cases passed in an isolated V8 compatibility harness. A new Playwright 390px phone-viewport flow is included in `npm run test:contact:groups` for Contacts CRUD/filtering, independent Moments audience/@mention selection, empty-exclusion rejection, post snapshots, owner-feed visibility, and zero API requests to excluded AI roles. The browser flow and repository Node command have not yet executed because PR Actions jobs report failure before runner allocation (`runner_id=0`, zero steps); downloadable logs are unavailable. Production build and desktop/phone manual acceptance remain open.
 
 
 ### AI-IMG-001 — Complete role-based image generation and gallery
