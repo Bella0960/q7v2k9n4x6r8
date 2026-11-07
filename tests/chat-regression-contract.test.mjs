@@ -1295,7 +1295,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v199/);
+  assert.match(serviceWorker, /phone-app-pwa-v200/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1886,7 +1886,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v199/);
+  assert.match(serviceWorker, /phone-app-pwa-v200/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
