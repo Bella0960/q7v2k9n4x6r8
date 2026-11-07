@@ -226,7 +226,7 @@ test('same raw ID across an AI role and a real user never shares conversation re
   assert.equal(runtime.data.has('chat_history_collision-id'), false);
 });
 
-test('corrupt history, invalid message IDs, and storage failures never claim success', () => {
+test('corrupt history, invalid message IDs or timestamps, and storage failures never claim success', () => {
   const runtime = createRuntime();
   acceptFriend(runtime.directory);
   const ref = refFor(runtime);
@@ -241,6 +241,9 @@ test('corrupt history, invalid message IDs, and storage failures never claim suc
   runtime.data.delete(key);
   assert.equal(runtime.repository.appendMessage(ref, {
     mid: '', type: 'text', text: '缺少消息 ID'
+  }).error, 'invalid_message');
+  assert.equal(runtime.repository.appendMessage(ref, {
+    mid: 'invalid-time', type: 'text', text: '非法时间', createdAt: Infinity
   }).error, 'invalid_message');
   runtime.setFailures(false, true);
   const failure = runtime.repository.appendMessage(ref, {
@@ -267,13 +270,42 @@ test('clear affects only the selected accepted real-user conversation', () => {
 
 test('clear remains available after the friend is blocked or removed', () => {
   const runtime = createRuntime();
+  acceptFriend(runtime.directory, 'blocked-friend', 'block-request');
+  acceptFriend(runtime.directory, 'removed-friend', 'remove-request');
+  const blockedRef = refFor(runtime, 'blocked-friend');
+  const removedRef = refFor(runtime, 'removed-friend');
+  runtime.repository.appendMessage(blockedRef, {
+    mid: 'before-block', type: 'text', text: '本地记录 A', createdAt: 800
+  });
+  runtime.repository.appendMessage(removedRef, {
+    mid: 'before-remove', type: 'text', text: '本地记录 B', createdAt: 801
+  });
+  assert.equal(runtime.directory.block(blockedRef.id).ok, true);
+  assert.equal(runtime.directory.removeFriend(removedRef.id).ok, true);
+  assert.equal(runtime.repository.readHistory(blockedRef).error, 'not_accepted_friend');
+  assert.equal(runtime.repository.readHistory(removedRef).error, 'not_accepted_friend');
+  assert.equal(runtime.repository.clear(blockedRef).ok, true);
+  assert.equal(runtime.repository.clear(removedRef).ok, true);
+  assert.equal(runtime.data.has(runtime.repository.storageKeyPrefix + encodeURIComponent(blockedRef.id)), false);
+  assert.equal(runtime.data.has(runtime.repository.storageKeyPrefix + encodeURIComponent(removedRef.id)), false);
+});
+
+
+test('duplicate stored message IDs are rejected as corrupt history', () => {
+  const runtime = createRuntime();
   acceptFriend(runtime.directory);
   const ref = refFor(runtime);
-  runtime.repository.appendMessage(ref, {
-    mid: 'before-block', type: 'text', text: '本地记录', createdAt: 800
-  });
-  assert.equal(runtime.directory.block(ref.id).ok, true);
-  assert.equal(runtime.repository.readHistory(ref).error, 'not_accepted_friend');
-  assert.equal(runtime.repository.clear(ref).ok, true);
-  assert.equal(runtime.data.has(runtime.repository.storageKeyPrefix + encodeURIComponent(ref.id)), false);
+  const key = runtime.repository.storageKeyPrefix + encodeURIComponent(ref.id);
+  const message = {
+    mid: 'duplicate-mid', type: 'text', sender: 'self',
+    deliveryState: 'local_only', createdAt: 900, text: '重复记录'
+  };
+  runtime.data.set(key, JSON.stringify({
+    schemaVersion: runtime.repository.version,
+    conversationRef: ref,
+    createdAt: 900,
+    updatedAt: 901,
+    messages: [message, message]
+  }));
+  assert.equal(runtime.repository.readHistory(ref).error, 'corrupt_history');
 });
