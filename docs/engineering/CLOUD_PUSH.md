@@ -660,3 +660,20 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增亲属卡用例：模拟 localStorage 静默丢弃写入，确认状态更新返回 storage 失败且读取到的旧状态保持不变。
 - 以上测试已写入仓库但尚未执行；Node 测试、Vite build、浏览器本地存储故障注入和 Android 真机仍为 NOT RUN / NOT VERIFIED。
 - 未合并 PR、未部署 Worker、未更新 APK。
+
+
+## 24. 多标签页收款互斥与刷新后状态复核（M2.12 follow-up）
+
+- 聊天页红包 / 转账领取现在先取得同源 Web Locks 全局钱包互斥锁 `maomao-wallet-ledger-v1`，再重新读取角色聊天历史与钱包账本。不同 paymentId 的并发入账也会串行化，避免两个页面基于同一个旧余额互相覆盖。
+- 同一页面使用 paymentId 防连点集合，并通过 `aria-busy` 标记正在处理的卡片；锁内再次确认卡片状态。另一标签页若已完成领取，等待中的操作重新读取后只显示已完成状态，不再重复加余额。
+- 若浏览器提供 Web Locks，跨标签页操作由浏览器锁协调；若不提供，则保留本页防连点，并提示用户不要在多个聊天页同时领取。**旧浏览器 fallback 不保证跨标签页互斥**，不会把它宣称为完整并发保护。
+- 已完成的聊天卡若对应钱包流水缺失，会 fail-closed：不会仅凭卡片状态再增加一次余额。钱包已记账而聊天记录尚未同步时，仍按 paymentId 幂等补齐卡片和账本明细。
+- PWA shell cache 更新到 phone-app-pwa-v188。
+
+### 回归覆盖与验证边界
+
+- 新增多标签页并发契约：两个页面同时领取不同卡片时两笔都计入；第三个页面重复领取第一张卡时不重复入账；钱包和财务记录均按 paymentId 唯一。
+- 新增旧浏览器 fallback 契约：本页仍可执行，但明确告知跨页面限制。
+- 测试源码已写入，但尚未在 Node runner / 浏览器执行；Web Locks 真机 / 多页面验证、Vite build 和 Android 行为仍为 NOT RUN / NOT VERIFIED。
+- 本锁覆盖聊天页红包 / 转账收款入口，不代表项目内其他独立钱包写入入口已统一迁移到同一锁。
+- 未合并 PR、未部署 Worker、未更新 APK。
