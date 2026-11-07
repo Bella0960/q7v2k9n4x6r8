@@ -337,6 +337,21 @@
     );
   }
 
+  // Browser timers use a signed 32-bit delay. Larger values can be clamped
+  // by the browser to a near-immediate timer, causing a heartbeat storm.
+  var MAX_BROWSER_TIMER_DELAY_MS = 2147483647;
+
+  function getPresenceRenewInterval(heartbeatTtlMs, leaseDurationMs) {
+    var ttl = Number(heartbeatTtlMs);
+    var lease = Number(leaseDurationMs);
+    if (!Number.isSafeInteger(ttl) || ttl <= 0 ||
+        !Number.isSafeInteger(lease) || lease <= 0) {
+      return null;
+    }
+    var target = Math.max(1, Math.floor(Math.min(ttl, lease) / 3));
+    return Math.min(MAX_BROWSER_TIMER_DELAY_MS, target);
+  }
+
   /**
    * Starts a character-scoped foreground lease while this chat page is visible.
    * All timing comes from the authenticated server config; no client defaults.
@@ -350,13 +365,13 @@
     if (!readDevice()) throw new Error('设备尚未连接云端');
 
     var config = await requestDeviceMetadata('/api/presence/config');
-    var ttl = Number(config.heartbeatTtlMs);
-    var leaseDuration = Number(config.leaseDurationMs);
-    if (!Number.isSafeInteger(ttl) || ttl <= 0 ||
-        !Number.isSafeInteger(leaseDuration) || leaseDuration <= 0) {
+    var renewInterval = getPresenceRenewInterval(
+      config.heartbeatTtlMs,
+      config.leaseDurationMs
+    );
+    if (renewInterval == null) {
       throw new Error('云端没有提供有效的心跳 TTL / 租约时长配置');
     }
-    var renewInterval = Math.max(1, Math.floor(Math.min(ttl, leaseDuration) / 3));
 
     var stopped = false;
     var running = false;
@@ -975,6 +990,6 @@
     getStatus: getStatus,
     refreshSettings: refreshSettings,
     mountSettings: mountSettings,
-    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice }
+    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice, getPresenceRenewInterval: getPresenceRenewInterval }
   };
 })(typeof window !== 'undefined' ? window : self);
