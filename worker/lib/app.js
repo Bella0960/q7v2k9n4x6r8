@@ -17,6 +17,7 @@ const FRIEND_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const FRIEND_MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const FRIEND_MESSAGE_LIMIT = 50;
 const FRIEND_MESSAGE_MAX_CHARS = 2000;
+const FRIEND_MESSAGES_PER_MINUTE = 60;
 const FRIEND_REGISTRATIONS_PER_IP_PER_HOUR = 20;
 const FRIEND_REQUESTS_PER_HOUR = 30;
 const MAX_SUBSCRIPTIONS_PER_DEVICE = 10;
@@ -566,19 +567,25 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (charCount > FRIEND_MESSAGE_MAX_CHARS) {
       throw new ApiError(400, 'FRIEND_MESSAGE_TOO_LONG', '单条文字消息最多 2000 个字符');
     }
+    const timestamp = now();
     const result = await store.insertFriendMessage({
       id: randomToken(16),
       senderId: account.user_id,
       recipientId: friendId,
       clientMessageId,
       body: messageBody,
-      now: now()
+      now: timestamp,
+      windowStart: timestamp - 60000,
+      rateLimit: FRIEND_MESSAGES_PER_MINUTE
     });
     if (result.kind === 'not_friends') {
       throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能发送消息');
     }
     if (result.kind === 'friend_unavailable') {
       throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '这位好友账号暂不可用');
+    }
+    if (result.kind === 'rate_limited') {
+      throw new ApiError(429, 'FRIEND_MESSAGE_RATE_LIMITED', '一分钟内发送消息过多，请稍后再试');
     }
     if (result.kind === 'idempotency_conflict') {
       throw new ApiError(409, 'MESSAGE_IDEMPOTENCY_CONFLICT', '这条消息的发送凭据已被其他内容使用，请重新发送');
