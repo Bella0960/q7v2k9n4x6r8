@@ -171,3 +171,46 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(source, /面向青少年用户/);
   assert.match(source, /npcFriendWelcome: true/);
 });
+
+test('NPC requests, settings and AI-visible names are isolated by selected main role', async () => {
+  const h = createHarness();
+  const first = await h.context.NPCSocial.discoverNow();
+  assert.equal(first.created, true);
+  h.context.NPCSocial.setSettings({ enabled: true, intervalHours: 12 });
+
+  h.roles.push({
+    id: 'second-role',
+    name: '第二主角色',
+    persona: '另一套完全独立的人物设定。',
+    worldBookIds: [],
+    npcCharacters: [{ id: 'second-relation', name: '第二角色的旧人物' }]
+  });
+  h.context.localStorage.setItem('phone_current_contact', 'second-role');
+
+  assert.equal(h.context.NPCSocial.getPendingCount(), 0, 'another role must not see the first role pending request');
+  assert.equal(h.context.NPCSocial.getRequests().length, 0);
+  assert.equal(h.context.NPCSocial.getSettings().enabled, false, 'auto discovery defaults off for a new role');
+  h.context.NPCSocial.setSettings({ enabled: true, intervalHours: 48 });
+  h.context.localStorage.setItem('phone_current_contact', 'main-role');
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1);
+  assert.equal(h.context.NPCSocial.getSettings().enabled, true);
+  assert.equal(h.context.NPCSocial.getSettings().intervalHours, 12);
+  h.context.localStorage.setItem('phone_current_contact', 'second-role');
+  assert.equal(h.context.NPCSocial.getSettings().intervalHours, 48);
+});
+
+test('legacy NPC requests migrate only to their recorded main role without deleting the backup', () => {
+  const h = createHarness();
+  const legacy = [
+    { id: 'legacy-main', mainRoleId: 'main-role', status: 'pending', createdAt: 2, npc: { id: 'npc-a', name: '甲' } },
+    { id: 'legacy-second', mainRoleId: 'second-role', status: 'pending', createdAt: 1, npc: { id: 'npc-b', name: '乙' } }
+  ];
+  h.data.set('npc_friend_requests_v1', JSON.stringify(legacy));
+  assert.equal(h.context.NPCSocial.getRequests().length, 1);
+  assert.equal(h.context.NPCSocial.getRequests()[0].id, 'legacy-main');
+  assert.equal(h.data.get('npc_friend_requests_v1'), JSON.stringify(legacy), 'legacy data remains as a backup');
+
+  h.context.localStorage.setItem('phone_current_contact', 'second-role');
+  assert.equal(h.context.NPCSocial.getRequests().length, 1);
+  assert.equal(h.context.NPCSocial.getRequests()[0].id, 'legacy-second');
+});
