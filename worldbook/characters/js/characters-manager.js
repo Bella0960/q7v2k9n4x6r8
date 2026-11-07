@@ -1436,11 +1436,19 @@ async function handleDeleteRole(id) {
         return;
     }
 
-    if (String(getCurrentPhoneContactId() || '') === String(id)) {
-        localStorage.removeItem(CURRENT_CONTACT_KEY);
-        localStorage.removeItem(LEGACY_CONTACT_KEY);
+    try {
+        if (String(getCurrentPhoneContactId() || '') === String(id)) {
+            localStorage.removeItem(CURRENT_CONTACT_KEY);
+            localStorage.removeItem(LEGACY_CONTACT_KEY);
+        }
+    } catch (error) {
+        console.warn('角色已删除，但当前联系人状态暂时无法清理:', error);
     }
-    renderRoleList();
+    try {
+        renderRoleList();
+    } catch (error) {
+        console.warn('角色已删除，但角色列表刷新失败:', error);
+    }
 
     const library = window.RoleAvatarLibrary;
     if (!library || typeof library.removeRole !== 'function') {
