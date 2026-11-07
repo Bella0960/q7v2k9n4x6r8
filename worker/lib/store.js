@@ -36,29 +36,29 @@ class CloudStore {
   }
 
   insertBootstrapDevice(device) {
-    const row = this.exec(
-      `INSERT INTO devices
-        (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE EXISTS (
-         SELECT 1 FROM device_bootstrap
-         WHERE id = 1 AND claimed_at IS NULL
-       )
-       AND NOT EXISTS (
-         SELECT 1 FROM devices WHERE revoked_at IS NULL
-       )
+    // Claim and insert are synchronous within this Durable Object request, so
+    // another request cannot interleave between the gate update and insertion.
+    const claim = this.exec(
+      `UPDATE device_bootstrap
+       SET claimed_at = ?, claimed_device_id = ?
+       WHERE id = 1
+         AND claimed_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM devices WHERE revoked_at IS NULL)
        RETURNING id`,
-      device.id,
-      device.userId || 'owner',
-      device.secretHash,
-      device.label || '',
-      device.platform || '',
-      device.userAgent || '',
-      device.ipHash || '',
       device.now,
-      device.now
+      device.id
     )[0];
-    return Boolean(row);
+    if (!claim) return false;
+    try {
+      this.insertDevice(device);
+      return true;
+    } catch (error) {
+      this.exec(
+        'UPDATE device_bootstrap SET claimed_at = NULL, claimed_device_id = NULL WHERE id = 1 AND claimed_device_id = ?',
+        device.id
+      );
+      throw error;
+    }
   }
 
   updateDeviceProfile(deviceId, { label, platform }) {
