@@ -6258,7 +6258,7 @@
                         );
                         fullText = parsedRoleSticker.text;
                     }
-                    var parsedAvatarCandidate = { text: fullText, candidates: [] };
+                    var parsedAvatarCandidate = { text: fullText, candidates: [], pairs: [] };
                     if (window.ChatImageVision && typeof window.ChatImageVision.parseAvatarCandidateReply === 'function') {
                         var avatarCandidateLimit = streamResult.ok && !isGroupChat && !isRegen &&
                             !contextOnly && (!silent || visionImageMids.length) && presenceMode === 'online' ? 1 : 0;
@@ -6306,8 +6306,9 @@
                         return stickerMessage;
                     });
                     var avatarCandidates = parsedAvatarCandidate.candidates || [];
-                    if (fullText || aiStickerMessages.length || avatarCandidates.length) {
-                        // 正文、表情与头像候选都在同一轮回复中处理；候选只进收藏，不自动替换头像。
+                    var avatarPairs = parsedAvatarCandidate.pairs || [];
+                    if (fullText || aiStickerMessages.length || avatarCandidates.length || avatarPairs.length) {
+                        // 正文、表情、单张头像和双图配对在同一轮回复中处理；只保存候选，不自动替换当前头像。
                         var aiMsg = null;
                         if (fullText) {
                             aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
@@ -6318,12 +6319,57 @@
                         });
                         window.__groupPrivateCardPending = false;
                         var replySaved = saveMessages(historyList);
-                        if (replySaved && avatarCandidates.length && !isGroupChat &&
-                            window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.addAsset === 'function') {
+                        var avatarRoleId = aliasRoleId || currentCharacter.id;
+                        if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
+                            typeof window.RoleAvatarLibrary.addAsset === 'function') {
+                            // 双图配对必须先成功保存两张头像，再创建关系；失败时回滚本轮新建的孤立条目。
+                            for (var avatarPairIndex = 0; avatarPairIndex < avatarPairs.length; avatarPairIndex++) {
+                                var avatarPair = avatarPairs[avatarPairIndex];
+                                var pairImages = avatarPair && Array.isArray(avatarPair.images) ? avatarPair.images.slice(0, 2) : [];
+                                if (pairImages.length !== 2) continue;
+                                var pairSavedItems = [];
+                                var pairSaveFailed = false;
+                                for (var pairImageIndex = 0; pairImageIndex < 2; pairImageIndex++) {
+                                    var pairImage = pairImages[pairImageIndex];
+                                    var pairItemResult = await window.RoleAvatarLibrary.addAsset(
+                                        avatarRoleId,
+                                        pairImage.assetId,
+                                        { source: 'chat', label: pairImageIndex === 0 ? '配对头像 · A' : '配对头像 · B' }
+                                    );
+                                    if (!pairItemResult || !pairItemResult.ok || !pairItemResult.value) {
+                                        pairSaveFailed = true;
+                                        break;
+                                    }
+                                    pairSavedItems.push(pairItemResult);
+                                }
+                                var pairLinkResult = null;
+                                if (!pairSaveFailed && pairSavedItems.length === 2 &&
+                                    typeof window.RoleAvatarLibrary.linkPair === 'function') {
+                                    pairLinkResult = window.RoleAvatarLibrary.linkPair(
+                                        avatarRoleId,
+                                        pairSavedItems[0].value.id,
+                                        pairSavedItems[1].value.id,
+                                        { source: 'chat', label: '聊天配对头像' }
+                                    );
+                                }
+                                if (pairLinkResult && pairLinkResult.ok) {
+                                    if (typeof showToast === 'function') showToast('TA 把这两张图片作为一组配对头像收藏了，当前头像没有改变');
+                                } else {
+                                    // 仅回滚本轮新建且尚未参与其他配对的条目；原有收藏始终保留。
+                                    for (var rollbackIndex = 0; rollbackIndex < pairSavedItems.length; rollbackIndex++) {
+                                        var rollbackItem = pairSavedItems[rollbackIndex];
+                                        if (rollbackItem.meta && rollbackItem.meta.linked && window.RoleAvatarLibrary.remove) {
+                                            await window.RoleAvatarLibrary.remove(avatarRoleId, rollbackItem.value.id);
+                                        }
+                                    }
+                                    if (typeof showToast === 'function') showToast('这组配对暂未保存成功，原有头像收藏没有被更改');
+                                }
+                            }
+                            // 非配对请求仍然只收藏单张候选。
                             for (var avatarCandidateIndex = 0; avatarCandidateIndex < avatarCandidates.length; avatarCandidateIndex++) {
                                 var avatarCandidate = avatarCandidates[avatarCandidateIndex];
                                 var candidateResult = await window.RoleAvatarLibrary.addAsset(
-                                    aliasRoleId || currentCharacter.id,
+                                    avatarRoleId,
                                     avatarCandidate.assetId,
                                     { source: 'chat', label: '聊天候选头像' }
                                 );
