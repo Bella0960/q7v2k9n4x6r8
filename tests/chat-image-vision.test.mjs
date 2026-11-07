@@ -271,3 +271,9 @@ test('paired avatar library operations preserve isolated references and never ch
   assert.ok(avatarLibrarySource.includes('getPairs: getPairs'));
   assert.ok(avatarLibrarySource.includes('unlinkPair: unlinkPair'));
 });
+
+test('paired portraits cannot be removed from the archive before the pair is unlinked', () => {
+  assert.ok(characterManagerSource.includes('active || isPaired ?'));
+  assert.ok(characterManagerSource.includes('先解除配对再移除'));
+  assert.ok(characterManagerSource.includes('data-avatar-pair-action="unlink"'));
+});
