@@ -214,12 +214,25 @@ async function sendFriendRequest(request, env, account) {
       request: { id: requestId, status: "pending", createdAt: now },
       target: publicProfile(target)
     }, 201);
-  } catch {
+  } catch (error) {
     // A concurrent request may win the unordered-pair unique index. Read the
-    // authoritative pending row and return it; never invent a send acknowledgement.
+    // authoritative current state; never invent a send acknowledgement.
     if (targetId) {
       try {
         const [pairLow, pairHigh] = pairFor(account.id, targetId);
+        const blocked = await env.DB.prepare(
+          "SELECT 1 AS blocked FROM real_user_blocks " +
+          "WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1"
+        ).bind(account.id, targetId, targetId, account.id).first();
+        if (blocked) return authJson({ ok: false, error: "friend_request_not_allowed" }, 403);
+
+        const friendship = await env.DB.prepare(
+          "SELECT status FROM real_user_friendships WHERE pair_low = ? AND pair_high = ? LIMIT 1"
+        ).bind(pairLow, pairHigh).first();
+        if (friendship && friendship.status === "accepted") {
+          return authJson({ ok: false, error: "already_friends" }, 409);
+        }
+
         const pending = await env.DB.prepare(
           "SELECT id, requester_id, recipient_id, status, created_at " +
           "FROM real_user_friend_requests WHERE pair_low = ? AND pair_high = ? AND status = 'pending' LIMIT 1"
@@ -235,6 +248,9 @@ async function sendFriendRequest(request, env, account) {
       } catch {
         // The original failure remains unavailable.
       }
+    }
+    if (String(error && error.message || "").includes("UNIQUE constraint failed: real_user_friend_requests.id")) {
+      return authJson({ ok: false, error: "request_id_conflict" }, 409);
     }
     return authJson({ ok: false, error: "friend_request_temporarily_unavailable" }, 503);
   }
