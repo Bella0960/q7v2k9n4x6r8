@@ -770,6 +770,51 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
   }
 
+  async function listCharacterOutboundMessages(request, characterId, url) {
+    const device = await authenticate(request);
+    const rawLimit = url.searchParams.get('limit');
+    const limit = rawLimit == null ? 50 : Number(rawLimit);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+      throw new ApiError(400, 'INVALID_OUTBOUND_LIMIT', 'limit 必须是 1 到 50 的整数');
+    }
+    const rows = await store.listPendingOutboundMessages({
+      userId: device.user_id || OWNER_USER_ID,
+      deviceId: device.id,
+      characterId,
+      limit
+    });
+    const messages = rows.map(row => {
+      let payload;
+      try {
+        payload = JSON.parse(row.payload_json);
+      } catch {
+        throw new ApiError(500, 'OUTBOUND_PAYLOAD_INVALID', '待同步消息数据无法解析');
+      }
+      return {
+        serverMessageId: row.server_message_id,
+        characterId: row.character_id,
+        createdAt: Number(row.created_at),
+        payload
+      };
+    });
+    return ok({ messages });
+  }
+
+  async function acknowledgeCharacterOutboundMessage(request, characterId, serverMessageId) {
+    const device = await authenticate(request);
+    const result = await store.acknowledgeOutboundMessage({
+      userId: device.user_id || OWNER_USER_ID,
+      deviceId: device.id,
+      characterId,
+      serverMessageId,
+      now: now()
+    });
+    if (!result) {
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+    }
+    return ok(result);
+  }
+
   async function getCharacterSchedule(request, characterId) {
     const device = await authenticate(request);
     const row = await store.getCharacterSchedule(device.user_id || OWNER_USER_ID, characterId);
@@ -920,6 +965,20 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         const characterId = readCharacterId(characterContextVersionMatch[1]);
         if (method === 'GET') return await getCharacterContextVersion(request, characterId);
         if (method === 'POST') return await recordCharacterContextEvent(request, characterId);
+      }
+
+      const characterOutboundMatch = /^\/api\/characters\/([^/]+)\/outbound$/.exec(path);
+      if (characterOutboundMatch && readCharacterId(characterOutboundMatch[1])) {
+        const characterId = readCharacterId(characterOutboundMatch[1]);
+        if (method === 'GET') return await listCharacterOutboundMessages(request, characterId, url);
+      }
+
+      const characterOutboundAckMatch = /^\/api\/characters\/([^/]+)\/outbound\/([A-Za-z0-9_-]{16,128})\/ack$/.exec(path);
+      if (characterOutboundAckMatch && readCharacterId(characterOutboundAckMatch[1])) {
+        const characterId = readCharacterId(characterOutboundAckMatch[1]);
+        if (method === 'POST') {
+          return await acknowledgeCharacterOutboundMessage(request, characterId, characterOutboundAckMatch[2]);
+        }
       }
 
       const characterScheduleMatch = /^\/api\/characters\/([^/]+)\/schedule$/.exec(path);
