@@ -130,3 +130,11 @@ test('PWA cache contains the contact group policy module and has a new cache ver
   assert.match(serviceWorker, /phone-app-pwa-v174/);
   assert.match(serviceWorker, /contact-groups\.js\?v=20261107v1/);
 });
+
+test('saving groups never overwrites malformed data already at the new storage key', () => {
+  const { api, data } = createRuntime('{broken');
+  const result = api.saveGroups([{ id: 'new', name: '新分组', memberIds: ['a'] }]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'corrupt_data');
+  assert.equal(data.get('contact_groups_v1'), '{broken');
+});
