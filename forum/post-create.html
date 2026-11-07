@@ -643,6 +643,10 @@
                         : audienceCheck.error === 'module_unavailable' ? '权限模块尚未加载，请刷新页面后重试'
                         : '分组数据无法读取，请取消失效分组或单独选择联系人';
                     showToast(audienceError);
+                    var audienceBody = document.getElementById('permBody');
+                    var previousAudienceScrollTop = audienceBody ? audienceBody.scrollTop : 0;
+                    renderAudienceSelection();
+                    if (audienceBody) audienceBody.scrollTop = previousAudienceScrollTop;
                     return;
                 }
                 if (!audienceCheck.memberIds.length) {
