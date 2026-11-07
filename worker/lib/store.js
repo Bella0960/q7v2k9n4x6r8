@@ -1206,13 +1206,8 @@ class CloudStore {
   }
 
   insertFriendMessage(message) {
-    const existing = this.getFriendMessageByClientId(message.senderId, message.clientMessageId);
-    if (existing) {
-      const sameRequest = existing.recipient_id === message.recipientId &&
-        existing.body === message.body;
-      return { kind: sameRequest ? 'duplicate' : 'idempotency_conflict', message: existing };
-    }
-
+    // Check the live relationship before returning an idempotent retry. Removing
+    // a friend must immediately disable every message endpoint, including retries.
     if (!this.getFriendship(message.senderId, message.recipientId)) {
       return { kind: 'not_friends', message: null };
     }
@@ -1221,6 +1216,13 @@ class CloudStore {
       message.recipientId
     )[0];
     if (!recipient) return { kind: 'friend_unavailable', message: null };
+
+    const existing = this.getFriendMessageByClientId(message.senderId, message.clientMessageId);
+    if (existing) {
+      const sameRequest = existing.recipient_id === message.recipientId &&
+        existing.body === message.body;
+      return { kind: sameRequest ? 'duplicate' : 'idempotency_conflict', message: existing };
+    }
 
     const inserted = this.exec(
       `INSERT INTO friend_messages
