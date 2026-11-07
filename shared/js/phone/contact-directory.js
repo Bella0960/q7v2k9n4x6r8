@@ -111,6 +111,11 @@
         return !record.ownerAccountId || (!!activeAccountId && record.ownerAccountId === activeAccountId);
     }
 
+    function sameIdentity(left, right) {
+        return !!(left && right && left.id === right.id &&
+            left.ownerAccountId === right.ownerAccountId);
+    }
+
     function read(options) {
         var result = readResult();
         if (!result.ok) return result;
@@ -313,7 +318,10 @@
             updatedAt: now
         }, now);
         if (!input) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
-        var existing = current.contacts.find(function (item) { return item.id === input.id; });
+        input.ownerAccountId = activeAccountId;
+        var existing = current.contacts.find(function (item) {
+            return item.id === input.id && isVisibleForActiveAccount(item);
+        });
         if (existing) {
             if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
@@ -327,7 +335,7 @@
             }
             input.createdAt = existing.createdAt;
             input.updatedAt = nextUpdatedAt(now, existing);
-            var replaced = current.contacts.map(function (item) { return item.id === existing.id ? input : item; });
+            var replaced = current.contacts.map(function (item) { return sameIdentity(item, existing) ? input : item; });
             return resultWithContact(writeContacts(replaced), input, 'request_restarted');
         }
         return resultWithContact(writeContacts(current.contacts.concat([input])), input, 'request_created');
@@ -354,7 +362,10 @@
             updatedAt: now
         }, now);
         if (!input) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
-        var existing = current.contacts.find(function (item) { return item.id === input.id; });
+        input.ownerAccountId = activeAccountId;
+        var existing = current.contacts.find(function (item) {
+            return item.id === input.id && isVisibleForActiveAccount(item);
+        });
         if (existing) {
             if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
@@ -368,7 +379,7 @@
             }
             input.createdAt = existing.createdAt;
             input.updatedAt = nextUpdatedAt(now, existing);
-            var replaced = current.contacts.map(function (item) { return item.id === existing.id ? input : item; });
+            var replaced = current.contacts.map(function (item) { return sameIdentity(item, existing) ? input : item; });
             return resultWithContact(writeContacts(replaced), input, 'incoming_request_received');
         }
         return resultWithContact(writeContacts(current.contacts.concat([input])), input, 'incoming_request_received');
@@ -405,7 +416,7 @@
             blockedAt: null,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? accepted : item; });
         return resultWithContact(writeContacts(next), accepted, 'request_accepted');
     }
 
@@ -429,7 +440,7 @@
             declinedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? declined : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? declined : item; });
         return resultWithContact(writeContacts(next), declined, 'request_declined');
     }
 
@@ -453,7 +464,7 @@
             cancelledAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? cancelled : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? cancelled : item; });
         return resultWithContact(writeContacts(next), cancelled, 'request_cancelled');
     }
 
@@ -480,7 +491,7 @@
             acceptedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? accepted : item; });
         return resultWithContact(writeContacts(next), accepted, 'outgoing_request_accepted');
     }
 
@@ -506,7 +517,7 @@
             declinedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? declined : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? declined : item; });
         return resultWithContact(writeContacts(next), declined, 'outgoing_request_declined');
     }
 
@@ -522,8 +533,11 @@
         if (!displayName) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
         var now = transitionTime(options);
         var updatedAt = nextUpdatedAt(now, existing);
+        var targetOwnerId = existing ? existing.ownerAccountId : activeAccountId;
         var blocked = normalizeRecord({
             id: current.id,
+            ownerAccountId: targetOwnerId,
+            handle: existing ? existing.handle : '',
             displayName: displayName,
             avatarUrl: options.avatarUrl != null ? options.avatarUrl : (existing && existing.avatarUrl),
             avatarAssetId: options.avatarAssetId != null ? options.avatarAssetId : (existing && existing.avatarAssetId),
@@ -535,7 +549,9 @@
             acceptedAt: existing ? existing.acceptedAt : null,
             blockedAt: updatedAt
         }, updatedAt);
-        var next = current.contacts.filter(function (item) { return item.id !== current.id; });
+        var next = current.contacts.filter(function (item) {
+            return !(item.id === current.id && item.ownerAccountId === targetOwnerId);
+        });
         next.push(blocked);
         return resultWithContact(writeContacts(next), blocked, 'contact_blocked');
     }
@@ -559,7 +575,7 @@
             unblockedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? unblocked : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? unblocked : item; });
         return resultWithContact(writeContacts(next), unblocked, 'contact_unblocked');
     }
 
@@ -584,7 +600,7 @@
             removedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? removed : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? removed : item; });
         return resultWithContact(writeContacts(next), removed, 'friend_removed');
     }
 
@@ -629,6 +645,13 @@
             var index = next.findIndex(function (item) {
                 return item.id === id && item.ownerAccountId === owner;
             });
+            // A legacy ownerless row is migrated only after the authenticated
+            // server explicitly confirms the same ID in this account's roster.
+            if (index < 0) {
+                index = next.findIndex(function (item) {
+                    return item.id === id && !item.ownerAccountId;
+                });
+            }
             var existing = index >= 0 ? next[index] : null;
             if (existing && existing.serverUpdatedAt && serverUpdatedAt < existing.serverUpdatedAt) {
                 return { ok: false, error: 'stale_server_snapshot', invalidIndex: i, contact: existing, contacts: current.contacts };
@@ -753,8 +776,12 @@
         if (!result.ok) return result;
         return {
             ok: true,
-            incoming: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_INCOMING; }),
-            outgoing: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_OUTGOING; })
+            incoming: result.contacts.filter(function (item) {
+                return isVisibleForActiveAccount(item) && item.status === STATUS.PENDING_INCOMING;
+            }),
+            outgoing: result.contacts.filter(function (item) {
+                return isVisibleForActiveAccount(item) && item.status === STATUS.PENDING_OUTGOING;
+            })
         };
     }
 
