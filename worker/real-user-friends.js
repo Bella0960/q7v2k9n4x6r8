@@ -358,6 +358,30 @@ async function listFriends(env, account) {
   }
 }
 
+async function listBlocked(env, account) {
+  try {
+    const result = await env.DB.prepare(
+      "SELECT a.id, a.handle, a.display_name, a.avatar_asset_id, b.created_at " +
+      "FROM real_user_blocks b " +
+      "JOIN real_user_accounts a ON a.id = b.blocked_id " +
+      "WHERE b.blocker_id = ? " +
+      "ORDER BY a.display_name COLLATE NOCASE LIMIT ?"
+    ).bind(account.id, MAX_LIST_LIMIT).all();
+    return authJson({
+      ok: true,
+      blocked: (result.results || []).map(row => ({
+        id: row.id,
+        handle: row.handle,
+        displayName: row.display_name,
+        avatarAssetId: row.avatar_asset_id || null,
+        blockedAt: row.created_at
+      }))
+    }, 200);
+  } catch {
+    return authJson({ ok: false, error: "blocked_accounts_temporarily_unavailable" }, 503);
+  }
+}
+
 async function removeFriend(request, env, account, friendId) {
   if (!hasSameOrigin(request)) return authJson({ ok: false, error: "origin_not_allowed" }, 403);
   if (!validAccountId(friendId) || friendId === account.id) return authJson({ ok: false, error: "friend_not_found" }, 404);
@@ -378,7 +402,9 @@ async function setBlock(request, env, account, friendId, blocked) {
   if (!validAccountId(friendId) || friendId === account.id) return authJson({ ok: false, error: "account_not_found" }, 404);
   try {
     const target = await env.DB.prepare(
-      "SELECT id FROM real_user_accounts WHERE id = ? AND status = 'active' LIMIT 1"
+      "SELECT id FROM real_user_accounts WHERE id = ? " +
+      (blocked ? "AND status = 'active' " : "") +
+      "LIMIT 1"
     ).bind(friendId).first();
     if (!target) return authJson({ ok: false, error: "account_not_found" }, 404);
     if (blocked) {
@@ -442,6 +468,10 @@ export async function handleRealUserFriends(request, env) {
     return authJson({ ok: false, error: "method_not_allowed" }, 405, { Allow: "GET" });
   }
   const segments = path.slice(1).split("/");
+  if (path === "/blocks") {
+    if (request.method !== "GET") return authJson({ ok: false, error: "method_not_allowed" }, 405, { Allow: "GET" });
+    return listBlocked(env, account);
+  }
   if (segments.length === 1) {
     let friendId = "";
     try { friendId = decodeURIComponent(segments[0]); } catch { return authJson({ ok: false, error: "not_found" }, 404); }
