@@ -445,56 +445,135 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     let failed = 0;
     let gone = 0;
 
+    const maxDeliveryAttempts = 5;
+    const deliveryLeaseMs = 60000;
+    let inProgress = 0;
+    let retryDeferred = 0;
+    let retryScheduled = 0;
+    let retryExhausted = 0;
+
     for (const subscription of subscriptions) {
-      if (await store.findDelivery(dedupeKey, subscription.id)) {
-        results.push({ subscriptionId: subscription.id, status: 'duplicate' });
-        skipped += 1;
+      const deliveryOwner = randomToken(12);
+      const claim = await store.claimDelivery({
+        id: randomToken(12),
+        dedupeKey,
+        subscriptionId: subscription.id,
+        owner: deliveryOwner,
+        now: timestamp,
+        leaseUntil: timestamp + deliveryLeaseMs,
+        maxAttempts: maxDeliveryAttempts
+      });
+
+      if (!claim) {
+        const existing = await store.findDelivery(dedupeKey, subscription.id);
+        if (existing?.status === 'sent' || existing?.status === 'gone') {
+          results.push({ subscriptionId: subscription.id, status: 'duplicate' });
+          skipped += 1;
+        } else if (existing?.status === 'sending') {
+          results.push({ subscriptionId: subscription.id, status: 'in_progress' });
+          inProgress += 1;
+          skipped += 1;
+        } else if (existing?.status === 'error' &&
+                   Number(existing.next_attempt_at || 0) > timestamp) {
+          results.push({
+            subscriptionId: subscription.id,
+            status: 'retry_deferred',
+            nextAttemptAt: Number(existing.next_attempt_at)
+          });
+          retryDeferred += 1;
+          skipped += 1;
+        } else {
+          results.push({ subscriptionId: subscription.id, status: 'retry_exhausted' });
+          retryExhausted += 1;
+          skipped += 1;
+        }
         continue;
       }
+
+      let outcome;
       try {
-        const outcome = await sendWebPush(
+        outcome = await sendWebPush(
           { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth_key },
           payload,
           keys,
           { nowMs: timestamp, fetchImpl }
         );
-        await store.recordDelivery({
-          id: randomToken(12),
-          dedupeKey,
-          subscriptionId: subscription.id,
-          status: outcome.ok ? 'sent' : outcome.gone ? 'gone' : 'failed',
-          httpStatus: outcome.statusCode,
-          now: timestamp
-        });
-        if (outcome.ok) {
-          sent += 1;
-          await store.markPushSuccess(subscription.id, timestamp);
-        } else {
-          failed += 1;
-          if (outcome.gone) {
-            gone += 1;
-            await store.disableSubscriptionById(subscription.id, 'gone', timestamp);
-          } else {
-            await store.markPushFailure(subscription.id);
-          }
-        }
+      } catch (error) {
+        // A network failure can happen after the push service accepted the
+        // request but before the Worker received its response. Treat it as
+        // retryable (at-least-once), never as a confirmed delivery.
+        outcome = {
+          ok: false,
+          statusCode: Number(error?.statusCode || 0),
+          gone: false
+        };
+      }
+
+      const statusCode = Number(outcome.statusCode || 0);
+      const retryable = !outcome.ok && !outcome.gone && (
+        statusCode === 0 ||
+        statusCode === 408 ||
+        statusCode === 425 ||
+        statusCode === 429 ||
+        statusCode >= 500
+      );
+      const canRetry = retryable && Number(claim.attempt_count) < maxDeliveryAttempts;
+      const deliveryStatus = outcome.ok
+        ? 'sent'
+        : outcome.gone
+          ? 'gone'
+          : canRetry
+            ? 'error'
+            : 'failed';
+      const retryDelayMs = Math.min(
+        6 * 60 * 60 * 1000,
+        30000 * (2 ** Math.max(0, Number(claim.attempt_count) - 1))
+      );
+      const nextAttemptAt = canRetry ? timestamp + retryDelayMs : null;
+      const finalized = await store.finishDelivery({
+        dedupeKey,
+        subscriptionId: subscription.id,
+        owner: deliveryOwner,
+        status: deliveryStatus,
+        httpStatus: Number.isFinite(statusCode) ? statusCode : 0,
+        nextAttemptAt,
+        now: now()
+      });
+
+      if (!finalized) {
+        failed += 1;
+        results.push({ subscriptionId: subscription.id, status: 'lease_lost' });
+        continue;
+      }
+
+      if (outcome.ok) {
+        sent += 1;
+        await store.markPushSuccess(subscription.id, timestamp);
         results.push({
           subscriptionId: subscription.id,
-          status: outcome.ok ? 'sent' : outcome.gone ? 'gone' : 'failed',
-          httpStatus: outcome.statusCode
+          status: 'sent',
+          httpStatus: statusCode
         });
-      } catch (error) {
+      } else if (outcome.gone) {
         failed += 1;
-        await store.recordDelivery({
-          id: randomToken(12),
-          dedupeKey,
-          subscriptionId: subscription.id,
-          status: 'error',
-          httpStatus: 0,
-          now: timestamp
-        });
+        gone += 1;
+        await store.disableSubscriptionById(subscription.id, 'gone', timestamp);
         await store.markPushFailure(subscription.id);
-        results.push({ subscriptionId: subscription.id, status: 'error' });
+        results.push({
+          subscriptionId: subscription.id,
+          status: 'gone',
+          httpStatus: statusCode
+        });
+      } else {
+        failed += 1;
+        await store.markPushFailure(subscription.id);
+        if (canRetry) retryScheduled += 1;
+        results.push({
+          subscriptionId: subscription.id,
+          status: canRetry ? 'retry_scheduled' : 'failed',
+          httpStatus: statusCode,
+          nextAttemptAt
+        });
       }
     }
 
@@ -504,13 +583,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       kind: 'test_push',
       status: sent > 0 ? 'success' : 'failed',
       reasonCode: sent > 0 ? 'delivered' : 'no_delivery',
-      detail: { sent, skipped, failed, gone },
+      detail: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted },
       durationMs: Math.max(0, now() - startedAt),
       now: timestamp
     });
     await store.cleanupSubscriptions(timestamp);
 
-    return ok({ dedupeKey, results, summary: { sent, skipped, failed, gone } });
+    return ok({ dedupeKey, results, summary: { sent, skipped, failed, gone, inProgress, retryDeferred, retryScheduled, retryExhausted } });
   }
 
   async function revokeDevice(request) {
