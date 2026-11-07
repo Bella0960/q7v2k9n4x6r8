@@ -263,3 +263,17 @@ test('clear affects only the selected accepted real-user conversation', () => {
   assert.equal(runtime.repository.readHistory(a).messages.length, 0);
   assert.equal(runtime.repository.readHistory(b).messages.length, 1);
 });
+
+
+test('clear remains available after the friend is blocked or removed', () => {
+  const runtime = createRuntime();
+  acceptFriend(runtime.directory);
+  const ref = refFor(runtime);
+  runtime.repository.appendMessage(ref, {
+    mid: 'before-block', type: 'text', text: '本地记录', createdAt: 800
+  });
+  assert.equal(runtime.directory.block(ref.id).ok, true);
+  assert.equal(runtime.repository.readHistory(ref).error, 'not_accepted_friend');
+  assert.equal(runtime.repository.clear(ref).ok, true);
+  assert.equal(runtime.data.has(runtime.repository.storageKeyPrefix + encodeURIComponent(ref.id)), false);
+});
