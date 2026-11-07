@@ -345,6 +345,63 @@ test('云端 readiness 只暴露布尔配置状态与订阅数量，且必须设
   const device = makeDevice();
   await registerDevice(ctx, device);
 
+  const base = Date.now();
+  const enqueueDiagnostic = id => ctx.store.enqueueActivity({
+    id,
+    deviceId: device.deviceId,
+    characterId: 'private-character-id',
+    kind: 'contact',
+    scheduledAt: base - 1000,
+    maxAttempts: 3,
+    now: base,
+    payload: { privateText: 'do-not-return-this-chat-like-payload' }
+  });
+  enqueueDiagnostic('readiness-waiting');
+  enqueueDiagnostic('readiness-retry');
+  enqueueDiagnostic('readiness-running');
+  enqueueDiagnostic('readiness-completed');
+  enqueueDiagnostic('readiness-failed');
+  enqueueDiagnostic('readiness-superseded');
+
+  const claim = (id, owner) => ctx.store.claimActivity({
+    id,
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner,
+    leaseUntil: base + 60_000,
+    now: base
+  });
+  assert.ok(claim('readiness-retry', 'retry-worker'));
+  assert.equal(ctx.store.failActivity({
+    id: 'readiness-retry',
+    owner: 'retry-worker',
+    attemptCount: 1,
+    now: base + 1,
+    nextAttemptAt: base + 30_000
+  }), true);
+  assert.ok(claim('readiness-running', 'running-worker'));
+  assert.ok(claim('readiness-completed', 'completed-worker'));
+  assert.equal(ctx.store.completeActivity({
+    id: 'readiness-completed',
+    owner: 'completed-worker',
+    attemptCount: 1,
+    now: base + 1
+  }), true);
+  assert.ok(claim('readiness-failed', 'failed-worker'));
+  assert.equal(ctx.store.failActivity({
+    id: 'readiness-failed',
+    owner: 'failed-worker',
+    attemptCount: 1,
+    now: base + 1,
+    nextAttemptAt: null
+  }), true);
+  assert.equal(ctx.store.supersedeActivity({
+    id: 'readiness-superseded',
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    now: base + 1
+  }), true);
+
   const readiness = await ctx.asJson('/api/autonomy/readiness', { device });
   assert.equal(readiness.status, 200);
   assert.equal(readiness.payload.deviceAuthorized, true);
@@ -355,9 +412,30 @@ test('云端 readiness 只暴露布尔配置状态与订阅数量，且必须设
   assert.equal(readiness.payload.activePushSubscriptions, 0);
   assert.equal(readiness.payload.testPushReady, false);
   assert.equal(readiness.payload.presenceConfigured, true);
+  assert.deepEqual(readiness.payload.activityQueue, {
+    total: 6,
+    waiting: 1,
+    retry: 1,
+    running: 1,
+    completed: 1,
+    failed: 1,
+    superseded: 1
+  });
+  assert.equal(readiness.payload.activityExecutorAvailable, false);
   assert.equal(readiness.payload.contextVersionReady, false);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
-  assert.equal(JSON.stringify(readiness.payload).includes('private-test-key'), false);
+  assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
+    'executor_unavailable',
+    'context_version_unavailable'
+  ]);
+  const readinessJson = JSON.stringify(readiness.payload);
+  assert.equal(readinessJson.includes('private-test-key'), false);
+  assert.equal(readinessJson.includes('private-character-id'), false);
+  assert.equal(readinessJson.includes('do-not-return-this-chat-like-payload'), false);
+  assert.deepEqual(ctx.store.getActivityQueueSummary({ userId: 'another-user' }), {
+    total: 0, waiting: 0, retry: 0, running: 0,
+    completed: 0, failed: 0, superseded: 0
+  });
 
   const anonymous = await ctx.asJson('/api/autonomy/readiness');
   assert.equal(anonymous.status, 401);
