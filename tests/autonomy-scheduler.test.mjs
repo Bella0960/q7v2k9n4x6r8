@@ -26,12 +26,6 @@ function freshStore() {
   const testDb = openTestDb();
   const store = createStore(testDb.exec);
   applyMigrations(testDb.exec);
-  store.insertDevice({
-    id: 'dev_test',
-    userId: 'owner',
-    secretHash: 'synthetic-test-hash',
-    now: NOW
-  });
   return { store, query: testDb.query };
 }
 
@@ -282,6 +276,12 @@ test('作废后不再出现在到期列表', () => {
 
 test('没有消息执行器时 tick 不认领活动，避免制造孤儿 running 任务', () => {
   const { store, query } = freshStore();
+  store.insertDevice({
+    id: 'dev_test',
+    userId: 'owner',
+    secretHash: 'synthetic-test-hash',
+    now: NOW
+  });
   enqueue(store, { id: 'act_without_executor' });
   const result = runTick({
     store,
@@ -307,6 +307,12 @@ test('没有消息执行器时 tick 不认领活动，避免制造孤儿 running
 
 test('缺少执行器时释放过期 running lease 回 retry，不消耗重试次数', () => {
   const { store, query } = freshStore();
+  store.insertDevice({
+    id: 'dev_test',
+    userId: 'owner',
+    secretHash: 'synthetic-test-hash',
+    now: NOW
+  });
   enqueue(store, { id: 'act_expired_no_executor' });
   store.claimActivity({
     id: 'act_expired_no_executor',
