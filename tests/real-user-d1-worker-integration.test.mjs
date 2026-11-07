@@ -651,7 +651,7 @@ if (!DatabaseSync) {
 
   test("acceptance and blocking are serialized so a blocked pair can never remain accepted", async () => {
     for (const blockFirst of [true, false]) {
-      const fixture = await seedRacePair(blockFirst ? "block-first" : "accept-first");
+      const fixture = await seedRacePair(blockFirst ? "block_first" : "accept_first");
       const { database, aliceId, bobId, aliceToken, bobToken, pair } = fixture;
       try {
         const requestId = blockFirst ? "request_block_order_01" : "request_accept_order_01";
@@ -715,7 +715,7 @@ if (!DatabaseSync) {
 
   test("friend removal and re-acceptance obey the serialized operation order", async () => {
     for (const removeFirst of [true, false]) {
-      const fixture = await seedRacePair(removeFirst ? "remove-first" : "accept-first");
+      const fixture = await seedRacePair(removeFirst ? "remove_first" : "accept_first");
       const { database, aliceId, bobId, aliceToken, bobToken, pair } = fixture;
       try {
         const oldRequestId = "request_remove_old_" + (removeFirst ? "01" : "02");
@@ -780,7 +780,7 @@ if (!DatabaseSync) {
   });
 
   test("logout completed before session validation prevents a pending friend mutation", async () => {
-    const fixture = await seedRacePair("logout-race");
+    const fixture = await seedRacePair("logout_race");
     const { database, aliceToken, bobId } = fixture;
     try {
       let reachedResolve;
