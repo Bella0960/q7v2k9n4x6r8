@@ -493,6 +493,15 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     return ok({ configured: true, timeZone: row.time_zone, schedule: validated.schedule, updatedAt: Number(row.updated_at) });
   }
 
+  async function getPresenceConfig(request) {
+    await authenticate(request);
+    const config = readPresenceConfig(env);
+    if (!config) {
+      throw new ApiError(503, 'PRESENCE_NOT_CONFIGURED', '缺少心跳 TTL、设备租约时长或 grace 配置');
+    }
+    return ok(config);
+  }
+
   async function updatePresenceHeartbeat(request) {
     const device = await authenticate(request);
     const body = await readJsonBody(request);
@@ -507,14 +516,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       foregroundActive: body.foregroundActive,
       now: timestamp
     });
-    let releasedLeases = 0;
-    if (!body.foregroundActive) {
-      releasedLeases = await store.releaseDeviceLeases(userId, device.id);
-    }
+    // Device-level heartbeat and per-character leases are separate.
+    // A hidden tab must not release every role lease owned by other tabs.
     return ok({
       foregroundActive: presence.foreground_active === 1,
-      lastHeartbeatAt: Number(presence.last_heartbeat_at),
-      releasedLeases
+      lastHeartbeatAt: Number(presence.last_heartbeat_at)
     });
   }
 
@@ -610,6 +616,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         if (method === 'PUT') return await setCharacterSchedule(request, characterId);
       }
 
+      if (path === '/api/presence/config' && method === 'GET') return await getPresenceConfig(request);
       if (path === '/api/presence/heartbeat' && method === 'POST') return await updatePresenceHeartbeat(request);
 
       const characterLeaseMatch = /^\/api\/characters\/([^/]+)\/lease$/.exec(path);
