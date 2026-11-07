@@ -143,7 +143,7 @@ test('manual NPC discovery creates a pending application, then acceptance create
   assert.equal(repeated.alreadyAccepted, true);
   assert.equal(h.histories[accepted.roleId].length, 1, 'repeated acceptance must not duplicate the greeting');
 
-  const stored = JSON.parse(h.data.get('npc_friend_requests_v1'));
+  const stored = JSON.parse(h.data.get('npc_friend_requests_v2_main-role'));
   assert.equal(stored[0].status, 'accepted');
   assert.equal(h.context.NPCSocial.getPendingCount(), 0);
 });
