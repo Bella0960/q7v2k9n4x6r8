@@ -40,14 +40,4 @@ HAVING COUNT(*) > 0;
 INSERT OR IGNORE INTO device_bootstrap (id, claimed_at, claimed_device_id)
 VALUES (1, NULL, NULL);
 
-CREATE TRIGGER IF NOT EXISTS claim_initial_device_after_insert
-AFTER INSERT ON devices
-WHEN EXISTS (
-  SELECT 1 FROM device_bootstrap WHERE id = 1 AND claimed_at IS NULL
-)
-BEGIN
-  UPDATE device_bootstrap
-  SET claimed_at = NEW.created_at, claimed_device_id = NEW.id
-  WHERE id = 1 AND claimed_at IS NULL;
-END;
 `;
