@@ -379,7 +379,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 这是一条**前台设备执行**路径，不是 Worker 在应用关闭或手机锁屏时自行调用模型。Web Push 只用于设备通知/收件，不会让浏览器在关闭后持续运行 AI 模型。
 - 当前只接入已有的 `contact` 主动联系流程；群聊、复杂卡片、图片/语音生成、角色日记等任务类型暂不开放。
 - `autonomousMessageGenerationReady` 仍保持 false，直到本地模型配置、真实浏览器执行、双设备抢占、断网重试、Worker 部署和 Android 真机推送都完成验收。
-- 新增 Node/SQLite 契约测试覆盖迁移 0007、跨设备去重、设备接管、租约 fencing、完成后 outbox 入箱、重复完成幂等、授权拒绝与旧上下文拒绝。完整项目测试与 build 尚需真实执行。
+- 新增 Node/SQLite 契约测试覆盖迁移 0007–0009、跨设备去重、设备上下文来源、前台租约门禁、租约 fencing、生成结果暂存、收件箱失败后按设备修复、重复完成幂等、授权拒绝与旧上下文拒绝。完整项目测试与 build 尚需真实执行。
 - 本阶段不上传本地聊天历史、角色设定、persona 或 API Key；仅把设备执行后实际生成的单条待送达文字写入云端收件箱。
 ## 12. M2.4b：本机归属门禁与生成结果恢复
 
@@ -404,6 +404,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增迁移 `0009_activity_result_staging`：活动队列增加 `result_json`、`result_server_message_id` 和 `result_dedupe_key`。
 - 完成任务时，Worker 先用一条带 lease fencing 条件的 SQLite UPDATE，把任务标为 completed，并不可变地暂存确切结果与稳定服务端消息 ID；随后再写入现有出站收件箱。
 - 如果 Worker 在暂存后、outbox 插入前中断，客户端可用同一活动 ID、attempt 和完全相同正文重试，Worker 会从暂存结果补建 outbox；不同正文会冲突，不能覆盖首次生成结果。
+- `GET /api/characters/:id/outbound` 和本机活动认领接口都会先调用 `repairStagedActivityOutbox()`。即使原页面已经关闭，下一次打开聊天或重新检查任务时，也能仅凭队列中的不可变结果补建缺失收件箱记录；修复按账号、设备、角色隔离。
 - 这种顺序让任务完成后的恢复有持久化依据，不需要重新调用模型，也不会因为 HTTP 响应丢失而生成第二条不同内容。
 
 ### 12.4 本轮新增验证覆盖
