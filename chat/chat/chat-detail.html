@@ -2911,6 +2911,23 @@
             }
             if (wrote && _verifyHistoryRoundTrip(list)) {
                 _resetWarnCooldown('chat-save');
+
+                // After the local history round-trip succeeds, notify the cloud
+                // with a random event ID only. The history list is fingerprinted
+                // locally and is never passed into a network request.
+                if (!isGroupChat && window.MaomaoCloud &&
+                    typeof window.MaomaoCloud.noteCharacterContextChanged === 'function') {
+                    try {
+                        window.MaomaoCloud.noteCharacterContextChanged(
+                            String(currentCharacter.id || currentRoleId || ''),
+                            list
+                        ).catch(function (error) {
+                            console.warn('[cloud] 角色上下文版本待同步', error && error.message || error);
+                        });
+                    } catch (error) {
+                        console.warn('[cloud] 角色上下文版本待同步', error && error.message || error);
+                    }
+                }
                 return true;
             }
             if (_shouldWarnAgain('chat-save') && typeof showToast === 'function') {
