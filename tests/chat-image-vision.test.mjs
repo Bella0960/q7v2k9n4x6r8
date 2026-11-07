@@ -194,7 +194,7 @@ test('deleted chat images release only chat references after single or bulk dele
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v178'"));
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v179'"));
   assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v2'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
