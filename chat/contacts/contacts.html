@@ -440,19 +440,39 @@
     }
     function openContactGroupEditor(group) {
       editingContactGroupId = group ? String(group.id) : '';
-      var availableContactIds = loadCharacters().map(function (role) { return String(role.id); });
       var storedMemberIds = group ? (group.memberIds || []).map(String) : [];
+      var rosterRead = { ok: false, roles: [] };
+      try {
+        if (_storage && _storage.result && typeof _storage.result.getCharacters === 'function') {
+          var result = _storage.result.getCharacters();
+          if (result && result.ok && Array.isArray(result.value)) {
+            rosterRead = { ok: true, roles: result.value };
+          } else if (result && result.error && result.error.code === 'NOT_FOUND') {
+            rosterRead = { ok: true, roles: [] };
+          }
+        } else {
+          var raw = localStorage.getItem(CHARACTERS_KEY);
+          var parsed = raw == null ? [] : JSON.parse(raw);
+          if (Array.isArray(parsed)) rosterRead = { ok: true, roles: parsed };
+        }
+      } catch (e) {}
       var staleMemberCount = 0;
-      editingContactGroupMembers = storedMemberIds.filter(function (id) {
-        var exists = availableContactIds.indexOf(id) !== -1;
-        if (!exists) staleMemberCount += 1;
-        return exists;
-      });
+      if (rosterRead.ok) {
+        var availableContactIds = rosterRead.roles.map(function (role) { return String(role.id); });
+        editingContactGroupMembers = storedMemberIds.filter(function (id) {
+          var exists = availableContactIds.indexOf(id) !== -1;
+          if (!exists) staleMemberCount += 1;
+          return exists;
+        });
+      } else {
+        // Do not remove members when the current contact roster itself cannot be verified.
+        editingContactGroupMembers = storedMemberIds.slice();
+      }
       document.getElementById('contactGroupEditorTitle').textContent = group ? '编辑分组' : '新建分组';
       document.getElementById('contactGroupName').value = group ? group.name : '';
-      document.getElementById('contactGroupEditStatus').textContent = staleMemberCount
-        ? '发现 ' + staleMemberCount + ' 位已不存在的联系人；保存时会从分组中清除，取消则保留原数据。'
-        : '';
+      document.getElementById('contactGroupEditStatus').textContent = !rosterRead.ok
+        ? '当前联系人列表暂时无法读取；保存时会保留原分组成员，避免误删。'
+        : (staleMemberCount ? '发现 ' + staleMemberCount + ' 位已不存在的联系人；保存时会从分组中清除，取消则保留原数据。' : '');
       renderContactGroupMembers(); showContactGroupPanel('edit');
       setTimeout(function () { document.getElementById('contactGroupName').focus(); }, 0);
     }
