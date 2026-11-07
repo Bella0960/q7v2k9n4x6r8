@@ -894,7 +894,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       kind: 'contact',
       scheduledAt: timestamp,
       maxAttempts: config.maxAttempts,
-      payload: { contextVersion },
+      payload: { contextVersion, sourceDeviceId: device.id },
       dedupeKey,
       now: timestamp
     });
