@@ -164,6 +164,7 @@
       authentication_temporarily_unavailable: '账号服务暂时不可用。',
       friend_requests_temporarily_unavailable: '好友申请暂时无法读取。',
       friends_temporarily_unavailable: '好友列表暂时无法读取。',
+      blocked_accounts_temporarily_unavailable: '暂时无法读取已屏蔽的用户。',
       friend_code_temporarily_unavailable: '暂时无法生成好友码。',
       request_not_pending: '这条申请已经处理过，请刷新列表。'
     };
