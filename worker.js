@@ -1,10 +1,12 @@
 import { handleRealUserAuth, isRealUserAuthConfigured } from "./worker/real-user-auth.js";
 import { handleRealUserFriends, isRealUserFriendsConfigured } from "./worker/real-user-friends.js";
+import { handleRealUserAvatar, isRealUserAvatarConfigured } from "./worker/real-user-avatar.js";
 
 const REAL_USER_CHAT_PREFIX = "/api/real-user-chat";
 const REAL_USER_CHAT_CAPABILITIES_PATH = REAL_USER_CHAT_PREFIX + "/capabilities";
 const REAL_USER_AUTH_PREFIX = REAL_USER_CHAT_PREFIX + "/v1/auth";
 const REAL_USER_FRIENDS_PREFIX = REAL_USER_CHAT_PREFIX + "/v1/friends";
+const REAL_USER_PROFILE_PREFIX = REAL_USER_CHAT_PREFIX + "/v1/profile";
 
 function jsonResponse(payload, status, extraHeaders) {
   const headers = new Headers({
@@ -20,6 +22,7 @@ function jsonResponse(payload, status, extraHeaders) {
 async function realUserChatCapabilities(env) {
   const accountAuthEnabled = await isRealUserAuthConfigured(env);
   const friendsEnabled = await isRealUserFriendsConfigured(env);
+  const profileAvatarEnabled = await isRealUserAvatarConfigured(env);
   return {
     ok: true,
     service: "maomao-real-user-chat",
@@ -34,6 +37,12 @@ async function realUserChatCapabilities(env) {
         ? ["register", "login", "me", "profile-update", "logout"]
         : [],
       reason: accountAuthEnabled ? "" : "database_or_auth_rate_limiter_not_configured"
+    },
+    profileAvatar: {
+      enabled: profileAvatarEnabled,
+      status: profileAvatarEnabled ? "enabled" : "disabled",
+      endpoints: profileAvatarEnabled ? ["avatar-upload", "avatar-remove", "avatar-read"] : [],
+      reason: profileAvatarEnabled ? "" : "avatar_bucket_or_schema_not_configured"
     },
     friends: {
       enabled: friendsEnabled,
@@ -97,6 +106,11 @@ export default {
 
     if (url.pathname.startsWith(REAL_USER_AUTH_PREFIX + "/")) {
       return handleRealUserAuth(request, env);
+    }
+
+    if (url.pathname === REAL_USER_PROFILE_PREFIX ||
+        url.pathname.startsWith(REAL_USER_PROFILE_PREFIX + "/")) {
+      return handleRealUserAvatar(request, env);
     }
 
     if (url.pathname === REAL_USER_FRIENDS_PREFIX ||
