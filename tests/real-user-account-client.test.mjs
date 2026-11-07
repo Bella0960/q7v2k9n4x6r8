@@ -167,6 +167,7 @@ test('friend code, request list and friend list use only the authenticated API',
       };
       return jsonResponse({
         ok: true,
+        ownerAccountId: 'self-1',
         friends: [friend],
         relationships: [{ ...friend, status: 'accepted', updatedAt: 100 }],
         snapshotAt: 200,
@@ -456,7 +457,7 @@ test('friend roster pagination collects every page under one stable snapshot', a
           avatarAssetId: null, acceptedRequestId: 'request_friend_001', acceptedAt: 400
         };
         return jsonResponse({
-          ok: true, friends: [first],
+          ok: true, ownerAccountId: 'self-page-1', friends: [first],
           relationships: [{ ...first, status: 'accepted', updatedAt: 450 }],
           snapshotAt, hasMore: true, nextCursor: first.id
         });
@@ -466,7 +467,7 @@ test('friend roster pagination collects every page under one stable snapshot', a
         avatarAssetId: 'av_' + 'c'.repeat(32), acceptedRequestId: 'request_friend_002', acceptedAt: 410
       };
       return jsonResponse({
-        ok: true, friends: [second],
+        ok: true, ownerAccountId: 'self-page-1', friends: [second],
         relationships: [{ ...second, status: 'accepted', updatedAt: 460 }],
         snapshotAt, hasMore: false, nextCursor: null
       });
@@ -523,4 +524,86 @@ test('Contacts roster does not expose account-scoped server friends before sessi
   assert.match(CLIENT_SOURCE, /setActiveDirectoryAccount\(null\);[\s\S]*?var capabilities = await discover\(\)/);
   assert.match(CLIENT_SOURCE, /setActiveDirectoryAccount\(state\.account\)/);
   assert.match(PANEL_SOURCE, /if \(!result\.account\) \{[\s\S]*?notifyContactRosterUpdated\(\)/);
+});
+
+test('friend roster refreshes the active session before assigning a server-owned roster', async () => {
+  let meReads = 0;
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      meReads += 1;
+      return jsonResponse({
+        ok: true,
+        account: { id: 'account-after-tab-switch', handle: 'new_session', displayName: 'New Session', status: 'active' }
+      });
+    }
+    if (url.includes('/v1/friends?')) {
+      return jsonResponse({
+        ok: true,
+        ownerAccountId: 'account-after-tab-switch',
+        friends: [],
+        relationships: [],
+        snapshotAt: 800,
+        hasMore: false,
+        nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.discover();
+  await app.client.login({ handle: 'old_session', password: 'a sufficiently long password' });
+  assert.equal(app.client.getState().account.id, 'account-after-tab-switch');
+  const roster = await app.client.listFriendRoster();
+  assert.equal(meReads, 1);
+  assert.equal(roster.ownerAccountId, 'account-after-tab-switch');
+  assert.equal(app.client.getState().account.id, 'account-after-tab-switch');
+});
+
+test('friend roster rejects a server owner mismatch and owner changes between pages', async () => {
+  const mismatch = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'account-session-a', handle: 'session_a', displayName: 'A', status: 'active' } });
+    }
+    if (url.includes('/v1/friends?')) {
+      return jsonResponse({
+        ok: true, ownerAccountId: 'account-session-b', friends: [], relationships: [],
+        snapshotAt: 900, hasMore: false, nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await mismatch.client.restore();
+  await assert.rejects(
+    mismatch.client.listFriendRoster(),
+    (error) => error.code === 'friend_roster_account_mismatch'
+  );
+
+  let page = 0;
+  const changed = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'account-session-a', handle: 'session_a', displayName: 'A', status: 'active' } });
+    }
+    if (url.includes('/v1/friends?')) {
+      page += 1;
+      const first = { id: 'account_peer_01', handle: 'peer_01', displayName: 'Peer', acceptedRequestId: 'request_peer_001', acceptedAt: 700 };
+      return jsonResponse({
+        ok: true,
+        ownerAccountId: page === 1 ? 'account-session-a' : 'account-session-b',
+        friends: [first],
+        relationships: [{ ...first, status: 'accepted', updatedAt: 750 }],
+        snapshotAt: 950,
+        hasMore: page === 1,
+        nextCursor: page === 1 ? first.id : null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await changed.client.restore();
+  await assert.rejects(
+    changed.client.listFriendRoster(),
+    (error) => error.code === 'friend_roster_account_mismatch'
+  );
 });
