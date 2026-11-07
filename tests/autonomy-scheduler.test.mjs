@@ -26,6 +26,12 @@ function freshStore() {
   const testDb = openTestDb();
   const store = createStore(testDb.exec);
   applyMigrations(testDb.exec);
+  store.insertDevice({
+    id: 'dev_test',
+    userId: 'owner',
+    secretHash: 'synthetic-test-hash',
+    now: NOW
+  });
   return { store, query: testDb.query };
 }
 
@@ -286,7 +292,17 @@ test('没有消息执行器时 tick 不认领活动，避免制造孤儿 running
   assert.equal(result.claimed, 0);
   assert.equal(result.deferred, 1);
   assert.equal(store.getActivity('act_without_executor').status, 'waiting');
-  assert.equal(query('SELECT * FROM execution_log WHERE reason_code = ?', REASON_CODES.EXECUTOR_UNAVAILABLE).length, 1);
+  const logs = query('SELECT * FROM execution_log WHERE reason_code = ?', REASON_CODES.EXECUTOR_UNAVAILABLE);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].device_id, 'dev_test');
+  assert.equal(store.getRecentAutonomyReasonSummary({
+    userId: 'owner',
+    since: NOW - 1
+  })[0].reasonCode, REASON_CODES.EXECUTOR_UNAVAILABLE);
+  assert.deepEqual(store.getRecentAutonomyReasonSummary({
+    userId: 'other-user',
+    since: NOW - 1
+  }), []);
 });
 
 test('缺少执行器时释放过期 running lease 回 retry，不消耗重试次数', () => {
@@ -315,7 +331,17 @@ test('缺少执行器时释放过期 running lease 回 retry，不消耗重试�
   assert.equal(activity.locked_by, null);
   assert.equal(activity.locked_until, null);
   assert.equal(activity.next_attempt_at, NOW + 15_000);
-  assert.equal(query('SELECT * FROM execution_log WHERE reason_code = ?', REASON_CODES.EXECUTOR_UNAVAILABLE).length, 1);
+  const logs = query('SELECT * FROM execution_log WHERE reason_code = ?', REASON_CODES.EXECUTOR_UNAVAILABLE);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].device_id, 'dev_test');
+  assert.equal(store.getRecentAutonomyReasonSummary({
+    userId: 'owner',
+    since: NOW - 1
+  })[0].reasonCode, REASON_CODES.EXECUTOR_UNAVAILABLE);
+  assert.deepEqual(store.getRecentAutonomyReasonSummary({
+    userId: 'other-user',
+    since: NOW - 1
+  }), []);
 });
 
 test('过期 running 租约会被重新列入并安全 CAS 认领，旧 worker 写入被 fencing 拒绝', () => {
