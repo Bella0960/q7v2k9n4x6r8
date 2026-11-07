@@ -17,8 +17,11 @@
 
   function writeAll(cards) {
     try {
-      localStorage.setItem(KEY, JSON.stringify(Array.isArray(cards) ? cards : []));
-      return true;
+      var serialized = JSON.stringify(Array.isArray(cards) ? cards : []);
+      localStorage.setItem(KEY, serialized);
+      // Some storage adapters can report success while retaining an older value.
+      // Treat the mutation as committed only when the exact payload reads back.
+      return localStorage.getItem(KEY) === serialized;
     } catch (e) { return false; }
   }
 
