@@ -23,6 +23,8 @@ test('MCP endpoint validation requires HTTPS except localhost and excludes crede
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://nas.local/mcp'), /局域网或内部域名/);
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://printer.lan/mcp'), /局域网或内部域名/);
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://mcpserver/mcp'), /完整域名或公网 IP/);
+  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://[::ffff:127.0.0.1]/mcp'), /IPv6/);
+  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://[ff02::1]/mcp'), /组播 IPv6/);
 });
 
 test('MCP initialization, tool discovery and calls use the negotiated session and ephemeral bearer token', async () => {
@@ -147,4 +149,8 @@ test('MCP tool arguments follow required fields, types, ranges and additionalPro
   assert.throws(() => validate(schema, { query: 'books', limit: 21 }), /大于允许范围/);
   assert.throws(() => validate(schema, { query: 'books', limit: 5, unexpected: true }), /未声明字段/);
   assert.throws(() => validate(schema, { query: 'books', limit: 5, filters: ['x', 'x', 'x', 'x', 'x'] }), /超过最大限制/);
+  assert.equal(validate({
+    type: 'object',
+    properties: { mode: { enum: [{ alpha: 1, beta: 2 }] } }
+  }, { mode: { beta: 2, alpha: 1 } }), true, 'object enum comparison must not depend on property order');
 });
