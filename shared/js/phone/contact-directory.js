@@ -2,12 +2,16 @@
     'use strict';
 
     var STORAGE_KEY = 'real_user_contacts_v1';
-    var VERSION = 1;
+    var VERSION = 2;
     var STATUS = {
         PENDING_OUTGOING: 'pending_outgoing',
         PENDING_INCOMING: 'pending_incoming',
         ACCEPTED: 'accepted',
-        BLOCKED: 'blocked'
+        BLOCKED: 'blocked',
+        DECLINED: 'declined',
+        CANCELLED: 'cancelled',
+        REMOVED: 'removed',
+        UNBLOCKED: 'unblocked'
     };
     var ALLOWED_STATUS = Object.create(null);
     Object.keys(STATUS).forEach(function (key) { ALLOWED_STATUS[STATUS[key]] = true; });
@@ -33,11 +37,15 @@
 
         var createdAt = Number(value.createdAt);
         var updatedAt = Number(value.updatedAt);
-        var acceptedAt = Number(value.acceptedAt);
-        var blockedAt = Number(value.blockedAt);
         now = Number(now) || Date.now();
         if (!Number.isFinite(createdAt) || createdAt <= 0) createdAt = now;
         if (!Number.isFinite(updatedAt) || updatedAt <= 0) updatedAt = createdAt;
+
+        function timestamp(field) {
+            var number = Number(value[field]);
+            return Number.isFinite(number) && number > 0 ? number : null;
+        }
+
         return {
             id: id,
             type: 'real_user',
@@ -49,8 +57,12 @@
             requestId: cleanText(value.requestId, 160),
             createdAt: createdAt,
             updatedAt: updatedAt,
-            acceptedAt: Number.isFinite(acceptedAt) && acceptedAt > 0 ? acceptedAt : null,
-            blockedAt: Number.isFinite(blockedAt) && blockedAt > 0 ? blockedAt : null
+            acceptedAt: timestamp('acceptedAt'),
+            blockedAt: timestamp('blockedAt'),
+            declinedAt: timestamp('declinedAt'),
+            cancelledAt: timestamp('cancelledAt'),
+            removedAt: timestamp('removedAt'),
+            unblockedAt: timestamp('unblockedAt')
         };
     }
 
@@ -99,7 +111,7 @@
     function get(id) {
         var result = readResult();
         if (!result.ok || id == null) return null;
-        var key = String(id).trim();
+        var key = cleanText(id, 160);
         return result.contacts.find(function (item) { return item.id === key; }) || null;
     }
 
@@ -117,6 +129,8 @@
         }
     }
 
+    // Low-level import/repair API. Product flows should use the guarded lifecycle
+    // methods below so a stale request cannot silently restore an old relationship.
     function save(value) {
         var current = readResult();
         if (!current.ok) return current;
@@ -159,6 +173,8 @@
         return writeContacts(contacts);
     }
 
+    // Physical deletion is retained for authoritative roster repair and test fixtures.
+    // A user-facing "remove friend" action must use removeFriend() to keep a replay tombstone.
     function remove(id) {
         var current = readResult();
         if (!current.ok) return current;
@@ -195,9 +211,8 @@
         return Number.isFinite(value) && value > 0 ? value : Date.now();
     }
 
-    function nextUpdatedAt(now, previous) {
-        var previousTime = Number(previous && previous.updatedAt) || 0;
-        return now > previousTime ? now : previousTime + 1;
+    function nextUpdatedAt(now, existing) {
+        return existing ? Math.max(now, existing.updatedAt + 1) : now;
     }
 
     function makeRequestId(options, now) {
@@ -206,14 +221,21 @@
             ('fr_' + Number(now).toString(36) + '_' + Math.random().toString(36).slice(2, 10));
     }
 
-    // Local state transitions are workflow primitives only. A remote adapter
-    // must authenticate the other account and confirm server-side state before
-    // calling applyIncomingRequest() or saving an accepted relationship.
+    function duplicateTerminal(existing, requestId) {
+        return !!(existing && existing.requestId && existing.requestId === requestId &&
+            (existing.status === STATUS.DECLINED || existing.status === STATUS.CANCELLED ||
+             existing.status === STATUS.REMOVED || existing.status === STATUS.UNBLOCKED));
+    }
+
+    // These methods are local lifecycle primitives, not network operations.
+    // A future adapter must authenticate the remote account and verify server
+    // authorization before applying incoming requests or accepted states.
     function requestOutgoing(value, options) {
         options = options && typeof options === 'object' ? options : {};
         var current = readResult();
         if (!current.ok) return current;
         var now = transitionTime(options);
+        var requestId = makeRequestId(options, now);
         var input = normalizeRecord({
             id: value && (value.id != null ? value.id : value.userId),
             displayName: value && (value.displayName != null ? value.displayName : value.name),
@@ -221,7 +243,7 @@
             avatarAssetId: value && value.avatarAssetId,
             status: STATUS.PENDING_OUTGOING,
             source: value && value.source || 'manual',
-            requestId: makeRequestId(options, now),
+            requestId: requestId,
             createdAt: now,
             updatedAt: now
         }, now);
@@ -231,19 +253,30 @@
             if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.PENDING_INCOMING) return { ok: false, error: 'incoming_request_exists', contact: existing, contacts: current.contacts };
-            return { ok: true, action: 'already_pending', contact: existing, contacts: current.contacts };
+            if (existing.status === STATUS.PENDING_OUTGOING) {
+                if (existing.requestId === requestId) return { ok: true, action: 'duplicate_delivery', contact: existing, contacts: current.contacts };
+                return { ok: false, error: 'outgoing_request_exists', contact: existing, contacts: current.contacts };
+            }
+            if (duplicateTerminal(existing, requestId)) {
+                return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
+            }
+            input.createdAt = existing.createdAt;
+            input.updatedAt = nextUpdatedAt(now, existing);
+            var replaced = current.contacts.map(function (item) { return item.id === existing.id ? input : item; });
+            return resultWithContact(writeContacts(replaced), input, 'request_restarted');
         }
-        var next = current.contacts.concat([input]);
-        return resultWithContact(writeContacts(next), input, 'request_created');
+        return resultWithContact(writeContacts(current.contacts.concat([input])), input, 'request_created');
     }
 
-    // This entry point is intended for a future authenticated server event;
-    // it does not discover accounts or send a request over the network itself.
+    // requestId is supplied by the authenticated server event and is mandatory:
+    // it is the idempotency key used to reject duplicate and stale deliveries.
     function applyIncomingRequest(value, options) {
         options = options && typeof options === 'object' ? options : {};
         var current = readResult();
         if (!current.ok) return current;
         var now = transitionTime(options);
+        var requestId = cleanText(value && value.requestId, 160);
+        if (!requestId) return { ok: false, error: 'missing_request_id', contacts: current.contacts };
         var input = normalizeRecord({
             id: value && (value.id != null ? value.id : value.userId),
             displayName: value && (value.displayName != null ? value.displayName : value.name),
@@ -251,7 +284,7 @@
             avatarAssetId: value && value.avatarAssetId,
             status: STATUS.PENDING_INCOMING,
             source: value && value.source || 'server',
-            requestId: cleanText(value && value.requestId, 160) || makeRequestId(options, now),
+            requestId: requestId,
             createdAt: now,
             updatedAt: now
         }, now);
@@ -261,10 +294,29 @@
             if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.PENDING_OUTGOING) return { ok: false, error: 'request_collision', contact: existing, contacts: current.contacts };
-            if (existing.requestId === input.requestId) return { ok: true, action: 'duplicate_delivery', contact: existing, contacts: current.contacts };
-            return { ok: false, error: 'incoming_request_exists', contact: existing, contacts: current.contacts };
+            if (existing.status === STATUS.PENDING_INCOMING) {
+                if (existing.requestId === requestId) return { ok: true, action: 'duplicate_delivery', contact: existing, contacts: current.contacts };
+                return { ok: false, error: 'incoming_request_exists', contact: existing, contacts: current.contacts };
+            }
+            if (duplicateTerminal(existing, requestId)) {
+                return { ok: true, action: 'duplicate_terminal_delivery', contact: existing, contacts: current.contacts };
+            }
+            input.createdAt = existing.createdAt;
+            input.updatedAt = nextUpdatedAt(now, existing);
+            var replaced = current.contacts.map(function (item) { return item.id === existing.id ? input : item; });
+            return resultWithContact(writeContacts(replaced), input, 'incoming_request_received');
         }
         return resultWithContact(writeContacts(current.contacts.concat([input])), input, 'incoming_request_received');
+    }
+
+    function validateRequestId(existing, options) {
+        var requestId = cleanText(options && options.requestId, 160);
+        if (!requestId) return { ok: false, error: 'missing_request_id' };
+        if (!existing || existing.requestId !== requestId) return { ok: false, error: 'stale_request' };
+        if (options.expectedUpdatedAt != null && Number(options.expectedUpdatedAt) !== existing.updatedAt) {
+            return { ok: false, error: 'stale_snapshot' };
+        }
+        return { ok: true, requestId: requestId };
     }
 
     function acceptIncoming(id, options) {
@@ -273,22 +325,20 @@
         if (!current.ok) return current;
         var existing = current.contact;
         if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
-        if (existing.status === STATUS.ACCEPTED) return { ok: true, action: 'already_accepted', contact: existing, contacts: current.contacts };
+        var validation = validateRequestId(existing, options);
+        if (!validation.ok) return { ok: false, error: validation.error, contact: existing, contacts: current.contacts };
+        if (existing.status === STATUS.ACCEPTED) {
+            return { ok: true, action: 'already_accepted', contact: existing, contacts: current.contacts };
+        }
         if (existing.status !== STATUS.PENDING_INCOMING) {
             return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
         }
-        if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
-            return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
-        }
-        if (options.expectedUpdatedAt != null && Number(options.expectedUpdatedAt) !== existing.updatedAt) {
-            return { ok: false, error: 'stale_snapshot', contact: existing, contacts: current.contacts };
-        }
-        var now = transitionTime(options);
+        var now = nextUpdatedAt(transitionTime(options), existing);
         var accepted = normalizeRecord(Object.assign({}, existing, {
             status: STATUS.ACCEPTED,
-            acceptedAt: nextUpdatedAt(now, existing),
+            acceptedAt: now,
             blockedAt: null,
-            updatedAt: nextUpdatedAt(now, existing)
+            updatedAt: now
         }), now);
         var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
         return resultWithContact(writeContacts(next), accepted, 'request_accepted');
@@ -300,17 +350,22 @@
         if (!current.ok) return current;
         var existing = current.contact;
         if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        var validation = validateRequestId(existing, options);
+        if (!validation.ok) return { ok: false, error: validation.error, contact: existing, contacts: current.contacts };
+        if (existing.status === STATUS.DECLINED) {
+            return { ok: true, action: 'already_declined', contact: existing, contacts: current.contacts };
+        }
         if (existing.status !== STATUS.PENDING_INCOMING) {
             return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
         }
-        if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
-            return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
-        }
-        if (options.expectedUpdatedAt != null && Number(options.expectedUpdatedAt) !== existing.updatedAt) {
-            return { ok: false, error: 'stale_snapshot', contact: existing, contacts: current.contacts };
-        }
-        var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
-        return resultWithContact(writeContacts(next), existing, 'request_declined');
+        var now = nextUpdatedAt(transitionTime(options), existing);
+        var declined = normalizeRecord(Object.assign({}, existing, {
+            status: STATUS.DECLINED,
+            declinedAt: now,
+            updatedAt: now
+        }), now);
+        var next = current.contacts.map(function (item) { return item.id === existing.id ? declined : item; });
+        return resultWithContact(writeContacts(next), declined, 'request_declined');
     }
 
     function cancelOutgoing(id, options) {
@@ -319,17 +374,22 @@
         if (!current.ok) return current;
         var existing = current.contact;
         if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        var validation = validateRequestId(existing, options);
+        if (!validation.ok) return { ok: false, error: validation.error, contact: existing, contacts: current.contacts };
+        if (existing.status === STATUS.CANCELLED) {
+            return { ok: true, action: 'already_cancelled', contact: existing, contacts: current.contacts };
+        }
         if (existing.status !== STATUS.PENDING_OUTGOING) {
             return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
         }
-        if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
-            return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
-        }
-        if (options.expectedUpdatedAt != null && Number(options.expectedUpdatedAt) !== existing.updatedAt) {
-            return { ok: false, error: 'stale_snapshot', contact: existing, contacts: current.contacts };
-        }
-        var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
-        return resultWithContact(writeContacts(next), existing, 'request_cancelled');
+        var now = nextUpdatedAt(transitionTime(options), existing);
+        var cancelled = normalizeRecord(Object.assign({}, existing, {
+            status: STATUS.CANCELLED,
+            cancelledAt: now,
+            updatedAt: now
+        }), now);
+        var next = current.contacts.map(function (item) { return item.id === existing.id ? cancelled : item; });
+        return resultWithContact(writeContacts(next), cancelled, 'request_cancelled');
     }
 
     function blockContact(id, options) {
@@ -343,6 +403,7 @@
         var displayName = cleanText(options.displayName || options.name || (existing && existing.displayName), 48);
         if (!displayName) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
         var now = transitionTime(options);
+        var updatedAt = nextUpdatedAt(now, existing);
         var blocked = normalizeRecord({
             id: current.id,
             displayName: displayName,
@@ -352,39 +413,75 @@
             source: existing ? existing.source : 'manual',
             requestId: existing ? existing.requestId : '',
             createdAt: existing ? existing.createdAt : now,
-            updatedAt: nextUpdatedAt(now, existing),
+            updatedAt: updatedAt,
             acceptedAt: existing ? existing.acceptedAt : null,
-            blockedAt: nextUpdatedAt(now, existing)
-        }, now);
+            blockedAt: updatedAt
+        }, updatedAt);
         var next = current.contacts.filter(function (item) { return item.id !== current.id; });
         next.push(blocked);
         return resultWithContact(writeContacts(next), blocked, 'contact_blocked');
     }
 
-    function unblockContact(id) {
+    function unblockContact(id, options) {
+        options = options && typeof options === 'object' ? options : {};
         var current = readContactForTransition(id);
         if (!current.ok) return current;
         var existing = current.contact;
         if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        if (existing.status === STATUS.UNBLOCKED) {
+            return { ok: true, action: 'already_unblocked', contact: existing, contacts: current.contacts };
+        }
         if (existing.status !== STATUS.BLOCKED) {
             return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
         }
-        var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
-        return resultWithContact(writeContacts(next), existing, 'contact_unblocked');
+        var now = nextUpdatedAt(transitionTime(options), existing);
+        var unblocked = normalizeRecord(Object.assign({}, existing, {
+            status: STATUS.UNBLOCKED,
+            acceptedAt: null,
+            unblockedAt: now,
+            updatedAt: now
+        }), now);
+        var next = current.contacts.map(function (item) { return item.id === existing.id ? unblocked : item; });
+        return resultWithContact(writeContacts(next), unblocked, 'contact_unblocked');
+    }
+
+    // Removing a friend keeps the last request ID as a replay tombstone. A later
+    // relationship requires a fresh request ID from the authenticated service.
+    function removeFriend(id, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        if (existing.status === STATUS.REMOVED) {
+            return { ok: true, action: 'already_removed', contact: existing, contacts: current.contacts };
+        }
+        if (existing.status !== STATUS.ACCEPTED) {
+            return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
+        }
+        var now = nextUpdatedAt(transitionTime(options), existing);
+        var removed = normalizeRecord(Object.assign({}, existing, {
+            status: STATUS.REMOVED,
+            acceptedAt: null,
+            removedAt: now,
+            updatedAt: now
+        }), now);
+        var next = current.contacts.map(function (item) { return item.id === existing.id ? removed : item; });
+        return resultWithContact(writeContacts(next), removed, 'friend_removed');
     }
 
     function getContactRef(value) {
         var identity = root.PhoneContactIdentity;
         var id = value && typeof value === 'object' ? (value.id != null ? value.id : value.userId) : value;
-        if (id == null) return null;
+        id = cleanText(id, 160);
+        if (!id) return null;
         if (identity && typeof identity.create === 'function') return identity.create('real_user', id);
-        var safeId = cleanText(id, 160);
-        return safeId ? {
+        return {
             type: 'real_user',
-            id: safeId,
-            key: 'real_user:' + encodeURIComponent(safeId),
-            conversationId: 'real_user:' + encodeURIComponent(safeId)
-        } : null;
+            id: id,
+            key: 'real_user:' + encodeURIComponent(id),
+            conversationId: 'real_user:' + encodeURIComponent(id)
+        };
     }
 
     function getAcceptedRefs() {
@@ -394,16 +491,6 @@
             ok: true,
             refs: result.contacts.map(function (item) { return getContactRef(item.id); }).filter(Boolean),
             contacts: result.contacts
-        };
-    }
-
-    function getPendingRequests() {
-        var result = readResult();
-        if (!result.ok) return result;
-        return {
-            ok: true,
-            incoming: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_INCOMING; }),
-            outgoing: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_OUTGOING; })
         };
     }
 
@@ -425,8 +512,8 @@
         cancelOutgoing: cancelOutgoing,
         block: blockContact,
         unblock: unblockContact,
+        removeFriend: removeFriend,
         getContactRef: getContactRef,
-        getAcceptedRefs: getAcceptedRefs,
-        getPendingRequests: getPendingRequests
+        getAcceptedRefs: getAcceptedRefs
     };
 })(window);
