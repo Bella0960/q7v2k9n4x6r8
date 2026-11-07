@@ -2856,7 +2856,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261107v3/,
+    assert.match(source, /wallet-ledger\.js\?v=20261107v4/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -2875,7 +2875,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v3/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v4/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -2974,7 +2974,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261107v3/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261107v4/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
