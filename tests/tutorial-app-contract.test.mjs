@@ -103,6 +103,46 @@ test('guided tours load same-origin pages and their selector targets exist in re
   assert.match(html, /右侧是真实 MAOMAO 页面/);
 });
 
+test('chat guided tours follow the real list, detail and settings pages', () => {
+  const listPage = readPage('../chat/chat/chat.html');
+  const detailPage = readPage('../chat/chat/chat-detail.html');
+  const settingsPage = readPage('../chat/chat/chat-settings.html');
+  assertSelectorExists(listPage, '.chat-slim-card', 'chat list');
+  assertSelectorExists(listPage, '.chat-group-card', 'group chat list');
+
+  const tourBlock = (id) => {
+    const start = html.indexOf("addTourConfig('" + id + "'");
+    assert.ok(start >= 0, 'missing guided tour config: ' + id);
+    const next = html.indexOf("\\naddTourConfig('", start + 1);
+    const end = next >= 0 ? next : html.indexOf('\\nvar apps=', start);
+    assert.ok(end > start, 'unterminated guided tour config: ' + id);
+    return html.slice(start, end);
+  };
+
+  const compose = tourBlock('chat-compose-and-media');
+  for (const selector of ['#chat-input', '#voice-input-btn', '#plus-action-btn', '.plus-item[data-feat="img"]']) {
+    assertSelectorExists(detailPage, selector, 'chat compose / detail page');
+    assert.ok(compose.includes("page:'../chat/chat/chat-detail.html',selector:'" + selector + "'"), 'chat compose step must target detail page: ' + selector);
+  }
+
+  const settings = tourBlock('chat-settings-and-autonomy');
+  assertSelectorExists(detailPage, '#btn-more-menu', 'chat settings / detail page');
+  assert.ok(settings.includes("page:'../chat/chat/chat-detail.html',selector:'#btn-more-menu'"));
+  for (const selector of ['#actionBackground', '#pinToggle', '#memCard', '#actionSearchHistory', '#actionTimeAware', '#autoMomentToggle', '#proactiveContactToggle', '#proactiveContactInterval', '#followUpToggle', '#autoCommentToggle', '#autoInteractToggle']) {
+    assertSelectorExists(settingsPage, selector, 'chat settings page');
+    assert.ok(settings.includes("page:'../chat/chat/chat-settings.html',selector:'" + selector + "'"), 'settings step must target chat-settings page: ' + selector);
+  }
+
+  const group = tourBlock('group-chat-interactions');
+  for (const selector of ['#plus-action-btn', '.plus-item[data-feat="group-poll"]', '#groupComposerQuestion', '#groupComposerOptions', '#groupComposerSubmit']) {
+    assertSelectorExists(detailPage, selector, 'group interaction / detail page');
+    assert.ok(group.includes("page:'../chat/chat/chat-detail.html',selector:'" + selector + "'"), 'group interaction step must target detail page: ' + selector);
+  }
+
+  assert.ok(html.includes('new URL(step.page||tour.url,window.location.href)'), 'guided tours must navigate to the page assigned to each step');
+  assert.ok(html.includes('guidedFrameNavigationPending'), 'the iframe must only refocus after tutorial-controlled navigation, not user navigation');
+});
+
 test('tutorial app directory contains every desktop app shortcut with valid local routes', () => {
   const appBlock = html.match(/var apps=\[([\s\S]*?)\n\];/);
   assert.ok(appBlock, 'app directory must declare its desktop app map');
