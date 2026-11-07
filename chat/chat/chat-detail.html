@@ -6153,10 +6153,15 @@
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
                     // 角色表情是现有回复的一部分，不发起额外 API。只接受完整成功的单聊线上回复。
                     var parsedRoleSticker = { text: fullText, stickers: [] };
-                    if (streamResult.ok && roleStickerCatalog.length && !isGroupChat &&
+                    if (roleStickerCatalog.length && !isGroupChat &&
                         !isRegen && !contextOnly && !silent && presenceMode === 'online' &&
                         window.RoleStickerLibrary && typeof window.RoleStickerLibrary.parseReply === 'function') {
-                        parsedRoleSticker = window.RoleStickerLibrary.parseReply(fullText, roleStickerCatalog, 1);
+                        // 中断回复也剥离机器标记，但绝不把未完成回合的表情当作已发送。
+                        parsedRoleSticker = window.RoleStickerLibrary.parseReply(
+                            fullText,
+                            roleStickerCatalog,
+                            streamResult.ok ? 1 : 0
+                        );
                         fullText = parsedRoleSticker.text;
                     }
                     // 落盘前剥离主动通话标记：气泡展示与聊天记录均不保留标记，避免污染后续上下文
