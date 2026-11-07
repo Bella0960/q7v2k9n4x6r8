@@ -1272,7 +1272,17 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         dedupeKey: outboundDedupeKey,
         payload: outboundPayload
       });
-      if (repeated) return ok(repeated);
+      if (repeated) {
+        let pushDispatch = null;
+        try {
+          pushDispatch = await dispatchPendingOutboundPushes({
+            store, env, now: timestamp, fetchImpl, limit: 10
+          });
+        } catch (error) {
+          pushDispatch = { configured: false, reason: 'dispatch_deferred' };
+        }
+        return ok({ ...repeated, pushDispatch });
+      }
       throw new ApiError(409, 'ACTIVITY_RESULT_CONFLICT', '已完成任务的消息内容不可修改');
     }
 
@@ -1351,7 +1361,17 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       detail: { activityId, serverMessageId },
       now: timestamp
     });
-    return ok(result);
+    let pushDispatch = null;
+    try {
+      pushDispatch = await dispatchPendingOutboundPushes({
+        store, env, now: timestamp, fetchImpl, limit: 10
+      });
+    } catch (error) {
+      // The durable outbox is already committed. Push failure must never
+      // roll back or hide the generated chat message.
+      pushDispatch = { configured: false, reason: 'dispatch_deferred' };
+    }
+    return ok({ ...result, pushDispatch });
   }
 
   async function skipAutonomyActivity(request, activityId) {
