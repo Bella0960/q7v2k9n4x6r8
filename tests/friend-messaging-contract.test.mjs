@@ -226,6 +226,80 @@ test('新消息与更早历史都能分批读取，游标分页不会漏行', as
   assert.equal(olderPage.payload.hasMore, false);
 });
 
+
+test('未读数量按收件人隔离；确认已读只会向前推进且跨设备持久化', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  const carol = makeAccount('Carol');
+  await register(ctx, alice, '198.51.100.61');
+  await register(ctx, bob, '198.51.100.62');
+  await register(ctx, carol, '198.51.100.63');
+  await makeFriends(ctx, alice, bob);
+
+  const path = '/api/friends/' + bob.userId + '/messages';
+  const first = await asAccount(ctx, alice, path, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '第一条未读消息' }
+  });
+  const second = await asAccount(ctx, alice, path, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '第二条未读消息' }
+  });
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+
+  const bobFriends = await asAccount(ctx, bob, '/api/friends');
+  const aliceFriends = await asAccount(ctx, alice, '/api/friends');
+  assert.equal(bobFriends.payload.friends[0].unreadCount, 2);
+  assert.equal(aliceFriends.payload.friends[0].unreadCount, 0);
+
+  const markSecond = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
+    method: 'POST',
+    body: { messageId: second.payload.message.id }
+  });
+  assert.equal(markSecond.status, 200);
+  assert.equal(markSecond.payload.read.lastReadMessageId, second.payload.message.id);
+  assert.equal(markSecond.payload.alreadyRead, false);
+
+  const afterRead = await asAccount(ctx, bob, '/api/friends');
+  assert.equal(afterRead.payload.friends[0].unreadCount, 0);
+
+  // A delayed request from another device must never move the watermark backwards.
+  const markOlder = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
+    method: 'POST',
+    body: { messageId: first.payload.message.id }
+  });
+  assert.equal(markOlder.status, 200);
+  assert.equal(markOlder.payload.alreadyRead, true);
+  assert.equal(markOlder.payload.read.lastReadMessageId, second.payload.message.id);
+  assert.equal((await asAccount(ctx, bob, '/api/friends')).payload.friends[0].unreadCount, 0);
+
+  // The recipient cannot mark their own outgoing message as read on the sender's behalf.
+  const bobReply = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages', {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '我的回复' }
+  });
+  const invalidRead = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/read', {
+    method: 'POST',
+    body: { messageId: bobReply.payload.message.id }
+  });
+  assert.equal(invalidRead.status, 404);
+  assert.equal(invalidRead.payload.error.code, 'FRIEND_MESSAGE_NOT_FOUND');
+
+  const strangerRead = await asAccount(ctx, carol, '/api/friends/' + alice.userId + '/read', {
+    method: 'POST',
+    body: { messageId: first.payload.message.id }
+  });
+  assert.equal(strangerRead.status, 403);
+  assert.equal(strangerRead.payload.error.code, 'NOT_FRIENDS');
+
+  // The persisted watermark is visible to the same account on another client/session.
+  const secondSession = await asAccount(ctx, bob, '/api/friends');
+  assert.equal(secondSession.payload.friends[0].unreadCount, 0);
+});
+
 test('账号每分钟最多发送 60 条消息；相同消息的网络重试不重复计数', async () => {
   const ctx = setupTestStore(openTestDb());
   ctx.timestamps.push(FIXED_NOW);
