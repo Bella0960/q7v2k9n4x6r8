@@ -2998,8 +2998,8 @@
             return true;
         }
 
-        // 同一角色只允许一个标签页拉取/确认。优先使用原子 Web Locks；
-        // 旧浏览器退回短期 localStorage 租约，并在写入后复核 owner token。
+        // 同一角色优先用 Web Locks 串行接收；旧浏览器用短期 localStorage 租约尽量减少碰撞。
+        // localStorage 没有原子 CAS，因此降级租约不是 Web Locks 的等价强保证。
         (function startCloudOutboundSyncForActiveRole() {
             var cloud = window.MaomaoCloud;
             if (!cloud || isGroupChat || !currentRoleId ||
@@ -3070,7 +3070,7 @@
             }
 
             function syncNow() {
-                if (!active || running || document.visibilityState === 'hidden') return;
+                if (!active || running || document.visibilityState === 'hidden' || !hasDeviceCredentials()) return;
                 running = true;
                 runWithRoleLock(function () {
                     return cloud.receiveCharacterOutboundMessages(roleId, persistCloudOutboundMessage, 10);
