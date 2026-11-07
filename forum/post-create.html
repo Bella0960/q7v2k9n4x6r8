@@ -303,8 +303,10 @@
         var permissionSheetStage = 'modes';
         var selectedVisibleGroupIds = [];
         var selectedVisibleContactIds = [];
+        var selectedVisibleRealUserIds = [];
         var selectedHiddenGroupIds = [];
         var selectedHiddenContactIds = [];
+        var selectedHiddenRealUserIds = [];
         var permissionDraft = null;
 
         /* ========== 工具函数 ========== */
@@ -453,17 +455,66 @@
 
         function getAudienceApi() { return window.PhoneContactGroups || null; }
         function getAudienceContacts() {
-            return getCharacterList().slice().sort(function (a,b) { return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'); });
+            return getCharacterList().slice().sort(function (a,b) {
+                return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN');
+            });
+        }
+        function getAudienceRealUsers() {
+            var directory = window.PhoneContactDirectory;
+            if (!directory || typeof directory.read !== 'function') {
+                return { ok: false, error: 'module_unavailable', contacts: [] };
+            }
+            var result = directory.read({ status: directory.statuses.ACCEPTED });
+            return result.ok ? result : { ok: false, error: result.error, contacts: [] };
+        }
+        function getAudienceIdentityKey(type, id) {
+            var identity = window.PhoneContactIdentity;
+            var ref = identity && typeof identity.create === 'function' ? identity.create(type, id) : null;
+            return ref ? ref.key : type + ':' + encodeURIComponent(String(id));
         }
         function getAudienceSnapshot(mode) {
             var api = getAudienceApi();
             var groups = mode === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
             var contacts = mode === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
-            var availableContactIds = getAudienceContacts().map(function (contact) { return String(contact.id); });
-            if (api && typeof api.buildAudienceSnapshot === 'function') {
-                return api.buildAudienceSnapshot(groups, contacts, { availableContactIds: availableContactIds });
+            var realUserIds = mode === 'custom' ? selectedVisibleRealUserIds : selectedHiddenRealUserIds;
+            var roleContacts = getAudienceContacts();
+            var availableContactIds = roleContacts.map(function (contact) { return String(contact.id); });
+            var realUserRead = getAudienceRealUsers();
+            var groupRead = api && typeof api.readStoredGroups === 'function'
+                ? api.readStoredGroups()
+                : { ok: false, error: 'module_unavailable', groups: [] };
+            var selectedGroupsContainRealUsers = groupRead.ok && groupRead.groups.some(function (group) {
+                if (groups.indexOf(String(group.id)) === -1) return false;
+                return (group.memberRefs || []).some(function (ref) { return String(ref).indexOf('real_user:') === 0; });
+            });
+            if ((!realUserRead.ok) && (realUserIds.length || selectedGroupsContainRealUsers)) {
+                return {
+                    ok: false,
+                    error: 'contact_directory_unavailable',
+                    groupIds: groups.slice(),
+                    contactIds: contacts.slice(),
+                    memberIds: [],
+                    memberRefs: []
+                };
             }
-            // If the shared policy module is missing, never silently drop selected groups.
+            var availableContactRefs = roleContacts.map(function (contact) {
+                return getAudienceIdentityKey('ai_role', contact.id);
+            });
+            if (realUserRead.ok) {
+                availableContactRefs = availableContactRefs.concat(realUserRead.contacts.map(function (contact) {
+                    return getAudienceIdentityKey('real_user', contact.id);
+                }));
+            }
+            var selectedContactRefs = realUserIds.map(function (id) {
+                return getAudienceIdentityKey('real_user', id);
+            });
+            if (api && typeof api.buildAudienceSnapshot === 'function') {
+                return api.buildAudienceSnapshot(groups, contacts, {
+                    availableContactIds: availableContactIds,
+                    availableContactRefs: availableContactRefs,
+                    selectedContactRefs: selectedContactRefs
+                });
+            }
             var missingContacts = contacts.filter(function (id) {
                 return availableContactIds.indexOf(String(id)) === -1;
             });
@@ -473,10 +524,10 @@
             if (missingContacts.length) {
                 return { ok: false, error: 'missing_contacts', missingContactIds: missingContacts, groupIds: [], contactIds: contacts.slice(), memberIds: [], memberRefs: [] };
             }
-            var directRefs = contacts.map(function (id) {
-                var identity = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole({ id: id });
-                return identity ? identity.key : 'ai_role:' + encodeURIComponent(id);
-            });
+            if (realUserIds.length) {
+                return { ok: false, error: 'contact_directory_unavailable', groupIds: [], contactIds: contacts.slice(), memberIds: [], memberRefs: [] };
+            }
+            var directRefs = contacts.map(function (id) { return getAudienceIdentityKey('ai_role', id); });
             return { ok: true, groupIds: [], contactIds: contacts.slice(), memberIds: contacts.slice(),
                 memberRefs: directRefs, memberCount: directRefs.length, staleMemberIds: [], staleMemberRefs: [] };
         }
