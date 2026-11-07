@@ -69,6 +69,8 @@ let editorReturnView = 'listView';
 let portraitPurpose = 'profile';
 let avatarLibraryObjectUrls = [];
 let avatarLibraryRenderToken = 0;
+let avatarPairDraftRoleId = '';
+let avatarPairDraftIds = [];
 
 // 读取世界书列表（phone_worldbooks），只读不写，异常/脏数据一律兜底为空数组
 function loadWorldBooks() {
@@ -252,7 +254,7 @@ async function renderAvatarLibrary(roleId) {
     if (!document.getElementById('avatarPairLibraryStyle')) {
         const style = document.createElement('style');
         style.id = 'avatarPairLibraryStyle';
-        style.textContent = '.avatar-pair-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 14px}.avatar-pair-empty{padding:12px 0;color:#999;font-size:12px}.avatar-pair-card{min-width:0;border:1px solid #e8e8ec;border-radius:16px;padding:12px;background:#fff}.avatar-pair-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;color:#333;font-size:12px}.avatar-pair-unlink{border:0;background:#f7f7f9;color:#666;border-radius:9px;padding:6px 9px;font-size:11px}.avatar-pair-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.avatar-pair-side{min-width:0;border:0;padding:0;background:transparent;text-align:left;color:#555}.avatar-pair-side img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#f0f0f3}.avatar-pair-side span{display:block;padding:7px 2px 0;font-size:11px}.avatar-pair-side.is-active img{outline:2px solid #111;outline-offset:2px}.avatar-pair-side.is-active span{color:#111;font-weight:600}';
+        style.textContent = '.avatar-pair-builder{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0 14px;padding:10px 12px;border:1px solid #e8e8ec;border-radius:14px;background:#f7f7f9;color:#666;font-size:12px}.avatar-pair-builder-actions{display:flex;gap:6px}.avatar-pair-builder button{border:0;border-radius:9px;padding:7px 10px;font-size:11px;background:#fff;color:#333}.avatar-pair-builder button:disabled{opacity:.38}.avatar-pair-pick{display:block;width:100%;margin-top:7px;border:1px solid #e8e8ec;border-radius:9px;padding:8px 5px;background:#fff;color:#666;font-size:11px}.avatar-pair-pick.is-selected{background:#111;color:#fff;border-color:#111}.avatar-library-origin{display:inline-block;margin-left:6px;color:#999;font-size:10px;font-weight:400}.avatar-pair-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 14px}.avatar-pair-empty{padding:12px 0;color:#999;font-size:12px}.avatar-pair-card{min-width:0;border:1px solid #e8e8ec;border-radius:16px;padding:12px;background:#fff}.avatar-pair-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;color:#333;font-size:12px}.avatar-pair-unlink{border:0;background:#f7f7f9;color:#666;border-radius:9px;padding:6px 9px;font-size:11px}.avatar-pair-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.avatar-pair-side{min-width:0;border:0;padding:0;background:transparent;text-align:left;color:#555}.avatar-pair-side img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#f0f0f3}.avatar-pair-side span{display:block;padding:7px 2px 0;font-size:11px}.avatar-pair-side.is-active img{outline:2px solid #111;outline-offset:2px}.avatar-pair-side.is-active span{color:#111;font-weight:600}';
         document.head.appendChild(style);
     }
 
@@ -261,9 +263,29 @@ async function renderAvatarLibrary(roleId) {
     const legacyReady = await ensureLegacyAvatarInLibrary(role);
     if (token !== avatarLibraryRenderToken || String(currentProfileRoleId) !== String(roleId)) return;
 
+    if (String(avatarPairDraftRoleId) !== String(roleId)) {
+        avatarPairDraftRoleId = String(roleId);
+        avatarPairDraftIds = [];
+    }
     const items = window.RoleAvatarLibrary.list(roleId);
     const pairs = typeof window.RoleAvatarLibrary.getPairs === 'function'
         ? window.RoleAvatarLibrary.getPairs(roleId) : [];
+    const pairedPortraitIds = Object.create(null);
+    pairs.forEach(function (pair) {
+        (pair.avatarIds || []).forEach(function (id) { pairedPortraitIds[String(id)] = true; });
+    });
+    avatarPairDraftIds = avatarPairDraftIds.filter(function (id) {
+        return items.some(function (item) { return item.id === id; }) && !pairedPortraitIds[id];
+    }).slice(0, 2);
+    const pairBuilder = document.getElementById('avatarPairBuilder');
+    if (pairBuilder) {
+        const selectedCount = avatarPairDraftIds.length;
+        pairBuilder.innerHTML = '<span>' + (selectedCount ? ('已选择 ' + selectedCount + ' / 2 张头像') : '也可以手动从收藏中选两张配对') + '</span>' +
+            '<div class="avatar-pair-builder-actions">' +
+            '<button type="button" data-avatar-pair-action="cancel"' + (selectedCount ? '' : ' disabled') + '>取消</button>' +
+            '<button type="button" data-avatar-pair-action="create"' + (selectedCount === 2 ? '' : ' disabled') + '>建立配对</button>' +
+            '</div>';
+    }
     if (pairContainer) {
         pairContainer.innerHTML = pairs.length ? '<div class="avatar-pair-list">' + pairs.map(function (pair) {
             const first = pair.avatars && pair.avatars[0];
@@ -297,12 +319,16 @@ async function renderAvatarLibrary(roleId) {
         const assetId = escapeHtml(item.assetId);
         const label = escapeHtml(item.label || ('头像 ' + String(index + 1)));
         const active = item.active;
+        const isPaired = !!pairedPortraitIds[item.id];
+        const isPairPicked = avatarPairDraftIds.indexOf(item.id) >= 0;
+        const originLabel = item.source === 'chat' ? '聊天候选' : (item.source === 'legacy' ? '原有头像' : '已上传');
         return '<article class="avatar-library-card' + (active ? ' is-active' : '') + '">' +
             '<button class="avatar-library-preview" type="button" data-avatar-action="select" data-avatar-id="' + id + '" aria-pressed="' + (active ? 'true' : 'false') + '" aria-label="' + (active ? '当前头像：' : '设为当前头像：') + label + '">' +
                 '<span class="avatar-library-photo"><img data-avatar-asset="' + assetId + '" alt="' + label + '" loading="lazy" decoding="async"><span class="avatar-library-current">正在使用</span></span>' +
-                '<span class="avatar-library-label">' + label + '</span>' +
+                '<span class="avatar-library-label">' + label + '<span class="avatar-library-origin">' + originLabel + '</span></span>' +
                 '<span class="avatar-library-select-label">' + (active ? '当前头像' : '设为当前') + '</span>' +
             '</button>' +
+            '<button class="avatar-pair-pick' + (isPairPicked ? ' is-selected' : '') + '" type="button" data-avatar-pair-action="pick" data-avatar-id="' + id + '"' + (isPaired ? ' disabled title="这张头像已经属于一组配对"' : '') + '>' + (isPaired ? '已配对' : (isPairPicked ? '已选入配对' : '选择配对')) + '</button>' +
             '<button class="avatar-library-remove" type="button" data-avatar-action="remove" data-avatar-id="' + id + '"' + (active ? ' disabled aria-disabled="true" title="先切换当前头像再移除"' : '') + '>移除</button>' +
         '</article>';
     }).join('');
@@ -391,6 +417,48 @@ async function selectRoleAvatarFromLibrary(avatarId) {
 
     renderRoleProfile();
     setAvatarLibraryStatus('已设为当前头像。聊天列表与角色资料会读取这份角色头像。', 'success');
+}
+
+function toggleRoleAvatarPairDraft(avatarId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library) return;
+    const item = library.find(roleId, avatarId);
+    if (!item) return;
+    const pairs = typeof library.getPairs === 'function' ? library.getPairs(roleId) : [];
+    if (pairs.some(function (pair) { return (pair.avatarIds || []).indexOf(item.id) >= 0; })) {
+        setAvatarLibraryStatus('这张头像已经属于一组配对，请先解除原配对。', 'error');
+        return;
+    }
+    const index = avatarPairDraftIds.indexOf(item.id);
+    if (index >= 0) avatarPairDraftIds.splice(index, 1);
+    else if (avatarPairDraftIds.length >= 2) {
+        setAvatarLibraryStatus('一组配对只能选择两张头像。先取消一张再重新选择。', 'info');
+        return;
+    } else avatarPairDraftIds.push(item.id);
+    avatarPairDraftRoleId = roleId;
+    renderAvatarLibrary(roleId);
+}
+
+function cancelRoleAvatarPairDraft() {
+    avatarPairDraftIds = [];
+    avatarPairDraftRoleId = String(currentProfileRoleId || '');
+    if (avatarPairDraftRoleId) renderAvatarLibrary(avatarPairDraftRoleId);
+}
+
+async function createRoleAvatarPairFromDraft() {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || avatarPairDraftIds.length !== 2 || typeof library.linkPair !== 'function') return;
+    const ids = avatarPairDraftIds.slice();
+    const result = library.linkPair(roleId, ids[0], ids[1], { source: 'manual', label: '手动配对' });
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message ? result.error.message : '配对没有保存成功，原头像均已保留。', 'error');
+        return;
+    }
+    avatarPairDraftIds = [];
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('已建立配对，两张头像仍可分别设为当前头像。', 'success');
 }
 
 async function unlinkRoleAvatarPair(pairId) {
@@ -570,7 +638,8 @@ function renderRoleProfile() {
             '<div class="avatar-library-heading"><div><div class="avatar-library-kicker">PORTRAIT ARCHIVE / PRIVATE COLLECTION</div><h3 id="avatarLibraryTitle">头像收藏</h3><p>每个角色独立保存，互不混用。</p></div>' +
             '<button class="avatar-library-add" type="button" data-profile-action="avatar-add"><span aria-hidden="true">＋</span> 添加头像</button></div>' +
             '<div class="avatar-library-status" id="avatarLibraryStatus" aria-live="polite" role="status"></div>' +
-            '<div class="avatar-pair-heading"><h4>配对头像</h4><p>识别为一组的两张图片会并排关联保存。</p></div>' +
+            '<div class="avatar-pair-heading"><h4>配对头像</h4><p>识别为一组的两张图片会并排关联保存，也可以手动选择。</p></div>' +
+            '<div id="avatarPairBuilder" class="avatar-pair-builder"></div>' +
             '<div id="avatarPairList" class="avatar-pair-container"></div>' +
             '<div class="avatar-library-grid" id="avatarLibraryGrid"><div class="avatar-library-empty">正在载入头像…</div></div>' +
         '</section>' +
@@ -593,6 +662,9 @@ function renderRoleProfile() {
             const pairAction = pairButton.getAttribute('data-avatar-pair-action');
             if (pairAction === 'unlink') unlinkRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
             if (pairAction === 'use') selectRoleAvatarFromLibrary(pairButton.getAttribute('data-avatar-id'));
+            if (pairAction === 'pick') toggleRoleAvatarPairDraft(pairButton.getAttribute('data-avatar-id'));
+            if (pairAction === 'create') createRoleAvatarPairFromDraft();
+            if (pairAction === 'cancel') cancelRoleAvatarPairDraft();
             return;
         }
         const avatarButton = event.target.closest ? event.target.closest('[data-avatar-action]') : null;
