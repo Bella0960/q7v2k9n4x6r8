@@ -16,6 +16,7 @@
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261107v1"></script>
+    <script src="../../shared/js/phone/wallet-ledger.js?v=20261107v1"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
@@ -7892,18 +7893,16 @@
             }
 
             try {
-                const lockManager = typeof navigator !== 'undefined' && navigator.locks &&
-                    typeof navigator.locks.request === 'function' ? navigator.locks : null;
-                if (lockManager) {
-                    // 使用全局锁：不同红包/转账同时领取时，也不能互相覆盖钱包余额。
-                    await lockManager.request('maomao-wallet-ledger-v1', { mode: 'exclusive' }, processPaymentUnderLock);
+                const ledger = window.MaoMaoWalletLedger;
+                if (ledger && typeof ledger.runExclusive === 'function') {
+                    await ledger.runExclusive(processPaymentUnderLock, {
+                        onFallback: function () {
+                            showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个聊天页领取');
+                        }
+                    });
                 } else {
-                    // 旧浏览器仍可在单页面内防连点，但不能保证跨标签页互斥。
-                    if (!paymentLockFallbackNoticeShown) {
-                        paymentLockFallbackNoticeShown = true;
-                        showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个聊天页领取');
-                    }
-                    await processPaymentUnderLock();
+                    // 锁模块加载失败时 fail-closed，不能退回无锁的钱包写入。
+                    showToast('钱包保护模块尚未加载，请刷新页面后重试');
                 }
             } catch (error) {
                 console.warn('[chat] 红包 / 转账操作未完成', error);
