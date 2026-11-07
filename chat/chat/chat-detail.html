@@ -7089,6 +7089,10 @@
         });
         const btnHeaderVideo = document.getElementById('btn-header-video');
         if (btnHeaderVideo) btnHeaderVideo.addEventListener('click', function () {
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                if (typeof showToast === 'function') showToast('真人聊天暂不开放视频通话，语音通话也需等实时通信服务接通。');
+                return;
+            }
             const existingVideoAction = document.querySelector('.plus-item[data-feat="video"]');
             if (existingVideoAction) existingVideoAction.click();
             else if (typeof showToast === 'function') showToast('请从加号菜单打开视频通话');
