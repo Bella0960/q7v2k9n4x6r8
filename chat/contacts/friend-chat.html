@@ -91,6 +91,7 @@
   var hasOlder = false;
   var known = Object.create(null);
   var hiddenMessageIds = Object.create(null);
+  var conversationViewVersion = '';
   var messageViewVersion = 0;
   var pollTimer = 0;
   var pollBusy = false;
@@ -382,6 +383,7 @@
       var result = await api.getMessages(friendId);
       $('friendName').textContent = result.friend.displayName || 'MAOMAO 用户';
       var initialMessages = result.messages || [];
+      conversationViewVersion = result.viewState && result.viewState.version || '';
       initialMessages.forEach(function (message) { appendMessage(message, false); });
       rememberIncoming(initialMessages);
       cursor = result.nextCursor || cursorFor(initialMessages.slice(-1)[0]);
@@ -402,6 +404,33 @@
     }
   }
 
+  async function reloadConversationView(expectedVersion, shouldStick, viewVersion) {
+    var previousTop = $('messages').scrollTop;
+    var page = await api.getMessages(friendId);
+    if (viewVersion !== messageViewVersion) return;
+    if (expectedVersion && page.viewState && page.viewState.version !== expectedVersion) {
+      conversationViewVersion = page.viewState.version || '';
+    } else {
+      conversationViewVersion = (page.viewState && page.viewState.version) || expectedVersion || '';
+    }
+    $('messages').innerHTML = '';
+    known = Object.create(null);
+    hiddenMessageIds = Object.create(null);
+    latestIncomingMessage = null;
+    var list = page.messages || [];
+    list.forEach(function (message) { appendMessage(message, false); });
+    rememberIncoming(list);
+    cursor = page.nextCursor || cursorFor(list.slice(-1)[0]);
+    olderCursor = page.olderCursor || cursorFor(list[0]);
+    hasOlder = Boolean(page.hasMore);
+    $('historyAction').hidden = !hasOlder;
+    if (!list.length) showEmpty('这段聊天记录已在其他设备更新。\n当前显示的是你账号里仍保留的消息。');
+    if (shouldStick) scrollToBottom();
+    else $('messages').scrollTop = Math.min(previousTop, $('messages').scrollHeight);
+    markVisibleIncomingRead();
+    setStatus('聊天视图已与其他设备同步');
+  }
+
   async function pollMessages() {
     if (!ready || blocked || pollBusy || document.hidden) return;
     pollBusy = true;
@@ -413,6 +442,12 @@
       do {
         page = await api.getMessages(friendId, cursor, 'after');
         if (viewVersion !== messageViewVersion) return;
+        var pageViewVersion = page.viewState && page.viewState.version || '';
+        if (conversationViewVersion && pageViewVersion && pageViewVersion !== conversationViewVersion) {
+          await reloadConversationView(pageViewVersion, shouldStick, viewVersion);
+          break;
+        }
+        if (!conversationViewVersion) conversationViewVersion = pageViewVersion;
         var list = page.messages || [];
         list.forEach(function (message) { appendMessage(message, false); });
         rememberIncoming(list);
