@@ -3177,3 +3177,153 @@ test('收件箱拉取会修复已暂存但首次未入箱的主动消息', async
   assert.equal(repeatedPull.status, 200);
   assert.equal(repeatedPull.payload.messages.length, 1);
 });
+
+
+test('本机主动消息完成后会立即发送不含正文的角色聊天 Push，并按订阅去重', async () => {
+  const now = 1800000000000;
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0',
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev',
+    fetchImpl: pushFetch
+  });
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const subscription = await makeBrowserSubscription();
+  const subscribed = await subscribeDevice(ctx, device, subscription);
+  assert.equal(subscribed.status, 200);
+
+  await ctx.asJson('/api/autonomy/global', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  await ctx.asJson('/api/characters/char-push/schedule', {
+    method: 'PUT',
+    device,
+    body: { timeZone: 'UTC', schedule: { active: [{ startMinute: 0, endMinute: 0 }] } }
+  });
+  await ctx.asJson('/api/characters/char-push/context-version', {
+    method: 'POST', device, body: { eventId: randomToken(20) }
+  });
+  await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST', device, body: { foregroundActive: true }
+  });
+  await ctx.asJson('/api/characters/char-push/lease', {
+    method: 'POST', device, body: { action: 'acquire' }
+  });
+  const queued = await ctx.asJson('/api/autonomy/characters/char-push/activities', {
+    method: 'POST', device, body: { contextVersion: 1 }
+  });
+  assert.equal(queued.status, 200);
+  const claimed = await ctx.asJson('/api/autonomy/characters/char-push/activities/claim', {
+    method: 'POST', device, body: {}
+  });
+  assert.equal(claimed.status, 200);
+  const activity = claimed.payload.activity;
+
+  const completed = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+  });
+  assert.equal(completed.status, 200);
+  assert.equal(completed.payload.completed, true);
+  assert.equal(completed.payload.pushDispatch.sent, 1);
+  assert.equal(pushFetch.calls.length, 1);
+
+  const serverMessageId = 'autonomy_' + activity.id + '_' + activity.attemptCount;
+  const delivery = ctx.store.findDelivery(
+    'outbound:' + serverMessageId,
+    subscribed.payload.subscription.id
+  );
+  assert.equal(delivery.status, 'sent');
+  assert.equal(delivery.outbound_message_id, 'out_' + serverMessageId);
+
+  const notification = buildOutboundPushPayload({
+    characterId: 'char-push',
+    serverMessageId,
+    timestamp: now
+  });
+  assert.equal(notification.url, './chat/chat/chat-detail.html?id=char-push');
+  assert.equal(notification.type, 'chat_message');
+  assert.match(notification.body, /有一条新消息/);
+  assert.equal(notification.body.includes('我刚刚想到'), false,
+    '锁屏通知不得暴露主动消息正文');
+  assert.equal(notification.dedupeKey, 'outbound:' + serverMessageId);
+
+  const repeated = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+  });
+  assert.equal(repeated.status, 200);
+  assert.equal(repeated.payload.alreadyCompleted, true);
+  assert.equal(repeated.payload.pushDispatch.sent, 0);
+  assert.equal(pushFetch.calls.length, 1, '重复完成请求不得重复推送');
+});
+
+test('聊天 Push 失败会写入退避记录，并由后续维护重试同一条通知', async () => {
+  const now = 1800000000000;
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(503);
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const subscription = await makeBrowserSubscription();
+  await subscribeDevice(ctx, device, subscription);
+
+  const serverMessageId = 'autonomy_retry_push_123456_1';
+  const outbox = ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-retry-push',
+    serverMessageId,
+    dedupeKey: 'autonomy:retry-push:1',
+    payload: { type: 'text', text: '不会出现在锁屏通知中的正文。' },
+    now
+  });
+  assert.equal(outbox.inserted, true);
+
+  const env = {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev'
+  };
+  let clock = now;
+  const first = await dispatchPendingOutboundPushes({
+    store: ctx.store, env, now: () => clock, fetchImpl: pushFetch, limit: 10
+  });
+  assert.equal(first.retryScheduled, 1);
+  assert.equal(first.sent, 0);
+  assert.equal(pushFetch.calls.length, 1);
+
+  const notDue = await dispatchPendingOutboundPushes({
+    store: ctx.store, env, now: () => clock, fetchImpl: pushFetch, limit: 10
+  });
+  assert.equal(notDue.attempted, 0);
+  assert.equal(pushFetch.calls.length, 1);
+
+  clock += 30000;
+  pushFetch.setStatus(201);
+  const retried = await dispatchPendingOutboundPushes({
+    store: ctx.store, env, now: () => clock, fetchImpl: pushFetch, limit: 10
+  });
+  assert.equal(retried.sent, 1);
+  assert.equal(pushFetch.calls.length, 2);
+
+  const delivery = ctx.store.findDelivery(
+    'outbound:' + serverMessageId,
+    subscription.payload.subscription.id
+  );
+  assert.equal(delivery.status, 'sent');
+  assert.equal(delivery.attempt_count, 2);
+});
