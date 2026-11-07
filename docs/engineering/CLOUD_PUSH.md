@@ -40,7 +40,7 @@ Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机
 
 设备鉴权：请求头 `X-Device-Auth: <deviceId>.<secret>`。`deviceId` 与 `secret` 由前端 `crypto.getRandomValues` 生成，只存本机 `localStorage`，且被备份导出逻辑永久排除。
 
-新设备注册不再开放自助加入：已授权设备先调用 `POST /api/devices/pairing-token` 生成一次性配对码；新设备把配对码提交给 `POST /api/devices/register`。配对码只存 peppered hash、过期后不可用、成功使用后不可重放，签发设备撤销时其未用配对码一并清除。首次安装可通过 Worker secret `ENROLLMENT_TOKEN` 认领首台设备；数据库会记录初始认领已完成，后续设备只能走配对流程。
+新设备注册不再开放自助加入：已授权设备先调用 `POST /api/devices/pairing-token` 生成一次性配对码；新设备把配对码提交给 `POST /api/devices/register`。配对码只存 peppered hash、过期后不可用、成功使用后不可重放，签发设备撤销时其未用配对码一并清除。已消费/过期记录会保留最近一小时用于签发频率统计，再由 maintenance 清理。首次安装可通过 Worker secret `ENROLLMENT_TOKEN` 认领首台设备；数据库会记录初始认领已完成，后续设备只能走配对流程。
 
 ## 4. 部署步骤
 
