@@ -326,6 +326,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       expirationTime: validated.expirationTime,
       now: timestamp
     });
+    if (!result) {
+      const currentDevice = await store.getDevice(device.id);
+      if (!currentDevice || currentDevice.revoked_at) {
+        throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+      }
+      throw new ApiError(409, 'SUBSCRIPTION_IN_USE', '该推送订阅仍属于另一台已授权设备');
+    }
     return ok({
       subscription: {
         id: result.id,
