@@ -204,9 +204,9 @@ test('MCP disconnect aborts in-flight requests before releasing its session', as
   await client.initialize();
   const pendingCall = client.callTool('slow-tool', {});
   await started;
+  const cancelled = assert.rejects(pendingCall, /连接已断开，已取消未完成的请求/);
   await client.disconnect();
-
-  await assert.rejects(pendingCall, /连接已断开，已取消未完成的请求/);
+  await cancelled;
   assert.equal(requestAborted, true);
   assert.ok(calls.some(item => item.init.method === 'DELETE'), 'session DELETE should be sent');
   await client.disconnect();
