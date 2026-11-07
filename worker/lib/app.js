@@ -7,6 +7,7 @@ import {
 import {
   PushConfigError, parseVapidKeys, sendWebPush
 } from './webpush.js';
+import '../../shared/js/phone/character-schedule-policy.js';
 
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -81,6 +82,69 @@ function vapidSummary(env) {
     configured: Boolean(env?.VAPID_PUBLIC_KEY && env?.VAPID_PRIVATE_KEY && env?.VAPID_SUBJECT),
     publicKey: String(env?.VAPID_PUBLIC_KEY || '')
   };
+}
+
+const OWNER_USER_ID = 'owner';
+const CHARACTER_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,96}$/;
+
+function parsePositiveEnv(env, name) {
+  const raw = env?.[name];
+  if (raw == null || String(raw).trim() === '') return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function readPresenceConfig(env) {
+  const heartbeatTtlMs = parsePositiveEnv(env, 'AUTONOMY_HEARTBEAT_TTL_MS');
+  const leaseDurationMs = parsePositiveEnv(env, 'AUTONOMY_DEVICE_LEASE_MS');
+  const graceMs = parsePositiveEnv(env, 'AUTONOMY_DEVICE_GRACE_MS');
+  if (heartbeatTtlMs == null || leaseDurationMs == null || graceMs == null) return null;
+  return { heartbeatTtlMs, leaseDurationMs, graceMs };
+}
+
+function readCharacterId(raw) {
+  let value = '';
+  try {
+    value = decodeURIComponent(String(raw || ''));
+  } catch {
+    return null;
+  }
+  return CHARACTER_ID_PATTERN.test(value) ? value : null;
+}
+
+function validateScheduleInput(body) {
+  const policy = globalThis.CharacterSchedulePolicy;
+  if (!policy || typeof policy.isValidTimeZone !== 'function') {
+    throw new ApiError(503, 'SCHEDULE_POLICY_UNAVAILABLE', '角色作息策略暂不可用');
+  }
+  const timeZone = String(body?.timeZone || '').trim();
+  if (!timeZone || timeZone.length > 96 || !policy.isValidTimeZone(timeZone)) {
+    throw new ApiError(400, 'INVALID_TIME_ZONE', '必须提供有效的 IANA 时区');
+  }
+  const schedule = body?.schedule;
+  if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule)) {
+    throw new ApiError(400, 'INVALID_SCHEDULE', '必须提供角色作息对象');
+  }
+  const allowed = ['active', 'busy', 'asleep', 'away'];
+  for (const key of Object.keys(schedule)) {
+    if (!allowed.includes(key)) {
+      throw new ApiError(400, 'INVALID_SCHEDULE', '角色作息包含未知状态');
+    }
+    const windows = Array.isArray(schedule[key]) ? schedule[key] : [schedule[key]];
+    for (const windowValue of windows) {
+      if (!policy.normalizeWindow(windowValue)) {
+        throw new ApiError(400, 'INVALID_SCHEDULE', '作息时间窗口格式无效');
+      }
+    }
+  }
+  if (!Object.prototype.hasOwnProperty.call(schedule, 'active')) {
+    throw new ApiError(400, 'INVALID_SCHEDULE', '必须明确提供 active 时间窗口；留空数组表示当前不允许主动活动');
+  }
+  const serialized = JSON.stringify(schedule);
+  if (serialized.length > 4000) {
+    throw new ApiError(413, 'SCHEDULE_TOO_LARGE', '作息配置过长');
+  }
+  return { timeZone, schedule };
 }
 
 /**
@@ -338,6 +402,152 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     return ok({ revoked: true });
   }
 
+  async function getGlobalAutonomy(request) {
+    const device = await authenticate(request);
+    const row = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
+    return ok({ enabled: row ? row.enabled === 1 : false, configured: Boolean(row), updatedAt: row ? Number(row.updated_at) : null });
+  }
+
+  async function setGlobalAutonomy(request) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (typeof body.enabled !== 'boolean') {
+      throw new ApiError(400, 'INVALID_AUTONOMY_SETTING', 'enabled 必须是布尔值');
+    }
+    const row = await store.setUserAutonomy(device.user_id || OWNER_USER_ID, body.enabled, now());
+    return ok({ enabled: row.enabled === 1, updatedAt: Number(row.updated_at) });
+  }
+
+  async function getCharacterAutonomy(request, characterId) {
+    const device = await authenticate(request);
+    const row = await store.getCharacterAutonomy(device.user_id || OWNER_USER_ID, characterId);
+    return ok({
+      enabled: row?.enabled == null ? null : row.enabled === 1,
+      inherited: !row || row.enabled == null,
+      updatedAt: row ? Number(row.updated_at) : null
+    });
+  }
+
+  async function setCharacterAutonomy(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (body.enabled !== null && typeof body.enabled !== 'boolean') {
+      throw new ApiError(400, 'INVALID_AUTONOMY_SETTING', 'enabled 必须为 true、false 或 null（继承全局设置）');
+    }
+    const row = await store.setCharacterAutonomy(
+      device.user_id || OWNER_USER_ID,
+      characterId,
+      body.enabled,
+      now()
+    );
+    return ok({
+      enabled: row.enabled == null ? null : row.enabled === 1,
+      inherited: row.enabled == null,
+      updatedAt: Number(row.updated_at)
+    });
+  }
+
+  async function getCharacterSchedule(request, characterId) {
+    const device = await authenticate(request);
+    const row = await store.getCharacterSchedule(device.user_id || OWNER_USER_ID, characterId);
+    if (!row) return ok({ configured: false, schedule: null, timeZone: null });
+    let schedule = null;
+    try {
+      schedule = JSON.parse(row.schedule_json);
+    } catch {
+      throw new ApiError(500, 'SCHEDULE_DATA_INVALID', '已保存的作息数据无法解析');
+    }
+    return ok({ configured: true, timeZone: row.time_zone, schedule, updatedAt: Number(row.updated_at) });
+  }
+
+  async function setCharacterSchedule(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    const validated = validateScheduleInput(body);
+    const row = await store.setCharacterSchedule(
+      device.user_id || OWNER_USER_ID,
+      characterId,
+      validated.timeZone,
+      validated.schedule,
+      now()
+    );
+    return ok({ configured: true, timeZone: row.time_zone, schedule: validated.schedule, updatedAt: Number(row.updated_at) });
+  }
+
+  async function updatePresenceHeartbeat(request) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (typeof body.foregroundActive !== 'boolean') {
+      throw new ApiError(400, 'INVALID_PRESENCE', 'foregroundActive 必须是布尔值');
+    }
+    const timestamp = now();
+    const userId = device.user_id || OWNER_USER_ID;
+    const presence = await store.upsertDevicePresence({
+      userId,
+      deviceId: device.id,
+      foregroundActive: body.foregroundActive,
+      now: timestamp
+    });
+    let releasedLeases = 0;
+    if (!body.foregroundActive) {
+      releasedLeases = await store.releaseDeviceLeases(userId, device.id);
+    }
+    return ok({
+      foregroundActive: presence.foreground_active === 1,
+      lastHeartbeatAt: Number(presence.last_heartbeat_at),
+      releasedLeases
+    });
+  }
+
+  async function updateCharacterLease(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    const action = String(body.action || '');
+    if (!['acquire', 'renew', 'release'].includes(action)) {
+      throw new ApiError(400, 'INVALID_LEASE_ACTION', 'action 必须为 acquire、renew 或 release');
+    }
+    const timestamp = now();
+    const userId = device.user_id || OWNER_USER_ID;
+    if (action === 'release') {
+      const released = await store.releaseCharacterLease({ userId, characterId, deviceId: device.id });
+      return ok({ released });
+    }
+
+    const config = readPresenceConfig(env);
+    if (!config) {
+      throw new ApiError(503, 'PRESENCE_NOT_CONFIGURED', '缺少心跳 TTL、设备租约时长或 grace 配置；为安全起见未申请租约');
+    }
+    if (!store.isDeviceForegroundFresh(userId, device.id, timestamp, config.heartbeatTtlMs)) {
+      throw new ApiError(409, 'FOREGROUND_HEARTBEAT_REQUIRED', '需要先发送有效的前台心跳');
+    }
+
+    const lease = action === 'acquire'
+      ? await store.acquireCharacterLease({
+          userId,
+          characterId,
+          deviceId: device.id,
+          now: timestamp,
+          leaseUntil: timestamp + config.leaseDurationMs,
+          graceMs: config.graceMs
+        })
+      : await store.renewCharacterLease({
+          userId,
+          characterId,
+          deviceId: device.id,
+          now: timestamp,
+          leaseUntil: timestamp + config.leaseDurationMs,
+          graceMs: config.graceMs
+        });
+    if (!lease) {
+      throw new ApiError(409, action === 'acquire' ? 'CHARACTER_LEASE_HELD' : 'LEASE_NOT_OWNED', '当前设备无法取得该角色的前台租约');
+    }
+    return ok({
+      characterId,
+      leaseUntil: Number(lease.lease_until),
+      ownerDeviceId: lease.owner_device_id
+    });
+  }
+
   return async function handleApi(request) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '');
@@ -364,6 +574,29 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       }
       if (path === '/api/devices/register' && method === 'POST') return await registerDevice(request);
       if (path === '/api/devices/revoke' && method === 'POST') return await revokeDevice(request);
+      if (path === '/api/autonomy/global' && method === 'GET') return await getGlobalAutonomy(request);
+      if (path === '/api/autonomy/global' && method === 'PUT') return await setGlobalAutonomy(request);
+
+      const characterAutonomyMatch = /^\\/api\\/autonomy\\/characters\\/([^/]+)$/.exec(path);
+      if (characterAutonomyMatch && readCharacterId(characterAutonomyMatch[1])) {
+        const characterId = readCharacterId(characterAutonomyMatch[1]);
+        if (method === 'GET') return await getCharacterAutonomy(request, characterId);
+        if (method === 'PUT') return await setCharacterAutonomy(request, characterId);
+      }
+
+      const characterScheduleMatch = /^\\/api\\/characters\\/([^/]+)\\/schedule$/.exec(path);
+      if (characterScheduleMatch && readCharacterId(characterScheduleMatch[1])) {
+        const characterId = readCharacterId(characterScheduleMatch[1]);
+        if (method === 'GET') return await getCharacterSchedule(request, characterId);
+        if (method === 'PUT') return await setCharacterSchedule(request, characterId);
+      }
+
+      if (path === '/api/presence/heartbeat' && method === 'POST') return await updatePresenceHeartbeat(request);
+
+      const characterLeaseMatch = /^\\/api\\/characters\\/([^/]+)\\/lease$/.exec(path);
+      if (characterLeaseMatch && readCharacterId(characterLeaseMatch[1]) && method === 'POST') {
+        return await updateCharacterLease(request, readCharacterId(characterLeaseMatch[1]));
+      }
       if (path === '/api/push/subscriptions' && method === 'POST') return await subscribe(request);
       if (path === '/api/push/subscriptions' && method === 'GET') return await listSubscriptions(request);
       if (path === '/api/push/unsubscribe' && method === 'POST') return await unsubscribe(request);
