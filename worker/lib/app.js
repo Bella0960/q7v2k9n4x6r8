@@ -799,13 +799,17 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(400, 'INVALID_OUTBOUND_LIMIT', 'limit 必须是 1 到 50 的整数');
     }
     const userId = device.user_id || OWNER_USER_ID;
-    await store.repairStagedActivityOutbox({
-      userId,
-      deviceId: device.id,
-      characterId,
-      now: now(),
-      limit
-    });
+    try {
+      await store.repairStagedActivityOutbox({
+        userId,
+        deviceId: device.id,
+        characterId,
+        now: now(),
+        limit
+      });
+    } catch (error) {
+      // Recovery is best-effort; a repair failure must not block older inbox rows.
+    }
     const rows = await store.listPendingOutboundMessages({
       userId,
       deviceId: device.id,
@@ -936,13 +940,17 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       config: readPresenceConfig(env) || {},
       executorDeviceId: device.id
     });
-    await store.repairStagedActivityOutbox({
-      userId,
-      deviceId: device.id,
-      characterId,
-      now: timestamp,
-      limit: Math.min(config.tickLimit, 10)
-    });
+    try {
+      await store.repairStagedActivityOutbox({
+        userId,
+        deviceId: device.id,
+        characterId,
+        now: timestamp,
+        limit: Math.min(config.tickLimit, 10)
+      });
+    } catch (error) {
+      // Keep claiming other eligible work even if one staged outbox needs repair.
+    }
     const tasks = await store.listDueActivitiesForUser({
       userId,
       characterId,
