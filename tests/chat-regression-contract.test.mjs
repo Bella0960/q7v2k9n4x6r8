@@ -2226,12 +2226,12 @@ test('WeChat Moments keeps the cover action menu available', () => {
 });
 
 test('chat sticker picker exposes per-role favourites without replacing the global sticker library', () => {
-  assert.match(detail, /role-sticker-library\\.js\\?v=20261107v1/);
-  assert.match(detail, /roleLibrary\\.stickerKey\\(lib\\.id, sticker\\.id\\)/);
-  assert.match(detail, /roleLibrary\\.toggle\\(roleId, entry\\.key\\)/);
-  assert.match(detail, /stickerRoleTab/);
-  assert.match(detail, /stickerAllTab/);
-  assert.match(detail, /sticker_libraries/);
-  assert.match(serviceWorker, /role-sticker-library\\.js\\?v=20261107v1/);
-  assert.match(serviceWorker, /phone-app-pwa-v174/);
+  assert.ok(detail.includes('role-sticker-library.js?v=20261107v1'));
+  assert.ok(detail.includes('roleLibrary.stickerKey(lib.id, sticker.id)'));
+  assert.ok(detail.includes('roleLibrary.toggle(roleId, entry.key)'));
+  assert.ok(detail.includes('stickerRoleTab'));
+  assert.ok(detail.includes('stickerAllTab'));
+  assert.ok(detail.includes('sticker_libraries'));
+  assert.ok(serviceWorker.includes('role-sticker-library.js?v=20261107v1'));
+  assert.ok(serviceWorker.includes('phone-app-pwa-v174'));
 });
