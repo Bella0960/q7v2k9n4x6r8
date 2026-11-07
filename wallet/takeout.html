@@ -997,6 +997,8 @@
             // 订单落盘后再清空购物车；清理未确认时保留原购物车与待恢复交易。
             var cartSnapshot = cart;
             var cartShopSnapshot = cartShopId;
+            var cartStorageSnapshot = localStorage.getItem('takeout_cart');
+            var cartShopStorageSnapshot = localStorage.getItem('takeout_cart_shop_id');
             cart = {};
             cartShopId = '';
             if (!saveCart()) {
@@ -1007,7 +1009,20 @@
               return;
             }
             if (!ledger.completePendingCheckout(transactionId)) {
-              toast('订单已保存，但结算确认暂未完成；再次提交不会重复扣款');
+              if (ledger.isPendingCheckout(transactionId) === true) {
+                cart = cartSnapshot;
+                cartShopId = cartShopSnapshot;
+                try {
+                  if (cartStorageSnapshot == null) localStorage.removeItem('takeout_cart');
+                  else localStorage.setItem('takeout_cart', cartStorageSnapshot);
+                  if (cartShopStorageSnapshot == null) localStorage.removeItem('takeout_cart_shop_id');
+                  else localStorage.setItem('takeout_cart_shop_id', cartShopStorageSnapshot);
+                } catch (restoreError) {}
+                updateCartUI();
+                toast('订单已保存，结算确认暂未完成；已恢复购物车，可再次提交完成确认');
+              } else {
+                toast('订单已保存，但结算确认暂未完成；请勿重新购买这笔外卖');
+              }
               return;
             }
             try {
