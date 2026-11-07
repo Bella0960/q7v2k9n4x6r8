@@ -47,9 +47,18 @@
     }
     return code;
   }
+  function getQrPayload(serverPayload, shareUrl) {
+    var expectedCode = String(serverPayload && serverPayload.code || '').trim().toLowerCase();
+    var payload = String(serverPayload && serverPayload.qrPayload || '').trim();
+    if (CODE_PATTERN.test(expectedCode) && extractFriendCode(payload) === expectedCode) return payload;
+    var fallbackCode = extractFriendCode(shareUrl, serverPayload && serverPayload.location);
+    if (fallbackCode && fallbackCode === expectedCode) return String(shareUrl);
+    throw new Error('invalid_friend_qr_payload');
+  }
   root.PhoneRealUserInviteLinks = {
     createShareUrl: createShareUrl,
     extractFriendCode: extractFriendCode,
-    captureCurrentInvite: captureCurrentInvite
+    captureCurrentInvite: captureCurrentInvite,
+    getQrPayload: getQrPayload
   };
 })(window);

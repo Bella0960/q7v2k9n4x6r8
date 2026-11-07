@@ -53,16 +53,21 @@ test('opening a share link captures the invite and clears only the fragment', ()
   assert.equal(calls.length, 1);
   assert.equal(calls[0][2], '/chat/contacts/contacts.html');
 });
-test('the bundled QR generator creates a local SVG for the HTTPS invitation link', () => {
+test('the QR uses the exact server-returned payload and creates a local SVG', () => {
   const sandbox = { console };
   vm.runInNewContext(qrSource, sandbox, { filename: 'qrcode-generator.js' });
   assert.equal(typeof sandbox.qrcode, 'function');
-  const link = inviteApi().createShareUrl(page, code);
+  const api = inviteApi();
+  const link = api.createShareUrl(page, code);
+  const serverPayload = { code, qrPayload: 'mao://friend/add?code=' + code };
+  const qrPayload = api.getQrPayload(serverPayload, link);
+  assert.equal(qrPayload, serverPayload.qrPayload);
   const qr = sandbox.qrcode(0, 'M');
-  qr.addData(link, 'Byte');
+  qr.addData(qrPayload, 'Byte');
   qr.make();
   const svg = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
   assert.match(svg, /^<svg/);
   assert.match(svg, /viewBox=/);
   assert.ok(qr.getModuleCount() >= 21);
+  assert.throws(() => api.getQrPayload({ code, qrPayload: 'https://attacker.example/#mao-friend=' + code }, link), /invalid_friend_qr_payload/);
 });

@@ -295,8 +295,10 @@
       if (!shareUrl) throw new Error('share_url_unavailable');
       currentCode.shareUrl = shareUrl;
       if (typeof root.qrcode !== 'function') throw new Error('qr_generator_unavailable');
+      var qrPayload = inviteLinks.getQrPayload(payload, shareUrl);
+      currentCode.qrPayload = qrPayload;
       var qr = root.qrcode(0, 'M');
-      qr.addData(shareUrl, 'Byte');
+      qr.addData(qrPayload, 'Byte');
       qr.make();
       qrContainer.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
     } catch (error) {
