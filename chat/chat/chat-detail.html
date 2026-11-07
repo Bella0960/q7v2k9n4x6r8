@@ -4919,6 +4919,7 @@
             var statusBackups = [];
             var skippedUnmatchedReturn = false;
             var skippedDuplicateReturn = false;
+            var skippedAmbiguousReturn = false;
             items.forEach(function (item) {
                 if (!item || !item.type) return;
                 var returnSource = null;
@@ -4926,33 +4927,60 @@
                 var isTransferReturn = item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''));
 
                 if (isTransferReturn) {
-                    var alreadyReturningSource = null;
-                    for (var pi = historyList.length - 1; pi >= 0; pi--) {
-                        var previous = historyList[pi];
-                        if (!previous || (previous.role !== 'user' && previous.role !== 'sent') ||
-                            previous.type !== 'transfer' ||
-                            Number(previous.amount) !== Number(item.amount)) continue;
-                        if (previous.status === 'returning') {
-                            alreadyReturningSource = previous;
-                            break;
+                    var requestedSourceId = String(item.returnOfPaymentId || '');
+                    if (requestedSourceId) {
+                        returnSource = historyList.find(function (row) {
+                            return row && (row.role === 'user' || row.role === 'sent') &&
+                                row.type === 'transfer' &&
+                                String(ensureMid(row)) === requestedSourceId &&
+                                Number(row.amount) === Number(item.amount);
+                        }) || null;
+                        if (returnSource && returnSource.status &&
+                            returnSource.status !== 'unopened') {
+                            var explicitDuplicate = historyList.some(function (row) {
+                                return row && row.role === 'assistant' && row.type === 'transfer' &&
+                                    String(row.returnOfPaymentId || '') === requestedSourceId;
+                            });
+                            if (explicitDuplicate) skippedDuplicateReturn = true;
+                            else skippedUnmatchedReturn = true;
+                            return;
                         }
-                        if (!previous.status || previous.status === 'unopened') {
-                            returnSource = previous;
-                            break;
+                    } else {
+                        var pendingSources = [];
+                        var returningSources = [];
+                        for (var pi = 0; pi < historyList.length; pi++) {
+                            var previous = historyList[pi];
+                            if (!previous || (previous.role !== 'user' && previous.role !== 'sent') ||
+                                previous.type !== 'transfer' ||
+                                Number(previous.amount) !== Number(item.amount)) continue;
+                            if (previous.status === 'returning') returningSources.push(previous);
+                            else if (!previous.status || previous.status === 'unopened') pendingSources.push(previous);
                         }
+
+                        if (returningSources.length) {
+                            if (returningSources.length === 1) {
+                                var alreadyReturningId = String(ensureMid(returningSources[0]));
+                                var hasReturnCard = historyList.some(function (row) {
+                                    return row && row.role === 'assistant' && row.type === 'transfer' &&
+                                        String(row.returnOfPaymentId || '') === alreadyReturningId;
+                                });
+                                if (hasReturnCard) skippedDuplicateReturn = true;
+                                else skippedUnmatchedReturn = true;
+                            } else {
+                                skippedAmbiguousReturn = true;
+                            }
+                            return;
+                        }
+                        if (pendingSources.length !== 1) {
+                            if (pendingSources.length > 1) skippedAmbiguousReturn = true;
+                            else skippedUnmatchedReturn = true;
+                            return;
+                        }
+                        returnSource = pendingSources[0];
                     }
 
-                    if (alreadyReturningSource) {
-                        var alreadyReturningId = ensureMid(alreadyReturningSource);
-                        var hasReturnCard = historyList.some(function (row) {
-                            return row && row.role === 'assistant' && row.type === 'transfer' &&
-                                String(row.returnOfPaymentId || '') === String(alreadyReturningId);
-                        });
-                        if (hasReturnCard) skippedDuplicateReturn = true;
-                        else skippedUnmatchedReturn = true;
-                        return;
-                    }
-                    if (!returnSource) {
+                    if (!returnSource || (returnSource.status &&
+                        returnSource.status !== 'unopened')) {
                         skippedUnmatchedReturn = true;
                         return;
                     }
@@ -4988,7 +5016,9 @@
             });
 
             if (historyList.length === originalLength) {
-                if (skippedUnmatchedReturn && typeof showToast === 'function') {
+                if (skippedAmbiguousReturn && typeof showToast === 'function') {
+                    showToast('同金额待退回转账不止一笔，无法确认原交易，已停止生成退回卡片');
+                } else if (skippedUnmatchedReturn && typeof showToast === 'function') {
                     showToast('未找到可对应的待退回转账，已忽略这张退回卡片');
                 } else if (skippedDuplicateReturn && typeof showToast === 'function') {
                     showToast('这笔转账已有退回卡片，未重复生成');
@@ -5011,7 +5041,9 @@
                 return false;
             }
             renderAllMessages();
-            if (skippedUnmatchedReturn && typeof showToast === 'function') {
+            if (skippedAmbiguousReturn && typeof showToast === 'function') {
+                showToast('同金额待退回转账不止一笔，无法确认原交易，已停止生成对应退回卡片');
+            } else if (skippedUnmatchedReturn && typeof showToast === 'function') {
                 showToast('未找到可对应的待退回转账，已忽略对应退回卡片');
             }
             return true;
