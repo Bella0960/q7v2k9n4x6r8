@@ -805,7 +805,8 @@
               ' / 运行中 ' + Number(ready.activityQueue && ready.activityQueue.running || 0) +
               ' / 已完成 ' + Number(ready.activityQueue && ready.activityQueue.completed || 0) +
               ' / 失败 ' + Number(ready.activityQueue && ready.activityQueue.failed || 0) +
-              ' / 已作废 ' + Number(ready.activityQueue && ready.activityQueue.superseded || 0) + '）',
+              ' / 已作废 ' + Number(ready.activityQueue && ready.activityQueue.superseded || 0) +
+              ' / 其他 ' + Number(ready.activityQueue && ready.activityQueue.other || 0) + '）',
             '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
             '可信聊天上下文版本：' + (ready.contextVersionReady ? '已就绪' : '未就绪'),
             'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
