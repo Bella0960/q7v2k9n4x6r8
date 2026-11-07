@@ -7685,158 +7685,228 @@
         }
 
         // 红包/转账卡片点击：拆红包 / 收款（防重复领取，金额强转数字防字符串拼接）
-        function handlePayCardClick(event) {
+        // 同一页面防连点；跨标签页由 Web Locks 的全局钱包锁串行化。
+        const pendingPaymentOperations = new Set();
+        let paymentLockFallbackNoticeShown = false;
+
+        async function handlePayCardClick(event) {
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
             const mid = cardEl.getAttribute('data-mid') || '';
             const indexStr = cardEl.getAttribute('data-index');
 
-            // 必须按稳定 mid 查全量历史，不能把过滤了 silent/date 的显示序号当数组下标。
-            const list = loadMessages();
-            let index = mid ? list.findIndex(function (item) { return item && ensureMid(item) === mid; }) : -1;
-            if (index < 0 && indexStr !== '' && indexStr != null) {
+            // 先拿稳定 paymentId；真正执行时会在锁内重新读取完整历史。
+            const initialList = loadMessages();
+            let initialIndex = mid ? initialList.findIndex(function (item) {
+                return item && ensureMid(item) === mid;
+            }) : -1;
+            if (initialIndex < 0 && !mid && indexStr !== '' && indexStr != null) {
                 const legacyIndex = parseInt(indexStr, 10);
-                if (!isNaN(legacyIndex) && legacyIndex >= 0) index = legacyIndex;
-            }
-            if (index < 0 || index >= list.length) return;
-            const msg = list[index];
-            if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
-            const isRed = msg.type === 'redpacket';
-
-            if (msg.type === 'transfer' && msg.status === 'returned') {
-                showToast('这笔转账已退回');
-                return;
-            }
-            if (msg.type === 'transfer' && msg.status === 'accepted') {
-                showToast('对方已收下这笔转账');
-                return;
-            }
-            if (msg.type === 'transfer' && msg.status === 'returning') {
-                showToast('对方正在退回这笔转账');
-                return;
-            }
-            // 只有角色发来的红包/转账可以由用户领取，防止点击自己发出的卡片给自己加钱。
-            if (msg.role !== 'assistant') {
-                showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方回应哦');
-                return;
-            }
-
-            if (isRed && msg.status === 'opened') {
-                showToast('你已经领取过这个红包啦');
-                return;
-            }
-            if (!isRed && msg.status === 'received') {
-                showToast('已经收过款啦');
-                return;
-            }
-
-            const amountNum = Number(msg.amount);
-            if (!isFinite(amountNum) || amountNum <= 0) {
-                showToast('金额数据异常');
-                return;
-            }
-            if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
-                showToast('钱包暂不可用，未完成收款');
-                return;
-            }
-            const paymentId = ensureMid(msg);
-            const wd = getWorkData();
-            if (!wd || typeof wd !== 'object') {
-                showToast('钱包数据读取失败，未完成收款');
-                return;
-            }
-            if (!Array.isArray(wd.history)) wd.history = [];
-
-            // 钱包流水是收款幂等依据；即使上一轮聊天状态写入失败，也只补状态，不重复加余额。
-            function ensureFinanceRecord() {
-                try {
-                    let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
-                    if (!Array.isArray(fin)) fin = [];
-                    if (!fin.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
-                        fin.push({
-                            paymentId: paymentId,
-                            amount: amountNum,
-                            type: '收入',
-                            category: isRed ? '红包' : '转账',
-                            note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
-                            time: Date.now()
-                        });
-                        const serialized = JSON.stringify(fin);
-                        localStorage.setItem('finance_records', serialized);
-                        return localStorage.getItem('finance_records') === serialized;
-                    }
-                    return true;
-                } catch (e) {
-                    return false;
+                if (!isNaN(legacyIndex) && legacyIndex >= 0 && legacyIndex < initialList.length) {
+                    initialIndex = legacyIndex;
                 }
             }
+            if (initialIndex < 0 || initialIndex >= initialList.length) return;
+            const initialMessage = initialList[initialIndex];
+            if (!initialMessage || (initialMessage.type !== 'redpacket' && initialMessage.type !== 'transfer')) return;
+            const paymentId = ensureMid(initialMessage);
+            if (!mid && !saveMessages(initialList)) {
+                showToast('无法确认这张卡片的唯一编号，请检查本地存储空间');
+                return;
+            }
 
-            function persistReceiptStatus() {
-                // 角色退回的转账只有在用户真正收款后，原转账才改为「已退回」。
-                if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
-                    for (let ri = list.length - 1; ri >= 0; ri--) {
-                        const previous = list[ri];
-                        if (previous && (previous.role === 'user' || previous.role === 'sent') &&
-                            previous.type === 'transfer' && previous.status === 'returning' &&
-                            Number(previous.amount) === amountNum) {
-                            previous.status = 'returned';
-                            previous.returnedAt = Date.now();
-                            break;
+            if (pendingPaymentOperations.has(paymentId)) {
+                showToast('这笔款项正在处理中，请勿重复点击');
+                return;
+            }
+            pendingPaymentOperations.add(paymentId);
+            const previousBusy = cardEl.getAttribute && cardEl.getAttribute('aria-busy');
+            if (cardEl.setAttribute) cardEl.setAttribute('aria-busy', 'true');
+
+            async function processPaymentUnderLock() {
+                // 必须在取得全局钱包锁之后重新读取，不能使用锁外的旧历史 / 旧余额快照。
+                const list = loadMessages();
+                const index = list.findIndex(function (item) {
+                    return item && ensureMid(item) === paymentId;
+                });
+                if (index < 0) {
+                    showToast('这张卡片已不存在，未执行收款');
+                    return;
+                }
+                const msg = list[index];
+                if (!msg || (msg.type !== 'redpacket' && msg.type !== 'transfer')) return;
+                const isRed = msg.type === 'redpacket';
+
+                if (msg.role !== 'assistant') {
+                    showToast('这是你发出的' + (isRed ? '红包' : '转账') + '，等待对方回应哦');
+                    return;
+                }
+                if (msg.type === 'transfer' && msg.status === 'returned') {
+                    showToast('这笔转账已退回');
+                    return;
+                }
+                if (msg.type === 'transfer' && msg.status === 'accepted') {
+                    showToast('对方已收下这笔转账');
+                    return;
+                }
+                if (msg.type === 'transfer' && msg.status === 'returning') {
+                    showToast('对方正在退回这笔转账');
+                    return;
+                }
+
+                const amountNum = Number(msg.amount);
+                if (!isFinite(amountNum) || amountNum <= 0) {
+                    showToast('金额数据异常');
+                    return;
+                }
+                if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
+                    showToast('钱包暂不可用，未完成收款');
+                    return;
+                }
+                const wd = getWorkData();
+                if (!wd || typeof wd !== 'object') {
+                    showToast('钱包数据读取失败，未完成收款');
+                    return;
+                }
+                if (!Array.isArray(wd.history)) wd.history = [];
+
+                function ensureFinanceRecord() {
+                    try {
+                        let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
+                        if (!Array.isArray(fin)) fin = [];
+                        if (!fin.some(function (entry) {
+                            return entry && String(entry.paymentId || '') === String(paymentId);
+                        })) {
+                            fin.push({
+                                paymentId: paymentId,
+                                amount: amountNum,
+                                type: '收入',
+                                category: isRed ? '红包' : '转账',
+                                note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
+                                time: Date.now()
+                            });
+                            const serialized = JSON.stringify(fin);
+                            localStorage.setItem('finance_records', serialized);
+                            return localStorage.getItem('finance_records') === serialized;
+                        }
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                }
+
+                function persistReceiptStatus() {
+                    // 角色退回的转账只有在用户真正收款后，原转账才改为「已退回」。
+                    if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
+                        for (let ri = list.length - 1; ri >= 0; ri--) {
+                            const previous = list[ri];
+                            if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                                previous.type === 'transfer' && previous.status === 'returning' &&
+                                Number(previous.amount) === amountNum) {
+                                previous.status = 'returned';
+                                previous.returnedAt = Date.now();
+                                break;
+                            }
                         }
                     }
+                    msg.status = isRed ? 'opened' : 'received';
+                    if (!saveMessages(list)) {
+                        showToast('款项已入账，但聊天卡片状态未同步；再次点击可补齐，不会重复入账');
+                        return false;
+                    }
+                    return true;
                 }
-                msg.status = isRed ? 'opened' : 'received';
-                if (!saveMessages(list)) {
-                    showToast('款项已入账，但聊天卡片状态未同步；再次点击可补齐，不会重复入账');
-                    return false;
-                }
-                return true;
-            }
 
-            const existingPayment = wd.history.some(function (entry) {
-                return entry && String(entry.paymentId || '') === String(paymentId);
-            });
-            if (existingPayment) {
-                if (!persistReceiptStatus()) return;
-                if (!ensureFinanceRecord()) {
-                    showToast('款项已入账，账本明细暂未同步');
-                } else {
-                    showToast('这笔款项已经入账');
-                }
-                renderAllMessages();
-                return;
-            }
-
-            const oldBalance = Number(wd.balance);
-            wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
-            wd.history.unshift({
-                type: 'income',
-                category: msg.type,
-                title: isRed ? '收到红包' : '收到转账',
-                amount: amountNum,
-                time: Date.now(),
-                paymentId: paymentId
-            });
-            if (!saveWorkData(wd)) return;
-
-            // 先读回钱包账本，确认余额和 paymentId 都真实落库，再推进聊天卡片状态。
-            const confirmedWallet = getWorkData();
-            const walletConfirmed = confirmedWallet &&
-                Number(confirmedWallet.balance) === Number(wd.balance) &&
-                Array.isArray(confirmedWallet.history) &&
-                confirmedWallet.history.some(function (entry) {
+                const existingPayment = wd.history.some(function (entry) {
                     return entry && String(entry.paymentId || '') === String(paymentId);
                 });
-            if (!walletConfirmed) {
-                showToast('钱包入账暂未确认，请稍后重试；系统会防止重复入账');
-                return;
+                const alreadyCompleted = isRed
+                    ? msg.status === 'opened'
+                    : msg.status === 'received';
+
+                if (alreadyCompleted) {
+                    if (!existingPayment) {
+                        showToast('卡片显示已完成，但钱包流水未找到；为避免重复入账，已停止操作');
+                        return;
+                    }
+                    if (!ensureFinanceRecord()) {
+                        showToast('款项已入账，账本明细暂未同步');
+                    } else {
+                        showToast('这笔款项已经入账');
+                    }
+                    renderAllMessages();
+                    return;
+                }
+
+                // 钱包流水是幂等依据：聊天状态写入失败后，只补状态和财务明细。
+                if (existingPayment) {
+                    if (!persistReceiptStatus()) return;
+                    const financeSaved = ensureFinanceRecord();
+                    renderAllMessages();
+                    if (!financeSaved) showToast('款项已入账，账本明细暂未同步');
+                    else showToast('这笔款项已经入账，卡片状态已恢复');
+                    return;
+                }
+
+                const oldBalance = Number(wd.balance);
+                wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
+                wd.history.unshift({
+                    type: 'income',
+                    category: msg.type,
+                    title: isRed ? '收到红包' : '收到转账',
+                    amount: amountNum,
+                    time: Date.now(),
+                    paymentId: paymentId
+                });
+                if (!saveWorkData(wd)) return;
+
+                // 写入后读回确认；只有余额和同一 paymentId 都存在，才推进聊天状态。
+                const confirmedWallet = getWorkData();
+                const walletConfirmed = confirmedWallet &&
+                    Number(confirmedWallet.balance) === Number(wd.balance) &&
+                    Array.isArray(confirmedWallet.history) &&
+                    confirmedWallet.history.some(function (entry) {
+                        return entry && String(entry.paymentId || '') === String(paymentId);
+                    });
+                if (!walletConfirmed) {
+                    showToast('钱包入账暂未确认，请稍后重试；系统会防止重复入账');
+                    return;
+                }
+
+                if (!persistReceiptStatus()) return;
+                const financeSaved = ensureFinanceRecord();
+                renderAllMessages();
+                openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
+                if (!financeSaved) showToast('收款成功，账本明细暂未同步');
             }
 
-            if (!persistReceiptStatus()) return;
-            const financeSaved = ensureFinanceRecord();
-            renderAllMessages();
-            openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
-            if (!financeSaved) showToast('收款成功，账本明细暂未同步');
+            try {
+                const lockManager = typeof navigator !== 'undefined' && navigator.locks &&
+                    typeof navigator.locks.request === 'function' ? navigator.locks : null;
+                if (lockManager) {
+                    // 使用全局锁：不同红包/转账同时领取时，也不能互相覆盖钱包余额。
+                    await lockManager.request('maomao-wallet-ledger-v1', { mode: 'exclusive' }, processPaymentUnderLock);
+                } else {
+                    // 旧浏览器仍可在单页面内防连点，但不能保证跨标签页互斥。
+                    if (!paymentLockFallbackNoticeShown) {
+                        paymentLockFallbackNoticeShown = true;
+                        showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个聊天页领取');
+                    }
+                    await processPaymentUnderLock();
+                }
+            } catch (error) {
+                console.warn('[chat] 红包 / 转账操作未完成', error);
+                showToast('收款暂未完成，请稍后重试；不会重复入账');
+            } finally {
+                pendingPaymentOperations.delete(paymentId);
+                if (cardEl.setAttribute || cardEl.removeAttribute) {
+                    if (previousBusy == null) {
+                        if (cardEl.removeAttribute) cardEl.removeAttribute('aria-busy');
+                    } else if (cardEl.setAttribute) {
+                        cardEl.setAttribute('aria-busy', previousBusy);
+                    }
+                }
+            }
         }
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
