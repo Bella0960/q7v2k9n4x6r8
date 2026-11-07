@@ -514,6 +514,22 @@
     );
   }
 
+  function skipAutonomyActivity(activity, reasonCode) {
+    if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
+      return Promise.reject(new Error('自主活动 ID 无效'));
+    }
+    var attemptCount = Number(activity.attemptCount);
+    var allowed = ['no_worthy_message', 'context_changed', 'feature_disabled', 'invalid_generation'];
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || allowed.indexOf(reasonCode) === -1) {
+      return Promise.reject(new Error('自主活动跳过原因无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/autonomy/activities/' + encodeURIComponent(activity.id) + '/skip',
+      'POST',
+      { attemptCount: attemptCount, reasonCode: reasonCode }
+    );
+  }
+
   function failAutonomyActivity(activity, reasonCode) {
     if (!activity || !/^[A-Za-z0-9_-]{16,64}$/.test(String(activity.id || ''))) {
       return Promise.reject(new Error('自主活动 ID 无效'));
@@ -1411,6 +1427,7 @@
     claimAutonomyActivity: claimAutonomyActivity,
     completeAutonomyActivity: completeAutonomyActivity,
     failAutonomyActivity: failAutonomyActivity,
+    skipAutonomyActivity: skipAutonomyActivity,
     getCharacterOutboundMessages: getCharacterOutboundMessages,
     acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage,
     receiveCharacterOutboundMessages: receiveCharacterOutboundMessages,
