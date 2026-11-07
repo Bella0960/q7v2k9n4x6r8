@@ -43,15 +43,25 @@ function readSchedulerConfig(env) {
  */
 function readSchedulePolicyConfig(env) {
   const config = {};
-  if (env?.AUTONOMY_HEARTBEAT_TTL_MS != null) {
-    config.heartbeatTtlMs = Number(env.AUTONOMY_HEARTBEAT_TTL_MS);
-  }
-  if (env?.AUTONOMY_DEVICE_LEASE_MS != null) {
-    config.leaseDurationMs = Number(env.AUTONOMY_DEVICE_LEASE_MS);
-  }
-  if (env?.AUTONOMY_DEVICE_GRACE_MS != null) {
-    config.graceMs = Number(env.AUTONOMY_DEVICE_GRACE_MS);
-  }
+  const readPositive = name => {
+    const raw = env?.[name];
+    if (raw == null || String(raw).trim() === '') return undefined;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value > 0 ? value : NaN;
+  };
+  const readNonNegative = name => {
+    const raw = env?.[name];
+    if (raw == null || String(raw).trim() === '') return undefined;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= 0 ? value : NaN;
+  };
+
+  const heartbeatTtlMs = readPositive('AUTONOMY_HEARTBEAT_TTL_MS');
+  const leaseDurationMs = readPositive('AUTONOMY_DEVICE_LEASE_MS');
+  const graceMs = readNonNegative('AUTONOMY_DEVICE_GRACE_MS');
+  if (heartbeatTtlMs !== undefined) config.heartbeatTtlMs = heartbeatTtlMs;
+  if (leaseDurationMs !== undefined) config.leaseDurationMs = leaseDurationMs;
+  if (graceMs !== undefined) config.graceMs = graceMs;
   return config;
 }
 
