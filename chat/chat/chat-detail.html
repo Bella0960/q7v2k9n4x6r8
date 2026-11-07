@@ -3361,7 +3361,7 @@
                         'chat-message',
                         String(message.mid)
                     ).then(function (released) {
-                        if (released && released.ok) {
+                        if (released && released.ok && released.value && released.value.removed) {
                             return _chatImageMediaRepo.removeAsset(String(message.assetId));
                         }
                     }).catch(function (error) {
