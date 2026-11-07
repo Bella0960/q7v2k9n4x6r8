@@ -71,7 +71,7 @@
             pairs.push({
                 id: 'pair_' + canonical.map(function (id) { return id.replace(/^avatar_/, ''); }).join('_'),
                 avatarIds: [firstId, secondId],
-                label: String(pair.label || '配对头像').replace(/[\\u0000-\\u001F<>]/g, '').trim().slice(0, 36) || '配对头像',
+                label: String(pair.label || '配对头像').replace(/[\u0000-\u001F<>]/g, '').trim().slice(0, 36) || '配对头像',
                 source: pair.source === 'chat' ? 'chat' : 'manual',
                 createdAt: Math.max(0, Number(pair.createdAt) || 0)
             });
@@ -177,7 +177,7 @@
         var pair = {
             id: 'pair_' + canonical.map(function (id) { return id.replace(/^avatar_/, ''); }).join('_'),
             avatarIds: [firstAvatarId, secondAvatarId],
-            label: String(options.label || '配对头像').replace(/[\\u0000-\\u001F<>]/g, '').trim().slice(0, 36) || '配对头像',
+            label: String(options.label || '配对头像').replace(/[\u0000-\u001F<>]/g, '').trim().slice(0, 36) || '配对头像',
             source: options.source === 'chat' ? 'chat' : 'manual',
             createdAt: Number(options.createdAt) || Date.now()
         };
