@@ -621,3 +621,5 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - A local persistence failure or deferred ACK does not remove the envelope and does not stop the client from scanning later pages.
 - After the scan reaches the end, the cursor resets. Unacknowledged envelopes are revisited on the next cycle and are still deduplicated by `serverMessageId` before local insertion.
 - This is bounded recovery, not a promise that an unavailable local store can be repaired automatically; the server continues retaining unacknowledged messages.
+
+- If cursor writes fail because browser storage is unavailable or full, the live page continues with a dirty in-memory cursor. That in-memory position takes precedence over an older persisted cursor. It is intentionally page-lifetime recovery; a full reload cannot preserve a cursor that the browser refused to store, so unacknowledged rows remain server-pending and are safely retried.
