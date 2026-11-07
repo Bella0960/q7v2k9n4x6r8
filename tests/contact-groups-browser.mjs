@@ -55,6 +55,8 @@ const SEED = {
     model: 'contact-groups-test-model',
     temperature: 0.2
   },
+  chat_auto_comment_role-a: true,
+  chat_auto_comment_role-d: true,
   moments: [],
   moments_notifications: []
 };
@@ -63,11 +65,13 @@ async function readJson(page, key) {
   return page.evaluate((name) => JSON.parse(localStorage.getItem(name) || 'null'), key);
 }
 
-async function openAudience(page, mode, groupId) {
+async function openAudience(page, mode, selections = []) {
   await page.locator('#rowVisibility').click();
   await page.locator('.option-item[data-perm="' + mode + '"]').click();
-  if (groupId) {
-    await page.locator('[data-audience-kind="group"][data-audience-id="' + groupId + '"]').click();
+  for (const selection of selections) {
+    await page.locator(
+      '[data-audience-kind="' + selection.kind + '"][data-audience-id="' + selection.id + '"]'
+    ).click();
   }
 }
 
@@ -97,6 +101,7 @@ async function main() {
   });
   let page;
   let apiRequests = 0;
+  const apiRequestBodies = [];
   const pageErrors = [];
 
   try {
@@ -108,6 +113,7 @@ async function main() {
     page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.route('https://mock.local/**', async (route) => {
       apiRequests += 1;
+      apiRequestBodies.push(route.request().postData() || '');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -115,7 +121,7 @@ async function main() {
       });
     });
 
-    // Contacts: create two overlapping groups, filter by group/ungrouped, rename and delete.
+    // Contacts: create overlapping groups, filter, rename and delete.
     await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
     await page.locator('.contact-item[data-id="role-a"]').waitFor({ state: 'visible', timeout: 10000 });
     await page.locator('#btnManageContactGroups').click();
@@ -165,48 +171,88 @@ async function main() {
       'deleting a group never deletes contact records');
     console.log('PASS Contacts: group CRUD, overlapping members, group filtering and ungrouped filtering');
 
-    // Moments: custom audience is independent from @mentions.
+    // Moments: a mixed group + direct-contact audience is snapshotted; an outside @mention is blocked.
     await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
-    await page.locator('#contentInput').fill('部分可见动态：仅家人分组可见');
-    await openAudience(page, 'custom', friendsGroup.id);
+    await page.locator('#contentInput').fill('部分可见动态：家人分组和单独联系人可见');
+    await openAudience(page, 'custom', [
+      { kind: 'group', id: friendsGroup.id },
+      { kind: 'contact', id: 'role-c' }
+    ]);
     assert.match(await page.locator('#permValue').innerText(), /部分可见/);
     await page.locator('#permClose').click();
     await page.locator('#rowMentions').click();
-    await page.locator('.mention-option[data-cid="role-c"]').click();
+    await page.locator('.mention-option[data-cid="role-d"]').click();
     await page.locator('#mentionClose').click();
-    const selectedPost = await publishAndRead(page, '部分可见动态：仅家人分组可见');
+    const selectedPost = await publishAndRead(page, '部分可见动态：家人分组和单独联系人可见');
     assert.equal(selectedPost.visibility, 'custom');
-    assert.deepEqual(selectedPost.visibleTo, ['role-a', 'role-b']);
-    assert.deepEqual(selectedPost.mentions, ['role-c'],
+    assert.deepEqual(selectedPost.visibleTo, ['role-a', 'role-b', 'role-c']);
+    assert.deepEqual(selectedPost.visibleGroupIds, [friendsGroup.id]);
+    assert.deepEqual(selectedPost.visibleContactIds, ['role-c']);
+    assert.deepEqual(selectedPost.mentions, ['role-d'],
       '@mention list is stored separately from the selected audience');
+
     await page.waitForTimeout(500);
-    assert.equal(apiRequests, 0,
-      'a mentioned contact outside the selected audience must not receive the post body');
+    assert.equal(apiRequests, 1,
+      'only the enabled auto-comment role inside the selected audience should receive a model request');
+    assert.match(apiRequestBodies[0], /角色甲/,
+      'an allowed role can receive the selected post and comment on it');
+    assert.doesNotMatch(apiRequestBodies[0], /角色丁/,
+      'an @mentioned role outside the audience must not receive the post body');
     assert.ok(await page.locator('body').innerText().then((text) => text.includes(selectedPost.content)),
       'the owner can still see their own partially visible post');
-    console.log('PASS Moments: selected group snapshot, independent @mention and owner feed');
+    console.log('PASS Moments: mixed audience snapshot, positive auto-comment path and blocked outside @mention');
 
-    // Moments: empty exclusion must not be committed; a real exclusion is snapshotted.
+    // Moments: excluded group + direct contact must block auto-comments even when those roles have opted in.
     await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
-    await page.locator('#contentInput').fill('排除名单动态：家人不可见');
-    await openAudience(page, 'excluded');
+    await page.locator('#contentInput').fill('排除名单动态：家人和单独联系人不可见');
+    await openAudience(page, 'excluded', [
+      { kind: 'group', id: friendsGroup.id },
+      { kind: 'contact', id: 'role-d' }
+    ]);
     await page.locator('#permClose').click();
-    assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
-      'an empty exclusion list must remain open for correction');
-    assert.match(await page.locator('#toast').innerText(), /至少选择一位联系人/);
-    await page.locator('[data-audience-kind="group"][data-audience-id="' + friendsGroup.id + '"]').click();
-    await page.locator('#permClose').click();
-    const excludedPost = await publishAndRead(page, '排除名单动态：家人不可见');
+    const excludedPost = await publishAndRead(page, '排除名单动态：家人和单独联系人不可见');
     assert.equal(excludedPost.visibility, 'excluded');
-    assert.deepEqual(excludedPost.hiddenTo, ['role-a', 'role-b']);
+    assert.deepEqual(excludedPost.hiddenTo, ['role-a', 'role-b', 'role-d']);
     assert.deepEqual(excludedPost.hiddenGroupIds, [friendsGroup.id]);
+    assert.deepEqual(excludedPost.hiddenContactIds, ['role-d']);
     await page.waitForTimeout(500);
-    assert.equal(apiRequests, 0,
-      'excluded group members must not receive the post body through AI requests');
+    assert.equal(apiRequests, 1,
+      'excluded, opted-in roles must not trigger any model request for the post');
     assert.ok(await page.locator('body').innerText().then((text) => text.includes(excludedPost.content)),
       'the owner can still see their own post even when it excludes a group');
+    console.log('PASS Moments: excluded group/contact blocks opted-in AI recipients');
+
+    // Changing group membership later must not rewrite an already-published post's recipient snapshot.
+    await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#btnManageContactGroups').click();
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    await page.locator('[data-contact-member="role-a"]').uncheck();
+    await page.locator('[data-contact-member="role-c"]').check();
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    const editedFamily = groups.find((group) => group.id === friendsGroup.id);
+    assert.deepEqual(editedFamily.memberIds, ['role-b', 'role-c']);
+
+    await page.goto(origin + '/chat/moments/moments.html', { waitUntil: 'domcontentloaded' });
+    const policyResult = await page.evaluate(({ postId }) => {
+      const posts = JSON.parse(localStorage.getItem('moments') || '[]');
+      const post = posts.find((item) => item.id === postId);
+      return {
+        hiddenTo: post && post.hiddenTo,
+        roleACanReceive: window.PhoneContactGroups.canRoleReceivePost(post, 'role-a'),
+        roleCCanReceive: window.PhoneContactGroups.canRoleReceivePost(post, 'role-c'),
+        roleDCanReceive: window.PhoneContactGroups.canRoleReceivePost(post, 'role-d')
+      };
+    }, { postId: excludedPost.id });
+    assert.deepEqual(policyResult.hiddenTo, ['role-a', 'role-b', 'role-d']);
+    assert.equal(policyResult.roleACanReceive, false,
+      'a contact removed from the group remains excluded from the older post snapshot');
+    assert.equal(policyResult.roleCCanReceive, true,
+      'a contact added to the group later is not retroactively excluded from the older post');
+    assert.equal(policyResult.roleDCanReceive, false,
+      'a directly excluded contact remains excluded regardless of later group edits');
     assert.deepEqual(pageErrors, [], 'affected pages should not throw browser runtime errors');
-    console.log('PASS Moments: empty exclusion blocked, exclusion snapshot stable, excluded AI contacts receive no request');
+    console.log('PASS Moments: published audience remains immutable after later group membership edits');
   } finally {
     await context.close();
     await browser.close();
