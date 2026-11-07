@@ -427,6 +427,17 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(409, 'NO_ACTIVE_SUBSCRIPTIONS', '当前设备没有有效推送订阅');
     }
 
+    // Reserve the rate-limit slot before the first network await. Durable Object
+    // SQLite writes are synchronous, so concurrent requests observe this slot.
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId: device.id,
+      kind: 'test_push',
+      status: 'started',
+      reasonCode: 'attempt_started',
+      now: timestamp
+    });
+
     const dedupeKey = String(body.dedupeKey || `test:${device.id}:${timestamp}`).slice(0, 96);
     const payload = JSON.stringify({
       type: 'test',
