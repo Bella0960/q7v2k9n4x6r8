@@ -681,6 +681,7 @@ class CloudStore {
     const userAutonomy = this.getUserAutonomy(userId);
     const characterAutonomy = this.getCharacterAutonomy(userId, characterId);
     const scheduleRow = this.getCharacterSchedule(userId, characterId);
+    const contextVersionRow = this.getCharacterContextVersion(userId, characterId);
 
     let schedule = null;
     if (scheduleRow) {
@@ -737,9 +738,9 @@ class CloudStore {
           : characterAutonomy.enabled === 1
       },
       presence: { devices, leases },
-      contextVersion: this.getCharacterContextVersion(userId, characterId)?.version == null
+      contextVersion: contextVersionRow?.version == null
         ? null
-        : Number(this.getCharacterContextVersion(userId, characterId).version)
+        : Number(contextVersionRow.version)
     };
   }
 
