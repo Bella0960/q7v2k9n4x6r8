@@ -246,7 +246,8 @@ test('candidate assets share the original media blob and do not change the activ
   assert.ok(avatarLibrarySource.includes('media.getAsset(assetId)'));
   assert.ok(avatarLibrarySource.includes("media.addRef(assetId, OWNER_TYPE, String(roleId))"));
   assert.ok(avatarLibrarySource.includes("source: options.source === 'legacy' ? 'legacy' : (options.source === 'chat' ? 'chat' : 'upload')"));
-  assert.ok(avatarLibrarySource.includes("activeId: previous.activeId, items: [item].concat(previous.items)"));
+  assert.ok(avatarLibrarySource.includes("var latest = readState(roleId)"));
+  assert.ok(avatarLibrarySource.includes("activeId: latest.activeId, items: [item].concat(latest.items)"));
   assert.ok(avatarLibrarySource.includes("return { ok: true, value: copyItem(item, next.activeId), meta: { linked: true } }"));
 });
 
