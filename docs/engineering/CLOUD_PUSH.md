@@ -98,51 +98,56 @@ Cron / 内部 tick
 - 尚未拍板：生产 tick 频率、重试预算、上下文版本来源、真实消息落库与推送接入点。
 
 
-## 8. M2.2b scheduler gate adapter（部分完成 / fail-closed）
+## 8. M2.2b：持久化元数据 + scheduler gate（前端接入部分待做）
 
-已新增 `worker/lib/scheduler-gate.js`，并接入 Worker 的 `/internal/tick` 路径。每个到期任务在 CAS claim 前，都会通过该 adapter 调用现有 M2.1 `CharacterSchedulePolicy.evaluate()`，复核全局/角色授权、IANA 时区、角色作息、设备前台 lease 与 grace。
+本阶段用户已明确授权同步**非聊天调度元数据**：全局/角色自主活动开关、角色 IANA 时区与作息、设备前台心跳、角色级前台租约。
 
-**当前生产状态仍为 fail-closed，不能宣称云端自主活动已启用：**
+### 8.1 数据库迁移
 
-- M1 当前数据库尚无已批准的全局/角色 autonomy、角色 schedule、前台 heartbeat/lease 的持久化数据源。
-- 当前 `CloudStore` 未实现 `getSchedulerGateSnapshot()`，所以真实 Worker 会记录 `gate_data_source_missing` 并 defer，不会认领活动。
-- 上下文任务（contact / follow_up / busy_reply / diary）必须同时具有任务侧与权威快照侧的整数 `contextVersion`；缺失时记录 `context_version_unavailable`，不允许猜测版本或用时间戳代替。
-- 角色作息、时区、设备 lease/grace 的策略参数只读取显式配置：`AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS`。缺失不会填入产品默认值。
-- gate 支持的原因码包括：`gate_data_source_missing`、`gate_data_missing`、`gate_provider_error`、`gate_policy_unavailable`、`gate_policy_invalid`、`autonomy_denied`、`foreground_lease_held`、`foreground_lease_grace`、`character_not_active`、`context_version_unavailable`、`stale_context`。
-
-本阶段新增的 gate 集成测试只使用合成授权、合成角色日程、合成 lease 和合成 context version；测试中的放行只证明调度器接线和策略判断，不代表生产已有这些数据源。没有上传聊天正文、persona、关系资料或附件；没有调用模型、创建真实出站消息或触发真实推送。
-
-### M2.2b 元数据持久化与受鉴权 API（已实现；前端接入仍待做）
-
-用户已明确允许同步以下**非聊天元数据**：全局/角色自主活动开关、角色 IANA 时区与作息、设备前台心跳、角色级前台租约。
-
-新增向前兼容迁移 `0002_autonomy_metadata`，不修改 `0001_init`：
+新增向前兼容的 `0002_autonomy_metadata`，未修改 `0001_init`：
 
 | 表 | 用途 | 主键 / 约束 |
 | --- | --- | --- |
-| `user_autonomy` | 全局自主活动开关；没有记录即关闭 | `user_id` |
-| `character_autonomy` | 单角色开关；NULL / 缺失表示继承全局 | `(user_id, character_id)` |
+| `user_autonomy` | 全局自主活动开关；无记录即关闭 | `user_id` |
+| `character_autonomy` | 单角色开关；NULL / 无记录表示继承全局 | `(user_id, character_id)` |
 | `character_schedules` | 显式 IANA 时区与 active/busy/asleep/away 时间窗口 | `(user_id, character_id)` |
-| `device_presence` | 设备前台状态与最近一次心跳时间 | `(user_id, device_id)` |
+| `device_presence` | 前台状态布尔值与最近一次心跳时间 | `(user_id, device_id)` |
 | `character_leases` | 同一用户 + 角色的唯一前台执行租约 | `(user_id, character_id)` |
 
-旧设备在迁移时归属现有单用户 `owner`，不删除设备、订阅或消息记录。设备撤销时会删除该设备的 presence 与角色租约，防止撤销设备继续占锁。
+`devices.user_id` 通过新增列迁移，既有设备归属当前单用户 `owner`；旧设备、推送订阅、队列与消息记录不删除。设备撤销时清除其 presence 与所持角色租约。
 
-受现有 `X-Device-Auth` 保护的 API：
+### 8.2 受设备鉴权保护的 API
 
-- `GET/PUT /api/autonomy/global`：全局开关。
+所有以下端点均要求现有 `X-Device-Auth`：
+
+- `GET/PUT /api/autonomy/global`：读取 / 更新全局开关。
 - `GET/PUT /api/autonomy/characters/:characterId`：角色开关；`null` 表示继承全局。
-- `GET/PUT /api/characters/:characterId/schedule`：IANA 时区与显式作息窗口。
-- `POST /api/presence/heartbeat`：仅记录前台状态布尔值与时间；不采集 GPS、位置或聊天内容。
-- `POST /api/characters/:characterId/lease`：按 `acquire / renew / release` 申请、续期或释放角色租约。只有租约 owner device 可续期/释放；新设备必须等待旧租约到期并经过 grace 才能接管。
-- 心跳 TTL、lease 时长和 grace 通过 `AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS` 显式配置；缺失时 API 不会发放租约。
+- `GET/PUT /api/characters/:characterId/schedule`：角色时区与显式作息窗口。接口只接受已明确提供的状态窗口，不补默认时段。
+- `POST /api/presence/heartbeat`：只接受 `foregroundActive: boolean`，记录时间戳，不收集位置/GPS/聊天正文。
+- `POST /api/characters/:characterId/lease`：`acquire / renew / release`。仅当前租约设备可续期或释放；另一设备不能释放持有者租约；新设备只有在旧 lease 到期且 grace 结束后才能 CAS 接管。
+- Lease API 所需的心跳 TTL、租约时长、grace 全部来自显式环境配置：`AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS`。缺失或无效时拒绝发放 lease。
 
-**当前仍未完成：**
+这几个 API 目前已提供云端存储能力；当前聊天前端尚未自动调用 heartbeat / lease，也还没有排班与 autonomy 设置 UI。因此不能报告 PWA 已自动同步设备状态。
 
-1. 现有 MAOMAO 前端尚未调用这些设置 / heartbeat / lease API；本轮先完成了云端存储和接口，尚不能把“设备前台状态已在 PWA 自动同步”报告为 DONE。
-2. Worker gate 已连接真实 store snapshot。全局开关没有显式记录时按关闭处理；角色作息缺失、时区无效或 policy 配置缺失时 fail-closed。
-3. 当前没有可信 server-side chat event/context version 来源。Store 明确返回 `contextVersion: null`；所有 contact / follow_up / busy_reply / diary 上下文任务因此保持 `context_version_unavailable`，不会执行。没有伪造版本，也没有上传聊天正文。
-4. 一次性 `ENROLLMENT_TOKEN` 的首次设备认领仍需单独审查；当前注册接口不能仅凭 M1 device-auth 测试视作已落实该要求。
-5. GitHub Actions、Cloudflare Worker 部署、真实设备锁屏推送仍分别需要独立验证；本地/合成测试不能替代这些验收。
+### 8.3 真实 scheduler gate
 
-以上 API 只处理开关、作息、时区、设备心跳与租约元数据；不保存消息正文、角色 persona、关系资料、摘要、图片或附件。
+Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerGate()` 并传给 `runTick`。Gate 从 `CloudStore.getSchedulerGateSnapshot()` 读取持久化非聊天元数据，复用 M2.1 `CharacterSchedulePolicy.evaluate()`，不复制时区/状态算法。
+
+判定要求：
+- 全局 autonomy 没有显式记录或为 OFF → defer。
+- 单角色 OFF → defer；单角色 NULL / 缺失只能继承全局开关。
+- 角色没有显式作息、active 窗口为空、时区无效、policy 配置缺失 → fail-closed。
+- 任一授权设备的角色 lease 有效，或仍处于 grace → defer；撤销设备的 lease 不再有效。
+- 设备离线不推导为 away/asleep/user-paused。
+- Gate 错误通过明确 reason code 记录：`gate_data_source_missing`、`gate_data_missing`、`gate_provider_error`、`gate_policy_unavailable`、`gate_policy_invalid`、`autonomy_denied`、`foreground_lease_held`、`foreground_lease_grace`、`character_not_active`、`context_version_unavailable`、`stale_context`。
+
+### 8.4 仍然 BLOCKED 的边界
+
+1. **前端 heartbeat/lease 调用：PARTIAL。** API 已有，chat-detail 尚未接入；在接通之前，PWA 不会自动申请角色前台租约。
+2. **真实上下文版本：BLOCKED。** 当前没有可信 server-side chat event/version source。Store 明确返回 `contextVersion: null`；所有 `contact / follow_up / busy_reply / diary` 上下文任务均返回 `context_version_unavailable` 并 defer。没有伪造版本、没有把时间戳当版本、没有上传聊天正文。
+3. **ENROLLMENT_TOKEN：BLOCKED。** 已确认的首次设备认领要求仍需独立落实；目前注册 API 仍不能只凭现有 device-auth 测试就视为已满足一次性认领。
+4. **云端模型凭据：NOT AUTHORIZED。** 不读取或上传浏览器 API Key，不配置/使用模型凭据。
+5. **AI 生成 / outbound / 真正角色主动推送：NOT STARTED。** 本阶段没有创建真实出站消息、没有调用模型、没有发真实推送。
+6. **GitHub Actions / Cloudflare / 真机：NOT VERIFIED。** 本地代码、合成 SQLite 测试、GitHub CI、Cloudflare 部署、真实设备锁屏通知是不同验收维度，不得互相替代。
+
+本阶段没有上传真实聊天正文、persona、关系资料、摘要、图片或附件；没有调用模型；没有触发用户可见推送；没有部署 Worker、合并 PR 或更新 APK。PR 保持 Draft。
