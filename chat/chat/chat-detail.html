@@ -2421,9 +2421,11 @@
 
         // Keep the legacy conversation ID untouched; expose a typed identity alongside it.
         var currentContactIdentity = window.PhoneContactIdentity;
-        window.PhoneCurrentContactRef = currentGroup && currentContactIdentity
-            ? currentContactIdentity.fromGroup(currentGroup)
-            : (currentContactIdentity ? currentContactIdentity.fromRole({ id: currentRoleId }) : null);
+        window.PhoneCurrentContactRef = currentContactIdentity
+            ? (isGroupChat
+                ? currentContactIdentity.fromGroup({ id: currentRoleId })
+                : currentContactIdentity.fromRole({ id: currentRoleId }))
+            : null;
         window.PhoneCurrentConversationId = currentRoleId || '';
 
         function groupMemberDisplayName(member) {
