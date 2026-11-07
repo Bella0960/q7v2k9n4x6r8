@@ -607,9 +607,11 @@ test('readiness 的在线设备与前台租约计数按账号、心跳 TTL 和 g
   const activeDevice = makeDevice();
   const staleDevice = makeDevice();
   const revokedDevice = makeDevice();
+  const futureDevice = makeDevice();
   await registerDevice(ctx, activeDevice);
   await registerDevice(ctx, staleDevice);
   await registerDevice(ctx, revokedDevice);
+  await registerDevice(ctx, futureDevice);
 
   ctx.store.upsertDevicePresence({
     userId: 'owner',
@@ -628,6 +630,12 @@ test('readiness 的在线设备与前台租约计数按账号、心跳 TTL 和 g
     deviceId: revokedDevice.deviceId,
     foregroundActive: true,
     now: timestamp - 1000
+  });
+  ctx.store.upsertDevicePresence({
+    userId: 'owner',
+    deviceId: futureDevice.deviceId,
+    foregroundActive: true,
+    now: timestamp + 1000
   });
 
   const saveLease = (userId, characterId, deviceId, leaseUntil) => (
@@ -669,7 +677,7 @@ test('readiness 的在线设备与前台租约计数按账号、心跳 TTL 和 g
   const response = await ctx.asJson('/api/autonomy/readiness', { device: activeDevice });
   assert.equal(response.status, 200);
   assert.deepEqual(response.payload.presenceSummary, {
-    authorizedDevices: 2,
+    authorizedDevices: 3,
     foregroundDevices: 1,
     validCharacterLeases: 1,
     graceCharacterLeases: 1
