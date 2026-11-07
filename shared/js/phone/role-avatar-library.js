@@ -31,10 +31,14 @@
         return DELETED_KEY_PREFIX + encodeURIComponent(String(roleId));
     }
 
+    function isDeletionTombstone(value) {
+        return value === '1' || value === 'done';
+    }
+
     function roleMutationBlock(roleId) {
         try {
             if (!global.localStorage) return failure('STORAGE_FAILED', 'role deletion state cannot be checked');
-            if (global.localStorage.getItem(deletedStorageKey(roleId)) === '1') {
+            if (isDeletionTombstone(global.localStorage.getItem(deletedStorageKey(roleId)))) {
                 return failure('ROLE_DELETED', 'this character was deleted; its portrait library is read-only');
             }
             return null;
@@ -45,7 +49,7 @@
 
     function isRoleDeleted(roleId) {
         try {
-            return !!(global.localStorage && global.localStorage.getItem(deletedStorageKey(roleId)) === '1');
+            return !!(global.localStorage && isDeletionTombstone(global.localStorage.getItem(deletedStorageKey(roleId))));
         } catch (error) {
             return false;
         }
@@ -58,6 +62,50 @@
             return true;
         } catch (error) {
             return false;
+        }
+    }
+
+    function markRoleDeletionComplete(roleId) {
+        try {
+            if (!global.localStorage) return false;
+            global.localStorage.setItem(deletedStorageKey(roleId), 'done');
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    // The cleanup queue is a convenience index, not the source of truth. A page may
+    // close after the tombstone is written but before the queue is updated; discover
+    // those interrupted deletions directly from localStorage on the next profile load.
+    function listPendingRoleCleanups() {
+        var storage = global.localStorage;
+        if (!storage || typeof storage.key !== 'function') {
+            return failure('STORAGE_FAILED', 'pending role cleanup markers cannot be enumerated');
+        }
+        try {
+            var pending = [];
+            var seen = Object.create(null);
+            var length = Number(storage.length);
+            if (!isFinite(length) || length < 0) {
+                return failure('STORAGE_FAILED', 'pending role cleanup markers cannot be enumerated');
+            }
+            for (var i = 0; i < length; i++) {
+                var key = storage.key(i);
+                if (typeof key !== 'string' || key.indexOf(DELETED_KEY_PREFIX) !== 0) continue;
+                var status = storage.getItem(key);
+                if (status !== '1' && status !== 'pending') continue;
+                var roleId;
+                try { roleId = decodeURIComponent(key.slice(DELETED_KEY_PREFIX.length)); }
+                catch (error) { continue; }
+                if (!validRoleId(roleId) || seen[roleId]) continue;
+                seen[roleId] = true;
+                pending.push(roleId);
+            }
+            pending.sort();
+            return { ok: true, value: pending };
+        } catch (error) {
+            return failure('STORAGE_FAILED', 'pending role cleanup markers cannot be read');
         }
     }
 
@@ -851,6 +899,9 @@
                     });
                 });
             }, Promise.resolve({ retained: 0 })).then(function (meta) {
+                if (!markRoleDeletionComplete(roleId)) {
+                    return failure('STORAGE_FAILED', 'role media references were released, but deletion completion could not be saved; retry cleanup');
+                }
                 return { ok: true, value: { removed: cleanupItems.length, retained: meta.retained } };
             });
         }).catch(function (error) {
@@ -879,6 +930,7 @@
         toObjectUrl: toObjectUrl,
         remove: remove,
         removeRole: removeRole,
+        listPendingRoleCleanups: listPendingRoleCleanups,
         _normalizeState: normalizeState,
         _storageKey: storageKey
     };
