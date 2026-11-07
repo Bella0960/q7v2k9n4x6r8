@@ -224,7 +224,7 @@ export async function getAuthenticatedAccount(request, env) {
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
   return env.DB.prepare(
-    "SELECT a.id, a.handle, a.display_name, a.status, s.expires_at " +
+    "SELECT a.id, a.handle, a.display_name, a.avatar_asset_id, a.status, s.expires_at " +
     "FROM real_user_sessions s JOIN real_user_accounts a ON a.id = s.account_id " +
     "WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? " +
     "AND a.status = 'active' LIMIT 1"
@@ -236,7 +236,8 @@ function publicAccount(account) {
     id: account.id,
     handle: account.handle,
     displayName: account.display_name,
-    status: account.status
+    status: account.status,
+    avatarAssetId: account.avatar_asset_id || null
   };
 }
 
@@ -301,7 +302,7 @@ async function register(request, env) {
 
   return authJson({
     ok: true,
-    account: { id: accountId, handle, displayName, status: "active" },
+    account: { id: accountId, handle, displayName, status: "active", avatarAssetId: null },
     session: { expiresAt, maxAgeSeconds: SESSION_TTL_MS / 1000 }
   }, 201, { "Set-Cookie": sessionCookie(sessionToken, SESSION_TTL_MS / 1000) });
 }
@@ -328,7 +329,7 @@ async function login(request, env) {
   let account = null;
   try {
     account = await env.DB.prepare(
-      "SELECT id, handle, display_name, password_hash, password_salt, password_iterations, status " +
+      "SELECT id, handle, display_name, avatar_asset_id, password_hash, password_salt, password_iterations, status " +
       "FROM real_user_accounts WHERE handle = ? COLLATE NOCASE LIMIT 1"
     ).bind(handle).first();
   } catch {
@@ -395,7 +396,7 @@ async function updateProfile(request, env, account) {
       "WHERE id = ? AND status = 'active'"
     ).bind(displayName, now, account.id).run();
     const updated = await env.DB.prepare(
-      "SELECT id, handle, display_name, status FROM real_user_accounts " +
+      "SELECT id, handle, display_name, avatar_asset_id, status FROM real_user_accounts " +
       "WHERE id = ? AND status = 'active' LIMIT 1"
     ).bind(account.id).first();
     if (!updated) return authJson({ ok: false, error: "profile_update_unavailable" }, 503);
