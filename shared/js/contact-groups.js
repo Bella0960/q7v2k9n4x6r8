@@ -72,19 +72,46 @@
     }
 
     function buildAudienceSnapshot(groupIds, contactIds) {
-        var groups = getGroups();
+        var requestedGroupIds = uniqueIds(groupIds);
+        var selectedContactIds = uniqueIds(contactIds);
+        var stored = readStoredGroups();
+
+        // A direct-contact selection remains usable when group storage is unavailable.
+        // A selected group, however, must never be silently dropped from the audience.
+        if (!stored.ok && requestedGroupIds.length) {
+            return {
+                ok: false,
+                error: stored.error || 'storage_unavailable',
+                groupIds: requestedGroupIds,
+                contactIds: selectedContactIds,
+                memberIds: []
+            };
+        }
+
+        var groups = stored.ok ? stored.groups : [];
         var validGroups = Object.create(null);
         groups.forEach(function (group) { validGroups[group.id] = group; });
-        var selectedGroupIds = uniqueIds(groupIds).filter(function (id) {
-            return Object.prototype.hasOwnProperty.call(validGroups, id);
+        var missingGroupIds = requestedGroupIds.filter(function (id) {
+            return !Object.prototype.hasOwnProperty.call(validGroups, id);
         });
-        var selectedContactIds = uniqueIds(contactIds);
+        if (missingGroupIds.length) {
+            return {
+                ok: false,
+                error: 'missing_groups',
+                missingGroupIds: missingGroupIds,
+                groupIds: requestedGroupIds,
+                contactIds: selectedContactIds,
+                memberIds: []
+            };
+        }
+
         var memberIds = selectedContactIds.slice();
-        selectedGroupIds.forEach(function (id) {
+        requestedGroupIds.forEach(function (id) {
             memberIds = memberIds.concat(validGroups[id].memberIds);
         });
         return {
-            groupIds: selectedGroupIds,
+            ok: true,
+            groupIds: requestedGroupIds,
             contactIds: selectedContactIds,
             memberIds: uniqueIds(memberIds)
         };
