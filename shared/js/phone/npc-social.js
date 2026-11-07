@@ -4,9 +4,12 @@
   if (global.NPCSocial) return;
 
   var NS = global.NPCSocial = {};
-  var REQUEST_KEY = 'npc_friend_requests_v1';
-  var SETTINGS_KEY = 'npc_friend_discovery_settings_v1';
-  var LOCK_KEY = 'npc_friend_generation_lock_v1';
+  // v1 global keys are read-only migration sources. All new state is scoped to
+  // the selected main role so switching roles cannot expose another role's queue.
+  var LEGACY_REQUEST_KEY = 'npc_friend_requests_v1';
+  var REQUEST_KEY_PREFIX = 'npc_friend_requests_v2_';
+  var SETTINGS_KEY_PREFIX = 'npc_friend_discovery_settings_v2_';
+  var LOCK_KEY_PREFIX = 'npc_friend_generation_lock_v2_';
   var CHECK_INTERVAL_MS = 30 * 60 * 1000;
   var AUTO_COOLDOWN_MS = 24 * 60 * 60 * 1000;
   var busy = false;
@@ -24,13 +27,41 @@
     try { localStorage.setItem(key, JSON.stringify(value)); return true; }
     catch (error) { return false; }
   }
+  function activeRoleId() {
+    var roleId = '';
+    try {
+      roleId = localStorage.getItem('phone_current_contact') ||
+        localStorage.getItem('currentPhoneContactId') || '';
+    } catch (error) {}
+    return String(roleId || '__unselected__');
+  }
+  function scopedKey(prefix, roleId) {
+    return prefix + encodeURIComponent(String(roleId || activeRoleId()));
+  }
+  function writeRequests(rows) {
+    return writeJson(scopedKey(REQUEST_KEY_PREFIX), rows);
+  }
   function readRequests() {
-    var rows = readJson(REQUEST_KEY, []);
-    if (!Array.isArray(rows)) throw new Error('NPC 好友申请数据无法读取，已停止写入以保护原数据。');
-    return rows;
+    var key = scopedKey(REQUEST_KEY_PREFIX);
+    var scoped = readJson(key, null);
+    if (scoped !== null) {
+      if (!Array.isArray(scoped)) throw new Error('当前主角色的 NPC 申请数据无法读取，已停止写入以保护原数据。');
+      return scoped;
+    }
+
+    // Import only legacy requests that explicitly identify this main role.
+    // The old global key is deliberately retained as a backup.
+    var legacy = readJson(LEGACY_REQUEST_KEY, []);
+    if (!Array.isArray(legacy)) throw new Error('旧版 NPC 申请数据无法读取，已停止迁移以保护原数据。');
+    var roleId = activeRoleId();
+    var migrated = roleId === '__unselected__' ? [] : legacy.filter(function (row) {
+      return row && String(row.mainRoleId || '') === roleId;
+    });
+    if (!writeRequests(migrated)) throw new Error('NPC 申请迁移保存失败，旧数据未被删除。');
+    return migrated;
   }
   function readSettings() {
-    var value = readJson(SETTINGS_KEY, {});
+    var value = readJson(scopedKey(SETTINGS_KEY_PREFIX), {});
     if (!value || typeof value !== 'object' || Array.isArray(value)) value = {};
     var interval = Number(value.intervalHours);
     return {
@@ -41,7 +72,7 @@
     };
   }
   function saveSettings(value) {
-    return writeJson(SETTINGS_KEY, {
+    return writeJson(scopedKey(SETTINGS_KEY_PREFIX), {
       enabled: value.enabled === true,
       intervalHours: [12, 24, 48].indexOf(Number(value.intervalHours)) !== -1 ? Number(value.intervalHours) : 24,
       lastAttemptAt: Number(value.lastAttemptAt) || 0,
@@ -106,9 +137,8 @@
     return dependencyPromise;
   }
   function getSelectedRole() {
-    var roleId = '';
-    try { roleId = localStorage.getItem('phone_current_contact') || localStorage.getItem('currentPhoneContactId') || ''; } catch (error) {}
-    if (!roleId) return null;
+    var roleId = activeRoleId();
+    if (roleId === '__unselected__') return null;
     var roles = global.PhoneStorage && global.PhoneStorage.getCharacters ? global.PhoneStorage.getCharacters() : readJson('ai_custom_characters', []);
     if (!Array.isArray(roles)) return null;
     return roles.find(function (role) { return role && String(role.id) === String(roleId); }) || null;
@@ -153,11 +183,23 @@
       worldbooks: worldbooks
     };
   }
-  function allRoleNames() {
+  function allRoleNames(role) {
+    // Only expose names associated with this main role to its NPC generator.
     var names = [];
-    var roles = global.PhoneStorage && global.PhoneStorage.getCharacters ? global.PhoneStorage.getCharacters() : readJson('ai_custom_characters', []);
-    if (Array.isArray(roles)) roles.forEach(function (role) {
-      if (role && role.name) names.push(cleanText(role.name, 40));
+    function add(value) {
+      var name = cleanText(value, 40);
+      if (name && names.indexOf(name) === -1) names.push(name);
+    }
+    if (!role) return names;
+    add(role.name);
+    (Array.isArray(role.npcCharacters) ? role.npcCharacters : []).forEach(function (item) {
+      if (item && item.name) add(item.name);
+    });
+    var roles = global.PhoneStorage && global.PhoneStorage.getCharacters
+      ? global.PhoneStorage.getCharacters()
+      : readJson('ai_custom_characters', []);
+    if (Array.isArray(roles)) roles.forEach(function (candidate) {
+      if (candidate && String(candidate.npcOriginMainRoleId || '') === String(role.id)) add(candidate.name);
     });
     return names;
   }
@@ -222,12 +264,13 @@
     return { name: name, profession: profession, persona: persona, greeting: greeting, reason: reason, speechStyle: speechStyle };
   }
   function acquireLock(now) {
-    var previous = Number(readJson(LOCK_KEY, 0)) || 0;
+    var key = scopedKey(LOCK_KEY_PREFIX);
+    var previous = Number(readJson(key, 0)) || 0;
     if (previous && now - previous >= 0 && now - previous < 2 * 60 * 1000) return false;
-    try { localStorage.setItem(LOCK_KEY, String(now)); return true; } catch (error) { return false; }
+    try { localStorage.setItem(key, String(now)); return true; } catch (error) { return false; }
   }
   function releaseLock() {
-    try { localStorage.removeItem(LOCK_KEY); } catch (error) {}
+    try { localStorage.removeItem(scopedKey(LOCK_KEY_PREFIX)); } catch (error) {}
   }
   function updateLastAttempt(settings, timestamp) {
     settings.lastAttemptAt = timestamp;
@@ -320,7 +363,7 @@
         introduction: npc.greeting
       };
       requests.unshift(request);
-      if (!writeJson(REQUEST_KEY, requests)) throw new Error('好友申请保存失败，请检查设备存储空间。');
+      if (!writeRequests(requests)) throw new Error('好友申请保存失败，请检查设备存储空间。');
       emit('mao:npc-friend-request', request);
       showIncomingToast(request);
       return { created: true, request: request };
@@ -396,7 +439,7 @@
     request.status = 'accepted';
     request.acceptedAt = Date.now();
     request.updatedAt = Date.now();
-    if (!writeJson(REQUEST_KEY, requests)) throw new Error('NPC 已加入通讯录，但申请状态未能保存。请重新打开申请列表，状态会自动校正。');
+    if (!writeRequests(requests)) throw new Error('NPC 已加入通讯录，但申请状态未能保存。请重新打开申请列表，状态会自动校正。');
     emit('mao:npc-friend-accepted', request);
     return { ok: true, roleId: request.npc.id };
   };
@@ -404,7 +447,7 @@
   NS.reject = function (requestId, blocked) {
     var requests = readRequests();
     var request = setStatus(requests, requestId, blocked ? 'blocked' : 'declined');
-    if (!writeJson(REQUEST_KEY, requests)) throw new Error('申请处理状态保存失败，请重试。');
+    if (!writeRequests(requests)) throw new Error('申请处理状态保存失败，请重试。');
     return { ok: true, request: request };
   };
 
@@ -427,7 +470,7 @@
         changed = true;
       }
     });
-    if (changed) writeJson(REQUEST_KEY, requests);
+    if (changed) writeRequests(requests);
   }
 
   NS.start = function () {
