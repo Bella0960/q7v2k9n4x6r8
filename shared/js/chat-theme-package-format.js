@@ -58,6 +58,7 @@
     return files;
   }
   function text(bytes,label){try{return dec?dec.decode(bytes):String.fromCharCode.apply(null,bytes)}catch(e){fail((label||"文件")+"不是有效 UTF-8。")}}
+  function safeCustomId(id){return typeof id==="string"&&/^custom-[A-Za-z0-9_-]{1,64}$/.test(id)}
   function safeAssetPath(path){return typeof path==="string"&&/^assets\/[A-Za-z0-9_.\-\u4e00-\u9fff ]{1,150}$/.test(path)&&path.indexOf("..")<0}
   function validateCss(css){
     css=String(css||"");
@@ -143,12 +144,12 @@
     });
     Object.keys(files).forEach(function(p){if(p.indexOf("assets/")===0&&!own(assets,p))fail("存在未登记素材："+p);if(["manifest.json","theme.json","custom.css"].indexOf(p)<0&&p.indexOf("assets/")!==0)fail("未知主题文件："+p)});
     var cleanPages={chatList:[],chatDetail:[]},ids={chatList:[],chatDetail:[]};
-    ["chatList","chatDetail"].forEach(function(page){cleanPages[page]=theme.pages[page].slice(0,80).filter(function(x){var ok=x&&typeof x.id==="string"&&(COMPONENTS[page].indexOf(x.id)>=0||x.id.indexOf("custom-")===0);if(ok&&!ids[page].includes(x.id))ids[page].push(x.id);return ok}).map(function(x){return{id:x.id,name:String(x.name||x.id).slice(0,80),type:COMPONENTS[page].indexOf(x.id)>=0?"core":"custom",visible:x.visible!==false}});
-      (Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).forEach(function(b){if(b&&typeof b.id==="string"&&!ids[page].includes(b.id))ids[page].push(b.id)})
+    ["chatList","chatDetail"].forEach(function(page){cleanPages[page]=theme.pages[page].slice(0,80).filter(function(x){var ok=x&&typeof x.id==="string"&&(COMPONENTS[page].indexOf(x.id)>=0||safeCustomId(x.id));if(ok&&!ids[page].includes(x.id))ids[page].push(x.id);return ok}).map(function(x){return{id:x.id,name:String(x.name||x.id).slice(0,80),type:COMPONENTS[page].indexOf(x.id)>=0?"core":"custom",visible:x.visible!==false}});
+      (Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).forEach(function(b){if(b&&safeCustomId(b.id)&&!ids[page].includes(b.id))ids[page].push(b.id)})
     });
     var clean={format:FORMAT,schemaVersion:VERSION,target:"maomao-chat",id:String(theme.id||"chat-theme").slice(0,120),name:theme.name,version:String(theme.version||"1.0.0"),pages:cleanPages,styles:{chatList:{},chatDetail:{}},blocks:{chatList:[],chatDetail:[]},layerOrder:{chatList:[],chatDetail:[]},motions:[],assetIndex:[]};
     ["chatList","chatDetail"].forEach(function(page){Object.keys(theme.styles&&theme.styles[page]||{}).forEach(function(id){if(!ids[page].includes(id))return;var st={};Object.keys(PROPS).forEach(function(k){var v=cleanValue(theme.styles[page][id][k]);if(v!==null&&v!==undefined)st[k]=v});clean.styles[page][id]=st});
-      clean.blocks[page]=(Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).slice(0,40).filter(function(b){return b&&typeof b.id==="string"&&ids[page].includes(b.id)}).map(function(b){var t=["card","text","image","divider"].indexOf(b.type)>=0?b.type:"card";return{id:b.id,type:t,title:String(b.title||"").slice(0,160),text:String(b.text||"").slice(0,2000),assetPath:paths.indexOf(b.assetPath)>=0?b.assetPath:"",slot:String(b.slot||"").slice(0,40),visible:b.visible!==false}});
+      clean.blocks[page]=(Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).slice(0,40).filter(function(b){return b&&safeCustomId(b.id)&&ids[page].includes(b.id)}).map(function(b){var t=["card","text","image","divider"].indexOf(b.type)>=0?b.type:"card";return{id:b.id,type:t,title:String(b.title||"").slice(0,160),text:String(b.text||"").slice(0,2000),assetPath:paths.indexOf(b.assetPath)>=0?b.assetPath:"",slot:String(b.slot||"").slice(0,40),visible:b.visible!==false}});
       clean.layerOrder[page]=(Array.isArray(theme.layerOrder&&theme.layerOrder[page])?theme.layerOrder[page]:[]).filter(function(id){return ids[page].includes(id)}).slice(0,120)
     });
     var seen={};clean.motions=(theme.motions||[]).slice(0,20).filter(function(m){return m&&RULES[m.id]&&!seen[m.id]&&(seen[m.id]=1)}).map(function(m){return Object.assign({},m,{enabled:m.enabled===true,duration:clamp(m.duration,80,1600,260),threshold:clamp(m.threshold,0,240,20),compactScale:clamp(m.compactScale,.55,1,.86),compactHeight:clamp(m.compactHeight,24,72,38),scale:clamp(m.scale,.75,1.3,1.1),lift:clamp(m.lift,0,16,4),distance:clamp(m.distance,0,40,8)})});
