@@ -337,3 +337,47 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增源码契约测试覆盖：serverMessageId 写后读回、重复投递去重、先保存再渲染、隐藏页面不处理迟到响应、设备连接后启动、Web Locks / 租约降级、15 秒前台轮询、跨标签页刷新和 PWA cache v174。
 - GitHub Actions 仍未提供可执行步骤的成功结果；官方 Node/SQLite 契约测试、Vite build、真实浏览器与 Android 多设备验收均为 **NOT VERIFIED**。
 - 当前只有接收端准备好消费消息；云端 AI 执行器仍未实现，所以没有真实角色主动消息被生成或投递。本轮不上传本地聊天正文、角色设定或 API Key，也不调用模型。
+## 11. M2.4a：本机模型执行器交接（不上传聊天上下文）
+
+本阶段把现有前台 `ChatNotifier` 主动联系决策接到云端活动队列。云端不调用模型，也不接收本地聊天正文 / persona / API Key；已配对设备使用自己的 `PhoneStorage`、`PhoneAPI` 和本机 API 配置生成。
+
+### 11.1 活动入队与跨设备去重
+
+- 新增迁移 `0007_activity_dedupe`：为 `activity_queue` 增加唯一 `dedupe_key`，旧任务以 `legacy:<id>` 回填，向前兼容。
+- 活动幂等键由 Worker 依据账号、角色、`contact` 类型和服务端上下文版本生成。同账号另一台设备在同一版本重复入队时只得到既有任务，不会创建第二条。
+- 入队请求只接受 `{ contextVersion }`；Worker 校验账号/角色自主活动授权及服务端最新版本。多余正文、角色设定或其他字段直接拒绝。
+- 每个角色最多保留 5 条 waiting/retry/running 活动，避免异常设备无限堆积。
+
+### 11.2 前台设备认领
+
+- `POST /api/autonomy/characters/:characterId/activities`：以当前已鉴权设备为起点，按账号/角色/上下文版本幂等入队。
+- `POST /api/autonomy/characters/:characterId/activities/claim`：查询该账号该角色到期任务，复用现有 scheduler policy 与真实 scheduler gate；全局/角色授权、作息、静默/状态、前台 lease/grace、上下文版本任一不满足，都不发放任务。
+- 同账号任一仍授权的配对设备可以 CAS 接管同一任务；成功认领时队列收件设备切换为执行设备，lease owner 与执行设备 ID 绑定。旧设备或旧 attempt 无法提交结果。
+- 活动租约、批量上限、重试退避必须由 Worker 显式配置 `AUTONOMY_LEASE_MS`、`AUTONOMY_TICK_LIMIT`、`AUTONOMY_RETRY_BACKOFF_MS`；缺失配置时 fail-closed。
+
+### 11.3 本机模型调用与结果交付
+
+- 当前前台 `ChatNotifier` 仍沿用本地 `ChatPresencePolicy` 选择主动联系候选，并只在用户开启该角色主动联系功能时运行。
+- 当云端全局/角色授权开启且本机已配对，客户端先读取服务端上下文版本、入队并认领任务；随后在本机调用已有 `PhoneAPI.completeJSON()`，本地 prompt 可使用角色 persona 和最近聊天历史，但这些内容不会进入 Worker 请求。
+- 模型明确返回不发送时使用 skip API 结束任务；生成失败走受限原因码和服务端重试退避；上下文在生成期间变化则跳过旧任务，不发送过时内容。
+- `POST /api/autonomy/activities/:id/complete` 同步完成任务并把生成出的纯文字写入现有 `outbound_messages` 收件箱；server message ID 由 task ID + attempt 固定生成，重复提交幂等。
+- 客户端把完成结果镜像写回本机现有 `chat_history_<roleId>`，保存失败时云端 outbox 仍 pending；聊天页原有 receiver 后续写后读回成功才 ACK。
+- 完成正文限制 2–220 字普通文字；完成/失败/跳过只接受 allowlist 字段和原因码，不允许客户端指定设备归属、租约 owner、下次重试时间或模型凭据。
+
+### 11.4 新增 API 与存储方法
+
+| API | 作用 |
+| --- | --- |
+| `POST /api/autonomy/characters/:id/activities` | 以当前上下文版本幂等入队 |
+| `POST /api/autonomy/characters/:id/activities/claim` | 在 gate 通过后认领任务 |
+| `POST /api/autonomy/activities/:id/complete` | 写出站文字并完成任务 |
+| `POST /api/autonomy/activities/:id/fail` | 按服务端退避配置释放为 retry / failed |
+| `POST /api/autonomy/activities/:id/skip` | 对无值得发送的内容或已过期上下文终止任务 |
+
+### 11.5 目前边界
+
+- 这是一条**前台设备执行**路径，不是 Worker 在应用关闭或手机锁屏时自行调用模型。Web Push 只用于设备通知/收件，不会让浏览器在关闭后持续运行 AI 模型。
+- 当前只接入已有的 `contact` 主动联系流程；群聊、复杂卡片、图片/语音生成、角色日记等任务类型暂不开放。
+- `autonomousMessageGenerationReady` 仍保持 false，直到本地模型配置、真实浏览器执行、双设备抢占、断网重试、Worker 部署和 Android 真机推送都完成验收。
+- 新增 Node/SQLite 契约测试覆盖迁移 0007、跨设备去重、设备接管、租约 fencing、完成后 outbox 入箱、重复完成幂等、授权拒绝与旧上下文拒绝。完整项目测试与 build 尚需真实执行。
+- 本阶段不上传本地聊天历史、角色设定、persona 或 API Key；仅把设备执行后实际生成的单条待送达文字写入云端收件箱。
