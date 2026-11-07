@@ -211,6 +211,7 @@ async function ensureLegacyAvatarInLibrary(role) {
         return false;
     }
 
+    const previousActive = library.getActive(role.id);
     const activated = library.setActive(role.id, saved.value.id);
     if (!activated.ok) {
         setAvatarLibraryStatus('头像已保存，但当前头像标记未能更新。', 'error');
@@ -224,7 +225,7 @@ async function ensureLegacyAvatarInLibrary(role) {
     latest.avatarAssetId = saved.value.assetId;
     if (!saveRoles(roles)) {
         latest.avatarAssetId = previousAssetId;
-        library.setActive(role.id, '');
+        library.setActive(role.id, previousActive ? previousActive.id : '');
         setAvatarLibraryStatus('图库已保留原图；角色资料写入失败，未更改原头像。', 'error');
         return false;
     }
