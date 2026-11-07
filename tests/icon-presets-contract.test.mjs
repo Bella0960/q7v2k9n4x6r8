@@ -24,6 +24,8 @@ test('icon upload rows are generated from every launcher app instead of a separa
   assert.match(iconSettings, /fetch\('\.\.\/index\.html'/);
   assert.match(iconSettings, /querySelectorAll\('button\[data-drag\^="app_"\]'\)/);
   assert.match(iconSettings, /\.app-name/);
+  assert.match(iconSettings, /if \(!name\) name = String\(element\.getAttribute\('data-name'\) \|\| ''\)\.trim\(\)/,
+    'empty visible labels must fall back to the stable data-name attribute');
   assert.match(iconSettings, /\.app-icon svg/);
   assert.match(iconSettings, /var APPS = \[\]/);
   assert.doesNotMatch(iconSettings, /id:\s*'app_shopadmin'/,
