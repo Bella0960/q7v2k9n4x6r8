@@ -393,3 +393,38 @@ test('pair creation rejects same, missing, and cross-character portraits and ded
   assert.equal(reverse.meta.reused, true);
   assert.equal(api.getPairs('role-a').length, 1);
 });
+
+test('adding or selecting another portrait preserves existing pair relationships', async () => {
+  const { api } = createLibrary();
+  const a = await api.add('role-a', 'data:image/jpeg;base64,A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,B');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id);
+  assert.equal(pair.ok, true);
+
+  const c = await api.add('role-a', 'data:image/jpeg;base64,C');
+  assert.equal(c.ok, true);
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.equal(api.setActive('role-a', c.value.id).ok, true);
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.deepEqual(Array.from(api.getPairs('role-a')[0].avatarIds), [a.value.id, b.value.id]);
+});
+
+test('deleting a character clears its pair metadata and references without affecting another character pair', async () => {
+  const { api, refs } = createLibrary();
+  const a1 = await api.add('role-a', 'data:image/jpeg;base64,A1');
+  const a2 = await api.add('role-a', 'data:image/jpeg;base64,A2');
+  const b1 = await api.add('role-b', 'data:image/jpeg;base64,B1');
+  const b2 = await api.add('role-b', 'data:image/jpeg;base64,B2');
+  assert.equal(api.linkPair('role-a', a1.value.id, a2.value.id).ok, true);
+  assert.equal(api.linkPair('role-b', b1.value.id, b2.value.id).ok, true);
+
+  const removed = await api.removeRole('role-a');
+  assert.equal(removed.ok, true);
+  assert.equal(api.list('role-a').length, 0);
+  assert.equal(api.getPairs('role-a').length, 0);
+  assert.equal(refs.has(a1.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(refs.has(a2.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(api.getPairs('role-b').length, 1);
+  assert.equal(refs.has(b1.value.assetId + '|role-avatar|role-b'), true);
+  assert.equal(refs.has(b2.value.assetId + '|role-avatar|role-b'), true);
+});
