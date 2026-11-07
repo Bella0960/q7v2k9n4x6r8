@@ -30,9 +30,13 @@
       '</div>' +
       '<div id="ruSessionArea" hidden>' +
         '<div class="ru-account-row">' +
-          '<div><div class="ru-account-name" id="ruAccountName"></div><div class="ru-account-handle" id="ruAccountHandle"></div></div>' +
+          '<div><div class="ru-account-name" id="ruAccountName"></div><div class="ru-account-handle" id="ruAccountHandle"></div><button type="button" class="ru-plain-button" id="ruEditName">修改昵称</button></div>' +
           '<button type="button" class="ru-plain-button" id="ruLogout">退出</button>' +
         '</div>' +
+        '<form id="ruProfileForm" class="ru-profile-form" hidden>' +
+          '<label>新的昵称<input id="ruProfileDisplayName" maxlength="48" autocomplete="nickname" required></label>' +
+          '<div class="ru-profile-actions"><button class="ru-primary" id="ruProfileSave" type="submit">保存昵称</button><button class="ru-plain-button" id="ruProfileCancel" type="button">取消</button></div>' +
+        '</form>' +
         '<div id="ruFriendsArea" hidden>' +
           '<section class="ru-section">' +
             '<div class="ru-section-head"><span>添加真人好友</span><button type="button" class="ru-plain-button" id="ruGenerateCode">生成加好友码</button></div>' +
@@ -100,6 +104,12 @@
     '.ru-account-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f0f0;}',
     '.ru-account-name{font-size:13px;font-weight:500;color:#171717;}',
     '.ru-account-handle{margin-top:3px;color:#999;font-size:10px;}',
+    '.ru-profile-form{display:grid;gap:8px;padding:10px 0;border-bottom:1px solid #f0f0f0;}',
+    '.ru-profile-form[hidden]{display:none!important;}',
+    '.ru-profile-form label{display:grid;gap:5px;color:#888;font-size:10px;}',
+    '.ru-profile-form input{width:100%;min-width:0;border:1px solid #e7e7e7;border-radius:5px;padding:9px;background:#fafafa;color:#171717;font:inherit;font-size:12px;}',
+    '.ru-profile-actions{display:flex;gap:8px;align-items:center;}',
+    '.ru-profile-actions .ru-primary{flex:1;}',
     '.ru-section{padding:12px 0;border-bottom:1px solid #f0f0f0;}',
     '.ru-section:last-child{border-bottom:0;padding-bottom:2px;}',
     '.ru-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;color:#222;font-size:12px;font-weight:500;}',
@@ -162,6 +172,8 @@
       invalid_friend_code: '请粘贴有效的 64 位好友码或分享链接。',
       origin_not_allowed: '请求来源未通过安全校验。',
       authentication_temporarily_unavailable: '账号服务暂时不可用。',
+      invalid_display_name: '昵称不能为空，最多 48 个字符。',
+      profile_update_unavailable: '昵称暂时无法保存，请稍后重试。',
       friend_requests_temporarily_unavailable: '好友申请暂时无法读取。',
       friends_temporarily_unavailable: '好友列表暂时无法读取。',
       blocked_accounts_temporarily_unavailable: '暂时无法读取已屏蔽的用户。',
@@ -184,6 +196,11 @@
   }
   function showAuthArea(show) { el('ruAuthArea').hidden = !show; }
   function showSessionArea(show) { el('ruSessionArea').hidden = !show; }
+  function renderAccount(account) {
+    el('ruAccountName').textContent = account.displayName;
+    el('ruAccountHandle').textContent = '@' + account.handle;
+    el('ruProfileDisplayName').value = account.displayName;
+  }
   function setAuthMode(mode) {
     authMode = mode === 'register' ? 'register' : 'login';
     panel.querySelectorAll('[data-ru-mode]').forEach(function (button) {
@@ -391,8 +408,7 @@
         return;
       }
       showSessionArea(true);
-      el('ruAccountName').textContent = result.account.displayName;
-      el('ruAccountHandle').textContent = '@' + result.account.handle;
+      renderAccount(result.account);
       if (!result.friendsEnabled) {
         setStatus('账号已登录，但好友服务尚未启用。');
         return;
@@ -433,8 +449,7 @@
       el('ruPassword').value = '';
       showAuthArea(false);
       showSessionArea(true);
-      el('ruAccountName').textContent = account.displayName;
-      el('ruAccountHandle').textContent = '@' + account.handle;
+      renderAccount(account);
       var state = client.getState();
       if (state.capabilities && state.capabilities.friends && state.capabilities.friends.enabled) {
         el('ruFriendsArea').hidden = false;
@@ -444,6 +459,36 @@
       } else {
         setStatus('账号已登录，但好友服务尚未启用。');
       }
+    } catch (error) {
+      setStatus(explainError(error), 'error');
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  el('ruEditName').addEventListener('click', function () {
+    var account = client.getState().account;
+    if (!account) return;
+    el('ruProfileDisplayName').value = account.displayName;
+    el('ruProfileForm').hidden = false;
+    el('ruProfileDisplayName').focus();
+  });
+
+  el('ruProfileCancel').addEventListener('click', function () {
+    var account = client.getState().account;
+    if (account) renderAccount(account);
+    el('ruProfileForm').hidden = true;
+  });
+
+  el('ruProfileForm').addEventListener('submit', async function (event) {
+    event.preventDefault();
+    var button = el('ruProfileSave');
+    setBusy(button, true, '保存中…');
+    try {
+      var account = await client.updateProfile(el('ruProfileDisplayName').value);
+      renderAccount(account);
+      el('ruProfileForm').hidden = true;
+      setStatus('昵称已更新。好友下次刷新时会看到新昵称。');
     } catch (error) {
       setStatus(explainError(error), 'error');
     } finally {
