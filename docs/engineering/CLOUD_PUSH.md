@@ -603,6 +603,8 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 迁移测试覆盖历史来源设备回执的准确回填。
 - Web Push dispatcher 按来源设备所属账号枚举所有有效设备的订阅；每个订阅继续使用独立 dedupe / delivery lease。来源设备被撤销后，其订阅会停用，但同账号其他有效设备仍会成为待投递消息的推送目标。
 - 推送目标回归覆盖同账号多设备、跨账号排除、单设备撤销排除，以及来源设备撤销后由剩余设备继续接收。
+- Push eligibility is calculated per target-device receipt, not from the legacy account-level `delivery_status`: after device B saves the account message, device A can still receive its own notification until A saves locally. This prevents the first device ACK from suppressing reminders to other devices.
+- Additional recovery coverage verifies that an active same-account device can retrieve and ACK a message even after the source device has been revoked; the revoked source credential is rejected.
 
 ### 验证边界
 
