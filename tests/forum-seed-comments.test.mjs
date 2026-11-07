@@ -285,6 +285,9 @@ function extractForumRefreshCore(){
   const parts = [
     "const STORE='forum_posts';",
     extractNamedFunction(forumHome,'function cloneForumRefreshPost('),
+    extractNamedFunction(forumHome,'function forumRefreshCommentKey('),
+    extractNamedFunction(forumHome,'function mergeForumRefreshReplies('),
+    extractNamedFunction(forumHome,'function appendForumRefreshComment('),
     extractNamedFunction(forumHome,'function mergeForumRefreshData('),
     extractNamedFunction(forumHome,'function commitForumRefreshData(')
   ];
@@ -467,4 +470,89 @@ test('forum refresh / 页面入口：刷新流程使用最新存储快照合并�
   assert.ok(forumHome.includes('const commit=commitForumRefreshData(fresh,data.activity,forumMakeAIComment)'));
   assert.equal(forumHome.includes('const before=posts.slice()'), false);
   assert.ok(forumHome.includes('posts=commit.posts'));
+});
+
+
+test('forum refresh / 重复根评论携带新楼中楼：保留根评论并只追加尚未出现的回复', () => {
+  const api = runForumRefreshCore();
+  const current = [{
+    id: 'thread_post',
+    title: '一条持续讨论',
+    body: '正文',
+    comments: [{
+      residentId: 'resident_root',
+      source: 'forum-ai',
+      text: '我之前也遇到过',
+      replies: [{
+        residentId: 'resident_old_reply',
+        source: 'forum-ai',
+        text: '之前的补充',
+        replyTo: '路人甲'
+      }]
+    }]
+  }];
+  const activity = [{
+    postId: 'thread_post',
+    comments: [{
+      residentId: 'resident_root',
+      source: 'forum-ai',
+      text: '我之前也遇到过',
+      replies: [
+        { residentId: 'resident_old_reply', source: 'forum-ai', text: '之前的补充', replyTo: '路人甲' },
+        { residentId: 'resident_new_reply', source: 'forum-ai', text: '我也想补充一点', replyTo: '路人甲' }
+      ]
+    }]
+  }];
+  const normalize = (item) => ({
+    residentId: item.residentId,
+    source: 'forum-ai',
+    text: item.text,
+    replies: item.replies || []
+  });
+
+  const result = api.mergeForumRefreshData(current, [], activity, normalize);
+  const comments = result.posts[0].comments;
+
+  assert.equal(result.changed, true);
+  assert.equal(result.activityCount, 1, '只把新楼中楼计为新增内容');
+  assert.equal(comments.length, 1, '重复的根评论不能再插入一份');
+  assert.deepEqual(
+    comments[0].replies.map((reply) => reply.text),
+    ['之前的补充', '我也想补充一点']
+  );
+  assert.equal(current[0].comments[0].replies.length, 1, '合并不得改写原始内存快照');
+});
+
+test('forum refresh / 新帖子自带评论：根评论和楼中楼都按身份去重', () => {
+  const api = runForumRefreshCore();
+  const fresh = [{
+    id: 'fresh_thread',
+    title: '新讨论',
+    body: '新帖子正文',
+    comments: [
+      {
+        residentId: 'resident_a',
+        source: 'forum-ai',
+        text: '我先说一下',
+        replies: [{ residentId: 'resident_b', source: 'forum-ai', text: '我来补充' }]
+      },
+      {
+        residentId: 'resident_a',
+        source: 'forum-ai',
+        text: '我先说一下',
+        replies: [
+          { residentId: 'resident_b', source: 'forum-ai', text: '我来补充' },
+          { residentId: 'resident_c', source: 'forum-ai', text: '还有一个细节' }
+        ]
+      }
+    ]
+  }];
+
+  const result = api.mergeForumRefreshData([], fresh, [], () => null);
+  assert.equal(result.addedPostCount, 1);
+  assert.equal(result.posts[0].comments.length, 1, '新帖子里的重复根评论只保留一份');
+  assert.deepEqual(
+    result.posts[0].comments[0].replies.map((reply) => reply.text),
+    ['我来补充', '还有一个细节']
+  );
 });
