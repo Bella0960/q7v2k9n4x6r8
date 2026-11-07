@@ -299,7 +299,7 @@ async function renderAvatarLibrary(roleId) {
             const firstLabel = escapeHtml(first.label || '头像 A');
             const secondLabel = escapeHtml(second.label || '头像 B');
             return '<article class="avatar-pair-card">' +
-                '<div class="avatar-pair-card-head"><input class="avatar-pair-label-input" type="text" maxlength="36" value="' + escapeHtml(pair.label || '配对头像') + '" aria-label="配对名称" data-avatar-pair-label-input="' + pairId + '">' +
+                '<div class="avatar-pair-card-head"><input class="avatar-pair-label-input" type="text" maxlength="36" value="' + escapeHtml(pair.label || '配对头像') + '" data-saved-value="' + escapeHtml(pair.label || '配对头像') + '" aria-label="配对名称" data-avatar-pair-label-input="' + pairId + '">' +
                 '<div class="avatar-pair-actions"><button class="avatar-pair-rename" type="button" data-avatar-pair-action="rename" data-pair-id="' + pairId + '">保存名称</button>' +
                 '<button class="avatar-pair-swap" type="button" data-avatar-pair-action="swap" data-pair-id="' + pairId + '">交换 A/B</button>' +
                 '<button class="avatar-pair-unlink" type="button" data-avatar-pair-action="unlink" data-pair-id="' + pairId + '">解除配对</button></div></div>' +
@@ -723,6 +723,19 @@ function renderRoleProfile() {
         if (action === 'tone') openMainRoleEditor(true);
         if (action === 'relationships') showAppView('relationshipView');
         if (action === 'life') showAppView('lifeView');
+    };
+    content.onkeydown = function (event) {
+        const labelInput = event.target && event.target.closest
+            ? event.target.closest('[data-avatar-pair-label-input]') : null;
+        if (!labelInput || !content.contains(labelInput)) return;
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            renameRoleAvatarPair(labelInput.getAttribute('data-avatar-pair-label-input'), labelInput.value);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            labelInput.value = labelInput.getAttribute('data-saved-value') || '';
+            labelInput.blur();
+        }
     };
 
     initPersonaCollapse(content);
