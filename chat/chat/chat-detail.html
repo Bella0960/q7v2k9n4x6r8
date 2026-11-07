@@ -6098,6 +6098,9 @@
                 if (window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function') {
                     tmpText = window.RoleStickerLibrary.stripStreamMarker(tmpText);
                 }
+                if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
+                    tmpText = window.ChatImageVision.stripAvatarCandidateMarker(tmpText);
+                }
                 if (!tmpText) return;
 
                 if (!streamBubble) {
