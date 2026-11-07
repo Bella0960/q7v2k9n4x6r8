@@ -90,7 +90,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0007 建立云推送、调度元数据、真人好友、聊天消息与已读状态表', async () => {
+test('迁移 0001–0008 建立云推送、调度元数据、真人好友、聊天消息、已读与隐私状态表', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -116,7 +116,9 @@ test('迁移 0001–0007 建立云推送、调度元数据、真人好友、聊�
     'friend_requests',
     'friendships',
     'friend_messages',
-    'friend_conversation_reads'
+    'friend_conversation_reads',
+    'friend_message_hides',
+    'friend_conversation_clears'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -138,12 +140,14 @@ test('迁移 0001–0007 建立云推送、调度元数据、真人好友、聊�
   assert.ok(indexes.includes('idx_friend_messages_pair_created'), '好友聊天记录必须支持按会话游标查询');
   assert.ok(indexes.includes('idx_friend_messages_recipient_created'), '好友收件箱消息必须支持按对端与时间查询');
   assert.ok(indexes.includes('idx_friend_conversation_reads_friend'), '好友会话已读状态必须支持按对端查询');
+  assert.ok(indexes.includes('idx_friend_message_hides_conversation'), '单条消息隐藏记录必须支持按会话查询');
+  assert.ok(indexes.includes('idx_friend_conversation_clears_friend'), '会话清空游标必须支持按对端查询');
 
   // 幂等：重复执行迁移不会重复建表，也不会重复记录版本。
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 7);
+  assert.equal(versions.length, 8);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -151,7 +155,8 @@ test('迁移 0001–0007 建立云推送、调度元数据、真人好友、聊�
     '0004_character_context_version',
     '0005_friend_accounts',
     '0006_friend_messages',
-    '0007_friend_conversation_reads'
+    '0007_friend_conversation_reads',
+    '0008_friend_message_visibility'
   ]);
 });
 
