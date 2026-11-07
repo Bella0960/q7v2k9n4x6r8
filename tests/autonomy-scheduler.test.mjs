@@ -214,6 +214,7 @@ test('CAS 认领只有一个赢家，第二个认领返回 null', () => {
   const second = store.claimActivity({
     id: 'act_cas',
     expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
     owner: 'foreground',
     leaseUntil: NOW + CONFIG.leaseMs,
     now: NOW
