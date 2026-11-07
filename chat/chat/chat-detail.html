@@ -4935,15 +4935,20 @@
                                 String(ensureMid(row)) === requestedSourceId &&
                                 Number(row.amount) === Number(item.amount);
                         }) || null;
-                        if (returnSource && returnSource.status &&
-                            returnSource.status !== 'unopened') {
-                            var explicitDuplicate = historyList.some(function (row) {
-                                return row && row.role === 'assistant' && row.type === 'transfer' &&
-                                    String(row.returnOfPaymentId || '') === requestedSourceId;
-                            });
-                            if (explicitDuplicate) skippedDuplicateReturn = true;
-                            else skippedUnmatchedReturn = true;
-                            return;
+                        if (returnSource) {
+                            var explicitDuplicate = !!returnSource.returnCardId ||
+                                historyList.some(function (row) {
+                                    return row && row.role === 'assistant' && row.type === 'transfer' &&
+                                        String(row.returnOfPaymentId || '') === requestedSourceId;
+                                });
+                            if (explicitDuplicate) {
+                                skippedDuplicateReturn = true;
+                                return;
+                            }
+                            if (returnSource.status && returnSource.status !== 'unopened') {
+                                skippedUnmatchedReturn = true;
+                                return;
+                            }
                         }
                     } else {
                         var pendingSources = [];
@@ -7875,7 +7880,7 @@
                         Number(returnSource.amount) !== amountNum ||
                         (returnSource.status !== 'returning' && returnSource.status !== 'returned') ||
                         (returnSource.returnCardId && String(returnSource.returnCardId) !== String(paymentId)) ||
-                        (returnSource.status === 'returned' && !returnSource.returnCardId && msg.status !== 'received')) {
+                        (returnSource.status === 'returned' && msg.status !== 'received')) {
                         showToast('原转账状态或关联编号不一致，已停止入账');
                         return;
                     }
