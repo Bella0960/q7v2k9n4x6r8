@@ -103,9 +103,13 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
         expectedStatus: decision.expectedStatus,
         now
       });
-      if (superseded) summary.superseded += 1;
-      else summary.lost += 1;
-      log(store, now, 'superseded', decision.reason, { taskId: decision.taskId });
+      if (superseded) {
+        summary.superseded += 1;
+        log(store, now, 'superseded', decision.reason, { taskId: decision.taskId });
+      } else {
+        summary.lost += 1;
+        log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId });
+      }
       continue;
     }
 
