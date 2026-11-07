@@ -804,10 +804,17 @@
       for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
         if (!row || typeof row !== 'object' || Array.isArray(row) ||
+            typeof row.roleName !== 'string' || !row.roleName ||
             !isFinite(Number(row.ts)) || Number(row.ts) <= 0 ||
+            !isFinite(Number(row.total)) || Number(row.total) < 0 ||
             !Array.isArray(row.items) ||
-            (row.total != null && (!isFinite(Number(row.total)) || Number(row.total) < 0)) ||
-            (row.statusHistory != null && !Array.isArray(row.statusHistory))) return null;
+            (Object.prototype.hasOwnProperty.call(row, 'statusHistory') && !Array.isArray(row.statusHistory))) return null;
+        for (var itemIndex = 0; itemIndex < row.items.length; itemIndex++) {
+          var item = row.items[itemIndex];
+          if (!item || typeof item !== 'object' ||
+              (typeof item.cn !== 'string' && typeof item.name !== 'string') ||
+              !isFinite(Number(item.price)) || Number(item.price) < 0) return null;
+        }
       }
       return rows;
     } catch(e) { return null; }
