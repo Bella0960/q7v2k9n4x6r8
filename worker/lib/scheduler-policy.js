@@ -225,6 +225,8 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
     taskId: task.id,
     expectedAttemptCount: Number(task.attempt_count || 0),
     expectedStatus: task.status,
+    expectedLockedBy: task.locked_by || null,
+    expectedLockedUntil: task.locked_until == null ? null : Number(task.locked_until),
     attemptCount,
     leaseUntil: now + validated.config.leaseMs,
     owner
