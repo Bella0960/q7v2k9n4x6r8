@@ -8,6 +8,7 @@
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/role_family_cards.js?v=20261107v1"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261107v1"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -1002,110 +1003,158 @@
     document.getElementById('cartView').style.display = 'block';
   }
 
-  function doPay() {
-    const total = payItems.reduce((s,c) => s + c.price, 0);
-    var roleFamilyCard = getRoleCardFromMethod(payMethod);
-    if (payMethod.indexOf('role_card:') === 0) {
-      if (!roleFamilyCard || !canUseRoleCard(roleFamilyCard, total)) {
-        showToast('这张亲属卡的额度不足或已停用');
-        payMethod = 'normal';
-        renderPayMethods(total);
-        return;
-      }
-      var roleCardSpend = window.RoleFamilyCards.consume(
-        roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop'
-      );
-      if (!roleCardSpend || !roleCardSpend.ok) {
-        showToast(roleCardSpend && roleCardSpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式');
-        renderPayMethods(total);
-        return;
-      }
-      roleFamilyCard = roleCardSpend.card;
-    }
-    const now = new Date();
-    const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
-    const itemsDesc = payItems.map(c => c.cn).join('、');
+  var shopPaymentInProgress = false;
 
-    // 记账：写 finance_records
+  async function doPay() {
+    if (shopPaymentInProgress) return;
+    shopPaymentInProgress = true;
     try {
-      const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-      payItems.forEach(c => {
-        list.push({ amount: c.price, type: 'expense',
-          category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
-          note: (payMethod === 'close_pay'
-            ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
-            : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + c.cn,
-          time: timeStr });
-      });
-      localStorage.setItem('finance_records', JSON.stringify(list));
-    } catch(e) {}
-
-    // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
-    if (payMethod === 'close_pay') {
-      try {
-        var cp = getClosePay();
-        if (cp) {
-          // 扣钱包余额
-          var wd = JSON.parse(localStorage.getItem('workData') || 'null') || { balance: 1000, history: [] };
-          if (typeof wd.balance !== 'number') wd.balance = 1000;
+      var ledger = window.MaoMaoWalletLedger;
+      if (!ledger || typeof ledger.runExclusive !== 'function') {
+        showToast('钱包保护模块尚未加载，请刷新页面后重试');
+        return;
+      }
+      await ledger.runExclusive(function () {
+        
+            const total = payItems.reduce((s,c) => s + c.price, 0);
+            var roleFamilyCard = getRoleCardFromMethod(payMethod);
+            if (payMethod.indexOf('role_card:') === 0) {
+              if (!roleFamilyCard || !canUseRoleCard(roleFamilyCard, total)) {
+                showToast('这张亲属卡的额度不足或已停用');
+                payMethod = 'normal';
+                renderPayMethods(total);
+                return;
+              }
+              var roleCardSpend = window.RoleFamilyCards.consume(
+                roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop'
+              );
+              if (!roleCardSpend || !roleCardSpend.ok) {
+                showToast(roleCardSpend && roleCardSpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式');
+                renderPayMethods(total);
+                return;
+              }
+              roleFamilyCard = roleCardSpend.card;
+            }
+            const now = new Date();
+            const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
+            const itemsDesc = payItems.map(c => c.cn).join('、');
+        
+            // 记账：写 finance_records
+            try {
+              const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
+              payItems.forEach(c => {
+                list.push({ amount: c.price, type: 'expense',
+                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
+                  note: (payMethod === 'close_pay'
+                    ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
+                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + c.cn,
+                  time: timeStr });
+              });
+              localStorage.setItem('finance_records', JSON.stringify(list));
+            } catch(e) {}
+        
+            // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
+            if (payMethod === 'close_pay') {
+              try {
+                var cp = getClosePay();
+                if (cp) {
+                  // 重新校验亲密付额度与真实余额，结算全程处于钱包全局锁内。
+          if (!cp.enabled || (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
+            showToast('亲密付额度已变化，请重新选择支付方式');
+            return;
+          }
+          var oldWalletRaw = localStorage.getItem('workData');
+          var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
+          if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
           if (!Array.isArray(wd.history)) wd.history = [];
+          if (wd.balance < total) {
+            showToast('钱包余额不足，未完成支付');
+            return;
+          }
           wd.balance = Math.round((wd.balance - total) * 100) / 100;
           wd.history.unshift({ type: 'expense', category: 'close_pay',
             title: '亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
             amount: total, time: Date.now() });
-          localStorage.setItem('workData', JSON.stringify(wd));
+          var walletSerialized = JSON.stringify(wd);
+          localStorage.setItem('workData', walletSerialized);
+          if (localStorage.getItem('workData') !== walletSerialized) {
+            showToast('钱包扣款未能确认，订单未完成');
+            return;
+          }
 
-          // 更新亲密付额度
+          // 更新亲密付额度；若额度记录未能写入，尽量回滚刚才的钱包扣款。
           cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
           if (!Array.isArray(cp.history)) cp.history = [];
           cp.history.push({ amount: total, note: '商店 · ' + itemsDesc, time: Date.now() });
-          localStorage.setItem('close_pay', JSON.stringify(cp));
+          var closePaySerialized = JSON.stringify(cp);
+          localStorage.setItem('close_pay', closePaySerialized);
+          if (localStorage.getItem('close_pay') !== closePaySerialized) {
+            try {
+              if (localStorage.getItem('workData') === walletSerialized) {
+                if (oldWalletRaw == null) localStorage.removeItem('workData');
+                else localStorage.setItem('workData', oldWalletRaw);
+              }
+            } catch (rollbackError) {}
+            showToast('亲密付额度未能保存，已尝试撤回钱包扣款');
+            return;
+          }
 
           // 给对方发一条聊天消息
-          if (cp.roleId) {
-            var key = 'chat_history_' + cp.roleId;
-            var arr = JSON.parse(localStorage.getItem(key) || '[]');
-            arr.push({
-              role: 'user',
-              type: 'text',
-              text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
-              time: Date.now()
-            });
-            localStorage.setItem(key, JSON.stringify(arr));
-          }
+                  if (cp.roleId) {
+                    var key = 'chat_history_' + cp.roleId;
+                    var arr = JSON.parse(localStorage.getItem(key) || '[]');
+                    arr.push({
+                      role: 'user',
+                      type: 'text',
+                      text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
+                      time: Date.now()
+                    });
+                    localStorage.setItem(key, JSON.stringify(arr));
+                  }
+                }
+              } catch(e) {}
+            }
+        
+            if (roleFamilyCard) {
+              notifyRoleCardIssuer(roleFamilyCard,
+                '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
+                '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
+                '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
+                window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+            }
+        
+            // 写入订单
+            const orders = loadOrders();
+            orders.push({ roleName: '我', roleBg: '#111', items: payItems.map(c=>({cn:c.cn,price:c.price})), total, ts: Date.now(), payMethod });
+            saveOrders(orders);
+            // 弹小票
+            document.getElementById('rOrder').textContent = String(Math.floor(Math.random()*9000)+1000);
+            document.getElementById('rBody').innerHTML =
+              payItems.map(c => `
+                <div class="r-row"><span class="name">${c.cn}</span><span>¥${c.price}</span></div>
+              `).join('') +
+              `<div class="r-divider"></div>
+               <div class="r-row"><span>商品件数</span><span>${payItems.length} 件</span></div>
+               <div class="r-row r-total"><span>合计</span><span>¥${total}.00</span></div>`;
+            document.getElementById('rFoot').textContent =
+              new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-') + ' · 谢谢惠顾';
+            document.getElementById('doneItems').innerHTML = payItems.map(c =>
+              `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.813rem;">
+                 <span>${c.cn}</span><span style="font-weight:600;">¥${c.price}</span>
+               </div>`).join('');
+            document.getElementById('payView').style.display = 'none';
+            document.getElementById('receiptBox').classList.add('show');
+      }, {
+        onFallback: function () {
+          showToast('当前浏览器不支持跨页面支付互斥，请避免同时从多个页面结算');
         }
-      } catch(e) {}
+      });
+    } catch (error) {
+      console.warn('[shop] 支付操作未完成', error);
+      showToast('支付暂未完成，请检查钱包记录后重试');
+    } finally {
+      shopPaymentInProgress = false;
     }
-
-    if (roleFamilyCard) {
-      notifyRoleCardIssuer(roleFamilyCard,
-        '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
-        '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
-        '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
-        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
-    }
-
-    // 写入订单
-    const orders = loadOrders();
-    orders.push({ roleName: '我', roleBg: '#111', items: payItems.map(c=>({cn:c.cn,price:c.price})), total, ts: Date.now(), payMethod });
-    saveOrders(orders);
-    // 弹小票
-    document.getElementById('rOrder').textContent = String(Math.floor(Math.random()*9000)+1000);
-    document.getElementById('rBody').innerHTML =
-      payItems.map(c => `
-        <div class="r-row"><span class="name">${c.cn}</span><span>¥${c.price}</span></div>
-      `).join('') +
-      `<div class="r-divider"></div>
-       <div class="r-row"><span>商品件数</span><span>${payItems.length} 件</span></div>
-       <div class="r-row r-total"><span>合计</span><span>¥${total}.00</span></div>`;
-    document.getElementById('rFoot').textContent =
-      new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-') + ' · 谢谢惠顾';
-    document.getElementById('doneItems').innerHTML = payItems.map(c =>
-      `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.813rem;">
-         <span>${c.cn}</span><span style="font-weight:600;">¥${c.price}</span>
-       </div>`).join('');
-    document.getElementById('payView').style.display = 'none';
-    document.getElementById('receiptBox').classList.add('show');
   }
 
   function closeReceipt() {
