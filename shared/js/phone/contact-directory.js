@@ -195,6 +195,11 @@
         return Number.isFinite(value) && value > 0 ? value : Date.now();
     }
 
+    function nextUpdatedAt(now, previous) {
+        var previousTime = Number(previous && previous.updatedAt) || 0;
+        return now > previousTime ? now : previousTime + 1;
+    }
+
     function makeRequestId(options, now) {
         options = options && typeof options === 'object' ? options : {};
         return cleanText(options.requestId, 160) ||
@@ -281,9 +286,9 @@
         var now = transitionTime(options);
         var accepted = normalizeRecord(Object.assign({}, existing, {
             status: STATUS.ACCEPTED,
-            acceptedAt: now,
+            acceptedAt: nextUpdatedAt(now, existing),
             blockedAt: null,
-            updatedAt: Math.max(now, existing.updatedAt)
+            updatedAt: nextUpdatedAt(now, existing)
         }), now);
         var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
         return resultWithContact(writeContacts(next), accepted, 'request_accepted');
@@ -301,6 +306,9 @@
         if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
             return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
         }
+        if (options.expectedUpdatedAt != null && Number(options.expectedUpdatedAt) !== existing.updatedAt) {
+            return { ok: false, error: 'stale_snapshot', contact: existing, contacts: current.contacts };
+        }
         var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
         return resultWithContact(writeContacts(next), existing, 'request_declined');
     }
@@ -316,6 +324,9 @@
         }
         if (options.requestId && cleanText(options.requestId, 160) !== existing.requestId) {
             return { ok: false, error: 'stale_request', contact: existing, contacts: current.contacts };
+        }
+        if (options.expectedUpdatedAt != null && Number(options.expectedUpdatedAt) !== existing.updatedAt) {
+            return { ok: false, error: 'stale_snapshot', contact: existing, contacts: current.contacts };
         }
         var next = current.contacts.filter(function (item) { return item.id !== existing.id; });
         return resultWithContact(writeContacts(next), existing, 'request_cancelled');
@@ -341,9 +352,9 @@
             source: existing ? existing.source : 'manual',
             requestId: existing ? existing.requestId : '',
             createdAt: existing ? existing.createdAt : now,
-            updatedAt: Math.max(now, existing ? existing.updatedAt : now),
+            updatedAt: nextUpdatedAt(now, existing),
             acceptedAt: existing ? existing.acceptedAt : null,
-            blockedAt: now
+            blockedAt: nextUpdatedAt(now, existing)
         }, now);
         var next = current.contacts.filter(function (item) { return item.id !== current.id; });
         next.push(blocked);
@@ -386,6 +397,16 @@
         };
     }
 
+    function getPendingRequests() {
+        var result = readResult();
+        if (!result.ok) return result;
+        return {
+            ok: true,
+            incoming: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_INCOMING; }),
+            outgoing: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_OUTGOING; })
+        };
+    }
+
     root.PhoneContactDirectory = {
         version: VERSION,
         storageKey: STORAGE_KEY,
@@ -405,6 +426,7 @@
         block: blockContact,
         unblock: unblockContact,
         getContactRef: getContactRef,
-        getAcceptedRefs: getAcceptedRefs
+        getAcceptedRefs: getAcceptedRefs,
+        getPendingRequests: getPendingRequests
     };
 })(window);
