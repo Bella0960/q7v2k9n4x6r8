@@ -831,6 +831,59 @@ test('真实 SQLite store gate snapshot 只读取非聊天元数据，缺少上�
   assert.equal(configured.contextVersion, null, '不得从时间戳或任务字段伪造服务端上下文版本');
 });
 
+test('真实 SQLite due queue 将任务绑定到设备所属用户，孤儿任务保持 fail-closed', () => {
+  const { store } = freshStore();
+  store.insertDevice({
+    id: 'device_other_account',
+    userId: 'another-user',
+    secretHash: 'synthetic-other-account-hash',
+    now: GATE_NOW
+  });
+  store.setUserAutonomy('another-user', true, GATE_NOW);
+  store.setCharacterAutonomy('another-user', 'character-other', null, GATE_NOW);
+  store.setCharacterSchedule('another-user', 'character-other', 'UTC', {
+    active: [{ startMinute: 0, endMinute: 1440 }],
+    busy: [],
+    asleep: []
+  }, GATE_NOW);
+  store.enqueueActivity({
+    id: 'activity_other_account',
+    deviceId: 'device_other_account',
+    characterId: 'character-other',
+    kind: 'contact',
+    scheduledAt: GATE_NOW,
+    maxAttempts: 3,
+    now: GATE_NOW,
+    payload: { contextVersion: 1, synthetic: true }
+  });
+  store.enqueueActivity({
+    id: 'activity_orphan_device',
+    deviceId: 'device_that_does_not_exist',
+    characterId: 'character-other',
+    kind: 'contact',
+    scheduledAt: GATE_NOW,
+    maxAttempts: 3,
+    now: GATE_NOW,
+    payload: { contextVersion: 1, synthetic: true }
+  });
+
+  const tasks = store.listDueActivities(GATE_NOW, 10);
+  const otherTask = tasks.find(task => task.id === 'activity_other_account');
+  const orphanTask = tasks.find(task => task.id === 'activity_orphan_device');
+  assert.equal(otherTask.user_id, 'another-user');
+
+  const gate = createSchedulerGate({
+    store,
+    now: () => GATE_NOW,
+    config: GATE_POLICY_CONFIG
+  });
+  const otherResult = gate(otherTask);
+  assert.equal(otherResult.reasonCode, REASON_CODES.CONTEXT_VERSION_UNAVAILABLE,
+    '应读取 another-user 的已开启授权与作息，而不是 owner 的关闭授权');
+  const orphanResult = gate(orphanTask);
+  assert.equal(orphanResult.reasonCode, REASON_CODES.GATE_DATA_MISSING);
+});
+
 test('真实 SQLite store snapshot 不会把后台心跳视为前台活跃设备', () => {
   const { store } = freshStore();
   store.insertDevice({
