@@ -270,6 +270,29 @@ async function readPreviewMetrics(page) {
   }));
 }
 
+/* 建立真实 SW 控制器：注册 sw.js，等待 active 后重新加载，确保页面被 SW 接管。 */
+async function ensureServiceWorkerControl(page, origin) {
+  await page.goto(origin + '/index.html', { waitUntil: 'load' });
+  await page.evaluate(async () => {
+    if (!('serviceWorker' in navigator)) throw new Error('Service Worker unavailable');
+    await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+    await navigator.serviceWorker.ready;
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 30000 });
+  return page.evaluate(() => navigator.serviceWorker.controller.scriptURL);
+}
+
+/* 与 font-loader.js 的 getFontCacheUrl 保持一致：/__maomao_fonts/<id>.<ext>。 */
+function fontCacheUrl(origin, id, format = 'truetype') {
+  const ext = format === 'woff2' ? '.woff2' : (format === 'woff' ? '.woff' : '.ttf');
+  return origin + '/__maomao_fonts/' + encodeURIComponent(id) + ext;
+}
+
+async function hasFontCacheEntry(page, cacheUrl) {
+  return page.evaluate(async (url) => !!(await caches.match(url)), cacheUrl);
+}
+
 function report(name, metrics) {
   console.log('  ' + name + ': ' + JSON.stringify({
     dcl: metrics.dcl,
@@ -723,11 +746,176 @@ try {
     pass('theme-store 字体预览：重复渲染不重复创建，删除/失败/卸载均释放');
     await context.close();
   }
+
+  /* 13. 真实 SW 控制器 + 专用字体缓存被清 + IndexedDB 仍有字体 → 自动恢复并重建缓存。 */
+  {
+    console.log('\n[13] SW 控制 + 字体缓存被清 + IndexedDB 可恢复');
+    const context = await createContext(browser, origin);
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const swScript = await ensureServiceWorkerControl(page, origin);
+    assert.ok(swScript.indexOf('/sw.js') >= 0, '页面必须由 sw.js 控制');
+
+    await seedFontPreset(page, origin, { id: 'font_sw_recover', name: 'SW Recover' });
+    await page.evaluate(() => localStorage.setItem('active_font_preset_id', 'font_sw_recover'));
+    await page.reload({ waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const seeded = await readMetrics(page);
+    report('[13] 预热', seeded);
+    const cacheUrl = fontCacheUrl(origin, 'font_sw_recover');
+    assert.equal(await hasFontCacheEntry(page, cacheUrl), true, '预热后应存在字体缓存');
+    assert.ok(seeded.fontDbOpens >= 1, '预热应从 IndexedDB 读取');
+    assert.equal(seeded.cachePuts, 1, '预热应写入一次字体缓存');
+
+    const deleted = await page.evaluate(async () => caches.delete('maomao-font-assets-v1'));
+    assert.equal(deleted, true, '字体专用缓存应已删除');
+    assert.equal(await hasFontCacheEntry(page, cacheUrl), false, '清理后缓存项必须不存在');
+
+    await page.reload({ waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const recovered = await readMetrics(page);
+    report('[13] 恢复', recovered);
+    assert.ok(recovered.fontFaces.includes('loaded'), '缓存缺失后应从 IndexedDB 恢复字体');
+    assert.ok(recovered.fontStyleAt >= recovered.dcl, '恢复也不能阻塞首屏');
+    assert.equal(recovered.fontDbOpens, 1, '恢复只打开一次字体库');
+    assert.equal(recovered.fontDbGets, 1, '恢复只读取一次字体 Blob');
+    assert.equal(recovered.cachePuts, 1, '恢复只重建一次字体缓存');
+    assert.equal(recovered.objectUrls, 1, '恢复只创建一个 ObjectURL');
+    assert.equal(await hasFontCacheEntry(page, cacheUrl), true, '恢复后缓存必须重建');
+    assert.deepEqual(errors, [], '恢复不应产生页面错误');
+
+    await page.reload({ waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const hit = await readMetrics(page);
+    report('[13] 恢复后再次加载', hit);
+    assert.equal(hit.fontDbOpens, 0, '恢复成功后再次加载不得读取 IndexedDB');
+    assert.equal(hit.fontDbGets, 0, '恢复成功后再次加载不得读取字体 Blob');
+    assert.equal(hit.cachePuts, 0, '恢复成功后再次加载不得重写缓存');
+    assert.equal(hit.objectUrls, 0, '缓存命中路径不得创建 ObjectURL');
+    assert.ok(hit.fontFaces.includes('loaded'), '缓存命中后字体仍应可用');
+    assert.ok(hit.fontResources >= 1, '缓存命中路径应通过 SW 字体地址加载');
+    assert.deepEqual(errors, []);
+    pass('SW 控制 + 缓存被清 + IndexedDB 可恢复：恢复成功并重建缓存，后续页面走命中');
+    await context.close();
+  }
+
+  /* 14. 真实 SW 控制器 + 缓存缺失 + IndexedDB 也缺失 → 系统字体回退且不重复扫描。 */
+  {
+    console.log('\n[14] SW 控制 + 缓存缺失 + IndexedDB 也缺失');
+    const context = await createContext(browser, origin);
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await ensureServiceWorkerControl(page, origin);
+    const cacheUrl = fontCacheUrl(origin, 'font_sw_missing');
+    await page.evaluate(async ({ cacheUrl }) => {
+      await new Promise((done, fail) => {
+        const request = indexedDB.open('maomao-font-presets', 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains('presets')) {
+            request.result.createObjectStore('presets', { keyPath: 'id' });
+          }
+        };
+        request.onsuccess = () => { request.result.close(); done(); };
+        request.onerror = () => fail(request.error);
+      });
+      localStorage.setItem('active_font_preset_id', 'font_sw_missing');
+      localStorage.setItem('maomao_font_cache_format_font_sw_missing', 'truetype');
+      await caches.delete('maomao-font-assets-v1');
+      return !!caches.match(cacheUrl);
+    }, { cacheUrl });
+
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => window.__fp.fontDbGets >= 1, null, { timeout: 20000 });
+    await delay(400);
+    const metrics = await readMetrics(page);
+    report('[14] 失败回退', metrics);
+    assert.equal(await hasFontCacheEntry(page, cacheUrl), false, '缺失数据不应留下缓存项');
+    assert.equal(metrics.fontDbOpens, 1, '只在首次调度读取一次 IndexedDB');
+    assert.equal(metrics.fontDbGets, 1, '只在首次调度读取一次 Blob');
+    assert.equal(metrics.cachePuts, 0, '无数据时不得写缓存');
+    assert.equal(metrics.hasStyle, false, '失败后不得保留自定义字体规则');
+    assert.ok(!metrics.fontFaces.includes('loaded'), '失败后不得注册可用自定义字体');
+    assert.deepEqual(errors, [], '失败回退不应产生页面错误');
+
+    await page.evaluate(() => {
+      for (let i = 0; i < 3; i++) {
+        window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      }
+    });
+    await delay(800);
+    const afterRetry = await readMetrics(page);
+    report('[14] 重复触发后', afterRetry);
+    assert.equal(afterRetry.fontDbOpens, 1, '失败 key 应阻止同一文档重复打开数据库');
+    assert.equal(afterRetry.fontDbGets, 1, '失败 key 应阻止同一文档重复读取 Blob');
+    assert.equal(afterRetry.hasStyle, false, '重复触发仍应回退系统字体');
+    assert.deepEqual(errors, []);
+    pass('SW 控制 + 缓存与 IndexedDB 均缺失：回退系统字体且不重复扫描');
+    await context.close();
+  }
+
+  /* 15. 真实 SW 控制器 + 恢复时 cache.put 抛错 → 回退系统字体、记录失败、不重试。 */
+  {
+    console.log('\n[15] SW 控制 + 恢复时 cache.put 抛错');
+    const context = await createContext(browser, origin);
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await ensureServiceWorkerControl(page, origin);
+    await seedFontPreset(page, origin, { id: 'font_sw_putfail', name: 'Put Fail' });
+    await page.evaluate(() => localStorage.setItem('active_font_preset_id', 'font_sw_putfail'));
+    await page.reload({ waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const cacheUrl = fontCacheUrl(origin, 'font_sw_putfail');
+    assert.equal(await hasFontCacheEntry(page, cacheUrl), true, '预热后应存在字体缓存');
+    await page.evaluate(async () => caches.delete('maomao-font-assets-v1'));
+
+    await context.addInitScript(() => {
+      window.__fp.cachePutThrows = 0;
+      Cache.prototype.put = function () {
+        window.__fp.cachePutThrows++;
+        throw new Error('simulated cache put failure');
+      };
+    });
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => window.__fp.cachePutThrows >= 1, null, { timeout: 20000 });
+    await delay(600);
+    const metrics = await readMetrics(page);
+    const throwsCount = await page.evaluate(() => window.__fp.cachePutThrows);
+    report('[15] 重建失败', metrics);
+    console.log('  cache.put 抛错次数: ' + throwsCount);
+    assert.equal(throwsCount, 1, '恢复只尝试一次 cache.put');
+    assert.equal(metrics.fontDbOpens, 1, '恢复只读取一次 IndexedDB');
+    assert.equal(metrics.fontDbGets, 1, '恢复只读取一次 Blob');
+    assert.equal(metrics.hasStyle, false, 'cache.put 失败后应回退系统字体');
+    assert.ok(!metrics.fontFaces.includes('loaded'), 'cache.put 失败后不得保留已加载自定义字体');
+    assert.equal(await hasFontCacheEntry(page, cacheUrl), false, '缓存不得重建成功');
+    assert.deepEqual(errors, [], 'cache.put 抛错不得变成页面错误');
+
+    await page.evaluate(() => {
+      for (let i = 0; i < 3; i++) {
+        window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      }
+    });
+    await delay(800);
+    const afterRetry = await readMetrics(page);
+    const throwsAfter = await page.evaluate(() => window.__fp.cachePutThrows);
+    report('[15] 重复触发后', afterRetry);
+    assert.equal(afterRetry.fontDbOpens, 1, '失败 key 应阻止重复打开数据库');
+    assert.equal(throwsAfter, 1, '失败 key 应阻止再次尝试 cache.put');
+    assert.equal(afterRetry.hasStyle, false, '重复触发仍应回退系统字体');
+    assert.deepEqual(errors, []);
+    pass('SW 控制 + cache.put 抛错：回退系统字体并记录失败，不重复重试');
+    await context.close();
+  }
 } catch (error) {
   console.error('\nFAILED:', error && error.stack ? error.stack : error);
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();
   server.close();
-  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/12 tests: ' + results.join(' | '));
+  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/15 tests: ' + results.join(' | '));
 }
