@@ -612,3 +612,12 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - 本轮提交了迁移、Store/API 行为和 Node/SQLite 契约用例；**本轮尚未执行 Node/SQLite 测试、Vite 构建或真机双设备验收**。
 - PR 保持 Draft；未合并、未部署 Worker、未更新 APK。真实多设备切换效果仍需在云端部署和两台设备上验收。
+
+
+## Outbound inbox cursor recovery
+
+- The authenticated inbox endpoint supports keyset pagination using the stable `(created_at, outbound_messages.id)` ordering key.
+- The client stores a cursor separately for each character and paired device, scanning up to 30 envelopes per polling round.
+- A local persistence failure or deferred ACK does not remove the envelope and does not stop the client from scanning later pages.
+- After the scan reaches the end, the cursor resets. Unacknowledged envelopes are revisited on the next cycle and are still deduplicated by `serverMessageId` before local insertion.
+- This is bounded recovery, not a promise that an unavailable local store can be repaired automatically; the server continues retaining unacknowledged messages.
