@@ -30,7 +30,8 @@ export const REASON_CODES = Object.freeze({
   CONTEXT_VERSION_UNAVAILABLE: 'context_version_unavailable',
   EXECUTOR_UNAVAILABLE: 'executor_unavailable',
   SOURCE_DEVICE_REVOKED: 'source_device_revoked',
-  DEVICE_EXECUTOR_LEASE_REQUIRED: 'device_executor_lease_required'
+  DEVICE_EXECUTOR_LEASE_REQUIRED: 'device_executor_lease_required',
+  DEVICE_CONTEXT_NOT_LOCAL: 'device_context_not_local'
 });
 
 function isPositiveInteger(value) {
