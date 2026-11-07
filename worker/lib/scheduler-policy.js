@@ -12,7 +12,7 @@ export const REASON_CODES = Object.freeze({
   INVALID_CONFIG: 'invalid_config',
   INVALID_TASK: 'invalid_task',
   NOT_DUE: 'not_due',
-  LEASE_HELD: 'foreground_lease_held',
+  LEASE_HELD: 'task_lease_held',
   RETRY_EXHAUSTED: 'retry_exhausted',
   AUTONOMY_DENIED: 'autonomy_denied',
   CHARACTER_NOT_ACTIVE: 'character_not_active',
