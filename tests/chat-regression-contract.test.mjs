@@ -2893,8 +2893,10 @@ test('商店、外卖亲密付必须验证额度和余额，且扣款未确认�
   for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
     assert.match(source, /async function doPay\(\)/, name + ' checkout must await the ledger lock');
     assert.match(source, /ledger\.runExclusive\(function \(\)/, name + ' must use shared wallet lock');
-    assert.match(source, /!cp\.enabled \|\| \(Number\(cp\.used\) \|\| 0\) \+ total > \(Number\(cp\.limit\) \|\| 0\)/,
-      name + ' must revalidate close-pay quota under the lock');
+    assert.match(source, /!walletAlreadyCommitted && !quotaAlreadyCommitted && !cp\.enabled/,
+      name + ' must reject a disabled close-pay setting before any part of this transaction commits');
+    assert.match(source, /!walletAlreadyCommitted && !quotaAlreadyCommitted &&[\s\S]*?Number\(cp\.limit\)/,
+      name + ' must revalidate quota before the first wallet or quota write, but finish a partial commit');
     assert.match(source, /wd\.balance < total/, name + ' must reject insufficient balance');
     assert.match(source, /localStorage\.getItem\('workData'\) !== walletSerialized/,
       name + ' must verify wallet write before continuing');
