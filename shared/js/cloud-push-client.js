@@ -140,41 +140,26 @@
     return payload.publicKey;
   }
 
-  async function registerDevice(device) {
-    try {
-      var payload = await requestJson('/api/devices/register', {
-        method: 'POST',
-        body: {
-          deviceId: device.deviceId,
-          secret: device.secret,
-          label: device.label,
-          platform: navigator.userAgent.slice(0, 64)
-        }
-      });
-      return payload;
-    } catch (error) {
-      if (error.code === 'DEVICE_CONFLICT' || error.code === 'DEVICE_UNKNOWN') {
-        // 本地凭据与云端记录不一致（例如云端数据被重置）：换一组新凭据重试一次。
-        clearDevice();
-        var fresh = ensureDevice();
-        return requestJson('/api/devices/register', {
-          method: 'POST',
-          body: {
-            deviceId: fresh.deviceId,
-            secret: fresh.secret,
-            label: fresh.label,
-            platform: navigator.userAgent.slice(0, 64)
-          }
-        });
-      }
-      throw error;
-    }
+  async function registerDevice(device, enrollmentToken) {
+    var body = {
+      deviceId: device.deviceId,
+      secret: device.secret,
+      label: device.label,
+      platform: navigator.userAgent.slice(0, 64)
+    };
+    if (enrollmentToken) body.enrollmentToken = String(enrollmentToken).trim();
+    // 不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据。
+    // 这通常表示设备需要重新配对，静默生成新 ID 会丢失原设备身份。
+    return requestJson('/api/devices/register', {
+      method: 'POST',
+      body: body
+    });
   }
 
-  async function enablePush(userInitiated) {
+  async function enablePush(userInitiated, enrollmentToken) {
     if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
     var device = ensureDevice();
-    await registerDevice(device);
+    await registerDevice(device, enrollmentToken);
 
     if (userInitiated && 'Notification' in global && Notification.permission === 'default') {
       await Notification.requestPermission();
@@ -226,6 +211,18 @@
       });
     }
     return { endpoint: endpoint };
+  }
+
+  function createDevicePairingToken() {
+    return requestDeviceMetadata('/api/devices/pairing-token', 'POST', {});
+  }
+
+  async function connectDeviceWithPairingCode(pairingCode) {
+    var code = String(pairingCode || '').trim();
+    if (code.length < 32 || code.length > 512) {
+      throw new Error('请输入有效的一次性配对码');
+    }
+    return enablePush(true, code);
   }
 
   async function sendTestPush() {
@@ -457,8 +454,10 @@
         }).length;
       } catch (error) {
         status.message = error.code === 'DEVICE_REVOKED'
-          ? '设备授权已撤销，请重新连接'
-          : '订阅状态读取失败：' + (error.message || '未知错误');
+          ? '设备授权已撤销，请重新配对'
+          : error.code === 'DEVICE_UNKNOWN' || error.code === 'DEVICE_PAIRING_REQUIRED'
+            ? '此设备尚未配对，请使用有效配对码连接'
+            : '订阅状态读取失败：' + (error.message || '未知错误');
       }
     }
     if (!status.message) {
@@ -504,7 +503,13 @@
     var toggle = document.getElementById('cloudPushToggle');
     var testRow = document.getElementById('cloudTestRow');
     var revokeRow = document.getElementById('cloudRevokeRow');
-    if (!toggle && !testRow && !revokeRow) return;
+    var pairCreateRow = document.getElementById('cloudPairCreateRow');
+    var pairCodeInput = document.getElementById('cloudPairCodeInput');
+    var pairConnectButton = document.getElementById('cloudPairConnectButton');
+    var pairCodePanel = document.getElementById('cloudPairCodePanel');
+    var pairCodeOutput = document.getElementById('cloudPairCodeOutput');
+    var pairCodeCopyButton = document.getElementById('cloudPairCodeCopyButton');
+    if (!toggle && !testRow && !revokeRow && !pairCreateRow && !pairConnectButton) return;
 
     if (toggle) {
       toggle.addEventListener('change', async function () {
@@ -543,6 +548,60 @@
       });
     }
 
+    if (pairCreateRow) {
+      pairCreateRow.addEventListener('click', async function () {
+        setStatusText('正在生成一次性配对码…');
+        try {
+          var issued = await createDevicePairingToken();
+          if (pairCodeOutput) pairCodeOutput.value = issued.pairingToken;
+          if (pairCodePanel) pairCodePanel.style.display = 'block';
+          var minutes = Math.max(1, Math.ceil(Number(issued.ttlMs || 0) / 60000));
+          setStatusText('配对码已生成：有效期约 ' + minutes + ' 分钟，且只能使用一次');
+        } catch (error) {
+          setStatusText('生成配对码失败：' + (error.message || '未知错误'));
+        }
+      });
+    }
+
+    if (pairCodeCopyButton) {
+      pairCodeCopyButton.addEventListener('click', async function () {
+        var value = pairCodeOutput && pairCodeOutput.value;
+        if (!value) return;
+        try {
+          await navigator.clipboard.writeText(value);
+          setStatusText('配对码已复制，请在新设备上使用');
+        } catch (error) {
+          if (pairCodeOutput) {
+            pairCodeOutput.focus();
+            pairCodeOutput.select();
+          }
+          setStatusText('请长按上方配对码复制');
+        }
+      });
+    }
+
+    if (pairConnectButton) {
+      pairConnectButton.addEventListener('click', async function () {
+        var code = pairCodeInput && pairCodeInput.value.trim();
+        if (!code) {
+          setStatusText('请先输入一次性配对码');
+          return;
+        }
+        pairConnectButton.disabled = true;
+        setStatusText('正在配对并连接推送…');
+        try {
+          await connectDeviceWithPairingCode(code);
+          if (pairCodeInput) pairCodeInput.value = '';
+          setStatusText('设备已配对，推送订阅已连接');
+          await refreshSettings();
+        } catch (error) {
+          setStatusText('设备配对失败：' + (error.message || '未知错误'));
+        } finally {
+          pairConnectButton.disabled = false;
+        }
+      });
+    }
+
     if (revokeRow) {
       revokeRow.addEventListener('click', async function () {
         setStatusText('正在断开云连接…');
@@ -569,6 +628,8 @@
     enablePush: function () { return enablePush(true); },
     disablePush: disablePush,
     sendTestPush: sendTestPush,
+    createDevicePairingToken: createDevicePairingToken,
+    connectDeviceWithPairingCode: connectDeviceWithPairingCode,
     getGlobalAutonomy: getGlobalAutonomy,
     setGlobalAutonomy: setGlobalAutonomy,
     getCharacterAutonomy: getCharacterAutonomy,
