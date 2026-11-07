@@ -2244,7 +2244,7 @@ test('AI replies can choose one role-favorite sticker without leaking machine ma
   assert.ok(detail.includes('RoleStickerLibrary.stripStreamMarker'));
   assert.ok(detail.includes("!isGroupChat && !silent && !contextOnly && !isRegen"));
   assert.ok(detail.includes("presenceMode === 'online'"));
-  assert.ok(detail.includes('streamResult.ok && roleStickerCatalog.length'));
+  assert.ok(detail.includes('streamResult.ok ? 1 : 0'));
   assert.ok(detail.includes("type: 'sticker'"));
   assert.ok(detail.includes('aiStickerMessages.forEach'));
   assert.ok(detail.includes('appendMessageToDOM(stickerMessage, stickerMessageIndex)'));
