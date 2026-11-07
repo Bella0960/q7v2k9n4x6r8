@@ -279,9 +279,12 @@ async function register(request, env) {
         "VALUES (?, ?, ?, ?, ?, ?)"
       ).bind(tokenHash, sessionFamilyId, accountId, now, expiresAt, now)
     ]);
-  } catch {
+  } catch (error) {
     // The unique handle constraint is intentionally the only account-existence signal.
-    return authJson({ ok: false, error: "handle_unavailable" }, 409);
+    if (/unique constraint failed: real_user_accounts\\.handle/i.test(String(error && error.message || ""))) {
+      return authJson({ ok: false, error: "handle_unavailable" }, 409);
+    }
+    return authJson({ ok: false, error: "authentication_temporarily_unavailable" }, 503);
   }
 
   return authJson({
