@@ -1035,6 +1035,15 @@
       await ledger.runExclusive(function () {
         
             const total = payItems.reduce((s,c) => s + c.price, 0);
+            var checkoutSignature = JSON.stringify({
+              items: payItems.map(function (item) { return { id: item.id, cn: item.cn, price: item.price }; }),
+              total: total,
+            });
+            var transactionId = ledger.getOrCreatePendingCheckout('shop', checkoutSignature, payMethod);
+            if (!transactionId) {
+              showToast('存在未完成的同一笔结算或结算编号未能保存；请使用上次支付方式继续');
+              return;
+            }
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
             if (payMethod.indexOf('role_card:') === 0) {
               if (!roleFamilyCard) {
@@ -1060,15 +1069,6 @@
             const now = new Date();
             const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
             const itemsDesc = payItems.map(c => c.cn).join('、');
-            var checkoutSignature = JSON.stringify({
-              items: payItems.map(function (item) { return { id: item.id, cn: item.cn, price: item.price }; }),
-              total: total,
-            });
-            var transactionId = ledger.getOrCreatePendingCheckout('shop', checkoutSignature, payMethod);
-            if (!transactionId) {
-              showToast('存在未完成的同一笔结算或结算编号未能保存；请使用上次支付方式继续');
-              return;
-            }
         
             // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
             if (payMethod === 'close_pay') {
