@@ -9,7 +9,7 @@
 
     var MARKER = '[[MAOMAO_AVATAR_CANDIDATE:';
     var DATA_URL_RE = /^data:image\/(?:jpeg|jpg|png|webp|gif|avif);base64,[A-Za-z0-9+/=\r\n]+$/i;
-    var MAX_DATA_URL_CHARS = 4 * 1024 * 1024;
+    var MAX_DATA_URL_CHARS = 4 * 1024 * 1024 + 128;
     var MAX_IMAGES = 4;
 
     function normalizeIds(ids) {
