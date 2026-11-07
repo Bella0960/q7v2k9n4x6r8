@@ -18,7 +18,11 @@
       throw new Error('服务地址不能包含用户名、密码或片段。');
     }
     if (Array.from(url.searchParams.keys()).some(function (key) {
-      return /^(?:access[_-]?token|api[_-]?key|auth(?:orization)?|credential|password|secret|token)$/i.test(key);
+      var normalized = String(key).replace(/[^a-z0-9]/gi, '').toLowerCase();
+      var credentialMarkers = ['token', 'secret', 'password', 'credential', 'authorization', 'apikey', 'signature'];
+      return credentialMarkers.some(function (marker) {
+        return normalized.indexOf(marker) !== -1;
+      }) || ['auth', 'authentication', 'authkey', 'clientkey'].indexOf(normalized) !== -1;
     })) {
       throw new Error('请勿把密钥放在服务地址参数中；请使用单独的 Bearer Token 输入框。');
     }
