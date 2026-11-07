@@ -2856,7 +2856,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261107v2/,
+    assert.match(source, /wallet-ledger\.js\?v=20261107v3/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -2875,7 +2875,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v2/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v3/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -2974,7 +2974,7 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261107v2/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261107v3/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
@@ -3084,4 +3084,29 @@ test('商店和外卖结算的扣款、财务明细、订单都使用同一 paym
     'shop orders require exact readback');
   assert.match(takeoutPage, /getItem\('takeout_orders'\) !== ordersSerialized/,
     'takeout orders require exact readback');
+});
+
+
+test('亲密付已有部分扣款时，设置变化不能取消原交易恢复编号', () => {
+  for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
+    const walletReceipt = source.indexOf('var walletAlreadyCommitted = wd.history.some');
+    const disabledCheck = source.indexOf('!walletAlreadyCommitted && !quotaAlreadyCommitted && !cp.enabled');
+    const quotaCheck = source.indexOf('!walletAlreadyCommitted && !quotaAlreadyCommitted &&');
+    assert.ok(walletReceipt >= 0 && disabledCheck > walletReceipt,
+      name + ' must inspect the wallet receipt before deciding whether the current close-pay setting blocks payment');
+    assert.ok(quotaCheck > walletReceipt,
+      name + ' must not revalidate a changed quota after the wallet leg has already committed');
+    assert.match(source, /亲密付设置不可用，原交易仍保留待恢复/,
+      name + ' must not delete a pending transaction when close-pay settings are temporarily unavailable');
+  }
+});
+
+test('外卖交易签名包含餐厅，且亲属卡通知只在订单和购物车结算确认后发出', () => {
+  assert.match(takeoutPage, /checkoutSignature = JSON\.stringify\(\{\s*shopId: orderShop\.id/,
+    'same dishes from different restaurants must not share a checkout ID');
+  const cartClear = takeoutPage.indexOf('if (!saveCart())');
+  const complete = takeoutPage.indexOf('completePendingCheckout(transactionId)', cartClear);
+  const notify = takeoutPage.indexOf('notifyRoleCardIssuer(roleFamilyCard', complete);
+  assert.ok(cartClear >= 0 && complete > cartClear && notify > complete,
+    'takeout must save the cleared cart and finalize the order before notifying the card issuer');
 });
