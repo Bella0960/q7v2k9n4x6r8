@@ -242,3 +242,49 @@ test('Contacts UI exposes only the signed-in account blocked list and an explici
   assert.match(PANEL_SOURCE, /client\.setBlocked\(id, false\)/);
   assert.match(PANEL_SOURCE, /双方不会自动恢复好友关系/);
 });
+
+
+test('profile update uses the server session and refreshes the in-memory account without accepting an account ID', async () => {
+  let patch;
+  const app = runtime(async (url, options) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me') && options.method === 'GET') {
+      return jsonResponse({
+        ok: true,
+        account: { id: 'self-profile-1', handle: 'self_1', displayName: 'Before', status: 'active' }
+      });
+    }
+    if (url.endsWith('/v1/auth/me') && options.method === 'PATCH') {
+      patch = { url, options };
+      return jsonResponse({
+        ok: true,
+        account: { id: 'self-profile-1', handle: 'self_1', displayName: 'New Nick', status: 'active' }
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.restore();
+  const account = await app.client.updateProfile('  New Nick  ');
+
+  assert.equal(patch.options.method, 'PATCH');
+  assert.deepEqual(JSON.parse(patch.options.body), { displayName: 'New Nick' });
+  assert.equal(account.id, 'self-profile-1');
+  assert.equal(account.displayName, 'New Nick');
+  assert.equal(app.client.getState().account.displayName, 'New Nick');
+  assert.equal(patch.options.credentials, 'same-origin');
+  assert.equal(patch.options.cache, 'no-store');
+
+  await assert.rejects(
+    app.client.updateProfile('   '),
+    (error) => error.code === 'invalid_display_name'
+  );
+});
+
+
+test('Contacts account panel exposes an explicit edit-and-save nickname flow', () => {
+  assert.match(PANEL_SOURCE, /id="ruProfileForm"/);
+  assert.match(PANEL_SOURCE, /id="ruEditName"/);
+  assert.match(PANEL_SOURCE, /client\.updateProfile\(/);
+  assert.match(PANEL_SOURCE, /昵称已更新/);
+});
