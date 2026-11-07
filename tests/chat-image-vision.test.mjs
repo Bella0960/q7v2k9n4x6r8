@@ -51,7 +51,7 @@ test('image hydration rejects unresolved, non-image, and oversized data URLs', a
     ok: false
   }));
   assert.equal(result.images.length, 0);
-  assert.equal(result.failed, 2);
+  assert.equal(result.failed, 3);
   assert.equal(result.omitted, 0);
 });
 
