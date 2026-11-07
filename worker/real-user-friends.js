@@ -397,6 +397,7 @@ async function listFriends(env, account, url) {
     }));
     return authJson({
       ok: true,
+      ownerAccountId: account.id,
       friends,
       relationships,
       snapshotAt,
