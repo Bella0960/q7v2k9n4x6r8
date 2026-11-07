@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('../shared/js/phone/mcp-client.js', import.meta.url), 'utf8');
 
 function createContext(fetchImpl) {
-  const context = { URL, AbortController, setTimeout, clearTimeout, fetch: fetchImpl };
+  const context = { URL, AbortController, TextDecoder, Uint8Array, setTimeout, clearTimeout, fetch: fetchImpl };
   context.window = context;
   vm.runInNewContext(source, context);
   return context;
@@ -20,6 +20,9 @@ test('MCP endpoint validation requires HTTPS except localhost and excludes crede
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://user:pass@example.com/mcp'), /查询参数/);
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://example.com/mcp?token=secret'), /查询参数/);
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://192.168.1.2/mcp'), /局域网/);
+  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://nas.local/mcp'), /局域网或内部域名/);
+  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://printer.lan/mcp'), /局域网或内部域名/);
+  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://mcpserver/mcp'), /完整域名或公网 IP/);
 });
 
 test('MCP initialization, tool discovery and calls use the negotiated session and ephemeral bearer token', async () => {
@@ -89,4 +92,28 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /window\.confirm\(confirmText\)/);
   assert.match(html, /仅本次页面会话使用/);
   assert.doesNotMatch(html, /localStorage\.setItem\([^)]*serverToken/i);
+});
+
+test('MCP response reader cancels an oversized stream before buffering the full body', async () => {
+  let cancelled = false;
+  const context = createContext(async () => ({
+    status: 200,
+    ok: true,
+    headers: { get(name) { return String(name).toLowerCase() === 'content-type' ? 'application/json' : null; } },
+    body: {
+      getReader() {
+        return {
+          read() {
+            return Promise.resolve({ done: false, value: new Uint8Array(1024 * 1024 + 1) });
+          },
+          cancel() { cancelled = true; return Promise.resolve(); }
+        };
+      }
+    },
+    text() { throw new Error('streaming response should not use text()'); }
+  }));
+
+  const client = context.MaoMcpClient.createClient({ url: 'https://example.com/mcp' });
+  await assert.rejects(client.initialize(), /返回内容过大/);
+  assert.equal(cancelled, true);
 });
