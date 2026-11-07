@@ -1164,11 +1164,17 @@ class CloudStore {
     )[0];
     if (existingTask) {
       const existingMessage = this.exec(
-        'SELECT server_message_id FROM outbound_messages WHERE server_message_id = ? AND device_id = ?',
+        'SELECT server_message_id, character_id, dedupe_key, payload_json FROM outbound_messages WHERE server_message_id = ? AND device_id = ?',
         serverMessageId,
         owner
       )[0];
-      if (existingMessage) {
+      const expectedPayloadJson = serializeStoreJson(payload, 12000, 'outbound.payload');
+      if (
+        existingMessage &&
+        existingMessage.character_id === existingTask.character_id &&
+        existingMessage.dedupe_key === dedupeKey &&
+        existingMessage.payload_json === expectedPayloadJson
+      ) {
         return { completed: true, alreadyCompleted: true, serverMessageId };
       }
       return null;
