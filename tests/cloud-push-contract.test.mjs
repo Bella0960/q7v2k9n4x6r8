@@ -329,6 +329,103 @@ test('客户端只提交随机上下文事件 ID，不上传本地聊天正文�
   assert.deepEqual(Object.keys(calls[2].body).sort(), ['eventId']);
 });
 
+test('多标签页并发上下文同步不会丢失较新的待同步事件', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const sharedStorage = new Map([[
+    'cloud_device_v1',
+    JSON.stringify({ deviceId: 'device-id-123456', secret: 's'.repeat(32) })
+  ]]);
+  const calls = [];
+  let resolveFirstTabRequest;
+  const successResponse = () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true, changed: true, version: 1, updatedAt: Date.now() })
+  });
+  const offlineResponse = () => ({
+    ok: false,
+    status: 503,
+    json: async () => ({ ok: false, error: { code: 'TEMPORARY', message: 'offline' } })
+  });
+
+  function makeTab(tabId, randomSeed) {
+    const localStorageStub = {
+      getItem(key) { return sharedStorage.has(key) ? sharedStorage.get(key) : null; },
+      setItem(key, value) { sharedStorage.set(key, String(value)); },
+      removeItem(key) { sharedStorage.delete(key); }
+    };
+    let requestCount = 0;
+    const fetchStub = async (url, options = {}) => {
+      const body = options.body ? JSON.parse(options.body) : null;
+      calls.push({ tabId, url, body });
+      if (url.includes('/context-version') && options.method === 'POST') {
+        requestCount += 1;
+        if (tabId === 'tab-a' && requestCount === 1) {
+          return new Promise(resolve => { resolveFirstTabRequest = resolve; });
+        }
+        if (tabId === 'tab-b') return offlineResponse();
+        return successResponse();
+      }
+      throw new Error('Unexpected request from ' + tabId + ': ' + url);
+    };
+    const browserWindow = {
+      crypto: {
+        getRandomValues(bytes) {
+          for (let i = 0; i < bytes.length; i += 1) {
+            bytes[i] = (randomSeed + i * 13) & 255;
+          }
+          return bytes;
+        }
+      }
+    };
+    vm.runInNewContext(clientSource, {
+      window: browserWindow,
+      document: { currentScript: null },
+      localStorage: localStorageStub,
+      fetch: fetchStub,
+      console: { warn() {}, log() {}, error() {} },
+      URL,
+      btoa
+    });
+    return browserWindow.MaomaoCloud;
+  }
+
+  const tabA = makeTab('tab-a', 17);
+  const tabB = makeTab('tab-b', 91);
+  const olderSync = tabA.noteCharacterContextChanged('char-a', [
+    { role: 'user', text: 'saved from tab A', time: 1 }
+  ]);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(typeof resolveFirstTabRequest, 'function',
+    '第一个标签页的请求应保持在途，模拟网络延迟');
+
+  await assert.rejects(tabB.noteCharacterContextChanged('char-a', [
+    { role: 'user', text: 'newer save from tab B', time: 2 }
+  ]), /offline/);
+  const newerEventId = calls[1].body.eventId;
+  assert.notEqual(calls[0].body.eventId, newerEventId,
+    '两个标签页的不同保存应生成不同事件 ID');
+  assert.deepEqual(Object.keys(calls[1].body).sort(), ['eventId']);
+
+  resolveFirstTabRequest(successResponse());
+  await olderSync;
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  assert.equal(calls.length, 3,
+    '旧标签页请求完成后应接手并重试另一个标签页留下的待同步事件');
+  assert.equal(calls[2].tabId, 'tab-a');
+  assert.equal(calls[2].body.eventId, newerEventId,
+    '补偿重试必须继续使用新标签页的原事件 ID');
+  assert.equal(sharedStorage.has('cloud_context_pending_v1:char-a'), false,
+    '补偿请求成功后应清除待同步事件');
+  assert.equal(
+    JSON.stringify(calls).includes('saved from tab A') ||
+    JSON.stringify(calls).includes('newer save from tab B'),
+    false,
+    '两个标签页的消息正文都不得进入云端请求'
+  );
+});
+
 test('本地角色上下文指纹覆盖嵌套消息字段并规范化对象键顺序', () => {
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   const browserWindow = {};
