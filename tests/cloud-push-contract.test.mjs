@@ -168,6 +168,89 @@ test('设备注册、重复注册与凭据冲突', async () => {
   assert.equal(row.user_id, 'owner', '旧版设备记录应归属当前单用户 owner');
 });
 
+test('新设备必须通过单次初始认领或已连接设备签发的一次性配对码', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const primary = makeDevice();
+  await registerDevice(ctx, primary);
+
+  const unpaired = makeDevice();
+  const rejected = await ctx.asJson('/api/devices/register', {
+    method: 'POST',
+    body: { ...unpaired, label: 'unpaired', platform: 'node' }
+  });
+  assert.equal(rejected.status, 403);
+  assert.equal(rejected.payload.error.code, 'DEVICE_PAIRING_REQUIRED');
+  assert.equal(ctx.store.getDevice(unpaired.deviceId), null);
+
+  const created = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: primary
+  });
+  assert.equal(created.status, 200);
+  assert.equal(typeof created.payload.pairingToken, 'string');
+  assert.ok(created.payload.pairingToken.length >= 32);
+  assert.equal(created.payload.expiresAt - Date.now() > 0, true);
+
+  const stored = ctx.query('SELECT token_hash FROM device_pairing_tokens');
+  assert.equal(stored.length, 1);
+  assert.notEqual(stored[0].token_hash, created.payload.pairingToken, '数据库不得保存配对码明文');
+
+  const secondary = makeDevice();
+  const paired = await registerDevice(ctx, secondary, {
+    pairingToken: created.payload.pairingToken
+  });
+  assert.equal(paired.status, 200);
+  assert.equal(paired.payload.device.enrollmentMode, 'paired');
+  assert.equal(ctx.store.getDevice(secondary.deviceId).user_id, 'owner');
+
+  const replay = await registerDevice(ctx, makeDevice(), {
+    pairingToken: created.payload.pairingToken
+  });
+  assert.equal(replay.status, 403);
+  assert.equal(replay.payload.error.code, 'PAIRING_TOKEN_INVALID');
+
+  const bootstrapReplay = await registerDevice(ctx, makeDevice());
+  assert.equal(bootstrapReplay.status, 409);
+  assert.equal(bootstrapReplay.payload.error.code, 'DEVICE_BOOTSTRAP_CLOSED');
+});
+
+test('初始认领与配对码配置缺失或过期时均 fail-closed', async () => {
+  const noBootstrap = setupTestStore(openTestDb(), { ENROLLMENT_TOKEN: '' });
+  const first = await registerDevice(noBootstrap, makeDevice());
+  assert.equal(first.status, 403);
+  assert.equal(first.payload.error.code, 'DEVICE_PAIRING_REQUIRED');
+
+  const expiring = setupTestStore(openTestDb(), {
+    DEVICE_PAIRING_TOKEN_TTL_MS: '1000'
+  });
+  const primary = makeDevice();
+  await registerDevice(expiring, primary);
+  const created = await expiring.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: primary
+  });
+  assert.equal(created.status, 200);
+
+  expiring.timestamps.push(Date.now() + 1001);
+  const expired = await registerDevice(expiring, makeDevice(), {
+    pairingToken: created.payload.pairingToken
+  });
+  assert.equal(expired.status, 403);
+  assert.equal(expired.payload.error.code, 'PAIRING_TOKEN_INVALID');
+
+  const missingTtl = setupTestStore(openTestDb(), {
+    DEVICE_PAIRING_TOKEN_TTL_MS: ''
+  });
+  const owner = makeDevice();
+  await registerDevice(missingTtl, owner);
+  const cannotMint = await missingTtl.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: owner
+  });
+  assert.equal(cannotMint.status, 503);
+  assert.equal(cannotMint.payload.error.code, 'PAIRING_NOT_CONFIGURED');
+});
+
 test('受保护接口拒绝缺失、错误与被撤销的设备凭据', async () => {
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
