@@ -577,14 +577,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (path === '/api/autonomy/global' && method === 'GET') return await getGlobalAutonomy(request);
       if (path === '/api/autonomy/global' && method === 'PUT') return await setGlobalAutonomy(request);
 
-      const characterAutonomyMatch = /^\\/api\\/autonomy\\/characters\\/([^/]+)$/.exec(path);
+      const characterAutonomyMatch = /^\/api\/autonomy\/characters\/([^/]+)$/.exec(path);
       if (characterAutonomyMatch && readCharacterId(characterAutonomyMatch[1])) {
         const characterId = readCharacterId(characterAutonomyMatch[1]);
         if (method === 'GET') return await getCharacterAutonomy(request, characterId);
         if (method === 'PUT') return await setCharacterAutonomy(request, characterId);
       }
 
-      const characterScheduleMatch = /^\\/api\\/characters\\/([^/]+)\\/schedule$/.exec(path);
+      const characterScheduleMatch = /^\/api\/characters\/([^/]+)\/schedule$/.exec(path);
       if (characterScheduleMatch && readCharacterId(characterScheduleMatch[1])) {
         const characterId = readCharacterId(characterScheduleMatch[1]);
         if (method === 'GET') return await getCharacterSchedule(request, characterId);
@@ -593,7 +593,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
 
       if (path === '/api/presence/heartbeat' && method === 'POST') return await updatePresenceHeartbeat(request);
 
-      const characterLeaseMatch = /^\\/api\\/characters\\/([^/]+)\\/lease$/.exec(path);
+      const characterLeaseMatch = /^\/api\/characters\/([^/]+)\/lease$/.exec(path);
       if (characterLeaseMatch && readCharacterId(characterLeaseMatch[1]) && method === 'POST') {
         return await updateCharacterLease(request, readCharacterId(characterLeaseMatch[1]));
       }
