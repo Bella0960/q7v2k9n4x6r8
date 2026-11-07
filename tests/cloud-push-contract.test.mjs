@@ -2803,6 +2803,7 @@ test('客户端只在消息持久化回调确认成功后才确认云端出站�
     '顺序必须是设备收到回执、本地持久化、成功检查，最后才是本地保存 ACK');
   assert.ok(receiver.includes('deferred += 1'), '本地保存失败时必须保留云端待确认消息');
   assert.ok(clientSource.includes('getCharacterOutboundMessages: getCharacterOutboundMessages'));
+  assert.ok(clientSource.includes('getCharacterOutboundLifecycle: getCharacterOutboundLifecycle'));
   assert.ok(clientSource.includes('markCharacterOutboundReceived: markCharacterOutboundReceived'));
   assert.ok(clientSource.includes('markCharacterOutboundRead: markCharacterOutboundRead'));
   assert.ok(clientSource.includes('acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage'));
@@ -3428,6 +3429,17 @@ test('出站消息分别记录 Push 接受、设备收到、本地保存与用�
   assert.equal(repeatedRead.payload.alreadyRead, true);
   assert.equal(repeatedRead.payload.read_at, read.payload.read_at);
 
+  const lifecycle = await ctx.asJson(
+    '/api/characters/char-lifecycle/outbound/' + messageId + '/status',
+    { device }
+  );
+  assert.equal(lifecycle.status, 200);
+  assert.equal(lifecycle.payload.lifecycle.pushAcceptedAt, now);
+  assert.ok(lifecycle.payload.lifecycle.deviceReceivedAt);
+  assert.ok(lifecycle.payload.lifecycle.localSavedAt);
+  assert.ok(lifecycle.payload.lifecycle.readAt);
+  assert.equal(lifecycle.payload.lifecycle.readByDeviceId, device.deviceId);
+
   const repeatedReceived = await ctx.asJson(
     '/api/characters/char-lifecycle/outbound/' + messageId + '/received',
     { method: 'POST', device }
@@ -3473,4 +3485,10 @@ test('出站生命周期回执不能由其他设备或其他角色伪造', async
     { method: 'POST', device }
   );
   assert.equal(wrongCharacter.status, 404);
+  const otherStatus = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/status',
+    { device: other }
+  );
+  assert.equal(otherStatus.status, 404);
+
 });
