@@ -212,6 +212,39 @@ test('新设备必须通过单次初始认领或已连接设备签发的一次�
   const bootstrapReplay = await registerDevice(ctx, makeDevice());
   assert.equal(bootstrapReplay.status, 409);
   assert.equal(bootstrapReplay.payload.error.code, 'DEVICE_BOOTSTRAP_CLOSED');
+
+  const outstanding = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: primary
+  });
+  assert.equal(outstanding.status, 200);
+  const revoked = await ctx.asJson('/api/devices/revoke', {
+    method: 'POST',
+    device: primary
+  });
+  assert.equal(revoked.status, 200);
+  const afterCreatorRevoked = await registerDevice(ctx, makeDevice(), {
+    pairingToken: outstanding.payload.pairingToken
+  });
+  assert.equal(afterCreatorRevoked.status, 403);
+  assert.equal(afterCreatorRevoked.payload.error.code, 'PAIRING_TOKEN_INVALID');
+});
+
+test('设置页暴露设备配对入口，客户端提供一次性配对流程', () => {
+  const settingsHtml = fs.readFileSync(path.join(rootDir, 'settings/settings.html'), 'utf8');
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  for (const id of [
+    'cloudPairCreateRow',
+    'cloudPairCodeOutput',
+    'cloudPairCodeCopyButton',
+    'cloudPairCodeInput',
+    'cloudPairConnectButton'
+  ]) {
+    assert.ok(settingsHtml.includes('id="' + id + '"'), '设置页缺少配对控件 ' + id);
+  }
+  assert.ok(clientSource.includes('function createDevicePairingToken()'));
+  assert.ok(clientSource.includes('function connectDeviceWithPairingCode('));
+  assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
 });
 
 test('初始认领与配对码配置缺失或过期时均 fail-closed', async () => {
