@@ -92,7 +92,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0010 建立云推送、活动幂等、上下文来源与消息生命周期回执结构', async () => {
+test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多设备消息回执结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -104,6 +104,7 @@ test('迁移 0001–0010 建立云推送、活动幂等、上下文来源与消�
     'activity_queue',
     'execution_log',
     'outbound_messages',
+    'outbound_device_receipts',
     'push_deliveries',
     'user_autonomy',
     'character_autonomy',
@@ -144,6 +145,10 @@ test('迁移 0001–0010 建立云推送、活动幂等、上下文来源与消�
   for (const column of ['push_accepted_at', 'device_received_at', 'local_saved_at', 'read_at', 'read_by_device_id']) {
     assert.ok(outboundColumns.includes(column), `出站消息缺少生命周期字段 ${column}`);
   }
+  const receiptColumns = testDb.query("PRAGMA table_info('outbound_device_receipts')").map(row => String(row.name));
+  for (const column of ['server_message_id', 'user_id', 'device_id', 'character_id', 'device_received_at', 'local_saved_at', 'read_at']) {
+    assert.ok(receiptColumns.includes(column), `设备独立回执缺少字段 ${column}`);
+  }
   const deliveryColumns = testDb.query("PRAGMA table_info('push_deliveries')").map(row => String(row.name));
   for (const column of ['lease_owner', 'lease_until', 'next_attempt_at', 'attempt_count', 'updated_at']) {
     assert.ok(deliveryColumns.includes(column), `推送投递缺少恢复字段 ${column}`);
@@ -153,7 +158,7 @@ test('迁移 0001–0010 建立云推送、活动幂等、上下文来源与消�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 10);
+  assert.equal(versions.length, 11);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -164,7 +169,8 @@ test('迁移 0001–0010 建立云推送、活动幂等、上下文来源与消�
     '0007_activity_dedupe',
     '0008_context_source_device',
     '0009_activity_result_staging',
-    '0010_outbound_lifecycle_receipts'
+    '0010_outbound_lifecycle_receipts',
+    '0011_outbound_device_receipts'
   ]);
 });
 
@@ -2749,12 +2755,14 @@ test('云端出站消息按目标设备拉取，保存后确认且重复确认�
   assert.equal(afterAck.payload.messages.length, 0);
 });
 
-test('出站消息不能跨设备或跨角色读取与确认', async () => {
+test('同账号其他设备可接管未确认消息，设备回执互不覆盖且角色隔离仍有效', async () => {
   const ctx = setupTestStore(openTestDb());
   const deviceA = makeDevice();
   const deviceB = makeDevice();
   await registerDevice(ctx, deviceA);
-  await registerDevice(ctx, deviceB);
+  const pairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device: deviceA });
+  assert.equal(pairing.status, 200);
+  await registerDevice(ctx, deviceB, { pairingToken: pairing.payload.pairingToken });
 
   const message = {
     id: randomToken(16),
@@ -2763,29 +2771,99 @@ test('出站消息不能跨设备或跨角色读取与确认', async () => {
     characterId: 'char-a',
     serverMessageId: randomToken(20),
     dedupeKey: randomToken(20),
-    payload: { type: 'text', text: '只发给设备 A' },
+    payload: { type: 'text', text: '账号内设备可恢复' },
     now: 3000
   };
   assert.equal(ctx.store.enqueueOutboundMessage(message).inserted, true);
 
   const otherDevicePull = await ctx.asJson('/api/characters/char-a/outbound', { device: deviceB });
   assert.equal(otherDevicePull.status, 200);
-  assert.equal(otherDevicePull.payload.messages.length, 0);
+  assert.equal(otherDevicePull.payload.messages.length, 1);
+  assert.equal(otherDevicePull.payload.messages[0].serverMessageId, message.serverMessageId);
+  assert.equal(otherDevicePull.payload.messages[0].deviceLifecycle.localSavedAt, null);
 
   const wrongRoleAck = await ctx.asJson(
     '/api/characters/char-b/outbound/' + message.serverMessageId + '/ack',
-    { method: 'POST', device: deviceA }
+    { method: 'POST', device: deviceB }
   );
   assert.equal(wrongRoleAck.status, 404);
 
-  const otherDeviceAck = await ctx.asJson(
+  ctx.timestamps.push(4000);
+  const deviceBReceived = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/received',
+    { method: 'POST', device: deviceB }
+  );
+  assert.equal(deviceBReceived.status, 200);
+  ctx.timestamps.push(5000);
+  const deviceBAck = await ctx.asJson(
     '/api/characters/char-a/outbound/' + message.serverMessageId + '/ack',
     { method: 'POST', device: deviceB }
   );
-  assert.equal(otherDeviceAck.status, 404);
+  assert.equal(deviceBAck.status, 200);
+  assert.equal(deviceBAck.payload.acknowledged, true);
+  assert.equal(deviceBAck.payload.alreadyAcknowledged, false);
 
-  const ownerPull = await ctx.asJson('/api/characters/char-a/outbound', { device: deviceA });
-  assert.equal(ownerPull.payload.messages.length, 1);
+  const deviceBAfterSave = await ctx.asJson('/api/characters/char-a/outbound', { device: deviceB });
+  assert.equal(deviceBAfterSave.payload.messages.length, 0);
+  const deviceAStillPending = await ctx.asJson('/api/characters/char-a/outbound', { device: deviceA });
+  assert.equal(deviceAStillPending.payload.messages.length, 1);
+
+  ctx.timestamps.push(6000);
+  const deviceBRead = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/read',
+    { method: 'POST', device: deviceB }
+  );
+  assert.equal(deviceBRead.status, 200);
+  ctx.timestamps.push(7000);
+  const lateDeviceAReceived = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/received',
+    { method: 'POST', device: deviceA }
+  );
+  assert.equal(lateDeviceAReceived.status, 200);
+  ctx.timestamps.push(8000);
+  const lateDeviceAAck = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/ack',
+    { method: 'POST', device: deviceA }
+  );
+  assert.equal(lateDeviceAAck.status, 200);
+
+  const statusA = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/status',
+    { device: deviceA }
+  );
+  const statusB = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/status',
+    { device: deviceB }
+  );
+  assert.equal(statusA.status, 200);
+  assert.equal(statusB.status, 200);
+  assert.equal(statusA.payload.lifecycle.localSavedAt, 5000);
+  assert.equal(statusA.payload.lifecycle.readAt, 6000);
+  assert.equal(statusA.payload.lifecycle.readByDeviceId, deviceB.deviceId);
+  assert.equal(statusA.payload.deviceLifecycle.localSavedAt, 8000);
+  assert.equal(statusA.payload.deviceLifecycle.readAt, null);
+  assert.equal(statusB.payload.deviceLifecycle.localSavedAt, 5000);
+  assert.equal(statusB.payload.deviceLifecycle.readAt, 6000);
+
+  const aggregate = ctx.query(
+    'SELECT local_saved_at, read_at, read_by_device_id FROM outbound_messages WHERE server_message_id = ?',
+    message.serverMessageId
+  )[0];
+  assert.equal(aggregate.local_saved_at, 5000, '账号级首次保存时间不能被旧设备迟到 ACK 覆盖');
+  assert.equal(aggregate.read_at, 6000, '账号级首次已读时间不能被迟到回执覆盖');
+  assert.equal(aggregate.read_by_device_id, deviceB.deviceId);
+
+  const otherAccount = makeDevice();
+  await registerDevice(ctx, otherAccount);
+  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
+  const isolatedPull = await ctx.asJson('/api/characters/char-a/outbound', { device: otherAccount });
+  assert.equal(isolatedPull.status, 200);
+  assert.equal(isolatedPull.payload.messages.length, 0);
+  const isolatedAck = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/ack',
+    { method: 'POST', device: otherAccount }
+  );
+  assert.equal(isolatedAck.status, 404);
 });
 
 
@@ -3458,7 +3536,7 @@ test('出站消息分别记录 Push 接受、设备收到、本地保存与用�
   assert.equal(repeatedReceived.payload.local_saved_at, saved.payload.local_saved_at);
 });
 
-test('出站生命周期回执不能由其他设备或其他角色伪造', async () => {
+test('生命周期回执支持同账号跨设备恢复，但不能跨账号或角色伪造', async () => {
   const now = 1800000000000;
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
@@ -3466,8 +3544,7 @@ test('出站生命周期回执不能由其他设备或其他角色伪造', async
   const other = makeDevice();
   const pairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device });
   assert.equal(pairing.status, 200);
-  const paired = await registerDevice(ctx, other, { pairingToken: pairing.payload.pairingToken });
-  assert.equal(paired.status, 200);
+  assert.equal((await registerDevice(ctx, other, { pairingToken: pairing.payload.pairingToken })).status, 200);
 
   const messageId = 'autonomy_lifecycle_isolation_123456';
   ctx.store.enqueueOutboundMessage({
@@ -3481,23 +3558,57 @@ test('出站生命周期回执不能由其他设备或其他角色伪造', async
     now
   });
 
-  for (const suffix of ['received', 'read', 'ack']) {
-    const response = await ctx.asJson(
-      '/api/characters/char-owner-only/outbound/' + messageId + '/' + suffix,
-      { method: 'POST', device: other }
-    );
-    assert.equal(response.status, 404);
-    assert.equal(response.payload.error.code, 'OUTBOUND_MESSAGE_NOT_FOUND');
-  }
+  const received = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/received',
+    { method: 'POST', device: other }
+  );
+  assert.equal(received.status, 200);
+  const unsavedRead = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/read',
+    { method: 'POST', device: other }
+  );
+  assert.equal(unsavedRead.status, 409);
+  const saved = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/ack',
+    { method: 'POST', device: other }
+  );
+  assert.equal(saved.status, 200);
+  const read = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/read',
+    { method: 'POST', device: other }
+  );
+  assert.equal(read.status, 200);
+
+  const sourceStillNeedsItsOwnCopy = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound',
+    { device }
+  );
+  assert.equal(sourceStillNeedsItsOwnCopy.payload.messages.length, 1);
+  const sameAccountStatus = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/status',
+    { device }
+  );
+  assert.equal(sameAccountStatus.status, 200);
+  assert.equal(sameAccountStatus.payload.lifecycle.localSavedAt, now);
+  assert.equal(sameAccountStatus.payload.deviceLifecycle.localSavedAt, null);
+
   const wrongCharacter = await ctx.asJson(
     '/api/characters/someone-else/outbound/' + messageId + '/received',
     { method: 'POST', device }
   );
   assert.equal(wrongCharacter.status, 404);
-  const otherStatus = await ctx.asJson(
-    '/api/characters/char-owner-only/outbound/' + messageId + '/status',
-    { device: other }
-  );
-  assert.equal(otherStatus.status, 404);
 
+  const otherAccount = makeDevice();
+  await registerDevice(ctx, otherAccount);
+  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
+  const otherAccountStatus = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/status',
+    { device: otherAccount }
+  );
+  assert.equal(otherAccountStatus.status, 404);
+  const forgedAck = await ctx.asJson(
+    '/api/characters/char-owner-only/outbound/' + messageId + '/ack',
+    { method: 'POST', device: otherAccount }
+  );
+  assert.equal(forgedAck.status, 404);
 });
