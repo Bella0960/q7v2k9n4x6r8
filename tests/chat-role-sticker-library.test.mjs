@@ -135,6 +135,14 @@ test('AI marker becomes one real sticker selection and never remains in visible 
   assert.equal(parsed.text.includes('MAOMAO_STICKER'), false);
 });
 
+test('interrupted replies strip the marker without sending the selected sticker', () => {
+  const { api } = createLibrary();
+  const catalog = [{ img: 'data:image/png;base64,ONE', desc: '开心' }];
+  const parsed = api.parseReply('回复到一半 [[MAOMAO_STICKER:1]]', catalog, 0);
+  assert.equal(parsed.text, '回复到一半');
+  assert.equal(parsed.stickers.length, 0);
+});
+
 test('AI can choose no sticker, and invalid indices never send a different image', () => {
   const { api } = createLibrary();
   const catalog = [{ img: 'data:image/png;base64,ONE', desc: '开心' }];
