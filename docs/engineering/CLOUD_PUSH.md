@@ -277,3 +277,12 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 外部推送服务可能已接收请求、但 Worker 在收到响应前断线；这种不确定结果只能按 at-least-once 恢复，极端情况下仍可能重复显示一条通知。不能把第三方 Web Push 宣称成严格 exactly-once。
 
 这只是 Web Push 投递底座加固，不会生成消息、不读取聊天正文、不调用模型，也不表示角色已经开始主动发消息。测试、Worker 部署和锁屏真机投递仍需独立验收。
+
+### 8.13 队列与出站消息存储完整性
+
+- Activity queue 与 outbound message 的幂等写入改为单条 SQLite `INSERT ... ON CONFLICT ... DO NOTHING RETURNING`，不再依赖“先 SELECT、再 INSERT”的分离步骤；重复请求返回首次保存的记录，不覆盖首次数据。
+- 出站消息以 `server_message_id` 为冲突目标。若不同 server ID 使用了已占用的 `dedupe_key`，唯一约束会明确拒绝写入，不会误把另一条消息当成成功去重。
+- 队列 payload（4 KB）、出站消息 payload（8 KB）和执行日志 detail（4 KB）按 UTF-8 实际字节数检查。超限或无法 JSON 序列化时直接拒绝，不再用字符串截断制造损坏的 JSON。
+- 这项改动只加固既有存储层，不会启用消息生成器，不会新增聊天正文上传 API，也不会触发主动消息或推送。
+
+回归用例覆盖首次数据不被重复请求覆盖、活动任务重复 ID 幂等、dedupe key 冲突、以及 payload 超限拒绝。GitHub Actions 是否实际执行这些用例，仍以对应提交的 runner 步骤和日志为准。
