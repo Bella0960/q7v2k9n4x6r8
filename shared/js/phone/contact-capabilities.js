@@ -28,7 +28,10 @@
         transfer: 'transfer',
         gift: 'gift',
         card: 'contact_card',
-        location: 'location'
+        location: 'location',
+        role_family_card: 'family_card',
+        wallet: 'wallet',
+        transaction_record: 'transaction_history'
     };
     var BLOCKED_FEATURES = [
         'redpacket', 'transfer', 'payment', 'collect', 'receive_payment',
@@ -120,7 +123,8 @@
         getFeatureState: getFeatureState,
         getPolicy: getPolicy,
         isTransactionMessage: function (value) {
-            return value === 'redpacket' || value === 'transfer';
+            return value === 'redpacket' || value === 'transfer' || value === 'role_family_card' ||
+                value === 'wallet' || value === 'transaction_record' || value === 'payment';
         }
     };
 })(window);
