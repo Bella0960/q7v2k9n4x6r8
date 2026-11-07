@@ -3335,4 +3335,8 @@ test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Pu
   assert.match(workerSource, /internal\/maintenance[\s\S]{0,700}dispatchPendingOutboundPushes/);
   assert.match(workerSource, /async scheduled\([\s\S]{0,500}internal\/maintenance/);
   assert.match(workerSource, /pushDispatch/);
+  const recoveryIndex = workerSource.indexOf('repairAllStagedActivityOutboxes');
+  const dispatchIndex = workerSource.indexOf('dispatchPendingOutboundPushes', recoveryIndex);
+  assert.ok(recoveryIndex >= 0 && dispatchIndex > recoveryIndex,
+    '定时维护必须先恢复暂存收件箱，再发送对应 Push');
 });
