@@ -429,6 +429,10 @@ test('deleting a character clears its pair metadata and references without affec
   assert.equal(refs.has(b2.value.assetId + '|role-avatar|role-b'), true);
 });
 
+test('role avatar library exposes a dedicated transactional pair saver', () => {
+  assert.equal(typeof createLibrary().api.addAssetPair, 'function');
+});
+
 test('pair state normalization rejects dangling, repeated, duplicate and overlapping relationships', () => {
   const { api } = createLibrary();
   const assetA = 'as_' + 'A'.repeat(32);
