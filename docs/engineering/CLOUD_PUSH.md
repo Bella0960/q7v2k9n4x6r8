@@ -189,6 +189,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 只在本机已存在云设备凭据时启动；不读聊天正文、不写聊天历史、不上传角色设定或 API Key。
 - 前台管理器根据服务端配置续期 device heartbeat 与角色 lease。隐藏标签页不会写入 `foregroundActive=false`，`pagehide` 和停止单页续期也不会释放设备级 presence 或角色 lease，避免一个标签页覆盖同一设备其他可见页面的状态。
 - 所有可见页面停止续期后，设备在线状态由服务端 heartbeat TTL 判 stale；角色 lease 则按 lease 到期与 grace 规则自然释放。两者是不同层级，不能用单页隐藏事件推断整台设备离线。
+- 客户端续期间隔取心跳 TTL 与角色 lease 时长的较短者的三分之一，至少 1ms；对浏览器有符号 32 位定时器上限进行截断，防止异常大配置被浏览器解释成近乎 1ms 的高频定时器。非安全整数或非正配置 fail-closed。
 - 群聊 ID 暂时不映射单角色租约，防止错误阻止角色调度。
 - 此接线只代表代码路径存在。由于当前 Cloudflare 环境参数、真实页面运行与真机行为尚未验证，不能把它当成已上线或已验证。
 
