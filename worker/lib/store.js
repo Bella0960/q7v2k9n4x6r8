@@ -1018,6 +1018,184 @@ class CloudStore {
     }));
   }
 
+  getFriendAccount(userId) {
+    return this.exec(
+      'SELECT user_id, secret_hash, display_name, created_at, updated_at, revoked_at FROM friend_accounts WHERE user_id = ?',
+      userId
+    )[0] || null;
+  }
+
+  createFriendAccount(account) {
+    return this.exec(
+      `INSERT INTO friend_accounts
+        (user_id, secret_hash, display_name, registration_ip_hash, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO NOTHING
+       RETURNING user_id, secret_hash, display_name, created_at, updated_at, revoked_at`,
+      account.userId,
+      account.secretHash,
+      account.displayName || '',
+      account.registrationIpHash || '',
+      account.now,
+      account.now
+    )[0] || null;
+  }
+
+  updateFriendAccountProfile(userId, displayName, now) {
+    this.exec(
+      'UPDATE friend_accounts SET display_name = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL',
+      displayName,
+      now,
+      userId
+    );
+    return this.getFriendAccount(userId);
+  }
+
+  countRecentFriendRegistrations(ipHash, since) {
+    const row = this.exec(
+      'SELECT COUNT(*) AS total FROM friend_accounts WHERE registration_ip_hash = ? AND created_at >= ?',
+      ipHash,
+      since
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  countRecentFriendRequests(userId, since) {
+    const row = this.exec(
+      'SELECT COUNT(*) AS total FROM friend_requests WHERE requester_id = ? AND created_at >= ?',
+      userId,
+      since
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  getFriendship(userId, otherUserId) {
+    const [low, high] = [String(userId), String(otherUserId)].sort();
+    return this.exec(
+      'SELECT * FROM friendships WHERE user_low_id = ? AND user_high_id = ?',
+      low,
+      high
+    )[0] || null;
+  }
+
+  createFriendRequest(request) {
+    if (this.getFriendship(request.requesterId, request.recipientId)) {
+      return { kind: 'already_friends', request: null };
+    }
+
+    const outgoing = this.exec(
+      `SELECT * FROM friend_requests
+       WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+       ORDER BY created_at DESC LIMIT 1`,
+      request.requesterId,
+      request.recipientId
+    )[0];
+    if (outgoing) return { kind: 'pending', request: outgoing };
+
+    const incoming = this.exec(
+      `SELECT * FROM friend_requests
+       WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+       ORDER BY created_at DESC LIMIT 1`,
+      request.recipientId,
+      request.requesterId
+    )[0];
+    if (incoming) return { kind: 'incoming_request_exists', request: incoming };
+
+    const inserted = this.exec(
+      `INSERT INTO friend_requests
+        (id, requester_id, recipient_id, message, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?)
+       RETURNING *`,
+      request.id,
+      request.requesterId,
+      request.recipientId,
+      request.message || '',
+      request.now,
+      request.now
+    )[0];
+    return { kind: 'created', request: inserted || null };
+  }
+
+  listFriendRequests(userId) {
+    return this.exec(
+      `SELECT r.id, r.requester_id, r.recipient_id, r.message, r.status, r.created_at, r.updated_at,
+              requester.display_name AS requester_name,
+              recipient.display_name AS recipient_name
+       FROM friend_requests r
+       LEFT JOIN friend_accounts requester ON requester.user_id = r.requester_id
+       LEFT JOIN friend_accounts recipient ON recipient.user_id = r.recipient_id
+       WHERE r.requester_id = ? OR r.recipient_id = ?
+       ORDER BY r.created_at DESC
+       LIMIT 100`,
+      userId,
+      userId
+    );
+  }
+
+  respondToFriendRequest({ requestId, userId, status, now }) {
+    const request = this.exec(
+      `SELECT * FROM friend_requests
+       WHERE id = ? AND recipient_id = ? AND status = 'pending'`,
+      requestId,
+      userId
+    )[0];
+    if (!request) return null;
+
+    const updated = this.exec(
+      `UPDATE friend_requests
+       SET status = ?, updated_at = ?
+       WHERE id = ? AND recipient_id = ? AND status = 'pending'
+       RETURNING *`,
+      status,
+      now,
+      requestId,
+      userId
+    )[0];
+    if (!updated) return null;
+
+    if (status === 'accepted') {
+      const [low, high] = [request.requester_id, request.recipient_id].sort();
+      this.exec(
+        `INSERT INTO friendships (user_low_id, user_high_id, created_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
+        low,
+        high,
+        now
+      );
+    }
+    return updated;
+  }
+
+  listFriends(userId) {
+    return this.exec(
+      `SELECT
+         CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END AS friend_id,
+         a.display_name AS display_name,
+         f.created_at AS created_at
+       FROM friendships f
+       INNER JOIN friend_accounts a
+         ON a.user_id = CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+       WHERE f.user_low_id = ? OR f.user_high_id = ?
+       ORDER BY f.created_at DESC
+       LIMIT 500`,
+      userId,
+      userId,
+      userId,
+      userId
+    );
+  }
+
+  removeFriendship(userId, otherUserId) {
+    const [low, high] = [String(userId), String(otherUserId)].sort();
+    const rows = this.exec(
+      'DELETE FROM friendships WHERE user_low_id = ? AND user_high_id = ? RETURNING user_low_id',
+      low,
+      high
+    );
+    return rows.length > 0;
+  }
+
   counts() {
     const devices = this.exec('SELECT COUNT(*) AS total FROM devices')[0];
     const subscriptions = this.exec(
