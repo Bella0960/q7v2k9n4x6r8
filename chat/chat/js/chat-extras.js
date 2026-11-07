@@ -841,7 +841,13 @@
           : null;
         if (finalPaymentEntry && !finalPaymentEntry.chatMessageSavedAt) {
           finalPaymentEntry.chatMessageSavedAt = Date.now();
-          if (!saveWorkData(finalWallet)) {
+          var markerWriteOk = saveWorkData(finalWallet);
+          var markerReadback = getWorkData();
+          var markerConfirmed = Array.isArray(markerReadback && markerReadback.history) &&
+            markerReadback.history.some(function (entry) {
+              return entry && String(entry.paymentId || '') === paymentId && !!entry.chatMessageSavedAt;
+            });
+          if (!markerWriteOk || !markerConfirmed) {
             if (typeof showToast === 'function') showToast('卡片已保存，恢复标记暂未同步');
           }
         }
