@@ -483,8 +483,12 @@ test("same-direction duplicate requests are idempotent; reverse duplicates point
   assert.equal(reverse.body.requestId, payload.requestId);
 });
 
-test("inbox and outbox are scoped to the authenticated account", async () => {
+test("inbox and outbox are scoped to the authenticated account and include current avatar references", async () => {
   const context = await setup();
+  const alice = context.db.accounts.get("account-alice-001");
+  const bob = context.db.accounts.get("account-bob-001");
+  context.db.accounts.set(alice.id, { ...alice, avatar_asset_id: "av_" + "a".repeat(32) });
+  context.db.accounts.set(bob.id, { ...bob, avatar_asset_id: "av_" + "b".repeat(32) });
   const qr = await call(context, "/codes/rotate", "POST", undefined, "bob");
   await call(context, "/requests", "POST", {
     requestId: "request_box_alice_01", code: qr.body.code, note: "Hello"
@@ -493,8 +497,10 @@ test("inbox and outbox are scoped to the authenticated account", async () => {
   const outbox = await call(context, "/requests?direction=outgoing", "GET");
   assert.equal(inbox.body.requests.length, 1);
   assert.equal(inbox.body.requests[0].peer.handle, "alice_01");
+  assert.equal(inbox.body.requests[0].peer.avatarAssetId, "av_" + "a".repeat(32));
   assert.equal(outbox.body.requests.length, 1);
   assert.equal(outbox.body.requests[0].peer.handle, "bob_0001");
+  assert.equal(outbox.body.requests[0].peer.avatarAssetId, "av_" + "b".repeat(32));
 });
 
 test("only the recipient can accept or decline; accepting creates the friendship", async () => {
@@ -552,6 +558,8 @@ test("friend removal, block and unblock update the authoritative relationship", 
   const readd = await call(context, "/requests", "POST", { requestId: "request_readd_00001", code: readdCode.body.code });
   assert.equal(readd.response.status, 201);
   await call(context, "/requests/request_readd_00001/accept", "POST", undefined, "bob");
+  const bob = context.db.accounts.get("account-bob-001");
+  context.db.accounts.set(bob.id, { ...bob, avatar_asset_id: "av_" + "c".repeat(32) });
   const blocked = await call(context, "/account-bob-001/block", "POST");
   assert.equal(blocked.body.blocked, true);
   const blockedList = await call(context, "/", "GET");
@@ -559,6 +567,7 @@ test("friend removal, block and unblock update the authoritative relationship", 
   const ownBlockList = await call(context, "/blocks", "GET", undefined, "alice");
   const otherBlockList = await call(context, "/blocks", "GET", undefined, "bob");
   assert.deepEqual(ownBlockList.body.blocked.map(item => item.id), ["account-bob-001"]);
+  assert.equal(ownBlockList.body.blocked[0].avatarAssetId, "av_" + "c".repeat(32));
   assert.equal(otherBlockList.body.blocked.length, 0);
   const blockedCode = await call(context, "/codes/rotate", "POST", undefined, "bob");
   const blockedRequest = await call(context, "/requests", "POST", {
