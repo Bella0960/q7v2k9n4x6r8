@@ -9,6 +9,8 @@ on:
       - 'library/**'
       - 'shared/js/phone/**'
       - 'shared/js/chat-beauty.js'
+      - 'shared/js/chat-theme-package-*.js'
+      - 'beauty/theme-import.html'
       - 'shared/js/wallpaper-store.js'
       - 'sw.js'
       - 'tests/**'
@@ -52,6 +54,7 @@ jobs:
       - name: Run chat regression contract tests
         run: |
           npm run test:chat:contract
+          npm run test:chat:theme-package
           npm run test:desktop:layout
           npm run test:bugfix:blockers
           npm run test:media:backup
