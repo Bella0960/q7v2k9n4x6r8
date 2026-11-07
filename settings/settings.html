@@ -104,6 +104,50 @@
                     <label class="switch"><input type="checkbox" id="cloudAutonomyToggle" disabled><span class="slider"></span></label>
                 </div>
                 <div style="padding:0 16px 12px;font-size:11.5px;line-height:1.5;color:var(--aux,#8e8e93);">此开关只保存云端授权。角色作息、聊天前台接入和消息生成链路完成前，不会触发角色主动联系。</div>
+                <div style="padding:4px 16px 15px;border-top:1px solid var(--line,#e7e7eb);">
+                    <div style="font-size:13px;font-weight:600;margin:10px 0;">角色自主活动</div>
+                    <div style="font-size:11.5px;color:var(--aux,#8e8e93);line-height:1.5;margin-bottom:8px;">角色名称只从本机读取；云端只保存角色 ID、授权状态和作息。</div>
+                    <select id="cloudRoleSelect" aria-label="选择角色" style="width:100%;height:40px;padding:0 10px;border:1px solid var(--line,#d0d0d5);border-radius:10px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:13px;">
+                        <option value="">正在读取本机角色…</option>
+                    </select>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;">
+                        <label for="cloudCharacterAutonomyMode" style="font-size:12px;">角色授权</label>
+                        <select id="cloudCharacterAutonomyMode" style="height:36px;padding:0 9px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:12px;">
+                            <option value="inherit">跟随全局设置</option>
+                            <option value="on">仅此角色开启</option>
+                            <option value="off">仅此角色关闭</option>
+                        </select>
+                    </div>
+                    <div style="font-size:12px;font-weight:600;margin:16px 0 8px;">角色作息与时区</div>
+                    <label for="cloudRoleTimezone" style="display:block;font-size:11.5px;color:var(--aux,#8e8e93);margin-bottom:5px;">IANA 时区（例如 America/Los_Angeles）</label>
+                    <input id="cloudRoleTimezone" type="text" inputmode="text" autocomplete="off" placeholder="必须明确填写时区" style="width:100%;height:40px;padding:0 10px;border:1px solid var(--line,#d0d0d5);border-radius:10px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:13px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">允许主动联系 · 开始
+                            <input id="cloudRoleActiveStart" type="time" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
+                        </label>
+                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">允许主动联系 · 结束
+                            <input id="cloudRoleActiveEnd" type="time" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
+                        </label>
+                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">忙碌时段 · 开始（可选）
+                            <input id="cloudRoleBusyStart" type="time" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
+                        </label>
+                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">忙碌时段 · 结束（可选）
+                            <input id="cloudRoleBusyEnd" type="time" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
+                        </label>
+                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">休息时段 · 开始（可选）
+                            <input id="cloudRoleAsleepStart" type="time" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
+                        </label>
+                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">休息时段 · 结束（可选）
+                            <input id="cloudRoleAsleepEnd" type="time" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
+                        </label>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;">
+                        <input id="cloudRoleAway" type="checkbox" style="width:16px;height:16px;">
+                        此角色当前设为外出
+                    </label>
+                    <button id="cloudRoleScheduleSave" type="button" style="width:100%;height:42px;margin-top:13px;border:0;border-radius:11px;background:#111;color:#fff;font-size:13px;">保存角色设置与作息</button>
+                    <div style="font-size:11px;color:var(--aux,#8e8e93);line-height:1.5;margin-top:8px;">未填写并保存有效作息的角色不会获得云端调度资格。此设置不会上传聊天记录或角色设定。</div>
+                </div>
                 <div class="menu-row" id="cloudTestRow" role="button" tabindex="0">
                     <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></div>
                     <div class="menu-title"><span class="t-cn">发送测试推送</span><span class="t-en">Test</span></div>
