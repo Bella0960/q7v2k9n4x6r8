@@ -31,7 +31,7 @@ async function realUserChatCapabilities(env) {
       enabled: accountAuthEnabled,
       status: accountAuthEnabled ? "enabled" : "disabled",
       endpoints: accountAuthEnabled
-        ? ["register", "login", "me", "logout"]
+        ? ["register", "login", "me", "profile-update", "logout"]
         : [],
       reason: accountAuthEnabled ? "" : "database_or_auth_rate_limiter_not_configured"
     },
