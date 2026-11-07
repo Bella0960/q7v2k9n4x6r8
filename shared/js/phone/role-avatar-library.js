@@ -422,17 +422,25 @@
             }
 
             var assetId = String(saved.value.assetId);
+            var roleRefAdded = saved.meta && typeof saved.meta.refAdded === 'boolean'
+                ? saved.meta.refAdded : saved.value.reused !== true;
             var deletedBlock = roleMutationBlock(roleId);
             if (deletedBlock) {
                 if (deletedBlock.error && deletedBlock.error.code === 'ROLE_DELETED') {
                     return cleanupStaleRoleAsset(media, assetId, roleId);
                 }
-                return cleanupRejectedRoleAsset(media, assetId, roleId, deletedBlock);
+                return roleRefAdded
+                    ? cleanupRejectedRoleAsset(media, assetId, roleId, deletedBlock)
+                    : deletedBlock;
             }
             // Re-read after the asynchronous media write so parallel uploads cannot overwrite
             // another portrait added to this role while putBlob was pending.
             var latestResult = readStateResult(roleId);
-            if (!latestResult.ok) return cleanupRejectedRoleAsset(media, assetId, roleId, latestResult);
+            if (!latestResult.ok) {
+                return roleRefAdded
+                    ? cleanupRejectedRoleAsset(media, assetId, roleId, latestResult)
+                    : latestResult;
+            }
             var latest = latestResult.value;
             var existing = latest.items.find(function (item) { return item.assetId === assetId; });
             if (existing) return { ok: true, value: copyItem(existing, latest.activeId), meta: { reused: true } };
@@ -446,11 +454,10 @@
             };
             var next = { version: 2, activeId: latest.activeId, items: [item].concat(latest.items), pairs: latest.pairs };
             if (!writeState(roleId, next)) {
-                return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function () {
-                    return media.removeAsset(assetId);
-                }).then(function () {
-                    return failure('STORAGE_FAILED', 'avatar metadata could not be saved; original profile was not changed');
-                });
+                var writeFailure = failure('STORAGE_FAILED', 'avatar metadata could not be saved; original profile was not changed');
+                return roleRefAdded
+                    ? cleanupRejectedRoleAsset(media, assetId, roleId, writeFailure)
+                    : writeFailure;
             }
             return { ok: true, value: copyItem(item, next.activeId), meta: { reused: !!saved.value.reused } };
         }).catch(function (error) {
@@ -500,6 +507,7 @@
                     if (afterLinkBlock.error && afterLinkBlock.error.code === 'ROLE_DELETED') {
                         return cleanupStaleRoleAsset(media, assetId, roleId);
                     }
+                    if (linked.value && linked.value.added === false) return afterLinkBlock;
                     return Promise.resolve(media.removeRef(assetId, OWNER_TYPE, String(roleId))).then(function (released) {
                         return released && released.ok
                             ? afterLinkBlock
