@@ -584,6 +584,30 @@ test('受保护接口拒绝缺失、错误与被撤销的设备凭据', async ()
   const subscription = await makeBrowserSubscription();
   await subscribeDevice(ctx, device, subscription);
 
+  // A second still-authorized device cannot claim the first device's endpoint.
+  const otherDeviceId = randomToken(16);
+  const timestamp = Date.now();
+  ctx.query(
+    `INSERT INTO devices
+      (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
+     VALUES (?, 'owner', ?, '', '', '', '', ?, ?)`,
+    otherDeviceId,
+    'a'.repeat(64),
+    timestamp,
+    timestamp
+  );
+  const stolen = ctx.store.upsertSubscription({
+    id: randomToken(12),
+    deviceId: otherDeviceId,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.p256dh,
+    authKey: subscription.auth,
+    expirationTime: null,
+    now: timestamp
+  });
+  assert.equal(stolen, null);
+  assert.equal(ctx.store.getSubscriptionByEndpoint(device.deviceId, subscription.endpoint).device_id, device.deviceId);
+
   const revoked = await ctx.asJson('/api/devices/revoke', { method: 'POST', device });
   assert.equal(revoked.status, 200);
   const revokedSubscriptions = ctx.store.listSubscriptions(device.deviceId, { includeDisabled: true });
@@ -591,6 +615,22 @@ test('受保护接口拒绝缺失、错误与被撤销的设备凭据', async ()
   assert.equal(revokedSubscriptions[0].disabled_reason, 'revoked');
   assert.ok(revokedSubscriptions[0].disabled_at != null);
   assert.equal(ctx.store.listSubscriptions(device.deviceId).length, 0);
+
+  // Simulate a request that passed authentication just before revocation and
+  // reaches the storage write after the revocation has committed.
+  const lateResubscribe = ctx.store.upsertSubscription({
+    id: randomToken(12),
+    deviceId: device.deviceId,
+    endpoint: subscription.endpoint,
+    p256dh: subscription.p256dh,
+    authKey: subscription.auth,
+    expirationTime: null,
+    now: timestamp + 1
+  });
+  assert.equal(lateResubscribe, null);
+  const stillRevoked = ctx.store.getSubscriptionByEndpoint(device.deviceId, subscription.endpoint);
+  assert.equal(stillRevoked.disabled_reason, 'revoked');
+  assert.ok(stillRevoked.disabled_at != null);
 
   const afterRevoke = await ctx.asJson('/api/push/subscriptions', { device });
   assert.equal(afterRevoke.status, 401);
