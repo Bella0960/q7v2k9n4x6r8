@@ -275,8 +275,18 @@
     function clear(value) {
         var ref = normalizeRef(value);
         if (!ref) return resultError('invalid_real_user_ref');
-        var accepted = contactState(ref);
-        if (!accepted.ok) return accepted;
+        var directory = root.PhoneContactDirectory;
+        if (!directory || typeof directory.readResult !== 'function') {
+            return resultError('contact_directory_unavailable');
+        }
+        var directoryResult = directory.readResult();
+        if (!directoryResult || !directoryResult.ok || !Array.isArray(directoryResult.contacts)) {
+            return resultError('contact_directory_unavailable');
+        }
+        if (!directoryResult.contacts.some(function (item) { return item && item.id === ref.id; })) {
+            return resultError('contact_not_found');
+        }
+        // Local data cleanup remains available after a friend is blocked or removed.
         try {
             root.localStorage.removeItem(storageKey(ref));
             return { ok: true, conversationRef: clone(ref), meta: { cleared: true, localOnly: true } };
