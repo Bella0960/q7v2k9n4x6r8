@@ -78,7 +78,6 @@ async function callWorker(env, path, method, options = {}) {
   if (options.body !== undefined) {
     body = JSON.stringify(options.body);
     headers.set("Content-Type", "application/json");
-    headers.set("Content-Length", String(new TextEncoder().encode(body).length));
   }
   const request = new Request("https://mao.example" + path, {
     method,
