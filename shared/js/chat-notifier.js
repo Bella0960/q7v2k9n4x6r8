@@ -380,8 +380,17 @@
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
             );
         }).then(function (ok) {
-            if (!ok) proactiveDependenciesPromise = null;
-            return ok;
+            if (!ok) {
+                proactiveDependenciesPromise = null;
+                return false;
+            }
+            // Cloud executor is optional for legacy local-only proactive contact.
+            // Its failure must not disable the existing local PhoneAPI path.
+            if (global.MaomaoCloud) return true;
+            return loadProactiveScript(
+                proactiveAsset('shared/js/cloud-push-client.js'),
+                function () { return !!global.MaomaoCloud; }
+            ).then(function () { return true; });
         }).catch(function () {
             proactiveDependenciesPromise = null;
             return false;
@@ -508,6 +517,142 @@
         return text;
     }
 
+    function resetProactiveAttempt(roleId) {
+        safeSet('chat_proactive_global_attempt_at', '0');
+        safeSet('chat_proactive_last_attempt_' + String(roleId), '0');
+    }
+
+    async function executeCloudProactiveCandidate(candidate, messages) {
+        var cloud = global.MaomaoCloud;
+        if (!cloud || !cloud._internal || typeof cloud._internal.readDevice !== 'function' ||
+            !cloud._internal.readDevice()) return false;
+
+        var roleId = String(candidate.contact.id);
+        var globalSetting;
+        try {
+            globalSetting = await cloud.getGlobalAutonomy();
+        } catch (error) {
+            // A paired device must not bypass cloud authorization when offline.
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+        if (!globalSetting || globalSetting.enabled !== true) return false;
+
+        var roleSetting;
+        try {
+            roleSetting = await cloud.getCharacterAutonomy(roleId);
+        } catch (error) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+        if (roleSetting && roleSetting.enabled === false) return true;
+
+        var context;
+        try {
+            context = await cloud.getCharacterContextVersion(roleId);
+        } catch (error) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+        if (!context || context.configured !== true || !Number.isSafeInteger(Number(context.version)) ||
+            Number(context.version) < 1) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+
+        var activity = null;
+        try {
+            var queued = await cloud.enqueueAutonomyActivity(roleId, Number(context.version));
+            if (!queued || queued.queued !== true) {
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+            activity = await cloud.claimAutonomyActivity(roleId);
+            if (!activity) {
+                // The server may be waiting for an allowed schedule window,
+                // or another paired device may already own the task.
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+
+            var result = await global.PhoneAPI.completeJSON({
+                messages: messages,
+                temperature: 0.78,
+                timeoutMs: 15000
+            });
+            if (!result || result.ok !== true || !result.data) {
+                await cloud.failAutonomyActivity(activity, 'generation_failed');
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+            if (result.data.send !== true) {
+                await cloud.skipAutonomyActivity(activity, 'no_worthy_message');
+                return true;
+            }
+
+            var content = cleanProactiveMessage(result.data.text);
+            if (!content) {
+                await cloud.skipAutonomyActivity(activity, 'invalid_generation');
+                return true;
+            }
+            if (safeGet('chat_proactive_contact_' + roleId) !== 'true' ||
+                document.visibilityState === 'hidden') {
+                await cloud.skipAutonomyActivity(activity, 'feature_disabled');
+                return true;
+            }
+
+            // Re-check the local chat after generation. No message body, persona
+            // or history has been sent to the Worker; only this result is handed off.
+            var freshHistory = readHistory(roleId);
+            var freshLatest = newestMeaningfulMessage(freshHistory);
+            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
+                freshLatest.text !== candidate.latest.text) {
+                await cloud.skipAutonomyActivity(activity, 'context_changed');
+                return true;
+            }
+
+            var completion = await cloud.completeAutonomyActivity(activity, content);
+            var serverMessageId = String(completion && completion.serverMessageId || '');
+            if (!/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId)) {
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+
+            // Mirror the accepted outbound message into this device's existing
+            // local conversation. The outbox keeps it pending until local
+            // history write/read-back is verified by the chat-detail receiver.
+            if (!freshHistory.some(function (item) {
+                return item && String(item.serverMessageId || '') === serverMessageId;
+            })) {
+                var localMessage = {
+                    role: 'assistant',
+                    text: content,
+                    time: Date.now(),
+                    voiceMode: 'online',
+                    proactiveContact: true,
+                    source: 'cloud_autonomous',
+                    mid: 'cloud_' + serverMessageId,
+                    serverMessageId: serverMessageId
+                };
+                freshHistory.push(localMessage);
+                var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
+                    ? global.PhoneStorage.saveChatHistory(roleId, freshHistory)
+                    : safeSet('chat_history_' + roleId, freshHistory);
+                var verified = readHistory(roleId).some(function (item) {
+                    return item && String(item.serverMessageId || '') === serverMessageId;
+                });
+                if (saved && verified) tick();
+            }
+            return true;
+        } catch (error) {
+            if (activity) {
+                try { await cloud.failAutonomyActivity(activity, 'generation_failed'); } catch (ignored) {}
+            }
+            resetProactiveAttempt(roleId);
+            throw error;
+        }
+    }
+
     async function checkProactiveContacts() {
         if (proactiveRequestPending || followUpRequestPending || document.visibilityState === 'hidden' || currentDetailRoleId()) return;
         var now = Date.now();
@@ -569,6 +714,9 @@
                 role: 'user',
                 content: '请判断现在是否真的有值得主动分享的一件事。若没有，请明确返回 send=false。只按系统要求输出 JSON。'
             });
+
+            var cloudHandled = await executeCloudProactiveCandidate(candidate, messages);
+            if (cloudHandled) return;
 
             var result = await global.PhoneAPI.completeJSON({
                 messages: messages,
