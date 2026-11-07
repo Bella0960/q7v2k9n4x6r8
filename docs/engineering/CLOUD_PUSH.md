@@ -420,3 +420,18 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 这是代码层面的本机前台生成与云端交接链路；没有部署 Worker，没有在真实 Android 设备上调用 API 生成消息，也没有验证锁屏后台运行。
 - GitHub Actions 当前仍无法给出实际执行步骤；Node/SQLite 契约测试、Vite build 和真机测试仍必须标为 **NOT VERIFIED**。
 - `autonomousMessageGenerationReady` 继续保持 false，直到真实部署、配对设备、模型配置、授权/作息、角色租约、消息接收 ACK 和断网恢复全部通过验收。
+## 13. M2.4d：已配对设备的授权降级封口
+
+本轮代码检查发现并修复了一个关键降级漏洞：此前已配对设备读取到云端全局自主活动开关为 `false` 时，客户端会返回“未处理”，从而继续执行旧的纯本地主动联系分支。这会绕开用户在云端设置的总开关。
+
+- 已配对设备只要云端客户端存在，就必须先通过云端全局授权；全局开关关闭或响应异常时，直接终止本轮，不得回退本地模型执行。
+- 单角色授权只有 `enabled === true` 或明确继承全局的 `enabled === null` 才可继续；接口返回缺失、格式异常或读取失败均 fail-closed。
+- 若云端客户端脚本加载失败，或设备凭据对象无法读取，只要 `cloud_device_v1` 仍有残留记录（包括无法解析的旧记录），就阻止本地主动联系降级。用户主动断开云端连接并清除该键后，未配对安装才恢复旧的本地模式。
+- 新增 Chat Regression Contract 源码断言，覆盖：已配对设备全局开关关闭时必须返回终止信号、单角色授权未知时必须终止、残留设备记录不允许进入本地 fallback。
+- ChatNotifier 资源版本更新至 `v20261107v3`，Service Worker cache 更新至 `phone-app-pwa-v177`。
+
+### 本轮验证状态
+
+- 新增断言已经提交，但 Node/SQLite 回归、`npm run build` 和真机行为尚未执行，均为 **NOT VERIFIED**。
+- 这项修复只封住已配对设备绕过云端授权的本地降级路径；不会改变未配对安装原有的本地模式，也未改变任何角色聊天数据。
+- 没有合并 PR、部署 Worker 或更新 APK。
