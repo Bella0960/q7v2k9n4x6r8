@@ -502,24 +502,33 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '这位好友账号暂不可用');
     }
     const url = new URL(request.url);
-    const cursor = parseFriendMessageCursor(url.searchParams.get('cursor'));
+    const afterRaw = url.searchParams.get('after');
+    const beforeRaw = url.searchParams.get('before');
+    if (afterRaw && beforeRaw) {
+      throw new ApiError(400, 'INVALID_MESSAGE_CURSOR', '不能同时使用 after 和 before 游标');
+    }
+    const after = parseFriendMessageCursor(afterRaw);
+    const before = parseFriendMessageCursor(beforeRaw);
     const rows = await store.listFriendMessages({
       userId: account.user_id,
       friendId,
-      cursor,
+      after,
+      before,
       limit: FRIEND_MESSAGE_LIMIT
     });
+    const first = rows.length ? rows[0] : null;
     const last = rows.length ? rows[rows.length - 1] : null;
-    const nextCursor = last
-      ? String(Number(last.created_at)) + '.' + String(last.id)
-      : (url.searchParams.get('cursor') || null);
+    const cursorOf = row => row
+      ? String(Number(row.created_at)) + '.' + String(row.id)
+      : null;
     return ok({
       friend: {
         userId: friend.user_id,
         displayName: friend.display_name || ''
       },
       messages: rows.map(friendMessageView),
-      nextCursor,
+      nextCursor: cursorOf(last) || afterRaw || null,
+      olderCursor: cursorOf(first) || beforeRaw || null,
       hasMore: rows.length === FRIEND_MESSAGE_LIMIT
     });
   }
