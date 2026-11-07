@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS real_user_friend_requests (
   updated_at INTEGER NOT NULL,
   responded_at INTEGER,
   CHECK (requester_id <> recipient_id),
+  CHECK ((status = 'pending' AND responded_at IS NULL) OR
+         (status <> 'pending' AND responded_at IS NOT NULL)),
   CHECK (pair_low < pair_high),
   CHECK (pair_low = CASE WHEN requester_id < recipient_id THEN requester_id ELSE recipient_id END),
   CHECK (pair_high = CASE WHEN requester_id < recipient_id THEN recipient_id ELSE requester_id END),
@@ -98,7 +100,7 @@ CREATE TABLE IF NOT EXISTS real_user_friendships (
   pair_high TEXT NOT NULL REFERENCES real_user_accounts(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'accepted'
     CHECK (status IN ('accepted', 'removed')),
-  accepted_request_id TEXT REFERENCES real_user_friend_requests(id),
+  accepted_request_id TEXT NOT NULL REFERENCES real_user_friend_requests(id),
   accepted_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (pair_low, pair_high),
@@ -108,6 +110,35 @@ CREATE TABLE IF NOT EXISTS real_user_friendships (
 
 CREATE INDEX IF NOT EXISTS idx_real_user_friendships_high
   ON real_user_friendships(pair_high, status);
+
+-- Friendships can only be created from an accepted request for the same pair.
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friendship_source_guard
+BEFORE INSERT ON real_user_friendships
+WHEN NOT EXISTS (
+  SELECT 1 FROM real_user_friend_requests r
+  WHERE r.id = NEW.accepted_request_id
+    AND r.status = 'accepted'
+    AND r.pair_low = NEW.pair_low
+    AND r.pair_high = NEW.pair_high
+)
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_friendship_requires_accepted_request');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friendship_update_guard
+BEFORE UPDATE OF pair_low, pair_high, accepted_request_id, accepted_at, status ON real_user_friendships
+WHEN NEW.pair_low <> OLD.pair_low
+  OR NEW.pair_high <> OLD.pair_high
+  OR (NEW.status = 'accepted' AND NOT EXISTS (
+    SELECT 1 FROM real_user_friend_requests r
+    WHERE r.id = NEW.accepted_request_id
+      AND r.status = 'accepted'
+      AND r.pair_low = NEW.pair_low
+      AND r.pair_high = NEW.pair_high
+  ))
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_friendship_update_invalid');
+END;
 
 CREATE TABLE IF NOT EXISTS real_user_blocks (
   blocker_id TEXT NOT NULL REFERENCES real_user_accounts(id) ON DELETE CASCADE,
@@ -120,6 +151,68 @@ CREATE TABLE IF NOT EXISTS real_user_blocks (
 
 CREATE INDEX IF NOT EXISTS idx_real_user_blocks_reverse
   ON real_user_blocks(blocked_id, blocker_id);
+
+-- Requests are created pending and may transition only once to a terminal state.
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_insert_guard
+BEFORE INSERT ON real_user_friend_requests
+WHEN NEW.status <> 'pending' OR NEW.responded_at IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_friend_request_must_start_pending');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_transition_guard
+BEFORE UPDATE ON real_user_friend_requests
+WHEN OLD.status <> 'pending'
+  OR NEW.status NOT IN ('accepted', 'declined', 'cancelled')
+  OR NEW.id <> OLD.id
+  OR NEW.requester_id <> OLD.requester_id
+  OR NEW.recipient_id <> OLD.recipient_id
+  OR NEW.pair_low <> OLD.pair_low
+  OR NEW.pair_high <> OLD.pair_high
+  OR NEW.created_at <> OLD.created_at
+  OR NEW.responded_at IS NULL
+  OR NEW.updated_at < OLD.updated_at
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_friend_request_transition_invalid');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_accept_guard
+BEFORE UPDATE OF status ON real_user_friend_requests
+WHEN NEW.status = 'accepted' AND EXISTS (
+  SELECT 1 FROM real_user_blocks b
+  WHERE (b.blocker_id = NEW.pair_low AND b.blocked_id = NEW.pair_high)
+     OR (b.blocker_id = NEW.pair_high AND b.blocked_id = NEW.pair_low)
+)
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_friendship_blocked');
+END;
+
+-- Acceptance atomically materializes the authoritative friendship row.
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_accepted
+AFTER UPDATE OF status ON real_user_friend_requests
+WHEN NEW.status = 'accepted'
+BEGIN
+  INSERT INTO real_user_friendships (
+    pair_low, pair_high, status, accepted_request_id, accepted_at, updated_at
+  ) VALUES (
+    NEW.pair_low, NEW.pair_high, 'accepted', NEW.id, NEW.responded_at, NEW.updated_at
+  )
+  ON CONFLICT(pair_low, pair_high) DO UPDATE SET
+    status = 'accepted',
+    accepted_request_id = excluded.accepted_request_id,
+    accepted_at = excluded.accepted_at,
+    updated_at = excluded.updated_at;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_real_user_block_removes_friendship
+AFTER INSERT ON real_user_blocks
+BEGIN
+  UPDATE real_user_friendships
+  SET status = 'removed', updated_at = MAX(updated_at, NEW.created_at)
+  WHERE pair_low = CASE WHEN NEW.blocker_id < NEW.blocked_id THEN NEW.blocker_id ELSE NEW.blocked_id END
+    AND pair_high = CASE WHEN NEW.blocker_id < NEW.blocked_id THEN NEW.blocked_id ELSE NEW.blocker_id END
+    AND status = 'accepted';
+END;
 
 CREATE TABLE IF NOT EXISTS real_user_conversations (
   id TEXT PRIMARY KEY NOT NULL,
@@ -270,6 +363,24 @@ BEGIN
 END;
 
 -- Each receipt belongs to the other participant, never the sender.
+CREATE TRIGGER IF NOT EXISTS trg_real_user_message_immutable
+BEFORE UPDATE ON real_user_messages
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_message_immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_real_user_receipt_monotonic
+BEFORE UPDATE ON real_user_message_receipts
+WHEN
+  (OLD.delivered_at IS NOT NULL AND
+    (NEW.delivered_at IS NULL OR NEW.delivered_at < OLD.delivered_at))
+  OR
+  (OLD.read_at IS NOT NULL AND
+    (NEW.read_at IS NULL OR NEW.read_at < OLD.read_at))
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_receipt_not_monotonic');
+END;
+
 CREATE TRIGGER IF NOT EXISTS trg_real_user_receipt_recipient_guard
 BEFORE INSERT ON real_user_message_receipts
 WHEN NOT EXISTS (
