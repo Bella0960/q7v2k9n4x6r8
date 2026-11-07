@@ -350,8 +350,12 @@ async function listFriends(env, account, url) {
   }
 
   try {
-    // One stable, ID-ordered snapshot contains both live and removed friendship
-    // rows. The client can page without treating a partial roster as complete.
+    // Pages are ordered by immutable account ID. D1 does not provide a shared
+    // transaction snapshot across HTTP requests, so do not filter rows by the
+    // first-page timestamp: a concurrent update must still appear as its latest
+    // relationship state rather than disappearing and looking like a deletion.
+    // Earlier pages may be stale until the next refresh; later pages never omit
+    // a changed row because its updated_at moved past the paging marker.
     // Removed/blocked rows carry relationship metadata only, never private profile data.
     const result = await env.DB.prepare(
       "SELECT a.id, a.handle, a.display_name, a.avatar_asset_id, a.status AS account_status, " +
@@ -361,11 +365,11 @@ async function listFriends(env, account, url) {
       "THEN 1 ELSE 0 END AS is_blocked " +
       "FROM real_user_friendships f " +
       "JOIN real_user_accounts a ON a.id = CASE WHEN f.pair_low = ? THEN f.pair_high ELSE f.pair_low END " +
-      "WHERE (f.pair_low = ? OR f.pair_high = ?) AND f.updated_at <= ? AND a.id > ? " +
+      "WHERE (f.pair_low = ? OR f.pair_high = ?) AND a.id > ? " +
       "ORDER BY a.id COLLATE BINARY LIMIT ?"
     ).bind(
       account.id, account.id, account.id, account.id, account.id,
-      snapshotAt, cursor, limit + 1
+      cursor, limit + 1
     ).all();
     const rows = result.results || [];
     const hasMore = rows.length > limit;
