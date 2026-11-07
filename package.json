@@ -33,7 +33,7 @@
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
-    "test:contact:groups": "node --test tests/contact-groups-visibility.test.mjs",
+    "test:contact:groups": "node --test tests/contact-groups-visibility.test.mjs && node tests/contact-groups-browser.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
