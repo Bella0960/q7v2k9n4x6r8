@@ -454,14 +454,11 @@
       });
     }
 
-    // Coalesce offline edits into one pending event. If an event is already
-    // in flight, keep a second token so changes made during that request are
-    // not accidentally cleared by its late response.
-    var pendingEventId = readContextMetadata(pendingKey, localContextPendingEvents);
-    if (activeContextEventIds[value] && pendingEventId === activeContextEventIds[value]) {
-      pendingEventId = null;
-    }
-    if (!pendingEventId) pendingEventId = randomBase64Url(18);
+    // Every distinct saved-history fingerprint gets a fresh event ID. This
+    // matters across tabs: a token already in flight in another page must not
+    // be reused for a later history change. Offline edits replace the pending
+    // token, so the latest saved state is represented by one eventual bump.
+    var pendingEventId = randomBase64Url(18);
 
     writeContextMetadata(fingerprintKey, fingerprint, localContextFingerprints);
     writeContextMetadata(pendingKey, pendingEventId, localContextPendingEvents);
