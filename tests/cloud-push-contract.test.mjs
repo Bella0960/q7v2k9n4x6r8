@@ -14,7 +14,7 @@ import {
   parseVapidKeys,
   PUSH_SEND_TIMEOUT_MS
 } from '../worker/lib/webpush.js';
-import { applyMigrations } from '../worker/lib/migrations.js';
+import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 import { createStore } from '../worker/lib/store.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -146,6 +146,58 @@ test('迁移 0001–0005 建立云推送、调度元数据与投递恢复结构'
     '0004_character_context_version',
     '0005_push_delivery_retries'
   ]);
+});
+
+test('推送投递迁移只恢复历史临时失败，不重放成功与永久失败记录', () => {
+  const legacy = openTestDb();
+  legacy.exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
+  for (const migration of MIGRATIONS.slice(0, 4)) {
+    for (const statement of splitSql(migration.sql)) legacy.exec(statement);
+    legacy.exec(
+      'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+      migration.version,
+      1
+    );
+  }
+  legacy.exec(
+    \`INSERT INTO push_deliveries
+      (id, dedupe_key, subscription_id, status, http_status, created_at)
+     VALUES ('legacy-5xx', 'legacy-5xx', 'sub-1', 'failed', 503, 100)\`
+  );
+  legacy.exec(
+    \`INSERT INTO push_deliveries
+      (id, dedupe_key, subscription_id, status, http_status, created_at)
+     VALUES ('legacy-400', 'legacy-400', 'sub-2', 'failed', 400, 200)\`
+  );
+  legacy.exec(
+    \`INSERT INTO push_deliveries
+      (id, dedupe_key, subscription_id, status, http_status, created_at)
+     VALUES ('legacy-sent', 'legacy-sent', 'sub-3', 'sent', 201, 300)\`
+  );
+
+  const applied = applyMigrations(legacy.exec, 999);
+  assert.deepEqual(applied, ['0005_push_delivery_retries']);
+
+  const retryable = legacy.query(
+    "SELECT status, http_status, next_attempt_at, attempt_count, updated_at FROM push_deliveries WHERE id = 'legacy-5xx'"
+  )[0];
+  assert.equal(retryable.status, 'error');
+  assert.equal(retryable.http_status, 503);
+  assert.equal(retryable.next_attempt_at, 100);
+  assert.equal(retryable.attempt_count, 0);
+  assert.equal(retryable.updated_at, 100);
+
+  const permanent = legacy.query(
+    "SELECT status, next_attempt_at FROM push_deliveries WHERE id = 'legacy-400'"
+  )[0];
+  assert.equal(permanent.status, 'failed');
+  assert.equal(permanent.next_attempt_at, null);
+
+  const sent = legacy.query(
+    "SELECT status, next_attempt_at FROM push_deliveries WHERE id = 'legacy-sent'"
+  )[0];
+  assert.equal(sent.status, 'sent');
+  assert.equal(sent.next_attempt_at, null);
 });
 
 test('推送投递租约可恢复过期 worker，并阻止旧 worker 覆盖新状态', () => {
