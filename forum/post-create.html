@@ -7,6 +7,7 @@
     <script src="../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../shared/js/native-feel.js"></script>
     <script src="../shared/js/phone/phone_storage.js"></script>
+    <script src="../shared/js/contact-groups.js?v=20261107v1"></script>
     <style>
         :root{
             color-scheme:light;
@@ -202,6 +203,11 @@
         .mention-option .check-icon { opacity: 0.3; }
         .mention-option.active .check-icon { opacity: 1; }
 
+        .audience-back { padding:12px 22px;color:#777;border-bottom:1px solid #eee;font-size:11px;cursor:pointer; }
+        .audience-section-label { padding:14px 22px 6px;color:#999;font-size:10px;letter-spacing:.04em; }
+        .audience-option .mention-avatar.group-mark { border-radius:4px;background:#f1f1f1;color:#555;font-size:10px;border:1px solid #e6e6e6; }
+        .audience-meta { color:#999;font-size:10px; }
+        .audience-count { padding:10px 22px;color:#888;font-size:10px;border-top:1px solid #eee; }
         .empty-hint { text-align: center; padding: 30px 16px; color: #b0b0b5; font-size: 12px; }
 
         /* ===== Toast：参考 toast ===== */
@@ -259,7 +265,7 @@
     <div class="sheet-backdrop" id="permBackdrop"></div>
     <div class="option-sheet" id="permSheet">
         <div class="sheet-header">
-            <span class="sheet-title">可见范围</span>
+            <span class="sheet-title" id="permSheetTitle">可见范围</span>
             <button class="sheet-close" id="permClose" type="button">关闭</button>
         </div>
         <div class="sheet-body" id="permBody"></div>
@@ -286,6 +292,11 @@
         var pendingImages = [];     // 图片 dataURL 数组（最多 9 张）
         var currentPerm = 'public';
         var mentionsList = [];
+        var permissionSheetStage = 'modes';
+        var selectedVisibleGroupIds = [];
+        var selectedVisibleContactIds = [];
+        var selectedHiddenGroupIds = [];
+        var selectedHiddenContactIds = [];
 
         /* ========== 工具函数 ========== */
         function escapeHtml(str) {
@@ -421,16 +432,40 @@
 
         /* ========== 可见范围 sheet ========== */
         var PERM_OPTIONS = [
-            { key: 'public',   label: '公开' },
-            { key: 'friends',  label: '好友可见' },
-            { key: 'private',  label: '仅自己可见' },
-            { key: 'custom',   label: '选部分好友可见' }
+            { key: 'public', label: '公开' },
+            { key: 'friends', label: '好友可见' },
+            { key: 'private', label: '仅自己可见' },
+            { key: 'custom', label: '部分可见' },
+            { key: 'excluded', label: '不给谁看' }
         ];
 
         var permSheet = document.getElementById('permSheet');
         var permBackdrop = document.getElementById('permBackdrop');
 
-        function openPermSheet() {
+        function getAudienceApi() { return window.PhoneContactGroups || null; }
+        function getAudienceContacts() {
+            return getCharacterList().slice().sort(function (a,b) { return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'); });
+        }
+        function getAudienceSnapshot(mode) {
+            var api = getAudienceApi();
+            var groups = mode === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
+            var contacts = mode === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
+            if (api && typeof api.buildAudienceSnapshot === 'function') return api.buildAudienceSnapshot(groups, contacts);
+            return { groupIds: [], contactIds: contacts.slice(), memberIds: contacts.slice() };
+        }
+        function updatePermissionValue() {
+            var option = PERM_OPTIONS.find(function (item) { return item.key === currentPerm; });
+            var label = option ? option.label : '公开';
+            if (currentPerm === 'custom' || currentPerm === 'excluded') {
+                var snapshot = getAudienceSnapshot(currentPerm);
+                label += snapshot.memberIds.length ? ' · ' + snapshot.memberIds.length + '人' : ' · 未选择';
+            }
+            document.getElementById('permValue').textContent = label;
+        }
+        function showPermissionModes() {
+            permissionSheetStage = 'modes';
+            document.getElementById('permSheetTitle').textContent = '可见范围';
+            document.getElementById('permClose').textContent = '关闭';
             var body = document.getElementById('permBody');
             body.innerHTML = PERM_OPTIONS.map(function (o) {
                 var active = o.key === currentPerm ? ' active' : '';
@@ -439,23 +474,94 @@
                     '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' +
                 '</div>';
             }).join('');
+        }
+        function renderAudienceSelection() {
+            var body = document.getElementById('permBody');
+            var api = getAudienceApi();
+            var groups = api ? api.getGroups() : [];
+            var contacts = getAudienceContacts();
+            var chosenGroups = currentPerm === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
+            var chosenContacts = currentPerm === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
+            var html = '<div class="audience-back" data-audience-back>返回可见范围</div>';
+            if (groups.length) {
+                html += '<div class="audience-section-label">通讯录分组</div>';
+                html += groups.map(function (group) {
+                    var active = chosenGroups.indexOf(String(group.id)) !== -1 ? ' active' : '';
+                    var count = Array.isArray(group.memberIds) ? group.memberIds.length : 0;
+                    return '<div class="mention-option audience-option' + active + '" data-audience-kind="group" data-audience-id="' + escapeHtml(group.id) + '">' +
+                        '<div class="mention-avatar group-mark">分</div>' +
+                        '<span class="mention-name">' + escapeHtml(group.name) + '<span class="audience-meta"> · ' + count + '人</span></span>' +
+                        '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+                }).join('');
+            }
+            html += '<div class="audience-section-label">单独选择联系人</div>';
+            if (!contacts.length) {
+                html += '<div class="empty-hint">还没有可选择的联系人</div>';
+            } else {
+                html += contacts.map(function (contact) {
+                    var id = String(contact.id);
+                    var active = chosenContacts.indexOf(id) !== -1 ? ' active' : '';
+                    var avatar = contact.avatar
+                        ? '<img src="' + escapeHtml(contact.avatar) + '" alt="">'
+                        : escapeHtml(String(contact.name || '友').charAt(0));
+                    return '<div class="mention-option audience-option' + active + '" data-audience-kind="contact" data-audience-id="' + escapeHtml(id) + '">' +
+                        '<div class="mention-avatar">' + avatar + '</div>' +
+                        '<span class="mention-name">' + escapeHtml(contact.name || '联系人') + '</span>' +
+                        '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+                }).join('');
+            }
+            var snapshot = getAudienceSnapshot(currentPerm);
+            html += '<div class="audience-count">已选择 ' + snapshot.memberIds.length + ' 位联系人 · ' + chosenGroups.length + ' 个分组</div>';
+            body.innerHTML = html;
+        }
+        function openAudienceSelection(mode) {
+            currentPerm = mode;
+            permissionSheetStage = 'audience';
+            document.getElementById('permSheetTitle').textContent = mode === 'custom' ? '部分可见' : '不给谁看';
+            document.getElementById('permClose').textContent = '完成';
+            renderAudienceSelection();
+        }
+        function openPermSheet() {
+            showPermissionModes();
             permBackdrop.classList.add('show');
             permSheet.classList.add('show');
         }
         function closePermSheet() {
             permBackdrop.classList.remove('show');
             permSheet.classList.remove('show');
+            permissionSheetStage = 'modes';
+            updatePermissionValue();
         }
 
         document.getElementById('rowVisibility').addEventListener('click', openPermSheet);
-        document.getElementById('permClose').addEventListener('click', closePermSheet);
+        document.getElementById('permClose').addEventListener('click', function () {
+            if (permissionSheetStage === 'audience' && currentPerm === 'custom' && !getAudienceSnapshot('custom').memberIds.length) {
+                showToast('部分可见至少选择一位联系人');
+                return;
+            }
+            closePermSheet();
+        });
         permBackdrop.addEventListener('click', closePermSheet);
         document.getElementById('permBody').addEventListener('click', function (e) {
+            var back = e.target.closest('[data-audience-back]');
+            if (back) { showPermissionModes(); return; }
+            var choice = e.target.closest('[data-audience-kind]');
+            if (choice && permissionSheetStage === 'audience') {
+                var kind = choice.getAttribute('data-audience-kind');
+                var id = choice.getAttribute('data-audience-id');
+                var selection = currentPerm === 'custom'
+                    ? (kind === 'group' ? selectedVisibleGroupIds : selectedVisibleContactIds)
+                    : (kind === 'group' ? selectedHiddenGroupIds : selectedHiddenContactIds);
+                var index = selection.indexOf(id);
+                if (index >= 0) selection.splice(index, 1); else selection.push(id);
+                renderAudienceSelection();
+                return;
+            }
             var item = e.target.closest('.option-item');
-            if (!item) return;
-            currentPerm = item.getAttribute('data-perm');
-            var label = PERM_OPTIONS.find(function (o) { return o.key === currentPerm; });
-            document.getElementById('permValue').textContent = label ? label.label : '公开';
+            if (!item || permissionSheetStage !== 'modes') return;
+            var mode = item.getAttribute('data-perm');
+            if (mode === 'custom' || mode === 'excluded') { openAudienceSelection(mode); return; }
+            currentPerm = mode;
             closePermSheet();
         });
 
@@ -532,6 +638,13 @@
 
             var me = getMyInfo();
             var myId = me.id;
+            var visibleAudience = currentPerm === 'custom' ? getAudienceSnapshot('custom') : { groupIds: [], contactIds: [], memberIds: [] };
+            var hiddenAudience = currentPerm === 'excluded' ? getAudienceSnapshot('excluded') : { groupIds: [], contactIds: [], memberIds: [] };
+            if (currentPerm === 'custom' && !visibleAudience.memberIds.length) {
+                showToast('部分可见至少选择一位联系人');
+                openPermSheet();
+                return;
+            }
             var post = {
                 id: 'm_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
                 authorId: myId,
@@ -546,12 +659,15 @@
                 comments: 0,
                 commentList: [],
                 visibility: currentPerm,
-                visibleTo: [],
+                visibleTo: visibleAudience.memberIds,
+                visibleGroupIds: visibleAudience.groupIds,
+                visibleContactIds: visibleAudience.contactIds,
+                hiddenTo: hiddenAudience.memberIds,
+                hiddenGroupIds: hiddenAudience.groupIds,
+                hiddenContactIds: hiddenAudience.contactIds,
+                audienceVersion: 1,
                 mentions: mentionsList.slice()
             };
-            if (currentPerm === 'custom') {
-                post.visibleTo = mentionsList.slice(); // 选部分好友时 visibleTo 同 mentions
-            }
 
             // 存
             var list = _storage ? _storage.getMoments() : (function(){ try { return JSON.parse(localStorage.getItem('moments') || '[]'); } catch (e) { return []; } })();
