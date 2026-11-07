@@ -2924,7 +2924,7 @@ test('记账页能从原支出行追溯订单售后申请，且申请期间不�
 
 test('商店与外卖售后入口只对可核验的原始支付流水开放，且明确不自动退款', () => {
   for (const [name, page] of [['shop', shopPage], ['takeout', takeoutPage]]) {
-    assert.match(page, /order-after-sales\.js\?v=20261107v1/);
+    assert.match(page, /order-after-sales\\.js\\?v=20261107v2/);
     assert.match(page, /MaoMaoOrderAfterSales\.canSubmit/);
     assert.match(page, /MaoMaoOrderAfterSales|journal\.submit/);
     assert.match(page, /不会自动退款/);
