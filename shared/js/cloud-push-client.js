@@ -615,7 +615,10 @@
     var messages = await getCharacterOutboundMessages(characterId, limit);
     var receivedMarked = 0;
     var receivedDeferred = 0;
+    var persistedCount = 0;
     var saved = 0;
+    var ackDeferred = 0;
+    var persistErrors = 0;
     var deferred = 0;
     for (var index = 0; index < messages.length; index += 1) {
       var message = messages[index];
@@ -628,19 +631,38 @@
         receivedDeferred += 1;
       }
 
-      var persisted = await persistMessage(message.payload, message);
+      var persisted = false;
+      try {
+        persisted = await persistMessage(message.payload, message);
+      } catch (persistError) {
+        // A single broken local write must not block later messages in this batch.
+        persistErrors += 1;
+        deferred += 1;
+        continue;
+      }
       if (persisted !== true) {
         deferred += 1;
         continue;
       }
-      await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
-      saved += 1;
+      persistedCount += 1;
+
+      try {
+        await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
+        saved += 1;
+      } catch (ackError) {
+        // The saved message remains in local history and pending in the cloud;
+        // the next poll sees the same serverMessageId and safely retries ACK only.
+        ackDeferred += 1;
+      }
     }
     return {
       received: messages.length,
       receivedMarked: receivedMarked,
       receivedDeferred: receivedDeferred,
+      persisted: persistedCount,
       saved: saved,
+      ackDeferred: ackDeferred,
+      persistErrors: persistErrors,
       deferred: deferred
     };
   }
