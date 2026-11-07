@@ -334,6 +334,33 @@ test('过期 running 租约会被重新列入并安全 CAS 认领，旧 worker �
   assert.equal(store.getActivity('act_recover').status, 'completed');
 });
 
+test('worker 即使尚未被新 owner 接管，也不能在原 lease 过期后提交结果', () => {
+  const { store } = freshStore();
+  enqueue(store, { id: 'act_late_completion' });
+  store.claimActivity({
+    id: 'act_late_completion',
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'worker-slow',
+    leaseUntil: NOW + 10_000,
+    now: NOW
+  });
+  assert.equal(store.completeActivity({
+    id: 'act_late_completion',
+    owner: 'worker-slow',
+    attemptCount: 1,
+    now: NOW + 10_000
+  }), false);
+  assert.equal(store.failActivity({
+    id: 'act_late_completion',
+    owner: 'worker-slow',
+    attemptCount: 1,
+    now: NOW + 10_000,
+    nextAttemptAt: NOW + 20_000
+  }), false);
+  assert.equal(store.getActivity('act_late_completion').status, 'running');
+});
+
 test('过期 running 任务耗尽重试次数后会终止为 failed', () => {
   const { store } = freshStore();
   enqueue(store, { id: 'act_reclaim_exhausted', maxAttempts: 1 });
