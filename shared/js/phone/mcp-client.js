@@ -108,6 +108,86 @@
     });
   }
 
+  function validateToolArguments(schema, args) {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+      throw new Error('工具参数必须是 JSON 对象。');
+    }
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+      throw new Error('工具参数结构无效，已停止调用。');
+    }
+    function actualType(value) {
+      if (value === null) return 'null';
+      if (Array.isArray(value)) return 'array';
+      if (Number.isInteger(value)) return 'integer';
+      if (typeof value === 'number') return 'number';
+      return typeof value;
+    }
+    function check(node, value, path, depth) {
+      if (depth > 8) throw new Error(path + ' 嵌套超过 8 层。');
+      if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+      if (Array.isArray(node.enum)) {
+        var encoded = JSON.stringify(value);
+        if (!node.enum.some(function (item) { return JSON.stringify(item) === encoded; })) {
+          throw new Error(path + ' 不符合工具声明的可选值。');
+        }
+      }
+      var types = Array.isArray(node.type) ? node.type : (node.type ? [node.type] : []);
+      if (types.length && types.indexOf(actualType(value)) === -1 &&
+          !(actualType(value) === 'integer' && types.indexOf('number') !== -1)) {
+        throw new Error(path + ' 类型不符合工具声明（需要 ' + types.join(' / ') + '）。');
+      }
+      var type = node.type;
+      if (Array.isArray(type)) type = type.indexOf(actualType(value)) !== -1
+        ? actualType(value) : (type.indexOf('number') !== -1 && actualType(value) === 'integer' ? 'number' : type[0]);
+      if (type === 'object' || (!type && value && typeof value === 'object' && !Array.isArray(value))) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(path + ' 必须是对象。');
+        var properties = node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
+          ? node.properties : {};
+        (Array.isArray(node.required) ? node.required.slice(0, 100) : []).forEach(function (key) {
+          if (!Object.prototype.hasOwnProperty.call(value, key)) {
+            throw new Error(path + ' 缺少必填字段：' + String(key).slice(0, 80));
+          }
+        });
+        Object.keys(value).forEach(function (key) {
+          if (!Object.prototype.hasOwnProperty.call(properties, key)) {
+            if (node.additionalProperties === false) throw new Error(path + ' 含有未声明字段：' + key.slice(0, 80));
+            return;
+          }
+          check(properties[key], value[key], path + '.' + key.slice(0, 80), depth + 1);
+        });
+      } else if (type === 'array') {
+        if (!Array.isArray(value)) throw new Error(path + ' 必须是数组。');
+        if (Number.isFinite(node.minItems) && value.length < node.minItems) throw new Error(path + ' 项数少于最小限制。');
+        if (Number.isFinite(node.maxItems) && value.length > node.maxItems) throw new Error(path + ' 项数超过最大限制。');
+        if (node.items && typeof node.items === 'object') {
+          value.slice(0, 200).forEach(function (item, index) {
+            check(node.items, item, path + '[' + index + ']', depth + 1);
+          });
+          if (value.length > 200) throw new Error(path + ' 数组项数超过安全检查上限。');
+        }
+      } else if (type === 'string') {
+        if (typeof value !== 'string') throw new Error(path + ' 必须是文本。');
+        if (Number.isFinite(node.minLength) && value.length < node.minLength) throw new Error(path + ' 长度不足。');
+        if (Number.isFinite(node.maxLength) && value.length > node.maxLength) throw new Error(path + ' 过长。');
+      } else if (type === 'integer') {
+        if (typeof value !== 'number' || !Number.isInteger(value)) throw new Error(path + ' 必须是整数。');
+        if (Number.isFinite(node.minimum) && value < node.minimum) throw new Error(path + ' 小于允许范围。');
+        if (Number.isFinite(node.maximum) && value > node.maximum) throw new Error(path + ' 大于允许范围。');
+      } else if (type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(path + ' 必须是有效数字。');
+        if (Number.isFinite(node.minimum) && value < node.minimum) throw new Error(path + ' 小于允许范围。');
+        if (Number.isFinite(node.maximum) && value > node.maximum) throw new Error(path + ' 大于允许范围。');
+      } else if (type === 'boolean' && typeof value !== 'boolean') {
+        throw new Error(path + ' 必须是布尔值。');
+      }
+    }
+    if (schema.type && schema.type !== 'object' && !(Array.isArray(schema.type) && schema.type.indexOf('object') !== -1)) {
+      throw new Error('MCP 工具的根参数结构必须是 object。');
+    }
+    check(schema, args, '参数', 0);
+    return true;
+  }
+
   function parseResponse(response, expectedId) {
     return readResponseText(response).then(function (text) {
       if (!text.trim()) return null;
@@ -121,6 +201,7 @@
   }
 
   NS.validateEndpoint = validateEndpoint;
+  NS.validateToolArguments = validateToolArguments;
   NS.createClient = function (options) {
     options = options || {};
     var endpoint = validateEndpoint(options.url);
