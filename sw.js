@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v173';
+const CACHE_NAME = 'phone-app-pwa-v174';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
+// v174 release: add the opt-in NPC friend request center and its foreground discovery module.
 const APP_SHELL = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
   './chat/contacts/contacts.html',
+  './chat/contacts/npc-friends.html',
   './chat/moments/moments.html',
   './chat/footprint/footprint.html',
   './wallet/takeout.html',
@@ -78,6 +79,7 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
+  './shared/js/phone/npc-social.js?v=20261108a',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
