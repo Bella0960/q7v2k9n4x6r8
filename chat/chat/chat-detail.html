@@ -6078,9 +6078,16 @@
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
                 inflightSnapshot = {
-                    text: window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function'
-                        ? window.RoleStickerLibrary.stripStreamMarker(lastPaintedStreamText)
-                        : lastPaintedStreamText,
+                    text: (function () {
+                        var snapshotText = lastPaintedStreamText;
+                        if (window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function') {
+                            snapshotText = window.RoleStickerLibrary.stripStreamMarker(snapshotText);
+                        }
+                        if (window.ChatImageVision && typeof window.ChatImageVision.stripAvatarCandidateMarker === 'function') {
+                            snapshotText = window.ChatImageVision.stripAvatarCandidateMarker(snapshotText);
+                        }
+                        return snapshotText;
+                    })(),
                     voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
