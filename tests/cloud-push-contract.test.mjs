@@ -202,7 +202,7 @@ test('推送投递迁移只恢复历史临时失败，不重放成功与永久�
   );
 
   const applied = applyMigrations(legacy.exec, 999);
-  assert.deepEqual(applied, ['0005_push_delivery_retries']);
+  assert.deepEqual(applied, MIGRATIONS.slice(4).map(migration => migration.version));
 
   const retryable = legacy.query(
     "SELECT status, http_status, next_attempt_at, attempt_count, updated_at FROM push_deliveries WHERE id = 'legacy-5xx'"
@@ -2854,7 +2854,9 @@ test('同账号其他设备可接管未确认消息，设备回执互不覆盖�
   assert.equal(aggregate.read_by_device_id, deviceB.deviceId);
 
   const otherAccount = makeDevice();
-  await registerDevice(ctx, otherAccount);
+  const otherPairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device: deviceA });
+  assert.equal(otherPairing.status, 200);
+  await registerDevice(ctx, otherAccount, { pairingToken: otherPairing.payload.pairingToken });
   ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
   const isolatedPull = await ctx.asJson('/api/characters/char-a/outbound', { device: otherAccount });
   assert.equal(isolatedPull.status, 200);
@@ -3539,6 +3541,7 @@ test('出站消息分别记录 Push 接受、设备收到、本地保存与用�
 test('生命周期回执支持同账号跨设备恢复，但不能跨账号或角色伪造', async () => {
   const now = 1800000000000;
   const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(now);
   const device = makeDevice();
   await registerDevice(ctx, device);
   const other = makeDevice();
@@ -3599,7 +3602,9 @@ test('生命周期回执支持同账号跨设备恢复，但不能跨账号或�
   assert.equal(wrongCharacter.status, 404);
 
   const otherAccount = makeDevice();
-  await registerDevice(ctx, otherAccount);
+  const otherPairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device });
+  assert.equal(otherPairing.status, 200);
+  await registerDevice(ctx, otherAccount, { pairingToken: otherPairing.payload.pairingToken });
   ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
   const otherAccountStatus = await ctx.asJson(
     '/api/characters/char-owner-only/outbound/' + messageId + '/status',
