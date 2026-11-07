@@ -395,7 +395,7 @@ function forumRefreshCommentKey(item){
  const author=String(item.residentId||item.name||'').trim();
  const text=String(item.text||'').trim().toLocaleLowerCase();
  if(!author||!text)return '';
- return [String(item.source||'forum-ai'),author,text].join('\\u0000');
+ return JSON.stringify([String(item.source||'forum-ai'),author,text]);
 }
 function mergeForumRefreshReplies(existingReplies,incomingReplies){
  const replies=Array.isArray(existingReplies)?existingReplies.map(function(reply){
