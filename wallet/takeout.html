@@ -776,6 +776,7 @@
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
             if (payMethod.indexOf('role_card:') === 0) {
               if (!roleFamilyCard) {
+                ledger.cancelPendingCheckout(transactionId);
                 toast('这张亲属卡不存在或已失效');
                 payMethod = 'normal';
                 closeCheckout();
@@ -786,6 +787,9 @@
                 roleFamilyCard.id, total, '外卖 · ' + items.map(function (it) { return it.dish.name + '×' + it.qty; }).join('、'), 'takeout', transactionId
               );
               if (!familySpend || !familySpend.ok) {
+                if (familySpend && (familySpend.reason === 'limit' || familySpend.reason === 'missing')) {
+                  ledger.cancelPendingCheckout(transactionId);
+                }
                 toast(familySpend && familySpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择');
                 closeCheckout();
                 openCheckout();
@@ -801,11 +805,10 @@
                 return { id: item.dish.id || item.dish.name, name: item.dish.name, price: item.dish.price, qty: item.qty };
               }),
               total: total,
-              payMethod: payMethod
             });
-            var transactionId = ledger.getOrCreatePendingCheckout('takeout', checkoutSignature);
+            var transactionId = ledger.getOrCreatePendingCheckout('takeout', checkoutSignature, payMethod);
             if (!transactionId) {
-              toast('本次结算编号未能保存，尚未扣款，请检查存储空间后重试');
+              toast('存在未完成的同一笔结算或结算编号未能保存；请使用上次支付方式继续');
               return;
             }
         
@@ -818,6 +821,7 @@
               try {
                 var cp = getClosePay();
                 if (!cp) {
+                  ledger.cancelPendingCheckout(transactionId);
                   toast('亲密付设置不可用，订单未完成');
                   return;
                 }
@@ -827,10 +831,12 @@
             return row && row.paymentId === transactionId;
           });
           if (!cp.enabled && !quotaAlreadyCommitted) {
+            ledger.cancelPendingCheckout(transactionId);
             toast('亲密付已关闭，订单未完成');
             return;
           }
           if (!quotaAlreadyCommitted && (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
+            ledger.cancelPendingCheckout(transactionId);
             toast('亲密付额度已变化，请重新选择支付方式');
             return;
           }
@@ -844,6 +850,7 @@
           });
           if (!walletAlreadyCommitted) {
             if (wd.balance < total) {
+              ledger.cancelPendingCheckout(transactionId);
               toast('钱包余额不足，未完成支付');
               return;
             }
