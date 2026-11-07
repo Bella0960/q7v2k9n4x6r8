@@ -110,7 +110,7 @@ test("migration does not create payment, transfer, wallet or transaction storage
 
 test("friendship rows must originate from accepted requests and blocked pairs are removed", () => {
   const friendships = tableBlock("real_user_friendships");
-  assert.match(friendships, /accepted_request_id TEXT NOT NULL/);
+  assert.match(friendships, /accepted_request_id TEXT NOT NULL REFERENCES real_user_friend_requests\\(id\\) ON DELETE CASCADE/);
   assert.match(migration, /trg_real_user_friendship_source_guard/);
   assert.match(migration, /real_user_friendship_requires_accepted_request/);
   assert.match(migration, /trg_real_user_friend_request_accepted/);
