@@ -324,5 +324,7 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /window\.setInterval\(pollMessages, 4500\)/);
   assert.match(FRIEND_CHAT_HTML, /document\.hidden/);
   assert.match(FRIEND_CHAT_HTML, /再次点击发送会安全重试/);
+  assert.match(FRIEND_CHAT_HTML, /FRIEND_MESSAGE_RATE_LIMITED/);
+  assert.match(FRIEND_CHAT_HTML, /请稍后再发送，当前输入内容已保留/);
   assert.match(FRIEND_CHAT_HTML, /端到端加密/);
 });
