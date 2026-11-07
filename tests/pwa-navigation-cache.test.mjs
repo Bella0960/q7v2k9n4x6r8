@@ -72,8 +72,9 @@ test('Contacts account client scripts are part of the versioned app shell', () =
   assert.match(contactsPage, /real-user-account-panel\.js\?v=20261107v6/);
   assert.match(serviceWorker, /friends-blocked-list/);
   const workerEntry = read('worker.js');
-  assert.match(workerEntry, /profileAvatar/);
-  assert.match(workerEntry, /REAL_USER_AVATAR_ENABLED/);
+  const avatarService = read('worker/real-user-avatar.js');
+  assert.match(workerEntry, /profileAvatarEnabled/);
+  assert.match(avatarService, /REAL_USER_AVATAR_ENABLED/);
 });
 
 test('real-user chat API requests always bypass the static cache and fetch live state', () => {
