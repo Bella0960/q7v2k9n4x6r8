@@ -377,7 +377,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       friends: friends.map(item => ({
         userId: item.friend_id,
         displayName: item.display_name || '',
-        createdAt: Number(item.created_at)
+        createdAt: Number(item.created_at),
+        unreadCount: Number(item.unread_count || 0)
       }))
     });
   }
@@ -598,6 +599,45 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       duplicate: result.kind === 'duplicate'
     });
   }
+
+
+  async function markFriendMessagesRead(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'messageId') {
+      throw new ApiError(400, 'INVALID_READ_RECEIPT', '已读确认只接受 messageId');
+    }
+    const messageId = String(body.messageId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(messageId)) {
+      throw new ApiError(400, 'INVALID_READ_RECEIPT', '消息 ID 格式无效');
+    }
+    const result = await store.markFriendConversationRead({
+      userId: account.user_id,
+      friendId,
+      messageId,
+      now: now()
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有仍然有效的好友才能更新已读状态');
+    }
+    if (result.kind === 'message_not_found') {
+      throw new ApiError(404, 'FRIEND_MESSAGE_NOT_FOUND', '只能确认已收到的好友消息');
+    }
+    return ok({
+      read: {
+        friendId,
+        lastReadMessageId: result.read.last_read_message_id,
+        lastReadAt: Number(result.read.last_read_created_at),
+        updatedAt: Number(result.read.updated_at)
+      },
+      alreadyRead: result.kind === 'already_read'
+    });
+  }
+
 
   async function registerDevice(request) {
     const body = await readJsonBody(request);
@@ -1184,6 +1224,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           friendRequestActionMatch[2] === 'accept' ? 'accepted' : 'rejected'
         );
       }
+      const friendReadMatch = /^\\/api\\/friends\\/([^/]+)\\/read$/.exec(path);
+      if (friendReadMatch && method === 'POST') return await markFriendMessagesRead(request, friendReadMatch[1]);
+
       const friendMessagesMatch = /^\/api\/friends\/([^/]+)\/messages$/.exec(path);
       if (friendMessagesMatch) {
         const friendId = friendMessagesMatch[1];
