@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role-avatar-library.js?v=20261107v6"></script>
     <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
-    <script src="../../shared/js/phone/chat-image-vision.js?v=20261107v4"></script>
+    <script src="../../shared/js/phone/chat-image-vision.js?v=20261107v5"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
@@ -6015,7 +6015,7 @@
             if (!isGroupChat && !isRegen && !contextOnly && (!silent || visionImageMids.length) &&
                 presenceMode === 'online' && avatarCandidateImages.length && window.ChatImageVision &&
                 typeof window.ChatImageVision.buildAvatarCandidatePrompt === 'function') {
-                var avatarCandidatePrompt = window.ChatImageVision.buildAvatarCandidatePrompt(avatarCandidateImages);
+                var avatarCandidatePrompt = window.ChatImageVision.buildAvatarCandidatePrompt(avatarCandidateImages, text);
                 if (avatarCandidatePrompt) apiMessages[0].content += '\n\n' + avatarCandidatePrompt;
             }
 
@@ -6265,7 +6265,8 @@
                         parsedAvatarCandidate = window.ChatImageVision.parseAvatarCandidateReply(
                             fullText,
                             avatarCandidateImages,
-                            avatarCandidateLimit
+                            avatarCandidateLimit,
+                            text
                         );
                         fullText = parsedAvatarCandidate.text;
                     }
