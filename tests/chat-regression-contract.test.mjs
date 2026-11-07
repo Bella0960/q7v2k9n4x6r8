@@ -1802,6 +1802,8 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /updateCharacterLease\(key, 'acquire'\)/);
   assert.match(chatNotifier, /ownedByCurrentDevice !== true/);
   assert.match(chatNotifier, /hasStoredCloudDeviceCredentials/);
+  assert.match(chatNotifier, /if \(!roleSetting \|\|[\s\S]{0,220}return true;/,
+    '单角色授权读取异常时必须 fail-closed');
   assert.match(chatNotifier, /if \(!globalSetting \|\| globalSetting\.enabled !== true\) \{[\s\S]{0,180}return true;/,
     '已配对设备的云端总开关关闭时，必须阻止本地主动联系降级');
   assert.match(chatNotifier, /return hasStoredCloudDeviceCredentials\(\);/,
