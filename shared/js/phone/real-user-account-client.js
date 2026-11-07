@@ -203,6 +203,12 @@
     return Array.isArray(payload.requests) ? payload.requests : [];
   }
 
+  async function listBlocked() {
+    requireFriends();
+    var payload = await request('/v1/friends/blocks');
+    return Array.isArray(payload.blocked) ? payload.blocked : [];
+  }
+
   async function rotateFriendCode() {
     requireFriends();
     return request('/v1/friends/codes/rotate', { method: 'POST' });
@@ -263,6 +269,7 @@
     logout: logout,
     listFriends: listFriends,
     listRequests: listRequests,
+    listBlocked: listBlocked,
     rotateFriendCode: rotateFriendCode,
     revokeFriendCode: revokeFriendCode,
     sendFriendRequest: sendFriendRequest,
