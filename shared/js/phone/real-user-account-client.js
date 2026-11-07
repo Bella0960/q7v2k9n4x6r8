@@ -318,9 +318,13 @@
 
   async function listFriendRoster() {
     requireFriends();
+    // Refresh the HttpOnly-cookie session first: another tab may have logged
+    // into a different account since this client instance was created.
+    var sessionAccount = await refreshAccount();
     var friends = [];
     var relationships = [];
     var snapshotAt = null;
+    var snapshotOwnerId = '';
     var cursor = '';
     var pages = 0;
     var seenIds = Object.create(null);
@@ -335,6 +339,12 @@
           typeof payload.hasMore !== 'boolean' || !Number.isSafeInteger(Number(payload.snapshotAt))) {
         throw makeError('invalid_friend_roster_response', 200, payload);
       }
+      var pageOwnerId = String(payload.ownerAccountId || '');
+      if (!pageOwnerId || pageOwnerId !== sessionAccount.id ||
+          (snapshotOwnerId && snapshotOwnerId !== pageOwnerId)) {
+        throw makeError('friend_roster_account_mismatch', 409, payload);
+      }
+      snapshotOwnerId = pageOwnerId;
       var pageSnapshotAt = Number(payload.snapshotAt);
       if (snapshotAt === null) snapshotAt = pageSnapshotAt;
       else if (snapshotAt !== pageSnapshotAt) throw makeError('friend_snapshot_changed', 409, payload);
@@ -360,7 +370,7 @@
       cursor = nextCursor;
     }
     return {
-      ownerAccountId: state.account.id,
+      ownerAccountId: snapshotOwnerId,
       friends: friends,
       relationships: relationships,
       snapshotAt: snapshotAt,
