@@ -787,6 +787,30 @@ class CloudStore {
     };
   }
 
+  /**
+   * 24 小时内的调度原因汇总，按已鉴权设备所属用户隔离。
+   * 历史 tick 若没有 device_id 关联，将不会被归入任何用户。
+   */
+  getRecentAutonomyReasonSummary({ userId = 'owner', since } = {}) {
+    if (!Number.isFinite(Number(since))) return [];
+    return this.exec(
+      `SELECT e.reason_code, COUNT(*) AS total
+       FROM execution_log e
+       INNER JOIN devices d ON d.id = e.device_id
+       WHERE d.user_id = ?
+         AND e.kind = 'autonomy_tick'
+         AND e.created_at >= ?
+       GROUP BY e.reason_code
+       ORDER BY total DESC, e.reason_code ASC
+       LIMIT 12`,
+      userId,
+      Number(since)
+    ).map(row => ({
+      reasonCode: String(row.reason_code || ''),
+      count: Number(row.total || 0)
+    }));
+  }
+
   counts() {
     const devices = this.exec('SELECT COUNT(*) AS total FROM devices')[0];
     const subscriptions = this.exec(
