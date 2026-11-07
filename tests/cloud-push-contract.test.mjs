@@ -16,6 +16,7 @@ import {
 } from '../worker/lib/webpush.js';
 import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 import { createStore } from '../worker/lib/store.js';
+import { buildOutboundPushPayload, dispatchPendingOutboundPushes } from '../worker/lib/app.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
