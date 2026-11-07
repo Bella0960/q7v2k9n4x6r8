@@ -49,7 +49,7 @@ This is server implementation groundwork, not proof of deployed account service.
 
 ## 4. Friend-code and friend-request service groundwork
 
-The Worker contains server-owned friend handlers under `/api/real-user-chat/v1/friends`. The feature remains separately disabled unless `REAL_USER_FRIENDS_ENABLED="true"`, account auth is configured, the D1 friend tables exist, the D1 v2 active-code uniqueness index exists, and `AUTH_LIMITER` is available.
+The Worker contains server-owned friend handlers under `/api/real-user-chat/v1/friends`. The feature remains separately disabled unless `REAL_USER_FRIENDS_ENABLED="true"`, account auth is configured, all four D1 friend tables exist, both required partial unique indexes exist (one active QR code per account and one pending request per unordered account pair), all eight relationship-lifecycle triggers from the migration exist, and `AUTH_LIMITER` is available. The trigger gate is intentional: accepting a request creates the authoritative friendship row through a D1 trigger, and blocking must revoke a friendship and terminate pending requests atomically. A partially migrated database must never advertise the friend service as ready.
 
 - `POST /codes/rotate`: revoke all previous unrevoked friend codes for the current account, create a new 256-bit random code, store only its SHA-256 hash, and return the plaintext code once with a 15-minute expiry and `mao://friend/add?code=...` QR payload.
 - `DELETE /codes/me`: revoke the current account's active friend code immediately.
