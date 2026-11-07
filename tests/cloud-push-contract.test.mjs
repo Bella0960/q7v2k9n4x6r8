@@ -3140,10 +3140,20 @@ test('本地存储额度不足时，页面内存游标仍可让连续轮询越�
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   const deviceId = 'test-device-0000000001';
   const cursorKey = 'cloud_outbound_cursor_v1:char-memory-cursor:' + deviceId;
-  const values = new Map([['cloud_device_v1', JSON.stringify({
-    deviceId,
-    secret: 'test-secret-000000000000000000000001'
-  })]]);
+  const rows = Array.from({ length: 40 }, (_, index) => ({
+    id: 'outbound_row_' + String(index + 1).padStart(12, '0'),
+    serverMessageId: 'server_message_' + String(index + 1).padStart(12, '0'),
+    createdAt: 1800000000000,
+    payload: { text: 'message-' + (index + 1) }
+  }));
+  const staleCursor = { createdAt: rows[7].createdAt, id: rows[7].id };
+  const values = new Map([
+    ['cloud_device_v1', JSON.stringify({
+      deviceId,
+      secret: 'test-secret-000000000000000000000001'
+    })],
+    [cursorKey, JSON.stringify(staleCursor)]
+  ]);
   const localStorageMock = {
     getItem(key) { return values.has(key) ? values.get(key) : null; },
     setItem(key, value) {
@@ -3152,12 +3162,6 @@ test('本地存储额度不足时，页面内存游标仍可让连续轮询越�
     },
     removeItem(key) { values.delete(key); }
   };
-  const rows = Array.from({ length: 32 }, (_, index) => ({
-    id: 'outbound_row_' + String(index + 1).padStart(12, '0'),
-    serverMessageId: 'server_message_' + String(index + 1).padStart(12, '0'),
-    createdAt: 1800000000000,
-    payload: { text: 'message-' + (index + 1) }
-  }));
   const acknowledged = new Set();
   const documentMock = { currentScript: null };
   const windowMock = { document: documentMock };
@@ -3209,17 +3213,25 @@ test('本地存储额度不足时，页面内存游标仍可让连续轮询越�
     navigator: {}
   });
   const client = windowMock.MaomaoCloud;
-  const persist = async () => true;
+  const persist = async (payload, envelope) => {
+    const rowIndex = rows.findIndex(row => row.serverMessageId === envelope.serverMessageId);
+    // Keep rows 9–37 failing. If the old on-disk cursor wins, they consume
+    // the next 30-item scan budget before the newest rows can be reached.
+    return rowIndex < 8 || rowIndex >= 37;
+  };
 
   const firstRound = await client.receiveCharacterOutboundMessages('char-memory-cursor', persist, 2);
-  assert.equal(firstRound.saved, 30);
+  assert.equal(firstRound.saved, 1);
   assert.equal(firstRound.pagesProcessed, 15);
-  assert.equal(values.has(cursorKey), false, 'the simulated storage failure must prevent disk cursor persistence');
+  assert.equal(acknowledged.has(rows[37].serverMessageId), true);
+  assert.equal(values.get(cursorKey), JSON.stringify(staleCursor),
+    'the old persisted cursor must remain unchanged when quota writes fail');
 
   const secondRound = await client.receiveCharacterOutboundMessages('char-memory-cursor', persist, 2);
-  assert.equal(secondRound.saved, 2, 'the in-memory cursor must resume after row 30');
-  assert.equal(acknowledged.size, 32);
-  assert.equal(values.has(cursorKey), false);
+  assert.equal(secondRound.saved, 2, 'the newer in-memory cursor must beat the stale disk cursor');
+  assert.equal(acknowledged.has(rows[38].serverMessageId), true);
+  assert.equal(acknowledged.has(rows[39].serverMessageId), true);
+  assert.equal(values.has(cursorKey), false, 'end-of-scan cleanup should remove the stale persisted cursor');
 });
 
 test('客户端收件箱游标按角色和设备持久化，并在有限批次中继续翻页', () => {
