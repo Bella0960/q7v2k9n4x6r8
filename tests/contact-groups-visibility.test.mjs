@@ -159,11 +159,11 @@ test('AI audience checks apply only to user-authored posts and fail closed for r
 });
 
 test('contact group metadata is covered by the existing full localStorage backup without adding secrets', () => {
-  assert.match(backup, /function snapshot\\(dropCaches, dropSecrets\\)/);
-  assert.match(backup, /keys\\.forEach\\(function \\(k\\)/);
-  assert.match(backup, /out\\[k\\] = localStorage\\.getItem\\(k\\)/);
-  assert.match(backup, /var EXCLUDE_KEYS = \\['api_call_logs'\\]/);
-  assert.doesNotMatch(backup, /contact_groups_v1/);
+  assert.ok(backup.includes('function snapshot(dropCaches, dropSecrets)'));
+  assert.ok(backup.includes('keys.forEach(function (k)'));
+  assert.ok(backup.includes('out[k] = localStorage.getItem(k)'));
+  assert.ok(backup.includes("var EXCLUDE_KEYS = ['api_call_logs']"));
+  assert.equal(backup.includes('contact_groups_v1'), false);
 });
 
 test('PWA cache contains the contact group policy module and has a new cache version', () => {
