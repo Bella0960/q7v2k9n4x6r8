@@ -323,19 +323,20 @@ test('chat avatar candidate linking rejects unavailable and non-image assets', a
 });
 
 test('chat avatar candidate reference is released if role library metadata cannot be saved', async () => {
-  const { api, assets, refs } = createLibrary();
-  const source = await api.add('chat-owner', 'data:image/jpeg;base64,PHOTO');
-  const originalSetItem = globalThis.__unused;
-  assert.equal(assets.has(source.value.assetId), true);
-  const library = api;
-  const originalStorage = library;
-  // Use a separate quota-failing library with the same valid source asset seeded into its mock media store.
   const failing = createLibrary({}, { failWrites: true });
-  failing.assets.set(source.value.assetId, new Blob(['photo'], { type: 'image/jpeg' }));
-  const result = await failing.api.addAsset('role-a', source.value.assetId, { source: 'chat' });
+  const sourceAssetId = 'as_' + 'A'.repeat(31) + 'B';
+  failing.assets.set(sourceAssetId, new Blob(['photo'], { type: 'image/jpeg' }));
+  const result = await failing.api.addAsset('role-a', sourceAssetId, { source: 'chat' });
   assert.equal(result.ok, false);
-  assert.equal(failing.refs.has(source.value.assetId + '|role-avatar|role-a'), false);
-  assert.equal(failing.assets.has(source.value.assetId), true, 'chat still owns the original asset');
-  void originalSetItem;
-  void originalStorage;
+  assert.equal(failing.refs.has(sourceAssetId + '|role-avatar|role-a'), false);
+  assert.equal(failing.assets.has(sourceAssetId), true, 'the chat-owned source asset is retained');
+});
+
+test('chat avatar candidate linking failure does not write a role library entry', async () => {
+  const failing = createLibrary({ failAddRefFor: 'as_' + 'A'.repeat(31) + 'B' });
+  const sourceAssetId = 'as_' + 'A'.repeat(31) + 'B';
+  failing.assets.set(sourceAssetId, new Blob(['photo'], { type: 'image/jpeg' }));
+  const result = await failing.api.addAsset('role-a', sourceAssetId, { source: 'chat' });
+  assert.equal(result.ok, false);
+  assert.equal(failing.api.list('role-a').length, 0);
 });
