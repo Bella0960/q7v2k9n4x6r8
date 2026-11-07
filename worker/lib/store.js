@@ -600,17 +600,19 @@ class CloudStore {
 
   listDueActivities(now, limit) {
     return this.exec(
-      `SELECT * FROM activity_queue
+      `SELECT q.*, d.user_id AS user_id
+       FROM activity_queue q
+       LEFT JOIN devices d ON d.id = q.device_id
        WHERE (
-         status IN ('waiting', 'retry')
-         AND COALESCE(next_attempt_at, scheduled_at) <= ?
-         AND (locked_until IS NULL OR locked_until <= ?)
+         q.status IN ('waiting', 'retry')
+         AND COALESCE(q.next_attempt_at, q.scheduled_at) <= ?
+         AND (q.locked_until IS NULL OR q.locked_until <= ?)
        ) OR (
-         status = 'running'
-         AND locked_until IS NOT NULL
-         AND locked_until <= ?
+         q.status = 'running'
+         AND q.locked_until IS NOT NULL
+         AND q.locked_until <= ?
        )
-       ORDER BY COALESCE(next_attempt_at, scheduled_at) ASC
+       ORDER BY COALESCE(q.next_attempt_at, q.scheduled_at) ASC
        LIMIT ?`,
       now,
       now,
