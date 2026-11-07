@@ -109,6 +109,14 @@
     return !!verified && !verified.some(function (item) { return item.id === transactionId; });
   }
 
+  function isPendingCheckout(transactionId) {
+    transactionId = String(transactionId || '');
+    if (!transactionId) return false;
+    var rows = readPendingCheckouts();
+    if (!rows) return null;
+    return rows.some(function (item) { return item.id === transactionId; });
+  }
+
   function completePendingCheckout(transactionId) {
     transactionId = String(transactionId || '');
     if (!transactionId) return false;
@@ -136,6 +144,7 @@
     runExclusive: runExclusive,
     getOrCreatePendingCheckout: getOrCreatePendingCheckout,
     cancelPendingCheckout: cancelPendingCheckout,
+    isPendingCheckout: isPendingCheckout,
     completePendingCheckout: completePendingCheckout,
     supportsCrossTabLock: function () {
       return !!(global.navigator && global.navigator.locks &&
