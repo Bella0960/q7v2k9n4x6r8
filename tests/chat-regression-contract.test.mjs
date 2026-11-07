@@ -1820,6 +1820,7 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
   assert.match(chatNotifier, /executeCloudProactiveCandidate/);
   assert.ok(chatNotifier.includes('cleanProactiveMessage(result.data)'));
+  assert.match(chatNotifier, /normalizeProactiveBubbles === 'function'/);
   assert.match(chatNotifier, /ensureCloudExecutorPresence/);
   assert.match(chatNotifier, /updatePresenceHeartbeat\(true\)/);
   assert.match(chatNotifier, /updateCharacterLease\(key, 'acquire'\)/);
