@@ -9,7 +9,7 @@ const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
 assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v189'/);
-assert.match(serviceWorker, /phone_api\\.js\\?v=20261108v1/);
+assert.match(serviceWorker, /phone_api\.js\?v=20261108v1/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
