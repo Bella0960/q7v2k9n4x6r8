@@ -286,3 +286,29 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 这项改动只加固既有存储层，不会启用消息生成器，不会新增聊天正文上传 API，也不会触发主动消息或推送。
 
 回归用例覆盖首次数据不被重复请求覆盖、活动任务重复 ID 幂等、dedupe key 冲突、以及 payload 超限拒绝。GitHub Actions 是否实际执行这些用例，仍以对应提交的 runner 步骤和日志为准。
+
+## 9. M2.3a：设备定向出站收件箱与确认（基础链路）
+
+新增 `0006_outbound_inbox_index`，为待同步出站消息建立 `(device_id, character_id, delivery_status, created_at, id)` 复合索引。
+
+### 9.1 云端存储约束
+
+- `CloudStore.enqueueOutboundMessage()` 是供未来云端执行器调用的内部存储入口，不开放给浏览器任意写入。
+- 每条消息必须指定目标账号、目标设备、角色 ID、稳定 `serverMessageId` 和载荷；载荷序列化后最多 12 KB。
+- 服务端消息 ID 与已有 `dedupe_key` 都参与幂等保护；同一标识重试且载荷完全一致时返回既有记录，任何字段或正文不同都返回冲突，不覆盖首次保存。
+- 目标设备必须属于指定用户且未撤销；设备被撤销后不能继续拉取或确认。
+- 当前表中 `device_id` 明确作为收件设备；拉取时同时匹配当前鉴权设备、账号和角色，不会把另一设备或另一角色的消息返回给客户端。
+
+### 9.2 客户端拉取与确认 API
+
+- `GET /api/characters/:characterId/outbound?limit=50`：只返回当前设备该角色尚未确认的消息，limit 为 1–50，按创建时间稳定排序。
+- `POST /api/characters/:characterId/outbound/:serverMessageId/ack`：当前目标设备确认消息。首次确认写入 `delivered_at`；重复确认返回 `alreadyAcknowledged`，不会重复改变状态。
+- 未授权请求返回 401；消息不属于当前设备或角色时返回 404，避免暴露其他设备的消息是否存在。
+- `MaomaoCloud.receiveCharacterOutboundMessages()` 提供串行处理辅助方法。调用方必须在本地聊天记录成功持久化并读回验证后返回 `true`，客户端才会确认；保存失败或回调返回其他值时消息仍留在云端待重试。
+
+### 9.3 当前完成边界
+
+- **已实现：** 内部幂等入箱、目标设备隔离、待确认消息拉取、重复确认幂等、客户端持久化回调与确认辅助方法。
+- **尚未实现：** AI 自主生成执行器、向收件箱写入真实角色消息、聊天页将拉取结果合并进现有历史，以及真实多设备/断网恢复验收。
+- 本轮没有调用模型、没有读取或上传本地聊天正文 / 角色设定 / API Key，也没有发送真实主动消息或推送。
+- 这些 API 代码存在不代表生产 Worker 已部署；Node/SQLite 契约测试与 Vite 构建仍需实际执行后才能标记通过。
