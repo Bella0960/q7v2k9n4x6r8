@@ -1288,7 +1288,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v181/);
+  assert.match(serviceWorker, /phone-app-pwa-v182/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1874,13 +1874,13 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261107v5/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261107v5/);
-  assert.match(detail, /chat-notifier\.js\?v=20261107v5/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261107v6/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261107v6/);
+  assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v181/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v5/);
+  assert.match(serviceWorker, /phone-app-pwa-v182/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(serviceWorker, /chat-followup-policy/);
@@ -2302,6 +2302,19 @@ test('WeChat Moments keeps the cover action menu available', () => {
   );
 });
 
+
+test('cloud outbound bubbles persist first, then use serialized pacing without stealing scroll position', () => {
+  assert.match(detail, /async function persistCloudOutboundMessage\(payload, envelope\)/);
+  assert.match(detail, /await appendAiMessageWithPacing\(message, appendIndex, \{ scrollToBottom: wasNearBottom \}\)/);
+  assert.match(detail, /let aiBubblePacingQueue = Promise\.resolve\(\)/);
+  assert.match(detail, /aiBubblePacingQueue\.then\(renderTask, renderTask\)/);
+  assert.match(detail, /generation !== aiBubblePacingRunId/);
+  assert.match(detail, /if \(shouldScroll\) scrollToBottom\(true\)/);
+  assert.match(detail, /aiBubblePacingRunId \+= 1/);
+  const saveAt = detail.indexOf('if (!saveMessages(history))', detail.indexOf('async function persistCloudOutboundMessage'));
+  const paceAt = detail.indexOf('await appendAiMessageWithPacing(message, appendIndex', saveAt);
+  assert.ok(saveAt >= 0 && paceAt > saveAt, 'message history must be saved before visual pacing');
+});
 
 test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡触发', () => {
   assert.match(detail, /row\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
