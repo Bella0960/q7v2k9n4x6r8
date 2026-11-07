@@ -126,6 +126,27 @@
     return requestJson('/api/friends/' + encodeURIComponent(userId), { method: 'DELETE' });
   }
 
+  function createMessageId() {
+    return randomBase64Url(18);
+  }
+
+  function getMessages(friendId, cursor) {
+    var path = '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages';
+    if (cursor) path += '?cursor=' + encodeURIComponent(String(cursor));
+    return requestJson(path);
+  }
+
+  function sendMessage(friendId, body, clientMessageId) {
+    var id = String(clientMessageId || createMessageId()).trim();
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages',
+      {
+        method: 'POST',
+        body: { clientMessageId: id, body: String(body == null ? '' : body) }
+      }
+    );
+  }
+
   global.MaomaoFriends = {
     ensureAccount: ensureAccount,
     getMe: getMe,
@@ -137,6 +158,9 @@
     acceptRequest: acceptRequest,
     rejectRequest: rejectRequest,
     removeFriend: removeFriend,
+    createMessageId: createMessageId,
+    getMessages: getMessages,
+    sendMessage: sendMessage,
     _readAccount: readAccount
   };
 })(typeof window !== 'undefined' ? window : self);
