@@ -657,7 +657,17 @@
     try { return JSON.parse(localStorage.getItem('shop_cart') || '[]'); }
     catch(e) { return []; }
   }
-  function saveCart(c) { localStorage.setItem('shop_cart', JSON.stringify(c)); updateBadge(); }
+  function saveCart(c) {
+    try {
+      var serialized = JSON.stringify(c);
+      localStorage.setItem('shop_cart', serialized);
+      updateBadge();
+      return localStorage.getItem('shop_cart') === serialized;
+    } catch (error) {
+      updateBadge();
+      return false;
+    }
+  }
   let shopCart = loadCart();
   // 支付流程使用的商品快照（避免污染真实购物车）
   let payItems = [];
@@ -1222,6 +1232,16 @@
             if (!saveOrders(orders)) {
               showToast('支付已记录，但订单暂未保存；再次提交会补齐订单且不会重复扣款');
               return;
+            }
+            if (payFromCart) {
+              var cartSnapshot = shopCart.slice();
+              shopCart = [];
+              if (!saveCart(shopCart)) {
+                shopCart = cartSnapshot;
+                updateBadge();
+                showToast('订单已保存，但购物车未能清空；再次提交会恢复原交易');
+                return;
+              }
             }
             if (!ledger.completePendingCheckout(transactionId)) {
               showToast('订单已保存，但结算确认暂未完成；再次提交不会重复扣款');
