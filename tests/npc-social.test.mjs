@@ -19,6 +19,7 @@ function createHarness() {
   }];
   let aiCalls = 0;
   let capturedPrompt = '';
+  let failGreetingSave = false;
   let completeJSONHandler = async () => ({ ok: true, data: {
     create: true,
     name: '林知夏',
@@ -43,7 +44,11 @@ function createHarness() {
     ]; },
     getApiConfig() { return { apiKey: 'test-key' }; },
     getChatHistory(id) { return histories[id] || []; },
-    saveChatHistory(id, list) { histories[id] = list.slice(); return true; },
+    saveChatHistory(id, list) {
+      if (failGreetingSave) return false;
+      histories[id] = list.slice();
+      return true;
+    },
     result: {
       getCharacters() { return { ok: true, value: roles.slice() }; },
       saveCharacters(next) {
@@ -97,6 +102,7 @@ function createHarness() {
   return {
     context, data, roles, histories,
     setCompleteJSONHandler(handler) { completeJSONHandler = handler; },
+    setGreetingSaveFailure(value) { failGreetingSave = value === true; },
     get aiCalls() { return aiCalls; },
     get capturedPrompt() { return capturedPrompt; }
   };
@@ -283,4 +289,27 @@ test('switching main roles while AI discovery is pending still writes to the ori
   assert.ok(h.context.NPCSocial.getSettings().lastAttemptAt > 0);
   h.context.localStorage.setItem('phone_current_contact', 'second-role');
   assert.equal(h.context.NPCSocial.getSettings().lastAttemptAt, 0, 'the other role must not inherit the attempt timestamp');
+});
+
+test('NPC acceptance stays pending until the first greeting is durable, then retries idempotently', async () => {
+  const h = createHarness();
+  const result = await h.context.NPCSocial.discoverNow();
+  h.setGreetingSaveFailure(true);
+
+  assert.throws(() => h.context.NPCSocial.accept(result.request.id), /首次问候保存失败/);
+  assert.equal(h.roles.length, 2, 'the NPC role can be saved before greeting persistence');
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1, 'the request remains pending for retry');
+
+  h.context.NPCSocial.reconcileAccepted();
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1, 'startup reconciliation must not accept without the greeting');
+
+  h.setGreetingSaveFailure(false);
+  const accepted = h.context.NPCSocial.accept(result.request.id);
+  assert.equal(accepted.ok, true);
+  assert.equal(h.context.NPCSocial.getPendingCount(), 0);
+  assert.equal(h.histories[accepted.roleId].length, 1);
+  assert.equal(h.histories[accepted.roleId][0].npcFriendWelcome, true);
+
+  h.context.NPCSocial.reconcileAccepted();
+  assert.equal(h.histories[accepted.roleId].length, 1, 'reconciliation must not duplicate the greeting');
 });
