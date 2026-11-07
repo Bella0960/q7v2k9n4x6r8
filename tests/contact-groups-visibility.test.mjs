@@ -230,6 +230,18 @@ test('typed Moments privacy never matches a real account to a role with the same
   assert.equal(api.canContactReceivePost({ authorId: 'role-author', visibility: 'private' }, user, { id: 'owner' }), true);
 });
 
+test('real-user audience and contact editing fail closed without silently deleting unresolved relationships', () => {
+  assert.ok(contactsPage.includes('待核验的真人好友'));
+  assert.ok(contactsPage.includes('取消勾选可移出分组'));
+  assert.ok(contactsPage.includes('好友目录暂不可读取'));
+  assert.ok(composerPage.includes('contact_directory_unavailable'));
+  assert.ok(composerPage.includes('真人好友目录暂时无法读取'));
+  assert.ok(composerPage.includes('selectedVisibleRealUserIds'));
+  assert.ok(composerPage.includes('selectedHiddenRealUserIds'));
+  assert.ok(composerPage.includes('visibleRealUserIds'));
+  assert.ok(composerPage.includes('hiddenRealUserIds'));
+});
+
 test('typed contact identity is loaded before chat notification and stored in chat relationship snapshots', () => {
   assert.ok(contactsPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(contactsPage.includes('phone/contact-directory.js?v=20261107v1'));
