@@ -105,6 +105,20 @@
         return true;
     }
 
+    function canRoleReceivePost(post, roleId, profile) {
+        if (!post || roleId == null) return false;
+        profile = profile && typeof profile === 'object' ? profile : {};
+        var authorId = String(post.authorId == null ? '' : post.authorId);
+        var profileId = String(profile.id == null ? 'me' : profile.id);
+        var profileName = String(profile.name == null ? '我' : profile.name);
+        var isUserAuthored = authorId === 'me' || authorId === profileId ||
+            (!authorId && (!post.author || String(post.author) === profileName || String(post.author) === '我'));
+        // This phone renders the owner's own feed. Only apply the owner's audience
+        // policy when deciding whether an AI role may receive a user-authored post.
+        if (!isUserAuthored) return true;
+        return canViewPost(post, roleId);
+    }
+
     function getGroupIdsForContact(contactId) {
         var id = String(contactId == null ? '' : contactId);
         if (!id) return [];
@@ -119,6 +133,7 @@
         saveGroups: saveGroups,
         buildAudienceSnapshot: buildAudienceSnapshot,
         canViewPost: canViewPost,
+        canRoleReceivePost: canRoleReceivePost,
         getGroupIdsForContact: getGroupIdsForContact,
         normalizeGroups: normalizeGroups,
         readStoredGroups: readStoredGroups
