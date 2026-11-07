@@ -76,7 +76,7 @@ export class CloudDatabase {
       return Response.json({ ok: true, removed });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
-      // gate 未接入：生产环境默认全部 defer，不会认领任何活动。
+      // 真实 gate 已接入；缺少显式授权/作息/lease 配置或可信上下文版本时仍 fail-closed。
       const timestamp = Date.now();
       const result = runTick({
         store: this.store,
