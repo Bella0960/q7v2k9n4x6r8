@@ -251,6 +251,81 @@
     });
   }
 
+  function recomputeLatestIncomingFromDom() {
+    latestIncomingMessage = null;
+    var rows = $('messages').querySelectorAll('.msg-row[data-message-id]');
+    rows.forEach(function (row) {
+      if (row.dataset.senderId !== friendId || row.dataset.recipientId !== myUserId) return;
+      var candidate = {
+        id: row.dataset.messageId,
+        senderId: row.dataset.senderId,
+        recipientId: row.dataset.recipientId,
+        createdAt: Number(row.dataset.createdAt) || 0
+      };
+      if (!latestIncomingMessage ||
+          candidate.createdAt > Number(latestIncomingMessage.createdAt) ||
+          (candidate.createdAt === Number(latestIncomingMessage.createdAt) &&
+           candidate.id > latestIncomingMessage.id)) {
+        latestIncomingMessage = candidate;
+      }
+    });
+  }
+
+  async function clearCurrentConversation() {
+    if (!ready || blocked) return;
+    var confirmed = window.confirm(
+      '清空你这边的全部聊天记录？\n\n这只会隐藏你账号里的现有记录，好友仍会保留自己的聊天记录。之后的新消息仍会正常显示。'
+    );
+    if (!confirmed) return;
+    $('clearChatBtn').disabled = true;
+    setStatus('正在清理你这边的聊天记录…');
+    try {
+      var result = await api.clearMessages(friendId);
+      $('messages').innerHTML = '';
+      known = Object.create(null);
+      latestIncomingMessage = null;
+      lastReadReceiptId = '';
+      var clearedThrough = result.clearedThrough;
+      cursor = clearedThrough
+        ? String(Number(clearedThrough.createdAt)) + '.' + String(clearedThrough.messageId)
+        : null;
+      olderCursor = null;
+      hasOlder = false;
+      $('historyAction').hidden = true;
+      showEmpty('你这边的聊天记录已清空。\n好友仍保留自己的记录，新消息会继续显示。');
+      setStatus(result.empty ? '这段会话原本就是空的' : '已清空你这边的聊天记录');
+      await pollMessages();
+    } catch (error) {
+      setStatus(error.message || '清理聊天记录失败，请稍后再试。', true);
+    } finally {
+      $('clearChatBtn').disabled = false;
+    }
+  }
+
+  async function hideMessageForMe(button) {
+    var row = button.closest('.msg-row');
+    var messageId = button.dataset.hideMessage;
+    if (!row || !messageId || blocked) return;
+    var confirmed = window.confirm('只在你自己的账号中隐藏这条消息？好友仍然可以看到原消息。');
+    if (!confirmed) return;
+    button.disabled = true;
+    try {
+      await api.hideMessage(friendId, messageId);
+      row.remove();
+      delete known[messageId];
+      if (latestIncomingMessage && latestIncomingMessage.id === messageId) {
+        lastReadReceiptId = '';
+        recomputeLatestIncomingFromDom();
+        markVisibleIncomingRead();
+      }
+      if (!Object.keys(known).length) showEmpty('你已隐藏当前显示的聊天记录。\n之后的新消息仍会正常显示。');
+      setStatus('这条消息已仅在你这里隐藏');
+    } catch (error) {
+      setStatus(error.message || '隐藏消息失败，请稍后再试。', true);
+      button.disabled = false;
+    }
+  }
+
   async function markVisibleIncomingRead() {
     if (!ready || blocked || document.hidden || !latestIncomingMessage ||
         !isMessageVisible(latestIncomingMessage.id) || readReceiptInFlight ||
@@ -417,6 +492,21 @@
       if (!blocked) setStatus('聊天已刷新');
     });
   });
+  $('messages').addEventListener('click', function (event) {
+    var more = event.target.closest('.message-more');
+    if (more) {
+      var row = more.closest('.msg-row');
+      var menu = row && row.querySelector('.message-menu');
+      if (menu) {
+        menu.hidden = !menu.hidden;
+        more.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
+      }
+      return;
+    }
+    var hide = event.target.closest('[data-hide-message]');
+    if (hide) hideMessageForMe(hide);
+  });
+  $('clearChatBtn').addEventListener('click', clearCurrentConversation);
   $('messages').addEventListener('scroll', function () {
     if (readReceiptTimer) window.clearTimeout(readReceiptTimer);
     readReceiptTimer = window.setTimeout(markVisibleIncomingRead, 140);
