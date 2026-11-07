@@ -121,6 +121,9 @@ async function findAvatar(env, assetId) {
     "AND a.avatar_asset_id = x.asset_id AND a.status = 'active' LIMIT 1"
   ).bind(assetId).first();
 }
+function changedRows(result) {
+  return Number(result && result.meta && result.meta.changes || result && result.changes || 0);
+}
 async function markDeleted(env, ownerId, assetId, objectKey) {
   if (!assetId) return;
   try {
@@ -150,7 +153,7 @@ async function upload(request, env, account) {
       httpMetadata: { contentType: mimeType, cacheControl: "private, no-store" },
       customMetadata: { ownerAccountId: account.id, assetId }
     });
-    await env.DB.batch([
+    const results = await env.DB.batch([
       env.DB.prepare("INSERT INTO real_user_attachments " +
         "(asset_id, owner_account_id, conversation_id, kind, object_key, mime_type, byte_size, state, created_at) " +
         "VALUES (?, ?, NULL, 'image', ?, ?, ?, 'staged', ?)")
@@ -158,6 +161,10 @@ async function upload(request, env, account) {
       env.DB.prepare("UPDATE real_user_accounts SET avatar_asset_id = ?, updated_at = ? " +
         "WHERE id = ? AND status = 'active'").bind(assetId, now, account.id)
     ]);
+    if (changedRows(results && results[1]) !== 1) {
+      await markDeleted(env, account.id, assetId, objectKey);
+      return authJson({ ok: false, error: "authentication_required" }, 401);
+    }
   } catch {
     try { await env.REAL_USER_AVATARS.delete(objectKey); } catch {}
     return authJson({ ok: false, error: "avatar_upload_unavailable" }, 503);
@@ -173,12 +180,17 @@ async function remove(request, env, account) {
   let previous = null;
   try {
     if (previousId) previous = await findAvatar(env, previousId);
-    const statements = [env.DB.prepare("UPDATE real_user_accounts SET avatar_asset_id = NULL, updated_at = ? " +
-      "WHERE id = ? AND status = 'active'").bind(Date.now(), account.id)];
-    if (previousId) statements.push(env.DB.prepare("UPDATE real_user_attachments SET state = 'deleted' " +
-      "WHERE asset_id = ? AND owner_account_id = ? AND kind = 'image' AND state = 'staged'").bind(previousId, account.id));
-    await env.DB.batch(statements);
+    const updated = await env.DB.prepare("UPDATE real_user_accounts SET avatar_asset_id = NULL, updated_at = ? " +
+      "WHERE id = ? AND status = 'active'").bind(Date.now(), account.id).run();
+    if (changedRows(updated) !== 1) return authJson({ ok: false, error: "authentication_required" }, 401);
   } catch { return authJson({ ok: false, error: "avatar_delete_unavailable" }, 503); }
+  if (previousId) {
+    try {
+      await env.DB.prepare("UPDATE real_user_attachments SET state = 'deleted' " +
+        "WHERE asset_id = ? AND owner_account_id = ? AND kind = 'image' AND state = 'staged'")
+        .bind(previousId, account.id).run();
+    } catch {}
+  }
   if (previous && previous.object_key) { try { await env.REAL_USER_AVATARS.delete(previous.object_key); } catch {} }
   return authJson({ ok: true, removed: !!previousId, account: accountDto(account, null) }, 200);
 }
