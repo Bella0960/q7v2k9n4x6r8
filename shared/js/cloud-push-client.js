@@ -22,6 +22,7 @@
   var activeContextEventIds = Object.create(null);
   var localContextFingerprints = Object.create(null);
   var localContextPendingEvents = Object.create(null);
+  var outboundCursorsInMemory = Object.create(null);
 
   function apiPath(path) {
     return basePath + path;
@@ -586,25 +587,37 @@
       ':' + encodeURIComponent(deviceId);
   }
 
+  function normalizeOutboundCursor(value) {
+    if (!value || !Number.isSafeInteger(Number(value.createdAt)) ||
+        Number(value.createdAt) < 0 ||
+        !/^[A-Za-z0-9_-]{16,128}$/.test(String(value.id || ''))) return null;
+    return { createdAt: Number(value.createdAt), id: String(value.id) };
+  }
+
   function readOutboundCursor(key) {
     try {
-      var value = JSON.parse(localStorage.getItem(key) || 'null');
-      if (!value || !Number.isSafeInteger(Number(value.createdAt)) ||
-          Number(value.createdAt) < 0 ||
-          !/^[A-Za-z0-9_-]{16,128}$/.test(String(value.id || ''))) return null;
-      return { createdAt: Number(value.createdAt), id: String(value.id) };
+      var stored = normalizeOutboundCursor(JSON.parse(localStorage.getItem(key) || 'null'));
+      if (stored) {
+        outboundCursorsInMemory[key] = stored;
+        return { createdAt: stored.createdAt, id: stored.id };
+      }
     } catch (error) {
-      return null;
+      // Fall through to the in-memory cursor when local storage is unavailable.
     }
+    var memory = normalizeOutboundCursor(outboundCursorsInMemory[key]);
+    return memory ? { createdAt: memory.createdAt, id: memory.id } : null;
   }
 
   function writeOutboundCursor(key, cursor) {
+    var normalized = cursor ? normalizeOutboundCursor(cursor) : null;
+    if (normalized) outboundCursorsInMemory[key] = normalized;
+    else delete outboundCursorsInMemory[key];
     try {
-      if (cursor) localStorage.setItem(key, JSON.stringify(cursor));
+      if (normalized) localStorage.setItem(key, JSON.stringify(normalized));
       else localStorage.removeItem(key);
     } catch (error) {
-      // Cursor persistence is best-effort; every message remains server-pending
-      // until the device's local-save ACK succeeds.
+      // Keep the cursor in memory for this open page. On-device persistence
+      // is best-effort; every message remains server-pending until ACK succeeds.
     }
   }
 
