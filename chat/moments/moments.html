@@ -787,8 +787,12 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             // 按可见权限过滤：自己的动态始终可见
             var list = allList.filter(function (m) {
                 var isMine = m.authorId === me.id || m.authorId === 'me' || m.author === me.name || m.byAI === true;
-                if (isMine) return true; // 自己发的 / AI 角色发的（已在朋友圈里）都显示
                 var v = m.visibility || 'public';
+                if (v === 'excluded') {
+                    var hiddenTo = Array.isArray(m.hiddenTo) ? m.hiddenTo.map(String) : [];
+                    if (hiddenTo.indexOf(String(me.id || 'me')) !== -1 || hiddenTo.indexOf('me') !== -1) return false;
+                }
+                if (isMine) return true; // 自己发的动态始终可见；AI 动态仍遵循显式排除名单
                 if (v === 'public') return true;
                 if (v === 'friends') return true; // 简化：目前所有 AI 角色都是朋友
                 if (v === 'private') return false; // 别人的仅自己动态不显示
