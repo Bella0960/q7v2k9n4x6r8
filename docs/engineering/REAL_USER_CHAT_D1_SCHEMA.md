@@ -38,9 +38,9 @@ Apply `0001_real_user_chat.sql` first, then `0002_real_user_friend_code_rotation
 1. Create a D1 database in the Cloudflare account and configure a real `DB` binding; no placeholder database ID is committed.
 2. Apply `0001_real_user_chat.sql`, then `0002_real_user_friend_code_rotation.sql` to a staging database; validate all tables, triggers, foreign keys, and the active-code unique index.
 3. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER`. Keep `REAL_USER_AUTH_ENABLED` and `REAL_USER_FRIENDS_ENABLED` unset/false until staging verification is complete.
-4. The Worker verifies that `sqlite_master` contains `real_user_accounts`, `real_user_sessions`, `real_user_friend_requests`, and `real_user_friendships` before it reports account auth as ready; a D1 binding without the migration remains disabled.
+4. The Worker verifies that `sqlite_master` contains `real_user_accounts`, `real_user_sessions`, `real_user_friend_requests`, and `real_user_friendships` before it reports account auth as ready; a D1 binding without the migration remains disabled. The friend service additionally checks `real_user_friend_codes`, `real_user_blocks`, the remaining friendship/request tables, and the v2 partial unique active-code index.
 5. Run the account-auth regression suite against the staging binding, review password derivation cost and rate-limit behavior in the target Worker plan, then explicitly set `REAL_USER_AUTH_ENABLED=true` to expose account registration/login only.
-6. Implement server-owned friend-code rotation and friend-request transitions with idempotency.
+6. Stage-test the Worker friend handlers for QR rotation/revocation, expired-code rejection, stable request-ID retries, inbox/outbox isolation, recipient-only accept/decline, requester-only cancellation, friend removal, and block/unblock; then explicitly set `REAL_USER_FRIENDS_ENABLED=true` to expose the friend service.
 7. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
 8. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
 9. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
@@ -48,4 +48,4 @@ Apply `0001_real_user_chat.sql` first, then `0002_real_user_friend_code_rotation
 
 Account-auth handlers are implemented in `worker/real-user-auth.js`: PBKDF2-HMAC-SHA256 password derivation (600,000 iterations), opaque random session tokens stored only as SHA-256 hashes, HttpOnly/Secure/SameSite=Strict cookies, same-origin checks, mandatory IP/handle rate limiting, and logout revocation. Account recovery, email verification, and native two-factor support remain unimplemented.
 
-This is schema and handler groundwork, not a working deployed account or messaging service. No D1 database is bound or migrated in Cloudflare, the auth gate remains off, and the local conversation repository remains `local_only`.
+This is schema and handler groundwork, not a working deployed account or messaging service. No D1 database is bound or migrated in Cloudflare, the auth and friend-service gates remain off, and the local conversation repository remains `local_only`.
