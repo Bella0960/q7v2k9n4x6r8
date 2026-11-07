@@ -436,14 +436,30 @@
                 return found && found.ok === false ? found : failure('NOT_FOUND', 'source image asset is unavailable');
             }
             var afterLookupBlock = roleMutationBlock(roleId);
-            if (afterLookupBlock) return cleanupStaleRoleAsset(media, assetId, roleId);
+            if (afterLookupBlock) {
+                if (afterLookupBlock.error && afterLookupBlock.error.code === 'ROLE_DELETED') {
+                    return cleanupStaleRoleAsset(media, assetId, roleId);
+                }
+                return afterLookupBlock;
+            }
             var mime = String(found.value.asset.mimeType || found.value.blob.type || '').toLowerCase();
             if (mime.indexOf('image/') !== 0) return failure('VALIDATION_FAILED', 'source asset is not an image');
 
             return media.addRef(assetId, OWNER_TYPE, String(roleId)).then(function (linked) {
                 if (!linked || !linked.ok) return linked || failure('STORAGE_FAILED', 'avatar asset reference could not be created');
                 var afterLinkBlock = roleMutationBlock(roleId);
-                if (afterLinkBlock) return cleanupStaleRoleAsset(media, assetId, roleId);
+                if (afterLinkBlock) {
+                    if (afterLinkBlock.error && afterLinkBlock.error.code === 'ROLE_DELETED') {
+                        return cleanupStaleRoleAsset(media, assetId, roleId);
+                    }
+                    return Promise.resolve(media.removeRef(assetId, OWNER_TYPE, String(roleId))).then(function (released) {
+                        return released && released.ok
+                            ? afterLinkBlock
+                            : failure('PARTIAL_ROLLBACK', 'temporary storage failure prevented saving the portrait and its reference could not be rolled back');
+                    }).catch(function () {
+                        return failure('PARTIAL_ROLLBACK', 'temporary storage failure prevented saving the portrait and its reference could not be rolled back');
+                    });
+                }
                 // Another async upload/link may have committed while getAsset/addRef was pending.
                 // Merge into that latest role state instead of writing the stale preflight snapshot.
                 var latest = readState(roleId);
