@@ -315,6 +315,96 @@ test('前台心跳续期间隔限制在浏览器安全定时器范围内', () =>
   assert.equal(getInterval(Number.POSITIVE_INFINITY, 60000), null, '非有限配置必须 fail-closed');
 });
 
+test('首次心跳临时失败后前台管理器仍会在下一轮自动重试', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const listeners = new Map();
+  const calls = [];
+  const warnings = [];
+  let intervalCallback = null;
+  let clearedInterval = null;
+  let heartbeatAttempts = 0;
+  const browserWindow = {
+    setInterval(callback, delay) {
+      assert.equal(delay, 40000);
+      intervalCallback = callback;
+      return 17;
+    },
+    clearInterval(id) {
+      clearedInterval = id;
+    }
+  };
+  const browserDocument = {
+    currentScript: null,
+    visibilityState: 'visible',
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name, callback) {
+      if (listeners.get(name) === callback) listeners.delete(name);
+    }
+  };
+  const localStorageStub = {
+    getItem(key) {
+      return key === 'cloud_device_v1'
+        ? JSON.stringify({ deviceId: 'device-id-123456', secret: 's'.repeat(32) })
+        : null;
+    },
+    setItem() {},
+    removeItem() {}
+  };
+  const response = (payload, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    json: async () => payload
+  });
+  const fetchStub = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url === '/api/presence/config') {
+      return response({ ok: true, heartbeatTtlMs: 120000, leaseDurationMs: 120000 });
+    }
+    if (url === '/api/presence/heartbeat') {
+      heartbeatAttempts += 1;
+      if (heartbeatAttempts === 1) {
+        return response({ ok: false, error: { code: 'TEMPORARY', message: 'temporary outage' } }, 503);
+      }
+      return response({ ok: true });
+    }
+    if (url === '/api/characters/role-123/lease') {
+      const action = JSON.parse(options.body || '{}').action;
+      if (action === 'renew') {
+        return response({ ok: false, error: { code: 'LEASE_NOT_OWNED', message: 'not owner' } }, 409);
+      }
+      if (action === 'acquire') return response({ ok: true, acquired: true });
+    }
+    throw new Error('Unexpected request: ' + url);
+  };
+
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: browserDocument,
+    localStorage: localStorageStub,
+    fetch: fetchStub,
+    console: { warn: (...args) => warnings.push(args), log() {}, error() {} },
+    URL
+  });
+
+  const manager = await browserWindow.MaomaoCloud.startCharacterPresence('role-123');
+  assert.ok(manager && typeof manager.stop === 'function', '初次网络失败不能让 presence manager 启动失败');
+  assert.equal(heartbeatAttempts, 1);
+  assert.equal(typeof intervalCallback, 'function', '首次请求前就要建立续期重试计时器');
+  assert.equal(warnings.length, 1, '首次失败应记录诊断信息');
+
+  intervalCallback();
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  assert.equal(heartbeatAttempts, 2, '下一次续期必须重新发送设备心跳');
+  const leaseActions = calls
+    .filter(call => call.url === '/api/characters/role-123/lease')
+    .map(call => JSON.parse(call.options.body || '{}').action);
+  assert.deepEqual(leaseActions, ['renew', 'acquire'], '重试成功后继续恢复角色租约');
+
+  manager.stop();
+  assert.equal(clearedInterval, 17);
+  assert.equal(listeners.has('visibilitychange'), false);
+});
+
 test('清理任务不会提前删除超过一小时但仍有效的配对码', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_PAIRING_TOKEN_TTL_MS: String(2 * 60 * 60 * 1000)
