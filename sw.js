@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v173';
+const CACHE_NAME = 'phone-app-pwa-v174';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
+// v174 release: add the role-scoped sticker library runtime to the offline app shell.
 const APP_SHELL = [
   './',
   './index.html',
@@ -92,6 +92,7 @@ const APP_SHELL = [
   './shared/js/chat-notifier.js?v=20261102v3',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
+  './shared/js/phone/role-sticker-library.js?v=20261107v1',
   'shared/js/phone/phone_api.js?v=20261106v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
