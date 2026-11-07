@@ -159,6 +159,66 @@ test('好友消息只允许已互相同意的双方读取和发送；删除好�
   assert.equal(retryAfterRemove.payload.error.code, 'NOT_FRIENDS');
 });
 
+test('新消息与更早历史都能分批读取，游标分页不会漏行', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  await register(ctx, alice, '198.51.100.48');
+  await register(ctx, bob, '198.51.100.49');
+  await makeFriends(ctx, alice, bob);
+  const path = '/api/friends/' + bob.userId + '/messages';
+
+  const seed = await asAccount(ctx, alice, path, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '分页起点' }
+  });
+  assert.equal(seed.status, 200);
+  const seedCursor = String(seed.payload.message.createdAt) + '.' + seed.payload.message.id;
+
+  for (let index = 0; index < 52; index += 1) {
+    const sent = await asAccount(ctx, alice, path, {
+      method: 'POST',
+      body: { clientMessageId: messageId(), body: '分页消息 ' + index }
+    });
+    assert.equal(sent.status, 200);
+  }
+
+  const firstNewPage = await asAccount(
+    ctx,
+    bob,
+    path + '?after=' + encodeURIComponent(seedCursor)
+  );
+  assert.equal(firstNewPage.status, 200);
+  assert.equal(firstNewPage.payload.messages.length, 50);
+  assert.equal(firstNewPage.payload.hasMore, true);
+  assert.equal(firstNewPage.payload.messages[0].body, '分页消息 0');
+
+  const secondNewPage = await asAccount(
+    ctx,
+    bob,
+    path + '?after=' + encodeURIComponent(firstNewPage.payload.nextCursor)
+  );
+  assert.equal(secondNewPage.status, 200);
+  assert.deepEqual(secondNewPage.payload.messages.map(item => item.body), ['分页消息 50', '分页消息 51']);
+  assert.equal(secondNewPage.payload.hasMore, false);
+
+  const latestPage = await asAccount(ctx, bob, path);
+  assert.equal(latestPage.status, 200);
+  assert.equal(latestPage.payload.messages.length, 50);
+  assert.equal(latestPage.payload.messages[49].body, '分页消息 51');
+  assert.equal(latestPage.payload.hasMore, true);
+
+  const olderPage = await asAccount(
+    ctx,
+    bob,
+    path + '?before=' + encodeURIComponent(latestPage.payload.olderCursor)
+  );
+  assert.equal(olderPage.status, 200);
+  assert.deepEqual(olderPage.payload.messages.map(item => item.body), ['分页起点', '分页消息 0', '分页消息 1']);
+  assert.equal(olderPage.payload.hasMore, false);
+});
+
 test('真人好友消息严格限制为非空纯文字，最多 2000 个 Unicode 字符', async () => {
   const ctx = setupTestStore(openTestDb());
   const alice = makeAccount('Alice');
