@@ -998,3 +998,109 @@ test('真实 SQLite 角色上下文版本接入 gate：同版本允许、旧版�
   assert.equal(untrackedRole.autonomyAllowed, false);
   assert.equal(untrackedRole.reasonCode, REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
 });
+
+
+test('活动幂等键跨同账号配对设备去重，且由实际执行设备接管收件归属', () => {
+  const { store, query } = freshStore();
+  store.insertDevice({ id: 'device_source_123456', userId: 'owner', secretHash: 'a', now: NOW });
+  store.insertDevice({ id: 'device_runner_123456', userId: 'owner', secretHash: 'b', now: NOW });
+
+  const activity = {
+    id: 'act_owner_context_0001',
+    deviceId: 'device_source_123456',
+    characterId: 'char_test',
+    kind: 'contact',
+    scheduledAt: NOW,
+    maxAttempts: 3,
+    payload: { contextVersion: 7 },
+    dedupeKey: 'autonomy-v1:owner:char_test:contact:7',
+    now: NOW
+  };
+  const first = store.enqueueActivity(activity);
+  const duplicateFromOtherDevice = store.enqueueActivity({
+    ...activity,
+    id: 'act_other_device_0002',
+    deviceId: 'device_runner_123456'
+  });
+  assert.equal(first.inserted, true);
+  assert.equal(duplicateFromOtherDevice.duplicate, true);
+  assert.equal(duplicateFromOtherDevice.activity.id, first.activity.id);
+  assert.equal(query('SELECT COUNT(*) AS total FROM activity_queue')[0].total, 1);
+
+  const claimed = store.claimActivityForDevice({
+    id: first.activity.id,
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    expectedDeviceId: 'device_source_123456',
+    deviceId: 'device_runner_123456',
+    userId: 'owner',
+    owner: 'device_runner_123456',
+    leaseUntil: NOW + CONFIG.leaseMs,
+    now: NOW
+  });
+  assert.ok(claimed);
+  assert.equal(claimed.device_id, 'device_runner_123456');
+  assert.equal(claimed.locked_by, 'device_runner_123456');
+  assert.equal(claimed.attempt_count, 1);
+
+  const completed = store.completeActivityWithOutbound({
+    id: claimed.id,
+    owner: 'device_runner_123456',
+    attemptCount: 1,
+    now: NOW + 1,
+    serverMessageId: 'autonomy_act_owner_context_0001_1',
+    dedupeKey: 'autonomy:act_owner_context_0001:1',
+    payload: { type: 'text', text: '本机模型生成的主动消息' }
+  });
+  assert.equal(completed.completed, true);
+  assert.equal(completed.outboundInserted, true);
+
+  const repeated = store.completeActivityWithOutbound({
+    id: claimed.id,
+    owner: 'device_runner_123456',
+    attemptCount: 1,
+    now: NOW + 2,
+    serverMessageId: 'autonomy_act_owner_context_0001_1',
+    dedupeKey: 'autonomy:act_owner_context_0001:1',
+    payload: { type: 'text', text: '本机模型生成的主动消息' }
+  });
+  assert.equal(repeated.alreadyCompleted, true);
+  const inbox = store.listPendingOutboundMessages({
+    userId: 'owner',
+    deviceId: 'device_runner_123456',
+    characterId: 'char_test',
+    limit: 10
+  });
+  assert.equal(inbox.length, 1);
+  assert.equal(JSON.parse(inbox[0].payload_json).text, '本机模型生成的主动消息');
+});
+
+test('活动幂等冲突不允许用不同载荷覆盖原任务', () => {
+  const { store } = freshStore();
+  store.insertDevice({ id: 'device_source_123456', userId: 'owner', secretHash: 'a', now: NOW });
+  const first = store.enqueueActivity({
+    id: 'act_immutable_context_0001',
+    deviceId: 'device_source_123456',
+    characterId: 'char_test',
+    kind: 'contact',
+    scheduledAt: NOW,
+    maxAttempts: 3,
+    payload: { contextVersion: 7 },
+    dedupeKey: 'autonomy-v1:owner:char_test:contact:7',
+    now: NOW
+  });
+  const conflict = store.enqueueActivity({
+    id: 'act_immutable_context_0002',
+    deviceId: 'device_source_123456',
+    characterId: 'char_test',
+    kind: 'contact',
+    scheduledAt: NOW,
+    maxAttempts: 3,
+    payload: { contextVersion: 8 },
+    dedupeKey: 'autonomy-v1:owner:char_test:contact:7',
+    now: NOW
+  });
+  assert.equal(first.inserted, true);
+  assert.equal(conflict.conflict, true);
+  assert.deepEqual(JSON.parse(store.getActivity('act_immutable_context_0001').payload_json), { contextVersion: 7 });
+});
