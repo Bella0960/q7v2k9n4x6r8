@@ -319,7 +319,7 @@ async function renderAvatarLibrary(roleId) {
             image.alt = '头像暂时无法读取';
             return;
         }
-        if (token !== avatarLibraryRenderToken || !grid.contains(image)) {
+        if (token !== avatarLibraryRenderToken || (!grid.contains(image) && !(pairContainer && pairContainer.contains(image)))) {
             try { resolved.value.revoke(); } catch (error) {}
             return;
         }
@@ -571,7 +571,7 @@ function renderRoleProfile() {
             '<button class="avatar-library-add" type="button" data-profile-action="avatar-add"><span aria-hidden="true">＋</span> 添加头像</button></div>' +
             '<div class="avatar-library-status" id="avatarLibraryStatus" aria-live="polite" role="status"></div>' +
             '<div class="avatar-pair-heading"><h4>配对头像</h4><p>识别为一组的两张图片会并排关联保存。</p></div>' +
-            '<div id="avatarPairList" class="avatar-pair-list"></div>' +
+            '<div id="avatarPairList" class="avatar-pair-container"></div>' +
             '<div class="avatar-library-grid" id="avatarLibraryGrid"><div class="avatar-library-empty">正在载入头像…</div></div>' +
         '</section>' +
         '<div class="profile-section-kicker">CHARACTER SETTINGS / 角色设定</div>' +
