@@ -46,6 +46,7 @@
             '<form id="ruAddFriendForm" class="ru-add-form">' +
               '<label>好友码或分享链接<input id="ruFriendCodeInput" maxlength="500" autocomplete="off" spellcheck="false" placeholder="粘贴 64 位好友码、mao:// 或 HTTPS 邀请链接" required></label>' +
               '<label>验证备注（可选）<input id="ruFriendNote" maxlength="160" placeholder="简单介绍一下自己"></label>' +
+              '<button class="ru-scan-trigger" type="button" id="ruStartScan">使用相机扫码</button>' +
               '<button class="ru-primary" type="submit">发送好友申请</button>' +
             '</form>' +
           '</section>' +
@@ -81,6 +82,14 @@
     '.ru-auth-form input,.ru-add-form input{width:100%;min-width:0;border:1px solid #e7e7e7;border-radius:5px;padding:10px 9px;background:#fafafa;color:#171717;font:inherit;font-size:12px;outline:none;}',
     '.ru-auth-form input:focus,.ru-add-form input:focus{border-color:#888;background:#fff;}',
     '.ru-primary{width:100%;border:1px solid #171717;border-radius:5px;background:#171717;color:#fff;padding:10px 12px;font:inherit;font-size:12px;cursor:pointer;}',
+    '.ru-scan-trigger{width:100%;border:1px solid #e2e2e2;border-radius:5px;background:#fff;color:#555;padding:9px 12px;font:inherit;font-size:11px;cursor:pointer;}',
+    '.ru-scan-overlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.72);}',
+    '.ru-scan-overlay[hidden]{display:none!important;}',
+    '.ru-scan-sheet{width:min(100%,420px);padding:14px;background:#fff;border-radius:10px;color:#171717;}',
+    '.ru-scan-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:13px;font-weight:500;}',
+    '.ru-scan-head button{border:0;background:transparent;color:#777;padding:6px 8px;font:inherit;font-size:11px;}',
+    '.ru-scan-video{display:block;width:100%;max-height:58vh;aspect-ratio:4/3;object-fit:cover;background:#111;border-radius:6px;}',
+    '.ru-scan-status{margin-top:10px;color:#777;font-size:11px;line-height:1.6;text-align:center;}',
     '.ru-primary:disabled{opacity:.45;cursor:default;}',
     '.ru-footnote{margin-top:8px;color:#999;font-size:10px;line-height:1.55;}',
     '.ru-account-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f0f0;}',
@@ -121,6 +130,7 @@
   var inviteLinks = root.PhoneRealUserInviteLinks;
   var pendingInviteCode = inviteLinks ? inviteLinks.captureCurrentInvite(root.location, root.history, document.title) : '';
   var codeExpiryTimer = null;
+  var cameraScanner = null;
 
   function el(id) { return document.getElementById(id); }
   function setStatus(message, kind) {
@@ -500,6 +510,59 @@
     }
   });
 
+  var scanOverlay = document.createElement('div');
+  scanOverlay.id = 'ruScanOverlay';
+  scanOverlay.className = 'ru-scan-overlay';
+  scanOverlay.hidden = true;
+  scanOverlay.setAttribute('role', 'dialog');
+  scanOverlay.setAttribute('aria-modal', 'true');
+  scanOverlay.setAttribute('aria-label', '扫码添加真人好友');
+  scanOverlay.innerHTML = '<div class="ru-scan-sheet"><div class="ru-scan-head"><span>扫码添加真人好友</span><button type="button" id="ruCloseScan">关闭</button></div><video id="ruScanVideo" class="ru-scan-video" autoplay muted playsinline></video><p id="ruScanStatus" class="ru-scan-status" role="status" aria-live="polite">摄像头只会在你点击扫码后开启。</p></div>';
+  document.body.appendChild(scanOverlay);
+
+  if (root.PhoneRealUserCameraScanner) {
+    cameraScanner = root.PhoneRealUserCameraScanner.create({
+      window: root,
+      document: document,
+      video: el('ruScanVideo'),
+      overlay: el('ruScanOverlay'),
+      closeButton: el('ruCloseScan'),
+      mediaDevices: root.navigator && root.navigator.mediaDevices,
+      fallbackScriptUrl: '../../shared/js/phone/jsQR.js?v=20261107v3',
+      onStatus: function (message) { el('ruScanStatus').textContent = message; },
+      onError: function (error) {
+        var message = error && error.name === 'NotAllowedError'
+          ? '摄像头权限未允许。请在浏览器设置中允许访问，或粘贴好友码/分享链接。'
+          : error && error.name === 'NotFoundError'
+            ? '没有检测到可用摄像头，请粘贴好友码/分享链接。'
+            : '摄像头暂时无法启动，请粘贴好友码/分享链接。';
+        el('ruScanStatus').textContent = message;
+        setStatus(message, 'error');
+      },
+      onInvalid: function () {
+        el('ruScanStatus').textContent = '这不是有效的 MAOMAO 好友邀请二维码，请对准正确的二维码。';
+      },
+      onScan: function (rawValue) {
+        var code = extractCode(rawValue);
+        if (!code) return false;
+        pendingInviteCode = code;
+        el('ruFriendCodeInput').value = code;
+        setStatus('二维码已识别，请核对邀请码后手动发送好友申请。');
+        return true;
+      }
+    });
+  }
+
+  el('ruStartScan').addEventListener('click', function () {
+    if (!cameraScanner) {
+      setStatus('扫码组件不可用，请粘贴好友码或分享链接。', 'error');
+      return;
+    }
+    el('ruScanOverlay').hidden = false;
+    el('ruScanStatus').textContent = '正在准备扫码…';
+    cameraScanner.start();
+  });
+
   el('ruAddFriendForm').addEventListener('submit', async function (event) {
     event.preventDefault();
     var code = extractCode(el('ruFriendCodeInput').value);
@@ -558,6 +621,9 @@
     }
   });
 
-  root.addEventListener('pagehide', clearCodeExpiryTimer);
+  root.addEventListener('pagehide', function () {
+    clearCodeExpiryTimer();
+    if (cameraScanner) cameraScanner.destroy();
+  });
   boot();
 })(window);
