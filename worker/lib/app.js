@@ -94,10 +94,17 @@ function parsePositiveEnv(env, name) {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+function parseNonNegativeEnv(env, name) {
+  const raw = env?.[name];
+  if (raw == null || String(raw).trim() === '') return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 function readPresenceConfig(env) {
   const heartbeatTtlMs = parsePositiveEnv(env, 'AUTONOMY_HEARTBEAT_TTL_MS');
   const leaseDurationMs = parsePositiveEnv(env, 'AUTONOMY_DEVICE_LEASE_MS');
-  const graceMs = parsePositiveEnv(env, 'AUTONOMY_DEVICE_GRACE_MS');
+  const graceMs = parseNonNegativeEnv(env, 'AUTONOMY_DEVICE_GRACE_MS');
   if (heartbeatTtlMs == null || leaseDurationMs == null || graceMs == null) return null;
   return { heartbeatTtlMs, leaseDurationMs, graceMs };
 }
