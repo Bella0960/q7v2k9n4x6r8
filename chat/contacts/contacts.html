@@ -244,6 +244,17 @@
 
       <!-- 快捷入口 -->
       <div class="quick-entry-list">
+        <div class="quick-entry" id="goNpcRequests">
+          <div class="quick-entry-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="8" r="3.5"/><path d="M2.5 21v-1.5A4.5 4.5 0 0 1 7 15h4a4.5 4.5 0 0 1 4.5 4.5V21"/><path d="M18 8v6M15 11h6"/>
+            </svg>
+          </div>
+          <span class="quick-entry-label">NPC 好友申请</span>
+          <span class="quick-entry-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </span>
+        </div>
         <div class="quick-entry" id="goManageRole">
           <div class="quick-entry-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -398,6 +409,9 @@
   /* mobile fullscreen: no rounded shell */
     document.getElementById('goManageRole').addEventListener('click', function () {
       window.location.href = '../../worldbook/characters/characters.html?from=contacts';
+    });
+    document.getElementById('goNpcRequests').addEventListener('click', function () {
+      window.location.href = 'npc-friends.html';
     });
 
   /* mobile fullscreen: no rounded shell */
