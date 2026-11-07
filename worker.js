@@ -39,7 +39,7 @@ async function realUserChatCapabilities(env) {
       enabled: friendsEnabled,
       status: friendsEnabled ? "enabled" : "disabled",
       endpoints: friendsEnabled
-        ? ["friend-code-rotate", "friend-code-revoke", "request-send", "request-inbox", "request-accept", "request-decline", "request-cancel", "friends-list", "friend-remove", "friend-block", "friend-unblock"]
+        ? ["friend-code-rotate", "friend-code-revoke", "request-send", "request-inbox", "request-accept", "request-decline", "request-cancel", "friends-list", "friends-blocked-list", "friend-remove", "friend-block", "friend-unblock"]
         : [],
       reason: friendsEnabled ? "" : "database_or_friend_service_not_configured"
     },
