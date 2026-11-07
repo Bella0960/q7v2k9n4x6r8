@@ -359,7 +359,13 @@
       }
       cursor = nextCursor;
     }
-    return { friends: friends, relationships: relationships, snapshotAt: snapshotAt, complete: true };
+    return {
+      ownerAccountId: state.account.id,
+      friends: friends,
+      relationships: relationships,
+      snapshotAt: snapshotAt,
+      complete: true
+    };
   }
 
   async function listFriends() {
