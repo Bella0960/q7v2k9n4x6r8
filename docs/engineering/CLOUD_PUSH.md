@@ -96,3 +96,26 @@ Cron / 内部 tick
 - 生产默认：`gate` 未接入，tick 会把所有到期活动延后并记录 `autonomy_denied`，不会认领任何活动。
 - 显式环境配置（缺失即 fail-closed，代码内无默认值）：`AUTONOMY_LEASE_MS`、`AUTONOMY_TICK_LIMIT`、`AUTONOMY_RETRY_BACKOFF_MS`（逗号分隔的毫秒数组）。
 - 尚未拍板：生产 tick 频率、重试预算、上下文版本来源、真实消息落库与推送接入点。
+
+
+## 8. M2.2b scheduler gate adapter（部分完成 / fail-closed）
+
+已新增 `worker/lib/scheduler-gate.js`，并接入 Worker 的 `/internal/tick` 路径。每个到期任务在 CAS claim 前，都会通过该 adapter 调用现有 M2.1 `CharacterSchedulePolicy.evaluate()`，复核全局/角色授权、IANA 时区、角色作息、设备前台 lease 与 grace。
+
+**当前生产状态仍为 fail-closed，不能宣称云端自主活动已启用：**
+
+- M1 当前数据库尚无已批准的全局/角色 autonomy、角色 schedule、前台 heartbeat/lease 的持久化数据源。
+- 当前 `CloudStore` 未实现 `getSchedulerGateSnapshot()`，所以真实 Worker 会记录 `gate_data_source_missing` 并 defer，不会认领活动。
+- 上下文任务（contact / follow_up / busy_reply / diary）必须同时具有任务侧与权威快照侧的整数 `contextVersion`；缺失时记录 `context_version_unavailable`，不允许猜测版本或用时间戳代替。
+- 角色作息、时区、设备 lease/grace 的策略参数只读取显式配置：`AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS`。缺失不会填入产品默认值。
+- gate 支持的原因码包括：`gate_data_source_missing`、`gate_data_missing`、`gate_provider_error`、`gate_policy_unavailable`、`gate_policy_invalid`、`autonomy_denied`、`foreground_lease_held`、`foreground_lease_grace`、`character_not_active`、`context_version_unavailable`、`stale_context`。
+
+本阶段新增的 gate 集成测试只使用合成授权、合成角色日程、合成 lease 和合成 context version；测试中的放行只证明调度器接线和策略判断，不代表生产已有这些数据源。没有上传聊天正文、persona、关系资料或附件；没有调用模型、创建真实出站消息或触发真实推送。
+
+### M2.2b 尚未完成 / BLOCKED
+
+1. 需要用户确认是否允许把全局/角色 autonomy 开关、角色时区/作息等非聊天元数据同步到云端，以及这些值的默认/继承规则。未确认前不新增自动授权、不把 localStorage 设置上传。
+2. 需要批准设备 presence/lease 元数据的云端存储与前台续租接口；不能把普通设备在线状态等同于进入某角色聊天页的前台 lease。
+3. 需要用户决定可信 context version 如何建立。当前没有 server-side chat event/version source；在此之前所有依赖聊天上下文的任务保持 BLOCKED。
+4. 一次性 `ENROLLMENT_TOKEN` 的首次设备认领仍需单独审查；当前注册接口不能仅凭 M1 device-auth 测试视作已落实该要求。
+5. GitHub Actions、Cloudflare Worker 部署、真实设备锁屏推送仍分别需要独立验证；本地/合成测试不能替代这些验收。
