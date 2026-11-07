@@ -562,3 +562,37 @@ test('transactional pair saver reports partial rollback instead of hiding a stra
   assert.equal(failing.api.getPairs('role-a').length, 0);
   assert.equal(failing.api.list('role-a').length, 1);
 });
+
+test('swapping a pair reverses only its A/B order and preserves active portrait references', async () => {
+  const { api, assets, refs } = createLibrary();
+  const first = await api.add('role-a', 'data:image/jpeg;base64,FIRST');
+  const second = await api.add('role-a', 'data:image/jpeg;base64,SECOND');
+  const third = await api.add('role-a', 'data:image/jpeg;base64,THIRD');
+  api.setActive('role-a', third.value.id);
+  const pair = api.linkPair('role-a', first.value.id, second.value.id, { label: '情头' });
+  const assetCount = assets.size;
+  const firstRef = refs.has(first.value.assetId + '|role-avatar|role-a');
+  const secondRef = refs.has(second.value.assetId + '|role-avatar|role-a');
+
+  const swapped = api.swapPair('role-a', pair.value.id);
+  assert.equal(swapped.ok, true);
+  assert.deepEqual(Array.from(swapped.value.avatarIds), [second.value.id, first.value.id]);
+  assert.equal(swapped.value.label, '情头');
+  assert.equal(swapped.value.avatars[0].assetId, second.value.assetId);
+  assert.equal(api.getActive('role-a').id, third.value.id);
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.equal(assets.size, assetCount);
+  assert.equal(refs.has(first.value.assetId + '|role-avatar|role-a'), firstRef);
+  assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), secondRef);
+});
+
+test('swapping a missing pair fails without changing the portrait library', async () => {
+  const { api } = createLibrary();
+  const first = await api.add('role-a', 'data:image/jpeg;base64,FIRST');
+  const before = api.list('role-a');
+  const result = api.swapPair('role-a', 'pair_missing');
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'NOT_FOUND');
+  assert.deepEqual(Array.from(api.list('role-a').map(item => item.id)), Array.from(before.map(item => item.id)));
+  assert.equal(api.getPairs('role-a').length, 0);
+});
