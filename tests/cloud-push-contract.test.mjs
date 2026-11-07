@@ -174,6 +174,47 @@ test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多�
   ]);
 });
 
+test('0011 迁移为历史消息保留来源设备回执，新设备仍可独立接管', () => {
+  const legacy = openTestDb();
+  legacy.exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
+  for (const migration of MIGRATIONS.slice(0, -1)) {
+    for (const statement of splitSql(migration.sql)) legacy.exec(statement);
+    legacy.exec(
+      'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+      migration.version,
+      1
+    );
+  }
+  legacy.exec(
+    `INSERT INTO devices
+      (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
+     VALUES ('legacy-device', 'owner', 'hash', 'legacy', 'test', '', '', 10, 10)`
+  );
+  legacy.exec(
+    `INSERT INTO outbound_messages
+      (id, device_id, character_id, payload_json, server_message_id, dedupe_key,
+       created_at, delivered_at, delivery_status, device_received_at, local_saved_at,
+       read_at, read_by_device_id)
+     VALUES ('legacy-out', 'legacy-device', 'char-a', '{}', 'legacy_message_123456',
+       'legacy-dedupe', 20, 30, 'delivered', 25, 30, 35, 'legacy-device')`
+  );
+
+  const migration = MIGRATIONS[MIGRATIONS.length - 1];
+  for (const statement of splitSql(migration.sql)) legacy.exec(statement);
+  const receipt = legacy.query(
+    'SELECT user_id, device_id, character_id, device_received_at, local_saved_at, read_at FROM outbound_device_receipts WHERE server_message_id = ?',
+    'legacy_message_123456'
+  )[0];
+  assert.deepEqual(receipt, {
+    user_id: 'owner',
+    device_id: 'legacy-device',
+    character_id: 'char-a',
+    device_received_at: 25,
+    local_saved_at: 30,
+    read_at: 35
+  });
+});
+
 test('推送投递迁移只恢复历史临时失败，不重放成功与永久失败记录', () => {
   const legacy = openTestDb();
   legacy.exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
