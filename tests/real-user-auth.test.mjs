@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import { default as worker } from "../worker.js";
 import {
@@ -345,4 +346,12 @@ test("account auth endpoints are routed while messaging remains disabled", async
     "https://mao.example/api/real-user-chat/v1/conversations/c1/messages"
   ), capabilityEnv);
   assert.equal(messages.status, 503);
+});
+
+
+test("server-only auth modules are excluded from Vite static assets but remain imported by the Worker", () => {
+  const viteConfig = readFileSync(new URL("../vite.config.js", import.meta.url), "utf8");
+  const workerEntry = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
+  assert.match(viteConfig, /const excludedDirs = new Set\(\[[^\]]*'worker'[^\]]*\]\)/);
+  assert.match(workerEntry, /from "\.\/worker\/real-user-auth\.js"/);
 });
