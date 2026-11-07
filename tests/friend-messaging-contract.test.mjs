@@ -376,7 +376,7 @@ test('单条消息只在当前账号隐藏；好友仍能看到原消息且未�
   });
   assert.equal(hidden.status, 200);
   assert.equal(hidden.payload.hidden, true);
-  assert.equal(hidden.payload.scope, undefined);
+  assert.equal(hidden.payload.scope, 'current_user_only');
 
   const repeated = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages/' + targetId, {
     method: 'DELETE'
