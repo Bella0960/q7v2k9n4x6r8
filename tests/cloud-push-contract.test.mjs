@@ -2911,6 +2911,55 @@ test('同账号其他设备可接管未确认消息，设备回执互不覆盖�
 });
 
 
+test('来源设备撤销或离线不阻止同账号有效设备恢复待收消息', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const source = makeDevice();
+  await registerDevice(ctx, source);
+  const pairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: source
+  });
+  assert.equal(pairing.status, 200);
+  const recoveryDevice = makeDevice();
+  assert.equal((await registerDevice(ctx, recoveryDevice, {
+    pairingToken: pairing.payload.pairingToken
+  })).status, 200);
+
+  const serverMessageId = 'source_revoked_recovery_123456';
+  ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: source.deviceId,
+    userId: 'owner',
+    characterId: 'char-source-revoked',
+    serverMessageId,
+    dedupeKey: 'autonomy:source-revoked:recovery',
+    payload: { type: 'text', text: '来源设备已撤销，仍可由账号内设备恢复。' },
+    now: 4000
+  });
+
+  ctx.store.revokeDevice(source.deviceId, 5000);
+  const recovered = await ctx.asJson('/api/characters/char-source-revoked/outbound', {
+    device: recoveryDevice
+  });
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.payload.messages.length, 1);
+  assert.equal(recovered.payload.messages[0].serverMessageId, serverMessageId);
+
+  const saved = await ctx.asJson(
+    '/api/characters/char-source-revoked/outbound/' + serverMessageId + '/ack',
+    { method: 'POST', device: recoveryDevice }
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.payload.acknowledged, true);
+
+  const revokedSourceAck = await ctx.asJson(
+    '/api/characters/char-source-revoked/outbound/' + serverMessageId + '/ack',
+    { method: 'POST', device: source }
+  );
+  assert.equal(revokedSourceAck.status, 401);
+  assert.equal(revokedSourceAck.payload.error.code, 'DEVICE_REVOKED');
+});
+
 test('客户端只在消息持久化回调确认成功后才确认云端出站消息', () => {
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   const start = clientSource.indexOf('async function receiveCharacterOutboundMessages(');
