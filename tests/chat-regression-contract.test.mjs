@@ -1786,6 +1786,7 @@ test('主动联系支持角色习惯决定数量的独立气泡并兼容旧版 t
   assert.equal(normalize({ send: true, bubbles: ['消息一。', '消息二。', '消息三。', '消息四。', '消息五。'] }), '');
   assert.equal(normalize({ send: true, bubbles: ['请打开 https://example.com'] }), '');
   assert.equal(normalize({ send: true, bubbles: ['[发起语音通话]'] }), '');
+  assert.equal(normalize({ send: true, bubbles: ['😀'.repeat(111)] }), '');
 });
 test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat history notifications', () => {
   assert.match(chatSettings, /chat_proactive_contact_[' ]\s*\+\s*roleId/);
