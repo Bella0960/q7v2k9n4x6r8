@@ -332,8 +332,11 @@
               throw new Error('MCP 工具清单格式无效：tools 必须是数组。');
             }
             var overflow = false;
-            result.tools.forEach(function (tool) {
-              if (!tool || typeof tool.name !== 'string' || !tool.name.trim()) return;
+            result.tools.forEach(function (tool, index) {
+              if (!tool || typeof tool !== 'object' || Array.isArray(tool) ||
+                  typeof tool.name !== 'string' || !tool.name.trim()) {
+                throw new Error('MCP 工具清单第 ' + (index + 1) + ' 项缺少有效名称或对象结构。');
+              }
               var name = tool.name.trim();
               if (name.length > 120) throw new Error('MCP 工具名称超过 120 字符限制。');
               if (seenNames[name]) throw new Error('MCP 工具名称重复：' + name.slice(0, 80));
@@ -341,19 +344,27 @@
                 overflow = true;
                 return;
               }
+              var schema = tool.inputSchema;
+              if (!schema || typeof schema !== 'object' || Array.isArray(schema) ||
+                  (schema.type && schema.type !== 'object' &&
+                   !(Array.isArray(schema.type) && schema.type.indexOf('object') !== -1))) {
+                throw new Error('MCP 工具“' + name.slice(0, 80) + '”缺少有效的对象参数结构，已停止导入。');
+              }
               seenNames[name] = true;
               all.push({
                 name: name,
                 description: String(tool.description || '').slice(0, 1200),
-                inputSchema: tool.inputSchema && typeof tool.inputSchema === 'object'
-                  ? tool.inputSchema : { type: 'object', properties: {} }
+                inputSchema: schema
               });
             });
             if (overflow) throw new Error('MCP 工具数量超过 500 个上限，未返回不完整清单。');
-            if (result.nextCursor) {
+            if (result.nextCursor != null && result.nextCursor !== '') {
+              if (typeof result.nextCursor !== 'string' || !result.nextCursor.trim()) {
+                throw new Error('MCP 分页游标格式无效，已停止读取。');
+              }
               if (all.length >= MAX_TOOLS) throw new Error('MCP 工具数量可能超过 500 个上限，未返回不完整清单。');
               if (pageCount + 1 >= 20) throw new Error('MCP 工具分页超过 20 页上限，无法完整读取。');
-              return page(String(result.nextCursor), pageCount + 1);
+              return page(result.nextCursor, pageCount + 1);
             }
             return all;
           });
