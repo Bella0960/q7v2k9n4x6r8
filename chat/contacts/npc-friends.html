@@ -167,6 +167,23 @@ button,select{font:inherit}
   });
   document.addEventListener('mao:npc-friend-request', function () { render(); });
   document.addEventListener('mao:npc-social-ready', render);
+  // Keep the inbox in sync when another MAOMAO tab changes the selected role,
+  // request queue, accepted NPC role or its first chat message.
+  window.addEventListener('storage', function (event) {
+    var key = event && event.key;
+    var relevant = !key ||
+      key === 'phone_current_contact' ||
+      key === 'currentPhoneContactId' ||
+      key === 'ai_custom_characters' ||
+      key.indexOf('npc_friend_requests_v2_') === 0 ||
+      key.indexOf('npc_friend_discovery_settings_v2_') === 0 ||
+      key.indexOf('chat_history_') === 0;
+    if (!relevant) return;
+    if (window.NPCSocial && typeof window.NPCSocial.reconcileAccepted === 'function') {
+      window.NPCSocial.reconcileAccepted();
+    }
+    render();
+  });
   render();
 })();
 </script>
