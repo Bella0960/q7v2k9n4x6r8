@@ -18,6 +18,13 @@ UPDATE push_deliveries
 SET updated_at = created_at
 WHERE updated_at IS NULL;
 
+-- Older versions permanently marked every failure as deduped. Promote only
+-- clearly transient historical failures into the retryable state.
+UPDATE push_deliveries
+SET status = 'error', next_attempt_at = created_at, attempt_count = 0
+WHERE status IN ('failed', 'error')
+  AND (http_status IS NULL OR http_status = 0 OR http_status IN (408, 425, 429) OR http_status >= 500);
+
 CREATE INDEX IF NOT EXISTS idx_push_delivery_retry
   ON push_deliveries (status, next_attempt_at, lease_until);
 `;
