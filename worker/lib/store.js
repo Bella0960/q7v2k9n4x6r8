@@ -1046,6 +1046,19 @@ class CloudStore {
     );
   }
 
+  getOutboundLifecycle({ userId, deviceId, characterId, serverMessageId }) {
+    return this.exec(
+      `SELECT o.server_message_id, o.character_id, o.created_at, o.delivery_status,
+              o.push_accepted_at, o.device_received_at, o.local_saved_at,
+              o.read_at, o.read_by_device_id
+       FROM outbound_messages o
+       INNER JOIN devices d ON d.id = o.device_id
+       WHERE o.server_message_id = ? AND o.device_id = ? AND o.character_id = ?
+         AND d.user_id = ? AND d.revoked_at IS NULL`,
+      serverMessageId, deviceId, characterId, userId
+    )[0] || null;
+  }
+
   markOutboundPushAccepted({ serverMessageId, now }) {
     return this.exec(
       `UPDATE outbound_messages
