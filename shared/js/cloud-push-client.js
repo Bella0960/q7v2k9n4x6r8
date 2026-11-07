@@ -377,6 +377,7 @@
 
     var stopped = false;
     var running = false;
+    var syncGeneration = 0;
     var intervalId = null;
     var activeRequestController = null;
     var leasePath = '/api/characters/' + encodedId + '/lease';
@@ -384,22 +385,28 @@
     async function syncVisibleSession() {
       if (stopped || running || document.visibilityState === 'hidden') return;
       running = true;
+      var requestGeneration = syncGeneration;
       var controller = typeof global.AbortController === 'function'
         ? new global.AbortController()
         : null;
       activeRequestController = controller;
       var signal = controller ? controller.signal : undefined;
+      function isCurrentVisibleSession() {
+        return !stopped &&
+          requestGeneration === syncGeneration &&
+          document.visibilityState !== 'hidden';
+      }
       try {
         await updatePresenceHeartbeat(true, signal);
         // Visibility can change while the heartbeat request is in flight.
         // Do not let a now-hidden/stopped page renew or acquire a role lease.
-        if (stopped || document.visibilityState === 'hidden') return;
+        if (!isCurrentVisibleSession()) return;
         try {
           await requestDeviceMetadata(leasePath, 'POST', { action: 'renew' }, signal);
         } catch (renewError) {
           if (renewError.code !== 'LEASE_NOT_OWNED') throw renewError;
           // The renewal response may also arrive after the page was hidden.
-          if (stopped || document.visibilityState === 'hidden') return;
+          if (!isCurrentVisibleSession()) return;
           try {
             await requestDeviceMetadata(leasePath, 'POST', { action: 'acquire' }, signal);
           } catch (acquireError) {
@@ -408,7 +415,9 @@
         }
       } finally {
         if (activeRequestController === controller) activeRequestController = null;
-        running = false;
+        // An older, non-abortable request may finish after a newer visible
+        // session has already started. It must not clear that session's lock.
+        if (requestGeneration === syncGeneration) running = false;
       }
     }
 
@@ -418,8 +427,11 @@
       // fresh heartbeat. The server-side TTL marks the device offline after
       // every visible tab stops renewing.
       if (document.visibilityState === 'hidden') {
-        // Abort this tab's in-flight request so a stalled network call cannot
-        // pin the local running flag and block a later visible-session retry.
+        // Invalidate this session even in browsers without AbortController.
+        // A later visible event can start a new sync without waiting for an
+        // older non-abortable fetch to settle.
+        syncGeneration += 1;
+        running = false;
         if (activeRequestController) activeRequestController.abort();
         return;
       }
@@ -451,19 +463,21 @@
       throw error;
     }
 
-    try {
-      await syncVisibleSession();
-    } catch (error) {
-      // Keep the manager alive; the next interval or visible transition retries.
-      if (document.visibilityState !== 'hidden' && error?.name !== 'AbortError') {
+    // Do not make chat initialization wait for the first network round-trip.
+    // The manager is usable immediately; failures are handled by the same retry
+    // path as subsequent heartbeat renewals.
+    syncVisibleSession().catch(function (error) {
+      if (!stopped && document.visibilityState !== 'hidden' && error?.name !== 'AbortError') {
         console.warn('[cloud] 首次角色前台同步失败，将自动重试', error);
       }
-    }
+    });
 
     return {
       stop: function () {
         if (stopped) return;
         stopped = true;
+        syncGeneration += 1;
+        running = false;
         if (intervalId != null) global.clearInterval(intervalId);
         if (activeRequestController) activeRequestController.abort();
         document.removeEventListener('visibilitychange', onVisibilityChange);
