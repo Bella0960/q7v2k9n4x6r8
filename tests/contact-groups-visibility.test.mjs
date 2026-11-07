@@ -10,6 +10,7 @@ const momentsPage = readFileSync(new URL('../chat/moments/moments.html', import.
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 const packageJson = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
+const browserTest = readFileSync(new URL('./contact-groups-browser.mjs', import.meta.url), 'utf8');
 
 function createRuntime(initialValue, options = {}) {
   const data = new Map();
@@ -134,6 +135,18 @@ test('Moments audience controls do not reuse @mentions as the visible-to list', 
   assert.doesNotMatch(composerPage, /post\.visibleTo\s*=\s*mentionsList/);
   assert.match(composerPage, /currentPerm === 'excluded' && !hiddenAudience\.memberIds\.length/);
   assert.match(composerPage, /不给谁看至少选择一位联系人/);
+});
+
+test('Moments audience preview lists the resolved recipients and explains snapshot behavior', () => {
+  assert.match(composerPage, /audience-review/);
+  assert.match(composerPage, /本条动态可见对象/);
+  assert.match(composerPage, /本条动态排除对象/);
+  assert.match(composerPage, /previewNames/);
+  assert.match(composerPage, /发布后会固定保存这份联系人名单/);
+  assert.match(browserTest, /角色甲/);
+  assert.match(browserTest, /角色乙/);
+  assert.match(browserTest, /角色丙/);
+  assert.match(browserTest, /角色丁/);
 });
 
 test('owner feed remains visible while excluded AI contacts are blocked from comment/mention requests', () => {
