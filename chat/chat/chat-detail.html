@@ -5872,7 +5872,7 @@
                         16
                     );
                     var roleStickerPrompt = window.RoleStickerLibrary.buildReplyPrompt(roleStickerCatalog);
-                    if (roleStickerPrompt) systemPrompt += '\\n\\n' + roleStickerPrompt;
+                    if (roleStickerPrompt) systemPrompt += '\n\n' + roleStickerPrompt;
                 } catch (stickerPromptError) {
                     roleStickerCatalog = [];
                 }
@@ -6231,8 +6231,7 @@
                         if (aiMsg) {
                             // Fix C：正文仍走原来的增量追加与多气泡节奏，不重建整段历史。
                             if (_vl) {
-                                if (aiStickerMessages.length) vlRefresh();
-                                else vlFinalizeLast();
+                                if (!aiStickerMessages.length) vlFinalizeLast();
                             } else {
                                 var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
                                 var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
