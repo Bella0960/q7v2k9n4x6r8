@@ -504,7 +504,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         // retryable (at-least-once), never as a confirmed delivery.
         outcome = {
           ok: false,
-          statusCode: Number(error?.statusCode || 0),
+          // Invalid local VAPID/crypto/subscription data is not a transient
+          // network failure and should not be retried five times.
+          statusCode: error instanceof PushConfigError
+            ? 400
+            : Number(error?.statusCode || 0),
           gone: false
         };
       }
