@@ -1197,6 +1197,87 @@ class CloudStore {
     );
   }
 
+  getFriendMessageByClientId(senderId, clientMessageId) {
+    return this.exec(
+      'SELECT * FROM friend_messages WHERE sender_id = ? AND client_message_id = ?',
+      senderId,
+      clientMessageId
+    )[0] || null;
+  }
+
+  insertFriendMessage(message) {
+    const existing = this.getFriendMessageByClientId(message.senderId, message.clientMessageId);
+    if (existing) {
+      const sameRequest = existing.recipient_id === message.recipientId &&
+        existing.body === message.body;
+      return { kind: sameRequest ? 'duplicate' : 'idempotency_conflict', message: existing };
+    }
+
+    if (!this.getFriendship(message.senderId, message.recipientId)) {
+      return { kind: 'not_friends', message: null };
+    }
+    const recipient = this.exec(
+      'SELECT user_id FROM friend_accounts WHERE user_id = ? AND revoked_at IS NULL',
+      message.recipientId
+    )[0];
+    if (!recipient) return { kind: 'friend_unavailable', message: null };
+
+    const inserted = this.exec(
+      `INSERT INTO friend_messages
+        (id, sender_id, recipient_id, client_message_id, body, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       RETURNING *`,
+      message.id,
+      message.senderId,
+      message.recipientId,
+      message.clientMessageId,
+      message.body,
+      message.now
+    )[0];
+    return { kind: 'created', message: inserted || null };
+  }
+
+  listFriendMessages({ userId, friendId, cursor = null, limit = 50 } = {}) {
+    const safeLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 50));
+    const pairFilter = `((sender_id = ? AND recipient_id = ?) OR
+                          (sender_id = ? AND recipient_id = ?))`;
+    let rows;
+    if (cursor && Number.isSafeInteger(cursor.createdAt) && cursor.createdAt >= 0 &&
+        typeof cursor.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(cursor.id)) {
+      rows = this.exec(
+        `SELECT id, sender_id, recipient_id, body, created_at
+         FROM friend_messages
+         WHERE ${pairFilter}
+           AND (created_at > ? OR (created_at = ? AND id > ?))
+         ORDER BY created_at ASC, id ASC
+         LIMIT ?`,
+        userId,
+        friendId,
+        friendId,
+        userId,
+        cursor.createdAt,
+        cursor.createdAt,
+        cursor.id,
+        safeLimit
+      );
+      return rows;
+    }
+
+    rows = this.exec(
+      `SELECT id, sender_id, recipient_id, body, created_at
+       FROM friend_messages
+       WHERE ${pairFilter}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?`,
+      userId,
+      friendId,
+      friendId,
+      userId,
+      safeLimit
+    );
+    return rows.reverse();
+  }
+
   removeFriendship(userId, otherUserId) {
     const [low, high] = [String(userId), String(otherUserId)].sort();
     const rows = this.exec(
