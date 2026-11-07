@@ -2970,13 +2970,13 @@ test('出站收件箱使用稳定游标翻页，队首保存失败不会挡住�
   for (let index = 0; index < 3; index += 1) {
     const serverMessageId = randomToken(20);
     const result = ctx.store.insertOutboundMessage({
-      id: randomToken(16),
+      id: 'outbound_row_000000' + index,
       deviceId: device.deviceId,
       characterId: 'char-pagination',
       serverMessageId,
       dedupeKey: 'pagination-' + index,
       payload: { text: 'message-' + index },
-      now: 1000 + index
+      now: 1000
     });
     assert.equal(result.inserted, true);
     inserted.push(serverMessageId);
@@ -2997,6 +2997,11 @@ test('出站收件箱使用稳定游标翻页，队首保存失败不会挡住�
   assert.equal(second.status, 200);
   assert.deepEqual(second.payload.messages.map(item => item.serverMessageId), [inserted[2]]);
   assert.equal(second.payload.nextCursor, null);
+
+  const retryCycle = await ctx.asJson('/api/characters/char-pagination/outbound?limit=2', { device });
+  assert.equal(retryCycle.status, 200);
+  assert.deepEqual(retryCycle.payload.messages.map(item => item.serverMessageId), inserted.slice(0, 2),
+    '游标回到队首后，之前未 ACK 的消息必须重新进入重试周期');
 
   const invalidHalfCursor = await ctx.asJson(
     '/api/characters/char-pagination/outbound?limit=2&afterCreatedAt=1000',
