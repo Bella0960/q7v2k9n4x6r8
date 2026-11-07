@@ -404,3 +404,11 @@ Server-boundary work (2026-11-07):
 Additional acceptance:
 - The deployed capabilities endpoint must remain disabled until authentication, authoritative relationships, durable persistence, delivery acknowledgements, and two-device tests are all proven.
 - The reserved API namespace must never fall through to static assets or return a success-shaped response before those gates are met.
+
+
+D1 data foundation (2026-11-07):
+- Added `migrations/0001_real_user_chat.sql` with separate account/session, hashed QR friend-code, friend-request, friendship, block, one-to-one conversation, attachment metadata, message, and recipient receipt tables.
+- Added database constraints and triggers for canonical account pairs, one pending friend request per unordered pair, accepted/unblocked friendship checks, sender participation, attachment owner/conversation/type checks, recipient-only receipts, and read-after-delivery ordering.
+- The message type CHECK permits only text/image/file/voice/sticker. No financial or wallet tables are created.
+- Added `tests/real-user-chat-d1-schema.test.mjs` (9 schema safety contracts), `npm run test:real-user:d1-schema`, and included it in `test:contact:groups`.
+- Migration, tests, and documentation are code groundwork only. No D1 database is bound or migrated, and no authentication or messaging endpoint is enabled. Native test execution and a staging D1 apply remain required.
