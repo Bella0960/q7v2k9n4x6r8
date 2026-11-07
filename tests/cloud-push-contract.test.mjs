@@ -2887,6 +2887,17 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   });
   assert.equal(contextEvent.status, 200);
   assert.equal(contextEvent.payload.version, 1);
+  const contextVersion = await ctx.asJson('/api/characters/char-executor/context-version', { device });
+  assert.equal(contextVersion.status, 200);
+  assert.equal(contextVersion.payload.ownedByCurrentDevice, true);
+
+  const otherDevice = makeDevice();
+  await registerDevice(ctx, otherDevice);
+  const otherDeviceEnqueue = await ctx.asJson('/api/autonomy/characters/char-executor/activities', {
+    method: 'POST', device: otherDevice, body: { contextVersion: 1 }
+  });
+  assert.equal(otherDeviceEnqueue.status, 409);
+  assert.equal(otherDeviceEnqueue.payload.error.code, 'CONTEXT_NOT_ON_DEVICE');
 
   const heartbeat = await ctx.asJson('/api/presence/heartbeat', {
     method: 'POST', device, body: { foregroundActive: true }
