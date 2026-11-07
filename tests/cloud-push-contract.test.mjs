@@ -3103,3 +3103,76 @@ test('生成期间上下文版本发生变化时，完成接口会跳过过时�
     userId: 'owner', deviceId: device.deviceId, characterId: 'char-stale', limit: 10
   }).length, 0);
 });
+
+
+test('收件箱拉取会修复已暂存但首次未入箱的主动消息', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  });
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  await ctx.asJson('/api/autonomy/global', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  await ctx.asJson('/api/characters/char-repair/schedule', {
+    method: 'PUT',
+    device,
+    body: { timeZone: 'UTC', schedule: { active: [{ startMinute: 0, endMinute: 0 }] } }
+  });
+  await ctx.asJson('/api/characters/char-repair/context-version', {
+    method: 'POST', device, body: { eventId: randomToken(20) }
+  });
+  await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST', device, body: { foregroundActive: true }
+  });
+  await ctx.asJson('/api/characters/char-repair/lease', {
+    method: 'POST', device, body: { action: 'acquire' }
+  });
+  const queued = await ctx.asJson('/api/autonomy/characters/char-repair/activities', {
+    method: 'POST', device, body: { contextVersion: 1 }
+  });
+  assert.equal(queued.status, 200);
+  const claim = await ctx.asJson('/api/autonomy/characters/char-repair/activities/claim', {
+    method: 'POST', device, body: {}
+  });
+  assert.equal(claim.status, 200);
+  const activity = claim.payload.activity;
+
+  const originalEnqueue = ctx.store.enqueueOutboundMessage.bind(ctx.store);
+  let failOnce = true;
+  ctx.store.enqueueOutboundMessage = message => {
+    if (failOnce) {
+      failOnce = false;
+      return { inserted: false, conflict: true, message: null };
+    }
+    return originalEnqueue(message);
+  };
+
+  const completion = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '先暂存，稍后从收件箱修复。' }
+  });
+  assert.equal(completion.status, 409);
+  assert.equal(ctx.store.getActivity(activity.id).status, 'completed');
+  assert.equal(ctx.store.getActivity(activity.id).result_server_message_id,
+    'autonomy_' + activity.id + '_' + activity.attemptCount);
+
+  const inbox = await ctx.asJson('/api/characters/char-repair/outbound', { device });
+  assert.equal(inbox.status, 200);
+  assert.equal(inbox.payload.messages.length, 1);
+  assert.equal(inbox.payload.messages[0].serverMessageId,
+    'autonomy_' + activity.id + '_' + activity.attemptCount);
+  assert.equal(inbox.payload.messages[0].payload.text, '先暂存，稍后从收件箱修复。');
+
+  const repeatedPull = await ctx.asJson('/api/characters/char-repair/outbound', { device });
+  assert.equal(repeatedPull.status, 200);
+  assert.equal(repeatedPull.payload.messages.length, 1);
+});
