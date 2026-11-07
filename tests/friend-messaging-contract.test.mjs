@@ -219,6 +219,54 @@ test('新消息与更早历史都能分批读取，游标分页不会漏行', as
   assert.equal(olderPage.payload.hasMore, false);
 });
 
+test('账号每分钟最多发送 60 条消息；相同消息的网络重试不重复计数', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  await register(ctx, alice, '198.51.100.51');
+  await register(ctx, bob, '198.51.100.52');
+  await makeFriends(ctx, alice, bob);
+  const path = '/api/friends/' + bob.userId + '/messages';
+  const firstId = messageId();
+
+  const first = await asAccount(ctx, alice, path, {
+    method: 'POST',
+    body: { clientMessageId: firstId, body: '第一次发送' }
+  });
+  assert.equal(first.status, 200);
+
+  const retry = await asAccount(ctx, alice, path, {
+    method: 'POST',
+    body: { clientMessageId: firstId, body: '第一次发送' }
+  });
+  assert.equal(retry.status, 200);
+  assert.equal(retry.payload.duplicate, true);
+
+  for (let index = 1; index < 60; index += 1) {
+    const sent = await asAccount(ctx, alice, path, {
+      method: 'POST',
+      body: { clientMessageId: messageId(), body: '频率测试 ' + index }
+    });
+    assert.equal(sent.status, 200, '第 ' + (index + 1) + ' 条消息应该还在限额内');
+  }
+
+  const overLimit = await asAccount(ctx, alice, path, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '第 61 条消息' }
+  });
+  assert.equal(overLimit.status, 429);
+  assert.equal(overLimit.payload.error.code, 'FRIEND_MESSAGE_RATE_LIMITED');
+
+  // 60 秒窗口滚动后恢复发送；过期窗口之外的消息不再占用额度。
+  ctx.timestamps.push(FIXED_NOW + 61000);
+  const afterWindow = await asAccount(ctx, alice, path, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '窗口过后可以继续发送' }
+  });
+  assert.equal(afterWindow.status, 200);
+});
+
 test('真人好友消息严格限制为非空纯文字，最多 2000 个 Unicode 字符', async () => {
   const ctx = setupTestStore(openTestDb());
   const alice = makeAccount('Alice');
