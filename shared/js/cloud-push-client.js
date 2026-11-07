@@ -100,7 +100,8 @@
         opts.device ? { 'X-Device-Auth': deviceAuth(opts.device) } : {}
       ),
       body: opts.body ? JSON.stringify(opts.body) : undefined,
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: opts.signal
     }).then(function (response) {
       return response.json().catch(function () {
         return { ok: false, error: { code: 'NON_JSON', message: '云端返回了无法解析的内容' } };
@@ -258,13 +259,14 @@
     });
   }
 
-  function requestDeviceMetadata(path, method, body) {
+  function requestDeviceMetadata(path, method, body, signal) {
     var device = readDevice();
     if (!device) return Promise.reject(new Error('设备尚未连接'));
     return requestJson(path, {
       method: method || 'GET',
       device: device,
-      body: body
+      body: body,
+      signal: signal
     });
   }
 
@@ -317,13 +319,13 @@
     );
   }
 
-  function updatePresenceHeartbeat(foregroundActive) {
+  function updatePresenceHeartbeat(foregroundActive, signal) {
     if (typeof foregroundActive !== 'boolean') {
       return Promise.reject(new Error('foregroundActive 必须是布尔值'));
     }
     return requestDeviceMetadata('/api/presence/heartbeat', 'POST', {
       foregroundActive: foregroundActive
-    });
+    }, signal);
   }
 
   function updateCharacterLease(characterId, action) {
@@ -376,29 +378,36 @@
     var stopped = false;
     var running = false;
     var intervalId = null;
+    var activeRequestController = null;
     var leasePath = '/api/characters/' + encodedId + '/lease';
 
     async function syncVisibleSession() {
       if (stopped || running || document.visibilityState === 'hidden') return;
       running = true;
+      var controller = typeof global.AbortController === 'function'
+        ? new global.AbortController()
+        : null;
+      activeRequestController = controller;
+      var signal = controller ? controller.signal : undefined;
       try {
-        await updatePresenceHeartbeat(true);
+        await updatePresenceHeartbeat(true, signal);
         // Visibility can change while the heartbeat request is in flight.
         // Do not let a now-hidden/stopped page renew or acquire a role lease.
         if (stopped || document.visibilityState === 'hidden') return;
         try {
-          await requestDeviceMetadata(leasePath, 'POST', { action: 'renew' });
+          await requestDeviceMetadata(leasePath, 'POST', { action: 'renew' }, signal);
         } catch (renewError) {
           if (renewError.code !== 'LEASE_NOT_OWNED') throw renewError;
           // The renewal response may also arrive after the page was hidden.
           if (stopped || document.visibilityState === 'hidden') return;
           try {
-            await requestDeviceMetadata(leasePath, 'POST', { action: 'acquire' });
+            await requestDeviceMetadata(leasePath, 'POST', { action: 'acquire' }, signal);
           } catch (acquireError) {
             if (acquireError.code !== 'CHARACTER_LEASE_HELD') throw acquireError;
           }
         }
       } finally {
+        if (activeRequestController === controller) activeRequestController = null;
         running = false;
       }
     }
@@ -408,9 +417,16 @@
       // chat tabs. A hidden tab must not write "inactive" over another tab's
       // fresh heartbeat. The server-side TTL marks the device offline after
       // every visible tab stops renewing.
-      if (document.visibilityState === 'hidden') return;
+      if (document.visibilityState === 'hidden') {
+        // Abort this tab's in-flight request so a stalled network call cannot
+        // pin the local running flag and block a later visible-session retry.
+        if (activeRequestController) activeRequestController.abort();
+        return;
+      }
       syncVisibleSession().catch(function (error) {
-        console.warn('[cloud] 角色前台租约续期失败', error);
+        if (!stopped && document.visibilityState !== 'hidden' && error?.name !== 'AbortError') {
+          console.warn('[cloud] 角色前台租约续期失败', error);
+        }
       });
     }
 
@@ -423,7 +439,9 @@
       intervalId = global.setInterval(
         function () {
           syncVisibleSession().catch(function (error) {
-            console.warn('[cloud] 角色前台租约续期失败', error);
+            if (!stopped && document.visibilityState !== 'hidden' && error?.name !== 'AbortError') {
+              console.warn('[cloud] 角色前台租约续期失败', error);
+            }
           });
         },
         renewInterval
@@ -437,7 +455,9 @@
       await syncVisibleSession();
     } catch (error) {
       // Keep the manager alive; the next interval or visible transition retries.
-      console.warn('[cloud] 首次角色前台同步失败，将自动重试', error);
+      if (document.visibilityState !== 'hidden' && error?.name !== 'AbortError') {
+        console.warn('[cloud] 首次角色前台同步失败，将自动重试', error);
+      }
     }
 
     return {
@@ -445,6 +465,7 @@
         if (stopped) return;
         stopped = true;
         if (intervalId != null) global.clearInterval(intervalId);
+        if (activeRequestController) activeRequestController.abort();
         document.removeEventListener('visibilitychange', onVisibilityChange);
       }
     };
