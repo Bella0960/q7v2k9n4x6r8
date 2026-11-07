@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v194';
+const CACHE_NAME = 'phone-app-pwa-v195';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v194 release: verify the live session owns every friend roster page.
+// v195 release: avoid private avatar reads while avatar storage is disabled.
 const APP_SHELL = [
   './',
   './index.html',
