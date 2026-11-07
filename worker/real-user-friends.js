@@ -21,12 +21,14 @@ export async function isRealUserFriendsConfigured(env) {
       !env || env.REAL_USER_FRIENDS_ENABLED !== "true") return false;
   try {
     const schema = await env.DB.prepare(
-      "SELECT COUNT(*) AS ready FROM sqlite_master " +
-      "WHERE type = 'table' AND name IN (" +
+      "SELECT " +
+      "(SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (" +
       "'real_user_friend_codes', 'real_user_friend_requests', " +
-      "'real_user_friendships', 'real_user_blocks')"
+      "'real_user_friendships', 'real_user_blocks')) AS ready_tables, " +
+      "(SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND " +
+      "name = 'idx_real_user_friend_codes_one_unrevoked_per_account') AS ready_index"
     ).first();
-    return !!schema && Number(schema.ready) === 4;
+    return !!schema && Number(schema.ready_tables) === 4 && Number(schema.ready_index) === 1;
   } catch {
     return false;
   }
