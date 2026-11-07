@@ -33,8 +33,11 @@ function createLibrary(seed, options = {}) {
       return Promise.resolve({ ok: true, value: { assetId, reused: false } });
     }
     removeRef(assetId, ownerType, ownerId) {
-      refs.delete(assetId + '|' + ownerType + '|' + ownerId);
-      return Promise.resolve({ ok: true, value: { removed: true } });
+      if (options.failRemoveRefFor === assetId) {
+        return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'write failed' } });
+      }
+      const removed = refs.delete(assetId + '|' + ownerType + '|' + ownerId);
+      return Promise.resolve({ ok: true, value: { removed } });
     }
     addRef(assetId, ownerType, ownerId) {
       refs.add(assetId + '|' + ownerType + '|' + ownerId);
@@ -245,4 +248,22 @@ test('PWA shell caches the role portrait archive and its runtime at v176', () =>
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v1'"));
   assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v1'"));
+});
+
+
+test('role removal restores already released references when a later cleanup step fails', async () => {
+  const setup = createLibrary();
+  const first = await setup.api.add('role-a', 'data:image/jpeg;base64,AAA');
+  const second = await setup.api.add('role-a', 'data:image/jpeg;base64,BBB');
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+
+  const failAtSecond = createLibrary({}, { failRemoveRefFor: second.value.assetId });
+  const a = await failAtSecond.api.add('role-a', 'data:image/jpeg;base64,AAA');
+  const b = await failAtSecond.api.add('role-a', 'data:image/jpeg;base64,BBB');
+  const result = await failAtSecond.api.removeRole('role-a');
+  assert.equal(result.ok, false);
+  assert.equal(failAtSecond.api.list('role-a').length, 2);
+  assert.equal(failAtSecond.refs.has(a.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(failAtSecond.refs.has(b.value.assetId + '|role-avatar|role-a'), true);
 });
