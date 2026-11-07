@@ -829,7 +829,8 @@
                     invalid_task: '任务数据无效',
                     invalid_config: '调度参数无效',
                     missing_config: '调度参数未配置',
-                    not_due: '任务尚未到执行时间'
+                    not_due: '任务尚未到执行时间',
+                    source_device_revoked: '来源设备授权已撤销，旧任务已作废'
                   };
                   return (labels[item.reasonCode] || '其他原因') + ' × ' + Number(item.count || 0);
                 }).join('、')
