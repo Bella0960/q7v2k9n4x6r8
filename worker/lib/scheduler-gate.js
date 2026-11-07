@@ -104,6 +104,9 @@ export function createSchedulerGate({ store, now = Date.now, config = {}, execut
     if (!hasRequiredSnapshot(snapshot) || snapshot.userId !== userId) {
       return deny(REASON_CODES.GATE_DATA_MISSING);
     }
+    if (executorDeviceId != null && snapshot.contextSourceDeviceId !== String(executorDeviceId)) {
+      return deny(REASON_CODES.DEVICE_CONTEXT_NOT_LOCAL);
+    }
     if (!POLICY || typeof POLICY.evaluate !== 'function') {
       return deny(REASON_CODES.GATE_POLICY_UNAVAILABLE);
     }
