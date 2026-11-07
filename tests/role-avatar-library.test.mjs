@@ -205,7 +205,7 @@ test('character profile loads the shared media stack before the avatar library a
   const storage = characterPage.indexOf('phone_storage.js');
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
-  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v1');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v2');
   const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v1');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
@@ -258,10 +258,10 @@ test('deleting a character releases only that character avatar references after 
 });
 
 test('PWA shell caches the role portrait archive and its runtime at v176', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v177'"));
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v178'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v1'"));
-  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v1'"));
+  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v2'"));
 });
 
 
@@ -339,4 +339,57 @@ test('chat avatar candidate linking failure does not write a role library entry'
   const result = await failing.api.addAsset('role-a', sourceAssetId, { source: 'chat' });
   assert.equal(result.ok, false);
   assert.equal(failing.api.list('role-a').length, 0);
+});
+
+test('paired portraits are saved as a role-scoped relationship without copying image assets', async () => {
+  const { api, assets, refs } = createLibrary();
+  const a = await api.add('role-a', 'data:image/jpeg;base64,PAIR_A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,PAIR_B');
+  const before = assets.size;
+  const linked = api.linkPair('role-a', a.value.id, b.value.id, { source: 'chat', label: '情头' });
+  assert.equal(linked.ok, true);
+  assert.equal(linked.value.avatars.length, 2);
+  assert.equal(linked.value.label, '情头');
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.equal(api.getPairs('role-b').length, 0);
+  assert.equal(assets.size, before, 'pair metadata references existing assets');
+  assert.equal(refs.has(a.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(refs.has(b.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(api.getActive('role-a'), null, 'pairing never changes the active avatar');
+});
+
+test('a portrait can belong to only one pair and paired images cannot be removed until unlinked', async () => {
+  const { api, assets } = createLibrary();
+  const a = await api.add('role-a', 'data:image/jpeg;base64,A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,B');
+  const c = await api.add('role-a', 'data:image/jpeg;base64,C');
+  const linked = api.linkPair('role-a', a.value.id, b.value.id);
+  assert.equal(linked.ok, true);
+  assert.equal(api.linkPair('role-a', a.value.id, c.value.id).error.code, 'PAIR_CONFLICT');
+  const blocked = await api.remove('role-a', b.value.id);
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.error.code, 'PAIR_EXISTS');
+  const unlinked = api.unlinkPair('role-a', linked.value.id);
+  assert.equal(unlinked.ok, true);
+  assert.equal(unlinked.meta.portraitsRetained, true);
+  assert.equal(api.getPairs('role-a').length, 0);
+  assert.equal(api.list('role-a').length, 3);
+  const removed = await api.remove('role-a', b.value.id);
+  assert.equal(removed.ok, true);
+  assert.equal(assets.has(b.value.assetId), false);
+});
+
+test('pair creation rejects same, missing, and cross-character portraits and deduplicates reversed pairs', async () => {
+  const { api } = createLibrary();
+  const a = await api.add('role-a', 'data:image/jpeg;base64,A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,B');
+  const other = await api.add('role-b', 'data:image/jpeg;base64,C');
+  assert.equal(api.linkPair('role-a', a.value.id, a.value.id).error.code, 'VALIDATION_FAILED');
+  assert.equal(api.linkPair('role-a', a.value.id, other.value.id).error.code, 'NOT_FOUND');
+  const first = api.linkPair('role-a', a.value.id, b.value.id);
+  const reverse = api.linkPair('role-a', b.value.id, a.value.id);
+  assert.equal(first.ok, true);
+  assert.equal(reverse.ok, true);
+  assert.equal(reverse.meta.reused, true);
+  assert.equal(api.getPairs('role-a').length, 1);
 });
