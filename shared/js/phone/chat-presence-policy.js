@@ -663,11 +663,18 @@
       '不连续追发，不强行制造问题，不输出动作旁白、隐藏机器标记、红包/转账/通话/图片指令或 Markdown。',
       '若确实适合发送，只输出 JSON：{"send":true,"bubbles":["第一条独立消息","第二条独立消息"]}；条数按语境变化，也可只返回一个元素。若不适合，输出 {"send":false,"bubbles":[]}。不要在 JSON 外添加任何文字。'
     ];
+    var relationship = contact && typeof contact.relationship === 'string'
+      ? contact.relationship.trim().slice(0, 40) : '';
+    if (relationship) {
+      lines.push('', '【当前关系设定】' + relationship + '。只按已明确设定和真实互动决定熟悉程度；不要擅自升级关系，不制造占有、愧疚或依赖。');
+    }
     if (persona) lines.push('', '【角色设定】', persona);
     var voicePrompt = buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
     if (voicePrompt) lines.push('', voicePrompt);
     var habitPrompt = buildVoiceHabitPrompt(options.voiceProfile);
     if (habitPrompt) lines.push('', habitPrompt);
+    var emotionPrompt = buildEmotionContinuityPrompt(history, { mode: 'online' });
+    if (emotionPrompt) lines.push('', emotionPrompt);
     var autonomyPrompt = buildAutonomyPrompt(history, { mode: 'online', maxScan: 60, maxNotes: 2, maxTurns: 4 });
     if (autonomyPrompt) lines.push('', autonomyPrompt);
     if (options.localTime) lines.push('', '【当前本地时间】' + String(options.localTime) + '。只能将其用于理解时间语境，不得声称在未知地点。');
