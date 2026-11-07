@@ -282,7 +282,7 @@ test('未读数量按收件人隔离；确认已读只会向前推进且跨设�
     method: 'POST',
     body: { clientMessageId: messageId(), body: '我的回复' }
   });
-  const invalidRead = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/read', {
+  const invalidRead = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
     method: 'POST',
     body: { messageId: bobReply.payload.message.id }
   });
