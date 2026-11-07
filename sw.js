@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v175';
+const CACHE_NAME = 'phone-app-pwa-v176';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v175 release: add typed contact identity references and typed Moments audience snapshots.
+// v176 release: add the local real-user contact directory contract.
 const APP_SHELL = [
   './',
   './index.html',
@@ -79,6 +79,7 @@ const APP_SHELL = [
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
   './shared/js/phone/contact-identity.js?v=20261107v1',
+  './shared/js/phone/contact-directory.js?v=20261107v1',
   './shared/js/contact-groups.js?v=20261107v2',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
