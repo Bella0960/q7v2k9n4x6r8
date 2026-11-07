@@ -798,6 +798,13 @@
             '当前有效推送订阅：' + Number(ready.activePushSubscriptions || 0),
             '测试推送通道：' + (ready.testPushReady ? '具备配置条件' : '尚未就绪'),
             '前台心跳与租约：' + yesNo(ready.presenceConfigured),
+            '有效前台心跳设备：' + (ready.presenceSummary
+              ? Number(ready.presenceSummary.foregroundDevices || 0) + ' / 授权设备 ' + Number(ready.presenceSummary.authorizedDevices || 0)
+              : '未知（前台配置未完成）'),
+            '角色前台租约：' + (ready.presenceSummary
+              ? '有效 ' + Number(ready.presenceSummary.validCharacterLeases || 0) +
+                ' / 缓冲期 ' + Number(ready.presenceSummary.graceCharacterLeases || 0)
+              : '未知（前台配置未完成）'),
             '全局自主活动授权：' + (ready.globalAutonomyEnabled ? '已开启' : '未开启'),
             '任务队列：共 ' + Number(ready.activityQueue && ready.activityQueue.total || 0) +
               '（待处理 ' + Number(ready.activityQueue && ready.activityQueue.waiting || 0) +
