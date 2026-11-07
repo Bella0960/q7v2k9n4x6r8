@@ -1224,6 +1224,23 @@ class CloudStore {
       return { kind: sameRequest ? 'duplicate' : 'idempotency_conflict', message: existing };
     }
 
+    // Give every message in one conversation a strictly increasing server
+    // timestamp. Two devices can send within the same millisecond; a monotonic
+    // cursor prevents the second message from falling behind an already-read ID.
+    const latest = this.exec(
+      `SELECT MAX(created_at) AS latest_created_at
+       FROM friend_messages
+       WHERE (sender_id = ? AND recipient_id = ?)
+          OR (sender_id = ? AND recipient_id = ?)`,
+      message.senderId,
+      message.recipientId,
+      message.recipientId,
+      message.senderId
+    )[0] || {};
+    const createdAt = Math.max(
+      Number(message.now) || Date.now(),
+      Number(latest.latest_created_at || 0) + 1
+    );
     const inserted = this.exec(
       `INSERT INTO friend_messages
         (id, sender_id, recipient_id, client_message_id, body, created_at)
@@ -1234,7 +1251,7 @@ class CloudStore {
       message.recipientId,
       message.clientMessageId,
       message.body,
-      message.now
+      createdAt
     )[0];
     return { kind: 'created', message: inserted || null };
   }
