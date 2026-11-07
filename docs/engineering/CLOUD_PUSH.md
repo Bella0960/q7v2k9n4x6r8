@@ -9,7 +9,7 @@ Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机
   - 理由：当前仓库的部署路径是"零账号级资源"的静态 Worker 部署。D1 需要在账号里先 `wrangler d1 create` 并把 `database_id` 写回 `wrangler.jsonc`，否则 `wrangler deploy` 会失败，直接阻断现有站点发布。Durable Object 随部署自动创建，同样是 Cloudflare 原生、事务性、SQLite 语义的持久化能力。
   - 迁移 SQL 是标准 SQLite 方言（`worker/migrations/0001_init.js`），若以后切到 D1，可原样迁移。
 - **定时**：`triggers.crons`（每日 03:17 UTC）清理过期/长期停用的推送订阅，并调用一次调度 tick。调度频率与生产配置值尚未拍板，因此没有擅自增加更高频 Cron。
-- **密钥**：VAPID 私钥、设备密钥 pepper 只通过 Cloudflare secrets 注入，前端只能拿到公开的 VAPID public key。
+- **密钥**：VAPID 私钥、设备密钥 pepper 与首台设备初始认领码只通过 Cloudflare secrets 注入，前端只能拿到公开的 VAPID public key。
 
 ## 2. 表结构（0001_init）
 
@@ -30,14 +30,17 @@ Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机
 | --- | --- | --- | --- |
 | GET | `/api/health` | 无 | 服务状态、VAPID 是否配置、设备/订阅计数 |
 | GET | `/api/push/config` | 无 | 返回 VAPID public key（未配置时 503） |
-| POST | `/api/devices/register` | 无 | 设备自注册；同 ID 不同密钥返回 409 |
-| POST | `/api/devices/revoke` | 设备 | 撤销设备并停用其全部订阅 |
+| POST | `/api/devices/register` | 新设备需配对码；已知设备可凭原凭据重连 | 设备注册；同 ID 不同密钥返回 409 |
+| POST | `/api/devices/pairing-token` | 设备 | 生成短时、单次使用的设备配对码 |
+| POST | `/api/devices/revoke` | 设备 | 撤销设备、停用订阅并清除其 presence / lease / 未使用配对码 |
 | POST | `/api/push/subscriptions` | 设备 | 订阅（同 endpoint 幂等更新） |
 | GET | `/api/push/subscriptions` | 设备 | 订阅状态（不含密钥） |
 | POST | `/api/push/unsubscribe` | 设备 | 退订单条（传 endpoint）或全部（不传） |
 | POST | `/api/push/test` | 设备 | 发送测试推送，支持 `dedupeKey` 去重 |
 
 设备鉴权：请求头 `X-Device-Auth: <deviceId>.<secret>`。`deviceId` 与 `secret` 由前端 `crypto.getRandomValues` 生成，只存本机 `localStorage`，且被备份导出逻辑永久排除。
+
+新设备注册不再开放自助加入：已授权设备先调用 `POST /api/devices/pairing-token` 生成一次性配对码；新设备把配对码提交给 `POST /api/devices/register`。配对码只存 peppered hash、过期后不可用、成功使用后不可重放，签发设备撤销时其未用配对码一并清除。首次安装可通过 Worker secret `ENROLLMENT_TOKEN` 认领首台设备；数据库会记录初始认领已完成，后续设备只能走配对流程。
 
 ## 4. 部署步骤
 
@@ -54,7 +57,10 @@ Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机
    npx wrangler secret put VAPID_PRIVATE_KEY    # 私钥，仅服务端使用
    npx wrangler secret put VAPID_SUBJECT        # mailto: 或 https: 联系地址
    npx wrangler secret put DEVICE_SECRET_PEPPER # 设备凭据哈希 pepper
+   npx wrangler secret put ENROLLMENT_TOKEN      # 首台设备一次性初始认领码，至少 32 字符
    ```
+
+   另外必须显式配置正整数 Worker 变量 `DEVICE_PAIRING_TOKEN_TTL_MS`（一次性配对码有效期，毫秒）；缺失时服务端不会签发配对码。不要把 `ENROLLMENT_TOKEN` 写入仓库、前端或公开日志。
 
 3. 部署：现有 `deploy-cloudflare-worker.yml` 在 `main` 推送时先 `npm run build` 再 `wrangler deploy`。`worker.js` 已设为 `main`，Durable Object 随部署自动创建。
 
@@ -146,9 +152,19 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 1. **前端 heartbeat/lease 调用：PARTIAL。** API 已有，chat-detail 尚未接入；在接通之前，PWA 不会自动申请角色前台租约。
 2. **真实上下文版本：BLOCKED。** 当前没有可信 server-side chat event/version source。Store 明确返回 `contextVersion: null`；所有 `contact / follow_up / busy_reply / diary` 上下文任务均返回 `context_version_unavailable` 并 defer。没有伪造版本、没有把时间戳当版本、没有上传聊天正文。
-3. **ENROLLMENT_TOKEN：BLOCKED。** 已确认的首次设备认领要求仍需独立落实；目前注册 API 仍不能只凭现有 device-auth 测试就视为已满足一次性认领。
+3. **设备安全配对：CODE IMPLEMENTED / DEPLOY CONFIG NOT VERIFIED。** 新增 `0003_device_pairing`：首台设备通过 Worker secret `ENROLLMENT_TOKEN` 完成一次初始认领；现有授权设备可以签发短时单次配对码；新设备设置页可输入配对码；已知设备保留原凭据重连路径，不会因服务端未知而自动清除本机凭据。生产环境仍需设置 `ENROLLMENT_TOKEN` 与 `DEVICE_PAIRING_TOKEN_TTL_MS`，并在真实 Cloudflare Worker 上验证迁移、首次认领、配对和撤销行为。
 4. **云端模型凭据：NOT AUTHORIZED。** 不读取或上传浏览器 API Key，不配置/使用模型凭据。
 5. **AI 生成 / outbound / 真正角色主动推送：NOT STARTED。** 本阶段没有创建真实出站消息、没有调用模型、没有发真实推送。
 6. **GitHub Actions / Cloudflare / 真机：NOT VERIFIED。** 本地代码、合成 SQLite 测试、GitHub CI、Cloudflare 部署、真实设备锁屏通知是不同验收维度，不得互相替代。
 
 本阶段没有上传真实聊天正文、persona、关系资料、摘要、图片或附件；没有调用模型；没有触发用户可见推送；没有部署 Worker、合并 PR 或更新 APK。PR 保持 Draft。
+
+
+### 8.5 首次认领与设备配对（代码已加入当前 Draft 分支）
+
+- 新增迁移 `0003_device_pairing`，为配对码保存 peppered hash、签发设备、创建时间、过期时间和消费时间；不保存配对码明文。
+- `device_bootstrap` 记录首台设备认领状态。迁移会把升级前已存在的有效设备标记为已认领，避免升级后要求用户重新连接；首台初始认领完成后不再接受第二次 bootstrap。
+- `POST /api/devices/pairing-token` 要求已授权设备，按 `DEVICE_PAIRING_TOKEN_TTL_MS` 设置有效期，并限制单设备每小时签发数量。
+- `POST /api/devices/register` 对未知设备要求有效的配对码，或在首台认领尚未完成时使用 `ENROLLMENT_TOKEN`；成功消费配对码后不能重放。撤销签发设备会删除其尚未消费的配对码。
+- 设置页增加“生成设备配对码”、复制配对码和输入配对码连接流程。设备注册遇到凭据冲突或服务端记录丢失时，不再自动生成新 ID 并清除原凭据。
+- 这部分代码仍未由当前会话执行 Node / SQLite 测试、Vite build、Cloudflare 部署或真机验收。PR 仍 Draft；不要将代码已写入误认为生产安全配置已完成。
