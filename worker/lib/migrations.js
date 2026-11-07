@@ -4,6 +4,7 @@ import { SQL as DEVICE_PAIRING_SQL, VERSION as DEVICE_PAIRING_VERSION } from '..
 import { SQL as CONTEXT_VERSION_SQL, VERSION as CONTEXT_VERSION_VERSION } from '../migrations/0004_character_context_version.js';
 import { SQL as PUSH_DELIVERY_RETRIES_SQL, VERSION as PUSH_DELIVERY_RETRIES_VERSION } from '../migrations/0005_push_delivery_retries.js';
 import { SQL as ACTIVITY_DEDUPE_SQL, VERSION as ACTIVITY_DEDUPE_VERSION } from '../migrations/0007_activity_dedupe.js';
+import { SQL as CONTEXT_SOURCE_DEVICE_SQL, VERSION as CONTEXT_SOURCE_DEVICE_VERSION } from '../migrations/0008_context_source_device.js';
 import { SQL as OUTBOUND_INBOX_SQL, VERSION as OUTBOUND_INBOX_VERSION } from '../migrations/0006_outbound_inbox_index.js';
 
 /**
@@ -17,7 +18,8 @@ export const MIGRATIONS = [
   { version: CONTEXT_VERSION_VERSION, sql: CONTEXT_VERSION_SQL },
   { version: PUSH_DELIVERY_RETRIES_VERSION, sql: PUSH_DELIVERY_RETRIES_SQL },
   { version: OUTBOUND_INBOX_VERSION, sql: OUTBOUND_INBOX_SQL },
-  { version: ACTIVITY_DEDUPE_VERSION, sql: ACTIVITY_DEDUPE_SQL }
+  { version: ACTIVITY_DEDUPE_VERSION, sql: ACTIVITY_DEDUPE_SQL },
+  { version: CONTEXT_SOURCE_DEVICE_VERSION, sql: CONTEXT_SOURCE_DEVICE_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */
