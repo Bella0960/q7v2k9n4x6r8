@@ -6817,12 +6817,17 @@
         // ---------- 单条删除 ----------
         function deleteOneMessage(mid) {
             var list = loadMessages();
+            var removedMessage = list.find(function (m) { return ensureMid(m) === mid; });
             var keep = list.filter(function (m) { return ensureMid(m) !== mid; });
             if (keep.length === list.length) {
                 if (typeof showToast === 'function') showToast('消息已不存在');
                 return;
             }
-            saveMessages(keep);
+            if (!saveMessages(keep)) {
+                if (typeof showToast === 'function') showToast('删除失败，消息和图片均已保留');
+                return;
+            }
+            if (removedMessage) releaseDeletedChatImageReferences([removedMessage]);
             if (_vl) {
                 vlRefresh();
             } else {
