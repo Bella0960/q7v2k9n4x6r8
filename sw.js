@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v181';
+const CACHE_NAME = 'phone-app-pwa-v182';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v181 release: cache isolated local-only real-user conversation storage.
 const APP_SHELL = [
@@ -159,6 +159,14 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // Server capability and conversation endpoints must never enter the PWA's
+  // cache-first static-asset path. Their state is dynamic and must be read live.
+  if (url.pathname === '/api/real-user-chat' ||
+      url.pathname.startsWith('/api/real-user-chat/')) {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
 
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
