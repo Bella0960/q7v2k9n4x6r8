@@ -42,7 +42,7 @@
           '<button type="button" class="ru-plain-button" id="ruRemoveAvatar" hidden>移除头像</button>' +
           '<span class="ru-avatar-hint">JPG、PNG 或 WebP，最大 5 MB</span>' +
         '</div>' +
-        '<form id="ruProfileForm" class="ru-profile-form" hidden>'
+        '<form id="ruProfileForm" class="ru-profile-form" hidden>' +
           '<label>新的昵称<input id="ruProfileDisplayName" maxlength="48" autocomplete="nickname" required></label>' +
           '<div class="ru-profile-actions"><button class="ru-primary" id="ruProfileSave" type="submit">保存昵称</button><button class="ru-plain-button" id="ruProfileCancel" type="button">取消</button></div>' +
         '</form>' +
