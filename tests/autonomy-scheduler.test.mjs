@@ -1251,3 +1251,65 @@ test('活动结果先不可变落库，收件箱短暂失败后可用同一正�
   assert.equal(changedText, null);
   assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 1);
 });
+
+
+test('全局维护可从不可变暂存结果恢复收件箱，且不会恢复已撤销设备的内容', () => {
+  const { store, query } = freshStore();
+  store.insertDevice({
+    id: 'device_maintenance_123',
+    userId: 'owner',
+    secretHash: 'maintenance-test',
+    now: NOW
+  });
+  store.insertDevice({
+    id: 'device_revoked_456',
+    userId: 'owner',
+    secretHash: 'revoked-test',
+    now: NOW
+  });
+
+  const prepareStaged = (id, deviceId, characterId, messageText) => {
+    const queued = store.enqueueActivity({
+      id,
+      deviceId,
+      characterId,
+      kind: 'contact',
+      scheduledAt: NOW,
+      maxAttempts: 3,
+      payload: { contextVersion: 1 },
+      dedupeKey: 'maintenance:' + id,
+      now: NOW
+    });
+    const claimed = store.claimActivity({
+      id: queued.activity.id,
+      expectedAttemptCount: 0,
+      expectedStatus: 'waiting',
+      owner: deviceId,
+      leaseUntil: NOW + CONFIG.leaseMs,
+      now: NOW
+    });
+    assert.ok(claimed);
+    const staged = store.completeActivityWithOutbound({
+      id,
+      owner: deviceId,
+      attemptCount: 1,
+      now: NOW + 1,
+      serverMessageId: 'autonomy_' + id + '_1',
+      dedupeKey: 'autonomy:' + id + ':1',
+      payload: { type: 'text', text: messageText }
+    });
+    assert.equal(staged.completed, true);
+  };
+
+  prepareStaged('act_maintenance_recovery_01', 'device_maintenance_123', 'char-maintenance',
+    '可由后台维护恢复的消息。');
+  prepareStaged('act_revoked_recovery_01', 'device_revoked_456', 'char-revoked',
+    '撤销设备的消息不得重新出站。');
+
+  store.revokeDevice('device_revoked_456', NOW + 2);
+  const recovery = store.repairAllStagedActivityOutboxes({ now: NOW + 3, limit: 20 });
+  assert.deepEqual(recovery, { scanned: 1, repaired: 1, deferred: 0 });
+  assert.equal(query('SELECT COUNT(*) AS total FROM outbound_messages')[0].total, 1);
+  assert.equal(store.getOutboundMessage('autonomy_act_maintenance_recovery_01_1').server_message_id,
+    'autonomy_act_maintenance_recovery_01_1');
+});
