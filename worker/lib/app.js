@@ -653,6 +653,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const globalAutonomy = await store.getUserAutonomy(userId);
     const contextVersionSummary = await store.getCharacterContextVersionSummary(userId);
     const contextVersionReady = contextVersionSummary.roleCount > 0;
+    const activityExecutorConfigured = readActivityExecutionConfig(env) !== null;
     const activityQueue = await store.getActivityQueueSummary({ userId });
     const timestamp = now();
     const recentSchedulerReasons = await store.getRecentAutonomyReasonSummary({
@@ -687,13 +688,15 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       contextVersionTrackedRoles: contextVersionSummary.roleCount,
       contextVersionMaxObserved: contextVersionSummary.maxVersion,
       contextVersionLatestUpdatedAt: contextVersionSummary.latestUpdatedAt,
-      activityExecutorAvailable: false,
+      activityExecutorAvailable: activityExecutorConfigured,
+      deviceLocalModelRequired: true,
       autonomousMessageGenerationReady: false,
       autonomyExecutionBlockers: [
-        'executor_unavailable',
+        ...(activityExecutorConfigured ? [] : ['activity_executor_config_missing']),
+        'device_local_model_runtime_not_verified',
         ...(contextVersionReady ? [] : ['context_version_unavailable'])
       ],
-      note: '角色聊天版本只记录服务端递增版本和设备事件 ID，不接收聊天正文；当前仍没有 AI 执行器，不会生成角色消息或触发主动推送。'
+      note: '云端只保存活动元数据与生成后的出站文字；生成由已配对前台设备调用本机 PhoneAPI 和本地 API 配置完成。聊天正文、角色设定和 API Key 不上传。应用关闭或页面后台时不会继续生成；完整运行与真机链路尚未验收。'
     });
   }
 
