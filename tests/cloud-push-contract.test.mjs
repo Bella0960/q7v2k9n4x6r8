@@ -91,7 +91,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0008 建立云推送、调度元数据、出站收件箱与上下文来源约束', async () => {
+test('迁移 0001–0009 建立云推送、活动幂等、上下文来源与结果恢复结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -134,6 +134,9 @@ test('迁移 0001–0008 建立云推送、调度元数据、出站收件箱与�
   assert.ok(indexes.includes('idx_activity_recipient_due'), '自主活动必须支持按角色与到期状态查询');
   const activityColumns = testDb.query("PRAGMA table_info('activity_queue')").map(row => String(row.name));
   assert.ok(activityColumns.includes('dedupe_key'), '活动队列必须保存稳定幂等键');
+  for (const column of ['result_json', 'result_server_message_id', 'result_dedupe_key']) {
+    assert.ok(activityColumns.includes(column), `活动队列必须保存不可变生成结果字段 ${column}`);
+  }
   const contextVersionColumns = testDb.query("PRAGMA table_info('character_context_versions')").map(row => String(row.name));
   assert.ok(contextVersionColumns.includes('updated_by_device_id'), '上下文版本必须记录最后更新设备');
   const deliveryColumns = testDb.query("PRAGMA table_info('push_deliveries')").map(row => String(row.name));
@@ -145,7 +148,7 @@ test('迁移 0001–0008 建立云推送、调度元数据、出站收件箱与�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 8);
+  assert.equal(versions.length, 9);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -154,7 +157,8 @@ test('迁移 0001–0008 建立云推送、调度元数据、出站收件箱与�
     '0005_push_delivery_retries',
     '0006_outbound_inbox_index',
     '0007_activity_dedupe',
-    '0008_context_source_device'
+    '0008_context_source_device',
+    '0009_activity_result_staging'
   ]);
 });
 
