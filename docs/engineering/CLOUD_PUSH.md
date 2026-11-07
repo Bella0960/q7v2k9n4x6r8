@@ -477,3 +477,49 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增测试覆盖即时发送、重复完成不重复通知、锁屏正文隐私、5xx 退避后同一订阅重试，以及全局维护先恢复 outbox 再派发 Push。
 
 当前这些测试只是写入仓库，尚未在可用 CI runner 上执行；GitHub Actions 仍不能作为通过证据。
+## 16. M2.6：主动消息完整生命周期回执（Push / Received / Saved / Read）
+
+此前 `outbound_messages.delivery_status='delivered'` 是在客户端本地聊天记录保存并读回验证后，由 `/ack` 写入；它不代表 Push 被接受，也不代表用户已经阅读。本轮保留旧字段与 ACK 语义，新增独立生命周期字段，避免把四件不同的事混成一个“已送达”。
+
+### 16.1 数据模型与兼容迁移
+
+- 新增迁移 `0010_outbound_lifecycle_receipts`，给 `outbound_messages` 增加 `push_accepted_at`、`device_received_at`、`local_saved_at`、`read_at` 和 `read_by_device_id`。
+- `push_accepted_at`：至少一个有效 Push 订阅的 Web Push 服务返回成功后记录；它只代表 Push 服务接受了该通知，不代表手机系统已显示。
+- `device_received_at`：已鉴权目标设备拉取到消息 envelope 后记录；这与 Push 通道分开，前台聊天轮询也能产生收到回执。
+- `local_saved_at`：沿用原 `/ack` 的写后读回确认；只有原聊天历史持久化回调返回 true 后才设置。`delivered_at` 保留兼容并继续写入同一时间。
+- `read_at` / `read_by_device_id`：用户实际看到消息气泡后记录，由目标设备的聊天页面发起。服务端拒绝未完成本地保存的已读请求。
+- 历史 `delivery_status='delivered'` 的旧记录会把既有 `delivered_at` 回填到 `device_received_at` 和 `local_saved_at`；不会猜测旧消息是否被用户看过，因此 `read_at` 保持 null。历史成功 Push 投递可按 `push_deliveries.status='sent'` 回填 `push_accepted_at`。
+
+### 16.2 新 API
+
+| API | 作用 |
+| --- | --- |
+| `POST /api/characters/:id/outbound/:messageId/received` | 目标设备确认已拉取消息 envelope；幂等，不代表已经保存 |
+| `POST /api/characters/:id/outbound/:messageId/ack` | 原有接口不变；写后读回成功后确认本地保存，同时兼容补记 received |
+| `POST /api/characters/:id/outbound/:messageId/read` | 本地保存后才可确认用户已读；只允许原目标设备、原角色回执 |
+
+出站 GET 仍返回原 payload，并附带 `lifecycle`：`pushAcceptedAt`、`deviceReceivedAt`、`localSavedAt`、`readAt`。所有时间均是服务端时间戳；没有相应事件时为 null。
+
+### 16.3 用户已读的判定方式
+
+- 原聊天页在真实消息行上挂载 `data-server-message-id`，用 `IntersectionObserver` 观察 `#chat-messages` 滚动视口。
+- 只有当目标气泡实际进入可视区域（至少约 18% 可见）并持续约 700ms，且页面仍在前台时，才调用 `markCharacterOutboundRead()`。
+- 页面隐藏、气泡离开视口、观察器不可用或服务端回执失败时，不伪造已读状态；失败会在消息行再次进入视口时重试。
+- 全量聊天历史与虚拟列表仍复用原消息行，不建立第二个阅读列表；只有带稳定 `serverMessageId` 的云端主动消息会请求云端已读回执。
+
+### 16.4 回归覆盖（已写入，未执行）
+
+- 迁移检查覆盖 `0010_outbound_lifecycle_receipts` 的五个字段及索引。
+- 生命周期 API 检查 Push 接受时间、设备收到、本地保存和用户已读分别为空/填充的正确顺序。
+- 未保存消息不能被标记已读；错误设备或错误角色不能伪造收到、保存或已读回执。
+- 重复 received/read 回执必须幂等；时间戳恰好相同的快速重复请求不会误判首次/重复状态。
+- 客户端接收顺序固定为 received → persist → check true → local-saved ACK；聊天页面只有实际可视消息气泡才能上报 read。
+- Service Worker shell cache 更新至 `phone-app-pwa-v178`，聊天页云端回执客户端资源版本为 `20261107v1`。
+
+### 16.5 语义边界
+
+- **Push accepted ≠ 设备收到**：Push 服务接受请求，不保证操作系统最终展示。
+- **设备收到 ≠ 本地保存**：只有原聊天历史写后读回成功才算 saved。
+- **本地保存 ≠ 用户已读**：用户未实际看到气泡时 `read_at` 仍为空。
+- 目前每条主动消息明确投递到创建该出站消息时指定的目标设备；不会把某台设备的本地聊天历史或已读行为冒充为另一台设备的状态。
+- Node/SQLite 契约测试、`npm run build`、浏览器真实滚动可视性、Android 多设备和锁屏 Push 仍需实际运行验收；当前均为 **NOT VERIFIED**。本轮没有合并、部署或更新 APK。
