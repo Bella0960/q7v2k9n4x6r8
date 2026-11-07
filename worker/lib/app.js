@@ -529,7 +529,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         6 * 60 * 60 * 1000,
         30000 * (2 ** Math.max(0, Number(claim.attempt_count) - 1))
       );
-      const nextAttemptAt = canRetry ? timestamp + retryDelayMs : null;
+      const finishedAt = now();
+      const nextAttemptAt = canRetry ? finishedAt + retryDelayMs : null;
       const finalized = await store.finishDelivery({
         dedupeKey,
         subscriptionId: subscription.id,
@@ -537,7 +538,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         status: deliveryStatus,
         httpStatus: Number.isFinite(statusCode) ? statusCode : 0,
         nextAttemptAt,
-        now: now()
+        now: finishedAt
       });
 
       if (!finalized) {
