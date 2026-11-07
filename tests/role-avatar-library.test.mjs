@@ -5,6 +5,9 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(path.join(process.cwd(), 'shared/js/phone/role-avatar-library.js'), 'utf8');
+const mediaRepositorySource = fs.readFileSync(
+  path.join(process.cwd(), 'shared/js/phone/storage/media-repository.js'), 'utf8'
+);
 
 function createLibrary(seed, options = {}) {
   const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor'];
@@ -300,6 +303,12 @@ test('deleted role tombstones block later portrait and pair mutations', async ()
   assert.equal(api.linkPair('role-a', first.value.id, second.value.id).error.code, 'ROLE_DELETED');
   assert.equal(api.setActive('role-a', first.value.id).error.code, 'ROLE_DELETED');
   assert.equal(api.list('role-a').length, 0);
+});
+
+test('MediaRepository reports whether putBlob created a new owner reference', () => {
+  assert.ok(mediaRepositorySource.includes('var refAdded = false;'));
+  assert.ok(mediaRepositorySource.includes('refAdded = true;'));
+  assert.ok(mediaRepositorySource.includes('meta: { reused: reused, refAdded: refAdded }'));
 });
 
 test('avatar libraries are isolated by character and store only asset references', async () => {
