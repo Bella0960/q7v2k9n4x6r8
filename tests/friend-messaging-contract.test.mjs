@@ -514,4 +514,9 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CENTER_HTML, /friend\.unreadCount/);
   assert.match(FRIEND_CENTER_HTML, /unread-count/);
   assert.match(FRIEND_CENTER_HTML, /friendsPollTimer/);
+  assert.match(FRIEND_CHAT_HTML, /clearChatBtn/);
+  assert.match(FRIEND_CHAT_HTML, /api\.clearMessages\(friendId\)/);
+  assert.match(FRIEND_CHAT_HTML, /api\.hideMessage\(friendId, messageId\)/);
+  assert.match(FRIEND_CHAT_HTML, /好友仍然可以看到原消息/);
+  assert.match(FRIEND_CHAT_HTML, /清空你这边的全部聊天记录/);
 });
