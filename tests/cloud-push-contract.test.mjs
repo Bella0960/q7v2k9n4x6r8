@@ -201,12 +201,13 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   });
   assert.equal(anonymous.status, 401);
 
+  const anotherUserNow = Date.now();
   const anotherAccountEvent = ctx.store.recordCharacterContextEvent({
     userId: 'another-user',
     characterId: 'char-a',
     eventId: 'context_event_other_1',
     deviceId: 'other-device',
-    now: Date.now()
+    now: anotherUserNow
   });
   assert.equal(anotherAccountEvent.version, 1);
   assert.deepEqual(ctx.store.getCharacterContextVersionSummary('owner'), {
@@ -217,7 +218,7 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.deepEqual(ctx.store.getCharacterContextVersionSummary('another-user'), {
     roleCount: 1,
     maxVersion: 1,
-    latestUpdatedAt: Date.now()
+    latestUpdatedAt: anotherUserNow
   });
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
@@ -239,10 +240,12 @@ test('客户端只提交随机上下文事件 ID，不上传本地聊天正文�
     setItem(key, value) { local.set(key, String(value)); },
     removeItem(key) { local.delete(key); }
   };
+  let randomFill = 0;
   const browserWindow = {
     crypto: {
       getRandomValues(bytes) {
-        for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 17 + 29) & 255;
+        randomFill += 1;
+        for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 17 + 29 + randomFill) & 255;
         return bytes;
       }
     }
@@ -398,6 +401,8 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   const chatDetail = fs.readFileSync(path.join(rootDir, 'chat/chat/chat-detail.html'), 'utf8');
   assert.ok(chatDetail.includes('../../shared/js/cloud-push-client.js'), '聊天页必须加载云端 presence 客户端');
   assert.ok(chatDetail.includes('startCharacterPresence(String(currentCharacter.id || currentRoleId))'));
+  assert.ok(chatDetail.includes('window.MaomaoCloud.noteCharacterContextChanged('),
+    '只有本地聊天历史保存并读回成功后才应通知角色版本变化');
   assert.ok(chatDetail.includes('isGroupChat || !currentRoleId'), '群聊不可误占单角色租约');
   for (const id of [
     'cloudReadinessCheck',
@@ -1024,6 +1029,7 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   });
   assert.equal(readiness.payload.activityExecutorAvailable, false);
   assert.equal(readiness.payload.contextVersionReady, false);
+  assert.equal(readiness.payload.contextVersionTrackedRoles, 0);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
     'executor_unavailable',
