@@ -64,7 +64,7 @@ test('icon upload always releases its temporary object URL and rejects unusable 
   assert.match(uploadHandler, /img\.onerror = function \(\)[\s\S]*?releaseImageUrl\(\)/);
   assert.match(uploadHandler, /if \(!width \|\| !height\)/);
   assert.match(uploadHandler, /if \(!ctx\)/);
-  assert.match(uploadHandler, /data:image\\\/jpeg;base64/);
+  assert.ok(uploadHandler.includes("data:image/jpeg;base64,"));
   assert.match(uploadHandler, /if \(!writeActivePresetId\(''\)\)/,
     'manual icon changes must not leave a stale active preset label when localStorage cannot be updated');
 });
