@@ -52,8 +52,8 @@
     }
     var ipv6 = host.replace(/^\[|\]$/g, '');
     if (ipv6.indexOf(':') !== -1 &&
-        (ipv6 === '::' || ipv6 === '::1' || /^(?:fc|fd|fe[89ab])/i.test(ipv6))) {
-      throw new Error('暂不允许连接本机或局域网 IPv6 地址。');
+        (ipv6.indexOf('::') === 0 || /^(?:fc|fd|fe[89ab]|ff)/i.test(ipv6))) {
+      throw new Error('暂不允许连接本机、局域网或组播 IPv6 地址。');
     }
     return url.href;
   }
@@ -108,6 +108,14 @@
     });
   }
 
+  function stableJson(value) {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return '[' + value.map(stableJson).join(',') + ']';
+    return '{' + Object.keys(value).sort().map(function (key) {
+      return JSON.stringify(key) + ':' + stableJson(value[key]);
+    }).join(',') + '}';
+  }
+
   function validateToolArguments(schema, args) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) {
       throw new Error('工具参数必须是 JSON 对象。');
@@ -126,8 +134,8 @@
       if (depth > 8) throw new Error(path + ' 嵌套超过 8 层。');
       if (!node || typeof node !== 'object' || Array.isArray(node)) return;
       if (Array.isArray(node.enum)) {
-        var encoded = JSON.stringify(value);
-        if (!node.enum.some(function (item) { return JSON.stringify(item) === encoded; })) {
+        var encoded = stableJson(value);
+        if (!node.enum.some(function (item) { return stableJson(item) === encoded; })) {
           throw new Error(path + ' 不符合工具声明的可选值。');
         }
       }
