@@ -17,6 +17,7 @@ function createRuntime(initialValue, options = {}) {
   if (initialValue !== undefined) data.set('contact_groups_v1', initialValue);
   const localStorage = {
     getItem(key) {
+      if (options.failReads) throw new Error('storage unavailable');
       return data.has(key) ? data.get(key) : null;
     },
     setItem(key, value) {
@@ -57,10 +58,37 @@ test('audience snapshots merge selected groups and individual contacts without d
   ]);
   const snapshot = api.buildAudienceSnapshot(['family', 'work', 'missing'], ['c', 'd', 'a']);
   assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), {
+    ok: true,
     groupIds: ['family', 'work'],
     contactIds: ['c', 'd', 'a'],
     memberIds: ['c', 'd', 'a', 'b']
   });
+});
+
+test('selected groups fail closed when storage is corrupt, unavailable, or the group was deleted', () => {
+  const corrupt = createRuntime('{broken');
+  const blockedCorrupt = corrupt.api.buildAudienceSnapshot(['family'], ['a']);
+  assert.equal(blockedCorrupt.ok, false);
+  assert.equal(blockedCorrupt.error, 'corrupt_data');
+  assert.deepEqual(JSON.parse(JSON.stringify(blockedCorrupt.memberIds)), []);
+
+  const directOnly = corrupt.api.buildAudienceSnapshot([], ['a']);
+  assert.equal(directOnly.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(directOnly.memberIds)), ['a']);
+
+  const unavailable = createRuntime(undefined, { failReads: true });
+  const blockedUnavailable = unavailable.api.buildAudienceSnapshot(['family'], ['a']);
+  assert.equal(blockedUnavailable.ok, false);
+  assert.equal(blockedUnavailable.error, 'storage_unavailable');
+
+  const deleted = createRuntime();
+  const selectedBeforeDelete = deleted.api.saveGroups([{ id: 'family', name: '家人', memberIds: ['a', 'b'] }]);
+  assert.equal(selectedBeforeDelete.ok, true);
+  deleted.api.saveGroups([]);
+  const blockedDeleted = deleted.api.buildAudienceSnapshot(['family'], ['c']);
+  assert.equal(blockedDeleted.ok, false);
+  assert.equal(blockedDeleted.error, 'missing_groups');
+  assert.deepEqual(JSON.parse(JSON.stringify(blockedDeleted.missingGroupIds)), ['family']);
 });
 
 test('a saved audience snapshot is not changed when a contact group is edited later', () => {
@@ -143,6 +171,10 @@ test('Moments audience preview lists the resolved recipients and explains snapsh
   assert.match(composerPage, /本条动态排除对象/);
   assert.match(composerPage, /previewNames/);
   assert.match(composerPage, /发布后会固定保存这份联系人名单/);
+  assert.match(composerPage, /已失效分组 · 点击取消选择/);
+  assert.match(composerPage, /!activeAudience\.ok/);
+  assert.match(composerPage, /分组已发生变化，请重新确认可见范围/);
+  assert.match(composerPage, /分组数据暂时无法读取/);
   assert.match(browserTest, /角色甲/);
   assert.match(browserTest, /角色乙/);
   assert.match(browserTest, /角色丙/);
