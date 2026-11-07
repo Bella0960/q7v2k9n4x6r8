@@ -2124,6 +2124,36 @@ test('连续失败的推送尝试也会计入每设备速率限制', async () =>
     '连续失败也必须受速率限制，不能靠每次换 dedupeKey 绕过');
 });
 
+test('并发 test-push HTTP 请求最多只有三个能取得设备限流名额', async () => {
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const ctx = setupTestStore(openTestDb(), {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev',
+    fetchImpl: pushFetch
+  });
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const sub = await makeBrowserSubscription();
+  await subscribeDevice(ctx, device, sub);
+
+  const responses = await Promise.all(
+    Array.from({ length: 4 }, (_, index) => ctx.asJson('/api/push/test', {
+      method: 'POST',
+      device,
+      body: { dedupeKey: 'parallel-http-' + index }
+    }))
+  );
+  const statuses = responses.map(response => response.status).sort((a, b) => a - b);
+  assert.deepEqual(statuses, [200, 200, 200, 429]);
+  assert.equal(
+    pushFetch.calls.length,
+    3,
+    '并发 HTTP 请求中只有实际取得原子限流名额的三条可以访问推送服务'
+  );
+});
+
 test('test-push 在未配置 VAPID 时返回明确的 503，而不是静默失败', async () => {
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
