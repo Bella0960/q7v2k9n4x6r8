@@ -12,6 +12,42 @@ function createContext(fetchImpl) {
   return context;
 }
 
+function createToolListClient(listHandler) {
+  function response(status, payload, headers = {}) {
+    const map = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      headers: { get(name) { return map[String(name).toLowerCase()] || null; } },
+      async text() { return payload == null ? '' : JSON.stringify(payload); }
+    };
+  }
+  const context = createContext(async (url, init) => {
+    if (init.method === 'DELETE') return response(200, null);
+    const message = JSON.parse(init.body);
+    if (message.method === 'initialize') {
+      return response(200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: { protocolVersion: '2025-03-26', serverInfo: { name: 'list-test', version: '1' } }
+      }, { 'Mcp-Session-Id': 'list-session' });
+    }
+    if (message.method === 'notifications/initialized') return response(202, null);
+    if (message.method === 'tools/list') {
+      return response(200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: listHandler(message.params || {})
+      }, { 'Mcp-Session-Id': 'list-session' });
+    }
+    throw new Error('unexpected MCP method: ' + message.method);
+  });
+  return {
+    context,
+    client: context.MaoMcpClient.createClient({ url: 'https://example.com/mcp' })
+  };
+}
+
 test('MCP endpoint validation requires HTTPS except localhost and excludes credential-bearing URLs', () => {
   const context = createContext(async () => { throw new Error('unexpected fetch'); });
   assert.equal(context.MaoMcpClient.validateEndpoint('https://example.com/mcp'), 'https://example.com/mcp');
@@ -211,4 +247,46 @@ test('MCP disconnect aborts in-flight requests before releasing its session', as
   assert.ok(calls.some(item => item.init.method === 'DELETE'), 'session DELETE should be sent');
   await client.disconnect();
   assert.equal(calls.filter(item => item.init.method === 'DELETE').length, 1, 'disconnect should be idempotent');
+});
+
+
+test('MCP tool listing rejects a catalog that exceeds the 500-tool limit instead of returning it partially', async () => {
+  const tools = Array.from({ length: 501 }, (_, index) => ({
+    name: 'tool-' + index,
+    inputSchema: { type: 'object' }
+  }));
+  const { client } = createToolListClient(() => ({ tools }));
+  await client.initialize();
+  await assert.rejects(client.listTools(), /数量超过 500 个上限/);
+  await client.disconnect();
+});
+
+test('MCP tool listing rejects duplicate names that would make calls ambiguous', async () => {
+  const { client } = createToolListClient(() => ({
+    tools: [{ name: 'duplicate-tool' }, { name: 'duplicate-tool' }]
+  }));
+  await client.initialize();
+  await assert.rejects(client.listTools(), /工具名称重复/);
+  await client.disconnect();
+});
+
+test('MCP tool listing rejects repeated pagination cursors and stops after the page limit', async () => {
+  let repeatedPage = 0;
+  const repeated = createToolListClient(() => ({
+    tools: [{ name: 'repeat-' + (++repeatedPage) }],
+    nextCursor: 'same-cursor'
+  }));
+  await repeated.client.initialize();
+  await assert.rejects(repeated.client.listTools(), /分页游标重复/);
+  await repeated.client.disconnect();
+
+  let pageNumber = 0;
+  const tooManyPages = createToolListClient(() => ({
+    tools: [{ name: 'page-' + (++pageNumber) }],
+    nextCursor: 'cursor-' + pageNumber
+  }));
+  await tooManyPages.client.initialize();
+  await assert.rejects(tooManyPages.client.listTools(), /分页超过 20 页上限/);
+  assert.equal(pageNumber, 20, 'the client must stop before requesting page 21');
+  await tooManyPages.client.disconnect();
 });
