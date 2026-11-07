@@ -1,5 +1,8 @@
+import { handleRealUserAuth, isRealUserAuthConfigured } from "./worker/real-user-auth.js";
+
 const REAL_USER_CHAT_PREFIX = "/api/real-user-chat";
 const REAL_USER_CHAT_CAPABILITIES_PATH = REAL_USER_CHAT_PREFIX + "/capabilities";
+const REAL_USER_AUTH_PREFIX = REAL_USER_CHAT_PREFIX + "/v1/auth";
 
 function jsonResponse(payload, status, extraHeaders) {
   const headers = new Headers({
@@ -12,14 +15,23 @@ function jsonResponse(payload, status, extraHeaders) {
   return new Response(JSON.stringify(payload), { status, headers });
 }
 
-function realUserChatCapabilities() {
+function realUserChatCapabilities(env) {
+  const accountAuthEnabled = isRealUserAuthConfigured(env);
   return {
     ok: true,
     service: "maomao-real-user-chat",
     protocolVersion: 1,
     enabled: false,
     status: "disabled",
-    reason: "server_authentication_and_persistence_not_configured",
+    reason: "real_user_message_delivery_not_configured",
+    accountAuth: {
+      enabled: accountAuthEnabled,
+      status: accountAuthEnabled ? "enabled" : "disabled",
+      endpoints: accountAuthEnabled
+        ? ["register", "login", "me", "logout"]
+        : [],
+      reason: accountAuthEnabled ? "" : "database_or_auth_rate_limiter_not_configured"
+    },
     networkingEnabled: false,
     policyAllowlist: ["text", "image", "file", "voice", "sticker"],
     explicitlyDenied: [
@@ -69,12 +81,15 @@ export default {
           error: "method_not_allowed"
         }, 405, { Allow: "GET" });
       }
-      return jsonResponse(realUserChatCapabilities(), 200);
+      return jsonResponse(realUserChatCapabilities(env), 200);
     }
 
-    // Keep the namespace reserved and fail closed until authentication,
-    // authoritative friend relationships, and durable message storage exist.
-    // Do not parse or accept a message body and never return a fake send ack.
+    if (url.pathname.startsWith(REAL_USER_AUTH_PREFIX + "/")) {
+      return handleRealUserAuth(request, env);
+    }
+
+    // Keep the rest of the real-user chat namespace fail-closed until
+    // authoritative friendships and durable message handling are configured.
     if (url.pathname === REAL_USER_CHAT_PREFIX ||
         url.pathname.startsWith(REAL_USER_CHAT_PREFIX + "/")) {
       return jsonResponse({
@@ -86,13 +101,10 @@ export default {
       }, 503);
     }
 
-    // With html_handling="none", explicitly map the site root to the built desktop.
     if (url.pathname === "/" && request.method === "GET") {
       const indexUrl = new URL("/index.html", url);
       return env.ASSETS.fetch(new Request(indexUrl, request));
     }
-
-    // Preserve explicit .html app routes and all normal static asset requests.
     return env.ASSETS.fetch(request);
   }
 };
