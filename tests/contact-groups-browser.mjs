@@ -169,7 +169,42 @@ async function main() {
     assert.equal(groups.some((group) => group.id === workGroup.id), false);
     assert.equal((await readJson(page, 'ai_custom_characters')).length, 4,
       'deleting a group never deletes contact records');
+
+    // Add a temporary group for the stale-selection race check below.
+    await page.locator('#btnNewContactGroup').click();
+    await page.locator('#contactGroupName').fill('临时分组');
+    await page.locator('[data-contact-member="role-b"]').check();
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    const temporaryGroup = groups.find((group) => group.name === '临时分组');
+    await page.locator('#btnCloseContactGroups').click();
     console.log('PASS Contacts: group CRUD, overlapping members, group filtering and ungrouped filtering');
+
+    // A group removed after the picker opened must block confirmation instead of silently shrinking the audience.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('分组变化时阻止误发');
+    await openAudience(page, 'custom', [{ kind: 'group', id: temporaryGroup.id }]);
+    await page.evaluate((groupId) => {
+      const groups = JSON.parse(localStorage.getItem('contact_groups_v1') || '[]');
+      localStorage.setItem('contact_groups_v1', JSON.stringify(groups.filter((group) => group.id !== groupId)));
+    }, temporaryGroup.id);
+    await page.locator('#permClose').click();
+    assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
+      'a deleted group selected earlier cannot be silently ignored');
+    assert.match(await page.locator('#toast').innerText(), /分组已发生变化/);
+    assert.equal(await page.locator('.audience-stale-group').count(), 1,
+      'the invalid selection remains visible so the user can explicitly remove it');
+    await page.locator('.audience-stale-group').click();
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    await page.locator('#permClose').click();
+    const raceSafePost = await publishAndRead(page, '分组变化时阻止误发');
+    assert.equal(raceSafePost.visibility, 'custom');
+    assert.deepEqual(raceSafePost.visibleTo, ['role-c'],
+      'the user must explicitly clear the stale group and select a replacement audience');
+    assert.deepEqual(raceSafePost.visibleGroupIds, []);
+    assert.equal(apiRequests, 0,
+      'no AI request is made to a contact that was only present in a now-deleted group');
+    console.log('PASS Moments: stale group selection blocks confirmation until explicitly cleared');
 
     // Moments: a mixed group + direct-contact audience is snapshotted; an outside @mention is blocked.
     await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
