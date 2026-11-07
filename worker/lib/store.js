@@ -934,6 +934,102 @@ class CloudStore {
     };
   }
 
+  /**
+   * Cloud-generated outbound message inbox. The target device is explicit;
+   * only that still-authorized device in the same account can pull or ack it.
+   * Payloads are bounded and idempotency conflicts never overwrite first data.
+   */
+  enqueueOutboundMessage(message) {
+    const id = requireStoreString(message?.id, 'outbound.id');
+    const deviceId = requireStoreString(message?.deviceId, 'outbound.deviceId');
+    const userId = requireStoreString(message?.userId, 'outbound.userId');
+    const characterId = requireStoreString(message?.characterId, 'outbound.characterId');
+    const serverMessageId = requireStoreString(message?.serverMessageId, 'outbound.serverMessageId');
+    const dedupeKey = message?.dedupeKey == null ? null : requireStoreString(message.dedupeKey, 'outbound.dedupeKey');
+    const payloadJson = serializeStoreJson(message.payload, 12000, 'outbound.payload');
+    const now = Number(message.now);
+    if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('outbound.now 必须是非负安全整数');
+
+    const recipient = this.exec(
+      'SELECT id FROM devices WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
+      deviceId,
+      userId
+    )[0];
+    if (!recipient) return { inserted: false, unavailable: true, message: null };
+
+    const inserted = this.exec(
+      `INSERT OR IGNORE INTO outbound_messages
+        (id, device_id, character_id, payload_json, server_message_id, dedupe_key,
+         created_at, delivered_at, delivery_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'pending')
+       RETURNING *`,
+      id, deviceId, characterId, payloadJson, serverMessageId, dedupeKey, now
+    )[0];
+    if (inserted) return { inserted: true, idempotent: false, message: inserted };
+
+    const existing = this.exec(
+      `SELECT * FROM outbound_messages
+       WHERE server_message_id = ? OR (? IS NOT NULL AND dedupe_key = ?)
+       ORDER BY CASE WHEN server_message_id = ? THEN 0 ELSE 1 END
+       LIMIT 1`,
+      serverMessageId, dedupeKey, dedupeKey, serverMessageId
+    )[0] || null;
+    const same = existing &&
+      existing.device_id === deviceId &&
+      existing.character_id === characterId &&
+      existing.server_message_id === serverMessageId &&
+      (existing.dedupe_key ?? null) === dedupeKey &&
+      existing.payload_json === payloadJson;
+    return same
+      ? { inserted: false, idempotent: true, message: existing }
+      : { inserted: false, conflict: true, message: existing };
+  }
+
+  listPendingOutboundMessages({ userId, deviceId, characterId, limit = 50 }) {
+    const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
+    return this.exec(
+      `SELECT o.id, o.character_id, o.payload_json, o.server_message_id,
+              o.created_at, o.delivery_status
+       FROM outbound_messages o
+       INNER JOIN devices d ON d.id = o.device_id
+       WHERE o.device_id = ? AND o.character_id = ?
+         AND o.delivery_status = 'pending'
+         AND d.user_id = ? AND d.revoked_at IS NULL
+       ORDER BY o.created_at ASC, o.id ASC
+       LIMIT ?`,
+      deviceId, characterId, userId, safeLimit
+    );
+  }
+
+  acknowledgeOutboundMessage({ userId, deviceId, characterId, serverMessageId, now }) {
+    const updated = this.exec(
+      `UPDATE outbound_messages
+       SET delivery_status = 'delivered', delivered_at = ?
+       WHERE server_message_id = ? AND device_id = ? AND character_id = ?
+         AND delivery_status = 'pending'
+         AND EXISTS (
+           SELECT 1 FROM devices d
+           WHERE d.id = ? AND d.user_id = ? AND d.revoked_at IS NULL
+         )
+       RETURNING server_message_id`,
+      now, serverMessageId, deviceId, characterId, deviceId, userId
+    )[0];
+    if (updated) return { acknowledged: true, alreadyAcknowledged: false };
+
+    const existing = this.exec(
+      `SELECT o.delivery_status
+       FROM outbound_messages o
+       INNER JOIN devices d ON d.id = o.device_id
+       WHERE o.server_message_id = ? AND o.device_id = ? AND o.character_id = ?
+         AND d.user_id = ? AND d.revoked_at IS NULL`,
+      serverMessageId, deviceId, characterId, userId
+    )[0];
+    if (existing?.delivery_status === 'delivered') {
+      return { acknowledged: true, alreadyAcknowledged: true };
+    }
+    return null;
+  }
+
   getActivity(id) {
     return this.exec('SELECT * FROM activity_queue WHERE id = ?', id)[0] || null;
   }
