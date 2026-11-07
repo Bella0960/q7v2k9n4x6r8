@@ -142,7 +142,8 @@
             var second = secondIndex > 0 ? images[secondIndex - 1] : null;
             if (cap > 0 && first && second && first !== second &&
                 first.mid && second.mid && first.assetId && second.assetId &&
-                String(first.mid) !== String(second.mid)) {
+                String(first.mid) !== String(second.mid) &&
+                String(first.assetId) !== String(second.assetId)) {
                 var key = [String(first.mid), String(second.mid)].sort().join('|');
                 if (!pairSeen[key] && !pairs.length) {
                     pairSeen[key] = true;
