@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>NPC 好友申请</title>
+<script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/phone/phone_api.js"></script>
+<script src="../../shared/js/phone/npc-social.js?v=20261108a"></script>
+<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#f4f4f5;color:#111;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif}
+button,select{font:inherit}
+.page{width:min(440px,100%);min-height:100dvh;margin:0 auto;background:#fff;padding:calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 28px)}
+.head{display:flex;align-items:center;gap:14px;padding-bottom:18px;border-bottom:1px solid #e5e5e7}
+.back{border:0;background:transparent;font-size:24px;padding:2px 6px 2px 0;cursor:pointer}
+.title{font-size:20px;font-weight:600}
+.sub{font-size:12px;color:#777;line-height:1.7;margin:18px 0}
+.card{border:1px solid #e5e5e7;padding:15px;margin:12px 0}
+.row{display:flex;justify-content:space-between;align-items:center;gap:14px}
+.label{font-size:13px;font-weight:600}
+.desc{font-size:11px;line-height:1.6;color:#888;margin-top:5px}
+.switch{width:42px;height:24px;position:relative;flex-shrink:0}
+.switch input{position:absolute;opacity:0}
+.switch span{display:block;width:42px;height:24px;border-radius:15px;background:#ddd;transition:background .18s}
+.switch span:after{content:"";display:block;width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:transform .18s}
+.switch input:checked+span{background:#111}
+.switch input:checked+span:after{transform:translateX(18px)}
+.select{margin-top:12px;width:100%;padding:9px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:12px}
+.actions{display:flex;gap:8px;margin-top:14px}
+.btn{border:1px solid #111;background:#111;color:#fff;border-radius:7px;padding:10px 14px;font-size:12px;cursor:pointer}
+.btn.light{background:#fff;color:#111;border-color:#ccc}
+.btn:disabled{opacity:.4}
+.status{font-size:12px;line-height:1.6;color:#777;margin:10px 0;white-space:pre-wrap}
+.request{display:flex;gap:12px;padding:14px 0;border-top:1px solid #eee}
+.avatar{width:44px;height:44px;flex-shrink:0;border-radius:9px;background:#f0f0f2;display:flex;align-items:center;justify-content:center;font-size:17px;color:#555;overflow:hidden}
+.meta{flex:1;min-width:0}
+.name{font-size:14px;font-weight:600}
+.profession{font-size:11px;color:#888;margin-top:3px}
+.reason{font-size:12px;line-height:1.65;color:#555;margin-top:8px}
+.intro{font-size:12px;line-height:1.6;color:#333;margin-top:6px}
+.request-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.request-actions button{border:1px solid #ddd;background:#fff;padding:7px 10px;border-radius:6px;font-size:11px;cursor:pointer}
+.request-actions .accept{background:#111;color:#fff;border-color:#111}
+.empty{padding:24px 4px;text-align:center;color:#999;font-size:12px;line-height:1.8}
+.section{font-size:10px;letter-spacing:.16em;color:#888;margin:22px 0 8px}
+.foot{font-size:11px;color:#888;line-height:1.7;margin:18px 0}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="head"><button class="back" type="button" onclick="history.back()" aria-label="返回">‹</button><div class="title">NPC 好友申请</div></header>
+  <p class="sub">这里会出现根据当前主角色、已绑定世界书和人物关系自然生成的新朋友。你决定是否接受；接受后才会进入通讯录和聊天列表。生成判断会把当前主角色人设、已绑定世界书内容片段和现有角色姓名发送给你配置的 AI 服务；不会发送聊天历史。</p>
+  <section class="card">
+    <div class="row">
+      <div><div class="label">自动发现新朋友</div><div class="desc">开启后，小手机在前台运行时会定期判断是否有合适的新人物。不会在后台关页后继续生成。</div></div>
+      <label class="switch"><input id="autoEnabled" type="checkbox"><span></span></label>
+    </div>
+    <select class="select" id="intervalHours" aria-label="自动发现频率">
+      <option value="12">每 12 小时最多尝试一次</option>
+      <option value="24">每 24 小时最多尝试一次</option>
+      <option value="48">每 48 小时最多尝试一次</option>
+    </select>
+    <div class="actions"><button class="btn" id="discoverNow" type="button">现在发现一位新朋友</button><button class="btn light" id="refresh" type="button">刷新申请</button></div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+  </section>
+  <div class="section">INCOMING REQUESTS</div>
+  <section class="card" id="requestList"><div class="empty">正在读取申请…</div></section>
+  <p class="foot">说明：NPC 是 AI 角色，不是真人账号。拒绝或屏蔽不会添加到通讯录。当前版本的自动发现依赖小手机页面处于前台，并调用你已配置的 AI 服务；真正的手机后台推送尚未接入。</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function setStatus(text, error) { $('status').textContent = text || ''; $('status').style.color = error ? '#8a2525' : '#777'; }
+  function render() {
+    var settings = NPCSocial.getSettings();
+    $('autoEnabled').checked = settings.enabled;
+    $('intervalHours').value = String(settings.intervalHours);
+    var rows = NPCSocial.getRequests();
+    var pending = rows.filter(function (row) { return row.status === 'pending'; });
+    if (!pending.length) {
+      $('requestList').innerHTML = '<div class="empty">暂时没有新的好友申请。<br>可以开启自动发现，或手动触发一次寻找。</div>';
+      return;
+    }
+    $('requestList').innerHTML = pending.map(function (row) {
+      var npc = row.npc || {};
+      return '<article class="request" data-id="' + esc(row.id) + '">' +
+        '<div class="avatar">' + esc(String(npc.name || '新').slice(0,1)) + '</div>' +
+        '<div class="meta"><div class="name">' + esc(npc.name || '新朋友') + '</div>' +
+        '<div class="profession">' + esc(npc.profession || '新认识的人') + '</div>' +
+        '<div class="reason">' + esc(row.reason || npc.description || '') + '</div>' +
+        '<div class="intro">' + esc(row.introduction || npc.greeting || '') + '</div>' +
+        '<div class="request-actions"><button class="accept" type="button" data-action="accept">接受</button><button type="button" data-action="decline">拒绝</button><button type="button" data-action="block">屏蔽</button></div></div></article>';
+    }).join('');
+  }
+  $('autoEnabled').addEventListener('change', function () {
+    try { NPCSocial.setSettings({enabled:$('autoEnabled').checked}); setStatus($('autoEnabled').checked ? '已开启自动发现。页面前台运行时会按频率检查。' : '已关闭自动发现。'); }
+    catch (error) { setStatus(error.message, true); render(); }
+  });
+  $('intervalHours').addEventListener('change', function () {
+    try { NPCSocial.setSettings({intervalHours:Number($('intervalHours').value)}); setStatus('发现频率已更新。'); }
+    catch (error) { setStatus(error.message, true); }
+  });
+  $('discoverNow').addEventListener('click', async function () {
+    $('discoverNow').disabled = true; setStatus('正在根据当前角色和已绑定世界书寻找新朋友…');
+    try {
+      var result = await NPCSocial.discoverNow();
+      if (result.created) setStatus('有新朋友发来申请：' + result.request.npc.name + '。');
+      else if (result.reason === 'pending-exists') setStatus('你还有一条待处理申请，请先处理后再发现新朋友。');
+      else if (result.reason === 'no-natural-candidate') setStatus('这次没有合适的新朋友出现。不会为了凑人数强行生成。');
+      else setStatus('这次暂时没有生成申请。');
+      render();
+    } catch (error) { setStatus(error.message || '发现失败。', true); }
+    finally { $('discoverNow').disabled = false; }
+  });
+  $('refresh').addEventListener('click', function () { render(); setStatus('申请列表已刷新。'); });
+  $('requestList').addEventListener('click', function (event) {
+    var button = event.target.closest('[data-action]');
+    if (!button) return;
+    var card = button.closest('[data-id]');
+    if (!card) return;
+    var id = card.getAttribute('data-id');
+    var action = button.getAttribute('data-action');
+    try {
+      if (action === 'accept') {
+        var result = NPCSocial.accept(id);
+        setStatus('已接受好友申请。现在可以在通讯录中找到 TA。');
+        button.textContent = '已接受';
+        setTimeout(function () { location.href = '../chat/chat-detail.html?id=' + encodeURIComponent(result.roleId); }, 500);
+      } else {
+        NPCSocial.reject(id, action === 'block');
+        setStatus(action === 'block' ? '已屏蔽该申请。' : '已拒绝该申请。');
+        render();
+      }
+    } catch (error) { setStatus(error.message || '处理失败。', true); }
+  });
+  document.addEventListener('mao:npc-friend-request', function () { render(); });
+  document.addEventListener('mao:npc-social-ready', render);
+  render();
+})();
+</script>
+</body>
+</html>
