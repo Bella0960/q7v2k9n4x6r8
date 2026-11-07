@@ -60,6 +60,11 @@
             '<div id="ruFriends" class="ru-list"></div>' +
             '<p class="ru-footnote">这里显示服务器确认的好友关系。真人聊天消息传输仍未启用，暂时不会跳转到 AI 聊天页面。</p>' +
           '</section>' +
+          '<section class="ru-section">' +
+            '<div class="ru-section-head"><span>已屏蔽的用户</span></div>' +
+            '<div id="ruBlocked" class="ru-list"></div>' +
+            '<p class="ru-footnote">解除屏蔽不会自动恢复好友关系；双方需要重新发送并接受好友申请。</p>' +
+          '</section>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -265,15 +270,40 @@
     });
   }
 
+  function renderBlocked(blocked) {
+    var container = el('ruBlocked');
+    container.textContent = '';
+    if (!blocked.length) {
+      emptyList(container, '暂无屏蔽用户');
+      return;
+    }
+    blocked.forEach(function (account) {
+      var row = document.createElement('div');
+      row.className = 'ru-list-row';
+      var main = document.createElement('div');
+      main.className = 'ru-list-main';
+      addText(main, 'ru-list-name', account.displayName || 'MAOMAO 用户');
+      addText(main, 'ru-list-meta', account.handle ? '@' + account.handle : account.id);
+      var actions = document.createElement('div');
+      actions.className = 'ru-list-actions';
+      addAction(actions, '解除屏蔽', 'unblock-user', account.id);
+      row.appendChild(main);
+      row.appendChild(actions);
+      container.appendChild(row);
+    });
+  }
+
   async function refreshServerData() {
     var results = await Promise.all([
       client.listFriends(),
       client.listRequests('incoming'),
-      client.listRequests('outgoing')
+      client.listRequests('outgoing'),
+      client.listBlocked()
     ]);
     renderFriends(results[0]);
     renderRequests(el('ruIncoming'), results[1], 'incoming');
     renderRequests(el('ruOutgoing'), results[2], 'outgoing');
+    renderBlocked(results[3]);
     return results;
   }
 
@@ -614,8 +644,9 @@
       else if (action === 'cancel-request') await client.transitionRequest(id, 'cancel');
       else if (action === 'remove-friend') await client.removeFriend(id);
       else if (action === 'block-friend') await client.setBlocked(id, true);
+      else if (action === 'unblock-user') await client.setBlocked(id, false);
       await refreshServerData();
-      setStatus('好友关系已更新。');
+      setStatus(action === 'unblock-user' ? '已解除屏蔽。双方不会自动恢复好友关系。' : '好友关系已更新。');
     } catch (error) {
       setStatus(explainError(error), 'error');
     } finally {
