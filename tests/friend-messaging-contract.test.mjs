@@ -370,6 +370,8 @@ test('单条消息只在当前账号隐藏；好友仍能看到原消息且未�
 
   const beforeHide = await asAccount(ctx, bob, '/api/friends');
   assert.equal(beforeHide.payload.friends[0].unreadCount, 1);
+  const beforeHideView = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
+  assert.ok(beforeHideView.payload.viewState.version);
 
   const hidden = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages/' + targetId, {
     method: 'DELETE'
@@ -386,6 +388,11 @@ test('单条消息只在当前账号隐藏；好友仍能看到原消息且未�
 
   const bobHistory = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
   assert.deepEqual(bobHistory.payload.messages, []);
+  assert.notEqual(
+    bobHistory.payload.viewState.version,
+    beforeHideView.payload.viewState.version,
+    '另一台设备可以通过可见性版本变化发现单条消息被隐藏'
+  );
   const bobFriends = await asAccount(ctx, bob, '/api/friends');
   assert.equal(bobFriends.payload.friends[0].unreadCount, 0);
 
@@ -427,8 +434,16 @@ test('清空聊天记录只影响当前账号；清空之后的新消息仍会�
   assert.equal(cleared.payload.scope, 'current_user_only');
   assert.equal(cleared.payload.clearedThrough.messageId, second.payload.message.id);
 
+  const aliceBeforeClear = await asAccount(ctx, alice, alicePath);
+  const bobBeforeAliceClear = await asAccount(ctx, bob, bobPath);
   const aliceAfterClear = await asAccount(ctx, alice, alicePath);
   assert.deepEqual(aliceAfterClear.payload.messages, []);
+  assert.notEqual(aliceAfterClear.payload.viewState.version, aliceBeforeClear.payload.viewState.version);
+  assert.equal(
+    bobBeforeAliceClear.payload.viewState.version,
+    (await asAccount(ctx, bob, bobPath)).payload.viewState.version,
+    '清空只改变执行者自己的会话可见性版本'
+  );
   assert.equal((await asAccount(ctx, alice, '/api/friends')).payload.friends[0].unreadCount, 0);
 
   const bobAfterAliceClear = await asAccount(ctx, bob, bobPath);
