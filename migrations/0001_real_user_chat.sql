@@ -129,6 +129,9 @@ CREATE TRIGGER IF NOT EXISTS trg_real_user_friendship_update_guard
 BEFORE UPDATE OF pair_low, pair_high, accepted_request_id, accepted_at, status ON real_user_friendships
 WHEN NEW.pair_low <> OLD.pair_low
   OR NEW.pair_high <> OLD.pair_high
+  OR NEW.updated_at < OLD.updated_at
+  OR (OLD.status = 'removed' AND NEW.status = 'accepted'
+      AND NEW.accepted_request_id = OLD.accepted_request_id)
   OR (NEW.status = 'accepted' AND NOT EXISTS (
     SELECT 1 FROM real_user_friend_requests r
     WHERE r.id = NEW.accepted_request_id
@@ -155,7 +158,17 @@ CREATE INDEX IF NOT EXISTS idx_real_user_blocks_reverse
 -- Requests are created pending and may transition only once to a terminal state.
 CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_insert_guard
 BEFORE INSERT ON real_user_friend_requests
-WHEN NEW.status <> 'pending' OR NEW.responded_at IS NOT NULL
+WHEN NEW.status <> 'pending'
+  OR NEW.responded_at IS NOT NULL
+  OR EXISTS (
+    SELECT 1 FROM real_user_friendships f
+    WHERE f.pair_low = NEW.pair_low AND f.pair_high = NEW.pair_high AND f.status = 'accepted'
+  )
+  OR EXISTS (
+    SELECT 1 FROM real_user_blocks b
+    WHERE (b.blocker_id = NEW.pair_low AND b.blocked_id = NEW.pair_high)
+       OR (b.blocker_id = NEW.pair_high AND b.blocked_id = NEW.pair_low)
+  )
 BEGIN
   SELECT RAISE(ABORT, 'real_user_friend_request_must_start_pending');
 END;
@@ -170,6 +183,7 @@ WHEN OLD.status <> 'pending'
   OR NEW.pair_low <> OLD.pair_low
   OR NEW.pair_high <> OLD.pair_high
   OR NEW.created_at <> OLD.created_at
+  OR NEW.note <> OLD.note
   OR NEW.responded_at IS NULL
   OR NEW.updated_at < OLD.updated_at
 BEGIN
@@ -395,4 +409,21 @@ WHEN NOT EXISTS (
 )
 BEGIN
   SELECT RAISE(ABORT, 'real_user_receipt_recipient_invalid');
+END;
+
+
+-- A pending request cannot be revived after either party blocks the other.
+CREATE TRIGGER IF NOT EXISTS trg_real_user_block_terminates_pending_requests
+AFTER INSERT ON real_user_blocks
+BEGIN
+  UPDATE real_user_friend_requests
+  SET status = CASE
+        WHEN requester_id = NEW.blocker_id THEN 'cancelled'
+        ELSE 'declined'
+      END,
+      updated_at = MAX(updated_at, NEW.created_at),
+      responded_at = MAX(created_at, NEW.created_at)
+  WHERE pair_low = CASE WHEN NEW.blocker_id < NEW.blocked_id THEN NEW.blocker_id ELSE NEW.blocked_id END
+    AND pair_high = CASE WHEN NEW.blocker_id < NEW.blocked_id THEN NEW.blocked_id ELSE NEW.blocker_id END
+    AND status = 'pending';
 END;
