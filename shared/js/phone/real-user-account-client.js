@@ -286,6 +286,7 @@
   }
 
   function avatarUrl(assetId) {
+    if (!featureEnabled('profileAvatar')) return '';
     var id = String(assetId == null ? '' : assetId);
     if (!/^av_[a-f0-9]{32}$/.test(id)) return '';
     return API_BASE + '/v1/profile/avatars/' + encodeURIComponent(id);
@@ -353,9 +354,23 @@
         var id = String(relationship && relationship.id || '');
         if (!id || seenIds[id]) throw makeError('invalid_friend_roster_response', 200, payload);
         seenIds[id] = true;
+        if (!featureEnabled('profileAvatar') && relationship && relationship.status === 'accepted' &&
+            relationship.avatarAssetId) {
+          relationship = Object.assign({}, relationship);
+          delete relationship.avatarAssetId;
+        }
         relationships.push(relationship);
       });
-      friends = friends.concat(payload.friends);
+      var pageFriends = payload.friends;
+      if (!featureEnabled('profileAvatar')) {
+        pageFriends = payload.friends.map(function (friend) {
+          if (!friend || !friend.avatarAssetId) return friend;
+          var safeFriend = Object.assign({}, friend);
+          delete safeFriend.avatarAssetId;
+          return safeFriend;
+        });
+      }
+      friends = friends.concat(pageFriends);
       if (!payload.hasMore) {
         if (payload.nextCursor != null && payload.nextCursor !== '') {
           throw makeError('invalid_friend_roster_response', 200, payload);
