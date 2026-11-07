@@ -2830,6 +2830,8 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(chat.includes('new IntersectionObserver(') &&
     chat.includes('cloud.markCharacterOutboundRead(roleId, serverMessageId)'),
     '只有消息气泡真实进入聊天可视区域后，才发送用户已读回执');
+  assert.ok(chat.includes("document.addEventListener('visibilitychange'"),
+    '页面回到前台时必须重新观察可见的云端消息');
   assert.ok(chat.includes('}, 700);'),
     '消息必须在可视区域稳定停留后才标记已读');
 
@@ -2866,7 +2868,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(sync.includes('window.addEventListener(\'storage\', onOtherTabNotice)'),
     '其他标签页保存消息后应刷新当前历史');
 
-  assert.match(serviceWorker, /phone-app-pwa-v178/);
+  assert.match(serviceWorker, /phone-app-pwa-v179/);
   assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
     'PWA shell 应继续预缓存现有聊天详情页');
 });
