@@ -1,10 +1,9 @@
 /**
  * M2.2b scheduler eligibility adapter.
  *
- * This is deliberately fail-closed until the repository has an approved,
- * durable source for autonomy settings, character schedules, presence/leases,
- * and a trustworthy context version. It adapts those future records through
- * the existing M2.1 policy rather than reimplementing its rules.
+ * This is deliberately fail-closed until explicit metadata has been written
+ * through the authenticated APIs and a trustworthy chat context version exists.
+ * It adapts persisted non-chat metadata through the existing M2.1 policy.
  *
  * It never reads chat bodies, persona data, browser storage, or secrets.
  */
@@ -62,14 +61,14 @@ function hasRequiredSnapshot(snapshot) {
 /**
  * Create the gate consumed by scheduler-policy.planTask.
  *
- * store.getSchedulerGateSnapshot({ userId, characterId }) is intentionally an
- * explicit adapter contract. The current M1 store does not implement it yet,
- * so production remains blocked with gate_data_source_missing instead of
- * assuming that autonomy is enabled or that a role is active.
+ * store.getSchedulerGateSnapshot({ userId, characterId }) reads only the
+ * explicitly persisted non-chat metadata tables. Missing global authorization
+ * is interpreted as OFF; missing schedules fail closed. The store deliberately
+ * reports contextVersion=null until a trusted server-side chat event source is
+ * separately authorized and implemented.
  *
- * Tests may provide synthetic snapshots; production must only provide
- * persisted, authorized metadata after the corresponding data-source work
- * has been separately reviewed and approved.
+ * Tests may provide synthetic snapshots, but production never fabricates
+ * context versions or infers permission from device connectivity.
  */
 export function createSchedulerGate({ store, now = Date.now, config = {} } = {}) {
   return function schedulerGate(task) {
