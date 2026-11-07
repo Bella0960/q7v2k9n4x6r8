@@ -4917,27 +4917,49 @@
             if (!Array.isArray(items) || !items.length) return true;
             var originalLength = historyList.length;
             var statusBackups = [];
+            var skippedUnmatchedReturn = false;
+            var skippedDuplicateReturn = false;
             items.forEach(function (item) {
-                if (item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''))) {
+                if (!item || !item.type) return;
+                var returnSource = null;
+                var returnSourceId = '';
+                var isTransferReturn = item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''));
+
+                if (isTransferReturn) {
+                    var alreadyReturningSource = null;
                     for (var pi = historyList.length - 1; pi >= 0; pi--) {
                         var previous = historyList[pi];
-                        if (previous && (previous.role === 'user' || previous.role === 'sent') &&
-                            previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
-                            Number(previous.amount) === Number(item.amount)) {
-                            statusBackups.push({
-                                target: previous,
-                                hadStatus: Object.prototype.hasOwnProperty.call(previous, 'status'),
-                                status: previous.status,
-                                hadReturnRequestedAt: Object.prototype.hasOwnProperty.call(previous, 'returnRequestedAt'),
-                                returnRequestedAt: previous.returnRequestedAt
-                            });
-                            previous.status = 'returning';
-                            previous.returnRequestedAt = Date.now();
+                        if (!previous || (previous.role !== 'user' && previous.role !== 'sent') ||
+                            previous.type !== 'transfer' ||
+                            Number(previous.amount) !== Number(item.amount)) continue;
+                        if (previous.status === 'returning') {
+                            alreadyReturningSource = previous;
+                            break;
+                        }
+                        if (!previous.status || previous.status === 'unopened') {
+                            returnSource = previous;
                             break;
                         }
                     }
+
+                    if (alreadyReturningSource) {
+                        var alreadyReturningId = ensureMid(alreadyReturningSource);
+                        var hasReturnCard = historyList.some(function (row) {
+                            return row && row.role === 'assistant' && row.type === 'transfer' &&
+                                String(row.returnOfPaymentId || '') === String(alreadyReturningId);
+                        });
+                        if (hasReturnCard) skippedDuplicateReturn = true;
+                        else skippedUnmatchedReturn = true;
+                        return;
+                    }
+                    if (!returnSource) {
+                        skippedUnmatchedReturn = true;
+                        return;
+                    }
+                    returnSourceId = String(ensureMid(returnSource));
                 }
-                const payMsg = {
+
+                var payMsg = {
                     role: 'assistant',
                     type: item.type,
                     amount: item.amount,
@@ -4945,8 +4967,35 @@
                     status: 'unopened',
                     timestamp: Date.now()
                 };
+
+                if (returnSource) {
+                    var returnCardId = String(ensureMid(payMsg));
+                    statusBackups.push({
+                        target: returnSource,
+                        hadStatus: Object.prototype.hasOwnProperty.call(returnSource, 'status'),
+                        status: returnSource.status,
+                        hadReturnRequestedAt: Object.prototype.hasOwnProperty.call(returnSource, 'returnRequestedAt'),
+                        returnRequestedAt: returnSource.returnRequestedAt,
+                        hadReturnCardId: Object.prototype.hasOwnProperty.call(returnSource, 'returnCardId'),
+                        returnCardId: returnSource.returnCardId
+                    });
+                    payMsg.returnOfPaymentId = returnSourceId;
+                    returnSource.status = 'returning';
+                    returnSource.returnRequestedAt = Date.now();
+                    returnSource.returnCardId = returnCardId;
+                }
                 historyList.push(payMsg);
             });
+
+            if (historyList.length === originalLength) {
+                if (skippedUnmatchedReturn && typeof showToast === 'function') {
+                    showToast('未找到可对应的待退回转账，已忽略这张退回卡片');
+                } else if (skippedDuplicateReturn && typeof showToast === 'function') {
+                    showToast('这笔转账已有退回卡片，未重复生成');
+                }
+                return true;
+            }
+
             if (!saveMessages(historyList)) {
                 historyList.splice(originalLength);
                 for (var bi = statusBackups.length - 1; bi >= 0; bi--) {
@@ -4955,11 +5004,16 @@
                     else delete backup.target.status;
                     if (backup.hadReturnRequestedAt) backup.target.returnRequestedAt = backup.returnRequestedAt;
                     else delete backup.target.returnRequestedAt;
+                    if (backup.hadReturnCardId) backup.target.returnCardId = backup.returnCardId;
+                    else delete backup.target.returnCardId;
                 }
                 if (typeof showToast === 'function') showToast('红包/转账卡片未能保存，请检查本地存储空间');
                 return false;
             }
             renderAllMessages();
+            if (skippedUnmatchedReturn && typeof showToast === 'function') {
+                showToast('未找到可对应的待退回转账，已忽略对应退回卡片');
+            }
             return true;
         }
 
@@ -7756,6 +7810,44 @@
                 }
 
                 const amountNum = Number(msg.amount);
+                const isTransferReturn = !isRed && (
+                    !!msg.returnOfPaymentId ||
+                    /退回|退还|还给你/.test(String(msg.message || ''))
+                );
+                var returnSource = null;
+                if (isTransferReturn) {
+                    var sourceId = String(msg.returnOfPaymentId || '');
+                    if (sourceId) {
+                        returnSource = list.find(function (row) {
+                            return row && ensureMid(row) === sourceId;
+                        }) || null;
+                    } else {
+                        var legacyCandidates = list.filter(function (row) {
+                            return row && (row.role === 'user' || row.role === 'sent') &&
+                                row.type === 'transfer' &&
+                                Number(row.amount) === amountNum &&
+                                (row.status === 'returning' || row.status === 'returned');
+                        });
+                        if (legacyCandidates.length === 1) returnSource = legacyCandidates[0];
+                        else {
+                            showToast(legacyCandidates.length
+                                ? '原转账对应关系不明确，已停止入账，避免退错款'
+                                : '未找到对应的待退回转账，已停止入账');
+                            return;
+                        }
+                    }
+
+                    if (!returnSource ||
+                        (returnSource.role !== 'user' && returnSource.role !== 'sent') ||
+                        returnSource.type !== 'transfer' ||
+                        Number(returnSource.amount) !== amountNum ||
+                        (returnSource.status !== 'returning' && returnSource.status !== 'returned') ||
+                        (returnSource.returnCardId && String(returnSource.returnCardId) !== String(paymentId)) ||
+                        (returnSource.status === 'returned' && !returnSource.returnCardId && msg.status !== 'received')) {
+                        showToast('原转账状态或关联编号不一致，已停止入账');
+                        return;
+                    }
+                }
                 if (!isFinite(amountNum) || amountNum <= 0) {
                     showToast('金额数据异常');
                     return;
@@ -7774,23 +7866,40 @@
                 function ensureFinanceRecord() {
                     try {
                         let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
-                        if (!Array.isArray(fin)) fin = [];
-                        if (!fin.some(function (entry) {
+                        if (!Array.isArray(fin)) return false;
+                        var matches = fin.filter(function (entry) {
                             return entry && String(entry.paymentId || '') === String(paymentId);
-                        })) {
-                            fin.push({
-                                paymentId: paymentId,
-                                amount: amountNum,
-                                type: '收入',
-                                category: isRed ? '红包' : '转账',
-                                note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
-                                time: Date.now()
-                            });
-                            const serialized = JSON.stringify(fin);
-                            localStorage.setItem('finance_records', serialized);
-                            return localStorage.getItem('finance_records') === serialized;
+                        });
+                        var expectedCategory = isRed ? '红包' : '转账';
+                        var reversalId = isTransferReturn && returnSource ? String(ensureMid(returnSource)) : '';
+                        if (matches.length > 1) return false;
+                        if (matches.length === 1) {
+                            var existing = matches[0];
+                            if (Number(existing.amount) !== amountNum ||
+                                existing.type !== '收入' || existing.category !== expectedCategory ||
+                                (isTransferReturn && existing.reversalOfPaymentId &&
+                                    String(existing.reversalOfPaymentId) !== reversalId)) return false;
+                            if (isTransferReturn && !existing.reversalOfPaymentId) {
+                                existing.reversalOfPaymentId = reversalId;
+                                var repaired = JSON.stringify(fin);
+                                localStorage.setItem('finance_records', repaired);
+                                return localStorage.getItem('finance_records') === repaired;
+                            }
+                            return true;
                         }
-                        return true;
+                        var financeRow = {
+                            paymentId: paymentId,
+                            amount: amountNum,
+                            type: '收入',
+                            category: expectedCategory,
+                            note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
+                            time: Date.now()
+                        };
+                        if (isTransferReturn) financeRow.reversalOfPaymentId = reversalId;
+                        fin.push(financeRow);
+                        const serialized = JSON.stringify(fin);
+                        localStorage.setItem('finance_records', serialized);
+                        return localStorage.getItem('finance_records') === serialized;
                     } catch (e) {
                         return false;
                     }
@@ -7798,18 +7907,21 @@
 
                 function persistReceiptStatus() {
                     var changed = false;
-                    // 角色退回的转账只有在用户真正收款后，原转账才改为「已退回」。
-                    if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
-                        for (let ri = list.length - 1; ri >= 0; ri--) {
-                            const previous = list[ri];
-                            if (previous && (previous.role === 'user' || previous.role === 'sent') &&
-                                previous.type === 'transfer' && previous.status === 'returning' &&
-                                Number(previous.amount) === amountNum) {
-                                previous.status = 'returned';
-                                previous.returnedAt = Date.now();
-                                changed = true;
-                                break;
-                            }
+                    // 退回卡只能更新它明确关联的原转账，不能再按金额猜测目标。
+                    if (isTransferReturn && returnSource) {
+                        var originalId = String(ensureMid(returnSource));
+                        if (String(msg.returnOfPaymentId || '') !== originalId) {
+                            msg.returnOfPaymentId = originalId;
+                            changed = true;
+                        }
+                        if (String(returnSource.returnCardId || '') !== String(paymentId)) {
+                            returnSource.returnCardId = String(paymentId);
+                            changed = true;
+                        }
+                        if (returnSource.status === 'returning') {
+                            returnSource.status = 'returned';
+                            returnSource.returnedAt = Date.now();
+                            changed = true;
                         }
                     }
                     var targetStatus = isRed ? 'opened' : 'received';
@@ -7862,14 +7974,18 @@
 
                 const oldBalance = Number(wd.balance);
                 wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
-                wd.history.unshift({
+                var walletIncomeRow = {
                     type: 'income',
                     category: msg.type,
-                    title: isRed ? '收到红包' : '收到转账',
+                    title: isRed ? '收到红包' : (isTransferReturn ? '收到退回转账' : '收到转账'),
                     amount: amountNum,
                     time: Date.now(),
                     paymentId: paymentId
-                });
+                };
+                if (isTransferReturn && returnSource) {
+                    walletIncomeRow.reversalOfPaymentId = String(ensureMid(returnSource));
+                }
+                wd.history.unshift(walletIncomeRow);
                 if (!saveWorkData(wd)) return;
 
                 // 写入后读回确认；只有余额和同一 paymentId 都存在，才推进聊天状态。
