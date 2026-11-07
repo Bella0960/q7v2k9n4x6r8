@@ -65,11 +65,11 @@ test('failed app navigation never falls back to the desktop index page', () => {
 
 
 test('Contacts account client scripts are part of the versioned app shell', () => {
-  assert.match(serviceWorker, /real-user-account-client\.js\?v=20261107v7/);
-  assert.match(serviceWorker, /real-user-account-panel\.js\?v=20261107v8/);
+  assert.match(serviceWorker, /real-user-account-client\.js\?v=20261108v1/);
+  assert.match(serviceWorker, /real-user-account-panel\.js\?v=20261108v1/);
   const contactsPage = read('chat/contacts/contacts.html');
-  assert.match(contactsPage, /real-user-account-client\.js\?v=20261107v7/);
-  assert.match(contactsPage, /real-user-account-panel\.js\?v=20261107v8/);
+  assert.match(contactsPage, /real-user-account-client\.js\?v=20261108v1/);
+  assert.match(contactsPage, /real-user-account-panel\.js\?v=20261108v1/);
   assert.match(serviceWorker, /friends-blocked-list/);
   const workerEntry = read('worker.js');
   const avatarService = read('worker/real-user-avatar.js');
