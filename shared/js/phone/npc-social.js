@@ -61,7 +61,7 @@
     var migrated = scopeId === '__unselected__' ? [] : legacy.filter(function (row) {
       return row && String(row.mainRoleId || '') === scopeId;
     });
-    if (!writeRequests(migrated)) throw new Error('NPC 申请迁移保存失败，旧数据未被删除。');
+    if (!writeRequests(migrated, scopeId)) throw new Error('NPC 申请迁移保存失败，旧数据未被删除。');
     return migrated;
   }
   function readSettings(roleId) {
@@ -326,7 +326,7 @@
     try {
       var context = roleContext(role);
       var oldNames = requests.map(function (item) { return item && item.npc && item.npc.name || ''; }).filter(Boolean);
-      var names = allRoleNames();
+      var names = allRoleNames(role);
       var system = buildPrompt(context, names, oldNames);
       var result = await global.PhoneAPI.completeJSON({
         messages: [
