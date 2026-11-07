@@ -517,27 +517,45 @@
 
         var media = mediaRepository();
         if (!media || typeof media.removeRef !== 'function') return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
+
+        function restoreReference(result) {
+            if (typeof media.addRef !== 'function') return Promise.resolve(result);
+            return media.addRef(item.assetId, OWNER_TYPE, String(roleId)).then(function (restored) {
+                return restored && restored.ok ? result : failure('STORAGE_FAILED', 'avatar reference could not be restored');
+            }).catch(function () {
+                return failure('STORAGE_FAILED', 'avatar reference could not be restored');
+            });
+        }
+
         return media.removeRef(item.assetId, OWNER_TYPE, String(roleId)).then(function (removedRef) {
             if (!removedRef || !removedRef.ok) return removedRef || failure('STORAGE_FAILED', 'avatar reference could not be removed');
+
+            // The library may have changed while IndexedDB was releasing the reference.
+            // Revalidate active/pair state and merge against the latest role snapshot.
+            var latest = readState(roleId);
+            var latestItem = latest.items.find(function (entry) { return entry.id === item.id; });
+            if (!latestItem) return failure('NOT_FOUND', 'avatar was already removed from this character library');
+            if (latest.activeId === latestItem.id) {
+                return restoreReference(failure('VALIDATION_FAILED', 'select another avatar before removing the current one'));
+            }
+            if (latest.pairs.some(function (pair) { return pair.avatarIds.indexOf(latestItem.id) >= 0; })) {
+                return restoreReference(failure('PAIR_EXISTS', 'unlink this portrait pair before removing an image'));
+            }
+
             var next = {
                 version: 2,
-                activeId: previous.activeId,
-                items: previous.items.filter(function (entry) { return entry.id !== item.id; }),
-                pairs: previous.pairs
+                activeId: latest.activeId,
+                items: latest.items.filter(function (entry) { return entry.id !== latestItem.id; }),
+                pairs: latest.pairs
             };
             if (!writeState(roleId, next)) {
-                if (typeof media.addRef === 'function') {
-                    return media.addRef(item.assetId, OWNER_TYPE, String(roleId)).then(function () {
-                        return failure('STORAGE_FAILED', 'avatar library could not be updated');
-                    });
-                }
-                return failure('STORAGE_FAILED', 'avatar library could not be updated');
+                return restoreReference(failure('STORAGE_FAILED', 'avatar library could not be updated'));
             }
-            return media.removeAsset(item.assetId).then(function (removedAsset) {
+            return media.removeAsset(latestItem.assetId).then(function (removedAsset) {
                 var retained = !removedAsset || !removedAsset.ok;
                 return {
                     ok: true,
-                    value: item,
+                    value: latestItem,
                     meta: { assetRetained: retained, reason: retained ? (removedAsset.error && removedAsset.error.code || 'referenced_elsewhere') : '' }
                 };
             });
