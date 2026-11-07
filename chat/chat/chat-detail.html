@@ -5927,6 +5927,29 @@
                 recentHistory = historyList.slice(-memoryLimit);
             }
 
+            // Decode only images explicitly attached to this send. DataURLs stay transient in memory.
+            if (visionImageMids.length && window.ChatImageVision &&
+                typeof window.ChatImageVision.prepareHistory === 'function') {
+                var preparedVisionHistory = await window.ChatImageVision.prepareHistory(
+                    recentHistory,
+                    visionImageMids,
+                    function (assetId) {
+                        return _chatImageMediaRepo
+                            ? _chatImageMediaRepo.toDataUrl(assetId)
+                            : Promise.resolve({ ok: false });
+                    },
+                    4
+                );
+                recentHistory = preparedVisionHistory.history;
+                avatarCandidateImages = preparedVisionHistory.images || [];
+                if (preparedVisionHistory.failed && typeof showToast === 'function') {
+                    showToast('有 ' + preparedVisionHistory.failed + ' 张图片暂时无法读取，已跳过');
+                }
+                if (preparedVisionHistory.omitted && typeof showToast === 'function') {
+                    showToast('本轮最多识别 4 张图片，超出的图片仍保留在聊天记录中');
+                }
+            }
+
             // Search older saved conversation locally. This adds no separate API call and only
             // injects a few relevant source excerpts when the current message matches.
             if (window.MemoryRecall && typeof window.MemoryRecall.buildHistoricalRecallText === 'function') {
