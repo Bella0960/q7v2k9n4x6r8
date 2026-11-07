@@ -14,6 +14,9 @@ const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const FRIEND_ACCOUNT_ID_PATTERN = /^u_[A-Za-z0-9_-]{16,48}$/;
 const FRIEND_ACCOUNT_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const FRIEND_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const FRIEND_MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const FRIEND_MESSAGE_LIMIT = 50;
+const FRIEND_MESSAGE_MAX_CHARS = 2000;
 const FRIEND_REGISTRATIONS_PER_IP_PER_HOUR = 20;
 const FRIEND_REQUESTS_PER_HOUR = 30;
 const MAX_SUBSCRIPTIONS_PER_DEVICE = 10;
@@ -459,6 +462,118 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     }
     const removed = await store.removeFriendship(account.user_id, friendId);
     return ok({ removed });
+  }
+
+  function friendMessageView(row) {
+    return {
+      id: row.id,
+      senderId: row.sender_id,
+      recipientId: row.recipient_id,
+      body: row.body,
+      createdAt: Number(row.created_at)
+    };
+  }
+
+  function parseFriendMessageCursor(raw) {
+    if (!raw) return null;
+    const value = String(raw);
+    const separator = value.indexOf('.');
+    if (separator <= 0) {
+      throw new ApiError(400, 'INVALID_MESSAGE_CURSOR', '消息游标格式无效');
+    }
+    const createdAt = Number(value.slice(0, separator));
+    const id = value.slice(separator + 1);
+    if (!Number.isSafeInteger(createdAt) || createdAt < 0 || !FRIEND_MESSAGE_ID_PATTERN.test(id)) {
+      throw new ApiError(400, 'INVALID_MESSAGE_CURSOR', '消息游标格式无效');
+    }
+    return { createdAt, id };
+  }
+
+  async function getFriendMessages(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    if (!store.getFriendship(account.user_id, friendId)) {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能查看聊天记录');
+    }
+    const friend = await store.getFriendAccount(friendId);
+    if (!friend || friend.revoked_at) {
+      throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '这位好友账号暂不可用');
+    }
+    const url = new URL(request.url);
+    const cursor = parseFriendMessageCursor(url.searchParams.get('cursor'));
+    const rows = await store.listFriendMessages({
+      userId: account.user_id,
+      friendId,
+      cursor,
+      limit: FRIEND_MESSAGE_LIMIT
+    });
+    const last = rows.length ? rows[rows.length - 1] : null;
+    const nextCursor = last
+      ? String(Number(last.created_at)) + '.' + String(last.id)
+      : (url.searchParams.get('cursor') || null);
+    return ok({
+      friend: {
+        userId: friend.user_id,
+        displayName: friend.display_name || ''
+      },
+      messages: rows.map(friendMessageView),
+      nextCursor,
+      hasMore: rows.length === FRIEND_MESSAGE_LIMIT
+    });
+  }
+
+  async function sendFriendMessage(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body).sort();
+    if (keys.length !== 2 || keys[0] !== 'body' || keys[1] !== 'clientMessageId') {
+      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '真人好友聊天目前只接受 clientMessageId 和纯文字 body');
+    }
+    const clientMessageId = String(body.clientMessageId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(clientMessageId)) {
+      throw new ApiError(400, 'INVALID_CLIENT_MESSAGE_ID', '消息客户端 ID 格式无效');
+    }
+    if (typeof body.body !== 'string') {
+      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '消息内容必须是文字');
+    }
+    const messageBody = body.body
+      .replace(/\r\n?/g, '\n')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+      .trim();
+    const charCount = Array.from(messageBody).length;
+    if (!charCount) throw new ApiError(400, 'EMPTY_FRIEND_MESSAGE', '不能发送空消息');
+    if (charCount > FRIEND_MESSAGE_MAX_CHARS) {
+      throw new ApiError(400, 'FRIEND_MESSAGE_TOO_LONG', '单条文字消息最多 2000 个字符');
+    }
+    const result = await store.insertFriendMessage({
+      id: randomToken(16),
+      senderId: account.user_id,
+      recipientId: friendId,
+      clientMessageId,
+      body: messageBody,
+      now: now()
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能发送消息');
+    }
+    if (result.kind === 'friend_unavailable') {
+      throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '这位好友账号暂不可用');
+    }
+    if (result.kind === 'idempotency_conflict') {
+      throw new ApiError(409, 'MESSAGE_IDEMPOTENCY_CONFLICT', '这条消息的发送凭据已被其他内容使用，请重新发送');
+    }
+    if (!result.message) {
+      throw new ApiError(500, 'FRIEND_MESSAGE_NOT_SAVED', '消息没有成功保存，请重试');
+    }
+    return ok({
+      message: friendMessageView(result.message),
+      duplicate: result.kind === 'duplicate'
+    });
   }
 
   async function registerDevice(request) {
