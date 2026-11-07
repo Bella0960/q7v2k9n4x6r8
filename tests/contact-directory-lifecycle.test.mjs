@@ -456,7 +456,7 @@ test('complete snapshots tombstone omitted server friends without touching local
   const all = directory.readResult().contacts;
   assert.equal(all.find(item => item.id === friendB.id && item.ownerAccountId === 'account_owner_03').status, 'removed');
   assert.equal(all.find(item => item.id === friendA.id && item.ownerAccountId === 'account_owner_04').status, 'accepted');
-  assert.ok(all.some(item => item.id === 'local_friend_01' && !item.ownerAccountId));
+  assert.ok(all.some(item => item.id === 'local_friend_01' && item.ownerAccountId === 'account_owner_03' && item.status === 'pending_outgoing'));
 });
 
 test('invalid, incomplete, duplicate, or stale server snapshots never partially overwrite the directory', () => {
