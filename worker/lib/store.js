@@ -428,7 +428,7 @@ class CloudStore {
     // failures could bypass the per-device rate limit by never succeeding.
     const row = this.exec(
       `SELECT COUNT(*) AS total FROM execution_log
-       WHERE device_id = ? AND kind = ? AND created_at >= ?`,
+       WHERE device_id = ? AND kind = ? AND status = 'started' AND created_at >= ?`,
       deviceId,
       kind,
       since
