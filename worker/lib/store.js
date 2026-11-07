@@ -1373,6 +1373,36 @@ class CloudStore {
     return rows.reverse();
   }
 
+
+  getFriendConversationViewState({ userId, friendId }) {
+    const clear = this.exec(
+      `SELECT clear_before_created_at, clear_before_message_id, updated_at
+       FROM friend_conversation_clears
+       WHERE user_id = ? AND friend_id = ?`,
+      userId,
+      friendId
+    )[0] || {};
+    const hidden = this.exec(
+      `SELECT COUNT(*) AS total, COALESCE(MAX(hidden_at), 0) AS latest_hidden_at
+       FROM friend_message_hides
+       WHERE user_id = ? AND friend_id = ?`,
+      userId,
+      friendId
+    )[0] || {};
+    const clearAt = Number(clear.clear_before_created_at || 0);
+    const clearId = String(clear.clear_before_message_id || '');
+    const clearUpdatedAt = Number(clear.updated_at || 0);
+    const hiddenCount = Number(hidden.total || 0);
+    const latestHiddenAt = Number(hidden.latest_hidden_at || 0);
+    return {
+      version: [clearUpdatedAt, clearAt, clearId, hiddenCount, latestHiddenAt].join(':'),
+      clearedThrough: clearAt && clearId
+        ? { createdAt: clearAt, messageId: clearId }
+        : null
+    };
+  }
+
+
   hideFriendMessage({ userId, friendId, messageId, now }) {
     if (!this.getFriendship(userId, friendId)) {
       return { kind: 'not_friends' };
