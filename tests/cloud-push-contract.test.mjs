@@ -233,6 +233,10 @@ test('新设备必须通过单次初始认领或已连接设备签发的一次�
 test('设置页暴露设备配对入口，客户端提供一次性配对流程', () => {
   const settingsHtml = fs.readFileSync(path.join(rootDir, 'settings/settings.html'), 'utf8');
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const chatDetail = fs.readFileSync(path.join(rootDir, 'chat/chat/chat-detail.html'), 'utf8');
+  assert.ok(chatDetail.includes('../../shared/js/cloud-push-client.js'), '聊天页必须加载云端 presence 客户端');
+  assert.ok(chatDetail.includes('startCharacterPresence(String(currentCharacter.id || currentRoleId))'));
+  assert.ok(chatDetail.includes('isGroupChat || !currentRoleId'), '群聊不可误占单角色租约');
   for (const id of [
     'cloudPairCreateRow',
     'cloudPairCodeOutput',
