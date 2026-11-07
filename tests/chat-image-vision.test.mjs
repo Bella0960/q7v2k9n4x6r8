@@ -112,7 +112,8 @@ test('context policy emits OpenAI-compatible multimodal user content only when a
   assert.equal(mapped[0].content[1].image_url.url, dataUrl('PHOTO'));
   assert.ok(mapped[0].content[0].text.includes('[本轮图片编号：3]'));
   assert.equal(mapped[1].content, '这是什么？');
-  assert.equal(mapped.length, 2, 'legacy images without an explicitly resolved vision URL stay textual');
+  assert.equal(mapped[2].content, '[图片]');
+  assert.equal(mapped.length, 3, 'legacy images without an explicitly resolved vision URL stay textual');
 });
 
 
