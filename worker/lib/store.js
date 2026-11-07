@@ -1183,13 +1183,32 @@ class CloudStore {
       `SELECT
          CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END AS friend_id,
          a.display_name AS display_name,
-         f.created_at AS created_at
+         f.created_at AS created_at,
+         (
+           SELECT COUNT(*)
+           FROM friend_messages m
+           LEFT JOIN friend_conversation_reads r
+             ON r.user_id = ? AND r.friend_id =
+               CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+           WHERE m.sender_id =
+                 CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+             AND m.recipient_id = ?
+             AND (
+               r.last_read_created_at IS NULL
+               OR m.created_at > r.last_read_created_at
+               OR (m.created_at = r.last_read_created_at AND m.id > r.last_read_message_id)
+             )
+         ) AS unread_count
        FROM friendships f
        INNER JOIN friend_accounts a
          ON a.user_id = CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
        WHERE f.user_low_id = ? OR f.user_high_id = ?
        ORDER BY f.created_at DESC
        LIMIT 500`,
+      userId,
+      userId,
+      userId,
+      userId,
       userId,
       userId,
       userId,
