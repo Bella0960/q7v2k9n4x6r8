@@ -650,11 +650,13 @@ class CloudStore {
        SET status = 'completed', locked_by = NULL, locked_until = NULL,
            next_attempt_at = NULL, updated_at = ?
        WHERE id = ? AND status = 'running' AND locked_by = ? AND attempt_count = ?
+         AND locked_until > ?
        RETURNING id`,
       now,
       id,
       owner,
-      attemptCount
+      attemptCount,
+      now
     )[0];
     return Boolean(row);
   }
@@ -666,13 +668,15 @@ class CloudStore {
        SET status = ?, locked_by = NULL, locked_until = NULL,
            next_attempt_at = ?, updated_at = ?
        WHERE id = ? AND status = 'running' AND locked_by = ? AND attempt_count = ?
+         AND locked_until > ?
        RETURNING id`,
       retryable ? 'retry' : 'failed',
       retryable ? nextAttemptAt : null,
       now,
       id,
       owner,
-      attemptCount
+      attemptCount,
+      now
     )[0];
     return Boolean(row);
   }
