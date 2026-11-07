@@ -28,7 +28,8 @@ export const REASON_CODES = Object.freeze({
   FOREGROUND_LEASE_HELD: 'foreground_lease_held',
   FOREGROUND_LEASE_GRACE: 'foreground_lease_grace',
   CONTEXT_VERSION_UNAVAILABLE: 'context_version_unavailable',
-  EXECUTOR_UNAVAILABLE: 'executor_unavailable'
+  EXECUTOR_UNAVAILABLE: 'executor_unavailable',
+  SOURCE_DEVICE_REVOKED: 'source_device_revoked'
 });
 
 function isPositiveInteger(value) {
@@ -182,7 +183,7 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
   if (snapshot.supersede === true || snapshot.reasonCode === REASON_CODES.STALE_CONTEXT) {
     return {
       action: 'supersede',
-      reason: REASON_CODES.STALE_CONTEXT,
+      reason: snapshot.reasonCode || REASON_CODES.STALE_CONTEXT,
       taskId: task.id,
       expectedAttemptCount: Number(task.attempt_count || 0),
       expectedStatus: task.status
