@@ -763,6 +763,7 @@
                     : '分组数据无法读取，请重新确认可见范围';
                 showToast(publishAudienceError);
                 openPermSheet();
+                openAudienceSelection(currentPerm);
                 return;
             }
             if ((currentPerm === 'custom' && !visibleAudience.memberIds.length) ||
