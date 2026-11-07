@@ -219,6 +219,36 @@
     return { ok: true, request: finalOrder.afterSales, replayed: false };
   }
 
+  function canSubmit(input) {
+    input = input || {};
+    var channel = String(input.channel || '');
+    var paymentId = String(input.paymentId || '').trim();
+    var ordersKey = String(input.ordersKey || '');
+    var financeKey = String(input.financeKey || '');
+    var amount = roundMoney(input.amount);
+    var paymentMethod = String(input.paymentMethod || '');
+    if (['shop', 'takeout'].indexOf(channel) === -1 ||
+        !paymentId || !ordersKey || !financeKey ||
+        !isFinite(amount) || amount <= 0 || !paymentMethod) {
+      return { ok: false, reason: 'invalid-input' };
+    }
+    var orderRows = readArray(ordersKey);
+    if (!orderRows.ok) return { ok: false, reason: 'orders-' + orderRows.reason };
+    var order = findUniqueOrder(orderRows.value, paymentId);
+    if (!order) return { ok: false, reason: 'order-missing-or-duplicate' };
+    if (Math.abs(roundMoney(order.total) - amount) > 0.009 ||
+        String(order.payMethod || '') !== paymentMethod) {
+      return { ok: false, reason: 'order-payment-conflict' };
+    }
+    var financeRows = readArray(financeKey);
+    if (!financeRows.ok) return { ok: false, reason: 'finance-' + financeRows.reason };
+    var requestId = order.afterSales && order.afterSales.requestId
+      ? String(order.afterSales.requestId) : '';
+    var verified = validatePaymentLines(financeRows.value, order, paymentId, amount, requestId);
+    if (!verified.ok) return verified;
+    return { ok: true, order: order, lineCount: verified.lines.length };
+  }
+
   function submit(input) {
     var ledger = global.MaoMaoWalletLedger;
     if (!ledger || typeof ledger.runExclusive !== 'function') {
@@ -240,5 +270,8 @@
     });
   }
 
-  global.MaoMaoOrderAfterSales = Object.freeze({ submit: submit });
+  global.MaoMaoOrderAfterSales = Object.freeze({
+    canSubmit: canSubmit,
+    submit: submit
+  });
 })(window);
