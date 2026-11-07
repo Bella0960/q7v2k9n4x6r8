@@ -2812,6 +2812,8 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   const renderIndex = adapter.indexOf('if (_vl) vlRefresh();');
   assert.ok(saveIndex >= 0 && renderIndex > saveIndex,
     '必须先验证本地保存成功，再渲染消息');
+  assert.ok(adapter.includes('if (document.visibilityState === \'hidden\') return false'),
+    '页面隐藏后，迟到的拉取响应不能再写入聊天历史');
   assert.ok(adapter.includes('if (isGroupChat'),
     '群聊不得误接单角色的出站收件箱');
   assert.ok(adapter.includes('payloadType !== \'text\''),
@@ -2823,10 +2825,13 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   const sync = chat.slice(syncStart, syncEnd);
   assert.ok(sync.includes('navigator.locks.request'), '优先使用 Web Locks 防止多标签页并发接收');
   assert.ok(sync.includes('runWithStorageLease'), '不支持 Web Locks 时应使用本地租约降级');
+  assert.ok(sync.includes('hasDeviceCredentials()'), '只有完成设备连接后才开始轮询');
   assert.ok(sync.includes("window.setInterval(syncNow, 15000)"),
     '前台聊天页应定期拉取待同步消息');
   assert.ok(sync.includes("document.visibilityState === 'hidden'"),
     '页面隐藏时应暂停拉取');
+  assert.ok(sync.includes('refreshHistoryFromOtherTab'),
+    '切回前台或其他标签页完成接收后应重新读取同一份历史');
   assert.ok(sync.includes('window.addEventListener(\'storage\', onOtherTabNotice)'),
     '其他标签页保存消息后应刷新当前历史');
 
