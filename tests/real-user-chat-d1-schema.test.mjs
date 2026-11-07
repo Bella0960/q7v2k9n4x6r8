@@ -152,3 +152,14 @@ test("blocking terminates pending requests and removed friendships require a fre
   assert.match(migration, /OLD\.status = 'removed' AND NEW\.status = 'accepted'/);
   assert.match(migration, /NEW\.accepted_request_id = OLD\.accepted_request_id/);
 });
+
+
+test("schema v2 enforces only one unrevoked QR friend code per account", () => {
+  const migrationV2 = readFileSync(
+    new URL("../migrations/0002_real_user_friend_code_rotation.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(migrationV2, /CREATE UNIQUE INDEX IF NOT EXISTS idx_real_user_friend_codes_one_unrevoked_per_account/);
+  assert.match(migrationV2, /ON real_user_friend_codes\(account_id\)/);
+  assert.match(migrationV2, /WHERE revoked_at IS NULL/);
+});
