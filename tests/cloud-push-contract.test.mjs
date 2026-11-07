@@ -677,6 +677,16 @@ test('设备前台心跳和角色租约：CAS 独占、grace 保护、只能由 
   assert.equal(acquireA.status, 200);
   assert.equal(acquireA.payload.ownerDeviceId, deviceA.deviceId);
 
+  // A hidden tab must not delete its role lease because another tab on the
+  // same device may still be active; only the explicit lease release does so.
+  const hiddenA = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST',
+    device: deviceA,
+    body: { foregroundActive: false }
+  });
+  assert.equal(hiddenA.status, 200);
+  assert.equal(ctx.store.getCharacterLease('owner', 'char-a').owner_device_id, deviceA.deviceId);
+
   const acquireB = await ctx.asJson('/api/characters/char-a/lease', {
     method: 'POST',
     device: deviceB,
@@ -742,4 +752,31 @@ test('设备租约缺少显式配置或缺少有效前台心跳时 fail-closed',
   });
   assert.equal(noHeartbeat.status, 200);
   assert.equal(noHeartbeat.payload.released, false);
+});
+
+
+test('presence config 只返回显式服务端参数，缺失配置或未鉴权时拒绝', async () => {
+  const configured = setupTestStore(openTestDb(), {
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  });
+  const device = makeDevice();
+  await registerDevice(configured, device);
+
+  const config = await configured.asJson('/api/presence/config', { device });
+  assert.equal(config.status, 200);
+  assert.equal(config.payload.heartbeatTtlMs, 90000);
+  assert.equal(config.payload.leaseDurationMs, 120000);
+  assert.equal(config.payload.graceMs, 0);
+
+  const anonymous = await configured.asJson('/api/presence/config');
+  assert.equal(anonymous.status, 401);
+
+  const missing = setupTestStore(openTestDb());
+  const missingDevice = makeDevice();
+  await registerDevice(missing, missingDevice);
+  const unavailable = await missing.asJson('/api/presence/config', { device: missingDevice });
+  assert.equal(unavailable.status, 503);
+  assert.equal(unavailable.payload.error.code, 'PRESENCE_NOT_CONFIGURED');
 });
