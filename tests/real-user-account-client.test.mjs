@@ -22,6 +22,7 @@ const disabledCapabilities = {
   enabled: false,
   accountAuth: { enabled: false, status: 'disabled' },
   friends: { enabled: false, status: 'disabled' },
+  profileAvatar: { enabled: false, status: 'disabled' },
   delivery: { enabled: false }
 };
 
@@ -287,4 +288,75 @@ test('Contacts account panel exposes an explicit edit-and-save nickname flow', (
   assert.match(PANEL_SOURCE, /id="ruEditName"/);
   assert.match(PANEL_SOURCE, /client\.updateProfile\(/);
   assert.match(PANEL_SOURCE, /昵称已更新/);
+});
+
+
+test('profile avatar upload and removal use the session-owned API and never browser persistence', async () => {
+  const avatarId = 'av_' + 'a'.repeat(32);
+  const avatarCapabilities = {
+    ...enabledCapabilities,
+    profileAvatar: { enabled: true, status: 'enabled' }
+  };
+  const png = new Blob([new Uint8Array(33)], { type: 'image/png' });
+  const calls = [];
+  const app = runtime(async (url, options) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(avatarCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({
+        ok: true,
+        account: { id: 'avatar-owner-1', handle: 'owner_1', displayName: 'Owner', status: 'active', avatarAssetId: null }
+      });
+    }
+    if (url.endsWith('/v1/profile/avatar') && options.method === 'POST') {
+      calls.push({ url, options });
+      assert.equal(options.body, png);
+      assert.equal(options.headers.get('Content-Type'), 'image/png');
+      return jsonResponse({
+        ok: true,
+        account: { id: 'avatar-owner-1', handle: 'owner_1', displayName: 'Owner', status: 'active', avatarAssetId: avatarId },
+        avatar: { assetId: avatarId, mimeType: 'image/png', byteSize: 33, width: 1, height: 1 }
+      }, 201);
+    }
+    if (url.endsWith('/v1/profile/avatar') && options.method === 'DELETE') {
+      calls.push({ url, options });
+      return jsonResponse({
+        ok: true,
+        removed: true,
+        account: { id: 'avatar-owner-1', handle: 'owner_1', displayName: 'Owner', status: 'active', avatarAssetId: null }
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.restore();
+  const uploaded = await app.client.uploadAvatar(png);
+  assert.equal(uploaded.account.avatarAssetId, avatarId);
+  assert.equal(app.client.getState().account.avatarAssetId, avatarId);
+  assert.equal(app.client.avatarUrl(avatarId), '/api/real-user-chat/v1/profile/avatars/' + avatarId);
+  assert.equal(app.client.avatarUrl('../not-an-avatar'), '');
+  const removed = await app.client.removeAvatar();
+  assert.equal(removed.avatarAssetId, null);
+  assert.equal(app.client.getState().account.avatarAssetId, null);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.options.credentials === 'same-origin'));
+  assert.ok(calls.every((call) => call.options.cache === 'no-store'));
+  assert.equal('localStorage' in app.window, false);
+});
+
+test('profile avatar methods fail closed when the server does not advertise avatar storage', async () => {
+  const app = runtime(async () => jsonResponse(enabledCapabilities));
+  await app.client.restore();
+  const png = new Blob([new Uint8Array(33)], { type: 'image/png' });
+  await assert.rejects(app.client.uploadAvatar(png),
+    (error) => error.code === 'profile_avatar_unavailable');
+  await assert.rejects(app.client.removeAvatar(),
+    (error) => error.code === 'profile_avatar_unavailable');
+});
+
+test('Contacts panel keeps real-user avatar management separate from AI role assets', () => {
+  assert.match(PANEL_SOURCE, /id="ruAvatarControls"/);
+  assert.match(PANEL_SOURCE, /client\.uploadAvatar\(file\)/);
+  assert.match(PANEL_SOURCE, /client\.removeAvatar\(\)/);
+  assert.match(PANEL_SOURCE, /friend\.avatarAssetId/);
+  assert.match(PANEL_SOURCE, /真人账号头像已更新/);
 });
