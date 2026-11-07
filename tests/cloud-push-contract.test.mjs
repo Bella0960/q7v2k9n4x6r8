@@ -90,7 +90,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0004 建立云推送、调度元数据与角色上下文版本表', async () => {
+test('迁移 0001–0005 建立云推送、调度元数据与投递恢复结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -127,17 +127,23 @@ test('迁移 0001–0004 建立云推送、调度元数据与角色上下文版�
   assert.ok(indexes.includes('idx_device_pairing_expiry'), '配对码必须可按过期时间清理');
   assert.ok(indexes.includes('idx_context_events_device_created'), '上下文事件必须可按设备清理与审计');
   assert.ok(indexes.includes('idx_context_events_created'), '上下文事件必须可按保留期清理');
+  assert.ok(indexes.includes('idx_push_delivery_retry'), '推送投递必须可按重试状态与租约查询');
+  const deliveryColumns = testDb.query("PRAGMA table_info('push_deliveries')").map(row => String(row.name));
+  for (const column of ['lease_owner', 'lease_until', 'next_attempt_at', 'attempt_count', 'updated_at']) {
+    assert.ok(deliveryColumns.includes(column), `推送投递缺少恢复字段 ${column}`);
+  }
 
   // 幂等：重复执行迁移不会重复建表，也不会重复记录版本。
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 4);
+  assert.equal(versions.length, 5);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
     '0003_device_pairing',
-    '0004_character_context_version'
+    '0004_character_context_version',
+    '0005_push_delivery_retries'
   ]);
 });
 
