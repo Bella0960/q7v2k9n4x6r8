@@ -136,7 +136,7 @@ Cron / 内部 tick
 - `POST /api/characters/:characterId/lease`：`acquire / renew / release`。仅当前租约设备可续期或释放；另一设备不能释放持有者租约；新设备只有在旧 lease 到期且 grace 结束后才能 CAS 接管。
 - Lease API 所需的心跳 TTL、租约时长、grace 全部来自显式环境配置：`AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS`。缺失或无效时拒绝发放 lease。
 
-`shared/js/cloud-push-client.js` 已暴露全局/角色开关、作息、前台心跳、角色租约方法，并提供按服务端 TTL 自动续期的 `startCharacterPresence(characterId)` 客户端管理器。但当前 `chat-detail.html` 尚未调用该管理器，也还没有排班与 autonomy 设置 UI。因此不能报告 PWA 已自动同步设备状态。
+`shared/js/cloud-push-client.js` 已暴露全局/角色开关、作息、前台心跳、角色租约方法，并提供按服务端 TTL 自动续期的 `startCharacterPresence(characterId)` 客户端管理器。设置页现已提供“云端自主活动授权”全局开关：读取/写入云端 `user_autonomy`，设备未通过鉴权前保持禁用；它只记录授权，不表示角色已经会主动联系。角色单独授权与角色作息的完整设置界面仍未完成。当前 `chat-detail.html` 尚未调用前台管理器，因此不能报告 PWA 已自动同步角色前台状态。
 
 ### 8.3 真实 scheduler gate
 
@@ -170,3 +170,11 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - `POST /api/devices/register` 对未知设备要求有效的配对码，或在首台认领尚未完成时使用 `ENROLLMENT_TOKEN`；成功消费配对码后不能重放。撤销签发设备会删除其尚未消费的配对码。
 - 设置页增加“生成设备配对码”、复制配对码和输入配对码连接流程。设备注册遇到凭据冲突或服务端记录丢失时，不再自动生成新 ID 并清除原凭据。
 - 这部分代码仍未由当前会话执行 Node / SQLite 测试、Vite build、Cloudflare 部署或真机验收。PR 仍 Draft；不要将代码已写入误认为生产安全配置已完成。
+
+
+### 8.6 设置页授权入口
+
+- 设置页新增全局“云端自主活动授权”开关，使用已鉴权的 `getGlobalAutonomy / setGlobalAutonomy` 读写云端状态。
+- 未连接或鉴权失败时开关禁用；刷新页面时重新读取云端值。
+- 文案明确说明这只是用户授权记录，在角色作息、聊天前台接入和自主生成链路完成前，不会触发主动联系。
+- 角色单独开关与作息编辑 UI、聊天页面自动 heartbeat/lease 仍待完成。
