@@ -1450,9 +1450,10 @@ body {
   border-bottom: 0 !important;
 }
 #byline.role-info-card {
-  width: min(calc(var(--profile-card-width, 100%) - 32px), 520px) !important;
+  width: min(calc(min(var(--profile-card-width, 100%), 100%) - 32px), 520px) !important;
   margin: 12px auto 8px !important;
   padding: var(--profile-card-padding, 20px) !important;
+  text-align: var(--profile-card-align, center) !important;
   background: var(--profile-card-background, transparent) !important;
   border: 1px solid var(--profile-card-border, transparent) !important;
   border-radius: var(--profile-card-radius, 0px) !important;
@@ -1468,9 +1469,26 @@ body {
   color: var(--profile-card-muted-text-color, #777777) !important;
 }
 #byline.role-info-card .character-portrait {
+  display: var(--profile-card-avatar-display, flex) !important;
+  width: var(--profile-card-avatar-size, 48px) !important;
+  height: var(--profile-card-avatar-size, 48px) !important;
+  margin: 0 auto var(--profile-card-info-gap, 12px) !important;
   background: rgba(127,127,127,.12) !important;
   color: var(--profile-card-text-color, #111111) !important;
   border-color: var(--profile-card-border, transparent) !important;
+}
+#byline.role-info-card .card-quote {
+  display: var(--profile-card-quote-display, block) !important;
+  font-size: var(--profile-card-quote-size, 13px) !important;
+  margin-bottom: var(--profile-card-info-gap, 12px) !important;
+}
+#byline.role-info-card .card-name {
+  font-size: var(--profile-card-name-size, 20px) !important;
+  margin-bottom: calc(var(--profile-card-info-gap, 12px) / 2) !important;
+}
+#byline.role-info-card[data-profile-card-align="left"] .character-portrait {
+  margin-left: 0 !important;
+  margin-right: auto !important;
 }
 #byline.role-info-card .card-status,
 #byline.role-info-card .card-quote,
@@ -1661,6 +1679,13 @@ body {
     <div class="wp-group"><div class="wp-label">卡片宽度</div><div class="wp-slider"><input type="range" id="profileCardWidthRange" min="60" max="100" step="1" value="100"><span class="wp-range" id="profileCardWidthVal">100%</span></div></div>
     <div class="wp-group"><div class="wp-label">卡片内边距</div><div class="wp-slider"><input type="range" id="profileCardPaddingRange" min="8" max="36" step="1" value="20"><span class="wp-range" id="profileCardPaddingVal">20px</span></div></div>
     <div class="wp-group"><div class="wp-label">阴影强度</div><div class="wp-slider"><input type="range" id="profileCardShadowRange" min="0" max="30" step="1" value="0"><span class="wp-range" id="profileCardShadowVal">0%</span></div></div>
+    <div class="wp-group"><div class="wp-label">卡片排版</div><div class="wp-chips" id="profileCardLayoutChips"></div></div>
+    <div class="wp-group"><div class="wp-label">头像显示</div><div class="wp-chips" id="profileCardAvatarVisibilityChips"></div></div>
+    <div class="wp-group"><div class="wp-label">英文签名显示</div><div class="wp-chips" id="profileCardQuoteVisibilityChips"></div></div>
+    <div class="wp-group"><div class="wp-label">头像尺寸</div><div class="wp-slider"><input type="range" id="profileCardAvatarSizeRange" min="32" max="88" step="1" value="48"><span class="wp-range" id="profileCardAvatarSizeVal">48px</span></div></div>
+    <div class="wp-group"><div class="wp-label">角色名字号</div><div class="wp-slider"><input type="range" id="profileCardNameSizeRange" min="14" max="32" step="1" value="20"><span class="wp-range" id="profileCardNameSizeVal">20px</span></div></div>
+    <div class="wp-group"><div class="wp-label">英文签名字号</div><div class="wp-slider"><input type="range" id="profileCardQuoteSizeRange" min="10" max="20" step="1" value="13"><span class="wp-range" id="profileCardQuoteSizeVal">13px</span></div></div>
+    <div class="wp-group"><div class="wp-label">信息间距</div><div class="wp-slider"><input type="range" id="profileCardInfoGapRange" min="0" max="28" step="1" value="12"><span class="wp-range" id="profileCardInfoGapVal">12px</span></div></div>
     <button type="button" class="wp-chip" id="profileCardResetBtn">恢复默认卡片样式</button>
   </div>
 </details>
@@ -1816,6 +1841,17 @@ body {
     var profileCardPaddingVal = document.getElementById('profileCardPaddingVal');
     var profileCardShadowRange = document.getElementById('profileCardShadowRange');
     var profileCardShadowVal = document.getElementById('profileCardShadowVal');
+    var profileCardLayoutChips = document.getElementById('profileCardLayoutChips');
+    var profileCardAvatarVisibilityChips = document.getElementById('profileCardAvatarVisibilityChips');
+    var profileCardQuoteVisibilityChips = document.getElementById('profileCardQuoteVisibilityChips');
+    var profileCardAvatarSizeRange = document.getElementById('profileCardAvatarSizeRange');
+    var profileCardAvatarSizeVal = document.getElementById('profileCardAvatarSizeVal');
+    var profileCardNameSizeRange = document.getElementById('profileCardNameSizeRange');
+    var profileCardNameSizeVal = document.getElementById('profileCardNameSizeVal');
+    var profileCardQuoteSizeRange = document.getElementById('profileCardQuoteSizeRange');
+    var profileCardQuoteSizeVal = document.getElementById('profileCardQuoteSizeVal');
+    var profileCardInfoGapRange = document.getElementById('profileCardInfoGapRange');
+    var profileCardInfoGapVal = document.getElementById('profileCardInfoGapVal');
     var profileCardResetBtn = document.getElementById('profileCardResetBtn');
     var bgImageBtn = document.getElementById('bgImageBtn');
     var bgClearBtn = document.getElementById('bgClearBtn');
@@ -1893,6 +1929,8 @@ body {
             profileCardBorderColor: '#222222', profileCardBorderOpacity: 0,
             profileCardRadius: 0, profileCardBlur: 0,
             profileCardWidth: 100, profileCardPadding: 20, profileCardShadowOpacity: 0,
+            profileCardLayout: 'center', profileCardShowAvatar: true, profileCardShowQuote: true,
+            profileCardAvatarSize: 48, profileCardNameSize: 20, profileCardQuoteSize: 13, profileCardInfoGap: 12,
             breakMode: 'none', summaryMode: 'card'
         };
         try {
@@ -1979,6 +2017,18 @@ body {
                 ['profileCardWidth', 60, 100],
                 ['profileCardPadding', 8, 36],
                 ['profileCardShadowOpacity', 0, 30]
+            ].forEach(function (rule) {
+                var value = Number(v[rule[0]]);
+                if (Number.isFinite(value) && value >= rule[1] && value <= rule[2]) d[rule[0]] = value;
+            });
+            if (v.profileCardLayout === 'center' || v.profileCardLayout === 'left') d.profileCardLayout = v.profileCardLayout;
+            if (typeof v.profileCardShowAvatar === 'boolean') d.profileCardShowAvatar = v.profileCardShowAvatar;
+            if (typeof v.profileCardShowQuote === 'boolean') d.profileCardShowQuote = v.profileCardShowQuote;
+            [
+                ['profileCardAvatarSize', 32, 88],
+                ['profileCardNameSize', 14, 32],
+                ['profileCardQuoteSize', 10, 20],
+                ['profileCardInfoGap', 0, 28]
             ].forEach(function (rule) {
                 var value = Number(v[rule[0]]);
                 if (Number.isFinite(value) && value >= rule[1] && value <= rule[2]) d[rule[0]] = value;
@@ -2294,6 +2344,34 @@ body {
         setRangeUI(profileCardWidthRange, profileCardWidthVal, writingOpts.profileCardWidth, function (v) { return Math.round(v) + '%'; });
         setRangeUI(profileCardPaddingRange, profileCardPaddingVal, writingOpts.profileCardPadding, function (v) { return Math.round(v) + 'px'; });
         setRangeUI(profileCardShadowRange, profileCardShadowVal, writingOpts.profileCardShadowOpacity, function (v) { return Math.round(v) + '%'; });
+        renderChips(profileCardLayoutChips, [
+            { key: 'center', label: '居中排版' },
+            { key: 'left', label: '左对齐' }
+        ], writingOpts.profileCardLayout, function (key) {
+            writingOpts.profileCardLayout = key;
+            markProfileCardCustom();
+            applyReadingStyle();
+        });
+        renderChips(profileCardAvatarVisibilityChips, [
+            { key: 'show', label: '显示头像' },
+            { key: 'hide', label: '隐藏头像' }
+        ], writingOpts.profileCardShowAvatar ? 'show' : 'hide', function (key) {
+            writingOpts.profileCardShowAvatar = key === 'show';
+            markProfileCardCustom();
+            applyReadingStyle();
+        });
+        renderChips(profileCardQuoteVisibilityChips, [
+            { key: 'show', label: '显示签名' },
+            { key: 'hide', label: '隐藏签名' }
+        ], writingOpts.profileCardShowQuote ? 'show' : 'hide', function (key) {
+            writingOpts.profileCardShowQuote = key === 'show';
+            markProfileCardCustom();
+            applyReadingStyle();
+        });
+        setRangeUI(profileCardAvatarSizeRange, profileCardAvatarSizeVal, writingOpts.profileCardAvatarSize, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardNameSizeRange, profileCardNameSizeVal, writingOpts.profileCardNameSize, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardQuoteSizeRange, profileCardQuoteSizeVal, writingOpts.profileCardQuoteSize, function (v) { return Math.round(v) + 'px'; });
+        setRangeUI(profileCardInfoGapRange, profileCardInfoGapVal, writingOpts.profileCardInfoGap, function (v) { return Math.round(v) + 'px'; });
         bindReplyStyleControls();
         applyReadingStyle();
     }
@@ -2419,6 +2497,15 @@ body {
         root.style.setProperty('--profile-card-width', clampNumber(writingOpts.profileCardWidth, 60, 100, 100) + '%');
         root.style.setProperty('--profile-card-padding', clampNumber(writingOpts.profileCardPadding, 8, 36, 20) + 'px');
         root.style.setProperty('--profile-card-shadow-opacity', String(clampNumber(writingOpts.profileCardShadowOpacity, 0, 30, 0) / 100));
+        root.style.setProperty('--profile-card-align', writingOpts.profileCardLayout === 'left' ? 'left' : 'center');
+        var profileCard = document.getElementById('byline');
+        if (profileCard) profileCard.setAttribute('data-profile-card-align', writingOpts.profileCardLayout === 'left' ? 'left' : 'center');
+        root.style.setProperty('--profile-card-avatar-display', writingOpts.profileCardShowAvatar ? 'flex' : 'none');
+        root.style.setProperty('--profile-card-quote-display', writingOpts.profileCardShowQuote ? 'block' : 'none');
+        root.style.setProperty('--profile-card-avatar-size', clampNumber(writingOpts.profileCardAvatarSize, 32, 88, 48) + 'px');
+        root.style.setProperty('--profile-card-name-size', clampNumber(writingOpts.profileCardNameSize, 14, 32, 20) + 'px');
+        root.style.setProperty('--profile-card-quote-size', clampNumber(writingOpts.profileCardQuoteSize, 10, 20, 13) + 'px');
+        root.style.setProperty('--profile-card-info-gap', clampNumber(writingOpts.profileCardInfoGap, 0, 28, 12) + 'px');
         if (storyEl) storyEl.setAttribute('data-break', writingOpts.breakMode || 'none');
     }
     if (wordBase) {
@@ -2468,9 +2555,20 @@ body {
     bindProfileCardRange(profileCardWidthRange, 'profileCardWidth', profileCardWidthVal, function (v) { return Math.round(v) + '%'; });
     bindProfileCardRange(profileCardPaddingRange, 'profileCardPadding', profileCardPaddingVal, function (v) { return Math.round(v) + 'px'; });
     bindProfileCardRange(profileCardShadowRange, 'profileCardShadowOpacity', profileCardShadowVal, function (v) { return Math.round(v) + '%'; });
+    bindProfileCardRange(profileCardAvatarSizeRange, 'profileCardAvatarSize', profileCardAvatarSizeVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardNameSizeRange, 'profileCardNameSize', profileCardNameSizeVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardQuoteSizeRange, 'profileCardQuoteSize', profileCardQuoteSizeVal, function (v) { return Math.round(v) + 'px'; });
+    bindProfileCardRange(profileCardInfoGapRange, 'profileCardInfoGap', profileCardInfoGapVal, function (v) { return Math.round(v) + 'px'; });
     if (profileCardResetBtn) profileCardResetBtn.addEventListener('click', function () {
         applyProfileCardPreset('transparent');
         writingOpts.profileCardPreset = 'transparent';
+        writingOpts.profileCardLayout = 'center';
+        writingOpts.profileCardShowAvatar = true;
+        writingOpts.profileCardShowQuote = true;
+        writingOpts.profileCardAvatarSize = 48;
+        writingOpts.profileCardNameSize = 20;
+        writingOpts.profileCardQuoteSize = 13;
+        writingOpts.profileCardInfoGap = 12;
         renderWritingUI();
         saveWritingOpts();
         toast('角色卡片样式已恢复默认');
