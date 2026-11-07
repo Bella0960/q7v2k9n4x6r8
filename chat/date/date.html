@@ -1426,6 +1426,51 @@ body{display:flex;justify-content:center;align-items:stretch;background:#fff;ove
 }
 </style>
 <link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+<style id="offline-transparent-profile-background">
+/* The user's uploaded reading background is the canvas for the whole offline scene. */
+body {
+  background: var(--story-bg, #fff) !important;
+}
+.page {
+  position: relative !important;
+  background-color: var(--story-bg, #fff) !important;
+  background-image:
+    linear-gradient(
+      rgba(255,255,255,var(--story-overlay-opacity,.24)),
+      rgba(255,255,255,var(--story-overlay-opacity,.24))
+    ),
+    var(--story-bg-image, none) !important;
+  background-repeat: no-repeat !important;
+  background-position: center center !important;
+  background-size: cover !important;
+}
+/* No white header strip or framed profile card over the uploaded image. */
+.masthead {
+  background: transparent !important;
+  border-bottom: 0 !important;
+}
+#byline.role-info-card {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+/* The image now belongs to .page, so the scrolling story must not paint a second copy. */
+#story.story {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+.card-status,
+.card-quote,
+.card-name,
+.card-desc,
+.mast-word {
+  text-shadow: 0 1px 8px rgba(255,255,255,.42);
+}
+</style>
 </head>
 <body>
 <div class="page">
