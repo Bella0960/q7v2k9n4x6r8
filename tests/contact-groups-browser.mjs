@@ -311,7 +311,7 @@ async function main() {
     const directOnlyPost = await publishAndRead(page, '分组数据异常后仍可单独选择联系人');
     assert.deepEqual(directOnlyPost.visibleTo, ['role-c']);
     assert.deepEqual(directOnlyPost.visibleGroupIds, []);
-    assert.equal(await readJson(page, 'contact_groups_v1'), '{broken',
+    assert.equal(await page.evaluate(() => localStorage.getItem('contact_groups_v1')), '{broken',
       'publishing with direct contacts must not rewrite corrupt group metadata');
     assert.equal(apiRequests, 1,
       'corrupt group metadata cannot leak the post to any auto-comment role');
