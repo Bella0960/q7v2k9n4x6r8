@@ -405,6 +405,78 @@ test('首次心跳临时失败后前台管理器仍会在下一轮自动重试',
   assert.equal(listeners.has('visibilitychange'), false);
 });
 
+test('标签页在心跳请求期间隐藏后不再继续写入角色租约', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const listeners = new Map();
+  const calls = [];
+  let intervalCallback = null;
+  let resolveHeartbeat;
+  let markHeartbeatStarted;
+  const heartbeatPending = new Promise(resolve => { resolveHeartbeat = resolve; });
+  const heartbeatStarted = new Promise(resolve => { markHeartbeatStarted = resolve; });
+  const browserWindow = {
+    setInterval(callback) {
+      intervalCallback = callback;
+      return 23;
+    },
+    clearInterval() {}
+  };
+  const browserDocument = {
+    currentScript: null,
+    visibilityState: 'visible',
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name, callback) {
+      if (listeners.get(name) === callback) listeners.delete(name);
+    }
+  };
+  const localStorageStub = {
+    getItem(key) {
+      return key === 'cloud_device_v1'
+        ? JSON.stringify({ deviceId: 'device-id-123456', secret: 's'.repeat(32) })
+        : null;
+    },
+    setItem() {},
+    removeItem() {}
+  };
+  const response = payload => ({ ok: true, json: async () => payload });
+  const fetchStub = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url === '/api/presence/config') {
+      return response({ ok: true, heartbeatTtlMs: 120000, leaseDurationMs: 120000 });
+    }
+    if (url === '/api/presence/heartbeat') {
+      markHeartbeatStarted();
+      return heartbeatPending;
+    }
+    throw new Error('Hidden page must not write a role lease: ' + url);
+  };
+
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: browserDocument,
+    localStorage: localStorageStub,
+    fetch: fetchStub,
+    console: { warn() {}, log() {}, error() {} },
+    URL
+  });
+
+  const startPromise = browserWindow.MaomaoCloud.startCharacterPresence('role-123');
+  await heartbeatStarted;
+  browserDocument.visibilityState = 'hidden';
+  listeners.get('visibilitychange')();
+  resolveHeartbeat(response({ ok: true }));
+
+  const manager = await startPromise;
+  assert.ok(manager && typeof manager.stop === 'function');
+  assert.equal(calls.filter(call => call.url === '/api/presence/heartbeat').length, 1);
+  assert.equal(
+    calls.some(call => call.url === '/api/characters/role-123/lease'),
+    false,
+    '页面隐藏后，心跳请求返回也不能继续续租或抢租约'
+  );
+  manager.stop();
+});
+
 test('清理任务不会提前删除超过一小时但仍有效的配对码', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_PAIRING_TOKEN_TTL_MS: String(2 * 60 * 60 * 1000)
