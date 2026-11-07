@@ -8,7 +8,7 @@ const MAX_BODY_BYTES = 8192;
 const DUMMY_SALT = "00112233445566778899aabbccddeeff";
 const DUMMY_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 
-function authJson(payload, status, headers) {
+export function authJson(payload, status, headers) {
   const resultHeaders = new Headers({
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store, max-age=0",
@@ -65,13 +65,13 @@ function hexToBytes(hex) {
   return output;
 }
 
-function randomHex(byteLength) {
+export function randomHex(byteLength) {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);
   return bytesToHex(bytes);
 }
 
-async function sha256Hex(value) {
+export async function sha256Hex(value) {
   const data = new TextEncoder().encode(String(value));
   const digest = await crypto.subtle.digest("SHA-256", data);
   return bytesToHex(new Uint8Array(digest));
@@ -142,7 +142,7 @@ function sessionCookie(token, maxAgeSeconds) {
     "; HttpOnly; Secure; SameSite=Strict";
 }
 
-function hasSameOrigin(request) {
+export function hasSameOrigin(request) {
   const origin = request.headers.get("Origin");
   if (!origin) return false;
   try {
@@ -153,7 +153,7 @@ function hasSameOrigin(request) {
   }
 }
 
-async function readJsonBody(request) {
+export async function readJsonBody(request) {
   const declaredLength = Number(request.headers.get("Content-Length") || 0);
   if (declaredLength > MAX_BODY_BYTES) return { ok: false, error: "body_too_large" };
   if (!request.body) return { ok: false, error: "invalid_json" };
@@ -189,11 +189,11 @@ async function readJsonBody(request) {
   }
 }
 
-function hasOnlyKeys(value, allowed) {
+export function hasOnlyKeys(value, allowed) {
   return Object.keys(value).every(key => allowed.includes(key));
 }
 
-async function applyAuthRateLimit(env, request, handle) {
+export async function applyAuthRateLimit(env, request, handle) {
   const ip = String(request.headers.get("CF-Connecting-IP") || "").trim();
   if (!ip) return { ok: false, error: "client_network_identity_unavailable" };
   try {
@@ -211,14 +211,14 @@ async function applyAuthRateLimit(env, request, handle) {
   }
 }
 
-function rateLimitResponse(error) {
+export function rateLimitResponse(error) {
   if (error === "rate_limited") {
     return authJson({ ok: false, error }, 429, { "Retry-After": "60" });
   }
   return authJson({ ok: false, error: "authentication_temporarily_unavailable" }, 503);
 }
 
-async function getAuthenticatedAccount(request, env) {
+export async function getAuthenticatedAccount(request, env) {
   const token = parseSessionCookie(request);
   if (!token) return null;
   const tokenHash = await sha256Hex(token);
