@@ -150,24 +150,27 @@ class FakeD1 {
       return { results: rows };
     }
     if (sql.includes("FROM real_user_friendships f")) {
-      const [caseAccount, lowAccount, highAccount, blockerA, blockerB, limit] = values;
+      const [blockerA, blockerB, caseAccount, lowAccount, highAccount, snapshotAt, cursor, limit] = values;
       const rows = Array.from(this.friendships.values())
-        .filter(f => (f.pair_low === lowAccount || f.pair_high === highAccount) && f.status === "accepted")
-        .filter(f => {
-          const peerId = f.pair_low === caseAccount ? f.pair_high : f.pair_low;
-          const peer = this.accounts.get(peerId);
-          return peer && peer.status === "active" &&
-            !this.blocks.has(blockerA + "|" + peerId) && !this.blocks.has(peerId + "|" + blockerB);
-        })
-        .slice(0, limit)
+        .filter(f => (f.pair_low === lowAccount || f.pair_high === highAccount) &&
+          Number(f.updated_at) <= snapshotAt)
         .map(f => {
           const peerId = f.pair_low === caseAccount ? f.pair_high : f.pair_low;
           const peer = this.accounts.get(peerId);
+          if (!peer || peerId <= cursor) return null;
+          const isBlocked = this.blocks.has(blockerA + "|" + peerId) ||
+            this.blocks.has(peerId + "|" + blockerB);
           return {
             id: peer.id, handle: peer.handle, display_name: peer.display_name,
-            avatar_asset_id: peer.avatar_asset_id || null, accepted_at: f.accepted_at
+            avatar_asset_id: peer.avatar_asset_id || null, account_status: peer.status,
+            friendship_status: f.status, accepted_request_id: f.accepted_request_id,
+            accepted_at: f.accepted_at, updated_at: f.updated_at,
+            is_blocked: isBlocked ? 1 : 0
           };
-        });
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .slice(0, limit);
       return { results: rows };
     }
     throw new Error("FakeD1 unsupported all query: " + sql);
