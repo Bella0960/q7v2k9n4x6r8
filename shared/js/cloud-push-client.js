@@ -799,10 +799,18 @@
             '测试推送通道：' + (ready.testPushReady ? '具备配置条件' : '尚未就绪'),
             '前台心跳与租约：' + yesNo(ready.presenceConfigured),
             '全局自主活动授权：' + (ready.globalAutonomyEnabled ? '已开启' : '未开启'),
+            '任务队列：共 ' + Number(ready.activityQueue && ready.activityQueue.total || 0) +
+              '（待处理 ' + Number(ready.activityQueue && ready.activityQueue.waiting || 0) +
+              ' / 重试 ' + Number(ready.activityQueue && ready.activityQueue.retry || 0) +
+              ' / 运行中 ' + Number(ready.activityQueue && ready.activityQueue.running || 0) +
+              ' / 已完成 ' + Number(ready.activityQueue && ready.activityQueue.completed || 0) +
+              ' / 失败 ' + Number(ready.activityQueue && ready.activityQueue.failed || 0) +
+              ' / 已作废 ' + Number(ready.activityQueue && ready.activityQueue.superseded || 0) + '）',
+            '云端执行器：' + (ready.activityExecutorAvailable ? '已接入' : '尚未接入，任务不会被实际执行'),
             '可信聊天上下文版本：' + (ready.contextVersionReady ? '已就绪' : '未就绪'),
             'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
             '',
-            ready.note || '此检查不会发送通知。'
+            ready.note || '此检查只读取配置与匿名队列汇总，不会发送通知。'
           ];
           if (readinessResult) readinessResult.textContent = lines.join('\n');
           setStatusText(ready.testPushReady ? '云端推送配置已具备测试条件' : '云端仍有配置未完成');
