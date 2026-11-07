@@ -599,11 +599,18 @@ class CloudStore {
   listDueActivities(now, limit) {
     return this.exec(
       `SELECT * FROM activity_queue
-       WHERE status IN ('waiting', 'retry')
+       WHERE (
+         status IN ('waiting', 'retry')
          AND COALESCE(next_attempt_at, scheduled_at) <= ?
          AND (locked_until IS NULL OR locked_until <= ?)
+       ) OR (
+         status = 'running'
+         AND locked_until IS NOT NULL
+         AND locked_until <= ?
+       )
        ORDER BY COALESCE(next_attempt_at, scheduled_at) ASC
        LIMIT ?`,
+      now,
       now,
       now,
       limit
@@ -617,51 +624,66 @@ class CloudStore {
        SET status = 'running', attempt_count = attempt_count + 1,
            locked_by = ?, locked_until = ?, updated_at = ?
        WHERE id = ? AND attempt_count = ?
-         AND status IN ('waiting', 'retry')
-         AND (locked_until IS NULL OR locked_until <= ?)
+         AND (
+           (status IN ('waiting', 'retry') AND (locked_until IS NULL OR locked_until <= ?))
+           OR (status = 'running' AND locked_until IS NOT NULL AND locked_until <= ?)
+         )
        RETURNING *`,
       owner,
       leaseUntil,
       now,
       id,
       expectedAttemptCount,
+      now,
       now
     )[0] || null;
   }
 
-  completeActivity(id, now) {
-    this.exec(
+  completeActivity({ id, owner, attemptCount, now }) {
+    const row = this.exec(
       `UPDATE activity_queue
        SET status = 'completed', locked_by = NULL, locked_until = NULL,
            next_attempt_at = NULL, updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'running' AND locked_by = ? AND attempt_count = ?
+       RETURNING id`,
       now,
-      id
-    );
+      id,
+      owner,
+      attemptCount
+    )[0];
+    return Boolean(row);
   }
 
-  failActivity({ id, now, nextAttemptAt }) {
+  failActivity({ id, owner, attemptCount, now, nextAttemptAt }) {
     const retryable = Number.isFinite(nextAttemptAt) && nextAttemptAt > now;
-    this.exec(
+    const row = this.exec(
       `UPDATE activity_queue
        SET status = ?, locked_by = NULL, locked_until = NULL,
            next_attempt_at = ?, updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'running' AND locked_by = ? AND attempt_count = ?
+       RETURNING id`,
       retryable ? 'retry' : 'failed',
       retryable ? nextAttemptAt : null,
       now,
-      id
-    );
+      id,
+      owner,
+      attemptCount
+    )[0];
+    return Boolean(row);
   }
 
-  supersedeActivity(id, now) {
-    this.exec(
+  supersedeActivity({ id, expectedAttemptCount, expectedStatus = 'waiting', now }) {
+    const row = this.exec(
       `UPDATE activity_queue
        SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND attempt_count = ? AND status = ?
+       RETURNING id`,
       now,
-      id
-    );
+      id,
+      expectedAttemptCount,
+      expectedStatus
+    )[0];
+    return Boolean(row);
   }
 
   counts() {
