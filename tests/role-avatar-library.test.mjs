@@ -7,6 +7,11 @@ import vm from 'node:vm';
 const source = fs.readFileSync(path.join(process.cwd(), 'shared/js/phone/role-avatar-library.js'), 'utf8');
 
 function createLibrary(seed, options = {}) {
+  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor'];
+  if (seed && Object.keys(seed).some(key => optionKeys.includes(key)) && !Object.keys(options).length) {
+    options = seed;
+    seed = {};
+  }
   const values = new Map(Object.entries(seed || {}));
   const assets = new Map();
   const refs = new Set();
@@ -311,7 +316,8 @@ test('legacy state is normalized and object URLs/data URLs are resolved through 
     { assetId: valid, label: '  我的头像  ', source: 'legacy', createdAt: 10 },
     { assetId: valid, label: 'duplicate', createdAt: 11 }
   ] }) };
-  const { api } = createLibrary(seed);
+  const { api, assets } = createLibrary(seed);
+  assets.set(valid, new Blob(['legacy avatar'], { type: 'image/jpeg' }));
   assert.equal(api.list('role-a').length, 1);
   assert.equal(api.getActive('role-a').label, '我的头像');
   assert.equal((await api.toDataUrl(valid)).value, 'data:image/jpeg;base64,AVATAR');
