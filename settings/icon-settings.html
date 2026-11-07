@@ -148,9 +148,8 @@
             if (!/^app_[a-z0-9_-]+$/i.test(id) || seen[id]) return;
 
             var nameNode = element.querySelector('.app-name');
-            var name = nameNode
-              ? nameNode.textContent.trim()
-              : String(element.getAttribute('data-name') || '').trim();
+            var name = nameNode ? nameNode.textContent.trim() : '';
+            if (!name) name = String(element.getAttribute('data-name') || '').trim();
             var svgNode = element.querySelector('.app-icon svg');
             if (!name || !svgNode) {
               throw new Error('桌面应用“' + (name || id) + '”缺少名称或默认图标，已停止加载以避免漏项。');
