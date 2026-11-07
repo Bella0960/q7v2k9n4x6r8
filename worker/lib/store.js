@@ -990,6 +990,45 @@ class CloudStore {
       : { inserted: false, conflict: true, message: existing };
   }
 
+  /**
+   * Return pending chat outbox rows paired with active push subscriptions whose
+   * per-message delivery is missing or due for retry. Message bodies are never
+   * selected here; the notification itself is intentionally content-free.
+   */
+  listOutboundPushCandidates({ now, limit = 50 }) {
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
+    const timestamp = Number(now);
+    if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+      throw new TypeError('outbound push now 必须是非负安全整数');
+    }
+    return this.exec(
+      `SELECT o.id AS outbound_message_id, o.device_id, o.character_id,
+              o.server_message_id, o.created_at,
+              s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
+       FROM outbound_messages o
+       INNER JOIN devices d
+         ON d.id = o.device_id AND d.revoked_at IS NULL
+       INNER JOIN push_subscriptions s
+         ON s.device_id = o.device_id AND s.disabled_at IS NULL
+       LEFT JOIN push_deliveries p
+         ON p.dedupe_key = ('outbound:' || o.server_message_id)
+        AND p.subscription_id = s.id
+       WHERE o.delivery_status = 'pending'
+         AND (
+           p.id IS NULL
+           OR (p.status = 'error'
+               AND (p.next_attempt_at IS NULL OR p.next_attempt_at <= ?))
+           OR (p.status = 'sending'
+               AND p.lease_until IS NOT NULL AND p.lease_until <= ?)
+         )
+       ORDER BY o.created_at ASC, o.id ASC, s.created_at ASC, s.id ASC
+       LIMIT ?`,
+      timestamp,
+      timestamp,
+      safeLimit
+    );
+  }
+
   listPendingOutboundMessages({ userId, deviceId, characterId, limit = 50 }) {
     const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
     return this.exec(
