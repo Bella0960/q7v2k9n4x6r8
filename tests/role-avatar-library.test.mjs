@@ -554,6 +554,7 @@ test('transactional pair saver reports partial rollback instead of hiding a stra
   });
   const first = await failing.api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
   assert.equal(first.value.assetId, firstAssetId);
+  failing.assets.set(secondAssetId, new Blob(['second image'], { type: 'image/jpeg' }));
   const result = await failing.api.addAssetPair('role-a', firstAssetId, secondAssetId);
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'PARTIAL_ROLLBACK');
