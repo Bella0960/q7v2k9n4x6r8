@@ -598,22 +598,30 @@
             resetProactiveAttempt(roleId);
             return true;
         }
-        try {
-            await ensureCloudExecutorPresence(roleId, cloud);
-            // Flush content-free revision events from this device before the
-            // task captures a version, so a just-sent user message is not stale.
-            if (typeof cloud.flushCharacterContextVersion === 'function') {
-                await cloud.flushCharacterContextVersion(roleId);
-            }
-        } catch (presenceError) {
-            resetProactiveAttempt(roleId);
-            return true;
-        }
 
         var context;
         try {
+            // Flush and confirm local ownership before taking a role lease;
+            // a device with stale local history must not block the true owner.
+            if (typeof cloud.flushCharacterContextVersion === 'function') {
+                await cloud.flushCharacterContextVersion(roleId);
+            }
             context = await cloud.getCharacterContextVersion(roleId);
-        } catch (error) {
+            if (!context || context.configured !== true ||
+                context.ownedByCurrentDevice !== true ||
+                !Number.isSafeInteger(Number(context.version)) || Number(context.version) < 1) {
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+
+            await ensureCloudExecutorPresence(roleId, cloud);
+            // Lease startup can flush another pending local revision; capture
+            // the authoritative version again immediately before enqueue.
+            if (typeof cloud.flushCharacterContextVersion === 'function') {
+                await cloud.flushCharacterContextVersion(roleId);
+            }
+            context = await cloud.getCharacterContextVersion(roleId);
+        } catch (contextOrPresenceError) {
             resetProactiveAttempt(roleId);
             return true;
         }
