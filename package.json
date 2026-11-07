@@ -34,13 +34,14 @@
     "test:forum:seed": "node --test tests/forum-seed-comments.test.mjs",
     "test:forum:mobile": "node tests/forum-media-mobile.mjs",
     "test:group:ui": "node --test tests/group-ui-collapse-invite.test.mjs",
-    "test:contact:groups": "node --test tests/contact-groups-visibility.test.mjs tests/contact-directory-lifecycle.test.mjs tests/contact-communication-policy.test.mjs tests/real-user-conversation-repository.test.mjs tests/real-user-chat-worker-gate.test.mjs && node tests/contact-groups-browser.mjs",
+    "test:contact:groups": "node --test tests/contact-groups-visibility.test.mjs tests/contact-directory-lifecycle.test.mjs tests/contact-communication-policy.test.mjs tests/real-user-conversation-repository.test.mjs tests/real-user-chat-worker-gate.test.mjs tests/real-user-chat-d1-schema.test.mjs && node tests/contact-groups-browser.mjs",
     "test:group:invite-e2e": "node --test tests/group-chat-invite-e2e.test.mjs",
     "test:wechat:browser": "node tests/wechat-theme-browser.mjs",
     "test:chat:isolation:browser": "node tests/chat-data-isolation-browser.mjs",
     "test:icons:presets": "node --test tests/icon-presets-contract.test.mjs",
     "test:images": "node --test tests/image-generation-pipeline.test.mjs",
-    "test:worker:real-user-gate": "node --test tests/real-user-chat-worker-gate.test.mjs"
+    "test:worker:real-user-gate": "node --test tests/real-user-chat-worker-gate.test.mjs",
+    "test:real-user:d1-schema": "node --test tests/real-user-chat-d1-schema.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
