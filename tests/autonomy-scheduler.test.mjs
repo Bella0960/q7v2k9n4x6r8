@@ -354,6 +354,34 @@ test('过期 running 任务耗尽重试次数后会终止为 failed', () => {
   assert.equal(store.getActivity('act_reclaim_exhausted').status, 'failed');
 });
 
+test('stale 决策不能覆盖并发 worker 已经认领的任务', () => {
+  const { store } = freshStore();
+  enqueue(store, { id: 'act_stale_race', payload: { contextVersion: 1 } });
+  const staleDecision = planTask(store.getActivity('act_stale_race'), {
+    now: NOW,
+    config: CONFIG,
+    gate: () => ({ autonomyAllowed: false, reasonCode: REASON_CODES.STALE_CONTEXT, supersede: true })
+  });
+  assert.equal(staleDecision.action, 'supersede');
+
+  const claimed = store.claimActivity({
+    id: 'act_stale_race',
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'worker-won-race',
+    leaseUntil: NOW + CONFIG.leaseMs,
+    now: NOW
+  });
+  assert.ok(claimed);
+  assert.equal(store.supersedeActivity({
+    id: staleDecision.taskId,
+    expectedAttemptCount: staleDecision.expectedAttemptCount,
+    expectedStatus: staleDecision.expectedStatus,
+    now: NOW
+  }), false);
+  assert.equal(store.getActivity('act_stale_race').status, 'running');
+});
+
 test('配置缺失时 tick 跳过并写入日志，不认领活动', () => {
   const { store, query } = freshStore();
   enqueue(store, { id: 'act_noconfig' });
