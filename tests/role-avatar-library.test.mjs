@@ -116,6 +116,17 @@ function createLibrary(seed, options = {}) {
       assets.delete(assetId);
       return Promise.resolve({ ok: true });
     }
+    listByOwner(ownerType, ownerId) {
+      const value = [];
+      const missingIds = [];
+      Array.from(refs).forEach(ref => {
+        const parts = ref.split('|');
+        if (parts[1] !== ownerType || parts[2] !== ownerId) return;
+        if (assets.has(parts[0])) value.push({ assetId: parts[0] });
+        else missingIds.push(parts[0]);
+      });
+      return Promise.resolve({ ok: true, value, meta: { count: value.length, missingIds } });
+    }
     toDataUrl(assetId) {
       return Promise.resolve(assets.has(assetId)
         ? { ok: true, value: 'data:image/jpeg;base64,AVATAR' }
@@ -489,6 +500,22 @@ test('removing a role clears its private index and releases role-owned reference
   assert.equal(refs.has(a.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(refs.has(b.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(values.has(api._storageKey('role-a')), false);
+});
+
+test('role deletion also cleans role-owned media references missing from the portrait index', async () => {
+  const { api, values, refs, assets } = createLibrary();
+  const orphan = await api.add('role-a', 'data:image/jpeg;base64,ORPHANED_INDEX_REFERENCE');
+  assert.equal(orphan.ok, true);
+
+  values.set(api._storageKey('role-a'), JSON.stringify({
+    version: 2, activeId: '', items: [], pairs: []
+  }));
+
+  const removed = await api.removeRole('role-a');
+  assert.equal(removed.ok, true);
+  assert.equal(removed.value.removed, 1);
+  assert.equal(refs.has(orphan.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(assets.has(orphan.value.assetId), false, 'orphaned unreferenced media is reclaimed after its owner is deleted');
 });
 
 
