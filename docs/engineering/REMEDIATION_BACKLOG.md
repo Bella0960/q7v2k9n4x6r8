@@ -203,6 +203,23 @@ Acceptance before implementation:
 
 ## Feature implementation
 
+### THEME-001 — High-freedom chat theme package import/export
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Scope: keep MAOMAO Theme Studio independent; add a versioned package format, a safe importer and a chat-only runtime adapter. Apply only to the chat list and chat detail DOM. Preserve the existing ChatBeauty configuration, per-role overrides, role data and chat history. Store imported image/font assets through MediaRepository and keep only asset references in localStorage. Limit CSS and motion behavior to the chat preview/page shell.
+
+Acceptance:
+- Accept only MAOMAO_CHAT_THEME schema v1 packages for target maomao-chat.
+- Validate archive paths, CRC, file counts/sizes, CSS syntax and external resource references before writing.
+- Import assets to MediaRepository; rollback references and theme settings when any step fails.
+- Keep imported themes separate from beauty_chat_global_v1, beauty_chat_<roleId> and maomao_chat_theme_preset.
+- Apply chat-list and chat-detail styles only on their corresponding pages; do not alter message data or role storage.
+- Mount custom blocks using safe DOM APIs and textContent; do not execute scripts from packages.
+- Motion behaviors are allow-listed (nav scroll collapse/hide, nav tap, message enter, sheet rise, bubble press).
+- Automated package-format tests cover valid packages, assets, CSS rejection, unsafe paths and schema mismatches.
+- Real desktop and phone/PWA import, apply, switch, refresh, and rollback acceptance remains required before release.
+
+
 ### AI-IMG-001 — Complete role-based image generation and gallery
 **Priority:** P1 · **Status:** IN PROGRESS
 
