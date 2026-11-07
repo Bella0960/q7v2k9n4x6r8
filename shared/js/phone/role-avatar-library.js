@@ -678,7 +678,9 @@
         if (!validRoleId(roleId)) return Promise.resolve(failure('VALIDATION_FAILED', 'roleId is required'));
         var blocked = roleMutationBlock(roleId);
         if (blocked) return Promise.resolve(blocked);
-        var previous = readState(roleId);
+        var previousResult = readStateResult(roleId);
+        if (!previousResult.ok) return Promise.resolve(previousResult);
+        var previous = previousResult.value;
         var item = previous.items.find(function (entry) { return entry.id === String(avatarId || ''); });
         if (!item) return Promise.resolve(failure('NOT_FOUND', 'avatar not found in this character library'));
         if (previous.activeId === item.id) return Promise.resolve(failure('VALIDATION_FAILED', 'select another avatar before removing the current one'));
@@ -702,10 +704,19 @@
             if (!removedRef || !removedRef.ok) return removedRef || failure('STORAGE_FAILED', 'avatar reference could not be removed');
 
             var deletedBlock = roleMutationBlock(roleId);
-            if (deletedBlock) return deletedBlock;
+            if (deletedBlock) {
+                if (deletedBlock.error && deletedBlock.error.code === 'ROLE_DELETED') return deletedBlock;
+                if (removedRef.value && removedRef.value.removed) return restoreReference(deletedBlock);
+                return deletedBlock;
+            }
             // The library may have changed while IndexedDB was releasing the reference.
             // Revalidate active/pair state and merge against the latest role snapshot.
-            var latest = readState(roleId);
+            var latestResult = readStateResult(roleId);
+            if (!latestResult.ok) {
+                if (removedRef.value && removedRef.value.removed) return restoreReference(latestResult);
+                return latestResult;
+            }
+            var latest = latestResult.value;
             var latestItem = latest.items.find(function (entry) { return entry.id === item.id; });
             if (!latestItem) return failure('NOT_FOUND', 'avatar was already removed from this character library');
             if (latest.activeId === latestItem.id) {
