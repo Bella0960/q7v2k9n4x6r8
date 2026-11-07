@@ -2805,7 +2805,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '写后读回校验必须包含云端服务端消息 ID');
 
   const adapterStart = chat.indexOf('function persistCloudOutboundMessage(payload, envelope)');
-  const adapterEnd = chat.indexOf('// 同一角色只允许一个标签页拉取/确认。', adapterStart);
+  const adapterEnd = chat.indexOf('// 同一角色优先用 Web Locks 串行接收', adapterStart);
   assert.ok(adapterStart >= 0 && adapterEnd > adapterStart);
   const adapter = chat.slice(adapterStart, adapterEnd);
   const saveIndex = adapter.indexOf('if (!saveMessages(history))');
