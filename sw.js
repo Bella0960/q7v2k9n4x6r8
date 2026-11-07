@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v185';
+const CACHE_NAME = 'phone-app-pwa-v186';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v185 release: support keyboard shortcuts for renaming paired portraits.
+// v186 release: make paired portrait name shortcuts safe for CJK input composition.
 const APP_SHELL = [
   './',
   './index.html',
@@ -57,7 +57,7 @@ const APP_SHELL = [
   './chat/chat/chat-detail.html',
   './chat/chat/js/chat-extras.js?t=20261107imagevision1',
   './worldbook/characters/characters.html',
-  './worldbook/characters/js/characters-manager.js?v=20261107v7',
+  './worldbook/characters/js/characters-manager.js?v=20261107v8',
   './travel/dream-travel.html',
   './novel/novel.html',
   './novel/novel-detail.html',
