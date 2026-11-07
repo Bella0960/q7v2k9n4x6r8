@@ -1067,7 +1067,8 @@
                   return (labels[item.reasonCode] || '其他原因') + ' × ' + Number(item.count || 0);
                 }).join('、')
               : '暂无记录'),
-            '可信聊天上下文版本：' + (ready.contextVersionReady ? '已就绪' : '未就绪'),
+            '角色聊天版本计数：' + (ready.contextVersionReady ? '已有记录' : '尚未记录'),
+            '已跟踪角色数：' + Number(ready.contextVersionTrackedRoles || 0),
             'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
             '',
             ready.note || '此检查只读取配置与匿名队列汇总，不会发送通知。'
