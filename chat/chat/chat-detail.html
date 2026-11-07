@@ -15,7 +15,7 @@
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
-    <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
+    <script src="../../shared/js/phone/role_family_cards.js?v=20261107v1"></script>
     <script src="../../shared/js/phone/memory_recall.js?v=20261024v2"></script>
     <script src="../../shared/js/phone/phone_stream.js"></script>
     <script src="../../shared/js/phone/chat-message-policy.js?v=20261029v5"></script>
@@ -7721,7 +7721,6 @@
                 return;
             }
 
-            // 状态校验：已领取/已收款直接提示并 return
             if (isRed && msg.status === 'opened') {
                 showToast('你已经领取过这个红包啦');
                 return;
@@ -7731,14 +7730,11 @@
                 return;
             }
 
-            // 金额：Number 强转数字，杜绝字符串拼接（1000 + '100' 绝不会变成 '1000100'）
             const amountNum = Number(msg.amount);
             if (!isFinite(amountNum) || amountNum <= 0) {
                 showToast('金额数据异常');
                 return;
             }
-
-            // 1. 先落钱包账本，并以消息 mid 做幂等键，避免状态存储失败后重复加钱。
             if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
                 showToast('钱包暂不可用，未完成收款');
                 return;
@@ -7750,13 +7746,67 @@
                 return;
             }
             if (!Array.isArray(wd.history)) wd.history = [];
-            if (wd.history.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
+
+            // 钱包流水是收款幂等依据；即使上一轮聊天状态写入失败，也只补状态，不重复加余额。
+            function ensureFinanceRecord() {
+                try {
+                    let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
+                    if (!Array.isArray(fin)) fin = [];
+                    if (!fin.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
+                        fin.push({
+                            paymentId: paymentId,
+                            amount: amountNum,
+                            type: '收入',
+                            category: isRed ? '红包' : '转账',
+                            note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
+                            time: Date.now()
+                        });
+                        const serialized = JSON.stringify(fin);
+                        localStorage.setItem('finance_records', serialized);
+                        return localStorage.getItem('finance_records') === serialized;
+                    }
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            function persistReceiptStatus() {
+                // 角色退回的转账只有在用户真正收款后，原转账才改为「已退回」。
+                if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
+                    for (let ri = list.length - 1; ri >= 0; ri--) {
+                        const previous = list[ri];
+                        if (previous && (previous.role === 'user' || previous.role === 'sent') &&
+                            previous.type === 'transfer' && previous.status === 'returning' &&
+                            Number(previous.amount) === amountNum) {
+                            previous.status = 'returned';
+                            previous.returnedAt = Date.now();
+                            break;
+                        }
+                    }
+                }
                 msg.status = isRed ? 'opened' : 'received';
-                saveMessages(list);
+                if (!saveMessages(list)) {
+                    showToast('款项已入账，但聊天卡片状态未同步；再次点击可补齐，不会重复入账');
+                    return false;
+                }
+                return true;
+            }
+
+            const existingPayment = wd.history.some(function (entry) {
+                return entry && String(entry.paymentId || '') === String(paymentId);
+            });
+            if (existingPayment) {
+                if (!persistReceiptStatus()) return;
+                if (!ensureFinanceRecord()) {
+                    showToast('款项已入账，账本明细暂未同步');
+                } else {
+                    showToast('这笔款项已经入账');
+                }
                 renderAllMessages();
-                showToast('这笔款项已经入账');
                 return;
             }
+
             const oldBalance = Number(wd.balance);
             wd.balance = Math.round(((isFinite(oldBalance) ? oldBalance : 0) + amountNum) * 100) / 100;
             wd.history.unshift({
@@ -7769,44 +7819,25 @@
             });
             if (!saveWorkData(wd)) return;
 
-            // 如果这是角色退回的转账，只有用户实际收款后，原转账才改为「已退回」。
-            if (!isRed && /退回|退还|还给你/.test(String(msg.message || ''))) {
-                for (let ri = list.length - 1; ri >= 0; ri--) {
-                    const previous = list[ri];
-                    if (previous && (previous.role === 'user' || previous.role === 'sent') &&
-                        previous.type === 'transfer' && previous.status === 'returning' &&
-                        Number(previous.amount) === amountNum) {
-                        previous.status = 'returned';
-                        previous.returnedAt = Date.now();
-                        break;
-                    }
-                }
+            // 先读回钱包账本，确认余额和 paymentId 都真实落库，再推进聊天卡片状态。
+            const confirmedWallet = getWorkData();
+            const walletConfirmed = confirmedWallet &&
+                Number(confirmedWallet.balance) === Number(wd.balance) &&
+                Array.isArray(confirmedWallet.history) &&
+                confirmedWallet.history.some(function (entry) {
+                    return entry && String(entry.paymentId || '') === String(paymentId);
+                });
+            if (!walletConfirmed) {
+                showToast('钱包入账暂未确认，请稍后重试；系统会防止重复入账');
+                return;
             }
-            msg.status = isRed ? 'opened' : 'received';
-            saveMessages(list);
 
-            // 记账本只在真正收款时记收入，避免 AI 生成卡片但用户尚未领取就提前入账。
-            try {
-                let fin = JSON.parse(localStorage.getItem('finance_records') || '[]');
-                if (!Array.isArray(fin)) fin = [];
-                if (!fin.some(function (entry) { return entry && String(entry.paymentId || '') === String(paymentId); })) {
-                    fin.push({
-                        paymentId: paymentId,
-                        amount: amountNum,
-                        type: '收入',
-                        category: isRed ? '红包' : '转账',
-                        note: (currentCharacter ? currentCharacter.name : '角色') + (isRed ? ' 发的红包' : ' 转账给我'),
-                        time: Date.now()
-                    });
-                    localStorage.setItem('finance_records', JSON.stringify(fin));
-                }
-            } catch (e) {}
+            if (!persistReceiptStatus()) return;
+            const financeSaved = ensureFinanceRecord();
             renderAllMessages();
-
-            // 3. 结果弹窗：红包「已存入余额」，转账「收款成功」
             openPayResult('+' + amountNum.toFixed(2), isRed ? '已存入余额' : '收款成功');
+            if (!financeSaved) showToast('收款成功，账本明细暂未同步');
         }
-
 
         // ===== 群投票 / 群接龙 / 角色群管理标记 =====
         function processGroupInteractionMarkers(rawText, speaker, historyList, isRegeneration, isGroupFollowup) {
