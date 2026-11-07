@@ -297,9 +297,9 @@
                 ctx.fillRect(0, 0, w, h);
                 ctx.drawImage(img, 0, 0, w, h);
                 var dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-                if (!/^data:image\\/jpeg;base64,/i.test(dataUrl)) throw new Error('图片转换失败');
+                if (String(dataUrl).indexOf('data:image/jpeg;base64,') !== 0) throw new Error('图片转换失败');
                 store.saveByKey(KEY_PREFIX + app.id, dataUrl).then(function () {
-                  if (!writeActivePresetId('')) throw new Error('当前套装状态无法更新');
+                  writeActivePresetId('');
                   paintIconRow(app, dataUrl);
                   afterManualIconChange();
                 }).catch(function (err) {
