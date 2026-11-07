@@ -125,9 +125,10 @@ test('好友消息只允许已互相同意的双方读取和发送；删除好�
   assert.equal((await register(ctx, carol, '198.51.100.45')).status, 200);
   await makeFriends(ctx, alice, bob);
 
+  const originalClientMessageId = messageId();
   const sent = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
     method: 'POST',
-    body: { clientMessageId: messageId(), body: '只有好友能看见' }
+    body: { clientMessageId: originalClientMessageId, body: '只有好友能看见' }
   });
   assert.equal(sent.status, 200);
 
@@ -150,7 +151,7 @@ test('好友消息只允许已互相同意的双方读取和发送；删除好�
   const retryAfterRemove = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
     method: 'POST',
     body: {
-      clientMessageId: sent.payload.message.clientMessageId || messageId(),
+      clientMessageId: originalClientMessageId,
       body: '好友关系已删除'
     }
   });
