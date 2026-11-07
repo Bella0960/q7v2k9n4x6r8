@@ -1286,10 +1286,10 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 });
 
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v18/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v179/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /phone-app-pwa-v180/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v18/);
 });
 
 
@@ -1410,7 +1410,7 @@ test('chat detail persists voice habits per character and per group session with
   assert.match(detail, /buildEmotionContinuityPrompt/);
   assert.match(detail, /maxScan: 24/);
   assert.match(serviceWorker, /phone-app-pwa-v173/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v18/);
 });
 
 
@@ -1595,9 +1595,9 @@ test('chat detail injects the role autonomy prompt and precaches the updated pol
   assert.ok(detail.includes('ChatPresencePolicy.buildAutonomyPrompt'));
   assert.ok(detail.includes('maxNotes: 3'));
   assert.ok(detail.includes('maxTurns: 4'));
-  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.ok(detail.includes('chat-presence-policy.js?v=20261102v18'));
   assert.ok(serviceWorker.includes('phone-app-pwa-v173'));
-  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v17'));
+  assert.ok(serviceWorker.includes('chat-presence-policy.js?v=20261102v18'));
 });
 
 
@@ -1761,11 +1761,32 @@ test('proactive contact prompt allows skipping and forbids guilt, pressure and i
   assert.ok(prompt.includes('MAOMAO 主动联系时机判断'));
   assert.ok(prompt.includes('宁可跳过'));
   assert.ok(prompt.includes('为什么不理我'));
-  assert.ok(prompt.includes('{"send":false,"text":""}'));
+  assert.ok(prompt.includes('{"send":false,"bubbles":[]}'));
+  assert.ok(prompt.includes('{"send":true,"bubbles":["第一条独立消息","第二条独立消息"]}'));
+  assert.ok(prompt.includes('最多 4 条'));
   assert.ok(prompt.includes('我明天准备去图书馆看书。'));
   assert.ok(prompt.includes('当前本地时间'));
 });
 
+
+test('主动联系支持角色习惯决定数量的独立气泡并兼容旧版 text', () => {
+  const normalize = presencePolicy.normalizeProactiveBubbles;
+  assert.equal(typeof normalize, 'function');
+  assert.equal(
+    normalize({ send: true, bubbles: ['刚刚看到一家新开的书店。', '感觉你可能会喜欢那里的选书。'] }),
+    '刚刚看到一家新开的书店。\n\n感觉你可能会喜欢那里的选书。'
+  );
+  assert.equal(normalize({ send: true, bubbles: ['我到家啦。'] }), '我到家啦。');
+  assert.equal(normalize({ send: true, text: '旧版单条主动消息仍然可以保存。' }), '旧版单条主动消息仍然可以保存。');
+  assert.equal(
+    normalize({ send: true, text: '第一条旧格式消息。\n\n第二条旧格式消息。' }),
+    '第一条旧格式消息。\n\n第二条旧格式消息。'
+  );
+  assert.equal(normalize({ send: true, bubbles: ['一条有效消息。', ''] }), '');
+  assert.equal(normalize({ send: true, bubbles: ['消息一。', '消息二。', '消息三。', '消息四。', '消息五。'] }), '');
+  assert.equal(normalize({ send: true, bubbles: ['请打开 https://example.com'] }), '');
+  assert.equal(normalize({ send: true, bubbles: ['[发起语音通话]'] }), '');
+});
 test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat history notifications', () => {
   assert.match(chatSettings, /chat_proactive_contact_[' ]\s*\+\s*roleId/);
   assert.match(chatSettings, /chat_proactive_interval_[' ]\s*\+\s*roleId/);
@@ -1797,6 +1818,7 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /tick\(\);/);
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
   assert.match(chatNotifier, /executeCloudProactiveCandidate/);
+  assert.ok(chatNotifier.includes('cleanProactiveMessage(result.data)'));
   assert.match(chatNotifier, /ensureCloudExecutorPresence/);
   assert.match(chatNotifier, /updatePresenceHeartbeat\(true\)/);
   assert.match(chatNotifier, /updateCharacterLease\(key, 'acquire'\)/);
@@ -1823,15 +1845,15 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261107v3/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261107v3/);
-  assert.match(detail, /chat-notifier\.js\?v=20261107v3/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261107v4/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261107v4/);
+  assert.match(detail, /chat-notifier\.js\?v=20261107v4/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
-  assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
-  assert.match(serviceWorker, /phone-app-pwa-v179/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v3/);
+  assert.match(detail, /chat-presence-policy\.js\?v=20261102v18/);
+  assert.match(serviceWorker, /phone-app-pwa-v180/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v4/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
-  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
+  assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v18/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
 
