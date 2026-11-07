@@ -2511,6 +2511,10 @@ test('图片卡批量保存失败时不显示半批内容，红包转账失败�
   const payEnd = detail.indexOf('// ===== AI 回复清洗', payStart);
   assert.ok(payStart >= 0 && payEnd > payStart, 'red packet / transfer card handler must be present');
   const paySandbox = {
+    ensureMid: (message) => {
+      if (!message.mid) message.mid = 'legacy-transfer-mid';
+      return message.mid;
+    },
     saveMessages: () => false,
     renderAllMessages: () => { paySandbox.rendered += 1; },
     showToast: (message) => { paySandbox.toast = message; },
@@ -2632,7 +2636,7 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
   assert.equal(renders, 1);
 });
 
-test('角色退回聊天转账必须关联唯一原卡，重复生成不能创建第二张退回卡', () => {
+test('退回卡仅在原转账唯一时生成；同金额多笔交易拒绝猜测且重复生成幂等', () => {
   const start = detail.indexOf('function insertPayCards(historyList, items)');
   const end = detail.indexOf('// ===== AI 回复清洗', start);
   assert.ok(start >= 0 && end > start, 'transfer return card writer must be present');
@@ -2651,23 +2655,32 @@ test('角色退回聊天转账必须关联唯一原卡，重复生成不能创�
     showToast(message) { toasts.push(message); }
   };
   runInNewContext(source, sandbox);
-  const history = [
+  const returnedItem = [{ type: 'transfer', amount: '12.00', message: '退还给你' }];
+  const ambiguous = [
     { role: 'user', type: 'transfer', amount: '12.00', status: 'unopened', mid: 'source-old' },
     { role: 'user', type: 'transfer', amount: '12.00', status: 'unopened', mid: 'source-new' }
   ];
-  const returnedItem = [{ type: 'transfer', amount: '12.00', message: '退还给你' }];
-  assert.equal(sandbox.insertPayCards(history, returnedItem), true);
-  assert.equal(history[0].status, 'unopened', 'the older equal-amount transfer must remain untouched');
-  assert.equal(history[1].status, 'returning', 'the latest eligible original transfer is linked');
-  const returnCard = history.find(row => row.role === 'assistant' && row.type === 'transfer');
+  assert.equal(sandbox.insertPayCards(ambiguous, returnedItem), true);
+  assert.equal(ambiguous.length, 2, 'ambiguous equal-amount transfers must not create a return card');
+  assert.equal(ambiguous[0].status, 'unopened');
+  assert.equal(ambiguous[1].status, 'unopened');
+  assert.equal(renders, 0);
+  assert.match(toasts.at(-1), /同金额待退回转账不止一笔/);
+
+  const unique = [
+    { role: 'user', type: 'transfer', amount: '12.00', status: 'unopened', mid: 'source-unique' }
+  ];
+  assert.equal(sandbox.insertPayCards(unique, returnedItem), true);
+  assert.equal(unique[0].status, 'returning');
+  const returnCard = unique.find(row => row.role === 'assistant' && row.type === 'transfer');
   assert.ok(returnCard);
-  assert.equal(returnCard.returnOfPaymentId, 'source-new');
-  assert.equal(history[1].returnCardId, returnCard.mid);
-  const firstLength = history.length;
-  assert.equal(sandbox.insertPayCards(history, returnedItem), true);
-  assert.equal(history.length, firstLength, 'reprocessing the same return marker must not append another card');
-  assert.equal(history.filter(row => row.returnOfPaymentId === 'source-new').length, 1);
-  assert.equal(renders, 1, 'a duplicate return marker must not redraw or persist another card');
+  assert.equal(returnCard.returnOfPaymentId, 'source-unique');
+  assert.equal(unique[0].returnCardId, returnCard.mid);
+  const firstLength = unique.length;
+  assert.equal(sandbox.insertPayCards(unique, returnedItem), true);
+  assert.equal(unique.length, firstLength, 'reprocessing the same return marker must not append another card');
+  assert.equal(unique.filter(row => row.returnOfPaymentId === 'source-unique').length, 1);
+  assert.equal(renders, 1, 'only the first accepted return marker should render');
   assert.equal(saved.length, firstLength);
 });
 
