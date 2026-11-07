@@ -29,7 +29,8 @@ export const REASON_CODES = Object.freeze({
   FOREGROUND_LEASE_GRACE: 'foreground_lease_grace',
   CONTEXT_VERSION_UNAVAILABLE: 'context_version_unavailable',
   EXECUTOR_UNAVAILABLE: 'executor_unavailable',
-  SOURCE_DEVICE_REVOKED: 'source_device_revoked'
+  SOURCE_DEVICE_REVOKED: 'source_device_revoked',
+  DEVICE_EXECUTOR_LEASE_REQUIRED: 'device_executor_lease_required'
 });
 
 function isPositiveInteger(value) {
