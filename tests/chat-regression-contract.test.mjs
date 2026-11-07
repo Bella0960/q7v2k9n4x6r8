@@ -1288,7 +1288,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v184/);
+  assert.match(serviceWorker, /phone-app-pwa-v185/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1879,7 +1879,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v184/);
+  assert.match(serviceWorker, /phone-app-pwa-v185/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2382,10 +2382,10 @@ test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最�
 });
 
 test('气泡动画期间新增的主动消息会与本轮 AI 回复合并，且保存失败不返回成功', () => {
-  const helperStart = detail.indexOf('function refreshHistoryAfterAssistantPacing(');
+  const helperStart = detail.indexOf('function refreshSendHistorySnapshot(');
   const helperEnd = detail.indexOf('\n\n        // 3. 核心真实 AI 聊天发送逻辑', helperStart);
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
-  const helperSource = detail.slice(detail.indexOf('function refreshSendHistorySnapshot(', helperStart), helperEnd);
+  const helperSource = detail.slice(helperStart, helperEnd);
 
   let stored = null;
   let writes = 0;
