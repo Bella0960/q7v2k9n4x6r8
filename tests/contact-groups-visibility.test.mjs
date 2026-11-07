@@ -5,6 +5,9 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../shared/js/contact-groups.js', import.meta.url), 'utf8');
 const identitySource = readFileSync(new URL('../shared/js/phone/contact-identity.js', import.meta.url), 'utf8');
+const notifierSource = readFileSync(new URL('../shared/js/chat-notifier.js', import.meta.url), 'utf8');
+const detailPage = readFileSync(new URL('../chat/chat/chat-detail.html', import.meta.url), 'utf8');
+const navPage = readFileSync(new URL('../shared/js/nav.js', import.meta.url), 'utf8');
 const contactsPage = readFileSync(new URL('../chat/contacts/contacts.html', import.meta.url), 'utf8');
 const composerPage = readFileSync(new URL('../forum/post-create.html', import.meta.url), 'utf8');
 const momentsPage = readFileSync(new URL('../chat/moments/moments.html', import.meta.url), 'utf8');
@@ -114,6 +117,20 @@ test('typed Moments privacy never matches a real account to a role with the same
   assert.equal(api.canContactReceivePost(excluded, user, { id: 'owner' }), true);
   assert.equal(api.canRoleReceivePost({ authorId: 'owner', visibility: 'custom', visibleTo: ['same-id'] }, 'same-id', { id: 'owner' }), true);
   assert.equal(api.canContactReceivePost({ authorId: 'role-author', visibility: 'private' }, user, { id: 'owner' }), true);
+});
+
+test('typed contact identity is loaded before chat notification and stored in chat relationship snapshots', () => {
+  assert.match(contactsPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
+  assert.match(composerPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
+  assert.match(momentsPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
+  assert.match(detailPage, /phone\\/contact-identity\\.js\\?v=20261107v1/);
+  assert.match(navPage, /contact-identity\\.js\\?v=20261107v1/);
+  assert.match(notifierSource, /contactRef: contactIdentity\\('ai_role', roleId\\)/);
+  assert.match(notifierSource, /contactRef: contactIdentity\\('chat_group', groupId\\)/);
+  assert.match(notifierSource, /ChatNotifier\\.getContactIdentity/);
+  assert.match(composerPage, /visibleContactRefs: visibleAudience\\.memberRefs/);
+  assert.match(composerPage, /hiddenContactRefs: hiddenAudience\\.memberRefs/);
+  assert.match(composerPage, /audienceVersion: 2/);
 });
 
 test('contact groups normalize IDs and permit one contact to belong to multiple groups', () => {
