@@ -1159,6 +1159,7 @@ class CloudStore {
   completeActivityWithOutbound({
     id, owner, attemptCount, now, serverMessageId, dedupeKey, payload
   }) {
+    const payloadJson = serializeStoreJson(payload, 12000, 'outbound.payload');
     const existingTask = this.exec(
       `SELECT q.*, d.user_id AS user_id
        FROM activity_queue q
@@ -1167,22 +1168,34 @@ class CloudStore {
          AND q.attempt_count = ? AND d.revoked_at IS NULL`,
       id, owner, attemptCount
     )[0];
+
     if (existingTask) {
-      const existingMessage = this.exec(
-        'SELECT server_message_id, character_id, dedupe_key, payload_json FROM outbound_messages WHERE server_message_id = ? AND device_id = ?',
-        serverMessageId,
-        owner
-      )[0];
-      const expectedPayloadJson = serializeStoreJson(payload, 12000, 'outbound.payload');
+      // The immutable result is the recovery record. A repeated completion
+      // can recreate a missing outbox row, but can never replace its first text.
       if (
-        existingMessage &&
-        existingMessage.character_id === existingTask.character_id &&
-        existingMessage.dedupe_key === dedupeKey &&
-        existingMessage.payload_json === expectedPayloadJson
-      ) {
-        return { completed: true, alreadyCompleted: true, serverMessageId };
-      }
-      return null;
+        existingTask.result_server_message_id !== serverMessageId ||
+        existingTask.result_dedupe_key !== dedupeKey ||
+        existingTask.result_json !== payloadJson
+      ) return null;
+
+      const queued = this.enqueueOutboundMessage({
+        id: 'out_' + serverMessageId,
+        deviceId: owner,
+        userId: existingTask.user_id,
+        characterId: existingTask.character_id,
+        serverMessageId,
+        dedupeKey,
+        payload,
+        now
+      });
+      if (queued.unavailable || queued.conflict) return null;
+      return {
+        completed: true,
+        alreadyCompleted: true,
+        serverMessageId,
+        outboundInserted: queued.inserted === true,
+        outboundIdempotent: queued.idempotent === true
+      };
     }
 
     const task = this.exec(
@@ -1196,6 +1209,22 @@ class CloudStore {
     )[0];
     if (!task) return null;
 
+    // Stage the exact generated result and close the lease in one SQLite
+    // statement. If the Worker stops before outbox insertion, a retry repairs
+    // the outbox from this immutable result instead of regenerating new text.
+    const completed = this.exec(
+      `UPDATE activity_queue
+       SET status = 'completed', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?,
+           result_json = ?, result_server_message_id = ?, result_dedupe_key = ?
+       WHERE id = ? AND device_id = ? AND status = 'running'
+         AND locked_by = ? AND attempt_count = ? AND locked_until > ?
+       RETURNING id`,
+      now, payloadJson, serverMessageId, dedupeKey,
+      id, owner, owner, attemptCount, now
+    )[0];
+    if (!completed) return null;
+
     const queued = this.enqueueOutboundMessage({
       id: 'out_' + serverMessageId,
       deviceId: owner,
@@ -1206,18 +1235,11 @@ class CloudStore {
       payload,
       now
     });
-    if (queued.unavailable || queued.conflict) return null;
-
-    const completed = this.exec(
-      `UPDATE activity_queue
-       SET status = 'completed', locked_by = NULL, locked_until = NULL,
-           next_attempt_at = NULL, updated_at = ?
-       WHERE id = ? AND device_id = ? AND status = 'running'
-         AND locked_by = ? AND attempt_count = ? AND locked_until > ?
-       RETURNING id`,
-      now, id, owner, owner, attemptCount, now
-    )[0];
-    if (!completed) return null;
+    if (queued.unavailable || queued.conflict) {
+      // The completed task retains its result_json so the same request can
+      // retry outbox repair; no new model generation or alternate text is allowed.
+      return null;
+    }
     return {
       completed: true,
       alreadyCompleted: false,
