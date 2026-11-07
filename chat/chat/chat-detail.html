@@ -7829,6 +7829,8 @@
                         showToast('卡片显示已完成，但钱包流水未找到；为避免重复入账，已停止操作');
                         return;
                     }
+                    // 已完成卡再次被打开时，也顺手修复可能尚未同步的原转账退回状态。
+                    if (!persistReceiptStatus()) return;
                     if (!ensureFinanceRecord()) {
                         showToast('款项已入账，账本明细暂未同步');
                     } else {
