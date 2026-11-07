@@ -180,6 +180,50 @@ async function main() {
     await page.locator('#btnCloseContactGroups').click();
     console.log('PASS Contacts: group CRUD, overlapping members, group filtering and ungrouped filtering');
 
+    // A selected group cannot be silently dropped if the shared policy module disappears.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('权限模块缺失时阻止误发');
+    await openAudience(page, 'custom', [{ kind: 'group', id: temporaryGroup.id }]);
+    await page.evaluate(() => { window.PhoneContactGroups = null; });
+    await page.locator('#permClose').click();
+    assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
+      'a selected group cannot be dropped when the shared policy module is unavailable');
+    assert.match(await page.locator('#toast').innerText(), /权限模块尚未加载/);
+    await page.locator('[data-audience-kind="group"][data-audience-id="' + temporaryGroup.id + '"]').click();
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    await page.locator('#permClose').click();
+    const moduleFallbackPost = await publishAndRead(page, '权限模块缺失时阻止误发');
+    assert.deepEqual(moduleFallbackPost.visibleTo, ['role-c'],
+      'after explicitly clearing the group, direct-contact selection remains available');
+    assert.deepEqual(moduleFallbackPost.visibleGroupIds, []);
+    console.log('PASS Moments: unavailable audience module blocks group selection but retains direct selection');
+
+    // A directly selected contact deleted while the picker is open must also be cleared explicitly.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('联系人变化时阻止误发');
+    await openAudience(page, 'custom', [{ kind: 'contact', id: 'role-b' }]);
+    await page.evaluate(() => {
+      const roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]');
+      localStorage.setItem('ai_custom_characters', JSON.stringify(roles.filter((role) => role.id !== 'role-b')));
+    });
+    await page.locator('#permClose').click();
+    assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
+      'a deleted directly selected contact cannot be silently ignored');
+    assert.match(await page.locator('#toast').innerText(), /联系人已不存在/);
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-b"]').click();
+    await page.evaluate((role) => {
+      const roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]');
+      roles.push(role);
+      localStorage.setItem('ai_custom_characters', JSON.stringify(roles));
+    }, SEED.ai_custom_characters[1]);
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    await page.locator('#permClose').click();
+    const contactRacePost = await publishAndRead(page, '联系人变化时阻止误发');
+    assert.deepEqual(contactRacePost.visibleTo, ['role-c'],
+      'the missing contact must be explicitly removed before another audience is published');
+    assert.equal(apiRequests, 0);
+    console.log('PASS Moments: deleted direct-contact selection requires explicit removal');
+
     // A group removed after the picker opened must block confirmation instead of silently shrinking the audience.
     await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
     await page.locator('#contentInput').fill('分组变化时阻止误发');
