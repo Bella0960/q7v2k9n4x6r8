@@ -532,6 +532,8 @@
   async function mountSettings() {
     var toggle = document.getElementById('cloudPushToggle');
     var testRow = document.getElementById('cloudTestRow');
+    var readinessRow = document.getElementById('cloudReadinessCheck');
+    var readinessResult = document.getElementById('cloudReadinessResult');
     var revokeRow = document.getElementById('cloudRevokeRow');
     var pairCreateRow = document.getElementById('cloudPairCreateRow');
     var pairCodeInput = document.getElementById('cloudPairCodeInput');
@@ -551,7 +553,7 @@
     var roleAsleepEnd = document.getElementById('cloudRoleAsleepEnd');
     var roleAway = document.getElementById('cloudRoleAway');
     var roleScheduleSave = document.getElementById('cloudRoleScheduleSave');
-    if (!toggle && !testRow && !revokeRow && !pairCreateRow && !pairConnectButton &&
+    if (!toggle && !testRow && !readinessRow && !revokeRow && !pairCreateRow && !pairConnectButton &&
         !autonomyToggle && !roleSelect && !roleAutonomySave && !roleScheduleSave) return;
 
     function localCharacters() {
@@ -763,6 +765,42 @@
           setStatusText(error.message || '操作失败');
         }
         refreshSettings();
+      });
+    }
+
+    if (readinessRow) {
+      readinessRow.addEventListener('click', async function () {
+        readinessRow.setAttribute('aria-disabled', 'true');
+        if (readinessResult) {
+          readinessResult.style.display = 'block';
+          readinessResult.textContent = '正在检查当前 Worker 配置…';
+        }
+        try {
+          var ready = await getAutonomyReadiness();
+          var yesNo = function (value) { return value ? '已配置' : '未配置'; };
+          var lines = [
+            '设备授权：' + yesNo(ready.deviceAuthorized),
+            '设备密钥 Pepper：' + yesNo(ready.deviceAuthConfigured),
+            '首次认领码：' + yesNo(ready.bootstrapConfigured),
+            '一次性配对码：' + yesNo(ready.pairingConfigured),
+            'VAPID 推送密钥：' + yesNo(ready.webPushKeysConfigured),
+            '当前有效推送订阅：' + Number(ready.activePushSubscriptions || 0),
+            '测试推送通道：' + (ready.testPushReady ? '具备配置条件' : '尚未就绪'),
+            '前台心跳与租约：' + yesNo(ready.presenceConfigured),
+            '全局自主活动授权：' + (ready.globalAutonomyEnabled ? '已开启' : '未开启'),
+            '可信聊天上下文版本：' + (ready.contextVersionReady ? '已就绪' : '未就绪'),
+            'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
+            '',
+            ready.note || '此检查不会发送通知。'
+          ];
+          if (readinessResult) readinessResult.textContent = lines.join('\n');
+          setStatusText(ready.testPushReady ? '云端推送配置已具备测试条件' : '云端仍有配置未完成');
+        } catch (error) {
+          if (readinessResult) readinessResult.textContent = '检查失败：' + (error.message || '未知错误');
+          setStatusText('读取云端准备情况失败');
+        } finally {
+          readinessRow.removeAttribute('aria-disabled');
+        }
       });
     }
 
