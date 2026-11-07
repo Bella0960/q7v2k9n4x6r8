@@ -133,7 +133,9 @@
         if (typeof value === 'string' && value.indexOf(':') > 0) {
             if (identity && typeof identity.parseKey === 'function') return identity.parseKey(value);
             var separator = value.indexOf(':');
-            return contactIdentity(value.slice(0, separator), decodeURIComponent(value.slice(separator + 1)));
+            try {
+                return contactIdentity(value.slice(0, separator), decodeURIComponent(value.slice(separator + 1)));
+            } catch (error) { return null; }
         }
         var id = String(value == null ? '' : value).trim();
         if (!id) return null;
