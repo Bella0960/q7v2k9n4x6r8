@@ -476,6 +476,51 @@
     );
   }
 
+  function getCharacterOutboundMessages(characterId, limit) {
+    var safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/outbound?limit=' + safeLimit
+    ).then(function (payload) {
+      return Array.isArray(payload.messages) ? payload.messages : [];
+    });
+  }
+
+  function acknowledgeCharacterOutboundMessage(characterId, serverMessageId) {
+    var messageId = String(serverMessageId || '');
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
+      return Promise.reject(new Error('云端消息 ID 无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/outbound/' +
+        encodeURIComponent(messageId) + '/ack',
+      'POST'
+    );
+  }
+
+  /**
+   * The caller must return true only after the message is durably saved and
+   * read back from local chat history. Failed saves are deliberately not acked.
+   */
+  async function receiveCharacterOutboundMessages(characterId, persistMessage, limit) {
+    if (typeof persistMessage !== 'function') {
+      throw new TypeError('必须提供消息持久化回调');
+    }
+    var messages = await getCharacterOutboundMessages(characterId, limit);
+    var saved = 0;
+    var deferred = 0;
+    for (var index = 0; index < messages.length; index += 1) {
+      var message = messages[index];
+      var persisted = await persistMessage(message.payload, message);
+      if (persisted !== true) {
+        deferred += 1;
+        continue;
+      }
+      await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
+      saved += 1;
+    }
+    return { received: messages.length, saved: saved, deferred: deferred };
+  }
+
   function flushCharacterContextVersion(characterId) {
     var value = String(characterId || '');
     if (!value) return Promise.reject(new Error('角色 ID 无效'));
@@ -1308,6 +1353,9 @@
     getCharacterSchedule: getCharacterSchedule,
     setCharacterSchedule: setCharacterSchedule,
     getCharacterContextVersion: getCharacterContextVersion,
+    getCharacterOutboundMessages: getCharacterOutboundMessages,
+    acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage,
+    receiveCharacterOutboundMessages: receiveCharacterOutboundMessages,
     noteCharacterContextChanged: noteCharacterContextChanged,
     flushCharacterContextVersion: flushCharacterContextVersion,
     updatePresenceHeartbeat: updatePresenceHeartbeat,
