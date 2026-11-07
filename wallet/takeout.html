@@ -829,8 +829,7 @@
               try {
                 var cp = getClosePay();
                 if (!cp) {
-                  ledger.cancelPendingCheckout(transactionId);
-                  toast('亲密付设置不可用，订单未完成');
+                  toast('亲密付设置不可用，原交易仍保留待恢复；请恢复亲密付设置后重试');
                   return;
                 }
                 if (cp) {
@@ -838,17 +837,6 @@
           var quotaAlreadyCommitted = cp.history.some(function (row) {
             return row && row.paymentId === transactionId;
           });
-          if (!cp.enabled && !quotaAlreadyCommitted) {
-            ledger.cancelPendingCheckout(transactionId);
-            toast('亲密付已关闭，订单未完成');
-            return;
-          }
-          if (!quotaAlreadyCommitted && (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
-            ledger.cancelPendingCheckout(transactionId);
-            toast('亲密付额度已变化，请重新选择支付方式');
-            return;
-          }
-
           oldWalletRaw = localStorage.getItem('workData');
           var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
           if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
@@ -856,6 +844,19 @@
           var walletAlreadyCommitted = wd.history.some(function (row) {
             return row && row.paymentId === transactionId;
           });
+
+          // A partial prior commit must be completed even if settings changed afterward.
+          if (!walletAlreadyCommitted && !quotaAlreadyCommitted && !cp.enabled) {
+            ledger.cancelPendingCheckout(transactionId);
+            toast('亲密付已关闭，订单未完成');
+            return;
+          }
+          if (!walletAlreadyCommitted && !quotaAlreadyCommitted &&
+              (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
+            ledger.cancelPendingCheckout(transactionId);
+            toast('亲密付额度已变化，订单未完成');
+            return;
+          }
           if (!walletAlreadyCommitted) {
             if (wd.balance < total) {
               ledger.cancelPendingCheckout(transactionId);
