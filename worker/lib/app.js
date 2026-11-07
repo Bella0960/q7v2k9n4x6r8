@@ -658,7 +658,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (result.kind === 'message_not_found') {
       throw new ApiError(404, 'FRIEND_MESSAGE_NOT_FOUND', '没有找到这条好友消息');
     }
-    return ok({ hidden: result.kind === 'hidden', alreadyHidden: result.kind === 'already_hidden' });
+    return ok({ hidden: result.kind === 'hidden', alreadyHidden: result.kind === 'already_hidden', scope: 'current_user_only' });
   }
 
   async function clearFriendConversation(request, friendId) {
