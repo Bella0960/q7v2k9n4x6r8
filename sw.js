@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v186';
+const CACHE_NAME = 'phone-app-pwa-v187';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v186 release: make paired portrait name shortcuts safe for CJK input composition.
+// v187 release: require explicit chat-text intent before archiving avatars from images.
 const APP_SHELL = [
   './',
   './index.html',
@@ -83,7 +83,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_storage.js',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
-  './shared/js/phone/chat-image-vision.js?v=20261107v3',
+  './shared/js/phone/chat-image-vision.js?v=20261107v4',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261107vision1',
   './shared/js/phone/chat-presence-policy.js?v=20261102v17',
