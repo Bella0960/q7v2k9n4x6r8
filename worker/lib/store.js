@@ -1034,19 +1034,20 @@ class CloudStore {
     return this.exec('SELECT * FROM activity_queue WHERE id = ?', id)[0] || null;
   }
 
-  /** 幂等入队：单条 INSERT 负责去重，绝不截断 JSON 破坏数据。 */
+  /** 幂等入队：同一账号/角色/上下文版本只允许一个 contact 任务。 */
   enqueueActivity(activity) {
     const id = requireStoreString(activity?.id, 'activity.id');
     const deviceId = requireStoreString(activity?.deviceId, 'activity.deviceId');
     const characterId = requireStoreString(activity?.characterId, 'activity.characterId');
+    const dedupeKey = requireStoreString(activity?.dedupeKey || ('legacy:' + id), 'activity.dedupeKey');
     const payloadJson = serializeStoreJson(activity.payload, 4000, 'activity.payload');
     const inserted = this.exec(
       `INSERT INTO activity_queue
         (id, device_id, character_id, kind, status, scheduled_at, next_attempt_at,
-         attempt_count, max_attempts, locked_by, locked_until, payload_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'waiting', ?, NULL, 0, ?, NULL, NULL, ?, ?, ?)
-        ON CONFLICT(id) DO NOTHING
-        RETURNING *`,
+         attempt_count, max_attempts, locked_by, locked_until, payload_json, created_at, updated_at, dedupe_key)
+       VALUES (?, ?, ?, ?, 'waiting', ?, NULL, 0, ?, NULL, NULL, ?, ?, ?, ?)
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
       id,
       deviceId,
       characterId,
@@ -1055,11 +1056,160 @@ class CloudStore {
       activity.maxAttempts,
       payloadJson,
       activity.now,
-      activity.now
+      activity.now,
+      dedupeKey
     )[0];
-    if (inserted) return { inserted: true, activity: inserted };
-    return { inserted: false, activity: this.getActivity(id) };
+    if (inserted) return { inserted: true, duplicate: false, activity: inserted };
+
+    const existing = this.exec(
+      'SELECT * FROM activity_queue WHERE id = ? OR dedupe_key = ? ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1',
+      id,
+      dedupeKey,
+      id
+    )[0] || null;
+    const identical = existing &&
+      existing.device_id === deviceId &&
+      existing.character_id === characterId &&
+      existing.kind === (activity.kind || 'contact') &&
+      existing.dedupe_key === dedupeKey &&
+      existing.payload_json === payloadJson;
+    return identical
+      ? { inserted: false, duplicate: true, activity: existing }
+      : { inserted: false, conflict: true, activity: existing };
   }
+
+  countPendingActivitiesForCharacter(userId, characterId) {
+    const row = this.exec(
+      `SELECT COUNT(*) AS total
+       FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE d.user_id = ? AND q.character_id = ?
+         AND q.status IN ('waiting', 'retry', 'running')`,
+      userId,
+      characterId
+    )[0] || {};
+    return Number(row.total || 0);
+  }
+
+  listDueActivitiesForUser({ userId, characterId, now, limit = 10 }) {
+    const safeLimit = Math.max(1, Math.min(20, Math.floor(Number(limit) || 10)));
+    return this.exec(
+      `SELECT q.*, d.user_id AS user_id,
+              d.revoked_at AS source_device_revoked_at
+       FROM activity_queue q
+       LEFT JOIN devices d ON d.id = q.device_id
+       WHERE d.user_id = ? AND q.character_id = ?
+         AND (
+           (q.status IN ('waiting', 'retry')
+             AND COALESCE(q.next_attempt_at, q.scheduled_at) <= ?
+             AND (q.locked_until IS NULL OR q.locked_until <= ?))
+           OR (q.status = 'running' AND q.locked_until IS NOT NULL AND q.locked_until <= ?)
+         )
+       ORDER BY COALESCE(q.next_attempt_at, q.scheduled_at) ASC, q.id ASC
+       LIMIT ?`,
+      userId,
+      characterId,
+      now,
+      now,
+      now,
+      safeLimit
+    );
+  }
+
+  claimActivityForDevice({
+    id, expectedAttemptCount, expectedStatus, expectedDeviceId,
+    deviceId, userId, owner, leaseUntil, now,
+    expectedLockedBy = null, expectedLockedUntil = null
+  }) {
+    return this.exec(
+      `UPDATE activity_queue
+       SET device_id = ?, status = 'running', attempt_count = attempt_count + 1,
+           locked_by = ?, locked_until = ?, updated_at = ?
+       WHERE id = ? AND device_id = ? AND attempt_count = ?
+         AND (
+           (? IN ('waiting', 'retry') AND status = ?
+             AND (locked_until IS NULL OR locked_until <= ?))
+           OR (? = 'running' AND status = 'running'
+             AND locked_by = ? AND locked_until = ? AND locked_until <= ?)
+         )
+         AND EXISTS (
+           SELECT 1 FROM devices d
+           WHERE d.id = ? AND d.user_id = ? AND d.revoked_at IS NULL
+         )
+       RETURNING *`,
+      deviceId, owner, leaseUntil, now,
+      id, expectedDeviceId, expectedAttemptCount,
+      expectedStatus, expectedStatus, now,
+      expectedStatus, expectedLockedBy, expectedLockedUntil, now,
+      deviceId, userId
+    )[0] || null;
+  }
+
+  completeActivityWithOutbound({
+    id, owner, attemptCount, now, serverMessageId, dedupeKey, payload
+  }) {
+    const existingTask = this.exec(
+      `SELECT q.*, d.user_id AS user_id
+       FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE q.id = ? AND q.device_id = ? AND q.status = 'completed'
+         AND q.attempt_count = ? AND d.revoked_at IS NULL`,
+      id, owner, attemptCount
+    )[0];
+    if (existingTask) {
+      const existingMessage = this.exec(
+        'SELECT server_message_id FROM outbound_messages WHERE server_message_id = ? AND device_id = ?',
+        serverMessageId,
+        owner
+      )[0];
+      if (existingMessage) {
+        return { completed: true, alreadyCompleted: true, serverMessageId };
+      }
+      return null;
+    }
+
+    const task = this.exec(
+      `SELECT q.*, d.user_id AS user_id
+       FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE q.id = ? AND q.device_id = ? AND q.status = 'running'
+         AND q.locked_by = ? AND q.attempt_count = ? AND q.locked_until > ?
+         AND d.revoked_at IS NULL`,
+      id, owner, owner, attemptCount, now
+    )[0];
+    if (!task) return null;
+
+    const queued = this.enqueueOutboundMessage({
+      id: 'out_' + serverMessageId,
+      deviceId: owner,
+      userId: task.user_id,
+      characterId: task.character_id,
+      serverMessageId,
+      dedupeKey,
+      payload,
+      now
+    });
+    if (queued.unavailable || queued.conflict) return null;
+
+    const completed = this.exec(
+      `UPDATE activity_queue
+       SET status = 'completed', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?
+       WHERE id = ? AND device_id = ? AND status = 'running'
+         AND locked_by = ? AND attempt_count = ? AND locked_until > ?
+       RETURNING id`,
+      now, id, owner, owner, attemptCount, now
+    )[0];
+    if (!completed) return null;
+    return {
+      completed: true,
+      alreadyCompleted: false,
+      serverMessageId,
+      outboundInserted: queued.inserted === true,
+      outboundIdempotent: queued.idempotent === true
+    };
+  }
+
 
   listDueActivities(now, limit) {
     return this.exec(
