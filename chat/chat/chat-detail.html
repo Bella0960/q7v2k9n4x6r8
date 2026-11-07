@@ -5295,6 +5295,32 @@
             return latest;
         }
 
+        // AI 气泡动画期间可能又收到云端消息。动画结束后重新读取最新记录，
+        // 只补回本轮 AI 回复（如被并发旧快照覆盖），后续红包/转账/图片/通话卡
+        // 必须继续使用这份新历史，不能再拿动画开始前的数组保存。
+        function refreshHistoryAfterAssistantPacing(snapshot, currentUserMid, currentUserIndex, assistantMessage) {
+            var latest = refreshSendHistorySnapshot(snapshot, currentUserMid, currentUserIndex);
+            if (!Array.isArray(latest)) return null;
+
+            if (assistantMessage && typeof assistantMessage === 'object') {
+                ensureMid(assistantMessage);
+                var assistantMid = String(assistantMessage.mid || '');
+                var alreadyPresent = assistantMid && latest.some(function (item) {
+                    return item && String(item.mid || '') === assistantMid;
+                });
+                if (!alreadyPresent) {
+                    latest.push(assistantMessage);
+                    if (!saveMessages(latest)) return null;
+                }
+                var verified = loadMessages();
+                if (!Array.isArray(verified) || !verified.some(function (item) {
+                    return item && String(item.mid || '') === assistantMid;
+                })) return null;
+                return verified;
+            }
+            return latest;
+        }
+
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
             const input = document.getElementById('chat-input');
@@ -6486,6 +6512,7 @@
             }
 
             try {
+                var persistedAssistantMessage = null;
                 if (fullText) {
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
@@ -6518,6 +6545,8 @@
                     if (fullText) {
                         // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
                         const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
+                        ensureMid(aiMsg);
+                        persistedAssistantMessage = aiMsg;
                         historyList.push(aiMsg);
                         window.__groupPrivateCardPending = false;
                         saveMessages(historyList);
@@ -6567,8 +6596,21 @@
                             renderAllMessages();
                         }
                     }
+
+                    // 上面的逐气泡动画包含 await。动画结束后重新读取，保留期间到达的主动消息
+                    // 和其他标签页更新，并确保本轮 AI 回复本身仍在持久化历史中。
+                    historyList = refreshHistoryAfterAssistantPacing(
+                        historyList,
+                        currentTurnUserMid,
+                        currentTurnUserIndex,
+                        persistedAssistantMessage
+                    );
+                    if (!Array.isArray(historyList)) {
+                        throw new Error('AI 回复在气泡呈现后未能重新确认本地聊天记录');
+                    }
+
                     if (parsedCall.wantCall) {
-                        // AI 侧插入黑底「发起语音通话」卡并落库；是否拨号由 chat_auto_call 开关决定
+                        // AI 侧插入黑底白字「发起语音通话」卡并落库；是否拨号由 chat_auto_call 开关决定
                         insertIncomingCallCard(historyList);
                         maybeAutoIncomingCall();
                     }
