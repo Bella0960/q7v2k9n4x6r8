@@ -78,6 +78,7 @@ function createHarness() {
     localStorage,
     PhoneStorage: phoneStorage,
     PhoneAPI: {
+      supportsAbortSignal: true,
       completeJSON: async (options) => {
         aiCalls += 1;
         capturedPrompt = (options && options.messages || []).map(function (item) { return item.content || ''; }).join('\n');
