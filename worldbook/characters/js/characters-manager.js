@@ -170,6 +170,73 @@ function saveRoles(roles) {
     }
 }
 
+const ROLE_AVATAR_CLEANUP_QUEUE_KEY = 'maomao_role_avatar_cleanup_queue_v1';
+
+function readRoleAvatarCleanupQueue() {
+    try {
+        const raw = localStorage.getItem(ROLE_AVATAR_CLEANUP_QUEUE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        const seen = Object.create(null);
+        return parsed.filter(function (item) {
+            const roleId = item && item.roleId != null ? String(item.roleId).trim() : '';
+            if (!roleId || roleId.length > 180 || seen[roleId]) return false;
+            seen[roleId] = true;
+            return true;
+        }).map(function (item) {
+            return { roleId: String(item.roleId), queuedAt: Math.max(0, Number(item.queuedAt) || 0) };
+        });
+    } catch (error) {
+        return [];
+    }
+}
+
+function writeRoleAvatarCleanupQueue(queue) {
+    try {
+        localStorage.setItem(ROLE_AVATAR_CLEANUP_QUEUE_KEY, JSON.stringify(queue));
+        return true;
+    } catch (error) {
+        console.warn('角色头像清理队列无法保存:', error);
+        return false;
+    }
+}
+
+function enqueueRoleAvatarCleanup(roleId) {
+    roleId = String(roleId == null ? '' : roleId).trim();
+    if (!roleId || roleId.length > 180) return false;
+    const queue = readRoleAvatarCleanupQueue();
+    if (!queue.some(function (item) { return item.roleId === roleId; })) {
+        queue.push({ roleId: roleId, queuedAt: Date.now() });
+    }
+    return writeRoleAvatarCleanupQueue(queue);
+}
+
+async function retryPendingRoleAvatarCleanup() {
+    const library = window.RoleAvatarLibrary;
+    if (!library || typeof library.removeRole !== 'function') return { attempted: 0, pending: readRoleAvatarCleanupQueue().length };
+    const queue = readRoleAvatarCleanupQueue();
+    if (!queue.length) return { attempted: 0, pending: 0 };
+    const pending = [];
+    let attempted = 0;
+    for (const item of queue) {
+        attempted += 1;
+        try {
+            const result = await library.removeRole(item.roleId);
+            if (!result || !result.ok) {
+                pending.push(item);
+                console.warn('角色头像清理仍未完成，将在下次打开角色档案页时重试:', item.roleId);
+            }
+        } catch (error) {
+            pending.push(item);
+            console.warn('角色头像清理失败，将在下次打开角色档案页时重试:', item.roleId, error);
+        }
+    }
+    if (!writeRoleAvatarCleanupQueue(pending)) {
+        return { attempted: attempted, pending: queue.length, queueWriteFailed: true };
+    }
+    return { attempted: attempted, pending: pending.length };
+}
+
 
 
 function setAvatarLibraryStatus(message, state) {
@@ -1354,32 +1421,55 @@ function handleSaveRole() {
 }
 
 
-// 删除角色
-function handleDeleteRole(id) {
+// 删除角色：先保存角色列表，再等待头像引用清理；失败会进入持久化重试队列。
+async function handleDeleteRole(id) {
     const roles = loadRoles();
-    const target = roles.find(r => r.id === id);
+    const target = roles.find(function (role) { return String(role.id) === String(id); });
     if (!target) return;
 
     const confirmed = confirm(`确定要删除角色"${target.name}"吗？`);
     if (!confirmed) return;
 
-    const updatedRoles = roles.filter(r => r.id !== id);
+    const updatedRoles = roles.filter(function (role) { return String(role.id) !== String(id); });
     if (!saveRoles(updatedRoles)) {
         alert('角色删除失败，原有资料和头像均已保留。');
         return;
     }
-    if (window.RoleAvatarLibrary && typeof RoleAvatarLibrary.removeRole === 'function') {
-        RoleAvatarLibrary.removeRole(String(id)).catch(function (error) {
-            console.warn('角色头像资产清理未完成:', error);
-        });
-    }
 
-    if (getCurrentPhoneContactId() === id) {
+    if (String(getCurrentPhoneContactId() || '') === String(id)) {
         localStorage.removeItem(CURRENT_CONTACT_KEY);
         localStorage.removeItem(LEGACY_CONTACT_KEY);
     }
-
     renderRoleList();
+
+    const library = window.RoleAvatarLibrary;
+    if (!library || typeof library.removeRole !== 'function') {
+        const queued = enqueueRoleAvatarCleanup(id);
+        alert(queued
+            ? '角色已删除，但头像清理模块暂时不可用，系统会在下次打开角色档案页时重试。'
+            : '角色已删除，但头像清理模块不可用，且清理任务无法写入重试队列。请重新打开角色档案页检查。');
+        return;
+    }
+
+    try {
+        const result = await library.removeRole(String(id));
+        if (!result || !result.ok) {
+            const queued = enqueueRoleAvatarCleanup(id);
+            alert(queued
+                ? '角色已删除，但头像资源清理暂时失败。系统已记录任务，会在下次打开角色档案页时自动重试。'
+                : '角色已删除，但头像清理失败，重试任务也未能保存。请重新打开角色档案页检查。');
+            return;
+        }
+        if (result.value && Number(result.value.retained) > 0) {
+            console.info('角色头像引用已清理；仍被其他位置引用或暂时无法删除的媒体资源数量:', result.value.retained);
+        }
+    } catch (error) {
+        const queued = enqueueRoleAvatarCleanup(id);
+        console.warn('角色头像资产清理未完成:', error);
+        alert(queued
+            ? '角色已删除，但头像清理暂时失败。系统已记录任务，会在下次打开角色档案页时自动重试。'
+            : '角色已删除，但头像清理失败，重试任务也未能保存。请重新打开角色档案页检查。');
+    }
 }
 
 // ====== 草稿、保存反馈与编辑状态 ======
@@ -1646,6 +1736,9 @@ if (cropCanvas) {
 
 // 页面初始化
 renderRoleList();
+retryPendingRoleAvatarCleanup().catch(function (error) {
+    console.warn('角色头像清理队列暂时无法执行:', error);
+});
 
 // ====== 列表页返回按钮：根据来源决定去哪 ======
 // from=contacts → 回通讯录；其他情况（从桌面点进来）→ 回主页 index.html
