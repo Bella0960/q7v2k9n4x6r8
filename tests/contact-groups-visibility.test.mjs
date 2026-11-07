@@ -56,13 +56,17 @@ test('audience snapshots merge selected groups and individual contacts without d
     { id: 'family', name: '家人', memberIds: ['a', 'b'] },
     { id: 'work', name: '同事', memberIds: ['b', 'c'] }
   ]);
-  const snapshot = api.buildAudienceSnapshot(['family', 'work', 'missing'], ['c', 'd', 'a']);
+  const snapshot = api.buildAudienceSnapshot(['family', 'work'], ['c', 'd', 'a']);
   assert.deepEqual(JSON.parse(JSON.stringify(snapshot)), {
     ok: true,
     groupIds: ['family', 'work'],
     contactIds: ['c', 'd', 'a'],
     memberIds: ['c', 'd', 'a', 'b']
   });
+  const stale = api.buildAudienceSnapshot(['family', 'missing'], ['c', 'd', 'a']);
+  assert.equal(stale.ok, false);
+  assert.equal(stale.error, 'missing_groups');
+  assert.deepEqual(JSON.parse(JSON.stringify(stale.missingGroupIds)), ['missing']);
 });
 
 test('selected groups fail closed when storage is corrupt, unavailable, or the group was deleted', () => {
