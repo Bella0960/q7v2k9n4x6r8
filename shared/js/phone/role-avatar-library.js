@@ -9,6 +9,7 @@
     'use strict';
 
     var KEY_PREFIX = 'maomao_role_avatar_library_v1_';
+    var DELETED_KEY_PREFIX = 'maomao_role_avatar_library_deleted_v1_';
     var OWNER_TYPE = 'role-avatar';
     var ASSET_RE = /^as_[A-Z2-7]{32}$/;
 
@@ -27,7 +28,7 @@
     // A persistent tombstone prevents late chat/vision promises from recreating a
     // character's portrait library after that character has been deleted.
     function deletedStorageKey(roleId) {
-        return KEY_PREFIX + '__deleted__' + encodeURIComponent(String(roleId));
+        return DELETED_KEY_PREFIX + encodeURIComponent(String(roleId));
     }
 
     function roleMutationBlock(roleId) {
