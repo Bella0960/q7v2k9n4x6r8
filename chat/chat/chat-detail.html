@@ -24,7 +24,7 @@
     <script src="../../shared/js/phone/chat-presence-policy.js?v=20261102v19"></script>
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
-    <script src="../../shared/js/chat-notifier.js?v=20261107v5"></script>
+    <script src="../../shared/js/chat-notifier.js?v=20261107v6"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -2943,7 +2943,7 @@
 
         // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
         // 本地写入并读回验证成功之前，绝不向云端 ACK。
-        function persistCloudOutboundMessage(payload, envelope) {
+        async function persistCloudOutboundMessage(payload, envelope) {
             if (document.visibilityState === 'hidden') return false;
             if (isGroupChat || !payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
             var serverMessageId = String(envelope && envelope.serverMessageId || '');
@@ -2984,9 +2984,14 @@
             }
 
             // 只有已经通过 PhoneStorage/localStorage 写后读回验证才刷新现有聊天 UI。
-            if (_vl) vlRefresh();
-            else appendMessageToDOM(message);
-            if (wasNearBottom) scrollToBottom(true);
+            if (_vl) {
+                vlRefresh();
+                if (wasNearBottom) scrollToBottom(true);
+            } else {
+                // History is durable before the serialized visual pacing begins.
+                var appendIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                await appendAiMessageWithPacing(message, appendIndex, { scrollToBottom: wasNearBottom });
+            }
 
             // 只广播消息 ID，不广播消息正文；其他标签页从本地持久化历史重新读取。
             try {
@@ -4095,56 +4100,59 @@
             }
         }
 
-        // 多气泡回复逐条呈现。消息已经先完整落库；这里仅控制当前页面的显示节奏。
-        // 使用 DocumentFragment 复用原渲染器，避免复制气泡、旁白、群成员名和译文的 DOM 规则。
+        // 多气泡回复逐条呈现。消息已完整落库；队列只控制当前页面显示节奏。
+        // 普通 AI 回复与云端主动消息共用队列，避免多条消息的气泡动画互相取消。
+        // 全量重绘只递增 generation，即可取消当前及排队中的旧节点。
         let aiBubblePacingRunId = 0;
-        async function appendAiMessageWithPacing(msg, idx) {
-            const fragment = document.createDocumentFragment();
-            appendMessageToDOM(msg, idx, fragment);
-            const nodes = Array.prototype.slice.call(fragment.childNodes);
-            const rowCount = nodes.filter(function (node) {
-                return node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
-            }).length;
-
-            const runId = ++aiBubblePacingRunId;
-            const presencePolicy = window.ChatPresencePolicy;
-            let reduceMotion = false;
-            try {
-                reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-            } catch (e) {}
-
-            if (rowCount < 2 || reduceMotion ||
-                !presencePolicy || typeof presencePolicy.getBubbleDelayMs !== 'function') {
-                chatMessages.appendChild(fragment);
-                scrollToBottom(true);
-                return;
-            }
-
-            let shownRows = 0;
-            let previousText = '';
-            for (let i = 0; i < nodes.length; i++) {
-                const node = nodes[i];
-                const isMessageRow = node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
-
-                // 只有下一条独立消息前才停顿；旁白节点沿用原有顺序，不额外制造空等。
-                if (isMessageRow && shownRows > 0) {
-                    const delay = presencePolicy.getBubbleDelayMs(previousText);
-                    await new Promise(function (resolve) { setTimeout(resolve, delay); });
+        let aiBubblePacingQueue = Promise.resolve();
+        function appendAiMessageWithPacing(msg, idx, options) {
+            const generation = aiBubblePacingRunId;
+            const shouldScroll = !(options && options.scrollToBottom === false);
+            const renderTask = async function () {
+                if (generation !== aiBubblePacingRunId) return;
+                const fragment = document.createDocumentFragment();
+                appendMessageToDOM(msg, idx, fragment);
+                const nodes = Array.prototype.slice.call(fragment.childNodes);
+                const rowCount = nodes.filter(function (node) {
+                    return node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
+                }).length;
+                const presencePolicy = window.ChatPresencePolicy;
+                let reduceMotion = false;
+                try {
+                    reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+                } catch (e) {}
+                if (rowCount < 2 || reduceMotion ||
+                    !presencePolicy || typeof presencePolicy.getBubbleDelayMs !== 'function') {
+                    if (generation !== aiBubblePacingRunId) return;
+                    chatMessages.appendChild(fragment);
+                    if (shouldScroll) scrollToBottom(true);
+                    return;
                 }
-
-                // 全量重渲染发生时取消尚未显示的旧节点，防止重复气泡。
-                if (runId !== aiBubblePacingRunId) return;
-
-                if (isMessageRow) {
-                    node.classList.add('chat-bubble-arrive');
-                    const bubble = node.querySelector('.msg-bubble');
-                    previousText = bubble ? bubble.textContent : '';
-                    shownRows += 1;
+                let shownRows = 0;
+                let previousText = '';
+                for (let i = 0; i < nodes.length; i++) {
+                    const node = nodes[i];
+                    const isMessageRow = node.nodeType === 1 && node.classList && node.classList.contains('msg-row');
+                    // 只有下一条独立消息前才停顿；旁白节点沿用原有顺序。
+                    if (isMessageRow && shownRows > 0) {
+                        const delay = presencePolicy.getBubbleDelayMs(previousText);
+                        await new Promise(function (resolve) { setTimeout(resolve, delay); });
+                    }
+                    // 全量重绘发生时取消尚未显示的旧节点，防止重复或乱序。
+                    if (generation !== aiBubblePacingRunId) return;
+                    if (isMessageRow) {
+                        node.classList.add('chat-bubble-arrive');
+                        const bubble = node.querySelector('.msg-bubble');
+                        previousText = bubble ? bubble.textContent : '';
+                        shownRows += 1;
+                    }
+                    chatMessages.appendChild(node);
+                    if (shouldScroll) scrollToBottom(true);
                 }
-
-                chatMessages.appendChild(node);
-                scrollToBottom(true);
-            }
+            };
+            const queued = aiBubblePacingQueue.then(renderTask, renderTask);
+            aiBubblePacingQueue = queued.catch(function () {});
+            return queued;
         }
 
         // ================= 虚拟列表（P3）：长会话窗口化渲染 =================
