@@ -5137,6 +5137,15 @@
 
             // 重玩模式：不新增用户消息，直接基于现有历史重新请求
             let historyList = loadMessages();
+            if (retryTarget && !visionImageMids.length) {
+                var retrySource = historyList.find(function (item) {
+                    return item && String(item.mid || '') === String(retryTarget.mid || '');
+                });
+                if (retrySource && Array.isArray(retrySource.visionImageMids)) {
+                    visionImageMids = retrySource.visionImageMids.map(function (mid) { return String(mid || ''); })
+                        .filter(Boolean).slice(0, 4);
+                }
+            }
             if (!isRegen) {
                 if (!contextOnly) {
                     const blockedNow = isBlocked(aliasRoleId);
