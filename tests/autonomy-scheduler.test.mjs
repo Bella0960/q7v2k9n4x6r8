@@ -943,7 +943,7 @@ test('真实 SQLite store snapshot 不会把后台心跳视为前台活跃设备
 });
 
 
-test('真实 SQLite 持久化授权与作息接入 gate，但无可信聊天版本时仍阻止上下文任务', () => {
+test('真实 SQLite 角色上下文版本接入 gate：同版本允许、旧版本作废、未跟踪角色拒绝', () => {
   const { store } = freshStore();
   const gate = createSchedulerGate({
     store,
@@ -962,7 +962,39 @@ test('真实 SQLite 持久化授权与作息接入 gate，但无可信聊天版�
     asleep: []
   }, GATE_NOW);
 
-  const noServerVersion = gate(contactTask());
+  const noServerVersion = gate(contactTask({
+    payload_json: JSON.stringify({ contextVersion: 1 })
+  }));
   assert.equal(noServerVersion.autonomyAllowed, false);
   assert.equal(noServerVersion.reasonCode, REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
+
+  const recorded = store.recordCharacterContextEvent({
+    userId: 'owner',
+    characterId: 'character-a',
+    eventId: 'scheduler_context_event_0001',
+    deviceId: 'device_context_test_0001',
+    now: GATE_NOW
+  });
+  assert.equal(recorded.version, 1);
+
+  const matching = gate(contactTask({
+    payload_json: JSON.stringify({ contextVersion: 1 })
+  }));
+  assert.equal(matching.autonomyAllowed, true);
+  assert.equal(matching.characterState, 'active');
+  assert.equal(matching.latestContextVersion, 1);
+
+  const stale = gate(contactTask({
+    payload_json: JSON.stringify({ contextVersion: 0 })
+  }));
+  assert.equal(stale.autonomyAllowed, false);
+  assert.equal(stale.supersede, true);
+  assert.equal(stale.reasonCode, REASON_CODES.STALE_CONTEXT);
+
+  const untrackedRole = gate(contactTask({
+    character_id: 'character-b',
+    payload_json: JSON.stringify({ contextVersion: 1 })
+  }));
+  assert.equal(untrackedRole.autonomyAllowed, false);
+  assert.equal(untrackedRole.reasonCode, REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
 });
