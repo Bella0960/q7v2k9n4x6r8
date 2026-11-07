@@ -778,12 +778,33 @@
         state.items.forEach(function (item) { addCleanupAsset(item.assetId); });
 
         function restoreReferences() {
-            if (typeof media.addRef !== 'function') return Promise.resolve();
+            if (!released.length) return Promise.resolve({ ok: true });
+            if (typeof media.addRef !== 'function') return Promise.resolve({ ok: false });
             return released.reduce(function (chain, item) {
-                return chain.then(function () {
-                    return media.addRef(item.assetId, OWNER_TYPE, String(roleId)).catch(function () {});
+                return chain.then(function (result) {
+                    if (!result.ok) return result;
+                    var restore;
+                    try {
+                        restore = media.addRef(item.assetId, OWNER_TYPE, String(roleId));
+                    } catch (error) {
+                        return { ok: false, assetId: item.assetId };
+                    }
+                    return Promise.resolve(restore).then(function (restored) {
+                        return restored && restored.ok
+                            ? { ok: true }
+                            : { ok: false, assetId: item.assetId };
+                    }, function () {
+                        return { ok: false, assetId: item.assetId };
+                    });
                 });
-            }, Promise.resolve());
+            }, Promise.resolve({ ok: true }));
+        }
+
+        function returnAfterRestore(originalResult) {
+            return restoreReferences().then(function (restored) {
+                if (restored && restored.ok) return originalResult;
+                return failure('PARTIAL_ROLLBACK', 'role deletion was interrupted and one or more released portrait references could not be restored; retry deletion cleanup');
+            });
         }
 
         var listOwnedAssets = typeof media.listByOwner === 'function'
@@ -810,16 +831,14 @@
             }, Promise.resolve({ ok: true }));
         }).then(function (result) {
             if (!result.ok) {
-                return restoreReferences().then(function () { return result; });
+                return returnAfterRestore(result);
             }
 
             try {
                 global.localStorage.removeItem(storageKey(roleId));
                 metadataCleared = true;
             } catch (error) {
-                return restoreReferences().then(function () {
-                    return failure('STORAGE_FAILED', 'role avatar metadata could not be cleared');
-                });
+                return returnAfterRestore(failure('STORAGE_FAILED', 'role avatar metadata could not be cleared'));
             }
 
             return cleanupItems.reduce(function (chain, item) {
@@ -839,9 +858,7 @@
             if (metadataCleared) {
                 return failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar asset cleanup was incomplete');
             }
-            return restoreReferences().then(function () {
-                return failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar library could not be removed');
-            });
+            return returnAfterRestore(failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar library could not be removed'));
         });
     }
 
