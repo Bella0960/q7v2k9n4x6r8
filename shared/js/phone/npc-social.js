@@ -263,7 +263,9 @@
       throw new Error('NPC 资料不完整，已放弃创建申请。');
     }
     var safetyText = [name, profession, persona, greeting, reason, speechStyle].join('\n');
-    if (/(?:色情|性行为|裸聊|恋爱|暧昧|追求|情侣|男女朋友|成人关系|线下见面)/i.test(safetyText)) {
+    var disallowedChinese = /(?:色情|性行为|裸聊|恋爱|暧昧|追求|情侣|男女朋友|成人(?:关系|内容|用品)|线下(?:见面|约见)|单独见面|约会|约炮|性暗示|亲密关系)/i;
+    var disallowedEnglish = /\b(?:sex(?:ual)?|porn(?:ography)?|nude(?:s|ness|ity)?|erotic|seduc\w*|romance|romantic|girlfriend|boyfriend|dating|date(?:d|s|ing)?|hook[\s-]?up|flirt\w*|meet\s+(?:up|in\s+person)|offline\s+(?:meet|meeting|meetup))\b/i;
+    if (disallowedChinese.test(safetyText) || disallowedEnglish.test(safetyText)) {
       throw new Error('NPC 资料未通过适龄交友检查，已放弃创建申请。');
     }
     return { name: name, profession: profession, persona: persona, greeting: greeting, reason: reason, speechStyle: speechStyle };
