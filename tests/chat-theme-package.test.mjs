@@ -48,6 +48,6 @@ test('custom component IDs are strictly validated and cannot escape the chat CSS
   assert.deepEqual(p.theme.layerOrder.chatList,['custom-card']);
   const css=F.buildScopedCss(p.theme,p.customCss);
   assert.doesNotMatch(css,/body\\s*\\{\\s*color:red/);
-  assert.doesNotMatch(css,/custom-x["],body/);
+  assert.doesNotMatch(css,/custom-x/);
   assert.match(css,/\\.phone-mockup\\[data-maomao-chat-theme-active="1"\\]/);
 });
