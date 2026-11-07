@@ -113,12 +113,13 @@
   function nameKey(value) {
     return text(value, 60).toLocaleLowerCase().replace(/[\s·•_—-]+/g, '');
   }
-  function hasDuplicateName(name) {
+  function hasDuplicateName(name, excludeRequestId) {
     var key = nameKey(name);
     if (!key) return true;
     if (getCharacters().some(function (role) { return nameKey(role && role.name) === key; })) return true;
     return readRequests().some(function (request) {
-      return request && request.character && nameKey(request.character.name) === key;
+      return request && String(request.id) !== String(excludeRequestId || '') &&
+        request.character && nameKey(request.character.name) === key;
     });
   }
   function worldbookContext(role) {
@@ -388,7 +389,7 @@
 
     var characters = getCharacters().slice();
     var existing = characters.find(function (item) { return String(item.id) === String(role.id); });
-    if (!existing && hasDuplicateName(role.name)) return { ok: false, error: 'CONTACT_NAME_CONFLICT' };
+    if (!existing && hasDuplicateName(role.name, requestId)) return { ok: false, error: 'CONTACT_NAME_CONFLICT' };
     if (!existing) {
       characters.unshift(clone(role));
       if (!saveCharacters(characters)) return { ok: false, error: 'CHARACTER_SAVE_FAILED' };
