@@ -130,9 +130,12 @@
     return randomBase64Url(18);
   }
 
-  function getMessages(friendId, cursor) {
+  function getMessages(friendId, cursor, direction) {
     var path = '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages';
-    if (cursor) path += '?cursor=' + encodeURIComponent(String(cursor));
+    if (cursor) {
+      var key = direction === 'before' ? 'before' : 'after';
+      path += '?' + key + '=' + encodeURIComponent(String(cursor));
+    }
     return requestJson(path);
   }
 
