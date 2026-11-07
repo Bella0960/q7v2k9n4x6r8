@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('../shared/js/phone/npc-social.js', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../chat/contacts/npc-friends.html', import.meta.url), 'utf8');
 const contacts = readFileSync(new URL('../chat/contacts/contacts.html', import.meta.url), 'utf8');
+const nav = readFileSync(new URL('../shared/js/nav.js', import.meta.url), 'utf8');
 
 function createHarness() {
   const data = new Map();
@@ -156,4 +157,6 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /data-action="decline"/);
   assert.match(page, /data-action="block"/);
   assert.match(contacts, /npc-friends\.html/);
+  assert.match(nav, /currentPage === 'chat\\.html' \\|\\| currentPage === 'contacts\\.html'/);
+  assert.match(source, /role\\.worldBookIds/);
 });
