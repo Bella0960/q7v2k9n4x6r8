@@ -215,6 +215,10 @@
     if (!name || Array.from(name).length < 2 || !persona || !reason) {
       throw new Error('NPC 资料不完整，已放弃创建申请。');
     }
+    var safetyText = [name, profession, persona, greeting, reason, speechStyle].join('\n');
+    if (/(?:色情|性行为|裸聊|恋爱|暧昧|追求|情侣|男女朋友|成人关系|线下见面)/i.test(safetyText)) {
+      throw new Error('NPC 资料未通过适龄交友检查，已放弃创建申请。');
+    }
     return { name: name, profession: profession, persona: persona, greeting: greeting, reason: reason, speechStyle: speechStyle };
   }
   function acquireLock(now) {
@@ -367,6 +371,26 @@
       if (!saved || saved.ok !== true) throw new Error('NPC 已通过申请，但保存到通讯录失败；请重试接受，不会重复创建。');
     } else if (String(existing.npcFriendRequestId || '') !== String(request.id)) {
       throw new Error('角色 ID 冲突，未覆盖现有联系人。');
+    }
+
+    // A new NPC should greet the user once after acceptance. If saving this
+    // first message fails, leave the request pending so retry can complete it.
+    if (typeof global.PhoneStorage.getChatHistory === 'function' &&
+        typeof global.PhoneStorage.saveChatHistory === 'function') {
+      var initialHistory = global.PhoneStorage.getChatHistory(request.npc.id);
+      if (!Array.isArray(initialHistory)) initialHistory = [];
+      if (!initialHistory.length && request.npc.greeting) {
+        var greetingSaved = global.PhoneStorage.saveChatHistory(request.npc.id, [{
+          role: 'assistant',
+          text: cleanText(request.npc.greeting, 180),
+          time: Date.now(),
+          voiceMode: 'online',
+          npcFriendWelcome: true
+        }]);
+        if (greetingSaved !== true) {
+          throw new Error('NPC 已加入通讯录，但首次问候保存失败。请重试接受申请以完成初始化。');
+        }
+      }
     }
 
     request.status = 'accepted';
