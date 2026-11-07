@@ -146,6 +146,14 @@ async function main() {
     assert.ok(groups.every((group) => group.memberIds.includes('role-a')),
       'one contact can exist in more than one group');
 
+    // Preserve a typed real-user relationship alongside legacy AI-role membership.
+    await page.evaluate((groupId) => {
+      const records = JSON.parse(localStorage.getItem('contact_groups_v1') || '[]');
+      const group = records.find((item) => item.id === groupId);
+      group.memberRefs.push('real_user:user-123');
+      localStorage.setItem('contact_groups_v1', JSON.stringify(records));
+    }, friendsGroup.id);
+
     await page.locator('#btnCloseContactGroups').click();
     await page.locator('[data-contact-group="' + friendsGroup.id + '"]').click();
     await page.waitForFunction(() => document.querySelectorAll('#contactList .contact-item').length === 2);
@@ -162,6 +170,8 @@ async function main() {
     await page.locator('#btnSaveContactGroup').click();
     groups = await readJson(page, 'contact_groups_v1');
     assert.equal(groups.find((group) => group.id === friendsGroup.id).name, '家人');
+    assert.ok(groups.find((group) => group.id === friendsGroup.id).memberRefs.includes('real_user:user-123'),
+      'editing a role-based group must preserve typed non-role members');
 
     page.once('dialog', (dialog) => dialog.accept());
     await page.locator('[data-group-id="' + workGroup.id + '"] [data-group-action="delete"]').click();
@@ -291,6 +301,9 @@ async function main() {
       'a deleted role left in a group is not a live recipient');
     assert.deepEqual(selectedPost.visibleGroupIds, [friendsGroup.id]);
     assert.deepEqual(selectedPost.visibleContactIds, ['role-c']);
+    assert.ok(selectedPost.visibleContactRefs.includes('real_user:user-123'),
+      'the audience snapshot preserves typed real-user membership from the selected group');
+    assert.ok(selectedPost.visibleContactRefs.includes('ai_role:role-a'));
     assert.deepEqual(selectedPost.mentions, ['role-d'],
       '@mention list is stored separately from the selected audience');
 
@@ -365,6 +378,8 @@ async function main() {
     assert.deepEqual(editedFamily.memberIds, ['role-b', 'role-c']);
     assert.equal(editedFamily.memberIds.includes('role-ghost'), false,
       'saving a group edit removes dangling member IDs that no longer match a contact');
+    assert.ok(editedFamily.memberRefs.includes('real_user:user-123'),
+      'the typed real-user reference survives later membership cleanup');
 
     await page.goto(origin + '/chat/moments/moments.html', { waitUntil: 'domcontentloaded' });
     const policyResult = await page.evaluate(({ postId }) => {
