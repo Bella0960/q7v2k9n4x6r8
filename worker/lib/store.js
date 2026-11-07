@@ -799,6 +799,7 @@ class CloudStore {
        INNER JOIN devices d ON d.id = e.device_id
        WHERE d.user_id = ?
          AND e.kind = 'autonomy_tick'
+         AND e.status IN ('deferred', 'failed', 'superseded', 'skipped')
          AND e.created_at >= ?
        GROUP BY e.reason_code
        ORDER BY total DESC, e.reason_code ASC
