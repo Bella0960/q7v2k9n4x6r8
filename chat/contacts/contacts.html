@@ -244,6 +244,21 @@
 
       <!-- 快捷入口 -->
       <div class="quick-entry-list">
+        <div class="quick-entry" id="goFriendCenter">
+          <div class="quick-entry-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="8.5" cy="7" r="4"/>
+              <path d="M19 8v6M16 11h6"/>
+            </svg>
+          </div>
+          <span class="quick-entry-label">新的朋友 · 添加真人好友</span>
+          <span class="quick-entry-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </span>
+        </div>
         <div class="quick-entry" id="goManageRole">
           <div class="quick-entry-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -340,7 +355,7 @@
               '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>' +
               '<path d="M16 3.13a4 4 0 0 1 0 7.75"/>' +
             '</svg>' +
-            '<div class="empty-text">' + (query ? '没有找到匹配的联系人' : '还没有角色<br>点击上方"新的朋友"开始添加') + '</div>' +
+            '<div class="empty-text">' + (query ? '没有找到匹配的联系人' : '还没有联系人<br>点击上方“新的朋友”添加真人好友，或添加 AI 角色') + '</div>' +
           '</div>';
         index.innerHTML = '';
         return;
@@ -396,6 +411,10 @@
     });
 
   /* mobile fullscreen: no rounded shell */
+    document.getElementById('goFriendCenter').addEventListener('click', function () {
+      window.location.href = 'friend-center.html';
+    });
+
     document.getElementById('goManageRole').addEventListener('click', function () {
       window.location.href = '../../worldbook/characters/characters.html?from=contacts';
     });
