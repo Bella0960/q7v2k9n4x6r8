@@ -512,6 +512,16 @@ test("only the recipient can accept or decline; accepting creates the friendship
   const friendsB = await call(context, "/", "GET", undefined, "bob");
   assert.equal(friendsA.body.friends[0].id, "account-bob-001");
   assert.equal(friendsB.body.friends[0].id, "account-alice-001");
+
+  // Public profile fields are resolved from the authoritative account row on
+  // every list read, not copied into a stale friendship snapshot.
+  const bob = context.db.accounts.get("account-bob-001");
+  context.db.accounts.set("account-bob-001", { ...bob, display_name: "Bob Renamed" });
+  const refreshedFriendsA = await call(context, "/", "GET", undefined, "alice");
+  const refreshedFriendsB = await call(context, "/", "GET", undefined, "bob");
+  assert.equal(refreshedFriendsA.body.friends[0].displayName, "Bob Renamed");
+  assert.equal(refreshedFriendsB.body.friends[0].displayName, "ALICE_01");
+
   const duplicateAccept = await call(context, "/requests/request_accept_alice_01/accept", "POST", undefined, "bob");
   assert.equal(duplicateAccept.response.status, 409);
 });
