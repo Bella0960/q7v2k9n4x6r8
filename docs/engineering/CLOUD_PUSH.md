@@ -38,7 +38,7 @@ Milestone 1：云端基础与真实 Web Push。后续里程碑（排班状态机
 | POST | `/api/push/unsubscribe` | 设备 | 退订单条（传 endpoint）或全部（不传） |
 | POST | `/api/push/test` | 设备 | 发送测试推送，支持 `dedupeKey` 去重 |
 
-推送订阅 endpoint 校验要求 HTTPS、公网 DNS 主机名、标准 HTTPS 端口；拒绝 IP 字面量、localhost / 常见本地域名后缀、URL 用户凭据及非标准端口。出站 Web Push 请求禁止自动跟随 HTTP 重定向，避免把推送投递转发到其他目标。
+推送订阅 endpoint 校验要求 HTTPS、公网格式 DNS 主机名、标准 HTTPS 端口；拒绝 IP 字面量、localhost / 常见本地域名后缀、URL 用户凭据及非标准端口。出站 Web Push 请求禁止自动跟随 HTTP 重定向，避免把推送投递转发到其他目标。该检查只验证 URL / 主机名格式，不执行 DNS 解析或提供任意域名的网络出口白名单；若未来要支持自定义 Push Service，还需单独设计 DNS/出口限制。
 
 设备鉴权：请求头 `X-Device-Auth: <deviceId>.<secret>`。`deviceId` 与 `secret` 由前端 `crypto.getRandomValues` 生成，只存本机 `localStorage`，且被备份导出逻辑永久排除。
 
