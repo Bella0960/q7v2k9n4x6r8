@@ -7,6 +7,7 @@ const identitySource = readFileSync(new URL('../shared/js/phone/contact-identity
 const directorySource = readFileSync(new URL('../shared/js/phone/contact-directory.js', import.meta.url), 'utf8');
 const capabilitiesSource = readFileSync(new URL('../shared/js/phone/contact-capabilities.js', import.meta.url), 'utf8');
 const repositorySource = readFileSync(new URL('../shared/js/phone/real-user-conversation-repository.js', import.meta.url), 'utf8');
+const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 
 function createRuntime(options = {}) {
   const data = new Map();
@@ -204,9 +205,9 @@ test('pagination returns stable chronological slices without changing stored his
   }
 
   const latest = runtime.repository.getPage(ref, 2);
-  assert.deepEqual(latest.messages.map((item) => item.mid), ['page-4', 'page-5']);
+  assert.deepEqual(Array.from(latest.messages, (item) => item.mid), ['page-4', 'page-5']);
   const previous = runtime.repository.getPage(ref, 2, 'page-4');
-  assert.deepEqual(previous.messages.map((item) => item.mid), ['page-2', 'page-3']);
+  assert.deepEqual(Array.from(previous.messages, (item) => item.mid), ['page-2', 'page-3']);
   assert.equal(runtime.repository.getPage(ref, 2, 'missing').error, 'message_cursor_not_found');
   assert.equal(runtime.repository.readHistory(ref).messages.length, 5);
 });
