@@ -383,10 +383,15 @@
       running = true;
       try {
         await updatePresenceHeartbeat(true);
+        // Visibility can change while the heartbeat request is in flight.
+        // Do not let a now-hidden/stopped page renew or acquire a role lease.
+        if (stopped || document.visibilityState === 'hidden') return;
         try {
           await requestDeviceMetadata(leasePath, 'POST', { action: 'renew' });
         } catch (renewError) {
           if (renewError.code !== 'LEASE_NOT_OWNED') throw renewError;
+          // The renewal response may also arrive after the page was hidden.
+          if (stopped || document.visibilityState === 'hidden') return;
           try {
             await requestDeviceMetadata(leasePath, 'POST', { action: 'acquire' });
           } catch (acquireError) {
