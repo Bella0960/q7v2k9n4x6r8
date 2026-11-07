@@ -29,8 +29,8 @@ function unavailable() {
   }, 503);
 }
 
-export function isRealUserAuthConfigured(env) {
-  return !!(
+export async function isRealUserAuthConfigured(env) {
+  if (!(
     env &&
     env.REAL_USER_AUTH_ENABLED === "true" &&
     env.DB &&
@@ -38,7 +38,19 @@ export function isRealUserAuthConfigured(env) {
     typeof env.DB.batch === "function" &&
     env.AUTH_LIMITER &&
     typeof env.AUTH_LIMITER.limit === "function"
-  );
+  )) return false;
+
+  try {
+    const schema = await env.DB.prepare(
+      "SELECT COUNT(*) AS ready FROM sqlite_master " +
+      "WHERE type = 'table' AND name IN (" +
+      "'real_user_accounts', 'real_user_sessions', " +
+      "'real_user_friend_requests', 'real_user_friendships')"
+    ).first();
+    return !!schema && Number(schema.ready) === 4;
+  } catch {
+    return false;
+  }
 }
 
 function bytesToHex(bytes) {
@@ -388,7 +400,7 @@ async function logout(request, env) {
 }
 
 export async function handleRealUserAuth(request, env) {
-  if (!isRealUserAuthConfigured(env)) return unavailable();
+  if (!await isRealUserAuthConfigured(env)) return unavailable();
   const url = new URL(request.url);
   if (!url.pathname.startsWith(AUTH_PREFIX + "/")) {
     return authJson({ ok: false, error: "not_found" }, 404);
