@@ -71,9 +71,15 @@
         }
     }
 
-    function buildAudienceSnapshot(groupIds, contactIds) {
+    function buildAudienceSnapshot(groupIds, contactIds, options) {
         var requestedGroupIds = uniqueIds(groupIds);
         var selectedContactIds = uniqueIds(contactIds);
+        options = options && typeof options === 'object' ? options : {};
+        var hasContactRoster = Array.isArray(options.availableContactIds);
+        var availableContactIds = hasContactRoster
+            ? uniqueIds(options.availableContactIds) : [];
+        var availableLookup = Object.create(null);
+        availableContactIds.forEach(function (id) { availableLookup[id] = true; });
         var stored = readStoredGroups();
 
         // A direct-contact selection remains usable when group storage is unavailable.
@@ -105,15 +111,42 @@
             };
         }
 
+        if (hasContactRoster) {
+            var missingContactIds = selectedContactIds.filter(function (id) {
+                return !Object.prototype.hasOwnProperty.call(availableLookup, id);
+            });
+            if (missingContactIds.length) {
+                return {
+                    ok: false,
+                    error: 'missing_contacts',
+                    missingContactIds: missingContactIds,
+                    groupIds: requestedGroupIds,
+                    contactIds: selectedContactIds,
+                    memberIds: []
+                };
+            }
+        }
+
         var memberIds = selectedContactIds.slice();
         requestedGroupIds.forEach(function (id) {
             memberIds = memberIds.concat(validGroups[id].memberIds);
         });
+        memberIds = uniqueIds(memberIds);
+        var staleMemberIds = [];
+        if (hasContactRoster) {
+            staleMemberIds = memberIds.filter(function (id) {
+                return !Object.prototype.hasOwnProperty.call(availableLookup, id);
+            });
+            memberIds = memberIds.filter(function (id) {
+                return Object.prototype.hasOwnProperty.call(availableLookup, id);
+            });
+        }
         return {
             ok: true,
             groupIds: requestedGroupIds,
             contactIds: selectedContactIds,
-            memberIds: uniqueIds(memberIds)
+            memberIds: memberIds,
+            staleMemberIds: staleMemberIds
         };
     }
 
