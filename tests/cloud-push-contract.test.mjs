@@ -289,7 +289,30 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(clientSource.includes('setCharacterAutonomy(roleId, enabled)'));
   assert.ok(clientSource.includes('setCharacterSchedule(roleId, timeZone, schedule)'));
   assert.ok(clientSource.includes('function readOptionalWindow('));
+  assert.ok(clientSource.includes('getPresenceRenewInterval'), 'presence renewer 必须使用安全的浏览器定时器间隔');
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
+});
+
+test('前台心跳续期间隔限制在浏览器安全定时器范围内', () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const browserWindow = {};
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: { currentScript: null },
+    console,
+    URL
+  });
+  const getInterval = browserWindow.MaomaoCloud._internal.getPresenceRenewInterval;
+
+  assert.equal(getInterval(180000, 120000), 40000, '正常配置仍按较短租约的三分之一续期');
+  assert.equal(getInterval(1, 5), 1, '极短配置至少保持 1ms 间隔');
+  assert.equal(
+    getInterval(9000000000, 9000000000),
+    2147483647,
+    '超出浏览器定时器上限时必须截断，不能被浏览器变成高频定时器'
+  );
+  assert.equal(getInterval(Number.MAX_SAFE_INTEGER + 1, 60000), null, '不安全整数必须 fail-closed');
+  assert.equal(getInterval(Number.POSITIVE_INFINITY, 60000), null, '非有限配置必须 fail-closed');
 });
 
 test('清理任务不会提前删除超过一小时但仍有效的配对码', async () => {
