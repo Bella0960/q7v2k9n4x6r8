@@ -36,18 +36,30 @@ function createLibrary(seed, options = {}) {
       if (options.failMedia) return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'offline' } });
       if (typeof input === 'string' && contentAssets.has(input)) {
         const existingAssetId = contentAssets.get(input);
-        refs.add(existingAssetId + '|' + opts.ownerType + '|' + opts.ownerId);
+        const refKey = existingAssetId + '|' + opts.ownerType + '|' + opts.ownerId;
+        const refAdded = !refs.has(refKey);
+        refs.add(refKey);
         if (options.failReadsOnPutBlob) options.failReads = true;
-        return Promise.resolve({ ok: true, value: { assetId: existingAssetId, reused: true } });
+        return Promise.resolve({
+          ok: true,
+          value: { assetId: existingAssetId, reused: true },
+          meta: { reused: true, refAdded }
+        });
       }
       sequence += 1;
       const suffix = sequence.toString(2).replace(/0/g, 'A').replace(/1/g, 'B');
       const assetId = 'as_' + suffix.padStart(32, 'A');
       assets.set(assetId, input);
       if (typeof input === 'string') contentAssets.set(input, assetId);
-      refs.add(assetId + '|' + opts.ownerType + '|' + opts.ownerId);
+      const refKey = assetId + '|' + opts.ownerType + '|' + opts.ownerId;
+      const refAdded = !refs.has(refKey);
+      refs.add(refKey);
       if (options.failReadsOnPutBlob) options.failReads = true;
-      const result = { ok: true, value: { assetId, reused: false } };
+      const result = {
+        ok: true,
+        value: { assetId, reused: false },
+        meta: { reused: false, refAdded }
+      };
       if (options.deferPutBlob) {
         return new Promise(resolve => { options.releasePutBlob = () => resolve(result); });
       }
@@ -64,9 +76,14 @@ function createLibrary(seed, options = {}) {
       if (options.failAddRefFor === assetId) {
         return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'link failed' } });
       }
-      refs.add(assetId + '|' + ownerType + '|' + ownerId);
+      const refKey = assetId + '|' + ownerType + '|' + ownerId;
+      const added = !refs.has(refKey);
+      refs.add(refKey);
       if (options.failReadsOnAddRefFor === assetId) options.failReads = true;
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({
+        ok: true,
+        value: { added, refCount: Array.from(refs).filter(ref => ref.startsWith(assetId + '|')).length }
+      });
     }
     getAsset(assetId) {
       if (!assets.has(assetId)) return Promise.resolve({ ok: false, error: { code: 'NOT_FOUND' } });
@@ -182,6 +199,23 @@ test('single portrait upload rolls back only its new reference when storage beco
 
   options.failReads = false;
   assert.equal(api.list('role-a').length, 0, 'failed upload must not create a role library entry');
+});
+
+test('failed duplicate upload preserves the existing role-owned portrait reference', async () => {
+  const options = { failReadsOnPutBlob: false };
+  const { api, assets, refs } = createLibrary({}, options);
+  const original = await api.add('role-a', 'data:image/jpeg;base64,ROLE_OWNED_DUPLICATE');
+  assert.equal(original.ok, true);
+  options.failReadsOnPutBlob = true;
+
+  const duplicate = await api.add('role-a', 'data:image/jpeg;base64,ROLE_OWNED_DUPLICATE');
+  assert.equal(duplicate.ok, false);
+  assert.equal(duplicate.error.code, 'STORAGE_FAILED');
+
+  options.failReads = false;
+  assert.equal(api.list('role-a').length, 1);
+  assert.equal(refs.has(original.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(assets.has(original.value.assetId), true, 'duplicate upload failure must preserve the existing portrait blob');
 });
 
 test('role deletion fails closed when its avatar index cannot be read and can be retried', async () => {
