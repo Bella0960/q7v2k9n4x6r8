@@ -6221,6 +6221,17 @@
                         );
                         fullText = parsedRoleSticker.text;
                     }
+                    var parsedAvatarCandidate = { text: fullText, candidates: [] };
+                    if (window.ChatImageVision && typeof window.ChatImageVision.parseAvatarCandidateReply === 'function') {
+                        var avatarCandidateLimit = streamResult.ok && !isGroupChat && !isRegen &&
+                            !contextOnly && !silent && presenceMode === 'online' ? 1 : 0;
+                        parsedAvatarCandidate = window.ChatImageVision.parseAvatarCandidateReply(
+                            fullText,
+                            avatarCandidateImages,
+                            avatarCandidateLimit
+                        );
+                        fullText = parsedAvatarCandidate.text;
+                    }
                     // 落盘前剥离主动通话标记：气泡展示与聊天记录均不保留标记，避免污染后续上下文
                     const parsedCall = extractVoiceCallMarker(fullText);
                     fullText = parsedCall.text;
