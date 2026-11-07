@@ -4,6 +4,10 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../shared/js/contact-groups.js', import.meta.url), 'utf8');
+const contactsPage = readFileSync(new URL('../chat/contacts/contacts.html', import.meta.url), 'utf8');
+const composerPage = readFileSync(new URL('../forum/post-create.html', import.meta.url), 'utf8');
+const momentsPage = readFileSync(new URL('../chat/moments/moments.html', import.meta.url), 'utf8');
+const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 
 function createRuntime(initialValue, options = {}) {
   const data = new Map();
@@ -93,4 +97,36 @@ test('storage write failures are reported rather than treated as success', () =>
   const unavailable = createRuntime(undefined, { failWrites: true }).api.saveGroups([{ id: 'g', name: '朋友' }]);
   assert.equal(unavailable.ok, false);
   assert.equal(unavailable.error, 'storage_unavailable');
+});
+
+test('Contacts page exposes group creation, editing, deletion, membership, and filtering', () => {
+  assert.match(contactsPage, /id="btnNewContactGroup"/);
+  assert.match(contactsPage, /id="btnSaveContactGroup"/);
+  assert.match(contactsPage, /data-group-action="edit"/);
+  assert.match(contactsPage, /data-group-action="delete"/);
+  assert.match(contactsPage, /data-contact-member=/);
+  assert.match(contactsPage, /data-contact-group=/);
+  assert.match(contactsPage, /contactGroupApi\.saveGroups/);
+});
+
+test('Moments audience controls do not reuse @mentions as the visible-to list', () => {
+  assert.match(composerPage, /selectedVisibleGroupIds/);
+  assert.match(composerPage, /selectedHiddenGroupIds/);
+  assert.match(composerPage, /key: 'excluded', label: '不给谁看'/);
+  assert.match(composerPage, /visibleTo: visibleAudience\.memberIds/);
+  assert.match(composerPage, /hiddenTo: hiddenAudience\.memberIds/);
+  assert.match(composerPage, /mentions: mentionsList\.slice\(\)/);
+  assert.doesNotMatch(composerPage, /post\.visibleTo\s*=\s*mentionsList/);
+});
+
+test('excluded contacts are filtered from the feed and blocked from AI comment/mention requests', () => {
+  assert.match(momentsPage, /if \(v === 'excluded'\)/);
+  assert.match(momentsPage, /function canRoleViewPost\(post, roleId\)/);
+  assert.match(momentsPage, /if \(!canRoleViewPost\(post, role\.id\)\) return;/);
+  assert.match(momentsPage, /!canRoleViewPost\(post, id\)/);
+});
+
+test('PWA cache contains the contact group policy module and has a new cache version', () => {
+  assert.match(serviceWorker, /phone-app-pwa-v174/);
+  assert.match(serviceWorker, /contact-groups\.js\?v=20261107v1/);
 });
