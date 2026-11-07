@@ -604,11 +604,42 @@ class CloudStore {
     )[0] || null;
   }
 
+  countRecentCharacterContextEvents(deviceId, since) {
+    const row = this.exec(
+      'SELECT COUNT(*) AS total FROM character_context_events WHERE device_id = ? AND created_at >= ?',
+      deviceId,
+      since
+    )[0] || {};
+    return Number(row.total || 0);
+  }
+
   /**
    * A device-authenticated, content-free event advances the role revision.
-   * Event IDs make request retries idempotent across network timeouts.
+   * Event IDs make retries idempotent; new events are rate-limited per device.
    */
-  recordCharacterContextEvent({ userId, characterId, eventId, deviceId, now }) {
+  recordCharacterContextEvent({
+    userId, characterId, eventId, deviceId, now,
+    eventLimit = 600, windowStart = Number(now) - 3600000
+  }) {
+    const existingEvent = this.exec(
+      'SELECT event_id FROM character_context_events WHERE user_id = ? AND character_id = ? AND event_id = ?',
+      userId,
+      characterId,
+      eventId
+    )[0];
+    if (existingEvent) {
+      const current = this.getCharacterContextVersion(userId, characterId);
+      return {
+        changed: false,
+        version: current ? Number(current.version) : 0,
+        updatedAt: current ? Number(current.updated_at) : null
+      };
+    }
+
+    if (this.countRecentCharacterContextEvents(deviceId, windowStart) >= eventLimit) {
+      return { limited: true, changed: false, version: 0, updatedAt: null };
+    }
+
     const inserted = this.exec(
       `INSERT OR IGNORE INTO character_context_events
         (user_id, character_id, event_id, device_id, created_at)
