@@ -6053,7 +6053,19 @@
                     content = content.replace(/\n{3,}/g, '\n\n').trim();
                     if (!content) return;
                     if (m.role === 'sent' || m.role === 'user') {
-                        apiMessages.push({ role: 'user', content: content });
+                        var fallbackUserContent = content;
+                        var fallbackVisionUrl = String(m.visionDataUrl || '');
+                        if (m.type === 'image' &&
+                            /^data:image\/(?:jpeg|jpg|png|webp|gif|avif);base64,[A-Za-z0-9+\/=\r\n]+$/i.test(fallbackVisionUrl) &&
+                            fallbackVisionUrl.length <= 4 * 1024 * 1024 + 128) {
+                            var fallbackVisionIndex = Math.max(0, parseInt(m.visionIndex, 10) || 0);
+                            var fallbackVisionLabel = fallbackVisionIndex ? '\n[本轮图片编号：' + fallbackVisionIndex + ']' : '';
+                            fallbackUserContent = [
+                                { type: 'text', text: (content || '[用户分享了一张图片]') + fallbackVisionLabel },
+                                { type: 'image_url', image_url: { url: fallbackVisionUrl, detail: 'auto' } }
+                            ];
+                        }
+                        apiMessages.push({ role: 'user', content: fallbackUserContent });
                     } else if (m.role === 'received' || m.role === 'assistant') {
                         var groupSpeaker = isGroupChat ? String(m.name || '') : '';
                         apiMessages.push({
