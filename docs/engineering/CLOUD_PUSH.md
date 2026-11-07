@@ -123,11 +123,12 @@ Cron / 内部 tick
 - `GET/PUT /api/autonomy/global`：读取 / 更新全局开关。
 - `GET/PUT /api/autonomy/characters/:characterId`：角色开关；`null` 表示继承全局。
 - `GET/PUT /api/characters/:characterId/schedule`：角色时区与显式作息窗口。接口只接受已明确提供的状态窗口，不补默认时段。
-- `POST /api/presence/heartbeat`：只接受 `foregroundActive: boolean`，记录时间戳，不收集位置/GPS/聊天正文。
+- `GET /api/presence/config`：返回显式配置的心跳 TTL、租约时长、grace；未配置时 503，不提供猜测默认值。
+- `POST /api/presence/heartbeat`：只接受 `foregroundActive: boolean`，记录时间戳，不收集位置/GPS/聊天正文。后台标签页不会批量释放设备的角色租约。
 - `POST /api/characters/:characterId/lease`：`acquire / renew / release`。仅当前租约设备可续期或释放；另一设备不能释放持有者租约；新设备只有在旧 lease 到期且 grace 结束后才能 CAS 接管。
 - Lease API 所需的心跳 TTL、租约时长、grace 全部来自显式环境配置：`AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS`。缺失或无效时拒绝发放 lease。
 
-这几个 API 目前已提供云端存储能力；当前聊天前端尚未自动调用 heartbeat / lease，也还没有排班与 autonomy 设置 UI。因此不能报告 PWA 已自动同步设备状态。
+`shared/js/cloud-push-client.js` 已暴露全局/角色开关、作息、前台心跳、角色租约方法，并提供按服务端 TTL 自动续期的 `startCharacterPresence(characterId)` 客户端管理器。但当前 `chat-detail.html` 尚未调用该管理器，也还没有排班与 autonomy 设置 UI。因此不能报告 PWA 已自动同步设备状态。
 
 ### 8.3 真实 scheduler gate
 
