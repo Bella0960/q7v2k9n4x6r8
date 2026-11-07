@@ -137,7 +137,32 @@ async function sendFriendRequest(request, env, account) {
 
   const now = Date.now();
   const codeHash = await sha256Hex(code);
+  let targetId = "";
   try {
+    // Check the stable request ID before looking up the short-lived QR code:
+    // retries remain idempotent even when the QR code expires after creation.
+    const existingById = await env.DB.prepare(
+      "SELECT id, requester_id, recipient_id, status, created_at " +
+      "FROM real_user_friend_requests WHERE id = ? LIMIT 1"
+    ).bind(requestId).first();
+    if (existingById) {
+      if (existingById.requester_id !== account.id) {
+        return authJson({ ok: false, error: "request_id_conflict" }, 409);
+      }
+      if (existingById.status !== "pending") {
+        return authJson({ ok: false, error: "request_id_already_used", status: existingById.status }, 409);
+      }
+      const peer = await env.DB.prepare(
+        "SELECT id, handle, display_name, avatar_asset_id FROM real_user_accounts WHERE id = ? LIMIT 1"
+      ).bind(existingById.recipient_id).first();
+      return authJson({
+        ok: true,
+        duplicate: true,
+        request: { id: existingById.id, status: existingById.status, createdAt: existingById.created_at },
+        target: publicProfile(peer)
+      }, 200);
+    }
+
     const target = await env.DB.prepare(
       "SELECT a.id, a.handle, a.display_name, a.avatar_asset_id " +
       "FROM real_user_friend_codes c JOIN real_user_accounts a ON a.id = c.account_id " +
@@ -145,25 +170,10 @@ async function sendFriendRequest(request, env, account) {
       "LIMIT 1"
     ).bind(codeHash, now).first();
     if (!target) return authJson({ ok: false, error: "friend_code_invalid_or_expired" }, 404);
+    targetId = target.id;
     if (target.id === account.id) return authJson({ ok: false, error: "cannot_add_self" }, 400);
 
     const [pairLow, pairHigh] = pairFor(account.id, target.id);
-    const existingById = await env.DB.prepare(
-      "SELECT id, requester_id, recipient_id, status, created_at " +
-      "FROM real_user_friend_requests WHERE id = ? LIMIT 1"
-    ).bind(requestId).first();
-    if (existingById) {
-      if (existingById.requester_id !== account.id || existingById.recipient_id !== target.id) {
-        return authJson({ ok: false, error: "request_id_conflict" }, 409);
-      }
-      if (existingById.status !== "pending") {
-        return authJson({ ok: false, error: "request_id_already_used", status: existingById.status }, 409);
-      }
-      return authJson({ ok: true, duplicate: true, request: {
-        id: existingById.id, status: existingById.status, createdAt: existingById.created_at
-      }, target: publicProfile(target) }, 200);
-    }
-
     const blocked = await env.DB.prepare(
       "SELECT 1 AS blocked FROM real_user_blocks " +
       "WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1"
@@ -203,26 +213,26 @@ async function sendFriendRequest(request, env, account) {
       target: publicProfile(target)
     }, 201);
   } catch {
-    // A concurrent request may win the unordered-pair unique index. Never
-    // fabricate success: read the authoritative pending row and return it.
-    try {
-      const [pairLow, pairHigh] = pairFor(account.id, (await env.DB.prepare(
-        "SELECT account_id FROM real_user_friend_codes WHERE code_hash = ? LIMIT 1"
-      ).bind(codeHash).first())?.account_id || "");
-      const pending = await env.DB.prepare(
-        "SELECT id, requester_id, recipient_id, status, created_at " +
-        "FROM real_user_friend_requests WHERE pair_low = ? AND pair_high = ? AND status = 'pending' LIMIT 1"
-      ).bind(pairLow, pairHigh).first();
-      if (pending && pending.requester_id === account.id) {
-        return authJson({ ok: true, duplicate: true, request: {
-          id: pending.id, status: pending.status, createdAt: pending.created_at
-        } }, 200);
+    // A concurrent request may win the unordered-pair unique index. Read the
+    // authoritative pending row and return it; never invent a send acknowledgement.
+    if (targetId) {
+      try {
+        const [pairLow, pairHigh] = pairFor(account.id, targetId);
+        const pending = await env.DB.prepare(
+          "SELECT id, requester_id, recipient_id, status, created_at " +
+          "FROM real_user_friend_requests WHERE pair_low = ? AND pair_high = ? AND status = 'pending' LIMIT 1"
+        ).bind(pairLow, pairHigh).first();
+        if (pending && pending.requester_id === account.id) {
+          return authJson({ ok: true, duplicate: true, request: {
+            id: pending.id, status: pending.status, createdAt: pending.created_at
+          } }, 200);
+        }
+        if (pending && pending.recipient_id === account.id) {
+          return authJson({ ok: false, error: "incoming_request_exists", requestId: pending.id }, 409);
+        }
+      } catch {
+        // The original failure remains unavailable.
       }
-      if (pending && pending.recipient_id === account.id) {
-        return authJson({ ok: false, error: "incoming_request_exists", requestId: pending.id }, 409);
-      }
-    } catch {
-      // The original failure remains an unavailable response.
     }
     return authJson({ ok: false, error: "friend_request_temporarily_unavailable" }, 503);
   }
