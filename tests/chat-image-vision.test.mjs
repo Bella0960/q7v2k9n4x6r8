@@ -138,7 +138,9 @@ test('chat plus-image upload stores Blob assets and chat history stores only ass
 });
 
 test('user image shares require first-use privacy confirmation and pass only current image mids to sendMsg', () => {
-  assert.ok(chatExtrasSource.includes('confirmChatImagePrivacy()'));
+  assert.ok(chatExtrasSource.includes('confirmChatImagePrivacy(openChatImagePicker)'));
+  assert.ok(chatExtrasSource.includes('chatImagePrivacyContinue'));
+  assert.ok(chatExtrasSource.includes('本轮图片会提交给你配置的 AI 服务'));
   assert.ok(chatExtrasSource.includes('maomao_chat_image_privacy_v1'));
   assert.ok(chatExtrasSource.includes('visionImageMids'));
   assert.ok(chatExtrasSource.includes("options.visionImageMids"));
