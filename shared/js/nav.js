@@ -179,8 +179,13 @@
         document.addEventListener('touchcancel', clearPress, { passive: true });
     }
 
-    // 注入跨页未读角标 + 顶部消息弹窗模块（它会自己判断是否需要轮询）
+    // 先加载统一联系人身份层，再加载未读/主动消息模块。
+    // 身份层失败时仍加载 notifier，旧会话继续沿用原始 conversation ID。
     var notifierScript = document.createElement('script');
-    notifierScript.src = appBase + 'shared/js/chat-notifier.js?v=20261102v3';
-    document.head.appendChild(notifierScript);
+    notifierScript.src = appBase + 'shared/js/chat-notifier.js?v=20261107v4';
+    var identityScript = document.createElement('script');
+    identityScript.src = appBase + 'shared/js/phone/contact-identity.js?v=20261107v1';
+    identityScript.onload = function () { document.head.appendChild(notifierScript); };
+    identityScript.onerror = function () { document.head.appendChild(notifierScript); };
+    document.head.appendChild(identityScript);
 })();
