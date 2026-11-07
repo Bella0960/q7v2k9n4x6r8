@@ -129,8 +129,30 @@
         }
     }
 
-    // Low-level import/repair API. Product flows should use the guarded lifecycle
-    // methods below so a stale request cannot silently restore an old relationship.
+    // Low-level snapshots may refresh profile fields, but they must never
+    // change relationship state or request identity. All lifecycle mutations
+    // go through the request-ID-guarded transition methods below.
+    function mergeProfileSnapshot(existing, incoming) {
+        if (incoming.status !== existing.status || incoming.requestId !== existing.requestId) {
+            return { ok: false, error: 'lifecycle_transition_required' };
+        }
+        if (incoming.updatedAt < existing.updatedAt) {
+            return { ok: false, error: 'stale_snapshot' };
+        }
+        var updatedAt = Math.max(incoming.updatedAt, existing.updatedAt);
+        var merged = normalizeRecord(Object.assign({}, existing, {
+            displayName: incoming.displayName,
+            avatarAssetId: incoming.avatarAssetId,
+            avatarUrl: incoming.avatarUrl,
+            updatedAt: updatedAt
+        }), updatedAt);
+        if (!merged) return { ok: false, error: 'invalid_contact' };
+        return { ok: true, record: merged };
+    }
+
+    // Safe profile-refresh API. New records may be imported, but an existing
+    // relationship cannot be accepted, blocked, removed, or restarted here.
+    // This prevents generic persistence calls from bypassing lifecycle guards.
     function save(value) {
         var current = readResult();
         if (!current.ok) return current;
@@ -140,10 +162,11 @@
         var index = contacts.findIndex(function (item) { return item.id === record.id; });
         if (index >= 0) {
             var previous = contacts[index];
-            if (record.updatedAt < previous.updatedAt) {
-                return { ok: false, error: 'stale_snapshot', contact: previous, contacts: contacts };
+            var merged = mergeProfileSnapshot(previous, record);
+            if (!merged.ok) {
+                return { ok: false, error: merged.error, contact: previous, contacts: contacts };
             }
-            record.createdAt = previous.createdAt;
+            record = merged.record;
             contacts[index] = record;
         } else {
             contacts.push(record);
@@ -151,6 +174,8 @@
         return writeContacts(contacts);
     }
 
+    // Batch refresh is all-or-nothing. A single attempted lifecycle mutation
+    // rejects the whole batch, so earlier profile updates are never partially saved.
     function saveMany(values) {
         if (!Array.isArray(values)) return { ok: false, error: 'invalid_contacts', contacts: [] };
         var current = readResult();
@@ -158,13 +183,21 @@
         var contacts = current.contacts.slice();
         for (var i = 0; i < values.length; i++) {
             var record = normalizeRecord(values[i]);
-            if (!record) return { ok: false, error: 'invalid_contact', invalidIndex: i, contacts: [] };
+            if (!record) return { ok: false, error: 'invalid_contact', invalidIndex: i, contacts: current.contacts };
             var index = contacts.findIndex(function (item) { return item.id === record.id; });
             if (index >= 0) {
-                if (record.updatedAt < contacts[index].updatedAt) {
-                    return { ok: false, error: 'stale_snapshot', invalidIndex: i, contacts: contacts };
+                var previous = contacts[index];
+                var merged = mergeProfileSnapshot(previous, record);
+                if (!merged.ok) {
+                    return {
+                        ok: false,
+                        error: merged.error,
+                        invalidIndex: i,
+                        contact: previous,
+                        contacts: current.contacts
+                    };
                 }
-                record.createdAt = contacts[index].createdAt;
+                record = merged.record;
                 contacts[index] = record;
             } else {
                 contacts.push(record);
