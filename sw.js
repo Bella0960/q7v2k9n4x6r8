@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v174';
+const CACHE_NAME = 'phone-app-pwa-v175';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
 const APP_SHELL = [
@@ -11,6 +11,8 @@ const APP_SHELL = [
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
   './chat/contacts/contacts.html',
+  './chat/contacts/friend-center.html',
+  './chat/contacts/friend-chat.html',
   './chat/moments/moments.html',
   './chat/footprint/footprint.html',
   './wallet/takeout.html',
@@ -91,7 +93,7 @@ const APP_SHELL = [
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
   './shared/js/chat-notifier.js?v=20261102v3',
   './shared/js/cloud-push-client.js',
-  './shared/js/friends-client.js?v=friend1',
+  './shared/js/friends-client.js?v=friend2',
   './shared/js/friend-qr.js?v=friend1',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
