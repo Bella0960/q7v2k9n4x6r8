@@ -1450,7 +1450,7 @@ body {
   border-bottom: 0 !important;
 }
 #byline.role-info-card {
-  width: min(calc(min(var(--profile-card-width, 100%), 100%) - 32px), 520px) !important;
+  width: min(var(--profile-card-width, calc(100% - 32px)), 520px) !important;
   margin: 12px auto 8px !important;
   padding: var(--profile-card-padding, 20px) !important;
   text-align: var(--profile-card-align, center) !important;
@@ -2361,7 +2361,6 @@ body {
         ], writingOpts.profileCardPreset, function (key) {
             writingOpts.profileCardPreset = key;
             applyProfileCardPreset(key);
-            renderWritingUI();
             saveWritingOpts();
         });
         if (profileCardColorInput) profileCardColorInput.value = writingOpts.profileCardColor;
@@ -2535,7 +2534,8 @@ body {
         root.style.setProperty('--profile-card-muted-text-color', writingOpts.profileCardMutedTextColor || '#777777');
         root.style.setProperty('--profile-card-radius', clampNumber(writingOpts.profileCardRadius, 0, 36, 0) + 'px');
         root.style.setProperty('--profile-card-blur', clampNumber(writingOpts.profileCardBlur, 0, 30, 0) + 'px');
-        root.style.setProperty('--profile-card-width', clampNumber(writingOpts.profileCardWidth, 60, 100, 100) + '%');
+        var profileCardWidth = clampNumber(writingOpts.profileCardWidth, 60, 100, 100);
+        root.style.setProperty('--profile-card-width', 'calc(' + profileCardWidth + '% - ' + (32 * profileCardWidth / 100).toFixed(2) + 'px)');
         root.style.setProperty('--profile-card-padding', clampNumber(writingOpts.profileCardPadding, 8, 36, 20) + 'px');
         root.style.setProperty('--profile-card-shadow-opacity', String(clampNumber(writingOpts.profileCardShadowOpacity, 0, 30, 0) / 100));
         root.style.setProperty('--profile-card-align', writingOpts.profileCardLayout === 'center' ? 'center' : 'left');
