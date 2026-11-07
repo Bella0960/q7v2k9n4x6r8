@@ -2885,6 +2885,15 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   assert.equal(contextEvent.status, 200);
   assert.equal(contextEvent.payload.version, 1);
 
+  const heartbeat = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST', device, body: { foregroundActive: true }
+  });
+  assert.equal(heartbeat.status, 200);
+  const lease = await ctx.asJson('/api/characters/char-executor/lease', {
+    method: 'POST', device, body: { action: 'acquire' }
+  });
+  assert.equal(lease.status, 200);
+
   const path = '/api/autonomy/characters/char-executor/activities';
   const queued = await ctx.asJson(path, {
     method: 'POST', device, body: { contextVersion: 1 }
@@ -2977,6 +2986,14 @@ test('自主活动 API：未授权、过期上下文与失效租约不能完成�
   await ctx.asJson('/api/characters/char-executor/context-version', {
     method: 'POST', device, body: { eventId: randomToken(20) }
   });
+  const heartbeat = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST', device, body: { foregroundActive: true }
+  });
+  assert.equal(heartbeat.status, 200);
+  const lease = await ctx.asJson('/api/characters/char-executor/lease', {
+    method: 'POST', device, body: { action: 'acquire' }
+  });
+  assert.equal(lease.status, 200);
 
   const stale = await ctx.asJson('/api/autonomy/characters/char-executor/activities', {
     method: 'POST', device, body: { contextVersion: 2 }
