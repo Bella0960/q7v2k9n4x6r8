@@ -3569,6 +3569,76 @@
             });
         });
 
+        var _cloudOutboundReadObserver = null;
+
+        function ensureCloudOutboundReadObserver() {
+            if (_cloudOutboundReadObserver) return _cloudOutboundReadObserver;
+            if (typeof window.IntersectionObserver !== 'function' || !chatMessages) return null;
+            _cloudOutboundReadObserver = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    var row = entry.target;
+                    if (!entry.isIntersecting || entry.intersectionRatio < 0.18 ||
+                        !row || row.dataset.cloudReadAck === '1' ||
+                        row.dataset.cloudReadPending === '1' ||
+                        document.visibilityState === 'hidden') return;
+
+                    row.dataset.cloudReadPending = '1';
+                    window.setTimeout(function () {
+                        delete row.dataset.cloudReadPending;
+                        if (!row.isConnected || document.visibilityState === 'hidden' ||
+                            row.dataset.cloudReadAck === '1') return;
+
+                        var cloud = window.MaomaoCloud;
+                        var serverMessageId = String(row.dataset.serverMessageId || '');
+                        var roleId = String(currentCharacter && currentCharacter.id || currentRoleId || '');
+                        if (!cloud || typeof cloud.markCharacterOutboundRead !== 'function' ||
+                            !roleId || !/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId)) return;
+
+                        var rect = row.getBoundingClientRect();
+                        var rootRect = chatMessages.getBoundingClientRect();
+                        var visibleHeight = Math.max(0, Math.min(rect.bottom, rootRect.bottom) -
+                            Math.max(rect.top, rootRect.top));
+                        if (visibleHeight / Math.max(1, rect.height) < 0.18) {
+                            try { _cloudOutboundReadObserver.observe(row); } catch (error) {}
+                            return;
+                        }
+
+                        cloud.markCharacterOutboundRead(roleId, serverMessageId).then(function (result) {
+                            if (result && result.read === true) {
+                                row.dataset.cloudReadAck = '1';
+                                row.dataset.cloudReadAt = String(result.read_at || Date.now());
+                            }
+                        }).catch(function () {
+                            // A failed read receipt is retried the next time the
+                            // actual message row re-enters the visible region.
+                            if (row.isConnected) {
+                                window.setTimeout(function () {
+                                    if (row.isConnected && row.dataset.cloudReadAck !== '1') {
+                                        try { _cloudOutboundReadObserver.observe(row); } catch (error) {}
+                                    }
+                                }, 3000);
+                            }
+                        });
+                    }, 700);
+                });
+            }, { root: chatMessages, threshold: [0.18, 0.5] });
+            return _cloudOutboundReadObserver;
+        }
+
+        function observeCloudOutboundReadRow(row) {
+            if (!row || !row.isConnected || !row.dataset.serverMessageId ||
+                row.dataset.cloudReadAck === '1') return;
+            var observer = ensureCloudOutboundReadObserver();
+            if (!observer) return;
+            try { observer.observe(row); } catch (error) {}
+        }
+
+        function observeVisibleCloudOutboundRows(root) {
+            if (!root || typeof root.querySelectorAll !== 'function') return;
+            var rows = root.querySelectorAll('.msg-row[data-server-message-id]');
+            Array.prototype.forEach.call(rows, observeCloudOutboundReadRow);
+        }
+
         function appendMessageToDOM(msg, idx, container) {
             // 虚拟列表模式：无显式容器（或明确指向 chatMessages）的单条追加，重定向进窗口容器，
             // 避免行被挂到窗口之外、脱离虚拟列表管理。传入 DocumentFragment 的批量渲染不受影响。
@@ -3584,6 +3654,7 @@
             row.dataset.time = String(msg.time || '');
             // 单条操作用：稳定标识（不存在时自动补齐）
             row.dataset.mid = ensureMid(msg);
+            if (msg.serverMessageId) row.dataset.serverMessageId = String(msg.serverMessageId);
 
             const bubble = document.createElement('div');
             bubble.className = 'msg-bubble';
@@ -4008,6 +4079,7 @@
             }
 
             host.appendChild(row);
+            observeCloudOutboundReadRow(row);
             // AI 消息的思维链块/旁白块/额外气泡：主 row 之后追加，保证正确渲染顺序
             if (typeof _pendingExtras !== 'undefined') {
                 _pendingExtras.forEach(function (el) { host.appendChild(el); });
@@ -4340,6 +4412,7 @@
             var frag = document.createDocumentFragment();
             visibleList.forEach(function (m, i) { appendMessageToDOM(m, i, frag); });
             chatMessages.appendChild(frag);
+            observeVisibleCloudOutboundRows(chatMessages);
             scrollToBottom(true);
         }
 
