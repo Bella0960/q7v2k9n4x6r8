@@ -12,6 +12,7 @@ import { base64UrlToBytes, bytesToBase64Url, concatBytes, utf8 } from './crypto.
 const encoder = new TextEncoder();
 
 export const PUSH_TTL_SECONDS = 3600;
+export const PUSH_SEND_TIMEOUT_MS = 25000;
 
 export class PushConfigError extends Error {
   constructor(message) {
@@ -174,7 +175,12 @@ export async function sendWebPush(subscription, payloadText, keys, { nowMs = Dat
   const body = await encryptPayload(subscription, payloadText);
 
   let response;
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timeoutId = null;
   try {
+    if (controller && typeof setTimeout === 'function') {
+      timeoutId = setTimeout(() => controller.abort(), PUSH_SEND_TIMEOUT_MS);
+    }
     response = await fetchImpl(endpoint, {
       method: 'POST',
       redirect: 'error',
@@ -185,10 +191,13 @@ export async function sendWebPush(subscription, payloadText, keys, { nowMs = Dat
         TTL: String(PUSH_TTL_SECONDS),
         Urgency: 'normal'
       },
-      body
+      body,
+      signal: controller?.signal
     });
   } catch (error) {
     throw new PushSendError(0, `推送网络请求失败: ${error?.message || error}`);
+  } finally {
+    if (timeoutId != null && typeof clearTimeout === 'function') clearTimeout(timeoutId);
   }
 
   const statusCode = response.status;
