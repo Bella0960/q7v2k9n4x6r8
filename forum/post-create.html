@@ -901,12 +901,18 @@
                 visibleTo: visibleAudience.memberIds,
                 visibleGroupIds: visibleAudience.groupIds,
                 visibleContactIds: visibleAudience.contactIds,
-                visibleRealUserIds: (visibleAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) { return key.slice('real_user:'.length); }),
+                visibleRealUserIds: (visibleAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) {
+                    try { return decodeURIComponent(key.slice('real_user:'.length)); }
+                    catch (error) { return key.slice('real_user:'.length); }
+                }),
                 visibleContactRefs: visibleAudience.memberRefs || [],
                 hiddenTo: hiddenAudience.memberIds,
                 hiddenGroupIds: hiddenAudience.groupIds,
                 hiddenContactIds: hiddenAudience.contactIds,
-                hiddenRealUserIds: (hiddenAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) { return key.slice('real_user:'.length); }),
+                hiddenRealUserIds: (hiddenAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) {
+                    try { return decodeURIComponent(key.slice('real_user:'.length)); }
+                    catch (error) { return key.slice('real_user:'.length); }
+                }),
                 hiddenContactRefs: hiddenAudience.memberRefs || [],
                 audienceVersion: 2,
                 mentions: mentionsList.slice()
