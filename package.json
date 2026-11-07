@@ -47,7 +47,8 @@
     "test:real-user:friends": "node --test tests/real-user-friends.test.mjs",
     "test:real-user:invites": "node --test tests/real-user-friend-invite-links.test.mjs",
     "test:real-user:camera": "node --test tests/real-user-friend-camera-scanner.test.mjs",
-    "test:real-user:avatar": "node --test tests/real-user-avatar.test.mjs"
+    "test:real-user:avatar": "node --test tests/real-user-avatar.test.mjs",
+    "test:npc:social": "node --test tests/npc-social.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
