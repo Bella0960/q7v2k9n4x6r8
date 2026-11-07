@@ -85,6 +85,10 @@
   var ready = false;
   var pendingSend = null;
   var blocked = false;
+  var latestIncomingMessage = null;
+  var lastReadReceiptId = '';
+  var readReceiptInFlight = false;
+  var readReceiptTimer = 0;
 
   function setStatus(message, error) {
     $('statusText').textContent = message || '';
@@ -183,6 +187,41 @@
   function cursorFor(message) {
     return message ? String(Number(message.createdAt)) + '.' + String(message.id) : null;
   }
+
+  function rememberIncoming(list) {
+    (list || []).forEach(function (message) {
+      if (!message || message.senderId !== friendId || message.recipientId !== myUserId) return;
+      if (!latestIncomingMessage ||
+          Number(message.createdAt) > Number(latestIncomingMessage.createdAt) ||
+          (Number(message.createdAt) === Number(latestIncomingMessage.createdAt) &&
+           String(message.id) > String(latestIncomingMessage.id))) {
+        latestIncomingMessage = message;
+      }
+    });
+  }
+
+  async function markVisibleIncomingRead() {
+    if (!ready || blocked || document.hidden || !isNearBottom() ||
+        !latestIncomingMessage || readReceiptInFlight ||
+        latestIncomingMessage.id === lastReadReceiptId) return;
+    var target = latestIncomingMessage;
+    readReceiptInFlight = true;
+    try {
+      var result = await api.markRead(friendId, target.id);
+      lastReadReceiptId = (result.read && result.read.lastReadMessageId) || target.id;
+    } catch (error) {
+      if (error && error.code === 'NOT_FRIENDS') {
+        setBlocked('好友关系已失效，无法继续聊天。');
+      }
+    } finally {
+      readReceiptInFlight = false;
+      if (latestIncomingMessage && latestIncomingMessage.id !== lastReadReceiptId &&
+          !document.hidden && isNearBottom()) {
+        // A newer incoming message may have arrived while the previous receipt was in flight.
+        window.setTimeout(markVisibleIncomingRead, 0);
+      }
+    }
+  }
   function setBlocked(message) {
     blocked = true;
     updateComposer();
@@ -209,8 +248,10 @@
       myUserId = me.account.userId;
       var result = await api.getMessages(friendId);
       $('friendName').textContent = result.friend.displayName || 'MAOMAO 用户';
-      (result.messages || []).forEach(function (message) { appendMessage(message, false); });
-      cursor = result.nextCursor || cursorFor((result.messages || []).slice(-1)[0]);
+      var initialMessages = result.messages || [];
+      initialMessages.forEach(function (message) { appendMessage(message, false); });
+      rememberIncoming(initialMessages);
+      cursor = result.nextCursor || cursorFor(initialMessages.slice(-1)[0]);
       olderCursor = result.olderCursor || cursorFor((result.messages || [])[0]);
       hasOlder = Boolean(result.hasMore);
       $('historyAction').hidden = !hasOlder;
@@ -219,6 +260,7 @@
       setStatus('已连接 · 新消息自动同步');
       if (!result.messages || !result.messages.length) showEmpty('你们已经成为好友了。\n从第一条消息开始聊吧。');
       scrollToBottom();
+      markVisibleIncomingRead();
       pollTimer = window.setInterval(pollMessages, 4500);
     } catch (error) {
       if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法查看聊天记录。');
@@ -238,10 +280,14 @@
         page = await api.getMessages(friendId, cursor, 'after');
         var list = page.messages || [];
         list.forEach(function (message) { appendMessage(message, false); });
+        rememberIncoming(list);
         if (page.nextCursor) cursor = page.nextCursor;
         guard += 1;
       } while (page.hasMore && guard < 5);
-      if (shouldStick && page && page.messages && page.messages.length) scrollToBottom();
+      if (shouldStick && page && page.messages && page.messages.length) {
+        scrollToBottom();
+        markVisibleIncomingRead();
+      }
       if (page && page.messages && page.messages.length) setStatus('刚刚同步');
     } catch (error) {
       if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法继续聊天。');
@@ -316,6 +362,10 @@
       if (!blocked) setStatus('聊天已刷新');
     });
   });
+  $('messages').addEventListener('scroll', function () {
+    if (readReceiptTimer) window.clearTimeout(readReceiptTimer);
+    readReceiptTimer = window.setTimeout(markVisibleIncomingRead, 140);
+  });
   $('loadOlderBtn').addEventListener('click', loadOlder);
   $('composer').addEventListener('submit', sendCurrentMessage);
   $('messageInput').addEventListener('input', function () {
@@ -340,6 +390,7 @@
   });
   window.addEventListener('pagehide', function () {
     if (pollTimer) window.clearInterval(pollTimer);
+    if (readReceiptTimer) window.clearTimeout(readReceiptTimer);
   });
   initialize();
 })();
