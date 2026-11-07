@@ -436,9 +436,9 @@
   async function refreshProfileAndFriends() {
     if (profileRefreshPromise) return profileRefreshPromise;
     profileRefreshPromise = (async function () {
-      var account = await client.refreshAccount();
-      renderAccount(account);
       await refreshServerData();
+      var account = client.getState().account;
+      if (account) renderAccount(account);
       return account;
     })();
     try {
