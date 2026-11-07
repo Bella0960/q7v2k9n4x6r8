@@ -1295,7 +1295,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v193/);
+  assert.match(serviceWorker, /phone-app-pwa-v194/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1886,7 +1886,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v193/);
+  assert.match(serviceWorker, /phone-app-pwa-v194/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2856,7 +2856,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     ['takeout', takeoutPage],
     ['wallet', walletPage]
   ]) {
-    assert.match(source, /wallet-ledger\.js\?v=20261107v1/,
+    assert.match(source, /wallet-ledger\.js\?v=20261107v2/,
       name + ' must load the shared wallet ledger coordinator');
     assert.match(source, /MaoMaoWalletLedger\.runExclusive|ledger\.runExclusive/,
       name + ' must route balance mutations through the shared lock');
@@ -2875,7 +2875,7 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
 
 
 test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
-  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v1/);
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v2/);
   assert.match(closePayPage, /async function mutateData\(mutator\)/);
   assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
   assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
@@ -2972,11 +2972,106 @@ test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢�
 });
 
 test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
-  assert.match(detail, /wallet-ledger\.js\?v=20261107v1/);
+  assert.match(detail, /wallet-ledger\.js\?v=20261107v2/);
   assert.match(detail, /chat-extras\.js\?t=20261107wallet2/);
   assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
   assert.match(chatExtrasSource, /paymentId: paymentId/);
   assert.match(chatExtrasSource, /pendingChatMessage: specialMsg/);
   assert.match(chatExtrasSource, /chatMessageSavedAt = Date\.now\(\)/);
   assert.match(chatExtrasSource, /!entry\.chatMessageSavedAt/);
+});
+
+
+test('钱包结算编号跨页面刷新复用，支付方式不能在未完成交易中被偷偷更换', () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { values.set(key, String(value)); },
+    removeItem: (key) => { values.delete(key); }
+  };
+  const firstWindow = { navigator: {}, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window: firstWindow });
+  const firstLedger = firstWindow.MaoMaoWalletLedger;
+  const firstId = firstLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay');
+  assert.ok(firstId, 'a pending checkout ID must be persisted before payment');
+
+  const secondWindow = { navigator: {}, localStorage: storage };
+  runInNewContext(walletLedgerSource, { window: secondWindow });
+  const secondLedger = secondWindow.MaoMaoWalletLedger;
+  assert.equal(
+    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay'),
+    firstId,
+    'a reload must recover the same transaction ID'
+  );
+  assert.equal(
+    secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal'),
+    null,
+    'an unfinished transaction cannot silently switch payment methods'
+  );
+  assert.equal(secondLedger.completePendingCheckout(firstId), true);
+  const nextId = secondLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'normal');
+  assert.ok(nextId);
+  assert.notEqual(nextId, firstId, 'a completed checkout allows a new intentional purchase');
+
+  const blockedStorage = {
+    getItem: () => null,
+    setItem: () => {}
+  };
+  const blockedWindow = { navigator: {}, localStorage: blockedStorage };
+  runInNewContext(walletLedgerSource, { window: blockedWindow });
+  assert.equal(
+    blockedWindow.MaoMaoWalletLedger.getOrCreatePendingCheckout('takeout', 'cart', 'normal'),
+    null,
+    'checkout must stop when its recovery ID cannot be read back'
+  );
+});
+
+test('亲属卡按交易编号幂等消费，重试不会再次占用额度', () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { values.set(key, String(value)); },
+    removeItem: (key) => { values.delete(key); }
+  };
+  const cardWindow = {};
+  runInNewContext(roleFamilyCardsSource, { window: cardWindow, localStorage: storage });
+  const api = cardWindow.RoleFamilyCards;
+  const invite = api.createInvite({
+    roleId: 'role-1', roleName: '角色', monthlyLimit: 50, singleLimit: 20
+  });
+  assert.ok(invite);
+  assert.equal(api.update(invite.id, 'accept').ok, true);
+
+  const first = api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1');
+  assert.equal(first.ok, true);
+  assert.equal(first.replayed, false);
+  const replay = api.consume(invite.id, 12, '商店 · 商品', 'shop', 'checkout-1');
+  assert.equal(replay.ok, true);
+  assert.equal(replay.replayed, true);
+  assert.equal(api.find(invite.id).history.length, 1);
+  assert.equal(api.usedThisMonth(api.find(invite.id)), 12);
+
+  const conflict = api.consume(invite.id, 15, '商店 · 商品', 'shop', 'checkout-1');
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.reason, 'transaction-conflict');
+  assert.equal(api.find(invite.id).history.length, 1);
+});
+
+test('商店和外卖结算的扣款、财务明细、订单都使用同一 paymentId 幂等恢复', () => {
+  for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
+    assert.match(source, /getOrCreatePendingCheckout\('(shop|takeout)'/,
+      name + ' must persist a checkout ID before side effects');
+    assert.match(source, /consume\([\s\S]*?transactionId\)/,
+      name + ' family-card consumption must use the checkout ID');
+    assert.match(source, /row\.paymentId === transactionId/,
+      name + ' wallet and order records must recognize the same transaction');
+    assert.match(source, /paymentLineIndex: index/,
+      name + ' finance rows must deduplicate each item line');
+    assert.match(source, /completePendingCheckout\(transactionId\)/,
+      name + ' must only clear the pending ID after persistent records are saved');
+  }
+  assert.match(shopPage, /function saveOrders\(o\)[\s\S]*?getItem\('shop_orders'\) === serialized/,
+    'shop orders require exact readback');
+  assert.match(takeoutPage, /getItem\('takeout_orders'\) !== ordersSerialized/,
+    'takeout orders require exact readback');
 });
