@@ -2419,6 +2419,13 @@
             currentGroup = loadGroupById(currentRoleId);
         }
 
+        // Keep the legacy conversation ID untouched; expose a typed identity alongside it.
+        var currentContactIdentity = window.PhoneContactIdentity;
+        window.PhoneCurrentContactRef = currentGroup && currentContactIdentity
+            ? currentContactIdentity.fromGroup(currentGroup)
+            : (currentContactIdentity ? currentContactIdentity.fromRole({ id: currentRoleId }) : null);
+        window.PhoneCurrentConversationId = currentRoleId || '';
+
         function groupMemberDisplayName(member) {
             return String((member && (member.nickname || member.name)) || '成员').trim() || '成员';
         }
