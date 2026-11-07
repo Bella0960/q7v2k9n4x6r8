@@ -1802,6 +1802,10 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /updateCharacterLease\(key, 'acquire'\)/);
   assert.match(chatNotifier, /ownedByCurrentDevice !== true/);
   assert.match(chatNotifier, /hasStoredCloudDeviceCredentials/);
+  assert.match(chatNotifier, /if \(!globalSetting \|\| globalSetting\.enabled !== true\) \{[\s\S]{0,180}return true;/,
+    '已配对设备的云端总开关关闭时，必须阻止本地主动联系降级');
+  assert.match(chatNotifier, /return hasStoredCloudDeviceCredentials\(\);/,
+    '残留的云端设备记录不能回退到本地生成');
   assert.match(chatNotifier, /cloud_device_v1/);
   const contextOwnershipIndex = chatNotifier.indexOf('context.ownedByCurrentDevice !== true');
   const leaseAcquireIndex = chatNotifier.indexOf('await ensureCloudExecutorPresence(roleId, cloud)');
