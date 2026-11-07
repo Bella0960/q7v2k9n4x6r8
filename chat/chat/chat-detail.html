@@ -2604,7 +2604,7 @@
                 && cloud._internal.readDevice();
             if (!hasDevice) return;
 
-            // startCharacterPresence 自己管理 visibilitychange/pagehide 与 TTL 续期。
+            // startCharacterPresence 管理可见性、可取消请求与 TTL 续期；版本事件只发送随机 ID。
             cloud.startCharacterPresence(String(currentCharacter.id || currentRoleId))
                 .catch(function (error) {
                     // 未配置云端 lease 时保持本地聊天可用，不影响正常发消息。
