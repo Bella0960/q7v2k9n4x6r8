@@ -24,7 +24,7 @@ function createDatabase() {
 
 // Cloudflare D1's small API surface used by the Worker. The SQL itself is not
 // mocked: every statement and trigger executes in the in-memory SQLite engine.
-function createD1Adapter(database) {
+function createD1Adapter(database, options = {}) {
   return {
     prepare(sql) {
       let values = [];
@@ -33,8 +33,14 @@ function createD1Adapter(database) {
           values = nextValues;
           return this;
         },
-        first() {
-          return database.prepare(sql).get(...values) || null;
+        async first() {
+          const row = database.prepare(sql).get(...values) || null;
+          if (options.afterPendingPairRead &&
+              sql.includes("FROM real_user_friend_requests WHERE pair_low = ?") &&
+              sql.includes("status = 'pending'")) {
+            await options.afterPendingPairRead(row);
+          }
+          return row;
         },
         all() {
           return { results: database.prepare(sql).all(...values) };
@@ -115,12 +121,23 @@ function addPendingRequest(database, id, requesterId, recipientId, now) {
   ).run(id, requesterId, recipientId, pairLow, pairHigh, now, now);
 }
 
-function createEnvironment(database) {
+function createEnvironment(database, adapterOptions = {}) {
   return {
     REAL_USER_AUTH_ENABLED: "true",
     REAL_USER_FRIENDS_ENABLED: "true",
-    DB: createD1Adapter(database),
+    DB: createD1Adapter(database, adapterOptions),
     AUTH_LIMITER: { async limit() { return { success: true }; } }
+  };
+}
+
+function createReadBarrier(parties) {
+  let arrived = 0;
+  let release;
+  const opened = new Promise(resolve => { release = resolve; });
+  return async () => {
+    arrived += 1;
+    if (arrived === parties) release();
+    await opened;
   };
 }
 
@@ -366,6 +383,62 @@ if (!DatabaseSync) {
       assert.equal(sent.body.request.id, requestId);
       assert.equal(sent.body.target.id, bobId);
 
+      // Repeated submission with the same ID remains idempotent after QR rotation.
+      // The request ID is checked before QR validity, so a network retry does not
+      // create a second request or fail just because the original code was revoked.
+      const rotatedBeforeRetry = await callWorker(
+        env, friendsPrefix + "/codes/rotate", "POST", { cookie: bobCookie }
+      );
+      assert.equal(rotatedBeforeRetry.response.status, 201);
+      const oldCode = database.prepare(
+        "SELECT revoked_at FROM real_user_friend_codes WHERE code_hash = ?"
+      ).get(qrHash);
+      assert.ok(oldCode.revoked_at > 0);
+      const sameRequestRetry = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId, code: qr.body.code, note: "retry" }
+      });
+      assert.equal(sameRequestRetry.response.status, 200);
+      assert.equal(sameRequestRetry.body.duplicate, true);
+      assert.equal(sameRequestRetry.body.request.id, requestId);
+      assert.equal(database.prepare(
+        "SELECT COUNT(*) AS count FROM real_user_friend_requests WHERE pair_low = ? AND pair_high = ? AND status = 'pending'"
+      ).get(aliceId < bobId ? aliceId : bobId, aliceId < bobId ? bobId : aliceId).count, 1);
+
+      // A revoked or expired QR code cannot create a new request ID.
+      const revokedCodeRetry = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId: "request_revoked_qr_e2e_01", code: qr.body.code }
+      });
+      assert.equal(revokedCodeRetry.response.status, 404);
+      const rotatedCodeHash = await sha256Hex(rotatedBeforeRetry.body.code);
+      database.prepare("UPDATE real_user_friend_codes SET expires_at = ? WHERE code_hash = ?")
+        .run(Date.now() - 1, rotatedCodeHash);
+      const expiredCodeRetry = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId: "request_expired_qr_e2e_01", code: rotatedBeforeRetry.body.code }
+      });
+      assert.equal(expiredCodeRetry.response.status, 404);
+      assert.equal(database.prepare(
+        "SELECT COUNT(*) AS count FROM real_user_friend_requests WHERE id IN (?, ?)"
+      ).get("request_revoked_qr_e2e_01", "request_expired_qr_e2e_01").count, 0);
+
+      // The owner cannot add themself, and another account cannot reuse the
+      // first account's stable request ID.
+      const aliceQr = await callWorker(env, friendsPrefix + "/codes/rotate", "POST", { cookie: aliceCookie });
+      const selfAdd = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId: "request_self_add_e2e_01", code: aliceQr.body.code }
+      });
+      assert.equal(selfAdd.response.status, 400);
+      assert.equal(selfAdd.body.error, "cannot_add_self");
+      const requestIdCollision = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: bobCookie,
+        body: { requestId, code: aliceQr.body.code }
+      });
+      assert.equal(requestIdCollision.response.status, 409);
+      assert.equal(requestIdCollision.body.error, "request_id_conflict");
+
       const bobInbox = await callWorker(
         env, friendsPrefix + "/requests?direction=incoming", "GET", { cookie: bobCookie }
       );
@@ -379,6 +452,12 @@ if (!DatabaseSync) {
       );
       assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
       assert.equal(accepted.body.request.status, "accepted");
+      const reusedAcceptedRequest = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId, code: qr.body.code }
+      });
+      assert.equal(reusedAcceptedRequest.response.status, 409);
+      assert.equal(reusedAcceptedRequest.body.error, "request_id_already_used");
 
       const [aliceRoster, bobRoster] = await Promise.all([
         callWorker(env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: aliceCookie }),
@@ -491,6 +570,107 @@ if (!DatabaseSync) {
         env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: freshBobCookie }
       );
       assert.deepEqual(bobRosterAfterLogin.body.friends.map(friend => friend.id), [aliceId]);
+    } finally {
+      database.close();
+    }
+  });
+
+
+  test("simultaneous QR requests are serialized by the real pending-pair unique index", async () => {
+    const database = createDatabase();
+    try {
+      const baseEnv = createEnvironment(database);
+      const authPrefix = "/api/real-user-chat/v1/auth";
+      const friendsPrefix = "/api/real-user-chat/v1/friends";
+      const register = async (handle, displayName, password) => {
+        const result = await callWorker(baseEnv, authPrefix + "/register", "POST", {
+          body: { handle, displayName, password }
+        });
+        assert.equal(result.response.status, 201, JSON.stringify(result.body));
+        return { id: result.body.account.id, cookie: cookieFrom(result.response) };
+      };
+      const alice = await register("race_alice", "Race Alice", "race alice secure passphrase");
+      const bob = await register("race_bob", "Race Bob", "race bob secure passphrase");
+      const bobCode = await callWorker(baseEnv, friendsPrefix + "/codes/rotate", "POST", {
+        cookie: bob.cookie
+      });
+      assert.equal(bobCode.response.status, 201);
+
+      // Force both requests to observe an empty pending-pair query before
+      // either INSERT executes. The real SQLite partial unique index decides
+      // the winner; the losing Worker request must reconcile the winner.
+      let pendingPairReads = 0;
+      const barrier = createReadBarrier(2);
+      const raceEnv = createEnvironment(database, {
+        afterPendingPairRead: async () => {
+          pendingPairReads += 1;
+          if (pendingPairReads <= 2) await barrier();
+        }
+      });
+      const [sameDirectionA, sameDirectionB] = await Promise.all([
+        callWorker(raceEnv, friendsPrefix + "/requests", "POST", {
+          cookie: alice.cookie,
+          body: { requestId: "request_race_alice_01", code: bobCode.body.code }
+        }),
+        callWorker(raceEnv, friendsPrefix + "/requests", "POST", {
+          cookie: alice.cookie,
+          body: { requestId: "request_race_alice_02", code: bobCode.body.code }
+        })
+      ]);
+      const sameResults = [sameDirectionA, sameDirectionB];
+      assert.equal(sameResults.filter(item => item.response.status === 201).length, 1);
+      assert.equal(sameResults.filter(item => item.response.status === 200 && item.body.duplicate).length, 1);
+      const sameRequestIds = sameResults.map(item => item.body.request.id);
+      assert.equal(new Set(sameRequestIds).size, 1,
+        "both concurrent submissions must resolve to the same server request");
+      const winningId = sameRequestIds[0];
+      assert.equal(database.prepare(
+        "SELECT COUNT(*) AS count FROM real_user_friend_requests WHERE status = 'pending'"
+      ).get().count, 1);
+
+      // Cancel the first winner, then race requests in opposite directions.
+      const cancelled = await callWorker(
+        baseEnv, friendsPrefix + "/requests/" + winningId + "/cancel", "POST", { cookie: alice.cookie }
+      );
+      assert.equal(cancelled.response.status, 200);
+      const aliceCode = await callWorker(baseEnv, friendsPrefix + "/codes/rotate", "POST", {
+        cookie: alice.cookie
+      });
+      assert.equal(aliceCode.response.status, 201);
+
+      pendingPairReads = 0;
+      const reverseBarrier = createReadBarrier(2);
+      const reverseRaceEnv = createEnvironment(database, {
+        afterPendingPairRead: async () => {
+          pendingPairReads += 1;
+          if (pendingPairReads <= 2) await reverseBarrier();
+        }
+      });
+      const [aliceToBob, bobToAlice] = await Promise.all([
+        callWorker(reverseRaceEnv, friendsPrefix + "/requests", "POST", {
+          cookie: alice.cookie,
+          body: { requestId: "request_race_reverse_alice", code: bobCode.body.code }
+        }),
+        callWorker(reverseRaceEnv, friendsPrefix + "/requests", "POST", {
+          cookie: bob.cookie,
+          body: { requestId: "request_race_reverse_bob", code: aliceCode.body.code }
+        })
+      ]);
+      const reverseResults = [aliceToBob, bobToAlice];
+      assert.equal(reverseResults.filter(item => item.response.status === 201).length, 1);
+      assert.equal(reverseResults.filter(item =>
+        item.response.status === 409 && item.body.error === "incoming_request_exists"
+      ).length, 1);
+      const reverseWinner = reverseResults.find(item => item.response.status === 201);
+      const reverseLoser = reverseResults.find(item => item.response.status === 409);
+      assert.equal(reverseLoser.body.requestId, reverseWinner.body.request.id);
+      const pair = alice.id < bob.id ? [alice.id, bob.id] : [bob.id, alice.id];
+      const pendingForPair = database.prepare(
+        "SELECT id, requester_id, recipient_id FROM real_user_friend_requests " +
+        "WHERE pair_low = ? AND pair_high = ? AND status = 'pending'"
+      ).get(...pair);
+      assert.ok(pendingForPair);
+      assert.equal(pendingForPair.id, reverseWinner.body.request.id);
     } finally {
       database.close();
     }
