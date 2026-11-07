@@ -69,6 +69,25 @@ test('audience snapshots merge selected groups and individual contacts without d
   assert.deepEqual(JSON.parse(JSON.stringify(stale.missingGroupIds)), ['missing']);
 });
 
+test('audience snapshots validate live contacts and omit stale members left inside groups', () => {
+  const { api } = createRuntime();
+  api.saveGroups([{ id: 'family', name: '家人', memberIds: ['a', 'b', 'deleted-role'] }]);
+
+  const mixed = api.buildAudienceSnapshot(['family'], ['c'], {
+    availableContactIds: ['a', 'b', 'c', 'd']
+  });
+  assert.equal(mixed.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(mixed.memberIds)), ['c', 'a', 'b']);
+  assert.deepEqual(JSON.parse(JSON.stringify(mixed.staleMemberIds)), ['deleted-role']);
+
+  const staleDirect = api.buildAudienceSnapshot([], ['deleted-role'], {
+    availableContactIds: ['a', 'b', 'c', 'd']
+  });
+  assert.equal(staleDirect.ok, false);
+  assert.equal(staleDirect.error, 'missing_contacts');
+  assert.deepEqual(JSON.parse(JSON.stringify(staleDirect.missingContactIds)), ['deleted-role']);
+});
+
 test('selected groups fail closed when storage is corrupt, unavailable, or the group was deleted', () => {
   const corrupt = createRuntime('{broken');
   const blockedCorrupt = corrupt.api.buildAudienceSnapshot(['family'], ['a']);
@@ -179,6 +198,11 @@ test('Moments audience preview lists the resolved recipients and explains snapsh
   assert.match(composerPage, /!activeAudience\.ok/);
   assert.match(composerPage, /分组已发生变化，请重新确认可见范围/);
   assert.match(composerPage, /分组数据暂时无法读取/);
+  assert.match(composerPage, /module_unavailable/);
+  assert.match(composerPage, /联系人已不存在，请取消失效联系人后重新选择/);
+  assert.match(composerPage, /已失效联系人 · 点击取消选择/);
+  assert.match(composerPage, /availableContactIds/);
+  assert.match(composerPage, /staleMemberIds/);
   assert.match(browserTest, /角色甲/);
   assert.match(browserTest, /角色乙/);
   assert.match(browserTest, /角色丙/);
