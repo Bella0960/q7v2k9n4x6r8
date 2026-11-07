@@ -14,3 +14,40 @@ test('rejects wrong target, unsafe paths, external CSS and malformed CSS',()=>{a
 test('CSS property values are sanitized and cannot inject declarations',()=>{const t=fixture({styles:{chatList:{bottomNav:{background:'url(javascript:alert(1))',color:'#222'}},chatDetail:{}}});const p=F.readPackage(F.parseStoredZip(makePackage(t)));const css=F.stylesToCss(p.theme);assert.doesNotMatch(css,/javascript:/i);assert.match(css,/color:#222/);});
 
 test('hidden components stay hidden when the package is applied',()=>{const t=fixture({pages:{chatList:[{id:'statusBar'},{id:'bottomNav',visible:false}],chatDetail:[{id:'detailHeader'}]}});const p=F.readPackage(F.parseStoredZip(makePackage(t)));assert.match(F.stylesToCss(p.theme),/\.floating-nav\{display:none !important\}/);});
+
+test('custom component IDs are strictly validated and cannot escape the chat CSS scope',()=>{
+  const maliciousId='custom-x"],body{color:red}/*';
+  const t=fixture({
+    pages:{
+      chatList:[{id:'statusBar'},{id:maliciousId}],
+      chatDetail:[{id:'detailHeader'}]
+    },
+    styles:{
+      chatList:{
+        'custom-card':{color:'#111'},
+        [maliciousId]:{color:'#f00'}
+      },
+      chatDetail:{}
+    },
+    blocks:{
+      chatList:[
+        {id:'custom-card',type:'card',title:'安全卡片',text:'保留'},
+        {id:maliciousId,type:'text',text:'不应导入'}
+      ],
+      chatDetail:[]
+    },
+    layerOrder:{
+      chatList:['statusBar',maliciousId,'custom-card'],
+      chatDetail:['detailHeader']
+    }
+  });
+  const p=F.readPackage(F.parseStoredZip(makePackage(t)));
+  assert.deepEqual(p.theme.pages.chatList.map(x=>x.id),['statusBar']);
+  assert.deepEqual(p.theme.blocks.chatList.map(x=>x.id),['custom-card']);
+  assert.deepEqual(Object.keys(p.theme.styles.chatList),['custom-card']);
+  assert.deepEqual(p.theme.layerOrder.chatList,['custom-card']);
+  const css=F.buildScopedCss(p.theme,p.customCss);
+  assert.doesNotMatch(css,/body\\s*\\{\\s*color:red/);
+  assert.doesNotMatch(css,/custom-x["],body/);
+  assert.match(css,/\\.phone-mockup\\[data-maomao-chat-theme-active="1"\\]/);
+});
