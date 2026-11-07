@@ -270,15 +270,91 @@
     }
     return { name: name, profession: profession, persona: persona, greeting: greeting, reason: reason, speechStyle: speechStyle };
   }
-  function acquireLock(now, roleId) {
+  function acquireStorageLock(roleId) {
     var key = scopedKey(LOCK_KEY_PREFIX, roleId);
-    var previous = Number(readJson(key, 0)) || 0;
-    if (previous && now - previous >= 0 && now - previous < 2 * 60 * 1000) return false;
-    try { localStorage.setItem(key, String(now)); return true; } catch (error) { return false; }
+    var now = Date.now();
+    var raw = null;
+    try { raw = localStorage.getItem(key); }
+    catch (error) { return null; }
+
+    if (raw !== null) {
+      var previous = null;
+      try { previous = JSON.parse(raw); }
+      catch (error) {
+        // Accept the old timestamp-only lock format during the transition.
+        var legacyTimestamp = Number(raw);
+        if (!Number.isFinite(legacyTimestamp)) return null;
+        previous = { expiresAt: legacyTimestamp + 2 * 60 * 1000 };
+      }
+      var expiresAt = previous && typeof previous === 'object'
+        ? Number(previous.expiresAt) || 0 : 0;
+      if (expiresAt > now) return null;
+    }
+
+    var token = makeId('npc_lock');
+    var lockRecord = { token: token, acquiredAt: now, expiresAt: now + 2 * 60 * 1000 };
+    try { localStorage.setItem(key, JSON.stringify(lockRecord)); }
+    catch (error) { return null; }
+
+    // Best-effort fallback for browsers without Web Locks. A unique owner token
+    // prevents one tab from clearing another tab's replacement lock.
+    var stored = readJson(key, null);
+    if (!stored || stored.token !== token) return null;
+    return function () {
+      var current = readJson(key, null);
+      if (current && current.token === token) {
+        try { localStorage.removeItem(key); } catch (error) {}
+      }
+    };
   }
-  function releaseLock(roleId) {
-    try { localStorage.removeItem(scopedKey(LOCK_KEY_PREFIX, roleId)); } catch (error) {}
+
+  function acquireLock(roleId) {
+    var lockManager = global.navigator && global.navigator.locks;
+    if (!lockManager || typeof lockManager.request !== 'function') {
+      return Promise.resolve(acquireStorageLock(roleId));
+    }
+
+    var lockName = 'maomao:npc-friend-discovery:' + encodeURIComponent(String(roleId));
+    var resolveOutcome;
+    var outcome = new Promise(function (resolve) { resolveOutcome = resolve; });
+    var release;
+    var hold = new Promise(function (resolve) { release = resolve; });
+    var requestPromise;
+
+    try {
+      requestPromise = lockManager.request(lockName, { mode: 'exclusive', ifAvailable: true }, function (lock) {
+        if (!lock) {
+          resolveOutcome('busy');
+          return false;
+        }
+        resolveOutcome('held');
+        // Keep the exclusive browser lock for the entire AI request and
+        // durable queue write, not just for the acquisition check.
+        return hold;
+      });
+    } catch (error) {
+      return Promise.resolve(acquireStorageLock(roleId));
+    }
+
+    requestPromise.catch(function (error) {
+      resolveOutcome('error');
+    });
+    return outcome.then(function (status) {
+      if (status === 'held') {
+        return function () {
+          release();
+          return requestPromise.catch(function () {});
+        };
+      }
+      if (status === 'busy') {
+        return requestPromise.then(function () { return null; });
+      }
+      return requestPromise.catch(function () {}).then(function () {
+        return acquireStorageLock(roleId);
+      });
+    });
   }
+
   function updateLastAttempt(settings, timestamp, roleId) {
     settings.lastAttemptAt = timestamp;
     return saveSettings(settings, roleId);
@@ -320,11 +396,12 @@
       if (manual) throw new Error('请先在设置中配置 AI API，才能生成 NPC。');
       return { created: false, reason: 'api-not-configured' };
     }
-    if (!acquireLock(now, roleId)) return { created: false, reason: 'locked' };
+    var releaseDiscoveryLock = await acquireLock(roleId);
+    if (!releaseDiscoveryLock) return { created: false, reason: 'locked' };
     busy = true;
     if (!updateLastAttempt(settings, now, roleId)) {
       busy = false;
-      releaseLock(roleId);
+      releaseDiscoveryLock();
       throw new Error('自动发现状态保存失败，已停止生成以避免重复请求。');
     }
     var controller = new global.AbortController();
@@ -398,7 +475,7 @@
     } finally {
       if (discoveryController === controller) discoveryController = null;
       busy = false;
-      releaseLock(roleId);
+      releaseDiscoveryLock();
     }
   }
 
