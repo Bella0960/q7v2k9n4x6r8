@@ -2313,7 +2313,17 @@ test('cloud outbound bubbles persist first, then use serialized pacing without s
   assert.match(detail, /aiBubblePacingRunId \+= 1/);
   const saveAt = detail.indexOf('if (!saveMessages(history))', detail.indexOf('async function persistCloudOutboundMessage'));
   const paceAt = detail.indexOf('await appendAiMessageWithPacing(message, appendIndex', saveAt);
+  const finalReadAt = detail.indexOf('var postRenderHistory = loadMessages()', paceAt);
+  const mergeAt = detail.indexOf('postRenderHistory.push(message)', finalReadAt);
+  const recoverySaveAt = detail.indexOf('if (!saveMessages(postRenderHistory)) return false', mergeAt);
+  const confirmAt = detail.indexOf('var confirmedHistory = loadMessages()', recoverySaveAt);
+  const noticeAt = detail.indexOf("'cloud_outbound_notice_v1:'", confirmAt);
   assert.ok(saveAt >= 0 && paceAt > saveAt, 'message history must be saved before visual pacing');
+  assert.ok(finalReadAt > paceAt && mergeAt > finalReadAt && recoverySaveAt > mergeAt &&
+    confirmAt > recoverySaveAt && noticeAt > confirmAt,
+    'a sibling-tab overwrite during bubble pacing must be repaired and read back before notifying the other tabs or returning success');
+  assert.match(detail, /var stillSaved = Array\.isArray\(postRenderHistory\)/);
+  assert.match(detail, /if \(!confirmed\) return false/);
 });
 
 test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡触发', () => {
