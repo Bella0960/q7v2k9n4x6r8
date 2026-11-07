@@ -364,8 +364,12 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   enqueueDiagnostic('readiness-superseded');
 
   const otherDevice = makeDevice();
-  await registerDevice(ctx, otherDevice);
-  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-user', otherDevice.deviceId);
+  ctx.store.insertDevice({
+    id: otherDevice.deviceId,
+    userId: 'another-user',
+    secretHash: 'synthetic-other-user-device-hash',
+    now: base
+  });
   ctx.store.enqueueActivity({
     id: 'readiness-other-user',
     deviceId: otherDevice.deviceId,
