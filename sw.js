@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v175';
+const CACHE_NAME = 'phone-app-pwa-v176';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v175 release: enable contextual role sticker replies using the updated sticker runtime.
+// v176 release: add the per-character portrait archive and its media-backed runtime.
 const APP_SHELL = [
   './',
   './index.html',
@@ -55,6 +55,8 @@ const APP_SHELL = [
   './chat/date/date.html',
   './chat/date/journey.html',
   './chat/chat/chat-detail.html',
+  './worldbook/characters/characters.html',
+  './worldbook/characters/js/characters-manager.js?v=20261107v1',
   './travel/dream-travel.html',
   './novel/novel.html',
   './novel/novel-detail.html',
@@ -93,6 +95,7 @@ const APP_SHELL = [
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
   './shared/js/phone/role-sticker-library.js?v=20261107v2',
+  './shared/js/phone/role-avatar-library.js?v=20261107v1',
   'shared/js/phone/phone_api.js?v=20261106v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
