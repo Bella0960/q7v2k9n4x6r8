@@ -3034,7 +3034,7 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   assert.notEqual(nextId, firstId, 'a completed checkout allows a new intentional purchase');
 
   const blockedStorage = {
-    getItem: () => null,
+    getItem: () => '',
     setItem: () => {}
   };
   const blockedWindow = { navigator: {}, localStorage: blockedStorage };
@@ -3046,6 +3046,23 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   );
   assert.equal(blockedWindow.MaoMaoWalletLedger.isPendingCheckout('missing'), null,
     'an unreadable pending store must remain distinguishable from a completed transaction');
+  assert.equal(blockedWindow.MaoMaoWalletLedger.getPendingCheckout('takeout'), null);
+
+  const ambiguousRows = [
+    { id: 'one', channel: 'shop', signature: 'cart-a', paymentMethod: 'normal', status: 'pending' },
+    { id: 'two', channel: 'shop', signature: 'cart-b', paymentMethod: 'normal', status: 'pending' }
+  ];
+  const ambiguousStorage = {
+    getItem: () => JSON.stringify(ambiguousRows),
+    setItem: () => {}
+  };
+  const ambiguousWindow = { navigator: {}, localStorage: ambiguousStorage };
+  runInNewContext(walletLedgerSource, { window: ambiguousWindow });
+  assert.equal(
+    ambiguousWindow.MaoMaoWalletLedger.getOrCreatePendingCheckout('shop', 'cart-c', 'normal'),
+    null,
+    'ambiguous pending transactions must block new checkouts instead of being silently filtered'
+  );
 });
 
 test('亲属卡按交易编号幂等消费，重试不会再次占用额度', () => {
