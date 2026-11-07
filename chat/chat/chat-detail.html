@@ -3114,8 +3114,12 @@
                 }
             }
 
-            function onPageShow() {
-                if (document.visibilityState !== 'hidden') refreshHistoryFromOtherTab();
+            function onPageShow(event) {
+                // A normal first load already renders loadMessages(); only BFCache
+                // restoration needs a second read of history saved by sibling tabs.
+                if (document.visibilityState !== 'hidden' && event && event.persisted) {
+                    refreshHistoryFromOtherTab();
+                }
                 activate();
             }
 
