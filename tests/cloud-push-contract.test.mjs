@@ -91,7 +91,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0006 建立云推送、调度元数据与出站收件箱结构', async () => {
+test('迁移 0001–0007 建立云推送、调度元数据、出站收件箱与活动去重结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -130,6 +130,10 @@ test('迁移 0001–0006 建立云推送、调度元数据与出站收件箱结�
   assert.ok(indexes.includes('idx_context_events_created'), '上下文事件必须可按保留期清理');
   assert.ok(indexes.includes('idx_push_delivery_retry'), '推送投递必须可按重试状态与租约查询');
   assert.ok(indexes.includes('idx_outbound_pending_device_character'), '出站收件箱必须按目标设备、角色与状态建立索引');
+  assert.ok(indexes.includes('idx_activity_dedupe'), '自主活动必须按账号/角色/上下文幂等键唯一');
+  assert.ok(indexes.includes('idx_activity_recipient_due'), '自主活动必须支持按角色与到期状态查询');
+  const activityColumns = testDb.query("PRAGMA table_info('activity_queue')").map(row => String(row.name));
+  assert.ok(activityColumns.includes('dedupe_key'), '活动队列必须保存稳定幂等键');
   const deliveryColumns = testDb.query("PRAGMA table_info('push_deliveries')").map(row => String(row.name));
   for (const column of ['lease_owner', 'lease_until', 'next_attempt_at', 'attempt_count', 'updated_at']) {
     assert.ok(deliveryColumns.includes(column), `推送投递缺少恢复字段 ${column}`);
@@ -139,14 +143,15 @@ test('迁移 0001–0006 建立云推送、调度元数据与出站收件箱结�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 6);
+  assert.equal(versions.length, 7);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
     '0003_device_pairing',
     '0004_character_context_version',
     '0005_push_delivery_retries',
-    '0006_outbound_inbox_index'
+    '0006_outbound_inbox_index',
+    '0007_activity_dedupe'
   ]);
 });
 
@@ -2840,4 +2845,157 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.match(serviceWorker, /phone-app-pwa-v174/);
   assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
     'PWA shell 应继续预缓存现有聊天详情页');
+});
+
+
+test('自主活动 API：本地生成器可安全认领并把结果交给原有出站收件箱', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000,300000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  });
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const enabled = await ctx.asJson('/api/autonomy/global', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  assert.equal(enabled.status, 200);
+
+  const schedule = await ctx.asJson('/api/characters/char-executor/schedule', {
+    method: 'PUT',
+    device,
+    body: {
+      timeZone: 'UTC',
+      schedule: { active: [{ startMinute: 0, endMinute: 0 }] }
+    }
+  });
+  assert.equal(schedule.status, 200);
+
+  const contextEvent = await ctx.asJson('/api/characters/char-executor/context-version', {
+    method: 'POST',
+    device,
+    body: { eventId: randomToken(20) }
+  });
+  assert.equal(contextEvent.status, 200);
+  assert.equal(contextEvent.payload.version, 1);
+
+  const path = '/api/autonomy/characters/char-executor/activities';
+  const queued = await ctx.asJson(path, {
+    method: 'POST', device, body: { contextVersion: 1 }
+  });
+  assert.equal(queued.status, 200);
+  assert.equal(queued.payload.queued, true);
+  assert.equal(queued.payload.duplicate, false);
+
+  const duplicate = await ctx.asJson(path, {
+    method: 'POST', device, body: { contextVersion: 1 }
+  });
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.payload.duplicate, true);
+  assert.equal(duplicate.payload.activityId, queued.payload.activityId);
+
+  const claim = await ctx.asJson('/api/autonomy/characters/char-executor/activities/claim', {
+    method: 'POST', device, body: {}
+  });
+  assert.equal(claim.status, 200);
+  assert.equal(claim.payload.activity.kind, 'contact');
+  assert.equal(claim.payload.activity.payload.contextVersion, 1);
+  assert.equal(claim.payload.activity.attemptCount, 1);
+
+  const activity = claim.payload.activity;
+  const completePath = '/api/autonomy/activities/' + activity.id + '/complete';
+  const completed = await ctx.asJson(completePath, {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+  });
+  assert.equal(completed.status, 200);
+  assert.equal(completed.payload.completed, true);
+  assert.equal(completed.payload.outboundInserted, true);
+
+  const repeatedComplete = await ctx.asJson(completePath, {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+  });
+  assert.equal(repeatedComplete.status, 200);
+  assert.equal(repeatedComplete.payload.alreadyCompleted, true);
+
+  assert.equal(ctx.store.getActivity(activity.id).status, 'completed');
+  const pending = ctx.store.listPendingOutboundMessages({
+    userId: 'owner',
+    deviceId: device.deviceId,
+    characterId: 'char-executor',
+    limit: 10
+  });
+  assert.equal(pending.length, 1);
+  assert.equal(JSON.parse(pending[0].payload_json).text, '我刚刚想到一件想和你分享的事。');
+});
+
+test('自主活动 API：未授权、过期上下文与失效租约不能完成生成任务', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  });
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const unauthorized = await ctx.asJson('/api/autonomy/characters/char-executor/activities', {
+    method: 'POST', device, body: { contextVersion: 1 }
+  });
+  assert.equal(unauthorized.status, 403);
+  assert.equal(unauthorized.payload.error.code, 'AUTONOMY_NOT_AUTHORIZED');
+
+  await ctx.asJson('/api/autonomy/global', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  await ctx.asJson('/api/characters/char-executor/schedule', {
+    method: 'PUT',
+    device,
+    body: { timeZone: 'UTC', schedule: { active: [{ startMinute: 0, endMinute: 0 }] } }
+  });
+  await ctx.asJson('/api/characters/char-executor/context-version', {
+    method: 'POST', device, body: { eventId: randomToken(20) }
+  });
+
+  const stale = await ctx.asJson('/api/autonomy/characters/char-executor/activities', {
+    method: 'POST', device, body: { contextVersion: 2 }
+  });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.payload.error.code, 'STALE_CONTEXT');
+
+  const queued = await ctx.asJson('/api/autonomy/characters/char-executor/activities', {
+    method: 'POST', device, body: { contextVersion: 1 }
+  });
+  assert.equal(queued.status, 200);
+  const claim = await ctx.asJson('/api/autonomy/characters/char-executor/activities/claim', {
+    method: 'POST', device, body: {}
+  });
+  assert.equal(claim.status, 200);
+  const activity = claim.payload.activity;
+
+  ctx.timestamps.push(now + 60000);
+  const lateComplete = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '这条消息不能在租约过期后提交。' }
+  });
+  assert.equal(lateComplete.status, 409);
+  assert.equal(lateComplete.payload.error.code, 'ACTIVITY_LEASE_LOST');
+  assert.equal(ctx.store.getActivity(activity.id).status, 'running');
+  assert.equal(ctx.store.listPendingOutboundMessages({
+    userId: 'owner', deviceId: device.deviceId, characterId: 'char-executor', limit: 10
+  }).length, 0);
 });
