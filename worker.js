@@ -1,6 +1,90 @@
+const REAL_USER_CHAT_PREFIX = "/api/real-user-chat";
+const REAL_USER_CHAT_CAPABILITIES_PATH = REAL_USER_CHAT_PREFIX + "/capabilities";
+
+function jsonResponse(payload, status, extraHeaders) {
+  const headers = new Headers({
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store, max-age=0",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer"
+  });
+  Object.entries(extraHeaders || {}).forEach(([key, value]) => headers.set(key, value));
+  return new Response(JSON.stringify(payload), { status, headers });
+}
+
+function realUserChatCapabilities() {
+  return {
+    ok: true,
+    service: "maomao-real-user-chat",
+    protocolVersion: 1,
+    enabled: false,
+    status: "disabled",
+    reason: "server_authentication_and_persistence_not_configured",
+    networkingEnabled: false,
+    policyAllowlist: ["text", "image", "file", "voice", "sticker"],
+    explicitlyDenied: [
+      "redpacket",
+      "transfer",
+      "payment",
+      "collection",
+      "wallet",
+      "transaction_history",
+      "trade_record",
+      "top_up",
+      "withdraw",
+      "gift",
+      "family_card",
+      "intimate_pay"
+    ],
+    delivery: {
+      enabled: false,
+      serverAcknowledgements: false,
+      states: []
+    },
+    voiceCall: {
+      enabled: false,
+      reason: "separate_real_time_communication_service_not_configured"
+    },
+    videoCall: {
+      enabled: false
+    },
+    requirements: [
+      "authenticated_account_identity",
+      "server_authoritative_friend_relationship",
+      "durable_message_persistence",
+      "recipient_delivery_and_read_receipts"
+    ]
+  };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === REAL_USER_CHAT_CAPABILITIES_PATH) {
+      if (request.method !== "GET") {
+        return jsonResponse({
+          ok: false,
+          enabled: false,
+          error: "method_not_allowed"
+        }, 405, { Allow: "GET" });
+      }
+      return jsonResponse(realUserChatCapabilities(), 200);
+    }
+
+    // Keep the namespace reserved and fail closed until authentication,
+    // authoritative friend relationships, and durable message storage exist.
+    // Do not parse or accept a message body and never return a fake send ack.
+    if (url.pathname === REAL_USER_CHAT_PREFIX ||
+        url.pathname.startsWith(REAL_USER_CHAT_PREFIX + "/")) {
+      return jsonResponse({
+        ok: false,
+        enabled: false,
+        error: "real_user_chat_service_unavailable",
+        reason: "server_authentication_and_persistence_not_configured",
+        retryable: false
+      }, 503);
+    }
 
     // With html_handling="none", explicitly map the site root to the built desktop.
     if (url.pathname === "/" && request.method === "GET") {
