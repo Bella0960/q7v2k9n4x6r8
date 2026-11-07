@@ -47,7 +47,24 @@ Sessions use 256-bit random opaque tokens. The browser receives the token only a
 
 This is server implementation groundwork, not proof of deployed account service. There is no account recovery or email verification flow yet. Do not enable the feature until a D1 migration has been applied to staging and the required bindings/rate limits have been configured and tested.
 
-## 4. Proposed messaging API shape (not live)
+## 4. Friend-code and friend-request service groundwork
+
+The Worker contains server-owned friend handlers under `/api/real-user-chat/v1/friends`. The feature remains separately disabled unless `REAL_USER_FRIENDS_ENABLED="true"`, account auth is configured, the D1 friend tables exist, the D1 v2 active-code uniqueness index exists, and `AUTH_LIMITER` is available.
+
+- `POST /codes/rotate`: revoke all previous unrevoked friend codes for the current account, create a new 256-bit random code, store only its SHA-256 hash, and return the plaintext code once with a 15-minute expiry and `mao://friend/add?code=...` QR payload.
+- `DELETE /codes/me`: revoke the current account's active friend code immediately.
+- `POST /requests`: accept `requestId`, `code`, and optional `note`; resolve the QR code to an active account, reject self-add, blocks, existing friendship, and reverse pending requests; persist one pending request.
+- `GET /requests?direction=incoming|outgoing`: return at most 50 pending requests for the authenticated account only.
+- `POST /requests/{requestId}/accept|decline|cancel`: only the recipient can accept/decline; only the requester can cancel. The existing D1 acceptance trigger materializes the friendship.
+- `GET /friends`: return accepted, active, unblocked friends for the current account.
+- `DELETE /{accountId}`: remove the accepted friendship.
+- `POST /{accountId}/block` and `DELETE /{accountId}/block`: block/unblock the account. Existing D1 triggers remove the friendship and terminate pending requests when a block is added.
+
+The client supplies a stable request ID; repeated sends with the same ID return the existing pending request, including after the QR code expires. A partial unique index prevents more than one pending request for an unordered account pair. The v2 migration adds a partial unique index that permits only one unrevoked friend code per account. Friend code values are never stored in plaintext. Unsafe methods require same-origin HTTPS and every authenticated friend request is rate-limited by both IP and account handle.
+
+The capability document reports `friends.enabled` separately from account authentication and message delivery. Message delivery remains disabled. This is Worker/API groundwork only; the existing Contacts UI is not yet wired to these routes, and no Cloudflare D1 migration or service binding has been configured.
+
+## 5. Proposed messaging API shape (not live)
 
 All message endpoints below require an authenticated account. The account ID and sender identity are derived from a verified server-side session, never trusted from request JSON.
 
