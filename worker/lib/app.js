@@ -751,7 +751,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     return ok({
       configured: Boolean(row),
       version: row ? Number(row.version) : 0,
-      updatedAt: row ? Number(row.updated_at) : null
+      updatedAt: row ? Number(row.updated_at) : null,
+      ownedByCurrentDevice: Boolean(row && row.updated_by_device_id === device.id)
     });
   }
 
@@ -860,6 +861,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const currentVersion = await store.getCharacterContextVersion(userId, characterId);
     if (!currentVersion || Number(currentVersion.version) !== contextVersion) {
       throw new ApiError(409, 'STALE_CONTEXT', '本机聊天上下文版本已变化，请刷新后重新评估');
+    }
+    if (currentVersion.updated_by_device_id !== device.id) {
+      throw new ApiError(409, 'CONTEXT_NOT_ON_DEVICE', '最新聊天上下文由另一台设备更新，当前设备没有可验证的最新本地记录');
     }
     const config = readActivityExecutionConfig(env);
     if (!config) {
