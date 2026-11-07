@@ -313,6 +313,7 @@ if (!DatabaseSync) {
       assert.equal(aliceRegistration.response.status, 201, JSON.stringify(aliceRegistration.body));
       const aliceCookie = cookieFrom(aliceRegistration.response);
       assert.match(aliceCookie, /^__Host-mao_session=[a-f0-9]{64}$/);
+      assert.match(aliceRegistration.response.headers.get("set-cookie") || "", /HttpOnly; Secure; SameSite=Strict$/);
       assert.equal(aliceRegistration.response.headers.get("cache-control"), "no-store, max-age=0");
 
       const bobRegistration = await callWorker(env, authPrefix + "/register", "POST", {
@@ -412,6 +413,9 @@ if (!DatabaseSync) {
       assert.equal("displayName" in afterRemoval.body.relationships[0], false);
 
       const secondQr = await callWorker(env, friendsPrefix + "/codes/rotate", "POST", { cookie: bobCookie });
+      const firstCodeRow = database.prepare("SELECT revoked_at FROM real_user_friend_codes WHERE code_hash = ?")
+        .get(qrHash);
+      assert.ok(firstCodeRow.revoked_at > 0, "rotating the QR code revokes the previous code");
       const readd = await callWorker(env, friendsPrefix + "/requests", "POST", {
         cookie: aliceCookie,
         body: { requestId: "request_alice_bob_e2e_02", code: secondQr.body.code }
@@ -470,15 +474,23 @@ if (!DatabaseSync) {
       assert.equal(bobLogout.response.status, 200);
       const revokedSession = await callWorker(env, authPrefix + "/me", "GET", { cookie: bobCookie });
       assert.equal(revokedSession.response.status, 401);
+      const aliceStillLoggedIn = await callWorker(env, authPrefix + "/me", "GET", { cookie: aliceCookie });
+      assert.equal(aliceStillLoggedIn.response.status, 200,
+        "revoking one account session must not affect the other account");
       const bobLogin = await callWorker(env, authPrefix + "/login", "POST", {
         body: { handle: "bob_e2e", password: "bob secure passphrase 2026" }
       });
       assert.equal(bobLogin.response.status, 200, JSON.stringify(bobLogin.body));
       const freshBobCookie = cookieFrom(bobLogin.response);
       assert.match(freshBobCookie, /^__Host-mao_session=[a-f0-9]{64}$/);
+      assert.notEqual(freshBobCookie, bobCookie, "login must issue a fresh opaque session token");
       const restoredSession = await callWorker(env, authPrefix + "/me", "GET", { cookie: freshBobCookie });
       assert.equal(restoredSession.response.status, 200);
       assert.equal(restoredSession.body.account.id, bobId);
+      const bobRosterAfterLogin = await callWorker(
+        env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: freshBobCookie }
+      );
+      assert.deepEqual(bobRosterAfterLogin.body.friends.map(friend => friend.id), [aliceId]);
     } finally {
       database.close();
     }
