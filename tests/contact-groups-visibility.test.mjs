@@ -351,8 +351,8 @@ test('contact group metadata is covered by the existing full localStorage backup
 test('PWA cache contains the contact group policy module and has a new cache version', () => {
   assert.match(serviceWorker, /phone-app-pwa-v175/);
   assert.match(packageJson, /test:contact:groups/);
-  assert.match(serviceWorker, /phone\\/contact-identity\\.js\\?v=20261107v1/);
-  assert.match(serviceWorker, /contact-groups\\.js\\?v=20261107v2/);
+  assert.ok(serviceWorker.includes('./shared/js/phone/contact-identity.js?v=20261107v1'));
+  assert.ok(serviceWorker.includes('./shared/js/contact-groups.js?v=20261107v2'));
 });
 
 test('saving groups never overwrites malformed data already at the new storage key', () => {
