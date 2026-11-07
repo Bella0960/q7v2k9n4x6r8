@@ -3,7 +3,7 @@
  */
 const CACHE_NAME = 'phone-app-pwa-v180';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v180 release: route chat image shares through vision and the role avatar candidate library.
+// v180 release: add transactional role-avatar pairs, manual archive pairing and chat image recognition.
 const APP_SHELL = [
   './',
   './index.html',
