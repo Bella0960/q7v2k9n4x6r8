@@ -1044,6 +1044,32 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     return ok(result);
   }
 
+  async function getCharacterOutboundLifecycle(request, characterId, serverMessageId) {
+    const device = await authenticate(request);
+    const row = await store.getOutboundLifecycle({
+      userId: device.user_id || OWNER_USER_ID,
+      deviceId: device.id,
+      characterId,
+      serverMessageId
+    });
+    if (!row) {
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+    }
+    return ok({
+      serverMessageId: row.server_message_id,
+      characterId: row.character_id,
+      createdAt: Number(row.created_at),
+      deliveryStatus: row.delivery_status,
+      lifecycle: {
+        pushAcceptedAt: row.push_accepted_at == null ? null : Number(row.push_accepted_at),
+        deviceReceivedAt: row.device_received_at == null ? null : Number(row.device_received_at),
+        localSavedAt: row.local_saved_at == null ? null : Number(row.local_saved_at),
+        readAt: row.read_at == null ? null : Number(row.read_at),
+        readByDeviceId: row.read_by_device_id || null
+      }
+    });
+  }
+
   async function markCharacterOutboundReceived(request, characterId, serverMessageId) {
     const device = await authenticate(request);
     const result = await store.markOutboundReceived({
@@ -1671,6 +1697,15 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         if (method === 'POST') {
           return await acknowledgeCharacterOutboundMessage(request, characterId, characterOutboundAckMatch[2]);
         }
+      }
+
+      const outboundStatusMatch = /^\/api\/characters\/([^/]+)\/outbound\/([A-Za-z0-9_-]{16,128})\/status$/.exec(path);
+      if (outboundStatusMatch && readCharacterId(outboundStatusMatch[1]) && method === 'GET') {
+        return await getCharacterOutboundLifecycle(
+          request,
+          readCharacterId(outboundStatusMatch[1]),
+          outboundStatusMatch[2]
+        );
       }
 
       const outboundReceivedMatch = /^\/api\/characters\/([^/]+)\/outbound\/([A-Za-z0-9_-]{16,128})\/received$/.exec(path);
