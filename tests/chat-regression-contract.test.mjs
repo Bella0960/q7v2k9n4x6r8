@@ -13,6 +13,7 @@ const walletLedgerSource = read('shared/js/phone/wallet-ledger.js');
 const shopPage = read('wallet/shop.html');
 const takeoutPage = read('wallet/takeout.html');
 const walletPage = read('wallet/wallet.html');
+const closePayPage = read('wallet/close-pay.html');
 const roleFamilyCardsSource = read('shared/js/phone/role_family_cards.js');
 const chatNotifier = read('shared/js/chat-notifier.js');
 const navPage = read('shared/js/nav.js');
@@ -1293,7 +1294,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v190/);
+  assert.match(serviceWorker, /phone-app-pwa-v191/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1884,7 +1885,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v190/);
+  assert.match(serviceWorker, /phone-app-pwa-v191/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2869,4 +2870,34 @@ test('聊天、商店、外卖和钱包充值提现统一使用同一个钱包�
     'shop must not spend more than the wallet balance');
   assert.match(takeoutPage, /wd\.balance < total/,
     'takeout must not spend more than the wallet balance');
+});
+
+
+test('亲密付额度、对象和开关设置也与商店及外卖结算共用钱包锁', () => {
+  assert.match(closePayPage, /wallet-ledger\.js\?v=20261107v1/);
+  assert.match(closePayPage, /async function mutateData\(mutator\)/);
+  assert.match(closePayPage, /ledger\.runExclusive\(function \(\)/);
+  assert.match(closePayPage, /localStorage\.getItem\(KEY\) !== serialized/,
+    'close-pay settings are confirmed by exact readback');
+  for (const handler of [
+    "getElementById('cpSwitch').addEventListener('click', async function()",
+    "getElementById('pickerOverlay').addEventListener('click', async function(e)",
+    "getElementById('limitInput').addEventListener('change', async function()"
+  ]) {
+    assert.ok(closePayPage.includes(handler), handler + ' must await the shared mutation path');
+  }
+});
+
+test('商店、外卖亲密付必须验证额度和余额，且扣款未确认不能继续下单', () => {
+  for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
+    assert.match(source, /async function doPay\(\)/, name + ' checkout must await the ledger lock');
+    assert.match(source, /ledger\.runExclusive\(function \(\)/, name + ' must use shared wallet lock');
+    assert.match(source, /!cp\.enabled \|\| \(Number\(cp\.used\) \|\| 0\) \+ total > \(Number\(cp\.limit\) \|\| 0\)/,
+      name + ' must revalidate close-pay quota under the lock');
+    assert.match(source, /wd\.balance < total/, name + ' must reject insufficient balance');
+    assert.match(source, /localStorage\.getItem\('workData'\) !== walletSerialized/,
+      name + ' must verify wallet write before continuing');
+    assert.match(source, /closePayQuotaCommitted = true/,
+      name + ' must distinguish quota commit from an incomplete transaction');
+  }
 });
