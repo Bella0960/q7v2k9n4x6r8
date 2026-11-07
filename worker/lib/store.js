@@ -766,7 +766,10 @@ class CloudStore {
          COALESCE(SUM(CASE WHEN q.status = 'running' THEN 1 ELSE 0 END), 0) AS running,
          COALESCE(SUM(CASE WHEN q.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
          COALESCE(SUM(CASE WHEN q.status = 'failed' THEN 1 ELSE 0 END), 0) AS failed,
-         COALESCE(SUM(CASE WHEN q.status = 'superseded' THEN 1 ELSE 0 END), 0) AS superseded
+         COALESCE(SUM(CASE WHEN q.status = 'superseded' THEN 1 ELSE 0 END), 0) AS superseded,
+         COALESCE(SUM(CASE WHEN q.status NOT IN
+           ('waiting', 'retry', 'running', 'completed', 'failed', 'superseded')
+           THEN 1 ELSE 0 END), 0) AS other
        FROM activity_queue q
        INNER JOIN devices d ON d.id = q.device_id
        WHERE d.user_id = ?`,
@@ -779,7 +782,8 @@ class CloudStore {
       running: Number(row.running || 0),
       completed: Number(row.completed || 0),
       failed: Number(row.failed || 0),
-      superseded: Number(row.superseded || 0)
+      superseded: Number(row.superseded || 0),
+      other: Number(row.other || 0)
     };
   }
 
