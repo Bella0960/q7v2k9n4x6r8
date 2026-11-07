@@ -1288,7 +1288,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v174/);
+  assert.match(serviceWorker, /phone-app-pwa-v175/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
 });
 
@@ -1797,6 +1797,12 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /tick\(\);/);
   assert.match(chatNotifier, /startProactiveScheduler\(\)/);
   assert.match(chatNotifier, /executeCloudProactiveCandidate/);
+  assert.match(chatNotifier, /ensureCloudExecutorPresence/);
+  assert.match(chatNotifier, /updatePresenceHeartbeat\(true\)/);
+  assert.match(chatNotifier, /updateCharacterLease\(key, 'acquire'\)/);
+  assert.match(chatNotifier, /ownedByCurrentDevice !== true/);
+  assert.match(chatNotifier, /hasStoredCloudDeviceCredentials/);
+  assert.match(chatNotifier, /cloud_device_v1/);
   assert.match(chatNotifier, /getCharacterContextVersion\(roleId\)/);
   assert.match(chatNotifier, /enqueueAutonomyActivity\(roleId, Number\(context\.version\)\)/);
   assert.match(chatNotifier, /claimAutonomyActivity\(roleId\)/);
@@ -1807,12 +1813,12 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
 });
 
 test('proactive contact notifier is loaded on home and navigation pages and precached by PWA', () => {
-  assert.match(homePage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(navPage, /chat-notifier\.js\?v=20261102v3/);
-  assert.match(detail, /chat-notifier\.js\?v=20261102v3/);
+  assert.match(homePage, /chat-notifier\.js\?v=20261107v1/);
+  assert.match(navPage, /chat-notifier\.js\?v=20261107v1/);
+  assert.match(detail, /chat-notifier\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /phone-app-pwa-v173/);
-  assert.match(serviceWorker, /chat-notifier\.js\?v=20261102v3/);
+  assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v17/);
   assert.match(serviceWorker, /chat-followup-policy/);
 });
