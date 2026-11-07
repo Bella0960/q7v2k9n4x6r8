@@ -560,6 +560,10 @@ function renderRoleList() {
 }
 
 function showAppView(viewId) {
+    if (viewId !== 'profileView') {
+        avatarPairDraftIds = [];
+        avatarPairDraftRoleId = '';
+    }
     const viewIds = ['listView', 'profileView', 'relationshipView', 'npcProfileView', 'npcEditorView', 'lifeView', 'editorView'];
     viewIds.forEach(function (id) {
         const el = document.getElementById(id);
