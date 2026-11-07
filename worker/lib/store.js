@@ -1068,7 +1068,6 @@ class CloudStore {
       id
     )[0] || null;
     const identical = existing &&
-      existing.device_id === deviceId &&
       existing.character_id === characterId &&
       existing.kind === (activity.kind || 'contact') &&
       existing.dedupe_key === dedupeKey &&
@@ -1076,6 +1075,13 @@ class CloudStore {
     return identical
       ? { inserted: false, duplicate: true, activity: existing }
       : { inserted: false, conflict: true, activity: existing };
+  }
+
+  getActivityByDedupeKey(dedupeKey) {
+    return this.exec(
+      'SELECT * FROM activity_queue WHERE dedupe_key = ?',
+      dedupeKey
+    )[0] || null;
   }
 
   countPendingActivitiesForCharacter(userId, characterId) {
