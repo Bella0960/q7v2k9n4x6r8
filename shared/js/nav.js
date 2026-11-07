@@ -183,9 +183,13 @@
     // 身份层失败时仍加载 notifier，旧会话继续沿用原始 conversation ID。
     var notifierScript = document.createElement('script');
     notifierScript.src = appBase + 'shared/js/chat-notifier.js?v=20261107v4';
+    var directoryScript = document.createElement('script');
+    directoryScript.src = appBase + 'shared/js/phone/contact-directory.js?v=20261107v1';
     var identityScript = document.createElement('script');
     identityScript.src = appBase + 'shared/js/phone/contact-identity.js?v=20261107v1';
-    identityScript.onload = function () { document.head.appendChild(notifierScript); };
-    identityScript.onerror = function () { document.head.appendChild(notifierScript); };
+    directoryScript.onload = function () { document.head.appendChild(notifierScript); };
+    directoryScript.onerror = function () { document.head.appendChild(notifierScript); };
+    identityScript.onload = function () { document.head.appendChild(directoryScript); };
+    identityScript.onerror = function () { document.head.appendChild(directoryScript); };
     document.head.appendChild(identityScript);
 })();
