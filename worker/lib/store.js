@@ -158,13 +158,15 @@ class CloudStore {
   }
 
   cleanupDevicePairingTokens(now) {
-    // Keep a full rolling-hour audit window so consuming a token does not
-    // reset the issuer's pairing rate limit.
+    // Keep recent consumed/expired records for the rolling-hour rate-limit
+    // audit, but never delete an unexpired token merely because it is old.
     const rows = this.exec(
       `DELETE FROM device_pairing_tokens
        WHERE created_at < ?
+         AND (consumed_at IS NOT NULL OR expires_at <= ?)
        RETURNING token_hash`,
-      now - 3600000
+      now - 3600000,
+      now
     );
     return rows.length;
   }
