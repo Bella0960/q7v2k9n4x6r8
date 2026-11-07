@@ -1041,15 +1041,23 @@
         
             // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
             if (payMethod === 'close_pay') {
+              var oldWalletRaw = null;
+              var walletSerialized = '';
+              var closePaySerialized = '';
+              var closePayQuotaCommitted = false;
               try {
                 var cp = getClosePay();
+                if (!cp) {
+                  showToast('亲密付设置不可用，订单未完成');
+                  return;
+                }
                 if (cp) {
                   // 重新校验亲密付额度与真实余额，结算全程处于钱包全局锁内。
           if (!cp.enabled || (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
             showToast('亲密付额度已变化，请重新选择支付方式');
             return;
           }
-          var oldWalletRaw = localStorage.getItem('workData');
+          oldWalletRaw = localStorage.getItem('workData');
           var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
           if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
           if (!Array.isArray(wd.history)) wd.history = [];
@@ -1061,7 +1069,7 @@
           wd.history.unshift({ type: 'expense', category: 'close_pay',
             title: '亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
             amount: total, time: Date.now() });
-          var walletSerialized = JSON.stringify(wd);
+          walletSerialized = JSON.stringify(wd);
           localStorage.setItem('workData', walletSerialized);
           if (localStorage.getItem('workData') !== walletSerialized) {
             showToast('钱包扣款未能确认，订单未完成');
@@ -1072,7 +1080,7 @@
           cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
           if (!Array.isArray(cp.history)) cp.history = [];
           cp.history.push({ amount: total, note: '商店 · ' + itemsDesc, time: Date.now() });
-          var closePaySerialized = JSON.stringify(cp);
+          closePaySerialized = JSON.stringify(cp);
           localStorage.setItem('close_pay', closePaySerialized);
           if (localStorage.getItem('close_pay') !== closePaySerialized) {
             try {
@@ -1084,6 +1092,7 @@
             showToast('亲密付额度未能保存，已尝试撤回钱包扣款');
             return;
           }
+          closePayQuotaCommitted = true;
 
           // 给对方发一条聊天消息
                   if (cp.roleId) {
@@ -1098,9 +1107,21 @@
                     localStorage.setItem(key, JSON.stringify(arr));
                   }
                 }
-              } catch(e) {}
+              } catch(e) {
+                // 如果异常发生在亲密付额度提交前，尽量恢复本次刚写入的钱包快照。
+                if (!closePayQuotaCommitted && walletSerialized) {
+                  try {
+                    if (localStorage.getItem('workData') === walletSerialized) {
+                      if (oldWalletRaw == null) localStorage.removeItem('workData');
+                      else localStorage.setItem('workData', oldWalletRaw);
+                    }
+                  } catch (rollbackError) {}
+                }
+                showToast('亲密付操作未能确认，订单未完成');
+                return;
+              }
             }
-        
+
             // 记账：写 finance_records
             try {
               const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
