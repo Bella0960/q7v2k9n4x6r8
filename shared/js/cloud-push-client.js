@@ -535,7 +535,123 @@
     var pairCodePanel = document.getElementById('cloudPairCodePanel');
     var pairCodeOutput = document.getElementById('cloudPairCodeOutput');
     var pairCodeCopyButton = document.getElementById('cloudPairCodeCopyButton');
-    if (!toggle && !testRow && !revokeRow && !pairCreateRow && !pairConnectButton) return;
+    var roleSelect = document.getElementById('cloudRoleSelect');
+    var roleAutonomyMode = document.getElementById('cloudCharacterAutonomyMode');
+    var roleAutonomySave = document.getElementById('cloudRoleAutonomySave');
+    var roleTimezone = document.getElementById('cloudRoleTimezone');
+    var roleActiveStart = document.getElementById('cloudRoleActiveStart');
+    var roleActiveEnd = document.getElementById('cloudRoleActiveEnd');
+    var roleBusyStart = document.getElementById('cloudRoleBusyStart');
+    var roleBusyEnd = document.getElementById('cloudRoleBusyEnd');
+    var roleAsleepStart = document.getElementById('cloudRoleAsleepStart');
+    var roleAsleepEnd = document.getElementById('cloudRoleAsleepEnd');
+    var roleAway = document.getElementById('cloudRoleAway');
+    var roleScheduleSave = document.getElementById('cloudRoleScheduleSave');
+    if (!toggle && !testRow && !revokeRow && !pairCreateRow && !pairConnectButton &&
+        !autonomyToggle && !roleSelect && !roleAutonomySave && !roleScheduleSave) return;
+
+    function localCharacters() {
+      try {
+        if (global.PhoneStorage && typeof global.PhoneStorage.getCharacters === 'function') {
+          var stored = global.PhoneStorage.getCharacters();
+          if (Array.isArray(stored)) return stored;
+        }
+        var raw = localStorage.getItem('ai_custom_characters');
+        var parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        console.warn('[cloud] 无法读取本机角色列表', error);
+        return [];
+      }
+    }
+
+    function setRoleControlsDisabled(disabled) {
+      [roleAutonomyMode, roleAutonomySave, roleTimezone, roleActiveStart, roleActiveEnd,
+        roleBusyStart, roleBusyEnd, roleAsleepStart, roleAsleepEnd, roleAway, roleScheduleSave]
+        .forEach(function (element) {
+          if (element) element.disabled = !!disabled;
+        });
+    }
+
+    function minuteToClock(value) {
+      var minute = Number(value);
+      if (!Number.isInteger(minute) || minute < 0 || minute > 1439) return '';
+      return String(Math.floor(minute / 60)).padStart(2, '0') + ':' +
+        String(minute % 60).padStart(2, '0');
+    }
+
+    function firstWindow(windows) {
+      return Array.isArray(windows) && windows.length ? windows[0] : null;
+    }
+
+    function fillWindow(startInput, endInput, windows) {
+      var windowValue = firstWindow(windows);
+      if (startInput) startInput.value = windowValue ? minuteToClock(windowValue.startMinute) : '';
+      if (endInput) endInput.value = windowValue ? minuteToClock(windowValue.endMinute) : '';
+    }
+
+    function fillRoleSchedule(schedule) {
+      var value = schedule || {};
+      if (roleActiveStart) roleActiveStart.value = '';
+      if (roleActiveEnd) roleActiveEnd.value = '';
+      if (roleBusyStart) roleBusyStart.value = '';
+      if (roleBusyEnd) roleBusyEnd.value = '';
+      if (roleAsleepStart) roleAsleepStart.value = '';
+      if (roleAsleepEnd) roleAsleepEnd.value = '';
+      if (roleAway) roleAway.checked = value.away === true;
+      fillWindow(roleActiveStart, roleActiveEnd, value.active);
+      fillWindow(roleBusyStart, roleBusyEnd, value.busy);
+      fillWindow(roleAsleepStart, roleAsleepEnd, value.asleep);
+    }
+
+    async function loadSelectedRoleSettings() {
+      var roleId = roleSelect && roleSelect.value;
+      setRoleControlsDisabled(!roleId || !readDevice());
+      if (!roleId || !readDevice()) return;
+      try {
+        var results = await Promise.all([
+          getCharacterAutonomy(roleId),
+          getCharacterSchedule(roleId)
+        ]);
+        if (roleSelect.value !== roleId) return;
+        var autonomy = results[0] || {};
+        var scheduleResult = results[1] || {};
+        if (roleAutonomyMode) {
+          roleAutonomyMode.value = autonomy.inherited ? 'inherit' :
+            autonomy.enabled ? 'on' : 'off';
+        }
+        if (roleTimezone) roleTimezone.value = scheduleResult.timeZone || '';
+        fillRoleSchedule(scheduleResult.configured ? scheduleResult.schedule : {});
+        setRoleControlsDisabled(false);
+      } catch (error) {
+        setRoleControlsDisabled(true);
+        setStatusText('读取角色云端设置失败：' + (error.message || '未知错误'));
+      }
+    }
+
+    function populateLocalCharacters() {
+      if (!roleSelect) return;
+      var selected = roleSelect.value;
+      var roles = localCharacters().filter(function (role) {
+        return role && role.id != null && String(role.id).trim() !== '';
+      });
+      roleSelect.innerHTML = '';
+      roles.forEach(function (role) {
+        var option = document.createElement('option');
+        option.value = String(role.id);
+        option.textContent = String(role.name || role.nickname || '未命名角色');
+        roleSelect.appendChild(option);
+      });
+      if (!roles.length) {
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '本机暂无角色';
+        roleSelect.appendChild(empty);
+      } else if (roles.some(function (role) { return String(role.id) === selected; })) {
+        roleSelect.value = selected;
+      }
+      loadSelectedRoleSettings();
+    }
 
     var autonomyToggle = document.getElementById('cloudAutonomyToggle');
     if (autonomyToggle) {
@@ -551,6 +667,76 @@
           setStatusText('保存授权失败：' + (error.message || '未知错误'));
         } finally {
           autonomyToggle.disabled = false;
+        }
+      });
+    }
+
+    if (roleSelect) {
+      roleSelect.addEventListener('change', loadSelectedRoleSettings);
+      populateLocalCharacters();
+    }
+
+    if (roleAutonomySave) {
+      roleAutonomySave.addEventListener('click', async function () {
+        var roleId = roleSelect && roleSelect.value;
+        if (!roleId) return;
+        var value = roleAutonomyMode ? roleAutonomyMode.value : 'inherit';
+        var enabled = value === 'inherit' ? null : value === 'on';
+        roleAutonomySave.disabled = true;
+        try {
+          await setCharacterAutonomy(roleId, enabled);
+          setStatusText('角色授权已保存');
+        } catch (error) {
+          setStatusText('保存角色授权失败：' + (error.message || '未知错误'));
+        } finally {
+          roleAutonomySave.disabled = false;
+        }
+      });
+    }
+
+    function readOptionalWindow(startInput, endInput, label) {
+      var start = startInput && startInput.value.trim();
+      var end = endInput && endInput.value.trim();
+      if (!start && !end) return [];
+      if (!start || !end) throw new Error(label + '需要同时填写开始和结束时间');
+      return [{ start: start, end: end }];
+    }
+
+    if (roleScheduleSave) {
+      roleScheduleSave.addEventListener('click', async function () {
+        var roleId = roleSelect && roleSelect.value;
+        if (!roleId) return;
+        var timeZone = roleTimezone && roleTimezone.value.trim();
+        var activeStart = roleActiveStart && roleActiveStart.value.trim();
+        var activeEnd = roleActiveEnd && roleActiveEnd.value.trim();
+        if (!timeZone) {
+          setStatusText('请填写角色使用的 IANA 时区');
+          return;
+        }
+        if (!activeStart || !activeEnd) {
+          setStatusText('请填写允许主动联系的开始和结束时间');
+          return;
+        }
+        var schedule;
+        try {
+          schedule = {
+            active: [{ start: activeStart, end: activeEnd }],
+            busy: readOptionalWindow(roleBusyStart, roleBusyEnd, '忙碌时段'),
+            asleep: readOptionalWindow(roleAsleepStart, roleAsleepEnd, '休息时段'),
+            away: Boolean(roleAway && roleAway.checked)
+          };
+        } catch (error) {
+          setStatusText(error.message);
+          return;
+        }
+        roleScheduleSave.disabled = true;
+        try {
+          await setCharacterSchedule(roleId, timeZone, schedule);
+          setStatusText('角色时区与作息已保存；生效时间由该时区决定');
+        } catch (error) {
+          setStatusText('保存角色作息失败：' + (error.message || '未知错误'));
+        } finally {
+          roleScheduleSave.disabled = false;
         }
       });
     }
@@ -640,11 +826,15 @@
             ? '设备已配对，推送订阅已连接'
             : '设备已配对；当前浏览器不支持 Web Push');
           await refreshSettings();
+          populateLocalCharacters();
         } catch (error) {
           setStatusText(error.deviceRegistered
             ? '设备已配对，但推送订阅未完成：' + (error.message || '未知错误')
             : '设备配对失败：' + (error.message || '未知错误'));
-          if (error.deviceRegistered) await refreshSettings();
+          if (error.deviceRegistered) {
+            await refreshSettings();
+            populateLocalCharacters();
+          }
         } finally {
           pairConnectButton.disabled = false;
         }
