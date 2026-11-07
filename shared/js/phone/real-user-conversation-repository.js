@@ -174,6 +174,18 @@
         };
     }
 
+    function sameMessageContent(left, right) {
+        var a = clone(left);
+        var b = clone(right);
+        delete a.createdAt;
+        delete b.createdAt;
+        delete a.sender;
+        delete b.sender;
+        delete a.deliveryState;
+        delete b.deliveryState;
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
+
     function writeHistory(ref, messages, createdAt) {
         var now = Date.now();
         var record = {
@@ -219,7 +231,7 @@
         if (!current.ok) return current;
         var existing = current.messages.find(function (item) { return item.mid === message.mid; });
         if (existing) {
-            if (JSON.stringify(existing) === JSON.stringify(message)) {
+            if (sameMessageContent(existing, message)) {
                 return {
                     ok: true,
                     action: 'duplicate_delivery',
