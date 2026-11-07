@@ -92,7 +92,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0009 建立云推送、活动幂等、上下文来源与结果恢复结构', async () => {
+test('迁移 0001–0010 建立云推送、活动幂等、上下文来源与消息生命周期回执结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -140,6 +140,10 @@ test('迁移 0001–0009 建立云推送、活动幂等、上下文来源与结�
   }
   const contextVersionColumns = testDb.query("PRAGMA table_info('character_context_versions')").map(row => String(row.name));
   assert.ok(contextVersionColumns.includes('updated_by_device_id'), '上下文版本必须记录最后更新设备');
+  const outboundColumns = testDb.query("PRAGMA table_info('outbound_messages')").map(row => String(row.name));
+  for (const column of ['push_accepted_at', 'device_received_at', 'local_saved_at', 'read_at', 'read_by_device_id']) {
+    assert.ok(outboundColumns.includes(column), `出站消息缺少生命周期字段 ${column}`);
+  }
   const deliveryColumns = testDb.query("PRAGMA table_info('push_deliveries')").map(row => String(row.name));
   for (const column of ['lease_owner', 'lease_until', 'next_attempt_at', 'attempt_count', 'updated_at']) {
     assert.ok(deliveryColumns.includes(column), `推送投递缺少恢复字段 ${column}`);
@@ -149,7 +153,7 @@ test('迁移 0001–0009 建立云推送、活动幂等、上下文来源与结�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 9);
+  assert.equal(versions.length, 10);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -159,7 +163,8 @@ test('迁移 0001–0009 建立云推送、活动幂等、上下文来源与结�
     '0006_outbound_inbox_index',
     '0007_activity_dedupe',
     '0008_context_source_device',
-    '0009_activity_result_staging'
+    '0009_activity_result_staging',
+    '0010_outbound_lifecycle_receipts'
   ]);
 });
 
@@ -3339,4 +3344,111 @@ test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Pu
   const dispatchIndex = workerSource.indexOf('dispatchPendingOutboundPushes', recoveryIndex);
   assert.ok(recoveryIndex >= 0 && dispatchIndex > recoveryIndex,
     '定时维护必须先恢复暂存收件箱，再发送对应 Push');
+});
+
+
+test('出站消息分别记录 Push 接受、设备收到、本地保存与用户已读', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const messageId = 'autonomy_lifecycle_message_123456';
+  const inserted = ctx.store.enqueueOutboundMessage({
+    id: 'out_' + messageId,
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-lifecycle',
+    serverMessageId: messageId,
+    dedupeKey: 'autonomy:lifecycle:1',
+    payload: { type: 'text', text: '状态回执测试消息。' },
+    now
+  });
+  assert.equal(inserted.inserted, true);
+
+  const receivedBeforePush = await ctx.asJson(
+    '/api/characters/char-lifecycle/outbound/' + messageId + '/received',
+    { method: 'POST', device }
+  );
+  assert.equal(receivedBeforePush.status, 200);
+  assert.equal(receivedBeforePush.payload.received, true);
+  assert.equal(receivedBeforePush.payload.push_accepted_at, null);
+
+  const readBeforeSave = await ctx.asJson(
+    '/api/characters/char-lifecycle/outbound/' + messageId + '/read',
+    { method: 'POST', device }
+  );
+  assert.equal(readBeforeSave.status, 409);
+  assert.equal(readBeforeSave.payload.error.code, 'OUTBOUND_NOT_SAVED');
+
+  const saved = await ctx.asJson(
+    '/api/characters/char-lifecycle/outbound/' + messageId + '/ack',
+    { method: 'POST', device }
+  );
+  assert.equal(saved.status, 200);
+  assert.equal(saved.payload.acknowledged, true);
+  assert.ok(saved.payload.local_saved_at);
+  assert.ok(saved.payload.device_received_at);
+
+  const read = await ctx.asJson(
+    '/api/characters/char-lifecycle/outbound/' + messageId + '/read',
+    { method: 'POST', device }
+  );
+  assert.equal(read.status, 200);
+  assert.equal(read.payload.read, true);
+  assert.ok(read.payload.read_at);
+  assert.equal(read.payload.read_by_device_id, device.deviceId);
+
+  const repeatedRead = await ctx.asJson(
+    '/api/characters/char-lifecycle/outbound/' + messageId + '/read',
+    { method: 'POST', device }
+  );
+  assert.equal(repeatedRead.status, 200);
+  assert.equal(repeatedRead.payload.alreadyRead, true);
+  assert.equal(repeatedRead.payload.read_at, read.payload.read_at);
+
+  const repeatedReceived = await ctx.asJson(
+    '/api/characters/char-lifecycle/outbound/' + messageId + '/received',
+    { method: 'POST', device }
+  );
+  assert.equal(repeatedReceived.status, 200);
+  assert.equal(repeatedReceived.payload.alreadyReceived, true);
+  assert.equal(repeatedReceived.payload.local_saved_at, saved.payload.local_saved_at);
+});
+
+test('出站生命周期回执不能由其他设备或其他角色伪造', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const other = makeDevice();
+  const pairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device });
+  assert.equal(pairing.status, 200);
+  const paired = await registerDevice(ctx, other, { pairingToken: pairing.payload.pairingToken });
+  assert.equal(paired.status, 200);
+
+  const messageId = 'autonomy_lifecycle_isolation_123456';
+  ctx.store.enqueueOutboundMessage({
+    id: 'out_' + messageId,
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-owner-only',
+    serverMessageId: messageId,
+    dedupeKey: 'autonomy:lifecycle:isolation',
+    payload: { type: 'text', text: '隔离测试。' },
+    now
+  });
+
+  for (const suffix of ['received', 'read', 'ack']) {
+    const response = await ctx.asJson(
+      '/api/characters/char-owner-only/outbound/' + messageId + '/' + suffix,
+      { method: 'POST', device: other }
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.payload.error.code, 'OUTBOUND_MESSAGE_NOT_FOUND');
+  }
+  const wrongCharacter = await ctx.asJson(
+    '/api/characters/someone-else/outbound/' + messageId + '/received',
+    { method: 'POST', device }
+  );
+  assert.equal(wrongCharacter.status, 404);
 });
