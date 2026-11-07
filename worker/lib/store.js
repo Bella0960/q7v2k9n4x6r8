@@ -181,10 +181,27 @@ class CloudStore {
   }
 
   upsertSubscription(subscription) {
+    // Re-check authorization at the write boundary. A request can pass
+    // authenticate() and then be overtaken by a concurrent device revocation.
+    // Store operations are synchronous, so this guard and the write below
+    // cannot be interleaved by another Durable Object request.
+    const device = this.exec(
+      'SELECT id FROM devices WHERE id = ? AND revoked_at IS NULL',
+      subscription.deviceId
+    )[0];
+    if (!device) return null;
+
     const existing = this.exec(
       'SELECT * FROM push_subscriptions WHERE endpoint = ?',
       subscription.endpoint
     )[0];
+    if (existing && existing.device_id !== subscription.deviceId) {
+      const previousOwner = this.getDevice(existing.device_id);
+      // A subscription may move only when its previous device was revoked.
+      // Never let a second live device silently take over an active endpoint.
+      if (!previousOwner || previousOwner.revoked_at == null) return null;
+    }
+
     if (existing) {
       this.exec(
         `UPDATE push_subscriptions
