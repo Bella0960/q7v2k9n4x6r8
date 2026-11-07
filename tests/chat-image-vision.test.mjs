@@ -175,11 +175,12 @@ test('candidate assets share the original media blob and do not change the activ
   assert.ok(avatarLibrarySource.includes("return { ok: true, value: copyItem(item, next.activeId), meta: { linked: true } }"));
 });
 
-test('deleted chat images release only chat references after the deletion is saved', () => {
+test('deleted chat images release only chat references after single or bulk deletion is saved', () => {
   assert.ok(chatDetailSource.includes('function releaseDeletedChatImageReferences(messages)'));
   assert.ok(chatDetailSource.includes("String(message.assetId),\n                        'chat-message',"));
   assert.ok(chatDetailSource.includes('if (!saveMessages(keep))'));
   assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences(removedMessages)'));
+  assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences([removedMessage])'));
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
