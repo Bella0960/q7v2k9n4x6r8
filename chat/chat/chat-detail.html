@@ -6322,47 +6322,25 @@
                         var avatarRoleId = aliasRoleId || currentCharacter.id;
                         if (replySaved && !isGroupChat && window.RoleAvatarLibrary &&
                             typeof window.RoleAvatarLibrary.addAsset === 'function') {
-                            // 双图配对必须先成功保存两张头像，再创建关系；失败时回滚本轮新建的孤立条目。
+                            // 配对保存统一走头像库的事务接口，集中处理去重、关系冲突与失败回滚。
                             for (var avatarPairIndex = 0; avatarPairIndex < avatarPairs.length; avatarPairIndex++) {
                                 var avatarPair = avatarPairs[avatarPairIndex];
                                 var pairImages = avatarPair && Array.isArray(avatarPair.images) ? avatarPair.images.slice(0, 2) : [];
                                 if (pairImages.length !== 2) continue;
-                                var pairSavedItems = [];
-                                var pairSaveFailed = false;
-                                for (var pairImageIndex = 0; pairImageIndex < 2; pairImageIndex++) {
-                                    var pairImage = pairImages[pairImageIndex];
-                                    var pairItemResult = await window.RoleAvatarLibrary.addAsset(
+                                var pairSaveResult = typeof window.RoleAvatarLibrary.addAssetPair === 'function'
+                                    ? await window.RoleAvatarLibrary.addAssetPair(
                                         avatarRoleId,
-                                        pairImage.assetId,
-                                        { source: 'chat', label: pairImageIndex === 0 ? '配对头像 · A' : '配对头像 · B' }
-                                    );
-                                    if (!pairItemResult || !pairItemResult.ok || !pairItemResult.value) {
-                                        pairSaveFailed = true;
-                                        break;
-                                    }
-                                    pairSavedItems.push(pairItemResult);
-                                }
-                                var pairLinkResult = null;
-                                if (!pairSaveFailed && pairSavedItems.length === 2 &&
-                                    typeof window.RoleAvatarLibrary.linkPair === 'function') {
-                                    pairLinkResult = window.RoleAvatarLibrary.linkPair(
-                                        avatarRoleId,
-                                        pairSavedItems[0].value.id,
-                                        pairSavedItems[1].value.id,
-                                        { source: 'chat', label: '聊天配对头像' }
-                                    );
-                                }
-                                if (pairLinkResult && pairLinkResult.ok) {
+                                        pairImages[0].assetId,
+                                        pairImages[1].assetId,
+                                        { label: '聊天配对头像' }
+                                    )
+                                    : null;
+                                if (pairSaveResult && pairSaveResult.ok) {
                                     if (typeof showToast === 'function') showToast('TA 把这两张图片作为一组配对头像收藏了，当前头像没有改变');
-                                } else {
-                                    // 仅回滚本轮新建且尚未参与其他配对的条目；原有收藏始终保留。
-                                    for (var rollbackIndex = 0; rollbackIndex < pairSavedItems.length; rollbackIndex++) {
-                                        var rollbackItem = pairSavedItems[rollbackIndex];
-                                        if (rollbackItem.meta && rollbackItem.meta.linked && window.RoleAvatarLibrary.remove) {
-                                            await window.RoleAvatarLibrary.remove(avatarRoleId, rollbackItem.value.id);
-                                        }
-                                    }
-                                    if (typeof showToast === 'function') showToast('这组配对暂未保存成功，原有头像收藏没有被更改');
+                                } else if (typeof showToast === 'function') {
+                                    showToast(pairSaveResult && pairSaveResult.meta && pairSaveResult.meta.cleanupRequired
+                                        ? '配对保存遇到问题，有一张未完成的候选需要在头像档案中检查'
+                                        : '这组配对暂未保存成功，原有头像收藏没有被更改');
                                 }
                             }
                             // 非配对请求仍然只收藏单张候选。
