@@ -390,6 +390,24 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
     now: base
   });
   ctx.store.logExecution({
+    id: 'readiness-own-success',
+    deviceId: device.deviceId,
+    kind: 'autonomy_tick',
+    status: 'claimed',
+    reasonCode: 'claimed',
+    detail: { taskId: 'another-private-task-id' },
+    now: base - 1000
+  });
+  ctx.store.logExecution({
+    id: 'readiness-own-old-reason',
+    deviceId: device.deviceId,
+    kind: 'autonomy_tick',
+    status: 'deferred',
+    reasonCode: 'outside_window',
+    detail: { taskId: 'old-private-task-id' },
+    now: base - 86400001
+  });
+  ctx.store.logExecution({
     id: 'readiness-other-reason',
     deviceId: otherDevice.deviceId,
     kind: 'autonomy_tick',
