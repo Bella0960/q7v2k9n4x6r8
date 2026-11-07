@@ -13,7 +13,7 @@
     <script src="../../shared/js/phone/phone_storage.js"></script>
     <script src="../../shared/js/phone/storage/repository.js"></script>
     <script src="../../shared/js/phone/storage/media-repository.js?v=20261106v1"></script>
-    <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v1"></script>
+    <script src="../../shared/js/phone/role-sticker-library.js?v=20261107v2"></script>
     <script src="../../shared/js/phone/phone_api.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/image-generation.js?v=20261106v1"></script>
     <script src="../../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
@@ -5857,6 +5857,27 @@
             }
             if (sharedTimelinePrompt) systemPrompt += '\n\n' + sharedTimelinePrompt;
 
+            // 只在单人线上聊天、普通可见回复中提供本角色已收藏的表情目录。
+            // 群聊、旁白、静默任务、重玩和后台 context-only 回合都不触发自动表情。
+            var roleStickerCatalog = [];
+            if (!isGroupChat && !silent && !contextOnly && !isRegen && presenceMode === 'online' &&
+                window.RoleStickerLibrary &&
+                typeof window.RoleStickerLibrary.resolveSelected === 'function' &&
+                typeof window.RoleStickerLibrary.buildReplyPrompt === 'function') {
+                try {
+                    var roleStickerLibraries = JSON.parse(localStorage.getItem('sticker_libraries') || '[]');
+                    roleStickerCatalog = window.RoleStickerLibrary.resolveSelected(
+                        aliasRoleId || currentCharacter.id,
+                        roleStickerLibraries,
+                        16
+                    );
+                    var roleStickerPrompt = window.RoleStickerLibrary.buildReplyPrompt(roleStickerCatalog);
+                    if (roleStickerPrompt) systemPrompt += '\\n\\n' + roleStickerPrompt;
+                } catch (stickerPromptError) {
+                    roleStickerCatalog = [];
+                }
+            }
+
             // 单聊中的亲属卡/亲密付是虚拟互动，不触达真实支付。只有剧情自然适合时才发放，不要每轮强行送卡。
             systemPrompt += '\n\n【单聊虚拟亲属卡 / 亲密付规则】\n' +
                 '仅在私聊、并且符合你当前人设、关系、经济状况与剧情时，你可以主动赠予对方一张虚拟亲属卡或亲密付卡；不要每次回复都送，也不要把它说成真实银行业务。\n' +
@@ -6010,7 +6031,9 @@
                 lastPaintedStreamText = typeof text === 'string' ? text : '';
                 // 同步快照，供 pagehide 时把半截消息落库
                 inflightSnapshot = {
-                    text: lastPaintedStreamText,
+                    text: window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function'
+                        ? window.RoleStickerLibrary.stripStreamMarker(lastPaintedStreamText)
+                        : lastPaintedStreamText,
                     voiceMode: presenceMode || 'online',
                     groupName: groupReplyPick ? groupReplyPick.name : undefined,
                     memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined
@@ -6025,6 +6048,9 @@
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
 
+                if (window.RoleStickerLibrary && typeof window.RoleStickerLibrary.stripStreamMarker === 'function') {
+                    tmpText = window.RoleStickerLibrary.stripStreamMarker(tmpText);
+                }
                 if (!tmpText) return;
 
                 if (!streamBubble) {
@@ -6125,6 +6151,14 @@
                     // ---- 标记剥离 → 清洗 → 落库 → 重渲染（成功与中断保文共用同一套收尾） ----
                     // 群投票/接龙/群管理标记先落到当前历史与群资料，再清理展示文本
                     fullText = processGroupInteractionMarkers(fullText, groupReplyPick, historyList, isRegen, isGroupFollowup);
+                    // 角色表情是现有回复的一部分，不发起额外 API。只接受完整成功的单聊线上回复。
+                    var parsedRoleSticker = { text: fullText, stickers: [] };
+                    if (streamResult.ok && roleStickerCatalog.length && !isGroupChat &&
+                        !isRegen && !contextOnly && !silent && presenceMode === 'online' &&
+                        window.RoleStickerLibrary && typeof window.RoleStickerLibrary.parseReply === 'function') {
+                        parsedRoleSticker = window.RoleStickerLibrary.parseReply(fullText, roleStickerCatalog, 1);
+                        fullText = parsedRoleSticker.text;
+                    }
                     // 落盘前剥离主动通话标记：气泡展示与聊天记录均不保留标记，避免污染后续上下文
                     const parsedCall = extractVoiceCallMarker(fullText);
                     fullText = parsedCall.text;
@@ -6150,45 +6184,78 @@
                     fullText = stripInternalReasoning(fullText);
                     fullText = cleanupAiReply(fullText);
                     groupReplyVisible = !!fullText;
-                    if (fullText) {
-                        // 落库（保留 think/narratage 标签供 parseReplyContent 解析）
-                        const aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
-                        historyList.push(aiMsg);
+                    var aiStickerMessages = (parsedRoleSticker.stickers || []).map(function (sticker) {
+                        var stickerMessage = {
+                            role: 'assistant',
+                            type: 'sticker',
+                            img: sticker.img,
+                            desc: sticker.desc,
+                            time: Date.now()
+                        };
+                        ensureMid(stickerMessage);
+                        return stickerMessage;
+                    });
+                    if (fullText || aiStickerMessages.length) {
+                        // 正文与主动选择的表情一起落库，确保刷新后仍按原顺序显示。
+                        var aiMsg = null;
+                        if (fullText) {
+                            aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
+                            historyList.push(aiMsg);
+                        }
+                        aiStickerMessages.forEach(function (stickerMessage) {
+                            historyList.push(stickerMessage);
+                        });
                         window.__groupPrivateCardPending = false;
-                        saveMessages(historyList);
-                        // 用户正在这个页面里看着这条回复流式出来 → 算已读，不算未读
-                        try { if (window.ChatNotifier) ChatNotifier.markSeen(aliasRoleId, aiMsg.time); } catch (e) {}
+                        var replySaved = saveMessages(historyList);
+                        if (!replySaved && aiStickerMessages.length) {
+                            // 保存未通过读回校验时，绝不把主动表情伪装成已发送。
+                            aiStickerMessages.forEach(function (stickerMessage) {
+                                var failedIndex = historyList.indexOf(stickerMessage);
+                                if (failedIndex >= 0) historyList.splice(failedIndex, 1);
+                            });
+                            aiStickerMessages = [];
+                            saveMessages(historyList);
+                        }
+                        if (aiMsg) {
+                            try { if (window.ChatNotifier) ChatNotifier.markSeen(aliasRoleId, aiMsg.time); } catch (e) {}
+                        } else if (aiStickerMessages.length) {
+                            try { if (window.ChatNotifier) ChatNotifier.markSeen(aliasRoleId, aiStickerMessages[0].time); } catch (e) {}
+                        }
                         inflightSnapshot = null;
                         // 删掉流式期间的临时气泡（它只显示了剥离标签后的原始文本）
                         if (streamBubble) {
                             var tempRow = streamBubble.closest('.msg-row');
                             if (tempRow) tempRow.remove();
                         }
-                        // Fix C（增量追加）：只把最终交付的这条 AI 消息挂到 DOM 末尾，
-                        // 不再清空重建全部气泡。原实现每条 AI 回复收尾都 O(N) 全量重渲染
-                        // （N=消息总数），长对话下冻结数百~上千毫秒；改为只追加最后一条后
-                        // 复杂度降为 O(1)。appendMessageToDOM 内部会调用 parseReplyContent，
-                        // 能把含 思维链/旁白/双回车 的回复正确展开成多个气泡，
-                        // 视觉结果与全量渲染完全一致。
-                        // 若本条回复同时携带红包/亲属卡等卡片，下方 insertPayCards /
-                        // insertRoleFamilyCardInvitations 仍会按需全量重渲染（自带兜底），
-                        // 普通文本回复则全程不再触发全量渲染。
-                        // data-idx 取「当前已渲染的带 idx 行数」——与全量渲染的 0..k-1 连续编号
-                        // 语义一致，且自动跳过隐藏消息（语音/约会剧情等），搜索跳转 hl= 不会错位。
-                        // 不能用 historyList.length-1：隐藏消息会让两者偏移，导致定位错行。
-                        if (_vl) {
-                            // 虚拟列表：流式收尾，仅重测最后一条（内容定稿）后重窗口化，O(1) 而非整表重测。
-                            vlFinalizeLast();
-                        } else {
-                            var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
-                            var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
-                                activeChatModeForPrompt !== 'offline' &&
-                                activeChatModeForPrompt !== 'date' &&
-                                !(isGroupChat && currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline');
-                            if (shouldPaceBubbles) {
-                                await appendAiMessageWithPacing(aiMsg, aiMessageIndex);
+
+                        if (aiMsg) {
+                            // Fix C：正文仍走原来的增量追加与多气泡节奏，不重建整段历史。
+                            if (_vl) {
+                                if (aiStickerMessages.length) vlRefresh();
+                                else vlFinalizeLast();
                             } else {
-                                appendMessageToDOM(aiMsg, aiMessageIndex);
+                                var aiMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                                var shouldPaceBubbles = activeChatModeForPrompt !== 'narration' &&
+                                    activeChatModeForPrompt !== 'offline' &&
+                                    activeChatModeForPrompt !== 'date' &&
+                                    !(isGroupChat && currentGroup && currentGroup.settings && currentGroup.settings.chatMode === 'offline');
+                                if (shouldPaceBubbles) {
+                                    await appendAiMessageWithPacing(aiMsg, aiMessageIndex);
+                                } else {
+                                    appendMessageToDOM(aiMsg, aiMessageIndex);
+                                    scrollToBottom(true);
+                                }
+                            }
+                        }
+                        if (aiStickerMessages.length) {
+                            if (_vl) {
+                                vlRefresh();
+                            } else {
+                                if (!aiMsg && typeof SoundSystem !== 'undefined') SoundSystem.play('receive', currentRoleId || '');
+                                aiStickerMessages.forEach(function (stickerMessage) {
+                                    var stickerMessageIndex = chatMessages.querySelectorAll('.msg-row[data-idx]').length;
+                                    appendMessageToDOM(stickerMessage, stickerMessageIndex);
+                                });
                                 scrollToBottom(true);
                             }
                         }
@@ -6196,7 +6263,6 @@
                         // 模型只输出了标记：移除空白气泡、不落文本（来电卡/红包卡仍会插入）
                         const onlyRow = streamBubble.closest('.msg-row');
                         if (onlyRow) onlyRow.remove();
-                        // 仅私聊标记也可能构成一条完整回复，需要立即刷新群私聊卡片。
                         if (window.__groupPrivateCardPending) {
                             window.__groupPrivateCardPending = false;
                             renderAllMessages();
