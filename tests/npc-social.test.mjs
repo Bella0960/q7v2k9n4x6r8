@@ -193,11 +193,17 @@ test('NPC requests, settings and AI-visible names are isolated by selected main 
   assert.equal(h.context.NPCSocial.getRequests().length, 0);
   assert.equal(h.context.NPCSocial.getSettings().enabled, false, 'auto discovery defaults off for a new role');
   h.context.NPCSocial.setSettings({ enabled: true, intervalHours: 48 });
+  const second = await h.context.NPCSocial.discoverNow();
+  assert.equal(second.created, true);
+  assert.match(h.capturedPrompt, /第二角色的旧人物/);
+  assert.doesNotMatch(h.capturedPrompt, /旧人物关系资料/);
+
   h.context.localStorage.setItem('phone_current_contact', 'main-role');
   assert.equal(h.context.NPCSocial.getPendingCount(), 1);
   assert.equal(h.context.NPCSocial.getSettings().enabled, true);
   assert.equal(h.context.NPCSocial.getSettings().intervalHours, 12);
   h.context.localStorage.setItem('phone_current_contact', 'second-role');
+  assert.equal(h.context.NPCSocial.getPendingCount(), 1);
   assert.equal(h.context.NPCSocial.getSettings().intervalHours, 48);
 });
 
@@ -217,4 +223,12 @@ test('legacy NPC requests migrate only to their recorded main role without delet
   h.context.localStorage.setItem('phone_current_contact', 'second-role');
   assert.equal(h.context.NPCSocial.getRequests().length, 1);
   assert.equal(h.context.NPCSocial.getRequests()[0].id, 'legacy-second');
+});
+
+test('corrupted role-scoped request data is preserved instead of being overwritten by migration', () => {
+  const h = createHarness();
+  const key = 'npc_friend_requests_v2_main-role';
+  h.data.set(key, '{not-valid-json');
+  assert.throws(() => h.context.NPCSocial.getRequests(), /无法读取/);
+  assert.equal(h.data.get(key), '{not-valid-json');
 });
