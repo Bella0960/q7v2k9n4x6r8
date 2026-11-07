@@ -254,8 +254,8 @@ test('PWA shell caches the role portrait archive and its runtime at v176', () =>
 
 
 test('role removal restores already released references when a later cleanup step fails', async () => {
-  const secondAssetId = 'as_' + 'A'.repeat(30) + 'BA';
-  const failAtSecond = createLibrary({}, { failRemoveRefFor: secondAssetId });
+  const laterCleanupAssetId = 'as_' + 'A'.repeat(31) + 'B';
+  const failAtSecond = createLibrary({}, { failRemoveRefFor: laterCleanupAssetId });
   const a = await failAtSecond.api.add('role-a', 'data:image/jpeg;base64,AAA');
   const b = await failAtSecond.api.add('role-a', 'data:image/jpeg;base64,BBB');
   const result = await failAtSecond.api.removeRole('role-a');
