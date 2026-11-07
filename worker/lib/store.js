@@ -289,17 +289,120 @@ class CloudStore {
     )[0] || null;
   }
 
+  /**
+   * Atomically reserve one delivery per dedupe key + subscription.
+   * A live sender owns the row until lease_until; completed rows are immutable
+   * idempotency records, while transient failures become retryable after backoff.
+   */
+  claimDelivery({
+    id,
+    dedupeKey,
+    subscriptionId,
+    outboundMessageId = null,
+    owner,
+    now,
+    leaseUntil,
+    maxAttempts = 5
+  }) {
+    // Convert abandoned final attempts to a terminal state before attempting
+    // a new claim, so a worker crash cannot leave a row "sending" forever.
+    this.exec(
+      `UPDATE push_deliveries
+       SET status = 'failed', lease_owner = NULL, lease_until = NULL,
+           next_attempt_at = NULL, updated_at = ?
+       WHERE attempt_count >= ?
+         AND (
+           (status = 'sending' AND lease_until IS NOT NULL AND lease_until <= ?)
+           OR (status = 'error' AND next_attempt_at IS NOT NULL AND next_attempt_at <= ?)
+         )`,
+      now,
+      maxAttempts,
+      now,
+      now
+    );
+
+    return this.exec(
+      `INSERT INTO push_deliveries
+        (id, dedupe_key, subscription_id, outbound_message_id, status,
+         http_status, created_at, lease_owner, lease_until, next_attempt_at,
+         attempt_count, updated_at)
+       VALUES (?, ?, ?, ?, 'sending', NULL, ?, ?, ?, NULL, 1, ?)
+       ON CONFLICT(dedupe_key, subscription_id) DO UPDATE SET
+         status = 'sending',
+         http_status = NULL,
+         lease_owner = excluded.lease_owner,
+         lease_until = excluded.lease_until,
+         next_attempt_at = NULL,
+         attempt_count = push_deliveries.attempt_count + 1,
+         outbound_message_id = COALESCE(push_deliveries.outbound_message_id, excluded.outbound_message_id),
+         updated_at = excluded.updated_at
+       WHERE (
+         push_deliveries.status = 'error'
+         AND push_deliveries.attempt_count < ?
+         AND (push_deliveries.next_attempt_at IS NULL OR push_deliveries.next_attempt_at <= ?)
+       ) OR (
+         push_deliveries.status = 'sending'
+         AND push_deliveries.lease_until IS NOT NULL
+         AND push_deliveries.lease_until <= ?
+         AND push_deliveries.attempt_count < ?
+       )
+       RETURNING *`,
+      id,
+      dedupeKey,
+      subscriptionId,
+      outboundMessageId,
+      now,
+      owner,
+      leaseUntil,
+      now,
+      maxAttempts,
+      now,
+      now,
+      maxAttempts
+    )[0] || null;
+  }
+
+  finishDelivery({
+    dedupeKey,
+    subscriptionId,
+    owner,
+    status,
+    httpStatus = null,
+    nextAttemptAt = null,
+    now
+  }) {
+    return this.exec(
+      `UPDATE push_deliveries
+       SET status = ?, http_status = ?, lease_owner = NULL, lease_until = NULL,
+           next_attempt_at = ?, updated_at = ?
+       WHERE dedupe_key = ? AND subscription_id = ?
+         AND status = 'sending' AND lease_owner = ? AND lease_until > ?
+       RETURNING *`,
+      status,
+      httpStatus,
+      nextAttemptAt,
+      now,
+      dedupeKey,
+      subscriptionId,
+      owner,
+      now
+    )[0] || null;
+  }
+
+  // Legacy/direct record helper retained for isolated store callers.
   recordDelivery(delivery) {
     this.exec(
       `INSERT INTO push_deliveries
-        (id, dedupe_key, subscription_id, outbound_message_id, status, http_status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (id, dedupe_key, subscription_id, outbound_message_id, status,
+         http_status, created_at, attempt_count, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       delivery.id,
       delivery.dedupeKey,
       delivery.subscriptionId,
       delivery.outboundMessageId ?? null,
       delivery.status,
       delivery.httpStatus ?? null,
+      delivery.now,
       delivery.now
     );
   }
