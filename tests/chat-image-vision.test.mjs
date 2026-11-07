@@ -230,6 +230,17 @@ test('paired avatar markers resolve two distinct current images and never collap
   assert.equal(parsed.candidates.length, 0, 'a valid pair takes precedence over individual candidate markers');
 });
 
+test('pair recognition rejects two message rows that reference the same underlying media asset', () => {
+  const api = createVision();
+  const images = [
+    { index: 1, mid: 'message-a', assetId: 'as_same_asset' },
+    { index: 2, mid: 'message-b', assetId: 'as_same_asset' }
+  ];
+  const parsed = api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2]]', images, 1);
+  assert.equal(parsed.pairs.length, 0);
+  assert.equal(parsed.candidates.length, 0);
+});
+
 test('invalid, repeated, unavailable, and interrupted pair markers never create a relationship', () => {
   const api = createVision();
   const images = [
