@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { sha256Hex } from "../worker/real-user-auth.js";
 import { handleRealUserFriends, isRealUserFriendsConfigured } from "../worker/real-user-friends.js";
+import worker from "../worker.js";
 
 const sqlite = await import("node:sqlite").catch(() => null);
 const DatabaseSync = sqlite && sqlite.DatabaseSync;
@@ -57,6 +58,35 @@ function createD1Adapter(database) {
       }
     }
   };
+}
+
+
+
+function cookieFrom(response) {
+  const match = String(response.headers.get("set-cookie") || "")
+    .match(/__Host-mao_session=([a-f0-9]{64})/);
+  return match ? "__Host-mao_session=" + match[1] : "";
+}
+
+async function callWorker(env, path, method, options = {}) {
+  const headers = new Headers({
+    Origin: "https://mao.example",
+    "CF-Connecting-IP": options.ip || "198.51.100.24"
+  });
+  if (options.cookie) headers.set("Cookie", options.cookie);
+  let body;
+  if (options.body !== undefined) {
+    body = JSON.stringify(options.body);
+    headers.set("Content-Type", "application/json");
+    headers.set("Content-Length", String(new TextEncoder().encode(body).length));
+  }
+  const request = new Request("https://mao.example" + path, {
+    method,
+    headers,
+    ...(body === undefined ? {} : { body })
+  });
+  const response = await worker.fetch(request, env);
+  return { response, body: await response.json() };
 }
 
 function addAccount(database, id, handle, displayName, now) {
@@ -266,4 +296,193 @@ if (!DatabaseSync) {
       database.close();
     }
   });
+
+  test("two independently registered accounts complete the real auth and friend lifecycle through the Worker router", async () => {
+    const database = createDatabase();
+    try {
+      const env = createEnvironment(database);
+      const authPrefix = "/api/real-user-chat/v1/auth";
+      const friendsPrefix = "/api/real-user-chat/v1/friends";
+
+      const aliceRegistration = await callWorker(env, authPrefix + "/register", "POST", {
+        body: {
+          handle: "alice_e2e",
+          displayName: "Alice E2E",
+          password: "alice secure passphrase 2026"
+        }
+      });
+      assert.equal(aliceRegistration.response.status, 201, JSON.stringify(aliceRegistration.body));
+      const aliceCookie = cookieFrom(aliceRegistration.response);
+      assert.match(aliceCookie, /^__Host-mao_session=[a-f0-9]{64}$/);
+      assert.equal(aliceRegistration.response.headers.get("cache-control"), "no-store, max-age=0");
+
+      const bobRegistration = await callWorker(env, authPrefix + "/register", "POST", {
+        body: {
+          handle: "bob_e2e",
+          displayName: "Bob E2E",
+          password: "bob secure passphrase 2026"
+        }
+      });
+      assert.equal(bobRegistration.response.status, 201, JSON.stringify(bobRegistration.body));
+      const bobCookie = cookieFrom(bobRegistration.response);
+      assert.match(bobCookie, /^__Host-mao_session=[a-f0-9]{64}$/);
+      const aliceId = aliceRegistration.body.account.id;
+      const bobId = bobRegistration.body.account.id;
+      assert.notEqual(aliceId, bobId);
+
+      const aliceSessionHash = await sha256Hex(aliceCookie.slice("__Host-mao_session=".length));
+      const bobSessionHash = await sha256Hex(bobCookie.slice("__Host-mao_session=".length));
+      assert.ok(database.prepare("SELECT token_hash FROM real_user_sessions WHERE token_hash = ?")
+        .get(aliceSessionHash));
+      assert.ok(database.prepare("SELECT token_hash FROM real_user_sessions WHERE token_hash = ?")
+        .get(bobSessionHash));
+      assert.equal(database.prepare("SELECT COUNT(*) AS count FROM real_user_sessions WHERE token_hash IN (?, ?)")
+        .get(aliceCookie.slice("__Host-mao_session=".length), bobCookie.slice("__Host-mao_session=".length)).count, 0,
+        "the raw session cookies must never be stored in D1");
+
+      const aliceMe = await callWorker(env, authPrefix + "/me", "GET", { cookie: aliceCookie });
+      const bobMe = await callWorker(env, authPrefix + "/me", "GET", { cookie: bobCookie });
+      assert.equal(aliceMe.response.status, 200);
+      assert.equal(bobMe.response.status, 200);
+      assert.equal(aliceMe.body.account.id, aliceId);
+      assert.equal(bobMe.body.account.id, bobId);
+
+      // Bob creates a QR code; only its hash is persisted.
+      const qr = await callWorker(env, friendsPrefix + "/codes/rotate", "POST", { cookie: bobCookie });
+      assert.equal(qr.response.status, 201, JSON.stringify(qr.body));
+      assert.match(qr.body.code, /^[a-f0-9]{64}$/);
+      const qrHash = await sha256Hex(qr.body.code);
+      assert.ok(database.prepare("SELECT code_hash FROM real_user_friend_codes WHERE code_hash = ?")
+        .get(qrHash));
+      assert.equal(database.prepare("SELECT COUNT(*) AS count FROM real_user_friend_codes WHERE code_hash = ?")
+        .get(qr.body.code).count, 0, "the plaintext QR code must never be stored");
+
+      const requestId = "request_alice_bob_e2e_01";
+      const sent = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId, code: qr.body.code, note: "Let's connect" }
+      });
+      assert.equal(sent.response.status, 201, JSON.stringify(sent.body));
+      assert.equal(sent.body.request.id, requestId);
+      assert.equal(sent.body.target.id, bobId);
+
+      const bobInbox = await callWorker(
+        env, friendsPrefix + "/requests?direction=incoming", "GET", { cookie: bobCookie }
+      );
+      assert.equal(bobInbox.response.status, 200);
+      assert.equal(bobInbox.body.requests.length, 1);
+      assert.equal(bobInbox.body.requests[0].id, requestId);
+      assert.equal(bobInbox.body.requests[0].peer.id, aliceId);
+
+      const accepted = await callWorker(
+        env, friendsPrefix + "/requests/" + requestId + "/accept", "POST", { cookie: bobCookie }
+      );
+      assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+      assert.equal(accepted.body.request.status, "accepted");
+
+      const [aliceRoster, bobRoster] = await Promise.all([
+        callWorker(env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: aliceCookie }),
+        callWorker(env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: bobCookie })
+      ]);
+      assert.equal(aliceRoster.body.ownerAccountId, aliceId);
+      assert.equal(bobRoster.body.ownerAccountId, bobId);
+      assert.deepEqual(aliceRoster.body.friends.map(friend => friend.id), [bobId]);
+      assert.deepEqual(bobRoster.body.friends.map(friend => friend.id), [aliceId]);
+
+      // Public profile updates are immediately reflected in the other account's roster.
+      const profileUpdate = await callWorker(env, authPrefix + "/me", "PATCH", {
+        cookie: aliceCookie,
+        body: { displayName: "Alice Updated" }
+      });
+      assert.equal(profileUpdate.response.status, 200, JSON.stringify(profileUpdate.body));
+      const refreshedBobRoster = await callWorker(
+        env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: bobCookie }
+      );
+      assert.equal(refreshedBobRoster.body.friends[0].displayName, "Alice Updated");
+
+      // Removing a friend removes it from both accepted rosters, while leaving
+      // a non-profile tombstone. A new request ID is required to add again.
+      const removed = await callWorker(env, friendsPrefix + "/" + bobId, "DELETE", { cookie: aliceCookie });
+      assert.equal(removed.response.status, 200);
+      assert.equal(removed.body.removed, true);
+      const afterRemoval = await callWorker(
+        env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: bobCookie }
+      );
+      assert.equal(afterRemoval.body.friends.length, 0);
+      assert.equal(afterRemoval.body.relationships[0].status, "removed");
+      assert.equal("displayName" in afterRemoval.body.relationships[0], false);
+
+      const secondQr = await callWorker(env, friendsPrefix + "/codes/rotate", "POST", { cookie: bobCookie });
+      const readd = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId: "request_alice_bob_e2e_02", code: secondQr.body.code }
+      });
+      assert.equal(readd.response.status, 201);
+      const reaccepted = await callWorker(
+        env, friendsPrefix + "/requests/request_alice_bob_e2e_02/accept", "POST", { cookie: bobCookie }
+      );
+      assert.equal(reaccepted.response.status, 200);
+      const restored = await callWorker(
+        env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: aliceCookie }
+      );
+      assert.equal(restored.body.friends[0].id, bobId);
+      assert.equal(restored.body.friends[0].acceptedRequestId, "request_alice_bob_e2e_02");
+
+      // A block revokes the accepted relationship. Unblocking must not
+      // silently recreate friendship; only a new request + acceptance may.
+      const blocked = await callWorker(env, friendsPrefix + "/" + aliceId + "/block", "POST", {
+        cookie: bobCookie
+      });
+      assert.equal(blocked.response.status, 200);
+      assert.equal(blocked.body.blocked, true);
+      const aliceBlockedRoster = await callWorker(
+        env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: aliceCookie }
+      );
+      assert.equal(aliceBlockedRoster.body.friends.length, 0);
+      assert.equal(aliceBlockedRoster.body.relationships[0].status, "removed");
+
+      const unblocked = await callWorker(env, friendsPrefix + "/" + aliceId + "/block", "DELETE", {
+        cookie: bobCookie
+      });
+      assert.equal(unblocked.response.status, 200);
+      const afterUnblock = await callWorker(
+        env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: bobCookie }
+      );
+      assert.equal(afterUnblock.body.friends.length, 0,
+        "unblocking is not an implicit friend restoration");
+      assert.equal(afterUnblock.body.relationships[0].status, "removed");
+
+      const thirdQr = await callWorker(env, friendsPrefix + "/codes/rotate", "POST", { cookie: bobCookie });
+      const afterUnblockRequest = await callWorker(env, friendsPrefix + "/requests", "POST", {
+        cookie: aliceCookie,
+        body: { requestId: "request_alice_bob_e2e_03", code: thirdQr.body.code }
+      });
+      assert.equal(afterUnblockRequest.response.status, 201);
+      const afterUnblockAccept = await callWorker(
+        env, friendsPrefix + "/requests/request_alice_bob_e2e_03/accept", "POST", { cookie: bobCookie }
+      );
+      assert.equal(afterUnblockAccept.response.status, 200);
+      const finalAliceRoster = await callWorker(
+        env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: aliceCookie }
+      );
+      assert.deepEqual(finalAliceRoster.body.friends.map(friend => friend.id), [bobId]);
+
+      const bobLogout = await callWorker(env, authPrefix + "/logout", "POST", { cookie: bobCookie });
+      assert.equal(bobLogout.response.status, 200);
+      const revokedSession = await callWorker(env, authPrefix + "/me", "GET", { cookie: bobCookie });
+      assert.equal(revokedSession.response.status, 401);
+      const bobLogin = await callWorker(env, authPrefix + "/login", "POST", {
+        body: { handle: "bob_e2e", password: "bob secure passphrase 2026" }
+      });
+      assert.equal(bobLogin.response.status, 200, JSON.stringify(bobLogin.body));
+      const freshBobCookie = cookieFrom(bobLogin.response);
+      assert.match(freshBobCookie, /^__Host-mao_session=[a-f0-9]{64}$/);
+      const restoredSession = await callWorker(env, authPrefix + "/me", "GET", { cookie: freshBobCookie });
+      assert.equal(restoredSession.response.status, 200);
+      assert.equal(restoredSession.body.account.id, bobId);
+    } finally {
+      database.close();
+    }
+  });
+
 }
