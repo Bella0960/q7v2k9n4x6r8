@@ -209,3 +209,19 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 设置页“检查云端准备情况”会显示设备鉴权、首次认领、配对、VAPID 配置、推送订阅、presence 参数、全局授权、上下文版本和 AI 生成链路状态。
 - 诊断接口不会发通知、不会创建任务，也不会触发模型调用。
 - `testPushReady` 仅表示 VAPID 配置存在且当前设备至少有一个活动订阅；真实 APNs/浏览器推送可达性仍需用“发送测试推送”和真机锁屏验收确认。
+
+
+### 8.10 Activity queue lease recovery 与 worker fencing
+
+本轮修复了任务在 worker 中断后无法恢复，以及旧 worker 可能覆盖新 worker 结果的风险：
+
+- `listDueActivities` 除 waiting/retry 外，也会返回 `locked_until <= now` 的过期 running 任务。
+- `evaluateTask` 只允许 lock 已明确存在且已经过期的 running 任务进入重新评估；没有 lock 时间或 lock 尚有效的 running 任务不会被回收。
+- `claimActivity` 通过 `attempt_count + expectedStatus + locked_until` 做 CAS 重新认领；重新认领会递增 attempt_count 并替换 owner/lease。
+- `completeActivity` 和 `failActivity` 必须同时匹配 `locked_by + attempt_count`。旧 worker 即使迟到返回，也不能完成或重试新 worker 当前持有的任务。
+- stale-context 作废同样要求匹配读取时的 status 与 attempt_count，不能覆盖并发 worker 已经认领的任务。
+- 已耗尽重试次数的任务会用 status/attempt/原 lease 信息 CAS 终止为 failed，不会无限留在候选队列。
+
+**当前 production gate：** Worker 的 scheduled 与 `/internal/tick` 路径没有消息生成 executor，因此 `runTick` 默认 `executorAvailable=false`。即使资格 gate 通过，也会记录 `executor_unavailable` 并保持任务 waiting/retry，不会提前占用成 running。只有未来真实执行器接入并显式声明可执行后，才允许认领任务。
+
+新增 scheduler 契约覆盖：过期 running 回收、并发 CAS、旧 worker completion/failure fencing、stale supersede 竞争、重试耗尽终止，以及无 executor 时保持 waiting。源码语法解析和独立 SQLite SQL 场景检查通过；完整 Node 测试/build 与 Cloudflare runtime 仍需实际执行。
