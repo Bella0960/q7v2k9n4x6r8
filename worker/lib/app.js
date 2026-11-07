@@ -639,6 +639,50 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   }
 
 
+
+  async function hideFriendMessage(request, friendId, messageId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id ||
+        !FRIEND_MESSAGE_ID_PATTERN.test(messageId)) {
+      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '好友或消息 ID 格式无效');
+    }
+    const result = await store.hideFriendMessage({
+      userId: account.user_id,
+      friendId,
+      messageId,
+      now: now()
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有仍然有效的好友才能管理聊天消息');
+    }
+    if (result.kind === 'message_not_found') {
+      throw new ApiError(404, 'FRIEND_MESSAGE_NOT_FOUND', '没有找到这条好友消息');
+    }
+    return ok({ hidden: result.kind === 'hidden', alreadyHidden: result.kind === 'already_hidden' });
+  }
+
+  async function clearFriendConversation(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    const result = await store.clearFriendConversation({
+      userId: account.user_id,
+      friendId,
+      now: now()
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有仍然有效的好友才能清理聊天记录');
+    }
+    return ok({
+      cleared: result.cleared,
+      empty: result.kind === 'empty',
+      alreadyCleared: result.kind === 'already_cleared',
+      scope: 'current_user_only'
+    });
+  }
+
+
   async function registerDevice(request) {
     const body = await readJsonBody(request);
     const deviceId = String(body.deviceId || '').trim();
@@ -1227,11 +1271,17 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       const friendReadMatch = /^\/api\/friends\/([^/]+)\/read$/.exec(path);
       if (friendReadMatch && method === 'POST') return await markFriendMessagesRead(request, friendReadMatch[1]);
 
+      const friendMessageItemMatch = /^\/api\/friends\/([^/]+)\/messages\/([^/]+)$/.exec(path);
+      if (friendMessageItemMatch && method === 'DELETE') {
+        return await hideFriendMessage(request, friendMessageItemMatch[1], friendMessageItemMatch[2]);
+      }
+
       const friendMessagesMatch = /^\/api\/friends\/([^/]+)\/messages$/.exec(path);
       if (friendMessagesMatch) {
         const friendId = friendMessagesMatch[1];
         if (method === 'GET') return await getFriendMessages(request, friendId);
         if (method === 'POST') return await sendFriendMessage(request, friendId);
+        if (method === 'DELETE') return await clearFriendConversation(request, friendId);
       }
 
       const removeFriendMatch = /^\/api\/friends\/([^/]+)$/.exec(path);
