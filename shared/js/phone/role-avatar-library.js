@@ -229,16 +229,39 @@
         var state = readState(roleId);
         var media = mediaRepository();
         if (!media || typeof media.removeRef !== 'function') return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
+
+        var released = [];
+        function restoreReferences() {
+            if (typeof media.addRef !== 'function') return Promise.resolve();
+            return released.reduce(function (chain, item) {
+                return chain.then(function () {
+                    return media.addRef(item.assetId, OWNER_TYPE, String(roleId)).catch(function () {});
+                });
+            }, Promise.resolve());
+        }
+
         return state.items.reduce(function (chain, item) {
             return chain.then(function (result) {
                 if (!result.ok) return result;
-                return media.removeRef(item.assetId, OWNER_TYPE, String(roleId));
+                return media.removeRef(item.assetId, OWNER_TYPE, String(roleId)).then(function (removed) {
+                    if (!removed || !removed.ok) return removed || failure('STORAGE_FAILED', 'avatar reference could not be released');
+                    if (removed.value && removed.value.removed) released.push(item);
+                    return { ok: true };
+                });
             });
         }, Promise.resolve({ ok: true })).then(function (result) {
-            if (!result.ok) return result;
-            try { global.localStorage.removeItem(storageKey(roleId)); } catch (error) {
-                return failure('STORAGE_FAILED', 'role avatar metadata could not be cleared');
+            if (!result.ok) {
+                return restoreReferences().then(function () { return result; });
             }
+
+            try {
+                global.localStorage.removeItem(storageKey(roleId));
+            } catch (error) {
+                return restoreReferences().then(function () {
+                    return failure('STORAGE_FAILED', 'role avatar metadata could not be cleared');
+                });
+            }
+
             return state.items.reduce(function (chain, item) {
                 return chain.then(function (meta) {
                     return media.removeAsset(item.assetId).then(function (removed) {
@@ -250,7 +273,9 @@
                 return { ok: true, value: { removed: state.items.length, retained: meta.retained } };
             });
         }).catch(function (error) {
-            return failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar library could not be removed');
+            return restoreReferences().then(function () {
+                return failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar library could not be removed');
+            });
         });
     }
 
