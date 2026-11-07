@@ -540,3 +540,18 @@ test('lifecycle changes for one account never mutate the same friend ID stored f
   assert.equal(records.find(item => item.ownerAccountId === 'account_owner_08').status, 'removed');
   assert.equal(records.find(item => item.ownerAccountId === 'account_owner_09').status, 'accepted');
 });
+
+test('directory refuses an otherwise complete snapshot when its account owner does not match', () => {
+  const { directory } = createDirectoryRuntime();
+  directory.setActiveAccountId('account_owner_10');
+  const result = directory.syncServerSnapshot(
+    serverRoster('account_other_10', [
+      acceptedServerFriend('account_friend_10', 'request_friend_010', 6000)
+    ], 6100),
+    'account_owner_10',
+    { now: 6200 }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'server_snapshot_account_mismatch');
+  assert.equal(directory.readResult().contacts.length, 0);
+});
