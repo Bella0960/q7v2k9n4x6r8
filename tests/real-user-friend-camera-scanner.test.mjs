@@ -13,7 +13,10 @@ function makeRuntime(options = {}) {
   const documentListeners = {};
   const intervals = new Map();
   let nextInterval = 1;
-  const tracks = [{ stopped: 0, stop() { this.stopped += 1; } }];
+  let requests = 0;
+  let constraints = null;
+  let stopCount = 0;
+  const tracks = [{ stop() { stopCount += 1; } }];
   const stream = { getTracks: () => tracks };
   const video = {
     srcObject: null, videoWidth: 640, videoHeight: 480,
@@ -24,6 +27,14 @@ function makeRuntime(options = {}) {
     handlers: {},
     addEventListener(type, fn) { this.handlers[type] = fn; },
     removeEventListener(type) { delete this.handlers[type]; }
+  };
+  const mediaDevices = {
+    async getUserMedia(value) {
+      requests += 1;
+      constraints = value;
+      if (options.cameraError) throw options.cameraError;
+      return stream;
+    }
   };
   const document = {
     hidden: false,
@@ -37,8 +48,8 @@ function makeRuntime(options = {}) {
   };
   const window = {
     location: { href: 'https://mao.example/chat/contacts/contacts.html', origin: 'https://mao.example' },
-    navigator: { mediaDevices: options.mediaDevices || { async getUserMedia() { return stream; } } },
-    BarcodeDetector: options.BarcodeDetector || class {
+    navigator: { mediaDevices },
+    BarcodeDetector: class {
       async detect() { return options.decoded ? [{ rawValue: options.decoded }] : []; }
     },
     setInterval(fn) { const id = nextInterval++; intervals.set(id, fn); return id; },
@@ -51,43 +62,56 @@ function makeRuntime(options = {}) {
   });
   const messages = [];
   const scanner = window.PhoneRealUserCameraScanner.create({
-    window, document, video, overlay, closeButton,
-    mediaDevices: window.navigator.mediaDevices,
+    document, video, overlay, closeButton, mediaDevices,
     onStatus: (message) => messages.push(message),
     onError: (error) => messages.push(error.name || error.message),
     onScan: options.onScan || (() => true)
   });
-  return { scanner, tracks, stream, video, overlay, closeButton, documentListeners, listeners, intervals, messages };
+  return {
+    scanner, tracks, stream, video, overlay, closeButton, documentListeners,
+    listeners, intervals, messages,
+    get requests() { return requests; },
+    get constraints() { return constraints; },
+    get stopCount() { return stopCount; }
+  };
 }
 
-test('camera permission is requested only after start and stop releases every media track', async () => {
-  let requests = 0;
-  const app = makeRuntime({
-    mediaDevices: { async getUserMedia(constraints) { requests += 1; assert.equal(constraints.audio, false); return { getTracks: () => [{ stop() { stopped += 1; } }] }; } }
-  });
-  let stopped = 0;
-  assert.equal(requests, 0);
-  await app.scanner.start();
-  assert.equal(requests, 1);
+test('camera access begins only after explicit start and stop releases every media track', async () => {
+  const app = makeRuntime();
+  assert.equal(app.requests, 0);
+  assert.equal(await app.scanner.start(), true);
+  assert.equal(app.requests, 1);
+  assert.equal(app.constraints.audio, false);
+  assert.equal(app.constraints.video.facingMode.ideal, 'environment');
   assert.equal(app.overlay.hidden, false);
   app.scanner.stop();
-  assert.equal(stopped, 1);
+  assert.equal(app.stopCount, 1);
   assert.equal(app.video.srcObject, null);
   assert.equal(app.overlay.hidden, true);
   assert.equal(app.intervals.size, 0);
 });
 
-test('a decoded QR is handed to the callback and then the camera is stopped', async () => {
+test('repeated start clicks do not create a second camera stream', async () => {
+  const app = makeRuntime();
+  await app.scanner.start();
+  await app.scanner.start();
+  assert.equal(app.requests, 1);
+  app.scanner.stop();
+  assert.equal(app.stopCount, 1);
+});
+
+test('a decoded QR is passed to the validator and then the camera is stopped', async () => {
   const link = 'https://mao.example/chat/contacts/contacts.html#mao-friend=' + 'a'.repeat(64);
-  const app = makeRuntime({ decoded: link });
   let received = '';
-  app.scanner = app.scanner;
+  const app = makeRuntime({
+    decoded: link,
+    onScan: (value) => { received = value; return true; }
+  });
   await app.scanner.start();
   const tick = app.intervals.values().next().value;
   await tick();
-  received = app.messages.length ? app.messages[app.messages.length - 1] : '';
-  assert.ok(received === '正在识别 MAOMAO 好友二维码…' || received === '');
-  assert.equal(app.tracks[0].stopped, 1);
+  assert.equal(received, link);
+  assert.equal(app.stopCount, 1);
   assert.equal(app.video.srcObject, null);
   assert.equal(app.overlay.hidden, true);
 });
@@ -96,15 +120,16 @@ test('hiding the page stops the camera and invalidates the active session', asyn
   const app = makeRuntime();
   await app.scanner.start();
   app.documentListeners.visibilitychange();
-  assert.equal(app.tracks[0].stopped, 1);
+  assert.equal(app.stopCount, 1);
   assert.equal(app.video.srcObject, null);
   assert.equal(app.overlay.hidden, true);
 });
 
 test('camera permission errors leave manual invitation entry available', async () => {
   const denied = Object.assign(new Error('permission denied'), { name: 'NotAllowedError' });
-  const app = makeRuntime({ mediaDevices: { async getUserMedia() { throw denied; } } });
+  const app = makeRuntime({ cameraError: denied });
   await app.scanner.start();
   assert.ok(app.messages.includes('NotAllowedError'));
   assert.equal(app.overlay.hidden, true);
+  assert.equal(app.stopCount, 0);
 });

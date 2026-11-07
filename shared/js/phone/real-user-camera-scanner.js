@@ -17,6 +17,7 @@
       mode: '',
       detecting: false,
       disposed: false,
+      pendingMediaRequest: false,
       fallbackPromise: null,
       canvas: null,
       context: null,
@@ -180,8 +181,9 @@
     }
 
     async function start() {
-      if (state.disposed || state.opening || state.stream) return false;
+      if (state.disposed || state.opening || state.stream || state.pendingMediaRequest) return false;
       if (!mediaDevices || typeof mediaDevices.getUserMedia !== 'function') {
+        if (overlay) overlay.hidden = true;
         report('此浏览器无法使用摄像头，请粘贴好友码或分享链接。', 'error');
         return false;
       }
@@ -193,10 +195,16 @@
         await prepareDecoder();
         if (generation !== state.generation || state.disposed) return false;
         report('请允许摄像头权限，并将好友二维码放入取景区域。');
-        var stream = await mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: 'environment' } }
-        });
+        state.pendingMediaRequest = true;
+        var stream;
+        try {
+          stream = await mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: 'environment' } }
+          });
+        } finally {
+          state.pendingMediaRequest = false;
+        }
         if (generation !== state.generation || state.disposed) {
           stopTracks(stream);
           return false;
