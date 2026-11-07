@@ -3011,6 +3011,131 @@ test('出站收件箱使用稳定游标翻页，队首保存失败不会挡住�
   assert.equal(invalidHalfCursor.payload.error.code, 'INVALID_OUTBOUND_CURSOR');
 });
 
+test('客户端收件箱真实运行：断网后从持久化游标续收，失败消息下一轮补救', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const localValues = new Map([
+    ['cloud_device_v1', JSON.stringify({
+      deviceId: 'test-device-0000000001',
+      secret: 'test-secret-000000000000000000000001'
+    })]
+  ]);
+  const localStorageMock = {
+    getItem(key) { return localValues.has(key) ? localValues.get(key) : null; },
+    setItem(key, value) { localValues.set(key, String(value)); },
+    removeItem(key) { localValues.delete(key); }
+  };
+  const rows = [1, 2, 3, 4].map(index => ({
+    id: 'outbound_row_00000000000' + index,
+    serverMessageId: 'server_message_00000000000' + index,
+    characterId: 'char-runtime-pagination',
+    createdAt: 1800000000000,
+    payload: { text: 'message-' + index }
+  }));
+  const acknowledged = new Set();
+  const received = [];
+  let interruptNextPage = true;
+
+  function makeClient() {
+    const documentMock = { currentScript: null };
+    const windowMock = { document: documentMock };
+    const fetchMock = async (input, init = {}) => {
+      const url = new URL(String(input), 'https://mao.test');
+      const method = init.method || 'GET';
+      if (url.pathname.endsWith('/outbound') && method === 'GET') {
+        const rawTime = url.searchParams.get('afterCreatedAt');
+        const afterId = url.searchParams.get('afterId');
+        if (rawTime && afterId && interruptNextPage) {
+          interruptNextPage = false;
+          throw new Error('simulated network interruption after first page');
+        }
+        const limit = Number(url.searchParams.get('limit') || 50);
+        const pending = rows
+          .filter(row => !acknowledged.has(row.serverMessageId))
+          .filter(row => !rawTime ||
+            row.createdAt > Number(rawTime) ||
+            (row.createdAt === Number(rawTime) && row.id > afterId))
+          .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+        const page = pending.slice(0, limit);
+        const last = page.length === limit ? page[page.length - 1] : null;
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            messages: page.map(row => ({
+              serverMessageId: row.serverMessageId,
+              characterId: row.characterId,
+              createdAt: row.createdAt,
+              payload: row.payload
+            })),
+            nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null
+          })
+        };
+      }
+      if (url.pathname.endsWith('/received') && method === 'POST') {
+        received.push(url.pathname);
+        return { ok: true, json: async () => ({ ok: true, received: true }) };
+      }
+      if (url.pathname.endsWith('/ack') && method === 'POST') {
+        const messageId = url.pathname.split('/').slice(-2, -1)[0];
+        acknowledged.add(messageId);
+        return { ok: true, json: async () => ({ ok: true, acknowledged: true }) };
+      }
+      throw new Error('unexpected mock request: ' + method + ' ' + url.pathname);
+    };
+    runInNewContext(clientSource, {
+      window: windowMock,
+      document: documentMock,
+      localStorage: localStorageMock,
+      fetch: fetchMock,
+      URL,
+      console: { warn() {}, error() {} },
+      navigator: {}
+    });
+    return windowMock.MaomaoCloud;
+  }
+
+  const firstClient = makeClient();
+  const firstAttempt = await firstClient.receiveCharacterOutboundMessages(
+    'char-runtime-pagination',
+    async (payload, envelope) => {
+      if (envelope.serverMessageId === rows[0].serverMessageId) return false;
+      return true;
+    },
+    2
+  ).then(
+    () => null,
+    error => error
+  );
+  assert.ok(firstAttempt instanceof Error, 'the simulated second-page network interruption must reject the round');
+  assert.deepEqual([...acknowledged], [rows[1].serverMessageId],
+    'the first failed row must remain unacknowledged while the second row is saved');
+  const cursorKey = 'cloud_outbound_cursor_v1:char-runtime-pagination:test-device-0000000001';
+  const savedCursor = JSON.parse(localValues.get(cursorKey));
+  assert.equal(savedCursor.id, rows[1].id, 'the first completed page cursor must survive an interrupted round');
+
+  const resumedClient = makeClient();
+  const resumed = await resumedClient.receiveCharacterOutboundMessages(
+    'char-runtime-pagination',
+    async () => true,
+    2
+  );
+  assert.equal(resumed.saved, 2, 'the restarted client must save the remaining page');
+  assert.equal(resumed.pagesProcessed, 1);
+  assert.equal(acknowledged.has(rows[2].serverMessageId), true);
+  assert.equal(acknowledged.has(rows[3].serverMessageId), true);
+  assert.equal(localValues.has(cursorKey), false, 'reaching the end must reset the cursor');
+
+  const retryClient = makeClient();
+  const retried = await retryClient.receiveCharacterOutboundMessages(
+    'char-runtime-pagination',
+    async () => true,
+    2
+  );
+  assert.equal(retried.saved, 1, 'the old failed envelope must be revisited after cursor reset');
+  assert.equal(acknowledged.has(rows[0].serverMessageId), true);
+  assert.equal(acknowledged.size, 4);
+});
+
 test('客户端收件箱游标按角色和设备持久化，并在有限批次中继续翻页', () => {
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   assert.ok(clientSource.includes('function getCharacterOutboundPage(characterId, limit, cursor)'));
