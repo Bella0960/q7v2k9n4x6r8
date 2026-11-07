@@ -30,6 +30,10 @@ function createHarness() {
     speechStyle: '说话自然，句子简洁，偶尔分享书和日常。'
   } });
   const histories = Object.create(null);
+  const documentListeners = Object.create(null);
+  function dispatchDocumentEvent(type) {
+    (documentListeners[type] || []).slice().forEach(listener => listener({ type }));
+  }
   const localStorage = {
     getItem(key) { return data.has(key) ? data.get(key) : null; },
     setItem(key, value) { data.set(key, String(value)); },
@@ -60,6 +64,7 @@ function createHarness() {
   const context = {
     URL,
     Uint8Array,
+    AbortController,
     Date,
     Math,
     JSON,
@@ -85,10 +90,13 @@ function createHarness() {
       visibilityState: 'visible',
       body: null,
       currentScript: null,
-      addEventListener() {},
-      dispatchEvent() {},
+      addEventListener(type, listener) {
+        (documentListeners[type] || (documentListeners[type] = [])).push(listener);
+      },
+      dispatchEvent(event) { dispatchDocumentEvent(event && event.type); return true; },
       getElementById() { return null; }
     },
+    addEventListener() {},
     location: { pathname: '/MAOMAO/chat/contacts/npc-friends.html' },
     CustomEvent: function CustomEvent(type, init) { this.type = type; this.detail = init && init.detail; },
     setInterval() { return 1; },
@@ -104,7 +112,8 @@ function createHarness() {
     setCompleteJSONHandler(handler) { completeJSONHandler = handler; },
     setGreetingSaveFailure(value) { failGreetingSave = value === true; },
     get aiCalls() { return aiCalls; },
-    get capturedPrompt() { return capturedPrompt; }
+    get capturedPrompt() { return capturedPrompt; },
+    dispatchDocumentEvent
   };
 }
 
@@ -115,6 +124,37 @@ test('NPC discovery is opt-in and does not run in the background when the page i
   assert.equal(h.context.NPCSocial.getSettings().enabled, true);
   assert.equal(h.aiCalls, 0);
   assert.equal(h.context.NPCSocial.getPendingCount(), 0);
+});
+
+
+test('NPC discovery aborts its AI request and discards the result when the page leaves the foreground', async () => {
+  const h = createHarness();
+  let requestSignal = null;
+  let aborted = false;
+  h.setCompleteJSONHandler(options => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      requestSignal.addEventListener('abort', () => {
+        aborted = true;
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      });
+    });
+  });
+
+  const pending = h.context.NPCSocial.discoverNow();
+  for (let i = 0; i < 10 && !requestSignal; i++) await Promise.resolve();
+  assert.ok(requestSignal, 'discovery should pass an AbortSignal to the AI request');
+
+  h.context.document.visibilityState = 'hidden';
+  h.dispatchDocumentEvent('visibilitychange');
+  const result = await pending;
+
+  assert.equal(aborted, true, 'the in-flight request must be aborted');
+  assert.equal(result.created, false);
+  assert.equal(result.reason, 'page-hidden');
+  assert.equal(h.context.NPCSocial.getPendingCount(), 0, 'a background result must not be saved as a friend request');
 });
 
 test('manual NPC discovery creates a pending application, then acceptance creates an isolated AI contact', async () => {
@@ -187,11 +227,13 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /data-action="block"/);
   assert.match(contacts, /npc-friends\.html/);
   assert.ok(nav.includes("currentPage === 'chat.html' || currentPage === 'contacts.html'"));
-  assert.match(page, /npc-social\.js\?v=20261108d/);
-  assert.ok(nav.includes("npc-social.js?v=20261108d"));
+  assert.match(page, /npc-social\.js\?v=20261108e/);
+  assert.ok(nav.includes("npc-social.js?v=20261108e"));
   assert.ok(source.includes('role.worldBookIds'));
   assert.match(source, /面向青少年用户/);
   assert.match(source, /npcFriendWelcome: true/);
+  assert.match(source, /signal: controller\.signal/);
+  assert.match(source, /abortDiscoveryWhenHidden/);
 });
 
 test('NPC requests, settings and AI-visible names are isolated by selected main role', async () => {
