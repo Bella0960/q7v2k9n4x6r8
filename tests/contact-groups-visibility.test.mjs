@@ -244,16 +244,16 @@ test('real-user audience and contact editing fail closed without silently deleti
 
 test('typed contact identity is loaded before chat notification and stored in chat relationship snapshots', () => {
   assert.ok(contactsPage.includes('phone/contact-identity.js?v=20261107v1'));
-  assert.ok(contactsPage.includes('phone/contact-directory.js?v=20261107v2'));
+  assert.ok(contactsPage.includes('phone/contact-directory.js?v=20261107v3'));
   assert.ok(composerPage.includes('phone/contact-identity.js?v=20261107v1'));
-  assert.ok(composerPage.includes('phone/contact-directory.js?v=20261107v2'));
-  assert.ok(navPage.includes('contact-directory.js?v=20261107v2'));
-  assert.ok(serviceWorker.includes('./shared/js/phone/contact-directory.js?v=20261107v2'));
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v177'/);
+  assert.ok(composerPage.includes('phone/contact-directory.js?v=20261107v3'));
+  assert.ok(navPage.includes('contact-directory.js?v=20261107v3'));
+  assert.ok(serviceWorker.includes('./shared/js/phone/contact-directory.js?v=20261107v3'));
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v178'/);
   assert.ok(momentsPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(detailPage.includes('phone/contact-identity.js?v=20261107v1'));
-  assert.ok(detailPage.includes('phone/contact-directory.js?v=20261107v2'));
-  assert.ok(indexPage.includes('phone/contact-directory.js?v=20261107v2'));
+  assert.ok(detailPage.includes('phone/contact-directory.js?v=20261107v3'));
+  assert.ok(indexPage.includes('phone/contact-directory.js?v=20261107v3'));
   assert.ok(notifierSource.includes('PhoneContactDirectory'));
   assert.ok(detailPage.includes('window.PhoneCurrentContactRef'));
   assert.ok(contactsPage.includes('data-contact-key'));
