@@ -147,6 +147,114 @@ test('迁移 0001–0005 建立云推送、调度元数据与投递恢复结构'
   ]);
 });
 
+test('推送投递租约可恢复过期 worker，并阻止旧 worker 覆盖新状态', () => {
+  const ctx = setupTestStore(openTestDb());
+  const first = ctx.store.claimDelivery({
+    id: 'delivery-row-1',
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-a',
+    now: 1000,
+    leaseUntil: 2000,
+    maxAttempts: 3
+  });
+  assert.ok(first);
+  assert.equal(first.status, 'sending');
+  assert.equal(first.attempt_count, 1);
+
+  const blocked = ctx.store.claimDelivery({
+    id: 'delivery-row-2',
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-b',
+    now: 1999,
+    leaseUntil: 2999,
+    maxAttempts: 3
+  });
+  assert.equal(blocked, null, '租约未过期时，其他 worker 不得并发发送');
+
+  const recovered = ctx.store.claimDelivery({
+    id: 'delivery-row-3',
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-b',
+    now: 2000,
+    leaseUntil: 3000,
+    maxAttempts: 3
+  });
+  assert.ok(recovered, '租约过期后应允许接管');
+  assert.equal(recovered.attempt_count, 2);
+
+  const staleFinish = ctx.store.finishDelivery({
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-a',
+    status: 'sent',
+    httpStatus: 201,
+    now: 2001
+  });
+  assert.equal(staleFinish, null, '旧 worker 迟到的成功结果不得覆盖新 owner');
+
+  const retryFinish = ctx.store.finishDelivery({
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-b',
+    status: 'error',
+    httpStatus: 503,
+    nextAttemptAt: 5000,
+    now: 2100
+  });
+  assert.equal(retryFinish.status, 'error');
+  assert.equal(retryFinish.lease_owner, null);
+
+  const tooEarly = ctx.store.claimDelivery({
+    id: 'delivery-row-4',
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-c',
+    now: 4999,
+    leaseUntil: 5999,
+    maxAttempts: 3
+  });
+  assert.equal(tooEarly, null, '退避时间未到时不得重试');
+
+  const lastAttempt = ctx.store.claimDelivery({
+    id: 'delivery-row-5',
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-c',
+    now: 5000,
+    leaseUntil: 6000,
+    maxAttempts: 3
+  });
+  assert.ok(lastAttempt);
+  assert.equal(lastAttempt.attempt_count, 3);
+
+  const finalFailure = ctx.store.finishDelivery({
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-c',
+    status: 'error',
+    httpStatus: 503,
+    nextAttemptAt: 7000,
+    now: 5100
+  });
+  assert.equal(finalFailure.status, 'error');
+
+  const exhausted = ctx.store.claimDelivery({
+    id: 'delivery-row-6',
+    dedupeKey: 'lease-test',
+    subscriptionId: 'subscription-1',
+    owner: 'sender-d',
+    now: 7000,
+    leaseUntil: 8000,
+    maxAttempts: 3
+  });
+  assert.equal(exhausted, null);
+  assert.equal(ctx.store.findDelivery('lease-test', 'subscription-1').status, 'failed',
+    '超过最大尝试次数后应进入终态，不能无限重试');
+});
+
 test('角色上下文版本事件：仅保存事件 ID、服务器递增、重复请求幂等且账号隔离', async () => {
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
@@ -1806,11 +1914,15 @@ test('同一推送事件的临时失败可退避重试，成功后仍保持幂�
   assert.equal(sentRow.lease_owner, null);
   assert.equal(sentRow.lease_until, null);
 
+  // Move outside the per-device 10-minute attempt window before checking
+  // successful-delivery dedupe independently of rate limiting.
+  ctx.timestamps.push(failedRow.next_attempt_at + 600001);
   const duplicate = await ctx.asJson('/api/push/test', {
     method: 'POST',
     device,
     body: { dedupeKey: 'retryable-delivery' }
   });
+  assert.equal(duplicate.status, 200);
   assert.equal(duplicate.payload.summary.skipped, 1);
   assert.equal(pushFetch.calls.length, 2, '成功后同一事件依旧不能重复推送');
 });
