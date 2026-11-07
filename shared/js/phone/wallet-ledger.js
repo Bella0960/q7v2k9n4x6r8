@@ -39,11 +39,28 @@
 
   function readStoredCheckouts() {
     try {
-      var value = JSON.parse(global.localStorage.getItem(PENDING_CHECKOUT_KEY) || '[]');
-      return Array.isArray(value) ? value.filter(function (item) {
-        return item && typeof item.id === 'string' && item.id &&
-          (item.status === 'pending' || item.status === 'completed');
-      }) : null;
+      var raw = global.localStorage.getItem(PENDING_CHECKOUT_KEY);
+      if (raw == null) return [];
+      var value = JSON.parse(raw);
+      if (!Array.isArray(value)) return null;
+
+      var ids = Object.create(null);
+      var pendingChannels = Object.create(null);
+      for (var i = 0; i < value.length; i++) {
+        var item = value[i];
+        if (!item || typeof item !== 'object' ||
+            typeof item.id !== 'string' || !item.id ||
+            typeof item.channel !== 'string' || !item.channel ||
+            typeof item.signature !== 'string' || !item.signature ||
+            (item.status !== 'pending' && item.status !== 'completed') ||
+            ids[item.id]) return null;
+        ids[item.id] = true;
+        if (item.status === 'pending') {
+          if (pendingChannels[item.channel]) return null;
+          pendingChannels[item.channel] = true;
+        }
+      }
+      return value;
     } catch (error) {
       return null;
     }
