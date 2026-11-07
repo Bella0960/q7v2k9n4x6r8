@@ -78,9 +78,9 @@
         var visionDataUrl = String(m.visionDataUrl || '');
         if (m.type === 'image' &&
             /^data:image\/(?:jpeg|jpg|png|webp|gif|avif);base64,[A-Za-z0-9+/=\r\n]+$/i.test(visionDataUrl) &&
-            visionDataUrl.length <= 4 * 1024 * 1024) {
+            visionDataUrl.length <= 4 * 1024 * 1024 + 128) {
           var visionIndex = Math.max(0, parseInt(m.visionIndex, 10) || 0);
-          var visionLabel = visionIndex ? '\\n[本轮图片编号：' + visionIndex + ']' : '';
+          var visionLabel = visionIndex ? '\n[本轮图片编号：' + visionIndex + ']' : '';
           userContent = [
             { type: 'text', text: (content || '[用户分享了一张图片]') + visionLabel },
             { type: 'image_url', image_url: { url: visionDataUrl, detail: 'auto' } }
