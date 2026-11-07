@@ -629,3 +629,18 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - The normal AI send path now reloads the latest role history after the awaited model request returns, before persisting the generated reply or an error bubble. It merges back only the current turn's user message if that message was displaced, preserving newer cloud proactive messages and sibling-tab writes without resurrecting unrelated stale history rows.
 
 - After normal AI bubble pacing (an awaited UI operation), the send path refreshes the role history again and restores the current AI reply by stable `mid` if a concurrent cloud/tab write displaced it. Follow-up call, red-packet/transfer, role-family-card and virtual-image insertion paths receive this refreshed history, preventing their later saves from reintroducing the pre-animation snapshot. If the recovery write cannot be verified, the follow-up card pipeline stops rather than claiming the history is current.
+
+
+## 22. 聊天卡片写入失败保护（M2.12 follow-up）
+
+- AI 来电卡、虚拟图片卡、红包 / 转账卡现在都先完成聊天历史写入与现有写后读回校验，成功后才更新聊天 UI。失败时移除本轮刚加入的卡片并提示用户；来电卡保存失败时不会继续自动跳转到来电页。
+- 多张虚拟图片卡合并为一次批量保存，避免逐张写入出现“前几张显示成功、后几张失败”的半批状态。
+- 红包 / 转账保存失败时，除移除新卡外，还恢复原用户转账记录被临时改动的状态字段，避免留下未落库的“退还中”状态。
+- 亲属卡继续使用独立的 RoleFamilyCards 存储。若独立亲属卡已创建、但聊天历史中的邀请卡写入失败，撤回聊天数组中的未确认邀请卡并明确提示；独立卡可能已经存在于亲属卡模块，因此这不是跨两个存储库的原子事务。
+- PWA shell cache 更新至 phone-app-pwa-v186。
+
+### 验证边界
+
+- 已新增失败回滚契约测试：来电卡、图片批量卡、红包 / 转账状态恢复、亲属卡独立存储与聊天记录分离。
+- 新增测试尚未执行；Node / SQLite、Vite build、真实浏览器存储空间不足场景与 Android 真机行为仍为 NOT RUN / NOT VERIFIED。
+- 当前没有合并 PR、没有部署 Worker、没有更新 APK。
