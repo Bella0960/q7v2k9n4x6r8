@@ -595,29 +595,33 @@
   }
 
   function readOutboundCursor(key) {
+    var memoryEntry = outboundCursorsInMemory[key];
+    if (memoryEntry && memoryEntry.dirty) {
+      var pendingMemory = normalizeOutboundCursor(memoryEntry.cursor);
+      return pendingMemory ? { createdAt: pendingMemory.createdAt, id: pendingMemory.id } : null;
+    }
     try {
       var stored = normalizeOutboundCursor(JSON.parse(localStorage.getItem(key) || 'null'));
-      if (stored) {
-        outboundCursorsInMemory[key] = stored;
-        return { createdAt: stored.createdAt, id: stored.id };
-      }
+      outboundCursorsInMemory[key] = { cursor: stored, dirty: false };
+      return stored ? { createdAt: stored.createdAt, id: stored.id } : null;
     } catch (error) {
-      // Fall through to the in-memory cursor when local storage is unavailable.
+      // Fall back to the last known cursor when local storage is unavailable.
     }
-    var memory = normalizeOutboundCursor(outboundCursorsInMemory[key]);
+    var memory = memoryEntry && normalizeOutboundCursor(memoryEntry.cursor);
     return memory ? { createdAt: memory.createdAt, id: memory.id } : null;
   }
 
   function writeOutboundCursor(key, cursor) {
     var normalized = cursor ? normalizeOutboundCursor(cursor) : null;
-    if (normalized) outboundCursorsInMemory[key] = normalized;
-    else delete outboundCursorsInMemory[key];
+    outboundCursorsInMemory[key] = { cursor: normalized, dirty: true };
     try {
       if (normalized) localStorage.setItem(key, JSON.stringify(normalized));
       else localStorage.removeItem(key);
+      outboundCursorsInMemory[key].dirty = false;
     } catch (error) {
-      // Keep the cursor in memory for this open page. On-device persistence
-      // is best-effort; every message remains server-pending until ACK succeeds.
+      // Keep the newer cursor in memory even when an older persisted cursor
+      // still exists. On-device persistence is best-effort; failed rows remain
+      // server-pending until their local-save ACK succeeds.
     }
   }
 
