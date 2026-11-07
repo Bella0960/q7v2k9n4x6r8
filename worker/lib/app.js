@@ -480,7 +480,6 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const device = await authenticate(request);
     const timestamp = now();
     await store.revokeDevice(device.id, timestamp);
-    await store.disableAllSubscriptions(device.id, 'revoked', timestamp);
     await store.logExecution({
       id: randomToken(12),
       deviceId: device.id,
@@ -508,6 +507,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userId,
       since: timestamp - 86400000
     });
+    const presenceSummary = presenceConfig
+      ? await store.getPresenceSummary({
+          userId,
+          now: timestamp,
+          heartbeatTtlMs: presenceConfig.heartbeatTtlMs,
+          graceMs: presenceConfig.graceMs
+        })
+      : null;
     return ok({
       deviceAuthorized: true,
       deviceAuthConfigured: pepper.length >= 32,
@@ -517,6 +524,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       activePushSubscriptions: activeSubscriptions.length,
       testPushReady: vapid.configured && activeSubscriptions.length > 0,
       presenceConfigured: Boolean(presenceConfig),
+      presenceSummary,
       globalAutonomyEnabled: globalAutonomy?.enabled === 1,
       activityQueue,
       recentSchedulerReasons,
