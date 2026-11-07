@@ -90,6 +90,10 @@ test('chat plus-menu and direct handlers enforce the real-user feature allowlist
   assert.match(extras, /function featCall\(mode\)[\s\S]*?realUserFeatureAllowed\('voice'\)/);
 });
 
+test('chat header video action is blocked for real-user conversations', () => {
+  assert.match(detail, /btnHeaderVideo[\s\S]*?PhoneIsRealUserConversation[\s\S]*?真人聊天暂不开放视频通话/);
+});
+
 test('chat rendering and payment-card handlers do not expose transaction details to real users', () => {
   assert.match(detail, /contact-capabilities\.js\?v=20261107v1/);
   assert.match(detail, /window\.PhoneIsRealUserConversation/);
