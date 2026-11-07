@@ -327,9 +327,12 @@
 
     var config = await requestDeviceMetadata('/api/presence/config');
     var ttl = Number(config.heartbeatTtlMs);
-    if (!Number.isSafeInteger(ttl) || ttl <= 0) {
-      throw new Error('云端没有提供有效的心跳 TTL 配置');
+    var leaseDuration = Number(config.leaseDurationMs);
+    if (!Number.isSafeInteger(ttl) || ttl <= 0 ||
+        !Number.isSafeInteger(leaseDuration) || leaseDuration <= 0) {
+      throw new Error('云端没有提供有效的心跳 TTL / 租约时长配置');
     }
+    var renewInterval = Math.max(1, Math.floor(Math.min(ttl, leaseDuration) / 3));
 
     var stopped = false;
     var running = false;
@@ -381,7 +384,7 @@
             console.warn('[cloud] 角色前台租约续期失败', error);
           });
         },
-        Math.max(1, Math.floor(ttl / 3))
+        renewInterval
       );
     } catch (error) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
