@@ -21,6 +21,14 @@ function createLibrary(seed, options = {}) {
   const contentAssets = new Map();
   let sequence = 0;
   const localStorage = {
+    get length() {
+      if (options.failReads) throw new Error('storage unavailable');
+      return values.size;
+    },
+    key(index) {
+      if (options.failReads) throw new Error('storage unavailable');
+      return Array.from(values.keys())[index] || null;
+    },
     getItem(key) {
       if (options.failReads) throw new Error('storage unavailable');
       return values.has(key) ? values.get(key) : null;
@@ -249,10 +257,41 @@ test('role deletion fails closed when its avatar index cannot be read and can be
   assert.equal(values.has(api._storageKey('role-a')), true, 'the index must not be cleared when it could not be read');
 
   options.failReads = false;
+  const discovered = api.listPendingRoleCleanups();
+  assert.equal(discovered.ok, true);
+  assert.deepEqual(Array.from(discovered.value), ['role-a'], 'the durable tombstone discovers deletion even without the queue');
   const retry = await api.removeRole('role-a');
   assert.equal(retry.ok, true);
   assert.equal(refs.has(avatar.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(values.has(api._storageKey('role-a')), false);
+  assert.deepEqual(Array.from(api.listPendingRoleCleanups().value), [], 'successful cleanup marks the tombstone complete');
+  assert.equal((await api.add('role-a', 'data:image/jpeg;base64,AFTER_CLEANUP')).error.code, 'ROLE_DELETED',
+    'completed tombstones still prevent stale async work from recreating a deleted library');
+});
+
+
+
+test('pending cleanup markers are recoverable for encoded role IDs after a failed media listing', async () => {
+  const roleId = 'role/with spaces + 中文';
+  const options = { failListByOwner: true };
+  const { api, refs } = createLibrary({}, options);
+  const avatar = await api.add(roleId, 'data:image/jpeg;base64,RECOVER_TOMBSTONE');
+  assert.equal(avatar.ok, true);
+
+  const interrupted = await api.removeRole(roleId);
+  assert.equal(interrupted.ok, false);
+  assert.equal(interrupted.error.code, 'DB_UNAVAILABLE');
+  assert.equal(refs.has(avatar.value.assetId + '|role-avatar|' + roleId), true);
+
+  options.failListByOwner = false;
+  const pending = api.listPendingRoleCleanups();
+  assert.equal(pending.ok, true);
+  assert.deepEqual(Array.from(pending.value), [roleId], 'URL-encoded storage keys resolve back to the original role ID');
+
+  const retried = await api.removeRole(roleId);
+  assert.equal(retried.ok, true);
+  assert.equal(refs.has(avatar.value.assetId + '|role-avatar|' + roleId), false);
+  assert.deepEqual(Array.from(api.listPendingRoleCleanups().value), []);
 });
 
 test('a pending chat asset lookup reclaims an unowned source image after character deletion', async () => {
@@ -534,8 +573,8 @@ test('character profile loads the shared media stack before the avatar library a
   const storage = characterPage.indexOf('phone_storage.js');
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
-  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v13');
-  const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v10');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v14');
+  const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v11');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
   assert.ok(characterPage.includes('id="avatarLibraryGrid"') === false,
@@ -580,17 +619,20 @@ test('avatar gallery revokes object URLs and prevents removal of the active port
   assert.ok(managerSource.includes('library.remove(roleId, avatarId)'));
 });
 
-test('deleting a character releases only that character avatar references after profile deletion succeeds', () => {
+test('deleting a character releases only its references and re-discovers interrupted cleanup on profile load', () => {
   assert.ok(managerSource.includes('if (!saveRoles(updatedRoles))'));
   assert.ok(managerSource.includes('await library.removeRole(String(id))'));
+  assert.ok(managerSource.includes('listPendingRoleCleanups()'));
+  assert.ok(managerSource.includes('const discovered = library.listPendingRoleCleanups()'));
+  assert.ok(managerSource.includes('删除标记暂时无法扫描'));
   assert.ok(managerSource.includes('角色删除失败，原有资料和头像均已保留。'));
 });
 
 test('PWA shell caches the role portrait archive and its runtime at v195', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v197'"));
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v198'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
-  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v10'"));
-  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v13'"));
+  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v11'"));
+  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v14'"));
 });
 
 
