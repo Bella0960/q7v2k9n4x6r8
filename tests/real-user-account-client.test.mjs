@@ -156,8 +156,19 @@ test('friend code, request list and friend list use only the authenticated API',
   const app = runtime(async (url) => {
     if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
     if (url.endsWith('/auth')) return jsonResponse({ ok: true });
-    if (url.endsWith('/v1/friends')) {
-      return jsonResponse({ ok: true, friends: [{ id: 'friend-1', handle: 'friend_1', displayName: 'Friend' }] });
+    if (url.includes('/v1/friends?')) {
+      const friend = {
+        id: 'friend-1', handle: 'friend_1', displayName: 'Friend',
+        avatarAssetId: null, acceptedRequestId: 'request_friend_001', acceptedAt: 100
+      };
+      return jsonResponse({
+        ok: true,
+        friends: [friend],
+        relationships: [{ ...friend, status: 'accepted', updatedAt: 100 }],
+        snapshotAt: 200,
+        hasMore: false,
+        nextCursor: null
+      });
     }
     if (url.includes('/v1/friends/requests?direction=incoming')) {
       return jsonResponse({ ok: true, requests: [{ id: 'request_123456', peer: { id: 'peer-1' } }] });
@@ -423,4 +434,72 @@ test('Contacts refresh and page-resume handlers refresh both the signed-in accou
   assert.match(PANEL_SOURCE, /root\.addEventListener\('focus', refreshOnResume\)/);
   assert.match(PANEL_SOURCE, /document\.addEventListener\('visibilitychange'/);
   assert.match(PANEL_SOURCE, /账号资料、好友头像和申请已同步/);
+});
+
+test('friend roster pagination collects every page under one stable snapshot', async () => {
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'self-page-1', handle: 'self_1', displayName: 'Self', status: 'active' } });
+    }
+    if (url.includes('/v1/friends?')) {
+      const parsed = new URL(url, 'https://mao.example');
+      const after = parsed.searchParams.get('after');
+      const snapshotAt = Number(parsed.searchParams.get('snapshotAt') || 500);
+      if (!after) {
+        const first = {
+          id: 'account_friend_01', handle: 'friend_01', displayName: 'Friend One',
+          avatarAssetId: null, acceptedRequestId: 'request_friend_001', acceptedAt: 400
+        };
+        return jsonResponse({
+          ok: true, friends: [first],
+          relationships: [{ ...first, status: 'accepted', updatedAt: 450 }],
+          snapshotAt, hasMore: true, nextCursor: first.id
+        });
+      }
+      const second = {
+        id: 'account_friend_02', handle: 'friend_02', displayName: 'Friend Two',
+        avatarAssetId: 'av_' + 'c'.repeat(32), acceptedRequestId: 'request_friend_002', acceptedAt: 410
+      };
+      return jsonResponse({
+        ok: true, friends: [second],
+        relationships: [{ ...second, status: 'accepted', updatedAt: 460 }],
+        snapshotAt, hasMore: false, nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.restore();
+  const roster = await app.client.listFriendRoster();
+  assert.equal(roster.complete, true);
+  assert.equal(roster.snapshotAt, 500);
+  assert.deepEqual(roster.friends.map((friend) => friend.id), ['account_friend_01', 'account_friend_02']);
+  assert.deepEqual(roster.relationships.map((friend) => friend.acceptedRequestId),
+    ['request_friend_001', 'request_friend_002']);
+  const friendCalls = app.calls.filter((call) => call.url.includes('/v1/friends?'));
+  assert.equal(friendCalls.length, 2);
+  assert.match(friendCalls[0].url, /limit=100/);
+  assert.match(friendCalls[1].url, /snapshotAt=500/);
+  assert.match(friendCalls[1].url, /after=account_friend_01/);
+});
+
+test('account restore and logout scope server-synced contacts to the active account only', async () => {
+  const directoryChanges = [];
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'scope-owner-1', handle: 'scope_1', displayName: 'Scoped', status: 'active' } });
+    }
+    if (url.endsWith('/v1/auth/logout')) return jsonResponse({ ok: true });
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  app.window.PhoneContactDirectory = {
+    setActiveAccountId(id) { directoryChanges.push(id); }
+  };
+
+  await app.client.restore();
+  assert.equal(directoryChanges.at(-1), 'scope-owner-1');
+  await app.client.logout();
+  assert.equal(directoryChanges.at(-1), '');
 });
