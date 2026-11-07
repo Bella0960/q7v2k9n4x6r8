@@ -432,3 +432,21 @@ test("profile update rejects missing sessions, cross-origin writes, invalid name
   assert.equal((await spoofed.json()).error, "unexpected_fields");
   assert.equal(db.accounts.get(accountId).display_name, "Profile");
 });
+
+
+test("profile updates fail closed when the rate limiter rejects the change", async () => {
+  const { env, db } = createEnv();
+  const register = await handleRealUserAuth(request(AUTH + "/register", "POST", {
+    handle: "profile_limit", displayName: "Before", password: "correct horse battery"
+  }), env);
+  const cookie = cookieFrom(register);
+  const accountId = (await register.json()).account.id;
+  env.AUTH_LIMITER = { async limit() { return { success: false }; } };
+
+  const update = await handleRealUserAuth(request(AUTH + "/me", "PATCH", {
+    displayName: "After"
+  }, { cookie }), env);
+
+  assert.equal(update.status, 429);
+  assert.equal(db.accounts.get(accountId).display_name, "Before");
+});
