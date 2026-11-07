@@ -261,6 +261,18 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   ]) {
     assert.ok(settingsHtml.includes('id="' + id + '"'), '设置页缺少配对控件 ' + id);
   }
+  const presenceClientStart = clientSource.indexOf('async function startCharacterPresence(');
+  const presenceClientEnd = clientSource.indexOf('  async function disconnect()', presenceClientStart);
+  assert.ok(presenceClientStart >= 0 && presenceClientEnd > presenceClientStart,
+    '必须存在可独立核对的角色前台状态管理器');
+  const presenceClientSource = clientSource.slice(presenceClientStart, presenceClientEnd);
+  assert.ok(presenceClientSource.includes("if (document.visibilityState === 'hidden') return;"),
+    '隐藏标签页不能覆盖设备级前台心跳');
+  assert.equal(presenceClientSource.includes('updatePresenceHeartbeat(false)'), false,
+    '设备级在线状态必须依靠心跳 TTL 过期，不能由单个标签页写离线');
+  assert.equal(presenceClientSource.includes("addEventListener('pagehide'"), false,
+    '单个页面离开不能将仍有其他可见页面的设备标记为离线');
+
   assert.ok(clientSource.includes('function getAutonomyReadiness()'));
   assert.ok(clientSource.includes("'/api/autonomy/readiness'"));
   assert.ok(clientSource.includes('function createDevicePairingToken()'));
