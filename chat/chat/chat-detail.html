@@ -3595,6 +3595,9 @@
                 </div>`;
                 }
             } else if (msg.type === 'transfer') {
+                if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                    bubble.textContent = '真人聊天仅支持普通聊天内容';
+                } else {
                 // 转账卡：纯白底 + 浅灰边框 + 黑色细线条双向箭头 + 右侧灰色细箭头
                 bubble.classList.add('bubble-pay');
                 const transferStatus = msg.status === 'received' ? '已收款'
@@ -3655,6 +3658,7 @@
                         familyCardButtons +
                         '<div style="margin-top:10px;font-size:9px;color:#aaa;">仅限应用内模拟商店与外卖使用</div>' +
                     '</div></div>';
+                }
             } else if (msg.type === 'card' && msg.card) {
                 const cd = msg.card;
                 const cdAvSrc = safeUrl(cd.avatar);
