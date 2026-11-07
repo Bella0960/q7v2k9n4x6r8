@@ -1,11 +1,13 @@
 import { SQL as INIT_SQL, VERSION as INIT_VERSION } from '../migrations/0001_init.js';
+import { SQL as AUTONOMY_SQL, VERSION as AUTONOMY_VERSION } from '../migrations/0002_autonomy_metadata.js';
 
 /**
  * 版本化迁移。exec(sql, ...params) 与存储层（Durable Object SQLite）保持同一签名，
  * 测试里注入 node:sqlite 适配器即可跑真实 SQL。
  */
 export const MIGRATIONS = [
-  { version: INIT_VERSION, sql: INIT_SQL }
+  { version: INIT_VERSION, sql: INIT_SQL },
+  { version: AUTONOMY_VERSION, sql: AUTONOMY_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */
