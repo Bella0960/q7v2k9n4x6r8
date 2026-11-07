@@ -152,7 +152,18 @@ async function main() {
       const group = records.find((item) => item.id === groupId);
       group.memberRefs.push('real_user:user-123');
       localStorage.setItem('contact_groups_v1', JSON.stringify(records));
+      // Simulate a missing identity helper while the group editor is still open.
+      window.PhoneContactIdentity = null;
     }, friendsGroup.id);
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    await page.locator('#contactGroupName').fill('亲近朋友');
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    assert.ok(groups.find((group) => group.id === friendsGroup.id).memberRefs.includes('real_user:user-123'),
+      'typed non-role members survive group edits even when the identity helper is unavailable');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('.contact-item[data-id="role-a"]').waitFor({ state: 'visible', timeout: 10000 });
+    await page.locator('#btnManageContactGroups').click();
 
     await page.locator('#btnCloseContactGroups').click();
     await page.locator('[data-contact-group="' + friendsGroup.id + '"]').click();
