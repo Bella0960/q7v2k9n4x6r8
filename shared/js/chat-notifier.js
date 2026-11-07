@@ -384,7 +384,7 @@
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
+                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v18'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
             );
         }).then(function (ok) {
@@ -511,14 +511,9 @@
     }
 
     function cleanProactiveMessage(value) {
-        var text = String(value == null ? '' : value)
-            .replace(/<[^>]*>/g, ' ')
-            .replace(/\[(?:红包|转账|图片|亲属卡|亲密付|心声|记住|发起语音通话|群动作|群投票|群接龙|群私聊)[^\]]*\]/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        if (text.length < 2 || text.length > 220) return '';
-        if (/\[[^\]]{1,100}\]/.test(text) || /https?:\/\//i.test(text)) return '';
-        return text;
+        var policy = global.ChatPresencePolicy;
+        if (!policy || typeof policy.normalizeProactiveBubbles !== 'function') return '';
+        return policy.normalizeProactiveBubbles(value);
     }
 
     var cloudExecutorPresenceManagers = Object.create(null);
@@ -680,7 +675,7 @@
                 return true;
             }
 
-            var content = cleanProactiveMessage(result.data.text);
+            var content = cleanProactiveMessage(result.data);
             if (!content) {
                 await cloud.skipAutonomyActivity(activity, 'invalid_generation');
                 return true;
@@ -819,7 +814,7 @@
             });
             if (!result || result.ok !== true || !result.data || result.data.send !== true) return;
 
-            var content = cleanProactiveMessage(result.data.text);
+            var content = cleanProactiveMessage(result.data);
             if (!content || safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
             if (document.visibilityState === 'hidden') return;
 
