@@ -1234,8 +1234,11 @@
               showToast('支付已记录，但订单暂未保存；再次提交会补齐订单且不会重复扣款');
               return;
             }
+            var cartSnapshot = null;
+            var cartStorageSnapshot = null;
             if (payFromCart) {
-              var cartSnapshot = shopCart.slice();
+              cartSnapshot = shopCart.slice();
+              cartStorageSnapshot = localStorage.getItem('shop_cart');
               shopCart = [];
               if (!saveCart(shopCart)) {
                 shopCart = cartSnapshot;
@@ -1245,7 +1248,17 @@
               }
             }
             if (!ledger.completePendingCheckout(transactionId)) {
-              showToast('订单已保存，但结算确认暂未完成；再次提交不会重复扣款');
+              if (payFromCart && ledger.isPendingCheckout(transactionId) === true && cartSnapshot) {
+                shopCart = cartSnapshot;
+                try {
+                  if (cartStorageSnapshot == null) localStorage.removeItem('shop_cart');
+                  else localStorage.setItem('shop_cart', cartStorageSnapshot);
+                } catch (restoreError) {}
+                updateBadge();
+                showToast('订单已保存，结算确认暂未完成；已恢复购物车，可再次提交完成确认');
+              } else {
+                showToast('订单已保存，但结算确认暂未完成；请勿重新购买这笔商品');
+              }
               return;
             }
             try {
