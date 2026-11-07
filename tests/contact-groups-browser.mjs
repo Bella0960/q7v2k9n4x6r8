@@ -297,8 +297,26 @@ async function main() {
       'a contact added to the group later is not retroactively excluded from the older post');
     assert.equal(policyResult.roleDCanReceive, false,
       'a directly excluded contact remains excluded regardless of later group edits');
-    assert.deepEqual(pageErrors, [], 'affected pages should not throw browser runtime errors');
     console.log('PASS Moments: published audience remains immutable after later group membership edits');
+
+    // Corrupt group metadata must be visible, preserved, and must not block a direct-contact-only audience.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => localStorage.setItem('contact_groups_v1', '{broken'));
+    await page.locator('#contentInput').fill('分组数据异常后仍可单独选择联系人');
+    await openAudience(page, 'custom');
+    assert.match(await page.locator('.audience-storage-warning').innerText(), /分组数据暂时无法读取/);
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    assert.match(await page.locator('.audience-review').innerText(), /角色丙/);
+    await page.locator('#permClose').click();
+    const directOnlyPost = await publishAndRead(page, '分组数据异常后仍可单独选择联系人');
+    assert.deepEqual(directOnlyPost.visibleTo, ['role-c']);
+    assert.deepEqual(directOnlyPost.visibleGroupIds, []);
+    assert.equal(await readJson(page, 'contact_groups_v1'), '{broken',
+      'publishing with direct contacts must not rewrite corrupt group metadata');
+    assert.equal(apiRequests, 1,
+      'corrupt group metadata cannot leak the post to any auto-comment role');
+    assert.deepEqual(pageErrors, [], 'affected pages should not throw browser runtime errors');
+    console.log('PASS Moments: corrupt group storage is preserved while direct-contact audiences remain available');
   } finally {
     await context.close();
     await browser.close();
