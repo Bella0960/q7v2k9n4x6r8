@@ -781,6 +781,7 @@
             }
             var total = cartTotal();
             var checkoutSignature = JSON.stringify({
+              shopId: orderShop.id,
               items: items.map(function (item) {
                 return { id: item.dish.id || item.dish.name, name: item.dish.name, price: item.dish.price, qty: item.qty };
               }),
@@ -990,16 +991,7 @@
               toast('订单保存失败；再次提交可恢复原交易');
               return;
             }
-            try {
-              if (roleFamilyCard) {
-                            notifyRoleCardIssuer(roleFamilyCard,
-                              '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
-                              '点了外卖：' + itemsDesc + '，共 ¥' + total.toFixed(2) + '。本月已使用 ¥' +
-                              window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
-                          }
-            } catch (notifyError) {
-              console.warn('[takeout] 亲属卡通知未能发送', notifyError);
-            }
+
 
             // 订单落盘后再清空购物车；清理未确认时保留原购物车与待恢复交易。
             var cartSnapshot = cart;
@@ -1016,6 +1008,16 @@
             if (!ledger.completePendingCheckout(transactionId)) {
               toast('订单已保存，但结算确认暂未完成；再次提交不会重复扣款');
               return;
+            }
+            try {
+              if (roleFamilyCard) {
+                            notifyRoleCardIssuer(roleFamilyCard,
+                              '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
+                              '点了外卖：' + itemsDesc + '，共 ¥' + total.toFixed(2) + '。本月已使用 ¥' +
+                              window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+                          }
+            } catch (notifyError) {
+              console.warn('[takeout] 亲属卡通知未能发送', notifyError);
             }
             closeCheckout();
             if (currentShop) renderDishes();
