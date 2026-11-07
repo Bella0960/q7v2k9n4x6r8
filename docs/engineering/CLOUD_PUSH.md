@@ -567,3 +567,18 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - 新增源码契约覆盖：先保存后呈现、串行队列、全量重绘取消和不抢滚动位置。
 - 本轮未运行 Node / SQLite、Vite build、浏览器滚动与动画实测或 Android 真机；仍为 **NOT RUN / NOT VERIFIED**。没有部署 Worker、没有合并 PR、没有更新 APK。
+
+## 20. M2.10：断网恢复与单条消息失败隔离
+
+- 出站收件箱客户端对每条 envelope 独立执行 received → 本地持久化 → ACK；一条消息的本地写入异常或 ACK 网络异常，不再中断同一批后续消息。
+- 新增 `persisted`、`ackDeferred`、`persistErrors` 结果计数，区分“本地已经保存”和“云端 ACK 尚未确认”，避免把两种状态混为一谈。
+- ACK 暂时失败时不删除、不重写本地消息，也不把消息错误标记为未保存；云端 outbox 继续保留原消息。下一轮拉取通过原 `serverMessageId` 命中本地历史，跳过重复插入，只补发 ACK。
+- 单条本地写入抛错或返回 false 时不 ACK，对应云端消息保留 pending；同批其他消息继续处理，避免队首坏消息阻塞整个收件箱。
+- 浏览器明确报告 `navigator.onLine === false` 时暂停定时拉取；浏览器 `online` 事件触发立即补拉，切回前台与 BFCache 恢复仍走既有立即同步入口。成功拉取后重置一次性网络警告状态。
+- 云端状态语义不变：设备收到不等于本地保存，本地保存不等于 ACK；只有持久化回调成功后才会发送 ACK。
+- Chat push client 资源更新至 `20261107v2`，PWA shell cache 更新至 `phone-app-pwa-v183`。
+
+### 验证边界
+
+- 新增契约覆盖单条持久化错误隔离、ACK 网络错误隔离、结果计数、浏览器离线暂停与 online 即时补拉。
+- Node/SQLite 回归、Vite 构建、浏览器离线/在线切换与 Android 真机均未在本轮运行，仍为 **NOT RUN / NOT VERIFIED**。没有合并 PR、没有部署 Worker、没有更新 APK。
