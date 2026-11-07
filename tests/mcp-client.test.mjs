@@ -157,3 +157,58 @@ test('MCP tool arguments follow required fields, types, ranges and additionalPro
     properties: { mode: { enum: [{ alpha: 1, beta: 2 }] } }
   }, { mode: { beta: 2, alpha: 1 } }), true, 'object enum comparison must not depend on property order');
 });
+
+test('MCP disconnect aborts in-flight requests before releasing its session', async () => {
+  const calls = [];
+  let callStarted;
+  const started = new Promise(resolve => { callStarted = resolve; });
+  let requestAborted = false;
+
+  function response(status, payload, headers = {}) {
+    const map = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      headers: { get(name) { return map[String(name).toLowerCase()] || (String(name).toLowerCase() === 'content-type' ? 'application/json' : null); } },
+      async text() { return payload == null ? '' : JSON.stringify(payload); }
+    };
+  }
+
+  const context = createContext(async (url, init) => {
+    calls.push({ url, init });
+    if (init.method === 'DELETE') return response(200, null);
+    const message = JSON.parse(init.body);
+    if (message.method === 'initialize') {
+      return response(200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: { protocolVersion: '2025-03-26', serverInfo: { name: 'test', version: '1' } }
+      }, { 'Mcp-Session-Id': 'session-cancel' });
+    }
+    if (message.method === 'notifications/initialized') return response(202, null);
+    if (message.method === 'tools/call') {
+      callStarted();
+      return new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => {
+          requestAborted = true;
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    }
+    throw new Error('unexpected MCP method: ' + message.method);
+  });
+
+  const client = context.MaoMcpClient.createClient({ url: 'https://example.com/mcp' });
+  await client.initialize();
+  const pendingCall = client.callTool('slow-tool', {});
+  await started;
+  await client.disconnect();
+
+  await assert.rejects(pendingCall, /连接已断开，已取消未完成的请求/);
+  assert.equal(requestAborted, true);
+  assert.ok(calls.some(item => item.init.method === 'DELETE'), 'session DELETE should be sent');
+  await client.disconnect();
+  assert.equal(calls.filter(item => item.init.method === 'DELETE').length, 1, 'disconnect should be idempotent');
+});
