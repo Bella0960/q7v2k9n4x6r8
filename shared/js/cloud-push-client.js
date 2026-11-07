@@ -573,9 +573,10 @@
         });
     }
 
-    function minuteToClock(value) {
+    function minuteToClock(value, allowEndOfDay) {
       var minute = Number(value);
-      if (!Number.isInteger(minute) || minute < 0 || minute > 1439) return '';
+      if (!Number.isInteger(minute) || minute < 0 || minute > (allowEndOfDay ? 1440 : 1439)) return '';
+      if (minute === 1440 && allowEndOfDay) return '24:00';
       return String(Math.floor(minute / 60)).padStart(2, '0') + ':' +
         String(minute % 60).padStart(2, '0');
     }
@@ -586,8 +587,8 @@
 
     function fillWindow(startInput, endInput, windows) {
       var windowValue = firstWindow(windows);
-      if (startInput) startInput.value = windowValue ? minuteToClock(windowValue.startMinute) : '';
-      if (endInput) endInput.value = windowValue ? minuteToClock(windowValue.endMinute) : '';
+      if (startInput) startInput.value = windowValue ? minuteToClock(windowValue.startMinute, false) : '';
+      if (endInput) endInput.value = windowValue ? minuteToClock(windowValue.endMinute, true) : '';
     }
 
     function fillRoleSchedule(schedule) {
