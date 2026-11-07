@@ -654,13 +654,19 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!CONTEXT_EVENT_ID_PATTERN.test(eventId)) {
       throw new ApiError(400, 'INVALID_CONTEXT_EVENT', 'eventId 格式无效');
     }
+    const timestamp = now();
     const result = await store.recordCharacterContextEvent({
       userId: device.user_id || OWNER_USER_ID,
       characterId,
       eventId,
       deviceId: device.id,
-      now: now()
+      now: timestamp,
+      eventLimit: 600,
+      windowStart: timestamp - 3600000
     });
+    if (result.limited) {
+      throw new ApiError(429, 'CONTEXT_VERSION_RATE_LIMITED', '角色上下文版本同步过于频繁，请稍后重试');
+    }
     return ok({
       changed: result.changed,
       version: result.version,
