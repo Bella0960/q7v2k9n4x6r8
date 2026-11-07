@@ -634,12 +634,17 @@
         pairConnectButton.disabled = true;
         setStatusText('正在配对并连接推送…');
         try {
-          await connectDeviceWithPairingCode(code);
+          var connection = await connectDeviceWithPairingCode(code);
           if (pairCodeInput) pairCodeInput.value = '';
-          setStatusText('设备已配对，推送订阅已连接');
+          setStatusText(connection.pushEnabled
+            ? '设备已配对，推送订阅已连接'
+            : '设备已配对；当前浏览器不支持 Web Push');
           await refreshSettings();
         } catch (error) {
-          setStatusText('设备配对失败：' + (error.message || '未知错误'));
+          setStatusText(error.deviceRegistered
+            ? '设备已配对，但推送订阅未完成：' + (error.message || '未知错误')
+            : '设备配对失败：' + (error.message || '未知错误'));
+          if (error.deviceRegistered) await refreshSettings();
         } finally {
           pairConnectButton.disabled = false;
         }
@@ -663,6 +668,8 @@
     if (!supported) {
       setToggle(false);
       setStatusText('当前浏览器不支持 Web Push');
+      // Web Push 不可用不应阻止设备配对状态与自主活动元数据读取。
+      refreshSettings();
       return;
     }
     refreshSettings();
