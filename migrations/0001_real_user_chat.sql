@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS real_user_friendships (
   pair_high TEXT NOT NULL REFERENCES real_user_accounts(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'accepted'
     CHECK (status IN ('accepted', 'removed')),
-  accepted_request_id TEXT NOT NULL REFERENCES real_user_friend_requests(id),
+  accepted_request_id TEXT NOT NULL REFERENCES real_user_friend_requests(id) ON DELETE CASCADE,
   accepted_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (pair_low, pair_high),
