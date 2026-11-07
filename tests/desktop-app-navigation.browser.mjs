@@ -133,12 +133,11 @@ try {
   assert.ok(firstRoute, 'first app tile should declare its destination');
 
   const expectedPath = `/${firstRoute}`;
-  const canonicalPath = expectedPath.replace(/\.html$/, '');
   const navigationResponses = [];
   page.on('response', response => {
     const url = new URL(response.url());
     if (url.origin === new URL(baseUrl).origin &&
-        (url.pathname === expectedPath || url.pathname === canonicalPath)) {
+        url.pathname === expectedPath) {
       navigationResponses.push({ status: response.status(), url: response.url(), location: response.headers()['location'] || '' });
     }
   });
@@ -150,11 +149,11 @@ try {
   assert.equal(appResponse.status(), 200,
     `mobile tap must finish on HTTP 200; redirect chain: ${JSON.stringify(navigationResponses)}`);
   await page.waitForURL(url =>
-    url.origin === new URL(baseUrl).origin && url.pathname === canonicalPath,
+    url.origin === new URL(baseUrl).origin && url.pathname === expectedPath,
     { timeout: 10000 }
   );
-  assert.equal(new URL(page.url()).pathname, canonicalPath,
-    'mobile app tap must navigate to the Cloudflare canonical app URL');
+  assert.equal(new URL(page.url()).pathname, expectedPath,
+    'mobile app tap must preserve the explicit .html route configured by the production Worker');
 
   console.log(`PASS: live target ${baseUrl}; cache ${expectedCacheName}; ${routes.length} app routes returned HTTP 200 HTML; mobile tap finished at ${page.url()} via ${JSON.stringify(navigationResponses)}.`);
 } finally {
