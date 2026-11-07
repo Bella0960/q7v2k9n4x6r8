@@ -605,3 +605,28 @@ test('真实 SQLite store snapshot 不会把后台心跳视为前台活跃设备
   assert.equal(snapshot.presence.devices[0].foregroundActive, false);
   assert.equal(snapshot.presence.devices[0].lastHeartbeatAt, 0);
 });
+
+
+test('真实 SQLite 持久化授权与作息接入 gate，但无可信聊天版本时仍阻止上下文任务', () => {
+  const { store } = freshStore();
+  const gate = createSchedulerGate({
+    store,
+    now: () => GATE_NOW,
+    config: GATE_POLICY_CONFIG
+  });
+  const noSchedule = gate(contactTask());
+  assert.equal(noSchedule.autonomyAllowed, false);
+  assert.equal(noSchedule.reasonCode, REASON_CODES.GATE_DATA_MISSING);
+
+  store.setUserAutonomy('owner', true, GATE_NOW);
+  store.setCharacterAutonomy('owner', 'character-a', null, GATE_NOW);
+  store.setCharacterSchedule('owner', 'character-a', 'UTC', {
+    active: [{ startMinute: 0, endMinute: 1440 }],
+    busy: [],
+    asleep: []
+  }, GATE_NOW);
+
+  const noServerVersion = gate(contactTask());
+  assert.equal(noServerVersion.autonomyAllowed, false);
+  assert.equal(noServerVersion.reasonCode, REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
+});
