@@ -507,6 +507,77 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
   manager.stop();
 });
 
+test('停止前台管理器会中止当前标签页的在途请求', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  let intervalCallback = null;
+  let resolveSecondHeartbeatStarted;
+  const secondHeartbeatStarted = new Promise(resolve => { resolveSecondHeartbeatStarted = resolve; });
+  let secondHeartbeatSignal = null;
+  let heartbeatCount = 0;
+  const browserWindow = {
+    AbortController,
+    setInterval(callback) {
+      intervalCallback = callback;
+      return 31;
+    },
+    clearInterval() {}
+  };
+  const browserDocument = {
+    currentScript: null,
+    visibilityState: 'visible',
+    addEventListener() {},
+    removeEventListener() {}
+  };
+  const localStorageStub = {
+    getItem(key) {
+      return key === 'cloud_device_v1'
+        ? JSON.stringify({ deviceId: 'device-id-123456', secret: 's'.repeat(32) })
+        : null;
+    },
+    setItem() {},
+    removeItem() {}
+  };
+  const response = payload => ({ ok: true, json: async () => payload });
+  const fetchStub = async (url, options = {}) => {
+    if (url === '/api/presence/config') {
+      return response({ ok: true, heartbeatTtlMs: 120000, leaseDurationMs: 120000 });
+    }
+    if (url === '/api/presence/heartbeat') {
+      heartbeatCount += 1;
+      if (heartbeatCount === 1) return response({ ok: true });
+      secondHeartbeatSignal = options.signal;
+      resolveSecondHeartbeatStarted();
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true });
+      });
+    }
+    if (url === '/api/characters/role-123/lease') {
+      return response({ ok: true, renewed: true });
+    }
+    throw new Error('Unexpected request: ' + url);
+  };
+
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: browserDocument,
+    localStorage: localStorageStub,
+    fetch: fetchStub,
+    console: { warn() {}, log() {}, error() {} },
+    URL
+  });
+
+  const manager = await browserWindow.MaomaoCloud.startCharacterPresence('role-123');
+  intervalCallback();
+  await secondHeartbeatStarted;
+  manager.stop();
+  assert.equal(secondHeartbeatSignal.aborted, true, '停止管理器时必须取消在途请求');
+  await new Promise(resolve => setTimeout(resolve, 0));
+});
+
 test('清理任务不会提前删除超过一小时但仍有效的配对码', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_PAIRING_TOKEN_TTL_MS: String(2 * 60 * 60 * 1000)
