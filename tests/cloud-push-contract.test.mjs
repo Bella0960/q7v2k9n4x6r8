@@ -2961,6 +2961,62 @@ test('来源设备撤销或离线不阻止同账号有效设备恢复待收消�
   assert.equal(revokedSourceAck.payload.error.code, 'DEVICE_REVOKED');
 });
 
+test('出站收件箱使用稳定游标翻页，队首保存失败不会挡住后续消息', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const inserted = [];
+  for (let index = 0; index < 3; index += 1) {
+    const serverMessageId = randomToken(20);
+    const result = ctx.store.insertOutboundMessage({
+      id: randomToken(16),
+      deviceId: device.deviceId,
+      characterId: 'char-pagination',
+      serverMessageId,
+      dedupeKey: 'pagination-' + index,
+      payload: { text: 'message-' + index },
+      now: 1000 + index
+    });
+    assert.equal(result.inserted, true);
+    inserted.push(serverMessageId);
+  }
+
+  const first = await ctx.asJson('/api/characters/char-pagination/outbound?limit=2', { device });
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.payload.messages.map(item => item.serverMessageId), inserted.slice(0, 2));
+  assert.ok(first.payload.nextCursor);
+
+  // Deliberately leave page 1 unacknowledged. The cursor must still reach page 2.
+  const cursor = first.payload.nextCursor;
+  const second = await ctx.asJson(
+    '/api/characters/char-pagination/outbound?limit=2&afterCreatedAt=' +
+      encodeURIComponent(String(cursor.createdAt)) + '&afterId=' + encodeURIComponent(cursor.id),
+    { device }
+  );
+  assert.equal(second.status, 200);
+  assert.deepEqual(second.payload.messages.map(item => item.serverMessageId), [inserted[2]]);
+  assert.equal(second.payload.nextCursor, null);
+
+  const invalidHalfCursor = await ctx.asJson(
+    '/api/characters/char-pagination/outbound?limit=2&afterCreatedAt=1000',
+    { device }
+  );
+  assert.equal(invalidHalfCursor.status, 400);
+  assert.equal(invalidHalfCursor.payload.error.code, 'INVALID_OUTBOUND_CURSOR');
+});
+
+test('客户端收件箱游标按角色和设备持久化，并在有限批次中继续翻页', () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  assert.ok(clientSource.includes('function getCharacterOutboundPage(characterId, limit, cursor)'));
+  assert.ok(clientSource.includes('cloud_outbound_cursor_v1:'));
+  assert.ok(clientSource.includes('var maxPages = Math.max(1, Math.ceil(30 / safeLimit))'));
+  assert.ok(clientSource.includes('while (pagesProcessed < maxPages)'));
+  assert.ok(clientSource.includes('cursor = page.nextCursor'));
+  assert.ok(clientSource.includes('writeOutboundCursor(cursorKey, null)'));
+  assert.ok(clientSource.includes('getCharacterOutboundPage: getCharacterOutboundPage'));
+});
+
 test('客户端只在消息持久化回调确认成功后才确认云端出站消息', () => {
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   const start = clientSource.indexOf('async function receiveCharacterOutboundMessages(');
