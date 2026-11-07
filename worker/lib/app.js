@@ -500,9 +500,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const vapid = vapidSummary(env);
     const pairingTtl = parsePositiveEnv(env, 'DEVICE_PAIRING_TOKEN_TTL_MS');
     const enrollmentToken = String(env?.ENROLLMENT_TOKEN || '');
-    const globalAutonomy = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
-    const activityQueue = await store.getActivityQueueSummary({
-      userId: device.user_id || OWNER_USER_ID
+    const userId = device.user_id || OWNER_USER_ID;
+    const globalAutonomy = await store.getUserAutonomy(userId);
+    const activityQueue = await store.getActivityQueueSummary({ userId });
+    const timestamp = now();
+    const recentSchedulerReasons = await store.getRecentAutonomyReasonSummary({
+      userId,
+      since: timestamp - 86400000
     });
     return ok({
       deviceAuthorized: true,
@@ -515,6 +519,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       presenceConfigured: Boolean(presenceConfig),
       globalAutonomyEnabled: globalAutonomy?.enabled === 1,
       activityQueue,
+      recentSchedulerReasons,
+      schedulerDiagnosticsWindowMs: 86400000,
       // No generation executor is wired into the scheduled Worker yet.
       activityExecutorAvailable: false,
       contextVersionReady: false,
