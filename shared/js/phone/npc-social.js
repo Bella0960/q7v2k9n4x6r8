@@ -383,10 +383,26 @@
     }
   }
 
+  function hasWelcomeMessage(roleId, request) {
+    var greeting = cleanText(request && request.npc && request.npc.greeting, 180);
+    if (!greeting) return true;
+    if (!global.PhoneStorage || typeof global.PhoneStorage.getChatHistory !== 'function') return false;
+    try {
+      var history = global.PhoneStorage.getChatHistory(roleId);
+      if (!Array.isArray(history)) return false;
+      return history.some(function (message) {
+        if (!message || message.role !== 'assistant') return false;
+        return message.npcFriendWelcome === true || cleanText(message.text, 180) === greeting;
+      });
+    } catch (error) { return false; }
+  }
+
   NS.accept = function (requestId) {
-    var requests = readRequests();
+    var roleId = activeRoleId();
+    var requests = readRequests(roleId);
     var request = requests.find(function (row) { return row && String(row.id) === String(requestId); });
     if (!request) throw new Error('找不到这条好友申请。');
+    if (String(request.mainRoleId || '') !== roleId) throw new Error('这条好友申请不属于当前主角色。');
     if (request.status === 'accepted') return { ok: true, roleId: request.npc.id, alreadyAccepted: true };
     if (request.status !== 'pending' || !request.npc || !request.npc.id) throw new Error('这条好友申请不能再接受。');
 
@@ -426,20 +442,26 @@
       throw new Error('角色 ID 冲突，未覆盖现有联系人。');
     }
 
-    // A new NPC should greet the user once after acceptance. If saving this
-    // first message fails, leave the request pending so retry can complete it.
-    if (typeof global.PhoneStorage.getChatHistory === 'function' &&
-        typeof global.PhoneStorage.saveChatHistory === 'function') {
+    // Do not mark a request accepted until its first greeting is durable.
+    // On retries, recognize the existing welcome and never duplicate it.
+    var greeting = cleanText(request.npc.greeting, 180);
+    if (greeting) {
+      if (typeof global.PhoneStorage.getChatHistory !== 'function' ||
+          typeof global.PhoneStorage.saveChatHistory !== 'function') {
+        throw new Error('聊天记录仓储暂不可用。NPC 已加入通讯录，但申请仍待完成；请稍后重试。');
+      }
       var initialHistory = global.PhoneStorage.getChatHistory(request.npc.id);
       if (!Array.isArray(initialHistory)) initialHistory = [];
-      if (!initialHistory.length && request.npc.greeting) {
-        var greetingSaved = global.PhoneStorage.saveChatHistory(request.npc.id, [{
+      if (!hasWelcomeMessage(request.npc.id, request)) {
+        var nextHistory = initialHistory.slice();
+        nextHistory.unshift({
           role: 'assistant',
-          text: cleanText(request.npc.greeting, 180),
+          text: greeting,
           time: Date.now(),
           voiceMode: 'online',
           npcFriendWelcome: true
-        }]);
+        });
+        var greetingSaved = global.PhoneStorage.saveChatHistory(request.npc.id, nextHistory);
         if (greetingSaved !== true) {
           throw new Error('NPC 已加入通讯录，但首次问候保存失败。请重试接受申请以完成初始化。');
         }
@@ -449,21 +471,23 @@
     request.status = 'accepted';
     request.acceptedAt = Date.now();
     request.updatedAt = Date.now();
-    if (!writeRequests(requests)) throw new Error('NPC 已加入通讯录，但申请状态未能保存。请重新打开申请列表，状态会自动校正。');
+    if (!writeRequests(requests, roleId)) throw new Error('NPC 已加入通讯录，但申请状态未能保存。请重新打开申请列表，状态会自动校正。');
     emit('mao:npc-friend-accepted', request);
     return { ok: true, roleId: request.npc.id };
   };
 
   NS.reject = function (requestId, blocked) {
-    var requests = readRequests();
+    var roleId = activeRoleId();
+    var requests = readRequests(roleId);
     var request = setStatus(requests, requestId, blocked ? 'blocked' : 'declined');
-    if (!writeRequests(requests)) throw new Error('申请处理状态保存失败，请重试。');
+    if (!writeRequests(requests, roleId)) throw new Error('申请处理状态保存失败，请重试。');
     return { ok: true, request: request };
   };
 
   function reconcileAccepted() {
+    var roleId = activeRoleId();
     var requests;
-    try { requests = readRequests(); } catch (error) { return; }
+    try { requests = readRequests(roleId); } catch (error) { return; }
     var store = global.PhoneStorage && global.PhoneStorage.result;
     if (!store || typeof store.getCharacters !== 'function') return;
     var roles = store.getCharacters();
@@ -474,14 +498,15 @@
       var existing = roles.value.find(function (role) {
         return String(role.id) === String(request.npc.id) && String(role.npcFriendRequestId || '') === String(request.id);
       });
-      if (existing) {
+      if (existing && hasWelcomeMessage(existing.id, request)) {
         request.status = 'accepted';
         request.acceptedAt = request.updatedAt = Date.now();
         changed = true;
       }
     });
-    if (changed) writeRequests(requests);
+    if (changed) writeRequests(requests, roleId);
   }
+  NS.reconcileAccepted = reconcileAccepted;
 
   NS.start = function () {
     if (started) return;
