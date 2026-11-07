@@ -238,12 +238,15 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
     'cloudPairCodeOutput',
     'cloudPairCodeCopyButton',
     'cloudPairCodeInput',
-    'cloudPairConnectButton'
+    'cloudPairConnectButton',
+    'cloudAutonomyToggle'
   ]) {
     assert.ok(settingsHtml.includes('id="' + id + '"'), '设置页缺少配对控件 ' + id);
   }
   assert.ok(clientSource.includes('function createDevicePairingToken()'));
   assert.ok(clientSource.includes('function connectDeviceWithPairingCode('));
+  assert.ok(clientSource.includes('setGlobalAutonomy(desired)'));
+  assert.ok(clientSource.includes('getGlobalAutonomy()'));
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
 });
 
