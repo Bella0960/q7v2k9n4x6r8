@@ -21,9 +21,10 @@ class CloudStore {
   insertDevice(device) {
     this.exec(
       `INSERT INTO devices
-        (id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       device.id,
+      device.userId || 'owner',
       device.secretHash,
       device.label || '',
       device.platform || '',
@@ -32,6 +33,32 @@ class CloudStore {
       device.now,
       device.now
     );
+  }
+
+  insertBootstrapDevice(device) {
+    const row = this.exec(
+      `INSERT INTO devices
+        (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM device_bootstrap
+         WHERE id = 1 AND claimed_at IS NULL
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM devices WHERE revoked_at IS NULL
+       )
+       RETURNING id`,
+      device.id,
+      device.userId || 'owner',
+      device.secretHash,
+      device.label || '',
+      device.platform || '',
+      device.userAgent || '',
+      device.ipHash || '',
+      device.now,
+      device.now
+    )[0];
+    return Boolean(row);
   }
 
   updateDeviceProfile(deviceId, { label, platform }) {
@@ -56,6 +83,7 @@ class CloudStore {
       device.user_id || 'owner',
       deviceId
     );
+    this.exec('DELETE FROM device_pairing_tokens WHERE created_by_device_id = ? AND consumed_at IS NULL', deviceId);
   }
 
   countDevicesByIp(ipHash, since) {
@@ -65,6 +93,52 @@ class CloudStore {
       since
     )[0];
     return Number(row?.total || 0);
+  }
+
+  countRecentPairingTokensByDevice(deviceId, since) {
+    const row = this.exec(
+      'SELECT COUNT(*) AS total FROM device_pairing_tokens WHERE created_by_device_id = ? AND created_at >= ?',
+      deviceId,
+      since
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  createDevicePairingToken(token) {
+    this.exec(
+      `INSERT INTO device_pairing_tokens
+        (token_hash, user_id, created_by_device_id, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      token.tokenHash,
+      token.userId || 'owner',
+      token.createdByDeviceId,
+      token.createdAt,
+      token.expiresAt
+    );
+  }
+
+  consumeDevicePairingToken(tokenHash, now) {
+    return this.exec(
+      `UPDATE device_pairing_tokens
+       SET consumed_at = ?
+       WHERE token_hash = ?
+         AND consumed_at IS NULL
+         AND expires_at > ?
+       RETURNING user_id`,
+      now,
+      tokenHash,
+      now
+    )[0] || null;
+  }
+
+  cleanupDevicePairingTokens(now) {
+    const rows = this.exec(
+      `DELETE FROM device_pairing_tokens
+       WHERE expires_at <= ? OR consumed_at IS NOT NULL
+       RETURNING token_hash`,
+      now
+    );
+    return rows.length;
   }
 
   upsertSubscription(subscription) {
