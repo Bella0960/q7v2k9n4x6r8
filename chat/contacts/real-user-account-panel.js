@@ -379,7 +379,8 @@
       row.className = 'ru-list-row';
       var main = document.createElement('div');
       main.className = 'ru-list-main ru-list-main-with-avatar';
-      main.appendChild(createAvatarWrap(account.avatarAssetId, account.displayName, false));
+      // A block revokes avatar-read permission; show the local initial without a doomed request.
+      main.appendChild(createAvatarWrap(null, account.displayName, false));
       var textWrap = document.createElement('div');
       textWrap.className = 'ru-list-text';
       addText(textWrap, 'ru-list-name', account.displayName || 'MAOMAO 用户');
