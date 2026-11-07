@@ -70,8 +70,8 @@ test('Contacts account client scripts are part of the versioned app shell', () =
   const contactsPage = read('chat/contacts/contacts.html');
   assert.match(contactsPage, /real-user-account-client\.js\?v=20261108v2/);
   assert.match(contactsPage, /real-user-account-panel\.js\?v=20261108v2/);
-  assert.match(serviceWorker, /contact-directory\.js\?v=20261108v1/);
-  assert.match(contactsPage, /contact-directory\.js\?v=20261108v1/);
+  assert.match(serviceWorker, /contact-directory\.js\?v=20261108v2/);
+  assert.match(contactsPage, /contact-directory\.js\?v=20261108v2/);
   assert.match(serviceWorker, /friends-blocked-list/);
   const workerEntry = read('worker.js');
   const avatarService = read('worker/real-user-avatar.js');
