@@ -13,6 +13,7 @@ class FakeD1 {
   constructor() {
     this.accounts = new Map();
     this.sessions = new Map();
+    this.schemaReady = true;
   }
 
   prepare(sql) {
@@ -25,6 +26,9 @@ class FakeD1 {
       },
       async first() {
         const values = this.values;
+        if (sql.includes("FROM sqlite_master")) {
+          return { ready: db.schemaReady ? 4 : 0 };
+        }
         if (sql.includes("FROM real_user_accounts WHERE handle")) {
           const handle = String(values[0]).toLowerCase();
           return Array.from(db.accounts.values()).find(account => account.handle === handle) || null;
@@ -149,10 +153,12 @@ test("account auth fails closed without the explicit flag, D1 and rate limiter",
   for (const options of [
     { enabled: false },
     { noDb: true },
-    { noLimiter: true }
+    { noLimiter: true },
+    { noSchema: true }
   ]) {
-    const { env } = createEnv(options);
-    assert.equal(isRealUserAuthConfigured(env), false);
+    const { env, db } = createEnv(options);
+    if (options.noSchema) db.schemaReady = false;
+    assert.equal(await isRealUserAuthConfigured(env), false);
     const response = await handleRealUserAuth(request(AUTH + "/register", "POST", {
       handle: "alice_1", displayName: "Alice", password: "correct horse battery"
     }), env);
