@@ -223,7 +223,18 @@
       throw new Error('请输入有效的一次性配对码');
     }
     var device = ensureDevice();
-    await registerDevice(device, code);
+    try {
+      await registerDevice(device, code);
+    } catch (error) {
+      // 仅在用户主动输入一次性配对码时，允许从已撤销/冲突的旧 ID
+      // 创建新设备身份；普通 enablePush / re-register 不会静默清除凭据。
+      if (['DEVICE_REVOKED', 'DEVICE_CONFLICT', 'DEVICE_UNKNOWN'].indexOf(error.code) === -1) {
+        throw error;
+      }
+      clearDevice();
+      device = ensureDevice();
+      await registerDevice(device, code);
+    }
     if (!isSupported()) {
       return { deviceRegistered: true, pushSupported: false, pushEnabled: false };
     }
