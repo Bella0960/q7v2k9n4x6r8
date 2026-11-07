@@ -209,6 +209,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增最近 24 小时调度阻塞 / 作废原因计数：仅统计 `deferred / failed / superseded / skipped`，不把成功认领的 `claimed` 误报为阻塞；Scheduler 日志写入任务所属的 `device_id`，readiness 仅按已鉴权设备所属用户分组返回原因码与次数，不返回执行日志详情、任务 ID 或时间戳；旧的未关联设备日志不会跨账号展示。
 - readiness 在心跳/租约参数齐全时，额外返回匿名 `presenceSummary`：授权设备总数、TTL 内有效前台心跳设备数、有效角色租约数、grace 缓冲期租约数。查询按用户隔离，并排除已撤销设备、过期或未来时间戳的心跳和非本账号租约；不返回设备 ID、角色 ID 或原始心跳时间。缺少前台参数时该汇总为 `null`，不会把未知状态伪装成离线。
 - 设备撤销在同一个同步 Store 操作内先停用其全部推送订阅，再标记设备撤销并清除 presence、租约和未使用配对码，避免撤销与停订阅分成两次调用造成的短暂推送窗口。
+- 推送订阅写入会在 Store 写入边界重新检查设备是否仍有效；即使请求在鉴权后被并发撤销，也不能重新激活订阅。endpoint 已属于另一台仍有效设备时拒绝转移；只有原设备已撤销后，配对完成的新设备才可接管该 endpoint。
 - 当前 `activityExecutorAvailable=false`、`contextVersionReady=false`，主动消息生成继续为 false；阻塞原因明确为 `executor_unavailable` 与 `context_version_unavailable`。这不是“已能主动发消息”的状态。
 - 不返回 VAPID 私钥、设备 pepper、初始认领码、配对码或任何 Secret。
 - 设置页“检查云端准备情况”显示设备鉴权、首次认领、配对、VAPID 配置、推送订阅、presence 参数、全局授权、队列计数、最近 24 小时调度原因、执行器、上下文版本和 AI 生成链路状态。
