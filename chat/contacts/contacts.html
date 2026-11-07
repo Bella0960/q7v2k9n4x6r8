@@ -330,6 +330,7 @@
     var currentContactGroupFilter = 'all';
     var editingContactGroupId = '';
     var editingContactGroupMembers = [];
+    var editingContactGroupOtherRefs = [];
 
     function getContactGroups() {
       if (!contactGroupApi) return [];
@@ -442,6 +443,15 @@
     function openContactGroupEditor(group) {
       editingContactGroupId = group ? String(group.id) : '';
       var storedMemberIds = group ? (group.memberIds || []).map(String) : [];
+      editingContactGroupOtherRefs = [];
+      if (group && Array.isArray(group.memberRefs) && window.PhoneContactIdentity) {
+        group.memberRefs.forEach(function (value) {
+          var ref = window.PhoneContactIdentity.normalize(value);
+          if (ref && ref.type !== 'ai_role' && editingContactGroupOtherRefs.indexOf(ref.key) === -1) {
+            editingContactGroupOtherRefs.push(ref.key);
+          }
+        });
+      }
       var rosterRead = { ok: false, roles: [] };
       try {
         if (_storage && _storage.result && typeof _storage.result.getCharacters === 'function') {
@@ -486,8 +496,13 @@
         status.textContent = '已经有同名分组了'; return;
       }
       var next = groups.slice(), index = next.findIndex(function (group) { return group.id === editingContactGroupId; });
+      var roleRefs = editingContactGroupMembers.map(function (id) {
+        var ref = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole({ id: id });
+        return ref ? ref.key : 'ai_role:' + encodeURIComponent(id);
+      });
       var record = { id: editingContactGroupId || ('cg_' + Date.now().toString(36) + '_' + Math.floor(Math.random() * 10000).toString(36)),
-        name: name.slice(0,24), memberIds: editingContactGroupMembers.slice() };
+        name: name.slice(0,24), memberIds: editingContactGroupMembers.slice(),
+        memberRefs: editingContactGroupOtherRefs.concat(roleRefs) };
       if (index >= 0) next[index] = record; else next.push(record);
       var saved = persistContactGroups(next);
       if (!saved.ok) {
