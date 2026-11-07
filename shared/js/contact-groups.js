@@ -87,7 +87,8 @@
         if (visibility === 'excluded') {
             return uniqueIds(post.hiddenTo).indexOf(id) === -1;
         }
-        return visibility === 'public' || visibility === 'friends' || true;
+        // 未知旧权限值沿用历史行为；新增受限权限必须在上方显式定义。
+        return true;
     }
 
     function getGroupIdsForContact(contactId) {
