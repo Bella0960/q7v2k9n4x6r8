@@ -495,10 +495,11 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 | API | 作用 |
 | --- | --- |
 | `POST /api/characters/:id/outbound/:messageId/received` | 目标设备确认已拉取消息 envelope；幂等，不代表已经保存 |
+| `GET /api/characters/:id/outbound/:messageId/status` | 目标设备读取该消息四个生命周期时间点；其他设备与角色不可查询 |
 | `POST /api/characters/:id/outbound/:messageId/ack` | 原有接口不变；写后读回成功后确认本地保存，同时兼容补记 received |
 | `POST /api/characters/:id/outbound/:messageId/read` | 本地保存后才可确认用户已读；只允许原目标设备、原角色回执 |
 
-出站 GET 仍返回原 payload，并附带 `lifecycle`：`pushAcceptedAt`、`deviceReceivedAt`、`localSavedAt`、`readAt`。所有时间均是服务端时间戳；没有相应事件时为 null。
+出站 GET 仍返回原 payload，并附带 `lifecycle`：`pushAcceptedAt`、`deviceReceivedAt`、`localSavedAt`、`readAt`。所有时间均是服务端时间戳；没有相应事件时为 null。 消息保存后不再出现在 pending 列表，但目标设备仍可通过 status GET 查询完整生命周期及 `readByDeviceId`；客户端 `MaomaoCloud.getCharacterOutboundLifecycle()` 暴露该只读查询。
 
 ### 16.3 用户已读的判定方式
 
