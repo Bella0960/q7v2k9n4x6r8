@@ -322,21 +322,40 @@
       listTools: function () {
         var all = [];
         var seenCursors = Object.create(null);
+        var seenNames = Object.create(null);
         function page(cursor, pageCount) {
-          if (pageCount >= 20 || all.length >= MAX_TOOLS) return Promise.resolve(all);
+          if (pageCount >= 20) throw new Error('MCP 工具分页超过 20 页上限，无法完整读取。');
           if (cursor && seenCursors[cursor]) throw new Error('MCP 工具分页游标重复，已停止读取。');
           if (cursor) seenCursors[cursor] = true;
           return request('tools/list', cursor ? { cursor: cursor } : {}).then(function (result) {
-            (Array.isArray(result.tools) ? result.tools : []).forEach(function (tool) {
-              if (!tool || typeof tool.name !== 'string' || !tool.name.trim() || all.length >= MAX_TOOLS) return;
+            if (!result || typeof result !== 'object' || Array.isArray(result) || !Array.isArray(result.tools)) {
+              throw new Error('MCP 工具清单格式无效：tools 必须是数组。');
+            }
+            var overflow = false;
+            result.tools.forEach(function (tool) {
+              if (!tool || typeof tool.name !== 'string' || !tool.name.trim()) return;
+              var name = tool.name.trim();
+              if (name.length > 120) throw new Error('MCP 工具名称超过 120 字符限制。');
+              if (seenNames[name]) throw new Error('MCP 工具名称重复：' + name.slice(0, 80));
+              if (all.length >= MAX_TOOLS) {
+                overflow = true;
+                return;
+              }
+              seenNames[name] = true;
               all.push({
-                name: tool.name.slice(0, 120),
+                name: name,
                 description: String(tool.description || '').slice(0, 1200),
                 inputSchema: tool.inputSchema && typeof tool.inputSchema === 'object'
                   ? tool.inputSchema : { type: 'object', properties: {} }
               });
             });
-            return result.nextCursor ? page(String(result.nextCursor), pageCount + 1) : all;
+            if (overflow) throw new Error('MCP 工具数量超过 500 个上限，未返回不完整清单。');
+            if (result.nextCursor) {
+              if (all.length >= MAX_TOOLS) throw new Error('MCP 工具数量可能超过 500 个上限，未返回不完整清单。');
+              if (pageCount + 1 >= 20) throw new Error('MCP 工具分页超过 20 页上限，无法完整读取。');
+              return page(String(result.nextCursor), pageCount + 1);
+            }
+            return all;
           });
         }
         return page('', 0);
