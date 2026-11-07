@@ -51,6 +51,7 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud' } = {
       const claimed = store.claimActivity({
         id: decision.taskId,
         expectedAttemptCount: decision.expectedAttemptCount,
+        expectedStatus: decision.expectedStatus,
         owner: decision.owner,
         leaseUntil: decision.leaseUntil,
         now
@@ -69,8 +70,14 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud' } = {
     }
 
     if (decision.action === 'supersede') {
-      store.supersedeActivity(decision.taskId, now, decision.reason);
-      summary.superseded += 1;
+      const superseded = store.supersedeActivity({
+        id: decision.taskId,
+        expectedAttemptCount: decision.expectedAttemptCount,
+        expectedStatus: decision.expectedStatus,
+        now
+      });
+      if (superseded) summary.superseded += 1;
+      else summary.lost += 1;
       log(store, now, 'superseded', decision.reason, { taskId: decision.taskId });
       continue;
     }
