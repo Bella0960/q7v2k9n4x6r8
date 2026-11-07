@@ -152,7 +152,7 @@ test('user image shares require first-use privacy confirmation and pass only cur
 });
 
 test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
-  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v2'));
+  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v3'));
   assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261107v3'));
   assert.ok(chatDetailSource.indexOf('storage/media-repository.js') < chatDetailSource.indexOf('role-avatar-library.js'));
   assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
@@ -195,8 +195,8 @@ test('deleted chat images release only chat references after single or bulk dele
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v180'"));
-  assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v2'));
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v181'"));
+  assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v3'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
   assert.ok(packageJson.scripts['test:chat:image-vision']);
