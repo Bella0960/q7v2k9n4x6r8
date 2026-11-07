@@ -3,7 +3,7 @@
  */
 const CACHE_NAME = 'phone-app-pwa-v178';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v174 release: refresh the existing chat detail receiver while retaining persistent same-origin font caching.
+// v178 release: separate outbound receipt states and visible-bubble read acknowledgements.
 const APP_SHELL = [
   './',
   './index.html',
