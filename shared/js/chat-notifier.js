@@ -551,6 +551,13 @@
         return cloudExecutorPresenceStarting[key];
     }
 
+    function hasStoredCloudDeviceCredentials() {
+        var device = safeJsonParse(safeGet('cloud_device_v1'));
+        return !!(device &&
+            typeof device.deviceId === 'string' &&
+            typeof device.secret === 'string');
+    }
+
     function resetProactiveAttempt(roleId) {
         safeSet('chat_proactive_global_attempt_at', '0');
         safeSet('chat_proactive_last_attempt_' + String(roleId), '0');
@@ -558,7 +565,13 @@
 
     async function executeCloudProactiveCandidate(candidate, messages) {
         var cloud = global.MaomaoCloud;
-        if (!cloud || !cloud._internal || typeof cloud._internal.readDevice !== 'function' ||
+        if (!cloud) {
+            // Unpaired installs retain the legacy local-only path. A paired
+            // device must fail closed if the cloud client failed to load,
+            // otherwise it could bypass the cloud autonomy master switch.
+            return hasStoredCloudDeviceCredentials();
+        }
+        if (!cloud._internal || typeof cloud._internal.readDevice !== 'function' ||
             !cloud._internal.readDevice()) return false;
 
         var roleId = String(candidate.contact.id);
@@ -581,6 +594,10 @@
         }
         if (roleSetting && roleSetting.enabled === false) return true;
 
+        if (document.visibilityState === 'hidden') {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
         try {
             await ensureCloudExecutorPresence(roleId, cloud);
             // Flush content-free revision events from this device before the
@@ -615,6 +632,11 @@
                 return true;
             }
             activity = await cloud.claimAutonomyActivity(roleId);
+            if (document.visibilityState === 'hidden') {
+                if (activity) await cloud.skipAutonomyActivity(activity, 'feature_disabled');
+                resetProactiveAttempt(roleId);
+                return true;
+            }
             if (!activity) {
                 // The server may be waiting for an allowed schedule window,
                 // or another paired device may already own the task.
