@@ -546,13 +546,66 @@
     );
   }
 
-  function getCharacterOutboundMessages(characterId, limit) {
+  function getCharacterOutboundPage(characterId, limit, cursor) {
     var safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
+    var query = '?limit=' + safeLimit;
+    if (cursor && Number.isSafeInteger(Number(cursor.createdAt)) &&
+        Number(cursor.createdAt) >= 0 &&
+        /^[A-Za-z0-9_-]{16,128}$/.test(String(cursor.id || ''))) {
+      query += '&afterCreatedAt=' + encodeURIComponent(String(cursor.createdAt));
+      query += '&afterId=' + encodeURIComponent(String(cursor.id));
+    }
     return requestDeviceMetadata(
-      '/api/characters/' + characterPath(characterId) + '/outbound?limit=' + safeLimit
+      '/api/characters/' + characterPath(characterId) + '/outbound' + query
     ).then(function (payload) {
-      return Array.isArray(payload.messages) ? payload.messages : [];
+      var next = payload.nextCursor;
+      if (!next || !Number.isSafeInteger(Number(next.createdAt)) ||
+          Number(next.createdAt) < 0 ||
+          !/^[A-Za-z0-9_-]{16,128}$/.test(String(next.id || ''))) {
+        next = null;
+      } else {
+        next = { createdAt: Number(next.createdAt), id: String(next.id) };
+      }
+      return {
+        messages: Array.isArray(payload.messages) ? payload.messages : [],
+        nextCursor: next
+      };
     });
+  }
+
+  function getCharacterOutboundMessages(characterId, limit) {
+    return getCharacterOutboundPage(characterId, limit, null).then(function (page) {
+      return page.messages;
+    });
+  }
+
+  function outboundCursorStorageKey(characterId) {
+    var device = readDevice();
+    var deviceId = device && device.deviceId ? String(device.deviceId) : 'unpaired';
+    return 'cloud_outbound_cursor_v1:' + encodeURIComponent(String(characterId || '')) +
+      ':' + encodeURIComponent(deviceId);
+  }
+
+  function readOutboundCursor(key) {
+    try {
+      var value = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!value || !Number.isSafeInteger(Number(value.createdAt)) ||
+          Number(value.createdAt) < 0 ||
+          !/^[A-Za-z0-9_-]{16,128}$/.test(String(value.id || ''))) return null;
+      return { createdAt: Number(value.createdAt), id: String(value.id) };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeOutboundCursor(key, cursor) {
+    try {
+      if (cursor) localStorage.setItem(key, JSON.stringify(cursor));
+      else localStorage.removeItem(key);
+    } catch (error) {
+      // Cursor persistence is best-effort; every message remains server-pending
+      // until the device's local-save ACK succeeds.
+    }
   }
 
   function getCharacterOutboundLifecycle(characterId, serverMessageId) {
@@ -612,7 +665,11 @@
     if (typeof persistMessage !== 'function') {
       throw new TypeError('必须提供消息持久化回调');
     }
-    var messages = await getCharacterOutboundMessages(characterId, limit);
+    var safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
+    var cursorKey = outboundCursorStorageKey(characterId);
+    var cursor = readOutboundCursor(cursorKey);
+    var maxPages = Math.max(1, Math.ceil(30 / safeLimit));
+    var receivedCount = 0;
     var receivedMarked = 0;
     var receivedDeferred = 0;
     var persistedCount = 0;
@@ -620,43 +677,69 @@
     var ackDeferred = 0;
     var persistErrors = 0;
     var deferred = 0;
-    for (var index = 0; index < messages.length; index += 1) {
-      var message = messages[index];
-      // This receipt means the authenticated device fetched the envelope. It
-      // is deliberately separate from the later local-save ACK.
-      try {
-        await markCharacterOutboundReceived(characterId, message.serverMessageId);
-        receivedMarked += 1;
-      } catch (receiveError) {
-        receivedDeferred += 1;
+    var pagesProcessed = 0;
+
+    // A stable keyset cursor lets us move past a repeatedly failing envelope.
+    // The cursor is per role + device and survives page reloads. It never ACKs
+    // or deletes failed messages; reaching the end clears it so old failures
+    // are revisited on the next polling cycle.
+    while (pagesProcessed < maxPages) {
+      var page = await getCharacterOutboundPage(characterId, safeLimit, cursor);
+      var messages = page.messages;
+      if (!messages.length) {
+        if (cursor && pagesProcessed === 0) {
+          cursor = null;
+          writeOutboundCursor(cursorKey, null);
+          continue;
+        }
+        if (cursor) writeOutboundCursor(cursorKey, null);
+        break;
       }
 
-      var persisted = false;
-      try {
-        persisted = await persistMessage(message.payload, message);
-      } catch (persistError) {
-        // A single broken local write must not block later messages in this batch.
-        persistErrors += 1;
-        deferred += 1;
-        continue;
-      }
-      if (persisted !== true) {
-        deferred += 1;
-        continue;
-      }
-      persistedCount += 1;
+      receivedCount += messages.length;
+      for (var index = 0; index < messages.length; index += 1) {
+        var message = messages[index];
+        // Device-received and local-save receipts remain independent.
+        try {
+          await markCharacterOutboundReceived(characterId, message.serverMessageId);
+          receivedMarked += 1;
+        } catch (receiveError) {
+          receivedDeferred += 1;
+        }
 
-      try {
-        await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
-        saved += 1;
-      } catch (ackError) {
-        // The saved message remains in local history and pending in the cloud;
-        // the next poll sees the same serverMessageId and safely retries ACK only.
-        ackDeferred += 1;
+        var persisted = false;
+        try {
+          persisted = await persistMessage(message.payload, message);
+        } catch (persistError) {
+          // Keep the cloud row pending, but continue through this page and later pages.
+          persistErrors += 1;
+          deferred += 1;
+          continue;
+        }
+        if (persisted !== true) {
+          deferred += 1;
+          continue;
+        }
+        persistedCount += 1;
+
+        try {
+          await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
+          saved += 1;
+        } catch (ackError) {
+          // A later scan sees the same serverMessageId and retries ACK without reinserting.
+          ackDeferred += 1;
+        }
       }
+
+      pagesProcessed += 1;
+      cursor = page.nextCursor;
+      writeOutboundCursor(cursorKey, cursor);
+      if (!cursor) break;
     }
+
     return {
-      received: messages.length,
+      received: receivedCount,
+      pagesProcessed: pagesProcessed,
       receivedMarked: receivedMarked,
       receivedDeferred: receivedDeferred,
       persisted: persistedCount,
@@ -1505,6 +1588,7 @@
     failAutonomyActivity: failAutonomyActivity,
     skipAutonomyActivity: skipAutonomyActivity,
     getCharacterOutboundMessages: getCharacterOutboundMessages,
+    getCharacterOutboundPage: getCharacterOutboundPage,
     getCharacterOutboundLifecycle: getCharacterOutboundLifecycle,
     markCharacterOutboundReceived: markCharacterOutboundReceived,
     markCharacterOutboundRead: markCharacterOutboundRead,
