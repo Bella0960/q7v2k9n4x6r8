@@ -768,7 +768,15 @@
         if (!media || typeof media.removeRef !== 'function') return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
 
         var released = [];
+        var cleanupItems = [];
         var metadataCleared = false;
+        function addCleanupAsset(assetId) {
+            assetId = String(assetId || '');
+            if (!ASSET_RE.test(assetId) || cleanupItems.some(function (item) { return item.assetId === assetId; })) return;
+            cleanupItems.push({ assetId: assetId });
+        }
+        state.items.forEach(function (item) { addCleanupAsset(item.assetId); });
+
         function restoreReferences() {
             if (typeof media.addRef !== 'function') return Promise.resolve();
             return released.reduce(function (chain, item) {
@@ -778,16 +786,29 @@
             }, Promise.resolve());
         }
 
-        return state.items.reduce(function (chain, item) {
-            return chain.then(function (result) {
-                if (!result.ok) return result;
-                return media.removeRef(item.assetId, OWNER_TYPE, String(roleId)).then(function (removed) {
-                    if (!removed || !removed.ok) return removed || failure('STORAGE_FAILED', 'avatar reference could not be released');
-                    if (removed.value && removed.value.removed) released.push(item);
-                    return { ok: true };
-                });
+        var listOwnedAssets = typeof media.listByOwner === 'function'
+            ? Promise.resolve().then(function () { return media.listByOwner(OWNER_TYPE, String(roleId)); })
+            : Promise.resolve({ ok: true, value: [] });
+
+        return listOwnedAssets.then(function (listed) {
+            if (!listed || !listed.ok) return listed || failure('STORAGE_FAILED', 'role-owned media references could not be listed');
+            (Array.isArray(listed.value) ? listed.value : []).forEach(function (asset) {
+                if (asset) addCleanupAsset(asset.assetId);
             });
-        }, Promise.resolve({ ok: true })).then(function (result) {
+            var missingIds = listed.meta && Array.isArray(listed.meta.missingIds) ? listed.meta.missingIds : [];
+            missingIds.forEach(addCleanupAsset);
+
+            return cleanupItems.reduce(function (chain, item) {
+                return chain.then(function (result) {
+                    if (!result.ok) return result;
+                    return media.removeRef(item.assetId, OWNER_TYPE, String(roleId)).then(function (removed) {
+                        if (!removed || !removed.ok) return removed || failure('STORAGE_FAILED', 'avatar reference could not be released');
+                        if (removed.value && removed.value.removed) released.push(item);
+                        return { ok: true };
+                    });
+                });
+            }, Promise.resolve({ ok: true }));
+        }).then(function (result) {
             if (!result.ok) {
                 return restoreReferences().then(function () { return result; });
             }
@@ -801,7 +822,7 @@
                 });
             }
 
-            return state.items.reduce(function (chain, item) {
+            return cleanupItems.reduce(function (chain, item) {
                 return chain.then(function (meta) {
                     return media.removeAsset(item.assetId).then(function (removed) {
                         if (!removed || !removed.ok) meta.retained = meta.retained + 1;
@@ -812,7 +833,7 @@
                     });
                 });
             }, Promise.resolve({ retained: 0 })).then(function (meta) {
-                return { ok: true, value: { removed: state.items.length, retained: meta.retained } };
+                return { ok: true, value: { removed: cleanupItems.length, retained: meta.retained } };
             });
         }).catch(function (error) {
             if (metadataCleared) {
