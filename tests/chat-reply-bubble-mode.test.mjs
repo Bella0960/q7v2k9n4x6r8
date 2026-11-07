@@ -339,6 +339,37 @@ test('三种模式的实际输出差异：single=1 条，auto 保留单换行，
   assert.deepEqual(Array.from(multi, (m) => m.text), ['第一句', '第二句', '第三句']);
 });
 
+test('同一毫秒内不同回复轮次的气泡 ID 不冲突，且可安全解析', () => {
+  const first = policy.buildReplyMessages('第一句\n第二句', 'multi', {
+    time: 3000,
+    turnId: 'turn/a#one'
+  });
+  const second = policy.buildReplyMessages('另一轮第一句\n另一轮第二句', 'multi', {
+    time: 3000,
+    turnId: 'turn/b#two'
+  });
+
+  assert.equal(first.length, 2);
+  assert.equal(second.length, 2);
+  const allIds = [...first, ...second].map((message) => message.mid);
+  assert.equal(new Set(allIds).size, 4, '不同回复轮次即使同毫秒完成，也必须有不同 mid');
+  assert.ok(allIds.every((id) => !id.includes('#')), '轮次 ID 中的 # 必须编码，不能混入旧版气泡分隔符');
+
+  first.forEach((message) => {
+    assert.deepEqual(policy.parseBubbleId(message.mid), { mid: message.mid, index: 0 });
+  });
+
+  const repeated = policy.buildReplyMessages('第一句\n第二句', 'multi', {
+    time: 3000,
+    turnId: 'turn/a#one'
+  });
+  assert.deepEqual(
+    repeated.map((message) => message.mid),
+    first.map((message) => message.mid),
+    '同一轮次的相同输入应生成可复现的消息身份'
+  );
+});
+
 test('逐气泡落库：身份唯一，写入 chat_history_* 后重读（模拟刷新）身份与文本不变', () => {
   const messages = policy.buildReplyMessages(
     '<narratage>夜色沉了下来</narratage>\n\n第一句\n\n第二句',
