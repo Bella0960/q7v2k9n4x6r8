@@ -61,19 +61,29 @@
         }
     }
 
-    function cleanupStaleRoleAsset(media, assetId, roleId, removeOrphanedBlob) {
+    function cleanupStaleRoleAsset(media, assetId, roleId) {
         return Promise.resolve().then(function () {
             return media.removeRef(assetId, OWNER_TYPE, String(roleId));
         }).then(function (released) {
             if (!released || !released.ok) {
                 return failure('PARTIAL_ROLLBACK', 'the deleted character no longer accepts portraits; a stale media reference needs cleanup');
             }
-            if (removeOrphanedBlob && typeof media.removeAsset === 'function') {
-                return Promise.resolve(media.removeAsset(assetId)).then(function () {
-                    return failure('ROLE_DELETED', 'this character was deleted; the portrait was not restored');
-                });
+            if (typeof media.removeAsset !== 'function') {
+                return failure('PARTIAL_ROLLBACK', 'the deleted character no longer accepts portraits; an unowned media asset could not be checked');
             }
-            return failure('ROLE_DELETED', 'this character was deleted; the portrait was not restored');
+            // MediaRepository removes the blob only when its transaction finds zero references.
+            // A chat message or another role may still own the same asset; that is expected.
+            return Promise.resolve(media.removeAsset(assetId)).then(function (removed) {
+                if (removed && removed.ok) {
+                    return failure('ROLE_DELETED', 'this character was deleted; the unowned portrait was reclaimed');
+                }
+                var meta = removed && removed.meta ? removed.meta : {};
+                var retainedRefs = Array.isArray(meta.refs) ? meta.refs.length : 0;
+                if (Number(meta.refCount) > 0 || retainedRefs > 0) {
+                    return failure('ROLE_DELETED', 'this character was deleted; the source image is retained because another feature still references it');
+                }
+                return failure('PARTIAL_ROLLBACK', 'the deleted character no longer accepts portraits; an unowned media asset needs cleanup');
+            });
         }).catch(function () {
             return failure('PARTIAL_ROLLBACK', 'the deleted character no longer accepts portraits; a stale media reference needs cleanup');
         });
@@ -374,7 +384,7 @@
 
             var assetId = String(saved.value.assetId);
             var deletedBlock = roleMutationBlock(roleId);
-            if (deletedBlock) return cleanupStaleRoleAsset(media, assetId, roleId, true);
+            if (deletedBlock) return cleanupStaleRoleAsset(media, assetId, roleId);
             // Re-read after the asynchronous media write so parallel uploads cannot overwrite
             // another portrait added to this role while putBlob was pending.
             var latest = readState(roleId);
@@ -426,14 +436,14 @@
                 return found && found.ok === false ? found : failure('NOT_FOUND', 'source image asset is unavailable');
             }
             var afterLookupBlock = roleMutationBlock(roleId);
-            if (afterLookupBlock) return afterLookupBlock;
+            if (afterLookupBlock) return cleanupStaleRoleAsset(media, assetId, roleId);
             var mime = String(found.value.asset.mimeType || found.value.blob.type || '').toLowerCase();
             if (mime.indexOf('image/') !== 0) return failure('VALIDATION_FAILED', 'source asset is not an image');
 
             return media.addRef(assetId, OWNER_TYPE, String(roleId)).then(function (linked) {
                 if (!linked || !linked.ok) return linked || failure('STORAGE_FAILED', 'avatar asset reference could not be created');
                 var afterLinkBlock = roleMutationBlock(roleId);
-                if (afterLinkBlock) return cleanupStaleRoleAsset(media, assetId, roleId, false);
+                if (afterLinkBlock) return cleanupStaleRoleAsset(media, assetId, roleId);
                 // Another async upload/link may have committed while getAsset/addRef was pending.
                 // Merge into that latest role state instead of writing the stale preflight snapshot.
                 var latest = readState(roleId);
