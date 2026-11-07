@@ -78,10 +78,12 @@
   }
   function saveState(state) { return rawSet(STATE_KEY, state); }
   function getCharacters() {
-    var api = storage();
-    if (!api || typeof api.getCharacters !== 'function') return [];
-    var value = api.getCharacters();
-    return Array.isArray(value) ? value : [];
+    try {
+      var api = storage();
+      if (!api || typeof api.getCharacters !== 'function') return [];
+      var value = api.getCharacters();
+      return Array.isArray(value) ? value : [];
+    } catch (error) { return []; }
   }
   function getRole(roleId) {
     var roles = getCharacters();
@@ -91,11 +93,13 @@
     return null;
   }
   function currentRoleId() {
-    var api = storage();
-    if (api && typeof api.getCurrentContactId === 'function') {
-      var id = api.getCurrentContactId();
-      if (id) return String(id);
-    }
+    try {
+      var api = storage();
+      if (api && typeof api.getCurrentContactId === 'function') {
+        var id = api.getCurrentContactId();
+        if (id) return String(id);
+      }
+    } catch (error) {}
     try { return String(global.localStorage.getItem('phone_current_contact') || ''); }
     catch (error) { return ''; }
   }
@@ -273,10 +277,12 @@
     };
   }
   function apiAvailable() {
-    var api = storage();
-    var config = api && typeof api.getApiConfig === 'function' ? api.getApiConfig() : null;
-    return !!(global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
-      config && String(config.apiKey || '').trim());
+    try {
+      var api = storage();
+      var config = api && typeof api.getApiConfig === 'function' ? api.getApiConfig() : null;
+      return !!(global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
+        config && String(config.apiKey || '').trim());
+    } catch (error) { return false; }
   }
   function saveCharacters(list) {
     var api = storage();
@@ -311,14 +317,28 @@
     state[roleId] = Object.assign({}, previous, { lastAttemptAt: now });
     saveState(state);
 
-    var prompt = buildPrompt(role);
-    return global.PhoneAPI.completeJSON({
-      messages: [
-        { role: 'system', content: '你是 MAOMAO 的虚构 NPC 人物设计器。严格遵守用户适龄规则，只返回合法 JSON。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.92,
-      timeoutMs: 30000
+    var prompt;
+    try { prompt = buildPrompt(role); }
+    catch (promptError) {
+      inFlight = false;
+      var failedState = getState();
+      failedState[roleId] = Object.assign({}, failedState[roleId] || {}, {
+        lastAttemptAt: now,
+        lastFailedAt: Date.now(),
+        lastError: 'PROMPT_BUILD_FAILED'
+      });
+      saveState(failedState);
+      return Promise.resolve({ ok: false, error: 'PROMPT_BUILD_FAILED' });
+    }
+    return Promise.resolve().then(function () {
+      return global.PhoneAPI.completeJSON({
+        messages: [
+          { role: 'system', content: '你是 MAOMAO 的虚构 NPC 人物设计器。严格遵守用户适龄规则，只返回合法 JSON。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.92,
+        timeoutMs: 30000
+      });
     }).then(function (result) {
       if (!result || result.ok !== true) throw new Error('AI_RESPONSE_FAILED');
       var candidate = normalizeCandidate(result.data);
@@ -396,16 +416,20 @@
     }
 
     var api = storage();
-    var history = api && typeof api.getChatHistory === 'function' ? api.getChatHistory(role.id) : [];
+    var history = [];
+    try { history = api && typeof api.getChatHistory === 'function' ? api.getChatHistory(role.id) : []; }
+    catch (historyError) { history = []; }
     if (!Array.isArray(history)) history = [];
     if (!history.length && role.greeting && api && typeof api.saveChatHistory === 'function') {
-      api.saveChatHistory(role.id, [{
-        role: 'assistant',
-        text: text(role.greeting, 180),
-        time: Date.now(),
-        voiceMode: 'online',
-        npcFriendWelcome: true
-      }]);
+      try {
+        api.saveChatHistory(role.id, [{
+          role: 'assistant',
+          text: text(role.greeting, 180),
+          time: Date.now(),
+          voiceMode: 'online',
+          npcFriendWelcome: true
+        }]);
+      } catch (historySaveError) {}
     }
 
     request.status = 'accepted';
