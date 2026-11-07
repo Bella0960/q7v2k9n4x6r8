@@ -84,7 +84,7 @@ The server derives the viewer from authentication, checks membership on every re
 
 Delivery and read acknowledgements are server-owned events. A recipient client can acknowledge only messages in a conversation where it is an authenticated participant. The server must not accept a sender-provided status field as proof of delivery or reading.
 
-## 4. Authorization and relationship checks
+## 5. Authorization and relationship checks
 
 Before every read, send, attachment fetch, and acknowledgement, the server must:
 
@@ -98,7 +98,7 @@ Before every read, send, attachment fetch, and acknowledgement, the server must:
 
 A client-provided `type: real_user`, contact ID, or accepted status is a hint only, not proof of identity or friendship.
 
-## 5. Message validation and persistence
+## 6. Message validation and persistence
 
 - Validate the allowlisted message type on the server, independently of the client.
 - Enforce a text limit consistent with the current client contract (5,000 characters); cap captions at 240 characters.
@@ -109,7 +109,7 @@ A client-provided `type: real_user`, contact ID, or accepted status is a hint on
 - Store the message and its delivery/outbox event atomically, or use an equivalent durable outbox pattern.
 - Do not log message bodies, attachment URLs, authentication tokens, or private account data.
 
-## 6. Authoritative state model
+## 7. Authoritative state model
 
 - `local_only`: browser-only draft/history; never means transmitted.
 - `queued`: optional client-side pending state; it is not server acceptance.
@@ -119,11 +119,11 @@ A client-provided `type: real_user`, contact ID, or accepted status is a hint on
 
 Only the relevant server event may advance `sent`, `delivered`, or `read`. A timeout, optimistic UI update, local storage write, or push attempt must not manufacture these states. Retries reuse the same `clientMessageId`.
 
-## 7. Calls are separate
+## 8. Calls are separate
 
 Voice messages are ordinary attachments and are allowed by the chat-only policy. Live voice calls are not part of this messaging API. They remain disabled until a separate real-time signaling/media service, authenticated call authorization, incoming-call delivery, peer connectivity, and explicit device permission handling are implemented and tested. The simulated AI call overlay must never be presented as a real-user call. Video calling remains disabled.
 
-## 8. Release gates
+## 9. Release gates
 
 Real-user messaging must not be enabled until all of the following are proven:
 
