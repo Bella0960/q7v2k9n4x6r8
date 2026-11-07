@@ -189,6 +189,9 @@ async function main() {
     assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
       'a selected group cannot be dropped when the shared policy module is unavailable');
     assert.match(await page.locator('#toast').innerText(), /权限模块尚未加载/);
+    assert.equal(await page.locator('.audience-stale-group').count(), 1,
+      'the missing module must render the chosen group as an explicit stale selection');
+    assert.match(await page.locator('.audience-stale-group').innerText(), /已失效分组/);
     await page.locator('[data-audience-kind="group"][data-audience-id="' + temporaryGroup.id + '"]').click();
     await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
     await page.locator('#permClose').click();
@@ -210,7 +213,10 @@ async function main() {
     assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
       'a deleted directly selected contact cannot be silently ignored');
     assert.match(await page.locator('#toast').innerText(), /联系人已不存在/);
-    await page.locator('[data-audience-kind="contact"][data-audience-id="role-b"]').click();
+    assert.equal(await page.locator('.audience-stale-contact').count(), 1,
+      'a removed directly selected contact must be rendered as an explicit stale selection');
+    assert.match(await page.locator('.audience-stale-contact').innerText(), /已失效联系人/);
+    await page.locator('.audience-stale-contact').click();
     await page.evaluate((role) => {
       const roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]');
       roles.push(role);
