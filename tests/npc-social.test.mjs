@@ -19,6 +19,7 @@ function createHarness() {
   }];
   let aiCalls = 0;
   let capturedPrompt = '';
+  const histories = Object.create(null);
   const localStorage = {
     getItem(key) { return data.has(key) ? data.get(key) : null; },
     setItem(key, value) { data.set(key, String(value)); },
@@ -32,6 +33,8 @@ function createHarness() {
       { id: 'world-2', title: '未绑定的世界书', content: '这段内容不应该进入 NPC 生成上下文。' }
     ]; },
     getApiConfig() { return { apiKey: 'test-key' }; },
+    getChatHistory(id) { return histories[id] || []; },
+    saveChatHistory(id, list) { histories[id] = list.slice(); return true; },
     result: {
       getCharacters() { return { ok: true, value: roles.slice() }; },
       saveCharacters(next) {
@@ -90,7 +93,7 @@ function createHarness() {
   };
   context.window = context;
   vm.runInNewContext(source, context);
-  return { context, data, roles, get aiCalls() { return aiCalls; }, get capturedPrompt() { return capturedPrompt; } };
+  return { context, data, roles, histories, get aiCalls() { return aiCalls; }, get capturedPrompt() { return capturedPrompt; } };
 }
 
 test('NPC discovery is opt-in and does not run in the background when the page is hidden', async () => {
@@ -121,6 +124,12 @@ test('manual NPC discovery creates a pending application, then acceptance create
   assert.equal(npc.npcSocialRole, true);
   assert.equal(npc.npcFriendRequestId, result.request.id);
   assert.equal(h.roles[0].npcCharacters[0].id, 'relation-only', 'legacy relationship records must remain untouched');
+  assert.equal(h.histories[accepted.roleId].length, 1);
+  assert.equal(h.histories[accepted.roleId][0].npcFriendWelcome, true);
+  assert.equal(h.histories[accepted.roleId][0].text, npc.greeting);
+  const repeated = h.context.NPCSocial.accept(result.request.id);
+  assert.equal(repeated.alreadyAccepted, true);
+  assert.equal(h.histories[accepted.roleId].length, 1, 'repeated acceptance must not duplicate the greeting');
 
   const stored = JSON.parse(h.data.get('npc_friend_requests_v1'));
   assert.equal(stored[0].status, 'accepted');
@@ -159,4 +168,6 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(contacts, /npc-friends\.html/);
   assert.match(nav, /currentPage === 'chat\\.html' \\|\\| currentPage === 'contacts\\.html'/);
   assert.match(source, /role\\.worldBookIds/);
+  assert.match(source, /面向青少年用户/);
+  assert.match(source, /npcFriendWelcome: true/);
 });
