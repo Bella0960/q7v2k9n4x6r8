@@ -73,6 +73,7 @@ const INSTRUMENT = () => {
     cachePuts: 0,
     cachePutMs: 0,
     objectUrls: 0,
+    objectUrlRevokes: 0,
     longTasks: [],
     fontStyleAt: null,
     fontStyleRemovedAt: null
@@ -104,6 +105,10 @@ const INSTRUMENT = () => {
   try {
     const create = URL.createObjectURL.bind(URL);
     URL.createObjectURL = function (blob) { fp.objectUrls++; return create(blob); };
+  } catch (e) {}
+  try {
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = function (url) { fp.objectUrlRevokes++; return revoke(url); };
   } catch (e) {}
   try {
     new PerformanceObserver((list) => {
@@ -139,6 +144,7 @@ const readMetrics = (page) => page.evaluate(() => {
     cachePuts: fp.cachePuts,
     cachePutMs: Math.round(fp.cachePutMs),
     objectUrls: fp.objectUrls,
+    objectUrlRevokes: fp.objectUrlRevokes,
     longTasks: fp.longTasks,
     longTaskTotal: fp.longTasks.reduce((sum, value) => sum + value, 0),
     fontStyleAt: fp.fontStyleAt,
@@ -146,6 +152,9 @@ const readMetrics = (page) => page.evaluate(() => {
     hasStyle,
     fontFaces: Array.from(document.fonts)
       .filter((face) => face.family.replace(/["']/g, '') === 'MAOMAOUserFont')
+      .map((face) => face.status),
+    previewFaces: Array.from(document.fonts)
+      .filter((face) => /StorePreview_/.test(face.family.replace(/["']/g, '')))
       .map((face) => face.status),
     bodyFamily,
     fontResources
@@ -215,6 +224,52 @@ async function waitForFontFallback(page) {
   }, null, { timeout: 20000 });
 }
 
+/* 模拟 Safari 类环境：移除 requestIdleCallback，字体调度必须回退到 setTimeout。 */
+async function disableIdleCallback(context) {
+  await context.addInitScript(() => {
+    window.requestIdleCallback = undefined;
+    window.cancelIdleCallback = undefined;
+    try { delete window.requestIdleCallback; } catch (e) {}
+    try { delete window.cancelIdleCallback; } catch (e) {}
+  });
+}
+
+async function deleteFontPreset(page, id) {
+  await page.evaluate(async (presetId) => {
+    const db = await new Promise((done, fail) => {
+      const request = indexedDB.open('maomao-font-presets', 1);
+      request.onsuccess = () => done(request.result);
+      request.onerror = () => fail(request.error);
+    });
+    await new Promise((done, fail) => {
+      const tx = db.transaction('presets', 'readwrite');
+      tx.objectStore('presets').delete(presetId);
+      tx.oncomplete = done;
+      tx.onerror = () => fail(tx.error);
+    });
+    db.close();
+  }, id);
+}
+
+async function requestStoreRefresh(page) {
+  await page.evaluate(() => {
+    window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+  });
+}
+
+async function readPreviewMetrics(page) {
+  return page.evaluate(() => ({
+    urls: window.__fp.objectUrls,
+    revokes: window.__fp.objectUrlRevokes,
+    previewFaces: Array.from(document.fonts)
+      .filter((face) => /StorePreview_/.test(face.family.replace(/["']/g, '')))
+      .map((face) => face.status),
+    styled: Array.from(document.querySelectorAll('[data-font-specimen]'))
+      .filter((node) => /StorePreview_/.test(node.style.fontFamily))
+      .map((node) => node.dataset.fontSpecimen)
+  }));
+}
+
 function report(name, metrics) {
   console.log('  ' + name + ': ' + JSON.stringify({
     dcl: metrics.dcl,
@@ -225,11 +280,13 @@ function report(name, metrics) {
     cachePuts: metrics.cachePuts,
     cachePutMs: metrics.cachePutMs,
     objectUrls: metrics.objectUrls,
+    objectUrlRevokes: metrics.objectUrlRevokes,
     longTaskTotal: metrics.longTaskTotal,
     longTaskMax: metrics.longTasks.length ? Math.max(...metrics.longTasks) : 0,
     fontStyleAt: metrics.fontStyleAt,
     fontStyleRemovedAt: metrics.fontStyleRemovedAt,
     fontFaces: metrics.fontFaces,
+    previewFaces: metrics.previewFaces,
     fontResources: metrics.fontResources
   }));
 }
@@ -475,11 +532,202 @@ try {
     await context.close();
     pass('旧 type:url 字体预设仍然兼容');
   }
+
+  /* 8-9. Safari 类环境（无 requestIdleCallback）：回退调度 + Cache Storage 命中。 */
+  {
+    console.log('\n[8] Safari 类环境（无 requestIdleCallback）');
+    const context = await createContext(browser, origin, { blockSw: true });
+    await disableIdleCallback(context);
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(origin + '/index.html', { waitUntil: 'load' });
+    await seedFontPreset(page, origin, { id: 'font_safari', name: 'Safari Class' });
+    await context.addInitScript(() => {
+      try { localStorage.setItem('active_font_preset_id', 'font_safari'); } catch (e) {}
+    });
+    await page.goto(origin + '/chat/chat/chat.html', { waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const first = await readMetrics(page);
+    report('/chat/chat/chat.html', first);
+    const idleAvailable = await page.evaluate(() => typeof window.requestIdleCallback === 'function');
+    assert.equal(idleAvailable, false, '模拟环境必须没有 requestIdleCallback');
+    assert.deepEqual(first.fontFaces, ['loaded'], '无 rIC 时仍应注册并加载自定义字体');
+    assert.ok(first.fontStyleAt !== null && first.fontStyleAt >= first.dcl, '回退调度仍必须晚于 DOMContentLoaded');
+    assert.ok(first.longTaskTotal <= 500, '回退调度不应产生超过 500ms 的长任务，实际 ' + first.longTaskTotal + 'ms');
+    assert.deepEqual(errors, [], '无 rIC 环境不应有页面错误');
+    pass('Safari 类环境（无 rIC）：回退调度仍应用字体且不阻塞首屏');
+
+    console.log('[9] Safari 类环境：Cache Storage 命中');
+    await page.goto(origin + '/settings/settings.html', { waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const hit = await readMetrics(page);
+    report('/settings/settings.html', hit);
+    assert.equal(hit.fontDbOpens, 0, '缓存命中时不应打开字体库');
+    assert.equal(hit.fontDbGets, 0, '缓存命中时不应读取字体 Blob');
+    assert.equal(hit.cachePuts, 0, '缓存命中时不应重写字体缓存');
+    assert.equal(hit.objectUrls, 1, '缓存命中后每个文档只创建一个 ObjectURL');
+    assert.deepEqual(hit.fontFaces, ['loaded'], '缓存命中后字体仍应可用');
+    assert.deepEqual(errors, [], '缓存命中不应有页面错误');
+    pass('Safari 类环境：Cache Storage 命中不读 IndexedDB、不重写缓存');
+    await context.close();
+  }
+
+  /* 10. Safari 类环境：Cache Storage 缺失，回退 IndexedDB 并只重建一次缓存。 */
+  {
+    console.log('\n[10] Safari 类环境：Cache Storage 缺失');
+    const context = await createContext(browser, origin, { blockSw: true });
+    await disableIdleCallback(context);
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(origin + '/index.html', { waitUntil: 'load' });
+    await seedFontPreset(page, origin, { id: 'font_safari_missing', name: 'Cache Missing' });
+    await context.addInitScript(() => {
+      try { localStorage.setItem('active_font_preset_id', 'font_safari_missing'); } catch (e) {}
+    });
+    await page.goto(origin + '/chat/chat/chat.html', { waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const cacheDeleted = await page.evaluate(async () => (window.caches ? caches.delete('maomao-font-assets-v1') : false));
+    assert.equal(cacheDeleted, true, '字体专用缓存应已删除');
+    await page.goto(origin + '/settings/settings.html', { waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const metrics = await readMetrics(page);
+    report('/settings/settings.html', metrics);
+    assert.equal(metrics.fontDbOpens, 1, '缓存缺失时应回退 IndexedDB');
+    assert.equal(metrics.fontDbGets, 1, '缓存缺失时应读取一次 Blob');
+    assert.equal(metrics.cachePuts, 1, '回退后只重建一次字体缓存');
+    assert.equal(metrics.objectUrls, 1, '回退后每个文档只创建一个 ObjectURL');
+    assert.deepEqual(metrics.fontFaces, ['loaded'], '回退后字体仍应可用');
+    assert.ok(metrics.fontStyleAt >= metrics.dcl, '回退调度不能阻塞首屏');
+    assert.deepEqual(errors, [], '缓存缺失不应有页面错误');
+    pass('Safari 类环境：Cache Storage 缺失时回退 IndexedDB 并只重建一次缓存');
+    await context.close();
+  }
+
+  /* 11. Safari 类环境：Cache Storage 拒绝访问，回退 IndexedDB 且不产生页面错误。 */
+  {
+    console.log('\n[11] Safari 类环境：Cache Storage 拒绝访问（模拟）');
+    const context = await createContext(browser, origin, { blockSw: true });
+    await disableIdleCallback(context);
+    await context.addInitScript(() => {
+      CacheStorage.prototype.match = function () {
+        return Promise.reject(new DOMException('Simulated cache access denied', 'SecurityError'));
+      };
+    });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(origin + '/index.html', { waitUntil: 'load' });
+    await seedFontPreset(page, origin, { id: 'font_safari_denied', name: 'Cache Denied' });
+    await context.addInitScript(() => {
+      try { localStorage.setItem('active_font_preset_id', 'font_safari_denied'); } catch (e) {}
+    });
+    await page.goto(origin + '/chat/chat/chat.html', { waitUntil: 'load' });
+    await waitForCustomFont(page);
+    await page.goto(origin + '/settings/settings.html', { waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const metrics = await readMetrics(page);
+    report('/settings/settings.html', metrics);
+    assert.equal(metrics.fontDbOpens, 1, '缓存拒绝时应回退 IndexedDB');
+    assert.equal(metrics.fontDbGets, 1, '缓存拒绝时应读取一次 Blob');
+    assert.deepEqual(metrics.fontFaces, ['loaded'], '缓存拒绝后字体仍应可用');
+    assert.ok(metrics.fontStyleAt >= metrics.dcl, '拒绝访问不能阻塞首屏');
+    assert.deepEqual(errors, [], '缓存拒绝不应变成页面错误');
+    pass('Safari 类环境：Cache Storage 拒绝访问时回退 IndexedDB 且无页面错误');
+    await context.close();
+  }
+
+  /* 12. theme-store 字体预览生命周期：重复渲染不重复创建，删除/失败/卸载时释放。 */
+  {
+    console.log('\n[12] theme-store 字体预览生命周期');
+    const context = await createContext(browser, origin, { blockSw: true });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(origin + '/theme-store/theme-store.html', { waitUntil: 'load' });
+    await seedFontPreset(page, origin, { id: 'font_preview_a', name: 'Preview A' });
+    await seedFontPreset(page, origin, { id: 'font_preview_b', name: 'Preview B' });
+
+    await page.evaluate(() => document.querySelector('[data-category="fonts"]').click());
+    await requestStoreRefresh(page);
+    await page.waitForFunction(() => {
+      const nodes = Array.from(document.querySelectorAll('[data-font-specimen]'));
+      return nodes.length === 2 && nodes.every((node) => /StorePreview_/.test(node.style.fontFamily));
+    }, null, { timeout: 20000 });
+
+    const initial = await readPreviewMetrics(page);
+    console.log('  首次渲染: ' + JSON.stringify(initial));
+    assert.equal(initial.urls, 2, '两个方案应各创建一个 ObjectURL');
+    assert.equal(initial.revokes, 0, '首次渲染不应撤销 URL');
+    assert.equal(initial.previewFaces.length, 2, '两个方案应各注册一个预览 FontFace');
+
+    await page.evaluate(() => {
+      for (let i = 0; i < 3; i++) {
+        document.querySelector('[data-category="themes"]').click();
+        document.querySelector('[data-category="fonts"]').click();
+      }
+    });
+    await requestStoreRefresh(page);
+    await page.waitForFunction(() => {
+      const nodes = Array.from(document.querySelectorAll('[data-font-specimen]'));
+      return nodes.length === 2 && nodes.every((node) => /StorePreview_/.test(node.style.fontFamily));
+    }, null, { timeout: 10000 });
+    const repeated = await readPreviewMetrics(page);
+    console.log('  重复渲染 4 次: ' + JSON.stringify(repeated));
+    assert.equal(repeated.urls, initial.urls, '重复渲染不应重复创建 ObjectURL');
+    assert.equal(repeated.revokes, initial.revokes, '重复渲染不应撤销仍在使用的 URL');
+    assert.equal(repeated.previewFaces.length, 2, '重复渲染不应重复解码/注册 FontFace');
+    assert.deepEqual(repeated.styled.sort(), ['font_preview_a', 'font_preview_b'], '重复渲染后预览仍应生效');
+
+    await deleteFontPreset(page, 'font_preview_a');
+    await requestStoreRefresh(page);
+    await page.waitForFunction(() => {
+      const nodes = Array.from(document.querySelectorAll('[data-font-specimen]'));
+      return window.__fp.objectUrlRevokes >= 1 && !nodes.some((node) => node.dataset.fontSpecimen === 'font_preview_a');
+    }, null, { timeout: 10000 });
+    const afterDelete = await readPreviewMetrics(page);
+    console.log('  删除 1 个方案后: ' + JSON.stringify(afterDelete));
+    assert.equal(afterDelete.urls, initial.urls, '删除不应创建新的 ObjectURL');
+    assert.equal(afterDelete.revokes, 1, '删除方案应撤销其 ObjectURL 一次');
+    assert.equal(afterDelete.previewFaces.length, 1, '删除方案应从 document.fonts 移除对应 FontFace');
+
+    await seedFontPreset(page, origin, { id: 'font_preview_bad', name: 'Broken', corrupt: true });
+    await requestStoreRefresh(page);
+    await page.evaluate(() => document.querySelector('[data-category="fonts"]').click());
+    await page.waitForFunction(() => window.__fp.objectUrlRevokes >= 2, null, { timeout: 20000 });
+    const afterBroken = await readPreviewMetrics(page);
+    console.log('  预览加载失败后: ' + JSON.stringify(afterBroken));
+    assert.equal(afterBroken.urls, 3, '损坏方案尝试一次应创建一个 ObjectURL');
+    assert.equal(afterBroken.revokes, 2, '损坏方案失败后应立即撤销其 ObjectURL');
+    assert.ok(!afterBroken.styled.includes('font_preview_bad'), '损坏方案不应应用预览字体');
+
+    await page.evaluate(() => {
+      for (let i = 0; i < 3; i++) {
+        document.querySelector('[data-category="themes"]').click();
+        document.querySelector('[data-category="fonts"]').click();
+      }
+    });
+    const brokenRepeated = await readPreviewMetrics(page);
+    console.log('  损坏方案重复渲染: ' + JSON.stringify(brokenRepeated));
+    assert.equal(brokenRepeated.urls, afterBroken.urls, '已失败的同一方案不应重复创建 ObjectURL/重复解码');
+    assert.equal(brokenRepeated.revokes, afterBroken.revokes, '已失败的同一方案不应再次创建并撤销 URL');
+
+    const beforeHide = await readPreviewMetrics(page);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+    const afterHide = await readPreviewMetrics(page);
+    console.log('  pagehide 释放: ' + JSON.stringify({ before: beforeHide, after: afterHide }));
+    assert.equal(afterHide.revokes, beforeHide.revokes + 1, 'pagehide 应撤销仍在使用的预览 ObjectURL');
+    assert.equal(afterHide.previewFaces.length, 0, 'pagehide 应移除所有预览 FontFace');
+    assert.deepEqual(errors, [], '预览生命周期不应产生页面错误');
+    pass('theme-store 字体预览：重复渲染不重复创建，删除/失败/卸载均释放');
+    await context.close();
+  }
 } catch (error) {
   console.error('\nFAILED:', error && error.stack ? error.stack : error);
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();
   server.close();
-  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/7 tests: ' + results.join(' | '));
+  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/12 tests: ' + results.join(' | '));
 }

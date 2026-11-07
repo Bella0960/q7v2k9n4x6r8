@@ -25,10 +25,14 @@ test('cached font presets bypass repeated IndexedDB Blob reads on controlled app
   assert.match(loader, /applyUrl\(cachedUrl, cachedFormat\)/);
 });
 
-test('font fetching and decoding starts during document parsing', () => {
+test('font styling is deferred past DOMContentLoaded, one frame, and an idle slot', () => {
+  /* 预加载/解码请求仍然存在，但真正的样式注入必须排在新时序的空闲阶段。 */
   assert.match(loader, /rel = 'preload'/);
   assert.match(loader, /document\.fonts\.load\('14px "MAOMAOUserFont"'/);
   assert.match(loader, /font-display:swap/);
+  assert.match(loader, /document\.addEventListener\('DOMContentLoaded', afterFrame/, 'must wait for DOMContentLoaded before scheduling a frame');
+  assert.match(loader, /window\.requestAnimationFrame\(function \(\) \{ whenIdle\(run\); \}\)/, 'font work must run after a rendered frame');
+  assert.match(loader, /requestIdleCallback\(callback, \{ timeout: 1000 \}\)/, 'font work must yield to an idle slot with a bounded timeout');
 });
 
 test('heavy font work is deferred to an idle slot after first paint', () => {
@@ -86,7 +90,11 @@ test('service worker serves cached font assets from a same-origin route', () => 
 });
 
 test('font asset cache survives app-shell version upgrades', () => {
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v173'/);
+  /* 不绑定具体 PWA 版本号：只要求 app-shell 使用版本化的 phone-app-pwa 命名。 */
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v[\w.-]+'/, 'app-shell cache must keep a versioned name');
+  assert.match(serviceWorker, /const FONT_ASSET_CACHE = 'maomao-font-assets-v1'/);
   assert.match(serviceWorker, /keys\.filter\(key => key\.startsWith\('phone-app-'\) && key !== CACHE_NAME\)/);
+  /* 清理条件只覆盖 phone-app- 前缀，字体专用缓存不在此命名空间内，因此不会被删除。 */
+  assert.doesNotMatch(serviceWorker, /key === FONT_ASSET_CACHE/);
   assert.doesNotMatch(serviceWorker, /key\.startsWith\('maomao-font-assets/);
 });
