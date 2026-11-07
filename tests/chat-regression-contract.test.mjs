@@ -2326,6 +2326,43 @@ test('cloud outbound bubbles persist first, then use serialized pacing without s
   assert.match(detail, /if \(!confirmed\) return false/);
 });
 
+test('AI 等待回复期间收到主动消息时，最终落库会合并最新历史而非写回旧快照', () => {
+  const sendStart = detail.indexOf('async function sendMsg(opts)');
+  const snapshotRefresh = detail.indexOf('historyList = refreshSendHistorySnapshot(', sendStart);
+  const retryMutation = detail.indexOf('var retryRemarked = false', snapshotRefresh);
+  const aiAppend = detail.indexOf('historyList.push(aiMsg)', snapshotRefresh);
+  assert.ok(sendStart >= 0 && snapshotRefresh > sendStart,
+    'sendMsg must refresh history after the asynchronous model request returns');
+  assert.ok(retryMutation > snapshotRefresh && aiAppend > snapshotRefresh,
+    'both retry-error and successful reply persistence must use the refreshed history');
+
+  const helperStart = detail.indexOf('function refreshSendHistorySnapshot(');
+  const helperEnd = detail.indexOf('\n\n        // 3. 核心真实 AI 聊天发送逻辑', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'the latest-history merge helper must be present');
+  const helperWindow = {
+    loadMessages: () => [
+      { mid: 'base-1', text: 'existing' },
+      { mid: 'cloud-1', text: '角色主动消息' },
+      { mid: 'later-1', text: '其他标签页新消息' }
+    ]
+  };
+  runInNewContext(detail.slice(helperStart, helperEnd), helperWindow);
+  const merged = helperWindow.refreshSendHistorySnapshot(
+    [
+      { mid: 'base-1', text: 'existing' },
+      { mid: 'user-turn-1', text: '本轮用户消息' },
+      { mid: 'deleted-old', text: '用户后来删除的旧消息' }
+    ],
+    'user-turn-1',
+    1
+  );
+  assert.deepEqual(
+    Array.from(merged, item => item.mid),
+    ['base-1', 'user-turn-1', 'cloud-1', 'later-1'],
+    'the pending user message is restored in order, concurrent newer messages are preserved, and unrelated stale/deleted snapshot rows are not resurrected'
+  );
+});
+
 test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡触发', () => {
   assert.match(detail, /row\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
   assert.match(detail, /new IntersectionObserver\(/);
