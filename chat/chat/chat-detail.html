@@ -5273,6 +5273,28 @@
             } catch (e) {}
         });
 
+        // AI 请求期间，云端主动消息或其他标签页可能更新同一份聊天历史。
+        // 收尾前重新读取最新版本，只补回本轮用户消息（若被旧快照覆盖），
+        // 不把整个旧 historyList 覆盖回去，也不复活用户后来主动删除的旧消息。
+        function refreshSendHistorySnapshot(snapshot, currentUserMid, currentUserIndex) {
+            var latest = loadMessages();
+            if (!Array.isArray(latest)) return Array.isArray(snapshot) ? snapshot : [];
+            var stableUserMid = String(currentUserMid || '');
+            if (stableUserMid && !latest.some(function (item) {
+                return item && String(item.mid || '') === stableUserMid;
+            })) {
+                var pendingUserMessage = (Array.isArray(snapshot) ? snapshot : []).find(function (item) {
+                    return item && String(item.mid || '') === stableUserMid;
+                });
+                if (pendingUserMessage) {
+                    var insertAt = Number(currentUserIndex);
+                    if (!Number.isSafeInteger(insertAt) || insertAt < 0) insertAt = latest.length;
+                    latest.splice(Math.min(insertAt, latest.length), 0, pendingUserMessage);
+                }
+            }
+            return latest;
+        }
+
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
         async function sendMsg(opts) {
             const input = document.getElementById('chat-input');
@@ -5461,6 +5483,8 @@
 
             // 重玩模式：不新增用户消息，直接基于现有历史重新请求
             let historyList = loadMessages();
+            var currentTurnUserMid = '';
+            var currentTurnUserIndex = -1;
             if (!isRegen) {
                 if (!contextOnly) {
                     const blockedNow = isBlocked(aliasRoleId);
@@ -5473,6 +5497,8 @@
                         quote: quoteSnapshot
                     };
                     ensureMid(userMsg);
+                    currentTurnUserMid = String(userMsg.mid || '');
+                    currentTurnUserIndex = historyList.length;
                     const previousGroupUserSend = (isGroupChat && !silent) ? { ...lastGroupUserSend } : null;
                     const previousGroupAutoFollowupToken = groupAutoFollowupToken;
                     if (!silent && !acceptGroupUserMessage(text)) {
@@ -6417,6 +6443,14 @@
             fullText = typeof streamResult.fullText === 'string'
                 ? streamResult.fullText
                 : lastPaintedStreamText;
+
+            // AI 请求期间可能已经收到并保存角色主动消息。刷新最新历史后再写
+            // AI 回复 / 错误提示，避免旧快照把并发到达的消息覆盖掉。
+            historyList = refreshSendHistorySnapshot(
+                historyList,
+                currentTurnUserMid,
+                currentTurnUserIndex
+            );
 
             // 流内一直没出现 loading 移除（零 delta 兜底）
             const loadingEl2 = document.getElementById(statusId);
