@@ -468,3 +468,12 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 这是 Worker 代码层面的真实 Web Push 发送路径，不代表真实 Android 手机已经收到通知。仍需 Cloudflare Worker 部署、VAPID secrets、设备订阅、通知权限和锁屏真机验收。
 - Push service 接受请求只代表服务端投递被接受，不保证操作系统最终展示通知；用户关闭通知权限、浏览器 / PWA 被系统限制或设备离线时，仍以 outbox + 前台聊天轮询及后续 Push 重试恢复。
 - Node/SQLite 契约测试、`npm run build`、Wrangler dry-run、Cloudflare 部署和 Android 锁屏通知测试均为 **NOT VERIFIED**。本轮未合并 PR、未部署 Worker、未更新 APK。
+## 15. M2.5a：Push 与暂存结果的维护顺序及重试细节
+
+- 定时维护顺序固定为：`repairAllStagedActivityOutboxes()` → `dispatchPendingOutboundPushes()`。第一步只从仍授权设备的已完成活动恢复缺失的 outbox；第二步才为有效订阅创建/恢复 Push 投递。
+- Push 投递沿用既有 `push_deliveries` 表，没有新建第二套队列或迁移。每条 `serverMessageId` 对每个订阅独立去重；不同设备、订阅之间互不覆盖。
+- 每个发送尝试按实际开始时间创建租约，并以真实完成时间计算退避，避免批量中前一条通知耗时导致后一条通知拿到过期租约。
+- 单条主动消息完成时立即尝试一次通知；如果没有订阅、VAPID 未配置或发送失败，outbox 不会被删除，定时维护继续扫描。前台聊天页面仍可通过既有收件箱轮询收到消息。
+- 新增测试覆盖即时发送、重复完成不重复通知、锁屏正文隐私、5xx 退避后同一订阅重试，以及全局维护先恢复 outbox 再派发 Push。
+
+当前这些测试只是写入仓库，尚未在可用 CI runner 上执行；GitHub Actions 仍不能作为通过证据。
