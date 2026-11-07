@@ -37,16 +37,21 @@
 
   var PENDING_CHECKOUT_KEY = 'maomao_wallet_pending_checkouts_v1';
 
-  function readPendingCheckouts() {
+  function readStoredCheckouts() {
     try {
       var value = JSON.parse(global.localStorage.getItem(PENDING_CHECKOUT_KEY) || '[]');
       return Array.isArray(value) ? value.filter(function (item) {
         return item && typeof item.id === 'string' && item.id &&
-          item.status === 'pending';
+          (item.status === 'pending' || item.status === 'completed');
       }) : null;
     } catch (error) {
       return null;
     }
+  }
+
+  function readPendingCheckouts() {
+    var rows = readStoredCheckouts();
+    return rows ? rows.filter(function (item) { return item.status === 'pending'; }) : null;
   }
 
   function writePendingCheckouts(rows) {
@@ -67,13 +72,12 @@
 
     var rows = readPendingCheckouts();
     if (!rows) return null;
-    var existing = rows.find(function (item) {
-      return item.channel === channel && item.signature === signature;
-    });
+    var existing = rows.find(function (item) { return item.channel === channel; });
     if (existing) {
-      // Once a checkout has started, changing its payment method must not create a
-      // second charge for the same cart. Definite pre-charge failures may cancel it.
-      return String(existing.paymentMethod || 'normal') === paymentMethod ? existing.id : null;
+      // Only one unresolved checkout per channel is allowed. This also prevents a
+      // changed cart from bypassing an earlier partial commit and being charged again.
+      return existing.signature === signature &&
+        String(existing.paymentMethod || 'normal') === paymentMethod ? existing.id : null;
     }
 
     var randomPart = global.crypto && typeof global.crypto.randomUUID === 'function'
@@ -106,7 +110,25 @@
   }
 
   function completePendingCheckout(transactionId) {
-    return cancelPendingCheckout(transactionId);
+    transactionId = String(transactionId || '');
+    if (!transactionId) return false;
+    var rows = readStoredCheckouts();
+    if (!rows) return false;
+    var target = rows.find(function (item) { return item.id === transactionId; });
+    if (!target) return true;
+    if (target.status === 'completed') return true;
+    target.status = 'completed';
+    target.completedAt = Date.now();
+    var serialized = JSON.stringify(rows);
+    try {
+      global.localStorage.setItem(PENDING_CHECKOUT_KEY, serialized);
+      if (global.localStorage.getItem(PENDING_CHECKOUT_KEY) !== serialized) return false;
+      var verified = readStoredCheckouts();
+      var saved = verified && verified.find(function (item) { return item.id === transactionId; });
+      return !!saved && saved.status === 'completed';
+    } catch (error) {
+      return false;
+    }
   }
 
   global.MaoMaoWalletLedger = Object.freeze({
