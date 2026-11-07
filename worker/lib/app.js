@@ -376,6 +376,10 @@ export async function dispatchPendingOutboundPushes({
     if (outcome.ok) {
       summary.sent += 1;
       store.markPushSuccess(candidate.subscription_id, finishedAt);
+      store.markOutboundPushAccepted({
+        serverMessageId: candidate.server_message_id,
+        now: finishedAt
+      });
     } else if (outcome.gone) {
       summary.failed += 1;
       summary.gone += 1;
@@ -1013,6 +1017,12 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         serverMessageId: row.server_message_id,
         characterId: row.character_id,
         createdAt: Number(row.created_at),
+        lifecycle: {
+          pushAcceptedAt: row.push_accepted_at == null ? null : Number(row.push_accepted_at),
+          deviceReceivedAt: row.device_received_at == null ? null : Number(row.device_received_at),
+          localSavedAt: row.local_saved_at == null ? null : Number(row.local_saved_at),
+          readAt: row.read_at == null ? null : Number(row.read_at)
+        },
         payload
       };
     });
@@ -1030,6 +1040,39 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
     if (!result) {
       throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+    }
+    return ok(result);
+  }
+
+  async function markCharacterOutboundReceived(request, characterId, serverMessageId) {
+    const device = await authenticate(request);
+    const result = await store.markOutboundReceived({
+      userId: device.user_id || OWNER_USER_ID,
+      deviceId: device.id,
+      characterId,
+      serverMessageId,
+      now: now()
+    });
+    if (!result) {
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+    }
+    return ok(result);
+  }
+
+  async function markCharacterOutboundRead(request, characterId, serverMessageId) {
+    const device = await authenticate(request);
+    const result = await store.markOutboundRead({
+      userId: device.user_id || OWNER_USER_ID,
+      deviceId: device.id,
+      characterId,
+      serverMessageId,
+      now: now()
+    });
+    if (!result) {
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+    }
+    if (result.reason === 'not_saved') {
+      throw new ApiError(409, 'OUTBOUND_NOT_SAVED', '消息尚未保存到本地聊天记录，不能标记已读');
     }
     return ok(result);
   }
@@ -1628,6 +1671,24 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         if (method === 'POST') {
           return await acknowledgeCharacterOutboundMessage(request, characterId, characterOutboundAckMatch[2]);
         }
+      }
+
+      const outboundReceivedMatch = /^\/api\/characters\/([^/]+)\/outbound\/([A-Za-z0-9_-]{16,128})\/received$/.exec(path);
+      if (outboundReceivedMatch && readCharacterId(outboundReceivedMatch[1]) && method === 'POST') {
+        return await markCharacterOutboundReceived(
+          request,
+          readCharacterId(outboundReceivedMatch[1]),
+          outboundReceivedMatch[2]
+        );
+      }
+
+      const outboundReadMatch = /^\/api\/characters\/([^/]+)\/outbound\/([A-Za-z0-9_-]{16,128})\/read$/.exec(path);
+      if (outboundReadMatch && readCharacterId(outboundReadMatch[1]) && method === 'POST') {
+        return await markCharacterOutboundRead(
+          request,
+          readCharacterId(outboundReadMatch[1]),
+          outboundReadMatch[2]
+        );
       }
 
       const autonomyActivityMatch = /^\/api\/autonomy\/characters\/([^/]+)\/activities$/.exec(path);
