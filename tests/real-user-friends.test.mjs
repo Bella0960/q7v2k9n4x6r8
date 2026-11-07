@@ -521,6 +521,11 @@ test("only the recipient can accept or decline; accepting creates the friendship
   const friendsB = await call(context, "/", "GET", undefined, "bob");
   assert.equal(friendsA.body.friends[0].id, "account-bob-001");
   assert.equal(friendsB.body.friends[0].id, "account-alice-001");
+  assert.equal(friendsA.body.friends[0].acceptedRequestId, "request_accept_alice_01");
+  assert.equal(friendsA.body.relationships[0].status, "accepted");
+  assert.equal(friendsA.body.relationships[0].acceptedRequestId, "request_accept_alice_01");
+  assert.equal(friendsA.body.relationships[0].updatedAt, friendsA.body.snapshotAt > 0
+    ? friendsA.body.relationships[0].updatedAt : 0);
 
   // Public profile fields are resolved from the authoritative account row on
   // every list read, not copied into a stale friendship snapshot.
@@ -557,6 +562,12 @@ test("friend removal, block and unblock update the authoritative relationship", 
   await call(context, "/requests/request_block_0001/accept", "POST", undefined, "bob");
   const removed = await call(context, "/account-bob-001", "DELETE");
   assert.equal(removed.body.removed, true);
+  const removedRoster = await call(context, "/", "GET");
+  assert.equal(removedRoster.body.friends.length, 0);
+  assert.equal(removedRoster.body.relationships.length, 1);
+  assert.equal(removedRoster.body.relationships[0].status, "removed");
+  assert.equal(removedRoster.body.relationships[0].displayName, undefined,
+    "removed relationships must not expose private profile fields");
   const readdCode = await call(context, "/codes/rotate", "POST", undefined, "bob");
   const readd = await call(context, "/requests", "POST", { requestId: "request_readd_00001", code: readdCode.body.code });
   assert.equal(readd.response.status, 201);
@@ -623,4 +634,56 @@ test("Worker routes friend APIs separately and keeps messages disabled", async (
     "https://mao.example/api/real-user-chat/v1/conversations/c1/messages"
   ), env);
   assert.equal(messages.status, 503);
+});
+
+test("friend roster pages by stable account ID and returns relationship tombstones without private fields", async () => {
+  const context = await setup();
+  const baseId = "account-alice-001";
+  const extraIds = ["account-extra-01", "account-extra-02", "account-extra-03"];
+  extraIds.forEach((id, index) => {
+    context.db.accounts.set(id, {
+      id, handle: "extra_" + (index + 1), display_name: "Extra " + (index + 1),
+      status: "active", avatar_asset_id: null
+    });
+    const [low, high] = context.db.pair(baseId, id);
+    context.db.friendships.set(low + "|" + high, {
+      pair_low: low, pair_high: high, status: "accepted",
+      accepted_request_id: "request_extra_" + (index + 1),
+      accepted_at: 1000 + index, updated_at: 1000 + index
+    });
+  });
+  const first = await call(context, "/?limit=1", "GET");
+  assert.equal(first.body.relationships.length, 1);
+  assert.equal(first.body.hasMore, true);
+  assert.ok(first.body.nextCursor);
+
+  const second = await call(context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(first.body.nextCursor),
+    "GET");
+  assert.equal(second.body.relationships.length, 1);
+  assert.equal(second.body.snapshotAt, first.body.snapshotAt);
+  assert.equal(second.body.hasMore, true);
+
+  const third = await call(context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(second.body.nextCursor),
+    "GET");
+  assert.equal(third.body.relationships.length, 1);
+  assert.equal(third.body.hasMore, true);
+
+  const fourth = await call(context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(third.body.nextCursor),
+    "GET");
+  assert.equal(fourth.body.relationships.length, 1);
+  assert.equal(fourth.body.hasMore, false);
+  assert.equal(fourth.body.nextCursor, null);
+
+  const ids = [first, second, third, fourth].flatMap(page => page.body.relationships.map(item => item.id));
+  assert.equal(new Set(ids).size, 4);
+});
+
+test("friend roster rejects malformed page limits, cursors and snapshot timestamps", async () => {
+  const context = await setup();
+  assert.equal((await call(context, "/?limit=101", "GET")).body.error, "invalid_friend_page_limit");
+  assert.equal((await call(context, "/?after=bad", "GET")).body.error, "invalid_friend_cursor");
+  assert.equal((await call(context, "/?snapshotAt=99999999999999999", "GET")).body.error, "invalid_friend_snapshot");
 });
