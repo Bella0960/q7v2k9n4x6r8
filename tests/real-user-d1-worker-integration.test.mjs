@@ -620,6 +620,9 @@ if (!DatabaseSync) {
       const sameResults = [sameDirectionA, sameDirectionB];
       assert.equal(sameResults.filter(item => item.response.status === 201).length, 1);
       assert.equal(sameResults.filter(item => item.response.status === 200 && item.body.duplicate).length, 1);
+      const raceDuplicate = sameResults.find(item => item.response.status === 200);
+      assert.equal(raceDuplicate.body.target.id, bob.id,
+        "the unique-index race response must retain the same target profile shape as an ordinary duplicate");
       const sameRequestIds = sameResults.map(item => item.body.request.id);
       assert.equal(new Set(sameRequestIds).size, 1,
         "both concurrent submissions must resolve to the same server request");
