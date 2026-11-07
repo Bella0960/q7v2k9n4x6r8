@@ -215,7 +215,7 @@
         if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
         pairId = String(pairId || '');
         label = String(label == null ? '' : label)
-            .replace(/[\\u0000-\\u001F<>]/g, '')
+            .replace(/[\u0000-\u001F<>]/g, '')
             .trim()
             .slice(0, 36);
         if (!label) return failure('VALIDATION_FAILED', 'pair name cannot be empty');
