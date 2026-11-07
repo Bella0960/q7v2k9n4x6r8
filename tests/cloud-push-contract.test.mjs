@@ -90,7 +90,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001/0002 建立云推送与非聊天自主活动元数据表', async () => {
+test('迁移 0001–0004 建立云推送、调度元数据与角色上下文版本表', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -220,6 +220,34 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
     maxVersion: 1,
     latestUpdatedAt: anotherUserNow
   });
+
+  const limitedEvent = ctx.store.recordCharacterContextEvent({
+    userId: 'owner',
+    characterId: 'char-a',
+    eventId: 'context_event_rate_limit_1',
+    deviceId: device.deviceId,
+    now: Date.now(),
+    eventLimit: 2,
+    windowStart: 0
+  });
+  assert.equal(limitedEvent.limited, true, '同一设备一小时内的新事件应有上限');
+  const duplicateAtLimit = ctx.store.recordCharacterContextEvent({
+    userId: 'owner',
+    characterId: 'char-a',
+    eventId: 'context_event_0002',
+    deviceId: device.deviceId,
+    now: Date.now(),
+    eventLimit: 2,
+    windowStart: 0
+  });
+  assert.equal(duplicateAtLimit.changed, false, '幂等重试在达到上限后仍应正常返回');
+
+  const readiness = await ctx.asJson('/api/autonomy/readiness', { device });
+  assert.equal(readiness.status, 200);
+  assert.equal(readiness.payload.contextVersionReady, true);
+  assert.equal(readiness.payload.contextVersionTrackedRoles, 1);
+  assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
+  assert.deepEqual(readiness.payload.autonomyExecutionBlockers, ['executor_unavailable']);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
   assert.equal(snapshot.contextVersion, 2);
