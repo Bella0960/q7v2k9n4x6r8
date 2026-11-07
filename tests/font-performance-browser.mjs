@@ -18,6 +18,7 @@ import { chromium } from 'playwright';
  * 4. 同一字体并发加载：只注册一次、只创建一个 ObjectURL。
  * 5. 字体损坏及失败回退：自动移除自定义字体规则，回到系统字体。
  * 6. 原有字体数据兼容性：旧 custom_font_url 与旧 type:'url' 预设仍可使用。
+ * 7. A → B → A 快速切换：同一字体重新选中时复用在途 IndexedDB 读取。
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -58,7 +59,90 @@ function startServer() {
         'Cache-Control': path.extname(filePath) === '.html' ? 'no-store' : 'public, max-age=600'
       });
       res.end(data);
-    } catch (error) {
+      /* 17. 字体 A → URL 字体 B → 再切回 A：必须复用仍在途的 IndexedDB 读取。 */
+  {
+    console.log('\n[17] 快速切换字体后重新选择原预设');
+    const context = await createContext(browser, origin, { blockSw: true });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(origin + '/index.html', { waitUntil: 'load' });
+    await seedFontPreset(page, origin, { id: 'font_aba_reselect', name: 'Reselect A' });
+    await page.evaluate(() => {
+      window.__fp.fontDbOpens = 0;
+      window.__fp.fontDbGets = 0;
+      localStorage.setItem('active_font_preset_id', 'font_aba_reselect');
+      localStorage.removeItem('custom_font_url');
+    });
+
+    /* 延迟 open 成功处理器，稳定复现 A 的 IndexedDB 请求尚未完成时切换出去再切回来。 */
+    await context.addInitScript(() => {
+      window.__fontRace = { openSuccesses: 0 };
+      const open = indexedDB.open.bind(indexedDB);
+      indexedDB.open = function (name, ...args) {
+        const request = open(name, ...args);
+        if (String(name) !== 'maomao-font-presets') return request;
+        let handler = null;
+        let delayed = false;
+        Object.defineProperty(request, 'onsuccess', {
+          configurable: true,
+          get: function () { return handler; },
+          set: function (next) {
+            handler = next;
+            if (typeof next !== 'function' || delayed) return;
+            delayed = true;
+            request.addEventListener('success', function (event) {
+              window.__fontRace.openSuccesses++;
+              setTimeout(function () {
+                if (typeof handler === 'function') handler.call(request, event);
+              }, 1600);
+            }, { once: true });
+          }
+        });
+        return request;
+      };
+    });
+
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => window.__fp.fontDbOpens === 1, null, { timeout: 10000 });
+    await page.waitForFunction(() => window.__fontRace && window.__fontRace.openSuccesses === 1, null, { timeout: 10000 });
+
+    await page.evaluate((url) => {
+      localStorage.setItem('active_font_preset_id', '');
+      localStorage.setItem('custom_font_url', url);
+      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+    }, origin + FONT_FIXTURE);
+    await page.waitForFunction(() => {
+      const tag = document.getElementById('maomao-global-custom-font-style');
+      return !!tag && tag.textContent.indexOf('/tests/fixtures/maomao-test-font.ttf') >= 0;
+    }, null, { timeout: 10000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem('active_font_preset_id', 'font_aba_reselect');
+      localStorage.removeItem('custom_font_url');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+    });
+
+    await page.waitForFunction(() => window.__fp.fontDbGets === 1, null, { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const tag = document.getElementById('maomao-global-custom-font-style');
+      return !!tag && tag.textContent.indexOf('blob:') >= 0 &&
+        Array.from(document.fonts).some((face) =>
+          face.family.replace(/["']/g, '') === 'MAOMAOUserFont' && face.status === 'loaded'
+        );
+    }, null, { timeout: 20000 });
+    const metrics = await readMetrics(page);
+    report('[17] 切回原字体', metrics);
+    assert.equal(metrics.fontDbOpens, 1, '重新选择 A 应复用原有 IndexedDB open 请求');
+    assert.equal(metrics.fontDbGets, 1, '原有请求应读取 A 的字体 Blob 一次');
+    assert.equal(metrics.hasStyle, true, '最终应恢复自定义字体样式');
+    assert.ok(metrics.fontFaces.includes('loaded'), '切回 A 后字体必须成功加载');
+    assert.deepEqual(errors, [], '快速切换不得产生页面错误');
+    pass('字体 A → B → A：原 IndexedDB 请求完成后恢复 A，不残留 B 字体');
+    await context.close();
+  }
+
+} catch (error) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
     }
   });
@@ -1019,5 +1103,5 @@ try {
 } finally {
   if (browser) await browser.close();
   server.close();
-  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/16 tests: ' + results.join(' | '));
+  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/17 tests: ' + results.join(' | '));
 }
