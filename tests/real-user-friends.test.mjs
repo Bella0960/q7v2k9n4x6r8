@@ -150,10 +150,9 @@ class FakeD1 {
       return { results: rows };
     }
     if (sql.includes("FROM real_user_friendships f")) {
-      const [blockerA, blockerB, caseAccount, lowAccount, highAccount, snapshotAt, cursor, limit] = values;
+      const [blockerA, blockerB, caseAccount, lowAccount, highAccount, cursor, limit] = values;
       const rows = Array.from(this.friendships.values())
-        .filter(f => (f.pair_low === lowAccount || f.pair_high === highAccount) &&
-          Number(f.updated_at) <= snapshotAt)
+        .filter(f => f.pair_low === lowAccount || f.pair_high === highAccount)
         .map(f => {
           const peerId = f.pair_low === caseAccount ? f.pair_high : f.pair_low;
           const peer = this.accounts.get(peerId);
@@ -688,4 +687,47 @@ test("friend roster rejects malformed page limits, cursors and snapshot timestam
   assert.equal((await call(context, "/?limit=101", "GET")).body.error, "invalid_friend_page_limit");
   assert.equal((await call(context, "/?after=bad", "GET")).body.error, "invalid_friend_cursor");
   assert.equal((await call(context, "/?snapshotAt=99999999999999999", "GET")).body.error, "invalid_friend_snapshot");
+});
+
+test("friend rows changed during pagination remain visible instead of being mistaken for missing relationships", async () => {
+  const context = await setup();
+  const ownerId = "account-alice-001";
+  const peerIds = ["account-peer-01", "account-peer-02", "account-peer-03"];
+  peerIds.forEach((id, index) => {
+    context.db.accounts.set(id, {
+      id, handle: "peer_" + index, display_name: "Peer " + index,
+      status: "active", avatar_asset_id: null
+    });
+    const [low, high] = context.db.pair(ownerId, id);
+    context.db.friendships.set(low + "|" + high, {
+      pair_low: low, pair_high: high, status: "accepted",
+      accepted_request_id: "request_peer_" + index,
+      accepted_at: Date.now() - 1000,
+      updated_at: Date.now() - 900
+    });
+  });
+
+  const first = await call(context, "/?limit=1", "GET");
+  assert.equal(first.body.hasMore, true);
+  const cursor = first.body.nextCursor;
+  const changedId = peerIds.find(id => id > cursor);
+  assert.ok(changedId, "fixture must include a relationship after the first-page cursor");
+  const [low, high] = context.db.pair(ownerId, changedId);
+  const key = low + "|" + high;
+  const row = context.db.friendships.get(key);
+  context.db.friendships.set(key, {
+    ...row,
+    status: "removed",
+    updated_at: first.body.snapshotAt + 1000
+  });
+
+  const second = await call(
+    context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(cursor),
+    "GET"
+  );
+  assert.equal(second.body.snapshotAt, first.body.snapshotAt);
+  const updated = second.body.relationships.find(item => item.id === changedId);
+  assert.ok(updated, "the changed relationship must not vanish from a later page");
+  assert.equal(updated.status, "removed");
 });
