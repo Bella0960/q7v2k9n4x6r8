@@ -1750,6 +1750,117 @@ test('test-push：授权、真实加密发送、过期订阅清理与重复通�
   assert.equal(ctx.store.getSubscriptionByEndpoint(device.deviceId, stale.endpoint), null);
 });
 
+test('同一推送事件的临时失败可退避重试，成功后仍保持幂等', async () => {
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(503);
+  const ctx = setupTestStore(openTestDb(), {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev',
+    fetchImpl: pushFetch
+  });
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const sub = await makeBrowserSubscription();
+  await subscribeDevice(ctx, device, sub);
+
+  const first = await ctx.asJson('/api/push/test', {
+    method: 'POST',
+    device,
+    body: { dedupeKey: 'retryable-delivery' }
+  });
+  assert.equal(first.status, 200);
+  assert.equal(first.payload.summary.failed, 1);
+  assert.equal(first.payload.summary.retryScheduled, 1);
+  assert.equal(first.payload.results[0].status, 'retry_scheduled');
+  assert.equal(pushFetch.calls.length, 1);
+
+  const failedRow = ctx.store.findDelivery('retryable-delivery', ctx.store.listSubscriptions(device.deviceId)[0].id);
+  assert.equal(failedRow.status, 'error');
+  assert.equal(failedRow.attempt_count, 1);
+  assert.equal(failedRow.next_attempt_at, failedRow.updated_at + 30000);
+
+  const tooEarly = await ctx.asJson('/api/push/test', {
+    method: 'POST',
+    device,
+    body: { dedupeKey: 'retryable-delivery' }
+  });
+  assert.equal(tooEarly.status, 200);
+  assert.equal(tooEarly.payload.summary.retryDeferred, 1);
+  assert.equal(tooEarly.payload.results[0].status, 'retry_deferred');
+  assert.equal(pushFetch.calls.length, 1, '退避时间未到不能反复敲推送服务');
+
+  ctx.timestamps.push(failedRow.next_attempt_at);
+  pushFetch.setStatus(201);
+  const retried = await ctx.asJson('/api/push/test', {
+    method: 'POST',
+    device,
+    body: { dedupeKey: 'retryable-delivery' }
+  });
+  assert.equal(retried.status, 200);
+  assert.equal(retried.payload.summary.sent, 1);
+  assert.equal(pushFetch.calls.length, 2);
+  const sentRow = ctx.store.findDelivery('retryable-delivery', ctx.store.listSubscriptions(device.deviceId)[0].id);
+  assert.equal(sentRow.status, 'sent');
+  assert.equal(sentRow.attempt_count, 2);
+  assert.equal(sentRow.lease_owner, null);
+  assert.equal(sentRow.lease_until, null);
+
+  const duplicate = await ctx.asJson('/api/push/test', {
+    method: 'POST',
+    device,
+    body: { dedupeKey: 'retryable-delivery' }
+  });
+  assert.equal(duplicate.payload.summary.skipped, 1);
+  assert.equal(pushFetch.calls.length, 2, '成功后同一事件依旧不能重复推送');
+});
+
+test('并发的相同推送事件只有一个请求能取得订阅投递租约', async () => {
+  const keys = makeVapidKeys();
+  const calls = [];
+  let resolveFetch;
+  let markFetchStarted;
+  const fetchStarted = new Promise(resolve => { markFetchStarted = resolve; });
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    markFetchStarted();
+    await new Promise(resolve => { resolveFetch = resolve; });
+    return new Response('', { status: 201 });
+  };
+  const ctx = setupTestStore(openTestDb(), {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev',
+    fetchImpl
+  });
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const sub = await makeBrowserSubscription();
+  await subscribeDevice(ctx, device, sub);
+
+  const firstRequest = ctx.asJson('/api/push/test', {
+    method: 'POST',
+    device,
+    body: { dedupeKey: 'concurrent-delivery' }
+  });
+  await fetchStarted;
+
+  const concurrentRequest = await ctx.asJson('/api/push/test', {
+    method: 'POST',
+    device,
+    body: { dedupeKey: 'concurrent-delivery' }
+  });
+  assert.equal(concurrentRequest.status, 200);
+  assert.equal(concurrentRequest.payload.summary.inProgress, 1);
+  assert.equal(calls.length, 1, '第二个请求不能在第一个发送尚未结束时重复推送');
+
+  resolveFetch();
+  const first = await firstRequest;
+  assert.equal(first.status, 200);
+  assert.equal(first.payload.summary.sent, 1);
+  assert.equal(calls.length, 1);
+});
+
 test('test-push 在未配置 VAPID 时返回明确的 503，而不是静默失败', async () => {
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
