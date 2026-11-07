@@ -424,9 +424,11 @@ class CloudStore {
   }
 
   countRecentExecutions(deviceId, kind, since) {
+    // Count every attempt, not only successful sends. Otherwise repeated
+    // failures could bypass the per-device rate limit by never succeeding.
     const row = this.exec(
       `SELECT COUNT(*) AS total FROM execution_log
-       WHERE device_id = ? AND kind = ? AND status = 'success' AND created_at >= ?`,
+       WHERE device_id = ? AND kind = ? AND created_at >= ?`,
       deviceId,
       kind,
       since
