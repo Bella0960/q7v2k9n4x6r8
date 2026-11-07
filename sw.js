@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v188';
+const CACHE_NAME = 'phone-app-pwa-v189';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v188 release: add gated real-user profile avatar upload and private display.
+// v189 release: add foreground cancellation for NPC AI discovery requests.
 const APP_SHELL = [
   './',
   './index.html',
@@ -103,7 +103,7 @@ const APP_SHELL = [
   './shared/js/chat-notifier.js?v=20261107v4',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
-  'shared/js/phone/phone_api.js?v=20261106v1',
+  'shared/js/phone/phone_api.js?v=20261108v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',
