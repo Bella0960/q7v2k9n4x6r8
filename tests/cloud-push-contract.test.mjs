@@ -200,6 +200,67 @@ test('推送投递迁移只恢复历史临时失败，不重放成功与永久�
   assert.equal(sent.next_attempt_at, null);
 });
 
+test('推送限流名额通过单条 SQLite 语句原子预留，结果日志不重复计数', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const deviceId = 'rate-limit-device';
+  const since = 1000;
+  const reserve = now => ctx.store.reserveExecutionAttempt({
+    id: 'attempt-' + now,
+    deviceId,
+    kind: 'test_push',
+    reasonCode: 'attempt_started',
+    now
+  }, { since, limit: 3 });
+
+  assert.equal(reserve(1000), true);
+  ctx.store.logExecution({
+    id: 'result-1',
+    deviceId,
+    kind: 'test_push',
+    status: 'failed',
+    reasonCode: 'no_delivery',
+    now: 1001
+  });
+  assert.equal(reserve(2000), true);
+  ctx.store.logExecution({
+    id: 'result-2',
+    deviceId,
+    kind: 'test_push',
+    status: 'failed',
+    reasonCode: 'no_delivery',
+    now: 2001
+  });
+  assert.equal(reserve(3000), true);
+  ctx.store.logExecution({
+    id: 'result-3',
+    deviceId,
+    kind: 'test_push',
+    status: 'success',
+    reasonCode: 'delivered',
+    now: 3001
+  });
+  assert.equal(reserve(4000), false, '三个已预留尝试后，第四次必须被拒绝');
+  assert.equal(
+    ctx.store.countRecentExecutions(deviceId, 'test_push', since),
+    3,
+    '发送后的成功/失败日志不能被重复算成新的尝试'
+  );
+});
+
+test('并发到达的推送请求不能同时预留超过限额的名额', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const reserveOne = index => Promise.resolve().then(() =>
+    ctx.store.reserveExecutionAttempt({
+      id: 'parallel-attempt-' + index,
+      deviceId: 'parallel-rate-device',
+      kind: 'test_push',
+      now: 5000 + index
+    }, { since: 0, limit: 1 })
+  );
+  const results = await Promise.all([reserveOne(1), reserveOne(2), reserveOne(3)]);
+  assert.equal(results.filter(Boolean).length, 1);
+});
+
 test('推送投递租约可恢复过期 worker，并阻止旧 worker 覆盖新状态', () => {
   const ctx = setupTestStore(openTestDb());
   const first = ctx.store.claimDelivery({
