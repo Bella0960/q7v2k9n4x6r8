@@ -388,6 +388,12 @@ test('单条消息只在当前账号隐藏；好友仍能看到原消息且未�
 
   const bobHistory = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
   assert.deepEqual(bobHistory.payload.messages, []);
+  const readHidden = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
+    method: 'POST',
+    body: { messageId: targetId }
+  });
+  assert.equal(readHidden.status, 404);
+  assert.equal(readHidden.payload.error.code, 'FRIEND_MESSAGE_NOT_FOUND');
   assert.notEqual(
     bobHistory.payload.viewState.version,
     beforeHideView.payload.viewState.version,
@@ -438,6 +444,12 @@ test('清空聊天记录只影响当前账号；清空之后的新消息仍会�
   const bobBeforeAliceClear = await asAccount(ctx, bob, bobPath);
   const aliceAfterClear = await asAccount(ctx, alice, alicePath);
   assert.deepEqual(aliceAfterClear.payload.messages, []);
+  const markClearedRead = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/read', {
+    method: 'POST',
+    body: { messageId: second.payload.message.id }
+  });
+  assert.equal(markClearedRead.status, 404);
+  assert.equal(markClearedRead.payload.error.code, 'FRIEND_MESSAGE_NOT_FOUND');
   assert.notEqual(aliceAfterClear.payload.viewState.version, aliceBeforeClear.payload.viewState.version);
   assert.equal(
     bobBeforeAliceClear.payload.viewState.version,
