@@ -1101,6 +1101,17 @@ class CloudStore {
     )[0];
     if (incoming) return { kind: 'incoming_request_exists', request: incoming };
 
+    if (Number.isFinite(Number(request.limit)) && Number.isFinite(Number(request.windowStart))) {
+      const recent = this.exec(
+        'SELECT COUNT(*) AS total FROM friend_requests WHERE requester_id = ? AND created_at >= ?',
+        request.requesterId,
+        request.windowStart
+      )[0];
+      if (Number(recent?.total || 0) >= Number(request.limit)) {
+        return { kind: 'rate_limited', request: null };
+      }
+    }
+
     const inserted = this.exec(
       `INSERT INTO friend_requests
         (id, requester_id, recipient_id, message, status, created_at, updated_at)
