@@ -484,6 +484,31 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     return ok({ revoked: true });
   }
 
+  async function getAutonomyReadiness(request) {
+    const device = await authenticate(request);
+    const presenceConfig = readPresenceConfig(env);
+    const activeSubscriptions = await store.listSubscriptions(device.id);
+    const pepper = String(env?.DEVICE_SECRET_PEPPER || '');
+    const vapid = vapidSummary(env);
+    const pairingTtl = parsePositiveEnv(env, 'DEVICE_PAIRING_TOKEN_TTL_MS');
+    const enrollmentToken = String(env?.ENROLLMENT_TOKEN || '');
+    const globalAutonomy = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
+    return ok({
+      deviceAuthorized: true,
+      deviceAuthConfigured: pepper.length >= 32,
+      bootstrapConfigured: enrollmentToken.length >= 32,
+      pairingConfigured: pairingTtl != null && pepper.length >= 32,
+      webPushKeysConfigured: vapid.configured,
+      activePushSubscriptions: activeSubscriptions.length,
+      testPushReady: vapid.configured && activeSubscriptions.length > 0,
+      presenceConfigured: Boolean(presenceConfig),
+      globalAutonomyEnabled: globalAutonomy?.enabled === 1,
+      contextVersionReady: false,
+      autonomousMessageGenerationReady: false,
+      note: '此检查只核对配置与订阅状态，不会生成角色消息或触发推送。'
+    });
+  }
+
   async function getGlobalAutonomy(request) {
     const device = await authenticate(request);
     const row = await store.getUserAutonomy(device.user_id || OWNER_USER_ID);
@@ -663,6 +688,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (path === '/api/devices/register' && method === 'POST') return await registerDevice(request);
       if (path === '/api/devices/pairing-token' && method === 'POST') return await createDevicePairingToken(request);
       if (path === '/api/devices/revoke' && method === 'POST') return await revokeDevice(request);
+      if (path === '/api/autonomy/readiness' && method === 'GET') return await getAutonomyReadiness(request);
       if (path === '/api/autonomy/global' && method === 'GET') return await getGlobalAutonomy(request);
       if (path === '/api/autonomy/global' && method === 'PUT') return await setGlobalAutonomy(request);
 
