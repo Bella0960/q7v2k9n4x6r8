@@ -399,7 +399,7 @@ Server-boundary work (2026-11-07):
 - Added `GET /api/real-user-chat/capabilities`, which explicitly reports `enabled: false`, no networking, no server acknowledgements, and disabled live voice/video calling.
 - Reserved `/api/real-user-chat/*` routes fail closed with HTTP 503; the Worker does not parse message bodies, forward them to static assets, or return a fake send acknowledgement.
 - Added `docs/engineering/REAL_USER_CHAT_SERVER_CONTRACT.md` with the proposed authenticated API DTOs, server-authoritative friend checks, attachment authorization, idempotency, delivery/read receipts, and release gates.
-- Added `tests/real-user-chat-worker-gate.test.mjs` and `npm run test:worker:real-user-gate`. The test suite is defined but has not been executed in a native Node runner; GitHub Actions currently fails before starting steps.
+- Added `tests/real-user-chat-worker-gate.test.mjs` (5 contract cases) and `npm run test:worker:real-user-gate`; the combined contact regression command also includes this suite. The PWA v182 fetch handler bypasses static caches for the entire real-user API namespace, with an additional regression assertion. The updated suites define 74 cases across this PR, but none of the newly added Worker/PWA cases has been executed in a native Node runner; GitHub Actions currently fails before starting steps.
 
 Additional acceptance:
 - The deployed capabilities endpoint must remain disabled until authentication, authoritative relationships, durable persistence, delivery acknowledgements, and two-device tests are all proven.
