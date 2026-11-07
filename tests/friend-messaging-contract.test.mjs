@@ -1,9 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomToken } from '../worker/lib/crypto.js';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 
 const FIXED_NOW = 1_800_000_000_000;
+
+const ROOT_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const FRIEND_CHAT_HTML = readFileSync(resolve(ROOT_DIR, 'chat/contacts/friend-chat.html'), 'utf8');
+
 
 function makeAccount(label) {
   return {
@@ -307,4 +314,15 @@ test('真人好友消息严格限制为非空纯文字，最多 2000 个 Unicode
     body: { clientMessageId: messageId(), body: '🙂'.repeat(2000) }
   });
   assert.equal(accepted.status, 200);
+});
+
+test('真人聊天页面安全渲染正文、立即显示发送状态并在后台暂停轮询', () => {
+  assert.match(FRIEND_CHAT_HTML, /bubble\.textContent = String\(message\.body \|\| ''\)/);
+  assert.match(FRIEND_CHAT_HTML, /appendPendingMessage\(text, clientId\)/);
+  assert.match(FRIEND_CHAT_HTML, /removePendingMessage\(pendingNode\)/);
+  assert.match(FRIEND_CHAT_HTML, /api\.sendMessage\(friendId, text, clientId\)/);
+  assert.match(FRIEND_CHAT_HTML, /window\.setInterval\(pollMessages, 4500\)/);
+  assert.match(FRIEND_CHAT_HTML, /document\.hidden/);
+  assert.match(FRIEND_CHAT_HTML, /再次点击发送会安全重试/);
+  assert.match(FRIEND_CHAT_HTML, /端到端加密/);
 });
