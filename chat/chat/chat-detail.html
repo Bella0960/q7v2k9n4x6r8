@@ -4977,6 +4977,11 @@
                     time: opts.retryTarget.time
                 }
                 : null;
+            var visionImageMids = (opts && Array.isArray(opts.visionImageMids))
+                ? opts.visionImageMids.map(function (mid) { return String(mid || '').trim(); })
+                    .filter(function (mid, index, items) { return mid && items.indexOf(mid) === index; }).slice(0, 4)
+                : [];
+            var avatarCandidateImages = [];
             window.__groupAutoStopRequested = false;
             let preflightReason;
             if (window.ChatSendPolicy && typeof window.ChatSendPolicy.evaluatePreflight === 'function') {
