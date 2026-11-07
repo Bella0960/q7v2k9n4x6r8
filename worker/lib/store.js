@@ -1014,10 +1014,14 @@ class CloudStore {
         AND target_device.revoked_at IS NULL
        INNER JOIN push_subscriptions s
          ON s.device_id = target_device.id AND s.disabled_at IS NULL
+       LEFT JOIN outbound_device_receipts r
+         ON r.server_message_id = o.server_message_id
+        AND r.user_id = source_device.user_id
+        AND r.device_id = target_device.id
        LEFT JOIN push_deliveries p
          ON p.dedupe_key = ('outbound:' || o.server_message_id)
         AND p.subscription_id = s.id
-       WHERE o.delivery_status = 'pending'
+       WHERE r.local_saved_at IS NULL
          AND (
            p.id IS NULL
            OR (p.status = 'error'
