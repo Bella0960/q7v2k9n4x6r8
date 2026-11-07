@@ -297,7 +297,10 @@
       removePendingMessage(pendingNode);
       if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法继续发送消息。');
       else {
-        setStatus((error.message || '发送失败') + '。再次点击发送会安全重试，不会重复落库。', true);
+        var retryHint = error && error.code === 'FRIEND_MESSAGE_RATE_LIMITED'
+          ? '请稍后再发送，当前输入内容已保留。'
+          : '再次点击发送会安全重试，不会重复落库。';
+        setStatus((error.message || '发送失败') + '。' + retryHint, true);
         $('messageInput').disabled = false;
         $('messageInput').focus();
         $('sendBtn').disabled = false;
