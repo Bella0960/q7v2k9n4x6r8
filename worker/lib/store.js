@@ -436,7 +436,8 @@ class CloudStore {
     }));
 
     const leases = this.exec(
-      `SELECT l.owner_device_id, l.lease_until, d.revoked_at
+      `SELECT l.owner_device_id, l.lease_until,
+              CASE WHEN d.id IS NOT NULL AND d.revoked_at IS NULL THEN 1 ELSE 0 END AS authorized
        FROM character_leases l
        LEFT JOIN devices d ON d.id = l.owner_device_id AND d.user_id = l.user_id
        WHERE l.user_id = ? AND l.character_id = ?`,
@@ -446,7 +447,7 @@ class CloudStore {
       deviceId: row.owner_device_id,
       userId,
       characterId,
-      authorized: row.revoked_at == null,
+      authorized: Number(row.authorized) === 1,
       leaseUntil: Number(row.lease_until)
     }));
 
