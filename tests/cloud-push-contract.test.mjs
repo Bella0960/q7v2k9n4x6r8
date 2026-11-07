@@ -90,7 +90,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0004 建立云推送、调度元数据与角色上下文版本表', async () => {
+test('迁移 0001–0005 建立云推送、调度元数据、真人账号与好友关系表', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -111,7 +111,10 @@ test('迁移 0001–0004 建立云推送、调度元数据与角色上下文版�
     'device_pairing_tokens',
     'device_bootstrap',
     'character_context_versions',
-    'character_context_events'
+    'character_context_events',
+    'friend_accounts',
+    'friend_requests',
+    'friendships'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -127,17 +130,21 @@ test('迁移 0001–0004 建立云推送、调度元数据与角色上下文版�
   assert.ok(indexes.includes('idx_device_pairing_expiry'), '配对码必须可按过期时间清理');
   assert.ok(indexes.includes('idx_context_events_device_created'), '上下文事件必须可按设备清理与审计');
   assert.ok(indexes.includes('idx_context_events_created'), '上下文事件必须可按保留期清理');
+  assert.ok(indexes.includes('idx_friend_accounts_ip_created'), '真人账号注册限流必须可按 IP 时间窗口查询');
+  assert.ok(indexes.includes('idx_friend_requests_pending_pair'), '重复好友申请必须由唯一索引保护');
+  assert.ok(indexes.includes('idx_friendships_high'), '好友关系必须支持双方查询');
 
   // 幂等：重复执行迁移不会重复建表，也不会重复记录版本。
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 4);
+  assert.equal(versions.length, 5);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
     '0003_device_pairing',
-    '0004_character_context_version'
+    '0004_character_context_version',
+    '0005_friend_accounts'
   ]);
 });
 

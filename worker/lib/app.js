@@ -11,6 +11,11 @@ import '../../shared/js/phone/character-schedule-policy.js';
 
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
+const FRIEND_ACCOUNT_ID_PATTERN = /^u_[A-Za-z0-9_-]{16,48}$/;
+const FRIEND_ACCOUNT_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
+const FRIEND_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const FRIEND_REGISTRATIONS_PER_IP_PER_HOUR = 20;
+const FRIEND_REQUESTS_PER_HOUR = 30;
 const MAX_SUBSCRIPTIONS_PER_DEVICE = 10;
 const REGISTRATIONS_PER_IP_PER_HOUR = 20;
 const PAIRING_TOKENS_PER_DEVICE_PER_HOUR = 5;
@@ -18,6 +23,24 @@ const TEST_PUSH_PER_10_MINUTES = 3;
 const CONTEXT_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 
 export const MILESTONE = '1';
+
+function friendAccountAuthHeader(request) {
+  const raw = String(request.headers.get('x-maomao-account') || '').trim();
+  const point = raw.indexOf('.');
+  if (point <= 0) return null;
+  const userId = raw.slice(0, point);
+  const secret = raw.slice(point + 1);
+  if (!FRIEND_ACCOUNT_ID_PATTERN.test(userId) || !FRIEND_ACCOUNT_SECRET_PATTERN.test(secret)) return null;
+  return { userId, secret };
+}
+
+async function friendAccountSecretHash(env, userId, secret) {
+  const pepper = String(env?.DEVICE_SECRET_PEPPER || '');
+  if (pepper.length < 32) {
+    throw new ApiError(503, 'ACCOUNT_AUTH_NOT_CONFIGURED', '真人账号服务尚未配置');
+  }
+  return sha256Hex(`${pepper}|friend-account|${userId}|${secret}`);
+}
 
 function deviceAuthHeader(request) {
   const raw = String(request.headers.get('x-device-auth') || '').trim();
@@ -219,6 +242,223 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       await store.touchDevice(device.id, timestamp);
     }
     return device;
+  }
+
+  async function authenticateFriendAccount(request) {
+    const parsed = friendAccountAuthHeader(request);
+    if (!parsed) throw new ApiError(401, 'FRIEND_ACCOUNT_UNAUTHORIZED', '请先创建或连接 MAOMAO 真人账号');
+    const account = await store.getFriendAccount(parsed.userId);
+    if (!account || account.revoked_at) {
+      throw new ApiError(401, 'FRIEND_ACCOUNT_UNKNOWN', '真人账号不存在或已停用');
+    }
+    const expected = await friendAccountSecretHash(env, parsed.userId, parsed.secret);
+    if (!timingSafeEqualHex(expected, account.secret_hash)) {
+      throw new ApiError(401, 'FRIEND_ACCOUNT_UNAUTHORIZED', '真人账号凭据校验失败');
+    }
+    return account;
+  }
+
+  function normalizeDisplayName(value) {
+    return String(value || '')
+      .replace(/[\u0000-\u001F\u007F]/g, '')
+      .trim()
+      .slice(0, 24);
+  }
+
+  function friendRequestView(row, currentUserId) {
+    return {
+      id: row.id,
+      requesterId: row.requester_id,
+      recipientId: row.recipient_id,
+      requesterName: row.requester_name || '',
+      recipientName: row.recipient_name || '',
+      message: row.message || '',
+      status: row.status,
+      direction: row.recipient_id === currentUserId ? 'incoming' : 'outgoing',
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at)
+    };
+  }
+
+  async function registerFriendAccount(request) {
+    const body = await readJsonBody(request);
+    const userId = String(body.userId || '').trim();
+    const secret = String(body.secret || '').trim();
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(userId) || !FRIEND_ACCOUNT_SECRET_PATTERN.test(secret)) {
+      throw new ApiError(400, 'INVALID_FRIEND_ACCOUNT', '真人账号凭据格式无效');
+    }
+    const displayName = normalizeDisplayName(body.displayName);
+    const hash = await friendAccountSecretHash(env, userId, secret);
+    const existing = await store.getFriendAccount(userId);
+    if (existing) {
+      if (existing.revoked_at) throw new ApiError(403, 'FRIEND_ACCOUNT_REVOKED', '该真人账号已停用');
+      if (!timingSafeEqualHex(hash, existing.secret_hash)) {
+        throw new ApiError(409, 'FRIEND_ACCOUNT_CONFLICT', '该账号 ID 已被其他凭据占用');
+      }
+      const account = displayName && displayName !== existing.display_name
+        ? await store.updateFriendAccountProfile(userId, displayName, now())
+        : existing;
+      return ok({
+        account: {
+          userId: account.user_id,
+          displayName: account.display_name,
+          createdAt: Number(account.created_at)
+        },
+        created: false
+      });
+    }
+
+    const timestamp = now();
+    const ipHash = await clientIpHash(request, env);
+    if (await store.countRecentFriendRegistrations(ipHash, timestamp - 3600000) >= FRIEND_REGISTRATIONS_PER_IP_PER_HOUR) {
+      throw new ApiError(429, 'FRIEND_ACCOUNT_RATE_LIMITED', '账号创建过于频繁，请稍后再试');
+    }
+    const created = await store.createFriendAccount({
+      userId,
+      secretHash: hash,
+      displayName,
+      registrationIpHash: ipHash,
+      now: timestamp
+    });
+    const account = created || await store.getFriendAccount(userId);
+    if (!account || account.revoked_at || !timingSafeEqualHex(hash, account.secret_hash)) {
+      throw new ApiError(409, 'FRIEND_ACCOUNT_CONFLICT', '账号创建冲突，请重新尝试');
+    }
+    return ok({
+      account: {
+        userId: account.user_id,
+        displayName: account.display_name,
+        createdAt: Number(account.created_at)
+      },
+      created: Boolean(created)
+    });
+  }
+
+  async function getFriendAccountMe(request) {
+    const account = await authenticateFriendAccount(request);
+    return ok({
+      account: {
+        userId: account.user_id,
+        displayName: account.display_name,
+        createdAt: Number(account.created_at)
+      }
+    });
+  }
+
+  async function updateFriendAccountMe(request) {
+    const account = await authenticateFriendAccount(request);
+    const body = await readJsonBody(request);
+    const displayName = normalizeDisplayName(body.displayName);
+    if (!displayName) throw new ApiError(400, 'INVALID_DISPLAY_NAME', '昵称不能为空');
+    const updated = await store.updateFriendAccountProfile(account.user_id, displayName, now());
+    return ok({
+      account: {
+        userId: updated.user_id,
+        displayName: updated.display_name,
+        createdAt: Number(updated.created_at)
+      }
+    });
+  }
+
+  async function getPublicFriendProfile(userId) {
+    const account = await store.getFriendAccount(userId);
+    if (!account || account.revoked_at) throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '没有找到这个 MAOMAO 用户');
+    return ok({ profile: { userId: account.user_id, displayName: account.display_name } });
+  }
+
+  async function getFriendList(request) {
+    const account = await authenticateFriendAccount(request);
+    const friends = await store.listFriends(account.user_id);
+    return ok({
+      friends: friends.map(item => ({
+        userId: item.friend_id,
+        displayName: item.display_name || '',
+        createdAt: Number(item.created_at)
+      }))
+    });
+  }
+
+  async function getFriendRequestList(request) {
+    const account = await authenticateFriendAccount(request);
+    const requests = await store.listFriendRequests(account.user_id);
+    return ok({ requests: requests.map(item => friendRequestView(item, account.user_id)) });
+  }
+
+  async function sendFriendRequest(request) {
+    const account = await authenticateFriendAccount(request);
+    const body = await readJsonBody(request);
+    const targetUserId = String(body.targetUserId || '').trim();
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(targetUserId)) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    if (targetUserId === account.user_id) {
+      throw new ApiError(400, 'CANNOT_ADD_SELF', '不能添加自己为好友');
+    }
+    const target = await store.getFriendAccount(targetUserId);
+    if (!target || target.revoked_at) {
+      throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '没有找到这个 MAOMAO 用户');
+    }
+    const message = String(body.message || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 120);
+    const timestamp = now();
+    const result = await store.createFriendRequest({
+      id: randomToken(16),
+      requesterId: account.user_id,
+      recipientId: targetUserId,
+      message,
+      now: timestamp,
+      limit: FRIEND_REQUESTS_PER_HOUR,
+      windowStart: timestamp - 3600000
+    });
+    if (result.kind === 'already_friends') {
+      throw new ApiError(409, 'ALREADY_FRIENDS', '你们已经是好友了');
+    }
+    if (result.kind === 'incoming_request_exists') {
+      throw new ApiError(409, 'INCOMING_REQUEST_EXISTS', '对方已经向你发送好友申请，请先在新朋友中处理');
+    }
+    if (result.kind === 'rate_limited') {
+      throw new ApiError(429, 'FRIEND_REQUEST_RATE_LIMITED', '好友申请过于频繁，请稍后再试');
+    }
+    return ok({
+      request: {
+        id: result.request.id,
+        targetUserId,
+        status: result.request.status,
+        createdAt: Number(result.request.created_at)
+      },
+      duplicate: result.kind === 'pending'
+    });
+  }
+
+  async function respondFriendRequest(request, requestId, status) {
+    const account = await authenticateFriendAccount(request);
+    const updated = await store.respondToFriendRequest({
+      requestId,
+      userId: account.user_id,
+      status,
+      now: now()
+    });
+    if (!updated) {
+      throw new ApiError(404, 'FRIEND_REQUEST_NOT_FOUND', '好友申请不存在、已处理或不属于当前账号');
+    }
+    return ok({
+      request: {
+        id: updated.id,
+        requesterId: updated.requester_id,
+        recipientId: updated.recipient_id,
+        status: updated.status,
+        updatedAt: Number(updated.updated_at)
+      },
+      friendshipCreated: status === 'accepted'
+    });
+  }
+
+  async function removeFriend(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId)) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    const removed = await store.removeFriendship(account.user_id, friendId);
+    return ok({ removed });
   }
 
   async function registerDevice(request) {
@@ -786,6 +1026,29 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const path = url.pathname.replace(/\/+$/, '');
     const method = request.method.toUpperCase();
     try {
+      if (path === '/api/accounts/register' && method === 'POST') return await registerFriendAccount(request);
+      if (path === '/api/accounts/me' && method === 'GET') return await getFriendAccountMe(request);
+      if (path === '/api/accounts/me' && method === 'PUT') return await updateFriendAccountMe(request);
+
+      const publicFriendProfileMatch = /^\/api\/friend-profiles\/([^/]+)$/.exec(path);
+      if (publicFriendProfileMatch && method === 'GET' && FRIEND_ACCOUNT_ID_PATTERN.test(publicFriendProfileMatch[1])) {
+        return await getPublicFriendProfile(publicFriendProfileMatch[1]);
+      }
+      if (path === '/api/friends' && method === 'GET') return await getFriendList(request);
+      if (path === '/api/friend-requests' && method === 'GET') return await getFriendRequestList(request);
+      if (path === '/api/friend-requests' && method === 'POST') return await sendFriendRequest(request);
+
+      const friendRequestActionMatch = /^\/api\/friend-requests\/([A-Za-z0-9_-]{16,64})\/(accept|reject)$/.exec(path);
+      if (friendRequestActionMatch && method === 'POST') {
+        return await respondFriendRequest(
+          request,
+          friendRequestActionMatch[1],
+          friendRequestActionMatch[2] === 'accept' ? 'accepted' : 'rejected'
+        );
+      }
+      const removeFriendMatch = /^\/api\/friends\/([^/]+)$/.exec(path);
+      if (removeFriendMatch && method === 'DELETE') return await removeFriend(request, removeFriendMatch[1]);
+
       if (path === '/api/health' && method === 'GET') {
         const counts = await store.counts();
         const vapid = vapidSummary(env);

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F7F7F9">
+<title>新的朋友 · MAOMAO</title>
+<script src="../../shared/js/font-loader.js"></script>
+<script src="../../shared/js/native-feel.js"></script>
+<script src="../../shared/js/phone/phone_storage.js"></script>
+<script src="../../shared/js/friends-client.js?v=friend1"></script>
+<script src="../../shared/js/friend-qr.js?v=friend1"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; width: 100%; min-height: 100%; background: #F7F7F9; color: #111; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; }
+  body { overflow: hidden; }
+  .phone-mockup { width: min(430px, 100vw); height: 100dvh; min-height: 0; margin: 0 auto; background: #F7F7F9; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .status-bar { height: 42px; padding: 13px 24px 0; font-size: 13px; font-weight: 650; flex: 0 0 auto; background: #F7F7F9; }
+  .top-nav { min-height: 49px; padding: 0 18px 10px; display: flex; align-items: center; justify-content: space-between; background: #F7F7F9; }
+  .back-btn, .quiet-btn { border: 0; background: transparent; color: #222; font: inherit; font-size: 14px; padding: 8px 0; cursor: pointer; }
+  .top-title { font-size: 17px; font-weight: 650; letter-spacing: -.3px; }
+  .stage { flex: 1; overflow-y: auto; padding: 2px 16px 112px; scrollbar-width: none; }
+  .stage::-webkit-scrollbar { display: none; }
+  .intro { padding: 11px 2px 18px; }
+  .eyebrow { color: #999; font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; }
+  .intro h1 { font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif; font-size: 27px; font-weight: 500; letter-spacing: -.8px; margin: 6px 0 5px; }
+  .intro p { color: #85858A; font-size: 12px; line-height: 1.65; margin: 0; }
+  .panel { background: #fff; border-radius: 17px; padding: 16px; margin: 0 0 12px; border: 1px solid rgba(20,20,20,.035); box-shadow: 0 2px 15px rgba(0,0,0,.035); }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px; }
+  .panel-title { font-size: 14px; font-weight: 650; }
+  .panel-kicker { color: #A0A0A5; font-size: 10px; letter-spacing: .6px; }
+  .account-row { display: flex; align-items: center; gap: 11px; min-width: 0; }
+  .avatar { width: 42px; height: 42px; border-radius: 13px; background: #111; color: #fff; display: grid; place-items: center; font-family: Georgia, serif; font-size: 18px; flex: 0 0 auto; }
+  .account-meta { min-width: 0; flex: 1; }
+  .account-name { font-size: 14px; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .account-id { font-size: 11px; color: #999; margin-top: 4px; overflow-wrap: anywhere; }
+  .qr-wrap { width: 190px; height: 190px; margin: 15px auto 11px; padding: 9px; background: #fff; }
+  .qr-wrap svg { display: block; width: 100%; height: 100%; }
+  .qr-caption { text-align: center; font-size: 11px; color: #999; }
+  .inline-actions { display: flex; gap: 8px; justify-content: center; margin-top: 13px; }
+  .btn { appearance: none; border: 1px solid #E5E5E8; background: #fff; color: #222; border-radius: 10px; min-height: 36px; padding: 0 13px; font: inherit; font-size: 12px; cursor: pointer; }
+  .btn.primary { background: #111; border-color: #111; color: #fff; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .form-row { display: flex; gap: 8px; margin-top: 8px; }
+  .text-input { min-width: 0; flex: 1; height: 42px; border: 1px solid #E7E7EA; border-radius: 10px; background: #FAFAFB; padding: 0 12px; outline: none; color: #111; font: inherit; font-size: 13px; }
+  .text-input:focus { border-color: #999; background: #fff; }
+  .hint { color: #A0A0A5; font-size: 10px; line-height: 1.6; margin: 9px 0 0; }
+  .scan-box { display: none; margin-top: 12px; padding: 8px; border-radius: 12px; background: #111; }
+  .scan-box video { width: 100%; max-height: 260px; object-fit: cover; border-radius: 8px; display: block; background: #222; }
+  .scan-caption { padding: 7px 2px 2px; color: #ddd; font-size: 11px; }
+  .target-card { display: none; margin-top: 11px; border-top: 1px solid #eee; padding-top: 12px; }
+  .target-card .account-row { margin-bottom: 10px; }
+  .status { margin: 0 2px 10px; color: #777; font-size: 11px; line-height: 1.6; min-height: 16px; }
+  .status.error { color: #8B3030; }
+  .list { display: flex; flex-direction: column; }
+  .list-item { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid #F0F0F2; }
+  .list-item:first-child { border-top: 0; padding-top: 2px; }
+  .small-avatar { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #F0F0F2; color: #333; font-family: Georgia, serif; font-size: 14px; }
+  .list-main { min-width: 0; flex: 1; }
+  .list-name { font-size: 12px; font-weight: 650; }
+  .list-sub { margin-top: 4px; color: #999; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+  .list-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+  .list-actions .btn { min-height: 30px; padding: 0 9px; font-size: 10px; }
+  .empty { color: #aaa; font-size: 11px; text-align: center; padding: 18px 5px 12px; }
+  .footnote { color: #aaa; font-size: 10px; text-align: center; line-height: 1.6; padding: 8px 18px 14px; }
+  @media (min-width: 600px) {
+    body { background: #E7E7E9; }
+    .phone-mockup { height: min(900px, 100dvh); box-shadow: 0 12px 55px rgba(0,0,0,.09); }
+  }
+</style>
+<link rel="stylesheet" href="../../shared/css/mobile-fit.css">
+</head>
+<body>
+<div class="phone-mockup">
+  <div class="status-bar"><span>09:41</span></div>
+  <header class="top-nav">
+    <button class="back-btn" id="backBtn" type="button" aria-label="返回">‹ 返回</button>
+    <div class="top-title">新的朋友</div>
+    <button class="quiet-btn" id="refreshBtn" type="button">刷新</button>
+  </header>
+  <main class="stage">
+    <div class="intro">
+      <div class="eyebrow">MAOMAO · PEOPLE</div>
+      <h1>把朋友加进来。</h1>
+      <p>用二维码或好友 ID 相互添加。双方确认后，真人好友会出现在这里。</p>
+    </div>
+    <p class="status" id="statusText" role="status" aria-live="polite">正在连接真人好友服务…</p>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">我的二维码</span>
+        <span class="panel-kicker">MY PROFILE</span>
+      </div>
+      <div class="account-row">
+        <div class="avatar" id="myAvatar">M</div>
+        <div class="account-meta">
+          <div class="account-name" id="myName">MAOMAO 用户</div>
+          <div class="account-id" id="myId">正在生成账号 ID…</div>
+        </div>
+      </div>
+      <div class="qr-wrap" id="myQr" aria-label="我的好友二维码"></div>
+      <div class="qr-caption">让朋友扫描此码，向你发送好友申请</div>
+      <div class="inline-actions">
+        <button class="btn" id="copyIdBtn" type="button" disabled>复制好友 ID</button>
+        <button class="btn" id="copyQrTextBtn" type="button" disabled>复制二维码内容</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">添加好友</span>
+        <span class="panel-kicker">ADD SOMEONE</span>
+      </div>
+      <div class="form-row">
+        <input class="text-input" id="friendIdInput" type="text" autocomplete="off" autocapitalize="off" placeholder="输入好友 ID 或粘贴二维码内容">
+        <button class="btn primary" id="lookupBtn" type="button">查找</button>
+      </div>
+      <div class="form-row">
+        <button class="btn" id="scanBtn" type="button">扫描二维码</button>
+      </div>
+      <div class="scan-box" id="scanBox">
+        <video id="scanVideo" playsinline muted></video>
+        <div class="scan-caption" id="scanCaption">将好友二维码放入取景框</div>
+      </div>
+      <div class="target-card" id="targetCard">
+        <div class="account-row">
+          <div class="small-avatar" id="targetAvatar">?</div>
+          <div class="account-meta">
+            <div class="account-name" id="targetName">用户</div>
+            <div class="account-id" id="targetId"></div>
+          </div>
+        </div>
+        <button class="btn primary" id="sendRequestBtn" type="button">发送好友申请</button>
+      </div>
+      <p class="hint">摄像头扫码需要浏览器授权和安全连接。无法扫码时，可以直接输入对方的好友 ID。</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">新朋友</span>
+        <span class="panel-kicker" id="requestCount">0</span>
+      </div>
+      <div class="list" id="requestList"><div class="empty">暂无好友申请</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="panel-title">我的好友</span>
+        <span class="panel-kicker" id="friendCount">0</span>
+      </div>
+      <div class="list" id="friendList"><div class="empty">你还没有真人好友</div></div>
+    </section>
+    <div class="footnote">当前版本先完成账号身份、二维码与好友关系。真人聊天窗口将在下一阶段接入。</div>
+  </main>
+</div>
+
+<script src="../../shared/js/nav.js"></script>
+<script src="../../shared/js/statusbar-control.js"></script>
+<script>
+(function () {
+  'use strict';
+  var api = window.MaomaoFriends;
+  var qr = window.MaomaoFriendQr;
+  var $ = function (id) { return document.getElementById(id); };
+  var myAccount = null;
+  var selectedTarget = null;
+  var scanStream = null;
+  var scanFrameId = 0;
+  var scanning = false;
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
+    });
+  }
+  function setStatus(message, error) {
+    $('statusText').textContent = message || '';
+    $('statusText').classList.toggle('error', Boolean(error));
+  }
+  function initials(name) {
+    return String(name || 'M').trim().charAt(0) || 'M';
+  }
+  function copyText(value, successMessage) {
+    if (!value) return;
+    var fallback = function () {
+      var input = document.createElement('textarea');
+      input.value = value;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.select();
+      try { document.execCommand('copy'); setStatus(successMessage); }
+      catch (error) { setStatus('复制失败，请长按文本复制', true); }
+      input.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(function () {
+        setStatus(successMessage);
+      }).catch(fallback);
+    } else fallback();
+  }
+  function formatTime(timestamp) {
+    if (!timestamp) return '';
+    try {
+      return new Date(Number(timestamp)).toLocaleString('zh-CN', {
+        month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+    } catch (error) { return ''; }
+  }
+
+  async function refreshLists() {
+    var results = await Promise.all([api.getFriends(), api.getRequests()]);
+    renderFriends(results[0]);
+    renderRequests(results[1]);
+  }
+
+  function renderFriends(friends) {
+    $('friendCount').textContent = String(friends.length);
+    if (!friends.length) {
+      $('friendList').innerHTML = '<div class="empty">你还没有真人好友</div>';
+      return;
+    }
+    $('friendList').innerHTML = friends.map(function (friend) {
+      return '<div class="list-item">' +
+        '<div class="small-avatar">' + escapeHtml(initials(friend.displayName)) + '</div>' +
+        '<div class="list-main"><div class="list-name">' + escapeHtml(friend.displayName || 'MAOMAO 用户') + '</div>' +
+        '<div class="list-sub">' + escapeHtml(friend.userId) + ' · 已成为好友</div></div>' +
+        '<div class="list-actions"><button class="btn" type="button" data-remove-friend="' + escapeHtml(friend.userId) + '">删除</button></div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderRequests(requests) {
+    var pending = requests.filter(function (item) { return item.status === 'pending'; });
+    $('requestCount').textContent = String(pending.length);
+    if (!pending.length) {
+      $('requestList').innerHTML = '<div class="empty">暂无待处理的好友申请</div>';
+      return;
+    }
+    $('requestList').innerHTML = pending.map(function (item) {
+      var incoming = item.direction === 'incoming';
+      var displayName = incoming ? item.requesterName : item.recipientName;
+      var userId = incoming ? item.requesterId : item.recipientId;
+      var action = incoming
+        ? '<div class="list-actions"><button class="btn" type="button" data-reject-request="' + escapeHtml(item.id) + '">拒绝</button><button class="btn primary" type="button" data-accept-request="' + escapeHtml(item.id) + '">同意</button></div>'
+        : '<span class="panel-kicker">等待验证</span>';
+      return '<div class="list-item">' +
+        '<div class="small-avatar">' + escapeHtml(initials(displayName)) + '</div>' +
+        '<div class="list-main"><div class="list-name">' + escapeHtml(displayName || 'MAOMAO 用户') + '</div>' +
+        '<div class="list-sub">' + escapeHtml(item.message || (incoming ? '请求添加你为好友' : '已发送好友申请')) +
+        '<br>' + escapeHtml(userId) + ' · ' + escapeHtml(formatTime(item.createdAt)) + '</div></div>' +
+        action + '</div>';
+    }).join('');
+  }
+
+  async function lookupFriend(rawValue) {
+    var userId = qr.parse(rawValue);
+    if (!/^u_[A-Za-z0-9_-]{16,48}$/.test(userId)) {
+      setStatus('好友 ID 格式不正确。可以粘贴二维码内容，或手动输入 ID。', true);
+      $('targetCard').style.display = 'none';
+      selectedTarget = null;
+      return;
+    }
+    if (myAccount && userId === myAccount.userId) {
+      setStatus('这是你自己的二维码。', true);
+      $('targetCard').style.display = 'none';
+      selectedTarget = null;
+      return;
+    }
+    setStatus('正在查找好友…');
+    try {
+      var profile = await api.getProfile(userId);
+      selectedTarget = profile;
+      $('targetAvatar').textContent = initials(profile.displayName);
+      $('targetName').textContent = profile.displayName || 'MAOMAO 用户';
+      $('targetId').textContent = profile.userId;
+      $('targetCard').style.display = 'block';
+      setStatus('已找到用户，确认后发送好友申请。');
+    } catch (error) {
+      selectedTarget = null;
+      $('targetCard').style.display = 'none';
+      setStatus(error.message || '没有找到这个好友 ID', true);
+    }
+  }
+
+  function stopScan() {
+    scanning = false;
+    if (scanFrameId) cancelAnimationFrame(scanFrameId);
+    scanFrameId = 0;
+    if (scanStream) {
+      scanStream.getTracks().forEach(function (track) { track.stop(); });
+      scanStream = null;
+    }
+    $('scanBox').style.display = 'none';
+  }
+
+  async function startScan() {
+    stopScan();
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('当前浏览器暂不支持摄像头扫码，请在上方直接输入好友 ID。', true);
+      return;
+    }
+    try {
+      var detector = new BarcodeDetector({ formats: ['qr_code'] });
+      scanStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' } }
+      });
+      $('scanBox').style.display = 'block';
+      $('scanVideo').srcObject = scanStream;
+      await $('scanVideo').play();
+      scanning = true;
+      setStatus('摄像头已开启，请对准好友二维码。');
+      async function detectFrame() {
+        if (!scanning) return;
+        try {
+          var codes = await detector.detect($('scanVideo'));
+          if (codes && codes.length && codes[0].rawValue) {
+            var value = codes[0].rawValue;
+            $('friendIdInput').value = value;
+            stopScan();
+            await lookupFriend(value);
+            return;
+          }
+        } catch (error) {
+          // The next frame may be decodable even when a frame is temporarily unavailable.
+        }
+        if (scanning) scanFrameId = requestAnimationFrame(detectFrame);
+      }
+      scanFrameId = requestAnimationFrame(detectFrame);
+    } catch (error) {
+      stopScan();
+      setStatus('无法启动摄像头，请检查浏览器授权，或手动输入好友 ID。', true);
+    }
+  }
+
+  async function initialize() {
+    if (!api || !qr) {
+      setStatus('真人好友模块加载失败，请刷新页面。', true);
+      return;
+    }
+    try {
+      var localProfile = window.PhoneStorage ? (window.PhoneStorage.getMyProfile() || {}) : {};
+      var displayName = localProfile.nickname || localProfile.displayName || localProfile.name || 'MAOMAO 用户';
+      myAccount = await api.ensureAccount(displayName);
+      $('myName').textContent = myAccount.displayName || displayName;
+      $('myAvatar').textContent = initials(myAccount.displayName || displayName);
+      $('myId').textContent = '好友 ID：' + myAccount.userId;
+      $('myQr').innerHTML = qr.toSvg(myAccount.userId);
+      $('copyIdBtn').disabled = false;
+      $('copyQrTextBtn').disabled = false;
+      $('copyIdBtn').addEventListener('click', function () {
+        copyText(myAccount.userId, '好友 ID 已复制');
+      });
+      $('copyQrTextBtn').addEventListener('click', function () {
+        copyText(qr.prefix + myAccount.userId, '二维码内容已复制');
+      });
+      await refreshLists();
+      setStatus('真人好友账号已连接。把二维码分享给朋友即可互相添加。');
+    } catch (error) {
+      setStatus((error.message || '真人好友服务连接失败') + '。云端服务尚未部署或暂不可用时，好友数据不会假装保存成功。', true);
+    }
+  }
+
+  $('backBtn').addEventListener('click', function () {
+    if (history.length > 1) history.back();
+    else window.location.href = 'contacts.html';
+  });
+  $('refreshBtn').addEventListener('click', function () {
+    refreshLists().then(function () { setStatus('好友列表已刷新。'); })
+      .catch(function (error) { setStatus(error.message || '刷新失败', true); });
+  });
+  $('lookupBtn').addEventListener('click', function () {
+    lookupFriend($('friendIdInput').value);
+  });
+  $('friendIdInput').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') lookupFriend($('friendIdInput').value);
+  });
+  $('scanBtn').addEventListener('click', startScan);
+  $('sendRequestBtn').addEventListener('click', async function () {
+    if (!selectedTarget) return;
+    $('sendRequestBtn').disabled = true;
+    try {
+      var result = await api.sendRequest(selectedTarget.userId, '');
+      setStatus(result.duplicate ? '这条好友申请已经发送过了。' : '好友申请已发送，等待对方同意。');
+      $('targetCard').style.display = 'none';
+      selectedTarget = null;
+      await refreshLists();
+    } catch (error) {
+      setStatus(error.message || '好友申请发送失败', true);
+    } finally {
+      $('sendRequestBtn').disabled = false;
+    }
+  });
+  $('requestList').addEventListener('click', async function (event) {
+    var accept = event.target.closest('[data-accept-request]');
+    var reject = event.target.closest('[data-reject-request]');
+    if (!accept && !reject) return;
+    var button = accept || reject;
+    button.disabled = true;
+    try {
+      if (accept) await api.acceptRequest(accept.getAttribute('data-accept-request'));
+      else await api.rejectRequest(reject.getAttribute('data-reject-request'));
+      await refreshLists();
+      setStatus(accept ? '已同意好友申请。' : '已拒绝好友申请。');
+    } catch (error) {
+      setStatus(error.message || '处理好友申请失败', true);
+      button.disabled = false;
+    }
+  });
+  $('friendList').addEventListener('click', async function (event) {
+    var remove = event.target.closest('[data-remove-friend]');
+    if (!remove) return;
+    if (!window.confirm('确定删除这位好友吗？')) return;
+    remove.disabled = true;
+    try {
+      await api.removeFriend(remove.getAttribute('data-remove-friend'));
+      await refreshLists();
+      setStatus('好友已删除。');
+    } catch (error) {
+      setStatus(error.message || '删除好友失败', true);
+      remove.disabled = false;
+    }
+  });
+  window.addEventListener('pagehide', stopScan);
+  initialize();
+})();
+</script>
+</body>
+</html>
