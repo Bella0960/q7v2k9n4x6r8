@@ -11,7 +11,8 @@ import { randomToken, base64UrlToBytes } from '../worker/lib/crypto.js';
 import {
   buildVapidAuthorization,
   encryptPayload,
-  parseVapidKeys
+  parseVapidKeys,
+  PUSH_SEND_TIMEOUT_MS
 } from '../worker/lib/webpush.js';
 import { applyMigrations } from '../worker/lib/migrations.js';
 import { createStore } from '../worker/lib/store.js';
@@ -1825,6 +1826,8 @@ test('test-push：授权、真实加密发送、过期订阅清理与重复通�
   assert.match(String(request.init.headers.Authorization), /^vapid t=/);
   assert.equal(request.init.headers['Content-Encoding'], 'aes128gcm');
   assert.equal(request.init.redirect, 'error', '推送 endpoint 不应把 Worker 重定向到其他目标');
+  assert.ok(request.init.signal instanceof AbortSignal, '推送请求必须携带可取消的超时信号');
+  assert.equal(PUSH_SEND_TIMEOUT_MS, 25000, '网络发送超时必须短于 60 秒投递租约');
   assert.ok(request.init.body instanceof Uint8Array, '请求体必须是加密后的字节');
 
   // 同一 dedupeKey 再发一次：不得再次 push（跨端/重试去重）。
