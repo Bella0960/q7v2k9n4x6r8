@@ -15,6 +15,7 @@ const MAX_SUBSCRIPTIONS_PER_DEVICE = 10;
 const REGISTRATIONS_PER_IP_PER_HOUR = 20;
 const PAIRING_TOKENS_PER_DEVICE_PER_HOUR = 5;
 const TEST_PUSH_PER_10_MINUTES = 3;
+const CONTEXT_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 
 export const MILESTONE = '1';
 
@@ -537,6 +538,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const enrollmentToken = String(env?.ENROLLMENT_TOKEN || '');
     const userId = device.user_id || OWNER_USER_ID;
     const globalAutonomy = await store.getUserAutonomy(userId);
+    const contextVersionSummary = await store.getCharacterContextVersionSummary(userId);
+    const contextVersionReady = contextVersionSummary.roleCount > 0;
     const activityQueue = await store.getActivityQueueSummary({ userId });
     const timestamp = now();
     const recentSchedulerReasons = await store.getRecentAutonomyReasonSummary({
@@ -565,12 +568,19 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       activityQueue,
       recentSchedulerReasons,
       schedulerDiagnosticsWindowMs: 86400000,
-      // No generation executor is wired into the scheduled Worker yet.
+      // This account-level aggregate does not replace the exact per-character
+      // version check performed by scheduler-gate for every context task.
+      contextVersionReady,
+      contextVersionTrackedRoles: contextVersionSummary.roleCount,
+      contextVersionMaxObserved: contextVersionSummary.maxVersion,
+      contextVersionLatestUpdatedAt: contextVersionSummary.latestUpdatedAt,
       activityExecutorAvailable: false,
-      contextVersionReady: false,
       autonomousMessageGenerationReady: false,
-      autonomyExecutionBlockers: ['executor_unavailable', 'context_version_unavailable'],
-      note: '此检查只核对配置与匿名队列汇总；当前没有 AI 执行器，不会生成角色消息、读取聊天正文或触发主动推送。'
+      autonomyExecutionBlockers: [
+        'executor_unavailable',
+        ...(contextVersionReady ? [] : ['context_version_unavailable'])
+      ],
+      note: '角色聊天版本只记录服务端递增版本和设备事件 ID，不接收聊天正文；当前仍没有 AI 执行器，不会生成角色消息或触发主动推送。'
     });
   }
 
@@ -616,6 +626,45 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       enabled: row.enabled == null ? null : row.enabled === 1,
       inherited: row.enabled == null,
       updatedAt: Number(row.updated_at)
+    });
+  }
+
+  async function getCharacterContextVersion(request, characterId) {
+    const device = await authenticate(request);
+    const row = await store.getCharacterContextVersion(device.user_id || OWNER_USER_ID, characterId);
+    return ok({
+      configured: Boolean(row),
+      version: row ? Number(row.version) : 0,
+      updatedAt: row ? Number(row.updated_at) : null
+    });
+  }
+
+  async function recordCharacterContextEvent(request, characterId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new ApiError(400, 'INVALID_CONTEXT_EVENT', '只接受版本事件对象');
+    }
+    // Explicit allowlist: this endpoint must never become a chat-content sync API.
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'eventId') {
+      throw new ApiError(400, 'INVALID_CONTEXT_EVENT', '版本事件只允许包含 eventId，不接受聊天内容或其他字段');
+    }
+    const eventId = String(body.eventId || '').trim();
+    if (!CONTEXT_EVENT_ID_PATTERN.test(eventId)) {
+      throw new ApiError(400, 'INVALID_CONTEXT_EVENT', 'eventId 格式无效');
+    }
+    const result = await store.recordCharacterContextEvent({
+      userId: device.user_id || OWNER_USER_ID,
+      characterId,
+      eventId,
+      deviceId: device.id,
+      now: now()
+    });
+    return ok({
+      changed: result.changed,
+      version: result.version,
+      updatedAt: result.updatedAt
     });
   }
 
@@ -762,6 +811,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         const characterId = readCharacterId(characterAutonomyMatch[1]);
         if (method === 'GET') return await getCharacterAutonomy(request, characterId);
         if (method === 'PUT') return await setCharacterAutonomy(request, characterId);
+      }
+
+      const characterContextVersionMatch = /^\/api\/characters\/([^/]+)\/context-version$/.exec(path);
+      if (characterContextVersionMatch && readCharacterId(characterContextVersionMatch[1])) {
+        const characterId = readCharacterId(characterContextVersionMatch[1]);
+        if (method === 'GET') return await getCharacterContextVersion(request, characterId);
+        if (method === 'POST') return await recordCharacterContextEvent(request, characterId);
       }
 
       const characterScheduleMatch = /^\/api\/characters\/([^/]+)\/schedule$/.exec(path);
