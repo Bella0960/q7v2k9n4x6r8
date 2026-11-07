@@ -862,16 +862,25 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!config) {
       throw new ApiError(503, 'ACTIVITY_EXECUTOR_NOT_CONFIGURED', '缺少自主活动租约、批量或重试配置');
     }
-    if (await store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
-      throw new ApiError(429, 'ACTIVITY_QUEUE_FULL', '该角色已有过多待处理活动');
-    }
-
     const timestamp = now();
     const dedupeKey = [
       'autonomy-v1', encodeURIComponent(userId), encodeURIComponent(characterId),
       'contact', String(contextVersion)
     ].join(':');
-    const result = await store.enqueueActivity({
+    const existing = store.getActivityByDedupeKey(dedupeKey);
+    if (existing) {
+      return ok({
+        queued: true,
+        duplicate: true,
+        activityId: existing.id,
+        scheduledAt: Number(existing.scheduled_at)
+      });
+    }
+    if (store.countPendingActivitiesForCharacter(userId, characterId) >= 5) {
+      throw new ApiError(429, 'ACTIVITY_QUEUE_FULL', '该角色已有过多待处理活动');
+    }
+
+    const result = store.enqueueActivity({
       id: randomToken(16),
       deviceId: device.id,
       characterId,
