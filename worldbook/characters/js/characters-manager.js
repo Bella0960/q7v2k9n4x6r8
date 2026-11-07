@@ -194,12 +194,21 @@ async function ensureLegacyAvatarInLibrary(role) {
     });
     if (linked) {
         const active = library.getActive(role.id);
-        if (!active || active.id !== linked.id) library.setActive(role.id, linked.id);
+        if (!active || active.id !== linked.id) {
+            const synchronized = library.setActive(role.id, linked.id);
+            if (!synchronized.ok) {
+                setAvatarLibraryStatus('原头像仍正常使用，但图库的当前标记暂时无法同步。', 'error');
+                return false;
+            }
+        }
         return true;
     }
 
     const legacyAvatar = String(role.avatar || '');
-    if (!/^data:image\//i.test(legacyAvatar)) return true;
+    if (!/^data:image\//i.test(legacyAvatar)) {
+        if (legacyAvatar) setAvatarLibraryStatus('当前头像仍由角色资料使用；可添加照片建立独立收藏。', 'info');
+        return true;
+    }
 
     setAvatarLibraryStatus('正在将原有头像安全加入角色图库…', 'info');
     const saved = await library.add(role.id, legacyAvatar, {
@@ -241,12 +250,13 @@ async function renderAvatarLibrary(roleId) {
 
     const role = getRoleById(roleId);
     if (!role) return;
-    await ensureLegacyAvatarInLibrary(role);
+    const legacyReady = await ensureLegacyAvatarInLibrary(role);
     if (token !== avatarLibraryRenderToken || String(currentProfileRoleId) !== String(roleId)) return;
 
     const items = window.RoleAvatarLibrary.list(roleId);
     if (!items.length) {
         grid.innerHTML = '<div class="avatar-library-empty"><span class="avatar-library-empty-mark">＋</span><strong>这里还没有收藏头像</strong><span>添加几张照片，为这个角色建立自己的头像档案。</span></div>';
+        if (legacyReady && !role.avatar) setAvatarLibraryStatus('还没有收藏头像，添加一张作为这个角色的专属头像。', 'info');
         return;
     }
 
@@ -282,7 +292,7 @@ async function renderAvatarLibrary(roleId) {
         image.src = resolved.value.url;
     }));
 
-    if (token === avatarLibraryRenderToken) {
+    if (token === avatarLibraryRenderToken && legacyReady) {
         const active = window.RoleAvatarLibrary.getActive(roleId);
         if (active) setAvatarLibraryStatus('已保存 ' + items.length + ' 张头像 · 当前头像已标记', 'success');
         else setAvatarLibraryStatus('已保存 ' + items.length + ' 张头像', 'info');
