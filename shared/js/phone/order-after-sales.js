@@ -107,6 +107,15 @@
     if (!financeRead.ok) return { ok: false, reason: 'finance-' + financeRead.reason };
 
     var request = order.afterSales;
+    var preflight = validatePaymentLines(
+      financeRead.value,
+      order,
+      paymentId,
+      amount,
+      request && request.requestId ? String(request.requestId) : ''
+    );
+    if (!preflight.ok) return { ok: false, reason: preflight.reason };
+
     var requestId;
     var requestedAt;
     if (request) {
