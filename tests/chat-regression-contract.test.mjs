@@ -1773,12 +1773,12 @@ test('proactive contact prompt allows skipping and forbids guilt, pressure and i
 test('主动联系按角色独立历史刷新语言画像，并参考关系阶段与未解决的明确情绪', () => {
   const now = new Date(2026, 10, 7, 12, 0, 0).getTime();
   const history = [
+    { role: 'assistant', text: '我今天在看一本小说。', time: now - 14 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '里面有一段写得很细。', time: now - 13.8 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '我还挺喜欢这种慢慢展开的故事。', time: now - 13 * 60 * 60 * 1000 },
+    { role: 'assistant', text: '等会儿想接着看。', time: now - 12.5 * 60 * 60 * 1000 },
     { role: 'user', text: '我最近有点难过。', time: now - 12 * 60 * 60 * 1000 },
-    { role: 'assistant', text: '嗯，我听到了。', time: now - 11.9 * 60 * 60 * 1000 },
-    { role: 'assistant', text: '我今天在看一本小说。', time: now - 11 * 60 * 60 * 1000 },
-    { role: 'assistant', text: '里面有一段写得很细。', time: now - 10 * 60 * 60 * 1000 },
-    { role: 'assistant', text: '我还挺喜欢这种慢慢展开的故事。', time: now - 9 * 60 * 60 * 1000 },
-    { role: 'assistant', text: '等会儿想接着看。', time: now - 8.5 * 60 * 60 * 1000 }
+    { role: 'assistant', text: '嗯，我听到了。', time: now - 11.9 * 60 * 60 * 1000 }
   ];
   const profile = presencePolicy.buildVoiceHabitProfile(history, { maxMessages: 80 });
   assert.ok(profile);
@@ -1793,6 +1793,7 @@ test('主动联系按角色独立历史刷新语言画像，并参考关系阶�
   assert.match(prompt, /角色长期表达习惯档案/);
   assert.match(prompt, /近期由角色本人提过的安排/);
 });
+
 test('主动联系支持角色习惯决定数量的独立气泡并兼容旧版 text', () => {
   const normalize = presencePolicy.normalizeProactiveBubbles;
   assert.equal(typeof normalize, 'function');
