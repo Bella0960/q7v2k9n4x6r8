@@ -91,6 +91,12 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /工具结果只作为文本展示/);
   assert.match(html, /window\.confirm\(confirmText\)/);
   assert.match(html, /仅本次页面会话使用/);
+  assert.match(html, /function validateArguments\(schema, value, path, depth\)/);
+  assert.match(html, /参数 JSON 超过 32 KB 限制/);
+  assert.match(html, /activeServiceName = name\.slice\(0, 60\)/);
+  assert.match(html, /MCP 服务：/);
+  assert.doesNotMatch(html, /activeId\s*=\s*id/);
+  assert.match(html, /validateArguments\(tool\.inputSchema \|\| \{ type: 'object' \}, args\)/);
   assert.doesNotMatch(html, /localStorage\.setItem\([^)]*serverToken/i);
 });
 
