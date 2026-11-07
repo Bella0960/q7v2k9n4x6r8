@@ -30,6 +30,9 @@ function deviceAuthHeader(request) {
 
 async function secretHash(env, deviceId, secret) {
   const pepper = String(env?.DEVICE_SECRET_PEPPER || '');
+  if (pepper.length < 32) {
+    throw new ApiError(503, 'DEVICE_AUTH_NOT_CONFIGURED', '设备鉴权密钥未配置或长度不足');
+  }
   return sha256Hex(`${pepper}|${deviceId}|${secret}`);
 }
 
