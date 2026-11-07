@@ -260,6 +260,9 @@ test('profile archive renders paired previews and supports switching either side
   assert.ok(characterManagerSource.includes('getPairs(roleId)'));
   assert.ok(characterManagerSource.includes('data-avatar-pair-asset'));
   assert.ok(characterManagerSource.includes('data-avatar-pair-action="use"'));
+  assert.ok(characterManagerSource.includes('data-avatar-pair-action="swap"'));
+  assert.ok(characterManagerSource.includes('swapRoleAvatarPair'));
+  assert.ok(avatarLibrarySource.includes('swapPair: swapPair'));
   assert.ok(characterManagerSource.includes('unlinkRoleAvatarPair'));
   assert.ok(characterManagerSource.includes('library.unlinkPair(roleId, pairId)'));
   assert.ok(characterManagerSource.includes('两张头像仍保留在收藏中'));
