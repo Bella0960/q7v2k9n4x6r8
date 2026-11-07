@@ -13,6 +13,7 @@
   var CHECK_INTERVAL_MS = 30 * 60 * 1000;
   var AUTO_COOLDOWN_MS = 24 * 60 * 60 * 1000;
   var busy = false;
+  var discoveryController = null;
   var started = false;
   var dependencyPromise = null;
 
@@ -125,14 +126,14 @@
     });
   }
   function ensureDependencies() {
-    if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function') return Promise.resolve(true);
+    if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' && global.PhoneAPI.supportsAbortSignal === true) return Promise.resolve(true);
     if (dependencyPromise) return dependencyPromise;
     var base = appBase();
     dependencyPromise = loadScript(base + 'shared/js/phone/phone_storage.js', function () { return !!global.PhoneStorage; })
       .then(function (ok) {
         if (!ok) return false;
-        return loadScript(base + 'shared/js/phone/phone_api.js', function () {
-          return !!global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function';
+        return loadScript(base + 'shared/js/phone/phone_api.js?v=20261108v1', function () {
+          return !!global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' && global.PhoneAPI.supportsAbortSignal === true;
         });
       }).then(function (ok) {
         if (!ok) dependencyPromise = null;
@@ -298,6 +299,7 @@
   async function runDiscovery(manual) {
     if (busy || document.visibilityState === 'hidden') return { created: false, reason: 'busy-or-hidden' };
     if (!await ensureDependencies()) throw new Error('AI 服务模块未能加载，请刷新后重试。');
+    if (document.visibilityState === 'hidden') return { created: false, reason: 'page-hidden' };
     var role = getSelectedRole();
     if (!role) {
       if (manual) throw new Error('请先在小手机中选择一个主角色，再寻找新朋友。');
@@ -323,19 +325,33 @@
       releaseLock(roleId);
       throw new Error('自动发现状态保存失败，已停止生成以避免重复请求。');
     }
+    var controller = new global.AbortController();
+    discoveryController = controller;
     try {
       var context = roleContext(role);
       var oldNames = requests.map(function (item) { return item && item.npc && item.npc.name || ''; }).filter(Boolean);
       var names = allRoleNames(role);
       var system = buildPrompt(context, names, oldNames);
-      var result = await global.PhoneAPI.completeJSON({
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: '请根据资料判断现在是否适合出现一位新朋友。只输出 JSON。' }
-        ],
-        temperature: 0.86,
-        timeoutMs: 20000
-      });
+      var result;
+      try {
+        result = await global.PhoneAPI.completeJSON({
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: '请根据资料判断现在是否适合出现一位新朋友。只输出 JSON。' }
+          ],
+          temperature: 0.86,
+          timeoutMs: 20000,
+          signal: controller.signal
+        });
+      } catch (error) {
+        if (controller.signal.aborted || document.visibilityState === 'hidden') {
+          return { created: false, reason: 'page-hidden' };
+        }
+        throw error;
+      }
+      if (controller.signal.aborted || document.visibilityState === 'hidden') {
+        return { created: false, reason: 'page-hidden' };
+      }
       if (!result || result.ok !== true) throw new Error('NPC 生成没有成功，请检查 AI 服务返回。');
       var npc = validateNpc(result.data);
       if (!npc) return { created: false, reason: 'no-natural-candidate' };
@@ -378,6 +394,7 @@
       }
       return { created: true, request: request, mainRoleId: roleId };
     } finally {
+      if (discoveryController === controller) discoveryController = null;
       busy = false;
       releaseLock(roleId);
     }
@@ -524,6 +541,16 @@
     document.addEventListener('visibilitychange', tick);
     emit('mao:npc-social-ready', { pendingCount: NS.getPendingCount() });
   };
+
+  function abortDiscoveryWhenHidden() {
+    if (document.visibilityState === 'hidden' && discoveryController && !discoveryController.signal.aborted) {
+      discoveryController.abort();
+    }
+  }
+  document.addEventListener('visibilitychange', abortDiscoveryWhenHidden);
+  global.addEventListener('pagehide', function () {
+    if (discoveryController && !discoveryController.signal.aborted) discoveryController.abort();
+  });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', NS.start, { once: true });
