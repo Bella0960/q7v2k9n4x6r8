@@ -397,17 +397,37 @@
     });
   }
 
+  function notifyContactRosterUpdated() {
+    try {
+      root.dispatchEvent(new CustomEvent('maomao:real-user-contacts-updated', {
+        detail: { accountId: client.getState().account && client.getState().account.id || null }
+      }));
+    } catch (error) {}
+  }
+
   async function refreshServerData() {
     var results = await Promise.all([
-      client.listFriends(),
+      client.listFriendRoster(),
       client.listRequests('incoming'),
       client.listRequests('outgoing'),
       client.listBlocked()
     ]);
-    renderFriends(results[0]);
+    var account = client.getState().account;
+    var directory = root.PhoneContactDirectory;
+    if (!account || !directory || typeof directory.syncServerSnapshot !== 'function') {
+      throw new Error('real_user_directory_sync_unavailable');
+    }
+    var synced = directory.syncServerSnapshot(results[0], account.id);
+    if (!synced || synced.ok !== true) {
+      var syncError = new Error(synced && synced.error || 'real_user_directory_sync_failed');
+      syncError.code = synced && synced.error || 'real_user_directory_sync_failed';
+      throw syncError;
+    }
+    renderFriends(results[0].friends);
     renderRequests(el('ruIncoming'), results[1], 'incoming');
     renderRequests(el('ruOutgoing'), results[2], 'outgoing');
     renderBlocked(results[3]);
+    notifyContactRosterUpdated();
     return results;
   }
 
@@ -439,6 +459,7 @@
     setAuthMode('login');
     setStatus('登录状态已失效，请重新登录。', 'error');
     el('ruSummaryStatus').textContent = '未登录';
+    notifyContactRosterUpdated();
     return true;
   }
 
@@ -530,6 +551,7 @@
         return;
       }
       if (!result.account) {
+        notifyContactRosterUpdated();
         setStatus(pendingInviteCode ? '已识别一条好友邀请。请先登录或创建账号，之后可确认发送申请。' : '服务器账号服务已就绪，请登录或创建账号。');
         showAuthArea(true);
         setAuthMode('login');
@@ -547,6 +569,7 @@
       applyPendingInvite();
       setStatus(pendingInviteCode ? '已识别好友邀请，请核对后手动发送申请。' : '已连接账号服务。好友列表以服务器关系为准；普通真人消息传输仍未启用。');
     } catch (error) {
+      notifyContactRosterUpdated();
       setStatus(explainError(error), 'error');
       if (error && error.code === 'account_auth_unavailable') {
         el('ruSummaryStatus').textContent = '服务未开通';
@@ -673,6 +696,7 @@
       showSessionArea(false);
       setAuthMode('login');
       showAuthArea(true);
+      notifyContactRosterUpdated();
       setStatus('已退出当前账号。');
       el('ruSummaryStatus').textContent = '未登录';
     } catch (error) {
