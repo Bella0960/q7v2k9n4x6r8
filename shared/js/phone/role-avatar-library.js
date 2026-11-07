@@ -42,7 +42,7 @@
                 id: 'avatar_' + assetId.slice(3),
                 assetId: assetId,
                 label: String(item.label || '角色头像').replace(/[\u0000-\u001F<>]/g, '').trim().slice(0, 36) || '角色头像',
-                source: item.source === 'legacy' ? 'legacy' : 'upload',
+                source: item.source === 'legacy' ? 'legacy' : (item.source === 'chat' ? 'chat' : 'upload'),
                 createdAt: Math.max(0, Number(item.createdAt) || 0)
             });
         });
@@ -173,6 +173,52 @@
         });
     }
 
+    function addAsset(roleId, assetId, options) {
+        options = options || {};
+        assetId = String(assetId || '');
+        if (!validRoleId(roleId)) return Promise.resolve(failure('VALIDATION_FAILED', 'roleId is required'));
+        if (!ASSET_RE.test(assetId)) return Promise.resolve(failure('VALIDATION_FAILED', 'invalid assetId'));
+
+        var media = mediaRepository();
+        if (!media || typeof media.getAsset !== 'function' || typeof media.addRef !== 'function') {
+            return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository cannot link an existing image asset'));
+        }
+
+        var previous = readState(roleId);
+        var existing = previous.items.find(function (item) { return item.assetId === assetId; });
+        if (existing) {
+            return Promise.resolve({ ok: true, value: copyItem(existing, previous.activeId), meta: { reused: true } });
+        }
+
+        return media.getAsset(assetId).then(function (found) {
+            if (!found || !found.ok || !found.value || !found.value.asset || !found.value.blob) {
+                return found && found.ok === false ? found : failure('NOT_FOUND', 'source image asset is unavailable');
+            }
+            var mime = String(found.value.asset.mimeType || found.value.blob.type || '').toLowerCase();
+            if (mime.indexOf('image/') !== 0) return failure('VALIDATION_FAILED', 'source asset is not an image');
+
+            return media.addRef(assetId, OWNER_TYPE, String(roleId)).then(function (linked) {
+                if (!linked || !linked.ok) return linked || failure('STORAGE_FAILED', 'avatar asset reference could not be created');
+                var item = {
+                    id: 'avatar_' + assetId.slice(3),
+                    assetId: assetId,
+                    label: String(options.label || '聊天候选头像').replace(/[\u0000-\u001F<>]/g, '').trim().slice(0, 36) || '聊天候选头像',
+                    source: options.source === 'legacy' ? 'legacy' : (options.source === 'chat' ? 'chat' : 'upload'),
+                    createdAt: Number(options.createdAt) || Date.now()
+                };
+                var next = { version: 1, activeId: previous.activeId, items: [item].concat(previous.items) };
+                if (!writeState(roleId, next)) {
+                    return media.removeRef(assetId, OWNER_TYPE, String(roleId)).then(function () {
+                        return failure('STORAGE_FAILED', 'avatar candidate metadata could not be saved');
+                    });
+                }
+                return { ok: true, value: copyItem(item, next.activeId), meta: { linked: true } };
+            });
+        }).catch(function (error) {
+            return failure('STORAGE_FAILED', error && error.message ? error.message : 'avatar candidate could not be linked');
+        });
+    }
+
     function toDataUrl(assetId) {
         if (!ASSET_RE.test(String(assetId || ''))) return Promise.resolve(failure('VALIDATION_FAILED', 'invalid assetId'));
         var media = mediaRepository();
@@ -292,6 +338,7 @@
         getActive: getActive,
         find: find,
         add: add,
+        addAsset: addAsset,
         setActive: setActive,
         toDataUrl: toDataUrl,
         toObjectUrl: toObjectUrl,
