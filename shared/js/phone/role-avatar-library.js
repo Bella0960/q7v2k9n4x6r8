@@ -211,6 +211,35 @@
         return { ok: true, value: copyPair(pair, state), meta: { portraitsRetained: true } };
     }
 
+    function renamePair(roleId, pairId, label) {
+        if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
+        pairId = String(pairId || '');
+        label = String(label == null ? '' : label)
+            .replace(/[\\u0000-\\u001F<>]/g, '')
+            .trim()
+            .slice(0, 36);
+        if (!label) return failure('VALIDATION_FAILED', 'pair name cannot be empty');
+
+        var state = readState(roleId);
+        var pair = state.pairs.find(function (item) { return item.id === pairId; });
+        if (!pair) return failure('NOT_FOUND', 'paired avatar set was not found');
+        var renamed = {
+            id: pair.id,
+            avatarIds: pair.avatarIds.slice(),
+            label: label,
+            source: pair.source,
+            createdAt: pair.createdAt
+        };
+        var next = {
+            version: 2,
+            activeId: state.activeId,
+            items: state.items,
+            pairs: state.pairs.map(function (item) { return item.id === pairId ? renamed : item; })
+        };
+        if (!writeState(roleId, next)) return failure('STORAGE_FAILED', 'pair name could not be saved');
+        return { ok: true, value: copyPair(renamed, next), meta: { renamed: true } };
+    }
+
     function swapPair(roleId, pairId) {
         if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
         var state = readState(roleId);
@@ -581,6 +610,7 @@
         getPairForAvatar: getPairForAvatar,
         linkPair: linkPair,
         unlinkPair: unlinkPair,
+        renamePair: renamePair,
         swapPair: swapPair,
         add: add,
         addAsset: addAsset,
