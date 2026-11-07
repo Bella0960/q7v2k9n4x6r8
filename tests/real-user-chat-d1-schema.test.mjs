@@ -133,3 +133,22 @@ test("message content is immutable and receipt timestamps cannot move backwards"
   assert.match(migration, /trg_real_user_receipt_monotonic/);
   assert.match(migration, /real_user_receipt_not_monotonic/);
 });
+
+
+test("new requests are blocked for accepted or blocked pairs", () => {
+  const insertGuard = migration.slice(
+    migration.indexOf("CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_insert_guard"),
+    migration.indexOf("CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_transition_guard")
+  );
+  assert.match(insertGuard, /real_user_friendships/);
+  assert.match(insertGuard, /status = 'accepted'/);
+  assert.match(insertGuard, /real_user_blocks/);
+  assert.match(insertGuard, /real_user_friend_request_must_start_pending/);
+});
+
+test("blocking terminates pending requests and removed friendships require a fresh request to reactivate", () => {
+  assert.match(migration, /trg_real_user_block_terminates_pending_requests/);
+  assert.match(migration, /trg_real_user_block_removes_friendship/);
+  assert.match(migration, /OLD\.status = 'removed' AND NEW\.status = 'accepted'/);
+  assert.match(migration, /NEW\.accepted_request_id = OLD\.accepted_request_id/);
+});
