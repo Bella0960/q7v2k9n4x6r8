@@ -772,6 +772,40 @@ test('推送订阅生命周期：订阅、去重、退订与失效', async () =>
   assert.equal(all[0].disabled_reason, 'user');
 });
 
+test('推送 endpoint 拒绝本机、内网名称、IP、凭据和非标准端口', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const sub = await makeBrowserSubscription();
+
+  const unsafeEndpoints = [
+    'https://localhost/push',
+    'https://device.local/push',
+    'https://service.internal/push',
+    'https://127.0.0.1/push',
+    'https://2130706433/push',
+    'https://[::1]/push',
+    'https://user:pass@push.example.com/push',
+    'https://push.example.com:8443/push'
+  ];
+
+  for (const endpoint of unsafeEndpoints) {
+    const response = await ctx.asJson('/api/push/subscriptions', {
+      method: 'POST',
+      device,
+      body: {
+        subscription: {
+          endpoint,
+          keys: { p256dh: sub.p256dh, auth: sub.auth }
+        }
+      }
+    });
+    assert.equal(response.status, 400, endpoint);
+    assert.equal(response.payload.error.code, 'INVALID_SUBSCRIPTION', endpoint);
+  }
+  assert.equal(ctx.store.listSubscriptions(device.deviceId, { includeDisabled: true }).length, 0);
+});
+
 test('非法订阅被拒绝：协议、endpoint 与密钥格式', async () => {
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
@@ -842,6 +876,7 @@ test('test-push：授权、真实加密发送、过期订阅清理与重复通�
   const request = pushFetch.calls[0];
   assert.match(String(request.init.headers.Authorization), /^vapid t=/);
   assert.equal(request.init.headers['Content-Encoding'], 'aes128gcm');
+  assert.equal(request.init.redirect, 'error', '推送 endpoint 不应把 Worker 重定向到其他目标');
   assert.ok(request.init.body instanceof Uint8Array, '请求体必须是加密后的字节');
 
   // 同一 dedupeKey 再发一次：不得再次 push（跨端/重试去重）。
