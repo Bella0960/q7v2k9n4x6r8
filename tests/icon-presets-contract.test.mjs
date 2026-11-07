@@ -54,6 +54,21 @@ test('icon upload rows are generated from every launcher app instead of a separa
   }
 });
 
+test('icon upload always releases its temporary object URL and rejects unusable image conversions', () => {
+  const uploadStart = iconSettings.indexOf("changeButton.addEventListener('click'");
+  const uploadEnd = iconSettings.indexOf("restoreButton.addEventListener('click'", uploadStart);
+  assert.ok(uploadStart >= 0 && uploadEnd > uploadStart);
+  const uploadHandler = iconSettings.slice(uploadStart, uploadEnd);
+  assert.match(uploadHandler, /function releaseImageUrl\(\)/);
+  assert.match(uploadHandler, /img\.onload = function \(\)[\s\S]*?releaseImageUrl\(\)/);
+  assert.match(uploadHandler, /img\.onerror = function \(\)[\s\S]*?releaseImageUrl\(\)/);
+  assert.match(uploadHandler, /if \(!width \|\| !height\)/);
+  assert.match(uploadHandler, /if \(!ctx\)/);
+  assert.match(uploadHandler, /data:image\\\/jpeg;base64/);
+  assert.match(uploadHandler, /if \(!writeActivePresetId\(''\)\)/,
+    'manual icon changes must not leave a stale active preset label when localStorage cannot be updated');
+});
+
 test('preset metadata stays small while image copies use the existing IndexedDB wallpaper store', () => {
   assert.match(iconSettings, /PRESET_LIST_KEY = 'home_icon_presets_v1'/);
   assert.match(iconSettings, /ACTIVE_PRESET_KEY = 'home_icon_active_preset_v1'/);
