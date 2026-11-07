@@ -430,7 +430,9 @@ class CloudStore {
       userId: row.user_id,
       authorized: row.revoked_at == null,
       foregroundActive: Number(row.foreground_active || 0) === 1,
-      lastHeartbeatAt: Number(row.last_heartbeat_at || 0)
+      lastHeartbeatAt: Number(row.foreground_active || 0) === 1
+        ? Number(row.last_heartbeat_at || 0)
+        : 0
     }));
 
     const leases = this.exec(
