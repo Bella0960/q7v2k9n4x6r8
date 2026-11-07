@@ -2433,9 +2433,10 @@
         // Typed identity is the source of truth for capability checks. Real-user
         // chats stay chat-only even if another caller opens this page in the future.
         window.PhoneIsRealUserConversation = function () {
+            var ref = window.PhoneCurrentContactRef;
+            if (ref && String(ref.type || '').toLowerCase() === 'real_user') return true;
             var policy = window.PhoneContactCapabilities;
-            return !!(policy && typeof policy.isRealUser === 'function' &&
-                policy.isRealUser(window.PhoneCurrentContactRef));
+            return !!(policy && typeof policy.isRealUser === 'function' && policy.isRealUser(ref));
         };
 
 
