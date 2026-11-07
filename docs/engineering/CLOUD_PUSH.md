@@ -188,3 +188,15 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 前台管理器根据服务端配置续期 device heartbeat 与角色 lease；页面隐藏/切换时标记前台状态，pagehide 时也会发送 inactive。
 - 群聊 ID 暂时不映射单角色租约，防止错误阻止角色调度。
 - 此接线只代表代码路径存在。由于当前 Cloudflare 环境参数、真实页面运行与真机行为尚未验证，不能把它当成已上线或已验证。
+
+
+### 8.8 角色级授权与作息设置 UI
+
+设置页云端区域现在有角色编辑区：
+
+- 角色选项从本机 `PhoneStorage.getCharacters()` / `ai_custom_characters` 读取，角色名称仅用于本机下拉显示，不发送到 Worker。
+- 角色授权支持“跟随全局 / 仅此角色开启 / 仅此角色关闭”。
+- 作息要求明确填写 IANA 时区、允许主动联系的开始与结束时间；busy / asleep 可选，away 可显式标记。
+- 角色授权与作息分开保存，未配置有效 active 窗口的角色仍会被 scheduler gate 拒绝。
+- 目前 UI 提供每天每种状态一个时间窗口；跨午夜窗口由统一 policy 解析。更复杂的多窗口/按星期计划编辑器留待后续，不擅自补默认。
+- 这组界面只同步角色 ID、授权布尔/继承状态、时区和时间窗口；不上传角色名称、persona、聊天内容、关系资料或附件。
