@@ -39,6 +39,9 @@
 - `GET /api/friends/:friendId/messages?after=<createdAt>.<messageId>`：读取游标之后的新消息。
 - `GET /api/friends/:friendId/messages?before=<createdAt>.<messageId>`：载入更早消息。
 - `POST /api/friends/:friendId/messages`：发送纯文字，请求体仅允许 `clientMessageId` 与 `body`。
+- `DELETE /api/friends/:friendId/messages/:messageId`：只在当前账号隐藏单条消息。
+- `DELETE /api/friends/:friendId/messages`：只清空当前账号这边的整段会话。
+- 消息分页同时返回当前账号的 `viewState.version`；其他设备发现版本变化后会重新加载当前会话视图。
 
 所有接口都需要 `X-Maomao-Account` 认证，并再次验证双方好友关系。
 
