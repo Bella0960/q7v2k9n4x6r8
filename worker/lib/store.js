@@ -43,7 +43,19 @@ class CloudStore {
   }
 
   revokeDevice(deviceId, now) {
+    const device = this.getDevice(deviceId);
+    if (!device) return;
     this.exec('UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL', now, deviceId);
+    this.exec(
+      'DELETE FROM character_leases WHERE user_id = ? AND owner_device_id = ?',
+      device.user_id || 'owner',
+      deviceId
+    );
+    this.exec(
+      'DELETE FROM device_presence WHERE user_id = ? AND device_id = ?',
+      device.user_id || 'owner',
+      deviceId
+    );
   }
 
   countDevicesByIp(ipHash, since) {
@@ -213,6 +225,244 @@ class CloudStore {
       'SELECT * FROM outbound_messages WHERE server_message_id = ?',
       serverMessageId
     )[0] || null;
+  }
+
+  /**
+   * Explicit non-chat autonomy metadata. Missing global row is treated as OFF
+   * by the gate; missing character row inherits the global choice.
+   */
+  setUserAutonomy(userId, enabled, now) {
+    this.exec(
+      `INSERT INTO user_autonomy (user_id, enabled, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+      userId,
+      enabled ? 1 : 0,
+      now
+    );
+    return this.getUserAutonomy(userId);
+  }
+
+  getUserAutonomy(userId) {
+    return this.exec('SELECT * FROM user_autonomy WHERE user_id = ?', userId)[0] || null;
+  }
+
+  setCharacterAutonomy(userId, characterId, enabled, now) {
+    this.exec(
+      `INSERT INTO character_autonomy (user_id, character_id, enabled, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, character_id) DO UPDATE
+       SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+      userId,
+      characterId,
+      enabled == null ? null : enabled ? 1 : 0,
+      now
+    );
+    return this.getCharacterAutonomy(userId, characterId);
+  }
+
+  getCharacterAutonomy(userId, characterId) {
+    return this.exec(
+      'SELECT * FROM character_autonomy WHERE user_id = ? AND character_id = ?',
+      userId,
+      characterId
+    )[0] || null;
+  }
+
+  setCharacterSchedule(userId, characterId, timeZone, schedule, now) {
+    this.exec(
+      `INSERT INTO character_schedules (user_id, character_id, time_zone, schedule_json, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, character_id) DO UPDATE SET
+         time_zone = excluded.time_zone,
+         schedule_json = excluded.schedule_json,
+         updated_at = excluded.updated_at`,
+      userId,
+      characterId,
+      timeZone,
+      JSON.stringify(schedule),
+      now
+    );
+    return this.getCharacterSchedule(userId, characterId);
+  }
+
+  getCharacterSchedule(userId, characterId) {
+    return this.exec(
+      'SELECT * FROM character_schedules WHERE user_id = ? AND character_id = ?',
+      userId,
+      characterId
+    )[0] || null;
+  }
+
+  upsertDevicePresence({ userId, deviceId, foregroundActive, now }) {
+    this.exec(
+      `INSERT INTO device_presence
+        (user_id, device_id, foreground_active, last_heartbeat_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, device_id) DO UPDATE SET
+         foreground_active = excluded.foreground_active,
+         last_heartbeat_at = excluded.last_heartbeat_at,
+         updated_at = excluded.updated_at`,
+      userId,
+      deviceId,
+      foregroundActive ? 1 : 0,
+      now,
+      now
+    );
+    return this.getDevicePresence(userId, deviceId);
+  }
+
+  getDevicePresence(userId, deviceId) {
+    return this.exec(
+      'SELECT * FROM device_presence WHERE user_id = ? AND device_id = ?',
+      userId,
+      deviceId
+    )[0] || null;
+  }
+
+  isDeviceForegroundFresh(userId, deviceId, now, heartbeatTtlMs) {
+    const row = this.getDevicePresence(userId, deviceId);
+    return Boolean(
+      row &&
+      Number(row.foreground_active) === 1 &&
+      Number(row.last_heartbeat_at) <= now &&
+      now - Number(row.last_heartbeat_at) <= heartbeatTtlMs
+    );
+  }
+
+  acquireCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs }) {
+    return this.exec(
+      `INSERT INTO character_leases
+        (user_id, character_id, owner_device_id, lease_until, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, character_id) DO UPDATE SET
+         owner_device_id = excluded.owner_device_id,
+         lease_until = excluded.lease_until,
+         updated_at = excluded.updated_at
+       WHERE character_leases.owner_device_id = excluded.owner_device_id
+          OR (character_leases.lease_until <= ? AND ? >= character_leases.lease_until + ?)
+       RETURNING *`,
+      userId,
+      characterId,
+      deviceId,
+      leaseUntil,
+      now,
+      now,
+      now,
+      graceMs
+    )[0] || null;
+  }
+
+  renewCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs }) {
+    return this.exec(
+      `UPDATE character_leases
+       SET lease_until = ?, updated_at = ?
+       WHERE user_id = ? AND character_id = ? AND owner_device_id = ?
+         AND lease_until + ? >= ?
+       RETURNING *`,
+      leaseUntil,
+      now,
+      userId,
+      characterId,
+      deviceId,
+      graceMs,
+      now
+    )[0] || null;
+  }
+
+  releaseCharacterLease({ userId, characterId, deviceId }) {
+    return this.exec(
+      `DELETE FROM character_leases
+       WHERE user_id = ? AND character_id = ? AND owner_device_id = ?
+       RETURNING owner_device_id`,
+      userId,
+      characterId,
+      deviceId
+    ).length > 0;
+  }
+
+  releaseDeviceLeases(userId, deviceId) {
+    return this.exec(
+      `DELETE FROM character_leases
+       WHERE user_id = ? AND owner_device_id = ?
+       RETURNING character_id`,
+      userId,
+      deviceId
+    ).length;
+  }
+
+  getCharacterLease(userId, characterId) {
+    return this.exec(
+      'SELECT * FROM character_leases WHERE user_id = ? AND character_id = ?',
+      userId,
+      characterId
+    )[0] || null;
+  }
+
+  /**
+   * Gate snapshot contains scheduling metadata only. No chat rows, message
+   * bodies, persona, summaries, or attachments are queried here.
+   */
+  getSchedulerGateSnapshot({ userId = 'owner', characterId }) {
+    const userAutonomy = this.getUserAutonomy(userId);
+    const characterAutonomy = this.getCharacterAutonomy(userId, characterId);
+    const scheduleRow = this.getCharacterSchedule(userId, characterId);
+
+    let schedule = null;
+    if (scheduleRow) {
+      try {
+        schedule = JSON.parse(scheduleRow.schedule_json);
+      } catch {
+        schedule = null;
+      }
+    }
+
+    const devices = this.exec(
+      `SELECT d.id AS device_id, d.user_id, d.revoked_at,
+              p.foreground_active, p.last_heartbeat_at
+       FROM devices d
+       LEFT JOIN device_presence p
+         ON p.user_id = d.user_id AND p.device_id = d.id
+       WHERE d.user_id = ?`,
+      userId
+    ).map(row => ({
+      deviceId: row.device_id,
+      userId: row.user_id,
+      authorized: row.revoked_at == null,
+      foregroundActive: Number(row.foreground_active || 0) === 1,
+      lastHeartbeatAt: Number(row.last_heartbeat_at || 0)
+    }));
+
+    const leases = this.exec(
+      `SELECT l.owner_device_id, l.lease_until, d.revoked_at
+       FROM character_leases l
+       LEFT JOIN devices d ON d.id = l.owner_device_id AND d.user_id = l.user_id
+       WHERE l.user_id = ? AND l.character_id = ?`,
+      userId,
+      characterId
+    ).map(row => ({
+      deviceId: row.owner_device_id,
+      userId,
+      characterId,
+      authorized: row.revoked_at == null,
+      leaseUntil: Number(row.lease_until)
+    }));
+
+    return {
+      userId,
+      characterId,
+      timeZone: scheduleRow?.time_zone || null,
+      schedule,
+      authorization: {
+        globalAutonomyEnabled: userAutonomy?.enabled === 1,
+        characterAutonomyEnabled: characterAutonomy?.enabled == null
+          ? null
+          : characterAutonomy.enabled === 1
+      },
+      presence: { devices, leases },
+      // No authoritative server-side chat event/version stream exists yet.
+      contextVersion: null
+    };
   }
 
   getActivity(id) {
