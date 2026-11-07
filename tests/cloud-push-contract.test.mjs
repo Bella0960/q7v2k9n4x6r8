@@ -386,8 +386,9 @@ test('首次心跳临时失败后前台管理器仍会在下一轮自动重试',
   });
 
   const manager = await browserWindow.MaomaoCloud.startCharacterPresence('role-123');
-  assert.ok(manager && typeof manager.stop === 'function', '初次网络失败不能让 presence manager 启动失败');
+  assert.ok(manager && typeof manager.stop === 'function', 'presence manager 应在首次网络请求完成前即可返回');
   assert.equal(heartbeatAttempts, 1);
+  await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(typeof intervalCallback, 'function', '首次请求前就要建立续期重试计时器');
   assert.equal(warnings.length, 1, '首次失败应记录诊断信息');
 
@@ -576,6 +577,91 @@ test('停止前台管理器会中止当前标签页的在途请求', async () =>
   manager.stop();
   assert.equal(secondHeartbeatSignal.aborted, true, '停止管理器时必须取消在途请求');
   await new Promise(resolve => setTimeout(resolve, 0));
+});
+
+test('没有 AbortController 时，隐藏页面也能释放本地锁并隔离旧请求结果', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const listeners = new Map();
+  const calls = [];
+  let heartbeatCount = 0;
+  let resolveFirstHeartbeat;
+  let markFirstHeartbeatStarted;
+  const firstHeartbeatStarted = new Promise(resolve => { markFirstHeartbeatStarted = resolve; });
+  const browserWindow = {
+    setInterval() { return 41; },
+    clearInterval() {}
+  };
+  const browserDocument = {
+    currentScript: null,
+    visibilityState: 'visible',
+    addEventListener(name, callback) { listeners.set(name, callback); },
+    removeEventListener(name, callback) {
+      if (listeners.get(name) === callback) listeners.delete(name);
+    }
+  };
+  const localStorageStub = {
+    getItem(key) {
+      return key === 'cloud_device_v1'
+        ? JSON.stringify({ deviceId: 'device-id-123456', secret: 's'.repeat(32) })
+        : null;
+    },
+    setItem() {},
+    removeItem() {}
+  };
+  const response = payload => ({ ok: true, json: async () => payload });
+  const fetchStub = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url === '/api/presence/config') {
+      return response({ ok: true, heartbeatTtlMs: 120000, leaseDurationMs: 120000 });
+    }
+    if (url === '/api/presence/heartbeat') {
+      heartbeatCount += 1;
+      if (heartbeatCount === 1) {
+        assert.equal(options.signal, undefined, '此测试模拟没有 AbortController 的浏览器');
+        markFirstHeartbeatStarted();
+        return new Promise(resolve => { resolveFirstHeartbeat = resolve; });
+      }
+      return response({ ok: true });
+    }
+    if (url === '/api/characters/role-123/lease') {
+      const action = JSON.parse(options.body || '{}').action;
+      if (action === 'renew') return response({ ok: true, renewed: true });
+      if (action === 'acquire') return response({ ok: true, acquired: true });
+    }
+    throw new Error('Unexpected request: ' + url);
+  };
+
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: browserDocument,
+    localStorage: localStorageStub,
+    fetch: fetchStub,
+    console: { warn() {}, log() {}, error() {} },
+    URL
+  });
+
+  const manager = await browserWindow.MaomaoCloud.startCharacterPresence('role-123');
+  assert.ok(manager && typeof manager.stop === 'function',
+    '首次网络请求挂起时也必须把管理器句柄交还给页面');
+  await firstHeartbeatStarted;
+
+  browserDocument.visibilityState = 'hidden';
+  listeners.get('visibilitychange')();
+  browserDocument.visibilityState = 'visible';
+  listeners.get('visibilitychange')();
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  assert.equal(heartbeatCount, 2, '无 AbortController 时恢复可见也应启动新一轮心跳');
+  const leaseCallsBeforeOldResponse = calls.filter(call => call.url === '/api/characters/role-123/lease');
+  assert.equal(leaseCallsBeforeOldResponse.length, 1, '新一轮同步应只续租一次');
+
+  resolveFirstHeartbeat(response({ ok: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const leaseCallsAfterOldResponse = calls.filter(call => call.url === '/api/characters/role-123/lease');
+  assert.equal(leaseCallsAfterOldResponse.length, 1,
+    '旧请求迟到返回后不得继续写租约，也不得覆盖新一轮运行状态');
+
+  manager.stop();
 });
 
 test('清理任务不会提前删除超过一小时但仍有效的配对码', async () => {
