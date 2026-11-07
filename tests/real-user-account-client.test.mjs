@@ -10,6 +10,10 @@ const CLIENT_SOURCE = fs.readFileSync(
   path.join(ROOT, 'shared/js/phone/real-user-account-client.js'),
   'utf8'
 );
+const PANEL_SOURCE = fs.readFileSync(
+  path.join(ROOT, 'chat/contacts/real-user-account-panel.js'),
+  'utf8'
+);
 
 const disabledCapabilities = {
   ok: true,
@@ -228,4 +232,13 @@ test('request transitions accept only server-supported actions', async () => {
     app.client.transitionRequest('request_123456', 'pay'),
     (error) => error.code === 'invalid_request_action'
   );
+});
+
+
+test('Contacts UI exposes only the signed-in account blocked list and an explicit unblock action', () => {
+  assert.match(PANEL_SOURCE, /client\.listBlocked\(\)/);
+  assert.match(PANEL_SOURCE, /function renderBlocked\(blocked\)/);
+  assert.match(PANEL_SOURCE, /addAction\(actions, '解除屏蔽', 'unblock-user', account\.id\)/);
+  assert.match(PANEL_SOURCE, /client\.setBlocked\(id, false\)/);
+  assert.match(PANEL_SOURCE, /双方不会自动恢复好友关系/);
 });
