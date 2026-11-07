@@ -278,7 +278,7 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
 });
 
-test('单设备配对码每小时签发上限由原子存储约束', async () => {
+test('单设备每小时配对签发上限包含已消费配对码且由原子存储约束', async () => {
   const ctx = setupTestStore(openTestDb());
   const owner = makeDevice();
   await registerDevice(ctx, owner);
@@ -289,6 +289,12 @@ test('单设备配对码每小时签发上限由原子存储约束', async () =>
       device: owner
     });
     assert.equal(response.status, 200, '前五次配对码签发应允许');
+
+    const pairedDevice = makeDevice();
+    const paired = await registerDevice(ctx, pairedDevice, {
+      pairingToken: response.payload.pairingToken
+    });
+    assert.equal(paired.status, 200, '已签发的配对码应可单次消费');
   }
 
   const limited = await ctx.asJson('/api/devices/pairing-token', {
