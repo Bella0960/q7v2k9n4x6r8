@@ -127,10 +127,13 @@
     ChatNotifier.getContactIdentity = function (value, type) {
         var identity = global.PhoneContactIdentity;
         if (value && typeof value === 'object') {
-            return identity && typeof identity.normalize === 'function' ? identity.normalize(value) : null;
+            if (identity && typeof identity.normalize === 'function') return identity.normalize(value);
+            return contactIdentity(value.type || value.kind, value.id != null ? value.id : value.legacyId);
         }
-        if (typeof value === 'string' && value.indexOf(':') > 0 && identity && typeof identity.parseKey === 'function') {
-            return identity.parseKey(value);
+        if (typeof value === 'string' && value.indexOf(':') > 0) {
+            if (identity && typeof identity.parseKey === 'function') return identity.parseKey(value);
+            var separator = value.indexOf(':');
+            return contactIdentity(value.slice(0, separator), decodeURIComponent(value.slice(separator + 1)));
         }
         var id = String(value == null ? '' : value).trim();
         if (!id) return null;
