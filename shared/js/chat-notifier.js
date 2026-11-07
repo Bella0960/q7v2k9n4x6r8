@@ -521,6 +521,36 @@
         return text;
     }
 
+    var cloudExecutorPresenceManagers = Object.create(null);
+    var cloudExecutorPresenceStarting = Object.create(null);
+
+    function ensureCloudExecutorPresence(roleId, cloud) {
+        var key = String(roleId);
+        if (cloudExecutorPresenceManagers[key]) return Promise.resolve(true);
+        if (cloudExecutorPresenceStarting[key]) return cloudExecutorPresenceStarting[key];
+        if (!cloud || typeof cloud.updatePresenceHeartbeat !== 'function' ||
+            typeof cloud.updateCharacterLease !== 'function' ||
+            typeof cloud.startCharacterPresence !== 'function') {
+            return Promise.reject(new Error('本机前台租约能力不可用'));
+        }
+
+        cloudExecutorPresenceStarting[key] = (async function () {
+            // Establish an authenticated foreground heartbeat before acquiring
+            // the role lease. Another device's lease is never stolen.
+            await cloud.updatePresenceHeartbeat(true);
+            await cloud.updateCharacterLease(key, 'acquire');
+            var manager = await cloud.startCharacterPresence(key);
+            if (!manager || typeof manager.stop !== 'function') {
+                throw new Error('本机角色前台租约未能启动');
+            }
+            cloudExecutorPresenceManagers[key] = manager;
+            return true;
+        })().finally(function () {
+            delete cloudExecutorPresenceStarting[key];
+        });
+        return cloudExecutorPresenceStarting[key];
+    }
+
     function resetProactiveAttempt(roleId) {
         safeSet('chat_proactive_global_attempt_at', '0');
         safeSet('chat_proactive_last_attempt_' + String(roleId), '0');
@@ -532,6 +562,18 @@
             !cloud._internal.readDevice()) return false;
 
         var roleId = String(candidate.contact.id);
+        try {
+            await ensureCloudExecutorPresence(roleId, cloud);
+            // Flush content-free revision events from this device before the
+            // task captures a version, so a just-sent user message is not stale.
+            if (typeof cloud.flushCharacterContextVersion === 'function') {
+                await cloud.flushCharacterContextVersion(roleId);
+            }
+        } catch (presenceError) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+
         var globalSetting;
         try {
             globalSetting = await cloud.getGlobalAutonomy();
