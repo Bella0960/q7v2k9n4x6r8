@@ -2333,6 +2333,7 @@
     </div>
     <script src="../../shared/js/memory.js"></script>
     <script src="../../shared/js/sound-system.js"></script>
+    <script src="../../shared/js/cloud-push-client.js"></script>
     <script>
         // ===== 加载壁纸到手机背景（iMessage 透明主题，支持 IndexedDB + 明暗自动切换） =====
         (function loadWallpaper() {
@@ -2593,6 +2594,36 @@
         const currentCharacter = isGroupChat
             ? { id: currentRoleId, name: (currentGroup && currentGroup.name) || '群聊', avatar: (currentGroup && (currentGroup.avatar || currentGroup.cover)) || '', avatarBg: '#3B9EFF' }
             : (getRoleById(currentRoleId) || { id: currentRoleId || 'default', name: '聊天', avatarBg: '#3B9EFF' });
+
+        // 云端前台租约只同步非聊天元数据；单角色聊天页可见时占有该角色租约。
+        // 群聊暂不映射到单角色 lease，避免把 group id 误当作角色 id。
+        (function startCloudPresenceForActiveRole() {
+            var cloud = window.MaomaoCloud;
+            if (!cloud || typeof cloud.startCharacterPresence !== 'function' || isGroupChat || !currentRoleId) return;
+            var hasDevice = cloud._internal && typeof cloud._internal.readDevice === 'function'
+                && cloud._internal.readDevice();
+            if (!hasDevice) return;
+
+            var leaving = false;
+            var session = null;
+            function stopPresence() {
+                leaving = true;
+                if (session && typeof session.stop === 'function') session.stop();
+            }
+            window.addEventListener('pagehide', stopPresence, { once: true });
+            cloud.startCharacterPresence(String(currentCharacter.id || currentRoleId))
+                .then(function (started) {
+                    session = started;
+                    if (leaving && session && typeof session.stop === 'function') session.stop();
+                })
+                .catch(function (error) {
+                    // 未配置云端 lease 时保持本地聊天可用，不影响正常发消息。
+                    if (error && error.code !== 'PRESENCE_NOT_CONFIGURED') {
+                        console.warn('[cloud] 当前角色的前台租约未启动', error && error.message || error);
+                    }
+                });
+        })();
+
         const contactName = currentCharacter.name || '聊天';
         const chatHeaderAvatar = document.getElementById('chat-header-avatar');
         if (chatHeaderAvatar) {
