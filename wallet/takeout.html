@@ -542,7 +542,15 @@
             !Array.isArray(row.items) ||
             !isFinite(Number(row.total)) || Number(row.total) < 0 ||
             !isFinite(Number(row.ts)) || Number(row.ts) <= 0 ||
-            (row.statusHistory != null && !Array.isArray(row.statusHistory))) return null;
+            (Object.prototype.hasOwnProperty.call(row, 'statusHistory') && !Array.isArray(row.statusHistory))) return null;
+        for (var itemIndex = 0; itemIndex < row.items.length; itemIndex++) {
+          var item = row.items[itemIndex];
+          if (!item || typeof item !== 'object' ||
+              typeof item.name !== 'string' || !item.name ||
+              !isFinite(Number(item.price)) || Number(item.price) < 0 ||
+              !isFinite(Number(item.qty)) || Number(item.qty) < 1 ||
+              Math.floor(Number(item.qty)) !== Number(item.qty)) return null;
+        }
       }
       return rows;
     } catch (error) { return null; }
@@ -1228,7 +1236,8 @@
                       Number(storedItem.qty) === Number(currentItem.qty);
                   });
                 if (!sameItems || Number(existingOrder.total) !== Number(total) ||
-                    String(existingOrder.shopId || '') !== String(orderShop.id)) {
+                    String(existingOrder.shopId || '') !== String(orderShop.id) ||
+                    String(existingOrder.payMethod || '') !== String(payMethod)) {
                   throw new Error('payment ID is already attached to a different order payload');
                 }
               } else {
