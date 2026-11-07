@@ -413,3 +413,13 @@ D1 data foundation (2026-11-07):
 - Added `tests/real-user-chat-d1-schema.test.mjs` (14 schema safety contracts), `npm run test:real-user:d1-schema`, and included it in `test:contact:groups`.
 - A local SQLite 3.46.1 validation executed a DDL-equivalent copy of the current migration statements and passed eight integration scenarios: request acceptance creates a friendship; accepted friends can create a conversation and send; receipts are recipient-only and monotonic; blocking revokes friendship and prevents messages; blocked pairs cannot create requests; a fresh request is required after unblocking; reverse duplicate pending requests are rejected; and payment-like message types fail the table CHECK. This is local schema validation only, not a Cloudflare D1 staging apply.
 - No D1 database is bound or migrated in Cloudflare, and no authentication or messaging endpoint is enabled. Native Node contract execution and a staging D1 apply remain required.
+
+
+Account authentication groundwork (2026-11-07):
+- Added `worker/real-user-auth.js` and Worker routes: `POST /api/real-user-chat/v1/auth/register`, `POST /login`, `GET /me`, and `POST /logout`.
+- Registration/login use PBKDF2-HMAC-SHA256 (600,000 iterations) with a per-account random salt. Sessions use random 256-bit opaque tokens, set only as `__Host-mao_session` Secure/HttpOnly/SameSite=Strict cookies; D1 stores only SHA-256 token hashes. Logout revokes the stored session.
+- Unsafe methods require a same-origin HTTPS Origin; JSON bodies are streamed with an 8 KiB limit, reject unknown fields, and no cross-origin CORS is enabled.
+- Authentication is fail-closed unless `REAL_USER_AUTH_ENABLED=true`, `DB` is a D1 binding, and `AUTH_LIMITER.limit()` is configured. IP and normalized-handle rate limits are both required; limiter errors keep authentication unavailable.
+- Account auth readiness is reported separately by the capability endpoint. Real-user message delivery remains disabled regardless of account-auth readiness.
+- Added `tests/real-user-auth.test.mjs` (11 test cases), updated Worker gate tests (6 cases), added `npm run test:real-user:auth`, and included auth tests in `test:contact:groups`. The PR now defines 99 Node test cases plus one PWA cache assertion (100 tracked checks), none of the Node suites has run in a native project runner.
+- The D1 migration is not deployed, no `DB` or `AUTH_LIMITER` binding is configured, and no UI registration/login flow is wired. Account auth is code-only groundwork and remains disabled. Password recovery and email verification are not implemented.
