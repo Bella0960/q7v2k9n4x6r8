@@ -76,6 +76,8 @@
     var fontLoadGeneration = 0;
     var fontLoadScheduled = false;
     var fontDbRequestKey = '';
+    /* 缓存重建失败只影响持久化：同一文档同一字体不再重复尝试写入。 */
+    var failedCacheRebuildKeys = {};
 
     function getFontStyle() {
         var tag = document.getElementById(fontStyleId);
@@ -319,8 +321,8 @@
     };
 
     /* 缓存被清理后从 IndexedDB 原件恢复：应用字体并重建专用缓存。
-       重建失败（cache.put 抛错等）时不保留临时字体，避免每页重复失败扫描。 */
-    function applyRecoveredBlob(record, source, isStillCurrent) {
+       字体可用即保留显示；缓存重建属于持久化优化，失败只记录、不回退当前页面。 */
+    function applyRecoveredBlob(record, source) {
         if (!record.blob.size) { fallbackToSystemFont(source.key); return; }
         if (source.key === appliedFontKey && hasAppliedFontStyle()) return;
         var objectUrl = '';
@@ -328,9 +330,11 @@
         if (!objectUrl) { fallbackToSystemFont(source.key); return; }
         applyFontSource(objectUrl, record.format || 'truetype', source.key);
         replaceObjectUrl(objectUrl);
+        if (failedCacheRebuildKeys[source.activeId]) return;
         cacheFontBlob(source.activeId, record.blob, record.format || 'truetype').then(function (url) {
-            if (!isStillCurrent()) return;
-            if (!url) fallbackToSystemFont(source.key);
+            if (url) return;
+            /* 写入失败/配额不足：仅标记本文件不再重试，已加载字体继续使用。 */
+            failedCacheRebuildKeys[source.activeId] = true;
         });
     }
 
@@ -374,7 +378,7 @@
                         return;
                     }
                     if (record.type === 'file' && record.blob) {
-                        if (recoverFromCache) applyRecoveredBlob(record, source, isStillCurrent);
+                        if (recoverFromCache) applyRecoveredBlob(record, source);
                         else window.MAOMAOFontRuntime.applyBlob(record.blob, record.format || 'truetype');
                     } else if (record.type === 'url' && record.url) {
                         window.MAOMAOFontRuntime.applyUrl(record.url, record.format || 'woff');
@@ -437,8 +441,8 @@
                 }
                 loadPresetFromIndexedDb(source, isStillCurrent, true);
             }, function () {
-                /* Cache Storage 不可读时保留原 SW 快路径，由 SW 自身尝试响应。 */
-                if (isStillCurrent()) window.MAOMAOFontRuntime.applyUrl(cachedUrl, cachedFormat);
+                /* Cache Storage 读取被拒绝：不能据此判定字体缺失，仍从 IndexedDB 恢复原件。 */
+                loadPresetFromIndexedDb(source, isStillCurrent, true);
             });
             return;
         }
