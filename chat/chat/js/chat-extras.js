@@ -509,16 +509,30 @@
   var chatImageMediaRepo = null;
   var CHAT_IMAGE_PRIVACY_KEY = 'maomao_chat_image_privacy_v1';
 
-  function confirmChatImagePrivacy() {
+  function confirmChatImagePrivacy(onContinue) {
     try {
-      if (localStorage.getItem(CHAT_IMAGE_PRIVACY_KEY) === 'confirmed') return true;
+      if (localStorage.getItem(CHAT_IMAGE_PRIVACY_KEY) === 'confirmed') {
+        if (typeof onContinue === 'function') onContinue();
+        return;
+      }
     } catch (e) {}
-    var approved = window.confirm(
-      '图片会保存在本机聊天记录中；发送后，本轮图片还会传给你配置的 AI 模型服务用于识图和回复。是否继续？'
+
+    openModal('图片分享与识图',
+      '<div class="x-core-muted">图片会保存在本机聊天记录中。发送后，本轮图片会提交给你配置的 AI 服务，用于理解图片内容并生成回复。</div>' +
+      '<div class="x-core-muted" style="margin-top:8px">一次最多 4 张；图片会先压缩，再保存在当前角色的聊天记录中。</div>' +
+      '<div class="x-row" style="margin-top:14px">' +
+        '<button class="x-btn x-btn-ghost" id="chatImagePrivacyCancel" type="button">暂不分享</button>' +
+        '<button class="x-btn x-btn-primary" id="chatImagePrivacyContinue" type="button">我知道了，继续</button>' +
+      '</div>'
     );
-    if (!approved) return false;
-    try { localStorage.setItem(CHAT_IMAGE_PRIVACY_KEY, 'confirmed'); } catch (e) {}
-    return true;
+    var cancel = document.getElementById('chatImagePrivacyCancel');
+    var proceed = document.getElementById('chatImagePrivacyContinue');
+    if (cancel) cancel.onclick = closeModal;
+    if (proceed) proceed.onclick = function () {
+      try { localStorage.setItem(CHAT_IMAGE_PRIVACY_KEY, 'confirmed'); } catch (e) {}
+      closeModal();
+      if (typeof onContinue === 'function') onContinue();
+    };
   }
 
   function imageMessageId() {
@@ -598,8 +612,7 @@
     );
   }
 
-  function featImage() {
-    if (!confirmChatImagePrivacy()) return;
+  function openChatImagePicker() {
     if (!chatImgInput) {
       chatImgInput = document.createElement('input');
       chatImgInput.type = 'file';
@@ -615,6 +628,10 @@
       });
     }
     chatImgInput.click();
+  }
+
+  function featImage() {
+    confirmChatImagePrivacy(openChatImagePicker);
   }
 
   // ============================================================
