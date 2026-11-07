@@ -5,6 +5,7 @@ import { SQL as CONTEXT_VERSION_SQL, VERSION as CONTEXT_VERSION_VERSION } from '
 import { SQL as FRIEND_ACCOUNTS_SQL, VERSION as FRIEND_ACCOUNTS_VERSION } from '../migrations/0005_friend_accounts.js';
 import { SQL as FRIEND_MESSAGES_SQL, VERSION as FRIEND_MESSAGES_VERSION } from '../migrations/0006_friend_messages.js';
 import { SQL as FRIEND_READS_SQL, VERSION as FRIEND_READS_VERSION } from '../migrations/0007_friend_conversation_reads.js';
+import { SQL as FRIEND_VISIBILITY_SQL, VERSION as FRIEND_VISIBILITY_VERSION } from '../migrations/0008_friend_message_visibility.js';
 
 /**
  * 版本化迁移。exec(sql, ...params) 与存储层（Durable Object SQLite）保持同一签名，
@@ -17,7 +18,8 @@ export const MIGRATIONS = [
   { version: CONTEXT_VERSION_VERSION, sql: CONTEXT_VERSION_SQL },
   { version: FRIEND_ACCOUNTS_VERSION, sql: FRIEND_ACCOUNTS_SQL },
   { version: FRIEND_MESSAGES_VERSION, sql: FRIEND_MESSAGES_SQL },
-  { version: FRIEND_READS_VERSION, sql: FRIEND_READS_SQL }
+  { version: FRIEND_READS_VERSION, sql: FRIEND_READS_SQL },
+  { version: FRIEND_VISIBILITY_VERSION, sql: FRIEND_VISIBILITY_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */
