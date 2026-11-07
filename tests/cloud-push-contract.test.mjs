@@ -3393,7 +3393,7 @@ test('出站消息分别记录 Push 接受、设备收到、本地保存与用�
   );
   assert.equal(receivedBeforePush.status, 200);
   assert.equal(receivedBeforePush.payload.received, true);
-  assert.equal(receivedBeforePush.payload.push_accepted_at, null);
+  assert.equal(receivedBeforePush.payload.push_accepted_at, now);
 
   const readBeforeSave = await ctx.asJson(
     '/api/characters/char-lifecycle/outbound/' + messageId + '/read',
