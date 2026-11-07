@@ -240,11 +240,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const pairingHash = await sha256Hex(
       `${String(env?.DEVICE_SECRET_PEPPER || '')}|pairing|${suppliedToken}`
     );
-    const pairing = await store.consumeDevicePairingToken(pairingHash, timestamp);
-    if (pairing) {
-      userId = pairing.user_id || OWNER_USER_ID;
+    const paired = await store.consumePairingTokenAndInsertDevice(
+      pairingHash,
+      timestamp,
+      commonDevice
+    );
+    if (paired) {
       enrollmentMode = 'paired';
-      await store.insertDevice({ ...commonDevice, userId });
     } else {
       const configuredToken = String(env?.ENROLLMENT_TOKEN || '');
       if (configuredToken.length < 32) {
@@ -281,22 +283,28 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(503, 'PAIRING_NOT_CONFIGURED', '缺少一次性配对码有效期配置');
     }
     const timestamp = now();
-    const recent = await store.countRecentPairingTokensByDevice(device.id, timestamp - 3600000);
-    if (recent >= PAIRING_TOKENS_PER_DEVICE_PER_HOUR) {
-      throw new ApiError(429, 'PAIRING_RATE_LIMITED', '配对码生成过于频繁，请稍后再试');
-    }
     const pairingToken = randomToken(32);
     const tokenHash = await sha256Hex(
       `${String(env?.DEVICE_SECRET_PEPPER || '')}|pairing|${pairingToken}`
     );
     await store.cleanupDevicePairingTokens(timestamp);
-    await store.createDevicePairingToken({
+    const created = await store.createDevicePairingTokenWithLimit({
       tokenHash,
       userId: device.user_id || OWNER_USER_ID,
       createdByDeviceId: device.id,
       createdAt: timestamp,
       expiresAt: timestamp + ttlMs
+    }, {
+      since: timestamp - 3600000,
+      limit: PAIRING_TOKENS_PER_DEVICE_PER_HOUR
     });
+    if (!created) {
+      const currentDevice = await store.getDevice(device.id);
+      if (!currentDevice || currentDevice.revoked_at) {
+        throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+      }
+      throw new ApiError(429, 'PAIRING_RATE_LIMITED', '配对码生成过于频繁，请稍后再试');
+    }
     return ok({ pairingToken, expiresAt: timestamp + ttlMs, ttlMs });
   }
 
