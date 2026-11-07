@@ -201,6 +201,7 @@ test('Moments audience preview lists the resolved recipients and explains snapsh
   assert.match(composerPage, /发布后会固定保存这份联系人名单/);
   assert.match(composerPage, /已失效分组 · 点击取消选择/);
   assert.match(composerPage, /!activeAudience\.ok/);
+  assert.match(composerPage, /openAudienceSelection\(currentPerm\)/);
   assert.match(composerPage, /分组已发生变化，请重新确认可见范围/);
   assert.match(composerPage, /分组数据暂时无法读取/);
   assert.match(composerPage, /module_unavailable/);
