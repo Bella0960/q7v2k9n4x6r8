@@ -19,7 +19,7 @@ Migration file: `migrations/0001_real_user_chat.sql`
 
 ## Database-level enforcement
 
-Triggers prevent a conversation from being created unless the pair has an accepted, unblocked friendship; prevent message insertion unless the sender is a participant and the relationship remains accepted/unblocked; ensure attachment references are owned by the sender, shared into the exact conversation, and match the message type; and ensure a receipt belongs to the other participant, not the sender.
+Triggers enforce that friendships originate from accepted friend requests, friend requests are created pending and can transition only once to a terminal state, and accepting a request materializes the friendship row. Blocking either direction removes the accepted relationship. Triggers also prevent a conversation from being created unless the pair has an accepted, unblocked friendship; prevent message insertion unless the sender is a participant and the relationship remains accepted/unblocked; make sent message content immutable; ensure attachment references are owned by the sender, shared into the exact conversation, and match the message type; ensure a receipt belongs to the other participant, not the sender; and prevent delivery/read timestamps from moving backwards.
 
 CHECK constraints and unique indexes enforce normalized handles, password-verifier metadata shape, opaque token/code hash shape, canonical account pairs, pending-request uniqueness, message-type allowlisting, text/caption lengths, attachment size/state metadata, stable per-sender message IDs, message sequence uniqueness, and read-after-delivery ordering.
 
