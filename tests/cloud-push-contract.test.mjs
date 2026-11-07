@@ -109,7 +109,9 @@ test('迁移 0001/0002 建立云推送与非聊天自主活动元数据表', asy
     'device_presence',
     'character_leases',
     'device_pairing_tokens',
-    'device_bootstrap'
+    'device_bootstrap',
+    'character_context_versions',
+    'character_context_events'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -123,17 +125,177 @@ test('迁移 0001/0002 建立云推送与非聊天自主活动元数据表', asy
   assert.ok(indexes.includes('idx_character_leases_owner'), '角色租约必须可按设备和用户查询');
   assert.ok(indexes.includes('idx_device_pairing_creator'), '配对码必须可按签发设备清理');
   assert.ok(indexes.includes('idx_device_pairing_expiry'), '配对码必须可按过期时间清理');
+  assert.ok(indexes.includes('idx_context_events_device_created'), '上下文事件必须可按设备清理与审计');
+  assert.ok(indexes.includes('idx_context_events_created'), '上下文事件必须可按保留期清理');
 
   // 幂等：重复执行迁移不会重复建表，也不会重复记录版本。
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 3);
+  assert.equal(versions.length, 4);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
-    '0003_device_pairing'
+    '0003_device_pairing',
+    '0004_character_context_version'
   ]);
+});
+
+test('角色上下文版本事件：仅保存事件 ID、服务器递增、重复请求幂等且账号隔离', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const initial = await ctx.asJson('/api/characters/char-a/context-version', { device });
+  assert.equal(initial.status, 200);
+  assert.equal(initial.payload.configured, false);
+  assert.equal(initial.payload.version, 0);
+
+  const event = {
+    eventId: 'context_event_0001'
+  };
+  const first = await ctx.asJson('/api/characters/char-a/context-version', {
+    method: 'POST',
+    device,
+    body: event
+  });
+  assert.equal(first.status, 200);
+  assert.equal(first.payload.changed, true);
+  assert.equal(first.payload.version, 1);
+
+  const duplicate = await ctx.asJson('/api/characters/char-a/context-version', {
+    method: 'POST',
+    device,
+    body: event
+  });
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.payload.changed, false);
+  assert.equal(duplicate.payload.version, 1, '同一 eventId 重试不得重复递增');
+
+  const second = await ctx.asJson('/api/characters/char-a/context-version', {
+    method: 'POST',
+    device,
+    body: { eventId: 'context_event_0002' }
+  });
+  assert.equal(second.status, 200);
+  assert.equal(second.payload.version, 2);
+
+  const rejectedContent = await ctx.asJson('/api/characters/char-a/context-version', {
+    method: 'POST',
+    device,
+    body: { eventId: 'context_event_0003', text: 'private chat body must be rejected' }
+  });
+  assert.equal(rejectedContent.status, 400);
+  assert.equal(rejectedContent.payload.error.code, 'INVALID_CONTEXT_EVENT');
+
+  const invalidEvent = await ctx.asJson('/api/characters/char-a/context-version', {
+    method: 'POST',
+    device,
+    body: { eventId: 'short' }
+  });
+  assert.equal(invalidEvent.status, 400);
+
+  const anonymous = await ctx.asJson('/api/characters/char-a/context-version', {
+    method: 'POST',
+    body: event
+  });
+  assert.equal(anonymous.status, 401);
+
+  const anotherAccountEvent = ctx.store.recordCharacterContextEvent({
+    userId: 'another-user',
+    characterId: 'char-a',
+    eventId: 'context_event_other_1',
+    deviceId: 'other-device',
+    now: Date.now()
+  });
+  assert.equal(anotherAccountEvent.version, 1);
+  assert.deepEqual(ctx.store.getCharacterContextVersionSummary('owner'), {
+    roleCount: 1,
+    maxVersion: 2,
+    latestUpdatedAt: second.payload.updatedAt
+  });
+  assert.deepEqual(ctx.store.getCharacterContextVersionSummary('another-user'), {
+    roleCount: 1,
+    maxVersion: 1,
+    latestUpdatedAt: Date.now()
+  });
+
+  const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
+  assert.equal(snapshot.contextVersion, 2);
+  const missingRoleSnapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-b' });
+  assert.equal(missingRoleSnapshot.contextVersion, null);
+});
+
+test('客户端只提交随机上下文事件 ID，不上传本地聊天正文，并可重试离线事件', async () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const local = new Map([[
+    'cloud_device_v1',
+    JSON.stringify({ deviceId: 'device-id-123456', secret: 's'.repeat(32) })
+  ]]);
+  const calls = [];
+  let failNext = true;
+  const localStorageStub = {
+    getItem(key) { return local.has(key) ? local.get(key) : null; },
+    setItem(key, value) { local.set(key, String(value)); },
+    removeItem(key) { local.delete(key); }
+  };
+  const browserWindow = {
+    crypto: {
+      getRandomValues(bytes) {
+        for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 17 + 29) & 255;
+        return bytes;
+      }
+    }
+  };
+  const fetchStub = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ url, body });
+    if (failNext) {
+      failNext = false;
+      return {
+        ok: false,
+        status: 503,
+        json: async () => ({ ok: false, error: { code: 'TEMPORARY', message: 'offline' } })
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, changed: true, version: calls.length, updatedAt: Date.now() })
+    };
+  };
+
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: { currentScript: null },
+    localStorage: localStorageStub,
+    fetch: fetchStub,
+    console: { warn() {}, log() {}, error() {} },
+    URL,
+    btoa
+  });
+
+  const api = browserWindow.MaomaoCloud;
+  const history = [{ role: 'user', text: 'this private message must stay on device', time: 100 }];
+  await assert.rejects(api.noteCharacterContextChanged('char-a', history), /offline/);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(Object.keys(calls[0].body).sort(), ['eventId']);
+  assert.equal(JSON.stringify(calls).includes('this private message must stay on device'), false);
+
+  const pendingEvent = calls[0].body.eventId;
+  failNext = false;
+  await api.flushCharacterContextVersion('char-a');
+  assert.equal(calls.length, 2, '离线待同步事件恢复网络后应重试');
+  assert.equal(calls[1].body.eventId, pendingEvent, '重试必须复用原事件 ID');
+
+  await api.noteCharacterContextChanged('char-a', history);
+  assert.equal(calls.length, 2, '历史未变时不得重复产生版本事件');
+
+  const changedHistory = [{ role: 'user', text: 'a later private message', time: 101 }];
+  await api.noteCharacterContextChanged('char-a', changedHistory);
+  assert.equal(calls.length, 3, '本地历史变化后应提交新的事件 ID');
+  assert.notEqual(calls[2].body.eventId, pendingEvent);
+  assert.deepEqual(Object.keys(calls[2].body).sort(), ['eventId']);
 });
 
 test('设备注册、重复注册与凭据冲突', async () => {
