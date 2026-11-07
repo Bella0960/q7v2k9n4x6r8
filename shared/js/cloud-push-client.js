@@ -340,9 +340,9 @@
   /**
    * Starts a character-scoped foreground lease while this chat page is visible.
    * All timing comes from the authenticated server config; no client defaults.
-   * A hidden tab only marks its device heartbeat inactive. Its role lease is
-   * allowed to expire naturally so another visible tab on the same device is
-   * not accidentally unlocked.
+   * Hidden tabs do not write an inactive device heartbeat or release a role
+   * lease: another visible tab may still be using this device. When every
+   * visible tab stops renewing, server-side TTL and lease expiry take over.
    */
   async function startCharacterPresence(characterId) {
     var encodedId = characterPath(characterId);
