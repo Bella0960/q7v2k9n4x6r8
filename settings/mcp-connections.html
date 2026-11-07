@@ -224,6 +224,18 @@ button,input,textarea{font:inherit}
     } finally { button.disabled = false; }
   });
   renderSaved();
+  // A page-session token and MCP session should not survive navigation or a
+  // back-forward cache restore. Reconnect explicitly after returning.
+  window.addEventListener('pagehide', function () {
+    disconnect();
+  });
+  window.addEventListener('pageshow', function (event) {
+    if (event && event.persisted) {
+      disconnect();
+      setStatus('页面已恢复。为保护连接凭据，请重新连接 MCP 服务。');
+      renderSaved();
+    }
+  });
 })();
 </script>
 </body>
