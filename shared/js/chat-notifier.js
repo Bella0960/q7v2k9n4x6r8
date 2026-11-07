@@ -358,10 +358,18 @@
         });
     }
 
+    function ensureOptionalCloudClient() {
+        if (global.MaomaoCloud) return Promise.resolve(true);
+        return loadProactiveScript(
+            proactiveAsset('shared/js/cloud-push-client.js'),
+            function () { return !!global.MaomaoCloud; }
+        ).then(function () { return true; });
+    }
+
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
-            return Promise.resolve(true);
+            return ensureOptionalCloudClient();
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
         proactiveDependenciesPromise = loadProactiveScript(
@@ -386,11 +394,7 @@
             }
             // Cloud executor is optional for legacy local-only proactive contact.
             // Its failure must not disable the existing local PhoneAPI path.
-            if (global.MaomaoCloud) return true;
-            return loadProactiveScript(
-                proactiveAsset('shared/js/cloud-push-client.js'),
-                function () { return !!global.MaomaoCloud; }
-            ).then(function () { return true; });
+            return ensureOptionalCloudClient();
         }).catch(function () {
             proactiveDependenciesPromise = null;
             return false;
