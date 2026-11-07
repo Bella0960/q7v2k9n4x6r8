@@ -600,7 +600,12 @@
             resetProactiveAttempt(roleId);
             return true;
         }
-        if (roleSetting && roleSetting.enabled === false) return true;
+        if (!roleSetting ||
+            (roleSetting.enabled !== true && roleSetting.enabled !== null)) {
+            // A malformed or incomplete per-role policy response is not
+            // permission to use the legacy local executor.
+            return true;
+        }
 
         if (document.visibilityState === 'hidden') {
             resetProactiveAttempt(roleId);
