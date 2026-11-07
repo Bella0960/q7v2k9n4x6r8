@@ -2363,6 +2363,82 @@ test('AI 等待回复期间收到主动消息时，最终落库会合并最新�
   );
 });
 
+test('AI 气泡动画结束后，红包/转账/图片/通话卡统一使用最新历史', () => {
+  const sendStart = detail.indexOf('async function sendMsg(opts)');
+  const pacingAwait = detail.indexOf('await appendAiMessageWithPacing(aiMsg, aiMessageIndex)', sendStart);
+  const refreshAfterPacing = detail.indexOf('historyList = refreshHistoryAfterAssistantPacing(', pacingAwait);
+  const callCard = detail.indexOf('insertIncomingCallCard(historyList)', refreshAfterPacing);
+  const payCards = detail.indexOf('insertPayCards(historyList, parsedPay.items)', callCard);
+  const familyCards = detail.indexOf('insertRoleFamilyCardInvitations(historyList, parsedRoleFamilyCard.cards)', payCards);
+  const heartCards = detail.indexOf('insertHeartCards(historyList, parsedHeart.hearts)', familyCards);
+  const imageCards = detail.indexOf('insertVImageCards(historyList, parsedImg.images)', heartCards);
+  assert.ok(pacingAwait >= 0 && refreshAfterPacing > pacingAwait,
+    'the awaited bubble animation must be followed by a fresh history read');
+  assert.ok(callCard > refreshAfterPacing && payCards > refreshAfterPacing &&
+    familyCards > refreshAfterPacing && heartCards > refreshAfterPacing && imageCards > refreshAfterPacing,
+    'all follow-up card handlers must receive the refreshed history after the only pacing await');
+  assert.match(detail, /persistedAssistantMessage = aiMsg/);
+  assert.match(detail, /if \(!Array\.isArray\(historyList\)\)/);
+});
+
+test('气泡动画期间新增的主动消息会与本轮 AI 回复合并，且保存失败不返回成功', () => {
+  const helperStart = detail.indexOf('function refreshHistoryAfterAssistantPacing(');
+  const helperEnd = detail.indexOf('\n\n        // 3. 核心真实 AI 聊天发送逻辑', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helperSource = detail.slice(detail.indexOf('function refreshSendHistorySnapshot(', helperStart), helperEnd);
+
+  let stored = null;
+  let writes = 0;
+  const helperWindow = {
+    loadMessages: () => stored
+      ? stored.map(item => ({ ...item }))
+      : [
+          { mid: 'base-1', text: 'existing' },
+          { mid: 'cloud-1', text: '动画期间到达的主动消息' },
+          { mid: 'tab-1', text: '另一个标签页的新消息' },
+          { mid: 'user-turn-1', text: '本轮用户消息' }
+        ],
+    ensureMid(message) {
+      if (!message.mid) message.mid = 'assistant-turn-1';
+    },
+    saveMessages(list) {
+      writes += 1;
+      stored = list.map(item => ({ ...item }));
+      return true;
+    }
+  };
+  runInNewContext(helperSource, helperWindow);
+  const merged = helperWindow.refreshHistoryAfterAssistantPacing(
+    [
+      { mid: 'base-1', text: 'existing' },
+      { mid: 'user-turn-1', text: '本轮用户消息' },
+      { mid: 'assistant-turn-1', text: '本轮 AI 回复' }
+    ],
+    'user-turn-1',
+    1,
+    { role: 'assistant', mid: 'assistant-turn-1', text: '本轮 AI 回复' }
+  );
+  assert.deepEqual(
+    Array.from(merged, item => item.mid),
+    ['base-1', 'cloud-1', 'tab-1', 'user-turn-1', 'assistant-turn-1'],
+    'concurrent cloud/tab messages must survive while the pending AI reply is restored exactly once'
+  );
+  assert.equal(writes, 1);
+
+  helperWindow.saveMessages = () => false;
+  helperWindow.loadMessages = () => [
+    { mid: 'base-1', text: 'existing' },
+    { mid: 'cloud-2', text: '另一条主动消息' }
+  ];
+  const failed = helperWindow.refreshHistoryAfterAssistantPacing(
+    [{ mid: 'assistant-turn-2', text: '不能丢失的回复' }],
+    '',
+    -1,
+    { role: 'assistant', mid: 'assistant-turn-2', text: '不能丢失的回复' }
+  );
+  assert.equal(failed, null, 'a failed recovery write must not be treated as a confirmed history');
+});
+
 test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡触发', () => {
   assert.match(detail, /row\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
   assert.match(detail, /new IntersectionObserver\(/);
