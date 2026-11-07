@@ -313,7 +313,101 @@ async function runViewport(browser, baseUrl, viewport) {
     add('forum-detail.no-horizontal-overflow', false, { reason: 'no seeded post found on forum.html' });
   }
 
-  // ---------- 5. Home 条自身仍可用 ----------
+  // ---------- 5. 论坛详情页 Home 线独立热区 ----------
+  await openPage(`${baseUrl}/forum/forum-detail.html?id=${encodeURIComponent(SEEDED_POST.id)}`, '#commentInput');
+  const detailLineGeom = await page.evaluate(() => {
+    const round = (v) => Math.round(v * 100) / 100;
+    const read = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { left: round(r.left), top: round(r.top), width: round(r.width), height: round(r.height), right: round(r.right), bottom: round(r.bottom) };
+    };
+    const describe = (el) => {
+      if (!el) return null;
+      const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
+      return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
+    };
+    const bar = document.querySelector('button.maomao-global-home-indicator');
+    const hit = document.querySelector('.maomao-global-home-indicator-hit-target');
+    const input = document.querySelector('#commentInput');
+    const lineStyle = getComputedStyle(bar, '::before');
+    const br = bar.getBoundingClientRect();
+    // 可见线在 140x30 外壳内居中，实际绘制区固定为 84x4。
+    const lineRect = {
+      left: round(br.left + (br.width - 84) / 2),
+      top: round(br.top + (br.height - 4) / 2),
+      width: 84,
+      height: 4,
+      right: round(br.left + (br.width - 84) / 2 + 84),
+      bottom: round(br.top + (br.height - 4) / 2 + 4)
+    };
+    const lineCenter = { x: round((lineRect.left + lineRect.right) / 2), y: round((lineRect.top + lineRect.bottom) / 2) };
+    const inputRect = read(input);
+    const inputCenter = inputRect ? { x: round((inputRect.left + inputRect.right) / 2), y: round((inputRect.top + inputRect.bottom) / 2) } : null;
+    return {
+      lineRect,
+      lineCenter,
+      hitRect: read(hit),
+      hitPointerEvents: hit ? getComputedStyle(hit).pointerEvents : null,
+      hitZIndex: hit ? getComputedStyle(hit).zIndex : null,
+      barPointerEvents: getComputedStyle(bar).pointerEvents,
+      lineWidth: lineStyle.width,
+      lineHeight: lineStyle.height,
+      lineTopElement: describe(document.elementFromPoint(lineCenter.x, lineCenter.y)),
+      inputCenter,
+      inputTopElement: inputCenter ? describe(document.elementFromPoint(inputCenter.x, inputCenter.y)) : null
+    };
+  });
+
+  const hitAligned = !!(detailLineGeom.hitRect &&
+    Math.abs(detailLineGeom.hitRect.left - detailLineGeom.lineRect.left) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.top - detailLineGeom.lineRect.top) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.width - 84) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.height - 4) <= 0.5);
+  add('forum-detail.home-line.hit-target-exact-84x4',
+    hitAligned && detailLineGeom.lineWidth === '84px' && detailLineGeom.lineHeight === '4px' &&
+    detailLineGeom.barPointerEvents === 'none' && detailLineGeom.hitPointerEvents === 'auto', detailLineGeom);
+  add('forum-detail.home-line.center.hits-hit-target',
+    /home-indicator-hit-target/.test(detailLineGeom.lineTopElement || ''), { lineTopElement: detailLineGeom.lineTopElement });
+
+  const commentText = `home-indicator-002-${viewport.width}`;
+  let commentFocused = false;
+  if (detailLineGeom.inputCenter) {
+    await page.mouse.click(detailLineGeom.inputCenter.x, detailLineGeom.inputCenter.y);
+    await sleep(200);
+    commentFocused = await page.evaluate(() => document.activeElement && document.activeElement.id === 'commentInput');
+  }
+  if (commentFocused) await page.keyboard.type(commentText);
+  await sleep(100);
+  const typedValue = await page.evaluate(() => document.querySelector('#commentInput') ? document.querySelector('#commentInput').value : '');
+  add('forum-detail.comment-input.outside-line.focus',
+    commentFocused && typedValue.includes(commentText),
+    { activeId: commentFocused ? 'commentInput' : null, typedValue, inputCenter: detailLineGeom.inputCenter, inputTopElement: detailLineGeom.inputTopElement });
+  if (commentFocused && typedValue.includes(commentText)) {
+    await page.click('.comment-bar .send-btn');
+    const submitDeadline = Date.now() + 2000;
+    let submitted = false;
+    while (Date.now() < submitDeadline && !submitted) {
+      await sleep(100);
+      submitted = await page.evaluate((expected) => {
+        try {
+          const posts = JSON.parse(localStorage.getItem('forum_posts') || '[]');
+          const post = posts.find((item) => item && item.id === 'hit_test_post');
+          return !!(post && Array.isArray(post.comments) && post.comments.some((c) => c && c.text === expected));
+        } catch (error) { return false; }
+      }, commentText);
+    }
+    add('forum-detail.comment-input.type-and-submit', submitted, { commentText, typedValue, submitted });
+  } else {
+    add('forum-detail.comment-input.type-and-submit', false, { commentText, typedValue, skippedBecauseNotFocused: true });
+  }
+
+  await page.mouse.click(detailLineGeom.lineCenter.x, detailLineGeom.lineCenter.y);
+  await sleep(500);
+  add('forum-detail.home-line.center.clicking.returns-home', isIndex(),
+    { afterPath: pathOf(), lineCenter: detailLineGeom.lineCenter, lineTopElement: detailLineGeom.lineTopElement });
+
+  // ---------- 6. Home 条自身仍可用 ----------
   await openPage(`${baseUrl}/forum/forum.html`, '.nav-item[data-page="home"]');
   const barGeom = await page.evaluate(() => {
     const bar = document.querySelector('button.maomao-global-home-indicator');
