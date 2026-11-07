@@ -435,3 +435,36 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增断言已经提交，但 Node/SQLite 回归、`npm run build` 和真机行为尚未执行，均为 **NOT VERIFIED**。
 - 这项修复只封住已配对设备绕过云端授权的本地降级路径；不会改变未配对安装原有的本地模式，也未改变任何角色聊天数据。
 - 没有合并 PR、部署 Worker 或更新 APK。
+## 14. M2.5：主动聊天消息的真实 Web Push 投递与维护恢复
+
+本轮补齐了“主动消息写入云端收件箱后，如何真正通知目标设备”的缺口。此前接收端只有聊天页前台 15 秒轮询；`POST /api/push/test` 只是独立测试通知，并不会为主动聊天消息创建 Push 投递记录。
+
+### 14.1 主动消息 → Push 投递
+
+- 新增 `CloudStore.listOutboundPushCandidates({ now, limit })`：只查询 `delivery_status='pending'` 的出站消息、仍授权的目标设备及有效订阅，并排除已发送 / 已终止通知；只挑选首次投递、到期重试或过期发送租约。
+- 新增 `buildOutboundPushPayload()`：通知标题为“新消息”，正文只提示“有一位角色刚刚联系你，打开聊天查看”，点击路径为 `chat/chat/chat-detail.html?id=<characterId>`。通知 payload 不带聊天正文、人设、记忆或 API Key。
+- 新增 `dispatchPendingOutboundPushes()`：复用既有 `push_deliveries`，以 `outbound:<serverMessageId> + subscriptionId` 为去重范围，先 CAS 认领 60 秒租约，再走现有 VAPID/Web Push 发送、成功/失效状态记录与失败退避。
+- 主动消息完成并持久化到 outbox 后立即尝试 Push。Push 服务不可用或发送失败不会回滚消息；收件箱仍保留，聊天页前台轮询可继续接收。
+- 每个订阅独立维护投递状态，最多 5 次发送尝试；临时网络错误、408/425/429、5xx 走指数退避，订阅返回 gone 时停用该订阅。
+
+### 14.2 定时重试与暂存结果恢复
+
+- Cloudflare scheduled maintenance 会先运行 `repairAllStagedActivityOutboxes()`，再运行 Push dispatcher。即使 Worker 在“生成结果暂存后、outbox 插入前”中断，用户没有重新打开聊天页时，下一轮维护也会从不可变暂存结果恢复 outbox。
+- 恢复只读取活动队列中已完成任务的暂存结果，并通过 join 限定仍授权的设备；已撤销设备的待恢复结果不会重新写入出站收件箱。
+- 恢复与 Push 派发都有 best-effort 边界：单条损坏记录或单次发送异常不会删除原始暂存数据，也不会把已经入箱的消息标记为已读 / 已确认。
+- Push accepted 不等于聊天记录已保存。出站消息仍必须由原聊天页写入本地历史、读回验证并 ACK；Push 只负责唤起 / 提醒，不替代消息收件箱。
+
+### 14.3 新增回归测试（已写入，未执行）
+
+- 主动任务完成后即时触发 Push，校验投递记录按订阅建立且状态为 sent。
+- 锁屏通知只包含通用提醒与目标聊天 URL，不包含模型生成的私聊正文。
+- 同一主动消息重复完成不重复发送 Push。
+- 5xx 失败进入 30 秒首轮退避，到期后可使用同一个 dedupe key 重试并成功。
+- Worker scheduled maintenance 的源码契约确认先做全局暂存 outbox 恢复，再运行 Push dispatcher。
+- 全局暂存结果恢复测试确认仍授权设备可以恢复，已撤销设备的暂存内容不会重新进入 outbox。
+
+### 14.4 验收边界
+
+- 这是 Worker 代码层面的真实 Web Push 发送路径，不代表真实 Android 手机已经收到通知。仍需 Cloudflare Worker 部署、VAPID secrets、设备订阅、通知权限和锁屏真机验收。
+- Push service 接受请求只代表服务端投递被接受，不保证操作系统最终展示通知；用户关闭通知权限、浏览器 / PWA 被系统限制或设备离线时，仍以 outbox + 前台聊天轮询及后续 Push 重试恢复。
+- Node/SQLite 契约测试、`npm run build`、Wrangler dry-run、Cloudflare 部署和 Android 锁屏通知测试均为 **NOT VERIFIED**。本轮未合并 PR、未部署 Worker、未更新 APK。
