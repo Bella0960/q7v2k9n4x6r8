@@ -9,6 +9,8 @@ class FakeD1 {
   constructor() {
     this.schemaReady = true;
     this.friendCodeIndexReady = true;
+    this.friendRequestIndexReady = true;
+    this.friendLifecycleTriggersReady = true;
     this.accounts = new Map();
     this.sessions = new Map();
     this.codes = new Map();
@@ -36,7 +38,8 @@ class FakeD1 {
     if (sql.includes("FROM sqlite_master") && sql.includes("ready_tables")) {
       return {
         ready_tables: this.schemaReady ? 4 : 0,
-        ready_index: this.friendCodeIndexReady ? 1 : 0
+        ready_indexes: Number(this.friendCodeIndexReady) + Number(this.friendRequestIndexReady),
+        ready_triggers: this.friendLifecycleTriggersReady ? 8 : 0
       };
     }
     if (sql.includes("FROM sqlite_master")) {
@@ -281,6 +284,8 @@ function makeAccount(db, id, handle, token) {
 
 async function setup(options = {}) {
   const db = new FakeD1();
+  db.friendRequestIndexReady = options.noFriendRequestIndex !== true;
+  db.friendLifecycleTriggersReady = options.noFriendLifecycleTriggers !== true;
   const tokens = {
     alice: makeAccount(db, "account-alice-001", "alice_01", "a".repeat(64)),
     bob: makeAccount(db, "account-bob-001", "bob_0001", "b".repeat(64)),
@@ -335,7 +340,9 @@ test("friend service stays disabled without its explicit flag and complete schem
     { friendsEnabled: false },
     { authEnabled: false },
     { noDb: true },
-    { noLimiter: true }
+    { noLimiter: true },
+    { noFriendRequestIndex: true },
+    { noFriendLifecycleTriggers: true }
   ]) {
     const context = await setup(options);
     assert.equal(await isRealUserFriendsConfigured(context.env), false);
@@ -349,6 +356,12 @@ test("friend service stays disabled without its explicit flag and complete schem
   const noRotationIndex = await setup();
   noRotationIndex.db.friendCodeIndexReady = false;
   assert.equal(await isRealUserFriendsConfigured(noRotationIndex.env), false);
+
+  const noPendingPairIndex = await setup({ noFriendRequestIndex: true });
+  assert.equal(await isRealUserFriendsConfigured(noPendingPairIndex.env), false);
+
+  const noLifecycleTriggers = await setup({ noFriendLifecycleTriggers: true });
+  assert.equal(await isRealUserFriendsConfigured(noLifecycleTriggers.env), false);
 });
 
 test("QR rotation returns a short-lived one-time code and revokes the previous code", async () => {
