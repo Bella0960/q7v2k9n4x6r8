@@ -135,7 +135,7 @@ test('novel workshop guide reflects current local-template behavior', () => {
 });
 
 test('PWA caches the tutorial app and dedicated CI runs tests, layout check and build', () => {
-  assert.match(sw, /phone-app-pwa-v176/);
+  assert.match(sw, /phone-app-pwa-v177/);
   assert.match(sw, /'\.\/tutorial\/tutorial\.html'/);
   assert.equal(packageJson.scripts['test:tutorial'], 'node --test tests/tutorial-app-contract.test.mjs');
   assert.match(tutorialWorkflow, /npm run test:tutorial/);
