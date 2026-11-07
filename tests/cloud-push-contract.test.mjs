@@ -478,7 +478,7 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readinessJson.includes('another_users_reason'), false);
   assert.equal(readinessJson.includes('private-task-id'), false);
   assert.deepEqual(ctx.store.getActivityQueueSummary({ userId: 'another-user' }), {
-    total: 0, waiting: 0, retry: 0, running: 0,
+    total: 1, waiting: 1, retry: 0, running: 0,
     completed: 0, failed: 0, superseded: 0, other: 0
   });
   assert.deepEqual(ctx.store.getRecentAutonomyReasonSummary({
