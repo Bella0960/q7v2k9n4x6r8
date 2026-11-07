@@ -1294,6 +1294,62 @@ class CloudStore {
    * before an interruption. The source device and tenant are rechecked; only
    * the exact persisted JSON/message ID can be replayed.
    */
+  /**
+   * Internal maintenance recovery across all still-authorized devices.
+   * The target tenant/device/role are taken only from persisted queue + device
+   * rows, never from caller-supplied identifiers.
+   */
+  repairAllStagedActivityOutboxes({ now, limit = 50 }) {
+    const safeLimit = Math.max(1, Math.min(200, Math.floor(Number(limit) || 50)));
+    const timestamp = Number(now);
+    if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+      throw new TypeError('staged outbox recovery now 必须是非负安全整数');
+    }
+    const rows = this.exec(
+      `SELECT q.id, q.device_id, q.character_id, q.result_json,
+              q.result_server_message_id, q.result_dedupe_key, q.updated_at,
+              d.user_id
+       FROM activity_queue q
+       INNER JOIN devices d
+         ON d.id = q.device_id AND d.revoked_at IS NULL
+       WHERE q.status = 'completed'
+         AND q.result_json IS NOT NULL
+         AND q.result_server_message_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM outbound_messages o
+           WHERE o.server_message_id = q.result_server_message_id
+         )
+       ORDER BY q.updated_at ASC, q.id ASC
+       LIMIT ?`,
+      safeLimit
+    );
+
+    let repaired = 0;
+    let deferred = 0;
+    for (const row of rows) {
+      let payload;
+      try {
+        payload = JSON.parse(row.result_json);
+      } catch {
+        deferred += 1;
+        continue;
+      }
+      const result = this.enqueueOutboundMessage({
+        id: 'out_' + row.result_server_message_id,
+        deviceId: row.device_id,
+        userId: row.user_id,
+        characterId: row.character_id,
+        serverMessageId: row.result_server_message_id,
+        dedupeKey: row.result_dedupe_key,
+        payload,
+        now: Number(row.updated_at || timestamp)
+      });
+      if (result.inserted || result.idempotent) repaired += 1;
+      else deferred += 1;
+    }
+    return { scanned: rows.length, repaired, deferred };
+  }
+
   repairStagedActivityOutbox({ userId, deviceId, characterId, now, limit = 10 }) {
     const safeLimit = Math.max(1, Math.min(20, Math.floor(Number(limit) || 10)));
     const rows = this.exec(
