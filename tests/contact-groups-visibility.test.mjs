@@ -117,6 +117,8 @@ test('Moments audience controls do not reuse @mentions as the visible-to list', 
   assert.match(composerPage, /hiddenTo: hiddenAudience\.memberIds/);
   assert.match(composerPage, /mentions: mentionsList\.slice\(\)/);
   assert.doesNotMatch(composerPage, /post\.visibleTo\s*=\s*mentionsList/);
+  assert.match(composerPage, /currentPerm === 'excluded' && !hiddenAudience\.memberIds\.length/);
+  assert.match(composerPage, /不给谁看至少选择一位联系人/);
 });
 
 test('owner feed remains visible while excluded AI contacts are blocked from comment/mention requests', () => {
