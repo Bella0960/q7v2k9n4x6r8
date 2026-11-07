@@ -30,10 +30,19 @@
       '</div>' +
       '<div id="ruSessionArea" hidden>' +
         '<div class="ru-account-row">' +
-          '<div><div class="ru-account-name" id="ruAccountName"></div><div class="ru-account-handle" id="ruAccountHandle"></div><button type="button" class="ru-plain-button" id="ruEditName">修改昵称</button></div>' +
+          '<div class="ru-account-identity">' +
+            '<div class="ru-avatar-wrap ru-avatar-wrap-large"><img id="ruOwnAvatar" class="ru-avatar-image" alt="账号头像" hidden><span id="ruOwnAvatarFallback" class="ru-avatar-fallback">M</span></div>' +
+            '<div><div class="ru-account-name" id="ruAccountName"></div><div class="ru-account-handle" id="ruAccountHandle"></div><button type="button" class="ru-plain-button" id="ruEditName">修改昵称</button></div>' +
+          '</div>' +
           '<button type="button" class="ru-plain-button" id="ruLogout">退出</button>' +
         '</div>' +
-        '<form id="ruProfileForm" class="ru-profile-form" hidden>' +
+        '<div id="ruAvatarControls" class="ru-avatar-controls" hidden>' +
+          '<input id="ruAvatarFile" type="file" accept="image/jpeg,image/png,image/webp" hidden>' +
+          '<button type="button" class="ru-plain-button" id="ruChooseAvatar">更换头像</button>' +
+          '<button type="button" class="ru-plain-button" id="ruRemoveAvatar" hidden>移除头像</button>' +
+          '<span class="ru-avatar-hint">JPG、PNG 或 WebP，最大 5 MB</span>' +
+        '</div>' +
+        '<form id="ruProfileForm" class="ru-profile-form" hidden>'
           '<label>新的昵称<input id="ruProfileDisplayName" maxlength="48" autocomplete="nickname" required></label>' +
           '<div class="ru-profile-actions"><button class="ru-primary" id="ruProfileSave" type="submit">保存昵称</button><button class="ru-plain-button" id="ruProfileCancel" type="button">取消</button></div>' +
         '</form>' +
@@ -102,8 +111,19 @@
     '.ru-primary:disabled{opacity:.45;cursor:default;}',
     '.ru-footnote{margin-top:8px;color:#999;font-size:10px;line-height:1.55;}',
     '.ru-account-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f0f0;}',
+    '.ru-account-identity{display:flex;align-items:center;gap:10px;min-width:0;}',
     '.ru-account-name{font-size:13px;font-weight:500;color:#171717;}',
     '.ru-account-handle{margin-top:3px;color:#999;font-size:10px;}',
+    '.ru-avatar-wrap{position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;border:1px solid #e8e8e8;border-radius:50%;background:#f4f4f5;color:#555;}',
+    '.ru-avatar-wrap-large{width:48px;height:48px;}',
+    '.ru-contact-avatar{width:34px;height:34px;}',
+    '.ru-avatar-image{display:block;width:100%;height:100%;object-fit:cover;}',
+    '.ru-avatar-image[hidden]{display:none!important;}',
+    '.ru-avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:13px;font-weight:500;}',
+    '.ru-avatar-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 0;border-bottom:1px solid #f0f0f0;}',
+    '.ru-avatar-controls[hidden]{display:none!important;}',
+    '.ru-avatar-hint{color:#999;font-size:9px;}',
+    '.ru-list-main-with-avatar{display:flex;align-items:center;gap:9px;}',
     '.ru-profile-form{display:grid;gap:8px;padding:10px 0;border-bottom:1px solid #f0f0f0;}',
     '.ru-profile-form[hidden]{display:none!important;}',
     '.ru-profile-form label{display:grid;gap:5px;color:#888;font-size:10px;}',
@@ -174,6 +194,14 @@
       authentication_temporarily_unavailable: '账号服务暂时不可用。',
       invalid_display_name: '昵称不能为空，最多 48 个字符。',
       profile_update_unavailable: '昵称暂时无法保存，请稍后重试。',
+      profile_avatar_unavailable: '服务器尚未开通头像存储服务。',
+      invalid_avatar_file: '请选择 JPG、PNG 或 WebP 图片，大小不超过 5 MB。',
+      unsupported_avatar_type: '暂不支持这种图片格式。',
+      avatar_too_large: '图片太大，请选择 5 MB 以内的图片。',
+      invalid_avatar_image: '图片文件无法识别，请换一张 JPG、PNG 或 WebP 图片。',
+      avatar_upload_unavailable: '头像暂时无法上传，请稍后重试。',
+      avatar_delete_unavailable: '头像暂时无法移除，请稍后重试。',
+      avatar_read_unavailable: '头像暂时无法读取。',
       friend_requests_temporarily_unavailable: '好友申请暂时无法读取。',
       friends_temporarily_unavailable: '好友列表暂时无法读取。',
       blocked_accounts_temporarily_unavailable: '暂时无法读取已屏蔽的用户。',
@@ -196,10 +224,34 @@
   }
   function showAuthArea(show) { el('ruAuthArea').hidden = !show; }
   function showSessionArea(show) { el('ruSessionArea').hidden = !show; }
+  function renderAvatar(target, fallback, assetId, displayName) {
+    var initial = Array.from(String(displayName || 'MAOMAO'))[0] || 'M';
+    fallback.textContent = initial;
+    var url = client.avatarUrl ? client.avatarUrl(assetId) : '';
+    if (!url) {
+      target.hidden = true;
+      target.removeAttribute('src');
+      fallback.hidden = false;
+      return;
+    }
+    target.onerror = function () {
+      target.hidden = true;
+      target.removeAttribute('src');
+      fallback.hidden = false;
+    };
+    target.src = url;
+    target.hidden = false;
+    fallback.hidden = true;
+  }
   function renderAccount(account) {
     el('ruAccountName').textContent = account.displayName;
     el('ruAccountHandle').textContent = '@' + account.handle;
     el('ruProfileDisplayName').value = account.displayName;
+    renderAvatar(el('ruOwnAvatar'), el('ruOwnAvatarFallback'), account.avatarAssetId, account.displayName);
+    var capabilities = client.getState().capabilities || {};
+    var avatarEnabled = !!(capabilities.profileAvatar && capabilities.profileAvatar.enabled === true);
+    el('ruAvatarControls').hidden = !avatarEnabled;
+    el('ruRemoveAvatar').hidden = !account.avatarAssetId;
   }
   function setAuthMode(mode) {
     authMode = mode === 'register' ? 'register' : 'login';
@@ -275,9 +327,24 @@
       var row = document.createElement('div');
       row.className = 'ru-list-row';
       var main = document.createElement('div');
-      main.className = 'ru-list-main';
-      addText(main, 'ru-list-name', friend.displayName || 'MAOMAO 用户');
-      addText(main, 'ru-list-meta', friend.handle ? '@' + friend.handle : friend.id);
+      main.className = 'ru-list-main ru-list-main-with-avatar';
+      var avatarWrap = document.createElement('div');
+      avatarWrap.className = 'ru-avatar-wrap ru-contact-avatar';
+      var avatarImage = document.createElement('img');
+      avatarImage.className = 'ru-avatar-image';
+      avatarImage.alt = '';
+      avatarImage.hidden = true;
+      var avatarFallback = document.createElement('span');
+      avatarFallback.className = 'ru-avatar-fallback';
+      avatarWrap.appendChild(avatarImage);
+      avatarWrap.appendChild(avatarFallback);
+      renderAvatar(avatarImage, avatarFallback, friend.avatarAssetId, friend.displayName);
+      main.appendChild(avatarWrap);
+      var textWrap = document.createElement('div');
+      textWrap.className = 'ru-list-text';
+      addText(textWrap, 'ru-list-name', friend.displayName || 'MAOMAO 用户');
+      addText(textWrap, 'ru-list-meta', friend.handle ? '@' + friend.handle : friend.id);
+      main.appendChild(textWrap);
       var actions = document.createElement('div');
       actions.className = 'ru-list-actions';
       addAction(actions, '移除', 'remove-friend', friend.id);
@@ -459,6 +526,42 @@
       } else {
         setStatus('账号已登录，但好友服务尚未启用。');
       }
+    } catch (error) {
+      setStatus(explainError(error), 'error');
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  el('ruChooseAvatar').addEventListener('click', function () {
+    if (!el('ruAvatarControls').hidden) el('ruAvatarFile').click();
+  });
+
+  el('ruAvatarFile').addEventListener('change', async function () {
+    var file = el('ruAvatarFile').files && el('ruAvatarFile').files[0];
+    if (!file) return;
+    var button = el('ruChooseAvatar');
+    setBusy(button, true, '上传中…');
+    try {
+      var result = await client.uploadAvatar(file);
+      renderAccount(result.account);
+      setStatus('真人账号头像已更新，好友刷新后会看到新头像。');
+    } catch (error) {
+      setStatus(explainError(error), 'error');
+    } finally {
+      el('ruAvatarFile').value = '';
+      setBusy(button, false);
+    }
+  });
+
+  el('ruRemoveAvatar').addEventListener('click', async function () {
+    if (!root.confirm('移除当前真人账号头像？')) return;
+    var button = el('ruRemoveAvatar');
+    setBusy(button, true, '移除中…');
+    try {
+      var account = await client.removeAvatar();
+      renderAccount(account);
+      setStatus('真人账号头像已移除。');
     } catch (error) {
       setStatus(explainError(error), 'error');
     } finally {
