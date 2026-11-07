@@ -481,6 +481,29 @@ test('transactional chat pair saver stores two existing assets once and creates 
   assert.equal(api.getActive('role-a'), null, 'pair saving does not change the active avatar');
 });
 
+test('saving the same chat pair twice is idempotent and preserves the original pair record', async () => {
+  const { api, assets, refs } = createLibrary();
+  const first = await api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
+  const second = await api.add('chat-owner', 'data:image/jpeg;base64,SECOND');
+  const initial = await api.addAssetPair('role-a', first.value.assetId, second.value.assetId, {
+    label: '第一次收藏'
+  });
+  assert.equal(initial.ok, true);
+  const assetCount = assets.size;
+  const referenceCount = refs.size;
+
+  const repeated = await api.addAssetPair('role-a', first.value.assetId, second.value.assetId, {
+    label: '重复请求不应覆盖名称'
+  });
+  assert.equal(repeated.ok, true);
+  assert.equal(repeated.meta.reused, true);
+  assert.equal(api.list('role-a').length, 2);
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.equal(api.getPairs('role-a')[0].label, '第一次收藏');
+  assert.equal(assets.size, assetCount);
+  assert.equal(refs.size, referenceCount);
+});
+
 test('transactional pair saver rolls back its first new reference when the second asset cannot be linked', async () => {
   const secondAssetId = 'as_' + 'B'.repeat(32);
   const failing = createLibrary({}, { failAddRefFor: secondAssetId });
