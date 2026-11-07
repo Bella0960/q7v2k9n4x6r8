@@ -99,6 +99,22 @@
   function start(mode, character) {
     var isGroupCall = mode === 'group' || mode === 'group-video';
     var type = mode === 'video' || mode === 'group-video' ? 'video' : 'voice';
+    var contactRef = global.PhoneCurrentContactRef;
+    if (contactRef && String(contactRef.type || '').toLowerCase() === 'real_user') {
+      var capabilities = global.PhoneContactCapabilities;
+      var requestedFeature = type === 'video' ? 'video' : 'voice';
+      if (!capabilities || typeof capabilities.canFeature !== 'function' ||
+          !capabilities.canFeature(contactRef, requestedFeature)) {
+        if (typeof global.showToast === 'function') {
+          var state = capabilities && typeof capabilities.getFeatureState === 'function'
+            ? capabilities.getFeatureState(contactRef, requestedFeature) : null;
+          global.showToast(state && state.reason
+            ? state.reason
+            : '真人语音通话尚未接入实时通信服务。');
+        }
+        return false;
+      }
+    }
     if (!character || !character.id) return false;
     var groupData = isGroupCall ? readGroupData(character.id) : null;
     var groupParticipants = isGroupCall ? resolveGroupParticipants(groupData) : [];
