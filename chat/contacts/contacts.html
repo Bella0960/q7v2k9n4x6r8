@@ -446,11 +446,15 @@
       editingContactGroupId = group ? String(group.id) : '';
       var storedMemberIds = group ? (group.memberIds || []).map(String) : [];
       editingContactGroupOtherRefs = [];
-      if (group && Array.isArray(group.memberRefs) && window.PhoneContactIdentity) {
+      if (group && Array.isArray(group.memberRefs)) {
         group.memberRefs.forEach(function (value) {
-          var ref = window.PhoneContactIdentity.normalize(value);
-          if (ref && ref.type !== 'ai_role' && editingContactGroupOtherRefs.indexOf(ref.key) === -1) {
-            editingContactGroupOtherRefs.push(ref.key);
+          var rawRef = String(value == null ? '' : value).trim();
+          if (!rawRef) return;
+          var ref = window.PhoneContactIdentity && window.PhoneContactIdentity.normalize(value);
+          var isRoleRef = ref ? ref.type === 'ai_role' : rawRef.indexOf('ai_role:') === 0;
+          if (!isRoleRef && rawRef.indexOf(':') > 0 && editingContactGroupOtherRefs.indexOf(rawRef) === -1) {
+            // Preserve typed non-role references even if the identity helper itself failed to load.
+            editingContactGroupOtherRefs.push(ref ? ref.key : rawRef);
           }
         });
       }
