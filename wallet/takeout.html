@@ -429,13 +429,20 @@
   }
   function saveCart() {
     try {
-      localStorage.setItem('takeout_cart', JSON.stringify(cart));
+      var serialized = JSON.stringify(cart);
+      localStorage.setItem('takeout_cart', serialized);
       if (cartCount() > 0 && cartShopId) localStorage.setItem('takeout_cart_shop_id', cartShopId);
       else localStorage.removeItem('takeout_cart_shop_id');
+      var shopIdSaved = cartCount() > 0 && cartShopId
+        ? localStorage.getItem('takeout_cart_shop_id') === cartShopId
+        : localStorage.getItem('takeout_cart_shop_id') === null;
+      updateCartUI();
+      return localStorage.getItem('takeout_cart') === serialized && shopIdSaved;
     } catch(e) {
       toast('购物车保存失败，请检查手机存储空间');
+      updateCartUI();
+      return false;
     }
-    updateCartUI();
   }
 
   function getCharacters() {
@@ -983,10 +990,6 @@
               toast('订单保存失败；再次提交可恢复原交易');
               return;
             }
-            if (!ledger.completePendingCheckout(transactionId)) {
-              toast('订单已保存，但结算确认暂未完成；再次提交不会重复扣款');
-              return;
-            }
             try {
               if (roleFamilyCard) {
                             notifyRoleCardIssuer(roleFamilyCard,
@@ -998,10 +1001,22 @@
               console.warn('[takeout] 亲属卡通知未能发送', notifyError);
             }
 
-            // 清购物车
+            // 订单落盘后再清空购物车；清理未确认时保留原购物车与待恢复交易。
+            var cartSnapshot = cart;
+            var cartShopSnapshot = cartShopId;
             cart = {};
             cartShopId = '';
-            saveCart();
+            if (!saveCart()) {
+              cart = cartSnapshot;
+              cartShopId = cartShopSnapshot;
+              updateCartUI();
+              toast('订单已保存，但购物车未能清空；再次提交会恢复原交易');
+              return;
+            }
+            if (!ledger.completePendingCheckout(transactionId)) {
+              toast('订单已保存，但结算确认暂未完成；再次提交不会重复扣款');
+              return;
+            }
             closeCheckout();
             if (currentShop) renderDishes();
             else updateCartUI();
