@@ -86,6 +86,15 @@ export class CloudDatabase {
       const removed = this.store.cleanupSubscriptions(timestamp);
       const pairingTokensRemoved = this.store.cleanupDevicePairingTokens(timestamp);
       const contextEventsRemoved = this.store.cleanupCharacterContextEvents(timestamp);
+      let stagedOutboxRecovery;
+      try {
+        stagedOutboxRecovery = this.store.repairAllStagedActivityOutboxes({
+          now: timestamp,
+          limit: 100
+        });
+      } catch (error) {
+        stagedOutboxRecovery = { scanned: 0, repaired: 0, deferred: 1 };
+      }
       let pushDispatch;
       try {
         pushDispatch = await dispatchPendingOutboundPushes({
@@ -103,6 +112,7 @@ export class CloudDatabase {
         removed,
         pairingTokensRemoved,
         contextEventsRemoved,
+        stagedOutboxRecovery,
         pushDispatch
       });
     }
