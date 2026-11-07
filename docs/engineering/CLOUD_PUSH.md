@@ -623,3 +623,5 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - This is bounded recovery, not a promise that an unavailable local store can be repaired automatically; the server continues retaining unacknowledged messages.
 
 - If cursor writes fail because browser storage is unavailable or full, the live page continues with a dirty in-memory cursor. That in-memory position takes precedence over an older persisted cursor. It is intentionally page-lifetime recovery; a full reload cannot preserve a cursor that the browser refused to store, so unacknowledged rows remain server-pending and are safely retried.
+
+- Before a cloud outbox envelope is allowed to return persistence success (and therefore before the receiver sends its cloud ACK), the chat page performs a second history read after visual pacing. If a sibling tab overwrote the message during that interval, the receiver merges the envelope back into the latest history and verifies it again. This narrows the stale-tab overwrite window; it is not a cross-tab transactional lock and does not claim to eliminate all concurrent-write races.
