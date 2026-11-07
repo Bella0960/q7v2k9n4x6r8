@@ -179,7 +179,9 @@ test('repeated message IDs are idempotent and conflicting reuse is rejected', ()
   const message = { mid: 'stable-mid', type: 'text', text: '同一条消息', createdAt: 300 };
 
   assert.equal(runtime.repository.appendMessage(ref, message).ok, true);
-  const duplicate = runtime.repository.appendMessage(ref, message);
+  const duplicate = runtime.repository.appendMessage(ref, {
+    mid: 'stable-mid', type: 'text', text: '同一条消息'
+  });
   assert.equal(duplicate.ok, true);
   assert.equal(duplicate.action, 'duplicate_delivery');
 
