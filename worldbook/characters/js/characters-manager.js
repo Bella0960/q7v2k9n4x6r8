@@ -254,7 +254,7 @@ async function renderAvatarLibrary(roleId) {
     if (!document.getElementById('avatarPairLibraryStyle')) {
         const style = document.createElement('style');
         style.id = 'avatarPairLibraryStyle';
-        style.textContent = '.avatar-pair-builder{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0 14px;padding:10px 12px;border:1px solid #e8e8ec;border-radius:14px;background:#f7f7f9;color:#666;font-size:12px}.avatar-pair-builder-actions{display:flex;gap:6px}.avatar-pair-builder button{border:0;border-radius:9px;padding:7px 10px;font-size:11px;background:#fff;color:#333}.avatar-pair-builder button:disabled{opacity:.38}.avatar-pair-pick{display:block;width:100%;margin-top:7px;border:1px solid #e8e8ec;border-radius:9px;padding:8px 5px;background:#fff;color:#666;font-size:11px}.avatar-pair-pick.is-selected{background:#111;color:#fff;border-color:#111}.avatar-library-origin{display:inline-block;margin-left:6px;color:#999;font-size:10px;font-weight:400}.avatar-pair-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 14px}.avatar-pair-empty{padding:12px 0;color:#999;font-size:12px}.avatar-pair-card{min-width:0;border:1px solid #e8e8ec;border-radius:16px;padding:12px;background:#fff}.avatar-pair-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;color:#333;font-size:12px}.avatar-pair-unlink{border:0;background:#f7f7f9;color:#666;border-radius:9px;padding:6px 9px;font-size:11px}.avatar-pair-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.avatar-pair-side{min-width:0;border:0;padding:0;background:transparent;text-align:left;color:#555}.avatar-pair-side img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#f0f0f3}.avatar-pair-side span{display:block;padding:7px 2px 0;font-size:11px}.avatar-pair-side.is-active img{outline:2px solid #111;outline-offset:2px}.avatar-pair-side.is-active span{color:#111;font-weight:600}';
+        style.textContent = '.avatar-pair-builder{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0 14px;padding:10px 12px;border:1px solid #e8e8ec;border-radius:14px;background:#f7f7f9;color:#666;font-size:12px}.avatar-pair-builder-actions{display:flex;gap:6px}.avatar-pair-builder button{border:0;border-radius:9px;padding:7px 10px;font-size:11px;background:#fff;color:#333}.avatar-pair-builder button:disabled{opacity:.38}.avatar-pair-pick{display:block;width:100%;margin-top:7px;border:1px solid #e8e8ec;border-radius:9px;padding:8px 5px;background:#fff;color:#666;font-size:11px}.avatar-pair-pick.is-selected{background:#111;color:#fff;border-color:#111}.avatar-library-origin{display:inline-block;margin-left:6px;color:#999;font-size:10px;font-weight:400}.avatar-pair-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 14px}.avatar-pair-empty{padding:12px 0;color:#999;font-size:12px}.avatar-pair-card{min-width:0;border:1px solid #e8e8ec;border-radius:16px;padding:12px;background:#fff}.avatar-pair-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;color:#333;font-size:12px}.avatar-pair-actions{display:flex;align-items:center;gap:6px}.avatar-pair-unlink,.avatar-pair-swap{border:0;background:#f7f7f9;color:#666;border-radius:9px;padding:6px 9px;font-size:11px}.avatar-pair-swap{background:#111;color:#fff}.avatar-pair-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.avatar-pair-side{min-width:0;border:0;padding:0;background:transparent;text-align:left;color:#555}.avatar-pair-side img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#f0f0f3}.avatar-pair-side span{display:block;padding:7px 2px 0;font-size:11px}.avatar-pair-side.is-active img{outline:2px solid #111;outline-offset:2px}.avatar-pair-side.is-active span{color:#111;font-weight:600}';
         document.head.appendChild(style);
     }
 
@@ -300,7 +300,8 @@ async function renderAvatarLibrary(roleId) {
             const secondLabel = escapeHtml(second.label || '头像 B');
             return '<article class="avatar-pair-card">' +
                 '<div class="avatar-pair-card-head"><span>' + escapeHtml(pair.label || '配对头像') + '</span>' +
-                '<button class="avatar-pair-unlink" type="button" data-avatar-pair-action="unlink" data-pair-id="' + pairId + '">解除配对</button></div>' +
+                '<div class="avatar-pair-actions"><button class="avatar-pair-swap" type="button" data-avatar-pair-action="swap" data-pair-id="' + pairId + '">交换 A/B</button>' +
+                '<button class="avatar-pair-unlink" type="button" data-avatar-pair-action="unlink" data-pair-id="' + pairId + '">解除配对</button></div></div>' +
                 '<div class="avatar-pair-photos">' +
                     '<button class="avatar-pair-side' + (first.active ? ' is-active' : '') + '" type="button" data-avatar-pair-action="use" data-avatar-id="' + firstId + '"><img data-avatar-pair-asset="' + firstAsset + '" alt="' + firstLabel + '" loading="lazy" decoding="async"><span>' + (first.active ? 'A · 当前头像' : 'A · 设为当前') + '</span></button>' +
                     '<button class="avatar-pair-side' + (second.active ? ' is-active' : '') + '" type="button" data-avatar-pair-action="use" data-avatar-id="' + secondId + '"><img data-avatar-pair-asset="' + secondAsset + '" alt="' + secondLabel + '" loading="lazy" decoding="async"><span>' + (second.active ? 'B · 当前头像' : 'B · 设为当前') + '</span></button>' +
@@ -459,6 +460,19 @@ async function createRoleAvatarPairFromDraft() {
     avatarPairDraftIds = [];
     await renderAvatarLibrary(roleId);
     setAvatarLibraryStatus('已建立配对，两张头像仍可分别设为当前头像。', 'success');
+}
+
+async function swapRoleAvatarPair(pairId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || typeof library.swapPair !== 'function') return;
+    const result = library.swapPair(roleId, pairId);
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message ? result.error.message : '交换配对顺序失败，原有头像没有变化。', 'error');
+        return;
+    }
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('已交换配对头像 A/B 顺序，当前使用的头像没有改变。', 'success');
 }
 
 async function unlinkRoleAvatarPair(pairId) {
@@ -665,6 +679,7 @@ function renderRoleProfile() {
             event.preventDefault();
             const pairAction = pairButton.getAttribute('data-avatar-pair-action');
             if (pairAction === 'unlink') unlinkRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
+            if (pairAction === 'swap') swapRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
             if (pairAction === 'use') selectRoleAvatarFromLibrary(pairButton.getAttribute('data-avatar-id'));
             if (pairAction === 'pick') toggleRoleAvatarPairDraft(pairButton.getAttribute('data-avatar-id'));
             if (pairAction === 'create') createRoleAvatarPairFromDraft();
