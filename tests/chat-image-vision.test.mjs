@@ -184,6 +184,8 @@ test('deleted chat images release only chat references after single or bulk dele
   assert.ok(chatDetailSource.includes('if (!saveMessages(keep))'));
   assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences(removedMessages)'));
   assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences([removedMessage])'));
+  assert.ok(chatExtrasSource.includes('releaseDeletedChatImageReferences(previousMessages)'));
+  assert.ok(chatDetailSource.includes('window.releaseDeletedChatImageReferences = releaseDeletedChatImageReferences'));
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
