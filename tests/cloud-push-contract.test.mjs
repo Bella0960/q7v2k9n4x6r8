@@ -330,7 +330,7 @@ test('单设备每小时配对签发上限包含已消费配对码且由原子�
   assert.equal(ctx.query('SELECT COUNT(*) AS total FROM device_pairing_tokens')[0].total, 5);
 });
 
-test('云端 readiness 只暴露布尔配置状态与订阅数量，且必须设备鉴权', async () => {
+test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设备鉴权', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_SECRET_PEPPER: 'test-device-secret-pepper-for-contract-tests-32chars',
     ENROLLMENT_TOKEN: 'test-enrollment-token-for-contract-tests',
@@ -419,7 +419,8 @@ test('云端 readiness 只暴露布尔配置状态与订阅数量，且必须设
     running: 1,
     completed: 1,
     failed: 1,
-    superseded: 1
+    superseded: 1,
+    other: 0
   });
   assert.equal(readiness.payload.activityExecutorAvailable, false);
   assert.equal(readiness.payload.contextVersionReady, false);
@@ -434,7 +435,7 @@ test('云端 readiness 只暴露布尔配置状态与订阅数量，且必须设
   assert.equal(readinessJson.includes('do-not-return-this-chat-like-payload'), false);
   assert.deepEqual(ctx.store.getActivityQueueSummary({ userId: 'another-user' }), {
     total: 0, waiting: 0, retry: 0, running: 0,
-    completed: 0, failed: 0, superseded: 0
+    completed: 0, failed: 0, superseded: 0, other: 0
   });
 
   const anonymous = await ctx.asJson('/api/autonomy/readiness');
