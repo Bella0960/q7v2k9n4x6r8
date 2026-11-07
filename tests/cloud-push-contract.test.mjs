@@ -278,6 +278,28 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
 });
 
+test('单设备配对码每小时签发上限由原子存储约束', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const owner = makeDevice();
+  await registerDevice(ctx, owner);
+
+  for (let i = 0; i < 5; i += 1) {
+    const response = await ctx.asJson('/api/devices/pairing-token', {
+      method: 'POST',
+      device: owner
+    });
+    assert.equal(response.status, 200, '前五次配对码签发应允许');
+  }
+
+  const limited = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: owner
+  });
+  assert.equal(limited.status, 429);
+  assert.equal(limited.payload.error.code, 'PAIRING_RATE_LIMITED');
+  assert.equal(ctx.query('SELECT COUNT(*) AS total FROM device_pairing_tokens')[0].total, 5);
+});
+
 test('云端 readiness 只暴露布尔配置状态与订阅数量，且必须设备鉴权', async () => {
   const ctx = setupTestStore(openTestDb(), {
     DEVICE_SECRET_PEPPER: 'test-device-secret-pepper-for-contract-tests-32chars',
