@@ -153,6 +153,15 @@
         return state.pairs.map(function (pair) { return copyPair(pair, state); });
     }
 
+    function getPairForAvatar(roleId, avatarId) {
+        if (!validRoleId(roleId)) return null;
+        avatarId = String(avatarId || '');
+        if (!avatarId) return null;
+        var state = readState(roleId);
+        var pair = state.pairs.find(function (item) { return item.avatarIds.indexOf(avatarId) >= 0; });
+        return pair ? copyPair(pair, state) : null;
+    }
+
     function linkPair(roleId, firstAvatarId, secondAvatarId, options) {
         options = options || {};
         if (!validRoleId(roleId)) return failure('VALIDATION_FAILED', 'roleId is required');
@@ -569,6 +578,7 @@
         getActive: getActive,
         find: find,
         getPairs: getPairs,
+        getPairForAvatar: getPairForAvatar,
         linkPair: linkPair,
         unlinkPair: unlinkPair,
         swapPair: swapPair,
