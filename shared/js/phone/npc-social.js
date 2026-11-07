@@ -238,7 +238,10 @@
     if (busy || document.visibilityState === 'hidden') return { created: false, reason: 'busy-or-hidden' };
     if (!await ensureDependencies()) throw new Error('AI 服务模块未能加载，请刷新后重试。');
     var role = getSelectedRole();
-    if (!role) throw new Error('请先在小手机中选择一个主角色，再开启 NPC 主动交友。');
+    if (!role) {
+      if (manual) throw new Error('请先在小手机中选择一个主角色，再寻找新朋友。');
+      return { created: false, reason: 'no-active-role' };
+    }
     var requests = readRequests();
     if (countPending(requests) >= 1) return { created: false, reason: 'pending-exists' };
     var settings = readSettings();
@@ -246,12 +249,19 @@
     if (!manual && (!settings.enabled || now - settings.lastAttemptAt < settings.intervalHours * 60 * 60 * 1000)) {
       return { created: false, reason: 'disabled-or-cooldown' };
     }
+    var apiConfig = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
+    if (!apiConfig || !String(apiConfig.apiKey || '').trim()) {
+      if (manual) throw new Error('请先在设置中配置 AI API，才能生成 NPC。');
+      return { created: false, reason: 'api-not-configured' };
+    }
     if (!acquireLock(now)) return { created: false, reason: 'locked' };
     busy = true;
-    updateLastAttempt(settings, now);
+    if (!updateLastAttempt(settings, now)) {
+      busy = false;
+      releaseLock();
+      throw new Error('自动发现状态保存失败，已停止生成以避免重复请求。');
+    }
     try {
-      var apiConfig = global.PhoneStorage && global.PhoneStorage.getApiConfig ? global.PhoneStorage.getApiConfig() : {};
-      if (!apiConfig || !String(apiConfig.apiKey || '').trim()) throw new Error('请先在设置中配置 AI API，才能生成 NPC。');
       var context = roleContext(role);
       var oldNames = requests.map(function (item) { return item && item.npc && item.npc.name || ''; }).filter(Boolean);
       var names = allRoleNames();
