@@ -177,6 +177,7 @@ export async function sendWebPush(subscription, payloadText, keys, { nowMs = Dat
   try {
     response = await fetchImpl(endpoint, {
       method: 'POST',
+      redirect: 'error',
       headers: {
         Authorization: authorization,
         'Content-Encoding': 'aes128gcm',
