@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v182';
+const CACHE_NAME = 'phone-app-pwa-v183';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v182 release: support transactional avatar pairs and A/B order swapping.
+// v183 release: support transactional avatar pairs, A/B order swapping and direct pair lookup.
 const APP_SHELL = [
   './',
   './index.html',
@@ -97,7 +97,7 @@ const APP_SHELL = [
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
   './shared/js/phone/role-sticker-library.js?v=20261107v2',
-  './shared/js/phone/role-avatar-library.js?v=20261107v4',
+  './shared/js/phone/role-avatar-library.js?v=20261107v5',
   'shared/js/phone/phone_api.js?v=20261106v1',
   'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
