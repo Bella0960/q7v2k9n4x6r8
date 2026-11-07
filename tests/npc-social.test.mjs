@@ -138,21 +138,23 @@ test('manual NPC discovery creates a pending application, then acceptance create
 
 test('NPC rejection and blocking do not create contacts', () => {
   const h = createHarness();
-  h.data.set('npc_friend_requests_v1', JSON.stringify([{
+  h.data.set('npc_friend_requests_v2_main-role', JSON.stringify([{
     id: 'req-1',
+    mainRoleId: 'main-role',
     status: 'pending',
     createdAt: Date.now(),
     npc: { id: 'npc-1', name: '测试人物', persona: '测试设定' }
   }]));
   h.context.NPCSocial.reject('req-1', true);
-  const stored = JSON.parse(h.data.get('npc_friend_requests_v1'));
+  const stored = JSON.parse(h.data.get('npc_friend_requests_v2_main-role'));
   assert.equal(stored[0].status, 'blocked');
   assert.equal(h.roles.length, 1);
 });
 
 test('NPC data remains separate from real-user accounts and financial features', () => {
   assert.match(source, /npc_friend_requests_v1/);
-  assert.match(source, /npc_friend_discovery_settings_v1/);
+  assert.match(source, /npc_friend_requests_v2_/);
+  assert.match(source, /npc_friend_discovery_settings_v2_/);
   assert.match(source, /npcSocialRole: true/);
   assert.match(source, /npcFriendRequestId/);
   assert.doesNotMatch(source, /real_user_contacts_v1|\/api\/real-user-chat|finance_records|wallet/i);
@@ -206,6 +208,8 @@ test('legacy NPC requests migrate only to their recorded main role without delet
     { id: 'legacy-second', mainRoleId: 'second-role', status: 'pending', createdAt: 1, npc: { id: 'npc-b', name: '乙' } }
   ];
   h.data.set('npc_friend_requests_v1', JSON.stringify(legacy));
+  // The harness bootstraps an empty current-role bucket before this fixture is added.
+  h.context.localStorage.removeItem('npc_friend_requests_v2_main-role');
   assert.equal(h.context.NPCSocial.getRequests().length, 1);
   assert.equal(h.context.NPCSocial.getRequests()[0].id, 'legacy-main');
   assert.equal(h.data.get('npc_friend_requests_v1'), JSON.stringify(legacy), 'legacy data remains as a backup');
