@@ -1033,7 +1033,8 @@ class CloudStore {
     const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
     return this.exec(
       `SELECT o.id, o.character_id, o.payload_json, o.server_message_id,
-              o.created_at, o.delivery_status
+              o.created_at, o.delivery_status, o.push_accepted_at,
+              o.device_received_at, o.local_saved_at, o.read_at
        FROM outbound_messages o
        INNER JOIN devices d ON d.id = o.device_id
        WHERE o.device_id = ? AND o.character_id = ?
@@ -1045,33 +1046,115 @@ class CloudStore {
     );
   }
 
-  acknowledgeOutboundMessage({ userId, deviceId, characterId, serverMessageId, now }) {
-    const updated = this.exec(
+  markOutboundPushAccepted({ serverMessageId, now }) {
+    return this.exec(
       `UPDATE outbound_messages
-       SET delivery_status = 'delivered', delivered_at = ?
+       SET push_accepted_at = COALESCE(push_accepted_at, ?)
+       WHERE server_message_id = ?
+       RETURNING server_message_id, push_accepted_at`,
+      now,
+      serverMessageId
+    )[0] || null;
+  }
+
+  markOutboundReceived({ userId, deviceId, characterId, serverMessageId, now }) {
+    const row = this.exec(
+      `UPDATE outbound_messages
+       SET device_received_at = COALESCE(device_received_at, ?)
        WHERE server_message_id = ? AND device_id = ? AND character_id = ?
-         AND delivery_status = 'pending'
          AND EXISTS (
            SELECT 1 FROM devices d
            WHERE d.id = ? AND d.user_id = ? AND d.revoked_at IS NULL
          )
-       RETURNING server_message_id`,
+       RETURNING device_received_at, local_saved_at, read_at, push_accepted_at`,
       now, serverMessageId, deviceId, characterId, deviceId, userId
     )[0];
-    if (updated) return { acknowledged: true, alreadyAcknowledged: false };
+    if (row) return { received: true, alreadyReceived: Number(row.device_received_at) !== now, ...row };
 
     const existing = this.exec(
-      `SELECT o.delivery_status
+      `SELECT o.device_received_at, o.local_saved_at, o.read_at, o.push_accepted_at
        FROM outbound_messages o
        INNER JOIN devices d ON d.id = o.device_id
        WHERE o.server_message_id = ? AND o.device_id = ? AND o.character_id = ?
          AND d.user_id = ? AND d.revoked_at IS NULL`,
       serverMessageId, deviceId, characterId, userId
     )[0];
-    if (existing?.delivery_status === 'delivered') {
-      return { acknowledged: true, alreadyAcknowledged: true };
+    return existing
+      ? { received: true, alreadyReceived: true, ...existing }
+      : null;
+  }
+
+  acknowledgeOutboundMessage({ userId, deviceId, characterId, serverMessageId, now }) {
+    const updated = this.exec(
+      `UPDATE outbound_messages
+       SET delivery_status = 'delivered',
+           delivered_at = COALESCE(delivered_at, ?),
+           device_received_at = COALESCE(device_received_at, ?),
+           local_saved_at = COALESCE(local_saved_at, ?)
+       WHERE server_message_id = ? AND device_id = ? AND character_id = ?
+         AND delivery_status = 'pending'
+         AND EXISTS (
+           SELECT 1 FROM devices d
+           WHERE d.id = ? AND d.user_id = ? AND d.revoked_at IS NULL
+         )
+       RETURNING server_message_id, device_received_at, local_saved_at, read_at, push_accepted_at`,
+      now, now, now, serverMessageId, deviceId, characterId, deviceId, userId
+    )[0];
+    if (updated) return { acknowledged: true, alreadyAcknowledged: false, ...updated };
+
+    const existing = this.exec(
+      `SELECT o.delivery_status, o.device_received_at, o.local_saved_at,
+              o.read_at, o.push_accepted_at
+       FROM outbound_messages o
+       INNER JOIN devices d ON d.id = o.device_id
+       WHERE o.server_message_id = ? AND o.device_id = ? AND o.character_id = ?
+         AND d.user_id = ? AND d.revoked_at IS NULL`,
+      serverMessageId, deviceId, characterId, userId
+    )[0];
+    if (existing?.delivery_status === 'delivered' && existing.local_saved_at != null) {
+      return { acknowledged: true, alreadyAcknowledged: true, ...existing };
     }
     return null;
+  }
+
+  markOutboundRead({ userId, deviceId, characterId, serverMessageId, now }) {
+    const updated = this.exec(
+      `UPDATE outbound_messages
+       SET read_at = COALESCE(read_at, ?),
+           read_by_device_id = COALESCE(read_by_device_id, ?)
+       WHERE server_message_id = ? AND device_id = ? AND character_id = ?
+         AND (local_saved_at IS NOT NULL OR delivery_status = 'delivered')
+         AND EXISTS (
+           SELECT 1 FROM devices d
+           WHERE d.id = ? AND d.user_id = ? AND d.revoked_at IS NULL
+         )
+       RETURNING read_at, read_by_device_id, local_saved_at, device_received_at, push_accepted_at`,
+      now, deviceId, serverMessageId, deviceId, characterId, deviceId, userId
+    )[0];
+    if (updated) {
+      return {
+        read: true,
+        alreadyRead: Number(updated.read_at) !== now,
+        ...updated
+      };
+    }
+
+    const existing = this.exec(
+      `SELECT o.local_saved_at, o.read_at, o.read_by_device_id
+       FROM outbound_messages o
+       INNER JOIN devices d ON d.id = o.device_id
+       WHERE o.server_message_id = ? AND o.device_id = ? AND o.character_id = ?
+         AND d.user_id = ? AND d.revoked_at IS NULL`,
+      serverMessageId, deviceId, characterId, userId
+    )[0];
+    if (!existing) return null;
+    if (existing.local_saved_at == null) return { read: false, reason: 'not_saved' };
+    return {
+      read: existing.read_at != null,
+      alreadyRead: existing.read_at != null,
+      read_at: existing.read_at,
+      read_by_device_id: existing.read_by_device_id
+    };
   }
 
   getActivity(id) {
