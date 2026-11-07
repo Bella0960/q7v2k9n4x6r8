@@ -4531,14 +4531,19 @@
                 time: Date.now()
             };
             historyList.push(cardMsg);
-            saveMessages(historyList);
+            if (!saveMessages(historyList)) {
+                historyList.pop();
+                if (typeof showToast === 'function') showToast('来电卡片未能保存，请检查本地存储空间');
+                return false;
+            }
             if (_vl) {
-                // 虚拟列表：从存储重新派生可见列表并窗口化重建到最新（来电卡已在 historyList 中）
+                // 只有聊天记录写入并读回成功后，才刷新虚拟列表
                 vlRefresh();
             } else {
                 appendMessageToDOM(cardMsg);
                 scrollToBottom(true);
             }
+            return true;
         }
         // 自动来电：仅当该角色独立开关 chat_auto_call_<roleId> 为 'true' 时，延迟 1.5s 进入来电页
         // 关闭（false/null/脏值）时只保留卡片，绝不跳转
@@ -4591,13 +4596,24 @@
 
         // 虚拟图片落库：role=assistant + type=image（无 img 走占位图渲染），text 让 AI 后续也能"记得"发过图
         function insertVImageCards(historyList, descs) {
-            (descs || []).forEach(function (d) {
-                const card = { role: 'assistant', type: 'image', desc: d, text: '[图片] ' + d, time: Date.now() };
-                historyList.push(card);
-                saveMessages(historyList);
-                if (_vl) vlRefresh(); else appendMessageToDOM(card);
+            if (!Array.isArray(descs) || !descs.length) return true;
+            var originalLength = historyList.length;
+            var cards = descs.map(function (d) {
+                return { role: 'assistant', type: 'image', desc: d, text: '[图片] ' + d, time: Date.now() };
             });
+            cards.forEach(function (card) { historyList.push(card); });
+            if (!saveMessages(historyList)) {
+                historyList.splice(originalLength);
+                if (typeof showToast === 'function') showToast('图片卡片未能保存，请检查本地存储空间');
+                return false;
+            }
+            if (_vl) {
+                vlRefresh();
+            } else {
+                cards.forEach(function (card) { appendMessageToDOM(card); });
+            }
             scrollToBottom(true);
+            return true;
         }
 
         // 心声卡日期格式化：2026年6月28日 14:30（iOS 备忘录风格）
@@ -4744,6 +4760,9 @@
             if (!roleId) return false;
             var roleName = String((currentCharacter && currentCharacter.name) || contactName || '角色');
             var inserted = false;
+            var originalLength = historyList.length;
+            var historyChanged = false;
+            var externalCardChanged = false;
             cardSpecs.forEach(function (spec) {
                 // 先检查这个角色是否已有未撤销的卡（active/pending/paused）
                 // 如果有，就自动调整已有卡的额度，不创建新卡
@@ -4751,14 +4770,17 @@
                     return ['active', 'pending', 'paused'].indexOf(c.status) !== -1;
                 });
                 if (existing.length > 0) {
-                    // 已有卡，自动调整额度
-                    window.RoleFamilyCards.applyRoleChange(roleId, {
+                    // 已有卡，只在独立亲属卡存储明确更新成功时才算完成
+                    var adjusted = window.RoleFamilyCards.applyRoleChange(roleId, {
                         action: 'adjust',
                         monthlyLimit: spec.monthlyLimit,
                         singleLimit: spec.singleLimit,
                         note: spec.note
                     });
-                    inserted = true;
+                    if (adjusted && adjusted.ok) {
+                        inserted = true;
+                        externalCardChanged = true;
+                    }
                     return;
                 }
                 var card = window.RoleFamilyCards.createInvite({
@@ -4779,12 +4801,18 @@
                     cardId: card.id,
                     time: Date.now()
                 });
+                historyChanged = true;
+                externalCardChanged = true;
                 inserted = true;
             });
-            if (inserted) {
-                saveMessages(historyList);
-                renderAllMessages();
+            if (historyChanged && !saveMessages(historyList)) {
+                historyList.splice(originalLength);
+                if (typeof showToast === 'function') {
+                    showToast('亲属卡已创建，但聊天记录未能保存；请检查本地存储空间');
+                }
+                return false;
             }
+            if (historyChanged || externalCardChanged) renderAllMessages();
             return inserted;
         }
 
@@ -4885,7 +4913,9 @@
         }
         // 命中红包/转账标记：在 AI 侧插入对应卡片并落库，role='assistant' 可被用户领取
         function insertPayCards(historyList, items) {
-            if (!items || !items.length) return;
+            if (!Array.isArray(items) || !items.length) return true;
+            var originalLength = historyList.length;
+            var statusBackups = [];
             items.forEach(function (item) {
                 if (item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''))) {
                     for (var pi = historyList.length - 1; pi >= 0; pi--) {
@@ -4893,6 +4923,13 @@
                         if (previous && (previous.role === 'user' || previous.role === 'sent') &&
                             previous.type === 'transfer' && (!previous.status || previous.status === 'unopened') &&
                             Number(previous.amount) === Number(item.amount)) {
+                            statusBackups.push({
+                                target: previous,
+                                hadStatus: Object.prototype.hasOwnProperty.call(previous, 'status'),
+                                status: previous.status,
+                                hadReturnRequestedAt: Object.prototype.hasOwnProperty.call(previous, 'returnRequestedAt'),
+                                returnRequestedAt: previous.returnRequestedAt
+                            });
                             previous.status = 'returning';
                             previous.returnRequestedAt = Date.now();
                             break;
@@ -4908,10 +4945,21 @@
                     timestamp: Date.now()
                 };
                 historyList.push(payMsg);
-
             });
-            saveMessages(historyList);
+            if (!saveMessages(historyList)) {
+                historyList.splice(originalLength);
+                for (var bi = statusBackups.length - 1; bi >= 0; bi--) {
+                    var backup = statusBackups[bi];
+                    if (backup.hadStatus) backup.target.status = backup.status;
+                    else delete backup.target.status;
+                    if (backup.hadReturnRequestedAt) backup.target.returnRequestedAt = backup.returnRequestedAt;
+                    else delete backup.target.returnRequestedAt;
+                }
+                if (typeof showToast === 'function') showToast('红包/转账卡片未能保存，请检查本地存储空间');
+                return false;
+            }
             renderAllMessages();
+            return true;
         }
 
         // ===== AI 回复清洗：只做标点/空白收口，不删任何正文内容 =====
@@ -6611,8 +6659,7 @@
 
                     if (parsedCall.wantCall) {
                         // AI 侧插入黑底白字「发起语音通话」卡并落库；是否拨号由 chat_auto_call 开关决定
-                        insertIncomingCallCard(historyList);
-                        maybeAutoIncomingCall();
+                        if (insertIncomingCallCard(historyList)) maybeAutoIncomingCall();
                     }
                     if (parsedPay.items.length) {
                         // AI 侧插入红包/转账卡片并落库，role='assistant' 可被用户点击领取
