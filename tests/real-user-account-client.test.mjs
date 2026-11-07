@@ -606,3 +606,42 @@ test('friend roster rejects a server owner mismatch and owner changes between pa
     (error) => error.code === 'friend_roster_account_mismatch'
   );
 });
+
+test('friend roster and account avatar URLs omit private avatar references when avatar storage is disabled', async () => {
+  const assetId = 'av_' + 'd'.repeat(32);
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({
+        ok: true,
+        account: { id: 'avatar-disabled-owner', handle: 'avatar_owner', displayName: 'Owner', status: 'active', avatarAssetId: assetId }
+      });
+    }
+    if (url.includes('/v1/friends?')) {
+      const friend = {
+        id: 'account_avatar_friend',
+        handle: 'avatar_friend',
+        displayName: 'Friend',
+        avatarAssetId: assetId,
+        acceptedRequestId: 'request_avatar_001',
+        acceptedAt: 100
+      };
+      return jsonResponse({
+        ok: true,
+        ownerAccountId: 'avatar-disabled-owner',
+        friends: [friend],
+        relationships: [{ ...friend, status: 'accepted', updatedAt: 120 }],
+        snapshotAt: 150,
+        hasMore: false,
+        nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.restore();
+  const roster = await app.client.listFriendRoster();
+  assert.equal(roster.friends[0].avatarAssetId, undefined);
+  assert.equal(roster.relationships[0].avatarAssetId, undefined);
+  assert.equal(app.client.avatarUrl(assetId), '');
+});
