@@ -216,6 +216,7 @@ test('NPC discovery aborts its AI request and discards the result when the page 
   assert.equal(result.created, false);
   assert.equal(result.reason, 'page-hidden');
   assert.equal(h.context.NPCSocial.getPendingCount(), 0, 'a background result must not be saved as a friend request');
+  assert.equal(h.context.NPCSocial.getSettings().lastAttemptAt, 0, 'foreground cancellation must not consume the next auto-discovery cooldown');
 });
 
 test('NPC validator rejects English relationship and offline-meeting language before storing requests', async () => {
@@ -316,8 +317,8 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /data-action="block"/);
   assert.match(contacts, /npc-friends\.html/);
   assert.ok(nav.includes("currentPage === 'chat.html' || currentPage === 'contacts.html'"));
-  assert.match(page, /npc-social\.js\?v=20261108h/);
-  assert.ok(nav.includes("npc-social.js?v=20261108h"));
+  assert.match(page, /npc-social\.js\?v=20261108i/);
+  assert.ok(nav.includes("npc-social.js?v=20261108i"));
   assert.ok(source.includes('role.worldBookIds'));
   assert.match(source, /面向青少年用户/);
   assert.match(source, /npcFriendWelcome: true/);
