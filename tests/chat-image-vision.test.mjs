@@ -308,3 +308,12 @@ test('paired portraits cannot be removed from the archive before the pair is unl
   assert.ok(characterManagerSource.includes('先解除配对再移除'));
   assert.ok(characterManagerSource.includes('data-avatar-pair-action="unlink"'));
 });
+
+test('role deletion waits for portrait cleanup and persists retryable failures', () => {
+  assert.ok(characterManagerSource.includes('async function handleDeleteRole(id)'));
+  assert.ok(characterManagerSource.includes('await library.removeRole(String(id))'));
+  assert.ok(characterManagerSource.includes('ROLE_AVATAR_CLEANUP_QUEUE_KEY'));
+  assert.ok(characterManagerSource.includes('enqueueRoleAvatarCleanup(id)'));
+  assert.ok(characterManagerSource.includes('retryPendingRoleAvatarCleanup()'));
+  assert.ok(characterManagerSource.includes('function writeRoleAvatarCleanupQueue(queue)'));
+});
