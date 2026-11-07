@@ -568,8 +568,11 @@
                     ? api.readStoredGroups() : { ok: true, groups: api.getGroups() });
             var groups = groupRead.ok ? groupRead.groups : [];
             var contacts = getAudienceContacts();
+            var realUserRead = getAudienceRealUsers();
+            var realUsers = realUserRead.ok ? realUserRead.contacts : [];
             var chosenGroups = currentPerm === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
             var chosenContacts = currentPerm === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
+            var chosenRealUsers = currentPerm === 'custom' ? selectedVisibleRealUserIds : selectedHiddenRealUserIds;
             var html = '<div class="audience-back" data-audience-back>返回可见范围</div>';
             if (!groupRead.ok) {
                 var groupWarning = groupRead.error === 'module_unavailable'
@@ -577,11 +580,15 @@
                     : '分组数据暂时无法读取。你仍可单独选择联系人；为保护原数据，系统不会覆盖损坏的分组记录。';
                 html += '<div class="audience-storage-warning">' + groupWarning + '</div>';
             }
+            if (!realUserRead.ok && (chosenRealUsers.length || chosenGroups.length)) {
+                html += '<div class="audience-storage-warning">真人好友目录暂时无法读取；相关真人好友不会被悄悄加入或移出名单，请恢复目录后再确认。</div>';
+            }
             if (groups.length || chosenGroups.length) {
                 html += '<div class="audience-section-label">通讯录分组</div>';
                 html += groups.map(function (group) {
                     var active = chosenGroups.indexOf(String(group.id)) !== -1 ? ' active' : '';
-                    var count = Array.isArray(group.memberIds) ? group.memberIds.length : 0;
+                    var count = Array.isArray(group.memberRefs) ? group.memberRefs.length
+                        : (Array.isArray(group.memberIds) ? group.memberIds.length : 0);
                     return '<div class="mention-option audience-option' + active + '" data-audience-kind="group" data-audience-id="' + escapeHtml(group.id) + '">' +
                         '<div class="mention-avatar group-mark">分</div>' +
                         '<span class="mention-name">' + escapeHtml(group.name) + '<span class="audience-meta"> · ' + count + '人</span></span>' +
@@ -601,44 +608,73 @@
                 if (currentContactIds.indexOf(String(id)) !== -1) return;
                 html += '<div class="mention-option audience-option active audience-stale-contact" data-audience-kind="contact" data-audience-id="' + escapeHtml(id) + '">' +
                     '<div class="mention-avatar">!</div>' +
-                    '<span class="mention-name">已失效联系人 · 点击取消选择</span>' +
+                    '<span class="mention-name">已失效 AI 联系人 · 点击取消选择</span>' +
                     '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
             });
-            html += '<div class="audience-section-label">单独选择联系人</div>';
+            var currentRealUserIds = realUsers.map(function (contact) { return String(contact.id); });
+            chosenRealUsers.forEach(function (id) {
+                if (currentRealUserIds.indexOf(String(id)) !== -1) return;
+                html += '<div class="mention-option audience-option active audience-stale-contact" data-audience-kind="real_user" data-audience-id="' + escapeHtml(id) + '">' +
+                    '<div class="mention-avatar">!</div>' +
+                    '<span class="mention-name">已失效或未接受的真人好友 · 点击取消选择</span>' +
+                    '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+            });
+            html += '<div class="audience-section-label">AI 角色</div>';
             if (!contacts.length) {
-                html += '<div class="empty-hint">还没有可选择的联系人</div>';
+                html += '<div class="empty-hint">还没有可选择的 AI 角色</div>';
             } else {
                 html += contacts.map(function (contact) {
                     var id = String(contact.id);
                     var active = chosenContacts.indexOf(id) !== -1 ? ' active' : '';
                     var avatar = contact.avatar
                         ? '<img src="' + escapeHtml(contact.avatar) + '" alt="">'
-                        : escapeHtml(String(contact.name || '友').charAt(0));
+                        : escapeHtml(String(contact.name || '角').charAt(0));
                     return '<div class="mention-option audience-option' + active + '" data-audience-kind="contact" data-audience-id="' + escapeHtml(id) + '">' +
                         '<div class="mention-avatar">' + avatar + '</div>' +
-                        '<span class="mention-name">' + escapeHtml(contact.name || '联系人') + '</span>' +
+                        '<span class="mention-name">' + escapeHtml(contact.name || '角色') + '</span>' +
+                        '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+                }).join('');
+            }
+            html += '<div class="audience-section-label">真人好友</div>';
+            if (!realUserRead.ok) {
+                html += '<div class="empty-hint">真人好友列表暂时无法读取</div>';
+            } else if (!realUsers.length) {
+                html += '<div class="empty-hint">还没有已接受的真人好友</div>';
+            } else {
+                html += realUsers.map(function (contact) {
+                    var id = String(contact.id);
+                    var active = chosenRealUsers.indexOf(id) !== -1 ? ' active' : '';
+                    var avatar = contact.avatarUrl
+                        ? '<img src="' + escapeHtml(contact.avatarUrl) + '" alt="">'
+                        : escapeHtml(String(contact.displayName || '友').charAt(0));
+                    return '<div class="mention-option audience-option' + active + '" data-audience-kind="real_user" data-audience-id="' + escapeHtml(id) + '">' +
+                        '<div class="mention-avatar">' + avatar + '</div>' +
+                        '<span class="mention-name">' + escapeHtml(contact.displayName || '真人好友') + '</span>' +
+                        '<span class="audience-meta">真人好友</span>' +
                         '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
                 }).join('');
             }
             var snapshot = getAudienceSnapshot(currentPerm);
             html += snapshot.ok
                 ? '<div class="audience-count">已选择 ' + getAudienceMemberCount(snapshot) + ' 位联系人 · ' + chosenGroups.length + ' 个分组</div>'
-                : '<div class="audience-count">受众名单暂不可确认 · 请处理失效分组后再继续</div>';
+                : '<div class="audience-count">受众名单暂不可确认 · 请处理失效联系人或恢复好友目录后再继续</div>';
 
-            // Show the resolved, deduplicated recipient list before publishing so a group
-            // selection is not reduced to a potentially ambiguous count.
+            // Preview by canonical typed keys; an AI role and a human account may share a raw ID.
             var contactNames = Object.create(null);
             contacts.forEach(function (contact) {
-                contactNames[String(contact.id)] = String(contact.name || '联系人');
+                contactNames[getAudienceIdentityKey('ai_role', contact.id)] = String(contact.name || '角色');
+            });
+            realUsers.forEach(function (contact) {
+                contactNames[getAudienceIdentityKey('real_user', contact.id)] = String(contact.displayName || '真人好友');
             });
             var previewNames = [];
             var missingCount = 0;
             var overflowCount = 0;
-            if (snapshot.ok) snapshot.memberIds.forEach(function (id) {
-                if (!Object.prototype.hasOwnProperty.call(contactNames, id)) {
+            if (snapshot.ok) (snapshot.memberRefs || []).forEach(function (key) {
+                if (!Object.prototype.hasOwnProperty.call(contactNames, key)) {
                     missingCount += 1;
                 } else if (previewNames.length < 8) {
-                    previewNames.push(contactNames[id]);
+                    previewNames.push(contactNames[key]);
                 } else {
                     overflowCount += 1;
                 }
@@ -653,10 +689,12 @@
             var snapshotErrorText = snapshot.error === 'missing_groups'
                 ? '分组已不存在，请取消失效分组后重新选择。'
                 : snapshot.error === 'missing_contacts'
-                    ? '有联系人已不存在，请取消失效联系人后重新选择。'
-                    : snapshot.error === 'module_unavailable'
-                        ? '权限模块暂未加载，请刷新页面或取消分组后单独选择联系人。'
-                        : snapshot.ok ? '' : '分组数据无法读取，请检查后重新选择。';
+                    ? '有联系人已不存在或尚未接受好友请求，请取消失效联系人后重新选择。'
+                    : snapshot.error === 'contact_directory_unavailable'
+                        ? '真人好友目录不可用，请恢复目录后重新确认可见范围。'
+                        : snapshot.error === 'module_unavailable'
+                            ? '权限模块暂未加载，请刷新页面或取消分组后单独选择联系人。'
+                            : snapshot.ok ? '' : '分组数据无法读取，请检查后重新选择。';
             html += '<div class="audience-review">' +
                 '<div class="audience-review-label">' + (currentPerm === 'custom' ? '本条动态可见对象' : '本条动态排除对象') + '</div>' +
                 '<div class="audience-review-names">' + (!snapshot.ok ? snapshotErrorText : (previewParts.length ? previewParts.join('、') : '尚未选择联系人')) + '</div>' +
@@ -676,8 +714,10 @@
                 visibility: currentPerm,
                 visibleGroups: selectedVisibleGroupIds.slice(),
                 visibleContacts: selectedVisibleContactIds.slice(),
+                visibleRealUsers: selectedVisibleRealUserIds.slice(),
                 hiddenGroups: selectedHiddenGroupIds.slice(),
-                hiddenContacts: selectedHiddenContactIds.slice()
+                hiddenContacts: selectedHiddenContactIds.slice(),
+                hiddenRealUsers: selectedHiddenRealUserIds.slice()
             };
             showPermissionModes();
             permBackdrop.classList.add('show');
@@ -688,8 +728,10 @@
                 currentPerm = permissionDraft.visibility;
                 selectedVisibleGroupIds = permissionDraft.visibleGroups;
                 selectedVisibleContactIds = permissionDraft.visibleContacts;
+                selectedVisibleRealUserIds = permissionDraft.visibleRealUsers;
                 selectedHiddenGroupIds = permissionDraft.hiddenGroups;
                 selectedHiddenContactIds = permissionDraft.hiddenContacts;
+                selectedHiddenRealUserIds = permissionDraft.hiddenRealUsers;
             }
             permissionDraft = null;
             permBackdrop.classList.remove('show');
@@ -729,9 +771,14 @@
             if (choice && permissionSheetStage === 'audience') {
                 var kind = choice.getAttribute('data-audience-kind');
                 var id = choice.getAttribute('data-audience-id');
-                var selection = currentPerm === 'custom'
-                    ? (kind === 'group' ? selectedVisibleGroupIds : selectedVisibleContactIds)
-                    : (kind === 'group' ? selectedHiddenGroupIds : selectedHiddenContactIds);
+                var selection;
+                if (kind === 'group') {
+                    selection = currentPerm === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
+                } else if (kind === 'real_user') {
+                    selection = currentPerm === 'custom' ? selectedVisibleRealUserIds : selectedHiddenRealUserIds;
+                } else {
+                    selection = currentPerm === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
+                }
                 var index = selection.indexOf(id);
                 if (index >= 0) selection.splice(index, 1); else selection.push(id);
                 renderAudienceSelection();
@@ -854,10 +901,12 @@
                 visibleTo: visibleAudience.memberIds,
                 visibleGroupIds: visibleAudience.groupIds,
                 visibleContactIds: visibleAudience.contactIds,
+                visibleRealUserIds: (visibleAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) { return key.slice('real_user:'.length); }),
                 visibleContactRefs: visibleAudience.memberRefs || [],
                 hiddenTo: hiddenAudience.memberIds,
                 hiddenGroupIds: hiddenAudience.groupIds,
                 hiddenContactIds: hiddenAudience.contactIds,
+                hiddenRealUserIds: (hiddenAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) { return key.slice('real_user:'.length); }),
                 hiddenContactRefs: hiddenAudience.memberRefs || [],
                 audienceVersion: 2,
                 mentions: mentionsList.slice()
