@@ -37,13 +37,14 @@
           '<section class="ru-section">' +
             '<div class="ru-section-head"><span>添加真人好友</span><button type="button" class="ru-plain-button" id="ruGenerateCode">生成加好友码</button></div>' +
             '<div id="ruCodeArea" class="ru-code-area" hidden>' +
+              '<div class="ru-qr-frame"><div id="ruQrCode" class="ru-qr-code" role="img" aria-label="真人好友邀请二维码"></div></div>' +
               '<div class="ru-code-value" id="ruFriendCode"></div>' +
               '<div class="ru-code-expiry" id="ruCodeExpiry"></div>' +
-              '<div class="ru-code-actions"><button type="button" id="ruCopyCode">复制加好友码</button><button type="button" id="ruCopyPayload">复制分享链接</button><button type="button" id="ruRevokeCode">立即作废</button></div>' +
-              '<p class="ru-footnote">当前提供可分享的加好友码和链接；二维码图形生成、相机扫码与链接接管入口尚未接入。</p>' +
+              '<div class="ru-code-actions"><button type="button" id="ruCopyCode">复制好友码</button><button type="button" id="ruCopyPayload">复制 HTTPS 分享链接</button><button type="button" id="ruShareCode">分享</button><button type="button" id="ruRevokeCode">立即作废</button></div>' +
+              '<p class="ru-footnote">二维码由本机生成，不会上传邀请码。分享链接只在本应用域名内有效；收到邀请后仍需手动确认发送申请。</p>' +
             '</div>' +
             '<form id="ruAddFriendForm" class="ru-add-form">' +
-              '<label>好友码或分享链接<input id="ruFriendCodeInput" maxlength="220" autocomplete="off" spellcheck="false" placeholder="粘贴 64 位好友码或 mao:// 分享链接" required></label>' +
+              '<label>好友码或分享链接<input id="ruFriendCodeInput" maxlength="500" autocomplete="off" spellcheck="false" placeholder="粘贴 64 位好友码、mao:// 或 HTTPS 邀请链接" required></label>' +
               '<label>验证备注（可选）<input id="ruFriendNote" maxlength="160" placeholder="简单介绍一下自己"></label>' +
               '<button class="ru-primary" type="submit">发送好友申请</button>' +
             '</form>' +
@@ -90,6 +91,10 @@
     '.ru-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;color:#222;font-size:12px;font-weight:500;}',
     '.ru-subhead{margin:10px 0 5px;color:#999;font-size:10px;}',
     '.ru-code-area{margin:6px 0 12px;padding:10px;background:#f7f7f8;border-radius:5px;}',
+    '.ru-qr-frame{display:flex;justify-content:center;align-items:center;margin:0 auto 10px;padding:12px;width:min(100%,230px);background:#fff;border:1px solid #ececec;border-radius:5px;}',
+    '.ru-qr-code{width:100%;max-width:196px;min-height:0;display:flex;justify-content:center;align-items:center;}',
+    '.ru-qr-code svg{display:block;width:100%;height:auto;shape-rendering:crispEdges;}',
+    '.ru-qr-fallback{padding:24px 8px;text-align:center;color:#999;font-size:10px;line-height:1.6;}',
     '.ru-code-value{font:600 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.4px;overflow-wrap:anywhere;color:#222;user-select:text;}',
     '.ru-code-expiry{margin-top:4px;color:#999;font-size:10px;}',
     '.ru-code-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}',
@@ -113,6 +118,9 @@
 
   var authMode = 'login';
   var currentCode = null;
+  var inviteLinks = root.PhoneRealUserInviteLinks;
+  var pendingInviteCode = inviteLinks ? inviteLinks.captureCurrentInvite(root.location, root.history, document.title) : '';
+  var codeExpiryTimer = null;
 
   function el(id) { return document.getElementById(id); }
   function setStatus(message, kind) {
@@ -260,19 +268,65 @@
   }
 
   function renderCode(payload) {
-    currentCode = payload;
+    clearCodeExpiryTimer();
+    var code = String(payload && payload.code || '').trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(code)) throw new Error('invalid_friend_code_response');
+    var expiresAt = Number(payload.expiresAt);
+    if (!Number.isFinite(expiresAt)) expiresAt = Date.parse(payload.expiresAt);
+    if (!Number.isFinite(expiresAt)) expiresAt = Date.now() + 15 * 60 * 1000;
+    currentCode = { code: code, expiresAt: expiresAt };
     el('ruCodeArea').hidden = false;
-    el('ruFriendCode').textContent = payload.code || '';
-    var expiry = payload.expiresAt ? new Date(payload.expiresAt) : null;
-    el('ruCodeExpiry').textContent = expiry && Number.isFinite(expiry.getTime())
-      ? '有效期至 ' + expiry.toLocaleString() : '好友码有效期为 15 分钟';
+    el('ruFriendCode').textContent = code;
+    var qrContainer = el('ruQrCode');
+    qrContainer.textContent = '';
+    qrContainer.className = 'ru-qr-code';
+    try {
+      var shareUrl = buildCurrentShareUrl();
+      if (!shareUrl) throw new Error('share_url_unavailable');
+      currentCode.shareUrl = shareUrl;
+      if (typeof root.qrcode !== 'function') throw new Error('qr_generator_unavailable');
+      var qr = root.qrcode(0, 'M');
+      qr.addData(shareUrl, 'Byte');
+      qr.make();
+      qrContainer.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+    } catch (error) {
+      qrContainer.className = 'ru-qr-code ru-qr-fallback';
+      qrContainer.textContent = '二维码暂时无法生成，请复制分享链接发送。';
+      currentCode.shareUrl = '';
+    }
+    updateCodeExpiry();
+    codeExpiryTimer = root.setInterval(updateCodeExpiry, 1000);
   }
 
-  function extractCode(value) {
-    var input = String(value == null ? '' : value).trim();
-    if (/^[a-f0-9]{64}$/i.test(input)) return input.toLowerCase();
-    var match = input.match(/^mao:\/\/friend\/add\?code=([a-f0-9]{64})$/i);
-    return match ? match[1].toLowerCase() : '';
+  function extractCode(value) { return inviteLinks ? inviteLinks.extractFriendCode(value, root.location) : ''; }
+
+  function applyPendingInvite() {
+    if (!pendingInviteCode || !el('ruFriendCodeInput')) return false;
+    if (!el('ruFriendCodeInput').value) el('ruFriendCodeInput').value = pendingInviteCode;
+    return true;
+  }
+  function buildCurrentShareUrl() {
+    if (!currentCode || !inviteLinks) return '';
+    return inviteLinks.createShareUrl(root.location, currentCode.code);
+  }
+  function clearCodeExpiryTimer() {
+    if (codeExpiryTimer) root.clearInterval(codeExpiryTimer);
+    codeExpiryTimer = null;
+  }
+  function updateCodeExpiry() {
+    if (!currentCode) return;
+    var remaining = currentCode.expiresAt - Date.now();
+    var expired = remaining <= 0;
+    ['ruCopyCode', 'ruCopyPayload', 'ruShareCode'].forEach(function (id) { el(id).disabled = expired; });
+    if (expired) {
+      el('ruCodeExpiry').textContent = '邀请已过期，请重新生成。';
+      el('ruQrCode').textContent = '二维码已过期';
+      el('ruQrCode').className = 'ru-qr-code ru-qr-fallback';
+      clearCodeExpiryTimer();
+      return;
+    }
+    var seconds = Math.ceil(remaining / 1000);
+    el('ruCodeExpiry').textContent = '剩余有效时间 ' + String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
   }
 
   async function boot() {
@@ -287,7 +341,7 @@
         return;
       }
       if (!result.account) {
-        setStatus('服务器账号服务已就绪，请登录或创建账号。');
+        setStatus(pendingInviteCode ? '已识别一条好友邀请。请先登录或创建账号，之后可确认发送申请。' : '服务器账号服务已就绪，请登录或创建账号。');
         showAuthArea(true);
         setAuthMode('login');
         el('ruSummaryStatus').textContent = '未登录';
@@ -301,8 +355,9 @@
         return;
       }
       el('ruFriendsArea').hidden = false;
-      setStatus('已连接账号服务。好友列表以服务器关系为准；普通真人消息传输仍未启用。');
       await refreshServerData();
+      applyPendingInvite();
+      setStatus(pendingInviteCode ? '已识别好友邀请，请核对后手动发送申请。' : '已连接账号服务。好友列表以服务器关系为准；普通真人消息传输仍未启用。');
     } catch (error) {
       setStatus(explainError(error), 'error');
       if (error && error.code === 'account_auth_unavailable') {
@@ -341,7 +396,8 @@
       if (state.capabilities && state.capabilities.friends && state.capabilities.friends.enabled) {
         el('ruFriendsArea').hidden = false;
         await refreshServerData();
-        setStatus('账号已登录，好友关系已从服务器读取。');
+        applyPendingInvite();
+        setStatus(pendingInviteCode ? '已识别好友邀请，请核对后手动发送申请。' : '账号已登录，好友关系已从服务器读取。');
       } else {
         setStatus('账号已登录，但好友服务尚未启用。');
       }
@@ -358,6 +414,7 @@
     setBusy(button, true, '退出中…');
     try {
       await client.logout();
+      clearCodeExpiryTimer();
       currentCode = null;
       el('ruCodeArea').hidden = true;
       showSessionArea(false);
@@ -410,15 +467,33 @@
     catch (error) { setStatus('复制失败，请长按好友码手动复制。', 'error'); }
   });
   el('ruCopyPayload').addEventListener('click', async function () {
-    try { await copyValue(currentCode && currentCode.qrPayload); setStatus('分享链接已复制。'); }
+    try { await copyValue(buildCurrentShareUrl()); setStatus('HTTPS 分享链接已复制。'); }
     catch (error) { setStatus('复制失败，请重新生成好友码。', 'error'); }
+  });
+
+  el('ruShareCode').addEventListener('click', async function () {
+    var shareUrl = buildCurrentShareUrl();
+    if (!shareUrl) { setStatus('当前邀请链接不可用，请重新生成好友码。', 'error'); return; }
+    if (root.navigator && typeof root.navigator.share === 'function') {
+      try {
+        await root.navigator.share({ title: 'MAOMAO 真人好友邀请', text: '通过 MAOMAO 添加我为好友', url: shareUrl });
+        setStatus('邀请链接已交给系统分享。');
+        return;
+      } catch (error) {
+        if (error && error.name === 'AbortError') { setStatus('已取消分享。'); return; }
+      }
+    }
+    try { await copyValue(shareUrl); setStatus('此设备暂不支持系统分享，已复制邀请链接。'); }
+    catch (error) { setStatus('分享不可用，请长按链接或手动复制。', 'error'); }
   });
   el('ruRevokeCode').addEventListener('click', async function () {
     if (!root.confirm('立即作废当前未过期的加好友码？')) return;
     try {
       await client.revokeFriendCode();
+      clearCodeExpiryTimer();
       currentCode = null;
       el('ruCodeArea').hidden = true;
+      el('ruQrCode').textContent = '';
       setStatus('加好友码已作废。');
     } catch (error) {
       setStatus(explainError(error), 'error');
@@ -435,6 +510,7 @@
       await client.sendFriendRequest(code, el('ruFriendNote').value);
       el('ruFriendCodeInput').value = '';
       el('ruFriendNote').value = '';
+      pendingInviteCode = '';
       await refreshServerData();
       setStatus('好友申请已提交。');
     } catch (error) {
@@ -482,5 +558,6 @@
     }
   });
 
+  root.addEventListener('pagehide', clearCodeExpiryTimer);
   boot();
 })(window);

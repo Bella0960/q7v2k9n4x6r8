@@ -44,7 +44,8 @@
     "test:worker:real-user-gate": "node --test tests/real-user-chat-worker-gate.test.mjs",
     "test:real-user:d1-schema": "node --test tests/real-user-chat-d1-schema.test.mjs",
     "test:real-user:auth": "node --test tests/real-user-auth.test.mjs",
-    "test:real-user:friends": "node --test tests/real-user-friends.test.mjs"
+    "test:real-user:friends": "node --test tests/real-user-friends.test.mjs",
+    "test:real-user:invites": "node --test tests/real-user-friend-invite-links.test.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
