@@ -13,9 +13,11 @@ function createHarness() {
     id: 'main-role',
     name: '主角色',
     persona: '一位住在海边城市的大学生。',
+    worldBookIds: ['world-1'],
     npcCharacters: [{ id: 'relation-only', name: '旧人物关系资料' }]
   }];
   let aiCalls = 0;
+  let capturedPrompt = '';
   const localStorage = {
     getItem(key) { return data.has(key) ? data.get(key) : null; },
     setItem(key, value) { data.set(key, String(value)); },
@@ -24,7 +26,10 @@ function createHarness() {
   data.set('phone_current_contact', 'main-role');
   const phoneStorage = {
     getCharacters() { return roles.slice(); },
-    getWorldbooks() { return []; },
+    getWorldbooks() { return [
+      { id: 'world-1', title: '已绑定的校园世界', entries: [{ name: '广播站', content: '校园广播站每周制作读书分享节目。' }] },
+      { id: 'world-2', title: '未绑定的世界书', content: '这段内容不应该进入 NPC 生成上下文。' }
+    ]; },
     getApiConfig() { return { apiKey: 'test-key' }; },
     result: {
       getCharacters() { return { ok: true, value: roles.slice() }; },
@@ -50,8 +55,9 @@ function createHarness() {
     localStorage,
     PhoneStorage: phoneStorage,
     PhoneAPI: {
-      completeJSON: async () => {
+      completeJSON: async (options) => {
         aiCalls += 1;
+        capturedPrompt = (options && options.messages || []).map(function (item) { return item.content || ''; }).join('\n');
         return { ok: true, data: {
           create: true,
           name: '林知夏',
@@ -83,7 +89,7 @@ function createHarness() {
   };
   context.window = context;
   vm.runInNewContext(source, context);
-  return { context, data, roles, get aiCalls() { return aiCalls; } };
+  return { context, data, roles, get aiCalls() { return aiCalls; }, get capturedPrompt() { return capturedPrompt; } };
 }
 
 test('NPC discovery is opt-in and does not run in the background when the page is hidden', async () => {
@@ -102,6 +108,9 @@ test('manual NPC discovery creates a pending application, then acceptance create
   assert.equal(result.request.status, 'pending');
   assert.equal(h.context.NPCSocial.getPendingCount(), 1);
   assert.equal(h.roles.length, 1, 'NPC must not enter the contact list before acceptance');
+  assert.match(h.capturedPrompt, /已绑定的校园世界/);
+  assert.match(h.capturedPrompt, /校园广播站每周制作读书分享节目/);
+  assert.doesNotMatch(h.capturedPrompt, /未绑定的世界书|不应该进入 NPC 生成上下文/);
 
   const accepted = h.context.NPCSocial.accept(result.request.id);
   assert.equal(accepted.ok, true);
