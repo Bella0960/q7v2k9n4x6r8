@@ -143,6 +143,13 @@
         var matches = [];
         if (readCharacters().some(function (item) { return item && String(item.id) === id; })) matches.push(contactIdentity('ai_role', id));
         if (readGroups().some(function (item) { return item && String(item.id) === id; })) matches.push(contactIdentity('chat_group', id));
+        var directory = global.PhoneContactDirectory;
+        if (directory && typeof directory.read === 'function' && directory.statuses) {
+            var userResult = directory.read({ status: directory.statuses.ACCEPTED });
+            if (userResult.ok && userResult.contacts.some(function (item) { return item && String(item.id) === id; })) {
+                matches.push(contactIdentity('real_user', id));
+            }
+        }
         return matches.length === 1 ? matches[0] : null;
     };
 
@@ -150,15 +157,27 @@
         var ref = ChatNotifier.getContactIdentity(value);
         if (!ref) return null;
         var source = ref.type === 'ai_role' ? readCharacters() : (ref.type === 'chat_group' ? readGroups() : []);
-        var record = source.find(function (item) { return item && String(item.id) === ref.id; });
+        var record = null;
+        if (ref.type === 'real_user') {
+            var directory = global.PhoneContactDirectory;
+            if (!directory || typeof directory.read !== 'function' || !directory.statuses) return null;
+            var userResult = directory.read({ status: directory.statuses.ACCEPTED });
+            if (!userResult.ok) return null;
+            record = userResult.contacts.find(function (item) { return item && String(item.id) === ref.id; }) || null;
+        } else {
+            record = source.find(function (item) { return item && String(item.id) === ref.id; }) || null;
+        }
         if (!record) return null;
         return {
             id: ref.id,
             contactRef: ref,
             contactKey: ref.key,
             contactType: ref.type,
-            name: record.name || record.nickname || (ref.type === 'chat_group' ? '群聊' : '角色'),
-            avatar: record.avatar || '',
+            name: ref.type === 'real_user' ? (record.displayName || '好友') :
+                (record.name || record.nickname || (ref.type === 'chat_group' ? '群聊' : '角色')),
+            avatar: ref.type === 'real_user' ? (record.avatarUrl || '') : (record.avatar || ''),
+            avatarAssetId: ref.type === 'real_user' ? (record.avatarAssetId || '') : '',
+            relationshipStatus: ref.type === 'real_user' ? record.status : '',
             isGroup: ref.type === 'chat_group'
         };
     };
