@@ -1295,7 +1295,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v202/);
+  assert.match(serviceWorker, /phone-app-pwa-v203/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1886,7 +1886,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v202/);
+  assert.match(serviceWorker, /phone-app-pwa-v203/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2766,6 +2766,54 @@ test('旧退回卡缺少原交易编号且有多笔等额候选时，必须停�
   assert.equal(wallet.history.length, 0);
   assert.equal(JSON.parse(finance).length, 0);
   assert.match(toasts.at(-1), /原转账对应关系不明确/);
+});
+
+test('商店订单列表与详情共用同一条72小时模拟物流时间线', () => {
+  const stageStart = shopPage.indexOf('const SHOP_ORDER_STAGES = [');
+  const stageEnd = shopPage.indexOf('];', stageStart) + 2;
+  const helperStart = shopPage.indexOf('function advanceOrderLifecycle(order, stages, now)');
+  const helperEnd = shopPage.indexOf('\n\n  function syncShopOrders', helperStart);
+  assert.ok(stageStart >= 0 && stageEnd > stageStart && helperStart >= 0 && helperEnd > helperStart);
+  const sandbox = {};
+  runInNewContext(shopPage.slice(stageStart, stageEnd) + '\n' +
+    shopPage.slice(helperStart, helperEnd) +
+    '\nthis.testStages = SHOP_ORDER_STAGES; this.testAdvance = advanceOrderLifecycle;', sandbox);
+  const order = { ts: 1000000 };
+  assert.equal(sandbox.testAdvance(order, sandbox.testStages, 1000000), true);
+  assert.equal(order.status, 'placed');
+  assert.equal(sandbox.testAdvance(order, sandbox.testStages, 1000000 + 3.5 * 3600000), true);
+  assert.equal(order.status, 'shipped');
+  assert.equal(order.statusHistory.map(event => event.status).join(','), 'placed,packed,shipped');
+  assert.equal(sandbox.testAdvance(order, sandbox.testStages, 1000000 + 2 * 3600000), false,
+    'clock rollback must not move a persisted order status backwards');
+  assert.equal(order.status, 'shipped');
+  assert.equal(sandbox.testAdvance(order, sandbox.testStages, 1000000 + 73 * 3600000), true);
+  assert.equal(order.status, 'delivered');
+  assert.equal(order.statusHistory.length, 6, 'each milestone is persisted once');
+  assert.equal(sandbox.testAdvance(order, sandbox.testStages, 1000000 + 80 * 3600000), false,
+    'reopening an unchanged completed order must not append duplicate milestones');
+});
+
+test('外卖订单中心按预计时长推进并保留支付交易编号', () => {
+  assert.match(takeoutPage, /function openTakeoutOrders\(\)/);
+  assert.match(takeoutPage, /function openTakeoutOrderDetail\(orderId\)/);
+  assert.match(takeoutPage, /takeoutOrdersList/);
+  assert.match(takeoutPage, /statusHistory: \[\{ status: 'placed', label: '已下单'/);
+  assert.match(takeoutPage, /function takeoutOrderStages\(order\)/);
+  assert.match(takeoutPage, /function syncTakeoutOrders\(\)/);
+  assert.match(takeoutPage, /配送节点为应用内模拟进度/);
+  assert.match(takeoutPage, /payment ID is already attached to a different order payload/);
+  assert.match(takeoutPage, /function loadTakeoutOrders\(\)[\s\S]*?return null;/,
+    'corrupt order data must not silently become an empty order list');
+});
+
+test('商店旧订单按原时间线补齐进度且损坏订单存储不被空数组覆盖', () => {
+  assert.match(shopPage, /const SHOP_ORDER_STAGES = \[[\s\S]*?offset: 72 \* 3600000/);
+  assert.match(shopPage, /function syncShopOrders\(\)/);
+  assert.match(shopPage, /const stored = syncShopOrders\(\)/);
+  assert.match(shopPage, /物流进度为应用内模拟时间推进/);
+  assert.match(shopPage, /function loadOrders\(\)[\s\S]*?return null;/);
+  assert.match(shopPage, /订单数据异常，已停止覆盖保存/);
 });
 
 test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
