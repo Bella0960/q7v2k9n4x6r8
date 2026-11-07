@@ -247,7 +247,7 @@ test('contact group metadata is covered by the existing full localStorage backup
 });
 
 test('PWA cache contains the contact group policy module and has a new cache version', () => {
-  assert.match(serviceWorker, /phone-app-pwa-v174/);
+  assert.match(serviceWorker, /phone-app-pwa-v175/);
   assert.match(packageJson, /test:contact:groups/);
   assert.match(serviceWorker, /contact-groups\.js\?v=20261107v1/);
 });
