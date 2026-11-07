@@ -2832,6 +2832,8 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '页面隐藏时应暂停拉取');
   assert.ok(sync.includes('refreshHistoryFromOtherTab'),
     '切回前台或其他标签页完成接收后应重新读取同一份历史');
+  assert.ok(sync.includes('event.persisted'),
+    '首次加载不应额外全量渲染，只有 BFCache 恢复时才主动刷新历史');
   assert.ok(sync.includes('window.addEventListener(\'storage\', onOtherTabNotice)'),
     '其他标签页保存消息后应刷新当前历史');
 
