@@ -228,39 +228,39 @@ addTourConfig('chat-compose-and-media', {
   url:'../chat/chat/chat.html',
   steps:[
     {selector:'.chat-slim-card',title:'选择一个角色会话',text:'在右侧聊天列表中点击一位角色，进入对应聊天详情。',hint:'如果列表为空，先到角色库创建角色。'},
-    {selector:'#chat-input',title:'文字输入框',text:'在这里输入消息。教程不会自动发送，先输入一条测试文字即可。',hint:'发送操作由你自己完成。'},
-    {selector:'#voice-input-btn',title:'语音输入',text:'点击波形按钮开始识别，再次点击结束。浏览器可能请求麦克风权限。',hint:'识别结果会进入文字输入框。'},
-    {selector:'#plus-action-btn',title:'打开更多功能',text:'点击加号，展开图片、语音、红包、转账和其他消息入口。',hint:'打开后继续下一步。'},
-    {selector:'.plus-item[data-feat="img"]',title:'图片消息入口',text:'点击后会打开本机图片选择器。确认发送对象和图片后再决定是否发送；也可以取消选择结束练习。',hint:'教程不会代替你选择或发送图片。'}
+    {page:'../chat/chat/chat-detail.html',selector:'#chat-input',title:'文字输入框',text:'在这里输入消息。教程不会自动发送，先输入一条测试文字即可。',hint:'发送操作由你自己完成。'},
+    {page:'../chat/chat/chat-detail.html',selector:'#voice-input-btn',title:'语音输入',text:'点击波形按钮开始识别，再次点击结束。浏览器可能请求麦克风权限。',hint:'识别结果会进入文字输入框。'},
+    {page:'../chat/chat/chat-detail.html',selector:'#plus-action-btn',title:'打开更多功能',text:'点击加号，展开图片、语音、红包、转账和其他消息入口。',hint:'打开后继续下一步。'},
+    {page:'../chat/chat/chat-detail.html',selector:'.plus-item[data-feat="img"]',title:'图片消息入口',text:'点击后会打开本机图片选择器。确认发送对象和图片后再决定是否发送；也可以取消选择结束练习。',hint:'教程不会代替你选择或发送图片。'}
   ]
 });
 addTourConfig('chat-settings-and-autonomy', {
   url:'../chat/chat/chat.html',
   steps:[
     {selector:'.chat-slim-card',title:'先选择角色',text:'点击一个角色进入聊天详情，再使用右上角对话设置。',hint:'这是角色专属设置。'},
-    {selector:'#btn-more-menu',title:'打开对话设置',text:'点击右上角三点按钮，页面会进入当前角色的对话设置。',hint:'进入后下一步会定位真实设置项。'},
-    {selector:'#actionBackground',title:'聊天背景',text:'可为当前角色单独设置背景图片。',hint:'与桌面壁纸分开保存。'},
-    {selector:'#pinToggle',title:'置顶对话',text:'打开后当前角色会出现在聊天列表前面。',hint:'此开关会真实修改当前角色设置。'},
-    {selector:'#memCard',title:'上下文条数',text:'这里可以选择模型发送的历史消息条数。',hint:'条数会影响上下文长度与 Token 使用。'},
-    {selector:'#actionSearchHistory',title:'查找聊天记录',text:'进入历史搜索，查找当前会话中的旧消息。',hint:'仅用于检索，不会删除记录。'},
-    {selector:'#actionTimeAware',title:'时间感知',text:'配置对话是否注入当前日期等时间信息。',hint:'具体选项在展开面板内。'},
-    {selector:'#autoMomentToggle',title:'自动发动态',text:'该开关允许角色主动生成动态，可能调用 API。',hint:'不确定时保持关闭。'},
-    {selector:'#proactiveContactToggle',title:'主动联系',text:'开启后，角色可能在合适时主动联系。',hint:'前台运行检查；注意间隔限制和 API 消耗。'},
-    {selector:'#proactiveContactInterval',title:'最短联系间隔',text:'可以选择 24、48 或 72 小时。',hint:'此设置只在主动联系开启后生效。'},
-    {selector:'#followUpToggle',title:'自然追问',text:'这是独立于主动联系的功能；最多三次，你回复后立即停止。',hint:'每次追问会调用 API，默认关闭。'},
-    {selector:'#autoCommentToggle',title:'自动评论动态',text:'允许角色主动评论你的动态。开启前先确认 API 使用情况。',hint:'可以随时关闭。'},
-    {selector:'#autoInteractToggle',title:'角色自动互动',text:'允许角色之间自动互动；这会使用 API Token。',hint:'建议先少量测试。'}
+    {page:'../chat/chat/chat-detail.html',selector:'#btn-more-menu',title:'打开对话设置',text:'点击右上角三点按钮，页面会进入当前角色的对话设置。',hint:'进入后下一步会定位真实设置项。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#actionBackground',title:'聊天背景',text:'可为当前角色单独设置背景图片。',hint:'与桌面壁纸分开保存。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#pinToggle',title:'置顶对话',text:'打开后当前角色会出现在聊天列表前面。',hint:'此开关会真实修改当前角色设置。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#memCard',title:'上下文条数',text:'这里可以选择模型发送的历史消息条数。',hint:'条数会影响上下文长度与 Token 使用。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#actionSearchHistory',title:'查找聊天记录',text:'进入历史搜索，查找当前会话中的旧消息。',hint:'仅用于检索，不会删除记录。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#actionTimeAware',title:'时间感知',text:'配置对话是否注入当前日期等时间信息。',hint:'具体选项在展开面板内。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#autoMomentToggle',title:'自动发动态',text:'该开关允许角色主动生成动态，可能调用 API。',hint:'不确定时保持关闭。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#proactiveContactToggle',title:'主动联系',text:'开启后，角色可能在合适时主动联系。',hint:'前台运行检查；注意间隔限制和 API 消耗。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#proactiveContactInterval',title:'最短联系间隔',text:'可以选择 24、48 或 72 小时。',hint:'此设置只在主动联系开启后生效。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#followUpToggle',title:'自然追问',text:'这是独立于主动联系的功能；最多三次，你回复后立即停止。',hint:'每次追问会调用 API，默认关闭。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#autoCommentToggle',title:'自动评论动态',text:'允许角色主动评论你的动态。开启前先确认 API 使用情况。',hint:'可以随时关闭。'},
+    {page:'../chat/chat/chat-settings.html',selector:'#autoInteractToggle',title:'角色自动互动',text:'允许角色之间自动互动；这会使用 API Token。',hint:'建议先少量测试。'}
   ]
 });
 addTourConfig('group-chat-interactions', {
   url:'../chat/chat/chat.html',
   steps:[
     {selector:'.chat-group-card',title:'选择群聊',text:'在聊天列表中点击一个群聊卡片，进入群聊详情。',hint:'没有群聊时先创建群聊。'},
-    {selector:'#plus-action-btn',title:'打开群互动菜单',text:'点击加号按钮，展开群投票与群接龙入口。',hint:'确认当前会话是群聊。'},
-    {selector:'.plus-item[data-feat="group-poll"]',title:'选择群投票',text:'点击群投票会打开创建面板。',hint:'之后可以填写问题与选项。'},
-    {selector:'#groupComposerQuestion',title:'填写投票问题',text:'输入一个清楚的问题，避免出现多个问题混在一起。',hint:'最多 100 个字符。'},
-    {selector:'#groupComposerOptions',title:'填写投票选项',text:'每行填写一个选项，最多 6 个。',hint:'也可以使用竖线分隔。'},
-    {selector:'#groupComposerSubmit',title:'确认发起投票',text:'点击会在真实群聊里创建投票。请检查会话、问题和选项后再决定是否提交。',hint:'教程不会替你提交。'}
+    {page:'../chat/chat/chat-detail.html',selector:'#plus-action-btn',title:'打开群互动菜单',text:'点击加号按钮，展开群投票与群接龙入口。',hint:'确认当前会话是群聊。'},
+    {page:'../chat/chat/chat-detail.html',selector:'.plus-item[data-feat="group-poll"]',title:'选择群投票',text:'点击群投票会打开创建面板。',hint:'之后可以填写问题与选项。'},
+    {page:'../chat/chat/chat-detail.html',selector:'#groupComposerQuestion',title:'填写投票问题',text:'输入一个清楚的问题，避免出现多个问题混在一起。',hint:'最多 100 个字符。'},
+    {page:'../chat/chat/chat-detail.html',selector:'#groupComposerOptions',title:'填写投票选项',text:'每行填写一个选项，最多 6 个。',hint:'也可以使用竖线分隔。'},
+    {page:'../chat/chat/chat-detail.html',selector:'#groupComposerSubmit',title:'确认发起投票',text:'点击会在真实群聊里创建投票。请检查会话、问题和选项后再决定是否提交。',hint:'教程不会替你提交。'}
   ]
 });
 
@@ -302,7 +302,7 @@ function openLesson(id){var l=lessonById(id);if(!l)return;activeCategory=l.cat;a
 function renderSearch(q){var s=q.trim().toLowerCase();if(!s){activeLesson=null;renderCategory();return;}var found=lessons.filter(function(l){return[l.title,l.summary,l.lead,l.keywords||''].join(' ').toLowerCase().indexOf(s)!==-1;}),af=apps.filter(function(a){return a.join(' ').toLowerCase().indexOf(s)!==-1;});var h='<div class="panel-head"><div><div class="panel-kicker">SEARCH / SEARCH RESULTS</div><h2>搜索结果</h2><div class="panel-desc">关键词：'+esc(q)+'</div></div><div class="lesson-count">'+(found.length+af.length)+' 条结果</div></div><div class="panel-body">';if(!found.length&&!af.length)h+='<div class="empty">没有找到相关内容。试试「API」「语音」「角色」「图标」或「备份」。</div>';else h+='<div class="search-results">'+found.map(function(l){return'<button class="search-result" data-search-lesson="'+esc(l.id)+'"><strong>'+esc(l.title)+'</strong><span>'+esc(l.summary)+'</span></button>';}).join('')+af.map(function(a){return'<a class="search-result" href="'+esc(a[2])+'"><strong>'+esc(a[0])+' · 打开应用 ↗</strong><span>'+esc(a[1])+'</span></a>';}).join('')+'</div>'; $('contentPanel').innerHTML=h+'</div>';$('contentPanel').querySelectorAll('[data-search-lesson]').forEach(function(b){b.addEventListener('click',function(){openLesson(b.dataset.searchLesson);});});}
 function render(){updateProgress();renderNav();if(searchQuery){renderSearch(searchQuery);return;}if(activeLesson){renderLesson(activeLesson);return;}renderCategory();}
 
-var activeTourLesson=null,activeTourIndex=0,tourFrameReady=false,tourPrepared=false;
+var activeTourLesson=null,activeTourIndex=0,tourFrameReady=false,tourPrepared=false,guidedFrameNavigationPending=false;
 function closeGuidedTour(){
   var frame=$('tourFrame');
   try{
@@ -311,7 +311,7 @@ function closeGuidedTour(){
   }catch(e){}
   frame.onload=null;frame.src='about:blank';
   $('tourModal').classList.remove('open');$('tourModal').setAttribute('aria-hidden','true');
-  activeTourLesson=null;tourFrameReady=false;
+  activeTourLesson=null;tourFrameReady=false;guidedFrameNavigationPending=false;
 }
 function prepareGuidedPage(tour,doc){
   if(!tour.prepare)return;
@@ -347,6 +347,14 @@ function focusGuidedTarget(){
   $('tourNext').textContent=activeTourIndex===tour.steps.length-1?'结束跟练':'我已完成，下一步';
   $('tourScreenNote').textContent='正在定位当前操作位置…';
   try{
+    var expectedPage=new URL(step.page||tour.url,window.location.href).href;
+    var currentPage=frame.contentWindow.location.href;
+    if(currentPage!==expectedPage){
+      guidedFrameNavigationPending=true;
+      $('tourScreenNote').textContent='正在打开本步骤对应的真实页面…';
+      frame.src=expectedPage;
+      return;
+    }
     var doc=frame.contentDocument;
     if(!doc||!doc.documentElement)throw new Error('页面尚未加载');
     doc.querySelectorAll('[data-maomao-tour-focus]').forEach(function(el){
@@ -378,10 +386,12 @@ function openGuidedTour(lesson){
   $('tourFrame').onload=function(){
     tourFrameReady=true;
     var tour=activeTourLesson&&activeTourLesson.tour;
-    if(!tour)return;
+    if(!tour||!guidedFrameNavigationPending)return;
+    guidedFrameNavigationPending=false;
     if(!tourPrepared){prepareGuidedPage(tour,$('tourFrame').contentDocument);tourPrepared=true;}
     window.setTimeout(focusGuidedTarget,300);
   };
+  guidedFrameNavigationPending=true;
   $('tourFrame').src=lesson.tour.url;
 }
 $('tourClose').addEventListener('click',closeGuidedTour);
