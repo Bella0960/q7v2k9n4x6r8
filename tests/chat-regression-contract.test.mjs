@@ -2560,10 +2560,10 @@ test('亲属卡独立存储成功但聊天记录失败时，不伪造聊天卡�
 });
 
 
-test('钱包流水已落库但聊天状态写入失败时，下一次点击只补状态、不重复入账', () => {
-  const start = detail.indexOf('function handlePayCardClick(event)');
+test('钱包流水已落库但聊天状态写入失败时，下一次点击只补状态、不重复入账', async () => {
+  const start = detail.indexOf('const pendingPaymentOperations = new Set();');
   const end = detail.indexOf('// ===== 群投票', start);
-  assert.ok(start >= 0 && end > start, 'payment-card click handler must be present');
+  assert.ok(start >= 0 && end > start, 'payment-card lock and click handler must be present');
   const handlerSource = detail.slice(start, end);
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -2607,7 +2607,7 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
     }
   };
 
-  sandbox.handlePayCardClick(event);
+  await sandbox.handlePayCardClick(event);
   assert.equal(wallet.balance, 32, 'the confirmed wallet operation adds the amount once');
   assert.equal(wallet.history.length, 1, 'the wallet stores one idempotent payment row');
   assert.equal(persistedHistory[1].status, 'unopened', 'failed chat save must not be represented as persisted');
@@ -2617,7 +2617,7 @@ test('钱包流水已落库但聊天状态写入失败时，下一次点击只�
   assert.match(toastMessages.at(-1), /款项已入账，但聊天卡片状态未同步/);
 
   failHistorySave = false;
-  sandbox.handlePayCardClick(event);
+  await sandbox.handlePayCardClick(event);
   assert.equal(wallet.balance, 32, 'retry must not credit the wallet a second time');
   assert.equal(wallet.history.length, 1);
   assert.equal(persistedHistory[1].status, 'received', 'retry completes the payment card status');
@@ -2650,4 +2650,110 @@ test('亲属卡状态变更必须通过本地存储写后读回确认', () => {
   assert.equal(updateResult.reason, 'storage');
   assert.equal(cards.find('family-card-1').status, 'pending',
     'the visible stored state remains pending after an unconfirmed write');
+});
+
+
+test('多个标签页并发领取时，全局钱包锁串行化不同交易并阻止同一交易重复入账', async () => {
+  const start = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const end = detail.indexOf('// ===== 群投票', start);
+  assert.ok(start >= 0 && end > start, 'payment lock and handler must be present');
+  const handlerSource = detail.slice(start, end);
+
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  let wallet = { balance: 20, history: [] };
+  let persistedHistory = [
+    { role: 'assistant', type: 'redpacket', amount: '12.00', status: 'unopened', mid: 'payment-a' },
+    { role: 'assistant', type: 'transfer', amount: '7.00', status: 'unopened', mid: 'payment-b' }
+  ];
+  let financeRecords = '[]';
+  let lockTail = Promise.resolve();
+  const lockNames = [];
+  let renders = 0;
+  let popups = 0;
+  const sharedLockManager = {
+    request(name, options, callback) {
+      lockNames.push({ name, mode: options && options.mode });
+      const run = lockTail.then(() => callback());
+      lockTail = run.catch(() => {});
+      return run;
+    }
+  };
+
+  function makeTab() {
+    const sandbox = {
+      navigator: { locks: sharedLockManager },
+      loadMessages: () => clone(persistedHistory),
+      ensureMid: (message) => message.mid,
+      getWorkData: () => clone(wallet),
+      saveWorkData: (next) => { wallet = clone(next); return true; },
+      saveMessages: (next) => { persistedHistory = clone(next); return true; },
+      showToast: () => {},
+      renderAllMessages: () => { renders += 1; },
+      openPayResult: () => { popups += 1; },
+      localStorage: {
+        getItem: (key) => key === 'finance_records' ? financeRecords : null,
+        setItem: (key, value) => { if (key === 'finance_records') financeRecords = String(value); }
+      },
+      currentCharacter: { name: '角色' }
+    };
+    runInNewContext(handlerSource, sandbox);
+    return sandbox;
+  }
+
+  function eventFor(id) {
+    return {
+      currentTarget: {
+        getAttribute: (name) => name === 'data-mid' ? id : '',
+        setAttribute: () => {},
+        removeAttribute: () => {}
+      }
+    };
+  }
+
+  const tabA = makeTab();
+  const tabB = makeTab();
+  const tabC = makeTab();
+  await Promise.all([
+    tabA.handlePayCardClick(eventFor('payment-a')),
+    tabB.handlePayCardClick(eventFor('payment-b')),
+    tabC.handlePayCardClick(eventFor('payment-a'))
+  ]);
+
+  assert.deepEqual(lockNames, [
+    { name: 'maomao-wallet-ledger-v1', mode: 'exclusive' },
+    { name: 'maomao-wallet-ledger-v1', mode: 'exclusive' },
+    { name: 'maomao-wallet-ledger-v1', mode: 'exclusive' }
+  ], 'every payment receipt must use the same origin-wide exclusive wallet lock');
+  assert.equal(wallet.balance, 39, 'two different payments must both be counted exactly once');
+  assert.deepEqual(
+    wallet.history.map((entry) => entry.paymentId).sort(),
+    ['payment-a', 'payment-b'],
+    'the wallet must contain one row per unique payment ID'
+  );
+  assert.equal(persistedHistory[0].status, 'opened');
+  assert.equal(persistedHistory[1].status, 'received');
+  assert.equal(JSON.parse(financeRecords).length, 2, 'finance records must also remain deduplicated');
+  assert.equal(popups, 2, 'only the two newly completed receipts show the success result');
+  assert.equal(renders, 2);
+});
+
+test('浏览器不支持 Web Locks 时保留本页防连点，并明确提醒跨页面限制', async () => {
+  const start = detail.indexOf('const pendingPaymentOperations = new Set();');
+  const end = detail.indexOf('// ===== 群投票', start);
+  const sandbox = {
+    loadMessages: () => [{ role: 'assistant', type: 'redpacket', amount: '1.00', status: 'unopened', mid: 'fallback-pay' }],
+    ensureMid: (message) => message.mid,
+    getWorkData: () => ({ balance: 0, history: [] }),
+    saveWorkData: () => true,
+    saveMessages: () => true,
+    showToast: (message) => { sandbox.toasts.push(message); },
+    renderAllMessages: () => {},
+    openPayResult: () => {},
+    currentCharacter: { name: '角色' },
+    localStorage: { getItem: () => '[]', setItem: () => {} },
+    toasts: []
+  };
+  runInNewContext(detail.slice(start, end), sandbox);
+  await sandbox.handlePayCardClick({ currentTarget: { getAttribute: () => 'fallback-pay' } });
+  assert.match(sandbox.toasts[0], /不支持跨页面钱包锁/);
 });
