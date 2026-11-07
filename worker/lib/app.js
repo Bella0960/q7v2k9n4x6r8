@@ -1063,6 +1063,45 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     return ok(result);
   }
 
+  async function skipAutonomyActivity(request, activityId) {
+    const device = await authenticate(request);
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        Object.keys(body).some(key => !['attemptCount', 'reasonCode'].includes(key)) ||
+        !Object.prototype.hasOwnProperty.call(body, 'attemptCount') ||
+        !Object.prototype.hasOwnProperty.call(body, 'reasonCode')) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_SKIP', '跳过请求只允许包含 attemptCount 和 reasonCode');
+    }
+    const attemptCount = Number(body.attemptCount);
+    const allowedReasons = new Set([
+      'no_worthy_message', 'context_changed', 'feature_disabled', 'invalid_generation'
+    ]);
+    const reasonCode = String(body.reasonCode || '');
+    if (!Number.isSafeInteger(attemptCount) || attemptCount < 1 || !allowedReasons.has(reasonCode)) {
+      throw new ApiError(400, 'INVALID_ACTIVITY_SKIP', '活动跳过原因或 attemptCount 无效');
+    }
+    const timestamp = now();
+    const completed = await store.completeActivity({
+      id: activityId,
+      owner: device.id,
+      attemptCount,
+      now: timestamp
+    });
+    if (!completed) {
+      throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
+    }
+    await store.logExecution({
+      id: randomToken(12),
+      deviceId: device.id,
+      kind: 'autonomy_device_executor',
+      status: 'skipped',
+      reasonCode,
+      detail: { activityId, attemptCount },
+      now: timestamp
+    });
+    return ok({ skipped: true });
+  }
+
   async function failAutonomyActivity(request, activityId) {
     const device = await authenticate(request);
     const body = await readJsonBody(request);
@@ -1294,6 +1333,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       const autonomyCompleteMatch = /^\/api\/autonomy\/activities\/([A-Za-z0-9_-]{16,64})\/complete$/.exec(path);
       if (autonomyCompleteMatch && method === 'POST') {
         return await completeAutonomyActivity(request, autonomyCompleteMatch[1]);
+      }
+
+      const autonomySkipMatch = /^\/api\/autonomy\/activities\/([A-Za-z0-9_-]{16,64})\/skip$/.exec(path);
+      if (autonomySkipMatch && method === 'POST') {
+        return await skipAutonomyActivity(request, autonomySkipMatch[1]);
       }
 
       const autonomyFailMatch = /^\/api\/autonomy\/activities\/([A-Za-z0-9_-]{16,64})\/fail$/.exec(path);
