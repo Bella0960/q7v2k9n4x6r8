@@ -100,6 +100,10 @@ class FakeD1 {
       if (!account || account.status !== "active") return null;
       return { ...account, expires_at: session.expires_at };
     }
+    if (sql.includes("FROM real_user_accounts") && sql.includes("WHERE id = ?")) {
+      const account = this.accounts.get(values[0]);
+      return account && account.status === "active" ? { ...account } : null;
+    }
     if (sql.includes("FROM real_user_attachments x")) {
       const asset = this.attachments.get(values[0]);
       if (!asset || asset.state !== "staged" || asset.kind !== "image") return null;
@@ -132,13 +136,27 @@ class FakeD1 {
     if (sql.includes("UPDATE real_user_accounts SET avatar_asset_id = NULL")) {
       const [updatedAt, accountId] = values;
       const account = this.accounts.get(accountId);
-      if (account) this.accounts.set(accountId, { ...account, avatar_asset_id: null, updated_at: updatedAt });
+      if (account) {
+        const next = { ...account, avatar_asset_id: null, updated_at: updatedAt };
+        if (db.nextDisplayNameOnAvatarWrite) {
+          next.display_name = db.nextDisplayNameOnAvatarWrite;
+          db.nextDisplayNameOnAvatarWrite = null;
+        }
+        this.accounts.set(accountId, next);
+      }
       return { success: true, meta: { changes: account ? 1 : 0 } };
     }
     if (sql.includes("UPDATE real_user_accounts SET avatar_asset_id = ?")) {
       const [assetId, updatedAt, accountId] = values;
       const account = this.accounts.get(accountId);
-      if (account) this.accounts.set(accountId, { ...account, avatar_asset_id: assetId, updated_at: updatedAt });
+      if (account) {
+        const next = { ...account, avatar_asset_id: assetId, updated_at: updatedAt };
+        if (db.nextDisplayNameOnAvatarWrite) {
+          next.display_name = db.nextDisplayNameOnAvatarWrite;
+          db.nextDisplayNameOnAvatarWrite = null;
+        }
+        this.accounts.set(accountId, next);
+      }
       return { success: true, meta: { changes: account ? 1 : 0 } };
     }
     if (sql.includes("UPDATE real_user_attachments SET state = 'deleted'")) {
@@ -219,11 +237,16 @@ test("avatar image inspection accepts bounded JPEG, PNG and static WebP headers 
 test("avatar upload, authenticated friend-only read, replacement and removal use private object storage", async () => {
   const { db, bucket, env, tokens } = await runtime();
   const path = "/api/real-user-chat/v1/profile/avatar";
+  // Simulate a nickname change on another active session after this request's
+  // initial authentication snapshot but before the avatar response is built.
+  db.nextDisplayNameOnAvatarWrite = "Alice Renamed During Upload";
   const firstUpload = await handleRealUserAvatar(request(path, "POST", tokens.alice, png(), {
     Origin: "https://mao.example", "Content-Type": "image/png"
   }), env);
   assert.equal(firstUpload.status, 201);
   const first = await firstUpload.json();
+  assert.equal(first.account.displayName, "Alice Renamed During Upload",
+    "avatar response must return the latest profile, not the stale auth snapshot");
   const firstId = first.account.avatarAssetId;
   assert.match(firstId, /^av_[a-f0-9]{32}$/);
   assert.equal(db.accounts.get("account_avatar_a").avatar_asset_id, firstId);
@@ -259,11 +282,15 @@ test("avatar upload, authenticated friend-only read, replacement and removal use
   assert.equal(db.accounts.get("account_avatar_a").avatar_asset_id, secondId);
   assert.equal(bucket.objects.size, 1, "replacing an avatar removes the previous private object");
 
+  db.nextDisplayNameOnAvatarWrite = "Alice Renamed During Removal";
   const removed = await handleRealUserAvatar(request(path, "DELETE", tokens.alice, undefined, {
     Origin: "https://mao.example"
   }), env);
   assert.equal(removed.status, 200);
-  assert.equal((await removed.json()).account.avatarAssetId, null);
+  const removedPayload = await removed.json();
+  assert.equal(removedPayload.account.avatarAssetId, null);
+  assert.equal(removedPayload.account.displayName, "Alice Renamed During Removal",
+    "avatar removal must return the latest profile snapshot too");
   assert.equal(db.accounts.get("account_avatar_a").avatar_asset_id, null);
   assert.equal(bucket.objects.size, 0);
 });
