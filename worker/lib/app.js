@@ -229,29 +229,28 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
 
     let userId = OWNER_USER_ID;
     let enrollmentMode = '';
-    const pairingToken = String(body.pairingToken || '').trim();
-    if (pairingToken) {
-      if (pairingToken.length < 32 || pairingToken.length > 128) {
-        throw new ApiError(403, 'PAIRING_TOKEN_INVALID', '配对码无效或已过期');
-      }
-      const tokenHash = await sha256Hex(
-        `${String(env?.DEVICE_SECRET_PEPPER || '')}|pairing|${pairingToken}`
-      );
-      const pairing = await store.consumeDevicePairingToken(tokenHash, timestamp);
-      if (!pairing) throw new ApiError(403, 'PAIRING_TOKEN_INVALID', '配对码无效、已使用或已过期');
+    const suppliedToken = String(body.enrollmentToken || body.pairingToken || '').trim();
+    if (suppliedToken.length < 32 || suppliedToken.length > 512) {
+      throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '新设备需要有效的一次性配对码');
+    }
+
+    const pairingHash = await sha256Hex(
+      `${String(env?.DEVICE_SECRET_PEPPER || '')}|pairing|${suppliedToken}`
+    );
+    const pairing = await store.consumeDevicePairingToken(pairingHash, timestamp);
+    if (pairing) {
       userId = pairing.user_id || OWNER_USER_ID;
       enrollmentMode = 'paired';
       await store.insertDevice({ ...commonDevice, userId });
     } else {
       const configuredToken = String(env?.ENROLLMENT_TOKEN || '');
-      const suppliedToken = String(body.enrollmentToken || '').trim();
-      if (configuredToken.length < 32 || suppliedToken.length < 32 || suppliedToken.length > 512) {
+      if (configuredToken.length < 32) {
         throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '新设备需要由已连接设备生成的一次性配对码');
       }
       const expected = await sha256Hex(`bootstrap|${configuredToken}`);
       const supplied = await sha256Hex(`bootstrap|${suppliedToken}`);
       if (!timingSafeEqualHex(expected, supplied)) {
-        throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '新设备需要有效的一次性配对码');
+        throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '配对码无效、已使用或已过期');
       }
       const inserted = await store.insertBootstrapDevice({ ...commonDevice, userId });
       if (!inserted) {
