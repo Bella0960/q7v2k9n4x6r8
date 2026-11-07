@@ -1,8 +1,10 @@
 import { handleRealUserAuth, isRealUserAuthConfigured } from "./worker/real-user-auth.js";
+import { handleRealUserFriends, isRealUserFriendsConfigured } from "./worker/real-user-friends.js";
 
 const REAL_USER_CHAT_PREFIX = "/api/real-user-chat";
 const REAL_USER_CHAT_CAPABILITIES_PATH = REAL_USER_CHAT_PREFIX + "/capabilities";
 const REAL_USER_AUTH_PREFIX = REAL_USER_CHAT_PREFIX + "/v1/auth";
+const REAL_USER_FRIENDS_PREFIX = REAL_USER_CHAT_PREFIX + "/v1/friends";
 
 function jsonResponse(payload, status, extraHeaders) {
   const headers = new Headers({
@@ -17,6 +19,7 @@ function jsonResponse(payload, status, extraHeaders) {
 
 async function realUserChatCapabilities(env) {
   const accountAuthEnabled = await isRealUserAuthConfigured(env);
+  const friendsEnabled = await isRealUserFriendsConfigured(env);
   return {
     ok: true,
     service: "maomao-real-user-chat",
@@ -31,6 +34,14 @@ async function realUserChatCapabilities(env) {
         ? ["register", "login", "me", "logout"]
         : [],
       reason: accountAuthEnabled ? "" : "database_or_auth_rate_limiter_not_configured"
+    },
+    friends: {
+      enabled: friendsEnabled,
+      status: friendsEnabled ? "enabled" : "disabled",
+      endpoints: friendsEnabled
+        ? ["friend-code-rotate", "friend-code-revoke", "request-send", "request-inbox", "request-accept", "request-decline", "request-cancel", "friends-list", "friend-remove", "friend-block", "friend-unblock"]
+        : [],
+      reason: friendsEnabled ? "" : "database_or_friend_service_not_configured"
     },
     networkingEnabled: false,
     policyAllowlist: ["text", "image", "file", "voice", "sticker"],
@@ -86,6 +97,11 @@ export default {
 
     if (url.pathname.startsWith(REAL_USER_AUTH_PREFIX + "/")) {
       return handleRealUserAuth(request, env);
+    }
+
+    if (url.pathname === REAL_USER_FRIENDS_PREFIX ||
+        url.pathname.startsWith(REAL_USER_FRIENDS_PREFIX + "/")) {
+      return handleRealUserFriends(request, env);
     }
 
     // Keep the rest of the real-user chat namespace fail-closed until
