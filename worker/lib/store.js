@@ -754,6 +754,35 @@ class CloudStore {
     return Boolean(row);
   }
 
+  /**
+   * 只返回当前用户的队列状态汇总，不读取或返回任务 ID、角色 ID、载荷或聊天内容。
+   */
+  getActivityQueueSummary({ userId = 'owner' } = {}) {
+    const row = this.exec(
+      `SELECT
+         COUNT(*) AS total,
+         COALESCE(SUM(CASE WHEN q.status = 'waiting' THEN 1 ELSE 0 END), 0) AS waiting,
+         COALESCE(SUM(CASE WHEN q.status = 'retry' THEN 1 ELSE 0 END), 0) AS retry,
+         COALESCE(SUM(CASE WHEN q.status = 'running' THEN 1 ELSE 0 END), 0) AS running,
+         COALESCE(SUM(CASE WHEN q.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed,
+         COALESCE(SUM(CASE WHEN q.status = 'failed' THEN 1 ELSE 0 END), 0) AS failed,
+         COALESCE(SUM(CASE WHEN q.status = 'superseded' THEN 1 ELSE 0 END), 0) AS superseded
+       FROM activity_queue q
+       INNER JOIN devices d ON d.id = q.device_id
+       WHERE d.user_id = ?`,
+      userId
+    )[0] || {};
+    return {
+      total: Number(row.total || 0),
+      waiting: Number(row.waiting || 0),
+      retry: Number(row.retry || 0),
+      running: Number(row.running || 0),
+      completed: Number(row.completed || 0),
+      failed: Number(row.failed || 0),
+      superseded: Number(row.superseded || 0)
+    };
+  }
+
   counts() {
     const devices = this.exec('SELECT COUNT(*) AS total FROM devices')[0];
     const subscriptions = this.exec(
