@@ -747,6 +747,7 @@
                 if (!audienceCheck.ok) {
                     var audienceError = audienceCheck.error === 'missing_groups' ? '分组已发生变化，请取消失效分组后重新选择'
                         : audienceCheck.error === 'missing_contacts' ? '联系人已不存在，请取消失效联系人后重新选择'
+                        : audienceCheck.error === 'contact_directory_unavailable' ? '真人好友目录暂时无法读取，请恢复目录后再确认名单'
                         : audienceCheck.error === 'module_unavailable' ? '权限模块尚未加载，请刷新页面后重试'
                         : '分组数据无法读取，请取消失效分组或单独选择联系人';
                     showToast(audienceError);
@@ -870,7 +871,8 @@
             var activeAudience = currentPerm === 'custom' ? visibleAudience : hiddenAudience;
             if ((currentPerm === 'custom' || currentPerm === 'excluded') && !activeAudience.ok) {
                 var publishAudienceError = activeAudience.error === 'missing_groups' ? '分组已发生变化，请重新确认可见范围'
-                    : activeAudience.error === 'missing_contacts' ? '联系人已不存在，请重新确认可见范围'
+                    : activeAudience.error === 'missing_contacts' ? '联系人已不存在或尚未接受好友请求，请重新确认可见范围'
+                    : activeAudience.error === 'contact_directory_unavailable' ? '真人好友目录暂时无法读取，请恢复目录后再发布'
                     : activeAudience.error === 'module_unavailable' ? '权限模块尚未加载，请刷新页面后重试'
                     : '分组数据无法读取，请重新确认可见范围';
                 showToast(publishAudienceError);
