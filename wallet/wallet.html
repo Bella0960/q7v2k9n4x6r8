@@ -874,12 +874,18 @@
 
         var expectedType = selectedMode === 'charge' ? 'income' : 'expense';
         var expectedCategory = selectedMode === 'charge' ? 'charge' : 'withdraw';
-        var existing = wd.history.find(function (row) {
+        var existingRows = wd.history.filter(function (row) {
           return row && row.paymentId === transactionId;
         });
+        if (existingRows.length > 1) {
+          amountError.textContent = '发现重复的原交易流水，已停止自动恢复，请先核对交易明细';
+          return;
+        }
+        var existing = existingRows[0] || null;
         if (existing) {
+          var existingAmount = Number(existing.amount);
           if (existing.type !== expectedType || existing.category !== expectedCategory ||
-              Math.abs(Number(existing.amount) - val) > 0.000001) {
+              !isFinite(existingAmount) || Math.abs(existingAmount - val) > 0.000001) {
             amountError.textContent = '原交易记录与本次操作不一致，已停止重复修改';
             return;
           }
