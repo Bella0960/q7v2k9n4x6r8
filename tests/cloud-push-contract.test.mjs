@@ -2927,6 +2927,14 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   assert.equal(repeatedComplete.status, 200);
   assert.equal(repeatedComplete.payload.alreadyCompleted, true);
 
+  const changedRetry = await ctx.asJson(completePath, {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '不能用新内容覆盖首次生成结果。' }
+  });
+  assert.equal(changedRetry.status, 409);
+  assert.equal(changedRetry.payload.error.code, 'ACTIVITY_RESULT_CONFLICT');
+
   assert.equal(ctx.store.getActivity(activity.id).status, 'completed');
   const pending = ctx.store.listPendingOutboundMessages({
     userId: 'owner',
@@ -2997,5 +3005,59 @@ test('自主活动 API：未授权、过期上下文与失效租约不能完成�
   assert.equal(ctx.store.getActivity(activity.id).status, 'running');
   assert.equal(ctx.store.listPendingOutboundMessages({
     userId: 'owner', deviceId: device.deviceId, characterId: 'char-executor', limit: 10
+  }).length, 0);
+});
+
+
+test('生成期间上下文版本发生变化时，完成接口会跳过过时消息', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '10',
+    AUTONOMY_RETRY_BACKOFF_MS: '60000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '90000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '0'
+  });
+  ctx.timestamps.push(now);
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  await ctx.asJson('/api/autonomy/global', {
+    method: 'PUT', device, body: { enabled: true }
+  });
+  await ctx.asJson('/api/characters/char-stale/schedule', {
+    method: 'PUT',
+    device,
+    body: { timeZone: 'UTC', schedule: { active: [{ startMinute: 0, endMinute: 0 }] } }
+  });
+  await ctx.asJson('/api/characters/char-stale/context-version', {
+    method: 'POST', device, body: { eventId: randomToken(20) }
+  });
+  await ctx.asJson('/api/autonomy/characters/char-stale/activities', {
+    method: 'POST', device, body: { contextVersion: 1 }
+  });
+  const claim = await ctx.asJson('/api/autonomy/characters/char-stale/activities/claim', {
+    method: 'POST', device, body: {}
+  });
+  assert.equal(claim.status, 200);
+  const activity = claim.payload.activity;
+  assert.ok(activity);
+
+  const newerContext = await ctx.asJson('/api/characters/char-stale/context-version', {
+    method: 'POST', device, body: { eventId: randomToken(20) }
+  });
+  assert.equal(newerContext.payload.version, 2);
+
+  const completed = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
+    method: 'POST',
+    device,
+    body: { attemptCount: activity.attemptCount, text: '这条基于旧上下文的消息不应送出。' }
+  });
+  assert.equal(completed.status, 200);
+  assert.equal(completed.payload.skipped, true);
+  assert.equal(completed.payload.reasonCode, 'stale_context');
+  assert.equal(ctx.store.getActivity(activity.id).status, 'completed');
+  assert.equal(ctx.store.listPendingOutboundMessages({
+    userId: 'owner', deviceId: device.deviceId, characterId: 'char-stale', limit: 10
   }).length, 0);
 });
