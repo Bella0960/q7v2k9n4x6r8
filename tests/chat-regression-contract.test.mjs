@@ -1803,6 +1803,10 @@ test('proactive contact is opt-in, foreground-only, daily-capped and reuses chat
   assert.match(chatNotifier, /ownedByCurrentDevice !== true/);
   assert.match(chatNotifier, /hasStoredCloudDeviceCredentials/);
   assert.match(chatNotifier, /cloud_device_v1/);
+  const contextOwnershipIndex = chatNotifier.indexOf('context.ownedByCurrentDevice !== true');
+  const leaseAcquireIndex = chatNotifier.indexOf('await ensureCloudExecutorPresence(roleId, cloud)');
+  assert.ok(contextOwnershipIndex >= 0 && leaseAcquireIndex > contextOwnershipIndex,
+    '必须先确认最新上下文归当前设备，再申请角色租约');
   assert.match(chatNotifier, /getCharacterContextVersion\(roleId\)/);
   assert.match(chatNotifier, /enqueueAutonomyActivity\(roleId, Number\(context\.version\)\)/);
   assert.match(chatNotifier, /claimAutonomyActivity\(roleId\)/);
