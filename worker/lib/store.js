@@ -1054,8 +1054,28 @@ class CloudStore {
     )[0] || null;
   }
 
-  listPendingOutboundMessages({ userId, deviceId, characterId, limit = 50 }) {
+  listPendingOutboundMessages({
+    userId,
+    deviceId,
+    characterId,
+    limit = 50,
+    afterCreatedAt = null,
+    afterId = null
+  }) {
     const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
+    const hasCursorTime = afterCreatedAt != null;
+    const hasCursorId = afterId != null;
+    if (hasCursorTime !== hasCursorId) {
+      throw new TypeError('outbound cursor 必须同时包含时间与消息键');
+    }
+    const cursorTime = hasCursorTime ? Number(afterCreatedAt) : null;
+    const cursorId = hasCursorId ? String(afterId) : null;
+    if (hasCursorTime && (
+      !Number.isSafeInteger(cursorTime) || cursorTime < 0 ||
+      !/^[A-Za-z0-9_-]{16,128}$/.test(cursorId)
+    )) {
+      throw new TypeError('outbound cursor 无效');
+    }
     return this.exec(
       `SELECT o.id, o.character_id, o.payload_json, o.server_message_id,
               o.created_at, o.delivery_status, o.push_accepted_at,
@@ -1074,9 +1094,12 @@ class CloudStore {
         AND r.device_id = requesting_device.id
        WHERE source_device.user_id = ? AND o.character_id = ?
          AND r.local_saved_at IS NULL
+         AND (? IS NULL OR o.created_at > ?
+              OR (o.created_at = ? AND o.id > ?))
        ORDER BY o.created_at ASC, o.id ASC
        LIMIT ?`,
-      deviceId, userId, userId, characterId, safeLimit
+      deviceId, userId, userId, characterId,
+      cursorTime, cursorTime, cursorTime, cursorId, safeLimit
     );
   }
 
