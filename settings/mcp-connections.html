@@ -133,15 +133,16 @@ button,input,textarea{font:inherit}
     if (old) old.disconnect();
   }
   $('connectBtn').addEventListener('click', async function () {
-    disconnect();
     var url = $('serverUrl').value.trim();
     var name = $('serverName').value.trim() || 'MCP 服务';
     var token = $('serverToken').value;
+    disconnect();
+    var nextClient = null;
     try {
       var validatedUrl = MaoMcpClient.validateEndpoint(url);
       $('connectBtn').disabled = true;
       setStatus('正在连接并协商 MCP 协议…');
-      var nextClient = MaoMcpClient.createClient({url:validatedUrl,token:token});
+      nextClient = MaoMcpClient.createClient({url:validatedUrl,token:token});
       var init = await nextClient.initialize();
       var tools = await nextClient.listTools();
       var id = 'mcp_' + Date.now().toString(36);
@@ -153,6 +154,7 @@ button,input,textarea{font:inherit}
       setStatus('已连接 · 发现 ' + tools.length + ' 个工具。');
       renderSaved(); renderTools();
     } catch (error) {
+      if (nextClient) await nextClient.disconnect();
       setStatus(error && error.message ? error.message : '连接失败。', true);
     } finally {
       $('connectBtn').disabled = false;
