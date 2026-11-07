@@ -109,6 +109,22 @@
     var box = $('messages');
     return box.scrollHeight - box.scrollTop - box.clientHeight < 90;
   }
+
+  function isMessageVisible(messageId) {
+    var box = $('messages');
+    var nodes = box.querySelectorAll('[data-message-id]');
+    var node = null;
+    for (var index = 0; index < nodes.length; index += 1) {
+      if (nodes[index].dataset.messageId === String(messageId)) {
+        node = nodes[index];
+        break;
+      }
+    }
+    if (!node) return false;
+    var viewport = box.getBoundingClientRect();
+    var rect = node.getBoundingClientRect();
+    return rect.bottom > viewport.top && rect.top < viewport.bottom;
+  }
   function updateComposer() {
     $('messageInput').disabled = blocked || !ready;
     $('sendBtn').disabled = blocked || !ready || !$('messageInput').value.trim();
@@ -201,8 +217,8 @@
   }
 
   async function markVisibleIncomingRead() {
-    if (!ready || blocked || document.hidden || !isNearBottom() ||
-        !latestIncomingMessage || readReceiptInFlight ||
+    if (!ready || blocked || document.hidden || !latestIncomingMessage ||
+        !isMessageVisible(latestIncomingMessage.id) || readReceiptInFlight ||
         latestIncomingMessage.id === lastReadReceiptId) return;
     var target = latestIncomingMessage;
     var receiptSaved = false;
@@ -286,11 +302,11 @@
         if (page.nextCursor) cursor = page.nextCursor;
         guard += 1;
       } while (page.hasMore && guard < 5);
-      if (shouldStick && page && page.messages && page.messages.length) {
-        scrollToBottom();
+      if (shouldStick && page && page.messages && page.messages.length) scrollToBottom();
+      if (page && page.messages && page.messages.length) {
         markVisibleIncomingRead();
+        setStatus('刚刚同步');
       }
-      if (page && page.messages && page.messages.length) setStatus('刚刚同步');
     } catch (error) {
       if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法继续聊天。');
       else setStatus(error.message || '同步暂时失败，稍后会自动重试。', true);
@@ -305,7 +321,9 @@
     button.disabled = true;
     try {
       var page = await api.getMessages(friendId, olderCursor, 'before');
+      rememberIncoming(page.messages || []);
       prependMessages(page.messages || []);
+      markVisibleIncomingRead();
       olderCursor = page.olderCursor || olderCursor;
       hasOlder = Boolean(page.hasMore);
       $('historyAction').hidden = !hasOlder;
