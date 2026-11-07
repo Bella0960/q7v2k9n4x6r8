@@ -3,7 +3,7 @@
  */
 const CACHE_NAME = 'phone-app-pwa-v195';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v189 release: keep portrait cleanup running when role-list UI refresh fails.
+// v195 release: preserve role-avatar references across storage-read failures and late deletion races.
 const APP_SHELL = [
   './',
   './index.html',
