@@ -349,6 +349,109 @@ test('账号每分钟最多发送 60 条消息；相同消息的网络重试不�
   assert.equal(afterWindow.status, 200);
 });
 
+
+test('单条消息只在当前账号隐藏；好友仍能看到原消息且未读数同步扣除', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  const carol = makeAccount('Carol');
+  await register(ctx, alice, '198.51.100.71');
+  await register(ctx, bob, '198.51.100.72');
+  await register(ctx, carol, '198.51.100.73');
+  await makeFriends(ctx, alice, bob);
+
+  const sent = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '这条消息只由 Bob 在自己这边隐藏' }
+  });
+  assert.equal(sent.status, 200);
+  const targetId = sent.payload.message.id;
+
+  const beforeHide = await asAccount(ctx, bob, '/api/friends');
+  assert.equal(beforeHide.payload.friends[0].unreadCount, 1);
+
+  const hidden = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages/' + targetId, {
+    method: 'DELETE'
+  });
+  assert.equal(hidden.status, 200);
+  assert.equal(hidden.payload.hidden, true);
+  assert.equal(hidden.payload.scope, undefined);
+
+  const repeated = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages/' + targetId, {
+    method: 'DELETE'
+  });
+  assert.equal(repeated.status, 200);
+  assert.equal(repeated.payload.alreadyHidden, true);
+
+  const bobHistory = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
+  assert.deepEqual(bobHistory.payload.messages, []);
+  const bobFriends = await asAccount(ctx, bob, '/api/friends');
+  assert.equal(bobFriends.payload.friends[0].unreadCount, 0);
+
+  const aliceHistory = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages');
+  assert.deepEqual(aliceHistory.payload.messages.map(item => item.id), [targetId]);
+
+  const strangerHide = await asAccount(ctx, carol, '/api/friends/' + alice.userId + '/messages/' + targetId, {
+    method: 'DELETE'
+  });
+  assert.equal(strangerHide.status, 403);
+  assert.equal(strangerHide.payload.error.code, 'NOT_FRIENDS');
+});
+
+test('清空聊天记录只影响当前账号；清空之后的新消息仍会正常出现', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  await register(ctx, alice, '198.51.100.74');
+  await register(ctx, bob, '198.51.100.75');
+  await makeFriends(ctx, alice, bob);
+  const alicePath = '/api/friends/' + bob.userId + '/messages';
+  const bobPath = '/api/friends/' + alice.userId + '/messages';
+
+  const first = await asAccount(ctx, alice, alicePath, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '清空前第一条' }
+  });
+  const second = await asAccount(ctx, bob, bobPath, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '清空前第二条' }
+  });
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+
+  const cleared = await asAccount(ctx, alice, alicePath, { method: 'DELETE' });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.payload.cleared, true);
+  assert.equal(cleared.payload.scope, 'current_user_only');
+  assert.equal(cleared.payload.clearedThrough.messageId, second.payload.message.id);
+
+  const aliceAfterClear = await asAccount(ctx, alice, alicePath);
+  assert.deepEqual(aliceAfterClear.payload.messages, []);
+  assert.equal((await asAccount(ctx, alice, '/api/friends')).payload.friends[0].unreadCount, 0);
+
+  const bobAfterAliceClear = await asAccount(ctx, bob, bobPath);
+  assert.deepEqual(
+    bobAfterAliceClear.payload.messages.map(item => item.body),
+    ['清空前第一条', '清空前第二条']
+  );
+
+  const newMessage = await asAccount(ctx, bob, bobPath, {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '清空之后的新消息' }
+  });
+  assert.equal(newMessage.status, 200);
+
+  const stillCleared = await asAccount(ctx, alice, alicePath);
+  assert.deepEqual(stillCleared.payload.messages.map(item => item.body), ['清空之后的新消息']);
+  assert.equal((await asAccount(ctx, alice, '/api/friends')).payload.friends[0].unreadCount, 1);
+
+  const emptyClear = await asAccount(ctx, alice, alicePath, { method: 'DELETE' });
+  assert.equal(emptyClear.status, 200);
+  assert.equal(emptyClear.payload.empty, false);
+});
+
 test('真人好友消息严格限制为非空纯文字，最多 2000 个 Unicode 字符', async () => {
   const ctx = setupTestStore(openTestDb());
   const alice = makeAccount('Alice');
