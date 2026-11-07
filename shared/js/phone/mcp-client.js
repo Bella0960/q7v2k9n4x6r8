@@ -217,10 +217,17 @@
     var sessionId = '';
     var nextId = 1;
     var closed = false;
+    var inFlightControllers = [];
+
+    function removeController(controller) {
+      var index = inFlightControllers.indexOf(controller);
+      if (index !== -1) inFlightControllers.splice(index, 1);
+    }
 
     function post(payload, timeoutMs) {
       if (closed) return Promise.reject(new Error('连接已断开。'));
       var controller = new AbortController();
+      inFlightControllers.push(controller);
       var timer = setTimeout(function () { controller.abort(); }, timeoutMs || 15000);
       var headers = {
         'Accept': 'application/json, text/event-stream',
@@ -262,10 +269,20 @@
         return message;
       }).catch(function (error) {
         clearTimeout(timer);
-        if (error && error.name === 'AbortError') throw new Error('MCP 请求超时。');
+        if (error && error.name === 'AbortError') {
+          throw new Error(closed ? '连接已断开，已取消未完成的请求。' : 'MCP 请求超时。');
+        }
         if (error instanceof TypeError) {
           throw new Error('无法连接 MCP 服务。请检查地址、网络和服务器 CORS 设置。');
         }
+        throw error;
+      }).then(function (message) {
+        clearTimeout(timer);
+        removeController(controller);
+        return message;
+      }, function (error) {
+        clearTimeout(timer);
+        removeController(controller);
         throw error;
       });
     }
@@ -334,6 +351,11 @@
       disconnect: function () {
         if (closed) return Promise.resolve();
         closed = true;
+        var pending = inFlightControllers.slice();
+        inFlightControllers.length = 0;
+        pending.forEach(function (controller) {
+          try { controller.abort(); } catch (error) {}
+        });
         if (!sessionId) return Promise.resolve();
         var headers = {
           'MCP-Protocol-Version': PROTOCOL_VERSION,
