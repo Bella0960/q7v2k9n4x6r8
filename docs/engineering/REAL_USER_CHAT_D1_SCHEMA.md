@@ -2,13 +2,13 @@
 
 **Status:** migration prepared; no D1 database is bound to the production Worker, and real-user messaging remains disabled.
 
-Migration file: `migrations/0001_real_user_chat.sql`
+Migration files: `migrations/0001_real_user_chat.sql` and `migrations/0002_real_user_friend_code_rotation.sql`
 
 ## Tables
 
 - `real_user_accounts`: unique normalized handle, display name, password verifier/salt/iteration metadata, account state.
 - `real_user_sessions`: stores a hash of an opaque session token, not the bearer token itself; supports expiry, revocation, and session-family invalidation.
-- `real_user_friend_codes`: stores one-way hashes of random QR/add-friend codes, with expiry and revocation. QR payloads must never include passwords or session tokens.
+- `real_user_friend_codes`: stores one-way hashes of random QR/add-friend codes, with expiry and revocation. The v2 partial unique index permits only one unrevoked code per account. QR payloads must never include passwords or session tokens.
 - `real_user_friend_requests`: pending/accepted/declined/cancelled requests with canonical unordered pair keys. A partial unique index prevents two pending requests in opposite directions for the same pair.
 - `real_user_friendships`: server-authoritative accepted/removed friendship state.
 - `real_user_blocks`: directional blocks; either direction prevents conversation creation and message writes.
@@ -29,11 +29,15 @@ There are no payment, red-packet, transfer, wallet, top-up, withdrawal, transact
 
 Voice messages are file attachments. Live voice/video calls are not included and remain disabled.
 
+## Friend-code v2 migration
+
+Apply `0001_real_user_chat.sql` first, then `0002_real_user_friend_code_rotation.sql`. The second migration creates a partial unique index over `real_user_friend_codes(account_id)` where `revoked_at IS NULL`. The Worker refuses to report the friend service ready unless this index and all four friend tables are visible in `sqlite_master`. Rotating a code revokes the previous code and inserts the replacement in one D1 batch.
+
 ## Activation prerequisites
 
 1. Create a D1 database in the Cloudflare account and configure a real `DB` binding; no placeholder database ID is committed.
 2. Apply the migration to a staging database first and validate all tables, triggers, and foreign keys.
-3. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER`. Keep `REAL_USER_AUTH_ENABLED` unset/false until staging verification is complete.
+3. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER`. Keep `REAL_USER_AUTH_ENABLED` and `REAL_USER_FRIENDS_ENABLED` unset/false until staging verification is complete.
 4. The Worker verifies that `sqlite_master` contains `real_user_accounts`, `real_user_sessions`, `real_user_friend_requests`, and `real_user_friendships` before it reports account auth as ready; a D1 binding without the migration remains disabled.
 5. Run the account-auth regression suite against the staging binding, review password derivation cost and rate-limit behavior in the target Worker plan, then explicitly set `REAL_USER_AUTH_ENABLED=true` to expose account registration/login only.
 6. Implement server-owned friend-code rotation and friend-request transitions with idempotency.
