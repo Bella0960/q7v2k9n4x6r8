@@ -61,7 +61,8 @@ test('audience snapshots merge selected groups and individual contacts without d
     ok: true,
     groupIds: ['family', 'work'],
     contactIds: ['c', 'd', 'a'],
-    memberIds: ['c', 'd', 'a', 'b']
+    memberIds: ['c', 'd', 'a', 'b'],
+    staleMemberIds: []
   });
   const stale = api.buildAudienceSnapshot(['family', 'missing'], ['c', 'd', 'a']);
   assert.equal(stale.ok, false);
