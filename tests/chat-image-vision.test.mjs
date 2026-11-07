@@ -252,6 +252,17 @@ test('profile archive renders paired previews and supports switching either side
   assert.ok(characterManagerSource.includes('两张头像仍保留在收藏中'));
 });
 
+test('portrait archive provides a two-image manual pairing fallback for AI recognition misses', () => {
+  assert.ok(characterManagerSource.includes('id="avatarPairBuilder"'));
+  assert.ok(characterManagerSource.includes('data-avatar-pair-action="pick"'));
+  assert.ok(characterManagerSource.includes('data-avatar-pair-action="create"'));
+  assert.ok(characterManagerSource.includes('data-avatar-pair-action="cancel"'));
+  assert.ok(characterManagerSource.includes('avatarPairDraftIds.length >= 2'));
+  assert.ok(characterManagerSource.includes("label: '手动配对'"));
+  assert.ok(characterManagerSource.includes('source: item.source'));
+  assert.ok(characterManagerSource.includes('const originLabel = item.source === \'chat\''));
+});
+
 test('paired avatar library operations preserve isolated references and never change the active portrait', () => {
   assert.ok(avatarLibrarySource.includes('function linkPair(roleId, firstAvatarId, secondAvatarId, options)'));
   assert.ok(avatarLibrarySource.includes('function unlinkPair(roleId, pairId)'));
