@@ -369,7 +369,8 @@
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
             global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
-            typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function') {
+            typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function' &&
+            typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function') {
             return ensureOptionalCloudClient();
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
@@ -385,9 +386,10 @@
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v18'),
+                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v19'),
                 function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
-                    typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function'; }
+                    typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function' &&
+                    typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) {
@@ -785,6 +787,12 @@
                 var voiceKey = 'chat_voice_habits_v1_' +
                     encodeURIComponent(String(candidate.contact.id)) + '_direct';
                 voiceProfile = safeJsonParse(safeGet(voiceKey));
+                if (global.ChatPresencePolicy && typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function') {
+                    voiceProfile = global.ChatPresencePolicy.buildVoiceHabitProfile(
+                        candidate.history, { maxMessages: 80 }, voiceProfile
+                    );
+                    if (voiceProfile) safeSet(voiceKey, voiceProfile);
+                }
             } catch (e) {}
 
             var currentTime = new Date();
