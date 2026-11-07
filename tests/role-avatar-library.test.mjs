@@ -10,7 +10,7 @@ const mediaRepositorySource = fs.readFileSync(
 );
 
 function createLibrary(seed, options = {}) {
-  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'failListByOwner', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor'];
+  const optionKeys = ['failWrites', 'failMedia', 'failAddRefFor', 'failRemoveRefFor', 'failRemoveAssetFor', 'failListByOwner', 'retainAssets', 'deferPutBlob', 'deferGetAssetFor'];
   if (seed && Object.keys(seed).some(key => optionKeys.includes(key)) && !Object.keys(options).length) {
     options = seed;
     seed = {};
@@ -113,6 +113,9 @@ function createLibrary(seed, options = {}) {
       return Promise.resolve(result);
     }
     removeAsset(assetId) {
+      if (options.failRemoveAssetFor === assetId) {
+        return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'asset deletion temporarily unavailable' } });
+      }
       const remainingRefs = Array.from(refs).filter(ref => ref.startsWith(assetId + '|'));
       if (remainingRefs.length || options.retainAssets) {
         return Promise.resolve({
@@ -291,6 +294,33 @@ test('pending cleanup markers are recoverable for encoded role IDs after a faile
   const retried = await api.removeRole(roleId);
   assert.equal(retried.ok, true);
   assert.equal(refs.has(avatar.value.assetId + '|role-avatar|' + roleId), false);
+  assert.deepEqual(Array.from(api.listPendingRoleCleanups().value), []);
+});
+
+
+
+test('role deletion retains its portrait index and tombstone when blob cleanup fails, then retries the orphan safely', async () => {
+  const options = {};
+  const { api, values, assets, refs } = createLibrary({}, options);
+  const avatar = await api.add('role-a', 'data:image/jpeg;base64,RETRY_ORPHAN_BLOB');
+  assert.equal(avatar.ok, true);
+  options.failRemoveAssetFor = avatar.value.assetId;
+
+  const interrupted = await api.removeRole('role-a');
+  assert.equal(interrupted.ok, false);
+  assert.equal(interrupted.error.code, 'STORAGE_FAILED');
+  assert.equal(refs.has(avatar.value.assetId + '|role-avatar|role-a'), false,
+    'the role owner reference is released before blob cleanup');
+  assert.equal(values.has(api._storageKey('role-a')), true,
+    'the portrait index is retained as the durable cleanup manifest');
+  assert.equal(assets.has(avatar.value.assetId), true);
+  assert.deepEqual(Array.from(api.listPendingRoleCleanups().value), ['role-a']);
+
+  options.failRemoveAssetFor = null;
+  const retried = await api.removeRole('role-a');
+  assert.equal(retried.ok, true);
+  assert.equal(values.has(api._storageKey('role-a')), false);
+  assert.equal(assets.has(avatar.value.assetId), false);
   assert.deepEqual(Array.from(api.listPendingRoleCleanups().value), []);
 });
 
