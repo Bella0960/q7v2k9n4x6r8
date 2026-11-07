@@ -357,6 +357,7 @@
     var hashA = 2166136261;
     var hashB = 2246822519;
     var fieldCount = 0;
+    var maxDepth = 32;
 
     function absorb(value) {
       var text = value == null ? '' : String(value);
@@ -370,32 +371,100 @@
       hashB = Math.imul(hashB ^ 47, 3266489917);
     }
 
-    history.forEach(function (message) {
-      if (!message || typeof message !== 'object') {
-        absorb('');
+    // Large inline data URLs can contain many megabytes. Sample fixed-size
+    // windows across the payload so a save does not synchronously hash every
+    // embedded image byte, while still noticing changes throughout the file.
+    function absorbInlineDataUrl(value) {
+      var match = /^data:[^,]*;base64,/i.exec(value);
+      if (!match) {
+        absorb(value);
         return;
       }
-      absorb(message.role);
-      absorb(message.mid);
-      absorb(message.time);
-      absorb(message.type);
-      absorb(message.memberId);
-      absorb(message.name);
-      var body = message.text != null ? message.text : message.content;
-      if (typeof body === 'string' && /^data:[^,]*;base64,/i.test(body)) {
-        absorb('[embedded-media]');
-      } else {
-        absorb(body);
+      absorb('[inline-data-url]');
+      absorb(match[0]);
+      var payloadStart = match[0].length;
+      var payloadLength = value.length - payloadStart;
+      absorb(payloadLength);
+      var sampleSize = 64;
+      var sampleCount = 32;
+      if (payloadLength <= sampleSize) {
+        absorb(value.slice(payloadStart));
+        return;
       }
-      absorb(message.desc);
-      absorb(message.mediaId);
-      absorb(message.assetId);
-      absorb(message.attachmentId);
-      absorb(message.fileId);
-      absorb(message.duration);
-      absorb(message.replyTo);
-    });
+      for (var sample = 0; sample < sampleCount; sample += 1) {
+        var offset = Math.floor(
+          sample * (payloadLength - sampleSize) / (sampleCount - 1)
+        );
+        absorb(value.slice(payloadStart + offset, payloadStart + offset + sampleSize));
+      }
+    }
 
+    function visit(value, depth, stack) {
+      if (value === null) {
+        absorb('null');
+        return;
+      }
+      var kind = typeof value;
+      if (kind === 'string') {
+        if (/^data:[^,]*;base64,/i.test(value)) absorbInlineDataUrl(value);
+        else {
+          absorb('string');
+          absorb(value);
+        }
+        return;
+      }
+      if (kind === 'number') {
+        absorb('number');
+        absorb(Number.isNaN(value) ? 'NaN' : String(value));
+        return;
+      }
+      if (kind === 'boolean' || kind === 'undefined') {
+        absorb(kind);
+        absorb(String(value));
+        return;
+      }
+      if (kind !== 'object') {
+        absorb(kind);
+        absorb(String(value));
+        return;
+      }
+      if (depth >= maxDepth) {
+        absorb('[max-depth]');
+        return;
+      }
+
+      var cycleIndex = stack.indexOf(value);
+      if (cycleIndex !== -1) {
+        absorb('[cycle]');
+        absorb(cycleIndex);
+        return;
+      }
+
+      stack.push(value);
+      if (Array.isArray(value)) {
+        absorb('array');
+        absorb(value.length);
+        for (var index = 0; index < value.length; index += 1) {
+          visit(value[index], depth + 1, stack);
+        }
+      } else {
+        absorb('object');
+        var keys = Object.keys(value).sort();
+        absorb(keys.length);
+        for (var keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
+          var key = keys[keyIndex];
+          absorb(key);
+          visit(value[key], depth + 1, stack);
+        }
+      }
+      stack.pop();
+    }
+
+    // Walk every serializable message field, including nested payloads used by
+    // polls, transfers, reactions, replies, calls, locations and attachments.
+    // Property order is normalized so an equivalent object does not create a
+    // spurious version bump.
+    visit(history, 0, []);
     return String(history.length) + ':' +
       (hashA >>> 0).toString(16) + ':' +
       (hashB >>> 0).toString(16) + ':' + String(fieldCount);
