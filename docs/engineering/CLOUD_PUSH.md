@@ -352,7 +352,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - `POST /api/autonomy/characters/:characterId/activities`：以当前已鉴权设备为起点，按账号/角色/上下文版本幂等入队。
 - `POST /api/autonomy/characters/:characterId/activities/claim`：查询该账号该角色到期任务，复用现有 scheduler policy 与真实 scheduler gate；全局/角色授权、作息、静默/状态、前台 lease/grace、上下文版本任一不满足，都不发放任务。
-- 同账号任一仍授权的配对设备可以 CAS 接管同一任务；成功认领时队列收件设备切换为执行设备，lease owner 与执行设备 ID 绑定。旧设备或旧 attempt 无法提交结果。
+- 任务认领使用 CAS；但带聊天上下文的 `contact` 任务只允许最近一次上下文版本的来源设备执行。其他配对设备不能借用该设备的本地聊天记录，也不能通过更换 `device_id` 绕过来源校验。成功认领时收件设备与 lease owner 绑定到当前执行设备；旧 attempt 无法提交结果。
 - 活动租约、批量上限、重试退避必须由 Worker 显式配置 `AUTONOMY_LEASE_MS`、`AUTONOMY_TICK_LIMIT`、`AUTONOMY_RETRY_BACKOFF_MS`；缺失配置时 fail-closed。
 
 ### 11.3 本机模型调用与结果交付
@@ -381,3 +381,41 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - `autonomousMessageGenerationReady` 仍保持 false，直到本地模型配置、真实浏览器执行、双设备抢占、断网重试、Worker 部署和 Android 真机推送都完成验收。
 - 新增 Node/SQLite 契约测试覆盖迁移 0007、跨设备去重、设备接管、租约 fencing、完成后 outbox 入箱、重复完成幂等、授权拒绝与旧上下文拒绝。完整项目测试与 build 尚需真实执行。
 - 本阶段不上传本地聊天历史、角色设定、persona 或 API Key；仅把设备执行后实际生成的单条待送达文字写入云端收件箱。
+## 12. M2.4b：本机归属门禁与生成结果恢复
+
+这一轮针对真实执行链修复了三个关键边界：前台租约身份、聊天上下文来源设备，以及任务完成与 outbox 写入之间的中断恢复。
+
+### 12.1 本机执行器必须拥有前台角色租约
+
+- `createSchedulerGate()` 区分云端执行器和本机执行器。云端仍只能在没有有效前台角色租约且 grace 已结束时运行；本机执行器必须同时满足当前设备有有效前台心跳、当前角色租约确实由该设备持有、角色作息为 active、账号与角色授权有效。
+- `ChatNotifier` 在云端总授权与角色授权通过后，先发送本机前台心跳，再申请角色租约，并启动已有的 `startCharacterPresence()` 续租循环，随后才拉取/认领任务。
+- 用户切到后台后不会启动新的模型调用；已在途的生成在最终提交前还会再次核对本地可见状态，Worker 完成接口也会再次检查服务端门禁。
+- 若设备已保存 `cloud_device_v1` 配对凭据但云端客户端脚本加载失败，主动联系流程 fail-closed，不会悄悄绕回本地模式绕过云端总授权。未配对设备仍沿用原本的纯本地主动联系路径。
+
+### 12.2 上下文版本绑定来源设备
+
+- 新增迁移 `0008_context_source_device`，为 `character_context_versions` 增加 `updated_by_device_id`。服务端版本事件只接收随机 `eventId`，同时记录提交事件的已鉴权设备 ID，不接收任何聊天正文或内容指纹。
+- `/api/characters/:id/context-version` 增加 `ownedByCurrentDevice`。主动生成只有在最新版本由当前执行设备报告时才继续；入队请求还要满足 `updated_by_device_id === 当前设备 ID`。
+- 活动 payload 只保存 `contextVersion` 与 `sourceDeviceId`。调度门禁发现版本已变化或来源设备已变更时会把旧任务标记 superseded；若任务仍有效但当前调用设备不是来源设备，则拒绝它认领。
+- 这是一个有意的隐私边界：项目尚未在设备间同步聊天历史，所以不能让另一台设备拿着旧的本地聊天记录替当前角色生成主动消息。跨设备共享上下文需要先单独完成安全同步设计。
+
+### 12.3 生成结果先暂存，再幂等修复收件箱
+
+- 新增迁移 `0009_activity_result_staging`：活动队列增加 `result_json`、`result_server_message_id` 和 `result_dedupe_key`。
+- 完成任务时，Worker 先用一条带 lease fencing 条件的 SQLite UPDATE，把任务标为 completed，并不可变地暂存确切结果与稳定服务端消息 ID；随后再写入现有出站收件箱。
+- 如果 Worker 在暂存后、outbox 插入前中断，客户端可用同一活动 ID、attempt 和完全相同正文重试，Worker 会从暂存结果补建 outbox；不同正文会冲突，不能覆盖首次生成结果。
+- 这种顺序让任务完成后的恢复有持久化依据，不需要重新调用模型，也不会因为 HTTP 响应丢失而生成第二条不同内容。
+
+### 12.4 本轮新增验证覆盖
+
+- 迁移检查覆盖 0001–0009、上下文来源设备列和活动结果暂存列。
+- 门禁回归覆盖：来源设备正确 + 自己持有前台心跳/角色租约时允许；其他设备不能借用；没有角色租约时拒绝；来源版本变化时 supersede；云端执行器仍被有效前台租约阻止。
+- 活动队列回归覆盖：outbox 首次写入失败后任务仍保留不可变结果；用同一结果重试可补建收件箱；不同正文不能替换。
+- API 回归覆盖：未配对设备不能入队、当前来源设备可入队、设备心跳和角色租约是认领前提、上下文在生成期间变化会跳过旧消息。
+- 聊天回归覆盖：本机执行器先申请角色租约、只用来源设备拥有的上下文、云端客户端缺失时已配对设备 fail-closed、PWA cache v175。
+
+### 12.5 当前状态
+
+- 这是代码层面的本机前台生成与云端交接链路；没有部署 Worker，没有在真实 Android 设备上调用 API 生成消息，也没有验证锁屏后台运行。
+- GitHub Actions 当前仍无法给出实际执行步骤；Node/SQLite 契约测试、Vite build 和真机测试仍必须标为 **NOT VERIFIED**。
+- `autonomousMessageGenerationReady` 继续保持 false，直到真实部署、配对设备、模型配置、授权/作息、角色租约、消息接收 ACK 和断网恢复全部通过验收。
