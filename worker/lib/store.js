@@ -1002,14 +1002,18 @@ class CloudStore {
       throw new TypeError('outbound push now 必须是非负安全整数');
     }
     return this.exec(
-      `SELECT o.id AS outbound_message_id, o.device_id, o.character_id,
-              o.server_message_id, o.created_at,
+      `SELECT o.id AS outbound_message_id,
+              target_device.id AS device_id,
+              source_device.id AS source_device_id,
+              o.character_id, o.server_message_id, o.created_at,
               s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
        FROM outbound_messages o
-       INNER JOIN devices d
-         ON d.id = o.device_id AND d.revoked_at IS NULL
+       INNER JOIN devices source_device ON source_device.id = o.device_id
+       INNER JOIN devices target_device
+         ON target_device.user_id = source_device.user_id
+        AND target_device.revoked_at IS NULL
        INNER JOIN push_subscriptions s
-         ON s.device_id = o.device_id AND s.disabled_at IS NULL
+         ON s.device_id = target_device.id AND s.disabled_at IS NULL
        LEFT JOIN push_deliveries p
          ON p.dedupe_key = ('outbound:' || o.server_message_id)
         AND p.subscription_id = s.id
@@ -1021,7 +1025,7 @@ class CloudStore {
            OR (p.status = 'sending'
                AND p.lease_until IS NOT NULL AND p.lease_until <= ?)
          )
-       ORDER BY o.created_at ASC, o.id ASC, s.created_at ASC, s.id ASC
+       ORDER BY o.created_at ASC, o.id ASC, target_device.created_at ASC, target_device.id ASC
        LIMIT ?`,
       timestamp,
       timestamp,
