@@ -84,7 +84,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001 建立设备、订阅、队列、日志与出站消息表', async () => {
+test('迁移 0001/0002 建立云推送与非聊天自主活动元数据表', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -96,7 +96,12 @@ test('迁移 0001 建立设备、订阅、队列、日志与出站消息表', as
     'activity_queue',
     'execution_log',
     'outbound_messages',
-    'push_deliveries'
+    'push_deliveries',
+    'user_autonomy',
+    'character_autonomy',
+    'character_schedules',
+    'device_presence',
+    'character_leases'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -105,12 +110,16 @@ test('迁移 0001 建立设备、订阅、队列、日志与出站消息表', as
   assert.ok(indexes.includes('idx_push_endpoint'), 'endpoint 必须有唯一索引，防止重复订阅');
   assert.ok(indexes.includes('idx_outbound_server_id'), 'server message id 必须唯一，保证幂等');
   assert.ok(indexes.includes('idx_push_delivery_dedupe'), '推送投递必须按 dedupe_key + 订阅唯一');
+  assert.ok(indexes.includes('idx_devices_user_id'), '设备必须归属单用户 owner');
+  assert.ok(indexes.includes('idx_device_presence_heartbeat'), '设备前台心跳必须可按用户与时间查询');
+  assert.ok(indexes.includes('idx_character_leases_owner'), '角色租约必须可按设备和用户查询');
 
   // 幂等：重复执行迁移不会重复建表，也不会重复记录版本。
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 1);
+  assert.equal(versions.length, 2);
+  assert.deepEqual(versions.map(row => row.version).sort(), ['0001_init', '0002_autonomy_metadata']);
 });
 
 test('设备注册、重复注册与凭据冲突', async () => {
@@ -142,6 +151,7 @@ test('设备注册、重复注册与凭据冲突', async () => {
   const row = ctx.store.getDevice(device.deviceId);
   assert.ok(row, '设备必须落库');
   assert.equal(row.secret_hash.includes(device.secret), false, '不得明文保存设备密钥');
+  assert.equal(row.user_id, 'owner', '旧版设备记录应归属当前单用户 owner');
 });
 
 test('受保护接口拒绝缺失、错误与被撤销的设备凭据', async () => {
@@ -554,4 +564,181 @@ test('客户端代码不含任何私钥或 API Key 字面量', async () => {
 
   const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
   assert.ok(serviceWorker.includes("'./shared/js/cloud-push-client.js'"), 'PWA 必须预缓存云连接客户端');
+});
+
+
+test('自主活动元数据 API：全局与角色开关、继承、IANA 时区和作息只接受已鉴权写入', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const globalDefault = await ctx.asJson('/api/autonomy/global', { device });
+  assert.equal(globalDefault.status, 200);
+  assert.equal(globalDefault.payload.enabled, false);
+  assert.equal(globalDefault.payload.configured, false);
+
+  const globalOn = await ctx.asJson('/api/autonomy/global', {
+    method: 'PUT',
+    device,
+    body: { enabled: true }
+  });
+  assert.equal(globalOn.status, 200);
+  assert.equal(globalOn.payload.enabled, true);
+
+  const inherited = await ctx.asJson('/api/autonomy/characters/char-a', { device });
+  assert.equal(inherited.status, 200);
+  assert.equal(inherited.payload.enabled, null);
+  assert.equal(inherited.payload.inherited, true);
+
+  const roleOff = await ctx.asJson('/api/autonomy/characters/char-a', {
+    method: 'PUT',
+    device,
+    body: { enabled: false }
+  });
+  assert.equal(roleOff.status, 200);
+  assert.equal(roleOff.payload.enabled, false);
+  assert.equal(roleOff.payload.inherited, false);
+
+  const roleInherit = await ctx.asJson('/api/autonomy/characters/char-a', {
+    method: 'PUT',
+    device,
+    body: { enabled: null }
+  });
+  assert.equal(roleInherit.status, 200);
+  assert.equal(roleInherit.payload.inherited, true);
+
+  const invalidSchedule = await ctx.asJson('/api/characters/char-a/schedule', {
+    method: 'PUT',
+    device,
+    body: { timeZone: 'Not/A_Real_Zone', schedule: { active: [{ start: '00:00', end: '24:00' }] } }
+  });
+  assert.equal(invalidSchedule.status, 400);
+  assert.equal(invalidSchedule.payload.error.code, 'INVALID_TIME_ZONE');
+
+  const savedSchedule = await ctx.asJson('/api/characters/char-a/schedule', {
+    method: 'PUT',
+    device,
+    body: {
+      timeZone: 'America/Los_Angeles',
+      schedule: {
+        active: [{ start: '09:00', end: '22:00' }],
+        busy: [{ start: '13:00', end: '14:00' }],
+        asleep: [{ start: '23:00', end: '07:00' }],
+        away: []
+      }
+    }
+  });
+  assert.equal(savedSchedule.status, 200);
+  assert.equal(savedSchedule.payload.configured, true);
+  assert.equal(savedSchedule.payload.timeZone, 'America/Los_Angeles');
+
+  const readSchedule = await ctx.asJson('/api/characters/char-a/schedule', { device });
+  assert.equal(readSchedule.status, 200);
+  assert.equal(readSchedule.payload.schedule.active[0].start, '09:00');
+
+  const unauthenticated = await ctx.asJson('/api/autonomy/global', {
+    method: 'PUT',
+    body: { enabled: true }
+  });
+  assert.equal(unauthenticated.status, 401);
+});
+
+test('设备前台心跳和角色租约：CAS 独占、grace 保护、只能由 owner 释放', async () => {
+  const config = {
+    AUTONOMY_HEARTBEAT_TTL_MS: '60000',
+    AUTONOMY_DEVICE_LEASE_MS: '60000',
+    AUTONOMY_DEVICE_GRACE_MS: '30000'
+  };
+  const ctx = setupTestStore(openTestDb(), config);
+  const deviceA = makeDevice();
+  const deviceB = makeDevice();
+  await registerDevice(ctx, deviceA);
+  await registerDevice(ctx, deviceB);
+
+  const beatA = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST',
+    device: deviceA,
+    body: { foregroundActive: true }
+  });
+  assert.equal(beatA.status, 200);
+  const beatB = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST',
+    device: deviceB,
+    body: { foregroundActive: true }
+  });
+  assert.equal(beatB.status, 200);
+
+  const acquireA = await ctx.asJson('/api/characters/char-a/lease', {
+    method: 'POST',
+    device: deviceA,
+    body: { action: 'acquire' }
+  });
+  assert.equal(acquireA.status, 200);
+  assert.equal(acquireA.payload.ownerDeviceId, deviceA.deviceId);
+
+  const acquireB = await ctx.asJson('/api/characters/char-a/lease', {
+    method: 'POST',
+    device: deviceB,
+    body: { action: 'acquire' }
+  });
+  assert.equal(acquireB.status, 409);
+  assert.equal(acquireB.payload.error.code, 'CHARACTER_LEASE_HELD');
+
+  const releaseByB = await ctx.asJson('/api/characters/char-a/lease', {
+    method: 'POST',
+    device: deviceB,
+    body: { action: 'release' }
+  });
+  assert.equal(releaseByB.status, 200);
+  assert.equal(releaseByB.payload.released, false);
+  assert.equal(ctx.store.getCharacterLease('owner', 'char-a').owner_device_id, deviceA.deviceId);
+
+  const releaseByA = await ctx.asJson('/api/characters/char-a/lease', {
+    method: 'POST',
+    device: deviceA,
+    body: { action: 'release' }
+  });
+  assert.equal(releaseByA.status, 200);
+  assert.equal(releaseByA.payload.released, true);
+
+  const beatAOff = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST',
+    device: deviceA,
+    body: { foregroundActive: false }
+  });
+  assert.equal(beatAOff.status, 200);
+  assert.equal(beatAOff.payload.foregroundActive, false);
+
+  await ctx.asJson('/api/characters/char-a/lease', {
+    method: 'POST',
+    device: deviceB,
+    body: { action: 'acquire' }
+  });
+  assert.equal(ctx.store.getCharacterLease('owner', 'char-a').owner_device_id, deviceB.deviceId);
+
+  const revokeB = await ctx.asJson('/api/devices/revoke', { method: 'POST', device: deviceB });
+  assert.equal(revokeB.status, 200);
+  assert.equal(ctx.store.getCharacterLease('owner', 'char-a'), null);
+});
+
+test('设备租约缺少显式配置或缺少有效前台心跳时 fail-closed', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const noConfig = await ctx.asJson('/api/characters/char-a/lease', {
+    method: 'POST',
+    device,
+    body: { action: 'acquire' }
+  });
+  assert.equal(noConfig.status, 503);
+  assert.equal(noConfig.payload.error.code, 'PRESENCE_NOT_CONFIGURED');
+
+  const noHeartbeat = await ctx.asJson('/api/characters/char-a/lease', {
+    method: 'POST',
+    device,
+    body: { action: 'release' }
+  });
+  assert.equal(noHeartbeat.status, 200);
+  assert.equal(noHeartbeat.payload.released, false);
 });
