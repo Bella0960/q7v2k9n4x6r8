@@ -334,6 +334,7 @@ async function main() {
     await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
     await page.locator('#btnManageContactGroups').click();
     await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    assert.match(await page.locator('#contactGroupEditStatus').innerText(), /发现 1 位已不存在的联系人/);
     await page.locator('[data-contact-member="role-a"]').uncheck();
     await page.locator('[data-contact-member="role-c"]').check();
     await page.locator('#btnSaveContactGroup').click();
