@@ -498,7 +498,7 @@
         function renderAudienceSelection() {
             var body = document.getElementById('permBody');
             var api = getAudienceApi();
-            var groupRead = !api
+            var groupRead = !api || typeof api.getGroups !== 'function'
                 ? { ok: false, error: 'module_unavailable', groups: [] }
                 : (typeof api.readStoredGroups === 'function'
                     ? api.readStoredGroups() : { ok: true, groups: api.getGroups() });
