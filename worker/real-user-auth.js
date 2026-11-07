@@ -372,6 +372,39 @@ async function login(request, env) {
   }, 200, { "Set-Cookie": sessionCookie(sessionToken, SESSION_TTL_MS / 1000) });
 }
 
+async function updateProfile(request, env, account) {
+  if (!hasSameOrigin(request)) return authJson({ ok: false, error: "origin_not_allowed" }, 403);
+  if ((request.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase() !== "application/json") {
+    return authJson({ ok: false, error: "json_required" }, 415);
+  }
+  const parsed = await readJsonBody(request);
+  if (!parsed.ok) return authJson({ ok: false, error: parsed.error }, parsed.error === "body_too_large" ? 413 : 400);
+  if (!hasOnlyKeys(parsed.value, ["displayName"])) {
+    return authJson({ ok: false, error: "unexpected_fields" }, 400);
+  }
+  const displayName = normalizeDisplayName(parsed.value.displayName);
+  if (!displayName) return authJson({ ok: false, error: "invalid_display_name" }, 400);
+
+  const limited = await applyAuthRateLimit(env, request, account.handle);
+  if (!limited.ok) return rateLimitResponse(limited.error);
+
+  const now = Date.now();
+  try {
+    await env.DB.prepare(
+      "UPDATE real_user_accounts SET display_name = ?, updated_at = ? " +
+      "WHERE id = ? AND status = 'active'"
+    ).bind(displayName, now, account.id).run();
+    const updated = await env.DB.prepare(
+      "SELECT id, handle, display_name, status FROM real_user_accounts " +
+      "WHERE id = ? AND status = 'active' LIMIT 1"
+    ).bind(account.id).first();
+    if (!updated) return authJson({ ok: false, error: "profile_update_unavailable" }, 503);
+    return authJson({ ok: true, account: publicAccount(updated), profile: { updatedAt: now } }, 200);
+  } catch {
+    return authJson({ ok: false, error: "profile_update_unavailable" }, 503);
+  }
+}
+
 async function currentAccount(request, env) {
   try {
     const account = await getAuthenticatedAccount(request, env);
@@ -418,8 +451,17 @@ export async function handleRealUserAuth(request, env) {
     catch { return authJson({ ok: false, error: "authentication_temporarily_unavailable" }, 503); }
   }
   if (action === "me") {
-    if (request.method !== "GET") return authJson({ ok: false, error: "method_not_allowed" }, 405, { Allow: "GET" });
-    return currentAccount(request, env);
+    if (request.method === "GET") return currentAccount(request, env);
+    if (request.method === "PATCH") {
+      try {
+        const account = await getAuthenticatedAccount(request, env);
+        if (!account) return authJson({ ok: false, error: "authentication_required" }, 401);
+        return await updateProfile(request, env, account);
+      } catch {
+        return authJson({ ok: false, error: "profile_update_unavailable" }, 503);
+      }
+    }
+    return authJson({ ok: false, error: "method_not_allowed" }, 405, { Allow: "GET, PATCH" });
   }
   if (action === "logout") {
     if (request.method !== "POST") return authJson({ ok: false, error: "method_not_allowed" }, 405, { Allow: "POST" });
