@@ -665,7 +665,39 @@
       });
     }
 
+    var contextPendingKey = contextMetadataKey(
+      CONTEXT_PENDING_PREFIX,
+      String(characterId || '')
+    );
+
+    function onContextStorageChange(event) {
+      // The browser dispatches storage events to other tabs, not the tab that
+      // performed setItem. A visible sibling chat tab can therefore help flush
+      // a pending event immediately instead of waiting for its next heartbeat.
+      if (stopped || !event || event.key !== contextPendingKey || !event.newValue) return;
+      flushCharacterContextVersion(characterId).catch(function (error) {
+        if (!stopped) {
+          console.warn('[cloud] 跨标签页上下文版本同步失败，将保留待同步事件', error);
+        }
+      });
+    }
+
+    function onNetworkOnline() {
+      if (stopped) return;
+      // Connectivity recovery is an additional retry trigger; the pending
+      // event ID remains the durable source of truth in localStorage.
+      flushCharacterContextVersion(characterId).catch(function (error) {
+        if (!stopped) {
+          console.warn('[cloud] 网络恢复后上下文版本同步失败，将继续重试', error);
+        }
+      });
+    }
+
     document.addEventListener('visibilitychange', onVisibilityChange);
+    if (typeof global.addEventListener === 'function') {
+      global.addEventListener('storage', onContextStorageChange);
+      global.addEventListener('online', onNetworkOnline);
+    }
 
     // Start the retry loop before the first network round-trip. A transient
     // failure on initial heartbeat/lease acquisition must not permanently
@@ -688,6 +720,10 @@
       );
     } catch (error) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (typeof global.removeEventListener === 'function') {
+        global.removeEventListener('storage', onContextStorageChange);
+        global.removeEventListener('online', onNetworkOnline);
+      }
       throw error;
     }
 
@@ -715,6 +751,10 @@
         if (intervalId != null) global.clearInterval(intervalId);
         if (activeRequestController) activeRequestController.abort();
         document.removeEventListener('visibilitychange', onVisibilityChange);
+        if (typeof global.removeEventListener === 'function') {
+          global.removeEventListener('storage', onContextStorageChange);
+          global.removeEventListener('online', onNetworkOnline);
+        }
       }
     };
   }
