@@ -145,7 +145,7 @@ test('stale incoming accept snapshots and wrong-direction transitions are reject
   });
   assert.equal(stale.ok, false);
   assert.equal(stale.error, 'stale_snapshot');
-  assert.equal(directory.cancelOutgoing('friend-2').error, 'invalid_transition');
+  assert.equal(directory.cancelOutgoing('friend-2', { requestId: 'request-2' }).error, 'invalid_transition');
   assert.equal(directory.get('friend-2').status, 'pending_incoming');
 });
 
@@ -176,7 +176,7 @@ test('blocking prevents new friend requests until the blocked record is explicit
   const blocked = directory.block('blocked-1', { now: 200 });
   assert.equal(blocked.ok, true);
   assert.equal(blocked.contact.status, 'blocked');
-  assert.equal(blocked.contact.blockedAt, 201);
+  assert.equal(blocked.contact.blockedAt, 200);
   assert.equal(directory.requestOutgoing({ id: 'blocked-1', displayName: '待申请好友' }, { now: 300 }).error, 'blocked');
   assert.equal(directory.applyIncomingRequest({
     id: 'blocked-1',
