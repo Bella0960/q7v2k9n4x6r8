@@ -14,6 +14,7 @@
   var AUTO_COOLDOWN_MS = 24 * 60 * 60 * 1000;
   var busy = false;
   var discoveryController = null;
+  var activeDiscoveryAttempt = null;
   var started = false;
   var dependencyPromise = null;
 
@@ -361,6 +362,15 @@
     settings.lastAttemptAt = timestamp;
     return saveSettings(settings, roleId);
   }
+  function rollbackCancelledAttempt(attempt) {
+    if (!attempt) return;
+    try {
+      var latest = readSettings(attempt.roleId);
+      if (latest.lastAttemptAt !== attempt.startedAt) return;
+      latest.lastAttemptAt = attempt.previousLastAttemptAt;
+      saveSettings(latest, attempt.roleId);
+    } catch (error) {}
+  }
 
   NS.getSettings = readSettings;
   NS.getRequests = function (roleId) { return readRequests(roleId).slice().sort(function (a, b) { return Number(b.createdAt) - Number(a.createdAt); }); };
@@ -407,6 +417,13 @@
       throw new Error('自动发现状态保存失败，已停止生成以避免重复请求。');
     }
     var controller = new global.AbortController();
+    var attempt = {
+      roleId: roleId,
+      startedAt: now,
+      previousLastAttemptAt: Number(settings.lastAttemptAt) || 0,
+      controller: controller
+    };
+    activeDiscoveryAttempt = attempt;
     discoveryController = controller;
     try {
       var context = roleContext(role);
@@ -475,6 +492,8 @@
       }
       return { created: true, request: request, mainRoleId: roleId };
     } finally {
+      if (controller.signal.aborted) rollbackCancelledAttempt(attempt);
+      if (activeDiscoveryAttempt === attempt) activeDiscoveryAttempt = null;
       if (discoveryController === controller) discoveryController = null;
       busy = false;
       releaseDiscoveryLock();
@@ -623,15 +642,16 @@
     emit('mao:npc-social-ready', { pendingCount: NS.getPendingCount() });
   };
 
+  function abortActiveDiscovery() {
+    if (!discoveryController || discoveryController.signal.aborted) return;
+    discoveryController.abort();
+    rollbackCancelledAttempt(activeDiscoveryAttempt);
+  }
   function abortDiscoveryWhenHidden() {
-    if (document.visibilityState === 'hidden' && discoveryController && !discoveryController.signal.aborted) {
-      discoveryController.abort();
-    }
+    if (document.visibilityState === 'hidden') abortActiveDiscovery();
   }
   document.addEventListener('visibilitychange', abortDiscoveryWhenHidden);
-  global.addEventListener('pagehide', function () {
-    if (discoveryController && !discoveryController.signal.aborted) discoveryController.abort();
-  });
+  global.addEventListener('pagehide', abortActiveDiscovery);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', NS.start, { once: true });
