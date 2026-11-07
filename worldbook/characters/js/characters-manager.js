@@ -728,6 +728,8 @@ function renderRoleProfile() {
         const labelInput = event.target && event.target.closest
             ? event.target.closest('[data-avatar-pair-label-input]') : null;
         if (!labelInput || !content.contains(labelInput)) return;
+        // Do not intercept Enter/Escape while a CJK IME is composing a candidate.
+        if (event.isComposing || event.keyCode === 229) return;
         if (event.key === 'Enter') {
             event.preventDefault();
             renameRoleAvatarPair(labelInput.getAttribute('data-avatar-pair-label-input'), labelInput.value);
