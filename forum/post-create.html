@@ -457,8 +457,21 @@
             var api = getAudienceApi();
             var groups = mode === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
             var contacts = mode === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
-            if (api && typeof api.buildAudienceSnapshot === 'function') return api.buildAudienceSnapshot(groups, contacts);
-            return { ok: true, groupIds: [], contactIds: contacts.slice(), memberIds: contacts.slice() };
+            var availableContactIds = getAudienceContacts().map(function (contact) { return String(contact.id); });
+            if (api && typeof api.buildAudienceSnapshot === 'function') {
+                return api.buildAudienceSnapshot(groups, contacts, { availableContactIds: availableContactIds });
+            }
+            // If the shared policy module is missing, never silently drop selected groups.
+            var missingContacts = contacts.filter(function (id) {
+                return availableContactIds.indexOf(String(id)) === -1;
+            });
+            if (groups.length) {
+                return { ok: false, error: 'module_unavailable', groupIds: groups.slice(), contactIds: contacts.slice(), memberIds: [] };
+            }
+            if (missingContacts.length) {
+                return { ok: false, error: 'missing_contacts', missingContactIds: missingContacts, groupIds: [], contactIds: contacts.slice(), memberIds: [] };
+            }
+            return { ok: true, groupIds: [], contactIds: contacts.slice(), memberIds: contacts.slice(), staleMemberIds: [] };
         }
         function updatePermissionValue() {
             var option = PERM_OPTIONS.find(function (item) { return item.key === currentPerm; });
@@ -514,6 +527,14 @@
                     '<span class="mention-name">已失效分组 · 点击取消选择</span>' +
                     '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
             });
+            var currentContactIds = contacts.map(function (contact) { return String(contact.id); });
+            chosenContacts.forEach(function (id) {
+                if (currentContactIds.indexOf(String(id)) !== -1) return;
+                html += '<div class="mention-option audience-option active audience-stale-contact" data-audience-kind="contact" data-audience-id="' + escapeHtml(id) + '">' +
+                    '<div class="mention-avatar">!</div>' +
+                    '<span class="mention-name">已失效联系人 · 点击取消选择</span>' +
+                    '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+            });
             html += '<div class="audience-section-label">单独选择联系人</div>';
             if (!contacts.length) {
                 html += '<div class="empty-hint">还没有可选择的联系人</div>';
@@ -555,6 +576,9 @@
             });
             var previewParts = previewNames.map(function (name) { return escapeHtml(name); });
             if (missingCount) previewParts.push('未匹配联系人 ' + missingCount + ' 人');
+            if (snapshot.ok && snapshot.staleMemberIds && snapshot.staleMemberIds.length) {
+                previewParts.push('分组内 ' + snapshot.staleMemberIds.length + ' 位已失效联系人不会计入名单');
+            }
             if (overflowCount) previewParts.push('另有 ' + overflowCount + ' 人');
             html += '<div class="audience-review">' +
                 '<div class="audience-review-label">' + (currentPerm === 'custom' ? '本条动态可见对象' : '本条动态排除对象') + '</div>' +
@@ -602,7 +626,11 @@
             if (permissionSheetStage === 'audience' && (currentPerm === 'custom' || currentPerm === 'excluded')) {
                 var audienceCheck = getAudienceSnapshot(currentPerm);
                 if (!audienceCheck.ok) {
-                    showToast(audienceCheck.error === 'missing_groups' ? '分组已发生变化，请取消失效分组后重新选择' : '分组数据无法读取，请取消失效分组或单独选择联系人');
+                    var audienceError = audienceCheck.error === 'missing_groups' ? '分组已发生变化，请取消失效分组后重新选择'
+                        : audienceCheck.error === 'missing_contacts' ? '联系人已不存在，请取消失效联系人后重新选择'
+                        : audienceCheck.error === 'module_unavailable' ? '权限模块尚未加载，请刷新页面后重试'
+                        : '分组数据无法读取，请取消失效分组或单独选择联系人';
+                    showToast(audienceError);
                     return;
                 }
                 if (!audienceCheck.memberIds.length) {
@@ -713,7 +741,11 @@
             var hiddenAudience = currentPerm === 'excluded' ? getAudienceSnapshot('excluded') : { groupIds: [], contactIds: [], memberIds: [] };
             var activeAudience = currentPerm === 'custom' ? visibleAudience : hiddenAudience;
             if ((currentPerm === 'custom' || currentPerm === 'excluded') && !activeAudience.ok) {
-                showToast(activeAudience.error === 'missing_groups' ? '分组已发生变化，请重新确认可见范围' : '分组数据无法读取，请重新确认可见范围');
+                var publishAudienceError = activeAudience.error === 'missing_groups' ? '分组已发生变化，请重新确认可见范围'
+                    : activeAudience.error === 'missing_contacts' ? '联系人已不存在，请重新确认可见范围'
+                    : activeAudience.error === 'module_unavailable' ? '权限模块尚未加载，请刷新页面后重试'
+                    : '分组数据无法读取，请重新确认可见范围';
+                showToast(publishAudienceError);
                 openPermSheet();
                 return;
             }
