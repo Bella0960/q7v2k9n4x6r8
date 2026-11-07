@@ -252,9 +252,12 @@ async function sendFriendRequest(request, env, account) {
           "FROM real_user_friend_requests WHERE pair_low = ? AND pair_high = ? AND status = 'pending' LIMIT 1"
         ).bind(pairLow, pairHigh).first();
         if (pending && pending.requester_id === account.id) {
+          const peer = await env.DB.prepare(
+            "SELECT id, handle, display_name, avatar_asset_id FROM real_user_accounts WHERE id = ? LIMIT 1"
+          ).bind(pending.recipient_id).first();
           return authJson({ ok: true, duplicate: true, request: {
             id: pending.id, status: pending.status, createdAt: pending.created_at
-          } }, 200);
+          }, target: publicProfile(peer) }, 200);
         }
         if (pending && pending.recipient_id === account.id) {
           return authJson({ ok: false, error: "incoming_request_exists", requestId: pending.id }, 409);
