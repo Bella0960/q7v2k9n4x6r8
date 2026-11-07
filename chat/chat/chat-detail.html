@@ -25,6 +25,7 @@
     <script src="../../shared/js/phone/role-public-timeline.js?v=20261102v1"></script>
     <script src="../../shared/js/phone/group-chat-policy.js?v=20261102v5"></script>
     <script src="../../shared/js/phone/contact-identity.js?v=20261107v1"></script>
+    <script src="../../shared/js/phone/contact-capabilities.js?v=20261107v1"></script>
     <script src="../../shared/js/phone/contact-directory.js?v=20261107v3"></script>
     <script src="../../shared/js/chat-notifier.js?v=20261107v4"></script>
     <style>
@@ -2429,6 +2430,15 @@
             : null;
         window.PhoneCurrentConversationId = currentRoleId || '';
 
+        // Typed identity is the source of truth for capability checks. Real-user
+        // chats stay chat-only even if another caller opens this page in the future.
+        window.PhoneIsRealUserConversation = function () {
+            var policy = window.PhoneContactCapabilities;
+            return !!(policy && typeof policy.isRealUser === 'function' &&
+                policy.isRealUser(window.PhoneCurrentContactRef));
+        };
+
+
         function groupMemberDisplayName(member) {
             return String((member && (member.nickname || member.name)) || '成员').trim() || '成员';
         }
@@ -3507,6 +3517,7 @@
                     '<div class="group-private-sender">' + escHtml(msg.senderName || msg.name || '群成员') + ' 悄悄说</div>' +
                     '<div class="group-private-text">' + escHtml(msg.text || '') + '</div>' +
                     '<button type="button" class="group-private-open" data-private-open="' + escHtml(privateRoleId) + '">打开与 TA 的私聊</button></div>';
+                }
             } else if (msg.type === 'group_poll') {
                 const poll = msg.poll || {};
                 const options = Array.isArray(poll.options) ? poll.options : [];
@@ -3566,6 +3577,9 @@
                     </div>
                 </div>`;
             } else if (msg.type === 'redpacket') {
+                if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                    bubble.textContent = '真人聊天仅支持普通聊天内容';
+                } else {
                 // 红包卡：纯黑底圆角卡 + 白色细线条金币图标（黑白灰极简，无红黄配色）
                 bubble.classList.add('bubble-pay');
                 const payLabel = msg.isVoice === true ? '语音红包' : '红包';
@@ -3579,6 +3593,7 @@
                     </div>
                     <div class="pay-card-status">${payStatus}</div>
                 </div>`;
+                }
             } else if (msg.type === 'transfer') {
                 // 转账卡：纯白底 + 浅灰边框 + 黑色细线条双向箭头 + 右侧灰色细箭头
                 bubble.classList.add('bubble-pay');
@@ -3595,7 +3610,11 @@
                     </div>
                     <span class="pay-card-status">${transferStatus}</span>
                 </div>`;
+                }
             } else if (msg.type === 'role_family_card') {
+                if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                    bubble.textContent = '真人聊天不提供钱包或额度类功能';
+                } else {
                 bubble.classList.add('bubble-family-card');
                 var familyCard = window.RoleFamilyCards && msg.cardId ? window.RoleFamilyCards.find(msg.cardId) : null;
                 var cardKindLabel = familyCard && familyCard.kind === 'intimate' ? '亲密付' : '亲属卡';
@@ -4289,6 +4308,9 @@
         const PAY_MARKER_REGEX = /\[(红包|转账):(\d+(?:\.\d{1,2})?):([^\]]*)\]/g;
         function extractPayMarkers(raw) {
             const text = String(raw || '');
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                return { text: text, items: [] };
+            }
             const items = [];
             let m;
             PAY_MARKER_REGEX.lastIndex = 0;
@@ -4313,6 +4335,9 @@
         const TRANSFER_ACCEPT_MARKER_REGEX = /\[收下转账:(\d+(?:\.\d{1,2})?)\]/g;
         function extractTransferDecisionMarkers(raw) {
             const text = String(raw || '');
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                return { text: text, amounts: [] };
+            }
             const amounts = [];
             let match;
             TRANSFER_ACCEPT_MARKER_REGEX.lastIndex = 0;
@@ -4326,6 +4351,7 @@
             };
         }
         function applyTransferDecisionMarkers(historyList, amounts) {
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) return;
             if (!Array.isArray(historyList) || !Array.isArray(amounts) || !amounts.length) return;
             amounts.forEach(function (amount) {
                 for (var i = historyList.length - 1; i >= 0; i--) {
@@ -4347,6 +4373,9 @@
         const ROLE_FAMILY_CARD_REVOKE_REGEX = /\[撤销(?:亲属卡|亲密付)\]/g;
         function extractRoleFamilyCardMarkers(raw) {
             var text = String(raw || '');
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                return { text: text, cards: [], changes: [] };
+            }
             var cards = [];
             var changes = [];
             var match;
@@ -4389,6 +4418,7 @@
         }
 
         function applyRoleFamilyCardChanges(changes) {
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) return false;
             if (!Array.isArray(changes) || !changes.length || isGroupChat ||
                 !window.RoleFamilyCards || typeof window.RoleFamilyCards.applyRoleChange !== 'function') return false;
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
@@ -4401,6 +4431,7 @@
         }
 
         function insertRoleFamilyCardInvitations(historyList, cardSpecs) {
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) return false;
             if (!Array.isArray(cardSpecs) || !cardSpecs.length || isGroupChat ||
                 !window.RoleFamilyCards || typeof window.RoleFamilyCards.createInvite !== 'function') return false;
             var roleId = String(aliasRoleId || currentRoleId || (currentCharacter && currentCharacter.id) || '');
@@ -4548,6 +4579,7 @@
         }
         // 命中红包/转账标记：在 AI 侧插入对应卡片并落库，role='assistant' 可被用户领取
         function insertPayCards(historyList, items) {
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) return;
             if (!items || !items.length) return;
             items.forEach(function (item) {
                 if (item.type === 'transfer' && /退回|退还|还给你/.test(String(item.message || ''))) {
@@ -7226,6 +7258,10 @@
 
         // 红包/转账卡片点击：拆红包 / 收款（防重复领取，金额强转数字防字符串拼接）
         function handlePayCardClick(event) {
+            if (window.PhoneIsRealUserConversation && window.PhoneIsRealUserConversation()) {
+                if (typeof showToast === 'function') showToast('真人聊天不支持红包、转账或交易记录');
+                return;
+            }
             const cardEl = event && event.currentTarget;
             if (!cardEl) return;
             const mid = cardEl.getAttribute('data-mid') || '';
