@@ -238,6 +238,8 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(chatDetail.includes('startCharacterPresence(String(currentCharacter.id || currentRoleId))'));
   assert.ok(chatDetail.includes('isGroupChat || !currentRoleId'), '群聊不可误占单角色租约');
   for (const id of [
+    'cloudReadinessCheck',
+    'cloudReadinessResult',
     'cloudPairCreateRow',
     'cloudPairCodeOutput',
     'cloudPairCodeCopyButton',
@@ -259,6 +261,8 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   ]) {
     assert.ok(settingsHtml.includes('id="' + id + '"'), '设置页缺少配对控件 ' + id);
   }
+  assert.ok(clientSource.includes('function getAutonomyReadiness()'));
+  assert.ok(clientSource.includes("'/api/autonomy/readiness'"));
   assert.ok(clientSource.includes('function createDevicePairingToken()'));
   assert.ok(clientSource.includes('function connectDeviceWithPairingCode('));
   assert.ok(clientSource.includes('pushSupported: false'));
@@ -272,6 +276,39 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   assert.ok(clientSource.includes('setCharacterSchedule(roleId, timeZone, schedule)'));
   assert.ok(clientSource.includes('function readOptionalWindow('));
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
+});
+
+test('云端 readiness 只暴露布尔配置状态与订阅数量，且必须设备鉴权', async () => {
+  const ctx = setupTestStore(openTestDb(), {
+    DEVICE_SECRET_PEPPER: 'test-device-secret-pepper-for-contract-tests-32chars',
+    ENROLLMENT_TOKEN: 'test-enrollment-token-for-contract-tests',
+    DEVICE_PAIRING_TOKEN_TTL_MS: '300000',
+    AUTONOMY_HEARTBEAT_TTL_MS: '60000',
+    AUTONOMY_DEVICE_LEASE_MS: '60000',
+    AUTONOMY_DEVICE_GRACE_MS: '30000',
+    VAPID_PUBLIC_KEY: 'public-test-key',
+    VAPID_PRIVATE_KEY: 'private-test-key',
+    VAPID_SUBJECT: 'mailto:test@example.invalid'
+  });
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const readiness = await ctx.asJson('/api/autonomy/readiness', { device });
+  assert.equal(readiness.status, 200);
+  assert.equal(readiness.payload.deviceAuthorized, true);
+  assert.equal(readiness.payload.deviceAuthConfigured, true);
+  assert.equal(readiness.payload.bootstrapConfigured, true);
+  assert.equal(readiness.payload.pairingConfigured, true);
+  assert.equal(readiness.payload.webPushKeysConfigured, true);
+  assert.equal(readiness.payload.activePushSubscriptions, 0);
+  assert.equal(readiness.payload.testPushReady, false);
+  assert.equal(readiness.payload.presenceConfigured, true);
+  assert.equal(readiness.payload.contextVersionReady, false);
+  assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
+  assert.equal(JSON.stringify(readiness.payload).includes('private-test-key'), false);
+
+  const anonymous = await ctx.asJson('/api/autonomy/readiness');
+  assert.equal(anonymous.status, 401);
 });
 
 test('设备 pepper 缺失或过短时注册与鉴权 fail-closed', async () => {
