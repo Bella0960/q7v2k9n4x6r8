@@ -532,10 +532,10 @@ test('friend roster refreshes the active session before assigning a server-owned
     if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
     if (url.endsWith('/v1/auth/me')) {
       meReads += 1;
-      return jsonResponse({
-        ok: true,
-        account: { id: 'account-after-tab-switch', handle: 'new_session', displayName: 'New Session', status: 'active' }
-      });
+      const account = meReads === 1
+        ? { id: 'account-before-tab-switch', handle: 'old_session', displayName: 'Old Session', status: 'active' }
+        : { id: 'account-after-tab-switch', handle: 'new_session', displayName: 'New Session', status: 'active' };
+      return jsonResponse({ ok: true, account });
     }
     if (url.includes('/v1/friends?')) {
       return jsonResponse({
@@ -551,11 +551,10 @@ test('friend roster refreshes the active session before assigning a server-owned
     return jsonResponse({ ok: false, error: 'not_found' }, 404);
   });
 
-  await app.client.discover();
-  await app.client.login({ handle: 'old_session', password: 'a sufficiently long password' });
-  assert.equal(app.client.getState().account.id, 'account-after-tab-switch');
+  await app.client.restore();
+  assert.equal(app.client.getState().account.id, 'account-before-tab-switch');
   const roster = await app.client.listFriendRoster();
-  assert.equal(meReads, 1);
+  assert.equal(meReads, 2);
   assert.equal(roster.ownerAccountId, 'account-after-tab-switch');
   assert.equal(app.client.getState().account.id, 'account-after-tab-switch');
 });
