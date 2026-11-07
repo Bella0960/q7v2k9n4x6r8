@@ -524,3 +524,18 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - **本地保存 ≠ 用户已读**：用户未实际看到气泡时 `read_at` 仍为空。
 - 目前每条主动消息明确投递到创建该出站消息时指定的目标设备；不会把某台设备的本地聊天历史或已读行为冒充为另一台设备的状态。
 - Node/SQLite 契约测试、`npm run build`、浏览器真实滚动可视性、Android 多设备和锁屏 Push 仍需实际运行验收；当前均为 **NOT VERIFIED**。本轮没有合并、部署或更新 APK。
+
+## 17. M2.7：主动联系支持动态多气泡
+
+- 主动联系 Prompt 改为返回 `bubbles` 数组：默认可以只有一条；只有存在自然分开的表达节点、且符合该角色聊天习惯时，才返回多条。数量不固定，最多 4 条是防止异常响应的技术上限，不是每轮配额。
+- 新增纯逻辑 `normalizeProactiveBubbles()`：统一校验数组与旧版 `text` 响应，拒绝空元素、超长内容、隐藏指令标记、URL 和异常控制字符；最终总长仍限制在 220 字。
+- 云端配对执行和旧版本地执行共用同一清洗器。通过校验的气泡按空行顺序写入原有 `text` 字段；聊天页既有 `parseReplyContent()` 会把它们显示为多个独立气泡。
+- 不新增数据库字段或第二种消息类型。整组气泡仍共用一个 `serverMessageId`，所以现有暂存结果幂等、设备接收、本地保存 ACK 和用户已读回执语义保持不变。
+- 旧版 `{ send, text }` 响应继续兼容；旧单条消息不会被迁移或重写。
+- PWA shell cache 更新至 `phone-app-pwa-v180`，ChatNotifier 更新至 `20261107v4`，角色聊天行为策略更新至 `20261102v18`。
+
+### 验证边界
+
+- 新增契约覆盖：单条与多条可变气泡、旧版 text 兼容、空元素拒绝、数量上限、URL / 机器指令拒绝，以及 Prompt 输出形状。
+- 本轮没有可用的项目 Node runner；Node / SQLite 测试、Vite build、浏览器实际渲染与手机验收仍为 **NOT RUN / NOT VERIFIED**。GitHub Actions 不能作为通过证据。
+- 未更改 Worker API、数据库迁移、聊天历史结构或模型凭据；未上传角色人设与聊天历史到 Worker；未合并、部署或更新 APK。
