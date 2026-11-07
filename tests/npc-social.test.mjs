@@ -144,6 +144,15 @@ test('NPC discovery is opt-in and does not run in the background when the page i
 });
 
 
+test('NPC lock migration still respects an active timestamp-only lock from the previous version', async () => {
+  const h = createHarness();
+  h.data.set('npc_friend_generation_lock_v2_main-role', String(Date.now()));
+  const result = await h.context.NPCSocial.discoverNow();
+  assert.equal(result.created, false);
+  assert.equal(result.reason, 'locked');
+  assert.equal(h.aiCalls, 0, 'a legacy active lock must prevent duplicate requests');
+});
+
 test('NPC discovery uses one role-scoped exclusive browser lock across tabs', async () => {
   const sharedData = new Map();
   const lockManager = createLockManager();
@@ -307,8 +316,8 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /data-action="block"/);
   assert.match(contacts, /npc-friends\.html/);
   assert.ok(nav.includes("currentPage === 'chat.html' || currentPage === 'contacts.html'"));
-  assert.match(page, /npc-social\.js\?v=20261108g/);
-  assert.ok(nav.includes("npc-social.js?v=20261108g"));
+  assert.match(page, /npc-social\.js\?v=20261108h/);
+  assert.ok(nav.includes("npc-social.js?v=20261108h"));
   assert.ok(source.includes('role.worldBookIds'));
   assert.match(source, /面向青少年用户/);
   assert.match(source, /npcFriendWelcome: true/);
