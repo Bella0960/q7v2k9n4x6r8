@@ -2895,8 +2895,15 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   assert.equal(contextVersion.status, 200);
   assert.equal(contextVersion.payload.ownedByCurrentDevice, true);
 
+  const pairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST', device
+  });
+  assert.equal(pairing.status, 200);
   const otherDevice = makeDevice();
-  await registerDevice(ctx, otherDevice);
+  const pairedOther = await registerDevice(ctx, otherDevice, {
+    pairingToken: pairing.payload.pairingToken
+  });
+  assert.equal(pairedOther.status, 200);
   const otherDeviceEnqueue = await ctx.asJson('/api/autonomy/characters/char-executor/activities', {
     method: 'POST', device: otherDevice, body: { contextVersion: 1 }
   });
