@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>MCP 连接 · 设置</title>
+<script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/mcp-client.js?v=20261108a"></script>
+<link rel="stylesheet" href="../shared/css/mobile-fit.css">
+<style>
+:root{--ink:#111;--muted:#777;--line:#e4e4e7;--paper:#fff}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#f4f4f5;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif}
+button,input,textarea{font:inherit}
+.page{width:min(440px,100%);min-height:100dvh;margin:0 auto;background:#fff;padding:calc(env(safe-area-inset-top) + 16px) 20px calc(env(safe-area-inset-bottom) + 28px)}
+.head{display:flex;align-items:center;gap:14px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.back{border:0;background:transparent;font-size:24px;padding:2px 6px 2px 0;cursor:pointer}
+.title{font-size:20px;font-weight:600;letter-spacing:-.3px}
+.eyebrow{font-size:10px;letter-spacing:.18em;color:var(--muted);margin:24px 0 9px}
+.intro{font-size:13px;line-height:1.7;color:#555;margin:0 0 20px}
+.panel{border:1px solid var(--line);padding:15px;margin:12px 0}
+.field{display:block;margin:12px 0}
+.field span{display:block;font-size:12px;color:#555;margin-bottom:6px}
+.field input,.tool-input{width:100%;border:1px solid #d7d7db;border-radius:7px;background:#fff;color:#111;padding:11px 12px;font-size:13px;outline:none}
+.field input:focus,.tool-input:focus{border-color:#777}
+.hint{font-size:11px;line-height:1.6;color:#888;margin:8px 0}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn{border:1px solid #111;background:#111;color:#fff;padding:10px 14px;border-radius:7px;font-size:12px;cursor:pointer}
+.btn.secondary{background:#fff;color:#111;border-color:#ccc}
+.btn:disabled{opacity:.45;cursor:default}
+.status{font-size:12px;line-height:1.6;padding:10px 0;color:#555;white-space:pre-wrap}
+.status.error{color:#8a2525}
+.saved-list{display:grid;gap:7px}
+.saved-item{border:1px solid var(--line);padding:10px;display:flex;align-items:center;gap:8px;font-size:12px}
+.saved-item button{border:0;background:none;color:#555;text-decoration:underline;cursor:pointer}
+.saved-item .saved-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.tool{border-top:1px solid var(--line);padding:14px 0}
+.tool-head{display:flex;justify-content:space-between;gap:12px;align-items:start}
+.tool-name{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.tool-desc{font-size:11px;line-height:1.6;color:#777;margin:5px 0 10px}
+.tool-input{min-height:76px;resize:vertical;font-family:ui-monospace,monospace;font-size:11px}
+.tool-result{margin:9px 0 0;background:#f6f6f7;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,monospace;max-height:220px;overflow:auto}
+.empty{font-size:12px;color:#999;padding:16px 0}
+.notice{background:#f6f6f7;padding:12px;font-size:11px;line-height:1.7;color:#555;margin:14px 0}
+.hidden{display:none!important}
+@media(min-width:600px){.page{margin:18px auto;min-height:calc(100dvh - 36px);border:1px solid #e5e5e5}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <button class="back" type="button" aria-label="返回设置" onclick="history.back()">‹</button>
+    <div class="title">MCP 连接中心</div>
+  </header>
+  <div class="eyebrow">MODEL CONTEXT PROTOCOL</div>
+  <p class="intro">连接支持 MCP Streamable HTTP 的外部工具服务。连接后可以查看工具说明，并在逐次确认后手动调用。</p>
+  <section class="panel">
+    <div class="eyebrow" style="margin-top:0">连接服务</div>
+    <label class="field"><span>服务名称</span><input id="serverName" maxlength="60" placeholder="例如：我的知识库"></label>
+    <label class="field"><span>MCP 服务地址</span><input id="serverUrl" inputmode="url" autocomplete="url" placeholder="https://example.com/mcp"></label>
+    <label class="field"><span>Bearer Token（可选）</span><input id="serverToken" type="password" autocomplete="off" placeholder="仅本次页面会话使用，不会保存"></label>
+    <p class="hint">凭据只保存在当前页面内存，离开页面即清除；保存的服务列表只包含名称和地址。</p>
+    <div class="actions">
+      <button class="btn" id="connectBtn" type="button">连接并读取工具</button>
+      <button class="btn secondary" id="disconnectBtn" type="button" disabled>断开连接</button>
+    </div>
+    <div class="status" id="connectStatus" role="status" aria-live="polite">尚未连接</div>
+  </section>
+  <section class="panel">
+    <div class="eyebrow" style="margin-top:0">已保存的服务</div>
+    <div id="savedList" class="saved-list"><div class="empty">尚未保存连接</div></div>
+  </section>
+  <section class="panel hidden" id="toolsPanel">
+    <div class="eyebrow" style="margin-top:0">可用工具</div>
+    <p class="hint" id="serverInfo"></p>
+    <div id="toolList"></div>
+  </section>
+  <div class="notice">安全说明：工具结果只作为文本展示，不会执行服务端返回的脚本。每次调用前都会显示工具名称和参数，并要求你确认。MCP 工具目前由你在本页手动调用，尚未接入 AI 的自动工具选择。浏览器连接还要求 MCP 服务允许当前网站的 CORS 跨域请求。</div>
+</main>
+<script>
+(function () {
+  'use strict';
+  var STORE_KEY = 'maomao_mcp_connections_v1';
+  var client = null, activeTools = [], serverInfo = null;
+  var $ = function (id) { return document.getElementById(id); };
+  function safeRead() {
+    try { var v = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function safeWrite(items) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(items)); return true; }
+    catch (e) { setStatus('无法保存服务列表：本机存储不可用。', true); return false; }
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function setStatus(message, error) {
+    $('connectStatus').textContent = message;
+    $('connectStatus').classList.toggle('error', !!error);
+  }
+  function renderSaved() {
+    var rows = safeRead();
+    if (!rows.length) { $('savedList').innerHTML = '<div class="empty">尚未保存连接</div>'; return; }
+    $('savedList').innerHTML = rows.map(function (row) {
+      return '<div class="saved-item"><span class="saved-name">' + esc(row.name) + '<br><span style="color:#888">' + esc(row.url) + '</span></span>' +
+        '<button type="button" data-load="' + esc(row.id) + '">载入</button><button type="button" data-remove="' + esc(row.id) + '">删除</button></div>';
+    }).join('');
+  }
+  function renderTools() {
+    $('toolsPanel').classList.toggle('hidden', !client);
+    $('serverInfo').textContent = serverInfo
+      ? '服务：' + String(serverInfo.name || 'MCP Server') + ' · 协议：' + String(serverInfo.version || '未提供')
+      : '已读取工具清单';
+    if (!activeTools.length) { $('toolList').innerHTML = '<div class="empty">服务暂未提供工具。</div>'; return; }
+    $('toolList').innerHTML = activeTools.map(function (tool, index) {
+      return '<article class="tool" data-tool-index="' + index + '">' +
+        '<div class="tool-head"><div class="tool-name">' + esc(tool.name) + '</div><button class="btn secondary" type="button" data-call="' + index + '">调用工具</button></div>' +
+        '<div class="tool-desc">' + esc(tool.description || '服务未提供工具说明。') + '</div>' +
+        '<textarea class="tool-input" aria-label="' + esc(tool.name) + ' 参数 JSON" spellcheck="false">{}</textarea>' +
+        '<details><summary class="hint">查看参数结构</summary><pre class="tool-result">' + esc(JSON.stringify(tool.inputSchema || {}, null, 2)) + '</pre></details>' +
+        '<pre class="tool-result hidden" data-result></pre></article>';
+    }).join('');
+  }
+  function disconnect() {
+    var old = client;
+    client = null; activeTools = []; serverInfo = null;
+    $('serverToken').value = '';
+    $('disconnectBtn').disabled = true;
+    $('toolsPanel').classList.add('hidden');
+    if (old) old.disconnect();
+  }
+  $('connectBtn').addEventListener('click', async function () {
+    disconnect();
+    var url = $('serverUrl').value.trim();
+    var name = $('serverName').value.trim() || 'MCP 服务';
+    var token = $('serverToken').value;
+    try {
+      var validatedUrl = MaoMcpClient.validateEndpoint(url);
+      $('connectBtn').disabled = true;
+      setStatus('正在连接并协商 MCP 协议…');
+      var nextClient = MaoMcpClient.createClient({url:validatedUrl,token:token});
+      var init = await nextClient.initialize();
+      var tools = await nextClient.listTools();
+      var id = 'mcp_' + Date.now().toString(36);
+      var rows = safeRead().filter(function (x) { return x.url !== validatedUrl; });
+      rows.unshift({id:id,name:name.slice(0,60),url:validatedUrl,updatedAt:Date.now()});
+      if (!safeWrite(rows.slice(0,30))) { await nextClient.disconnect(); return; }
+      client = nextClient; activeTools = tools; serverInfo = init.serverInfo || null;
+      $('disconnectBtn').disabled = false;
+      setStatus('已连接 · 发现 ' + tools.length + ' 个工具。');
+      renderSaved(); renderTools();
+    } catch (error) {
+      setStatus(error && error.message ? error.message : '连接失败。', true);
+    } finally {
+      $('connectBtn').disabled = false;
+    }
+  });
+  $('disconnectBtn').addEventListener('click', function () {
+    disconnect(); setStatus('已断开连接。');
+  });
+  $('savedList').addEventListener('click', function (event) {
+    var load = event.target.closest('[data-load]');
+    var remove = event.target.closest('[data-remove]');
+    if (load) {
+      var row = safeRead().find(function (x) { return String(x.id) === load.getAttribute('data-load'); });
+      if (!row) return;
+      $('serverName').value = row.name || ''; $('serverUrl').value = row.url || '';
+      $('serverToken').value = ''; setStatus('已载入地址。请重新输入令牌并连接。');
+      return;
+    }
+    if (remove) {
+      disconnect();
+      safeWrite(safeRead().filter(function (x) { return String(x.id) !== remove.getAttribute('data-remove'); }));
+      renderSaved(); setStatus('已删除服务配置。');
+    }
+  });
+  $('toolList').addEventListener('click', async function (event) {
+    var button = event.target.closest('[data-call]');
+    if (!button || !client) return;
+    var tool = activeTools[Number(button.getAttribute('data-call'))];
+    var card = button.closest('.tool');
+    var input = card && card.querySelector('.tool-input');
+    var resultBox = card && card.querySelector('[data-result]');
+    if (!tool || !input || !resultBox) return;
+    var args;
+    try {
+      args = JSON.parse(input.value || '{}');
+      if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('参数必须是 JSON 对象。');
+    } catch (error) {
+      resultBox.textContent = error.message || '参数 JSON 格式错误。';
+      resultBox.classList.remove('hidden'); return;
+    }
+    var confirmText = '即将调用 MCP 工具：' + tool.name + '\\n\\n参数：\\n' + JSON.stringify(args, null, 2) +
+      '\\n\\n工具会访问外部 MCP 服务，可能产生外部影响。确定继续吗？';
+    if (!window.confirm(confirmText)) return;
+    button.disabled = true; resultBox.textContent = '正在调用…'; resultBox.classList.remove('hidden');
+    try {
+      var result = await client.callTool(tool.name, args);
+      resultBox.textContent = JSON.stringify(result, null, 2).slice(0, 12000);
+    } catch (error) {
+      resultBox.textContent = error && error.message ? error.message : '工具调用失败。';
+    } finally { button.disabled = false; }
+  });
+  renderSaved();
+})();
+</script>
+</body>
+</html>
