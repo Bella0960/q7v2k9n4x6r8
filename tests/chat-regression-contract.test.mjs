@@ -10,6 +10,7 @@ const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8')
 
 const detail = read('chat/chat/chat-detail.html');
 const walletLedgerSource = read('shared/js/phone/wallet-ledger.js');
+const chatExtrasSource = read('chat/chat/js/chat-extras.js');
 const shopPage = read('wallet/shop.html');
 const takeoutPage = read('wallet/takeout.html');
 const walletPage = read('wallet/wallet.html');
@@ -2900,4 +2901,82 @@ test('商店、外卖亲密付必须验证额度和余额，且扣款未确认�
     assert.match(source, /closePayQuotaCommitted = true/,
       name + ' must distinguish quota commit from an incomplete transaction');
   }
+});
+
+
+test('用户发出的红包/转账在钱包扣款后聊天保存失败时可恢复且不重复扣款', async () => {
+  const start = chatExtrasSource.indexOf('  var submitPayInProgress = false;');
+  const end = chatExtrasSource.indexOf("  if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage);", start);
+  assert.ok(start >= 0 && end > start, 'outgoing payment submit handler must be present');
+  const source = chatExtrasSource.slice(start, end);
+
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  let wallet = { balance: 50, history: [] };
+  let savedMessages = [];
+  let failFirstChatSave = true;
+  let drawerClosed = 0;
+  let rendered = 0;
+  let silentInstructions = 0;
+  const toasts = [];
+  const sandbox = {
+    window: {
+      MaoMaoWalletLedger: {
+        runExclusive: (task) => Promise.resolve().then(task)
+      }
+    },
+    payAmountInput: { value: '12.50' },
+    payMessageInput: { value: '给你买点喜欢的' },
+    payConfirmBtn: { disabled: false },
+    PAY_DEFAULT_MESSAGE: '恭喜发财，大吉大利',
+    payMode: 'redpacket',
+    currentCharacter: { id: 'role-1', name: '角色' },
+    getWorkData: () => clone(wallet),
+    saveWorkData: (next) => { wallet = clone(next); return true; },
+    loadMessages: () => clone(savedMessages),
+    saveMessages: (next) => {
+      if (failFirstChatSave) {
+        failFirstChatSave = false;
+        return false;
+      }
+      savedMessages = clone(next);
+      return true;
+    },
+    closePayDrawer: () => { drawerClosed += 1; },
+    renderAllMessages: () => { rendered += 1; },
+    sendSilentInstruction: () => { silentInstructions += 1; },
+    showToast: (message) => toasts.push(message),
+    console: { warn: () => {} }
+  };
+  runInNewContext(source, sandbox);
+
+  await sandbox.submitPayMessage();
+  assert.equal(wallet.balance, 37.5, 'the first attempt deducts the wallet once');
+  assert.equal(wallet.history.length, 1);
+  assert.ok(wallet.history[0].pendingChatMessage, 'the wallet keeps the exact unsaved chat card for recovery');
+  assert.equal(savedMessages.length, 0, 'the failed chat write does not falsely render a sent card');
+  assert.equal(drawerClosed, 0, 'the drawer remains available for recovery');
+  assert.equal(silentInstructions, 0, 'the character is not told about an unconfirmed chat card');
+  assert.match(toasts.at(-1), /再次提交会恢复原卡/);
+
+  await sandbox.submitPayMessage();
+  assert.equal(wallet.balance, 37.5, 'retry recovers the pending payment without deducting again');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(savedMessages.length, 1);
+  assert.equal(savedMessages[0].type, 'redpacket');
+  assert.equal(savedMessages[0].amount, '12.50');
+  assert.equal(savedMessages[0].mid, wallet.history[0].paymentId);
+  assert.ok(wallet.history[0].chatMessageSavedAt, 'successful recovery marks the chat card as persisted');
+  assert.equal(drawerClosed, 1);
+  assert.equal(rendered, 1);
+  assert.equal(silentInstructions, 1);
+});
+
+test('用户红包/转账发送入口也使用共享钱包锁并刷新 chat-extras 脚本', () => {
+  assert.match(detail, /wallet-ledger\.js\?v=20261107v1/);
+  assert.match(detail, /chat-extras\.js\?t=20261107wallet1/);
+  assert.match(chatExtrasSource, /ledger\.runExclusive\(function \(\)/);
+  assert.match(chatExtrasSource, /paymentId: paymentId/);
+  assert.match(chatExtrasSource, /pendingChatMessage: specialMsg/);
+  assert.match(chatExtrasSource, /chatMessageSavedAt = Date\.now\(\)/);
+  assert.match(chatExtrasSource, /!entry\.chatMessageSavedAt/);
 });
