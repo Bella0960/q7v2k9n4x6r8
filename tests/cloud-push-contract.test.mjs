@@ -1973,6 +1973,41 @@ test('并发的相同推送事件只有一个请求能取得订阅投递租约',
   assert.equal(calls.length, 1);
 });
 
+test('连续失败的推送尝试也会计入每设备速率限制', async () => {
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(503);
+  const ctx = setupTestStore(openTestDb(), {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev',
+    fetchImpl: pushFetch
+  });
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const sub = await makeBrowserSubscription();
+  await subscribeDevice(ctx, device, sub);
+
+  for (let index = 0; index < 3; index += 1) {
+    const attempt = await ctx.asJson('/api/push/test', {
+      method: 'POST',
+      device,
+      body: { dedupeKey: 'failing-key-' + index }
+    });
+    assert.equal(attempt.status, 200);
+    assert.equal(attempt.payload.summary.retryScheduled, 1);
+  }
+
+  const limited = await ctx.asJson('/api/push/test', {
+    method: 'POST',
+    device,
+    body: { dedupeKey: 'fourth-unique-key' }
+  });
+  assert.equal(limited.status, 429);
+  assert.equal(limited.payload.error.code, 'PUSH_RATE_LIMITED');
+  assert.equal(pushFetch.calls.length, 3,
+    '连续失败也必须受速率限制，不能靠每次换 dedupeKey 绕过');
+});
+
 test('test-push 在未配置 VAPID 时返回明确的 503，而不是静默失败', async () => {
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
