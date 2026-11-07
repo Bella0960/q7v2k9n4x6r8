@@ -8,6 +8,7 @@ const contactsPage = readFileSync(new URL('../chat/contacts/contacts.html', impo
 const composerPage = readFileSync(new URL('../forum/post-create.html', import.meta.url), 'utf8');
 const momentsPage = readFileSync(new URL('../chat/moments/moments.html', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const packageJson = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 const backup = readFileSync(new URL('../settings/js/backup.js', import.meta.url), 'utf8');
 
 function createRuntime(initialValue, options = {}) {
@@ -168,7 +169,7 @@ test('contact group metadata is covered by the existing full localStorage backup
 
 test('PWA cache contains the contact group policy module and has a new cache version', () => {
   assert.match(serviceWorker, /phone-app-pwa-v174/);
-  assert.match(await readFileSync(new URL('../package.json', import.meta.url), 'utf8'), /test:contact:groups/);
+  assert.match(packageJson, /test:contact:groups/);
   assert.match(serviceWorker, /contact-groups\.js\?v=20261107v1/);
 });
 
