@@ -644,6 +644,28 @@ class CloudStore {
     )[0] || null;
   }
 
+  releaseExpiredActivity({ id, expectedAttemptCount, expectedLockedBy, expectedLockedUntil, now }) {
+    const row = this.exec(
+      `UPDATE activity_queue
+       SET status = 'retry', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = ?, updated_at = ?
+       WHERE id = ? AND status = 'running'
+         AND attempt_count = ?
+         AND locked_by = ?
+         AND locked_until = ?
+         AND locked_until <= ?
+       RETURNING id`,
+      now,
+      now,
+      id,
+      expectedAttemptCount,
+      expectedLockedBy,
+      expectedLockedUntil,
+      now
+    )[0];
+    return Boolean(row);
+  }
+
   completeActivity({ id, owner, attemptCount, now }) {
     const row = this.exec(
       `UPDATE activity_queue
