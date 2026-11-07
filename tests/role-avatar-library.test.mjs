@@ -457,3 +457,73 @@ test('pair state normalization rejects dangling, repeated, duplicate and overlap
   assert.equal(normalized.pairs[0].source, 'chat');
   assert.deepEqual(Array.from(normalized.pairs[0].avatarIds), [idA, idB]);
 });
+
+test('transactional chat pair saver stores two existing assets once and creates the role-scoped pair', async () => {
+  const { api, assets, refs } = createLibrary();
+  const first = await api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
+  const second = await api.add('chat-owner', 'data:image/jpeg;base64,SECOND');
+  const before = assets.size;
+
+  const result = await api.addAssetPair('role-a', first.value.assetId, second.value.assetId, { label: '聊天情头' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.label, '聊天情头');
+  assert.equal(result.value.avatars.length, 2);
+  assert.equal(api.list('role-a').length, 2);
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.equal(api.getPairs('role-b').length, 0);
+  assert.equal(assets.size, before, 'the pair reuses the two existing media blobs');
+  assert.equal(refs.has(first.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(api.getActive('role-a'), null, 'pair saving does not change the active avatar');
+});
+
+test('transactional pair saver rolls back its first new reference when the second asset cannot be linked', async () => {
+  const secondAssetId = 'as_' + 'B'.repeat(32);
+  const failing = createLibrary({}, { failAddRefFor: secondAssetId });
+  const first = await failing.api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
+  failing.assets.set(secondAssetId, new Blob(['second image'], { type: 'image/jpeg' }));
+  failing.refs.add(secondAssetId + '|chat-message|message-b');
+
+  const result = await failing.api.addAssetPair('role-a', first.value.assetId, secondAssetId);
+  assert.equal(result.ok, false);
+  assert.equal(failing.api.list('role-a').length, 0);
+  assert.equal(failing.api.getPairs('role-a').length, 0);
+  assert.equal(failing.refs.has(first.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(failing.refs.has(first.value.assetId + '|role-avatar|chat-owner'), true);
+  assert.equal(failing.refs.has(secondAssetId + '|chat-message|message-b'), true);
+});
+
+test('transactional pair saver preserves an existing pair when a new overlapping pair conflicts', async () => {
+  const { api } = createLibrary();
+  const first = await api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
+  const second = await api.add('chat-owner', 'data:image/jpeg;base64,SECOND');
+  const third = await api.add('chat-owner', 'data:image/jpeg;base64,THIRD');
+  const original = await api.addAssetPair('role-a', second.value.assetId, third.value.assetId);
+  assert.equal(original.ok, true);
+
+  const conflict = await api.addAssetPair('role-a', first.value.assetId, second.value.assetId);
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.error.code, 'PAIR_CONFLICT');
+  assert.equal(api.list('role-a').length, 2);
+  assert.equal(api.list('role-a').some(item => item.assetId === first.value.assetId), false);
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.deepEqual(
+    Array.from(api.getPairs('role-a')[0].avatarIds),
+    [api.list('role-a').find(item => item.assetId === second.value.assetId).id,
+     api.list('role-a').find(item => item.assetId === third.value.assetId).id]
+  );
+});
+
+test('transactional pair saver never removes an existing single avatar when its other image fails', async () => {
+  const secondAssetId = 'as_' + 'C'.repeat(32);
+  const failing = createLibrary({}, { failAddRefFor: secondAssetId });
+  const first = await failing.api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
+  const existing = await failing.api.addAsset('role-a', first.value.assetId, { source: 'chat' });
+  failing.assets.set(secondAssetId, new Blob(['second image'], { type: 'image/jpeg' }));
+
+  const result = await failing.api.addAssetPair('role-a', first.value.assetId, secondAssetId);
+  assert.equal(result.ok, false);
+  assert.equal(failing.api.list('role-a').length, 1);
+  assert.equal(failing.api.list('role-a')[0].id, existing.value.id);
+  assert.equal(failing.refs.has(first.value.assetId + '|role-avatar|role-a'), true);
+});
