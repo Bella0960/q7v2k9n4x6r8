@@ -634,7 +634,8 @@ test('自主活动元数据 API：全局与角色开关、继承、IANA 时区�
 
   const readSchedule = await ctx.asJson('/api/characters/char-a/schedule', { device });
   assert.equal(readSchedule.status, 200);
-  assert.equal(readSchedule.payload.schedule.active[0].start, '09:00');
+  assert.equal(readSchedule.payload.schedule.active[0].startMinute, 540);
+  assert.equal(readSchedule.payload.schedule.active[0].endMinute, 1320);
 
   const unauthenticated = await ctx.asJson('/api/autonomy/global', {
     method: 'PUT',
