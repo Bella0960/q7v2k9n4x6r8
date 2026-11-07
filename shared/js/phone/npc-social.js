@@ -43,8 +43,11 @@
   }
   function readRequests() {
     var key = scopedKey(REQUEST_KEY_PREFIX);
-    var scoped = readJson(key, null);
-    if (scoped !== null) {
+    var raw = null;
+    try { raw = localStorage.getItem(key); }
+    catch (error) { throw new Error('当前主角色的 NPC 申请数据无法读取，已停止写入以保护原数据。'); }
+    if (raw !== null) {
+      var scoped = readJson(key, null);
       if (!Array.isArray(scoped)) throw new Error('当前主角色的 NPC 申请数据无法读取，已停止写入以保护原数据。');
       return scoped;
     }
