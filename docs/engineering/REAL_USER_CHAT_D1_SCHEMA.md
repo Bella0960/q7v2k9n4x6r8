@@ -31,14 +31,16 @@ Voice messages are file attachments. Live voice/video calls are not included and
 
 ## Activation prerequisites
 
-1. Create a D1 database in the user's Cloudflare account and configure a real `DB` binding; this change does not add a placeholder database ID to `wrangler.jsonc`.
-2. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER` and explicitly set `REAL_USER_AUTH_ENABLED=true` only after the D1 migration has been applied and reviewed.
-3. Apply the migration to a staging database first and validate all triggers and foreign keys.
-4. The Worker now implements PBKDF2-HMAC-SHA256 password derivation (600,000 iterations), opaque random session tokens stored only as hashes, HttpOnly/Secure/SameSite=Strict cookies, same-origin checks, mandatory IP/handle rate limiting, and logout revocation. Account recovery, email verification, and native two-factor support remain unimplemented.
+1. Create a D1 database in the Cloudflare account and configure a real `DB` binding; no placeholder database ID is committed.
+2. Apply the migration to a staging database first and validate all tables, triggers, and foreign keys.
+3. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER`. Keep `REAL_USER_AUTH_ENABLED` unset/false until staging verification is complete.
+4. Run the account-auth regression suite against the staging binding, review password derivation cost and rate-limit behavior in the target Worker plan, then explicitly set `REAL_USER_AUTH_ENABLED=true` to expose account registration/login only.
 5. Implement server-owned friend-code rotation and friend-request transitions with idempotency.
 6. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
 7. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
 8. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
 9. Only then change the Worker capability endpoint to report messaging enabled.
 
-This is schema groundwork, not a working account or messaging service. Until the above work is completed and verified, the Worker remains disabled and the local repository remains `local_only`.
+Account-auth handlers are implemented in `worker/real-user-auth.js`: PBKDF2-HMAC-SHA256 password derivation (600,000 iterations), opaque random session tokens stored only as SHA-256 hashes, HttpOnly/Secure/SameSite=Strict cookies, same-origin checks, mandatory IP/handle rate limiting, and logout revocation. Account recovery, email verification, and native two-factor support remain unimplemented.
+
+This is schema and handler groundwork, not a working deployed account or messaging service. No D1 database is bound or migrated in Cloudflare, the auth gate remains off, and the local conversation repository remains `local_only`.
