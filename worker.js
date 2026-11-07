@@ -82,8 +82,10 @@ export class CloudDatabase {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return this.handleApi(request);
     if (url.pathname === '/internal/maintenance' && request.method === 'POST') {
-      const removed = this.store.cleanupSubscriptions(Date.now());
-      return Response.json({ ok: true, removed });
+      const timestamp = Date.now();
+      const removed = this.store.cleanupSubscriptions(timestamp);
+      const pairingTokensRemoved = this.store.cleanupDevicePairingTokens(timestamp);
+      return Response.json({ ok: true, removed, pairingTokensRemoved });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
       // 真实 gate 已接入；缺少显式授权/作息/lease 配置或可信上下文版本时仍 fail-closed。
