@@ -238,8 +238,8 @@
 
     /**
      * putBlob(blobOrDataUrl, {type, mimeType, ownerType, ownerId})
-     * → Promise<{ ok:true, value:{ assetId, size, hash, reused } } | { ok:false, error:{code, message, retryable} }>
-     * 同 hash 已存在时复用已有 assetId（reused=true），不复制 Blob。
+     * → Promise<{ ok:true, value:{ assetId, size, hash, reused }, meta:{ reused, refAdded } } | { ok:false, error:{code, message, retryable} }>
+     * 同 hash 已存在时复用已有 assetId（reused=true）；refAdded 表示本次是否新增当前 owner 的引用。
      */
     MediaRepository.prototype.putBlob = function (input, opts) {
         var self = this;
