@@ -7023,6 +7023,7 @@
                 forwardFrom: { id: String(aliasRoleId), name: roleDisplayName },
                 text: plainTextOf(msg)
             };
+            ensureMid(fwd);
             var linkedImageRef = false;
             if (msg.type === 'image' && msg.assetId) {
                 if (!_chatImageMediaRepo || typeof _chatImageMediaRepo.addRef !== 'function') {
