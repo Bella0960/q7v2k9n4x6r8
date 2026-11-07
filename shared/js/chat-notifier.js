@@ -552,10 +552,10 @@
     }
 
     function hasStoredCloudDeviceCredentials() {
-        var device = safeJsonParse(safeGet('cloud_device_v1'));
-        return !!(device &&
-            typeof device.deviceId === 'string' &&
-            typeof device.secret === 'string');
+        // An explicit cloud disconnect removes this key. Any non-empty record,
+        // even one that no longer parses, means local fallback is unsafe.
+        var raw = safeGet('cloud_device_v1');
+        return typeof raw === 'string' && raw.trim().length > 0;
     }
 
     function resetProactiveAttempt(roleId) {
