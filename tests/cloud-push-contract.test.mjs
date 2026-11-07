@@ -2674,3 +2674,96 @@ test('presence config 只返回显式服务端参数，缺失配置或未鉴权�
   assert.equal(unavailable.status, 503);
   assert.equal(unavailable.payload.error.code, 'PRESENCE_NOT_CONFIGURED');
 });
+
+
+test('云端出站消息按目标设备拉取，保存后确认且重复确认幂等', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const message = {
+    id: randomToken(16),
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-a',
+    serverMessageId: randomToken(20),
+    dedupeKey: randomToken(20),
+    payload: { type: 'text', text: '云端待同步消息' },
+    now: 2000
+  };
+  const inserted = ctx.store.enqueueOutboundMessage(message);
+  assert.equal(inserted.inserted, true);
+  assert.equal(inserted.message.delivery_status, 'pending');
+
+  const duplicate = ctx.store.enqueueOutboundMessage(message);
+  assert.equal(duplicate.inserted, false);
+  assert.equal(duplicate.idempotent, true);
+
+  const conflictingRetry = ctx.store.enqueueOutboundMessage({
+    ...message,
+    payload: { type: 'text', text: '不同正文不得覆盖首次保存' }
+  });
+  assert.equal(conflictingRetry.conflict, true);
+
+  const pulled = await ctx.asJson('/api/characters/char-a/outbound?limit=10', { device });
+  assert.equal(pulled.status, 200);
+  assert.equal(pulled.payload.messages.length, 1);
+  assert.equal(pulled.payload.messages[0].serverMessageId, message.serverMessageId);
+  assert.deepEqual(pulled.payload.messages[0].payload, message.payload);
+
+  const unauthenticated = await ctx.asJson('/api/characters/char-a/outbound');
+  assert.equal(unauthenticated.status, 401);
+
+  const ackPath = '/api/characters/char-a/outbound/' + message.serverMessageId + '/ack';
+  const acknowledged = await ctx.asJson(ackPath, { method: 'POST', device });
+  assert.equal(acknowledged.status, 200);
+  assert.equal(acknowledged.payload.acknowledged, true);
+  assert.equal(acknowledged.payload.alreadyAcknowledged, false);
+
+  const repeatedAck = await ctx.asJson(ackPath, { method: 'POST', device });
+  assert.equal(repeatedAck.status, 200);
+  assert.equal(repeatedAck.payload.alreadyAcknowledged, true);
+
+  const afterAck = await ctx.asJson('/api/characters/char-a/outbound', { device });
+  assert.equal(afterAck.status, 200);
+  assert.equal(afterAck.payload.messages.length, 0);
+});
+
+test('出站消息不能跨设备或跨角色读取与确认', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const deviceA = makeDevice();
+  const deviceB = makeDevice();
+  await registerDevice(ctx, deviceA);
+  await registerDevice(ctx, deviceB);
+
+  const message = {
+    id: randomToken(16),
+    deviceId: deviceA.deviceId,
+    userId: 'owner',
+    characterId: 'char-a',
+    serverMessageId: randomToken(20),
+    dedupeKey: randomToken(20),
+    payload: { type: 'text', text: '只发给设备 A' },
+    now: 3000
+  };
+  assert.equal(ctx.store.enqueueOutboundMessage(message).inserted, true);
+
+  const otherDevicePull = await ctx.asJson('/api/characters/char-a/outbound', { device: deviceB });
+  assert.equal(otherDevicePull.status, 200);
+  assert.equal(otherDevicePull.payload.messages.length, 0);
+
+  const wrongRoleAck = await ctx.asJson(
+    '/api/characters/char-b/outbound/' + message.serverMessageId + '/ack',
+    { method: 'POST', device: deviceA }
+  );
+  assert.equal(wrongRoleAck.status, 404);
+
+  const otherDeviceAck = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/ack',
+    { method: 'POST', device: deviceB }
+  );
+  assert.equal(otherDeviceAck.status, 404);
+
+  const ownerPull = await ctx.asJson('/api/characters/char-a/outbound', { device: deviceA });
+  assert.equal(ownerPull.payload.messages.length, 1);
+});
