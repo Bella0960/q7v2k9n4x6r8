@@ -368,7 +368,8 @@
 
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
-            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
+            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
+            typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function') {
             return ensureOptionalCloudClient();
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
@@ -385,7 +386,8 @@
             if (!ok) return false;
             return loadProactiveScript(
                 proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v18'),
-                function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+                function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
+                    typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function'; }
             );
         }).then(function (ok) {
             if (!ok) {
