@@ -113,3 +113,77 @@ test('context policy emits OpenAI-compatible multimodal user content only when a
   assert.equal(mapped[1].content, '这是什么？');
   assert.equal(mapped.length, 2, 'legacy images without an explicitly resolved vision URL stay textual');
 });
+
+
+const chatDetailSource = fs.readFileSync(
+  path.join(process.cwd(), 'chat/chat/chat-detail.html'), 'utf8'
+);
+const chatExtrasSource = fs.readFileSync(
+  path.join(process.cwd(), 'chat/chat/js/chat-extras.js'), 'utf8'
+);
+const avatarLibrarySource = fs.readFileSync(
+  path.join(process.cwd(), 'shared/js/phone/role-avatar-library.js'), 'utf8'
+);
+const serviceWorkerSource = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
+const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+
+test('chat plus-image upload stores Blob assets and chat history stores only asset references', () => {
+  assert.ok(chatExtrasSource.includes("ownerType: 'chat-message'"));
+  assert.ok(chatExtrasSource.includes('putBlob(blob'));
+  assert.ok(chatExtrasSource.includes("type: 'image'"));
+  assert.ok(chatExtrasSource.includes('assetId: String(stored.value.assetId)'));
+  assert.ok(chatExtrasSource.includes("attachmentSource: 'upload'"));
+  assert.equal(chatExtrasSource.includes('img: dataUrl'), false);
+});
+
+test('user image shares require first-use privacy confirmation and pass only current image mids to sendMsg', () => {
+  assert.ok(chatExtrasSource.includes('confirmChatImagePrivacy()'));
+  assert.ok(chatExtrasSource.includes('maomao_chat_image_privacy_v1'));
+  assert.ok(chatExtrasSource.includes('visionImageMids'));
+  assert.ok(chatExtrasSource.includes("options.visionImageMids"));
+  assert.ok(chatExtrasSource.includes('Math.min(files.length, maxFiles)'));
+});
+
+test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
+  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v1'));
+  assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
+  assert.ok(chatDetailSource.includes('visionImageMids'));
+  assert.ok(chatDetailSource.includes('buildAvatarCandidatePrompt'));
+  assert.ok(chatDetailSource.includes('parseAvatarCandidateReply'));
+  assert.ok(chatDetailSource.includes('streamResult.ok'));
+  assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.addAsset'));
+  assert.match(chatDetailSource, /if\s*\(replySaved\s*&&\s*avatarCandidates\.length/);
+  assert.ok(chatDetailSource.includes("source: 'chat'"));
+});
+
+test('ordinary group, background and non-image silent turns cannot add avatar candidates', () => {
+  assert.ok(chatDetailSource.includes('!isGroupChat && !isRegen && !contextOnly && (!silent || visionImageMids.length)'));
+  assert.ok(chatDetailSource.includes('streamResult.ok && !isGroupChat && !isRegen'));
+  assert.ok(chatDetailSource.includes('avatarCandidateImages.length'));
+  assert.ok(chatDetailSource.includes('avatarCandidateLimit'));
+});
+
+test('candidate assets share the original media blob and do not change the active avatar', () => {
+  assert.ok(avatarLibrarySource.includes('function addAsset(roleId, assetId, options)'));
+  assert.ok(avatarLibrarySource.includes('media.getAsset(assetId)'));
+  assert.ok(avatarLibrarySource.includes("media.addRef(assetId, OWNER_TYPE, String(roleId))"));
+  assert.ok(avatarLibrarySource.includes("source: options.source === 'legacy' ? 'legacy' : (options.source === 'chat' ? 'chat' : 'upload')"));
+  assert.ok(avatarLibrarySource.includes("activeId: previous.activeId, items: [item].concat(previous.items)"));
+  assert.ok(avatarLibrarySource.includes("return { ok: true, value: copyItem(item, next.activeId), meta: { linked: true } }"));
+});
+
+test('deleted chat images release only chat references after the deletion is saved', () => {
+  assert.ok(chatDetailSource.includes('function releaseDeletedChatImageReferences(messages)'));
+  assert.ok(chatDetailSource.includes("String(message.assetId),\n                        'chat-message',"));
+  assert.ok(chatDetailSource.includes('if (!saveMessages(keep))'));
+  assert.ok(chatDetailSource.includes('releaseDeletedChatImageReferences(removedMessages)'));
+});
+
+test('PWA shell and package contracts include the chat vision runtime', () => {
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v177'"));
+  assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v1'));
+  assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
+  assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
+  assert.ok(packageJson.scripts['test:chat:image-vision']);
+  assert.ok(packageJson.scripts['test:chat:contract'].includes('tests/chat-image-vision.test.mjs'));
+});
