@@ -74,9 +74,13 @@ function createLibrary(seed, options = {}) {
       return Promise.resolve(result);
     }
     removeAsset(assetId) {
-      const stillReferenced = Array.from(refs).some(ref => ref.startsWith(assetId + '|'));
-      if (stillReferenced || options.retainAssets) {
-        return Promise.resolve({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+      const remainingRefs = Array.from(refs).filter(ref => ref.startsWith(assetId + '|'));
+      if (remainingRefs.length || options.retainAssets) {
+        return Promise.resolve({
+          ok: false,
+          error: { code: 'VALIDATION_FAILED' },
+          meta: { refCount: remainingRefs.length, refs: remainingRefs }
+        });
       }
       assets.delete(assetId);
       return Promise.resolve({ ok: true });
@@ -113,6 +117,28 @@ test('a pending portrait upload cannot recreate a library after its character is
   assert.equal(api.list('role-deleted').length, 0);
   assert.equal(Array.from(refs).some(ref => ref.endsWith('|role-avatar|role-deleted')), false);
   assert.equal(assets.size, 0, 'a newly uploaded orphan is removed after its role reference is released');
+});
+
+test('a pending chat asset lookup reclaims an unowned source image after character deletion', async () => {
+  const assetId = 'as_' + 'A'.repeat(32);
+  const options = { deferGetAssetFor: assetId };
+  const { api, assets, refs } = createLibrary({}, options);
+  assets.set(assetId, new Blob(['orphan'], { type: 'image/jpeg' }));
+
+  const pending = api.addAsset('role-deleted', assetId, { source: 'chat' });
+  for (let i = 0; i < 8 && typeof options.releaseGetAsset !== 'function'; i += 1) await Promise.resolve();
+  assert.equal(typeof options.releaseGetAsset, 'function', 'the source image lookup is still pending');
+
+  const deleted = await api.removeRole('role-deleted');
+  assert.equal(deleted.ok, true);
+  options.releaseGetAsset();
+
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'ROLE_DELETED');
+  assert.equal(api.list('role-deleted').length, 0);
+  assert.equal(refs.has(assetId + '|role-avatar|role-deleted'), false);
+  assert.equal(assets.has(assetId), false, 'an image with no remaining references is reclaimed');
 });
 
 test('a pending chat pair cannot leave a late portrait reference after character deletion', async () => {
