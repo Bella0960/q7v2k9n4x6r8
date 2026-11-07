@@ -2996,6 +2996,8 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   const firstLedger = firstWindow.MaoMaoWalletLedger;
   const firstId = firstLedger.getOrCreatePendingCheckout('shop', '[{"sku":1}]', 'close_pay');
   assert.ok(firstId, 'a pending checkout ID must be persisted before payment');
+  assert.equal(firstLedger.isPendingCheckout(firstId), true,
+    'the ledger must report a readable pending transaction');
 
   const secondWindow = { navigator: {}, localStorage: storage };
   runInNewContext(walletLedgerSource, { window: secondWindow });
@@ -3016,6 +3018,8 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
     'changing cart contents cannot bypass an unresolved checkout on the same channel'
   );
   assert.equal(secondLedger.completePendingCheckout(firstId), true);
+  assert.equal(secondLedger.isPendingCheckout(firstId), false,
+    'a completed transaction must no longer block a new checkout');
   const storedAfterCompletion = JSON.parse(storage.getItem('maomao_wallet_pending_checkouts_v1'));
   assert.equal(storedAfterCompletion.find((item) => item.id === firstId).status, 'completed',
     'completion must be persisted before a checkout can be discarded');
@@ -3034,6 +3038,8 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
     null,
     'checkout must stop when its recovery ID cannot be read back'
   );
+  assert.equal(blockedWindow.MaoMaoWalletLedger.isPendingCheckout('missing'), null,
+    'an unreadable pending store must remain distinguishable from a completed transaction');
 });
 
 test('亲属卡按交易编号幂等消费，重试不会再次占用额度', () => {
@@ -3109,4 +3115,16 @@ test('外卖交易签名包含餐厅，且亲属卡通知只在订单和购物�
   const notify = takeoutPage.indexOf('notifyRoleCardIssuer(roleFamilyCard', complete);
   assert.ok(cartClear >= 0 && complete > cartClear && notify > complete,
     'takeout must save the cleared cart and finalize the order before notifying the card issuer');
+});
+
+
+test('结算确认失败时，商店与外卖只在原交易仍待恢复时保留原购物车', () => {
+  for (const [name, source] of [['shop', shopPage], ['takeout', takeoutPage]]) {
+    const completion = source.indexOf('if (!ledger.completePendingCheckout(transactionId))');
+    const pendingCheck = source.indexOf('ledger.isPendingCheckout(transactionId) === true', completion);
+    assert.ok(completion >= 0 && pendingCheck > completion,
+      name + ' must inspect the actual pending state before restoring cart data');
+    assert.match(source.slice(completion, completion + 1100), /cartStorageSnapshot/,
+      name + ' must retain the previously persisted cart snapshot');
+  }
 });
