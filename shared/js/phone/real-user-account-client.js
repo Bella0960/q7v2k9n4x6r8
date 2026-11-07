@@ -76,7 +76,9 @@
       id: id,
       handle: handle,
       displayName: displayName,
-      status: 'active'
+      status: 'active',
+      avatarAssetId: /^av_[a-f0-9]{32}$/.test(String(value.avatarAssetId || ''))
+        ? String(value.avatarAssetId) : null
     };
   }
 
@@ -93,6 +95,44 @@
     requireAuth();
     if (!featureEnabled('friends')) throw makeError('friend_service_unavailable', 503);
     if (!state.account) throw makeError('authentication_required', 401);
+  }
+
+  function requireProfileAvatar() {
+    requireAuth();
+    if (!featureEnabled('profileAvatar')) throw makeError('profile_avatar_unavailable', 503);
+    if (!state.account) throw makeError('authentication_required', 401);
+  }
+
+  async function requestAvatar(path, method, file) {
+    if (typeof root.fetch !== 'function') throw makeError('fetch_unavailable', 0);
+    var response;
+    try {
+      response = await root.fetch(API_BASE + path, {
+        method: method,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        mode: 'same-origin',
+        redirect: 'error',
+        headers: new Headers({ Accept: 'application/json', 'Content-Type': file.type }),
+        body: file
+      });
+    } catch (error) {
+      throw makeError('network_unavailable', 0, null, error);
+    }
+    var payload = null;
+    if (response.headers && response.headers.get &&
+        String(response.headers.get('Content-Type') || '').toLowerCase().includes('application/json')) {
+      try { payload = await response.json(); } catch (error) {}
+    }
+    if (!response.ok || (payload && payload.ok === false)) {
+      var code = payload && payload.error ? String(payload.error) : 'http_' + response.status;
+      if (response.status === 401) state.account = null;
+      throw makeError(code, response.status, payload);
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw makeError('invalid_server_response', response.status);
+    }
+    return payload;
   }
 
   async function discover() {
@@ -182,6 +222,40 @@
     }
     state.account = updated;
     return updated;
+  }
+
+  async function uploadAvatar(file) {
+    requireProfileAvatar();
+    if (!file || typeof file.size !== 'number' || file.size < 24 || file.size > 5 * 1024 * 1024 ||
+        ['image/jpeg', 'image/png', 'image/webp'].indexOf(String(file.type || '').toLowerCase()) === -1) {
+      throw makeError('invalid_avatar_file', 400);
+    }
+    var accountId = state.account.id;
+    var payload = await requestAvatar('/v1/profile/avatar', 'POST', file);
+    var updated = normalizeAccount(payload.account);
+    if (!updated || updated.id !== accountId || !updated.avatarAssetId) {
+      throw makeError('invalid_account_response', 200, payload);
+    }
+    state.account = updated;
+    return { account: updated, avatar: payload.avatar || null };
+  }
+
+  async function removeAvatar() {
+    requireProfileAvatar();
+    var accountId = state.account.id;
+    var payload = await request('/v1/profile/avatar', { method: 'DELETE' });
+    var updated = normalizeAccount(payload.account);
+    if (!updated || updated.id !== accountId || updated.avatarAssetId) {
+      throw makeError('invalid_account_response', 200, payload);
+    }
+    state.account = updated;
+    return updated;
+  }
+
+  function avatarUrl(assetId) {
+    var id = String(assetId == null ? '' : assetId);
+    if (!/^av_[a-f0-9]{32}$/.test(id)) return '';
+    return API_BASE + '/v1/profile/avatars/' + encodeURIComponent(id);
   }
 
   async function logout() {
@@ -287,6 +361,9 @@
     register: register,
     login: login,
     updateProfile: updateProfile,
+    uploadAvatar: uploadAvatar,
+    removeAvatar: removeAvatar,
+    avatarUrl: avatarUrl,
     logout: logout,
     listFriends: listFriends,
     listRequests: listRequests,
