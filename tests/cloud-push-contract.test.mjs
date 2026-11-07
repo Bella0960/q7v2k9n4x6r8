@@ -3477,6 +3477,95 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
 });
 
 
+test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤销设备', async () => {
+  const now = 1800000000000;
+  const ctx = setupTestStore(openTestDb());
+  const source = makeDevice();
+  await registerDevice(ctx, source);
+
+  async function pairAnotherDevice() {
+    const pairing = await ctx.asJson('/api/devices/pairing-token', {
+      method: 'POST',
+      device: source
+    });
+    assert.equal(pairing.status, 200);
+    const device = makeDevice();
+    assert.equal((await registerDevice(ctx, device, {
+      pairingToken: pairing.payload.pairingToken
+    })).status, 200);
+    return device;
+  }
+
+  const second = await pairAnotherDevice();
+  const revoked = await pairAnotherDevice();
+  const foreign = await pairAnotherDevice();
+  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', foreign.deviceId);
+
+  const subscriptions = new Map();
+  for (const device of [source, second, revoked, foreign]) {
+    const subscription = await makeBrowserSubscription();
+    const result = await subscribeDevice(ctx, device, subscription);
+    assert.equal(result.status, 200);
+    subscriptions.set(device.deviceId, result.payload.subscription.id);
+  }
+
+  const serverMessageId = 'account_push_targets_123456';
+  ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: source.deviceId,
+    userId: 'owner',
+    characterId: 'char-push-multi',
+    serverMessageId,
+    dedupeKey: 'autonomy:push:multi-device',
+    payload: { type: 'text', text: '仅在账号内同步。' },
+    now
+  });
+
+  const beforeRevocation = ctx.store.listOutboundPushCandidates({ now, limit: 50 });
+  assert.deepEqual(
+    beforeRevocation.map(row => row.device_id).sort(),
+    [source.deviceId, second.deviceId, revoked.deviceId].sort(),
+    '推送候选应覆盖同账号全部有效设备，但不能包含其他账号'
+  );
+
+  ctx.store.revokeDevice(revoked.deviceId, now + 1);
+  const afterOneRevocation = ctx.store.listOutboundPushCandidates({ now: now + 1, limit: 50 });
+  assert.deepEqual(
+    afterOneRevocation.map(row => row.device_id).sort(),
+    [source.deviceId, second.deviceId].sort(),
+    '撤销设备的订阅必须立即退出推送目标集合'
+  );
+
+  ctx.store.revokeDevice(source.deviceId, now + 2);
+  const afterSourceRevocation = ctx.store.listOutboundPushCandidates({ now: now + 2, limit: 50 });
+  assert.deepEqual(
+    afterSourceRevocation.map(row => row.device_id),
+    [second.deviceId],
+    '来源设备撤销后，仍有效的同账号设备应能接收待投递消息'
+  );
+
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const dispatched = await dispatchPendingOutboundPushes({
+    store: ctx.store,
+    env: {
+      VAPID_PUBLIC_KEY: keys.publicB64,
+      VAPID_PRIVATE_KEY: keys.privateB64,
+      VAPID_SUBJECT: 'mailto:test@maomao.dev'
+    },
+    now: now + 3,
+    fetchImpl: pushFetch,
+    limit: 10
+  });
+  assert.equal(dispatched.sent, 1);
+  assert.equal(pushFetch.calls.length, 1);
+  const delivery = ctx.store.findDelivery(
+    'outbound:' + serverMessageId,
+    subscriptions.get(second.deviceId)
+  );
+  assert.equal(delivery.status, 'sent');
+});
+ 
 test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Push', () => {
   const workerSource = fs.readFileSync(path.join(rootDir, 'worker.js'), 'utf8');
   assert.match(workerSource, /import \{ createApp, dispatchPendingOutboundPushes \} from '\.\/worker\/lib\/app\.js'/);
