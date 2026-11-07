@@ -162,7 +162,7 @@ test("blocking removes accepted friends and terminates pending requests in the d
 
     addRequest(db, "request_pending_block_03", "account-alice-03", "account-carol-03", 3400);
     db.prepare("INSERT INTO real_user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)")
-      .run("account-carol-03", "account-alice-03", 3500);
+      .run("account-alice-03", "account-carol-03", 3500);
     const pending = db.prepare("SELECT status, responded_at FROM real_user_friend_requests WHERE id = ?")
       .get("request_pending_block_03");
     assert.equal(pending.status, "cancelled");
