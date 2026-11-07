@@ -2998,6 +2998,12 @@ test('钱包结算编号跨页面刷新复用，支付方式不能在未完成�
   assert.ok(firstId, 'a pending checkout ID must be persisted before payment');
   assert.equal(firstLedger.isPendingCheckout(firstId), true,
     'the ledger must report a readable pending transaction');
+  const pendingDetails = firstLedger.getPendingCheckout('shop');
+  assert.equal(pendingDetails.id, firstId);
+  assert.equal(pendingDetails.signature, '[{"sku":1}]');
+  assert.equal(pendingDetails.paymentMethod, 'close_pay');
+  assert.equal(firstLedger.getPendingCheckout('missing'), undefined,
+    'a readable store with no matching transaction is different from an unreadable store');
 
   const secondWindow = { navigator: {}, localStorage: storage };
   runInNewContext(walletLedgerSource, { window: secondWindow });
@@ -3236,4 +3242,74 @@ test('钱包界面在存在未完成的充值/提现时会提示并预填原操�
   assert.match(walletPage, /pending\.paymentMethod/);
   assert.match(walletPage, /amountInput\.value = Number\(detail\.amount\)\.toFixed\(2\)/);
   assert.match(walletPage, /数据异常/);
+});
+
+
+test('提现部分成功后重试沿用原交易编号，不会再次扣除余额', async () => {
+  const helperStart = walletPage.indexOf('  function getWorkDataForMutation()');
+  const helperEnd = walletPage.indexOf('  function getWorkData()', helperStart);
+  const handlerStart = walletPage.indexOf('  // 确认：充值 / 提现使用交易 ID');
+  const handlerEnd = walletPage.indexOf('  // 初始化：页面加载即渲染真实余额与交易明细', handlerStart);
+  const values = new Map([['workData', JSON.stringify({ balance: 60, history: [] })]]);
+  let blockCompletionWrite = true;
+  let capturedHandler = null;
+  let closed = 0;
+  const storage = {
+    getItem: (key) => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => {
+      if (key === 'maomao_wallet_pending_checkouts_v1' && blockCompletionWrite &&
+          JSON.parse(String(value)).some((item) => item.status === 'completed')) return;
+      values.set(key, String(value));
+    },
+    removeItem: (key) => { values.delete(key); }
+  };
+  const window = { navigator: {}, localStorage: storage };
+  const amountConfirm = {
+    disabled: false,
+    addEventListener: (event, callback) => { if (event === 'click') capturedHandler = callback; }
+  };
+  const sandbox = {
+    window, localStorage: storage, amountMode: 'withdraw',
+    amountInput: { value: '15.00' }, amountError: { textContent: '' }, amountConfirm,
+    renderBalance: () => {}, renderHistory: () => {}, closeAmountModal: () => { closed += 1; },
+    console: { warn: () => {} }
+  };
+  runInNewContext(walletLedgerSource, sandbox);
+  runInNewContext(walletPage.slice(helperStart, helperEnd) + '\n' +
+    walletPage.slice(handlerStart, handlerEnd), sandbox);
+  await capturedHandler();
+  let wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 45);
+  assert.equal(wallet.history.length, 1);
+  assert.equal(wallet.history[0].type, 'expense');
+  assert.equal(wallet.history[0].category, 'withdraw');
+  const paymentId = wallet.history[0].paymentId;
+  assert.ok(paymentId);
+  assert.equal(closed, 0);
+
+  blockCompletionWrite = false;
+  await capturedHandler();
+  wallet = JSON.parse(values.get('workData'));
+  assert.equal(wallet.balance, 45, 'retry must not subtract the same amount twice');
+  assert.equal(wallet.history.length, 1);
+  assert.equal(wallet.history[0].paymentId, paymentId);
+  assert.equal(closed, 1);
+});
+
+test('旧版合法钱包缺少 history 时保留余额，空字符串或损坏结构不重置余额', () => {
+  const helperStart = walletPage.indexOf('  function getWorkDataForMutation()');
+  const helperEnd = walletPage.indexOf('  function getWorkData()', helperStart);
+  const helper = walletPage.slice(helperStart, helperEnd);
+  const legacy = { localStorage: { getItem: () => '{"balance":42.5}' } };
+  runInNewContext(helper, legacy);
+  assert.equal(legacy.getWorkDataForMutation().balance, 42.5);
+  assert.deepEqual(JSON.parse(JSON.stringify(legacy.getWorkDataForMutation().history)), []);
+
+  const empty = { localStorage: { getItem: () => '' } };
+  runInNewContext(helper, empty);
+  assert.equal(empty.getWorkDataForMutation(), null);
+
+  const malformed = { localStorage: { getItem: () => '{"balance":42,"history":{}}' } };
+  runInNewContext(helper, malformed);
+  assert.equal(malformed.getWorkDataForMutation(), null);
 });
