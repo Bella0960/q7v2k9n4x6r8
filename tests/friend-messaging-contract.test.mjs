@@ -449,7 +449,8 @@ test('清空聊天记录只影响当前账号；清空之后的新消息仍会�
 
   const emptyClear = await asAccount(ctx, alice, alicePath, { method: 'DELETE' });
   assert.equal(emptyClear.status, 200);
-  assert.equal(emptyClear.payload.empty, false);
+  assert.equal(emptyClear.payload.cleared, true);
+  assert.deepEqual((await asAccount(ctx, alice, alicePath)).payload.messages, []);
 });
 
 test('真人好友消息严格限制为非空纯文字，最多 2000 个 Unicode 字符', async () => {
