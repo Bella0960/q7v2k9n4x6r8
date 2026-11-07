@@ -72,6 +72,15 @@ class CloudStore {
   revokeDevice(deviceId, now) {
     const device = this.getDevice(deviceId);
     if (!device) return;
+    // Stop delivery first, in the same synchronous store operation as revocation.
+    // A sender must never observe a revoked device with still-active subscriptions.
+    this.exec(
+      `UPDATE push_subscriptions
+       SET disabled_at = ?, disabled_reason = 'revoked'
+       WHERE device_id = ? AND disabled_at IS NULL`,
+      now,
+      deviceId
+    );
     this.exec('UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL', now, deviceId);
     this.exec(
       'DELETE FROM character_leases WHERE user_id = ? AND owner_device_id = ?',
@@ -432,6 +441,73 @@ class CloudStore {
       Number(row.last_heartbeat_at) <= now &&
       now - Number(row.last_heartbeat_at) <= heartbeatTtlMs
     );
+  }
+
+  /**
+   * Return account-scoped aggregate presence only. Never expose device IDs,
+   * character IDs, heartbeat timestamps, or individual lease rows.
+   */
+  getPresenceSummary({ userId, now, heartbeatTtlMs, graceMs } = {}) {
+    const timestamp = Number(now);
+    const ttl = Number(heartbeatTtlMs);
+    const grace = Number(graceMs);
+    if (
+      !userId ||
+      !Number.isSafeInteger(timestamp) || timestamp <= 0 ||
+      !Number.isSafeInteger(ttl) || ttl <= 0 ||
+      !Number.isSafeInteger(grace) || grace < 0
+    ) {
+      return null;
+    }
+
+    const row = this.exec(
+      `SELECT
+         (SELECT COUNT(*)
+          FROM devices d
+          WHERE d.user_id = ? AND d.revoked_at IS NULL) AS authorized_devices,
+         (SELECT COUNT(DISTINCT d.id)
+          FROM devices d
+          INNER JOIN device_presence p
+            ON p.user_id = d.user_id AND p.device_id = d.id
+          WHERE d.user_id = ?
+            AND d.revoked_at IS NULL
+            AND p.foreground_active = 1
+            AND p.last_heartbeat_at <= ?
+            AND p.last_heartbeat_at >= ?) AS foreground_devices,
+         (SELECT COUNT(*)
+          FROM character_leases l
+          INNER JOIN devices d
+            ON d.id = l.owner_device_id
+           AND d.user_id = l.user_id
+           AND d.revoked_at IS NULL
+          WHERE l.user_id = ? AND l.lease_until > ?) AS valid_character_leases,
+         (SELECT COUNT(*)
+          FROM character_leases l
+          INNER JOIN devices d
+            ON d.id = l.owner_device_id
+           AND d.user_id = l.user_id
+           AND d.revoked_at IS NULL
+          WHERE l.user_id = ?
+            AND l.lease_until <= ?
+            AND l.lease_until + ? > ?) AS grace_character_leases`,
+      userId,
+      userId,
+      timestamp,
+      timestamp - ttl,
+      userId,
+      timestamp,
+      userId,
+      timestamp,
+      grace,
+      timestamp
+    )[0] || {};
+
+    return {
+      authorizedDevices: Number(row.authorized_devices || 0),
+      foregroundDevices: Number(row.foreground_devices || 0),
+      validCharacterLeases: Number(row.valid_character_leases || 0),
+      graceCharacterLeases: Number(row.grace_character_leases || 0)
+    };
   }
 
   acquireCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs }) {
