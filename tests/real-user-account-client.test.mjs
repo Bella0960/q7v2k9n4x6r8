@@ -360,3 +360,15 @@ test('Contacts panel keeps real-user avatar management separate from AI role ass
   assert.match(PANEL_SOURCE, /friend\.avatarAssetId/);
   assert.match(PANEL_SOURCE, /真人账号头像已更新/);
 });
+
+
+test('friend requests and blocked contacts render their server avatar references through the same private loader', () => {
+  assert.match(PANEL_SOURCE, /function createAvatarWrap\(assetId, displayName, large\)/);
+  assert.match(PANEL_SOURCE, /createAvatarWrap\(peer\.avatarAssetId, peer\.displayName, false\)/);
+  assert.match(PANEL_SOURCE, /createAvatarWrap\(friend\.avatarAssetId, friend\.displayName, false\)/);
+  assert.match(PANEL_SOURCE, /createAvatarWrap\(account\.avatarAssetId, account\.displayName, false\)/);
+  assert.match(PANEL_SOURCE, /target\.loading = 'lazy'/);
+  assert.match(PANEL_SOURCE, /target\.decoding = 'async'/);
+  assert.match(PANEL_SOURCE, /target\.referrerPolicy = 'no-referrer'/);
+  assert.match(PANEL_SOURCE, /client\.avatarUrl\(assetId\)/);
+});
