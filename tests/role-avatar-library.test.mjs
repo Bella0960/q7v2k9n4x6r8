@@ -219,8 +219,8 @@ test('portrait studio can add a cropped Blob without automatically replacing the
 });
 
 test('current avatar changes are persisted with a compatibility DataURL and roll back on save failure', () => {
-  assert.ok(managerSource.includes('RoleAvatarLibrary.setActive(roleId, item.id)'));
-  assert.ok(managerSource.includes('RoleAvatarLibrary.toDataUrl(item.assetId)'));
+  assert.ok(managerSource.includes('library.setActive(roleId, item.id)'));
+  assert.ok(managerSource.includes('library.toDataUrl(item.assetId)'));
   assert.ok(managerSource.includes("const previousAvatar = target.avatar || ''"));
   assert.ok(managerSource.includes('library.setActive(roleId, previousActive ? previousActive.id : \\'\\')'));
   assert.ok(managerSource.includes('target.avatar = previousAvatar'));
@@ -231,7 +231,7 @@ test('avatar gallery revokes object URLs and prevents removal of the active port
   assert.ok(managerSource.includes('avatarLibraryObjectUrls.push(resolved.value)'));
   assert.ok(managerSource.includes('if (item.active)'));
   assert.ok(managerSource.includes('当前头像不能直接移除'));
-  assert.ok(managerSource.includes('RoleAvatarLibrary.remove(roleId, avatarId)'));
+  assert.ok(managerSource.includes('library.remove(roleId, avatarId)'));
 });
 
 test('deleting a character releases only that character avatar references after profile deletion succeeds', () => {
