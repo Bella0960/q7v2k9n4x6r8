@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v187';
+const CACHE_NAME = 'phone-app-pwa-v188';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v187 release: add authenticated account nickname editing.
+// v188 release: add NPC friend requests and autonomous discovery.
 const APP_SHELL = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
   './chat/contacts/contacts.html',
+  './chat/contacts/npc-friends.html',
   './chat/moments/moments.html',
   './chat/footprint/footprint.html',
   './wallet/takeout.html',
@@ -78,6 +79,7 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
+  './shared/js/phone/npc-friend-discovery.js?v=20261108b',
   './shared/js/phone/contact-identity.js?v=20261107v1',
   './shared/js/phone/contact-capabilities.js?v=20261107v1',
   './shared/js/phone/real-user-conversation-repository.js',
