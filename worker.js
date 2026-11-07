@@ -11,7 +11,7 @@
  *  随部署自动创建，属于同一套持久化能力）。
  */
 
-import { createApp } from './worker/lib/app.js';
+import { createApp, dispatchPendingOutboundPushes } from './worker/lib/app.js';
 import { createStore } from './worker/lib/store.js';
 import { applyMigrations } from './worker/lib/migrations.js';
 import { runTick } from './worker/lib/scheduler.js';
@@ -86,7 +86,25 @@ export class CloudDatabase {
       const removed = this.store.cleanupSubscriptions(timestamp);
       const pairingTokensRemoved = this.store.cleanupDevicePairingTokens(timestamp);
       const contextEventsRemoved = this.store.cleanupCharacterContextEvents(timestamp);
-      return Response.json({ ok: true, removed, pairingTokensRemoved, contextEventsRemoved });
+      let pushDispatch;
+      try {
+        pushDispatch = await dispatchPendingOutboundPushes({
+          store: this.store,
+          env: this.env,
+          now: timestamp,
+          fetchImpl: fetch,
+          limit: 50
+        });
+      } catch (error) {
+        pushDispatch = { configured: false, reason: 'dispatch_deferred' };
+      }
+      return Response.json({
+        ok: true,
+        removed,
+        pairingTokensRemoved,
+        contextEventsRemoved,
+        pushDispatch
+      });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
       // 真实 gate 已接入；缺少显式授权/作息/lease 配置或可信上下文版本时仍 fail-closed。
