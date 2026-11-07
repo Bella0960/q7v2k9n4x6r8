@@ -29,9 +29,26 @@ Unknown message types are rejected by default. The service must not implement or
 
 The existing MAOMAO Wallet app remains independent. Existing AI-role simulations are unchanged and must not be reused as a real-user transport or call service.
 
-## 3. Proposed API shape (not live)
+## 3. Account authentication groundwork
 
-All endpoints below require an authenticated account. The account ID and sender identity are derived from a verified server-side session/token, never trusted from request JSON.
+The Worker now contains account-auth handlers at `/api/real-user-chat/v1/auth`:
+
+- `POST /register`: create a handle/display-name account and issue a session.
+- `POST /login`: verify the password and issue a new session.
+- `GET /me`: resolve the current account from the server-side session.
+- `POST /logout`: revoke the current session and clear the cookie.
+
+The handlers remain disabled unless all three conditions are met: `REAL_USER_AUTH_ENABLED="true"`, a D1 `DB` binding exists, and a Cloudflare Rate Limiting `AUTH_LIMITER` binding is configured. No such bindings or enable flag are added to `wrangler.jsonc` in this change. The capability endpoint can report account-auth readiness separately; `enabled` for real-user messaging remains false.
+
+Registration uses PBKDF2-HMAC-SHA256 with a per-account 16-byte random salt and 600,000 iterations. Only the derived verifier and salt are stored. Password length is 12–256 UTF-8 bytes. Handles are normalized lowercase ASCII `a-z`, digits, and underscore, 3–24 characters. Login performs a dummy derivation for unknown handles and returns a generic invalid-credentials response.
+
+Sessions use 256-bit random opaque tokens. The browser receives the token only as a `__Host-mao_session` cookie with `Secure; HttpOnly; SameSite=Strict; Path=/`; D1 stores only its SHA-256 hash. Sessions expire after seven days and can be revoked at logout. Unsafe methods require an exact same-origin HTTPS `Origin` header. Requests are JSON-only, size-limited, reject unknown fields, and have no cross-origin CORS allowance. IP and normalized-handle rate limiting is mandatory; if the limiter is absent or errors, authentication remains unavailable.
+
+This is server implementation groundwork, not proof of deployed account service. There is no account recovery or email verification flow yet. Do not enable the feature until a D1 migration has been applied to staging and the required bindings/rate limits have been configured and tested.
+
+## 4. Proposed messaging API shape (not live)
+
+All message endpoints below require an authenticated account. The account ID and sender identity are derived from a verified server-side session, never trusted from request JSON.
 
 ### Capability discovery
 
