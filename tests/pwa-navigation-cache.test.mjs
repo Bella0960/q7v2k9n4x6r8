@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v189'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v196'/);
 assert.match(serviceWorker, /phone_api\.js\?v=20261108v1/);
 const viteConfig = read('vite.config.js');
 
@@ -66,11 +66,13 @@ test('failed app navigation never falls back to the desktop index page', () => {
 
 
 test('Contacts account client scripts are part of the versioned app shell', () => {
-  assert.match(serviceWorker, /real-user-account-client\.js\?v=20261107v6/);
-  assert.match(serviceWorker, /real-user-account-panel\.js\?v=20261107v6/);
+  assert.match(serviceWorker, /real-user-account-client\.js\?v=20261108v6/);
+  assert.match(serviceWorker, /real-user-account-panel\.js\?v=20261108v3/);
   const contactsPage = read('chat/contacts/contacts.html');
-  assert.match(contactsPage, /real-user-account-client\.js\?v=20261107v6/);
-  assert.match(contactsPage, /real-user-account-panel\.js\?v=20261107v6/);
+  assert.match(contactsPage, /real-user-account-client\.js\?v=20261108v6/);
+  assert.match(contactsPage, /real-user-account-panel\.js\?v=20261108v3/);
+  assert.match(serviceWorker, /contact-directory\.js\?v=20261108v3/);
+  assert.match(contactsPage, /contact-directory\.js\?v=20261108v3/);
   assert.match(serviceWorker, /friends-blocked-list/);
   const workerEntry = read('worker.js');
   const avatarService = read('worker/real-user-avatar.js');
@@ -87,5 +89,16 @@ test('real-user chat API requests always bypass the static cache and fetch live 
   assert.match(serviceWorker,
     /event\.respondWith\(fetch\(req, \{ cache: 'no-store' \}\)\);[\s\S]*?return;/,
     'real-user capability and message endpoints must always use a no-store network request');
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v189'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v196'/);
+});
+
+
+test('NPC friend discovery entry, engine and cancellation runtime are wired into the PWA shell', () => {
+  const contactsPage = read('chat/contacts/contacts.html');
+  const navigation = read('shared/js/nav.js');
+  assert.match(contactsPage, /id="goNpcRequests"/);
+  assert.match(contactsPage, /goNpcRequests[\s\S]*?npc-friends\.html/);
+  assert.match(contactsPage, /phone_api\.js\?v=20261108v1/);
+  assert.match(navigation, /npc-social\.js\?v=20261108e/);
+  assert.match(serviceWorker, /npc-social\.js\?v=20261108e/);
 });

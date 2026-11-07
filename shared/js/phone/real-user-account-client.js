@@ -57,7 +57,10 @@
 
     if (!response.ok || (payload && payload.ok === false)) {
       var code = payload && payload.error ? String(payload.error) : 'http_' + response.status;
-      if (response.status === 401) state.account = null;
+      if (response.status === 401) {
+        state.account = null;
+        setActiveDirectoryAccount(null);
+      }
       throw makeError(code, response.status, payload);
     }
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -80,6 +83,14 @@
       avatarAssetId: /^av_[a-f0-9]{32}$/.test(String(value.avatarAssetId || ''))
         ? String(value.avatarAssetId) : null
     };
+  }
+
+  function setActiveDirectoryAccount(account) {
+    var directory = root.PhoneContactDirectory;
+    if (!directory || typeof directory.setActiveAccountId !== 'function') return;
+    directory.setActiveAccountId(
+      account && account.id && featureEnabled('friends') ? account.id : ''
+    );
   }
 
   function featureEnabled(name) {
@@ -126,7 +137,10 @@
     }
     if (!response.ok || (payload && payload.ok === false)) {
       var code = payload && payload.error ? String(payload.error) : 'http_' + response.status;
-      if (response.status === 401) state.account = null;
+      if (response.status === 401) {
+        state.account = null;
+        setActiveDirectoryAccount(null);
+      }
       throw makeError(code, response.status, payload);
     }
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -146,8 +160,9 @@
   }
 
   async function restore() {
-    var capabilities = await discover();
     state.account = null;
+    setActiveDirectoryAccount(null);
+    var capabilities = await discover();
     if (!featureEnabled('accountAuth')) {
       return {
         capabilities: capabilities,
@@ -161,6 +176,7 @@
       var payload = await request('/v1/auth/me');
       state.account = normalizeAccount(payload.account);
       if (!state.account) throw makeError('invalid_account_response', 200, payload);
+      setActiveDirectoryAccount(state.account);
     } catch (error) {
       if (error && error.status === 401) {
         state.account = null;
@@ -184,6 +200,7 @@
     });
     state.account = normalizeAccount(payload.account);
     if (!state.account) throw makeError('invalid_account_response', 200, payload);
+    setActiveDirectoryAccount(state.account);
     return state.account;
   }
 
@@ -204,6 +221,19 @@
     });
   }
 
+  // Refresh the signed-in profile from the HttpOnly-cookie session endpoint.
+  // The browser never treats an old in-memory profile as authoritative.
+  async function refreshAccount() {
+    requireAuth();
+    if (!state.account) throw makeError('authentication_required', 401);
+    var payload = await request('/v1/auth/me');
+    var updated = normalizeAccount(payload.account);
+    if (!updated) throw makeError('invalid_account_response', 200, payload);
+    state.account = updated;
+    setActiveDirectoryAccount(updated);
+    return updated;
+  }
+
   async function updateProfile(displayName) {
     requireAuth();
     if (!state.account) throw makeError('authentication_required', 401);
@@ -221,6 +251,7 @@
       throw makeError('invalid_account_response', 200, payload);
     }
     state.account = updated;
+    setActiveDirectoryAccount(updated);
     return updated;
   }
 
@@ -237,6 +268,7 @@
       throw makeError('invalid_account_response', 200, payload);
     }
     state.account = updated;
+    setActiveDirectoryAccount(updated);
     return { account: updated, avatar: payload.avatar || null };
   }
 
@@ -249,10 +281,12 @@
       throw makeError('invalid_account_response', 200, payload);
     }
     state.account = updated;
+    setActiveDirectoryAccount(updated);
     return updated;
   }
 
   function avatarUrl(assetId) {
+    if (!featureEnabled('profileAvatar')) return '';
     var id = String(assetId == null ? '' : assetId);
     if (!/^av_[a-f0-9]{32}$/.test(id)) return '';
     return API_BASE + '/v1/profile/avatars/' + encodeURIComponent(id);
@@ -262,6 +296,7 @@
     requireAuth();
     var payload = await request('/v1/auth/logout', { method: 'POST' });
     state.account = null;
+    setActiveDirectoryAccount(null);
     return payload;
   }
 
@@ -282,10 +317,85 @@
     return 'rq_' + value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 88);
   }
 
-  async function listFriends() {
+  async function listFriendRoster() {
     requireFriends();
-    var payload = await request('/v1/friends');
-    return Array.isArray(payload.friends) ? payload.friends : [];
+    // Refresh the HttpOnly-cookie session first: another tab may have logged
+    // into a different account since this client instance was created.
+    var sessionAccount = await refreshAccount();
+    var friends = [];
+    var relationships = [];
+    var snapshotAt = null;
+    var snapshotOwnerId = '';
+    var cursor = '';
+    var pages = 0;
+    var seenIds = Object.create(null);
+    while (true) {
+      pages += 1;
+      if (pages > 500) throw makeError('friend_roster_too_large', 413);
+      var query = '?limit=100';
+      if (snapshotAt !== null) query += '&snapshotAt=' + encodeURIComponent(String(snapshotAt));
+      if (cursor) query += '&after=' + encodeURIComponent(cursor);
+      var payload = await request('/v1/friends' + query);
+      if (!Array.isArray(payload.friends) || !Array.isArray(payload.relationships) ||
+          typeof payload.hasMore !== 'boolean' || !Number.isSafeInteger(Number(payload.snapshotAt))) {
+        throw makeError('invalid_friend_roster_response', 200, payload);
+      }
+      var pageOwnerId = String(payload.ownerAccountId || '');
+      if (!pageOwnerId || pageOwnerId !== sessionAccount.id ||
+          (snapshotOwnerId && snapshotOwnerId !== pageOwnerId)) {
+        throw makeError('friend_roster_account_mismatch', 409, payload);
+      }
+      snapshotOwnerId = pageOwnerId;
+      var pageSnapshotAt = Number(payload.snapshotAt);
+      if (snapshotAt === null) snapshotAt = pageSnapshotAt;
+      else if (snapshotAt !== pageSnapshotAt) throw makeError('friend_snapshot_changed', 409, payload);
+
+      payload.relationships.forEach(function (relationship) {
+        var id = String(relationship && relationship.id || '');
+        if (!id || seenIds[id]) throw makeError('invalid_friend_roster_response', 200, payload);
+        seenIds[id] = true;
+        if (!featureEnabled('profileAvatar') && relationship && relationship.status === 'accepted' &&
+            relationship.avatarAssetId) {
+          relationship = Object.assign({}, relationship);
+          delete relationship.avatarAssetId;
+        }
+        relationships.push(relationship);
+      });
+      var pageFriends = payload.friends;
+      if (!featureEnabled('profileAvatar')) {
+        pageFriends = payload.friends.map(function (friend) {
+          if (!friend || !friend.avatarAssetId) return friend;
+          var safeFriend = Object.assign({}, friend);
+          delete safeFriend.avatarAssetId;
+          return safeFriend;
+        });
+      }
+      friends = friends.concat(pageFriends);
+      if (!payload.hasMore) {
+        if (payload.nextCursor != null && payload.nextCursor !== '') {
+          throw makeError('invalid_friend_roster_response', 200, payload);
+        }
+        break;
+      }
+      var nextCursor = String(payload.nextCursor || '');
+      var lastRelationship = payload.relationships[payload.relationships.length - 1];
+      if (!nextCursor || nextCursor === cursor || !lastRelationship || String(lastRelationship.id) !== nextCursor) {
+        throw makeError('invalid_friend_roster_cursor', 200, payload);
+      }
+      cursor = nextCursor;
+    }
+    return {
+      ownerAccountId: snapshotOwnerId,
+      friends: friends,
+      relationships: relationships,
+      snapshotAt: snapshotAt,
+      complete: true
+    };
+  }
+
+  async function listFriends() {
+    var roster = await listFriendRoster();
+    return roster.friends;
   }
 
   async function listRequests(direction) {
@@ -355,9 +465,10 @@
   }
 
   root.PhoneRealUserAccountClient = {
-    version: 1,
+    version: 2,
     discover: discover,
     restore: restore,
+    refreshAccount: refreshAccount,
     register: register,
     login: login,
     updateProfile: updateProfile,
@@ -366,6 +477,7 @@
     avatarUrl: avatarUrl,
     logout: logout,
     listFriends: listFriends,
+    listFriendRoster: listFriendRoster,
     listRequests: listRequests,
     listBlocked: listBlocked,
     rotateFriendCode: rotateFriendCode,

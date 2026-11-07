@@ -150,24 +150,26 @@ class FakeD1 {
       return { results: rows };
     }
     if (sql.includes("FROM real_user_friendships f")) {
-      const [caseAccount, lowAccount, highAccount, blockerA, blockerB, limit] = values;
+      const [blockerA, blockerB, caseAccount, lowAccount, highAccount, cursor, limit] = values;
       const rows = Array.from(this.friendships.values())
-        .filter(f => (f.pair_low === lowAccount || f.pair_high === highAccount) && f.status === "accepted")
-        .filter(f => {
-          const peerId = f.pair_low === caseAccount ? f.pair_high : f.pair_low;
-          const peer = this.accounts.get(peerId);
-          return peer && peer.status === "active" &&
-            !this.blocks.has(blockerA + "|" + peerId) && !this.blocks.has(peerId + "|" + blockerB);
-        })
-        .slice(0, limit)
+        .filter(f => f.pair_low === lowAccount || f.pair_high === highAccount)
         .map(f => {
           const peerId = f.pair_low === caseAccount ? f.pair_high : f.pair_low;
           const peer = this.accounts.get(peerId);
+          if (!peer || peerId <= cursor) return null;
+          const isBlocked = this.blocks.has(blockerA + "|" + peerId) ||
+            this.blocks.has(peerId + "|" + blockerB);
           return {
             id: peer.id, handle: peer.handle, display_name: peer.display_name,
-            avatar_asset_id: peer.avatar_asset_id || null, accepted_at: f.accepted_at
+            avatar_asset_id: peer.avatar_asset_id || null, account_status: peer.status,
+            friendship_status: f.status, accepted_request_id: f.accepted_request_id,
+            accepted_at: f.accepted_at, updated_at: f.updated_at,
+            is_blocked: isBlocked ? 1 : 0
           };
-        });
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .slice(0, limit);
       return { results: rows };
     }
     throw new Error("FakeD1 unsupported all query: " + sql);
@@ -483,8 +485,12 @@ test("same-direction duplicate requests are idempotent; reverse duplicates point
   assert.equal(reverse.body.requestId, payload.requestId);
 });
 
-test("inbox and outbox are scoped to the authenticated account", async () => {
+test("inbox and outbox are scoped to the authenticated account and include current avatar references", async () => {
   const context = await setup();
+  const alice = context.db.accounts.get("account-alice-001");
+  const bob = context.db.accounts.get("account-bob-001");
+  context.db.accounts.set(alice.id, { ...alice, avatar_asset_id: "av_" + "a".repeat(32) });
+  context.db.accounts.set(bob.id, { ...bob, avatar_asset_id: "av_" + "b".repeat(32) });
   const qr = await call(context, "/codes/rotate", "POST", undefined, "bob");
   await call(context, "/requests", "POST", {
     requestId: "request_box_alice_01", code: qr.body.code, note: "Hello"
@@ -493,8 +499,10 @@ test("inbox and outbox are scoped to the authenticated account", async () => {
   const outbox = await call(context, "/requests?direction=outgoing", "GET");
   assert.equal(inbox.body.requests.length, 1);
   assert.equal(inbox.body.requests[0].peer.handle, "alice_01");
+  assert.equal(inbox.body.requests[0].peer.avatarAssetId, "av_" + "a".repeat(32));
   assert.equal(outbox.body.requests.length, 1);
   assert.equal(outbox.body.requests[0].peer.handle, "bob_0001");
+  assert.equal(outbox.body.requests[0].peer.avatarAssetId, "av_" + "b".repeat(32));
 });
 
 test("only the recipient can accept or decline; accepting creates the friendship", async () => {
@@ -510,8 +518,14 @@ test("only the recipient can accept or decline; accepting creates the friendship
   assert.equal(accepted.body.request.status, "accepted");
   const friendsA = await call(context, "/", "GET", undefined, "alice");
   const friendsB = await call(context, "/", "GET", undefined, "bob");
+  assert.equal(friendsA.body.ownerAccountId, "account-alice-001");
+  assert.equal(friendsB.body.ownerAccountId, "account-bob-001");
   assert.equal(friendsA.body.friends[0].id, "account-bob-001");
   assert.equal(friendsB.body.friends[0].id, "account-alice-001");
+  assert.equal(friendsA.body.friends[0].acceptedRequestId, "request_accept_alice_01");
+  assert.equal(friendsA.body.relationships[0].status, "accepted");
+  assert.equal(friendsA.body.relationships[0].acceptedRequestId, "request_accept_alice_01");
+  assert.ok(friendsA.body.relationships[0].updatedAt > 0);
 
   // Public profile fields are resolved from the authoritative account row on
   // every list read, not copied into a stale friendship snapshot.
@@ -548,10 +562,18 @@ test("friend removal, block and unblock update the authoritative relationship", 
   await call(context, "/requests/request_block_0001/accept", "POST", undefined, "bob");
   const removed = await call(context, "/account-bob-001", "DELETE");
   assert.equal(removed.body.removed, true);
+  const removedRoster = await call(context, "/", "GET");
+  assert.equal(removedRoster.body.friends.length, 0);
+  assert.equal(removedRoster.body.relationships.length, 1);
+  assert.equal(removedRoster.body.relationships[0].status, "removed");
+  assert.equal(removedRoster.body.relationships[0].displayName, undefined,
+    "removed relationships must not expose private profile fields");
   const readdCode = await call(context, "/codes/rotate", "POST", undefined, "bob");
   const readd = await call(context, "/requests", "POST", { requestId: "request_readd_00001", code: readdCode.body.code });
   assert.equal(readd.response.status, 201);
   await call(context, "/requests/request_readd_00001/accept", "POST", undefined, "bob");
+  const bob = context.db.accounts.get("account-bob-001");
+  context.db.accounts.set(bob.id, { ...bob, avatar_asset_id: "av_" + "c".repeat(32) });
   const blocked = await call(context, "/account-bob-001/block", "POST");
   assert.equal(blocked.body.blocked, true);
   const blockedList = await call(context, "/", "GET");
@@ -559,6 +581,7 @@ test("friend removal, block and unblock update the authoritative relationship", 
   const ownBlockList = await call(context, "/blocks", "GET", undefined, "alice");
   const otherBlockList = await call(context, "/blocks", "GET", undefined, "bob");
   assert.deepEqual(ownBlockList.body.blocked.map(item => item.id), ["account-bob-001"]);
+  assert.equal(ownBlockList.body.blocked[0].avatarAssetId, "av_" + "c".repeat(32));
   assert.equal(otherBlockList.body.blocked.length, 0);
   const blockedCode = await call(context, "/codes/rotate", "POST", undefined, "bob");
   const blockedRequest = await call(context, "/requests", "POST", {
@@ -611,4 +634,100 @@ test("Worker routes friend APIs separately and keeps messages disabled", async (
     "https://mao.example/api/real-user-chat/v1/conversations/c1/messages"
   ), env);
   assert.equal(messages.status, 503);
+});
+
+test("friend roster uses stable ID cursors and returns relationship tombstones without private fields", async () => {
+  const context = await setup();
+  const baseId = "account-alice-001";
+  const extraIds = ["account-extra-01", "account-extra-02", "account-extra-03", "account-extra-04"];
+  extraIds.forEach((id, index) => {
+    context.db.accounts.set(id, {
+      id, handle: "extra_" + (index + 1), display_name: "Extra " + (index + 1),
+      status: "active", avatar_asset_id: null
+    });
+    const [low, high] = context.db.pair(baseId, id);
+    context.db.friendships.set(low + "|" + high, {
+      pair_low: low, pair_high: high, status: "accepted",
+      accepted_request_id: "request_extra_" + (index + 1),
+      accepted_at: 1000 + index, updated_at: 1000 + index
+    });
+  });
+  const first = await call(context, "/?limit=1", "GET");
+  assert.equal(first.body.ownerAccountId, "account-alice-001");
+  assert.equal(first.body.relationships.length, 1);
+  assert.equal(first.body.hasMore, true);
+  assert.ok(first.body.nextCursor);
+
+  const second = await call(context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(first.body.nextCursor),
+    "GET");
+  assert.equal(second.body.relationships.length, 1);
+  assert.equal(second.body.snapshotAt, first.body.snapshotAt);
+  assert.equal(second.body.hasMore, true);
+
+  const third = await call(context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(second.body.nextCursor),
+    "GET");
+  assert.equal(third.body.relationships.length, 1);
+  assert.equal(third.body.hasMore, true);
+
+  const fourth = await call(context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(third.body.nextCursor),
+    "GET");
+  assert.equal(fourth.body.relationships.length, 1);
+  assert.equal(fourth.body.hasMore, false);
+  assert.equal(fourth.body.nextCursor, null);
+
+  const ids = [first, second, third, fourth].flatMap(page => page.body.relationships.map(item => item.id));
+  assert.equal(new Set(ids).size, 4);
+});
+
+test("friend roster rejects malformed page limits, cursors and snapshot timestamps", async () => {
+  const context = await setup();
+  assert.equal((await call(context, "/?limit=101", "GET")).body.error, "invalid_friend_page_limit");
+  assert.equal((await call(context, "/?after=bad", "GET")).body.error, "invalid_friend_cursor");
+  assert.equal((await call(context, "/?snapshotAt=99999999999999999", "GET")).body.error, "invalid_friend_snapshot");
+});
+
+test("friend rows changed during pagination remain visible instead of being mistaken for missing relationships", async () => {
+  const context = await setup();
+  const ownerId = "account-alice-001";
+  const peerIds = ["account-peer-01", "account-peer-02", "account-peer-03"];
+  peerIds.forEach((id, index) => {
+    context.db.accounts.set(id, {
+      id, handle: "peer_" + index, display_name: "Peer " + index,
+      status: "active", avatar_asset_id: null
+    });
+    const [low, high] = context.db.pair(ownerId, id);
+    context.db.friendships.set(low + "|" + high, {
+      pair_low: low, pair_high: high, status: "accepted",
+      accepted_request_id: "request_peer_" + index,
+      accepted_at: Date.now() - 1000,
+      updated_at: Date.now() - 900
+    });
+  });
+
+  const first = await call(context, "/?limit=1", "GET");
+  assert.equal(first.body.hasMore, true);
+  const cursor = first.body.nextCursor;
+  const changedId = peerIds.find(id => id > cursor);
+  assert.ok(changedId, "fixture must include a relationship after the first-page cursor");
+  const [low, high] = context.db.pair(ownerId, changedId);
+  const key = low + "|" + high;
+  const row = context.db.friendships.get(key);
+  context.db.friendships.set(key, {
+    ...row,
+    status: "removed",
+    updated_at: first.body.snapshotAt + 1000
+  });
+
+  const second = await call(
+    context,
+    "/?limit=1&snapshotAt=" + first.body.snapshotAt + "&after=" + encodeURIComponent(cursor),
+    "GET"
+  );
+  assert.equal(second.body.snapshotAt, first.body.snapshotAt);
+  const updated = second.body.relationships.find(item => item.id === changedId);
+  assert.ok(updated, "the changed relationship must not vanish from a later page");
+  assert.equal(updated.status, "removed");
 });

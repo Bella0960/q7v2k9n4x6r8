@@ -355,6 +355,15 @@ test("account auth endpoints are routed while messaging remains disabled", async
   assert.equal(capabilityBody.delivery.enabled, false);
   assert.equal(capabilityBody.profileAvatar.enabled, false);
 
+  const avatarRoute = await worker.fetch(new Request(
+    "https://mao.example/api/real-user-chat/v1/profile/avatar",
+    { method: "POST", headers: { Origin: "https://mao.example", "Content-Type": "image/png" }, body: new Uint8Array([1, 2, 3]) }
+  ), capabilityEnv);
+  assert.equal(avatarRoute.status, 503);
+  assert.deepEqual(await avatarRoute.json(), {
+    ok: false, enabled: false, error: "real_user_avatar_unavailable"
+  });
+
   const unavailableEnv = {
     ...capabilityEnv,
     REAL_USER_AUTH_ENABLED: "false"
@@ -376,6 +385,7 @@ test("server-only auth modules are excluded from Vite static assets but remain i
   const workerEntry = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
   assert.match(viteConfig, /const excludedDirs = new Set\(\[[^\]]*'worker'[^\]]*\]\)/);
   assert.match(workerEntry, /from "\.\/worker\/real-user-auth\.js"/);
+  assert.match(workerEntry, /from "\.\/worker\/real-user-avatar\.js"/);
 });
 
 

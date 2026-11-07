@@ -354,3 +354,204 @@ test('safe profile refresh keeps accepted relationship metadata intact', () => {
   assert.equal(after.acceptedAt, before.acceptedAt);
   assert.equal(after.source, before.source);
 });
+
+function serverRoster(ownerAccountId, relationships, snapshotAt) {
+  return { ownerAccountId, complete: true, relationships, snapshotAt };
+}
+
+function acceptedServerFriend(id, requestId, updatedAt, overrides = {}) {
+  return {
+    id,
+    status: 'accepted',
+    acceptedRequestId: requestId,
+    acceptedAt: updatedAt - 10,
+    updatedAt,
+    handle: id.replace(/[^a-z0-9]/gi, '').slice(0, 20).toLowerCase() || 'friend_01',
+    displayName: '服务器好友',
+    avatarAssetId: 'av_' + 'a'.repeat(32),
+    ...overrides
+  };
+}
+
+test('complete server snapshots sync active-account friends into the directory with current profile fields', () => {
+  const { directory } = createDirectoryRuntime();
+  directory.setActiveAccountId('account_owner_01');
+
+  const synced = directory.syncServerSnapshot(serverRoster('account_owner_01', [
+    acceptedServerFriend('account_friend_01', 'request_owner_001', 1000, {
+      displayName: '最新好友昵称',
+      avatarAssetId: 'av_' + 'b'.repeat(32)
+    })
+  ], 1100), 'account_owner_01', { now: 1200 });
+
+  assert.equal(synced.ok, true);
+  const visible = directory.read({ status: 'accepted' });
+  assert.equal(visible.contacts.length, 1);
+  assert.equal(visible.contacts[0].ownerAccountId, 'account_owner_01');
+  assert.equal(visible.contacts[0].displayName, '最新好友昵称');
+  assert.equal(visible.contacts[0].handle, 'accountfriend01');
+  assert.equal(visible.contacts[0].avatarAssetId, 'av_' + 'b'.repeat(32));
+  assert.match(visible.contacts[0].avatarUrl, /\/api\/real-user-chat\/v1\/profile\/avatars\/av_/);
+
+  directory.setActiveAccountId('account_other_01');
+  assert.equal(directory.read({ status: 'accepted' }).contacts.length, 0);
+  assert.equal(directory.readResult().contacts.length, 1);
+});
+
+test('server snapshots update and remove friends, but only a new request ID can create a new relationship', () => {
+  const { directory } = createDirectoryRuntime();
+  directory.setActiveAccountId('account_owner_02');
+  const initial = acceptedServerFriend('account_friend_02', 'request_old_001', 2000);
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_02', [initial], 2100),
+    'account_owner_02', { now: 2200 }).ok, true);
+
+  const removed = {
+    id: initial.id,
+    status: 'removed',
+    acceptedRequestId: initial.acceptedRequestId,
+    acceptedAt: initial.acceptedAt,
+    updatedAt: 2300
+  };
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_02', [removed], 2400),
+    'account_owner_02', { now: 2500 }).ok, true);
+  assert.equal(directory.read({ status: 'accepted' }).contacts.length, 0);
+  assert.equal(directory.get(initial.id).status, 'removed');
+
+  const staleRevival = directory.syncServerSnapshot(serverRoster('account_owner_02', [
+    acceptedServerFriend(initial.id, 'request_old_001', 2600)
+  ], 2700), 'account_owner_02', { now: 2800 });
+  assert.equal(staleRevival.ok, false);
+  assert.equal(staleRevival.error, 'stale_server_relationship_revival');
+  assert.equal(directory.get(initial.id).status, 'removed');
+
+  const fresh = directory.syncServerSnapshot(serverRoster('account_owner_02', [
+    acceptedServerFriend(initial.id, 'request_fresh_002', 2900, { displayName: '重新添加的好友' })
+  ], 3000), 'account_owner_02', { now: 3100 });
+  assert.equal(fresh.ok, true);
+  assert.equal(directory.get(initial.id).status, 'accepted');
+  assert.equal(directory.get(initial.id).requestId, 'request_fresh_002');
+  assert.equal(directory.get(initial.id).displayName, '重新添加的好友');
+});
+
+test('complete snapshots tombstone omitted server friends without touching local-only or other-account records', () => {
+  const { directory } = createDirectoryRuntime();
+  directory.setActiveAccountId('account_owner_03');
+  const friendA = acceptedServerFriend('account_friend_03', 'request_friend_003', 3200);
+  const friendB = acceptedServerFriend('account_friend_04', 'request_friend_004', 3300);
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_03', [friendA, friendB], 3400),
+    'account_owner_03', { now: 3500 }).ok, true);
+
+  const local = directory.requestOutgoing({ id: 'local_friend_01', displayName: '本地联系人' }, {
+    requestId: 'local_request_001', now: 3510
+  });
+  assert.equal(local.ok, true);
+  const secondOwner = directory.syncServerSnapshot(serverRoster('account_owner_04', [
+    acceptedServerFriend(friendA.id, 'request_other_003', 3520, { displayName: '另一个账号的好友' })
+  ], 3530), 'account_owner_04', { now: 3540 });
+  assert.equal(secondOwner.ok, true);
+
+  const onlyA = directory.syncServerSnapshot(serverRoster('account_owner_03', [friendA], 3600),
+    'account_owner_03', { now: 3700 });
+  assert.equal(onlyA.ok, true);
+  const all = directory.readResult().contacts;
+  assert.equal(all.find(item => item.id === friendB.id && item.ownerAccountId === 'account_owner_03').status, 'removed');
+  assert.equal(all.find(item => item.id === friendA.id && item.ownerAccountId === 'account_owner_04').status, 'accepted');
+  assert.ok(all.some(item => item.id === 'local_friend_01' && item.ownerAccountId === 'account_owner_03' && item.status === 'pending_outgoing'));
+});
+
+test('invalid, incomplete, duplicate, or stale server snapshots never partially overwrite the directory', () => {
+  const { directory } = createDirectoryRuntime();
+  directory.setActiveAccountId('account_owner_05');
+  const initial = acceptedServerFriend('account_friend_05', 'request_friend_005', 4000);
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_05', [initial], 4100),
+    'account_owner_05', { now: 4200 }).ok, true);
+
+  const incomplete = directory.syncServerSnapshot({
+    complete: false,
+    relationships: [],
+    snapshotAt: 4300
+  }, 'account_owner_05', { now: 4400 });
+  assert.equal(incomplete.error, 'incomplete_server_snapshot');
+
+  const duplicate = directory.syncServerSnapshot(serverRoster('account_owner_05', [
+    acceptedServerFriend('account_friend_06', 'request_friend_006', 4500),
+    acceptedServerFriend('account_friend_06', 'request_friend_007', 4501)
+  ], 4600), 'account_owner_05', { now: 4700 });
+  assert.equal(duplicate.error, 'duplicate_server_relationship');
+  assert.equal(directory.read({ status: 'accepted' }).contacts.length, 1);
+  assert.equal(directory.get('account_friend_05').displayName, '服务器好友');
+
+  const stale = directory.syncServerSnapshot(serverRoster('account_owner_05', [
+    acceptedServerFriend('account_friend_05', 'request_friend_005', 3900, { displayName: '旧资料' })
+  ], 3900), 'account_owner_05', { now: 4800 });
+  assert.equal(stale.error, 'stale_server_snapshot');
+  assert.equal(directory.get('account_friend_05').displayName, '服务器好友');
+});
+
+test('legacy ownerless accepted rows migrate only after the active server account confirms the relationship', () => {
+  const legacy = JSON.stringify([{
+    id: 'account_friend_06',
+    displayName: '旧本地昵称',
+    status: 'accepted',
+    source: 'server',
+    requestId: 'legacy_request_006',
+    createdAt: 4900,
+    updatedAt: 4900,
+    acceptedAt: 4900
+  }]);
+  const { directory } = createDirectoryRuntime({ initialDirectory: legacy });
+  directory.setActiveAccountId('account_owner_06');
+
+  const synced = directory.syncServerSnapshot(serverRoster('account_owner_06', [
+    acceptedServerFriend('account_friend_06', 'server_request_006', 5000, {
+      displayName: '服务器确认的新昵称'
+    })
+  ], 5100), 'account_owner_06', { now: 5200 });
+
+  assert.equal(synced.ok, true);
+  const all = directory.readResult().contacts;
+  assert.equal(all.length, 1);
+  assert.equal(all[0].ownerAccountId, 'account_owner_06');
+  assert.equal(all[0].displayName, '服务器确认的新昵称');
+  assert.equal(all[0].requestId, 'server_request_006');
+
+  directory.setActiveAccountId('account_owner_07');
+  assert.equal(directory.read({ status: 'accepted' }).contacts.length, 0);
+});
+
+test('lifecycle changes for one account never mutate the same friend ID stored for another account', () => {
+  const { directory } = createDirectoryRuntime();
+  const friendId = 'account_friend_08';
+  directory.setActiveAccountId('account_owner_08');
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_08', [
+    acceptedServerFriend(friendId, 'server_request_owner8', 5300)
+  ], 5400), 'account_owner_08', { now: 5500 }).ok, true);
+
+  directory.setActiveAccountId('account_owner_09');
+  assert.equal(directory.syncServerSnapshot(serverRoster('account_owner_09', [
+    acceptedServerFriend(friendId, 'server_request_owner9', 5600)
+  ], 5700), 'account_owner_09', { now: 5800 }).ok, true);
+
+  directory.setActiveAccountId('account_owner_08');
+  const removed = directory.removeFriend(friendId, { requestId: 'server_request_owner8', now: 5900 });
+  assert.equal(removed.ok, true);
+  const records = directory.readResult().contacts.filter(item => item.id === friendId);
+  assert.equal(records.length, 2);
+  assert.equal(records.find(item => item.ownerAccountId === 'account_owner_08').status, 'removed');
+  assert.equal(records.find(item => item.ownerAccountId === 'account_owner_09').status, 'accepted');
+});
+
+test('directory refuses an otherwise complete snapshot when its account owner does not match', () => {
+  const { directory } = createDirectoryRuntime();
+  directory.setActiveAccountId('account_owner_10');
+  const result = directory.syncServerSnapshot(
+    serverRoster('account_other_10', [
+      acceptedServerFriend('account_friend_10', 'request_friend_010', 6000)
+    ], 6100),
+    'account_owner_10',
+    { now: 6200 }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'server_snapshot_account_mismatch');
+  assert.equal(directory.readResult().contacts.length, 0);
+});

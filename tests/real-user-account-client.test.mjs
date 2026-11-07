@@ -14,6 +14,10 @@ const PANEL_SOURCE = fs.readFileSync(
   path.join(ROOT, 'chat/contacts/real-user-account-panel.js'),
   'utf8'
 );
+const CONTACTS_SOURCE = fs.readFileSync(
+  path.join(ROOT, 'chat/contacts/contacts.html'),
+  'utf8'
+);
 
 const disabledCapabilities = {
   ok: true,
@@ -156,8 +160,20 @@ test('friend code, request list and friend list use only the authenticated API',
   const app = runtime(async (url) => {
     if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
     if (url.endsWith('/auth')) return jsonResponse({ ok: true });
-    if (url.endsWith('/v1/friends')) {
-      return jsonResponse({ ok: true, friends: [{ id: 'friend-1', handle: 'friend_1', displayName: 'Friend' }] });
+    if (url.includes('/v1/friends?')) {
+      const friend = {
+        id: 'friend-1', handle: 'friend_1', displayName: 'Friend',
+        avatarAssetId: null, acceptedRequestId: 'request_friend_001', acceptedAt: 100
+      };
+      return jsonResponse({
+        ok: true,
+        ownerAccountId: 'self-1',
+        friends: [friend],
+        relationships: [{ ...friend, status: 'accepted', updatedAt: 100 }],
+        snapshotAt: 200,
+        hasMore: false,
+        nextCursor: null
+      });
     }
     if (url.includes('/v1/friends/requests?direction=incoming')) {
       return jsonResponse({ ok: true, requests: [{ id: 'request_123456', peer: { id: 'peer-1' } }] });
@@ -359,4 +375,273 @@ test('Contacts panel keeps real-user avatar management separate from AI role ass
   assert.match(PANEL_SOURCE, /client\.removeAvatar\(\)/);
   assert.match(PANEL_SOURCE, /friend\.avatarAssetId/);
   assert.match(PANEL_SOURCE, /真人账号头像已更新/);
+});
+
+
+test('friend requests and accepted friends load private avatars; blocked rows avoid denied reads', () => {
+  assert.match(PANEL_SOURCE, /function createAvatarWrap\(assetId, displayName, large\)/);
+  assert.match(PANEL_SOURCE, /createAvatarWrap\(peer\.avatarAssetId, peer\.displayName, false\)/);
+  assert.match(PANEL_SOURCE, /createAvatarWrap\(friend\.avatarAssetId, friend\.displayName, false\)/);
+  assert.match(PANEL_SOURCE, /function renderBlocked\(blocked\)[\s\S]*?createAvatarWrap\(null, account\.displayName, false\)/);
+  assert.doesNotMatch(PANEL_SOURCE, /function renderBlocked\(blocked\)[\s\S]*?createAvatarWrap\(account\.avatarAssetId/);
+  assert.match(PANEL_SOURCE, /target\.loading = 'lazy'/);
+  assert.match(PANEL_SOURCE, /target\.decoding = 'async'/);
+  assert.match(PANEL_SOURCE, /target\.referrerPolicy = 'no-referrer'/);
+  assert.match(PANEL_SOURCE, /client\.avatarUrl\(assetId\)/);
+});
+
+test('refreshAccount replaces stale in-memory profile fields with the current cookie-session profile', async () => {
+  let currentProfile = {
+    id: 'profile-refresh-1',
+    handle: 'profile_1',
+    displayName: 'Before Refresh',
+    status: 'active',
+    avatarAssetId: null
+  };
+  const app = runtime(async (url, options) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/login')) {
+      return jsonResponse({ ok: true, account: currentProfile });
+    }
+    if (url.endsWith('/v1/auth/me') && options.method === 'GET') {
+      return jsonResponse({ ok: true, account: currentProfile });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.discover();
+  const signedIn = await app.client.login({ handle: 'profile_1', password: 'a sufficiently long password' });
+  assert.equal(signedIn.displayName, 'Before Refresh');
+
+  currentProfile = {
+    ...currentProfile,
+    displayName: 'Updated From Another Device',
+    avatarAssetId: 'av_' + 'b'.repeat(32)
+  };
+  const refreshed = await app.client.refreshAccount();
+
+  assert.equal(refreshed.id, 'profile-refresh-1');
+  assert.equal(refreshed.displayName, 'Updated From Another Device');
+  assert.equal(refreshed.avatarAssetId, 'av_' + 'b'.repeat(32));
+  assert.equal(app.client.getState().account.displayName, 'Updated From Another Device');
+  const refreshCall = app.calls.find((call) =>
+    call.url.endsWith('/v1/auth/me') && call.options.method === 'GET'
+  );
+  assert.ok(refreshCall);
+  assert.equal(refreshCall.options.credentials, 'same-origin');
+  assert.equal(refreshCall.options.cache, 'no-store');
+});
+
+test('Contacts refresh and page-resume handlers refresh both the signed-in account and friend data', () => {
+  assert.match(PANEL_SOURCE, /client\.refreshAccount\(\)/);
+  assert.match(PANEL_SOURCE, /function refreshProfileAndFriends\(\)/);
+  assert.match(PANEL_SOURCE, /root\.addEventListener\('pageshow', refreshOnResume\)/);
+  assert.match(PANEL_SOURCE, /root\.addEventListener\('focus', refreshOnResume\)/);
+  assert.match(PANEL_SOURCE, /document\.addEventListener\('visibilitychange'/);
+  assert.match(PANEL_SOURCE, /账号资料、好友头像和申请已同步/);
+});
+
+test('friend roster pagination collects every page under one stable snapshot', async () => {
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'self-page-1', handle: 'self_1', displayName: 'Self', status: 'active' } });
+    }
+    if (url.includes('/v1/friends?')) {
+      const parsed = new URL(url, 'https://mao.example');
+      const after = parsed.searchParams.get('after');
+      const snapshotAt = Number(parsed.searchParams.get('snapshotAt') || 500);
+      if (!after) {
+        const first = {
+          id: 'account_friend_01', handle: 'friend_01', displayName: 'Friend One',
+          avatarAssetId: null, acceptedRequestId: 'request_friend_001', acceptedAt: 400
+        };
+        return jsonResponse({
+          ok: true, ownerAccountId: 'self-page-1', friends: [first],
+          relationships: [{ ...first, status: 'accepted', updatedAt: 450 }],
+          snapshotAt, hasMore: true, nextCursor: first.id
+        });
+      }
+      const second = {
+        id: 'account_friend_02', handle: 'friend_02', displayName: 'Friend Two',
+        avatarAssetId: 'av_' + 'c'.repeat(32), acceptedRequestId: 'request_friend_002', acceptedAt: 410
+      };
+      return jsonResponse({
+        ok: true, ownerAccountId: 'self-page-1', friends: [second],
+        relationships: [{ ...second, status: 'accepted', updatedAt: 460 }],
+        snapshotAt, hasMore: false, nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.restore();
+  const roster = await app.client.listFriendRoster();
+  assert.equal(roster.complete, true);
+  assert.equal(roster.ownerAccountId, 'self-page-1');
+  assert.equal(roster.snapshotAt, 500);
+  assert.deepEqual(roster.friends.map((friend) => friend.id), ['account_friend_01', 'account_friend_02']);
+  assert.deepEqual(roster.relationships.map((friend) => friend.acceptedRequestId),
+    ['request_friend_001', 'request_friend_002']);
+  const friendCalls = app.calls.filter((call) => call.url.includes('/v1/friends?'));
+  assert.equal(friendCalls.length, 2);
+  assert.match(friendCalls[0].url, /limit=100/);
+  assert.match(friendCalls[1].url, /snapshotAt=500/);
+  assert.match(friendCalls[1].url, /after=account_friend_01/);
+});
+
+test('account restore and logout scope server-synced contacts to the active account only', async () => {
+  const directoryChanges = [];
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'scope-owner-1', handle: 'scope_1', displayName: 'Scoped', status: 'active' } });
+    }
+    if (url.endsWith('/v1/auth/logout')) return jsonResponse({ ok: true });
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  app.window.PhoneContactDirectory = {
+    setActiveAccountId(id) { directoryChanges.push(id); }
+  };
+
+  await app.client.restore();
+  assert.equal(directoryChanges.at(-1), 'scope-owner-1');
+  await app.client.logout();
+  assert.equal(directoryChanges.at(-1), '');
+});
+
+test('Contacts pushes complete server roster snapshots into the scoped directory and refreshes the main list', () => {
+  assert.match(PANEL_SOURCE, /client\.listFriendRoster\(\)/);
+  assert.match(PANEL_SOURCE, /directory\.syncServerSnapshot\(results\[0\], account\.id\)/);
+  assert.match(PANEL_SOURCE, /notifyContactRosterUpdated\(\)/);
+  assert.match(CONTACTS_SOURCE, /contactDirectoryApi\.read\(\{ status: contactDirectoryApi\.statuses\.ACCEPTED \}\)/);
+  assert.match(CONTACTS_SOURCE, /maomao:real-user-contacts-updated/);
+  assert.match(CONTACTS_SOURCE, /avatar: contact\.avatarUrl \|\| ''/);
+  assert.match(CONTACTS_SOURCE, /if \(type !== 'ai_role'\) return/);
+});
+
+test('Contacts roster does not expose account-scoped server friends before session restore', () => {
+  assert.match(CLIENT_SOURCE, /setActiveDirectoryAccount\(null\);[\s\S]*?var capabilities = await discover\(\)/);
+  assert.match(CLIENT_SOURCE, /setActiveDirectoryAccount\(state\.account\)/);
+  assert.match(PANEL_SOURCE, /if \(!result\.account\) \{[\s\S]*?notifyContactRosterUpdated\(\)/);
+});
+
+test('friend roster refreshes the active session before assigning a server-owned roster', async () => {
+  let meReads = 0;
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      meReads += 1;
+      const account = meReads === 1
+        ? { id: 'account-before-tab-switch', handle: 'old_session', displayName: 'Old Session', status: 'active' }
+        : { id: 'account-after-tab-switch', handle: 'new_session', displayName: 'New Session', status: 'active' };
+      return jsonResponse({ ok: true, account });
+    }
+    if (url.includes('/v1/friends?')) {
+      return jsonResponse({
+        ok: true,
+        ownerAccountId: 'account-after-tab-switch',
+        friends: [],
+        relationships: [],
+        snapshotAt: 800,
+        hasMore: false,
+        nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.restore();
+  assert.equal(app.client.getState().account.id, 'account-before-tab-switch');
+  const roster = await app.client.listFriendRoster();
+  assert.equal(meReads, 2);
+  assert.equal(roster.ownerAccountId, 'account-after-tab-switch');
+  assert.equal(app.client.getState().account.id, 'account-after-tab-switch');
+});
+
+test('friend roster rejects a server owner mismatch and owner changes between pages', async () => {
+  const mismatch = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'account-session-a', handle: 'session_a', displayName: 'A', status: 'active' } });
+    }
+    if (url.includes('/v1/friends?')) {
+      return jsonResponse({
+        ok: true, ownerAccountId: 'account-session-b', friends: [], relationships: [],
+        snapshotAt: 900, hasMore: false, nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await mismatch.client.restore();
+  await assert.rejects(
+    mismatch.client.listFriendRoster(),
+    (error) => error.code === 'friend_roster_account_mismatch'
+  );
+
+  let page = 0;
+  const changed = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({ ok: true, account: { id: 'account-session-a', handle: 'session_a', displayName: 'A', status: 'active' } });
+    }
+    if (url.includes('/v1/friends?')) {
+      page += 1;
+      const first = { id: 'account_peer_01', handle: 'peer_01', displayName: 'Peer', acceptedRequestId: 'request_peer_001', acceptedAt: 700 };
+      return jsonResponse({
+        ok: true,
+        ownerAccountId: page === 1 ? 'account-session-a' : 'account-session-b',
+        friends: [first],
+        relationships: [{ ...first, status: 'accepted', updatedAt: 750 }],
+        snapshotAt: 950,
+        hasMore: page === 1,
+        nextCursor: page === 1 ? first.id : null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+  await changed.client.restore();
+  await assert.rejects(
+    changed.client.listFriendRoster(),
+    (error) => error.code === 'friend_roster_account_mismatch'
+  );
+});
+
+test('friend roster and account avatar URLs omit private avatar references when avatar storage is disabled', async () => {
+  const assetId = 'av_' + 'd'.repeat(32);
+  const app = runtime(async (url) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/me')) {
+      return jsonResponse({
+        ok: true,
+        account: { id: 'avatar-disabled-owner', handle: 'avatar_owner', displayName: 'Owner', status: 'active', avatarAssetId: assetId }
+      });
+    }
+    if (url.includes('/v1/friends?')) {
+      const friend = {
+        id: 'account_avatar_friend',
+        handle: 'avatar_friend',
+        displayName: 'Friend',
+        avatarAssetId: assetId,
+        acceptedRequestId: 'request_avatar_001',
+        acceptedAt: 100
+      };
+      return jsonResponse({
+        ok: true,
+        ownerAccountId: 'avatar-disabled-owner',
+        friends: [friend],
+        relationships: [{ ...friend, status: 'accepted', updatedAt: 120 }],
+        snapshotAt: 150,
+        hasMore: false,
+        nextCursor: null
+      });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.restore();
+  const roster = await app.client.listFriendRoster();
+  assert.equal(roster.friends[0].avatarAssetId, undefined);
+  assert.equal(roster.relationships[0].avatarAssetId, undefined);
+  assert.equal(app.client.avatarUrl(assetId), '');
 });

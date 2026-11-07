@@ -2,7 +2,8 @@
     'use strict';
 
     var STORAGE_KEY = 'real_user_contacts_v1';
-    var VERSION = 2;
+    var VERSION = 3;
+    var activeAccountId = '';
     var STATUS = {
         PENDING_OUTGOING: 'pending_outgoing',
         PENDING_INCOMING: 'pending_incoming',
@@ -49,14 +50,18 @@
         return {
             id: id,
             type: 'real_user',
+            ownerAccountId: cleanText(value.ownerAccountId, 96),
+            handle: cleanText(value.handle, 24).toLowerCase(),
             displayName: displayName,
-            avatarAssetId: cleanText(value.avatarAssetId, 180),
+            avatarAssetId: /^av_[a-f0-9]{32}$/.test(String(value.avatarAssetId || ''))
+                ? String(value.avatarAssetId) : '',
             avatarUrl: safeAvatarUrl(value.avatarUrl != null ? value.avatarUrl : value.avatar),
             status: status,
             source: cleanText(value.source, 32) || 'unknown',
             requestId: cleanText(value.requestId, 160),
             createdAt: createdAt,
             updatedAt: updatedAt,
+            serverUpdatedAt: timestamp('serverUpdatedAt'),
             acceptedAt: timestamp('acceptedAt'),
             blockedAt: timestamp('blockedAt'),
             declinedAt: timestamp('declinedAt'),
@@ -84,12 +89,15 @@
         for (var i = 0; i < parsed.length; i++) {
             var record = normalizeRecord(parsed[i]);
             if (!record) return { ok: false, error: 'corrupt_data', contacts: [], invalidIndex: i };
-            var current = byId[record.id];
+            var recordKey = record.ownerAccountId
+                ? 'owner:' + record.ownerAccountId + ':' + record.id
+                : 'local:' + record.id;
+            var current = byId[recordKey];
             if (!current) {
-                byId[record.id] = record;
+                byId[recordKey] = record;
             } else {
                 duplicateCount += 1;
-                if (record.updatedAt > current.updatedAt) byId[record.id] = record;
+                if (record.updatedAt > current.updatedAt) byId[recordKey] = record;
             }
         }
         return {
@@ -99,20 +107,40 @@
         };
     }
 
+    function isVisibleForActiveAccount(record) {
+        return !record.ownerAccountId || (!!activeAccountId && record.ownerAccountId === activeAccountId);
+    }
+
+    function sameIdentity(left, right) {
+        return !!(left && right && left.id === right.id &&
+            left.ownerAccountId === right.ownerAccountId);
+    }
+
     function read(options) {
         var result = readResult();
         if (!result.ok) return result;
         options = options && typeof options === 'object' ? options : {};
-        var contacts = result.contacts;
+        var contacts = result.contacts.filter(isVisibleForActiveAccount);
         if (options.status) contacts = contacts.filter(function (item) { return item.status === options.status; });
         return { ok: true, contacts: contacts.slice(), duplicateCount: result.duplicateCount };
+    }
+
+    function setActiveAccountId(value) {
+        activeAccountId = cleanText(value, 96);
+        return { ok: true, activeAccountId: activeAccountId || null };
+    }
+
+    function getActiveAccountId() {
+        return activeAccountId || null;
     }
 
     function get(id) {
         var result = readResult();
         if (!result.ok || id == null) return null;
         var key = cleanText(id, 160);
-        return result.contacts.find(function (item) { return item.id === key; }) || null;
+        return result.contacts.find(function (item) {
+            return item.id === key && isVisibleForActiveAccount(item);
+        }) || null;
     }
 
     function writeContacts(contacts) {
@@ -141,6 +169,7 @@
         }
         var updatedAt = Math.max(incoming.updatedAt, existing.updatedAt);
         var merged = normalizeRecord(Object.assign({}, existing, {
+            handle: incoming.handle,
             displayName: incoming.displayName,
             avatarAssetId: incoming.avatarAssetId,
             avatarUrl: incoming.avatarUrl,
@@ -159,7 +188,9 @@
         var record = normalizeRecord(value);
         if (!record) return { ok: false, error: 'invalid_contact', contacts: [] };
         var contacts = current.contacts.slice();
-        var index = contacts.findIndex(function (item) { return item.id === record.id; });
+        var index = contacts.findIndex(function (item) {
+            return item.id === record.id && item.ownerAccountId === record.ownerAccountId;
+        });
         if (index >= 0) {
             var previous = contacts[index];
             var merged = mergeProfileSnapshot(previous, record);
@@ -184,7 +215,9 @@
         for (var i = 0; i < values.length; i++) {
             var record = normalizeRecord(values[i]);
             if (!record) return { ok: false, error: 'invalid_contact', invalidIndex: i, contacts: current.contacts };
-            var index = contacts.findIndex(function (item) { return item.id === record.id; });
+            var index = contacts.findIndex(function (item) {
+                return item.id === record.id && item.ownerAccountId === record.ownerAccountId;
+            });
             if (index >= 0) {
                 var previous = contacts[index];
                 var merged = mergeProfileSnapshot(previous, record);
@@ -212,7 +245,9 @@
         var current = readResult();
         if (!current.ok) return current;
         var key = cleanText(id, 160);
-        var next = current.contacts.filter(function (item) { return item.id !== key; });
+        var next = current.contacts.filter(function (item) {
+            return !(item.id === key && isVisibleForActiveAccount(item));
+        });
         if (next.length === current.contacts.length) {
             return { ok: false, error: 'not_found', contacts: current.contacts };
         }
@@ -234,7 +269,9 @@
         if (!result.ok) return result;
         var key = cleanText(id, 160);
         if (!key) return { ok: false, error: 'invalid_contact_id', contacts: [] };
-        var contact = result.contacts.find(function (item) { return item.id === key; }) || null;
+        var contact = result.contacts.find(function (item) {
+            return item.id === key && isVisibleForActiveAccount(item);
+        }) || null;
         return { ok: true, contact: contact, contacts: result.contacts, id: key };
     }
 
@@ -281,7 +318,10 @@
             updatedAt: now
         }, now);
         if (!input) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
-        var existing = current.contacts.find(function (item) { return item.id === input.id; });
+        input.ownerAccountId = activeAccountId;
+        var existing = current.contacts.find(function (item) {
+            return item.id === input.id && isVisibleForActiveAccount(item);
+        });
         if (existing) {
             if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
@@ -295,7 +335,7 @@
             }
             input.createdAt = existing.createdAt;
             input.updatedAt = nextUpdatedAt(now, existing);
-            var replaced = current.contacts.map(function (item) { return item.id === existing.id ? input : item; });
+            var replaced = current.contacts.map(function (item) { return sameIdentity(item, existing) ? input : item; });
             return resultWithContact(writeContacts(replaced), input, 'request_restarted');
         }
         return resultWithContact(writeContacts(current.contacts.concat([input])), input, 'request_created');
@@ -322,7 +362,10 @@
             updatedAt: now
         }, now);
         if (!input) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
-        var existing = current.contacts.find(function (item) { return item.id === input.id; });
+        input.ownerAccountId = activeAccountId;
+        var existing = current.contacts.find(function (item) {
+            return item.id === input.id && isVisibleForActiveAccount(item);
+        });
         if (existing) {
             if (existing.status === STATUS.ACCEPTED) return { ok: false, error: 'already_friends', contact: existing, contacts: current.contacts };
             if (existing.status === STATUS.BLOCKED) return { ok: false, error: 'blocked', contact: existing, contacts: current.contacts };
@@ -336,7 +379,7 @@
             }
             input.createdAt = existing.createdAt;
             input.updatedAt = nextUpdatedAt(now, existing);
-            var replaced = current.contacts.map(function (item) { return item.id === existing.id ? input : item; });
+            var replaced = current.contacts.map(function (item) { return sameIdentity(item, existing) ? input : item; });
             return resultWithContact(writeContacts(replaced), input, 'incoming_request_received');
         }
         return resultWithContact(writeContacts(current.contacts.concat([input])), input, 'incoming_request_received');
@@ -373,7 +416,7 @@
             blockedAt: null,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? accepted : item; });
         return resultWithContact(writeContacts(next), accepted, 'request_accepted');
     }
 
@@ -397,7 +440,7 @@
             declinedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? declined : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? declined : item; });
         return resultWithContact(writeContacts(next), declined, 'request_declined');
     }
 
@@ -421,7 +464,7 @@
             cancelledAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? cancelled : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? cancelled : item; });
         return resultWithContact(writeContacts(next), cancelled, 'request_cancelled');
     }
 
@@ -448,7 +491,7 @@
             acceptedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? accepted : item; });
         return resultWithContact(writeContacts(next), accepted, 'outgoing_request_accepted');
     }
 
@@ -474,7 +517,7 @@
             declinedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? declined : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? declined : item; });
         return resultWithContact(writeContacts(next), declined, 'outgoing_request_declined');
     }
 
@@ -490,8 +533,11 @@
         if (!displayName) return { ok: false, error: 'invalid_contact', contacts: current.contacts };
         var now = transitionTime(options);
         var updatedAt = nextUpdatedAt(now, existing);
+        var targetOwnerId = existing ? existing.ownerAccountId : activeAccountId;
         var blocked = normalizeRecord({
             id: current.id,
+            ownerAccountId: targetOwnerId,
+            handle: existing ? existing.handle : '',
             displayName: displayName,
             avatarUrl: options.avatarUrl != null ? options.avatarUrl : (existing && existing.avatarUrl),
             avatarAssetId: options.avatarAssetId != null ? options.avatarAssetId : (existing && existing.avatarAssetId),
@@ -503,7 +549,9 @@
             acceptedAt: existing ? existing.acceptedAt : null,
             blockedAt: updatedAt
         }, updatedAt);
-        var next = current.contacts.filter(function (item) { return item.id !== current.id; });
+        var next = current.contacts.filter(function (item) {
+            return !(item.id === current.id && item.ownerAccountId === targetOwnerId);
+        });
         next.push(blocked);
         return resultWithContact(writeContacts(next), blocked, 'contact_blocked');
     }
@@ -527,7 +575,7 @@
             unblockedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? unblocked : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? unblocked : item; });
         return resultWithContact(writeContacts(next), unblocked, 'contact_unblocked');
     }
 
@@ -552,8 +600,154 @@
             removedAt: now,
             updatedAt: now
         }), now);
-        var next = current.contacts.map(function (item) { return item.id === existing.id ? removed : item; });
+        var next = current.contacts.map(function (item) { return sameIdentity(item, existing) ? removed : item; });
         return resultWithContact(writeContacts(next), removed, 'friend_removed');
+    }
+
+    // Reconcile a complete, authenticated server snapshot. This is the only
+    // path allowed to apply remote lifecycle changes to server-owned contact rows.
+    // It requires stable accepted request IDs and an all-pages-complete marker.
+    function syncServerSnapshot(snapshot, ownerId, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var owner = cleanText(ownerId, 96);
+        if (!owner) return { ok: false, error: 'invalid_owner_account_id', contacts: [] };
+        if (!snapshot || snapshot.complete !== true || !Array.isArray(snapshot.relationships)) {
+            return { ok: false, error: 'incomplete_server_snapshot', contacts: [] };
+        }
+        if (cleanText(snapshot.ownerAccountId, 96) !== owner) {
+            return { ok: false, error: 'server_snapshot_account_mismatch', contacts: [] };
+        }
+        var snapshotAt = Number(snapshot.snapshotAt);
+        if (!Number.isSafeInteger(snapshotAt) || snapshotAt <= 0) {
+            return { ok: false, error: 'invalid_server_snapshot_time', contacts: [] };
+        }
+        var now = transitionTime(options);
+        var current = readResult();
+        if (!current.ok) return current;
+
+        var seen = Object.create(null);
+        var next = current.contacts.slice();
+        for (var i = 0; i < snapshot.relationships.length; i++) {
+            var remote = snapshot.relationships[i];
+            if (!remote || typeof remote !== 'object' || Array.isArray(remote)) {
+                return { ok: false, error: 'invalid_server_relationship', invalidIndex: i, contacts: current.contacts };
+            }
+            var id = cleanText(remote.id, 160);
+            var requestId = cleanText(remote.acceptedRequestId, 160);
+            var status = cleanText(remote.status, 16);
+            var serverUpdatedAt = Number(remote.updatedAt);
+            var acceptedAt = Number(remote.acceptedAt);
+            if (!id || !/^[A-Za-z0-9_-]{8,96}$/.test(requestId) ||
+                (status !== 'accepted' && status !== 'removed') ||
+                !Number.isSafeInteger(serverUpdatedAt) || serverUpdatedAt <= 0) {
+                return { ok: false, error: 'invalid_server_relationship', invalidIndex: i, contacts: current.contacts };
+            }
+            if (seen[id]) return { ok: false, error: 'duplicate_server_relationship', invalidIndex: i, contacts: current.contacts };
+            seen[id] = true;
+
+            var index = next.findIndex(function (item) {
+                return item.id === id && item.ownerAccountId === owner;
+            });
+            // A legacy ownerless row is migrated only after the authenticated
+            // server explicitly confirms the same ID in this account's roster.
+            if (index < 0) {
+                index = next.findIndex(function (item) {
+                    return item.id === id && !item.ownerAccountId;
+                });
+            }
+            var existing = index >= 0 ? next[index] : null;
+            if (existing && existing.serverUpdatedAt && serverUpdatedAt < existing.serverUpdatedAt) {
+                return { ok: false, error: 'stale_server_snapshot', invalidIndex: i, contact: existing, contacts: current.contacts };
+            }
+
+            if (status === 'removed') {
+                if (!existing) continue;
+                var removedAt = Math.max(now, existing.updatedAt + 1);
+                var removed = normalizeRecord(Object.assign({}, existing, {
+                    ownerAccountId: owner,
+                    status: STATUS.REMOVED,
+                    requestId: requestId,
+                    avatarAssetId: '',
+                    avatarUrl: '',
+                    acceptedAt: null,
+                    removedAt: removedAt,
+                    updatedAt: removedAt,
+                    serverUpdatedAt: serverUpdatedAt,
+                    source: 'server_snapshot'
+                }), removedAt);
+                if (!removed) return { ok: false, error: 'invalid_server_relationship', invalidIndex: i, contacts: current.contacts };
+                if (index >= 0) next[index] = removed;
+                continue;
+            }
+
+            var displayName = cleanText(remote.displayName, 48);
+            var handle = cleanText(remote.handle, 24).toLowerCase();
+            var avatarAssetId = /^av_[a-f0-9]{32}$/.test(String(remote.avatarAssetId || ''))
+                ? String(remote.avatarAssetId) : '';
+            if (!displayName || !handle || !Number.isSafeInteger(acceptedAt) || acceptedAt <= 0) {
+                return { ok: false, error: 'invalid_server_profile', invalidIndex: i, contacts: current.contacts };
+            }
+            if (existing && existing.status !== STATUS.ACCEPTED &&
+                existing.requestId === requestId &&
+                [STATUS.BLOCKED, STATUS.DECLINED, STATUS.CANCELLED, STATUS.REMOVED, STATUS.UNBLOCKED].indexOf(existing.status) !== -1) {
+                return { ok: false, error: 'stale_server_relationship_revival', invalidIndex: i, contact: existing, contacts: current.contacts };
+            }
+
+            var localUpdatedAt = existing ? Math.max(now, existing.updatedAt + 1) : Math.max(now, acceptedAt);
+            var refreshed = normalizeRecord({
+                id: id,
+                ownerAccountId: owner,
+                handle: handle,
+                displayName: displayName,
+                avatarAssetId: avatarAssetId,
+                avatarUrl: avatarAssetId ? '/api/real-user-chat/v1/profile/avatars/' + encodeURIComponent(avatarAssetId) : '',
+                status: STATUS.ACCEPTED,
+                source: 'server_snapshot',
+                requestId: requestId,
+                createdAt: existing && existing.requestId === requestId ? existing.createdAt : acceptedAt,
+                updatedAt: localUpdatedAt,
+                serverUpdatedAt: serverUpdatedAt,
+                acceptedAt: acceptedAt,
+                blockedAt: null,
+                declinedAt: null,
+                cancelledAt: null,
+                removedAt: null,
+                unblockedAt: null
+            }, localUpdatedAt);
+            if (!refreshed) return { ok: false, error: 'invalid_server_profile', invalidIndex: i, contacts: current.contacts };
+            if (index >= 0) next[index] = refreshed;
+            else next.push(refreshed);
+        }
+
+        // A complete roster is authoritative for this owner. Any previously accepted
+        // server-owned row absent from it has been removed (or its account was deleted).
+        // Local-only records and other account owners are never touched.
+        next = next.map(function (item) {
+            if (item.ownerAccountId !== owner || item.status !== STATUS.ACCEPTED || seen[item.id]) return item;
+            if (item.serverUpdatedAt && snapshotAt < item.serverUpdatedAt) return item;
+            var removedAt = Math.max(now, item.updatedAt + 1);
+            return normalizeRecord(Object.assign({}, item, {
+                status: STATUS.REMOVED,
+                avatarAssetId: '',
+                avatarUrl: '',
+                acceptedAt: null,
+                removedAt: removedAt,
+                updatedAt: removedAt,
+                serverUpdatedAt: snapshotAt,
+                source: 'server_snapshot'
+            }), removedAt);
+        });
+
+        var saved = writeContacts(next);
+        if (!saved.ok) return saved;
+        return {
+            ok: true,
+            ownerAccountId: owner,
+            snapshotAt: snapshotAt,
+            contacts: next.filter(function (item) {
+                return item.ownerAccountId === owner && item.status === STATUS.ACCEPTED;
+            })
+        };
     }
 
     function getContactRef(value) {
@@ -585,8 +779,12 @@
         if (!result.ok) return result;
         return {
             ok: true,
-            incoming: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_INCOMING; }),
-            outgoing: result.contacts.filter(function (item) { return item.status === STATUS.PENDING_OUTGOING; })
+            incoming: result.contacts.filter(function (item) {
+                return isVisibleForActiveAccount(item) && item.status === STATUS.PENDING_INCOMING;
+            }),
+            outgoing: result.contacts.filter(function (item) {
+                return isVisibleForActiveAccount(item) && item.status === STATUS.PENDING_OUTGOING;
+            })
         };
     }
 
@@ -598,6 +796,9 @@
         readResult: readResult,
         read: read,
         get: get,
+        setActiveAccountId: setActiveAccountId,
+        getActiveAccountId: getActiveAccountId,
+        syncServerSnapshot: syncServerSnapshot,
         save: save,
         saveMany: saveMany,
         remove: remove,

@@ -166,6 +166,8 @@
   var pendingInviteCode = inviteLinks ? inviteLinks.captureCurrentInvite(root.location, root.history, document.title) : '';
   var codeExpiryTimer = null;
   var cameraScanner = null;
+  var profileRefreshPromise = null;
+  var lastResumeRefreshAt = 0;
 
   function el(id) { return document.getElementById(id); }
   function setStatus(message, kind) {
@@ -234,6 +236,9 @@
       fallback.hidden = false;
       return;
     }
+    target.loading = 'lazy';
+    target.decoding = 'async';
+    target.referrerPolicy = 'no-referrer';
     target.onerror = function () {
       target.hidden = true;
       target.removeAttribute('src');
@@ -286,6 +291,21 @@
     parent.appendChild(button);
   }
 
+  function createAvatarWrap(assetId, displayName, large) {
+    var wrap = document.createElement('div');
+    wrap.className = 'ru-avatar-wrap ' + (large ? 'ru-avatar-wrap-large' : 'ru-contact-avatar');
+    var image = document.createElement('img');
+    image.className = 'ru-avatar-image';
+    image.alt = '';
+    image.hidden = true;
+    var fallback = document.createElement('span');
+    fallback.className = 'ru-avatar-fallback';
+    wrap.appendChild(image);
+    wrap.appendChild(fallback);
+    renderAvatar(image, fallback, assetId, displayName);
+    return wrap;
+  }
+
   function renderRequests(container, requests, direction) {
     container.textContent = '';
     if (!requests.length) {
@@ -295,12 +315,17 @@
     requests.forEach(function (item) {
       var row = document.createElement('div');
       row.className = 'ru-list-row';
+      var peer = item.peer || {};
       var main = document.createElement('div');
-      main.className = 'ru-list-main';
-      addText(main, 'ru-list-name', item.peer && item.peer.displayName || 'MAOMAO 用户');
-      addText(main, 'ru-list-meta',
-        (item.peer && item.peer.handle ? '@' + item.peer.handle : '') +
+      main.className = 'ru-list-main ru-list-main-with-avatar';
+      main.appendChild(createAvatarWrap(peer.avatarAssetId, peer.displayName, false));
+      var textWrap = document.createElement('div');
+      textWrap.className = 'ru-list-text';
+      addText(textWrap, 'ru-list-name', peer.displayName || 'MAOMAO 用户');
+      addText(textWrap, 'ru-list-meta',
+        (peer.handle ? '@' + peer.handle : '') +
         (item.note ? ' · ' + item.note : ''));
+      main.appendChild(textWrap);
       var actions = document.createElement('div');
       actions.className = 'ru-list-actions';
       if (direction === 'incoming') {
@@ -328,18 +353,7 @@
       row.className = 'ru-list-row';
       var main = document.createElement('div');
       main.className = 'ru-list-main ru-list-main-with-avatar';
-      var avatarWrap = document.createElement('div');
-      avatarWrap.className = 'ru-avatar-wrap ru-contact-avatar';
-      var avatarImage = document.createElement('img');
-      avatarImage.className = 'ru-avatar-image';
-      avatarImage.alt = '';
-      avatarImage.hidden = true;
-      var avatarFallback = document.createElement('span');
-      avatarFallback.className = 'ru-avatar-fallback';
-      avatarWrap.appendChild(avatarImage);
-      avatarWrap.appendChild(avatarFallback);
-      renderAvatar(avatarImage, avatarFallback, friend.avatarAssetId, friend.displayName);
-      main.appendChild(avatarWrap);
+      main.appendChild(createAvatarWrap(friend.avatarAssetId, friend.displayName, false));
       var textWrap = document.createElement('div');
       textWrap.className = 'ru-list-text';
       addText(textWrap, 'ru-list-name', friend.displayName || 'MAOMAO 用户');
@@ -366,9 +380,14 @@
       var row = document.createElement('div');
       row.className = 'ru-list-row';
       var main = document.createElement('div');
-      main.className = 'ru-list-main';
-      addText(main, 'ru-list-name', account.displayName || 'MAOMAO 用户');
-      addText(main, 'ru-list-meta', account.handle ? '@' + account.handle : account.id);
+      main.className = 'ru-list-main ru-list-main-with-avatar';
+      // A block revokes avatar-read permission; show the local initial without a doomed request.
+      main.appendChild(createAvatarWrap(null, account.displayName, false));
+      var textWrap = document.createElement('div');
+      textWrap.className = 'ru-list-text';
+      addText(textWrap, 'ru-list-name', account.displayName || 'MAOMAO 用户');
+      addText(textWrap, 'ru-list-meta', account.handle ? '@' + account.handle : account.id);
+      main.appendChild(textWrap);
       var actions = document.createElement('div');
       actions.className = 'ru-list-actions';
       addAction(actions, '解除屏蔽', 'unblock-user', account.id);
@@ -378,18 +397,82 @@
     });
   }
 
+  function notifyContactRosterUpdated() {
+    try {
+      root.dispatchEvent(new CustomEvent('maomao:real-user-contacts-updated', {
+        detail: { accountId: client.getState().account && client.getState().account.id || null }
+      }));
+    } catch (error) {}
+  }
+
   async function refreshServerData() {
     var results = await Promise.all([
-      client.listFriends(),
+      client.listFriendRoster(),
       client.listRequests('incoming'),
       client.listRequests('outgoing'),
       client.listBlocked()
     ]);
-    renderFriends(results[0]);
+    var account = client.getState().account;
+    var directory = root.PhoneContactDirectory;
+    if (!account || !directory || typeof directory.syncServerSnapshot !== 'function') {
+      throw new Error('real_user_directory_sync_unavailable');
+    }
+    var synced = directory.syncServerSnapshot(results[0], account.id);
+    if (!synced || synced.ok !== true) {
+      var syncError = new Error(synced && synced.error || 'real_user_directory_sync_failed');
+      syncError.code = synced && synced.error || 'real_user_directory_sync_failed';
+      throw syncError;
+    }
+    renderFriends(results[0].friends);
     renderRequests(el('ruIncoming'), results[1], 'incoming');
     renderRequests(el('ruOutgoing'), results[2], 'outgoing');
     renderBlocked(results[3]);
+    notifyContactRosterUpdated();
     return results;
+  }
+
+  // Keep the self profile and the friend roster aligned with the authenticated
+  // server state. A single in-flight refresh avoids stale responses racing each other.
+  async function refreshProfileAndFriends() {
+    if (profileRefreshPromise) return profileRefreshPromise;
+    profileRefreshPromise = (async function () {
+      await refreshServerData();
+      var account = client.getState().account;
+      if (account) renderAccount(account);
+      return account;
+    })();
+    try {
+      return await profileRefreshPromise;
+    } finally {
+      profileRefreshPromise = null;
+    }
+  }
+
+  function handleSessionExpired(error) {
+    if (!error || (error.status !== 401 && error.code !== 'authentication_required')) return false;
+    clearCodeExpiryTimer();
+    currentCode = null;
+    el('ruCodeArea').hidden = true;
+    el('ruFriendsArea').hidden = true;
+    showSessionArea(false);
+    showAuthArea(true);
+    setAuthMode('login');
+    setStatus('登录状态已失效，请重新登录。', 'error');
+    el('ruSummaryStatus').textContent = '未登录';
+    notifyContactRosterUpdated();
+    return true;
+  }
+
+  function refreshOnResume() {
+    if (!panel.open || el('ruSessionArea').hidden || document.visibilityState === 'hidden') return;
+    var now = Date.now();
+    if (now - lastResumeRefreshAt < 20000) return;
+    lastResumeRefreshAt = now;
+    refreshProfileAndFriends().then(function () {
+      setStatus('账号资料与好友资料已从服务器同步。');
+    }).catch(function (error) {
+      if (!handleSessionExpired(error)) setStatus(explainError(error), 'error');
+    });
   }
 
   function renderCode(payload) {
@@ -468,6 +551,7 @@
         return;
       }
       if (!result.account) {
+        notifyContactRosterUpdated();
         setStatus(pendingInviteCode ? '已识别一条好友邀请。请先登录或创建账号，之后可确认发送申请。' : '服务器账号服务已就绪，请登录或创建账号。');
         showAuthArea(true);
         setAuthMode('login');
@@ -485,6 +569,7 @@
       applyPendingInvite();
       setStatus(pendingInviteCode ? '已识别好友邀请，请核对后手动发送申请。' : '已连接账号服务。好友列表以服务器关系为准；普通真人消息传输仍未启用。');
     } catch (error) {
+      notifyContactRosterUpdated();
       setStatus(explainError(error), 'error');
       if (error && error.code === 'account_auth_unavailable') {
         el('ruSummaryStatus').textContent = '服务未开通';
@@ -611,6 +696,7 @@
       showSessionArea(false);
       setAuthMode('login');
       showAuthArea(true);
+      notifyContactRosterUpdated();
       setStatus('已退出当前账号。');
       el('ruSummaryStatus').textContent = '未登录';
     } catch (error) {
@@ -768,10 +854,10 @@
     var button = el('ruRefreshFriends');
     setBusy(button, true, '刷新中…');
     try {
-      await refreshServerData();
-      setStatus('好友列表和申请已刷新。');
+      await refreshProfileAndFriends();
+      setStatus('账号资料、好友头像和申请已同步。');
     } catch (error) {
-      setStatus(explainError(error), 'error');
+      if (!handleSessionExpired(error)) setStatus(explainError(error), 'error');
     } finally {
       setBusy(button, false);
     }
@@ -801,6 +887,15 @@
     } finally {
       setBusy(button, false);
     }
+  });
+
+  panel.addEventListener('toggle', function () {
+    if (panel.open) refreshOnResume();
+  });
+  root.addEventListener('pageshow', refreshOnResume);
+  root.addEventListener('focus', refreshOnResume);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') refreshOnResume();
   });
 
   root.addEventListener('pagehide', function () {
