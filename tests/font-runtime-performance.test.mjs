@@ -18,8 +18,8 @@ test('custom font files are warmed into a dedicated persistent cache', () => {
 });
 
 test('cached font presets bypass repeated IndexedDB Blob reads on controlled app pages', () => {
-  const cachedFastPath = loader.indexOf('if (cachedFormat && hasFontServiceWorker())');
-  const indexedDbFallback = loader.indexOf("indexedDB.open('maomao-font-presets', 1)");
+  const cachedFastPath = loader.indexOf('if (cachedUrl && hasFontServiceWorker())');
+  const indexedDbFallback = loader.indexOf('loadPresetFromIndexedDb(source, isStillCurrent);');
   assert.ok(cachedFastPath >= 0, 'cached-font fast path must exist');
   assert.ok(indexedDbFallback > cachedFastPath, 'IndexedDB must remain a fallback after the cache fast path');
   assert.match(loader, /applyUrl\(cachedUrl, cachedFormat\)/);
@@ -30,6 +30,47 @@ test('font fetching and decoding starts during document parsing', () => {
   assert.match(loader, /document\.fonts\.load\('14px "MAOMAOUserFont"'/);
   assert.match(loader, /font-display:swap/);
 });
+
+test('heavy font work is deferred to an idle slot after first paint', () => {
+  assert.match(loader, /requestIdleCallback/, 'font application must use idle time');
+  assert.match(loader, /document\.addEventListener\('DOMContentLoaded', afterFrame/, 'font application must wait for DOMContentLoaded');
+  assert.match(loader, /requestAnimationFrame/, 'font application must wait for a rendered frame');
+});
+
+test('font source application is idempotent per document', () => {
+  assert.match(loader, /if \(key && key === appliedFontKey && hasAppliedFontStyle\(\)\) return false;/);
+  assert.match(loader, /if \(source\.key !== 'none' && source\.key === appliedFontKey && hasAppliedFontStyle\(\)\)/);
+  assert.match(loader, /appliedFontKey/, 'runtime must remember the applied font key');
+});
+
+test('existing cache entries are never rewritten on subsequent pages', () => {
+  assert.match(loader, /return cache\.match\(url\)\.then\(function \(existing\) \{/);
+  assert.match(loader, /if \(existing\) \{/, 'cache hit must skip cache.put');
+});
+
+test('pages without a service worker controller still read Cache Storage, not IndexedDB', () => {
+  assert.match(loader, /if \(cachedUrl && window\.caches\) \{/);
+  assert.match(loader, /caches\.match\(cachedUrl\)/, 'no-controller path must read Cache Storage directly');
+  const cacheRead = loader.indexOf('caches.match(cachedUrl)');
+  const indexedDbFallback = loader.indexOf('loadPresetFromIndexedDb(source, isStillCurrent);', cacheRead);
+  assert.ok(cacheRead >= 0 && indexedDbFallback > cacheRead, 'IndexedDB remains the final fallback');
+});
+
+test('broken fonts fall back to the system font stack', () => {
+  assert.match(loader, /function fallbackToSystemFont\(key\)/);
+  assert.match(loader, /warmPromise\.then\(function \(faces\)/, 'must await the font load result');
+  assert.match(loader, /removeAppliedFontStyle\(\)/, 'failed font must remove the custom rule');
+  assert.doesNotMatch(loader, /\.catch\(function \(\) \{\s*\}\)/, 'font failures must not be silently swallowed');
+});
+
+test('font preview uses an isolated family and theme specimens load once', () => {
+  assert.match(settings, /font-family:"MAOMAOPreviewFont"/);
+  assert.doesNotMatch(settings, /font-family:"MAOMAOUserFont";src:url\("' \+ safeUrl/);
+  const store = read('theme-store/theme-store.html');
+  assert.match(store, /fontFaceStates/);
+  assert.match(store, /if\(state&&state\.ready\)/, 'already loaded specimens must be reused');
+});
+
 
 test('font settings waits for the cache warm-up before reporting success', () => {
   assert.match(settings, /return Promise\.resolve\(activatePreset\(record\)\)\.then\(function \(cacheReady\)/);

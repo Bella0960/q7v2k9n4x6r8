@@ -3,6 +3,13 @@
  * 2. 自定义字体优先走 Service Worker + Cache Storage 的同源字体地址：
  *    导入后只预热一次，应用页面不再逐页从 IndexedDB 取出完整 Blob。
  * 3. 首次迁移/缓存不可用时仍回退到 IndexedDB + Blob URL，不丢失旧字体方案。
+ *
+ * 性能约束（PERF-FONT-001）：
+ * - 默认字体模式下本文件不读取 IndexedDB / Cache Storage，也不创建 ObjectURL；
+ * - 字体在首帧之后的空闲时段应用，避免 10-30MB 字体文件与首屏资源竞争；
+ * - 同一文档内同一字体只注册一次，不重复创建 ObjectURL、不重写样式表；
+ * - Cache Storage 已有副本时不再回读 IndexedDB，也不重复写缓存；
+ * - 字体损坏、丢失或加载失败时移除自定义字体规则，自动回退系统字体。
  */
 (function () {
     'use strict';
@@ -64,7 +71,8 @@
     var fontPreloadId = 'maomao-global-custom-font-preload';
     var fontStyleId = 'maomao-global-custom-font-style';
     var globalFontStack = '"MAOMAOUserFont", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif';
-    var lastLoadedFontKey = null;
+    var appliedFontKey = null;
+    var failedFontKey = '';
     var fontLoadGeneration = 0;
     var fontLoadScheduled = false;
 
@@ -76,6 +84,11 @@
             document.head.appendChild(tag);
         }
         return tag;
+    }
+
+    function hasAppliedFontStyle() {
+        var tag = document.getElementById(fontStyleId);
+        return !!(tag && tag.textContent);
     }
 
     function safeFontUrl(url) {
@@ -108,6 +121,11 @@
         }
     }
 
+    function rememberCachedFormat(id, format) {
+        try { localStorage.setItem(FONT_CACHE_FORMAT_PREFIX + id, format || 'truetype'); } catch (e) {}
+    }
+
+    /* 只有缓存中确实不存在同一字体时才写入，避免每页重复写入 10-30MB Blob。 */
     function cacheFontBlob(id, blob, format) {
         if (!id || !blob || !window.caches || typeof window.Response !== 'function') return Promise.resolve('');
         var url = getFontCacheUrl(id, format);
@@ -124,10 +142,16 @@
             return Promise.resolve('');
         }
         return caches.open(FONT_CACHE_NAME).then(function (cache) {
-            return cache.put(url, response);
-        }).then(function () {
-            try { localStorage.setItem(FONT_CACHE_FORMAT_PREFIX + id, format || 'truetype'); } catch (e) {}
-            return url;
+            return cache.match(url).then(function (existing) {
+                if (existing) {
+                    rememberCachedFormat(id, format);
+                    return url;
+                }
+                return cache.put(url, response).then(function () {
+                    rememberCachedFormat(id, format);
+                    return url;
+                });
+            });
         }).catch(function () {
             return '';
         });
@@ -167,24 +191,6 @@
         document.head.appendChild(link);
     }
 
-    function applyFontSource(url, format) {
-        if (!url) return;
-        var tag = getFontStyle();
-        var safeUrl = safeFontUrl(url);
-        var fontFormat = format || 'woff';
-        preloadFont(safeUrl, fontFormat);
-        tag.textContent = '@font-face{font-family:"MAOMAOUserFont";src:url("' + safeUrl + '") format("' + fontFormat + '");font-style:normal;font-display:swap;}'
-            + 'body,body h1,body h2,body h3,body h4,body h5,body h6,body p,body span:not([class*="icon"]):not([class*="Icon"]),body a,body button,body input,body textarea,body select,body label,body small,body strong,body b,body em,body li,body td,body th'
-            + '{font-family:' + globalFontStack + ' !important;}';
-        /* Start fetching and decoding while the page is still parsing, not after the user taps an app. */
-        try {
-            if (document.fonts && typeof document.fonts.load === 'function') {
-                var warmPromise = document.fonts.load('14px "MAOMAOUserFont"', '小手机 MAOMAO Aa 0123456789');
-                if (warmPromise && typeof warmPromise.catch === 'function') warmPromise.catch(function () {});
-            }
-        } catch (e) {}
-    }
-
     function readActiveFontSource() {
         var activeId = '';
         var legacyUrl = '';
@@ -205,22 +211,81 @@
         if (previous && previous !== nextUrl) releaseObjectUrlLater(previous);
     }
 
+    function removeAppliedFontStyle() {
+        var tag = document.getElementById(fontStyleId);
+        if (tag) tag.remove();
+        var preload = document.getElementById(fontPreloadId);
+        if (preload) preload.remove();
+        appliedFontKey = 'none';
+    }
+
+    /* 加载失败/数据损坏：撤掉自定义字体规则，页面自动回到系统字体。 */
+    function fallbackToSystemFont(key) {
+        failedFontKey = key || '';
+        replaceObjectUrl('');
+        removeAppliedFontStyle();
+    }
+
+    function warmFont(key) {
+        try {
+            if (document.fonts && typeof document.fonts.load === 'function') {
+                var warmPromise = document.fonts.load('14px "MAOMAOUserFont"', '小手机 MAOMAO Aa 0123456789');
+                if (warmPromise && typeof warmPromise.then === 'function') {
+                    warmPromise.then(function (faces) {
+                        if (appliedFontKey !== key) return;
+                        if (!faces || !faces.length) fallbackToSystemFont(key);
+                    }, function () {
+                        if (appliedFontKey !== key) return;
+                        fallbackToSystemFont(key);
+                    });
+                }
+            }
+        } catch (e) {}
+    }
+
+    function applyFontSource(url, format, key) {
+        if (!url) return false;
+        if (key && key === appliedFontKey && hasAppliedFontStyle()) return false;
+        var tag = getFontStyle();
+        var safeUrl = safeFontUrl(url);
+        var fontFormat = format || 'woff';
+        preloadFont(safeUrl, fontFormat);
+        tag.textContent = '@font-face{font-family:"MAOMAOUserFont";src:url("' + safeUrl + '") format("' + fontFormat + '");font-style:normal;font-display:swap;}'
+            + 'body,body h1,body h2,body h3,body h4,body h5,body h6,body p,body span:not([class*="icon"]):not([class*="Icon"]),body a,body button,body input,body textarea,body select,body label,body small,body strong,body b,body em,body li,body td,body th'
+            + '{font-family:' + globalFontStack + ' !important;}';
+        appliedFontKey = key || null;
+        failedFontKey = '';
+        /* 空闲时段开始抓取并解码，避免与首屏资源竞争。 */
+        warmFont(key || ('url:' + safeUrl));
+        return true;
+    }
+
     window.MAOMAOFontRuntime = {
         applyUrl: function (url, format) {
-            applyFontSource(url, format);
+            var source = readActiveFontSource();
+            if (source.key !== 'none' && source.key === appliedFontKey && hasAppliedFontStyle()) return true;
+            fontLoadGeneration++;
+            applyFontSource(url, format, source.key);
             replaceObjectUrl('');
-            lastLoadedFontKey = readActiveFontSource().key;
+            return true;
         },
         applyBlob: function (blob, format) {
             if (!blob || !window.URL || !URL.createObjectURL) return Promise.resolve(false);
+            var source = readActiveFontSource();
+            if (source.key !== 'none' && source.key === appliedFontKey && hasAppliedFontStyle()) {
+                return Promise.resolve(!!getCachedFontFormat(source.activeId));
+            }
+            if (!blob.size) {
+                fallbackToSystemFont(source.key);
+                return Promise.resolve(false);
+            }
             var objectUrl = '';
             try { objectUrl = URL.createObjectURL(blob); } catch (e) {}
             if (!objectUrl) return Promise.resolve(false);
-            applyFontSource(objectUrl, format || 'truetype');
+            fontLoadGeneration++;
+            applyFontSource(objectUrl, format || 'truetype', source.key);
             replaceObjectUrl(objectUrl);
-            var source = readActiveFontSource();
-            lastLoadedFontKey = source.key;
-            if (!source.activeId) return Promise.resolve(false);
+            if (!source.activeId) return Promise.resolve(true);
             return cacheFontBlob(source.activeId, blob, format || 'truetype').then(function (url) {
                 return !!url;
             });
@@ -246,50 +311,13 @@
             });
         },
         clear: function () {
-            var tag = document.getElementById(fontStyleId);
-            if (tag) tag.remove();
-            var preload = document.getElementById(fontPreloadId);
-            if (preload) preload.remove();
             replaceObjectUrl('');
-            lastLoadedFontKey = 'none';
+            removeAppliedFontStyle();
+            failedFontKey = '';
         }
     };
 
-    function loadActiveFontPreset() {
-        var source = readActiveFontSource();
-        var sourceKey = source.key;
-        if (sourceKey === lastLoadedFontKey) return;
-        var generation = ++fontLoadGeneration;
-
-        function isStillCurrent() {
-            return generation === fontLoadGeneration && readActiveFontSource().key === sourceKey;
-        }
-
-        if (!source.activeId) {
-            if (source.legacyUrl) {
-                var match = source.legacyUrl.toLowerCase().match(/\.(ttf|woff2?)(?:[?#]|$)/);
-                var format = match && match[1] === 'ttf' ? 'truetype' : (match && match[1] === 'woff2' ? 'woff2' : 'woff');
-                if (!isStillCurrent()) return;
-                window.MAOMAOFontRuntime.applyUrl(source.legacyUrl, format);
-            } else {
-                if (!isStillCurrent()) return;
-                window.MAOMAOFontRuntime.clear();
-            }
-            lastLoadedFontKey = sourceKey;
-            return;
-        }
-
-        /* 预热过的文件直接通过同源字体地址读取；无需每个页面重新打开 IndexedDB、复制大 Blob。 */
-        var cachedFormat = getCachedFontFormat(source.activeId);
-        if (cachedFormat && hasFontServiceWorker()) {
-            var cachedUrl = getFontCacheUrl(source.activeId, cachedFormat);
-            if (cachedUrl && isStillCurrent()) {
-                window.MAOMAOFontRuntime.applyUrl(cachedUrl, cachedFormat);
-                lastLoadedFontKey = sourceKey;
-                return;
-            }
-        }
-
+    function loadPresetFromIndexedDb(source, isStillCurrent) {
         if (!window.indexedDB) return;
         var request;
         try { request = indexedDB.open('maomao-font-presets', 1); }
@@ -306,18 +334,16 @@
                     var record = get.result;
                     if (!record) {
                         window.MAOMAOFontRuntime.clear();
-                        lastLoadedFontKey = sourceKey;
                         return;
                     }
                     if (record.type === 'file' && record.blob) {
-                        /* 兼容旧预设：先立即应用，后台将 Blob 预热进 Cache Storage。 */
+                        /* 兼容旧预设：立即应用，并把 Blob 预热进 Cache Storage 供后续页面使用。 */
                         window.MAOMAOFontRuntime.applyBlob(record.blob, record.format || 'truetype');
                     } else if (record.type === 'url' && record.url) {
                         window.MAOMAOFontRuntime.applyUrl(record.url, record.format || 'woff');
                     } else {
                         window.MAOMAOFontRuntime.clear();
                     }
-                    lastLoadedFontKey = sourceKey;
                 };
                 tx.oncomplete = function () { db.close(); };
                 tx.onerror = function () { db.close(); };
@@ -329,6 +355,66 @@
         request.onerror = function () {};
     }
 
+    function loadActiveFontPreset() {
+        var source = readActiveFontSource();
+        var sourceKey = source.key;
+        if (sourceKey === appliedFontKey || sourceKey === failedFontKey) return;
+        var generation = ++fontLoadGeneration;
+
+        function isStillCurrent() {
+            return generation === fontLoadGeneration && readActiveFontSource().key === sourceKey;
+        }
+
+        if (!source.activeId) {
+            if (source.legacyUrl) {
+                var match = source.legacyUrl.toLowerCase().match(/\.(ttf|woff2?)(?:[?#]|$)/);
+                var format = match && match[1] === 'ttf' ? 'truetype' : (match && match[1] === 'woff2' ? 'woff2' : 'woff');
+                if (!isStillCurrent()) return;
+                window.MAOMAOFontRuntime.applyUrl(source.legacyUrl, format);
+            } else {
+                if (!isStillCurrent()) return;
+                window.MAOMAOFontRuntime.clear();
+            }
+            return;
+        }
+
+        var cachedFormat = getCachedFontFormat(source.activeId);
+        var cachedUrl = cachedFormat ? getFontCacheUrl(source.activeId, cachedFormat) : '';
+        if (cachedUrl && hasFontServiceWorker()) {
+            /* 已预热过：直接用同源字体地址，无需每页打开 IndexedDB、复制大 Blob。 */
+            if (!isStillCurrent()) return;
+            window.MAOMAOFontRuntime.applyUrl(cachedUrl, cachedFormat);
+            return;
+        }
+        if (cachedUrl && window.caches) {
+            /* 没有 SW 控制器时（首次启动、直开子页面、Safari）：直接命中 Cache Storage，
+               避免每页重复读取 IndexedDB，也避免每页重写同等大小的缓存。 */
+            caches.match(cachedUrl).then(function (response) {
+                if (!response) {
+                    if (isStillCurrent()) loadPresetFromIndexedDb(source, isStillCurrent);
+                    return;
+                }
+                return response.blob().then(function (blob) {
+                    if (!isStillCurrent()) return;
+                    window.MAOMAOFontRuntime.applyBlob(blob, cachedFormat);
+                });
+            }).catch(function () {
+                if (isStillCurrent()) loadPresetFromIndexedDb(source, isStillCurrent);
+            });
+            return;
+        }
+        loadPresetFromIndexedDb(source, isStillCurrent);
+    }
+
+    function whenIdle(callback) {
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(callback, { timeout: 1000 });
+        } else {
+            window.setTimeout(callback, 0);
+        }
+    }
+
+    /* 首帧之后再应用字体：导航、桌面与聊天首屏都先使用系统字体立即渲染。 */
     function scheduleFontLoad() {
         if (fontLoadScheduled) return;
         fontLoadScheduled = true;
@@ -336,10 +422,15 @@
             fontLoadScheduled = false;
             loadActiveFontPreset();
         };
-        /* 在 head 阶段尽早启动字体请求，避免固定等到首屏 1.8 秒后才换字体。 */
-        if (document.readyState === 'loading') run();
-        else if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run);
-        else window.setTimeout(run, 0);
+        var afterFrame = function () {
+            if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(function () { whenIdle(run); });
+            else whenIdle(run);
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', afterFrame, { once: true });
+        } else {
+            afterFrame();
+        }
     }
 
     scheduleFontLoad();

@@ -233,6 +233,7 @@
     var mineFilter='all';
     var fontRecords=[];
     var fontPreviewUrls={};
+    var fontFaceStates={};
     var bubbleScopeValue='global';
     var toastTimer=null;
     var defaultThemes=[
@@ -589,11 +590,20 @@
         var record=fontRecords.filter(function(r){return String(r.id)===el.dataset.fontSpecimen;})[0];
         if(!record)return;
         var cacheKey=String(record.id);
+        var family='StorePreview_'+cacheKey.replace(/[^a-z0-9_-]/gi,'');
+        /* 同一字体只创建一个 FontFace 并加载一次；列表重绘/切换页面时复用结果。 */
+        var state=fontFaceStates[cacheKey];
+        if(state&&state.ready){el.style.fontFamily='"'+family+'",sans-serif';return;}
+        if(state){if(state.elements.indexOf(el)<0)state.elements.push(el);return;}
         if(!fontPreviewUrls[cacheKey])fontPreviewUrls[cacheKey]=record.type==='file'&&record.blob?URL.createObjectURL(record.blob):(record.url||'');
         var source=fontPreviewUrls[cacheKey];if(!source)return;
-        var family='StorePreview_'+String(record.id).replace(/[^a-z0-9_-]/gi,'');
+        state=fontFaceStates[cacheKey]={family:family,ready:false,elements:[el]};
         var face=new FontFace(family,'url("'+String(source).replace(/["']/g,'')+'")');
-        face.load().then(function(loaded){document.fonts.add(loaded);el.style.fontFamily='"'+family+'",sans-serif';}).catch(function(){});
+        face.load().then(function(loaded){
+          document.fonts.add(loaded);
+          state.ready=true;
+          state.elements.forEach(function(node){node.style.fontFamily='"'+family+'",sans-serif';});
+        }).catch(function(){delete fontFaceStates[cacheKey];});
       });
     }
     function openPage(relative){
@@ -640,7 +650,7 @@
       }
     },{passive:true});
     function refreshAll(){
-      loadFonts().then(function(){render();bindFontSpecimens();});
+      loadFonts().then(function(){render();});
       if(currentCategory==='bubbles'||currentCategory==='mine')render();
     }
     window.addEventListener('pageshow',refreshAll);
