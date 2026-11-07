@@ -289,6 +289,35 @@ test('没有消息执行器时 tick 不认领活动，避免制造孤儿 running
   assert.equal(query('SELECT * FROM execution_log WHERE reason_code = ?', REASON_CODES.EXECUTOR_UNAVAILABLE).length, 1);
 });
 
+test('缺少执行器时释放过期 running lease 回 retry，不消耗重试次数', () => {
+  const { store, query } = freshStore();
+  enqueue(store, { id: 'act_expired_no_executor' });
+  store.claimActivity({
+    id: 'act_expired_no_executor',
+    expectedAttemptCount: 0,
+    expectedStatus: 'waiting',
+    owner: 'worker-gone',
+    leaseUntil: NOW + 15_000,
+    now: NOW
+  });
+
+  const result = runTick({
+    store,
+    now: NOW + 15_000,
+    config: CONFIG,
+    gate: () => ({ autonomyAllowed: true, characterState: 'active' })
+  });
+  const activity = store.getActivity('act_expired_no_executor');
+  assert.equal(result.claimed, 0);
+  assert.equal(result.deferred, 1);
+  assert.equal(activity.status, 'retry');
+  assert.equal(activity.attempt_count, 1, '释放过期 lease 不应消耗 attempt');
+  assert.equal(activity.locked_by, null);
+  assert.equal(activity.locked_until, null);
+  assert.equal(activity.next_attempt_at, NOW + 15_000);
+  assert.equal(query('SELECT * FROM execution_log WHERE reason_code = ?', REASON_CODES.EXECUTOR_UNAVAILABLE).length, 1);
+});
+
 test('过期 running 租约会被重新列入并安全 CAS 认领，旧 worker 写入被 fencing 拒绝', () => {
   const { store } = freshStore();
   enqueue(store, { id: 'act_recover' });
