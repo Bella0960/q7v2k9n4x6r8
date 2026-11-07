@@ -1224,6 +1224,15 @@ class CloudStore {
       return { kind: sameRequest ? 'duplicate' : 'idempotency_conflict', message: existing };
     }
 
+    const recent = this.exec(
+      'SELECT COUNT(*) AS total FROM friend_messages WHERE sender_id = ? AND created_at >= ?',
+      message.senderId,
+      message.windowStart
+    )[0];
+    if (Number(recent?.total || 0) >= Number(message.rateLimit || 60)) {
+      return { kind: 'rate_limited', message: null };
+    }
+
     // Give every message in one conversation a strictly increasing server
     // timestamp. Two devices can send within the same millisecond; a monotonic
     // cursor prevents the second message from falling behind an already-read ID.
