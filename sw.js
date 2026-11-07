@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v180';
+const CACHE_NAME = 'phone-app-pwa-v181';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v180 release: add transactional role-avatar pairs, manual archive pairing and chat image recognition.
+// v181 release: reject duplicate media assets during chat pair recognition.
 const APP_SHELL = [
   './',
   './index.html',
@@ -83,7 +83,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_storage.js',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
-  './shared/js/phone/chat-image-vision.js?v=20261107v2',
+  './shared/js/phone/chat-image-vision.js?v=20261107v3',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
   'shared/js/phone/chat-context-policy.js?v=20261107vision1',
   './shared/js/phone/chat-presence-policy.js?v=20261102v17',
