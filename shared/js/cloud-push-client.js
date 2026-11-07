@@ -555,6 +555,19 @@
     });
   }
 
+  function getCharacterOutboundLifecycle(characterId, serverMessageId) {
+    var messageId = String(serverMessageId || '');
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
+      return Promise.reject(new Error('云端消息 ID 无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/outbound/' +
+        encodeURIComponent(messageId) + '/status'
+    ).then(function (payload) {
+      return payload.lifecycle || null;
+    });
+  }
+
   function markCharacterOutboundReceived(characterId, serverMessageId) {
     var messageId = String(serverMessageId || '');
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
@@ -1470,6 +1483,7 @@
     failAutonomyActivity: failAutonomyActivity,
     skipAutonomyActivity: skipAutonomyActivity,
     getCharacterOutboundMessages: getCharacterOutboundMessages,
+    getCharacterOutboundLifecycle: getCharacterOutboundLifecycle,
     markCharacterOutboundReceived: markCharacterOutboundReceived,
     markCharacterOutboundRead: markCharacterOutboundRead,
     acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage,
