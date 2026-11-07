@@ -195,7 +195,7 @@ button,input,textarea{font:inherit}
       resultBox.textContent = error.message || '参数 JSON 格式错误。';
       resultBox.classList.remove('hidden'); return;
     }
-    var confirmText = '即将调用 MCP 工具：' + tool.name + '\\n\\n参数：\\n' + JSON.stringify(args, null, 2) +
+    var confirmText = '即将调用 MCP 工具：' + tool.name + '\n\n参数：\n' + JSON.stringify(args, null, 2) +
       '\\n\\n工具会访问外部 MCP 服务，可能产生外部影响。确定继续吗？';
     if (!window.confirm(confirmText)) return;
     button.disabled = true; resultBox.textContent = '正在调用…'; resultBox.classList.remove('hidden');
