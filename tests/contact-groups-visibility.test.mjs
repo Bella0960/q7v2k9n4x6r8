@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../shared/js/contact-groups.js', import.meta.url), 'utf8');
+const identitySource = readFileSync(new URL('../shared/js/phone/contact-identity.js', import.meta.url), 'utf8');
 const contactsPage = readFileSync(new URL('../chat/contacts/contacts.html', import.meta.url), 'utf8');
 const composerPage = readFileSync(new URL('../forum/post-create.html', import.meta.url), 'utf8');
 const momentsPage = readFileSync(new URL('../chat/moments/moments.html', import.meta.url), 'utf8');
@@ -30,9 +31,90 @@ function createRuntime(initialValue, options = {}) {
     }
   };
   const window = { localStorage };
-  vm.runInNewContext(source, { window, localStorage, JSON, Array, Object, String, Date, Math });
-  return { api: window.PhoneContactGroups, data };
+  vm.runInNewContext(identitySource, { window, localStorage, JSON, Array, Object, String, Date, Math, encodeURIComponent, decodeURIComponent });
+  vm.runInNewContext(source, { window, localStorage, JSON, Array, Object, String, Date, Math, encodeURIComponent, decodeURIComponent });
+  return { api: window.PhoneContactGroups, identity: window.PhoneContactIdentity, data };
 }
+
+test('contact identity keys separate AI roles, real accounts, and group conversations with the same ID', () => {
+  const { identity } = createRuntime();
+  const role = identity.fromRole({ id: 'same-id' });
+  const user = identity.fromUser({ id: 'same-id' });
+  const group = identity.fromGroup({ id: 'same-id' });
+  assert.equal(role.key, 'ai_role:same-id');
+  assert.equal(user.key, 'real_user:same-id');
+  assert.equal(group.key, 'chat_group:same-id');
+  assert.equal(new Set([role.key, user.key, group.key]).size, 3);
+  assert.equal(identity.parseKey(user.key).type, 'real_user');
+  assert.equal(identity.toLegacyConversationId(role), 'same-id');
+  assert.equal(identity.toLegacyConversationId(group), 'same-id');
+  assert.equal(identity.toLegacyConversationId(user), 'real_user:same-id');
+  assert.equal(identity.equals(role, user), false);
+});
+
+test('contact identity parser round-trips encoded IDs and rejects malformed keys', () => {
+  const { identity } = createRuntime();
+  const ref = identity.fromUser({ id: 'user/a:b 1' });
+  assert.equal(identity.parseKey(ref.key).id, 'user/a:b 1');
+  assert.equal(identity.parseKey('unknown:value'), null);
+  assert.equal(identity.parseKey('real_user:%E0%A4%A'), null);
+});
+
+test('typed group members preserve non-role contacts while keeping legacy role IDs', () => {
+  const { api } = createRuntime();
+  const saved = api.saveGroups([{
+    id: 'family',
+    name: '家人',
+    memberIds: ['same-id', 'role-b'],
+    memberRefs: ['real_user:same-id', 'ai_role:same-id']
+  }]);
+  assert.equal(saved.ok, true);
+  const group = api.getGroups()[0];
+  assert.deepEqual(JSON.parse(JSON.stringify(group.memberIds)), ['same-id', 'role-b']);
+  assert.deepEqual(JSON.parse(JSON.stringify(group.memberRefs)), ['real_user:same-id', 'ai_role:same-id', 'ai_role:role-b']);
+  assert.deepEqual(JSON.parse(JSON.stringify(api.getGroupIdsForContactRef('real_user:same-id'))), ['family']);
+  assert.deepEqual(JSON.parse(JSON.stringify(api.getGroupIdsForContact('same-id'))), ['family']);
+});
+
+test('typed audience snapshots keep same-ID role and real account membership separate', () => {
+  const { api } = createRuntime();
+  api.saveGroups([{
+    id: 'mixed',
+    name: '混合联系人',
+    memberIds: ['same-id'],
+    memberRefs: ['real_user:same-id', 'ai_role:same-id']
+  }]);
+  const snapshot = api.buildAudienceSnapshot(['mixed'], [], {
+    availableContactIds: ['same-id']
+  });
+  assert.equal(snapshot.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.memberIds)), ['same-id']);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.memberRefs)), ['real_user:same-id', 'ai_role:same-id']);
+});
+
+test('typed Moments privacy never matches a real account to a role with the same raw ID', () => {
+  const { api, identity } = createRuntime();
+  const role = identity.fromRole({ id: 'same-id' });
+  const user = identity.fromUser({ id: 'same-id' });
+  const selected = {
+    authorId: 'owner',
+    visibility: 'custom',
+    visibleTo: ['same-id'],
+    visibleContactRefs: ['ai_role:same-id']
+  };
+  const excluded = {
+    authorId: 'owner',
+    visibility: 'excluded',
+    hiddenTo: ['same-id'],
+    hiddenContactRefs: ['ai_role:same-id']
+  };
+  assert.equal(api.canContactReceivePost(selected, role, { id: 'owner' }), true);
+  assert.equal(api.canContactReceivePost(selected, user, { id: 'owner' }), false);
+  assert.equal(api.canContactReceivePost(excluded, role, { id: 'owner' }), false);
+  assert.equal(api.canContactReceivePost(excluded, user, { id: 'owner' }), true);
+  assert.equal(api.canRoleReceivePost({ authorId: 'owner', visibility: 'custom', visibleTo: ['same-id'] }, 'same-id', { id: 'owner' }), true);
+  assert.equal(api.canContactReceivePost({ authorId: 'role-author', visibility: 'private' }, user, { id: 'owner' }), true);
+});
 
 test('contact groups normalize IDs and permit one contact to belong to multiple groups', () => {
   const { api } = createRuntime();
@@ -44,8 +126,8 @@ test('contact groups normalize IDs and permit one contact to belong to multiple 
   ]);
   assert.equal(result.ok, true);
   assert.deepEqual(JSON.parse(JSON.stringify(api.getGroups())), [
-    { id: 'family', name: '家人', memberIds: ['a', 'b'] },
-    { id: 'friends', name: '朋友', memberIds: ['a', 'c'] }
+    { id: 'family', name: '家人', memberIds: ['a', 'b'], memberRefs: ['ai_role:a', 'ai_role:b'] },
+    { id: 'friends', name: '朋友', memberIds: ['a', 'c'], memberRefs: ['ai_role:a', 'ai_role:c'] }
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(api.getGroupIdsForContact('a'))), ['family', 'friends']);
 });
@@ -62,6 +144,7 @@ test('audience snapshots merge selected groups and individual contacts without d
     groupIds: ['family', 'work'],
     contactIds: ['c', 'd', 'a'],
     memberIds: ['c', 'd', 'a', 'b'],
+    memberRefs: ['ai_role:c', 'ai_role:d', 'ai_role:a', 'ai_role:b'],
     staleMemberIds: []
   });
   const stale = api.buildAudienceSnapshot(['family', 'missing'], ['c', 'd', 'a']);
@@ -249,7 +332,8 @@ test('contact group metadata is covered by the existing full localStorage backup
 test('PWA cache contains the contact group policy module and has a new cache version', () => {
   assert.match(serviceWorker, /phone-app-pwa-v175/);
   assert.match(packageJson, /test:contact:groups/);
-  assert.match(serviceWorker, /contact-groups\.js\?v=20261107v1/);
+  assert.match(serviceWorker, /phone\\/contact-identity\\.js\\?v=20261107v1/);
+  assert.match(serviceWorker, /contact-groups\\.js\\?v=20261107v2/);
 });
 
 test('saving groups never overwrites malformed data already at the new storage key', () => {
