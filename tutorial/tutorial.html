@@ -356,7 +356,7 @@ function focusGuidedTarget(){
       return;
     }
     var doc=frame.contentDocument;
-    if(!doc||!doc.documentElement)throw new Error('页面尚未加载');
+    if(!doc||!doc.documentElement){guidedFrameNavigationPending=true;throw new Error('页面尚未加载');}
     doc.querySelectorAll('[data-maomao-tour-focus]').forEach(function(el){
       var old=el.getAttribute('data-maomao-tour-old-style');if(old===null)el.removeAttribute('style');else el.setAttribute('style',old);el.removeAttribute('data-maomao-tour-old-style');el.removeAttribute('data-maomao-tour-focus');
     });
