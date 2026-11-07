@@ -234,7 +234,7 @@
     } finally {
       readReceiptInFlight = false;
       if (receiptSaved && latestIncomingMessage && latestIncomingMessage.id !== target.id &&
-          !document.hidden && isNearBottom()) {
+          !document.hidden && isMessageVisible(latestIncomingMessage.id)) {
         // A newer incoming message may have arrived while the previous receipt was in flight.
         window.setTimeout(markVisibleIncomingRead, 0);
       }
