@@ -287,7 +287,9 @@
         previous = { expiresAt: legacyTimestamp + 2 * 60 * 1000 };
       }
       var expiresAt = previous && typeof previous === 'object'
-        ? Number(previous.expiresAt) || 0 : 0;
+        ? Number(previous.expiresAt) || 0
+        : (typeof previous === 'number' && Number.isFinite(previous)
+          ? previous + 2 * 60 * 1000 : 0);
       if (expiresAt > now) return null;
     }
 
