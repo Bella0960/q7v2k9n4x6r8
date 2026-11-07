@@ -63,6 +63,7 @@ function createLibrary(seed, options = {}) {
         return Promise.resolve({ ok: false, error: { code: 'DB_UNAVAILABLE', message: 'link failed' } });
       }
       refs.add(assetId + '|' + ownerType + '|' + ownerId);
+      if (options.failReadsOnAddRefFor === assetId) options.failReads = true;
       return Promise.resolve({ ok: true });
     }
     getAsset(assetId) {
@@ -145,6 +146,22 @@ test('temporary storage read failure after chat asset lookup never deletes the s
   assert.equal(refs.has(assetId + '|chat-message|message-shared'), true);
   assert.equal(refs.has(assetId + '|role-avatar|role-a'), false);
   assert.equal(assets.has(assetId), true, 'a temporary storage read failure must not delete the source image');
+});
+
+test('storage read failure immediately after chat reference creation rolls back only the new role reference', async () => {
+  const assetId = 'as_' + 'D'.repeat(32);
+  const options = { failReadsOnAddRefFor: assetId };
+  const { api, assets, refs } = createLibrary({}, options);
+  assets.set(assetId, new Blob(['shared'], { type: 'image/jpeg' }));
+  refs.add(assetId + '|chat-message|message-shared');
+
+  const result = await api.addAsset('role-a', assetId, { source: 'chat' });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'STORAGE_FAILED');
+  assert.equal(api.list('role-a').length, 0);
+  assert.equal(refs.has(assetId + '|role-avatar|role-a'), false);
+  assert.equal(refs.has(assetId + '|chat-message|message-shared'), true);
+  assert.equal(assets.has(assetId), true, 'rollback must not delete an image still owned by chat history');
 });
 
 test('a pending chat asset lookup reclaims an unowned source image after character deletion', async () => {
