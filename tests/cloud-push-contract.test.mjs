@@ -2795,13 +2795,16 @@ test('客户端只在消息持久化回调确认成功后才确认云端出站�
   const end = clientSource.indexOf('  function flushCharacterContextVersion(', start);
   assert.ok(start >= 0 && end > start, '客户端必须提供独立的出站接收处理器');
   const receiver = clientSource.slice(start, end);
+  const receiptIndex = receiver.indexOf('await markCharacterOutboundReceived(characterId, message.serverMessageId)');
   const persistIndex = receiver.indexOf('await persistMessage(message.payload, message)');
   const guardIndex = receiver.indexOf('if (persisted !== true)');
   const ackIndex = receiver.indexOf('await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId)');
-  assert.ok(persistIndex >= 0 && guardIndex > persistIndex && ackIndex > guardIndex,
-    '必须先持久化、检查成功，再确认云端消息');
+  assert.ok(receiptIndex >= 0 && persistIndex > receiptIndex && guardIndex > persistIndex && ackIndex > guardIndex,
+    '顺序必须是设备收到回执、本地持久化、成功检查，最后才是本地保存 ACK');
   assert.ok(receiver.includes('deferred += 1'), '本地保存失败时必须保留云端待确认消息');
   assert.ok(clientSource.includes('getCharacterOutboundMessages: getCharacterOutboundMessages'));
+  assert.ok(clientSource.includes('markCharacterOutboundReceived: markCharacterOutboundReceived'));
+  assert.ok(clientSource.includes('markCharacterOutboundRead: markCharacterOutboundRead'));
   assert.ok(clientSource.includes('acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage'));
 });
 
@@ -2821,6 +2824,13 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
     '云端消息必须有稳定本地 mid');
   assert.ok(chat.includes("msg.serverMessageId != null"),
     '写后读回校验必须包含云端服务端消息 ID');
+  assert.ok(chat.includes('row.dataset.serverMessageId = String(msg.serverMessageId)'),
+    '消息行必须携带稳定服务端 ID，以支持准确的已读回执');
+  assert.ok(chat.includes('new IntersectionObserver(') &&
+    chat.includes('cloud.markCharacterOutboundRead(roleId, serverMessageId)'),
+    '只有消息气泡真实进入聊天可视区域后，才发送用户已读回执');
+  assert.ok(chat.includes('}, 700);'),
+    '消息必须在可视区域稳定停留后才标记已读');
 
   const adapterStart = chat.indexOf('function persistCloudOutboundMessage(payload, envelope)');
   const adapterEnd = chat.indexOf('// 同一角色优先用 Web Locks 串行接收', adapterStart);
@@ -2855,7 +2865,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(sync.includes('window.addEventListener(\'storage\', onOtherTabNotice)'),
     '其他标签页保存消息后应刷新当前历史');
 
-  assert.match(serviceWorker, /phone-app-pwa-v174/);
+  assert.match(serviceWorker, /phone-app-pwa-v178/);
   assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
     'PWA shell 应继续预缓存现有聊天详情页');
 });
