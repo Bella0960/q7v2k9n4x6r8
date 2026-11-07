@@ -34,12 +34,13 @@ Voice messages are file attachments. Live voice/video calls are not included and
 1. Create a D1 database in the Cloudflare account and configure a real `DB` binding; no placeholder database ID is committed.
 2. Apply the migration to a staging database first and validate all tables, triggers, and foreign keys.
 3. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER`. Keep `REAL_USER_AUTH_ENABLED` unset/false until staging verification is complete.
-4. Run the account-auth regression suite against the staging binding, review password derivation cost and rate-limit behavior in the target Worker plan, then explicitly set `REAL_USER_AUTH_ENABLED=true` to expose account registration/login only.
-5. Implement server-owned friend-code rotation and friend-request transitions with idempotency.
-6. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
-7. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
-8. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
-9. Only then change the Worker capability endpoint to report messaging enabled.
+4. The Worker verifies that `sqlite_master` contains `real_user_accounts`, `real_user_sessions`, `real_user_friend_requests`, and `real_user_friendships` before it reports account auth as ready; a D1 binding without the migration remains disabled.
+5. Run the account-auth regression suite against the staging binding, review password derivation cost and rate-limit behavior in the target Worker plan, then explicitly set `REAL_USER_AUTH_ENABLED=true` to expose account registration/login only.
+6. Implement server-owned friend-code rotation and friend-request transitions with idempotency.
+7. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
+8. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
+9. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
+10. Only then change the Worker capability endpoint to report messaging enabled.
 
 Account-auth handlers are implemented in `worker/real-user-auth.js`: PBKDF2-HMAC-SHA256 password derivation (600,000 iterations), opaque random session tokens stored only as SHA-256 hashes, HttpOnly/Secure/SameSite=Strict cookies, same-origin checks, mandatory IP/handle rate limiting, and logout revocation. Account recovery, email verification, and native two-factor support remain unimplemented.
 
