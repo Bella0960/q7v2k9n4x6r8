@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v196';
+const CACHE_NAME = 'phone-app-pwa-v197';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v196 release: include NPC social discovery and foreground-cancellation runtime.
+// v197 release: include bilingual NPC content safety validation.
 const APP_SHELL = [
   './',
   './index.html',
@@ -104,7 +104,7 @@ const APP_SHELL = [
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
   'shared/js/phone/phone_api.js?v=20261108v1',
-  './shared/js/phone/npc-social.js?v=20261108e',
+  './shared/js/phone/npc-social.js?v=20261108f',
   'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',
