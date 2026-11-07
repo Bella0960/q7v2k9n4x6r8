@@ -243,10 +243,18 @@ async function ensureLegacyAvatarInLibrary(role) {
 
 async function renderAvatarLibrary(roleId) {
     const grid = document.getElementById('avatarLibraryGrid');
+    const pairContainer = document.getElementById('avatarPairList');
     if (!grid || !window.RoleAvatarLibrary) return;
     const token = ++avatarLibraryRenderToken;
     releaseAvatarLibraryUrls();
     grid.innerHTML = '<div class="avatar-library-empty">正在整理头像…</div>';
+    if (pairContainer) pairContainer.innerHTML = '<div class="avatar-pair-empty">配对头像会在这里并排展示。</div>';
+    if (!document.getElementById('avatarPairLibraryStyle')) {
+        const style = document.createElement('style');
+        style.id = 'avatarPairLibraryStyle';
+        style.textContent = '.avatar-pair-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 14px}.avatar-pair-empty{padding:12px 0;color:#999;font-size:12px}.avatar-pair-card{min-width:0;border:1px solid #e8e8ec;border-radius:16px;padding:12px;background:#fff}.avatar-pair-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;color:#333;font-size:12px}.avatar-pair-unlink{border:0;background:#f7f7f9;color:#666;border-radius:9px;padding:6px 9px;font-size:11px}.avatar-pair-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.avatar-pair-side{min-width:0;border:0;padding:0;background:transparent;text-align:left;color:#555}.avatar-pair-side img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#f0f0f3}.avatar-pair-side span{display:block;padding:7px 2px 0;font-size:11px}.avatar-pair-side.is-active img{outline:2px solid #111;outline-offset:2px}.avatar-pair-side.is-active span{color:#111;font-weight:600}';
+        document.head.appendChild(style);
+    }
 
     const role = getRoleById(roleId);
     if (!role) return;
@@ -254,6 +262,30 @@ async function renderAvatarLibrary(roleId) {
     if (token !== avatarLibraryRenderToken || String(currentProfileRoleId) !== String(roleId)) return;
 
     const items = window.RoleAvatarLibrary.list(roleId);
+    const pairs = typeof window.RoleAvatarLibrary.getPairs === 'function'
+        ? window.RoleAvatarLibrary.getPairs(roleId) : [];
+    if (pairContainer) {
+        pairContainer.innerHTML = pairs.length ? '<div class="avatar-pair-list">' + pairs.map(function (pair) {
+            const first = pair.avatars && pair.avatars[0];
+            const second = pair.avatars && pair.avatars[1];
+            if (!first || !second) return '';
+            const pairId = escapeHtml(pair.id);
+            const firstId = escapeHtml(first.id);
+            const secondId = escapeHtml(second.id);
+            const firstAsset = escapeHtml(first.assetId);
+            const secondAsset = escapeHtml(second.assetId);
+            const firstLabel = escapeHtml(first.label || '头像 A');
+            const secondLabel = escapeHtml(second.label || '头像 B');
+            return '<article class="avatar-pair-card">' +
+                '<div class="avatar-pair-card-head"><span>' + escapeHtml(pair.label || '配对头像') + '</span>' +
+                '<button class="avatar-pair-unlink" type="button" data-avatar-pair-action="unlink" data-pair-id="' + pairId + '">解除配对</button></div>' +
+                '<div class="avatar-pair-photos">' +
+                    '<button class="avatar-pair-side' + (first.active ? ' is-active' : '') + '" type="button" data-avatar-pair-action="use" data-avatar-id="' + firstId + '"><img data-avatar-pair-asset="' + firstAsset + '" alt="' + firstLabel + '" loading="lazy" decoding="async"><span>' + (first.active ? 'A · 当前头像' : 'A · 设为当前') + '</span></button>' +
+                    '<button class="avatar-pair-side' + (second.active ? ' is-active' : '') + '" type="button" data-avatar-pair-action="use" data-avatar-id="' + secondId + '"><img data-avatar-pair-asset="' + secondAsset + '" alt="' + secondLabel + '" loading="lazy" decoding="async"><span>' + (second.active ? 'B · 当前头像' : 'B · 设为当前') + '</span></button>' +
+                '</div>' +
+            '</article>';
+        }).join('') + '</div>' : '<div class="avatar-pair-empty">配对头像会在这里并排展示；解除配对不会删除两张原图。</div>';
+    }
     if (!items.length) {
         grid.innerHTML = '<div class="avatar-library-empty"><span class="avatar-library-empty-mark">＋</span><strong>这里还没有收藏头像</strong><span>添加几张照片，为这个角色建立自己的头像档案。</span></div>';
         if (legacyReady && !role.avatar) setAvatarLibraryStatus('还没有收藏头像，添加一张作为这个角色的专属头像。', 'info');
@@ -276,8 +308,11 @@ async function renderAvatarLibrary(roleId) {
     }).join('');
 
     const images = Array.prototype.slice.call(grid.querySelectorAll('img[data-avatar-asset]'));
+    if (pairContainer) {
+        Array.prototype.push.apply(images, Array.prototype.slice.call(pairContainer.querySelectorAll('img[data-avatar-pair-asset]')));
+    }
     await Promise.all(images.map(async function (image) {
-        const assetId = image.getAttribute('data-avatar-asset');
+        const assetId = image.getAttribute('data-avatar-asset') || image.getAttribute('data-avatar-pair-asset');
         const resolved = await window.RoleAvatarLibrary.toObjectUrl(assetId);
         if (!resolved || !resolved.ok || !resolved.value) {
             image.classList.add('is-missing');
@@ -356,6 +391,21 @@ async function selectRoleAvatarFromLibrary(avatarId) {
 
     renderRoleProfile();
     setAvatarLibraryStatus('已设为当前头像。聊天列表与角色资料会读取这份角色头像。', 'success');
+}
+
+async function unlinkRoleAvatarPair(pairId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || typeof library.unlinkPair !== 'function') return;
+    if (!confirm('只解除这两张头像之间的配对关系？两张原图仍会保留在头像收藏中。')) return;
+    setAvatarLibraryStatus('正在解除配对…', 'info');
+    const result = library.unlinkPair(roleId, pairId);
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message ? result.error.message : '解除配对失败，原有收藏没有变化。', 'error');
+        return;
+    }
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('已解除配对，两张头像仍保留在收藏中。', 'success');
 }
 
 async function removeRoleAvatarFromLibrary(avatarId) {
@@ -520,6 +570,8 @@ function renderRoleProfile() {
             '<div class="avatar-library-heading"><div><div class="avatar-library-kicker">PORTRAIT ARCHIVE / PRIVATE COLLECTION</div><h3 id="avatarLibraryTitle">头像收藏</h3><p>每个角色独立保存，互不混用。</p></div>' +
             '<button class="avatar-library-add" type="button" data-profile-action="avatar-add"><span aria-hidden="true">＋</span> 添加头像</button></div>' +
             '<div class="avatar-library-status" id="avatarLibraryStatus" aria-live="polite" role="status"></div>' +
+            '<div class="avatar-pair-heading"><h4>配对头像</h4><p>识别为一组的两张图片会并排关联保存。</p></div>' +
+            '<div id="avatarPairList" class="avatar-pair-list"></div>' +
             '<div class="avatar-library-grid" id="avatarLibraryGrid"><div class="avatar-library-empty">正在载入头像…</div></div>' +
         '</section>' +
         '<div class="profile-section-kicker">CHARACTER SETTINGS / 角色设定</div>' +
@@ -535,6 +587,14 @@ function renderRoleProfile() {
         '<p class="profile-bottom-note">人物关系和生活记录只属于这个主角色。其他主角色不会自动继承这些人物或关系。</p>';
 
     content.onclick = function (event) {
+        const pairButton = event.target.closest ? event.target.closest('[data-avatar-pair-action]') : null;
+        if (pairButton) {
+            event.preventDefault();
+            const pairAction = pairButton.getAttribute('data-avatar-pair-action');
+            if (pairAction === 'unlink') unlinkRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
+            if (pairAction === 'use') selectRoleAvatarFromLibrary(pairButton.getAttribute('data-avatar-id'));
+            return;
+        }
         const avatarButton = event.target.closest ? event.target.closest('[data-avatar-action]') : null;
         if (avatarButton) {
             event.preventDefault();
