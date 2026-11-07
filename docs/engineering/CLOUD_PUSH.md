@@ -668,12 +668,12 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 同一页面使用 paymentId 防连点集合，并通过 `aria-busy` 标记正在处理的卡片；锁内再次确认卡片状态。另一标签页若已完成领取，等待中的操作重新读取后只显示已完成状态，不再重复加余额。
 - 若浏览器提供 Web Locks，跨标签页操作由浏览器锁协调；若不提供，则保留本页防连点，并提示用户不要在多个聊天页同时领取。**旧浏览器 fallback 不保证跨标签页互斥**，不会把它宣称为完整并发保护。
 - 已完成的聊天卡若对应钱包流水缺失，会 fail-closed：不会仅凭卡片状态再增加一次余额。钱包已记账而聊天记录尚未同步时，仍按 paymentId 幂等补齐卡片和账本明细。
-- PWA shell cache 更新到 phone-app-pwa-v188。
+- PWA shell cache 更新到 phone-app-pwa-v189。
 
 ### 回归覆盖与验证边界
 
 - 新增多标签页并发契约：两个页面同时领取不同卡片时两笔都计入；第三个页面重复领取第一张卡时不重复入账；钱包和财务记录均按 paymentId 唯一。
-- 新增旧浏览器 fallback 契约：本页仍可执行，但明确告知跨页面限制。
+- 新增旧浏览器 fallback 契约：本页仍可执行，但明确告知跨页面限制；同一页面的重复点击会在读取钱包前被拦截。
 - 测试源码已写入，但尚未在 Node runner / 浏览器执行；Web Locks 真机 / 多页面验证、Vite build 和 Android 行为仍为 NOT RUN / NOT VERIFIED。
 - 本锁覆盖聊天页红包 / 转账收款入口，不代表项目内其他独立钱包写入入口已统一迁移到同一锁。
 - 未合并 PR、未部署 Worker、未更新 APK。
