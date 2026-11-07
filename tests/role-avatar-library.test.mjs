@@ -1026,25 +1026,27 @@ test('role deletion stops before releasing refs when the owner index cannot be l
   assert.equal(assets.has(avatar.value.assetId), false);
 });
 
-test('role deletion reports PARTIAL_ROLLBACK when a released portrait reference cannot be restored', async () => {
+test('role deletion reports incomplete rollback and still restores every other released reference', async () => {
   const options = {};
   const { api, values, refs } = createLibrary({}, options);
   const first = await api.add('role-a', 'data:image/jpeg;base64,ROLLBACK_FIRST');
   const second = await api.add('role-a', 'data:image/jpeg;base64,ROLLBACK_SECOND');
+  const third = await api.add('role-a', 'data:image/jpeg;base64,ROLLBACK_THIRD');
   const orderedAssetIds = api.list('role-a').map(item => item.assetId);
-  assert.equal(orderedAssetIds.length, 2);
+  assert.equal(orderedAssetIds.length, 3);
 
-  // The library removes portraits in index order. Let the first reference release,
-  // fail the second release, then fail restoration of that first reference.
-  options.failRemoveRefFor = orderedAssetIds[1];
+  // Release two references, fail the third release, and fail restoration of the
+  // first one. The second released reference must still be restored afterwards.
+  options.failRemoveRefFor = orderedAssetIds[2];
   options.failAddRefFor = orderedAssetIds[0];
 
   const failed = await api.removeRole('role-a');
   assert.equal(failed.ok, false);
   assert.equal(failed.error.code, 'PARTIAL_ROLLBACK');
   assert.equal(values.has(api._storageKey('role-a')), true, 'the role index stays available for cleanup retry');
-  assert.equal(refs.has(orderedAssetIds[0] + '|role-avatar|role-a'), false, 'failed restoration is not hidden');
-  assert.equal(refs.has(orderedAssetIds[1] + '|role-avatar|role-a'), true, 'the reference whose release failed remains intact');
+  assert.equal(refs.has(orderedAssetIds[0] + '|role-avatar|role-a'), false, 'failed restoration is reported');
+  assert.equal(refs.has(orderedAssetIds[1] + '|role-avatar|role-a'), true, 'later references are still restored');
+  assert.equal(refs.has(orderedAssetIds[2] + '|role-avatar|role-a'), true, 'the reference whose release failed remains intact');
 
   options.failAddRefFor = null;
   options.failRemoveRefFor = null;
@@ -1052,5 +1054,6 @@ test('role deletion reports PARTIAL_ROLLBACK when a released portrait reference 
   assert.equal(retry.ok, true);
   assert.equal(refs.has(first.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(refs.has(third.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(values.has(api._storageKey('role-a')), false);
 });
