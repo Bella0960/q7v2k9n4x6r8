@@ -123,6 +123,7 @@ test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多�
   assert.ok(indexes.includes('idx_push_endpoint'), 'endpoint 必须有唯一索引，防止重复订阅');
   assert.ok(indexes.includes('idx_outbound_server_id'), 'server message id 必须唯一，保证幂等');
   assert.ok(indexes.includes('idx_outbound_receipts_device_pending'), '设备收件箱必须支持按账号、设备、角色恢复待收消息');
+  assert.ok(indexes.includes('idx_outbound_character_source_created'), '跨设备收件箱必须支持按角色与来源设备快速扫描');
   assert.ok(indexes.includes('idx_push_delivery_dedupe'), '推送投递必须按 dedupe_key + 订阅唯一');
   assert.ok(indexes.includes('idx_devices_user_id'), '设备必须归属单用户 owner');
   assert.ok(indexes.includes('idx_device_presence_heartbeat'), '设备前台心跳必须可按用户与时间查询');
