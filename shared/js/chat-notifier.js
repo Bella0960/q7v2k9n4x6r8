@@ -572,7 +572,11 @@
             return hasStoredCloudDeviceCredentials();
         }
         if (!cloud._internal || typeof cloud._internal.readDevice !== 'function' ||
-            !cloud._internal.readDevice()) return false;
+            !cloud._internal.readDevice()) {
+            // A malformed/stale stored pairing record must not silently switch
+            // a previously paired install back to the legacy local executor.
+            return hasStoredCloudDeviceCredentials();
+        }
 
         var roleId = String(candidate.contact.id);
         var globalSetting;
@@ -583,7 +587,11 @@
             resetProactiveAttempt(roleId);
             return true;
         }
-        if (!globalSetting || globalSetting.enabled !== true) return false;
+        if (!globalSetting || globalSetting.enabled !== true) {
+            // Cloud authorization is the master switch for paired devices.
+            // Never fall through to the legacy local-only generator.
+            return true;
+        }
 
         var roleSetting;
         try {
