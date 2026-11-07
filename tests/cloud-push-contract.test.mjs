@@ -2802,6 +2802,11 @@ test('客户端只在消息持久化回调确认成功后才确认云端出站�
   assert.ok(receiptIndex >= 0 && persistIndex > receiptIndex && guardIndex > persistIndex && ackIndex > guardIndex,
     '顺序必须是设备收到回执、本地持久化、成功检查，最后才是本地保存 ACK');
   assert.ok(receiver.includes('deferred += 1'), '本地保存失败时必须保留云端待确认消息');
+  assert.ok(receiver.includes('catch (persistError)'), '单条持久化异常必须被隔离，不能中断整批接收');
+  assert.ok(receiver.includes('catch (ackError)'), '单条 ACK 网络异常必须被隔离，后续消息仍应继续处理');
+  assert.ok(receiver.includes('persisted: persistedCount'), '应区分本地已保存与云端 ACK 已确认');
+  assert.ok(receiver.includes('ackDeferred: ackDeferred'), 'ACK 失败应单独报告以便后续重试');
+  assert.ok(receiver.includes('persistErrors: persistErrors'), '本地存储异常应单独计数');
   assert.ok(clientSource.includes('getCharacterOutboundMessages: getCharacterOutboundMessages'));
   assert.ok(clientSource.includes('getCharacterOutboundLifecycle: getCharacterOutboundLifecycle'));
   assert.ok(clientSource.includes('markCharacterOutboundReceived: markCharacterOutboundReceived'));
@@ -2857,6 +2862,8 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(sync.includes('navigator.locks.request'), '优先使用 Web Locks 防止多标签页并发接收');
   assert.ok(sync.includes('runWithStorageLease'), '不支持 Web Locks 时应使用本地租约降级');
   assert.ok(sync.includes('hasDeviceCredentials()'), '只有完成设备连接后才开始轮询');
+  assert.ok(sync.includes('navigator.onLine === false'), '浏览器离线时应暂停轮询');
+  assert.ok(sync.includes("window.addEventListener('online', syncNow)"), '恢复联网后应立即触发补拉');
   assert.ok(sync.includes("window.setInterval(syncNow, 15000)"),
     '前台聊天页应定期拉取待同步消息');
   assert.ok(sync.includes("document.visibilityState === 'hidden'"),
