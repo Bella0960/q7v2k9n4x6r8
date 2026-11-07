@@ -5987,6 +5987,13 @@
                 if (recalledText) apiMessages[0].content += '\n\n' + recalledText;
             }
 
+            if (!isGroupChat && !isRegen && !contextOnly && !silent && presenceMode === 'online' &&
+                avatarCandidateImages.length && window.ChatImageVision &&
+                typeof window.ChatImageVision.buildAvatarCandidatePrompt === 'function') {
+                var avatarCandidatePrompt = window.ChatImageVision.buildAvatarCandidatePrompt(avatarCandidateImages);
+                if (avatarCandidatePrompt) apiMessages[0].content += '\n\n' + avatarCandidatePrompt;
+            }
+
             if (window.ChatContextPolicy && typeof window.ChatContextPolicy.mapHistoryToApiMessages === 'function') {
                 apiMessages.push.apply(apiMessages, window.ChatContextPolicy.mapHistoryToApiMessages(recentHistory, stripInternalReasoning, {
                     isGroupChat: isGroupChat,
