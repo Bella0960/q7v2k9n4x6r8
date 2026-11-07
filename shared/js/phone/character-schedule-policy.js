@@ -376,7 +376,7 @@
       if (!device || device.authorized !== true) continue;
       if (device.userId != null && String(device.userId) !== String(userId)) continue;
       var heartbeatAt = Number(device.lastHeartbeatAt);
-      if (!isFinite(heartbeatAt)) continue;
+      if (!isFinite(heartbeatAt) || heartbeatAt > nowMs) continue;
       if (nowMs - heartbeatAt <= config.heartbeatTtlMs) {
         activeDeviceIds.push(String(device.deviceId));
       }
