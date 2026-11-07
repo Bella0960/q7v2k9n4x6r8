@@ -373,3 +373,54 @@ test('friend requests and accepted friends load private avatars; blocked rows av
   assert.match(PANEL_SOURCE, /target\.referrerPolicy = 'no-referrer'/);
   assert.match(PANEL_SOURCE, /client\.avatarUrl\(assetId\)/);
 });
+
+test('refreshAccount replaces stale in-memory profile fields with the current cookie-session profile', async () => {
+  let currentProfile = {
+    id: 'profile-refresh-1',
+    handle: 'profile_1',
+    displayName: 'Before Refresh',
+    status: 'active',
+    avatarAssetId: null
+  };
+  const app = runtime(async (url, options) => {
+    if (url.endsWith('/capabilities')) return jsonResponse(enabledCapabilities);
+    if (url.endsWith('/v1/auth/login')) {
+      return jsonResponse({ ok: true, account: currentProfile });
+    }
+    if (url.endsWith('/v1/auth/me') && options.method === 'GET') {
+      return jsonResponse({ ok: true, account: currentProfile });
+    }
+    return jsonResponse({ ok: false, error: 'not_found' }, 404);
+  });
+
+  await app.client.discover();
+  const signedIn = await app.client.login({ handle: 'profile_1', password: 'a sufficiently long password' });
+  assert.equal(signedIn.displayName, 'Before Refresh');
+
+  currentProfile = {
+    ...currentProfile,
+    displayName: 'Updated From Another Device',
+    avatarAssetId: 'av_' + 'b'.repeat(32)
+  };
+  const refreshed = await app.client.refreshAccount();
+
+  assert.equal(refreshed.id, 'profile-refresh-1');
+  assert.equal(refreshed.displayName, 'Updated From Another Device');
+  assert.equal(refreshed.avatarAssetId, 'av_' + 'b'.repeat(32));
+  assert.equal(app.client.getState().account.displayName, 'Updated From Another Device');
+  const refreshCall = app.calls.find((call) =>
+    call.url.endsWith('/v1/auth/me') && call.options.method === 'GET'
+  );
+  assert.ok(refreshCall);
+  assert.equal(refreshCall.options.credentials, 'same-origin');
+  assert.equal(refreshCall.options.cache, 'no-store');
+});
+
+test('Contacts refresh and page-resume handlers refresh both the signed-in account and friend data', () => {
+  assert.match(PANEL_SOURCE, /client\.refreshAccount\(\)/);
+  assert.match(PANEL_SOURCE, /function refreshProfileAndFriends\(\)/);
+  assert.match(PANEL_SOURCE, /root\.addEventListener\('pageshow', refreshOnResume\)/);
+  assert.match(PANEL_SOURCE, /root\.addEventListener\('focus', refreshOnResume\)/);
+  assert.match(PANEL_SOURCE, /document\.addEventListener\('visibilitychange'/);
+  assert.match(PANEL_SOURCE, /账号资料、好友头像和申请已同步/);
+});
