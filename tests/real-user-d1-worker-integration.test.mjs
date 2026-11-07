@@ -157,6 +157,7 @@ function createMutationGate(actions) {
   function actionFor(sql) {
     if (sql.startsWith("UPDATE real_user_friend_requests SET status = ?")) return "accept";
     if (sql.startsWith("INSERT OR IGNORE INTO real_user_blocks")) return "block";
+    if (sql.startsWith("DELETE FROM real_user_blocks WHERE blocker_id = ?")) return "unblock";
     if (sql.startsWith("UPDATE real_user_friendships SET status = 'removed'")) return "remove";
     return "";
   }
@@ -773,6 +774,62 @@ if (!DatabaseSync) {
           assert.equal(friendship.status, "removed",
             "a remove that linearizes after acceptance must leave a tombstone");
         }
+      } finally {
+        database.close();
+      }
+    }
+  });
+
+  test("block and unblock races keep the tombstone regardless of final block-list state", async () => {
+    for (const blockFirst of [true, false]) {
+      const fixture = await seedRacePair(blockFirst ? "block_unblock_first" : "unblock_block_first");
+      const { database, aliceId, bobId, bobToken, pair } = fixture;
+      try {
+        const requestId = blockFirst ? "request_block_unblock_01" : "request_unblock_block_01";
+        addPendingRequest(database, requestId, aliceId, bobId, Date.now() - 3000);
+        const accepted = database.prepare(
+          "UPDATE real_user_friend_requests SET status = 'accepted', updated_at = ?, responded_at = ? WHERE id = ?"
+        ).run(Date.now() - 2000, Date.now() - 2000, requestId);
+        assert.equal(Number(accepted.changes), 1);
+
+        const gate = createMutationGate(["block", "unblock"]);
+        const raceEnv = createEnvironment(database, {
+          beforeRun: gate.beforeRun,
+          afterRun: gate.afterRun
+        });
+        const blockPromise = callWorker(
+          raceEnv,
+          "/api/real-user-chat/v1/friends/" + aliceId + "/block",
+          "POST",
+          { cookie: bobToken }
+        );
+        const unblockPromise = callWorker(
+          raceEnv,
+          "/api/real-user-chat/v1/friends/" + aliceId + "/block",
+          "DELETE",
+          { cookie: bobToken }
+        );
+
+        await gate.waitUntilReady();
+        const firstAction = blockFirst ? "block" : "unblock";
+        const secondAction = blockFirst ? "unblock" : "block";
+        gate.release(firstAction);
+        await gate.waitUntilComplete(firstAction);
+        gate.release(secondAction);
+        const [blocked, unblocked] = await Promise.all([blockPromise, unblockPromise]);
+
+        assert.equal(blocked.response.status, 200);
+        assert.equal(unblocked.response.status, 200);
+        const friendship = database.prepare(
+          "SELECT status FROM real_user_friendships WHERE pair_low = ? AND pair_high = ?"
+        ).get(...pair);
+        assert.equal(friendship.status, "removed",
+          "once a block operation revokes an accepted friendship, an unblock must not resurrect it");
+        const blockCount = database.prepare(
+          "SELECT COUNT(*) AS count FROM real_user_blocks WHERE blocker_id = ? AND blocked_id = ?"
+        ).get(bobId, aliceId).count;
+        assert.equal(blockCount, blockFirst ? 0 : 1,
+          "the last serialized block-list operation decides the final block state");
       } finally {
         database.close();
       }
