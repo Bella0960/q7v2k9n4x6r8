@@ -146,6 +146,8 @@
 
         if (hasTypedContactRoster) {
             var missingSelectedContactRefs = selectedRefs.filter(function (item) {
+                if (item.type === TYPES.AI_ROLE && hasContactRoster &&
+                    Object.prototype.hasOwnProperty.call(availableLookup, item.id)) return false;
                 return !Object.prototype.hasOwnProperty.call(availableRefLookup, item.key);
             }).map(function (item) { return item.key; });
             if (missingSelectedContactRefs.length) {
@@ -229,9 +231,13 @@
         }
         if (hasTypedContactRoster) {
             staleMemberRefs = selectedMemberRefs.filter(function (item) {
+                if (item.type === TYPES.AI_ROLE && hasContactRoster &&
+                    Object.prototype.hasOwnProperty.call(availableLookup, item.id)) return false;
                 return !Object.prototype.hasOwnProperty.call(availableRefLookup, item.key);
             }).map(function (item) { return item.key; });
             selectedMemberRefs = selectedMemberRefs.filter(function (item) {
+                if (item.type === TYPES.AI_ROLE && hasContactRoster &&
+                    Object.prototype.hasOwnProperty.call(availableLookup, item.id)) return true;
                 return Object.prototype.hasOwnProperty.call(availableRefLookup, item.key);
             });
         }
