@@ -3,7 +3,7 @@
  */
 const CACHE_NAME = 'phone-app-pwa-v174';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
+// v174 release: refresh the existing chat detail receiver while retaining persistent same-origin font caching.
 const APP_SHELL = [
   './',
   './index.html',
