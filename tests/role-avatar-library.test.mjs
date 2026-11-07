@@ -546,21 +546,18 @@ test('transactional pair saver rejects duplicate or malformed source assets with
 });
 
 test('transactional pair saver reports partial rollback instead of hiding a stranded new portrait', async () => {
+  const firstAssetId = 'as_' + 'A'.repeat(31) + 'B';
   const secondAssetId = 'as_' + 'D'.repeat(32);
   const failing = createLibrary({}, {
     failAddRefFor: secondAssetId,
-    failRemoveRefFor: 'as_' + 'A'.repeat(32)
+    failRemoveRefFor: firstAssetId
   });
   const first = await failing.api.add('chat-owner', 'data:image/jpeg;base64,FIRST');
-  const firstAssetId = first.value.assetId;
-  // Configure the failure against the actual generated first ID as well.
-  failing.refs.add(firstAssetId + '|chat-owner|role-avatar');
-  const originalRemoveGuard = failing.api.remove;
+  assert.equal(first.value.assetId, firstAssetId);
   const result = await failing.api.addAssetPair('role-a', firstAssetId, secondAssetId);
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'PARTIAL_ROLLBACK');
   assert.equal(result.meta.cleanupRequired, true);
   assert.equal(failing.api.getPairs('role-a').length, 0);
   assert.equal(failing.api.list('role-a').length, 1);
-  assert.equal(typeof originalRemoveGuard, 'function');
 });
