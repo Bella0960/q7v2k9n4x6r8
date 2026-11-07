@@ -164,6 +164,26 @@
     });
   }
 
+  async function updateProfile(displayName) {
+    requireAuth();
+    if (!state.account) throw makeError('authentication_required', 401);
+    var cleanName = String(displayName == null ? '' : displayName).trim();
+    if (!cleanName || Array.from(cleanName).length > 48) {
+      throw makeError('invalid_display_name', 400);
+    }
+    var previousAccountId = state.account.id;
+    var payload = await request('/v1/auth/me', {
+      method: 'PATCH',
+      body: { displayName: cleanName }
+    });
+    var updated = normalizeAccount(payload.account);
+    if (!updated || updated.id !== previousAccountId) {
+      throw makeError('invalid_account_response', 200, payload);
+    }
+    state.account = updated;
+    return updated;
+  }
+
   async function logout() {
     requireAuth();
     var payload = await request('/v1/auth/logout', { method: 'POST' });
@@ -266,6 +286,7 @@
     restore: restore,
     register: register,
     login: login,
+    updateProfile: updateProfile,
     logout: logout,
     listFriends: listFriends,
     listRequests: listRequests,
