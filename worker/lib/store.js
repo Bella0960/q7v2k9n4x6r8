@@ -600,7 +600,8 @@ class CloudStore {
 
   listDueActivities(now, limit) {
     return this.exec(
-      `SELECT q.*, d.user_id AS user_id
+      `SELECT q.*, d.user_id AS user_id,
+              d.revoked_at AS source_device_revoked_at
        FROM activity_queue q
        LEFT JOIN devices d ON d.id = q.device_id
        WHERE (
