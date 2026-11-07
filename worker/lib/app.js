@@ -229,7 +229,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
 
     let userId = OWNER_USER_ID;
     let enrollmentMode = '';
-    const suppliedToken = String(body.enrollmentToken || body.pairingToken || '').trim();
+    const suppliedToken = String(body.pairingToken || body.enrollmentToken || '').trim();
     if (suppliedToken.length < 32 || suppliedToken.length > 512) {
       throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '新设备需要有效的一次性配对码');
     }
