@@ -782,22 +782,21 @@
             if (typeof media.addRef !== 'function') return Promise.resolve({ ok: false });
             return released.reduce(function (chain, item) {
                 return chain.then(function (result) {
-                    if (!result.ok) return result;
                     var restore;
                     try {
                         restore = media.addRef(item.assetId, OWNER_TYPE, String(roleId));
                     } catch (error) {
-                        return { ok: false, assetId: item.assetId };
+                        return { ok: false, failedAssetIds: result.failedAssetIds.concat([item.assetId]) };
                     }
                     return Promise.resolve(restore).then(function (restored) {
                         return restored && restored.ok
-                            ? { ok: true }
-                            : { ok: false, assetId: item.assetId };
+                            ? result
+                            : { ok: false, failedAssetIds: result.failedAssetIds.concat([item.assetId]) };
                     }, function () {
-                        return { ok: false, assetId: item.assetId };
+                        return { ok: false, failedAssetIds: result.failedAssetIds.concat([item.assetId]) };
                     });
                 });
-            }, Promise.resolve({ ok: true }));
+            }, Promise.resolve({ ok: true, failedAssetIds: [] }));
         }
 
         function returnAfterRestore(originalResult) {
