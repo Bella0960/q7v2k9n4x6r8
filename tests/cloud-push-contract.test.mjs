@@ -411,6 +411,7 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
   const calls = [];
   let intervalCallback = null;
   let heartbeatSignal = null;
+  let heartbeatAttempts = 0;
   let markHeartbeatStarted;
   const heartbeatStarted = new Promise(resolve => { markHeartbeatStarted = resolve; });
   const browserWindow = {
@@ -444,6 +445,8 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
       return response({ ok: true, heartbeatTtlMs: 120000, leaseDurationMs: 120000 });
     }
     if (url === '/api/presence/heartbeat') {
+      heartbeatAttempts += 1;
+      if (heartbeatAttempts > 1) return response({ ok: true });
       markHeartbeatStarted();
       heartbeatSignal = options.signal;
       return new Promise((resolve, reject) => {
@@ -458,7 +461,14 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
         }, { once: true });
       });
     }
-    throw new Error('Hidden page must not write a role lease: ' + url);
+    if (url === '/api/characters/role-123/lease') {
+      const action = JSON.parse(options.body || '{}').action;
+      if (action === 'renew') {
+        return { ok: false, json: async () => ({ ok: false, error: { code: 'LEASE_NOT_OWNED', message: 'not owner' } }) };
+      }
+      if (action === 'acquire') return response({ ok: true, acquired: true });
+    }
+    throw new Error('Unexpected request after visibility recovery: ' + url);
   };
 
   vm.runInNewContext(clientSource, {
@@ -484,6 +494,15 @@ test('标签页在心跳请求期间隐藏后不再继续写入角色租约', as
     false,
     '页面隐藏后，心跳请求返回也不能继续续租或抢租约'
   );
+
+  browserDocument.visibilityState = 'visible';
+  listeners.get('visibilitychange')();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(heartbeatAttempts, 2, '页面重新可见后应立即重新同步');
+  const leaseActions = calls
+    .filter(call => call.url === '/api/characters/role-123/lease')
+    .map(call => JSON.parse(call.options.body || '{}').action);
+  assert.deepEqual(leaseActions, ['renew', 'acquire'], '恢复可见后应恢复角色租约');
   manager.stop();
 });
 
