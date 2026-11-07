@@ -596,3 +596,15 @@ test('swapping a missing pair fails without changing the portrait library', asyn
   assert.deepEqual(Array.from(api.list('role-a').map(item => item.id)), Array.from(before.map(item => item.id)));
   assert.equal(api.getPairs('role-a').length, 0);
 });
+
+test('direct pair lookup returns the matching role-scoped relationship for either portrait', async () => {
+  const { api } = createLibrary();
+  const a = await api.add('role-a', 'data:image/jpeg;base64,A');
+  const b = await api.add('role-a', 'data:image/jpeg;base64,B');
+  const other = await api.add('role-b', 'data:image/jpeg;base64,C');
+  const pair = api.linkPair('role-a', a.value.id, b.value.id, { label: '情头' });
+  assert.equal(api.getPairForAvatar('role-a', a.value.id).id, pair.value.id);
+  assert.equal(api.getPairForAvatar('role-a', b.value.id).id, pair.value.id);
+  assert.equal(api.getPairForAvatar('role-b', a.value.id), null);
+  assert.equal(api.getPairForAvatar('role-a', other.value.id), null);
+});
