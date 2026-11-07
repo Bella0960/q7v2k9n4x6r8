@@ -90,7 +90,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0006 建立云推送、调度元数据、真人好友与聊天消息表', async () => {
+test('迁移 0001–0007 建立云推送、调度元数据、真人好友、聊天消息与已读状态表', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -115,7 +115,8 @@ test('迁移 0001–0006 建立云推送、调度元数据、真人好友与聊�
     'friend_accounts',
     'friend_requests',
     'friendships',
-    'friend_messages'
+    'friend_messages',
+    'friend_conversation_reads'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -136,19 +137,21 @@ test('迁移 0001–0006 建立云推送、调度元数据、真人好友与聊�
   assert.ok(indexes.includes('idx_friendships_high'), '好友关系必须支持双方查询');
   assert.ok(indexes.includes('idx_friend_messages_pair_created'), '好友聊天记录必须支持按会话游标查询');
   assert.ok(indexes.includes('idx_friend_messages_recipient_created'), '好友收件箱消息必须支持按对端与时间查询');
+  assert.ok(indexes.includes('idx_friend_conversation_reads_friend'), '好友会话已读状态必须支持按对端查询');
 
   // 幂等：重复执行迁移不会重复建表，也不会重复记录版本。
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 6);
+  assert.equal(versions.length, 7);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
     '0003_device_pairing',
     '0004_character_context_version',
     '0005_friend_accounts',
-    '0006_friend_messages'
+    '0006_friend_messages',
+    '0007_friend_conversation_reads'
   ]);
 });
 
