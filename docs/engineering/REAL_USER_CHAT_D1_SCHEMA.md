@@ -6,14 +6,14 @@ Migration files: `migrations/0001_real_user_chat.sql` and `migrations/0002_real_
 
 ## Tables
 
-- `real_user_accounts`: unique normalized handle, display name, password verifier/salt/iteration metadata, account state.
+- `real_user_accounts`: unique normalized handle, display name, password verifier/salt/iteration metadata, account state, and a nullable `avatar_asset_id` pointer for the current real-user profile avatar.
 - `real_user_sessions`: stores a hash of an opaque session token, not the bearer token itself; supports expiry, revocation, and session-family invalidation.
 - `real_user_friend_codes`: stores one-way hashes of random QR/add-friend codes, with expiry and revocation. The v2 partial unique index permits only one unrevoked code per account. QR payloads must never include passwords or session tokens.
 - `real_user_friend_requests`: pending/accepted/declined/cancelled requests with canonical unordered pair keys. A partial unique index prevents two pending requests in opposite directions for the same pair.
 - `real_user_friendships`: server-authoritative accepted/removed friendship state.
 - `real_user_blocks`: directional blocks; either direction prevents conversation creation and message writes.
 - `real_user_conversations`: one-to-one conversation keyed by canonical account pair.
-- `real_user_attachments`: attachment metadata and server-generated private object key. Binary bytes are planned for private object storage, not D1.
+- `real_user_attachments`: attachment metadata and server-generated private object key. Binary bytes are stored in private object storage, not D1. A profile avatar is represented by an `image` row in `staged` state with a null conversation ID; the account's `avatar_asset_id` points to that row. Message attachments continue to use the `shared` state and a conversation ID.
 - `real_user_messages`: allowlisted text/image/file/voice/sticker messages, ordered sequence, stable client idempotency key, and a foreign key to the attachment reference where applicable.
 - `real_user_message_receipts`: recipient-only delivery/read timestamps.
 
@@ -35,12 +35,14 @@ Apply `0001_real_user_chat.sql` first, then `0002_real_user_friend_code_rotation
 
 ## Activation prerequisites
 
-1. Create a D1 database in the Cloudflare account and configure a real `DB` binding; no placeholder database ID is committed.
+1. Create a D1 database in the Cloudflare account and configure a real `DB` binding; no placeholder database ID is committed. Profile avatars additionally require a private R2 binding named `REAL_USER_AVATARS`; the current Worker config intentionally does not include it.
 2. Apply `0001_real_user_chat.sql`, then `0002_real_user_friend_code_rotation.sql` to a staging database; validate all tables, triggers, foreign keys, and the active-code unique index.
 3. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER`. Keep `REAL_USER_AUTH_ENABLED` and `REAL_USER_FRIENDS_ENABLED` unset/false until staging verification is complete.
 4. The Worker verifies that `sqlite_master` contains `real_user_accounts`, `real_user_sessions`, `real_user_friend_requests`, and `real_user_friendships` before it reports account auth as ready; a D1 binding without the migration remains disabled. The friend service additionally checks all four friend tables, both partial unique indexes (`idx_real_user_friend_codes_one_unrevoked_per_account` and `idx_real_user_friend_requests_pending_pair`), and all eight lifecycle triggers (request insert/transition/accept guards, friendship materialization/source/update guards, and block cleanup for friendships and pending requests).
 5. Run the account-auth regression suite against the staging binding, review password derivation cost and rate-limit behavior in the target Worker plan, then explicitly set `REAL_USER_AUTH_ENABLED=true` to expose account registration/login only.
 6. Stage-test the Worker friend handlers for QR rotation/revocation, expired-code rejection, stable request-ID retries, inbox/outbox isolation, recipient-only accept/decline, requester-only cancellation, friend removal, and block/unblock; then explicitly set `REAL_USER_FRIENDS_ENABLED=true` to expose the friend service.
+7. To expose profile avatars separately, stage-test bounded JPEG/PNG/WebP upload, object replacement/deletion, authenticated owner reads, accepted-friend reads, and blocked/removed-friend denial against the private R2 bucket; only then explicitly set `REAL_USER_AVATAR_ENABLED=true`.
+
 7. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
 8. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
 9. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
