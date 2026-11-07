@@ -43,10 +43,10 @@ Apply `0001_real_user_chat.sql` first, then `0002_real_user_friend_code_rotation
 6. Stage-test the Worker friend handlers for QR rotation/revocation, expired-code rejection, stable request-ID retries, inbox/outbox isolation, recipient-only accept/decline, requester-only cancellation, friend removal, and block/unblock; then explicitly set `REAL_USER_FRIENDS_ENABLED=true` to expose the friend service.
 7. To expose profile avatars separately, stage-test bounded JPEG/PNG/WebP upload, object replacement/deletion, authenticated owner reads, accepted-friend reads, and blocked/removed-friend denial against the private R2 bucket; only then explicitly set `REAL_USER_AVATAR_ENABLED=true`.
 
-7. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
-8. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
-9. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
-10. Only then change the Worker capability endpoint to report messaging enabled.
+8. Implement authenticated conversation and message handlers; never trust account IDs, friendship states, sender IDs, message status, object keys, or attachment ownership supplied by the client.
+9. Add private R2 (or equivalent) attachment storage and signed/authorized retrieval before enabling media messages.
+10. Run two-account/two-device tests for registration, login/logout, QR add, accept/decline/block/remove, send/retry, reconnect, delivery/read receipts, and prohibited types.
+11. Only then change the Worker capability endpoint to report messaging enabled.
 
 Account-auth handlers are implemented in `worker/real-user-auth.js`: PBKDF2-HMAC-SHA256 password derivation (600,000 iterations), opaque random session tokens stored only as SHA-256 hashes, HttpOnly/Secure/SameSite=Strict cookies, same-origin checks, mandatory IP/handle rate limiting, and logout revocation. Account recovery, email verification, and native two-factor support remain unimplemented.
 
