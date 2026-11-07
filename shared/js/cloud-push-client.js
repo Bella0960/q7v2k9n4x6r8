@@ -384,21 +384,17 @@
     }
 
     function onVisibilityChange() {
-      if (document.visibilityState === 'hidden') {
-        updatePresenceHeartbeat(false).catch(function () {});
-      } else {
-        syncVisibleSession().catch(function (error) {
-          console.warn('[cloud] 角色前台租约续期失败', error);
-        });
-      }
-    }
-
-    function onPageHide() {
-      updatePresenceHeartbeat(false).catch(function () {});
+      // Presence is device-scoped, while a phone can have multiple visible
+      // chat tabs. A hidden tab must not write "inactive" over another tab's
+      // fresh heartbeat. The server-side TTL marks the device offline after
+      // every visible tab stops renewing.
+      if (document.visibilityState === 'hidden') return;
+      syncVisibleSession().catch(function (error) {
+        console.warn('[cloud] 角色前台租约续期失败', error);
+      });
     }
 
     document.addEventListener('visibilitychange', onVisibilityChange);
-    global.addEventListener('pagehide', onPageHide);
 
     try {
       await syncVisibleSession();
@@ -412,7 +408,6 @@
       );
     } catch (error) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      global.removeEventListener('pagehide', onPageHide);
       throw error;
     }
 
@@ -422,8 +417,6 @@
         stopped = true;
         if (intervalId != null) global.clearInterval(intervalId);
         document.removeEventListener('visibilitychange', onVisibilityChange);
-        global.removeEventListener('pagehide', onPageHide);
-        updatePresenceHeartbeat(false).catch(function () {});
       }
     };
   }
