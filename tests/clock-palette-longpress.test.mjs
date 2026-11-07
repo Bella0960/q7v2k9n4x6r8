@@ -51,13 +51,10 @@ const VIEWPORTS = [
   { width: 430, height: 932 }
 ];
 
-// origin/main 上已复现的两条基线控制台噪声：
-//   1) 页面内联 SVG path 的解析错误（"Expected number ... 1 16 4 16z"）；
-//   2) 375 档加载 favicon 的 404。
-// 本次改动不新增任何错误；出现白名单以外的报错即判失败。
+// 只保留 origin/main 已确认的内联 SVG path 解析噪声。
+// favicon.ico 由下面的测试服务器明确返回 204；其他资源出现 404 必须让测试失败。
 const BASELINE_ERRORS = [
-  /<path> attribute d: Expected number/i,
-  /Failed to load resource: the server responded with a status of 404/i
+  /<path> attribute d: Expected number/i
 ];
 
 const LAYOUT_KEY = 'ds_layout_v14';
@@ -72,6 +69,11 @@ function startServer() {
         urlPath = (req.url || '/').split('?')[0];
       }
       const rel = urlPath === '/' ? '/index.html' : urlPath;
+      // 避免浏览器自动请求 favicon 时产生基线 404；其他缺失资源仍应暴露。
+      if (rel === '/favicon.ico') {
+        res.writeHead(204).end();
+        return;
+      }
       const filePath = path.join(root, rel);
       if (!filePath.startsWith(root)) {
         res.writeHead(403).end('Forbidden');
