@@ -581,11 +581,99 @@ test('受保护接口拒绝缺失、错误与被撤销的设备凭据', async ()
   assert.equal(unknown.status, 401);
   assert.equal(unknown.payload.error.code, 'DEVICE_UNKNOWN');
 
+  const subscription = await makeBrowserSubscription();
+  await subscribeDevice(ctx, device, subscription);
+
   const revoked = await ctx.asJson('/api/devices/revoke', { method: 'POST', device });
   assert.equal(revoked.status, 200);
+  const revokedSubscriptions = ctx.store.listSubscriptions(device.deviceId, { includeDisabled: true });
+  assert.equal(revokedSubscriptions.length, 1);
+  assert.equal(revokedSubscriptions[0].disabled_reason, 'revoked');
+  assert.ok(revokedSubscriptions[0].disabled_at != null);
+  assert.equal(ctx.store.listSubscriptions(device.deviceId).length, 0);
+
   const afterRevoke = await ctx.asJson('/api/push/subscriptions', { device });
   assert.equal(afterRevoke.status, 401);
   assert.equal(afterRevoke.payload.error.code, 'DEVICE_REVOKED');
+});
+
+test('readiness 的在线设备与前台租约计数按账号、心跳 TTL 和 grace 隔离', async () => {
+  const timestamp = Date.now();
+  const ctx = setupTestStore(openTestDb(), {
+    AUTONOMY_HEARTBEAT_TTL_MS: '60000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '30000'
+  });
+  const activeDevice = makeDevice();
+  const staleDevice = makeDevice();
+  const revokedDevice = makeDevice();
+  await registerDevice(ctx, activeDevice);
+  await registerDevice(ctx, staleDevice);
+  await registerDevice(ctx, revokedDevice);
+
+  ctx.store.upsertDevicePresence({
+    userId: 'owner',
+    deviceId: activeDevice.deviceId,
+    foregroundActive: true,
+    now: timestamp - 5000
+  });
+  ctx.store.upsertDevicePresence({
+    userId: 'owner',
+    deviceId: staleDevice.deviceId,
+    foregroundActive: true,
+    now: timestamp - 120000
+  });
+  ctx.store.upsertDevicePresence({
+    userId: 'owner',
+    deviceId: revokedDevice.deviceId,
+    foregroundActive: true,
+    now: timestamp - 1000
+  });
+
+  const saveLease = (userId, characterId, deviceId, leaseUntil) => (
+    ctx.store.acquireCharacterLease({
+      userId,
+      characterId,
+      deviceId,
+      now: timestamp,
+      leaseUntil,
+      graceMs: 30000
+    })
+  );
+  saveLease('owner', 'role_active', activeDevice.deviceId, timestamp + 60000);
+  saveLease('owner', 'role_grace', staleDevice.deviceId, timestamp - 10000);
+  saveLease('owner', 'role_revoked', revokedDevice.deviceId, timestamp + 60000);
+
+  ctx.query('UPDATE devices SET revoked_at = ? WHERE id = ?', timestamp, revokedDevice.deviceId);
+
+  // A different account also has active heartbeat and lease rows; neither may leak.
+  ctx.query(
+    `INSERT INTO devices
+      (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
+     VALUES (?, ?, ?, '', '', '', '', ?, ?)`,
+    'presence_other_user_device',
+    'another-user',
+    'unused-secret-hash',
+    timestamp,
+    timestamp
+  );
+  ctx.store.upsertDevicePresence({
+    userId: 'another-user',
+    deviceId: 'presence_other_user_device',
+    foregroundActive: true,
+    now: timestamp - 1000
+  });
+  saveLease('another-user', 'other_user_role', 'presence_other_user_device', timestamp + 60000);
+
+  ctx.timestamps.push(timestamp);
+  const response = await ctx.asJson('/api/autonomy/readiness', { device: activeDevice });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.payload.presenceSummary, {
+    authorizedDevices: 2,
+    foregroundDevices: 1,
+    validCharacterLeases: 1,
+    graceCharacterLeases: 1
+  });
 });
 
 test('推送订阅生命周期：订阅、去重、退订与失效', async () => {
