@@ -56,12 +56,18 @@ test('outgoing real-user requests are idempotent and pending accounts never ente
 
   const repeated = directory.requestOutgoing({
     id: 'remote-1',
-    displayName: '改过的昵称'
-  }, { now: 200, requestId: 'request-out-2' });
+    displayName: '待添加好友'
+  }, { now: 200, requestId: 'request-out-1' });
   assert.equal(repeated.ok, true);
-  assert.equal(repeated.action, 'already_pending');
-  assert.equal(repeated.contact.displayName, '待添加好友');
-  assert.equal(repeated.contact.requestId, 'request-out-1');
+  assert.equal(repeated.action, 'duplicate_delivery');
+  assert.equal(repeated.contact.updatedAt, 100);
+  const conflict = directory.requestOutgoing({
+    id: 'remote-1',
+    displayName: '待添加好友'
+  }, { now: 300, requestId: 'request-out-2' });
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.error, 'outgoing_request_exists');
+  assert.equal(directory.getPendingRequests().outgoing.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(directory.getAcceptedRefs().refs)), []);
 });
 
@@ -122,7 +128,7 @@ test('incoming requests accept only the current request and accepted contacts be
     JSON.parse(JSON.stringify(directory.getAcceptedRefs().refs.map((ref) => ref.key))),
     ['real_user:friend-1']
   );
-  assert.equal(directory.acceptIncoming('friend-1', { now: 170 }).action, 'already_accepted');
+  assert.equal(directory.acceptIncoming('friend-1', { now: 170, requestId: 'incoming-current' }).action, 'already_accepted');
 });
 
 test('stale incoming accept snapshots and wrong-direction transitions are rejected', () => {
@@ -143,7 +149,7 @@ test('stale incoming accept snapshots and wrong-direction transitions are reject
   assert.equal(directory.get('friend-2').status, 'pending_incoming');
 });
 
-test('declining incoming and cancelling outgoing requests remove only matching pending records', () => {
+test('declining incoming and cancelling outgoing requests keep replay-safe tombstones', () => {
   const { directory } = createRuntime();
   directory.applyIncomingRequest({
     id: 'decline-1',
@@ -158,8 +164,10 @@ test('declining incoming and cancelling outgoing requests remove only matching p
   assert.equal(directory.cancelOutgoing('cancel-1', { requestId: 'wrong-token' }).error, 'stale_request');
   assert.equal(directory.declineIncoming('decline-1', { requestId: 'decline-token' }).action, 'request_declined');
   assert.equal(directory.cancelOutgoing('cancel-1', { requestId: 'cancel-token' }).action, 'request_cancelled');
-  assert.equal(directory.get('decline-1'), null);
-  assert.equal(directory.get('cancel-1'), null);
+  assert.equal(directory.get('decline-1').status, 'declined');
+  assert.equal(directory.get('cancel-1').status, 'cancelled');
+  assert.equal(directory.getPendingRequests().incoming.length, 0);
+  assert.equal(directory.getPendingRequests().outgoing.length, 0);
 });
 
 test('blocking prevents new friend requests until the blocked record is explicitly removed', () => {
@@ -168,7 +176,7 @@ test('blocking prevents new friend requests until the blocked record is explicit
   const blocked = directory.block('blocked-1', { now: 200 });
   assert.equal(blocked.ok, true);
   assert.equal(blocked.contact.status, 'blocked');
-  assert.equal(blocked.contact.blockedAt, 200);
+  assert.equal(blocked.contact.blockedAt, 201);
   assert.equal(directory.requestOutgoing({ id: 'blocked-1', displayName: '待申请好友' }, { now: 300 }).error, 'blocked');
   assert.equal(directory.applyIncomingRequest({
     id: 'blocked-1',
@@ -177,19 +185,59 @@ test('blocking prevents new friend requests until the blocked record is explicit
   }, { now: 300 }).error, 'blocked');
   assert.equal(directory.block('blocked-1').action, 'already_blocked');
   assert.equal(directory.unblock('blocked-1').action, 'contact_unblocked');
-  assert.equal(directory.get('blocked-1'), null);
-  assert.equal(directory.requestOutgoing({ id: 'blocked-1', displayName: '重新申请' }, { now: 400, requestId: 'request-2' }).action, 'request_created');
+  assert.equal(directory.get('blocked-1').status, 'unblocked');
+  assert.equal(directory.applyIncomingRequest({
+    id: 'blocked-1',
+    displayName: '待申请好友',
+    requestId: 'request-1'
+  }, { now: 350 }).action, 'duplicate_terminal_delivery');
+  assert.equal(directory.requestOutgoing({ id: 'blocked-1', displayName: '重新申请' }, { now: 400, requestId: 'request-2' }).action, 'request_restarted');
+});
+
+test('friend removal keeps a replay tombstone and requires a fresh relationship request', () => {
+  const { directory } = createRuntime();
+  directory.applyIncomingRequest({
+    id: 'former-friend',
+    displayName: '已成为好友',
+    requestId: 'accepted-request'
+  }, { now: 100 });
+  directory.acceptIncoming('former-friend', {
+    now: 110,
+    requestId: 'accepted-request',
+    expectedUpdatedAt: 100
+  });
+  const removed = directory.removeFriend('former-friend', { now: 120 });
+  assert.equal(removed.ok, true);
+  assert.equal(removed.action, 'friend_removed');
+  assert.equal(removed.contact.status, 'removed');
+  assert.deepEqual(JSON.parse(JSON.stringify(directory.getAcceptedRefs().refs)), []);
+
+  const replay = directory.applyIncomingRequest({
+    id: 'former-friend',
+    displayName: '已成为好友',
+    requestId: 'accepted-request'
+  }, { now: 130 });
+  assert.equal(replay.action, 'duplicate_terminal_delivery');
+
+  const fresh = directory.applyIncomingRequest({
+    id: 'former-friend',
+    displayName: '已成为好友',
+    requestId: 'new-request-after-remove'
+  }, { now: 140 });
+  assert.equal(fresh.action, 'incoming_request_received');
+  assert.equal(fresh.contact.status, 'pending_incoming');
 });
 
 test('friend request transition methods are exposed as local adapter contracts only', () => {
   const { directory } = createRuntime();
   [
     'requestOutgoing', 'applyIncomingRequest', 'acceptIncoming',
-    'declineIncoming', 'cancelOutgoing', 'block', 'unblock'
+    'declineIncoming', 'cancelOutgoing', 'block', 'unblock', 'removeFriend',
+    'getPendingRequests'
   ].forEach((method) => assert.equal(typeof directory[method], 'function'));
   const source = directorySource;
-  assert.match(source, /does not discover accounts or send a request over the network itself/);
-  assert.match(source, /remote adapter must authenticate the other account/);
+  assert.match(source, /local lifecycle primitives, not network operations/);
+  assert.match(source, /authenticate the remote account and verify server/);
 });
 
 test('real-user directory validates typed accounts and exposes accepted friends only', () => {
