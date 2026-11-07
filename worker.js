@@ -15,6 +15,7 @@ import { createApp } from './worker/lib/app.js';
 import { createStore } from './worker/lib/store.js';
 import { applyMigrations } from './worker/lib/migrations.js';
 import { runTick } from './worker/lib/scheduler.js';
+import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
@@ -32,6 +33,24 @@ function readSchedulerConfig(env) {
       .map(value => value.trim())
       .filter(Boolean)
       .map(Number);
+  }
+  return config;
+}
+
+/**
+ * M2.1 time/presence parameters remain explicit operator configuration.
+ * Missing values are not replaced with guessed product defaults.
+ */
+function readSchedulePolicyConfig(env) {
+  const config = {};
+  if (env?.AUTONOMY_HEARTBEAT_TTL_MS != null) {
+    config.heartbeatTtlMs = Number(env.AUTONOMY_HEARTBEAT_TTL_MS);
+  }
+  if (env?.AUTONOMY_DEVICE_LEASE_MS != null) {
+    config.leaseDurationMs = Number(env.AUTONOMY_DEVICE_LEASE_MS);
+  }
+  if (env?.AUTONOMY_DEVICE_GRACE_MS != null) {
+    config.graceMs = Number(env.AUTONOMY_DEVICE_GRACE_MS);
   }
   return config;
 }
@@ -58,10 +77,16 @@ export class CloudDatabase {
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
       // gate 未接入：生产环境默认全部 defer，不会认领任何活动。
+      const timestamp = Date.now();
       const result = runTick({
         store: this.store,
-        now: Date.now(),
-        config: readSchedulerConfig(this.env)
+        now: timestamp,
+        config: readSchedulerConfig(this.env),
+        gate: createSchedulerGate({
+          store: this.store,
+          now: () => timestamp,
+          config: readSchedulePolicyConfig(this.env)
+        })
       });
       return Response.json({ ok: true, result });
     }
