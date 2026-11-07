@@ -428,3 +428,32 @@ test('deleting a character clears its pair metadata and references without affec
   assert.equal(refs.has(b1.value.assetId + '|role-avatar|role-b'), true);
   assert.equal(refs.has(b2.value.assetId + '|role-avatar|role-b'), true);
 });
+
+test('pair state normalization rejects dangling, repeated, duplicate and overlapping relationships', () => {
+  const { api } = createLibrary();
+  const assetA = 'as_' + 'A'.repeat(32);
+  const assetB = 'as_' + 'B'.repeat(32);
+  const assetC = 'as_' + 'C'.repeat(32);
+  const idA = 'avatar_' + assetA.slice(3);
+  const idB = 'avatar_' + assetB.slice(3);
+  const idC = 'avatar_' + assetC.slice(3);
+  const normalized = api._normalizeState({
+    activeId: idA,
+    items: [
+      { assetId: assetA, label: 'A' },
+      { assetId: assetB, label: 'B' },
+      { assetId: assetC, label: 'C' }
+    ],
+    pairs: [
+      { avatarIds: [idA, idB], label: 'valid', source: 'chat', createdAt: 10 },
+      { avatarIds: [idB, idA], label: 'duplicate reversed', createdAt: 11 },
+      { avatarIds: [idB, idC], label: 'overlap', createdAt: 12 },
+      { avatarIds: [idA, idA], label: 'same image', createdAt: 13 },
+      { avatarIds: [idA, 'avatar_missing'], label: 'dangling', createdAt: 14 }
+    ]
+  });
+  assert.equal(normalized.pairs.length, 1);
+  assert.equal(normalized.pairs[0].label, 'valid');
+  assert.equal(normalized.pairs[0].source, 'chat');
+  assert.deepEqual(Array.from(normalized.pairs[0].avatarIds), [idA, idB]);
+});
