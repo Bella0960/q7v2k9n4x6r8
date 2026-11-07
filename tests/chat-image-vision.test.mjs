@@ -74,6 +74,8 @@ test('avatar candidate prompt only appears when current user images exist and re
   assert.ok(prompt.includes('普通分享'));
   assert.ok(prompt.includes('不会自动替换当前头像'));
   assert.ok(prompt.includes('[[MAOMAO_AVATAR_CANDIDATE:编号]]'));
+  assert.ok(prompt.includes('[[MAOMAO_AVATAR_PAIR:编号A,编号B]]'));
+  assert.ok(prompt.includes('恰好两张'));
 });
 
 test('only an allowed current image can become one avatar candidate', () => {
@@ -126,7 +128,7 @@ const chatExtrasSource = fs.readFileSync(
 const avatarLibrarySource = fs.readFileSync(
   path.join(process.cwd(), 'shared/js/phone/role-avatar-library.js'), 'utf8'
 );
-const serviceWorkerSource = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
+const serviceWorkerSource = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');\nconst characterManagerSource = fs.readFileSync(path.join(process.cwd(), 'worldbook/characters/js/characters-manager.js'), 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 
 test('chat plus-image upload stores Blob assets and chat history stores only asset references', () => {
@@ -149,8 +151,8 @@ test('user image shares require first-use privacy confirmation and pass only cur
 });
 
 test('AI sees current-turn images and can only add an explicit avatar candidate after a successful reply', () => {
-  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v1'));
-  assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261107v1'));
+  assert.ok(chatDetailSource.includes('chat-image-vision.js?v=20261107v2'));
+  assert.ok(chatDetailSource.includes('role-avatar-library.js?v=20261107v2'));
   assert.ok(chatDetailSource.indexOf('storage/media-repository.js') < chatDetailSource.indexOf('role-avatar-library.js'));
   assert.ok(chatDetailSource.includes('ChatImageVision.prepareHistory'));
   assert.ok(chatDetailSource.includes('visionImageMids'));
@@ -160,6 +162,8 @@ test('AI sees current-turn images and can only add an explicit avatar candidate 
   assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.addAsset'));
   assert.match(chatDetailSource, /if\s*\(replySaved\s*&&\s*avatarCandidates\.length/);
   assert.ok(chatDetailSource.includes("source: 'chat'"));
+  assert.ok(chatDetailSource.includes('var avatarPairs = parsedAvatarCandidate.pairs || [];'));
+  assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.linkPair'));
 });
 
 test('ordinary group, background and non-image silent turns cannot add avatar candidates', () => {
@@ -189,8 +193,8 @@ test('deleted chat images release only chat references after single or bulk dele
 });
 
 test('PWA shell and package contracts include the chat vision runtime', () => {
-  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v177'"));
-  assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v1'));
+  assert.ok(serviceWorkerSource.includes("const CACHE_NAME = 'phone-app-pwa-v178'"));
+  assert.ok(serviceWorkerSource.includes('chat-image-vision.js?v=20261107v2'));
   assert.ok(serviceWorkerSource.includes('chat-context-policy.js?v=20261107vision1'));
   assert.ok(serviceWorkerSource.includes('chat-extras.js?t=20261107imagevision1'));
   assert.ok(packageJson.scripts['test:chat:image-vision']);
@@ -204,4 +208,54 @@ test('forwarding an asset-backed chat image adds a destination chat reference', 
   assert.ok(chatDetailSource.includes('fwd.assetId = String(msg.assetId)'));
   assert.ok(chatDetailSource.includes('if (linkedImageRef)'));
   assert.ok(chatDetailSource.includes('await _chatImageMediaRepo.removeRef(fwd.assetId'));
+});
+
+test('paired avatar markers resolve two distinct current images and never collapse into two unrelated singles', () => {
+  const api = createVision();
+  const images = [
+    { index: 1, mid: 'image-a', assetId: 'as_A' },
+    { index: 2, mid: 'image-b', assetId: 'as_B' },
+    { index: 3, mid: 'image-c', assetId: 'as_C' }
+  ];
+  const parsed = api.parseAvatarCandidateReply(
+    '这两张是一组情头。[[MAOMAO_AVATAR_PAIR:2,1]][[MAOMAO_AVATAR_CANDIDATE:3]]',
+    images,
+    1
+  );
+  assert.equal(parsed.text, '这两张是一组情头。');
+  assert.equal(parsed.pairs.length, 1);
+  assert.deepEqual(Array.from(parsed.pairs[0].images, image => image.mid), ['image-b', 'image-a']);
+  assert.equal(parsed.candidates.length, 0, 'a valid pair takes precedence over individual candidate markers');
+});
+
+test('invalid, repeated, unavailable, and interrupted pair markers never create a relationship', () => {
+  const api = createVision();
+  const images = [
+    { index: 1, mid: 'image-a', assetId: 'as_A' },
+    { index: 2, mid: 'image-b', assetId: 'as_B' }
+  ];
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,1]]', images, 1).pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,8]]', images, 1).pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2]]', images, 0).pairs.length, 0);
+  assert.equal(api.parseAvatarCandidateReply('[[MAOMAO_AVATAR_PAIR:1,2', images, 1).pairs.length, 0);
+  assert.equal(api.stripAvatarCandidateMarker('回复 [[MAOMAO_AVATAR_PAIR:'), '回复');
+});
+
+test('profile archive renders paired previews and supports switching either side or unlinking only the relation', () => {
+  assert.ok(characterManagerSource.includes('id="avatarPairList"'));
+  assert.ok(characterManagerSource.includes('getPairs(roleId)'));
+  assert.ok(characterManagerSource.includes('data-avatar-pair-asset'));
+  assert.ok(characterManagerSource.includes('data-avatar-pair-action="use"'));
+  assert.ok(characterManagerSource.includes('unlinkRoleAvatarPair'));
+  assert.ok(characterManagerSource.includes('library.unlinkPair(roleId, pairId)'));
+  assert.ok(characterManagerSource.includes('两张头像仍保留在收藏中'));
+});
+
+test('paired avatar library operations preserve isolated references and never change the active portrait', () => {
+  assert.ok(avatarLibrarySource.includes('function linkPair(roleId, firstAvatarId, secondAvatarId, options)'));
+  assert.ok(avatarLibrarySource.includes('function unlinkPair(roleId, pairId)'));
+  assert.ok(avatarLibrarySource.includes('pairs: previous.pairs'));
+  assert.ok(avatarLibrarySource.includes("return Promise.resolve(failure('PAIR_EXISTS'"));
+  assert.ok(avatarLibrarySource.includes('getPairs: getPairs'));
+  assert.ok(avatarLibrarySource.includes('unlinkPair: unlinkPair'));
 });
