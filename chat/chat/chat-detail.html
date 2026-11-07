@@ -6268,8 +6268,9 @@
                         ensureMid(stickerMessage);
                         return stickerMessage;
                     });
-                    if (fullText || aiStickerMessages.length) {
-                        // 正文与主动选择的表情一起落库，确保刷新后仍按原顺序显示。
+                    var avatarCandidates = parsedAvatarCandidate.candidates || [];
+                    if (fullText || aiStickerMessages.length || avatarCandidates.length) {
+                        // 正文、表情与头像候选都在同一轮回复中处理；候选只进收藏，不自动替换头像。
                         var aiMsg = null;
                         if (fullText) {
                             aiMsg = { role: 'assistant', text: fullText, time: Date.now(), voiceMode: presenceMode || 'online', name: groupReplyPick ? groupReplyPick.name : undefined, memberId: groupReplyPick && groupReplyPick.id != null ? String(groupReplyPick.id) : undefined };
@@ -6280,6 +6281,22 @@
                         });
                         window.__groupPrivateCardPending = false;
                         var replySaved = saveMessages(historyList);
+                        if (replySaved && avatarCandidates.length && !isGroupChat &&
+                            window.RoleAvatarLibrary && typeof window.RoleAvatarLibrary.addAsset === 'function') {
+                            for (var avatarCandidateIndex = 0; avatarCandidateIndex < avatarCandidates.length; avatarCandidateIndex++) {
+                                var avatarCandidate = avatarCandidates[avatarCandidateIndex];
+                                var candidateResult = await window.RoleAvatarLibrary.addAsset(
+                                    aliasRoleId || currentCharacter.id,
+                                    avatarCandidate.assetId,
+                                    { source: 'chat', label: '聊天候选头像' }
+                                );
+                                if (candidateResult && candidateResult.ok) {
+                                    if (typeof showToast === 'function') showToast('TA 把这张图片加入了头像收藏，当前头像没有改变');
+                                } else if (typeof showToast === 'function') {
+                                    showToast('头像候选保存失败，原头像没有变化');
+                                }
+                            }
+                        }
                         if (!replySaved && aiStickerMessages.length) {
                             // 保存未通过读回校验时，绝不把主动表情伪装成已发送。
                             aiStickerMessages.forEach(function (stickerMessage) {
