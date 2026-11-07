@@ -183,4 +183,12 @@
     var notifierScript = document.createElement('script');
     notifierScript.src = appBase + 'shared/js/chat-notifier.js?v=20261102v3';
     document.head.appendChild(notifierScript);
+
+    // NPC social discovery runs only on the chat list and Contacts surfaces.
+    // It performs no AI/network work unless the user has enabled discovery.
+    if (currentPage === 'chat.html' || currentPage === 'contacts.html') {
+        var npcSocialScript = document.createElement('script');
+        npcSocialScript.src = appBase + 'shared/js/phone/npc-social.js?v=20261108a';
+        document.head.appendChild(npcSocialScript);
+    }
 })();
