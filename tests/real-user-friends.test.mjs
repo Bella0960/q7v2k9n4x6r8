@@ -524,8 +524,7 @@ test("only the recipient can accept or decline; accepting creates the friendship
   assert.equal(friendsA.body.friends[0].acceptedRequestId, "request_accept_alice_01");
   assert.equal(friendsA.body.relationships[0].status, "accepted");
   assert.equal(friendsA.body.relationships[0].acceptedRequestId, "request_accept_alice_01");
-  assert.equal(friendsA.body.relationships[0].updatedAt, friendsA.body.snapshotAt > 0
-    ? friendsA.body.relationships[0].updatedAt : 0);
+  assert.ok(friendsA.body.relationships[0].updatedAt > 0);
 
   // Public profile fields are resolved from the authoritative account row on
   // every list read, not copied into a stale friendship snapshot.
@@ -639,7 +638,7 @@ test("Worker routes friend APIs separately and keeps messages disabled", async (
 test("friend roster pages by stable account ID and returns relationship tombstones without private fields", async () => {
   const context = await setup();
   const baseId = "account-alice-001";
-  const extraIds = ["account-extra-01", "account-extra-02", "account-extra-03"];
+  const extraIds = ["account-extra-01", "account-extra-02", "account-extra-03", "account-extra-04"];
   extraIds.forEach((id, index) => {
     context.db.accounts.set(id, {
       id, handle: "extra_" + (index + 1), display_name: "Extra " + (index + 1),
