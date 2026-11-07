@@ -238,6 +238,81 @@
     });
   }
 
+  function requestDeviceMetadata(path, method, body) {
+    var device = readDevice();
+    if (!device) return Promise.reject(new Error('设备尚未连接'));
+    return requestJson(path, {
+      method: method || 'GET',
+      device: device,
+      body: body
+    });
+  }
+
+  function characterPath(characterId) {
+    var value = String(characterId || '');
+    if (!value || value.length > 96) throw new Error('角色 ID 无效');
+    return encodeURIComponent(value);
+  }
+
+  function getGlobalAutonomy() {
+    return requestDeviceMetadata('/api/autonomy/global');
+  }
+
+  function setGlobalAutonomy(enabled) {
+    if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled 必须是布尔值'));
+    return requestDeviceMetadata('/api/autonomy/global', 'PUT', { enabled: enabled });
+  }
+
+  function getCharacterAutonomy(characterId) {
+    return requestDeviceMetadata('/api/autonomy/characters/' + characterPath(characterId));
+  }
+
+  function setCharacterAutonomy(characterId, enabled) {
+    if (enabled !== null && typeof enabled !== 'boolean') {
+      return Promise.reject(new Error('enabled 必须为 true、false 或 null'));
+    }
+    return requestDeviceMetadata(
+      '/api/autonomy/characters/' + characterPath(characterId),
+      'PUT',
+      { enabled: enabled }
+    );
+  }
+
+  function getCharacterSchedule(characterId) {
+    return requestDeviceMetadata('/api/characters/' + characterPath(characterId) + '/schedule');
+  }
+
+  function setCharacterSchedule(characterId, timeZone, schedule) {
+    if (!timeZone || !schedule || typeof schedule !== 'object') {
+      return Promise.reject(new Error('必须明确提供时区和角色作息'));
+    }
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/schedule',
+      'PUT',
+      { timeZone: timeZone, schedule: schedule }
+    );
+  }
+
+  function updatePresenceHeartbeat(foregroundActive) {
+    if (typeof foregroundActive !== 'boolean') {
+      return Promise.reject(new Error('foregroundActive 必须是布尔值'));
+    }
+    return requestDeviceMetadata('/api/presence/heartbeat', 'POST', {
+      foregroundActive: foregroundActive
+    });
+  }
+
+  function updateCharacterLease(characterId, action) {
+    if (['acquire', 'renew', 'release'].indexOf(action) === -1) {
+      return Promise.reject(new Error('lease action 无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/lease',
+      'POST',
+      { action: action }
+    );
+  }
+
   async function disconnect() {
     var device = readDevice();
     try {
@@ -403,6 +478,14 @@
     enablePush: function () { return enablePush(true); },
     disablePush: disablePush,
     sendTestPush: sendTestPush,
+    getGlobalAutonomy: getGlobalAutonomy,
+    setGlobalAutonomy: setGlobalAutonomy,
+    getCharacterAutonomy: getCharacterAutonomy,
+    setCharacterAutonomy: setCharacterAutonomy,
+    getCharacterSchedule: getCharacterSchedule,
+    setCharacterSchedule: setCharacterSchedule,
+    updatePresenceHeartbeat: updatePresenceHeartbeat,
+    updateCharacterLease: updateCharacterLease,
     disconnect: disconnect,
     getStatus: getStatus,
     refreshSettings: refreshSettings,
