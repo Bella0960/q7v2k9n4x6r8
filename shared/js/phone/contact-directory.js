@@ -614,6 +614,9 @@
         if (!snapshot || snapshot.complete !== true || !Array.isArray(snapshot.relationships)) {
             return { ok: false, error: 'incomplete_server_snapshot', contacts: [] };
         }
+        if (cleanText(snapshot.ownerAccountId, 96) !== owner) {
+            return { ok: false, error: 'server_snapshot_account_mismatch', contacts: [] };
+        }
         var snapshotAt = Number(snapshot.snapshotAt);
         if (!Number.isSafeInteger(snapshotAt) || snapshotAt <= 0) {
             return { ok: false, error: 'invalid_server_snapshot_time', contacts: [] };
