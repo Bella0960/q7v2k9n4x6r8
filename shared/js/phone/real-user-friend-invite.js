@@ -47,12 +47,13 @@
     }
     return code;
   }
-  function getQrPayload(serverPayload, shareUrl) {
+  function getQrPayload(serverPayload, shareUrl, locationLike) {
     var expectedCode = String(serverPayload && serverPayload.code || '').trim().toLowerCase();
     var payload = String(serverPayload && serverPayload.qrPayload || '').trim();
-    if (CODE_PATTERN.test(expectedCode) && extractFriendCode(payload) === expectedCode) return payload;
-    var fallbackCode = extractFriendCode(shareUrl, serverPayload && serverPayload.location);
-    if (fallbackCode && fallbackCode === expectedCode) return String(shareUrl);
+    if (!CODE_PATTERN.test(expectedCode)) throw new Error('invalid_friend_qr_payload');
+    if (extractFriendCode(payload) === expectedCode) return payload;
+    var fallbackCode = extractFriendCode(shareUrl, locationLike);
+    if (fallbackCode === expectedCode) return String(shareUrl);
     throw new Error('invalid_friend_qr_payload');
   }
   root.PhoneRealUserInviteLinks = {

@@ -62,6 +62,8 @@ test('the QR uses the exact server-returned payload and creates a local SVG', ()
   const serverPayload = { code, qrPayload: 'mao://friend/add?code=' + code };
   const qrPayload = api.getQrPayload(serverPayload, link);
   assert.equal(qrPayload, serverPayload.qrPayload);
+  assert.equal(api.getQrPayload({ code }, link, page), link);
+  assert.throws(() => api.getQrPayload({ code, qrPayload: 'https://attacker.example/#mao-friend=' + code }, link, page), /invalid_friend_qr_payload/);
   const qr = sandbox.qrcode(0, 'M');
   qr.addData(qrPayload, 'Byte');
   qr.make();
@@ -69,5 +71,4 @@ test('the QR uses the exact server-returned payload and creates a local SVG', ()
   assert.match(svg, /^<svg/);
   assert.match(svg, /viewBox=/);
   assert.ok(qr.getModuleCount() >= 21);
-  assert.throws(() => api.getQrPayload({ code, qrPayload: 'https://attacker.example/#mao-friend=' + code }, link), /invalid_friend_qr_payload/);
 });

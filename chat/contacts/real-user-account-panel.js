@@ -295,7 +295,7 @@
       if (!shareUrl) throw new Error('share_url_unavailable');
       currentCode.shareUrl = shareUrl;
       if (typeof root.qrcode !== 'function') throw new Error('qr_generator_unavailable');
-      var qrPayload = inviteLinks.getQrPayload(payload, shareUrl);
+      var qrPayload = inviteLinks.getQrPayload(payload, shareUrl, root.location);
       currentCode.qrPayload = qrPayload;
       var qr = root.qrcode(0, 'M');
       qr.addData(qrPayload, 'Byte');
