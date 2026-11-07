@@ -17,9 +17,10 @@ function makeId() {
   return `tick_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function log(store, now, status, reasonCode, detail) {
+function log(store, now, status, reasonCode, detail, deviceId = null) {
   store.logExecution({
     id: makeId(),
+    deviceId,
     kind: 'autonomy_tick',
     status,
     reasonCode,
@@ -45,8 +46,10 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
   });
 
   const summary = { ok: true, due: tasks.length, claimed: 0, deferred: 0, superseded: 0, failed: 0, lost: 0 };
+  const taskDeviceById = new Map(tasks.map(task => [task.id, task.device_id || null]));
 
   for (const decision of decisions) {
+    const deviceId = taskDeviceById.get(decision.taskId) || null;
     if (decision.action === 'claim') {
       // The current Worker has no message-generation executor. Do not reserve
       // a task and leave it in "running" until an executor is actually wired.
@@ -61,7 +64,7 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
           });
           if (!released) {
             summary.lost += 1;
-            log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId });
+            log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId }, deviceId);
             continue;
           }
         }
@@ -69,7 +72,7 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
         log(store, now, 'deferred', REASON_CODES.EXECUTOR_UNAVAILABLE, {
           taskId: decision.taskId,
           releasedExpiredLease: decision.expectedStatus === 'running'
-        });
+        }, deviceId);
         continue;
       }
 
@@ -86,10 +89,10 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
         log(store, now, 'claimed', REASON_CODES.CLAIMED, {
           taskId: decision.taskId,
           attemptCount: decision.attemptCount
-        });
+        }, deviceId);
       } else {
         summary.lost += 1;
-        log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId });
+        log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId }, deviceId);
       }
       continue;
     }
@@ -107,7 +110,7 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
       else summary.lost += 1;
       log(store, now, failed ? 'failed' : 'deferred',
         failed ? decision.reason : REASON_CODES.CLAIM_LOST,
-        { taskId: decision.taskId });
+        { taskId: decision.taskId }, deviceId);
       continue;
     }
 
@@ -120,16 +123,16 @@ export function runTick({ store, now, config, gate = null, owner = 'cloud', exec
       });
       if (superseded) {
         summary.superseded += 1;
-        log(store, now, 'superseded', decision.reason, { taskId: decision.taskId });
+        log(store, now, 'superseded', decision.reason, { taskId: decision.taskId }, deviceId);
       } else {
         summary.lost += 1;
-        log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId });
+        log(store, now, 'deferred', REASON_CODES.CLAIM_LOST, { taskId: decision.taskId }, deviceId);
       }
       continue;
     }
 
     summary.deferred += 1;
-    log(store, now, 'deferred', decision.reason, { taskId: decision.taskId });
+    log(store, now, 'deferred', decision.reason, { taskId: decision.taskId }, deviceId);
   }
 
   return summary;
