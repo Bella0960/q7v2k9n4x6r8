@@ -509,13 +509,20 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     }
     const after = parseFriendMessageCursor(afterRaw);
     const before = parseFriendMessageCursor(beforeRaw);
-    const rows = await store.listFriendMessages({
+    const fetchedRows = await store.listFriendMessages({
       userId: account.user_id,
       friendId,
       after,
       before,
-      limit: FRIEND_MESSAGE_LIMIT
+      limit: FRIEND_MESSAGE_LIMIT + 1
     });
+    const hasMore = fetchedRows.length > FRIEND_MESSAGE_LIMIT;
+    // An older-page query returns the nearest preceding rows in ascending order;
+    // keep the last 50. An initial page keeps the newest 50; polling keeps the
+    // first 50 newer rows so the next cursor can drain the remainder.
+    const rows = afterRaw
+      ? fetchedRows.slice(0, FRIEND_MESSAGE_LIMIT)
+      : fetchedRows.slice(-FRIEND_MESSAGE_LIMIT);
     const first = rows.length ? rows[0] : null;
     const last = rows.length ? rows[rows.length - 1] : null;
     const cursorOf = row => row
@@ -529,7 +536,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       messages: rows.map(friendMessageView),
       nextCursor: cursorOf(last) || afterRaw || null,
       olderCursor: cursorOf(first) || beforeRaw || null,
-      hasMore: rows.length === FRIEND_MESSAGE_LIMIT
+      hasMore
     });
   }
 
