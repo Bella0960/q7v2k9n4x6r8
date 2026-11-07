@@ -639,12 +639,15 @@ test('本机执行器只能在自己持有有效前台心跳与角色租约时�
   });
 
   const localGate = makeGate(snapshot, { executorDeviceId: 'device_local_executor' });
-  const allowed = localGate(contactTask());
+  const localTask = contactTask({
+    payload_json: JSON.stringify({ contextVersion: 7, sourceDeviceId: 'device_local_executor' })
+  });
+  const allowed = localGate(localTask);
   assert.equal(allowed.autonomyAllowed, true);
   assert.equal(allowed.characterState, 'active');
   assert.equal(allowed.latestContextVersion, 7);
 
-  const wrongContextDevice = makeGate(snapshot, { executorDeviceId: 'device_other_executor' })(contactTask());
+  const wrongContextDevice = makeGate(snapshot, { executorDeviceId: 'device_other_executor' })(localTask);
   assert.equal(wrongContextDevice.autonomyAllowed, false);
   assert.equal(wrongContextDevice.reasonCode, REASON_CODES.DEVICE_CONTEXT_NOT_LOCAL);
 
@@ -654,13 +657,20 @@ test('本机执行器只能在自己持有有效前台心跳与角色租约时�
       devices: snapshot.presence.devices,
       leases: []
     }
-  }), { executorDeviceId: 'device_local_executor' })(contactTask());
+  }), { executorDeviceId: 'device_local_executor' })(localTask);
   assert.equal(noLease.autonomyAllowed, false);
   assert.equal(noLease.reasonCode, REASON_CODES.DEVICE_EXECUTOR_LEASE_REQUIRED);
 
-  const cloudGate = makeGate(snapshot)(contactTask());
+  const cloudGate = makeGate(snapshot)(localTask);
   assert.equal(cloudGate.autonomyAllowed, false);
   assert.equal(cloudGate.reasonCode, REASON_CODES.FOREGROUND_LEASE_HELD);
+  const staleSource = makeGate(validGateSnapshot({
+    contextSourceDeviceId: 'device_newer_context',
+    presence: snapshot.presence
+  }), { executorDeviceId: 'device_local_executor' })(localTask);
+  assert.equal(staleSource.autonomyAllowed, false);
+  assert.equal(staleSource.reasonCode, REASON_CODES.STALE_CONTEXT);
+  assert.equal(staleSource.supersede, true);
 });
 
 test('scheduler gate 缺少持久化数据源时明确 fail-closed', () => {
