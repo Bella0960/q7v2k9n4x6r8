@@ -593,8 +593,10 @@
     if (!saveMessages(next)) {
       await storedAssets.reduce(function (chain, item) {
         return chain.then(function () {
-          return chatImageMediaRepo.removeRef(item.assetId, 'chat-message', item.mid).then(function () {
-            return chatImageMediaRepo.removeAsset(item.assetId);
+          return chatImageMediaRepo.removeRef(item.assetId, 'chat-message', item.mid).then(function (released) {
+            if (released && released.ok && released.value && released.value.removed) {
+              return chatImageMediaRepo.removeAsset(item.assetId);
+            }
           });
         }).catch(function () {});
       }, Promise.resolve());
