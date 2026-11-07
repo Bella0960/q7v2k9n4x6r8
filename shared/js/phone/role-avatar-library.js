@@ -813,11 +813,11 @@
         if (!stateResult.ok) return Promise.resolve(stateResult);
         var state = stateResult.value;
         var media = mediaRepository();
-        if (!media || typeof media.removeRef !== 'function') return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
+        if (!media || typeof media.removeRef !== 'function' || typeof media.removeAsset !== 'function') return Promise.resolve(failure('DB_UNAVAILABLE', 'MediaRepository is unavailable'));
 
         var released = [];
         var cleanupItems = [];
-        var metadataCleared = false;
+        var referencesReleased = false;
         function addCleanupAsset(assetId) {
             assetId = String(assetId || '');
             if (!ASSET_RE.test(assetId) || cleanupItems.some(function (item) { return item.assetId === assetId; })) return;
@@ -881,32 +881,42 @@
                 return returnAfterRestore(result);
             }
 
-            try {
-                global.localStorage.removeItem(storageKey(roleId));
-                metadataCleared = true;
-            } catch (error) {
-                return returnAfterRestore(failure('STORAGE_FAILED', 'role avatar metadata could not be cleared'));
-            }
-
+            // Once every owner reference has been released, keep the local index until
+            // every unowned blob is either deleted or proven to be shared. That index is
+            // the retry manifest if a transient IndexedDB failure interrupts blob cleanup.
+            referencesReleased = true;
             return cleanupItems.reduce(function (chain, item) {
                 return chain.then(function (meta) {
                     return media.removeAsset(item.assetId).then(function (removed) {
-                        if (!removed || !removed.ok) meta.retained = meta.retained + 1;
+                        if (!removed || !removed.ok) {
+                            meta.retained = meta.retained + 1;
+                            var code = removed && removed.error ? removed.error.code : '';
+                            if (code !== 'VALIDATION_FAILED') meta.retryRequired = true;
+                        }
                         return meta;
                     }).catch(function () {
                         meta.retained = meta.retained + 1;
+                        meta.retryRequired = true;
                         return meta;
                     });
                 });
-            }, Promise.resolve({ retained: 0 })).then(function (meta) {
+            }, Promise.resolve({ retained: 0, retryRequired: false })).then(function (meta) {
+                if (meta.retryRequired) {
+                    return failure('STORAGE_FAILED', 'role references were released, but some unowned media could not be verified or deleted; retry cleanup');
+                }
+                try {
+                    global.localStorage.removeItem(storageKey(roleId));
+                } catch (error) {
+                    return failure('STORAGE_FAILED', 'role avatar metadata could not be cleared; retry cleanup');
+                }
                 if (!markRoleDeletionComplete(roleId)) {
                     return failure('STORAGE_FAILED', 'role media references were released, but deletion completion could not be saved; retry cleanup');
                 }
                 return { ok: true, value: { removed: cleanupItems.length, retained: meta.retained } };
             });
         }).catch(function (error) {
-            if (metadataCleared) {
-                return failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar asset cleanup was incomplete');
+            if (referencesReleased) {
+                return failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar asset cleanup was incomplete; retry cleanup');
             }
             return returnAfterRestore(failure('STORAGE_FAILED', error && error.message ? error.message : 'role avatar library could not be removed'));
         });
