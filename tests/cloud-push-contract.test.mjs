@@ -245,6 +245,9 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
   }
   assert.ok(clientSource.includes('function createDevicePairingToken()'));
   assert.ok(clientSource.includes('function connectDeviceWithPairingCode('));
+  assert.ok(clientSource.includes('pushSupported: false'));
+  assert.ok(clientSource.includes('error.deviceRegistered = true'));
+  assert.ok(clientSource.includes("Web Push 不可用不应阻止设备配对状态"));
   assert.ok(clientSource.includes('setGlobalAutonomy(desired)'));
   assert.ok(clientSource.includes('getGlobalAutonomy()'));
   assert.ok(clientSource.includes('不再因 DEVICE_UNKNOWN / DEVICE_CONFLICT 自动销毁本机凭据'));
