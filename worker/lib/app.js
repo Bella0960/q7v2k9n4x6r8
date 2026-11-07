@@ -1021,7 +1021,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           pushAcceptedAt: row.push_accepted_at == null ? null : Number(row.push_accepted_at),
           deviceReceivedAt: row.device_received_at == null ? null : Number(row.device_received_at),
           localSavedAt: row.local_saved_at == null ? null : Number(row.local_saved_at),
-          readAt: row.read_at == null ? null : Number(row.read_at)
+          readAt: row.read_at == null ? null : Number(row.read_at),
+          readByDeviceId: row.read_by_device_id || null
+        },
+        deviceLifecycle: {
+          deviceReceivedAt: row.current_device_received_at == null ? null : Number(row.current_device_received_at),
+          localSavedAt: row.current_device_local_saved_at == null ? null : Number(row.current_device_local_saved_at),
+          readAt: row.current_device_read_at == null ? null : Number(row.current_device_read_at)
         },
         payload
       };
@@ -1039,7 +1045,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       now: now()
     });
     if (!result) {
-      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在、不属于当前账号或当前设备已撤销');
     }
     return ok(result);
   }
@@ -1053,7 +1059,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       serverMessageId
     });
     if (!row) {
-      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在、不属于当前账号或当前设备已撤销');
     }
     return ok({
       serverMessageId: row.server_message_id,
@@ -1066,6 +1072,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         localSavedAt: row.local_saved_at == null ? null : Number(row.local_saved_at),
         readAt: row.read_at == null ? null : Number(row.read_at),
         readByDeviceId: row.read_by_device_id || null
+      },
+      deviceLifecycle: {
+        deviceReceivedAt: row.current_device_received_at == null ? null : Number(row.current_device_received_at),
+        localSavedAt: row.current_device_local_saved_at == null ? null : Number(row.current_device_local_saved_at),
+        readAt: row.current_device_read_at == null ? null : Number(row.current_device_read_at)
       }
     });
   }
@@ -1080,7 +1091,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       now: now()
     });
     if (!result) {
-      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在、不属于当前账号或当前设备已撤销');
     }
     return ok(result);
   }
@@ -1095,7 +1106,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       now: now()
     });
     if (!result) {
-      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在或不属于当前设备');
+      throw new ApiError(404, 'OUTBOUND_MESSAGE_NOT_FOUND', '消息不存在、不属于当前账号或当前设备已撤销');
     }
     if (result.reason === 'not_saved') {
       throw new ApiError(409, 'OUTBOUND_NOT_SAVED', '消息尚未保存到本地聊天记录，不能标记已读');
