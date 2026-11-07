@@ -220,14 +220,14 @@ test('portrait studio can add a cropped Blob without automatically replacing the
   assert.ok(managerSource.includes("output.toBlob(function (blob)"));
   assert.ok(managerSource.includes('RoleAvatarLibrary.add(roleId, blob'));
   assert.ok(managerSource.includes('新头像已加入这个角色的收藏。选择缩略图即可设为当前头像。'));
-  assert.ok(managerSource.includes('portraitPurpose = \\'profile\\''));
+  assert.ok(managerSource.includes("portraitPurpose = 'profile'"));
 });
 
 test('current avatar changes are persisted with a compatibility DataURL and roll back on save failure', () => {
   assert.ok(managerSource.includes('library.setActive(roleId, item.id)'));
   assert.ok(managerSource.includes('library.toDataUrl(item.assetId)'));
   assert.ok(managerSource.includes("const previousAvatar = target.avatar || ''"));
-  assert.ok(managerSource.includes('library.setActive(roleId, previousActive ? previousActive.id : \\'\\')'));
+  assert.ok(managerSource.includes("library.setActive(roleId, previousActive ? previousActive.id : '')"));
   assert.ok(managerSource.includes('target.avatar = previousAvatar'));
 });
 
@@ -254,7 +254,8 @@ test('PWA shell caches the role portrait archive and its runtime at v176', () =>
 
 
 test('role removal restores already released references when a later cleanup step fails', async () => {
-  const failAtSecond = createLibrary({}, { failRemoveRefFor: second.value.assetId });
+  const secondAssetId = 'as_' + 'A'.repeat(30) + 'BA';
+  const failAtSecond = createLibrary({}, { failRemoveRefFor: secondAssetId });
   const a = await failAtSecond.api.add('role-a', 'data:image/jpeg;base64,AAA');
   const b = await failAtSecond.api.add('role-a', 'data:image/jpeg;base64,BBB');
   const result = await failAtSecond.api.removeRole('role-a');
