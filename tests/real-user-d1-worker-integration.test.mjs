@@ -34,6 +34,10 @@ function createD1Adapter(database, options = {}) {
           return this;
         },
         async first() {
+          if (options.beforeSessionLookup &&
+              sql.includes("FROM real_user_sessions s JOIN real_user_accounts")) {
+            await options.beforeSessionLookup();
+          }
           const row = database.prepare(sql).get(...values) || null;
           if (options.afterPendingPairRead &&
               sql.includes("FROM real_user_friend_requests WHERE pair_low = ?") &&
@@ -45,8 +49,10 @@ function createD1Adapter(database, options = {}) {
         all() {
           return { results: database.prepare(sql).all(...values) };
         },
-        run() {
+        async run() {
+          if (options.beforeRun) await options.beforeRun(sql, values);
           const result = database.prepare(sql).run(...values);
+          if (options.afterRun) await options.afterRun(sql, values, result);
           return { success: true, meta: { changes: Number(result.changes) } };
         }
       };
@@ -127,6 +133,72 @@ function createEnvironment(database, adapterOptions = {}) {
     REAL_USER_FRIENDS_ENABLED: "true",
     DB: createD1Adapter(database, adapterOptions),
     AUTH_LIMITER: { async limit() { return { success: true }; } }
+  };
+}
+
+function createMutationGate(actions) {
+  const expected = new Set(actions);
+  const arrived = new Set();
+  const releases = new Map();
+  const completionResolvers = new Map();
+  const completionPromises = new Map();
+  let readyResolve;
+  const ready = new Promise(resolve => { readyResolve = resolve; });
+
+  for (const action of expected) {
+    let release;
+    releases.set(action, new Promise(resolve => { release = resolve; }));
+    releases.set(action + ":release", release);
+    let complete;
+    completionPromises.set(action, new Promise(resolve => { complete = resolve; }));
+    completionResolvers.set(action, complete);
+  }
+
+  function actionFor(sql) {
+    if (sql.startsWith("UPDATE real_user_friend_requests SET status = ?")) return "accept";
+    if (sql.startsWith("INSERT OR IGNORE INTO real_user_blocks")) return "block";
+    if (sql.startsWith("UPDATE real_user_friendships SET status = 'removed'")) return "remove";
+    return "";
+  }
+
+  return {
+    async beforeRun(sql) {
+      const action = actionFor(sql);
+      if (!expected.has(action)) return;
+      arrived.add(action);
+      if (arrived.size === expected.size) readyResolve();
+      await releases.get(action);
+    },
+    afterRun(sql) {
+      const action = actionFor(sql);
+      if (expected.has(action)) completionResolvers.get(action)();
+    },
+    waitUntilReady() { return ready; },
+    release(action) { releases.get(action + ":release")(); },
+    waitUntilComplete(action) { return completionPromises.get(action); }
+  };
+}
+
+async function seedRacePair(suffix) {
+  const database = createDatabase();
+  const env = createEnvironment(database);
+  const now = Date.now() - 10000;
+  const aliceId = "account-race-a-" + suffix;
+  const bobId = "account-race-b-" + suffix;
+  const aliceToken = "a".repeat(64);
+  const bobToken = "b".repeat(64);
+  addAccount(database, aliceId, "racea_" + suffix, "Race Alice", now);
+  addAccount(database, bobId, "raceb_" + suffix, "Race Bob", now);
+  await addSession(database, aliceId, aliceToken, now);
+  await addSession(database, bobId, bobToken, now);
+  return {
+    database,
+    env,
+    aliceId,
+    bobId,
+    aliceToken,
+    bobToken,
+    pair: aliceId < bobId ? [aliceId, bobId] : [bobId, aliceId]
   };
 }
 
@@ -575,6 +647,179 @@ if (!DatabaseSync) {
     }
   });
 
+
+
+  test("acceptance and blocking are serialized so a blocked pair can never remain accepted", async () => {
+    for (const blockFirst of [true, false]) {
+      const fixture = await seedRacePair(blockFirst ? "block-first" : "accept-first");
+      const { database, aliceId, bobId, aliceToken, bobToken, pair } = fixture;
+      try {
+        const requestId = blockFirst ? "request_block_order_01" : "request_accept_order_01";
+        addPendingRequest(database, requestId, aliceId, bobId, Date.now() - 1000);
+        const gate = createMutationGate(["accept", "block"]);
+        const raceEnv = createEnvironment(database, {
+          beforeRun: gate.beforeRun,
+          afterRun: gate.afterRun
+        });
+        const acceptPromise = callWorker(
+          raceEnv,
+          "/api/real-user-chat/v1/friends/requests/" + requestId + "/accept",
+          "POST",
+          { cookie: bobToken }
+        );
+        const blockPromise = callWorker(
+          raceEnv,
+          "/api/real-user-chat/v1/friends/" + aliceId + "/block",
+          "POST",
+          { cookie: bobToken }
+        );
+
+        await gate.waitUntilReady();
+        const firstAction = blockFirst ? "block" : "accept";
+        const secondAction = blockFirst ? "accept" : "block";
+        gate.release(firstAction);
+        await gate.waitUntilComplete(firstAction);
+        gate.release(secondAction);
+        const [accepted, blocked] = await Promise.all([acceptPromise, blockPromise]);
+
+        assert.equal(blocked.response.status, 200);
+        assert.equal(blocked.body.blocked, true);
+        const requestRow = database.prepare(
+          "SELECT status FROM real_user_friend_requests WHERE id = ?"
+        ).get(requestId);
+        assert.equal(database.prepare(
+          "SELECT COUNT(*) AS count FROM real_user_blocks WHERE blocker_id = ? AND blocked_id = ?"
+        ).get(bobId, aliceId).count, 1);
+
+        const friendship = database.prepare(
+          "SELECT status FROM real_user_friendships WHERE pair_low = ? AND pair_high = ?"
+        ).get(...pair);
+        if (blockFirst) {
+          assert.equal(accepted.response.status, 409);
+          assert.equal(accepted.body.status, "cancelled");
+          assert.equal(requestRow.status, "cancelled");
+          assert.equal(friendship, undefined,
+            "blocking before acceptance must not create a friendship row");
+        } else {
+          assert.equal(accepted.response.status, 200);
+          assert.equal(requestRow.status, "accepted");
+          assert.equal(friendship.status, "removed",
+            "blocking after acceptance must atomically revoke the friendship");
+        }
+        assert.notEqual(friendship && friendship.status, "accepted");
+      } finally {
+        database.close();
+      }
+    }
+  });
+
+  test("friend removal and re-acceptance obey the serialized operation order", async () => {
+    for (const removeFirst of [true, false]) {
+      const fixture = await seedRacePair(removeFirst ? "remove-first" : "accept-first");
+      const { database, aliceId, bobId, aliceToken, bobToken, pair } = fixture;
+      try {
+        const oldRequestId = "request_remove_old_" + (removeFirst ? "01" : "02");
+        const requestId = "request_remove_new_" + (removeFirst ? "01" : "02");
+        addPendingRequest(database, oldRequestId, aliceId, bobId, Date.now() - 3000);
+        const acceptedOld = database.prepare(
+          "UPDATE real_user_friend_requests SET status = 'accepted', updated_at = ?, responded_at = ? WHERE id = ?"
+        ).run(Date.now() - 2000, Date.now() - 2000, oldRequestId);
+        assert.equal(Number(acceptedOld.changes), 1);
+        database.prepare(
+          "UPDATE real_user_friendships SET status = 'removed', updated_at = ? " +
+          "WHERE pair_low = ? AND pair_high = ? AND status = 'accepted'"
+        ).run(Date.now() - 1500, ...pair);
+        addPendingRequest(database, requestId, aliceId, bobId, Date.now() - 1000);
+
+        const gate = createMutationGate(["accept", "remove"]);
+        const raceEnv = createEnvironment(database, {
+          beforeRun: gate.beforeRun,
+          afterRun: gate.afterRun
+        });
+        const acceptPromise = callWorker(
+          raceEnv,
+          "/api/real-user-chat/v1/friends/requests/" + requestId + "/accept",
+          "POST",
+          { cookie: bobToken }
+        );
+        const removePromise = callWorker(
+          raceEnv,
+          "/api/real-user-chat/v1/friends/" + bobId,
+          "DELETE",
+          { cookie: aliceToken }
+        );
+
+        await gate.waitUntilReady();
+        const firstAction = removeFirst ? "remove" : "accept";
+        const secondAction = removeFirst ? "accept" : "remove";
+        gate.release(firstAction);
+        await gate.waitUntilComplete(firstAction);
+        gate.release(secondAction);
+        const [accepted, removed] = await Promise.all([acceptPromise, removePromise]);
+
+        assert.equal(accepted.response.status, 200);
+        assert.equal(removed.response.status, 200);
+        const friendship = database.prepare(
+          "SELECT status, accepted_request_id FROM real_user_friendships " +
+          "WHERE pair_low = ? AND pair_high = ?"
+        ).get(...pair);
+        assert.equal(friendship.accepted_request_id, requestId);
+        if (removeFirst) {
+          assert.equal(removed.body.removed, false,
+            "a remove that linearizes before re-acceptance cannot remove a friendship that does not exist yet");
+          assert.equal(friendship.status, "accepted");
+        } else {
+          assert.equal(removed.body.removed, true);
+          assert.equal(friendship.status, "removed",
+            "a remove that linearizes after acceptance must leave a tombstone");
+        }
+      } finally {
+        database.close();
+      }
+    }
+  });
+
+  test("logout completed before session validation prevents a pending friend mutation", async () => {
+    const fixture = await seedRacePair("logout-race");
+    const { database, aliceToken, bobId } = fixture;
+    try {
+      let reachedResolve;
+      let releaseLookup;
+      const reached = new Promise(resolve => { reachedResolve = resolve; });
+      const lookupGate = new Promise(resolve => { releaseLookup = resolve; });
+      let intercepted = false;
+      const gatedEnv = createEnvironment(database, {
+        beforeSessionLookup: async () => {
+          if (intercepted) return;
+          intercepted = true;
+          reachedResolve();
+          await lookupGate;
+        }
+      });
+      const friendsPrefix = "/api/real-user-chat/v1/friends";
+      const authPrefix = "/api/real-user-chat/v1/auth";
+      const pendingBlock = callWorker(
+        gatedEnv, friendsPrefix + "/" + bobId + "/block", "POST", { cookie: aliceToken }
+      );
+      await reached;
+
+      const logout = await callWorker(
+        fixture.env, authPrefix + "/logout", "POST", { cookie: aliceToken }
+      );
+      assert.equal(logout.response.status, 200);
+      releaseLookup();
+
+      const blocked = await pendingBlock;
+      assert.equal(blocked.response.status, 401);
+      assert.equal(blocked.body.error, "authentication_required");
+      assert.equal(database.prepare(
+        "SELECT COUNT(*) AS count FROM real_user_blocks WHERE blocker_id = ? AND blocked_id = ?"
+      ).get(fixture.aliceId, bobId).count, 0,
+      "a session revoked before authentication completes must not authorize a later relationship mutation");
+    } finally {
+      database.close();
+    }
+  });
 
   test("simultaneous QR requests are serialized by the real pending-pair unique index", async () => {
     const database = createDatabase();
