@@ -196,17 +196,17 @@ NPC 不再只是主角色档案中的人物介绍，而能在合理的剧情/生
 3. **暂缓 LIB-001**：PDF 单词提取与导入暂不排期；未来再扩展单词卡、间隔复习和类似百词斩的学习流程。
 4. 每个阶段单独分支和 Draft PR，明确记录测试、真实手机验收、备份影响和未完成项。
 
-## 当前验证状态
+## 当前验证状态（2026-11-08 更新）
 
 | 项目 | 状态 | 说明 |
 |---|---|---|
-| MCP 连接中心 | PLANNED | 尚未实现 |
-| PDF 普通文本解析 | PLANNED | 尚未实现 |
-| PDF OCR | PLANNED | 尚未实现 |
-| 单词本和备份 | PLANNED | 尚未实现 |
-| NPC 自动生成 | PLANNED | 尚未实现 |
-| NPC 好友申请闭环 | PLANNED | 尚未实现 |
-| NPC 接受后聊天 | PLANNED | 尚未实现 |
-| NPC 真实后台推送 | NOT VERIFIED | 不视为本路线图已完成 |
+| MCP 连接中心 | IN PROGRESS | Draft PR #202；已提交 Streamable HTTP 连接、工具清单和逐次确认调用；AI 自动工具选择未实现，测试/构建未验证 |
+| PDF 普通文本解析 | DEFERRED | 用户已明确暂缓，当前批次不开发 |
+| PDF OCR | DEFERRED | 随 PDF 导入一起暂缓 |
+| 单词本和备份 | DEFERRED | 未来再扩展单词卡、例句练习和间隔复习 |
+| NPC 自动生成 | IN PROGRESS | Draft PR #204；通讯录打开时限频检查，默认启用，可关闭 |
+| NPC 好友申请闭环 | IN PROGRESS | Draft PR #204；独立收件箱、接受/拒绝/屏蔽和重复保护已提交 |
+| NPC 接受后聊天 | IN PROGRESS | 接受后写入独立 AI 角色和首次问候；自动化测试/真机验证未执行 |
+| NPC 真实后台推送 | DEFERRED / NOT VERIFIED | 当前只是打开通讯录时检查，不是网页关闭后的后台推送 |
 
-**本路线图仅登记需求与验收边界。没有任何功能代码、用户数据或生产部署在本次文档变更中被修改。**
+**当前代码状态：** MCP 见 [PR #202](https://github.com/Bella0960/MAOMAO/pull/202)；NPC 见 [PR #204](https://github.com/Bella0960/MAOMAO/pull/204)，后者依赖 [PR #199](https://github.com/Bella0960/MAOMAO/pull/199)。均为 Draft，未合并 main、未部署。测试与真实手机验收仍未验证。
