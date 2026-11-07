@@ -204,6 +204,18 @@
     });
   }
 
+  // Refresh the signed-in profile from the HttpOnly-cookie session endpoint.
+  // The browser never treats an old in-memory profile as authoritative.
+  async function refreshAccount() {
+    requireAuth();
+    if (!state.account) throw makeError('authentication_required', 401);
+    var payload = await request('/v1/auth/me');
+    var updated = normalizeAccount(payload.account);
+    if (!updated) throw makeError('invalid_account_response', 200, payload);
+    state.account = updated;
+    return updated;
+  }
+
   async function updateProfile(displayName) {
     requireAuth();
     if (!state.account) throw makeError('authentication_required', 401);
@@ -355,9 +367,10 @@
   }
 
   root.PhoneRealUserAccountClient = {
-    version: 1,
+    version: 2,
     discover: discover,
     restore: restore,
+    refreshAccount: refreshAccount,
     register: register,
     login: login,
     updateProfile: updateProfile,
