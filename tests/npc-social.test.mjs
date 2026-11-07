@@ -158,6 +158,34 @@ test('NPC discovery aborts its AI request and discards the result when the page 
   assert.equal(h.context.NPCSocial.getPendingCount(), 0, 'a background result must not be saved as a friend request');
 });
 
+test('NPC validator rejects English relationship and offline-meeting language before storing requests', async () => {
+  const safeCandidate = {
+    create: true,
+    name: '林知夏',
+    profession: '独立书店店员',
+    persona: '一位友善的虚构人物，喜欢阅读和分享日常。',
+    greeting: '你好，很高兴认识你。',
+    reason: '因为共同的读书活动认识。',
+    speechStyle: '表达自然，句子简洁。'
+  };
+  const unsafeCases = [
+    { field: 'persona', value: 'She wants to be your girlfriend and plan romantic dates.' },
+    { field: 'reason', value: 'I would like to meet up in person after class.' },
+    { field: 'greeting', value: '我们可以在线下约见。' }
+  ];
+
+  for (const item of unsafeCases) {
+    const h = createHarness();
+    h.setCompleteJSONHandler(async () => ({
+      ok: true,
+      data: { ...safeCandidate, [item.field]: item.value }
+    }));
+    await assert.rejects(h.context.NPCSocial.discoverNow(), /适龄交友检查/);
+    assert.equal(h.context.NPCSocial.getPendingCount(), 0, 'unsafe output must never enter the request queue');
+    assert.equal(h.roles.length, 1, 'unsafe output must not create a contact');
+  }
+});
+
 test('manual NPC discovery creates a pending application, then acceptance creates an isolated AI contact', async () => {
   const h = createHarness();
   const result = await h.context.NPCSocial.discoverNow();
@@ -228,8 +256,8 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /data-action="block"/);
   assert.match(contacts, /npc-friends\.html/);
   assert.ok(nav.includes("currentPage === 'chat.html' || currentPage === 'contacts.html'"));
-  assert.match(page, /npc-social\.js\?v=20261108e/);
-  assert.ok(nav.includes("npc-social.js?v=20261108e"));
+  assert.match(page, /npc-social\.js\?v=20261108f/);
+  assert.ok(nav.includes("npc-social.js?v=20261108f"));
   assert.ok(source.includes('role.worldBookIds'));
   assert.match(source, /面向青少年用户/);
   assert.match(source, /npcFriendWelcome: true/);
