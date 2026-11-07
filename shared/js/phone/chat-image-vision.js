@@ -1,14 +1,15 @@
 /* ============================================================
- * chat-image-vision.js — 聊天图片视觉上下文与头像候选标记
+ * chat-image-vision.js — 聊天图片视觉上下文、头像候选与情头配对识别
  *
- * 仅把本次发送明确选中的用户图片注入当前 API 请求；
- * 不把 DataURL 写回聊天历史，也不默认重复发送旧图片。
+ * 只解析本轮明确发送的图片；普通分享不收藏。
+ * 单张头像和双图配对使用不同标记，配对关系由角色头像库单独保存。
  * ============================================================ */
 (function (global) {
     'use strict';
 
     var MARKER = '[[MAOMAO_AVATAR_CANDIDATE:';
-    var DATA_URL_RE = /^data:image\/(?:jpeg|jpg|png|webp|gif|avif);base64,[A-Za-z0-9+/=\r\n]+$/i;
+    var PAIR_MARKER = '[[MAOMAO_AVATAR_PAIR:';
+    var DATA_URL_RE = /^data:image\/(?:jpeg|jpg|png|webp|gif|avif);base64,[A-Za-z0-9+\/=\r\n]+$/i;
     var MAX_DATA_URL_CHARS = 4 * 1024 * 1024 + 128;
     var MAX_IMAGES = 4;
 
@@ -101,22 +102,25 @@
             return (index + 1) + ' = 本轮用户刚发送的第 ' + (index + 1) + ' 张图片';
         });
         return [
-            '【角色头像 / 情头候选识别】',
+            '【角色头像候选与配对识别】',
             '本轮可见图片编号：',
             lines.join('\n'),
-            '只有当用户明确要求把某张图片用作你的新头像、替换你的头像，或明确要求制作/挑选情头时，才考虑挑选图片。',
-            '普通分享、询问图片内容、让你评价照片、分享风景或其他用途，都不要生成头像候选标记。',
-            '若图片用途明确且确实适合作为头像，只能从上面的编号中选一张，在正常回复最后附加一次 [[MAOMAO_AVATAR_CANDIDATE:编号]]。',
-            '编号必须是上面列出的数字；不确定用户想换哪张、图片不适合、或用户只是随口提及头像时，不要输出标记。',
-            '标记只会把图片加入角色头像收藏候选，不会自动替换当前头像。不要声称已经切换头像，也不要向用户解释机器标记。'
+            '先理解用户这次明确提出的用途，再决定是否收藏；不要因为图片里出现人物或一次发了多张图就自动收藏。',
+            '若用户明确要把某一张用作你的个人头像，只能选择一张，并在正常回复最后附加 [[MAOMAO_AVATAR_CANDIDATE:编号]]。',
+            '若用户明确要求情头、情侣头像、一组配对头像，或明确要求把本轮两张图配成一组，只有当两张图确实构成互相匹配的一对时，才选择恰好两张，并在正常回复最后附加 [[MAOMAO_AVATAR_PAIR:编号A,编号B]]。',
+            '配对必须指向两张不同的本轮图片；不能把同一张重复两次，也不能只因两张图风格相似就擅自建立关系。',
+            '用户只说换你的头像、只想收藏一张、没有明确配对意图、图像不适合或无法确定对应关系时，不要生成配对标记。',
+            '普通分享、询问图片内容、评价照片、分享风景或其他用途，都不要生成任何头像标记。',
+            '每轮最多输出一个单张候选标记或一个双图配对标记，不能两种同时输出；编号只能使用上面列出的数字。',
+            '这些标记只用于收藏候选和保存两张图之间的配对关系，不会自动替换当前头像。不要声称已经切换头像，也不要向用户解释机器标记。'
         ].join('\n');
     }
 
     function stripAvatarCandidateMarker(raw) {
         var text = String(raw || '');
-        var re = /\[\[MAOMAO_AVATAR_CANDIDATE:[^\]]*\]\]/gi;
-        text = text.replace(re, '');
-        var partial = text.lastIndexOf(MARKER);
+        text = text.replace(/\[\[MAOMAO_AVATAR_CANDIDATE:[^\]]*\]\]/gi, '');
+        text = text.replace(/\[\[MAOMAO_AVATAR_PAIR:[^\]]*\]\]/gi, '');
+        var partial = Math.max(text.lastIndexOf(MARKER), text.lastIndexOf(PAIR_MARKER));
         if (partial >= 0) text = text.slice(0, partial);
         return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trimEnd();
     }
@@ -125,19 +129,43 @@
         images = Array.isArray(images) ? images : [];
         var cap = Math.max(0, Math.min(1, Number(maxCount) || 0));
         var text = String(raw || '');
-        var picked = [];
-        var seen = Object.create(null);
-        var re = /\[\[MAOMAO_AVATAR_CANDIDATE:(\d+)\]\]/gi;
+        var pairs = [];
+        var candidates = [];
+        var pairSeen = Object.create(null);
+        var pairRe = /\[\[MAOMAO_AVATAR_PAIR:(\d+)\s*,\s*(\d+)\]\]/gi;
         var match;
-        while ((match = re.exec(text))) {
-            var index = Number(match[1]);
-            var image = index > 0 ? images[index - 1] : null;
-            if (cap > 0 && image && image.mid && !seen[String(image.mid)] && picked.length < cap) {
-                seen[String(image.mid)] = true;
-                picked.push(image);
+
+        while ((match = pairRe.exec(text))) {
+            var firstIndex = Number(match[1]);
+            var secondIndex = Number(match[2]);
+            var first = firstIndex > 0 ? images[firstIndex - 1] : null;
+            var second = secondIndex > 0 ? images[secondIndex - 1] : null;
+            if (cap > 0 && first && second && first !== second &&
+                first.mid && second.mid && first.assetId && second.assetId &&
+                String(first.mid) !== String(second.mid)) {
+                var key = [String(first.mid), String(second.mid)].sort().join('|');
+                if (!pairSeen[key] && !pairs.length) {
+                    pairSeen[key] = true;
+                    pairs.push({ images: [first, second] });
+                }
             }
         }
-        return { text: stripAvatarCandidateMarker(text), candidates: picked };
+
+        // A valid two-image relationship takes precedence over individual candidates.
+        if (!pairs.length && cap > 0) {
+            var seen = Object.create(null);
+            var candidateRe = /\[\[MAOMAO_AVATAR_CANDIDATE:(\d+)\]\]/gi;
+            while ((match = candidateRe.exec(text))) {
+                var index = Number(match[1]);
+                var image = index > 0 ? images[index - 1] : null;
+                if (image && image.mid && image.assetId && !seen[String(image.mid)] && candidates.length < cap) {
+                    seen[String(image.mid)] = true;
+                    candidates.push(image);
+                }
+            }
+        }
+
+        return { text: stripAvatarCandidateMarker(text), candidates: candidates, pairs: pairs };
     }
 
     global.ChatImageVision = {
