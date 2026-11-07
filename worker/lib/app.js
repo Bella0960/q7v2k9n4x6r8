@@ -232,8 +232,8 @@ export function buildOutboundPushPayload({ characterId, serverMessageId, timesta
   }
   return {
     type: 'chat_message',
-    title: 'MAOMAO',
-    body: '有一条新消息。打开小手机查看。',
+    title: '新消息',
+    body: '有一位角色刚刚联系你，打开聊天查看。',
     url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
     tag: 'maomao-chat-' + messageId,
     dedupeKey: ('outbound:' + messageId).slice(0, 96),
@@ -289,6 +289,7 @@ export async function dispatchPendingOutboundPushes({
   const deliveryLeaseMs = 60000;
 
   for (const candidate of candidates) {
+    const deliveryTimestamp = Number(typeof now === 'function' ? now() : timestamp);
     const dedupeKey = 'outbound:' + String(candidate.server_message_id);
     const deliveryOwner = randomToken(12);
     const claim = store.claimDelivery({
@@ -297,8 +298,8 @@ export async function dispatchPendingOutboundPushes({
       subscriptionId: candidate.subscription_id,
       outboundMessageId: candidate.outbound_message_id,
       owner: deliveryOwner,
-      now: timestamp,
-      leaseUntil: timestamp + deliveryLeaseMs,
+      now: deliveryTimestamp,
+      leaseUntil: deliveryTimestamp + deliveryLeaseMs,
       maxAttempts: maxDeliveryAttempts
     });
 
@@ -329,7 +330,7 @@ export async function dispatchPendingOutboundPushes({
         },
         JSON.stringify(payload),
         keys,
-        { nowMs: timestamp, fetchImpl }
+        { nowMs: deliveryTimestamp, fetchImpl }
       );
     } catch (error) {
       outcome = {
