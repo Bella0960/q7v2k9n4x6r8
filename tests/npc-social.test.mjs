@@ -170,6 +170,9 @@ test('NPC data remains separate from real-user accounts and financial features',
 test('NPC request center discloses AI context and exposes explicit accept/reject/block actions', () => {
   assert.match(page, /当前主角色人设、已绑定世界书内容片段/);
   assert.match(page, /不会发送聊天历史/);
+  assert.match(page, /id="roleNote"/);
+  assert.match(page, /当前主角色：/);
+  assert.match(page, /尚未选择主角色/);
   assert.match(page, /data-action="accept"/);
   assert.match(page, /data-action="decline"/);
   assert.match(page, /data-action="block"/);
