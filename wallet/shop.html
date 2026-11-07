@@ -1039,20 +1039,6 @@
             const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
             const itemsDesc = payItems.map(c => c.cn).join('、');
         
-            // 记账：写 finance_records
-            try {
-              const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-              payItems.forEach(c => {
-                list.push({ amount: c.price, type: 'expense',
-                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
-                  note: (payMethod === 'close_pay'
-                    ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
-                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + c.cn,
-                  time: timeStr });
-              });
-              localStorage.setItem('finance_records', JSON.stringify(list));
-            } catch(e) {}
-        
             // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
             if (payMethod === 'close_pay') {
               try {
@@ -1114,6 +1100,25 @@
                 }
               } catch(e) {}
             }
+        
+            // 记账：写 finance_records
+            try {
+              const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
+              payItems.forEach(c => {
+                list.push({ amount: c.price, type: 'expense',
+                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
+                  note: (payMethod === 'close_pay'
+                    ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
+                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + c.cn,
+                  time: timeStr });
+              });
+              var financeSerialized = JSON.stringify(list);
+              localStorage.setItem('finance_records', financeSerialized);
+              if (localStorage.getItem('finance_records') !== financeSerialized) {
+                showToast('订单记账未能保存，请稍后检查');
+                return;
+              }
+            } catch(e) {}
         
             if (roleFamilyCard) {
               notifyRoleCardIssuer(roleFamilyCard,
