@@ -5087,6 +5087,7 @@
                         role: 'user', text: text, time: Date.now(), silent: !!silent,
                         quote: quoteSnapshot, sendFailed: true, sendFailedReason: 'missing-api-key'
                     };
+                    if (visionImageMids.length) userMsg.visionImageMids = visionImageMids.slice();
                     ensureMid(userMsg);
                     historyList.push(userMsg);
 
@@ -5147,6 +5148,7 @@
                         role: 'user', text: text, time: Date.now(), silent: !!silent,
                         quote: quoteSnapshot
                     };
+                    if (visionImageMids.length) userMsg.visionImageMids = visionImageMids.slice();
                     ensureMid(userMsg);
                     const previousGroupUserSend = (isGroupChat && !silent) ? { ...lastGroupUserSend } : null;
                     const previousGroupAutoFollowupToken = groupAutoFollowupToken;
