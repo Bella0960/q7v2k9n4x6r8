@@ -315,6 +315,113 @@
         });
     }
 
+    function addAssetPair(roleId, firstAssetId, secondAssetId, options) {
+        options = options || {};
+        firstAssetId = String(firstAssetId || '');
+        secondAssetId = String(secondAssetId || '');
+        if (!validRoleId(roleId)) return Promise.resolve(failure('VALIDATION_FAILED', 'roleId is required'));
+        if (!ASSET_RE.test(firstAssetId) || !ASSET_RE.test(secondAssetId)) {
+            return Promise.resolve(failure('VALIDATION_FAILED', 'both pair image assets must be valid'));
+        }
+        if (firstAssetId === secondAssetId) {
+            return Promise.resolve(failure('VALIDATION_FAILED', 'a pair must contain two different image assets'));
+        }
+
+        var roleKey = String(roleId);
+        var label = String(options.label || '聊天配对头像').replace(/[\\u0000-\\u001F<>]/g, '').trim().slice(0, 36) || '聊天配对头像';
+        var pairItems = [];
+        var pairFailure = null;
+        var linkedPair = null;
+
+        function rollbackNewItems() {
+            return pairItems.reduce(function (chain, result) {
+                return chain.then(function (state) {
+                    if (!result.meta || result.meta.linked !== true) return state;
+                    return remove(roleKey, result.value.id).then(function (removed) {
+                        if (!removed || !removed.ok) state.failed = true;
+                        return state;
+                    }).catch(function () {
+                        state.failed = true;
+                        return state;
+                    });
+                });
+            }, Promise.resolve({ failed: false }));
+        }
+
+        return addAsset(roleKey, firstAssetId, {
+            source: 'chat',
+            label: String(options.firstLabel || (label + ' · A'))
+        }).then(function (first) {
+            if (!first || !first.ok || !first.value) {
+                pairFailure = first || failure('STORAGE_FAILED', 'first pair image could not be saved');
+                return;
+            }
+            pairItems.push(first);
+            return addAsset(roleKey, secondAssetId, {
+                source: 'chat',
+                label: String(options.secondLabel || (label + ' · B'))
+            }).then(function (second) {
+                if (!second || !second.ok || !second.value) {
+                    pairFailure = second || failure('STORAGE_FAILED', 'second pair image could not be saved');
+                    return;
+                }
+                pairItems.push(second);
+            });
+        }).then(function () {
+            if (!pairFailure && pairItems.length === 2) {
+                linkedPair = linkPair(roleKey, pairItems[0].value.id, pairItems[1].value.id, {
+                    source: 'chat',
+                    label: label,
+                    createdAt: options.createdAt
+                });
+                if (!linkedPair || !linkedPair.ok) {
+                    pairFailure = linkedPair || failure('STORAGE_FAILED', 'pair relationship could not be saved');
+                }
+            }
+
+            if (!pairFailure && linkedPair && linkedPair.ok) {
+                return {
+                    ok: true,
+                    value: linkedPair.value,
+                    meta: {
+                        reused: !!(linkedPair.meta && linkedPair.meta.reused),
+                        avatarIds: pairItems.map(function (result) { return result.value.id; })
+                    }
+                };
+            }
+
+            return rollbackNewItems().then(function (rollback) {
+                if (rollback.failed) {
+                    return {
+                        ok: false,
+                        error: {
+                            code: 'PARTIAL_ROLLBACK',
+                            message: 'pair creation failed; a newly added unpaired portrait could not be cleaned up',
+                            retryable: true
+                        },
+                        meta: { cleanupRequired: true, originalError: pairFailure && pairFailure.error ? pairFailure.error.code : 'UNKNOWN' }
+                    };
+                }
+                return pairFailure || failure('STORAGE_FAILED', 'pair could not be saved');
+            });
+        }).catch(function (error) {
+            return rollbackNewItems().then(function (rollback) {
+                if (rollback.failed) {
+                    return {
+                        ok: false,
+                        error: {
+                            code: 'PARTIAL_ROLLBACK',
+                            message: 'pair creation failed; a newly added unpaired portrait could not be cleaned up',
+                            retryable: true
+                        },
+                        meta: { cleanupRequired: true, originalError: error && error.message ? error.message : 'UNKNOWN' }
+                    };
+                }
+                return failure('STORAGE_FAILED', error && error.message ? error.message : 'pair could not be saved');
+            });
+        });
+    }
+
     function toDataUrl(assetId) {
         if (!ASSET_RE.test(String(assetId || ''))) return Promise.resolve(failure('VALIDATION_FAILED', 'invalid assetId'));
         var media = mediaRepository();
@@ -442,6 +549,7 @@
         unlinkPair: unlinkPair,
         add: add,
         addAsset: addAsset,
+        addAssetPair: addAssetPair,
         setActive: setActive,
         toDataUrl: toDataUrl,
         toObjectUrl: toObjectUrl,
