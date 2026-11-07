@@ -18,7 +18,10 @@ function createLibrary(seed, options = {}) {
   const contentAssets = new Map();
   let sequence = 0;
   const localStorage = {
-    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    getItem(key) {
+      if (options.failReads) throw new Error('storage unavailable');
+      return values.has(key) ? values.get(key) : null;
+    },
     setItem(key, value) {
       if (options.failWrites) throw new Error('storage quota');
       values.set(key, String(value));
@@ -69,7 +72,12 @@ function createLibrary(seed, options = {}) {
       const blob = stored instanceof Blob ? stored : new Blob([String(stored)], { type: mimeType });
       const result = { ok: true, value: { asset: { mimeType }, blob } };
       if (options.deferGetAssetFor === assetId) {
-        return new Promise(resolve => { options.releaseGetAsset = () => resolve(result); });
+        return new Promise(resolve => {
+          options.releaseGetAsset = () => {
+            if (options.failReadsOnGetAssetRelease) options.failReads = true;
+            resolve(result);
+          };
+        });
       }
       return Promise.resolve(result);
     }
@@ -117,6 +125,26 @@ test('a pending portrait upload cannot recreate a library after its character is
   assert.equal(api.list('role-deleted').length, 0);
   assert.equal(Array.from(refs).some(ref => ref.endsWith('|role-avatar|role-deleted')), false);
   assert.equal(assets.size, 0, 'a newly uploaded orphan is removed after its role reference is released');
+});
+
+test('temporary storage read failure after chat asset lookup never deletes the shared source image', async () => {
+  const assetId = 'as_' + 'C'.repeat(32);
+  const options = { deferGetAssetFor: assetId, failReadsOnGetAssetRelease: true };
+  const { api, assets, refs } = createLibrary({}, options);
+  assets.set(assetId, new Blob(['shared'], { type: 'image/jpeg' }));
+  refs.add(assetId + '|chat-message|message-shared');
+
+  const pending = api.addAsset('role-a', assetId, { source: 'chat' });
+  for (let i = 0; i < 8 && typeof options.releaseGetAsset !== 'function'; i += 1) await Promise.resolve();
+  assert.equal(typeof options.releaseGetAsset, 'function');
+  options.releaseGetAsset();
+
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'STORAGE_FAILED');
+  assert.equal(refs.has(assetId + '|chat-message|message-shared'), true);
+  assert.equal(refs.has(assetId + '|role-avatar|role-a'), false);
+  assert.equal(assets.has(assetId), true, 'a temporary storage read failure must not delete the source image');
 });
 
 test('a pending chat asset lookup reclaims an unowned source image after character deletion', async () => {
