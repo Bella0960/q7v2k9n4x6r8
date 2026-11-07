@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v182';
+const CACHE_NAME = 'phone-app-pwa-v183';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v181 release: cache isolated local-only real-user conversation storage.
 const APP_SHELL = [
@@ -81,6 +81,8 @@ const APP_SHELL = [
   './shared/js/phone/contact-identity.js?v=20261107v1',
   './shared/js/phone/contact-capabilities.js?v=20261107v1',
   './shared/js/phone/real-user-conversation-repository.js',
+  './shared/js/phone/real-user-account-client.js?v=20261107v1',
+  './chat/contacts/real-user-account-panel.js?v=20261107v1',
   './shared/js/phone/contact-directory.js?v=20261107v4',
   './shared/js/contact-groups.js?v=20261107v2',
   './shared/js/phone/phone_context.js?v=20261102npc1',
