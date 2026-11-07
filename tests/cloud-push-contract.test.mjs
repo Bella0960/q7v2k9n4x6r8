@@ -329,6 +329,74 @@ test('客户端只提交随机上下文事件 ID，不上传本地聊天正文�
   assert.deepEqual(Object.keys(calls[2].body).sort(), ['eventId']);
 });
 
+test('本地角色上下文指纹覆盖嵌套消息字段并规范化对象键顺序', () => {
+  const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  const browserWindow = {};
+  vm.runInNewContext(clientSource, {
+    window: browserWindow,
+    document: { currentScript: null },
+    console,
+    URL
+  });
+  const fingerprint = browserWindow.MaomaoCloud._internal.fingerprintCharacterHistory;
+
+  const original = [{
+    role: 'user',
+    text: 'interaction',
+    payload: {
+      poll: { options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], votes: { a: 1, b: 0 } },
+      transfer: { amount: 12, currency: 'USD' },
+      reactions: [{ emoji: 'like', count: 1 }],
+      attachment: { fileId: 'file-1', metadata: { width: 640, height: 480 } }
+    }
+  }];
+  const reordered = [{
+    payload: {
+      attachment: { metadata: { height: 480, width: 640 }, fileId: 'file-1' },
+      reactions: [{ count: 1, emoji: 'like' }],
+      transfer: { currency: 'USD', amount: 12 },
+      poll: { votes: { b: 0, a: 1 }, options: [{ label: 'A', id: 'a' }, { label: 'B', id: 'b' }] }
+    },
+    text: 'interaction',
+    role: 'user'
+  }];
+  const originalFingerprint = fingerprint(original);
+  assert.equal(fingerprint(reordered), originalFingerprint,
+    '仅对象属性顺序变化不得产生无意义版本更新');
+
+  const changedPoll = [{
+    ...original[0],
+    payload: {
+      ...original[0].payload,
+      poll: { ...original[0].payload.poll, votes: { a: 0, b: 1 } }
+    }
+  }];
+  assert.notEqual(fingerprint(changedPoll), originalFingerprint,
+    '投票结果等嵌套字段变化必须被记录');
+
+  const changedTransfer = [{
+    ...original[0],
+    payload: {
+      ...original[0].payload,
+      transfer: { ...original[0].payload.transfer, amount: 13 }
+    }
+  }];
+  assert.notEqual(fingerprint(changedTransfer), originalFingerprint,
+    '转账等嵌套业务字段变化必须被记录');
+
+  const dataHeader = 'data:image/png;base64,';
+  const mediaA = dataHeader + 'A'.repeat(4096);
+  const sample = 16;
+  const offset = Math.floor(sample * (4096 - 64) / 31) + 12;
+  const mediaB = mediaA.slice(0, dataHeader.length + offset) + 'B' +
+    mediaA.slice(dataHeader.length + offset + 1);
+  assert.notEqual(
+    fingerprint([{ role: 'user', attachment: { preview: mediaA } }]),
+    fingerprint([{ role: 'user', attachment: { preview: mediaB } }]),
+    '嵌入式媒体数据的分布式采样变化也应触发本地指纹变化'
+  );
+});
+
 test('设备注册、重复注册与凭据冲突', async () => {
   const ctx = setupTestStore(openTestDb());
   const device = makeDevice();
