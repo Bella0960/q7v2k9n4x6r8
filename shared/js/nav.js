@@ -192,4 +192,12 @@
     identityScript.onload = function () { document.head.appendChild(directoryScript); };
     identityScript.onerror = function () { document.head.appendChild(directoryScript); };
     document.head.appendChild(identityScript);
+
+    // NPC friend discovery runs only on the chat list and Contacts pages.
+    // The engine performs no AI request unless the user enabled discovery.
+    if (currentPage === 'chat.html' || currentPage === 'contacts.html') {
+        var npcSocialScript = document.createElement('script');
+        npcSocialScript.src = appBase + 'shared/js/phone/npc-social.js?v=20261108i';
+        document.head.appendChild(npcSocialScript);
+    }
 })();

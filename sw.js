@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v195';
+const CACHE_NAME = 'phone-app-pwa-v199';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v195 release: avoid private avatar reads while avatar storage is disabled.
+// v199 release: restore NPC cooldown when foreground discovery is cancelled.
 const APP_SHELL = [
   './',
   './index.html',
@@ -103,7 +103,8 @@ const APP_SHELL = [
   './shared/js/chat-notifier.js?v=20261107v4',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
-  'shared/js/phone/phone_api.js?v=20261106v1',
+  'shared/js/phone/phone_api.js?v=20261108v1',
+  './shared/js/phone/npc-social.js?v=20261108i',
   'shared/js/phone/image-generation.js?v=20261106v1',
   'desktop/js/script.js',
   'shared/js/statusbar-control.js',

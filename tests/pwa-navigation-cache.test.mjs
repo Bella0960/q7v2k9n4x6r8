@@ -8,7 +8,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v195'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v199'/);
+assert.match(serviceWorker, /phone_api\.js\?v=20261108v1/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -88,5 +89,16 @@ test('real-user chat API requests always bypass the static cache and fetch live 
   assert.match(serviceWorker,
     /event\.respondWith\(fetch\(req, \{ cache: 'no-store' \}\)\);[\s\S]*?return;/,
     'real-user capability and message endpoints must always use a no-store network request');
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v195'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v199'/);
+});
+
+
+test('NPC friend discovery entry, engine and cancellation runtime are wired into the PWA shell', () => {
+  const contactsPage = read('chat/contacts/contacts.html');
+  const navigation = read('shared/js/nav.js');
+  assert.match(contactsPage, /id="goNpcRequests"/);
+  assert.match(contactsPage, /goNpcRequests[\s\S]*?npc-friends\.html/);
+  assert.match(contactsPage, /phone_api\.js\?v=20261108v1/);
+  assert.match(navigation, /npc-social\.js\?v=20261108i/);
+  assert.match(serviceWorker, /npc-social\.js\?v=20261108i/);
 });

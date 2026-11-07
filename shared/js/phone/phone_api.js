@@ -19,14 +19,17 @@
         console.warn('[PhoneAPI] PhoneStorage 未加载');
     }
 
-    var NS = global.PhoneAPI = {};
+    var NS = global.PhoneAPI || {};
+    global.PhoneAPI = NS;
 
     var DEFAULT_TIMEOUT = 15000;
+    NS.supportsAbortSignal = true;
 
     /* ========== 单次 completion ========== */
 
     NS.complete = function (opts) {
-        // opts: { system, user, messages, temperature, model, timeoutMs }
+        // opts: { system, user, messages, temperature, model, timeoutMs, signal }
+        opts = opts || {};
         var config = Storage ? Storage.getApiConfig() : {};
         var apiKey = (config.apiKey || '').trim();
         if (!apiKey) {
@@ -58,8 +61,30 @@
         if (topP > 0 && topP < 1) body.top_p = topP;
 
         var start = Date.now();
+        var externalSignal = opts.signal && typeof opts.signal.addEventListener === 'function'
+            ? opts.signal : null;
+        if (externalSignal && externalSignal.aborted) {
+            var alreadyCancelled = new Error('请求已取消');
+            alreadyCancelled.name = 'AbortError';
+            log('error', model, start, alreadyCancelled.message);
+            return Promise.reject(alreadyCancelled);
+        }
+
         var controller = new AbortController();
-        var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+        var timedOut = false;
+        var onExternalAbort = function () {
+            if (!controller.signal.aborted) controller.abort();
+        };
+        if (externalSignal) externalSignal.addEventListener('abort', onExternalAbort);
+        var timer = setTimeout(function () {
+            timedOut = true;
+            controller.abort();
+        }, timeoutMs);
+
+        function cleanup() {
+            clearTimeout(timer);
+            if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+        }
 
         return fetch(baseUrl + '/chat/completions', {
             method: 'POST',
@@ -70,24 +95,27 @@
             signal: controller.signal,
             body: JSON.stringify(body)
         }).then(function (response) {
-            clearTimeout(timer);
             if (!response.ok) {
                 return response.text().then(function (txt) {
-                    var e = new Error('HTTP ' + response.status + ' ' + txt.slice(0, 200));
-                    log('error', model, start, e.message);
-                    throw e;
+                    throw new Error('HTTP ' + response.status + ' ' + txt.slice(0, 200));
                 });
             }
             return response.json();
         }).then(function (data) {
             var text = (((data || {}).choices || [])[0] || {}).message
                 ? (data.choices[0].message.content || '') : '';
+            cleanup();
             log('success', model, start);
             return text;
         }).catch(function (err) {
-            clearTimeout(timer);
+            cleanup();
             if (err && err.name === 'AbortError') {
-                err = new Error('请求超时（' + timeoutMs + 'ms）');
+                if (externalSignal && externalSignal.aborted) {
+                    err = new Error('请求已取消');
+                    err.name = 'AbortError';
+                } else if (timedOut) {
+                    err = new Error('请求超时（' + timeoutMs + 'ms）');
+                }
             }
             log('error', model, start, err && err.message ? err.message : String(err));
             throw err;

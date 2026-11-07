@@ -1,0 +1,58 @@
+name: NPC Social Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/npc-social-regression.yml'
+      - 'chat/contacts/**'
+      - 'shared/js/nav.js'
+      - 'shared/js/phone/npc-social.js'
+      - 'shared/js/phone/phone_api.js'
+      - 'tests/npc-social.test.mjs'
+      - 'tests/phone-api-abort.test.mjs'
+      - 'package.json'
+      - 'sw.js'
+  pull_request:
+    paths:
+      - '.github/workflows/npc-social-regression.yml'
+      - 'chat/contacts/**'
+      - 'shared/js/nav.js'
+      - 'shared/js/phone/npc-social.js'
+      - 'shared/js/phone/phone_api.js'
+      - 'tests/npc-social.test.mjs'
+      - 'tests/phone-api-abort.test.mjs'
+      - 'package.json'
+      - 'sw.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npc-social-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run NPC social contract tests
+        run: npm run test:npc:social
+
+  production-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build MAOMAO
+        run: npm run build
