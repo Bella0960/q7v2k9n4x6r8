@@ -263,6 +263,10 @@
     return encodeURIComponent(value);
   }
 
+  function getAutonomyReadiness() {
+    return requestDeviceMetadata('/api/autonomy/readiness');
+  }
+
   function getGlobalAutonomy() {
     return requestDeviceMetadata('/api/autonomy/global');
   }
@@ -872,6 +876,7 @@
     sendTestPush: sendTestPush,
     createDevicePairingToken: createDevicePairingToken,
     connectDeviceWithPairingCode: connectDeviceWithPairingCode,
+    getAutonomyReadiness: getAutonomyReadiness,
     getGlobalAutonomy: getGlobalAutonomy,
     setGlobalAutonomy: setGlobalAutonomy,
     getCharacterAutonomy: getCharacterAutonomy,
