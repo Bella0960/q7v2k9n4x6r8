@@ -584,29 +584,23 @@ test('受保护接口拒绝缺失、错误与被撤销的设备凭据', async ()
   const subscription = await makeBrowserSubscription();
   await subscribeDevice(ctx, device, subscription);
 
-  // A second still-authorized device cannot claim the first device's endpoint.
-  const otherDeviceId = randomToken(16);
-  const timestamp = Date.now();
-  ctx.query(
-    `INSERT INTO devices
-      (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
-     VALUES (?, 'owner', ?, '', '', '', '', ?, ?)`,
-    otherDeviceId,
-    'a'.repeat(64),
-    timestamp,
-    timestamp
-  );
-  const stolen = ctx.store.upsertSubscription({
-    id: randomToken(12),
-    deviceId: otherDeviceId,
-    endpoint: subscription.endpoint,
-    p256dh: subscription.p256dh,
-    authKey: subscription.auth,
-    expirationTime: null,
-    now: timestamp
+  // Pair a second real device. It cannot take over the active endpoint.
+  const issuedPairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device
   });
-  assert.equal(stolen, null);
+  assert.equal(issuedPairing.status, 200);
+  const otherDevice = makeDevice();
+  const pairedOther = await registerDevice(ctx, otherDevice, {
+    pairingToken: issuedPairing.payload.pairingToken
+  });
+  assert.equal(pairedOther.status, 200);
+
+  const stolen = await subscribeDevice(ctx, otherDevice, subscription);
+  assert.equal(stolen.status, 409);
+  assert.equal(stolen.payload.error.code, 'SUBSCRIPTION_IN_USE');
   assert.equal(ctx.store.getSubscriptionByEndpoint(device.deviceId, subscription.endpoint).device_id, device.deviceId);
+  const timestamp = Date.now();
 
   const revoked = await ctx.asJson('/api/devices/revoke', { method: 'POST', device });
   assert.equal(revoked.status, 200);
@@ -635,6 +629,13 @@ test('受保护接口拒绝缺失、错误与被撤销的设备凭据', async ()
   const afterRevoke = await ctx.asJson('/api/push/subscriptions', { device });
   assert.equal(afterRevoke.status, 401);
   assert.equal(afterRevoke.payload.error.code, 'DEVICE_REVOKED');
+
+  // Once the previous owner is revoked, the paired device may safely reuse
+  // the same browser endpoint and reactivate the subscription.
+  const transferred = await subscribeDevice(ctx, otherDevice, subscription);
+  assert.equal(transferred.status, 200);
+  assert.equal(ctx.store.listSubscriptions(otherDevice.deviceId).length, 1);
+  assert.equal(ctx.store.getSubscriptionByEndpoint(device.deviceId, subscription.endpoint), null);
 });
 
 test('readiness 的在线设备与前台租约计数按账号、心跳 TTL 和 grace 隔离', async () => {
