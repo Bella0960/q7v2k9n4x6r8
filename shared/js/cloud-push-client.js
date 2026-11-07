@@ -495,6 +495,20 @@
       subscribed = Boolean(await registration.pushManager.getSubscription());
     }
     setToggle(subscribed);
+    var autonomyToggle = document.getElementById('cloudAutonomyToggle');
+    if (autonomyToggle) {
+      autonomyToggle.disabled = true;
+      autonomyToggle.checked = false;
+      if (readDevice()) {
+        try {
+          var autonomy = await getGlobalAutonomy();
+          autonomyToggle.checked = Boolean(autonomy.enabled);
+          autonomyToggle.disabled = false;
+        } catch (error) {
+          // 未完成配对或云端尚未开放时保持关闭且不可操作。
+        }
+      }
+    }
     setStatusText(status.message || '未连接');
     return status;
   }
@@ -510,6 +524,24 @@
     var pairCodeOutput = document.getElementById('cloudPairCodeOutput');
     var pairCodeCopyButton = document.getElementById('cloudPairCodeCopyButton');
     if (!toggle && !testRow && !revokeRow && !pairCreateRow && !pairConnectButton) return;
+
+    var autonomyToggle = document.getElementById('cloudAutonomyToggle');
+    if (autonomyToggle) {
+      autonomyToggle.addEventListener('change', async function () {
+        var desired = autonomyToggle.checked;
+        autonomyToggle.disabled = true;
+        setStatusText('正在保存云端自主活动授权…');
+        try {
+          await setGlobalAutonomy(desired);
+          setStatusText(desired ? '云端自主活动授权已开启；等待角色作息与生成链路完成' : '云端自主活动授权已关闭');
+        } catch (error) {
+          autonomyToggle.checked = !desired;
+          setStatusText('保存授权失败：' + (error.message || '未知错误'));
+        } finally {
+          autonomyToggle.disabled = false;
+        }
+      });
+    }
 
     if (toggle) {
       toggle.addEventListener('change', async function () {
