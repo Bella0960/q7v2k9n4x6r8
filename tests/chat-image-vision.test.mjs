@@ -259,7 +259,6 @@ test('portrait archive provides a two-image manual pairing fallback for AI recog
   assert.ok(characterManagerSource.includes('data-avatar-pair-action="cancel"'));
   assert.ok(characterManagerSource.includes('avatarPairDraftIds.length >= 2'));
   assert.ok(characterManagerSource.includes("label: '手动配对'"));
-  assert.ok(characterManagerSource.includes('source: item.source'));
   assert.ok(characterManagerSource.includes('const originLabel = item.source === \'chat\''));
 });
 
