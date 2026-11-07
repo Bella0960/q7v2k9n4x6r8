@@ -113,6 +113,37 @@ test('duplicate image assets do not create duplicate library entries', async () 
   assert.equal(duplicate.value.id, a.value.id);
 });
 
+test('parallel portrait uploads merge into the latest role snapshot instead of overwriting each other', async () => {
+  const { api } = createLibrary();
+  const results = await Promise.all([
+    api.add('role-a', 'data:image/jpeg;base64,PARALLEL_A', { label: '并发头像 A' }),
+    api.add('role-a', 'data:image/jpeg;base64,PARALLEL_B', { label: '并发头像 B' })
+  ]);
+  assert.equal(results.every(result => result.ok), true);
+  assert.equal(api.list('role-a').length, 2);
+  assert.deepEqual(
+    api.list('role-a').map(item => item.label).sort(),
+    ['并发头像 A', '并发头像 B']
+  );
+});
+
+test('parallel chat asset links preserve every portrait reference in the role library', async () => {
+  const { api, assets, refs } = createLibrary();
+  const firstAssetId = 'as_' + 'A'.repeat(32);
+  const secondAssetId = 'as_' + 'B'.repeat(32);
+  assets.set(firstAssetId, new Blob(['first'], { type: 'image/jpeg' }));
+  assets.set(secondAssetId, new Blob(['second'], { type: 'image/jpeg' }));
+
+  const results = await Promise.all([
+    api.addAsset('role-a', firstAssetId, { source: 'chat', label: '聊天头像 A' }),
+    api.addAsset('role-a', secondAssetId, { source: 'chat', label: '聊天头像 B' })
+  ]);
+  assert.equal(results.every(result => result.ok), true);
+  assert.equal(api.list('role-a').length, 2);
+  assert.equal(refs.has(firstAssetId + '|role-avatar|role-a'), true);
+  assert.equal(refs.has(secondAssetId + '|role-avatar|role-a'), true);
+});
+
 test('current avatar cannot be removed before another avatar is selected', async () => {
   const { api } = createLibrary();
   const a = await api.add('role-a', 'data:image/jpeg;base64,AAA');
@@ -133,6 +164,24 @@ test('removing an inactive avatar releases only this character reference', async
   assert.equal(api.list('role-a').length, 1);
   assert.equal(refs.has(b.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(assets.has(b.value.assetId), false);
+});
+
+test('portrait removal revalidates pair state after asynchronous reference release', async () => {
+  const { api, refs } = createLibrary();
+  const first = await api.add('role-a', 'data:image/jpeg;base64,PAIR_FIRST');
+  const second = await api.add('role-a', 'data:image/jpeg;base64,PAIR_SECOND');
+  assert.equal(api.setActive('role-a', first.value.id).ok, true);
+
+  const removalPending = api.remove('role-a', second.value.id);
+  const paired = api.linkPair('role-a', first.value.id, second.value.id);
+  assert.equal(paired.ok, true);
+
+  const removed = await removalPending;
+  assert.equal(removed.ok, false);
+  assert.equal(removed.error.code, 'PAIR_EXISTS');
+  assert.equal(api.getPairs('role-a').length, 1);
+  assert.equal(api.find('role-a', second.value.id).id, second.value.id);
+  assert.equal(refs.has(second.value.assetId + '|role-avatar|role-a'), true);
 });
 
 test('shared assets remain available when another feature still references them', async () => {
