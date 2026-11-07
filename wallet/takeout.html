@@ -28,6 +28,28 @@
     padding-top: calc(16px + env(safe-area-inset-top));
   }
   .header-left { display: flex; align-items: center; gap: 12px; }
+  .header-right { display:flex; align-items:center; gap:10px; }
+  .order-card { background:#fff; border:1px solid #ECECEF; border-radius:14px; padding:14px; margin-bottom:10px; cursor:pointer; }
+  .order-card-top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .order-card-shop { font-size:.875rem; font-weight:700; min-width:0; }
+  .order-card-status { flex-shrink:0; font-size:.688rem; color:#555; border:1px solid #D8D8DD; border-radius:12px; padding:3px 9px; }
+  .order-card-meta { font-size:.688rem; color:#999; margin-top:7px; line-height:1.5; }
+  .order-card-bottom { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:.813rem; }
+  .order-timeline { background:#fff; border:1px solid #ECECEF; border-radius:14px; padding:16px; margin-bottom:12px; }
+  .order-timeline-row { display:flex; gap:12px; position:relative; padding-bottom:17px; }
+  .order-timeline-row:last-child { padding-bottom:0; }
+  .order-timeline-row::before { content:''; position:absolute; left:4px; top:12px; bottom:0; width:1px; background:#ECECEF; }
+  .order-timeline-row:last-child::before { display:none; }
+  .order-timeline-row.done::before { background:#111; }
+  .order-timeline-dot { width:9px; height:9px; border-radius:50%; background:#DDD; flex-shrink:0; margin-top:3px; z-index:1; }
+  .order-timeline-row.done .order-timeline-dot,.order-timeline-row.now .order-timeline-dot { background:#111; }
+  .order-timeline-copy { flex:1; min-width:0; }
+  .order-timeline-label { font-size:.813rem; font-weight:600; }
+  .order-timeline-desc,.order-timeline-time { font-size:.688rem; color:#999; margin-top:3px; }
+  .order-detail-card { background:#fff; border:1px solid #ECECEF; border-radius:14px; padding:15px; margin-bottom:12px; }
+  .order-detail-line { display:flex; justify-content:space-between; gap:12px; padding:8px 0; font-size:.813rem; border-bottom:1px solid #F2F2F4; }
+  .order-detail-line:last-child { border-bottom:0; }
+
   .back-btn {
     width: 36px; height: 36px; border: 0; background: transparent;
     border-bottom: 1px solid #bdbdbd; cursor: pointer;
@@ -256,9 +278,14 @@
       </button>
       <div class="brand-title">外卖<small>TAKEOUT</small></div>
     </div>
-    <div class="cart-icon" onclick="openCart()">
-      <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-      <div class="cart-badge" id="cartBadge"></div>
+    <div class="header-right">
+      <div class="cart-icon" onclick="openTakeoutOrders()" title="我的订单" aria-label="我的订单">
+        <svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z"/><path d="M9 8h6M9 12h6"/></svg>
+      </div>
+      <div class="cart-icon" onclick="openCart()" title="购物车" aria-label="购物车">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <div class="cart-badge" id="cartBadge"></div>
+      </div>
     </div>
   </div>
 
@@ -280,12 +307,44 @@
       </button>
       <div class="brand-title" id="shopTitle">餐厅</div>
     </div>
-    <div class="cart-icon" onclick="openCart()">
-      <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-      <div class="cart-badge" id="cartBadge2"></div>
+    <div class="header-right">
+      <div class="cart-icon" onclick="openTakeoutOrders()" title="我的订单" aria-label="我的订单">
+        <svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z"/><path d="M9 8h6M9 12h6"/></svg>
+      </div>
+      <div class="cart-icon" onclick="openCart()" title="购物车" aria-label="购物车">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <div class="cart-badge" id="cartBadge2"></div>
+      </div>
     </div>
   </div>
   <div class="dish-list" id="dishList"></div>
+</div>
+
+<!-- 外卖订单中心 -->
+<div class="view" id="viewOrders">
+  <div class="header">
+    <div class="header-left">
+      <button class="back-btn" onclick="closeTakeoutOrders()">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="brand-title">我的订单<small>ORDERS</small></div>
+    </div>
+    <div style="width:36px;"></div>
+  </div>
+  <div id="takeoutOrdersList" style="padding:0 20px 24px;"></div>
+</div>
+
+<div class="view" id="viewOrderDetail">
+  <div class="header">
+    <div class="header-left">
+      <button class="back-btn" onclick="closeTakeoutOrderDetail()">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="brand-title">订单详情<small>ORDER DETAIL</small></div>
+    </div>
+    <div style="width:36px;"></div>
+  </div>
+  <div id="takeoutOrderDetailBody" style="padding:0 20px 24px;"></div>
 </div>
 
 <!-- 底部购物车条 -->
@@ -466,6 +525,197 @@
       return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
     });
   }
+  const TAKEOUT_ORDER_STATUS_LABELS = {
+    placed: '已下单', accepted: '商家已接单', preparing: '备餐中',
+    picked_up: '骑手已取餐', delivering: '配送中', delivered: '已送达'
+  };
+  function loadTakeoutOrders() {
+    try {
+      var raw = localStorage.getItem('takeout_orders');
+      if (raw == null) return [];
+      var rows = JSON.parse(raw);
+      if (!Array.isArray(rows)) return null;
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row || typeof row !== 'object' || Array.isArray(row) ||
+            typeof row.paymentId !== 'string' || !row.paymentId ||
+            !Array.isArray(row.items) ||
+            !isFinite(Number(row.total)) || Number(row.total) < 0 ||
+            !isFinite(Number(row.ts)) || Number(row.ts) <= 0 ||
+            (row.statusHistory != null && !Array.isArray(row.statusHistory))) return null;
+      }
+      return rows;
+    } catch (error) { return null; }
+  }
+  function saveTakeoutOrders(rows) {
+    if (!Array.isArray(rows)) return false;
+    try {
+      var serialized = JSON.stringify(rows);
+      localStorage.setItem('takeout_orders', serialized);
+      return localStorage.getItem('takeout_orders') === serialized;
+    } catch (error) { return false; }
+  }
+  function takeoutOrderStages(order) {
+    var found = String(order.delivery || '').match(/\d+/);
+    var parsed = parseInt(found ? found[0] : '30', 10);
+    var etaMinutes = Math.max(5, Math.min(180, isFinite(parsed) ? parsed : 30));
+    var duration = etaMinutes * 60000;
+    return [
+      { status:'placed', label:'已下单', desc:'订单已提交，等待餐厅确认', offset:0 },
+      { status:'accepted', label:'商家已接单', desc:'餐厅开始处理订单', offset:Math.round(duration * 0.08) },
+      { status:'preparing', label:'备餐中', desc:'餐品正在制作', offset:Math.round(duration * 0.25) },
+      { status:'picked_up', label:'骑手已取餐', desc:'骑手已取餐，准备出发', offset:Math.round(duration * 0.52) },
+      { status:'delivering', label:'配送中', desc:'餐品正在送往收货地址', offset:Math.round(duration * 0.78) },
+      { status:'delivered', label:'已送达', desc:'本次模拟配送已完成', offset:duration }
+    ];
+  }
+  function advanceOrderLifecycle(order, stages, now) {
+    if (!order || !Array.isArray(stages) || !stages.length) return null;
+    var createdAt = Number(order.ts);
+    if (!isFinite(createdAt) || createdAt <= 0) return null;
+    if (Object.prototype.hasOwnProperty.call(order, 'statusHistory') &&
+        !Array.isArray(order.statusHistory)) return null;
+    var history = order.statusHistory || [];
+    for (var hi = 0; hi < history.length; hi++) {
+      var event = history[hi];
+      if (!event || typeof event !== 'object' ||
+          !stages.some(function (stage) { return stage.status === event.status; }) ||
+          !isFinite(Number(event.time))) return null;
+    }
+    var targetIndex = -1;
+    stages.forEach(function (stage, index) {
+      if (Number(now) - createdAt >= stage.offset) targetIndex = index;
+    });
+    history.forEach(function (event) {
+      var eventIndex = stages.findIndex(function (stage) { return stage.status === event.status; });
+      if (eventIndex > targetIndex) targetIndex = eventIndex;
+    });
+    if (order.status != null) {
+      var storedIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+      if (storedIndex < 0) return null;
+      if (storedIndex > targetIndex) targetIndex = storedIndex;
+    }
+    if (targetIndex < 0) targetIndex = 0;
+    var changed = !Array.isArray(order.statusHistory);
+    for (var si = 0; si <= targetIndex; si++) {
+      var stage = stages[si];
+      if (!history.some(function (event) { return event.status === stage.status; })) {
+        history.push({ status:stage.status, label:stage.label, time:createdAt + stage.offset });
+        changed = true;
+      }
+    }
+    history.sort(function (a, b) { return Number(a.time) - Number(b.time); });
+    var lastEvent = history.find(function (event) { return event.status === stages[targetIndex].status; });
+    if (order.status !== stages[targetIndex].status) { order.status = stages[targetIndex].status; changed = true; }
+    if (order.statusUpdatedAt !== Number(lastEvent.time)) { order.statusUpdatedAt = Number(lastEvent.time); changed = true; }
+    if (!Array.isArray(order.statusHistory)) order.statusHistory = history;
+    return changed;
+  }
+  function syncTakeoutOrders() {
+    var rows = loadTakeoutOrders();
+    if (!rows) return null;
+    var changed = false;
+    for (var i = 0; i < rows.length; i++) {
+      var result = advanceOrderLifecycle(rows[i], takeoutOrderStages(rows[i]), Date.now());
+      if (result === null) return null;
+      if (result) changed = true;
+    }
+    if (changed && !saveTakeoutOrders(rows)) return null;
+    return rows;
+  }
+  function getTakeoutOrderStatus(order) {
+    return TAKEOUT_ORDER_STATUS_LABELS[order.status] || '状态待确认';
+  }
+  var takeoutOrdersReturnView = 'viewShops';
+  function openTakeoutOrders() {
+    closeCart();
+    closeCheckout();
+    closeForward();
+    takeoutOrdersReturnView = currentShop ? 'viewDishes' : 'viewShops';
+    document.querySelectorAll('.view').forEach(function (view) { view.classList.remove('active'); });
+    document.getElementById('viewOrders').classList.add('active');
+    document.getElementById('cartBar').style.display = 'none';
+    renderTakeoutOrders();
+    window.scrollTo(0, 0);
+  }
+  function closeTakeoutOrders() {
+    document.getElementById('viewOrders').classList.remove('active');
+    document.getElementById('viewOrderDetail').classList.remove('active');
+    document.getElementById(takeoutOrdersReturnView).classList.add('active');
+    updateCartUI();
+    if (currentShop) renderDishes();
+  }
+  function renderTakeoutOrders() {
+    var rows = syncTakeoutOrders();
+    var box = document.getElementById('takeoutOrdersList');
+    if (!rows) {
+      box.innerHTML = '<div style="text-align:center;padding:54px 12px;color:#999;font-size:.875rem;">订单数据暂时无法读取，已停止自动修改</div>';
+      return;
+    }
+    rows = rows.slice().sort(function (a, b) { return Number(b.ts) - Number(a.ts); });
+    if (!rows.length) {
+      box.innerHTML = '<div style="text-align:center;padding:54px 12px;color:#999;font-size:.875rem;">还没有外卖订单</div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (order) {
+      var names = order.items.map(function (item) {
+        return escapeFamilyCardText(item.name || '菜品') + ' × ' + Math.max(1, Number(item.qty) || 1);
+      }).join('、');
+      return '<div class="order-card" data-order-id="' + escapeFamilyCardText(order.paymentId) + '">' +
+        '<div class="order-card-top"><div class="order-card-shop">' + escapeFamilyCardText(order.shop || '外卖订单') + '</div>' +
+        '<div class="order-card-status">' + escapeFamilyCardText(getTakeoutOrderStatus(order)) + '</div></div>' +
+        '<div class="order-card-meta">' + names + '</div>' +
+        '<div class="order-card-bottom"><span style="color:#999;">' + new Date(order.ts).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>' +
+        '<strong>¥' + Number(order.total).toFixed(2) + '</strong></div></div>';
+    }).join('');
+  }
+  function openTakeoutOrderDetail(orderId) {
+    var rows = syncTakeoutOrders();
+    if (!rows) { toast('订单数据异常，无法打开详情'); return; }
+    var order = rows.find(function (row) { return row.paymentId === String(orderId); });
+    if (!order) { toast('找不到这笔订单，请刷新订单列表'); return; }
+    var stages = takeoutOrderStages(order);
+    var currentIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+    currentIndex = Math.max(0, currentIndex);
+    var currentStage = stages[currentIndex];
+    var events = order.statusHistory || [];
+    var timeline = stages.map(function (stage, index) {
+      var event = events.find(function (entry) { return entry.status === stage.status; });
+      var state = index < currentIndex ? 'done' : (index === currentIndex ? 'now' : '');
+      return '<div class="order-timeline-row ' + state + '"><span class="order-timeline-dot"></span>' +
+        '<div class="order-timeline-copy"><div class="order-timeline-label">' + escapeFamilyCardText(stage.label) + '</div>' +
+        '<div class="order-timeline-desc">' + escapeFamilyCardText(stage.desc) + '</div>' +
+        (event ? '<div class="order-timeline-time">' + new Date(event.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</div>' : '') +
+        '</div></div>';
+    }).join('');
+    var itemsHtml = order.items.map(function (item) {
+      var qty = Math.max(1, Math.floor(Number(item.qty) || 1));
+      return '<div class="order-detail-line"><span>' + escapeFamilyCardText(item.name || '菜品') + ' × ' + qty +
+        '</span><strong>¥' + (Number(item.price) * qty).toFixed(2) + '</strong></div>';
+    }).join('');
+    document.getElementById('takeoutOrderDetailBody').innerHTML =
+      '<div class="order-detail-card"><div style="font-size:1rem;font-weight:700;">' +
+      escapeFamilyCardText(currentStage.label) + '</div><div style="font-size:.75rem;color:#888;margin-top:5px;">' +
+      escapeFamilyCardText(currentStage.desc) + '</div></div>' +
+      '<div class="order-timeline">' + timeline + '</div>' +
+      '<div class="order-detail-card"><div style="font-size:.75rem;color:#999;margin-bottom:6px;">' +
+      escapeFamilyCardText(order.shop || '餐厅') + '</div>' + itemsHtml +
+      '<div class="order-detail-line" style="margin-top:8px;"><span>合计</span><strong>¥' + Number(order.total).toFixed(2) +
+      '</strong></div></div>' +
+      '<div class="order-detail-card" style="font-size:.75rem;color:#777;line-height:1.8;">' +
+      '订单编号：' + escapeFamilyCardText(order.paymentId) + '<br>' +
+      '支付方式：' + escapeFamilyCardText(order.payMethod === 'normal' ? '日常账户' : (order.payMethod === 'close_pay' ? '亲密付' : '角色赠予额度')) + '<br>' +
+      '下单时间：' + new Date(order.ts).toLocaleString('zh-CN') + '</div>' +
+      '<div style="font-size:.625rem;color:#aaa;padding:0 2px 12px;">配送节点为应用内模拟进度，按预计送达时长自动推进，不代表真实骑手或平台配送状态。</div>';
+    document.getElementById('viewOrders').classList.remove('active');
+    document.getElementById('viewOrderDetail').classList.add('active');
+    window.scrollTo(0, 0);
+  }
+  function closeTakeoutOrderDetail() {
+    document.getElementById('viewOrderDetail').classList.remove('active');
+    document.getElementById('viewOrders').classList.add('active');
+  }
+
   function getRoleCardFromMethod(method) {
     if (!window.RoleFamilyCards || String(method || '').indexOf('role_card:') !== 0) return null;
     return window.RoleFamilyCards.find(String(method).slice('role_card:'.length));
@@ -965,10 +1215,26 @@
         
             // 订单按 paymentId 去重，且以精确读回作为保存成功标准。
             try {
-              var orders = JSON.parse(localStorage.getItem('takeout_orders') || '[]');
-              if (!Array.isArray(orders)) throw new Error('takeout_orders is not an array');
-              if (!orders.some(function (row) { return row && row.paymentId === transactionId; })) {
+              var orders = loadTakeoutOrders();
+              if (!orders) throw new Error('takeout_orders data is invalid; refusing to overwrite');
+              var existingOrder = orders.find(function (row) { return row.paymentId === transactionId; });
+              if (existingOrder) {
+                var sameItems = Array.isArray(existingOrder.items) &&
+                  existingOrder.items.length === items.length &&
+                  existingOrder.items.every(function (storedItem, index) {
+                    var currentItem = items[index];
+                    return storedItem.name === currentItem.dish.name &&
+                      Number(storedItem.price) === Number(currentItem.dish.price) &&
+                      Number(storedItem.qty) === Number(currentItem.qty);
+                  });
+                if (!sameItems || Number(existingOrder.total) !== Number(total) ||
+                    String(existingOrder.shopId || '') !== String(orderShop.id)) {
+                  throw new Error('payment ID is already attached to a different order payload');
+                }
+              } else {
+                var orderCreatedAt = Date.now();
                 orders.push({
+                  orderId: transactionId,
                   paymentId: transactionId,
                   items: items.map(function (item) {
                     return { name: item.dish.name, price: item.dish.price, qty: item.qty };
@@ -978,12 +1244,14 @@
                   shopId: orderShop.id,
                   delivery: orderShop.delivery,
                   payMethod: payMethod,
-                  ts: Date.now()
+                  ts: orderCreatedAt,
+                  status: 'placed',
+                  statusUpdatedAt: orderCreatedAt,
+                  statusHistory: [{ status: 'placed', label: '已下单', time: orderCreatedAt }],
+                  statusSource: 'simulation'
                 });
               }
-              var ordersSerialized = JSON.stringify(orders);
-              localStorage.setItem('takeout_orders', ordersSerialized);
-              if (localStorage.getItem('takeout_orders') !== ordersSerialized) {
+              if (!saveTakeoutOrders(orders)) {
                 toast('支付已记录，但订单暂未保存；再次提交会补齐订单且不会重复扣款');
                 return;
               }
@@ -1073,6 +1341,11 @@
     document.getElementById('forwardOverlay').classList.add('open');
   }
   function closeForward() { document.getElementById('forwardOverlay').classList.remove('open'); }
+
+  document.getElementById('takeoutOrdersList').addEventListener('click', function (event) {
+    var card = event.target.closest('[data-order-id]');
+    if (card) openTakeoutOrderDetail(card.getAttribute('data-order-id'));
+  });
 
   document.getElementById('forwardList').addEventListener('click', function(e){
     var row = e.target.closest('.forward-row');
