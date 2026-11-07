@@ -2877,7 +2877,12 @@
         function _messageIdentity(msg) {
             if (!msg || typeof msg !== 'object') return '';
             var body = msg.text != null ? msg.text : (msg.content != null ? msg.content : '');
-            var marker = msg.mid != null ? msg.mid : (msg.time != null ? msg.time : '');
+            // A cloud server ID is part of the durable identity contract: if
+            // storage drops it, the write/read-back check must fail and the
+            // server message must remain unacknowledged for a safe retry.
+            var marker = msg.serverMessageId != null
+                ? 'cloud:' + String(msg.serverMessageId)
+                : (msg.mid != null ? msg.mid : (msg.time != null ? msg.time : ''));
             return String(msg.role || '') + '\u0001' + String(marker) + '\u0001' + String(body);
         }
 
@@ -2935,6 +2940,175 @@
             }
             return false;
         }
+
+        // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
+        // 本地写入并读回验证成功之前，绝不向云端 ACK。
+        function persistCloudOutboundMessage(payload, envelope) {
+            if (isGroupChat || !payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+            var serverMessageId = String(envelope && envelope.serverMessageId || '');
+            if (!/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId)) return false;
+
+            // 第一阶段仅开放纯文字角色消息；未知载荷类型继续留在云端待处理。
+            var payloadType = String(payload.type || 'text');
+            if (payloadType !== 'text' || typeof payload.text !== 'string') return false;
+            var messageText = payload.text.trim();
+            if (!messageText || messageText.length > 10000) return false;
+
+            var history = loadMessages();
+            if (!Array.isArray(history)) return false;
+            var existing = history.some(function (item) {
+                return item && String(item.serverMessageId || '') === serverMessageId;
+            });
+            // 本地已经保存但上一次 ACK 断网：本次只补 ACK，不再插入第二个气泡。
+            if (existing) return true;
+
+            var createdAt = Number(envelope && envelope.createdAt);
+            if (!Number.isSafeInteger(createdAt) || createdAt <= 0) createdAt = Date.now();
+            var message = {
+                role: 'assistant',
+                text: messageText,
+                time: createdAt,
+                mid: 'cloud_' + serverMessageId,
+                serverMessageId: serverMessageId,
+                source: 'cloud_autonomous'
+            };
+            ensureMid(message);
+
+            var wasNearBottom = !chatMessages ||
+                (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= 120);
+            history.push(message);
+            if (!saveMessages(history)) {
+                history.pop();
+                return false;
+            }
+
+            // 只有已经通过 PhoneStorage/localStorage 写后读回验证才刷新现有聊天 UI。
+            if (_vl) vlRefresh();
+            else appendMessageToDOM(message);
+            if (wasNearBottom) scrollToBottom(true);
+
+            // 只广播消息 ID，不广播消息正文；其他标签页从本地持久化历史重新读取。
+            try {
+                localStorage.setItem(
+                    'cloud_outbound_notice_v1:' + String(currentCharacter.id || currentRoleId),
+                    JSON.stringify({ serverMessageId: serverMessageId, at: Date.now() })
+                );
+            } catch (error) {}
+            return true;
+        }
+
+        // 同一角色只允许一个标签页拉取/确认。优先使用原子 Web Locks；
+        // 旧浏览器退回短期 localStorage 租约，并在写入后复核 owner token。
+        (function startCloudOutboundSyncForActiveRole() {
+            var cloud = window.MaomaoCloud;
+            if (!cloud || isGroupChat || !currentRoleId ||
+                typeof cloud.receiveCharacterOutboundMessages !== 'function') return;
+
+            var roleId = String(currentCharacter.id || currentRoleId);
+            var lockName = 'maomao-cloud-outbound:' + roleId;
+            var storageLockKey = 'cloud_outbound_lock_v1:' + roleId;
+            var noticeKey = 'cloud_outbound_notice_v1:' + roleId;
+            var active = false;
+            var running = false;
+            var intervalId = null;
+            var warned = false;
+
+            function randomLockToken() {
+                var bytes = new Uint8Array(12);
+                try {
+                    window.crypto.getRandomValues(bytes);
+                    return Array.prototype.map.call(bytes, function (value) {
+                        return value.toString(16).padStart(2, '0');
+                    }).join('');
+                } catch (error) {
+                    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+                }
+            }
+
+            function runWithStorageLease(work) {
+                var token = randomLockToken();
+                var now = Date.now();
+                try {
+                    var current = JSON.parse(localStorage.getItem(storageLockKey) || 'null');
+                    if (current && Number(current.expiresAt) > now) return Promise.resolve(null);
+                    localStorage.setItem(storageLockKey, JSON.stringify({
+                        token: token,
+                        expiresAt: now + 120000
+                    }));
+                    var confirmed = JSON.parse(localStorage.getItem(storageLockKey) || 'null');
+                    if (!confirmed || confirmed.token !== token) return Promise.resolve(null);
+                } catch (error) {
+                    // Lock state unavailable: fail closed rather than risk duplicate cross-tab writes.
+                    return Promise.resolve(null);
+                }
+
+                return Promise.resolve().then(work).finally(function () {
+                    try {
+                        var owner = JSON.parse(localStorage.getItem(storageLockKey) || 'null');
+                        if (owner && owner.token === token) localStorage.removeItem(storageLockKey);
+                    } catch (error) {}
+                });
+            }
+
+            function runWithRoleLock(work) {
+                if (navigator.locks && typeof navigator.locks.request === 'function') {
+                    return navigator.locks.request(lockName, {
+                        mode: 'exclusive',
+                        ifAvailable: true
+                    }, function (lock) {
+                        return lock ? work() : null;
+                    });
+                }
+                return runWithStorageLease(work);
+            }
+
+            function syncNow() {
+                if (!active || running || document.visibilityState === 'hidden') return;
+                running = true;
+                runWithRoleLock(function () {
+                    return cloud.receiveCharacterOutboundMessages(roleId, persistCloudOutboundMessage, 10);
+                }).catch(function (error) {
+                    if (!warned) {
+                        warned = true;
+                        console.warn('[cloud] 角色主动消息同步暂未完成，页面会继续重试', error && error.message || error);
+                    }
+                }).then(function () {
+                    running = false;
+                });
+            }
+
+            function activate() {
+                if (active || document.visibilityState === 'hidden') return;
+                active = true;
+                syncNow();
+                intervalId = window.setInterval(syncNow, 15000);
+            }
+
+            function pause() {
+                active = false;
+                if (intervalId != null) window.clearInterval(intervalId);
+                intervalId = null;
+            }
+
+            function onVisibilityChange() {
+                if (document.visibilityState === 'hidden') pause();
+                else activate();
+            }
+
+            function onOtherTabNotice(event) {
+                if (event && event.key === noticeKey && document.visibilityState !== 'hidden' &&
+                    typeof renderAllMessages === 'function') {
+                    renderAllMessages();
+                }
+            }
+
+            document.addEventListener('visibilitychange', onVisibilityChange);
+            window.addEventListener('online', syncNow);
+            window.addEventListener('pageshow', activate);
+            window.addEventListener('pagehide', pause);
+            window.addEventListener('storage', onOtherTabNotice);
+            activate();
+        })();
 
         // /photo 为用户显式触发，不自动判断意图、不随机生成；仅支持单人角色聊天。
         var _chatImageGenerationRunning = false;
