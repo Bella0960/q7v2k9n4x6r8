@@ -64,7 +64,13 @@ function createFakePushFetch(statusCode = 201) {
 async function registerDevice(ctx, device, extra = {}) {
   return ctx.asJson('/api/devices/register', {
     method: 'POST',
-    body: { ...device, label: 'test-device', platform: 'node', ...extra }
+    body: {
+      ...device,
+      label: 'test-device',
+      platform: 'node',
+      enrollmentToken: 'test-enrollment-token-for-contract-tests',
+      ...extra
+    }
   });
 }
 
@@ -101,7 +107,9 @@ test('迁移 0001/0002 建立云推送与非聊天自主活动元数据表', asy
     'character_autonomy',
     'character_schedules',
     'device_presence',
-    'character_leases'
+    'character_leases',
+    'device_pairing_tokens',
+    'device_bootstrap'
   ]) {
     assert.ok(tables.includes(expected), `缺少表 ${expected}`);
   }
@@ -113,13 +121,19 @@ test('迁移 0001/0002 建立云推送与非聊天自主活动元数据表', asy
   assert.ok(indexes.includes('idx_devices_user_id'), '设备必须归属单用户 owner');
   assert.ok(indexes.includes('idx_device_presence_heartbeat'), '设备前台心跳必须可按用户与时间查询');
   assert.ok(indexes.includes('idx_character_leases_owner'), '角色租约必须可按设备和用户查询');
+  assert.ok(indexes.includes('idx_device_pairing_creator'), '配对码必须可按签发设备清理');
+  assert.ok(indexes.includes('idx_device_pairing_expiry'), '配对码必须可按过期时间清理');
 
   // 幂等：重复执行迁移不会重复建表，也不会重复记录版本。
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 2);
-  assert.deepEqual(versions.map(row => row.version).sort(), ['0001_init', '0002_autonomy_metadata']);
+  assert.equal(versions.length, 3);
+  assert.deepEqual(versions.map(row => row.version).sort(), [
+    '0001_init',
+    '0002_autonomy_metadata',
+    '0003_device_pairing'
+  ]);
 });
 
 test('设备注册、重复注册与凭据冲突', async () => {
@@ -654,7 +668,12 @@ test('设备前台心跳和角色租约：CAS 独占、grace 保护、只能由 
   const deviceA = makeDevice();
   const deviceB = makeDevice();
   await registerDevice(ctx, deviceA);
-  await registerDevice(ctx, deviceB);
+  const pairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: deviceA
+  });
+  assert.equal(pairing.status, 200);
+  await registerDevice(ctx, deviceB, { pairingToken: pairing.payload.pairingToken });
 
   const beatA = await ctx.asJson('/api/presence/heartbeat', {
     method: 'POST',
