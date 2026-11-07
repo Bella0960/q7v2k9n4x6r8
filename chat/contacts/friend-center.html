@@ -58,6 +58,7 @@
   .small-avatar { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #F0F0F2; color: #333; font-family: Georgia, serif; font-size: 14px; }
   .list-main { min-width: 0; flex: 1; }
   .list-name { font-size: 12px; font-weight: 650; }
+  .unread-count { display: inline-block; min-width: 17px; margin-left: 6px; padding: 2px 6px; border-radius: 9px; background: #F0F0F2; color: #444; font-size: 10px; font-weight: 650; line-height: 1.2; text-align: center; vertical-align: 1px; }
   .list-sub { margin-top: 4px; color: #999; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
   .list-actions { display: flex; gap: 6px; flex: 0 0 auto; }
   .list-actions .btn { min-height: 30px; padding: 0 9px; font-size: 10px; }
@@ -167,6 +168,7 @@
   var scanStream = null;
   var scanFrameId = 0;
   var scanning = false;
+  var friendsPollTimer = 0;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
@@ -221,9 +223,13 @@
       return;
     }
     $('friendList').innerHTML = friends.map(function (friend) {
+      var unreadCount = Math.max(0, Number(friend.unreadCount || 0));
+      var unreadBadge = unreadCount > 0
+        ? '<span class="unread-count" aria-label="' + unreadCount + ' 条未读">' + (unreadCount > 99 ? '99+' : unreadCount) + '</span>'
+        : '';
       return '<div class="list-item">' +
         '<div class="small-avatar">' + escapeHtml(initials(friend.displayName)) + '</div>' +
-        '<div class="list-main"><div class="list-name">' + escapeHtml(friend.displayName || 'MAOMAO 用户') + '</div>' +
+        '<div class="list-main"><div class="list-name">' + escapeHtml(friend.displayName || 'MAOMAO 用户') + unreadBadge + '</div>' +
         '<div class="list-sub">' + escapeHtml(friend.userId) + ' · 已成为好友</div></div>' +
         '<div class="list-actions"><button class="btn primary" type="button" data-open-chat="' + escapeHtml(friend.userId) + '">聊天</button><button class="btn" type="button" data-remove-friend="' + escapeHtml(friend.userId) + '">删除</button></div>' +
         '</div>';
@@ -356,6 +362,10 @@
         copyText(qr.prefix + myAccount.userId, '二维码内容已复制');
       });
       await refreshLists();
+      friendsPollTimer = window.setInterval(function () {
+        if (document.hidden) return;
+        api.getFriends().then(renderFriends).catch(function () {});
+      }, 12000);
       setStatus('真人好友账号已连接。把二维码分享给朋友即可互相添加。');
     } catch (error) {
       setStatus((error.message || '真人好友服务连接失败') + '。云端服务尚未部署或暂不可用时，好友数据不会假装保存成功。', true);
@@ -430,7 +440,10 @@
       remove.disabled = false;
     }
   });
-  window.addEventListener('pagehide', stopScan);
+  window.addEventListener('pagehide', function () {
+    stopScan();
+    if (friendsPollTimer) window.clearInterval(friendsPollTimer);
+  });
   initialize();
 })();
 </script>
