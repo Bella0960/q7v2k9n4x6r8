@@ -788,11 +788,9 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var list = allList.filter(function (m) {
                 var isMine = m.authorId === me.id || m.authorId === 'me' || m.author === me.name || m.byAI === true;
                 var v = m.visibility || 'public';
-                if (v === 'excluded') {
-                    var hiddenTo = Array.isArray(m.hiddenTo) ? m.hiddenTo.map(String) : [];
-                    if (hiddenTo.indexOf(String(me.id || 'me')) !== -1 || hiddenTo.indexOf('me') !== -1) return false;
-                }
-                if (isMine) return true; // 自己发的动态始终可见；AI 动态仍遵循显式排除名单
+                // 朋友圈页面是当前手机主人的动态流；主人始终能看见自己的发布记录。
+                // 排除名单用于限制 AI 角色接收动态，不用于隐藏主人自己的时间线。
+                if (isMine) return true;
                 if (v === 'public') return true;
                 if (v === 'friends') return true; // 简化：目前所有 AI 角色都是朋友
                 if (v === 'private') return false; // 别人的仅自己动态不显示
@@ -1087,21 +1085,17 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             return null;
         }
 
-        function isCurrentUserPostForPrivacy(post) {
-            if (!post) return false;
-            var me = getMyInfo();
-            var authorId = String(post.authorId || '');
-            return authorId === 'me' || authorId === String(me.id || 'me') ||
-                (!authorId && (!post.author || post.author === me.name || post.author === '我'));
-        }
-
         function canRoleViewPost(post, roleId) {
             if (!post || roleId == null) return false;
-            if (!isCurrentUserPostForPrivacy(post)) return true;
+            var me = getMyInfo();
             var policy = window.PhoneContactGroups;
-            if (policy && typeof policy.canViewPost === 'function') {
-                return policy.canViewPost(post, roleId);
+            if (policy && typeof policy.canRoleReceivePost === 'function') {
+                return policy.canRoleReceivePost(post, roleId, me);
             }
+            var authorId = String(post.authorId || '');
+            var isUserAuthored = authorId === 'me' || authorId === String(me.id || 'me') ||
+                (!authorId && (!post.author || post.author === me.name || post.author === '我'));
+            if (!isUserAuthored) return true;
             var id = String(roleId);
             var visibility = post.visibility || 'public';
             if (visibility === 'private') return false;
