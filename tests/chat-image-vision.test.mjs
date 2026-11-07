@@ -128,7 +128,8 @@ const chatExtrasSource = fs.readFileSync(
 const avatarLibrarySource = fs.readFileSync(
   path.join(process.cwd(), 'shared/js/phone/role-avatar-library.js'), 'utf8'
 );
-const serviceWorkerSource = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');\nconst characterManagerSource = fs.readFileSync(path.join(process.cwd(), 'worldbook/characters/js/characters-manager.js'), 'utf8');
+const serviceWorkerSource = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
+const characterManagerSource = fs.readFileSync(path.join(process.cwd(), 'worldbook/characters/js/characters-manager.js'), 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 
 test('chat plus-image upload stores Blob assets and chat history stores only asset references', () => {
