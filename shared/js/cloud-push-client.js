@@ -555,6 +555,30 @@
     });
   }
 
+  function markCharacterOutboundReceived(characterId, serverMessageId) {
+    var messageId = String(serverMessageId || '');
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
+      return Promise.reject(new Error('云端消息 ID 无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/outbound/' +
+        encodeURIComponent(messageId) + '/received',
+      'POST'
+    );
+  }
+
+  function markCharacterOutboundRead(characterId, serverMessageId) {
+    var messageId = String(serverMessageId || '');
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
+      return Promise.reject(new Error('云端消息 ID 无效'));
+    }
+    return requestDeviceMetadata(
+      '/api/characters/' + characterPath(characterId) + '/outbound/' +
+        encodeURIComponent(messageId) + '/read',
+      'POST'
+    );
+  }
+
   function acknowledgeCharacterOutboundMessage(characterId, serverMessageId) {
     var messageId = String(serverMessageId || '');
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
@@ -576,10 +600,21 @@
       throw new TypeError('必须提供消息持久化回调');
     }
     var messages = await getCharacterOutboundMessages(characterId, limit);
+    var receivedMarked = 0;
+    var receivedDeferred = 0;
     var saved = 0;
     var deferred = 0;
     for (var index = 0; index < messages.length; index += 1) {
       var message = messages[index];
+      // This receipt means the authenticated device fetched the envelope. It
+      // is deliberately separate from the later local-save ACK.
+      try {
+        await markCharacterOutboundReceived(characterId, message.serverMessageId);
+        receivedMarked += 1;
+      } catch (receiveError) {
+        receivedDeferred += 1;
+      }
+
       var persisted = await persistMessage(message.payload, message);
       if (persisted !== true) {
         deferred += 1;
@@ -588,7 +623,13 @@
       await acknowledgeCharacterOutboundMessage(characterId, message.serverMessageId);
       saved += 1;
     }
-    return { received: messages.length, saved: saved, deferred: deferred };
+    return {
+      received: messages.length,
+      receivedMarked: receivedMarked,
+      receivedDeferred: receivedDeferred,
+      saved: saved,
+      deferred: deferred
+    };
   }
 
   function flushCharacterContextVersion(characterId) {
@@ -1429,6 +1470,8 @@
     failAutonomyActivity: failAutonomyActivity,
     skipAutonomyActivity: skipAutonomyActivity,
     getCharacterOutboundMessages: getCharacterOutboundMessages,
+    markCharacterOutboundReceived: markCharacterOutboundReceived,
+    markCharacterOutboundRead: markCharacterOutboundRead,
     acknowledgeCharacterOutboundMessage: acknowledgeCharacterOutboundMessage,
     receiveCharacterOutboundMessages: receiveCharacterOutboundMessages,
     noteCharacterContextChanged: noteCharacterContextChanged,
