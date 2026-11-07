@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../shared/js/contact-groups.js', import.meta.url), 'utf8');
 const identitySource = readFileSync(new URL('../shared/js/phone/contact-identity.js', import.meta.url), 'utf8');
+const directorySource = readFileSync(new URL('../shared/js/phone/contact-directory.js', import.meta.url), 'utf8');
 const notifierSource = readFileSync(new URL('../shared/js/chat-notifier.js', import.meta.url), 'utf8');
 const detailPage = readFileSync(new URL('../chat/chat/chat-detail.html', import.meta.url), 'utf8');
 const navPage = readFileSync(new URL('../shared/js/nav.js', import.meta.url), 'utf8');
@@ -19,6 +20,7 @@ const browserTest = readFileSync(new URL('./contact-groups-browser.mjs', import.
 function createRuntime(initialValue, options = {}) {
   const data = new Map();
   if (initialValue !== undefined) data.set('contact_groups_v1', initialValue);
+  if (options.initialDirectory !== undefined) data.set('real_user_contacts_v1', options.initialDirectory);
   const localStorage = {
     getItem(key) {
       if (options.failReads) throw new Error('storage unavailable');
@@ -35,9 +37,87 @@ function createRuntime(initialValue, options = {}) {
   };
   const window = { localStorage };
   vm.runInNewContext(identitySource, { window, localStorage, JSON, Array, Object, String, Date, Math, encodeURIComponent, decodeURIComponent });
+  vm.runInNewContext(directorySource, { window, localStorage, JSON, Array, Object, String, Date, Math, encodeURIComponent, decodeURIComponent });
   vm.runInNewContext(source, { window, localStorage, JSON, Array, Object, String, Date, Math, encodeURIComponent, decodeURIComponent });
-  return { api: window.PhoneContactGroups, identity: window.PhoneContactIdentity, data };
+  return { api: window.PhoneContactGroups, identity: window.PhoneContactIdentity, directory: window.PhoneContactDirectory, data };
 }
+
+test('real-user directory validates typed accounts and exposes accepted friends only', () => {
+  const { directory } = createRuntime();
+  const saved = directory.saveMany([
+    { id: 'user-1', displayName: '真人好友', status: 'accepted', createdAt: 10, updatedAt: 20, avatarUrl: 'https://cdn.example.test/a.png' },
+    { id: 'user-2', displayName: '待处理好友', status: 'pending_incoming', createdAt: 11, updatedAt: 21 },
+    { id: 'user-3', displayName: '已屏蔽好友', status: 'blocked', createdAt: 12, updatedAt: 22 }
+  ]);
+  assert.equal(saved.ok, true);
+  const accepted = directory.getAcceptedRefs();
+  assert.equal(accepted.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(accepted.refs.map((ref) => ref.key))), ['real_user:user-1']);
+  assert.deepEqual(JSON.parse(JSON.stringify(directory.read({ status: 'pending_incoming' }).contacts.map((item) => item.id))), ['user-2']);
+  assert.equal(directory.get('user-1').avatarUrl, 'https://cdn.example.test/a.png');
+  assert.equal(directory.get('user-2').status, 'pending_incoming');
+});
+
+test('real-user directory rejects stale snapshots and never overwrites corrupt storage', () => {
+  const { directory, data } = createRuntime();
+  assert.equal(directory.save({ id: 'user-1', displayName: '新名字', status: 'accepted', createdAt: 10, updatedAt: 200 }).ok, true);
+  const stale = directory.save({ id: 'user-1', displayName: '旧名字', status: 'pending_outgoing', createdAt: 10, updatedAt: 100 });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.error, 'stale_snapshot');
+  assert.equal(directory.get('user-1').displayName, '新名字');
+  assert.equal(directory.save({ id: 'missing-name', status: 'accepted' }).error, 'invalid_contact');
+
+  const corrupt = createRuntime(undefined, { initialDirectory: '{broken' });
+  const before = corrupt.data.get('real_user_contacts_v1');
+  assert.equal(corrupt.directory.save({ id: 'user-2', displayName: '不能覆盖', status: 'accepted' }).error, 'corrupt_data');
+  assert.equal(corrupt.data.get('real_user_contacts_v1'), before);
+  assert.equal(data.get('real_user_contacts_v1') !== undefined, true);
+});
+
+test('real-user directory records are the authoritative typed roster for Moments audiences', () => {
+  const { api, directory } = createRuntime();
+  directory.saveMany([
+    { id: 'user-live', displayName: '已接受好友', status: 'accepted', createdAt: 1, updatedAt: 2 },
+    { id: 'user-pending', displayName: '待接受好友', status: 'pending_incoming', createdAt: 1, updatedAt: 2 }
+  ]);
+  api.saveGroups([{
+    id: 'friends',
+    name: '好友',
+    memberIds: ['role-a'],
+    memberRefs: ['ai_role:role-a', 'real_user:user-live', 'real_user:user-pending']
+  }]);
+  const acceptedRefs = directory.getAcceptedRefs().refs.map((ref) => ref.key);
+  const roster = ['ai_role:role-a'].concat(acceptedRefs);
+  const groupSnapshot = api.buildAudienceSnapshot(['friends'], [], {
+    availableContactIds: ['role-a'],
+    availableContactRefs: roster
+  });
+  assert.equal(groupSnapshot.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(groupSnapshot.memberRefs)), ['ai_role:role-a', 'real_user:user-live']);
+  assert.deepEqual(JSON.parse(JSON.stringify(groupSnapshot.staleMemberRefs)), ['real_user:user-pending']);
+
+  const missingDirect = api.buildAudienceSnapshot([], [], {
+    selectedContactRefs: ['real_user:user-pending'],
+    availableContactIds: ['role-a'],
+    availableContactRefs: roster
+  });
+  assert.equal(missingDirect.ok, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(missingDirect.missingContactRefs)), ['real_user:user-pending']);
+});
+
+test('real-user directory removal leaves a typed group orphan without granting visibility', () => {
+  const { api, directory } = createRuntime();
+  directory.save({ id: 'user-1', displayName: '好友', status: 'accepted', createdAt: 1, updatedAt: 2 });
+  api.saveGroups([{ id: 'g', name: '好友组', memberIds: [], memberRefs: ['real_user:user-1'] }]);
+  assert.equal(directory.remove('user-1').ok, true);
+  const snapshot = api.buildAudienceSnapshot(['g'], [], {
+    availableContactIds: [],
+    availableContactRefs: []
+  });
+  assert.equal(snapshot.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.memberRefs)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.staleMemberRefs)), ['real_user:user-1']);
+});
 
 test('contact identity keys separate AI roles, real accounts, and group conversations with the same ID', () => {
   const { identity } = createRuntime();
@@ -151,7 +231,12 @@ test('typed Moments privacy never matches a real account to a role with the same
 
 test('typed contact identity is loaded before chat notification and stored in chat relationship snapshots', () => {
   assert.ok(contactsPage.includes('phone/contact-identity.js?v=20261107v1'));
+  assert.ok(contactsPage.includes('phone/contact-directory.js?v=20261107v1'));
   assert.ok(composerPage.includes('phone/contact-identity.js?v=20261107v1'));
+  assert.ok(composerPage.includes('phone/contact-directory.js?v=20261107v1'));
+  assert.ok(navPage.includes('contact-directory.js?v=20261107v1'));
+  assert.ok(serviceWorker.includes('./shared/js/phone/contact-directory.js?v=20261107v1'));
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v176'/);
   assert.ok(momentsPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(detailPage.includes('phone/contact-identity.js?v=20261107v1'));
   assert.ok(detailPage.includes('window.PhoneCurrentContactRef'));
