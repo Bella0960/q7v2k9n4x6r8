@@ -263,7 +263,7 @@ test('MCP tool listing rejects a catalog that exceeds the 500-tool limit instead
 
 test('MCP tool listing rejects duplicate names that would make calls ambiguous', async () => {
   const { client } = createToolListClient(() => ({
-    tools: [{ name: 'duplicate-tool' }, { name: 'duplicate-tool' }]
+    tools: [{ name: 'duplicate-tool', inputSchema: { type: 'object' } }, { name: 'duplicate-tool', inputSchema: { type: 'object' } }]
   }));
   await client.initialize();
   await assert.rejects(client.listTools(), /工具名称重复/);
@@ -273,7 +273,7 @@ test('MCP tool listing rejects duplicate names that would make calls ambiguous',
 test('MCP tool listing rejects repeated pagination cursors and stops after the page limit', async () => {
   let repeatedPage = 0;
   const repeated = createToolListClient(() => ({
-    tools: [{ name: 'repeat-' + (++repeatedPage) }],
+    tools: [{ name: 'repeat-' + (++repeatedPage), inputSchema: { type: 'object' } }],
     nextCursor: 'same-cursor'
   }));
   await repeated.client.initialize();
@@ -282,11 +282,45 @@ test('MCP tool listing rejects repeated pagination cursors and stops after the p
 
   let pageNumber = 0;
   const tooManyPages = createToolListClient(() => ({
-    tools: [{ name: 'page-' + (++pageNumber) }],
+    tools: [{ name: 'page-' + (++pageNumber), inputSchema: { type: 'object' } }],
     nextCursor: 'cursor-' + pageNumber
   }));
   await tooManyPages.client.initialize();
   await assert.rejects(tooManyPages.client.listTools(), /分页超过 20 页上限/);
   assert.equal(pageNumber, 20, 'the client must stop before requesting page 21');
   await tooManyPages.client.disconnect();
+});
+
+
+test('MCP tool listing rejects malformed entries and missing or non-object argument schemas', async () => {
+  const invalidEntry = createToolListClient(() => ({
+    tools: [{ name: 'valid', inputSchema: { type: 'object' } }, null]
+  }));
+  await invalidEntry.client.initialize();
+  await assert.rejects(invalidEntry.client.listTools(), /缺少有效名称或对象结构/);
+  await invalidEntry.client.disconnect();
+
+  const missingSchema = createToolListClient(() => ({
+    tools: [{ name: 'missing-schema' }]
+  }));
+  await missingSchema.client.initialize();
+  await assert.rejects(missingSchema.client.listTools(), /缺少有效的对象参数结构/);
+  await missingSchema.client.disconnect();
+
+  const invalidSchema = createToolListClient(() => ({
+    tools: [{ name: 'array-schema', inputSchema: [] }]
+  }));
+  await invalidSchema.client.initialize();
+  await assert.rejects(invalidSchema.client.listTools(), /缺少有效的对象参数结构/);
+  await invalidSchema.client.disconnect();
+});
+
+test('MCP tool listing rejects malformed pagination cursors', async () => {
+  const { client } = createToolListClient(() => ({
+    tools: [{ name: 'valid-tool', inputSchema: { type: 'object' } }],
+    nextCursor: { unexpected: true }
+  }));
+  await client.initialize();
+  await assert.rejects(client.listTools(), /分页游标格式无效/);
+  await client.disconnect();
 });
