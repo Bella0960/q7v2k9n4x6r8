@@ -90,6 +90,8 @@
   var olderCursor = null;
   var hasOlder = false;
   var known = Object.create(null);
+  var hiddenMessageIds = Object.create(null);
+  var messageViewVersion = 0;
   var pollTimer = 0;
   var pollBusy = false;
   var ready = false;
@@ -195,7 +197,7 @@
     return row;
   }
   function appendMessage(message, pending) {
-    if (!message || !message.id || known[message.id]) return false;
+    if (!message || !message.id || known[message.id] || hiddenMessageIds[message.id]) return false;
     removeEmpty();
     known[message.id] = true;
     $('messages').appendChild(messageNode(message, pending));
@@ -278,11 +280,13 @@
     );
     if (!confirmed) return;
     $('clearChatBtn').disabled = true;
+    messageViewVersion += 1;
     setStatus('正在清理你这边的聊天记录…');
     try {
       var result = await api.clearMessages(friendId);
       $('messages').innerHTML = '';
       known = Object.create(null);
+      hiddenMessageIds = Object.create(null);
       latestIncomingMessage = null;
       lastReadReceiptId = '';
       var clearedThrough = result.clearedThrough;
@@ -311,6 +315,7 @@
     button.disabled = true;
     try {
       await api.hideMessage(friendId, messageId);
+      hiddenMessageIds[messageId] = true;
       row.remove();
       delete known[messageId];
       if (latestIncomingMessage && latestIncomingMessage.id === messageId) {
@@ -401,11 +406,13 @@
     if (!ready || blocked || pollBusy || document.hidden) return;
     pollBusy = true;
     var shouldStick = isNearBottom();
+    var viewVersion = messageViewVersion;
     try {
       var page;
       var guard = 0;
       do {
         page = await api.getMessages(friendId, cursor, 'after');
+        if (viewVersion !== messageViewVersion) return;
         var list = page.messages || [];
         list.forEach(function (message) { appendMessage(message, false); });
         rememberIncoming(list);
@@ -429,8 +436,10 @@
     if (!ready || !hasOlder || !olderCursor) return;
     var button = $('loadOlderBtn');
     button.disabled = true;
+    var viewVersion = messageViewVersion;
     try {
       var page = await api.getMessages(friendId, olderCursor, 'before');
+      if (viewVersion !== messageViewVersion) return;
       rememberIncoming(page.messages || []);
       prependMessages(page.messages || []);
       markVisibleIncomingRead();
