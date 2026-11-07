@@ -329,3 +329,28 @@ test('saveMany is atomic when one snapshot attempts a lifecycle transition', () 
   assert.equal(directory.get('batch-one').displayName, '真人好友');
   assert.equal(directory.get('batch-two').status, 'accepted');
 });
+
+test('safe profile refresh keeps accepted relationship metadata intact', () => {
+  const { directory } = createDirectoryRuntime();
+  incoming(directory, 'profile-refresh-user', 'profile-refresh-request', 930);
+  directory.acceptIncoming('profile-refresh-user', { requestId: 'profile-refresh-request', now: 931 });
+  const before = directory.get('profile-refresh-user');
+
+  const refreshed = directory.save({
+    ...before,
+    displayName: '更新后的好友昵称',
+    avatarUrl: 'https://example.test/avatar.png',
+    acceptedAt: 999999,
+    source: 'untrusted-refresh',
+    updatedAt: before.updatedAt + 1
+  });
+
+  assert.equal(refreshed.ok, true);
+  const after = directory.get('profile-refresh-user');
+  assert.equal(after.displayName, '更新后的好友昵称');
+  assert.equal(after.avatarUrl, 'https://example.test/avatar.png');
+  assert.equal(after.status, 'accepted');
+  assert.equal(after.requestId, 'profile-refresh-request');
+  assert.equal(after.acceptedAt, before.acceptedAt);
+  assert.equal(after.source, before.source);
+});
