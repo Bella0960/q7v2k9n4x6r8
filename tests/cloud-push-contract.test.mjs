@@ -3251,6 +3251,8 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   );
   assert.equal(delivery.status, 'sent');
   assert.equal(delivery.outbound_message_id, 'out_' + serverMessageId);
+  assert.ok(ctx.store.getOutboundMessage(serverMessageId).push_accepted_at,
+    '至少一个订阅接受 Push 后应记录 push_accepted_at');
 
   const notification = buildOutboundPushPayload({
     characterId: 'char-push',
@@ -3364,6 +3366,16 @@ test('出站消息分别记录 Push 接受、设备收到、本地保存与用�
     now
   });
   assert.equal(inserted.inserted, true);
+  const pushAccepted = ctx.store.markOutboundPushAccepted({ serverMessageId: messageId, now });
+  assert.equal(pushAccepted.server_message_id, messageId);
+
+  const pulled = await ctx.asJson('/api/characters/char-lifecycle/outbound', { device });
+  assert.equal(pulled.status, 200);
+  assert.equal(pulled.payload.messages.length, 1);
+  assert.equal(pulled.payload.messages[0].lifecycle.pushAcceptedAt, now);
+  assert.equal(pulled.payload.messages[0].lifecycle.deviceReceivedAt, null);
+  assert.equal(pulled.payload.messages[0].lifecycle.localSavedAt, null);
+  assert.equal(pulled.payload.messages[0].lifecycle.readAt, null);
 
   const receivedBeforePush = await ctx.asJson(
     '/api/characters/char-lifecycle/outbound/' + messageId + '/received',
