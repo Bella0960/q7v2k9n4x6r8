@@ -222,7 +222,19 @@
     if (code.length < 32 || code.length > 512) {
       throw new Error('请输入有效的一次性配对码');
     }
-    return enablePush(true, code);
+    var device = ensureDevice();
+    await registerDevice(device, code);
+    if (!isSupported()) {
+      return { deviceRegistered: true, pushSupported: false, pushEnabled: false };
+    }
+    try {
+      await enablePush(true);
+      return { deviceRegistered: true, pushSupported: true, pushEnabled: true };
+    } catch (error) {
+      // 配对已成功；推送权限/订阅失败不撤销设备身份。
+      error.deviceRegistered = true;
+      throw error;
+    }
   }
 
   async function sendTestPush() {
