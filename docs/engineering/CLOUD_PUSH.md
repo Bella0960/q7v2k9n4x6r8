@@ -218,6 +218,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 - `listDueActivities` 通过队列表与设备表的 LEFT JOIN 给每个任务附上设备所属 `user_id`；scheduler gate 只读取该用户的授权、角色作息和设备租约。
 - 缺少设备用户归属、持久化快照缺失或快照用户 ID 不匹配时，gate 会 fail-closed，不再把其他账户的任务默认按 `owner` 规则评估。
+- 到期任务若来源设备已撤销，会以 `source_device_revoked` 原因码作废，不进入后续执行。
 
 本轮修复了任务在 worker 中断后无法恢复，以及旧 worker 可能覆盖新 worker 结果的风险：
 
