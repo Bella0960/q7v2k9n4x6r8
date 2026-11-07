@@ -38,7 +38,7 @@
             return Promise.reject(err);
         }
 
-        var baseUrl = (config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\\/+$/, '');
+        var baseUrl = (config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
         var model = (opts.model || config.model || 'gpt-3.5-turbo').trim();
         var temperature = opts.temperature != null ? opts.temperature : (config.temperature != null ? config.temperature : 0.8);
         var timeoutMs = opts.timeoutMs || DEFAULT_TIMEOUT;
