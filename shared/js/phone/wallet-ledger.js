@@ -59,9 +59,10 @@
     }
   }
 
-  function getOrCreatePendingCheckout(channel, signature) {
+  function getOrCreatePendingCheckout(channel, signature, paymentMethod) {
     channel = String(channel || '').trim().slice(0, 32);
     signature = String(signature || '');
+    paymentMethod = String(paymentMethod || 'normal').slice(0, 64);
     if (!channel || !signature || signature.length > 8000) return null;
 
     var rows = readPendingCheckouts();
@@ -69,7 +70,11 @@
     var existing = rows.find(function (item) {
       return item.channel === channel && item.signature === signature;
     });
-    if (existing) return existing.id;
+    if (existing) {
+      // Once a checkout has started, changing its payment method must not create a
+      // second charge for the same cart. Definite pre-charge failures may cancel it.
+      return String(existing.paymentMethod || 'normal') === paymentMethod ? existing.id : null;
+    }
 
     var randomPart = global.crypto && typeof global.crypto.randomUUID === 'function'
       ? global.crypto.randomUUID()
@@ -81,13 +86,14 @@
       id: id,
       channel: channel,
       signature: signature,
+      paymentMethod: paymentMethod,
       status: 'pending',
       createdAt: Date.now()
     });
     return writePendingCheckouts(rows) ? id : null;
   }
 
-  function completePendingCheckout(transactionId) {
+  function cancelPendingCheckout(transactionId) {
     transactionId = String(transactionId || '');
     if (!transactionId) return false;
     var rows = readPendingCheckouts();
@@ -99,10 +105,15 @@
     return !!verified && !verified.some(function (item) { return item.id === transactionId; });
   }
 
+  function completePendingCheckout(transactionId) {
+    return cancelPendingCheckout(transactionId);
+  }
+
   global.MaoMaoWalletLedger = Object.freeze({
     lockName: LOCK_NAME,
     runExclusive: runExclusive,
     getOrCreatePendingCheckout: getOrCreatePendingCheckout,
+    cancelPendingCheckout: cancelPendingCheckout,
     completePendingCheckout: completePendingCheckout,
     supportsCrossTabLock: function () {
       return !!(global.navigator && global.navigator.locks &&
