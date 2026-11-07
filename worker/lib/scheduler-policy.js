@@ -19,7 +19,15 @@ export const REASON_CODES = Object.freeze({
   STALE_CONTEXT: 'stale_context',
   SUPERSEDED: 'superseded',
   CLAIMED: 'claimed',
-  CLAIM_LOST: 'claim_lost'
+  CLAIM_LOST: 'claim_lost',
+  GATE_DATA_SOURCE_MISSING: 'gate_data_source_missing',
+  GATE_DATA_MISSING: 'gate_data_missing',
+  GATE_PROVIDER_ERROR: 'gate_provider_error',
+  GATE_POLICY_UNAVAILABLE: 'gate_policy_unavailable',
+  GATE_POLICY_INVALID: 'gate_policy_invalid',
+  FOREGROUND_LEASE_HELD: 'foreground_lease_held',
+  FOREGROUND_LEASE_GRACE: 'foreground_lease_grace',
+  CONTEXT_VERSION_UNAVAILABLE: 'context_version_unavailable'
 });
 
 function isPositiveInteger(value) {
@@ -136,11 +144,31 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
     };
   }
 
-  const snapshot = gate(task) || {};
+  let snapshot;
+  try {
+    snapshot = gate(task, { now, config: validated.config }) || {};
+  } catch (error) {
+    return {
+      action: 'defer',
+      reason: REASON_CODES.GATE_PROVIDER_ERROR,
+      taskId: task.id,
+      expectedAttemptCount: Number(task.attempt_count || 0)
+    };
+  }
+
+  if (snapshot.supersede === true || snapshot.reasonCode === REASON_CODES.STALE_CONTEXT) {
+    return {
+      action: 'supersede',
+      reason: REASON_CODES.STALE_CONTEXT,
+      taskId: task.id,
+      expectedAttemptCount: Number(task.attempt_count || 0)
+    };
+  }
+
   if (snapshot.autonomyAllowed !== true) {
     return {
       action: 'defer',
-      reason: REASON_CODES.AUTONOMY_DENIED,
+      reason: snapshot.reasonCode || REASON_CODES.AUTONOMY_DENIED,
       taskId: task.id,
       expectedAttemptCount: Number(task.attempt_count || 0)
     };
@@ -148,7 +176,7 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
   if (snapshot.characterState !== 'active') {
     return {
       action: 'defer',
-      reason: REASON_CODES.CHARACTER_NOT_ACTIVE,
+      reason: snapshot.reasonCode || REASON_CODES.CHARACTER_NOT_ACTIVE,
       taskId: task.id,
       expectedAttemptCount: Number(task.attempt_count || 0)
     };
