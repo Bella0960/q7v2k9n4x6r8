@@ -2604,18 +2604,8 @@
                 && cloud._internal.readDevice();
             if (!hasDevice) return;
 
-            var leaving = false;
-            var session = null;
-            function stopPresence() {
-                leaving = true;
-                if (session && typeof session.stop === 'function') session.stop();
-            }
-            window.addEventListener('pagehide', stopPresence, { once: true });
+            // startCharacterPresence 自己管理 visibilitychange/pagehide 与 TTL 续期。
             cloud.startCharacterPresence(String(currentCharacter.id || currentRoleId))
-                .then(function (started) {
-                    session = started;
-                    if (leaving && session && typeof session.stop === 'function') session.stop();
-                })
                 .catch(function (error) {
                     // 未配置云端 lease 时保持本地聊天可用，不影响正常发消息。
                     if (error && error.code !== 'PRESENCE_NOT_CONFIGURED') {
