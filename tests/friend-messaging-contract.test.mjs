@@ -10,6 +10,7 @@ const FIXED_NOW = 1_800_000_000_000;
 
 const ROOT_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const FRIEND_CHAT_HTML = readFileSync(resolve(ROOT_DIR, 'chat/contacts/friend-chat.html'), 'utf8');
+const FRIEND_CENTER_HTML = readFileSync(resolve(ROOT_DIR, 'chat/contacts/friend-center.html'), 'utf8');
 
 
 function makeAccount(label) {
@@ -401,4 +402,10 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /FRIEND_MESSAGE_RATE_LIMITED/);
   assert.match(FRIEND_CHAT_HTML, /请稍后再发送，当前输入内容已保留/);
   assert.match(FRIEND_CHAT_HTML, /端到端加密/);
+  assert.match(FRIEND_CHAT_HTML, /api\.markRead\(friendId, target\.id\)/);
+  assert.match(FRIEND_CHAT_HTML, /!isNearBottom\(\)/);
+  assert.match(FRIEND_CHAT_HTML, /rememberIncoming\(initialMessages\)/);
+  assert.match(FRIEND_CENTER_HTML, /friend\.unreadCount/);
+  assert.match(FRIEND_CENTER_HTML, /unread-count/);
+  assert.match(FRIEND_CENTER_HTML, /friendsPollTimer/);
 });
