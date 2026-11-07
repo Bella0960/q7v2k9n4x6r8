@@ -636,7 +636,7 @@ test("Worker routes friend APIs separately and keeps messages disabled", async (
   assert.equal(messages.status, 503);
 });
 
-test("friend roster pages by stable account ID and returns relationship tombstones without private fields", async () => {
+test("friend roster uses stable ID cursors and returns relationship tombstones without private fields", async () => {
   const context = await setup();
   const baseId = "account-alice-001";
   const extraIds = ["account-extra-01", "account-extra-02", "account-extra-03", "account-extra-04"];
