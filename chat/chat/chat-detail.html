@@ -2993,6 +2993,23 @@
                 await appendAiMessageWithPacing(message, appendIndex, { scrollToBottom: wasNearBottom });
             }
 
+            // 气泡呈现期间其他标签页可能写回较旧历史。ACK 前再读一次，
+            // 若云端消息被覆盖，则合并回最新历史并再次写后读回验证。
+            var postRenderHistory = loadMessages();
+            var stillSaved = Array.isArray(postRenderHistory) && postRenderHistory.some(function (item) {
+                return item && String(item.serverMessageId || '') === serverMessageId;
+            });
+            if (!stillSaved) {
+                if (!Array.isArray(postRenderHistory)) return false;
+                postRenderHistory.push(message);
+                if (!saveMessages(postRenderHistory)) return false;
+                var confirmedHistory = loadMessages();
+                var confirmed = Array.isArray(confirmedHistory) && confirmedHistory.some(function (item) {
+                    return item && String(item.serverMessageId || '') === serverMessageId;
+                });
+                if (!confirmed) return false;
+            }
+
             // 只广播消息 ID，不广播消息正文；其他标签页从本地持久化历史重新读取。
             try {
                 localStorage.setItem(
