@@ -789,7 +789,15 @@
     try { return JSON.parse(localStorage.getItem('shop_orders') || '[]'); }
     catch(e) { return []; }
   }
-  function saveOrders(o) { localStorage.setItem('shop_orders', JSON.stringify(o)); }
+  function saveOrders(o) {
+    try {
+      var serialized = JSON.stringify(o);
+      localStorage.setItem('shop_orders', serialized);
+      return localStorage.getItem('shop_orders') === serialized;
+    } catch (error) {
+      return false;
+    }
+  }
 
   function orderStatus(ts) {
     const hr = (Date.now() - ts) / 3600000;
@@ -1019,14 +1027,14 @@
             const total = payItems.reduce((s,c) => s + c.price, 0);
             var roleFamilyCard = getRoleCardFromMethod(payMethod);
             if (payMethod.indexOf('role_card:') === 0) {
-              if (!roleFamilyCard || !canUseRoleCard(roleFamilyCard, total)) {
-                showToast('这张亲属卡的额度不足或已停用');
+              if (!roleFamilyCard) {
+                showToast('这张亲属卡不存在或已失效');
                 payMethod = 'normal';
                 renderPayMethods(total);
                 return;
               }
               var roleCardSpend = window.RoleFamilyCards.consume(
-                roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop'
+                roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop', transactionId
               );
               if (!roleCardSpend || !roleCardSpend.ok) {
                 showToast(roleCardSpend && roleCardSpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式');
@@ -1038,6 +1046,16 @@
             const now = new Date();
             const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
             const itemsDesc = payItems.map(c => c.cn).join('、');
+            var checkoutSignature = JSON.stringify({
+              items: payItems.map(function (item) { return { id: item.id, cn: item.cn, price: item.price }; }),
+              total: total,
+              payMethod: payMethod
+            });
+            var transactionId = ledger.getOrCreatePendingCheckout('shop', checkoutSignature);
+            if (!transactionId) {
+              showToast('本次结算编号未能保存，尚未扣款，请检查存储空间后重试');
+              return;
+            }
         
             // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
             if (payMethod === 'close_pay') {
@@ -1053,44 +1071,61 @@
                 }
                 if (cp) {
                   // 重新校验亲密付额度与真实余额，结算全程处于钱包全局锁内。
-          if (!cp.enabled || (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
+          if (!Array.isArray(cp.history)) cp.history = [];
+          var quotaAlreadyCommitted = cp.history.some(function (row) {
+            return row && row.paymentId === transactionId;
+          });
+          if (!cp.enabled && !quotaAlreadyCommitted) {
+            showToast('亲密付已关闭，订单未完成');
+            return;
+          }
+          if (!quotaAlreadyCommitted && (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
             showToast('亲密付额度已变化，请重新选择支付方式');
             return;
           }
+
           oldWalletRaw = localStorage.getItem('workData');
           var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
           if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
           if (!Array.isArray(wd.history)) wd.history = [];
-          if (wd.balance < total) {
-            showToast('钱包余额不足，未完成支付');
-            return;
-          }
-          wd.balance = Math.round((wd.balance - total) * 100) / 100;
-          wd.history.unshift({ type: 'expense', category: 'close_pay',
-            title: '亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
-            amount: total, time: Date.now() });
-          walletSerialized = JSON.stringify(wd);
-          localStorage.setItem('workData', walletSerialized);
-          if (localStorage.getItem('workData') !== walletSerialized) {
-            showToast('钱包扣款未能确认，订单未完成');
-            return;
+          var walletAlreadyCommitted = wd.history.some(function (row) {
+            return row && row.paymentId === transactionId;
+          });
+          if (!walletAlreadyCommitted) {
+            if (wd.balance < total) {
+              showToast('钱包余额不足，未完成支付');
+              return;
+            }
+            wd.balance = Math.round((wd.balance - total) * 100) / 100;
+            wd.history.unshift({ type: 'expense', category: 'close_pay',
+              title: '亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
+              amount: total, time: Date.now(), paymentId: transactionId });
+            walletSerialized = JSON.stringify(wd);
+            localStorage.setItem('workData', walletSerialized);
+            if (localStorage.getItem('workData') !== walletSerialized) {
+              showToast('钱包扣款未能确认；再次提交会核对原交易，不会盲目重复扣款');
+              return;
+            }
+          } else {
+            walletSerialized = oldWalletRaw || JSON.stringify(wd);
           }
 
-          // 更新亲密付额度；若额度记录未能写入，尽量回滚刚才的钱包扣款。
-          cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
-          if (!Array.isArray(cp.history)) cp.history = [];
-          cp.history.push({ amount: total, note: '商店 · ' + itemsDesc, time: Date.now() });
-          closePaySerialized = JSON.stringify(cp);
-          localStorage.setItem('close_pay', closePaySerialized);
-          if (localStorage.getItem('close_pay') !== closePaySerialized) {
-            try {
-              if (localStorage.getItem('workData') === walletSerialized) {
-                if (oldWalletRaw == null) localStorage.removeItem('workData');
-                else localStorage.setItem('workData', oldWalletRaw);
-              }
-            } catch (rollbackError) {}
-            showToast('亲密付额度未能保存，已尝试撤回钱包扣款');
-            return;
+          if (!quotaAlreadyCommitted) {
+            cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
+            cp.history.push({ amount: total, note: '商店 · ' + itemsDesc,
+              time: Date.now(), paymentId: transactionId });
+            closePaySerialized = JSON.stringify(cp);
+            localStorage.setItem('close_pay', closePaySerialized);
+            if (localStorage.getItem('close_pay') !== closePaySerialized) {
+              try {
+                if (localStorage.getItem('workData') === walletSerialized) {
+                  if (oldWalletRaw == null) localStorage.removeItem('workData');
+                  else localStorage.setItem('workData', oldWalletRaw);
+                }
+              } catch (rollbackError) {}
+              showToast('亲密付额度未能保存，已尝试撤回钱包扣款；请重试核对原交易');
+              return;
+            }
           }
           closePayQuotaCommitted = true;
 
@@ -1098,13 +1133,21 @@
                   if (cp.roleId) {
                     var key = 'chat_history_' + cp.roleId;
                     var arr = JSON.parse(localStorage.getItem(key) || '[]');
-                    arr.push({
-                      role: 'user',
-                      type: 'text',
-                      text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
-                      time: Date.now()
-                    });
-                    localStorage.setItem(key, JSON.stringify(arr));
+                    if (!arr.some(function (row) { return row && row.paymentId === transactionId; })) {
+                      arr.push({
+                        role: 'user',
+                        type: 'text',
+                        text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
+                        time: Date.now(),
+                        paymentId: transactionId
+                      });
+                      var chatSerialized = JSON.stringify(arr);
+                      localStorage.setItem(key, chatSerialized);
+                      if (localStorage.getItem(key) !== chatSerialized) {
+                        showToast('亲密付已扣款，但聊天记录暂未保存；再次提交会恢复原交易');
+                        return;
+                      }
+                    }
                   }
                 }
               } catch(e) {
@@ -1122,37 +1165,72 @@
               }
             }
 
-            // 记账：写 finance_records
+            // 财务明细按交易 ID + 商品序号幂等写入；失败时保留待恢复交易。
             try {
               const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-              payItems.forEach(c => {
-                list.push({ amount: c.price, type: 'expense',
+              if (!Array.isArray(list)) throw new Error('finance_records is not an array');
+              payItems.forEach(function (item, index) {
+                var exists = list.some(function (row) {
+                  return row && row.paymentId === transactionId && Number(row.paymentLineIndex) === index;
+                });
+                if (!exists) list.push({
+                  amount: item.price,
+                  type: 'expense',
                   category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
                   note: (payMethod === 'close_pay'
                     ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
-                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + c.cn,
-                  time: timeStr });
+                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + item.cn,
+                  time: timeStr,
+                  paymentId: transactionId,
+                  paymentLineIndex: index
+                });
               });
               var financeSerialized = JSON.stringify(list);
               localStorage.setItem('finance_records', financeSerialized);
               if (localStorage.getItem('finance_records') !== financeSerialized) {
-                showToast('订单记账未能保存，请稍后检查');
+                showToast('支付已记录，但财务明细未保存；再次提交会补齐且不会重复扣款');
                 return;
               }
-            } catch(e) {}
-        
-            if (roleFamilyCard) {
-              notifyRoleCardIssuer(roleFamilyCard,
-                '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
-                '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
-                '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
-                window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+            } catch (financeError) {
+              console.warn('[shop] 财务明细保存失败', financeError);
+              showToast('财务明细保存失败；再次提交可恢复原交易');
+              return;
             }
+
         
-            // 写入订单
+
+            // 订单按 paymentId 去重；订单保存失败时保留待恢复交易。
             const orders = loadOrders();
-            orders.push({ roleName: '我', roleBg: '#111', items: payItems.map(c=>({cn:c.cn,price:c.price})), total, ts: Date.now(), payMethod });
-            saveOrders(orders);
+            if (!orders.some(function (row) { return row && row.paymentId === transactionId; })) {
+              orders.push({
+                paymentId: transactionId,
+                roleName: '我',
+                roleBg: '#111',
+                items: payItems.map(function (item) { return { cn: item.cn, price: item.price }; }),
+                total: total,
+                ts: Date.now(),
+                payMethod: payMethod
+              });
+            }
+            if (!saveOrders(orders)) {
+              showToast('支付已记录，但订单暂未保存；再次提交会补齐订单且不会重复扣款');
+              return;
+            }
+            if (!ledger.completePendingCheckout(transactionId)) {
+              showToast('订单已保存，但结算确认暂未完成；再次提交不会重复扣款');
+              return;
+            }
+            try {
+              if (roleFamilyCard) {
+                            notifyRoleCardIssuer(roleFamilyCard,
+                              '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
+                              '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
+                              '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
+                              window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+                          }
+            } catch (notifyError) {
+              console.warn('[shop] 亲属卡通知未能发送', notifyError);
+            }
             // 弹小票
             document.getElementById('rOrder').textContent = String(Math.floor(Math.random()*9000)+1000);
             document.getElementById('rBody').innerHTML =
