@@ -85,7 +85,8 @@ export class CloudDatabase {
       const timestamp = Date.now();
       const removed = this.store.cleanupSubscriptions(timestamp);
       const pairingTokensRemoved = this.store.cleanupDevicePairingTokens(timestamp);
-      return Response.json({ ok: true, removed, pairingTokensRemoved });
+      const contextEventsRemoved = this.store.cleanupCharacterContextEvents(timestamp);
+      return Response.json({ ok: true, removed, pairingTokensRemoved, contextEventsRemoved });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
       // 真实 gate 已接入；缺少显式授权/作息/lease 配置或可信上下文版本时仍 fail-closed。
