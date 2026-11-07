@@ -347,7 +347,7 @@ Acceptance:
 - No blanket cleanup.
 
 ### SOC-002 — Keep real-user conversations strictly communication-only
-**Priority:** P0 · **Status:** IN PROGRESS (client capability contract added; real-user messaging service not yet implemented)
+**Priority:** P0 · **Status:** IN PROGRESS (client policy, local repository, Worker fail-closed gate, and v1 server contract; real-user delivery is not enabled)
 
 Product boundary:
 - Real-user conversations are for ordinary communication only: text, image/file sharing, voice messages, and stickers.
@@ -392,3 +392,15 @@ Do not parallelize:
 5. Agent E: PERF-001 — image asset inventory and safe optimization recommendations, no replacements yet.
 
 Only after these reports are reviewed should implementation tasks be assigned.
+
+
+Server-boundary work (2026-11-07):
+- The current `worker.js` is a static-asset Worker and `wrangler.jsonc` has no real-user account authentication or message database bindings. Do not treat the current deployment as a messaging backend.
+- Added `GET /api/real-user-chat/capabilities`, which explicitly reports `enabled: false`, no networking, no server acknowledgements, and disabled live voice/video calling.
+- Reserved `/api/real-user-chat/*` routes fail closed with HTTP 503; the Worker does not parse message bodies, forward them to static assets, or return a fake send acknowledgement.
+- Added `docs/engineering/REAL_USER_CHAT_SERVER_CONTRACT.md` with the proposed authenticated API DTOs, server-authoritative friend checks, attachment authorization, idempotency, delivery/read receipts, and release gates.
+- Added `tests/real-user-chat-worker-gate.test.mjs` and `npm run test:worker:real-user-gate`. The test suite is defined but has not been executed in a native Node runner; GitHub Actions currently fails before starting steps.
+
+Additional acceptance:
+- The deployed capabilities endpoint must remain disabled until authentication, authoritative relationships, durable persistence, delivery acknowledgements, and two-device tests are all proven.
+- The reserved API namespace must never fall through to static assets or return a success-shaped response before those gates are met.
