@@ -160,7 +160,7 @@ test('AI sees current-turn images and can only add an explicit avatar candidate 
   assert.ok(chatDetailSource.includes('parseAvatarCandidateReply'));
   assert.ok(chatDetailSource.includes('streamResult.ok'));
   assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.addAsset'));
-  assert.match(chatDetailSource, /if\s*\(replySaved\s*&&\s*avatarCandidates\.length/);
+  assert.match(chatDetailSource, /if\s*\(replySaved\s*&&\s*!isGroupChat\s*&&\s*window\.RoleAvatarLibrary/);
   assert.ok(chatDetailSource.includes("source: 'chat'"));
   assert.ok(chatDetailSource.includes('var avatarPairs = parsedAvatarCandidate.pairs || [];'));
   assert.ok(chatDetailSource.includes('window.RoleAvatarLibrary.linkPair'));
