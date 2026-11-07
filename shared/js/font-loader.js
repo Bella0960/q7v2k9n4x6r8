@@ -338,6 +338,13 @@
         });
     }
 
+    /* A preset can be selected again while its original IndexedDB request is still pending.
+       In that A → B → A case the generation is stale, but the source is current again;
+       reuse the in-flight record instead of leaving B's font applied indefinitely. */
+    function fontRequestIsRelevant(source, isStillCurrent) {
+        return isStillCurrent() || readActiveFontSource().key === source.key;
+    }
+
     function loadPresetFromIndexedDb(source, isStillCurrent, recoverFromCache) {
         if (!source.activeId) return;
         /* 同一文档同一字体只允许一次未完成的 IndexedDB 读取，避免 pageshow/storage 重复触发。 */
@@ -351,7 +358,7 @@
         }
         function failToSystemFont() {
             finish();
-            if (isStillCurrent()) fallbackToSystemFont(source.key);
+            if (fontRequestIsRelevant(source, isStillCurrent)) fallbackToSystemFont(source.key);
         }
         if (!window.indexedDB) { failToSystemFont(); return; }
         var request;
@@ -360,7 +367,7 @@
 
         request.onsuccess = function () {
             var db = request.result;
-            if (failedFontKey === source.key || !isStillCurrent()) {
+            if (failedFontKey === source.key || !fontRequestIsRelevant(source, isStillCurrent)) {
                 finish();
                 try { db.close(); } catch (e) {}
                 return;
@@ -369,7 +376,7 @@
                 var tx = db.transaction('presets', 'readonly');
                 var get = tx.objectStore('presets').get(source.activeId);
                 get.onsuccess = function () {
-                    if (!isStillCurrent()) { finish(); return; }
+                    if (!fontRequestIsRelevant(source, isStillCurrent)) { finish(); return; }
                     var record = get.result;
                     finish();
                     if (!record) {
@@ -393,7 +400,7 @@
             } catch (e) {
                 finish();
                 try { db.close(); } catch (err) {}
-                if (isStillCurrent()) fallbackToSystemFont(source.key);
+                if (fontRequestIsRelevant(source, isStillCurrent)) fallbackToSystemFont(source.key);
             }
         };
         request.onerror = failToSystemFont;
