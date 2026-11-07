@@ -65,11 +65,11 @@ test('failed app navigation never falls back to the desktop index page', () => {
 
 
 test('Contacts account client scripts are part of the versioned app shell', () => {
-  assert.match(serviceWorker, /real-user-account-client\\.js\\?v=20261107v1/);
-  assert.match(serviceWorker, /real-user-account-panel\\.js\\?v=20261107v1/);
-  assert.match(homePage, /real-user-account-client\\.js\\?v=20261107v1/);
+  assert.match(serviceWorker, /real-user-account-client\.js\?v=20261107v1/);
+  assert.match(serviceWorker, /real-user-account-panel\.js\?v=20261107v1/);
+  assert.match(homePage, /real-user-account-client\.js\?v=20261107v1/);
   const contactsPage = read('chat/contacts/contacts.html');
-  assert.match(contactsPage, /real-user-account-panel\\.js\\?v=20261107v1/);
+  assert.match(contactsPage, /real-user-account-panel\.js\?v=20261107v1/);
 });
 
 test('real-user chat API requests always bypass the static cache and fetch live state', () => {
