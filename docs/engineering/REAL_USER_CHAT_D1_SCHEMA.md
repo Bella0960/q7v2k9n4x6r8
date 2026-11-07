@@ -36,7 +36,7 @@ Apply `0001_real_user_chat.sql` first, then `0002_real_user_friend_code_rotation
 ## Activation prerequisites
 
 1. Create a D1 database in the Cloudflare account and configure a real `DB` binding; no placeholder database ID is committed.
-2. Apply the migration to a staging database first and validate all tables, triggers, and foreign keys.
+2. Apply `0001_real_user_chat.sql`, then `0002_real_user_friend_code_rotation.sql` to a staging database; validate all tables, triggers, foreign keys, and the active-code unique index.
 3. Configure a Cloudflare Rate Limiting binding named `AUTH_LIMITER`. Keep `REAL_USER_AUTH_ENABLED` and `REAL_USER_FRIENDS_ENABLED` unset/false until staging verification is complete.
 4. The Worker verifies that `sqlite_master` contains `real_user_accounts`, `real_user_sessions`, `real_user_friend_requests`, and `real_user_friendships` before it reports account auth as ready; a D1 binding without the migration remains disabled.
 5. Run the account-auth regression suite against the staging binding, review password derivation cost and rate-limit behavior in the target Worker plan, then explicitly set `REAL_USER_AUTH_ENABLED=true` to expose account registration/login only.
