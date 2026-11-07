@@ -392,6 +392,59 @@
         return resultWithContact(writeContacts(next), cancelled, 'request_cancelled');
     }
 
+    // Apply the other party's response to a request initiated on this device.
+    // This event must come from an authenticated server adapter and match the
+    // exact outgoing request ID before the local relationship becomes accepted.
+    function confirmOutgoingAccepted(id, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        var validation = validateRequestId(existing, options);
+        if (!validation.ok) return { ok: false, error: validation.error, contact: existing, contacts: current.contacts };
+        if (existing.status === STATUS.ACCEPTED) {
+            return { ok: true, action: 'already_accepted', contact: existing, contacts: current.contacts };
+        }
+        if (existing.status !== STATUS.PENDING_OUTGOING) {
+            return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
+        }
+        var now = nextUpdatedAt(transitionTime(options), existing);
+        var accepted = normalizeRecord(Object.assign({}, existing, {
+            status: STATUS.ACCEPTED,
+            acceptedAt: now,
+            updatedAt: now
+        }), now);
+        var next = current.contacts.map(function (item) { return item.id === existing.id ? accepted : item; });
+        return resultWithContact(writeContacts(next), accepted, 'outgoing_request_accepted');
+    }
+
+    // A remote rejection is terminal for this request ID, but a new request
+    // with a different ID may be sent later.
+    function applyOutgoingDeclined(id, options) {
+        options = options && typeof options === 'object' ? options : {};
+        var current = readContactForTransition(id);
+        if (!current.ok) return current;
+        var existing = current.contact;
+        if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        var validation = validateRequestId(existing, options);
+        if (!validation.ok) return { ok: false, error: validation.error, contact: existing, contacts: current.contacts };
+        if (existing.status === STATUS.DECLINED) {
+            return { ok: true, action: 'already_declined', contact: existing, contacts: current.contacts };
+        }
+        if (existing.status !== STATUS.PENDING_OUTGOING) {
+            return { ok: false, error: 'invalid_transition', contact: existing, contacts: current.contacts };
+        }
+        var now = nextUpdatedAt(transitionTime(options), existing);
+        var declined = normalizeRecord(Object.assign({}, existing, {
+            status: STATUS.DECLINED,
+            declinedAt: now,
+            updatedAt: now
+        }), now);
+        var next = current.contacts.map(function (item) { return item.id === existing.id ? declined : item; });
+        return resultWithContact(writeContacts(next), declined, 'outgoing_request_declined');
+    }
+
     function blockContact(id, options) {
         options = options && typeof options === 'object' ? options : {};
         var current = readContactForTransition(id);
@@ -518,6 +571,8 @@
         requestOutgoing: requestOutgoing,
         applyIncomingRequest: applyIncomingRequest,
         acceptIncoming: acceptIncoming,
+        confirmOutgoingAccepted: confirmOutgoingAccepted,
+        applyOutgoingDeclined: applyOutgoingDeclined,
         declineIncoming: declineIncoming,
         cancelOutgoing: cancelOutgoing,
         block: blockContact,
