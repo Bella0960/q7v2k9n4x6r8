@@ -254,7 +254,8 @@ test("current-account endpoint requires a valid active server session", async ()
     id: body.account.id,
     handle: "current_1",
     displayName: "Current",
-    status: "active"
+    status: "active",
+    avatarAssetId: null
   });
   assert.equal(body.account.password_hash, undefined);
   const anonymous = await handleRealUserAuth(request(AUTH + "/me"), env);
@@ -352,6 +353,7 @@ test("account auth endpoints are routed while messaging remains disabled", async
   assert.equal(capabilityBody.enabled, false);
   assert.equal(capabilityBody.accountAuth.enabled, true);
   assert.equal(capabilityBody.delivery.enabled, false);
+  assert.equal(capabilityBody.profileAvatar.enabled, false);
 
   const unavailableEnv = {
     ...capabilityEnv,
