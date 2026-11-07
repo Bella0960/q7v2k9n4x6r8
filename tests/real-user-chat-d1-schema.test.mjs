@@ -106,3 +106,30 @@ test("migration does not create payment, transfer, wallet or transaction storage
     assert.doesNotMatch(migration, new RegExp("CREATE TABLE IF NOT EXISTS " + forbidden, "i"));
   }
 });
+
+
+test("friendship rows must originate from accepted requests and blocked pairs are removed", () => {
+  const friendships = tableBlock("real_user_friendships");
+  assert.match(friendships, /accepted_request_id TEXT NOT NULL/);
+  assert.match(migration, /trg_real_user_friendship_source_guard/);
+  assert.match(migration, /real_user_friendship_requires_accepted_request/);
+  assert.match(migration, /trg_real_user_friend_request_accepted/);
+  assert.match(migration, /trg_real_user_block_removes_friendship/);
+  assert.match(migration, /trg_real_user_friendship_blocked/);
+});
+
+test("friend requests can only be created pending and cannot be replayed from terminal states", () => {
+  assert.match(migration, /trg_real_user_friend_request_insert_guard/);
+  assert.match(migration, /real_user_friend_request_must_start_pending/);
+  assert.match(migration, /trg_real_user_friend_request_transition_guard/);
+  assert.match(migration, /OLD\.status <> 'pending'/);
+  assert.match(migration, /NEW\.status NOT IN \('accepted', 'declined', 'cancelled'\)/);
+  assert.match(migration, /real_user_friend_request_transition_invalid/);
+});
+
+test("message content is immutable and receipt timestamps cannot move backwards", () => {
+  assert.match(migration, /trg_real_user_message_immutable/);
+  assert.match(migration, /real_user_message_immutable/);
+  assert.match(migration, /trg_real_user_receipt_monotonic/);
+  assert.match(migration, /real_user_receipt_not_monotonic/);
+});
