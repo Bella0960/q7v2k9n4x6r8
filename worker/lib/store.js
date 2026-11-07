@@ -1344,6 +1344,50 @@ class CloudStore {
     return rows.reverse();
   }
 
+
+  markFriendConversationRead({ userId, friendId, messageId, now }) {
+    if (!this.getFriendship(userId, friendId)) {
+      return { kind: 'not_friends', read: null };
+    }
+    const target = this.exec(
+      `SELECT id, created_at
+       FROM friend_messages
+       WHERE id = ? AND sender_id = ? AND recipient_id = ?`,
+      messageId,
+      friendId,
+      userId
+    )[0];
+    if (!target) return { kind: 'message_not_found', read: null };
+
+    const updated = this.exec(
+      `INSERT INTO friend_conversation_reads
+        (user_id, friend_id, last_read_created_at, last_read_message_id, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, friend_id) DO UPDATE SET
+         last_read_created_at = excluded.last_read_created_at,
+         last_read_message_id = excluded.last_read_message_id,
+         updated_at = excluded.updated_at
+       WHERE excluded.last_read_created_at > friend_conversation_reads.last_read_created_at
+          OR (excluded.last_read_created_at = friend_conversation_reads.last_read_created_at
+              AND excluded.last_read_message_id > friend_conversation_reads.last_read_message_id)
+       RETURNING user_id, friend_id, last_read_created_at, last_read_message_id, updated_at`,
+      userId,
+      friendId,
+      Number(target.created_at),
+      target.id,
+      now
+    )[0];
+
+    const current = updated || this.exec(
+      `SELECT user_id, friend_id, last_read_created_at, last_read_message_id, updated_at
+       FROM friend_conversation_reads
+       WHERE user_id = ? AND friend_id = ?`,
+      userId,
+      friendId
+    )[0] || null;
+    return { kind: updated ? 'updated' : 'already_read', read: current };
+  }
+
   removeFriendship(userId, otherUserId) {
     const [low, high] = [String(userId), String(otherUserId)].sort();
     const rows = this.exec(
