@@ -708,62 +708,161 @@
   }
   if (payBackdrop) payBackdrop.addEventListener('click', closePayDrawer);
 
-  // 提交：构造特殊格式消息直接入历史，不走 sendMsg / 不发任何 API
-  function submitPayMessage() {
-    if (typeof loadMessages !== 'function' || typeof saveMessages !== 'function') return;
+  // 提交：先在钱包锁内写入带 paymentId 的待恢复记录，再写聊天卡片。
+  // 钱包已扣款但聊天历史写入失败时，下一次提交会恢复同一张卡，不会再次扣款。
+  var submitPayInProgress = false;
+
+  function makeChatPaymentId() {
+    return 'chat-pay-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  async function submitPayMessage() {
+    if (submitPayInProgress) return;
     var amountStr = String((payAmountInput && payAmountInput.value) || '').trim();
     var amountNum = parseFloat(amountStr);
-    if (!amountStr || isNaN(amountNum) || amountNum <= 0) {
+    if (!amountStr || !isFinite(amountNum) || amountNum <= 0) {
       if (typeof showToast === 'function') showToast('请输入金额');
       return;
     }
+    amountNum = Math.round(amountNum * 100) / 100;
     var msgText = String((payMessageInput && payMessageInput.value) || PAY_DEFAULT_MESSAGE).trim();
-    // 发送即扣款（修复资金漏洞）：余额不足阻止发送，绝不先发红包后扣款
-    if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function') {
-      if (typeof showToast === 'function') showToast('钱包暂不可用，未发送');
+    if (typeof getWorkData !== 'function' || typeof saveWorkData !== 'function' ||
+        typeof loadMessages !== 'function' || typeof saveMessages !== 'function') {
+      if (typeof showToast === 'function') showToast('钱包或聊天存储暂不可用，未发送');
       return;
     }
-    var wd = getWorkData();
-    if (!wd || !(Number(wd.balance) >= amountNum)) {
-      if (typeof showToast === 'function') showToast('余额不足');
-      return; // 不写消息、不关抽屉、不扣款
+
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.runExclusive !== 'function') {
+      if (typeof showToast === 'function') showToast('钱包保护模块尚未加载，请刷新页面后重试');
+      return;
     }
-    wd.balance = Math.round((Number(wd.balance) - amountNum) * 100) / 100; // 保留两位防浮点误差
-    // 交易明细：支出记录（amountNum 已是 parseFloat 后的数字，与扣款同一次写入原子落盘）
-    if (!Array.isArray(wd.history)) wd.history = [];
-    wd.history.unshift({
-      type: 'expense',
-      category: payMode,                              // 'redpacket' | 'transfer'
-      title: payMode === 'transfer' ? '发起转账' : '发出红包',
-      amount: amountNum,
-      time: Date.now()
-    });
-    if (!saveWorkData(wd)) return; // 扣款保存失败则中止发送
-    var specialMsg = {
-      role: 'user',
-      type: payMode,                    // 'redpacket' 或 'transfer'
-      amount: amountNum.toFixed(2),     // 统一两位小数，如 '100.00'
-      message: msgText,                 // 留言内容
-      status: 'unopened',               // 初始状态为未领取
-      timestamp: Date.now()
-    };
-    var list = loadMessages();
-    list.push(specialMsg);
-    saveMessages(list);
-    closePayDrawer();
-    // 立刻刷新聊天列表，让新消息以 [红包]/[转账] 占位文本渲染出来
-    if (typeof renderAllMessages === 'function') {
-      renderAllMessages();
-    } else if (typeof appendMessageToDOM === 'function') {
-      appendMessageToDOM(specialMsg);
-      if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-    // 支付卡片本身不重复显示为文字；用隐藏上下文触发角色按人设回应。
-    var safeNote = msgText.replace(/[\r\n]+/g, ' ').slice(0, 160);
-    if (payMode === 'transfer') {
-      sendSilentInstruction('[互动事件：我刚刚向你转账 ¥' + amountNum.toFixed(2) + '，附言为“' + safeNote + '”。请根据你自己的性格、关系和经济观念自然决定是否收下。若决定收下，请在回复中附加标记 [收下转账:' + amountNum.toFixed(2) + ']；若决定拒绝并退还，请自然说明原因并附加 [转账:' + amountNum.toFixed(2) + ':退回转账]。两种标记只能二选一；没有决定时不要编造交易，不得改变金额。]');
-    } else {
-      sendSilentInstruction('[互动事件：我给你发送了 ¥' + amountNum.toFixed(2) + ' 的红包，附言为“' + safeNote + '”。请以角色人设自然回应收到红包的反应，不要把红包卡片当作普通文字复述。]');
+
+    submitPayInProgress = true;
+    if (payConfirmBtn) payConfirmBtn.disabled = true;
+    try {
+      await ledger.runExclusive(function () {
+        var wd = getWorkData();
+        if (!wd || !Array.isArray(wd.history)) {
+          if (typeof showToast === 'function') showToast('钱包记录读取失败，未发送');
+          return;
+        }
+
+        var roleId = String((currentCharacter && currentCharacter.id) || '');
+        var list = loadMessages();
+        if (!Array.isArray(list)) {
+          if (typeof showToast === 'function') showToast('聊天记录读取失败，未发送');
+          return;
+        }
+
+        // 先恢复当前角色上一次已经扣款、但尚未成功写入聊天历史的卡片。
+        var pendingEntry = wd.history.find(function (entry) {
+          var pending = entry && entry.pendingChatMessage;
+          return pending && String(pending.roleId || '') === roleId &&
+            pending.paymentId && !list.some(function (item) {
+              return item && String(item.mid || item.paymentId || '') === String(pending.paymentId);
+            });
+        });
+
+        var specialMsg;
+        var paymentId;
+        var isRecovery = !!pendingEntry;
+        if (pendingEntry) {
+          specialMsg = Object.assign({}, pendingEntry.pendingChatMessage);
+          paymentId = String(specialMsg.paymentId);
+          specialMsg.mid = paymentId;
+        } else {
+          paymentId = makeChatPaymentId();
+          specialMsg = {
+            role: 'user',
+            type: payMode,
+            amount: amountNum.toFixed(2),
+            message: msgText,
+            status: 'unopened',
+            timestamp: Date.now(),
+            mid: paymentId,
+            paymentId: paymentId,
+            roleId: roleId
+          };
+
+          if (!(Number(wd.balance) >= amountNum)) {
+            if (typeof showToast === 'function') showToast('余额不足');
+            return;
+          }
+          wd.balance = Math.round((Number(wd.balance) - amountNum) * 100) / 100;
+          wd.history.unshift({
+            type: 'expense',
+            category: payMode,
+            title: payMode === 'transfer' ? '发起转账' : '发出红包',
+            amount: amountNum,
+            time: Date.now(),
+            paymentId: paymentId,
+            pendingChatMessage: specialMsg
+          });
+          if (!saveWorkData(wd)) {
+            if (typeof showToast === 'function') showToast('扣款未能保存，红包/转账没有发送');
+            return;
+          }
+          var walletReadback = getWorkData();
+          var walletConfirmed = walletReadback && Array.isArray(walletReadback.history) &&
+            walletReadback.history.some(function (entry) {
+              return entry && String(entry.paymentId || '') === paymentId;
+            });
+          if (!walletConfirmed) {
+            if (typeof showToast === 'function') showToast('钱包扣款尚未确认，红包/转账没有发送');
+            return;
+          }
+        }
+
+        // 无论是首次发送还是恢复，都按稳定 mid 检查并写回聊天历史。
+        var exists = list.some(function (item) {
+          return item && String(item.mid || item.paymentId || '') === paymentId;
+        });
+        if (!exists) list.push(specialMsg);
+        if (!saveMessages(list)) {
+          if (typeof showToast === 'function') {
+            showToast('款项已从钱包扣除，但聊天卡片暂未保存；再次提交会恢复原卡，不会重复扣款');
+          }
+          return;
+        }
+        var savedHistory = loadMessages();
+        if (!Array.isArray(savedHistory) || !savedHistory.some(function (item) {
+          return item && String(item.mid || item.paymentId || '') === paymentId;
+        })) {
+          if (typeof showToast === 'function') showToast('聊天卡片写入尚未确认，请再次提交恢复');
+          return;
+        }
+
+        closePayDrawer();
+        if (typeof renderAllMessages === 'function') {
+          renderAllMessages();
+        } else if (typeof appendMessageToDOM === 'function') {
+          appendMessageToDOM(specialMsg);
+          if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        var safeNote = String(specialMsg.message || '').replace(/[\r\n]+/g, ' ').slice(0, 160);
+        if (specialMsg.type === 'transfer') {
+          sendSilentInstruction('[互动事件：我刚刚向你转账 ¥' + specialMsg.amount + '，附言为“' + safeNote + '”。请根据你自己的性格、关系和经济观念自然决定是否收下。若决定收下，请在回复中附加标记 [收下转账:' + specialMsg.amount + ']；若决定拒绝并退还，请自然说明原因并附加标记 [转账:' + specialMsg.amount + ':退回转账]。两种标记只能二选一；没有决定时不要编造交易，不得改变金额。]');
+        } else {
+          sendSilentInstruction('[互动事件：我给你发送了 ¥' + specialMsg.amount + ' 的红包，附言为“' + safeNote + '”。请以角色人设自然回应收到红包的反应，不要把红包卡片当作普通文字复述。]');
+        }
+        if (isRecovery && typeof showToast === 'function') {
+          showToast('上次未完成的红包/转账卡已恢复，没有重复扣款');
+        }
+      }, {
+        onFallback: function () {
+          if (typeof showToast === 'function') {
+            showToast('当前浏览器不支持跨页面钱包锁，请避免同时在多个页面发起支付');
+          }
+        }
+      });
+    } catch (error) {
+      console.warn('[chat-extras] 红包 / 转账发送未完成', error);
+      if (typeof showToast === 'function') showToast('红包/转账暂未完成，请检查钱包记录后重试');
+    } finally {
+      submitPayInProgress = false;
+      if (payConfirmBtn) payConfirmBtn.disabled = false;
     }
   }
   if (payConfirmBtn) payConfirmBtn.addEventListener('click', submitPayMessage);
