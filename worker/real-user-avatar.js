@@ -109,6 +109,12 @@ function accountDto(account, avatarAssetId) {
   return { id: account.id, handle: account.handle, displayName: account.display_name,
     status: "active", avatarAssetId: avatarAssetId || null };
 }
+async function readCurrentAccount(env, accountId) {
+  return env.DB.prepare(
+    "SELECT id, handle, display_name, avatar_asset_id, status FROM real_user_accounts " +
+    "WHERE id = ? AND status = 'active' LIMIT 1"
+  ).bind(accountId).first();
+}
 async function limited(request, env, account) {
   const result = await applyAuthRateLimit(env, request, account.handle);
   return result.ok ? null : rateLimitResponse(result.error);
@@ -170,7 +176,12 @@ async function upload(request, env, account) {
     return authJson({ ok: false, error: "avatar_upload_unavailable" }, 503);
   }
   if (previous) await markDeleted(env, account.id, previous.asset_id, previous.object_key);
-  return authJson({ ok: true, account: accountDto(account, assetId),
+  let updatedAccount = null;
+  try { updatedAccount = await readCurrentAccount(env, account.id); } catch {}
+  if (!updatedAccount || updatedAccount.avatar_asset_id !== assetId) {
+    return authJson({ ok: false, error: "avatar_upload_unavailable" }, 503);
+  }
+  return authJson({ ok: true, account: accountDto(updatedAccount, updatedAccount.avatar_asset_id),
     avatar: { assetId, mimeType, byteSize: body.bytes.byteLength, width: inspected.width, height: inspected.height } }, 201);
 }
 async function remove(request, env, account) {
@@ -192,7 +203,13 @@ async function remove(request, env, account) {
     } catch {}
   }
   if (previous && previous.object_key) { try { await env.REAL_USER_AVATARS.delete(previous.object_key); } catch {} }
-  return authJson({ ok: true, removed: !!previousId, account: accountDto(account, null) }, 200);
+  let updatedAccount = null;
+  try { updatedAccount = await readCurrentAccount(env, account.id); } catch {}
+  if (!updatedAccount || updatedAccount.avatar_asset_id) {
+    return authJson({ ok: false, error: "avatar_delete_unavailable" }, 503);
+  }
+  return authJson({ ok: true, removed: !!previousId,
+    account: accountDto(updatedAccount, updatedAccount.avatar_asset_id) }, 200);
 }
 async function canReadOwnerAvatar(env, viewerId, ownerId) {
   if (viewerId === ownerId) return true;
