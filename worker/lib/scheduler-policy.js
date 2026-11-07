@@ -27,7 +27,8 @@ export const REASON_CODES = Object.freeze({
   GATE_POLICY_INVALID: 'gate_policy_invalid',
   FOREGROUND_LEASE_HELD: 'foreground_lease_held',
   FOREGROUND_LEASE_GRACE: 'foreground_lease_grace',
-  CONTEXT_VERSION_UNAVAILABLE: 'context_version_unavailable'
+  CONTEXT_VERSION_UNAVAILABLE: 'context_version_unavailable',
+  EXECUTOR_UNAVAILABLE: 'executor_unavailable'
 });
 
 function isPositiveInteger(value) {
@@ -102,6 +103,7 @@ export function evaluateTask(task, { now } = {}) {
   if (task.status === 'superseded' || task.status === 'completed' || task.status === 'failed') {
     return { due: false, reason: REASON_CODES.SUPERSEDED };
   }
+
   const reclaimingExpiredRun = task.status === 'running' &&
     task.locked_until != null && Number(task.locked_until) <= now;
   if (task.status !== 'waiting' && task.status !== 'retry' && !reclaimingExpiredRun) {
@@ -110,15 +112,21 @@ export function evaluateTask(task, { now } = {}) {
   if (task.locked_until != null && Number(task.locked_until) > now) {
     return { due: false, reason: REASON_CODES.LEASE_HELD };
   }
+
   const dueAt = Number(task.next_attempt_at == null ? task.scheduled_at : task.next_attempt_at);
   if (!Number.isFinite(dueAt)) return { due: false, reason: REASON_CODES.INVALID_TASK };
   if (now < dueAt) return { due: false, reason: REASON_CODES.NOT_DUE };
+
   const attempts = Number(task.attempt_count || 0);
   const maxAttempts = Number(task.max_attempts || 0);
   if (maxAttempts > 0 && attempts >= maxAttempts) {
-    return { due: false, reason: REASON_CODES.RETRY_EXHAUSTED };
+    return {
+      due: false,
+      terminal: true,
+      reason: REASON_CODES.RETRY_EXHAUSTED
+    };
   }
-  return { due: true, reason: REASON_CODES.CLAIMED };
+  return { due: true, reason: REASON_CODES.CLAIMED, reclaimingExpiredRun };
 }
 
 /**
@@ -131,6 +139,17 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
 
   const due = evaluateTask(task, { now });
   if (!due.due) {
+    if (due.terminal === true && due.reason === REASON_CODES.RETRY_EXHAUSTED) {
+      return {
+        action: 'fail',
+        reason: due.reason,
+        taskId: task.id,
+        expectedAttemptCount: Number(task.attempt_count || 0),
+        expectedStatus: task.status,
+        expectedLockedBy: task.locked_by || null,
+        expectedLockedUntil: task.locked_until == null ? null : Number(task.locked_until)
+      };
+    }
     return {
       action: 'defer',
       reason: due.reason,
@@ -194,7 +213,8 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
       action: 'supersede',
       reason: REASON_CODES.STALE_CONTEXT,
       taskId: task.id,
-      expectedAttemptCount: Number(task.attempt_count || 0)
+      expectedAttemptCount: Number(task.attempt_count || 0),
+      expectedStatus: task.status
     };
   }
 
@@ -204,6 +224,7 @@ export function planTask(task, { now, config, gate, owner = 'cloud' } = {}) {
     reason: REASON_CODES.CLAIMED,
     taskId: task.id,
     expectedAttemptCount: Number(task.attempt_count || 0),
+    expectedStatus: task.status,
     attemptCount,
     leaseUntil: now + validated.config.leaseMs,
     owner
