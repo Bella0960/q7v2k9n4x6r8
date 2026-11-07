@@ -104,9 +104,6 @@ export function createSchedulerGate({ store, now = Date.now, config = {}, execut
     if (!hasRequiredSnapshot(snapshot) || snapshot.userId !== userId) {
       return deny(REASON_CODES.GATE_DATA_MISSING);
     }
-    if (executorDeviceId != null && snapshot.contextSourceDeviceId !== String(executorDeviceId)) {
-      return deny(REASON_CODES.DEVICE_CONTEXT_NOT_LOCAL);
-    }
     if (!POLICY || typeof POLICY.evaluate !== 'function') {
       return deny(REASON_CODES.GATE_POLICY_UNAVAILABLE);
     }
@@ -133,6 +130,31 @@ export function createSchedulerGate({ store, now = Date.now, config = {}, execut
     if (evaluated.autonomy?.allowed !== true) {
       return deny(REASON_CODES.AUTONOMY_DENIED);
     }
+    if (CONTEXT_TASK_KINDS.has(String(task?.kind || ''))) {
+      const payload = readPayload(task);
+      const taskVersion = readVersion(payload?.contextVersion);
+      const currentVersion = readVersion(snapshot.contextVersion);
+      if (taskVersion == null || currentVersion == null) {
+        return deny(REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
+      }
+      if (taskVersion !== currentVersion) {
+        return deny(REASON_CODES.STALE_CONTEXT, {
+          supersede: true,
+          latestContextVersion: currentVersion
+        });
+      }
+      const taskSourceDeviceId = String(payload?.sourceDeviceId || task?.source_device_id || '');
+      if (taskSourceDeviceId && snapshot.contextSourceDeviceId !== taskSourceDeviceId) {
+        return deny(REASON_CODES.STALE_CONTEXT, {
+          supersede: true,
+          latestContextVersion: currentVersion
+        });
+      }
+      if (executorDeviceId != null && snapshot.contextSourceDeviceId !== String(executorDeviceId)) {
+        return deny(REASON_CODES.DEVICE_CONTEXT_NOT_LOCAL);
+      }
+    }
+
     if (executorDeviceId != null) {
       // The device-side model executor may run only for the exact foreground
       // device that owns this character lease. A sibling device cannot borrow
@@ -169,22 +191,10 @@ export function createSchedulerGate({ store, now = Date.now, config = {}, execut
     }
 
     if (CONTEXT_TASK_KINDS.has(String(task?.kind || ''))) {
-      const payload = readPayload(task);
-      const taskVersion = readVersion(payload?.contextVersion);
-      const currentVersion = readVersion(snapshot.contextVersion);
-      if (taskVersion == null || currentVersion == null) {
-        return deny(REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
-      }
-      if (taskVersion !== currentVersion) {
-        return deny(REASON_CODES.STALE_CONTEXT, {
-          supersede: true,
-          latestContextVersion: currentVersion
-        });
-      }
       return {
         autonomyAllowed: true,
         characterState: evaluated.character.state,
-        latestContextVersion: currentVersion,
+        latestContextVersion: readVersion(snapshot.contextVersion),
         reasonCode: REASON_CODES.CLAIMED,
         policyChecked: true
       };
