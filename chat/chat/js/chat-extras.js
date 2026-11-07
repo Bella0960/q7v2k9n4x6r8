@@ -758,7 +758,8 @@
         // 先恢复当前角色上一次已经扣款、但尚未成功写入聊天历史的卡片。
         var pendingEntry = wd.history.find(function (entry) {
           var pending = entry && entry.pendingChatMessage;
-          return pending && String(pending.roleId || '') === roleId &&
+          return pending && !entry.chatMessageSavedAt &&
+            String(pending.roleId || '') === roleId &&
             pending.paymentId && !list.some(function (item) {
               return item && String(item.mid || item.paymentId || '') === String(pending.paymentId);
             });
@@ -831,6 +832,18 @@
         })) {
           if (typeof showToast === 'function') showToast('聊天卡片写入尚未确认，请再次提交恢复');
           return;
+        }
+
+        // 标记这笔扣款已成功对应到聊天卡片；后续用户主动删除卡片时，不会被误当成待恢复项重新插回。
+        var finalWallet = getWorkData();
+        var finalPaymentEntry = Array.isArray(finalWallet.history)
+          ? finalWallet.history.find(function (entry) { return entry && String(entry.paymentId || '') === paymentId; })
+          : null;
+        if (finalPaymentEntry && !finalPaymentEntry.chatMessageSavedAt) {
+          finalPaymentEntry.chatMessageSavedAt = Date.now();
+          if (!saveWorkData(finalWallet)) {
+            if (typeof showToast === 'function') showToast('卡片已保存，恢复标记暂未同步');
+          }
         }
 
         closePayDrawer();
