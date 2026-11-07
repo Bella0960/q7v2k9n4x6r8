@@ -988,6 +988,24 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
       throw new ApiError(400, 'INVALID_OUTBOUND_LIMIT', 'limit 必须是 1 到 50 的整数');
     }
+    const rawAfterCreatedAt = url.searchParams.get('afterCreatedAt');
+    const afterId = url.searchParams.get('afterId');
+    const hasCursorTime = rawAfterCreatedAt != null;
+    const hasCursorId = afterId != null;
+    if (hasCursorTime !== hasCursorId) {
+      throw new ApiError(400, 'INVALID_OUTBOUND_CURSOR', '游标必须同时包含 afterCreatedAt 与 afterId');
+    }
+    let afterCreatedAt = null;
+    if (hasCursorTime) {
+      afterCreatedAt = Number(rawAfterCreatedAt);
+      if (
+        !/^\d+$/.test(rawAfterCreatedAt) ||
+        !Number.isSafeInteger(afterCreatedAt) || afterCreatedAt < 0 ||
+        !/^[A-Za-z0-9_-]{16,128}$/.test(afterId)
+      ) {
+        throw new ApiError(400, 'INVALID_OUTBOUND_CURSOR', '收件箱游标无效');
+      }
+    }
     const userId = device.user_id || OWNER_USER_ID;
     try {
       await store.repairStagedActivityOutbox({
@@ -1004,7 +1022,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userId,
       deviceId: device.id,
       characterId,
-      limit
+      limit,
+      afterCreatedAt,
+      afterId
     });
     const messages = rows.map(row => {
       let payload;
@@ -1032,7 +1052,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         payload
       };
     });
-    return ok({ messages });
+    const lastRow = rows.length === limit ? rows[rows.length - 1] : null;
+    const nextCursor = lastRow
+      ? { createdAt: Number(lastRow.created_at), id: String(lastRow.id) }
+      : null;
+    return ok({ messages, nextCursor });
   }
 
   async function acknowledgeCharacterOutboundMessage(request, characterId, serverMessageId) {
