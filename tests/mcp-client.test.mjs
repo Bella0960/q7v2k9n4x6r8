@@ -17,8 +17,8 @@ test('MCP endpoint validation requires HTTPS except localhost and excludes crede
   assert.equal(context.MaoMcpClient.validateEndpoint('https://example.com/mcp'), 'https://example.com/mcp');
   assert.equal(context.MaoMcpClient.validateEndpoint('http://localhost:3000/mcp'), 'http://localhost:3000/mcp');
   assert.throws(() => context.MaoMcpClient.validateEndpoint('http://example.com/mcp'), /HTTPS/);
-  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://user:pass@example.com/mcp'), /查询参数/);
-  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://example.com/mcp?token=secret'), /查询参数/);
+  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://user:pass@example.com/mcp'), /用户名、密码或片段/);
+  assert.throws(() => context.MaoMcpClient.validateEndpoint('https://example.com/mcp?token=secret'), /密钥放在服务地址参数中/);
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://192.168.1.2/mcp'), /局域网/);
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://nas.local/mcp'), /局域网或内部域名/);
   assert.throws(() => context.MaoMcpClient.validateEndpoint('https://printer.lan/mcp'), /局域网或内部域名/);
