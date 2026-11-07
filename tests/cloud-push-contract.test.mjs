@@ -3567,6 +3567,82 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
   assert.equal(delivery.status, 'sent');
 });
  
+test('一台设备已保存消息后，其他尚未保存设备仍能获得 Push 提醒', async () => {
+  const now = 1800000000000;
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const ctx = setupTestStore(openTestDb());
+  const source = makeDevice();
+  await registerDevice(ctx, source);
+  const pairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: source
+  });
+  assert.equal(pairing.status, 200);
+  const receiver = makeDevice();
+  assert.equal((await registerDevice(ctx, receiver, {
+    pairingToken: pairing.payload.pairingToken
+  })).status, 200);
+
+  const receiverSubscription = await makeBrowserSubscription();
+  const receiverSubResult = await subscribeDevice(ctx, receiver, receiverSubscription);
+  assert.equal(receiverSubResult.status, 200);
+
+  const serverMessageId = 'push_after_account_ack_123456';
+  ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: source.deviceId,
+    userId: 'owner',
+    characterId: 'char-push-late-device',
+    serverMessageId,
+    dedupeKey: 'autonomy:push:late-device',
+    payload: { type: 'text', text: '第二台设备仍需同步。' },
+    now
+  });
+
+  const env = {
+    VAPID_PUBLIC_KEY: keys.publicB64,
+    VAPID_PRIVATE_KEY: keys.privateB64,
+    VAPID_SUBJECT: 'mailto:test@maomao.dev'
+  };
+  const firstDispatch = await dispatchPendingOutboundPushes({
+    store: ctx.store, env, now, fetchImpl: pushFetch, limit: 10
+  });
+  assert.equal(firstDispatch.sent, 1);
+  assert.equal(pushFetch.calls.length, 1);
+
+  const savedOnReceiver = await ctx.asJson(
+    '/api/characters/char-push-late-device/outbound/' + serverMessageId + '/ack',
+    { method: 'POST', device: receiver }
+  );
+  assert.equal(savedOnReceiver.status, 200);
+  assert.equal(savedOnReceiver.payload.acknowledged, true);
+  const aggregate = ctx.query(
+    'SELECT delivery_status, local_saved_at FROM outbound_messages WHERE server_message_id = ?',
+    serverMessageId
+  )[0];
+  assert.equal(aggregate.delivery_status, 'delivered');
+
+  // The source device subscribes after another device has already saved the
+  // account-level message. It must still be eligible for its own notification.
+  const sourceSubscription = await makeBrowserSubscription();
+  const sourceSubResult = await subscribeDevice(ctx, source, sourceSubscription);
+  assert.equal(sourceSubResult.status, 200);
+
+  const remainingCandidates = ctx.store.listOutboundPushCandidates({ now: now + 1, limit: 10 });
+  assert.deepEqual(remainingCandidates.map(row => row.device_id), [source.deviceId]);
+
+  const secondDispatch = await dispatchPendingOutboundPushes({
+    store: ctx.store, env, now: now + 1, fetchImpl: pushFetch, limit: 10
+  });
+  assert.equal(secondDispatch.sent, 1);
+  assert.equal(pushFetch.calls.length, 2);
+  assert.equal(
+    ctx.store.findDelivery('outbound:' + serverMessageId, sourceSubResult.payload.subscription.id).status,
+    'sent'
+  );
+});
+
 test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Push', () => {
   const workerSource = fs.readFileSync(path.join(rootDir, 'worker.js'), 'utf8');
   assert.match(workerSource, /import \{ createApp, dispatchPendingOutboundPushes \} from '\.\/worker\/lib\/app\.js'/);
