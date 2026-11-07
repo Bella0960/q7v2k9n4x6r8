@@ -136,7 +136,7 @@ Cron / 内部 tick
 - `POST /api/characters/:characterId/lease`：`acquire / renew / release`。仅当前租约设备可续期或释放；另一设备不能释放持有者租约；新设备只有在旧 lease 到期且 grace 结束后才能 CAS 接管。
 - Lease API 所需的心跳 TTL、租约时长、grace 全部来自显式环境配置：`AUTONOMY_HEARTBEAT_TTL_MS`、`AUTONOMY_DEVICE_LEASE_MS`、`AUTONOMY_DEVICE_GRACE_MS`。缺失或无效时拒绝发放 lease。
 
-`shared/js/cloud-push-client.js` 已暴露全局/角色开关、作息、前台心跳、角色租约方法，并提供按服务端 TTL 自动续期的 `startCharacterPresence(characterId)` 客户端管理器。设置页现已提供“云端自主活动授权”全局开关：读取/写入云端 `user_autonomy`，设备未通过鉴权前保持禁用；它只记录授权，不表示角色已经会主动联系。角色单独授权与角色作息的完整设置界面仍未完成。当前 `chat-detail.html` 尚未调用前台管理器，因此不能报告 PWA 已自动同步角色前台状态。
+`shared/js/cloud-push-client.js` 已暴露全局/角色开关、作息、前台心跳、角色租约方法，并提供按服务端 TTL 自动续期的 `startCharacterPresence(characterId)` 客户端管理器。设置页现已提供“云端自主活动授权”全局开关：读取/写入云端 `user_autonomy`，设备未通过鉴权前保持禁用；它只记录授权，不表示角色已经会主动联系。角色单独授权与角色作息的完整设置界面仍未完成。`chat/chat/chat-detail.html` 现已在单角色聊天页接入前台管理器；群聊暂不申请角色租约。该客户端需要显式配置的服务端 TTL/lease 参数，且仍须经项目测试与真实设备验证，不能据此报告生产环境已经同步。
 
 ### 8.3 真实 scheduler gate
 
@@ -152,7 +152,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 
 ### 8.4 仍然 BLOCKED 的边界
 
-1. **前端 heartbeat/lease 调用：PARTIAL。** API 已有，chat-detail 尚未接入；在接通之前，PWA 不会自动申请角色前台租约。
+1. **前端 heartbeat/lease 调用：CODE WIRED / RUNTIME NOT VERIFIED。** 单角色 chat-detail 已加载云端客户端并按当前 role ID 启动前台心跳/租约；群聊未接入。必须配置服务端 TTL/lease 参数，并通过构建、浏览器与真机测试确认。
 2. **真实上下文版本：BLOCKED。** 当前没有可信 server-side chat event/version source。Store 明确返回 `contextVersion: null`；所有 `contact / follow_up / busy_reply / diary` 上下文任务均返回 `context_version_unavailable` 并 defer。没有伪造版本、没有把时间戳当版本、没有上传聊天正文。
 3. **设备安全配对：CODE IMPLEMENTED / DEPLOY CONFIG NOT VERIFIED。** 新增 `0003_device_pairing`：首台设备通过 Worker secret `ENROLLMENT_TOKEN` 完成一次初始认领；现有授权设备可以签发短时单次配对码；新设备设置页可输入配对码；已知设备保留原凭据重连路径，不会因服务端未知而自动清除本机凭据。生产环境仍需设置 `ENROLLMENT_TOKEN` 与 `DEVICE_PAIRING_TOKEN_TTL_MS`，并在真实 Cloudflare Worker 上验证迁移、首次认领、配对和撤销行为。
 4. **云端模型凭据：NOT AUTHORIZED。** 不读取或上传浏览器 API Key，不配置/使用模型凭据。
@@ -179,3 +179,12 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 未连接或鉴权失败时开关禁用；刷新页面时重新读取云端值。
 - 文案明确说明这只是用户授权记录，在角色作息、聊天前台接入和自主生成链路完成前，不会触发主动联系。
 - 角色单独开关与作息编辑 UI、聊天页面自动 heartbeat/lease 仍待完成。
+
+
+### 8.7 单角色聊天页前台接入
+
+- `chat/chat/chat-detail.html` 加载 `shared/js/cloud-push-client.js`，在解析出当前单角色 ID 后调用 `startCharacterPresence(characterId)`。
+- 只在本机已存在云设备凭据时启动；不读聊天正文、不写聊天历史、不上传角色设定或 API Key。
+- 前台管理器根据服务端配置续期 device heartbeat 与角色 lease；页面隐藏/切换时标记前台状态，pagehide 时也会发送 inactive。
+- 群聊 ID 暂时不映射单角色租约，防止错误阻止角色调度。
+- 此接线只代表代码路径存在。由于当前 Cloudflare 环境参数、真实页面运行与真机行为尚未验证，不能把它当成已上线或已验证。
