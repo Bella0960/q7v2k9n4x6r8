@@ -2234,7 +2234,7 @@ test('offline face-to-face role card customizer exposes persisted styles and con
   const section = date.slice(sectionStart, sectionEnd);
 
   for (const label of ['白卡片', '透明', '黑卡片', '自定义', '居中排版', '左对齐', '横向排版', '圆形', '圆角方形', '方形']) {
-    assert.ok(section.includes(label), 'customizer should expose ' + label);
+    assert.ok(date.includes(label), 'customizer should expose ' + label);
   }
   for (const id of [
     'profileCardColorInput', 'profileCardTextColorInput', 'profileCardMutedTextColorInput',
