@@ -388,14 +388,14 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 ### 12.1 本机执行器必须拥有前台角色租约
 
 - `createSchedulerGate()` 区分云端执行器和本机执行器。云端仍只能在没有有效前台角色租约且 grace 已结束时运行；本机执行器必须同时满足当前设备有有效前台心跳、当前角色租约确实由该设备持有、角色作息为 active、账号与角色授权有效。
-- `ChatNotifier` 在云端总授权与角色授权通过后，先发送本机前台心跳，再申请角色租约，并启动已有的 `startCharacterPresence()` 续租循环，随后才拉取/认领任务。
+- `ChatNotifier` 在云端总授权与角色授权通过后，先刷新并读取本机的最新上下文版本，确认来源设备就是当前设备，再发送本机前台心跳、申请角色租约并启动 `startCharacterPresence()` 续租循环；申请租约后再次刷新和读取版本，只有版本仍归当前设备且有效才允许入队。这样另一台拿着旧本地历史的设备不会先占住角色租约。
 - 用户切到后台后不会启动新的模型调用；已在途的生成在最终提交前还会再次核对本地可见状态，Worker 完成接口也会再次检查服务端门禁。
 - 若设备已保存 `cloud_device_v1` 配对凭据但云端客户端脚本加载失败，主动联系流程 fail-closed，不会悄悄绕回本地模式绕过云端总授权。未配对设备仍沿用原本的纯本地主动联系路径。
 
 ### 12.2 上下文版本绑定来源设备
 
 - 新增迁移 `0008_context_source_device`，为 `character_context_versions` 增加 `updated_by_device_id`。服务端版本事件只接收随机 `eventId`，同时记录提交事件的已鉴权设备 ID，不接收任何聊天正文或内容指纹。
-- `/api/characters/:id/context-version` 增加 `ownedByCurrentDevice`。主动生成只有在最新版本由当前执行设备报告时才继续；入队请求还要满足 `updated_by_device_id === 当前设备 ID`。
+- `/api/characters/:id/context-version` 增加 `ownedByCurrentDevice`。主动生成只有在最新版本由当前执行设备报告时才继续；入队请求还要满足 `updated_by_device_id === 当前设备 ID`。活动 payload 同时固定记录 `sourceDeviceId`；认领时若服务端最新版本或来源设备已变化，旧活动会被 supersede，其他设备不能拿旧上下文接管。
 - 活动 payload 只保存 `contextVersion` 与 `sourceDeviceId`。调度门禁发现版本已变化或来源设备已变更时会把旧任务标记 superseded；若任务仍有效但当前调用设备不是来源设备，则拒绝它认领。
 - 这是一个有意的隐私边界：项目尚未在设备间同步聊天历史，所以不能让另一台设备拿着旧的本地聊天记录替当前角色生成主动消息。跨设备共享上下文需要先单独完成安全同步设计。
 
@@ -404,7 +404,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 新增迁移 `0009_activity_result_staging`：活动队列增加 `result_json`、`result_server_message_id` 和 `result_dedupe_key`。
 - 完成任务时，Worker 先用一条带 lease fencing 条件的 SQLite UPDATE，把任务标为 completed，并不可变地暂存确切结果与稳定服务端消息 ID；随后再写入现有出站收件箱。
 - 如果 Worker 在暂存后、outbox 插入前中断，客户端可用同一活动 ID、attempt 和完全相同正文重试，Worker 会从暂存结果补建 outbox；不同正文会冲突，不能覆盖首次生成结果。
-- `GET /api/characters/:id/outbound` 和本机活动认领接口都会先调用 `repairStagedActivityOutbox()`。即使原页面已经关闭，下一次打开聊天或重新检查任务时，也能仅凭队列中的不可变结果补建缺失收件箱记录；修复按账号、设备、角色隔离。
+- `GET /api/characters/:id/outbound` 和本机活动认领接口都会先调用 `repairStagedActivityOutbox()`。即使原页面已经关闭，下一次打开聊天或重新检查任务时，也能仅凭队列中的不可变结果补建缺失收件箱记录；修复按账号、设备、角色隔离。 修复失败采用 best-effort：不会因此挡住其他已入箱消息的读取或其他符合条件的任务认领。
 - 这种顺序让任务完成后的恢复有持久化依据，不需要重新调用模型，也不会因为 HTTP 响应丢失而生成第二条不同内容。
 
 ### 12.4 本轮新增验证覆盖
