@@ -178,3 +178,71 @@ test('removing a role clears its private index and releases role-owned reference
   assert.equal(refs.has(b.value.assetId + '|role-avatar|role-a'), false);
   assert.equal(values.has(api._storageKey('role-a')), false);
 });
+
+
+const managerSource = fs.readFileSync(
+  path.join(process.cwd(), 'worldbook/characters/js/characters-manager.js'), 'utf8'
+);
+const characterPage = fs.readFileSync(
+  path.join(process.cwd(), 'worldbook/characters/characters.html'), 'utf8'
+);
+const serviceWorker = fs.readFileSync(path.join(process.cwd(), 'sw.js'), 'utf8');
+
+test('character profile loads the shared media stack before the avatar library and manager', () => {
+  const storage = characterPage.indexOf('phone_storage.js');
+  const repository = characterPage.indexOf('storage/repository.js');
+  const media = characterPage.indexOf('storage/media-repository.js');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v1');
+  const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v1');
+  assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
+  assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
+  assert.ok(characterPage.includes('id="avatarLibraryGrid"') === false,
+    'the gallery itself is rendered only inside the selected role profile');
+});
+
+test('role manager imports legacy avatar data only into that role library and keeps legacy consumers compatible', () => {
+  assert.ok(managerSource.includes('ensureLegacyAvatarInLibrary(role)'));
+  assert.ok(managerSource.includes("source: 'legacy'"));
+  assert.ok(managerSource.includes('latest.avatarAssetId = saved.value.assetId'));
+  assert.ok(managerSource.includes('target.avatar = resolved.value'));
+  assert.ok(managerSource.includes('target.avatarAssetId = item.assetId'));
+  assert.ok(managerSource.includes('role.avatar'),
+    'existing profile and list avatar rendering must continue to support the legacy field');
+});
+
+test('portrait studio can add a cropped Blob without automatically replacing the active avatar', () => {
+  assert.ok(managerSource.includes("portraitPurpose === 'library'"));
+  assert.ok(managerSource.includes("output.toBlob(function (blob)"));
+  assert.ok(managerSource.includes('RoleAvatarLibrary.add(roleId, blob'));
+  assert.ok(managerSource.includes('新头像已加入这个角色的收藏。选择缩略图即可设为当前头像。'));
+  assert.ok(managerSource.includes('portraitPurpose = \\'profile\\''));
+});
+
+test('current avatar changes are persisted with a compatibility DataURL and roll back on save failure', () => {
+  assert.ok(managerSource.includes('RoleAvatarLibrary.setActive(roleId, item.id)'));
+  assert.ok(managerSource.includes('RoleAvatarLibrary.toDataUrl(item.assetId)'));
+  assert.ok(managerSource.includes("const previousAvatar = target.avatar || ''"));
+  assert.ok(managerSource.includes('library.setActive(roleId, previousActive ? previousActive.id : \\'\\')'));
+  assert.ok(managerSource.includes('target.avatar = previousAvatar'));
+});
+
+test('avatar gallery revokes object URLs and prevents removal of the active portrait', () => {
+  assert.ok(managerSource.includes('releaseAvatarLibraryUrls()'));
+  assert.ok(managerSource.includes('avatarLibraryObjectUrls.push(resolved.value)'));
+  assert.ok(managerSource.includes('if (item.active)'));
+  assert.ok(managerSource.includes('当前头像不能直接移除'));
+  assert.ok(managerSource.includes('RoleAvatarLibrary.remove(roleId, avatarId)'));
+});
+
+test('deleting a character releases only that character avatar references after profile deletion succeeds', () => {
+  assert.ok(managerSource.includes('if (!saveRoles(updatedRoles))'));
+  assert.ok(managerSource.includes('RoleAvatarLibrary.removeRole(String(id))'));
+  assert.ok(managerSource.includes('角色删除失败，原有资料和头像均已保留。'));
+});
+
+test('PWA shell caches the role portrait archive and its runtime at v176', () => {
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v176'"));
+  assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
+  assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v1'"));
+  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v1'"));
+});
