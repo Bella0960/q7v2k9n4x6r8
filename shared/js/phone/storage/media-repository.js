@@ -283,12 +283,13 @@
                             var existing = checkReq.result;
                             resolve({ ok: true,
                                 value: { assetId: finalAssetId, size: size, hash: hash, reused: reused, type: type },
-                                meta: { reused: reused } });
+                                meta: { reused: reused, refAdded: refAdded } });
                         };
                         tx.onerror = function () { finishError(tx.error); };
                         tx.onabort = function () { finishError(tx.error); };
                         var finalAssetId = assetId;
                         var reused = false;
+                        var refAdded = false;
                         checkReq.onsuccess = function () {
                             var existing = checkReq.result;
                             finalAssetId = existing ? existing.assetId : assetId;
@@ -312,7 +313,10 @@
                                 var exists = refList.some(function (item) {
                                     return item && item.ownerType === opts.ownerType && item.ownerId === opts.ownerId;
                                 });
-                                if (!exists) refList.push({ ownerType: opts.ownerType, ownerId: opts.ownerId });
+                                if (!exists) {
+                                    refList.push({ ownerType: opts.ownerType, ownerId: opts.ownerId });
+                                    refAdded = true;
+                                }
                                 var primary = refList[0] || { ownerType: opts.ownerType, ownerId: opts.ownerId };
                                 refs.put({
                                     assetId: finalAssetId,
