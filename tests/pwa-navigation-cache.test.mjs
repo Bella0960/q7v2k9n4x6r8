@@ -64,3 +64,10 @@ test('failed app navigation never falls back to the desktop index page', () => {
   assert.doesNotMatch(serviceWorker, /cached \|\| caches\.match\('\.\/index\.html'\)/);
   assert.match(serviceWorker, /status: 503/);
 });
+
+
+test('MCP settings page and PWA shell load the same guarded client version', () => {
+  const mcpPage = read('settings/mcp-connections.html');
+  assert.match(mcpPage, /mcp-client\.js\?v=20261108g/);
+  assert.ok(serviceWorker.includes('./shared/js/phone/mcp-client.js?v=20261108g'));
+});
