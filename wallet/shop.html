@@ -796,10 +796,24 @@
 
   // === 订单（含角色送礼）===
   function loadOrders() {
-    try { return JSON.parse(localStorage.getItem('shop_orders') || '[]'); }
-    catch(e) { return []; }
+    try {
+      var raw = localStorage.getItem('shop_orders');
+      if (raw == null) return [];
+      var rows = JSON.parse(raw);
+      if (!Array.isArray(rows)) return null;
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row || typeof row !== 'object' || Array.isArray(row) ||
+            !isFinite(Number(row.ts)) || Number(row.ts) <= 0 ||
+            !Array.isArray(row.items) ||
+            (row.total != null && (!isFinite(Number(row.total)) || Number(row.total) < 0)) ||
+            (row.statusHistory != null && !Array.isArray(row.statusHistory))) return null;
+      }
+      return rows;
+    } catch(e) { return null; }
   }
   function saveOrders(o) {
+    if (!Array.isArray(o)) return false;
     try {
       var serialized = JSON.stringify(o);
       localStorage.setItem('shop_orders', serialized);
@@ -809,12 +823,86 @@
     }
   }
 
-  function orderStatus(ts) {
-    const hr = (Date.now() - ts) / 3600000;
-    if (hr < 1) return { label: '已下单', color: '#999' };
-    if (hr < 3) return { label: '打包中', color: '#666' };
-    if (hr < 24) return { label: '派送中', color: '#111' };
-    return { label: '已签收', color: '#999' };
+  const SHOP_ORDER_STAGES = [
+    { status: 'placed', label: '订单已下单', desc: '等待仓库处理', offset: 0 },
+    { status: 'packed', label: '仓库已打包', desc: '包裹已打包，等待快递揽收', offset: 1 * 3600000 },
+    { status: 'shipped', label: '商品已发货', desc: '快递已揽收，包裹正在发往转运中心', offset: 3 * 3600000 },
+    { status: 'in_transit', label: '运输中', desc: '包裹正在发往派送点', offset: 24 * 3600000 },
+    { status: 'delivering', label: '派送中', desc: '配送员正在为您派送', offset: 48 * 3600000 },
+    { status: 'delivered', label: '已签收', desc: '本次模拟配送已完成', offset: 72 * 3600000 }
+  ];
+
+  // Persist each elapsed simulated milestone once; clock rollback never moves an order backwards.
+  function advanceOrderLifecycle(order, stages, now) {
+    if (!order || !Array.isArray(stages) || !stages.length) return null;
+    var createdAt = Number(order.ts);
+    if (!isFinite(createdAt) || createdAt <= 0) return null;
+    if (Object.prototype.hasOwnProperty.call(order, 'statusHistory') &&
+        !Array.isArray(order.statusHistory)) return null;
+    var history = order.statusHistory || [];
+    for (var hi = 0; hi < history.length; hi++) {
+      var event = history[hi];
+      if (!event || typeof event !== 'object' ||
+          !stages.some(function (stage) { return stage.status === event.status; }) ||
+          !isFinite(Number(event.time))) return null;
+    }
+
+    var targetIndex = -1;
+    stages.forEach(function (stage, index) {
+      if (Number(now) - createdAt >= stage.offset) targetIndex = index;
+    });
+    history.forEach(function (event) {
+      var eventIndex = stages.findIndex(function (stage) { return stage.status === event.status; });
+      if (eventIndex > targetIndex) targetIndex = eventIndex;
+    });
+    if (order.status != null) {
+      var storedIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+      if (storedIndex < 0) return null;
+      if (storedIndex > targetIndex) targetIndex = storedIndex;
+    }
+    if (targetIndex < 0) targetIndex = 0;
+
+    var changed = !Array.isArray(order.statusHistory);
+    for (var si = 0; si <= targetIndex; si++) {
+      var stage = stages[si];
+      if (!history.some(function (event) { return event.status === stage.status; })) {
+        history.push({ status: stage.status, label: stage.label, time: createdAt + stage.offset });
+        changed = true;
+      }
+    }
+    history.sort(function (a, b) { return Number(a.time) - Number(b.time); });
+    var lastEvent = history.find(function (event) { return event.status === stages[targetIndex].status; });
+    if (order.status !== stages[targetIndex].status) {
+      order.status = stages[targetIndex].status;
+      changed = true;
+    }
+    if (order.statusUpdatedAt !== Number(lastEvent.time)) {
+      order.statusUpdatedAt = Number(lastEvent.time);
+      changed = true;
+    }
+    if (!Array.isArray(order.statusHistory)) order.statusHistory = history;
+    return changed;
+  }
+
+  function syncShopOrders() {
+    var orders = loadOrders();
+    if (!orders) return null;
+    var changed = false;
+    for (var i = 0; i < orders.length; i++) {
+      var result = advanceOrderLifecycle(orders[i], SHOP_ORDER_STAGES, Date.now());
+      if (result === null) return null;
+      if (result) changed = true;
+    }
+    if (changed && !saveOrders(orders)) return null;
+    return orders;
+  }
+
+  function orderStatus(order) {
+    var stage = SHOP_ORDER_STAGES.find(function (item) { return item.status === order.status; });
+    return stage ? {
+      label: stage.label,
+      color: order.status === 'delivering' || order.status === 'shipped' ? '#111' : '#777'
+    } : { label: '状态待确认', color: '#999' };
   }
 
   function openOrders() {
@@ -832,15 +920,20 @@
   }
 
   function renderOrders() {
-    const all = loadOrders().reverse();
-    const orders = all.filter(o => o.roleName === '我');
+    const stored = syncShopOrders();
     const box = document.getElementById('ordersList');
+    if (!stored) {
+      box.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#999;font-size:0.875rem;">订单数据暂时无法读取，请先检查本地存储</div>';
+      return;
+    }
+    const all = stored.slice().reverse();
+    const orders = all.filter(o => o.roleName === '我');
     if (orders.length === 0) {
       box.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#999;font-size:0.875rem;">还没有订单</div>';
       return;
     }
     box.innerHTML = orders.map((o, i) => {
-      const st = orderStatus(o.ts);
+      const st = orderStatus(o);
       const itemNames = o.items.map(it => it.cn).join('、');
       return `
         <div style="background:#fff;border:1px solid #ECECEF;border-radius:14px;padding:14px;margin-bottom:10px;cursor:pointer;" onclick="openOrderDetail(${i})">
@@ -862,68 +955,59 @@
   }
 
   function openOrderDetail(i) {
-    const all = loadOrders().reverse();
-    const orders = all.filter(o => o.roleName === '我');
+    const all = syncShopOrders();
+    if (!all) {
+      showToast('订单数据异常，暂时无法打开详情');
+      return;
+    }
+    const orders = all.slice().reverse().filter(o => o.roleName === '我');
     const o = orders[i];
     if (!o) return;
     const box = document.getElementById('orderDetailBody');
-    const now = Date.now();
-    const hr = (now - o.ts) / 3600000;
     const fmt = (t) => new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-');
-    // 物流步骤：[标题, 描述, 相对小时偏移, 已完成?]
-    const steps = [
-      { title: '订单已下单', desc: '等待仓库发货', off: 0 },
-      { title: '仓库已打包', desc: '包裹已打包，等待快递揽收', off: 1 },
-      { title: '商品已发货', desc: '快递已揽收，包裹正在发往转运中心', off: 3 },
-      { title: '运输中', desc: '包裹已到达转运中心，正在发往派送点', off: 24 },
-      { title: '派送中', desc: '快递员正在为您派送，请保持电话畅通', off: 48 },
-      { title: '已签收', desc: '感谢购买，欢迎再次光临', off: 72 },
-    ];
-    let curIdx = 0;
-    steps.forEach((s, idx) => { if (hr >= s.off) curIdx = idx; });
-    const latest = steps[curIdx];
-    const latestTime = fmt(o.ts + latest.off * 3600000);
-
-    let stepsHtml = steps.map((s, idx) => {
-      let state = '';
-      if (idx < curIdx) state = 'done';
-      else if (idx === curIdx) state = 'now';
-      const t = idx <= curIdx ? fmt(o.ts + s.off * 3600000) : '';
+    const currentIndex = SHOP_ORDER_STAGES.findIndex(function (stage) { return stage.status === o.status; });
+    const curIdx = Math.max(0, currentIndex);
+    const currentStage = SHOP_ORDER_STAGES[curIdx];
+    const latestEvent = (o.statusHistory || []).find(function (event) { return event.status === currentStage.status; });
+    const latestTime = fmt(latestEvent ? latestEvent.time : o.ts);
+    const stepsHtml = SHOP_ORDER_STAGES.map(function (stage, idx) {
+      const event = (o.statusHistory || []).find(function (entry) { return entry.status === stage.status; });
+      const state = idx < curIdx ? 'done' : (idx === curIdx ? 'now' : '');
+      const time = event ? fmt(event.time) : '';
       return `
         <div class="logi-step ${state}">
           <div class="logi-dot"></div>
           <div class="logi-step-body">
-            <div class="logi-step-title">${s.title}</div>
-            <div class="logi-step-desc">${s.desc}</div>
-            ${t ? `<div class="logi-step-time">${t}</div>` : ''}
+            <div class="logi-step-title">${stage.label}</div>
+            <div class="logi-step-desc">${stage.desc}</div>
+            ${time ? `<div class="logi-step-time">${time}</div>` : ''}
           </div>
         </div>`;
     }).join('');
 
-    let itemsHtml = o.items.map(it => `
+    const itemsHtml = o.items.map(it => `
       <div class="order-item-row">
-        <div style="flex:1;">
-          <div style="font-size:0.813rem;font-weight:600;">${it.cn}</div>
-        </div>
-        <div class="oi-price">¥${it.price}.00</div>
-      </div>
-    `).join('');
+        <div style="flex:1;"><div style="font-size:0.813rem;font-weight:600;">${it.cn || it.name || '商品'}</div></div>
+        <div class="oi-price">¥${Number(it.price || 0).toFixed(2)}</div>
+      </div>`
+    ).join('');
 
     box.innerHTML = `
       <div class="logi-card">
-        <div class="logi-latest">${latest.title} · ${latest.desc}</div>
+        <div class="logi-latest">${currentStage.label} · ${currentStage.desc}</div>
         <div class="logi-time">${latestTime}</div>
       </div>
       <div class="logi-steps">${stepsHtml}</div>
       <div class="logi-card">
-        <div style="font-size:0.75rem;color:#999;margin-bottom:8px;">包裹信息 · 极简速运</div>
+        <div style="font-size:0.75rem;color:#999;margin-bottom:8px;">包裹信息 · 应用内模拟物流</div>
         ${itemsHtml}
         <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #F2F2F4;">
           <span style="font-size:0.813rem;color:#666;">合计</span>
-          <span style="font-size:1rem;font-weight:800;">¥${o.total}.00</span>
+          <span style="font-size:1rem;font-weight:800;">¥${Number(o.total || 0).toFixed(2)}</span>
         </div>
       </div>
-      <div style="margin:0 20px;font-size:0.688rem;color:#bbb;">订单号 #${String(o.ts).slice(-6)} · 下单时间 ${fmt(o.ts)}</div>
+      <div style="margin:0 20px;font-size:0.688rem;color:#bbb;">订单号 #${String(o.orderId || o.paymentId || o.ts).slice(-6)} · 下单时间 ${fmt(o.ts)}</div>
+      <div style="margin:8px 20px 16px;font-size:0.625rem;color:#aaa;">进度按应用内模拟时间推进，不代表真实快递扫描或签收。</div>
     `;
     document.getElementById('ordersView').style.display = 'none';
     document.getElementById('orderDetailView').style.display = 'block';
@@ -943,14 +1027,22 @@
     const c = chars[Math.floor(Math.random()*chars.length)];
     const p = PRODUCTS[Math.floor(Math.random()*PRODUCTS.length)];
     const orders = loadOrders();
+    if (!orders) {
+      showToast('订单数据异常，未新增模拟订单');
+      return;
+    }
     orders.push({
+      orderId: 'legacy_shop_' + Date.now().toString(36),
       roleName: c.name || '神秘人',
       roleBg: c.avatarBg || '#111',
       items: [{ cn: p.cn, price: p.price }],
       total: p.price,
-      ts: Date.now() - Math.random()*3600000*10  // 随机10小时内
+      ts: Date.now() - Math.random()*3600000*10
     });
-    saveOrders(orders);
+    if (!saveOrders(orders)) {
+      showToast('模拟订单保存失败');
+      return;
+    }
     renderOrders();
   }
 
@@ -1219,16 +1311,38 @@
 
             // 订单按 paymentId 去重；订单保存失败时保留待恢复交易。
             const orders = loadOrders();
+            if (!orders) {
+              showToast('订单数据异常，已停止覆盖保存；原支付交易仍可恢复');
+              return;
+            }
             if (!orders.some(function (row) { return row && row.paymentId === transactionId; })) {
+              var orderCreatedAt = Date.now();
               orders.push({
+                orderId: transactionId,
                 paymentId: transactionId,
                 roleName: '我',
                 roleBg: '#111',
                 items: payItems.map(function (item) { return { cn: item.cn, price: item.price }; }),
                 total: total,
-                ts: Date.now(),
-                payMethod: payMethod
+                ts: orderCreatedAt,
+                payMethod: payMethod,
+                status: 'placed',
+                statusUpdatedAt: orderCreatedAt,
+                statusHistory: [{ status: 'placed', label: '订单已下单', time: orderCreatedAt }],
+                statusSource: 'simulation'
               });
+            }
+            var storedOrder = orders.find(function (row) { return row && row.paymentId === transactionId; });
+            var storedItemsMatch = storedOrder && Array.isArray(storedOrder.items) &&
+              storedOrder.items.length === payItems.length &&
+              storedOrder.items.every(function (storedItem, index) {
+                return storedItem.cn === payItems[index].cn &&
+                  Number(storedItem.price) === Number(payItems[index].price);
+              });
+            if (!storedOrder || Number(storedOrder.total) !== Number(total) ||
+                !storedItemsMatch || String(storedOrder.payMethod || '') !== String(payMethod)) {
+              showToast('订单交易编号与商品明细不一致，已停止继续处理');
+              return;
             }
             if (!saveOrders(orders)) {
               showToast('支付已记录，但订单暂未保存；再次提交会补齐订单且不会重复扣款');
