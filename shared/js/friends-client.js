@@ -160,6 +160,21 @@
     );
   }
 
+  function hideMessage(friendId, messageId) {
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) +
+        '/messages/' + encodeURIComponent(String(messageId || '').trim()),
+      { method: 'DELETE' }
+    );
+  }
+
+  function clearMessages(friendId) {
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages',
+      { method: 'DELETE' }
+    );
+  }
+
   global.MaomaoFriends = {
     ensureAccount: ensureAccount,
     getMe: getMe,
@@ -175,6 +190,8 @@
     getMessages: getMessages,
     sendMessage: sendMessage,
     markRead: markRead,
+    hideMessage: hideMessage,
+    clearMessages: clearMessages,
     _readAccount: readAccount
   };
 })(typeof window !== 'undefined' ? window : self);
