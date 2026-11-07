@@ -175,6 +175,10 @@ test('Contacts page exposes group creation, editing, deletion, membership, and f
   assert.match(contactsPage, /data-contact-member=/);
   assert.match(contactsPage, /data-contact-group=/);
   assert.match(contactsPage, /contactGroupApi\.saveGroups/);
+  assert.match(contactsPage, /发现 '\s*\+ staleMemberCount/);
+  assert.match(contactsPage, /保存时会从分组中清除/);
+  assert.match(contactsPage, /当前联系人列表暂时无法读取/);
+  assert.match(contactsPage, /Do not remove members when the current contact roster itself cannot be verified/);
 });
 
 test('Moments audience controls do not reuse @mentions as the visible-to list', () => {
