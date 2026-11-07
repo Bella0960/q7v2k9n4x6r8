@@ -121,6 +121,8 @@
     transition: background 0.12s;
   }
   .contact-item:active { background: #F0F0F0; }
+  .contact-item.real-user { cursor: default; }
+  .contact-kind { margin-left: 8px; color: #999; font-size: 10px; font-weight: 400; flex-shrink: 0; }
 
   .contact-item:last-child { border-bottom: none; }
 
@@ -406,25 +408,50 @@
         })
       };
     }
+    function getRealUserRefKey(contact) {
+      if (!contact || contact.id == null) return '';
+      var ref = contactDirectoryApi && typeof contactDirectoryApi.getContactRef === 'function'
+        ? contactDirectoryApi.getContactRef(contact) : null;
+      return ref && ref.key ? ref.key : 'real_user:' + encodeURIComponent(String(contact.id));
+    }
+    function groupContainsRealUser(group, contact) {
+      var key = getRealUserRefKey(contact);
+      if (!key) return false;
+      return Array.isArray(group && group.memberRefs) && group.memberRefs.some(function (value) {
+        var raw = String(value == null ? '' : value).trim();
+        if (raw === key) return true;
+        var identity = window.PhoneContactIdentity;
+        var normalized = identity && typeof identity.normalize === 'function' ? identity.normalize(value) : null;
+        return !!(normalized && normalized.type === 'real_user' && normalized.key === key);
+      });
+    }
     function getFilteredGroupCount(group) {
       var roleCount = loadCharacters().filter(function (role) {
         return (group.memberIds || []).indexOf(String(role.id)) !== -1;
       }).length;
       var users = readAcceptedRealUsers();
       if (!users.ok) return roleCount;
-      var refs = Array.isArray(group.memberRefs) ? group.memberRefs : [];
       var userCount = users.contacts.filter(function (contact) {
-        var ref = contactDirectoryApi.getContactRef(contact);
-        return ref && refs.indexOf(ref.key) !== -1;
+        return groupContainsRealUser(group, contact);
       }).length;
       return roleCount + userCount;
     }
     function renderGroupBar() {
       var bar = document.getElementById('contactGroupBar');
-      var roles = loadCharacters(), groups = getContactGroups(), grouped = Object.create(null);
-      groups.forEach(function (group) { (group.memberIds || []).forEach(function (id) { grouped[String(id)] = true; }); });
-      var ungrouped = roles.filter(function (role) { return !grouped[String(role.id)]; }).length;
-      var items = [{id:'all',label:'全部',count:roles.length},{id:'ungrouped',label:'未分组',count:ungrouped}];
+      var roles = loadCharacters(), groups = getContactGroups(), users = readAcceptedRealUsers();
+      var realUsers = users.ok ? users.contacts : [];
+      var groupedRoles = Object.create(null);
+      groups.forEach(function (group) {
+        (group.memberIds || []).forEach(function (id) { groupedRoles[String(id)] = true; });
+      });
+      var ungroupedRoleCount = roles.filter(function (role) { return !groupedRoles[String(role.id)]; }).length;
+      var ungroupedUserCount = realUsers.filter(function (contact) {
+        return !groups.some(function (group) { return groupContainsRealUser(group, contact); });
+      }).length;
+      var items = [
+        {id:'all',label:'全部',count:roles.length + realUsers.length},
+        {id:'ungrouped',label:'未分组',count:ungroupedRoleCount + ungroupedUserCount}
+      ];
       bar.innerHTML = items.map(function (item) {
         return '<button type="button" class="contact-group-chip' + (currentContactGroupFilter === item.id ? ' active' : '') +
           '" data-contact-group="' + item.id + '">' + item.label + '<span class="contact-group-count">' + item.count + '</span></button>';
@@ -614,24 +641,58 @@
     function renderList(filter) {
       var list = document.getElementById('contactList');
       var index = document.getElementById('contactAlphabet');
-      var roles = loadCharacters();
       var query = String(filter || '').trim().toLowerCase();
+      var roles = loadCharacters().map(function (role) {
+        return {
+          type: 'ai_role',
+          id: String(role.id),
+          name: role.name || '角色',
+          avatar: role.avatar || '',
+          pinyin: role.pinyin || role.py || role.sortName || '',
+          source: role
+        };
+      });
+      var usersRead = readAcceptedRealUsers();
+      var realUsers = usersRead.ok ? usersRead.contacts.map(function (contact) {
+        return {
+          type: 'real_user',
+          id: String(contact.id),
+          name: contact.displayName || '好友',
+          avatar: contact.avatarUrl || '',
+          pinyin: contact.pinyin || contact.py || '',
+          source: contact
+        };
+      }) : [];
+      var entries = roles.concat(realUsers);
+      var groups = getContactGroups();
 
       if (query) {
-        roles = roles.filter(function (r) {
-          return String(r.name || '').toLowerCase().indexOf(query) !== -1 ||
-            String(r.pinyin || r.py || '').toLowerCase().indexOf(query) !== -1;
+        entries = entries.filter(function (entry) {
+          return String(entry.name || '').toLowerCase().indexOf(query) !== -1 ||
+            String(entry.pinyin || '').toLowerCase().indexOf(query) !== -1;
         });
       }
       if (currentContactGroupFilter === 'ungrouped') {
-        roles = roles.filter(function (role) { return !contactGroupApi || contactGroupApi.getGroupIdsForContact(role.id).length === 0; });
+        entries = entries.filter(function (entry) {
+          if (entry.type === 'real_user') {
+            return !groups.some(function (group) { return groupContainsRealUser(group, entry.source); });
+          }
+          return !contactGroupApi || contactGroupApi.getGroupIdsForContact(entry.id).length === 0;
+        });
       } else if (currentContactGroupFilter !== 'all') {
-        var selectedGroup = getContactGroups().find(function (group) { return group.id === currentContactGroupFilter; });
-        if (selectedGroup) roles = roles.filter(function (role) { return (selectedGroup.memberIds || []).indexOf(String(role.id)) !== -1; });
+        var selectedGroup = groups.find(function (group) { return group.id === currentContactGroupFilter; });
+        if (selectedGroup) {
+          entries = entries.filter(function (entry) {
+            if (entry.type === 'real_user') return groupContainsRealUser(selectedGroup, entry.source);
+            return (selectedGroup.memberIds || []).indexOf(String(entry.id)) !== -1;
+          });
+        } else {
+          entries = [];
+        }
       }
-      roles.sort(compareContactNames);
+      entries.sort(compareContactNames);
 
-      if (!roles.length) {
+      if (!entries.length) {
         list.innerHTML =
           '<div class="empty-state">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
@@ -640,40 +701,51 @@
               '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>' +
               '<path d="M16 3.13a4 4 0 0 1 0 7.75"/>' +
             '</svg>' +
-            '<div class="empty-text">' + (query ? '没有找到匹配的联系人' : '还没有角色<br>点击上方"新的朋友"开始添加') + '</div>' +
+            '<div class="empty-text">' + (query ? '没有找到匹配的联系人' : '还没有联系人<br>可先添加 AI 角色，或等待真人好友接受请求') + '</div>' +
           '</div>';
         index.innerHTML = '';
         return;
       }
 
-      var groups = {};
-      roles.forEach(function(role){
-        var letter = contactInitial(role);
-        if(!groups[letter])groups[letter]=[];
-        groups[letter].push(role);
+      var sections = {};
+      entries.forEach(function (entry) {
+        var letter = contactInitial(entry);
+        if (!sections[letter]) sections[letter] = [];
+        sections[letter].push(entry);
       });
-      var letters = Object.keys(groups).sort(function(a,b){
-        if(a==='#')return 1;if(b==='#')return -1;return a.localeCompare(b);
+      var letters = Object.keys(sections).sort(function (a, b) {
+        if (a === '#') return 1;
+        if (b === '#') return -1;
+        return a.localeCompare(b);
       });
       var html = '';
-      letters.forEach(function(letter){
+      letters.forEach(function (letter) {
         html += '<section class="contact-letter-group" id="contactSection' + letter + '">' +
           '<div class="contact-section-title">' + letter + '</div>';
-        html += groups[letter].map(function(role){
-          var name = role.name || '角色';
-          var avatar = role.avatar
-            ? '<div class="contact-avatar"><img src="' + escapeHtml(role.avatar) + '" alt=""></div>'
+        html += sections[letter].map(function (entry) {
+          var name = entry.name || (entry.type === 'real_user' ? '好友' : '角色');
+          var avatar = entry.avatar
+            ? '<div class="contact-avatar"><img src="' + escapeHtml(entry.avatar) + '" alt=""></div>'
             : avatarFallback(name);
-          var contactRef = window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole(role);
-          var contactKey = contactRef ? contactRef.key : 'ai_role:' + encodeURIComponent(String(role.id));
-          return '<div class="contact-item" data-id="' + escapeHtml(role.id) + '" data-contact-key="' + escapeHtml(contactKey) + '">' +
+          var isRealUser = entry.type === 'real_user';
+          var contactRef = isRealUser
+            ? (contactDirectoryApi && contactDirectoryApi.getContactRef(entry.source))
+            : (window.PhoneContactIdentity && window.PhoneContactIdentity.fromRole(entry.source));
+          var contactKey = contactRef && contactRef.key
+            ? contactRef.key
+            : (isRealUser ? 'real_user:' : 'ai_role:') + encodeURIComponent(String(entry.id));
+          return '<div class="contact-item' + (isRealUser ? ' real-user' : '') +
+            '" data-id="' + escapeHtml(entry.id) + '" data-contact-type="' + entry.type +
+            '" data-contact-key="' + escapeHtml(contactKey) + '"' +
+            (isRealUser ? ' aria-label="真人好友：' + escapeHtml(name) + '，聊天功能尚未接入"' : '') + '>' +
             avatar + '<div class="contact-info"><div class="contact-name">' + escapeHtml(name) + '</div></div>' +
+            (isRealUser ? '<span class="contact-kind">真人好友</span>' : '') +
           '</div>';
         }).join('');
         html += '</section>';
       });
       list.innerHTML = html;
-      index.innerHTML = letters.map(function(letter){
+      index.innerHTML = letters.map(function (letter) {
         return '<button type="button" class="wechat-index-letter" data-letter="' + letter + '">' + letter + '</button>';
       }).join('');
     }
@@ -685,6 +757,8 @@
     document.getElementById('contactList').addEventListener('click',function(e){
       var item=e.target.closest('.contact-item');
       if(!item)return;
+      var type = item.getAttribute('data-contact-type') || 'ai_role';
+      if (type !== 'ai_role') return;
       var id=item.getAttribute('data-id');
       if(id)window.location.href='../chat/chat-detail.html?id='+encodeURIComponent(id);
     });
@@ -746,9 +820,12 @@
       if (e.key === 'Enter') { e.preventDefault(); saveContactGroupFromEditor(); }
     });
     window.addEventListener('storage', function (e) {
-      if (e.key === 'contact_groups_v1') {
+      if (e.key === 'contact_groups_v1' || e.key === 'real_user_contacts_v1') {
         renderGroupBar(); renderList(document.getElementById('searchInput').value);
-        if (document.getElementById('contactGroupOverlay').classList.contains('open')) renderContactGroupManager();
+        if (document.getElementById('contactGroupOverlay').classList.contains('open')) {
+          renderContactGroupManager();
+          if (!document.getElementById('contactGroupEditSheet').hidden) renderContactGroupMembers();
+        }
       }
     });
 
