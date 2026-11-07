@@ -208,6 +208,7 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 队列只暴露 `total / waiting / retry / running / completed / failed / superseded / other` 数量（未知或历史状态归入 `other`）；按已鉴权设备所属用户过滤。不会返回任务 ID、角色 ID、设备 ID、任务载荷或聊天内容。
 - 新增最近 24 小时调度阻塞 / 作废原因计数：仅统计 `deferred / failed / superseded / skipped`，不把成功认领的 `claimed` 误报为阻塞；Scheduler 日志写入任务所属的 `device_id`，readiness 仅按已鉴权设备所属用户分组返回原因码与次数，不返回执行日志详情、任务 ID 或时间戳；旧的未关联设备日志不会跨账号展示。
 - readiness 在心跳/租约参数齐全时，额外返回匿名 `presenceSummary`：授权设备总数、TTL 内有效前台心跳设备数、有效角色租约数、grace 缓冲期租约数。查询按用户隔离，并排除已撤销设备、过期或未来时间戳的心跳和非本账号租约；不返回设备 ID、角色 ID 或原始心跳时间。缺少前台参数时该汇总为 `null`，不会把未知状态伪装成离线。
+- 前台心跳是设备级、角色租约是角色级：单个聊天标签页隐藏、pagehide 或停止本地续期时不再主动写入 `foregroundActive=false`，避免一个后台标签页覆盖同一手机另一个可见标签页的心跳。所有可见页面都停止续期后，readiness 与 scheduler policy 会依显式 TTL 自然将旧心跳视为过期；角色租约仍按 lease + grace 到期。
 - 设备撤销在同一个同步 Store 操作内先停用其全部推送订阅，再标记设备撤销并清除 presence、租约和未使用配对码，避免撤销与停订阅分成两次调用造成的短暂推送窗口。
 - 推送订阅写入会在 Store 写入边界重新检查设备是否仍有效；即使请求在鉴权后被并发撤销，也不能重新激活订阅。endpoint 已属于另一台仍有效设备时拒绝转移；只有原设备已撤销后，配对完成的新设备才可接管该 endpoint。
 - 当前 `activityExecutorAvailable=false`、`contextVersionReady=false`，主动消息生成继续为 false；阻塞原因明确为 `executor_unavailable` 与 `context_version_unavailable`。这不是“已能主动发消息”的状态。
