@@ -714,6 +714,18 @@
       return '<div class="order-after-sales"><div class="order-after-sales-title">售后申请状态待核对</div>' +
         '<div class="order-after-sales-note">检测到已有申请记录，为避免重复申请，暂时不开放再次提交。</div></div>';
     }
+    var eligibility = window.MaoMaoOrderAfterSales && window.MaoMaoOrderAfterSales.canSubmit
+      ? window.MaoMaoOrderAfterSales.canSubmit({
+          channel: 'takeout', ordersKey: 'takeout_orders', financeKey: 'finance_records',
+          paymentId: order.paymentId, amount: Number(order.total), paymentMethod: String(order.payMethod || '')
+        }) : { ok: false, reason: 'module' };
+    if (!eligibility.ok) {
+      return '<div class="order-after-sales"><div class="order-after-sales-title">暂不可提交售后</div>' +
+        '<div class="order-after-sales-note">' + (!order.paymentId
+          ? '这笔旧订单没有原支付编号。'
+          : '未能核验完整的原始支出明细。') +
+        '为保护账本，系统不会创建无法关联支付记录的申请。</div></div>';
+    }
     var isCancelable = stageIndex <= 1;
     return '<div class="order-after-sales"><div class="order-after-sales-title">订单售后</div>' +
       '<select class="order-after-sales-select" id="takeoutAfterSalesReason" aria-label="申请原因">' +
