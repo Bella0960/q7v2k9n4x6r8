@@ -172,6 +172,7 @@
           line.afterSalesStatus === 'pending_review' &&
           line.afterSalesType === requestedType) return;
       line.afterSalesRequestId = requestId;
+      line.afterSalesChannel = channel;
       line.afterSalesStatus = 'pending_review';
       line.afterSalesType = requestedType;
       line.afterSalesRequestedAt = requestedAt;
