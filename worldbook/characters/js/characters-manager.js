@@ -426,8 +426,9 @@ function toggleRoleAvatarPairDraft(avatarId) {
     if (!roleId || !library) return;
     const item = library.find(roleId, avatarId);
     if (!item) return;
-    const pairs = typeof library.getPairs === 'function' ? library.getPairs(roleId) : [];
-    if (pairs.some(function (pair) { return (pair.avatarIds || []).indexOf(item.id) >= 0; })) {
+    const existingPair = typeof library.getPairForAvatar === 'function'
+        ? library.getPairForAvatar(roleId, item.id) : null;
+    if (existingPair) {
         setAvatarLibraryStatus('这张头像已经属于一组配对，请先解除原配对。', 'error');
         return;
     }
