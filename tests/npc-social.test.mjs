@@ -184,6 +184,8 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /data-action="block"/);
   assert.match(contacts, /npc-friends\.html/);
   assert.ok(nav.includes("currentPage === 'chat.html' || currentPage === 'contacts.html'"));
+  assert.match(page, /npc-social\.js\?v=20261108d/);
+  assert.ok(nav.includes("npc-social.js?v=20261108d"));
   assert.ok(source.includes('role.worldBookIds'));
   assert.match(source, /面向青少年用户/);
   assert.match(source, /npcFriendWelcome: true/);
