@@ -130,15 +130,36 @@
         var selectedContactIds = uniqueIds(contactIds);
         options = options && typeof options === 'object' ? options : {};
         var hasContactRoster = Array.isArray(options.availableContactIds);
+        var hasTypedContactRoster = Array.isArray(options.availableContactRefs);
         var availableContactIds = hasContactRoster ? uniqueIds(options.availableContactIds) : [];
         var availableLookup = Object.create(null);
         availableContactIds.forEach(function (id) { availableLookup[id] = true; });
+        var availableRefs = hasTypedContactRoster ? uniqueRefs(options.availableContactRefs, null) : [];
+        var availableRefLookup = Object.create(null);
+        availableRefs.forEach(function (item) { availableRefLookup[item.key] = true; });
         var selectedRefs = uniqueRefs(options.selectedContactRefs, null);
         selectedContactIds.forEach(function (id) {
             var roleRef = createRef(TYPES.AI_ROLE, id);
             if (roleRef && !selectedRefs.some(function (item) { return item.key === roleRef.key; })) selectedRefs.push(roleRef);
         });
         var stored = readStoredGroups();
+
+        if (hasTypedContactRoster) {
+            var missingSelectedContactRefs = selectedRefs.filter(function (item) {
+                return !Object.prototype.hasOwnProperty.call(availableRefLookup, item.key);
+            }).map(function (item) { return item.key; });
+            if (missingSelectedContactRefs.length) {
+                return {
+                    ok: false,
+                    error: 'missing_contacts',
+                    missingContactRefs: missingSelectedContactRefs,
+                    groupIds: requestedGroupIds,
+                    contactIds: selectedContactIds,
+                    memberIds: [],
+                    memberRefs: []
+                };
+            }
+        }
 
         if (!stored.ok && requestedGroupIds.length) {
             return {
@@ -197,6 +218,7 @@
         selectedMemberRefs = uniqueRefs(selectedMemberRefs, null);
 
         var staleMemberIds = [];
+        var staleMemberRefs = [];
         if (hasContactRoster) {
             staleMemberIds = selectedMemberRefs.filter(function (item) {
                 return item.type === TYPES.AI_ROLE && !Object.prototype.hasOwnProperty.call(availableLookup, item.id);
@@ -205,16 +227,27 @@
                 return item.type !== TYPES.AI_ROLE || Object.prototype.hasOwnProperty.call(availableLookup, item.id);
             });
         }
+        if (hasTypedContactRoster) {
+            staleMemberRefs = selectedMemberRefs.filter(function (item) {
+                return !Object.prototype.hasOwnProperty.call(availableRefLookup, item.key);
+            }).map(function (item) { return item.key; });
+            selectedMemberRefs = selectedMemberRefs.filter(function (item) {
+                return Object.prototype.hasOwnProperty.call(availableRefLookup, item.key);
+            });
+        }
 
         var memberIds = selectedMemberRefs.filter(function (item) { return item.type === TYPES.AI_ROLE; })
             .map(function (item) { return item.id; });
+        var memberRefs = selectedMemberRefs.map(function (item) { return item.key; });
         return {
             ok: true,
             groupIds: requestedGroupIds,
             contactIds: selectedContactIds,
             memberIds: uniqueIds(memberIds),
-            memberRefs: selectedMemberRefs.map(function (item) { return item.key; }),
-            staleMemberIds: uniqueIds(staleMemberIds)
+            memberRefs: memberRefs,
+            memberCount: memberRefs.length,
+            staleMemberIds: uniqueIds(staleMemberIds),
+            staleMemberRefs: uniqueIds(staleMemberRefs)
         };
     }
 
