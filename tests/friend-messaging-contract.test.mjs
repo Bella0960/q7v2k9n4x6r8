@@ -534,4 +534,8 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /api\.hideMessage\(friendId, messageId\)/);
   assert.match(FRIEND_CHAT_HTML, /好友仍然可以看到原消息/);
   assert.match(FRIEND_CHAT_HTML, /清空你这边的全部聊天记录/);
+  assert.match(FRIEND_CHAT_HTML, /function reloadConversationView/);
+  assert.match(FRIEND_CHAT_HTML, /page\.viewState\.version/);
+  assert.match(FRIEND_CHAT_HTML, /conversationViewVersion/);
+  assert.match(FRIEND_CHAT_HTML, /hiddenMessageIds\[message\.id\]/);
 });
