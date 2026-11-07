@@ -3327,3 +3327,12 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
   assert.equal(delivery.status, 'sent');
   assert.equal(delivery.attempt_count, 2);
 });
+
+
+test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Push', () => {
+  const workerSource = fs.readFileSync(path.join(rootDir, 'worker.js'), 'utf8');
+  assert.match(workerSource, /import \{ createApp, dispatchPendingOutboundPushes \} from '\.\/worker\/lib\/app\.js'/);
+  assert.match(workerSource, /internal\/maintenance[\s\S]{0,700}dispatchPendingOutboundPushes/);
+  assert.match(workerSource, /async scheduled\([\s\S]{0,500}internal\/maintenance/);
+  assert.match(workerSource, /pushDispatch/);
+});
