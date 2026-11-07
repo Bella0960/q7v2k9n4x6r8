@@ -6,7 +6,7 @@
 
   var NS = global.MaoMcpClient = {};
   var PROTOCOL_VERSION = '2025-03-26';
-  var MAX_RESPONSE_CHARS = 1024 * 1024;
+  var MAX_RESPONSE_BYTES = 1024 * 1024;
   var MAX_TOOLS = 500;
 
   function validateEndpoint(value) {
@@ -23,14 +23,19 @@
       throw new Error('请勿把密钥放在服务地址参数中；请使用单独的 Bearer Token 输入框。');
     }
 
-    var host = String(url.hostname || '').toLowerCase();
+    var host = String(url.hostname || '').toLowerCase().replace(/\.$/, '');
     var localHost = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
     var ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && localHost)) {
       throw new Error('MCP 服务必须使用 HTTPS；仅 localhost 开发地址允许 HTTP。');
     }
-    if (host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.localhost')) {
+    var blockedSuffixes = ['.local', '.internal', '.localhost', '.lan', '.home', '.corp', '.intranet', '.test', '.invalid', '.example', '.arpa'];
+    if (blockedSuffixes.some(function (suffix) { return host.endsWith(suffix); })) {
       throw new Error('暂不允许连接局域网或内部域名。');
+    }
+    var isIpv6Host = host.indexOf(':') !== -1;
+    if (!localHost && !ipv4 && !isIpv6Host && host.indexOf('.') === -1) {
+      throw new Error('MCP 服务必须使用可公开解析的完整域名或公网 IP。');
     }
     if (ipv4) {
       var octets = ipv4.slice(1).map(Number);
@@ -71,11 +76,40 @@
     return null;
   }
 
-  function parseResponse(response, expectedId) {
-    return response.text().then(function (text) {
-      if (text.length > MAX_RESPONSE_CHARS) {
-        throw new Error('MCP 服务返回内容过大，已停止读取。');
+  function readResponseText(response) {
+    var body = response.body;
+    if (body && typeof body.getReader === 'function') {
+      var reader = body.getReader();
+      var decoder = new TextDecoder();
+      var chunks = [];
+      var totalBytes = 0;
+      function readNext() {
+        return reader.read().then(function (part) {
+          if (part.done) return decoder.decode();
+          var chunk = part.value;
+          totalBytes += chunk && chunk.byteLength ? chunk.byteLength : 0;
+          if (totalBytes > MAX_RESPONSE_BYTES) {
+            try {
+              var cancelled = reader.cancel();
+              if (cancelled && typeof cancelled.catch === 'function') cancelled.catch(function () {});
+            } catch (error) {}
+            throw new Error('MCP 服务返回内容过大，已停止读取。');
+          }
+          chunks.push(decoder.decode(chunk, { stream: true }));
+          return readNext();
+        });
       }
+      return readNext().then(function (tail) { return chunks.join('') + tail; });
+    }
+    // Older/mock Response implementations may not expose a readable body.
+    return response.text().then(function (text) {
+      if (text.length > MAX_RESPONSE_BYTES) throw new Error('MCP 服务返回内容过大，已停止读取。');
+      return text;
+    });
+  }
+
+  function parseResponse(response, expectedId) {
+    return readResponseText(response).then(function (text) {
       if (!text.trim()) return null;
       var type = String(response.headers.get('content-type') || '').toLowerCase();
       if (type.indexOf('text/event-stream') !== -1 || /^\s*event:|^\s*data:/m.test(text)) {
