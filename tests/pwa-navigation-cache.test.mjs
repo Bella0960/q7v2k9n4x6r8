@@ -71,7 +71,7 @@ test('real-user chat API requests always bypass the static cache and fetch live 
   assert.ok(apiGateIndex >= 0, 'the real-user API must have a dedicated fetch branch');
   assert.ok(staticCacheIndex > apiGateIndex, 'the API bypass must run before static cache-first handling');
   assert.match(serviceWorker,
-    /event\\.respondWith\\(fetch\\(req, \\{ cache: 'no-store' \\}\\)\\);[\\s\\S]*?return;/,
+    /event\.respondWith\(fetch\(req, \{ cache: 'no-store' \}\)\);[\s\S]*?return;/,
     'real-user capability and message endpoints must always use a no-store network request');
   assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v182'/);
 });
