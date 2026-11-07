@@ -1040,8 +1040,62 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(400, 'INVALID_ACTIVITY_RESULT', '主动消息必须是 2–220 字的普通文字');
     }
 
-    const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
     const timestamp = now();
+    const activity = await store.getActivity(activityId);
+    if (!activity || activity.device_id !== device.id ||
+        activity.status !== 'running' || activity.locked_by !== device.id ||
+        Number(activity.attempt_count) !== attemptCount ||
+        Number(activity.locked_until || 0) <= timestamp) {
+      throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
+    }
+
+    const userId = device.user_id || OWNER_USER_ID;
+    let activityPayload = null;
+    try {
+      activityPayload = JSON.parse(activity.payload_json);
+    } catch {}
+    const currentVersion = await store.getCharacterContextVersion(userId, activity.character_id);
+    const contextStillCurrent = activityPayload &&
+      Number.isSafeInteger(Number(activityPayload.contextVersion)) &&
+      currentVersion &&
+      Number(currentVersion.version) === Number(activityPayload.contextVersion);
+    const gate = createSchedulerGate({
+      store,
+      now: () => timestamp,
+      config: readPresenceConfig(env) || {}
+    });
+    const gateResult = contextStillCurrent
+      ? gate({
+          ...activity,
+          user_id: userId,
+          source_device_revoked_at: null
+        })
+      : { autonomyAllowed: false, reasonCode: 'stale_context' };
+
+    if (gateResult.autonomyAllowed !== true || gateResult.characterState !== 'active') {
+      const finished = await store.completeActivity({
+        id: activityId,
+        owner: device.id,
+        attemptCount,
+        now: timestamp
+      });
+      if (!finished) {
+        throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
+      }
+      const reasonCode = gateResult.reasonCode || 'execution_gate_changed';
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId: device.id,
+        kind: 'autonomy_device_executor',
+        status: 'skipped',
+        reasonCode,
+        detail: { activityId, attemptCount },
+        now: timestamp
+      });
+      return ok({ completed: true, skipped: true, reasonCode });
+    }
+
+    const serverMessageId = 'autonomy_' + activityId + '_' + attemptCount;
     const result = await store.completeActivityWithOutbound({
       id: activityId,
       owner: device.id,
