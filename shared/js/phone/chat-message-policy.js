@@ -147,6 +147,13 @@
     return { mid: raw, index: 0 };
   }
 
+  // 把轮次 ID 纳入消息主键：同一毫秒内的并发回复也不会共用 mid。
+  // 额外编码轮次 ID，避免其中的 # 被旧版 mid#index 解析器误认为气泡分隔符。
+  function buildReplyMessageMid(turnId, time, index) {
+    var turnKey = encodeURIComponent(String(turnId || ('t' + time)));
+    return 'm' + String(time) + '-' + turnKey + '-' + String(index);
+  }
+
   // 把一次 AI 回复拆成逐条消息：一个气泡 = 一条消息，身份各自稳定。
   // 首条气泡携带 <narratage> 旁白，保证整轮旁白只渲染一次。
   // 新增字段 turnId / bubbleIndex / bubbleCount 全部是可选的，老记录读取不受影响。
@@ -167,7 +174,7 @@
         role: 'assistant',
         text: String(rawText || '').trim(),
         time: baseTime,
-        mid: 'm' + baseTime + '-0',
+        mid: buildReplyMessageMid(turnId, baseTime, 0),
         turnId: turnId,
         bubbleIndex: 0,
         bubbleCount: 1
@@ -190,7 +197,7 @@
         role: 'assistant',
         text: text,
         time: baseTime + index,
-        mid: 'm' + baseTime + '-' + index,
+        mid: buildReplyMessageMid(turnId, baseTime, index),
         turnId: turnId,
         bubbleIndex: index,
         bubbleCount: count
