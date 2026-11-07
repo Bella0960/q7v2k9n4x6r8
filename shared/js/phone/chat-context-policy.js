@@ -72,7 +72,19 @@
       if (!content) return;
 
       if (m.role === 'sent' || m.role === 'user') {
-        apiMessages.push({ role: 'user', content: content });
+        var userContent = content;
+        // Only an explicitly hydrated current-turn image is sent as multimodal data.
+        // Legacy image messages stay textual unless the caller deliberately resolves them.
+        var visionDataUrl = String(m.visionDataUrl || '');
+        if (m.type === 'image' &&
+            /^data:image\/(?:jpeg|jpg|png|webp|gif|avif);base64,[A-Za-z0-9+/=\r\n]+$/i.test(visionDataUrl) &&
+            visionDataUrl.length <= 4 * 1024 * 1024) {
+          userContent = [
+            { type: 'text', text: content || '[用户分享了一张图片]' },
+            { type: 'image_url', image_url: { url: visionDataUrl, detail: 'auto' } }
+          ];
+        }
+        apiMessages.push({ role: 'user', content: userContent });
       } else if (m.role === 'received' || m.role === 'assistant') {
         apiMessages.push({ role: 'assistant', content: groupSpeakerPrefix(m) + content });
       }
