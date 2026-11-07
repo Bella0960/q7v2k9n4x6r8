@@ -3241,6 +3241,8 @@ test('钱包界面在存在未完成的充值/提现时会提示并预填原操�
   assert.match(walletPage, /检测到一笔未完成的/);
   assert.match(walletPage, /pending\.paymentMethod/);
   assert.match(walletPage, /amountInput\.value = Number\(detail\.amount\)\.toFixed\(2\)/);
+  assert.match(walletPage, /existingRows\.length > 1/);
+  assert.match(walletPage, /!isFinite\(existingAmount\)/);
   assert.match(walletPage, /数据异常/);
 });
 
