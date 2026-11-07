@@ -9,7 +9,7 @@
 <script src="../../shared/js/chat-beauty.js?v=20261102v3"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
 <script src="../../shared/js/phone/contact-identity.js?v=20261107v1"></script>
-<script src="../../shared/js/phone/contact-directory.js?v=20261107v4"></script>
+<script src="../../shared/js/phone/contact-directory.js?v=20261108v1"></script>
 <script src="../../shared/js/contact-groups.js?v=20261107v2"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -396,17 +396,14 @@
     }
 
     function readAcceptedRealUsers() {
-      if (!contactDirectoryApi || typeof contactDirectoryApi.readResult !== 'function') {
+      if (!contactDirectoryApi || typeof contactDirectoryApi.read !== 'function') {
         return { ok: false, error: 'module_unavailable', contacts: [] };
       }
-      var result = contactDirectoryApi.readResult();
+      // Server-synced friends are visible only for the currently authenticated
+      // account selected by the same-origin account client.
+      var result = contactDirectoryApi.read({ status: contactDirectoryApi.statuses.ACCEPTED });
       if (!result.ok) return { ok: false, error: result.error, contacts: [] };
-      return {
-        ok: true,
-        contacts: result.contacts.filter(function (contact) {
-          return contact && contact.status === contactDirectoryApi.statuses.ACCEPTED;
-        })
-      };
+      return { ok: true, contacts: result.contacts };
     }
     function getRealUserRefKey(contact) {
       if (!contact || contact.id == null) return '';
@@ -828,6 +825,14 @@
         }
       }
     });
+    window.addEventListener('maomao:real-user-contacts-updated', function () {
+      renderGroupBar();
+      renderList(document.getElementById('searchInput').value);
+      if (document.getElementById('contactGroupOverlay').classList.contains('open')) {
+        renderContactGroupManager();
+        if (!document.getElementById('contactGroupEditSheet').hidden) renderContactGroupMembers();
+      }
+    });
 
     renderGroupBar();
     renderList();
@@ -835,8 +840,8 @@
   <script src="../../shared/js/phone/qrcode-generator.js?v=20261107v3"></script>
   <script src="../../shared/js/phone/real-user-friend-invite.js?v=20261107v3"></script>
   <script src="../../shared/js/phone/real-user-camera-scanner.js?v=20261107v3"></script>
-  <script src="../../shared/js/phone/real-user-account-client.js?v=20261108v1"></script>
-  <script src="./real-user-account-panel.js?v=20261108v1"></script>
+  <script src="../../shared/js/phone/real-user-account-client.js?v=20261108v2"></script>
+  <script src="./real-user-account-panel.js?v=20261108v2"></script>
   <script src="../../shared/js/statusbar-control.js"></script>
 </body>
 </html>
