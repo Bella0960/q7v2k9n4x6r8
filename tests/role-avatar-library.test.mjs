@@ -30,7 +30,11 @@ function createLibrary(seed, options = {}) {
       const assetId = 'as_' + suffix.padStart(32, 'A');
       assets.set(assetId, input);
       refs.add(assetId + '|' + opts.ownerType + '|' + opts.ownerId);
-      return Promise.resolve({ ok: true, value: { assetId, reused: false } });
+      const result = { ok: true, value: { assetId, reused: false } };
+      if (options.deferPutBlob) {
+        return new Promise(resolve => { options.releasePutBlob = () => resolve(result); });
+      }
+      return Promise.resolve(result);
     }
     removeRef(assetId, ownerType, ownerId) {
       if (options.failRemoveRefFor === assetId) {
@@ -51,7 +55,11 @@ function createLibrary(seed, options = {}) {
       const stored = assets.get(assetId);
       const mimeType = stored && stored.type ? stored.type : 'image/jpeg';
       const blob = stored instanceof Blob ? stored : new Blob([String(stored)], { type: mimeType });
-      return Promise.resolve({ ok: true, value: { asset: { mimeType }, blob } });
+      const result = { ok: true, value: { asset: { mimeType }, blob } };
+      if (options.deferGetAssetFor === assetId) {
+        return new Promise(resolve => { options.releaseGetAsset = () => resolve(result); });
+      }
+      return Promise.resolve(result);
     }
     removeAsset(assetId) {
       const stillReferenced = Array.from(refs).some(ref => ref.startsWith(assetId + '|'));
@@ -76,6 +84,66 @@ function createLibrary(seed, options = {}) {
   vm.runInNewContext(source, { window }, { filename: 'role-avatar-library.js' });
   return { api: window.RoleAvatarLibrary, values, assets, refs };
 }
+
+test('a pending portrait upload cannot recreate a library after its character is deleted', async () => {
+  const options = { deferPutBlob: true };
+  const { api, assets, refs } = createLibrary({}, options);
+  const pending = api.add('role-deleted', 'data:image/jpeg;base64,LATE_UPLOAD');
+  assert.equal(typeof options.releasePutBlob, 'function');
+
+  const deleted = await api.removeRole('role-deleted');
+  assert.equal(deleted.ok, true);
+  options.releasePutBlob();
+
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'ROLE_DELETED');
+  assert.equal(api.list('role-deleted').length, 0);
+  assert.equal(Array.from(refs).some(ref => ref.endsWith('|role-avatar|role-deleted')), false);
+  assert.equal(assets.size, 0, 'a newly uploaded orphan is removed after its role reference is released');
+});
+
+test('a pending chat pair cannot leave a late portrait reference after character deletion', async () => {
+  const firstAssetId = 'as_' + 'A'.repeat(32);
+  const secondAssetId = 'as_' + 'B'.repeat(32);
+  const options = { deferGetAssetFor: secondAssetId };
+  const { api, assets, refs } = createLibrary({}, options);
+  assets.set(firstAssetId, new Blob(['first'], { type: 'image/jpeg' }));
+  assets.set(secondAssetId, new Blob(['second'], { type: 'image/jpeg' }));
+  refs.add(firstAssetId + '|chat-message|message-a');
+  refs.add(secondAssetId + '|chat-message|message-b');
+
+  const pending = api.addAssetPair('role-deleted', firstAssetId, secondAssetId);
+  for (let i = 0; i < 8 && typeof options.releaseGetAsset !== 'function'; i += 1) await Promise.resolve();
+  assert.equal(typeof options.releaseGetAsset, 'function', 'the second pair image is waiting on media lookup');
+
+  const deleted = await api.removeRole('role-deleted');
+  assert.equal(deleted.ok, true);
+  options.releaseGetAsset();
+
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'ROLE_DELETED');
+  assert.equal(api.list('role-deleted').length, 0);
+  assert.equal(api.getPairs('role-deleted').length, 0);
+  assert.equal(refs.has(firstAssetId + '|role-avatar|role-deleted'), false);
+  assert.equal(refs.has(secondAssetId + '|role-avatar|role-deleted'), false);
+  assert.equal(refs.has(firstAssetId + '|chat-message|message-a'), true, 'chat-owned source image is retained');
+  assert.equal(refs.has(secondAssetId + '|chat-message|message-b'), true, 'chat-owned source image is retained');
+});
+
+test('deleted role tombstones block later portrait and pair mutations', async () => {
+  const { api } = createLibrary();
+  const first = await api.add('role-a', 'data:image/jpeg;base64,FIRST');
+  const second = await api.add('role-a', 'data:image/jpeg;base64,SECOND');
+  assert.equal((await api.removeRole('role-a')).ok, true);
+
+  assert.equal((await api.add('role-a', 'data:image/jpeg;base64,AFTER_DELETE')).error.code, 'ROLE_DELETED');
+  assert.equal((await api.addAsset('role-a', first.value.assetId, { source: 'chat' })).error.code, 'ROLE_DELETED');
+  assert.equal(api.linkPair('role-a', first.value.id, second.value.id).error.code, 'ROLE_DELETED');
+  assert.equal(api.setActive('role-a', first.value.id).error.code, 'ROLE_DELETED');
+  assert.equal(api.list('role-a').length, 0);
+});
 
 test('avatar libraries are isolated by character and store only asset references', async () => {
   const { api, values } = createLibrary();
@@ -269,7 +337,7 @@ test('character profile loads the shared media stack before the avatar library a
   const storage = characterPage.indexOf('phone_storage.js');
   const repository = characterPage.indexOf('storage/repository.js');
   const media = characterPage.indexOf('storage/media-repository.js');
-  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v7');
+  const avatars = characterPage.indexOf('role-avatar-library.js?v=20261107v8');
   const manager = characterPage.indexOf('js/characters-manager.js?v=20261107v10');
   assert.ok(storage >= 0 && repository > storage && media > repository && avatars > media && manager > avatars);
   assert.ok(characterPage.includes('id="avatarLibraryFileInput"'));
@@ -322,10 +390,10 @@ test('deleting a character releases only that character avatar references after 
 });
 
 test('PWA shell caches the role portrait archive and its runtime at v178', () => {
-  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v191'"));
+  assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v192'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v10'"));
-  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v7'"));
+  assert.ok(serviceWorker.includes("'./shared/js/phone/role-avatar-library.js?v=20261107v8'"));
 });
 
 
