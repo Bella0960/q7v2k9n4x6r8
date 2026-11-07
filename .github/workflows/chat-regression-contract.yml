@@ -58,6 +58,7 @@ jobs:
           npm run test:bugfix:blockers
           npm run test:media:backup
           npm run test:cloud:push
+          npm run test:friends
           npm run test:schedule
           npm run test:autonomy
           npm run test:forum:media
