@@ -70,6 +70,10 @@ class FakeD1 {
         const [id, owner] = values;
         return request.id === id && request.requester_id === owner ? { status: request.status } : null;
       }
+      if (sql.includes("recipient_id = ?")) {
+        const [id, owner] = values;
+        return request.id === id && request.recipient_id === owner ? { status: request.status } : null;
+      }
       return {
         id: request.id, requester_id: request.requester_id, recipient_id: request.recipient_id,
         status: request.status, created_at: request.created_at
