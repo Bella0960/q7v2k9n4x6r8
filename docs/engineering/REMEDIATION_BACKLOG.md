@@ -203,6 +203,23 @@ Acceptance before implementation:
 
 ## Feature implementation
 
+### SOC-001 — Contact groups and Moments audience privacy
+**Priority:** P1 · **Status:** IN PROGRESS
+
+Scope: add user-managed contact groups to the existing Contacts page and connect them to WeChat-style Moments audience selection. Keep the current native MPA pages, existing role/contact IDs, legacy Moments records, and the separate @mention feature.
+
+Acceptance:
+- Contacts can create, rename, delete groups, assign multiple contacts to groups, and filter the contact list by all / ungrouped / group.
+- Moments composer supports public, all contacts, private, selected groups + selected contacts, and excluded groups + excluded contacts.
+- The audience selected at publish time is snapshotted into the post; later group membership edits do not retroactively change old posts.
+- @mentions remain independent from visibility selection.
+- AI roles excluded from a user's post never receive its body through mention replies or automatic comments.
+- Existing Moments records and visibility values remain readable; no chat history, role ID, or existing storage key is migrated or deleted.
+- Group and audience policy have unit tests; build and affected page acceptance are recorded accurately.
+
+Storage: small group metadata in `contact_groups_v1`; post audience snapshots are additive fields on new Moments records. No server sync or new database is introduced.
+
+
 ### AI-IMG-001 — Complete role-based image generation and gallery
 **Priority:** P1 · **Status:** IN PROGRESS
 
