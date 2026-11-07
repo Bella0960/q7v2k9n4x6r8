@@ -408,10 +408,6 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const device = await authenticate(request);
     const body = await readJsonBody(request);
     const timestamp = now();
-    const recent = await store.countRecentExecutions(device.id, 'test_push', timestamp - 600000);
-    if (recent >= TEST_PUSH_PER_10_MINUTES) {
-      throw new ApiError(429, 'PUSH_RATE_LIMITED', '测试推送过于频繁，请稍后再试');
-    }
     let keys;
     try {
       keys = parseVapidKeys(env);
@@ -427,16 +423,21 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(409, 'NO_ACTIVE_SUBSCRIPTIONS', '当前设备没有有效推送订阅');
     }
 
-    // Reserve the rate-limit slot before the first network await. Durable Object
-    // SQLite writes are synchronous, so concurrent requests observe this slot.
-    await store.logExecution({
+    // The SQLite statement checks the rolling window and reserves this
+    // attempt atomically, so concurrent requests cannot all pass on the same count.
+    const reserved = await store.reserveExecutionAttempt({
       id: randomToken(12),
       deviceId: device.id,
       kind: 'test_push',
-      status: 'started',
       reasonCode: 'attempt_started',
       now: timestamp
+    }, {
+      since: timestamp - 600000,
+      limit: TEST_PUSH_PER_10_MINUTES
     });
+    if (!reserved) {
+      throw new ApiError(429, 'PUSH_RATE_LIMITED', '测试推送过于频繁，请稍后再试');
+    }
 
     const dedupeKey = String(body.dedupeKey || `test:${device.id}:${timestamp}`).slice(0, 96);
     const payload = JSON.stringify({
