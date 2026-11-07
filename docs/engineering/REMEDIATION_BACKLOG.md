@@ -204,7 +204,7 @@ Acceptance before implementation:
 ## Feature implementation
 
 ### SOC-001 — Contact groups and Moments audience privacy
-**Priority:** P1 · **Status:** IN PROGRESS (implementation committed to task branch; build/browser verification pending)
+**Priority:** P1 · **Status:** IN PROGRESS (implementation committed to task branch; automated runner unavailable; build/browser verification pending)
 
 Scope: add user-managed contact groups to the existing Contacts page and connect them to WeChat-style Moments audience selection. Keep the current native MPA pages, existing role/contact IDs, legacy Moments records, and the separate @mention feature.
 
@@ -218,6 +218,8 @@ Acceptance:
 - Group and audience policy have unit tests; build and affected page acceptance are recorded accurately.
 
 Storage: small group metadata in `contact_groups_v1`; post audience snapshots are additive fields on new Moments records. No server sync or new database is introduced.
+
+Verification note (2026-11-07): source and inline-script syntax parsing passed; the audience policy module was executed against synthetic storage data. The PR-triggered GitHub Actions jobs report failure with `runner_id=0` and no steps, and their downloadable log objects are unavailable, so CI has not actually verified the build or tests. Desktop/phone manual acceptance remains open.
 
 
 ### AI-IMG-001 — Complete role-based image generation and gallery
