@@ -7,6 +7,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const policySource = read('../shared/js/phone/contact-capabilities.js');
 const detail = read('../chat/chat/chat-detail.html');
 const extras = read('../chat/chat/js/chat-extras.js');
+const callOverlay = read('../chat/call/call-overlay.js');
 const wallet = read('../wallet/wallet.html');
 
 function getPolicy() {
@@ -103,4 +104,9 @@ test('chat rendering and payment-card handlers do not expose transaction details
 test('the separate wallet app remains independent from real-user chat restrictions', () => {
   assert.match(wallet, /交易明细/);
   assert.doesNotMatch(wallet, /contact-capabilities\.js/);
+});
+
+
+test('the direct call-overlay start path rejects real-user contacts before opening a simulated call', () => {
+  assert.match(callOverlay, /function start\(mode, character\)[\s\S]*?contactRef\.type[\s\S]*?capabilities\.canFeature[\s\S]*?return false/);
 });
