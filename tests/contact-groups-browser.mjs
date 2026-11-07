@@ -55,8 +55,8 @@ const SEED = {
     model: 'contact-groups-test-model',
     temperature: 0.2
   },
-  chat_auto_comment_role-a: true,
-  chat_auto_comment_role-d: true,
+  'chat_auto_comment_role-a': true,
+  'chat_auto_comment_role-d': true,
   moments: [],
   moments_notifications: []
 };
