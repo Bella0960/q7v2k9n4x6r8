@@ -32,7 +32,7 @@ test('MCP endpoint validation requires HTTPS except localhost and rejects privat
 
 test('MCP bearer token is never written to browser persistence and redirects are rejected', () => {
   assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/);
-  assert.match(source, /Authorization: 'Bearer '/);
+  assert.match(source, /headers\.Authorization = 'Bearer '/);
   assert.match(source, /credentials: 'omit'/);
   assert.match(source, /redirect: 'error'/);
 });
