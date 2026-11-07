@@ -8,8 +8,23 @@ const page = readFileSync(new URL('../chat/contacts/npc-friends.html', import.me
 const contacts = readFileSync(new URL('../chat/contacts/contacts.html', import.meta.url), 'utf8');
 const nav = readFileSync(new URL('../shared/js/nav.js', import.meta.url), 'utf8');
 
-function createHarness() {
-  const data = new Map();
+function createLockManager() {
+  const held = new Set();
+  return {
+    request(name, options, callback) {
+      if (held.has(name) && options && options.ifAvailable) {
+        return Promise.resolve().then(() => callback(null));
+      }
+      held.add(name);
+      return Promise.resolve()
+        .then(() => callback({ name }))
+        .finally(() => held.delete(name));
+    }
+  };
+}
+
+function createHarness(options = {}) {
+  const data = options.data || new Map();
   const roles = [{
     id: 'main-role',
     name: '主角色',
@@ -76,6 +91,7 @@ function createHarness() {
     Error,
     Map,
     localStorage,
+    navigator: options.lockManager ? { locks: options.lockManager } : undefined,
     PhoneStorage: phoneStorage,
     PhoneAPI: {
       supportsAbortSignal: true,
@@ -127,6 +143,41 @@ test('NPC discovery is opt-in and does not run in the background when the page i
   assert.equal(h.context.NPCSocial.getPendingCount(), 0);
 });
 
+
+test('NPC discovery uses one role-scoped exclusive browser lock across tabs', async () => {
+  const sharedData = new Map();
+  const lockManager = createLockManager();
+  const firstTab = createHarness({ data: sharedData, lockManager });
+  const secondTab = createHarness({ data: sharedData, lockManager });
+  let releaseFirstResponse;
+  let firstRequestStarted;
+  const started = new Promise(resolve => { firstRequestStarted = resolve; });
+  firstTab.setCompleteJSONHandler(() => new Promise(resolve => {
+    releaseFirstResponse = resolve;
+    firstRequestStarted();
+  }));
+
+  const firstDiscovery = firstTab.context.NPCSocial.discoverNow();
+  await started;
+  const secondResult = await secondTab.context.NPCSocial.discoverNow();
+  assert.equal(secondResult.created, false);
+  assert.equal(secondResult.reason, 'locked');
+  assert.equal(secondTab.aiCalls, 0, 'a second tab must not send a duplicate AI request');
+
+  releaseFirstResponse({ ok: true, data: {
+    create: true,
+    name: '林知夏',
+    profession: '独立书店店员',
+    persona: '一位友善的虚构人物。',
+    greeting: '你好。',
+    reason: '因为共同的阅读活动认识。',
+    speechStyle: '表达自然。'
+  } });
+  const firstResult = await firstDiscovery;
+  assert.equal(firstResult.created, true);
+  assert.equal(firstTab.context.NPCSocial.getPendingCount(), 1);
+  assert.equal(secondTab.context.NPCSocial.getPendingCount(), 1);
+});
 
 test('NPC discovery aborts its AI request and discards the result when the page leaves the foreground', async () => {
   const h = createHarness();
@@ -256,13 +307,15 @@ test('NPC request center discloses AI context and exposes explicit accept/reject
   assert.match(page, /data-action="block"/);
   assert.match(contacts, /npc-friends\.html/);
   assert.ok(nav.includes("currentPage === 'chat.html' || currentPage === 'contacts.html'"));
-  assert.match(page, /npc-social\.js\?v=20261108f/);
-  assert.ok(nav.includes("npc-social.js?v=20261108f"));
+  assert.match(page, /npc-social\.js\?v=20261108g/);
+  assert.ok(nav.includes("npc-social.js?v=20261108g"));
   assert.ok(source.includes('role.worldBookIds'));
   assert.match(source, /面向青少年用户/);
   assert.match(source, /npcFriendWelcome: true/);
   assert.match(source, /signal: controller\.signal/);
   assert.match(source, /abortDiscoveryWhenHidden/);
+  assert.match(source, /navigator && global\.navigator\.locks/);
+  assert.match(source, /maomao:npc-friend-discovery:/);
 });
 
 test('NPC requests, settings and AI-visible names are isolated by selected main role', async () => {
