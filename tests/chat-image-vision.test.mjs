@@ -86,19 +86,26 @@ test('avatar intent is classified from current user text and rejects negated or 
   const api = createVision();
   assert.equal(api.classifyAvatarIntent('帮你换头像'), 'single');
   assert.equal(api.classifyAvatarIntent('能不能帮你换头像？'), 'single');
+  assert.equal(api.classifyAvatarIntent('帮我选个头像'), 'single');
+  assert.equal(api.classifyAvatarIntent('把这张存到头像库'), 'single');
+  assert.equal(api.classifyAvatarIntent('把这张当头像'), 'single');
+  assert.equal(api.classifyAvatarIntent('Please set another avatar'), 'single');
   assert.equal(api.classifyAvatarIntent('帮我们把这两张配成一组情头'), 'pair');
   assert.equal(api.classifyAvatarIntent('我要一对情侣头像'), 'pair');
   assert.equal(api.classifyAvatarIntent('给我们配一对情侣头像'), 'pair');
   assert.equal(api.classifyAvatarIntent('我们做一组情头'), 'pair');
+  assert.equal(api.classifyAvatarIntent('把这俩弄成一对情头'), 'pair');
   assert.equal(api.classifyAvatarIntent('这张适合做头像吗？'), 'none');
+  assert.equal(api.classifyAvatarIntent('这张能当头像吗？'), 'none');
   assert.equal(api.classifyAvatarIntent('怎么换头像？'), 'none');
   assert.equal(api.classifyAvatarIntent('情头怎么配？'), 'none');
   assert.equal(api.classifyAvatarIntent('帮我看看是不是情头'), 'none');
+  assert.equal(api.classifyAvatarIntent('these are matching couple avatars'), 'none');
   assert.equal(api.classifyAvatarIntent('只是看看这两张图片'), 'none');
   assert.equal(api.classifyAvatarIntent('不要帮我换头像'), 'none');
   assert.equal(api.classifyAvatarIntent('不喜欢情头'), 'none');
   assert.equal(api.classifyAvatarIntent('别把这两张配成情头'), 'none');
-  assert.equal(api.classifyAvatarIntent('不要普通头像，帮我们配一组情头'), 'pair');
+  assert.equal(api.classifyAvatarIntent('不要普通头像，但帮我们配一组情头'), 'pair');
 });
 
 test('only an explicitly requested current image can become one avatar candidate', () => {
