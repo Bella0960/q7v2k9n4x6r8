@@ -14,6 +14,10 @@ const PANEL_SOURCE = fs.readFileSync(
   path.join(ROOT, 'chat/contacts/real-user-account-panel.js'),
   'utf8'
 );
+const CONTACTS_SOURCE = fs.readFileSync(
+  path.join(ROOT, 'chat/contacts/contacts.html'),
+  'utf8'
+);
 
 const disabledCapabilities = {
   ok: true,
@@ -502,4 +506,20 @@ test('account restore and logout scope server-synced contacts to the active acco
   assert.equal(directoryChanges.at(-1), 'scope-owner-1');
   await app.client.logout();
   assert.equal(directoryChanges.at(-1), '');
+});
+
+test('Contacts pushes complete server roster snapshots into the scoped directory and refreshes the main list', () => {
+  assert.match(PANEL_SOURCE, /client\.listFriendRoster\(\)/);
+  assert.match(PANEL_SOURCE, /directory\.syncServerSnapshot\(results\[0\], account\.id\)/);
+  assert.match(PANEL_SOURCE, /notifyContactRosterUpdated\(\)/);
+  assert.match(CONTACTS_SOURCE, /contactDirectoryApi\.read\(\{ status: contactDirectoryApi\.statuses\.ACCEPTED \}\)/);
+  assert.match(CONTACTS_SOURCE, /maomao:real-user-contacts-updated/);
+  assert.match(CONTACTS_SOURCE, /avatar: contact\.avatarUrl \|\| ''/);
+  assert.match(CONTACTS_SOURCE, /if \(type !== 'ai_role'\) return/);
+});
+
+test('Contacts roster does not expose account-scoped server friends before session restore', () => {
+  assert.match(CLIENT_SOURCE, /setActiveDirectoryAccount\(null\);[\s\S]*?var capabilities = await discover\(\)/);
+  assert.match(CLIENT_SOURCE, /setActiveDirectoryAccount\(state\.account\)/);
+  assert.match(PANEL_SOURCE, /if \(!result\.account\) \{[\s\S]*?notifyContactRosterUpdated\(\)/);
 });
