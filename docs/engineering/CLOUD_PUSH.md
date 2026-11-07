@@ -644,3 +644,19 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 已新增失败回滚契约测试：来电卡、图片批量卡、红包 / 转账状态恢复、亲属卡独立存储与聊天记录分离。
 - 新增测试尚未执行；Node / SQLite、Vite build、真实浏览器存储空间不足场景与 Android 真机行为仍为 NOT RUN / NOT VERIFIED。
 - 当前没有合并 PR、没有部署 Worker、没有更新 APK。
+
+
+## 23. 收款流水恢复与亲属卡状态写后读回（M2.12 follow-up）
+
+- 红包 / 转账领取现在把钱包流水中的稳定 paymentId 作为幂等依据。钱包余额与流水先写入后会重新读取确认；聊天卡片状态及原转账的「已退回」状态只有在聊天历史写入并读回成功后才确认。
+- 若钱包已记账但聊天历史保存失败，页面不会显示正常收款成功状态。再次点击时会识别同一个 paymentId，只补齐红包 / 转账卡片状态，不会再次增加余额；退回场景也会补齐原转账状态。
+- 账本 finance_records 以 paymentId 去重，并在上述恢复路径中补写，避免聊天历史写入中断导致钱包余额已有流水、财务明细却缺失。
+- RoleFamilyCards.writeAll() 现在要求 localStorage 写入后精确读回同一序列化内容，才返回成功。领取、婉拒、暂停、恢复、调整额度、消费和创建邀请均复用该确认边界；静默丢写不会再被报告为成功。
+- 所有使用 role_family_cards.js 的聊天、钱包、商店、外卖和亲属卡页面统一更新脚本资源版本 20261107v1；PWA shell cache 更新到 phone-app-pwa-v187。
+
+### 回归覆盖与验证边界
+
+- 新增支付恢复用例：钱包流水先成功、聊天状态保存失败、第二次点击恢复状态，余额和流水仍只增加一次；同时恢复原转账退回状态和 finance_records 明细。
+- 新增亲属卡用例：模拟 localStorage 静默丢弃写入，确认状态更新返回 storage 失败且读取到的旧状态保持不变。
+- 以上测试已写入仓库但尚未执行；Node 测试、Vite build、浏览器本地存储故障注入和 Android 真机仍为 NOT RUN / NOT VERIFIED。
+- 未合并 PR、未部署 Worker、未更新 APK。
