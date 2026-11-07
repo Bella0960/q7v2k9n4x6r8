@@ -100,26 +100,28 @@
         var clauses = String(userText || '').toLowerCase()
             .split(/[。！？!?；;\n，,]+/)
             .reduce(function (all, clause) {
-                return all.concat(clause.split(/(?:但是|不过|而是|然而|but|instead|however)/i));
+                return all.concat(clause.split(/(?:但是|不过|但|而是|然而|but|instead|however|yet)/i));
             }, []);
 
         var negationRe = /(?:不要|别|不用|不必|无需|不想|不需要|不喜欢|不打算|不建议|不愿意|不换|不设|不收藏|不保存|不配|不适合|不太适合|不是|并非|禁止|拒绝|\b(?:don't|do not|never|not)\b)/i;
         var pairCueRe = /情头|情侣头像|配对头像|couple\s+avatars?|matching\s+avatars?/i;
-        var queryOnlyRe = /(?:怎么|如何|怎样|是否|哪张|哪个好|哪一个|哪个|推荐|建议|看起来|评价|怎么样|是什么|how\s+to|how\s+do\s+i|which|what\s+is)/i;
-        var pairCommandRe = /(?:我(?:想要|要|想|希望|准备|决定)[^。！？!?；;\n]{0,10}(?:情头|情侣头像|配对头像|一对|一组)|(?:帮|给|替)[^。！？!?；;\n]{0,8}(?:我|你|我们|咱们)[^。！？!?；;\n]{0,12}(?:配|匹配|做|弄|整|搭|安排|选|挑|找|收藏|保存|设|用|换)|(?:我们|咱们)[^。！？!?；;\n]{0,8}(?:配|匹配|做|弄|整|搭|安排|选|挑|找|收藏|保存|设|用|换|要|想要)|来一(?:对|组)|(?:配成|配为|配一对|配一组|做成|做一对|做一组|弄成|弄一对|弄一组|组成|匹配成|选一对|挑一对|找一对|保存成|收藏成)[^。！？!?；;\n]{0,8}(?:一对|一组|情头|情侣头像|配对头像)|(?:make|pair|match|choose|pick|save|set)[^。！？!?；;\n]{0,16}(?:couple\s+avatars?|matching\s+avatars?))/i;
+        var queryOnlyRe = /(?:怎么|如何|怎样|是否|哪张|哪个好|哪一个|哪个|适合|推荐|建议|看起来|评价|怎么样|是什么|能当|能作为|可以当|可否当|how\s+to|how\s+do\s+i|which|what\s+is|suitable)/i;
+        var explicitDirectiveRe = /(?:帮|给|替)(?:我|你|我们|咱们)[^。！？!?；;\n]{0,10}(?:换|选|挑|做|弄|找|存|收藏|保存|设|设置|加|配|匹配)|(?:把|将)[^。！？!?；;\n]{0,16}(?:配成|配为|配一对|配一组|做成|做一对|做一组|弄成|弄一对|弄一组|设为|设成|设置成|用作|作为|加入|添加|存到|保存到|收藏到|当(?:作)?)|(?:换(?:成|个|上|为)?头像|更换头像|替换头像|选(?:一个|个)头像|挑(?:一个|个)头像|收藏头像|保存头像|设为头像|设置为头像|配成情头|配一对情头|弄成情头|做成情头)|\b(?:please\s+)?(?:make|pair|match|choose|pick|save|set|use)\b[^。！？!?；;\n]{0,16}(?:avatar|profile\s+picture|couple\s+avatars?|matching\s+avatars?)/i;
+
+        var pairCommandRe = /(?:我(?:想要|要|想|希望|准备|决定)[^。！？!?；;\n]{0,10}(?:情头|情侣头像|配对头像|一对|一组)|(?:帮|给|替)[^。！？!?；;\n]{0,8}(?:我|你|我们|咱们)[^。！？!?；;\n]{0,12}(?:配|匹配|做|弄|整|搭|安排|选|挑|找|收藏|保存|设|用|换)|(?:我们|咱们)[^。！？!?；;\n]{0,8}(?:配|匹配|做|弄|整|搭|安排|选|挑|找|收藏|保存|设|用|换|要|想要)|来一(?:对|组)|(?:配成|配为|配一对|配一组|做成|做一对|做一组|弄成|弄一对|弄一组|组成|匹配成|选一对|挑一对|找一对|保存成|收藏成)[^。！？!?；;\n]{0,8}(?:一对|一组|情头|情侣头像|配对头像)|(?:\b(?:make|pair|match|choose|pick|save|set)\b)[^。！？!?；;\n]{0,16}(?:couple\s+avatars?|matching\s+avatars?))/i;
         var directPairRe = /(?:把|将)?(?:这两张(?:图|照片)?|两张(?:图|照片)?|这俩|这两个|这组|它们|these two|both images)[^。！？!?；;\n]{0,16}(?:配|匹配|做|弄|整|搭|安排|组成|凑成|保存|收藏)[^。！？!?；;\n]{0,8}(?:一对|一组|情头|情侣头像|couple|matching)|(?:配成|配为|配一对|配一组|做成|做一对|做一组|弄成|弄一对|弄一组|组成|凑成|匹配成|选一对|挑一对|找一对)[^。！？!?；;\n]{0,6}(?:一对|一组|情头|情侣头像|配对头像)/i;
-        var singleCommandRe = /(?:换(?:成|个|上|为)?|更换|替换|改(?:成|为)?|设为|设置为|设成|设置成|用作|当(?:作)?|作为|收藏(?:到|为)?|保存(?:到|为)?|存(?:到|为)?|加入|添加|选为|选(?:一个|个)?|挑(?:一个|个)?|做(?:一个|个)?|弄(?:一个|个)?|make|set|use|save|choose|pick)[^。！？!?；;\n]{0,8}(?:头像|profile\s+picture|avatar)|(?:帮|给|替)(?:我|你|我们|咱们)[^。！？!?；;\n]{0,10}(?:换|选|挑|做|弄|找|存|收藏|保存|设|设置|加)[^。！？!?；;\n]{0,8}(?:头像|profile\s+picture|avatar)/i;
+        var singleCommandRe = /(?:换(?:成|个|上|为)?|更换|替换|改(?:成|为)?|设为|设置为|设成|设置成|用作|当(?:作)?|作为|收藏(?:到|为)?|保存(?:到|为)?|存(?:到|为)?|加入|添加|选为|选(?:一个|个)?|挑(?:一个|个)?|做(?:一个|个)?|弄(?:一个|个)?|make|set|use|save|choose|pick)[^。！？!?；;\n]{0,20}(?:头像|profile\s+picture|avatar)|(?:帮|给|替)(?:我|你|我们|咱们)[^。！？!?；;\n]{0,10}(?:换|选|挑|做|弄|找|存|收藏|保存|设|设置|加)[^。！？!?；;\n]{0,8}(?:头像|profile\s+picture|avatar)/i;
 
         for (var i = 0; i < clauses.length; i++) {
             var clause = String(clauses[i] || '').trim();
-            if (!clause || negationRe.test(clause) || queryOnlyRe.test(clause)) continue;
+            if (!clause || negationRe.test(clause) || (queryOnlyRe.test(clause) && !explicitDirectiveRe.test(clause))) continue;
             if ((pairCueRe.test(clause) && pairCommandRe.test(clause)) || directPairRe.test(clause)) {
                 return 'pair';
             }
         }
         for (var j = 0; j < clauses.length; j++) {
             var singleClause = String(clauses[j] || '').trim();
-            if (!singleClause || negationRe.test(singleClause) || queryOnlyRe.test(singleClause)) continue;
+            if (!singleClause || negationRe.test(singleClause) || (queryOnlyRe.test(singleClause) && !explicitDirectiveRe.test(singleClause))) continue;
             if (singleCommandRe.test(singleClause)) return 'single';
         }
         return 'none';
