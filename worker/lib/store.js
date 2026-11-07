@@ -618,15 +618,17 @@ class CloudStore {
   }
 
   /** CAS 认领：只有 attempt_count 未被他人推进时才成功，避免双执行。 */
-  claimActivity({ id, expectedAttemptCount, owner, leaseUntil, now }) {
+  claimActivity({ id, expectedAttemptCount, expectedStatus, owner, leaseUntil, now }) {
     return this.exec(
       `UPDATE activity_queue
        SET status = 'running', attempt_count = attempt_count + 1,
            locked_by = ?, locked_until = ?, updated_at = ?
        WHERE id = ? AND attempt_count = ?
          AND (
-           (status IN ('waiting', 'retry') AND (locked_until IS NULL OR locked_until <= ?))
-           OR (status = 'running' AND locked_until IS NOT NULL AND locked_until <= ?)
+           (? = 'running' AND status = 'running'
+             AND locked_until IS NOT NULL AND locked_until <= ?)
+           OR (? IN ('waiting', 'retry') AND status = ?
+             AND (locked_until IS NULL OR locked_until <= ?))
          )
        RETURNING *`,
       owner,
@@ -634,7 +636,10 @@ class CloudStore {
       now,
       id,
       expectedAttemptCount,
+      expectedStatus,
       now,
+      expectedStatus,
+      expectedStatus,
       now
     )[0] || null;
   }
@@ -668,6 +673,41 @@ class CloudStore {
       id,
       owner,
       attemptCount
+    )[0];
+    return Boolean(row);
+  }
+
+  failExhaustedActivity({
+    id,
+    expectedAttemptCount,
+    expectedStatus,
+    expectedLockedBy,
+    expectedLockedUntil,
+    now
+  }) {
+    const row = this.exec(
+      `UPDATE activity_queue
+       SET status = 'failed', locked_by = NULL, locked_until = NULL,
+           next_attempt_at = NULL, updated_at = ?
+       WHERE id = ?
+         AND attempt_count = ?
+         AND attempt_count >= max_attempts
+         AND status = ?
+         AND (
+           (? = 'running' AND locked_by = ?
+             AND locked_until = ? AND locked_until <= ?)
+           OR (? IN ('waiting', 'retry'))
+         )
+       RETURNING id`,
+      now,
+      id,
+      expectedAttemptCount,
+      expectedStatus,
+      expectedStatus,
+      expectedLockedBy,
+      expectedLockedUntil,
+      now,
+      expectedStatus
     )[0];
     return Boolean(row);
   }
