@@ -37,6 +37,7 @@ function createLibrary(seed, options = {}) {
       if (typeof input === 'string' && contentAssets.has(input)) {
         const existingAssetId = contentAssets.get(input);
         refs.add(existingAssetId + '|' + opts.ownerType + '|' + opts.ownerId);
+        if (options.failReadsOnPutBlob) options.failReads = true;
         return Promise.resolve({ ok: true, value: { assetId: existingAssetId, reused: true } });
       }
       sequence += 1;
@@ -45,6 +46,7 @@ function createLibrary(seed, options = {}) {
       assets.set(assetId, input);
       if (typeof input === 'string') contentAssets.set(input, assetId);
       refs.add(assetId + '|' + opts.ownerType + '|' + opts.ownerId);
+      if (options.failReadsOnPutBlob) options.failReads = true;
       const result = { ok: true, value: { assetId, reused: false } };
       if (options.deferPutBlob) {
         return new Promise(resolve => { options.releasePutBlob = () => resolve(result); });
@@ -162,6 +164,44 @@ test('storage read failure immediately after chat reference creation rolls back 
   assert.equal(refs.has(assetId + '|role-avatar|role-a'), false);
   assert.equal(refs.has(assetId + '|chat-message|message-shared'), true);
   assert.equal(assets.has(assetId), true, 'rollback must not delete an image still owned by chat history');
+});
+
+test('single portrait upload rolls back only its new reference when storage becomes unreadable after putBlob', async () => {
+  const options = { failReadsOnPutBlob: false };
+  const { api, assets, refs } = createLibrary({}, options);
+  const source = await api.add('chat-owner', 'data:image/jpeg;base64,SHARED_UPLOAD');
+  assert.equal(source.ok, true);
+  options.failReadsOnPutBlob = true;
+
+  const result = await api.add('role-a', 'data:image/jpeg;base64,SHARED_UPLOAD');
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'STORAGE_FAILED');
+  assert.equal(refs.has(source.value.assetId + '|role-avatar|chat-owner'), true);
+  assert.equal(refs.has(source.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(assets.has(source.value.assetId), true, 'the shared source image must survive the failed role upload');
+
+  options.failReads = false;
+  assert.equal(api.list('role-a').length, 0, 'failed upload must not create a role library entry');
+});
+
+test('role deletion fails closed when its avatar index cannot be read and can be retried', async () => {
+  const options = {};
+  const { api, values, refs } = createLibrary({}, options);
+  const avatar = await api.add('role-a', 'data:image/jpeg;base64,KEEP_ON_READ_FAILURE');
+  assert.equal(avatar.ok, true);
+  options.failReads = true;
+
+  const firstAttempt = await api.removeRole('role-a');
+  assert.equal(firstAttempt.ok, false);
+  assert.equal(firstAttempt.error.code, 'STORAGE_FAILED');
+  assert.equal(refs.has(avatar.value.assetId + '|role-avatar|role-a'), true);
+  assert.equal(values.has(api._storageKey('role-a')), true, 'the index must not be cleared when it could not be read');
+
+  options.failReads = false;
+  const retry = await api.removeRole('role-a');
+  assert.equal(retry.ok, true);
+  assert.equal(refs.has(avatar.value.assetId + '|role-avatar|role-a'), false);
+  assert.equal(values.has(api._storageKey('role-a')), false);
 });
 
 test('a pending chat asset lookup reclaims an unowned source image after character deletion', async () => {
@@ -473,7 +513,7 @@ test('deleting a character releases only that character avatar references after 
   assert.ok(managerSource.includes('角色删除失败，原有资料和头像均已保留。'));
 });
 
-test('PWA shell caches the role portrait archive and its runtime at v178', () => {
+test('PWA shell caches the role portrait archive and its runtime at v195', () => {
   assert.ok(serviceWorker.includes("const CACHE_NAME = 'phone-app-pwa-v194'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/characters.html'"));
   assert.ok(serviceWorker.includes("'./worldbook/characters/js/characters-manager.js?v=20261107v10'"));
