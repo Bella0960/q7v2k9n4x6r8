@@ -8,9 +8,9 @@ const F=require('../shared/js/chat-theme-package-format.js');
 function crc32(b){let c=~0;for(let i=0;i<b.length;i++){c^=b[i];for(let j=0;j<8;j++)c=(c>>>1)^((c&1)?0xedb88320:0)}return(c^~0)>>>0}
 function u16(v){return[v&255,v>>>8&255]}function u32(v){return[v&255,v>>>8&255,v>>>16&255,v>>>24&255]}
 function zip(files){const e=new TextEncoder(),parts=[],central=[];let offset=0;for(const f of files){const n=e.encode(f.name),d=f.data instanceof Uint8Array?f.data:e.encode(String(f.data)),c=crc32(d);const l=new Uint8Array([...u32(0x04034b50),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0),...u32(c),...u32(d.length),...u32(d.length),...u16(n.length),...u16(0),...n]);parts.push(l,d);central.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0),...u32(c),...u32(d.length),...u32(d.length),...u16(n.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...n]));offset+=l.length+d.length}const size=central.reduce((n,x)=>n+x.length,0),end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(central.length),...u16(central.length),...u32(size),...u32(offset),...u16(0)]);return Buffer.concat([...parts,...central,end].map(Buffer.from))}
-function fixture(overrides={}){return{format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat',id:'test-theme',name:'测试聊天主题',pages:{chatList:[{id:'statusBar'},{id:'bottomNav'}],chatDetail:[{id:'detailHeader'},{id:'sentBubble'},{id:'inputDock'}]},styles:{chatList:{bottomNav:{background:'#fff',radius:22,opacity:92}},chatDetail:{sentBubble:{background:'#111',color:'#fff',fontSize:14,letterSpacing:.4}}},blocks:{chatList:[{id:'custom-card',type:'card',title:'卡片',text:'内容',slot:'before-list'}],chatDetail:[{id:'custom-text',type:'text',text:'说明',slot:'before-input'}]},layerOrder:{chatList:['statusBar','custom-card','bottomNav'],chatDetail:['detailHeader','sentBubble','custom-text','inputDock']},motions:[{id:'nav-collapse-scroll',enabled:true,duration:330,threshold:30,compactScale:.82}],assetIndex:[],...overrides}}
+function fixture(overrides={}){return{format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat',id:'test-theme',name:'测试聊天主题',pages:{chatList:[{id:'statusBar'},{id:'bottomNav'}],chatDetail:[{id:'detailHeader'},{id:'sentBubble'},{id:'inputDock'}]},styles:{chatList:{bottomNav:{background:'#fff',radius:22,opacity:92}},chatDetail:{sentBubble:{background:'#111',color:'#fff',fontSize:14,letterSpacing:.4}}},blocks:{chatList:[{id:'custom-card',type:'card',title:'卡片',text:'内容',slot:'top-of-content'}],chatDetail:[{id:'custom-text',type:'text',text:'说明',slot:'before-input'}]},layerOrder:{chatList:['statusBar','custom-card','bottomNav'],chatDetail:['detailHeader','sentBubble','custom-text','inputDock']},motions:[{id:'nav-collapse-scroll',enabled:true,duration:330,threshold:30,compactScale:.82}],assetIndex:[],...overrides}}
 function makePackage(theme=fixture(),css='.msg-row.sent .msg-bubble{letter-spacing:.2px}',extra=[]){const m={format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat'};return zip([{name:'manifest.json',data:JSON.stringify(m)},{name:'theme.json',data:JSON.stringify(theme)},{name:'custom.css',data:css},...extra])}
-test('valid chat theme parses with layout, CSS and motion settings',()=>{const p=F.readPackage(F.parseStoredZip(makePackage()));assert.equal(p.theme.name,'测试聊天主题');assert.equal(p.theme.blocks.chatList[0].slot,'before-list');assert.equal(p.theme.motions[0].duration,330);assert.match(F.buildScopedCss(p.theme,p.customCss),/data-maomao-chat-theme-active/);assert.match(F.buildScopedCss(p.theme,p.customCss),/letter-spacing:0?\.4px/);assert.match(F.scopeCss('.phone-mockup .msg-bubble{color:#111}','.phone-mockup[data-maomao-chat-theme-active="1"]'),/data-maomao-chat-theme-active="1"\] \.msg-bubble/);});
+test('valid chat theme parses with layout, CSS and motion settings',()=>{const p=F.readPackage(F.parseStoredZip(makePackage()));assert.equal(p.theme.name,'测试聊天主题');assert.equal(p.theme.blocks.chatList[0].slot,'top-of-content');assert.equal(p.theme.motions[0].duration,330);assert.match(F.buildScopedCss(p.theme,p.customCss),/data-maomao-chat-theme-active/);assert.match(F.buildScopedCss(p.theme,p.customCss),/letter-spacing:0?\.4px/);assert.match(F.scopeCss('.phone-mockup .msg-bubble{color:#111}','.phone-mockup[data-maomao-chat-theme-active="1"]'),/data-maomao-chat-theme-active="1"\] \.msg-bubble/);});
 
 test('stored ZIP validates its EOCD, central directory and matching local headers',()=>{
   const valid=Buffer.from(makePackage());
@@ -52,6 +52,35 @@ test('stored ZIP permits a valid archive comment but rejects trailing unregister
   assert.doesNotThrow(()=>F.parseStoredZip(signatureInComment),'注释中的结束签名不能遮蔽真正的 ZIP 结束记录');
 });
 test('image/font assets must be registered in assetIndex',()=>{const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);const t=fixture({assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]});const p=F.readPackage(F.parseStoredZip(makePackage(t,'',[{name:'assets/bg.png',data:bytes}])));assert.deepEqual(Array.from(p.assets['assets/bg.png'].bytes),Array.from(bytes));});
+test('custom block slots are normalized to supported positions for their own page',()=>{
+  const theme=fixture({
+    blocks:{
+      chatList:[{id:'custom-list-slot',type:'text',text:'列表',slot:'before-list'}],
+      chatDetail:[{id:'custom-detail-slot',type:'text',text:'详情',slot:'above-nav'}]
+    }
+  });
+  const normalized=F.readPackage(F.parseStoredZip(makePackage(theme))).theme;
+  assert.equal(normalized.blocks.chatList[0].slot,'top-of-content','列表页未知位置应回退到顶部安全插槽');
+  assert.equal(normalized.blocks.chatDetail[0].slot,'before-input','详情页不能使用列表页插槽');
+});
+
+test('image custom blocks must reference a registered image asset',()=>{
+  const missing=fixture({blocks:{chatList:[{id:'custom-photo',type:'image',assetPath:'assets/missing.png'}],chatDetail:[]}});
+  assert.throws(()=>F.readPackage(F.parseStoredZip(makePackage(missing))),/图片组件必须引用已登记的图片素材/);
+
+  const fontAsset=fixture({
+    assetIndex:[{path:'assets/font.woff2',name:'font.woff2',type:'font',mimeType:'font/woff2'}],
+    blocks:{chatList:[{id:'custom-photo',type:'image',assetPath:'assets/font.woff2'}],chatDetail:[]}
+  });
+  assert.throws(()=>F.readPackage(F.parseStoredZip(makePackage(fontAsset,'',[{name:'assets/font.woff2',data:new Uint8Array([1,2,3])}]))),/图片组件必须引用已登记的图片素材/);
+
+  const imageAsset=fixture({
+    assetIndex:[{path:'assets/photo.png',name:'photo.png',type:'image',mimeType:'image/png'}],
+    blocks:{chatList:[{id:'custom-photo',type:'image',assetPath:'assets/photo.png'}],chatDetail:[]}
+  });
+  const parsed=F.readPackage(F.parseStoredZip(makePackage(imageAsset,'',[{name:'assets/photo.png',data:new Uint8Array([137,80,78,71])}])));
+  assert.equal(parsed.theme.blocks.chatList[0].assetPath,'assets/photo.png');
+});
 test('rejects wrong target, unsafe paths, external CSS and malformed CSS',()=>{assert.throws(()=>F.readPackage(F.parseStoredZip(makePackage(fixture({target:'desktop'})))),/目标不兼容/);assert.throws(()=>F.parseStoredZip(zip([{name:'../x',data:'x'}])),/不安全路径/);assert.throws(()=>F.parseStoredZip(zip([{name:'assets\\\\..\\\\secret',data:'x'}])),/不安全路径/);assert.throws(()=>F.validateCss('@import url(https://example.invalid/a.css)'),/不允许/);assert.throws(()=>F.validateCss('.x{background:url(https://example.invalid/a.png)}'),/只能引用主题 assets/);assert.throws(()=>F.validateCss('.x{color:red'),/不完整/);});
 test('CSS property values are sanitized and cannot inject declarations',()=>{const t=fixture({styles:{chatList:{bottomNav:{background:'url(javascript:alert(1))',color:'#222'}},chatDetail:{}}});const p=F.readPackage(F.parseStoredZip(makePackage(t)));const css=F.stylesToCss(p.theme);assert.doesNotMatch(css,/javascript:/i);assert.match(css,/color:#222/);});
 
