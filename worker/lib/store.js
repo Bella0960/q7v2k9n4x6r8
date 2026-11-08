@@ -1919,6 +1919,52 @@ class CloudStore {
     return true;
   }
 
+  getMaoLoginRateLimit(ipHash, now, windowMs = 15 * 60 * 1000) {
+    const row = this.exec(
+      "SELECT window_started_at, attempt_count, blocked_until FROM mao_login_rate_limits WHERE ip_hash = ?",
+      ipHash
+    )[0];
+    if (!row || Number(row.window_started_at) <= now - windowMs) {
+      return { attemptCount: 0, blockedUntil: 0, blocked: false };
+    }
+    const blockedUntil = Number(row.blocked_until || 0);
+    return {
+      attemptCount: Number(row.attempt_count || 0),
+      blockedUntil,
+      blocked: blockedUntil > now
+    };
+  }
+
+  recordMaoLoginFailure(ipHash, now, { windowMs = 15 * 60 * 1000, maxAttempts = 8, blockMs = 15 * 60 * 1000 } = {}) {
+    const current = this.getMaoLoginRateLimit(ipHash, now, windowMs);
+    if (current.blocked) return current;
+    const row = this.exec(
+      "SELECT window_started_at FROM mao_login_rate_limits WHERE ip_hash = ?",
+      ipHash
+    )[0];
+    const expired = !row || Number(row.window_started_at) <= now - windowMs;
+    const windowStartedAt = expired ? now : Number(row.window_started_at);
+    const attemptCount = expired ? 1 : current.attemptCount + 1;
+    const blockedUntil = attemptCount >= maxAttempts ? now + blockMs : null;
+    this.exec(
+      "INSERT INTO mao_login_rate_limits (ip_hash, window_started_at, attempt_count, blocked_until) VALUES (?, ?, ?, ?) ON CONFLICT(ip_hash) DO UPDATE SET window_started_at = excluded.window_started_at, attempt_count = excluded.attempt_count, blocked_until = excluded.blocked_until",
+      ipHash, windowStartedAt, attemptCount, blockedUntil
+    );
+    return { attemptCount, blockedUntil: blockedUntil || 0, blocked: Boolean(blockedUntil) };
+  }
+
+  clearMaoLoginRateLimit(ipHash) {
+    this.exec("DELETE FROM mao_login_rate_limits WHERE ip_hash = ?", ipHash);
+  }
+
+  cleanupMaoLoginRateLimits(now, retentionMs = 30 * 24 * 60 * 60 * 1000) {
+    return this.exec(
+      "DELETE FROM mao_login_rate_limits WHERE window_started_at < ? AND (blocked_until IS NULL OR blocked_until < ?) RETURNING ip_hash",
+      now - retentionMs,
+      now
+    ).length;
+  }
+
   createMaoAccountSession(session) {
     this.exec(
       "INSERT INTO mao_account_sessions (id, account_id, token_hash, created_at, expires_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)",
