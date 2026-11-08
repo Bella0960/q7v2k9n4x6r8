@@ -940,6 +940,150 @@
         });
     }
 
+    function estimateRestorePointBytes(value, seen) {
+        if (value == null) return 0;
+        if (typeof Blob !== 'undefined' && value instanceof Blob) return value.size || 0;
+        if (typeof value === 'string') return value.length * 2;
+        if (typeof value === 'number' || typeof value === 'boolean') return 8;
+        if (typeof value !== 'object') return 0;
+        seen = seen || [];
+        if (seen.indexOf(value) !== -1) return 0;
+        seen.push(value);
+        var total = 0;
+        Object.keys(value).forEach(function (key) {
+            total += key.length * 2 + estimateRestorePointBytes(value[key], seen);
+        });
+        return total;
+    }
+
+    // 恢复点需要保存业务库的完整原始值，而普通导出会有意排除本地音频 Blob。
+    // 这里仅存入独立恢复点 DB，不进入用户导出的备份文件。
+    function dumpDatabaseForRestorePoint(dbName, version, storeDefs) {
+        var db = null;
+        return idbOpen(dbName, version, storeDefs).then(function (_db) {
+            db = _db;
+            var data = {};
+            var index = 0;
+            function next() {
+                if (index >= storeDefs.length) {
+                    db.close();
+                    return data;
+                }
+                var def = storeDefs[index++];
+                return dumpStore(db, def, true).then(function (result) {
+                    if (result.skipped && result.skipped.length) {
+                        throw new Error(dbName + '/' + def.store + ' 有 '
+                            + result.skipped.length + ' 条记录无法建立完整恢复点');
+                    }
+                    data[def.store] = result.records;
+                    return next();
+                });
+            }
+            return next();
+        }).catch(function (error) {
+            if (db) { try { db.close(); } catch (closeError) {} }
+            throw error;
+        });
+    }
+
+    // 在改动 localStorage 或任何业务数据库之前，先为所有即将恢复的数据库建立
+    // 可回滚快照并写入独立恢复点库。快照失败或超限时中止整个导入。
+    async function captureIndexedDbRestorePoint(incomingIndexedDB) {
+        if (!incomingIndexedDB || typeof incomingIndexedDB !== 'object' || Array.isArray(incomingIndexedDB)) {
+            return { targets: [], snapshots: {} };
+        }
+        var targets = [];
+        var snapshots = {};
+        for (var i = 0; i < IDB_TARGETS.length; i++) {
+            var target = IDB_TARGETS[i];
+            var incomingDb = incomingIndexedDB[target.db];
+            if (!incomingDb || typeof incomingDb !== 'object' || Array.isArray(incomingDb)) continue;
+            var hasKnownStore = target.stores.some(function (def) {
+                return Object.prototype.hasOwnProperty.call(incomingDb, def.store);
+            });
+            if (!hasKnownStore) continue;
+            target.stores.forEach(function (def) {
+                if (Object.prototype.hasOwnProperty.call(incomingDb, def.store)
+                        && !Array.isArray(incomingDb[def.store])) {
+                    throw new Error('备份中的 ' + target.db + '/' + def.store + ' 不是有效记录列表');
+                }
+            });
+            snapshots[target.db] = await dumpDatabaseForRestorePoint(target.db, target.version, target.stores);
+            targets.push(target);
+        }
+        var estimatedBytes = estimateRestorePointBytes(snapshots);
+        if (estimatedBytes > RESTORE_POINT_IDB_MAX_BYTES) {
+            throw new Error('导入前 IndexedDB 数据约 ' + Math.ceil(estimatedBytes / 1024 / 1024)
+                + ' MB，超过本机安全恢复点上限；尚未改动现有数据，请先单独导出相关应用数据');
+        }
+        if (!targets.length) return { targets: [], snapshots: {} };
+
+        await rpWriteSnapshot(snapshots, RP_ROLE_IDB_PRE);
+        var stored = await rpReadSnapshot(RP_ROLE_IDB_PRE);
+        if (!stored || !stored.snap || typeof stored.snap !== 'object') {
+            throw new Error('IndexedDB 导入前恢复点写入后无法读回');
+        }
+        var storedDbNames = Object.keys(stored.snap).sort();
+        var expectedDbNames = Object.keys(snapshots).sort();
+        if (JSON.stringify(storedDbNames) !== JSON.stringify(expectedDbNames)) {
+            throw new Error('IndexedDB 导入前恢复点数据库清单校验失败');
+        }
+        expectedDbNames.forEach(function (dbName) {
+            var expectedStores = snapshots[dbName];
+            var storedStores = stored.snap[dbName];
+            if (!storedStores || typeof storedStores !== 'object') {
+                throw new Error('IndexedDB 恢复点缺少数据库：' + dbName);
+            }
+            Object.keys(expectedStores).forEach(function (storeName) {
+                if (!Array.isArray(storedStores[storeName])
+                        || storedStores[storeName].length !== expectedStores[storeName].length) {
+                    throw new Error('IndexedDB 恢复点记录数量校验失败：' + dbName + '/' + storeName);
+                }
+            });
+        });
+        return { targets: targets, snapshots: stored.snap };
+    }
+
+    // 数据库之间不能共享 IndexedDB 事务，因此按数据库顺序恢复；若后续数据库失败，
+    // 按逆序把之前已成功的数据库恢复到导入前快照。每个数据库内部仍由单事务保证原子性。
+    async function restoreIndexedDBWithRollback(incomingIndexedDB, restorePoint) {
+        restorePoint = restorePoint || { targets: [], snapshots: {} };
+        var restored = [];
+        var totalWritten = 0;
+        for (var i = 0; i < restorePoint.targets.length; i++) {
+            var target = restorePoint.targets[i];
+            try {
+                var result = await restoreDatabase(
+                    target.db, target.version, target.stores, incomingIndexedDB[target.db]
+                );
+                totalWritten += result.written;
+                restored.push(target);
+            } catch (error) {
+                var rollbackFailures = [];
+                for (var j = restored.length - 1; j >= 0; j--) {
+                    var previous = restored[j];
+                    try {
+                        await restoreDatabase(
+                            previous.db, previous.version, previous.stores,
+                            restorePoint.snapshots[previous.db], true
+                        );
+                    } catch (rollbackError) {
+                        rollbackFailures.push(previous.db + '（'
+                            + ((rollbackError && rollbackError.message) || '回滚失败') + '）');
+                    }
+                }
+                return {
+                    ok: false,
+                    written: totalWritten,
+                    failedDb: target.db,
+                    error: (error && error.message) || '未知恢复错误',
+                    rollbackFailures: rollbackFailures
+                };
+            }
+        }
+        return { ok: true, written: totalWritten, rollbackFailures: [] };
+    }
+
     // 导入兜底：备份文件通常不含 API 密钥（见 SECRET_KEYS），而 restore() 会先 clear()。
     // 若不保留本机现有凭据，用户导入一份别人分享的备份就会静默丢掉自己的 API 配置。
     // 规则：备份里带了凭据 → 以备份为准；没带 → 保留本机现有值。
