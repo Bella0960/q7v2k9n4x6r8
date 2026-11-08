@@ -134,12 +134,12 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
     ...device, label: 'Alice phone', platform: 'test'
   }, aliceCookie);
   assert.equal(deviceResult.status, 200);
-  const activeApi = await ctx.fetchTo('/api/autonomy/global', { headers: { 'x-device-auth': device.deviceId + '.' + device.secret } });
+  const activeApi = await ctx.fetchTo('/api/autonomy/global', { headers: { cookie: aliceCookie, 'x-device-auth': device.deviceId + '.' + device.secret } });
   assert.notEqual(activeApi.status, 403);
 
   const disabled = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'disable' }, adminCookie);
   assert.equal(disabled.status, 200);
-  const disabledApi = await ctx.fetchTo('/api/autonomy/global', { headers: { 'x-device-auth': device.deviceId + '.' + device.secret } });
+  const disabledApi = await ctx.fetchTo('/api/autonomy/global', { headers: { cookie: aliceCookie, 'x-device-auth': device.deviceId + '.' + device.secret } });
   const disabledJson = await json(disabledApi);
   assert.equal(disabledJson.status, 403);
   assert.equal(disabledJson.payload.error.message, '您的账号已被禁用');
@@ -151,7 +151,13 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
 
   const restored = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'restore' }, adminCookie);
   assert.equal(restored.status, 200);
-  const oldDeviceStillDenied = await ctx.fetchTo('/api/autonomy/global', { headers: { 'x-device-auth': device.deviceId + '.' + device.secret } });
+  const relogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'alice', password: 'alice-password-123' }
+  });
+  const restoredCookie = cookieFrom(relogin);
+  const oldDeviceStillDenied = await ctx.fetchTo('/api/autonomy/global', {
+    headers: { cookie: restoredCookie, 'x-device-auth': device.deviceId + '.' + device.secret }
+  });
   assert.equal(oldDeviceStillDenied.status, 401, '恢复账号不能复活已撤销的设备凭据');
 
   const revoked = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'revoke' }, adminCookie);
