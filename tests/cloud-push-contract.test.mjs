@@ -894,6 +894,9 @@ test('独立云端推送页暴露设备配对入口，客户端提供一次性�
   assert.ok(cloudSettingsHtml.includes('这到底是什么功能？'), '独立云端推送页底部必须解释功能用途');
   assert.ok(cloudSettingsHtml.includes('目前需要知道的限制'), '独立云端推送页必须明确当前主动生成限制');
   assert.ok(cloudSettingsHtml.includes('24 小时自动发消息'), '不能让用户误解为云端全天候自主生成');
+  assert.ok(cloudSettingsHtml.includes('前台主动联系'), '必须说明当前前台主动联系的工作方式');
+  assert.ok(cloudSettingsHtml.includes('关闭应用后生成'), '必须单独说明关闭应用后的生成能力');
+  assert.ok(cloudSettingsHtml.includes('尚未完成。Cloudflare 实际部署'), '必须标明真实设备验收尚未完成');
   const chatDetail = fs.readFileSync(path.join(rootDir, 'chat/chat/chat-detail.html'), 'utf8');
   assert.ok(chatDetail.includes('../../shared/js/cloud-push-client.js'), '聊天页必须加载云端 presence 客户端');
   assert.ok(chatDetail.includes('startCharacterPresence(String(currentCharacter.id || currentRoleId))'));
