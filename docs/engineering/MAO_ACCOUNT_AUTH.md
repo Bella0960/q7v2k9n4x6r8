@@ -86,7 +86,7 @@ Temporary account disable remembers whether the account was `pending_invite` or 
 
 The eight-per-hour registration cap is also checked in the account INSERT statement, not only in an earlier read, so concurrent requests cannot all pass the pre-check and exceed the quota.
 The creator management API loads up to 500 ordinary accounts by default so a few hundred registered users remain searchable in the first release. Cursor pagination is a follow-up before exceeding that limit.
-Invitation issuance re-checks the one-active-code rule under a write transaction, and redemption consumes the code plus activates the account atomically. Current-password verification for password changes has its own IP/account-scoped 15-minute rate limit.
+Invitation issuance re-checks the one-active-code rule under a write transaction, and redemption consumes the code plus activates the account atomically. Current-password verification for password changes has its own IP/account-scoped 15-minute rate limit. Password rotation and revocation of all other sessions commit in one transaction; if session revocation fails, the password change rolls back too.
 In Cloudflare Durable Objects, account lifecycle, invitation, legacy-owner adoption, and schema migrations use the native `storage.transactionSync` boundary. The Node SQLite test adapter uses explicit SQL transactions behind the same store abstraction.
 
 ## Service Worker cache boundaries
