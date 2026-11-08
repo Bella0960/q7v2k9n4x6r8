@@ -1911,12 +1911,25 @@ class CloudStore {
       account.passwordHash, account.qqEmail || null, account.now, account.now, account.now
     );
     // Adopt the existing single-owner cloud data into the creator's permanent MAO ID.
-    this.exec("UPDATE devices SET user_id = ? WHERE user_id = 'owner'", account.id);
-    for (const table of ['user_autonomy', 'character_autonomy', 'character_schedules',
-      'device_presence', 'character_leases', 'device_pairing_tokens', 'outbound_device_receipts']) {
-      this.exec('UPDATE ' + table + " SET user_id = ? WHERE user_id = 'owner'", account.id);
+    // If any table update fails, reverse all completed moves and remove the unissued admin row.
+    const tables = ['devices', 'user_autonomy', 'character_autonomy', 'character_schedules',
+      'device_presence', 'character_leases', 'device_pairing_tokens', 'outbound_device_receipts'];
+    try {
+      for (const table of tables) {
+        this.exec('UPDATE ' + table + " SET user_id = ? WHERE user_id = 'owner'", account.id);
+      }
+      return true;
+    } catch (error) {
+      for (const table of tables) {
+        try {
+          this.exec('UPDATE ' + table + " SET user_id = 'owner' WHERE user_id = ?", account.id);
+        } catch (rollbackError) {}
+      }
+      try {
+        this.exec("DELETE FROM mao_accounts WHERE id = ? AND role = 'super_admin'", account.id);
+      } catch (rollbackError) {}
+      throw error;
     }
-    return true;
   }
 
   getMaoLoginRateLimit(ipHash, now, windowMs = 15 * 60 * 1000) {
