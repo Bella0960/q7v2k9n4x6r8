@@ -47,6 +47,15 @@ test('an IndexedDB font request remains usable when the same preset is reselecte
   assert.match(loader, /if \(failedFontKey === source\.key \|\| !fontRequestIsRelevant\(source, isStillCurrent\)\)/);
 });
 
+test('pending IndexedDB reads are deduplicated independently per font preset', () => {
+  assert.match(loader, /var fontDbRequests = Object\\.create\\(null\\)/);
+  assert.match(loader, /if \\(fontDbRequests\\[source\\.activeId\\]\\) return/);
+  assert.match(loader, /fontDbRequests\\[source\\.activeId\\] = requestToken/);
+  assert.match(loader, /fontDbRequests\\[source\\.activeId\\] === requestToken/);
+  assert.match(loader, /delete fontDbRequests\\[source\\.activeId\\]/);
+  assert.doesNotMatch(loader, /fontDbRequestKey/);
+});
+
 test('font source application is idempotent per document', () => {
   assert.match(loader, /if \(key && key === appliedFontKey && hasAppliedFontStyle\(\)\) return false;/);
   assert.match(loader, /if \(source\.key !== 'none' && source\.key === appliedFontKey && hasAppliedFontStyle\(\)\)/);
