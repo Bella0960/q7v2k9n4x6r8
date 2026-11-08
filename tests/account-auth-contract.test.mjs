@@ -564,6 +564,29 @@ test('账号安全只返回本人设备与会话，并支持撤销设备、会�
   const otherSessionCheck = await ctx.fetchTo('/api/accounts/me', { headers: { cookie: aliceSecondCookie } });
   assert.equal(otherSessionCheck.status, 401);
 
+  for (let attempt = 0; attempt < 7; attempt += 1) {
+    const failed = await post(ctx, '/api/accounts/password/change', {
+      currentPassword: 'wrong-current-password',
+      newPassword: 'alice-new-password-456',
+      confirmPassword: 'alice-new-password-456'
+    }, alice.cookie);
+    assert.equal(failed.status, 401);
+  }
+  const blockedPasswordAttempt = await post(ctx, '/api/accounts/password/change', {
+    currentPassword: 'wrong-current-password',
+    newPassword: 'alice-new-password-456',
+    confirmPassword: 'alice-new-password-456'
+  }, alice.cookie);
+  assert.equal(blockedPasswordAttempt.status, 429);
+  const correctButBlocked = await post(ctx, '/api/accounts/password/change', {
+    currentPassword: 'alice-password-123',
+    newPassword: 'alice-new-password-456',
+    confirmPassword: 'alice-new-password-456'
+  }, alice.cookie);
+  assert.equal(correctButBlocked.status, 429,
+    '密码验证触发限流后，即使输入正确当前密码也要等待窗口结束');
+  ctx.timestamps.push(ctx.now() + 16 * 60 * 1000);
+
   const passwordChange = await post(ctx, '/api/accounts/password/change', {
     currentPassword: 'alice-password-123',
     newPassword: 'alice-new-password-456',
