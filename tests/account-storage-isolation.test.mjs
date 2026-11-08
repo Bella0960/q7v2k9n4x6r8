@@ -129,6 +129,7 @@ test('无法安装账号存储命名空间时阻止继续加载页面', () => {
 
 test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓存个人 HTML', () => {
   assert.match(workerSource, /authPayload\?\.account\?\.status !== 'active'/);
+  assert.match(workerSource, /url\.pathname\.startsWith\('\/admin\/'\) && authorizedAccount\.role !== 'super_admin'/);
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);
   assert.ok(workerSource.includes('shared/js/mao-account-scope.js'));
@@ -164,4 +165,12 @@ test('localStorage 的键枚举只返回当前账号键，跨账号 storage 事�
   };
   listener.listener(own);
   assert.equal(own.stopped, false, '当前账号自己的存储事件可以正常传播');
+});
+
+test('管理中心桌面入口只为超级管理员加入个人布局', () => {
+  const home = fs.readFileSync(root + '/index.html', 'utf8');
+  assert.match(home, /data-href="admin\/admin-center\.html" data-drag="app_admin_center"/);
+  assert.match(home, /roleMeta\.content === 'super_admin'/);
+  assert.match(home, /currentLayout\.pages\[pageIndex\]\.splice/);
+  assert.match(home, /currentLayout\.pages = \(currentLayout\.pages \|\| \[\]\)\.map/);
 });
