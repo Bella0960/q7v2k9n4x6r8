@@ -455,10 +455,24 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const existing = await store.getDevice(deviceId);
     const hash = await secretHash(env, deviceId, secret);
     if (existing) {
-      if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
       if (!timingSafeEqualHex(hash, existing.secret_hash)) {
         throw new ApiError(409, 'DEVICE_CONFLICT', '设备 ID 已被其他凭据占用');
       }
+      const existingUserId = String(existing.user_id || OWNER_USER_ID);
+      if (existingUserId !== OWNER_USER_ID) {
+        const account = await store.getMaoAccountById(existingUserId);
+        if (!account || account.status === 'disabled' || account.status === 'revoked') {
+          throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+        }
+        if (account.status !== 'active') {
+          throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权');
+        }
+        const accountSession = await accountAuth.getAuthenticatedAccount(request);
+        if (!accountSession || accountSession.account_id !== existingUserId) {
+          throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+        }
+      }
+      if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
       await store.updateDeviceProfile(deviceId, {
         label: String(body.label || '').slice(0, 64),
         platform: String(body.platform || '').slice(0, 64)
