@@ -137,12 +137,22 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
   const activeApi = await ctx.fetchTo('/api/autonomy/global', { headers: { cookie: aliceCookie, 'x-device-auth': device.deviceId + '.' + device.secret } });
   assert.notEqual(activeApi.status, 403);
 
-  const disabled = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'disable' }, adminCookie);
+  const disabled = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'disable', reason: '测试管理原因' }, adminCookie);
   assert.equal(disabled.status, 200);
   const disabledApi = await ctx.fetchTo('/api/autonomy/global', { headers: { cookie: aliceCookie, 'x-device-auth': device.deviceId + '.' + device.secret } });
   const disabledJson = await json(disabledApi);
   assert.equal(disabledJson.status, 403);
   assert.equal(disabledJson.payload.error.message, '您的账号已被禁用');
+  const auditResponse = await ctx.fetchTo('/api/admin/accounts/' + alice.payload.account.id + '/audit', {
+    headers: { cookie: adminCookie }
+  });
+  const auditResult = await json(auditResponse);
+  assert.equal(auditResult.status, 200);
+  assert.equal(auditResult.payload.records[0].reason, '测试管理原因');
+  const userCannotReadAudit = await ctx.fetchTo('/api/admin/accounts/' + alice.payload.account.id + '/audit', {
+    headers: { cookie: aliceCookie }
+  });
+  assert.equal(userCannotReadAudit.status, 403, '管理原因和审计记录只允许超级管理员查看');
   const disabledWrongPassword = await ctx.asJson('/api/accounts/login', {
     method: 'POST', body: { identifier: 'alice', password: 'wrong-password-123' }
   });
