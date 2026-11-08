@@ -13,6 +13,10 @@
 
   if (!accountId || !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
 
+  try {
+    global.__MAO_ACCOUNT_SCOPE__ = Object.freeze({ accountId: accountId, role: role, ready: true });
+  } catch (error) {}
+
   // Bind every same-origin API request to the MAO account whose data namespace
   // this page opened with. This closes the interval before the 30-second tab
   // recheck when another tab signs into a different account on the same device.
@@ -347,7 +351,4 @@
     return;
   }
 
-  try {
-    global.__MAO_ACCOUNT_SCOPE__ = Object.freeze({ accountId: accountId, ready: true });
-  } catch (error) {}
 })(window);
