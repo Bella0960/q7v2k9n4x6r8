@@ -88,15 +88,27 @@ test('0010 migration backfills existing friendship and message generations', () 
     exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', previous.version, 1);
   }
 
+  // Simulate an older friendship cycle followed by a re-add before 0010.
   exec(
     'INSERT INTO friendships (user_low_id, user_high_id, created_at) VALUES (?, ?, ?)',
-    'u_alpha', 'u_bravo', 100
+    'u_alpha', 'u_bravo', 50
   );
   exec(
     `INSERT INTO friend_messages
       (id, sender_id, recipient_id, client_message_id, body, created_at)
       VALUES (?, ?, ?, ?, ?, ?)`,
-    'legacy-message', 'u_alpha', 'u_bravo', 'legacy-client-id', 'legacy body', 101
+    'pre-readd-message', 'u_alpha', 'u_bravo', 'pre-readd-client-id', '上一轮关系里的消息', 100
+  );
+  exec('DELETE FROM friendships WHERE user_low_id = ? AND user_high_id = ?', 'u_alpha', 'u_bravo');
+  exec(
+    'INSERT INTO friendships (user_low_id, user_high_id, created_at) VALUES (?, ?, ?)',
+    'u_alpha', 'u_bravo', 200
+  );
+  exec(
+    `INSERT INTO friend_messages
+      (id, sender_id, recipient_id, client_message_id, body, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+    'legacy-message', 'u_alpha', 'u_bravo', 'legacy-client-id', '当前关系里的消息', 201
   );
 
   // Simulate old per-user state whose relationship was already deleted before
@@ -136,8 +148,10 @@ test('0010 migration backfills existing friendship and message generations', () 
     'u_alpha', 'u_bravo'
   )[0];
   const message = query('SELECT generation_id FROM friend_messages WHERE id = ?', 'legacy-message')[0];
+  const preReaddMessage = query('SELECT generation_id FROM friend_messages WHERE id = ?', 'pre-readd-message')[0];
   assert.ok(friendship.generation_id);
   assert.equal(message.generation_id, friendship.generation_id);
+  assert.equal(preReaddMessage.generation_id, '', '当前关系建立之前的消息不得回填到新代际');
 
   exec('DELETE FROM friendships WHERE user_low_id = ? AND user_high_id = ?', 'u_alpha', 'u_bravo');
   exec(
