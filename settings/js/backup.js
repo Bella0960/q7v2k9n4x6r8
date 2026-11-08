@@ -537,11 +537,9 @@
     //
     // out-of-line key（keyPath=null）：推入 records 保持 { __key: rawKey, __value: inner }。
     // inline key：cursor.value 自带主键字段，直接推入 inner。
-    function dumpStore(db, storeDef, includeAllFields) {
-        // 恢复点必须保留正常导出会排除的本机字段（例如本地音乐 Blob）。
-        // 普通备份仍按 IDB_TARGETS 规则排除敏感或过大的字段。
-        var blobFields = includeAllFields ? [] : (storeDef.blobFields || []);
-        var excludeFields = includeAllFields ? [] : (storeDef.excludeFields || []);
+    function dumpStore(db, storeDef) {
+        var blobFields = storeDef.blobFields || [];
+        var excludeFields = storeDef.excludeFields || [];
         var blobMax = storeDef.blobMaxBytes || Infinity;
         var blobStoreMax = storeDef.blobStoreMaxBytes || Infinity;
 
@@ -1091,6 +1089,9 @@
         if (JSON.stringify(storedDbNames) !== JSON.stringify(expectedDbNames)) {
             throw new Error('IndexedDB 导入前恢复点数据库清单校验失败');
         }
+        if (estimateRestorePointBytes(stored.snap) !== estimatedBytes) {
+            throw new Error('IndexedDB 导入前恢复点内容大小校验失败');
+        }
         expectedDbNames.forEach(function (dbName) {
             var expectedStores = snapshots[dbName];
             var storedStores = stored.snap[dbName];
@@ -1231,7 +1232,7 @@
             }
             if (!confirm('将用备份覆盖当前全部数据（localStorage ' + count + ' 项'
                     + (idbTotal ? '，IndexedDB ' + idbTotal + ' 项' : '') + '）' + label
-                    + '。\n\n当前数据会先自动导出一份安全备份，localStorage 导入失败会自动回滚。确定继续？')) return;
+                    + '。\n\n当前数据会先自动导出安全备份；将被覆盖的 IndexedDB 数据库也会先建立恢复点，任一数据库恢复失败时会尝试整体回滚。确定继续？')) return;
 
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
