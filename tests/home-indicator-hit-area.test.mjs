@@ -325,7 +325,7 @@ async function runViewport(browser, baseUrl, viewport) {
     };
     const describe = (el) => {
       if (!el) return null;
-      const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\\s+/).join('.') : '';
+      const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
       return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
     };
     const shell = document.querySelector('button.maomao-global-home-indicator');
@@ -378,7 +378,7 @@ async function runViewport(browser, baseUrl, viewport) {
     !!detailLineGeom.inputRect && detailLineGeom.inputToHitGap >= 6,
     { inputRect: detailLineGeom.inputRect, hitRect: detailLineGeom.hitRect, gap: detailLineGeom.inputToHitGap });
   add('forum-detail.home-line.center.hits-home-target',
-    /button\\.maomao-global-home-indicator-hit-target/.test(detailLineGeom.lineTopElement || ''),
+    typeof detailLineGeom.lineTopElement === 'string' && detailLineGeom.lineTopElement.indexOf('button.maomao-global-home-indicator-hit-target') === 0,
     { lineTopElement: detailLineGeom.lineTopElement, lineCenter: detailLineGeom.lineCenter });
 
   // 命中可见线中心应返回桌面；随后重新进入详情页，继续验证评论功能。
