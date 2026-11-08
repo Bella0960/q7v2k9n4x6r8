@@ -258,7 +258,7 @@ test('guided verification distinguishes storage failure from a later successful 
     activeTourIndex: 0
   };
   runInNewContext(
-    "var guidedVerificationObserver=null,guidedVerificationState='none',guidedVerificationMessage='',guidedVerificationOverride=false;\\n" + helperSource,
+    "var guidedVerificationObserver=null,guidedVerificationState='none',guidedVerificationMessage='',guidedVerificationOverride=false;\n" + helperSource,
     sandbox
   );
 
