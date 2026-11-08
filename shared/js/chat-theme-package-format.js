@@ -114,6 +114,7 @@
     return Promise.reject(new Error("当前浏览器无法读取主题二进制素材。"));
   }
   function resolveMediaAssetIndex(theme,media){
+    if(theme.assetIndex!=null&&!Array.isArray(theme.assetIndex))return Promise.reject(new Error("主题素材清单格式无效。"));
     var items=Array.isArray(theme.assetIndex)?theme.assetIndex.slice():[];
     var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
     var missing=Object.keys(refs).filter(function(path){return !items.some(function(item){return item&&item.path===path})});
@@ -133,10 +134,22 @@
       return items;
     });
   }
+  function validateMediaAssetManifest(items,refs){
+    if(!Array.isArray(items)||items.length>117)fail("主题素材数量超过 117 项限制。");
+    var seen=Object.create(null);
+    items.forEach(function(item){
+      if(!item||!safeAssetPath(item.path))fail("主题素材路径无效。");
+      if(own(seen,item.path))fail("主题素材清单包含重复路径："+item.path);
+      seen[item.path]=true;
+      if(!own(refs,item.path)||typeof refs[item.path]!=="string"||!refs[item.path].trim())fail("主题素材引用缺失："+item.path);
+      if(!/^(image\/(png|jpeg|webp|gif)|font\/(woff|woff2|ttf|otf)|application\/octet-stream)$/i.test(item.mimeType||""))fail("主题素材类型不支持："+item.path);
+    });
+  }
   function createPackageFromMedia(theme,css,media){
     if(!theme||typeof theme!=="object")return Promise.reject(new Error("主题数据无效。"));
     return Promise.resolve().then(function(){return resolveMediaAssetIndex(theme,media)}).then(function(items){
       var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
+      validateMediaAssetManifest(items,refs);
       var exportTheme=Object.assign({},theme,{assetIndex:items}),assetData=Object.create(null),total=0,chain=Promise.resolve();
       if(items.length&&(!media||typeof media.getBlob!=="function"))throw new Error("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。");
       items.forEach(function(item){
