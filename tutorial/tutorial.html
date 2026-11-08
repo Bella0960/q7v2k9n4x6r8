@@ -45,6 +45,7 @@ button,input{font:inherit}a{color:inherit;text-decoration:none}
 .tour-guide h3{font-family:"Songti SC","STSong",serif;font-size:24px;font-weight:500;line-height:1.35;margin:10px 0}
 .tour-guide p{font-size:12px;color:#666;line-height:1.8;margin:0}
 .tour-hint{font-size:10px;line-height:1.65;color:#777;background:#f5f5f6;border-radius:11px;padding:11px 12px;margin-top:16px}
+.tour-verification{font-size:10px;line-height:1.7;color:#777;background:#fafafa;border:1px solid var(--line);border-radius:11px;padding:10px 12px;margin-top:9px;min-height:38px}.tour-verification.is-success{color:#222;border-color:#aaa;background:#f5f5f5}.tour-verification.is-failure{color:#555;border-color:#999;background:#f1f1f1}.tour-verification.is-waiting{color:#777}
 .tour-progress{height:3px;background:#e8e8eb;border-radius:8px;margin-top:18px;overflow:hidden}
 .tour-progress span{display:block;width:0;height:100%;background:#111;transition:width .2s}
 .tour-warning{font-size:10px;color:#999;line-height:1.7;margin-top:auto;padding-top:18px}
@@ -86,6 +87,7 @@ button,input{font:inherit}a{color:inherit;text-decoration:none}
         <h3 id="tourStepTitle">正在打开真实页面</h3>
         <p id="tourStepText">页面加载后会高亮当前要操作的位置。</p>
         <div class="tour-hint" id="tourHint">请在右侧真实页面中操作。</div>
+        <div class="tour-verification" id="tourVerification" aria-live="polite">本步骤未设置自动结果核验。</div>
         <div class="tour-progress"><span id="tourProgressFill"></span></div>
         <div class="tour-warning">右侧是真实 MAOMAO 页面。保存、发布、寄出、生成或连接等操作会按原应用逻辑执行；教程不会代替你点击最终确认按钮。</div>
         <div class="tour-nav"><button type="button" id="tourPrev">上一步</button><button type="button" class="tour-next" id="tourNext">我已完成，下一步</button></div>
@@ -325,12 +327,77 @@ function renderSearch(q){var s=q.trim().toLowerCase();if(!s){activeLesson=null;r
 function render(){updateProgress();renderNav();if(searchQuery){renderSearch(searchQuery);return;}if(activeLesson){renderLesson(activeLesson);return;}renderCategory();}
 
 var activeTourLesson=null,activeTourIndex=0,tourFrameReady=false,tourPrepared=false,guidedFrameNavigationPending=false;
+var guidedVerificationObserver=null,guidedVerificationState='none',guidedVerificationMessage='',guidedVerificationOverride=false;
+function stopGuidedVerification(){
+  if(guidedVerificationObserver){guidedVerificationObserver.disconnect();guidedVerificationObserver=null;}
+}
+function verificationMatches(value,patterns){
+  var list=Array.isArray(patterns)?patterns:[patterns];
+  return list.some(function(pattern){return typeof pattern==='string'&&pattern&&value.indexOf(pattern)!==-1;});
+}
+function updateGuidedVerification(status,message,recovery){
+  guidedVerificationState=status;
+  guidedVerificationMessage=String(message||'');
+  var el=$('tourVerification');
+  if(!el)return;
+  el.className='tour-verification'+(status==='success'?' is-success':status==='failure'?' is-failure':status==='waiting'?' is-waiting':'');
+  if(status==='none')el.textContent='本步骤无需自动核验，请按页面提示检查结果。';
+  else if(status==='waiting')el.textContent='等待页面反馈：完成操作后，教程会读取当前页面的成功或失败提示。';
+  else if(status==='success')el.textContent='已确认页面反馈：'+guidedVerificationMessage;
+  else if(status==='failure')el.textContent='页面反馈失败：'+guidedVerificationMessage+(recovery?' 建议：'+recovery:'');
+  else if(status==='unavailable')el.textContent='当前页面没有找到结果提示区域；请以页面实际内容为准。';
+  else el.textContent=guidedVerificationMessage?'已收到页面提示：'+guidedVerificationMessage+'；暂时无法判断是否保存成功。':'尚未捕捉到可核对的结果提示。';
+}
+function beginGuidedVerification(step,doc){
+  stopGuidedVerification();
+  guidedVerificationOverride=false;
+  var rule=step&&step.verify;
+  if(!rule){updateGuidedVerification('none','');return;}
+  var node=null;
+  try{node=doc&&doc.querySelector(rule.selector);}catch(e){}
+  if(!node){updateGuidedVerification('unavailable','');return;}
+  var initialText=String(node.textContent||'').trim();
+  var initialShown=node.classList&&node.classList.contains('show');
+  updateGuidedVerification('waiting','');
+  function inspect(){
+    var value=String(node.textContent||'').trim();
+    var shown=!!(node.classList&&node.classList.contains('show'));
+    var changed=value!==initialText||(shown&&!initialShown);
+    if(!changed||!shown||!value)return;
+    if(verificationMatches(value,rule.failure)){
+      updateGuidedVerification('failure',value,rule.recovery);
+      return;
+    }
+    if(verificationMatches(value,rule.success)){
+      updateGuidedVerification('success',value,'');
+      return;
+    }
+    updateGuidedVerification('unknown',value,'');
+  }
+  if(typeof MutationObserver!=='undefined'){
+    guidedVerificationObserver=new MutationObserver(inspect);
+    guidedVerificationObserver.observe(node,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','style','hidden','aria-hidden']});
+  }
+}
+function allowUnverifiedAdvance(){
+  if(guidedVerificationState==='success'||guidedVerificationState==='none')return true;
+  if(!guidedVerificationOverride){
+    guidedVerificationOverride=true;
+    $('tourNext').textContent='跳过核验并继续';
+    $('tourHint').textContent=guidedVerificationState==='failure'
+      ?'请先按失败提示检查并重试。若已自行处理，也可以再次点击下方按钮跳过核验。'
+      :'尚未确认成功结果。请检查右侧页面；如页面没有提供提示，也可以再次点击下方按钮跳过核验。';
+    return false;
+  }
+  return true;
+}
 function closeGuidedTour(){
   var frame=$('tourFrame');
   try{
     var d=frame.contentDocument;
     if(d){d.querySelectorAll('[data-maomao-tour-focus]').forEach(function(el){var old=el.getAttribute('data-maomao-tour-old-style');if(old===null)el.removeAttribute('style');else el.setAttribute('style',old);el.removeAttribute('data-maomao-tour-old-style');el.removeAttribute('data-maomao-tour-focus');});}
   }catch(e){}
+  stopGuidedVerification();
   frame.onload=null;frame.src='about:blank';
   $('tourModal').classList.remove('open');$('tourModal').setAttribute('aria-hidden','true');
   activeTourLesson=null;tourFrameReady=false;guidedFrameNavigationPending=false;
@@ -382,6 +449,7 @@ function focusGuidedTarget(){
     doc.querySelectorAll('[data-maomao-tour-focus]').forEach(function(el){
       var old=el.getAttribute('data-maomao-tour-old-style');if(old===null)el.removeAttribute('style');else el.setAttribute('style',old);el.removeAttribute('data-maomao-tour-old-style');el.removeAttribute('data-maomao-tour-focus');
     });
+    beginGuidedVerification(step,doc);
     var target=step.selector?doc.querySelector(step.selector):null;
     if(target){
       target.setAttribute('data-maomao-tour-old-style',target.getAttribute('style')===null?'':target.getAttribute('style'));
@@ -421,6 +489,8 @@ $('tourShade').addEventListener('click',closeGuidedTour);
 $('tourPrev').addEventListener('click',function(){if(!activeTourLesson||activeTourIndex<=0)return;activeTourIndex--;focusGuidedTarget();});
 $('tourNext').addEventListener('click',function(){
   if(!activeTourLesson)return;
+  var currentStep=activeTourLesson.tour.steps[activeTourIndex];
+  if(currentStep&&currentStep.verify&&!allowUnverifiedAdvance())return;
   if(activeTourIndex>=activeTourLesson.tour.steps.length-1){closeGuidedTour();toast('实机跟练已结束');return;}
   activeTourIndex++;focusGuidedTarget();
 });
