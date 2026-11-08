@@ -310,7 +310,7 @@
   }
   function validateCssAssetRefs(css,assets){
     var normalized=normalizeCssForSafety(String(css||""));
-    var re=/url\\s*\\(\\s*(?:\\u0001(\\d+)\\u0002|([^)]*?))\\s*\\)/gi,match;
+    var re=/url\s*\(\s*(?:\u0001(\d+)\u0002|([^)]*?))\s*\)/gi,match;
     while((match=re.exec(normalized.code))){
       var path=match[1]!==undefined?String(normalized.strings[Number(match[1])]||"").trim():String(match[2]||"").trim();
       if(path.indexOf("assets/")===0&&!own(assets,path))fail("CSS 引用了未登记的主题素材："+path);
