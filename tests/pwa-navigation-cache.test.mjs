@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v173'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v184'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -37,16 +37,18 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   }
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('service worker caches the public account entry but excludes protected app HTML', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.match(serviceWorker, /cache\.add\(url\)/);
+  assert.match(serviceWorker, /url === '\.\/account\/index\.html' \|\| !\/\\.html/);
+  assert.match(serviceWorker, /account\/account\.js/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('protected app navigation always checks the Worker before showing a document', () => {
+  assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
+  assert.match(serviceWorker, /return await fetch\(req\)/);
+  assert.match(serviceWorker, /account\/index\.html/);
+  assert.doesNotMatch(serviceWorker, /if \(cached\) return cached/);
 });
 
 
