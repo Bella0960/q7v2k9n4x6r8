@@ -1892,6 +1892,7 @@
             // 会先尝试恢复到导入前状态，而不是让用户继续在混合数据上操作。
             var indexedDbTargetNames = idbRestorePoint.targets.map(function (target) { return target.db; });
             try {
+                await assertImportLock();
                 await writeImportState('applying', indexedDbTargetNames);
                 importStageRecorded = true;
             } catch (stateWriteError) {
@@ -1958,6 +1959,7 @@
                 return;
             }
             // 3. 保留本机 API 凭据（备份未携带时），避免导入他人备份后丢失配置
+            await assertImportLock();
             var secretRes = carryOverSecrets(incoming, current);
 
             // 4. IndexedDB 恢复：数据库之间依次处理；任一库失败时回滚此前已恢复的库，
@@ -1975,7 +1977,7 @@
                     if (allRollbackOk) {
                         try {
                             await assertImportLock();
-                        await writeImportState('rolled-back', indexedDbTargetNames);
+                            await writeImportState('rolled-back', indexedDbTargetNames);
                         } catch (stateError) {
                             importRecoveryReady = false;
                             toast('导入失败，数据已回滚核验通过，但恢复阶段标记写入失败。'
@@ -2002,7 +2004,9 @@
             }
 
             // 4.5 字体兜底：active_font_preset_id 指向的预设可能因跳过 / 解码失败不存在了 → 清掉悬空 id
+            await assertImportLock();
             var fontOrphanCleaned = await checkFontPresetOrphan();
+            await assertImportLock();
 
             // 5. 全部业务数据恢复成功后，先持久化 committed，再清理恢复点。
             // 若页面在清理中断，下一次启动只会继续清理，不会把已完成导入回滚掉。
