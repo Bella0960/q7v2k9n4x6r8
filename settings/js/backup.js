@@ -1249,12 +1249,13 @@
             targets.push(target);
         }
         var estimatedBytes = estimateRestorePointBytes(snapshots);
-        var expectedFingerprint = await fingerprintRestorePoint(snapshots);
         if (estimatedBytes > RESTORE_POINT_IDB_MAX_BYTES) {
             throw new Error('导入前 IndexedDB 数据约 ' + Math.ceil(estimatedBytes / 1024 / 1024)
                 + ' MB，超过本机安全恢复点上限；尚未改动现有数据，请先单独导出相关应用数据');
         }
         if (!targets.length) return { targets: [], snapshots: {} };
+        // 先过容量闸门，再读取 Blob 实际字节生成指纹，避免超限数据产生额外 IO。 
+        var expectedFingerprint = await fingerprintRestorePoint(snapshots);
 
         await rpWriteSnapshot(snapshots, RP_ROLE_IDB_PRE);
         var stored = await rpReadSnapshot(RP_ROLE_IDB_PRE);
