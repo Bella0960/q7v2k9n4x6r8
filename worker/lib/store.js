@@ -1203,12 +1203,13 @@ class CloudStore {
     if (status === 'accepted') {
       const [low, high] = [request.requester_id, request.recipient_id].sort();
       this.exec(
-        `INSERT INTO friendships (user_low_id, user_high_id, created_at)
-         VALUES (?, ?, ?)
+        `INSERT INTO friendships (user_low_id, user_high_id, created_at, generation_id)
+         VALUES (?, ?, ?, ?)
          ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
         low,
         high,
-        now
+        now,
+        request.id
       );
     }
     return { ...updated, duplicate: false };
@@ -1229,7 +1230,8 @@ class CloudStore {
            LEFT JOIN friend_conversation_clears c
              ON c.user_id = ? AND c.friend_id =
                CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
-           WHERE m.sender_id =
+           WHERE m.generation_id = f.generation_id
+             AND m.sender_id =
                  CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
              AND m.recipient_id = ?
              AND NOT EXISTS (
@@ -1279,11 +1281,9 @@ class CloudStore {
   }
 
   insertFriendMessage(message) {
-    // Check the live relationship before returning an idempotent retry. Removing
-    // a friend must immediately disable every message endpoint, including retries.
-    if (!this.getFriendship(message.senderId, message.recipientId)) {
-      return { kind: 'not_friends', message: null };
-    }
+    // A retry from a removed-and-readded friendship must not replay into the new conversation.
+    const friendship = this.getFriendship(message.senderId, message.recipientId);
+    if (!friendship) return { kind: 'not_friends', message: null };
     const recipient = this.exec(
       'SELECT user_id FROM friend_accounts WHERE user_id = ? AND revoked_at IS NULL',
       message.recipientId
@@ -1292,14 +1292,18 @@ class CloudStore {
 
     const existing = this.getFriendMessageByClientId(message.senderId, message.clientMessageId);
     if (existing) {
+      if (existing.generation_id !== friendship.generation_id) {
+        return { kind: 'stale_relationship_retry', message: null };
+      }
       const sameRequest = existing.recipient_id === message.recipientId &&
         existing.body === message.body;
       return { kind: sameRequest ? 'duplicate' : 'idempotency_conflict', message: existing };
     }
 
     const recent = this.exec(
-      'SELECT COUNT(*) AS total FROM friend_messages WHERE sender_id = ? AND created_at >= ?',
+      'SELECT COUNT(*) AS total FROM friend_messages WHERE sender_id = ? AND generation_id = ? AND created_at >= ?',
       message.senderId,
+      friendship.generation_id,
       message.windowStart
     )[0];
     if (Number(recent?.total || 0) >= Number(message.rateLimit || 60)) {
@@ -1312,8 +1316,10 @@ class CloudStore {
     const latest = this.exec(
       `SELECT MAX(created_at) AS latest_created_at
        FROM friend_messages
-       WHERE (sender_id = ? AND recipient_id = ?)
-          OR (sender_id = ? AND recipient_id = ?)`,
+       WHERE generation_id = ?
+         AND ((sender_id = ? AND recipient_id = ?)
+          OR (sender_id = ? AND recipient_id = ?))`,
+      friendship.generation_id,
       message.senderId,
       message.recipientId,
       message.recipientId,
@@ -1325,26 +1331,30 @@ class CloudStore {
     );
     const inserted = this.exec(
       `INSERT INTO friend_messages
-        (id, sender_id, recipient_id, client_message_id, body, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)
+        (id, sender_id, recipient_id, client_message_id, body, created_at, generation_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
       message.id,
       message.senderId,
       message.recipientId,
       message.clientMessageId,
       message.body,
-      createdAt
+      createdAt,
+      friendship.generation_id
     )[0];
     return { kind: 'created', message: inserted || null };
   }
 
   listFriendMessages({ userId, friendId, after = null, before = null, limit = 50 } = {}) {
+    const friendship = this.getFriendship(userId, friendId);
+    if (!friendship) return [];
     const safeLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 50));
     const pairFilter = `((m.sender_id = ? AND m.recipient_id = ?) OR
                           (m.sender_id = ? AND m.recipient_id = ?))`;
     const visibilityJoin = `LEFT JOIN friend_conversation_clears c
       ON c.user_id = ? AND c.friend_id = ?`;
     const visibilityFilter = `
+      AND m.generation_id = ?
       AND (
         c.clear_before_created_at IS NULL
         OR m.created_at > c.clear_before_created_at
@@ -1354,7 +1364,7 @@ class CloudStore {
         SELECT 1 FROM friend_message_hides h
         WHERE h.user_id = ? AND h.friend_id = ? AND h.message_id = m.id
       )`;
-    const baseParams = [userId, friendId, userId, friendId, friendId, userId, userId, friendId];
+    const baseParams = [userId, friendId, userId, friendId, friendId, userId, userId, friendId, friendship.generation_id];
 
     if (before && Number.isSafeInteger(before.createdAt) && before.createdAt >= 0 &&
         typeof before.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(before.id)) {
@@ -1575,6 +1585,21 @@ class CloudStore {
 
   removeFriendship(userId, otherUserId) {
     const [low, high] = [String(userId), String(otherUserId)].sort();
+    if (!this.getFriendship(userId, otherUserId)) return false;
+    // Old message rows remain stored but belong to the retired generation.
+    // Reset both users' cursors and visibility overrides for a clean re-add.
+    this.exec(
+      `DELETE FROM friend_conversation_reads WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+      userId, otherUserId, otherUserId, userId
+    );
+    this.exec(
+      `DELETE FROM friend_conversation_clears WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+      userId, otherUserId, otherUserId, userId
+    );
+    this.exec(
+      `DELETE FROM friend_message_hides WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+      userId, otherUserId, otherUserId, userId
+    );
     const rows = this.exec(
       'DELETE FROM friendships WHERE user_low_id = ? AND user_high_id = ? RETURNING user_low_id',
       low,
