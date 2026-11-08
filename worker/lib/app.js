@@ -1746,9 +1746,30 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
   }
 
-  async function assertAccountPageContext(request) {
+  async function assertAccountPageContext(request, path) {
     const pageAccountId = String(request.headers.get('x-mao-account-context') || '').trim();
-    if (!pageAccountId) return;
+    const contextOptionalPaths = new Set([
+      '/api/accounts/register',
+      '/api/accounts/login',
+      '/api/accounts/logout',
+      '/api/accounts/me',
+      '/api/admin/bootstrap/status',
+      '/api/admin/bootstrap',
+      '/api/health',
+      '/api/push/config'
+    ]);
+
+    // Public account-entry and bootstrap calls must work before a page has an
+    // authenticated account scope. Every other request carrying a valid MAO
+    // session must prove which account namespace its page was opened for.
+    if (!pageAccountId) {
+      if (contextOptionalPaths.has(path)) return;
+      const session = await accountAuth.getAuthenticatedAccount(request);
+      if (session) {
+        throw new ApiError(409, 'ACCOUNT_CONTEXT_REQUIRED', '当前请求缺少 MAO 账号上下文，请重新进入页面');
+      }
+      return;
+    }
     if (!/^MAO-[A-Z0-9]{12,24}$/.test(pageAccountId)) {
       throw new ApiError(400, 'INVALID_ACCOUNT_CONTEXT', '页面账号标识无效');
     }
@@ -1766,7 +1787,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const path = url.pathname.replace(/\/+$/, '');
     const method = request.method.toUpperCase();
     try {
-      await assertAccountPageContext(request);
+      await assertAccountPageContext(request, path);
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
 
