@@ -943,3 +943,46 @@ test('runtime marks each mounted custom block with its owning chat page',async()
   assert.equal(attributes.get('data-maomao-theme-page'),'chatList','运行时组件必须携带所属页面标记');
   assert.equal(attributes.get('data-maomao-theme-block'),'custom-shared-card','运行时组件 ID 应保持不变');
 });
+
+
+test('package normalization deduplicates page components, custom blocks and layer order per page',()=>{
+  const theme=fixture({
+    pages:{
+      chatList:[
+        {id:'statusBar'},
+        {id:'statusBar'},
+        {id:'custom-duplicate'},
+        {id:'custom-duplicate'}
+      ],
+      chatDetail:[
+        {id:'detailHeader'},
+        {id:'custom-duplicate'}
+      ]
+    },
+    blocks:{
+      chatList:[
+        {id:'custom-duplicate',type:'text',text:'第一次'},
+        {id:'custom-duplicate',type:'text',text:'重复项不应挂载'}
+      ],
+      chatDetail:[
+        {id:'custom-duplicate',type:'card',title:'详情页独立组件'}
+      ]
+    },
+    styles:{
+      chatList:{'custom-duplicate':{color:'#111'}},
+      chatDetail:{'custom-duplicate':{color:'#fff'}}
+    },
+    layerOrder:{
+      chatList:['statusBar','custom-duplicate','custom-duplicate'],
+      chatDetail:['custom-duplicate','custom-duplicate']
+    }
+  });
+  const normalized=F.readPackage(F.parseStoredZip(makePackage(theme))).theme;
+  assert.deepEqual(normalized.pages.chatList.map(x=>x.id),['statusBar','custom-duplicate'],'同一页面的布局 ID 必须去重');
+  assert.deepEqual(normalized.pages.chatDetail.map(x=>x.id),['detailHeader','custom-duplicate'],'另一页面可以独立使用相同自定义 ID');
+  assert.equal(normalized.blocks.chatList.length,1,'同一页面重复自定义块只能保留一份');
+  assert.equal(normalized.blocks.chatList[0].text,'第一次','去重应保留首次出现的定义');
+  assert.equal(normalized.blocks.chatDetail.length,1,'详情页的同名块不能被列表页去重影响');
+  assert.deepEqual(normalized.layerOrder.chatList,['statusBar','custom-duplicate'],'同一页面图层顺序不能重复同一 ID');
+  assert.deepEqual(normalized.layerOrder.chatDetail,['custom-duplicate'],'详情页图层顺序应独立去重');
+});
