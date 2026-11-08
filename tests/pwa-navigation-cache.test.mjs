@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v212'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v213'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -47,6 +47,9 @@ test('service worker caches the public account entry but excludes protected app 
   assert.ok(serviceWorker.includes('./account/settings-link.js?v=1'));
   assert.ok(serviceWorker.includes('./admin/admin-center.css'));
   assert.ok(serviceWorker.includes('./admin/admin-center.js'));
+  assert.ok(serviceWorker.includes('./account/bootstrap.html'));
+  assert.ok(serviceWorker.includes('./account/bootstrap.js'));
+  assert.match(serviceWorker, /url\.pathname === accountPath \+ 'bootstrap\.html'/);
   assert.match(serviceWorker, /account\/account\.js/);
 });
 
