@@ -604,6 +604,8 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /api\.sendMessage\(friendId, text, clientId, conversationGenerationId\)/);
   assert.match(FRIEND_CHAT_HTML, /pollAgain = true/);
   assert.match(FRIEND_CHAT_HTML, /STALE_FRIENDSHIP_GENERATION/);
+  assert.match(FRIEND_CHAT_HTML, /本次清空没有执行/);
+  assert.match(FRIEND_CENTER_HTML, /好友关系已经变化，已刷新好友列表/);
   assert.match(FRIEND_CHAT_HTML, /FRIENDSHIP_CHANGED_RETRY/);
   assert.match(FRIEND_CHAT_HTML, /好友关系刚刚更新，正在重新同步聊天/);
   assert.match(FRIEND_CHAT_HTML, /receiptRevision !== readReceiptRevision/);
