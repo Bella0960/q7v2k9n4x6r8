@@ -169,8 +169,20 @@
     if (currentAccount?.status === 'active') window.location.assign('/index.html');
   });
 
+  async function checkCreatorBootstrapEntry() {
+    const link = byId('creatorBootstrapLink');
+    if (!link) return;
+    try {
+      const status = await api('/api/admin/bootstrap/status');
+      link.hidden = Boolean(status.initialized);
+    } catch {
+      link.hidden = true;
+    }
+  }
+
   (async function restoreSession() {
     const params = new URLSearchParams(window.location.search);
+    checkCreatorBootstrapEntry();
     if (params.get('disabled') === '1') {
       showPanel('blockedPanel');
       return;
