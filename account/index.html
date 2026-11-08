@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F7F8">
+  <meta name="description" content="MAO 账号入口">
+  <title>MAO · 账号入口</title>
+  <link rel="stylesheet" href="./account.css">
+  <script src="./account.js" defer></script>
+</head>
+<body>
+  <main class="account-shell">
+    <header class="brand-row">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span class="brand-name">MAO</span>
+      <span class="brand-caption">ACCOUNT ACCESS</span>
+    </header>
+
+    <section class="panel welcome-panel" id="welcomePanel">
+      <div class="eyebrow">PRIVATE SPACE · 01</div>
+      <h1>欢迎使用 MAO</h1>
+      <p class="lead">创建专属账号，开始你的 MAO 之旅。</p>
+      <div class="welcome-card">
+        <span class="welcome-symbol" aria-hidden="true">
+          <svg viewBox="0 0 48 48"><rect x="7" y="4" width="34" height="40" rx="11"/><path d="M17 20v1M31 20v1M18 30c3.5 3 8.5 3 12 0"/></svg>
+        </span>
+        <div>
+          <strong>属于你的独立空间</strong>
+          <span>账号身份与使用授权分别管理</span>
+        </div>
+      </div>
+      <button class="primary-button" type="button" data-show="registerPanel">创建账号 <span aria-hidden="true">→</span></button>
+      <button class="text-button" type="button" data-show="loginPanel">已有账号？登录</button>
+      <div class="bottom-note"><span></span> 未经创作者授权的账号无法进入 MAO <span></span></div>
+    </section>
+
+    <section class="panel form-panel" id="registerPanel" hidden>
+      <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">←</button>
+      <div class="eyebrow">CREATE ACCOUNT · 02</div>
+      <h1>创建账号</h1>
+      <p class="lead">先建立你的永久身份，再完成邀请码验证。</p>
+      <form id="registerForm" novalidate>
+        <label>用户名<input name="username" autocomplete="username" minlength="2" maxlength="24" required placeholder="设置用户名"></label>
+        <label>登录密码<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="至少 10 位"></label>
+        <label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="再次输入密码"></label>
+        <label>QQ 邮箱 <span class="optional">选填</span><input name="qqEmail" type="email" autocomplete="email" placeholder="用于后续账号验证"></label>
+        <div class="notice-line">
+          <span class="red-mark">!</span>
+          <span>注册后会生成永久 ID；完成专属邀请码验证后才能进入 MAO。</span>
+          <button class="notice-link" type="button" data-legal>授权说明</button>
+        </div>
+        <button class="primary-button" type="submit">创建并继续</button>
+        <p class="form-error" id="registerError" role="alert" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="panel form-panel" id="loginPanel" hidden>
+      <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">←</button>
+      <div class="eyebrow">SIGN IN · 03</div>
+      <h1>登录 MAO</h1>
+      <p class="lead">使用用户名或永久 ID 登录。</p>
+      <form id="loginForm" novalidate>
+        <label>账号<input name="identifier" autocomplete="username" required placeholder="用户名 / MAO 永久 ID"></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" required placeholder="输入登录密码"></label>
+        <button class="primary-button" type="submit">登录</button>
+        <p class="form-error" id="loginError" role="alert" aria-live="polite"></p>
+      </form>
+      <button class="text-button" type="button" data-show="registerPanel">还没有账号？创建账号</button>
+    </section>
+
+    <section class="panel form-panel" id="invitePanel" hidden>
+      <button class="back-button" type="button" data-show="loginPanel" aria-label="返回">←</button>
+      <div class="eyebrow">INVITATION · 04</div>
+      <h1>邀请码验证</h1>
+      <p class="lead">你的永久 ID 已创建。请使用管理员发放给你的专属邀请码完成授权。</p>
+      <div class="identity-card">
+        <span>MAO 永久 ID</span>
+        <strong id="pendingAccountId">—</strong>
+        <button type="button" class="copy-button" id="copyAccountId">复制</button>
+      </div>
+      <form id="inviteForm" novalidate>
+        <label>专属邀请码<input name="inviteCode" autocomplete="one-time-code" required maxlength="128" placeholder="输入管理员发放的随机邀请码"></label>
+        <div class="notice-line">
+          <span class="red-mark">!</span>
+          <span>邀请码由唯一超级管理员生成，并绑定指定账号。不得转售或转让。</span>
+          <button class="notice-link" type="button" data-legal>授权说明</button>
+        </div>
+        <button class="primary-button" type="submit">验证并获得授权</button>
+        <p class="form-error" id="inviteError" role="alert" aria-live="polite"></p>
+      </form>
+      <p class="quiet-note">还没有邀请码？请联系 MAO 创作者本人申请。</p>
+    </section>
+
+    <section class="panel state-panel" id="authorizedPanel" hidden>
+      <div class="state-icon success-icon" aria-hidden="true">✓</div>
+      <div class="eyebrow">AUTHORIZED</div>
+      <h1>授权成功</h1>
+      <p class="lead">你的 MAO 账号已获得使用资格。</p>
+      <div class="identity-card">
+        <span>MAO 永久 ID</span>
+        <strong id="authorizedAccountId">—</strong>
+      </div>
+      <button class="primary-button" type="button" id="enterMao">进入 MAO <span aria-hidden="true">→</span></button>
+    </section>
+
+    <section class="panel state-panel" id="blockedPanel" hidden>
+      <div class="state-icon blocked-icon" aria-hidden="true">—</div>
+      <div class="blocked-label">已被禁用</div>
+      <h1>您的账号已被禁用</h1>
+      <p class="lead">当前账号无法继续使用 MAO。</p>
+    </section>
+  </main>
+
+  <dialog id="legalDialog" class="legal-dialog">
+    <button class="dialog-close" type="button" id="closeLegal" aria-label="关闭">×</button>
+    <div class="eyebrow">MAO · ACCESS POLICY</div>
+    <h2>授权说明</h2>
+    <p>MAO 使用资格仅由创作者本人授权。创建账号不代表获得使用资格，必须通过绑定该账号的专属邀请码验证。</p>
+    <p>禁止对 MAO 使用资格进行二次转售、出租、转让或以其他方式向未获授权者提供。</p>
+    <p>未经授权购买资格的用户，请联系创作者本人核实处理。邀请码不得转交给绑定对象以外的账号使用。</p>
+    <button class="primary-button" type="button" id="confirmLegal">我已了解</button>
+  </dialog>
+  <footer class="page-footer">MAO <span>·</span> PRIVATE ACCOUNT ACCESS</footer>
+</body>
+</html>
