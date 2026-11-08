@@ -131,8 +131,11 @@
     return requestJson('/api/friend-requests/' + encodeURIComponent(requestId) + '/reject', { method: 'POST', body: {} });
   }
 
-  function removeFriend(userId) {
-    return requestJson('/api/friends/' + encodeURIComponent(userId), { method: 'DELETE' });
+  function removeFriend(userId, friendshipGenerationId) {
+    return requestJson('/api/friends/' + encodeURIComponent(userId), {
+      method: 'DELETE',
+      body: { friendshipGenerationId: String(friendshipGenerationId || '').trim() }
+    });
   }
 
   function createMessageId() {
@@ -182,10 +185,13 @@
     );
   }
 
-  function clearMessages(friendId) {
+  function clearMessages(friendId, friendshipGenerationId) {
     return requestJson(
       '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages',
-      { method: 'DELETE' }
+      {
+        method: 'DELETE',
+        body: { friendshipGenerationId: String(friendshipGenerationId || '').trim() }
+      }
     );
   }
 
