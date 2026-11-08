@@ -43,6 +43,7 @@ button,input,textarea{font:inherit}
 .tool-input{min-height:76px;resize:vertical;font-family:ui-monospace,monospace;font-size:11px}
 .role-permissions{border:1px solid var(--line);padding:12px;margin:12px 0;background:#fafafa}
 .role-permissions select{width:100%;border:1px solid #d7d7db;border-radius:7px;background:#fff;color:#111;padding:10px 12px;font-size:12px}
+.role-permissions-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px}
 .tool-permission{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0 0;padding-top:10px;border-top:1px solid #eee}
 .tool-permission-status{font-size:11px;color:#777;line-height:1.5}
 .tool-result{margin:9px 0 0;background:#f6f6f7;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 ui-monospace,monospace;max-height:220px;overflow:auto}
@@ -80,7 +81,10 @@ button,input,textarea{font:inherit}
     <div class="eyebrow" style="margin-top:0">可用工具</div>
     <p class="hint" id="serverInfo"></p>
     <div class="role-permissions">
-      <label class="field" style="margin:0"><span>角色级工具授权</span><select id="permissionRole" aria-label="选择需要管理 MCP 权限的角色"><option value="">选择角色（默认无授权）</option></select></label>
+      <div class="role-permissions-head">
+        <label class="field" style="margin:0"><span>角色级工具授权</span><select id="permissionRole" aria-label="选择需要管理 MCP 权限的角色"><option value="">选择角色（默认无授权）</option></select></label>
+        <button class="btn secondary" id="clearRolePermissions" type="button" disabled>清空该角色授权</button>
+      </div>
       <p class="hint" id="permissionHint">每个角色独立授权到具体服务和工具。未授权角色不能通过角色调用接口使用 MCP。</p>
     </div>
     <div id="toolList"></div>
@@ -118,6 +122,7 @@ button,input,textarea{font:inherit}
     var buttons = Array.prototype.slice.call($('toolList').querySelectorAll('[data-permission-action]'));
     var manager = window.MaoMcpRolePermissions;
     buttons.forEach(function (button) { button.disabled = !roleId || !client || !manager; });
+    $('clearRolePermissions').disabled = !roleId || !manager;
     if (!roleId) {
       $('permissionHint').textContent = '请选择一个角色。每个角色默认没有 MCP 工具权限。';
       buttons.forEach(function (button) {
@@ -268,6 +273,22 @@ button,input,textarea{font:inherit}
     }
   });
   $('permissionRole').addEventListener('change', refreshRolePermissions);
+  $('clearRolePermissions').addEventListener('click', async function () {
+    var roleId = $('permissionRole').value;
+    if (!roleId || !window.MaoMcpRolePermissions) return;
+    var roleOption = $('permissionRole').selectedOptions[0];
+    var roleName = roleOption ? roleOption.textContent : roleId;
+    if (!window.confirm('清空角色“' + roleName + '”的全部 MCP 工具授权？此操作会撤销该角色在所有已连接服务上的授权。')) return;
+    $('clearRolePermissions').disabled = true;
+    try {
+      await MaoMcpRolePermissions.revokeRole(roleId);
+      $('permissionHint').textContent = '该角色的全部 MCP 工具授权已清空。';
+      await refreshRolePermissions();
+    } catch (error) {
+      $('permissionHint').textContent = error && error.message ? error.message : '清空授权失败。';
+      $('clearRolePermissions').disabled = false;
+    }
+  });
   $('toolList').addEventListener('click', async function (event) {
     var permissionButton = event.target.closest('[data-permission-action]');
     if (permissionButton) {

@@ -280,6 +280,8 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /mcp-client\.js\?v=20261108m/);
   assert.match(html, /mcp-role-permissions\\.js\\?v=20261108a/);
   assert.match(html, /角色级工具授权/);
+  assert.match(html, /clearRolePermissions/);
+  assert.match(html, /MaoMcpRolePermissions\\.revokeRole/);
   assert.match(html, /MaoMcpRolePermissions\\.grantTool/);
   assert.match(html, /window\.addEventListener\('pagehide'/);
   assert.match(html, /window\.addEventListener\('pageshow'/);
