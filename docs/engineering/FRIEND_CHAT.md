@@ -40,7 +40,7 @@
 - `GET /api/friends/:friendId/messages`：读取最近一页消息。
 - `GET /api/friends/:friendId/messages?after=<createdAt>.<messageId>`：读取游标之后的新消息。
 - `GET /api/friends/:friendId/messages?before=<createdAt>.<messageId>`：载入更早消息。
-- `POST /api/friends/:friendId/messages`：发送纯文字，请求体仅允许 `clientMessageId` 与 `body`。
+- `POST /api/friends/:friendId/messages`：发送纯文字，请求体仅允许 `clientMessageId`、`friendshipGenerationId` 与 `body`；代际凭据必须来自当前会话读取接口，服务器在数据库写入边界再次校验。
 - `DELETE /api/friends/:friendId/messages/:messageId`：只在当前账号隐藏单条消息。
 - `DELETE /api/friends/:friendId/messages`：只清空当前账号这边的整段会话。
 - 消息分页同时返回当前账号的 `viewState.version`，其中包含当前好友关系代际；其他设备发现隐藏、清空或关系代际变化后会重新加载当前会话视图，并重置旧消息游标。
