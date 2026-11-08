@@ -503,7 +503,7 @@
             '安全提醒：抢救包可能包含 API 密钥、聊天内容和私人媒体。只保存到可信位置，不要直接分享。',
             'ZIP CRC32 仅用于传输/解压损坏检测，不是密码学签名或来源认证。',
             '原始恢复点不会因本次导出而删除或修改。'
-        ].join('\\n');
+        ].join('\n');
         var json = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
         var files = [
             { name: 'README.txt', blob: new Blob([readme], { type: 'text/plain;charset=utf-8' }) },
