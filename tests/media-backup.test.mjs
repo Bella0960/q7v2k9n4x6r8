@@ -2913,8 +2913,12 @@ test('59 createRecoveryPointRescuePackage：导出 JSON 清单和原始 Blob 附
         const expectedCrc = await ctx.rescueCrc32(new SandboxBlob([entry.data]));
         assert.equal(entry.crc, expectedCrc, 'local ZIP CRC must match file bytes: ' + entry.name);
     }
+    const readmeEntry = entries.find(entry => entry.name === 'README.txt');
     const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
     const assetEntry = entries.find(entry => entry.name === 'assets/blob-000001.bin');
+    assert.ok(readmeEntry, 'human-readable README must be included');
+    assert.match(readmeEntry.data.toString('utf8'), /不是普通备份文件/);
+    assert.match(readmeEntry.data.toString('utf8'), /可能包含 API 密钥/);
     assert.ok(manifestEntry, 'manifest must be included');
     assert.ok(assetEntry, 'binary Blob must be a separate ZIP entry');
     assert.equal(assetEntry.data.toString('utf8'), 'rescue-local-audio-original');
@@ -2944,4 +2948,56 @@ test('60 serializeRecoveryPointValue：循环引用必须明确报错', async ()
         ctx.serializeRecoveryPointValue(cyclic, [], { assetIndex: 0, stack: [] }),
         /循环引用/
     );
+});
+
+
+/* ═══════════════════════════════════════════════
+   61. 单份恢复点损坏：其他可读记录仍可单独导出
+   ═══════════════════════════════════════════════ */
+test('61 createRecoveryPointRescuePackage：单份记录序列化失败时继续导出其他记录且清理孤立附件', async () => {
+    const ctx = buildCtxFull();
+    const partialBlob = new SandboxBlob([Buffer.from('orphan-blob-must-not-enter-archive')], { type: 'audio/mpeg' });
+    const brokenSnapshot = { firstBlob: partialBlob };
+    brokenSnapshot.cycle = brokenSnapshot;
+
+    ctx.__restorePointRows.set('pre-import', {
+        role: 'pre-import',
+        snap: brokenSnapshot,
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        role: 'pre-import-indexeddb',
+        snap: { 'maomao-media-store': { wallpapers: [], audio: [] } },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+        createdAt: Date.now()
+    });
+
+    const result = await ctx.createRecoveryPointRescuePackage();
+    assert.ok(result);
+    assert.equal(result.records, 2, 'readable roles must still be exported');
+    assert.equal(result.assets, 0,
+        'binary assets queued before a failed role serialization must be rolled back');
+    assert.equal(result.readErrors.length, 1);
+    assert.equal(result.readErrors[0].role, 'pre-import');
+    assert.match(result.readErrors[0].message, /循环引用/);
+
+    const zip = Buffer.from(result.blob._data);
+    let offset = 0;
+    const names = [];
+    while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+        const nameLength = zip.readUInt16LE(offset + 26);
+        const extraLength = zip.readUInt16LE(offset + 28);
+        const size = zip.readUInt32LE(offset + 18);
+        names.push(zip.subarray(offset + 30, offset + 30 + nameLength).toString('utf8'));
+        offset += 30 + nameLength + extraLength + size;
+    }
+    assert.deepEqual(names.sort(), ['README.txt', 'recovery-points.json'],
+        'failed role must not leave an orphan binary file in the rescue ZIP');
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
 });
