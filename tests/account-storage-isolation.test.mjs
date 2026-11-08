@@ -21,7 +21,7 @@ function makeStorage(seed = {}) {
   };
 }
 
-function createScope({ accountId, role = 'user' }) {
+function createScope({ accountId, role = 'user', fetchImpl = null }) {
   const local = makeStorage({ ai_custom_characters: '[{"id":"legacy-owner"}]' });
   const session = makeStorage({ active_tab: 'home' });
   const openCalls = [];
@@ -55,6 +55,8 @@ function createScope({ accountId, role = 'user' }) {
   };
   const storageListeners = [];
   const window = {
+    location: { replace(url) { window.redirectedTo = url; } },
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
     localStorage: local,
     sessionStorage: session,
     indexedDB: nativeIndexedDB,
@@ -80,6 +82,48 @@ test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命
   a.window.sessionStorage.setItem('active_tab', 'chat');
   assert.equal(a.window.sessionStorage.getItem('active_tab'), 'chat');
   assert.equal(a.session.getItem('active_tab'), 'home', 'sessionStorage 也必须按账号隔离');
+});
+
+test('同一设备在其他标签页切换 MAO 账号后，旧账号页面必须退出', async () => {
+  const a = createScope({
+    accountId: 'MAO-AAAAAAAAAAAA',
+    role: 'user',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        account: {
+          id: 'MAO-BBBBBBBBBBBB',
+          role: 'user',
+          status: 'active'
+        }
+      })
+    })
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(
+    a.window.redirectedTo,
+    '/account/index.html?switched=1',
+    '服务端会话的永久 ID 与当前页面不一致时不得继续显示旧账号数据'
+  );
+});
+
+test('账号会话仍属于当前 MAO ID 和角色时，页面不应误退出', async () => {
+  const a = createScope({
+    accountId: 'MAO-AAAAAAAAAAAA',
+    role: 'user',
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        account: {
+          id: 'MAO-AAAAAAAAAAAA',
+          role: 'user',
+          status: 'active'
+        }
+      })
+    })
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(a.window.redirectedTo, undefined);
 });
 
 test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互隔离', async () => {
