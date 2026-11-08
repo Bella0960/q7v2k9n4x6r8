@@ -972,6 +972,7 @@
                 }
             }
         }
+        // 双 32-bit 指纹用于识别意外损坏，不是防恶意篡改的密码学签名。
         // 新版 applying 恢复点必须与写入阶段日志时的内容指纹一致。
         // 旧版本没有 integrity 字段，仍按结构校验结果兼容恢复。
         var integrity = metaRecord && metaRecord.snap && metaRecord.snap.integrity;
