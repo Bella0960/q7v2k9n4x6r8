@@ -129,7 +129,7 @@
     }
     // Older/mock Response implementations may not expose a readable body.
     return response.text().then(function (text) {
-      if (text.length > MAX_RESPONSE_BYTES) throw new Error('MCP 服务返回内容过大，已停止读取。');
+      if (utf8ByteLength(text) > MAX_RESPONSE_BYTES) throw new Error('MCP 服务返回内容过大，已停止读取。');
       return text;
     });
   }
