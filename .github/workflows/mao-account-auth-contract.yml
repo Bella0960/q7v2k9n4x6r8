@@ -1,20 +1,6 @@
 name: MAO Account Auth Contract
 
 on:
-  push:
-    branches: [feat/mao-account-auth-foundation]
-    paths:
-      - 'account/**'
-      - 'admin/**'
-      - 'worker/**'
-      - 'shared/js/mao-account-scope.js'
-      - 'sw.js'
-      - 'tests/account-*.test.mjs'
-      - 'tests/pwa-navigation-cache.test.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'vite.config.js'
-      - '.github/workflows/mao-account-auth-contract.yml'
   pull_request:
     paths:
       - 'account/**'
