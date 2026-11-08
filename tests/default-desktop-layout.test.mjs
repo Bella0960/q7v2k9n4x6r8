@@ -190,3 +190,20 @@ test('invitation records can navigate directly to their bound account details', 
   assert.match(adminScript, /function openAccountFromInvite\(accountId\)[\s\S]*activateTab\('users'\)[\s\S]*accountFilter = 'all'[\s\S]*\$\('accountSearch'\)\.value = ''[\s\S]*renderAccounts\(\)[\s\S]*openAccount\(accountId\)/);
   assert.match(adminScript, /button\.addEventListener\('click', \(\) => activateTab\(button\.dataset\.tab\)\)/);
 });
+
+test('creator bootstrap form stays hidden until server initialization status is confirmed', () => {
+  const bootstrapHtml = readFileSync(new URL('../account/bootstrap.html', import.meta.url), 'utf8');
+  const bootstrapScript = readFileSync(new URL('../account/bootstrap.js', import.meta.url), 'utf8');
+
+  assert.match(bootstrapHtml, /id="bootstrapStatus" role="status" aria-live="polite"/);
+  assert.match(bootstrapHtml, /id="retryBootstrapCheck" type="button" hidden/);
+  assert.match(bootstrapHtml, /<form id="bootstrapForm" novalidate hidden>/);
+  assert.match(bootstrapScript, /const statusNode = document\.getElementById\('bootstrapStatus'\)/);
+  assert.match(bootstrapScript, /const retryButton = document\.getElementById\('retryBootstrapCheck'\)/);
+  assert.match(bootstrapScript, /form\.hidden = true;[\s\S]*statusNode\.hidden = false;[\s\S]*正在确认服务器初始化状态/);
+  assert.match(bootstrapScript, /status\.initialized[\s\S]*showInitialized\(\)[\s\S]*statusNode\.hidden = true;[\s\S]*form\.hidden = false/);
+  assert.match(bootstrapScript, /暂时无法确认初始化状态[\s\S]*retryButton\.hidden = false/);
+  assert.match(bootstrapScript, /retryButton\.addEventListener\('click', checkStatus\)/);
+  assert.match(bootstrapScript, /statusCheckInProgress/);
+  assert.match(bootstrapScript, /function showInitialized\(\)[\s\S]*form\.hidden = true;[\s\S]*completeNode\.hidden = false/);
+});
