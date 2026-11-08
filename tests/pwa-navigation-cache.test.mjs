@@ -11,6 +11,7 @@ const homePage = read('index.html');
 const sharedNavigation = read('shared/js/nav.js');
 assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v181'/);
 assert.match(serviceWorker, /friend-chat\.html/);
+assert.match(serviceWorker, /friend-center\.html/);
 assert.match(sharedNavigation, /SKIP_PAGES\s*=\s*\[[^\]]*friend-center\.html/);
 assert.match(serviceWorker, /friends-client\.js\?v=friend8/);
 const viteConfig = read('vite.config.js');
