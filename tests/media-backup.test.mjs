@@ -19,7 +19,7 @@
  *  32-33. 整机导入互斥、FileReader 初始化失败与锁释放
  *  34-37. 页面中断后的启动恢复、恢复失败重试与 committed 清理
  *  38-39. 阶段日志写入保护、未预期异常后的恢复点保留
- *  40-42. 跨标签页导入互斥、过期租约接管与恢复互斥
+ *  40-43. 跨标签页导入互斥、过期租约接管、恢复互斥与旧租约拒写
  */
 
 import test from 'node:test';
@@ -2329,4 +2329,27 @@ test('42 recoverInterruptedImportOnStartup：活动标签页持有租约时不�
         /另一个 MAOMAO 标签页正在导入或恢复数据/.test(item.msg)
     ));
     await activeTab.rpReleaseImportLock(activeTab.importLockOwner);
+});
+
+
+/* ═══════════════════════════════════════════════
+   43. 原标签页恢复运行时：续租失败必须停止后续写入
+   ═══════════════════════════════════════════════ */
+test('43 assertImportLock：租约已被新标签页接管时旧标签页必须失败关闭', async () => {
+    clearAllDBs();
+    const oldTab = buildCtxFull();
+    const recoveryTab = buildCtxFull();
+
+    assert.equal(await oldTab.rpAcquireImportLock(oldTab.importLockOwner), true);
+    const lockDb = openDbs['maomao-restore-point'];
+    const row = lockDb._data.restores.find(item => item.role === 'active-import-lock');
+    assert.ok(row);
+    row.expiresAt = Date.now() - 1000;
+
+    assert.equal(await recoveryTab.rpAcquireImportLock(recoveryTab.importLockOwner), true);
+    await assert.rejects(oldTab.assertImportLock(), /已被其他标签页接管/);
+    assert.equal(oldTab.importLockLost, true);
+    assert.equal(oldTab.importRecoveryReady, false);
+
+    await recoveryTab.rpReleaseImportLock(recoveryTab.importLockOwner);
 });
