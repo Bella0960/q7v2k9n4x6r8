@@ -15,6 +15,7 @@ const tutorialWorkflow = readFileSync(resolve(here, '../.github/workflows/tutori
 const novelPage = readFileSync(resolve(here, '../novel/novel.html'), 'utf8');
 const minimaxPage = readFileSync(resolve(here, '../settings/minimax-tts.html'), 'utf8');
 const worldbookPage = readFileSync(resolve(here, '../worldbook/worldbook/worldbook.html'), 'utf8');
+const cafePage = readFileSync(resolve(here, '../cafe/cafe.html'), 'utf8');
 
 function readExtraLessons(source) {
   const match = source.match(/var extraLessons=(\[[\s\S]*?\]);\nlessons=lessons\.concat\(extraLessons\);/);
@@ -291,6 +292,13 @@ test('guided verification distinguishes storage failure from a later successful 
   assert.equal(lastObserver.disconnected, true);
 });
 
+test('cafe custom dish save rolls back in-memory state when persistence fails', () => {
+  assert.match(cafePage, /function save\(\)\{try\{localStorage\.setItem\('maomao_cafe_state_v1',JSON\.stringify\(st\)\);return true;\}catch\(e\)\{return false;\}\}/);
+  assert.match(cafePage, /var previousState=JSON\.stringify\(st\)/);
+  assert.match(cafePage, /if\(!save\(\)\)\{st=JSON\.parse\(previousState\);toast\('菜品保存失败：请检查浏览器存储空间。'\);return;\}/);
+  assert.match(cafePage, /toast\(old\?'菜品配方已更新。':'新菜品已加入菜单。'\)/);
+});
+
 test('every guided save verifier points to a real toast and an existing action control', () => {
   const extra = readExtraLessons(html);
   const cases = [
@@ -298,7 +306,8 @@ test('every guided save verifier points to a real toast and an existing action c
     ['diary-journal', '#saveEntry', '../diary/diary.html'],
     ['envelope-letter', '#saveDraftButton', '../envelope/envelope.html'],
     ['reading-workflow', '#confirmBookImport', '../library/library.html'],
-    ['novel-workflow', '#saveWork', '../novel/novel.html']
+    ['novel-workflow', '#saveWork', '../novel/novel.html'],
+    ['cafe-menu-stock', '[data-save-dish]', '../cafe/cafe.html']
   ];
   for (const [id, actionSelector, pagePath] of cases) {
     const lesson = extra.find((item) => item.id === id);
