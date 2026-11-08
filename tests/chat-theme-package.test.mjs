@@ -26,6 +26,9 @@ test('CSS scoping preserves braces in comments and strings and handles escaped g
   assert.ok(escaped.includes('@m\\65 dia (max-width:600px){'+prefix+' .nested{'),'转义写法的 @media 与 html 选择器也必须保持聊天页作用域');
   const escapedShell=F.scopeCss(String.raw` .\70 hone-mockup .child{color:red}`,prefix);
   assert.ok(escapedShell.includes(prefix+' .child{'),'转义写法的 phone-mockup 根选择器必须正确替换');
+  let deeplyNested=' .sample{color:red}';
+  for(let i=0;i<34;i++)deeplyNested='@media (min-width:1px){'+deeplyNested+'}';
+  assert.throws(()=>F.scopeCss(deeplyNested,prefix),/分组规则嵌套过深/);
 });
 
 test('stored ZIP validates its EOCD, central directory and matching local headers',()=>{
