@@ -67,8 +67,8 @@
     return ({
       pending_invite: '待授权',
       active: '正常使用',
-      disabled: '已被禁用',
-      revoked: '已被禁用'
+      disabled: '临时停用',
+      revoked: '永久撤销'
     })[status] || '未知状态';
   }
 
