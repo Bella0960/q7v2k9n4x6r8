@@ -297,7 +297,7 @@ async function withPersistentProfile(name, fn) {
   }
 }
 
-const report = { backup: [], restore: [], legacy: [], crossDevice: [], partial: [] };
+const report = { backup: [], restore: [], nonBase64: [], legacy: [], crossDevice: [], partial: [] };
 const browser = await chromium.launch({ headless: true });
 const tmpFiles = [];
 try {
@@ -333,6 +333,33 @@ try {
     await page.waitForTimeout(600);
     const afterReload = await verifyAllWidgets(page, savedA);
     console.log('GROUP 2 clean restore:', report.restore, 'after reload:', afterReload);
+    await context.close();
+  }
+
+  // ---------- 3. Valid non-Base64 image data URL restore ----------
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const page = await context.newPage();
+    const variant = JSON.parse(fs.readFileSync(exportedFile, 'utf8'));
+    const imageKey = WIDGETS.find(widget => widget.name === 'image').key;
+    const imageRecord = variant.indexedDB['maomao-media-store'].wallpapers
+      .find(record => record.__key === imageKey);
+    assert.ok(imageRecord, 'fixture must contain the image widget record');
+
+    const svgDataUrl = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%201%201%22%3E%3Crect%20width%3D%221%22%20height%3D%221%22%20fill%3D%22black%22%2F%3E%3C%2Fsvg%3E';
+    imageRecord.__value = svgDataUrl;
+    const variantFile = path.join(os.tmpdir(), `maomao-backup-non-base64-${Date.now()}.json`);
+    fs.writeFileSync(variantFile, JSON.stringify(variant));
+    tmpFiles.push(variantFile);
+
+    const importToast = await importBackup(page, variantFile, '导入成功');
+    assert.equal(importToast, true, 'valid percent-encoded SVG data URL must be accepted');
+    await page.goto(`${baseUrl}/index.html`, { waitUntil: 'load' });
+    await ensureLayout(page);
+    const expected = Object.assign({}, savedA, { image: svgDataUrl });
+    report.nonBase64 = await verifyAllWidgets(page, expected);
+    assert.equal(await readSaved(page, imageKey), svgDataUrl, 'non-Base64 image data URL must be restored unchanged');
+    console.log('GROUP 3 non-Base64 image data URL: PASS');
     await context.close();
   }
 
@@ -412,6 +439,7 @@ try {
       { label: 'null value', mutate: record => { record.__value = null; } },
       { label: 'non-image text', mutate: record => { record.__value = 'not-an-image'; } },
       { label: 'invalid base64 data URL', mutate: record => { record.__value = 'data:image/png;base64,%%%'; } },
+      { label: 'invalid percent-encoded image data URL', mutate: record => { record.__value = 'data:image/svg+xml,%E0%A4%A'; } },
       { label: 'invalid dataUrl wrapper', mutate: record => { record.__value = { dataUrl: 'data:image/png;base64,%%%' }; } }
     ];
 
