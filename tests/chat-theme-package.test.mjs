@@ -89,6 +89,7 @@ test('CSS package references must resolve to registered package assets',()=>{
   assert.doesNotThrow(()=>F.createPackage(withAsset,'.sample{background-image:url("assets/bg.png")}',{'assets/bg.png':new Uint8Array([1,2,3])}));
 });
 
+
 test('runtime CSS asset rewriting follows the same tokenizer as package validation',()=>{
   const theme=fixture({
     assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]
@@ -96,10 +97,10 @@ test('runtime CSS asset rewriting follows the same tokenizer as package validati
   const bytes=new Uint8Array([1,2,3]);
   const urls={'assets/bg.png':'blob:maomao/theme-bg'};
   const cases=[
-    String.raw`.sample{background-image:u/**/rl(assets/bg.png)}`,
-    String.raw`.sample{background-image:u\\72l(assets/bg.png)}`,
-    String.raw`.sample{background-image:url("assets/b\\67.png")}`,
-    `.sample{content:"url(assets/bg.png)";background-image:url(assets/bg.png)}`
+    ".sample{background-image:u/**/rl(assets/bg.png)}",
+    ".sample{background-image:u\\\\72l(assets/bg.png)}",
+    ".sample{background-image:url(\\"assets/b\\\\67.png\\")}",
+    ".sample{content:\\"url(assets/bg.png)\\";background-image:url(assets/bg.png)}"
   ];
   for(const css of cases){
     assert.doesNotThrow(()=>F.createPackage(theme,css,{'assets/bg.png':bytes}));
