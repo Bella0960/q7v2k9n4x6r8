@@ -211,7 +211,7 @@ Scope: keep MAOMAO Theme Studio independent; add a versioned package format, a v
 Acceptance:
 - Accept only MAOMAO_CHAT_THEME schema v1 packages for target maomao-chat.
 - Validate archive paths, CRC, file counts/sizes, CSS syntax, external resource references, and ensure every assets/ URL resolves to an asset registered in the package.
-- Rewrite runtime `assets/` URLs through the same CSS tokenizer used by validation, including quoted, unquoted, escaped and comment-separated forms; never rewrite matching text inside CSS string values.
+- Rewrite runtime `assets/` URLs using the package CSS escape decoder and matching comment handling, including quoted, unquoted, escaped and comment-separated forms; never rewrite matching text inside CSS string values or alter unrelated CSS escapes.
 - Import assets to MediaRepository; rollback references and theme settings when any step fails.
 - Keep imported themes separate from beauty_chat_global_v1, beauty_chat_<roleId> and maomao_chat_theme_preset.
 - Apply chat-list and chat-detail styles only on their corresponding pages; do not alter message data or role storage.
