@@ -180,16 +180,45 @@ self.addEventListener('fetch', event => {
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
   if (url.pathname.startsWith(fontAssetPrefix)) {
-    event.respondWith(
-      caches.open(FONT_ASSET_CACHE).then(function (cache) {
-        return cache.match(req).then(function (cached) {
-          return cached || new Response('', {
+    // Page CacheStorage is account-namespaced. Resolve the current session here
+    // (HttpOnly cookies are sent by same-origin fetch) and open the matching cache.
+    event.respondWith((async function () {
+      try {
+        const authResponse = await fetch('/api/accounts/me', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { 'accept': 'application/json' }
+        });
+        if (!authResponse.ok) {
+          return new Response('', {
             status: 404,
             headers: { 'Cache-Control': 'no-store' }
           });
+        }
+        const payload = await authResponse.json();
+        const account = payload && payload.account;
+        if (!account || !/^MAO-[A-Z0-9]{12,24}$/.test(String(account.id || ''))) {
+          return new Response('', {
+            status: 404,
+            headers: { 'Cache-Control': 'no-store' }
+          });
+        }
+        const cacheName = account.role === 'super_admin'
+          ? FONT_ASSET_CACHE
+          : '__mao_account_v1__' + encodeURIComponent(account.id) + '__' + FONT_ASSET_CACHE;
+        const cache = await caches.open(cacheName);
+        return await cache.match(req) || new Response('', {
+          status: 404,
+          headers: { 'Cache-Control': 'no-store' }
         });
-      })
-    );
+      } catch (error) {
+        return new Response('', {
+          status: 503,
+          headers: { 'Cache-Control': 'no-store' }
+        });
+      }
+    })());
     return;
   }
 
