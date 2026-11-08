@@ -17,6 +17,7 @@
  *  25-30. 恢复点内容指纹、原生事务生命周期、删除后读回校验
  *  31. 数据库回滚后逐库读回指纹，检测事务成功但静默漏写
  *  32-33. 整机导入互斥、FileReader 初始化失败与锁释放
+ *  34-37. 页面中断后的启动恢复、恢复失败重试与 committed 清理
  */
 
 import test from 'node:test';
@@ -283,8 +284,10 @@ function makeIDB(name, version, storeDefs) {
                     const complete = () => {
                         if (oncompleteCb && !aborted) oncompleteCb();
                     };
+                    // IndexedDB transaction complete event is queued after request success
+                    // callbacks; use a later task rather than a microtask in this mock.
                     if (db._deferComplete) db._pendingComplete = complete;
-                    else Promise.resolve().then(complete);
+                    else setTimeout(complete, 0);
                 },
                 get oncomplete() { return oncompleteCb; },
                 set onerror(fn) { this._onerror = fn; },
@@ -2006,6 +2009,7 @@ test('35 recoverInterruptedImportOnStartup：用户取消时保留所有恢复�
 
     const recovered = await ctx.recoverInterruptedImportOnStartup();
     assert.equal(recovered, false);
+    ctx.importRecoveryReady = false; // mirrors the settings-page startup gate
     assert.ok(ctx.__restorePointRows.has('pre-import'));
     assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
     ctx.handleImportFile({ content: JSON.stringify(makeImportPayload({})) });
