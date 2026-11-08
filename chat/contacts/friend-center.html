@@ -187,13 +187,25 @@
     var fallback = function () {
       var input = document.createElement('textarea');
       input.value = value;
+      input.setAttribute('readonly', '');
       input.style.position = 'fixed';
+      input.style.left = '-9999px';
       input.style.opacity = '0';
       document.body.appendChild(input);
-      input.select();
-      try { document.execCommand('copy'); setStatus(successMessage); }
-      catch (error) { setStatus('复制失败，请长按文本复制', true); }
+      var copied = false;
+      try {
+        input.focus();
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        copied = document.execCommand('copy') === true;
+      } catch (error) {
+        copied = false;
+      }
       input.remove();
+      setStatus(
+        copied ? successMessage : '复制未成功，请长按好友 ID 文本手动复制。',
+        !copied
+      );
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(value).then(function () {
@@ -260,7 +272,10 @@
   }
 
   async function lookupFriend(rawValue) {
-    var userId = qr.parse(rawValue);
+    var rawId = String(rawValue || '').trim();
+    var userId = qr && typeof qr.parse === 'function'
+      ? qr.parse(rawId)
+      : (rawId.indexOf('MAOMAO-F1:') === 0 ? rawId.slice('MAOMAO-F1:'.length) : rawId);
     if (!/^u_[A-Za-z0-9_-]{16,48}$/.test(userId)) {
       setStatus('好友 ID 格式不正确。可以粘贴二维码内容，或手动输入 ID。', true);
       $('targetCard').style.display = 'none';
@@ -388,26 +403,35 @@
       $('myName').textContent = myAccount.displayName || displayName;
       $('myAvatar').textContent = initials(myAccount.displayName || displayName);
       $('myId').textContent = '好友 ID：' + myAccount.userId;
-      $('copyQrTextBtn').disabled = false;
-      $('copyQrTextBtn').addEventListener('click', function () {
-        copyText(qr.prefix + myAccount.userId, '二维码内容已复制');
-      });
-      if (qr && typeof qr.toSvg === 'function') {
+      if (qr && typeof qr.toSvg === 'function' && typeof qr.prefix === 'string') {
+        $('copyQrTextBtn').disabled = false;
+        $('copyQrTextBtn').addEventListener('click', function () {
+          copyText(qr.prefix + myAccount.userId, '二维码内容已复制');
+        });
         $('qrCaption').textContent = '让朋友扫描此码，向你发送好友申请';
         if (!$('myQr').innerHTML) $('myQr').innerHTML = qr.toSvg(myAccount.userId);
       } else {
+        $('copyQrTextBtn').disabled = true;
         $('qrCaption').textContent = '账号已连接；二维码模块暂不可用，可以复制好友 ID 添加';
       }
-      await refreshLists();
-      friendsPollTimer = window.setInterval(function () {
-        if (document.hidden) return;
-        api.getFriends().then(renderFriends).catch(function () {});
-      }, 12000);
-      setStatus('真人好友账号已连接。把二维码分享给朋友即可互相添加。');
     } catch (error) {
       $('qrCaption').textContent = '云端账号尚未连接，二维码暂不可用于添加好友；你仍可复制 ID，连接成功后再分享';
       setStatus((error.message || '真人好友服务连接失败') + '。', true);
+      return;
     }
+
+    // Account registration and list loading are separate failure domains:
+    // a temporary list endpoint error must not invalidate a registered QR.
+    try {
+      await refreshLists();
+      setStatus('真人好友账号已连接。把二维码分享给朋友即可互相添加。');
+    } catch (error) {
+      setStatus('账号已连接，但好友列表暂时刷新失败。可以点右上角刷新重试。', true);
+    }
+    friendsPollTimer = window.setInterval(function () {
+      if (document.hidden) return;
+      refreshLists().catch(function () {});
+    }, 12000);
   }
 
   $('backBtn').addEventListener('click', function () {
