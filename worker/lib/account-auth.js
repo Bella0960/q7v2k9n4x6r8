@@ -373,9 +373,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/admin/invites' && method === 'GET') return await adminInvites(request);
       if (path === '/api/admin/invites' && method === 'POST') return await createInvite(request);
 
-      const actionMatch = /^\\/api\\/admin\\/accounts\\/(MAO-[A-Z0-9]{12,24})\\/action$/.exec(path);
+      const actionMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/action$/.exec(path);
       if (actionMatch && method === 'POST') return await accountAction(request, actionMatch[1]);
-      const inviteMatch = /^\\/api\\/admin\\/invites\\/([A-Za-z0-9_-]{16,64})\\/revoke$/.exec(path);
+      const inviteMatch = /^\/api\/admin\/invites\/([A-Za-z0-9_-]{16,64})\/revoke$/.exec(path);
       if (inviteMatch && method === 'POST') return await revokeInvite(request, inviteMatch[1]);
       return null;
     }
