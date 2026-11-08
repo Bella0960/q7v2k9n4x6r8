@@ -426,7 +426,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const code = randomToken(32);
     const inviteId = randomToken(16);
     const expiresAt = timestamp + ttlHours * 60 * 60 * 1000;
-    store.insertMaoInvite({
+    const inserted = store.insertMaoInvite({
       id: inviteId,
       tokenHash: await sha256Hex('mao-invite|' + code),
       targetAccountId,
@@ -436,6 +436,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       now: timestamp,
       expiresAt
     });
+    if (!inserted) {
+      throw new ApiError(409, 'INVITE_ALREADY_ACTIVE', '该账号已有尚未使用且未过期的邀请码，请先撤销原邀请码');
+    }
     return json({
       ok: true,
       invite: { id: inviteId, code, targetAccountId: targetAccountId || null, targetEmail, maxUses, expiresAt },
