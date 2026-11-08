@@ -408,6 +408,9 @@ test('recovery-point rescue export is discoverable, read-only, and warns about s
   assert.match(backupScript, /README\.txt/);
   assert.match(backupScript, /recordStatuses/);
   assert.match(backupScript, /assets\.length = assetStart/);
+  assert.match(backupScript, /recordStatuses\[role\] = 'partial'/);
+  assert.match(backupScript, /markUnavailableRescueAssets/);
+  assert.match(backupScript, /unavailable = true/);
   assert.match(backupScript, /不是密码学签名或来源认证/);
   assert.match(backupScript, /不是可直接导入的普通备份文件/);
 });
