@@ -321,6 +321,7 @@ function registerBlob() {
         if (parts && !Array.isArray(parts)) parts = [parts];
         const bufs = parts.map(p => {
             if (p instanceof Uint8Array || Buffer.isBuffer(p)) return p;
+            if (p && Buffer.isBuffer(p._data)) return p._data;
             return Buffer.from(String(p), 'utf8');
         });
         const totalLen = bufs.reduce((s, b) => s + b.length, 0);
@@ -438,6 +439,9 @@ function buildCtxFull(opts) {
         'assertImportLock', 'clearRestorePoints', 'writeImportState',
         'recoverInterruptedImportUnlocked', 'recoverInterruptedImportOnStartup', 'validateInterruptedRestorePoints',
         'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
+        'rescueUtf8Bytes', 'serializeRecoveryPointValue', 'readBlobArrayBuffer',
+        'rescueCrcTable', 'rescueCrc32', 'createRecoveryRescueZip',
+        'createRecoveryPointRescuePackage',
         'estimateRestorePointBytes', 'assertRestorePointCapacity', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
         'doExport', 'handleImportFile', 'startImportFileRead'
@@ -2846,4 +2850,90 @@ test('58 validateInterruptedRestorePoints：同尺寸同 MIME 的音频 Blob 内
     );
     assert.equal(result.ok, false);
     assert.match(result.message, /恢复点内容指纹不一致/);
+});
+
+
+/* ═══════════════════════════════════════════════
+   59. 恢复点抢救 ZIP：完整保留本地 Blob 二进制附件
+   ═══════════════════════════════════════════════ */
+test('59 createRecoveryPointRescuePackage：导出 JSON 清单和原始 Blob 附件而不删除恢复点', async () => {
+    const ctx = buildCtxFull();
+    const audioBytes = Buffer.from('rescue-local-audio-original');
+    ctx.__restorePointRows.set('pre-import', {
+        role: 'pre-import',
+        snap: { ai_custom_characters: 'old-character-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        role: 'pre-import-indexeddb',
+        snap: {
+            'maomao-media-store': {
+                wallpapers: [],
+                audio: [{
+                    id: 'rescue-audio-1',
+                    title: 'Local audio',
+                    blob: new SandboxBlob([audioBytes], { type: 'audio/mpeg' })
+                }]
+            }
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+        createdAt: Date.now()
+    });
+
+    const result = await ctx.createRecoveryPointRescuePackage();
+    assert.ok(result);
+    assert.equal(result.records, 3);
+    assert.equal(result.assets, 1);
+    assert.equal(result.readErrors.length, 0);
+
+    const zip = Buffer.from(result.blob._data);
+    assert.equal(zip.readUInt32LE(0), 0x04034b50, 'archive must begin with a ZIP local-file header');
+    const entries = [];
+    let offset = 0;
+    while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+        const nameLength = zip.readUInt16LE(offset + 26);
+        const extraLength = zip.readUInt16LE(offset + 28);
+        const size = zip.readUInt32LE(offset + 18);
+        const nameStart = offset + 30;
+        const dataStart = nameStart + nameLength + extraLength;
+        const name = zip.subarray(nameStart, nameStart + nameLength).toString('utf8');
+        const data = zip.subarray(dataStart, dataStart + size);
+        entries.push({ name, data });
+        offset = dataStart + size;
+    }
+    const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
+    const assetEntry = entries.find(entry => entry.name === 'assets/blob-000001.bin');
+    assert.ok(manifestEntry, 'manifest must be included');
+    assert.ok(assetEntry, 'binary Blob must be a separate ZIP entry');
+    assert.equal(assetEntry.data.toString('utf8'), 'rescue-local-audio-original');
+    const manifest = JSON.parse(manifestEntry.data.toString('utf8'));
+    assert.equal(manifest.format, 'maomao-restore-point-rescue');
+    assert.equal(
+        manifest.records['pre-import-indexeddb'].snap['maomao-media-store'].audio[0].blob.file,
+        'assets/blob-000001.bin'
+    );
+    assert.equal(
+        manifest.records['pre-import-indexeddb'].snap['maomao-media-store'].audio[0].blob.mime,
+        'audio/mpeg'
+    );
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
+});
+
+/* ═══════════════════════════════════════════════
+   60. 抢救序列化遇到循环引用：明确拒绝而不静默丢失关系
+   ═══════════════════════════════════════════════ */
+test('60 serializeRecoveryPointValue：循环引用必须明确报错', async () => {
+    const ctx = buildCtxFull();
+    const cyclic = { label: 'cycle' };
+    cyclic.self = cyclic;
+    await assert.rejects(
+        ctx.serializeRecoveryPointValue(cyclic, [], { assetIndex: 0, stack: [] }),
+        /循环引用/
+    );
 });
