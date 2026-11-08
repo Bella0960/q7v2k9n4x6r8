@@ -273,6 +273,35 @@
             line-height: 1.75;
         }
         .cloud-guide-limit strong { color: var(--sub); font-weight: 600; }
+        .cloud-guide-status {
+            margin-top: 17px;
+            padding-top: 14px;
+            border-top: 1px solid var(--line);
+        }
+        .cloud-guide-status-title {
+            margin-bottom: 3px;
+            color: var(--ink);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .cloud-guide-status-item {
+            display: grid;
+            grid-template-columns: 95px minmax(0, 1fr);
+            gap: 9px;
+            padding: 9px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .cloud-guide-status-item:last-child { border-bottom: 0; }
+        .cloud-guide-status-item strong {
+            color: var(--sub);
+            font-size: 11.5px;
+            font-weight: 600;
+        }
+        .cloud-guide-status-item p {
+            color: var(--aux);
+            font-size: 11.5px;
+            line-height: 1.7;
+        }
         @media (min-width: 600px) {
             body { background: #F2F2F4; }
             .phone-mockup { min-height: 100vh; box-shadow: 0 8px 36px rgba(0,0,0,.05); }
@@ -459,6 +488,22 @@
             </div>
 
             <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>角色主动联系的聊天内容仍由已配对设备上的 MAOMAO 使用本机 API 配置和本地聊天上下文生成。设备需要打开 MAOMAO 并保持页面在前台；应用关闭或处于后台时，目前不会在云端独立生成新聊天内容。所以，开启授权不等于角色会 24 小时自动发消息。</p>
+
+            <div class="cloud-guide-status" aria-label="当前功能进度">
+                <h3 class="cloud-guide-status-title">当前进度</h3>
+                <div class="cloud-guide-status-item">
+                    <strong>前台主动联系</strong>
+                    <p>已接入代码路径。设备前台运行且授权、角色作息和本机 API 均满足条件时，才会尝试生成并投递角色消息。</p>
+                </div>
+                <div class="cloud-guide-status-item">
+                    <strong>关闭应用后生成</strong>
+                    <p>尚未实现。当前 Worker 不会在应用关闭或手机锁屏时独立调用 AI 模型；Web Push 只负责通知，不负责生成聊天内容。</p>
+                </div>
+                <div class="cloud-guide-status-item">
+                    <strong>真实设备验收</strong>
+                    <p>尚未完成。Cloudflare 实际部署、Android 锁屏通知和两台真实设备之间的切换，仍需要单独测试确认。</p>
+                </div>
+            </div>
         </section>
     </main>
 </div>
