@@ -739,9 +739,15 @@
         try { await rpReleaseImportLock(importLockOwner); } catch (e) {}
     }
 
-    function assertImportLock() {
+    async function assertImportLock() {
         if (importLockLost) {
             throw new Error('整机导入互斥租约已失效，为保护数据已中止本轮覆盖');
+        }
+        var renewed = await rpRenewImportLock(importLockOwner);
+        if (!renewed) {
+            importLockLost = true;
+            importRecoveryReady = false;
+            throw new Error('整机导入互斥租约已被其他标签页接管，为保护数据已停止继续覆盖');
         }
     }
 
@@ -838,6 +844,7 @@
         });
 
         for (var i = 0; i < targetNames.length; i++) {
+            await assertImportLock();
             var dbName = targetNames[i];
             var target = null;
             for (var j = 0; j < IDB_TARGETS.length; j++) {
@@ -865,6 +872,7 @@
             }
         }
 
+        await assertImportLock();
         var localRollbackOk = restore(localSnapshot);
         var localVerify = verifyRestore(localSnapshot);
         if (!localRollbackOk || !localVerify.ok) {
@@ -878,6 +886,7 @@
         }
 
         try {
+            await assertImportLock();
             await writeImportState('rolled-back', targetNames);
         } catch (stateError) {
             toast('数据已恢复到导入前状态，但无法写入恢复完成标记。'
@@ -1642,11 +1651,12 @@
 
     // 数据库之间不能共享 IndexedDB 事务，因此按数据库顺序恢复；若后续数据库失败，
     // 按逆序把之前已成功的数据库恢复到导入前快照。每个数据库内部仍由单事务保证原子性。
-    async function restoreIndexedDBWithRollback(incomingIndexedDB, restorePoint) {
+    async function restoreIndexedDBWithRollback(incomingIndexedDB, restorePoint, requireImportLock) {
         restorePoint = restorePoint || { targets: [], snapshots: {} };
         var restored = [];
         var totalWritten = 0;
         for (var i = 0; i < restorePoint.targets.length; i++) {
+            if (requireImportLock) await assertImportLock();
             var target = restorePoint.targets[i];
             try {
                 var result = await restoreDatabase(
@@ -1903,7 +1913,7 @@
             }
 
             // 2. localStorage 覆盖写入；失败则从恢复点回滚后结束（IndexedDB 还没动）
-            assertImportLock();
+            await assertImportLock();
             var ok = restore(incoming);
             if (!ok) {
                 // 回滚：直接用恢复点里读回来的快照，而不是内存里的 current
@@ -1925,6 +1935,7 @@
                 }
                 if (rollbackOk && verify.ok) {
                     try {
+                        await assertImportLock();
                         await writeImportState('rolled-back', indexedDbTargetNames);
                     } catch (stateError) {
                         importRecoveryReady = false;
@@ -1954,8 +1965,8 @@
             var dbRestored = 0;
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
-                assertImportLock();
-                var idbRestoreResult = await restoreIndexedDBWithRollback(obj.indexedDB, idbRestorePoint);
+                await assertImportLock();
+                var idbRestoreResult = await restoreIndexedDBWithRollback(obj.indexedDB, idbRestorePoint, true);
                 if (!idbRestoreResult.ok) {
                     var localRollbackOk = restore(rpSnap);
                     var localRollbackVerify = verifyRestore(rpSnap);
@@ -1963,7 +1974,8 @@
                         && idbRestoreResult.rollbackFailures.length === 0;
                     if (allRollbackOk) {
                         try {
-                            await writeImportState('rolled-back', indexedDbTargetNames);
+                            await assertImportLock();
+                        await writeImportState('rolled-back', indexedDbTargetNames);
                         } catch (stateError) {
                             importRecoveryReady = false;
                             toast('导入失败，数据已回滚核验通过，但恢复阶段标记写入失败。'
@@ -1995,7 +2007,7 @@
             // 5. 全部业务数据恢复成功后，先持久化 committed，再清理恢复点。
             // 若页面在清理中断，下一次启动只会继续清理，不会把已完成导入回滚掉。
             try {
-                assertImportLock();
+                await assertImportLock();
                 await writeImportState('committed', indexedDbTargetNames);
             } catch (commitStateError) {
                 importRecoveryReady = false;
