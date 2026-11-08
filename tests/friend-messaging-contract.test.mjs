@@ -565,7 +565,7 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /blockedRetryAt = Date\.now\(\) \+ 15000/);
   assert.match(FRIEND_CHAT_HTML, /blocked && Date\.now\(\) < blockedRetryAt/);
   assert.match(FRIEND_CHAT_HTML, /A previously removed friend may be added again/);
-  assert.match(FRIEND_CHAT_HTML, /ready = Boolean\\(myUserId\\)/);
+  assert.ok(FRIEND_CHAT_HTML.includes('ready = Boolean(myUserId)'));
   assert.match(FRIEND_CHAT_HTML, /重新成为好友后，此页面会自动恢复/);
   assert.match(FRIEND_CHAT_HTML, /好友关系已恢复，聊天已重新连接/);
   assert.match(FRIEND_CHAT_HTML, /hiddenMessageIds\[message\.id\]/);
