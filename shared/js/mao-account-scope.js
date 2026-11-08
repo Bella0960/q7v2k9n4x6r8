@@ -84,7 +84,7 @@
         try {
           var requestUrl = new global.URL(String(url), global.location.href);
           bindContext = requestUrl.origin === global.location.origin &&
-            /^\\/api(?:\\/|$)/.test(requestUrl.pathname);
+            /^\/api(?:\/|$)/.test(requestUrl.pathname);
         } catch (error) {}
         this[marker] = bindContext;
         return nativeOpen.apply(this, arguments);
