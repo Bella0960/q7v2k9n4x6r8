@@ -1474,6 +1474,7 @@ class CloudStore {
   }
 
   hideFriendMessage({ userId, friendId, messageId, now }) {
+    return this.atomic(() => {
     const friendship = this.getFriendship(userId, friendId);
     if (!friendship) return { kind: 'not_friends' };
     const message = this.exec(
@@ -1501,6 +1502,7 @@ class CloudStore {
       now
     )[0];
     return { kind: inserted ? 'hidden' : 'already_hidden' };
+    });
   }
 
   clearFriendConversation({ userId, friendId, friendshipGenerationId, now }) {
@@ -1556,6 +1558,7 @@ class CloudStore {
   }
 
   markFriendConversationRead({ userId, friendId, messageId, now }) {
+    return this.atomic(() => {
     const friendship = this.getFriendship(userId, friendId);
     if (!friendship) return { kind: 'not_friends', read: null };
     const target = this.exec(
@@ -1611,6 +1614,7 @@ class CloudStore {
       friendId
     )[0] || null;
     return { kind: updated ? 'updated' : 'already_read', read: current };
+    });
   }
 
   removeFriendship(userId, otherUserId, friendshipGenerationId) {
