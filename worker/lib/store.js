@@ -1221,6 +1221,7 @@ class CloudStore {
          CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END AS friend_id,
          a.display_name AS display_name,
          f.created_at AS created_at,
+         f.generation_id AS generation_id,
          (
            SELECT COUNT(*)
            FROM friend_messages m
@@ -1488,9 +1489,12 @@ class CloudStore {
     return { kind: inserted ? 'hidden' : 'already_hidden' };
   }
 
-  clearFriendConversation({ userId, friendId, now }) {
+  clearFriendConversation({ userId, friendId, friendshipGenerationId, now }) {
     const friendship = this.getFriendship(userId, friendId);
     if (!friendship) return { kind: 'not_friends', cleared: false };
+    if (friendship.generation_id !== friendshipGenerationId) {
+      return { kind: 'stale_generation', cleared: false };
+    }
     const latest = this.exec(
       `SELECT id, created_at
        FROM friend_messages
@@ -1593,9 +1597,13 @@ class CloudStore {
     return { kind: updated ? 'updated' : 'already_read', read: current };
   }
 
-  removeFriendship(userId, otherUserId) {
+  removeFriendship(userId, otherUserId, friendshipGenerationId) {
     const [low, high] = [String(userId), String(otherUserId)].sort();
-    if (!this.getFriendship(userId, otherUserId)) return false;
+    const friendship = this.getFriendship(userId, otherUserId);
+    if (!friendship) return false;
+    if (friendship.generation_id !== friendshipGenerationId) {
+      return { kind: 'stale_generation' };
+    }
     // Old message rows remain stored but belong to the retired generation.
     // Reset both users' cursors and visibility overrides for a clean re-add.
     this.exec(
