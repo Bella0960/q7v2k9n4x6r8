@@ -1271,6 +1271,7 @@
                     idbRestorePoint = await captureIndexedDbRestorePoint(obj.indexedDB);
                 } catch (error) {
                     await rpDeleteRole(RP_ROLE_PRE);
+                    await rpDeleteRole(RP_ROLE_IDB_PRE);
                     toast('已中止导入：无法建立完整的 IndexedDB 回滚恢复点。现有业务数据未修改。'
                         + ((error && error.message) ? ' ' + error.message : ''));
                     return;
