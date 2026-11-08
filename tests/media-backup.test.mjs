@@ -2529,5 +2529,10 @@ test('48 完整导入：只恢复音频元数据时保留同 ID 本地 Blob', as
     assert.equal(ctx.__restorePointRows.size, 0,
         'successful import should still clean both verified restore points');
     assert.equal(ctx.__intercepted.reloads, 1);
+
+    const exported = await ctx.dumpDatabase('maomao-media-store', mediaDef.version, mediaDef.stores);
+    assert.equal(exported.data.audio.length, 2, 'audio metadata remains part of a regular backup');
+    assert.ok(exported.data.audio.every(row => !Object.prototype.hasOwnProperty.call(row, 'blob')),
+        'regular backup must still exclude local audio binary data');
 });
 
