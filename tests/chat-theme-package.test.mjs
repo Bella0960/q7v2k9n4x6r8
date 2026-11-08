@@ -490,3 +490,18 @@ test('reapplying the same active package is idempotent and does not duplicate mo
   assert.equal(listeners.click,1,'重复应用同一主题不能重复注册点击监听');
   assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),theme.id,'重复应用后 last-good 应稳定');
 });
+
+  
+test('theme package scripts use a shared cache-busting revision across chat and importer pages',()=>{
+  const revision='20261109theme2';
+  const importer=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const chatList=readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8');
+  const chatDetail=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
+  assert.ok(importer.includes('../shared/js/chat-theme-package-format.js?v='+revision));
+  for(const html of [chatList,chatDetail]){
+    assert.ok(html.includes('chat-theme-package-format.js?v='+revision));
+    assert.ok(html.includes('chat-theme-package-runtime.js?v='+revision));
+    assert.ok(!html.includes('chat-theme-package-format.js?v=20261107theme1'));
+    assert.ok(!html.includes('chat-theme-package-runtime.js?v=20261107theme1'));
+  }
+});
