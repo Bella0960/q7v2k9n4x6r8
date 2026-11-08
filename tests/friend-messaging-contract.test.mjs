@@ -658,6 +658,24 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   await register(ctx, alice, '198.51.100.81');
   await register(ctx, bob, '198.51.100.82');
   const oldRequestId = await makeFriends(ctx, alice, bob);
+  const currentFriendList = await asAccount(ctx, alice, '/api/friends');
+  assert.equal(currentFriendList.payload.friends[0].generationId, ctx.store.getFriendship(alice.userId, bob.userId).generation_id);
+
+  const missingRemoveGeneration = await ctx.asJson('/api/friends/' + bob.userId, {
+    method: 'DELETE',
+    headers: { 'x-maomao-account': alice.userId + '.' + alice.secret },
+    body: {}
+  });
+  assert.equal(missingRemoveGeneration.status, 400);
+  assert.equal(missingRemoveGeneration.payload.error.code, 'INVALID_FRIENDSHIP_GENERATION');
+
+  const missingClearGeneration = await ctx.asJson('/api/friends/' + bob.userId + '/messages', {
+    method: 'DELETE',
+    headers: { 'x-maomao-account': alice.userId + '.' + alice.secret },
+    body: {}
+  });
+  assert.equal(missingClearGeneration.status, 400);
+  assert.equal(missingClearGeneration.payload.error.code, 'INVALID_FRIENDSHIP_GENERATION');
 
   const oldClientMessageId = messageId();
   const oldMessage = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
@@ -699,6 +717,8 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   assert.deepEqual((await asAccount(ctx, bob, '/api/friends')).payload.friends, []);
 
   await makeFriends(ctx, alice, bob);
+  const readdedFriendList = await asAccount(ctx, alice, '/api/friends');
+  assert.notEqual(readdedFriendList.payload.friends[0].generationId, oldGenerationId);
 
   // Simulate a request that was created under the old relationship but only
   // reaches the database after the same pair has been re-added.
