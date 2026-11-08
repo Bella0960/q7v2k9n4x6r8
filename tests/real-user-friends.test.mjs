@@ -125,7 +125,8 @@ class FakeD1 {
           const peer = this.accounts.get(peerId);
           return peer ? {
             id: r.id, note: r.note, created_at: r.created_at,
-            peer_id: peer.id, handle: peer.handle, display_name: peer.display_name,
+            peer_id: peer.id, peer_status: peer.status || "active",
+            handle: peer.handle, display_name: peer.display_name,
             avatar_asset_id: peer.avatar_asset_id || null
           } : null;
         }).filter(Boolean);
@@ -581,7 +582,8 @@ test("friend removal, block and unblock update the authoritative relationship", 
   const ownBlockList = await call(context, "/blocks", "GET", undefined, "alice");
   const otherBlockList = await call(context, "/blocks", "GET", undefined, "bob");
   assert.deepEqual(ownBlockList.body.blocked.map(item => item.id), ["account-bob-001"]);
-  assert.equal(ownBlockList.body.blocked[0].avatarAssetId, "av_" + "c".repeat(32));
+  assert.equal("avatarAssetId" in ownBlockList.body.blocked[0], false,
+    "blocked-user rows must not disclose avatar asset references");
   assert.equal(otherBlockList.body.blocked.length, 0);
   const blockedCode = await call(context, "/codes/rotate", "POST", undefined, "bob");
   const blockedRequest = await call(context, "/requests", "POST", {
