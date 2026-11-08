@@ -962,26 +962,89 @@
         var db = null;
         return idbOpen(dbName, version, storeDefs).then(function (_db) {
             db = _db;
-            var data = {};
-            var index = 0;
-            function next() {
-                if (index >= storeDefs.length) {
-                    db.close();
-                    return data;
+            return new Promise(function (resolve, reject) {
+                var storeNames = storeDefs.map(function (def) { return def.store; });
+                var tx;
+                var data = {};
+                var loaded = {};
+                var settled = false;
+                function fail(error) {
+                    if (settled) return;
+                    settled = true;
+                    if (tx) { try { tx.abort(); } catch (e) {} }
+                    reject(error || new Error(dbName + ' 快照读取失败'));
                 }
-                var def = storeDefs[index++];
-                return dumpStore(db, def, true).then(function (result) {
-                    if (result.skipped && result.skipped.length) {
-                        throw new Error(dbName + '/' + def.store + ' 有 '
-                            + result.skipped.length + ' 条记录无法建立完整恢复点');
-                    }
-                    data[def.store] = result.records;
-                    return next();
-                });
-            }
-            return next();
-        }).catch(function (error) {
-            if (db) { try { db.close(); } catch (closeError) {} }
+                try {
+                    tx = db.transaction(storeNames, 'readonly');
+                    tx.onerror = function () { fail(tx.error || new Error(dbName + ' 快照事务失败')); };
+                    tx.onabort = function () { fail(tx.error || new Error(dbName + ' 快照事务已中止')); };
+                    tx.oncomplete = function () {
+                        if (settled) return;
+                        settled = true;
+                        for (var i = 0; i < storeDefs.length; i++) {
+                            if (!loaded[storeDefs[i].store]) {
+                                reject(new Error(dbName + '/' + storeDefs[i].store + ' 快照读取不完整'));
+                                return;
+                            }
+                        }
+                        resolve(data);
+                    };
+                    storeDefs.forEach(function (def) {
+                        var store = tx.objectStore(def.store);
+                        if (def.keyPath) {
+                            var valuesRequest = store.getAll();
+                            valuesRequest.onsuccess = function () {
+                                data[def.store] = valuesRequest.result || [];
+                                loaded[def.store] = true;
+                            };
+                            valuesRequest.onerror = function () {
+                                fail(valuesRequest.error || new Error(def.store + ' 快照读取失败'));
+                            };
+                            return;
+                        }
+                        var keysRequest = store.getAllKeys();
+                        var valuesRequestOut = store.getAll();
+                        var keysReady = false;
+                        var valuesReady = false;
+                        var keys = [];
+                        var values = [];
+                        function pairOutOfLineRecords() {
+                            if (!keysReady || !valuesReady || settled) return;
+                            if (keys.length !== values.length) {
+                                fail(new Error(dbName + '/' + def.store + ' 快照期间记录数量发生变化'));
+                                return;
+                            }
+                            data[def.store] = keys.map(function (key, index) {
+                                return { __key: key, __value: values[index] };
+                            });
+                            loaded[def.store] = true;
+                        }
+                        keysRequest.onsuccess = function () {
+                            keys = keysRequest.result || [];
+                            keysReady = true;
+                            pairOutOfLineRecords();
+                        };
+                        keysRequest.onerror = function () {
+                            fail(keysRequest.error || new Error(def.store + ' 快照主键读取失败'));
+                        };
+                        valuesRequestOut.onsuccess = function () {
+                            values = valuesRequestOut.result || [];
+                            valuesReady = true;
+                            pairOutOfLineRecords();
+                        };
+                        valuesRequestOut.onerror = function () {
+                            fail(valuesRequestOut.error || new Error(def.store + ' 快照记录读取失败'));
+                        };
+                    });
+                } catch (error) {
+                    fail(error);
+                }
+            });
+        }).then(function (data) {
+            if (db) { try { db.close(); } catch (e) {} }
+            return data;
+        }, function (error) {
+            if (db) { try { db.close(); } catch (e) {} }
             throw error;
         });
     }
