@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tutorialPath = resolve(here, '../tutorial/tutorial.html');
@@ -39,6 +40,43 @@ function assertSelectorExists(source, selector, label) {
     assert.ok(source.includes(name), label + ' missing .' + name);
   }
 }
+
+test('tutorial progress safely normalizes corrupted and outdated local storage', () => {
+  const functionMatch = html.match(/function loadProgress\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(functionMatch, 'loadProgress must remain independently testable');
+  const lessons = [
+    { id: 'desktop', steps: [{}, {}] },
+    { id: 'chat', steps: [{}, {}, {}] }
+  ];
+  const read = (saved) => {
+    const fn = runInNewContext('(' + functionMatch[0] + ')', {
+      KEY: 'maomao_tutorial_progress_v1',
+      lessons,
+      localStorage: { getItem: () => JSON.stringify(saved) }
+    });
+    return JSON.parse(JSON.stringify(fn()));
+  };
+
+  assert.deepEqual(read({
+    done: 'corrupt',
+    steps: { desktop: 'not-an-array', chat: [0, 2, 9, -1, '1', 1, 1] },
+    last: { unexpected: true }
+  }), {
+    done: {},
+    steps: { chat: [0, 2, 1] },
+    last: 'desktop'
+  });
+
+  assert.deepEqual(read({
+    done: { desktop: true, removedLesson: true, chat: 'yes' },
+    steps: { chat: [2, 0, 0, 99] },
+    last: 'chat'
+  }), {
+    done: { desktop: true },
+    steps: { chat: [2, 0] },
+    last: 'chat'
+  });
+});
 
 test('tutorial app is linked from the desktop and included in the default layout', () => {
   assert.match(index, /data-href="tutorial\/tutorial\.html"[^>]*data-drag="app_tutorial"[^>]*data-name="教程"/);
