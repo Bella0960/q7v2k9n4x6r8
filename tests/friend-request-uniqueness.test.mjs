@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openTestDb } from './helpers/cloud-helpers.mjs';
-import { MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
+import { createStore } from '../worker/lib/store.js';
+import { MIGRATIONS, splitSql, applyMigrations } from '../worker/lib/migrations.js';
 
 test('0009 migration keeps the earliest pending request and rejects reverse duplicates', () => {
   const db = openTestDb();
@@ -170,4 +171,115 @@ test('0010 migration backfills existing friendship and message generations', () 
   assert.equal(query('SELECT COUNT(*) AS total FROM friend_message_hides WHERE user_id = ?', 'u_ghost')[0].total, 0);
   assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_reads WHERE user_id = ?', 'u_alpha')[0].total, 1);
   assert.equal(query('SELECT COUNT(*) AS total FROM friend_message_hides WHERE user_id = ?', 'u_alpha')[0].total, 1);
+});
+
+
+test('接受好友申请与删除好友的多步写入具备事务回滚保护', () => {
+  const db = openTestDb();
+  const { exec, query, transaction } = db;
+  applyMigrations(exec);
+  const store = createStore(exec, transaction);
+  const request = {
+    id: 'accept-atomic-request',
+    requesterId: 'u_alpha',
+    recipientId: 'u_bravo',
+    message: '',
+    now: 100
+  };
+  assert.equal(store.createFriendRequest(request).kind, 'created');
+
+  const failingAcceptStore = createStore((sql, ...params) => {
+    if (String(sql).includes('INSERT INTO friendships')) {
+      throw new Error('injected friendship insert failure');
+    }
+    return exec(sql, ...params);
+  }, transaction);
+
+  assert.throws(
+    () => failingAcceptStore.respondToFriendRequest({
+      requestId: request.id,
+      userId: request.recipientId,
+      status: 'accepted',
+      now: 101
+    }),
+    /injected friendship insert failure/
+  );
+  assert.equal(
+    query('SELECT status FROM friend_requests WHERE id = ?', request.id)[0].status,
+    'pending',
+    '好友关系插入失败时，申请状态必须回滚为 pending'
+  );
+  assert.equal(store.getFriendship(request.requesterId, request.recipientId), null);
+
+  const accepted = store.respondToFriendRequest({
+    requestId: request.id,
+    userId: request.recipientId,
+    status: 'accepted',
+    now: 102
+  });
+  assert.equal(accepted.status, 'accepted');
+  assert.equal(accepted.duplicate, false);
+  const friendship = store.getFriendship(request.requesterId, request.recipientId);
+  assert.equal(friendship.generation_id, request.id);
+
+  const inserted = store.insertFriendMessage({
+    id: 'atomic-message-id',
+    senderId: request.requesterId,
+    recipientId: request.recipientId,
+    clientMessageId: 'atomic-client-message',
+    friendshipGenerationId: friendship.generation_id,
+    body: '事务清理回滚测试',
+    now: 103,
+    windowStart: 0,
+    rateLimit: 60
+  });
+  assert.equal(inserted.kind, 'created');
+
+  exec(
+    `INSERT INTO friend_conversation_reads
+      (user_id, friend_id, last_read_created_at, last_read_message_id, updated_at)
+      VALUES (?, ?, ?, ?, ?)`,
+    request.requesterId, request.recipientId, 103, 'atomic-message-id', 103
+  );
+  exec(
+    `INSERT INTO friend_conversation_clears
+      (user_id, friend_id, clear_before_created_at, clear_before_message_id, updated_at)
+      VALUES (?, ?, ?, ?, ?)`,
+    request.requesterId, request.recipientId, 103, 'atomic-message-id', 103
+  );
+  exec(
+    `INSERT INTO friend_message_hides (user_id, friend_id, message_id, hidden_at)
+      VALUES (?, ?, ?, ?)`,
+    request.requesterId, request.recipientId, 'atomic-message-id', 103
+  );
+
+  const failingRemoveStore = createStore((sql, ...params) => {
+    if (String(sql).includes('DELETE FROM friendships')) {
+      throw new Error('injected friendship delete failure');
+    }
+    return exec(sql, ...params);
+  }, transaction);
+
+  assert.throws(
+    () => failingRemoveStore.removeFriendship(
+      request.requesterId,
+      request.recipientId,
+      friendship.generation_id
+    ),
+    /injected friendship delete failure/
+  );
+  assert.ok(store.getFriendship(request.requesterId, request.recipientId));
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_reads')[0].total, 1);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_clears')[0].total, 1);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_message_hides')[0].total, 1);
+
+  assert.equal(store.removeFriendship(
+    request.requesterId,
+    request.recipientId,
+    friendship.generation_id
+  ), true);
+  assert.equal(store.getFriendship(request.requesterId, request.recipientId), null);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_reads')[0].total, 0);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_clears')[0].total, 0);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_message_hides')[0].total, 0);
 });
