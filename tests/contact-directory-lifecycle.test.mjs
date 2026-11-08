@@ -601,18 +601,6 @@ test('server snapshots are rejected when their account is no longer active', () 
   assert.equal(directory.readResult().contacts.length, 0);
 });
 
-test('server snapshots are rejected when their account is no longer active', () => {
-  const { directory } = createDirectoryRuntime();
-  directory.setActiveAccountId('account-current');
-  const result = directory.syncServerSnapshot(serverRoster('account-previous', [
-    acceptedServerFriend('account_friend_previous', 'request_previous_001', 7000)
-  ], 7100), 'account-previous', { now: 7200 });
-
-  assert.equal(result.ok, false);
-  assert.equal(result.error, 'active_account_mismatch');
-  assert.equal(directory.readResult().contacts.length, 0);
-});
-
 test('removed snapshots create tombstones for unseen users without claiming local-only contacts', () => {
   const legacy = JSON.stringify([{
     id: 'same-id-local-contact',
