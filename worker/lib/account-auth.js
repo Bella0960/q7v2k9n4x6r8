@@ -363,10 +363,15 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     }
     const salt = randomToken(16);
     const digest = await passwordDigest(newPassword, salt);
-    if (!store.updateMaoAccountPassword(actor.account_id, salt, digest, now())) {
+    if (!store.updateMaoAccountPasswordAndRevokeOtherSessions({
+      accountId: actor.account_id,
+      keepSessionId: actor.session_id,
+      passwordSalt: salt,
+      passwordHash: digest,
+      now: now()
+    })) {
       throw new ApiError(409, 'PASSWORD_UPDATE_FAILED', '密码修改没有成功');
     }
-    store.revokeMaoAccountSessionsExcept(actor.account_id, actor.session_id, now());
     store.clearMaoLoginRateLimit(rateLimitKey);
     return ok({ changed: true, sessionsRevoked: true });
   }
