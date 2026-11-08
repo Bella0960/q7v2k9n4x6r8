@@ -205,6 +205,9 @@ export default {
           return Response.redirect(target, 302);
         }
         authorizedAccount = authPayload.account;
+        if (url.pathname.startsWith('/admin/') && authorizedAccount.role !== 'super_admin') {
+          return Response.redirect(new URL('/index.html', url), 302);
+        }
       } catch {
         return Response.redirect(new URL('/account/index.html', url), 302);
       }
