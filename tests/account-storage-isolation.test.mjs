@@ -258,6 +258,12 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(appSource, /x-mao-account-context/);
   assert.match(appSource, /ACCOUNT_CONTEXT_CHANGED/);
   assert.match(scopeSource, /headers\.set\('x-mao-account-context', accountId\)/);
+  assert.match(scopeSource, /function installAccountBoundXHR\(\)/);
+  assert.match(scopeSource, /nativeSetRequestHeader\.call\(this, 'x-mao-account-context', accountId\)/);
+  assert.match(scopeSource, /!installAccountBoundXHR\(\)/);
+  assert.match(workerSource, /let injected = false/);
+  assert.match(workerSource, /if \(!injected\) return blockedPage/);
+  assert.match(workerSource, /!\['user', 'super_admin'\]\.includes\(role\)/);
 });
 
 test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
