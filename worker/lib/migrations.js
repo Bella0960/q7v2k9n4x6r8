@@ -59,9 +59,20 @@ export function applyMigrations(exec, now = Date.now()) {
   const results = [];
   for (const migration of MIGRATIONS) {
     if (applied.has(migration.version)) continue;
-    for (const statement of splitSql(migration.sql)) exec(statement);
-    exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
-    results.push(migration.version);
+    // A schema change and its version marker must commit together. Otherwise a
+    // crash after ALTER TABLE but before the marker can make the next startup
+    // retry a non-idempotent migration (for example, ADD COLUMN).
+    exec('BEGIN IMMEDIATE');
+    try {
+      for (const statement of splitSql(migration.sql)) exec(statement);
+      exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
+      exec('COMMIT');
+      results.push(migration.version);
+    } catch (error) {
+      try { exec('ROLLBACK'); } catch (rollbackError) {}
+      throw error;
+    }
   }
   return results;
 }
+
