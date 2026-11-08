@@ -322,18 +322,125 @@
       .replace(/"/g,"\\\"")
       .replace(/[\u0000-\u001f\u007f]/g,function(ch){return "\\"+ch.charCodeAt(0).toString(16)+" "})+"\"";
   }
+  function skipCssTrivia(css,index){
+    while(index<css.length){
+      if(/\s/.test(css.charAt(index))){index++;continue}
+      if(css.charAt(index)==="/"&&css.charAt(index+1)==="*"){
+        var close=css.indexOf("*/",index+2);
+        return close<0?css.length:skipCssTrivia(css,close+2);
+      }
+      break;
+    }
+    return index;
+  }
+  function readCssIdentifier(css,start){
+    var name="",index=start;
+    while(index<css.length){
+      var c=css.charAt(index);
+      if(c==="/"&&css.charAt(index+1)==="*"){
+        var close=css.indexOf("*/",index+2);
+        if(close<0)return{name:name,end:css.length};
+        index=close+2;
+        continue;
+      }
+      if(c==="\\\\"){
+        var escaped=decodeCssEscape(css,index);
+        name+=escaped.value;
+        index=escaped.next;
+        continue;
+      }
+      if(/[A-Za-z0-9_-]/.test(c)||c.charCodeAt(0)>=128){name+=c;index++;continue}
+      break;
+    }
+    return{name:name,end:index};
+  }
+  function readCssUrl(css,open){
+    var index=skipCssTrivia(css,open+1),value="",quote=css.charAt(index)==="\""||css.charAt(index)==="'"?css.charAt(index):"";
+    if(quote){
+      index++;
+      var closed=false;
+      while(index<css.length){
+        var c=css.charAt(index);
+        if(c==="\\\\"){
+          var escaped=decodeCssEscape(css,index);
+          value+=escaped.value;
+          index=escaped.next;
+          continue;
+        }
+        if(c===quote){closed=true;index++;break}
+        value+=c;
+        index++;
+      }
+      if(!closed)return null;
+      index=skipCssTrivia(css,index);
+      if(css.charAt(index)!==")")return null;
+      return{path:value.trim(),end:index+1};
+    }
+    while(index<css.length){
+      var c=css.charAt(index);
+      if(c===")")return{path:value.trim(),end:index+1};
+      if(c==="/"&&css.charAt(index+1)==="*"){
+        var close=css.indexOf("*/",index+2);
+        if(close<0)return null;
+        index=close+2;
+        continue;
+      }
+      if(c==="\\\\"){
+        var escaped=decodeCssEscape(css,index);
+        value+=escaped.value;
+        index=escaped.next;
+        continue;
+      }
+      value+=c;
+      index++;
+    }
+    return null;
+  }
   function rewriteCssAssetUrls(css,assetUrls){
-    var normalized=normalizeCssForSafety(String(css||""));
-    var rewritten=normalized.code.replace(/url\s*\(\s*(?:\u0001(\d+)\u0002|([^)]*?))\s*\)/gi,function(match,index,raw){
-      var path=index!==undefined?String(normalized.strings[Number(index)]||"").trim():String(raw||"").trim();
-      if(path.indexOf("assets/")!==0)return match;
-      var url=assetUrls&&assetUrls[path];
-      return url?"url("+quoteCssString(url)+")":"none";
-    });
-    return rewritten.replace(/\u0001(\d+)\u0002/g,function(token,index){
-      var at=Number(index);
-      return at<normalized.strings.length?quoteCssString(normalized.strings[at]):token;
-    });
+    css=String(css||"");
+    var output="",index=0;
+    while(index<css.length){
+      var c=css.charAt(index);
+      if(c==="/"&&css.charAt(index+1)==="*"){
+        var commentEnd=css.indexOf("*/",index+2);
+        var next=commentEnd<0?css.length:commentEnd+2;
+        output+=css.slice(index,next);
+        index=next;
+        continue;
+      }
+      if(c==="\""||c==="'"){
+        var quote=c,start=index++;
+        while(index<css.length){
+          c=css.charAt(index);
+          if(c==="\\\\"){index=decodeCssEscape(css,index).next;continue}
+          index++;
+          if(c===quote)break;
+        }
+        output+=css.slice(start,index);
+        continue;
+      }
+      if(/[A-Za-z_-]/.test(c)||c==="\\\\"||c.charCodeAt(0)>=128){
+        var identifier=readCssIdentifier(css,index);
+        var open=skipCssTrivia(css,identifier.end);
+        if(identifier.name.toLowerCase()==="url"&&css.charAt(open)==="("){
+          var parsed=readCssUrl(css,open);
+          if(parsed){
+            if(parsed.path.indexOf("assets/")===0){
+              var resolved=assetUrls&&Object.prototype.hasOwnProperty.call(assetUrls,parsed.path)?assetUrls[parsed.path]:"";
+              output+=resolved?"url("+quoteCssString(resolved)+")":"none";
+            }else output+=css.slice(index,parsed.end);
+            index=parsed.end;
+            continue;
+          }
+        }
+        output+=css.slice(index,identifier.end);
+        index=identifier.end;
+        continue;
+      }
+      output+=c;
+      index++;
+    }
+    return output;
   }
   function cleanValue(v,propertyName){
     if(typeof v==="number")return Number.isFinite(v)?v:null;
