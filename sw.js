@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v177';
+const CACHE_NAME = 'phone-app-pwa-v178';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
 const APP_SHELL = [
@@ -74,7 +74,7 @@ const APP_SHELL = [
   './settings/image-generation.html',
   './settings/js/image-generation.js?v=20261106v1',
   './settings/mcp-connections.html',
-  './shared/js/phone/mcp-client.js?v=20261108g',
+  './shared/js/phone/mcp-client.js?v=20261108h',
   'settings/css/settings.css',
   'shared/css/mobile-fit.css',
   'shared/js/font-loader.js',
