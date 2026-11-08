@@ -814,3 +814,15 @@ test('import locks file selection and uses one immutable package snapshot',async
   assert.equal(ids.themeFile.disabled,false,'导入完成后应重新启用文件输入');
   assert.equal(ids.packagePreview.hidden,true,'成功导入后应关闭预览');
 });
+
+
+test('theme CSS rejects global keyframes including comment and escape obfuscation',()=>{
+  const blocked=[
+    '@keyframes fadeIn{from{opacity:0}to{opacity:1}}',
+    '@-webkit-keyframes fadeIn{from{opacity:0}to{opacity:1}}',
+    '@key/**/frames fadeIn{from{opacity:0}to{opacity:1}}',
+    String.raw\`@k\\65 yframes fadeIn{from{opacity:0}to{opacity:1}}\`
+  ];
+  blocked.forEach(css=>assert.throws(()=>F.validateCss(css),/不允许/));
+  assert.doesNotThrow(()=>F.validateCss('.msg-bubble{transition:opacity .2s ease-out}'));
+});
