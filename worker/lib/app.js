@@ -378,6 +378,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         userId: item.friend_id,
         displayName: item.display_name || '',
         createdAt: Number(item.created_at),
+        generationId: item.generation_id,
         unreadCount: Number(item.unread_count || 0)
       }))
     });
@@ -466,8 +467,20 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId)) {
       throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
     }
-    const removed = await store.removeFriendship(account.user_id, friendId);
-    return ok({ removed });
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'friendshipGenerationId') {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '删除好友操作必须携带当前好友关系代际');
+    }
+    const friendshipGenerationId = String(body.friendshipGenerationId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(friendshipGenerationId)) {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '好友关系代际凭据无效');
+    }
+    const removed = await store.removeFriendship(account.user_id, friendId, friendshipGenerationId);
+    if (removed && typeof removed === 'object' && removed.kind === 'stale_generation') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_GENERATION', '好友关系已经变化，请刷新好友列表后再操作');
+    }
+    return ok({ removed: Boolean(removed) });
   }
 
   function friendMessageView(row) {
@@ -691,13 +704,26 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
       throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
     }
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'friendshipGenerationId') {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '清空聊天必须携带当前好友关系代际');
+    }
+    const friendshipGenerationId = String(body.friendshipGenerationId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(friendshipGenerationId)) {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '好友关系代际凭据无效');
+    }
     const result = await store.clearFriendConversation({
       userId: account.user_id,
       friendId,
+      friendshipGenerationId,
       now: now()
     });
     if (result.kind === 'not_friends') {
       throw new ApiError(403, 'NOT_FRIENDS', '只有仍然有效的好友才能清理聊天记录');
+    }
+    if (result.kind === 'stale_generation') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_GENERATION', '好友关系已经变化，已阻止旧设备清空新会话');
     }
     return ok({
       cleared: result.cleared,
