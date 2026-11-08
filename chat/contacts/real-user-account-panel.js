@@ -318,18 +318,20 @@
       var peer = item.peer || {};
       var main = document.createElement('div');
       main.className = 'ru-list-main ru-list-main-with-avatar';
-      main.appendChild(createAvatarWrap(peer.avatarAssetId, peer.displayName, false));
+      var peerUnavailable = peer.unavailable === true;
+      var visibleName = peerUnavailable ? '账号暂不可用' : (peer.displayName || 'MAOMAO 用户');
+      main.appendChild(createAvatarWrap(peerUnavailable ? null : peer.avatarAssetId, visibleName, false));
       var textWrap = document.createElement('div');
       textWrap.className = 'ru-list-text';
-      addText(textWrap, 'ru-list-name', peer.displayName || 'MAOMAO 用户');
+      addText(textWrap, 'ru-list-name', visibleName);
       addText(textWrap, 'ru-list-meta',
-        (peer.handle ? '@' + peer.handle : '') +
+        (peerUnavailable ? '对方账号当前不可用' : (peer.handle ? '@' + peer.handle : '')) +
         (item.note ? ' · ' + item.note : ''));
       main.appendChild(textWrap);
       var actions = document.createElement('div');
       actions.className = 'ru-list-actions';
       if (direction === 'incoming') {
-        addAction(actions, '通过', 'accept-request', item.id);
+        if (!peerUnavailable) addAction(actions, '通过', 'accept-request', item.id);
         addAction(actions, '拒绝', 'decline-request', item.id);
       } else {
         addAction(actions, '撤回', 'cancel-request', item.id);
