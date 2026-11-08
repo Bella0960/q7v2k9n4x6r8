@@ -129,8 +129,11 @@
     button.setAttribute('aria-hidden', 'true');
     document.body.appendChild(button);
 
-    // The hit target is limited to the 84x4 visible-line footprint on every app
-    // page (including pages with a comment bar), so it never blocks other controls.
+    // 论坛详情页的评论输入框完整覆盖可见线所在的 84x4 区域，无法在不改布局的前提下
+    // 同时保留两者点击。按「评论输入框完整可交互区域优先」原则，该页不创建命中目标：
+    // 可见线外观不变，但不承担返回桌面（例外记录见 PR #209）。
+    if (document.querySelector('.comment-bar')) return;
+
     var hitButton = document.createElement('button');
     hitButton.type = 'button';
     hitButton.className = 'maomao-global-home-indicator-hit-target';
