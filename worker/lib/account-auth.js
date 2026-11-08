@@ -254,6 +254,85 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     return ok({ account: publicAccount(account) });
   }
 
+  async function accountSecurity(request) {
+    const actor = await getAuthenticatedAccount(request);
+    if (!actor) throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
+    return ok({
+      currentSessionId: actor.session_id,
+      devices: store.listMaoAccountDevices(actor.account_id).map(device => ({
+        id: device.id,
+        label: device.label || '',
+        platform: device.platform || '',
+        createdAt: Number(device.created_at),
+        lastSeenAt: Number(device.last_seen_at),
+        revokedAt: device.revoked_at == null ? null : Number(device.revoked_at)
+      })),
+      sessions: store.listMaoAccountSessions(actor.account_id).map(session => ({
+        id: session.id,
+        createdAt: Number(session.created_at),
+        expiresAt: Number(session.expires_at),
+        lastUsedAt: Number(session.last_used_at),
+        revokedAt: session.revoked_at == null ? null : Number(session.revoked_at),
+        current: session.id === actor.session_id
+      }))
+    });
+  }
+
+  async function revokeOwnSession(request, sessionId) {
+    const actor = await getAuthenticatedAccount(request);
+    if (!actor || actor.status !== 'active') {
+      throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
+    }
+    if (!store.revokeMaoAccountSessionForAccount(actor.account_id, sessionId, now())) {
+      throw new ApiError(404, 'SESSION_NOT_FOUND', '登录会话不存在或已经退出');
+    }
+    const response = ok({ revoked: true, current: sessionId === actor.session_id });
+    return sessionId === actor.session_id ? clearSessionCookie(response, request) : response;
+  }
+
+  async function revokeOwnDevice(request, deviceId) {
+    const actor = await getAuthenticatedAccount(request);
+    if (!actor || actor.status !== 'active') {
+      throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
+    }
+    if (!store.revokeMaoAccountDevice(actor.account_id, deviceId, now())) {
+      throw new ApiError(404, 'DEVICE_NOT_FOUND', '设备不存在或已经撤销');
+    }
+    return ok({ revoked: true });
+  }
+
+  async function changePassword(request) {
+    const actor = await getAuthenticatedAccount(request);
+    if (!actor || actor.status !== 'active') {
+      throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
+    }
+    const body = await readJsonBody(request);
+    const currentPassword = String(body.currentPassword || '');
+    const newPassword = String(body.newPassword || '');
+    if (newPassword.length < 10 || newPassword.length > 128) {
+      throw new ApiError(400, 'INVALID_PASSWORD', '新密码长度需要为 10–128 位');
+    }
+    if (body.confirmPassword !== newPassword) {
+      throw new ApiError(400, 'PASSWORD_MISMATCH', '两次输入的新密码不一致');
+    }
+    const account = store.getMaoAccountById(actor.account_id);
+    if (!account) throw new ApiError(404, 'ACCOUNT_NOT_FOUND', '账号不存在');
+    const currentDigest = await passwordDigest(currentPassword, account.password_salt);
+    if (!timingSafeEqualHex(currentDigest, account.password_hash)) {
+      throw new ApiError(401, 'CURRENT_PASSWORD_INVALID', '当前密码不正确');
+    }
+    if (timingSafeEqualHex(await passwordDigest(newPassword, account.password_salt), account.password_hash)) {
+      throw new ApiError(400, 'PASSWORD_REUSE', '新密码不能与当前密码相同');
+    }
+    const salt = randomToken(16);
+    const digest = await passwordDigest(newPassword, salt);
+    if (!store.updateMaoAccountPassword(actor.account_id, salt, digest, now())) {
+      throw new ApiError(409, 'PASSWORD_UPDATE_FAILED', '密码修改没有成功');
+    }
+    store.revokeMaoAccountSessionsExcept(actor.account_id, actor.session_id, now());
+    return ok({ changed: true, sessionsRevoked: true });
+  }
+
   async function logout(request) {
     const token = cookieValue(request);
     if (token) {
@@ -413,7 +492,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/accounts/login' && method === 'POST') return await login(request);
       if (path === '/api/accounts/logout' && method === 'POST') return await logout(request);
       if (path === '/api/accounts/me' && method === 'GET') return await currentAccount(request);
+      if (path === '/api/accounts/security' && method === 'GET') return await accountSecurity(request);
+      if (path === '/api/accounts/password/change' && method === 'POST') return await changePassword(request);
       if (path === '/api/accounts/invites/redeem' && method === 'POST') return await redeemInvite(request);
+
+      const sessionMatch = /^\/api\/accounts\/sessions\/([A-Za-z0-9_-]{16,64})\/revoke$/.exec(path);
+      if (sessionMatch && method === 'POST') return await revokeOwnSession(request, sessionMatch[1]);
+      const deviceMatch = /^\/api\/accounts\/devices\/([A-Za-z0-9_-]{16,64})\/revoke$/.exec(path);
+      if (deviceMatch && method === 'POST') return await revokeOwnDevice(request, deviceMatch[1]);
       if (path === '/api/admin/bootstrap' && method === 'POST') return await bootstrap(request);
       if (path === '/api/admin/accounts' && method === 'GET') return await adminAccounts(request);
       if (path === '/api/admin/invites' && method === 'GET') return await adminInvites(request);
