@@ -99,6 +99,26 @@ test('0010 migration backfills existing friendship and message generations', () 
     'legacy-message', 'u_alpha', 'u_bravo', 'legacy-client-id', 'legacy body', 101
   );
 
+  // Simulate old per-user state whose relationship was already deleted before
+  // generation-aware cleanup shipped. These rows must not affect a later re-add.
+  exec(
+    `INSERT INTO friend_conversation_reads
+      (user_id, friend_id, last_read_created_at, last_read_message_id, updated_at)
+      VALUES (?, ?, ?, ?, ?)`,
+    'u_ghost', 'u_removed', 500, 'old-read-message', 500
+  );
+  exec(
+    `INSERT INTO friend_conversation_clears
+      (user_id, friend_id, clear_before_created_at, clear_before_message_id, updated_at)
+      VALUES (?, ?, ?, ?, ?)`,
+    'u_ghost', 'u_removed', 500, 'old-clear-message', 500
+  );
+  exec(
+    `INSERT INTO friend_message_hides (user_id, friend_id, message_id, hidden_at)
+      VALUES (?, ?, ?, ?)`,
+    'u_ghost', 'u_removed', 'old-hidden-message', 500
+  );
+
   for (const statement of splitSql(migration.sql)) exec(statement);
   const friendship = query(
     'SELECT generation_id FROM friendships WHERE user_low_id = ? AND user_high_id = ?',
@@ -119,4 +139,8 @@ test('0010 migration backfills existing friendship and message generations', () 
   );
   assert.deepEqual(visible, []);
   assert.notEqual(message.generation_id, 'new-friendship-generation');
+
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_reads WHERE user_id = ?', 'u_ghost')[0].total, 0);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_clears WHERE user_id = ?', 'u_ghost')[0].total, 0);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_message_hides WHERE user_id = ?', 'u_ghost')[0].total, 0);
 });
