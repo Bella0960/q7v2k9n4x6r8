@@ -1408,3 +1408,138 @@ test('19 完整导入：IndexedDB 恢复点写入失败时提前中止且不修�
     ));
     assert.equal(ctx.__intercepted.reloads, 0);
 });
+
+
+/* ═══════════════════════════════════════════════
+   20. 完整导入链成功：验证数据提交、恢复点清理与刷新
+   ═══════════════════════════════════════════════ */
+test('20 完整导入成功：业务数据写入后清理两份恢复点并刷新', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-new-key',
+                __value: { id: 'wallpaper-new', name: 'Imported wallpaper' }
+            }],
+            audio: []
+        }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters,
+        JSON.stringify({ profile: 'imported-character-state' }));
+    assert.equal(ctx.localStorage.phone_data_v2, 'imported-phone-state');
+    assert.equal(ctx.localStorage.keep_local_setting, undefined,
+        '成功导入按备份内容覆盖普通 localStorage 键');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-new']);
+    assert.equal(ctx.__restorePointRows.size, 0, '成功提交后应清理两份临时恢复点');
+    assert.equal(ctx.__intercepted.reloads, 1, '成功导入应触发一次页面刷新');
+    assert.ok(ctx.__intercepted.toasts.some(item => /导入成功/.test(item.msg)));
+});
+
+/* ═══════════════════════════════════════════════
+   21. 完整导入链：无法完整读取旧 localStorage 时拒绝开始导入
+   ═══════════════════════════════════════════════ */
+test('21 完整导入：导入前 localStorage 读取失败时中止且不建立不完整恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const originalGetItem = ctx.localStorage.getItem;
+    Object.defineProperty(ctx.localStorage, 'getItem', {
+        configurable: true,
+        value: function (key) {
+            if (key === 'phone_data_v2') throw new Error('injected localStorage read failure');
+            return originalGetItem.call(this, key);
+        }
+    });
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': { wallpapers: [] }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '不完整的 localStorage 快照不得写成可用恢复点');
+    assert.equal(ctx.__intercepted.reloads, 0);
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /无法完整读取本机数据/.test(item.msg) && /phone_data_v2/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   22. localStorage.clear 故障：不得产生异步未处理异常，且应尝试恢复
+   ═══════════════════════════════════════════════ */
+test('22 完整导入：localStorage.clear 抛错时安全中止并从恢复点恢复原值', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const originalClear = ctx.localStorage.clear;
+    let failOnce = true;
+    Object.defineProperty(ctx.localStorage, 'clear', {
+        configurable: true,
+        value: function () {
+            if (failOnce) {
+                failOnce = false;
+                throw new Error('injected localStorage clear failure');
+            }
+            return originalClear.call(this);
+        }
+    });
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': { wallpapers: [] }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '回滚成功后应清理恢复点');
+    assert.equal(ctx.__intercepted.reloads, 0);
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /已从本机恢复点回滚到导入前状态/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   23. localStorage 恢复校验必须拒绝额外残留键
+   ═══════════════════════════════════════════════ */
+test('23 verifyRestore：检测导入前快照之外的额外残留键', () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            unexpected_residue: 'should-not-remain'
+        }
+    });
+    const result = ctx.verifyRestore({
+        ai_custom_characters: 'old-character-state'
+    });
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.extra, ['unexpected_residue']);
+    assert.deepEqual(result.missing, []);
+    assert.deepEqual(result.mismatched, []);
+});
