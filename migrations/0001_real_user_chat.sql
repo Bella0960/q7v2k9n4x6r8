@@ -480,4 +480,11 @@ BEGIN
       responded_at = MAX(created_at, NEW.updated_at)
   WHERE status = 'pending'
     AND (requester_id = NEW.id OR recipient_id = NEW.id);
+
+  -- Reactivation must not silently restore an old accepted relationship.
+  UPDATE real_user_friendships
+  SET status = 'removed',
+      updated_at = MAX(updated_at, NEW.updated_at)
+  WHERE status = 'accepted'
+    AND (pair_low = NEW.id OR pair_high = NEW.id);
 END;
