@@ -1188,7 +1188,8 @@ class CloudStore {
     }
     const updated = this.exec(
       `UPDATE outbound_device_receipts
-       SET device_received_at = COALESCE(device_received_at, ?), updated_at = ?
+       SET device_received_at = COALESCE(device_received_at, ?),
+           updated_at = MAX(updated_at, ?)
        WHERE server_message_id = ? AND user_id = ? AND device_id = ? AND character_id = ?
        RETURNING device_received_at, local_saved_at, read_at`,
       now, now, serverMessageId, userId, deviceId, characterId
@@ -1214,11 +1215,17 @@ class CloudStore {
     const access = this.getOutboundAccess({ userId, deviceId, characterId, serverMessageId });
     if (!access) return null;
     const existing = this.exec(
-      `SELECT local_saved_at
+      `SELECT device_received_at, local_saved_at
        FROM outbound_device_receipts
        WHERE server_message_id = ? AND user_id = ? AND device_id = ? AND character_id = ?`,
       serverMessageId, userId, deviceId, characterId
     )[0] || null;
+    const receivedAt = existing?.device_received_at ?? now;
+    const localSavedAt = Math.max(
+      Number(now),
+      Number(receivedAt),
+      existing?.local_saved_at == null ? Number(now) : Number(existing.local_saved_at)
+    );
     if (!existing) {
       this.exec(
         `INSERT INTO outbound_device_receipts
@@ -1226,17 +1233,17 @@ class CloudStore {
            device_received_at, local_saved_at, read_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
          ON CONFLICT(server_message_id, device_id) DO NOTHING`,
-        serverMessageId, userId, deviceId, characterId, now, now, now, now
+        serverMessageId, userId, deviceId, characterId, receivedAt, localSavedAt, localSavedAt, localSavedAt
       );
     }
     const receipt = this.exec(
       `UPDATE outbound_device_receipts
        SET device_received_at = COALESCE(device_received_at, ?),
            local_saved_at = COALESCE(local_saved_at, ?),
-           updated_at = ?
+           updated_at = MAX(updated_at, ?)
        WHERE server_message_id = ? AND user_id = ? AND device_id = ? AND character_id = ?
        RETURNING device_received_at, local_saved_at, read_at`,
-      now, now, now, serverMessageId, userId, deviceId, characterId
+      now, localSavedAt, localSavedAt, serverMessageId, userId, deviceId, characterId
     )[0];
     if (!receipt) return null;
     this.exec(
@@ -1281,12 +1288,14 @@ class CloudStore {
         local_saved_at: existing.local_saved_at
       };
     }
+    const readAt = Math.max(Number(now), Number(existing.local_saved_at));
     const updated = this.exec(
       `UPDATE outbound_device_receipts
-       SET read_at = COALESCE(read_at, ?), updated_at = ?
+       SET read_at = COALESCE(read_at, ?),
+           updated_at = MAX(updated_at, ?)
        WHERE server_message_id = ? AND user_id = ? AND device_id = ? AND character_id = ?
        RETURNING device_received_at, local_saved_at, read_at`,
-      now, now, serverMessageId, userId, deviceId, characterId
+      readAt, readAt, serverMessageId, userId, deviceId, characterId
     )[0];
     if (!updated) return null;
     this.exec(

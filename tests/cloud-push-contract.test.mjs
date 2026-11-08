@@ -4447,6 +4447,52 @@ test('出站消息分别记录 Push 接受、设备收到、本地保存与用�
   assert.equal(repeatedReceived.payload.local_saved_at, saved.payload.local_saved_at);
 });
 
+test('设备生命周期回执在服务器时钟回拨时仍保持单调', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+  const messageId = 'autonomy_lifecycle_clock_rollback_123456';
+  ctx.store.enqueueOutboundMessage({
+    id: 'out_' + messageId,
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-clock-rollback',
+    serverMessageId: messageId,
+    dedupeKey: 'autonomy:lifecycle:clock-rollback',
+    payload: { type: 'text', text: '时钟回拨回归测试。' },
+    now: 1000
+  });
+  const scope = {
+    userId: 'owner',
+    deviceId: device.deviceId,
+    characterId: 'char-clock-rollback',
+    serverMessageId: messageId
+  };
+
+  const received = ctx.store.markOutboundReceived({ ...scope, now: 9000 });
+  assert.equal(received.device_received_at, 9000);
+
+  // The server clock moves backwards before ACK and again before read.
+  const saved = ctx.store.acknowledgeOutboundMessage({ ...scope, now: 7000 });
+  assert.equal(saved.device_received_at, 9000);
+  assert.equal(saved.local_saved_at, 9000,
+    '本地保存时间不得早于同一设备的收到时间');
+
+  const read = ctx.store.markOutboundRead({ ...scope, now: 5000 });
+  assert.equal(read.read_at, 9000,
+    '用户已读时间不得早于同一设备的本地保存时间');
+
+  const lifecycle = ctx.store.getOutboundLifecycle(scope);
+  assert.equal(lifecycle.current_device_received_at, 9000);
+  assert.equal(lifecycle.current_device_local_saved_at, 9000);
+  assert.equal(lifecycle.current_device_read_at, 9000);
+  assert.ok(
+    lifecycle.current_device_received_at <= lifecycle.current_device_local_saved_at &&
+    lifecycle.current_device_local_saved_at <= lifecycle.current_device_read_at,
+    '设备生命周期时间必须保持 received <= saved <= read'
+  );
+});
+
 test('生命周期回执支持同账号跨设备恢复，但不能跨账号或角色伪造', async () => {
   const now = 1800000000000;
   const ctx = setupTestStore(openTestDb());
