@@ -423,10 +423,14 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   async function adminAccounts(request) {
     await requireActiveAdmin(request);
     return ok({
-      accounts: store.listMaoAccounts().map(account => ({
-        ...account,
-        qq_email_verified_at: account.qq_email_verified_at == null ? null : Number(account.qq_email_verified_at)
-      }))
+      // The creator account is managed through Account Management, never through
+      // ordinary-user disable/revoke controls in this list.
+      accounts: store.listMaoAccounts()
+        .filter(account => account.role !== 'super_admin')
+        .map(account => ({
+          ...account,
+          qq_email_verified_at: account.qq_email_verified_at == null ? null : Number(account.qq_email_verified_at)
+        }))
     });
   }
 
