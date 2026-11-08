@@ -410,3 +410,83 @@ test('runtime ignores stale asset loads after a rapid theme switch',async()=>{
   assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),fast.id,'最后成功主题不能被旧请求覆盖');
   assert.equal(slowRevoked,1,'迟到的旧主题素材 URL 必须释放');
 });
+
+
+test('runtime clears failed first-use selection when no successful theme exists',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  const theme={id:'first-use-broken',assetRefs:{'assets/broken.png':'broken-asset'}};
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([theme])],
+    ['maomao_chat_theme_active_v1',theme.id]
+  ]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  const media={toObjectUrl(){return Promise.reject(new Error('首次素材读取失败'))}};
+  const styleNodes=new Map();
+  const shell={
+    classList:{add(){},remove(){}},style:{removeProperty(){}},
+    setAttribute(){},removeAttribute(){},querySelector(){return null},querySelectorAll(){return[]}
+  };
+  const document={
+    readyState:'complete',querySelector(){return shell},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(){return'.broken{color:red}'}},
+    PhoneStorage:phoneStorage,
+    location:{pathname:'/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(){}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,PhoneStorage:phoneStorage,console:{error(){}},setTimeout});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(localStorage.getItem('maomao_chat_theme_active_v1'),null,'没有成功主题可回退时应清空失败活动 ID');
+  assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),null,'无可用回退主题时不能留下陈旧 last-good');
+  assert.equal(styleNodes.get('maomao-chat-theme-package-style').textContent,'','首次应用失败后应保持原生主题样式');
+});
+
+test('reapplying the same active package is idempotent and does not duplicate motion listeners',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  const theme={id:'idempotent-theme',motions:[{id:'nav-elastic-tap',enabled:true,duration:300}]};
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([theme])],
+    ['maomao_chat_theme_active_v1',theme.id]
+  ]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  const listeners={click:0},styleNodes=new Map();
+  const shell={
+    classList:{add(){},remove(){}},style:{removeProperty(){}},
+    setAttribute(){},removeAttribute(){},querySelector(){return null},querySelectorAll(){return[]},
+    addEventListener(type){if(type==='click')listeners.click++},
+    removeEventListener(){}
+  };
+  const document={
+    readyState:'complete',querySelector(){return shell},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const runtimeEvents={};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(){return''}},
+    location:{pathname:'/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(type,callback){runtimeEvents[type]=callback}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,console,setTimeout});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  runtimeEvents['maomao:chat-theme-change']();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(listeners.click,1,'重复应用同一主题不能重复注册点击监听');
+  assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),theme.id,'重复应用后 last-good 应稳定');
+});
