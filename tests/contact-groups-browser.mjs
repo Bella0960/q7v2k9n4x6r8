@@ -1,0 +1,519 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { dirname, resolve, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
+};
+
+function startServer() {
+  const server = http.createServer((req, res) => {
+    const pathname = decodeURIComponent(new URL(req.url || '/', 'http://127.0.0.1').pathname);
+    const file = path.resolve(ROOT, '.' + pathname);
+    if (!file.startsWith(ROOT + path.sep) && file !== ROOT) {
+      res.writeHead(403); res.end('forbidden'); return;
+    }
+    fs.readFile(file, (error, data) => {
+      if (error) { res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200, {
+        'Content-Type': MIME[extname(file).toLowerCase()] || 'application/octet-stream',
+        'Cache-Control': 'no-store'
+      });
+      res.end(data);
+    });
+  });
+  return new Promise((resolveServer) => server.listen(0, '127.0.0.1', () => resolveServer(server)));
+}
+
+const SEED = {
+  ai_custom_characters: [
+    { id: 'role-a', name: '角色甲', avatar: '', persona: '角色甲的人设' },
+    { id: 'role-b', name: '角色乙', avatar: '', persona: '角色乙的人设' },
+    { id: 'role-c', name: '角色丙', avatar: '', persona: '角色丙的人设' },
+    { id: 'role-d', name: '角色丁', avatar: '', persona: '角色丁的人设' }
+  ],
+  myProfile: { id: 'me', nickname: '我', avatar: '' },
+  api_settings: {
+    apiKey: 'contact-groups-test-key',
+    baseUrl: 'https://mock.local/v1',
+    model: 'contact-groups-test-model',
+    temperature: 0.2
+  },
+  'chat_auto_comment_role-a': true,
+  'chat_auto_comment_role-d': true,
+  moments: [],
+  moments_notifications: []
+};
+
+async function readJson(page, key) {
+  return page.evaluate((name) => JSON.parse(localStorage.getItem(name) || 'null'), key);
+}
+
+async function openAudience(page, mode, selections = []) {
+  await page.locator('#rowVisibility').click();
+  await page.locator('.option-item[data-perm="' + mode + '"]').click();
+  for (const selection of selections) {
+    await page.locator(
+      '[data-audience-kind="' + selection.kind + '"][data-audience-id="' + selection.id + '"]'
+    ).click();
+  }
+}
+
+async function publishAndRead(page, text) {
+  await page.locator('#btnPublish').click();
+  await page.waitForURL(/chat\/moments\/moments\.html/);
+  await page.waitForFunction((content) => {
+    const posts = JSON.parse(localStorage.getItem('moments') || '[]');
+    return posts.some((post) => post.content === content);
+  }, text, { timeout: 6000 });
+  return page.evaluate((content) => {
+    const posts = JSON.parse(localStorage.getItem('moments') || '[]');
+    return posts.find((post) => post.content === content) || null;
+  }, text);
+}
+
+async function main() {
+  const server = await startServer();
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    serviceWorkers: 'block'
+  });
+  let page;
+  let apiRequests = 0;
+  const apiRequestBodies = [];
+  const pageErrors = [];
+
+  try {
+    await context.addInitScript((seed) => {
+      Object.keys(seed).forEach((key) => localStorage.setItem(key, JSON.stringify(seed[key])));
+    }, SEED);
+
+    page = await context.newPage();
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    await page.route('**/api/real-user-chat/capabilities', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          service: 'maomao-real-user-chat',
+          protocolVersion: 1,
+          enabled: false,
+          accountAuth: { enabled: false, status: 'disabled' },
+          friends: { enabled: false, status: 'disabled' },
+          delivery: { enabled: false }
+        })
+      });
+    });
+    await page.route('https://mock.local/**', async (route) => {
+      apiRequests += 1;
+      apiRequestBodies.push(route.request().postData() || '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ choices: [{ message: { content: '测试回复' } }] })
+      });
+    });
+
+    // Contacts: create overlapping groups, filter, rename and delete.
+    await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => {
+      const status = document.getElementById('ruSummaryStatus');
+      return status && status.textContent === '服务未开通';
+    }, null, { timeout: 5000 });
+    assert.equal(await page.locator('#ruAuthArea').isVisible(), false,
+      'registration and login controls stay hidden when the Worker advertises account auth as disabled');
+
+    await page.locator('.contact-item[data-id="role-a"]').waitFor({ state: 'visible', timeout: 10000 });
+    await page.locator('#btnManageContactGroups').click();
+    await page.locator('#btnNewContactGroup').click();
+    await page.locator('#contactGroupName').fill('亲近朋友');
+    await page.locator('[data-contact-member="role-a"]').check();
+    await page.locator('[data-contact-member="role-b"]').check();
+    await page.locator('#btnSaveContactGroup').click();
+
+    await page.locator('#btnNewContactGroup').click();
+    await page.locator('#contactGroupName').fill('工作联系人');
+    await page.locator('[data-contact-member="role-a"]').check();
+    await page.locator('[data-contact-member="role-c"]').check();
+    await page.locator('#btnSaveContactGroup').click();
+
+    let groups = await readJson(page, 'contact_groups_v1');
+    assert.equal(groups.length, 2);
+    const friendsGroup = groups.find((group) => group.name === '亲近朋友');
+    const workGroup = groups.find((group) => group.name === '工作联系人');
+    assert.deepEqual(friendsGroup.memberIds, ['role-a', 'role-b']);
+    assert.deepEqual(workGroup.memberIds, ['role-a', 'role-c']);
+    assert.ok(groups.every((group) => group.memberIds.includes('role-a')),
+      'one contact can exist in more than one group');
+
+    // Preserve a typed real-user relationship alongside legacy AI-role membership.
+    await page.evaluate((groupId) => {
+      const records = JSON.parse(localStorage.getItem('contact_groups_v1') || '[]');
+      const group = records.find((item) => item.id === groupId);
+      group.memberRefs.push('real_user:user-123', 'real_user:user-pending');
+      localStorage.setItem('contact_groups_v1', JSON.stringify(records));
+      const directory = window.PhoneContactDirectory;
+      const savedUsers = directory.saveMany([
+        { id: 'user-123', displayName: '已加入分组的真人好友', status: 'accepted', createdAt: 10, updatedAt: 20 },
+        { id: 'user-456', displayName: '单独选择的真人好友', status: 'accepted', createdAt: 11, updatedAt: 21 },
+        { id: 'user-789', displayName: '新加入分组的真人好友', status: 'accepted', createdAt: 12, updatedAt: 22 },
+        { id: 'user-pending', displayName: '尚未接受的好友请求', status: 'pending_incoming', createdAt: 13, updatedAt: 23 }
+      ]);
+      if (!savedUsers.ok) throw new Error('failed to seed real-user directory');
+      // Simulate a missing identity helper while the group editor is still open.
+      window.PhoneContactIdentity = null;
+    }, friendsGroup.id);
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    assert.equal(await page.locator('[data-contact-ref="real_user:user-123"]').isChecked(), true,
+      'accepted real-user members are visible in the Contacts group editor');
+    assert.equal(await page.locator('[data-contact-ref="real_user:user-pending"]').isChecked(), true,
+      'a pending or unverified real-user member remains checked until explicitly removed');
+    await page.locator('[data-contact-ref="real_user:user-789"]').check();
+    await page.locator('#contactGroupName').fill('亲近朋友');
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    let updatedFriendsGroup = groups.find((group) => group.id === friendsGroup.id);
+    assert.ok(updatedFriendsGroup.memberRefs.includes('real_user:user-123'),
+      'typed accepted-user references survive group edits even when the identity helper is unavailable');
+    assert.ok(updatedFriendsGroup.memberRefs.includes('real_user:user-pending'),
+      'unresolved real-user references are preserved by default instead of being silently deleted');
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    await page.locator('[data-contact-ref="real_user:user-pending"]').uncheck();
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    updatedFriendsGroup = groups.find((group) => group.id === friendsGroup.id);
+    assert.equal(updatedFriendsGroup.memberRefs.includes('real_user:user-pending'), false,
+      'unresolved real-user membership is removed only after an explicit uncheck');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('.contact-item[data-id="role-a"]').waitFor({ state: 'visible', timeout: 10000 });
+    await page.locator('#btnManageContactGroups').click();
+
+    await page.locator('#btnCloseContactGroups').click();
+    assert.equal(await page.locator('#contactList .contact-item').count(), 7,
+      'all contacts includes the four AI roles and three accepted real users, but not pending requests');
+    assert.equal(await page.locator('#contactGroupBar [data-contact-group="all"] .contact-group-count').innerText(), '7');
+    assert.equal(await page.locator('#contactGroupBar [data-contact-group="ungrouped"] .contact-group-count').innerText(), '2',
+      'ungrouped count includes the one ungrouped AI role and one ungrouped accepted real user');
+
+    await page.locator('#searchInput').fill('已加入分组的真人好友');
+    assert.equal(await page.locator('#contactList .contact-item').count(), 1,
+      'search includes accepted real-user display names');
+    assert.equal(await page.locator('#contactList [data-contact-type="real_user"]').count(), 1);
+    const contactsUrl = page.url();
+    await page.locator('#contactList [data-contact-key="real_user:user-123"]').click();
+    assert.equal(page.url(), contactsUrl,
+      'a real-user contact must not be routed into the AI-role conversation page');
+    await page.locator('#searchInput').fill('');
+
+    await page.locator('[data-contact-group="' + friendsGroup.id + '"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#contactList .contact-item').length === 4);
+    assert.equal(await page.locator('#contactList [data-id="role-a"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-id="role-b"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-contact-key="real_user:user-123"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-contact-key="real_user:user-789"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-id="role-c"]').count(), 0);
+    assert.equal(await page.locator('#contactList [data-id="role-d"]').count(), 0);
+
+    await page.locator('[data-contact-group="ungrouped"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#contactList .contact-item').length === 2);
+    assert.equal(await page.locator('#contactList [data-id="role-d"]').count(), 1);
+    assert.equal(await page.locator('#contactList [data-contact-key="real_user:user-456"]').count(), 1,
+      'ungrouped filtering also includes accepted real users');
+
+    await page.locator('#btnManageContactGroups').click();
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    await page.locator('#contactGroupName').fill('家人');
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    assert.equal(groups.find((group) => group.id === friendsGroup.id).name, '家人');
+    assert.ok(groups.find((group) => group.id === friendsGroup.id).memberRefs.includes('real_user:user-123'),
+      'editing a role-based group must preserve typed non-role members');
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.locator('[data-group-id="' + workGroup.id + '"] [data-group-action="delete"]').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    assert.equal(groups.some((group) => group.id === workGroup.id), false);
+    assert.equal((await readJson(page, 'ai_custom_characters')).length, 4,
+      'deleting a group never deletes contact records');
+
+    // Add a temporary group for the stale-selection race check below.
+    await page.locator('#btnNewContactGroup').click();
+    await page.locator('#contactGroupName').fill('临时分组');
+    await page.locator('[data-contact-member="role-b"]').check();
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    const temporaryGroup = groups.find((group) => group.name === '临时分组');
+    await page.locator('#btnCloseContactGroups').click();
+    console.log('PASS Contacts: group CRUD, overlapping members, group filtering and ungrouped filtering');
+
+    // A selected group cannot be silently dropped if the shared policy module disappears.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('权限模块缺失时阻止误发');
+    await openAudience(page, 'custom', [{ kind: 'group', id: temporaryGroup.id }]);
+    await page.evaluate(() => { window.PhoneContactGroups = null; });
+    await page.locator('#permClose').click();
+    assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
+      'a selected group cannot be dropped when the shared policy module is unavailable');
+    assert.match(await page.locator('#toast').innerText(), /权限模块尚未加载/);
+    assert.equal(await page.locator('.audience-stale-group').count(), 1,
+      'the missing module must render the chosen group as an explicit stale selection');
+    assert.match(await page.locator('.audience-stale-group').innerText(), /已失效分组/);
+    await page.locator('[data-audience-kind="group"][data-audience-id="' + temporaryGroup.id + '"]').click();
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    await page.locator('#permClose').click();
+    const moduleFallbackPost = await publishAndRead(page, '权限模块缺失时阻止误发');
+    assert.deepEqual(moduleFallbackPost.visibleTo, ['role-c'],
+      'after explicitly clearing the group, direct-contact selection remains available');
+    assert.deepEqual(moduleFallbackPost.visibleGroupIds, []);
+    console.log('PASS Moments: unavailable audience module blocks group selection but retains direct selection');
+
+    // A directly selected contact deleted while the picker is open must also be cleared explicitly.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('联系人变化时阻止误发');
+    await openAudience(page, 'custom', [{ kind: 'contact', id: 'role-b' }]);
+    await page.evaluate(() => {
+      const roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]');
+      localStorage.setItem('ai_custom_characters', JSON.stringify(roles.filter((role) => role.id !== 'role-b')));
+    });
+    await page.locator('#permClose').click();
+    assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
+      'a deleted directly selected contact cannot be silently ignored');
+    assert.match(await page.locator('#toast').innerText(), /联系人已不存在/);
+    assert.equal(await page.locator('.audience-stale-contact').count(), 1,
+      'a removed directly selected contact must be rendered as an explicit stale selection');
+    assert.match(await page.locator('.audience-stale-contact').innerText(), /已失效联系人/);
+    await page.locator('.audience-stale-contact').click();
+    await page.evaluate((role) => {
+      const roles = JSON.parse(localStorage.getItem('ai_custom_characters') || '[]');
+      roles.push(role);
+      localStorage.setItem('ai_custom_characters', JSON.stringify(roles));
+    }, SEED.ai_custom_characters[1]);
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    await page.locator('#permClose').click();
+    const contactRacePost = await publishAndRead(page, '联系人变化时阻止误发');
+    assert.deepEqual(contactRacePost.visibleTo, ['role-c'],
+      'the missing contact must be explicitly removed before another audience is published');
+    assert.equal(apiRequests, 0);
+    console.log('PASS Moments: deleted direct-contact selection requires explicit removal');
+
+    // A group removed after the picker opened must block confirmation instead of silently shrinking the audience.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('分组变化时阻止误发');
+    await openAudience(page, 'custom', [{ kind: 'group', id: temporaryGroup.id }]);
+    await page.evaluate((groupId) => {
+      const groups = JSON.parse(localStorage.getItem('contact_groups_v1') || '[]');
+      localStorage.setItem('contact_groups_v1', JSON.stringify(groups.filter((group) => group.id !== groupId)));
+    }, temporaryGroup.id);
+    await page.locator('#permClose').click();
+    assert.equal(await page.locator('#permSheet').evaluate((el) => el.classList.contains('show')), true,
+      'a deleted group selected earlier cannot be silently ignored');
+    assert.match(await page.locator('#toast').innerText(), /分组已发生变化/);
+    assert.equal(await page.locator('.audience-stale-group').count(), 1,
+      'the invalid selection remains visible so the user can explicitly remove it');
+    await page.locator('.audience-stale-group').click();
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    await page.locator('#permClose').click();
+    const raceSafePost = await publishAndRead(page, '分组变化时阻止误发');
+    assert.equal(raceSafePost.visibility, 'custom');
+    assert.deepEqual(raceSafePost.visibleTo, ['role-c'],
+      'the user must explicitly clear the stale group and select a replacement audience');
+    assert.deepEqual(raceSafePost.visibleGroupIds, []);
+    assert.equal(apiRequests, 0,
+      'no AI request is made to a contact that was only present in a now-deleted group');
+    console.log('PASS Moments: stale group selection blocks confirmation until explicitly cleared');
+
+    // A group can contain a dangling member ID after a role was deleted elsewhere.
+    // Such an ID is never included in the live audience and is visible in the review.
+    await page.evaluate((groupId) => {
+      const groups = JSON.parse(localStorage.getItem('contact_groups_v1') || '[]');
+      const group = groups.find((item) => item.id === groupId);
+      group.memberIds.push('role-ghost');
+      localStorage.setItem('contact_groups_v1', JSON.stringify(groups));
+    }, friendsGroup.id);
+
+    // Moments: a mixed group + direct-contact audience is snapshotted; an outside @mention is blocked.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('部分可见动态：家人分组和单独联系人可见');
+    await openAudience(page, 'custom', [
+      { kind: 'group', id: friendsGroup.id },
+      { kind: 'contact', id: 'role-c' }
+    ]);
+    await page.locator('[data-audience-kind="real_user"][data-audience-id="user-456"]').click();
+    assert.match(await page.locator('#permValue').innerText(), /部分可见/);
+    const visibleReview = await page.locator('.audience-review').innerText();
+    assert.match(visibleReview, /角色甲/);
+    assert.match(visibleReview, /角色乙/);
+    assert.match(visibleReview, /角色丙/);
+    assert.match(visibleReview, /已加入分组的真人好友/);
+    assert.match(visibleReview, /新加入分组的真人好友/);
+    assert.match(visibleReview, /单独选择的真人好友/);
+    assert.match(visibleReview, /分组内 1 位已失效联系人不会计入名单/);
+    assert.doesNotMatch(visibleReview, /role-ghost/);
+    assert.doesNotMatch(visibleReview, /角色丁/,
+      'the @mentioned contact must not be implied to be in the visible audience');
+    await page.locator('#permClose').click();
+    await page.locator('#rowMentions').click();
+    await page.locator('.mention-option[data-cid="role-d"]').click();
+    await page.locator('#mentionClose').click();
+    const selectedPost = await publishAndRead(page, '部分可见动态：家人分组和单独联系人可见');
+    assert.equal(selectedPost.visibility, 'custom');
+    assert.deepEqual(selectedPost.visibleTo, ['role-a', 'role-b', 'role-c'],
+      'a deleted role left in a group is not a live recipient');
+    assert.deepEqual(selectedPost.visibleGroupIds, [friendsGroup.id]);
+    assert.deepEqual(selectedPost.visibleContactIds, ['role-c']);
+    assert.ok(selectedPost.visibleContactRefs.includes('real_user:user-123'),
+      'the audience snapshot preserves typed real-user membership from the selected group');
+    assert.ok(selectedPost.visibleContactRefs.includes('real_user:user-789'),
+      'a real-user friend can be added to a Contacts group and flow into the audience');
+    assert.ok(selectedPost.visibleContactRefs.includes('real_user:user-456'),
+      'a real-user friend can also be selected directly for a Moments audience');
+    assert.deepEqual(selectedPost.visibleRealUserIds.slice().sort(), ['user-123', 'user-456', 'user-789']);
+    assert.ok(selectedPost.visibleContactRefs.includes('ai_role:role-a'));
+    assert.deepEqual(selectedPost.mentions, ['role-d'],
+      '@mention list is stored separately from the selected audience');
+
+    await page.waitForTimeout(500);
+    assert.equal(apiRequests, 1,
+      'only the enabled auto-comment role inside the selected audience should receive a model request');
+    assert.match(apiRequestBodies[0], /角色甲/,
+      'an allowed role can receive the selected post and comment on it');
+    assert.doesNotMatch(apiRequestBodies[0], /角色丁/,
+      'an @mentioned role outside the audience must not receive the post body');
+    assert.ok(await page.locator('body').innerText().then((text) => text.includes(selectedPost.content)),
+      'the owner can still see their own partially visible post');
+    console.log('PASS Moments: mixed audience snapshot, positive auto-comment path and blocked outside @mention');
+
+    // Moments: excluded group + direct contact must block auto-comments even when those roles have opted in.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#contentInput').fill('排除名单动态：家人和单独联系人不可见');
+    await openAudience(page, 'excluded', [
+      { kind: 'group', id: friendsGroup.id },
+      { kind: 'contact', id: 'role-d' }
+    ]);
+    const excludedReview = await page.locator('.audience-review').innerText();
+    assert.match(excludedReview, /角色甲/);
+    assert.match(excludedReview, /角色乙/);
+    assert.match(excludedReview, /角色丁/);
+    assert.doesNotMatch(excludedReview, /角色丙/);
+    await page.locator('#permClose').click();
+    const excludedPost = await publishAndRead(page, '排除名单动态：家人和单独联系人不可见');
+    assert.equal(excludedPost.visibility, 'excluded');
+    assert.deepEqual(excludedPost.hiddenTo, ['role-a', 'role-b', 'role-d']);
+    assert.deepEqual(excludedPost.hiddenGroupIds, [friendsGroup.id]);
+    assert.deepEqual(excludedPost.hiddenContactIds, ['role-d']);
+    await page.waitForTimeout(500);
+    assert.equal(apiRequests, 1,
+      'excluded, opted-in roles must not trigger any model request for the post');
+    assert.ok(await page.locator('body').innerText().then((text) => text.includes(excludedPost.content)),
+      'the owner can still see their own post even when it excludes a group');
+    console.log('PASS Moments: excluded group/contact blocks opted-in AI recipients');
+
+    // If the current contact roster is unreadable, renaming a group must preserve all stored members.
+    await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      window.__originalGetCharacters = PhoneStorage.getCharacters;
+      window.__originalResultGetCharacters = PhoneStorage.result.getCharacters;
+      PhoneStorage.getCharacters = () => [];
+      PhoneStorage.result.getCharacters = () => ({
+        ok: false,
+        error: { code: 'DB_UNAVAILABLE', message: 'simulated unavailable roster' }
+      });
+    });
+    await page.locator('#btnManageContactGroups').click();
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    assert.match(await page.locator('#contactGroupEditStatus').innerText(), /当前联系人列表暂时无法读取/);
+    await page.locator('#contactGroupName').fill('家人（保留成员）');
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    assert.deepEqual(groups.find((group) => group.id === friendsGroup.id).memberIds,
+      ['role-a', 'role-b', 'role-ghost'],
+      'an unreadable contact roster cannot be interpreted as every member being deleted');
+    console.log('PASS Contacts: preserve existing group members when contact roster is unavailable');
+
+    // With a readable roster, editing can safely clean dangling members.
+    await page.goto(origin + '/chat/contacts/contacts.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#btnManageContactGroups').click();
+    await page.locator('[data-group-id="' + friendsGroup.id + '"] [data-group-action="edit"]').click();
+    assert.match(await page.locator('#contactGroupEditStatus').innerText(), /发现 1 位已不存在的联系人/);
+    await page.locator('[data-contact-member="role-a"]').uncheck();
+    await page.locator('[data-contact-member="role-c"]').check();
+    await page.locator('#btnSaveContactGroup').click();
+    groups = await readJson(page, 'contact_groups_v1');
+    const editedFamily = groups.find((group) => group.id === friendsGroup.id);
+    assert.deepEqual(editedFamily.memberIds, ['role-b', 'role-c']);
+    assert.equal(editedFamily.memberIds.includes('role-ghost'), false,
+      'saving a group edit removes dangling member IDs that no longer match a contact');
+    assert.ok(editedFamily.memberRefs.includes('real_user:user-123'),
+      'the typed real-user reference survives later membership cleanup');
+
+    await page.goto(origin + '/chat/moments/moments.html', { waitUntil: 'domcontentloaded' });
+    const policyResult = await page.evaluate(({ postId }) => {
+      const posts = JSON.parse(localStorage.getItem('moments') || '[]');
+      const post = posts.find((item) => item.id === postId);
+      return {
+        hiddenTo: post && post.hiddenTo,
+        roleACanReceive: window.PhoneContactGroups.canRoleReceivePost(post, 'role-a'),
+        roleCCanReceive: window.PhoneContactGroups.canRoleReceivePost(post, 'role-c'),
+        roleDCanReceive: window.PhoneContactGroups.canRoleReceivePost(post, 'role-d')
+      };
+    }, { postId: excludedPost.id });
+    assert.deepEqual(policyResult.hiddenTo, ['role-a', 'role-b', 'role-d']);
+    assert.equal(policyResult.roleACanReceive, false,
+      'a contact removed from the group remains excluded from the older post snapshot');
+    assert.equal(policyResult.roleCCanReceive, true,
+      'a contact added to the group later is not retroactively excluded from the older post');
+    assert.equal(policyResult.roleDCanReceive, false,
+      'a directly excluded contact remains excluded regardless of later group edits');
+    console.log('PASS Moments: published audience remains immutable after later group membership edits');
+
+    // Corrupt group metadata must be visible, preserved, and must not block a direct-contact-only audience.
+    await page.goto(origin + '/forum/post-create.html', { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => localStorage.setItem('contact_groups_v1', '{broken'));
+    await page.locator('#contentInput').fill('分组数据异常后仍可单独选择联系人');
+    await openAudience(page, 'custom');
+    assert.match(await page.locator('.audience-storage-warning').innerText(), /分组数据暂时无法读取/);
+    await page.locator('[data-audience-kind="contact"][data-audience-id="role-c"]').click();
+    assert.match(await page.locator('.audience-review').innerText(), /角色丙/);
+    await page.locator('#permClose').click();
+    const directOnlyPost = await publishAndRead(page, '分组数据异常后仍可单独选择联系人');
+    assert.deepEqual(directOnlyPost.visibleTo, ['role-c']);
+    assert.deepEqual(directOnlyPost.visibleGroupIds, []);
+    assert.equal(await page.evaluate(() => localStorage.getItem('contact_groups_v1')), '{broken',
+      'publishing with direct contacts must not rewrite corrupt group metadata');
+    assert.equal(apiRequests, 1,
+      'corrupt group metadata cannot leak the post to any auto-comment role');
+    assert.deepEqual(pageErrors, [], 'affected pages should not throw browser runtime errors');
+    console.log('PASS Moments: corrupt group storage is preserved while direct-contact audiences remain available');
+  } finally {
+    await context.close();
+    await browser.close();
+    await new Promise((resolveServer) => server.close(resolveServer));
+  }
+}
+
+main().catch((error) => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exitCode = 1;
+});

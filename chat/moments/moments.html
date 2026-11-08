@@ -4,7 +4,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>空间 · 小手机</title>
     <script src="../../shared/js/font-loader.js?v=20261022v1"></script><style>:root { --base-font-size: 14px; }html { font-size: calc(var(--base-font-size, 14px) / 14 * 16); }</style>
-    <script src="../../shared/js/native-feel.js"></script><script src="../../shared/js/chat-beauty.js?v=20261102v3"></script><script src="../../shared/js/phone/phone_storage.js"></script><script src="../../shared/js/phone/phone_api.js"></script><script src="../../shared/js/phone/phone_context.js?v=20261102npc1"></script><script src="../../shared/js/phone/phone_apps.js"></script><script src="../../shared/js/phone/phone_engine.js"></script><script src="../../shared/js/phone/phone_ui.js"></script><style>html {
+    <script src="../../shared/js/native-feel.js"></script><script src="../../shared/js/chat-beauty.js?v=20261102v3"></script><script src="../../shared/js/phone/phone_storage.js"></script><script src="../../shared/js/phone/contact-identity.js?v=20261107v1"></script><script src="../../shared/js/contact-groups.js?v=20261107v2"></script><script src="../../shared/js/phone/phone_api.js"></script><script src="../../shared/js/phone/phone_context.js?v=20261102npc1"></script><script src="../../shared/js/phone/phone_apps.js"></script><script src="../../shared/js/phone/phone_engine.js"></script><script src="../../shared/js/phone/phone_ui.js"></script><style>html {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
@@ -787,8 +787,10 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             // 按可见权限过滤：自己的动态始终可见
             var list = allList.filter(function (m) {
                 var isMine = m.authorId === me.id || m.authorId === 'me' || m.author === me.name || m.byAI === true;
-                if (isMine) return true; // 自己发的 / AI 角色发的（已在朋友圈里）都显示
                 var v = m.visibility || 'public';
+                // 朋友圈页面是当前手机主人的动态流；主人始终能看见自己的发布记录。
+                // 排除名单用于限制 AI 角色接收动态，不用于隐藏主人自己的时间线。
+                if (isMine) return true;
                 if (v === 'public') return true;
                 if (v === 'friends') return true; // 简化：目前所有 AI 角色都是朋友
                 if (v === 'private') return false; // 别人的仅自己动态不显示
@@ -835,7 +837,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 ) : '';
                 // 可见权限 & @好友 标记（小字提示）
                 var metaBadges = '';
-                var permLabel = { public: '公开', friends: '好友可见', private: '仅自己', custom: '部分可见' }[m.visibility || 'public'];
+                var permLabel = { public: '公开', friends: '好友可见', private: '仅自己', custom: '部分可见', excluded: '不给谁看' }[m.visibility || 'public'];
                 if (permLabel && permLabel !== '公开') {
                     metaBadges += '<span style="font-size:0.594rem;color:#999;margin-top:2px;">🔒 ' + permLabel + '</span>';
                 }
@@ -1083,8 +1085,29 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             return null;
         }
 
+        function canRoleViewPost(post, roleId) {
+            if (!post || roleId == null) return false;
+            var me = getMyInfo();
+            var policy = window.PhoneContactGroups;
+            if (policy && typeof policy.canRoleReceivePost === 'function') {
+                return policy.canRoleReceivePost(post, roleId, me);
+            }
+            var authorId = String(post.authorId || '');
+            var isUserAuthored = authorId === 'me' || authorId === String(me.id || 'me') ||
+                (!authorId && (!post.author || post.author === me.name || post.author === '我'));
+            if (!isUserAuthored) return true;
+            var id = String(roleId);
+            var visibility = post.visibility || 'public';
+            if (visibility === 'private') return false;
+            if (visibility === 'custom') return (post.visibleTo || []).map(String).indexOf(id) !== -1;
+            if (visibility === 'excluded') return (post.hiddenTo || []).map(String).indexOf(id) === -1;
+            return true;
+        }
+
         function requestMomentRoleComment(post, role, userComment) {
             if (!post || !role || !role.id) return;
+            // 隐私校验放在 API 请求前，防止被排除的角色通过任何回复入口读到动态正文。
+            if (!canRoleViewPost(post, role.id)) return;
             var config = getApiConfig();
             var apiKey = String(config.apiKey || '').trim();
             if (!apiKey) return;
@@ -1210,7 +1233,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
             var mentioned = (post.mentions || []).map(function (id) { return String(id); });
             getCharacterList().forEach(function (role) {
                 var id = String(role && role.id || '');
-                if (!id || mentioned.indexOf(id) !== -1 || !isAutoCommentEnabled(id)) return;
+                if (!id || mentioned.indexOf(id) !== -1 || !isAutoCommentEnabled(id) || !canRoleViewPost(post, id)) return;
                 requestMomentRoleComment(post, role, null);
             });
         }
@@ -1373,7 +1396,7 @@ a:active, button:active, [role="button"]:active { transform: scale(0.97); }</sty
                 for (var i = 0; i < characters.length; i++) {
                     if (String(characters[i].id) === String(cid)) { role = characters[i]; break; }
                 }
-                if (!role) return;
+                if (!role || !canRoleViewPost(post, role.id)) return;
 
                 var persona = (role.persona || role.prompt || '一个善解人意的AI角色').trim();
                 var tone = (role.tone || '').trim();

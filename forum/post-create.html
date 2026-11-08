@@ -7,6 +7,9 @@
     <script src="../shared/js/font-loader.js?v=20261022v1"></script>
     <script src="../shared/js/native-feel.js"></script>
     <script src="../shared/js/phone/phone_storage.js"></script>
+    <script src="../shared/js/phone/contact-identity.js?v=20261107v1"></script>
+    <script src="../shared/js/phone/contact-directory.js?v=20261107v2"></script>
+    <script src="../shared/js/contact-groups.js?v=20261107v2"></script>
     <style>
         :root{
             color-scheme:light;
@@ -202,6 +205,17 @@
         .mention-option .check-icon { opacity: 0.3; }
         .mention-option.active .check-icon { opacity: 1; }
 
+        .audience-back { padding:12px 22px;color:#777;border-bottom:1px solid #eee;font-size:11px;cursor:pointer; }
+        .audience-section-label { padding:14px 22px 6px;color:#999;font-size:10px;letter-spacing:.04em; }
+        .audience-option .mention-avatar.group-mark { border-radius:4px;background:#f1f1f1;color:#555;font-size:10px;border:1px solid #e6e6e6; }
+        .audience-meta { color:#999;font-size:10px; }
+        .audience-count { padding:10px 22px;color:#888;font-size:10px;border-top:1px solid #eee; }
+        .audience-storage-warning { margin:10px 22px;padding:10px;background:#f6f6f6;color:#777;font-size:10px;line-height:1.7; }
+        .audience-stale-group .mention-name, .audience-stale-contact .mention-name { color:#777; }
+        .audience-review { margin:0 22px 14px;padding:10px 0 12px;border-top:1px solid #eee; }
+        .audience-review-label { color:#888;font-size:10px;margin-bottom:5px; }
+        .audience-review-names { color:#333;font-size:11px;line-height:1.8;overflow-wrap:anywhere; }
+        .audience-review-note { margin-top:5px;color:#aaa;font-size:9px;line-height:1.6; }
         .empty-hint { text-align: center; padding: 30px 16px; color: #b0b0b5; font-size: 12px; }
 
         /* ===== Toast：参考 toast ===== */
@@ -259,7 +273,7 @@
     <div class="sheet-backdrop" id="permBackdrop"></div>
     <div class="option-sheet" id="permSheet">
         <div class="sheet-header">
-            <span class="sheet-title">可见范围</span>
+            <span class="sheet-title" id="permSheetTitle">可见范围</span>
             <button class="sheet-close" id="permClose" type="button">关闭</button>
         </div>
         <div class="sheet-body" id="permBody"></div>
@@ -286,6 +300,14 @@
         var pendingImages = [];     // 图片 dataURL 数组（最多 9 张）
         var currentPerm = 'public';
         var mentionsList = [];
+        var permissionSheetStage = 'modes';
+        var selectedVisibleGroupIds = [];
+        var selectedVisibleContactIds = [];
+        var selectedVisibleRealUserIds = [];
+        var selectedHiddenGroupIds = [];
+        var selectedHiddenContactIds = [];
+        var selectedHiddenRealUserIds = [];
+        var permissionDraft = null;
 
         /* ========== 工具函数 ========== */
         function escapeHtml(str) {
@@ -421,16 +443,113 @@
 
         /* ========== 可见范围 sheet ========== */
         var PERM_OPTIONS = [
-            { key: 'public',   label: '公开' },
-            { key: 'friends',  label: '好友可见' },
-            { key: 'private',  label: '仅自己可见' },
-            { key: 'custom',   label: '选部分好友可见' }
+            { key: 'public', label: '公开' },
+            { key: 'friends', label: '好友可见' },
+            { key: 'private', label: '仅自己可见' },
+            { key: 'custom', label: '部分可见' },
+            { key: 'excluded', label: '不给谁看' }
         ];
 
         var permSheet = document.getElementById('permSheet');
         var permBackdrop = document.getElementById('permBackdrop');
 
-        function openPermSheet() {
+        function getAudienceApi() { return window.PhoneContactGroups || null; }
+        function getAudienceContacts() {
+            return getCharacterList().slice().sort(function (a,b) {
+                return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN');
+            });
+        }
+        function getAudienceRealUsers() {
+            var directory = window.PhoneContactDirectory;
+            if (!directory || typeof directory.read !== 'function') {
+                return { ok: false, error: 'module_unavailable', contacts: [] };
+            }
+            var result = directory.read({ status: directory.statuses.ACCEPTED });
+            return result.ok ? result : { ok: false, error: result.error, contacts: [] };
+        }
+        function getAudienceIdentityKey(type, id) {
+            var identity = window.PhoneContactIdentity;
+            var ref = identity && typeof identity.create === 'function' ? identity.create(type, id) : null;
+            return ref ? ref.key : type + ':' + encodeURIComponent(String(id));
+        }
+        function getAudienceSnapshot(mode) {
+            var api = getAudienceApi();
+            var groups = mode === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
+            var contacts = mode === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
+            var realUserIds = mode === 'custom' ? selectedVisibleRealUserIds : selectedHiddenRealUserIds;
+            var roleContacts = getAudienceContacts();
+            var availableContactIds = roleContacts.map(function (contact) { return String(contact.id); });
+            var realUserRead = getAudienceRealUsers();
+            var groupRead = api && typeof api.readStoredGroups === 'function'
+                ? api.readStoredGroups()
+                : { ok: false, error: 'module_unavailable', groups: [] };
+            var selectedGroupsContainRealUsers = groupRead.ok && groupRead.groups.some(function (group) {
+                if (groups.indexOf(String(group.id)) === -1) return false;
+                return (group.memberRefs || []).some(function (ref) { return String(ref).indexOf('real_user:') === 0; });
+            });
+            if ((!realUserRead.ok) && (realUserIds.length || selectedGroupsContainRealUsers)) {
+                return {
+                    ok: false,
+                    error: 'contact_directory_unavailable',
+                    groupIds: groups.slice(),
+                    contactIds: contacts.slice(),
+                    memberIds: [],
+                    memberRefs: []
+                };
+            }
+            var availableContactRefs = roleContacts.map(function (contact) {
+                return getAudienceIdentityKey('ai_role', contact.id);
+            });
+            if (realUserRead.ok) {
+                availableContactRefs = availableContactRefs.concat(realUserRead.contacts.map(function (contact) {
+                    return getAudienceIdentityKey('real_user', contact.id);
+                }));
+            }
+            var selectedContactRefs = realUserIds.map(function (id) {
+                return getAudienceIdentityKey('real_user', id);
+            });
+            if (api && typeof api.buildAudienceSnapshot === 'function') {
+                return api.buildAudienceSnapshot(groups, contacts, {
+                    availableContactIds: availableContactIds,
+                    availableContactRefs: availableContactRefs,
+                    selectedContactRefs: selectedContactRefs
+                });
+            }
+            var missingContacts = contacts.filter(function (id) {
+                return availableContactIds.indexOf(String(id)) === -1;
+            });
+            if (groups.length) {
+                return { ok: false, error: 'module_unavailable', groupIds: groups.slice(), contactIds: contacts.slice(), memberIds: [], memberRefs: [] };
+            }
+            if (missingContacts.length) {
+                return { ok: false, error: 'missing_contacts', missingContactIds: missingContacts, groupIds: [], contactIds: contacts.slice(), memberIds: [], memberRefs: [] };
+            }
+            if (realUserIds.length) {
+                return { ok: false, error: 'contact_directory_unavailable', groupIds: [], contactIds: contacts.slice(), memberIds: [], memberRefs: [] };
+            }
+            var directRefs = contacts.map(function (id) { return getAudienceIdentityKey('ai_role', id); });
+            return { ok: true, groupIds: [], contactIds: contacts.slice(), memberIds: contacts.slice(),
+                memberRefs: directRefs, memberCount: directRefs.length, staleMemberIds: [], staleMemberRefs: [] };
+        }
+        function getAudienceMemberCount(snapshot) {
+            if (!snapshot || !snapshot.ok) return 0;
+            if (typeof snapshot.memberCount === 'number') return snapshot.memberCount;
+            if (Array.isArray(snapshot.memberRefs)) return snapshot.memberRefs.length;
+            return Array.isArray(snapshot.memberIds) ? snapshot.memberIds.length : 0;
+        }
+        function updatePermissionValue() {
+            var option = PERM_OPTIONS.find(function (item) { return item.key === currentPerm; });
+            var label = option ? option.label : '公开';
+            if (currentPerm === 'custom' || currentPerm === 'excluded') {
+                var snapshot = getAudienceSnapshot(currentPerm);
+                label += !snapshot.ok ? ' · 需重新确认' : (getAudienceMemberCount(snapshot) ? ' · ' + getAudienceMemberCount(snapshot) + '人' : ' · 未选择');
+            }
+            document.getElementById('permValue').textContent = label;
+        }
+        function showPermissionModes() {
+            permissionSheetStage = 'modes';
+            document.getElementById('permSheetTitle').textContent = '可见范围';
+            document.getElementById('permClose').textContent = '关闭';
             var body = document.getElementById('permBody');
             body.innerHTML = PERM_OPTIONS.map(function (o) {
                 var active = o.key === currentPerm ? ' active' : '';
@@ -439,24 +558,239 @@
                     '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>' +
                 '</div>';
             }).join('');
+        }
+        function renderAudienceSelection() {
+            var body = document.getElementById('permBody');
+            var api = getAudienceApi();
+            var groupRead = !api || typeof api.getGroups !== 'function'
+                ? { ok: false, error: 'module_unavailable', groups: [] }
+                : (typeof api.readStoredGroups === 'function'
+                    ? api.readStoredGroups() : { ok: true, groups: api.getGroups() });
+            var groups = groupRead.ok ? groupRead.groups : [];
+            var contacts = getAudienceContacts();
+            var realUserRead = getAudienceRealUsers();
+            var realUsers = realUserRead.ok ? realUserRead.contacts : [];
+            var chosenGroups = currentPerm === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
+            var chosenContacts = currentPerm === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
+            var chosenRealUsers = currentPerm === 'custom' ? selectedVisibleRealUserIds : selectedHiddenRealUserIds;
+            var html = '<div class="audience-back" data-audience-back>返回可见范围</div>';
+            if (!groupRead.ok) {
+                var groupWarning = groupRead.error === 'module_unavailable'
+                    ? '权限模块暂未加载。已选分组会保留为失效状态，刷新页面后可重试；如需继续，可明确取消分组后单独选择联系人。'
+                    : '分组数据暂时无法读取。你仍可单独选择联系人；为保护原数据，系统不会覆盖损坏的分组记录。';
+                html += '<div class="audience-storage-warning">' + groupWarning + '</div>';
+            }
+            if (!realUserRead.ok && (chosenRealUsers.length || chosenGroups.length)) {
+                html += '<div class="audience-storage-warning">真人好友目录暂时无法读取；相关真人好友不会被悄悄加入或移出名单，请恢复目录后再确认。</div>';
+            }
+            if (groups.length || chosenGroups.length) {
+                html += '<div class="audience-section-label">通讯录分组</div>';
+                html += groups.map(function (group) {
+                    var active = chosenGroups.indexOf(String(group.id)) !== -1 ? ' active' : '';
+                    var count = Array.isArray(group.memberRefs) ? group.memberRefs.length
+                        : (Array.isArray(group.memberIds) ? group.memberIds.length : 0);
+                    return '<div class="mention-option audience-option' + active + '" data-audience-kind="group" data-audience-id="' + escapeHtml(group.id) + '">' +
+                        '<div class="mention-avatar group-mark">分</div>' +
+                        '<span class="mention-name">' + escapeHtml(group.name) + '<span class="audience-meta"> · ' + count + '人</span></span>' +
+                        '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+                }).join('');
+            }
+            var currentGroupIds = groups.map(function (group) { return String(group.id); });
+            chosenGroups.forEach(function (id) {
+                if (currentGroupIds.indexOf(String(id)) !== -1) return;
+                html += '<div class="mention-option audience-option active audience-stale-group" data-audience-kind="group" data-audience-id="' + escapeHtml(id) + '">' +
+                    '<div class="mention-avatar group-mark">!</div>' +
+                    '<span class="mention-name">已失效分组 · 点击取消选择</span>' +
+                    '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+            });
+            var currentContactIds = contacts.map(function (contact) { return String(contact.id); });
+            chosenContacts.forEach(function (id) {
+                if (currentContactIds.indexOf(String(id)) !== -1) return;
+                html += '<div class="mention-option audience-option active audience-stale-contact" data-audience-kind="contact" data-audience-id="' + escapeHtml(id) + '">' +
+                    '<div class="mention-avatar">!</div>' +
+                    '<span class="mention-name">已失效 AI 联系人 · 点击取消选择</span>' +
+                    '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+            });
+            var currentRealUserIds = realUsers.map(function (contact) { return String(contact.id); });
+            chosenRealUsers.forEach(function (id) {
+                if (currentRealUserIds.indexOf(String(id)) !== -1) return;
+                html += '<div class="mention-option audience-option active audience-stale-contact" data-audience-kind="real_user" data-audience-id="' + escapeHtml(id) + '">' +
+                    '<div class="mention-avatar">!</div>' +
+                    '<span class="mention-name">已失效或未接受的真人好友 · 点击取消选择</span>' +
+                    '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+            });
+            html += '<div class="audience-section-label">AI 角色</div>';
+            if (!contacts.length) {
+                html += '<div class="empty-hint">还没有可选择的 AI 角色</div>';
+            } else {
+                html += contacts.map(function (contact) {
+                    var id = String(contact.id);
+                    var active = chosenContacts.indexOf(id) !== -1 ? ' active' : '';
+                    var avatar = contact.avatar
+                        ? '<img src="' + escapeHtml(contact.avatar) + '" alt="">'
+                        : escapeHtml(String(contact.name || '角').charAt(0));
+                    return '<div class="mention-option audience-option' + active + '" data-audience-kind="contact" data-audience-id="' + escapeHtml(id) + '">' +
+                        '<div class="mention-avatar">' + avatar + '</div>' +
+                        '<span class="mention-name">' + escapeHtml(contact.name || '角色') + '</span>' +
+                        '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+                }).join('');
+            }
+            html += '<div class="audience-section-label">真人好友</div>';
+            if (!realUserRead.ok) {
+                html += '<div class="empty-hint">真人好友列表暂时无法读取</div>';
+            } else if (!realUsers.length) {
+                html += '<div class="empty-hint">还没有已接受的真人好友</div>';
+            } else {
+                html += realUsers.map(function (contact) {
+                    var id = String(contact.id);
+                    var active = chosenRealUsers.indexOf(id) !== -1 ? ' active' : '';
+                    var avatar = contact.avatarUrl
+                        ? '<img src="' + escapeHtml(contact.avatarUrl) + '" alt="">'
+                        : escapeHtml(String(contact.displayName || '友').charAt(0));
+                    return '<div class="mention-option audience-option' + active + '" data-audience-kind="real_user" data-audience-id="' + escapeHtml(id) + '">' +
+                        '<div class="mention-avatar">' + avatar + '</div>' +
+                        '<span class="mention-name">' + escapeHtml(contact.displayName || '真人好友') + '</span>' +
+                        '<span class="audience-meta">真人好友</span>' +
+                        '<svg class="check-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>';
+                }).join('');
+            }
+            var snapshot = getAudienceSnapshot(currentPerm);
+            html += snapshot.ok
+                ? '<div class="audience-count">已选择 ' + getAudienceMemberCount(snapshot) + ' 位联系人 · ' + chosenGroups.length + ' 个分组</div>'
+                : '<div class="audience-count">受众名单暂不可确认 · 请处理失效联系人或恢复好友目录后再继续</div>';
+
+            // Preview by canonical typed keys; an AI role and a human account may share a raw ID.
+            var contactNames = Object.create(null);
+            contacts.forEach(function (contact) {
+                contactNames[getAudienceIdentityKey('ai_role', contact.id)] = String(contact.name || '角色');
+            });
+            realUsers.forEach(function (contact) {
+                contactNames[getAudienceIdentityKey('real_user', contact.id)] = String(contact.displayName || '真人好友');
+            });
+            var previewNames = [];
+            var missingCount = 0;
+            var overflowCount = 0;
+            if (snapshot.ok) (snapshot.memberRefs || []).forEach(function (key) {
+                if (!Object.prototype.hasOwnProperty.call(contactNames, key)) {
+                    missingCount += 1;
+                } else if (previewNames.length < 8) {
+                    previewNames.push(contactNames[key]);
+                } else {
+                    overflowCount += 1;
+                }
+            });
+            var previewParts = previewNames.map(function (name) { return escapeHtml(name); });
+            if (missingCount) previewParts.push('未匹配联系人 ' + missingCount + ' 人');
+            var staleAudienceCount = (snapshot.staleMemberIds || []).length + (snapshot.staleMemberRefs || []).length;
+            if (snapshot.ok && staleAudienceCount) {
+                previewParts.push('分组内 ' + staleAudienceCount + ' 位已失效联系人不会计入名单');
+            }
+            if (overflowCount) previewParts.push('另有 ' + overflowCount + ' 人');
+            var snapshotErrorText = snapshot.error === 'missing_groups'
+                ? '分组已不存在，请取消失效分组后重新选择。'
+                : snapshot.error === 'missing_contacts'
+                    ? '有联系人已不存在或尚未接受好友请求，请取消失效联系人后重新选择。'
+                    : snapshot.error === 'contact_directory_unavailable'
+                        ? '真人好友目录不可用，请恢复目录后重新确认可见范围。'
+                        : snapshot.error === 'module_unavailable'
+                            ? '权限模块暂未加载，请刷新页面或取消分组后单独选择联系人。'
+                            : snapshot.ok ? '' : '分组数据无法读取，请检查后重新选择。';
+            html += '<div class="audience-review">' +
+                '<div class="audience-review-label">' + (currentPerm === 'custom' ? '本条动态可见对象' : '本条动态排除对象') + '</div>' +
+                '<div class="audience-review-names">' + (!snapshot.ok ? snapshotErrorText : (previewParts.length ? previewParts.join('、') : '尚未选择联系人')) + '</div>' +
+                '<div class="audience-review-note">发布后会固定保存这份联系人名单，之后调整分组不会改变已发布动态的范围</div>' +
+                '</div>';
+            body.innerHTML = html;
+        }
+        function openAudienceSelection(mode) {
+            currentPerm = mode;
+            permissionSheetStage = 'audience';
+            document.getElementById('permSheetTitle').textContent = mode === 'custom' ? '部分可见' : '不给谁看';
+            document.getElementById('permClose').textContent = '完成';
+            renderAudienceSelection();
+        }
+        function openPermSheet() {
+            permissionDraft = {
+                visibility: currentPerm,
+                visibleGroups: selectedVisibleGroupIds.slice(),
+                visibleContacts: selectedVisibleContactIds.slice(),
+                visibleRealUsers: selectedVisibleRealUserIds.slice(),
+                hiddenGroups: selectedHiddenGroupIds.slice(),
+                hiddenContacts: selectedHiddenContactIds.slice(),
+                hiddenRealUsers: selectedHiddenRealUserIds.slice()
+            };
+            showPermissionModes();
             permBackdrop.classList.add('show');
             permSheet.classList.add('show');
         }
-        function closePermSheet() {
+        function closePermSheet(commit) {
+            if (!commit && permissionDraft) {
+                currentPerm = permissionDraft.visibility;
+                selectedVisibleGroupIds = permissionDraft.visibleGroups;
+                selectedVisibleContactIds = permissionDraft.visibleContacts;
+                selectedVisibleRealUserIds = permissionDraft.visibleRealUsers;
+                selectedHiddenGroupIds = permissionDraft.hiddenGroups;
+                selectedHiddenContactIds = permissionDraft.hiddenContacts;
+                selectedHiddenRealUserIds = permissionDraft.hiddenRealUsers;
+            }
+            permissionDraft = null;
             permBackdrop.classList.remove('show');
             permSheet.classList.remove('show');
+            permissionSheetStage = 'modes';
+            updatePermissionValue();
         }
 
         document.getElementById('rowVisibility').addEventListener('click', openPermSheet);
-        document.getElementById('permClose').addEventListener('click', closePermSheet);
-        permBackdrop.addEventListener('click', closePermSheet);
+        document.getElementById('permClose').addEventListener('click', function () {
+            if (permissionSheetStage === 'audience' && (currentPerm === 'custom' || currentPerm === 'excluded')) {
+                var audienceCheck = getAudienceSnapshot(currentPerm);
+                if (!audienceCheck.ok) {
+                    var audienceError = audienceCheck.error === 'missing_groups' ? '分组已发生变化，请取消失效分组后重新选择'
+                        : audienceCheck.error === 'missing_contacts' ? '联系人已不存在，请取消失效联系人后重新选择'
+                        : audienceCheck.error === 'contact_directory_unavailable' ? '真人好友目录暂时无法读取，请恢复目录后再确认名单'
+                        : audienceCheck.error === 'module_unavailable' ? '权限模块尚未加载，请刷新页面后重试'
+                        : '分组数据无法读取，请取消失效分组或单独选择联系人';
+                    showToast(audienceError);
+                    var audienceBody = document.getElementById('permBody');
+                    var previousAudienceScrollTop = audienceBody ? audienceBody.scrollTop : 0;
+                    renderAudienceSelection();
+                    if (audienceBody) audienceBody.scrollTop = previousAudienceScrollTop;
+                    return;
+                }
+                if (!getAudienceMemberCount(audienceCheck)) {
+                    showToast(currentPerm === 'custom' ? '部分可见至少选择一位联系人' : '不给谁看至少选择一位联系人');
+                    return;
+                }
+            }
+            closePermSheet(permissionSheetStage === 'audience');
+        });
+        permBackdrop.addEventListener('click', function () { closePermSheet(false); });
         document.getElementById('permBody').addEventListener('click', function (e) {
+            var back = e.target.closest('[data-audience-back]');
+            if (back) { showPermissionModes(); return; }
+            var choice = e.target.closest('[data-audience-kind]');
+            if (choice && permissionSheetStage === 'audience') {
+                var kind = choice.getAttribute('data-audience-kind');
+                var id = choice.getAttribute('data-audience-id');
+                var selection;
+                if (kind === 'group') {
+                    selection = currentPerm === 'custom' ? selectedVisibleGroupIds : selectedHiddenGroupIds;
+                } else if (kind === 'real_user') {
+                    selection = currentPerm === 'custom' ? selectedVisibleRealUserIds : selectedHiddenRealUserIds;
+                } else {
+                    selection = currentPerm === 'custom' ? selectedVisibleContactIds : selectedHiddenContactIds;
+                }
+                var index = selection.indexOf(id);
+                if (index >= 0) selection.splice(index, 1); else selection.push(id);
+                renderAudienceSelection();
+                return;
+            }
             var item = e.target.closest('.option-item');
-            if (!item) return;
-            currentPerm = item.getAttribute('data-perm');
-            var label = PERM_OPTIONS.find(function (o) { return o.key === currentPerm; });
-            document.getElementById('permValue').textContent = label ? label.label : '公开';
-            closePermSheet();
+            if (!item || permissionSheetStage !== 'modes') return;
+            var mode = item.getAttribute('data-perm');
+            if (mode === 'custom' || mode === 'excluded') { openAudienceSelection(mode); return; }
+            currentPerm = mode;
+            closePermSheet(true);
         });
 
         /* ========== @好友 sheet ========== */
@@ -532,6 +866,26 @@
 
             var me = getMyInfo();
             var myId = me.id;
+            var visibleAudience = currentPerm === 'custom' ? getAudienceSnapshot('custom') : { groupIds: [], contactIds: [], memberIds: [] };
+            var hiddenAudience = currentPerm === 'excluded' ? getAudienceSnapshot('excluded') : { groupIds: [], contactIds: [], memberIds: [] };
+            var activeAudience = currentPerm === 'custom' ? visibleAudience : hiddenAudience;
+            if ((currentPerm === 'custom' || currentPerm === 'excluded') && !activeAudience.ok) {
+                var publishAudienceError = activeAudience.error === 'missing_groups' ? '分组已发生变化，请重新确认可见范围'
+                    : activeAudience.error === 'missing_contacts' ? '联系人已不存在或尚未接受好友请求，请重新确认可见范围'
+                    : activeAudience.error === 'contact_directory_unavailable' ? '真人好友目录暂时无法读取，请恢复目录后再发布'
+                    : activeAudience.error === 'module_unavailable' ? '权限模块尚未加载，请刷新页面后重试'
+                    : '分组数据无法读取，请重新确认可见范围';
+                showToast(publishAudienceError);
+                openPermSheet();
+                openAudienceSelection(currentPerm);
+                return;
+            }
+            if ((currentPerm === 'custom' && !getAudienceMemberCount(visibleAudience)) ||
+                (currentPerm === 'excluded' && !getAudienceMemberCount(hiddenAudience))) {
+                showToast(currentPerm === 'custom' ? '部分可见至少选择一位联系人' : '不给谁看至少选择一位联系人');
+                openPermSheet();
+                return;
+            }
             var post = {
                 id: 'm_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
                 authorId: myId,
@@ -546,12 +900,25 @@
                 comments: 0,
                 commentList: [],
                 visibility: currentPerm,
-                visibleTo: [],
+                visibleTo: visibleAudience.memberIds,
+                visibleGroupIds: visibleAudience.groupIds,
+                visibleContactIds: visibleAudience.contactIds,
+                visibleRealUserIds: (visibleAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) {
+                    try { return decodeURIComponent(key.slice('real_user:'.length)); }
+                    catch (error) { return key.slice('real_user:'.length); }
+                }),
+                visibleContactRefs: visibleAudience.memberRefs || [],
+                hiddenTo: hiddenAudience.memberIds,
+                hiddenGroupIds: hiddenAudience.groupIds,
+                hiddenContactIds: hiddenAudience.contactIds,
+                hiddenRealUserIds: (hiddenAudience.memberRefs || []).filter(function (key) { return key.indexOf('real_user:') === 0; }).map(function (key) {
+                    try { return decodeURIComponent(key.slice('real_user:'.length)); }
+                    catch (error) { return key.slice('real_user:'.length); }
+                }),
+                hiddenContactRefs: hiddenAudience.memberRefs || [],
+                audienceVersion: 2,
                 mentions: mentionsList.slice()
             };
-            if (currentPerm === 'custom') {
-                post.visibleTo = mentionsList.slice(); // 选部分好友时 visibleTo 同 mentions
-            }
 
             // 存
             var list = _storage ? _storage.getMoments() : (function(){ try { return JSON.parse(localStorage.getItem('moments') || '[]'); } catch (e) { return []; } })();

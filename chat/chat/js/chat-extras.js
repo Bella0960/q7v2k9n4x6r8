@@ -8,9 +8,58 @@
 (function () {
   'use strict';
 
+  function isRealUserConversation() {
+    return !!(window.PhoneCurrentContactRef && window.PhoneCurrentContactRef.type === 'real_user');
+  }
+  function realUserFeatureAllowed(feature) {
+    if (!isRealUserConversation()) return true;
+    var policy = window.PhoneContactCapabilities;
+    return !!(policy && typeof policy.canFeature === 'function' &&
+      policy.canFeature(window.PhoneCurrentContactRef, feature));
+  }
+  function showRealUserFeatureNotice(feature) {
+    var policy = window.PhoneContactCapabilities;
+    var state = policy && typeof policy.getFeatureState === 'function'
+      ? policy.getFeatureState(window.PhoneCurrentContactRef, feature) : null;
+    var message = state && state.reason
+      ? state.reason
+      : '真人好友之间仅开放普通聊天，不提供红包、转账、钱包或交易记录。';
+    if (typeof showToast === 'function') showToast(message);
+  }
+  function applyRealUserFeaturePolicy() {
+    if (!panelOverlay || !isRealUserConversation()) return;
+    var policy = window.PhoneContactCapabilities;
+    panelOverlay.querySelectorAll('.plus-item[data-feat]').forEach(function (button) {
+      var feature = button.getAttribute('data-feat') || '';
+      var state = policy && typeof policy.getFeatureState === 'function'
+        ? policy.getFeatureState(window.PhoneCurrentContactRef, feature) : { enabled: false, planned: false };
+      if (state && state.enabled) {
+        button.hidden = false;
+        button.disabled = false;
+        button.removeAttribute('aria-disabled');
+      } else if (feature === 'voice' && state && state.planned) {
+        button.hidden = false;
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+        button.title = state.reason || '真人语音通话暂未开放';
+      } else {
+        button.hidden = true;
+        button.disabled = true;
+      }
+    });
+  }
+
   // ---------- 通用：向聊天插入一条展示消息（不触发 AI 请求） ----------
   function insertChatMessage(msg) {
     if (!msg || typeof msg !== 'object') return;
+    if (isRealUserConversation()) {
+      var policy = window.PhoneContactCapabilities;
+      if (!policy || typeof policy.canMessageType !== 'function' ||
+          !policy.canMessageType(window.PhoneCurrentContactRef, msg.type || 'text')) {
+        showRealUserFeatureNotice(msg.type || 'message');
+        return;
+      }
+    }
     if (!msg.time) msg.time = Date.now();
     if (!msg.role) msg.role = 'user';
     const list = loadMessages();
@@ -22,6 +71,7 @@
 
   // 隐藏指令：作为 user 消息进入 AI 上下文，但不在界面渲染气泡（sendMsg silent 模式）
   function sendSilentInstruction(text) {
+    if (isRealUserConversation()) return;
     if (typeof sendMsg === 'function') {
       sendMsg({ text: text, silent: true });
     }
@@ -76,6 +126,7 @@
   const plusBtn = document.getElementById('plus-action-btn');
 
   function openPlusPanel() {
+    applyRealUserFeaturePolicy();
     if (panelOverlay) panelOverlay.classList.add('active');
   }
   function closePlusPanel() {
@@ -271,6 +322,10 @@
   // 旧通话页保留为兼容回退；此入口不调用真实麦克风或摄像头。
   // ============================================================
   function featCall(mode) {
+    if (isRealUserConversation() && !realUserFeatureAllowed('voice')) {
+      showRealUserFeatureNotice('voice');
+      return;
+    }
     if (typeof currentCharacter === 'undefined' || !currentCharacter || !currentCharacter.id) return;
     if (window.MAOMAOCallExperience && typeof window.MAOMAOCallExperience.start === 'function') {
       window.MAOMAOCallExperience.start(mode, currentCharacter);
@@ -642,6 +697,10 @@
 
   // ---------- 分发 ----------
   function handleFeature(feat) {
+    if (isRealUserConversation() && !realUserFeatureAllowed(feat)) {
+      showRealUserFeatureNotice(feat);
+      return;
+    }
     switch (feat) {
       case 'regenerate': openRegen(); break;
       case 'location': featLocation(); break;
@@ -680,6 +739,10 @@
   let payMode = 'redpacket'; // 当前抽屉模式：'redpacket' | 'transfer'
 
   function openPayDrawer(mode) {
+    if (isRealUserConversation()) {
+      showRealUserFeatureNotice(mode === 'transfer' ? 'transfer' : 'redpacket');
+      return;
+    }
     payMode = mode === 'transfer' ? 'transfer' : 'redpacket';
     if (payTitle) payTitle.textContent = payMode === 'transfer' ? '转账' : '发红包';
     if (payAmountInput) payAmountInput.value = '';
@@ -710,6 +773,11 @@
 
   // 提交：构造特殊格式消息直接入历史，不走 sendMsg / 不发任何 API
   function submitPayMessage() {
+    if (isRealUserConversation()) {
+      showRealUserFeatureNotice(payMode);
+      closePayDrawer();
+      return;
+    }
     if (typeof loadMessages !== 'function' || typeof saveMessages !== 'function') return;
     var amountStr = String((payAmountInput && payAmountInput.value) || '').trim();
     var amountNum = parseFloat(amountStr);

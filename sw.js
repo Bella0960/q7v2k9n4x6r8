@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v173';
+const CACHE_NAME = 'phone-app-pwa-v196';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v173 release: serve imported fonts from a persistent same-origin cache to avoid per-page IndexedDB Blob reads.
+// v196 release: redact inactive friend requests and blocked avatar references.
 const APP_SHELL = [
   './',
   './index.html',
@@ -78,6 +78,17 @@ const APP_SHELL = [
   'shared/js/font-loader.js',
   'shared/js/native-feel.js',
   'shared/js/phone/phone_storage.js',
+  './shared/js/phone/contact-identity.js?v=20261107v1',
+  './shared/js/phone/contact-capabilities.js?v=20261107v1',
+  './shared/js/phone/real-user-conversation-repository.js',
+  './shared/js/phone/qrcode-generator.js?v=20261107v3',
+  './shared/js/phone/real-user-friend-invite.js?v=20261107v3',
+  './shared/js/phone/real-user-camera-scanner.js?v=20261107v3',
+  './shared/js/phone/jsQR.js?v=20261107v3',
+  './shared/js/phone/real-user-account-client.js?v=20261108v6',
+  './chat/contacts/real-user-account-panel.js?v=20261108v4',
+  './shared/js/phone/contact-directory.js?v=20261108v3',
+  './shared/js/contact-groups.js?v=20261107v2',
   './shared/js/phone/phone_context.js?v=20261102npc1',
   'shared/js/phone/chat-message-policy.js?v=20261029v5',
   'shared/js/phone/chat-send-policy.js?v=20261029v2',
@@ -89,7 +100,7 @@ const APP_SHELL = [
   'shared/js/phone/phone_stream.js',
   'shared/js/phone/memory_recall.js?v=20261024v2',
   'shared/js/phone/memory_space_v2.js?v=20261024v1',
-  './shared/js/chat-notifier.js?v=20261102v3',
+  './shared/js/chat-notifier.js?v=20261107v4',
   'shared/js/phone/storage/repository.js',
   'shared/js/phone/storage/media-repository.js?v=20261106v1',
   'shared/js/phone/phone_api.js?v=20261106v1',
@@ -154,6 +165,14 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+
+  // Server capability and conversation endpoints must never enter the PWA's
+  // cache-first static-asset path. Their state is dynamic and must be read live.
+  if (url.pathname === '/api/real-user-chat' ||
+      url.pathname.startsWith('/api/real-user-chat/')) {
+    event.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
 
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
