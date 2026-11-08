@@ -1378,10 +1378,18 @@ if (!DatabaseSync) {
       assert.equal(friendship.status, "removed",
         "reactivation must not restore the prior friendship");
 
-      const redeemed = await callFriends(env, "/requests", "POST", aliceToken, {
-        requestId: "request_reactivation_new_01",
-        code: qr.body.code
-      });
+      const redeemed = await callWorker(
+        env,
+        "/api/real-user-chat/v1/friends/requests",
+        "POST",
+        {
+          cookie: aliceToken,
+          body: {
+            requestId: "request_reactivation_new_01",
+            code: qr.body.code
+          }
+        }
+      );
       assert.equal(redeemed.response.status, 409,
         "reactivation must not revive a QR code revoked during suspension");
 
