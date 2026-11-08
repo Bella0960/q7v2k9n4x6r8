@@ -69,8 +69,8 @@ The creator-only desktop shortcut opens `/admin/admin-center.html`. The page is 
 
 The first management screen includes:
 - A count of ordinary MAO accounts (the creator account is deliberately excluded), pending invitations, active accounts, and restricted accounts.
-- Search by username or permanent MAO ID.
-- Per-account details and private audit history.
+- Search by username, permanent MAO ID, or QQ email; filter the directory by all, pending, active, or restricted states.
+- Per-account details and private audit history, with a one-tap permanent-ID copy control and protection against stale audit responses when switching accounts.
 - One-time invitation generation for pending accounts, with the raw code displayed once for copying.
 - Temporary disable, restore, and permanent revoke actions with an admin-only reason.
 
