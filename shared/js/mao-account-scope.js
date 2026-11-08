@@ -90,6 +90,9 @@
           return key == null ? null : key.slice(prefix.length);
         };
         if (property === Symbol.toStringTag) return 'Storage';
+        if (property === Symbol.iterator) return function () {
+          return keys().map(function (key) { return key.slice(prefix.length); })[Symbol.iterator]();
+        };
         if (typeof property === 'string') {
           var value = nativeStorage.getItem(physical(property));
           return value == null ? undefined : value;
@@ -167,6 +170,18 @@
     console.error('[MAO account scope] storage namespace unavailable');
     stopUnsafeAccountPage();
     return;
+  }
+
+  // Native storage events are shared across same-origin tabs. Hide events
+  // from other MAO namespaces so a page cannot read another account's changed
+  // key/value through the StorageEvent payload.
+  if (global.addEventListener) {
+    global.addEventListener('storage', function (event) {
+      if (event.storageArea !== rawLocalStorage && event.storageArea !== rawSessionStorage) return;
+      if (!event.key || event.key.indexOf(prefix) !== 0) {
+        if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+      }
+    }, true);
   }
 
   // Every local IndexedDB database is account-prefixed. The one super-admin
