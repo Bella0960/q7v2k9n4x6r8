@@ -401,7 +401,9 @@ self.addEventListener('push', event => {
       silent: false
     });
   })());
-, event => {
+});
+
+self.addEventListener('notificationclick', event => {
   event.notification.close();
   const targetUrl = pushTargetUrl(event.notification.data && event.notification.data.url);
 
