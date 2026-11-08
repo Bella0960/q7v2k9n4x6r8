@@ -229,6 +229,68 @@ test('guided save steps verify real success and failure messages instead of manu
   assert.match(html, /跳过核验并继续/);
 });
 
+test('guided verification distinguishes storage failure from a later successful retry', () => {
+  const start = html.indexOf('function stopGuidedVerification()');
+  const end = html.indexOf('function closeGuidedTour()', start);
+  assert.ok(start >= 0 && end > start, 'guided verification helpers must remain a contiguous unit');
+  const helperSource = html.slice(start, end);
+
+  let lastObserver = null;
+  class FakeMutationObserver {
+    constructor(callback) { this.callback = callback; this.disconnected = false; lastObserver = this; }
+    observe() {}
+    disconnect() { this.disconnected = true; }
+  }
+  const classes = new Set();
+  const toast = {
+    textContent: '',
+    classList: { contains: (name) => classes.has(name) }
+  };
+  const ui = {
+    tourVerification: { className: '', textContent: '' },
+    tourNext: { textContent: '' },
+    tourHint: { textContent: '' }
+  };
+  const sandbox = {
+    MutationObserver: FakeMutationObserver,
+    $: (id) => ui[id],
+    activeTourLesson: null,
+    activeTourIndex: 0
+  };
+  runInNewContext(
+    "var guidedVerificationObserver=null,guidedVerificationState='none',guidedVerificationMessage='',guidedVerificationOverride=false;\\n" + helperSource,
+    sandbox
+  );
+
+  sandbox.beginGuidedVerification({
+    verify: {
+      selector: '#toast',
+      success: ['已保存'],
+      failure: ['保存失败'],
+      recovery: '释放浏览器存储空间后重试。'
+    }
+  }, { querySelector: () => toast });
+  assert.equal(sandbox.guidedVerificationState, 'waiting');
+
+  toast.textContent = '保存失败：存储空间不足';
+  classes.add('show');
+  lastObserver.callback();
+  assert.equal(sandbox.guidedVerificationState, 'failure');
+  assert.match(ui.tourVerification.textContent, /释放浏览器存储空间后重试/);
+
+  classes.delete('show');
+  lastObserver.callback();
+  toast.textContent = '已保存';
+  lastObserver.callback();
+  classes.add('show');
+  lastObserver.callback();
+  assert.equal(sandbox.guidedVerificationState, 'success');
+  assert.match(ui.tourVerification.textContent, /已确认页面反馈：已保存/);
+
+  sandbox.stopGuidedVerification();
+  assert.equal(lastObserver.disconnected, true);
+});
+
 test('every guided save verifier points to a real toast and an existing action control', () => {
   const extra = readExtraLessons(html);
   const cases = [
