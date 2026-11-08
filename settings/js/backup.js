@@ -1120,8 +1120,10 @@
             // 4.5 字体兜底：active_font_preset_id 指向的预设可能因跳过 / 解码失败不存在了 → 清掉悬空 id
             var fontOrphanCleaned = await checkFontPresetOrphan();
 
-            // 5. 成功路径：清掉本机恢复点（已无需保留）
-            rpDeleteRole(RP_ROLE_PRE);
+            // 5. 只有所有 IndexedDB 数据库都成功恢复时才清掉本机恢复点。
+            //    任一数据库失败时，该库事务已回滚；保留 localStorage 导入前快照供排查。
+            var restorePointKept = dbFailed.length > 0;
+            if (!restorePointKept) rpDeleteRole(RP_ROLE_PRE);
 
             // 6. 组装最终提示
             var parts = ['导入成功'];
@@ -1133,6 +1135,7 @@
             if (dbRestored) parts.push('已恢复 IndexedDB ' + dbRestored + ' 项');
             if (dbSkippedBlob) parts.push('有 ' + dbSkippedBlob + ' 项 IndexedDB 记录因内容损坏未恢复');
             if (dbFailed.length) parts.push('部分 IndexedDB 未恢复：' + dbFailed.join('；'));
+            if (restorePointKept) parts.push('本机导入前恢复点已保留，供排查');
             if (dbSkippedOld) parts.push('备份版本较旧，未包含媒体与书籍数据');
             if (fontOrphanCleaned) parts.push('自定义字体未随备份恢复，请重新上传');
             var tail = backupFileWarn || '';
