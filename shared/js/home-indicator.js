@@ -152,6 +152,14 @@
 
   function applyPreference() {
     var visible = getPreference();
+    // The forum composer reserves the visible Home Indicator band only while that setting is enabled.
+    var root = document.documentElement;
+    if (root && root.style) {
+      root.style.setProperty('--maomao-home-indicator-comment-bottom',
+        visible ? 'calc(24px + env(safe-area-inset-bottom,0px))' : '0px');
+      root.style.setProperty('--maomao-home-indicator-comment-padding-bottom',
+        visible ? '10px' : 'calc(10px + env(safe-area-inset-bottom,0px))');
+    }
     document.querySelectorAll('.gesture-bar').forEach(function (bar) {
       bar.style.display = visible ? '' : 'none';
     });
