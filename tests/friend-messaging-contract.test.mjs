@@ -787,3 +787,48 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   const aliceAfterFresh = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages');
   assert.deepEqual(aliceAfterFresh.payload.messages.map(item => item.body), ['新关系里的第一条消息']);
 });
+
+
+test('好友关系在聊天分页期间发生变化时，服务端拒绝混合代际响应', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  await register(ctx, alice, '198.51.100.101');
+  await register(ctx, bob, '198.51.100.102');
+  await makeFriends(ctx, alice, bob);
+
+  const originalList = ctx.store.listFriendMessages.bind(ctx.store);
+  let changed = false;
+  ctx.store.listFriendMessages = function (query) {
+    const rows = originalList(query);
+    if (!changed) {
+      changed = true;
+      const oldFriendship = ctx.store.getFriendship(alice.userId, bob.userId);
+      assert.ok(oldFriendship);
+      assert.equal(ctx.store.removeFriendship(alice.userId, bob.userId, oldFriendship.generation_id), true);
+      const newRequestId = messageId();
+      const created = ctx.store.createFriendRequest({
+        id: newRequestId,
+        requesterId: alice.userId,
+        recipientId: bob.userId,
+        message: '',
+        now: FIXED_NOW + 2
+      });
+      assert.equal(created.kind, 'created');
+      const accepted = ctx.store.respondToFriendRequest({
+        requestId: newRequestId,
+        userId: bob.userId,
+        status: 'accepted',
+        now: FIXED_NOW + 3
+      });
+      assert.equal(accepted.duplicate, false);
+    }
+    return rows;
+  };
+
+  const response = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages');
+  assert.equal(response.status, 409);
+  assert.equal(response.payload.error.code, 'FRIENDSHIP_CHANGED_RETRY');
+  assert.ok(ctx.store.getFriendship(alice.userId, bob.userId));
+});
