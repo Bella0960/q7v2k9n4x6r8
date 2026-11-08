@@ -153,6 +153,8 @@ test('场景1：命中缓存立即返回，网络照常后台更新，缓存写�
   assert.equal(response, cached, '命中缓存时必须原样返回缓存响应');
   assert.equal(await response.text(), 'cached-page');
   assert.equal(harness.fetchCalls.length, 1, '即使命中缓存也必须继续发起网络请求');
+  assert.notEqual(harness.fetchCalls[0].mode, 'navigate',
+    '后台刷新不能复用 navigate 模式的原始 Request，否则浏览器会拒绝该请求');
   assert.equal(lifecycleState.value, 'pending', '网络尚未返回时 waitUntil 不应结束');
 
   networkGate.resolve(htmlResponse('fresh-page'));
