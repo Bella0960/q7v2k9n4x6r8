@@ -593,6 +593,10 @@
         if (!current.ok) return current;
         var existing = current.contact;
         if (!existing) return { ok: false, error: 'not_found', contacts: current.contacts };
+        var validation = validateRequestId(existing, options);
+        if (!validation.ok) {
+            return { ok: false, error: validation.error, contact: existing, contacts: current.contacts };
+        }
         if (existing.status === STATUS.REMOVED) {
             return { ok: true, action: 'already_removed', contact: existing, contacts: current.contacts };
         }

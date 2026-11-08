@@ -155,7 +155,7 @@ test('removing an accepted friend retains a tombstone but permits a new relation
   incoming(directory, 'user-4', 'friendship-old', 400);
   directory.acceptIncoming('user-4', { requestId: 'friendship-old', now: 401 });
 
-  const removed = directory.removeFriend('user-4', { now: 402 });
+  const removed = directory.removeFriend('user-4', { requestId: 'friendship-old', now: 402 });
   assert.equal(removed.ok, true);
   assert.equal(removed.contact.status, 'removed');
   assert.equal(directory.getAcceptedRefs().refs.length, 0);
@@ -295,7 +295,7 @@ test('low-level save cannot revive blocked or removed relationship tombstones', 
 
   incoming(directory, 'removed-user', 'removed-request', 914);
   directory.acceptIncoming('removed-user', { requestId: 'removed-request', now: 915 });
-  directory.removeFriend('removed-user', { now: 916 });
+  directory.removeFriend('removed-user', { requestId: 'removed-request', now: 916 });
   const removed = directory.get('removed-user');
   const removedRevival = directory.save({
     ...removed,
@@ -328,6 +328,52 @@ test('saveMany is atomic when one snapshot attempts a lifecycle transition', () 
   assert.equal(result.invalidIndex, 1);
   assert.equal(directory.get('batch-one').displayName, '真人好友');
   assert.equal(directory.get('batch-two').status, 'accepted');
+});
+
+test('friend removal requires the exact current request ID and cannot remove a later friendship', () => {
+  const { directory } = createDirectoryRuntime();
+  incoming(directory, 'readded-user', 'friendship-old', 940);
+  directory.acceptIncoming('readded-user', { requestId: 'friendship-old', now: 941 });
+
+  assert.equal(directory.removeFriend('readded-user', { now: 942 }).error, 'missing_request_id');
+  assert.equal(directory.removeFriend('readded-user', {
+    requestId: 'stale-request',
+    now: 942
+  }).error, 'stale_request');
+  assert.equal(directory.get('readded-user').status, 'accepted');
+
+  const firstRemoval = directory.removeFriend('readded-user', {
+    requestId: 'friendship-old',
+    now: 943
+  });
+  assert.equal(firstRemoval.ok, true);
+  assert.equal(firstRemoval.contact.status, 'removed');
+
+  // A fresh request establishes a new relationship generation for this contact.
+  incoming(directory, 'readded-user', 'friendship-new', 944);
+  directory.acceptIncoming('readded-user', { requestId: 'friendship-new', now: 945 });
+
+  const staleRemoval = directory.removeFriend('readded-user', {
+    requestId: 'friendship-old',
+    now: 946
+  });
+  assert.equal(staleRemoval.ok, false);
+  assert.equal(staleRemoval.error, 'stale_request');
+  assert.equal(directory.get('readded-user').status, 'accepted');
+  assert.equal(directory.get('readded-user').requestId, 'friendship-new');
+
+  const currentRemoval = directory.removeFriend('readded-user', {
+    requestId: 'friendship-new',
+    now: 947
+  });
+  assert.equal(currentRemoval.ok, true);
+  assert.equal(currentRemoval.contact.status, 'removed');
+  const duplicateRemoval = directory.removeFriend('readded-user', {
+    requestId: 'friendship-new',
+    now: 948
+  });
+  assert.equal(duplicateRemoval.ok, true);
+  assert.equal(duplicateRemoval.action, 'already_removed');
 });
 
 test('safe profile refresh keeps accepted relationship metadata intact', () => {
