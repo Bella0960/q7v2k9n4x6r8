@@ -206,7 +206,7 @@ Acceptance before implementation:
 ### THEME-001 — High-freedom chat theme package import/export
 **Priority:** P1 · **Status:** IN PROGRESS
 
-Scope: keep MAOMAO Theme Studio independent; add a versioned package format, a safe importer and a chat-only runtime adapter. Apply only to the chat list and chat detail DOM. Preserve the existing ChatBeauty configuration, per-role overrides, role data and chat history. Store imported image/font assets through MediaRepository and keep only asset references in localStorage. Limit CSS and motion behavior to the chat preview/page shell.
+Scope: keep MAOMAO Theme Studio independent; add a versioned package format, a validated ZIP writer, a safe importer and a chat-only runtime adapter. The installed-theme manager can re-export imported packages without changing their stored theme settings. Apply only to the chat list and chat detail DOM. Preserve the existing ChatBeauty configuration, per-role overrides, role data and chat history. Store imported image/font assets through MediaRepository and keep only asset references in localStorage. Limit CSS and motion behavior to the chat preview/page shell.
 
 Acceptance:
 - Accept only MAOMAO_CHAT_THEME schema v1 packages for target maomao-chat.
@@ -216,9 +216,10 @@ Acceptance:
 - Apply chat-list and chat-detail styles only on their corresponding pages; do not alter message data or role storage.
 - Mount custom blocks using safe DOM APIs and textContent; do not execute scripts from packages.
 - Motion behaviors are allow-listed (nav scroll collapse/hide, nav tap, message enter, sheet rise, bubble press).
-- Automated package-format tests cover valid packages, assets, CSS rejection, unsafe paths and schema mismatches.
+- Exported packages contain the normalized manifest/theme/CSS and original binary assets; export output must round-trip through the importer.
+- Automated package-format tests cover valid packages, exported round trips, assets, CSS rejection, unsafe paths and schema mismatches.
 - Real desktop and phone/PWA import, apply, switch, refresh, and rollback acceptance remains required before release.
-- The import adapter alone does not complete the import/export loop. Keep THEME-001 IN PROGRESS until the independent Theme Studio exporter emits compatible packages and an export-to-import round trip is verified.
+- A shared exporter and installed-theme re-export action now produce compatible `.maomaotheme` packages, with automated export-to-import round-trip coverage. Keep THEME-001 IN PROGRESS until the independent Theme Studio editor exposes this exporter and real desktop/phone acceptance is completed.
 
 
 ### AI-IMG-001 — Complete role-based image generation and gallery
