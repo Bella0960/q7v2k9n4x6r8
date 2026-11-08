@@ -831,18 +831,22 @@
         var clearOnRestore = !!(targetDef && targetDef.clearOnRestore);
         return idbOpen(dbName, version, storeDefs).then(function (db) {
             var storeMap = {};
-            storeDefs.forEach(function (def) { storeMap[def.store] = def; });
-            var incomingNames = Object.keys(incomingDb);
             var storeNames = [];
-            incomingNames.forEach(function (name) {
-                var def = storeMap[name];
-                if (!def) return;
-                var records = incomingDb[name];
-                if (!Array.isArray(records)) {
-                    throw new Error('备份中的 ' + dbName + '/' + name + ' 不是有效记录列表');
-                }
-                if (records.length || clearOnRestore) storeNames.push(name);
-            });
+            try {
+                storeDefs.forEach(function (def) { storeMap[def.store] = def; });
+                Object.keys(incomingDb).forEach(function (name) {
+                    var def = storeMap[name];
+                    if (!def) return;
+                    var records = incomingDb[name];
+                    if (!Array.isArray(records)) {
+                        throw new Error('备份中的 ' + dbName + '/' + name + ' 不是有效记录列表');
+                    }
+                    if (records.length || clearOnRestore) storeNames.push(name);
+                });
+            } catch (error) {
+                try { db.close(); } catch (closeError) {}
+                throw error;
+            }
             if (!storeNames.length) {
                 db.close();
                 return { written: 0, skipped: 0, dbRestored: true };
