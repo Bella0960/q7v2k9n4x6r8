@@ -878,15 +878,15 @@ test('custom component IDs are isolated between chat list and chat detail styles
   const detailSelector='[data-maomao-theme-page="chatDetail"][data-maomao-theme-block="'+sameId+'"]';
   assert.ok(css.includes(listSelector),'聊天列表自定义组件样式必须带 chatList 页面标记');
   assert.ok(css.includes(detailSelector),'聊天详情自定义组件样式必须带 chatDetail 页面标记');
-  assert.ok(css.includes(listSelector+'{color:#111'),'聊天列表样式不能被详情页同 ID 组件覆盖');
-  assert.ok(css.includes(detailSelector+'{color:#fff'),'聊天详情样式不能被列表页同 ID 组件覆盖');
+  assert.ok(css.includes(listSelector+'{background:#fff !important;color:#111 !important}'),'聊天列表样式不能被详情页同 ID 组件覆盖');
+  assert.ok(css.includes(detailSelector+'{background:#111 !important;color:#fff !important}'),'聊天详情样式不能被列表页同 ID 组件覆盖');
 });
 
 test('runtime marks each mounted custom block with its owning chat page',async()=>{
   const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
   const theme={
     id:'page-tag-theme',
-    blocks:{chatList:[{id:'custom-shared-card',type:'text',text:'列表'}],chatDetail:[]},
+    blocks:{chatList:[{id:'custom-shared-card',type:'text',text:'列表',slot:'top-of-content'}],chatDetail:[]},
     motions:[]
   };
   const values=new Map([
