@@ -105,6 +105,17 @@ test('0010 migration backfills existing friendship and message generations', () 
     `INSERT INTO friend_conversation_reads
       (user_id, friend_id, last_read_created_at, last_read_message_id, updated_at)
       VALUES (?, ?, ?, ?, ?)`,
+    'u_alpha', 'u_bravo', 100, 'legacy-message', 100
+  );
+  exec(
+    `INSERT INTO friend_message_hides (user_id, friend_id, message_id, hidden_at)
+      VALUES (?, ?, ?, ?)`,
+    'u_alpha', 'u_bravo', 'legacy-message', 100
+  );
+  exec(
+    `INSERT INTO friend_conversation_reads
+      (user_id, friend_id, last_read_created_at, last_read_message_id, updated_at)
+      VALUES (?, ?, ?, ?, ?)`,
     'u_ghost', 'u_removed', 500, 'old-read-message', 500
   );
   exec(
@@ -143,4 +154,6 @@ test('0010 migration backfills existing friendship and message generations', () 
   assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_reads WHERE user_id = ?', 'u_ghost')[0].total, 0);
   assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_clears WHERE user_id = ?', 'u_ghost')[0].total, 0);
   assert.equal(query('SELECT COUNT(*) AS total FROM friend_message_hides WHERE user_id = ?', 'u_ghost')[0].total, 0);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_conversation_reads WHERE user_id = ?', 'u_alpha')[0].total, 1);
+  assert.equal(query('SELECT COUNT(*) AS total FROM friend_message_hides WHERE user_id = ?', 'u_alpha')[0].total, 1);
 });
