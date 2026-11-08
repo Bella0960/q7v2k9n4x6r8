@@ -1289,4 +1289,52 @@ if (!DatabaseSync) {
     }
   });
 
+
+  test("suspending or deleting an account revokes its QR codes and terminates its pending requests", async () => {
+    for (const inactiveStatus of ["suspended", "deleted"]) {
+      for (const inactiveSide of ["requester", "recipient"]) {
+        const fixture = await seedRacePair("cleanup_" + inactiveStatus + "_" + inactiveSide);
+        const { database, env, aliceId, bobId, aliceToken, bobToken } = fixture;
+        try {
+          const requesterId = inactiveSide === "requester" ? aliceId : bobId;
+          const recipientId = inactiveSide === "requester" ? bobId : aliceId;
+          const requesterToken = inactiveSide === "requester" ? aliceToken : bobToken;
+          const recipientToken = inactiveSide === "requester" ? bobToken : aliceToken;
+          const requesterCode = await callFriends(env, "/codes/rotate", "POST", requesterToken);
+          const recipientCode = await callFriends(env, "/codes/rotate", "POST", recipientToken);
+          assert.equal(requesterCode.response.status, 201);
+          assert.equal(recipientCode.response.status, 201);
+
+          const requestId = "request_cleanup_" + inactiveStatus + "_" + inactiveSide;
+          addPendingRequest(database, requestId, requesterId, recipientId, Date.now() - 1000);
+
+          database.prepare(
+            "UPDATE real_user_accounts SET status = ?, updated_at = ? WHERE id = ?"
+          ).run(inactiveStatus, Date.now(), inactiveSide === "requester" ? requesterId : recipientId);
+
+          const inactiveAccountCodes = database.prepare(
+            "SELECT COUNT(*) AS count FROM real_user_friend_codes WHERE account_id = ? AND revoked_at IS NULL"
+          ).get(inactiveSide === "requester" ? requesterId : recipientId);
+          assert.equal(inactiveAccountCodes.count, 0, "all outstanding QR codes for the inactive account must be revoked");
+
+          const request = database.prepare(
+            "SELECT status, responded_at FROM real_user_friend_requests WHERE id = ?"
+          ).get(requestId);
+          assert.equal(request.status, inactiveSide === "requester" ? "cancelled" : "declined");
+          assert.ok(request.responded_at > 0);
+
+          const inbox = await callFriends(
+            env, "/requests?direction=incoming", "GET",
+            inactiveSide === "requester" ? recipientToken : requesterToken
+          );
+          assert.equal(inbox.response.status, 200);
+          assert.equal(inbox.body.requests.length, 0,
+            "an account becoming inactive must not leave a stale pending request visible");
+        } finally {
+          database.close();
+        }
+      }
+    }
+  });
+
 }
