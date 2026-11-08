@@ -851,3 +851,95 @@ test('theme CSS rejects global at-rules outside the grouping and namespaced-font
   assert.throws(()=>F.validateCss('@layer app{.sample{color:#111}}'),/白名单/);
   assert.doesNotThrow(()=>F.validateCss('@media (max-width:600px){.sample{font-size:14px}}'));
 });
+
+
+test('custom component IDs are isolated between chat list and chat detail styles',()=>{
+  const sameId='custom-shared-card';
+  const theme=fixture({
+    pages:{
+      chatList:[{id:'statusBar'},{id:sameId}],
+      chatDetail:[{id:'detailHeader'},{id:sameId}]
+    },
+    styles:{
+      chatList:{[sameId]:{color:'#111',background:'#fff'}},
+      chatDetail:{[sameId]:{color:'#fff',background:'#111'}}
+    },
+    blocks:{
+      chatList:[{id:sameId,type:'card',title:'列表卡片',slot:'top-of-content'}],
+      chatDetail:[{id:sameId,type:'card',title:'详情卡片',slot:'before-header'}]
+    },
+    layerOrder:{
+      chatList:[sameId],
+      chatDetail:[sameId]
+    }
+  });
+  const css=F.stylesToCss(F.readPackage(F.parseStoredZip(makePackage(theme))).theme);
+  const listSelector='[data-maomao-theme-page="chatList"][data-maomao-theme-block="'+sameId+'"]';
+  const detailSelector='[data-maomao-theme-page="chatDetail"][data-maomao-theme-block="'+sameId+'"]';
+  assert.ok(css.includes(listSelector),'聊天列表自定义组件样式必须带 chatList 页面标记');
+  assert.ok(css.includes(detailSelector),'聊天详情自定义组件样式必须带 chatDetail 页面标记');
+  assert.ok(css.includes(listSelector+'{color:#111'),'聊天列表样式不能被详情页同 ID 组件覆盖');
+  assert.ok(css.includes(detailSelector+'{color:#fff'),'聊天详情样式不能被列表页同 ID 组件覆盖');
+});
+
+test('runtime marks each mounted custom block with its owning chat page',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  const theme={
+    id:'page-tag-theme',
+    blocks:{chatList:[{id:'custom-shared-card',type:'text',text:'列表'}],chatDetail:[]},
+    motions:[]
+  };
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([theme])],
+    ['maomao_chat_theme_active_v1',theme.id]
+  ]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  const nodes=[],main={
+    firstElementChild:null,
+    insertBefore(node){nodes.push(node);node.parentNode=this;return node}
+  };
+  const attributes=new Map();
+  function makeNode(tag){
+    return{
+      tagName:tag,children:[],style:{setProperty(){},removeProperty(){}},
+      classList:{add(){},remove(){}},
+      attributes,
+      setAttribute(name,value){attributes.set(name,String(value))},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      remove(){this.removed=true}
+    };
+  }
+  const styleNodes=new Map();
+  const shell={
+    classList:{add(){},remove(){}},
+    style:{setProperty(){},removeProperty(){}},
+    setAttribute(){},removeAttribute(){},
+    querySelector(selector){return selector==='.main-stage'?main:null},
+    querySelectorAll(){return[]}
+  };
+  const document={
+    readyState:'complete',
+    querySelector(selector){return selector==='.phone-mockup'?shell:null},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement:makeNode,
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const phoneStorage={repository:{media(){return{}}}};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(){return''}},
+    PhoneStorage:phoneStorage,
+    location:{pathname:'/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(){},
+    dispatchEvent(){}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,PhoneStorage:phoneStorage,console:{error(){}},setTimeout});
+  for(let i=0;i<8;i++)await Promise.resolve();
+  assert.equal(nodes.length,1,'当前页面应只挂载聊天列表自己的自定义组件');
+  assert.equal(attributes.get('data-maomao-theme-page'),'chatList','运行时组件必须携带所属页面标记');
+  assert.equal(attributes.get('data-maomao-theme-block'),'custom-shared-card','运行时组件 ID 应保持不变');
+});
