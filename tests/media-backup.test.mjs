@@ -21,6 +21,7 @@
  *  38-39. 阶段日志写入保护、未预期异常后的恢复点保留
  *  40-43. 跨标签页导入互斥、过期租约接管、恢复互斥与旧租约拒写
  *  44-45. 清理中断时保留阶段标记，避免已提交数据被误回滚
+ *  46. 跨标签页租约写入未提交时不得误发放锁
  */
 
 import test from 'node:test';
@@ -205,7 +206,8 @@ function makeIDB(name, version, storeDefs) {
                         const failure = db._failPut;
                         if (failure && failure.store === name
                                 && (!failure.assetId || String(value && value.assetId) === String(failure.assetId))
-                                && (!failure.id || String(value && value.id) === String(failure.id))) {
+                                && (!failure.id || String(value && value.id) === String(failure.id))
+                                && (!failure.role || String(value && value.role) === String(failure.role))) {
                             db._failPut = null;
                             throw new Error(failure.message || 'mock IndexedDB put failed');
                         }
@@ -2415,4 +2417,28 @@ test('45 clearRestorePoints：阶段标记最后删除，避免清理过程留�
     assert.equal(result.ok, true);
     assert.equal(deleted.join(','), roles.join(','));
     assert.equal(ctx.__restorePointRows.size, 0);
+});
+
+
+/* ═══════════════════════════════════════════════
+   46. 锁写入请求同步抛错：不得把未提交的租约报告为已获取
+   ═══════════════════════════════════════════════ */
+test('46 rpAcquireImportLock：锁记录 put 同步失败时拒绝授予租约', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const rpDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    rpDb._failPut = {
+        store: 'restores',
+        role: 'active-import-lock',
+        message: 'injected import lock put failure'
+    };
+
+    await assert.rejects(
+        ctx.rpAcquireImportLock('owner-that-never-committed'),
+        /injected import lock put failure/
+    );
+    assert.equal(rpDb._data.restores.length, 0,
+        '锁记录未写入时不得留下半成品租约');
 });
