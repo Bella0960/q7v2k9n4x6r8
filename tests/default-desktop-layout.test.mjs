@@ -94,3 +94,34 @@ test('all desktop app tiles have valid relative destinations and delegated click
     'the legacy bubble-phase handler must not duplicate the capture-phase navigation');
   assert.match(index, /home-editing/);
 });
+
+test('creator management shortcut is restored from removed layouts and placed on the visible desktop', () => {
+  const blockStart = index.indexOf('(function configureCreatorAdminShortcut()');
+  const blockEnd = index.indexOf('})();', blockStart);
+  assert.ok(blockStart >= 0 && blockEnd > blockStart, 'creator shortcut migration block must exist');
+  const block = index.slice(blockStart, blockEnd + 5);
+  assert.match(block, /roleMeta\.content === 'super_admin'/,
+    'only the server-injected super-admin role may see the shortcut');
+  assert.match(block, /tile\.hidden = false/);
+  assert.match(block, /currentLayout\.removed = \(currentLayout\.removed \|\| \[\]\)\.filter/,
+    'a stale removed entry must not hide the creator shortcut');
+  assert.match(block, /var existsOnDesktop = .*currentLayout\.pages[\s\S]*currentLayout\.dock/,
+    'only a real page or dock placement counts as visible');
+  assert.doesNotMatch(block, /existsOnDesktop[\s\S]{0,180}currentLayout\.removed/,
+    'the hidden/removed bucket must not suppress restoration');
+  assert.match(block, /splice\(settingsIndex >= 0 \? settingsIndex \+ 1/,
+    'the shortcut should be inserted beside Settings when it has no visible placement');
+});
+
+test('creator dashboard labels account totals accurately and distinguishes temporary disable from permanent revoke', () => {
+  const adminHtml = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const adminScript = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
+  const adminCss = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+  assert.match(adminHtml, /<span>普通账号<\/span>/,
+    'the directory excludes the super-admin, so the total must not claim to count every account');
+  assert.match(adminHtml, /<span>受限账号<\/span>/);
+  assert.match(adminScript, /disabled: '临时停用'/);
+  assert.match(adminScript, /revoked: '永久撤销'/);
+  assert.doesNotMatch(adminCss, /linear-gradient|--green:/,
+    'creator dashboard should follow the black/white/gray visual system');
+});
