@@ -218,6 +218,7 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(scopeSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(scopeSource, /setInterval\(verifyAccountSession, 30000\)/);
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);
+  assert.match(workerSource, /storage\.transactionSync/);
   assert.match(appSource, /x-mao-account-context/);
   assert.match(appSource, /ACCOUNT_CONTEXT_CHANGED/);
   assert.match(scopeSource, /headers\\.set\\('x-mao-account-context', accountId\\)/);
