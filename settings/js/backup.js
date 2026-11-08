@@ -840,6 +840,129 @@
         }, RP_ROLE_META);
     }
 
+    // 在任何回滚写入开始前，完整检查恢复点的外层记录、数据库清单和每个 store。
+    // 只要结构不完整，就保留原始恢复点并停止；不能边恢复边发现快照缺项。
+    function validateInterruptedRestorePoints(localRecord, indexedDbRecord, metaRecord) {
+        function fail(message) { return { ok: false, message: message }; }
+        function validEnvelope(record, role) {
+            if (!record || typeof record !== 'object' || Array.isArray(record)) {
+                return role + ' 恢复点记录不存在或格式错误';
+            }
+            if (record.role !== role) return role + ' 恢复点标识不匹配';
+            if (!Object.prototype.hasOwnProperty.call(record, 'snap')) {
+                return role + ' 恢复点缺少快照内容';
+            }
+            if (Object.prototype.hasOwnProperty.call(record, 'createdAt')
+                    && (!Number.isFinite(Number(record.createdAt)) || Number(record.createdAt) <= 0)) {
+                return role + ' 恢复点时间戳无效';
+            }
+            return '';
+        }
+
+        var envelopeError = '';
+        if (localRecord) envelopeError = validEnvelope(localRecord, RP_ROLE_PRE);
+        if (!envelopeError && indexedDbRecord) {
+            envelopeError = validEnvelope(indexedDbRecord, RP_ROLE_IDB_PRE);
+        }
+        if (!envelopeError && metaRecord) envelopeError = validEnvelope(metaRecord, RP_ROLE_META);
+        if (envelopeError) return fail(envelopeError);
+
+        var state = metaRecord && metaRecord.snap && metaRecord.snap.status;
+        if (metaRecord && (state !== 'applying' && state !== 'committed' && state !== 'rolled-back')) {
+            return fail('导入阶段标记缺失或无法识别');
+        }
+        var targetNames = [];
+        if (metaRecord && metaRecord.snap
+                && Object.prototype.hasOwnProperty.call(metaRecord.snap, 'indexedDbTargets')) {
+            var declared = metaRecord.snap.indexedDbTargets;
+            if (!Array.isArray(declared)) return fail('IndexedDB 恢复数据库清单格式错误');
+            var allowedNames = IDB_TARGETS.map(function (target) { return target.db; });
+            for (var i = 0; i < declared.length; i++) {
+                if (typeof declared[i] !== 'string' || allowedNames.indexOf(declared[i]) === -1
+                        || targetNames.indexOf(declared[i]) !== -1) {
+                    return fail('IndexedDB 恢复数据库清单包含未知或重复项目');
+                }
+                targetNames.push(declared[i]);
+            }
+        }
+
+        // committed / rolled-back 只会继续清理；不再读取快照覆盖业务数据。
+        // 允许清理中断后其中一份快照已被删除的状态。
+        if (state === 'committed' || state === 'rolled-back') {
+            return { ok: true, status: state, targetNames: targetNames };
+        }
+
+        var localSnapshot = localRecord && localRecord.snap;
+        if (!localSnapshot || typeof localSnapshot !== 'object' || Array.isArray(localSnapshot)) {
+            return fail('localStorage 原始恢复点缺失或损坏');
+        }
+        var localKeys = Object.keys(localSnapshot);
+        for (var k = 0; k < localKeys.length; k++) {
+            if (typeof localSnapshot[localKeys[k]] !== 'string') {
+                return fail('localStorage 恢复点包含非字符串值：' + localKeys[k]);
+            }
+        }
+
+        var dbSnapshots = indexedDbRecord && indexedDbRecord.snap;
+        if (indexedDbRecord && (!dbSnapshots || typeof dbSnapshots !== 'object' || Array.isArray(dbSnapshots))) {
+            return fail('IndexedDB 原始恢复点缺失或损坏');
+        }
+        var snapshotNames = dbSnapshots ? Object.keys(dbSnapshots) : [];
+        if (metaRecord) {
+            if (targetNames.length !== snapshotNames.length
+                    || targetNames.some(function (name) { return snapshotNames.indexOf(name) === -1; })) {
+                return fail('IndexedDB 恢复点与阶段记录中的数据库清单不一致');
+            }
+        } else {
+            targetNames = snapshotNames.slice(); // 兼容旧版本没有阶段元数据的恢复点
+        }
+        if (targetNames.length && !indexedDbRecord) {
+            return fail('IndexedDB 原始恢复点缺失');
+        }
+
+        for (var d = 0; d < snapshotNames.length; d++) {
+            var dbName = snapshotNames[d];
+            var target = null;
+            for (var t = 0; t < IDB_TARGETS.length; t++) {
+                if (IDB_TARGETS[t].db === dbName) { target = IDB_TARGETS[t]; break; }
+            }
+            if (!target) return fail('恢复点包含未知数据库：' + dbName);
+            var dbSnapshot = dbSnapshots[dbName];
+            if (!dbSnapshot || typeof dbSnapshot !== 'object' || Array.isArray(dbSnapshot)) {
+                return fail(dbName + ' 数据库快照格式错误');
+            }
+            var expectedStores = target.stores.map(function (def) { return def.store; }).sort();
+            var actualStores = Object.keys(dbSnapshot).sort();
+            if (expectedStores.length !== actualStores.length
+                    || expectedStores.some(function (name, index) { return name !== actualStores[index]; })) {
+                return fail(dbName + ' 的 object store 清单不完整或不兼容');
+            }
+            for (var st = 0; st < target.stores.length; st++) {
+                var storeDef = target.stores[st];
+                var records = dbSnapshot[storeDef.store];
+                if (!Array.isArray(records)) {
+                    return fail(dbName + '/' + storeDef.store + ' 记录列表缺失或损坏');
+                }
+                for (var r = 0; r < records.length; r++) {
+                    var record = records[r];
+                    if (storeDef.keyPath) {
+                        if (!record || typeof record !== 'object' || Array.isArray(record)
+                                || !Object.prototype.hasOwnProperty.call(record, storeDef.keyPath)
+                                || record[storeDef.keyPath] === undefined || record[storeDef.keyPath] === null) {
+                            return fail(dbName + '/' + storeDef.store + ' 第 ' + (r + 1) + ' 条记录主键无效');
+                        }
+                    } else if (!record || typeof record !== 'object' || Array.isArray(record)
+                            || !Object.prototype.hasOwnProperty.call(record, '__key')
+                            || !Object.prototype.hasOwnProperty.call(record, '__value')
+                            || record.__key === undefined || record.__key === null) {
+                        return fail(dbName + '/' + storeDef.store + ' 第 ' + (r + 1) + ' 条记录缺少原始主键或内容');
+                    }
+                }
+            }
+        }
+        return { ok: true, status: state || 'legacy', targetNames: targetNames };
+    }
+
     // 设置页启动时检查上一次导入是否因关闭页面、崩溃或浏览器中断而停在中途。
     // applying / 无阶段日志但有旧版恢复点：恢复到导入前状态。
     // committed / rolled-back：只清理上次遗留的恢复点，绝不覆盖当前数据。
@@ -860,7 +983,13 @@
         var hasAnyPoint = !!(localRecord || indexedDbRecord || metaRecord);
         if (!hasAnyPoint) return true;
 
-        var state = metaRecord && metaRecord.snap && metaRecord.snap.status;
+        var validation = validateInterruptedRestorePoints(localRecord, indexedDbRecord, metaRecord);
+        if (!validation.ok) {
+            toast('发现上次整机导入的恢复点结构不完整：' + validation.message
+                + '。原始恢复点未清理，已禁止新的整机导入；请勿清理网站数据。');
+            return false;
+        }
+        var state = validation.status;
         if (state === 'committed' || state === 'rolled-back') {
             await assertImportLock();
             var cleanup = await clearRestorePoints();
@@ -874,22 +1003,11 @@
             return false;
         }
 
-        // 没有元数据属于旧版本遗留恢复点；按“可能已经开始覆盖”处理，不能擅自删除。
-        var targetNames = metaRecord && metaRecord.snap
-            && Array.isArray(metaRecord.snap.indexedDbTargets)
-            ? metaRecord.snap.indexedDbTargets.slice() : [];
-        var localSnapshot = localRecord && localRecord.snap;
-        var dbSnapshots = indexedDbRecord && indexedDbRecord.snap;
-        if (!localSnapshot || typeof localSnapshot !== 'object' || Array.isArray(localSnapshot)) {
-            toast('发现上次未完成的整机导入，但 localStorage 原始恢复点缺失或损坏。'
-                + '恢复点未清理，已禁止新的整机导入；请勿清理网站数据。');
-            return false;
-        }
-        if (targetNames.length && (!dbSnapshots || typeof dbSnapshots !== 'object')) {
-            toast('发现上次未完成的整机导入，但 IndexedDB 恢复点缺失。'
-                + '恢复点未清理，已禁止新的整机导入；请勿清理网站数据。');
-            return false;
-        }
+        // 通过全量结构预检后，才允许进入恢复确认与写入阶段。
+        // 没有阶段元数据时，targetNames 已从旧版快照数据库清单推导。
+        var targetNames = validation.targetNames.slice();
+        var localSnapshot = localRecord.snap;
+        var dbSnapshots = indexedDbRecord ? indexedDbRecord.snap : {};
 
         if (!confirm('检测到上次整机导入没有正常结束。\n\n'
                 + '为避免保留一半新数据，将尝试把 localStorage 和 IndexedDB 恢复到导入前状态。'
