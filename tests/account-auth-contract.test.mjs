@@ -179,7 +179,8 @@ test('登录会话与旧标签页 MAO 上下文不一致时，所有账号 API �
   assert.equal(currentResult.payload.account.id, bob.payload.account.id);
 
   const legacyRequest = await ctx.fetchTo('/api/accounts/me', {
-    headers: { cookie: aliceCookie }
+    headers: { cookie: aliceCookie },
+    accountContext: false
   });
   assert.equal(legacyRequest.status, 200,
     '未注入账号上下文的既有客户端仍可完成登录兼容流程');
