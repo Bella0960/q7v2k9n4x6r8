@@ -179,6 +179,18 @@ test('接受好友申请与删除好友的多步写入具备事务回滚保护',
   const { exec, query, transaction } = db;
   applyMigrations(exec);
   const store = createStore(exec, transaction);
+  exec(
+    `INSERT INTO friend_accounts
+      (user_id, secret_hash, display_name, registration_ip_hash, created_at, updated_at)
+      VALUES (?, ?, ?, '', ?, ?)`,
+    'u_alpha', 'hash-alpha', 'Alpha', 1, 1
+  );
+  exec(
+    `INSERT INTO friend_accounts
+      (user_id, secret_hash, display_name, registration_ip_hash, created_at, updated_at)
+      VALUES (?, ?, ?, '', ?, ?)`,
+    'u_bravo', 'hash-bravo', 'Bravo', 1, 1
+  );
   const request = {
     id: 'accept-atomic-request',
     requesterId: 'u_alpha',
