@@ -1027,6 +1027,36 @@ test('shared MediaRepository package builder exports registered binary assets an
   );
 });
 
+test('shared MediaRepository export validates manifests and references before reading binary assets',async()=>{
+  let reads=0;
+  const media={getBlob(){reads++;return Promise.resolve({ok:true,value:new Uint8Array([1,2,3])})}};
+  const asset={path:'assets/preflight.png',name:'preflight.png',mimeType:'image/png',type:'image'};
+  const cases=[
+    [fixture({assetIndex:{path:asset.path},assetRefs:{}}),/素材清单格式无效/,'非数组素材清单必须拒绝，不能静默导出空主题'],
+    [fixture({assetIndex:[asset,asset],assetRefs:{[asset.path]:'asset-preflight'}}),/重复路径/,'重复素材路径必须在读取二进制前拒绝'],
+    [fixture({assetIndex:[asset],assetRefs:{}}),/素材引用缺失/,'缺少 assetId 引用必须在读取二进制前拒绝'],
+    [fixture({assetIndex:[{...asset,mimeType:'text/html'}],assetRefs:{[asset.path]:'asset-preflight'}}),/类型不支持/,'不支持的素材 MIME 类型必须在读取二进制前拒绝']
+  ];
+  for(const [theme,error,message] of cases){
+    await assert.rejects(F.createPackageFromMedia(theme,'',media),error,message);
+  }
+  assert.equal(reads,0,'清单无效时不得触碰 MediaRepository 二进制数据');
+});
+
+test('shared MediaRepository export rejects oversized blobs before allocating their bytes',async()=>{
+  let readCalled=false;
+  const theme=fixture({
+    assetIndex:[{path:'assets/too-large.png',name:'too-large.png',mimeType:'image/png',type:'image'}],
+    assetRefs:{'assets/too-large.png':'asset-too-large'}
+  });
+  const media={getBlob(){return Promise.resolve({ok:true,value:{
+    size:16*1024*1024+1,
+    arrayBuffer(){readCalled=true;return Promise.resolve(new ArrayBuffer(0))}
+  }})}};
+  await assert.rejects(F.createPackageFromMedia(theme,'',media),/单个主题文件超过 16 MB/);
+  assert.equal(readCalled,false,'超过单文件限制时不得读取或分配素材二进制');
+});
+
 test('legacy installed themes recover missing asset manifests from owner-scoped MediaRepository metadata',async()=>{
   const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
