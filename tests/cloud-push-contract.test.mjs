@@ -891,6 +891,9 @@ test('独立云端推送页暴露设备配对入口，客户端提供一次性�
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   assert.ok(settingsHtml.includes("cloud-push.html"), '设置首页必须只提供独立云端推送入口');
   assert.equal(settingsHtml.includes('cloudPushToggle'), false, '推送开关不得继续堆在设置首页');
+  assert.ok(cloudSettingsHtml.includes('这到底是什么功能？'), '独立云端推送页底部必须解释功能用途');
+  assert.ok(cloudSettingsHtml.includes('目前需要知道的限制'), '独立云端推送页必须明确当前主动生成限制');
+  assert.ok(cloudSettingsHtml.includes('24 小时自动发消息'), '不能让用户误解为云端全天候自主生成');
   const chatDetail = fs.readFileSync(path.join(rootDir, 'chat/chat/chat-detail.html'), 'utf8');
   assert.ok(chatDetail.includes('../../shared/js/cloud-push-client.js'), '聊天页必须加载云端 presence 客户端');
   assert.ok(chatDetail.includes('startCharacterPresence(String(currentCharacter.id || currentRoleId))'));
