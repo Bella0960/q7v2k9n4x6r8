@@ -85,7 +85,15 @@ async function callWorker(env, path, method, options = {}) {
     Origin: "https://mao.example",
     "CF-Connecting-IP": options.ip || "198.51.100.24"
   });
-  if (options.cookie) headers.set("Cookie", options.cookie);
+  if (options.cookie) {
+    const suppliedCookie = String(options.cookie);
+    headers.set(
+      "Cookie",
+      suppliedCookie.startsWith("__Host-mao_session=")
+        ? suppliedCookie
+        : "__Host-mao_session=" + suppliedCookie
+    );
+  }
   let body;
   if (options.body !== undefined) {
     body = JSON.stringify(options.body);
