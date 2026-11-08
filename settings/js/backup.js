@@ -1420,10 +1420,19 @@
         }
     }
 
+    // 同一设备只允许一条整机导入链同时运行，避免多次导入覆盖彼此的唯一恢复点。
+    var importInProgress = false;
+
     function handleImportFile(file) {
         if (!file) return;
+        if (importInProgress) {
+            toast('已有整机导入正在进行，本次导入已拒绝；请等待当前操作结束后再试');
+            return;
+        }
+        importInProgress = true;
         var reader = new FileReader();
         reader.onload = async function (ev) {
+            try {
             var obj;
             try { obj = JSON.parse(String(ev.target.result)); }
             catch (e) { toast('导入失败：文件不是合法 JSON'); return; }
@@ -1597,9 +1606,22 @@
             var tail = backupFileWarn || '';
             toast(parts.join('，') + tail + '，正在刷新…');
             setTimeout(function () { location.reload(); }, 700);
+            } catch (importError) {
+                toast('导入失败：' + ((importError && importError.message) || '恢复流程发生未知错误'));
+            } finally {
+                importInProgress = false;
+            }
         };
-        reader.onerror = function () { toast('导入失败：文件读取失败'); };
-        reader.readAsText(file);
+        reader.onerror = function () {
+            importInProgress = false;
+            toast('导入失败：文件读取失败');
+        };
+        try {
+            reader.readAsText(file);
+        } catch (readError) {
+            importInProgress = false;
+            toast('导入失败：' + ((readError && readError.message) || '文件读取失败'));
+        }
     }
 
     // 绑定 DATA 分组入口
