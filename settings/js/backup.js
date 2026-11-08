@@ -445,18 +445,29 @@
         var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE, RP_ROLE_META];
         var records = Object.create(null);
         var readErrors = [];
+        var recordStatuses = Object.create(null);
         var assets = [];
         var state = { assetIndex: 0, stack: [] };
         for (var i = 0; i < roles.length; i++) {
+            var assetStart = assets.length;
+            var assetIndexStart = state.assetIndex;
             try {
                 var record = await rpReadSnapshot(roles[i]);
                 if (record) {
                     records[roles[i]] = await serializeRecoveryPointValue(record, assets, state);
+                    recordStatuses[roles[i]] = 'exported';
+                } else {
+                    recordStatuses[roles[i]] = 'absent';
                 }
             } catch (error) {
+                // 某一份恢复记录无法序列化时，撤销它已经排入的附件，避免包内留下无主文件；
+                // 其余角色继续导出，并在 manifest 中明确标记本记录失败。
+                assets.length = assetStart;
+                state.assetIndex = assetIndexStart;
+                recordStatuses[roles[i]] = 'error';
                 readErrors.push({
                     role: roles[i],
-                    message: (error && error.message) || '读取失败'
+                    message: (error && error.message) || '读取或序列化失败'
                 });
             }
         }
@@ -467,11 +478,37 @@
             schema: 1,
             exportedAt: new Date().toISOString(),
             purpose: '只读抢救包；不是可直接导入的普通备份文件。',
+            recordStatuses: recordStatuses,
             records: records,
             readErrors: readErrors
         };
+        var readme = [
+            'MAOMAO 本机恢复点抢救包',
+            '================================',
+            '这是只读抢救材料，不是普通备份文件，不能通过「设置 > 导入数据」直接导入。',
+            '请先保留 ZIP 原件；不要解压后覆盖业务数据，也不要清理原设备的网站数据。',
+            '',
+            '文件说明：',
+            '- recovery-points.json：恢复点记录、状态和读取/序列化错误。',
+            '- assets/：原始 Blob、ArrayBuffer 等二进制附件；清单中的 file 字段指向对应附件。',
+            '',
+            '恢复点角色：',
+            '- pre-import：导入前 localStorage 快照。',
+            '- pre-import-indexeddb：导入前 IndexedDB 快照，可能包含本机音频、字体等文件。',
+            '- pre-import-meta：导入阶段与完整性指纹。',
+            '',
+            'recordStatuses 中 exported 表示成功导出，absent 表示本机没有该记录，error 表示无法完整导出。',
+            'readErrors 会说明出错角色及原因；缺失记录不会被伪装成完整快照。',
+            '',
+            '安全提醒：抢救包可能包含 API 密钥、聊天内容和私人媒体。只保存到可信位置，不要直接分享。',
+            'ZIP CRC32 仅用于传输/解压损坏检测，不是密码学签名或来源认证。',
+            '原始恢复点不会因本次导出而删除或修改。'
+        ].join('\\n');
         var json = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-        var files = [{ name: 'recovery-points.json', blob: json }].concat(assets);
+        var files = [
+            { name: 'README.txt', blob: new Blob([readme], { type: 'text/plain;charset=utf-8' }) },
+            { name: 'recovery-points.json', blob: json }
+        ].concat(assets);
         var archive = await createRecoveryRescueZip(files);
         return {
             blob: archive,
