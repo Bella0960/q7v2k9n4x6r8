@@ -405,8 +405,16 @@
       markVisibleIncomingRead();
       pollTimer = window.setInterval(pollMessages, 4500);
     } catch (error) {
-      if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法查看聊天记录。');
-      else setStatus((error.message || '聊天连接失败') + '。请检查网络或好友账号状态。', true);
+      if (error && error.code === 'NOT_FRIENDS') {
+        setBlocked('好友关系已失效，无法查看聊天记录。重新成为好友后，此页面会自动恢复。');
+        // Account authentication is already complete. Keep a low-frequency
+        // relationship probe alive so an open page can recover after re-add.
+        ready = Boolean(myUserId);
+        updateComposer();
+        if (ready && !pollTimer) pollTimer = window.setInterval(pollMessages, 4500);
+      } else {
+        setStatus((error.message || '聊天连接失败') + '。请检查网络或好友账号状态。', true);
+      }
       showEmpty('暂时无法载入聊天记录');
     }
   }
