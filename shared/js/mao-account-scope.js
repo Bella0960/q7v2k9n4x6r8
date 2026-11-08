@@ -13,20 +13,41 @@
 
   if (!accountId || !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
 
+  var redirectingToAccountEntry = false;
+
+  function redirectToAccountEntry(query) {
+    if (redirectingToAccountEntry) return;
+    redirectingToAccountEntry = true;
+    var destination = '/account/index.html' + (query ? '?' + query : '');
+    if (global.location && typeof global.location.replace === 'function') {
+      global.location.replace(destination);
+    }
+  }
+
   function verifyAccountSession() {
-    if (typeof global.fetch !== 'function') return;
+    if (typeof global.fetch !== 'function' || redirectingToAccountEntry) return;
     global.fetch('/api/accounts/me', {
       method: 'GET',
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { 'accept': 'application/json' }
     }).then(function (response) {
-      if (response.ok) return null;
       return response.json().catch(function () { return {}; }).then(function (payload) {
+        var current = payload && payload.account;
+        if (response.ok &&
+            current &&
+            current.id === accountId &&
+            current.role === role &&
+            current.status === 'active') {
+          return null;
+        }
         var disabled = payload && payload.error && payload.error.code === 'ACCOUNT_DISABLED';
-        var destination = '/account/index.html' + (disabled ? '?disabled=1' : '');
-        if (global.location && typeof global.location.replace === 'function') {
-          global.location.replace(destination);
+        if (response.ok && current && current.id !== accountId) {
+          redirectToAccountEntry('switched=1');
+        } else if (response.ok && current && current.role !== role) {
+          redirectToAccountEntry('switched=1');
+        } else {
+          redirectToAccountEntry(disabled ? 'disabled=1' : '');
         }
         return false;
       });
