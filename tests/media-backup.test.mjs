@@ -20,6 +20,7 @@
  *  34-37. 页面中断后的启动恢复、恢复失败重试与 committed 清理
  *  38-39. 阶段日志写入保护、未预期异常后的恢复点保留
  *  40-43. 跨标签页导入互斥、过期租约接管、恢复互斥与旧租约拒写
+ *  44-45. 清理中断时保留阶段标记，避免已提交数据被误回滚
  */
 
 import test from 'node:test';
@@ -2352,4 +2353,66 @@ test('43 assertImportLock：租约已被新标签页接管时旧标签页必须�
     assert.equal(oldTab.importRecoveryReady, false);
 
     await recoveryTab.rpReleaseImportLock(recoveryTab.importLockOwner);
+});
+
+
+/* ═══════════════════════════════════════════════
+   44. 数据快照删除失败：必须保留 committed 阶段标记
+   ═══════════════════════════════════════════════ */
+test('44 clearRestorePoints：任一数据快照删除失败时保留阶段标记', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': { wallpapers: [] } },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        snap: { status: 'committed', indexedDbTargets: ['maomao-media-store'] },
+        createdAt: Date.now()
+    });
+
+    const deleteRole = ctx.rpDeleteRole;
+    ctx.rpDeleteRole = async role => {
+        if (role === 'pre-import') return; // 模拟 quota / transaction abort
+        return deleteRole(role);
+    };
+
+    const result = await ctx.clearRestorePoints();
+    assert.equal(result.ok, false);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0], 'pre-import');
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'),
+        'committed marker must remain while any data snapshot remains');
+    assert.equal(ctx.__restorePointRows.has('pre-import-indexeddb'), false,
+        '清理流程仍可继续删除另一份快照，但不得提前删阶段标记');
+});
+
+/* ═══════════════════════════════════════════════
+   45. 两份数据快照清理成功后，阶段标记必须最后删除
+   ═══════════════════════════════════════════════ */
+test('45 clearRestorePoints：阶段标记最后删除，避免清理过程留下无标记快照', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const roles = ['pre-import', 'pre-import-indexeddb', 'pre-import-meta'];
+    roles.forEach(role => ctx.__restorePointRows.set(role, {
+        snap: { role },
+        createdAt: Date.now()
+    }));
+
+    const deleted = [];
+    const deleteRole = ctx.rpDeleteRole;
+    ctx.rpDeleteRole = async role => {
+        deleted.push(role);
+        return deleteRole(role);
+    };
+
+    const result = await ctx.clearRestorePoints();
+    assert.equal(result.ok, true);
+    assert.equal(deleted.join(','), roles.join(','));
+    assert.equal(ctx.__restorePointRows.size, 0);
 });
