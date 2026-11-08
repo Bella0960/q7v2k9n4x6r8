@@ -856,12 +856,12 @@ if (!DatabaseSync) {
       const friendsPrefix = "/api/real-user-chat/v1/friends";
       const authPrefix = "/api/real-user-chat/v1/auth";
       const pendingBlock = callWorker(
-        gatedEnv, friendsPrefix + "/" + bobId + "/block", "POST", { cookie: aliceToken }
+        gatedEnv, friendsPrefix + "/" + bobId + "/block", "POST", { cookie: "__Host-mao_session=" + aliceToken }
       );
       await reached;
 
       const logout = await callWorker(
-        fixture.env, authPrefix + "/logout", "POST", { cookie: aliceToken }
+        fixture.env, authPrefix + "/logout", "POST", { cookie: "__Host-mao_session=" + aliceToken }
       );
       assert.equal(logout.response.status, 200);
       releaseLookup();
@@ -976,6 +976,96 @@ if (!DatabaseSync) {
       ).get(...pair);
       assert.ok(pendingForPair);
       assert.equal(pendingForPair.id, reverseWinner.body.request.id);
+    } finally {
+      database.close();
+    }
+  });
+
+
+  test("suspended and deleted accounts lose session access and expose no peer profile fields", async () => {
+    const fixture = await seedRacePair("account_state");
+    const { database, env, aliceId, bobId, aliceToken, bobToken } = fixture;
+    try {
+      const requestId = "request_account_state_01";
+      addPendingRequest(database, requestId, aliceId, bobId, Date.now() - 1000);
+      const accepted = await callFriends(
+        env, "/requests/" + requestId + "/accept", "POST", bobToken
+      );
+      assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+
+      for (const status of ["suspended", "deleted"]) {
+        database.prepare(
+          "UPDATE real_user_accounts SET status = ?, updated_at = ? WHERE id = ?"
+        ).run(status, Date.now(), bobId);
+
+        const bobMe = await callWorker(
+          env,
+          "/api/real-user-chat/v1/auth/me",
+          "GET",
+          { cookie: "__Host-mao_session=" + bobToken }
+        );
+        assert.equal(bobMe.response.status, 401);
+        assert.equal(bobMe.body.error, "authentication_required");
+
+        const bobRoster = await callFriends(
+          env, "/?limit=10&snapshotAt=" + Date.now(), "GET", bobToken
+        );
+        assert.equal(bobRoster.response.status, 401);
+
+        const bobQr = await callFriends(env, "/codes/rotate", "POST", bobToken);
+        assert.equal(bobQr.response.status, 401);
+
+        const aliceRoster = await callFriends(
+          env, "/?limit=10&snapshotAt=" + Date.now(), "GET", aliceToken
+        );
+        assert.equal(aliceRoster.response.status, 200, JSON.stringify(aliceRoster.body));
+        assert.equal(aliceRoster.body.friends.length, 0);
+        assert.equal(aliceRoster.body.relationships.length, 1);
+        const hiddenPeer = aliceRoster.body.relationships[0];
+        assert.equal(hiddenPeer.id, bobId);
+        assert.equal(hiddenPeer.status, "removed");
+        assert.equal("handle" in hiddenPeer, false);
+        assert.equal("displayName" in hiddenPeer, false);
+        assert.equal("avatarAssetId" in hiddenPeer, false);
+      }
+    } finally {
+      database.close();
+    }
+  });
+
+  test("a session expires at the exact expires_at boundary and cannot mutate relationships", async () => {
+    const fixture = await seedRacePair("session_expiry");
+    const { database, env, aliceId, aliceToken, bobId } = fixture;
+    try {
+      const tokenHash = await sha256Hex(aliceToken);
+      const expiryBoundary = Date.now();
+      const updated = database.prepare(
+        "UPDATE real_user_sessions SET expires_at = ? WHERE token_hash = ?"
+      ).run(expiryBoundary, tokenHash);
+      assert.equal(Number(updated.changes), 1);
+
+      const me = await callWorker(
+        env,
+        "/api/real-user-chat/v1/auth/me",
+        "GET",
+        { cookie: "__Host-mao_session=" + aliceToken }
+      );
+      assert.equal(me.response.status, 401);
+      assert.equal(me.body.error, "authentication_required");
+
+      const roster = await callFriends(
+        env, "/?limit=10&snapshotAt=" + Date.now(), "GET", aliceToken
+      );
+      assert.equal(roster.response.status, 401);
+
+      const blocked = await callFriends(
+        env, "/" + bobId + "/block", "POST", aliceToken
+      );
+      assert.equal(blocked.response.status, 401);
+      assert.equal(database.prepare(
+        "SELECT COUNT(*) AS count FROM real_user_blocks WHERE blocker_id = ? AND blocked_id = ?"
+      ).get(aliceId, bobId).count, 0,
+      "a session whose expiry equals the lookup time must not authorize a relationship write");
     } finally {
       database.close();
     }
