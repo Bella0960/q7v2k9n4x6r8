@@ -46,7 +46,7 @@ Bootstrap is one-time. A partial unique index prevents a second super-admin. No 
 4. Only the matching account can redeem through POST /api/accounts/invites/redeem. Each invitation has exactly one successful redemption. The raw invitation code is returned once; only its hash is stored.
 5. The Worker serves MAO app HTML only after checking an active MAO account session. Cloud API device requests also require the matching active account session.
 
-Registration is limited to eight accounts per source IP hash per hour. The source IP itself is not stored in the account row.
+Registration is limited to eight accounts per source IP hash per hour. The source IP itself is not stored in the account row. Failed logins are rate-limited by a persisted source-IP hash: eight failures in a 15-minute window trigger a 15-minute block; successful login clears the current source's failure record.
 
 ### QQ email limitation
 
@@ -62,7 +62,7 @@ Only a session whose account role is super_admin may call the admin actions.
 
 The account row and its associated data are retained. Admin audit records retain the actor, action, target and optional reason. Audit and reason endpoints are admin-only.
 
-Open pages recheck the session every 30 seconds and when returning to the foreground. Cloud APIs check every request. An already-open, fully offline page cannot receive a remote revocation until it reconnects; do not describe offline revocation as instantaneous.
+Open pages recheck the session every 30 seconds and when returning to the foreground. Cloud APIs check every request. The account-management page displays the permanent ID, username, optional QQ email verification state, devices, and sessions. Users can revoke their own devices and other sessions, change their password (which revokes all other sessions), and log out. An already-open, fully offline page cannot receive a remote revocation until it reconnects; do not describe offline revocation as instantaneous.
 
 ## Browser-side account separation
 
@@ -103,6 +103,6 @@ Super-admin only:
 - The command also includes browser storage namespace tests for two account IDs.
 - The GitHub Actions job must execute the tests and build before the branch can be considered validated.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
-- The admin-center UI, account-management UI, QQ mailbox verification, password reset, and production configuration remain follow-up work.
+- The independent super-admin center UI, first-run bootstrap UI, QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
 
 No production deployment, merge into main, or APK update is part of this branch.
