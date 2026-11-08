@@ -194,7 +194,7 @@
   }
   function namespaceFontFamilies(css,themeId){
     var normalized=normalizeCssForSafety(String(css||"")),code=normalized.code,strings=normalized.strings,map=Object.create(null);
-    if(!/@font-face\\b/i.test(code))return css;
+    if(!/@font-face\b/i.test(code))return css;
     var namespace=String(themeId||"package").replace(/[^A-Za-z0-9_-]/g,"_").slice(0,48)||"package";
     function familyToken(family){
       return Array.from(family).map(function(ch){return ch.codePointAt(0).toString(16)}).join("_").slice(0,128)||"font";
@@ -203,7 +203,7 @@
     while((match=face.exec(code))){
       var familyMatch=/font-family\s*:\s*(?:\u0001(\d+)\u0002|([A-Za-z_][A-Za-z0-9_-]*(?:\s+[A-Za-z_][A-Za-z0-9_-]*)*))\s*;/i.exec(match[1]);
       if(!familyMatch)fail("@font-face 必须指定有效的 font-family。");
-      if((match[1].match(/font-family\\s*:/gi)||[]).length!==1)fail("@font-face 只能声明一个 font-family。");
+      if((match[1].match(/font-family\s*:/gi)||[]).length!==1)fail("@font-face 只能声明一个 font-family。");
       var family=String(familyMatch[1]!==undefined?strings[Number(familyMatch[1])]:familyMatch[2]||"").trim();
       if(!family||family.length>100||/[,;{}]/.test(family))fail("@font-face 的 font-family 名称无效。");
       if(!own(map,family))map[family]="MAOMAOChatTheme_"+namespace+"_"+familyToken(family);
