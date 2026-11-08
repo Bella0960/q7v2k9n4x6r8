@@ -60,7 +60,7 @@ function createScope({ accountId, role = 'user' }) {
     stop() { this.stopped = true; }
   };
   vm.runInNewContext(scopeSource, { window, document, console, Object, Array, Proxy, Reflect, Promise, encodeURIComponent, Symbol });
-  return { window, document, local, session, openCalls, cacheCalls, cacheNames };
+  return { window, document, local, session, openCalls, cacheCalls, cacheNames, nativeIndexedDB, nativeCaches };
 }
 
 test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命名空间', () => {
@@ -69,7 +69,7 @@ test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命
   a.window.localStorage.setItem('profile', 'A');
   assert.equal(a.window.localStorage.getItem('ai_custom_characters'), '[{"id":"account-a"}]');
   assert.equal(a.window.localStorage.length, 2);
-  assert.equal(a.window.localStorage.key(0), '__scope_migrated__' === a.window.localStorage.key(0) ? '__scope_migrated__' : a.window.localStorage.key(0));
+  assert.deepEqual([a.window.localStorage.key(0), a.window.localStorage.key(1)].sort(), ['ai_custom_characters', 'profile']);
   assert.equal(a.local.getItem('ai_custom_characters'), '[{"id":"legacy-owner"}]', '普通账号不能读取或覆盖遗留未分区数据');
   assert.equal(a.local.getItem('__mao_account_v1__MAO-AAAAAAAAAAAA__ai_custom_characters'), '[{"id":"account-a"}]');
   a.window.sessionStorage.setItem('active_tab', 'chat');
@@ -103,7 +103,8 @@ test('唯一超级管理员继续使用创作者现有本地数据，不迁移�
   const admin = createScope({ accountId: 'MAO-CCCCCCCCCCCC', role: 'super_admin' });
   assert.equal(admin.window.localStorage, admin.local);
   assert.equal(admin.window.sessionStorage, admin.session);
-  assert.equal(admin.window.indexedDB, undefined === admin.window.indexedDB ? undefined : admin.window.indexedDB);
+  assert.equal(admin.window.indexedDB, admin.nativeIndexedDB);
+  assert.equal(admin.window.caches, admin.nativeCaches);
   assert.equal(admin.local.getItem('ai_custom_characters'), '[{"id":"legacy-owner"}]');
 });
 
