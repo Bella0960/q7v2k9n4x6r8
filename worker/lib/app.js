@@ -1028,12 +1028,16 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
     const messages = rows.map(row => {
       let payload;
+      let payloadError = null;
       try {
         payload = JSON.parse(row.payload_json);
       } catch {
-        throw new ApiError(500, 'OUTBOUND_PAYLOAD_INVALID', '待同步消息数据无法解析');
+        // Isolate a damaged envelope: a single corrupt row must not turn the
+        // whole account inbox page into HTTP 500 and block later valid rows.
+        payload = null;
+        payloadError = 'invalid_json';
       }
-      return {
+      const envelope = {
         serverMessageId: row.server_message_id,
         characterId: row.character_id,
         createdAt: Number(row.created_at),
@@ -1051,6 +1055,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         },
         payload
       };
+      if (payloadError) envelope.payloadError = payloadError;
+      return envelope;
     });
     const lastRow = rows.length === limit ? rows[rows.length - 1] : null;
     const nextCursor = lastRow

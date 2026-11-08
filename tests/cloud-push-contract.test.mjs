@@ -3092,6 +3092,59 @@ test('出站收件箱使用稳定游标翻页，队首保存失败不会挡住�
   assert.equal(invalidHalfCursor.payload.error.code, 'INVALID_OUTBOUND_CURSOR');
 });
 
+test('单条损坏的出站 payload 不会阻断同页后续正常消息', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const damagedId = randomToken(20);
+  const validId = randomToken(20);
+  const damaged = ctx.store.insertOutboundMessage({
+    id: 'legacy-corrupt-0001',
+    deviceId: device.deviceId,
+    characterId: 'char-corrupt-payload',
+    serverMessageId: damagedId,
+    dedupeKey: 'corrupt-payload-1',
+    payload: { type: 'text', text: '该记录稍后会被损坏' },
+    now: 1000
+  });
+  const valid = ctx.store.insertOutboundMessage({
+    id: 'legacy-valid-0002',
+    deviceId: device.deviceId,
+    characterId: 'char-corrupt-payload',
+    serverMessageId: validId,
+    dedupeKey: 'corrupt-payload-2',
+    payload: { type: 'text', text: '这条正常消息仍必须送达' },
+    now: 1000
+  });
+  assert.equal(damaged.inserted, true);
+  assert.equal(valid.inserted, true);
+
+  ctx.store.exec(
+    'UPDATE outbound_messages SET payload_json = ? WHERE server_message_id = ?',
+    '{invalid-json',
+    damagedId
+  );
+
+  const inbox = await ctx.asJson(
+    '/api/characters/char-corrupt-payload/outbound?limit=10',
+    { device }
+  );
+  assert.equal(inbox.status, 200, '单条 JSON 损坏不得使整页收件箱返回 500');
+  assert.deepEqual(
+    inbox.payload.messages.map(message => message.serverMessageId),
+    [damagedId, validId],
+    '损坏记录和后续正常记录都应保留在分页结果中'
+  );
+  assert.equal(inbox.payload.messages[0].payload, null);
+  assert.equal(inbox.payload.messages[0].payloadError, 'invalid_json');
+  assert.deepEqual(inbox.payload.messages[1].payload, {
+    type: 'text',
+    text: '这条正常消息仍必须送达'
+  });
+  assert.equal(inbox.payload.messages[1].payloadError, undefined);
+});
+
 test('客户端收件箱真实运行：断网后从持久化游标续收，失败消息下一轮补救', async () => {
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
   const localValues = new Map([
