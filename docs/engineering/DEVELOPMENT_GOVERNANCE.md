@@ -20,6 +20,7 @@ Do not force-push main. Never overwrite a newer main commit. Rebase/merge agains
 | Workflow | Current trigger | Purpose | Policy |
 |---|---|---|---|
 | deploy-cloudflare-worker.yml | Push to main for app/build inputs; manual | Vite build, PWA preflight, Cloudflare Worker deployment and live route verification | Keep production deploy separate; test/docs/perf/android-only changes do not deploy |
+| deploy-pr149-cloudflare-preview.yml | Push to the legacy `sync/local-plus-origin-main-20261106` branch for app/build inputs | Isolated PR #149 preview Worker deployment | Separate from production; test/docs/perf/android-only changes do not deploy; superseded preview runs may be cancelled |
 | chat-regression-contract.yml | PR targeting main for chat/forum/library/phone and its explicitly listed suites; manual | One grouped chat, chat-call, forum, media, groups, and data-isolation regression job | No broad tests/** filter; no duplicate post-merge push run |
 | font-runtime-regression.yml | PR targeting main for font-loader/settings/SW and its exact test; manual | Custom font cache and navigation regression plus build | Only font-related changes or dependency/workflow changes |
 | home-indicator-regression.yml | PR targeting main for home-indicator code/test; manual | Targeted Playwright hit-area check | No post-merge push duplicate |
