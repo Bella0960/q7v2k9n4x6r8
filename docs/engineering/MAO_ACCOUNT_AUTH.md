@@ -37,7 +37,7 @@ POST /api/admin/bootstrap:
 }
 ```
 
-Bootstrap is one-time. A partial unique index prevents a second super-admin. No bootstrap secret is included in the repository or front-end bundle. This branch has not been deployed and the Worker secret has not been configured. The creator setup page checks the server's public initialized flag before revealing the setup form; if the status request fails, the form remains hidden and the page offers a retry. A final status check also runs immediately before submission.
+Bootstrap is one-time. A partial unique index prevents a second super-admin. No bootstrap secret is included in the repository or front-end bundle. This branch has not been deployed and the Worker secret has not been configured. The creator setup page checks the server's public initialized flag before revealing the setup form; if the status request fails, the form remains hidden and the page offers a retry. A final status check also runs immediately before submission. The setup form uses native browser validation for required fields, minimum lengths, and email format. The public status endpoint intentionally does not reveal whether either Worker secret is configured. If bootstrap returns `ADMIN_BOOTSTRAP_NOT_CONFIGURED`, the page explains that both `MAO_SUPER_ADMIN_BOOTSTRAP_SECRET` and `DEVICE_SECRET_PEPPER` must be present and at least 32 characters; it never displays either secret value.
 
 ## User registration and invitations
 
