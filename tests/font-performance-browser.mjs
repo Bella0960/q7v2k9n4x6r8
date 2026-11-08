@@ -1157,7 +1157,8 @@ try {
       localStorage.setItem('active_font_preset_id', 'font_race_a');
       window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
     });
-    await delay(180);
+    /* Idle callback has a 1s upper bound; keep the delayed IDB success handlers pending. */
+    await delay(1250);
     const beforeRelease = await readMetrics(page);
     assert.equal(beforeRelease.fontDbOpens, 2,
       'reselecting A while A and B are pending must reuse A rather than open a duplicate IDB request');
