@@ -451,6 +451,30 @@ async function runViewport(browser, baseUrl, viewport) {
     add('forum-detail.comment-input.type-and-submit', false, { commentText, typedValue, skippedBecauseNotFocused: true });
   }
 
+  const hiddenPreferenceState = await page.evaluate(() => {
+    localStorage.setItem('settings_home_indicator_visible', '0');
+    window.dispatchEvent(new Event('maomao:home-indicator-change'));
+    return {
+      hitDisplay: getComputedStyle(document.querySelector('.maomao-global-home-indicator-hit-target')).display,
+      composerBottom: getComputedStyle(document.querySelector('.comment-bar')).bottom
+    };
+  });
+  add('forum-detail.hidden-home-indicator-restores-composer-bottom',
+    hiddenPreferenceState.hitDisplay === 'none' && hiddenPreferenceState.composerBottom === '0px',
+    hiddenPreferenceState);
+
+  const restoredPreferenceState = await page.evaluate(() => {
+    localStorage.removeItem('settings_home_indicator_visible');
+    window.dispatchEvent(new Event('maomao:home-indicator-change'));
+    return {
+      hitDisplay: getComputedStyle(document.querySelector('.maomao-global-home-indicator-hit-target')).display,
+      composerBottom: getComputedStyle(document.querySelector('.comment-bar')).bottom
+    };
+  });
+  add('forum-detail.visible-home-indicator-reserves-composer-bottom',
+    restoredPreferenceState.hitDisplay === 'block' && restoredPreferenceState.composerBottom === '24px',
+    restoredPreferenceState);
+
   // ---------- 6. Home 条自身仍可用 ----------
   await openPage(`${baseUrl}/forum/forum.html`, '.nav-item[data-page="home"]');
   const barGeom = await page.evaluate(() => {
