@@ -269,7 +269,29 @@ var apps=[
 ];
 var progress=loadProgress(),activeCategory='start',activeLesson=null,searchQuery='';
 var $=function(id){return document.getElementById(id);};
-function loadProgress(){try{var v=JSON.parse(localStorage.getItem(KEY)||'{}');return v&&typeof v==='object'?{done:v.done||{},steps:v.steps||{},last:v.last||'desktop'}:{done:{},steps:{},last:'desktop'};}catch(e){return{done:{},steps:{},last:'desktop'};}}
+function loadProgress(){
+  var empty={done:{},steps:{},last:'desktop'};
+  try{
+    var v=JSON.parse(localStorage.getItem(KEY)||'{}');
+    if(!v||typeof v!=='object'||Array.isArray(v))return empty;
+    var rawDone=v.done&&typeof v.done==='object'&&!Array.isArray(v.done)?v.done:{};
+    var rawSteps=v.steps&&typeof v.steps==='object'&&!Array.isArray(v.steps)?v.steps:{};
+    var done={},steps={};
+    lessons.forEach(function(lesson){
+      if(rawDone[lesson.id]===true)done[lesson.id]=true;
+      var saved=rawSteps[lesson.id];
+      if(!Array.isArray(saved))return;
+      var seen={};
+      var valid=saved.filter(function(index){
+        if(!Number.isInteger(index)||index<0||index>=lesson.steps.length||seen[index])return false;
+        seen[index]=true;
+        return true;
+      });
+      if(valid.length)steps[lesson.id]=valid;
+    });
+    return{done:done,steps:steps,last:typeof v.last==='string'&&lessons.some(function(lesson){return lesson.id===v.last;})?v.last:'desktop'};
+  }catch(e){return empty;}
+}
 function saveProgress(){try{localStorage.setItem(KEY,JSON.stringify(progress));}catch(e){}updateProgress();}
 function updateProgress(){var n=lessons.length,d=lessons.filter(function(x){return!!progress.done[x.id];}).length,p=n?Math.round(d/n*100):0;$('progressNumber').textContent=p+'%';$('progressFill').style.width=p+'%';$('progressNote').textContent=d+' / '+n+' 节已完成 · 进度保存在本机';$('statLessons').textContent=n;$('statApps').textContent=apps.length;}
 function toast(msg){var el=$('toast');el.textContent=msg;el.classList.add('show');window.clearTimeout(toast.timer);toast.timer=window.setTimeout(function(){el.classList.remove('show');},1900);}
