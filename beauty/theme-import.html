@@ -157,7 +157,7 @@ function doImport(){
  Object.keys(selected.assets).forEach(function(path){chain=chain.then(function(){var a=selected.assets[path],blob=new Blob([a.bytes],{type:a.mimeType});return media.putBlob(blob,{type:a.type||'file',mimeType:a.mimeType,ownerType:'chat-theme-package',ownerId:themeId}).then(function(result){if(!result||!result.ok||!result.value||!result.value.assetId)throw new Error(result&&result.error?result.error.message:'素材写入失败');assetRefs[path]=result.value.assetId;created.push(result.value.assetId)})})});
  chain.then(function(){
    var installed=Object.assign({},source,{id:themeId,sourceId:source.id||'',customCss:selected.customCss,assetRefs:assetRefs,createdAt:Date.now(),updatedAt:Date.now()});
-   delete installed.assetIndex;
+   // Keep the normalized asset manifest for re-export; binary data remains in MediaRepository.
    var newList=oldList.concat([installed]);
    saveList(newList);
    localStorage.setItem(ACTIVE_KEY,themeId);
