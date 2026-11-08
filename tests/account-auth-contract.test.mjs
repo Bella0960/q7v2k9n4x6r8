@@ -90,6 +90,8 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   assert.equal(invite.status, 201);
   assert.equal(invite.payload.invite.maxUses, 1);
   assert.match(invite.payload.invite.code, /^[A-Za-z0-9_-]{32,128}$/);
+  const duplicateInvite = await post(ctx, '/api/admin/invites', { targetAccountId: alice.payload.account.id }, adminCookie);
+  assert.equal(duplicateInvite.status, 409, '同一账号不能同时持有多个有效邀请码');
 
   const wrongAccount = await post(ctx, '/api/accounts/invites/redeem', { inviteCode: invite.payload.invite.code }, bobCookie);
   assert.equal(wrongAccount.status, 403);
