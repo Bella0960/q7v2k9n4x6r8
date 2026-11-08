@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const root = process.cwd();
 const scopeSource = fs.readFileSync(root + '/shared/js/mao-account-scope.js', 'utf8');
 const workerSource = fs.readFileSync(root + '/worker.js', 'utf8');
+const serviceWorkerSource = fs.readFileSync(root + '/sw.js', 'utf8');
 
 function makeStorage(seed = {}) {
   const values = new Map(Object.entries(seed));
@@ -139,12 +140,12 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
 });
 
 test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
-  assert.match(workerSource, /fetch\('\/api\/accounts\/me'/);
-  assert.match(workerSource, /account\.role === 'super_admin'[\s\S]*?FONT_ASSET_CACHE/);
-  assert.match(workerSource, /__mao_account_v1__/);
-  assert.match(workerSource, /encodeURIComponent\(account\.id\)/);
-  assert.match(workerSource, /credentials:\s*'same-origin'/);
-  assert.match(workerSource, /status:\s*503/);
+  assert.match(serviceWorkerSource, /fetch\('\/api\/accounts\/me'/);
+  assert.match(serviceWorkerSource, /account\.role === 'super_admin'[\s\S]*?FONT_ASSET_CACHE/);
+  assert.match(serviceWorkerSource, /__mao_account_v1__/);
+  assert.match(serviceWorkerSource, /encodeURIComponent\(account\.id\)/);
+  assert.match(serviceWorkerSource, /credentials:\s*'same-origin'/);
+  assert.match(serviceWorkerSource, /status:\s*503/);
 });
 
 test('localStorage 的键枚举只返回当前账号键，跨账号 storage 事件不会泄漏 payload', () => {
