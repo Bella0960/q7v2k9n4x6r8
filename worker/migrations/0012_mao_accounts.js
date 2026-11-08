@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS mao_accounts (
   updated_at INTEGER NOT NULL,
   authorized_at INTEGER,
   disabled_at INTEGER,
-  revoked_at INTEGER
+  revoked_at INTEGER,
+  registration_ip_hash TEXT NOT NULL DEFAULT ''
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mao_single_super_admin
@@ -34,6 +35,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mao_verified_qq_email
 
 CREATE INDEX IF NOT EXISTS idx_mao_accounts_status_created
   ON mao_accounts(status, created_at, id);
+
+CREATE INDEX IF NOT EXISTS idx_mao_accounts_registration_ip_created
+  ON mao_accounts(registration_ip_hash, created_at);
 
 CREATE TABLE IF NOT EXISTS mao_account_sessions (
   id TEXT PRIMARY KEY,
