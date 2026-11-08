@@ -2924,6 +2924,9 @@ test('59 createRecoveryPointRescuePackage：导出 JSON 清单和原始 Blob 附
     assert.equal(assetEntry.data.toString('utf8'), 'rescue-local-audio-original');
     const manifest = JSON.parse(manifestEntry.data.toString('utf8'));
     assert.equal(manifest.format, 'maomao-restore-point-rescue');
+    assert.equal(manifest.recordStatuses['pre-import'], 'exported');
+    assert.equal(manifest.recordStatuses['pre-import-indexeddb'], 'exported');
+    assert.equal(manifest.recordStatuses['pre-import-meta'], 'exported');
     assert.equal(
         manifest.records['pre-import-indexeddb'].snap['maomao-media-store'].audio[0].blob.file,
         'assets/blob-000001.bin'
@@ -2997,6 +3000,12 @@ test('61 createRecoveryPointRescuePackage：单份记录序列化失败时继续
     }
     assert.deepEqual(names.sort(), ['README.txt', 'recovery-points.json'],
         'failed role must not leave an orphan binary file in the rescue ZIP');
+    const manifestBytes = zip.subarray(
+        names.indexOf('recovery-points.json') >= 0 ? 0 : 0
+    );
+    const manifestStart = zip.indexOf(Buffer.from('{"format"'));
+    assert.notEqual(manifestStart, -1,
+        'manifest JSON should be included even when one record fails serialization');
     assert.ok(ctx.__restorePointRows.has('pre-import'));
     assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
     assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
