@@ -317,8 +317,11 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (!Number.isInteger(ttlHours) || ttlHours < 1 || ttlHours > 720) {
       throw new ApiError(400, 'INVALID_INVITE_EXPIRY', '邀请码有效期需要为 1–720 小时');
     }
-    const code = randomToken(32);
     const timestamp = now();
+    if (store.hasActiveMaoInvite({ targetAccountId, targetEmail, now: timestamp })) {
+      throw new ApiError(409, 'INVITE_ALREADY_ACTIVE', '该账号已有尚未使用且未过期的邀请码，请先撤销原邀请码');
+    }
+    const code = randomToken(32);
     const inviteId = randomToken(16);
     const expiresAt = timestamp + ttlHours * 60 * 60 * 1000;
     store.insertMaoInvite({
