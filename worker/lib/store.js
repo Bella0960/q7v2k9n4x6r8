@@ -5,13 +5,21 @@
  * 这样迁移与查询都能跑真实 SQL，而不是被 mock 掉。
  */
 
-export function createStore(exec) {
-  return new CloudStore(exec);
+export function createStore(exec, transaction = null) {
+  return new CloudStore(exec, transaction);
 }
 
 class CloudStore {
-  constructor(exec) {
+  constructor(exec, transaction = null) {
     this.exec = exec;
+    this.transaction = typeof transaction === 'function' ? transaction : null;
+  }
+
+  atomic(operation) {
+    if (typeof operation !== 'function') {
+      throw new TypeError('CloudStore.atomic requires a synchronous operation');
+    }
+    return this.transaction ? this.transaction(operation) : operation();
   }
 
   getDevice(deviceId) {
