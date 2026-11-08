@@ -1054,7 +1054,7 @@ test('12 restoreIndexedDBWithRollback: later database failure rolls back earlier
     assert.equal(fontDb._data.presets[0].id, 'font-old');
 });
 
-test('12 IndexedDB restore failure keeps the pre-import localStorage recovery point', () => {
+test('13 IndexedDB restore failure keeps the pre-import localStorage recovery point', () => {
     assert.match(backupSrc, /var restorePointKept = dbFailed\.length > 0/);
     assert.match(backupSrc, /if \(!restorePointKept\) rpDeleteRole\(RP_ROLE_PRE\)/);
     assert.match(backupSrc, /if \(restorePointKept\) parts\.push\('本机导入前恢复点已保留，供排查'\)/);
