@@ -614,7 +614,9 @@
     }
     return prefix+" "+trimmed;
   }
-  function processRules(start,limit){
+  function processRules(start,limit,depth){
+    depth=depth||0;
+    if(depth>32)fail("CSS 分组规则嵌套过深。");
     var out="",cursor=start;
     while(cursor<limit){
       var boundary=findBoundary(cursor,limit);
@@ -627,7 +629,7 @@
         atRuleName=readCssIdentifier(prelude,nameStart).name.toLowerCase();
       }
       if(atRuleName==="media"||atRuleName==="supports"||atRuleName==="container"){
-        out+=prelude+"{"+processRules(open+1,close)+"}";
+        out+=prelude+"{"+processRules(open+1,close,depth+1)+"}";
       }else if(atRuleName){
         out+=css.slice(cursor,close+1);
       }else{
@@ -637,7 +639,7 @@
     }
     return out;
   }
-  return processRules(0,css.length);
+  return processRules(0,css.length,0);
 }
     function themeBlockSelector(id,page){
     return '[data-maomao-theme-page="'+page+'"][data-maomao-theme-block="'+id+'"]';
