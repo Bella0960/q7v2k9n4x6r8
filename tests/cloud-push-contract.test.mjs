@@ -885,9 +885,12 @@ test('新设备必须通过单次初始认领或已连接设备签发的一次�
   assert.equal(afterCreatorRevoked.payload.error.code, 'PAIRING_TOKEN_INVALID');
 });
 
-test('设置页暴露设备配对入口，客户端提供一次性配对流程', () => {
+test('独立云端推送页暴露设备配对入口，客户端提供一次性配对流程', () => {
   const settingsHtml = fs.readFileSync(path.join(rootDir, 'settings/settings.html'), 'utf8');
+  const cloudSettingsHtml = fs.readFileSync(path.join(rootDir, 'settings/cloud-push.html'), 'utf8');
   const clientSource = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
+  assert.ok(settingsHtml.includes("cloud-push.html"), '设置首页必须只提供独立云端推送入口');
+  assert.equal(settingsHtml.includes('cloudPushToggle'), false, '推送开关不得继续堆在设置首页');
   const chatDetail = fs.readFileSync(path.join(rootDir, 'chat/chat/chat-detail.html'), 'utf8');
   assert.ok(chatDetail.includes('../../shared/js/cloud-push-client.js'), '聊天页必须加载云端 presence 客户端');
   assert.ok(chatDetail.includes('startCharacterPresence(String(currentCharacter.id || currentRoleId))'));
@@ -916,7 +919,7 @@ test('设置页暴露设备配对入口，客户端提供一次性配对流程',
     'cloudRoleAway',
     'cloudRoleScheduleSave'
   ]) {
-    assert.ok(settingsHtml.includes('id="' + id + '"'), '设置页缺少配对控件 ' + id);
+    assert.ok(cloudSettingsHtml.includes('id="' + id + '"'), '云端推送页缺少控件 ' + id);
   }
   const presenceClientStart = clientSource.indexOf('async function startCharacterPresence(');
   const presenceClientEnd = clientSource.indexOf('  async function disconnect()', presenceClientStart);
@@ -2517,8 +2520,10 @@ test('客户端代码不含任何私钥或 API Key 字面量', async () => {
   assert.ok(client.includes('cloud_device_v1'), '设备凭据只保存于本机 localStorage');
 
   const settings = fs.readFileSync(path.join(rootDir, 'settings/settings.html'), 'utf8');
-  assert.ok(settings.includes('cloudPushToggle'), '设置页必须提供推送开关');
-  assert.ok(settings.includes('cloud-push-client.js'), '设置页必须加载云连接客户端');
+  const cloudSettings = fs.readFileSync(path.join(rootDir, 'settings/cloud-push.html'), 'utf8');
+  assert.ok(settings.includes('cloud-push.html'), '设置首页必须链接到独立云端推送页');
+  assert.ok(cloudSettings.includes('cloudPushToggle'), '独立云端推送页必须提供推送开关');
+  assert.ok(cloudSettings.includes('cloud-push-client.js'), '独立云端推送页必须加载原云连接客户端');
 
   const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
   assert.ok(serviceWorker.includes("'./shared/js/cloud-push-client.js'"), 'PWA 必须预缓存云连接客户端');
