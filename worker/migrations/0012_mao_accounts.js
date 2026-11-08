@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS mao_accounts (
   updated_at INTEGER NOT NULL,
   authorized_at INTEGER,
   disabled_at INTEGER,
-  disabled_from_status TEXT CHECK (disabled_from_status IS NULL OR disabled_from_status IN ('pending_invite', 'active')),
   revoked_at INTEGER,
   registration_ip_hash TEXT NOT NULL DEFAULT ''
 );
