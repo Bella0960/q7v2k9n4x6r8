@@ -16,6 +16,7 @@ const novelPage = readFileSync(resolve(here, '../novel/novel.html'), 'utf8');
 const minimaxPage = readFileSync(resolve(here, '../settings/minimax-tts.html'), 'utf8');
 const worldbookPage = readFileSync(resolve(here, '../worldbook/worldbook/worldbook.html'), 'utf8');
 const cafePage = readFileSync(resolve(here, '../cafe/cafe.html'), 'utf8');
+const libraryPage = readFileSync(resolve(here, '../library/library.html'), 'utf8');
 
 function readExtraLessons(source) {
   const match = source.match(/var extraLessons=(\[[\s\S]*?\]);\nlessons=lessons\.concat\(extraLessons\);/);
@@ -290,6 +291,113 @@ test('guided verification distinguishes storage failure from a later successful 
 
   sandbox.stopGuidedVerification();
   assert.equal(lastObserver.disconnected, true);
+});
+
+test('reader cleanup deletes books and comments in one IndexedDB transaction', async () => {
+  const start = libraryPage.indexOf('function idbDeleteLocalBooksAndComments(removedIds)');
+  const end = libraryPage.indexOf('function updateLocalBookFallback(removedIds)', start);
+  assert.ok(start >= 0 && end > start, 'atomic reader cleanup transaction helper must exist');
+  const helper = libraryPage.slice(start, end).trim().replace(/;$/, '');
+
+  function fakeDatabase(commentRows) {
+    const operations = [];
+    let commentRequest;
+    const transaction = {
+      error: new Error('transaction failed'),
+      objectStore(name) {
+        if (name === 'books') {
+          return { delete: (id) => operations.push({ store: name, id }) };
+        }
+        return {
+          getAll() {
+            commentRequest = { result: commentRows, onsuccess: null, onerror: null };
+            return commentRequest;
+          },
+          delete: (id) => operations.push({ store: name, id })
+        };
+      },
+      abort() { this.aborted = true; if (this.onabort) this.onabort(); }
+    };
+    const db = {
+      transaction(names, mode) {
+        assert.deepEqual(names, ['books', 'comments']);
+        assert.equal(mode, 'readwrite');
+        return transaction;
+      }
+    };
+    return { db, transaction, operations, get commentRequest() { return commentRequest; } };
+  }
+
+  const fake = fakeDatabase([
+    { id: 'comment-1', bookId: 'book-1' },
+    { id: 'comment-2', bookId: 'book-2' }
+  ]);
+  const remove = runInNewContext('(' + helper + ')', {
+    openReaderDb: () => Promise.resolve(fake.db),
+    Promise,
+    Set
+  });
+  const pending = remove(['book-1']);
+  await Promise.resolve();
+  assert.ok(fake.commentRequest && typeof fake.commentRequest.onsuccess === 'function');
+  fake.commentRequest.onsuccess();
+  fake.transaction.oncomplete();
+  await pending;
+  assert.deepEqual(fake.operations, [
+    { store: 'books', id: 'book-1' },
+    { store: 'comments', id: 'comment-1' }
+  ]);
+
+  const failed = fakeDatabase([{ id: 'comment-1', bookId: 'book-1' }]);
+  const removeFailed = runInNewContext('(' + helper + ')', {
+    openReaderDb: () => Promise.resolve(failed.db),
+    Promise,
+    Set
+  });
+  const rejected = removeFailed(['book-1']);
+  await Promise.resolve();
+  failed.commentRequest.onerror();
+  await assert.rejects(rejected, /transaction failed|本地书籍删除/);
+});
+
+test('reader cleanup restores fallback books and comments if a write fails', () => {
+  const start = libraryPage.indexOf('function updateLocalBookFallback(removedIds)');
+  const end = libraryPage.indexOf('function removeLocalBooks()', start);
+  assert.ok(start >= 0 && end > start, 'fallback cleanup helper must exist');
+  const helper = libraryPage.slice(start, end).trim().replace(/;$/, '');
+  const bookKey = 'maomao_reader_local_books_v1';
+  const commentKey = 'maomao_reader_comments_v1';
+  const originalBooks = JSON.stringify([{ id: 'book-1' }, { id: 'book-2' }]);
+  const originalComments = JSON.stringify([{ id: 'note-1', bookId: 'book-1' }, { id: 'note-2', bookId: 'book-2' }]);
+
+  function storage(failCommentWrite) {
+    const map = new Map([[bookKey, originalBooks], [commentKey, originalComments]]);
+    let shouldFail = failCommentWrite;
+    return {
+      map,
+      getItem(key) { return map.has(key) ? map.get(key) : null; },
+      setItem(key, value) {
+        if (key === commentKey && shouldFail) { shouldFail = false; throw new Error('QuotaExceededError'); }
+        map.set(key, String(value));
+      },
+      removeItem(key) { map.delete(key); }
+    };
+  }
+
+  const brokenStorage = storage(true);
+  const updateBroken = runInNewContext('(' + helper + ')', { localStorage: brokenStorage, Set, JSON });
+  assert.throws(() => updateBroken(['book-1']), /QuotaExceededError/);
+  assert.equal(brokenStorage.getItem(bookKey), originalBooks, 'book fallback must roll back after comment write fails');
+  assert.equal(brokenStorage.getItem(commentKey), originalComments, 'comment fallback must remain unchanged');
+
+  const goodStorage = storage(false);
+  const updateGood = runInNewContext('(' + helper + ')', { localStorage: goodStorage, Set, JSON });
+  const rollback = updateGood(['book-1']);
+  assert.deepEqual(JSON.parse(goodStorage.getItem(bookKey)), [{ id: 'book-2' }]);
+  assert.deepEqual(JSON.parse(goodStorage.getItem(commentKey)), [{ id: 'note-2', bookId: 'book-2' }]);
+  rollback();
+  assert.equal(goodStorage.getItem(bookKey), originalBooks);
+  assert.equal(goodStorage.getItem(commentKey), originalComments);
 });
 
 test('cafe custom dish save rolls back in-memory state when persistence fails', () => {
