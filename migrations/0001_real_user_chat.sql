@@ -458,3 +458,26 @@ BEGIN
     AND pair_high = CASE WHEN NEW.blocker_id < NEW.blocked_id THEN NEW.blocked_id ELSE NEW.blocker_id END
     AND status = 'pending';
 END;
+
+
+-- Account suspension/deletion invalidates outstanding invitations and requests.
+-- This is a database-level cleanup so it also applies to administrative status
+-- changes that do not pass through an HTTP handler.
+CREATE TRIGGER IF NOT EXISTS trg_real_user_account_inactive_cleans_friend_state
+AFTER UPDATE OF status ON real_user_accounts
+WHEN OLD.status = 'active' AND NEW.status IN ('suspended', 'deleted')
+BEGIN
+  UPDATE real_user_friend_codes
+  SET revoked_at = MAX(created_at, NEW.updated_at)
+  WHERE account_id = NEW.id AND revoked_at IS NULL;
+
+  UPDATE real_user_friend_requests
+  SET status = CASE
+        WHEN requester_id = NEW.id THEN 'cancelled'
+        ELSE 'declined'
+      END,
+      updated_at = MAX(updated_at, NEW.updated_at),
+      responded_at = MAX(created_at, NEW.updated_at)
+  WHERE status = 'pending'
+    AND (requester_id = NEW.id OR recipient_id = NEW.id);
+END;
