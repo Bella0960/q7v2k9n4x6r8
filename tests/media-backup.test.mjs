@@ -19,6 +19,7 @@
  *  32-33. 整机导入互斥、FileReader 初始化失败与锁释放
  *  34-37. 页面中断后的启动恢复、恢复失败重试与 committed 清理
  *  38-39. 阶段日志写入保护、未预期异常后的恢复点保留
+ *  40-42. 跨标签页导入互斥、过期租约接管与恢复互斥
  */
 
 import test from 'node:test';
@@ -2230,4 +2231,102 @@ test('39 完整导入：阶段日志写入后的未预期异常必须保留恢�
     assert.ok(ctx.__intercepted.toasts.some(item =>
         /正在检查或恢复上次未完成的整机导入/.test(item.msg)
     ));
+});
+
+
+/* ═══════════════════════════════════════════════
+   40. 跨标签页导入互斥：同一 origin 只允许一个标签页取得租约
+   ═══════════════════════════════════════════════ */
+test('40 handleImportFile：第二个标签页无法取得活动导入租约', async () => {
+    clearAllDBs();
+    const ctxA = buildCtxFull({
+        confirmResult: true,
+        localStorage: { ai_custom_characters: 'tab-a-before' }
+    });
+    const ctxB = buildCtxFull({
+        confirmResult: true,
+        localStorage: { ai_custom_characters: 'tab-b-before' }
+    });
+
+    const writeA = ctxA.rpWriteSnapshot;
+    let releaseWrite;
+    const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+    ctxA.rpWriteSnapshot = async (snap, role) => {
+        if (role === 'pre-import') await writeGate;
+        return writeA(snap, role);
+    };
+
+    const payload = makeImportPayload({});
+    ctxA.handleImportFile({ content: JSON.stringify(payload) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(ctxA.__pendingImport, 'first tab should have acquired the lock and begun reading');
+
+    ctxB.handleImportFile({ content: JSON.stringify(payload) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(ctxB.__pendingImport, undefined,
+        'second tab must not start a FileReader while the first tab holds the lease');
+    assert.ok(ctxB.__intercepted.toasts.some(item =>
+        /另一个 MAOMAO 标签页正在导入或恢复数据/.test(item.msg)
+    ));
+
+    releaseWrite();
+    await ctxA.__pendingImport;
+    const lockDb = openDbs['maomao-restore-point'];
+    assert.ok(lockDb);
+    assert.equal(lockDb._data.restores.some(row => row.role === 'active-import-lock'), false,
+        'first tab must release the shared IndexedDB lock at the end');
+
+    ctxB.handleImportFile({ content: JSON.stringify(payload) });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(ctxB.__pendingImport,
+        'second tab may start once the first tab has released the lease');
+    await ctxB.__pendingImport;
+});
+
+/* ═══════════════════════════════════════════════
+   41. 崩溃遗留的过期租约：新页面可安全接管
+   ═══════════════════════════════════════════════ */
+test('41 rpAcquireImportLock：过期租约可以被新页面接管', async () => {
+    clearAllDBs();
+    const ctxA = buildCtxFull();
+    const ctxB = buildCtxFull();
+    const first = await ctxA.rpAcquireImportLock('crashed-tab-owner');
+    assert.equal(first, true);
+
+    const lockDb = openDbs['maomao-restore-point'];
+    const row = lockDb._data.restores.find(item => item.role === 'active-import-lock');
+    assert.ok(row);
+    row.expiresAt = Date.now() - 1000; // 模拟页面崩溃且租约自然过期
+
+    const takeover = await ctxB.rpAcquireImportLock('recovery-tab-owner');
+    assert.equal(takeover, true);
+    const replaced = lockDb._data.restores.find(item => item.role === 'active-import-lock');
+    assert.equal(replaced.owner, 'recovery-tab-owner');
+    await ctxB.rpReleaseImportLock('recovery-tab-owner');
+    assert.equal(lockDb._data.restores.some(item => item.role === 'active-import-lock'), false);
+});
+
+/* ═══════════════════════════════════════════════
+   42. 活动导入租约存在时：新标签页不能启动中断恢复
+   ═══════════════════════════════════════════════ */
+test('42 recoverInterruptedImportOnStartup：活动标签页持有租约时不得并发回滚', async () => {
+    clearAllDBs();
+    const activeTab = buildCtxFull();
+    const newTab = buildCtxFull({ confirmResult: true });
+    assert.equal(await activeTab.rpAcquireImportLock(activeTab.importLockOwner), true);
+
+    newTab.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    await newTab.writeImportState('applying', []);
+
+    const recovered = await newTab.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, false);
+    assert.ok(newTab.__restorePointRows.has('pre-import'),
+        '新标签页不得在另一标签页持有租约时回滚业务数据');
+    assert.ok(newTab.__intercepted.toasts.some(item =>
+        /另一个 MAOMAO 标签页正在导入或恢复数据/.test(item.msg)
+    ));
+    await activeTab.rpReleaseImportLock(activeTab.importLockOwner);
 });
