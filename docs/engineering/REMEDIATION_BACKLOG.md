@@ -218,6 +218,7 @@ Acceptance:
 - Motion behaviors are allow-listed (nav scroll collapse/hide, nav tap, message enter, sheet rise, bubble press).
 - Automated package-format tests cover valid packages, assets, CSS rejection, unsafe paths and schema mismatches.
 - Real desktop and phone/PWA import, apply, switch, refresh, and rollback acceptance remains required before release.
+- The import adapter alone does not complete the import/export loop. Keep THEME-001 IN PROGRESS until the independent Theme Studio exporter emits compatible packages and an export-to-import round trip is verified.
 
 
 ### AI-IMG-001 — Complete role-based image generation and gallery
