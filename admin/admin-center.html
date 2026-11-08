@@ -39,7 +39,14 @@
 
     <section class="admin-view" id="usersView">
       <div class="view-heading"><div><h2>账号列表</h2><p>按 MAO 永久 ID 管理独立账号</p></div><button class="refresh-button" id="refreshUsers" type="button">刷新</button></div>
-      <label class="search-box"><span aria-hidden="true">⌕</span><input id="accountSearch" type="search" placeholder="搜索永久 ID 或用户名"></label>
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="accountSearch" type="search" placeholder="搜索永久 ID、用户名或邮箱"></label>
+      <div class="account-filter-row" role="group" aria-label="按账号状态筛选">
+        <button class="filter-button active" type="button" data-account-filter="all" aria-pressed="true">全部 <span id="filterCountAll">—</span></button>
+        <button class="filter-button" type="button" data-account-filter="pending_invite" aria-pressed="false">待授权 <span id="filterCountPending">—</span></button>
+        <button class="filter-button" type="button" data-account-filter="active" aria-pressed="false">正常 <span id="filterCountActive">—</span></button>
+        <button class="filter-button" type="button" data-account-filter="restricted" aria-pressed="false">受限 <span id="filterCountRestricted">—</span></button>
+      </div>
+      <p class="results-count" id="accountResultCount" aria-live="polite">正在读取账号…</p>
       <div class="records-card" id="accountsList"><p class="empty-note">正在读取账号…</p></div>
     </section>
 
