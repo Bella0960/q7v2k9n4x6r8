@@ -639,7 +639,9 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
     body: { clientMessageId: oldClientMessageId, body: '旧关系里的消息' }
   });
   assert.equal(oldMessage.status, 200);
-  const oldViewVersion = (await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages')).payload.viewState.version;
+  const oldViewState = (await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages')).payload.viewState;
+  const oldViewVersion = oldViewState.version;
+  const oldGenerationId = oldViewState.generationId;
 
   const oldRead = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
     method: 'POST',
@@ -671,6 +673,19 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   assert.deepEqual((await asAccount(ctx, bob, '/api/friends')).payload.friends, []);
 
   await makeFriends(ctx, alice, bob);
+
+  // Simulate a request that was created under the old relationship but only
+  // reaches the database after the same pair has been re-added.
+  const delayedOldGenerationWrite = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
+    method: 'POST',
+    body: {
+      clientMessageId: messageId(),
+      friendshipGenerationId: oldGenerationId,
+      body: '上一轮关系迟到的请求'
+    }
+  });
+  assert.equal(delayedOldGenerationWrite.status, 409);
+  assert.equal(delayedOldGenerationWrite.payload.error.code, 'STALE_FRIENDSHIP_GENERATION');
 
   const aliceHistory = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages');
   const bobHistory = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
