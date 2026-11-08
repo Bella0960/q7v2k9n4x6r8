@@ -2942,6 +2942,30 @@
             return false;
         }
 
+        // A matching server ID alone is not proof that the local copy is durable.
+        // Refuse ACK when the row is duplicated, has the wrong role, or its body
+        // differs from the immutable cloud envelope; otherwise a damaged local
+        // row could silently consume the only recoverable server copy.
+        function inspectCloudOutboundHistory(history, serverMessageId, expectedText) {
+            if (!Array.isArray(history)) return 'conflict';
+            var matches = [];
+            for (var i = 0; i < history.length; i += 1) {
+                var item = history[i];
+                if (item && String(item.serverMessageId || '') === serverMessageId) {
+                    matches.push(item);
+                }
+            }
+            if (!matches.length) return 'missing';
+            if (matches.length !== 1) return 'conflict';
+            var existing = matches[0];
+            var existingText = typeof existing.text === 'string'
+                ? existing.text
+                : (typeof existing.content === 'string' ? existing.content : null);
+            return existing.role === 'assistant' && existingText === expectedText
+                ? 'match'
+                : 'conflict';
+        }
+
         // 云端主动消息进入现有聊天历史：只接收纯文字，serverMessageId 是本地幂等键。
         // 本地写入并读回验证成功之前，绝不向云端 ACK。
         async function persistCloudOutboundMessage(payload, envelope) {
@@ -2958,11 +2982,11 @@
 
             var history = loadMessages();
             if (!Array.isArray(history)) return false;
-            var existing = history.some(function (item) {
-                return item && String(item.serverMessageId || '') === serverMessageId;
-            });
-            // 本地已经保存但上一次 ACK 断网：本次只补 ACK，不再插入第二个气泡。
-            if (existing) return true;
+            var existingState = inspectCloudOutboundHistory(history, serverMessageId, messageText);
+            // 本地已经保存但上一次 ACK 断网：只有角色和完整正文都匹配时才补 ACK。
+            if (existingState === 'match') return true;
+            // 同一 ID 对应的本地行若损坏/冲突，不能追加重复气泡，也不能误 ACK。
+            if (existingState === 'conflict') return false;
 
             var createdAt = Number(envelope && envelope.createdAt);
             if (!Number.isSafeInteger(createdAt) || createdAt <= 0) createdAt = Date.now();

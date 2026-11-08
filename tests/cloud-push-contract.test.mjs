@@ -3433,7 +3433,36 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   const adapterStart = chat.indexOf('function persistCloudOutboundMessage(payload, envelope)');
   const adapterEnd = chat.indexOf('// 同一角色优先用 Web Locks 串行接收', adapterStart);
   assert.ok(adapterStart >= 0 && adapterEnd > adapterStart);
+  const helperStart = chat.indexOf('function inspectCloudOutboundHistory(');
+  const helperEnd = chat.indexOf('        // 云端主动消息进入现有聊天历史', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart,
+    '云端重复消息必须提供本地记录完整性检查');
+  const helperSource = chat.slice(helperStart, helperEnd).trim();
+  const inspectHistory = runInNewContext('(' + helperSource + ')');
+  const serverMessageId = 'cloud_integrity_message_123456';
+  const expectedText = '完整的云端正文';
+  assert.equal(inspectHistory([], serverMessageId, expectedText), 'missing');
+  assert.equal(inspectHistory([{
+    role: 'assistant', serverMessageId, text: expectedText
+  }], serverMessageId, expectedText), 'match');
+  assert.equal(inspectHistory([{
+    role: 'assistant', serverMessageId, text: '被截断的正文'
+  }], serverMessageId, expectedText), 'conflict',
+    '正文不一致时必须保持云端消息未确认');
+  assert.equal(inspectHistory([{
+    role: 'sent', serverMessageId, text: expectedText
+  }], serverMessageId, expectedText), 'conflict',
+    '错误角色不能冒充已保存的角色消息');
+  assert.equal(inspectHistory([
+    { role: 'assistant', serverMessageId, text: expectedText },
+    { role: 'assistant', serverMessageId, text: expectedText }
+  ], serverMessageId, expectedText), 'conflict',
+    '本地存在重复服务端 ID 时不得提前确认');
+
   const adapter = chat.slice(adapterStart, adapterEnd);
+  assert.ok(adapter.includes("existingState === 'match'"));
+  assert.ok(adapter.includes("existingState === 'conflict') return false"),
+    '本地记录内容冲突时必须保留云端待同步状态');
   const saveIndex = adapter.indexOf('if (!saveMessages(history))');
   const renderIndex = adapter.indexOf('if (_vl) vlRefresh();');
   assert.ok(saveIndex >= 0 && renderIndex > saveIndex,
