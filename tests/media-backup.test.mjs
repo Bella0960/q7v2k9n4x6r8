@@ -1539,9 +1539,9 @@ test('23 verifyRestore：检测导入前快照之外的额外残留键', () => {
         ai_custom_characters: 'old-character-state'
     });
     assert.equal(result.ok, false);
-    assert.deepEqual(result.extra, ['unexpected_residue']);
-    assert.deepEqual(result.missing, []);
-    assert.deepEqual(result.mismatched, []);
+    assert.equal(Array.from(result.extra).join(','), 'unexpected_residue');
+    assert.equal(result.missing.length, 0);
+    assert.equal(result.mismatched.length, 0);
 });
 
 
