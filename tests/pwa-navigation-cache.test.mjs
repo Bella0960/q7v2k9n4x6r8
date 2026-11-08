@@ -54,7 +54,10 @@ test('navigation background refresh never reuses the navigate-mode request', () 
   // 后台刷新必须用同 URL 的新 Request，并且缓存键也使用该 Request。
   const navigationBranch = serviceWorker.match(/if \(req\.mode === 'navigate'\) \{[\s\S]*?\n  \}/)[0];
   assert.doesNotMatch(navigationBranch, /fetch\(req\)/);
-  assert.match(navigationBranch, /fetch\(new Request\(refreshUrl, \{ cache: 'no-store' \}\)\)/);
+  assert.match(navigationBranch, /headers: req\.headers/);
+  assert.match(navigationBranch, /credentials: req\.credentials/);
+  assert.match(navigationBranch, /redirect: req\.redirect/);
+  assert.match(navigationBranch, /fetch\(new Request\(refreshUrl, \{[\s\S]*?cache: 'no-store'/);
   assert.match(navigationBranch, /cache\.put\(refreshKey, copy\)/);
 });
 
