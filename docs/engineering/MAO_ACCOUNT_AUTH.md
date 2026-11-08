@@ -103,6 +103,6 @@ Super-admin only:
 - The command also includes browser storage namespace tests for two account IDs.
 - The GitHub Actions job must execute the tests and build before the branch can be considered validated.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
-- The independent super-admin center UI, first-run bootstrap UI, QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
+- The first-run bootstrap UI, QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
 
 No production deployment, merge into main, or APK update is part of this branch.
