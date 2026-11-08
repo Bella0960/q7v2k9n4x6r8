@@ -1001,7 +1001,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (
         !/^\d+$/.test(rawAfterCreatedAt) ||
         !Number.isSafeInteger(afterCreatedAt) || afterCreatedAt < 0 ||
-        !/^[A-Za-z0-9_-]{16,128}$/.test(afterId)
+        typeof afterId !== 'string' || afterId.length < 1 || afterId.length > 256
       ) {
         throw new ApiError(400, 'INVALID_OUTBOUND_CURSOR', '收件箱游标无效');
       }
