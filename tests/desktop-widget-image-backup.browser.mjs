@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 
 // DESKTOP-WIDGET-IMAGE-002:
 // 1) full backup really contains the IndexedDB widget photos (not only legacy ds_* keys)
-// 2) clean-profile restore brings back all five widgets
+// 2) clean-profile restore brings back all nine independently uploaded widget image slots
 // 3) legacy ds_* compatibility (legacy-only read, new wins, legacy never overwrites)
 // 4) cross-device migration via the existing backup import (NOT cloud sync)
 // 5) partial/corrupt restore keeps existing images and reports the failure
@@ -105,10 +105,14 @@ function makeNoisePng(width, height, seedStart) {
 
 const WIDGETS = [
   { name: 'image', click: '[data-drag="image"]', render: '[data-drag="image"]', key: 'home_widget_image_v1_image_img', legacyKey: 'ds_image_v1' },
-  { name: 'postcard', click: '#pcAvatar', render: '#pcAvatar', key: 'home_widget_image_v1_postcard_avatar', legacyKey: 'ds_postcard_v1' },
+  { name: 'postcard-background', click: '#pcBgTop', render: '#pcBgTop', key: 'home_widget_image_v1_postcard_background', legacyKey: 'ds_postcard_v1' },
+  { name: 'postcard-avatar', click: '#pcAvatar', render: '#pcAvatar', key: 'home_widget_image_v1_postcard_avatar', legacyKey: 'ds_postcard_v1' },
   { name: 'polaroid', click: '#poImg', render: '#poImg', key: 'home_widget_image_v1_polaroid_img', legacyKey: 'ds_polaroid_v1' },
-  { name: 'dialog', click: '#dlAvatarThem', render: '#dlAvatarThem', key: 'home_widget_image_v1_dialog_themAvatar', legacyKey: 'ds_dialog_v1' },
-  { name: 'social', click: '#scAvatar', render: '#scAvatar .sc-photo-inner', key: 'home_widget_image_v1_social_avatar', legacyKey: 'ds_social_v1' }
+  { name: 'dialog-them-avatar', click: '#dlAvatarThem', render: '#dlAvatarThem', key: 'home_widget_image_v1_dialog_themAvatar', legacyKey: 'ds_dialog_v1' },
+  { name: 'dialog-me-avatar', click: '#dlAvatarMe', render: '#dlAvatarMe', key: 'home_widget_image_v1_dialog_meAvatar', legacyKey: 'ds_dialog_v1' },
+  { name: 'social-avatar', click: '#scAvatar', render: '#scAvatar .sc-photo-inner', key: 'home_widget_image_v1_social_avatar', legacyKey: 'ds_social_v1' },
+  { name: 'social-photo-1', click: '#scP1', render: '#scP1 .sc-p-photo', key: 'home_widget_image_v1_social_p1', legacyKey: 'ds_social_v1' },
+  { name: 'social-photo-2', click: '#scP2', render: '#scP2 .sc-p-photo', key: 'home_widget_image_v1_social_p2', legacyKey: 'ds_social_v1' }
 ];
 const PHOTOS_A = WIDGETS.map((_, index) => makeNoisePng(320, 320, 1000 + index * 7919));
 const PHOTOS_B = WIDGETS.map((_, index) => makeNoisePng(320, 320, 50000 + index * 6151));
@@ -240,7 +244,7 @@ function inspectBackup(file, saved) {
 }
 
 async function importBackup(page, file, expectedToastPattern) {
-  page.on('dialog', dialog => dialog.accept().catch(() => {}));
+  page.once('dialog', dialog => dialog.accept().catch(() => {}));
   await page.goto(`${baseUrl}/settings/settings.html`, { waitUntil: 'load' });
   await page.waitForTimeout(400);
   const toastSeen = page.waitForFunction(pattern => {
@@ -403,25 +407,38 @@ try {
 
     const original = JSON.parse(fs.readFileSync(exportedFile, 'utf8'));
     const wallpapers = original.indexedDB['maomao-media-store'].wallpapers;
-    const victim = wallpapers.find(record => record.__key === WIDGETS[2].key);
-    assert.ok(victim, 'fixture must contain the polaroid record');
-    victim.__value = null; // corrupt one record: whole store must be skipped
-    const corruptedFile = path.join(os.tmpdir(), `maomao-backup-corrupt-${Date.now()}.json`);
-    fs.writeFileSync(corruptedFile, JSON.stringify(original));
-    tmpFiles.push(corruptedFile);
+    const polaroidKey = WIDGETS.find(widget => widget.name === 'polaroid').key;
+    const corruptionCases = [
+      { label: 'null value', mutate: record => { record.__value = null; } },
+      { label: 'non-image text', mutate: record => { record.__value = 'not-an-image'; } },
+      { label: 'invalid base64 data URL', mutate: record => { record.__value = 'data:image/png;base64,%%%'; } },
+      { label: 'invalid dataUrl wrapper', mutate: record => { record.__value = { dataUrl: 'data:image/png;base64,%%%' }; } }
+    ];
 
-    const toastSeen = await importBackup(page, corruptedFile, '图片库备份记录损坏');
-    assert.equal(toastSeen, true, 'corrupt wallpaper backup must be reported');
-    await page.goto(`${baseUrl}/index.html`, { waitUntil: 'load' });
-    await ensureLayout(page);
-    await page.waitForTimeout(600);
-    for (const widget of WIDGETS) {
-      assert.equal(await readSaved(page, widget.key), existing[widget.name],
-        `${widget.name}: existing photo must be preserved when the backup store is corrupt`);
+    for (const corruptionCase of corruptionCases) {
+      const damagedBackup = JSON.parse(JSON.stringify(original));
+      const damagedWallpapers = damagedBackup.indexedDB['maomao-media-store'].wallpapers;
+      const victim = damagedWallpapers.find(record => record.__key === polaroidKey);
+      assert.ok(victim, 'fixture must contain the polaroid record');
+      corruptionCase.mutate(victim);
+
+      const corruptedFile = path.join(os.tmpdir(), `maomao-backup-corrupt-${corruptionCase.label.replace(/[^a-z0-9]+/gi, '-')}-${Date.now()}.json`);
+      fs.writeFileSync(corruptedFile, JSON.stringify(damagedBackup));
+      tmpFiles.push(corruptedFile);
+
+      const toastSeen = await importBackup(page, corruptedFile, '图片库备份记录损坏');
+      assert.equal(toastSeen, true, corruptionCase.label + ': corrupt wallpaper backup must be reported');
+      await page.goto(`${baseUrl}/index.html`, { waitUntil: 'load' });
+      await ensureLayout(page);
+      await page.waitForTimeout(600);
+      for (const widget of WIDGETS) {
+        assert.equal(await readSaved(page, widget.key), existing[widget.name],
+          widget.name + ': existing photo must be preserved for ' + corruptionCase.label);
+      }
+      const preserved = await verifyAllWidgets(page, existing);
+      report.partial.push({ check: corruptionCase.label + ': all existing photos preserved', result: 'PASS', widgets: preserved });
     }
-    const preserved = await verifyAllWidgets(page, existing);
-    report.partial.push({ check: 'corrupt store keeps all existing photos', result: 'PASS', widgets: preserved });
-    report.partial.push({ check: 'failure toast shown', result: 'PASS' });
+    report.partial.push({ check: 'all corrupt wallpaper cases show a warning', result: 'PASS', cases: corruptionCases.map(item => item.label) });
 
     // Invalid JSON must also leave data untouched.
     const invalidFile = path.join(os.tmpdir(), `maomao-backup-invalid-${Date.now()}.json`);
