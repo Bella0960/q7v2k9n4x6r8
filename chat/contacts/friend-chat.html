@@ -8,7 +8,7 @@
 <script src="../../shared/js/font-loader.js"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
-<script src="../../shared/js/friends-client.js?v=friend5"></script>
+<script src="../../shared/js/friends-client.js?v=friend7"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { width:100%; height:100%; margin:0; background:#F7F7F9; color:#111; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif; }
@@ -93,6 +93,7 @@
   var messageViewVersion = 0;
   var pollTimer = 0;
   var pollBusy = false;
+  var pollAgain = false;
   var messageScrollRevision = 0;
   var ready = false;
   var pendingSend = null;
@@ -459,7 +460,11 @@
   }
 
   async function pollMessages() {
-    if (!ready || pollBusy || document.hidden || (blocked && Date.now() < blockedRetryAt)) return;
+    if (!ready || document.hidden || (blocked && Date.now() < blockedRetryAt)) return;
+    if (pollBusy) {
+      pollAgain = true;
+      return;
+    }
     pollBusy = true;
     var shouldStick = isNearBottom();
     var scrollRevision = messageScrollRevision;
@@ -508,6 +513,10 @@
       else setStatus(error.message || '同步暂时失败，稍后会自动重试。', true);
     } finally {
       pollBusy = false;
+      if (pollAgain && !document.hidden) {
+        pollAgain = false;
+        window.setTimeout(pollMessages, 0);
+      }
     }
   }
 
