@@ -63,6 +63,8 @@ Only a session whose account role is super_admin may call the admin actions.
 
 The account row and its associated data are retained. Admin audit records retain the actor, action, target and optional reason. Audit and reason endpoints are admin-only.
 
+A user-initiated single-device revocation is also one transaction: disabling that device's push subscriptions, revoking its device credential, deleting its live presence and character leases, removing unused pairing tokens created by the device, and superseding its queued autonomous activities either all commit or all roll back. A failure during any cleanup step must not leave a partially revoked device.
+
 Open pages recheck the session every 30 seconds and when returning to the foreground. Cloud APIs check every request. The account-management page displays the permanent ID, username, optional QQ email verification state, devices, and sessions. Users can revoke their own devices and other sessions, change their password (which revokes all other sessions), and log out. An already-open, fully offline page cannot receive a remote revocation until it reconnects; do not describe offline revocation as instantaneous.
 
 ## Data-adoption and lifecycle safety
