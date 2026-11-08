@@ -27,7 +27,12 @@
     }).then(function(){return{assetUrls:nextUrls,releases:nextReleases}})
       .catch(function(error){releaseUrls(nextReleases);throw error});
   }
-  function rewrite(css){return String(css||"").replace(/url\(\s*(['"]?)(assets\/[^'")]+)\1\s*\)/g,function(all,q,path){return assetUrls[path]?"url(\""+assetUrls[path]+"\")":"none"})}
+  function rewrite(css){
+    if(FORMAT&&typeof FORMAT.rewriteCssAssetUrls==="function")return FORMAT.rewriteCssAssetUrls(css,assetUrls);
+    return String(css||"").replace(/url\s*\(\s*(['"]?)(assets\/[^'")]+)\1\s*\)/g,function(all,q,path){
+      return assetUrls[path]?"url("+JSON.stringify(assetUrls[path])+")":"none";
+    });
+  }
   function cleanMotion(shell){
     if(shell.__chatThemeCleanup){shell.__chatThemeCleanup.forEach(function(fn){try{fn()}catch(e){}});shell.__chatThemeCleanup=[]}
     if(shell.__chatThemeObserver){shell.__chatThemeObserver.disconnect();shell.__chatThemeObserver=null}
