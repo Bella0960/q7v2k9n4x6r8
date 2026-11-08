@@ -12,6 +12,41 @@
   var role = roleMeta && String(roleMeta.content || '').trim();
 
   if (!accountId || !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+
+  function verifyAccountSession() {
+    if (typeof global.fetch !== 'function') return;
+    global.fetch('/api/accounts/me', {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'accept': 'application/json' }
+    }).then(function (response) {
+      if (response.ok) return null;
+      return response.json().catch(function () { return {}; }).then(function (payload) {
+        var disabled = payload && payload.error && payload.error.code === 'ACCOUNT_DISABLED';
+        var destination = '/account/index.html' + (disabled ? '?disabled=1' : '');
+        if (global.location && typeof global.location.replace === 'function') {
+          global.location.replace(destination);
+        }
+        return false;
+      });
+    }).catch(function () {
+      // A transient network error does not erase local data. Cloud APIs remain
+      // individually session-checked and the next focus/heartbeat retries.
+    });
+  }
+
+  verifyAccountSession();
+  if (typeof global.setInterval === 'function') {
+    global.setInterval(verifyAccountSession, 30000);
+  }
+  if (global.addEventListener) global.addEventListener('focus', verifyAccountSession);
+  if (document.addEventListener) {
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) verifyAccountSession();
+    });
+  }
+
   if (role === 'super_admin') {
     // Existing MAO content belongs to the creator. Keep the original keys/DB names
     // for this one account so the first authorized release does not hide old data.
