@@ -1740,11 +1740,27 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
   }
 
+  async function assertAccountPageContext(request) {
+    const pageAccountId = String(request.headers.get('x-mao-account-context') || '').trim();
+    if (!pageAccountId) return;
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(pageAccountId)) {
+      throw new ApiError(400, 'INVALID_ACCOUNT_CONTEXT', '页面账号标识无效');
+    }
+    const session = await accountAuth.getAuthenticatedAccount(request);
+    if (!session) {
+      throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
+    }
+    if (session.account_id !== pageAccountId) {
+      throw new ApiError(409, 'ACCOUNT_CONTEXT_CHANGED', '当前页面所属 MAO 账号已切换，请重新进入');
+    }
+  }
+
   return async function handleApi(request) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '');
     const method = request.method.toUpperCase();
     try {
+      await assertAccountPageContext(request);
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
 
