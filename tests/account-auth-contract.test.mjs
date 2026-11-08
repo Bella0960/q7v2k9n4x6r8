@@ -530,6 +530,55 @@ test('QQ 邮箱只有完成所有权验证后才能作为登录标识与邀请�
   assert.equal(idInvite.status, 409, '通过邮箱或永久 ID 绑定的同一个账号不能同时拥有两个有效邀请码');
 });
 
+test('创作者初始化迁移失败会完整回滚账号与全部 owner 数据归属', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const deviceId = 'legacy_owner_device_rollback';
+  ctx.store.exec(
+    "INSERT INTO devices (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at) VALUES (?, 'owner', 'legacy-hash', 'creator phone', 'test', '', '', ?, ?)",
+    deviceId, ctx.now(), ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO user_autonomy (user_id, enabled, updated_at) VALUES ('owner', 1, ?)",
+    ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO character_schedules (user_id, character_id, time_zone, schedule_json, updated_at) VALUES ('owner', 'role-old', 'UTC', '{}', ?)",
+    ctx.now()
+  );
+  ctx.store.exec(
+    "CREATE TRIGGER fail_owner_schedule_adoption BEFORE UPDATE OF user_id ON character_schedules WHEN OLD.user_id = 'owner' BEGIN SELECT RAISE(ABORT, 'forced migration failure'); END"
+  );
+
+  const failed = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(failed.status, 500);
+  assert.equal(Number(ctx.query("SELECT COUNT(*) AS total FROM mao_accounts WHERE role = 'super_admin'")[0].total), 0,
+    '管理员记录必须随失败的迁移一起回滚');
+  assert.equal(ctx.query('SELECT user_id FROM devices WHERE id = ?', deviceId)[0].user_id, 'owner',
+    '前面已经执行过的设备归属更新也必须回滚');
+  assert.equal(Number(ctx.query("SELECT COUNT(*) AS total FROM user_autonomy WHERE user_id = 'owner'")[0].total), 1);
+
+  ctx.store.exec('DROP TRIGGER fail_owner_schedule_adoption');
+  const retry = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(retry.status, 200, '修复迁移阻塞条件后应允许安全重试');
+});
+
 test('唯一超级管理员初始化时完整接管旧 owner 云端元数据，不复制也不丢失记录', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
@@ -549,6 +598,30 @@ test('唯一超级管理员初始化时完整接管旧 owner 云端元数据，�
   ctx.store.exec(
     "INSERT INTO character_context_events (user_id, character_id, event_id, device_id, created_at) VALUES ('owner', 'role-old', 'event-old', ?, ?)",
     legacyDeviceId, ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO character_autonomy (user_id, character_id, enabled, updated_at) VALUES ('owner', 'role-old', 1, ?)",
+    ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO character_schedules (user_id, character_id, time_zone, schedule_json, updated_at) VALUES ('owner', 'role-old', 'UTC', '{\"active\":[]}', ?)",
+    ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO device_presence (user_id, device_id, foreground_active, last_heartbeat_at, updated_at) VALUES ('owner', ?, 1, ?, ?)",
+    legacyDeviceId, ctx.now(), ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO character_leases (user_id, character_id, owner_device_id, lease_until, updated_at) VALUES ('owner', 'role-old', ?, ?, ?)",
+    legacyDeviceId, ctx.now() + 60000, ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO device_pairing_tokens (token_hash, user_id, created_by_device_id, created_at, expires_at, consumed_at) VALUES ('legacy-pairing-hash', 'owner', ?, ?, ?, NULL)",
+    legacyDeviceId, ctx.now(), ctx.now() + 300000
+  );
+  ctx.store.exec(
+    "INSERT INTO outbound_device_receipts (server_message_id, user_id, device_id, character_id, device_received_at, local_saved_at, read_at, created_at, updated_at) VALUES ('server-message-old', 'owner', ?, 'role-old', ?, ?, NULL, ?, ?)",
+    legacyDeviceId, ctx.now(), ctx.now(), ctx.now(), ctx.now()
   );
 
   const initialized = await ctx.fetchTo('/api/admin/bootstrap', {
@@ -571,5 +644,29 @@ test('唯一超级管理员初始化时完整接管旧 owner 云端元数据，�
   assert.equal(Number(version.version), 9);
   const event = ctx.query("SELECT event_id FROM character_context_events WHERE user_id = ? AND event_id = 'event-old'", adminId)[0];
   assert.equal(event.event_id, 'event-old');
-  assert.equal(Number(ctx.query("SELECT COUNT(*) AS total FROM devices WHERE user_id = 'owner'")[0].total), 0);
+
+  const adoptedTables = [
+    'devices',
+    'user_autonomy',
+    'character_autonomy',
+    'character_schedules',
+    'device_presence',
+    'character_leases',
+    'device_pairing_tokens',
+    'character_context_versions',
+    'character_context_events',
+    'outbound_device_receipts'
+  ];
+  for (const table of adoptedTables) {
+    assert.equal(
+      Number(ctx.query('SELECT COUNT(*) AS total FROM ' + table + ' WHERE user_id = ?', adminId)[0].total),
+      1,
+      '旧 owner 行必须完整迁移到创作者 MAO ID：' + table
+    );
+    assert.equal(
+      Number(ctx.query("SELECT COUNT(*) AS total FROM " + table + " WHERE user_id = 'owner'")[0].total),
+      0,
+      '旧 owner 命名空间不能遗留半迁移记录：' + table
+    );
+  }
 });
