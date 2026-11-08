@@ -513,7 +513,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
       throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
     }
-    if (!store.getFriendship(account.user_id, friendId)) {
+    const friendshipAtStart = store.getFriendship(account.user_id, friendId);
+    if (!friendshipAtStart) {
       throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能查看聊天记录');
     }
     const friend = await store.getFriendAccount(friendId);
@@ -551,6 +552,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userId: account.user_id,
       friendId
     });
+    if (!viewState.generationId) {
+      throw new ApiError(403, 'NOT_FRIENDS', '好友关系已失效，无法继续读取聊天记录');
+    }
+    if (viewState.generationId !== friendshipAtStart.generation_id) {
+      // Do not pair rows selected from one friendship generation with a
+      // cursor/version from another generation during concurrent remove/re-add.
+      throw new ApiError(409, 'FRIENDSHIP_CHANGED_RETRY', '好友关系刚刚发生变化，请重新同步聊天');
+    }
     return ok({
       friend: {
         userId: friend.user_id,
