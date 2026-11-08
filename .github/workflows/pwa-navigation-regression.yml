@@ -9,6 +9,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'tests/pwa-navigation-cache.test.mjs'
+      - 'tests/icon-presets-contract.test.mjs'
       - 'tests/sw-navigation-cache-lifecycle.test.mjs'
       - 'tests/desktop-app-navigation.browser.mjs'
   workflow_dispatch:
