@@ -1503,6 +1503,35 @@
         return total;
     }
 
+    // 使用 StorageManager.estimate 做写入前容量预检。浏览器估算并非配额保证，
+    // 因此按 1.35 倍估算体积并额外留 4MB 余量；真正写入仍以事务结果为准。
+    async function assertRestorePointCapacity(additionalBytes) {
+        var storage = window.navigator && window.navigator.storage;
+        if (!storage || typeof storage.estimate !== 'function') return { checked: false };
+        var estimate;
+        try {
+            estimate = await storage.estimate();
+        } catch (error) {
+            // 容量接口不可用时不把它当作数据损坏；后续写入仍有事务级保护。
+            return { checked: false };
+        }
+        var quota = Number(estimate && estimate.quota);
+        var usage = Number(estimate && estimate.usage);
+        if (!Number.isFinite(quota) || !Number.isFinite(usage) || quota <= 0 || usage < 0) {
+            return { checked: false };
+        }
+        var required = Math.ceil(Math.max(0, Number(additionalBytes) || 0) * 1.35) + 4 * 1024 * 1024;
+        var available = Math.max(0, quota - usage);
+        if (available < required) {
+            var err = new Error('浏览器剩余存储空间不足以安全建立恢复点：预计至少需要 '
+                + Math.ceil(required / 1024 / 1024) + ' MB，当前可用约 '
+                + Math.floor(available / 1024 / 1024) + ' MB。请先释放网站存储空间或导出并妥善保存重要数据；本次尚未覆盖现有业务数据。');
+            err.name = 'QuotaExceededError';
+            throw err;
+        }
+        return { checked: true, available: available, required: required };
+    }
+
     // 生成确定性内容指纹：对象键排序，数组/Map/Set 保留顺序，Blob 按 1MB
     // 分块读取实际二进制内容。双 32-bit 非密码学校验值用于检测读回数据意外变化；
     // 不把整个大 Blob 转成 base64，避免恢复点校验时额外制造一份巨大字符串。
@@ -1724,6 +1753,7 @@
         if (!targets.length) return { targets: [], snapshots: {} };
         // 先过容量闸门，再读取 Blob 实际字节生成指纹，避免超限数据产生额外 IO。 
         var expectedFingerprint = await fingerprintRestorePoint(snapshots);
+        await assertRestorePointCapacity(estimatedBytes);
 
         await rpWriteSnapshot(snapshots, RP_ROLE_IDB_PRE);
         var stored = await rpReadSnapshot(RP_ROLE_IDB_PRE);
@@ -1953,6 +1983,7 @@
             var rpSnap = null;       // 从恢复点读回的真正快照
             var rpReady = false;
             try {
+                await assertRestorePointCapacity(estimateRestorePointBytes(current));
                 await rpWriteSnapshot(current, RP_ROLE_PRE);
                 var rpRec = await rpReadSnapshot(RP_ROLE_PRE);
                 if (rpRec && rpRec.snap && typeof rpRec.snap === 'object'
