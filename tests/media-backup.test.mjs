@@ -2858,6 +2858,8 @@ test('58 validateInterruptedRestorePoints：同尺寸同 MIME 的音频 Blob 内
    ═══════════════════════════════════════════════ */
 test('59 createRecoveryPointRescuePackage：导出 JSON 清单和原始 Blob 附件而不删除恢复点', async () => {
     const ctx = buildCtxFull();
+    assert.equal((await ctx.rescueCrc32(new SandboxBlob([Buffer.from('123456789')]))).toString(16),
+        'cbf43926', 'ZIP CRC32 must use the standard polynomial and byte order');
     const audioBytes = Buffer.from('rescue-local-audio-original');
     ctx.__restorePointRows.set('pre-import', {
         role: 'pre-import',
