@@ -716,7 +716,7 @@ test('reapplying the same active package is idempotent and does not duplicate mo
 
   
 test('theme package scripts use a shared cache-busting revision across chat and importer pages',()=>{
-  const revision='20261109theme6';
+  const revision='20261109theme7';
   const importer=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const beauty=readFileSync(new URL('../beauty/beauty.html',import.meta.url),'utf8');
   const chatList=readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8');
