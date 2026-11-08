@@ -567,6 +567,23 @@
         }).catch(function () {});  // 恢复点清理失败不能覆盖主恢复结果
     }
 
+    // 恢复点清理采用“删除后读回”确认，不能只依赖 delete 请求没有抛错。
+    // 清理失败不会影响已经完成的数据回滚/导入，但必须把残留情况反馈给用户。
+    async function clearRestorePoints() {
+        var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE];
+        var failed = [];
+        for (var i = 0; i < roles.length; i++) {
+            try {
+                await rpDeleteRole(roles[i]);
+                var remaining = await rpReadSnapshot(roles[i]);
+                if (remaining) failed.push(roles[i]);
+            } catch (error) {
+                failed.push(roles[i]);
+            }
+        }
+        return { ok: failed.length === 0, failed: failed };
+    }
+
     /* ===== IndexedDB 工具函数 =====
      * 全部独立于各业务模块，直接用原生 indexedDB API。
      * DB 不存在 → 静默返回空 / 跳过，不 throw。
@@ -1462,10 +1479,10 @@
                 try {
                     idbRestorePoint = await captureIndexedDbRestorePoint(obj.indexedDB);
                 } catch (error) {
-                    await rpDeleteRole(RP_ROLE_PRE);
-                    await rpDeleteRole(RP_ROLE_IDB_PRE);
+                    var cleanupAfterSnapshotFailure = await clearRestorePoints();
                     toast('已中止导入：无法建立完整的 IndexedDB 回滚恢复点。现有业务数据未修改。'
-                        + ((error && error.message) ? ' ' + error.message : ''));
+                        + ((error && error.message) ? ' ' + error.message : '')
+                        + (cleanupAfterSnapshotFailure.ok ? '' : ' 本轮恢复点清理未能完全确认，请勿清理网站数据。'));
                     return;
                 }
             }
@@ -1500,9 +1517,9 @@
                     verify = { ok: false, matched: 0, total: Object.keys(current).length, missing: Object.keys(current), mismatched: [] };
                 }
                 if (rollbackOk && verify.ok) {
-                    await rpDeleteRole(RP_ROLE_PRE);
-                    await rpDeleteRole(RP_ROLE_IDB_PRE);
-                    toast('导入失败，已从本机恢复点回滚到导入前状态');
+                    var cleanupAfterLocalRollback = await clearRestorePoints();
+                    toast('导入失败，已从本机恢复点回滚到导入前状态'
+                        + (cleanupAfterLocalRollback.ok ? '' : '；恢复点清理未能完全确认，残留记录仍保留在本机'));
                 } else {
                     toast('导入失败，恢复未完成，且回滚未完全成功（'
                         + verify.matched + '/' + verify.total + ' 项匹配'
@@ -1528,10 +1545,10 @@
                     var allRollbackOk = localRollbackOk && localRollbackVerify.ok
                         && idbRestoreResult.rollbackFailures.length === 0;
                     if (allRollbackOk) {
-                        await rpDeleteRole(RP_ROLE_PRE);
-                        await rpDeleteRole(RP_ROLE_IDB_PRE);
+                        var cleanupAfterDatabaseRollback = await clearRestorePoints();
                         toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
-                            + idbRestoreResult.error + '），已将其他数据全部回滚到导入前状态');
+                            + idbRestoreResult.error + '），已将其他数据全部回滚到导入前状态'
+                            + (cleanupAfterDatabaseRollback.ok ? '' : '；恢复点清理未能完全确认，残留记录仍保留在本机'));
                     } else {
                         toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
                             + idbRestoreResult.error + '）。部分回滚未能确认；本机恢复点已保留。'
@@ -1550,11 +1567,15 @@
             var fontOrphanCleaned = await checkFontPresetOrphan();
 
             // 5. 全部业务数据恢复成功后，再清理 localStorage 与 IndexedDB 的导入前恢复点。
-            await rpDeleteRole(RP_ROLE_PRE);
-            await rpDeleteRole(RP_ROLE_IDB_PRE);
+            var cleanupAfterSuccess = await clearRestorePoints();
 
             // 6. 组装最终提示
             var parts = ['导入成功'];
+            if (!cleanupAfterSuccess.ok) {
+                parts.push('本机导入前恢复点清理未能完全确认（'
+                    + cleanupAfterSuccess.failed.join('、')
+                    + '），残留恢复点仍保留；请勿手动清理网站数据');
+            }
             if (secretRes.written) parts.push('已保留本机 API 配置');
             if (secretRes.failed) {
                 parts.push('有 ' + secretRes.failed + ' 项 API 配置未能写回（'
