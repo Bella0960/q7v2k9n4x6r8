@@ -2522,7 +2522,7 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
 
   // 点击通知：已有本站窗口时在该窗口内跳转
   const clickEvent = {
-    notification: { close: () => undefined, data: { url: 'https://mao.test/chat/chat/chat-detail.html?id=heroine' } },
+    notification: { close: () => undefined, data: { accountId: 'MAO-AAAAAAAAAAAA', url: 'https://mao.test/chat/chat/chat-detail.html?id=heroine' } },
     waitUntil: promise => { clickEvent.wait = promise; }
   };
   sw.handlers.notificationclick[0](clickEvent);
@@ -2601,6 +2601,40 @@ test('推送只在当前登录 MAO 账号匹配时展示，退出或切换账号
     '缺少有效 MAO 永久 ID 的旧通知必须 fail-closed');
 });
 
+test('点击系统通知时重新核对 MAO 账号，过期账号通知不能打开聊天页', async () => {
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+  const switched = loadServiceWorker(undefined, {
+    id: accountB, role: 'user', status: 'active'
+  });
+  const switchedClick = {
+    notification: {
+      close: () => undefined,
+      data: { accountId: accountA, url: 'https://mao.test/chat/chat/chat-detail.html?id=role-a' }
+    },
+    waitUntil: promise => { switchedClick.wait = promise; }
+  };
+  switched.handlers.notificationclick[0](switchedClick);
+  await switchedClick.wait;
+  assert.deepEqual(switched.navigations, []);
+  assert.deepEqual(switched.opened, [],
+    '账号切换后，旧账号通知只能关闭，不能打开旧账号聊天');
+
+  const loggedOut = loadServiceWorker(undefined, null, 401);
+  const loggedOutClick = {
+    notification: {
+      close: () => undefined,
+      data: { accountId: accountA, url: 'https://mao.test/chat/chat/chat-detail.html?id=role-a' }
+    },
+    waitUntil: promise => { loggedOutClick.wait = promise; }
+  };
+  loggedOut.handlers.notificationclick[0](loggedOutClick);
+  await loggedOutClick.wait;
+  assert.deepEqual(loggedOut.navigations, []);
+  assert.deepEqual(loggedOut.opened, [],
+    '退出登录后，系统通知不能重新打开账号页面');
+});
+
 test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地址', async () => {
   const sw = loadServiceWorker('https://mao.test/app/');
 
@@ -2655,7 +2689,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   const click = {
     notification: {
       close: () => undefined,
-      data: { url: 'https://mao.test/outside.html' }
+      data: { accountId: 'MAO-AAAAAAAAAAAA', url: 'https://mao.test/outside.html' }
     },
     waitUntil: promise => { click.wait = promise; }
   };
@@ -4198,6 +4232,7 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   });
   assert.equal(notification.url, './chat/chat/chat-detail.html?id=char-push');
   assert.equal(notification.type, 'chat_message');
+  assert.equal(notification.accountId, 'owner', '云端推送必须带上目标设备所属 MAO 账号');
   assert.match(notification.body, /有一位角色刚刚联系你/);
   assert.equal(notification.body.includes('我刚刚想到'), false,
     '锁屏通知不得暴露主动消息正文');
