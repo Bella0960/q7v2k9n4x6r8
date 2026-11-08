@@ -198,7 +198,8 @@ test('creator bootstrap form stays hidden until server initialization status is 
   assert.match(bootstrapHtml, /id="bootstrapStatus" role="status" aria-live="polite"/);
   assert.match(bootstrapHtml, /id="retryBootstrapCheck" type="button" hidden/);
   assert.match(bootstrapHtml, /<form id="bootstrapForm" hidden>/);
-  assert.match(bootstrapHtml, /\\.bootstrap-warning\\{[^}]*background:#F7F7F9[^}]*color:#555/);\n  assert.doesNotMatch(bootstrapHtml, /<form id="bootstrapForm" novalidate hidden>/,
+  assert.match(bootstrapHtml, /\.bootstrap-warning\{[^}]*background:#F7F7F9[^}]*color:#555/);
+  assert.doesNotMatch(bootstrapHtml, /<form id="bootstrapForm" novalidate hidden>/,
     'native required, length and email validation must run before submission');
   assert.match(bootstrapHtml, /MAO_SUPER_ADMIN_BOOTSTRAP_SECRET[\s\S]*DEVICE_SECRET_PEPPER/);
   assert.match(bootstrapScript, /error\.code === 'ADMIN_BOOTSTRAP_NOT_CONFIGURED'/);
