@@ -234,32 +234,78 @@
     $('detailActions').appendChild(button);
   }
 
+  function findActiveInviteForAccount(accountId) {
+    const timestamp = Date.now();
+    return invites.find(invite =>
+      invite.target_account_id === accountId &&
+      !invite.revoked_at &&
+      Number(invite.expires_at) > timestamp &&
+      Number(invite.used_count || 0) < Number(invite.max_uses || 1)
+    ) || null;
+  }
+
   async function renderAccountDetail(account) {
     $('detailUsername').textContent = account.username || '账号详情';
     $('detailId').textContent = account.id;
-    $('detailMeta').replaceChildren(
+    const meta = [
       el('span', '', '状态：' + statusText(account.status)),
       el('span', '', '创建：' + formatTime(account.created_at)),
       el('span', '', '授权：' + formatTime(account.authorized_at))
-    );
+    ];
+    if (account.qq_email) {
+      meta.push(el(
+        'span',
+        '',
+        'QQ 邮箱：' + account.qq_email +
+          (account.qq_email_verified_at ? '（已验证）' : '（未验证）')
+      ));
+    }
+    $('detailMeta').replaceChildren(...meta);
+
+    const inviteStatus = $('accountInviteStatus');
+    inviteStatus.hidden = true;
+    inviteStatus.replaceChildren();
+
     const actions = $('detailActions');
     actions.replaceChildren();
     $('reasonField').hidden = true;
     pendingAction = '';
 
     if (account.status === 'pending_invite') {
-      const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
-      inviteButton.type = 'button';
-      inviteButton.addEventListener('click', () => run(async () => {
-        if (!window.confirm('将为 ' + account.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
-        const result = await api('/api/admin/invites', 'POST', { targetAccountId: account.id });
-        generatedCode = result.invite.code;
-        $('generatedCode').textContent = generatedCode;
-        $('copyInviteCode').textContent = '复制邀请码';
-        $('inviteCodeSheet').hidden = false;
-        await refreshAll();
-      }));
-      actions.appendChild(inviteButton);
+      const activeInvite = findActiveInviteForAccount(account.id);
+      if (activeInvite) {
+        inviteStatus.hidden = false;
+        inviteStatus.append(
+          el('strong', 'invite-status-title', '已有有效的专属邀请码'),
+          el('span', 'invite-status-meta',
+            '到期时间：' + formatTime(activeInvite.expires_at) +
+            ' · 使用次数：' + Number(activeInvite.used_count || 0) + '/' + Number(activeInvite.max_uses || 1)),
+          el('span', 'invite-status-note',
+            '原始邀请码只在生成时展示一次。若用户遗失，需要先撤销当前邀请码，再生成新的。')
+        );
+        const revokeButton = el('button', 'invite-revoke-button', '撤销当前邀请码');
+        revokeButton.type = 'button';
+        revokeButton.addEventListener('click', () => run(async () => {
+          if (!window.confirm('撤销后，当前邀请码将立即失效。确定继续吗？')) return;
+          await api('/api/admin/invites/' + encodeURIComponent(activeInvite.id) + '/revoke', 'POST', {});
+          await refreshAll();
+        }));
+        inviteStatus.appendChild(revokeButton);
+      } else {
+        const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
+        inviteButton.type = 'button';
+        inviteButton.addEventListener('click', () => run(async () => {
+          if (!window.confirm('将为 ' + account.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
+          const result = await api('/api/admin/invites', 'POST', { targetAccountId: account.id });
+          generatedCode = result.invite.code;
+          $('generatedCode').textContent = generatedCode;
+          $('copyInviteCode').textContent = '复制邀请码';
+          $('inviteCodeSheet').hidden = false;
+          await refreshAll();
+        }));
+        actions.appendChild(inviteButton);
+      }
+      createActionButton('停用账号', 'danger', 'disable', true);
     } else if (account.status === 'active') {
       createActionButton('停用账号', 'danger', 'disable', true);
     } else if (account.status === 'disabled') {
