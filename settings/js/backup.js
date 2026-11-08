@@ -580,7 +580,9 @@
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
                 var tx = null;
+                var writeQueued = false;
                 var acquired = false;
+                var blockedByActiveLock = false;
                 var settled = false;
                 function finish(error) {
                     if (settled) return;
@@ -591,21 +593,29 @@
                 }
                 try {
                     tx = db.transaction(RP_STORE_NAME, 'readwrite');
-                    tx.oncomplete = function () { finish(null); };
-                    tx.onerror = function () {
-                        finish(tx.error || new Error('Import lock transaction failed'));
+                    tx.oncomplete = function () {
+                        acquired = writeQueued;
+                        finish(null);
                     };
-                    tx.onabort = function () { finish(null); };
+                    tx.onerror = function () {
+                        if (blockedByActiveLock) finish(null);
+                        else finish(tx.error || new Error('Import lock transaction failed'));
+                    };
+                    tx.onabort = function () {
+                        if (blockedByActiveLock) finish(null);
+                        else finish(tx.error || new Error('Import lock transaction aborted'));
+                    };
                     var store = tx.objectStore(RP_STORE_NAME);
                     var req = store.get(RP_ROLE_LOCK);
                     req.onsuccess = function () {
                         var current = req.result;
                         if (current && current.owner !== owner
                                 && Number(current.expiresAt) > Date.now()) {
+                            blockedByActiveLock = true;
                             try { tx.abort(); } catch (abortError) { finish(null); }
                             return;
                         }
-                        acquired = true;
+                        writeQueued = true;
                         store.put({
                             role: RP_ROLE_LOCK,
                             owner: owner,
@@ -627,7 +637,9 @@
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
                 var tx = null;
+                var renewalQueued = false;
                 var renewed = false;
+                var ownerMismatch = false;
                 var settled = false;
                 function finish(error) {
                     if (settled) return;
@@ -638,20 +650,28 @@
                 }
                 try {
                     tx = db.transaction(RP_STORE_NAME, 'readwrite');
-                    tx.oncomplete = function () { finish(null); };
-                    tx.onerror = function () {
-                        finish(tx.error || new Error('Import lease renewal failed'));
+                    tx.oncomplete = function () {
+                        renewed = renewalQueued;
+                        finish(null);
                     };
-                    tx.onabort = function () { finish(null); };
+                    tx.onerror = function () {
+                        if (ownerMismatch) finish(null);
+                        else finish(tx.error || new Error('Import lease renewal failed'));
+                    };
+                    tx.onabort = function () {
+                        if (ownerMismatch) finish(null);
+                        else finish(tx.error || new Error('Import lease renewal aborted'));
+                    };
                     var store = tx.objectStore(RP_STORE_NAME);
                     var req = store.get(RP_ROLE_LOCK);
                     req.onsuccess = function () {
                         var current = req.result;
                         if (!current || current.owner !== owner) {
+                            ownerMismatch = true;
                             try { tx.abort(); } catch (abortError) { finish(null); }
                             return;
                         }
-                        renewed = true;
+                        renewalQueued = true;
                         store.put({
                             role: RP_ROLE_LOCK,
                             owner: owner,
@@ -673,6 +693,7 @@
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
                 var tx = null;
+                var deleteQueued = false;
                 var released = false;
                 var settled = false;
                 function finish(error) {
@@ -684,17 +705,22 @@
                 }
                 try {
                     tx = db.transaction(RP_STORE_NAME, 'readwrite');
-                    tx.oncomplete = function () { finish(null); };
+                    tx.oncomplete = function () {
+                        released = deleteQueued;
+                        finish(null);
+                    };
                     tx.onerror = function () {
                         finish(tx.error || new Error('Import lock release failed'));
                     };
-                    tx.onabort = function () { finish(null); };
+                    tx.onabort = function () {
+                        finish(tx.error || new Error('Import lock release aborted'));
+                    };
                     var store = tx.objectStore(RP_STORE_NAME);
                     var req = store.get(RP_ROLE_LOCK);
                     req.onsuccess = function () {
                         var current = req.result;
                         if (current && current.owner === owner) {
-                            released = true;
+                            deleteQueued = true;
                             store.delete(RP_ROLE_LOCK);
                         }
                     };
