@@ -2024,10 +2024,12 @@ class CloudStore {
 
   hasActiveMaoInvite({ targetAccountId = null, targetEmail = null, now }) {
     const row = this.exec(
-      "SELECT id FROM mao_invite_codes WHERE revoked_at IS NULL AND expires_at > ? AND used_count < max_uses AND ((? IS NOT NULL AND target_account_id = ?) OR (? IS NOT NULL AND target_email = ?)) LIMIT 1",
+      "SELECT i.id FROM mao_invite_codes i WHERE i.revoked_at IS NULL AND i.expires_at > ? AND i.used_count < i.max_uses AND ((? IS NOT NULL AND (i.target_account_id = ? OR i.target_email = (SELECT LOWER(qq_email) FROM mao_accounts WHERE id = ? AND qq_email_verified_at IS NOT NULL))) OR (? IS NOT NULL AND (i.target_email = ? OR i.target_account_id = (SELECT id FROM mao_accounts WHERE LOWER(qq_email) = ? AND qq_email_verified_at IS NOT NULL))) ) LIMIT 1",
       now,
       targetAccountId,
       targetAccountId,
+      targetAccountId,
+      targetEmail,
       targetEmail,
       targetEmail
     )[0];
