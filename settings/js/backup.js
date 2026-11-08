@@ -500,16 +500,36 @@
                 return;
             }
             var url = URL.createObjectURL(result.blob);
-            var link = document.createElement('a');
-            link.href = url;
-            link.download = result.name;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
-            toast('恢复点抢救包已生成：' + result.records + ' 份恢复记录、' + result.assets
+            var rescueRow = $('rowExportRecoveryPoints');
+            var parent = rescueRow && rescueRow.parentNode;
+            if (!parent) throw new Error('无法显示抢救包下载入口；原始恢复点仍保留');
+            var previousLink = $('rowDownloadRecoveryRescue');
+            if (previousLink && previousLink.parentNode) previousLink.parentNode.removeChild(previousLink);
+            // 异步读取与 CRC 校验可能消耗浏览器的用户激活状态；先生成可点击下载行，
+            // 由用户再点一次完成保存，避免手机浏览器拦截延迟触发的自动下载。
+            var downloadRow = document.createElement('a');
+            downloadRow.id = 'rowDownloadRecoveryRescue';
+            downloadRow.className = 'menu-row';
+            downloadRow.href = url;
+            downloadRow.download = result.name;
+            downloadRow.style.textDecoration = 'none';
+            var zipIcon = document.createElement('div');
+            zipIcon.className = 'menu-icon';
+            zipIcon.textContent = 'ZIP';
+            var zipTitle = document.createElement('div');
+            zipTitle.className = 'menu-title';
+            zipTitle.textContent = '点击保存恢复点抢救包';
+            var zipArrow = document.createElement('div');
+            zipArrow.className = 'menu-arrow';
+            zipArrow.textContent = '›';
+            downloadRow.appendChild(zipIcon);
+            downloadRow.appendChild(zipTitle);
+            downloadRow.appendChild(zipArrow);
+            parent.insertBefore(downloadRow, rescueRow.nextSibling);
+            setTimeout(function () { URL.revokeObjectURL(url); }, 10 * 60 * 1000);
+            toast('恢复点抢救包已准备好：' + result.records + ' 份恢复记录、' + result.assets
                 + ' 个二进制附件' + (result.readErrors.length ? '；有 ' + result.readErrors.length + ' 项读取失败，详情已写入抢救包' : '')
-                + '。原始恢复点未删除。');
+                + '。请再点击下方「点击保存恢复点抢救包」完成下载；原始恢复点未删除。');
         } catch (error) {
             toast('恢复点抢救包导出失败：' + ((error && error.message) || '未知错误')
                 + '。原始恢复点仍保留，请勿清理网站数据。');
