@@ -8,7 +8,7 @@
 <script src="../../shared/js/font-loader.js"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
-<script src="../../shared/js/friends-client.js?v=friend4"></script>
+<script src="../../shared/js/friends-client.js?v=friend5"></script>
 <script src="../../shared/js/friend-qr.js?v=friend1"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -100,7 +100,7 @@
         </div>
       </div>
       <div class="qr-wrap" id="myQr" aria-label="我的好友二维码"></div>
-      <div class="qr-caption">让朋友扫描此码，向你发送好友申请</div>
+      <div class="qr-caption" id="qrCaption" role="status" aria-live="polite">正在准备本机二维码…</div>
       <div class="inline-actions">
         <button class="btn" id="copyIdBtn" type="button" disabled>复制好友 ID</button>
         <button class="btn" id="copyQrTextBtn" type="button" disabled>复制二维码内容</button>
@@ -341,18 +341,36 @@
   }
 
   async function initialize() {
-    if (!api || !qr) {
+    if (!api || !qr || typeof api.getLocalAccountId !== 'function') {
       setStatus('真人好友模块加载失败，请刷新页面。', true);
+      $('qrCaption').textContent = '二维码模块暂不可用';
       return;
     }
+
+    var localProfile = window.PhoneStorage ? (window.PhoneStorage.getMyProfile() || {}) : {};
+    var displayName = localProfile.nickname || localProfile.displayName || localProfile.name || 'MAOMAO 用户';
+    var localUserId = '';
     try {
-      var localProfile = window.PhoneStorage ? (window.PhoneStorage.getMyProfile() || {}) : {};
-      var displayName = localProfile.nickname || localProfile.displayName || localProfile.name || 'MAOMAO 用户';
+      // Render the device-stable public ID immediately. Cloud registration is
+      // still required before the QR/ID can be shared as an active friend code.
+      localUserId = api.getLocalAccountId();
+      $('myName').textContent = displayName;
+      $('myAvatar').textContent = initials(displayName);
+      $('myId').textContent = '好友 ID：' + localUserId;
+      $('myQr').innerHTML = qr.toSvg(localUserId);
+      $('qrCaption').textContent = '正在连接云端账号，连接成功后即可分享';
+    } catch (qrError) {
+      $('qrCaption').textContent = '二维码生成失败，请重新打开页面';
+      setStatus(qrError.message || '本机二维码生成失败', true);
+      return;
+    }
+
+    try {
       myAccount = await api.ensureAccount(displayName);
       $('myName').textContent = myAccount.displayName || displayName;
       $('myAvatar').textContent = initials(myAccount.displayName || displayName);
       $('myId').textContent = '好友 ID：' + myAccount.userId;
-      $('myQr').innerHTML = qr.toSvg(myAccount.userId);
+      $('qrCaption').textContent = '让朋友扫描此码，向你发送好友申请';
       $('copyIdBtn').disabled = false;
       $('copyQrTextBtn').disabled = false;
       $('copyIdBtn').addEventListener('click', function () {
@@ -368,7 +386,8 @@
       }, 12000);
       setStatus('真人好友账号已连接。把二维码分享给朋友即可互相添加。');
     } catch (error) {
-      setStatus((error.message || '真人好友服务连接失败') + '。云端服务尚未部署或暂不可用时，好友数据不会假装保存成功。', true);
+      $('qrCaption').textContent = '云端账号尚未连接，此二维码暂不可用于添加好友；重新打开页面可重试';
+      setStatus((error.message || '真人好友服务连接失败') + '。二维码已在本机生成，但云端确认成功前不能分享使用。', true);
     }
   }
 
