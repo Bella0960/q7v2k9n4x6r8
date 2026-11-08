@@ -14,7 +14,7 @@ test('custom font files are warmed into a dedicated persistent cache', () => {
   assert.match(loader, /function cacheFontBlob\(id, blob, format\)/);
   assert.match(loader, /cache\.put\(url, response\)/);
   assert.match(loader, /FONT_CACHE_FORMAT_PREFIX \+ id/);
-  assert.match(loader, /new URL\(fontAssetPath/);
+  assert.ok(loader.includes("fontAssetPath += encodeURIComponent(maoScope.accountId) + '/'"));
   assert.match(loader, /fontAssetPath \+= encodeURIComponent\(maoScope\.accountId\) \+ '\\/'/);
   assert.match(loader, /maoScope\.role !== 'super_admin'/);
 });
