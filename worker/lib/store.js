@@ -1281,9 +1281,14 @@ class CloudStore {
   }
 
   insertFriendMessage(message) {
-    // A retry from a removed-and-readded friendship must not replay into the new conversation.
+    // The sender must prove which friendship generation the request belongs to.
+    // Checking only the live pair is insufficient: an in-flight request may
+    // authenticate before removal and reach this write after the pair is re-added.
     const friendship = this.getFriendship(message.senderId, message.recipientId);
     if (!friendship) return { kind: 'not_friends', message: null };
+    if (message.friendshipGenerationId !== friendship.generation_id) {
+      return { kind: 'stale_generation', message: null };
+    }
     const recipient = this.exec(
       'SELECT user_id FROM friend_accounts WHERE user_id = ? AND revoked_at IS NULL',
       message.recipientId
@@ -1445,6 +1450,7 @@ class CloudStore {
     return {
       // Include the relationship generation so an already-open chat page can
       // reset its old cursor after the same friend is removed and re-added.
+      generationId,
       version: [generationId, clearUpdatedAt, clearAt, clearId, hiddenCount, latestHiddenAt].join(':'),
       clearedThrough: clearAt && clearId
         ? { createdAt: clearAt, messageId: clearId }
