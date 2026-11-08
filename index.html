@@ -749,10 +749,15 @@
         if (!tile) return;
         if (isSuperAdmin) {
           tile.hidden = false;
-          var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
-            || (currentLayout.dock || []).indexOf(id) !== -1
-            || (currentLayout.removed || []).indexOf(id) !== -1;
-          if (!exists) {
+          // A creator must always be able to open the management center.
+          // Older/custom layouts may have this new app ID in the removed bucket;
+          // that is not a visible desktop placement, so restore it next to Settings.
+          currentLayout.removed = (currentLayout.removed || []).filter(function (item) {
+            return item !== id;
+          });
+          var existsOnDesktop = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+            || (currentLayout.dock || []).indexOf(id) !== -1;
+          if (!existsOnDesktop) {
             var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_settings') !== -1; });
             if (pageIndex < 0) pageIndex = 0;
             while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
