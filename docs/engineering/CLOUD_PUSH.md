@@ -563,7 +563,8 @@ Worker 的 `/internal/tick` 与 scheduled cron 现在会创建 `createSchedulerG
 - 同一条多气泡主动消息只在最后一条气泡进入聊天视口并稳定停留后才写入已读回执，避免第一条刚显示就把整组消息标为已读。
 - 动态逐泡呈现时，消息节点从临时 DocumentFragment 插入真实 DOM 后会重新注册 IntersectionObserver；否则初次组装时节点尚未连接，观察器无法生效。
 - 支持系统减少动态效果偏好；单气泡消息不等待，只有同一组里确有第二条独立气泡时才加入停顿。
-- PWA shell cache 更新至 `phone-app-pwa-v206`，本轮仅更新聊天详情页的已读观察点与动态挂载。
+- PWA shell cache 更新至 `phone-app-pwa-v207`。
+- Web Push 通知跳转现在同时校验 origin 与 Service Worker scope 路径；同源但处于其他应用目录的地址、带凭据的 URL 均回退到当前 MAOMAO scope 首页。
 
 ### 验证边界
 

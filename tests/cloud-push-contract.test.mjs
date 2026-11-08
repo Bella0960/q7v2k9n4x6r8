@@ -2425,8 +2425,10 @@ test('活动队列幂等入队是原子的，重复 ID 不覆盖首次任务数�
 /* Service Worker 回归：保留缓存/离线导航，同时具备推送处理能力          */
 /* ------------------------------------------------------------------ */
 
-function loadServiceWorker() {
+function loadServiceWorker(scope) {
   const source = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
+  const serviceWorkerScope = scope || 'https://mao.test/';
+  const existingChatUrl = new URL('chat/chat/chat.html', serviceWorkerScope).href;
   const handlers = { push: [], notificationclick: [], install: [], activate: [], fetch: [] };
   const notifications = [];
   const opened = [];
@@ -2435,7 +2437,7 @@ function loadServiceWorker() {
   const clients = {
     matchAll: async () => [
       {
-        url: 'https://mao.test/chat/chat/chat.html',
+        url: existingChatUrl,
         focus: async () => { focused.push('existing'); return undefined; },
         navigate: async url => { navigations.push(url); return undefined; }
       }
@@ -2447,7 +2449,7 @@ function loadServiceWorker() {
       addEventListener: (type, fn) => { (handlers[type] = handlers[type] || []).push(fn); },
       location: { origin: 'https://mao.test' },
       registration: {
-        scope: 'https://mao.test/',
+        scope: serviceWorkerScope,
         showNotification: async (title, options) => { notifications.push({ title, options }); }
       },
       clients,
@@ -2518,6 +2520,72 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
   assert.deepEqual(sw.navigations, ['https://mao.test/chat/chat/chat-detail.html?id=heroine']);
   assert.deepEqual(sw.opened, [], '已有窗口时不应重复开窗');
 });
+
+test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地址', async () => {
+  const sw = loadServiceWorker('https://mao.test/app/');
+
+  const valid = {
+    data: { json: () => ({ title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine' }) },
+    waitUntil: promise => { valid.wait = promise; }
+  };
+  sw.handlers.push[0](valid);
+  await valid.wait;
+  assert.equal(
+    sw.notifications[0].options.data.url,
+    'https://mao.test/app/chat/chat/chat-detail.html?id=heroine',
+    'scope 内的相对聊天路径必须保留'
+  );
+
+  const outsideRelative = {
+    data: { json: () => ({ title: 'x', body: 'y', url: '../outside.html' }) },
+    waitUntil: promise => { outsideRelative.wait = promise; }
+  };
+  sw.handlers.push[0](outsideRelative);
+  await outsideRelative.wait;
+  assert.equal(
+    sw.notifications[1].options.data.url,
+    'https://mao.test/app/index.html',
+    '相对路径回退到 scope 之外时必须回退到应用首页'
+  );
+
+  const outsideSameOrigin = {
+    data: { json: () => ({ title: 'x', body: 'y', url: 'https://mao.test/other-app/settings.html' }) },
+    waitUntil: promise => { outsideSameOrigin.wait = promise; }
+  };
+  sw.handlers.push[0](outsideSameOrigin);
+  await outsideSameOrigin.wait;
+  assert.equal(
+    sw.notifications[2].options.data.url,
+    'https://mao.test/app/index.html',
+    '同源但不在 PWA scope 内的绝对 URL 也必须被拒绝'
+  );
+
+  const credentialed = {
+    data: { json: () => ({ title: 'x', body: 'y', url: 'https://user@mao.test/app/chat/chat.html' }) },
+    waitUntil: promise => { credentialed.wait = promise; }
+  };
+  sw.handlers.push[0](credentialed);
+  await credentialed.wait;
+  assert.equal(
+    sw.notifications[3].options.data.url,
+    'https://mao.test/app/index.html',
+    '含用户名或密码的 URL 必须被拒绝'
+  );
+
+  const click = {
+    notification: {
+      close: () => undefined,
+      data: { url: 'https://mao.test/outside.html' }
+    },
+    waitUntil: promise => { click.wait = promise; }
+  };
+  sw.handlers.notificationclick[0](click);
+  await click.wait;
+  assert.deepEqual(sw.navigations, ['https://mao.test/app/index.html'],
+    '点击被篡改或过期的通知数据时也必须重新校验 scope');
+  assert.deepEqual(sw.opened, [], '已有 scope 内窗口时应在原窗口回退到首页');
+});
+
 
 test('客户端代码不含任何私钥或 API Key 字面量', async () => {
   const client = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');

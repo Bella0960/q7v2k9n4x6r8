@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v206';
+const CACHE_NAME = 'phone-app-pwa-v207';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
@@ -252,13 +252,22 @@ self.addEventListener('fetch', event => {
  * ------------------------------------------------------------------ */
 
 function pushTargetUrl(value) {
-  var fallback = new URL('./index.html', self.registration.scope).href;
+  var scopeUrl = new URL(self.registration.scope);
+  var fallback = new URL('./index.html', scopeUrl).href;
   var raw = String(value || '').trim();
   if (!raw) return fallback;
   try {
-    var target = new URL(raw, self.registration.scope);
-    // 只允许本站源：外部 URL、mailto:、javascript: 等一律回退到首页。
-    if (target.origin !== self.location.origin) return fallback;
+    var target = new URL(raw, scopeUrl);
+    // 既要同源，也必须留在当前 Service Worker scope 的路径内。
+    // 只检查 origin 会放行同域名下其他应用或站点目录的地址。
+    var scopePath = scopeUrl.pathname.endsWith('/')
+      ? scopeUrl.pathname
+      : scopeUrl.pathname + '/';
+    var insideScope = target.pathname === scopeUrl.pathname ||
+      target.pathname.startsWith(scopePath);
+    if (target.origin !== scopeUrl.origin ||
+        target.username || target.password ||
+        !insideScope) return fallback;
     return target.href;
   } catch (error) {
     return fallback;
