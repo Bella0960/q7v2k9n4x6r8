@@ -477,33 +477,94 @@
     function rpWriteSnapshot(snap, role) {
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
-                var tx = db.transaction(RP_STORE_NAME, 'readwrite');
-                tx.objectStore(RP_STORE_NAME).put({ role: role, snap: snap, createdAt: Date.now() });
-                tx.oncomplete = function () { resolve(); };
-                tx.onerror = function () { reject(tx.error || new Error('Restore-point write failed')); };
-                tx.onabort = function () { reject(tx.error || new Error('Restore-point write aborted')); };
+                var tx = null;
+                var settled = false;
+                function finish(error) {
+                    if (settled) return;
+                    settled = true;
+                    try { if (db) db.close(); } catch (closeError) {}
+                    if (error) reject(error);
+                    else resolve();
+                }
+                try {
+                    tx = db.transaction(RP_STORE_NAME, 'readwrite');
+                    tx.oncomplete = function () { finish(null); };
+                    tx.onerror = function () {
+                        finish(tx.error || new Error('Restore-point write failed'));
+                    };
+                    tx.onabort = function () {
+                        finish(tx.error || new Error('Restore-point write aborted'));
+                    };
+                    tx.objectStore(RP_STORE_NAME).put({
+                        role: role, snap: snap, createdAt: Date.now()
+                    });
+                } catch (error) {
+                    finish(error);
+                }
             });
         });
     }
     function rpReadSnapshot(role) {
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
-                var tx = db.transaction(RP_STORE_NAME, 'readonly');
-                var req = tx.objectStore(RP_STORE_NAME).get(role);
-                req.onsuccess = function () { resolve(req.result || null); };
-                req.onerror = function () { reject(req.error); };
+                var tx = null;
+                var result = null;
+                var settled = false;
+                function finish(error) {
+                    if (settled) return;
+                    settled = true;
+                    try { if (db) db.close(); } catch (closeError) {}
+                    if (error) reject(error);
+                    else resolve(result);
+                }
+                try {
+                    tx = db.transaction(RP_STORE_NAME, 'readonly');
+                    var req = tx.objectStore(RP_STORE_NAME).get(role);
+                    req.onsuccess = function () { result = req.result || null; };
+                    req.onerror = function () {
+                        try { tx.abort(); } catch (abortError) {}
+                        finish(req.error || new Error('Restore-point read failed'));
+                    };
+                    tx.oncomplete = function () { finish(null); };
+                    tx.onerror = function () {
+                        finish(tx.error || new Error('Restore-point read transaction failed'));
+                    };
+                    tx.onabort = function () {
+                        finish(tx.error || new Error('Restore-point read transaction aborted'));
+                    };
+                } catch (error) {
+                    finish(error);
+                }
             });
         });
     }
     function rpDeleteRole(role) {
         return rpOpen().then(function (db) {
             return new Promise(function (resolve, reject) {
-                var tx = db.transaction(RP_STORE_NAME, 'readwrite');
-                tx.objectStore(RP_STORE_NAME).delete(role);
-                tx.oncomplete = function () { resolve(); };
-                tx.onerror = function () { reject(tx.error); };
+                var tx = null;
+                var settled = false;
+                function finish(error) {
+                    if (settled) return;
+                    settled = true;
+                    try { if (db) db.close(); } catch (closeError) {}
+                    if (error) reject(error);
+                    else resolve();
+                }
+                try {
+                    tx = db.transaction(RP_STORE_NAME, 'readwrite');
+                    tx.oncomplete = function () { finish(null); };
+                    tx.onerror = function () {
+                        finish(tx.error || new Error('Restore-point delete failed'));
+                    };
+                    tx.onabort = function () {
+                        finish(tx.error || new Error('Restore-point delete aborted'));
+                    };
+                    tx.objectStore(RP_STORE_NAME).delete(role);
+                } catch (error) {
+                    finish(error);
+                }
             });
-        }).catch(function () {});  // 恢复点删不掉不应该阻断主流程
+        }).catch(function () {});  // 恢复点清理失败不能覆盖主恢复结果
     }
 
     /* ===== IndexedDB 工具函数 =====
@@ -974,6 +1035,101 @@
         return total;
     }
 
+    // 生成确定性内容指纹：对象键排序，数组/Map/Set 保留顺序，Blob 按 1MB
+    // 分块读取实际二进制内容。双 32-bit 非密码学校验值用于检测读回数据意外变化；
+    // 不把整个大 Blob 转成 base64，避免恢复点校验时额外制造一份巨大字符串。
+    async function fingerprintRestorePoint(value) {
+        var hashA = 2166136261;
+        var hashB = 0x9e3779b9;
+        var seen = [];
+        function byte(v) {
+            hashA = Math.imul(hashA ^ (v & 255), 16777619) >>> 0;
+            hashB = Math.imul(hashB ^ (v & 255), 2246822519) >>> 0;
+        }
+        function text(value) {
+            var s = String(value);
+            for (var i = 0; i < s.length; i++) {
+                var c = s.charCodeAt(i);
+                byte(c & 255);
+                byte(c >>> 8);
+            }
+            byte(255);
+        }
+        async function visit(item) {
+            if (item === null) { text('null'); return; }
+            if (item === undefined) { text('undefined'); return; }
+            if (typeof item === 'string') { text('string'); text(item); return; }
+            if (typeof item === 'number') {
+                text('number');
+                text(Object.is(item, -0) ? '-0' : String(item));
+                return;
+            }
+            if (typeof item === 'boolean') { text(item ? 'true' : 'false'); return; }
+            if (typeof Blob !== 'undefined' && item instanceof Blob) {
+                text('blob'); text(item.type || ''); text(item.size || 0);
+                var chunkSize = 1024 * 1024;
+                for (var offset = 0; offset < item.size; offset += chunkSize) {
+                    var reader = new FileReader();
+                    var chunk = await new Promise(function (resolve, reject) {
+                        reader.onload = function () { resolve(reader.result); };
+                        reader.onerror = function () {
+                            reject(reader.error || new Error('Blob 指纹读取失败'));
+                        };
+                        try { reader.readAsArrayBuffer(item.slice(offset, offset + chunkSize)); }
+                        catch (error) { reject(error); }
+                    });
+                    var bytes = new Uint8Array(chunk);
+                    for (var j = 0; j < bytes.length; j++) byte(bytes[j]);
+                }
+                text('blob-end');
+                return;
+            }
+            if (typeof ArrayBuffer !== 'undefined' && item instanceof ArrayBuffer) {
+                text('array-buffer');
+                var raw = new Uint8Array(item);
+                for (var a = 0; a < raw.length; a++) byte(raw[a]);
+                return;
+            }
+            if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(item)) {
+                text('array-buffer-view');
+                var view = new Uint8Array(item.buffer, item.byteOffset, item.byteLength);
+                for (var v = 0; v < view.length; v++) byte(view[v]);
+                return;
+            }
+            if (item instanceof Date) { text('date'); text(item.getTime()); return; }
+            if (typeof item !== 'object') { text(typeof item); text(String(item)); return; }
+            var seenAt = seen.indexOf(item);
+            if (seenAt !== -1) { text('ref'); text(seenAt); return; }
+            seen.push(item);
+            if (Array.isArray(item)) {
+                text('array'); text(item.length);
+                for (var k = 0; k < item.length; k++) await visit(item[k]);
+                return;
+            }
+            if (typeof Map !== 'undefined' && item instanceof Map) {
+                text('map'); text(item.size);
+                for (var pair of item.entries()) {
+                    await visit(pair[0]);
+                    await visit(pair[1]);
+                }
+                return;
+            }
+            if (typeof Set !== 'undefined' && item instanceof Set) {
+                text('set'); text(item.size);
+                for (var entry of item.values()) await visit(entry);
+                return;
+            }
+            var keys = Object.keys(item).sort();
+            text('object'); text(keys.length);
+            for (var q = 0; q < keys.length; q++) {
+                text(keys[q]);
+                await visit(item[keys[q]]);
+            }
+        }
+        await visit(value);
+        return hashA.toString(16).padStart(8, '0') + hashB.toString(16).padStart(8, '0');
+    }
+
     // 恢复点需要保存业务库的完整原始值，而普通导出会有意排除本地音频 Blob。
     // 这里仅存入独立恢复点 DB，不进入用户导出的备份文件。
     function dumpDatabaseForRestorePoint(dbName, version, storeDefs) {
@@ -1093,6 +1249,7 @@
             targets.push(target);
         }
         var estimatedBytes = estimateRestorePointBytes(snapshots);
+        var expectedFingerprint = await fingerprintRestorePoint(snapshots);
         if (estimatedBytes > RESTORE_POINT_IDB_MAX_BYTES) {
             throw new Error('导入前 IndexedDB 数据约 ' + Math.ceil(estimatedBytes / 1024 / 1024)
                 + ' MB，超过本机安全恢复点上限；尚未改动现有数据，请先单独导出相关应用数据');
@@ -1111,6 +1268,10 @@
         }
         if (estimateRestorePointBytes(stored.snap) !== estimatedBytes) {
             throw new Error('IndexedDB 导入前恢复点内容大小校验失败');
+        }
+        var storedFingerprint = await fingerprintRestorePoint(stored.snap);
+        if (storedFingerprint !== expectedFingerprint) {
+            throw new Error('IndexedDB 导入前恢复点内容指纹校验失败；快照内容与原始数据不一致');
         }
         expectedDbNames.forEach(function (dbName) {
             var expectedStores = snapshots[dbName];
