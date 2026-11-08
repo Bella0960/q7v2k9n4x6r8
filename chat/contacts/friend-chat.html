@@ -89,6 +89,7 @@
   var known = Object.create(null);
   var hiddenMessageIds = Object.create(null);
   var conversationViewVersion = '';
+  var conversationGenerationId = '';
   var messageViewVersion = 0;
   var pollTimer = 0;
   var pollBusy = false;
@@ -391,6 +392,7 @@
       $('friendName').textContent = result.friend.displayName || 'MAOMAO 用户';
       var initialMessages = result.messages || [];
       conversationViewVersion = result.viewState && result.viewState.version || '';
+      conversationGenerationId = result.viewState && result.viewState.generationId || '';
       initialMessages.forEach(function (message) { appendMessage(message, false); });
       rememberIncoming(initialMessages);
       cursor = result.nextCursor || cursorFor(initialMessages.slice(-1)[0]);
@@ -428,6 +430,7 @@
     } else {
       conversationViewVersion = (page.viewState && page.viewState.version) || expectedVersion || '';
     }
+    conversationGenerationId = page.viewState && page.viewState.generationId || '';
     // A view-version change is a relationship boundary as well as a local
     // visibility change: invalidate receipts still in flight and reset cursors.
     readReceiptRevision += 1;
@@ -476,6 +479,9 @@
           updateComposer();
         }
         var pageViewVersion = page.viewState && page.viewState.version || '';
+        if (!conversationGenerationId && page.viewState && page.viewState.generationId) {
+          conversationGenerationId = page.viewState.generationId;
+        }
         if (conversationViewVersion && pageViewVersion && pageViewVersion !== conversationViewVersion) {
           await reloadConversationView(pageViewVersion, shouldStick, viewVersion);
           break;
@@ -532,6 +538,11 @@
     if (!ready || blocked) return;
     var text = $('messageInput').value.replace(/\r\n?/g, '\n').trim();
     if (!text) return;
+    if (!conversationGenerationId) {
+      setStatus('好友关系凭据尚未同步，正在刷新聊天状态。请稍后再次发送。', true);
+      await pollMessages();
+      return;
+    }
     var clientId = pendingSend && pendingSend.body === text
       ? pendingSend.id
       : api.createMessageId();
@@ -541,7 +552,7 @@
     setStatus('正在发送…');
     var pendingNode = appendPendingMessage(text, clientId);
     try {
-      var result = await api.sendMessage(friendId, text, clientId);
+      var result = await api.sendMessage(friendId, text, clientId, conversationGenerationId);
       removePendingMessage(pendingNode);
       appendMessage(result.message, false);
       cursor = cursorFor(result.message) || cursor;
@@ -553,8 +564,25 @@
       setStatus(result.duplicate ? '消息已确认送达' : '已发送');
     } catch (error) {
       removePendingMessage(pendingNode);
-      if (error && error.code === 'NOT_FRIENDS') setBlocked('好友关系已失效，无法继续发送消息。');
-      else {
+      if (error && error.code === 'NOT_FRIENDS') {
+        setBlocked('好友关系已失效，无法继续发送消息。');
+      } else if (error && error.code === 'STALE_FRIENDSHIP_GENERATION') {
+        // The request was created against an older relationship. Synchronize
+        // before allowing a retry; the server did not store this stale write.
+        await pollMessages();
+        setStatus('好友关系已经更新，聊天状态已刷新。再次点击发送即可继续。', true);
+        $('messageInput').disabled = false;
+        $('messageInput').focus();
+        $('sendBtn').disabled = false;
+      } else if (error && error.code === 'STALE_FRIENDSHIP_MESSAGE_RETRY') {
+        // This client ID already belongs to a message in the retired generation.
+        // Keep the text but rotate the id so it can be sent as a new message.
+        pendingSend = { body: text, id: api.createMessageId() };
+        setStatus('原发送编号属于上一轮好友关系，已为这条文字生成新编号。再次点击发送会作为新消息发送。', true);
+        $('messageInput').disabled = false;
+        $('messageInput').focus();
+        $('sendBtn').disabled = false;
+      } else {
         var retryHint = error && error.code === 'FRIEND_MESSAGE_RATE_LIMITED'
           ? '请稍后再发送，当前输入内容已保留。'
           : '再次点击发送会安全重试，不会重复落库。';
