@@ -20,12 +20,23 @@ export function openTestDb() {
     return [];
   };
   const query = (sql, ...params) => db.prepare(sql).all(...params);
-  return { db, exec, query };
+  const transaction = operation => {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = operation();
+      db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  };
+  return { db, exec, query, transaction };
 }
 
 export function setupTestStore(testDb, env = {}) {
   const { db, exec } = testDb;
-  const store = createStore(exec);
+  const store = createStore(exec, testDb.transaction);
   applyMigrations(exec);
   const timestamps = [];
   const now = () => (timestamps.length ? timestamps[timestamps.length - 1] : Date.now());
