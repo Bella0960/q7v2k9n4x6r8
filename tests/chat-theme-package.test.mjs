@@ -907,6 +907,90 @@ test('installed chat themes export with CSS and MediaRepository assets',async()=
   assert.equal(parsed.customCss,theme.customCss);
   assert.deepEqual(Array.from(parsed.assets['assets/photo.png'].bytes),Array.from(assetBytes));
 });
+test('full import then export preserves image assets and the imported manifest',async()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  function makeNode(tag){
+    const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,hidden:false,value:'',style:{},
+      classList:{add(){},remove(){}},
+      addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      removeChild(child){this.children=this.children.filter(item=>item!==child);child.parentNode=null},
+      setAttribute(){},click(){this.clicked=true}
+    };
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName',
+   'previewName','previewVersion','previewCss','previewList','previewDetail','previewSummary'].forEach(id=>ids[id]=makeNode('div'));
+  const values=new Map();
+  const LIST_KEY='maomao_chat_theme_packages_v1',ACTIVE_KEY='maomao_chat_theme_active_v1';
+  const localStorage={getItem(key){return values.has(key)?values.get(key):null},setItem(key,value){values.set(key,String(value))},removeItem(key){values.delete(key)}};
+  const bytes=new Uint8Array([137,80,78,71,13,10,26,10,1,2,3,4]);
+  const blobs=new Map();
+  const media={
+    putBlob(blob,options){
+      const id='asset-imported-image';
+      blobs.set(id,blob);
+      assert.equal(options.ownerType,'chat-theme-package','导入素材必须使用主题包 owner 类型');
+      return Promise.resolve({ok:true,value:{assetId:id}});
+    },
+    getBlob(id){
+      assert.ok(blobs.has(id),'导出只能读取本次导入保存的素材');
+      return Promise.resolve({ok:true,value:blobs.get(id)});
+    }
+  };
+  const phoneStorage={repository:{media(){return media}}};
+  const theme={
+    format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat',
+    id:'round-trip-theme',name:'导入再导出主题',version:'1.0.0',
+    pages:{chatList:[{id:'statusBar'},{id:'custom-photo'}],chatDetail:[{id:'detailHeader'}]},
+    styles:{chatList:{},chatDetail:{}},
+    blocks:{chatList:[{id:'custom-photo',type:'image',title:'',text:'',assetPath:'assets/photo.png',slot:'top-of-content',visible:true}],chatDetail:[]},
+    layerOrder:{chatList:['statusBar','custom-photo'],chatDetail:['detailHeader']},
+    motions:[],
+    assetIndex:[{path:'assets/photo.png',name:'photo.png',mimeType:'image/png',type:'image'}]
+  };
+  const windowMock={
+    PhoneStorage:phoneStorage,MAOMAOChatThemeFormat:{
+      parseStoredZip(buffer){return buffer},
+      readPackage(){return{theme,customCss:'.sample{background:url("assets/photo.png")}',assets:{
+        'assets/photo.png':{bytes,mimeType:'image/png',type:'image'}
+      }}}
+    },
+    dispatchEvent(){},
+    URL:{createObjectURL(blob){windowMock.download=blob;return 'blob:round-trip'},revokeObjectURL(){}}
+  };
+  const body=makeNode('body');
+  const document={body,querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(script,{window:windowMock,PhoneStorage:phoneStorage,document,localStorage,CustomEvent,Blob,setTimeout(callback){callback();return 1},console});
+  ids.themeFile.handlers.change({target:{files:[{name:'round-trip.maomaotheme',arrayBuffer(){return Promise.resolve('package')}}]}});
+  for(let i=0;i<8;i++)await Promise.resolve();
+  assert.equal(ids.importApply.disabled,false,'有效主题包必须允许导入');
+  ids.importApply.handlers.click();
+  for(let i=0;i<24;i++)await Promise.resolve();
+  const installed=JSON.parse(localStorage.getItem(LIST_KEY)||'[]');
+  assert.equal(installed.length,1,'导入应只安装一套主题');
+  assert.ok(Array.isArray(installed[0].assetIndex),'导入保存后必须继续保留 assetIndex');
+  assert.deepEqual(installed[0].assetIndex,[{path:'assets/photo.png',name:'photo.png',mimeType:'image/png',type:'image'}]);
+  assert.equal(installed[0].assetRefs['assets/photo.png'],'asset-imported-image','导入后应保存素材 assetId 引用');
+  const exportButton=ids.installedList.children[0].children[1].children[0];
+  exportButton.handlers.click();
+  for(let i=0;i<24;i++)await Promise.resolve();
+  assert.ok(windowMock.download,'导入后的已安装主题应能直接导出');
+  const archive=new Uint8Array(await windowMock.download.arrayBuffer());
+  const parsed=F.readPackage(F.parseStoredZip(archive));
+  assert.equal(parsed.theme.name,theme.name,'导出包应保留主题信息');
+  assert.deepEqual(parsed.theme.assetIndex,[{path:'assets/photo.png',name:'photo.png',mimeType:'image/png',type:'image'}]);
+  assert.deepEqual(Array.from(parsed.assets['assets/photo.png'].bytes),Array.from(bytes),'真实导入后再导出必须保留图片二进制');
+  assert.match(parsed.customCss,/url\("assets\/photo\.png"\)/,'主题 CSS 中的素材 URL 应随图片一起保留');
+  assert.equal(exportButton.disabled,false,'完成导出后按钮应恢复');
+});
+
 test('legacy installed themes recover missing asset manifests from owner-scoped MediaRepository metadata',async()=>{
   const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
