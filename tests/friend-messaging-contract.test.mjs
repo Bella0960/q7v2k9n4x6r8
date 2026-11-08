@@ -534,8 +534,11 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /请稍后再发送，当前输入内容已保留/);
   assert.match(FRIEND_CHAT_HTML, /端到端加密/);
   assert.match(FRIEND_CHAT_HTML, /api\.markRead\(friendId, target\.id\)/);
-  assert.match(FRIEND_CHAT_HTML, /function isMessageVisible\(messageId\)/);
-  assert.match(FRIEND_CHAT_HTML, /!isMessageVisible\(latestIncomingMessage\.id\)/);
+  assert.match(FRIEND_CHAT_HTML, /function latestVisibleIncomingMessage\(\)/);
+  assert.match(FRIEND_CHAT_HTML, /row\.dataset\.senderId !== friendId/);
+  assert.match(FRIEND_CHAT_HTML, /rect\.bottom <= viewport\.top \|\| rect\.top >= viewport\.bottom/);
+  assert.match(FRIEND_CHAT_HTML, /function isAfterReadCursor\(message\)/);
+  assert.match(FRIEND_CHAT_HTML, /lastReadReceiptAt = Number\(result\.read && result\.read\.lastReadAt\)/);
   assert.match(FRIEND_CHAT_HTML, /rememberIncoming\(page\.messages \|\| \[\]\)/);
   assert.match(FRIEND_CHAT_HTML, /rememberIncoming\(initialMessages\)/);
   assert.match(FRIEND_CENTER_HTML, /friend\.unreadCount/);
