@@ -186,7 +186,14 @@ test('tutorial app directory contains every desktop app shortcut with valid loca
   assert.ok(appBlock, 'app directory must declare its desktop app map');
   const entries = [...appBlock[1].matchAll(/\['([^']+)','([^']+)','([^']+)'\]/g)];
   assert.ok(entries.length >= 29, 'expected a directory entry for every desktop app');
-  const indexNames = new Set([...index.matchAll(/data-name="([^"]+)"[^>]*title="[^"]+"/g)].map((m) => m[1]));
+  const desktopNames = [...index.matchAll(/<button\\b(?=[^>]*\\bdata-drag="app_[^"]+")[^>]*\\bdata-name="([^"]+)"/g)].map((m) => m[1]);
+  const directoryNames = entries.map((entry) => entry[1]);
+  const indexNames = new Set(desktopNames);
+  assert.equal(new Set(directoryNames).size, directoryNames.length, 'tutorial app directory must not contain duplicate names');
+  assert.equal(directoryNames.length, desktopNames.length, 'tutorial directory must have one entry for every desktop application');
+  for (const name of desktopNames) {
+    assert.ok(directoryNames.includes(name), 'desktop app missing from tutorial directory: ' + name);
+  }
   for (const entry of entries) {
     assert.ok(indexNames.has(entry[1]), 'missing desktop app in directory: ' + entry[1]);
     assert.ok(existsSync(resolve(dirname(tutorialPath), entry[3])), 'missing app route: ' + entry[3]);
