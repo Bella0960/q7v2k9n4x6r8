@@ -1388,20 +1388,8 @@
                         var excludedFields = (!forceClear && Array.isArray(def.excludeFields))
                             ? def.excludeFields : [];
 
-                        function writeRecords(existingRows) {
-                            var existingByKey = new Map();
-                            if (excludedFields.length) {
-                                (existingRows || []).forEach(function (oldValue) {
-                                    if (!oldValue || typeof oldValue !== 'object') return;
-                                    var oldKey = def.keyPath ? oldValue[def.keyPath] : undefined;
-                                    if (oldKey !== undefined && oldKey !== null) {
-                                        existingByKey.set(oldKey, oldValue);
-                                    }
-                                });
-                            }
-
-                            store.clear();
-                            records.forEach(function (record, index) {
+                        function parseIncomingRecords() {
+                            return records.map(function (record, index) {
                                 var value, key;
                                 if (record && Object.prototype.hasOwnProperty.call(record, '__key')
                                         && Object.prototype.hasOwnProperty.call(record, '__value')) {
@@ -1416,23 +1404,18 @@
                                 } else {
                                     throw new Error('备份记录格式无效：' + name + ' 第 ' + (index + 1) + ' 条');
                                 }
-
-                                if (excludedFields.length && value && typeof value === 'object') {
-                                    // 普通分享备份有意不携带本机文件字段。按主键合并本机原件，
-                                    // 不接受备份文件中的同名 excluded field；未匹配到原件则保持缺省。
-                                    var incomingKey = def.keyPath ? value[def.keyPath] : key;
-                                    var previous = incomingKey !== undefined && incomingKey !== null
-                                        ? existingByKey.get(incomingKey) : null;
-                                    value = Object.assign({}, value);
-                                    excludedFields.forEach(function (field) {
-                                        if (previous && Object.prototype.hasOwnProperty.call(previous, field)) {
-                                            value[field] = previous[field];
-                                        } else {
-                                            delete value[field];
-                                        }
-                                    });
+                                var lookupKey = def.keyPath ? value[def.keyPath] : key;
+                                if (excludedFields.length && (lookupKey === undefined || lookupKey === null)) {
+                                    throw new Error('无法按主键保留本机字段：' + name + ' 第 ' + (index + 1) + ' 条');
                                 }
+                                return { value: value, key: key, lookupKey: lookupKey, index: index };
+                            });
+                        }
 
+                        function commitRecords(entries) {
+                            store.clear();
+                            entries.forEach(function (entry) {
+                                var value = entry.value;
                                 var blobFields = def.blobFields || [];
                                 if (value && typeof value === 'object' && blobFields.length) {
                                     blobFields.forEach(function (field) {
@@ -1444,32 +1427,49 @@
                                                 value[field] = base64ToBlob(blobValue, mime);
                                             } catch (error) {
                                                 throw new Error('Blob 解码失败：' + name + '/' + field
-                                                    + '（第 ' + (index + 1) + ' 条）');
+                                                    + '（第 ' + (entry.index + 1) + ' 条）');
                                             }
                                             delete value[mimeKey];
                                         }
                                     });
                                 }
-
-                                if (key !== undefined) store.put(value, key);
+                                if (entry.key !== undefined) store.put(value, entry.key);
                                 else store.put(value);
                                 totalWritten++;
                             });
                         }
 
-                        if (excludedFields.length) {
-                            // 读取旧记录与 clear/put 在同一个 readwrite 事务中完成，
-                            // 避免另开只读事务后出现跨标签页修改竞态。
-                            var existingRequest = store.getAll();
-                            existingRequest.onsuccess = function () {
-                                try { writeRecords(existingRequest.result || []); }
-                                catch (error) { fail(error); }
-                            };
-                            existingRequest.onerror = function () {
-                                fail(existingRequest.error || new Error(name + ' 本机排除字段读取失败'));
-                            };
+                        var entries = parseIncomingRecords();
+                        if (excludedFields.length && entries.length) {
+                            // 只读取备份中实际出现的主键，不把整个本地音频 Blob 库克隆到内存。
+                            // 读取、clear 和 put 共用当前 readwrite 事务，避免跨标签页竞态。
+                            var pendingReads = entries.length;
+                            entries.forEach(function (entry) {
+                                var existingRequest = store.get(entry.lookupKey);
+                                existingRequest.onsuccess = function () {
+                                    try {
+                                        var previous = existingRequest.result;
+                                        var nextValue = Object.assign({}, entry.value);
+                                        excludedFields.forEach(function (field) {
+                                            if (previous && Object.prototype.hasOwnProperty.call(previous, field)) {
+                                                nextValue[field] = previous[field];
+                                            } else {
+                                                delete nextValue[field];
+                                            }
+                                        });
+                                        entry.value = nextValue;
+                                        pendingReads--;
+                                        if (pendingReads === 0) commitRecords(entries);
+                                    } catch (error) {
+                                        fail(error);
+                                    }
+                                };
+                                existingRequest.onerror = function () {
+                                    fail(existingRequest.error || new Error(name + ' 本机排除字段读取失败'));
+                                };
+                            });
                         } else {
-                            writeRecords([]);
+                            commitRecords(entries);
                         }
                     });
                 } catch (error) {
