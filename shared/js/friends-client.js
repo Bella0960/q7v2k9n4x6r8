@@ -65,7 +65,7 @@
     return String(value || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 24);
   }
 
-  async function ensureAccount(displayName) {
+  function getOrCreateLocalAccount() {
     var account = readAccount();
     if (!account) {
       account = {
@@ -73,10 +73,19 @@
         secret: randomBase64Url(32),
         createdAt: Date.now()
       };
-      // Save the random credential before the network call. A retry after a
-      // network interruption must reuse this same account identity.
+      // Persist the local credential before any network call. A retry must
+      // reuse this same identity even when the Worker is temporarily offline.
       writeAccount(account);
     }
+    return account;
+  }
+
+  function getLocalAccountId() {
+    return getOrCreateLocalAccount().userId;
+  }
+
+  async function ensureAccount(displayName) {
+    var account = getOrCreateLocalAccount();
     var name = normalizeName(displayName) || 'MAOMAO 用户';
     var payload = await requestJson('/api/accounts/register', {
       account: false,
@@ -176,7 +185,7 @@
   }
 
   global.MaomaoFriends = {
-    ensureAccount: ensureAccount,
+    ensureAccount: ensureAccount,\n    getLocalAccountId: getLocalAccountId,
     getMe: getMe,
     updateProfile: updateProfile,
     getProfile: getProfile,
