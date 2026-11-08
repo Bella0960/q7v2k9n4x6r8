@@ -343,7 +343,10 @@ function updateGuidedVerification(status,message,recovery){
   el.className='tour-verification'+(status==='success'?' is-success':status==='failure'?' is-failure':status==='waiting'?' is-waiting':'');
   if(status==='none')el.textContent='本步骤无需自动核验，请按页面提示检查结果。';
   else if(status==='waiting')el.textContent='等待页面反馈：完成操作后，教程会读取当前页面的成功或失败提示。';
-  else if(status==='success')el.textContent='已确认页面反馈：'+guidedVerificationMessage;
+  else if(status==='success'){
+    el.textContent='已确认页面反馈：'+guidedVerificationMessage;
+    if(activeTourLesson)$('tourNext').textContent=activeTourIndex>=activeTourLesson.tour.steps.length-1?'结束跟练':'我已完成，下一步';
+  }
   else if(status==='failure')el.textContent='页面反馈失败：'+guidedVerificationMessage+(recovery?' 建议：'+recovery:'');
   else if(status==='unavailable')el.textContent='当前页面没有找到结果提示区域；请以页面实际内容为准。';
   else el.textContent=guidedVerificationMessage?'已收到页面提示：'+guidedVerificationMessage+'；暂时无法判断是否保存成功。':'尚未捕捉到可核对的结果提示。';
@@ -356,13 +359,14 @@ function beginGuidedVerification(step,doc){
   var node=null;
   try{node=doc&&doc.querySelector(rule.selector);}catch(e){}
   if(!node){updateGuidedVerification('unavailable','');return;}
-  var initialText=String(node.textContent||'').trim();
-  var initialShown=node.classList&&node.classList.contains('show');
+  var lastText=String(node.textContent||'').trim();
+  var wasShown=!!(node.classList&&node.classList.contains('show'));
   updateGuidedVerification('waiting','');
   function inspect(){
     var value=String(node.textContent||'').trim();
     var shown=!!(node.classList&&node.classList.contains('show'));
-    var changed=value!==initialText||(shown&&!initialShown);
+    var changed=value!==lastText||(shown&&!wasShown);
+    lastText=value;wasShown=shown;
     if(!changed||!shown||!value)return;
     if(verificationMatches(value,rule.failure)){
       updateGuidedVerification('failure',value,rule.recovery);
@@ -426,7 +430,10 @@ function prepareGuidedPage(tour,doc){
 }
 function focusGuidedTarget(){
   if(!activeTourLesson)return;
+  stopGuidedVerification();
+  guidedVerificationOverride=false;
   var tour=activeTourLesson.tour,step=tour.steps[activeTourIndex],frame=$('tourFrame');
+  updateGuidedVerification(step&&step.verify?'waiting':'none','');
   $('tourStepCount').textContent='步骤 '+(activeTourIndex+1)+' / '+tour.steps.length;
   $('tourStepTitle').textContent=step.title||'当前步骤';
   $('tourStepText').textContent=step.text||'按照提示在右侧页面中完成这一步。';
