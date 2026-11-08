@@ -95,6 +95,14 @@
         showInitialized();
         return;
       }
+      if (error.code === 'ADMIN_BOOTSTRAP_NOT_CONFIGURED') {
+        errorNode.textContent = '服务器初始化尚未配置完成。请先在 Cloudflare Worker Secrets 中设置 MAO_SUPER_ADMIN_BOOTSTRAP_SECRET（至少 32 位），并确认 DEVICE_SECRET_PEPPER（至少 32 位）已配置。配置完成后重新加载本页再试。';
+        return;
+      }
+      if (error.code === 'INVALID_BOOTSTRAP_SECRET') {
+        errorNode.textContent = '初始化密钥与服务器配置不一致，请核对后重试。不要将密钥发送给任何人。';
+        return;
+      }
       errorNode.textContent = error.message || '初始化失败，请检查密钥并重试。';
     } finally {
       button.disabled = false;
