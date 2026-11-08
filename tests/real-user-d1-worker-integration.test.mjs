@@ -1323,8 +1323,9 @@ if (!DatabaseSync) {
           assert.equal(request.status, inactiveSide === "requester" ? "cancelled" : "declined");
           assert.ok(request.responded_at > 0);
 
+          const remainingQueue = inactiveSide === "requester" ? "incoming" : "outgoing";
           const inbox = await callFriends(
-            env, "/requests?direction=incoming", "GET",
+            env, "/requests?direction=" + remainingQueue, "GET",
             inactiveSide === "requester" ? recipientToken : requesterToken
           );
           assert.equal(inbox.response.status, 200);
