@@ -407,3 +407,47 @@ test('QQ 邮箱只有完成所有权验证后才能作为登录标识与邀请�
   const idInvite = await post(ctx, '/api/admin/invites', { targetAccountId: registered.payload.account.id }, adminCookie);
   assert.equal(idInvite.status, 409, '通过邮箱或永久 ID 绑定的同一个账号不能同时拥有两个有效邀请码');
 });
+
+test('唯一超级管理员初始化时完整接管旧 owner 云端元数据，不复制也不丢失记录', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const legacyDeviceId = 'legacy_owner_device_001';
+  ctx.store.exec(
+    "INSERT INTO devices (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at) VALUES (?, 'owner', 'legacy-hash', 'creator phone', 'test', '', '', ?, ?)",
+    legacyDeviceId, ctx.now(), ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO user_autonomy (user_id, enabled, updated_at) VALUES ('owner', 1, ?)",
+    ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO character_context_versions (user_id, character_id, version, updated_at) VALUES ('owner', 'role-old', 9, ?)",
+    ctx.now()
+  );
+  ctx.store.exec(
+    "INSERT INTO character_context_events (user_id, character_id, event_id, device_id, created_at) VALUES ('owner', 'role-old', 'event-old', ?, ?)",
+    legacyDeviceId, ctx.now()
+  );
+
+  const initialized = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(initialized.status, 200);
+  const adminId = (await initialized.json()).account.id;
+
+  const device = ctx.query('SELECT user_id FROM devices WHERE id = ?', legacyDeviceId)[0];
+  assert.equal(device.user_id, adminId);
+  const autonomy = ctx.query("SELECT user_id, enabled FROM user_autonomy WHERE user_id = ?", adminId)[0];
+  assert.equal(Number(autonomy.enabled), 1);
+  const version = ctx.query("SELECT version FROM character_context_versions WHERE user_id = ? AND character_id = 'role-old'", adminId)[0];
+  assert.equal(Number(version.version), 9);
+  const event = ctx.query("SELECT event_id FROM character_context_events WHERE user_id = ? AND event_id = 'event-old'", adminId)[0];
+  assert.equal(event.event_id, 'event-old');
+  assert.equal(Number(ctx.query("SELECT COUNT(*) AS total FROM devices WHERE user_id = 'owner'")[0].total), 0);
+});
