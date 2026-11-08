@@ -202,3 +202,67 @@ test('runtime releases asset URLs that resolve after theme deactivation',async()
   assert.equal(attributes.has('data-maomao-chat-theme-active'),false,'迟到的资源加载不能重新激活主题');
   assert.equal(styleNodes.get('maomao-chat-theme-package-style').textContent,'','迟到的资源加载不能重新写回主题 CSS');
 });
+
+
+test('runtime clears temporary navigation tap styles when deactivated',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  const timers=new Map();let timerId=0,cleared=0,clickHandler=null;
+  const timeout=(callback)=>{const id=++timerId;timers.set(id,callback);return id};
+  const clear=(id)=>{if(timers.delete(id))cleared++};
+  const tapStyles=new Map();
+  const tapClasses=new Set();
+  const navTab={
+    style:{
+      setProperty(key,value){tapStyles.set(key,value)},
+      removeProperty(key){tapStyles.delete(key)}
+    },
+    classList:{
+      add(name){tapClasses.add(name)},
+      remove(name){tapClasses.delete(name)}
+    }
+  };
+  const nav={classList:{remove(){}},style:{removeProperty(){}}};
+  const shell={
+    classList:{add(){},remove(){}},style:{removeProperty(){}},
+    setAttribute(){},removeAttribute(){},
+    querySelector(selector){return selector==='.floating-nav'?nav:null},
+    querySelectorAll(){return[]},
+    addEventListener(type,handler){if(type==='click')clickHandler=handler},
+    removeEventListener(type,handler){if(type==='click'&&clickHandler===handler)clickHandler=null}
+  };
+  const theme={
+    id:'tap-theme',
+    motions:[{id:'nav-elastic-tap',enabled:true,duration:360,scale:1.12,lift:4}]
+  };
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([theme])],
+    ['maomao_chat_theme_active_v1',theme.id]
+  ]);
+  const localStorage={getItem(key){return values.has(key)?values.get(key):null},removeItem(key){values.delete(key)}};
+  const styleNodes=new Map();
+  const document={
+    readyState:'complete',querySelector(){return shell},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const listeners={};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(){return''}},
+    location:{pathname:'/chat/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(type,callback){listeners[type]=callback}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,console,setTimeout:timeout,clearTimeout:clear});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(typeof clickHandler,'function','主题应用后应安装导航点击监听');
+  clickHandler({target:{closest(){return navTab}}});
+  assert.equal(tapClasses.has('maomao-theme-nav-tapped'),true,'点击后应启用动效 class');
+  assert.equal(tapStyles.size,4,'点击后应写入四个临时动效变量');
+  localStorage.removeItem('maomao_chat_theme_active_v1');
+  listeners['maomao:chat-theme-change']();
+  assert.equal(clickHandler,null,'停用后应移除点击监听');
+  assert.equal(tapClasses.size,0,'停用后应移除点击动效 class');
+  assert.equal(tapStyles.size,0,'停用后应清除按钮临时 CSS 变量');
+  assert.ok(cleared>=1,'停用后应取消未完成的动效定时器');
+});
