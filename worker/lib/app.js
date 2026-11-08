@@ -556,6 +556,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
       throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
     }
+    // Preserve the established non-friend response before validating the
+    // generation token; the store repeats this check at the write boundary.
+    if (!store.getFriendship(account.user_id, friendId)) {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能发送消息');
+    }
     const body = await readJsonBody(request);
     const keys = Object.keys(body).sort();
     if (keys.length !== 3 || keys[0] !== 'body' || keys[1] !== 'clientMessageId' || keys[2] !== 'friendshipGenerationId') {
