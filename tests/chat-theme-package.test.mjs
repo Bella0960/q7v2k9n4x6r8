@@ -89,9 +89,31 @@ test('CSS package references must resolve to registered package assets',()=>{
   assert.doesNotThrow(()=>F.createPackage(withAsset,'.sample{background-image:url("assets/bg.png")}',{'assets/bg.png':new Uint8Array([1,2,3])}));
 });
 
+test('runtime CSS asset rewriting follows the same tokenizer as package validation',()=>{
+  const theme=fixture({
+    assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]
+  });
+  const bytes=new Uint8Array([1,2,3]);
+  const urls={'assets/bg.png':'blob:maomao/theme-bg'};
+  const cases=[
+    String.raw`.sample{background-image:u/**/rl(assets/bg.png)}`,
+    String.raw`.sample{background-image:u\\72l(assets/bg.png)}`,
+    String.raw`.sample{background-image:url("assets/b\\67.png")}`,
+    `.sample{content:"url(assets/bg.png)";background-image:url(assets/bg.png)}`
+  ];
+  for(const css of cases){
+    assert.doesNotThrow(()=>F.createPackage(theme,css,{'assets/bg.png':bytes}));
+    assert.match(F.rewriteCssAssetUrls(css,urls),/url\\("blob:maomao\\/theme-bg"\\)/);
+  }
+  const contentOnly='.sample{content:"url(assets/bg.png)"}';
+  assert.equal(F.rewriteCssAssetUrls(contentOnly,urls),contentOnly,'普通文本中的 url 字样不能被当成素材引用替换');
+  const runtime=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  assert.match(runtime,/FORMAT\\.rewriteCssAssetUrls\\(css,assetUrls\\)/,'运行时必须使用与导入校验相同的 CSS URL 解析器');
+});
+
 test('chat beauty exports only global CSS presets as chat theme packages',()=>{
   const beauty=readFileSync(new URL('../beauty/beauty.html',import.meta.url),'utf8');
-  assert.ok(beauty.includes('../shared/js/chat-theme-package-format.js?v=20261109theme4'));
+  assert.ok(beauty.includes('../shared/js/chat-theme-package-format.js?v=20261109theme5'));
   assert.match(beauty,/function exportCssPreset\(i\)/);
   assert.match(beauty,/preset\.target !== 'all'/);
   assert.match(beauty,/p\.target === 'all'/);
@@ -664,7 +686,7 @@ test('reapplying the same active package is idempotent and does not duplicate mo
 
   
 test('theme package scripts use a shared cache-busting revision across chat and importer pages',()=>{
-  const revision='20261109theme4';
+  const revision='20261109theme5';
   const importer=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const beauty=readFileSync(new URL('../beauty/beauty.html',import.meta.url),'utf8');
   const chatList=readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8');
