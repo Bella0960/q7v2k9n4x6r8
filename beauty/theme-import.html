@@ -94,9 +94,9 @@ function showInstalled(){
 }
 function parseSelected(file,generation){return file.arrayBuffer().then(function(buffer){if(generation!==selectionGeneration)return null;var F=window.MAOMAOChatThemeFormat;if(!F)throw new Error('主题包检查模块没有加载。');var files=F.parseStoredZip(buffer);return F.readPackage(files)}).then(function(parsed){if(generation!==selectionGeneration)return null;pending=parsed;var t=parsed.theme;$('#packagePreview').hidden=false;$('#previewName').textContent=t.name;$('#previewVersion').textContent=t.version||'1.0.0';$('#previewCss').textContent=(parsed.customCss.match(/\{/g)||[]).length+' 项';$('#previewList').textContent=t.pages.chatList.length+' 个';$('#previewDetail').textContent=t.pages.chatDetail.length+' 个';$('#previewSummary').textContent='将导入 '+Object.keys(parsed.assets).length+' 项素材、'+(Array.isArray(t.motions)?t.motions.filter(function(x){return x.enabled}).length:0)+' 个启用动效。应用范围仅限聊天列表和聊天详情。';$('#importApply').disabled=false;showStatus('检查通过。主题包格式、目标应用、CSS 和素材清单均可读取。点击“导入并应用”后才会写入本机。','ok');return parsed})}
 function removeRefs(assetIds,ownerId){
- var failed=[],chain=Promise.resolve();
- if(!media)return Promise.resolve({failed:assetIds.slice()});
- assetIds.forEach(function(id){
+ var ids=Array.from(new Set(assetIds||[])),failed=[],chain=Promise.resolve();
+ if(!media)return Promise.resolve({failed:ids.slice()});
+ ids.forEach(function(id){
   chain=chain.then(function(){
    return Promise.resolve().then(function(){return media.removeRef(id,'chat-theme-package',ownerId)}).then(function(refResult){
     if(!refResult||!refResult.ok||!refResult.value){failed.push(id);return}
@@ -121,7 +121,7 @@ function doImport(){
  try{oldActive=localStorage.getItem(ACTIVE_KEY)}catch(e){}
  Object.keys(selected.assets).forEach(function(path){chain=chain.then(function(){var a=selected.assets[path],blob=new Blob([a.bytes],{type:a.mimeType});return media.putBlob(blob,{type:a.type||'file',mimeType:a.mimeType,ownerType:'chat-theme-package',ownerId:themeId}).then(function(result){if(!result||!result.ok||!result.value||!result.value.assetId)throw new Error(result&&result.error?result.error.message:'素材写入失败');assetRefs[path]=result.value.assetId;created.push(result.value.assetId)})})});
  chain.then(function(){
-   var installed=Object.assign({},source,{id:themeId,sourceId:source.id||'',customCss:pending.customCss,assetRefs:assetRefs,createdAt:Date.now(),updatedAt:Date.now()});
+   var installed=Object.assign({},source,{id:themeId,sourceId:source.id||'',customCss:selected.customCss,assetRefs:assetRefs,createdAt:Date.now(),updatedAt:Date.now()});
    delete installed.assetIndex;
    var newList=oldList.concat([installed]);
    saveList(newList);
