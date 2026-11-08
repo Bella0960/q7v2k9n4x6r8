@@ -32,7 +32,8 @@ POST /api/admin/bootstrap:
 {
   "bootstrapSecret": "<worker secret>",
   "username": "<creator username>",
-  "password": "<creator password, 10–128 characters>"
+  "password": "<creator password, 10–128 characters>",
+  "confirmPassword": "<same creator password>"
 }
 ```
 
