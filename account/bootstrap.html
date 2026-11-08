@@ -10,6 +10,8 @@
     .bootstrap-warning{padding:13px 14px;border:1px solid #eadfe0;border-radius:13px;background:#fff9f9;color:#8d5257;font-size:11px;line-height:1.7;margin:0 0 18px}
     .bootstrap-link{display:block;text-align:center;margin-top:18px;color:#777b83;text-decoration:underline;font-size:12px}
     .bootstrap-state{padding:14px;border:1px solid #e4e5e8;border-radius:13px;background:#fff;color:#626771;font-size:12px;line-height:1.8}
+    .bootstrap-retry{display:block;min-height:42px;margin-top:12px;padding:0 15px;border:1px solid #dfe1e5;border-radius:11px;background:#fff;color:#555a63;font-size:12px}
+    .bootstrap-retry:disabled{opacity:.5;cursor:wait}
   </style>
   <script src="./bootstrap.js" defer></script>
 </head>
@@ -26,7 +28,9 @@
       <h1>创作者初始化</h1>
       <p class="lead">首次部署时创建唯一超级管理员。初始化成功后，此入口永久关闭。</p>
       <div class="bootstrap-warning">此操作仅适用于 MAO 创作者本人。需要先在 Cloudflare Worker Secrets 中设置 MAO_SUPER_ADMIN_BOOTSTRAP_SECRET，再输入相同密钥。切勿将密钥发给其他人。</div>
-      <form id="bootstrapForm" novalidate>
+      <div class="bootstrap-state" id="bootstrapStatus" role="status" aria-live="polite">正在确认服务器初始化状态…</div>
+      <button class="bootstrap-retry" id="retryBootstrapCheck" type="button" hidden>重新检查</button>
+      <form id="bootstrapForm" novalidate hidden>
         <label>初始化密钥<input name="bootstrapSecret" type="password" autocomplete="off" minlength="32" required placeholder="输入部署时设置的 Worker Secret"></label>
         <label>管理员用户名<input name="username" autocomplete="username" minlength="2" maxlength="24" required placeholder="设置创作者账号名"></label>
         <label>管理员密码<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="至少 10 位"></label>
