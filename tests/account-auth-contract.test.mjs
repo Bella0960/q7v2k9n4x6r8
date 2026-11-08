@@ -195,6 +195,86 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
   assert.equal(restoreRevoked.status, 409, '永久撤销不可恢复');
 });
 
+test('停用并恢复尚未核销邀请码的账号仍保持待授权，不能绕过一人一码', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const adminResponse = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(adminResponse);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'pending-user',
+      password: 'pending-user-password-123',
+      confirmPassword: 'pending-user-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  assert.equal(registered.payload.account.status, 'pending_invite');
+
+  const disabled = await post(
+    ctx,
+    '/api/admin/accounts/' + registered.payload.account.id + '/action',
+    { action: 'disable', reason: '注册流程暂停' },
+    adminCookie
+  );
+  assert.equal(disabled.status, 200);
+
+  const restored = await post(
+    ctx,
+    '/api/admin/accounts/' + registered.payload.account.id + '/action',
+    { action: 'restore' },
+    adminCookie
+  );
+  assert.equal(restored.status, 200);
+
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'pending-user', password: 'pending-user-password-123' }
+  });
+  assert.equal(login.status, 200);
+  const userCookie = cookieFrom(login);
+  const me = await ctx.fetchTo('/api/accounts/me', { headers: { cookie: userCookie } });
+  const meResult = await json(me);
+  assert.equal(meResult.status, 200);
+  assert.equal(meResult.payload.account.status, 'pending_invite',
+    '恢复必须还原到停用前状态，不能把未核销邀请码的账号改为 active');
+
+  const device = await post(ctx, '/api/devices/register', {
+    deviceId: 'device_pending_0001',
+    secret: randomToken(32),
+    label: 'pending device',
+    platform: 'test'
+  }, userCookie);
+  assert.equal(device.status, 403);
+  assert.equal(device.payload.error.code, 'INVITE_REQUIRED');
+
+  const invite = await post(
+    ctx,
+    '/api/admin/invites',
+    { targetAccountId: registered.payload.account.id },
+    adminCookie
+  );
+  assert.equal(invite.status, 201);
+  const redeemed = await post(
+    ctx,
+    '/api/accounts/invites/redeem',
+    { inviteCode: invite.payload.invite.code },
+    userCookie
+  );
+  assert.equal(redeemed.status, 200);
+  assert.equal(redeemed.payload.account.status, 'active');
+});
+
 test('重复错误登录触发持久化限流，窗口过期后恢复并清除失败计数', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
