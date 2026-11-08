@@ -60,7 +60,7 @@
         for(var k=0;k<raw.length;k++)if(raw[k]>0x7f)fail("主题文件名必须使用 UTF-8 编码。");
       }
       try{name=dec?dec.decode(raw):String.fromCharCode.apply(null,raw)}catch(e){fail("主题文件名编码错误。")}
-      if(!name||name.indexOf("\u0000")>=0||name.charAt(0)==="/"||name.indexOf("\\\\")>=0||
+      if(!name||name.indexOf("\u0000")>=0||name.charAt(0)==="/"||name.indexOf("\\")>=0||
         name.split("/").some(function(part){return part===".."||part==="."})||/^[A-Za-z]:/.test(name)){
         fail("主题包包含不安全路径。");
       }
