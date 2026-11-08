@@ -1117,3 +1117,121 @@ test('唯一超级管理员初始化时完整接管旧 owner 云端元数据，�
     );
   }
 });
+
+
+test('修改密码与撤销其他会话必须原子提交，撤销失败时密码也回滚', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'atomic-password',
+      password: 'atomic-password-123',
+      confirmPassword: 'atomic-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+
+  const invite = await post(
+    ctx,
+    '/api/admin/invites',
+    { targetAccountId: registered.payload.account.id },
+    adminCookie
+  );
+  assert.equal(invite.status, 201);
+
+  const firstLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'atomic-password', password: 'atomic-password-123' }
+  });
+  const currentCookie = cookieFrom(firstLogin);
+  const redeemed = await post(
+    ctx,
+    '/api/accounts/invites/redeem',
+    { inviteCode: invite.payload.invite.code },
+    currentCookie
+  );
+  assert.equal(redeemed.status, 200);
+
+  const secondLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'atomic-password', password: 'atomic-password-123' }
+  });
+  const otherCookie = cookieFrom(secondLogin);
+  const security = await ctx.fetchTo('/api/accounts/security', {
+    headers: { cookie: currentCookie }
+  });
+  const securityResult = await json(security);
+  assert.equal(securityResult.status, 200);
+  const currentSessionId = securityResult.payload.currentSessionId;
+
+  const before = ctx.query(
+    'SELECT password_salt, password_hash FROM mao_accounts WHERE id = ?',
+    registered.payload.account.id
+  )[0];
+  ctx.store.exec(`
+    CREATE TRIGGER fail_other_mao_session_revocation
+    BEFORE UPDATE OF revoked_at ON mao_account_sessions
+    WHEN NEW.id != '${currentSessionId}'
+      AND OLD.revoked_at IS NULL
+      AND NEW.revoked_at IS NOT NULL
+    BEGIN
+      SELECT RAISE(ABORT, 'simulated session revocation failure');
+    END
+  `);
+
+  const failedChange = await post(ctx, '/api/accounts/password/change', {
+    currentPassword: 'atomic-password-123',
+    newPassword: 'atomic-password-456',
+    confirmPassword: 'atomic-password-456'
+  }, currentCookie);
+  assert.equal(failedChange.status, 500);
+
+  const afterFailure = ctx.query(
+    'SELECT password_salt, password_hash FROM mao_accounts WHERE id = ?',
+    registered.payload.account.id
+  )[0];
+  assert.equal(afterFailure.password_salt, before.password_salt,
+    '撤销其他会话失败时，新密码盐也必须回滚');
+  assert.equal(afterFailure.password_hash, before.password_hash,
+    '撤销其他会话失败时，新密码摘要也必须回滚');
+
+  const otherSessionAfterFailure = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie: otherCookie }
+  });
+  assert.equal(otherSessionAfterFailure.status, 200,
+    '密码修改事务失败时，其他会话不能被部分撤销');
+
+  ctx.store.exec('DROP TRIGGER fail_other_mao_session_revocation');
+  const successfulChange = await post(ctx, '/api/accounts/password/change', {
+    currentPassword: 'atomic-password-123',
+    newPassword: 'atomic-password-456',
+    confirmPassword: 'atomic-password-456'
+  }, currentCookie);
+  assert.equal(successfulChange.status, 200);
+  assert.equal(successfulChange.payload.changed, true);
+
+  const otherSessionAfterCommit = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie: otherCookie }
+  });
+  assert.equal(otherSessionAfterCommit.status, 401,
+    '密码修改成功提交后，其他会话必须全部失效');
+
+  const currentSessionAfterCommit = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie: currentCookie }
+  });
+  assert.equal(currentSessionAfterCommit.status, 200,
+    '修改密码的当前会话应继续有效');
+});
