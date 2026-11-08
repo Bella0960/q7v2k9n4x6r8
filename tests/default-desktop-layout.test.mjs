@@ -179,3 +179,14 @@ test('creator account detail supports copying permanent IDs and prevents stale a
     'a slower audit response must not replace the currently selected account history');
   assert.match(adminCss, /\.copy-detail-id\{/);
 });
+
+test('invitation records can navigate directly to their bound account details', () => {
+  const adminScript = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
+
+  assert.match(adminScript, /const targetAccount = invite\.target_account_id[\s\S]*accounts\.find\(account => account\.id === invite\.target_account_id\)/);
+  assert.match(adminScript, /el\('button', 'open-detail', '查看账号'\)/);
+  assert.match(adminScript, /detailButton\.addEventListener\('click', \(\) => openAccountFromInvite\(targetAccount\.id\)\)/);
+  assert.match(adminScript, /function activateTab\(name\)[\s\S]*usersView[\s\S]*invitesView[\s\S]*closeDetail\(\)/);
+  assert.match(adminScript, /function openAccountFromInvite\(accountId\)[\s\S]*activateTab\('users'\)[\s\S]*accountFilter = 'all'[\s\S]*\$\('accountSearch'\)\.value = ''[\s\S]*renderAccounts\(\)[\s\S]*openAccount\(accountId\)/);
+  assert.match(adminScript, /button\.addEventListener\('click', \(\) => activateTab\(button\.dataset\.tab\)\)/);
+});
