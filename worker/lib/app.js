@@ -456,7 +456,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         status: updated.status,
         updatedAt: Number(updated.updated_at)
       },
-      friendshipCreated: status === 'accepted'
+      friendshipCreated: status === 'accepted' && !updated.duplicate,
+      duplicate: Boolean(updated.duplicate)
     });
   }
 
