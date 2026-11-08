@@ -173,6 +173,9 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Authenticated API responses are account-private; never store them in the shared origin cache.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
