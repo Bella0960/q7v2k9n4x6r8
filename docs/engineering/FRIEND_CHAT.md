@@ -41,8 +41,10 @@
 - `GET /api/friends/:friendId/messages?after=<createdAt>.<messageId>`：读取游标之后的新消息。
 - `GET /api/friends/:friendId/messages?before=<createdAt>.<messageId>`：载入更早消息。
 - `POST /api/friends/:friendId/messages`：发送纯文字，请求体仅允许 `clientMessageId`、`friendshipGenerationId` 与 `body`；代际凭据必须来自当前会话读取接口，服务器在数据库写入边界再次校验。
+- 会话读取会校验查询期间关系代际没有变化；若删除/重加与读取交错，服务端返回 `FRIENDSHIP_CHANGED_RETRY`，客户端重新同步，避免混合旧消息页与新代际游标。
 - `DELETE /api/friends/:friendId/messages/:messageId`：只在当前账号隐藏单条消息。
-- `DELETE /api/friends/:friendId/messages`：只清空当前账号这边的整段会话。
+- `DELETE /api/friends/:friendId/messages`：只清空当前账号这边的整段会话，请求体必须携带 `friendshipGenerationId`；旧关系的迟到清空请求返回 409，不影响重新添加后的新会话。
+- `DELETE /api/friends/:friendId`：删除好友，请求体必须携带好友列表返回的 `generationId`；旧关系的迟到删除请求返回 409，不会误删重新建立的新关系。
 - 消息分页同时返回当前账号的 `viewState.version`，其中包含当前好友关系代际；其他设备发现隐藏、清空或关系代际变化后会重新加载当前会话视图，并重置旧消息游标。
 - 聊天页若在删除空窗期收到 `NOT_FRIENDS`，会暂停发送，并每 15 秒重新验证好友关系；关系恢复后自动重连。关系代际变化会使旧的已读请求失效，避免迟到响应覆盖新会话的本地已读游标。
 
