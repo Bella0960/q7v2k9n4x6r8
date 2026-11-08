@@ -51,3 +51,26 @@ test('custom component IDs are strictly validated and cannot escape the chat CSS
   assert.doesNotMatch(css,/custom-x/);
   assert.match(css,/\\.phone-mockup\\[data-maomao-chat-theme-active="1"\\]/);
 });
+
+
+test('CSS safety validation checks comments and escaped syntax after normalization',()=>{
+  const blocked=[
+    '@im/**/port "https://example.invalid/theme.css"',
+    String.raw`@im\70 ort "https://example.invalid/theme.css"`,
+    '.x{background:u/**/rl("https://example.invalid/a.png")}',
+    String.raw`.x{background:u\72l("https://example.invalid/a.png")}`,
+    String.raw`.x{background:url("https\3a //example.invalid/a.png")}`,
+    '.x{posi/**/tion:fixed}',
+    String.raw`.x{position:fi\78 ed}`,
+    String.raw`.x{posi\74 ion:fixed}`,
+    String.raw`.x{width:e\78 pression(alert(1))}`
+  ];
+  blocked.forEach((css,index)=>{
+    assert.throws(()=>F.validateCss(css),undefined,'必须拒绝被注释或转义隐藏的危险 CSS，第 '+(index+1)+' 例');
+  });
+});
+
+test('CSS safety validation ignores harmless comments and ordinary quoted text',()=>{
+  assert.doesNotThrow(()=>F.validateCss('/* @import url(https://example.invalid/a.css) */ .x::after{content:"@import javascript: https://example.invalid";}'));
+  assert.doesNotThrow(()=>F.validateCss('.x{background:url("assets/background.png");content:"普通文本";}'));
+});

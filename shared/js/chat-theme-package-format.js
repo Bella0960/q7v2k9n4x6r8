@@ -60,22 +60,104 @@
   function text(bytes,label){try{return dec?dec.decode(bytes):String.fromCharCode.apply(null,bytes)}catch(e){fail((label||"文件")+"不是有效 UTF-8。")}}
   function safeCustomId(id){return typeof id==="string"&&/^custom-[A-Za-z0-9_-]{1,64}$/.test(id)}
   function safeAssetPath(path){return typeof path==="string"&&/^assets\/[A-Za-z0-9_.\-\u4e00-\u9fff ]{1,150}$/.test(path)&&path.indexOf("..")<0}
+  function decodeCssEscape(css,index){
+    var i=index+1;
+    if(i>=css.length)fail("CSS 转义序列不完整。");
+    var c=css.charAt(i);
+    if(c==="\n")return{value:"",next:i+1};
+    if(c==="\r")return{value:"",next:css.charAt(i+1)==="\n"?i+2:i+1};
+    if(c==="\f")return{value:"",next:i+1};
+    if(/[0-9a-f]/i.test(c)){
+      var begin=i;
+      while(i<css.length&&i-begin<6&&/[0-9a-f]/i.test(css.charAt(i)))i++;
+      var point=parseInt(css.slice(begin,i),16);
+      if(css.charAt(i)===" "||css.charAt(i)==="\t"||css.charAt(i)==="\n"||css.charAt(i)==="\r"||css.charAt(i)==="\f"){
+        if(css.charAt(i)==="\r"&&css.charAt(i+1)==="\n")i+=2;
+        else i++;
+      }
+      if(!point||point>0x10ffff||(point>=0xd800&&point<=0xdfff))point=0xfffd;
+      if(point<=0xffff)return{value:String.fromCharCode(point),next:i};
+      point-=0x10000;
+      return{value:String.fromCharCode(0xd800+(point>>10),0xdc00+(point&1023)),next:i};
+    }
+    return{value:c,next:i+1};
+  }
+  function normalizeCssForSafety(css){
+    var code="",strings=[],brace=0,paren=0,bracket=0,i=0;
+    while(i<css.length){
+      var c=css.charAt(i),n=css.charAt(i+1);
+      if(c==="/"&&n==="*"){
+        var close=css.indexOf("*/",i+2);
+        if(close<0)fail("CSS 注释没有闭合。");
+        i=close+2;
+        continue;
+      }
+      if(c==="\""||c==="'"){
+        var quote=c,value="",closed=false;
+        i++;
+        while(i<css.length){
+          c=css.charAt(i);
+          if(c==="\\"){
+            var stringEscape=decodeCssEscape(css,i);
+            value+=stringEscape.value;
+            i=stringEscape.next;
+            continue;
+          }
+          if(c===quote){closed=true;i++;break}
+          if(c==="\n"||c==="\r"||c==="\f")fail("CSS 字符串包含未转义换行。");
+          value+=c;
+          i++;
+        }
+        if(!closed)fail("CSS 字符串没有闭合。");
+        var token="\u0001"+strings.length+"\u0002";
+        strings.push(value);
+        code+=token;
+        continue;
+      }
+      if(c==="\\"){
+        var escaped=decodeCssEscape(css,i),decoded=escaped.value;
+        if(decoded&&(!/^[A-Za-z0-9_-]$/.test(decoded)&&decoded.charCodeAt(0)<128||/\s/u.test(decoded))){
+          fail("CSS 不允许用转义字符改写结构符号或分隔符。");
+        }
+        code+=decoded;
+        i=escaped.next;
+        continue;
+      }
+      if(c==="{"){brace++;code+=c;i++;continue}
+      if(c==="}"){brace--;if(brace<0)fail("CSS 花括号不匹配。");code+=c;i++;continue}
+      if(c==="("){paren++;code+=c;i++;continue}
+      if(c===")"){paren--;if(paren<0)fail("CSS 圆括号不匹配。");code+=c;i++;continue}
+      if(c==="["){bracket++;code+=c;i++;continue}
+      if(c==="]"){bracket--;if(bracket<0)fail("CSS 方括号不匹配。");code+=c;i++;continue}
+      code+=c;
+      i++;
+    }
+    if(brace!==0||paren!==0||bracket!==0)fail("CSS 结构不完整或括号不匹配。");
+    return{code:code,strings:strings};
+  }
   function validateCss(css){
     css=String(css||"");
     if(enc&&enc.encode(css).length>512*1024)fail("CSS 超过 512 KB。");
-    var bad=[/@import\b/i,/expression\s*\(/i,/javascript\s*:/i,/(?:^|[;{\s])behavior\s*:/i,/-moz-binding\s*:/i,/url\s*\(\s*["']?\s*(?:https?:|\/\/|file:|blob:|filesystem:)/i,/@namespace\b/i,/(?:^|[;{\s])position\s*:\s*fixed\b/i];
-    if(bad.some(function(re){return re.test(css)}))fail("CSS 包含不允许的远程引用或危险声明。");
-    var depth=0,quote="",comment=false,escape=false;
-    for(var i=0;i<css.length;i++){var c=css.charAt(i),n=css.charAt(i+1);
-      if(comment){if(c==="*"&&n==="/"){comment=false;i++}continue}
-      if(!quote&&c==="/"&&n==="*"){comment=true;i++;continue}
-      if(escape){escape=false;continue}if(c==="\\"){escape=true;continue}
-      if(quote){if(c===quote)quote="";continue}if(c==='"'||c==="'"){quote=c;continue}
-      if(c==="{")depth++;if(c==="}")depth--;if(depth<0)fail("CSS 花括号不匹配。")
+    var normalized=normalizeCssForSafety(css);
+    var code=normalized.code.replace(/\u0001\d+\u0002/g," ");
+    var bad=[
+      /@import\b/i,
+      /expression\s*\(/i,
+      /javascript\s*:/i,
+      /(?:^|[;{])\s*behavior\s*:/i,
+      /(?:^|[;{])\s*-moz-binding\s*:/i,
+      /(?:^|[;{])\s*position\s*:\s*fixed\b/i,
+      /@namespace\b/i,
+      /(?:-webkit-)?image-set\s*\(/i
+    ];
+    if(bad.some(function(re){return re.test(code)}))fail("CSS 包含不允许的远程引用或危险声明。");
+    var re=/url\s*\(\s*(?:\u0001(\d+)\u0002|([^)]*?))\s*\)/gi,m;
+    while((m=re.exec(normalized.code))){
+      var u=m[1]!==undefined?String(normalized.strings[Number(m[1])]||"").trim():String(m[2]||"").trim();
+      if(!safeAssetPath(u)&&!/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(u)){
+        fail("CSS 图片与字体只能引用主题 assets/ 素材。");
+      }
     }
-    if(depth!==0||quote||comment)fail("CSS 结构不完整。");
-    var re=/url\s*\(\s*(["']?)(.*?)\1\s*\)/gi,m;
-    while((m=re.exec(css))){var u=String(m[2]||"").trim();if(!safeAssetPath(u)&&!/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(u))fail("CSS 图片与字体只能引用主题 assets/ 素材。")}
     return css;
   }
   function cleanValue(v){if(typeof v==="number")return Number.isFinite(v)?v:null;if(typeof v==="boolean")return v;var s=String(v==null?"":v).trim();if(!s||/[;{}<>]|url\s*\(|expression\s*\(|javascript\s*:/i.test(s))return null;return s.slice(0,220)}
