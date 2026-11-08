@@ -428,6 +428,28 @@ test('恢复没有历史授权状态的旧 disabled 账号时按待授权处理'
     '缺少可证明授权历史的旧账号不能因恢复操作获得 active 权限');
 });
 
+test('并发注册不能突破同一来源每小时八个 MAO 账号的上限', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  const attempts = await Promise.all(Array.from({ length: 10 }, (_, index) => {
+    const suffix = String(index + 1).padStart(2, '0');
+    const username = 'quota_' + suffix;
+    const password = 'quota-password-' + suffix;
+    return ctx.asJson('/api/accounts/register', {
+      method: 'POST',
+      body: { username, password, confirmPassword: password },
+      ip: '198.51.100.44'
+    });
+  }));
+  assert.equal(attempts.filter(item => item.status === 201).length, 8);
+  assert.equal(attempts.filter(item => item.status === 429).length, 2);
+  assert.equal(
+    Number(ctx.query("SELECT COUNT(*) AS total FROM mao_accounts WHERE registration_ip_hash != ''")[0].total),
+    8,
+    '数据库中也不能留下超过配额的账号记录'
+  );
+});
+
 test('重复错误登录触发持久化限流，窗口过期后恢复并清除失败计数', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
