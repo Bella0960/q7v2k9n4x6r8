@@ -2127,7 +2127,7 @@ class CloudStore {
         nextStatus = 'disabled';
       } else if (action === 'restore' && account.status === 'disabled') {
         // Temporary suspension must never grant an invitation that was not redeemed.
-        nextStatus = account.disabled_from_status === 'pending_invite' ? 'pending_invite' : 'active';
+        nextStatus = account.disabled_from_status === 'active' ? 'active' : 'pending_invite';
       } else if (action === 'revoke' && account.status !== 'revoked') {
         nextStatus = 'revoked';
       }
