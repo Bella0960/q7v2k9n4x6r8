@@ -92,6 +92,7 @@
   var messageViewVersion = 0;
   var pollTimer = 0;
   var pollBusy = false;
+  var messageScrollRevision = 0;
   var ready = false;
   var pendingSend = null;
   var blocked = false;
@@ -430,6 +431,7 @@
     if (!ready || blocked || pollBusy || document.hidden) return;
     pollBusy = true;
     var shouldStick = isNearBottom();
+    var scrollRevision = messageScrollRevision;
     var viewVersion = messageViewVersion;
     try {
       var page;
@@ -449,7 +451,8 @@
         if (page.nextCursor) cursor = page.nextCursor;
         guard += 1;
       } while (page.hasMore && guard < 5);
-      if (shouldStick && page && page.messages && page.messages.length) scrollToBottom();
+      if (shouldStick && scrollRevision === messageScrollRevision &&
+          page && page.messages && page.messages.length) scrollToBottom();
       if (page && page.messages && page.messages.length) {
         markVisibleIncomingRead();
         setStatus('刚刚同步');
@@ -527,6 +530,7 @@
     window.location.href = 'friend-center.html';
   });
   $('messages').addEventListener('scroll', function () {
+    messageScrollRevision += 1;
     if (readReceiptTimer) window.clearTimeout(readReceiptTimer);
     readReceiptTimer = window.setTimeout(markVisibleIncomingRead, 140);
   });
