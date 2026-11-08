@@ -42,7 +42,7 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(statusBefore.payload.initialized, false);
   const first = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
-    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
   });
   const firstResult = await json(first);
   assert.equal(firstResult.status, 200);
@@ -72,7 +72,7 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
 
   const adminResponse = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
-    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
   });
   const adminCookie = cookieFrom(adminResponse);
 
@@ -121,7 +121,7 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
 
   const adminResponse = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
-    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
   });
   const adminCookie = cookieFrom(adminResponse);
   const alice = await ctx.asJson('/api/accounts/register', {
@@ -239,7 +239,7 @@ test('账号安全只返回本人设备与会话，并支持撤销设备、会�
 
   const adminResponse = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
-    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
   });
   const adminCookie = cookieFrom(adminResponse);
 
@@ -336,25 +336,25 @@ test('首次管理员初始化密钥错误会被持久化限流，初始化完�
   for (let index = 0; index < 7; index += 1) {
     const failed = await ctx.asJson('/api/admin/bootstrap', {
       method: 'POST',
-      body: { bootstrapSecret: 'wrong-bootstrap-secret-32-characters-long', username: 'creator', password: 'creator-password-123' }
+      body: { bootstrapSecret: 'wrong-bootstrap-secret-32-characters-long', username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
     });
     assert.equal(failed.status, 403);
   }
   const eighth = await ctx.asJson('/api/admin/bootstrap', {
     method: 'POST',
-    body: { bootstrapSecret: 'wrong-bootstrap-secret-32-characters-long', username: 'creator', password: 'creator-password-123' }
+    body: { bootstrapSecret: 'wrong-bootstrap-secret-32-characters-long', username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
   });
   assert.equal(eighth.status, 429);
   const correctButBlocked = await ctx.asJson('/api/admin/bootstrap', {
     method: 'POST',
-    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
   });
   assert.equal(correctButBlocked.status, 429);
 
   ctx.timestamps.push(ctx.now() + 15 * 60 * 1000 + 1);
   const initialized = await ctx.asJson('/api/admin/bootstrap', {
     method: 'POST',
-    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
   });
   assert.equal(initialized.status, 200);
   const status = await ctx.asJson('/api/admin/bootstrap/status');
