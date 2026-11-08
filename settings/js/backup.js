@@ -1768,11 +1768,30 @@
             return;
         }
         importInProgress = true;
+        importLockLost = false;
+        rpAcquireImportLock(importLockOwner).then(function (acquired) {
+            if (!acquired) {
+                importInProgress = false;
+                toast('另一个 MAOMAO 标签页正在导入或恢复数据；本次导入未启动。');
+                return;
+            }
+            startImportLockHeartbeat();
+            startImportFileRead(file);
+        }).catch(function (lockError) {
+            importInProgress = false;
+            importRecoveryReady = false;
+            toast('无法取得整机导入互斥锁：'
+                + ((lockError && lockError.message) || '未知错误')
+                + '。为保护数据，已暂时禁止新的整机导入。');
+        });
+    }
+
+    function startImportFileRead(file) {
         var reader;
         try {
             reader = new FileReader();
         } catch (readerError) {
-            importInProgress = false;
+            releaseImportLock().then(function () { importInProgress = false; });
             toast('导入失败：' + ((readerError && readerError.message) || '无法初始化文件读取器'));
             return;
         }
@@ -1884,6 +1903,7 @@
             }
 
             // 2. localStorage 覆盖写入；失败则从恢复点回滚后结束（IndexedDB 还没动）
+            assertImportLock();
             var ok = restore(incoming);
             if (!ok) {
                 // 回滚：直接用恢复点里读回来的快照，而不是内存里的 current
@@ -1934,6 +1954,7 @@
             var dbRestored = 0;
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
+                assertImportLock();
                 var idbRestoreResult = await restoreIndexedDBWithRollback(obj.indexedDB, idbRestorePoint);
                 if (!idbRestoreResult.ok) {
                     var localRollbackOk = restore(rpSnap);
@@ -1974,6 +1995,7 @@
             // 5. 全部业务数据恢复成功后，先持久化 committed，再清理恢复点。
             // 若页面在清理中断，下一次启动只会继续清理，不会把已完成导入回滚掉。
             try {
+                assertImportLock();
                 await writeImportState('committed', indexedDbTargetNames);
             } catch (commitStateError) {
                 importRecoveryReady = false;
@@ -2006,16 +2028,19 @@
                 toast('导入失败：' + ((importError && importError.message) || '恢复流程发生未知错误')
                     + (importStageRecorded ? '。本轮恢复点已保留；重新打开设置页可尝试恢复到导入前状态。' : ''));
             } finally {
+                await releaseImportLock();
                 importInProgress = false;
             }
         };
-        reader.onerror = function () {
+        reader.onerror = async function () {
+            await releaseImportLock();
             importInProgress = false;
             toast('导入失败：文件读取失败');
         };
         try {
             reader.readAsText(file);
         } catch (readError) {
+            await releaseImportLock();
             importInProgress = false;
             toast('导入失败：' + ((readError && readError.message) || '文件读取失败'));
         }
