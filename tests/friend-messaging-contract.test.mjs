@@ -528,6 +528,10 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /removePendingMessage\(pendingNode\)/);
   assert.match(FRIEND_CHAT_HTML, /api\.sendMessage\(friendId, text, clientId\)/);
   assert.match(FRIEND_CHAT_HTML, /window\.setInterval\(pollMessages, 4500\)/);
+  assert.match(FRIEND_CHAT_HTML, /var messageScrollRevision = 0/);
+  assert.match(FRIEND_CHAT_HTML, /var scrollRevision = messageScrollRevision/);
+  assert.match(FRIEND_CHAT_HTML, /scrollRevision === messageScrollRevision/);
+  assert.match(FRIEND_CHAT_HTML, /messageScrollRevision \+= 1/);
   assert.match(FRIEND_CHAT_HTML, /document\.hidden/);
   assert.match(FRIEND_CHAT_HTML, /再次点击发送会安全重试/);
   assert.match(FRIEND_CHAT_HTML, /FRIEND_MESSAGE_RATE_LIMITED/);
