@@ -198,6 +198,15 @@
       );
       const meta = el('div', 'row-status ' + (revoked || expired ? 'status-revoked' : (used ? 'status-active' : 'status-pending')), state);
       row.append(icon, main, meta);
+      const targetAccount = invite.target_account_id
+        ? accounts.find(account => account.id === invite.target_account_id)
+        : null;
+      if (targetAccount) {
+        const detailButton = el('button', 'open-detail', '查看账号');
+        detailButton.type = 'button';
+        detailButton.addEventListener('click', () => openAccountFromInvite(targetAccount.id));
+        row.appendChild(detailButton);
+      }
       if (!revoked && !expired && !used) {
         const button = el('button', 'open-detail', '撤销');
         button.type = 'button';
@@ -438,13 +447,31 @@
     });
   });
 
-  document.querySelectorAll('[data-tab]').forEach(button => {
-    button.addEventListener('click', () => {
-      document.querySelectorAll('[data-tab]').forEach(item => item.classList.toggle('active', item === button));
-      $('usersView').hidden = button.dataset.tab !== 'users';
-      $('invitesView').hidden = button.dataset.tab !== 'invites';
-      closeDetail();
+  function activateTab(name) {
+    const selected = name === 'invites' ? 'invites' : 'users';
+    document.querySelectorAll('[data-tab]').forEach(item => {
+      item.classList.toggle('active', item.dataset.tab === selected);
     });
+    $('usersView').hidden = selected !== 'users';
+    $('invitesView').hidden = selected !== 'invites';
+    closeDetail();
+  }
+
+  function openAccountFromInvite(accountId) {
+    activateTab('users');
+    accountFilter = 'all';
+    $('accountSearch').value = '';
+    document.querySelectorAll('[data-account-filter]').forEach(item => {
+      const active = item.dataset.accountFilter === 'all';
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    renderAccounts();
+    openAccount(accountId);
+  }
+
+  document.querySelectorAll('[data-tab]').forEach(button => {
+    button.addEventListener('click', () => activateTab(button.dataset.tab));
   });
 
   $('closeCodeSheet').addEventListener('click', () => {
