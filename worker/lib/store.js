@@ -1173,11 +1173,20 @@ class CloudStore {
   respondToFriendRequest({ requestId, userId, status, now }) {
     const request = this.exec(
       `SELECT * FROM friend_requests
-       WHERE id = ? AND recipient_id = ? AND status = 'pending'`,
+       WHERE id = ? AND recipient_id = ?`,
       requestId,
       userId
     )[0];
     if (!request) return null;
+
+    // Repeating the same completed action is safe after a lost response or
+    // from a second device. A conflicting action (accept after reject, or
+    // reject after accept) remains a real conflict and cannot change state.
+    if (request.status !== 'pending') {
+      return request.status === status
+        ? { ...request, duplicate: true }
+        : null;
+    }
 
     const updated = this.exec(
       `UPDATE friend_requests
@@ -1202,7 +1211,7 @@ class CloudStore {
         now
       );
     }
-    return updated;
+    return { ...updated, duplicate: false };
   }
 
   listFriends(userId) {
