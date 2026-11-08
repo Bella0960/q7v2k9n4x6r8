@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v195'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v196'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -66,10 +66,10 @@ test('failed app navigation never falls back to the desktop index page', () => {
 
 test('Contacts account client scripts are part of the versioned app shell', () => {
   assert.match(serviceWorker, /real-user-account-client\.js\?v=20261108v6/);
-  assert.match(serviceWorker, /real-user-account-panel\.js\?v=20261108v3/);
+  assert.match(serviceWorker, /real-user-account-panel\.js\?v=20261108v4/);
   const contactsPage = read('chat/contacts/contacts.html');
   assert.match(contactsPage, /real-user-account-client\.js\?v=20261108v6/);
-  assert.match(contactsPage, /real-user-account-panel\.js\?v=20261108v3/);
+  assert.match(contactsPage, /real-user-account-panel\.js\?v=20261108v4/);
   assert.match(serviceWorker, /contact-directory\.js\?v=20261108v3/);
   assert.match(contactsPage, /contact-directory\.js\?v=20261108v3/);
   assert.match(serviceWorker, /friends-blocked-list/);
@@ -88,5 +88,5 @@ test('real-user chat API requests always bypass the static cache and fetch live 
   assert.match(serviceWorker,
     /event\.respondWith\(fetch\(req, \{ cache: 'no-store' \}\)\);[\s\S]*?return;/,
     'real-user capability and message endpoints must always use a no-store network request');
-  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v195'/);
+  assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v196'/);
 });
