@@ -24,15 +24,29 @@ async function injectAccountScope(response, account) {
     return response;
   }
   const accountId = String(account?.id || '');
-  const role = String(account?.role || 'user');
-  if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return response;
+  const role = String(account?.role || '');
+  const blockedHeaders = {
+    'content-type': 'text/html; charset=UTF-8',
+    'cache-control': 'no-store'
+  };
+  const blockedPage = new Response(
+    '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAO</title><body style="margin:0;padding:12vh 8vw;font:16px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#222;background:#f7f7f8"><h2>账号隔离暂不可用</h2><p>MAO 无法确认此页面已正确安装账号隔离保护，因此已阻止打开。请重新进入或联系创作者。</p></body></html>',
+    { status: 503, headers: blockedHeaders }
+  );
+  if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId) ||
+      !['user', 'super_admin'].includes(role)) return blockedPage;
 
   const source = await response.text();
   const tags =
     '<meta name="mao-account-id" content="' + accountId + '">' +
     '<meta name="mao-account-role" content="' + (role === 'super_admin' ? 'super_admin' : 'user') + '">' +
     '<script src="/shared/js/mao-account-scope.js?v=1" data-mao-account-scope></script>';
-  const html = source.replace(/<head\b[^>]*>/i, match => match + tags);
+  let injected = false;
+  const html = source.replace(/<head\b[^>]*>/i, match => {
+    injected = true;
+    return match + tags;
+  });
+  if (!injected) return blockedPage;
   const headers = new Headers(response.headers);
   ['content-length', 'content-encoding', 'content-md5', 'etag', 'last-modified'].forEach(name => headers.delete(name));
   headers.set('cache-control', 'private, no-store, max-age=0');
