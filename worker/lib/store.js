@@ -1087,6 +1087,7 @@ class CloudStore {
   }
 
   createFriendRequest(request) {
+    return this.atomic(() => {
     if (this.getFriendship(request.requesterId, request.recipientId)) {
       return { kind: 'already_friends', request: null };
     }
@@ -1160,6 +1161,7 @@ class CloudStore {
     if (currentIncoming) return { kind: 'incoming_request_exists', request: currentIncoming };
 
     return { kind: 'request_conflict', request: null };
+    });
   }
 
   listFriendRequests(userId) {
@@ -1179,6 +1181,7 @@ class CloudStore {
   }
 
   respondToFriendRequest({ requestId, userId, status, now }) {
+    return this.atomic(() => {
     const request = this.exec(
       `SELECT * FROM friend_requests
        WHERE id = ? AND recipient_id = ?`,
@@ -1221,6 +1224,7 @@ class CloudStore {
       );
     }
     return { ...updated, duplicate: false };
+    });
   }
 
   listFriends(userId) {
@@ -1290,6 +1294,7 @@ class CloudStore {
   }
 
   insertFriendMessage(message) {
+    return this.atomic(() => {
     // The sender must prove which friendship generation the request belongs to.
     // Checking only the live pair is insufficient: an in-flight request may
     // authenticate before removal and reach this write after the pair is re-added.
@@ -1357,6 +1362,7 @@ class CloudStore {
       friendship.generation_id
     )[0];
     return { kind: 'created', message: inserted || null };
+    });
   }
 
   listFriendMessages({ userId, friendId, after = null, before = null, limit = 50 } = {}) {
@@ -1498,6 +1504,7 @@ class CloudStore {
   }
 
   clearFriendConversation({ userId, friendId, friendshipGenerationId, now }) {
+    return this.atomic(() => {
     const friendship = this.getFriendship(userId, friendId);
     if (!friendship) return { kind: 'not_friends', cleared: false };
     if (friendship.generation_id !== friendshipGenerationId) {
@@ -1545,6 +1552,7 @@ class CloudStore {
         messageId: String(updated?.clear_before_message_id || latest.id)
       }
     };
+    });
   }
 
   markFriendConversationRead({ userId, friendId, messageId, now }) {
@@ -1606,6 +1614,7 @@ class CloudStore {
   }
 
   removeFriendship(userId, otherUserId, friendshipGenerationId) {
+    return this.atomic(() => {
     const [low, high] = [String(userId), String(otherUserId)].sort();
     const friendship = this.getFriendship(userId, otherUserId);
     if (!friendship) return false;
@@ -1632,6 +1641,7 @@ class CloudStore {
       high
     );
     return rows.length > 0;
+    });
   }
 
   counts() {
