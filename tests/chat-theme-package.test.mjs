@@ -97,19 +97,19 @@ test('runtime CSS asset rewriting follows the same tokenizer as package validati
   const bytes=new Uint8Array([1,2,3]);
   const urls={'assets/bg.png':'blob:maomao/theme-bg'};
   const cases=[
-    ".sample{background-image:u/**/rl(assets/bg.png)}",
-    ".sample{background-image:u\\\\72l(assets/bg.png)}",
-    ".sample{background-image:url(\\"assets/b\\\\67.png\\")}",
-    ".sample{content:\\"url(assets/bg.png)\\";background-image:url(assets/bg.png)}"
+    String.raw`.sample{background-image:u/**/rl(assets/bg.png)}`,
+    String.raw`.sample{background-image:u\72l(assets/bg.png)}`,
+    String.raw`.sample{background-image:url("assets/b\67.png")}`,
+    `.sample{content:"url(assets/bg.png)";background-image:url(assets/bg.png)}`
   ];
   for(const css of cases){
     assert.doesNotThrow(()=>F.createPackage(theme,css,{'assets/bg.png':bytes}));
-    assert.match(F.rewriteCssAssetUrls(css,urls),/url\\("blob:maomao\\/theme-bg"\\)/);
+    assert.ok(F.rewriteCssAssetUrls(css,urls).includes('url("blob:maomao/theme-bg")'));
   }
   const contentOnly='.sample{content:"url(assets/bg.png)"}';
   assert.equal(F.rewriteCssAssetUrls(contentOnly,urls),contentOnly,'普通文本中的 url 字样不能被当成素材引用替换');
   const runtime=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
-  assert.match(runtime,/FORMAT\\.rewriteCssAssetUrls\\(css,assetUrls\\)/,'运行时必须使用与导入校验相同的 CSS URL 解析器');
+  assert.ok(runtime.includes('FORMAT.rewriteCssAssetUrls(css,assetUrls)'),'运行时必须使用与导入校验相同的 CSS URL 解析器');
 });
 
 test('chat beauty exports only global CSS presets as chat theme packages',()=>{
