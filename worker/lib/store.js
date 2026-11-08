@@ -2239,14 +2239,29 @@ class CloudStore {
     return true;
   }
 
-  updateMaoAccountPassword(accountId, passwordSalt, passwordHash, now) {
-    return Boolean(this.exec(
-      "UPDATE mao_accounts SET password_salt = ?, password_hash = ?, updated_at = ? WHERE id = ? RETURNING id",
-      passwordSalt,
-      passwordHash,
-      now,
-      accountId
-    )[0]);
+  updateMaoAccountPasswordAndRevokeOtherSessions({
+    accountId, keepSessionId, passwordSalt, passwordHash, now
+  }) {
+    return this.transaction(() => {
+      const updated = this.exec(
+        "UPDATE mao_accounts SET password_salt = ?, password_hash = ?, updated_at = ? WHERE id = ? RETURNING id",
+        passwordSalt,
+        passwordHash,
+        now,
+        accountId
+      )[0];
+      if (!updated) return false;
+
+      // Password rotation and revoking every other session are one atomic
+      // security change. Never leave the new password active with old sessions.
+      this.exec(
+        "UPDATE mao_account_sessions SET revoked_at = ? WHERE account_id = ? AND id != ? AND revoked_at IS NULL",
+        now,
+        accountId,
+        keepSessionId
+      );
+      return true;
+    });
   }
 
   updateMaoAccountEmail(accountId, email, now) {
