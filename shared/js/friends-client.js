@@ -185,7 +185,8 @@
   }
 
   global.MaomaoFriends = {
-    ensureAccount: ensureAccount,\n    getLocalAccountId: getLocalAccountId,
+    ensureAccount: ensureAccount,
+    getLocalAccountId: getLocalAccountId,
     getMe: getMe,
     updateProfile: updateProfile,
     getProfile: getProfile,
