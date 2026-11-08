@@ -342,6 +342,53 @@ test('停用并恢复尚未核销邀请码的账号仍保持待授权，不能�
   assert.equal(redeemed.payload.account.status, 'active');
 });
 
+test('恢复没有历史授权状态的旧 disabled 账号时按待授权处理', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'legacy-disabled',
+      password: 'legacy-disabled-password-123',
+      confirmPassword: 'legacy-disabled-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  ctx.store.exec(
+    "UPDATE mao_accounts SET status = 'disabled', disabled_from_status = NULL WHERE id = ?",
+    registered.payload.account.id
+  );
+
+  const restored = await post(
+    ctx,
+    '/api/admin/accounts/' + registered.payload.account.id + '/action',
+    { action: 'restore' },
+    adminCookie
+  );
+  assert.equal(restored.status, 200);
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'legacy-disabled', password: 'legacy-disabled-password-123' }
+  });
+  const userCookie = cookieFrom(login);
+  const me = await ctx.fetchTo('/api/accounts/me', { headers: { cookie: userCookie } });
+  const result = await json(me);
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.account.status, 'pending_invite',
+    '缺少可证明授权历史的旧账号不能因恢复操作获得 active 权限');
+});
+
 test('重复错误登录触发持久化限流，窗口过期后恢复并清除失败计数', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
