@@ -284,7 +284,7 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   assert.equal(JSON.stringify(listResult.payload).includes('token_hash'), false, '管理列表不得泄露邀请码哈希');
 });
 
-test('创作者管理中心默认列表可检索超过两百名普通账号', async () => {
+test('创作者管理中心默认列表可返回完整 500 名普通账号，不让管理员占用名额', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
   const admin = await ctx.fetchTo('/api/admin/bootstrap', {
@@ -297,13 +297,19 @@ test('创作者管理中心默认列表可检索超过两百名普通账号', as
     }
   });
   const adminCookie = cookieFrom(admin);
+  const adminCreatedAt = ctx.query(
+    "SELECT created_at FROM mao_accounts WHERE role = 'super_admin'"
+  )[0].created_at;
 
-  for (let index = 0; index < 225; index += 1) {
+  // Make the creator account newer than these ordinary users so a LIMIT applied
+  // before role filtering would incorrectly return only 499 ordinary accounts.
+  for (let index = 0; index < 505; index += 1) {
     const suffix = String(index).padStart(12, '0');
     const username = 'capacity_' + index;
+    const createdAt = Number(adminCreatedAt) - 10000 + index;
     ctx.store.exec(
       "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at) VALUES (?, ?, ?, 'test-salt', 'test-hash', 'user', 'pending_invite', ?, ?)",
-      'MAO-' + suffix, username, username, ctx.now() + index, ctx.now() + index
+      'MAO-' + suffix, username, username, createdAt, createdAt
     );
   }
 
@@ -312,9 +318,11 @@ test('创作者管理中心默认列表可检索超过两百名普通账号', as
   });
   const result = await json(response);
   assert.equal(result.status, 200);
-  assert.equal(result.payload.accounts.length, 225,
-    '管理列表默认读取上限应覆盖数百名用户，而不是停在前 200 名');
-  assert.ok(result.payload.accounts.every(account => account.role !== 'super_admin'));
+  assert.equal(result.payload.accounts.length, 500,
+    '管理列表默认应返回完整 500 名普通账号，超级管理员不能占用名额');
+  assert.ok(result.payload.accounts.every(account => account.role === 'user'));
+  assert.ok(result.payload.accounts.some(account => account.username === 'capacity_504'));
+  assert.ok(!result.payload.accounts.some(account => account.username === 'capacity_0'));
 });
 
 test('并发创建同一目标账号的邀请码时只允许一张有效邀请码', async () => {
