@@ -901,6 +901,7 @@
                 + '原始恢复点仍保留，请勿清理网站数据；重新打开设置页可再次核验。');
             return false;
         }
+        await assertImportLock();
         var finalCleanup = await clearRestorePoints();
         if (!finalCleanup.ok) {
             toast('上次整机导入已恢复到导入前状态，但恢复点清理未完全确认。'
@@ -923,7 +924,7 @@
         }
         if (!acquired) {
             toast('另一个 MAOMAO 标签页正在导入或恢复数据。'
-                + '请勿同时操作；完成后重新打开设置页再试。');
+                + '请勿同时操作；若原标签页已异常关闭，租约最长 5 分钟后过期，再重新打开设置页恢复。');
             return false;
         }
         startImportLockHeartbeat();
@@ -1953,6 +1954,7 @@
                         return;
                     }
                     await assertImportLock();
+                    await assertImportLock();
                     var cleanupAfterLocalRollback = await clearRestorePoints();
                     toast('导入失败，已从本机恢复点回滚到导入前状态'
                         + (cleanupAfterLocalRollback.ok ? '' : '；恢复点清理未能完全确认，残留记录仍保留在本机'));
@@ -1993,6 +1995,7 @@
                                 + '原始恢复点已保留，请勿清理网站数据。');
                             return;
                         }
+                        await assertImportLock();
                         await assertImportLock();
                         var cleanupAfterDatabaseRollback = await clearRestorePoints();
                         toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
