@@ -4,6 +4,7 @@
   const $ = id => document.getElementById(id);
   let accounts = [];
   let invites = [];
+  let accountFilter = 'all';
   let selectedAccountId = '';
   let pendingAction = '';
   let generatedCode = '';
@@ -117,17 +118,41 @@
     $('statDisabled').textContent = String(totals.disabled);
   }
 
+  function updateAccountFilterCounts() {
+    const counts = {
+      all: accounts.length,
+      pending_invite: accounts.filter(account => account.status === 'pending_invite').length,
+      active: accounts.filter(account => account.status === 'active').length,
+      restricted: accounts.filter(account => account.status === 'disabled' || account.status === 'revoked').length
+    };
+    $('filterCountAll').textContent = String(counts.all);
+    $('filterCountPending').textContent = String(counts.pending_invite);
+    $('filterCountActive').textContent = String(counts.active);
+    $('filterCountRestricted').textContent = String(counts.restricted);
+  }
+
   function renderAccounts() {
     const list = $('accountsList');
     list.replaceChildren();
     const query = String($('accountSearch').value || '').trim().toLocaleLowerCase();
-    const filtered = accounts.filter(account =>
-      String(account.id || '').toLocaleLowerCase().includes(query) ||
-      String(account.username || '').toLocaleLowerCase().includes(query)
+    const searched = accounts.filter(account =>
+      [account.id, account.username, account.qq_email]
+        .some(value => String(value || '').toLocaleLowerCase().includes(query))
     );
+    const filtered = searched.filter(account => {
+      if (accountFilter === 'restricted') return account.status === 'disabled' || account.status === 'revoked';
+      return accountFilter === 'all' || account.status === accountFilter;
+    });
+    $('accountResultCount').textContent = query || accountFilter !== 'all'
+      ? '当前显示 ' + filtered.length + ' / ' + accounts.length + ' 个账号'
+      : '共 ' + accounts.length + ' 个普通账号';
 
     if (!filtered.length) {
-      list.appendChild(el('p', 'empty-note', query ? '没有找到匹配的账号。' : '暂无普通用户账号。'));
+      list.appendChild(el(
+        'p',
+        'empty-note',
+        accounts.length ? '没有找到符合条件的账号。' : '暂无普通用户账号。'
+      ));
       return;
     }
 
@@ -135,9 +160,10 @@
       const row = el('div', 'account-row', '');
       const avatar = el('div', 'row-avatar', 'M');
       const main = el('div', 'row-main', '');
+      const subline = account.id + ' · 创建于 ' + formatTime(account.created_at);
       main.append(
         el('div', 'row-title', account.username || '未命名用户'),
-        el('div', 'row-sub', account.id + ' · 创建于 ' + formatTime(account.created_at))
+        el('div', 'row-sub', subline)
       );
       const status = el('div', 'row-status ' + statusClass(account.status), statusText(account.status));
       const button = el('button', 'open-detail', '详情');
@@ -194,6 +220,7 @@
     accounts = Array.isArray(accountResult.accounts) ? accountResult.accounts : [];
     invites = Array.isArray(inviteResult.invites) ? inviteResult.invites : [];
     updateStats();
+    updateAccountFilterCounts();
     renderAccounts();
     renderInvites();
     if (selectedAccountId && !$('accountDetail').hidden) {
@@ -378,6 +405,17 @@
   $('refreshUsers').addEventListener('click', () => run(refreshAll));
   $('refreshInvites').addEventListener('click', () => run(refreshAll));
   $('accountSearch').addEventListener('input', renderAccounts);
+  document.querySelectorAll('[data-account-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+      accountFilter = button.dataset.accountFilter || 'all';
+      document.querySelectorAll('[data-account-filter]').forEach(item => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      renderAccounts();
+    });
+  });
 
   document.querySelectorAll('[data-tab]').forEach(button => {
     button.addEventListener('click', () => {
