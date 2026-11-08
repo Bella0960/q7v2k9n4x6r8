@@ -137,7 +137,7 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /window\.confirm\(confirmText\)/);
   assert.match(html, /仅本次页面会话使用/);
   assert.match(html, /MaoMcpClient\.validateToolArguments\(tool\.inputSchema/);
-  assert.match(html, /mcp-client\.js\?v=20261108h/);
+  assert.match(html, /mcp-client\.js\?v=20261108i/);
   assert.match(html, /window\.addEventListener\('pagehide'/);
   assert.match(html, /window\.addEventListener\('pageshow'/);
   assert.match(html, /页面已恢复。为保护连接凭据/);
@@ -371,7 +371,7 @@ test('MCP tool listing enforces a cumulative metadata budget across the catalog'
   const tools = Array.from({ length: 40 }, (_, index) => {
     const properties = {};
     for (let property = 0; property < 5; property += 1) {
-      properties['field-' + property] = { description: 's'.repeat(4000) };
+      properties['field-' + property] = { description: '中'.repeat(1200) };
     }
     return { name: 'catalog-' + index, inputSchema: { type: 'object', properties } };
   });
