@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
+import { MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
 
@@ -20,6 +21,30 @@ async function post(ctx, path, body, cookie = '') {
   const headers = cookie ? { cookie } : {};
   return ctx.asJson(path, { method: 'POST', body, headers });
 }
+
+test('旧数据库已经应用 0012 时，新增 0013 可安全补上恢复状态字段', () => {
+  const db = openTestDb();
+  // Simulate an installation whose schema_migrations already records 0012.
+  for (const migration of MIGRATIONS.filter(item => item.version !== '0013_mao_account_restore_state')) {
+    for (const statement of splitSql(migration.sql)) db.exec(statement);
+    db.exec(
+      'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+      migration.version,
+      1
+    );
+  }
+  const before = db.query('PRAGMA table_info(mao_accounts)').map(column => column.name);
+  assert.ok(!before.includes('disabled_from_status'),
+    '0012 must remain unchanged so previously applied databases do not skip this schema change');
+
+  const ctx = setupTestStore(db);
+  const after = ctx.query('PRAGMA table_info(mao_accounts)').map(column => column.name);
+  assert.ok(after.includes('disabled_from_status'),
+    '0013 must add the restore-state field to an existing MAO account table');
+  assert.ok(
+    ctx.query('SELECT version FROM schema_migrations WHERE version = ?', '0013_mao_account_restore_state').length === 1
+  );
+});
 
 test('0012 创建独立 MAO 账号、会话、邀请码与审计表', () => {
   const db = openTestDb();
