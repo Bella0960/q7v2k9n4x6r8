@@ -329,6 +329,16 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (!actor || actor.status !== 'active') {
       throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
     }
+    const pepper = String(env.DEVICE_SECRET_PEPPER || '');
+    if (pepper.length < 32) {
+      throw new ApiError(503, 'ACCOUNT_SECURITY_NOT_CONFIGURED', '账号安全服务尚未完成配置');
+    }
+    const ip = String(request.headers.get('cf-connecting-ip') || 'unavailable');
+    const rateLimitKey = await sha256Hex('mao-password-change|' + pepper + '|' + ip + '|' + actor.account_id);
+    if (store.getMaoLoginRateLimit(rateLimitKey, now()).blocked) {
+      throw new ApiError(429, 'PASSWORD_CHANGE_RATE_LIMITED', '密码验证尝试过多，请 15 分钟后再试');
+    }
+
     const body = await readJsonBody(request);
     const currentPassword = String(body.currentPassword || '');
     const newPassword = String(body.newPassword || '');
@@ -342,6 +352,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (!account) throw new ApiError(404, 'ACCOUNT_NOT_FOUND', '账号不存在');
     const currentDigest = await passwordDigest(currentPassword, account.password_salt);
     if (!timingSafeEqualHex(currentDigest, account.password_hash)) {
+      const failed = store.recordMaoLoginFailure(rateLimitKey, now());
+      if (failed.blocked) {
+        throw new ApiError(429, 'PASSWORD_CHANGE_RATE_LIMITED', '密码验证尝试过多，请 15 分钟后再试');
+      }
       throw new ApiError(401, 'CURRENT_PASSWORD_INVALID', '当前密码不正确');
     }
     if (timingSafeEqualHex(await passwordDigest(newPassword, account.password_salt), account.password_hash)) {
@@ -353,8 +367,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw new ApiError(409, 'PASSWORD_UPDATE_FAILED', '密码修改没有成功');
     }
     store.revokeMaoAccountSessionsExcept(actor.account_id, actor.session_id, now());
+    store.clearMaoLoginRateLimit(rateLimitKey);
     return ok({ changed: true, sessionsRevoked: true });
   }
+
 
   async function logout(request) {
     const token = cookieValue(request);
