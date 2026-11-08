@@ -872,8 +872,9 @@
             return fail('导入阶段标记缺失或无法识别');
         }
         var targetNames = [];
-        if (metaRecord && metaRecord.snap
-                && Object.prototype.hasOwnProperty.call(metaRecord.snap, 'indexedDbTargets')) {
+        var hasDeclaredTargetNames = !!(metaRecord && metaRecord.snap
+            && Object.prototype.hasOwnProperty.call(metaRecord.snap, 'indexedDbTargets'));
+        if (hasDeclaredTargetNames) {
             var declared = metaRecord.snap.indexedDbTargets;
             if (!Array.isArray(declared)) return fail('IndexedDB 恢复数据库清单格式错误');
             var allowedNames = IDB_TARGETS.map(function (target) { return target.db; });
@@ -908,13 +909,14 @@
             return fail('IndexedDB 原始恢复点缺失或损坏');
         }
         var snapshotNames = dbSnapshots ? Object.keys(dbSnapshots) : [];
-        if (metaRecord) {
+        if (metaRecord && hasDeclaredTargetNames) {
             if (targetNames.length !== snapshotNames.length
                     || targetNames.some(function (name) { return snapshotNames.indexOf(name) === -1; })) {
                 return fail('IndexedDB 恢复点与阶段记录中的数据库清单不一致');
             }
         } else {
-            targetNames = snapshotNames.slice(); // 兼容旧版本没有阶段元数据的恢复点
+            // 兼容早期阶段日志尚未记录数据库清单的版本，以及没有阶段日志的旧恢复点。
+            targetNames = snapshotNames.slice();
         }
         if (targetNames.length && !indexedDbRecord) {
             return fail('IndexedDB 原始恢复点缺失');
