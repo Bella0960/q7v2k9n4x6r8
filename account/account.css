@@ -143,3 +143,10 @@ input:focus { border-color: #989ba3; box-shadow: 0 0 0 3px rgba(130,135,145,.10)
 .page-footer span { padding: 0 5px; }
 @media (min-height: 820px) { .panel { padding-top: 7vh; padding-bottom: 7vh; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+.creator-bootstrap-link{
+  display:block;width:max-content;max-width:100%;margin:10px auto 12px;padding:7px 11px;
+  color:#999ca3;font-size:10px;text-decoration:none;border:1px solid #e7e8eb;border-radius:10px;
+  background:rgba(255,255,255,.62)
+}
+.creator-bootstrap-link[hidden]{display:none}
