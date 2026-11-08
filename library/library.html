@@ -2012,12 +2012,22 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
   document.getElementById('fsUp').addEventListener('click', function () {
     if (settings.fs < 22) { settings.fs += 1; applySettings(); }
   });
+  var localBooksCleanupBusy = false;
   document.getElementById('clearRow').addEventListener('click', function () {
-    var hasLocal = books.some(function (b) { return b.isLocal; });
+    var button = this;
+    var hasLocal = books.some(function (b) { return b && b.isLocal; });
+    if (localBooksCleanupBusy) return;
     if (!hasLocal) { showToast('没有本地书籍'); return; }
     if (!confirm('清空后会移除所有导入的书籍和对应段评，示例书籍不会受影响。继续吗？')) return;
-    removeLocalBooks().catch(function (error) {
+    localBooksCleanupBusy = true;
+    button.disabled = true;
+    removeLocalBooks().then(function () {
+      localBooksCleanupBusy = false;
+      button.disabled = false;
+    }, function (error) {
       showToast('清空失败：' + String(error && error.message || error || '请稍后重试').slice(0, 90));
+      localBooksCleanupBusy = false;
+      button.disabled = false;
     });
   });
 
