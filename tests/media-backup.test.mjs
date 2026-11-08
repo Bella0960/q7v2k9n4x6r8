@@ -199,6 +199,13 @@ function makeIDB(name, version, storeDefs) {
                             db._failPut = null;
                             throw new Error(failure.message || 'mock IndexedDB put failed');
                         }
+                        const drop = db._dropPut;
+                        if (drop && drop.store === name
+                                && (!drop.assetId || String(value && value.assetId) === String(drop.assetId))
+                                && (!drop.id || String(value && value.id) === String(drop.id))) {
+                            db._dropPut = null;
+                            return { onsuccess: null, result: undefined };
+                        }
                         let k;
                         if (def && def.keyPath) k = value[def.keyPath];
                         else k = key;
@@ -1783,4 +1790,49 @@ test('30 clearRestorePoints：删除后仍可读到恢复点时返回失败列�
     assert.equal(ctx.__restorePointRows.has('pre-import'), false);
     assert.equal(ctx.__restorePointRows.has('pre-import-indexeddb'), true,
         '未确认删除的恢复点必须保留');
+});
+
+
+/* ═══════════════════════════════════════════════
+   31. 数据库回滚事务成功但静默漏写：必须回读发现并保留恢复点
+   ═══════════════════════════════════════════════ */
+test('31 完整导入：数据库回滚事务成功但数据未完整写回时判定回滚失败', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const { mediaDb, fontDb } = await seedCrossDatabaseImportFixture(ctx);
+
+    // rollback restoreDatabase 的事务正常 complete，但故意静默丢弃原 wallpaper。
+    mediaDb._dropPut = {
+        store: 'wallpapers',
+        id: 'wallpaper-old'
+    };
+    // 第二库导入失败，触发首库回滚。
+    fontDb._failPut = {
+        store: 'presets',
+        id: 'font-new',
+        message: 'injected second database failure'
+    };
+
+    await runImport(ctx, makeCrossDatabaseIncoming());
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(mediaDb._data.wallpapers.length, 0,
+        '故障注入应模拟事务成功但原记录静默漏写');
+    assert.ok(ctx.__restorePointRows.has('pre-import'),
+        'localStorage 恢复点必须继续保留');
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'),
+        '含本地 Blob 的数据库恢复点必须继续保留');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /部分回滚未能确认/.test(item.msg)
+        && /maomao-media-store/.test(item.msg)
+        && /请勿清理网站数据/.test(item.msg)
+    ));
+    assert.equal(ctx.__intercepted.reloads, 0);
 });
