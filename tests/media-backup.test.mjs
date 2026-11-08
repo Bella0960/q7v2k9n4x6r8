@@ -1195,13 +1195,16 @@ test('15 完整导入：localStorage 写入失败时回滚原值且不触碰业�
 
     const originalSetItem = ctx.localStorage.setItem;
     let injected = false;
-    ctx.localStorage.setItem = function (key, value) {
-        if (key === 'phone_data_v2' && !injected) {
-            injected = true;
-            throw new Error('injected localStorage import write failure');
+    Object.defineProperty(ctx.localStorage, 'setItem', {
+        configurable: true,
+        value: function (key, value) {
+            if (key === 'phone_data_v2' && !injected) {
+                injected = true;
+                throw new Error('injected localStorage import write failure');
+            }
+            return originalSetItem.call(this, key, value);
         }
-        return originalSetItem.call(this, key, value);
-    };
+    });
 
     await runImport(ctx, makeImportPayload({
         'maomao-media-store': {
@@ -1326,13 +1329,16 @@ test('18 完整导入：localStorage 写入及其回滚均失败时保留两份�
 
     const originalSetItem = ctx.localStorage.setItem;
     let failuresRemaining = 2;
-    ctx.localStorage.setItem = function (key, value) {
-        if (key === 'phone_data_v2' && failuresRemaining > 0) {
-            failuresRemaining--;
-            throw new Error('injected persistent localStorage write failure');
+    Object.defineProperty(ctx.localStorage, 'setItem', {
+        configurable: true,
+        value: function (key, value) {
+            if (key === 'phone_data_v2' && failuresRemaining > 0) {
+                failuresRemaining--;
+                throw new Error('injected persistent localStorage write failure');
+            }
+            return originalSetItem.call(this, key, value);
         }
-        return originalSetItem.call(this, key, value);
-    };
+    });
 
     await runImport(ctx, makeImportPayload({
         'maomao-media-store': {
