@@ -212,13 +212,14 @@ Acceptance:
 - Accept only MAOMAO_CHAT_THEME schema v1 packages for target maomao-chat.
 - Validate archive paths, CRC, file counts/sizes, CSS syntax, external resource references, and ensure every assets/ URL resolves to an asset registered in the package.
 - Rewrite runtime `assets/` URLs using the package CSS escape decoder and matching comment handling, including quoted, unquoted, escaped and comment-separated forms; never rewrite matching text inside CSS string values or alter unrelated CSS escapes.
+- Scope CSS rules with a comment/string-aware parser: ignore braces and commas inside comments, strings, functions and attribute selectors; recurse through allow-listed `@media`, `@supports` and `@container` blocks; recognize escaped root identifiers; never scope or rewrite `@font-face` declaration bodies.
 - Import assets to MediaRepository; rollback references and theme settings when any step fails.
 - Keep imported themes separate from beauty_chat_global_v1, beauty_chat_<roleId> and maomao_chat_theme_preset.
 - Apply chat-list and chat-detail styles only on their corresponding pages; do not alter message data or role storage.
 - Mount custom blocks using safe DOM APIs and textContent; do not execute scripts from packages.
 - Motion behaviors are allow-listed (nav scroll collapse/hide, nav tap, message enter, sheet rise, bubble press).
 - Exported packages contain the normalized manifest/theme/CSS and original binary assets; export output must round-trip through the importer.
-- Automated package-format tests cover valid packages, exported round trips, global CSS preset export, role-preset isolation, assets, missing CSS assets, CSS rejection, unsafe paths and schema mismatches.
+- Automated package-format tests cover valid packages, exported round trips, global CSS preset export, role-preset isolation, assets, missing CSS assets, CSS rejection and scoping around comments/strings/escaped selectors, unsafe paths and schema mismatches.
 - Real desktop and phone/PWA import, apply, switch, refresh, and rollback acceptance remains required before release.
 - A shared exporter, installed-theme re-export action, and the existing deep-CSS editor's global-preset export action now produce compatible `.maomaotheme` packages. Role-scoped CSS presets are excluded. Keep THEME-001 IN PROGRESS until the independent high-freedom Theme Studio editor exposes the same exporter and real desktop/phone acceptance is completed.
 
