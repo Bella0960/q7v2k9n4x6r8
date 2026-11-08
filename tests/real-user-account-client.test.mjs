@@ -380,8 +380,11 @@ test('Contacts panel keeps real-user avatar management separate from AI role ass
 
 test('friend requests and accepted friends load private avatars; blocked rows avoid denied reads', () => {
   assert.match(PANEL_SOURCE, /function createAvatarWrap\(assetId, displayName, large\)/);
-  assert.match(PANEL_SOURCE, /createAvatarWrap\(peer\.avatarAssetId, peer\.displayName, false\)/);
+  assert.match(PANEL_SOURCE, /createAvatarWrap\(peerUnavailable \? null : peer\.avatarAssetId, visibleName, false\)/);
   assert.match(PANEL_SOURCE, /createAvatarWrap\(friend\.avatarAssetId, friend\.displayName, false\)/);
+  assert.match(PANEL_SOURCE, /peer\.unavailable === true/);
+  assert.match(PANEL_SOURCE, /账号暂不可用/);
+  assert.match(PANEL_SOURCE, /if \(!peerUnavailable\) addAction\(actions, '通过', 'accept-request', item\.id\)/);
   assert.match(PANEL_SOURCE, /function renderBlocked\(blocked\)[\s\S]*?createAvatarWrap\(null, account\.displayName, false\)/);
   assert.doesNotMatch(PANEL_SOURCE, /function renderBlocked\(blocked\)[\s\S]*?createAvatarWrap\(account\.avatarAssetId/);
   assert.match(PANEL_SOURCE, /target\.loading = 'lazy'/);
