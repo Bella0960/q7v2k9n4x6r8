@@ -346,7 +346,7 @@
     if(theme.assetIndex!=null&&!Array.isArray(theme.assetIndex))fail("主题素材清单格式无效。");
     (Array.isArray(theme.assetIndex)?theme.assetIndex:[]).forEach(function(a){if(!a||!safeAssetPath(a.path)||!files[a.path]||own(assets,a.path))fail("主题素材缺失或路径无效。");
       if(!/^(image\/(png|jpeg|webp|gif)|font\/(woff|woff2|ttf|otf)|application\/octet-stream)$/i.test(a.mimeType||""))fail("主题素材类型不支持。");
-      assets[a.path]={bytes:files[a.path],name:String(a.name||a.path.split("/").pop()),mimeType:a.mimeType,type:a.type||"file"};paths.push(a.path)
+      assets[a.path]={bytes:files[a.path],name:String(a.name||a.path.split("/").pop()),mimeType:a.mimeType,type:/^image\\//i.test(a.mimeType)?"image":(/^font\\//i.test(a.mimeType)?"font":"file")};paths.push(a.path)
     });
     Object.keys(files).forEach(function(p){if(p.indexOf("assets/")===0&&!own(assets,p))fail("存在未登记素材："+p);if(["manifest.json","theme.json","custom.css"].indexOf(p)<0&&p.indexOf("assets/")!==0)fail("未知主题文件："+p)});
     var cleanPages={chatList:[],chatDetail:[]},ids={chatList:[],chatDetail:[]};
@@ -365,18 +365,19 @@
     ["chatList","chatDetail"].forEach(function(page){Object.keys(theme.styles&&theme.styles[page]||{}).forEach(function(id){if(!ids[page].includes(id))return;var st={};Object.keys(PROPS).forEach(function(k){var v=cleanValue(theme.styles[page][id][k],k);if(v!==null&&v!==undefined)st[k]=v});clean.styles[page][id]=st});
       var blockSeen=Object.create(null);
       var pageBlocks=(Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).slice(0,40);
-      pageBlocks.forEach(function(b){
-        if(!b||b.type!=="image")return;
+      var uniqueBlocks=pageBlocks.filter(function(b){
+        if(!b||!safeCustomId(b.id)||!ids[page].includes(b.id)||blockSeen[b.id])return false;
+        blockSeen[b.id]=1;
+        return true;
+      });
+      uniqueBlocks.forEach(function(b){
+        if(b.type!=="image")return;
         var asset=assets[b.assetPath];
         if(!asset||!/^image\/(png|jpeg|webp|gif)$/i.test(asset.mimeType||"")){
           fail("图片组件必须引用已登记的图片素材："+String(b.id||""));
         }
       });
-      clean.blocks[page]=pageBlocks.filter(function(b){
-        if(!b||!safeCustomId(b.id)||!ids[page].includes(b.id)||blockSeen[b.id])return false;
-        blockSeen[b.id]=1;
-        return true;
-      }).map(function(b){
+      clean.blocks[page]=uniqueBlocks.map(function(b){
         var t=["card","text","image","divider"].indexOf(b.type)>=0?b.type:"card";
         var slot=BLOCK_SLOTS[page].indexOf(b.slot)>=0?b.slot:(page==="chatList"?"top-of-content":"before-input");
         return{id:b.id,type:t,title:String(b.title||"").slice(0,160),text:String(b.text||"").slice(0,2000),
