@@ -38,5 +38,5 @@ test('好友页先显示本机固定二维码，云端注册成功前不开放�
   assert.match(friendCenterSource, /云端账号尚未连接，此二维码暂不可用于添加好友/);
   assert.match(friendCenterSource, /id="copyIdBtn"[^>]*disabled/);
   assert.match(friendCenterSource, /id="copyQrTextBtn"[^>]*disabled/);
-  assert.match(friendsClientSource, /getLocalAccountId:\\s*getLocalAccountId/);
+  assert.match(friendsClientSource, /getLocalAccountId:\s*getLocalAccountId/);
 });
