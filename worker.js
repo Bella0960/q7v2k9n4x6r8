@@ -95,11 +95,17 @@ export class CloudDatabase {
     this.ctx = ctx;
     this.env = env;
     this.exec = (sql, ...params) => ctx.storage.sql.exec(sql, ...params).toArray();
-    const store = createStore(this.exec);
+    // Durable Objects expose a native synchronous transaction boundary for
+    // SQLite. Keep the store/migration logic storage-agnostic and use this
+    // adapter in production; node:sqlite tests use the explicit SQL fallback.
+    this.transaction = typeof ctx.storage.transactionSync === 'function'
+      ? callback => ctx.storage.transactionSync(callback)
+      : null;
+    const store = createStore(this.exec, this.transaction);
     this.store = store;
     this.handleApi = createApp({ store, env });
     ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(this.exec);
+      applyMigrations(this.exec, Date.now(), this.transaction);
     });
   }
 
