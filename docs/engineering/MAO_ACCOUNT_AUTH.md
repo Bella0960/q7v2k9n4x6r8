@@ -107,6 +107,7 @@ For normal MAO accounts, the script namespaces:
 - page-created CacheStorage names and lookups
 
 The sole super-admin intentionally keeps the creator's existing browser storage and IndexedDB names to preserve the current MAO installation. Ordinary accounts never read the unscoped legacy keys or the super-admin's namespaced cache/database records. If the browser cannot install the required namespace wrappers, the account page is stopped rather than opening unisolated data.
+The page also wraps same-origin `fetch` calls with `x-mao-account-context=<MAO ID>`. The Worker checks that header against the HttpOnly session before dispatching any account API. This prevents a stale tab for account A from using a newly changed account B cookie during the 30-second foreground recheck interval. Cross-origin fetches are left untouched.
 
 This is a first browser-isolation layer. It still requires real-device testing across separate accounts and browsers, and a follow-up audit of any app feature that stores user data outside these browser APIs (for example, server-side tables that have not yet been attached to MAO account IDs).
 
@@ -132,7 +133,7 @@ Super-admin only:
 
 - npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, and account/device revocation.
 - The command also includes browser storage namespace tests for two account IDs.
-- The GitHub Actions job must execute the tests and build before the branch can be considered validated.
+- The focused `MAO Account Auth Contract` workflow must execute the tests and build before the branch can be considered validated. The latest observed jobs still terminate before runner assignment (`runner_id=0`, no steps/logs), so tests and build remain NOT VERIFIED.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
 - QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
 
