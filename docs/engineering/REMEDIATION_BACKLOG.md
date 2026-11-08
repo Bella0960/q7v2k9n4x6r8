@@ -320,6 +320,33 @@ Acceptance:
 - No user data, routes, assets, backup code, or build dependencies removed.
 - No blanket cleanup.
 
+## Phase 6 — iOS application packaging (deferred)
+
+### IOS-001 — Add an iOS app build and IPA distribution path
+**Priority:** P2 · **Status:** DEFERRED (owner decision: do this in a later phase; not part of current work)
+
+Goal: after the existing MAOMAO experience is stable, provide an iPhone-installable iOS app build while continuing to support the current web/PWA version.
+
+Scope when activated:
+- Reassess the current Vite/PWA architecture and evaluate a thin iOS shell such as Capacitor before choosing an implementation.
+- Reuse the existing app code, APIs, and cloud/data contracts wherever practical; do not rewrite MAOMAO as a separate native app without a demonstrated need.
+- Preserve the web/PWA deployment and Android path. iOS work must not silently replace or disrupt either.
+- Audit iOS-specific behavior rather than assuming browser features transfer unchanged: sign-in/session persistence, local data and uploaded media persistence, camera/photo library and file handling, keyboard/viewport behavior, safe-area insets, sharing, background behavior, and push notifications.
+- Document Apple signing and distribution requirements for development-device testing, ad hoc distribution/TestFlight, and any future App Store release. A generated IPA is not automatically installable by every iPhone.
+- Keep signing credentials and certificates out of the repository and CI logs; document the secure owner-controlled signing process.
+
+Start condition:
+- Do not start implementation during the current stabilization/backlog cleanup phase.
+- Activate only after the owner explicitly schedules the task and the core mobile experience, authentication, chat, and data persistence have been stabilized.
+- Before implementation, inspect the then-current main branch and existing Android/PWA configuration; avoid creating duplicate wrappers or parallel app projects.
+
+Acceptance:
+- Existing web/PWA remains functional and independently deployable.
+- A signed iOS test build or TestFlight distribution path is documented and verifiably usable on a real iPhone.
+- Real-device tests cover sign-in, chat send/receive, refresh/reopen persistence, image/file handling, keyboard and safe-area layout, and any claimed background/push behavior.
+- Unsupported or platform-limited capabilities are listed honestly; static build success alone is not treated as device verification.
+- No production deployment, Android release, or existing user data is changed without separate approval.
+
 ## Parallel work plan
 
 Safe to parallelize:
