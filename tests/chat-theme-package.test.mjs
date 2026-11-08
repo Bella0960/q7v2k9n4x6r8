@@ -36,12 +36,20 @@ test('stored ZIP validates its EOCD, central directory and matching local header
 test('stored ZIP permits a valid archive comment but rejects trailing unregistered bytes',()=>{
   const valid=Buffer.from(makePackage());
   const trailing=Buffer.concat([valid,Buffer.from([0x41])]);
-  assert.throws(()=>F.parseStoredZip(trailing),/结束记录长度/);
+  assert.throws(()=>F.parseStoredZip(trailing),/结束记录/);
 
   const commented=Buffer.concat([valid,Buffer.from('ok')]);
   const view=new DataView(commented.buffer,commented.byteOffset,commented.byteLength);
   view.setUint16(valid.length-2,2,true);
   assert.doesNotThrow(()=>F.parseStoredZip(commented));
+
+  const trickyComment=Buffer.alloc(24,0x41);
+  trickyComment.writeUInt32LE(0x06054b50,2);
+  trickyComment.writeUInt16LE(0,22);
+  const signatureInComment=Buffer.concat([valid,trickyComment]);
+  const signatureView=new DataView(signatureInComment.buffer,signatureInComment.byteOffset,signatureInComment.byteLength);
+  signatureView.setUint16(valid.length-2,trickyComment.length,true);
+  assert.doesNotThrow(()=>F.parseStoredZip(signatureInComment),'注释中的结束签名不能遮蔽真正的 ZIP 结束记录');
 });
 test('image/font assets must be registered in assetIndex',()=>{const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);const t=fixture({assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]});const p=F.readPackage(F.parseStoredZip(makePackage(t,'',[{name:'assets/bg.png',data:bytes}])));assert.deepEqual(Array.from(p.assets['assets/bg.png'].bytes),Array.from(bytes));});
 test('rejects wrong target, unsafe paths, external CSS and malformed CSS',()=>{assert.throws(()=>F.readPackage(F.parseStoredZip(makePackage(fixture({target:'desktop'})))),/目标不兼容/);assert.throws(()=>F.parseStoredZip(zip([{name:'../x',data:'x'}])),/不安全路径/);assert.throws(()=>F.parseStoredZip(zip([{name:'assets\\\\..\\\\secret',data:'x'}])),/不安全路径/);assert.throws(()=>F.validateCss('@import url(https://example.invalid/a.css)'),/不允许/);assert.throws(()=>F.validateCss('.x{background:url(https://example.invalid/a.png)}'),/只能引用主题 assets/);assert.throws(()=>F.validateCss('.x{color:red'),/不完整/);});
