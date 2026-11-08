@@ -3918,6 +3918,19 @@ test('暂存结果与同 ID 出站记录冲突时不误判恢复，也不向设�
   assert.equal(inbox.payload.messages.length, 0,
     '与完成任务不可变暂存结果冲突的正文不得进入设备收件箱');
 
+  const staleAck = await ctx.asJson(
+    '/api/characters/char-staged-conflict/outbound/' + serverMessageId + '/ack',
+    { method: 'POST', device }
+  );
+  assert.equal(staleAck.status, 404,
+    '迟到的旧客户端 ACK 也不能确认与暂存结果冲突的记录');
+  const staleStatus = await ctx.asJson(
+    '/api/characters/char-staged-conflict/outbound/' + serverMessageId + '/status',
+    { device }
+  );
+  assert.equal(staleStatus.status, 404,
+    '冲突记录不能通过生命周期接口暴露为有效云端消息');
+
   ctx.store.exec(
     `INSERT INTO push_subscriptions
       (id, device_id, endpoint, p256dh, auth_key, created_at, updated_at)

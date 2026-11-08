@@ -1061,7 +1061,19 @@ class CloudStore {
         AND requesting_device.user_id = source_device.user_id
         AND requesting_device.revoked_at IS NULL
        WHERE o.server_message_id = ? AND o.character_id = ?
-         AND source_device.user_id = ?`,
+         AND source_device.user_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM activity_queue staged
+           WHERE staged.status = 'completed'
+             AND staged.result_server_message_id = o.server_message_id
+             AND staged.result_json IS NOT NULL
+             AND (
+               staged.device_id <> o.device_id
+               OR staged.character_id <> o.character_id
+               OR staged.result_json <> o.payload_json
+               OR staged.result_dedupe_key IS NOT o.dedupe_key
+             )
+         )`,
       deviceId, serverMessageId, characterId, userId
     )[0] || null;
   }
