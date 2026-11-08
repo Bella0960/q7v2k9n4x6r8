@@ -7,19 +7,19 @@
 <script src="../shared/js/phone/phone_storage.js"></script>
 <script src="../shared/js/phone/storage/repository.js"></script>
 <script src="../shared/js/phone/storage/media-repository.js"></script>
-<script src="../shared/js/chat-theme-package-format.js?v=20261109theme3"></script>
+<script src="../shared/js/chat-theme-package-format.js?v=20261109theme4"></script>
 <style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;min-height:100%;background:#fff;color:#171717;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}button{font:inherit;cursor:pointer}.page{width:min(100%,520px);min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;background:#fff}.top{display:flex;align-items:center;gap:14px;padding:calc(18px + env(safe-area-inset-top,0px)) 22px 15px;border-bottom:1px solid #ededf0}.back{border:0;background:transparent;color:#555;font-size:21px;padding:0 4px}.title{font:400 23px/1.1 Georgia,"Songti SC",serif}.sub{font-size:9px;color:#999;letter-spacing:.12em;margin-top:5px}.content{padding:22px;flex:1}.copy{font-size:11px;line-height:1.8;color:#85858b;max-width:390px}.drop{margin-top:23px;border:1px dashed #c9c9ce;border-radius:14px;padding:24px 17px;text-align:center;background:#fafafa}.drop strong{font:400 17px Georgia,"Songti SC",serif}.drop p{font-size:10px;color:#999;line-height:1.7;margin:8px 0 15px}.btn{border:1px solid #dedee2;border-radius:8px;padding:10px 14px;background:#fff;color:#222;font-size:11px}.btn.primary{background:#171717;border-color:#171717;color:#fff}.btn:disabled{opacity:.4;cursor:default}.file-name{margin-top:12px;font-size:10px;color:#777;overflow-wrap:anywhere}.panel{border-top:1px solid #eee;padding:17px 0;margin-top:20px}.panel h3{font:400 17px Georgia,"Songti SC",serif;margin:0 0 11px}.preview-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px}.meta{background:#f7f7f8;border-radius:8px;padding:11px}.meta span{display:block;font-size:9px;color:#999}.meta strong{display:block;margin-top:5px;font-size:12px;font-weight:550}.summary{font-size:10px;color:#777;line-height:1.7;white-space:pre-wrap;margin-top:11px}.list{display:flex;flex-direction:column;gap:8px}.item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #eee}.item-name{font-size:12px}.item-sub{font-size:9px;color:#999;margin-top:4px}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#171717;color:#fff;padding:10px 15px;border-radius:8px;font-size:10px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}.status{font-size:10px;line-height:1.7;color:#777;background:#f7f7f8;border-radius:8px;padding:10px;margin-top:12px;white-space:pre-wrap}.status.error{background:#faf2f2;color:#8b4444}.status.ok{background:#f3f7f3;color:#3f684c}.footnote{font-size:9px;line-height:1.7;color:#aaa;margin-top:19px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;min-height:100%;background:#fff;color:#171717;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}button{font:inherit;cursor:pointer}.page{width:min(100%,520px);min-height:100dvh;margin:0 auto;display:flex;flex-direction:column;background:#fff}.top{display:flex;align-items:center;gap:14px;padding:calc(18px + env(safe-area-inset-top,0px)) 22px 15px;border-bottom:1px solid #ededf0}.back{border:0;background:transparent;color:#555;font-size:21px;padding:0 4px}.title{font:400 23px/1.1 Georgia,"Songti SC",serif}.sub{font-size:9px;color:#999;letter-spacing:.12em;margin-top:5px}.content{padding:22px;flex:1}.copy{font-size:11px;line-height:1.8;color:#85858b;max-width:390px}.drop{margin-top:23px;border:1px dashed #c9c9ce;border-radius:14px;padding:24px 17px;text-align:center;background:#fafafa}.drop strong{font:400 17px Georgia,"Songti SC",serif}.drop p{font-size:10px;color:#999;line-height:1.7;margin:8px 0 15px}.btn{border:1px solid #dedee2;border-radius:8px;padding:10px 14px;background:#fff;color:#222;font-size:11px}.btn.primary{background:#171717;border-color:#171717;color:#fff}.btn:disabled{opacity:.4;cursor:default}.file-name{margin-top:12px;font-size:10px;color:#777;overflow-wrap:anywhere}.panel{border-top:1px solid #eee;padding:17px 0;margin-top:20px}.panel h3{font:400 17px Georgia,"Songti SC",serif;margin:0 0 11px}.preview-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px}.meta{background:#f7f7f8;border-radius:8px;padding:11px}.meta span{display:block;font-size:9px;color:#999}.meta strong{display:block;margin-top:5px;font-size:12px;font-weight:550}.summary{font-size:10px;color:#777;line-height:1.7;white-space:pre-wrap;margin-top:11px}.list{display:flex;flex-direction:column;gap:8px}.item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #eee}.item-name{font-size:12px}.item-sub{font-size:9px;color:#999;margin-top:4px}.item-actions{display:flex;gap:6px;flex-shrink:0}.item-actions .btn{padding:8px 10px;font-size:10px}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#171717;color:#fff;padding:10px 15px;border-radius:8px;font-size:10px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}.status{font-size:10px;line-height:1.7;color:#777;background:#f7f7f8;border-radius:8px;padding:10px;margin-top:12px;white-space:pre-wrap}.status.error{background:#faf2f2;color:#8b4444}.status.ok{background:#f3f7f3;color:#3f684c}.footnote{font-size:9px;line-height:1.7;color:#aaa;margin-top:19px}
 </style>
 </head>
 <body>
 <div class="page">
 <header class="top"><button class="back" onclick="history.back()" aria-label="返回">‹</button><div><div class="title">聊天主题导入</div><div class="sub">MAOMAO / THEME PACKAGE</div></div></header>
 <main class="content">
-  <p class="copy">选择在 Chat Theme Studio 导出的 .maomaotheme 文件。导入时会先检查格式、CSS 和素材，再保存为一套独立主题；不会覆盖原有聊天主题或角色数据。</p>
+  <p class="copy">选择 .maomaotheme 主题包。导入时会先检查格式、CSS 和素材，再保存为一套独立主题；已安装的主题也可以从下方重新导出。</p>
  <section class="drop">
   <strong>选择主题包</strong>
-  <p>支持 Chat Theme Studio 导出的主题包。CSS 与图片/字体素材会一起导入。</p>
+  <p>支持 MAOMAO 聊天主题包。CSS 与图片/字体素材会一起导入，导出文件可再次导入。</p>
   <input id="themeFile" type="file" accept=".maomaotheme,.zip,application/zip" hidden>
   <button class="btn" id="chooseFile">选择文件</button>
   <div class="file-name" id="fileName">尚未选择文件</div>
@@ -52,7 +52,7 @@ function showInstalled(){
  try{active=localStorage.getItem(ACTIVE_KEY)||''}catch(e){}
  var box=$('#installedList');box.innerHTML='';
  if(!list.length){
-   box.innerHTML='<div class="item"><div><div class="item-name">还没有导入主题</div><div class="item-sub">你可以从独立工作台导出第一套聊天主题。</div></div></div>';
+   box.innerHTML='<div class="item"><div><div class="item-name">还没有导入主题</div><div class="item-sub">导入一套主题后，可以在这里再次导出为主题包。</div></div></div>';
    return;
  }
  list.slice().reverse().forEach(function(theme){
@@ -89,7 +89,42 @@ function showInstalled(){
        showStatus((current===theme.id?'恢复原主题':'应用主题')+'失败：'+(e&&e.message?e.message:String(e)),'error');
      }
    });
-   row.appendChild(left);row.appendChild(btn);box.appendChild(row);
+   var exportBtn=document.createElement("button");exportBtn.className="btn";exportBtn.textContent="导出";
+   exportBtn.setAttribute("aria-label","导出"+(theme.name||"聊天主题")+"主题包");
+   exportBtn.addEventListener("click",function(){exportTheme(theme,exportBtn)});
+   var actions=document.createElement("div");actions.className="item-actions";actions.appendChild(exportBtn);actions.appendChild(btn);
+   row.appendChild(left);row.appendChild(actions);box.appendChild(row);
+ });
+}
+function blobBytes(blob){
+ if(blob&&typeof blob.arrayBuffer==="function")return blob.arrayBuffer().then(function(buffer){return new Uint8Array(buffer)});
+ return new Promise(function(resolve,reject){var reader=new FileReader();reader.onerror=function(){reject(reader.error||new Error("读取主题素材失败"))};reader.onload=function(){resolve(new Uint8Array(reader.result))};reader.readAsArrayBuffer(blob)});
+}
+function exportTheme(theme,button){
+ var F=window.MAOMAOChatThemeFormat;
+ if(!F||typeof F.createPackage!=="function"){showStatus("主题包导出模块尚未加载，请刷新页面后重试。","error");return}
+ if(!media||typeof media.getBlob!=="function"){showStatus("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。","error");return}
+ var original=button.textContent,assets=Object.create(null),items=Array.isArray(theme.assetIndex)?theme.assetIndex:[],chain=Promise.resolve();
+ button.disabled=true;button.textContent="导出中…";showStatus("正在收集主题素材并生成可再次导入的主题包…");
+ items.forEach(function(item){chain=chain.then(function(){
+   var assetId=theme.assetRefs&&theme.assetRefs[item.path];
+   if(!assetId)throw new Error("主题素材引用缺失："+item.path);
+   return media.getBlob(assetId).then(function(result){
+     if(!result||!result.ok||!result.value)throw new Error("主题素材读取失败："+item.path);
+     return blobBytes(result.value).then(function(bytes){assets[item.path]=bytes});
+   });
+ })});
+ chain.then(function(){
+   var archive=F.createPackage(theme,theme.customCss||"",assets),blob=new Blob([archive],{type:"application/zip"});
+   if(!window.URL||typeof URL.createObjectURL!=="function")throw new Error("当前浏览器不支持主题包下载。");
+   var url=URL.createObjectURL(blob),link=document.createElement("a");
+   var filename=String(theme.name||"chat-theme").replace(/[\\\\/:*?"<>|\\u0000-\\u001f]/g,"_").trim().slice(0,64)||"chat-theme";
+   link.href=url;link.download=filename+".maomaotheme";link.style.display="none";document.body.appendChild(link);link.click();
+   if(link.parentNode)link.parentNode.removeChild(link);
+   setTimeout(function(){URL.revokeObjectURL(url)},2000);
+   showStatus("「"+(theme.name||"聊天主题")+"」已导出。文件包含主题布局、CSS 和全部登记素材，可以再次导入。","ok");toast("主题包已导出");
+ }).catch(function(error){showStatus("主题导出失败："+(error&&error.message?error.message:String(error)),"error")}).then(function(){
+   button.disabled=false;button.textContent=original;
  });
 }
 function parseSelected(file,generation){if(!file||typeof file.arrayBuffer!=='function')return Promise.reject(new Error('无法读取所选文件。'));if(Number(file.size)>48*1024*1024)return Promise.reject(new Error('主题包超过 48 MB。'));return file.arrayBuffer().then(function(buffer){if(generation!==selectionGeneration)return null;var F=window.MAOMAOChatThemeFormat;if(!F)throw new Error('主题包检查模块没有加载。');var files=F.parseStoredZip(buffer);return F.readPackage(files)}).then(function(parsed){if(generation!==selectionGeneration)return null;pending=parsed;var t=parsed.theme;$('#packagePreview').hidden=false;$('#previewName').textContent=t.name;$('#previewVersion').textContent=t.version||'1.0.0';$('#previewCss').textContent=(parsed.customCss.match(/\{/g)||[]).length+' 项';$('#previewList').textContent=t.pages.chatList.length+' 个';$('#previewDetail').textContent=t.pages.chatDetail.length+' 个';$('#previewSummary').textContent='将导入 '+Object.keys(parsed.assets).length+' 项素材、'+(Array.isArray(t.motions)?t.motions.filter(function(x){return x.enabled}).length:0)+' 个启用动效。应用范围仅限聊天列表和聊天详情。';$('#importApply').disabled=false;showStatus('检查通过。主题包格式、目标应用、CSS 和素材清单均可读取。点击“导入并应用”后才会写入本机。','ok');return parsed})}
