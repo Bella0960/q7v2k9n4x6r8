@@ -51,6 +51,8 @@
             version: 2,   // 含 audio store（本地音乐）
             stores: [
                 { store: 'wallpapers', keyPath: null },
+                // 普通备份只带音频元数据；恢复时按 id 合并本机已有 blob，避免删掉本地文件。
+                // 完整回滚通过 forceClear 使用私有快照，仍会精确恢复 blob 原件。
                 { store: 'audio',      keyPath: 'id', excludeFields: ['blob'] }
             ]
         },
