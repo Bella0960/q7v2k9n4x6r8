@@ -1072,7 +1072,7 @@ class CloudStore {
     const cursorId = hasCursorId ? String(afterId) : null;
     if (hasCursorTime && (
       !Number.isSafeInteger(cursorTime) || cursorTime < 0 ||
-      !/^[A-Za-z0-9_-]{16,128}$/.test(cursorId)
+      cursorId.length < 1 || cursorId.length > 256
     )) {
       throw new TypeError('outbound cursor 无效');
     }
