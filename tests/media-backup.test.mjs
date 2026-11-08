@@ -2587,14 +2587,14 @@ test('49 assertRestorePointCapacity：容量 API 不可用时安全降级', asyn
 /* ═══════════════════════════════════════════════
    50. localStorage 恢复点内容损坏：预检必须拒绝回滚
    ═══════════════════════════════════════════════ */
-test('50 validateInterruptedRestorePoints：localStorage 快照出现非字符串值时失败关闭', () => {
+test('50 validateInterruptedRestorePoints：localStorage 快照出现非字符串值时失败关闭', async () => {
     const ctx = buildCtxFull();
     const localRecord = {
         role: 'pre-import',
         snap: { ai_custom_characters: { corrupted: true } },
         createdAt: Date.now()
     };
-    const result = ctx.validateInterruptedRestorePoints(localRecord, null, null);
+    const result = await ctx.validateInterruptedRestorePoints(localRecord, null, null);
     assert.equal(result.ok, false);
     assert.match(result.message, /localStorage 恢复点包含非字符串值/);
 });
@@ -2643,12 +2643,12 @@ test('51 recoverInterruptedImportUnlocked：缺少 store 时在任何业务写�
 /* ═══════════════════════════════════════════════
    52. 阶段元数据与快照数据库清单不一致：在回滚前阻断
    ═══════════════════════════════════════════════ */
-test('52 validateInterruptedRestorePoints：阶段数据库清单与快照不一致时拒绝恢复', () => {
+test('52 validateInterruptedRestorePoints：阶段数据库清单与快照不一致时拒绝恢复', async () => {
     const ctx = buildCtxFull();
     const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
     const stores = {};
     media.stores.forEach(def => { stores[def.store] = []; });
-    const result = ctx.validateInterruptedRestorePoints(
+    const result = await ctx.validateInterruptedRestorePoints(
         {
             role: 'pre-import',
             snap: { ai_custom_characters: 'old-state' },
@@ -2672,13 +2672,13 @@ test('52 validateInterruptedRestorePoints：阶段数据库清单与快照不一
 /* ═══════════════════════════════════════════════
    53. out-of-line 记录缺少原始主键：不能清空业务库后才发现
    ═══════════════════════════════════════════════ */
-test('53 validateInterruptedRestorePoints：out-of-line 记录缺少主键时拒绝恢复', () => {
+test('53 validateInterruptedRestorePoints：out-of-line 记录缺少主键时拒绝恢复', async () => {
     const ctx = buildCtxFull();
     const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
     const stores = {};
     media.stores.forEach(def => { stores[def.store] = []; });
     stores.wallpapers = [{ __value: { id: 'orphan-record' } }];
-    const result = ctx.validateInterruptedRestorePoints(
+    const result = await ctx.validateInterruptedRestorePoints(
         {
             role: 'pre-import',
             snap: { ai_custom_characters: 'old-state' },
@@ -2702,9 +2702,9 @@ test('53 validateInterruptedRestorePoints：out-of-line 记录缺少主键时拒
 /* ═══════════════════════════════════════════════
    54. committed 清理中断：允许缺失已删除的快照并继续清理
    ═══════════════════════════════════════════════ */
-test('54 validateInterruptedRestorePoints：committed 清理阶段不要求已删除的数据库快照仍存在', () => {
+test('54 validateInterruptedRestorePoints：committed 清理阶段不要求已删除的数据库快照仍存在', async () => {
     const ctx = buildCtxFull();
-    const result = ctx.validateInterruptedRestorePoints(
+    const result = await ctx.validateInterruptedRestorePoints(
         {
             role: 'pre-import',
             snap: { ai_custom_characters: 'old-state' },
@@ -2725,12 +2725,12 @@ test('54 validateInterruptedRestorePoints：committed 清理阶段不要求已�
 /* ═══════════════════════════════════════════════
    55. 早期阶段标记没有数据库清单：从已校验快照推导兼容恢复
    ═══════════════════════════════════════════════ */
-test('55 validateInterruptedRestorePoints：兼容未记录 IndexedDB 清单的早期阶段标记', () => {
+test('55 validateInterruptedRestorePoints：兼容未记录 IndexedDB 清单的早期阶段标记', async () => {
     const ctx = buildCtxFull();
     const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
     const stores = {};
     media.stores.forEach(def => { stores[def.store] = []; });
-    const result = ctx.validateInterruptedRestorePoints(
+    const result = await ctx.validateInterruptedRestorePoints(
         {
             role: 'pre-import',
             snap: { ai_custom_characters: 'old-state' },
@@ -2749,4 +2749,58 @@ test('55 validateInterruptedRestorePoints：兼容未记录 IndexedDB 清单的�
     );
     assert.equal(result.ok, true);
     assert.deepEqual(result.targetNames, ['maomao-media-store']);
+});
+
+
+/* ═══════════════════════════════════════════════
+   56. 内容仍符合结构但字节已变化：指纹必须发现恢复点被改写
+   ═══════════════════════════════════════════════ */
+test('56 validateInterruptedRestorePoints：结构有效但快照内容被改写时拒绝回滚', async () => {
+    const ctx = buildCtxFull();
+    const localSnapshot = { ai_custom_characters: 'before-value' };
+    const indexedSnapshots = {};
+    const integrity = await ctx.fingerprintRestorePoint({
+        localStorage: localSnapshot,
+        indexedDB: indexedSnapshots
+    });
+    localSnapshot.ai_custom_characters = 'changed-value'; // 仍是合法字符串，只有内容指纹能发现变化。
+
+    const result = await ctx.validateInterruptedRestorePoints(
+        { role: 'pre-import', snap: localSnapshot, createdAt: Date.now() },
+        null,
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: [], integrity },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /恢复点内容指纹不一致/);
+});
+
+/* ═══════════════════════════════════════════════
+   57. 阶段切换不得丢失 applying 阶段的完整性指纹
+   ═══════════════════════════════════════════════ */
+test('57 writeImportState：切换 committed / rolled-back 状态时继承原内容指纹', async () => {
+    const ctx = buildCtxFull();
+    const integrity = '0123456789abcdef';
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: {
+            status: 'applying',
+            indexedDbTargets: ['maomao-media-store'],
+            integrity
+        },
+        createdAt: Date.now()
+    });
+
+    await ctx.writeImportState('committed', ['maomao-media-store']);
+    const committed = ctx.__restorePointRows.get('pre-import-meta');
+    assert.equal(committed.snap.status, 'committed');
+    assert.equal(committed.snap.integrity, integrity);
+
+    await ctx.writeImportState('rolled-back', ['maomao-media-store']);
+    const rolledBack = ctx.__restorePointRows.get('pre-import-meta');
+    assert.equal(rolledBack.snap.status, 'rolled-back');
+    assert.equal(rolledBack.snap.integrity, integrity);
 });
