@@ -816,39 +816,119 @@
     // 恢复一个 DB：顺序处理备份里有的 store，一个 store 一个事务。
     // 备份里有我们没登记的 store（兼容性/未来字段）→ 静默跳过。
     // 返回 Promise<{ written: number, skipped: number, dbRestored: boolean }>
+    // 恢复一个 DB：所有本次涉及的 store 共用一个 readwrite 事务。
+    // 任一 store 的 clear / Blob 解码 / put 失败都会 abort 整个事务，避免同一 DB
+    // 出现「前几个 store 已覆盖、后一个 store 失败」的半恢复状态。
+    // 不在 incomingDb 中的未来/未知 store 继续跳过；已登记 store 的非法数据则整体失败。
     function restoreDatabase(dbName, version, storeDefs, incomingDb) {
-        if (!incomingDb || typeof incomingDb !== 'object') return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
-        var db = null;
-        // 从 IDB_TARGETS 中读取 clearOnRestore 标记
+        if (!incomingDb || typeof incomingDb !== 'object' || Array.isArray(incomingDb)) {
+            return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
+        }
         var targetDef = null;
         for (var t = 0; t < IDB_TARGETS.length; t++) {
             if (IDB_TARGETS[t].db === dbName) { targetDef = IDB_TARGETS[t]; break; }
         }
-        var clearOnRestore = targetDef && targetDef.clearOnRestore;
-        return idbOpen(dbName, version, storeDefs).then(function (_db) {
-            db = _db;
+        var clearOnRestore = !!(targetDef && targetDef.clearOnRestore);
+        return idbOpen(dbName, version, storeDefs).then(function (db) {
             var storeMap = {};
-            storeDefs.forEach(function (d) { storeMap[d.store] = d; });
-            var storeNames = Object.keys(incomingDb);
-            var i = 0, totalWritten = 0, totalSkipped = 0;
-            function next() {
-                if (i >= storeNames.length) { db.close(); return { written: totalWritten, skipped: totalSkipped, dbRestored: true }; }
-                var sn = storeNames[i++];
-                var def = storeMap[sn];
-                if (!def) return next();
-                var records = incomingDb[sn];
-                // clearOnRestore: 空数组也调用 restoreStore（会执行 clear()），确保恢复状态与备份一致
-                if (!Array.isArray(records) || (!records.length && !clearOnRestore)) return next();
-                return restoreStore(db, def, records, clearOnRestore).then(function (res) {
-                    totalWritten += res.written;
-                    totalSkipped += res.skipped;
-                    return next();
-                });
+            storeDefs.forEach(function (def) { storeMap[def.store] = def; });
+            var incomingNames = Object.keys(incomingDb);
+            var storeNames = [];
+            incomingNames.forEach(function (name) {
+                var def = storeMap[name];
+                if (!def) return;
+                var records = incomingDb[name];
+                if (!Array.isArray(records)) {
+                    throw new Error('备份中的 ' + dbName + '/' + name + ' 不是有效记录列表');
+                }
+                if (records.length || clearOnRestore) storeNames.push(name);
+            });
+            if (!storeNames.length) {
+                db.close();
+                return { written: 0, skipped: 0, dbRestored: true };
             }
-            return next();
-        }).catch(function (e) {
-            if (db) { try { db.close(); } catch (e2) {} }
-            throw e;
+
+            return new Promise(function (resolve, reject) {
+                var tx = null;
+                var settled = false;
+                var totalWritten = 0;
+                function fail(error) {
+                    if (settled) return;
+                    settled = true;
+                    if (tx) { try { tx.abort(); } catch (e) {} }
+                    reject(error || new Error('IndexedDB 恢复失败'));
+                }
+                try {
+                    tx = db.transaction(storeNames, 'readwrite');
+                    tx.oncomplete = function () {
+                        if (settled) return;
+                        settled = true;
+                        resolve({ written: totalWritten, skipped: 0, dbRestored: true });
+                    };
+                    tx.onerror = function () {
+                        fail(tx.error || new Error('IndexedDB 恢复事务失败'));
+                    };
+                    tx.onabort = function () {
+                        fail(tx.error || new Error('IndexedDB 恢复事务已回滚'));
+                    };
+
+                    storeNames.forEach(function (name) {
+                        var def = storeMap[name];
+                        var records = incomingDb[name];
+                        var store = tx.objectStore(name);
+                        store.clear();
+
+                        records.forEach(function (record, index) {
+                            var value, key;
+                            if (record && Object.prototype.hasOwnProperty.call(record, '__key')
+                                    && Object.prototype.hasOwnProperty.call(record, '__value')) {
+                                value = record.__value;
+                                key = record.__key;
+                                if (key === undefined || key === null) {
+                                    throw new Error('备份记录主键无效：' + name + ' 第 ' + (index + 1) + ' 条');
+                                }
+                            } else if (record && typeof record === 'object' && !Array.isArray(record)) {
+                                value = record;
+                                key = undefined;
+                            } else {
+                                throw new Error('备份记录格式无效：' + name + ' 第 ' + (index + 1) + ' 条');
+                            }
+
+                            var blobFields = def.blobFields || [];
+                            if (value && typeof value === 'object' && blobFields.length) {
+                                blobFields.forEach(function (field) {
+                                    var blobValue = value[field];
+                                    if (typeof blobValue === 'string') {
+                                        var mimeKey = '__blobMime_' + field;
+                                        var mime = value[mimeKey] || value.format || 'application/octet-stream';
+                                        try {
+                                            value[field] = base64ToBlob(blobValue, mime);
+                                        } catch (error) {
+                                            throw new Error('Blob 解码失败：' + name + '/' + field
+                                                + '（第 ' + (index + 1) + ' 条）');
+                                        }
+                                        delete value[mimeKey];
+                                    }
+                                });
+                            }
+
+                            if (key !== undefined) store.put(value, key);
+                            else store.put(value);
+                            totalWritten++;
+                        });
+                    });
+                } catch (error) {
+                    fail(error);
+                }
+            }).then(function (result) {
+                db.close();
+                return result;
+            }, function (error) {
+                try { db.close(); } catch (e) {}
+                throw error;
+            });
+        }).catch(function (error) {
+            throw error;
         });
     }
 
