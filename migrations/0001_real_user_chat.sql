@@ -155,6 +155,21 @@ CREATE TABLE IF NOT EXISTS real_user_blocks (
 CREATE INDEX IF NOT EXISTS idx_real_user_blocks_reverse
   ON real_user_blocks(blocked_id, blocker_id);
 
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_active_accounts_insert_guard
+BEFORE INSERT ON real_user_friend_requests
+WHEN
+  NOT EXISTS (
+    SELECT 1 FROM real_user_accounts a
+    WHERE a.id = NEW.requester_id AND a.status = 'active'
+  )
+  OR NOT EXISTS (
+    SELECT 1 FROM real_user_accounts a
+    WHERE a.id = NEW.recipient_id AND a.status = 'active'
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_friend_request_account_unavailable');
+END;
+
 -- Requests are created pending and may transition only once to a terminal state.
 CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_insert_guard
 BEFORE INSERT ON real_user_friend_requests
