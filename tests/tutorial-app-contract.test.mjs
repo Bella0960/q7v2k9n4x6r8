@@ -18,6 +18,7 @@ const worldbookPage = readFileSync(resolve(here, '../worldbook/worldbook/worldbo
 const cafePage = readFileSync(resolve(here, '../cafe/cafe.html'), 'utf8');
 const libraryPage = readFileSync(resolve(here, '../library/library.html'), 'utf8');
 const backupScript = readFileSync(resolve(here, '../settings/js/backup.js'), 'utf8');
+const settingsPage = readFileSync(resolve(here, '../settings/settings.html'), 'utf8');
 
 function readExtraLessons(source) {
   const match = source.match(/var extraLessons=(\[[\s\S]*?\]);\nlessons=lessons\.concat\(extraLessons\);/);
@@ -386,10 +387,25 @@ test('backup tutorial explains per-database rollback and retained recovery point
   assert.match(lesson, /普通备份只包含本地音频元数据/);
   assert.match(lesson, /相同 ID 的本地原文件/);
   assert.match(lesson, /音频文件本体需要另行转移并重新导入/);
+  assert.match(lesson, /导出恢复点抢救包/);
+  assert.match(lesson, /它是只读抢救材料/);
+  assert.match(lesson, /抢救包可能含 API 密钥/);
   assert.match(backupScript, /db\.transaction\(storeNames, 'readwrite'\)/);
   assert.match(backupScript, /restoreIndexedDBWithRollback\(obj\.indexedDB, idbRestorePoint\)/);
   assert.match(backupScript, /RESTORE_POINT_IDB_MAX_BYTES/);
   assert.match(backupScript, /部分回滚未能确认；本机恢复点已保留/);
+});
+
+test('recovery-point rescue export is discoverable, read-only, and warns about sensitive contents', () => {
+  assert.match(settingsPage, /id="rowExportRecoveryPoints"/);
+  assert.match(backupScript, /rowExportRecoveryPoints/);
+  assert.match(backupScript, /createRecoveryPointRescuePackage/);
+  assert.match(backupScript, /createRecoveryRescueZip/);
+  assert.match(backupScript, /恢复点抢救包已准备好/);
+  assert.match(backupScript, /抢救包会包含当前仍可读取的原始恢复记录/);
+  assert.match(backupScript, /原始恢复点未删除/);
+  assert.match(backupScript, /rowDownloadRecoveryRescue/);
+  assert.match(backupScript, /不是可直接导入的普通备份文件/);
 });
 
 test('reader cleanup walkthrough explains the destructive scope and verifies the real result', () => {
