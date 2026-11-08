@@ -1878,9 +1878,10 @@ class CloudStore {
   getMaoAccountByIdentifier(identifier) {
     const value = String(identifier || '').trim();
     return this.exec(
-      "SELECT * FROM mao_accounts WHERE id = ? OR username_key = ? LIMIT 1",
+      "SELECT * FROM mao_accounts WHERE id = ? OR username_key = ? OR (qq_email IS NOT NULL AND qq_email_verified_at IS NOT NULL AND LOWER(qq_email) = ?) LIMIT 1",
       value.toUpperCase(),
-      value.toLocaleLowerCase('en-US')
+      value.toLocaleLowerCase('en-US'),
+      value.toLowerCase()
     )[0] || null;
   }
 
@@ -2168,6 +2169,11 @@ class CloudStore {
     )[0];
     if (!device || device.revoked_at) return false;
     this.revokeDevice(deviceId, now);
+    this.exec(
+      "UPDATE activity_queue SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ? WHERE device_id = ? AND status IN ('waiting', 'retry', 'running')",
+      now,
+      deviceId
+    );
     return true;
   }
 
