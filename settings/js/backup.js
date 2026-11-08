@@ -1200,6 +1200,20 @@
                 return;
             }
 
+            // 1.5 在任何业务数据被覆盖前，为本次备份将触及的 IndexedDB 数据库
+            //     建立完整恢复点；若快照无法读回或超过安全上限，整个导入提前中止。
+            var idbRestorePoint = { targets: [], snapshots: {} };
+            if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
+                try {
+                    idbRestorePoint = await captureIndexedDbRestorePoint(obj.indexedDB);
+                } catch (error) {
+                    await rpDeleteRole(RP_ROLE_PRE);
+                    toast('已中止导入：无法建立完整的 IndexedDB 回滚恢复点。现有业务数据未修改。'
+                        + ((error && error.message) ? ' ' + error.message : ''));
+                    return;
+                }
+            }
+
             // 额外便利：下载一份安全备份文件到本地。成功与否不再阻断流程——
             // 即使下载失败，恢复点 DB 已经能保障回滚能力。
             var backupFileWarn = '';
@@ -1230,37 +1244,47 @@
                     verify = { ok: false, matched: 0, total: Object.keys(current).length, missing: Object.keys(current), mismatched: [] };
                 }
                 if (rollbackOk && verify.ok) {
+                    await rpDeleteRole(RP_ROLE_PRE);
+                    await rpDeleteRole(RP_ROLE_IDB_PRE);
                     toast('导入失败，已从本机恢复点回滚到导入前状态');
                 } else {
                     toast('导入失败，恢复未完成，且回滚未完全成功（'
                         + verify.matched + '/' + verify.total + ' 项匹配'
                         + (verify.missing && verify.missing.length ? '，缺失 ' + verify.missing.length + ' 项' : '')
                         + (verify.mismatched && verify.mismatched.length ? '，值不等 ' + verify.mismatched.length + ' 项' : '')
-                        + '）。当前数据可能不完整');
+                        + '）。本机恢复点已保留，请勿清理网站数据。');
                 }
-                return;  // 失败路径：不清理恢复点（让它留着便于排查或下次覆盖）
+                return;
             }
             // 3. 保留本机 API 凭据（备份未携带时），避免导入他人备份后丢失配置
             var secretRes = carryOverSecrets(incoming, current);
 
-            // 4. IndexedDB 恢复：schema < 2 的旧备份跳过并提示
+            // 4. IndexedDB 恢复：数据库之间依次处理；任一库失败时回滚此前已恢复的库，
+            //     同时将 localStorage 恢复到导入前快照，避免整机处于混合版本状态。
             var dbRestored = 0;
-            var dbSkippedBlob = 0;  // blob 解码失败被跳过的记录数
-            var dbFailed = [];
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
-                for (var i = 0; i < IDB_TARGETS.length; i++) {
-                    var tgt = IDB_TARGETS[i];
-                    var incomingDb = obj.indexedDB[tgt.db];
-                    if (!incomingDb || typeof incomingDb !== 'object') continue;
-                    try {
-                        var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb);
-                        dbRestored += res.written;
-                        dbSkippedBlob += res.skipped;
-                    } catch (e) {
-                        dbFailed.push(tgt.db + '（' + ((e && e.message) || '未知错误') + '）');
+                var idbRestoreResult = await restoreIndexedDBWithRollback(obj.indexedDB, idbRestorePoint);
+                if (!idbRestoreResult.ok) {
+                    var localRollbackOk = restore(rpSnap);
+                    var localRollbackVerify = verifyRestore(rpSnap);
+                    var allRollbackOk = localRollbackOk && localRollbackVerify.ok
+                        && idbRestoreResult.rollbackFailures.length === 0;
+                    if (allRollbackOk) {
+                        await rpDeleteRole(RP_ROLE_PRE);
+                        await rpDeleteRole(RP_ROLE_IDB_PRE);
+                        toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
+                            + idbRestoreResult.error + '），已将其他数据全部回滚到导入前状态');
+                    } else {
+                        toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
+                            + idbRestoreResult.error + '）。部分回滚未能确认；本机恢复点已保留。'
+                            + (idbRestoreResult.rollbackFailures.length
+                                ? ' IndexedDB 回滚失败：' + idbRestoreResult.rollbackFailures.join('；') + '。' : '')
+                            + ' 请勿清理网站数据，并先导出当前可读取的数据。');
                     }
+                    return;
                 }
+                dbRestored = idbRestoreResult.written;
             } else {
                 dbSkippedOld = true;
             }
@@ -1268,10 +1292,9 @@
             // 4.5 字体兜底：active_font_preset_id 指向的预设可能因跳过 / 解码失败不存在了 → 清掉悬空 id
             var fontOrphanCleaned = await checkFontPresetOrphan();
 
-            // 5. 只有所有 IndexedDB 数据库都成功恢复时才清掉本机恢复点。
-            //    任一数据库失败时，该库事务已回滚；保留 localStorage 导入前快照供排查。
-            var restorePointKept = dbFailed.length > 0;
-            if (!restorePointKept) rpDeleteRole(RP_ROLE_PRE);
+            // 5. 全部业务数据恢复成功后，再清理 localStorage 与 IndexedDB 的导入前恢复点。
+            await rpDeleteRole(RP_ROLE_PRE);
+            await rpDeleteRole(RP_ROLE_IDB_PRE);
 
             // 6. 组装最终提示
             var parts = ['导入成功'];
@@ -1281,9 +1304,6 @@
                     + secretRes.failedKeys.join('、') + '），请到设置页重新填写');
             }
             if (dbRestored) parts.push('已恢复 IndexedDB ' + dbRestored + ' 项');
-            if (dbSkippedBlob) parts.push('有 ' + dbSkippedBlob + ' 项 IndexedDB 记录因内容损坏未恢复');
-            if (dbFailed.length) parts.push('部分 IndexedDB 未恢复：' + dbFailed.join('；'));
-            if (restorePointKept) parts.push('本机导入前恢复点已保留，供排查');
             if (dbSkippedOld) parts.push('备份版本较旧，未包含媒体与书籍数据');
             if (fontOrphanCleaned) parts.push('自定义字体未随备份恢复，请重新上传');
             var tail = backupFileWarn || '';
