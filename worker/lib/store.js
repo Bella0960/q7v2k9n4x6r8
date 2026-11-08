@@ -1112,10 +1112,14 @@ class CloudStore {
       }
     }
 
+    // The unordered-pair unique index is the final guard against opposite-
+    // direction pending requests. Resolve a conflict to the current relationship
+    // state instead of returning a generic database error.
     const inserted = this.exec(
       `INSERT INTO friend_requests
         (id, requester_id, recipient_id, message, status, created_at, updated_at)
        VALUES (?, ?, ?, ?, 'pending', ?, ?)
+       ON CONFLICT DO NOTHING
        RETURNING *`,
       request.id,
       request.requesterId,
@@ -1124,7 +1128,30 @@ class CloudStore {
       request.now,
       request.now
     )[0];
-    return { kind: 'created', request: inserted || null };
+    if (inserted) return { kind: 'created', request: inserted };
+
+    if (this.getFriendship(request.requesterId, request.recipientId)) {
+      return { kind: 'already_friends', request: null };
+    }
+    const currentOutgoing = this.exec(
+      `SELECT * FROM friend_requests
+       WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+       ORDER BY created_at DESC LIMIT 1`,
+      request.requesterId,
+      request.recipientId
+    )[0];
+    if (currentOutgoing) return { kind: 'pending', request: currentOutgoing };
+
+    const currentIncoming = this.exec(
+      `SELECT * FROM friend_requests
+       WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+       ORDER BY created_at DESC LIMIT 1`,
+      request.recipientId,
+      request.requesterId
+    )[0];
+    if (currentIncoming) return { kind: 'incoming_request_exists', request: currentIncoming };
+
+    return { kind: 'request_conflict', request: null };
   }
 
   listFriendRequests(userId) {
