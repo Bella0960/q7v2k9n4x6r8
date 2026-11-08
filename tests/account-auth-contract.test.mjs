@@ -227,3 +227,100 @@ test('重复错误登录触发持久化限流，窗口过期后恢复并清除�
   const limits = ctx.query('SELECT COUNT(*) AS total FROM mao_login_rate_limits');
   assert.equal(Number(limits[0].total), 0, '成功登录后清除该来源的失败计数');
 });
+
+test('账号安全只返回本人设备与会话，并支持撤销设备、会话及修改密码', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const adminResponse = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+  });
+  const adminCookie = cookieFrom(adminResponse);
+
+  const registerAccount = async username => {
+    const result = await ctx.asJson('/api/accounts/register', {
+      method: 'POST',
+      body: { username, password: username + '-password-123', confirmPassword: username + '-password-123' }
+    });
+    assert.equal(result.status, 201);
+    const invite = await post(ctx, '/api/admin/invites', { targetAccountId: result.payload.account.id }, adminCookie);
+    assert.equal(invite.status, 201);
+    const login = await ctx.fetchTo('/api/accounts/login', {
+      method: 'POST',
+      body: { identifier: username, password: username + '-password-123' }
+    });
+    const cookie = cookieFrom(login);
+    const redeemed = await post(ctx, '/api/accounts/invites/redeem', { inviteCode: invite.payload.invite.code }, cookie);
+    assert.equal(redeemed.status, 200);
+    return { account: result.payload.account, cookie };
+  };
+
+  const alice = await registerAccount('alice');
+  const bob = await registerAccount('bob');
+  const aliceSecondLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'alice', password: 'alice-password-123' }
+  });
+  const aliceSecondCookie = cookieFrom(aliceSecondLogin);
+
+  const createDevice = async (cookie, id, secret) => {
+    const response = await post(ctx, '/api/devices/register', {
+      deviceId: id, secret, label: id, platform: 'test'
+    }, cookie);
+    assert.equal(response.status, 200);
+    return { id, secret };
+  };
+  const aliceDevice = await createDevice(alice.cookie, 'device_alice_0001', randomToken(32));
+  const bobDevice = await createDevice(bob.cookie, 'device_bob_000001', randomToken(32));
+
+  const security = await ctx.fetchTo('/api/accounts/security', { headers: { cookie: alice.cookie } });
+  const securityResult = await json(security);
+  assert.equal(securityResult.status, 200);
+  assert.equal(securityResult.payload.devices.length, 1);
+  assert.equal(securityResult.payload.devices[0].id, aliceDevice.id);
+  assert.equal(securityResult.payload.sessions.length, 2);
+  assert.ok(securityResult.payload.sessions.some(session => session.current));
+  assert.ok(!JSON.stringify(securityResult.payload).includes(bobDevice.id), '不得返回其他账号的设备信息');
+
+  const crossRevoke = await post(ctx, '/api/accounts/devices/' + bobDevice.id + '/revoke', {}, alice.cookie);
+  assert.equal(crossRevoke.status, 404, '不能撤销其他账号的设备');
+
+  const revokeAliceDevice = await post(ctx, '/api/accounts/devices/' + aliceDevice.id + '/revoke', {}, alice.cookie);
+  assert.equal(revokeAliceDevice.status, 200);
+  const oldDeviceRequest = await ctx.fetchTo('/api/autonomy/global', {
+    headers: { cookie: alice.cookie, 'x-device-auth': aliceDevice.id + '.' + aliceDevice.secret }
+  });
+  assert.equal(oldDeviceRequest.status, 401);
+
+  const aliceSessions = ctx.query(
+    'SELECT id FROM mao_account_sessions WHERE account_id = ? AND revoked_at IS NULL ORDER BY created_at',
+    alice.account.id
+  );
+  assert.equal(aliceSessions.length, 2);
+  const otherSessionId = securityResult.payload.sessions.find(session => !session.current).id;
+  const revokeOther = await post(ctx, '/api/accounts/sessions/' + otherSessionId + '/revoke', {}, alice.cookie);
+  assert.equal(revokeOther.status, 200);
+  const otherSessionCheck = await ctx.fetchTo('/api/accounts/me', { headers: { cookie: aliceSecondCookie } });
+  assert.equal(otherSessionCheck.status, 401);
+
+  const passwordChange = await post(ctx, '/api/accounts/password/change', {
+    currentPassword: 'alice-password-123',
+    newPassword: 'alice-new-password-456',
+    confirmPassword: 'alice-new-password-456'
+  }, alice.cookie);
+  assert.equal(passwordChange.status, 200);
+  assert.equal(passwordChange.payload.changed, true);
+
+  const oldPasswordLogin = await ctx.asJson('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'alice', password: 'alice-password-123' }
+  });
+  assert.equal(oldPasswordLogin.status, 401);
+  const newPasswordLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'alice', password: 'alice-new-password-456' }
+  });
+  assert.equal(newPasswordLogin.status, 200);
+
+  const bobStillActive = await ctx.fetchTo('/api/accounts/me', { headers: { cookie: bob.cookie } });
+  assert.equal(bobStillActive.status, 200, '修改 Alice 的密码不得影响 Bob');
+});
