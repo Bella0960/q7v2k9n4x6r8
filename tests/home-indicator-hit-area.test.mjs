@@ -313,8 +313,9 @@ async function runViewport(browser, baseUrl, viewport) {
     add('forum-detail.no-horizontal-overflow', false, { reason: 'no seeded post found on forum.html' });
   }
 
-  // ---------- 5. 论坛详情页：评论输入框优先，Home 线不承担返回（例外） ----------
-  await openPage(`${baseUrl}/forum/forum-detail.html?id=${encodeURIComponent(SEEDED_POST.id)}`, '#commentInput');
+  // ---------- 5. 论坛详情页：Home 热区与评论输入框各自独立可用 ----------
+  const detailUrl = `${baseUrl}/forum/forum-detail.html?id=${encodeURIComponent(SEEDED_POST.id)}`;
+  await openPage(detailUrl, '#commentInput');
   const detailLineGeom = await page.evaluate(() => {
     const round = (v) => Math.round(v * 100) / 100;
     const read = (el) => {
@@ -324,77 +325,86 @@ async function runViewport(browser, baseUrl, viewport) {
     };
     const describe = (el) => {
       if (!el) return null;
-      const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : '';
+      const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\\s+/).join('.') : '';
       return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
     };
     const shell = document.querySelector('button.maomao-global-home-indicator');
     const lineStyle = getComputedStyle(shell, '::before');
-    const sr = shell.getBoundingClientRect();
-    // 可见线在 140x30 外壳内居中，实际绘制区固定为 84x4。
-    const lineRect = {
-      left: round(sr.left + (sr.width - 84) / 2),
-      top: round(sr.top + (sr.height - 4) / 2),
+    const shellRect = read(shell);
+    const lineRect = shellRect ? {
+      left: round(shellRect.left + (shellRect.width - 84) / 2),
+      top: round(shellRect.top + (shellRect.height - 4) / 2),
       width: 84,
       height: 4,
-      right: round(sr.left + (sr.width - 84) / 2 + 84),
-      bottom: round(sr.top + (sr.height - 4) / 2 + 4)
-    };
-    const lineCenter = { x: round((lineRect.left + lineRect.right) / 2), y: round((lineRect.top + lineRect.bottom) / 2) };
+      right: round(shellRect.left + (shellRect.width - 84) / 2 + 84),
+      bottom: round(shellRect.top + (shellRect.height - 4) / 2 + 4)
+    } : null;
+    const lineCenter = lineRect ? {
+      x: round((lineRect.left + lineRect.right) / 2),
+      y: round((lineRect.top + lineRect.bottom) / 2)
+    } : null;
     const hit = document.querySelector('.maomao-global-home-indicator-hit-target');
+    const hitRect = read(hit);
     const inputRect = read(document.querySelector('#commentInput'));
-    let intersection = null;
-    if (inputRect) {
-      const left = Math.max(lineRect.left, inputRect.left);
-      const right = Math.min(lineRect.right, inputRect.right);
-      const top = Math.max(lineRect.top, inputRect.top);
-      const bottom = Math.min(lineRect.bottom, inputRect.bottom);
-      intersection = {
-        left: round(left), top: round(top), right: round(right), bottom: round(bottom),
-        width: round(Math.max(0, right - left)), height: round(Math.max(0, bottom - top))
-      };
-    }
     return {
-      shellRect: read(shell),
       lineRect,
       lineCenter,
       lineWidth: lineStyle.width,
       lineHeight: lineStyle.height,
       shellPointerEvents: getComputedStyle(shell).pointerEvents,
       hitExists: !!hit,
+      hitRect,
+      hitPointerEvents: hit ? getComputedStyle(hit).pointerEvents : null,
       inputRect,
-      intersection,
-      lineTopElement: describe(document.elementFromPoint(lineCenter.x, lineCenter.y)),
-      inputCenter: inputRect ? { x: round((inputRect.left + inputRect.right) / 2), y: round((inputRect.top + inputRect.bottom) / 2) } : null,
-      inputBottomCenter: inputRect ? { x: round((inputRect.left + inputRect.right) / 2), y: round(inputRect.bottom - 1) } : null,
-      inputEdges: inputRect ? {
-        top: { x: round((inputRect.left + inputRect.right) / 2), y: round(inputRect.top + 1) },
-        bottom: { x: round(inputRect.left + 20), y: round(inputRect.bottom - 1) },
-        left: { x: round(inputRect.left + 1), y: round((inputRect.top + inputRect.bottom) / 2) },
-        right: { x: round(inputRect.right - 1), y: round((inputRect.top + inputRect.bottom) / 2) }
-      } : null
+      inputToHitGap: hitRect && inputRect ? round(hitRect.top - inputRect.bottom) : null,
+      lineTopElement: lineCenter ? describe(document.elementFromPoint(lineCenter.x, lineCenter.y)) : null
     };
   });
 
   add('forum-detail.home-line.visible-84x4',
     detailLineGeom.lineWidth === '84px' && detailLineGeom.lineHeight === '4px' &&
-    Math.abs(detailLineGeom.lineRect.width - 84) <= 0.5 && Math.abs(detailLineGeom.lineRect.height - 4) <= 0.5 &&
+    Math.abs(detailLineGeom.lineRect.width - 84) <= 0.5 &&
+    Math.abs(detailLineGeom.lineRect.height - 4) <= 0.5 &&
     detailLineGeom.shellPointerEvents === 'none', detailLineGeom);
-  // 例外：评论输入框完整覆盖 84x4 区域，该页不创建命中目标，Home 线不承担返回桌面。
-  add('forum-detail.home-line.no-hit-target-exception', detailLineGeom.hitExists === false, { hitExists: detailLineGeom.hitExists });
-  add('forum-detail.home-line.fully-overlaps-comment-input',
-    !!(detailLineGeom.intersection &&
-      Math.abs(detailLineGeom.intersection.width - 84) <= 0.5 &&
-      Math.abs(detailLineGeom.intersection.height - 4) <= 0.5),
-    { intersection: detailLineGeom.intersection, lineRect: detailLineGeom.lineRect, inputRect: detailLineGeom.inputRect });
-  add('forum-detail.home-line.center.hits-comment-input',
-    /input#commentInput/.test(detailLineGeom.lineTopElement || ''),
+  add('forum-detail.home-line.hit-target-present-and-aligned',
+    detailLineGeom.hitExists && detailLineGeom.hitPointerEvents === 'auto' &&
+    !!detailLineGeom.hitRect &&
+    Math.abs(detailLineGeom.hitRect.width - 84) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.height - 4) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.left - detailLineGeom.lineRect.left) <= 0.5 &&
+    Math.abs(detailLineGeom.hitRect.top - detailLineGeom.lineRect.top) <= 0.5,
+    { hitExists: detailLineGeom.hitExists, hitRect: detailLineGeom.hitRect, lineRect: detailLineGeom.lineRect, hitPointerEvents: detailLineGeom.hitPointerEvents });
+  add('forum-detail.home-line.reserved-below-comment-input',
+    !!detailLineGeom.inputRect && detailLineGeom.inputToHitGap >= 6,
+    { inputRect: detailLineGeom.inputRect, hitRect: detailLineGeom.hitRect, gap: detailLineGeom.inputToHitGap });
+  add('forum-detail.home-line.center.hits-home-target',
+    /button\\.maomao-global-home-indicator-hit-target/.test(detailLineGeom.lineTopElement || ''),
     { lineTopElement: detailLineGeom.lineTopElement, lineCenter: detailLineGeom.lineCenter });
 
+  // 命中可见线中心应返回桌面；随后重新进入详情页，继续验证评论功能。
+  await page.mouse.click(detailLineGeom.lineCenter.x, detailLineGeom.lineCenter.y);
+  await sleep(450);
+  const lineTapPath = pathOf();
+  add('forum-detail.home-line.center.clicking.returns-home', isIndex(), { afterPath: lineTapPath });
+
+  await openPage(detailUrl, '#commentInput');
+  const inputPoints = await page.evaluate(() => {
+    const r = document.querySelector('#commentInput').getBoundingClientRect();
+    const round = (v) => Math.round(v * 100) / 100;
+    return {
+      center: { x: round((r.left + r.right) / 2), y: round((r.top + r.bottom) / 2) },
+      bottomCenter: { x: round((r.left + r.right) / 2), y: round(r.bottom - 1) },
+      edges: {
+        top: { x: round((r.left + r.right) / 2), y: round(r.top + 1) },
+        bottom: { x: round(r.left + 20), y: round(r.bottom - 1) },
+        left: { x: round(r.left + 1), y: round((r.top + r.bottom) / 2) },
+        right: { x: round(r.right - 1), y: round((r.top + r.bottom) / 2) }
+      }
+    };
+  });
   const detailPath = pathOf();
-  const blurActive = () => page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
   const tapAndRead = async (point) => {
-    if (!point) return null;
-    await blurActive();
+    await page.evaluate(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); });
     await page.mouse.click(point.x, point.y);
     await sleep(160);
     return page.evaluate(() => ({
@@ -402,60 +412,25 @@ async function runViewport(browser, baseUrl, viewport) {
       activeId: document.activeElement ? (document.activeElement.id || document.activeElement.tagName.toLowerCase()) : null
     }));
   };
-  const focusCheck = (name, result, extra) => add(name,
+  const focusCheck = (name, result, point) => add(name,
     !!result && result.activeId === 'commentInput' && result.path === detailPath && !isIndex(),
-    Object.assign({ path: result ? result.path : null, activeId: result ? result.activeId : null, expectedPath: detailPath }, extra || {}));
+    { path: result ? result.path : null, activeId: result ? result.activeId : null, point, expectedPath: detailPath });
 
-  focusCheck('forum-detail.comment-input.center.clicking.focus', await tapAndRead(detailLineGeom.inputCenter), { point: detailLineGeom.inputCenter });
-  focusCheck('forum-detail.comment-input.bottom-center.clicking.focus', await tapAndRead(detailLineGeom.inputBottomCenter), { point: detailLineGeom.inputBottomCenter });
+  focusCheck('forum-detail.comment-input.center.clicking.focus', await tapAndRead(inputPoints.center), inputPoints.center);
+  focusCheck('forum-detail.comment-input.bottom-center.clicking.focus', await tapAndRead(inputPoints.bottomCenter), inputPoints.bottomCenter);
   for (const edge of ['top', 'bottom', 'left', 'right']) {
-    focusCheck(`forum-detail.comment-input.edge.${edge}.clicking.focus`,
-      await tapAndRead(detailLineGeom.inputEdges ? detailLineGeom.inputEdges[edge] : null),
-      { point: detailLineGeom.inputEdges ? detailLineGeom.inputEdges[edge] : null });
+    focusCheck(`forum-detail.comment-input.edge.${edge}.clicking.focus`, await tapAndRead(inputPoints.edges[edge]), inputPoints.edges[edge]);
   }
 
-  // 原先被 84x4 命中目标拦截的区域：现在应落到评论输入框，且不返回桌面。
-  const lineAreaTap = await tapAndRead(detailLineGeom.lineCenter);
-  focusCheck('forum-detail.comment-input.line-area.clicking.focus', lineAreaTap, { lineCenter: detailLineGeom.lineCenter });
-  add('forum-detail.home-line.center.clicking.exception-no-return',
-    !!lineAreaTap && lineAreaTap.path === detailPath && !isIndex(),
-    { result: lineAreaTap, lineCenter: detailLineGeom.lineCenter, exception: 'comment input keeps priority; this page does not return to home via the line' });
-
   const commentText = `home-indicator-002-${viewport.width}`;
-  const centerRetap = await tapAndRead(detailLineGeom.inputCenter);
+  const centerRetap = await tapAndRead(inputPoints.center);
   let commentFocused = !!centerRetap && centerRetap.activeId === 'commentInput';
   if (commentFocused) await page.keyboard.type(commentText);
   await sleep(100);
   const typedValue = await page.evaluate(() => document.querySelector('#commentInput') ? document.querySelector('#commentInput').value : '');
-  add('forum-detail.comment-input.outside-line.focus',
+  add('forum-detail.comment-input.type-and-submit.ready',
     commentFocused && typedValue.includes(commentText),
-    { activeId: commentFocused ? 'commentInput' : null, typedValue, inputCenter: detailLineGeom.inputCenter });
-
-  // 相邻区域连续触摸：输入框底边 → 线中心 → 输入框底边 → 线中心。
-  const sequencePoints = [
-    ['input-bottom', detailLineGeom.inputEdges ? detailLineGeom.inputEdges.bottom : null],
-    ['line-center', detailLineGeom.lineCenter],
-    ['input-bottom', detailLineGeom.inputEdges ? detailLineGeom.inputEdges.bottom : null],
-    ['line-center', detailLineGeom.lineCenter]
-  ];
-  const sequence = [];
-  await blurActive();
-  for (const [label, point] of sequencePoints) {
-    if (!point) continue;
-    await page.mouse.click(point.x, point.y);
-    await sleep(130);
-    const state = await page.evaluate(() => ({
-      path: location.pathname,
-      activeId: document.activeElement ? (document.activeElement.id || document.activeElement.tagName.toLowerCase()) : null
-    }));
-    sequence.push(Object.assign({ label, point }, state));
-  }
-  add('forum-detail.adjacent-sequence.no-navigation',
-    sequence.length === sequencePoints.length && sequence.every((step) => step.path === detailPath && !isIndex()),
-    { sequence, expectedPath: detailPath });
-  add('forum-detail.adjacent-sequence.final-focus',
-    sequence.length === sequencePoints.length && sequence[sequence.length - 1].activeId === 'commentInput',
-    { sequence });
+    { activeId: centerRetap ? centerRetap.activeId : null, typedValue, inputCenter: inputPoints.center });
 
   if (commentFocused && typedValue.includes(commentText)) {
     await page.click('.comment-bar .send-btn');
