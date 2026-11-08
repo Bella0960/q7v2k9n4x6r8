@@ -185,6 +185,55 @@ test('登录会话与旧标签页 MAO 上下文不一致时，所有账号 API �
     '未注入账号上下文的既有客户端仍可完成登录兼容流程');
 });
 
+test('已登录会话访问私有账号 API 必须提供页面 MAO 上下文', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'context-user',
+      password: 'context-user-password-123',
+      confirmPassword: 'context-user-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'context-user', password: 'context-user-password-123' }
+  });
+  const cookie = cookieFrom(login);
+
+  const unboundSecurity = await ctx.fetchTo('/api/accounts/security', {
+    headers: { cookie },
+    accountContext: false
+  });
+  const unboundResult = await json(unboundSecurity);
+  assert.equal(unboundResult.status, 409);
+  assert.equal(unboundResult.payload.error.code, 'ACCOUNT_CONTEXT_REQUIRED');
+
+  const boundSecurity = await ctx.fetchTo('/api/accounts/security', { headers: { cookie } });
+  assert.equal(boundSecurity.status, 200,
+    '模拟 Worker 注入的页面上下文后，账号管理页面可以读取自己的设备与会话');
+
+  const unboundInviteRedeem = await ctx.fetchTo('/api/accounts/invites/redeem', {
+    method: 'POST',
+    body: { inviteCode: 'A'.repeat(32) },
+    headers: { cookie },
+    accountContext: false
+  });
+  const unboundInviteResult = await json(unboundInviteRedeem);
+  assert.equal(unboundInviteResult.status, 409);
+  assert.equal(unboundInviteResult.payload.error.code, 'ACCOUNT_CONTEXT_REQUIRED');
+
+  const publicMe = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie },
+    accountContext: false
+  });
+  assert.equal(publicMe.status, 200,
+    '公开账号入口仍能恢复当前会话，不要求尚未注入的页面上下文');
+});
+
 test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号核销一次后生效', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
