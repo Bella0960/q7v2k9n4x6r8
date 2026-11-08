@@ -2991,6 +2991,106 @@ test('同账号其他设备可接管未确认消息，设备回执互不覆盖�
 });
 
 
+test('两台设备并发拉取同一条消息时，各自 ACK 独立且不会互相清除', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const deviceA = makeDevice();
+  await registerDevice(ctx, deviceA);
+  const pairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: deviceA
+  });
+  assert.equal(pairing.status, 200);
+  const deviceB = makeDevice();
+  assert.equal((await registerDevice(ctx, deviceB, {
+    pairingToken: pairing.payload.pairingToken
+  })).status, 200);
+
+  const serverMessageId = 'parallel_device_delivery_123456';
+  const queued = ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: deviceA.deviceId,
+    userId: 'owner',
+    characterId: 'char-parallel-delivery',
+    serverMessageId,
+    dedupeKey: 'parallel-device-delivery',
+    payload: { type: 'text', text: '两台设备各自保存这一条消息。' },
+    now: 9000
+  });
+  assert.equal(queued.inserted, true);
+
+  // Both authenticated device requests are in flight together against the
+  // same account inbox row. Each must receive its own pending envelope.
+  const [pullA, pullB] = await Promise.all([
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound', { device: deviceA }),
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound', { device: deviceB })
+  ]);
+  for (const pull of [pullA, pullB]) {
+    assert.equal(pull.status, 200);
+    assert.equal(pull.payload.messages.length, 1);
+    assert.equal(pull.payload.messages[0].serverMessageId, serverMessageId);
+    assert.equal(pull.payload.messages[0].deviceLifecycle.localSavedAt, null);
+  }
+
+  const [receivedA, receivedB] = await Promise.all([
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound/' + serverMessageId + '/received', {
+      method: 'POST', device: deviceA
+    }),
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound/' + serverMessageId + '/received', {
+      method: 'POST', device: deviceB
+    })
+  ]);
+  assert.equal(receivedA.status, 200);
+  assert.equal(receivedB.status, 200);
+
+  const savedA = await ctx.asJson(
+    '/api/characters/char-parallel-delivery/outbound/' + serverMessageId + '/ack',
+    { method: 'POST', device: deviceA }
+  );
+  assert.equal(savedA.status, 200);
+  assert.equal(savedA.payload.acknowledged, true);
+
+  // An account-level delivered flag must not hide A's message from B.
+  const stillPendingForB = await ctx.asJson(
+    '/api/characters/char-parallel-delivery/outbound',
+    { device: deviceB }
+  );
+  assert.equal(stillPendingForB.status, 200);
+  assert.equal(stillPendingForB.payload.messages.length, 1);
+  assert.equal(stillPendingForB.payload.messages[0].serverMessageId, serverMessageId);
+  assert.equal(stillPendingForB.payload.messages[0].deviceLifecycle.localSavedAt, null);
+
+  const [repeatAckA, savedB] = await Promise.all([
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound/' + serverMessageId + '/ack', {
+      method: 'POST', device: deviceA
+    }),
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound/' + serverMessageId + '/ack', {
+      method: 'POST', device: deviceB
+    })
+  ]);
+  assert.equal(repeatAckA.status, 200);
+  assert.equal(repeatAckA.payload.alreadyAcknowledged, true);
+  assert.equal(savedB.status, 200);
+  assert.equal(savedB.payload.alreadyAcknowledged, false);
+
+  const receipts = ctx.query(
+    'SELECT device_id, local_saved_at FROM outbound_device_receipts WHERE server_message_id = ? ORDER BY device_id',
+    serverMessageId
+  );
+  assert.deepEqual(
+    receipts.map(row => row.device_id),
+    [deviceA.deviceId, deviceB.deviceId].sort(),
+    '同一消息必须分别保留 A、B 两台设备的本地保存回执'
+  );
+  assert.ok(receipts.every(row => row.local_saved_at != null));
+
+  const [afterA, afterB] = await Promise.all([
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound', { device: deviceA }),
+    ctx.asJson('/api/characters/char-parallel-delivery/outbound', { device: deviceB })
+  ]);
+  assert.equal(afterA.payload.messages.length, 0);
+  assert.equal(afterB.payload.messages.length, 0);
+});
+
 test('来源设备撤销或离线不阻止同账号有效设备恢复待收消息', async () => {
   const ctx = setupTestStore(openTestDb());
   const source = makeDevice();
