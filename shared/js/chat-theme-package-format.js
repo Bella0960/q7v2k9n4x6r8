@@ -148,6 +148,7 @@
       /(?:^|[;{])\s*-moz-binding\s*:/i,
       /(?:^|[;{])\s*position\s*:\s*fixed\b/i,
       /@namespace\b/i,
+      /@(?:-webkit-)?keyframes\b/i,
       /(?:-webkit-)?image-set\s*\(/i
     ];
     if(bad.some(function(re){return re.test(code)}))fail("CSS 包含不允许的远程引用或危险声明。");
