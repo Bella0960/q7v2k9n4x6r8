@@ -1688,6 +1688,66 @@
     function load(k) { try { return JSON.parse(localStorage.getItem(k)) || null; } catch(e) { return null; } }
     function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
 
+    // ===== 桌面挂件图片：统一走 IndexedDB（复用壁纸仓库），localStorage 仅作旧数据兜底 =====
+    // Base64 图片写 localStorage 在配额紧张时会抛错；旧实现用空 catch 吞掉错误，
+    // 导致上传后画面看似成功、刷新/重新进入桌面后图片消失且没有任何提示。
+    var WIDGET_IMAGE_PREFIX = 'home_widget_image_v1_';
+
+    function widgetImageKey(widgetId, field) {
+      return WIDGET_IMAGE_PREFIX + widgetId + '_' + field;
+    }
+
+    function getWidgetImageStore() {
+      var store = window.MAOMAOWallpaperStore;
+      return store && typeof store.getByKey === 'function' && typeof store.saveByKey === 'function'
+        ? store
+        : null;
+    }
+
+    function notifyWidgetImageError(error) {
+      console.error('[MAOMAO widget image] Unable to save image:', error);
+      if (typeof window.showToast === 'function') {
+        window.showToast('图片保存失败，请检查本机存储空间后重试');
+      }
+    }
+
+    /* 读取顺序：IndexedDB → 旧版 localStorage 值；旧值成功迁移后继续作为兜底保留，不删除用户数据。 */
+    function restoreWidgetImage(widgetId, field, legacyValue) {
+      var key = widgetImageKey(widgetId, field);
+      var store = getWidgetImageStore();
+      if (!store) {
+        try { return Promise.resolve(localStorage.getItem(key) || legacyValue || ''); }
+        catch (error) { return Promise.resolve(legacyValue || ''); }
+      }
+      return Promise.resolve(store.getByKey(key)).then(function(saved) {
+        if (saved) return saved;
+        if (!legacyValue) return '';
+        return Promise.resolve(store.saveByKey(key, legacyValue)).then(function() {
+          return legacyValue;
+        }).catch(function() {
+          return legacyValue;
+        });
+      }).catch(function() {
+        return legacyValue || '';
+      });
+    }
+
+    /* 只有真正写入成功才算保存成功；失败时抛错，由调用方保持旧画面并提示用户。 */
+    function saveWidgetImage(widgetId, field, dataUrl) {
+      var key = widgetImageKey(widgetId, field);
+      var store = getWidgetImageStore();
+      var write = store
+        ? store.saveByKey(key, dataUrl)
+        : new Promise(function(resolve, reject) {
+            try { localStorage.setItem(key, dataUrl); resolve(true); }
+            catch (error) { reject(error); }
+          });
+      return Promise.resolve(write).catch(function(error) {
+        notifyWidgetImageError(error);
+        throw error;
+      });
+    }
+
     // ===== 四个桌面组件交互 =====
     (function () {
       var POSTCARD_KEY = 'ds_postcard_v1';
@@ -1709,6 +1769,16 @@
         if (nameEl) nameEl.textContent = data.name;
         if (signEl) signEl.textContent = data.sign;
 
+        // 异步恢复 IndexedDB 中的最新图片；若期间用户已上传新图，旧恢复结果不得覆盖。
+        var bgRevision = 0, avRevision = 0;
+        var bgRestoreRevision = bgRevision, avRestoreRevision = avRevision;
+        restoreWidgetImage('postcard', 'background', data.bgTop).then(function (src) {
+          if (bgEl && src && bgRevision === bgRestoreRevision) bgEl.style.backgroundImage = 'url(' + src + ')';
+        });
+        restoreWidgetImage('postcard', 'avatar', data.avatar).then(function (src) {
+          if (avEl && src && avRevision === avRestoreRevision) avEl.style.backgroundImage = 'url(' + src + ')';
+        });
+
         // 点击头像区 → 上传头像
         if (avEl) avEl.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -1719,8 +1789,10 @@
             if (!fi.files[0]) return;
             var r = new FileReader();
             r.onload = function () {
-              avEl.style.backgroundImage = 'url(' + r.result + ')';
-              data.avatar = r.result; save(POSTCARD_KEY, data);
+              var currentRevision = ++avRevision;
+              saveWidgetImage('postcard', 'avatar', r.result).then(function () {
+                if (avRevision === currentRevision) avEl.style.backgroundImage = 'url(' + r.result + ')';
+              }).catch(function () {});
             };
             r.readAsDataURL(fi.files[0]);
           };
@@ -1737,8 +1809,10 @@
             if (!fi.files[0]) return;
             var r = new FileReader();
             r.onload = function () {
-              bgEl.style.backgroundImage = 'url(' + r.result + ')';
-              data.bgTop = r.result; save(POSTCARD_KEY, data);
+              var currentRevision = ++bgRevision;
+              saveWidgetImage('postcard', 'background', r.result).then(function () {
+                if (bgRevision === currentRevision) bgEl.style.backgroundImage = 'url(' + r.result + ')';
+              }).catch(function () {});
             };
             r.readAsDataURL(fi.files[0]);
           };
@@ -1778,6 +1852,14 @@
           imgEl.innerHTML = '';
           imgEl.style.backgroundImage = 'url(' + data.img + ')';
         }
+        var imgRevision = 0;
+        var imgRestoreRevision = imgRevision;
+        restoreWidgetImage('polaroid', 'img', data.img).then(function (src) {
+          if (imgEl && src && imgRevision === imgRestoreRevision) {
+            imgEl.innerHTML = '';
+            imgEl.style.backgroundImage = 'url(' + src + ')';
+          }
+        });
         if (imgEl) imgEl.addEventListener('click', function (e) {
           e.stopPropagation();
           if (document.body.classList.contains('home-editing')) return;
@@ -1787,9 +1869,12 @@
             if (!fi.files[0]) return;
             var r = new FileReader();
             r.onload = function () {
-              imgEl.innerHTML = '';
-              imgEl.style.backgroundImage = 'url(' + r.result + ')';
-              data.img = r.result; save(POLAROID_KEY, data);
+              var currentRevision = ++imgRevision;
+              saveWidgetImage('polaroid', 'img', r.result).then(function () {
+                if (imgRevision !== currentRevision) return;
+                imgEl.innerHTML = '';
+                imgEl.style.backgroundImage = 'url(' + r.result + ')';
+              }).catch(function () {});
             };
             r.readAsDataURL(fi.files[0]);
           };
@@ -1812,6 +1897,14 @@
         if (tBub) tBub.textContent = data.themText;
         if (mBub) mBub.textContent = data.meText;
 
+        var avatarRevisions = { themAvatar: 0, meAvatar: 0 };
+        restoreWidgetImage('dialog', 'themAvatar', data.themAvatar).then(function (src) {
+          if (tAv && src && avatarRevisions.themAvatar === 0) tAv.style.backgroundImage = 'url(' + src + ')';
+        });
+        restoreWidgetImage('dialog', 'meAvatar', data.meAvatar).then(function (src) {
+          if (mAv && src && avatarRevisions.meAvatar === 0) mAv.style.backgroundImage = 'url(' + src + ')';
+        });
+
         function editAvatar(el, key) {
           if (!el) return;
           el.addEventListener('click', function (e) {
@@ -1823,8 +1916,10 @@
               if (!fi.files[0]) return;
               var r = new FileReader();
               r.onload = function () {
-                el.style.backgroundImage = 'url(' + r.result + ')';
-                data[key] = r.result; save(DIALOG_KEY, data);
+                var currentRevision = ++avatarRevisions[key];
+                saveWidgetImage('dialog', key, r.result).then(function () {
+                  if (avatarRevisions[key] === currentRevision) el.style.backgroundImage = 'url(' + r.result + ')';
+                }).catch(function () {});
               };
               r.readAsDataURL(fi.files[0]);
             };
@@ -2469,10 +2564,14 @@
       });
 
       // 照片上传通用
+      var photoRevisions = { avatar: 0, p1: 0, p2: 0 };
       function bindPhoto(container, dataKey, innerSelector) {
         var file = container.querySelector('.sc-file');
         var inner = container.querySelector(innerSelector);
         if (data[dataKey]) inner.style.backgroundImage = 'url(' + data[dataKey] + ')';
+        restoreWidgetImage('social', dataKey, data[dataKey]).then(function (src) {
+          if (src && photoRevisions[dataKey] === 0) inner.style.backgroundImage = 'url(' + src + ')';
+        });
         container.addEventListener('click', function (e) {
           e.stopPropagation();
           if (document.body.classList.contains('home-editing')) return;
@@ -2495,9 +2594,10 @@
               canvas.width = w; canvas.height = h;
               canvas.getContext('2d').drawImage(img, 0, 0, w, h);
               var url = canvas.toDataURL('image/jpeg', 0.8);
-              data[dataKey] = url;
-              inner.style.backgroundImage = 'url(' + url + ')';
-              save(KEY, data);
+              var currentRevision = ++photoRevisions[dataKey];
+              saveWidgetImage('social', dataKey, url).then(function () {
+                if (photoRevisions[dataKey] === currentRevision) inner.style.backgroundImage = 'url(' + url + ')';
+              }).catch(function () {});
             };
             img.src = reader.result;
           };
@@ -2526,6 +2626,14 @@
       }
       if (data && data.img) applyImg(data.img);
 
+      // 旧版图片仍从 ds_image_v1 兜底读取；新图片统一写入 IndexedDB，
+      // 避免 localStorage 配额不足时“显示成功、刷新丢失”。
+      var revision = 0;
+      var restoreRevision = revision;
+      restoreWidgetImage('image', 'img', data && data.img).then(function (src) {
+        if (src && revision === restoreRevision) applyImg(src);
+      });
+
       el.addEventListener('click', function (e) {
         e.stopPropagation();
         if (document.body.classList.contains('home-editing')) return;
@@ -2549,10 +2657,10 @@
               ctx.fillRect(0, 0, w, h);
               ctx.drawImage(img, 0, 0, w, h);
               var out = canvas.toDataURL('image/jpeg', 0.7);
-              applyImg(out);
-              try {
-                localStorage.setItem(KEY, JSON.stringify({ img: out }));
-              } catch (err) {}
+              var currentRevision = ++revision;
+              saveWidgetImage('image', 'img', out).then(function () {
+                if (revision === currentRevision) applyImg(out);
+              }).catch(function () {});
             };
             img.src = reader.result;
           };

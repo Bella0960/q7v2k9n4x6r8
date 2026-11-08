@@ -28,6 +28,7 @@ Browser storage is scoped to the origin, browser profile, and device. Changing d
 | moments, forum_posts, settings and app-specific keys | Social feed, forum and application data | Some image-bearing structures may still add substantial strings |
 | home_custom_wallpaper and other legacy keys | Legacy wallpaper/settings compatibility | Wallpaper store can fall back to legacy localStorage |
 | home_icon_presets_v1 / home_icon_active_preset_v1 | Saved icon-set metadata and currently selected preset ID | Icon image copies are stored separately in the shared wallpapers IndexedDB store |
+| ds_image_v1 / ds_postcard_v1 / ds_polaroid_v1 / ds_dialog_v1 / ds_social_v1 | Desktop widget text plus legacy Base64 photos | Read-only compatibility fallback: new widget photos are written to IndexedDB first |
 | music_local_tracks | Local music metadata | Audio Blob itself is in IndexedDB, metadata remains in localStorage |
 | maomao_reader_bg_v1 | Reading background | Source comments cap the data URL at 600,000 characters |
 
@@ -39,6 +40,7 @@ PhoneStorage provides a common API and error-result namespace, but not every exi
 |---|---|---|---|
 | maomao-media-store | v2: wallpapers (out-of-line key), audio (keyPath id) | shared/js/wallpaper-store.js and music/music.html | Listed in backup.js. wallpapers included. audio record's blob field is explicitly excluded, so the actual audio file is not included by that target rule. |
 | `maomao-media-store.wallpapers` records keyed `home_icon_preset_img_v1_<presetId>_<appId>` | Saved icon-set image copies | settings/icon-settings.html | Included in the existing wallpapers backup/restore path |
+| `maomao-media-store.wallpapers` records keyed `home_widget_image_v1_<widgetId>_<field>` | Desktop widget photos (image / postcard / polaroid / dialog / social) | index.html via shared/js/wallpaper-store.js | Included in the existing wallpapers backup/restore path; legacy `ds_*` localStorage values stay untouched as fallback |
 | maomao_diary_photo_store_v1 | v1: photos (keyPath key) | diary/diary.html | Listed in backup.js |
 | maomao-reading-library | v1: books (keyPath id), comments (keyPath id) | library/library.html | Listed in backup.js |
 | maomao-font-presets | v1: presets (keyPath id, includes Blob) | shared/js/font-loader.js, settings/font-settings.html, theme-store/theme-store.html | Listed in backup.js; Blob serialized as Base64 with 30 MiB per-record and 90 MiB per-store source limits |
