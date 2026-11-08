@@ -562,6 +562,39 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
 });
 
 
+
+test('并发发送与删除好友无论先后都不会把旧消息带进重新添加后的会话', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  await register(ctx, alice, '198.51.100.91');
+  await register(ctx, bob, '198.51.100.92');
+  await makeFriends(ctx, alice, bob);
+
+  const clientMessageId = messageId();
+  const [send, remove] = await Promise.all([
+    asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
+      method: 'POST',
+      body: { clientMessageId, body: '删除操作同时发生的旧消息' }
+    }),
+    asAccount(ctx, alice, '/api/friends/' + bob.userId, { method: 'DELETE' })
+  ]);
+
+  assert.equal(remove.status, 200);
+  assert.ok([200, 403].includes(send.status), '发送只能在删除前成功，或在删除后被拒绝');
+  if (send.status === 200) {
+    assert.equal(send.payload.message.body, '删除操作同时发生的旧消息');
+  } else {
+    assert.equal(send.payload.error.code, 'NOT_FRIENDS');
+  }
+
+  await makeFriends(ctx, alice, bob);
+  const history = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
+  assert.equal(history.status, 200);
+  assert.deepEqual(history.payload.messages, [], '旧关系中成功写入的消息也不得进入新代际');
+});
+
 test('删除并重新添加好友会开启全新聊天关系，不恢复旧消息或旧视图状态', async () => {
   const ctx = setupTestStore(openTestDb());
   ctx.timestamps.push(FIXED_NOW);
