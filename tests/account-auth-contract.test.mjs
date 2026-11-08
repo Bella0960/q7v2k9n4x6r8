@@ -360,3 +360,50 @@ test('首次管理员初始化密钥错误会被持久化限流，初始化完�
   const status = await ctx.asJson('/api/admin/bootstrap/status');
   assert.equal(status.payload.initialized, true);
 });
+
+test('QQ 邮箱只有完成所有权验证后才能作为登录标识与邀请码绑定目标', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'email-user',
+      password: 'email-user-password-123',
+      confirmPassword: 'email-user-password-123',
+      qqEmail: 'owner-test@qq.com'
+    }
+  });
+  assert.equal(registered.status, 201);
+
+  const unverifiedLogin = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'owner-test@qq.com', password: 'email-user-password-123' }
+  });
+  assert.equal(unverifiedLogin.status, 401, '未验证邮箱不能作为登录标识');
+
+  ctx.store.exec(
+    "UPDATE mao_accounts SET qq_email_verified_at = ? WHERE id = ?",
+    ctx.now(),
+    registered.payload.account.id
+  );
+  const verifiedLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'OWNER-TEST@qq.com', password: 'email-user-password-123' }
+  });
+  assert.equal(verifiedLogin.status, 200, '验证后 QQ 邮箱可以作为登录标识');
+
+  const adminResponse = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(adminResponse);
+  const emailInvite = await post(ctx, '/api/admin/invites', { targetEmail: 'owner-test@qq.com' }, adminCookie);
+  assert.equal(emailInvite.status, 201);
+  const idInvite = await post(ctx, '/api/admin/invites', { targetAccountId: registered.payload.account.id }, adminCookie);
+  assert.equal(idInvite.status, 409, '通过邮箱或永久 ID 绑定的同一个账号不能同时拥有两个有效邀请码');
+});
