@@ -169,7 +169,7 @@ test('unsafe prototype property names and invalid negative length bounds are rej
   const client = makeClient('https://schema.example.com/mcp');
   await assert.rejects(api.registerConnection(client, [{
     name: 'unsafe_property',
-    inputSchema: { type: 'object', properties: { '__proto__': { type: 'string' } } }
+    inputSchema: JSON.parse('{"type":"object","properties":{"__proto__":{"type":"string"}}}')
   }]), /不安全的字段名称/);
   await assert.rejects(api.registerConnection(makeClient('https://length.example.com/mcp'), [{
     name: 'negative_length',
