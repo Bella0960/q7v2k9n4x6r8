@@ -513,6 +513,7 @@
             downloadRow.href = url;
             downloadRow.download = result.name;
             downloadRow.style.textDecoration = 'none';
+            downloadRow.style.color = 'inherit';
             var zipIcon = document.createElement('div');
             zipIcon.className = 'menu-icon';
             zipIcon.textContent = 'ZIP';
