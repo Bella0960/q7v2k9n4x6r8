@@ -2604,7 +2604,6 @@ test('50 validateInterruptedRestorePoints：localStorage 快照出现非字符�
    ═══════════════════════════════════════════════ */
 test('51 recoverInterruptedImportUnlocked：缺少 store 时在任何业务写入前中止', async () => {
     const ctx = buildCtxFull({ confirmResult: true });
-    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
     const rows = new Map([
         ['pre-import', {
             role: 'pre-import',
@@ -2720,4 +2719,34 @@ test('54 validateInterruptedRestorePoints：committed 清理阶段不要求已�
     );
     assert.equal(result.ok, true);
     assert.equal(result.status, 'committed');
+});
+
+
+/* ═══════════════════════════════════════════════
+   55. 早期阶段标记没有数据库清单：从已校验快照推导兼容恢复
+   ═══════════════════════════════════════════════ */
+test('55 validateInterruptedRestorePoints：兼容未记录 IndexedDB 清单的早期阶段标记', () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const stores = {};
+    media.stores.forEach(def => { stores[def.store] = []; });
+    const result = ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': stores },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying' },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.targetNames, ['maomao-media-store']);
 });
