@@ -55,7 +55,7 @@ export function setupTestStore(testDb, env = {}) {
     // it to exercise the server's fail-closed path.
     if (accountContext && !headers.has('x-mao-account-context')) {
       const cookie = headers.get('cookie') || '';
-      const cookieMatch = /(?:^|;\\s*)MAO_SESSION=([^;]+)/.exec(cookie);
+      const cookieMatch = /(?:^|;\s*)MAO_SESSION=([^;]+)/.exec(cookie);
       const bearerMatch = /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(headers.get('authorization') || '');
       const token = cookieMatch ? cookieMatch[1] : (bearerMatch ? bearerMatch[1] : '');
       if (token) {
