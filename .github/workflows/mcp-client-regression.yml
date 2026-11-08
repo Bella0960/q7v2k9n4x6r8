@@ -7,7 +7,9 @@ on:
       - '.github/workflows/mcp-client-regression.yml'
       - 'settings/mcp-connections.html'
       - 'shared/js/phone/mcp-client.js'
+      - 'shared/js/phone/mcp-role-permissions.js'
       - 'tests/mcp-client.test.mjs'
+      - 'tests/mcp-role-permissions.test.mjs'
       - 'package.json'
       - 'sw.js'
   pull_request:
@@ -15,7 +17,9 @@ on:
       - '.github/workflows/mcp-client-regression.yml'
       - 'settings/mcp-connections.html'
       - 'shared/js/phone/mcp-client.js'
+      - 'shared/js/phone/mcp-role-permissions.js'
       - 'tests/mcp-client.test.mjs'
+      - 'tests/mcp-role-permissions.test.mjs'
       - 'package.json'
       - 'sw.js'
   workflow_dispatch:
