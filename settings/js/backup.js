@@ -457,7 +457,13 @@
     var RP_ROLE_PRE = 'pre-import';
     var RP_ROLE_IDB_PRE = 'pre-import-indexeddb';
     var RP_ROLE_META = 'pre-import-meta';
+    var RP_ROLE_LOCK = 'active-import-lock';
     var RESTORE_POINT_IDB_MAX_BYTES = 150 * 1024 * 1024;
+    var IMPORT_LOCK_LEASE_MS = 5 * 60 * 1000;
+    var IMPORT_LOCK_HEARTBEAT_MS = 30 * 1000;
+    var importLockOwner = 'import-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    var importLockHeartbeat = null;
+    var importLockLost = false;
 
     function rpOpen() {
         return new Promise(function (resolve, reject) {
@@ -568,6 +574,177 @@
         }).catch(function () {});  // 恢复点清理失败不能覆盖主恢复结果
     }
 
+
+    // IndexedDB readwrite 事务提供跨标签页原子互斥；过期租约可由新标签页接管。
+    function rpAcquireImportLock(owner) {
+        return rpOpen().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = null;
+                var acquired = false;
+                var settled = false;
+                function finish(error) {
+                    if (settled) return;
+                    settled = true;
+                    try { if (db) db.close(); } catch (closeError) {}
+                    if (error) reject(error);
+                    else resolve(acquired);
+                }
+                try {
+                    tx = db.transaction(RP_STORE_NAME, 'readwrite');
+                    tx.oncomplete = function () { finish(null); };
+                    tx.onerror = function () {
+                        finish(tx.error || new Error('Import lock transaction failed'));
+                    };
+                    tx.onabort = function () { finish(null); };
+                    var store = tx.objectStore(RP_STORE_NAME);
+                    var req = store.get(RP_ROLE_LOCK);
+                    req.onsuccess = function () {
+                        var current = req.result;
+                        if (current && current.owner !== owner
+                                && Number(current.expiresAt) > Date.now()) {
+                            try { tx.abort(); } catch (abortError) { finish(null); }
+                            return;
+                        }
+                        acquired = true;
+                        store.put({
+                            role: RP_ROLE_LOCK,
+                            owner: owner,
+                            expiresAt: Date.now() + IMPORT_LOCK_LEASE_MS
+                        });
+                    };
+                    req.onerror = function () {
+                        try { tx.abort(); } catch (abortError) {}
+                        finish(req.error || new Error('Import lock read failed'));
+                    };
+                } catch (error) {
+                    finish(error);
+                }
+            });
+        });
+    }
+
+    function rpRenewImportLock(owner) {
+        return rpOpen().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = null;
+                var renewed = false;
+                var settled = false;
+                function finish(error) {
+                    if (settled) return;
+                    settled = true;
+                    try { if (db) db.close(); } catch (closeError) {}
+                    if (error) reject(error);
+                    else resolve(renewed);
+                }
+                try {
+                    tx = db.transaction(RP_STORE_NAME, 'readwrite');
+                    tx.oncomplete = function () { finish(null); };
+                    tx.onerror = function () {
+                        finish(tx.error || new Error('Import lease renewal failed'));
+                    };
+                    tx.onabort = function () { finish(null); };
+                    var store = tx.objectStore(RP_STORE_NAME);
+                    var req = store.get(RP_ROLE_LOCK);
+                    req.onsuccess = function () {
+                        var current = req.result;
+                        if (!current || current.owner !== owner) {
+                            try { tx.abort(); } catch (abortError) { finish(null); }
+                            return;
+                        }
+                        renewed = true;
+                        store.put({
+                            role: RP_ROLE_LOCK,
+                            owner: owner,
+                            expiresAt: Date.now() + IMPORT_LOCK_LEASE_MS
+                        });
+                    };
+                    req.onerror = function () {
+                        try { tx.abort(); } catch (abortError) {}
+                        finish(req.error || new Error('Import lease read failed'));
+                    };
+                } catch (error) {
+                    finish(error);
+                }
+            });
+        });
+    }
+
+    function rpReleaseImportLock(owner) {
+        return rpOpen().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var tx = null;
+                var released = false;
+                var settled = false;
+                function finish(error) {
+                    if (settled) return;
+                    settled = true;
+                    try { if (db) db.close(); } catch (closeError) {}
+                    if (error) reject(error);
+                    else resolve(released);
+                }
+                try {
+                    tx = db.transaction(RP_STORE_NAME, 'readwrite');
+                    tx.oncomplete = function () { finish(null); };
+                    tx.onerror = function () {
+                        finish(tx.error || new Error('Import lock release failed'));
+                    };
+                    tx.onabort = function () { finish(null); };
+                    var store = tx.objectStore(RP_STORE_NAME);
+                    var req = store.get(RP_ROLE_LOCK);
+                    req.onsuccess = function () {
+                        var current = req.result;
+                        if (current && current.owner === owner) {
+                            released = true;
+                            store.delete(RP_ROLE_LOCK);
+                        }
+                    };
+                    req.onerror = function () {
+                        try { tx.abort(); } catch (abortError) {}
+                        finish(req.error || new Error('Import lock release read failed'));
+                    };
+                } catch (error) {
+                    finish(error);
+                }
+            });
+        });
+    }
+
+    function startImportLockHeartbeat() {
+        stopImportLockHeartbeat();
+        importLockLost = false;
+        importLockHeartbeat = setInterval(function () {
+            rpRenewImportLock(importLockOwner).then(function (renewed) {
+                if (!renewed) {
+                    importLockLost = true;
+                    importRecoveryReady = false;
+                    toast('整机导入互斥租约已失效，本轮将停止继续覆盖；原始恢复点会保留。');
+                }
+            }).catch(function () {
+                importLockLost = true;
+                importRecoveryReady = false;
+                toast('无法续期整机导入互斥租约；为保护数据，本轮将停止继续覆盖。');
+            });
+        }, IMPORT_LOCK_HEARTBEAT_MS);
+    }
+
+    function stopImportLockHeartbeat() {
+        if (importLockHeartbeat !== null) {
+            try { clearInterval(importLockHeartbeat); } catch (e) {}
+            importLockHeartbeat = null;
+        }
+    }
+
+    async function releaseImportLock() {
+        stopImportLockHeartbeat();
+        try { await rpReleaseImportLock(importLockOwner); } catch (e) {}
+    }
+
+    function assertImportLock() {
+        if (importLockLost) {
+            throw new Error('整机导入互斥租约已失效，为保护数据已中止本轮覆盖');
+        }
+    }
+
     // 恢复点清理采用“删除后读回”确认，不能只依赖 delete 请求没有抛错。
     // 清理失败不会影响已经完成的数据回滚/导入，但必须把残留情况反馈给用户。
     async function clearRestorePoints() {
@@ -599,7 +776,7 @@
     // 设置页启动时检查上一次导入是否因关闭页面、崩溃或浏览器中断而停在中途。
     // applying / 无阶段日志但有旧版恢复点：恢复到导入前状态。
     // committed / rolled-back：只清理上次遗留的恢复点，绝不覆盖当前数据。
-    async function recoverInterruptedImportOnStartup() {
+    async function recoverInterruptedImportUnlocked() {
         var localRecord = null;
         var indexedDbRecord = null;
         var metaRecord = null;
@@ -715,6 +892,29 @@
         }
         toast('已将上次未完成的整机导入恢复到导入前状态');
         return true;
+    }
+
+
+    async function recoverInterruptedImportOnStartup() {
+        var acquired = false;
+        try {
+            acquired = await rpAcquireImportLock(importLockOwner);
+        } catch (lockError) {
+            toast('无法取得整机恢复互斥锁：' + ((lockError && lockError.message) || '未知错误')
+                + '。为避免与其他标签页冲突，新的整机导入已禁用。');
+            return false;
+        }
+        if (!acquired) {
+            toast('另一个 MAOMAO 标签页正在导入或恢复数据。'
+                + '请勿同时操作；完成后重新打开设置页再试。');
+            return false;
+        }
+        startImportLockHeartbeat();
+        try {
+            return await recoverInterruptedImportUnlocked();
+        } finally {
+            await releaseImportLock();
+        }
     }
 
     /* ===== IndexedDB 工具函数 =====
