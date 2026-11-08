@@ -780,7 +780,64 @@ test('08 restoreDatabase clearOnRestore：空 store 仍 clear，不残留旧数�
 });
 
 /* ═══════════════════════════════════════════════
-   9. atomicExport：store 总量超限（多条累加越过 blobStoreMaxBytes）
+   9. restoreDatabase 多 store 原子性：后续 store 写入失败时整库回滚
+   ═══════════════════════════════════════════════ */
+test('09 restoreDatabase：任一 store 写入失败会回滚同一 DB 的全部 store', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const definition = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
+    const db = registerDB('maomao-assets', definition.version, definition.stores);
+
+    await injectRecords(db, 'assets', definition.stores.find(s => s.store === 'assets'), [
+        { assetId: 'old-asset', type: 'image', mimeType: 'image/png' }
+    ]);
+    await injectRecords(db, 'blobs', definition.stores.find(s => s.store === 'blobs'), [
+        { assetId: 'old-asset', blob: new SandboxBlob([Buffer.from('original-bytes')], { type: 'image/png' }) }
+    ]);
+    await injectRecords(db, 'refs', definition.stores.find(s => s.store === 'refs'), [
+        { assetId: 'old-asset', ownerType: 'character', ownerId: 'char_old' }
+    ]);
+    await injectRecords(db, 'image_records', definition.stores.find(s => s.store === 'image_records'), [
+        { id: 'old-record', assetId: 'old-asset', characterId: 'char_old', isPrivate: true }
+    ]);
+
+    const incoming = {
+        assets: [{ assetId: 'new-asset', type: 'image', mimeType: 'image/jpeg' }],
+        blobs: [{
+            assetId: 'broken-blob',
+            blob: 'aGVsbG8=',
+            __blobMime_blob: 'image/jpeg'
+        }],
+        refs: [{ assetId: 'new-asset', ownerType: 'character', ownerId: 'char_new' }],
+        image_records: [{ id: 'new-record', assetId: 'new-asset', characterId: 'char_new', isPrivate: false }]
+    };
+    db._failPut = { store: 'blobs', assetId: 'broken-blob', message: 'injected restore failure' };
+
+    await assert.rejects(
+        ctx.restoreDatabase('maomao-assets', definition.version, definition.stores, incoming),
+        /injected restore failure/
+    );
+
+    assert.deepEqual(db._data.assets.map(x => x.assetId), ['old-asset'],
+        'assets written before the failure must be rolled back');
+    assert.equal(db._data.blobs.length, 1);
+    assert.equal(db._data.blobs[0].assetId, 'old-asset');
+    assert.ok(isBlobLike(db._data.blobs[0].blob));
+    assert.equal(db._data.blobs[0].blob._data.toString('utf8'), 'original-bytes');
+    assert.deepEqual(db._data.refs.map(x => x.ownerId), ['char_old'],
+        'later stores must keep their original values');
+    assert.deepEqual(db._data.image_records.map(x => x.id), ['old-record']);
+
+    const atomicTx = db._transactions.findLast(tx =>
+        tx.mode === 'readwrite' && tx.storeNames.length === 4
+    );
+    assert.ok(atomicTx, 'all four stores must share one readwrite transaction');
+    assert.deepEqual(atomicTx.storeNames, ['assets', 'blobs', 'refs', 'image_records']);
+});
+
+/* ═══════════════════════════════════════════════
+   10. atomicExport：store 总量超限
+   ═══════════════════════════════════════════════ */限（多条累加越过 blobStoreMaxBytes）
    ═══════════════════════════════════════════════ */
 test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExportFailed', async () => {
     clearAllDBs();
