@@ -285,7 +285,7 @@
     readReceiptInFlight = false;
     setStatus('正在清理你这边的聊天记录…');
     try {
-      var result = await api.clearMessages(friendId);
+      var result = await api.clearMessages(friendId, conversationGenerationId);
       $('messages').innerHTML = '';
       known = Object.create(null);
       hiddenMessageIds = Object.create(null);
