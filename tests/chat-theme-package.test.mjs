@@ -106,6 +106,9 @@ test('runtime CSS asset rewriting follows the same tokenizer as package validati
     assert.doesNotThrow(()=>F.createPackage(theme,css,{'assets/bg.png':bytes}));
     assert.ok(F.rewriteCssAssetUrls(css,urls).includes('url("blob:maomao/theme-bg")'));
   }
+  const escapedSelector=String.raw`.f\6f o{background-image:url(assets/bg.png)}`;
+  const rewrittenSelector=F.rewriteCssAssetUrls(escapedSelector,urls);
+  assert.ok(rewrittenSelector.startsWith(String.raw`.f\6f o{`),'替换素材地址不能改写 CSS 中其他合法转义');
   const contentOnly='.sample{content:"url(assets/bg.png)"}';
   assert.equal(F.rewriteCssAssetUrls(contentOnly,urls),contentOnly,'普通文本中的 url 字样不能被当成素材引用替换');
   const runtime=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
