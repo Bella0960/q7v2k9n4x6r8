@@ -137,7 +137,7 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /window\.confirm\(confirmText\)/);
   assert.match(html, /仅本次页面会话使用/);
   assert.match(html, /MaoMcpClient\.validateToolArguments\(tool\.inputSchema/);
-  assert.match(html, /mcp-client\.js\?v=20261108g/);
+  assert.match(html, /mcp-client\.js\?v=20261108h/);
   assert.match(html, /window\.addEventListener\('pagehide'/);
   assert.match(html, /window\.addEventListener\('pageshow'/);
   assert.match(html, /页面已恢复。为保护连接凭据/);
@@ -330,5 +330,60 @@ test('MCP tool listing rejects malformed pagination cursors', async () => {
   }));
   await client.initialize();
   await assert.rejects(client.listTools(), /分页游标格式无效/);
+  await client.disconnect();
+});
+
+
+test('MCP tool listing rejects oversized, deeply nested and excessively wide schemas', async () => {
+  const oversized = createToolListClient(() => ({
+    tools: [{ name: 'oversized-schema', inputSchema: { type: 'object', description: 'x'.repeat(24 * 1024) } }]
+  }));
+  await oversized.client.initialize();
+  await assert.rejects(oversized.client.listTools(), /参数结构超过 24 KB/);
+  await oversized.client.disconnect();
+
+  let deepNode = { type: 'string' };
+  for (let i = 0; i < 14; i += 1) {
+    deepNode = { type: 'object', properties: { nested: deepNode } };
+  }
+  const deeplyNested = createToolListClient(() => ({
+    tools: [{ name: 'deep-schema', inputSchema: { type: 'object', properties: { value: deepNode } } }]
+  }));
+  await deeplyNested.client.initialize();
+  await assert.rejects(deeplyNested.client.listTools(), /嵌套超过 12 层/);
+  await deeplyNested.client.disconnect();
+
+  const tooManyNodes = createToolListClient(() => ({
+    tools: [{
+      name: 'wide-schema',
+      inputSchema: {
+        type: 'object',
+        metadata: Array.from({ length: 200 }, () => ({ left: {}, middle: {}, right: {} }))
+      }
+    }]
+  }));
+  await tooManyNodes.client.initialize();
+  await assert.rejects(tooManyNodes.client.listTools(), /节点超过 512 个上限/);
+  await tooManyNodes.client.disconnect();
+});
+
+test('MCP tool listing enforces a cumulative metadata budget across the catalog', async () => {
+  const tools = Array.from({ length: 33 }, (_, index) => ({
+    name: 'catalog-' + index,
+    inputSchema: { type: 'object', description: 's'.repeat(24000) }
+  }));
+  const { client } = createToolListClient(() => ({ tools }));
+  await client.initialize();
+  await assert.rejects(client.listTools(), /元数据超过 768 KB 上限/);
+  await client.disconnect();
+});
+
+test('MCP tool listing rejects excessively long pagination cursors', async () => {
+  const { client } = createToolListClient(() => ({
+    tools: [{ name: 'valid-tool', inputSchema: { type: 'object' } }],
+    nextCursor: 'c'.repeat(513)
+  }));
+  await client.initialize();
+  await assert.rejects(client.listTools(), /分页游标超过 512 字符限制/);
   await client.disconnect();
 });
