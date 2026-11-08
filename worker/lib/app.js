@@ -552,12 +552,18 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userId: account.user_id,
       friendId
     });
-    if (!viewState.generationId) {
+    const friendshipAtResponse = store.getFriendship(account.user_id, friendId);
+    if (!friendshipAtResponse || !viewState.generationId) {
       throw new ApiError(403, 'NOT_FRIENDS', '好友关系已失效，无法继续读取聊天记录');
     }
-    if (viewState.generationId !== friendshipAtStart.generation_id) {
+    if (
+      friendshipAtResponse.generation_id !== friendshipAtStart.generation_id ||
+      viewState.generationId !== friendshipAtResponse.generation_id
+    ) {
       // Do not pair rows selected from one friendship generation with a
       // cursor/version from another generation during concurrent remove/re-add.
+      // This final synchronous re-check is deliberately the last store read
+      // before responding, so no await can reopen the race window.
       throw new ApiError(409, 'FRIENDSHIP_CHANGED_RETRY', '好友关系刚刚发生变化，请重新同步聊天');
     }
     return ok({
