@@ -108,22 +108,29 @@ For normal MAO accounts, the script namespaces:
 - page-created CacheStorage names and lookups
 
 The sole super-admin intentionally keeps the creator's existing browser storage and IndexedDB names to preserve the current MAO installation. Ordinary accounts never read the unscoped legacy keys or the super-admin's namespaced cache/database records. If the browser cannot install the required namespace wrappers, the account page is stopped rather than opening unisolated data.
-The page also wraps same-origin `fetch` calls with `x-mao-account-context=<MAO ID>`. The Worker checks that header against the HttpOnly session before dispatching any account API. This prevents a stale tab for account A from using a newly changed account B cookie during the 30-second foreground recheck interval. Cross-origin fetches are left untouched.
+The page wraps same-origin `fetch` calls and legacy `XMLHttpRequest` calls to `/api/*` with `x-mao-account-context=<MAO ID>`. The server rejects an authenticated request to a private API when this context is missing, malformed, or does not match the HttpOnly session. Public account-entry routes (registration, login, logout, current-session lookup and bootstrap status/setup), plus the non-account health and push-configuration endpoints, remain usable before the app scope is installed. This prevents a stale tab for account A from using a newly changed account B cookie during the 30-second foreground recheck interval. Cross-origin requests are left untouched; if the browser cannot install the fetch/XHR wrappers, the page is blocked before app storage is opened.
 
 This is a first browser-isolation layer. It still requires real-device testing across separate accounts and browsers, and a follow-up audit of any app feature that stores user data outside these browser APIs (for example, server-side tables that have not yet been attached to MAO account IDs).
 
 ## Endpoints
 
-Public account:
+Public account-entry routes (no injected page context required):
 - POST /api/accounts/register
 - POST /api/accounts/login
 - POST /api/accounts/logout
 - GET /api/accounts/me
+- GET /api/admin/bootstrap/status
+- POST /api/admin/bootstrap (one-time secret-gated setup)
+
+Authenticated account routes (require the page MAO context to match the HttpOnly session):
+- GET /api/accounts/security
+- POST /api/accounts/password/change
 - POST /api/accounts/invites/redeem
+- POST /api/accounts/sessions/:id/revoke
+- POST /api/accounts/devices/:id/revoke
 
 Super-admin only:
-- GET /api/admin/bootstrap/status (public boolean only; never exposes whether the secret is configured)\n- POST /api/admin/bootstrap (one-time secret-gated setup)
-- GET /api/admin/accounts
+- GET /api/admin/bootstrap/status (public boolean only; never exposes whether the secret is configured)\n- GET /api/admin/accounts
 - GET /api/admin/accounts/:id/audit
 - GET /api/admin/invites
 - POST /api/admin/invites
