@@ -1235,3 +1235,182 @@ test('修改密码与撤销其他会话必须原子提交，撤销失败时密�
   assert.equal(currentSessionAfterCommit.status, 200,
     '修改密码的当前会话应继续有效');
 });
+
+test('撤销单台设备及其关联状态必须原子提交，清理失败时完整回滚', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'atomic-device',
+      password: 'atomic-device-password-123',
+      confirmPassword: 'atomic-device-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+
+  const invite = await post(
+    ctx,
+    '/api/admin/invites',
+    { targetAccountId: registered.payload.account.id },
+    adminCookie
+  );
+  assert.equal(invite.status, 201);
+
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'atomic-device', password: 'atomic-device-password-123' }
+  });
+  const userCookie = cookieFrom(login);
+  const redeemed = await post(
+    ctx,
+    '/api/accounts/invites/redeem',
+    { inviteCode: invite.payload.invite.code },
+    userCookie
+  );
+  assert.equal(redeemed.status, 200);
+
+  const deviceId = 'device_atomic_0001';
+  const deviceSecret = randomToken(32);
+  const enrolled = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret: deviceSecret,
+    label: 'atomic device',
+    platform: 'test'
+  }, userCookie);
+  assert.equal(enrolled.status, 200);
+
+  const accountId = registered.payload.account.id;
+  const timestamp = ctx.now();
+  ctx.store.exec(
+    'INSERT INTO push_subscriptions (id, device_id, endpoint, p256dh, auth_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'sub_atomic_device_0001',
+    deviceId,
+    'https://push.example.com/atomic-device',
+    'test-p256dh',
+    'test-auth',
+    timestamp,
+    timestamp
+  );
+  ctx.store.exec(
+    'INSERT INTO device_presence (user_id, device_id, foreground_active, last_heartbeat_at, updated_at) VALUES (?, ?, 1, ?, ?)',
+    accountId, deviceId, timestamp, timestamp
+  );
+  ctx.store.exec(
+    'INSERT INTO character_leases (user_id, character_id, owner_device_id, lease_until, updated_at) VALUES (?, ?, ?, ?, ?)',
+    accountId, 'role_atomic_device', deviceId, timestamp + 60000, timestamp
+  );
+  ctx.store.exec(
+    'INSERT INTO device_pairing_tokens (token_hash, user_id, created_by_device_id, created_at, expires_at, consumed_at) VALUES (?, ?, ?, ?, ?, NULL)',
+    'atomic-device-pairing-hash',
+    accountId,
+    deviceId,
+    timestamp,
+    timestamp + 300000
+  );
+  ctx.store.exec(
+    "INSERT INTO activity_queue (id, device_id, character_id, kind, status, scheduled_at, payload_json, created_at, updated_at, dedupe_key) VALUES (?, ?, ?, 'contact', 'waiting', ?, '{}', ?, ?, ?)",
+    'activity_atomic_device_0001',
+    deviceId,
+    'role_atomic_device',
+    timestamp,
+    timestamp,
+    timestamp,
+    'atomic-device-dedupe'
+  );
+
+  ctx.store.exec(`
+    CREATE TRIGGER fail_atomic_device_activity_cleanup
+    BEFORE UPDATE OF status ON activity_queue
+    WHEN OLD.device_id = '${deviceId}' AND NEW.status = 'superseded'
+    BEGIN
+      SELECT RAISE(ABORT, 'simulated activity cleanup failure');
+    END
+  `);
+
+  const failedRevoke = await post(
+    ctx,
+    '/api/accounts/devices/' + deviceId + '/revoke',
+    {},
+    userCookie
+  );
+  assert.equal(failedRevoke.status, 500,
+    '模拟关联任务清理失败时，设备撤销请求应失败');
+
+  const deviceAfterFailure = ctx.query(
+    'SELECT revoked_at FROM devices WHERE id = ?',
+    deviceId
+  )[0];
+  assert.equal(deviceAfterFailure.revoked_at, null,
+    '事务失败时设备本身不能先行变成已撤销');
+  const subscriptionAfterFailure = ctx.query(
+    'SELECT disabled_at FROM push_subscriptions WHERE id = ?',
+    'sub_atomic_device_0001'
+  )[0];
+  assert.equal(subscriptionAfterFailure.disabled_at, null,
+    '事务失败时推送订阅不能被部分停用');
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM device_presence WHERE user_id = ? AND device_id = ?',
+    accountId, deviceId
+  )[0].total), 1, '事务失败时在线状态必须保留');
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM character_leases WHERE user_id = ? AND owner_device_id = ?',
+    accountId, deviceId
+  )[0].total), 1, '事务失败时角色 lease 必须保留');
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM device_pairing_tokens WHERE created_by_device_id = ? AND consumed_at IS NULL',
+    deviceId
+  )[0].total), 1, '事务失败时未使用的配对令牌必须保留');
+  assert.equal(ctx.query(
+    'SELECT status FROM activity_queue WHERE id = ?',
+    'activity_atomic_device_0001'
+  )[0].status, 'waiting', '事务失败时自主活动任务不能被部分终止');
+
+  ctx.store.exec('DROP TRIGGER fail_atomic_device_activity_cleanup');
+  const successfulRevoke = await post(
+    ctx,
+    '/api/accounts/devices/' + deviceId + '/revoke',
+    {},
+    userCookie
+  );
+  assert.equal(successfulRevoke.status, 200);
+
+  assert.notEqual(ctx.query(
+    'SELECT revoked_at FROM devices WHERE id = ?',
+    deviceId
+  )[0].revoked_at, null);
+  const subscriptionAfterCommit = ctx.query(
+    'SELECT disabled_at, disabled_reason FROM push_subscriptions WHERE id = ?',
+    'sub_atomic_device_0001'
+  )[0];
+  assert.notEqual(subscriptionAfterCommit.disabled_at, null);
+  assert.equal(subscriptionAfterCommit.disabled_reason, 'revoked');
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM device_presence WHERE user_id = ? AND device_id = ?',
+    accountId, deviceId
+  )[0].total), 0);
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM character_leases WHERE user_id = ? AND owner_device_id = ?',
+    accountId, deviceId
+  )[0].total), 0);
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM device_pairing_tokens WHERE created_by_device_id = ? AND consumed_at IS NULL',
+    deviceId
+  )[0].total), 0);
+  assert.equal(ctx.query(
+    'SELECT status FROM activity_queue WHERE id = ?',
+    'activity_atomic_device_0001'
+  )[0].status, 'superseded');
+});
