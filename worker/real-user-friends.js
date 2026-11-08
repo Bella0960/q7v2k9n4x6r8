@@ -38,12 +38,13 @@ export async function isRealUserFriendsConfigured(env) {
       "'trg_real_user_friendship_update_guard', " +
       "'trg_real_user_block_removes_friendship', " +
       "'trg_real_user_block_terminates_pending_requests', " +
-      "'trg_real_user_friend_request_active_accounts_guard')) AS ready_triggers"
+      "'trg_real_user_friend_request_active_accounts_guard', " +
+      "'trg_real_user_friend_request_active_accounts_insert_guard')) AS ready_triggers"
     ).first();
     return !!schema &&
       Number(schema.ready_tables) === 4 &&
       Number(schema.ready_indexes) === 2 &&
-      Number(schema.ready_triggers) === 9;
+      Number(schema.ready_triggers) === 10;
   } catch {
     return false;
   }
@@ -266,6 +267,9 @@ async function sendFriendRequest(request, env, account) {
       } catch {
         // The original failure remains unavailable.
       }
+    }
+    if (String(error && error.message || "").includes("real_user_friend_request_account_unavailable")) {
+      return authJson({ ok: false, error: "friend_request_account_unavailable" }, 409);
     }
     if (String(error && error.message || "").includes("UNIQUE constraint failed: real_user_friend_requests.id")) {
       return authJson({ ok: false, error: "request_id_conflict" }, 409);
