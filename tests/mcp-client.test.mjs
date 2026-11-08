@@ -368,10 +368,13 @@ test('MCP tool listing rejects oversized, deeply nested and excessively wide sch
 });
 
 test('MCP tool listing enforces a cumulative metadata budget across the catalog', async () => {
-  const tools = Array.from({ length: 33 }, (_, index) => ({
-    name: 'catalog-' + index,
-    inputSchema: { type: 'object', description: 's'.repeat(24000) }
-  }));
+  const tools = Array.from({ length: 40 }, (_, index) => {
+    const properties = {};
+    for (let property = 0; property < 5; property += 1) {
+      properties['field-' + property] = { description: 's'.repeat(4000) };
+    }
+    return { name: 'catalog-' + index, inputSchema: { type: 'object', properties } };
+  });
   const { client } = createToolListClient(() => ({ tools }));
   await client.initialize();
   await assert.rejects(client.listTools(), /元数据超过 768 KB 上限/);
