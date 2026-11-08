@@ -125,3 +125,24 @@ test('creator dashboard labels account totals accurately and distinguishes tempo
   assert.doesNotMatch(adminCss, /linear-gradient|--green:/,
     'creator dashboard should follow the black/white/gray visual system');
 });
+
+test('pending accounts can be suspended and existing unused invitations can be revoked before reissue', () => {
+  const adminHtml = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const adminScript = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
+  const adminCss = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+
+  assert.match(adminHtml, /id="accountInviteStatus" hidden/,
+    'account detail needs a dedicated current-invitation status region');
+  assert.match(adminScript, /function findActiveInviteForAccount\(accountId\)/);
+  assert.match(adminScript, /invite\.target_account_id === accountId/);
+  assert.match(adminScript, /!invite\.revoked_at[\s\S]*Number\(invite\.expires_at\) > timestamp/,
+    'only unrevoked and unexpired invitations may block new issuance');
+  assert.match(adminScript, /已有有效的专属邀请码/);
+  assert.match(adminScript, /原始邀请码只在生成时展示一次/);
+  assert.match(adminScript, /accountInviteStatus[\s\S]*revokeButton[\s\S]*\/api\/admin\/invites\//,
+    'the existing invitation must be revocable directly from account detail');
+  assert.match(adminScript, /createActionButton\('停用账号', 'danger', 'disable', true\);[\s\S]*else if \(account\.status === 'active'\)/,
+    'pending_invite and active accounts must both expose temporary disable');
+  assert.match(adminCss, /\.invite-status\[hidden\]\{display:none\}/);
+  assert.match(adminCss, /\.invite-revoke-button/);
+});
