@@ -101,6 +101,68 @@
     normalized.theme.assetIndex.forEach(function(asset){entries.push({name:asset.path,data:normalized.assets[asset.path].bytes})});
     return storedZip(entries);
   }
+  function readMediaBlobBytes(blob){
+    if(blob instanceof Uint8Array)return Promise.resolve(new Uint8Array(blob));
+    if(typeof ArrayBuffer!=="undefined"&&blob instanceof ArrayBuffer)return Promise.resolve(new Uint8Array(blob));
+    if(blob&&typeof blob.arrayBuffer==="function")return blob.arrayBuffer().then(function(buffer){return new Uint8Array(buffer)});
+    if(typeof FileReader!=="undefined")return new Promise(function(resolve,reject){
+      var reader=new FileReader();
+      reader.onerror=function(){reject(reader.error||new Error("读取主题素材失败。"))};
+      reader.onload=function(){resolve(new Uint8Array(reader.result))};
+      reader.readAsArrayBuffer(blob);
+    });
+    return Promise.reject(new Error("当前浏览器无法读取主题二进制素材。"));
+  }
+  function resolveMediaAssetIndex(theme,media){
+    var items=Array.isArray(theme.assetIndex)?theme.assetIndex.slice():[];
+    var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
+    var missing=Object.keys(refs).filter(function(path){return !items.some(function(item){return item&&item.path===path})});
+    if(!missing.length)return Promise.resolve(items);
+    missing.forEach(function(path){if(!safeAssetPath(path))fail("旧版主题包含无效素材路径："+path)});
+    if(!media||typeof media.listByOwner!=="function")return Promise.reject(new Error("该主题缺少素材清单，当前媒体仓储无法恢复素材元数据。"));
+    return media.listByOwner("chat-theme-package",String(theme.id||"")).then(function(result){
+      if(!result||!result.ok||!Array.isArray(result.value))throw new Error("无法读取旧版主题的媒体素材清单。");
+      var records=Object.create(null);
+      result.value.forEach(function(asset){if(asset&&asset.assetId)records[asset.assetId]=asset});
+      missing.forEach(function(path){
+        var record=records[refs[path]];
+        if(!record||!record.mimeType)throw new Error("旧版主题素材元数据无法恢复："+path);
+        items.push({path:path,name:path.slice(path.lastIndexOf("/")+1),mimeType:String(record.mimeType),type:String(record.type||"file")});
+      });
+      return items;
+    });
+  }
+  function createPackageFromMedia(theme,css,media){
+    if(!theme||typeof theme!=="object")return Promise.reject(new Error("主题数据无效。"));
+    return resolveMediaAssetIndex(theme,media).then(function(items){
+      var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
+      var exportTheme=Object.assign({},theme,{assetIndex:items}),assetData=Object.create(null),total=0,chain=Promise.resolve();
+      if(items.length&&(!media||typeof media.getBlob!=="function"))throw new Error("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。");
+      items.forEach(function(item){
+        chain=chain.then(function(){
+          if(!item||!safeAssetPath(item.path))throw new Error("主题素材路径无效。");
+          var assetId=refs[item.path];
+          if(!assetId)throw new Error("主题素材引用缺失："+item.path);
+          return media.getBlob(assetId).then(function(result){
+            if(!result||!result.ok||!result.value)throw new Error("主题素材读取失败："+item.path);
+            var blob=result.value,size=typeof blob.size==="number"?blob.size:(blob&&typeof blob.byteLength==="number"?blob.byteLength:null);
+            if(size!==null){
+              if(size>MAX_FILE)throw new Error("单个主题文件超过 16 MB："+item.path);
+              total+=size;if(total>MAX)throw new Error("主题素材总量超过 48 MB。");
+            }
+            return readMediaBlobBytes(blob).then(function(bytes){
+              if(size===null){
+                if(bytes.length>MAX_FILE)throw new Error("单个主题文件超过 16 MB："+item.path);
+                total+=bytes.length;if(total>MAX)throw new Error("主题素材总量超过 48 MB。");
+              }
+              assetData[item.path]=bytes;
+            });
+          });
+        });
+      });
+      return chain.then(function(){return createPackage(exportTheme,css||"",assetData)});
+    });
+  }
   function parseStoredZip(input){
     var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
     if(bytes.length>MAX)fail("主题包超过 48 MB。");
