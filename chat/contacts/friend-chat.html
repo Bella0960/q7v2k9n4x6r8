@@ -415,6 +415,15 @@
         ready = Boolean(myUserId);
         updateComposer();
         if (ready && !pollTimer) pollTimer = window.setInterval(pollMessages, 4500);
+      } else if (error && error.code === 'FRIENDSHIP_CHANGED_RETRY') {
+        setStatus('好友关系刚刚更新，正在重新同步聊天…');
+        ready = Boolean(myUserId);
+        updateComposer();
+        if (ready) {
+          showEmpty('好友关系刚刚更新，正在载入最新会话…');
+          await pollMessages();
+          if (!pollTimer) pollTimer = window.setInterval(pollMessages, 4500);
+        }
       } else {
         setStatus((error.message || '聊天连接失败') + '。请检查网络或好友账号状态。', true);
       }
@@ -483,6 +492,7 @@
           blockedRetryAt = 0;
           updateComposer();
         }
+        if (page.friend && page.friend.displayName) $('friendName').textContent = page.friend.displayName;
         var pageViewVersion = page.viewState && page.viewState.version || '';
         if (!conversationGenerationId && page.viewState && page.viewState.generationId) {
           conversationGenerationId = page.viewState.generationId;
@@ -496,9 +506,9 @@
         list.forEach(function (message) { appendMessage(message, false); });
         rememberIncoming(list);
         if (page.nextCursor) cursor = page.nextCursor;
-        if (recoveredRelationship && !list.length) {
+        if (!list.length && !Object.keys(known).length) {
           showEmpty('你们已经重新成为好友了。\n从第一条新消息开始聊吧。');
-          setStatus('好友关系已恢复，聊天已重新连接');
+          if (recoveredRelationship) setStatus('好友关系已恢复，聊天已重新连接');
         }
         guard += 1;
       } while (page.hasMore && guard < 5);
