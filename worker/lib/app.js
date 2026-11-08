@@ -420,6 +420,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (result.kind === 'incoming_request_exists') {
       throw new ApiError(409, 'INCOMING_REQUEST_EXISTS', '对方已经向你发送好友申请，请先在新朋友中处理');
     }
+    if (result.kind === 'request_conflict') {
+      throw new ApiError(409, 'FRIEND_REQUEST_CONFLICT', '好友关系刚刚发生变化，请刷新好友申请后重试');
+    }
     if (result.kind === 'rate_limited') {
       throw new ApiError(429, 'FRIEND_REQUEST_RATE_LIMITED', '好友申请过于频繁，请稍后再试');
     }
