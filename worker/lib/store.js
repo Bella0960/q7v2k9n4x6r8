@@ -1882,11 +1882,20 @@ class CloudStore {
 
   createMaoAccount(account) {
     this.exec(
-      "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'user', 'pending_invite', ?, NULL, ?, ?)",
+      "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at, registration_ip_hash) VALUES (?, ?, ?, ?, ?, 'user', 'pending_invite', ?, NULL, ?, ?, ?)",
       account.id, account.username, account.usernameKey, account.passwordSalt,
-      account.passwordHash, account.qqEmail || null, account.now, account.now
+      account.passwordHash, account.qqEmail || null, account.now, account.now, account.registrationIpHash || ''
     );
     return this.getMaoAccountById(account.id);
+  }
+
+  countMaoAccountsByRegistrationIp(ipHash, since) {
+    const row = this.exec(
+      "SELECT COUNT(*) AS total FROM mao_accounts WHERE registration_ip_hash = ? AND created_at >= ?",
+      ipHash,
+      since
+    )[0];
+    return Number(row?.total || 0);
   }
 
   createMaoSuperAdminAccountIfEmpty(account) {
