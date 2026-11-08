@@ -52,15 +52,19 @@ function createScope({ accountId, role = 'user' }) {
     close() { this.closed = true; },
     documentElement: {}
   };
+  const storageListeners = [];
   const window = {
     localStorage: local,
     sessionStorage: session,
     indexedDB: nativeIndexedDB,
     caches: nativeCaches,
+    addEventListener(type, listener, capture) {
+      storageListeners.push({ type, listener, capture });
+    },
     stop() { this.stopped = true; }
   };
   vm.runInNewContext(scopeSource, { window, document, console, Object, Array, Proxy, Reflect, Promise, encodeURIComponent, Symbol });
-  return { window, document, local, session, openCalls, cacheCalls, cacheNames, nativeIndexedDB, nativeCaches };
+  return { window, document, local, session, openCalls, cacheCalls, cacheNames, nativeIndexedDB, nativeCaches, storageListeners };
 }
 
 test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命名空间', () => {
@@ -131,4 +135,33 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(scopeSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(scopeSource, /setInterval\(verifyAccountSession, 30000\)/);
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);
+});
+
+test('localStorage 的键枚举只返回当前账号键，跨账号 storage 事件不会泄漏 payload', () => {
+  const account = createScope({ accountId: 'MAO-EEEEEEEEEEEE', role: 'user' });
+  account.window.localStorage.setItem('own-key', 'own-value');
+  const iterated = Array.from(account.window.localStorage);
+  assert.deepEqual(iterated, ['own-key']);
+
+  const listener = account.storageListeners.find(item => item.type === 'storage' && item.capture);
+  assert.ok(listener, '必须在 capture 阶段监听原生 storage 事件');
+  const foreign = {
+    storageArea: account.local,
+    key: '__mao_account_v1__MAO-FFFFFFFFFFFF__private',
+    newValue: 'foreign-secret',
+    stopped: false,
+    stopImmediatePropagation() { this.stopped = true; }
+  };
+  listener.listener(foreign);
+  assert.equal(foreign.stopped, true, '其他账号变更事件必须在普通页面监听器之前被拦截');
+
+  const own = {
+    storageArea: account.local,
+    key: '__mao_account_v1__MAO-EEEEEEEEEEEE__own-key',
+    newValue: 'own-value',
+    stopped: false,
+    stopImmediatePropagation() { this.stopped = true; }
+  };
+  listener.listener(own);
+  assert.equal(own.stopped, false, '当前账号自己的存储事件可以正常传播');
 });
