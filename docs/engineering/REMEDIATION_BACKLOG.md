@@ -74,6 +74,7 @@ Completed in the current branch:
 - Enabled npm dependency caching and skipped optional npm audit/fund network calls during CI installs.
 - Excluded test, documentation, performance and Android-only changes from production/legacy preview deployment path filters; kept production deployment on main pushes.
 - Added production deployment concurrency that never cancels an in-progress production deploy.
+- Removed self-trigger path entries from CI/deploy workflows so editing workflow YAML alone does not consume runner minutes or launch a production deploy; manual dispatch remains available for test workflows.
 
 Still NOT VERIFIED:
 - These workflow changes have not been executed because Actions usage quota is exhausted.

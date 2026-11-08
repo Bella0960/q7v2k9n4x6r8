@@ -34,6 +34,7 @@ Do not force-push main. Never overwrite a newer main commit. Rebase/merge agains
 ### CI cost controls
 
 - Test workflows are PR-first and target only PRs whose base is main. They do not rerun on the subsequent merge push; the production deployment workflow remains the separate post-merge build/deploy check.
+- Workflow-definition-only changes do not self-trigger their own expensive test job or production deploy; use a deliberate manual run only when that workflow itself needs validation.
 - Feature-stack PRs targeting another task branch do not automatically start the full mainline test suite. They can be manually dispatched when an intermediate check is needed; final integration must target main.
 - The chat regression workflow lists only the test files it actually runs. A change to an unrelated file under tests/ no longer starts its full Chromium suite.
 - The chat-call contract is included in the existing chat regression job, avoiding a second checkout/install/job for the same chat changes.

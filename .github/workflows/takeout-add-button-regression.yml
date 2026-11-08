@@ -16,7 +16,6 @@ on:
       - 'tests/takeout-add-button.browser.mjs'
       - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/takeout-add-button-regression.yml'
   workflow_dispatch:
 
 permissions:

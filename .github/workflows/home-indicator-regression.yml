@@ -8,7 +8,6 @@ on:
       - 'tests/home-indicator-hit-area.test.mjs'
       - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/home-indicator-regression.yml'
   workflow_dispatch:
 
 permissions:

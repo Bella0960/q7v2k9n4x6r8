@@ -10,7 +10,6 @@ on:
       - 'tests/font-runtime-performance.test.mjs'
       - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/font-runtime-regression.yml'
   workflow_dispatch:
 
 permissions:

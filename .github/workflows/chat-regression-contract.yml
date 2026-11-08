@@ -30,7 +30,6 @@ on:
       - 'docs/chat-regression-baseline.md'
       - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/chat-regression-contract.yml'
   workflow_dispatch:
 
 permissions:
