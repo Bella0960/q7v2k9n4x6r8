@@ -423,6 +423,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(401, 'UNAUTHORIZED', '设备凭据校验失败');
     }
     const deviceUserId = String(device.user_id || OWNER_USER_ID);
+    if (deviceUserId === OWNER_USER_ID && store.hasMaoSuperAdminAccount()) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+    }
     if (deviceUserId !== OWNER_USER_ID) {
       const account = await store.getMaoAccountById(deviceUserId);
       if (!account || account.status === 'disabled' || account.status === 'revoked') {
@@ -459,6 +462,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         throw new ApiError(409, 'DEVICE_CONFLICT', '设备 ID 已被其他凭据占用');
       }
       const existingUserId = String(existing.user_id || OWNER_USER_ID);
+      if (existingUserId === OWNER_USER_ID && store.hasMaoSuperAdminAccount()) {
+        throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+      }
       if (existingUserId !== OWNER_USER_ID) {
         const account = await store.getMaoAccountById(existingUserId);
         if (!account || account.status === 'disabled' || account.status === 'revoked') {
