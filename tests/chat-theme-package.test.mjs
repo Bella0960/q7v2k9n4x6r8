@@ -104,7 +104,7 @@ test('CSS package references must resolve to registered package assets',()=>{
   assert.throws(()=>F.createPackage(theme,'.sample{background-image:url("assets/missing.png")}',{}),/CSS 引用了未登记的主题素材/);
   const hiddenReferences=[
     String.raw`.sample{background-image:u/**/rl("assets/missing.png")}`,
-    String.raw`.sample{background-image:u\\72l("assets/missing.png")}`,
+    String.raw`.sample{background-image:u\72l("assets/missing.png")}`,
     '.sample{background-image:url(assets/**/missing.png)}'
   ];
   hiddenReferences.forEach(css=>assert.throws(()=>F.createPackage(theme,css,{}),/CSS 引用了未登记的主题素材/));
