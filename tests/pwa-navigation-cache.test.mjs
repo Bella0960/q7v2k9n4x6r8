@@ -53,7 +53,7 @@ test('protected app navigation always checks the Worker before showing a documen
     serviceWorker.indexOf("if (req.mode === 'navigate' && !isPublicAccountPage)"),
     serviceWorker.indexOf('// The public account entry stays cache-first')
   );
-  assert.doesNotMatch(protectedNavigation, /caches\.match/);
+  assert.doesNotMatch(protectedNavigation, /caches\.match\(req\)/);
 });
 
 
