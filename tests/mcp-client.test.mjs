@@ -2,11 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { webcrypto } from 'node:crypto';
 
 const source = readFileSync(new URL('../shared/js/phone/mcp-client.js', import.meta.url), 'utf8');
+const permissionSource = readFileSync(new URL('../shared/js/phone/mcp-role-permissions.js', import.meta.url), 'utf8');
 
 function createContext(fetchImpl) {
-  const context = { URL, AbortController, TextDecoder, Uint8Array, setTimeout, clearTimeout, fetch: fetchImpl };
+  const stored = new Map();
+  const localStorage = {
+    getItem(key) { return stored.has(key) ? stored.get(key) : null; },
+    setItem(key, value) { stored.set(key, String(value)); },
+    removeItem(key) { stored.delete(key); }
+  };
+  const context = { URL, AbortController, TextDecoder, TextEncoder, Uint8Array, crypto: webcrypto, localStorage, setTimeout, clearTimeout, fetch: fetchImpl };
   context.window = context;
   vm.runInNewContext(source, context);
   return context;
@@ -192,6 +200,67 @@ test('MCP client enforces the complete tool catalog, schema and UTF-8 argument l
   assert.equal(result.content[0].text, 'accepted');
   const call = requests.find(item => JSON.parse(item.init.body).method === 'tools/call');
   assert.equal(JSON.parse(call.init.body).params.arguments.query, 'hello');
+  await client.disconnect();
+});
+
+test('MCP role calls fail closed until that role grants the exact service, tool and schema', async () => {
+  const requests = [];
+  function response(status, payload, headers = {}) {
+    const map = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      headers: { get(name) { return map[String(name).toLowerCase()] || (String(name).toLowerCase() === 'content-type' ? 'application/json' : null); } },
+      async text() { return payload == null ? '' : JSON.stringify(payload); }
+    };
+  }
+  const context = createContext(async (url, init) => {
+    requests.push({ url, init });
+    if (init.method === 'DELETE') return response(200, null);
+    const message = JSON.parse(init.body);
+    if (message.method === 'initialize') {
+      return response(200, {
+        jsonrpc: '2.0', id: message.id,
+        result: { protocolVersion: '2025-03-26', serverInfo: { name: 'role-test', version: '1' } }
+      }, { 'Mcp-Session-Id': 'role-session' });
+    }
+    if (message.method === 'notifications/initialized') return response(202, null);
+    if (message.method === 'tools/list') {
+      return response(200, {
+        jsonrpc: '2.0', id: message.id,
+        result: { tools: [{
+          name: 'read_notes',
+          inputSchema: { type: 'object', required: ['query'], properties: { query: { type: 'string' } } }
+        }] }
+      }, { 'Mcp-Session-Id': 'role-session' });
+    }
+    if (message.method === 'tools/call') {
+      return response(200, {
+        jsonrpc: '2.0', id: message.id,
+        result: { content: [{ type: 'text', text: 'authorized' }] }
+      }, { 'Mcp-Session-Id': 'role-session' });
+    }
+    throw new Error('unexpected MCP method: ' + message.method);
+  });
+  vm.runInNewContext(permissionSource, context);
+  const client = context.MaoMcpClient.createClient({ url: 'https://example.com/mcp' });
+  await client.initialize();
+  const tools = await client.listTools();
+
+  await assert.rejects(
+    client.callToolForRole('role-A', 'read_notes', { query: 'hello' }),
+    /未获准/
+  );
+  assert.equal(requests.filter(item => JSON.parse(item.init.body).method === 'tools/call').length, 0);
+
+  await context.MaoMcpRolePermissions.grantTool('role-A', client.endpoint, tools[0]);
+  const result = await client.callToolForRole('role-A', 'read_notes', { query: 'hello' });
+  assert.equal(result.content[0].text, 'authorized');
+  await assert.rejects(
+    client.callToolForRole('role-B', 'read_notes', { query: 'hello' }),
+    /未获准/
+  );
+  assert.equal(requests.filter(item => JSON.parse(item.init.body).method === 'tools/call').length, 1);
   await client.disconnect();
 });
 

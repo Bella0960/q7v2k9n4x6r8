@@ -382,7 +382,7 @@
       return post({ jsonrpc: '2.0', method: method, params: params || {} });
     }
 
-    return {
+    var api = {
       endpoint: endpoint,
       getSessionId: function () { return sessionId; },
       initialize: function () {
@@ -529,5 +529,22 @@
         }).then(function () { return undefined; }).catch(function () { return undefined; });
       }
     };
+    api.callToolForRole = function (roleId, name, args) {
+      var permissionManager = global.MaoMcpRolePermissions;
+      if (!permissionManager || typeof permissionManager.isAllowed !== 'function') {
+        return Promise.reject(new Error('角色 MCP 权限管理器不可用，已拒绝调用。'));
+      }
+      if (!toolCatalogReady || !Object.prototype.hasOwnProperty.call(toolSchemas, name)) {
+        return Promise.reject(new Error('只能调用本次完整读取的工具清单中的工具。'));
+      }
+      return permissionManager.isAllowed(roleId, endpoint, {
+        name: name,
+        inputSchema: toolSchemas[name]
+      }).then(function (allowed) {
+        if (!allowed) throw new Error('当前角色未获准使用此 MCP 工具。');
+        return api.callTool(name, args);
+      });
+    };
+    return api;
   };
 })(window);
