@@ -579,10 +579,12 @@
         // The request was created against an older relationship. Synchronize
         // before allowing a retry; the server did not store this stale write.
         await pollMessages();
-        setStatus('好友关系已经更新，聊天状态已刷新。再次点击发送即可继续。', true);
-        $('messageInput').disabled = false;
-        $('messageInput').focus();
-        $('sendBtn').disabled = false;
+        if (!blocked) {
+          setStatus('好友关系已经变化，聊天正在同步。同步后再次点击发送即可继续。', true);
+          $('messageInput').disabled = false;
+          $('messageInput').focus();
+          $('sendBtn').disabled = false;
+        }
       } else if (error && error.code === 'STALE_FRIENDSHIP_MESSAGE_RETRY') {
         // This client ID already belongs to a message in the retired generation.
         // Keep the text but rotate the id so it can be sent as a new message.
