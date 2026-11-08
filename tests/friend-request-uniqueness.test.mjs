@@ -9,11 +9,15 @@ test('0009 migration keeps the earliest pending request and rejects reverse dupl
   exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
 
   // Build the exact pre-0009 schema to simulate an already-provisioned Worker.
-  for (const migration of MIGRATIONS.slice(0, -1)) {
-    for (const statement of splitSql(migration.sql)) exec(statement);
+  const targetVersion = '0009_friend_request_pair_uniqueness';
+  const migration = MIGRATIONS.find(item => item.version === targetVersion);
+  assert.ok(migration, '0009 migration is registered');
+  for (const previous of MIGRATIONS) {
+    if (previous.version === targetVersion) break;
+    for (const statement of splitSql(previous.sql)) exec(statement);
     exec(
       'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
-      migration.version,
+      previous.version,
       1
     );
   }
@@ -39,8 +43,6 @@ test('0009 migration keeps the earliest pending request and rejects reverse dupl
     101
   );
 
-  const migration = MIGRATIONS[MIGRATIONS.length - 1];
-  assert.equal(migration.version, '0009_friend_request_pair_uniqueness');
   for (const statement of splitSql(migration.sql)) exec(statement);
   exec(
     'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
