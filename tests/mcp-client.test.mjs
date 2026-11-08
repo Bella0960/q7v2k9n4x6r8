@@ -173,6 +173,20 @@ test('MCP response reader cancels an oversized stream before buffering the full 
   assert.equal(cancelled, true);
 });
 
+
+test('MCP response text fallback enforces the UTF-8 byte cap', async () => {
+  const context = createContext(async () => ({
+    status: 200,
+    ok: true,
+    headers: { get() { return 'application/json'; } },
+    async text() { return '{"payload":"' + '中'.repeat(400 * 1024) + '"}'; }
+  }));
+  const client = context.MaoMcpClient.createClient({ url: 'https://example.com/mcp' });
+  await assert.rejects(client.initialize(), /返回内容过大/);
+  await client.disconnect();
+});
+
+
 test('MCP tool arguments follow required fields, types, ranges and additionalProperties rules', () => {
   const context = createContext(async () => { throw new Error('unexpected fetch'); });
   const validate = context.MaoMcpClient.validateToolArguments;
