@@ -436,7 +436,7 @@ function buildCtxFull(opts) {
         'rpAcquireImportLock', 'rpRenewImportLock', 'rpReleaseImportLock',
         'startImportLockHeartbeat', 'stopImportLockHeartbeat', 'releaseImportLock',
         'assertImportLock', 'clearRestorePoints', 'writeImportState',
-        'recoverInterruptedImportUnlocked', 'recoverInterruptedImportOnStartup',
+        'recoverInterruptedImportUnlocked', 'recoverInterruptedImportOnStartup', 'validateInterruptedRestorePoints',
         'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
         'estimateRestorePointBytes', 'assertRestorePointCapacity', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
@@ -567,8 +567,8 @@ function buildCtxFull(opts) {
         rpReadSnapshot: ctx.rpReadSnapshot,
         rpDeleteRole: ctx.rpDeleteRole
     };
-    ctx.rpWriteSnapshot = async (snap, role) => { restorePointRows.set(role, { snap, createdAt: Date.now() }); };
-    ctx.rpReadSnapshot = async (role) => restorePointRows.get(role) || null;
+    ctx.rpWriteSnapshot = async (snap, role) => { restorePointRows.set(role, { role, snap, createdAt: Date.now() }); };
+    ctx.rpReadSnapshot = async (role) => { const row = restorePointRows.get(role); return row ? Object.assign({ role }, row) : null; };
     ctx.rpDeleteRole = async (role) => {
         restorePointRows.delete(role);
         intercepted.deletedRestorePoints.push(role);
@@ -2581,4 +2581,143 @@ test('49 assertRestorePointCapacity：容量 API 不可用时安全降级', asyn
     const ctx = buildCtxFull();
     ctx.window.navigator = {};
     assert.deepEqual(await ctx.assertRestorePointCapacity(1024), { checked: false });
+});
+
+
+/* ═══════════════════════════════════════════════
+   50. localStorage 恢复点内容损坏：预检必须拒绝回滚
+   ═══════════════════════════════════════════════ */
+test('50 validateInterruptedRestorePoints：localStorage 快照出现非字符串值时失败关闭', () => {
+    const ctx = buildCtxFull();
+    const localRecord = {
+        role: 'pre-import',
+        snap: { ai_custom_characters: { corrupted: true } },
+        createdAt: Date.now()
+    };
+    const result = ctx.validateInterruptedRestorePoints(localRecord, null, null);
+    assert.equal(result.ok, false);
+    assert.match(result.message, /localStorage 恢复点包含非字符串值/);
+});
+
+/* ═══════════════════════════════════════════════
+   51. IndexedDB 恢复点缺少 store：不得先恢复其他业务数据
+   ═══════════════════════════════════════════════ */
+test('51 recoverInterruptedImportUnlocked：缺少 store 时在任何业务写入前中止', async () => {
+    const ctx = buildCtxFull({ confirmResult: true });
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const rows = new Map([
+        ['pre-import', {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-character-state' },
+            createdAt: Date.now()
+        }],
+        ['pre-import-indexeddb', {
+            role: 'pre-import-indexeddb',
+            // media 数据库实际有 wallpapers + audio；故意漏掉 audio
+            snap: { 'maomao-media-store': { wallpapers: [] } },
+            createdAt: Date.now()
+        }],
+        ['pre-import-meta', {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+            createdAt: Date.now()
+        }]
+    ]);
+    ctx.rpReadSnapshot = async role => rows.get(role) || null;
+
+    let businessWrites = 0;
+    ctx.restore = () => { businessWrites++; return true; };
+    ctx.restoreDatabase = async () => { businessWrites++; };
+    const recovered = await ctx.recoverInterruptedImportUnlocked();
+
+    assert.equal(recovered, false);
+    assert.equal(businessWrites, 0,
+        '快照预检失败时 localStorage 与所有 IndexedDB 都不得被写入');
+    assert.ok(rows.has('pre-import'));
+    assert.ok(rows.has('pre-import-indexeddb'));
+    assert.ok(rows.has('pre-import-meta'));
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /object store 清单不完整/.test(item.msg) && /原始恢复点未清理/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   52. 阶段元数据与快照数据库清单不一致：在回滚前阻断
+   ═══════════════════════════════════════════════ */
+test('52 validateInterruptedRestorePoints：阶段数据库清单与快照不一致时拒绝恢复', () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const stores = {};
+    media.stores.forEach(def => { stores[def.store] = []; });
+    const result = ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': stores },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: ['maomao-font-presets'] },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /数据库清单不一致/);
+});
+
+/* ═══════════════════════════════════════════════
+   53. out-of-line 记录缺少原始主键：不能清空业务库后才发现
+   ═══════════════════════════════════════════════ */
+test('53 validateInterruptedRestorePoints：out-of-line 记录缺少主键时拒绝恢复', () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const stores = {};
+    media.stores.forEach(def => { stores[def.store] = []; });
+    stores.wallpapers = [{ __value: { id: 'orphan-record' } }];
+    const result = ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': stores },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'applying', indexedDbTargets: ['maomao-media-store'] },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /wallpapers 第 1 条记录缺少原始主键或内容/);
+});
+
+/* ═══════════════════════════════════════════════
+   54. committed 清理中断：允许缺失已删除的快照并继续清理
+   ═══════════════════════════════════════════════ */
+test('54 validateInterruptedRestorePoints：committed 清理阶段不要求已删除的数据库快照仍存在', () => {
+    const ctx = buildCtxFull();
+    const result = ctx.validateInterruptedRestorePoints(
+        {
+            role: 'pre-import',
+            snap: { ai_custom_characters: 'old-state' },
+            createdAt: Date.now()
+        },
+        null,
+        {
+            role: 'pre-import-meta',
+            snap: { status: 'committed', indexedDbTargets: ['maomao-media-store'] },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.status, 'committed');
 });
