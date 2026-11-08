@@ -111,6 +111,7 @@ export class CloudDatabase {
       const removed = this.store.cleanupSubscriptions(timestamp);
       const pairingTokensRemoved = this.store.cleanupDevicePairingTokens(timestamp);
       const contextEventsRemoved = this.store.cleanupCharacterContextEvents(timestamp);
+      const loginRateLimitsRemoved = this.store.cleanupMaoLoginRateLimits(timestamp);
       let stagedOutboxRecovery;
       try {
         stagedOutboxRecovery = this.store.repairAllStagedActivityOutboxes({
@@ -137,6 +138,7 @@ export class CloudDatabase {
         removed,
         pairingTokensRemoved,
         contextEventsRemoved,
+        loginRateLimitsRemoved,
         stagedOutboxRecovery,
         pushDispatch
       });
