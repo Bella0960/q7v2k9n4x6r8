@@ -201,6 +201,22 @@ BEGIN
   SELECT RAISE(ABORT, 'real_user_friendship_blocked');
 END;
 
+CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_active_accounts_guard
+BEFORE UPDATE OF status ON real_user_friend_requests
+WHEN NEW.status = 'accepted' AND (
+  NOT EXISTS (
+    SELECT 1 FROM real_user_accounts a
+    WHERE a.id = NEW.requester_id AND a.status = 'active'
+  )
+  OR NOT EXISTS (
+    SELECT 1 FROM real_user_accounts a
+    WHERE a.id = NEW.recipient_id AND a.status = 'active'
+  )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'real_user_friend_request_account_unavailable');
+END;
+
 -- Acceptance atomically materializes the authoritative friendship row.
 CREATE TRIGGER IF NOT EXISTS trg_real_user_friend_request_accepted
 AFTER UPDATE OF status ON real_user_friend_requests
