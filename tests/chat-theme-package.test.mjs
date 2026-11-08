@@ -1,4 +1,6 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require=createRequire(import.meta.url);
@@ -73,4 +75,80 @@ test('CSS safety validation checks comments and escaped syntax after normalizati
 test('CSS safety validation ignores harmless comments and ordinary quoted text',()=>{
   assert.doesNotThrow(()=>F.validateCss('/* @import url(https://example.invalid/a.css) */ .x::after{content:"@import javascript: https://example.invalid";}'));
   assert.doesNotThrow(()=>F.validateCss('.x{background:url("assets/background.png");content:"普通文本";}'));
+});
+
+
+test('runtime deactivation removes mounted custom blocks and clears package styling',()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  const customBlock={removed:false,remove(){this.removed=true}};
+  const attributes=new Set(['data-maomao-chat-theme-active']);
+  const styleNodes=new Map();
+  const shell={
+    classList:{remove(){}},
+    style:{removeProperty(){}},
+    removeAttribute(name){attributes.delete(name)},
+    querySelector(){return null},
+    querySelectorAll(selector){return selector==='.maomao-theme-custom-block'?[customBlock]:[]}
+  };
+  const document={
+    readyState:'complete',
+    querySelector(selector){return selector==='.phone-mockup'?shell:null},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const localStorage={getItem(){return null}};
+  const windowMock={
+    MAOMAOChatThemeFormat:{},
+    location:{pathname:'/chat/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(){}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,console,setTimeout});
+  assert.equal(customBlock.removed,true,'停用主题后必须移除已挂载自定义组件');
+  assert.equal(attributes.has('data-maomao-chat-theme-active'),false,'必须移除主题激活标记');
+  assert.equal(styleNodes.get('maomao-chat-theme-package-style').textContent,'','必须清空主题样式');
+  assert.equal(styleNodes.get('maomao-chat-theme-motion-style').textContent,'','必须清空动效样式');
+});
+
+test('import page can restore the original theme without deleting installed package data',()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  assert.ok(script,'导入页必须包含可执行的主题管理脚本');
+  const LIST_KEY='maomao_chat_theme_packages_v1',ACTIVE_KEY='maomao_chat_theme_active_v1';
+  const theme={id:'installed-theme-1',name:'回退测试主题',version:'1.0.0',assetRefs:{'assets/bg.png':'asset-1'}};
+  const values=new Map([[LIST_KEY,JSON.stringify([theme])],[ACTIVE_KEY,theme.id]]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  function makeNode(tag){
+    const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,style:{},
+      classList:{add(){},remove(){}},
+      addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      setAttribute(){}
+    };
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName'].forEach(id=>ids[id]=makeNode('div'));
+  const events=[];
+  const document={querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  function CustomEvent(type){this.type=type}
+  const windowMock={dispatchEvent(event){events.push(event)},PhoneStorage:null};
+  vm.runInNewContext(script,{window:windowMock,document,localStorage,CustomEvent,setTimeout(){},console});
+  let row=ids.installedList.children[0];
+  assert.equal(row.children[1].textContent,'恢复原主题','当前主题必须显示恢复入口');
+  row.children[1].handlers.click();
+  assert.equal(localStorage.getItem(ACTIVE_KEY),null,'恢复原主题只清空活动主题 ID');
+  assert.equal(localStorage.getItem(LIST_KEY),JSON.stringify([theme]),'恢复原主题不能删除已安装主题包或素材引用');
+  assert.ok(events.some(event=>event.type==='maomao:chat-theme-change'),'恢复时必须通知聊天页运行时');
+  assert.match(ids.status.textContent,/原有聊天主题已恢复/);
+  row=ids.installedList.children[0];
+  assert.equal(row.children[1].textContent,'应用','停用后仍应允许重新应用');
 });

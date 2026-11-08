@@ -22,6 +22,12 @@
     if(nav){nav.classList.remove("maomao-theme-nav-compact","maomao-theme-nav-hidden");["--maomao-theme-motion-duration","--maomao-theme-motion-easing","--maomao-theme-motion-scale","--maomao-theme-motion-lift","--maomao-theme-motion-distance","--maomao-theme-motion-compact-height","--maomao-theme-motion-compact-scale","--maomao-theme-motion-hide-duration"].forEach(function(k){nav.style.removeProperty(k)})}
     shell.querySelectorAll(".maomao-theme-nav-compact,.maomao-theme-nav-hidden,.maomao-theme-nav-tapped,.maomao-theme-message-enter").forEach(function(n){n.classList.remove("maomao-theme-nav-compact","maomao-theme-nav-hidden","maomao-theme-nav-tapped","maomao-theme-message-enter");["--maomao-theme-motion-duration","--maomao-theme-motion-easing","--maomao-theme-motion-scale","--maomao-theme-motion-lift","--maomao-theme-motion-distance","--maomao-theme-motion-compact-height","--maomao-theme-motion-compact-scale"].forEach(function(k){n.style.removeProperty(k)})})
   }
+  function removeCustomBlocks(shell){
+    shell.querySelectorAll(".maomao-theme-custom-block").forEach(function(node){
+      if(node&&typeof node.remove==="function")node.remove();
+      else if(node&&node.parentNode)node.parentNode.removeChild(node);
+    });
+  }
   function cleanup(shell,fn){if(!shell.__chatThemeCleanup)shell.__chatThemeCleanup=[];shell.__chatThemeCleanup.push(fn)}
   function motion(shell,theme){
     cleanMotion(shell);var effects=(theme.motions||[]).filter(function(x){return x&&x.enabled});
@@ -41,7 +47,7 @@
   }
   function blockNode(b){var n=document.createElement("div");n.className="maomao-theme-custom-block";n.setAttribute("data-maomao-theme-block",b.id);if(b.visible===false)n.style.display="none";if(b.type==="image"){var img=document.createElement("img");img.alt="";img.loading="lazy";if(assetUrls[b.assetPath])img.src=assetUrls[b.assetPath];n.appendChild(img)}else if(b.type==="text")n.textContent=b.text||"";else if(b.type==="divider")n.classList.add("is-divider");else{var strong=document.createElement("strong"),p=document.createElement("p");strong.textContent=b.title||"";p.textContent=b.text||"";n.appendChild(strong);n.appendChild(p)}return n}
   function mount(shell,theme,page){
-    shell.querySelectorAll(".maomao-theme-custom-block").forEach(function(n){n.remove()});
+    removeCustomBlocks(shell);
     (theme.blocks&&theme.blocks[page]||[]).forEach(function(b){var n=blockNode(b),parent=null,before=null,main=shell.querySelector(".main-stage"),stream=shell.querySelector(".tier4-floating-stream"),list=shell.querySelector("#chatListContainer"),profile=shell.querySelector(".white-profile-stage"),music=shell.querySelector(".floating-music-card"),nav=shell.querySelector(".floating-nav"),head=shell.querySelector(".chat-theme-header,.wechat-home-header"),detail=shell.querySelector(".chat-header"),stage=shell.querySelector("#chat-messages"),input=shell.querySelector("#chat-form"),quote=shell.querySelector("#quoteBar");
       if(page==="chatList"){if(b.slot==="top-of-content"||b.slot==="after-header"){parent=main;before=b.slot==="top-of-content"?(head||main.firstElementChild):(head?head.nextElementSibling:null)}else if(b.slot==="above-profile"&&profile){parent=profile.parentElement;before=profile}else if((b.slot==="before-music"||b.slot==="after-music")&&stream){parent=stream;before=b.slot==="before-music"?(music||list):(music?music.nextElementSibling:list)}else if(b.slot==="after-list"&&list){parent=list.parentElement;before=list.nextElementSibling}else if(b.slot==="above-nav"&&nav){parent=nav.parentElement;before=nav}else if(stream){parent=stream;before=list}}
       else if(detail){if(b.slot==="before-header"||b.slot==="after-header"){parent=detail.parentElement;before=b.slot==="before-header"?detail:detail.nextElementSibling}else if((b.slot==="before-messages"||b.slot==="after-messages")&&stage){parent=stage;before=b.slot==="before-messages"?stage.firstElementChild:null}else if(b.slot==="before-input"&&input){parent=input.parentElement;before=input}else if(b.slot==="after-input"&&input){parent=input.parentElement;before=input.nextElementSibling}else if(stage){parent=stage}}
@@ -51,7 +57,7 @@
   function apply(){
     var path=global.location.pathname.toLowerCase(),page=path.indexOf("chat-detail.html")>=0?"chatDetail":(path.indexOf("chat.html")>=0?"chatList":"");
     if(!page||!FORMAT)return;var shell=document.querySelector(".phone-mockup");if(!shell)return;var theme=active(),gen=++generation;
-    if(!theme){shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);revoke();signature="";return}
+    if(!theme){shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);removeCustomBlocks(shell);revoke();signature="";return}
     var sig=theme.id+":"+String(theme.updatedAt||"");if(sig===signature)return;shell.setAttribute("data-maomao-chat-theme-active","1");
     loadAssets(theme).then(function(){if(gen!==generation||!active()||active().id!==theme.id)return;addStyle(styleId,rewrite(FORMAT.buildScopedCss(theme,theme.customCss||"")));var pageKey=page;mount(shell,theme,pageKey);var effects=theme.motions||[];var rules=[
       '.phone-mockup[data-maomao-chat-theme-active="1"] .floating-nav{transition:transform var(--maomao-theme-motion-duration,260ms) var(--maomao-theme-motion-easing,ease-out),opacity var(--maomao-theme-motion-hide-duration,220ms) ease-out!important}',
@@ -63,7 +69,7 @@
       '.phone-mockup[data-maomao-chat-theme-active="1"].maomao-theme-bubble-press .msg-bubble:active{transform:scale(var(--maomao-theme-bubble-scale,.985))!important;transition:transform var(--maomao-theme-bubble-duration,120ms) var(--maomao-theme-bubble-easing,ease-out)!important}',
       '.phone-mockup[data-maomao-chat-theme-active="1"].maomao-theme-sheet-rise .plus-panel-overlay .plus-panel-sheet{transition-duration:var(--maomao-theme-sheet-duration,300ms)!important;transition-timing-function:var(--maomao-theme-sheet-easing,ease-out)!important}'
     ];addStyle(motionId,rules.join("\n"));motion(shell,theme);signature=sig
-    }).catch(function(e){if(gen!==generation)return;shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);revoke();signature="";if(console&&console.error)console.error("[MAOMAO Chat Theme]",e)})
+    }).catch(function(e){if(gen!==generation)return;shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);removeCustomBlocks(shell);revoke();signature="";if(console&&console.error)console.error("[MAOMAO Chat Theme]",e)})
   }
   function schedule(){if(global.requestAnimationFrame)global.requestAnimationFrame(apply);else global.setTimeout(apply,0)}
   global.MAOMAOChatThemePackageRuntime={refresh:schedule,getActive:active,getInstalled:list};
