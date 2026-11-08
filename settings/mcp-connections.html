@@ -189,7 +189,12 @@ button,input,textarea{font:inherit}
     $('serverInfo').textContent = serverInfo
       ? '服务：' + String(serverInfo.name || 'MCP Server') + ' · 协议：' + String(serverInfo.version || '未提供')
       : '已读取工具清单';
-    if (!activeTools.length) { $('toolList').innerHTML = '<div class="empty">服务暂未提供工具。</div>'; return; }
+    renderPermissionRoles();
+    if (!activeTools.length) {
+      $('toolList').innerHTML = '<div class="empty">服务暂未提供工具。</div>';
+      refreshRolePermissions();
+      return;
+    }
     $('toolList').innerHTML = activeTools.map(function (tool, index) {
       return '<article class="tool" data-tool-index="' + index + '">' +
         '<div class="tool-head"><div class="tool-name">' + esc(tool.name) + '</div><button class="btn secondary" type="button" data-call="' + index + '">调用工具</button></div>' +
@@ -199,7 +204,6 @@ button,input,textarea{font:inherit}
         '<details><summary class="hint">查看参数结构</summary><pre class="tool-result">' + esc(JSON.stringify(tool.inputSchema || {}, null, 2)) + '</pre></details>' +
         '<pre class="tool-result hidden" data-result></pre></article>';
     }).join('');
-    renderPermissionRoles();
     refreshRolePermissions();
   }
   function disconnect() {
