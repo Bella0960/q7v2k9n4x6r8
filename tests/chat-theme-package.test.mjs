@@ -709,6 +709,7 @@ test('installed chat themes export with CSS and MediaRepository assets',async()=
   const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
   const script=scripts[scripts.length-1];
+  const links=[];
   function makeNode(tag){
     const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,hidden:false,value:'',style:{},
       classList:{add(){},remove(){}},
@@ -717,6 +718,7 @@ test('installed chat themes export with CSS and MediaRepository assets',async()=
       removeChild(child){this.children=this.children.filter(item=>item!==child);child.parentNode=null},
       setAttribute(){},click(){this.clicked=true}
     };
+    if(tag==='a')links.push(node);
     let inner='';
     Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
     return node;
@@ -758,6 +760,7 @@ test('installed chat themes export with CSS and MediaRepository assets',async()=
   const download=downloads[0];
   const link=body.children.find(node=>node.tagName==='a');
   assert.equal(link,undefined,'下载链接点击后应从页面移除');
+  assert.equal(links[0].download,'Round _ Trip_ Theme_.maomaotheme','下载文件名必须清理系统不允许的字符');
   assert.deepEqual(revoked,['blob:theme-export'],'下载后应释放临时对象 URL');
   const bytes=new Uint8Array(await download.blob.arrayBuffer());
   const parsed=F.readPackage(F.parseStoredZip(bytes));
