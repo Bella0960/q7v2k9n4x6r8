@@ -92,6 +92,7 @@
       if(!asset||!safeAssetPath(asset.path)||!own(assetData,asset.path))fail("导出主题缺少素材："+String(asset&&asset.path||""));
       files[asset.path]=inputBytes(assetData[asset.path]);
     });
+    files["custom.css"]=encodeUtf8(css||"");
     var normalized=normalize(theme,files,manifest),entries=[
       {name:"manifest.json",data:encodeUtf8(JSON.stringify(manifest))},
       {name:"theme.json",data:encodeUtf8(JSON.stringify(normalized.theme))},
