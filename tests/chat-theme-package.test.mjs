@@ -721,3 +721,96 @@ test('import rollback reports failed MediaRepository cleanup without deleting sh
   assert.match(ids.status.textContent,/1 项新增素材清理未能确认完成/,'MediaRepository 返回 ok:false 时必须报告清理未完成');
   assert.doesNotMatch(ids.status.textContent,/新增素材已回滚/,'清理未确认时不能宣称所有素材都已回滚');
 });
+
+
+test('import locks file selection and uses one immutable package snapshot',async()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  function makeNode(tag){
+    const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,hidden:false,value:'',style:{},
+      classList:{add(){},remove(){}},
+      addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      setAttribute(){}
+    };
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName',
+   'previewName','previewVersion','previewCss','previewList','previewDetail','previewSummary'].forEach(id=>ids[id]=makeNode('div'));
+  const document={querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  const values=new Map();
+  const LIST_KEY='maomao_chat_theme_packages_v1',ACTIVE_KEY='maomao_chat_theme_active_v1';
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  let finishFirstPut;
+  const firstPut=new Promise(resolve=>{finishFirstPut=resolve});
+  const writes=[];
+  const media={
+    putBlob(blob,options){
+      writes.push({blob,options});
+      return writes.length===1?firstPut:Promise.resolve({ok:true,value:{assetId:'asset-from-package-A-2'}});
+    },
+    removeRef(){return Promise.resolve({ok:true,value:{removed:true,refCount:0}})},
+    removeAsset(){return Promise.resolve({ok:true,value:{removed:true}})}
+  };
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    PhoneStorage:phoneStorage,
+    MAOMAOChatThemeFormat:{
+      parseStoredZip(buffer){return buffer},
+      readPackage(marker){return{
+        theme:{id:marker,name:'主题 '+marker,version:'1.0.0',pages:{chatList:[],chatDetail:[]},motions:[]},
+        customCss:'.msg-bubble{color:'+(marker==='A'?'#111':'#222')+'}',
+        assets:{
+          'assets/first.png':{bytes:new Uint8Array([1,2,3]),mimeType:'image/png',type:'image'},
+          'assets/second.png':{bytes:new Uint8Array([4,5,6]),mimeType:'image/png',type:'image'}
+        }
+      }}
+    },
+    dispatchEvent(){}
+  };
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(script,{window:windowMock,PhoneStorage:phoneStorage,document,localStorage,CustomEvent,Blob,setTimeout(){},console});
+  let secondFileRead=false;
+  const fileA={name:'主题A.maomaotheme',arrayBuffer(){return Promise.resolve('A')}};
+  const fileB={name:'主题B.maomaotheme',arrayBuffer(){secondFileRead=true;return Promise.resolve('B')}};
+  ids.themeFile.handlers.change({target:{files:[fileA]}});
+  for(let i=0;i<6;i++)await Promise.resolve();
+  assert.equal(ids.previewName.textContent,'主题 A','应先预览用户选择的主题 A');
+
+  ids.importApply.handlers.click();
+  assert.equal(ids.chooseFile.disabled,true,'导入期间应锁定选择文件按钮');
+  assert.equal(ids.clearFile.disabled,true,'导入期间应锁定重新选择按钮');
+  assert.equal(ids.themeFile.disabled,true,'导入期间应锁定文件输入');
+  ids.themeFile.handlers.change({target:{files:[fileB]}}); 
+  ids.clearFile.handlers.click();
+  assert.equal(secondFileRead,false,'导入期间的新文件选择必须被忽略');
+  assert.equal(ids.fileName.textContent,'主题A.maomaotheme','导入期间不能更换当前文件');
+
+  for(let i=0;i<6;i++)await Promise.resolve();
+  assert.equal(writes.length,1,'首个素材写入应处于等待状态');
+  finishFirstPut({ok:true,value:{assetId:'asset-from-package-A-1'}});
+  for(let i=0;i<24;i++)await Promise.resolve();
+
+  const installed=JSON.parse(localStorage.getItem(LIST_KEY)||'[]');
+  assert.equal(installed.length,1,'导入结束后只应保存一套主题');
+  assert.equal(installed[0].sourceId,'A','保存的主题必须来自原始快照 A');
+  assert.match(installed[0].customCss,/color:#111/,'CSS 必须来自原始快照 A，不能混入主题 B');
+  assert.deepEqual(installed[0].assetRefs,{
+    'assets/first.png':'asset-from-package-A-1',
+    'assets/second.png':'asset-from-package-A-2'
+  },'素材引用必须全部来自同一套原始主题包');
+  assert.equal(writes.length,2,'两项素材都应按快照 A 写入');
+  assert.equal(writes[0].options.ownerId,writes[1].options.ownerId,'同一主题的所有素材必须使用同一个 ownerId');
+  assert.equal(ids.chooseFile.disabled,false,'导入完成后应重新启用文件选择');
+  assert.equal(ids.clearFile.disabled,false,'导入完成后应重新启用重新选择');
+  assert.equal(ids.themeFile.disabled,false,'导入完成后应重新启用文件输入');
+  assert.equal(ids.packagePreview.hidden,true,'成功导入后应关闭预览');
+});
