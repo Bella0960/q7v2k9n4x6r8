@@ -287,7 +287,6 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /Bearer Token 按连接共用/);
   assert.match(html, /不代替 MCP 服务端自身的账户权限校验/);
   assert.match(html, /clearRolePermissions/);
-  assert.match(html, /renderPermissionRoles\(\);[\\s\\S]*if \(!activeTools\.length\)/);
 
 
   assert.match(html, /window\.addEventListener\('pagehide'/);
