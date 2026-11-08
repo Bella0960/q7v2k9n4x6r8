@@ -12,6 +12,9 @@
  *   8. clearOnRestore 在 restoreDatabase 层生效（空 store 仍 clear）
  *   9. 体积边界：store 总 Blob 超限 → 最后几条被跳过 → 触发 atomicExport
  *  10. doExport 层：atomicExportFailed 的库不进 dbData，进 dbWarnings + allSkipped
+ *  11-14. 多 store / 跨数据库恢复回滚、私有 Blob 恢复点与容量边界
+ *  15-24. 完整导入链故障注入：localStorage / IndexedDB / 恢复点异常
+ *  25-30. 恢复点内容指纹、原生事务生命周期、删除后读回校验
  */
 
 import test from 'node:test';
