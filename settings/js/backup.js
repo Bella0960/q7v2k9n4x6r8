@@ -456,6 +456,7 @@
     var RP_STORE_NAME = 'restores';
     var RP_ROLE_PRE = 'pre-import';
     var RP_ROLE_IDB_PRE = 'pre-import-indexeddb';
+    var RP_ROLE_META = 'pre-import-meta';
     var RESTORE_POINT_IDB_MAX_BYTES = 150 * 1024 * 1024;
 
     function rpOpen() {
@@ -570,7 +571,8 @@
     // 恢复点清理采用“删除后读回”确认，不能只依赖 delete 请求没有抛错。
     // 清理失败不会影响已经完成的数据回滚/导入，但必须把残留情况反馈给用户。
     async function clearRestorePoints() {
-        var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE];
+        // 元数据最后删除：若清理过程中页面关闭，仍可判断此前应恢复还是仅清理。
+        var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE, RP_ROLE_META];
         var failed = [];
         for (var i = 0; i < roles.length; i++) {
             try {
@@ -582,6 +584,137 @@
             }
         }
         return { ok: failed.length === 0, failed: failed };
+    }
+
+
+    // 写入导入阶段日志。只有该记录事务完成后，导入才允许触碰业务数据。
+    function writeImportState(status, indexedDbTargets) {
+        return rpWriteSnapshot({
+            status: status,
+            updatedAt: Date.now(),
+            indexedDbTargets: indexedDbTargets || []
+        }, RP_ROLE_META);
+    }
+
+    // 设置页启动时检查上一次导入是否因关闭页面、崩溃或浏览器中断而停在中途。
+    // applying / 无阶段日志但有旧版恢复点：恢复到导入前状态。
+    // committed / rolled-back：只清理上次遗留的恢复点，绝不覆盖当前数据。
+    async function recoverInterruptedImportOnStartup() {
+        var localRecord = null;
+        var indexedDbRecord = null;
+        var metaRecord = null;
+        try {
+            localRecord = await rpReadSnapshot(RP_ROLE_PRE);
+            indexedDbRecord = await rpReadSnapshot(RP_ROLE_IDB_PRE);
+            metaRecord = await rpReadSnapshot(RP_ROLE_META);
+        } catch (readError) {
+            toast('无法检查上次整机导入的恢复状态：' + ((readError && readError.message) || '恢复点读取失败')
+                + '。为保护现有数据，已暂时禁止新的整机导入。');
+            return false;
+        }
+
+        var hasAnyPoint = !!(localRecord || indexedDbRecord || metaRecord);
+        if (!hasAnyPoint) return true;
+
+        var state = metaRecord && metaRecord.snap && metaRecord.snap.status;
+        if (state === 'committed' || state === 'rolled-back') {
+            var cleanup = await clearRestorePoints();
+            if (cleanup.ok) {
+                toast(state === 'committed'
+                    ? '已清理上次成功导入遗留的恢复点'
+                    : '已清理上次回滚完成后遗留的恢复点');
+                return true;
+            }
+            toast('上次整机导入的恢复点仍有残留，暂时禁止新的整机导入；请勿清理网站数据。');
+            return false;
+        }
+
+        // 没有元数据属于旧版本遗留恢复点；按“可能已经开始覆盖”处理，不能擅自删除。
+        var targetNames = metaRecord && metaRecord.snap
+            && Array.isArray(metaRecord.snap.indexedDbTargets)
+            ? metaRecord.snap.indexedDbTargets.slice() : [];
+        var localSnapshot = localRecord && localRecord.snap;
+        var dbSnapshots = indexedDbRecord && indexedDbRecord.snap;
+        if (!localSnapshot || typeof localSnapshot !== 'object' || Array.isArray(localSnapshot)) {
+            toast('发现上次未完成的整机导入，但 localStorage 原始恢复点缺失或损坏。'
+                + '恢复点未清理，已禁止新的整机导入；请勿清理网站数据。');
+            return false;
+        }
+        if (targetNames.length && (!dbSnapshots || typeof dbSnapshots !== 'object')) {
+            toast('发现上次未完成的整机导入，但 IndexedDB 恢复点缺失。'
+                + '恢复点未清理，已禁止新的整机导入；请勿清理网站数据。');
+            return false;
+        }
+
+        if (!confirm('检测到上次整机导入没有正常结束。\\n\\n'
+                + '为避免保留一半新数据，将尝试把 localStorage 和 IndexedDB 恢复到导入前状态。'
+                + '\\n\\n恢复过程中请勿关闭页面。是否现在恢复？')) {
+            toast('上次整机导入尚未恢复；原始恢复点已保留，新的整机导入暂时禁用。');
+            return false;
+        }
+
+        var failures = [];
+        var snapshotDbNames = dbSnapshots && typeof dbSnapshots === 'object'
+            ? Object.keys(dbSnapshots) : [];
+        snapshotDbNames.forEach(function (dbName) {
+            if (targetNames.indexOf(dbName) === -1) targetNames.push(dbName);
+        });
+
+        for (var i = 0; i < targetNames.length; i++) {
+            var dbName = targetNames[i];
+            var target = null;
+            for (var j = 0; j < IDB_TARGETS.length; j++) {
+                if (IDB_TARGETS[j].db === dbName) { target = IDB_TARGETS[j]; break; }
+            }
+            if (!target || !dbSnapshots || !dbSnapshots[dbName]
+                    || typeof dbSnapshots[dbName] !== 'object') {
+                failures.push(dbName + '（恢复点数据库清单缺失或版本不兼容）');
+                continue;
+            }
+            try {
+                await restoreDatabase(
+                    target.db, target.version, target.stores, dbSnapshots[dbName], true
+                );
+                var actualSnapshot = await dumpDatabaseForRestorePoint(
+                    target.db, target.version, target.stores
+                );
+                var expectedFingerprint = await fingerprintRestorePoint(dbSnapshots[dbName]);
+                var actualFingerprint = await fingerprintRestorePoint(actualSnapshot);
+                if (expectedFingerprint !== actualFingerprint) {
+                    throw new Error('恢复后读回内容指纹不一致');
+                }
+            } catch (dbError) {
+                failures.push(dbName + '（' + ((dbError && dbError.message) || '恢复失败') + '）');
+            }
+        }
+
+        var localRollbackOk = restore(localSnapshot);
+        var localVerify = verifyRestore(localSnapshot);
+        if (!localRollbackOk || !localVerify.ok) {
+            failures.push('localStorage（' + localVerify.matched + '/' + localVerify.total + ' 项匹配）');
+        }
+
+        if (failures.length) {
+            toast('上次整机导入恢复未能完全完成：' + failures.join('；')
+                + '。原始恢复点已保留，请勿清理网站数据；重新打开设置页可再次尝试。');
+            return false;
+        }
+
+        try {
+            await writeImportState('rolled-back', targetNames);
+        } catch (stateError) {
+            toast('数据已恢复到导入前状态，但无法写入恢复完成标记。'
+                + '原始恢复点仍保留，请勿清理网站数据；重新打开设置页可再次核验。');
+            return false;
+        }
+        var finalCleanup = await clearRestorePoints();
+        if (!finalCleanup.ok) {
+            toast('上次整机导入已恢复到导入前状态，但恢复点清理未完全确认。'
+                + '残留恢复点已保留，请勿清理网站数据。');
+            return false;
+        }
+        toast('已将上次未完成的整机导入恢复到导入前状态');
+        return true;
     }
 
     /* ===== IndexedDB 工具函数 =====
@@ -1422,9 +1555,14 @@
 
     // 同一设备只允许一条整机导入链同时运行，避免多次导入覆盖彼此的唯一恢复点。
     var importInProgress = false;
+    var importRecoveryReady = false;
 
     function handleImportFile(file) {
         if (!file) return;
+        if (!importRecoveryReady) {
+            toast('正在检查或恢复上次未完成的整机导入；完成后才能开始新的导入。');
+            return;
+        }
         if (importInProgress) {
             toast('已有整机导入正在进行，本次导入已拒绝；请等待当前操作结束后再试');
             return;
@@ -1513,6 +1651,19 @@
                 }
             }
 
+            // 持久化标记“即将开始覆盖”。设置页下次启动时，若仍是 applying，
+            // 会先尝试恢复到导入前状态，而不是让用户继续在混合数据上操作。
+            var indexedDbTargetNames = idbRestorePoint.targets.map(function (target) { return target.db; });
+            try {
+                await writeImportState('applying', indexedDbTargetNames);
+            } catch (stateWriteError) {
+                var cleanupAfterStateFailure = await clearRestorePoints();
+                toast('已中止导入：无法写入导入阶段保护记录，现有业务数据未修改。'
+                    + ((stateWriteError && stateWriteError.message) || '')
+                    + (cleanupAfterStateFailure.ok ? '' : ' 恢复点清理未能完全确认，请勿清理网站数据。'));
+                return;
+            }
+
             // 额外便利：下载一份安全备份文件到本地。成功与否不再阻断流程——
             // 即使下载失败，恢复点 DB 已经能保障回滚能力。
             var backupFileWarn = '';
@@ -1543,6 +1694,13 @@
                     verify = { ok: false, matched: 0, total: Object.keys(current).length, missing: Object.keys(current), mismatched: [] };
                 }
                 if (rollbackOk && verify.ok) {
+                    try {
+                        await writeImportState('rolled-back', indexedDbTargetNames);
+                    } catch (stateError) {
+                        toast('导入失败，localStorage 已回滚核验通过，但恢复阶段标记写入失败。'
+                            + '原始恢复点已保留，请勿清理网站数据。');
+                        return;
+                    }
                     var cleanupAfterLocalRollback = await clearRestorePoints();
                     toast('导入失败，已从本机恢复点回滚到导入前状态'
                         + (cleanupAfterLocalRollback.ok ? '' : '；恢复点清理未能完全确认，残留记录仍保留在本机'));
@@ -1571,6 +1729,13 @@
                     var allRollbackOk = localRollbackOk && localRollbackVerify.ok
                         && idbRestoreResult.rollbackFailures.length === 0;
                     if (allRollbackOk) {
+                        try {
+                            await writeImportState('rolled-back', indexedDbTargetNames);
+                        } catch (stateError) {
+                            toast('导入失败，数据已回滚核验通过，但恢复阶段标记写入失败。'
+                                + '原始恢复点已保留，请勿清理网站数据。');
+                            return;
+                        }
                         var cleanupAfterDatabaseRollback = await clearRestorePoints();
                         toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
                             + idbRestoreResult.error + '），已将其他数据全部回滚到导入前状态'
@@ -1592,7 +1757,15 @@
             // 4.5 字体兜底：active_font_preset_id 指向的预设可能因跳过 / 解码失败不存在了 → 清掉悬空 id
             var fontOrphanCleaned = await checkFontPresetOrphan();
 
-            // 5. 全部业务数据恢复成功后，再清理 localStorage 与 IndexedDB 的导入前恢复点。
+            // 5. 全部业务数据恢复成功后，先持久化 committed，再清理恢复点。
+            // 若页面在清理中断，下一次启动只会继续清理，不会把已完成导入回滚掉。
+            try {
+                await writeImportState('committed', indexedDbTargetNames);
+            } catch (commitStateError) {
+                toast('数据已写入，但无法保存最终导入状态。原始恢复点已保留；'
+                    + '请勿清理网站数据，并重新打开设置页执行安全恢复。');
+                return;
+            }
             var cleanupAfterSuccess = await clearRestorePoints();
 
             // 6. 组装最终提示
@@ -1655,4 +1828,13 @@
         });
         secretBox.addEventListener('click', function (e) { e.stopPropagation(); });
     }
+
+    // 启动时先检查断电/关页遗留的恢复点；未确认安全前不允许开始新导入。
+    recoverInterruptedImportOnStartup().then(function (ready) {
+        importRecoveryReady = !!ready;
+    }).catch(function (error) {
+        importRecoveryReady = false;
+        toast('无法检查上次整机恢复状态：' + ((error && error.message) || '未知错误')
+            + '。为保护数据，已暂时禁止新的整机导入。');
+    });
 })();
