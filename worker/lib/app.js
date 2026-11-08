@@ -418,7 +418,6 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!parsed) throw new ApiError(401, 'UNAUTHORIZED', '缺少或非法的设备凭据');
     const device = await store.getDevice(parsed.deviceId);
     if (!device) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
-    if (device.revoked_at) throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
     const expected = await secretHash(env, parsed.deviceId, parsed.secret);
     if (!timingSafeEqualHex(expected, device.secret_hash)) {
       throw new ApiError(401, 'UNAUTHORIZED', '设备凭据校验失败');
@@ -430,6 +429,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
       }
     }
+    if (device.revoked_at) throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
     const timestamp = now();
     if (timestamp - Number(device.last_seen_at || 0) > 300000) {
       await store.touchDevice(device.id, timestamp);
