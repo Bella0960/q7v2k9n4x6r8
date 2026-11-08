@@ -39,6 +39,16 @@ CREATE INDEX IF NOT EXISTS idx_mao_accounts_status_created
 CREATE INDEX IF NOT EXISTS idx_mao_accounts_registration_ip_created
   ON mao_accounts(registration_ip_hash, created_at);
 
+CREATE TABLE IF NOT EXISTS mao_login_rate_limits (
+  ip_hash TEXT PRIMARY KEY,
+  window_started_at INTEGER NOT NULL,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  blocked_until INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_mao_login_rate_limits_blocked
+  ON mao_login_rate_limits(blocked_until);
+
 CREATE TABLE IF NOT EXISTS mao_account_sessions (
   id TEXT PRIMARY KEY,
   account_id TEXT NOT NULL REFERENCES mao_accounts(id),
