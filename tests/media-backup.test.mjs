@@ -1921,3 +1921,191 @@ test('33 handleImportFile：FileReader 构造失败后允许重新发起导入',
         'lock must be released after FileReader initialization failure');
     assert.equal(ctx.__intercepted.reloads, 1);
 });
+
+
+/* ═══════════════════════════════════════════════
+   34. 浏览器中断后：下次打开设置页自动提供完整回滚
+   ═══════════════════════════════════════════════ */
+test('34 recoverInterruptedImportOnStartup：恢复 localStorage、跨库记录与本地音乐 Blob', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+    await injectRecords(mediaDb, 'audio',
+        mediaDef.stores.find(s => s.store === 'audio'), [
+            { id: 'audio-old', title: 'Old local audio',
+              blob: new SandboxBlob([Buffer.from('original-local-audio')], { type: 'audio/mpeg' }) }
+        ]);
+
+    const beforeMedia = await ctx.dumpDatabaseForRestorePoint(
+        mediaDef.db, mediaDef.version, mediaDef.stores
+    );
+    ctx.__restorePointRows.set('pre-import', {
+        snap: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state',
+            keep_local_setting: 'keep-me'
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': beforeMedia },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('applying', ['maomao-media-store']);
+
+    await ctx.restoreDatabase('maomao-media-store', mediaDef.version, mediaDef.stores, {
+        wallpapers: [{
+            __key: 'wallpaper-new-key',
+            __value: { id: 'wallpaper-new', name: 'Imported wallpaper' }
+        }],
+        audio: [{ id: 'audio-new', title: 'Imported audio' }]
+    });
+    ctx.restore({
+        ai_custom_characters: 'new-character-state',
+        phone_data_v2: 'new-phone-state'
+    });
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, true);
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.equal(ctx.localStorage.keep_local_setting, 'keep-me');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old']);
+    assert.equal(mediaDb._data.audio.length, 1);
+    assert.equal(mediaDb._data.audio[0].id, 'audio-old');
+    assert.equal(mediaDb._data.audio[0].blob.type, 'audio/mpeg');
+    assert.equal(mediaDb._data.audio[0].blob._data.toString('utf8'), 'original-local-audio');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '全部恢复并验证通过后才能清理恢复点与阶段标记');
+    assert.ok(ctx.__intercepted.toasts.some(item => /已将上次未完成的整机导入恢复到导入前状态/.test(item.msg)));
+});
+
+/* ═══════════════════════════════════════════════
+   35. 用户暂不恢复：必须保留恢复点并阻止新导入
+   ═══════════════════════════════════════════════ */
+test('35 recoverInterruptedImportOnStartup：用户取消时保留所有恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({ confirmResult: false });
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('applying', []);
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, false);
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
+    ctx.handleImportFile({ content: JSON.stringify(makeImportPayload({})) });
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /正在检查或恢复上次未完成的整机导入/.test(item.msg)
+    ));
+    assert.equal(ctx.__pendingImport, undefined,
+        '恢复未确认前不能开始覆盖新的备份');
+});
+
+/* ═══════════════════════════════════════════════
+   36. 中断恢复再次失败：localStorage 尽力恢复，全部恢复点继续保留
+   ═══════════════════════════════════════════════ */
+test('36 recoverInterruptedImportOnStartup：数据库恢复失败时保留两份快照供重试', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'new-character-state',
+            phone_data_v2: 'new-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+    const beforeMedia = await ctx.dumpDatabaseForRestorePoint(
+        mediaDef.db, mediaDef.version, mediaDef.stores
+    );
+    ctx.__restorePointRows.set('pre-import', {
+        snap: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': beforeMedia },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('applying', ['maomao-media-store']);
+
+    await ctx.restoreDatabase('maomao-media-store', mediaDef.version, mediaDef.stores, {
+        wallpapers: [{
+            __key: 'wallpaper-new-key',
+            __value: { id: 'wallpaper-new', name: 'Imported wallpaper' }
+        }]
+    });
+    mediaDb._failPut = {
+        store: 'wallpapers',
+        id: 'wallpaper-old',
+        message: 'injected recovery retry failure'
+    };
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, false);
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state',
+        '即使 IndexedDB 恢复失败，也应尽力恢复独立的 localStorage');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-new']);
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-meta'),
+        '恢复失败时阶段标记必须继续保持 applying');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /上次整机导入恢复未能完全完成/.test(item.msg)
+        && /maomao-media-store/.test(item.msg)
+        && /原始恢复点已保留/.test(item.msg)
+    ));
+});
+
+/* ═══════════════════════════════════════════════
+   37. 已提交但清理中断：启动时只清理，不回滚已导入数据
+   ═══════════════════════════════════════════════ */
+test('37 recoverInterruptedImportOnStartup：committed 状态只清理残留恢复点', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'imported-character-state',
+            phone_data_v2: 'imported-phone-state'
+        }
+    });
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-character-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': { wallpapers: [] } },
+        createdAt: Date.now()
+    });
+    await ctx.writeImportState('committed', ['maomao-media-store']);
+
+    const recovered = await ctx.recoverInterruptedImportOnStartup();
+    assert.equal(recovered, true);
+    assert.equal(ctx.localStorage.ai_custom_characters, 'imported-character-state',
+        'committed 数据不应被旧快照覆盖');
+    assert.equal(ctx.localStorage.phone_data_v2, 'imported-phone-state');
+    assert.equal(ctx.__restorePointRows.size, 0);
+    assert.ok(ctx.__intercepted.toasts.some(item => /清理上次成功导入遗留的恢复点/.test(item.msg)));
+});
