@@ -35,8 +35,11 @@ function normalizedUsername(value) {
 function normalizedEmail(value) {
   const email = String(value || '').trim().toLowerCase();
   if (!email) return null;
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new ApiError(400, 'INVALID_EMAIL', 'QQ 邮箱格式不正确');
+  if (
+    email.length > 254 ||
+    !/^[^\s@]+@(?:qq\.com|vip\.qq\.com|foxmail\.com)$/.test(email)
+  ) {
+    throw new ApiError(400, 'INVALID_EMAIL', '请输入有效的 QQ 邮箱地址');
   }
   return email;
 }
@@ -173,6 +176,16 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (body.confirmPassword !== password) {
       throw new ApiError(400, 'PASSWORD_MISMATCH', '两次输入的密码不一致');
     }
+    const timestamp = now();
+    const pepper = String(env.DEVICE_SECRET_PEPPER || '');
+    if (pepper.length < 32) {
+      throw new ApiError(503, 'ACCOUNT_SECURITY_NOT_CONFIGURED', '账号安全服务尚未完成配置');
+    }
+    const ip = String(request.headers.get('cf-connecting-ip') || 'unavailable');
+    const registrationIpHash = await sha256Hex('mao-register|' + pepper + '|' + ip);
+    if (store.countMaoAccountsByRegistrationIp(registrationIpHash, timestamp - 60 * 60 * 1000) >= 8) {
+      throw new ApiError(429, 'ACCOUNT_REGISTRATION_RATE_LIMITED', '当前网络注册次数过多，请稍后再试');
+    }
     const salt = randomToken(16);
     const passwordHash = await passwordDigest(password, salt);
     const account = {
@@ -182,7 +195,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       passwordSalt: salt,
       passwordHash,
       qqEmail: normalizedEmail(body.qqEmail),
-      now: now()
+      registrationIpHash,
+      now: timestamp
     };
     try {
       const created = store.createMaoAccount(account);
@@ -268,8 +282,12 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         throw new ApiError(404, 'INVITE_TARGET_NOT_FOUND', '找不到符合条件的待授权账号');
       }
     }
-    if (targetEmail && !store.findVerifiedMaoEmail(targetEmail)) {
-      throw new ApiError(409, 'EMAIL_NOT_VERIFIED', '该邮箱尚未完成所有权验证，暂时不能用于邀请码绑定');
+    if (targetEmail) {
+      const verifiedOwner = store.findVerifiedMaoEmail(targetEmail);
+      const target = verifiedOwner ? store.getMaoAccountById(verifiedOwner.id) : null;
+      if (!target || target.status !== 'pending_invite') {
+        throw new ApiError(409, 'EMAIL_NOT_VERIFIED', '该邮箱尚未验证，或没有对应的待授权账号');
+      }
     }
     const maxUses = body.maxUses == null ? 1 : Number(body.maxUses);
     if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 20 || (targetAccountId && maxUses !== 1)) {
