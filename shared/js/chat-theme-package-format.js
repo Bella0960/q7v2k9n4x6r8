@@ -316,6 +316,25 @@
       if(path.indexOf("assets/")===0&&!own(assets,path))fail("CSS 引用了未登记的主题素材："+path);
     }
   }
+  function quoteCssString(value){
+    return "\""+String(value)
+      .replace(/\\/g,"\\\\")
+      .replace(/\"/g,"\\\"")
+      .replace(/[\\u0000-\\u001f\\u007f]/g,function(ch){return"\\\\\\\\\\\\\\\\\\\\"+ch.charCodeAt(0).toString(16)+" "})+"\"";
+  }
+  function rewriteCssAssetUrls(css,assetUrls){
+    var normalized=normalizeCssForSafety(String(css||""));
+    var rewritten=normalized.code.replace(/url\\s*\\(\\s*(?:\\u0001(\\d+)\\u0002|([^)\\]*?))\\s*\\)/gi,function(match,index,raw){
+      var path=index!==undefined?String(normalized.strings[Number(index)]||"").trim():String(raw||"").trim();
+      if(path.indexOf("assets/")!==0)return match;
+      var url=assetUrls&&assetUrls[path];
+      return url?"url("+quoteCssString(url)+")":"none";
+    });
+    return rewritten.replace(/\\u0001(\\d+)\\u0002/g,function(token,index){
+      var at=Number(index);
+      return at<normalized.strings.length?quoteCssString(normalized.strings[at]):token;
+    });
+  }
   function cleanValue(v,propertyName){
     if(typeof v==="number")return Number.isFinite(v)?v:null;
     if(typeof v==="boolean")return v;
@@ -478,5 +497,5 @@
     return normalize(theme,files,manifest);
   }
   function buildScopedCss(theme,css){var combined=stylesToCss(theme)+"\n"+scopeCss(css||" ",'.phone-mockup[data-maomao-chat-theme-active="1"]');return namespaceFontFamilies(combined,theme&&theme.id)}
-  return{FORMAT:FORMAT,VERSION:VERSION,COMPONENTS:COMPONENTS,MOTION_RULES:RULES,parseStoredZip:parseStoredZip,readPackage:readPackage,createPackage:createPackage,validateCss:validateCss,scopeCss:scopeCss,stylesToCss:stylesToCss,buildScopedCss:buildScopedCss,safeAssetPath:safeAssetPath};
+  return{FORMAT:FORMAT,VERSION:VERSION,COMPONENTS:COMPONENTS,MOTION_RULES:RULES,parseStoredZip:parseStoredZip,readPackage:readPackage,createPackage:createPackage,validateCss:validateCss,scopeCss:scopeCss,stylesToCss:stylesToCss,buildScopedCss:buildScopedCss,safeAssetPath:safeAssetPath,rewriteCssAssetUrls:rewriteCssAssetUrls};
 });
