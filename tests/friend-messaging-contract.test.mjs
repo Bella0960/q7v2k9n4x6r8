@@ -34,16 +34,18 @@ async function register(ctx, account, ip) {
 }
 
 function asAccount(ctx, account, path, options = {}) {
-  const messagePath = /^\\/api\\/friends\\/([^/]+)\\/messages$/.exec(path);
+  const pathParts = String(path || '').split('/');
+  const messageFriendId = pathParts.length === 5 && pathParts[1] === 'api' &&
+    pathParts[2] === 'friends' && pathParts[4] === 'messages' ? pathParts[3] : '';
   if (
     options.method === 'POST' &&
-    messagePath &&
+    messageFriendId &&
     options.body &&
     typeof options.body === 'object' &&
     !Array.isArray(options.body) &&
     !Object.prototype.hasOwnProperty.call(options.body, 'friendshipGenerationId')
   ) {
-    const friendship = ctx.store.getFriendship(account.userId, messagePath[1]);
+    const friendship = ctx.store.getFriendship(account.userId, messageFriendId);
     if (friendship) {
       options = {
         ...options,
