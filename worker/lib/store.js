@@ -1022,6 +1022,18 @@ class CloudStore {
          ON p.dedupe_key = ('outbound:' || o.server_message_id)
         AND p.subscription_id = s.id
        WHERE r.local_saved_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM activity_queue staged
+           WHERE staged.status = 'completed'
+             AND staged.result_server_message_id = o.server_message_id
+             AND staged.result_json IS NOT NULL
+             AND (
+               staged.device_id <> o.device_id
+               OR staged.character_id <> o.character_id
+               OR staged.result_json <> o.payload_json
+               OR staged.result_dedupe_key IS NOT o.dedupe_key
+             )
+         )
          AND (
            p.id IS NULL
            OR (p.status = 'error'
@@ -1094,6 +1106,18 @@ class CloudStore {
         AND r.device_id = requesting_device.id
        WHERE source_device.user_id = ? AND o.character_id = ?
          AND r.local_saved_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM activity_queue staged
+           WHERE staged.status = 'completed'
+             AND staged.result_server_message_id = o.server_message_id
+             AND staged.result_json IS NOT NULL
+             AND (
+               staged.device_id <> o.device_id
+               OR staged.character_id <> o.character_id
+               OR staged.result_json <> o.payload_json
+               OR staged.result_dedupe_key IS NOT o.dedupe_key
+             )
+         )
          AND (? IS NULL OR o.created_at > ?
               OR (o.created_at = ? AND o.id > ?))
        ORDER BY o.created_at ASC, o.id ASC
@@ -1514,6 +1538,10 @@ class CloudStore {
          AND NOT EXISTS (
            SELECT 1 FROM outbound_messages o
            WHERE o.server_message_id = q.result_server_message_id
+             AND o.device_id = q.device_id
+             AND o.character_id = q.character_id
+             AND o.payload_json = q.result_json
+             AND o.dedupe_key IS q.result_dedupe_key
          )
        ORDER BY q.updated_at ASC, q.id ASC
        LIMIT ?`,
@@ -1561,6 +1589,10 @@ class CloudStore {
          AND NOT EXISTS (
            SELECT 1 FROM outbound_messages o
            WHERE o.server_message_id = q.result_server_message_id
+             AND o.device_id = q.device_id
+             AND o.character_id = q.character_id
+             AND o.payload_json = q.result_json
+             AND o.dedupe_key IS q.result_dedupe_key
          )
        ORDER BY q.updated_at ASC, q.id ASC
        LIMIT ?`,

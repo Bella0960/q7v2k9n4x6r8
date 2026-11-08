@@ -3850,6 +3850,91 @@ test('生成期间上下文版本发生变化时，完成接口会跳过过时�
 });
 
 
+test('暂存结果与同 ID 出站记录冲突时不误判恢复，也不向设备或 Push 下发', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const device = makeDevice();
+  await registerDevice(ctx, device);
+
+  const activityId = 'staged_conflict_activity_1234';
+  const serverMessageId = 'autonomy_' + activityId + '_1';
+  const dedupeKey = 'autonomy:' + activityId + ':1';
+  const stagedPayload = { type: 'text', text: '不可变的正确暂存正文。' };
+  const conflictingPayload = { type: 'text', text: '与暂存结果冲突的旧正文。' };
+  const createdAt = 9000;
+
+  ctx.store.exec(
+    `INSERT INTO activity_queue
+      (id, device_id, character_id, kind, status, scheduled_at,
+       attempt_count, max_attempts, payload_json, created_at, updated_at,
+       dedupe_key, result_json, result_server_message_id, result_dedupe_key)
+     VALUES (?, ?, ?, 'contact', 'completed', ?, 1, 3, '{}', ?, ?, ?, ?, ?, ?)`,
+    activityId,
+    device.deviceId,
+    'char-staged-conflict',
+    createdAt,
+    createdAt,
+    createdAt,
+    'activity:' + activityId,
+    JSON.stringify(stagedPayload),
+    serverMessageId,
+    dedupeKey
+  );
+
+  const conflictingOutbox = ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: device.deviceId,
+    userId: 'owner',
+    characterId: 'char-staged-conflict',
+    serverMessageId,
+    dedupeKey,
+    payload: conflictingPayload,
+    now: createdAt
+  });
+  assert.equal(conflictingOutbox.inserted, true);
+
+  const globalRepair = ctx.store.repairAllStagedActivityOutboxes({ now: createdAt + 1, limit: 10 });
+  assert.deepEqual(globalRepair, { scanned: 1, repaired: 0, deferred: 1 },
+    '全局恢复必须识别同 ID 但内容不一致的记录，不能静默当成已修复');
+
+  const scopedRepair = ctx.store.repairStagedActivityOutbox({
+    userId: 'owner',
+    deviceId: device.deviceId,
+    characterId: 'char-staged-conflict',
+    now: createdAt + 2,
+    limit: 10
+  });
+  assert.deepEqual(scopedRepair, { repaired: 0, deferred: 1 },
+    '单设备收件箱恢复也必须识别并隔离同类冲突');
+
+  const stored = ctx.query(
+    'SELECT payload_json FROM outbound_messages WHERE server_message_id = ?',
+    serverMessageId
+  )[0];
+  assert.deepEqual(JSON.parse(stored.payload_json), conflictingPayload,
+    '恢复过程不得覆盖首次写入的原始出站记录');
+
+  const inbox = await ctx.asJson('/api/characters/char-staged-conflict/outbound', { device });
+  assert.equal(inbox.status, 200);
+  assert.equal(inbox.payload.messages.length, 0,
+    '与完成任务不可变暂存结果冲突的正文不得进入设备收件箱');
+
+  ctx.store.exec(
+    `INSERT INTO push_subscriptions
+      (id, device_id, endpoint, p256dh, auth_key, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    'sub_staged_conflict_001',
+    device.deviceId,
+    'https://push.example.com/staged-conflict',
+    'p256dh-test',
+    'auth-test',
+    createdAt,
+    createdAt
+  );
+  const pushCandidates = ctx.store.listOutboundPushCandidates({ now: createdAt + 3, limit: 10 });
+  assert.equal(pushCandidates.length, 0,
+    '冲突正文不得触发看似正常的角色主动消息 Push');
+});
+
 test('收件箱拉取会修复已暂存但首次未入箱的主动消息', async () => {
   const now = 1800000000000;
   const ctx = setupTestStore(openTestDb(), {
