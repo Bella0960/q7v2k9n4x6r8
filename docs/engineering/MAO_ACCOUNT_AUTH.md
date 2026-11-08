@@ -94,6 +94,7 @@ In Cloudflare Durable Objects, account lifecycle, invitation, legacy-owner adopt
 - Imported-font CacheStorage remains account-scoped for ordinary accounts. The Service Worker resolves the current HttpOnly MAO session before opening that account's font cache.
 - Every cloud chat/test push carries the recipient's MAO permanent ID. The Service Worker verifies the HttpOnly session before showing a notification and verifies it again when the notification is clicked; account mismatch, logged-out sessions and legacy `owner` payloads fail closed.
 - The creator's original `maomao-font-assets-v1` cache name remains supported so existing creator fonts are not hidden by the new account namespace.
+- Cloud chat and test push payloads carry the recipient's MAO ID. The Service Worker verifies the current HttpOnly session before displaying and again before opening a notification; logged-out, switched-account and legacy `owner` payloads are suppressed.
 - Protected app HTML continues to require a Worker authorization check on every navigation; offline fallback may show only the public account entry.
 
 ## Browser-side account separation
