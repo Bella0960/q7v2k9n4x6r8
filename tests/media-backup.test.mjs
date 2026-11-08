@@ -1889,3 +1889,27 @@ test('32 完整导入：并发重复导入被拒绝且首轮结束后锁正确�
     assert.equal(ctx.__intercepted.confirmCalls, 2);
     assert.equal(ctx.__intercepted.reloads, 2);
 });
+
+
+/* ═══════════════════════════════════════════════
+   33. 文件读取器构造失败也必须释放导入互斥锁
+   ═══════════════════════════════════════════════ */
+test('33 handleImportFile：FileReader 构造失败后允许重新发起导入', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({ confirmResult: true });
+    const validReader = ctx.FileReader;
+    ctx.FileReader = function BrokenFileReader() {
+        throw new Error('injected FileReader constructor failure');
+    };
+
+    ctx.handleImportFile({ content: '{}' });
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /无法初始化文件读取器|FileReader constructor failure/.test(item.msg)
+    ));
+
+    ctx.FileReader = validReader;
+    await runImport(ctx, makeImportPayload({}));
+    assert.equal(ctx.__intercepted.confirmCalls, 1,
+        'lock must be released after FileReader initialization failure');
+    assert.equal(ctx.__intercepted.reloads, 1);
+});
