@@ -39,7 +39,12 @@
     var view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
     var minEocd=Math.max(0,bytes.length-22-0xffff),eocd=-1;
     for(var scan=bytes.length-22;scan>=minEocd;scan--){
-      if(view.getUint32(scan,true)===0x06054b50){eocd=scan;break}
+      if(view.getUint32(scan,true)===0x06054b50){
+        var candidateComment=view.getUint16(scan+20,true);
+        var candidateSize=view.getUint32(scan+12,true),candidateOffset=view.getUint32(scan+16,true);
+        var directoryFits=candidateSize===0xffffffff||candidateOffset===0xffffffff||candidateOffset+candidateSize===scan;
+        if(scan+22+candidateComment===bytes.length&&directoryFits){eocd=scan;break}
+      }
     }
     if(eocd<0)fail("主题 ZIP 缺少结束记录。");
     var disk=view.getUint16(eocd+4,true),centralDisk=view.getUint16(eocd+6,true);
