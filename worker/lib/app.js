@@ -558,10 +558,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     }
     const body = await readJsonBody(request);
     const keys = Object.keys(body).sort();
-    if (keys.length !== 2 || keys[0] !== 'body' || keys[1] !== 'clientMessageId') {
-      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '真人好友聊天目前只接受 clientMessageId 和纯文字 body');
+    if (keys.length !== 3 || keys[0] !== 'body' || keys[1] !== 'clientMessageId' || keys[2] !== 'friendshipGenerationId') {
+      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '真人好友聊天目前只接受 clientMessageId、friendshipGenerationId 和纯文字 body');
     }
     const clientMessageId = String(body.clientMessageId || '').trim();
+    const friendshipGenerationId = String(body.friendshipGenerationId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(friendshipGenerationId)) {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '好友关系代际凭据无效，请刷新聊天页面');
+    }
     if (!FRIEND_MESSAGE_ID_PATTERN.test(clientMessageId)) {
       throw new ApiError(400, 'INVALID_CLIENT_MESSAGE_ID', '消息客户端 ID 格式无效');
     }
@@ -583,6 +587,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       senderId: account.user_id,
       recipientId: friendId,
       clientMessageId,
+      friendshipGenerationId,
       body: messageBody,
       now: timestamp,
       windowStart: timestamp - 60000,
@@ -596,6 +601,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     }
     if (result.kind === 'rate_limited') {
       throw new ApiError(429, 'FRIEND_MESSAGE_RATE_LIMITED', '一分钟内发送消息过多，请稍后再试');
+    }
+    if (result.kind === 'stale_generation') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_GENERATION', '好友关系已经变化，请先同步最新聊天状态，再重新发送这条消息');
     }
     if (result.kind === 'idempotency_conflict') {
       throw new ApiError(409, 'MESSAGE_IDEMPOTENCY_CONFLICT', '这条消息的发送凭据已被其他内容使用，请重新发送');
