@@ -11,6 +11,37 @@ function zip(files){const e=new TextEncoder(),parts=[],central=[];let offset=0;f
 function fixture(overrides={}){return{format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat',id:'test-theme',name:'测试聊天主题',pages:{chatList:[{id:'statusBar'},{id:'bottomNav'}],chatDetail:[{id:'detailHeader'},{id:'sentBubble'},{id:'inputDock'}]},styles:{chatList:{bottomNav:{background:'#fff',radius:22,opacity:92}},chatDetail:{sentBubble:{background:'#111',color:'#fff',fontSize:14,letterSpacing:.4}}},blocks:{chatList:[{id:'custom-card',type:'card',title:'卡片',text:'内容',slot:'before-list'}],chatDetail:[{id:'custom-text',type:'text',text:'说明',slot:'before-input'}]},layerOrder:{chatList:['statusBar','custom-card','bottomNav'],chatDetail:['detailHeader','sentBubble','custom-text','inputDock']},motions:[{id:'nav-collapse-scroll',enabled:true,duration:330,threshold:30,compactScale:.82}],assetIndex:[],...overrides}}
 function makePackage(theme=fixture(),css='.msg-row.sent .msg-bubble{letter-spacing:.2px}',extra=[]){const m={format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat'};return zip([{name:'manifest.json',data:JSON.stringify(m)},{name:'theme.json',data:JSON.stringify(theme)},{name:'custom.css',data:css},...extra])}
 test('valid chat theme parses with layout, CSS and motion settings',()=>{const p=F.readPackage(F.parseStoredZip(makePackage()));assert.equal(p.theme.name,'测试聊天主题');assert.equal(p.theme.blocks.chatList[0].slot,'before-list');assert.equal(p.theme.motions[0].duration,330);assert.match(F.buildScopedCss(p.theme,p.customCss),/data-maomao-chat-theme-active/);assert.match(F.buildScopedCss(p.theme,p.customCss),/letter-spacing:0?\.4px/);assert.match(F.scopeCss('.phone-mockup .msg-bubble{color:#111}','.phone-mockup[data-maomao-chat-theme-active="1"]'),/data-maomao-chat-theme-active="1"\] \.msg-bubble/);});
+
+test('stored ZIP validates its EOCD, central directory and matching local headers',()=>{
+  const valid=Buffer.from(makePackage());
+  assert.doesNotThrow(()=>F.parseStoredZip(valid));
+
+  const missingEnd=Buffer.from(valid);
+  missingEnd[missingEnd.length-22]=0;
+  assert.throws(()=>F.parseStoredZip(missingEnd),/结束记录/);
+
+  const badCount=Buffer.from(valid);
+  const countView=new DataView(badCount.buffer,badCount.byteOffset,badCount.byteLength);
+  countView.setUint16(badCount.length-22+10,2,true);
+  assert.throws(()=>F.parseStoredZip(badCount),/中央目录长度不正确/);
+
+  const mismatchedHeader=Buffer.from(valid);
+  const headerView=new DataView(mismatchedHeader.buffer,mismatchedHeader.byteOffset,mismatchedHeader.byteLength);
+  const centralOffset=headerView.getUint32(mismatchedHeader.length-22+16,true);
+  headerView.setUint32(centralOffset+16,(headerView.getUint32(centralOffset+16,true)+1)>>>0,true);
+  assert.throws(()=>F.parseStoredZip(mismatchedHeader),/本地文件头与中央目录不一致/);
+});
+
+test('stored ZIP permits a valid archive comment but rejects trailing unregistered bytes',()=>{
+  const valid=Buffer.from(makePackage());
+  const trailing=Buffer.concat([valid,Buffer.from([0x41])]);
+  assert.throws(()=>F.parseStoredZip(trailing),/结束记录长度/);
+
+  const commented=Buffer.concat([valid,Buffer.from('ok')]);
+  const view=new DataView(commented.buffer,commented.byteOffset,commented.byteLength);
+  view.setUint16(valid.length-2,2,true);
+  assert.doesNotThrow(()=>F.parseStoredZip(commented));
+});
 test('image/font assets must be registered in assetIndex',()=>{const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);const t=fixture({assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]});const p=F.readPackage(F.parseStoredZip(makePackage(t,'',[{name:'assets/bg.png',data:bytes}])));assert.deepEqual(Array.from(p.assets['assets/bg.png'].bytes),Array.from(bytes));});
 test('rejects wrong target, unsafe paths, external CSS and malformed CSS',()=>{assert.throws(()=>F.readPackage(F.parseStoredZip(makePackage(fixture({target:'desktop'})))),/目标不兼容/);assert.throws(()=>F.parseStoredZip(zip([{name:'../x',data:'x'}])),/不安全路径/);assert.throws(()=>F.validateCss('@import url(https://example.invalid/a.css)'),/不允许/);assert.throws(()=>F.validateCss('.x{background:url(https://example.invalid/a.png)}'),/只能引用主题 assets/);assert.throws(()=>F.validateCss('.x{color:red'),/不完整/);});
 test('CSS property values are sanitized and cannot inject declarations',()=>{const t=fixture({styles:{chatList:{bottomNav:{background:'url(javascript:alert(1))',color:'#222'}},chatDetail:{}}});const p=F.readPackage(F.parseStoredZip(makePackage(t)));const css=F.stylesToCss(p.theme);assert.doesNotMatch(css,/javascript:/i);assert.match(css,/color:#222/);});
