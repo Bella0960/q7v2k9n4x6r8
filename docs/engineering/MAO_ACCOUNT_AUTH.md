@@ -1,0 +1,108 @@
+# MAO account identity and authorization
+
+Status: implementation branch only; production deployment is not authorized.
+
+## Identity model
+
+MAO accounts are separate from the existing real-friend identity and from device credentials.
+
+- **mao_accounts.id** is the permanent MAO identity (MAO-...).
+- A browser login uses a random session token stored as a hash in mao_account_sessions.
+- A cloud device has its own device ID and secret. The device row is assigned to the MAO permanent account ID after a valid MAO login.
+- Existing creator-owned cloud records with user_id='owner' are adopted by the one super-admin account during the one-time bootstrap. Existing rows are not copied into ordinary users.
+
+## Account states
+
+| State | Meaning | App entry |
+| --- | --- | --- |
+| pending_invite | Account exists and has a permanent ID, but no invitation has been redeemed | Denied |
+| active | Invitation accepted and account authorized | Allowed |
+| disabled | Temporarily blocked by the super-admin | Denied; can be restored by the super-admin |
+| revoked | Authorization permanently revoked | Denied; cannot be restored |
+
+Disabled and revoked users receive the same public message: “您的账号已被禁用”. The action and reason are only available through super-admin APIs.
+
+## First super-admin bootstrap
+
+The deployment owner must configure MAO_SUPER_ADMIN_BOOTSTRAP_SECRET as a Cloudflare Worker secret with at least 32 characters, in addition to the existing DEVICE_SECRET_PEPPER secret. Then exactly one account can be created through:
+
+POST /api/admin/bootstrap:
+
+```json
+{
+  "bootstrapSecret": "<worker secret>",
+  "username": "<creator username>",
+  "password": "<creator password, 10–128 characters>"
+}
+```
+
+Bootstrap is one-time. A partial unique index prevents a second super-admin. No bootstrap secret is included in the repository or front-end bundle. This branch has not been deployed and the Worker secret has not been configured.
+
+## User registration and invitations
+
+1. POST /api/accounts/register creates an account with a permanent ID and pending_invite status.
+2. POST /api/accounts/login establishes an HttpOnly, SameSite=Lax session cookie. A pending account can sign in only to redeem its invitation.
+3. The super-admin creates a random invitation through POST /api/admin/invites and binds it to a pending permanent ID or a verified QQ email.
+4. Only the matching account can redeem through POST /api/accounts/invites/redeem. Each invitation has exactly one successful redemption. The raw invitation code is returned once; only its hash is stored.
+5. The Worker serves MAO app HTML only after checking an active MAO account session. Cloud API device requests also require the matching active account session.
+
+Registration is limited to eight accounts per source IP hash per hour. The source IP itself is not stored in the account row.
+
+### QQ email limitation
+
+QQ email may be recorded on registration, but mailbox ownership verification and email delivery are not implemented in this increment. Email-targeted invitations therefore fail closed until a real verification flow is added. Permanent-ID-targeted invitations are the currently usable path.
+
+## Disable / restore / revoke
+
+Only a session whose account role is super_admin may call the admin actions.
+
+- disable: block login, revoke all sessions and all device credentials, disable push subscriptions, clear live presence/leases and supersede pending autonomous tasks.
+- restore: restore a temporarily disabled account. Previously revoked device credentials remain revoked; the user must log in and enroll a new device.
+- revoke: permanently revoke authorization. This state cannot be restored.
+
+The account row and its associated data are retained. Admin audit records retain the actor, action, target and optional reason. Audit and reason endpoints are admin-only.
+
+Open pages recheck the session every 30 seconds and when returning to the foreground. Cloud APIs check every request. An already-open, fully offline page cannot receive a remote revocation until it reconnects; do not describe offline revocation as instantaneous.
+
+## Browser-side account separation
+
+The authenticated Worker injects shared/js/mao-account-scope.js before the app's scripts and adds the authenticated account ID and role as meta values.
+
+For normal MAO accounts, the script namespaces:
+
+- localStorage
+- sessionStorage
+- IndexedDB database names
+- page-created CacheStorage names and lookups
+
+The sole super-admin intentionally keeps the creator's existing browser storage and IndexedDB names to preserve the current MAO installation. Ordinary accounts never read the unscoped legacy keys or the super-admin's namespaced cache/database records. If the browser cannot install the required namespace wrappers, the account page is stopped rather than opening unisolated data.
+
+This is a first browser-isolation layer. It still requires real-device testing across separate accounts and browsers, and a follow-up audit of any app feature that stores user data outside these browser APIs (for example, server-side tables that have not yet been attached to MAO account IDs).
+
+## Endpoints
+
+Public account:
+- POST /api/accounts/register
+- POST /api/accounts/login
+- POST /api/accounts/logout
+- GET /api/accounts/me
+- POST /api/accounts/invites/redeem
+
+Super-admin only:
+- POST /api/admin/bootstrap (one-time secret-gated setup)
+- GET /api/admin/accounts
+- GET /api/admin/accounts/:id/audit
+- GET /api/admin/invites
+- POST /api/admin/invites
+- POST /api/admin/invites/:id/revoke
+- POST /api/admin/accounts/:id/action (disable / restore / revoke)
+
+## Validation
+
+- npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, and account/device revocation.
+- The command also includes browser storage namespace tests for two account IDs.
+- The GitHub Actions job must execute the tests and build before the branch can be considered validated.
+- Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
+- The admin-center UI, account-management UI, QQ mailbox verification, password reset, and production configuration remain follow-up work.
+
+No production deployment, merge into main, or APK update is part of this branch.
