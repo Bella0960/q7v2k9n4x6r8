@@ -600,6 +600,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (result.kind === 'idempotency_conflict') {
       throw new ApiError(409, 'MESSAGE_IDEMPOTENCY_CONFLICT', '这条消息的发送凭据已被其他内容使用，请重新发送');
     }
+    if (result.kind === 'stale_relationship_retry') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_MESSAGE_RETRY', '这条消息属于之前的好友关系，不能在重新添加好友后重放；请作为新消息重新发送');
+    }
     if (!result.message) {
       throw new ApiError(500, 'FRIEND_MESSAGE_NOT_SAVED', '消息没有成功保存，请重试');
     }
