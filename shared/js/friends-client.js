@@ -148,13 +148,18 @@
     return requestJson(path);
   }
 
-  function sendMessage(friendId, body, clientMessageId) {
+  function sendMessage(friendId, body, clientMessageId, friendshipGenerationId) {
     var id = String(clientMessageId || createMessageId()).trim();
+    var generationId = String(friendshipGenerationId || '').trim();
     return requestJson(
       '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages',
       {
         method: 'POST',
-        body: { clientMessageId: id, body: String(body == null ? '' : body) }
+        body: {
+          clientMessageId: id,
+          friendshipGenerationId: generationId,
+          body: String(body == null ? '' : body)
+        }
       }
     );
   }
