@@ -122,19 +122,36 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   }
 
   async function bootstrap(request) {
+    if (store.hasMaoSuperAdminAccount()) {
+      throw new ApiError(409, 'ADMIN_ALREADY_INITIALIZED', '超级管理员已经初始化');
+    }
     const body = await readJsonBody(request);
     const configured = String(env.MAO_SUPER_ADMIN_BOOTSTRAP_SECRET || '');
     const supplied = String(body.bootstrapSecret || '');
-    if (configured.length < 32 || supplied.length < 32) {
+    const pepper = String(env.DEVICE_SECRET_PEPPER || '');
+    if (configured.length < 32 || pepper.length < 32) {
       throw new ApiError(503, 'ADMIN_BOOTSTRAP_NOT_CONFIGURED', '管理员首次初始化尚未配置安全密钥');
+    }
+    const ip = String(request.headers.get('cf-connecting-ip') || 'unavailable');
+    const ipHash = await sha256Hex('mao-bootstrap|' + pepper + '|' + ip);
+    if (store.getMaoLoginRateLimit(ipHash, now()).blocked) {
+      throw new ApiError(429, 'BOOTSTRAP_RATE_LIMITED', '初始化尝试过多，请 15 分钟后再试');
+    }
+    if (supplied.length < 32) {
+      const failed = store.recordMaoLoginFailure(ipHash, now());
+      if (failed.blocked) throw new ApiError(429, 'BOOTSTRAP_RATE_LIMITED', '初始化尝试过多，请 15 分钟后再试');
+      throw new ApiError(403, 'INVALID_BOOTSTRAP_SECRET', '初始化授权无效');
     }
     const hashes = await Promise.all([
       sha256Hex('mao-admin-bootstrap|' + configured),
       sha256Hex('mao-admin-bootstrap|' + supplied)
     ]);
     if (!timingSafeEqualHex(hashes[0], hashes[1])) {
+      const failed = store.recordMaoLoginFailure(ipHash, now());
+      if (failed.blocked) throw new ApiError(429, 'BOOTSTRAP_RATE_LIMITED', '初始化尝试过多，请 15 分钟后再试');
       throw new ApiError(403, 'INVALID_BOOTSTRAP_SECRET', '初始化授权无效');
     }
+    store.clearMaoLoginRateLimit(ipHash);
 
     const identity = normalizedUsername(body.username);
     const password = String(body.password || '');
