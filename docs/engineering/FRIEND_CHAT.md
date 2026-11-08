@@ -41,6 +41,7 @@
 - `GET /api/friends/:friendId/messages?after=<createdAt>.<messageId>`：读取游标之后的新消息。
 - `GET /api/friends/:friendId/messages?before=<createdAt>.<messageId>`：载入更早消息。
 - `POST /api/friends/:friendId/messages`：发送纯文字，请求体仅允许 `clientMessageId`、`friendshipGenerationId` 与 `body`；代际凭据必须来自当前会话读取接口，服务器在数据库写入边界再次校验。
+- 好友申请创建/同意、消息写入、隐藏/已读/清空与删除好友的多步数据库写入运行在 `ctx.storage.transactionSync()` 事务中；事务中任一 SQL 抛错会整体回滚，避免出现“申请已同意但好友关系未创建”或“清理了一半视图数据却仍是好友”等半完成状态。Node 契约测试使用 `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK` 模拟相同事务边界，并注入 SQL 故障验证回滚。
 - 会话读取会校验查询期间关系代际没有变化；若删除/重加与读取交错，服务端返回 `FRIENDSHIP_CHANGED_RETRY`，客户端重新同步，避免混合旧消息页与新代际游标。
 - `DELETE /api/friends/:friendId/messages/:messageId`：只在当前账号隐藏单条消息。
 - `DELETE /api/friends/:friendId/messages`：只清空当前账号这边的整段会话，请求体必须携带 `friendshipGenerationId`；旧关系的迟到清空请求返回 409，不影响重新添加后的新会话。
