@@ -3440,7 +3440,7 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   const completed = await ctx.asJson(completePath, {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
   });
   assert.equal(completed.status, 200);
   assert.equal(completed.payload.completed, true);
@@ -3449,7 +3449,7 @@ test('自主活动 API：本地生成器可安全认领并把结果交给原有�
   const repeatedComplete = await ctx.asJson(completePath, {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
   });
   assert.equal(repeatedComplete.status, 200);
   assert.equal(repeatedComplete.payload.alreadyCompleted, true);
@@ -3721,10 +3721,11 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(claimed.status, 200);
   const activity = claimed.payload.activity;
 
+  const proactiveMessage = '我刚刚想到一件想和你分享的事。\n\n另外还有一件小事，也想顺便告诉你。';
   const completed = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
   });
   assert.equal(completed.status, 200);
   assert.equal(completed.payload.completed, true);
@@ -3740,6 +3741,12 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(delivery.outbound_message_id, 'out_' + serverMessageId);
   assert.ok(ctx.store.getOutboundMessage(serverMessageId).push_accepted_at,
     '至少一个订阅接受 Push 后应记录 push_accepted_at');
+  const outboundInbox = await ctx.asJson('/api/characters/char-push/outbound', { device });
+  assert.equal(outboundInbox.status, 200);
+  assert.equal(outboundInbox.payload.messages.length, 1);
+  assert.equal(outboundInbox.payload.messages[0].payload.type, 'text');
+  assert.equal(outboundInbox.payload.messages[0].payload.text, proactiveMessage,
+    '云端收件箱必须原样保留用于拆分气泡的空行分隔符');
 
   const notification = buildOutboundPushPayload({
     characterId: 'char-push',
@@ -3756,7 +3763,7 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   const repeated = await ctx.asJson('/api/autonomy/activities/' + activity.id + '/complete', {
     method: 'POST',
     device,
-    body: { attemptCount: activity.attemptCount, text: '我刚刚想到一件想和你分享的事。' }
+    body: { attemptCount: activity.attemptCount, text: proactiveMessage }
   });
   assert.equal(repeated.status, 200);
   assert.equal(repeated.payload.alreadyCompleted, true);

@@ -1297,7 +1297,7 @@ test('chat presence policy skips narration and face-to-face modes and avoids rig
 test('chat presence policy is loaded by chat detail and precached for PWA', () => {
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
   assert.match(detail, /ChatPresencePolicy\.buildPrompt/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
+  assert.match(serviceWorker, /phone-app-pwa-v206/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
 });
 
@@ -1806,10 +1806,25 @@ test('主动联系按角色独立历史刷新语言画像，并参考关系阶�
 test('主动联系支持角色习惯决定数量的独立气泡并兼容旧版 text', () => {
   const normalize = presencePolicy.normalizeProactiveBubbles;
   assert.equal(typeof normalize, 'function');
+  const multiBubbleText = normalize({
+    send: true,
+    bubbles: ['刚刚看到一家新开的书店。', '感觉你可能会喜欢那里的选书。']
+  });
   assert.equal(
-    normalize({ send: true, bubbles: ['刚刚看到一家新开的书店。', '感觉你可能会喜欢那里的选书。'] }),
+    multiBubbleText,
     '刚刚看到一家新开的书店。\n\n感觉你可能会喜欢那里的选书。'
   );
+  assert.deepEqual(
+    policy.parseReplyContent(multiBubbleText).bubbles,
+    ['刚刚看到一家新开的书店。', '感觉你可能会喜欢那里的选书。'],
+    'the exact text sent through the cloud API must still render as separate chat bubbles'
+  );
+  const fourBubbleText = normalize({
+    send: true,
+    bubbles: ['第一条自然消息。', '第二条自然消息。', '第三条自然消息。', '第四条自然消息。']
+  });
+  assert.equal(policy.parseReplyContent(fourBubbleText).bubbles.length, 4,
+    'the variable bubble flow supports up to four independent messages');
   assert.equal(normalize({ send: true, bubbles: ['我到家啦。'] }), '我到家啦。');
   assert.equal(normalize({ send: true, text: '旧版单条主动消息仍然可以保存。' }), '旧版单条主动消息仍然可以保存。');
   assert.equal(
@@ -1888,7 +1903,7 @@ test('proactive contact notifier is loaded on home and navigation pages and prec
   assert.match(detail, /chat-notifier\.js\?v=20261107v6/);
   assert.match(detail, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(detail, /chat-presence-policy\.js\?v=20261102v19/);
-  assert.match(serviceWorker, /phone-app-pwa-v204/);
+  assert.match(serviceWorker, /phone-app-pwa-v206/);
   assert.match(serviceWorker, /chat-notifier\.js\?v=20261107v6/);
   assert.match(serviceWorker, /cloud-push-client\.js\?v=20261107v1/);
   assert.match(serviceWorker, /chat-presence-policy\.js\?v=20261102v19/);
@@ -2448,8 +2463,25 @@ test('气泡动画期间新增的主动消息会与本轮 AI 回复合并，且�
   assert.equal(failed, null, 'a failed recovery write must not be treated as a confirmed history');
 });
 
-test('cloud outbound 用户已读只由实际进入聊天视口的消息气泡触发', () => {
-  assert.match(detail, /row\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
+test('cloud outbound 多气泡仅在最后一条进入视口后标记已读，动态插入后会注册观察器', () => {
+  const appendStart = detail.indexOf('function appendMessageToDOM');
+  const appendEnd = detail.indexOf('function appendAiMessageWithPacing', appendStart);
+  assert.ok(appendStart >= 0 && appendEnd > appendStart);
+  const appendSource = detail.slice(appendStart, appendEnd);
+  assert.match(appendSource, /row\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
+  assert.match(appendSource, /parsed\.bubbles\.length > 1 && msg\.serverMessageId/);
+  assert.match(appendSource, /row\.removeAttribute\('data-server-message-id'\)/);
+  assert.match(appendSource, /bi === parsed\.bubbles\.length - 1 && msg\.serverMessageId/);
+  assert.match(appendSource, /extraRow\.dataset\.serverMessageId = String\(msg\.serverMessageId\)/);
+  assert.match(appendSource, /host\.appendChild\(el\);[\s\S]{0,180}observeCloudOutboundReadRow\(el\)/);
+
+  const paceStart = detail.indexOf('function appendAiMessageWithPacing');
+  const paceEnd = detail.indexOf('// ================= 虚拟列表', paceStart);
+  assert.ok(paceStart >= 0 && paceEnd > paceStart);
+  const pacingSource = detail.slice(paceStart, paceEnd);
+  assert.match(pacingSource, /chatMessages\.appendChild\(node\);[\s\S]{0,120}observeCloudOutboundReadRow\(node\)/);
+  assert.match(pacingSource, /nodes\.forEach\(function \(node\)/);
+
   assert.match(detail, /new IntersectionObserver\(/);
   assert.match(detail, /root: chatMessages, threshold: \[0\.18, 0\.5\]/);
   assert.match(detail, /cloud\.markCharacterOutboundRead\(roleId, serverMessageId\)/);

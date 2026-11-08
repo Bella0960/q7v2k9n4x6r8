@@ -3993,7 +3993,11 @@
                         _pendingExtras.push(renderNarratageBlock(nc));
                     });
                     if (parsed.bubbles.length > 0) {
-                        // 第一个气泡走正常 row 流程（含 avatar / group name / mid / 译文）
+                        // 第一个气泡走正常 row 流程（含 avatar / group name / mid / 译文）。
+                        // 云端同一条消息由最后一个气泡承担已读观察点，避免第一条刚露出就提前回执。
+                        if (parsed.bubbles.length > 1 && msg.serverMessageId) {
+                            row.removeAttribute('data-server-message-id');
+                        }
                         bubble.textContent = parsed.bubbles[0];
                         // 双语聊天：每段外语正文底下挂一条灰色中文翻译
                         if (parsed.translations && parsed.translations[0]) {
@@ -4008,6 +4012,9 @@
                             extraRow.className = 'msg-row received';
                             extraRow.dataset.mid = ensureMid(msg);
                             extraRow.dataset.time = String(msg.time || '');
+                            if (bi === parsed.bubbles.length - 1 && msg.serverMessageId) {
+                                extraRow.dataset.serverMessageId = String(msg.serverMessageId);
+                            }
                             var extraBubble = document.createElement('div');
                             extraBubble.className = 'msg-bubble';
                             extraBubble.textContent = parsed.bubbles[bi];
@@ -4116,7 +4123,11 @@
             observeCloudOutboundReadRow(row);
             // AI 消息的思维链块/旁白块/额外气泡：主 row 之后追加，保证正确渲染顺序
             if (typeof _pendingExtras !== 'undefined') {
-                _pendingExtras.forEach(function (el) { host.appendChild(el); });
+                _pendingExtras.forEach(function (el) {
+                    host.appendChild(el);
+                    // 普通直插入时节点已连接；临时 DocumentFragment 中则由 pacing 队列在入 DOM 后补挂。
+                    observeCloudOutboundReadRow(el);
+                });
             }
         }
 
@@ -4145,6 +4156,12 @@
                     !presencePolicy || typeof presencePolicy.getBubbleDelayMs !== 'function') {
                     if (generation !== aiBubblePacingRunId) return;
                     chatMessages.appendChild(fragment);
+                    // appendMessageToDOM 组装时节点仍在临时 fragment；进入真实 DOM 后再注册已读观察器。
+                    nodes.forEach(function (node) {
+                        if (node && node.nodeType === 1 && node.classList && node.classList.contains('msg-row')) {
+                            observeCloudOutboundReadRow(node);
+                        }
+                    });
                     if (shouldScroll) scrollToBottom(true);
                     return;
                 }
@@ -4167,6 +4184,7 @@
                         shownRows += 1;
                     }
                     chatMessages.appendChild(node);
+                    if (isMessageRow) observeCloudOutboundReadRow(node);
                     if (shouldScroll) scrollToBottom(true);
                 }
             };
