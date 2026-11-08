@@ -184,8 +184,19 @@ self.addEventListener('fetch', event => {
       // 旧页面会被无限期缓存（只有 sw.js 变更触发重装时才会被替换）。
       // 用同 URL 的新 Request 绕过此限制，no-store 确保拿到最新 HTML。
       var refreshUrl = req.url;
-      var refreshKey = new Request(refreshUrl);
-      var networkPromise = fetch(new Request(refreshUrl, { cache: 'no-store' })).then(function (response) {
+      // Preserve navigation headers and credentials so the refreshed HTML and
+      // Cache API key follow the same Vary/identity rules as the original request.
+      var refreshKey = new Request(refreshUrl, {
+        headers: req.headers,
+        credentials: req.credentials,
+        redirect: req.redirect
+      });
+      var networkPromise = fetch(new Request(refreshUrl, {
+        headers: req.headers,
+        credentials: req.credentials,
+        redirect: req.redirect,
+        cache: 'no-store'
+      })).then(function (response) {
         if (response && response.ok) {
           var copy = response.clone();
           // 写回缓存单独成 Promise：失败只影响缓存，不影响已成功的网络响应。
