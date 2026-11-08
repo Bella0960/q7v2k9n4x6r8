@@ -129,8 +129,11 @@
 
   function safeToolAlias(connectionId, toolName, index) {
     var readable = String(toolName || '').replace(/[^a-zA-Z0-9_-]/g, '_')
-      .replace(/^[-_]+/, '').slice(0, 42) || ('tool_' + index);
-    return ('mcp' + connectionId + '_' + readable).slice(0, 64);
+      .replace(/^[-_]+/, '') || 'tool';
+    var prefix = 'mcp' + connectionId + '_';
+    var suffix = '_' + index;
+    var available = Math.max(1, 64 - prefix.length - suffix.length);
+    return prefix + readable.slice(0, available) + suffix;
   }
 
   function getPermissionManager() {
@@ -152,6 +155,9 @@
     }
     if (connections.length >= MAX_CONNECTIONS) {
       return Promise.reject(new Error('单个页面最多登记 30 个 MCP 连接。'));
+    }
+    if (connections.some(function (connection) { return connection.active && connection.endpoint === client.endpoint; })) {
+      return Promise.reject(new Error('同一 MCP 服务地址只能保留一个活动连接，避免不同凭据共享同一角色授权。'));
     }
     var seen = Object.create(null);
     var prepared;

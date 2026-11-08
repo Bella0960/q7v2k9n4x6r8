@@ -62,8 +62,8 @@ test('AI tool list exposes only tools explicitly granted to the selected role', 
   const roleB = await api.listForRole('role-B');
   assert.equal(roleA.length, 1);
   assert.equal(roleB.length, 1);
-  assert.match(roleA[0].function.name, /^mcp1_search_notes$/);
-  assert.match(roleB[0].function.name, /^mcp2_lookup$/);
+  assert.match(roleA[0].function.name, /^mcp1_search_notes_0$/);
+  assert.match(roleB[0].function.name, /^mcp2_lookup_0$/);
   assert.equal((await api.listForRole('role-C')).length, 0);
 });
 
@@ -152,6 +152,33 @@ test('unregistering a connection disconnects it and removes its AI-visible tools
   assert.equal(await api.unregisterConnection(connection.id), true);
   assert.equal((await api.listForRole('role-A')).length, 0);
   assert.ok(calls.some(call => call.disconnected));
+});
+
+test('one active connection per endpoint prevents credential-context ambiguity', async () => {
+  const { api, makeClient } = createRuntime();
+  const endpoint = 'https://same.example.com/mcp';
+  await api.registerConnection(makeClient(endpoint), [{ name: 'search_notes', inputSchema: { type: 'object' } }]);
+  await assert.rejects(
+    api.registerConnection(makeClient(endpoint), [{ name: 'search_notes', inputSchema: { type: 'object' } }]),
+    /只能保留一个活动连接/
+  );
+});
+
+test('unsafe prototype property names and invalid negative length bounds are rejected', async () => {
+  const { api, makeClient } = createRuntime();
+  const client = makeClient('https://schema.example.com/mcp');
+  await assert.rejects(api.registerConnection(client, [{
+    name: 'unsafe_property',
+    inputSchema: { type: 'object', properties: { '__proto__': { type: 'string' } } }
+  }]), /不安全的字段名称/);
+  await assert.rejects(api.registerConnection(makeClient('https://length.example.com/mcp'), [{
+    name: 'negative_length',
+    inputSchema: { type: 'object', properties: { value: { type: 'string', maxLength: -1 } } }
+  }]), /边界值无效/);
+  await api.registerConnection(makeClient('https://negative-number.example.com/mcp'), [{
+    name: 'negative_number',
+    inputSchema: { type: 'object', properties: { value: { type: 'number', minimum: -10, maximum: -1 } } }
+  }]);
 });
 
 test('connection registration rejects missing clients, duplicate tools and excessive tool lists', async () => {
