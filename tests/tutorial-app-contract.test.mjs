@@ -405,6 +405,10 @@ test('recovery-point rescue export is discoverable, read-only, and warns about s
   assert.match(backupScript, /抢救包会包含当前仍可读取的原始恢复记录/);
   assert.match(backupScript, /原始恢复点未删除/);
   assert.match(backupScript, /rowDownloadRecoveryRescue/);
+  assert.match(backupScript, /README\.txt/);
+  assert.match(backupScript, /recordStatuses/);
+  assert.match(backupScript, /assets\.length = assetStart/);
+  assert.match(backupScript, /不是密码学签名或来源认证/);
   assert.match(backupScript, /不是可直接导入的普通备份文件/);
 });
 
