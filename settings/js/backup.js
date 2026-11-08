@@ -1577,6 +1577,7 @@
             return;
         }
         reader.onload = async function (ev) {
+            var importStageRecorded = false;
             try {
             var obj;
             try { obj = JSON.parse(String(ev.target.result)); }
@@ -1656,6 +1657,7 @@
             var indexedDbTargetNames = idbRestorePoint.targets.map(function (target) { return target.db; });
             try {
                 await writeImportState('applying', indexedDbTargetNames);
+                importStageRecorded = true;
             } catch (stateWriteError) {
                 var cleanupAfterStateFailure = await clearRestorePoints();
                 toast('已中止导入：无法写入导入阶段保护记录，现有业务数据未修改。'
@@ -1705,6 +1707,7 @@
                     toast('导入失败，已从本机恢复点回滚到导入前状态'
                         + (cleanupAfterLocalRollback.ok ? '' : '；恢复点清理未能完全确认，残留记录仍保留在本机'));
                 } else {
+                    importRecoveryReady = false;
                     toast('导入失败，恢复未完成，且回滚未完全成功（'
                         + verify.matched + '/' + verify.total + ' 项匹配'
                         + (verify.missing && verify.missing.length ? '，缺失 ' + verify.missing.length + ' 项' : '')
@@ -1741,6 +1744,7 @@
                             + idbRestoreResult.error + '），已将其他数据全部回滚到导入前状态'
                             + (cleanupAfterDatabaseRollback.ok ? '' : '；恢复点清理未能完全确认，残留记录仍保留在本机'));
                     } else {
+                        importRecoveryReady = false;
                         toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
                             + idbRestoreResult.error + '）。部分回滚未能确认；本机恢复点已保留。'
                             + (idbRestoreResult.rollbackFailures.length
@@ -1787,7 +1791,9 @@
             toast(parts.join('，') + tail + '，正在刷新…');
             setTimeout(function () { location.reload(); }, 700);
             } catch (importError) {
-                toast('导入失败：' + ((importError && importError.message) || '恢复流程发生未知错误'));
+                if (importStageRecorded) importRecoveryReady = false;
+                toast('导入失败：' + ((importError && importError.message) || '恢复流程发生未知错误')
+                    + (importStageRecorded ? '。本轮恢复点已保留；重新打开设置页可尝试恢复到导入前状态。' : ''));
             } finally {
                 importInProgress = false;
             }
