@@ -1079,7 +1079,10 @@ test('import locks file selection and uses one immutable package snapshot',async
     MAOMAOChatThemeFormat:{
       parseStoredZip(buffer){return buffer},
       readPackage(marker){return{
-        theme:{id:marker,name:'主题 '+marker,version:'1.0.0',pages:{chatList:[],chatDetail:[]},motions:[]},
+        theme:{id:marker,name:'主题 '+marker,version:'1.0.0',pages:{chatList:[],chatDetail:[]},motions:[],assetIndex:[
+          {path:'assets/first.png',name:'first.png',mimeType:'image/png',type:'image'},
+          {path:'assets/second.png',name:'second.png',mimeType:'image/png',type:'image'}
+        ]},
         customCss:'.msg-bubble{color:'+(marker==='A'?'#111':'#222')+'}',
         assets:{
           'assets/first.png':{bytes:new Uint8Array([1,2,3]),mimeType:'image/png',type:'image'},
@@ -1120,6 +1123,10 @@ test('import locks file selection and uses one immutable package snapshot',async
     'assets/first.png':'asset-from-package-A-1',
     'assets/second.png':'asset-from-package-A-2'
   },'素材引用必须全部来自同一套原始主题包');
+  assert.deepEqual(installed[0].assetIndex,[
+    {path:'assets/first.png',name:'first.png',mimeType:'image/png',type:'image'},
+    {path:'assets/second.png',name:'second.png',mimeType:'image/png',type:'image'}
+  ],'导入后必须保留素材清单元数据，供重新导出时按 assetId 找回二进制文件');
   assert.equal(writes.length,2,'两项素材都应按快照 A 写入');
   assert.equal(writes[0].options.ownerId,writes[1].options.ownerId,'同一主题的所有素材必须使用同一个 ownerId');
   assert.equal(ids.chooseFile.disabled,false,'导入完成后应重新启用文件选择');
