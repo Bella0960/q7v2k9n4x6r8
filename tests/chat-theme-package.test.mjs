@@ -619,6 +619,38 @@ test('style values reject comment and escape obfuscation of dangerous CSS',()=>{
 });
 
 
+
+test('import rejects oversized files before allocating their ArrayBuffer',async()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  function makeNode(){
+    const node={handlers:{},textContent:'',disabled:false,hidden:false,value:'',className:'',
+      classList:{add(){},remove(){}},addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(){},setAttribute(){}};
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value)}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName',
+   'previewName','previewVersion','previewCss','previewList','previewDetail','previewSummary'].forEach(id=>ids[id]=makeNode());
+  const document={querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  let readCalled=false;
+  const windowMock={PhoneStorage:null,MAOMAOChatThemeFormat:{parseStoredZip(){throw new Error('不应读取超限文件')},readPackage(){}},dispatchEvent(){}};
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(script,{window:windowMock,document,localStorage:{getItem(){return null}},CustomEvent,setTimeout(){},console});
+  ids.themeFile.handlers.change({target:{files:[{
+    name:'oversized.maomaotheme',size:48*1024*1024+1,
+    arrayBuffer(){readCalled=true;return Promise.resolve(new ArrayBuffer(0))}
+  }]}});
+  for(let i=0;i<4;i++)await Promise.resolve();
+  assert.equal(readCalled,false,'超过 48 MB 的文件不能先被读入内存');
+  assert.equal(ids.packagePreview.hidden,true,'超限文件不能显示可导入的预览');
+  assert.equal(ids.importApply.disabled,true,'超限文件不能进入导入流程');
+  assert.match(ids.status.textContent,/超过 48 MB/,'应明确告知主题包体积超限');
+});
+
 test('import preview ignores stale file reads after a newer selection or clear',async()=>{
   const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
