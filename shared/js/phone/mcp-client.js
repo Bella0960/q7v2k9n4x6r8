@@ -14,6 +14,7 @@
   var MAX_TOOL_SCHEMA_CHILDREN = 200;
   var MAX_TOOL_CATALOG_BYTES = 768 * 1024;
   var MAX_TOOL_CURSOR_CHARS = 512;
+  var MAX_TOOL_ARGUMENT_BYTES = 32 * 1024;
 
   function utf8ByteLength(value) {
     var bytes = 0;
@@ -294,6 +295,8 @@
     var nextId = 1;
     var closed = false;
     var inFlightControllers = [];
+    var toolSchemas = Object.create(null);
+    var toolCatalogReady = false;
 
     function removeController(controller) {
       var index = inFlightControllers.indexOf(controller);
@@ -396,7 +399,10 @@
         });
       },
       listTools: function () {
+        toolCatalogReady = false;
+        toolSchemas = Object.create(null);
         var all = [];
+        var nextToolSchemas = Object.create(null);
         var seenCursors = Object.create(null);
         var seenNames = Object.create(null);
         var totalCatalogBytes = 0;
@@ -437,6 +443,7 @@
                 throw new Error('MCP 工具清单元数据超过 768 KB 上限，已停止导入。');
               }
               seenNames[name] = true;
+              nextToolSchemas[name] = JSON.parse(JSON.stringify(schema));
               all.push({
                 name: name,
                 description: description,
@@ -458,18 +465,50 @@
             return all;
           });
         }
-        return page('', 0);
+        return page('', 0).then(function (tools) {
+          toolSchemas = nextToolSchemas;
+          toolCatalogReady = true;
+          return tools;
+        }, function (error) {
+          toolSchemas = Object.create(null);
+          toolCatalogReady = false;
+          throw error;
+        });
       },
       callTool: function (name, args) {
         if (!name || typeof name !== 'string') return Promise.reject(new Error('工具名称无效。'));
+        if (!toolCatalogReady || !Object.prototype.hasOwnProperty.call(toolSchemas, name)) {
+          return Promise.reject(new Error('只能调用本次完整读取的工具清单中的工具。'));
+        }
+        if (!args || typeof args !== 'object' || Array.isArray(args)) {
+          return Promise.reject(new Error('工具参数必须是 JSON 对象。'));
+        }
+        var argumentJson;
+        try { argumentJson = JSON.stringify(args); }
+        catch (error) { return Promise.reject(new Error('工具参数无法安全序列化为 JSON。')); }
+        if (typeof argumentJson !== 'string') {
+          return Promise.reject(new Error('工具参数无法安全序列化为 JSON。'));
+        }
+        if (utf8ByteLength(argumentJson) > MAX_TOOL_ARGUMENT_BYTES) {
+          return Promise.reject(new Error('工具参数 JSON 超过 32 KB UTF-8 限制。'));
+        }
+        var normalizedArgs;
+        try {
+          normalizedArgs = JSON.parse(argumentJson);
+          validateToolArguments(toolSchemas[name], normalizedArgs);
+        } catch (error) {
+          return Promise.reject(error);
+        }
         return request('tools/call', {
           name: name,
-          arguments: args && typeof args === 'object' && !Array.isArray(args) ? args : {}
+          arguments: normalizedArgs
         }, 30000);
       },
       disconnect: function () {
         if (closed) return Promise.resolve();
         closed = true;
+        toolCatalogReady = false;
+        toolSchemas = Object.create(null);
         var pending = inFlightControllers.slice();
         inFlightControllers.length = 0;
         pending.forEach(function (controller) {

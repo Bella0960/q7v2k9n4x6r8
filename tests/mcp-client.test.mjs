@@ -124,6 +124,77 @@ test('MCP initialization, tool discovery and calls use the negotiated session an
   await client.disconnect();
 });
 
+test('MCP client enforces the complete tool catalog, schema and UTF-8 argument limit before dispatch', async () => {
+  const requests = [];
+  function response(status, payload, headers = {}) {
+    const map = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      headers: { get(name) { return map[String(name).toLowerCase()] || (String(name).toLowerCase() === 'content-type' ? 'application/json' : null); } },
+      async text() { return payload == null ? '' : JSON.stringify(payload); }
+    };
+  }
+  const context = createContext(async (url, init) => {
+    requests.push({ url, init });
+    if (init.method === 'DELETE') return response(200, null);
+    const message = JSON.parse(init.body);
+    if (message.method === 'initialize') {
+      return response(200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: { protocolVersion: '2025-03-26', serverInfo: { name: 'guard-test', version: '1' } }
+      }, { 'Mcp-Session-Id': 'guard-session' });
+    }
+    if (message.method === 'notifications/initialized') return response(202, null);
+    if (message.method === 'tools/list') {
+      return response(200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          tools: [{
+            name: 'lookup',
+            inputSchema: {
+              type: 'object',
+              required: ['query'],
+              additionalProperties: false,
+              properties: { query: { type: 'string', maxLength: 10 } }
+            }
+          }]
+        }
+      }, { 'Mcp-Session-Id': 'guard-session' });
+    }
+    if (message.method === 'tools/call') {
+      return response(200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: { content: [{ type: 'text', text: 'accepted' }] }
+      }, { 'Mcp-Session-Id': 'guard-session' });
+    }
+    throw new Error('unexpected MCP method: ' + message.method);
+  });
+  const client = context.MaoMcpClient.createClient({ url: 'https://example.com/mcp' });
+  await client.initialize();
+
+  await assert.rejects(client.callTool('lookup', { query: 'hello' }), /完整读取的工具清单/);
+  const tools = await client.listTools();
+  assert.equal(tools.length, 1);
+
+  // Mutating the UI-facing copy must not weaken the client's private schema snapshot.
+  tools[0].inputSchema.properties.query.maxLength = 100000;
+  await assert.rejects(client.callTool('not-listed', {}), /完整读取的工具清单/);
+  await assert.rejects(client.callTool('lookup', {}), /缺少必填字段/);
+  await assert.rejects(client.callTool('lookup', { query: '12345678901' }), /过长/);
+  await assert.rejects(client.callTool('lookup', { query: '中'.repeat(11000) }), /32 KB UTF-8/);
+  assert.equal(requests.filter(item => JSON.parse(item.init.body).method === 'tools/call').length, 0);
+
+  const result = await client.callTool('lookup', { query: 'hello' });
+  assert.equal(result.content[0].text, 'accepted');
+  const call = requests.find(item => JSON.parse(item.init.body).method === 'tools/call');
+  assert.equal(JSON.parse(call.init.body).params.arguments.query, 'hello');
+  await client.disconnect();
+});
+
 test('MCP client source never persists bearer tokens', () => {
   assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/);
   assert.match(source, /Authorization = 'Bearer ' \+ token/);
@@ -137,7 +208,7 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /window\.confirm\(confirmText\)/);
   assert.match(html, /仅本次页面会话使用/);
   assert.match(html, /MaoMcpClient\.validateToolArguments\(tool\.inputSchema/);
-  assert.match(html, /mcp-client\.js\?v=20261108j/);
+  assert.match(html, /mcp-client\.js\?v=20261108k/);
   assert.match(html, /window\.addEventListener\('pagehide'/);
   assert.match(html, /window\.addEventListener\('pageshow'/);
   assert.match(html, /页面已恢复。为保护连接凭据/);

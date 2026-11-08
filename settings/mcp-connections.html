@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#ffffff">
 <title>MCP 连接 · 设置</title>
 <script src="../shared/js/native-feel.js"></script>
-<script src="../shared/js/phone/mcp-client.js?v=20261108j"></script>
+<script src="../shared/js/phone/mcp-client.js?v=20261108k"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
 :root{--ink:#111;--muted:#777;--line:#e4e4e7;--paper:#fff}
@@ -204,7 +204,7 @@ button,input,textarea{font:inherit}
     if (!tool || !input || !resultBox) return;
     var args;
     try {
-      if (input.value.length > 32768) throw new Error('参数 JSON 超过 32 KB 限制，请缩小内容后重试。');
+      if (new TextEncoder().encode(input.value).byteLength > 32768) throw new Error('参数 JSON 超过 32 KB UTF-8 限制，请缩小内容后重试。');
       args = JSON.parse(input.value || '{}');
       if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('参数必须是 JSON 对象。');
       MaoMcpClient.validateToolArguments(tool.inputSchema || { type: 'object' }, args);
