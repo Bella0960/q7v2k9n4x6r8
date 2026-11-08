@@ -383,6 +383,9 @@ test('backup tutorial explains per-database rollback and retained recovery point
   assert.match(lesson, /之前已成功恢复的数据库和 localStorage 也会回滚/);
   assert.match(lesson, /恢复点会保留/);
   assert.match(lesson, /超过安全容量/);
+  assert.match(lesson, /普通备份只包含本地音频元数据/);
+  assert.match(lesson, /相同 ID 的本地原文件/);
+  assert.match(lesson, /音频文件本体需要另行转移并重新导入/);
   assert.match(backupScript, /db\.transaction\(storeNames, 'readwrite'\)/);
   assert.match(backupScript, /restoreIndexedDBWithRollback\(obj\.indexedDB, idbRestorePoint\)/);
   assert.match(backupScript, /RESTORE_POINT_IDB_MAX_BYTES/);
