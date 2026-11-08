@@ -123,6 +123,68 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.notEqual(registered.payload.account.id, firstResult.payload.account.id);
 });
 
+test('登录会话与旧标签页 MAO 上下文不一致时，所有账号 API 都必须拒绝', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+
+  const alice = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: { username: 'tab-alice', password: 'tab-alice-password-123', confirmPassword: 'tab-alice-password-123' }
+  });
+  const bob = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: { username: 'tab-bob', password: 'tab-bob-password-123', confirmPassword: 'tab-bob-password-123' }
+  });
+  assert.equal(alice.status, 201);
+  assert.equal(bob.status, 201);
+
+  const aliceLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'tab-alice', password: 'tab-alice-password-123' }
+  });
+  const bobLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'tab-bob', password: 'tab-bob-password-123' }
+  });
+  const aliceCookie = cookieFrom(aliceLogin);
+  const bobCookie = cookieFrom(bobLogin);
+
+  const staleTab = await ctx.fetchTo('/api/accounts/me', {
+    headers: {
+      cookie: bobCookie,
+      'x-mao-account-context': alice.payload.account.id
+    }
+  });
+  const staleResult = await json(staleTab);
+  assert.equal(staleResult.status, 409);
+  assert.equal(staleResult.payload.error.code, 'ACCOUNT_CONTEXT_CHANGED');
+
+  const staleSecurity = await ctx.fetchTo('/api/accounts/security', {
+    headers: {
+      cookie: bobCookie,
+      'x-mao-account-context': alice.payload.account.id
+    }
+  });
+  assert.equal(staleSecurity.status, 409,
+    '旧标签页不得读取新账号的设备和会话列表');
+
+  const currentTab = await ctx.fetchTo('/api/accounts/me', {
+    headers: {
+      cookie: bobCookie,
+      'x-mao-account-context': bob.payload.account.id
+    }
+  });
+  const currentResult = await json(currentTab);
+  assert.equal(currentResult.status, 200);
+  assert.equal(currentResult.payload.account.id, bob.payload.account.id);
+
+  const legacyRequest = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie: aliceCookie }
+  });
+  assert.equal(legacyRequest.status, 200,
+    '未注入账号上下文的既有客户端仍可完成登录兼容流程');
+});
+
 test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号核销一次后生效', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
