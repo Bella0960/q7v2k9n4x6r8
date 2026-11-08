@@ -21,7 +21,7 @@
  *  38-39. 阶段日志写入保护、未预期异常后的恢复点保留
  *  40-43. 跨标签页导入互斥、过期租约接管、恢复互斥与旧租约拒写
  *  44-45. 清理中断时保留阶段标记，避免已提交数据被误回滚
- *  46. 跨标签页租约写入未提交时不得误发放锁
+ *  46-47. 跨标签页租约写入/续期未提交时不得误报持锁
  */
 
 import test from 'node:test';
@@ -2441,4 +2441,36 @@ test('46 rpAcquireImportLock：锁记录 put 同步失败时拒绝授予租约',
     );
     assert.equal(rpDb._data.restores.length, 0,
         '锁记录未写入时不得留下半成品租约');
+});
+
+
+/* ═══════════════════════════════════════════════
+   47. 租约续期 put 失败：不得继续声称仍持有有效租约
+   ═══════════════════════════════════════════════ */
+test('47 rpRenewImportLock：续期写入失败时必须返回错误而非续租成功', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const rpDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    assert.equal(await ctx.rpAcquireImportLock('lease-owner'), true);
+
+    const original = rpDb._data.restores.find(row => row.role === 'active-import-lock');
+    assert.ok(original);
+    const originalExpiry = original.expiresAt;
+    rpDb._failPut = {
+        store: 'restores',
+        role: 'active-import-lock',
+        message: 'injected lease renewal failure'
+    };
+
+    await assert.rejects(
+        ctx.rpRenewImportLock('lease-owner'),
+        /injected lease renewal failure/
+    );
+    const after = rpDb._data.restores.find(row => row.role === 'active-import-lock');
+    assert.ok(after);
+    assert.equal(after.owner, 'lease-owner');
+    assert.equal(after.expiresAt, originalExpiry,
+        '续租事务失败时不能把租约报告为已延长');
 });
