@@ -534,6 +534,7 @@
       if (!permissionManager || typeof permissionManager.isAllowed !== 'function') {
         return Promise.reject(new Error('角色 MCP 权限管理器不可用，已拒绝调用。'));
       }
+      if (!name || typeof name !== 'string') return Promise.reject(new Error('工具名称无效。'));
       if (!toolCatalogReady || !Object.prototype.hasOwnProperty.call(toolSchemas, name)) {
         return Promise.reject(new Error('只能调用本次完整读取的工具清单中的工具。'));
       }

@@ -44,6 +44,10 @@ test('role grants are isolated by role, service endpoint and individual tool', a
   const { manager, values } = createManager();
   await manager.grantTool('role-A', endpointA, toolA);
   assert.equal(await manager.isAllowed('role-A', endpointA, toolA), true);
+  const listed = manager.listForRole('role-A');
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].toolName, 'search_notes');
+  assert.deepEqual(Object.keys(listed[0]).sort(), ['endpoint', 'toolName', 'updatedAt']);
   assert.equal(await manager.isAllowed('role-B', endpointA, toolA), false);
   assert.equal(await manager.isAllowed('role-A', endpointB, toolA), false);
   assert.equal(await manager.isAllowed('role-A', endpointA, { name: 'delete_notes', inputSchema: toolA.inputSchema }), false);
@@ -95,6 +99,20 @@ test('corrupted role permission records fail closed without overwriting the stor
   await assert.rejects(manager.isAllowed('role-A', endpointA, toolA), /记录损坏/);
   await assert.rejects(manager.grantTool('role-A', endpointA, toolA), /记录损坏/);
   assert.equal(values.get(key), '{broken');
+
+  const injected = JSON.stringify({
+    version: 1,
+    grants: [{
+      endpoint: endpointA,
+      toolName: 'search_notes',
+      schemaSha256: 'a'.repeat(64),
+      updatedAt: Date.now(),
+      bearerToken: 'must-not-be-preserved'
+    }]
+  });
+  localStorage.setItem(key, injected);
+  await assert.rejects(manager.listForRole('role-A'), /格式无效/);
+  assert.equal(values.get(key), injected, 'unknown fields must fail closed and remain untouched');
 });
 
 test('role grant storage enforces the per-role tool cap', async () => {

@@ -64,9 +64,14 @@
     return KEY_PREFIX + encodeURIComponent(normalizeRoleId(roleId));
   }
   function validateRecord(record) {
-    return !!record && typeof record === 'object' && !Array.isArray(record) &&
-      typeof record.endpoint === 'string' && record.endpoint.length <= MAX_ENDPOINT_CHARS &&
-      typeof record.toolName === 'string' && record.toolName.length > 0 &&
+    if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
+    var keys = Object.keys(record).sort();
+    if (keys.length !== 4 || keys.join('|') !== 'endpoint|schemaSha256|toolName|updatedAt') return false;
+    if (typeof record.endpoint !== 'string' || record.endpoint.length > MAX_ENDPOINT_CHARS) return false;
+    try {
+      if (normalizeEndpoint(record.endpoint) !== record.endpoint) return false;
+    } catch (error) { return false; }
+    return typeof record.toolName === 'string' && record.toolName.length > 0 &&
       record.toolName.length <= MAX_TOOL_NAME_CHARS &&
       typeof record.schemaSha256 === 'string' && /^[a-f0-9]{64}$/.test(record.schemaSha256) &&
       Number.isFinite(record.updatedAt) && record.updatedAt > 0;
