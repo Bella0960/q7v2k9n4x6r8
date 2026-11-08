@@ -8,6 +8,12 @@
   var PROTOCOL_VERSION = '2025-03-26';
   var MAX_RESPONSE_BYTES = 1024 * 1024;
   var MAX_TOOLS = 500;
+  var MAX_TOOL_SCHEMA_CHARS = 24 * 1024;
+  var MAX_TOOL_SCHEMA_NODES = 512;
+  var MAX_TOOL_SCHEMA_DEPTH = 12;
+  var MAX_TOOL_SCHEMA_CHILDREN = 200;
+  var MAX_TOOL_CATALOG_CHARS = 768 * 1024;
+  var MAX_TOOL_CURSOR_CHARS = 512;
 
   function validateEndpoint(value) {
     var url;
@@ -120,6 +126,54 @@
     }).join(',') + '}';
   }
 
+  function validateToolSchemaComplexity(schema) {
+    var serialized;
+    try { serialized = JSON.stringify(schema); }
+    catch (error) { throw new Error('MCP 工具参数结构无法安全读取。'); }
+    if (typeof serialized !== 'string' || serialized.length > MAX_TOOL_SCHEMA_CHARS) {
+      throw new Error('MCP 工具参数结构超过 24 KB 限制。');
+    }
+
+    // The response body is capped separately. These structural limits stop a
+    // small but deeply nested or extremely wide schema from freezing the UI.
+    var pending = [{ value: schema, depth: 0 }];
+    var nodeCount = 0;
+    while (pending.length) {
+      var current = pending.pop();
+      var value = current.value;
+      if (current.depth > MAX_TOOL_SCHEMA_DEPTH) {
+        throw new Error('MCP 工具参数结构嵌套超过 12 层。');
+      }
+      if (typeof value === 'string') {
+        if (value.length > 4096) throw new Error('MCP 工具参数结构包含过长文本。');
+        continue;
+      }
+      if (!value || typeof value !== 'object') continue;
+
+      nodeCount += 1;
+      if (nodeCount > MAX_TOOL_SCHEMA_NODES) {
+        throw new Error('MCP 工具参数结构节点超过 512 个上限。');
+      }
+      if (Array.isArray(value)) {
+        if (value.length > MAX_TOOL_SCHEMA_CHILDREN) {
+          throw new Error('MCP 工具参数结构数组超过 200 项上限。');
+        }
+        for (var i = 0; i < value.length; i++) {
+          pending.push({ value: value[i], depth: current.depth + 1 });
+        }
+        continue;
+      }
+
+      var keys = Object.keys(value);
+      if (keys.length > 100) throw new Error('MCP 工具参数结构单层字段超过 100 个上限。');
+      keys.forEach(function (key) {
+        if (key.length > 120) throw new Error('MCP 工具参数结构字段名超过 120 字符。');
+        pending.push({ value: value[key], depth: current.depth + 1 });
+      });
+    }
+    return serialized.length;
+  }
+
   function validateToolArguments(schema, args) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) {
       throw new Error('工具参数必须是 JSON 对象。');
@@ -127,6 +181,7 @@
     if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
       throw new Error('工具参数结构无效，已停止调用。');
     }
+    validateToolSchemaComplexity(schema);
     function actualType(value) {
       if (value === null) return 'null';
       if (Array.isArray(value)) return 'array';
@@ -327,6 +382,7 @@
         var all = [];
         var seenCursors = Object.create(null);
         var seenNames = Object.create(null);
+        var totalCatalogChars = 0;
         function page(cursor, pageCount) {
           if (pageCount >= 20) throw new Error('MCP 工具分页超过 20 页上限，无法完整读取。');
           if (cursor && seenCursors[cursor]) throw new Error('MCP 工具分页游标重复，已停止读取。');
@@ -354,10 +410,19 @@
                    !(Array.isArray(schema.type) && schema.type.indexOf('object') !== -1))) {
                 throw new Error('MCP 工具“' + name.slice(0, 80) + '”缺少有效的对象参数结构，已停止导入。');
               }
+              var schemaChars = validateToolSchemaComplexity(schema);
+              if (tool.description != null && typeof tool.description !== 'string') {
+                throw new Error('MCP 工具“' + name.slice(0, 80) + '”的描述格式无效。');
+              }
+              var description = String(tool.description || '').slice(0, 1200);
+              totalCatalogChars += name.length + description.length + schemaChars;
+              if (totalCatalogChars > MAX_TOOL_CATALOG_CHARS) {
+                throw new Error('MCP 工具清单元数据超过 768 KB 上限，已停止导入。');
+              }
               seenNames[name] = true;
               all.push({
                 name: name,
-                description: String(tool.description || '').slice(0, 1200),
+                description: description,
                 inputSchema: schema
               });
             });
@@ -365,6 +430,9 @@
             if (result.nextCursor != null && result.nextCursor !== '') {
               if (typeof result.nextCursor !== 'string' || !result.nextCursor.trim()) {
                 throw new Error('MCP 分页游标格式无效，已停止读取。');
+              }
+              if (result.nextCursor.length > MAX_TOOL_CURSOR_CHARS) {
+                throw new Error('MCP 分页游标超过 512 字符限制，已停止读取。');
               }
               if (all.length >= MAX_TOOLS) throw new Error('MCP 工具数量可能超过 500 个上限，未返回不完整清单。');
               if (pageCount + 1 >= 20) throw new Error('MCP 工具分页超过 20 页上限，无法完整读取。');
