@@ -435,6 +435,8 @@
     var RP_DB_VERSION = 1;
     var RP_STORE_NAME = 'restores';
     var RP_ROLE_PRE = 'pre-import';
+    var RP_ROLE_IDB_PRE = 'pre-import-indexeddb';
+    var RESTORE_POINT_IDB_MAX_BYTES = 150 * 1024 * 1024;
 
     function rpOpen() {
         return new Promise(function (resolve, reject) {
@@ -535,9 +537,11 @@
     //
     // out-of-line key（keyPath=null）：推入 records 保持 { __key: rawKey, __value: inner }。
     // inline key：cursor.value 自带主键字段，直接推入 inner。
-    function dumpStore(db, storeDef) {
-        var blobFields = storeDef.blobFields || [];
-        var excludeFields = storeDef.excludeFields || [];
+    function dumpStore(db, storeDef, includeAllFields) {
+        // 恢复点必须保留正常导出会排除的本机字段（例如本地音乐 Blob）。
+        // 普通备份仍按 IDB_TARGETS 规则排除敏感或过大的字段。
+        var blobFields = includeAllFields ? [] : (storeDef.blobFields || []);
+        var excludeFields = includeAllFields ? [] : (storeDef.excludeFields || []);
         var blobMax = storeDef.blobMaxBytes || Infinity;
         var blobStoreMax = storeDef.blobStoreMaxBytes || Infinity;
 
@@ -820,7 +824,7 @@
     // 任一 store 的 clear / Blob 解码 / put 失败都会 abort 整个事务，避免同一 DB
     // 出现「前几个 store 已覆盖、后一个 store 失败」的半恢复状态。
     // 不在 incomingDb 中的未来/未知 store 继续跳过；已登记 store 的非法数据则整体失败。
-    function restoreDatabase(dbName, version, storeDefs, incomingDb) {
+    function restoreDatabase(dbName, version, storeDefs, incomingDb, forceClear) {
         if (!incomingDb || typeof incomingDb !== 'object' || Array.isArray(incomingDb)) {
             return Promise.resolve({ written: 0, skipped: 0, dbRestored: true });
         }
@@ -841,7 +845,7 @@
                     if (!Array.isArray(records)) {
                         throw new Error('备份中的 ' + dbName + '/' + name + ' 不是有效记录列表');
                     }
-                    if (records.length || clearOnRestore) storeNames.push(name);
+                    if (records.length || clearOnRestore || forceClear) storeNames.push(name);
                 });
             } catch (error) {
                 try { db.close(); } catch (closeError) {}
