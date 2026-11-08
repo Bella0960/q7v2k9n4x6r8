@@ -212,7 +212,7 @@ Acceptance:
 - Accept only MAOMAO_CHAT_THEME schema v1 packages for target maomao-chat.
 - Validate archive paths, CRC, file counts/sizes, CSS syntax, external resource references, and ensure every assets/ URL resolves to an asset registered in the package.
 - Rewrite runtime `assets/` URLs using the package CSS escape decoder and matching comment handling, including quoted, unquoted, escaped and comment-separated forms; never rewrite matching text inside CSS string values or alter unrelated CSS escapes.
-- Scope CSS rules with a comment/string-aware parser: ignore braces and commas inside comments, strings, functions and attribute selectors; recurse through allow-listed `@media`, `@supports` and `@container` blocks; recognize escaped root identifiers; never scope or rewrite `@font-face` declaration bodies.
+- Scope CSS rules with a comment/string-aware parser: ignore braces and commas inside comments, strings, functions and attribute selectors; recurse through allow-listed `@media`, `@supports` and `@container` blocks with a maximum nesting depth of 32; recognize escaped root identifiers; never scope or rewrite `@font-face` declaration bodies.
 - Import assets to MediaRepository; rollback references and theme settings when any step fails.
 - Keep imported themes separate from beauty_chat_global_v1, beauty_chat_<roleId> and maomao_chat_theme_preset.
 - Apply chat-list and chat-detail styles only on their corresponding pages; do not alter message data or role storage.
