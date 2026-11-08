@@ -899,6 +899,29 @@ test('账号安全只返回本人设备与会话，并支持撤销设备、会�
   assert.equal(bobStillActive.status, 200, '修改 Alice 的密码不得影响 Bob');
 });
 
+test('初始化缺少 Worker Secret 时明确拒绝，公开状态不泄露密钥配置情况', async () => {
+  for (const env of [
+    {},
+    { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET, DEVICE_SECRET_PEPPER: '' }
+  ]) {
+    const ctx = setupTestStore(openTestDb(), env);
+    const status = await ctx.asJson('/api/admin/bootstrap/status');
+    assert.equal(status.status, 200);
+    assert.equal(status.payload.initialized, false);
+    assert.equal(Object.hasOwn(status.payload, 'ready'), false,
+      '公开状态不得暴露 Worker Secret 是否已配置');
+    assert.equal(Object.hasOwn(status.payload, 'secretConfigured'), false,
+      '公开状态不得暴露 Worker Secret 是否已配置');
+
+    const result = await ctx.asJson('/api/admin/bootstrap', {
+      method: 'POST',
+      body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123', confirmPassword: 'creator-password-123' }
+    });
+    assert.equal(result.status, 503);
+    assert.equal(result.payload.error.code, 'ADMIN_BOOTSTRAP_NOT_CONFIGURED');
+  }
+});
+
 test('首次管理员初始化密钥错误会被持久化限流，初始化完成后入口状态关闭', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
