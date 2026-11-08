@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F7F7F8">
+  <title>MAO · 管理中心</title>
+  <link rel="stylesheet" href="./admin-center.css">
+  <script src="./admin-center.js" defer></script>
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-header">
+      <a class="back-link" href="../index.html" aria-label="返回桌面">←</a>
+      <div><div class="eyebrow">CREATOR CONTROL</div><h1>管理中心</h1></div>
+      <span class="admin-mark">MAO</span>
+    </header>
+
+    <section class="admin-intro">
+      <div>
+        <div class="eyebrow">SUPER ADMIN ONLY</div>
+        <h2>授权与用户管理</h2>
+        <p>所有 MAO 使用资格均由创作者本人授权。</p>
+      </div>
+      <div class="shield-mark" aria-hidden="true">⌑</div>
+    </section>
+
+    <section class="stats-grid" aria-label="账号统计">
+      <div class="stat-card"><span>全部账号</span><strong id="statTotal">—</strong></div>
+      <div class="stat-card"><span>待授权</span><strong id="statPending">—</strong></div>
+      <div class="stat-card"><span>正常使用</span><strong id="statActive">—</strong></div>
+      <div class="stat-card"><span>已禁用</span><strong id="statDisabled">—</strong></div>
+    </section>
+
+    <nav class="admin-tabs" aria-label="管理项目">
+      <button class="tab-button active" type="button" data-tab="users">用户管理</button>
+      <button class="tab-button" type="button" data-tab="invites">邀请码管理</button>
+    </nav>
+
+    <section class="admin-view" id="usersView">
+      <div class="view-heading"><div><h2>账号列表</h2><p>按 MAO 永久 ID 管理独立账号</p></div><button class="refresh-button" id="refreshUsers" type="button">刷新</button></div>
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="accountSearch" type="search" placeholder="搜索永久 ID 或用户名"></label>
+      <div class="records-card" id="accountsList"><p class="empty-note">正在读取账号…</p></div>
+    </section>
+
+    <section class="admin-view" id="invitesView" hidden>
+      <div class="view-heading"><div><h2>邀请码记录</h2><p>随机生成 · 一人一码 · 使用后失效</p></div><button class="refresh-button" id="refreshInvites" type="button">刷新</button></div>
+      <div class="policy-note"><b>邀请码规则</b><span>每个邀请码只能成功授权一个指定账号。原始邀请码只在生成时显示一次，后台仅保存哈希。</span></div>
+      <div class="records-card" id="invitesList"><p class="empty-note">正在读取邀请码…</p></div>
+      <p class="helper-note">当前可直接绑定 MAO 永久 ID。QQ 邮箱所有权验证与邮件发送尚未接通，因此邮箱方式暂不开放。</p>
+    </section>
+
+    <section class="detail-sheet" id="accountDetail" hidden>
+      <div class="sheet-top"><div><div class="eyebrow">ACCOUNT DETAIL</div><h2 id="detailUsername">账号详情</h2></div><button class="close-detail" id="closeDetail" type="button" aria-label="关闭">×</button></div>
+      <div class="detail-id"><span>MAO 永久 ID</span><strong id="detailId">—</strong></div>
+      <div class="detail-meta" id="detailMeta"></div>
+      <div class="action-stack" id="detailActions"></div>
+      <div class="reason-field" id="reasonField" hidden>
+        <label for="actionReason">管理员备注（仅管理员可见）</label>
+        <textarea id="actionReason" rows="3" maxlength="500" placeholder="填写本次管理操作的备注"></textarea>
+        <div class="reason-actions"><button type="button" id="cancelAction">取消</button><button type="button" id="confirmAction">确认操作</button></div>
+      </div>
+      <div class="audit-heading"><h3>管理记录</h3><span>PRIVATE AUDIT</span></div>
+      <div class="audit-list" id="auditList"><p class="empty-note">正在读取记录…</p></div>
+    </section>
+
+    <section class="code-sheet" id="inviteCodeSheet" hidden>
+      <div class="sheet-top"><div><div class="eyebrow">ONE-TIME INVITATION</div><h2>邀请码已生成</h2></div><button class="close-detail" id="closeCodeSheet" type="button" aria-label="关闭">×</button></div>
+      <p>请立即复制并安全交付给指定用户。离开此页面后，原始邀请码不会再次显示。</p>
+      <div class="generated-code" id="generatedCode"></div>
+      <button class="dark-button" id="copyInviteCode" type="button">复制邀请码</button>
+      <p class="helper-note">此邀请码已绑定目标 MAO 永久 ID，只能成功使用一次。</p>
+    </section>
+
+    <p class="admin-footer">仅超级管理员可访问 · 所有操作由服务器记录</p>
+  </main>
+</body>
+</html>
