@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomToken } from '../worker/lib/crypto.js';
+import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
@@ -193,6 +193,48 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
   assert.equal(revoked.status, 200);
   const restoreRevoked = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'restore' }, adminCookie);
   assert.equal(restoreRevoked.status, 409, '永久撤销不可恢复');
+});
+
+test('超级管理员初始化后遗留 owner 设备不能绕过 MAO 会话校验', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const adminResponse = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(adminResponse.status, 200);
+
+  // Simulate an orphaned legacy owner row left by an interrupted/partial migration.
+  // Once the permanent creator account exists, such a row must fail closed.
+  const deviceId = 'legacy_owner_device_001';
+  const secret = randomToken(32);
+  const pepper = 'test-device-secret-pepper-for-contract-tests-32chars';
+  const secretHash = await sha256Hex(pepper + '|' + deviceId + '|' + secret);
+  ctx.store.exec(
+    "INSERT INTO devices (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at) VALUES (?, 'owner', ?, 'legacy device', 'test', '', '', ?, ?)",
+    deviceId, secretHash, ctx.now(), ctx.now()
+  );
+
+  const api = await ctx.fetchTo('/api/autonomy/global', {
+    headers: { 'x-device-auth': deviceId + '.' + secret }
+  });
+  const apiResult = await json(api);
+  assert.equal(apiResult.status, 401);
+  assert.equal(apiResult.payload.error.code, 'ACCOUNT_SESSION_REQUIRED');
+
+  const reRegister = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret,
+    label: 'legacy device',
+    platform: 'test'
+  });
+  assert.equal(reRegister.status, 401);
+  assert.equal(reRegister.payload.error.code, 'ACCOUNT_SESSION_REQUIRED');
 });
 
 test('停用并恢复尚未核销邀请码的账号仍保持待授权，不能绕过一人一码', async () => {
