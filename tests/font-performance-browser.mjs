@@ -1181,5 +1181,5 @@ try {
 } finally {
   if (browser) await browser.close();
   server.close();
-  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/17 tests: ' + results.join(' | '));
+  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/18 tests: ' + results.join(' | '));
 }
