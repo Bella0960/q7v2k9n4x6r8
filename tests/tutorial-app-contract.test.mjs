@@ -12,6 +12,8 @@ const index = readFileSync(resolve(here, '../index.html'), 'utf8');
 const sw = readFileSync(resolve(here, '../sw.js'), 'utf8');
 const packageJson = JSON.parse(readFileSync(resolve(here, '../package.json'), 'utf8'));
 const tutorialWorkflow = readFileSync(resolve(here, '../.github/workflows/tutorial-regression.yml'), 'utf8');
+const novelPage = readFileSync(resolve(here, '../novel/novel.html'), 'utf8');
+const minimaxPage = readFileSync(resolve(here, '../settings/minimax-tts.html'), 'utf8');
 
 function readExtraLessons(source) {
   const match = source.match(/var extraLessons=(\[[\s\S]*?\]);\nlessons=lessons\.concat\(extraLessons\);/);
@@ -198,6 +200,39 @@ test('tutorial app directory contains every desktop app shortcut with valid loca
     assert.ok(indexNames.has(entry[1]), 'missing desktop app in directory: ' + entry[1]);
     assert.ok(existsSync(resolve(dirname(tutorialPath), entry[3])), 'missing app route: ' + entry[3]);
   }
+});
+
+test('guided save steps verify real success and failure messages instead of manual checkboxes alone', () => {
+  const extra = readExtraLessons(html);
+  const cases = [
+    ['forum-post', '#submitPost', '帖子已发布', '本机存储空间不足'],
+    ['diary-journal', '#saveEntry', '已保存到你的日记', '照片保存失败'],
+    ['envelope-letter', '#saveDraftButton', '草稿已保存', '保存失败'],
+    ['reading-workflow', '#confirmBookImport', '加入书架', '书籍保存失败'],
+    ['novel-workflow', '#saveWork', '作品设定已保存', '本机存储空间不足']
+  ];
+  for (const [id, selector, successText, failureText] of cases) {
+    const lesson = extra.find((item) => item.id === id);
+    assert.ok(lesson && lesson.tour, 'missing guided lesson: ' + id);
+    const step = lesson.tour.steps.find((item) => item.selector === selector);
+    assert.ok(step && step.verify, 'save step must define result verification: ' + id);
+    assert.equal(step.verify.selector, '#toast');
+    assert.ok(step.verify.success.some((text) => text.includes(successText)), 'missing success signal: ' + id);
+    assert.ok(step.verify.failure.some((text) => text.includes(failureText)), 'missing failure signal: ' + id);
+    assert.ok(step.verify.recovery.length > 10, 'missing recovery guidance: ' + id);
+  }
+
+  assert.match(html, /selector:'#wbToast',success:\['新建成功'\]/);
+  assert.match(html, /selector:'#toast',success:\['已保存 TTS 设置'\]/);
+  assert.match(html, /new MutationObserver\(inspect\)/);
+  assert.match(html, /跳过核验并继续/);
+});
+
+test('novel and MiniMax settings do not claim save success when local storage fails', () => {
+  assert.match(novelPage, /function persist\(\)\{try\{localStorage\.setItem\(KEY,JSON\.stringify\(db\)\);renderStats\(\);return true\}catch\(e\)\{toast\('本机存储空间不足，请先导出作品备份'\);return false\}\}/);
+  assert.match(novelPage, /\$\('saveWork'\)\.onclick=\(\)=>\{syncWork\(\);if\(!persist\(\)\)return;renderAll\(\);toast\('作品设定已保存'\)\}/);
+  assert.match(minimaxPage, /function save\(cfg\)\s*\{\s*try \{ localStorage\.setItem\(STORAGE_KEY, JSON\.stringify\(cfg\)\); return true; \}\s*catch \(e\) \{ return false; \}\s*\}/);
+  assert.match(minimaxPage, /if \(!save\(cfg\)\) \{ showToast\('保存失败：请检查浏览器存储空间'\); return; \}/);
 });
 
 test('desktop widget fallback preserves the tutorial shortcut and renders guided-tour controls', () => {
