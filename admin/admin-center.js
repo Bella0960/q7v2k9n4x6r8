@@ -234,6 +234,8 @@
     selectedAccountId = accountId;
     $('accountDetail').hidden = false;
     $('detailUsername').textContent = '正在读取…';
+    $('detailId').textContent = accountId;
+    $('copyDetailId').textContent = '复制 ID';
     $('detailActions').replaceChildren();
     $('auditList').replaceChildren(el('p', 'empty-note', '正在读取管理记录…'));
     const account = accounts.find(item => item.id === accountId);
@@ -350,6 +352,7 @@
     list.replaceChildren(el('p', 'empty-note', '正在读取管理记录…'));
     try {
       const result = await api('/api/admin/accounts/' + encodeURIComponent(accountId) + '/audit');
+      if (selectedAccountId !== accountId) return;
       list.replaceChildren();
       const records = Array.isArray(result.records) ? result.records : [];
       if (!records.length) {
@@ -371,6 +374,7 @@
         list.appendChild(item);
       });
     } catch (error) {
+      if (selectedAccountId !== accountId) return;
       list.replaceChildren(el('p', 'empty-note', error.message || '管理记录暂时无法读取。'));
     }
   }
@@ -399,6 +403,23 @@
   $('cancelAction').addEventListener('click', () => {
     pendingAction = '';
     $('reasonField').hidden = true;
+  });
+
+  $('copyDetailId').addEventListener('click', async () => {
+    const value = String($('detailId').textContent || '').trim();
+    if (!value || value === '—') return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(value);
+      $('copyDetailId').textContent = '已复制';
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents($('detailId'));
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      $('copyDetailId').textContent = '已选中 ID';
+    }
   });
 
   $('closeDetail').addEventListener('click', closeDetail);
