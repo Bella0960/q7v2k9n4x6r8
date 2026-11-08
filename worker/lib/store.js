@@ -1867,6 +1867,10 @@ class CloudStore {
     }));
   }
 
+  hasMaoSuperAdminAccount() {
+    return Boolean(this.exec("SELECT id FROM mao_accounts WHERE role = 'super_admin' LIMIT 1")[0]);
+  }
+
   getMaoAccountById(accountId) {
     return this.exec("SELECT * FROM mao_accounts WHERE id = ?", accountId)[0] || null;
   }
