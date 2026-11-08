@@ -315,6 +315,13 @@ test('MCP disconnect aborts in-flight requests before releasing its session', as
       }, { 'Mcp-Session-Id': 'session-cancel' });
     }
     if (message.method === 'notifications/initialized') return response(202, null);
+    if (message.method === 'tools/list') {
+      return response(200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: { tools: [{ name: 'slow-tool', inputSchema: { type: 'object' } }] }
+      }, { 'Mcp-Session-Id': 'session-cancel' });
+    }
     if (message.method === 'tools/call') {
       callStarted();
       return new Promise((resolve, reject) => {
@@ -331,6 +338,7 @@ test('MCP disconnect aborts in-flight requests before releasing its session', as
 
   const client = context.MaoMcpClient.createClient({ url: 'https://example.com/mcp' });
   await client.initialize();
+  await client.listTools();
   const pendingCall = client.callTool('slow-tool', {});
   await started;
   const cancelled = assert.rejects(pendingCall, /连接已断开，已取消未完成的请求/);
