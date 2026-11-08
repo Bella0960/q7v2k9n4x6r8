@@ -75,7 +75,8 @@
     var failedFontKey = '';
     var fontLoadGeneration = 0;
     var fontLoadScheduled = false;
-    var fontDbRequestKey = '';
+    // Track pending reads per preset so switching A → B → A cannot overwrite A's in-flight marker.
+    var fontDbRequests = Object.create(null);
     /* 缓存重建失败只影响持久化：同一文档同一字体不再重复尝试写入。 */
     var failedCacheRebuildKeys = {};
 
@@ -347,14 +348,17 @@
 
     function loadPresetFromIndexedDb(source, isStillCurrent, recoverFromCache) {
         if (!source.activeId) return;
-        /* 同一文档同一字体只允许一次未完成的 IndexedDB 读取，避免 pageshow/storage 重复触发。 */
-        if (fontDbRequestKey === source.activeId) return;
-        fontDbRequestKey = source.activeId;
+        /* 每个预设独立去重：不同字体可以并行读取，同一字体在途时则复用原请求。 */
+        if (fontDbRequests[source.activeId]) return;
+        var requestToken = {};
+        fontDbRequests[source.activeId] = requestToken;
         var finished = false;
         function finish() {
             if (finished) return;
             finished = true;
-            if (fontDbRequestKey === source.activeId) fontDbRequestKey = '';
+            if (fontDbRequests[source.activeId] === requestToken) {
+                delete fontDbRequests[source.activeId];
+            }
         }
         function failToSystemFont() {
             finish();
