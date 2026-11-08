@@ -1900,7 +1900,7 @@ class CloudStore {
     // Adopt the existing single-owner cloud data into the creator's permanent MAO ID.
     this.exec("UPDATE devices SET user_id = ? WHERE user_id = 'owner'", account.id);
     for (const table of ['user_autonomy', 'character_autonomy', 'character_schedules',
-      'device_presence', 'character_leases', 'device_pairing_tokens']) {
+      'device_presence', 'character_leases', 'device_pairing_tokens', 'outbound_device_receipts']) {
       this.exec('UPDATE ' + table + " SET user_id = ? WHERE user_id = 'owner'", account.id);
     }
     return true;
