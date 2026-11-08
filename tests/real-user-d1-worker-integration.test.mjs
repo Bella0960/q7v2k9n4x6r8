@@ -1239,4 +1239,54 @@ if (!DatabaseSync) {
     }
   });
 
+
+  test("QR redemption rechecks both accounts when the recipient is suspended after code lookup", async () => {
+    const fixture = await seedRacePair("qr_recipient_race");
+    const { database, env, aliceToken, bobToken, bobId } = fixture;
+    try {
+      const qr = await callFriends(env, "/codes/rotate", "POST", bobToken);
+      assert.equal(qr.response.status, 201, JSON.stringify(qr.body));
+
+      let reachedResolve;
+      let releaseInsert;
+      const reached = new Promise(resolve => { reachedResolve = resolve; });
+      const gate = new Promise(resolve => { releaseInsert = resolve; });
+      let intercepted = false;
+      const gatedEnv = createEnvironment(database, {
+        beforeRun: async sql => {
+          if (!intercepted && sql.startsWith("INSERT INTO real_user_friend_requests")) {
+            intercepted = true;
+            reachedResolve();
+            await gate;
+          }
+        }
+      });
+      const requestId = "request_qr_recipient_race_01";
+      const send = callWorker(
+        gatedEnv,
+        "/api/real-user-chat/v1/friends/requests",
+        "POST",
+        {
+          cookie: aliceToken,
+          body: { requestId, code: qr.body.code, note: "race check" }
+        }
+      );
+      await reached;
+      database.prepare(
+        "UPDATE real_user_accounts SET status = 'suspended', updated_at = ? WHERE id = ?"
+      ).run(Date.now(), bobId);
+      releaseInsert();
+
+      const result = await send;
+      assert.equal(result.response.status, 409);
+      assert.equal(result.body.error, "friend_request_account_unavailable");
+      assert.equal(database.prepare(
+        "SELECT COUNT(*) AS count FROM real_user_friend_requests WHERE id = ?"
+      ).get(requestId).count, 0,
+      "a QR validated before suspension cannot create a pending request afterward");
+    } finally {
+      database.close();
+    }
+  });
+
 }
