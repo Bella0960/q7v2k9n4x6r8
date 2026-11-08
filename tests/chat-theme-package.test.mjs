@@ -80,6 +80,24 @@ test('exported theme packages round-trip CSS, custom blocks and binary assets th
   assert.throws(()=>F.createPackage(theme,css,{}),/导出主题缺少素材/);
   assert.throws(()=>F.createPackage(theme,'@import url(https://example.invalid/a.css)',{'assets/photo.png':bytes}),/不允许/);
 });
+test('CSS package references must resolve to registered package assets',()=>{
+  const theme=fixture();
+  assert.throws(()=>F.createPackage(theme,'.sample{background-image:url("assets/missing.png")}',{}),/CSS 引用了未登记的主题素材/);
+  const withAsset=fixture({
+    assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]
+  });
+  assert.doesNotThrow(()=>F.createPackage(withAsset,'.sample{background-image:url("assets/bg.png")}',{'assets/bg.png':new Uint8Array([1,2,3])}));
+});
+
+test('chat beauty exports only global CSS presets as chat theme packages',()=>{
+  const beauty=readFileSync(new URL('../beauty/beauty.html',import.meta.url),'utf8');
+  assert.ok(beauty.includes('../shared/js/chat-theme-package-format.js?v=20261109theme4'));
+  assert.match(beauty,/function exportCssPreset\(i\)/);
+  assert.match(beauty,/preset\.target !== 'all'/);
+  assert.match(beauty,/p\.target === 'all'/);
+  assert.match(beauty,/format\.createPackage\(theme, preset\.css \|\| '', \{\}\)/);
+  assert.match(beauty,/角色专属预设保持独立/);
+});
 test('custom block slots are normalized to supported positions for their own page',()=>{
   const theme=fixture({
     blocks:{
@@ -592,9 +610,11 @@ test('reapplying the same active package is idempotent and does not duplicate mo
 test('theme package scripts use a shared cache-busting revision across chat and importer pages',()=>{
   const revision='20261109theme4';
   const importer=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const beauty=readFileSync(new URL('../beauty/beauty.html',import.meta.url),'utf8');
   const chatList=readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8');
   const chatDetail=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
   assert.ok(importer.includes('../shared/js/chat-theme-package-format.js?v='+revision));
+  assert.ok(beauty.includes('../shared/js/chat-theme-package-format.js?v='+revision));
   for(const html of [chatList,chatDetail]){
     assert.ok(html.includes('chat-theme-package-format.js?v='+revision));
     assert.ok(html.includes('chat-theme-package-runtime.js?v='+revision));
