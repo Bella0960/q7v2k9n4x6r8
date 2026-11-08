@@ -2949,6 +2949,17 @@ test('同账号其他设备可接管未确认消息，设备回执互不覆盖�
   );
   assert.equal(lateDeviceAAck.status, 200);
 
+  // Device B already read first. A's delayed read must update only A's
+  // receipt, not replace the account-level first-read attribution.
+  ctx.timestamps.push(9000);
+  const lateDeviceARead = await ctx.asJson(
+    '/api/characters/char-a/outbound/' + message.serverMessageId + '/read',
+    { method: 'POST', device: deviceA }
+  );
+  assert.equal(lateDeviceARead.status, 200);
+  assert.equal(lateDeviceARead.payload.read, true);
+  assert.equal(lateDeviceARead.payload.read_at, 9000);
+
   const statusA = await ctx.asJson(
     '/api/characters/char-a/outbound/' + message.serverMessageId + '/status',
     { device: deviceA }
@@ -2963,9 +2974,11 @@ test('同账号其他设备可接管未确认消息，设备回执互不覆盖�
   assert.equal(statusA.payload.lifecycle.readAt, 6000);
   assert.equal(statusA.payload.lifecycle.readByDeviceId, deviceB.deviceId);
   assert.equal(statusA.payload.deviceLifecycle.localSavedAt, 8000);
-  assert.equal(statusA.payload.deviceLifecycle.readAt, null);
+  assert.equal(statusA.payload.deviceLifecycle.readAt, 9000,
+    '设备 A 的迟到已读只更新 A 自己的回执');
   assert.equal(statusB.payload.deviceLifecycle.localSavedAt, 5000);
-  assert.equal(statusB.payload.deviceLifecycle.readAt, 6000);
+  assert.equal(statusB.payload.deviceLifecycle.readAt, 6000,
+    '设备 A 的迟到已读不能改写设备 B 的已读时间');
 
   const aggregate = ctx.query(
     'SELECT local_saved_at, read_at, read_by_device_id FROM outbound_messages WHERE server_message_id = ?',
