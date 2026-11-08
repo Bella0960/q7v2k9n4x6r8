@@ -216,15 +216,35 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (!identifier || password.length > 128) {
       throw new ApiError(400, 'INVALID_LOGIN', '请输入账号和密码');
     }
+    const pepper = String(env.DEVICE_SECRET_PEPPER || '');
+    if (pepper.length < 32) {
+      throw new ApiError(503, 'ACCOUNT_SECURITY_NOT_CONFIGURED', '账号安全服务尚未完成配置');
+    }
+    const ip = String(request.headers.get('cf-connecting-ip') || 'unavailable');
+    const ipHash = await sha256Hex('mao-login|' + pepper + '|' + ip);
+    if (store.getMaoLoginRateLimit(ipHash, now()).blocked) {
+      throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
+    }
+
     const account = store.getMaoAccountByIdentifier(identifier);
-    if (!account) throw new ApiError(401, 'LOGIN_FAILED', '账号或密码不正确');
+    if (!account) {
+      // Spend comparable password-hash work for unknown identifiers to reduce
+      // account enumeration through response timing.
+      await passwordDigest(password, 'AAAAAAAAAAAAAAAAAAAAAA');
+      const failed = store.recordMaoLoginFailure(ipHash, now());
+      if (failed.blocked) throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
+      throw new ApiError(401, 'LOGIN_FAILED', '账号或密码不正确');
+    }
     if (account.status === 'disabled' || account.status === 'revoked') {
       throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
     }
     const actual = await passwordDigest(password, account.password_salt);
     if (!timingSafeEqualHex(actual, account.password_hash)) {
+      const failed = store.recordMaoLoginFailure(ipHash, now());
+      if (failed.blocked) throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
       throw new ApiError(401, 'LOGIN_FAILED', '账号或密码不正确');
     }
+    store.clearMaoLoginRateLimit(ipHash);
     return await createSession(account, request);
   }
 
