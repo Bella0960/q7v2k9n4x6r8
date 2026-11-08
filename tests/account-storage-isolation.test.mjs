@@ -8,6 +8,7 @@ const scopeSource = fs.readFileSync(root + '/shared/js/mao-account-scope.js', 'u
 const workerSource = fs.readFileSync(root + '/worker.js', 'utf8');
 const appSource = fs.readFileSync(root + '/worker/lib/app.js', 'utf8');
 const serviceWorkerSource = fs.readFileSync(root + '/sw.js', 'utf8');
+const fontLoaderSource = fs.readFileSync(root + '/shared/js/font-loader.js', 'utf8');
 
 function makeStorage(seed = {}) {
   const values = new Map(Object.entries(seed));
@@ -233,6 +234,10 @@ test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，�
   assert.match(serviceWorkerSource, /req\.headers\.get\('x-mao-account-context'\)/);
   assert.match(serviceWorkerSource, /authHeaders\.set\('x-mao-account-context', pageAccountContext\)/);
   assert.match(serviceWorkerSource, /status:\s*503/);
+  assert.match(serviceWorkerSource, /requestedAccountId !== account\.id/);
+  assert.match(serviceWorkerSource, /hasAccountPath/);
+  assert.match(fontLoaderSource, /fontAssetPath \+= encodeURIComponent\(maoScope\.accountId\)/);
+  assert.match(scopeSource, /global\.__MAO_ACCOUNT_SCOPE__ = Object\.freeze/);
 });
 
 test('localStorage 的键枚举只返回当前账号键，跨账号 storage 事件不会泄漏 payload', () => {
