@@ -163,6 +163,10 @@ function makeIDB(name, version, storeDefs) {
             if (!storeNames.includes(storeName)) {
                 storeNames.push(storeName);
                 data[storeName] = [];
+                storeDefs.push({
+                    store: storeName,
+                    keyPath: opts && opts.keyPath ? opts.keyPath : null
+                });
             }
             return {
                 createIndex() {}, deleteIndex() {}, index() {},
@@ -407,7 +411,13 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'RP_ROLE_PRE'),
         extractVar(backupSrc, 'RP_ROLE_IDB_PRE'),
         extractVar(backupSrc, 'RP_ROLE_META'),
+        extractVar(backupSrc, 'RP_ROLE_LOCK'),
         extractVar(backupSrc, 'RESTORE_POINT_IDB_MAX_BYTES'),
+        extractVar(backupSrc, 'IMPORT_LOCK_LEASE_MS'),
+        extractVar(backupSrc, 'IMPORT_LOCK_HEARTBEAT_MS'),
+        extractVar(backupSrc, 'importLockOwner'),
+        extractVar(backupSrc, 'importLockHeartbeat'),
+        extractVar(backupSrc, 'importLockLost'),
         extractVar(backupSrc, 'importInProgress'),
         extractVar(backupSrc, 'importRecoveryReady')
     ];
@@ -418,11 +428,14 @@ function buildCtxFull(opts) {
         'dumpStore', 'dumpDatabase',
         'restoreStore', 'restoreDatabase', 'validateBackup', 'restore', 'verifyRestore',
         'rpOpen', 'rpWriteSnapshot', 'rpReadSnapshot', 'rpDeleteRole',
-        'clearRestorePoints', 'writeImportState', 'recoverInterruptedImportOnStartup',
+        'rpAcquireImportLock', 'rpRenewImportLock', 'rpReleaseImportLock',
+        'startImportLockHeartbeat', 'stopImportLockHeartbeat', 'releaseImportLock',
+        'assertImportLock', 'clearRestorePoints', 'writeImportState',
+        'recoverInterruptedImportUnlocked', 'recoverInterruptedImportOnStartup',
         'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
         'estimateRestorePointBytes', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
-        'doExport', 'handleImportFile'
+        'doExport', 'handleImportFile', 'startImportFileRead'
     ];
     const fnSrcs = fnNames.map(n => extractFunction(backupSrc, n));
     const ctxSrc = varSrcs.concat(fnSrcs).join('\n');
@@ -478,6 +491,8 @@ function buildCtxFull(opts) {
         Error: globalThis.Error,
         Date: globalThis.Date,
         setTimeout: (fn) => { fn(); return 0; },
+        setInterval(fn) { return { callback: fn }; },
+        clearInterval() {},
         // URL.createObjectURL → 返回假 URL，不访问 DOM
         URL: {
             createObjectURL(blob) {
@@ -588,6 +603,8 @@ function makeImportPayload(indexedDB) {
 
 async function runImport(ctx, payload) {
     ctx.handleImportFile({ content: JSON.stringify(payload) });
+    // The cross-tab IndexedDB lease is acquired asynchronously before FileReader starts.
+    await new Promise(resolve => setTimeout(resolve, 5));
     assert.ok(ctx.__pendingImport, 'handleImportFile must start a waitable FileReader import');
     await ctx.__pendingImport;
 }
@@ -1879,6 +1896,7 @@ test('32 完整导入：并发重复导入被拒绝且首轮结束后锁正确�
     });
 
     ctx.handleImportFile({ content: JSON.stringify(payloadA) });
+    await new Promise(resolve => setTimeout(resolve, 5));
     const firstImport = ctx.__pendingImport;
     assert.ok(firstImport, 'first import must start');
     ctx.handleImportFile({ content: JSON.stringify(payloadB) });
@@ -1895,6 +1913,7 @@ test('32 完整导入：并发重复导入被拒绝且首轮结束后锁正确�
 
     // 首轮结束后锁必须释放，用户可以重新发起一次导入。
     ctx.handleImportFile({ content: JSON.stringify(payloadB) });
+    await new Promise(resolve => setTimeout(resolve, 5));
     const secondImport = ctx.__pendingImport;
     assert.ok(secondImport);
     await secondImport;
@@ -1915,6 +1934,7 @@ test('33 handleImportFile：FileReader 构造失败后允许重新发起导入',
     };
 
     ctx.handleImportFile({ content: '{}' });
+    await new Promise(resolve => setTimeout(resolve, 5));
     assert.ok(ctx.__intercepted.toasts.some(item =>
         /无法初始化文件读取器|FileReader constructor failure/.test(item.msg)
     ));
