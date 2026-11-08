@@ -493,7 +493,7 @@ test('reapplying the same active package is idempotent and does not duplicate mo
 
   
 test('theme package scripts use a shared cache-busting revision across chat and importer pages',()=>{
-  const revision='20261109theme2';
+  const revision='20261109theme3';
   const importer=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const chatList=readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8');
   const chatDetail=readFileSync(new URL('../chat/chat/chat-detail.html',import.meta.url),'utf8');
@@ -569,4 +569,19 @@ test('runtime releases partial asset URLs before falling back from a broken pack
   assert.equal(localStorage.getItem('maomao_chat_theme_active_v1'),working.id,'部分素材失败后应恢复最后成功主题');
   assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),working.id,'回退后应保留最后成功主题记录');
   assert.match(styleNodes.get('maomao-chat-theme-package-style').textContent,/partial-working-theme/,'回退后应恢复旧主题样式');
+});
+
+test('style values reject comment and escape obfuscation of dangerous CSS',()=>{
+  const t=fixture({
+    styles:{
+      chatList:{bottomNav:{background:'u/**/rl(javascript:alert(1))',color:'#222'}},
+      chatDetail:{sentBubble:{background:'u\\\\72l(javascript:alert(1))',position:'fi\\\\78 ed',color:'#111'}}
+    }
+  });
+  const p=F.readPackage(F.parseStoredZip(makePackage(t)));
+  const css=F.stylesToCss(p.theme);
+  assert.doesNotMatch(css,/javascript:/i);
+  assert.doesNotMatch(css,/position:fixed/i);
+  assert.match(css,/color:#222/);
+  assert.match(css,/color:#111/);
 });

@@ -160,11 +160,19 @@
     }
     return css;
   }
-  function cleanValue(v){if(typeof v==="number")return Number.isFinite(v)?v:null;if(typeof v==="boolean")return v;var s=String(v==null?"":v).trim();if(!s||/[;{}<>]|url\s*\(|expression\s*\(|javascript\s*:/i.test(s))return null;return s.slice(0,220)}
+  function cleanValue(v,propertyName){
+    if(typeof v==="number")return Number.isFinite(v)?v:null;
+    if(typeof v==="boolean")return v;
+    var s=String(v==null?"":v).trim();
+    if(!s||/[;{}<>]/.test(s))return null;
+    var property=String(propertyName||"value").replace(/[A-Z]/g,function(c){return"-"+c.toLowerCase()});
+    try{validateCss(".maomao-theme-value{"+property+":"+s+"}")}catch(e){return null}
+    return s.slice(0,220)
+  }
   function clamp(v,min,max,fb){var n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fb}
   function declarations(style){
     var out=[];
-    Object.keys(PROPS).forEach(function(k){if(style[k]==null)return;var v=cleanValue(style[k]);if(v==null)return;
+    Object.keys(PROPS).forEach(function(k){if(style[k]==null)return;var v=cleanValue(style[k],k);if(v==null)return;
       if(k==="opacity")v=String(clamp(v,0,100,100)>1?clamp(v,0,100,100)/100:clamp(v,0,1,1));
       if(k==="blur")v="blur("+clamp(v,0,80,0)+"px)";
       if(["radius","padding","margin","gap","height","fontSize","borderWidth","letterSpacing"].indexOf(k)>=0&&typeof v==="number")v+= "px";
@@ -230,7 +238,7 @@
       (Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).forEach(function(b){if(b&&safeCustomId(b.id)&&!ids[page].includes(b.id))ids[page].push(b.id)})
     });
     var clean={format:FORMAT,schemaVersion:VERSION,target:"maomao-chat",id:String(theme.id||"chat-theme").slice(0,120),name:theme.name,version:String(theme.version||"1.0.0"),pages:cleanPages,styles:{chatList:{},chatDetail:{}},blocks:{chatList:[],chatDetail:[]},layerOrder:{chatList:[],chatDetail:[]},motions:[],assetIndex:[]};
-    ["chatList","chatDetail"].forEach(function(page){Object.keys(theme.styles&&theme.styles[page]||{}).forEach(function(id){if(!ids[page].includes(id))return;var st={};Object.keys(PROPS).forEach(function(k){var v=cleanValue(theme.styles[page][id][k]);if(v!==null&&v!==undefined)st[k]=v});clean.styles[page][id]=st});
+    ["chatList","chatDetail"].forEach(function(page){Object.keys(theme.styles&&theme.styles[page]||{}).forEach(function(id){if(!ids[page].includes(id))return;var st={};Object.keys(PROPS).forEach(function(k){var v=cleanValue(theme.styles[page][id][k],k);if(v!==null&&v!==undefined)st[k]=v});clean.styles[page][id]=st});
       clean.blocks[page]=(Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).slice(0,40).filter(function(b){return b&&safeCustomId(b.id)&&ids[page].includes(b.id)}).map(function(b){var t=["card","text","image","divider"].indexOf(b.type)>=0?b.type:"card";return{id:b.id,type:t,title:String(b.title||"").slice(0,160),text:String(b.text||"").slice(0,2000),assetPath:paths.indexOf(b.assetPath)>=0?b.assetPath:"",slot:String(b.slot||"").slice(0,40),visible:b.visible!==false}});
       clean.layerOrder[page]=(Array.isArray(theme.layerOrder&&theme.layerOrder[page])?theme.layerOrder[page]:[]).filter(function(id){return ids[page].includes(id)}).slice(0,120)
     });
