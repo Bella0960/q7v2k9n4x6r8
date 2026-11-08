@@ -39,7 +39,7 @@ class FakeD1 {
       return {
         ready_tables: this.schemaReady ? 4 : 0,
         ready_indexes: Number(this.friendCodeIndexReady) + Number(this.friendRequestIndexReady),
-        ready_triggers: this.friendLifecycleTriggersReady ? 9 : 0
+        ready_triggers: this.friendLifecycleTriggersReady ? 10 : 0
       };
     }
     if (sql.includes("FROM sqlite_master")) {
