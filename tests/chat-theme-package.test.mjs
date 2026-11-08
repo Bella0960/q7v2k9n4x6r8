@@ -649,3 +649,75 @@ test('import preview ignores stale file reads after a newer selection or clear',
   assert.equal(ids.fileName.textContent,'尚未选择文件','清空选择后不能恢复旧文件名');
   assert.match(ids.status.textContent,/可以重新选择一个主题包/,'过期读取错误不能覆盖清空状态');
 });
+
+
+test('import rollback reports failed MediaRepository cleanup without deleting shared assets',async()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  function makeNode(tag){
+    const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,hidden:false,value:'',style:{},
+      classList:{add(){},remove(){}},
+      addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      setAttribute(){}
+    };
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName',
+   'previewName','previewVersion','previewCss','previewList','previewDetail','previewSummary'].forEach(id=>ids[id]=makeNode('div'));
+  const document={querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  const values=new Map();
+  const LIST_KEY='maomao_chat_theme_packages_v1',ACTIVE_KEY='maomao_chat_theme_active_v1';
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){if(key===ACTIVE_KEY)throw new Error('模拟活动主题写入失败');values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  const calls={putBlob:[],removeRef:[],removeAsset:[]};
+  const media={
+    putBlob(blob,options){
+      const index=calls.putBlob.length;
+      calls.putBlob.push({blob,options});
+      return Promise.resolve({ok:true,value:{assetId:index===0?'asset-shared':'asset-cleanup-failed'}});
+    },
+    removeRef(id,ownerType,ownerId){
+      calls.removeRef.push({id,ownerType,ownerId});
+      if(id==='asset-shared')return Promise.resolve({ok:true,value:{removed:true,refCount:1}});
+      return Promise.resolve({ok:false,error:{code:'STORAGE_ERROR',message:'模拟引用删除失败'}});
+    },
+    removeAsset(id){calls.removeAsset.push(id);return Promise.resolve({ok:true,value:{removed:true}})}
+  };
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    PhoneStorage:phoneStorage,
+    MAOMAOChatThemeFormat:{
+      parseStoredZip(buffer){return buffer},
+      readPackage(){return{
+        theme:{id:'rollback-theme',name:'回滚测试主题',version:'1.0.0',pages:{chatList:[],chatDetail:[]},motions:[]},
+        customCss:'',assets:{
+          'assets/shared.png':{bytes:new Uint8Array([1,2,3]),mimeType:'image/png',type:'image'},
+          'assets/second.png':{bytes:new Uint8Array([4,5,6]),mimeType:'image/png',type:'image'}
+        }
+      }}
+    },
+    dispatchEvent(){}
+  };
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(script,{window:windowMock,PhoneStorage:phoneStorage,document,localStorage,CustomEvent,Blob,setTimeout(){},console});
+  ids.themeFile.handlers.change({target:{files:[{name:'rollback.maomaotheme',arrayBuffer(){return Promise.resolve('package')}}]}});
+  for(let i=0;i<6;i++)await Promise.resolve();
+  assert.equal(ids.importApply.disabled,false,'有效主题包应允许开始导入');
+  ids.importApply.handlers.click();
+  for(let i=0;i<24;i++)await Promise.resolve();
+  assert.equal(JSON.parse(localStorage.getItem(LIST_KEY)||'[]').length,0,'活动主题写入失败后必须恢复原主题列表');
+  assert.equal(localStorage.getItem(ACTIVE_KEY),null,'活动主题写入失败后不能留下半应用状态');
+  assert.equal(calls.removeRef.length,2,'必须逐项尝试清理本次新增引用');
+  assert.deepEqual(calls.removeAsset,[],'共享资产仍有其他引用时不能删除；引用清理失败时也不能贸然删素材');
+  assert.match(ids.status.textContent,/主题设置已回滚/,'应明确说明主题设置已回滚');
+  assert.match(ids.status.textContent,/1 项新增素材清理未能确认完成/,'MediaRepository 返回 ok:false 时必须报告清理未完成');
+  assert.doesNotMatch(ids.status.textContent,/新增素材已回滚/,'清理未确认时不能宣称所有素材都已回滚');
+});
