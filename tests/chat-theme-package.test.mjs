@@ -12,6 +12,22 @@ function fixture(overrides={}){return{format:F.FORMAT,schemaVersion:F.VERSION,ta
 function makePackage(theme=fixture(),css='.msg-row.sent .msg-bubble{letter-spacing:.2px}',extra=[]){const m={format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat'};return zip([{name:'manifest.json',data:JSON.stringify(m)},{name:'theme.json',data:JSON.stringify(theme)},{name:'custom.css',data:css},...extra])}
 test('valid chat theme parses with layout, CSS and motion settings',()=>{const p=F.readPackage(F.parseStoredZip(makePackage()));assert.equal(p.theme.name,'测试聊天主题');assert.equal(p.theme.blocks.chatList[0].slot,'top-of-content');assert.equal(p.theme.motions[0].duration,330);assert.match(F.buildScopedCss(p.theme,p.customCss),/data-maomao-chat-theme-active/);assert.match(F.buildScopedCss(p.theme,p.customCss),/letter-spacing:0?\.4px/);assert.match(F.scopeCss('.phone-mockup .msg-bubble{color:#111}','.phone-mockup[data-maomao-chat-theme-active="1"]'),/data-maomao-chat-theme-active="1"\] \.msg-bubble/);});
 
+test('CSS scoping preserves braces in comments and strings and handles escaped group selectors',()=>{
+  const prefix='.phone-mockup[data-maomao-chat-theme-active="1"]';
+  const css='/* { fake block } */ .sample::after{content:"{ literal }";color:red}'+
+    '@media (max-width:600px){/* } { */ .nested:is(.a,.b), [data-x="a,b"]{content:"}";color:#222}}';
+  const scoped=F.scopeCss(css,prefix);
+  assert.ok(scoped.includes(prefix+' /* { fake block } */ .sample::after{'),'注释中的花括号不能被误识别为规则边界');
+  assert.ok(scoped.includes('content:"{ literal }";color:red}'),'字符串中的花括号必须保持原样');
+  assert.ok(scoped.includes('@media (max-width:600px){'+prefix+' /* } { */ .nested:is(.a,.b),'+prefix+' [data-x="a,b"]{'),'分组规则内的注释和选择器列表必须正确保留');
+  assert.ok(scoped.includes('content:"}";color:#222}}'),'嵌套规则体中的字符串和闭合括号必须保持原样');
+
+  const escaped=F.scopeCss(String.raw`@m\65 dia (max-width:600px){h\74 ml .nested{color:red}}`,prefix);
+  assert.ok(escaped.includes('@m\\65 dia (max-width:600px){'+prefix+' .nested{'),'转义写法的 @media 与 html 选择器也必须保持聊天页作用域');
+  const escapedShell=F.scopeCss(String.raw` .\70 hone-mockup .child{color:red}`,prefix);
+  assert.ok(escapedShell.includes(prefix+' .child{'),'转义写法的 phone-mockup 根选择器必须正确替换');
+});
+
 test('stored ZIP validates its EOCD, central directory and matching local headers',()=>{
   const valid=Buffer.from(makePackage());
   assert.doesNotThrow(()=>F.parseStoredZip(valid));
