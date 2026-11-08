@@ -2990,22 +2990,25 @@ test('61 createRecoveryPointRescuePackage：单份记录序列化失败时继续
 
     const zip = Buffer.from(result.blob._data);
     let offset = 0;
-    const names = [];
+    const entries = [];
     while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
         const nameLength = zip.readUInt16LE(offset + 26);
         const extraLength = zip.readUInt16LE(offset + 28);
         const size = zip.readUInt32LE(offset + 18);
-        names.push(zip.subarray(offset + 30, offset + 30 + nameLength).toString('utf8'));
-        offset += 30 + nameLength + extraLength + size;
+        const nameStart = offset + 30;
+        const dataStart = nameStart + nameLength + extraLength;
+        const name = zip.subarray(nameStart, nameStart + nameLength).toString('utf8');
+        entries.push({ name: name, data: zip.subarray(dataStart, dataStart + size) });
+        offset = dataStart + size;
     }
-    assert.deepEqual(names.sort(), ['README.txt', 'recovery-points.json'],
+    assert.deepEqual(entries.map(entry => entry.name).sort(), ['README.txt', 'recovery-points.json'],
         'failed role must not leave an orphan binary file in the rescue ZIP');
-    const manifestBytes = zip.subarray(
-        names.indexOf('recovery-points.json') >= 0 ? 0 : 0
-    );
-    const manifestStart = zip.indexOf(Buffer.from('{"format"'));
-    assert.notEqual(manifestStart, -1,
-        'manifest JSON should be included even when one record fails serialization');
+    const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
+    const manifest = JSON.parse(manifestEntry.data.toString('utf8'));
+    assert.equal(manifest.recordStatuses['pre-import'], 'error');
+    assert.equal(manifest.recordStatuses['pre-import-indexeddb'], 'exported');
+    assert.equal(manifest.recordStatuses['pre-import-meta'], 'exported');
+    assert.equal(manifest.readErrors[0].role, 'pre-import');
     assert.ok(ctx.__restorePointRows.has('pre-import'));
     assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
     assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
