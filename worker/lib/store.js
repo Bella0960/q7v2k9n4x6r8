@@ -2001,7 +2001,7 @@ class CloudStore {
     );
   }
 
-  setMaoAccountState({ accountId, action, actorAccountId, now }) {
+  setMaoAccountState({ accountId, action, actorAccountId, reason = '', now }) {
     const account = this.getMaoAccountById(accountId);
     if (!account || account.role === 'super_admin') return null;
     let nextStatus = '';
@@ -2035,9 +2035,33 @@ class CloudStore {
       }
     }
     this.exec(
-      "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, ?, '{}', ?)",
-      'audit_' + now + '_' + Math.random().toString(36).slice(2, 10),
-      actorAccountId, accountId, action, now
+      "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      'audit_' + crypto.randomUUID(),
+      actorAccountId, accountId, action,
+      serializeStoreJson({ reason: String(reason || '').slice(0, 500) }, 2048, 'audit detail'),
+      now
+    );
+    return this.getMaoAccountById(accountId);
+  }
+
+  listMaoAccountAudit(accountId) {
+    return this.exec(
+      "SELECT id, actor_account_id, target_account_id, action, detail_json, created_at FROM mao_account_audit WHERE target_account_id = ? ORDER BY created_at DESC, id DESC LIMIT 200",
+      accountId
+    );
+  }
+
+  updateMaoAccountEmail(accountId, email, now) {
+    const account = this.getMaoAccountById(accountId);
+    if (!account) return null;
+    if (String(account.qq_email || '').toLowerCase() === String(email || '').toLowerCase()) {
+      return account;
+    }
+    this.exec(
+      "UPDATE mao_accounts SET qq_email = ?, qq_email_verified_at = NULL, updated_at = ? WHERE id = ?",
+      email || null,
+      now,
+      accountId
     );
     return this.getMaoAccountById(accountId);
   }
