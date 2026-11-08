@@ -160,6 +160,14 @@
                   <span class="ds-del" title="移除">×</span>
                 </button>
 
+                <button class="app-card app-tile" type="button" data-href="admin/admin-center.html" data-drag="app_admin_center" data-name="管理中心" title="管理中心" hidden>
+                  <span class="app-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>
+                  </span>
+                  <span class="app-name">管理中心</span>
+                  <span class="ds-del" title="移除">×</span>
+                </button>
+
                 <button class="app-card app-tile" type="button" data-href="wallet/finance.html" data-drag="app_finance" data-name="记账" title="记账">
                   <span class="app-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -728,6 +736,36 @@
         while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
         var beautyIndex = currentLayout.pages[pageIndex].indexOf('app_beauty');
         currentLayout.pages[pageIndex].splice(beautyIndex >= 0 ? beautyIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+        saveLayout(currentLayout);
+      })();
+
+      // 管理中心是创作者独占应用。普通账号不保留该快捷方式；
+      // 超级管理员登录后将入口加入其现有桌面，不改变其他用户的布局。
+      (function configureCreatorAdminShortcut() {
+        var roleMeta = document.querySelector('meta[name="mao-account-role"]');
+        var isSuperAdmin = !!(roleMeta && roleMeta.content === 'super_admin');
+        var id = 'app_admin_center';
+        var tile = document.querySelector('[data-drag="' + id + '"]');
+        if (!tile) return;
+        if (isSuperAdmin) {
+          tile.hidden = false;
+          var exists = (currentLayout.pages || []).some(function (page) { return page.indexOf(id) !== -1; })
+            || (currentLayout.dock || []).indexOf(id) !== -1
+            || (currentLayout.removed || []).indexOf(id) !== -1;
+          if (!exists) {
+            var pageIndex = (currentLayout.pages || []).findIndex(function (page) { return page.indexOf('app_settings') !== -1; });
+            if (pageIndex < 0) pageIndex = 0;
+            while (currentLayout.pages.length <= pageIndex) currentLayout.pages.push([]);
+            var settingsIndex = currentLayout.pages[pageIndex].indexOf('app_settings');
+            currentLayout.pages[pageIndex].splice(settingsIndex >= 0 ? settingsIndex + 1 : currentLayout.pages[pageIndex].length, 0, id);
+          }
+        } else {
+          currentLayout.pages = (currentLayout.pages || []).map(function (page) {
+            return page.filter(function (item) { return item !== id; });
+          });
+          currentLayout.dock = (currentLayout.dock || []).filter(function (item) { return item !== id; });
+          currentLayout.removed = (currentLayout.removed || []).filter(function (item) { return item !== id; });
+        }
         saveLayout(currentLayout);
       })();
 
