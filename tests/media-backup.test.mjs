@@ -189,6 +189,11 @@ function makeIDB(name, version, storeDefs) {
                         else data[name].push(value);
                         return { onsuccess: null, result: k };
                     },
+                    getAll() {
+                        const req = { result: data[name].slice(), onsuccess: null };
+                        Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
                     getAllKeys() {
                         const keys = data[name].map(r => {
                             const def = storeDefs.find(d => d.store === name);
