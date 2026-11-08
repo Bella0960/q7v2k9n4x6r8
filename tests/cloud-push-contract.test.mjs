@@ -4404,11 +4404,22 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
     subscriptions.set(device.deviceId, result.payload.subscription.id);
   }
 
+  const receiverAccountId = 'MAO-AAAAAAAAAAAA';
+  const foreignAccountId = 'MAO-BBBBBBBBBBBB';
+  ctx.store.exec(
+    'UPDATE devices SET user_id = ? WHERE id IN (?, ?, ?)',
+    receiverAccountId, source.deviceId, second.deviceId, revoked.deviceId
+  );
+  ctx.store.exec(
+    'UPDATE devices SET user_id = ? WHERE id = ?',
+    foreignAccountId, foreign.deviceId
+  );
+
   const serverMessageId = 'account_push_targets_123456';
   ctx.store.enqueueOutboundMessage({
     id: 'out_' + serverMessageId,
     deviceId: source.deviceId,
-    userId: 'owner',
+    userId: receiverAccountId,
     characterId: 'char-push-multi',
     serverMessageId,
     dedupeKey: 'autonomy:push:multi-device',
@@ -4417,6 +4428,8 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
   });
 
   const beforeRevocation = ctx.store.listOutboundPushCandidates({ now, limit: 50 });
+  assert.ok(beforeRevocation.every(row => row.target_account_id === receiverAccountId),
+    'Push payload 的账号标识必须取自目标设备所属 MAO ID，而不是发送设备以外的其他租户');
   assert.deepEqual(
     beforeRevocation.map(row => row.device_id).sort(),
     [source.deviceId, second.deviceId, revoked.deviceId].sort(),
