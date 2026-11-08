@@ -113,6 +113,16 @@ function makeFileReader() {
                 }
                 if (this.onload) this.onload();
             });
+        },
+        readAsArrayBuffer(blob) {
+            Promise.resolve().then(() => {
+                if (!blob || !blob._data) throw new Error('mock Blob has no bytes');
+                this.result = Uint8Array.from(blob._data).buffer;
+                if (this.onload) this.onload();
+            }).catch(error => {
+                this.error = error;
+                if (this.onerror) this.onerror();
+            });
         }
     };
 }
@@ -280,7 +290,9 @@ function registerBlob() {
             _b64: this._data ? this._data.toString('base64') : ''
         };
     };
-    Blob.prototype.slice = function () { return new Blob([this._data], { type: this.type }); };
+    Blob.prototype.slice = function (start, end) {
+        return new Blob([this._data.subarray(start || 0, end === undefined ? this._data.length : end)], { type: this.type });
+    };
     globalThis.Blob = Blob;
     return Blob;
 }
@@ -358,7 +370,7 @@ function buildCtxFull(opts) {
         'dumpStore', 'dumpDatabase',
         'restoreStore', 'restoreDatabase', 'validateBackup', 'restore', 'verifyRestore',
         'rpDeleteRole', 'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
-        'estimateRestorePointBytes', 'dumpDatabaseForRestorePoint',
+        'estimateRestorePointBytes', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
         'doExport', 'handleImportFile'
     ];
@@ -1557,4 +1569,65 @@ test('24 verifyRestore：无法读取 localStorage 键清单时不能把空快�
     const result = ctx.verifyRestore({});
     assert.equal(result.ok, false);
     assert.equal(result.keyReadOk, false);
+});
+
+
+/* ═══════════════════════════════════════════════
+   25. 恢复点指纹识别等大小文本内容被改写
+   ═══════════════════════════════════════════════ */
+test('25 captureIndexedDbRestorePoint：读回内容同长度被改写时指纹校验失败', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-key', id: 'wallpaper-1', name: 'Old wallpaper' }
+    ]);
+
+    const readSnapshot = ctx.rpReadSnapshot;
+    ctx.rpReadSnapshot = async role => {
+        const stored = await readSnapshot(role);
+        if (role !== 'pre-import-indexeddb' || !stored) return stored;
+        const dbData = stored.snap['maomao-media-store'];
+        const rows = dbData.wallpapers.map(row => ({
+            ...row,
+            __value: { ...row.__value, name: 'Bad wallpaper' }
+        }));
+        return {
+            ...stored,
+            snap: {
+                ...stored.snap,
+                'maomao-media-store': { ...dbData, wallpapers: rows }
+            }
+        };
+    };
+
+    await assert.rejects(
+        ctx.captureIndexedDbRestorePoint({
+            'maomao-media-store': { wallpapers: [] }
+        }),
+        /内容指纹校验失败/
+    );
+});
+
+/* ═══════════════════════════════════════════════
+   26. 恢复点指纹读取真实 Blob 字节，不只比较 MIME 和体积
+   ═══════════════════════════════════════════════ */
+test('26 fingerprintRestorePoint：同 MIME、同体积但二进制不同的 Blob 指纹不同', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const first = new SandboxBlob([Buffer.from('original-audio')], { type: 'audio/mpeg' });
+    const changed = new SandboxBlob([Buffer.from('original-audiX')], { type: 'audio/mpeg' });
+    assert.equal(first.size, changed.size);
+    assert.equal(first.type, changed.type);
+
+    const firstFingerprint = await ctx.fingerprintRestorePoint({ blob: first });
+    const changedFingerprint = await ctx.fingerprintRestorePoint({ blob: changed });
+    assert.notEqual(firstFingerprint, changedFingerprint,
+        '校验必须读取 Blob 实际字节，不能只依赖 size/type');
+    const clonedFingerprint = await ctx.fingerprintRestorePoint({
+        blob: new SandboxBlob([Buffer.from('original-audio')], { type: 'audio/mpeg' })
+    });
+    assert.equal(firstFingerprint, clonedFingerprint,
+        '结构化克隆后的相同 Blob 内容必须产生相同指纹');
 });
