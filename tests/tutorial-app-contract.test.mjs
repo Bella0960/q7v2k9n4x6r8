@@ -14,6 +14,7 @@ const packageJson = JSON.parse(readFileSync(resolve(here, '../package.json'), 'u
 const tutorialWorkflow = readFileSync(resolve(here, '../.github/workflows/tutorial-regression.yml'), 'utf8');
 const novelPage = readFileSync(resolve(here, '../novel/novel.html'), 'utf8');
 const minimaxPage = readFileSync(resolve(here, '../settings/minimax-tts.html'), 'utf8');
+const worldbookPage = readFileSync(resolve(here, '../worldbook/worldbook/worldbook.html'), 'utf8');
 
 function readExtraLessons(source) {
   const match = source.match(/var extraLessons=(\[[\s\S]*?\]);\nlessons=lessons\.concat\(extraLessons\);/);
@@ -226,6 +227,33 @@ test('guided save steps verify real success and failure messages instead of manu
   assert.match(html, /selector:'#toast',success:\['已保存 TTS 设置'\]/);
   assert.match(html, /new MutationObserver\(inspect\)/);
   assert.match(html, /跳过核验并继续/);
+});
+
+test('every guided save verifier points to a real toast and an existing action control', () => {
+  const extra = readExtraLessons(html);
+  const cases = [
+    ['forum-post', '#submitPost', '../forum/forum.html'],
+    ['diary-journal', '#saveEntry', '../diary/diary.html'],
+    ['envelope-letter', '#saveDraftButton', '../envelope/envelope.html'],
+    ['reading-workflow', '#confirmBookImport', '../library/library.html'],
+    ['novel-workflow', '#saveWork', '../novel/novel.html']
+  ];
+  for (const [id, actionSelector, pagePath] of cases) {
+    const lesson = extra.find((item) => item.id === id);
+    const step = lesson && lesson.tour.steps.find((item) => item.selector === actionSelector);
+    assert.ok(step && step.verify, id + ' must declare a verified save step');
+    assertSelectorExists(readPage(pagePath), actionSelector, id + ' action');
+    assertSelectorExists(readPage(pagePath), step.verify.selector, id + ' result feedback');
+    assert.ok(step.verify.success.length > 0 && step.verify.failure.length > 0);
+    assert.ok(step.verify.recovery);
+  }
+
+  const worldbook = html.slice(html.indexOf("addTourConfig('worldbook'"), html.indexOf("addTourConfig('fonts'"));
+  const tts = html.slice(html.indexOf("addTourConfig('minimax-tts'"), html.indexOf("addTourConfig('image-generate'"));
+  assert.match(worldbookPage, /wbToast/);
+  assert.match(worldbook, /selector:'#wbToast',success:\['新建成功'\]/);
+  assert.match(tts, /selector:'#toast',success:\['已保存 TTS 设置'\]/);
+  assert.match(minimaxPage, /id="toast"/);
 });
 
 test('novel and MiniMax settings do not claim save success when local storage fails', () => {
