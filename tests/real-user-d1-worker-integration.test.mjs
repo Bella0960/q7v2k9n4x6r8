@@ -1338,4 +1338,61 @@ if (!DatabaseSync) {
     }
   });
 
+
+  test("reactivating an account never restores old QR codes, requests, or friendships", async () => {
+    const { database, env, aliceId, bobId, aliceToken, bobToken } =
+      await seedRacePair("reactivation");
+    try {
+      const qr = await callFriends(env, "/codes/rotate", "POST", bobToken);
+      assert.equal(qr.response.status, 201);
+
+      const oldRequestId = "request_reactivation_old_01";
+      addPendingRequest(database, oldRequestId, aliceId, bobId, Date.now() - 1000);
+      database.prepare(
+        "UPDATE real_user_friend_requests SET status = 'accepted', responded_at = ?, updated_at = ? WHERE id = ?"
+      ).run(Date.now(), Date.now(), oldRequestId);
+
+      let friendship = database.prepare(
+        "SELECT status FROM real_user_friendships WHERE pair_low = ? AND pair_high = ?"
+      ).get(aliceId < bobId ? aliceId : bobId, aliceId < bobId ? bobId : aliceId);
+      assert.equal(friendship.status, "accepted");
+
+      const now = Date.now();
+      database.prepare(
+        "UPDATE real_user_accounts SET status = 'suspended', updated_at = ? WHERE id = ?"
+      ).run(now, bobId);
+
+      friendship = database.prepare(
+        "SELECT status FROM real_user_friendships WHERE pair_low = ? AND pair_high = ?"
+      ).get(aliceId < bobId ? aliceId : bobId, aliceId < bobId ? bobId : aliceId);
+      assert.equal(friendship.status, "removed",
+        "suspension must terminate an existing accepted friendship");
+
+      database.prepare(
+        "UPDATE real_user_accounts SET status = 'active', updated_at = ? WHERE id = ?"
+      ).run(now + 1, bobId);
+
+      friendship = database.prepare(
+        "SELECT status FROM real_user_friendships WHERE pair_low = ? AND pair_high = ?"
+      ).get(aliceId < bobId ? aliceId : bobId, aliceId < bobId ? bobId : aliceId);
+      assert.equal(friendship.status, "removed",
+        "reactivation must not restore the prior friendship");
+
+      const redeemed = await callFriends(env, "/requests", "POST", aliceToken, {
+        requestId: "request_reactivation_new_01",
+        code: qr.body.code
+      });
+      assert.equal(redeemed.response.status, 409,
+        "reactivation must not revive a QR code revoked during suspension");
+
+      const oldRequest = database.prepare(
+        "SELECT status FROM real_user_friend_requests WHERE id = ?"
+      ).get(oldRequestId);
+      assert.equal(oldRequest.status, "accepted",
+        "an already accepted request remains historical; only the friendship is removed");
+    } finally {
+      database.close();
+    }
+  });
+
 }
