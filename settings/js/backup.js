@@ -1330,6 +1330,16 @@
                             previous.db, previous.version, previous.stores,
                             restorePoint.snapshots[previous.db], true
                         );
+                        var rollbackActual = await dumpDatabaseForRestorePoint(
+                            previous.db, previous.version, previous.stores
+                        );
+                        var rollbackExpectedFingerprint = await fingerprintRestorePoint(
+                            restorePoint.snapshots[previous.db]
+                        );
+                        var rollbackActualFingerprint = await fingerprintRestorePoint(rollbackActual);
+                        if (rollbackActualFingerprint !== rollbackExpectedFingerprint) {
+                            throw new Error('回滚事务完成，但回读内容指纹不一致');
+                        }
                     } catch (rollbackError) {
                         rollbackFailures.push(previous.db + '（'
                             + ((rollbackError && rollbackError.message) || '回滚失败') + '）');
