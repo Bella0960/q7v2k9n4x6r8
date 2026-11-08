@@ -52,6 +52,23 @@ test('stored ZIP permits a valid archive comment but rejects trailing unregister
   assert.doesNotThrow(()=>F.parseStoredZip(signatureInComment),'注释中的结束签名不能遮蔽真正的 ZIP 结束记录');
 });
 test('image/font assets must be registered in assetIndex',()=>{const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);const t=fixture({assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]});const p=F.readPackage(F.parseStoredZip(makePackage(t,'',[{name:'assets/bg.png',data:bytes}])));assert.deepEqual(Array.from(p.assets['assets/bg.png'].bytes),Array.from(bytes));});
+test('exported theme packages round-trip CSS, custom blocks and binary assets through the importer',()=>{
+  const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);
+  const theme=fixture({
+    id:'round-trip-theme',
+    assetIndex:[{path:'assets/photo.png',name:'photo.png',type:'image',mimeType:'image/png'}],
+    blocks:{chatList:[{id:'custom-photo',type:'image',assetPath:'assets/photo.png',slot:'top-of-content'}],chatDetail:[]}
+  });
+  const css='.phone-mockup .sample{color:#111}';
+  const exported=F.createPackage(theme,css,{'assets/photo.png':bytes});
+  const imported=F.readPackage(F.parseStoredZip(exported));
+  assert.equal(imported.theme.name,theme.name);
+  assert.equal(imported.theme.blocks.chatList[0].assetPath,'assets/photo.png');
+  assert.equal(imported.customCss,css);
+  assert.deepEqual(Array.from(imported.assets['assets/photo.png'].bytes),Array.from(bytes));
+  assert.throws(()=>F.createPackage(theme,css,{}),/导出主题缺少素材/);
+  assert.throws(()=>F.createPackage(theme,'@import url(https://example.invalid/a.css)',{'assets/photo.png':bytes}),/不允许/);
+});
 test('custom block slots are normalized to supported positions for their own page',()=>{
   const theme=fixture({
     blocks:{
