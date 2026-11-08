@@ -211,14 +211,21 @@
     };
     $('passwordMessage').textContent = '';
     $('passwordMessage').className = 'inline-message';
-    runAction(async () => {
-      const result = await api('/api/accounts/password/change', 'POST', body);
+    const submit = event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    api('/api/accounts/password/change', 'POST', body).then(async result => {
       event.currentTarget.reset();
       $('passwordMessage').textContent = result.changed ? '密码已更新，其他登录会话已退出。' : '密码没有修改。';
       await refreshSecurity();
     }).catch(error => {
+      if (error.code === 'ACCOUNT_DISABLED') {
+        showDisabled();
+        return;
+      }
       $('passwordMessage').textContent = error.message || '密码修改失败。';
       $('passwordMessage').className = 'inline-message error';
+    }).finally(() => {
+      submit.disabled = false;
     });
   });
 
