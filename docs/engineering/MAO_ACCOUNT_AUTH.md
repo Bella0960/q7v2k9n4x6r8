@@ -50,7 +50,7 @@ Registration is limited to eight accounts per source IP hash per hour. The sourc
 
 ### QQ email limitation
 
-QQ email may be recorded on registration, but mailbox ownership verification and email delivery are not implemented in this increment. Email-targeted invitations therefore fail closed until a real verification flow is added. Permanent-ID-targeted invitations are the currently usable path.
+QQ email may be recorded on registration. Once an account's QQ mailbox is marked verified by a future server-side verification flow, the verified email can also be used to log in and to bind an invitation. Mailbox ownership verification and outbound email delivery are not implemented in this increment, so email-targeted invitations fail closed. Permanent-ID-targeted invitations are the currently usable path.
 
 ## Disable / restore / revoke
 
@@ -89,7 +89,7 @@ Public account:
 - POST /api/accounts/invites/redeem
 
 Super-admin only:
-- POST /api/admin/bootstrap (one-time secret-gated setup)
+- GET /api/admin/bootstrap/status (public boolean only; never exposes whether the secret is configured)\n- POST /api/admin/bootstrap (one-time secret-gated setup)
 - GET /api/admin/accounts
 - GET /api/admin/accounts/:id/audit
 - GET /api/admin/invites
@@ -103,6 +103,6 @@ Super-admin only:
 - The command also includes browser storage namespace tests for two account IDs.
 - The GitHub Actions job must execute the tests and build before the branch can be considered validated.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
-- The first-run bootstrap UI, QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
+- QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
 
 No production deployment, merge into main, or APK update is part of this branch.
