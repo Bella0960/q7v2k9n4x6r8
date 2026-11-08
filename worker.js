@@ -180,7 +180,8 @@ export default {
     const isHtmlDocument = request.method === 'GET' &&
       (url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html'));
     const isPublicAccountDocument = url.pathname === '/account' ||
-      url.pathname.startsWith('/account/');
+      url.pathname === '/account/' ||
+      url.pathname === '/account/index.html';
     let authorizedAccount = null;
     if (isHtmlDocument && !isPublicAccountDocument) {
       if (!env.CLOUD_DB) {
