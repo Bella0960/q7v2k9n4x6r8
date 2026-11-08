@@ -51,10 +51,13 @@ test('0009 migration keeps the earliest pending request and rejects reverse dupl
   const rows = query(
     'SELECT id, status FROM friend_requests ORDER BY id'
   );
-  assert.deepEqual(rows, [
-    { id: 'request-early', status: 'pending' },
-    { id: 'request-reverse-late', status: 'rejected' }
-  ]);
+  assert.deepEqual(
+    rows.map(row => [row.id, row.status]),
+    [
+      ['request-early', 'pending'],
+      ['request-reverse-late', 'rejected']
+    ]
+  );
 
   assert.throws(() => exec(
     `INSERT INTO friend_requests
