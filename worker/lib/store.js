@@ -2092,17 +2092,38 @@ class CloudStore {
   setMaoAccountState({ accountId, action, actorAccountId, reason = '', now }) {
     const account = this.getMaoAccountById(accountId);
     if (!account || account.role === 'super_admin') return null;
+
     let nextStatus = '';
-    if (action === 'disable' && account.status !== 'revoked') nextStatus = 'disabled';
-    if (action === 'restore' && account.status === 'disabled') nextStatus = 'active';
-    if (action === 'revoke' && account.status !== 'revoked') nextStatus = 'revoked';
+    if (action === 'disable' && ['pending_invite', 'active'].includes(account.status)) {
+      nextStatus = 'disabled';
+    } else if (action === 'restore' && account.status === 'disabled') {
+      // Temporary suspension must never grant an invitation that was not redeemed.
+      nextStatus = account.disabled_from_status === 'pending_invite' ? 'pending_invite' : 'active';
+    } else if (action === 'revoke' && account.status !== 'revoked') {
+      nextStatus = 'revoked';
+    }
     if (!nextStatus || nextStatus === account.status) return null;
 
-    this.exec(
-      "UPDATE mao_accounts SET status = ?, updated_at = ?, disabled_at = CASE WHEN ? = 'disabled' THEN ? ELSE disabled_at END, revoked_at = CASE WHEN ? = 'revoked' THEN ? ELSE revoked_at END WHERE id = ?",
-      nextStatus, now, nextStatus, now, nextStatus, now, accountId
-    );
-    if (nextStatus !== 'active') {
+    let changed = null;
+    if (action === 'disable') {
+      changed = this.exec(
+        "UPDATE mao_accounts SET status = 'disabled', disabled_from_status = ?, updated_at = ?, disabled_at = ? WHERE id = ? AND status = ? RETURNING id",
+        account.status, now, now, accountId, account.status
+      )[0] || null;
+    } else if (action === 'restore') {
+      changed = this.exec(
+        "UPDATE mao_accounts SET status = ?, disabled_from_status = NULL, updated_at = ? WHERE id = ? AND status = 'disabled' RETURNING id",
+        nextStatus, now, accountId
+      )[0] || null;
+    } else if (action === 'revoke') {
+      changed = this.exec(
+        "UPDATE mao_accounts SET status = 'revoked', disabled_from_status = NULL, updated_at = ?, revoked_at = ? WHERE id = ? AND status != 'revoked' RETURNING id",
+        now, now, accountId
+      )[0] || null;
+    }
+    if (!changed) return null;
+
+    if (action === 'disable' || action === 'revoke') {
       this.revokeMaoAccountSessions(accountId, now);
       this.exec(
         "UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = 'account_disabled' WHERE disabled_at IS NULL AND device_id IN (SELECT id FROM devices WHERE user_id = ? AND revoked_at IS NULL)",
