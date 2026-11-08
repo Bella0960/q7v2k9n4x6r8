@@ -2435,6 +2435,7 @@ function loadServiceWorker(scope, authAccount, authStatus = 200) {
   const focused = [];
   const navigations = [];
   const authRequests = [];
+  const cacheNamesOpened = [];
   const account = authAccount === undefined
     ? { id: 'MAO-AAAAAAAAAAAA', role: 'user', status: 'active' }
     : authAccount;
@@ -2461,7 +2462,7 @@ function loadServiceWorker(scope, authAccount, authStatus = 200) {
       console
     },
     caches: {
-      open: async () => ({ add: async () => undefined, put: async () => undefined, match: async () => null }),
+      open: async name => { cacheNamesOpened.push(String(name)); return { add: async () => undefined, put: async () => undefined, match: async () => null }; },
       match: async () => null,
       keys: async () => []
     },
@@ -2473,6 +2474,7 @@ function loadServiceWorker(scope, authAccount, authStatus = 200) {
       });
     },
     URL,
+    Headers,
     Response,
     console,
     Date,
@@ -2484,7 +2486,7 @@ function loadServiceWorker(scope, authAccount, authStatus = 200) {
     TextDecoder
   };
   vm.runInNewContext(source, sandbox, { filename: 'sw.js' });
-  return { handlers, notifications, opened, focused, navigations, authRequests };
+  return { handlers, notifications, opened, focused, navigations, authRequests, cacheNamesOpened };
 }
 
 test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', async () => {
@@ -2700,6 +2702,55 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   assert.deepEqual(sw.opened, [], '已有 scope 内窗口时应在原窗口回退到首页');
 });
 
+
+test('CSS 字体请求按 URL 中的 MAO ID 取缓存，并拒绝其他账号 Cookie', async () => {
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+  const fontRequest = (url) => ({
+    request: {
+      method: 'GET',
+      url: 'https://mao.test' + url,
+      headers: new Headers()
+    },
+    respondWith(promise) { this.responsePromise = promise; }
+  });
+
+  const alice = loadServiceWorker(undefined, {
+    id: accountA, role: 'user', status: 'active'
+  });
+  const aliceEvent = fontRequest('/__maomao_fonts/' + accountA + '/custom.woff2');
+  alice.handlers.fetch[0](aliceEvent);
+  const aliceResponse = await aliceEvent.responsePromise;
+  assert.equal(aliceResponse.status, 404,
+    '缓存尚未写入时返回 404，但只能查询 Alice 自己的缓存');
+  assert.deepEqual(alice.cacheNamesOpened, [
+    '__mao_account_v1__' + accountA + '__maomao-font-assets-v1'
+  ]);
+
+  const bob = loadServiceWorker(undefined, {
+    id: accountB, role: 'user', status: 'active'
+  });
+  const staleAliceEvent = fontRequest('/__maomao_fonts/' + accountA + '/custom.woff2');
+  bob.handlers.fetch[0](staleAliceEvent);
+  const staleAliceResponse = await staleAliceEvent.responsePromise;
+  assert.equal(staleAliceResponse.status, 404);
+  assert.deepEqual(bob.cacheNamesOpened, [],
+    'B 登录态不能打开或查找 A 的字体缓存');
+  assert.equal(
+    bob.authRequests[0].init.headers['x-mao-account-context'],
+    accountA,
+    '字体路径中的账号 ID 必须和服务器会话一起核对'
+  );
+
+  const creator = loadServiceWorker(undefined, {
+    id: 'MAO-CCCCCCCCCCCC', role: 'super_admin', status: 'active'
+  });
+  const creatorEvent = fontRequest('/__maomao_fonts/creator-font.woff2');
+  creator.handlers.fetch[0](creatorEvent);
+  await creatorEvent.responsePromise;
+  assert.deepEqual(creator.cacheNamesOpened, ['maomao-font-assets-v1'],
+    '创作者必须继续使用既有字体缓存名');
+});
 
 test('客户端代码不含任何私钥或 API Key 字面量', async () => {
   const client = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
