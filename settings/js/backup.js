@@ -742,6 +742,41 @@
     // 记录损坏（缺少必要字段）时静默跳过，不 throw。
     // 返回 Promise<{ written: number, skipped: number }>：实际写进 DB 的条数 / 跳过的条数。
     // clearOnRestore: 空数组时也执行 clear()，确保恢复后 store 与备份状态完全一致。
+    // 校验图片 data URL 的 MIME、编码和实际解码内容。只接受图片类型，且不允许空内容或畸形 Base64/百分号编码。
+    function isValidImageDataUrl(value) {
+        if (typeof value !== 'string' || !value) return false;
+        var comma = value.indexOf(',');
+        if (comma < 0) return false;
+
+        var metadata = value.slice(5, comma);
+        if (value.slice(0, 5).toLowerCase() !== 'data:') return false;
+        var parts = metadata.split(';');
+        var mime = (parts.shift() || '').trim();
+        if (!/^image\/[a-z0-9][a-z0-9.+_-]*$/i.test(mime)) return false;
+
+        var isBase64 = false;
+        for (var i = 0; i < parts.length; i++) {
+            var part = parts[i].trim();
+            if (/^base64$/i.test(part)) {
+                if (isBase64 || i !== parts.length - 1) return false;
+                isBase64 = true;
+            } else if (!/^[a-z0-9!#$&^_.+-]+=[a-z0-9!#$&^_.+-]+$/i.test(part)) {
+                return false;
+            }
+        }
+
+        var payload = value.slice(comma + 1);
+        if (!payload || /[\\r\\n\\t ]/.test(payload)) return false;
+        if (isBase64) {
+            // 严格 Base64：完整四字符分组、正确 padding、无非法字符。
+            if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload)) return false;
+            try { return atob(payload).length > 0; } catch (e) { return false; }
+        }
+
+        // 非 Base64 data URL 允许 percent-encoding，但每个转义序列必须完整且解码后非空。
+        try { return decodeURIComponent(payload).length > 0; } catch (e) { return false; }
+    }
+
     function restoreStore(db, storeDef, records, clearOnRestore) {
         var blobFields = storeDef.blobFields || [];
         return new Promise(function (resolve, reject) {
@@ -763,11 +798,12 @@
                         continue;
                     }
                     var rawValue = candidate.__value;
-                    var validValue = typeof rawValue === 'string'
-                        ? rawValue.length > 0
-                        : !!(rawValue && typeof rawValue === 'object'
-                            && typeof rawValue.dataUrl === 'string' && rawValue.dataUrl.length > 0);
-                    if (typeof candidate.__key !== 'string' || !candidate.__key || !validValue) invalid++;
+                    // wallpaper-store 的真实写入格式是 data URL 字符串；兼容旧版导出包装对象，但验证其 dataUrl 字段。
+                    var imageValue = typeof rawValue === 'string'
+                        ? rawValue
+                        : (rawValue && typeof rawValue === 'object' ? rawValue.dataUrl : '');
+                    if (typeof candidate.__key !== 'string' || !candidate.__key
+                            || !isValidImageDataUrl(imageValue)) invalid++;
                 }
                 if (invalid) {
                     resolve({ written: 0, skipped: invalid, aborted: true });
@@ -793,6 +829,8 @@
                     if (rec && Object.prototype.hasOwnProperty.call(rec, '__key')
                             && Object.prototype.hasOwnProperty.call(rec, '__value')) {
                         value = rec.__value;
+                        if (storeDef.validateBeforeClear && value && typeof value === 'object'
+                                && typeof value.dataUrl === 'string') value = value.dataUrl;
                         key = rec.__key;
                     } else if (rec && typeof rec === 'object') {
                         value = rec;
