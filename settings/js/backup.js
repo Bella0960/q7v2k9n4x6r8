@@ -50,7 +50,7 @@
             db: 'maomao-media-store',
             version: 2,   // 含 audio store（本地音乐）
             stores: [
-                { store: 'wallpapers', keyPath: null },
+                { store: 'wallpapers', keyPath: null, validateBeforeClear: true },
                 { store: 'audio',      keyPath: 'id', excludeFields: ['blob'] }
             ]
         },
@@ -750,6 +750,30 @@
                 resolve({ written: 0, skipped: 0 });
                 return;
             }
+            // validateBeforeClear：先校验整批记录，任意一条损坏就整库放弃，
+            // 不执行 clear()，保留本机已有图片，避免"清空后只写回一部分"的半套数据。
+            if (storeDef.validateBeforeClear) {
+                var invalid = 0;
+                for (var v = 0; v < records.length; v++) {
+                    var candidate = records[v];
+                    if (!candidate || typeof candidate !== 'object'
+                            || !Object.prototype.hasOwnProperty.call(candidate, '__key')
+                            || !Object.prototype.hasOwnProperty.call(candidate, '__value')) {
+                        invalid++;
+                        continue;
+                    }
+                    var rawValue = candidate.__value;
+                    var validValue = typeof rawValue === 'string'
+                        ? rawValue.length > 0
+                        : !!(rawValue && typeof rawValue === 'object'
+                            && typeof rawValue.dataUrl === 'string' && rawValue.dataUrl.length > 0);
+                    if (typeof candidate.__key !== 'string' || !candidate.__key || !validValue) invalid++;
+                }
+                if (invalid) {
+                    resolve({ written: 0, skipped: invalid, aborted: true });
+                    return;
+                }
+            }
             var storeName = storeDef.store;
             var tx = db.transaction(storeName, 'readwrite');
             var store = tx.objectStore(storeName);
@@ -830,9 +854,9 @@
             var storeMap = {};
             storeDefs.forEach(function (d) { storeMap[d.store] = d; });
             var storeNames = Object.keys(incomingDb);
-            var i = 0, totalWritten = 0, totalSkipped = 0;
+            var i = 0, totalWritten = 0, totalSkipped = 0, anyAborted = false;
             function next() {
-                if (i >= storeNames.length) { db.close(); return { written: totalWritten, skipped: totalSkipped, dbRestored: true }; }
+                if (i >= storeNames.length) { db.close(); return { written: totalWritten, skipped: totalSkipped, dbRestored: true, aborted: anyAborted }; }
                 var sn = storeNames[i++];
                 var def = storeMap[sn];
                 if (!def) return next();
@@ -842,6 +866,7 @@
                 return restoreStore(db, def, records, clearOnRestore).then(function (res) {
                     totalWritten += res.written;
                     totalSkipped += res.skipped;
+                    if (res.aborted) anyAborted = true;
                     return next();
                 });
             }
@@ -1015,6 +1040,7 @@
             var dbRestored = 0;
             var dbSkippedBlob = 0;  // blob 解码失败被跳过的记录数
             var dbFailed = [];
+            var dbAborted = [];     // 记录损坏导致整库未恢复（保留本机原数据）的库
             var dbSkippedOld = false;
             if (obj.__backup.schema >= 2 && obj.indexedDB && typeof obj.indexedDB === 'object') {
                 for (var i = 0; i < IDB_TARGETS.length; i++) {
@@ -1025,6 +1051,7 @@
                         var res = await restoreDatabase(tgt.db, tgt.version, tgt.stores, incomingDb);
                         dbRestored += res.written;
                         dbSkippedBlob += res.skipped;
+                        if (res.aborted) dbAborted.push(tgt.db);
                     } catch (e) {
                         dbFailed.push(tgt.db + '（' + ((e && e.message) || '未知错误') + '）');
                     }
@@ -1048,6 +1075,7 @@
             }
             if (dbRestored) parts.push('已恢复 IndexedDB ' + dbRestored + ' 项');
             if (dbSkippedBlob) parts.push('有 ' + dbSkippedBlob + ' 项 IndexedDB 记录因内容损坏未恢复');
+            if (dbAborted.length) parts.push('图片库备份记录损坏，已保留本机原有图片未覆盖（' + dbAborted.join('、') + '）');
             if (dbFailed.length) parts.push('部分 IndexedDB 未恢复：' + dbFailed.join('；'));
             if (dbSkippedOld) parts.push('备份版本较旧，未包含媒体与书籍数据');
             if (fontOrphanCleaned) parts.push('自定义字体未随备份恢复，请重新上传');
