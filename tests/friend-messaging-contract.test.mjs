@@ -55,6 +55,7 @@ async function makeFriends(ctx, requester, recipient) {
     body: {}
   });
   assert.equal(accepted.status, 200);
+  return requestId;
 }
 
 function messageId() {
@@ -568,7 +569,7 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   const bob = makeAccount('Bob');
   await register(ctx, alice, '198.51.100.81');
   await register(ctx, bob, '198.51.100.82');
-  await makeFriends(ctx, alice, bob);
+  const oldRequestId = await makeFriends(ctx, alice, bob);
 
   const oldClientMessageId = messageId();
   const oldMessage = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
@@ -594,6 +595,18 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   assert.equal(removed.payload.removed, true);
   assert.equal((await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages')).status, 403);
   assert.equal((await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages')).status, 403);
+
+  // A delayed duplicate acceptance from the retired request is acknowledged
+  // idempotently but must never recreate the deleted friendship.
+  const delayedAccept = await asAccount(ctx, bob, '/api/friend-requests/' + oldRequestId + '/accept', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(delayedAccept.status, 200);
+  assert.equal(delayedAccept.payload.duplicate, true);
+  assert.equal(delayedAccept.payload.friendshipCreated, false);
+  assert.deepEqual((await asAccount(ctx, alice, '/api/friends')).payload.friends, []);
+  assert.deepEqual((await asAccount(ctx, bob, '/api/friends')).payload.friends, []);
 
   await makeFriends(ctx, alice, bob);
 
