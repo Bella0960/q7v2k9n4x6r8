@@ -24,6 +24,35 @@ SET generation_id = COALESCE((
 ), '')
 WHERE generation_id = '';
 
+-- Remove per-user read/visibility state left behind by friendships deleted
+-- before generation isolation was introduced. Active friendships retain state.
+DELETE FROM friend_conversation_reads
+WHERE NOT EXISTS (
+  SELECT 1 FROM friendships f
+  WHERE f.user_low_id = CASE WHEN friend_conversation_reads.user_id < friend_conversation_reads.friend_id
+    THEN friend_conversation_reads.user_id ELSE friend_conversation_reads.friend_id END
+    AND f.user_high_id = CASE WHEN friend_conversation_reads.user_id < friend_conversation_reads.friend_id
+    THEN friend_conversation_reads.friend_id ELSE friend_conversation_reads.user_id END
+);
+
+DELETE FROM friend_conversation_clears
+WHERE NOT EXISTS (
+  SELECT 1 FROM friendships f
+  WHERE f.user_low_id = CASE WHEN friend_conversation_clears.user_id < friend_conversation_clears.friend_id
+    THEN friend_conversation_clears.user_id ELSE friend_conversation_clears.friend_id END
+    AND f.user_high_id = CASE WHEN friend_conversation_clears.user_id < friend_conversation_clears.friend_id
+    THEN friend_conversation_clears.friend_id ELSE friend_conversation_clears.user_id END
+);
+
+DELETE FROM friend_message_hides
+WHERE NOT EXISTS (
+  SELECT 1 FROM friendships f
+  WHERE f.user_low_id = CASE WHEN friend_message_hides.user_id < friend_message_hides.friend_id
+    THEN friend_message_hides.user_id ELSE friend_message_hides.friend_id END
+    AND f.user_high_id = CASE WHEN friend_message_hides.user_id < friend_message_hides.friend_id
+    THEN friend_message_hides.friend_id ELSE friend_message_hides.user_id END
+);
+
 CREATE INDEX IF NOT EXISTS idx_friend_messages_generation_created
   ON friend_messages (generation_id, created_at, id);
 `;
