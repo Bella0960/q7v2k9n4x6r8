@@ -3049,7 +3049,7 @@ test('出站收件箱使用稳定游标翻页，队首保存失败不会挡住�
   for (let index = 0; index < 3; index += 1) {
     const serverMessageId = randomToken(20);
     const result = ctx.store.insertOutboundMessage({
-      id: 'outbound_row_000000' + index,
+      id: 'legacy-out-' + index,
       deviceId: device.deviceId,
       characterId: 'char-pagination',
       serverMessageId,
@@ -3065,6 +3065,8 @@ test('出站收件箱使用稳定游标翻页，队首保存失败不会挡住�
   assert.equal(first.status, 200);
   assert.deepEqual(first.payload.messages.map(item => item.serverMessageId), inserted.slice(0, 2));
   assert.ok(first.payload.nextCursor);
+  assert.equal(first.payload.nextCursor.id, 'legacy-out-1',
+    '内部行键可能来自历史迁移数据，不要求达到消息令牌的最小长度');
 
   // Deliberately leave page 1 unacknowledged. The cursor must still reach page 2.
   const cursor = first.payload.nextCursor;
@@ -3104,7 +3106,7 @@ test('客户端收件箱真实运行：断网后从持久化游标续收，失�
     removeItem(key) { localValues.delete(key); }
   };
   const rows = [1, 2, 3, 4].map(index => ({
-    id: 'outbound_row_00000000000' + index,
+    id: 'legacy-out-' + String(index).padStart(2, '0'),
     serverMessageId: 'server_message_00000000000' + index,
     characterId: 'char-runtime-pagination',
     createdAt: 1800000000000,
