@@ -558,6 +558,13 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /function reloadConversationView/);
   assert.match(FRIEND_CHAT_HTML, /page\.viewState\.version/);
   assert.match(FRIEND_CHAT_HTML, /conversationViewVersion/);
+  assert.match(FRIEND_CHAT_HTML, /var readReceiptRevision = 0/);
+  assert.match(FRIEND_CHAT_HTML, /receiptRevision !== readReceiptRevision/);
+  assert.match(FRIEND_CHAT_HTML, /lastReadReceiptId = ''/);
+  assert.match(FRIEND_CHAT_HTML, /lastReadReceiptAt = 0/);
+  assert.match(FRIEND_CHAT_HTML, /blockedRetryAt = Date\.now\(\) \+ 15000/);
+  assert.match(FRIEND_CHAT_HTML, /blocked && Date\.now\(\) < blockedRetryAt/);
+  assert.match(FRIEND_CHAT_HTML, /A previously removed friend may be added again/);
   assert.match(FRIEND_CHAT_HTML, /hiddenMessageIds\[message\.id\]/);
 });
 
