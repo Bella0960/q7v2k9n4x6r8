@@ -127,6 +127,8 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /authPayload\?\.account\?\.status !== 'active'/);
   assert.match(workerSource, /meta name="mao-account-id"/);
   assert.match(workerSource, /mao-account-role/);
-  assert.match(workerSource, /shared\\/js\\/mao-account-scope\\.js/);
+  assert.ok(workerSource.includes('shared/js/mao-account-scope.js'));
+  assert.match(scopeSource, /fetch\('\/api\/accounts\/me'/);
+  assert.match(scopeSource, /setInterval\(verifyAccountSession, 30000\)/);
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);
 });
