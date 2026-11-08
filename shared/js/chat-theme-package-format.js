@@ -343,7 +343,7 @@
         index=close+2;
         continue;
       }
-      if(c==="\\\\"){
+      if(c==="\\"){
         var escaped=decodeCssEscape(css,index);
         name+=escaped.value;
         index=escaped.next;
@@ -361,7 +361,7 @@
       var closed=false;
       while(index<css.length){
         var c=css.charAt(index);
-        if(c==="\\\\"){
+        if(c==="\\"){
           var escaped=decodeCssEscape(css,index);
           value+=escaped.value;
           index=escaped.next;
@@ -385,7 +385,7 @@
         index=close+2;
         continue;
       }
-      if(c==="\\\\"){
+      if(c==="\\"){
         var escaped=decodeCssEscape(css,index);
         value+=escaped.value;
         index=escaped.next;
@@ -412,14 +412,14 @@
         var quote=c,start=index++;
         while(index<css.length){
           c=css.charAt(index);
-          if(c==="\\\\"){index=decodeCssEscape(css,index).next;continue}
+          if(c==="\\"){index=decodeCssEscape(css,index).next;continue}
           index++;
           if(c===quote)break;
         }
         output+=css.slice(start,index);
         continue;
       }
-      if(/[A-Za-z_-]/.test(c)||c==="\\\\"||c.charCodeAt(0)>=128){
+      if(/[A-Za-z_-]/.test(c)||c==="\\"||c.charCodeAt(0)>=128){
         var identifier=readCssIdentifier(css,index);
         var open=skipCssTrivia(css,identifier.end);
         if(identifier.name.toLowerCase()==="url"&&css.charAt(open)==="("){
