@@ -148,6 +148,38 @@ export default {
       const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
       return stub.fetch(request);
     }
+    // Every MAO app document is server-gated. Only the account entry is public;
+    // static assets remain readable, but account-owned APIs still enforce identity.
+    const isHtmlDocument = request.method === 'GET' &&
+      (url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html'));
+    const isPublicAccountDocument = url.pathname === '/account' ||
+      url.pathname.startsWith('/account/');
+    if (isHtmlDocument && !isPublicAccountDocument) {
+      if (!env.CLOUD_DB) {
+        return Response.redirect(new URL('/account/index.html', url), 302);
+      }
+      try {
+        const stub = env.CLOUD_DB.get(env.CLOUD_DB.idFromName(INSTANCE_NAME));
+        const authRequest = new Request(new URL('/api/accounts/me', url), {
+          method: 'GET',
+          headers: { cookie: request.headers.get('cookie') || '' }
+        });
+        const authResponse = await stub.fetch(authRequest);
+        const authPayload = await authResponse.json().catch(() => ({}));
+        if (
+          !authResponse.ok ||
+          authPayload?.account?.status !== 'active'
+        ) {
+          const disabled = authPayload?.error?.code === 'ACCOUNT_DISABLED';
+          const target = new URL('/account/index.html', url);
+          if (disabled) target.searchParams.set('disabled', '1');
+          return Response.redirect(target, 302);
+        }
+      } catch {
+        return Response.redirect(new URL('/account/index.html', url), 302);
+      }
+    }
+
     // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
     if (url.pathname === "/" && request.method === "GET") {
       const indexUrl = new URL("/index.html", url);
