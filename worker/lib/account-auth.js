@@ -333,6 +333,25 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     return ok({ invites: store.listMaoInvites() });
   }
 
+  async function adminAccountAudit(request, accountId) {
+    await requireActiveAdmin(request);
+    const account = store.getMaoAccountById(accountId);
+    if (!account) throw new ApiError(404, 'ACCOUNT_NOT_FOUND', '账号不存在');
+    const records = store.listMaoAccountAudit(accountId).map(record => {
+      let detail = {};
+      try { detail = JSON.parse(String(record.detail_json || '{}')); } catch {}
+      return {
+        id: record.id,
+        actorAccountId: record.actor_account_id,
+        targetAccountId: record.target_account_id,
+        action: record.action,
+        reason: String(detail.reason || ''),
+        createdAt: Number(record.created_at)
+      };
+    });
+    return ok({ records });
+  }
+
   async function accountAction(request, accountId) {
     const actor = await requireActiveAdmin(request);
     const body = await readJsonBody(request);
@@ -341,7 +360,11 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw new ApiError(400, 'INVALID_ACCOUNT_ACTION', '不支持的账号操作');
     }
     const updated = store.setMaoAccountState({
-      accountId, action, actorAccountId: actor.account_id, now: now()
+      accountId,
+      action,
+      actorAccountId: actor.account_id,
+      reason: String(body.reason || '').trim().slice(0, 500),
+      now: now()
     });
     if (!updated) {
       throw new ApiError(409, 'ACCOUNT_ACTION_REJECTED', '该账号不存在，或当前状态不允许此操作');
@@ -373,6 +396,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/admin/invites' && method === 'GET') return await adminInvites(request);
       if (path === '/api/admin/invites' && method === 'POST') return await createInvite(request);
 
+      const auditMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/audit$/.exec(path);
+      if (auditMatch && method === 'GET') return await adminAccountAudit(request, auditMatch[1]);
       const actionMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/action$/.exec(path);
       if (actionMatch && method === 'POST') return await accountAction(request, actionMatch[1]);
       const inviteMatch = /^\/api\/admin\/invites\/([A-Za-z0-9_-]{16,64})\/revoke$/.exec(path);
