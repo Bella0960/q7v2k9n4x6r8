@@ -46,7 +46,8 @@ test('every desktop app is assigned exactly once and dock apps stay in the dock'
     .filter((id) => id !== 'app_chat' && id !== 'app_shop' && id !== 'app_admin_center');
   assert.equal(new Set(assigned).size, assigned.length, 'default pages must not contain duplicate items');
   assert.deepEqual([...assigned].filter((id) => id.startsWith('app_')).sort(), [...appIds].sort());
-  assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);\n  assert.match(index, /data-href="admin\/admin-center\.html" data-drag="app_admin_center"[^>]*hidden/);
+  assert.match(index, /dock:\s*\['app_chat',\s*'app_shop'\]/);
+  assert.match(index, /data-href="admin\/admin-center\.html" data-drag="app_admin_center"[^>]*hidden/);
   assert.match(index, /roleMeta\.content === 'super_admin'/, 'creator-only shortcut must require the server-injected admin role');
 
 });
