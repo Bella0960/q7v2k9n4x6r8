@@ -172,7 +172,17 @@
           });
         };
         if (property === 'match') return function (request, options) {
-          return target.match(request, options);
+          return target.keys().then(function (items) {
+            var scopedNames = items.filter(function (name) { return name.indexOf(prefix) === 0; });
+            return scopedNames.reduce(function (chain, name) {
+              return chain.then(function (found) {
+                if (found) return found;
+                return target.open(name).then(function (cache) {
+                  return cache.match(request, options);
+                });
+              });
+            }, Promise.resolve(null));
+          });
         };
         var value = Reflect.get(target, property, target);
         return typeof value === 'function' ? value.bind(target) : value;
