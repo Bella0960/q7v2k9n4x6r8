@@ -111,6 +111,13 @@ test('好友申请必须由接收方同意，支持重复提交、拒绝、删�
   assert.equal(duplicate.payload.duplicate, true);
   assert.equal(duplicate.payload.request.id, requestId);
 
+  const reverseDuplicate = await asAccount(ctx, bob, '/api/friend-requests', {
+    method: 'POST',
+    body: { targetUserId: alice.userId }
+  });
+  assert.equal(reverseDuplicate.status, 409);
+  assert.equal(reverseDuplicate.payload.error.code, 'INCOMING_REQUEST_EXISTS');
+
   const bobInbox = await asAccount(ctx, bob, '/api/friend-requests');
   assert.equal(bobInbox.status, 200);
   assert.equal(bobInbox.payload.requests.length, 1);
