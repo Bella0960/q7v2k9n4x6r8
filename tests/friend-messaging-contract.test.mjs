@@ -34,6 +34,23 @@ async function register(ctx, account, ip) {
 }
 
 function asAccount(ctx, account, path, options = {}) {
+  const messagePath = /^\\/api\\/friends\\/([^/]+)\\/messages$/.exec(path);
+  if (
+    options.method === 'POST' &&
+    messagePath &&
+    options.body &&
+    typeof options.body === 'object' &&
+    !Array.isArray(options.body) &&
+    !Object.prototype.hasOwnProperty.call(options.body, 'friendshipGenerationId')
+  ) {
+    const friendship = ctx.store.getFriendship(account.userId, messagePath[1]);
+    if (friendship) {
+      options = {
+        ...options,
+        body: { ...options.body, friendshipGenerationId: friendship.generation_id }
+      };
+    }
+  }
   return ctx.asJson(path, {
     ...options,
     headers: {
