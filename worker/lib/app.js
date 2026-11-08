@@ -444,12 +444,26 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
       }
     }
-    if (device.revoked_at) throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
-    const timestamp = now();
-    if (timestamp - Number(device.last_seen_at || 0) > 300000) {
-      await store.touchDevice(device.id, timestamp);
+    // Credential hashing and account-session validation above are asynchronous.
+    // A device can be revoked while those checks are in flight, so never make the
+    // final authorization decision from the stale row loaded at the start.
+    const currentDevice = await store.getDevice(parsed.deviceId);
+    if (!currentDevice) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
+    if (currentDevice.revoked_at) {
+      throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
     }
-    return device;
+    if (
+      String(currentDevice.user_id || OWNER_USER_ID) !== deviceUserId ||
+      !timingSafeEqualHex(String(currentDevice.secret_hash || ''), String(device.secret_hash || ''))
+    ) {
+      throw new ApiError(401, 'UNAUTHORIZED', '设备授权状态已变化，请重新连接');
+    }
+
+    const timestamp = now();
+    if (timestamp - Number(currentDevice.last_seen_at || 0) > 300000) {
+      await store.touchDevice(currentDevice.id, timestamp);
+    }
+    return currentDevice;
   }
 
   async function registerDevice(request) {
