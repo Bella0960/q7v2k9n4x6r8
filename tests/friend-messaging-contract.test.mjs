@@ -546,7 +546,7 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /bubble\.textContent = String\(message\.body \|\| ''\)/);
   assert.match(FRIEND_CHAT_HTML, /appendPendingMessage\(text, clientId\)/);
   assert.match(FRIEND_CHAT_HTML, /removePendingMessage\(pendingNode\)/);
-  assert.match(FRIEND_CHAT_HTML, /api\.sendMessage\(friendId, text, clientId\)/);
+  assert.match(FRIEND_CHAT_HTML, /api\.sendMessage\(friendId, text, clientId, conversationGenerationId\)/);
   assert.match(FRIEND_CHAT_HTML, /window\.setInterval\(pollMessages, 4500\)/);
   assert.match(FRIEND_CHAT_HTML, /var messageScrollRevision = 0/);
   assert.match(FRIEND_CHAT_HTML, /var scrollRevision = messageScrollRevision/);
