@@ -791,5 +791,5 @@
     return normalize(theme,files,manifest);
   }
   function buildScopedCss(theme,css){var combined=stylesToCss(theme)+"\n"+scopeCss(css||" ",'.phone-mockup[data-maomao-chat-theme-active="1"]');return namespaceFontFamilies(combined,theme&&theme.id)}
-  return{FORMAT:FORMAT,VERSION:VERSION,COMPONENTS:COMPONENTS,MOTION_RULES:RULES,parseStoredZip:parseStoredZip,readPackage:readPackage,createPackage:createPackage,validateCss:validateCss,scopeCss:scopeCss,stylesToCss:stylesToCss,buildScopedCss:buildScopedCss,safeAssetPath:safeAssetPath,rewriteCssAssetUrls:rewriteCssAssetUrls};
+  return{FORMAT:FORMAT,VERSION:VERSION,COMPONENTS:COMPONENTS,MOTION_RULES:RULES,parseStoredZip:parseStoredZip,readPackage:readPackage,createPackage:createPackage,createPackageFromMedia:createPackageFromMedia,validateCss:validateCss,scopeCss:scopeCss,stylesToCss:stylesToCss,buildScopedCss:buildScopedCss,safeAssetPath:safeAssetPath,rewriteCssAssetUrls:rewriteCssAssetUrls};
 });
