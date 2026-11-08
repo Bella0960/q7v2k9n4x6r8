@@ -319,18 +319,18 @@
   function quoteCssString(value){
     return "\""+String(value)
       .replace(/\\/g,"\\\\")
-      .replace(/\"/g,"\\\"")
-      .replace(/[\\u0000-\\u001f\\u007f]/g,function(ch){return"\\\\\\\\\\\\\\\\\\\\"+ch.charCodeAt(0).toString(16)+" "})+"\"";
+      .replace(/"/g,"\\\"")
+      .replace(/[\u0000-\u001f\u007f]/g,function(ch){return "\\"+ch.charCodeAt(0).toString(16)+" "})+"\"";
   }
   function rewriteCssAssetUrls(css,assetUrls){
     var normalized=normalizeCssForSafety(String(css||""));
-    var rewritten=normalized.code.replace(/url\\s*\\(\\s*(?:\\u0001(\\d+)\\u0002|([^)\\]*?))\\s*\\)/gi,function(match,index,raw){
+    var rewritten=normalized.code.replace(/url\s*\(\s*(?:\u0001(\d+)\u0002|([^)]*?))\s*\)/gi,function(match,index,raw){
       var path=index!==undefined?String(normalized.strings[Number(index)]||"").trim():String(raw||"").trim();
       if(path.indexOf("assets/")!==0)return match;
       var url=assetUrls&&assetUrls[path];
       return url?"url("+quoteCssString(url)+")":"none";
     });
-    return rewritten.replace(/\\u0001(\\d+)\\u0002/g,function(token,index){
+    return rewritten.replace(/\u0001(\d+)\u0002/g,function(token,index){
       var at=Number(index);
       return at<normalized.strings.length?quoteCssString(normalized.strings[at]):token;
     });
