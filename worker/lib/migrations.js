@@ -52,27 +52,34 @@ export function splitSql(sql) {
   return statements;
 }
 
-export function applyMigrations(exec, now = Date.now()) {
+export function applyMigrations(exec, now = Date.now(), transaction = null) {
   exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
   const rows = exec('SELECT version FROM schema_migrations');
   const applied = new Set(rows.map(row => String(row.version)));
   const results = [];
+  const runTransaction = typeof transaction === 'function'
+    ? transaction
+    : callback => {
+        exec('BEGIN IMMEDIATE');
+        try {
+          const result = callback();
+          exec('COMMIT');
+          return result;
+        } catch (error) {
+          try { exec('ROLLBACK'); } catch (rollbackError) {}
+          throw error;
+        }
+      };
+
   for (const migration of MIGRATIONS) {
     if (applied.has(migration.version)) continue;
-    // A schema change and its version marker must commit together. Otherwise a
-    // crash after ALTER TABLE but before the marker can make the next startup
-    // retry a non-idempotent migration (for example, ADD COLUMN).
-    exec('BEGIN IMMEDIATE');
-    try {
+    // Use Durable Object transactionSync in production; the local SQLite test
+    // adapter uses explicit BEGIN/COMMIT. The DDL and version marker commit as one.
+    runTransaction(() => {
       for (const statement of splitSql(migration.sql)) exec(statement);
       exec('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', migration.version, now);
-      exec('COMMIT');
-      results.push(migration.version);
-    } catch (error) {
-      try { exec('ROLLBACK'); } catch (rollbackError) {}
-      throw error;
-    }
+    });
+    results.push(migration.version);
   }
   return results;
 }
-
