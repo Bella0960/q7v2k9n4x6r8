@@ -2804,3 +2804,46 @@ test('57 writeImportState：切换 committed / rolled-back 状态时继承原内
     assert.equal(rolledBack.snap.status, 'rolled-back');
     assert.equal(rolledBack.snap.integrity, integrity);
 });
+
+
+/* ═══════════════════════════════════════════════
+   58. 本地音频 Blob 同尺寸内容变化：二进制指纹必须识别
+   ═══════════════════════════════════════════════ */
+test('58 validateInterruptedRestorePoints：同尺寸同 MIME 的音频 Blob 内容变化也必须被发现', async () => {
+    const ctx = buildCtxFull();
+    const media = ctx.IDB_TARGETS.find(target => target.db === 'maomao-media-store');
+    const localSnapshot = { ai_custom_characters: 'unchanged-local-state' };
+    const dbSnapshot = {};
+    media.stores.forEach(def => { dbSnapshot[def.store] = []; });
+    dbSnapshot.audio = [{
+        id: 'local-audio-1',
+        title: 'Local recording',
+        blob: new SandboxBlob([Buffer.from('AAAA-original')], { type: 'audio/mpeg' })
+    }];
+    const integrity = await ctx.fingerprintRestorePoint({
+        localStorage: localSnapshot,
+        indexedDB: { 'maomao-media-store': dbSnapshot }
+    });
+    // 大小和 MIME 都保持不变，只替换二进制内容。
+    dbSnapshot.audio[0].blob = new SandboxBlob([Buffer.from('BBBB-original')], { type: 'audio/mpeg' });
+
+    const result = await ctx.validateInterruptedRestorePoints(
+        { role: 'pre-import', snap: localSnapshot, createdAt: Date.now() },
+        {
+            role: 'pre-import-indexeddb',
+            snap: { 'maomao-media-store': dbSnapshot },
+            createdAt: Date.now()
+        },
+        {
+            role: 'pre-import-meta',
+            snap: {
+                status: 'applying',
+                indexedDbTargets: ['maomao-media-store'],
+                integrity
+            },
+            createdAt: Date.now()
+        }
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.message, /恢复点内容指纹不一致/);
+});
