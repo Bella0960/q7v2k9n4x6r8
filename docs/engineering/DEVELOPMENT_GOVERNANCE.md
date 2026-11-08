@@ -155,3 +155,4 @@ Rules:
 Website deploy is the normal release channel.
 APK build is manual and exceptional.
 Do not create GitHub releases or publish packages until npm-publish-github-packages.yml and package.json scripts have been reviewed and approved.
+Before a significant migration release: full backup test, migration canary, regression checks, production deploy check, and rollback instructions.
