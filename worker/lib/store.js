@@ -2126,6 +2126,59 @@ class CloudStore {
     );
   }
 
+  listMaoAccountDevices(accountId) {
+    return this.exec(
+      "SELECT id, label, platform, created_at, last_seen_at, revoked_at FROM devices WHERE user_id = ? ORDER BY last_seen_at DESC, created_at DESC LIMIT 100",
+      accountId
+    );
+  }
+
+  listMaoAccountSessions(accountId) {
+    return this.exec(
+      "SELECT id, created_at, expires_at, last_used_at, revoked_at FROM mao_account_sessions WHERE account_id = ? ORDER BY last_used_at DESC, created_at DESC LIMIT 100",
+      accountId
+    );
+  }
+
+  revokeMaoAccountSessionForAccount(accountId, sessionId, now) {
+    return Boolean(this.exec(
+      "UPDATE mao_account_sessions SET revoked_at = ? WHERE id = ? AND account_id = ? AND revoked_at IS NULL RETURNING id",
+      now,
+      sessionId,
+      accountId
+    )[0]);
+  }
+
+  revokeMaoAccountSessionsExcept(accountId, keepSessionId, now) {
+    return this.exec(
+      "UPDATE mao_account_sessions SET revoked_at = ? WHERE account_id = ? AND id != ? AND revoked_at IS NULL RETURNING id",
+      now,
+      accountId,
+      keepSessionId
+    ).length;
+  }
+
+  revokeMaoAccountDevice(accountId, deviceId, now) {
+    const device = this.exec(
+      "SELECT id, revoked_at FROM devices WHERE id = ? AND user_id = ? LIMIT 1",
+      deviceId,
+      accountId
+    )[0];
+    if (!device || device.revoked_at) return false;
+    this.revokeDevice(deviceId, now);
+    return true;
+  }
+
+  updateMaoAccountPassword(accountId, passwordSalt, passwordHash, now) {
+    return Boolean(this.exec(
+      "UPDATE mao_accounts SET password_salt = ?, password_hash = ?, updated_at = ? WHERE id = ? RETURNING id",
+      passwordSalt,
+      passwordHash,
+      now,
+      accountId
+    )[0]);
+  }
+
   updateMaoAccountEmail(accountId, email, now) {
     const account = this.getMaoAccountById(accountId);
     if (!account) return null;
