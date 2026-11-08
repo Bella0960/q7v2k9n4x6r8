@@ -100,6 +100,8 @@
   var lastReadReceiptId = '';
   var lastReadReceiptAt = 0;
   var readReceiptInFlight = false;
+  var readReceiptRevision = 0;
+  var blockedRetryAt = 0;
   var readReceiptTimer = 0;
 
   function setStatus(message, error) {
@@ -277,6 +279,8 @@
     if (!confirmed) return;
     $('clearChatBtn').disabled = true;
     messageViewVersion += 1;
+    readReceiptRevision += 1;
+    readReceiptInFlight = false;
     setStatus('正在清理你这边的聊天记录…');
     try {
       var result = await api.clearMessages(friendId);
@@ -333,27 +337,34 @@
     var target = latestVisibleIncomingMessage();
     if (!target || !isAfterReadCursor(target)) return;
     var receiptSaved = false;
+    var receiptRevision = readReceiptRevision;
     readReceiptInFlight = true;
     try {
       var result = await api.markRead(friendId, target.id);
+      // Ignore a response from a previous relationship generation. A delayed
+      // receipt must not overwrite the new conversation's local read cursor.
+      if (receiptRevision !== readReceiptRevision) return;
       lastReadReceiptId = (result.read && result.read.lastReadMessageId) || target.id;
       lastReadReceiptAt = Number(result.read && result.read.lastReadAt) || target.createdAt;
       receiptSaved = true;
     } catch (error) {
-      if (error && error.code === 'NOT_FRIENDS') {
+      if (receiptRevision === readReceiptRevision && error && error.code === 'NOT_FRIENDS') {
         setBlocked('好友关系已失效，无法继续聊天。');
       }
     } finally {
-      readReceiptInFlight = false;
-      var nextVisible = latestVisibleIncomingMessage();
-      if (receiptSaved && isAfterReadCursor(nextVisible) && !document.hidden) {
-        // A newer incoming message may have entered the viewport while the receipt was in flight.
-        window.setTimeout(markVisibleIncomingRead, 0);
+      // An obsolete request must not clear the in-flight flag for a newer request.
+      if (receiptRevision === readReceiptRevision) {
+        readReceiptInFlight = false;
+        var nextVisible = latestVisibleIncomingMessage();
+        if (receiptSaved && isAfterReadCursor(nextVisible) && !document.hidden) {
+          window.setTimeout(markVisibleIncomingRead, 0);
+        }
       }
     }
   }
   function setBlocked(message) {
     blocked = true;
+    blockedRetryAt = Date.now() + 15000;
     updateComposer();
     setStatus(message || '你们已经不是好友，暂时无法继续聊天。', true);
   }
@@ -409,6 +420,15 @@
     } else {
       conversationViewVersion = (page.viewState && page.viewState.version) || expectedVersion || '';
     }
+    // A view-version change is a relationship boundary as well as a local
+    // visibility change: invalidate receipts still in flight and reset cursors.
+    readReceiptRevision += 1;
+    readReceiptInFlight = false;
+    lastReadReceiptId = '';
+    lastReadReceiptAt = 0;
+    blocked = false;
+    blockedRetryAt = 0;
+    updateComposer();
     $('messages').innerHTML = '';
     known = Object.create(null);
     hiddenMessageIds = Object.create(null);
@@ -428,7 +448,7 @@
   }
 
   async function pollMessages() {
-    if (!ready || blocked || pollBusy || document.hidden) return;
+    if (!ready || pollBusy || document.hidden || (blocked && Date.now() < blockedRetryAt)) return;
     pollBusy = true;
     var shouldStick = isNearBottom();
     var scrollRevision = messageScrollRevision;
@@ -439,6 +459,13 @@
       do {
         page = await api.getMessages(friendId, cursor, 'after');
         if (viewVersion !== messageViewVersion) return;
+        if (blocked) {
+          // A previously removed friend may be added again while this page stays open.
+          // A successful authenticated read proves the relationship is active again.
+          blocked = false;
+          blockedRetryAt = 0;
+          updateComposer();
+        }
         var pageViewVersion = page.viewState && page.viewState.version || '';
         if (conversationViewVersion && pageViewVersion && pageViewVersion !== conversationViewVersion) {
           await reloadConversationView(pageViewVersion, shouldStick, viewVersion);
