@@ -220,6 +220,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     };
     try {
       const created = store.createMaoAccount(account);
+      if (!created) {
+        throw new ApiError(429, 'ACCOUNT_REGISTRATION_RATE_LIMITED', '当前网络注册次数过多，请稍后再试');
+      }
       return json({ ok: true, account: publicAccount(created), nextStep: 'invite_required' }, 201);
     } catch (error) {
       if (/unique|constraint/i.test(String(error?.message || error))) {
