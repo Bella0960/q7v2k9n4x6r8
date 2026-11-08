@@ -1,4 +1,4 @@
-import { ApiError, ok, readJsonBody } from './http.js';
+import { ApiError, ok, json, readJsonBody } from './http.js';
 import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './crypto.js';
 
 const SESSION_COOKIE = 'MAO_SESSION';
@@ -184,7 +184,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     };
     try {
       const created = store.createMaoAccount(account);
-      return ok({ account: publicAccount(created), nextStep: 'invite_required' }, 201);
+      return json({ ok: true, account: publicAccount(created), nextStep: 'invite_required' }, 201);
     } catch (error) {
       if (/unique|constraint/i.test(String(error?.message || error))) {
         throw new ApiError(409, 'ACCOUNT_ALREADY_EXISTS', '用户名或邮箱已被使用');
@@ -291,7 +291,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       now: timestamp,
       expiresAt
     });
-    return ok({
+    return json({
+      ok: true,
       invite: { id: inviteId, code, targetAccountId: targetAccountId || null, targetEmail, maxUses, expiresAt },
       warning: '邀请码仅展示这一次，请安全交付给指定对象'
     }, 201);
