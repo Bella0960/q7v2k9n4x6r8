@@ -766,7 +766,7 @@
         }
 
         var payload = value.slice(comma + 1);
-        if (!payload || /[\\r\\n\\t ]/.test(payload)) return false;
+        if (!payload || /[\r\n\t ]/.test(payload)) return false;
         if (isBase64) {
             // 严格 Base64：完整四字符分组、正确 padding、无非法字符。
             if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload)) return false;
