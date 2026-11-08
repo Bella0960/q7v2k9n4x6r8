@@ -211,10 +211,11 @@
     };
     $('passwordMessage').textContent = '';
     $('passwordMessage').className = 'inline-message';
-    const submit = event.currentTarget.querySelector('button[type="submit"]');
+    const formElement = event.currentTarget;
+    const submit = formElement.querySelector('button[type="submit"]');
     submit.disabled = true;
     api('/api/accounts/password/change', 'POST', body).then(async result => {
-      event.currentTarget.reset();
+      formElement.reset();
       $('passwordMessage').textContent = result.changed ? '密码已更新，其他登录会话已退出。' : '密码没有修改。';
       await refreshSecurity();
     }).catch(error => {
