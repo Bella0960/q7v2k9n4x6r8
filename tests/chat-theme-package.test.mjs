@@ -50,6 +50,17 @@ test('stored ZIP permits a valid archive comment but rejects trailing unregister
   const signatureView=new DataView(signatureInComment.buffer,signatureInComment.byteOffset,signatureInComment.byteLength);
   signatureView.setUint16(valid.length-2,trickyComment.length,true);
   assert.doesNotThrow(()=>F.parseStoredZip(signatureInComment),'注释中的结束签名不能遮蔽真正的 ZIP 结束记录');
+
+  const zip64LikeComment=Buffer.alloc(22,0);
+  zip64LikeComment.writeUInt32LE(0x06054b50,0);
+  zip64LikeComment.writeUInt16LE(0xffff,8);
+  zip64LikeComment.writeUInt16LE(0xffff,10);
+  zip64LikeComment.writeUInt32LE(0xffffffff,12);
+  zip64LikeComment.writeUInt32LE(0xffffffff,16);
+  const zip64SignatureInComment=Buffer.concat([valid,zip64LikeComment]);
+  const zip64SignatureView=new DataView(zip64SignatureInComment.buffer,zip64SignatureInComment.byteOffset,zip64SignatureInComment.byteLength);
+  zip64SignatureView.setUint16(valid.length-2,zip64LikeComment.length,true);
+  assert.doesNotThrow(()=>F.parseStoredZip(zip64SignatureInComment),'ZIP64 伪结束记录也不能遮蔽注释前的真实结束记录');
 });
 test('image/font assets must be registered in assetIndex',()=>{const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);const t=fixture({assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]});const p=F.readPackage(F.parseStoredZip(makePackage(t,'',[{name:'assets/bg.png',data:bytes}])));assert.deepEqual(Array.from(p.assets['assets/bg.png'].bytes),Array.from(bytes));});
 test('exported theme packages round-trip CSS, custom blocks and binary assets through the importer',()=>{
