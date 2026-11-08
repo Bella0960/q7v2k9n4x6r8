@@ -37,20 +37,39 @@ function asAccount(ctx, account, path, options = {}) {
   const pathParts = String(path || '').split('/');
   const messageFriendId = pathParts.length === 5 && pathParts[1] === 'api' &&
     pathParts[2] === 'friends' && pathParts[4] === 'messages' ? pathParts[3] : '';
+  const removeFriendId = pathParts.length === 4 && pathParts[1] === 'api' &&
+    pathParts[2] === 'friends' ? pathParts[3] : '';
+  const clearFriendId = pathParts.length === 5 && pathParts[1] === 'api' &&
+    pathParts[2] === 'friends' && pathParts[4] === 'messages' ? pathParts[3] : '';
+  const generationTarget = messageFriendId || removeFriendId || clearFriendId;
+  const needsGeneration = options.method === 'POST' && messageFriendId ||
+    options.method === 'DELETE' && (removeFriendId || clearFriendId);
   if (
-    options.method === 'POST' &&
-    messageFriendId &&
+    needsGeneration &&
+    generationTarget &&
     options.body &&
     typeof options.body === 'object' &&
     !Array.isArray(options.body) &&
     !Object.prototype.hasOwnProperty.call(options.body, 'friendshipGenerationId')
   ) {
-    const friendship = ctx.store.getFriendship(account.userId, messageFriendId);
+    const friendship = ctx.store.getFriendship(account.userId, generationTarget);
     if (friendship) {
       options = {
         ...options,
         body: { ...options.body, friendshipGenerationId: friendship.generation_id }
       };
+    }
+  }
+  // DELETE requests without an explicit body are also normalized for the
+  // generation-bound delete/clear endpoints used by existing contract cases.
+  if (
+    options.method === 'DELETE' &&
+    generationTarget &&
+    !options.body
+  ) {
+    const friendship = ctx.store.getFriendship(account.userId, generationTarget);
+    if (friendship) {
+      options = { ...options, body: { friendshipGenerationId: friendship.generation_id } };
     }
   }
   return ctx.asJson(path, {
