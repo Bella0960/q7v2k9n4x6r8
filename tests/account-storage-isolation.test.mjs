@@ -230,6 +230,8 @@ test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，�
   assert.match(serviceWorkerSource, /__mao_account_v1__/);
   assert.match(serviceWorkerSource, /encodeURIComponent\(account\.id\)/);
   assert.match(serviceWorkerSource, /credentials:\s*'same-origin'/);
+  assert.match(serviceWorkerSource, /req\.headers\.get\('x-mao-account-context'\)/);
+  assert.match(serviceWorkerSource, /authHeaders\.set\('x-mao-account-context', pageAccountContext\)/);
   assert.match(serviceWorkerSource, /status:\s*503/);
 });
 
