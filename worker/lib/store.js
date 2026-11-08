@@ -2224,19 +2224,25 @@ class CloudStore {
   }
 
   revokeMaoAccountDevice(accountId, deviceId, now) {
-    const device = this.exec(
-      "SELECT id, revoked_at FROM devices WHERE id = ? AND user_id = ? LIMIT 1",
-      deviceId,
-      accountId
-    )[0];
-    if (!device || device.revoked_at) return false;
-    this.revokeDevice(deviceId, now);
-    this.exec(
-      "UPDATE activity_queue SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ? WHERE device_id = ? AND status IN ('waiting', 'retry', 'running')",
-      now,
-      deviceId
-    );
-    return true;
+    return this.transaction(() => {
+      const device = this.exec(
+        "SELECT id, revoked_at FROM devices WHERE id = ? AND user_id = ? LIMIT 1",
+        deviceId,
+        accountId
+      )[0];
+      if (!device || device.revoked_at) return false;
+
+      // Device credential revocation and every dependent cleanup form one
+      // security transition. A failed cleanup must not leave a half-revoked
+      // device with stale presence, leases, pairing tokens, or queued work.
+      this.revokeDevice(deviceId, now);
+      this.exec(
+        "UPDATE activity_queue SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ? WHERE device_id = ? AND status IN ('waiting', 'retry', 'running')",
+        now,
+        deviceId
+      );
+      return true;
+    });
   }
 
   updateMaoAccountPasswordAndRevokeOtherSessions({
