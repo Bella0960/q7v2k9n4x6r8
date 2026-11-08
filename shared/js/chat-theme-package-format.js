@@ -327,7 +327,9 @@
       if(/\s/.test(css.charAt(index))){index++;continue}
       if(css.charAt(index)==="/"&&css.charAt(index+1)==="*"){
         var close=css.indexOf("*/",index+2);
-        return close<0?css.length:skipCssTrivia(css,close+2);
+        if(close<0)return css.length;
+        index=close+2;
+        continue;
       }
       break;
     }
