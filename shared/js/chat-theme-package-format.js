@@ -19,6 +19,10 @@
     fontSize:1,fontWeight:1,lineHeight:1,fontFamily:1,letterSpacing:1,textAlign:1,borderWidth:1,
     borderColor:1,borderStyle:1,zIndex:1,transform:1,display:1,position:1,order:1,shadow:1
   };
+  var BLOCK_SLOTS={
+    chatList:["top-of-content","after-header","above-profile","before-music","after-music","after-list","above-nav"],
+    chatDetail:["before-header","after-header","before-messages","after-messages","before-input","after-input"]
+  };
   var TARGETS={
     statusBar:".status-bar",listHeader:".chat-theme-header,.wechat-home-header",coverSpacer:".cover-spacer",
     profileStage:".white-profile-stage",musicCard:".floating-music-card",conversationList:"#chatListContainer",
@@ -360,11 +364,24 @@
     var clean={format:FORMAT,schemaVersion:VERSION,target:"maomao-chat",id:String(theme.id||"chat-theme").slice(0,120),name:theme.name,version:String(theme.version||"1.0.0"),pages:cleanPages,styles:{chatList:{},chatDetail:{}},blocks:{chatList:[],chatDetail:[]},layerOrder:{chatList:[],chatDetail:[]},motions:[],assetIndex:[]};
     ["chatList","chatDetail"].forEach(function(page){Object.keys(theme.styles&&theme.styles[page]||{}).forEach(function(id){if(!ids[page].includes(id))return;var st={};Object.keys(PROPS).forEach(function(k){var v=cleanValue(theme.styles[page][id][k],k);if(v!==null&&v!==undefined)st[k]=v});clean.styles[page][id]=st});
       var blockSeen=Object.create(null);
-      clean.blocks[page]=(Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).slice(0,40).filter(function(b){
+      var pageBlocks=(Array.isArray(theme.blocks&&theme.blocks[page])?theme.blocks[page]:[]).slice(0,40);
+      pageBlocks.forEach(function(b){
+        if(!b||b.type!=="image")return;
+        var asset=assets[b.assetPath];
+        if(!asset||!/^image\/(png|jpeg|webp|gif)$/i.test(asset.mimeType||"")){
+          fail("图片组件必须引用已登记的图片素材："+String(b.id||""));
+        }
+      });
+      clean.blocks[page]=pageBlocks.filter(function(b){
         if(!b||!safeCustomId(b.id)||!ids[page].includes(b.id)||blockSeen[b.id])return false;
         blockSeen[b.id]=1;
         return true;
-      }).map(function(b){var t=["card","text","image","divider"].indexOf(b.type)>=0?b.type:"card";return{id:b.id,type:t,title:String(b.title||"").slice(0,160),text:String(b.text||"").slice(0,2000),assetPath:paths.indexOf(b.assetPath)>=0?b.assetPath:"",slot:String(b.slot||"").slice(0,40),visible:b.visible!==false}});
+      }).map(function(b){
+        var t=["card","text","image","divider"].indexOf(b.type)>=0?b.type:"card";
+        var slot=BLOCK_SLOTS[page].indexOf(b.slot)>=0?b.slot:(page==="chatList"?"top-of-content":"before-input");
+        return{id:b.id,type:t,title:String(b.title||"").slice(0,160),text:String(b.text||"").slice(0,2000),
+          assetPath:t==="image"?b.assetPath:"",slot:slot,visible:b.visible!==false};
+      });
       var layerSeen=Object.create(null);
       clean.layerOrder[page]=(Array.isArray(theme.layerOrder&&theme.layerOrder[page])?theme.layerOrder[page]:[]).filter(function(id){if(!ids[page].includes(id)||layerSeen[id])return false;layerSeen[id]=1;return true}).slice(0,120)
     });
