@@ -138,6 +138,15 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);
 });
 
+test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
+  assert.match(workerSource, /fetch\('\/api\/accounts\/me'/);
+  assert.match(workerSource, /account\.role === 'super_admin'[\s\S]*?FONT_ASSET_CACHE/);
+  assert.match(workerSource, /__mao_account_v1__/);
+  assert.match(workerSource, /encodeURIComponent\(account\.id\)/);
+  assert.match(workerSource, /credentials:\s*'same-origin'/);
+  assert.match(workerSource, /status:\s*503/);
+});
+
 test('localStorage 的键枚举只返回当前账号键，跨账号 storage 事件不会泄漏 payload', () => {
   const account = createScope({ accountId: 'MAO-EEEEEEEEEEEE', role: 'user' });
   account.window.localStorage.setItem('own-key', 'own-value');
