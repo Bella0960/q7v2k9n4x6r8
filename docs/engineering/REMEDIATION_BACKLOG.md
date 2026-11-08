@@ -206,20 +206,20 @@ Acceptance before implementation:
 ### THEME-001 — High-freedom chat theme package import/export
 **Priority:** P1 · **Status:** IN PROGRESS
 
-Scope: keep MAOMAO Theme Studio independent; add a versioned package format, a validated ZIP writer, a safe importer and a chat-only runtime adapter. The installed-theme manager can re-export imported packages without changing their stored theme settings. Apply only to the chat list and chat detail DOM. Preserve the existing ChatBeauty configuration, per-role overrides, role data and chat history. Store imported image/font assets through MediaRepository and keep only asset references in localStorage. Limit CSS and motion behavior to the chat preview/page shell.
+Scope: keep MAOMAO Theme Studio independent; add a versioned package format, a validated ZIP writer, a safe importer and a chat-only runtime adapter. The installed-theme manager can re-export imported packages, and the existing deep-CSS preset manager can export global CSS presets without changing saved preset data. Role-scoped CSS presets must never be exported as global packages. Apply only to the chat list and chat detail DOM. Preserve the existing ChatBeauty configuration, per-role overrides, role data and chat history. Store imported image/font assets through MediaRepository and keep only asset references in localStorage. Limit CSS and motion behavior to the chat preview/page shell.
 
 Acceptance:
 - Accept only MAOMAO_CHAT_THEME schema v1 packages for target maomao-chat.
-- Validate archive paths, CRC, file counts/sizes, CSS syntax and external resource references before writing.
+- Validate archive paths, CRC, file counts/sizes, CSS syntax, external resource references, and ensure every assets/ URL resolves to an asset registered in the package.
 - Import assets to MediaRepository; rollback references and theme settings when any step fails.
 - Keep imported themes separate from beauty_chat_global_v1, beauty_chat_<roleId> and maomao_chat_theme_preset.
 - Apply chat-list and chat-detail styles only on their corresponding pages; do not alter message data or role storage.
 - Mount custom blocks using safe DOM APIs and textContent; do not execute scripts from packages.
 - Motion behaviors are allow-listed (nav scroll collapse/hide, nav tap, message enter, sheet rise, bubble press).
 - Exported packages contain the normalized manifest/theme/CSS and original binary assets; export output must round-trip through the importer.
-- Automated package-format tests cover valid packages, exported round trips, assets, CSS rejection, unsafe paths and schema mismatches.
+- Automated package-format tests cover valid packages, exported round trips, global CSS preset export, role-preset isolation, assets, missing CSS assets, CSS rejection, unsafe paths and schema mismatches.
 - Real desktop and phone/PWA import, apply, switch, refresh, and rollback acceptance remains required before release.
-- A shared exporter and installed-theme re-export action now produce compatible `.maomaotheme` packages, with automated export-to-import round-trip coverage. Keep THEME-001 IN PROGRESS until the independent Theme Studio editor exposes this exporter and real desktop/phone acceptance is completed.
+- A shared exporter, installed-theme re-export action, and the existing deep-CSS editor's global-preset export action now produce compatible `.maomaotheme` packages. Role-scoped CSS presets are excluded. Keep THEME-001 IN PROGRESS until the independent high-freedom Theme Studio editor exposes the same exporter and real desktop/phone acceptance is completed.
 
 
 ### AI-IMG-001 — Complete role-based image generation and gallery
