@@ -172,6 +172,39 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   assert.equal(JSON.stringify(listResult.payload).includes('token_hash'), false, '管理列表不得泄露邀请码哈希');
 });
 
+test('创作者管理中心默认列表可检索超过两百名普通账号', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  for (let index = 0; index < 225; index += 1) {
+    const suffix = String(index).padStart(12, '0');
+    const username = 'capacity_' + index;
+    ctx.store.exec(
+      "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at) VALUES (?, ?, ?, 'test-salt', 'test-hash', 'user', 'pending_invite', ?, ?)",
+      'MAO-' + suffix, username, username, ctx.now() + index, ctx.now() + index
+    );
+  }
+
+  const response = await ctx.fetchTo('/api/admin/accounts', {
+    headers: { cookie: adminCookie }
+  });
+  const result = await json(response);
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.accounts.length, 225,
+    '管理列表默认读取上限应覆盖数百名用户，而不是停在前 200 名');
+  assert.ok(result.payload.accounts.every(account => account.role !== 'super_admin'));
+});
+
 test('并发创建同一目标账号的邀请码时只允许一张有效邀请码', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
