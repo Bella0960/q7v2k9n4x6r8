@@ -485,7 +485,7 @@
     async function exportRecoveryPointRescueBundle() {
         var acquired = false;
         if (!confirm('抢救包会包含当前仍可读取的原始恢复记录、本机音频/字体等二进制文件，以及可能存在的 API 密钥和个人数据。'
-                + '\\n\\n请只保存到可信位置，不要直接分享。导出不会删除或修改恢复点。是否继续？')) return;
+                + '\n\n请只保存到可信位置，不要直接分享。导出不会删除或修改恢复点。是否继续？')) return;
         try {
             acquired = await rpAcquireImportLock(importLockOwner);
             if (!acquired) {
