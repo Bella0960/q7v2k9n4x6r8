@@ -360,6 +360,37 @@ test('reader cleanup deletes books and comments in one IndexedDB transaction', a
   await assert.rejects(rejected, /transaction failed|本地书籍删除/);
 });
 
+test('reader cleanup walkthrough explains the destructive scope and verifies the real result', () => {
+  const extra = readExtraLessons(html);
+  const lesson = extra.find((item) => item.id === 'reader-cleanup');
+  assert.ok(lesson && lesson.tour, 'reader cleanup must have a dedicated walkthrough');
+  assert.match(lesson.lead, /批量清理/);
+  assert.match(lesson.lead, /备份/);
+  assert.match(lesson.tour.steps[0].text, /只有在你确实想清空/);
+  assert.match(lesson.tour.steps[0].text, /系统确认框/);
+  const step = lesson.tour.steps[0];
+  assert.equal(step.selector, '#clearRow');
+  assert.equal(step.verify.selector, '#toast');
+  assert.ok(step.verify.success.includes('已清空本地书籍'));
+  assert.ok(step.verify.failure.includes('清空失败'));
+  assert.ok(step.verify.recovery);
+  assertSelectorExists(libraryPage, '#clearRow', 'reader cleanup action');
+  assertSelectorExists(libraryPage, '#toast', 'reader cleanup feedback');
+});
+
+test('reader bulk cleanup is transactional and never silently succeeds after IndexedDB errors', () => {
+  assert.match(libraryPage, /db\.transaction\(\['books', 'comments'\], 'readwrite'\)/);
+  assert.match(libraryPage, /commentsRequest\.onsuccess\s*=\s*function/);
+  assert.match(libraryPage, /commentsRequest\.onerror\s*=\s*function/);
+  assert.match(libraryPage, /tx\.oncomplete\s*=\s*function/);
+  assert.match(libraryPage, /tx\.onabort\s*=\s*function/);
+  assert.match(libraryPage, /return idbDeleteLocalBooksAndComments\(removedIds\)\.catch/);
+  assert.match(libraryPage, /rollbackFallback\(\)/);
+  assert.match(libraryPage, /var localBooksCleanupBusy = false/);
+  assert.match(libraryPage, /if \(localBooksCleanupBusy\) return/);
+  assert.doesNotMatch(libraryPage, /idbDelete\('books',[\s\S]{0,120}?catch\(function\s*\(\)\s*\{\s*\}\)/);
+});
+
 test('reader cleanup restores fallback books and comments if a write fails', () => {
   const start = libraryPage.indexOf('function updateLocalBookFallback(removedIds)');
   const end = libraryPage.indexOf('function removeLocalBooks()', start);
