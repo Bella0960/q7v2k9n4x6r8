@@ -49,3 +49,21 @@ test('好友页先显示本机二维码；复制 ID 不等待云端，二维码�
   assert.match(friendCenterSource, /friend-qr\.js\?v=friend2/);
   assert.match(friendsClientSource, /getLocalAccountId:\s*getLocalAccountId/);
 });
+
+
+test('好友中心复制结果准确；二维码能力缺失不阻断手动 ID 查找', () => {
+  assert.match(friendCenterSource, /copied = document\.execCommand\('copy'\) === true/);
+  assert.match(friendCenterSource, /copied \? successMessage : '复制未成功/);
+  assert.match(friendCenterSource, /qr && typeof qr\.parse === 'function'/);
+  assert.match(friendCenterSource, /rawId\.indexOf\('MAOMAO-F1:'\) === 0/);
+  assert.match(
+    friendCenterSource,
+    /if \(qr && typeof qr\.toSvg === 'function' && typeof qr\.prefix === 'string'\) \{\s*\$\('copyQrTextBtn'\)\.disabled = false/
+  );
+  assert.match(friendCenterSource, /账号已连接，但好友列表暂时刷新失败/);
+  assert.match(friendCenterSource, /refreshLists\(\)\.catch\(function \(\) \{\}\)/);
+  assert.doesNotMatch(
+    friendCenterSource,
+    /api\.getFriends\(\)\.then\(renderFriends\)\.catch\(function \(\) \{\}\)/
+  );
+});
