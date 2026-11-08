@@ -1,9 +1,9 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v195';
+const CACHE_NAME = 'phone-app-pwa-v196';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
-// v195 release: avoid private avatar reads while avatar storage is disabled.
+// v196 release: redact inactive friend requests and blocked avatar references.
 const APP_SHELL = [
   './',
   './index.html',
@@ -86,7 +86,7 @@ const APP_SHELL = [
   './shared/js/phone/real-user-camera-scanner.js?v=20261107v3',
   './shared/js/phone/jsQR.js?v=20261107v3',
   './shared/js/phone/real-user-account-client.js?v=20261108v6',
-  './chat/contacts/real-user-account-panel.js?v=20261108v3',
+  './chat/contacts/real-user-account-panel.js?v=20261108v4',
   './shared/js/phone/contact-directory.js?v=20261108v3',
   './shared/js/contact-groups.js?v=20261107v2',
   './shared/js/phone/phone_context.js?v=20261102npc1',
