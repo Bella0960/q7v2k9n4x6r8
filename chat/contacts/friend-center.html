@@ -8,8 +8,8 @@
 <script src="../../shared/js/font-loader.js"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
-<script src="../../shared/js/friends-client.js?v=friend5"></script>
-<script src="../../shared/js/friend-qr.js?v=friend1"></script>
+<script src="../../shared/js/friends-client.js?v=friend6"></script>
+<script src="../../shared/js/friend-qr.js?v=friend2"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; width: 100%; min-height: 100%; background: #F7F7F9; color: #111; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; }
@@ -341,9 +341,9 @@
   }
 
   async function initialize() {
-    if (!api || !qr || typeof api.getLocalAccountId !== 'function') {
+    if (!api || typeof api.getLocalAccountId !== 'function') {
       setStatus('真人好友模块加载失败，请刷新页面。', true);
-      $('qrCaption').textContent = '二维码模块暂不可用';
+      $('qrCaption').textContent = '账号模块暂不可用';
       return;
     }
 
@@ -351,18 +351,36 @@
     var displayName = localProfile.nickname || localProfile.displayName || localProfile.name || 'MAOMAO 用户';
     var localUserId = '';
     try {
-      // Render the device-stable public ID immediately. Cloud registration is
-      // still required before the QR/ID can be shared as an active friend code.
       localUserId = api.getLocalAccountId();
       $('myName').textContent = displayName;
       $('myAvatar').textContent = initials(displayName);
       $('myId').textContent = '好友 ID：' + localUserId;
+    } catch (accountError) {
+      $('qrCaption').textContent = '本机账号暂不可用，请重新打开页面';
+      setStatus(accountError.message || '无法读取本机好友 ID', true);
+      return;
+    }
+
+    // Copying the local ID must not wait for the cloud handshake. It remains
+    // useful as a manual fallback in the add-friend input above.
+    $('copyIdBtn').disabled = false;
+    $('copyIdBtn').addEventListener('click', function () {
+      copyText(
+        localUserId,
+        myAccount
+          ? '好友 ID 已复制'
+          : '好友 ID 已复制；当前账号尚未连接云端，暂时无法被查找'
+      );
+    });
+
+    try {
+      if (!qr || typeof qr.toSvg !== 'function') throw new Error('二维码绘制模块未加载');
       $('myQr').innerHTML = qr.toSvg(localUserId);
       $('qrCaption').textContent = '正在连接云端账号，连接成功后即可分享';
     } catch (qrError) {
-      $('qrCaption').textContent = '二维码生成失败，请重新打开页面';
-      setStatus(qrError.message || '本机二维码生成失败', true);
-      return;
+      $('myQr').innerHTML = '';
+      $('qrCaption').textContent = '二维码暂时无法显示，可以先复制下方 ID';
+      setStatus(qrError.message || '二维码生成失败', true);
     }
 
     try {
@@ -370,15 +388,16 @@
       $('myName').textContent = myAccount.displayName || displayName;
       $('myAvatar').textContent = initials(myAccount.displayName || displayName);
       $('myId').textContent = '好友 ID：' + myAccount.userId;
-      $('qrCaption').textContent = '让朋友扫描此码，向你发送好友申请';
-      $('copyIdBtn').disabled = false;
       $('copyQrTextBtn').disabled = false;
-      $('copyIdBtn').addEventListener('click', function () {
-        copyText(myAccount.userId, '好友 ID 已复制');
-      });
       $('copyQrTextBtn').addEventListener('click', function () {
         copyText(qr.prefix + myAccount.userId, '二维码内容已复制');
       });
+      if (qr && typeof qr.toSvg === 'function') {
+        $('qrCaption').textContent = '让朋友扫描此码，向你发送好友申请';
+        if (!$('myQr').innerHTML) $('myQr').innerHTML = qr.toSvg(myAccount.userId);
+      } else {
+        $('qrCaption').textContent = '账号已连接；二维码模块暂不可用，可以复制好友 ID 添加';
+      }
       await refreshLists();
       friendsPollTimer = window.setInterval(function () {
         if (document.hidden) return;
@@ -386,8 +405,8 @@
       }, 12000);
       setStatus('真人好友账号已连接。把二维码分享给朋友即可互相添加。');
     } catch (error) {
-      $('qrCaption').textContent = '云端账号尚未连接，此二维码暂不可用于添加好友；重新打开页面可重试';
-      setStatus((error.message || '真人好友服务连接失败') + '。二维码已在本机生成，但云端确认成功前不能分享使用。', true);
+      $('qrCaption').textContent = '云端账号尚未连接，二维码暂不可用于添加好友；你仍可复制 ID，连接成功后再分享';
+      setStatus((error.message || '真人好友服务连接失败') + '。', true);
     }
   }
 
