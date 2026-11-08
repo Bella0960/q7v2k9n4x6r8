@@ -67,3 +67,12 @@ test('好友中心复制结果准确；二维码能力缺失不阻断手动 ID �
     /api\.getFriends\(\)\.then\(renderFriends\)\.catch\(function \(\) \{\}\)/
   );
 });
+
+
+test('好友关系操作成功后，列表刷新失败不会误报为操作失败', () => {
+  assert.match(friendCenterSource, /async function refreshListsAfterAction\(successMessage\)/);
+  assert.match(friendCenterSource, /successMessage \+ '但好友列表暂时刷新失败/);
+  assert.match(friendCenterSource, /await refreshListsAfterAction\(successMessage\)/);
+  assert.match(friendCenterSource, /await refreshListsAfterAction\(accept \? '已同意好友申请。' : '已拒绝好友申请。'\)/);
+  assert.match(friendCenterSource, /await refreshListsAfterAction\('好友已删除。'\)/);
+});
