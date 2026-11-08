@@ -2022,6 +2022,18 @@ class CloudStore {
     );
   }
 
+  hasActiveMaoInvite({ targetAccountId = null, targetEmail = null, now }) {
+    const row = this.exec(
+      "SELECT id FROM mao_invite_codes WHERE revoked_at IS NULL AND expires_at > ? AND used_count < max_uses AND ((? IS NOT NULL AND target_account_id = ?) OR (? IS NOT NULL AND target_email = ?)) LIMIT 1",
+      now,
+      targetAccountId,
+      targetAccountId,
+      targetEmail,
+      targetEmail
+    )[0];
+    return Boolean(row);
+  }
+
   listMaoInvites() {
     return this.exec(
       "SELECT i.id, i.target_account_id, i.target_email, i.max_uses, i.used_count, i.created_by_account_id, i.created_at, i.expires_at, i.revoked_at, a.username AS target_username FROM mao_invite_codes i LEFT JOIN mao_accounts a ON a.id = i.target_account_id ORDER BY i.created_at DESC, i.id DESC LIMIT 500"
