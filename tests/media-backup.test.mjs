@@ -399,7 +399,7 @@ function buildCtxFull(opts) {
         'dumpStore', 'dumpDatabase',
         'restoreStore', 'restoreDatabase', 'validateBackup', 'restore', 'verifyRestore',
         'rpOpen', 'rpWriteSnapshot', 'rpReadSnapshot', 'rpDeleteRole',
-        'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
+        'clearRestorePoints', 'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
         'estimateRestorePointBytes', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
         'doExport', 'handleImportFile'
@@ -1749,4 +1749,35 @@ test('29 rpReadSnapshot：request success 后 readonly 事务 abort 必须 rejec
     restoreDb._lastTransaction.abort();
     await assert.rejects(pendingRead, /mock transaction aborted|aborted/);
     restoreDb._deferComplete = false;
+});
+
+
+/* ═══════════════════════════════════════════════
+   30. 恢复点删除失败：必须读回发现残留并告知用户
+   ═══════════════════════════════════════════════ */
+test('30 clearRestorePoints：删除后仍可读到恢复点时返回失败列表', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    ctx.__restorePointRows.set('pre-import', {
+        snap: { ai_custom_characters: 'old-state' },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-indexeddb', {
+        snap: { 'maomao-media-store': { wallpapers: [] } },
+        createdAt: Date.now()
+    });
+
+    const deleteRole = ctx.rpDeleteRole;
+    ctx.rpDeleteRole = async role => {
+        if (role === 'pre-import-indexeddb') return;
+        return deleteRole(role);
+    };
+
+    const result = await ctx.clearRestorePoints();
+    assert.equal(result.ok, false);
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0], 'pre-import-indexeddb');
+    assert.equal(ctx.__restorePointRows.has('pre-import'), false);
+    assert.equal(ctx.__restorePointRows.has('pre-import-indexeddb'), true,
+        '未确认删除的恢复点必须保留');
 });
