@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "lint": "node -e 'console.log(\"Lint passed\")'",
     "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs",
+    "test:accounts": "node --test tests/account-auth-contract.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
     "test:detective:unlock": "node --test tests/detective-case-unlock.test.mjs",
