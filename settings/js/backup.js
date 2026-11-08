@@ -787,17 +787,28 @@
     // 恢复点清理采用“删除后读回”确认，不能只依赖 delete 请求没有抛错。
     // 清理失败不会影响已经完成的数据回滚/导入，但必须把残留情况反馈给用户。
     async function clearRestorePoints() {
-        // 元数据最后删除：若清理过程中页面关闭，仍可判断此前应恢复还是仅清理。
-        var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE, RP_ROLE_META];
+        // 先清理两份数据快照并逐一读回确认。只要任一快照仍残留，就必须保留
+        // committed / rolled-back 阶段标记，避免下次启动把残留数据误判为 applying。
+        var snapshotRoles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE];
         var failed = [];
-        for (var i = 0; i < roles.length; i++) {
+        for (var i = 0; i < snapshotRoles.length; i++) {
             try {
-                await rpDeleteRole(roles[i]);
-                var remaining = await rpReadSnapshot(roles[i]);
-                if (remaining) failed.push(roles[i]);
+                await rpDeleteRole(snapshotRoles[i]);
+                var remaining = await rpReadSnapshot(snapshotRoles[i]);
+                if (remaining) failed.push(snapshotRoles[i]);
             } catch (error) {
-                failed.push(roles[i]);
+                failed.push(snapshotRoles[i]);
             }
+        }
+        if (failed.length) return { ok: false, failed: failed };
+
+        // 只有两个快照都确认删除后，才允许最后删除阶段标记。
+        try {
+            await rpDeleteRole(RP_ROLE_META);
+            var remainingMeta = await rpReadSnapshot(RP_ROLE_META);
+            if (remainingMeta) failed.push(RP_ROLE_META);
+        } catch (metaError) {
+            failed.push(RP_ROLE_META);
         }
         return { ok: failed.length === 0, failed: failed };
     }
@@ -1704,6 +1715,7 @@
                 for (var j = restored.length - 1; j >= 0; j--) {
                     var previous = restored[j];
                     try {
+                        if (requireImportLock) await assertImportLock();
                         await restoreDatabase(
                             previous.db, previous.version, previous.stores,
                             restorePoint.snapshots[previous.db], true
@@ -1964,6 +1976,7 @@
                 var rollbackOk = false;
                 var verify = null;
                 if (rpRollback) {
+                    await assertImportLock();
                     rollbackOk = restore(rpRollback);
                     verify = verifyRestore(rpRollback);
                 } else {
@@ -1979,7 +1992,6 @@
                             + '原始恢复点已保留，请勿清理网站数据。');
                         return;
                     }
-                    await assertImportLock();
                     await assertImportLock();
                     var cleanupAfterLocalRollback = await clearRestorePoints();
                     toast('导入失败，已从本机恢复点回滚到导入前状态'
@@ -2007,6 +2019,7 @@
                 await assertImportLock();
                 var idbRestoreResult = await restoreIndexedDBWithRollback(obj.indexedDB, idbRestorePoint, true);
                 if (!idbRestoreResult.ok) {
+                    await assertImportLock();
                     var localRollbackOk = restore(rpSnap);
                     var localRollbackVerify = verifyRestore(rpSnap);
                     var allRollbackOk = localRollbackOk && localRollbackVerify.ok
@@ -2021,7 +2034,6 @@
                                 + '原始恢复点已保留，请勿清理网站数据。');
                             return;
                         }
-                        await assertImportLock();
                         await assertImportLock();
                         var cleanupAfterDatabaseRollback = await clearRestorePoints();
                         toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
