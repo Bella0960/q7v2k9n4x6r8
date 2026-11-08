@@ -19,10 +19,18 @@
   }
 
   async function api(path, method = 'GET', body = null) {
+    const headers = body ? { 'content-type': 'application/json' } : {};
+    // The account-entry page is intentionally public and has no injected scope
+    // script. Once login has identified the pending account, bind invite
+    // redemption explicitly so it receives the same server-side context check
+    // as requests made from authenticated app pages.
+    if (path === '/api/accounts/invites/redeem' && currentAccount?.id) {
+      headers['x-mao-account-context'] = currentAccount.id;
+    }
     const response = await fetch(path, {
       method,
       credentials: 'same-origin',
-      headers: body ? { 'content-type': 'application/json' } : {},
+      headers,
       body: body ? JSON.stringify(body) : undefined,
       cache: 'no-store'
     });
