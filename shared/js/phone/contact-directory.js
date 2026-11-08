@@ -627,6 +627,9 @@
         if (cleanText(snapshot.ownerAccountId, 96) !== owner) {
             return { ok: false, error: 'server_snapshot_account_mismatch', contacts: [] };
         }
+        if (!activeAccountId || activeAccountId !== owner) {
+            return { ok: false, error: 'active_account_mismatch', contacts: [] };
+        }
         var snapshotAt = Number(snapshot.snapshotAt);
         if (!Number.isSafeInteger(snapshotAt) || snapshotAt <= 0) {
             return { ok: false, error: 'invalid_server_snapshot_time', contacts: [] };
@@ -659,8 +662,9 @@
                 return item.id === id && item.ownerAccountId === owner;
             });
             // A legacy ownerless row is migrated only after the authenticated
-            // server explicitly confirms the same ID in this account's roster.
-            if (index < 0) {
+            // server confirms an active accepted relationship. A removal event
+            // must never claim an unrelated local-only contact with the same ID.
+            if (index < 0 && status === 'accepted') {
                 index = next.findIndex(function (item) {
                     return item.id === id && !item.ownerAccountId;
                 });
@@ -671,22 +675,31 @@
             }
 
             if (status === 'removed') {
-                if (!existing) continue;
-                var removedAt = Math.max(now, existing.updatedAt + 1);
-                var removed = normalizeRecord(Object.assign({}, existing, {
+                // Keep a tombstone even when this device has never seen the
+                // friend. Otherwise a delayed older "accepted" snapshot could
+                // recreate the relationship after the server already removed it.
+                var removedAt = Math.max(now, existing ? existing.updatedAt + 1 :
+                    (Number.isSafeInteger(acceptedAt) && acceptedAt > 0 ? acceptedAt : serverUpdatedAt));
+                var removed = normalizeRecord({
+                    id: id,
                     ownerAccountId: owner,
-                    status: STATUS.REMOVED,
-                    requestId: requestId,
+                    handle: existing ? existing.handle : cleanText(remote.handle, 24).toLowerCase(),
+                    displayName: existing ? existing.displayName : (cleanText(remote.displayName, 48) || '已解除好友关系'),
                     avatarAssetId: '',
                     avatarUrl: '',
-                    acceptedAt: null,
-                    removedAt: removedAt,
+                    status: STATUS.REMOVED,
+                    source: 'server_snapshot',
+                    requestId: requestId,
+                    createdAt: existing ? existing.createdAt :
+                        (Number.isSafeInteger(acceptedAt) && acceptedAt > 0 ? acceptedAt : serverUpdatedAt),
                     updatedAt: removedAt,
                     serverUpdatedAt: serverUpdatedAt,
-                    source: 'server_snapshot'
-                }), removedAt);
+                    acceptedAt: null,
+                    removedAt: removedAt
+                }, removedAt);
                 if (!removed) return { ok: false, error: 'invalid_server_relationship', invalidIndex: i, contacts: current.contacts };
                 if (index >= 0) next[index] = removed;
+                else next.push(removed);
                 continue;
             }
 

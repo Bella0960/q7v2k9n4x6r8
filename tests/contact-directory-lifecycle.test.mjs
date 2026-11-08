@@ -491,11 +491,13 @@ test('complete snapshots tombstone omitted server friends without touching local
     requestId: 'local_request_001', now: 3510
   });
   assert.equal(local.ok, true);
+  directory.setActiveAccountId('account_owner_04');
   const secondOwner = directory.syncServerSnapshot(serverRoster('account_owner_04', [
     acceptedServerFriend(friendA.id, 'request_other_003', 3520, { displayName: '另一个账号的好友' })
   ], 3530), 'account_owner_04', { now: 3540 });
   assert.equal(secondOwner.ok, true);
 
+  directory.setActiveAccountId('account_owner_03');
   const onlyA = directory.syncServerSnapshot(serverRoster('account_owner_03', [friendA], 3600),
     'account_owner_03', { now: 3700 });
   assert.equal(onlyA.ok, true);
@@ -585,6 +587,63 @@ test('lifecycle changes for one account never mutate the same friend ID stored f
   assert.equal(records.length, 2);
   assert.equal(records.find(item => item.ownerAccountId === 'account_owner_08').status, 'removed');
   assert.equal(records.find(item => item.ownerAccountId === 'account_owner_09').status, 'accepted');
+});
+
+test('server snapshots are rejected when their account is no longer active', () => {
+  const { directory } = createDirectoryRuntime();
+  directory.setActiveAccountId('account-current');
+  const result = directory.syncServerSnapshot(serverRoster('account-previous', [
+    acceptedServerFriend('account_friend_previous', 'request_previous_001', 7000)
+  ], 7100), 'account-previous', { now: 7200 });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'active_account_mismatch');
+  assert.equal(directory.readResult().contacts.length, 0);
+});
+
+test('removed snapshots create tombstones for unseen users without claiming local-only contacts', () => {
+  const legacy = JSON.stringify([{
+    id: 'same-id-local-contact',
+    displayName: '用户自己的本地联系人',
+    status: 'accepted',
+    source: 'manual',
+    requestId: 'local-only-request',
+    createdAt: 7300,
+    updatedAt: 7301
+  }]);
+  const { directory } = createDirectoryRuntime({ initialDirectory: legacy });
+  directory.setActiveAccountId('account_owner_11');
+
+  const removal = {
+    id: 'same-id-local-contact',
+    status: 'removed',
+    acceptedRequestId: 'server_request_old_11',
+    acceptedAt: 7310,
+    updatedAt: 7320
+  };
+  const removed = directory.syncServerSnapshot(serverRoster('account_owner_11', [removal], 7330),
+    'account_owner_11', { now: 7340 });
+  assert.equal(removed.ok, true);
+
+  const records = directory.readResult().contacts;
+  assert.equal(records.length, 2);
+  assert.equal(records.find(item => !item.ownerAccountId).displayName, '用户自己的本地联系人');
+  assert.equal(records.find(item => item.ownerAccountId === 'account_owner_11').status, 'removed');
+  assert.equal(records.find(item => item.ownerAccountId === 'account_owner_11').requestId, 'server_request_old_11');
+
+  const staleAccepted = directory.syncServerSnapshot(serverRoster('account_owner_11', [
+    acceptedServerFriend('same-id-local-contact', 'server_request_old_11', 7350)
+  ], 7360), 'account_owner_11', { now: 7370 });
+  assert.equal(staleAccepted.ok, false);
+  assert.equal(staleAccepted.error, 'stale_server_relationship_revival');
+  assert.equal(directory.readResult().contacts.find(item => !item.ownerAccountId).displayName, '用户自己的本地联系人');
+
+  const freshAccepted = directory.syncServerSnapshot(serverRoster('account_owner_11', [
+    acceptedServerFriend('same-id-local-contact', 'server_request_new_11', 7380)
+  ], 7390), 'account_owner_11', { now: 7400 });
+  assert.equal(freshAccepted.ok, true);
+  assert.equal(directory.get('same-id-local-contact').status, 'accepted');
+  assert.equal(directory.get('same-id-local-contact').requestId, 'server_request_new_11');
 });
 
 test('directory refuses an otherwise complete snapshot when its account owner does not match', () => {
