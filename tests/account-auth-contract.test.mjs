@@ -134,6 +134,14 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
     ...device, label: 'Alice phone', platform: 'test'
   }, aliceCookie);
   assert.equal(deviceResult.status, 200);
+  const reenrollWithoutAccount = await post(ctx, '/api/devices/register', {
+    ...device, label: 'unauthenticated attempt', platform: 'test'
+  });
+  assert.equal(reenrollWithoutAccount.status, 401, '现有设备重新注册也必须提供 MAO 会话');
+  const reenrollWithAccount = await post(ctx, '/api/devices/register', {
+    ...device, label: 'Alice phone', platform: 'test'
+  }, aliceCookie);
+  assert.equal(reenrollWithAccount.status, 200);
   const activeApi = await ctx.fetchTo('/api/autonomy/global', { headers: { cookie: aliceCookie, 'x-device-auth': device.deviceId + '.' + device.secret } });
   assert.notEqual(activeApi.status, 403);
 
