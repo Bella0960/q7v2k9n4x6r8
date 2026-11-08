@@ -39,12 +39,13 @@ export async function isRealUserFriendsConfigured(env) {
       "'trg_real_user_block_removes_friendship', " +
       "'trg_real_user_block_terminates_pending_requests', " +
       "'trg_real_user_friend_request_active_accounts_guard', " +
-      "'trg_real_user_friend_request_active_accounts_insert_guard')) AS ready_triggers"
+      "'trg_real_user_friend_request_active_accounts_insert_guard', " +
+      "'trg_real_user_account_inactive_cleans_friend_state')) AS ready_triggers"
     ).first();
     return !!schema &&
       Number(schema.ready_tables) === 4 &&
       Number(schema.ready_indexes) === 2 &&
-      Number(schema.ready_triggers) === 10;
+      Number(schema.ready_triggers) === 11;
   } catch {
     return false;
   }
