@@ -385,7 +385,7 @@
             if (nameBytes.length > 65535 || blob.size > 0xffffffff || offset > 0xffffffff) {
                 throw new Error('抢救包单个文件超过 ZIP 格式安全范围');
             }
-            var crc = await rescueCrc32(blob);
+            var crc = Number.isInteger(file.crc32) ? (file.crc32 >>> 0) : await rescueCrc32(blob);
             var local = new Uint8Array(30 + nameBytes.length);
             var lv = new DataView(local.buffer);
             lv.setUint32(0, 0x04034b50, true);
@@ -441,6 +441,24 @@
         return new Blob(parts.concat(central).concat([end]), { type: 'application/zip' });
     }
 
+    function markUnavailableRescueAssets(value, missingAssets, seen) {
+        if (!value || typeof value !== 'object') return false;
+        seen = seen || [];
+        if (seen.indexOf(value) !== -1) return false;
+        seen.push(value);
+        if (value.file && Object.prototype.hasOwnProperty.call(missingAssets, value.file)) {
+            value.unavailable = true;
+            value.reason = missingAssets[value.file];
+            return true;
+        }
+        var partial = false;
+        var keys = Object.keys(value);
+        for (var i = 0; i < keys.length; i++) {
+            if (markUnavailableRescueAssets(value[keys[i]], missingAssets, seen)) partial = true;
+        }
+        return partial;
+    }
+
     async function createRecoveryPointRescuePackage() {
         var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE, RP_ROLE_META];
         var records = Object.create(null);
@@ -471,6 +489,29 @@
                 });
             }
         }
+        // 在写入 ZIP 前逐个校验二进制附件。某个 Blob 无法读取时，只标记该附件缺失，
+        // 其他附件和恢复记录仍可导出；同时把引用它的恢复记录标记为 partial。
+        var missingAssets = Object.create(null);
+        var readableAssets = [];
+        for (var a = 0; a < assets.length; a++) {
+            try {
+                assets[a].crc32 = await rescueCrc32(assets[a].blob);
+                readableAssets.push(assets[a]);
+            } catch (assetError) {
+                missingAssets[assets[a].name] = (assetError && assetError.message) || '二进制附件读取失败';
+                readErrors.push({
+                    role: assets[a].name,
+                    message: missingAssets[assets[a].name]
+                });
+            }
+        }
+        assets = readableAssets;
+        Object.keys(records).forEach(function (role) {
+            if (markUnavailableRescueAssets(records[role], missingAssets)) {
+                recordStatuses[role] = 'partial';
+            }
+        });
+
         var recordNames = Object.keys(records);
         if (!recordNames.length && !readErrors.length) return null;
         var manifest = {
@@ -497,7 +538,8 @@
             '- pre-import-indexeddb：导入前 IndexedDB 快照，可能包含本机音频、字体等文件。',
             '- pre-import-meta：导入阶段与完整性指纹。',
             '',
-            'recordStatuses 中 exported 表示成功导出，absent 表示本机没有该记录，error 表示无法完整导出。',
+            'recordStatuses 中 exported 表示完整导出，partial 表示记录已导出但有二进制附件缺失，absent 表示本机没有该记录，error 表示记录无法完整导出。',
+            '若附件描述包含 unavailable: true，表示对应二进制文件未能读取，不能视为完整文件。',
             'readErrors 会说明出错角色及原因；缺失记录不会被伪装成完整快照。',
             '',
             '安全提醒：抢救包可能包含 API 密钥、聊天内容和私人媒体。只保存到可信位置，不要直接分享。',
