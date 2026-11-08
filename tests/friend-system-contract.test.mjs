@@ -179,3 +179,42 @@ test('好友申请必须由接收方同意，支持重复提交、拒绝、删�
   assert.equal((await asAccount(ctx, bob, '/api/friends')).payload.friends.length, 0);
   assert.equal((await asAccount(ctx, carol, '/api/friends')).payload.friends.length, 0);
 });
+
+
+test('双方同时发起好友申请时只保留一条待处理关系', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  assert.equal((await register(ctx, alice, '198.51.100.81')).status, 200);
+  assert.equal((await register(ctx, bob, '198.51.100.82')).status, 200);
+
+  const results = await Promise.all([
+    asAccount(ctx, alice, '/api/friend-requests', {
+      method: 'POST',
+      body: { targetUserId: bob.userId }
+    }),
+    asAccount(ctx, bob, '/api/friend-requests', {
+      method: 'POST',
+      body: { targetUserId: alice.userId }
+    })
+  ]);
+
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  const conflict = results.find(result => result.status === 409);
+  assert.equal(conflict.payload.error.code, 'INCOMING_REQUEST_EXISTS');
+
+  const pending = ctx.query(
+    `SELECT requester_id, recipient_id
+     FROM friend_requests
+     WHERE status = 'pending'
+       AND (
+         (requester_id = ? AND recipient_id = ?)
+         OR (requester_id = ? AND recipient_id = ?)
+       )`,
+    alice.userId,
+    bob.userId,
+    bob.userId,
+    alice.userId
+  );
+  assert.equal(pending.length, 1);
+});
