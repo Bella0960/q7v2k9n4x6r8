@@ -63,6 +63,22 @@ Only a session whose account role is super_admin may call the admin actions.
 
 The account row and its associated data are retained. Admin audit records retain the actor, action, target and optional reason. Audit and reason endpoints are admin-only.
 
+### Creator management center
+
+The creator-only desktop shortcut opens `/admin/admin-center.html`. The page is served only to an active `super_admin` session, and every data-changing or data-reading admin API independently checks that role.
+
+The first management screen includes:
+- A count of ordinary MAO accounts (the creator account is deliberately excluded), pending invitations, active accounts, and restricted accounts.
+- Search by username or permanent MAO ID.
+- Per-account details and private audit history.
+- One-time invitation generation for pending accounts, with the raw code displayed once for copying.
+- Temporary disable, restore, and permanent revoke actions with an admin-only reason.
+
+The account list distinguishes `disabled` (temporary suspension) from `revoked` (permanent authorization removal). Ordinary users continue to receive the same public disabled notice for both states. The creator shortcut is restored beside Settings when an active super-admin opens the desktop, including when an older custom layout had the newly introduced shortcut stored in its removed-items list.
+
+The page and its APIs are present on this implementation branch. They are not yet visible on the production site: this branch has not been deployed, and the one-time `MAO_SUPER_ADMIN_BOOTSTRAP_SECRET` has not yet been configured in the Worker environment. The first creator account must be initialized exactly once after the preview/runtime environment and secret are ready.
+
+
 A user-initiated single-device revocation is also one transaction: disabling that device's push subscriptions, revoking its device credential, deleting its live presence and character leases, removing unused pairing tokens created by the device, and superseding its queued autonomous activities either all commit or all roll back. A failure during any cleanup step must not leave a partially revoked device.
 
 Open pages recheck the session every 30 seconds and when returning to the foreground. Cloud APIs check every request. The account-management page displays the permanent ID, username, optional QQ email verification state, devices, and sessions. Users can revoke their own devices and other sessions, change their password (which revokes all other sessions), and log out. An already-open, fully offline page cannot receive a remote revocation until it reconnects; do not describe offline revocation as instantaneous. Device-authenticated API requests re-read the device row after asynchronous credential and MAO-session checks, so a device revoked while authentication is in flight is rejected using the latest persisted state rather than the stale initial lookup.
