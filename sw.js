@@ -180,13 +180,23 @@ self.addEventListener('fetch', event => {
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
   if (url.pathname.startsWith(fontAssetPrefix)) {
-    // Page CacheStorage is account-namespaced. Resolve the current session here
-    // (HttpOnly cookies are sent by same-origin fetch) and open the matching cache.
+    // CSS font requests do not carry custom fetch headers. The account ID is
+    // therefore part of ordinary-account font URLs and is matched against the
+    // current HttpOnly session before opening any account's CacheStorage.
     event.respondWith((async function () {
       try {
+        const relativeFontPath = url.pathname.slice(fontAssetPrefix.length);
+        const firstSegment = relativeFontPath.split('/')[0] || '';
+        let requestedAccountId = '';
+        try { requestedAccountId = decodeURIComponent(firstSegment); } catch (error) {
+          return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+        }
+        const hasAccountPath = /^MAO-[A-Z0-9]{12,24}$/.test(requestedAccountId);
         const authHeaders = new Headers({ 'accept': 'application/json' });
         const pageAccountContext = req.headers.get('x-mao-account-context');
         if (pageAccountContext) authHeaders.set('x-mao-account-context', pageAccountContext);
+        if (hasAccountPath) authHeaders.set('x-mao-account-context', requestedAccountId);
+
         const authResponse = await fetch('/api/accounts/me', {
           method: 'GET',
           credentials: 'same-origin',
@@ -207,9 +217,22 @@ self.addEventListener('fetch', event => {
             headers: { 'Cache-Control': 'no-store' }
           });
         }
-        const cacheName = account.role === 'super_admin'
-          ? FONT_ASSET_CACHE
-          : '__mao_account_v1__' + encodeURIComponent(account.id) + '__' + FONT_ASSET_CACHE;
+
+        let cacheName;
+        if (account.role === 'super_admin') {
+          // Preserve the creator's existing unqualified font URLs and cache.
+          if (hasAccountPath) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = FONT_ASSET_CACHE;
+        } else {
+          // A stale tab A must never resolve its font URL through account B's cookie.
+          if (!hasAccountPath || requestedAccountId !== account.id) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = '__mao_account_v1__' + encodeURIComponent(account.id) + '__' + FONT_ASSET_CACHE;
+        }
+
         const cache = await caches.open(cacheName);
         return await cache.match(req) || new Response('', {
           status: 404,
