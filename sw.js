@@ -352,18 +352,46 @@ self.addEventListener('push', event => {
   } catch (error) {
     payload = {};
   }
-  const title = String(payload.title || 'MAOMAO');
-  const body = String(payload.body || '你有一条新消息。');
-  const targetUrl = pushTargetUrl(payload.url);
-  // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
-  const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
 
-  event.waitUntil(
-    self.registration.showNotification(title, {
+  event.waitUntil((async function () {
+    // Notifications are private to the MAO account that owns the target device.
+    // Re-check the HttpOnly session at display time so a logged-out or switched
+    // browser cannot show another account's previously queued push.
+    const accountId = String(payload.accountId || '');
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+    let authResponse;
+    try {
+      authResponse = await fetch('/api/accounts/me', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'accept': 'application/json',
+          'x-mao-account-context': accountId
+        }
+      });
+    } catch (error) {
+      return;
+    }
+    if (!authResponse || !authResponse.ok) return;
+    let authPayload = {};
+    try { authPayload = await authResponse.json(); } catch (error) { return; }
+    const currentAccount = authPayload && authPayload.account;
+    if (!currentAccount ||
+        currentAccount.id !== accountId ||
+        currentAccount.status !== 'active') return;
+
+    const title = String(payload.title || 'MAOMAO');
+    const body = String(payload.body || '你有一条新消息。');
+    const targetUrl = pushTargetUrl(payload.url);
+    // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
+    const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
+    await self.registration.showNotification(title, {
       body,
       tag,
       data: {
         url: targetUrl,
+        accountId,
         dedupeKey: String(payload.dedupeKey || '').slice(0, 96),
         type: String(payload.type || 'message').slice(0, 32)
       },
@@ -371,11 +399,9 @@ self.addEventListener('push', event => {
       badge: './assets/icon-192.png',
       renotify: false,
       silent: false
-    })
-  );
-});
-
-self.addEventListener('notificationclick', event => {
+    });
+  })());
+, event => {
   event.notification.close();
   const targetUrl = pushTargetUrl(event.notification.data && event.notification.data.url);
 
