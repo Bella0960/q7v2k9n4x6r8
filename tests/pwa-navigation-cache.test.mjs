@@ -40,7 +40,7 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
 test('service worker caches the public account entry but excludes protected app HTML', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.match(serviceWorker, /url === '\.\/account\/index\.html' \|\| !\/\\.html/);
+  assert.ok(serviceWorker.includes("url === './account/index.html' || !/\\.html"));
   assert.match(serviceWorker, /account\/account\.js/);
 });
 
@@ -48,7 +48,11 @@ test('protected app navigation always checks the Worker before showing a documen
   assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
   assert.match(serviceWorker, /return await fetch\(req\)/);
   assert.match(serviceWorker, /account\/index\.html/);
-  assert.doesNotMatch(serviceWorker, /if \(cached\) return cached/);
+  const protectedNavigation = serviceWorker.slice(
+    serviceWorker.indexOf("if (req.mode === 'navigate' && !isPublicAccountPage)"),
+    serviceWorker.indexOf('// The public account entry stays cache-first')
+  );
+  assert.doesNotMatch(protectedNavigation, /caches\.match/);
 });
 
 
