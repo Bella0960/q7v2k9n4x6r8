@@ -615,12 +615,17 @@
                             try { tx.abort(); } catch (abortError) { finish(null); }
                             return;
                         }
-                        writeQueued = true;
-                        store.put({
-                            role: RP_ROLE_LOCK,
-                            owner: owner,
-                            expiresAt: Date.now() + IMPORT_LOCK_LEASE_MS
-                        });
+                        try {
+                            store.put({
+                                role: RP_ROLE_LOCK,
+                                owner: owner,
+                                expiresAt: Date.now() + IMPORT_LOCK_LEASE_MS
+                            });
+                            writeQueued = true;
+                        } catch (writeError) {
+                            try { tx.abort(); } catch (abortError) {}
+                            finish(writeError);
+                        }
                     };
                     req.onerror = function () {
                         try { tx.abort(); } catch (abortError) {}
@@ -671,12 +676,17 @@
                             try { tx.abort(); } catch (abortError) { finish(null); }
                             return;
                         }
-                        renewalQueued = true;
-                        store.put({
-                            role: RP_ROLE_LOCK,
-                            owner: owner,
-                            expiresAt: Date.now() + IMPORT_LOCK_LEASE_MS
-                        });
+                        try {
+                            store.put({
+                                role: RP_ROLE_LOCK,
+                                owner: owner,
+                                expiresAt: Date.now() + IMPORT_LOCK_LEASE_MS
+                            });
+                            renewalQueued = true;
+                        } catch (writeError) {
+                            try { tx.abort(); } catch (abortError) {}
+                            finish(writeError);
+                        }
                     };
                     req.onerror = function () {
                         try { tx.abort(); } catch (abortError) {}
@@ -720,8 +730,13 @@
                     req.onsuccess = function () {
                         var current = req.result;
                         if (current && current.owner === owner) {
-                            deleteQueued = true;
-                            store.delete(RP_ROLE_LOCK);
+                            try {
+                                store.delete(RP_ROLE_LOCK);
+                                deleteQueued = true;
+                            } catch (deleteError) {
+                                try { tx.abort(); } catch (abortError) {}
+                                finish(deleteError);
+                            }
                         }
                     };
                     req.onerror = function () {
@@ -1843,7 +1858,7 @@
         });
     }
 
-    function startImportFileRead(file) {
+    async function startImportFileRead(file) {
         var reader;
         try {
             reader = new FileReader();
