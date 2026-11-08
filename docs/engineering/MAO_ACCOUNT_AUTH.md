@@ -84,6 +84,7 @@ Message payloads, subscriptions, outbound rows, delivery receipts and execution 
 Temporary account disable remembers whether the account was `pending_invite` or `active`. Restore returns it to that exact state. For older disabled rows without a recorded prior state, restore fails closed to `pending_invite`; it never grants authorization based on an unknown history. The field is added by the separate additive migration `0013_mao_account_restore_state`; migration `0012_mao_accounts` remains unchanged.
 
 The eight-per-hour registration cap is also checked in the account INSERT statement, not only in an earlier read, so concurrent requests cannot all pass the pre-check and exceed the quota.
+The creator management API loads up to 500 ordinary accounts by default so a few hundred registered users remain searchable in the first release. Cursor pagination is a follow-up before exceeding that limit.
 Invitation issuance re-checks the one-active-code rule under a write transaction, and redemption consumes the code plus activates the account atomically. Current-password verification for password changes has its own IP/account-scoped 15-minute rate limit.
 
 ## Service Worker cache boundaries
