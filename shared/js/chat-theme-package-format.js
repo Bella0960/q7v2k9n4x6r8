@@ -36,6 +36,70 @@
   function fail(message){throw new Error(message)}
   function own(o,k){return Object.prototype.hasOwnProperty.call(o,k)}
   function crc32(bytes){var c=0xffffffff;for(var i=0;i<bytes.length;i++){c^=bytes[i];for(var j=0;j<8;j++)c=(c>>>1)^((c&1)?0xedb88320:0)}return(c^0xffffffff)>>>0}
+  function encodeUtf8(value){
+    var source=String(value);
+    if(enc)return enc.encode(source);
+    try{var encoded=unescape(encodeURIComponent(source)),out=new Uint8Array(encoded.length);for(var i=0;i<encoded.length;i++)out[i]=encoded.charCodeAt(i);return out}
+    catch(e){fail("主题包文本包含无效 Unicode 字符。")}
+  }
+  function inputBytes(value){
+    if(value instanceof Uint8Array)return value;
+    if(typeof ArrayBuffer!=="undefined"&&value instanceof ArrayBuffer)return new Uint8Array(value);
+    if(typeof ArrayBuffer!=="undefined"&&ArrayBuffer.isView&&ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);
+    fail("主题素材必须提供二进制数据。")
+  }
+  function concatBytes(parts){
+    var size=parts.reduce(function(total,part){return total+part.length},0),out=new Uint8Array(size),offset=0;
+    parts.forEach(function(part){out.set(part,offset);offset+=part.length});
+    return out;
+  }
+  function storedZip(entries){
+    if(!Array.isArray(entries)||!entries.length||entries.length>120)fail("主题文件数量超出限制。");
+    var names=Object.create(null),localParts=[],centralParts=[],offset=0,total=0;
+    entries.forEach(function(entry){
+      if(!entry||typeof entry.name!=="string"||!(entry.name==="manifest.json"||entry.name==="theme.json"||entry.name==="custom.css"||safeAssetPath(entry.name)))fail("主题包文件路径无效。");
+      if(own(names,entry.name))fail("主题包存在重复文件："+entry.name);
+      names[entry.name]=1;
+      var name=encodeUtf8(entry.name),data=inputBytes(entry.data);
+      if(name.length>65535)fail("主题文件名过长。");
+      if(data.length>MAX_FILE)fail("单个主题文件超过 16 MB。");
+      total+=data.length;if(total>MAX)fail("主题包超过 48 MB。");
+      var crc=crc32(data),local=new Uint8Array(30+name.length),lv=new DataView(local.buffer);
+      lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x0800,true);lv.setUint16(8,0,true);
+      lv.setUint16(10,0,true);lv.setUint16(12,0,true);lv.setUint32(14,crc,true);lv.setUint32(18,data.length,true);lv.setUint32(22,data.length,true);
+      lv.setUint16(26,name.length,true);lv.setUint16(28,0,true);local.set(name,30);
+      var central=new Uint8Array(46+name.length),cv=new DataView(central.buffer);
+      cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);cv.setUint16(8,0x0800,true);
+      cv.setUint16(10,0,true);cv.setUint16(12,0,true);cv.setUint16(14,0,true);cv.setUint32(16,crc,true);
+      cv.setUint32(20,data.length,true);cv.setUint32(24,data.length,true);cv.setUint16(28,name.length,true);
+      cv.setUint16(30,0,true);cv.setUint16(32,0,true);cv.setUint16(34,0,true);cv.setUint16(36,0,true);
+      cv.setUint32(38,0,true);cv.setUint32(42,offset,true);central.set(name,46);
+      localParts.push(local,data);centralParts.push(central);offset+=local.length+data.length;
+    });
+    var centralSize=centralParts.reduce(function(n,part){return n+part.length},0),end=new Uint8Array(22),ev=new DataView(end.buffer);
+    ev.setUint32(0,0x06054b50,true);ev.setUint16(4,0,true);ev.setUint16(6,0,true);
+    ev.setUint16(8,entries.length,true);ev.setUint16(10,entries.length,true);ev.setUint32(12,centralSize,true);
+    ev.setUint32(16,offset,true);ev.setUint16(20,0,true);
+    var archive=concatBytes(localParts.concat(centralParts,[end]));
+    if(archive.length>MAX)fail("导出的主题包超过 48 MB。");
+    return archive;
+  }
+  function createPackage(theme,css,assetData){
+    if(!theme||typeof theme!=="object")fail("主题数据无效。");
+    assetData=assetData&&typeof assetData==="object"?assetData:{};
+    var files=Object.create(null),manifest={format:FORMAT,schemaVersion:VERSION,target:"maomao-chat"};
+    (Array.isArray(theme.assetIndex)?theme.assetIndex:[]).forEach(function(asset){
+      if(!asset||!safeAssetPath(asset.path)||!own(assetData,asset.path))fail("导出主题缺少素材："+String(asset&&asset.path||""));
+      files[asset.path]=inputBytes(assetData[asset.path]);
+    });
+    var normalized=normalize(theme,files,manifest),entries=[
+      {name:"manifest.json",data:encodeUtf8(JSON.stringify(manifest))},
+      {name:"theme.json",data:encodeUtf8(JSON.stringify(normalized.theme))},
+      {name:"custom.css",data:encodeUtf8(normalized.customCss)}
+    ];
+    normalized.theme.assetIndex.forEach(function(asset){entries.push({name:asset.path,data:normalized.assets[asset.path].bytes})});
+    return storedZip(entries);
+  }
   function parseStoredZip(input){
     var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
     if(bytes.length>MAX)fail("主题包超过 48 MB。");
@@ -397,5 +461,5 @@
     return normalize(theme,files,manifest);
   }
   function buildScopedCss(theme,css){var combined=stylesToCss(theme)+"\n"+scopeCss(css||" ",'.phone-mockup[data-maomao-chat-theme-active="1"]');return namespaceFontFamilies(combined,theme&&theme.id)}
-  return{FORMAT:FORMAT,VERSION:VERSION,COMPONENTS:COMPONENTS,MOTION_RULES:RULES,parseStoredZip:parseStoredZip,readPackage:readPackage,validateCss:validateCss,scopeCss:scopeCss,stylesToCss:stylesToCss,buildScopedCss:buildScopedCss,safeAssetPath:safeAssetPath};
+  return{FORMAT:FORMAT,VERSION:VERSION,COMPONENTS:COMPONENTS,MOTION_RULES:RULES,parseStoredZip:parseStoredZip,readPackage:readPackage,createPackage:createPackage,validateCss:validateCss,scopeCss:scopeCss,stylesToCss:stylesToCss,buildScopedCss:buildScopedCss,safeAssetPath:safeAssetPath};
 });
