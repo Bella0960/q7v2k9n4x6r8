@@ -1383,46 +1383,92 @@
                         var def = storeMap[name];
                         var records = incomingDb[name];
                         var store = tx.objectStore(name);
-                        store.clear();
+                        var excludedFields = (!forceClear && Array.isArray(def.excludeFields))
+                            ? def.excludeFields : [];
 
-                        records.forEach(function (record, index) {
-                            var value, key;
-                            if (record && Object.prototype.hasOwnProperty.call(record, '__key')
-                                    && Object.prototype.hasOwnProperty.call(record, '__value')) {
-                                value = record.__value;
-                                key = record.__key;
-                                if (key === undefined || key === null) {
-                                    throw new Error('备份记录主键无效：' + name + ' 第 ' + (index + 1) + ' 条');
-                                }
-                            } else if (record && typeof record === 'object' && !Array.isArray(record)) {
-                                value = record;
-                                key = undefined;
-                            } else {
-                                throw new Error('备份记录格式无效：' + name + ' 第 ' + (index + 1) + ' 条');
-                            }
-
-                            var blobFields = def.blobFields || [];
-                            if (value && typeof value === 'object' && blobFields.length) {
-                                blobFields.forEach(function (field) {
-                                    var blobValue = value[field];
-                                    if (typeof blobValue === 'string') {
-                                        var mimeKey = '__blobMime_' + field;
-                                        var mime = value[mimeKey] || value.format || 'application/octet-stream';
-                                        try {
-                                            value[field] = base64ToBlob(blobValue, mime);
-                                        } catch (error) {
-                                            throw new Error('Blob 解码失败：' + name + '/' + field
-                                                + '（第 ' + (index + 1) + ' 条）');
-                                        }
-                                        delete value[mimeKey];
+                        function writeRecords(existingRows) {
+                            var existingByKey = new Map();
+                            if (excludedFields.length) {
+                                (existingRows || []).forEach(function (oldValue) {
+                                    if (!oldValue || typeof oldValue !== 'object') return;
+                                    var oldKey = def.keyPath ? oldValue[def.keyPath] : undefined;
+                                    if (oldKey !== undefined && oldKey !== null) {
+                                        existingByKey.set(oldKey, oldValue);
                                     }
                                 });
                             }
 
-                            if (key !== undefined) store.put(value, key);
-                            else store.put(value);
-                            totalWritten++;
-                        });
+                            store.clear();
+                            records.forEach(function (record, index) {
+                                var value, key;
+                                if (record && Object.prototype.hasOwnProperty.call(record, '__key')
+                                        && Object.prototype.hasOwnProperty.call(record, '__value')) {
+                                    value = record.__value;
+                                    key = record.__key;
+                                    if (key === undefined || key === null) {
+                                        throw new Error('备份记录主键无效：' + name + ' 第 ' + (index + 1) + ' 条');
+                                    }
+                                } else if (record && typeof record === 'object' && !Array.isArray(record)) {
+                                    value = record;
+                                    key = undefined;
+                                } else {
+                                    throw new Error('备份记录格式无效：' + name + ' 第 ' + (index + 1) + ' 条');
+                                }
+
+                                if (excludedFields.length && value && typeof value === 'object') {
+                                    // 普通分享备份有意不携带本机文件字段。按主键合并本机原件，
+                                    // 不接受备份文件中的同名 excluded field；未匹配到原件则保持缺省。
+                                    var incomingKey = def.keyPath ? value[def.keyPath] : key;
+                                    var previous = incomingKey !== undefined && incomingKey !== null
+                                        ? existingByKey.get(incomingKey) : null;
+                                    value = Object.assign({}, value);
+                                    excludedFields.forEach(function (field) {
+                                        if (previous && Object.prototype.hasOwnProperty.call(previous, field)) {
+                                            value[field] = previous[field];
+                                        } else {
+                                            delete value[field];
+                                        }
+                                    });
+                                }
+
+                                var blobFields = def.blobFields || [];
+                                if (value && typeof value === 'object' && blobFields.length) {
+                                    blobFields.forEach(function (field) {
+                                        var blobValue = value[field];
+                                        if (typeof blobValue === 'string') {
+                                            var mimeKey = '__blobMime_' + field;
+                                            var mime = value[mimeKey] || value.format || 'application/octet-stream';
+                                            try {
+                                                value[field] = base64ToBlob(blobValue, mime);
+                                            } catch (error) {
+                                                throw new Error('Blob 解码失败：' + name + '/' + field
+                                                    + '（第 ' + (index + 1) + ' 条）');
+                                            }
+                                            delete value[mimeKey];
+                                        }
+                                    });
+                                }
+
+                                if (key !== undefined) store.put(value, key);
+                                else store.put(value);
+                                totalWritten++;
+                            });
+                        }
+
+                        if (excludedFields.length) {
+                            // 读取旧记录与 clear/put 在同一个 readwrite 事务中完成，
+                            // 避免另开只读事务后出现跨标签页修改竞态。
+                            var existingRequest = store.getAll();
+                            existingRequest.onsuccess = function () {
+                                try { writeRecords(existingRequest.result || []); }
+                                catch (error) { fail(error); }
+                            };
+                            existingRequest.onerror = function () {
+                                fail(existingRequest.error || new Error(name + ' 本机排除字段读取失败'));
+                            };
+                        } else {
+                            writeRecords([]);
+                        }
                     });
                 } catch (error) {
                     fail(error);
