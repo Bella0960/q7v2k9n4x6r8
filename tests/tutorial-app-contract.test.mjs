@@ -367,8 +367,8 @@ test('backup tutorial explains per-database rollback and retained recovery point
   assert.ok(start >= 0 && end > start, 'backup lesson must exist');
   const lesson = html.slice(start, end);
   assert.match(lesson, /同一数据库中的多个表会在一个事务里恢复/);
-  assert.match(lesson, /不同数据库分别处理/);
-  assert.match(lesson, /部分数据库没有恢复/);
+  assert.match(lesson, /之前已成功恢复的数据库和 localStorage 也会回滚/);
+  assert.match(lesson, /恢复点会保留/);
   assert.match(backupScript, /db\.transaction\(storeNames, 'readwrite'\)/);
   assert.match(backupScript, /var restorePointKept = dbFailed\.length > 0/);
   assert.match(backupScript, /本机导入前恢复点已保留，供排查/);
