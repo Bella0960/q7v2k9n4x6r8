@@ -1543,3 +1543,18 @@ test('23 verifyRestore：检测导入前快照之外的额外残留键', () => {
     assert.deepEqual(result.missing, []);
     assert.deepEqual(result.mismatched, []);
 });
+
+
+/* ═══════════════════════════════════════════════
+   24. localStorage 键清单不可读时，恢复校验必须失败
+   ═══════════════════════════════════════════════ */
+test('24 verifyRestore：无法读取 localStorage 键清单时不能把空快照判为成功', () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    ctx.localStorage = new Proxy(ctx.localStorage, {
+        ownKeys() { throw new Error('injected localStorage key enumeration failure'); }
+    });
+    const result = ctx.verifyRestore({});
+    assert.equal(result.ok, false);
+    assert.equal(result.keyReadOk, false);
+});
