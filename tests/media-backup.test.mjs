@@ -986,3 +986,9 @@ test('11 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     assert.ok(/媒体 Blob.*超限/.test(lastToast.msg) || /atomicExport/.test(lastToast.msg) || /maomao-assets/.test(lastToast.msg) || /1 个 IndexedDB/.test(lastToast.msg),
         'toast 应提到 maomao-assets atomicExportFailed 警告');
 });
+
+test('12 IndexedDB restore failure keeps the pre-import localStorage recovery point', () => {
+    assert.match(backupSrc, /var restorePointKept = dbFailed\.length > 0/);
+    assert.match(backupSrc, /if \(!restorePointKept\) rpDeleteRole\(RP_ROLE_PRE\)/);
+    assert.match(backupSrc, /if \(restorePointKept\) parts\.push\('本机导入前恢复点已保留，供排查'\)/);
+});
