@@ -2124,10 +2124,10 @@ class CloudStore {
   }
 
 
-  listMaoAccounts({ limit = 200 } = {}) {
+  listMaoAccounts({ limit = 500 } = {}) {
     return this.exec(
       "SELECT id, username, role, status, qq_email, qq_email_verified_at, created_at, authorized_at, disabled_at, revoked_at FROM mao_accounts ORDER BY created_at DESC, id DESC LIMIT ?",
-      Math.min(500, Math.max(1, Number(limit) || 200))
+      Math.min(500, Math.max(1, Number(limit) || 500))
     );
   }
 
