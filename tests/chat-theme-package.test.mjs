@@ -907,6 +907,78 @@ test('installed chat themes export with CSS and MediaRepository assets',async()=
   assert.equal(parsed.customCss,theme.customCss);
   assert.deepEqual(Array.from(parsed.assets['assets/photo.png'].bytes),Array.from(assetBytes));
 });
+test('legacy installed themes recover missing asset manifests from owner-scoped MediaRepository metadata',async()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  const links=[];
+  function makeNode(tag){
+    const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,hidden:false,value:'',style:{},
+      classList:{add(){},remove(){}},
+      addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      removeChild(child){this.children=this.children.filter(item=>item!==child);child.parentNode=null},
+      setAttribute(){},click(){this.clicked=true}
+    };
+    if(tag==='a')links.push(node);
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName',
+   'previewName','previewVersion','previewCss','previewList','previewDetail','previewSummary'].forEach(id=>ids[id]=makeNode('div'));
+  const fontBytes=new Uint8Array([0,1,2,3,4,5]);
+  const theme={
+    id:'legacy-installed-theme',name:'旧版已安装主题',version:'1.0.0',
+    format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat',
+    pages:{chatList:[],chatDetail:[]},styles:{chatList:{},chatDetail:{}},
+    blocks:{chatList:[],chatDetail:[]},layerOrder:{chatList:[],chatDetail:[]},motions:[],
+    assetRefs:{'assets/legacy-font.woff2':'asset-legacy-font'},customCss:'.sample{color:#111}'
+  };
+  assert.equal(Object.prototype.hasOwnProperty.call(theme,'assetIndex'),false,'测试对象应模拟旧版本已丢失 assetIndex 的已安装主题');
+  const values=new Map([['maomao_chat_theme_packages_v1',JSON.stringify([theme])]]);
+  const localStorage={getItem(key){return values.has(key)?values.get(key):null},setItem(key,value){values.set(key,String(value))},removeItem(key){values.delete(key)}};
+  const downloads=[];
+  const body=makeNode('body');
+  const document={body,querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  const calls={listByOwner:0,getBlob:0};
+  const media={
+    listByOwner(ownerType,ownerId){
+      calls.listByOwner++;
+      assert.equal(ownerType,'chat-theme-package','恢复素材时必须限制在主题包 owner 类型');
+      assert.equal(ownerId,theme.id,'恢复素材时必须限制在当前主题 ID');
+      return Promise.resolve({ok:true,value:[{assetId:'asset-legacy-font',mimeType:'font/woff2',type:'file'}]});
+    },
+    getBlob(assetId){
+      calls.getBlob++;
+      assert.equal(assetId,'asset-legacy-font','必须通过旧主题保留的 assetId 读取素材');
+      return Promise.resolve({ok:true,value:{arrayBuffer(){return Promise.resolve(fontBytes.buffer.slice(0))}}});
+    }
+  };
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    PhoneStorage:phoneStorage,MAOMAOChatThemeFormat:F,dispatchEvent(){},
+    URL:{createObjectURL(blob){downloads.push(blob);return 'blob:legacy-theme-export'},revokeObjectURL(){}}
+  };
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(script,{window:windowMock,PhoneStorage:phoneStorage,document,localStorage,CustomEvent,Blob,setTimeout(callback){callback();return 1},console});
+  const row=ids.installedList.children[0];
+  const exportButton=row.children[1].children[0];
+  exportButton.handlers.click();
+  for(let i=0;i<24;i++)await Promise.resolve();
+  assert.equal(calls.listByOwner,1,'旧版记录应只读取当前主题 owner 的素材元数据');
+  assert.equal(calls.getBlob,1,'恢复元数据后应读取对应素材二进制');
+  assert.equal(downloads.length,1,'旧版已安装主题应能成功重新导出');
+  const archive=new Uint8Array(await downloads[0].arrayBuffer());
+  const parsed=F.readPackage(F.parseStoredZip(archive));
+  assert.deepEqual(parsed.theme.assetIndex,[{
+    path:'assets/legacy-font.woff2',name:'legacy-font.woff2',mimeType:'font/woff2',type:'font'
+  }],'导出包应补回旧记录缺失的素材清单');
+  assert.deepEqual(Array.from(parsed.assets['assets/legacy-font.woff2'].bytes),Array.from(fontBytes),'导出包必须包含旧主题原来的字体二进制');
+  assert.equal(Object.prototype.hasOwnProperty.call(theme,'assetIndex'),false,'恢复过程不能修改或迁移用户已安装主题记录');
+  assert.equal(exportButton.disabled,false,'导出完成后按钮应恢复可用');
+});
 test('import preview ignores stale file reads after a newer selection or clear',async()=>{
   const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
