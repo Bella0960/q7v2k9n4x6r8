@@ -51,7 +51,7 @@
 
 1. 先部署并验收 PR #148 的云端 Worker / Durable Object 基础设施。
 2. 再合入并验收 PR #196 的真人账号、二维码与好友关系。
-3. 最后合入本 PR；首次 Worker 部署会按迁移顺序创建 `0006_friend_messages`、`0007_friend_conversation_reads`、`0008_friend_message_visibility` 与 `0009_friend_request_pair_uniqueness`；0009 会先收敛历史反向重复待处理申请，再建立按无方向好友对唯一的数据库索引。
+3. 最后合入本 PR；首次 Worker 部署会按迁移顺序创建 `0006_friend_messages`、`0007_friend_conversation_reads`、`0008_friend_message_visibility`、`0009_friend_request_pair_uniqueness` 与 `0010_friendship_generation_isolation`。0009 会先收敛历史反向重复待处理申请，再建立按无方向好友对唯一的数据库索引；0010 会为现存好友关系和消息回填代际，并清理已不存在好友关系的孤立视图状态。
 4. 用两台真实设备分别创建真人账号，互扫二维码、发送并同意好友申请。
 5. 双向发送文字，验证轮询、刷新恢复、向上翻历史、断网重试无重复；删除好友后确认访问被拒绝，再重新添加同一好友，确认旧消息、未读、隐藏和清空状态均不恢复，旧消息 ID 与旧 clientMessageId 不能跨关系重放。
 6. 真实部署与 Android PWA 验收仍需独立完成；本地契约测试或静态构建不能替代真机验收。
