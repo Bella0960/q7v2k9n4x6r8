@@ -14,6 +14,10 @@ const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const FRIEND_ACCOUNT_ID_PATTERN = /^u_[A-Za-z0-9_-]{16,48}$/;
 const FRIEND_ACCOUNT_SECRET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const FRIEND_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const FRIEND_MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const FRIEND_MESSAGE_LIMIT = 50;
+const FRIEND_MESSAGE_MAX_CHARS = 2000;
+const FRIEND_MESSAGES_PER_MINUTE = 60;
 const FRIEND_REGISTRATIONS_PER_IP_PER_HOUR = 20;
 const FRIEND_REQUESTS_PER_HOUR = 30;
 const MAX_SUBSCRIPTIONS_PER_DEVICE = 10;
@@ -373,7 +377,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       friends: friends.map(item => ({
         userId: item.friend_id,
         displayName: item.display_name || '',
-        createdAt: Number(item.created_at)
+        createdAt: Number(item.created_at),
+        generationId: item.generation_id,
+        unreadCount: Number(item.unread_count || 0)
       }))
     });
   }
@@ -413,7 +419,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(409, 'ALREADY_FRIENDS', '你们已经是好友了');
     }
     if (result.kind === 'incoming_request_exists') {
-      throw new ApiError(409, 'INCOMING_REQUEST_EXISTS', '对方已经向你发送好友申请，请先在新朋友中处理');
+      throw new ApiError(409, 'INCOMING_REQUEST_EXISTS', '对方已经向你发送好友申请，请先处理好友申请');
+    }
+    if (result.kind === 'request_conflict') {
+      throw new ApiError(409, 'FRIEND_REQUEST_CONFLICT', '好友关系刚刚发生变化，请刷新好友申请后重试');
     }
     if (result.kind === 'rate_limited') {
       throw new ApiError(429, 'FRIEND_REQUEST_RATE_LIMITED', '好友申请过于频繁，请稍后再试');
@@ -448,7 +457,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         status: updated.status,
         updatedAt: Number(updated.updated_at)
       },
-      friendshipCreated: status === 'accepted'
+      friendshipCreated: status === 'accepted' && !updated.duplicate,
+      duplicate: Boolean(updated.duplicate)
     });
   }
 
@@ -457,9 +467,288 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId)) {
       throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
     }
-    const removed = await store.removeFriendship(account.user_id, friendId);
-    return ok({ removed });
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'friendshipGenerationId') {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '删除好友操作必须携带当前好友关系代际');
+    }
+    const friendshipGenerationId = String(body.friendshipGenerationId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(friendshipGenerationId)) {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '好友关系代际凭据无效');
+    }
+    const removed = await store.removeFriendship(account.user_id, friendId, friendshipGenerationId);
+    if (removed && typeof removed === 'object' && removed.kind === 'stale_generation') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_GENERATION', '好友关系已经变化，请刷新好友列表后再操作');
+    }
+    return ok({ removed: Boolean(removed) });
   }
+
+  function friendMessageView(row) {
+    return {
+      id: row.id,
+      senderId: row.sender_id,
+      recipientId: row.recipient_id,
+      body: row.body,
+      createdAt: Number(row.created_at)
+    };
+  }
+
+  function parseFriendMessageCursor(raw) {
+    if (!raw) return null;
+    const value = String(raw);
+    const separator = value.indexOf('.');
+    if (separator <= 0) {
+      throw new ApiError(400, 'INVALID_MESSAGE_CURSOR', '消息游标格式无效');
+    }
+    const createdAt = Number(value.slice(0, separator));
+    const id = value.slice(separator + 1);
+    if (!Number.isSafeInteger(createdAt) || createdAt < 0 || !FRIEND_MESSAGE_ID_PATTERN.test(id)) {
+      throw new ApiError(400, 'INVALID_MESSAGE_CURSOR', '消息游标格式无效');
+    }
+    return { createdAt, id };
+  }
+
+  async function getFriendMessages(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    const friendshipAtStart = store.getFriendship(account.user_id, friendId);
+    if (!friendshipAtStart) {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能查看聊天记录');
+    }
+    const friend = await store.getFriendAccount(friendId);
+    if (!friend || friend.revoked_at) {
+      throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '这位好友账号暂不可用');
+    }
+    const url = new URL(request.url);
+    const afterRaw = url.searchParams.get('after');
+    const beforeRaw = url.searchParams.get('before');
+    if (afterRaw && beforeRaw) {
+      throw new ApiError(400, 'INVALID_MESSAGE_CURSOR', '不能同时使用 after 和 before 游标');
+    }
+    const after = parseFriendMessageCursor(afterRaw);
+    const before = parseFriendMessageCursor(beforeRaw);
+    const fetchedRows = await store.listFriendMessages({
+      userId: account.user_id,
+      friendId,
+      after,
+      before,
+      limit: FRIEND_MESSAGE_LIMIT + 1
+    });
+    const hasMore = fetchedRows.length > FRIEND_MESSAGE_LIMIT;
+    // An older-page query returns the nearest preceding rows in ascending order;
+    // keep the last 50. An initial page keeps the newest 50; polling keeps the
+    // first 50 newer rows so the next cursor can drain the remainder.
+    const rows = afterRaw
+      ? fetchedRows.slice(0, FRIEND_MESSAGE_LIMIT)
+      : fetchedRows.slice(-FRIEND_MESSAGE_LIMIT);
+    const first = rows.length ? rows[0] : null;
+    const last = rows.length ? rows[rows.length - 1] : null;
+    const cursorOf = row => row
+      ? String(Number(row.created_at)) + '.' + String(row.id)
+      : null;
+    const viewState = await store.getFriendConversationViewState({
+      userId: account.user_id,
+      friendId
+    });
+    const friendshipAtResponse = store.getFriendship(account.user_id, friendId);
+    if (!friendshipAtResponse || !viewState.generationId) {
+      throw new ApiError(403, 'NOT_FRIENDS', '好友关系已失效，无法继续读取聊天记录');
+    }
+    if (
+      friendshipAtResponse.generation_id !== friendshipAtStart.generation_id ||
+      viewState.generationId !== friendshipAtResponse.generation_id
+    ) {
+      // Do not pair rows selected from one friendship generation with a
+      // cursor/version from another generation during concurrent remove/re-add.
+      // This final synchronous re-check is deliberately the last store read
+      // before responding, so no await can reopen the race window.
+      throw new ApiError(409, 'FRIENDSHIP_CHANGED_RETRY', '好友关系刚刚发生变化，请重新同步聊天');
+    }
+    return ok({
+      friend: {
+        userId: friend.user_id,
+        displayName: friend.display_name || ''
+      },
+      messages: rows.map(friendMessageView),
+      nextCursor: cursorOf(last) || afterRaw || null,
+      olderCursor: cursorOf(first) || beforeRaw || null,
+      hasMore,
+      viewState
+    });
+  }
+
+  async function sendFriendMessage(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    // Preserve the established non-friend response before validating the
+    // generation token; the store repeats this check at the write boundary.
+    if (!store.getFriendship(account.user_id, friendId)) {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能发送消息');
+    }
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body).sort();
+    if (keys.length !== 3 || keys[0] !== 'body' || keys[1] !== 'clientMessageId' || keys[2] !== 'friendshipGenerationId') {
+      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '真人好友聊天目前只接受 clientMessageId、friendshipGenerationId 和纯文字 body');
+    }
+    const clientMessageId = String(body.clientMessageId || '').trim();
+    const friendshipGenerationId = String(body.friendshipGenerationId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(friendshipGenerationId)) {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '好友关系代际凭据无效，请刷新聊天页面');
+    }
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(clientMessageId)) {
+      throw new ApiError(400, 'INVALID_CLIENT_MESSAGE_ID', '消息客户端 ID 格式无效');
+    }
+    if (typeof body.body !== 'string') {
+      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '消息内容必须是文字');
+    }
+    const messageBody = body.body
+      .replace(/\r\n?/g, '\n')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+      .trim();
+    const charCount = Array.from(messageBody).length;
+    if (!charCount) throw new ApiError(400, 'EMPTY_FRIEND_MESSAGE', '不能发送空消息');
+    if (charCount > FRIEND_MESSAGE_MAX_CHARS) {
+      throw new ApiError(400, 'FRIEND_MESSAGE_TOO_LONG', '单条文字消息最多 2000 个字符');
+    }
+    const timestamp = now();
+    const result = await store.insertFriendMessage({
+      id: randomToken(16),
+      senderId: account.user_id,
+      recipientId: friendId,
+      clientMessageId,
+      friendshipGenerationId,
+      body: messageBody,
+      now: timestamp,
+      windowStart: timestamp - 60000,
+      rateLimit: FRIEND_MESSAGES_PER_MINUTE
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有已经互相同意的好友才能发送消息');
+    }
+    if (result.kind === 'friend_unavailable') {
+      throw new ApiError(404, 'FRIEND_ACCOUNT_NOT_FOUND', '这位好友账号暂不可用');
+    }
+    if (result.kind === 'rate_limited') {
+      throw new ApiError(429, 'FRIEND_MESSAGE_RATE_LIMITED', '一分钟内发送消息过多，请稍后再试');
+    }
+    if (result.kind === 'stale_generation') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_GENERATION', '好友关系已经变化，请先同步最新聊天状态，再重新发送这条消息');
+    }
+    if (result.kind === 'idempotency_conflict') {
+      throw new ApiError(409, 'MESSAGE_IDEMPOTENCY_CONFLICT', '这条消息的发送凭据已被其他内容使用，请重新发送');
+    }
+    if (result.kind === 'stale_relationship_retry') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_MESSAGE_RETRY', '这条消息属于之前的好友关系，不能在重新添加好友后重放；请作为新消息重新发送');
+    }
+    if (!result.message) {
+      throw new ApiError(500, 'FRIEND_MESSAGE_NOT_SAVED', '消息没有成功保存，请重试');
+    }
+    return ok({
+      message: friendMessageView(result.message),
+      duplicate: result.kind === 'duplicate'
+    });
+  }
+
+
+  async function markFriendMessagesRead(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'messageId') {
+      throw new ApiError(400, 'INVALID_READ_RECEIPT', '已读确认只接受 messageId');
+    }
+    const messageId = String(body.messageId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(messageId)) {
+      throw new ApiError(400, 'INVALID_READ_RECEIPT', '消息 ID 格式无效');
+    }
+    const result = await store.markFriendConversationRead({
+      userId: account.user_id,
+      friendId,
+      messageId,
+      now: now()
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有仍然有效的好友才能更新已读状态');
+    }
+    if (result.kind === 'message_not_found') {
+      throw new ApiError(404, 'FRIEND_MESSAGE_NOT_FOUND', '只能确认已收到的好友消息');
+    }
+    return ok({
+      read: {
+        friendId,
+        lastReadMessageId: result.read.last_read_message_id,
+        lastReadAt: Number(result.read.last_read_created_at),
+        updatedAt: Number(result.read.updated_at)
+      },
+      alreadyRead: result.kind === 'already_read'
+    });
+  }
+
+
+
+  async function hideFriendMessage(request, friendId, messageId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id ||
+        !FRIEND_MESSAGE_ID_PATTERN.test(messageId)) {
+      throw new ApiError(400, 'INVALID_FRIEND_MESSAGE', '好友或消息 ID 格式无效');
+    }
+    const result = await store.hideFriendMessage({
+      userId: account.user_id,
+      friendId,
+      messageId,
+      now: now()
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有仍然有效的好友才能管理聊天消息');
+    }
+    if (result.kind === 'message_not_found') {
+      throw new ApiError(404, 'FRIEND_MESSAGE_NOT_FOUND', '没有找到这条好友消息');
+    }
+    return ok({ hidden: result.kind === 'hidden', alreadyHidden: result.kind === 'already_hidden', scope: 'current_user_only' });
+  }
+
+  async function clearFriendConversation(request, friendId) {
+    const account = await authenticateFriendAccount(request);
+    if (!FRIEND_ACCOUNT_ID_PATTERN.test(friendId) || friendId === account.user_id) {
+      throw new ApiError(400, 'INVALID_FRIEND_TARGET', '好友 ID 格式无效');
+    }
+    const body = await readJsonBody(request);
+    const keys = Object.keys(body);
+    if (keys.length !== 1 || keys[0] !== 'friendshipGenerationId') {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '清空聊天必须携带当前好友关系代际');
+    }
+    const friendshipGenerationId = String(body.friendshipGenerationId || '').trim();
+    if (!FRIEND_MESSAGE_ID_PATTERN.test(friendshipGenerationId)) {
+      throw new ApiError(400, 'INVALID_FRIENDSHIP_GENERATION', '好友关系代际凭据无效');
+    }
+    const result = await store.clearFriendConversation({
+      userId: account.user_id,
+      friendId,
+      friendshipGenerationId,
+      now: now()
+    });
+    if (result.kind === 'not_friends') {
+      throw new ApiError(403, 'NOT_FRIENDS', '只有仍然有效的好友才能清理聊天记录');
+    }
+    if (result.kind === 'stale_generation') {
+      throw new ApiError(409, 'STALE_FRIENDSHIP_GENERATION', '好友关系已经变化，已阻止旧设备清空新会话');
+    }
+    return ok({
+      cleared: result.cleared,
+      empty: result.kind === 'empty',
+      alreadyCleared: result.kind === 'already_cleared',
+      clearedThrough: result.clearedThrough || null,
+      scope: 'current_user_only'
+    });
+  }
+
 
   async function registerDevice(request) {
     const body = await readJsonBody(request);
@@ -1046,6 +1335,22 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           friendRequestActionMatch[2] === 'accept' ? 'accepted' : 'rejected'
         );
       }
+      const friendReadMatch = /^\/api\/friends\/([^/]+)\/read$/.exec(path);
+      if (friendReadMatch && method === 'POST') return await markFriendMessagesRead(request, friendReadMatch[1]);
+
+      const friendMessageItemMatch = /^\/api\/friends\/([^/]+)\/messages\/([^/]+)$/.exec(path);
+      if (friendMessageItemMatch && method === 'DELETE') {
+        return await hideFriendMessage(request, friendMessageItemMatch[1], friendMessageItemMatch[2]);
+      }
+
+      const friendMessagesMatch = /^\/api\/friends\/([^/]+)\/messages$/.exec(path);
+      if (friendMessagesMatch) {
+        const friendId = friendMessagesMatch[1];
+        if (method === 'GET') return await getFriendMessages(request, friendId);
+        if (method === 'POST') return await sendFriendMessage(request, friendId);
+        if (method === 'DELETE') return await clearFriendConversation(request, friendId);
+      }
+
       const removeFriendMatch = /^\/api\/friends\/([^/]+)$/.exec(path);
       if (removeFriendMatch && method === 'DELETE') return await removeFriend(request, removeFriendMatch[1]);
 

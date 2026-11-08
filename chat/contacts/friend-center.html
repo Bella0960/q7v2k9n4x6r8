@@ -8,8 +8,8 @@
 <script src="../../shared/js/font-loader.js"></script>
 <script src="../../shared/js/native-feel.js"></script>
 <script src="../../shared/js/phone/phone_storage.js"></script>
-<script src="../../shared/js/friends-client.js?v=friend1"></script>
-<script src="../../shared/js/friend-qr.js?v=friend1"></script>
+<script src="../../shared/js/friends-client.js?v=friend8"></script>
+<script src="../../shared/js/friend-qr.js?v=friend2"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; width: 100%; min-height: 100%; background: #F7F7F9; color: #111; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; }
@@ -58,6 +58,7 @@
   .small-avatar { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #F0F0F2; color: #333; font-family: Georgia, serif; font-size: 14px; }
   .list-main { min-width: 0; flex: 1; }
   .list-name { font-size: 12px; font-weight: 650; }
+  .unread-count { display: inline-block; min-width: 17px; margin-left: 6px; padding: 2px 6px; border-radius: 9px; background: #F0F0F2; color: #444; font-size: 10px; font-weight: 650; line-height: 1.2; text-align: center; vertical-align: 1px; }
   .list-sub { margin-top: 4px; color: #999; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
   .list-actions { display: flex; gap: 6px; flex: 0 0 auto; }
   .list-actions .btn { min-height: 30px; padding: 0 9px; font-size: 10px; }
@@ -99,9 +100,9 @@
         </div>
       </div>
       <div class="qr-wrap" id="myQr" aria-label="我的好友二维码"></div>
-      <div class="qr-caption">让朋友扫描此码，向你发送好友申请</div>
+      <div class="qr-caption" id="qrCaption" role="status" aria-live="polite">正在准备本机二维码…</div>
       <div class="inline-actions">
-        <button class="btn" id="copyIdBtn" type="button" disabled>复制好友 ID</button>
+        <button class="btn" id="copyIdBtn" type="button" disabled>复制 ID</button>
         <button class="btn" id="copyQrTextBtn" type="button" disabled>复制二维码内容</button>
       </div>
     </section>
@@ -137,7 +138,7 @@
 
     <section class="panel">
       <div class="panel-head">
-        <span class="panel-title">新朋友</span>
+        <span class="panel-title">好友申请</span>
         <span class="panel-kicker" id="requestCount">0</span>
       </div>
       <div class="list" id="requestList"><div class="empty">暂无好友申请</div></div>
@@ -150,7 +151,7 @@
       </div>
       <div class="list" id="friendList"><div class="empty">你还没有真人好友</div></div>
     </section>
-    <div class="footnote">当前版本先完成账号身份、二维码与好友关系。真人聊天窗口将在下一阶段接入。</div>
+    <div class="footnote">真人好友的文字消息会在独立聊天窗口中同步；图片、语音和推送尚未接入。</div>
   </main>
 </div>
 
@@ -167,6 +168,7 @@
   var scanStream = null;
   var scanFrameId = 0;
   var scanning = false;
+  var friendsPollTimer = 0;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
@@ -185,13 +187,25 @@
     var fallback = function () {
       var input = document.createElement('textarea');
       input.value = value;
+      input.setAttribute('readonly', '');
       input.style.position = 'fixed';
+      input.style.left = '-9999px';
       input.style.opacity = '0';
       document.body.appendChild(input);
-      input.select();
-      try { document.execCommand('copy'); setStatus(successMessage); }
-      catch (error) { setStatus('复制失败，请长按文本复制', true); }
+      var copied = false;
+      try {
+        input.focus();
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        copied = document.execCommand('copy') === true;
+      } catch (error) {
+        copied = false;
+      }
       input.remove();
+      setStatus(
+        copied ? successMessage : '复制未成功，请长按好友 ID 文本手动复制。',
+        !copied
+      );
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(value).then(function () {
@@ -214,6 +228,15 @@
     renderRequests(results[1]);
   }
 
+  async function refreshListsAfterAction(successMessage) {
+    try {
+      await refreshLists();
+      setStatus(successMessage);
+    } catch (error) {
+      setStatus(successMessage + '但好友列表暂时刷新失败，请点右上角刷新重试。', true);
+    }
+  }
+
   function renderFriends(friends) {
     $('friendCount').textContent = String(friends.length);
     if (!friends.length) {
@@ -221,11 +244,15 @@
       return;
     }
     $('friendList').innerHTML = friends.map(function (friend) {
+      var unreadCount = Math.max(0, Number(friend.unreadCount || 0));
+      var unreadBadge = unreadCount > 0
+        ? '<span class="unread-count" aria-label="' + unreadCount + ' 条未读">' + (unreadCount > 99 ? '99+' : unreadCount) + '</span>'
+        : '';
       return '<div class="list-item">' +
         '<div class="small-avatar">' + escapeHtml(initials(friend.displayName)) + '</div>' +
-        '<div class="list-main"><div class="list-name">' + escapeHtml(friend.displayName || 'MAOMAO 用户') + '</div>' +
+        '<div class="list-main"><div class="list-name">' + escapeHtml(friend.displayName || 'MAOMAO 用户') + unreadBadge + '</div>' +
         '<div class="list-sub">' + escapeHtml(friend.userId) + ' · 已成为好友</div></div>' +
-        '<div class="list-actions"><button class="btn" type="button" data-remove-friend="' + escapeHtml(friend.userId) + '">删除</button></div>' +
+        '<div class="list-actions"><button class="btn primary" type="button" data-open-chat="' + escapeHtml(friend.userId) + '">聊天</button><button class="btn" type="button" data-remove-friend="' + escapeHtml(friend.userId) + '" data-remove-generation="' + escapeHtml(friend.generationId || '') + '">删除</button></div>' +
         '</div>';
     }).join('');
   }
@@ -254,7 +281,10 @@
   }
 
   async function lookupFriend(rawValue) {
-    var userId = qr.parse(rawValue);
+    var rawId = String(rawValue || '').trim();
+    var userId = qr && typeof qr.parse === 'function'
+      ? qr.parse(rawId)
+      : (rawId.indexOf('MAOMAO-F1:') === 0 ? rawId.slice('MAOMAO-F1:'.length) : rawId);
     if (!/^u_[A-Za-z0-9_-]{16,48}$/.test(userId)) {
       setStatus('好友 ID 格式不正确。可以粘贴二维码内容，或手动输入 ID。', true);
       $('targetCard').style.display = 'none';
@@ -335,31 +365,82 @@
   }
 
   async function initialize() {
-    if (!api || !qr) {
+    if (!api || typeof api.getLocalAccountId !== 'function') {
       setStatus('真人好友模块加载失败，请刷新页面。', true);
+      $('qrCaption').textContent = '账号模块暂不可用';
       return;
     }
+
+    var localProfile = window.PhoneStorage ? (window.PhoneStorage.getMyProfile() || {}) : {};
+    var displayName = localProfile.nickname || localProfile.displayName || localProfile.name || 'MAOMAO 用户';
+    var localUserId = '';
     try {
-      var localProfile = window.PhoneStorage ? (window.PhoneStorage.getMyProfile() || {}) : {};
-      var displayName = localProfile.nickname || localProfile.displayName || localProfile.name || 'MAOMAO 用户';
+      localUserId = api.getLocalAccountId();
+      $('myName').textContent = displayName;
+      $('myAvatar').textContent = initials(displayName);
+      $('myId').textContent = '好友 ID：' + localUserId;
+    } catch (accountError) {
+      $('qrCaption').textContent = '本机账号暂不可用，请重新打开页面';
+      setStatus(accountError.message || '无法读取本机好友 ID', true);
+      return;
+    }
+
+    // Copying the local ID must not wait for the cloud handshake. It remains
+    // useful as a manual fallback in the add-friend input above.
+    $('copyIdBtn').disabled = false;
+    $('copyIdBtn').addEventListener('click', function () {
+      copyText(
+        localUserId,
+        myAccount
+          ? '好友 ID 已复制'
+          : '好友 ID 已复制；当前账号尚未连接云端，暂时无法被查找'
+      );
+    });
+
+    try {
+      if (!qr || typeof qr.toSvg !== 'function') throw new Error('二维码绘制模块未加载');
+      $('myQr').innerHTML = qr.toSvg(localUserId);
+      $('qrCaption').textContent = '正在连接云端账号，连接成功后即可分享';
+    } catch (qrError) {
+      $('myQr').innerHTML = '';
+      $('qrCaption').textContent = '二维码暂时无法显示，可以先复制下方 ID';
+      setStatus(qrError.message || '二维码生成失败', true);
+    }
+
+    try {
       myAccount = await api.ensureAccount(displayName);
       $('myName').textContent = myAccount.displayName || displayName;
       $('myAvatar').textContent = initials(myAccount.displayName || displayName);
       $('myId').textContent = '好友 ID：' + myAccount.userId;
-      $('myQr').innerHTML = qr.toSvg(myAccount.userId);
-      $('copyIdBtn').disabled = false;
-      $('copyQrTextBtn').disabled = false;
-      $('copyIdBtn').addEventListener('click', function () {
-        copyText(myAccount.userId, '好友 ID 已复制');
-      });
-      $('copyQrTextBtn').addEventListener('click', function () {
-        copyText(qr.prefix + myAccount.userId, '二维码内容已复制');
-      });
+      if (qr && typeof qr.toSvg === 'function' && typeof qr.prefix === 'string') {
+        $('copyQrTextBtn').disabled = false;
+        $('copyQrTextBtn').addEventListener('click', function () {
+          copyText(qr.prefix + myAccount.userId, '二维码内容已复制');
+        });
+        $('qrCaption').textContent = '让朋友扫描此码，向你发送好友申请';
+        if (!$('myQr').innerHTML) $('myQr').innerHTML = qr.toSvg(myAccount.userId);
+      } else {
+        $('copyQrTextBtn').disabled = true;
+        $('qrCaption').textContent = '账号已连接；二维码模块暂不可用，可以复制好友 ID 添加';
+      }
+    } catch (error) {
+      $('qrCaption').textContent = '云端账号尚未连接，二维码暂不可用于添加好友；你仍可复制 ID，连接成功后再分享';
+      setStatus((error.message || '真人好友服务连接失败') + '。', true);
+      return;
+    }
+
+    // Account registration and list loading are separate failure domains:
+    // a temporary list endpoint error must not invalidate a registered QR.
+    try {
       await refreshLists();
       setStatus('真人好友账号已连接。把二维码分享给朋友即可互相添加。');
     } catch (error) {
-      setStatus((error.message || '真人好友服务连接失败') + '。云端服务尚未部署或暂不可用时，好友数据不会假装保存成功。', true);
+      setStatus('账号已连接，但好友列表暂时刷新失败。可以点右上角刷新重试。', true);
     }
+    friendsPollTimer = window.setInterval(function () {
+      if (document.hidden) return;
+      refreshLists().catch(function () {});
+    }, 12000);
   }
 
   $('backBtn').addEventListener('click', function () {
@@ -382,10 +463,12 @@
     $('sendRequestBtn').disabled = true;
     try {
       var result = await api.sendRequest(selectedTarget.userId, '');
-      setStatus(result.duplicate ? '这条好友申请已经发送过了。' : '好友申请已发送，等待对方同意。');
+      var successMessage = result.duplicate
+        ? '这条好友申请已经发送过了。'
+        : '好友申请已发送，等待对方同意。';
       $('targetCard').style.display = 'none';
       selectedTarget = null;
-      await refreshLists();
+      await refreshListsAfterAction(successMessage);
     } catch (error) {
       setStatus(error.message || '好友申请发送失败', true);
     } finally {
@@ -401,28 +484,41 @@
     try {
       if (accept) await api.acceptRequest(accept.getAttribute('data-accept-request'));
       else await api.rejectRequest(reject.getAttribute('data-reject-request'));
-      await refreshLists();
-      setStatus(accept ? '已同意好友申请。' : '已拒绝好友申请。');
+      await refreshListsAfterAction(accept ? '已同意好友申请。' : '已拒绝好友申请。');
     } catch (error) {
       setStatus(error.message || '处理好友申请失败', true);
       button.disabled = false;
     }
   });
   $('friendList').addEventListener('click', async function (event) {
+    var openChat = event.target.closest('[data-open-chat]');
+    if (openChat) {
+      var chatFriendId = openChat.getAttribute('data-open-chat');
+      if (chatFriendId) {
+        window.location.href = 'friend-chat.html?friendId=' + encodeURIComponent(chatFriendId);
+      }
+      return;
+    }
     var remove = event.target.closest('[data-remove-friend]');
     if (!remove) return;
     if (!window.confirm('确定删除这位好友吗？')) return;
     remove.disabled = true;
     try {
-      await api.removeFriend(remove.getAttribute('data-remove-friend'));
-      await refreshLists();
-      setStatus('好友已删除。');
+      await api.removeFriend(remove.getAttribute('data-remove-friend'), remove.getAttribute('data-remove-generation'));
+      await refreshListsAfterAction('好友已删除。');
     } catch (error) {
-      setStatus(error.message || '删除好友失败', true);
-      remove.disabled = false;
+      if (error && error.code === 'STALE_FRIENDSHIP_GENERATION') {
+        await refreshListsAfterAction('好友关系已经变化，已刷新好友列表。请确认当前关系后再操作。');
+      } else {
+        setStatus(error.message || '删除好友失败', true);
+        remove.disabled = false;
+      }
     }
   });
-  window.addEventListener('pagehide', stopScan);
+  window.addEventListener('pagehide', function () {
+    stopScan();
+    if (friendsPollTimer) window.clearInterval(friendsPollTimer);
+  });
   initialize();
 })();
 </script>

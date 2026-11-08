@@ -65,7 +65,7 @@
     return String(value || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 24);
   }
 
-  async function ensureAccount(displayName) {
+  function getOrCreateLocalAccount() {
     var account = readAccount();
     if (!account) {
       account = {
@@ -73,10 +73,19 @@
         secret: randomBase64Url(32),
         createdAt: Date.now()
       };
-      // Save the random credential before the network call. A retry after a
-      // network interruption must reuse this same account identity.
+      // Persist the local credential before any network call. A retry must
+      // reuse this same identity even when the Worker is temporarily offline.
       writeAccount(account);
     }
+    return account;
+  }
+
+  function getLocalAccountId() {
+    return getOrCreateLocalAccount().userId;
+  }
+
+  async function ensureAccount(displayName) {
+    var account = getOrCreateLocalAccount();
     var name = normalizeName(displayName) || 'MAOMAO 用户';
     var payload = await requestJson('/api/accounts/register', {
       account: false,
@@ -122,12 +131,73 @@
     return requestJson('/api/friend-requests/' + encodeURIComponent(requestId) + '/reject', { method: 'POST', body: {} });
   }
 
-  function removeFriend(userId) {
-    return requestJson('/api/friends/' + encodeURIComponent(userId), { method: 'DELETE' });
+  function removeFriend(userId, friendshipGenerationId) {
+    return requestJson('/api/friends/' + encodeURIComponent(userId), {
+      method: 'DELETE',
+      body: { friendshipGenerationId: String(friendshipGenerationId || '').trim() }
+    });
+  }
+
+  function createMessageId() {
+    return randomBase64Url(18);
+  }
+
+  function getMessages(friendId, cursor, direction) {
+    var path = '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages';
+    if (cursor) {
+      var key = direction === 'before' ? 'before' : 'after';
+      path += '?' + key + '=' + encodeURIComponent(String(cursor));
+    }
+    return requestJson(path);
+  }
+
+  function sendMessage(friendId, body, clientMessageId, friendshipGenerationId) {
+    var id = String(clientMessageId || createMessageId()).trim();
+    var generationId = String(friendshipGenerationId || '').trim();
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages',
+      {
+        method: 'POST',
+        body: {
+          clientMessageId: id,
+          friendshipGenerationId: generationId,
+          body: String(body == null ? '' : body)
+        }
+      }
+    );
+  }
+
+  function markRead(friendId, messageId) {
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/read',
+      {
+        method: 'POST',
+        body: { messageId: String(messageId || '').trim() }
+      }
+    );
+  }
+
+  function hideMessage(friendId, messageId) {
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) +
+        '/messages/' + encodeURIComponent(String(messageId || '').trim()),
+      { method: 'DELETE' }
+    );
+  }
+
+  function clearMessages(friendId, friendshipGenerationId) {
+    return requestJson(
+      '/api/friends/' + encodeURIComponent(String(friendId || '').trim()) + '/messages',
+      {
+        method: 'DELETE',
+        body: { friendshipGenerationId: String(friendshipGenerationId || '').trim() }
+      }
+    );
   }
 
   global.MaomaoFriends = {
     ensureAccount: ensureAccount,
+    getLocalAccountId: getLocalAccountId,
     getMe: getMe,
     updateProfile: updateProfile,
     getProfile: getProfile,
@@ -137,6 +207,12 @@
     acceptRequest: acceptRequest,
     rejectRequest: rejectRequest,
     removeFriend: removeFriend,
+    createMessageId: createMessageId,
+    getMessages: getMessages,
+    sendMessage: sendMessage,
+    markRead: markRead,
+    hideMessage: hideMessage,
+    clearMessages: clearMessages,
     _readAccount: readAccount
   };
 })(typeof window !== 'undefined' ? window : self);

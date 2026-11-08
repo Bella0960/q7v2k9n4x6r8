@@ -8,7 +8,12 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v173'/);
+const sharedNavigation = read('shared/js/nav.js');
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v181'/);
+assert.match(serviceWorker, /friend-chat\.html/);
+assert.match(serviceWorker, /friend-center\.html/);
+assert.match(sharedNavigation, /SKIP_PAGES\s*=\s*\[[^\]]*friend-center\.html/);
+assert.match(serviceWorker, /friends-client\.js\?v=friend8/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {

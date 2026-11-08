@@ -70,7 +70,8 @@ export class CloudDatabase {
     this.ctx = ctx;
     this.env = env;
     this.exec = (sql, ...params) => ctx.storage.sql.exec(sql, ...params).toArray();
-    const store = createStore(this.exec);
+    const transaction = operation => ctx.storage.transactionSync(operation);
+    const store = createStore(this.exec, transaction);
     this.store = store;
     this.handleApi = createApp({ store, env });
     ctx.blockConcurrencyWhile(async () => {

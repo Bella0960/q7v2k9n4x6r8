@@ -4,7 +4,7 @@
     var navScript = document.currentScript;
     var appBase = navScript ? new URL('../../', navScript.src).pathname : '/';
     // 不注入导航的页面（手机桌面、聊天详情、设置页、编辑资料、记忆空间、角色管理）
-    var SKIP_PAGES = ['index.html', 'chat-detail.html', 'settings.html', 'edit-profile.html', 'memory.html', 'characters.html', 'games/games.html', 'cafe/cafe.html', 'shake.html'];
+    var SKIP_PAGES = ['index.html', 'chat-detail.html', 'friend-center.html', 'settings.html', 'edit-profile.html', 'memory.html', 'characters.html', 'games/games.html', 'cafe/cafe.html', 'shake.html'];
     var path = location.pathname.toLowerCase();
     // 咖啡馆是独立经营界面：无论通过 cafe/cafe.html、目录路由或带部署前缀访问，
     // 都不应出现聊天模块的悬浮底部导航。

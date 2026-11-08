@@ -28,6 +28,15 @@ function auth(account) {
 }
 
 function asAccount(ctx, account, path, options = {}) {
+  const parts = String(path || '').split('/');
+  const target = options.method === 'DELETE' && parts.length === 4 &&
+    parts[1] === 'api' && parts[2] === 'friends' ? parts[3] : '';
+  if (target && !options.body) {
+    const friendship = ctx.store.getFriendship(account.userId, target);
+    if (friendship) {
+      options = { ...options, body: { friendshipGenerationId: friendship.generation_id } };
+    }
+  }
   return ctx.asJson(path, {
     ...options,
     headers: { ...auth(account), ...(options.headers || {}) }
@@ -111,6 +120,13 @@ test('好友申请必须由接收方同意，支持重复提交、拒绝、删�
   assert.equal(duplicate.payload.duplicate, true);
   assert.equal(duplicate.payload.request.id, requestId);
 
+  const reverseDuplicate = await asAccount(ctx, bob, '/api/friend-requests', {
+    method: 'POST',
+    body: { targetUserId: alice.userId }
+  });
+  assert.equal(reverseDuplicate.status, 409);
+  assert.equal(reverseDuplicate.payload.error.code, 'INCOMING_REQUEST_EXISTS');
+
   const bobInbox = await asAccount(ctx, bob, '/api/friend-requests');
   assert.equal(bobInbox.status, 200);
   assert.equal(bobInbox.payload.requests.length, 1);
@@ -136,6 +152,22 @@ test('好友申请必须由接收方同意，支持重复提交、拒绝、删�
   assert.equal(accepted.status, 200);
   assert.equal(accepted.payload.request.status, 'accepted');
   assert.equal(accepted.payload.friendshipCreated, true);
+  assert.equal(accepted.payload.duplicate, false);
+
+  const acceptedRetry = await asAccount(ctx, bob, '/api/friend-requests/' + requestId + '/accept', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(acceptedRetry.status, 200);
+  assert.equal(acceptedRetry.payload.request.status, 'accepted');
+  assert.equal(acceptedRetry.payload.duplicate, true);
+  assert.equal(acceptedRetry.payload.friendshipCreated, false);
+
+  const rejectAfterAccept = await asAccount(ctx, bob, '/api/friend-requests/' + requestId + '/reject', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(rejectAfterAccept.status, 404);
 
   const aliceFriends = await asAccount(ctx, alice, '/api/friends');
   const bobFriends = await asAccount(ctx, bob, '/api/friends');
@@ -154,6 +186,15 @@ test('好友申请必须由接收方同意，支持重复提交、拒绝、删�
   assert.equal(removed.payload.removed, true);
   assert.equal((await asAccount(ctx, bob, '/api/friends')).payload.friends.length, 0);
 
+  // A delayed retry of the old acceptance must not recreate a later-deleted friendship.
+  const staleAcceptedRetry = await asAccount(ctx, bob, '/api/friend-requests/' + requestId + '/accept', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(staleAcceptedRetry.status, 200);
+  assert.equal(staleAcceptedRetry.payload.duplicate, true);
+  assert.equal((await asAccount(ctx, bob, '/api/friends')).payload.friends.length, 0);
+
   const carolRequest = await asAccount(ctx, carol, '/api/friend-requests', {
     method: 'POST',
     body: { targetUserId: bob.userId }
@@ -169,6 +210,57 @@ test('好友申请必须由接收方同意，支持重复提交、拒绝、删�
   });
   assert.equal(rejected.status, 200);
   assert.equal(rejected.payload.request.status, 'rejected');
+  assert.equal(rejected.payload.duplicate, false);
+  const rejectedRetry = await asAccount(ctx, bob, '/api/friend-requests/' + incomingCarol.id + '/reject', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(rejectedRetry.status, 200);
+  assert.equal(rejectedRetry.payload.duplicate, true);
+  const acceptAfterReject = await asAccount(ctx, bob, '/api/friend-requests/' + incomingCarol.id + '/accept', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(acceptAfterReject.status, 404);
   assert.equal((await asAccount(ctx, bob, '/api/friends')).payload.friends.length, 0);
   assert.equal((await asAccount(ctx, carol, '/api/friends')).payload.friends.length, 0);
+});
+
+
+test('双方同时发起好友申请时只保留一条待处理关系', async () => {
+  const ctx = setupTestStore(openTestDb());
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  assert.equal((await register(ctx, alice, '198.51.100.81')).status, 200);
+  assert.equal((await register(ctx, bob, '198.51.100.82')).status, 200);
+
+  const results = await Promise.all([
+    asAccount(ctx, alice, '/api/friend-requests', {
+      method: 'POST',
+      body: { targetUserId: bob.userId }
+    }),
+    asAccount(ctx, bob, '/api/friend-requests', {
+      method: 'POST',
+      body: { targetUserId: alice.userId }
+    })
+  ]);
+
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  const conflict = results.find(result => result.status === 409);
+  assert.equal(conflict.payload.error.code, 'INCOMING_REQUEST_EXISTS');
+
+  const pending = ctx.query(
+    `SELECT requester_id, recipient_id
+     FROM friend_requests
+     WHERE status = 'pending'
+       AND (
+         (requester_id = ? AND recipient_id = ?)
+         OR (requester_id = ? AND recipient_id = ?)
+       )`,
+    alice.userId,
+    bob.userId,
+    bob.userId,
+    alice.userId
+  );
+  assert.equal(pending.length, 1);
 });

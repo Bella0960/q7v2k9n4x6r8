@@ -5,13 +5,28 @@
  * 这样迁移与查询都能跑真实 SQL，而不是被 mock 掉。
  */
 
-export function createStore(exec) {
-  return new CloudStore(exec);
+export function createStore(exec, transaction = null) {
+  return new CloudStore(exec, transaction);
 }
 
 class CloudStore {
-  constructor(exec) {
+  constructor(exec, transaction = null) {
     this.exec = exec;
+    this.transaction = typeof transaction === 'function' ? transaction : null;
+  }
+
+  atomic(operation) {
+    if (typeof operation !== 'function') {
+      throw new TypeError('CloudStore.atomic requires a synchronous operation');
+    }
+    const run = () => {
+      const result = operation();
+      if (result && typeof result.then === 'function') {
+        throw new TypeError('CloudStore.atomic operations must be synchronous');
+      }
+      return result;
+    };
+    return this.transaction ? this.transaction(run) : run();
   }
 
   getDevice(deviceId) {
@@ -1079,52 +1094,81 @@ class CloudStore {
   }
 
   createFriendRequest(request) {
-    if (this.getFriendship(request.requesterId, request.recipientId)) {
-      return { kind: 'already_friends', request: null };
-    }
-
-    const outgoing = this.exec(
-      `SELECT * FROM friend_requests
-       WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
-       ORDER BY created_at DESC LIMIT 1`,
-      request.requesterId,
-      request.recipientId
-    )[0];
-    if (outgoing) return { kind: 'pending', request: outgoing };
-
-    const incoming = this.exec(
-      `SELECT * FROM friend_requests
-       WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
-       ORDER BY created_at DESC LIMIT 1`,
-      request.recipientId,
-      request.requesterId
-    )[0];
-    if (incoming) return { kind: 'incoming_request_exists', request: incoming };
-
-    if (Number.isFinite(Number(request.limit)) && Number.isFinite(Number(request.windowStart))) {
-      const recent = this.exec(
-        'SELECT COUNT(*) AS total FROM friend_requests WHERE requester_id = ? AND created_at >= ?',
-        request.requesterId,
-        request.windowStart
-      )[0];
-      if (Number(recent?.total || 0) >= Number(request.limit)) {
-        return { kind: 'rate_limited', request: null };
+    return this.atomic(() => {
+      if (this.getFriendship(request.requesterId, request.recipientId)) {
+        return { kind: 'already_friends', request: null };
       }
-    }
 
-    const inserted = this.exec(
-      `INSERT INTO friend_requests
-        (id, requester_id, recipient_id, message, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'pending', ?, ?)
-       RETURNING *`,
-      request.id,
-      request.requesterId,
-      request.recipientId,
-      request.message || '',
-      request.now,
-      request.now
-    )[0];
-    return { kind: 'created', request: inserted || null };
+      const outgoing = this.exec(
+        `SELECT * FROM friend_requests
+         WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+         ORDER BY created_at DESC LIMIT 1`,
+        request.requesterId,
+        request.recipientId
+      )[0];
+      if (outgoing) return { kind: 'pending', request: outgoing };
+
+      const incoming = this.exec(
+        `SELECT * FROM friend_requests
+         WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+         ORDER BY created_at DESC LIMIT 1`,
+        request.recipientId,
+        request.requesterId
+      )[0];
+      if (incoming) return { kind: 'incoming_request_exists', request: incoming };
+
+      if (Number.isFinite(Number(request.limit)) && Number.isFinite(Number(request.windowStart))) {
+        const recent = this.exec(
+          'SELECT COUNT(*) AS total FROM friend_requests WHERE requester_id = ? AND created_at >= ?',
+          request.requesterId,
+          request.windowStart
+        )[0];
+        if (Number(recent?.total || 0) >= Number(request.limit)) {
+          return { kind: 'rate_limited', request: null };
+        }
+      }
+
+      // The unordered-pair unique index is the final guard against opposite-
+      // direction pending requests. Resolve a conflict to the current relationship
+      // state instead of returning a generic database error.
+      const inserted = this.exec(
+        `INSERT INTO friend_requests
+          (id, requester_id, recipient_id, message, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?)
+         ON CONFLICT DO NOTHING
+         RETURNING *`,
+        request.id,
+        request.requesterId,
+        request.recipientId,
+        request.message || '',
+        request.now,
+        request.now
+      )[0];
+      if (inserted) return { kind: 'created', request: inserted };
+
+      if (this.getFriendship(request.requesterId, request.recipientId)) {
+        return { kind: 'already_friends', request: null };
+      }
+      const currentOutgoing = this.exec(
+        `SELECT * FROM friend_requests
+         WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+         ORDER BY created_at DESC LIMIT 1`,
+        request.requesterId,
+        request.recipientId
+      )[0];
+      if (currentOutgoing) return { kind: 'pending', request: currentOutgoing };
+
+      const currentIncoming = this.exec(
+        `SELECT * FROM friend_requests
+         WHERE requester_id = ? AND recipient_id = ? AND status = 'pending'
+         ORDER BY created_at DESC LIMIT 1`,
+        request.recipientId,
+        request.requesterId
+      )[0];
+      if (currentIncoming) return { kind: 'incoming_request_exists', request: currentIncoming };
+
+      return { kind: 'request_conflict', request: null };
+    });
   }
 
   listFriendRequests(userId) {
@@ -1144,38 +1188,50 @@ class CloudStore {
   }
 
   respondToFriendRequest({ requestId, userId, status, now }) {
-    const request = this.exec(
-      `SELECT * FROM friend_requests
-       WHERE id = ? AND recipient_id = ? AND status = 'pending'`,
-      requestId,
-      userId
-    )[0];
-    if (!request) return null;
+    return this.atomic(() => {
+      const request = this.exec(
+        `SELECT * FROM friend_requests
+         WHERE id = ? AND recipient_id = ?`,
+        requestId,
+        userId
+      )[0];
+      if (!request) return null;
 
-    const updated = this.exec(
-      `UPDATE friend_requests
-       SET status = ?, updated_at = ?
-       WHERE id = ? AND recipient_id = ? AND status = 'pending'
-       RETURNING *`,
-      status,
-      now,
-      requestId,
-      userId
-    )[0];
-    if (!updated) return null;
+      // Repeating the same completed action is safe after a lost response or
+      // from a second device. A conflicting action (accept after reject, or
+      // reject after accept) remains a real conflict and cannot change state.
+      if (request.status !== 'pending') {
+        return request.status === status
+          ? { ...request, duplicate: true }
+          : null;
+      }
 
-    if (status === 'accepted') {
-      const [low, high] = [request.requester_id, request.recipient_id].sort();
-      this.exec(
-        `INSERT INTO friendships (user_low_id, user_high_id, created_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
-        low,
-        high,
-        now
-      );
-    }
-    return updated;
+      const updated = this.exec(
+        `UPDATE friend_requests
+         SET status = ?, updated_at = ?
+         WHERE id = ? AND recipient_id = ? AND status = 'pending'
+         RETURNING *`,
+        status,
+        now,
+        requestId,
+        userId
+      )[0];
+      if (!updated) return null;
+
+      if (status === 'accepted') {
+        const [low, high] = [request.requester_id, request.recipient_id].sort();
+        this.exec(
+          `INSERT INTO friendships (user_low_id, user_high_id, created_at, generation_id)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(user_low_id, user_high_id) DO NOTHING`,
+          low,
+          high,
+          now,
+          request.id
+        );
+      }
+      return { ...updated, duplicate: false };
+    });
   }
 
   listFriends(userId) {
@@ -1183,7 +1239,38 @@ class CloudStore {
       `SELECT
          CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END AS friend_id,
          a.display_name AS display_name,
-         f.created_at AS created_at
+         f.created_at AS created_at,
+         f.generation_id AS generation_id,
+         (
+           SELECT COUNT(*)
+           FROM friend_messages m
+           LEFT JOIN friend_conversation_reads r
+             ON r.user_id = ? AND r.friend_id =
+               CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+           LEFT JOIN friend_conversation_clears c
+             ON c.user_id = ? AND c.friend_id =
+               CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+           WHERE m.generation_id = f.generation_id
+             AND m.sender_id =
+                 CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+             AND m.recipient_id = ?
+             AND NOT EXISTS (
+               SELECT 1 FROM friend_message_hides h
+               WHERE h.user_id = ?
+                 AND h.friend_id = CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
+                 AND h.message_id = m.id
+             )
+             AND (
+               r.last_read_created_at IS NULL
+               OR m.created_at > r.last_read_created_at
+               OR (m.created_at = r.last_read_created_at AND m.id > r.last_read_message_id)
+             )
+             AND (
+               c.clear_before_created_at IS NULL
+               OR m.created_at > c.clear_before_created_at
+               OR (m.created_at = c.clear_before_created_at AND m.id > c.clear_before_message_id)
+             )
+         ) AS unread_count
        FROM friendships f
        INNER JOIN friend_accounts a
          ON a.user_id = CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END
@@ -1193,18 +1280,379 @@ class CloudStore {
       userId,
       userId,
       userId,
+      userId,
+      userId,
+      userId,
+      userId,
+      userId,
+      userId,
+      userId,
+      userId,
       userId
     );
   }
 
-  removeFriendship(userId, otherUserId) {
-    const [low, high] = [String(userId), String(otherUserId)].sort();
+  getFriendMessageByClientId(senderId, clientMessageId) {
+    return this.exec(
+      'SELECT * FROM friend_messages WHERE sender_id = ? AND client_message_id = ?',
+      senderId,
+      clientMessageId
+    )[0] || null;
+  }
+
+  insertFriendMessage(message) {
+    return this.atomic(() => {
+      // The sender must prove which friendship generation the request belongs to.
+      // Checking only the live pair is insufficient: an in-flight request may
+      // authenticate before removal and reach this write after the pair is re-added.
+      const friendship = this.getFriendship(message.senderId, message.recipientId);
+      if (!friendship) return { kind: 'not_friends', message: null };
+      if (message.friendshipGenerationId !== friendship.generation_id) {
+        return { kind: 'stale_generation', message: null };
+      }
+      const recipient = this.exec(
+        'SELECT user_id FROM friend_accounts WHERE user_id = ? AND revoked_at IS NULL',
+        message.recipientId
+      )[0];
+      if (!recipient) return { kind: 'friend_unavailable', message: null };
+
+      const existing = this.getFriendMessageByClientId(message.senderId, message.clientMessageId);
+      if (existing) {
+        if (existing.generation_id !== friendship.generation_id) {
+          return { kind: 'stale_relationship_retry', message: null };
+        }
+        const sameRequest = existing.recipient_id === message.recipientId &&
+          existing.body === message.body;
+        return { kind: sameRequest ? 'duplicate' : 'idempotency_conflict', message: existing };
+      }
+
+      const recent = this.exec(
+        'SELECT COUNT(*) AS total FROM friend_messages WHERE sender_id = ? AND generation_id = ? AND created_at >= ?',
+        message.senderId,
+        friendship.generation_id,
+        message.windowStart
+      )[0];
+      if (Number(recent?.total || 0) >= Number(message.rateLimit || 60)) {
+        return { kind: 'rate_limited', message: null };
+      }
+
+      // Give every message in one conversation a strictly increasing server
+      // timestamp. Two devices can send within the same millisecond; a monotonic
+      // cursor prevents the second message from falling behind an already-read ID.
+      const latest = this.exec(
+        `SELECT MAX(created_at) AS latest_created_at
+         FROM friend_messages
+         WHERE generation_id = ?
+           AND ((sender_id = ? AND recipient_id = ?)
+            OR (sender_id = ? AND recipient_id = ?))`,
+        friendship.generation_id,
+        message.senderId,
+        message.recipientId,
+        message.recipientId,
+        message.senderId
+      )[0] || {};
+      const createdAt = Math.max(
+        Number(message.now) || Date.now(),
+        Number(latest.latest_created_at || 0) + 1
+      );
+      const inserted = this.exec(
+        `INSERT INTO friend_messages
+          (id, sender_id, recipient_id, client_message_id, body, created_at, generation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         RETURNING *`,
+        message.id,
+        message.senderId,
+        message.recipientId,
+        message.clientMessageId,
+        message.body,
+        createdAt,
+        friendship.generation_id
+      )[0];
+      return { kind: 'created', message: inserted || null };
+    });
+  }
+
+  listFriendMessages({ userId, friendId, after = null, before = null, limit = 50 } = {}) {
+    const friendship = this.getFriendship(userId, friendId);
+    if (!friendship) return [];
+    const safeLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 50));
+    const pairFilter = `((m.sender_id = ? AND m.recipient_id = ?) OR
+                          (m.sender_id = ? AND m.recipient_id = ?))`;
+    const visibilityJoin = `LEFT JOIN friend_conversation_clears c
+      ON c.user_id = ? AND c.friend_id = ?`;
+    const visibilityFilter = `
+      AND m.generation_id = ?
+      AND (
+        c.clear_before_created_at IS NULL
+        OR m.created_at > c.clear_before_created_at
+        OR (m.created_at = c.clear_before_created_at AND m.id > c.clear_before_message_id)
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM friend_message_hides h
+        WHERE h.user_id = ? AND h.friend_id = ? AND h.message_id = m.id
+      )`;
+    const baseParams = [userId, friendId, userId, friendId, friendId, userId, friendship.generation_id, userId, friendId];
+
+    if (before && Number.isSafeInteger(before.createdAt) && before.createdAt >= 0 &&
+        typeof before.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(before.id)) {
+      const rows = this.exec(
+        `SELECT m.id, m.sender_id, m.recipient_id, m.body, m.created_at
+         FROM friend_messages m
+         ${visibilityJoin}
+         WHERE ${pairFilter}
+         ${visibilityFilter}
+           AND (m.created_at < ? OR (m.created_at = ? AND m.id < ?))
+         ORDER BY m.created_at DESC, m.id DESC
+         LIMIT ?`,
+        ...baseParams,
+        before.createdAt,
+        before.createdAt,
+        before.id,
+        safeLimit
+      );
+      return rows.reverse();
+    }
+
+    if (after && Number.isSafeInteger(after.createdAt) && after.createdAt >= 0 &&
+        typeof after.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(after.id)) {
+      return this.exec(
+        `SELECT m.id, m.sender_id, m.recipient_id, m.body, m.created_at
+         FROM friend_messages m
+         ${visibilityJoin}
+         WHERE ${pairFilter}
+         ${visibilityFilter}
+           AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
+         ORDER BY m.created_at ASC, m.id ASC
+         LIMIT ?`,
+        ...baseParams,
+        after.createdAt,
+        after.createdAt,
+        after.id,
+        safeLimit
+      );
+    }
+
     const rows = this.exec(
-      'DELETE FROM friendships WHERE user_low_id = ? AND user_high_id = ? RETURNING user_low_id',
-      low,
-      high
+      `SELECT m.id, m.sender_id, m.recipient_id, m.body, m.created_at
+       FROM friend_messages m
+       ${visibilityJoin}
+       WHERE ${pairFilter}
+       ${visibilityFilter}
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT ?`,
+      ...baseParams,
+      safeLimit
     );
-    return rows.length > 0;
+    return rows.reverse();
+  }
+
+
+  getFriendConversationViewState({ userId, friendId }) {
+    const friendship = this.getFriendship(userId, friendId);
+    const generationId = friendship?.generation_id || '';
+    const clear = this.exec(
+      `SELECT clear_before_created_at, clear_before_message_id, updated_at
+       FROM friend_conversation_clears
+       WHERE user_id = ? AND friend_id = ?`,
+      userId,
+      friendId
+    )[0] || {};
+    const hidden = this.exec(
+      `SELECT COUNT(*) AS total, COALESCE(MAX(hidden_at), 0) AS latest_hidden_at
+       FROM friend_message_hides
+       WHERE user_id = ? AND friend_id = ?`,
+      userId,
+      friendId
+    )[0] || {};
+    const clearAt = Number(clear.clear_before_created_at || 0);
+    const clearId = String(clear.clear_before_message_id || '');
+    const clearUpdatedAt = Number(clear.updated_at || 0);
+    const hiddenCount = Number(hidden.total || 0);
+    const latestHiddenAt = Number(hidden.latest_hidden_at || 0);
+    return {
+      // Include the relationship generation so an already-open chat page can
+      // reset its old cursor after the same friend is removed and re-added.
+      generationId,
+      version: [generationId, clearUpdatedAt, clearAt, clearId, hiddenCount, latestHiddenAt].join(':'),
+      clearedThrough: clearAt && clearId
+        ? { createdAt: clearAt, messageId: clearId }
+        : null
+    };
+  }
+
+  hideFriendMessage({ userId, friendId, messageId, now }) {
+    return this.atomic(() => {
+      const friendship = this.getFriendship(userId, friendId);
+      if (!friendship) return { kind: 'not_friends' };
+      const message = this.exec(
+        `SELECT id FROM friend_messages
+         WHERE id = ? AND generation_id = ? AND (
+           (sender_id = ? AND recipient_id = ?)
+           OR (sender_id = ? AND recipient_id = ?)
+         )`,
+        messageId,
+        friendship.generation_id,
+        userId,
+        friendId,
+        friendId,
+        userId
+      )[0];
+      if (!message) return { kind: 'message_not_found' };
+      const inserted = this.exec(
+        `INSERT INTO friend_message_hides (user_id, friend_id, message_id, hidden_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, message_id) DO NOTHING
+         RETURNING message_id`,
+        userId,
+        friendId,
+        messageId,
+        now
+      )[0];
+      return { kind: inserted ? 'hidden' : 'already_hidden' };
+    });
+  }
+
+  clearFriendConversation({ userId, friendId, friendshipGenerationId, now }) {
+    return this.atomic(() => {
+      const friendship = this.getFriendship(userId, friendId);
+      if (!friendship) return { kind: 'not_friends', cleared: false };
+      if (friendship.generation_id !== friendshipGenerationId) {
+        return { kind: 'stale_generation', cleared: false };
+      }
+      const latest = this.exec(
+        `SELECT id, created_at
+         FROM friend_messages
+         WHERE generation_id = ?
+           AND ((sender_id = ? AND recipient_id = ?)
+            OR (sender_id = ? AND recipient_id = ?))
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1`,
+        friendship.generation_id,
+        userId,
+        friendId,
+        friendId,
+        userId
+      )[0];
+      if (!latest) return { kind: 'empty', cleared: false, clearedThrough: null };
+
+      const updated = this.exec(
+        `INSERT INTO friend_conversation_clears
+          (user_id, friend_id, clear_before_created_at, clear_before_message_id, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, friend_id) DO UPDATE SET
+           clear_before_created_at = excluded.clear_before_created_at,
+           clear_before_message_id = excluded.clear_before_message_id,
+           updated_at = excluded.updated_at
+         WHERE excluded.clear_before_created_at > friend_conversation_clears.clear_before_created_at
+            OR (excluded.clear_before_created_at = friend_conversation_clears.clear_before_created_at
+                AND excluded.clear_before_message_id > friend_conversation_clears.clear_before_message_id)
+         RETURNING clear_before_created_at, clear_before_message_id`,
+        userId,
+        friendId,
+        Number(latest.created_at),
+        latest.id,
+        now
+      )[0];
+      return {
+        kind: updated ? 'cleared' : 'already_cleared',
+        cleared: Boolean(updated),
+        clearedThrough: {
+          createdAt: Number(updated?.clear_before_created_at || latest.created_at),
+          messageId: String(updated?.clear_before_message_id || latest.id)
+        }
+      };
+    });
+  }
+
+  markFriendConversationRead({ userId, friendId, messageId, now }) {
+    return this.atomic(() => {
+      const friendship = this.getFriendship(userId, friendId);
+      if (!friendship) return { kind: 'not_friends', read: null };
+      const target = this.exec(
+        `SELECT m.id, m.created_at
+         FROM friend_messages m
+         LEFT JOIN friend_conversation_clears c
+           ON c.user_id = ? AND c.friend_id = ?
+         WHERE m.id = ? AND m.generation_id = ? AND m.sender_id = ? AND m.recipient_id = ?
+           AND (
+             c.clear_before_created_at IS NULL
+             OR m.created_at > c.clear_before_created_at
+             OR (m.created_at = c.clear_before_created_at AND m.id > c.clear_before_message_id)
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM friend_message_hides h
+             WHERE h.user_id = ? AND h.friend_id = ? AND h.message_id = m.id
+           )`,
+        userId,
+        friendId,
+        messageId,
+        friendship.generation_id,
+        friendId,
+        userId,
+        userId,
+        friendId
+      )[0];
+      if (!target) return { kind: 'message_not_found', read: null };
+
+      const updated = this.exec(
+        `INSERT INTO friend_conversation_reads
+          (user_id, friend_id, last_read_created_at, last_read_message_id, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, friend_id) DO UPDATE SET
+           last_read_created_at = excluded.last_read_created_at,
+           last_read_message_id = excluded.last_read_message_id,
+           updated_at = excluded.updated_at
+         WHERE excluded.last_read_created_at > friend_conversation_reads.last_read_created_at
+            OR (excluded.last_read_created_at = friend_conversation_reads.last_read_created_at
+                AND excluded.last_read_message_id > friend_conversation_reads.last_read_message_id)
+         RETURNING user_id, friend_id, last_read_created_at, last_read_message_id, updated_at`,
+        userId,
+        friendId,
+        Number(target.created_at),
+        target.id,
+        now
+      )[0];
+
+      const current = updated || this.exec(
+        `SELECT user_id, friend_id, last_read_created_at, last_read_message_id, updated_at
+         FROM friend_conversation_reads
+         WHERE user_id = ? AND friend_id = ?`,
+        userId,
+        friendId
+      )[0] || null;
+      return { kind: updated ? 'updated' : 'already_read', read: current };
+    });
+  }
+
+  removeFriendship(userId, otherUserId, friendshipGenerationId) {
+    return this.atomic(() => {
+      const [low, high] = [String(userId), String(otherUserId)].sort();
+      const friendship = this.getFriendship(userId, otherUserId);
+      if (!friendship) return false;
+      if (friendship.generation_id !== friendshipGenerationId) {
+        return { kind: 'stale_generation' };
+      }
+      // Old message rows remain stored but belong to the retired generation.
+      // Reset both users' cursors and visibility overrides for a clean re-add.
+      this.exec(
+        `DELETE FROM friend_conversation_reads WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+        userId, otherUserId, otherUserId, userId
+      );
+      this.exec(
+        `DELETE FROM friend_conversation_clears WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+        userId, otherUserId, otherUserId, userId
+      );
+      this.exec(
+        `DELETE FROM friend_message_hides WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+        userId, otherUserId, otherUserId, userId
+      );
+      const rows = this.exec(
+        'DELETE FROM friendships WHERE user_low_id = ? AND user_high_id = ? RETURNING user_low_id',
+        low,
+        high
+      );
+      return rows.length > 0;
+    });
   }
 
   counts() {
