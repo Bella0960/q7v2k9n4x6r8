@@ -22,7 +22,18 @@ SET generation_id = COALESCE((
     AND f.user_high_id = CASE WHEN friend_messages.sender_id < friend_messages.recipient_id
     THEN friend_messages.recipient_id ELSE friend_messages.sender_id END
 ), '')
-WHERE generation_id = '';
+WHERE generation_id = ''
+  AND EXISTS (
+    SELECT 1
+    FROM friendships f
+    WHERE f.user_low_id = CASE WHEN friend_messages.sender_id < friend_messages.recipient_id
+      THEN friend_messages.sender_id ELSE friend_messages.recipient_id END
+      AND f.user_high_id = CASE WHEN friend_messages.sender_id < friend_messages.recipient_id
+      THEN friend_messages.recipient_id ELSE friend_messages.sender_id END
+      -- Messages older than the currently active relationship belong to a
+      -- previous pre-migration friendship cycle and must remain invisible.
+      AND friend_messages.created_at >= f.created_at
+  );
 
 -- Remove per-user read/visibility state left behind by friendships deleted
 -- before generation isolation was introduced. Active friendships retain state.
