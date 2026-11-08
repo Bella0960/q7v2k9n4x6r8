@@ -386,6 +386,112 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
   assert.equal(restoreRevoked.status, 409, '永久撤销不可恢复');
 });
 
+test('云端设备密钥必须与同一个 MAO 会话配对，不能跨账号组合使用', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const alice = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: { username: 'device-alice', password: 'device-alice-password-123', confirmPassword: 'device-alice-password-123' }
+  });
+  const bob = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: { username: 'device-bob', password: 'device-bob-password-123', confirmPassword: 'device-bob-password-123' }
+  });
+  assert.equal(alice.status, 201);
+  assert.equal(bob.status, 201);
+
+  for (const account of [alice, bob]) {
+    const invite = await post(
+      ctx,
+      '/api/admin/invites',
+      { targetAccountId: account.payload.account.id },
+      adminCookie
+    );
+    assert.equal(invite.status, 201);
+    const login = await ctx.fetchTo('/api/accounts/login', {
+      method: 'POST',
+      body: {
+        identifier: account.payload.account.username,
+        password: account.payload.account.username + '-password-123'
+      }
+    });
+    const cookie = cookieFrom(login);
+    const redeemed = await post(
+      ctx,
+      '/api/accounts/invites/redeem',
+      { inviteCode: invite.payload.invite.code },
+      cookie
+    );
+    assert.equal(redeemed.status, 200);
+    account.cookie = cookie;
+  }
+
+  const aliceDevice = {
+    deviceId: 'device_alice_isolated_01',
+    secret: randomToken(32)
+  };
+  const bobDevice = {
+    deviceId: 'device_bob_isolated_01',
+    secret: randomToken(32)
+  };
+  const aliceEnrollment = await post(ctx, '/api/devices/register', {
+    ...aliceDevice, label: 'Alice phone', platform: 'test'
+  }, alice.cookie);
+  const bobEnrollment = await post(ctx, '/api/devices/register', {
+    ...bobDevice, label: 'Bob phone', platform: 'test'
+  }, bob.cookie);
+  assert.equal(aliceEnrollment.status, 200);
+  assert.equal(bobEnrollment.status, 200);
+
+  const aliceApi = await ctx.fetchTo('/api/autonomy/global', {
+    headers: {
+      cookie: alice.cookie,
+      'x-device-auth': aliceDevice.deviceId + '.' + aliceDevice.secret
+    }
+  });
+  assert.equal(aliceApi.status, 200);
+
+  const bobApiWithAliceDevice = await ctx.fetchTo('/api/autonomy/global', {
+    headers: {
+      cookie: bob.cookie,
+      'x-device-auth': aliceDevice.deviceId + '.' + aliceDevice.secret
+    }
+  });
+  const bobApiResult = await json(bobApiWithAliceDevice);
+  assert.equal(bobApiResult.status, 401);
+  assert.equal(bobApiResult.payload.error.code, 'ACCOUNT_SESSION_REQUIRED',
+    'B 的会话不能与 A 的设备凭据组合访问云端数据');
+
+  const bobCannotReEnrollAliceDevice = await post(ctx, '/api/devices/register', {
+    ...aliceDevice, label: 'attempted takeover', platform: 'test'
+  }, bob.cookie);
+  assert.equal(bobCannotReEnrollAliceDevice.status, 401);
+  assert.equal(bobCannotReEnrollAliceDevice.payload.error.code, 'ACCOUNT_SESSION_REQUIRED');
+
+  const aliceOwner = ctx.query(
+    'SELECT user_id FROM devices WHERE id = ?',
+    aliceDevice.deviceId
+  )[0];
+  const bobOwner = ctx.query(
+    'SELECT user_id FROM devices WHERE id = ?',
+    bobDevice.deviceId
+  )[0];
+  assert.equal(aliceOwner.user_id, alice.payload.account.id);
+  assert.equal(bobOwner.user_id, bob.payload.account.id);
+  assert.notEqual(aliceOwner.user_id, bobOwner.user_id);
+});
+
 test('超级管理员初始化后遗留 owner 设备不能绕过 MAO 会话校验', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
