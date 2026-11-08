@@ -1054,10 +1054,12 @@ test('12 restoreIndexedDBWithRollback: later database failure rolls back earlier
     assert.equal(fontDb._data.presets[0].id, 'font-old');
 });
 
-test('13 IndexedDB restore failure keeps the pre-import localStorage recovery point', () => {
-    assert.match(backupSrc, /var restorePointKept = dbFailed\.length > 0/);
-    assert.match(backupSrc, /if \(!restorePointKept\) rpDeleteRole\(RP_ROLE_PRE\)/);
-    assert.match(backupSrc, /if \(restorePointKept\) parts\.push\('本机导入前恢复点已保留，供排查'\)/);
+test('13 IndexedDB restore failure rolls back globally and retains recovery points if rollback is uncertain', () => {
+    assert.match(backupSrc, /var allRollbackOk = localRollbackOk && localRollbackVerify\.ok/);
+    assert.match(backupSrc, /idbRestoreResult\.rollbackFailures\.length === 0/);
+    assert.match(backupSrc, /await rpDeleteRole\(RP_ROLE_PRE\);\s*await rpDeleteRole\(RP_ROLE_IDB_PRE\);/);
+    assert.match(backupSrc, /部分回滚未能确认；本机恢复点已保留/);
+    assert.match(backupSrc, /captureIndexedDbRestorePoint\(obj\.indexedDB\)/);
 });
 
 test('14 restore-point snapshot keeps excluded local fields and enforces a size ceiling', () => {
