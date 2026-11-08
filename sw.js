@@ -405,9 +405,36 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const targetUrl = pushTargetUrl(event.notification.data && event.notification.data.url);
+  const notificationData = event.notification.data || {};
+  const targetUrl = pushTargetUrl(notificationData.url);
+  const accountId = String(notificationData.accountId || '');
 
   event.waitUntil((async function () {
+    // A notification may remain in the OS tray after logout or account switch.
+    // Re-validate the account when clicked; old unbound notifications fail closed.
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+    let authResponse;
+    try {
+      authResponse = await fetch('/api/accounts/me', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'accept': 'application/json',
+          'x-mao-account-context': accountId
+        }
+      });
+    } catch (error) {
+      return;
+    }
+    if (!authResponse || !authResponse.ok) return;
+    let authPayload = {};
+    try { authPayload = await authResponse.json(); } catch (error) { return; }
+    const currentAccount = authPayload && authPayload.account;
+    if (!currentAccount ||
+        currentAccount.id !== accountId ||
+        currentAccount.status !== 'active') return;
+
     const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windowClients) {
       if (client.url === targetUrl && 'focus' in client) return client.focus();
@@ -426,4 +453,5 @@ self.addEventListener('notificationclick', event => {
     if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
     return undefined;
   })());
+
 });
