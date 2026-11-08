@@ -1097,6 +1097,84 @@ try {
     pass('SW 控制 + Cache Storage 读取拒绝：不因持久化失败回退，仍可从 IndexedDB 恢复');
     await context.close();
   }
+  /* 18. A → B → A，A/B 均为 IndexedDB 预设：每个 preset 只允许一个在途读取。 */
+  {
+    console.log('\\n[18] 两个字体预设交替选择时分别去重');
+    const context = await createContext(browser, origin, { blockSw: true });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(origin + '/index.html', { waitUntil: 'load' });
+    await seedFontPreset(page, origin, { id: 'font_race_a', name: 'Race A' });
+    await seedFontPreset(page, origin, { id: 'font_race_b', name: 'Race B' });
+    await page.evaluate(() => {
+      window.__fp.fontDbOpens = 0;
+      window.__fp.fontDbGets = 0;
+      localStorage.setItem('active_font_preset_id', 'font_race_a');
+      localStorage.removeItem('custom_font_url');
+    });
+
+    /* 将 A、B 的 open success handler 都延后，确保两个请求会短暂同时在途。 */
+    await context.addInitScript(() => {
+      window.__fontRace = { openSuccesses: 0 };
+      const open = indexedDB.open.bind(indexedDB);
+      indexedDB.open = function (name, ...args) {
+        const request = open(name, ...args);
+        if (String(name) !== 'maomao-font-presets') return request;
+        let handler = null;
+        let delayed = false;
+        Object.defineProperty(request, 'onsuccess', {
+          configurable: true,
+          get: function () { return handler; },
+          set: function (next) {
+            handler = next;
+            if (typeof next !== 'function' || delayed) return;
+            delayed = true;
+            request.addEventListener('success', function (event) {
+              window.__fontRace.openSuccesses++;
+              setTimeout(function () {
+                if (typeof handler === 'function') handler.call(request, event);
+              }, 1800);
+            }, { once: true });
+          }
+        });
+        return request;
+      };
+    });
+
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => window.__fp.fontDbOpens === 1, null, { timeout: 10000 });
+    await page.waitForFunction(() => window.__fontRace && window.__fontRace.openSuccesses === 1, null, { timeout: 10000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem('active_font_preset_id', 'font_race_b');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+    });
+    await page.waitForFunction(() => window.__fp.fontDbOpens === 2, null, { timeout: 10000 });
+    await page.waitForFunction(() => window.__fontRace.openSuccesses === 2, null, { timeout: 10000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem('active_font_preset_id', 'font_race_a');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+    });
+    await delay(180);
+    const beforeRelease = await readMetrics(page);
+    assert.equal(beforeRelease.fontDbOpens, 2,
+      'reselecting A while A and B are pending must reuse A rather than open a duplicate IDB request');
+
+    await waitForCustomFont(page);
+    await delay(300);
+    const metrics = await readMetrics(page);
+    report('[18] A → B → A 交替预设', metrics);
+    assert.equal(metrics.fontDbOpens, 2, 'A/B 两个预设各只能打开一次字体库');
+    assert.equal(metrics.fontDbGets, 1, '只有最终选中的 A 应读取 Blob；过期 B 不应读取');
+    assert.equal(metrics.hasStyle, true, '最终应应用 A 的自定义字体');
+    assert.ok(metrics.fontFaces.includes('loaded'), '最终字体应成功加载');
+    assert.deepEqual(errors, [], '交替切换不得产生页面错误');
+    pass('两个 IndexedDB 预设 A → B → A：每个预设独立去重，最终应用 A');
+    await context.close();
+  }
+
 } catch (error) {
   console.error('\nFAILED:', error && error.stack ? error.stack : error);
   process.exitCode = 1;
