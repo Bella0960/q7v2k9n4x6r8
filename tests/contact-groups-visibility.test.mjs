@@ -497,3 +497,43 @@ test('saving groups never overwrites malformed data already at the new storage k
   assert.equal(result.error, 'corrupt_data');
   assert.equal(data.get('contact_groups_v1'), '{broken');
 });
+
+test('switching real-user accounts cannot reuse another account roster entries for a Moments audience', () => {
+  const { api, directory } = createRuntime();
+  directory.setActiveAccountId('account-owner-a');
+  directory.save({
+    id: 'friend-owned-by-a',
+    ownerAccountId: 'account-owner-a',
+    displayName: 'A 的好友',
+    status: 'accepted',
+    createdAt: 1,
+    updatedAt: 2
+  });
+  api.saveGroups([{
+    id: 'cross-account',
+    name: '跨账号分组',
+    memberIds: [],
+    memberRefs: ['real_user:friend-owned-by-a']
+  }]);
+
+  const ownerA = directory.getAcceptedRefs();
+  assert.equal(ownerA.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(ownerA.refs.map((ref) => ref.key))), [
+    'real_user:friend-owned-by-a'
+  ]);
+
+  directory.setActiveAccountId('account-owner-b');
+  const ownerB = directory.getAcceptedRefs();
+  assert.equal(ownerB.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(ownerB.refs)), []);
+
+  const snapshot = api.buildAudienceSnapshot(['cross-account'], [], {
+    availableContactIds: [],
+    availableContactRefs: []
+  });
+  assert.equal(snapshot.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.memberRefs)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.staleMemberRefs)), [
+    'real_user:friend-owned-by-a'
+  ]);
+});
