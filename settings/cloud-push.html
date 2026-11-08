@@ -231,6 +231,48 @@
             overflow-wrap: anywhere;
         }
         .cloud-danger { color: var(--sub); }
+        .cloud-guide {
+            margin: 22px 2px 4px;
+            padding-top: 17px;
+            border-top: 1px solid var(--line);
+        }
+        .cloud-guide-title {
+            color: var(--ink);
+            font-size: 16px;
+            font-weight: 650;
+            letter-spacing: -.2px;
+        }
+        .cloud-guide-lead {
+            margin-top: 7px;
+            color: var(--sub);
+            font-size: 12px;
+            line-height: 1.75;
+        }
+        .cloud-guide-list { margin-top: 12px; }
+        .cloud-guide-item {
+            display: grid;
+            grid-template-columns: 86px minmax(0, 1fr);
+            gap: 9px;
+            padding: 11px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .cloud-guide-item strong {
+            color: var(--ink);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .cloud-guide-item p {
+            color: var(--sub);
+            font-size: 11.5px;
+            line-height: 1.7;
+        }
+        .cloud-guide-limit {
+            margin-top: 13px;
+            color: var(--aux);
+            font-size: 11.5px;
+            line-height: 1.75;
+        }
+        .cloud-guide-limit strong { color: var(--sub); font-weight: 600; }
         @media (min-width: 600px) {
             body { background: #F2F2F4; }
             .phone-mockup { min-height: 100vh; box-shadow: 0 8px 36px rgba(0,0,0,.05); }
@@ -391,6 +433,32 @@
                     <div class="cloud-action cloud-danger" id="cloudRevokeRow" role="button" tabindex="0">断开云连接</div>
                 </div>
             </details>
+        </section>
+
+        <section class="cloud-guide" aria-labelledby="cloudGuideTitle">
+            <h2 class="cloud-guide-title" id="cloudGuideTitle">这到底是什么功能？</h2>
+            <p class="cloud-guide-lead">简单说：它让 MAOMAO 可以把云端提醒送到你的设备，也为角色按设定时间主动联系你提供授权和调度入口。它不是一个新的聊天窗口。</p>
+
+            <div class="cloud-guide-list">
+                <div class="cloud-guide-item">
+                    <strong>推送通知</strong>
+                    <p>负责把云端发出的通知显示在这台设备上。打开它只代表允许接收通知，不会因此自动生成聊天内容，也不会替角色开启主动联系。</p>
+                </div>
+                <div class="cloud-guide-item">
+                    <strong>角色主动联系</strong>
+                    <p>给角色授权后，系统才会参考全局开关、该角色的授权方式和作息，判断角色是否可以主动联系。允许时段之外、忙碌或休息时段，以及设为外出的角色，不应按普通主动联系时段调度。</p>
+                </div>
+                <div class="cloud-guide-item">
+                    <strong>设备配对</strong>
+                    <p>把另一台设备加入同一个云端账号。配对成功后，该设备也可以获得自己的推送订阅，并参与已授权的消息接收流程。</p>
+                </div>
+                <div class="cloud-guide-item">
+                    <strong>测试与诊断</strong>
+                    <p>「发送测试推送」只检查通知能否送到设备；「检查云端准备情况」用于查看配置和调度是否就绪，不会替角色发送聊天消息。</p>
+                </div>
+            </div>
+
+            <p class="cloud-guide-limit"><strong>目前需要知道的限制：</strong>角色主动联系的聊天内容仍由已配对设备上的 MAOMAO 使用本机 API 配置和本地聊天上下文生成。设备需要打开 MAOMAO 并保持页面在前台；应用关闭或处于后台时，目前不会在云端独立生成新聊天内容。所以，开启授权不等于角色会 24 小时自动发消息。</p>
         </section>
     </main>
 </div>
