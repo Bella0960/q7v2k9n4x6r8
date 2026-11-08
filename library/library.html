@@ -832,11 +832,10 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     }
     if (before[commentKey] !== null) {
       var savedComments = JSON.parse(before[commentKey]);
-      if (Array.isArray(savedComments)) {
-        after[commentKey] = JSON.stringify(savedComments.filter(function (comment) {
-          return !comment || !idSet.has(String(comment.bookId));
-        }));
-      }
+      if (!Array.isArray(savedComments)) throw new Error('备用段评数据格式异常，未执行清空');
+      after[commentKey] = JSON.stringify(savedComments.filter(function (comment) {
+        return !comment || !idSet.has(String(comment.bookId));
+      }));
     }
     try {
       if (after[bookKey] !== before[bookKey]) localStorage.setItem(bookKey, after[bookKey]);
@@ -2017,7 +2016,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent
     var hasLocal = books.some(function (b) { return b.isLocal; });
     if (!hasLocal) { showToast('没有本地书籍'); return; }
     if (!confirm('清空后会移除所有导入的书籍和对应段评，示例书籍不会受影响。继续吗？')) return;
-    removeLocalBooks().catch(function () { showToast('清空失败，请稍后重试'); });
+    removeLocalBooks().catch(function (error) {
+      showToast('清空失败：' + String(error && error.message || error || '请稍后重试').slice(0, 90));
+    });
   });
 
   /* ===== 数据与操作：选择本地书籍 ===== */
