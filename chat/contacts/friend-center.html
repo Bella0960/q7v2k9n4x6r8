@@ -507,8 +507,12 @@
       await api.removeFriend(remove.getAttribute('data-remove-friend'), remove.getAttribute('data-remove-generation'));
       await refreshListsAfterAction('好友已删除。');
     } catch (error) {
-      setStatus(error.message || '删除好友失败', true);
-      remove.disabled = false;
+      if (error && error.code === 'STALE_FRIENDSHIP_GENERATION') {
+        await refreshListsAfterAction('好友关系已经变化，已刷新好友列表。请确认当前关系后再操作。');
+      } else {
+        setStatus(error.message || '删除好友失败', true);
+        remove.disabled = false;
+      }
     }
   });
   window.addEventListener('pagehide', function () {
