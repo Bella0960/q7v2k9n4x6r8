@@ -832,17 +832,27 @@
 
 
     // 写入导入阶段日志。只有该记录事务完成后，导入才允许触碰业务数据。
-    function writeImportState(status, indexedDbTargets) {
-        return rpWriteSnapshot({
+    // applying 阶段写入快照内容指纹；后续 committed / rolled-back 更新必须继承它，
+    // 不能因为覆盖阶段标记而失去启动恢复时的完整性校验依据。
+    async function writeImportState(status, indexedDbTargets, integrity) {
+        var savedIntegrity = integrity || null;
+        if (!savedIntegrity) {
+            var previous = await rpReadSnapshot(RP_ROLE_META);
+            savedIntegrity = previous && previous.snap && previous.snap.integrity
+                ? previous.snap.integrity : null;
+        }
+        var state = {
             status: status,
             updatedAt: Date.now(),
             indexedDbTargets: indexedDbTargets || []
-        }, RP_ROLE_META);
+        };
+        if (savedIntegrity) state.integrity = savedIntegrity;
+        return rpWriteSnapshot(state, RP_ROLE_META);
     }
 
     // 在任何回滚写入开始前，完整检查恢复点的外层记录、数据库清单和每个 store。
     // 只要结构不完整，就保留原始恢复点并停止；不能边恢复边发现快照缺项。
-    function validateInterruptedRestorePoints(localRecord, indexedDbRecord, metaRecord) {
+    async function validateInterruptedRestorePoints(localRecord, indexedDbRecord, metaRecord) {
         function fail(message) { return { ok: false, message: message }; }
         function validEnvelope(record, role) {
             if (!record || typeof record !== 'object' || Array.isArray(record)) {
@@ -962,6 +972,26 @@
                 }
             }
         }
+        // 新版 applying 恢复点必须与写入阶段日志时的内容指纹一致。
+        // 旧版本没有 integrity 字段，仍按结构校验结果兼容恢复。
+        var integrity = metaRecord && metaRecord.snap && metaRecord.snap.integrity;
+        if (state === 'applying' && integrity !== undefined) {
+            if (typeof integrity !== 'string' || !/^[0-9a-f]{16}$/i.test(integrity)) {
+                return fail('恢复点内容指纹格式无效');
+            }
+            try {
+                var actualIntegrity = await fingerprintRestorePoint({
+                    localStorage: localSnapshot,
+                    indexedDB: dbSnapshots || {}
+                });
+                if (actualIntegrity !== integrity) {
+                    return fail('恢复点内容指纹不一致，快照可能已损坏或被意外改写');
+                }
+            } catch (fingerprintError) {
+                return fail('无法读取恢复点内容以完成指纹校验：'
+                    + ((fingerprintError && fingerprintError.message) || '读取失败'));
+            }
+        }
         return { ok: true, status: state || 'legacy', targetNames: targetNames };
     }
 
@@ -985,7 +1015,7 @@
         var hasAnyPoint = !!(localRecord || indexedDbRecord || metaRecord);
         if (!hasAnyPoint) return true;
 
-        var validation = validateInterruptedRestorePoints(localRecord, indexedDbRecord, metaRecord);
+        var validation = await validateInterruptedRestorePoints(localRecord, indexedDbRecord, metaRecord);
         if (!validation.ok) {
             toast('发现上次整机导入的恢复点结构不完整：' + validation.message
                 + '。原始恢复点未清理，已禁止新的整机导入；请勿清理网站数据。');
@@ -2153,8 +2183,12 @@
             // 会先尝试恢复到导入前状态，而不是让用户继续在混合数据上操作。
             var indexedDbTargetNames = idbRestorePoint.targets.map(function (target) { return target.db; });
             try {
+                var restorePointIntegrity = await fingerprintRestorePoint({
+                    localStorage: rpSnap,
+                    indexedDB: idbRestorePoint.snapshots || {}
+                });
                 await assertImportLock();
-                await writeImportState('applying', indexedDbTargetNames);
+                await writeImportState('applying', indexedDbTargetNames, restorePointIntegrity);
                 importStageRecorded = true;
             } catch (stateWriteError) {
                 var cleanupAfterStateFailure = await clearRestorePoints();
