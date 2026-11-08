@@ -228,6 +228,15 @@
     renderRequests(results[1]);
   }
 
+  async function refreshListsAfterAction(successMessage) {
+    try {
+      await refreshLists();
+      setStatus(successMessage);
+    } catch (error) {
+      setStatus(successMessage + '但好友列表暂时刷新失败，请点右上角刷新重试。', true);
+    }
+  }
+
   function renderFriends(friends) {
     $('friendCount').textContent = String(friends.length);
     if (!friends.length) {
@@ -454,10 +463,12 @@
     $('sendRequestBtn').disabled = true;
     try {
       var result = await api.sendRequest(selectedTarget.userId, '');
-      setStatus(result.duplicate ? '这条好友申请已经发送过了。' : '好友申请已发送，等待对方同意。');
+      var successMessage = result.duplicate
+        ? '这条好友申请已经发送过了。'
+        : '好友申请已发送，等待对方同意。';
       $('targetCard').style.display = 'none';
       selectedTarget = null;
-      await refreshLists();
+      await refreshListsAfterAction(successMessage);
     } catch (error) {
       setStatus(error.message || '好友申请发送失败', true);
     } finally {
@@ -473,8 +484,7 @@
     try {
       if (accept) await api.acceptRequest(accept.getAttribute('data-accept-request'));
       else await api.rejectRequest(reject.getAttribute('data-reject-request'));
-      await refreshLists();
-      setStatus(accept ? '已同意好友申请。' : '已拒绝好友申请。');
+      await refreshListsAfterAction(accept ? '已同意好友申请。' : '已拒绝好友申请。');
     } catch (error) {
       setStatus(error.message || '处理好友申请失败', true);
       button.disabled = false;
@@ -495,8 +505,7 @@
     remove.disabled = true;
     try {
       await api.removeFriend(remove.getAttribute('data-remove-friend'));
-      await refreshLists();
-      setStatus('好友已删除。');
+      await refreshListsAfterAction('好友已删除。');
     } catch (error) {
       setStatus(error.message || '删除好友失败', true);
       remove.disabled = false;
