@@ -716,7 +716,7 @@ test('reapplying the same active package is idempotent and does not duplicate mo
 
   
 test('theme package scripts use a shared cache-busting revision across chat and importer pages',()=>{
-  const revision='20261109theme5';
+  const revision='20261109theme6';
   const importer=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const beauty=readFileSync(new URL('../beauty/beauty.html',import.meta.url),'utf8');
   const chatList=readFileSync(new URL('../chat/chat/chat.html',import.meta.url),'utf8');
@@ -989,6 +989,42 @@ test('full import then export preserves image assets and the imported manifest',
   assert.deepEqual(Array.from(parsed.assets['assets/photo.png'].bytes),Array.from(bytes),'真实导入后再导出必须保留图片二进制');
   assert.match(parsed.customCss,/url\("assets\/photo\.png"\)/,'主题 CSS 中的素材 URL 应随图片一起保留');
   assert.equal(exportButton.disabled,false,'完成导出后按钮应恢复');
+});
+
+test('shared MediaRepository package builder exports registered binary assets and CSS',async()=>{
+  const bytes=new Uint8Array([137,80,78,71,13,10,26,10,7,8,9]);
+  const theme=fixture({
+    id:'shared-media-export',
+    assetIndex:[{path:'assets/shared-photo.png',name:'shared-photo.png',mimeType:'image/png',type:'image'}],
+    assetRefs:{'assets/shared-photo.png':'asset-shared-photo'}
+  });
+  let reads=0;
+  const media={
+    getBlob(assetId){
+      reads++;
+      assert.equal(assetId,'asset-shared-photo','共享导出器必须使用主题保存的 assetId');
+      return Promise.resolve({ok:true,value:{
+        size:bytes.length,
+        arrayBuffer(){return Promise.resolve(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength))}
+      }});
+    },
+    listByOwner(){assert.fail('已有素材清单时不应额外查询 owner 素材列表')}
+  };
+  const css='.sample{background:url("assets/shared-photo.png")}';
+  const archive=await F.createPackageFromMedia(theme,css,media);
+  const parsed=F.readPackage(F.parseStoredZip(archive));
+  assert.equal(reads,1,'每项登记素材应读取一次');
+  assert.equal(parsed.theme.name,theme.name,'主题名称应保留');
+  assert.deepEqual(parsed.theme.assetIndex,[{
+    path:'assets/shared-photo.png',name:'shared-photo.png',mimeType:'image/png',type:'image'
+  }],'共享导出器应保留素材清单');
+  assert.deepEqual(Array.from(parsed.assets['assets/shared-photo.png'].bytes),Array.from(bytes),'共享导出器必须嵌入素材二进制');
+  assert.equal(parsed.customCss,css,'共享导出器必须保留 CSS');
+  await assert.rejects(
+    F.createPackageFromMedia(fixture({assetRefs:{'assets/../escape.png':'bad-asset'}}),'',media),
+    /无效素材路径/,
+    '旧主题素材路径不安全时必须返回可处理的异步失败'
+  );
 });
 
 test('legacy installed themes recover missing asset manifests from owner-scoped MediaRepository metadata',async()=>{
