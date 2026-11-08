@@ -152,6 +152,10 @@
       /(?:-webkit-)?image-set\s*\(/i
     ];
     if(bad.some(function(re){return re.test(code)}))fail("CSS 包含不允许的远程引用或危险声明。");
+    var atRule=/@([A-Za-z_-][A-Za-z0-9_-]*)/gi,atMatch,allowedAtRules={media:1,supports:1,container:1,"font-face":1};
+    while((atMatch=atRule.exec(code))){
+      if(!allowedAtRules[atMatch[1].toLowerCase()])fail("CSS at-rule 不在聊天主题安全白名单中："+atMatch[0]);
+    }
     var re=/url\s*\(\s*(?:\u0001(\d+)\u0002|([^)]*?))\s*\)/gi,m;
     while((m=re.exec(normalized.code))){
       var u=m[1]!==undefined?String(normalized.strings[Number(m[1])]||"").trim():String(m[2]||"").trim();
@@ -184,6 +188,41 @@
       var map={blur:"backdrop-filter"};var prop=map[k]||k.replace(/[A-Z]/g,function(c){return"-"+c.toLowerCase()});out.push(prop+":"+v+" !important");
     });
     return out.join(";");
+  }
+  function quoteCssString(value){
+    return "\""+String(value).replace(/\\/g,"\\\\").replace(/"/g,"\\\"").replace(/\n/g,"\\a ").replace(/\r/g,"\\d ").replace(/\f/g,"\\c ")+"\"";
+  }
+  function namespaceFontFamilies(css,themeId){
+    var normalized=normalizeCssForSafety(String(css||"")),code=normalized.code,strings=normalized.strings,map=Object.create(null);
+    if(code.indexOf("@font-face")<0)return css;
+    var namespace=String(themeId||"package").replace(/[^A-Za-z0-9_-]/g,"_").slice(0,48)||"package";
+    function familyToken(family){
+      return Array.from(family).map(function(ch){return ch.codePointAt(0).toString(16)}).join("_").slice(0,128)||"font";
+    }
+    var face=/@font-face\s*\{([^{}]*)\}/gi,match;
+    while((match=face.exec(code))){
+      var familyMatch=/font-family\s*:\s*(?:\u0001(\d+)\u0002|([A-Za-z_][A-Za-z0-9_-]*(?:\s+[A-Za-z_][A-Za-z0-9_-]*)*))\s*;/i.exec(match[1]);
+      if(!familyMatch)fail("@font-face 必须指定有效的 font-family。");
+      var family=String(familyMatch[1]!==undefined?strings[Number(familyMatch[1])]:familyMatch[2]||"").trim();
+      if(!family||family.length>100||/[,;{}]/.test(family))fail("@font-face 的 font-family 名称无效。");
+      if(!own(map,family))map[family]="MAOMAOChatTheme_"+namespace+"_"+familyToken(family);
+    }
+    if(!Object.keys(map).length)return css;
+    code=code.replace(/\bfont-family\s*:\s*([^;}]+)/gi,function(all,value){
+      var important=/\s*!important\s*$/i.exec(value);
+      var raw=important?value.slice(0,important.index):value;
+      var parts=raw.split(",").map(function(part){
+        var token=part.trim(),stringToken=/^\u0001(\d+)\u0002$/.exec(token);
+        var family=String(stringToken?strings[Number(stringToken[1])]:token).trim();
+        if(own(map,family)){
+          if(stringToken)strings[Number(stringToken[1])]=map[family];
+          else return map[family];
+        }
+        return token;
+      });
+      return "font-family:"+parts.join(", ")+(important?" !important":"");
+    });
+    return code.replace(/\u0001(\d+)\u0002/g,function(all,index){return quoteCssString(strings[Number(index)]||"")});
   }
   function scopeCss(css,prefix){
     css=validateCss(css);
@@ -253,6 +292,6 @@
     if(!manifest||manifest.format!==FORMAT||manifest.schemaVersion!==VERSION||manifest.target!=="maomao-chat")fail("该主题包不适用于 MAOMAO 聊天模块。");
     return normalize(theme,files,manifest);
   }
-  function buildScopedCss(theme,css){return stylesToCss(theme)+"\n"+scopeCss(css||" ",'.phone-mockup[data-maomao-chat-theme-active="1"]')}
+  function buildScopedCss(theme,css){var combined=stylesToCss(theme)+"\n"+scopeCss(css||" ",'.phone-mockup[data-maomao-chat-theme-active="1"]');return namespaceFontFamilies(combined,theme&&theme.id)}
   return{FORMAT:FORMAT,VERSION:VERSION,COMPONENTS:COMPONENTS,MOTION_RULES:RULES,parseStoredZip:parseStoredZip,readPackage:readPackage,validateCss:validateCss,scopeCss:scopeCss,stylesToCss:stylesToCss,buildScopedCss:buildScopedCss,safeAssetPath:safeAssetPath};
 });
