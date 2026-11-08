@@ -1,7 +1,7 @@
 name: Chat Regression Contract
 
 on:
-  push:
+  pull_request:
     branches: [main]
     paths:
       - 'chat/**'
@@ -11,29 +11,34 @@ on:
       - 'shared/js/chat-beauty.js'
       - 'shared/js/wallpaper-store.js'
       - 'sw.js'
-      - 'tests/**'
+      - 'tests/chat-regression-contract.test.mjs'
+      - 'tests/chat-call-experience.test.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
+      - 'tests/forum-chat-blockers.test.mjs'
+      - 'tests/media-backup.test.mjs'
+      - 'tests/forum-media.test.mjs'
+      - 'tests/phone-api-image-generation.test.mjs'
+      - 'tests/image-generation-pipeline.test.mjs'
+      - 'tests/forum-seed-comments.test.mjs'
+      - 'tests/forum-media-mobile.mjs'
+      - 'tests/group-ui-collapse-invite.test.mjs'
+      - 'tests/group-chat-invite-e2e.test.mjs'
+      - 'tests/wechat-theme-browser.mjs'
+      - 'tests/chat-data-isolation.test.mjs'
+      - 'tests/chat-data-isolation-browser.mjs'
       - 'docs/chat-architecture-contract.md'
       - 'docs/chat-regression-baseline.md'
       - 'package.json'
-      - '.github/workflows/chat-regression-contract.yml'
-  pull_request:
-    paths:
-      - 'chat/**'
-      - 'forum/**'
-      - 'library/**'
-      - 'shared/js/phone/**'
-      - 'shared/js/chat-beauty.js'
-      - 'shared/js/wallpaper-store.js'
-      - 'sw.js'
-      - 'tests/**'
-      - 'docs/chat-architecture-contract.md'
-      - 'docs/chat-regression-baseline.md'
-      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/chat-regression-contract.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: chat-regression-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   chat-regression-contract:
@@ -45,13 +50,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       - name: Install Chromium for mobile viewport checks
         run: npx playwright install --with-deps chromium
-      - name: Run chat regression contract tests
+      - name: Run chat and related regression contracts
         run: |
           npm run test:chat:contract
+          npm run test:chat:call
           npm run test:desktop:layout
           npm run test:bugfix:blockers
           npm run test:media:backup

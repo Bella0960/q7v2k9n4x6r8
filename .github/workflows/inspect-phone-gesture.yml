@@ -1,23 +1,10 @@
 name: Inspect Phone Gesture & Layout
 
-# 独立 job：验证 inspect-phone/phone.html 的两项修复
-#   - 窄屏 ≤480px 下左右白边消除、无横向溢出
-#   - 首次上滑解锁（真实 CDP touch 事件，不是 click 兜底）
-#
-# 与 perf-gate 互不依赖、互不影响；失败只标记此 workflow 红灯。
-# Playwright 浏览器目录不通过 env: 字面量传（GitHub 不做 shell 变量展开），
-# 让 Playwright 使用默认缓存目录即可，安装与测试自然共用。
-
+# 独立 job：只验证 inspect-phone/phone.html 的窄屏布局和首次上滑解锁。
+# 仅 main 目标 PR 自动运行；功能分支之间的堆叠 PR 可手动 dispatch。
 on:
-  push:
-    branches: [main, fix/home-gesture-white-edge]
-    paths:
-      - 'inspect-phone/phone.html'
-      - 'tests/inspect-phone-gesture.test.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/inspect-phone-gesture.yml'
   pull_request:
+    branches: [main]
     paths:
       - 'inspect-phone/phone.html'
       - 'tests/inspect-phone-gesture.test.mjs'
@@ -28,6 +15,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: inspect-phone-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   inspect-phone:
@@ -44,17 +35,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
-      # 不通过 env: 写 PLAYWRIGHT_BROWSERS_PATH（GitHub Actions 的 env: 不展开
-      # $GITHUB_WORKSPACE 这种 shell 变量，字面量传给 Playwright 找不到浏览器）。
-      # 这里用默认缓存目录 ~/.cache/ms-playwright，安装与测试自然共用。
       - name: Install Playwright Chromium
-        run: |
-          npx playwright install --with-deps chromium
-          echo "Playwright browsers at: $(npx playwright install --dry-run 2>&1 || true)"
-          # 打印默认路径供排查
-          node -e "console.log('PW default cache:', require('playwright-core').chromium.executablePath())" || true
+        run: npx playwright install --with-deps chromium
 
       - name: Build production bundle
         run: npm run build
@@ -63,7 +47,6 @@ jobs:
         run: |
           npm run preview -- --host 127.0.0.1 --port 3000 > preview.log 2>&1 &
           echo $! > preview.pid
-          # 等端口起来（最多 40s，每次 sleep 1s）。用整数计数避免 Bash 浮点算术错误。
           READY=0
           for i in $(seq 1 40); do
             if curl -sf http://127.0.0.1:3000/ >/dev/null 2>&1; then
@@ -74,22 +57,16 @@ jobs:
             sleep 1
           done
           if [ "$READY" -ne 1 ]; then
-            echo "preview server failed to start after 40s — waiting script bailing out"
-            echo "=== preview.log tail ==="
+            echo "preview server failed to start after 40s"
             tail -n 30 preview.log || true
-            # 这里 exit 1 会让后续 Run inspect-phone regression tests 步骤根本不执行，
-            # 日志里会明确显示是等待失败，不会出现"测试通过"的假阳性。
             exit 1
           fi
 
-      # BASE_URL 是纯字面量，无需 shell 展开，可以用 env:
       - name: Run inspect-phone regression tests
         env:
           BASE_URL: http://127.0.0.1:3000
         run: |
           echo "Testing against $BASE_URL"
-          # 打印可观测信息：当前 Playwright 浏览器路径
-          node -e "const pw=require('playwright'); console.log('chromium executable:', pw.chromium.executablePath())" || true
           node tests/inspect-phone-gesture.test.mjs
 
       - name: Stop preview server
@@ -99,6 +76,5 @@ jobs:
             kill $(cat preview.pid) || true
           fi
           if [ -f preview.log ]; then
-            echo "=== preview.log tail ==="
             tail -n 20 preview.log || true
           fi

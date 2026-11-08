@@ -6,16 +6,17 @@ on:
     paths:
       - 'shared/js/home-indicator.js'
       - 'tests/home-indicator-hit-area.test.mjs'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/home-indicator-regression.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'shared/js/home-indicator.js'
-      - 'tests/home-indicator-hit-area.test.mjs'
-      - '.github/workflows/home-indicator-regression.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: home-indicator-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   home-indicator-hit-area:
@@ -29,7 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run Home Indicator browser regression

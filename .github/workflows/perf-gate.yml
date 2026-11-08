@@ -1,19 +1,10 @@
 name: Performance Budget Gate
 
 on:
-  push:
+  pull_request:
     branches: [main]
     paths:
-      - 'chat/**'
-      - 'shared/js/phone/**'
-      - 'perf/**'
-      - 'tests/p0-02-page-load-perf.browser.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/perf-gate.yml'
-  pull_request:
-    paths:
-      - 'chat/**'
+      - 'chat/chat/**'
       - 'shared/js/phone/**'
       - 'perf/**'
       - 'tests/p0-02-page-load-perf.browser.mjs'
@@ -25,6 +16,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: performance-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   perf-gate:
     runs-on: ubuntu-latest
@@ -35,10 +30,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - name: Install dependencies
-        run: npm ci
-      - name: Install Playwright (Edge channel) for performance gate
-        run: npx playwright install --with-deps msedge || npx playwright install msedge
+        run: npm ci --no-audit --no-fund
+      - name: Install Playwright Edge
+        run: npx playwright install --with-deps msedge
       - name: Run performance budget gate
         run: npm run perf:gate
       - name: Run P0-02 page load browser regression (msedge)

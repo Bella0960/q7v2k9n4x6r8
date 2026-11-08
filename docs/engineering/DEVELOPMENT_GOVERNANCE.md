@@ -19,12 +19,27 @@ Do not force-push main. Never overwrite a newer main commit. Rebase/merge agains
 
 | Workflow | Current trigger | Purpose | Policy |
 |---|---|---|---|
-| deploy-cloudflare-worker.yml | Push to main with matching app/source paths; manual | Vite build and Cloudflare Worker static-asset deployment | Keep automatic website deployment |
-| chat-regression-contract.yml | Push/PR for chat-related paths; manual | npm run test:chat:contract | Keep and expand |
-| perf-gate.yml | Push/PR for chat/shared phone/perf paths; manual | Playwright performance budget gate | Keep; inspect runtime/cost and maintain |
+| deploy-cloudflare-worker.yml | Push to main for app/build inputs; manual | Vite build, PWA preflight, Cloudflare Worker deployment and live route verification | Keep production deploy separate; test/docs/perf/android-only changes do not deploy |
+| chat-regression-contract.yml | PR targeting main for chat/forum/library/phone and its explicitly listed suites; manual | One grouped chat, chat-call, forum, media, groups, and data-isolation regression job | No broad tests/** filter; no duplicate post-merge push run |
+| font-runtime-regression.yml | PR targeting main for font-loader/settings/SW and its exact test; manual | Custom font cache and navigation regression plus build | Only font-related changes or dependency/workflow changes |
+| home-indicator-regression.yml | PR targeting main for home-indicator code/test; manual | Targeted Playwright hit-area check | No post-merge push duplicate |
+| inspect-phone-gesture.yml | PR targeting main for inspect-phone page/test; manual | Narrow-screen layout and first-swipe gesture check | No post-merge push duplicate |
+| perf-gate.yml | PR targeting main for chat detail, shared phone, perf code/test; manual | Chat rendering performance budget and P0-02 page-load check | Narrowed from all chat/** files |
+| pwa-navigation-regression.yml | PR targeting main for SW/Vite/PWA tests; manual | Build, mobile navigation and cache lifecycle checks | No post-merge push duplicate |
+| takeout-add-button-regression.yml | PR targeting main for listed mobile-fit consumer pages/test; manual | Edge browser add-button and mobile-layout regression | Only listed consumer pages/shared CSS or dependency changes |
 | build-android-apk.yml | Manual workflow_dispatch only | Build debug APK | Do not restore push trigger; output retained 3 days |
 | cleanup-apk-artifacts.yml | Manual workflow_dispatch only | Delete artifacts whose exact name is MAOMAO-Android-APK in this repo | Run manually to clean existing APK outputs; scope does not include other repos |
 | npm-publish-github-packages.yml | GitHub release created | Runs npm ci, npm test, npm publish | Unverified; package.json has no generic test script and the project is not currently operated as an npm package. Do not publish/release until the workflow is reviewed and explicitly approved |
+
+### CI cost controls
+
+- Test workflows are PR-first and target only PRs whose base is main. They do not rerun on the subsequent merge push; the production deployment workflow remains the separate post-merge build/deploy check.
+- Feature-stack PRs targeting another task branch do not automatically start the full mainline test suite. They can be manually dispatched when an intermediate check is needed; final integration must target main.
+- The chat regression workflow lists only the test files it actually runs. A change to an unrelated file under tests/ no longer starts its full Chromium suite.
+- The chat-call contract is included in the existing chat regression job, avoiding a second checkout/install/job for the same chat changes.
+- PR test runs use per-workflow concurrency groups and cancel superseded runs for the same PR. Production deploys are never cancelled in progress; only an older pending deploy may be superseded by a newer main commit.
+- Production deployment path filters exclude tests/, docs/, perf/, and android/ so test/documentation-only work does not deploy the website.
+- npm cache is enabled for Node setup steps; npm ci skips the optional audit/fund network calls in CI.
 
 The previous APK artifact-upload failure reported GitHub Artifact storage quota reached. That failure happened after the Build debug APK step succeeded. The failed run itself had no uploaded artifact. The cleanup workflow is repository-scoped. If account-wide usage is still full after cleanup and GitHub's usage refresh window, inspect artifacts in other repositories/account scope.
 
@@ -139,4 +154,3 @@ Rules:
 Website deploy is the normal release channel.
 APK build is manual and exceptional.
 Do not create GitHub releases or publish packages until npm-publish-github-packages.yml and package.json scripts have been reviewed and approved.
-Before a significant migration release: full backup test, migration canary, regression checks, production deploy check, and rollback instructions.

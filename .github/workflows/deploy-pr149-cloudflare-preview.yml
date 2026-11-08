@@ -19,9 +19,17 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'wrangler.jsonc'
+      - '!tests/**'
+      - '!docs/**'
+      - '!perf/**'
+      - '!android/**'
 
 permissions:
   contents: read
+
+concurrency:
+  group: pr149-preview-deploy
+  cancel-in-progress: true
 
 jobs:
   deploy-preview:

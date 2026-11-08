@@ -19,11 +19,20 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'wrangler.jsonc'
-      - 'tests/production-worker-navigation.browser.mjs'
+      - '!tests/**'
+      - '!docs/**'
+      - '!perf/**'
+      - '!android/**'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Do not cancel an in-progress production deploy. Newer pending main commits replace
+# older pending deploys so the latest source is what reaches production.
+concurrency:
+  group: cloudflare-production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:

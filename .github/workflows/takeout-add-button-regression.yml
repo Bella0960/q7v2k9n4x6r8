@@ -14,25 +14,17 @@ on:
       - 'chat/chat/chat-detail.html'
       - 'settings/settings.html'
       - 'tests/takeout-add-button.browser.mjs'
-      - '.github/workflows/takeout-add-button-regression.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'shared/css/mobile-fit.css'
-      - 'wallet/takeout.html'
-      - 'wallet/shop-admin.html'
-      - 'games/story-create.html'
-      - 'library/library.html'
-      - 'wallet/finance.html'
-      - 'chat/chat/chat.html'
-      - 'chat/chat/chat-detail.html'
-      - 'settings/settings.html'
-      - 'tests/takeout-add-button.browser.mjs'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/takeout-add-button-regression.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: takeout-browser-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   takeout-add-button-browser:
@@ -40,14 +32,13 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      - name: Install Playwright (Edge channel)
-        run: npx playwright install --with-deps msedge || npx playwright install msedge
+      - name: Install Playwright Edge
+        run: npx playwright install --with-deps msedge
       - name: Run takeout add-button browser regression (msedge)
         run: node tests/takeout-add-button.browser.mjs
