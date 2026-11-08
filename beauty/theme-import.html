@@ -40,7 +40,7 @@
 (function(){
 'use strict';
 var LIST_KEY='maomao_chat_theme_packages_v1',ACTIVE_KEY='maomao_chat_theme_active_v1';
-var pending=null,selectionGeneration=0,media=window.PhoneStorage&&PhoneStorage.repository&&PhoneStorage.repository.media?PhoneStorage.repository.media():null;
+var pending=null,selectionGeneration=0,importing=false,media=window.PhoneStorage&&PhoneStorage.repository&&PhoneStorage.repository.media?PhoneStorage.repository.media():null;
 var $=function(s){return document.querySelector(s)};
 function toast(msg){var t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},2200)}
 function showStatus(msg,type){var box=$('#status');box.textContent=msg;box.className='status'+(type?' '+type:'')}
@@ -109,15 +109,17 @@ function removeRefs(assetIds,ownerId){
  });
  return chain.then(function(){return{failed:failed}})
 }
+function setImporting(value){importing=value;$('#chooseFile').disabled=value;$('#clearFile').disabled=value;$('#themeFile').disabled=value}
 function doImport(){
- if(!pending)return;
+ if(!pending||importing)return;
  if(!media){showStatus('MAOMAO 媒体仓储不可用，暂时不能安全导入图片和字体。','error');return}
- $('#importApply').disabled=true;showStatus('正在导入主题素材…');
- var source=pending.theme,themeId=String(source.id||'chat-theme')+'-'+Date.now();
+ var selected=pending;
+ setImporting(true);$('#importApply').disabled=true;showStatus('正在导入主题素材…');
+ var source=selected.theme,themeId=String(source.id||'chat-theme')+'-'+Date.now();
  var assetRefs={},created=[],chain=Promise.resolve();
  var oldList=readList(),oldActive=null;
  try{oldActive=localStorage.getItem(ACTIVE_KEY)}catch(e){}
- Object.keys(pending.assets).forEach(function(path){chain=chain.then(function(){var a=pending.assets[path],blob=new Blob([a.bytes],{type:a.mimeType});return media.putBlob(blob,{type:a.type||'file',mimeType:a.mimeType,ownerType:'chat-theme-package',ownerId:themeId}).then(function(result){if(!result||!result.ok||!result.value||!result.value.assetId)throw new Error(result&&result.error?result.error.message:'素材写入失败');assetRefs[path]=result.value.assetId;created.push(result.value.assetId)})})});
+ Object.keys(selected.assets).forEach(function(path){chain=chain.then(function(){var a=selected.assets[path],blob=new Blob([a.bytes],{type:a.mimeType});return media.putBlob(blob,{type:a.type||'file',mimeType:a.mimeType,ownerType:'chat-theme-package',ownerId:themeId}).then(function(result){if(!result||!result.ok||!result.value||!result.value.assetId)throw new Error(result&&result.error?result.error.message:'素材写入失败');assetRefs[path]=result.value.assetId;created.push(result.value.assetId)})})});
  chain.then(function(){
    var installed=Object.assign({},source,{id:themeId,sourceId:source.id||'',customCss:pending.customCss,assetRefs:assetRefs,createdAt:Date.now(),updatedAt:Date.now()});
    delete installed.assetIndex;
@@ -125,7 +127,7 @@ function doImport(){
    saveList(newList);
    localStorage.setItem(ACTIVE_KEY,themeId);
    window.dispatchEvent(new CustomEvent('maomao:chat-theme-change'));
-   pending=null;$('#packagePreview').hidden=true;$('#fileName').textContent='尚未选择文件';$('#themeFile').value='';
+   pending=null;selectionGeneration++;setImporting(false);$('#packagePreview').hidden=true;$('#fileName').textContent='尚未选择文件';$('#themeFile').value='';$('#importApply').disabled=true;
    showStatus('导入完成。「'+installed.name+'」已保存并应用。原有主题与聊天数据均未改动。','ok');showInstalled();toast('聊天主题已导入')
  }).catch(function(error){
    restoreKey(LIST_KEY,JSON.stringify(oldList));restoreKey(ACTIVE_KEY,oldActive);
@@ -134,17 +136,17 @@ function doImport(){
        ?'主题设置已回滚，但有 '+cleanup.failed.length+' 项新增素材清理未能确认完成；为避免误删其他引用，相关素材会保留。'
        :'本次主题设置与新增素材已回滚，原有主题保持不变。';
      showStatus('导入失败：'+(error&&error.message?error.message:String(error))+'。'+cleanupNote,'error');
-     $('#importApply').disabled=false;showInstalled()
+     setImporting(false);$('#importApply').disabled=false;showInstalled()
    }).catch(function(){
      showStatus('导入失败：'+(error&&error.message?error.message:String(error))+'。主题设置已尝试回滚，但素材清理过程发生异常，需要检查媒体仓储。','error');
-     $('#importApply').disabled=false;showInstalled()
+     setImporting(false);$('#importApply').disabled=false;showInstalled()
    })
  });
 }
-$('#chooseFile').addEventListener('click',function(){$('#themeFile').click()});
-$('#themeFile').addEventListener('change',function(e){var file=e.target.files&&e.target.files[0];if(!file)return;var generation=++selectionGeneration;pending=null;$('#fileName').textContent=file.name;$('#packagePreview').hidden=true;$('#importApply').disabled=true;parseSelected(file,generation).catch(function(err){if(generation!==selectionGeneration)return;pending=null;showStatus('主题包检查未通过：'+(err&&err.message?err.message:String(err)),'error')})});
+$('#chooseFile').addEventListener('click',function(){if(importing)return;$('#themeFile').click()});
+$('#themeFile').addEventListener('change',function(e){if(importing)return;var file=e.target.files&&e.target.files[0];if(!file)return;var generation=++selectionGeneration;pending=null;$('#fileName').textContent=file.name;$('#packagePreview').hidden=true;$('#importApply').disabled=true;parseSelected(file,generation).catch(function(err){if(generation!==selectionGeneration)return;pending=null;showStatus('主题包检查未通过：'+(err&&err.message?err.message:String(err)),'error')})});
 $('#importApply').addEventListener('click',doImport);
-$('#clearFile').addEventListener('click',function(){selectionGeneration++;pending=null;$('#themeFile').value='';$('#fileName').textContent='尚未选择文件';$('#packagePreview').hidden=true;$('#importApply').disabled=true;showStatus('可以重新选择一个主题包。')});
+$('#clearFile').addEventListener('click',function(){if(importing)return;selectionGeneration++;pending=null;$('#themeFile').value='';$('#fileName').textContent='尚未选择文件';$('#packagePreview').hidden=true;$('#importApply').disabled=true;showStatus('可以重新选择一个主题包。')});
 showInstalled();
 })();
 </script>
