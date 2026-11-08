@@ -1927,6 +1927,14 @@ class CloudStore {
     );
   }
 
+  revokeMaoAccountSession(sessionId, now) {
+    this.exec(
+      "UPDATE mao_account_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+      now,
+      sessionId
+    );
+  }
+
   revokeMaoAccountSessions(accountId, now) {
     return this.exec(
       "UPDATE mao_account_sessions SET revoked_at = ? WHERE account_id = ? AND revoked_at IS NULL RETURNING id",
