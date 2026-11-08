@@ -140,7 +140,17 @@ function makeIDB(name, version, storeDefs) {
         objectStoreNames: {
             contains(sn) { return storeNames.includes(sn); }
         },
-        close() {},
+        _closeCount: 0,
+        _deferComplete: false,
+        _pendingComplete: null,
+        _lastTransaction: null,
+        _requestSuccessCount: 0,
+        _flushComplete() {
+            const pending = this._pendingComplete;
+            this._pendingComplete = null;
+            if (pending) pending();
+        },
+        close() { this._closeCount++; },
         // idbOpen 的 onupgradeneeded 回调会调这个——未预注册的 DB 需能动态建空 store
         createObjectStore(storeName, opts) {
             if (!storeNames.includes(storeName)) {
@@ -220,9 +230,21 @@ function makeIDB(name, version, storeDefs) {
                             if (def && def.keyPath) return r[def.keyPath] === key;
                             return r.__mock_key === key;
                         });
-                        const req = { result: match || undefined, onsuccess: null };
-                        Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
+                        const req = { result: match || undefined, onsuccess: null, onerror: null };
+                        Promise.resolve().then(() => {
+                            db._requestSuccessCount++;
+                            if (req.onsuccess) req.onsuccess({ target: req });
+                        });
                         return req;
+                    },
+                    delete(key) {
+                        const def = storeDefs.find(d => d.store === name);
+                        const index = data[name].findIndex(r => {
+                            if (def && def.keyPath) return r[def.keyPath] === key;
+                            return r.__mock_key === key;
+                        });
+                        if (index >= 0) data[name].splice(index, 1);
+                        return { onsuccess: null, result: undefined };
                     }
                 };
                 stores[name] = store;
@@ -241,13 +263,16 @@ function makeIDB(name, version, storeDefs) {
                     aborted = true;
                     this.error = this.error || new Error('mock transaction aborted');
                     if (before) Object.keys(before).forEach(name => { data[name] = before[name].slice(); });
+                    db._pendingComplete = null;
                     if (onabortCb) Promise.resolve().then(() => onabortCb());
                 },
                 set oncomplete(fn) {
                     oncompleteCb = fn;
-                    Promise.resolve().then(() => {
+                    const complete = () => {
                         if (oncompleteCb && !aborted) oncompleteCb();
-                    });
+                    };
+                    if (db._deferComplete) db._pendingComplete = complete;
+                    else Promise.resolve().then(complete);
                 },
                 get oncomplete() { return oncompleteCb; },
                 set onerror(fn) { this._onerror = fn; },
@@ -258,6 +283,7 @@ function makeIDB(name, version, storeDefs) {
                 },
                 get onabort() { return this._onabort; }
             };
+            db._lastTransaction = tx;
             return tx;
         }
     };
@@ -359,6 +385,9 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'SECRET_KEYS'),
         extractVar(backupSrc, 'CORE_HINTS'),
         extractVar(backupSrc, 'IDB_TARGETS'),
+        extractVar(backupSrc, 'RP_DB_NAME'),
+        extractVar(backupSrc, 'RP_DB_VERSION'),
+        extractVar(backupSrc, 'RP_STORE_NAME'),
         extractVar(backupSrc, 'RP_ROLE_PRE'),
         extractVar(backupSrc, 'RP_ROLE_IDB_PRE'),
         extractVar(backupSrc, 'RESTORE_POINT_IDB_MAX_BYTES')
@@ -369,7 +398,8 @@ function buildCtxFull(opts) {
         'base64ToBlob', 'blobToBase64', 'idbOpen',
         'dumpStore', 'dumpDatabase',
         'restoreStore', 'restoreDatabase', 'validateBackup', 'restore', 'verifyRestore',
-        'rpDeleteRole', 'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
+        'rpOpen', 'rpWriteSnapshot', 'rpReadSnapshot', 'rpDeleteRole',
+        'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
         'estimateRestorePointBytes', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
         'doExport', 'handleImportFile'
@@ -485,6 +515,12 @@ function buildCtxFull(opts) {
     ctx.$ = function (id) { return null; };
 
     const restorePointRows = new Map();
+    ctx.__realRestorePointApi = {
+        rpOpen: ctx.rpOpen,
+        rpWriteSnapshot: ctx.rpWriteSnapshot,
+        rpReadSnapshot: ctx.rpReadSnapshot,
+        rpDeleteRole: ctx.rpDeleteRole
+    };
     ctx.rpWriteSnapshot = async (snap, role) => { restorePointRows.set(role, { snap, createdAt: Date.now() }); };
     ctx.rpReadSnapshot = async (role) => restorePointRows.get(role) || null;
     ctx.rpDeleteRole = async (role) => {
@@ -1630,4 +1666,87 @@ test('26 fingerprintRestorePoint：同 MIME、同体积但二进制不同的 Blo
     });
     assert.equal(firstFingerprint, clonedFingerprint,
         '结构化克隆后的相同 Blob 内容必须产生相同指纹');
+});
+
+
+/* ═══════════════════════════════════════════════
+   27. 恢复点 IndexedDB API：真实写入、事务完成后读回和清理
+   ═══════════════════════════════════════════════ */
+test('27 恢复点 API：真实写入/读回/清理使用完整事务并关闭数据库连接', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const restoreDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    const api = ctx.__realRestorePointApi;
+    const snapshot = {
+        profile: 'before-import',
+        nested: { enabled: true, values: [1, 2, 3] }
+    };
+
+    await api.rpWriteSnapshot(snapshot, 'pre-import');
+    assert.equal(restoreDb._data.restores.length, 1);
+    assert.equal(restoreDb._data.restores[0].role, 'pre-import');
+
+    const restored = await api.rpReadSnapshot('pre-import');
+    assert.deepEqual(restored.snap, snapshot);
+    assert.ok(restoreDb._closeCount >= 2,
+        'write and read operations must close their IndexedDB connections');
+
+    await api.rpDeleteRole('pre-import');
+    assert.equal(restoreDb._data.restores.length, 0);
+    assert.ok(restoreDb._closeCount >= 3,
+        'delete operation must close its IndexedDB connection');
+});
+
+/* ═══════════════════════════════════════════════
+   28. 恢复点读取：request success 不等于只读事务完成
+   ═══════════════════════════════════════════════ */
+test('28 rpReadSnapshot：必须等 readonly 事务 complete 后才 resolve', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const restoreDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    const api = ctx.__realRestorePointApi;
+    await api.rpWriteSnapshot({ value: 'durable-snapshot' }, 'pre-import');
+
+    restoreDb._deferComplete = true;
+    let settled = false;
+    const pendingRead = api.rpReadSnapshot('pre-import').then(value => {
+        settled = true;
+        return value;
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(restoreDb._requestSuccessCount > 0,
+        'the object-store get request should already have succeeded');
+    assert.equal(settled, false,
+        'the read promise must not resolve before its transaction completes');
+
+    restoreDb._flushComplete();
+    const result = await pendingRead;
+    assert.equal(result.snap.value, 'durable-snapshot');
+    assert.equal(settled, true);
+    restoreDb._deferComplete = false;
+});
+
+/* ═══════════════════════════════════════════════
+   29. 恢复点读取：请求成功后事务中止仍必须判失败
+   ═══════════════════════════════════════════════ */
+test('29 rpReadSnapshot：request success 后 readonly 事务 abort 必须 reject', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+    const restoreDb = registerDB('maomao-restore-point', 1, [
+        { store: 'restores', keyPath: 'role' }
+    ]);
+    const api = ctx.__realRestorePointApi;
+    await api.rpWriteSnapshot({ value: 'durable-snapshot' }, 'pre-import');
+
+    restoreDb._deferComplete = true;
+    const pendingRead = api.rpReadSnapshot('pre-import');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(restoreDb._requestSuccessCount > 0);
+    restoreDb._lastTransaction.abort();
+    await assert.rejects(pendingRead, /mock transaction aborted|aborted/);
+    restoreDb._deferComplete = false;
 });
