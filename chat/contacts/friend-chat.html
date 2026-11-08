@@ -592,8 +592,9 @@
       if (error && error.code === 'NOT_FRIENDS') {
         setBlocked('好友关系已失效，无法继续发送消息。');
       } else if (error && error.code === 'STALE_FRIENDSHIP_GENERATION') {
-        // The request was created against an older relationship. Synchronize
-        // before allowing a retry; the server did not store this stale write.
+        // The request was created against an older relationship. The store
+        // rejected it before insertion, so rotate the client ID before retry.
+        pendingSend = { body: text, id: api.createMessageId() };
         await pollMessages();
         if (!blocked) {
           setStatus('好友关系已经变化，聊天正在同步。同步后再次点击发送即可继续。', true);
