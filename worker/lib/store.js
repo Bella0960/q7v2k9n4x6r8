@@ -2109,8 +2109,10 @@ class CloudStore {
 
 
   listMaoAccounts({ limit = 500 } = {}) {
+    // The creator account is outside the ordinary-user directory. Exclude it
+    // before LIMIT so the advertised 500-user capacity is not reduced to 499.
     return this.exec(
-      "SELECT id, username, role, status, qq_email, qq_email_verified_at, created_at, authorized_at, disabled_at, revoked_at FROM mao_accounts ORDER BY created_at DESC, id DESC LIMIT ?",
+      "SELECT id, username, role, status, qq_email, qq_email_verified_at, created_at, authorized_at, disabled_at, revoked_at FROM mao_accounts WHERE role != 'super_admin' ORDER BY created_at DESC, id DESC LIMIT ?",
       Math.min(500, Math.max(1, Number(limit) || 500))
     );
   }
