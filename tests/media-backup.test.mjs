@@ -144,66 +144,102 @@ function makeIDB(name, version, storeDefs) {
             };
         },
         transaction(storeName, mode) {
-            assert.ok(data[storeName] !== undefined, `store ${storeName} 不存在`);
+            const transactionNames = Array.isArray(storeName) ? storeName.slice() : [storeName];
+            transactionNames.forEach(name => {
+                assert.ok(data[name] !== undefined, `store ${name} 不存在`);
+            });
+            const before = mode === 'readwrite'
+                ? Object.fromEntries(transactionNames.map(name => [name, data[name].slice()]))
+                : null;
+            db._transactions = db._transactions || [];
+            db._transactions.push({ storeNames: transactionNames.slice(), mode });
+
             let oncompleteCb = null;
-            let onsuccessCb = null;
-            const store = {
-                _name: storeName,
-                _defs: storeDefs.find(d => d.store === storeName),
-                clear() {
-                    data[storeName] = [];
-                    return { onsuccess: null, result: undefined };
-                },
-                put(value, key) {
-                    const def = storeDefs.find(d => d.store === storeName);
-                    let k;
-                    if (def && def.keyPath) k = value[def.keyPath];
-                    else k = key;
-                    if (k === undefined || k === null) k = String(Date.now()) + '_' + Math.random();
-                    // 非 keyPath store：把生成的 key 存到 record 上（getAllKeys 需要）
-                    if (!(def && def.keyPath)) value.__mock_key = k;
-                    const idx = data[storeName].findIndex(r => {
-                        if (def && def.keyPath) return r[def.keyPath] === k;
-                        return r.__mock_key === k;
-                    });
-                    // 直接存引用，不做 JSON 序列化（Blob 保持 instanceof Blob，_data 保留）
-                    if (idx >= 0) data[storeName][idx] = value;
-                    else data[storeName].push(value);
-                    return { onsuccess: null, result: k };
-                },
-                getAllKeys() {
-                    const keys = data[storeName].map(r => {
-                        const def = storeDefs.find(d => d.store === storeName);
-                        if (def && def.keyPath) return r[def.keyPath];
-                        return r.__mock_key;
-                    });
-                    const req = { result: keys, onsuccess: null };
-                    Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
-                    return req;
-                },
-                get(key) {
-                    const match = data[storeName].find(r => {
-                        const def = storeDefs.find(d => d.store === storeName);
-                        if (def && def.keyPath) return r[def.keyPath] === key;
-                        return r.__mock_key === key;
-                    });
-                    // 直接返回引用——Blob 仍是 SandboxBlob 实例，_data 完整
-                    const req = { result: match || undefined, onsuccess: null };
-                    Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
-                    return req;
-                }
-            };
+            let onabortCb = null;
+            let aborted = false;
+            const stores = {};
+            function makeStore(name) {
+                if (stores[name]) return stores[name];
+                const store = {
+                    _name: name,
+                    _defs: storeDefs.find(d => d.store === name),
+                    clear() {
+                        data[name] = [];
+                        return { onsuccess: null, result: undefined };
+                    },
+                    put(value, key) {
+                        const def = storeDefs.find(d => d.store === name);
+                        const failure = db._failPut;
+                        if (failure && failure.store === name
+                                && (!failure.assetId || String(value && value.assetId) === String(failure.assetId))) {
+                            db._failPut = null;
+                            throw new Error(failure.message || 'mock IndexedDB put failed');
+                        }
+                        let k;
+                        if (def && def.keyPath) k = value[def.keyPath];
+                        else k = key;
+                        if (k === undefined || k === null) k = String(Date.now()) + '_' + Math.random();
+                        if (!(def && def.keyPath)) value.__mock_key = k;
+                        const idx = data[name].findIndex(r => {
+                            if (def && def.keyPath) return r[def.keyPath] === k;
+                            return r.__mock_key === k;
+                        });
+                        if (idx >= 0) data[name][idx] = value;
+                        else data[name].push(value);
+                        return { onsuccess: null, result: k };
+                    },
+                    getAllKeys() {
+                        const keys = data[name].map(r => {
+                            const def = storeDefs.find(d => d.store === name);
+                            if (def && def.keyPath) return r[def.keyPath];
+                            return r.__mock_key;
+                        });
+                        const req = { result: keys, onsuccess: null };
+                        Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    get(key) {
+                        const match = data[name].find(r => {
+                            const def = storeDefs.find(d => d.store === name);
+                            if (def && def.keyPath) return r[def.keyPath] === key;
+                            return r.__mock_key === key;
+                        });
+                        const req = { result: match || undefined, onsuccess: null };
+                        Promise.resolve().then(() => { if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    }
+                };
+                stores[name] = store;
+                return store;
+            }
+
             const tx = {
-                objectStore() { return store; },
+                objectStore(name) {
+                    const target = name || transactionNames[0];
+                    assert.ok(transactionNames.includes(target), `store ${target} 不在事务中`);
+                    return makeStore(target);
+                },
                 error: null,
+                abort() {
+                    if (aborted) return;
+                    aborted = true;
+                    this.error = this.error || new Error('mock transaction aborted');
+                    if (before) Object.keys(before).forEach(name => { data[name] = before[name].slice(); });
+                    if (onabortCb) Promise.resolve().then(() => onabortCb());
+                },
                 set oncomplete(fn) {
                     oncompleteCb = fn;
-                    Promise.resolve().then(() => { if (oncompleteCb) oncompleteCb(); });
+                    Promise.resolve().then(() => {
+                        if (oncompleteCb && !aborted) oncompleteCb();
+                    });
                 },
                 get oncomplete() { return oncompleteCb; },
                 set onerror(fn) { this._onerror = fn; },
                 get onerror() { return this._onerror; },
-                set onabort(fn) { this._onabort = fn; },
+                set onabort(fn) {
+                    onabortCb = fn;
+                    if (aborted && onabortCb) Promise.resolve().then(() => onabortCb());
+                },
                 get onabort() { return this._onabort; }
             };
             return tx;
