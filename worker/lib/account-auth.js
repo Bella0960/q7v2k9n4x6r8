@@ -290,8 +290,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       }
     }
     const maxUses = body.maxUses == null ? 1 : Number(body.maxUses);
-    if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 20 || (targetAccountId && maxUses !== 1)) {
-      throw new ApiError(400, 'INVALID_INVITE_USES', '指定永久 ID 的邀请码只能使用一次；邮箱邀请码最多 20 次');
+    if (maxUses !== 1) {
+      throw new ApiError(400, 'INVALID_INVITE_USES', 'MAO 采用一人一码，每个邀请码只能成功授权一个账号');
     }
     const ttlHours = body.ttlHours == null ? 168 : Number(body.ttlHours);
     if (!Number.isInteger(ttlHours) || ttlHours < 1 || ttlHours > 720) {
