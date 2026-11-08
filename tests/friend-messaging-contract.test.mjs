@@ -559,3 +559,74 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CHAT_HTML, /conversationViewVersion/);
   assert.match(FRIEND_CHAT_HTML, /hiddenMessageIds\[message\.id\]/);
 });
+
+
+test('删除并重新添加好友会开启全新聊天关系，不恢复旧消息或旧视图状态', async () => {
+  const ctx = setupTestStore(openTestDb());
+  ctx.timestamps.push(FIXED_NOW);
+  const alice = makeAccount('Alice');
+  const bob = makeAccount('Bob');
+  await register(ctx, alice, '198.51.100.81');
+  await register(ctx, bob, '198.51.100.82');
+  await makeFriends(ctx, alice, bob);
+
+  const oldClientMessageId = messageId();
+  const oldMessage = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
+    method: 'POST',
+    body: { clientMessageId: oldClientMessageId, body: '旧关系里的消息' }
+  });
+  assert.equal(oldMessage.status, 200);
+
+  const oldRead = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
+    method: 'POST',
+    body: { messageId: oldMessage.payload.message.id }
+  });
+  assert.equal(oldRead.status, 200);
+
+  const oldHidden = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages/' + oldMessage.payload.message.id, {
+    method: 'DELETE'
+  });
+  assert.equal(oldHidden.status, 200);
+
+  const removed = await asAccount(ctx, alice, '/api/friends/' + bob.userId, { method: 'DELETE' });
+  assert.equal(removed.status, 200);
+  assert.equal(removed.payload.removed, true);
+  assert.equal((await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages')).status, 403);
+  assert.equal((await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages')).status, 403);
+
+  await makeFriends(ctx, alice, bob);
+
+  const aliceHistory = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages');
+  const bobHistory = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
+  assert.equal(aliceHistory.status, 200);
+  assert.equal(bobHistory.status, 200);
+  assert.deepEqual(aliceHistory.payload.messages, []);
+  assert.deepEqual(bobHistory.payload.messages, []);
+  assert.equal((await asAccount(ctx, alice, '/api/friends')).payload.friends[0].unreadCount, 0);
+  assert.equal((await asAccount(ctx, bob, '/api/friends')).payload.friends[0].unreadCount, 0);
+
+  const staleRetry = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
+    method: 'POST',
+    body: { clientMessageId: oldClientMessageId, body: '旧关系里的消息' }
+  });
+  assert.equal(staleRetry.status, 409);
+  assert.equal(staleRetry.payload.error.code, 'STALE_FRIENDSHIP_MESSAGE_RETRY');
+
+  const staleRead = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
+    method: 'POST',
+    body: { messageId: oldMessage.payload.message.id }
+  });
+  assert.equal(staleRead.status, 404);
+  const staleHide = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages/' + oldMessage.payload.message.id, {
+    method: 'DELETE'
+  });
+  assert.equal(staleHide.status, 404);
+
+  const fresh = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages', {
+    method: 'POST',
+    body: { clientMessageId: messageId(), body: '新关系里的第一条消息' }
+  });
+  assert.equal(fresh.status, 200);
+  const aliceAfterFresh = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages');
+  assert.deepEqual(aliceAfterFresh.payload.messages.map(item => item.body), ['新关系里的第一条消息']);
+});
