@@ -342,7 +342,8 @@ test('runtime falls back to the last working theme when the newly selected theme
     addEventListener(type,callback){listeners[type]=callback},
     dispatchEvent(event){if(event.type==='maomao:chat-theme-change'&&listeners[event.type])listeners[event.type]()}
   };
-  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,PhoneStorage:phoneStorage,console:{error(){}},setTimeout});
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,PhoneStorage:phoneStorage,CustomEvent,console:{error(){}},setTimeout});
   await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),first.id,'首次成功应用应记住可回退主题');
   localStorage.setItem('maomao_chat_theme_active_v1',broken.id);
@@ -354,4 +355,58 @@ test('runtime falls back to the last working theme when the newly selected theme
   assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),first.id,'回退后应保留最后成功主题标记');
   assert.match(styleNodes.get('maomao-chat-theme-package-style').textContent,/working-theme/,'回退后应重新加载并显示原先可用主题');
   assert.ok(aRevokes>=1,'切换和回退时应释放已替换的旧对象 URL');
+});
+
+
+test('runtime ignores stale asset loads after a rapid theme switch',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  let resolveSlow,slowRevoked=0;
+  const slowPending=new Promise(resolve=>{resolveSlow=resolve});
+  const slow={id:'slow-theme',assetRefs:{'assets/slow.png':'slow-asset'}};
+  const fast={id:'fast-theme',assetRefs:{'assets/fast.png':'fast-asset'}};
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([slow,fast])],
+    ['maomao_chat_theme_active_v1',slow.id]
+  ]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  const media={toObjectUrl(id){
+    if(id==='slow-asset')return slowPending;
+    return Promise.resolve({ok:true,value:{url:'blob:fast-theme',revoke(){}}});
+  }};
+  const styleNodes=new Map(),listeners={};
+  const shell={
+    classList:{add(){},remove(){}},style:{removeProperty(){}},
+    setAttribute(){},removeAttribute(){},querySelector(){return null},querySelectorAll(){return[]}
+  };
+  const document={
+    readyState:'complete',querySelector(){return shell},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(theme){return '/* '+theme.id+' */'}},
+    PhoneStorage:phoneStorage,
+    location:{pathname:'/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(type,callback){listeners[type]=callback}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,PhoneStorage:phoneStorage,console,setTimeout});
+  await Promise.resolve();
+  await Promise.resolve();
+  values.set('maomao_chat_theme_active_v1',fast.id);
+  listeners['maomao:chat-theme-change']();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.match(styleNodes.get('maomao-chat-theme-package-style').textContent,/fast-theme/,'快速切换后应先应用最新选择');
+  resolveSlow({ok:true,value:{url:'blob:slow-theme',revoke(){slowRevoked++}}});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.match(styleNodes.get('maomao-chat-theme-package-style').textContent,/fast-theme/,'旧请求迟到后不能覆盖新主题样式');
+  assert.equal(localStorage.getItem('maomao_chat_theme_active_v1'),fast.id,'活动主题 ID 应保持最新选择');
+  assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),fast.id,'最后成功主题不能被旧请求覆盖');
+  assert.equal(slowRevoked,1,'迟到的旧主题素材 URL 必须释放');
 });
