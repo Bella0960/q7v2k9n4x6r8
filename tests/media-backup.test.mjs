@@ -836,10 +836,9 @@ test('09 restoreDatabase：任一 store 写入失败会回滚同一 DB 的全部
 });
 
 /* ═══════════════════════════════════════════════
-   10. atomicExport：store 总量超限
-   ═══════════════════════════════════════════════ */限（多条累加越过 blobStoreMaxBytes）
+   10. atomicExport：store 总量超限（多条累加越过 blobStoreMaxBytes）
    ═══════════════════════════════════════════════ */
-test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExportFailed', async () => {
+test('10 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExportFailed', async () => {
     clearAllDBs();
     const ctx = buildCtxFull();
     const maomaoAssetsDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-assets');
@@ -889,7 +888,7 @@ test('09 dumpDatabase：store 总 Blob 超限 → 多条被跳过 → atomicExpo
       - dbWarnings + allSkipped 在 toast 文案里出现
       - 最终 JSON body 可 parse 且结构正确
    ═══════════════════════════════════════════════ */
-test('10 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB 被排除', async () => {
+test('11 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB 被排除', async () => {
     clearAllDBs();
 
     // ── localStorage mock 里预置若干键值（snapshot 会读它们） ──
