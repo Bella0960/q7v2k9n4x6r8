@@ -61,7 +61,7 @@ test('account and cloud API GET requests bypass the shared Service Worker cache'
   assert.ok(fontCache > apiBypass, 'the API bypass must run before cache-specific handlers');
   assert.ok(sharedCache > fontCache, 'the API bypass must run before the shared GET cache');
   const bypassRegion = serviceWorker.slice(apiBypass, fontCache);
-  assert.doesNotMatch(bypassRegion, /event\\.respondWith|caches\\./,
+  assert.doesNotMatch(bypassRegion, /event\.respondWith|caches\./,
     'API requests must pass directly to the network/Worker without touching CacheStorage');
 });
 
