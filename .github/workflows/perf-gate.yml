@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
       - name: Install Playwright Edge
-        run: npx playwright install --with-deps msedge
+        run: npx playwright install --with-deps msedge || npx playwright install msedge
       - name: Run performance budget gate
         run: npm run perf:gate
       - name: Run P0-02 page load browser regression (msedge)

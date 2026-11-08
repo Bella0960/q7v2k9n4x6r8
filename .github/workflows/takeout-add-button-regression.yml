@@ -38,6 +38,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
       - name: Install Playwright Edge
-        run: npx playwright install --with-deps msedge
+        run: npx playwright install --with-deps msedge || npx playwright install msedge
       - name: Run takeout add-button browser regression (msedge)
         run: node tests/takeout-add-button.browser.mjs
