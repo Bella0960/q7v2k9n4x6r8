@@ -537,3 +537,56 @@ test('switching real-user accounts cannot reuse another account roster entries f
     'real_user:friend-owned-by-a'
   ]);
 });
+
+test('blocked, unblocked, and removed real users never enter a new Moments audience snapshot', () => {
+  const { api, directory } = createRuntime();
+  directory.setActiveAccountId('owner-account');
+  directory.saveMany([
+    {
+      id: 'user-blocked',
+      ownerAccountId: 'owner-account',
+      displayName: '已屏蔽好友',
+      status: 'accepted',
+      requestId: 'request_blocked_01',
+      createdAt: 1,
+      updatedAt: 2
+    },
+    {
+      id: 'user-removed',
+      ownerAccountId: 'owner-account',
+      displayName: '已删除好友',
+      status: 'accepted',
+      requestId: 'request_removed_01',
+      createdAt: 1,
+      updatedAt: 2
+    }
+  ]);
+  api.saveGroups([{
+    id: 'former-friends',
+    name: '旧好友分组',
+    memberIds: [],
+    memberRefs: ['real_user:user-blocked', 'real_user:user-removed']
+  }]);
+
+  assert.equal(directory.block('user-blocked', { now: 10 }).ok, true);
+  assert.equal(directory.unblock('user-blocked', { now: 20 }).ok, true);
+  assert.equal(directory.removeFriend('user-removed', {
+    now: 30,
+    requestId: 'request_removed_01'
+  }).ok, true);
+
+  const accepted = directory.getAcceptedRefs();
+  assert.equal(accepted.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(accepted.refs)), []);
+
+  const snapshot = api.buildAudienceSnapshot(['former-friends'], [], {
+    availableContactIds: [],
+    availableContactRefs: []
+  });
+  assert.equal(snapshot.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.memberRefs)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.staleMemberRefs)), [
+    'real_user:user-blocked',
+    'real_user:user-removed'
+  ]);
+});
