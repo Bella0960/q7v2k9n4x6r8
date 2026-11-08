@@ -361,6 +361,19 @@ test('reader cleanup deletes books and comments in one IndexedDB transaction', a
   await assert.rejects(rejected, /transaction failed|本地书籍删除/);
 });
 
+test('backup import snapshots IndexedDB before overwriting data and rolls back across databases', () => {
+  const captureAt = backupScript.indexOf('captureIndexedDbRestorePoint(obj.indexedDB)');
+  const localRestoreAt = backupScript.indexOf('var ok = restore(incoming)');
+  const idbRestoreAt = backupScript.indexOf('restoreIndexedDBWithRollback(obj.indexedDB, idbRestorePoint)');
+  assert.ok(captureAt >= 0 && captureAt < localRestoreAt, 'IndexedDB snapshot must be captured before localStorage changes');
+  assert.ok(localRestoreAt < idbRestoreAt, 'IndexedDB restore starts only after localStorage write');
+  assert.match(backupScript, /for \(var j = restored\.length - 1; j >= 0; j--\)/);
+  assert.match(backupScript, /await restoreDatabase\([\s\S]{0,180}?restorePoint\.snapshots\[previous\.db\], true\)/);
+  assert.match(backupScript, /var allRollbackOk = localRollbackOk && localRollbackVerify\.ok/);
+  assert.match(backupScript, /部分回滚未能确认；本机恢复点已保留/);
+  assert.match(backupScript, /RESTORE_POINT_IDB_MAX_BYTES/);
+});
+
 test('backup tutorial explains per-database rollback and retained recovery points', () => {
   const start = html.indexOf("{id:'backup'");
   const end = html.indexOf("\\n{id:'api-errors'", start);
