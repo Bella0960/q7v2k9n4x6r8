@@ -27,13 +27,26 @@ function serializeStoreJson(value, maxBytes, field) {
   return serialized;
 }
 
-export function createStore(exec) {
-  return new CloudStore(exec);
+export function createStore(exec, transaction = null) {
+  return new CloudStore(exec, transaction);
 }
 
 class CloudStore {
-  constructor(exec) {
+  constructor(exec, transaction = null) {
     this.exec = exec;
+    this.transaction = typeof transaction === 'function'
+      ? transaction
+      : callback => {
+          exec('BEGIN IMMEDIATE');
+          try {
+            const result = callback();
+            exec('COMMIT');
+            return result;
+          } catch (error) {
+            try { exec('ROLLBACK'); } catch (rollbackError) {}
+            throw error;
+          }
+        };
   }
 
   getDevice(deviceId) {
@@ -1910,21 +1923,17 @@ class CloudStore {
   }
 
   createMaoSuperAdminAccountIfEmpty(account) {
-    this.exec('BEGIN IMMEDIATE');
-    try {
+    return this.transaction(() => {
       const existing = this.exec("SELECT id FROM mao_accounts WHERE role = 'super_admin' LIMIT 1")[0];
-      if (existing) {
-        this.exec('ROLLBACK');
-        return false;
-      }
+      if (existing) return false;
       this.exec(
         "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at, authorized_at) VALUES (?, ?, ?, ?, ?, 'super_admin', 'active', ?, NULL, ?, ?, ?)",
         account.id, account.username, account.usernameKey, account.passwordSalt,
         account.passwordHash, account.qqEmail || null, account.now, account.now, account.now
       );
 
-      // Move every creator-owned tenant row in the same SQLite transaction as
-      // the one-time admin insert. A crash can no longer strand half the data.
+      // Move every creator-owned tenant row in the same storage transaction as
+      // the one-time admin insert. A failure rolls back the account and all rows.
       const tables = [
         'devices',
         'user_autonomy',
@@ -1940,12 +1949,8 @@ class CloudStore {
       for (const table of tables) {
         this.exec('UPDATE ' + table + " SET user_id = ? WHERE user_id = 'owner'", account.id);
       }
-      this.exec('COMMIT');
       return true;
-    } catch (error) {
-      try { this.exec('ROLLBACK'); } catch (rollbackError) {}
-      throw error;
-    }
+    });
   }
 
 
@@ -2032,30 +2037,23 @@ class CloudStore {
   }
 
   insertMaoInvite(invite) {
-    this.exec('BEGIN IMMEDIATE');
-    try {
-      // Re-check under the write lock. The route's earlier check is only an
-      // optimization; this one closes concurrent ID/email invite issuance races.
+    return this.transaction(() => {
+      // Re-check under the write transaction. The route's earlier check is only
+      // an optimization; this one closes concurrent ID/email invite issuance races.
       if (this.hasActiveMaoInvite({
         targetAccountId: invite.targetAccountId || null,
         targetEmail: invite.targetEmail || null,
         now: invite.now
-      })) {
-        this.exec('ROLLBACK');
-        return false;
-      }
+      })) return false;
       this.exec(
         "INSERT INTO mao_invite_codes (id, token_hash, target_account_id, target_email, max_uses, used_count, created_by_account_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
         invite.id, invite.tokenHash, invite.targetAccountId || null, invite.targetEmail || null,
         invite.maxUses, invite.createdByAccountId, invite.now, invite.expiresAt
       );
-      this.exec('COMMIT');
       return true;
-    } catch (error) {
-      try { this.exec('ROLLBACK'); } catch (rollbackError) {}
-      throw error;
-    }
+    });
   }
+
 
   hasActiveMaoInvite({ targetAccountId = null, targetEmail = null, now }) {
     const row = this.exec(
@@ -2092,35 +2090,20 @@ class CloudStore {
   }
 
   redeemMaoInvite({ tokenHash, accountId, now }) {
-    this.exec('BEGIN IMMEDIATE');
-    try {
+    return this.transaction(() => {
       const account = this.getMaoAccountById(accountId);
-      if (!account || account.status !== 'pending_invite') {
-        this.exec('ROLLBACK');
-        return false;
-      }
+      if (!account || account.status !== 'pending_invite') return false;
       const invite = this.exec(
         "UPDATE mao_invite_codes SET used_count = used_count + 1 WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ? AND used_count < max_uses AND (target_account_id = ? OR (target_email IS NOT NULL AND target_email = ? AND EXISTS (SELECT 1 FROM mao_accounts verified WHERE verified.id = ? AND verified.qq_email = target_email AND verified.qq_email_verified_at IS NOT NULL))) RETURNING id",
         tokenHash, now, accountId, String(account.qq_email || '').toLowerCase(), accountId
       )[0];
-      if (!invite) {
-        this.exec('ROLLBACK');
-        return false;
-      }
+      if (!invite) return false;
       const updated = this.exec(
         "UPDATE mao_accounts SET status = 'active', authorized_at = ?, updated_at = ? WHERE id = ? AND status = 'pending_invite' RETURNING id",
         now, now, accountId
       )[0];
-      if (!updated) {
-        this.exec('ROLLBACK');
-        return false;
-      }
-      this.exec('COMMIT');
-      return true;
-    } catch (error) {
-      try { this.exec('ROLLBACK'); } catch (rollbackError) {}
-      throw error;
-    }
+      return Boolean(updated);
+    });
   }
 
 
@@ -2132,13 +2115,9 @@ class CloudStore {
   }
 
   setMaoAccountState({ accountId, action, actorAccountId, reason = '', now }) {
-    this.exec('BEGIN IMMEDIATE');
-    try {
+    return this.transaction(() => {
       const account = this.getMaoAccountById(accountId);
-      if (!account || account.role === 'super_admin') {
-        this.exec('ROLLBACK');
-        return null;
-      }
+      if (!account || account.role === 'super_admin') return null;
 
       let nextStatus = '';
       if (action === 'disable' && ['pending_invite', 'active'].includes(account.status)) {
@@ -2149,10 +2128,7 @@ class CloudStore {
       } else if (action === 'revoke' && account.status !== 'revoked') {
         nextStatus = 'revoked';
       }
-      if (!nextStatus || nextStatus === account.status) {
-        this.exec('ROLLBACK');
-        return null;
-      }
+      if (!nextStatus || nextStatus === account.status) return null;
 
       let changed = null;
       if (action === 'disable') {
@@ -2171,10 +2147,7 @@ class CloudStore {
           now, now, accountId
         )[0] || null;
       }
-      if (!changed) {
-        this.exec('ROLLBACK');
-        return null;
-      }
+      if (!changed) return null;
 
       if (action === 'disable' || action === 'revoke') {
         this.revokeMaoAccountSessions(accountId, now);
@@ -2203,13 +2176,8 @@ class CloudStore {
         serializeStoreJson({ reason: String(reason || '').slice(0, 500) }, 2048, 'audit detail'),
         now
       );
-      const updatedAccount = this.getMaoAccountById(accountId);
-      this.exec('COMMIT');
-      return updatedAccount;
-    } catch (error) {
-      try { this.exec('ROLLBACK'); } catch (rollbackError) {}
-      throw error;
-    }
+      return this.getMaoAccountById(accountId);
+    });
   }
 
 
