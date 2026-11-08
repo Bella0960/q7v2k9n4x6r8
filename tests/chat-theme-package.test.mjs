@@ -22,6 +22,7 @@ test('stored ZIP validates its EOCD, central directory and matching local header
 
   const badCount=Buffer.from(valid);
   const countView=new DataView(badCount.buffer,badCount.byteOffset,badCount.byteLength);
+  countView.setUint16(badCount.length-22+8,2,true);
   countView.setUint16(badCount.length-22+10,2,true);
   assert.throws(()=>F.parseStoredZip(badCount),/中央目录长度不正确/);
 
@@ -43,7 +44,7 @@ test('stored ZIP permits a valid archive comment but rejects trailing unregister
   assert.doesNotThrow(()=>F.parseStoredZip(commented));
 });
 test('image/font assets must be registered in assetIndex',()=>{const bytes=new Uint8Array([137,80,78,71,13,10,26,10]);const t=fixture({assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]});const p=F.readPackage(F.parseStoredZip(makePackage(t,'',[{name:'assets/bg.png',data:bytes}])));assert.deepEqual(Array.from(p.assets['assets/bg.png'].bytes),Array.from(bytes));});
-test('rejects wrong target, unsafe paths, external CSS and malformed CSS',()=>{assert.throws(()=>F.readPackage(F.parseStoredZip(makePackage(fixture({target:'desktop'})))),/目标不兼容/);assert.throws(()=>F.parseStoredZip(zip([{name:'../x',data:'x'}])),/不安全路径/);assert.throws(()=>F.validateCss('@import url(https://example.invalid/a.css)'),/不允许/);assert.throws(()=>F.validateCss('.x{background:url(https://example.invalid/a.png)}'),/只能引用主题 assets/);assert.throws(()=>F.validateCss('.x{color:red'),/不完整/);});
+test('rejects wrong target, unsafe paths, external CSS and malformed CSS',()=>{assert.throws(()=>F.readPackage(F.parseStoredZip(makePackage(fixture({target:'desktop'})))),/目标不兼容/);assert.throws(()=>F.parseStoredZip(zip([{name:'../x',data:'x'}])),/不安全路径/);assert.throws(()=>F.parseStoredZip(zip([{name:'assets\\\\..\\\\secret',data:'x'}])),/不安全路径/);assert.throws(()=>F.validateCss('@import url(https://example.invalid/a.css)'),/不允许/);assert.throws(()=>F.validateCss('.x{background:url(https://example.invalid/a.png)}'),/只能引用主题 assets/);assert.throws(()=>F.validateCss('.x{color:red'),/不完整/);});
 test('CSS property values are sanitized and cannot inject declarations',()=>{const t=fixture({styles:{chatList:{bottomNav:{background:'url(javascript:alert(1))',color:'#222'}},chatDetail:{}}});const p=F.readPackage(F.parseStoredZip(makePackage(t)));const css=F.stylesToCss(p.theme);assert.doesNotMatch(css,/javascript:/i);assert.match(css,/color:#222/);});
 
 test('hidden components stay hidden when the package is applied',()=>{const t=fixture({pages:{chatList:[{id:'statusBar'},{id:'bottomNav',visible:false}],chatDetail:[{id:'detailHeader'}]}});const p=F.readPackage(F.parseStoredZip(makePackage(t)));assert.match(F.stylesToCss(p.theme),/\.floating-nav\{display:none !important\}/);});
