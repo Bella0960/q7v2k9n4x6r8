@@ -467,6 +467,7 @@
       do {
         page = await api.getMessages(friendId, cursor, 'after');
         if (viewVersion !== messageViewVersion) return;
+        var recoveredRelationship = blocked;
         if (blocked) {
           // A previously removed friend may be added again while this page stays open.
           // A successful authenticated read proves the relationship is active again.
@@ -484,6 +485,10 @@
         list.forEach(function (message) { appendMessage(message, false); });
         rememberIncoming(list);
         if (page.nextCursor) cursor = page.nextCursor;
+        if (recoveredRelationship && !list.length) {
+          showEmpty('你们已经重新成为好友了。\n从第一条新消息开始聊吧。');
+          setStatus('好友关系已恢复，聊天已重新连接');
+        }
         guard += 1;
       } while (page.hasMore && guard < 5);
       if (shouldStick && scrollRevision === messageScrollRevision &&
