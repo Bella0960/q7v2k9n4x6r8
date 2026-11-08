@@ -145,7 +145,7 @@ self.addEventListener('install', event => {
       // Only the public account entry may be stored as an HTML document.
       // Account-owned app pages are always fetched through the Worker gate.
       const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
-        .filter(url => url === './account/index.html' || !/\.html(?:\?|$)/i.test(url));
+        .filter(url => url === './account/index.html' || url === './account/bootstrap.html' || !/\.html(?:\?|$)/i.test(url));
       await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
     }).then(() => self.skipWaiting())
   );
