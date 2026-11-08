@@ -63,7 +63,51 @@
     }
   }
 
-  if (!installAccountBoundFetch()) {
+  // Older screens still use XMLHttpRequest in a few legacy modules. Bind those
+  // same-origin API calls too; the server rejects authenticated private requests
+  // that arrive without an explicit page-account context.
+  function installAccountBoundXHR() {
+    var XHR = global.XMLHttpRequest;
+    if (!XHR || !XHR.prototype) return true;
+    var prototype = XHR.prototype;
+    var nativeOpen = prototype.open;
+    var nativeSend = prototype.send;
+    var nativeSetRequestHeader = prototype.setRequestHeader;
+    if (typeof nativeOpen !== 'function' ||
+        typeof nativeSend !== 'function' ||
+        typeof nativeSetRequestHeader !== 'function') return false;
+
+    var marker = '__maoAccountBoundApiV1';
+    try {
+      prototype.open = function (method, url) {
+        var bindContext = false;
+        try {
+          var requestUrl = new global.URL(String(url), global.location.href);
+          bindContext = requestUrl.origin === global.location.origin &&
+            /^\\/api(?:\\/|$)/.test(requestUrl.pathname);
+        } catch (error) {}
+        this[marker] = bindContext;
+        return nativeOpen.apply(this, arguments);
+      };
+      prototype.send = function () {
+        if (this[marker]) {
+          try {
+            nativeSetRequestHeader.call(this, 'x-mao-account-context', accountId);
+          } catch (error) {
+            try { this.abort(); } catch (abortError) {}
+            throw error;
+          }
+        }
+        return nativeSend.apply(this, arguments);
+      };
+      return true;
+    } catch (error) {
+      console.error('[MAO account scope] unable to bind XMLHttpRequest to the account');
+      return false;
+    }
+  }
+
+  if (!installAccountBoundFetch() || !installAccountBoundXHR()) {
     // Do not open app storage if same-origin requests cannot be account-bound.
     try {
       global.stop();
