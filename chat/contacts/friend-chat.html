@@ -303,7 +303,12 @@
       setStatus(result.empty ? '这段会话原本就是空的' : '已清空你这边的聊天记录');
       await pollMessages();
     } catch (error) {
-      setStatus(error.message || '清理聊天记录失败，请稍后再试。', true);
+      if (error && error.code === 'STALE_FRIENDSHIP_GENERATION') {
+        await pollMessages();
+        if (!blocked) setStatus('好友关系已经变化，已刷新当前聊天；本次清空没有执行。', true);
+      } else {
+        setStatus(error.message || '清理聊天记录失败，请稍后再试。', true);
+      }
     } finally {
       $('clearChatBtn').disabled = false;
     }
