@@ -221,7 +221,7 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(workerSource, /storage\.transactionSync/);
   assert.match(appSource, /x-mao-account-context/);
   assert.match(appSource, /ACCOUNT_CONTEXT_CHANGED/);
-  assert.match(scopeSource, /headers\\.set\\('x-mao-account-context', accountId\\)/);
+  assert.match(scopeSource, /headers\.set\('x-mao-account-context', accountId\)/);
 });
 
 test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
