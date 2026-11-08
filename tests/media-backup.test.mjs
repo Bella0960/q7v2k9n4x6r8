@@ -402,7 +402,10 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'RP_STORE_NAME'),
         extractVar(backupSrc, 'RP_ROLE_PRE'),
         extractVar(backupSrc, 'RP_ROLE_IDB_PRE'),
-        extractVar(backupSrc, 'RESTORE_POINT_IDB_MAX_BYTES')
+        extractVar(backupSrc, 'RP_ROLE_META'),
+        extractVar(backupSrc, 'RESTORE_POINT_IDB_MAX_BYTES'),
+        extractVar(backupSrc, 'importInProgress'),
+        extractVar(backupSrc, 'importRecoveryReady')
     ];
     const fnNames = [
         '$', 'toast', 'includeSecretsEnabled', 'snapshot',
@@ -411,7 +414,8 @@ function buildCtxFull(opts) {
         'dumpStore', 'dumpDatabase',
         'restoreStore', 'restoreDatabase', 'validateBackup', 'restore', 'verifyRestore',
         'rpOpen', 'rpWriteSnapshot', 'rpReadSnapshot', 'rpDeleteRole',
-        'clearRestorePoints', 'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
+        'clearRestorePoints', 'writeImportState', 'recoverInterruptedImportOnStartup',
+        'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
         'estimateRestorePointBytes', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
         'doExport', 'handleImportFile'
@@ -504,6 +508,8 @@ function buildCtxFull(opts) {
         }
     };
     runInNewContext(ctxSrc, ctx, { filename: 'backup.js (sandbox)' });
+    // 沙箱测试从稳定状态开始；生产页面会在启动恢复检查完成前保持 false。
+    ctx.importRecoveryReady = true;
 
     // 文件导入仍调用生产 handleImportFile；只把浏览器 FileReader 的文本读取
     // 接到测试 Promise，便于等待 async onload 完整结束，不复制导入流程逻辑。
