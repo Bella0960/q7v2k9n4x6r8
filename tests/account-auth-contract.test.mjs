@@ -37,6 +37,9 @@ test('0012 创建独立 MAO 账号、会话、邀请码与审计表', () => {
 test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授权', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const statusBefore = await ctx.asJson('/api/admin/bootstrap/status');
+  assert.equal(statusBefore.status, 200);
+  assert.equal(statusBefore.payload.initialized, false);
   const first = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
     body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
@@ -45,6 +48,8 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(firstResult.status, 200);
   assert.match(firstResult.payload.account.id, /^MAO-[A-Z0-9]{12,24}$/);
   assert.equal(firstResult.payload.account.role, 'super_admin');
+  const statusAfter = await ctx.asJson('/api/admin/bootstrap/status');
+  assert.equal(statusAfter.payload.initialized, true);
   const second = await ctx.asJson('/api/admin/bootstrap', {
     method: 'POST',
     body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'another', password: 'another-password-123' }
@@ -323,4 +328,35 @@ test('账号安全只返回本人设备与会话，并支持撤销设备、会�
 
   const bobStillActive = await ctx.fetchTo('/api/accounts/me', { headers: { cookie: bob.cookie } });
   assert.equal(bobStillActive.status, 200, '修改 Alice 的密码不得影响 Bob');
+});
+
+test('首次管理员初始化密钥错误会被持久化限流，初始化完成后入口状态关闭', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  for (let index = 0; index < 7; index += 1) {
+    const failed = await ctx.asJson('/api/admin/bootstrap', {
+      method: 'POST',
+      body: { bootstrapSecret: 'wrong-bootstrap-secret-32-characters-long', username: 'creator', password: 'creator-password-123' }
+    });
+    assert.equal(failed.status, 403);
+  }
+  const eighth = await ctx.asJson('/api/admin/bootstrap', {
+    method: 'POST',
+    body: { bootstrapSecret: 'wrong-bootstrap-secret-32-characters-long', username: 'creator', password: 'creator-password-123' }
+  });
+  assert.equal(eighth.status, 429);
+  const correctButBlocked = await ctx.asJson('/api/admin/bootstrap', {
+    method: 'POST',
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+  });
+  assert.equal(correctButBlocked.status, 429);
+
+  ctx.timestamps.push(ctx.now() + 15 * 60 * 1000 + 1);
+  const initialized = await ctx.asJson('/api/admin/bootstrap', {
+    method: 'POST',
+    body: { bootstrapSecret: BOOTSTRAP_SECRET, username: 'creator', password: 'creator-password-123' }
+  });
+  assert.equal(initialized.status, 200);
+  const status = await ctx.asJson('/api/admin/bootstrap/status');
+  assert.equal(status.payload.initialized, true);
 });
