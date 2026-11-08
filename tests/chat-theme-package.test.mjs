@@ -98,6 +98,62 @@ test('chat beauty exports only global CSS presets as chat theme packages',()=>{
   assert.match(beauty,/format\.createPackage\(theme, preset\.css \|\| '', \{\}\)/);
   assert.match(beauty,/角色专属预设保持独立/);
 });
+test('global CSS preset export creates an importable package and keeps role presets isolated',()=>{
+  const beauty=readFileSync(new URL('../beauty/beauty.html',import.meta.url),'utf8');
+  const start=beauty.indexOf('function exportCssPreset(i){');
+  const end=beauty.indexOf('\n\nfunction esc(s){',start);
+  assert.ok(start>=0&&end>start,'beauty page must expose the CSS preset exporter');
+  const source=beauty.slice(start,end);
+  let preset={name:'CSS / Global: Test?',target:'all',css:'.msg-bubble{color:#111}'};
+  const downloads=[],revoked=[],toasts=[],links=[];
+  const body={
+    children:[],
+    appendChild(node){this.children.push(node);node.parentNode=this},
+    removeChild(node){this.children=this.children.filter(item=>item!==node);node.parentNode=null}
+  };
+  const document={
+    body,
+    createElement(tag){
+      const node={tagName:tag,style:{},click(){this.clicked=true}};
+      links.push(node);
+      return node;
+    }
+  };
+  const windowMock={
+    MAOMAOChatThemeFormat:F,
+    URL:{
+      createObjectURL(blob){downloads.push(blob);return 'blob:global-css-theme'},
+      revokeObjectURL(url){revoked.push(url)}
+    }
+  };
+  class BlobStub{
+    constructor(parts,options){this.parts=parts;this.type=options.type}
+  }
+  const context={
+    getPresets(){return[preset]},
+    showToast(message){toasts.push(message)},
+    window:windowMock,Blob:BlobStub,document,
+    setTimeout(callback){callback();return 1}
+  };
+  vm.runInNewContext(source+'\nthis.exportCssPreset=exportCssPreset;',context);
+  context.exportCssPreset(0);
+  assert.equal(downloads.length,1,'global CSS preset should generate one package download');
+  assert.equal(links[0].download,'CSS _ Global_ Test_.maomaotheme','unsafe filename characters must be replaced');
+  assert.equal(links[0].clicked,true,'download link should be activated');
+  assert.equal(body.children.length,0,'temporary download link should be removed');
+  assert.deepEqual(revoked,['blob:global-css-theme'],'temporary object URL should be released');
+  const archive=downloads[0].parts[0];
+  const imported=F.readPackage(F.parseStoredZip(archive));
+  assert.equal(imported.theme.name,preset.name);
+  assert.equal(imported.customCss,preset.css);
+  assert.equal(imported.theme.pages.chatList.length,7);
+  assert.equal(imported.theme.pages.chatDetail.length,11);
+
+  preset={name:'Role-only preset',target:'role_123',css:'.msg-bubble{color:#f00}'};
+  context.exportCssPreset(0);
+  assert.equal(downloads.length,1,'role-scoped preset must not create a global package');
+  assert.match(toasts[toasts.length-1],/角色专属/);
+});
 test('custom block slots are normalized to supported positions for their own page',()=>{
   const theme=fixture({
     blocks:{
