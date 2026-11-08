@@ -143,6 +143,10 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
   const disabledJson = await json(disabledApi);
   assert.equal(disabledJson.status, 403);
   assert.equal(disabledJson.payload.error.message, '您的账号已被禁用');
+  const disabledWrongPassword = await ctx.asJson('/api/accounts/login', {
+    method: 'POST', body: { identifier: 'alice', password: 'wrong-password-123' }
+  });
+  assert.equal(disabledWrongPassword.status, 401, '错误密码不能探测账号是否已停用');
   const disabledLogin = await ctx.asJson('/api/accounts/login', {
     method: 'POST', body: { identifier: 'alice', password: 'alice-password-123' }
   });
