@@ -1017,6 +1017,7 @@ class CloudStore {
     return this.exec(
       `SELECT o.id AS outbound_message_id,
               target_device.id AS device_id,
+              target_device.user_id AS target_account_id,
               source_device.id AS source_device_id,
               o.character_id, o.server_message_id, o.created_at,
               s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
