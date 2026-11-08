@@ -18,6 +18,7 @@
  *  31. 数据库回滚后逐库读回指纹，检测事务成功但静默漏写
  *  32-33. 整机导入互斥、FileReader 初始化失败与锁释放
  *  34-37. 页面中断后的启动恢复、恢复失败重试与 committed 清理
+ *  38-39. 阶段日志写入保护、未预期异常后的恢复点保留
  */
 
 import test from 'node:test';
@@ -2112,4 +2113,101 @@ test('37 recoverInterruptedImportOnStartup：committed 状态只清理残留恢�
     assert.equal(ctx.localStorage.phone_data_v2, 'imported-phone-state');
     assert.equal(ctx.__restorePointRows.size, 0);
     assert.ok(ctx.__intercepted.toasts.some(item => /清理上次成功导入遗留的恢复点/.test(item.msg)));
+});
+
+
+/* ═══════════════════════════════════════════════
+   38. 无法持久化 applying 标记：必须在业务覆盖前中止
+   ═══════════════════════════════════════════════ */
+test('38 完整导入：写入 applying 阶段标记失败时不得覆盖任何业务数据', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+
+    const writeSnapshot = ctx.rpWriteSnapshot;
+    ctx.rpWriteSnapshot = async (snap, role) => {
+        if (role === 'pre-import-meta') throw new Error('injected import journal quota failure');
+        return writeSnapshot(snap, role);
+    };
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-new-key',
+                __value: { id: 'wallpaper-new', name: 'New wallpaper' }
+            }]
+        }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters, 'old-character-state');
+    assert.equal(ctx.localStorage.phone_data_v2, 'old-phone-state');
+    assert.deepEqual(mediaDb._data.wallpapers.map(row => row.id), ['wallpaper-old']);
+    assert.equal(ctx.__restorePointRows.size, 0,
+        '阶段日志写入失败且业务数据未修改时，应清理本轮恢复点');
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /无法写入导入阶段保护记录/.test(item.msg)
+        && /现有业务数据未修改/.test(item.msg)
+    ));
+    assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+/* ═══════════════════════════════════════════════
+   39. 意外异常发生在覆盖之后：锁住新导入并保留日志等待启动恢复
+   ═══════════════════════════════════════════════ */
+test('39 完整导入：阶段日志写入后的未预期异常必须保留恢复点并禁止继续导入', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers',
+        mediaDef.stores.find(s => s.store === 'wallpapers'), [
+            { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+        ]);
+
+    ctx.restoreIndexedDBWithRollback = async () => {
+        throw new Error('injected unexpected restore pipeline exception');
+    };
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-new-key',
+                __value: { id: 'wallpaper-new', name: 'New wallpaper' }
+            }]
+        }
+    }));
+
+    assert.equal(ctx.localStorage.ai_custom_characters,
+        JSON.stringify({ profile: 'imported-character-state' }));
+    assert.equal(ctx.localStorage.phone_data_v2, 'imported-phone-state');
+    assert.ok(ctx.__restorePointRows.has('pre-import'));
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+    assert.equal(ctx.__restorePointRows.get('pre-import-meta').snap.status, 'applying');
+    assert.equal(ctx.importRecoveryReady, false,
+        '当次页面不能在未知混合状态下覆盖恢复点并开始新导入');
+    assert.equal(ctx.__intercepted.reloads, 0);
+
+    const pendingBefore = ctx.__pendingImport;
+    ctx.handleImportFile({ content: JSON.stringify(makeImportPayload({})) });
+    assert.equal(ctx.__pendingImport, pendingBefore);
+    assert.ok(ctx.__intercepted.toasts.some(item =>
+        /正在检查或恢复上次未完成的整机导入/.test(item.msg)
+    ));
 });
