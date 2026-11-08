@@ -48,11 +48,11 @@ test('an IndexedDB font request remains usable when the same preset is reselecte
 });
 
 test('pending IndexedDB reads are deduplicated independently per font preset', () => {
-  assert.match(loader, /var fontDbRequests = Object\\.create\\(null\\)/);
-  assert.match(loader, /if \\(fontDbRequests\\[source\\.activeId\\]\\) return/);
-  assert.match(loader, /fontDbRequests\\[source\\.activeId\\] = requestToken/);
-  assert.match(loader, /fontDbRequests\\[source\\.activeId\\] === requestToken/);
-  assert.match(loader, /delete fontDbRequests\\[source\\.activeId\\]/);
+  assert.ok(loader.includes('var fontDbRequests = Object.create(null)'));
+  assert.ok(loader.includes('if (fontDbRequests[source.activeId]) return'));
+  assert.ok(loader.includes('fontDbRequests[source.activeId] = requestToken'));
+  assert.ok(loader.includes('fontDbRequests[source.activeId] === requestToken'));
+  assert.ok(loader.includes('delete fontDbRequests[source.activeId]'));
   assert.doesNotMatch(loader, /fontDbRequestKey/);
 });
 
