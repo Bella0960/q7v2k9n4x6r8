@@ -140,6 +140,45 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   assert.equal(JSON.stringify(listResult.payload).includes('token_hash'), false, '管理列表不得泄露邀请码哈希');
 });
 
+test('并发创建同一目标账号的邀请码时只允许一张有效邀请码', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-race',
+      password: 'invite-race-password-123',
+      confirmPassword: 'invite-race-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+
+  const results = await Promise.all([
+    post(ctx, '/api/admin/invites', { targetAccountId: registered.payload.account.id }, adminCookie),
+    post(ctx, '/api/admin/invites', { targetAccountId: registered.payload.account.id }, adminCookie)
+  ]);
+  const statuses = results.map(response => response.status).sort((a, b) => a - b);
+  assert.deepEqual(statuses, [201, 409],
+    '并发请求也只能创建一张绑定同一账号的有效邀请码');
+  assert.equal(
+    Number(ctx.query(
+      "SELECT COUNT(*) AS total FROM mao_invite_codes WHERE target_account_id = ? AND revoked_at IS NULL AND used_count < max_uses AND expires_at > ?",
+      registered.payload.account.id, ctx.now()
+    )[0].total),
+    1
+  );
+});
+
 test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧设备，永久撤销不可恢复', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
