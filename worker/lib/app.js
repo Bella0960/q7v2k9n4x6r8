@@ -411,12 +411,21 @@ export async function dispatchPendingOutboundPushes({
 }
 
 export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
+  const accountAuth = createAccountAuth({ store, env, now });
+
   async function authenticate(request) {
     const parsed = deviceAuthHeader(request);
     if (!parsed) throw new ApiError(401, 'UNAUTHORIZED', '缺少或非法的设备凭据');
     const device = await store.getDevice(parsed.deviceId);
     if (!device) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
     if (device.revoked_at) throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
+    const deviceUserId = String(device.user_id || OWNER_USER_ID);
+    if (deviceUserId !== OWNER_USER_ID) {
+      const account = await store.getMaoAccountById(deviceUserId);
+      if (!account || account.status !== 'active') {
+        throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+      }
+    }
     const expected = await secretHash(env, parsed.deviceId, parsed.secret);
     if (!timingSafeEqualHex(expected, device.secret_hash)) {
       throw new ApiError(401, 'UNAUTHORIZED', '设备凭据校验失败');
@@ -466,6 +475,26 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       ipHash,
       now: timestamp
     };
+
+    // A signed-in, authorized MAO account may enroll another device directly.
+    // The permanent account ID becomes the only tenant key for this device.
+    const accountSession = await accountAuth.getAuthenticatedAccount(request);
+    if (accountSession) {
+      if (accountSession.status !== 'active') {
+        throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权，请先验证专属邀请码');
+      }
+      await store.insertDevice({ ...commonDevice, userId: accountSession.account_id });
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId,
+        kind: 'device_register',
+        status: 'success',
+        reasonCode: 'mao_account_session',
+        detail: { platform: String(body.platform || '').slice(0, 64) },
+        now: timestamp
+      });
+      return ok({ device: { id: deviceId, createdAt: timestamp, reenrolled: false, enrollmentMode: 'account' } });
+    }
 
     let userId = OWNER_USER_ID;
     let enrollmentMode = '';
@@ -1686,6 +1715,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const path = url.pathname.replace(/\/+$/, '');
     const method = request.method.toUpperCase();
     try {
+      const accountResponse = await accountAuth.handle(request, path, method);
+      if (accountResponse) return accountResponse;
+
       if (path === '/api/health' && method === 'GET') {
         const counts = await store.counts();
         const vapid = vapidSummary(env);
