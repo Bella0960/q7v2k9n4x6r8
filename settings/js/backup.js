@@ -1430,7 +1430,14 @@
             return;
         }
         importInProgress = true;
-        var reader = new FileReader();
+        var reader;
+        try {
+            reader = new FileReader();
+        } catch (readerError) {
+            importInProgress = false;
+            toast('导入失败：' + ((readerError && readerError.message) || '无法初始化文件读取器'));
+            return;
+        }
         reader.onload = async function (ev) {
             try {
             var obj;
