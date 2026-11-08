@@ -171,7 +171,8 @@ function makeIDB(name, version, storeDefs) {
                         const def = storeDefs.find(d => d.store === name);
                         const failure = db._failPut;
                         if (failure && failure.store === name
-                                && (!failure.assetId || String(value && value.assetId) === String(failure.assetId))) {
+                                && (!failure.assetId || String(value && value.assetId) === String(failure.assetId))
+                                && (!failure.id || String(value && value.id) === String(failure.id))) {
                             db._failPut = null;
                             throw new Error(failure.message || 'mock IndexedDB put failed');
                         }
@@ -340,7 +341,9 @@ function buildCtxFull(opts) {
         extractVar(backupSrc, 'EXCLUDE_KEYS'),
         extractVar(backupSrc, 'SECRET_KEYS'),
         extractVar(backupSrc, 'CORE_HINTS'),
-        extractVar(backupSrc, 'IDB_TARGETS')
+        extractVar(backupSrc, 'IDB_TARGETS'),
+        extractVar(backupSrc, 'RP_ROLE_IDB_PRE'),
+        extractVar(backupSrc, 'RESTORE_POINT_IDB_MAX_BYTES')
     ];
     const fnNames = [
         '$', 'toast', 'includeSecretsEnabled', 'snapshot',
@@ -348,6 +351,8 @@ function buildCtxFull(opts) {
         'base64ToBlob', 'blobToBase64', 'idbOpen',
         'dumpStore', 'dumpDatabase',
         'restoreStore', 'restoreDatabase',
+        'estimateRestorePointBytes', 'dumpDatabaseForRestorePoint',
+        'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
         'doExport'
     ];
     const fnSrcs = fnNames.map(n => extractFunction(backupSrc, n));
@@ -443,6 +448,10 @@ function buildCtxFull(opts) {
     // 覆盖 $('toastMsg') 返回 null，让原 toast 走 alert 分支 → 被我们拦截
     ctx.$ = function (id) { return null; };
 
+    const restorePointRows = new Map();
+    ctx.rpWriteSnapshot = async (snap, role) => { restorePointRows.set(role, { snap, createdAt: Date.now() }); };
+    ctx.rpReadSnapshot = async (role) => restorePointRows.get(role) || null;
+    ctx.__restorePointRows = restorePointRows;
     ctx.__intercepted = intercepted;
     ctx.__lsStore = mockLocalStorage;
     assert.ok(ctx.IDB_TARGETS, 'runInNewContext 后 IDB_TARGETS 应挂在 ctx 上');
@@ -985,6 +994,59 @@ test('11 生产 doExport：localStorage 有数据 + atomicExportFailed 的 DB �
     assert.ok(/已导出/.test(lastToast.msg), 'toast 应说已导出');
     assert.ok(/媒体 Blob.*超限/.test(lastToast.msg) || /atomicExport/.test(lastToast.msg) || /maomao-assets/.test(lastToast.msg) || /1 个 IndexedDB/.test(lastToast.msg),
         'toast 应提到 maomao-assets atomicExportFailed 警告');
+});
+
+test('12 restoreIndexedDBWithRollback: later database failure rolls back earlier database and preserves audio Blob', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull();
+
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    await injectRecords(mediaDb, 'wallpapers', mediaDef.stores.find(s => s.store === 'wallpapers'), [
+        { __key: 'wallpaper-old-key', id: 'wallpaper-old', name: 'Old wallpaper' }
+    ]);
+    const originalAudioBytes = Buffer.from('original-local-audio');
+    await injectRecords(mediaDb, 'audio', mediaDef.stores.find(s => s.store === 'audio'), [
+        { id: 'audio-old', title: 'Old local audio', blob: new SandboxBlob([originalAudioBytes], { type: 'audio/mpeg' }) }
+    ]);
+
+    const fontDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-font-presets');
+    const fontDb = registerDB('maomao-font-presets', fontDef.version, fontDef.stores);
+    await injectRecords(fontDb, 'presets', fontDef.stores.find(s => s.store === 'presets'), [
+        { id: 'font-old', label: 'Old font', blob: new SandboxBlob([Buffer.from('old-font-bytes')], { type: 'font/ttf' }) }
+    ]);
+
+    const incoming = {
+        'maomao-media-store': {
+            wallpapers: [{ __key: 'wallpaper-new-key', __value: { id: 'wallpaper-new', name: 'New wallpaper' } }],
+            audio: [{ id: 'audio-new', title: 'New local audio' }]
+        },
+        'maomao-font-presets': {
+            presets: [{ id: 'font-new', label: 'Broken incoming font', blob: 'aGVsbG8=', __blobMime_blob: 'font/ttf' }]
+        }
+    };
+    fontDb._failPut = { store: 'presets', id: 'font-new', message: 'injected font database failure' };
+
+    const restorePoint = await ctx.captureIndexedDbRestorePoint(incoming);
+    assert.deepEqual(restorePoint.targets.map(t => t.db), ['maomao-media-store', 'maomao-font-presets']);
+    assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
+
+    const result = await ctx.restoreIndexedDBWithRollback(incoming, restorePoint);
+    assert.equal(result.ok, false);
+    assert.equal(result.failedDb, 'maomao-font-presets');
+    assert.deepEqual(result.rollbackFailures, []);
+
+    assert.deepEqual(mediaDb._data.wallpapers.map(x => x.id), ['wallpaper-old'],
+        'the first restored database must be rolled back');
+    assert.equal(mediaDb._data.audio.length, 1);
+    assert.equal(mediaDb._data.audio[0].id, 'audio-old');
+    assert.ok(isBlobLike(mediaDb._data.audio[0].blob),
+        'excluded audio blobs in regular exports must still exist in the private restore point');
+    assert.equal(mediaDb._data.audio[0].blob.type, 'audio/mpeg');
+    assert.equal(mediaDb._data.audio[0].blob._data.toString('utf8'), 'original-local-audio');
+    assert.equal(fontDb._data.presets.length, 1,
+        'the failing database transaction itself must leave the original store unchanged');
+    assert.equal(fontDb._data.presets[0].id, 'font-old');
 });
 
 test('12 IndexedDB restore failure keeps the pre-import localStorage recovery point', () => {
