@@ -72,5 +72,5 @@ h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .generated-code{padding:16px;margin:12px 0;border-radius:12px;border:1px dashed #d2d5db;background:#f8f9fa;font-size:14px;font-weight:650;letter-spacing:.08em;overflow-wrap:anywhere;user-select:all}
 .dark-button{width:100%;min-height:47px;border:0;border-radius:12px;background:#23252a;color:#fff;font-size:12px;font-weight:600}
 .admin-footer{text-align:center;color:#a2a5ad;font-size:10px;line-height:1.7;margin:24px 0 0}
-.page-error{margin:10px 0;padding:11px 12px;border:1px solid #f0dfe0;border-radius:10px;background:#fff8f8;color:var(--red);font-size:11px;line-height:1.6}
+.page-error{margin:10px 0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#f7f7f8;color:#555b65;font-size:11px;line-height:1.6}
 @media(max-width:380px){.admin-shell{padding-left:13px;padding-right:13px}.stats-grid{gap:5px}.stat-card{padding:10px 7px}.stat-card span{font-size:9px}.row-sub{font-size:9px}}
