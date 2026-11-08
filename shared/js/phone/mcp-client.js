@@ -8,12 +8,28 @@
   var PROTOCOL_VERSION = '2025-03-26';
   var MAX_RESPONSE_BYTES = 1024 * 1024;
   var MAX_TOOLS = 500;
-  var MAX_TOOL_SCHEMA_CHARS = 24 * 1024;
+  var MAX_TOOL_SCHEMA_BYTES = 24 * 1024;
   var MAX_TOOL_SCHEMA_NODES = 512;
   var MAX_TOOL_SCHEMA_DEPTH = 12;
   var MAX_TOOL_SCHEMA_CHILDREN = 200;
-  var MAX_TOOL_CATALOG_CHARS = 768 * 1024;
+  var MAX_TOOL_CATALOG_BYTES = 768 * 1024;
   var MAX_TOOL_CURSOR_CHARS = 512;
+
+  function utf8ByteLength(value) {
+    var bytes = 0;
+    for (var i = 0; i < value.length; i++) {
+      var code = value.charCodeAt(i);
+      if (code <= 0x7f) bytes += 1;
+      else if (code <= 0x7ff) bytes += 2;
+      else if (code >= 0xd800 && code <= 0xdbff &&
+               i + 1 < value.length && value.charCodeAt(i + 1) >= 0xdc00 &&
+               value.charCodeAt(i + 1) <= 0xdfff) {
+        bytes += 4;
+        i += 1;
+      } else bytes += 3;
+    }
+    return bytes;
+  }
 
   function validateEndpoint(value) {
     var url;
@@ -130,7 +146,8 @@
     var serialized;
     try { serialized = JSON.stringify(schema); }
     catch (error) { throw new Error('MCP 工具参数结构无法安全读取。'); }
-    if (typeof serialized !== 'string' || serialized.length > MAX_TOOL_SCHEMA_CHARS) {
+    var schemaBytes = typeof serialized === 'string' ? utf8ByteLength(serialized) : 0;
+    if (typeof serialized !== 'string' || schemaBytes > MAX_TOOL_SCHEMA_BYTES) {
       throw new Error('MCP 工具参数结构超过 24 KB 限制。');
     }
 
@@ -171,7 +188,7 @@
         pending.push({ value: value[key], depth: current.depth + 1 });
       });
     }
-    return serialized.length;
+    return schemaBytes;
   }
 
   function validateToolArguments(schema, args) {
@@ -382,7 +399,7 @@
         var all = [];
         var seenCursors = Object.create(null);
         var seenNames = Object.create(null);
-        var totalCatalogChars = 0;
+        var totalCatalogBytes = 0;
         function page(cursor, pageCount) {
           if (pageCount >= 20) throw new Error('MCP 工具分页超过 20 页上限，无法完整读取。');
           if (cursor && seenCursors[cursor]) throw new Error('MCP 工具分页游标重复，已停止读取。');
@@ -410,13 +427,13 @@
                    !(Array.isArray(schema.type) && schema.type.indexOf('object') !== -1))) {
                 throw new Error('MCP 工具“' + name.slice(0, 80) + '”缺少有效的对象参数结构，已停止导入。');
               }
-              var schemaChars = validateToolSchemaComplexity(schema);
+              var schemaBytes = validateToolSchemaComplexity(schema);
               if (tool.description != null && typeof tool.description !== 'string') {
                 throw new Error('MCP 工具“' + name.slice(0, 80) + '”的描述格式无效。');
               }
               var description = String(tool.description || '').slice(0, 1200);
-              totalCatalogChars += name.length + description.length + schemaChars;
-              if (totalCatalogChars > MAX_TOOL_CATALOG_CHARS) {
+              totalCatalogBytes += utf8ByteLength(name) + utf8ByteLength(description) + schemaBytes;
+              if (totalCatalogBytes > MAX_TOOL_CATALOG_BYTES) {
                 throw new Error('MCP 工具清单元数据超过 768 KB 上限，已停止导入。');
               }
               seenNames[name] = true;
