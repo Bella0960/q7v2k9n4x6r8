@@ -826,3 +826,28 @@ test('theme CSS rejects global keyframes including comment and escape obfuscatio
   blocked.forEach(css=>assert.throws(()=>F.validateCss(css),/不允许/));
   assert.doesNotThrow(()=>F.validateCss('.msg-bubble{transition:opacity .2s ease-out}'));
 });
+
+
+test('imported font faces are namespaced to the active chat theme',()=>{
+  const theme=fixture({
+    id:'font-theme-42',
+    styles:{chatList:{statusBar:{fontFamily:'Shared Font'}},chatDetail:{}}
+  });
+  const css=F.buildScopedCss(theme,
+    '@font-face{font-family:"Shared Font";src:url("assets/shared-font.woff2");font-weight:400}'+
+    '.sample{font-family:"Shared Font",sans-serif}'
+  );
+  const family=(css.match(/@font-face\s*\{[^}]*font-family:\s*"([^"]+)"/i)||[])[1];
+  assert.ok(family,'主题包字体必须保留可用的 font-face 定义');
+  assert.match(family,/^MAOMAOChatTheme_font-theme-42_/,'字体名称必须附带当前主题命名空间');
+  assert.ok(css.includes('font-family:'+family+' !important'),'主题组件的字体引用也必须同步命名');
+  assert.ok(css.includes('font-family:"'+family+'", sans-serif'),'自定义 CSS 字体引用必须同步命名');
+  assert.doesNotMatch(css,/font-family:\s*"Shared Font"/,'不能把原始字体族名称注册到全局');
+  assert.match(css,/url\("assets\/shared-font\.woff2"\)/,'字体素材 URL 必须保留给运行时替换');
+});
+
+test('theme CSS rejects global at-rules outside the grouping and namespaced-font allowlist',()=>{
+  assert.throws(()=>F.validateCss('@property --unsafe{syntax:"*";inherits:false}'),/白名单/);
+  assert.throws(()=>F.validateCss('@layer app{.sample{color:#111}}'),/白名单/);
+  assert.doesNotThrow(()=>F.validateCss('@media (max-width:600px){.sample{font-size:14px}}'));
+});
