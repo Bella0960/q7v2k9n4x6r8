@@ -221,7 +221,7 @@ Acceptance:
 - Exported packages contain the normalized manifest/theme/CSS and original binary assets; export output must round-trip through the importer.
 - Automated package-format tests cover valid packages, exported round trips, global CSS preset export, role-preset isolation, assets, missing CSS assets, CSS rejection and scoping around comments/strings/escaped selectors, unsafe paths and schema mismatches.
 - Real desktop and phone/PWA import, apply, switch, refresh, and rollback acceptance remains required before release.
-- A shared exporter, installed-theme re-export action, and the existing deep-CSS editor's global-preset export action now produce compatible `.maomaotheme` packages. Role-scoped CSS presets are excluded. Keep THEME-001 IN PROGRESS until the independent high-freedom Theme Studio editor exposes the same exporter and real desktop/phone acceptance is completed.
+- The shared format module exposes `MAOMAOChatThemeFormat.createPackageFromMedia(theme, css, mediaRepository)` for validated MediaRepository-backed export, including owner-scoped recovery of legacy asset manifests and ZIP size/count limits; the installed-theme manager consumes this API. The existing deep-CSS editor exports global presets through the same package format, while role-scoped presets remain excluded. Keep THEME-001 IN PROGRESS until the independent high-freedom Theme Studio editor is actually wired to the shared exporter and real desktop/phone acceptance is completed.
 
 
 ### AI-IMG-001 — Complete role-based image generation and gallery
