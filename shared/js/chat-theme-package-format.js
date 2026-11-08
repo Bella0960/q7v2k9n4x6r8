@@ -118,7 +118,7 @@
     var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
     var missing=Object.keys(refs).filter(function(path){return !items.some(function(item){return item&&item.path===path})});
     if(!missing.length)return Promise.resolve(items);
-    missing.forEach(function(path){if(!safeAssetPath(path))fail("旧版主题包含无效素材路径："+path)});
+    if(missing.some(function(path){return !safeAssetPath(path)}))return Promise.reject(new Error("旧版主题包含无效素材路径。"));
     if(!media||typeof media.listByOwner!=="function")return Promise.reject(new Error("该主题缺少素材清单，当前媒体仓储无法恢复素材元数据。"));
     return media.listByOwner("chat-theme-package",String(theme.id||"")).then(function(result){
       if(!result||!result.ok||!Array.isArray(result.value))throw new Error("无法读取旧版主题的媒体素材清单。");
@@ -134,7 +134,7 @@
   }
   function createPackageFromMedia(theme,css,media){
     if(!theme||typeof theme!=="object")return Promise.reject(new Error("主题数据无效。"));
-    return resolveMediaAssetIndex(theme,media).then(function(items){
+    return Promise.resolve().then(function(){return resolveMediaAssetIndex(theme,media)}).then(function(items){
       var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
       var exportTheme=Object.assign({},theme,{assetIndex:items}),assetData=Object.create(null),total=0,chain=Promise.resolve();
       if(items.length&&(!media||typeof media.getBlob!=="function"))throw new Error("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。");
@@ -145,16 +145,14 @@
           if(!assetId)throw new Error("主题素材引用缺失："+item.path);
           return media.getBlob(assetId).then(function(result){
             if(!result||!result.ok||!result.value)throw new Error("主题素材读取失败："+item.path);
-            var blob=result.value,size=typeof blob.size==="number"?blob.size:(blob&&typeof blob.byteLength==="number"?blob.byteLength:null);
+            var blob=result.value,size=blob&&typeof blob.size==="number"&&Number.isFinite(blob.size)?blob.size:(blob&&typeof blob.byteLength==="number"?blob.byteLength:null);
             if(size!==null){
               if(size>MAX_FILE)throw new Error("单个主题文件超过 16 MB："+item.path);
-              total+=size;if(total>MAX)throw new Error("主题素材总量超过 48 MB。");
+              if(total+size>MAX)throw new Error("主题素材总量超过 48 MB。");
             }
             return readMediaBlobBytes(blob).then(function(bytes){
-              if(size===null){
-                if(bytes.length>MAX_FILE)throw new Error("单个主题文件超过 16 MB："+item.path);
-                total+=bytes.length;if(total>MAX)throw new Error("主题素材总量超过 48 MB。");
-              }
+              if(bytes.length>MAX_FILE)throw new Error("单个主题文件超过 16 MB："+item.path);
+              total+=bytes.length;if(total>MAX)throw new Error("主题素材总量超过 48 MB。");
               assetData[item.path]=bytes;
             });
           });
