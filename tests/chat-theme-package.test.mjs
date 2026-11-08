@@ -585,3 +585,67 @@ test('style values reject comment and escape obfuscation of dangerous CSS',()=>{
   assert.match(css,/color:#222/);
   assert.match(css,/color:#111/);
 });
+
+
+test('import preview ignores stale file reads after a newer selection or clear',async()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  function makeNode(tag){
+    const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,hidden:false,value:'',style:{},
+      classList:{add(){},remove(){}},
+      addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      setAttribute(){}
+    };
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName',
+   'previewName','previewVersion','previewCss','previewList','previewDetail','previewSummary'].forEach(id=>ids[id]=makeNode('div'));
+  const document={querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  const localStorage={getItem(){return null},setItem(){},removeItem(){}};
+  const windowMock={
+    PhoneStorage:null,
+    MAOMAOChatThemeFormat:{
+      parseStoredZip(buffer){return buffer},
+      readPackage(marker){return{
+        theme:{name:'主题 '+marker,version:'1.0.0',pages:{chatList:[],chatDetail:[]},motions:[]},
+        customCss:'',assets:{}
+      }}
+    },
+    dispatchEvent(){}
+  };
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(script,{window:windowMock,document,localStorage,CustomEvent,setTimeout(){},console});
+  function deferredFile(name){
+    let resolve,reject;
+    const promise=new Promise((yes,no)=>{resolve=yes;reject=no});
+    return{name,arrayBuffer(){return promise},resolve,reject};
+  }
+  async function flush(){for(let i=0;i<6;i++)await Promise.resolve()}
+  const older=deferredFile('旧文件.maomaotheme');
+  const newer=deferredFile('新文件.maomaotheme');
+  ids.themeFile.handlers.change({target:{files:[older]}});
+  ids.themeFile.handlers.change({target:{files:[newer]}});
+  newer.resolve('新文件');
+  await flush();
+  assert.equal(ids.previewName.textContent,'主题 新文件','较新的选择应先显示自己的预览');
+  older.resolve('旧文件');
+  await flush();
+  assert.equal(ids.previewName.textContent,'主题 新文件','较早完成的文件读取不能覆盖新预览');
+  assert.equal(ids.fileName.textContent,'新文件.maomaotheme','文件名必须与当前预览一致');
+  assert.equal(ids.importApply.disabled,false,'当前有效预览应保持可导入');
+
+  const cancelled=deferredFile('已取消.maomaotheme');
+  ids.themeFile.handlers.change({target:{files:[cancelled]}});
+  ids.clearFile.handlers.click();
+  cancelled.reject(new Error('取消前的文件读取失败'));
+  await flush();
+  assert.equal(ids.packagePreview.hidden,true,'清空选择后，迟到的读取不能重新显示预览');
+  assert.equal(ids.importApply.disabled,true,'清空选择后必须保持不可导入');
+  assert.equal(ids.fileName.textContent,'尚未选择文件','清空选择后不能恢复旧文件名');
+  assert.match(ids.status.textContent,/可以重新选择一个主题包/,'过期读取错误不能覆盖清空状态');
+});
