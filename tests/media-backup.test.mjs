@@ -1059,3 +1059,19 @@ test('13 IndexedDB restore failure keeps the pre-import localStorage recovery po
     assert.match(backupSrc, /if \(!restorePointKept\) rpDeleteRole\(RP_ROLE_PRE\)/);
     assert.match(backupSrc, /if \(restorePointKept\) parts\.push\('本机导入前恢复点已保留，供排查'\)/);
 });
+
+test('14 restore-point snapshot keeps excluded local fields and enforces a size ceiling', () => {
+    const snapshotStart = backupSrc.indexOf('function dumpDatabaseForRestorePoint(');
+    const snapshotEnd = backupSrc.indexOf('function captureIndexedDbRestorePoint(', snapshotStart);
+    assert.ok(snapshotStart >= 0 && snapshotEnd > snapshotStart);
+    const snapshotFn = backupSrc.slice(snapshotStart, snapshotEnd);
+    assert.match(snapshotFn, /db\.transaction\(storeNames, 'readonly'\)/);
+    assert.match(snapshotFn, /store\.getAll\(\)/);
+    assert.match(snapshotFn, /store\.getAllKeys\(\)/);
+    assert.match(snapshotFn, /__key: key, __value: values\[index\]/);
+    assert.match(backupSrc, /RESTORE_POINT_IDB_MAX_BYTES = 150 \* 1024 \* 1024/);
+    assert.match(backupSrc, /estimateRestorePointBytes\(snapshots\)/);
+    assert.match(backupSrc, /超过本机安全恢复点上限/);
+    assert.match(backupSrc, /estimateRestorePointBytes\(stored\.snap\) !== estimatedBytes/);
+});
+
