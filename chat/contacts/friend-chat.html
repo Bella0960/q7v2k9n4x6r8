@@ -424,6 +424,7 @@
           await pollMessages();
           if (!pollTimer) pollTimer = window.setInterval(pollMessages, 4500);
         }
+        return;
       } else {
         setStatus((error.message || '聊天连接失败') + '。请检查网络或好友账号状态。', true);
       }
