@@ -100,10 +100,12 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (!token) return null;
     const session = store.getMaoAccountSession(await sha256Hex(token));
     const timestamp = now();
-    if (!session || session.session_revoked_at || Number(session.expires_at) <= timestamp) return null;
+    if (!session) return null;
+    // Keep the user-facing disabled notice even after all sessions are revoked.
     if (session.status === 'disabled' || session.status === 'revoked') {
       throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
     }
+    if (session.session_revoked_at || Number(session.expires_at) <= timestamp) return null;
     store.touchMaoAccountSession(session.session_id, timestamp);
     return session;
   }
