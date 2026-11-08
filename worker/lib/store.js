@@ -2032,11 +2032,29 @@ class CloudStore {
   }
 
   insertMaoInvite(invite) {
-    this.exec(
-      "INSERT INTO mao_invite_codes (id, token_hash, target_account_id, target_email, max_uses, used_count, created_by_account_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
-      invite.id, invite.tokenHash, invite.targetAccountId || null, invite.targetEmail || null,
-      invite.maxUses, invite.createdByAccountId, invite.now, invite.expiresAt
-    );
+    this.exec('BEGIN IMMEDIATE');
+    try {
+      // Re-check under the write lock. The route's earlier check is only an
+      // optimization; this one closes concurrent ID/email invite issuance races.
+      if (this.hasActiveMaoInvite({
+        targetAccountId: invite.targetAccountId || null,
+        targetEmail: invite.targetEmail || null,
+        now: invite.now
+      })) {
+        this.exec('ROLLBACK');
+        return false;
+      }
+      this.exec(
+        "INSERT INTO mao_invite_codes (id, token_hash, target_account_id, target_email, max_uses, used_count, created_by_account_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
+        invite.id, invite.tokenHash, invite.targetAccountId || null, invite.targetEmail || null,
+        invite.maxUses, invite.createdByAccountId, invite.now, invite.expiresAt
+      );
+      this.exec('COMMIT');
+      return true;
+    } catch (error) {
+      try { this.exec('ROLLBACK'); } catch (rollbackError) {}
+      throw error;
+    }
   }
 
   hasActiveMaoInvite({ targetAccountId = null, targetEmail = null, now }) {
