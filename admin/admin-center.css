@@ -53,8 +53,9 @@ h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .sheet-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
 .sheet-top h2{font-size:18px;margin:0;font-weight:650}
 .close-detail{width:31px;height:31px;border:0;border-radius:50%;background:#f1f2f4;color:#646872;font-size:20px}
-.detail-id{padding:13px;border:1px solid var(--line);border-radius:12px;background:#fafbfc}
-.detail-id span{display:block;font-size:10px;color:#9599a1}.detail-id strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}
+.detail-id{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#fafbfc}
+.detail-id-copy{min-width:0}.detail-id span{display:block;font-size:10px;color:#9599a1}.detail-id strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}
+.copy-detail-id{flex:0 0 auto;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:#656a73;font-size:10px;white-space:nowrap}
 .detail-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:12px 2px;color:#777c84;font-size:10px}
 .invite-status{display:grid;gap:7px;padding:13px 14px;margin:2px 0 13px;border:1px solid var(--line);border-radius:12px;background:#f7f7f8}
 .invite-status[hidden]{display:none}
