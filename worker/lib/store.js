@@ -1364,7 +1364,7 @@ class CloudStore {
         SELECT 1 FROM friend_message_hides h
         WHERE h.user_id = ? AND h.friend_id = ? AND h.message_id = m.id
       )`;
-    const baseParams = [userId, friendId, userId, friendId, friendId, userId, userId, friendId, friendship.generation_id];
+    const baseParams = [userId, friendId, userId, friendId, friendId, userId, friendship.generation_id, userId, friendId];
 
     if (before && Number.isSafeInteger(before.createdAt) && before.createdAt >= 0 &&
         typeof before.id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(before.id)) {
