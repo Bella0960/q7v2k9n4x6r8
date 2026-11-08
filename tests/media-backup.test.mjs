@@ -446,6 +446,7 @@ function buildCtxFull(opts) {
         downloads: [],   // 被拦截的 Blob { name, bodyStr }
         toasts: [],
         confirmResult: opts.confirmResult || false, // 默认用户不确认带密钥
+        confirmCalls: 0,
         reloads: 0,
         deletedRestorePoints: []
     };
@@ -495,7 +496,10 @@ function buildCtxFull(opts) {
         },
         location: { reload() { intercepted.reloads++; } },
         alert(msg) { intercepted.toasts.push({ kind: 'alert', msg }); },
-        confirm(msg) { return intercepted.confirmResult; }
+        confirm(msg) {
+            intercepted.confirmCalls++;
+            return intercepted.confirmResult;
+        }
     };
     runInNewContext(ctxSrc, ctx, { filename: 'backup.js (sandbox)' });
 
@@ -1835,4 +1839,53 @@ test('31 完整导入：数据库回滚事务成功但数据未完整写回时�
         && /请勿清理网站数据/.test(item.msg)
     ));
     assert.equal(ctx.__intercepted.reloads, 0);
+});
+
+
+/* ═══════════════════════════════════════════════
+   32. 同一设备重复导入互斥：并发第二次拒绝，完成后允许重试
+   ═══════════════════════════════════════════════ */
+test('32 完整导入：并发重复导入被拒绝且首轮结束后锁正确释放', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const payloadA = makeImportPayload({
+        'maomao-media-store': { wallpapers: [] }
+    });
+    const payloadB = makeImportPayload({
+        'maomao-media-store': {
+            wallpapers: [{
+                __key: 'wallpaper-second',
+                __value: { id: 'wallpaper-second', name: 'Second import' }
+            }]
+        }
+    });
+
+    ctx.handleImportFile({ content: JSON.stringify(payloadA) });
+    const firstImport = ctx.__pendingImport;
+    assert.ok(firstImport, 'first import must start');
+    ctx.handleImportFile({ content: JSON.stringify(payloadB) });
+
+    assert.equal(ctx.__pendingImport, firstImport,
+        'second import must not create a second FileReader/import chain');
+    assert.ok(ctx.__intercepted.toasts.some(item => /已有整机导入正在进行/.test(item.msg)));
+
+    await firstImport;
+    assert.equal(ctx.__intercepted.confirmCalls, 1,
+        'only the first import may reach the confirmation dialog');
+    assert.equal(ctx.__intercepted.reloads, 1);
+    assert.equal(ctx.__restorePointRows.size, 0);
+
+    // 首轮结束后锁必须释放，用户可以重新发起一次导入。
+    ctx.handleImportFile({ content: JSON.stringify(payloadB) });
+    const secondImport = ctx.__pendingImport;
+    assert.ok(secondImport);
+    await secondImport;
+    assert.equal(ctx.__intercepted.confirmCalls, 2);
+    assert.equal(ctx.__intercepted.reloads, 2);
 });
