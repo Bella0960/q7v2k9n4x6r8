@@ -2425,7 +2425,7 @@ test('活动队列幂等入队是原子的，重复 ID 不覆盖首次任务数�
 /* Service Worker 回归：保留缓存/离线导航，同时具备推送处理能力          */
 /* ------------------------------------------------------------------ */
 
-function loadServiceWorker(scope) {
+function loadServiceWorker(scope, authAccount, authStatus = 200) {
   const source = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
   const serviceWorkerScope = scope || 'https://mao.test/';
   const existingChatUrl = new URL('chat/chat/chat.html', serviceWorkerScope).href;
@@ -2434,6 +2434,10 @@ function loadServiceWorker(scope) {
   const opened = [];
   const focused = [];
   const navigations = [];
+  const authRequests = [];
+  const account = authAccount === undefined
+    ? { id: 'MAO-AAAAAAAAAAAA', role: 'user', status: 'active' }
+    : authAccount;
   const clients = {
     matchAll: async () => [
       {
@@ -2461,7 +2465,13 @@ function loadServiceWorker(scope) {
       match: async () => null,
       keys: async () => []
     },
-    fetch: async () => new Response('', { status: 200 }),
+    fetch: async (url, init) => {
+      authRequests.push({ url: String(url), init: init || {} });
+      return new Response(JSON.stringify(account ? { account } : {}), {
+        status: authStatus,
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+    },
     URL,
     Response,
     console,
@@ -2474,7 +2484,7 @@ function loadServiceWorker(scope) {
     TextDecoder
   };
   vm.runInNewContext(source, sandbox, { filename: 'sw.js' });
-  return { handlers, notifications, opened, focused, navigations };
+  return { handlers, notifications, opened, focused, navigations, authRequests };
 }
 
 test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', async () => {
@@ -2487,7 +2497,7 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
 
   // 推送展示
   const pushEvent = {
-    data: { json: () => ({ title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine', tag: 't1' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine', tag: 't1' }) },
     waitUntil: promise => { pushEvent.wait = promise; }
   };
   sw.handlers.push[0](pushEvent);
@@ -2503,7 +2513,7 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
 
   // 外站 URL 必须被拒绝，回退到首页
   const evil = {
-    data: { json: () => ({ title: 'x', body: 'y', url: 'https://evil.example/phish' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: 'https://evil.example/phish' }) },
     waitUntil: promise => { evil.wait = promise; }
   };
   sw.handlers.push[0](evil);
@@ -2521,11 +2531,81 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
   assert.deepEqual(sw.opened, [], '已有窗口时不应重复开窗');
 });
 
+
+test('推送只在当前登录 MAO 账号匹配时展示，退出或切换账号后静默丢弃', async () => {
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+
+  const matching = loadServiceWorker(undefined, {
+    id: accountA, role: 'user', status: 'active'
+  });
+  const validEvent = {
+    data: { json: () => ({
+      accountId: accountA,
+      title: '新消息',
+      body: '有一位角色刚刚联系你',
+      url: './chat/chat/chat-detail.html?id=role-a',
+      tag: 'role-a-message'
+    }) },
+    waitUntil: promise => { validEvent.wait = promise; }
+  };
+  matching.handlers.push[0](validEvent);
+  await validEvent.wait;
+  assert.equal(matching.notifications.length, 1);
+  assert.equal(matching.notifications[0].options.data.accountId, accountA);
+  assert.equal(matching.authRequests.length, 1);
+  assert.equal(matching.authRequests[0].url, '/api/accounts/me');
+  assert.equal(matching.authRequests[0].init.credentials, 'same-origin');
+  assert.equal(matching.authRequests[0].init.headers['x-mao-account-context'], accountA);
+
+  const switched = loadServiceWorker(undefined, {
+    id: accountB, role: 'user', status: 'active'
+  });
+  const staleEvent = {
+    data: { json: () => ({
+      accountId: accountA, title: '新消息', body: '旧账号通知',
+      url: './chat/chat/chat-detail.html?id=role-a'
+    }) },
+    waitUntil: promise => { staleEvent.wait = promise; }
+  };
+  switched.handlers.push[0](staleEvent);
+  await staleEvent.wait;
+  assert.equal(switched.notifications.length, 0,
+    '登录了 B 账号的设备不能展示 A 账号的推送');
+  assert.equal(switched.authRequests[0].init.headers['x-mao-account-context'], accountA);
+
+  const loggedOut = loadServiceWorker(undefined, null, 401);
+  const loggedOutEvent = {
+    data: { json: () => ({
+      accountId: accountA, title: '新消息', body: '已退出账号的通知',
+      url: './chat/chat/chat-detail.html?id=role-a'
+    }) },
+    waitUntil: promise => { loggedOutEvent.wait = promise; }
+  };
+  loggedOut.handlers.push[0](loggedOutEvent);
+  await loggedOutEvent.wait;
+  assert.equal(loggedOut.notifications.length, 0,
+    '未登录状态不得展示此前账号的通知');
+
+  const legacyOwner = loadServiceWorker();
+  const legacyEvent = {
+    data: { json: () => ({
+      accountId: 'owner', title: '旧通知', body: '未绑定永久账号的旧通知',
+      url: './index.html'
+    }) },
+    waitUntil: promise => { legacyEvent.wait = promise; }
+  };
+  legacyOwner.handlers.push[0](legacyEvent);
+  await legacyEvent.wait;
+  assert.equal(legacyOwner.notifications.length, 0,
+    '缺少有效 MAO 永久 ID 的旧通知必须 fail-closed');
+});
+
 test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地址', async () => {
   const sw = loadServiceWorker('https://mao.test/app/');
 
   const valid = {
-    data: { json: () => ({ title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine' }) },
     waitUntil: promise => { valid.wait = promise; }
   };
   sw.handlers.push[0](valid);
@@ -2537,7 +2617,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   );
 
   const outsideRelative = {
-    data: { json: () => ({ title: 'x', body: 'y', url: '../outside.html' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: '../outside.html' }) },
     waitUntil: promise => { outsideRelative.wait = promise; }
   };
   sw.handlers.push[0](outsideRelative);
@@ -2549,7 +2629,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   );
 
   const outsideSameOrigin = {
-    data: { json: () => ({ title: 'x', body: 'y', url: 'https://mao.test/other-app/settings.html' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: 'https://mao.test/other-app/settings.html' }) },
     waitUntil: promise => { outsideSameOrigin.wait = promise; }
   };
   sw.handlers.push[0](outsideSameOrigin);
@@ -2561,7 +2641,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   );
 
   const credentialed = {
-    data: { json: () => ({ title: 'x', body: 'y', url: 'https://user@mao.test/app/chat/chat.html' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: 'https://user@mao.test/app/chat/chat.html' }) },
     waitUntil: promise => { credentialed.wait = promise; }
   };
   sw.handlers.push[0](credentialed);
