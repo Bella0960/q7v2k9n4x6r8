@@ -158,6 +158,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     if (password.length < 10 || password.length > 128) {
       throw new ApiError(400, 'INVALID_PASSWORD', '密码长度需要为 10–128 位');
     }
+    if (body.confirmPassword !== password) {
+      throw new ApiError(400, 'PASSWORD_MISMATCH', '两次输入的密码不一致');
+    }
     const salt = randomToken(16);
     const passwordHash = await passwordDigest(password, salt);
     const timestamp = now();
