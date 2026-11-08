@@ -7,9 +7,12 @@ on:
       - 'admin/**'
       - 'worker/**'
       - 'shared/js/mao-account-scope.js'
+      - 'shared/js/font-loader.js'
       - 'sw.js'
       - 'tests/account-*.test.mjs'
       - 'tests/pwa-navigation-cache.test.mjs'
+      - 'tests/cloud-push-contract.test.mjs'
+      - 'tests/font-runtime-performance.test.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'vite.config.js'
@@ -41,6 +44,11 @@ jobs:
 
       - name: Build production bundle
         run: npm run build
+
+      - name: Verify cloud push privacy and font runtime contracts
+        run: |
+          npm run test:cloud:push
+          npm run test:font:runtime
 
       - name: Verify desktop compatibility and Service Worker cache boundaries
         run: |
