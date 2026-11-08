@@ -24,6 +24,8 @@ on:
       - 'package.json'
       - 'tests/tutorial-app-contract.test.mjs'
       - 'tests/default-desktop-layout.test.mjs'
+      - 'settings/js/backup.js'
+      - 'tests/media-backup.test.mjs'
       - '.github/workflows/tutorial-regression.yml'
   workflow_dispatch:
 
