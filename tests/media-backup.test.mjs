@@ -22,6 +22,7 @@
  *  40-43. 跨标签页导入互斥、过期租约接管、恢复互斥与旧租约拒写
  *  44-45. 清理中断时保留阶段标记，避免已提交数据被误回滚
  *  46-47. 跨标签页租约写入/续期未提交时不得误报持锁
+ *  48-49. 浏览器存储配额预检与容量 API 不可用时的安全降级
  */
 
 import test from 'node:test';
@@ -437,7 +438,7 @@ function buildCtxFull(opts) {
         'assertImportLock', 'clearRestorePoints', 'writeImportState',
         'recoverInterruptedImportUnlocked', 'recoverInterruptedImportOnStartup',
         'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
-        'estimateRestorePointBytes', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
+        'estimateRestorePointBytes', 'assertRestorePointCapacity', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
         'doExport', 'handleImportFile', 'startImportFileRead'
     ];
@@ -2540,3 +2541,44 @@ test('48 完整导入：只恢复音频元数据时保留同 ID 本地 Blob', as
         'regular backup must still exclude local audio binary data');
 });
 
+
+
+/* ═══════════════════════════════════════════════
+   48. 浏览器剩余配额不足：在写入恢复点前主动中止
+   ═══════════════════════════════════════════════ */
+test('48 assertRestorePointCapacity：剩余配额不足时拒绝写恢复点并给出可操作提示', async () => {
+    const ctx = buildCtxFull();
+    ctx.window.navigator = {
+        storage: {
+            estimate: async () => ({
+                quota: 100 * 1024 * 1024,
+                usage: 98 * 1024 * 1024
+            })
+        }
+    };
+
+    await assert.rejects(
+        ctx.assertRestorePointCapacity(10 * 1024 * 1024),
+        error => error.name === 'QuotaExceededError'
+            && /剩余存储空间不足/.test(error.message)
+            && /尚未覆盖现有业务数据/.test(error.message)
+    );
+
+    ctx.window.navigator.storage.estimate = async () => ({
+        quota: 500 * 1024 * 1024,
+        usage: 100 * 1024 * 1024
+    });
+    const result = await ctx.assertRestorePointCapacity(10 * 1024 * 1024);
+    assert.equal(result.checked, true);
+    assert.ok(result.required > 10 * 1024 * 1024,
+        '预检应包含写入膨胀与额外余量');
+});
+
+/* ═══════════════════════════════════════════════
+   49. 浏览器不支持容量估算：保留事务级失败保护，不误判数据损坏
+   ═══════════════════════════════════════════════ */
+test('49 assertRestorePointCapacity：容量 API 不可用时安全降级', async () => {
+    const ctx = buildCtxFull();
+    ctx.window.navigator = {};
+    assert.deepEqual(await ctx.assertRestorePointCapacity(1024), { checked: false });
+});
