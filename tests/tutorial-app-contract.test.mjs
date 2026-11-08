@@ -193,6 +193,22 @@ test('tutorial app directory contains every desktop app shortcut with valid loca
   }
 });
 
+test('desktop widget fallback preserves the tutorial shortcut and renders guided-tour controls', () => {
+  const widgetPage = readPage('../desktop/widgets.html');
+  const fallbackStart = widgetPage.indexOf('if (!cur) { cur =');
+  assert.ok(fallbackStart >= 0, 'widget page must keep a safe fallback layout');
+  const fallbackEnd = widgetPage.indexOf('}; }', fallbackStart);
+  assert.ok(fallbackEnd > fallbackStart, 'widget fallback layout must be complete');
+  assert.match(widgetPage.slice(fallbackStart, fallbackEnd), /'app_tutorial'/,
+    'the fallback layout must preserve the tutorial desktop shortcut');
+  assert.match(widgetPage, /li\.className = 'widget-item'/,
+    'widget rows are rendered dynamically for the tutorial target');
+  assert.match(widgetPage, /btn\.className = 'w-btn'/,
+    'widget actions are rendered dynamically for the tutorial target');
+  assert.match(html, /selector:'\.widget-item'/);
+  assert.match(html, /selector:'\.widget-item \.w-btn'/);
+});
+
 test('API practice stays local-only and MIX is not given invented connection details', () => {
   assert.match(html, /没有发出网络请求，也没有保存任何内容/);
   assert.match(html, /当前状态：待确认/);
