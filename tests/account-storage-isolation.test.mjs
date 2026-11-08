@@ -56,6 +56,23 @@ function createScope({ accountId, role = 'user', fetchImpl = null }) {
     documentElement: {}
   };
   const storageListeners = [];
+  function MockXHR() {
+    this.headers = {};
+  }
+  MockXHR.prototype.open = function (method, url) {
+    this.method = method;
+    this.url = url;
+  };
+  MockXHR.prototype.setRequestHeader = function (name, value) {
+    this.headers[String(name).toLowerCase()] = String(value);
+  };
+  MockXHR.prototype.send = function (body) {
+    this.body = body;
+  };
+  MockXHR.prototype.abort = function () {
+    this.aborted = true;
+  };
+
   const defaultFetch = async () => ({
     ok: true,
     json: async () => ({ account: { id: accountId, role, status: 'active' } })
@@ -69,6 +86,7 @@ function createScope({ accountId, role = 'user', fetchImpl = null }) {
     fetch: fetchImpl || defaultFetch,
     Headers,
     URL,
+    XMLHttpRequest: MockXHR,
     localStorage: local,
     sessionStorage: session,
     indexedDB: nativeIndexedDB,
@@ -120,6 +138,23 @@ test('页面同源 API 请求会自动绑定注入的 MAO 永久 ID', async () =
   await a.window.fetch('https://external.example/resource');
   assert.equal(requests[2].headers.has('x-mao-account-context'), false,
     '不得给跨域请求增加 MAO 专用头，避免触发不必要的 CORS 预检');
+});
+
+test('旧页面使用 XMLHttpRequest 请求同源 API 时也会绑定页面 MAO ID', () => {
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const a = createScope({ accountId, role: 'user' });
+
+  const privateRequest = new a.window.XMLHttpRequest();
+  privateRequest.open('POST', '/api/accounts/security');
+  privateRequest.send('{}');
+  assert.equal(privateRequest.headers['x-mao-account-context'], accountId,
+    '旧式 XHR 也必须显式携带当前页面的 MAO 账号上下文');
+
+  const externalRequest = new a.window.XMLHttpRequest();
+  externalRequest.open('GET', 'https://external.example/resource');
+  externalRequest.send();
+  assert.equal(externalRequest.headers['x-mao-account-context'], undefined,
+    '跨域 XHR 不得附加 MAO 专用请求头');
 });
 
 test('同一设备在其他标签页切换 MAO 账号后，旧账号页面必须退出', async () => {
