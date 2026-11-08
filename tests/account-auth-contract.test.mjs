@@ -1414,3 +1414,67 @@ test('撤销单台设备及其关联状态必须原子提交，清理失败时�
     'activity_atomic_device_0001'
   )[0].status, 'superseded');
 });
+
+test('设备在异步鉴权期间被撤销时，旧设备请求必须在最终校验处失败', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const adminAccountId = (await admin.clone().json()).account.id;
+
+  const deviceId = 'device_revocation_race01';
+  const deviceSecret = randomToken(32);
+  const enrolled = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret: deviceSecret,
+    label: 'race test device',
+    platform: 'test'
+  }, adminCookie);
+  assert.equal(enrolled.status, 200);
+
+  // The first device row is read before credential hashing. Simulate an
+  // independent revocation immediately after the later account lookup, while
+  // authenticate() is still using the originally loaded device snapshot.
+  const getAccount = ctx.store.getMaoAccountById.bind(ctx.store);
+  let revokedDuringAuthentication = false;
+  ctx.store.getMaoAccountById = accountId => {
+    const account = getAccount(accountId);
+    if (accountId === adminAccountId && !revokedDuringAuthentication) {
+      revokedDuringAuthentication = true;
+      assert.equal(
+        ctx.store.revokeMaoAccountDevice(adminAccountId, deviceId, ctx.now()),
+        true,
+        '模拟的并发请求应成功撤销设备'
+      );
+    }
+    return account;
+  };
+
+  const staleDeviceRequest = await ctx.fetchTo('/api/autonomy/global', {
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': deviceId + '.' + deviceSecret
+    }
+  });
+  const result = await json(staleDeviceRequest);
+  assert.equal(revokedDuringAuthentication, true);
+  assert.equal(result.status, 401,
+    '设备在异步校验期间撤销后，请求不得继续使用最初读取的未撤销记录');
+  assert.equal(result.payload.error.code, 'DEVICE_REVOKED');
+
+  const persisted = ctx.query(
+    'SELECT revoked_at FROM devices WHERE id = ?',
+    deviceId
+  )[0];
+  assert.notEqual(persisted.revoked_at, null);
+});
