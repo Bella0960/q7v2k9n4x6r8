@@ -1913,8 +1913,18 @@ class CloudStore {
     );
     // Adopt the existing single-owner cloud data into the creator's permanent MAO ID.
     // If any table update fails, reverse all completed moves and remove the unissued admin row.
-    const tables = ['devices', 'user_autonomy', 'character_autonomy', 'character_schedules',
-      'device_presence', 'character_leases', 'device_pairing_tokens', 'outbound_device_receipts'];
+    const tables = [
+      'devices',
+      'user_autonomy',
+      'character_autonomy',
+      'character_schedules',
+      'device_presence',
+      'character_leases',
+      'device_pairing_tokens',
+      'character_context_versions',
+      'character_context_events',
+      'outbound_device_receipts'
+    ];
     try {
       for (const table of tables) {
         this.exec('UPDATE ' + table + " SET user_id = ? WHERE user_id = 'owner'", account.id);
