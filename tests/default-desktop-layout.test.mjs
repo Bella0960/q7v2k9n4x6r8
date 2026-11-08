@@ -146,3 +146,36 @@ test('pending accounts can be suspended and existing unused invitations can be r
   assert.match(adminCss, /\.invite-status\[hidden\]\{display:none\}/);
   assert.match(adminCss, /\.invite-revoke-button/);
 });
+
+test('creator account directory supports email search, status filters, and accurate result counts', () => {
+  const adminHtml = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const adminScript = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
+  const adminCss = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+
+  assert.match(adminHtml, /placeholder="搜索永久 ID、用户名或邮箱"/);
+  for (const filter of ['all', 'pending_invite', 'active', 'restricted']) {
+    assert.match(adminHtml, new RegExp('data-account-filter="' + filter + '"'));
+  }
+  assert.match(adminHtml, /id="accountResultCount" aria-live="polite"/);
+  assert.match(adminScript, /\[account\.id, account\.username, account\.qq_email\]/,
+    'search must include the QQ email recorded on the account');
+  assert.match(adminScript, /accountFilter === 'restricted'[\s\S]*account\.status === 'disabled'[\s\S]*account\.status === 'revoked'/);
+  assert.match(adminScript, /updateAccountFilterCounts\(\)/);
+  assert.match(adminScript, /setAttribute\('aria-pressed', active \? 'true' : 'false'\)/);
+  assert.match(adminCss, /\.account-filter-row\{display:flex;gap:6px;overflow-x:auto/);
+  assert.match(adminCss, /\.filter-button\.active/);
+});
+
+test('creator account detail supports copying permanent IDs and prevents stale audit results from crossing accounts', () => {
+  const adminHtml = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const adminScript = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
+  const adminCss = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+
+  assert.match(adminHtml, /id="copyDetailId"/);
+  assert.match(adminScript, /navigator\.clipboard\?\.writeText\(value\)/);
+  assert.match(adminScript, /range\.selectNodeContents\(\$\('detailId'\)\)/,
+    'manual selection must remain possible when clipboard access is unavailable');
+  assert.match(adminScript, /const result = await api\('\/api\/admin\/accounts\/'[\s\S]*if \(selectedAccountId !== accountId\) return;[\s\S]*list\.replaceChildren\(\)/,
+    'a slower audit response must not replace the currently selected account history');
+  assert.match(adminCss, /\.copy-detail-id\{/);
+});
