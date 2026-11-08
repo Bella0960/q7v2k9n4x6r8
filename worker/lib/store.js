@@ -1421,6 +1421,8 @@ class CloudStore {
 
 
   getFriendConversationViewState({ userId, friendId }) {
+    const friendship = this.getFriendship(userId, friendId);
+    const generationId = friendship?.generation_id || '';
     const clear = this.exec(
       `SELECT clear_before_created_at, clear_before_message_id, updated_at
        FROM friend_conversation_clears
@@ -1441,13 +1443,14 @@ class CloudStore {
     const hiddenCount = Number(hidden.total || 0);
     const latestHiddenAt = Number(hidden.latest_hidden_at || 0);
     return {
-      version: [clearUpdatedAt, clearAt, clearId, hiddenCount, latestHiddenAt].join(':'),
+      // Include the relationship generation so an already-open chat page can
+      // reset its old cursor after the same friend is removed and re-added.
+      version: [generationId, clearUpdatedAt, clearAt, clearId, hiddenCount, latestHiddenAt].join(':'),
       clearedThrough: clearAt && clearId
         ? { createdAt: clearAt, messageId: clearId }
         : null
     };
   }
-
 
   hideFriendMessage({ userId, friendId, messageId, now }) {
     const friendship = this.getFriendship(userId, friendId);
