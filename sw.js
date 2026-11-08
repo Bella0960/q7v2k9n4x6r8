@@ -7,6 +7,9 @@ const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 const APP_SHELL = [
   './',
   './index.html',
+  './account/index.html',
+  './account/account.css',
+  './account/account.js',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
@@ -176,10 +179,31 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 页面导航采用“缓存优先、后台更新”：
-  // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
-  // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
-  if (req.mode === 'navigate') {
+  // Protected app documents must reach the Worker on every navigation so
+  // account disable/revocation cannot be bypassed by a stale offline HTML cache.
+  // On network loss, fall back only to the public account entry, never cached app pages.
+  const accountPath = new URL('account/', self.registration.scope).pathname;
+  const isPublicAccountPage = url.pathname === accountPath ||
+    url.pathname.startsWith(accountPath);
+  if (req.mode === 'navigate' && !isPublicAccountPage) {
+    event.respondWith((async function () {
+      try {
+        return await fetch(req);
+      } catch {
+        const entry = new URL('account/index.html', self.registration.scope);
+        const cachedEntry = await caches.match(entry.href).catch(function () { return null; });
+        return cachedEntry || new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' }
+        });
+      }
+    })());
+    return;
+  }
+
+  // The public account entry stays cache-first so a disabled or offline device
+  // can display the safe sign-in/disabled notice, never a cached app document.
+  if (req.mode === 'navigate' && isPublicAccountPage) {
     event.respondWith((async function () {
       var cachedPromise = caches.match(req).catch(function () { return null; });
       var cacheWritePromise = null;
