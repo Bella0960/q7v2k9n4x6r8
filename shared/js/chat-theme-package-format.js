@@ -36,25 +36,88 @@
     var bytes=input instanceof Uint8Array?input:new Uint8Array(input);
     if(bytes.length>MAX)fail("主题包超过 48 MB。");
     if(bytes.length<22)fail("文件不是有效的主题 ZIP 包。");
-    var view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),files=Object.create(null),offset=0,total=0,count=0;
-    while(offset+30<=bytes.length&&view.getUint32(offset,true)===0x04034b50){
-      var flags=view.getUint16(offset+6,true),method=view.getUint16(offset+8,true),crc=view.getUint32(offset+14,true);
-      var size=view.getUint32(offset+18,true),rawSize=view.getUint32(offset+22,true),nameLen=view.getUint16(offset+26,true),extra=view.getUint16(offset+28,true);
+    var view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+    var minEocd=Math.max(0,bytes.length-22-0xffff),eocd=-1;
+    for(var scan=bytes.length-22;scan>=minEocd;scan--){
+      if(view.getUint32(scan,true)===0x06054b50){eocd=scan;break}
+    }
+    if(eocd<0)fail("主题 ZIP 缺少结束记录。");
+    var disk=view.getUint16(eocd+4,true),centralDisk=view.getUint16(eocd+6,true);
+    var diskCount=view.getUint16(eocd+8,true),entryCount=view.getUint16(eocd+10,true);
+    var centralSize=view.getUint32(eocd+12,true),centralOffset=view.getUint32(eocd+16,true);
+    var commentLength=view.getUint16(eocd+20,true);
+    if(eocd+22+commentLength!==bytes.length)fail("主题 ZIP 结束记录长度不正确。");
+    if(disk!==0||centralDisk!==0||diskCount!==entryCount)fail("不支持分卷 ZIP。");
+    if(entryCount===0xffff||centralSize===0xffffffff||centralOffset===0xffffffff)fail("暂不支持 ZIP64 主题包。");
+    if(entryCount>120)fail("主题文件数量或体积超出限制。");
+    var centralEnd=centralOffset+centralSize;
+    if(centralEnd!==eocd||centralEnd>bytes.length)fail("主题 ZIP 中央目录位置不正确。");
+    var files=Object.create(null),seenNames=Object.create(null),entries=[],total=0,fileCount=0,pos=centralOffset;
+    function readName(start,length,flags){
+      if(!length||start+length>bytes.length)fail("主题 ZIP 文件名不完整。");
+      var raw=bytes.subarray(start,start+length),name;
+      if(!(flags&0x0800)){
+        for(var k=0;k<raw.length;k++)if(raw[k]>0x7f)fail("主题文件名必须使用 UTF-8 编码。");
+      }
+      try{name=dec?dec.decode(raw):String.fromCharCode.apply(null,raw)}catch(e){fail("主题文件名编码错误。")}
+      if(!name||name.indexOf("\u0000")>=0||name.charAt(0)==="/"||name.indexOf("\\\\")>=0||
+        name.split("/").some(function(part){return part===".."||part==="."})||/^[A-Za-z]:/.test(name)){
+        fail("主题包包含不安全路径。");
+      }
+      return name;
+    }
+    function validateFlags(flags){
       if(flags&1)fail("不支持加密 ZIP。");
       if(flags&8)fail("ZIP 文件尺寸信息不完整。");
       if(flags&~0x0800)fail("ZIP 标志不受支持。");
+    }
+    for(var index=0;index<entryCount;index++){
+      if(pos+46>centralEnd||view.getUint32(pos,true)!==0x02014b50)fail("主题 ZIP 中央目录不完整。");
+      var flags=view.getUint16(pos+8,true),method=view.getUint16(pos+10,true);
+      var crc=view.getUint32(pos+16,true),size=view.getUint32(pos+20,true),rawSize=view.getUint32(pos+24,true);
+      var nameLen=view.getUint16(pos+28,true),extraLen=view.getUint16(pos+30,true),commentLen=view.getUint16(pos+32,true);
+      var startDisk=view.getUint16(pos+34,true),localOffset=view.getUint32(pos+42,true);
+      var recordEnd=pos+46+nameLen+extraLen+commentLen;
+      if(recordEnd>centralEnd)fail("主题 ZIP 中央目录记录不完整。");
+      validateFlags(flags);
+      if(startDisk!==0)fail("不支持分卷 ZIP。");
       if(method!==0||size!==rawSize)fail("请使用工作台导出的标准主题包。");
       if(rawSize>MAX_FILE)fail("单个主题文件超过 16 MB。");
-      var nameStart=offset+30,dataStart=nameStart+nameLen+extra,dataEnd=dataStart+size;
-      if(!nameLen||dataEnd>bytes.length)fail("主题 ZIP 内容不完整。");
-      var name;try{name=dec?dec.decode(bytes.subarray(nameStart,nameStart+nameLen)):String.fromCharCode.apply(null,bytes.subarray(nameStart,nameStart+nameLen))}catch(e){fail("主题文件名编码错误。")}
-      if(name.charAt(0)==="/"||name.indexOf("\\")>=0||name.split("/").indexOf("..")>=0||/^[A-Za-z]:/.test(name))fail("主题包包含不安全路径。");
+      var name=readName(pos+46,nameLen,flags);
+      if(own(seenNames,name))fail("主题包存在重复文件："+name);
+      seenNames[name]=true;
+      if(localOffset+30>centralOffset||view.getUint32(localOffset,true)!==0x04034b50)fail("主题 ZIP 本地文件头无效。");
+      var localFlags=view.getUint16(localOffset+6,true),localMethod=view.getUint16(localOffset+8,true);
+      var localCrc=view.getUint32(localOffset+14,true),localSize=view.getUint32(localOffset+18,true);
+      var localRawSize=view.getUint32(localOffset+22,true),localNameLen=view.getUint16(localOffset+26,true);
+      var localExtraLen=view.getUint16(localOffset+28,true),localNameStart=localOffset+30;
+      var dataStart=localNameStart+localNameLen+localExtraLen,dataEnd=dataStart+size;
+      if(dataStart>centralOffset||dataEnd>centralOffset)fail("主题 ZIP 内容不完整。");
+      validateFlags(localFlags);
+      if(localFlags!==flags||localMethod!==method||localCrc!==crc||localSize!==size||localRawSize!==rawSize||
+        localNameLen!==nameLen||dataStart-localNameStart-localExtraLen!==nameLen){
+        fail("主题 ZIP 本地文件头与中央目录不一致。");
+      }
+      var localName=readName(localNameStart,localNameLen,localFlags);
+      if(localName!==name)fail("主题 ZIP 本地文件名与中央目录不一致。");
       var data=bytes.slice(dataStart,dataEnd);
       if(crc32(data)!==crc)fail("主题文件校验失败："+name);
-      if(name.slice(-1)!=="/"){if(own(files,name))fail("主题包存在重复文件："+name);files[name]=data;total+=data.length;count++;if(total>MAX||count>120)fail("主题文件数量或体积超出限制。")}
-      offset=dataEnd;
+      var isDirectory=name.charAt(name.length-1)==="/";
+      if(isDirectory&&rawSize!==0)fail("主题 ZIP 目录条目不能包含文件内容。");
+      if(!isDirectory){files[name]=data;total+=data.length;fileCount++}
+      if(total>MAX||fileCount>120)fail("主题文件数量或体积超出限制。");
+      entries.push({offset:localOffset,end:dataEnd});
+      pos=recordEnd;
     }
-    if(!count)fail("没有读取到主题文件。");
+    if(pos!==centralEnd)fail("主题 ZIP 中央目录长度不正确。");
+    entries.sort(function(a,b){return a.offset-b.offset});
+    var expectedOffset=0;
+    for(var entryIndex=0;entryIndex<entries.length;entryIndex++){
+      if(entries[entryIndex].offset!==expectedOffset)fail("主题 ZIP 存在未登记、重叠或缺失的文件数据。");
+      expectedOffset=entries[entryIndex].end;
+    }
+    if(expectedOffset!==centralOffset)fail("主题 ZIP 存在未登记的文件数据。");
+    if(!fileCount)fail("没有读取到主题文件。");
     return files;
   }
   function text(bytes,label){try{return dec?dec.decode(bytes):String.fromCharCode.apply(null,bytes)}catch(e){fail((label||"文件")+"不是有效 UTF-8。")}}
