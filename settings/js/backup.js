@@ -1625,15 +1625,21 @@
                 rpReady = false;
             }
             if (!rpReady) {
-                toast('已中止导入：无法建立可回滚的恢复点，请检查 IndexedDB 存储空间');
+                var cleanupAfterLocalPointFailure = await clearRestorePoints();
+                if (!cleanupAfterLocalPointFailure.ok) importRecoveryReady = false;
+                toast('已中止导入：无法建立可回滚的恢复点，请检查 IndexedDB 存储空间'
+                    + (cleanupAfterLocalPointFailure.ok ? '' : '；恢复点清理未能完全确认，请勿清理网站数据'));
                 return;
             }
             // 恢复点建立后，额外做一次 verifyRestore——用从 DB 读回的快照对当前 localStorage 做实际比对。
             // 理论上此时 localStorage 就是 current 本身，应该 ok；若不 ok 说明 DB 存坏了，不能继续。
             var rpVerify = verifyRestore(rpSnap);
             if (!rpVerify.ok) {
+                var cleanupAfterLocalVerifyFailure = await clearRestorePoints();
+                if (!cleanupAfterLocalVerifyFailure.ok) importRecoveryReady = false;
                 toast('已中止导入：恢复点校验失败（' + rpVerify.matched + '/' + rpVerify.total
-                    + ' 项匹配），导入后可能无法完整恢复');
+                    + ' 项匹配），导入后可能无法完整恢复'
+                    + (cleanupAfterLocalVerifyFailure.ok ? '' : '；恢复点清理未能完全确认，请勿清理网站数据'));
                 return;
             }
 
@@ -1648,6 +1654,7 @@
                     toast('已中止导入：无法建立完整的 IndexedDB 回滚恢复点。现有业务数据未修改。'
                         + ((error && error.message) ? ' ' + error.message : '')
                         + (cleanupAfterSnapshotFailure.ok ? '' : ' 本轮恢复点清理未能完全确认，请勿清理网站数据。'));
+                    if (!cleanupAfterSnapshotFailure.ok) importRecoveryReady = false;
                     return;
                 }
             }
@@ -1663,6 +1670,7 @@
                 toast('已中止导入：无法写入导入阶段保护记录，现有业务数据未修改。'
                     + ((stateWriteError && stateWriteError.message) || '')
                     + (cleanupAfterStateFailure.ok ? '' : ' 恢复点清理未能完全确认，请勿清理网站数据。'));
+                if (!cleanupAfterStateFailure.ok) importRecoveryReady = false;
                 return;
             }
 
@@ -1699,6 +1707,7 @@
                     try {
                         await writeImportState('rolled-back', indexedDbTargetNames);
                     } catch (stateError) {
+                        importRecoveryReady = false;
                         toast('导入失败，localStorage 已回滚核验通过，但恢复阶段标记写入失败。'
                             + '原始恢复点已保留，请勿清理网站数据。');
                         return;
@@ -1735,6 +1744,7 @@
                         try {
                             await writeImportState('rolled-back', indexedDbTargetNames);
                         } catch (stateError) {
+                            importRecoveryReady = false;
                             toast('导入失败，数据已回滚核验通过，但恢复阶段标记写入失败。'
                                 + '原始恢复点已保留，请勿清理网站数据。');
                             return;
@@ -1766,6 +1776,7 @@
             try {
                 await writeImportState('committed', indexedDbTargetNames);
             } catch (commitStateError) {
+                importRecoveryReady = false;
                 toast('数据已写入，但无法保存最终导入状态。原始恢复点已保留；'
                     + '请勿清理网站数据，并重新打开设置页执行安全恢复。');
                 return;
