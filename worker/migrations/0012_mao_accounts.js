@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS mao_invite_codes (
   token_hash TEXT NOT NULL UNIQUE,
   target_account_id TEXT REFERENCES mao_accounts(id),
   target_email TEXT,
-  max_uses INTEGER NOT NULL DEFAULT 1 CHECK (max_uses BETWEEN 1 AND 20),
+  max_uses INTEGER NOT NULL DEFAULT 1 CHECK (max_uses = 1),
   used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
   created_by_account_id TEXT NOT NULL REFERENCES mao_accounts(id),
   created_at INTEGER NOT NULL,
