@@ -547,12 +547,16 @@
     );
   }
 
+  function isValidOutboundCursorId(value) {
+    return typeof value === 'string' && value.length > 0 && value.length <= 256;
+  }
+
   function getCharacterOutboundPage(characterId, limit, cursor) {
     var safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
     var query = '?limit=' + safeLimit;
     if (cursor && Number.isSafeInteger(Number(cursor.createdAt)) &&
         Number(cursor.createdAt) >= 0 &&
-        /^[A-Za-z0-9_-]{16,128}$/.test(String(cursor.id || ''))) {
+        isValidOutboundCursorId(cursor.id)) {
       query += '&afterCreatedAt=' + encodeURIComponent(String(cursor.createdAt));
       query += '&afterId=' + encodeURIComponent(String(cursor.id));
     }
@@ -562,7 +566,7 @@
       var next = payload.nextCursor;
       if (!next || !Number.isSafeInteger(Number(next.createdAt)) ||
           Number(next.createdAt) < 0 ||
-          !/^[A-Za-z0-9_-]{16,128}$/.test(String(next.id || ''))) {
+          !isValidOutboundCursorId(next.id)) {
         next = null;
       } else {
         next = { createdAt: Number(next.createdAt), id: String(next.id) };
@@ -590,8 +594,8 @@
   function normalizeOutboundCursor(value) {
     if (!value || !Number.isSafeInteger(Number(value.createdAt)) ||
         Number(value.createdAt) < 0 ||
-        !/^[A-Za-z0-9_-]{16,128}$/.test(String(value.id || ''))) return null;
-    return { createdAt: Number(value.createdAt), id: String(value.id) };
+        !isValidOutboundCursorId(value.id)) return null;
+    return { createdAt: Number(value.createdAt), id: value.id };
   }
 
   function readOutboundCursor(key) {
