@@ -109,7 +109,14 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
   assert.equal(typeof listeners.fetch, 'function', 'sw.js 必须注册 fetch 监听');
 
   function dispatchNavigation() {
-    const request = { method: 'GET', mode: 'navigate', url: NAV_URL };
+    const request = {
+      method: 'GET',
+      mode: 'navigate',
+      url: NAV_URL,
+      headers: new Headers({ Accept: 'text/html,application/xhtml+xml' }),
+      credentials: 'include',
+      redirect: 'follow'
+    };
     const event = {
       request,
       responsePromise: null,
@@ -131,7 +138,10 @@ function createHarness({ cachedResponse = null, fetchImpl, putImpl, matchImpl } 
 function htmlResponse(body, status = 200) {
   return new Response(body, {
     status,
-    headers: { 'Content-Type': 'text/html; charset=UTF-8' }
+    headers: {
+      'Content-Type': 'text/html; charset=UTF-8',
+      'Vary': 'Accept'
+    }
   });
 }
 
@@ -155,12 +165,20 @@ test('场景1：命中缓存立即返回，网络照常后台更新，缓存写�
   assert.equal(harness.fetchCalls.length, 1, '即使命中缓存也必须继续发起网络请求');
   assert.notEqual(harness.fetchCalls[0].mode, 'navigate',
     '后台刷新不能复用 navigate 模式的原始 Request，否则浏览器会拒绝该请求');
+  assert.equal(harness.fetchCalls[0].headers.get('accept'), 'text/html,application/xhtml+xml',
+    '后台请求必须保留导航 Accept，避免与 Vary: Accept 响应不一致');
+  assert.equal(harness.fetchCalls[0].credentials, 'include',
+    '后台请求必须保留导航 credentials');
   assert.equal(lifecycleState.value, 'pending', '网络尚未返回时 waitUntil 不应结束');
 
   networkGate.resolve(htmlResponse('fresh-page'));
   await flushAsync();
 
   assert.equal(harness.putCalls.length, 1, '网络成功后必须调用 cache.put');
+  assert.equal(harness.putCalls[0].request.headers.get('accept'), 'text/html,application/xhtml+xml',
+    'Cache API key 必须保留原导航 Accept，才能匹配 Vary: Accept');
+  assert.equal(harness.putCalls[0].request.credentials, 'include',
+    'Cache API key 必须保留原导航 credentials');
   assert.equal(harness.openCalls[0], CACHE_NAME, '必须写入当前 CACHE_NAME');
   assert.equal(lifecycleState.value, 'pending', 'cache.put 未完成时 waitUntil 必须仍 pending');
 
