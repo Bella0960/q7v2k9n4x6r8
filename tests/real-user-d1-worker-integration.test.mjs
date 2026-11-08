@@ -593,11 +593,21 @@ if (!DatabaseSync) {
 
       // A block revokes the accepted relationship. Unblocking must not
       // silently recreate friendship; only a new request + acceptance may.
+      database.prepare("UPDATE real_user_accounts SET avatar_asset_id = ? WHERE id = ?")
+        .run("av_" + "d".repeat(32), aliceId);
       const blocked = await callWorker(env, friendsPrefix + "/" + aliceId + "/block", "POST", {
         cookie: bobCookie
       });
       assert.equal(blocked.response.status, 200);
       assert.equal(blocked.body.blocked, true);
+      const blockedList = await callWorker(
+        env, friendsPrefix + "/blocks", "GET", { cookie: bobCookie }
+      );
+      assert.equal(blockedList.response.status, 200);
+      assert.equal(blockedList.body.blocked.length, 1);
+      assert.equal(blockedList.body.blocked[0].id, aliceId);
+      assert.equal("avatarAssetId" in blockedList.body.blocked[0], false,
+        "the blocked-user directory must not disclose an avatar asset reference");
       const aliceBlockedRoster = await callWorker(
         env, friendsPrefix + "/?limit=10&snapshotAt=" + Date.now(), "GET", { cookie: aliceCookie }
       );
@@ -1074,6 +1084,156 @@ if (!DatabaseSync) {
         "SELECT COUNT(*) AS count FROM real_user_blocks WHERE blocker_id = ? AND blocked_id = ?"
       ).get(aliceId, bobId).count, 0,
       "a session whose expiry equals the lookup time must not authorize a relationship write");
+    } finally {
+      database.close();
+    }
+  });
+
+
+  test("inactive peers are redacted from pending request lists and stable duplicate retries", async () => {
+    const fixture = await seedRacePair("inactive_peer");
+    const { database, env, aliceId, bobId, aliceToken, bobToken } = fixture;
+    const charlieId = "account-inactive-charlie-01";
+    const charlieToken = "c".repeat(64);
+    const now = Date.now() - 10000;
+    try {
+      addAccount(database, charlieId, "charlie_state_1", "Charlie State", now);
+      await addSession(database, charlieId, charlieToken, now);
+      const charlieQr = await callWorker(
+        env,
+        "/api/real-user-chat/v1/friends/codes/rotate",
+        "POST",
+        { cookie: charlieToken }
+      );
+      assert.equal(charlieQr.response.status, 201, JSON.stringify(charlieQr.body));
+
+      const outgoingId = "request_alice_charlie_01";
+      const outgoing = await callWorker(
+        env,
+        "/api/real-user-chat/v1/friends/requests",
+        "POST",
+        {
+          cookie: aliceToken,
+          body: { requestId: outgoingId, code: charlieQr.body.code, note: "hello" }
+        }
+      );
+      assert.equal(outgoing.response.status, 201, JSON.stringify(outgoing.body));
+
+      const incomingId = "request_charlie_bob_01";
+      addPendingRequest(database, incomingId, charlieId, bobId, Date.now() - 1000);
+      database.prepare(
+        "UPDATE real_user_accounts SET avatar_asset_id = ?, status = 'suspended', updated_at = ? WHERE id = ?"
+      ).run("av_" + "e".repeat(32), Date.now(), charlieId);
+
+      const aliceOutbox = await callWorker(
+        env,
+        "/api/real-user-chat/v1/friends/requests?direction=outgoing",
+        "GET",
+        { cookie: aliceToken }
+      );
+      assert.equal(aliceOutbox.response.status, 200);
+      assert.equal(aliceOutbox.body.requests.length, 1);
+      const outgoingPeer = aliceOutbox.body.requests[0].peer;
+      assert.equal(outgoingPeer.id, charlieId);
+      assert.equal(outgoingPeer.unavailable, true);
+      assert.equal("handle" in outgoingPeer, false);
+      assert.equal("displayName" in outgoingPeer, false);
+      assert.equal("avatarAssetId" in outgoingPeer, false);
+
+      const bobInbox = await callWorker(
+        env,
+        "/api/real-user-chat/v1/friends/requests?direction=incoming",
+        "GET",
+        { cookie: bobToken }
+      );
+      assert.equal(bobInbox.response.status, 200);
+      assert.equal(bobInbox.body.requests.length, 1);
+      const incomingPeer = bobInbox.body.requests[0].peer;
+      assert.equal(incomingPeer.id, charlieId);
+      assert.equal(incomingPeer.unavailable, true);
+      assert.equal("handle" in incomingPeer, false);
+      assert.equal("displayName" in incomingPeer, false);
+      assert.equal("avatarAssetId" in incomingPeer, false);
+
+      // Stable request retries remain idempotent, but must not re-disclose a
+      // peer profile after that peer becomes suspended or deleted.
+      const duplicate = await callWorker(
+        env,
+        "/api/real-user-chat/v1/friends/requests",
+        "POST",
+        {
+          cookie: aliceToken,
+          body: { requestId: outgoingId, code: charlieQr.body.code, note: "retry" }
+        }
+      );
+      assert.equal(duplicate.response.status, 200);
+      assert.equal(duplicate.body.duplicate, true);
+      assert.equal(duplicate.body.request.id, outgoingId);
+      assert.equal(duplicate.body.target, null);
+    } finally {
+      database.close();
+    }
+  });
+
+  test("acceptance rejects a pending request when its requester is suspended or deleted", async () => {
+    const fixture = await seedRacePair("inactive_requester");
+    const { database, env, aliceId, aliceToken, bobToken } = fixture;
+    try {
+      const requestId = "request_inactive_alice_01";
+      addPendingRequest(database, requestId, aliceId, fixture.bobId, Date.now() - 1000);
+      for (const status of ["suspended", "deleted"]) {
+        database.prepare(
+          "UPDATE real_user_accounts SET status = ?, updated_at = ? WHERE id = ?"
+        ).run(status, Date.now(), aliceId);
+        const accepted = await callFriends(
+          env, "/requests/" + requestId + "/accept", "POST", bobToken
+        );
+        assert.equal(accepted.response.status, 409);
+        assert.equal(accepted.body.error, "friend_request_account_unavailable");
+        assert.equal(database.prepare(
+          "SELECT status FROM real_user_friend_requests WHERE id = ?"
+        ).get(requestId).status, "pending",
+        "an inactive requester must not be materialized into an accepted friendship");
+      }
+    } finally {
+      database.close();
+    }
+  });
+
+  test("recipient suspension after session validation still prevents request acceptance", async () => {
+    const fixture = await seedRacePair("inactive_recipient_race");
+    const { database, aliceId, bobId, bobToken } = fixture;
+    try {
+      const requestId = "request_recipient_race_01";
+      addPendingRequest(database, requestId, aliceId, bobId, Date.now() - 1000);
+      let reachedResolve;
+      let releaseUpdate;
+      const reached = new Promise(resolve => { reachedResolve = resolve; });
+      const gate = new Promise(resolve => { releaseUpdate = resolve; });
+      let intercepted = false;
+      const gatedEnv = createEnvironment(database, {
+        beforeRun: async sql => {
+          if (!intercepted && sql.startsWith("UPDATE real_user_friend_requests SET status = ?")) {
+            intercepted = true;
+            reachedResolve();
+            await gate;
+          }
+        }
+      });
+      const acceptance = callFriends(
+        gatedEnv, "/requests/" + requestId + "/accept", "POST", bobToken
+      );
+      await reached;
+      database.prepare(
+        "UPDATE real_user_accounts SET status = 'suspended', updated_at = ? WHERE id = ?"
+      ).run(Date.now(), bobId);
+      releaseUpdate();
+      const result = await acceptance;
+      assert.equal(result.response.status, 409);
+      assert.equal(result.body.error, "friend_request_account_unavailable");
+      assert.equal(database.prepare(
+        "SELECT status FROM real_user_friend_requests WHERE id = ?"
+      ).get(requestId).status, "pending");
     } finally {
       database.close();
     }
