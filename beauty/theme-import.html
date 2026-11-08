@@ -103,8 +103,8 @@ function blobBytes(blob){
 function exportTheme(theme,button){
  var F=window.MAOMAOChatThemeFormat;
  if(!F||typeof F.createPackage!=="function"){showStatus("主题包导出模块尚未加载，请刷新页面后重试。","error");return}
- if(!media||typeof media.getBlob!=="function"){showStatus("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。","error");return}
  var original=button.textContent,assets=Object.create(null),items=Array.isArray(theme.assetIndex)?theme.assetIndex:[],chain=Promise.resolve();
+ if(items.length&&(!media||typeof media.getBlob!=="function")){showStatus("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。","error");return}
  button.disabled=true;button.textContent="导出中…";showStatus("正在收集主题素材并生成可再次导入的主题包…");
  items.forEach(function(item){chain=chain.then(function(){
    var assetId=theme.assetRefs&&theme.assetRefs[item.path];
