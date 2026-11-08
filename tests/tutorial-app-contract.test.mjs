@@ -376,15 +376,17 @@ test('backup import snapshots IndexedDB before overwriting data and rolls back a
 
 test('backup tutorial explains per-database rollback and retained recovery points', () => {
   const start = html.indexOf("{id:'backup'");
-  const end = html.indexOf("\\n{id:'api-errors'", start);
+  const end = html.indexOf("\n{id:'api-errors'", start);
   assert.ok(start >= 0 && end > start, 'backup lesson must exist');
   const lesson = html.slice(start, end);
-  assert.match(lesson, /同一数据库中的多个表会在一个事务里恢复/);
+  assert.match(lesson, /每个数据库内部的多个表使用同一事务/);
   assert.match(lesson, /之前已成功恢复的数据库和 localStorage 也会回滚/);
   assert.match(lesson, /恢复点会保留/);
+  assert.match(lesson, /超过安全容量/);
   assert.match(backupScript, /db\.transaction\(storeNames, 'readwrite'\)/);
-  assert.match(backupScript, /var restorePointKept = dbFailed\.length > 0/);
-  assert.match(backupScript, /本机导入前恢复点已保留，供排查/);
+  assert.match(backupScript, /restoreIndexedDBWithRollback\(obj\.indexedDB, idbRestorePoint\)/);
+  assert.match(backupScript, /RESTORE_POINT_IDB_MAX_BYTES/);
+  assert.match(backupScript, /部分回滚未能确认；本机恢复点已保留/);
 });
 
 test('reader cleanup walkthrough explains the destructive scope and verifies the real result', () => {
