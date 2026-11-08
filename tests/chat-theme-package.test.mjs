@@ -909,7 +909,7 @@ test('installed chat themes export with CSS and MediaRepository assets',async()=
 });
 test('legacy installed themes recover missing asset manifests from owner-scoped MediaRepository metadata',async()=>{
   const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
-  const scripts=[...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
   const script=scripts[scripts.length-1];
   const links=[];
   function makeNode(tag){
