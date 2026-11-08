@@ -97,6 +97,7 @@
   var blocked = false;
   var latestIncomingMessage = null;
   var lastReadReceiptId = '';
+  var lastReadReceiptAt = 0;
   var readReceiptInFlight = false;
   var readReceiptTimer = 0;
 
@@ -120,20 +121,34 @@
     return box.scrollHeight - box.scrollTop - box.clientHeight < 90;
   }
 
-  function isMessageVisible(messageId) {
+  function latestVisibleIncomingMessage() {
     var box = $('messages');
-    var nodes = box.querySelectorAll('[data-message-id]');
-    var node = null;
-    for (var index = 0; index < nodes.length; index += 1) {
-      if (nodes[index].dataset.messageId === String(messageId)) {
-        node = nodes[index];
-        break;
-      }
-    }
-    if (!node) return false;
     var viewport = box.getBoundingClientRect();
-    var rect = node.getBoundingClientRect();
-    return rect.bottom > viewport.top && rect.top < viewport.bottom;
+    var rows = box.querySelectorAll('.msg-row[data-message-id]');
+    var latest = null;
+    rows.forEach(function (row) {
+      if (row.dataset.senderId !== friendId || row.dataset.recipientId !== myUserId) return;
+      var rect = row.getBoundingClientRect();
+      if (rect.bottom <= viewport.top || rect.top >= viewport.bottom) return;
+      var candidate = {
+        id: row.dataset.messageId,
+        createdAt: Number(row.dataset.createdAt) || 0
+      };
+      if (!latest ||
+          candidate.createdAt > latest.createdAt ||
+          (candidate.createdAt === latest.createdAt && candidate.id > latest.id)) {
+        latest = candidate;
+      }
+    });
+    return latest;
+  }
+
+  function isAfterReadCursor(message) {
+    if (!message) return false;
+    var createdAt = Number(message.createdAt) || 0;
+    if (createdAt > lastReadReceiptAt) return true;
+    if (createdAt < lastReadReceiptAt) return false;
+    return String(message.id) > lastReadReceiptId;
   }
   function updateComposer() {
     $('messageInput').disabled = blocked || !ready;
@@ -269,6 +284,7 @@
       hiddenMessageIds = Object.create(null);
       latestIncomingMessage = null;
       lastReadReceiptId = '';
+      lastReadReceiptAt = 0;
       var clearedThrough = result.clearedThrough;
       cursor = clearedThrough
         ? String(Number(clearedThrough.createdAt)) + '.' + String(clearedThrough.messageId)
@@ -312,15 +328,15 @@
   }
 
   async function markVisibleIncomingRead() {
-    if (!ready || blocked || document.hidden || !latestIncomingMessage ||
-        !isMessageVisible(latestIncomingMessage.id) || readReceiptInFlight ||
-        latestIncomingMessage.id === lastReadReceiptId) return;
-    var target = latestIncomingMessage;
+    if (!ready || blocked || document.hidden || readReceiptInFlight) return;
+    var target = latestVisibleIncomingMessage();
+    if (!target || !isAfterReadCursor(target)) return;
     var receiptSaved = false;
     readReceiptInFlight = true;
     try {
       var result = await api.markRead(friendId, target.id);
       lastReadReceiptId = (result.read && result.read.lastReadMessageId) || target.id;
+      lastReadReceiptAt = Number(result.read && result.read.lastReadAt) || target.createdAt;
       receiptSaved = true;
     } catch (error) {
       if (error && error.code === 'NOT_FRIENDS') {
@@ -328,9 +344,9 @@
       }
     } finally {
       readReceiptInFlight = false;
-      if (receiptSaved && latestIncomingMessage && latestIncomingMessage.id !== target.id &&
-          !document.hidden && isMessageVisible(latestIncomingMessage.id)) {
-        // A newer incoming message may have arrived while the previous receipt was in flight.
+      var nextVisible = latestVisibleIncomingMessage();
+      if (receiptSaved && isAfterReadCursor(nextVisible) && !document.hidden) {
+        // A newer incoming message may have entered the viewport while the receipt was in flight.
         window.setTimeout(markVisibleIncomingRead, 0);
       }
     }
