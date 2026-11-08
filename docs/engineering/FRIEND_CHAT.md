@@ -44,6 +44,7 @@
 - `DELETE /api/friends/:friendId/messages/:messageId`：只在当前账号隐藏单条消息。
 - `DELETE /api/friends/:friendId/messages`：只清空当前账号这边的整段会话。
 - 消息分页同时返回当前账号的 `viewState.version`，其中包含当前好友关系代际；其他设备发现隐藏、清空或关系代际变化后会重新加载当前会话视图，并重置旧消息游标。
+- 聊天页若在删除空窗期收到 `NOT_FRIENDS`，会暂停发送，并每 15 秒重新验证好友关系；关系恢复后自动重连。关系代际变化会使旧的已读请求失效，避免迟到响应覆盖新会话的本地已读游标。
 
 所有接口都需要 `X-Maomao-Account` 认证，并再次验证双方好友关系。
 
