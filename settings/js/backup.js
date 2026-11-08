@@ -419,7 +419,9 @@
     function verifyRestore(snap) {
         var snapKeys = Object.keys(snap);
         var curKeys = [];
-        try { curKeys = Object.keys(localStorage); } catch (e) {}
+        var keyReadOk = true;
+        try { curKeys = Object.keys(localStorage); }
+        catch (e) { keyReadOk = false; }
         var missingKeys = [];   // 快照里有但实际没有的
         var mismatchedKeys = []; // 快照里有、实际也有、但值不等的
         snapKeys.forEach(function (k) {
@@ -431,7 +433,8 @@
         });
         var extraKeys = curKeys.filter(function (k) { return snapKeys.indexOf(k) === -1; });
         return {
-            ok: missingKeys.length === 0 && mismatchedKeys.length === 0 && extraKeys.length === 0,
+            ok: keyReadOk && missingKeys.length === 0 && mismatchedKeys.length === 0 && extraKeys.length === 0,
+            keyReadOk: keyReadOk,
             total: snapKeys.length,
             matched: snapKeys.length - missingKeys.length - mismatchedKeys.length,
             missing: missingKeys,
