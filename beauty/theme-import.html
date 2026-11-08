@@ -100,22 +100,48 @@ function blobBytes(blob){
  if(blob&&typeof blob.arrayBuffer==="function")return blob.arrayBuffer().then(function(buffer){return new Uint8Array(buffer)});
  return new Promise(function(resolve,reject){var reader=new FileReader();reader.onerror=function(){reject(reader.error||new Error("读取主题素材失败"))};reader.onload=function(){resolve(new Uint8Array(reader.result))};reader.readAsArrayBuffer(blob)});
 }
+function resolveExportAssetIndex(theme,F){
+ var items=Array.isArray(theme.assetIndex)?theme.assetIndex.slice():[];
+ var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
+ var missing=Object.keys(refs).filter(function(path){return !items.some(function(item){return item&&item.path===path})});
+ if(!missing.length)return Promise.resolve(items);
+ if(!media||typeof media.listByOwner!=="function"){
+   return Promise.reject(new Error("该主题来自旧版导入记录，缺少素材清单；当前媒体仓储无法恢复素材元数据。"));
+ }
+ return media.listByOwner("chat-theme-package",String(theme.id||"")).then(function(result){
+   if(!result||!result.ok||!Array.isArray(result.value))throw new Error("无法读取旧版主题的媒体素材清单。");
+   var records=Object.create(null);
+   result.value.forEach(function(asset){if(asset&&asset.assetId)records[asset.assetId]=asset});
+   missing.forEach(function(path){
+     if(typeof F.safeAssetPath==="function"&&!F.safeAssetPath(path))throw new Error("旧版主题包含无效素材路径："+path);
+     var record=records[refs[path]];
+     if(!record||!record.mimeType)throw new Error("旧版主题素材元数据无法恢复："+path);
+     var mimeType=String(record.mimeType),type=/^image\//i.test(mimeType)?"image":(/^font\//i.test(mimeType)?"font":"file");
+     items.push({path:path,name:path.slice(path.lastIndexOf("/")+1),mimeType:mimeType,type:type});
+   });
+   return items;
+ });
+}
 function exportTheme(theme,button){
  var F=window.MAOMAOChatThemeFormat;
  if(!F||typeof F.createPackage!=="function"){showStatus("主题包导出模块尚未加载，请刷新页面后重试。","error");return}
- var original=button.textContent,assets=Object.create(null),items=Array.isArray(theme.assetIndex)?theme.assetIndex:[],chain=Promise.resolve();
- if(items.length&&(!media||typeof media.getBlob!=="function")){showStatus("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。","error");return}
+ var original=button.textContent,assets=Object.create(null),items=[],chain=Promise.resolve(),packageTheme=theme;
  button.disabled=true;button.textContent="导出中…";showStatus("正在收集主题素材并生成可再次导入的主题包…");
- items.forEach(function(item){chain=chain.then(function(){
-   var assetId=theme.assetRefs&&theme.assetRefs[item.path];
-   if(!assetId)throw new Error("主题素材引用缺失："+item.path);
-   return media.getBlob(assetId).then(function(result){
-     if(!result||!result.ok||!result.value)throw new Error("主题素材读取失败："+item.path);
-     return blobBytes(result.value).then(function(bytes){assets[item.path]=bytes});
-   });
- })});
- chain.then(function(){
-   var archive=F.createPackage(theme,theme.customCss||"",assets),blob=new Blob([archive],{type:"application/zip"});
+ resolveExportAssetIndex(theme,F).then(function(resolvedItems){
+   items=resolvedItems;
+   if(items.length&&(!media||typeof media.getBlob!=="function"))throw new Error("MAOMAO 媒体仓储不可用，暂时不能导出主题素材。");
+   packageTheme=Object.assign({},theme,{assetIndex:items});
+   items.forEach(function(item){chain=chain.then(function(){
+     var assetId=theme.assetRefs&&theme.assetRefs[item.path];
+     if(!assetId)throw new Error("主题素材引用缺失："+item.path);
+     return media.getBlob(assetId).then(function(result){
+       if(!result||!result.ok||!result.value)throw new Error("主题素材读取失败："+item.path);
+       return blobBytes(result.value).then(function(bytes){assets[item.path]=bytes});
+     });
+   })});
+   return chain;
+ }).then(function(){
+   var archive=F.createPackage(packageTheme,theme.customCss||"",assets),blob=new Blob([archive],{type:"application/zip"});
    if(!window.URL||typeof window.URL.createObjectURL!=="function")throw new Error("当前浏览器不支持主题包下载。");
    var url=window.URL.createObjectURL(blob),link=document.createElement("a");
    var filename=Array.from(String(theme.name||"chat-theme")).map(function(ch){var code=ch.charCodeAt(0);return code<32||code===34||code===47||code===58||code===42||code===63||code===60||code===62||code===124||code===92?"_":ch}).join("").trim().slice(0,64)||"chat-theme";
