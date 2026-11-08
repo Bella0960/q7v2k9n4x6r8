@@ -106,15 +106,31 @@
     }
   }
 
+  function stopUnsafeAccountPage() {
+    try {
+      global.stop();
+      document.open();
+      document.write('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAO</title><body style="margin:0;padding:12vh 8vw;font:16px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#222;background:#f7f7f8"><h2>账号数据隔离暂不可用</h2><p>为保护不同账号的私人数据，MAO 已阻止打开此页面。请更新浏览器后重试，或联系创作者。</p></body></html>');
+      document.close();
+    } catch (error) {}
+  }
+
   var rawLocalStorage;
   var rawSessionStorage;
   try {
     rawLocalStorage = global.localStorage;
     rawSessionStorage = global.sessionStorage;
-    if (!replaceWindowProperty('localStorage', scopedStorage(rawLocalStorage))) return;
-    replaceWindowProperty('sessionStorage', scopedStorage(rawSessionStorage));
+    if (!replaceWindowProperty('localStorage', scopedStorage(rawLocalStorage))) {
+      stopUnsafeAccountPage();
+      return;
+    }
+    if (!replaceWindowProperty('sessionStorage', scopedStorage(rawSessionStorage))) {
+      stopUnsafeAccountPage();
+      return;
+    }
   } catch (error) {
     console.error('[MAO account scope] storage namespace unavailable');
+    stopUnsafeAccountPage();
     return;
   }
 
@@ -146,7 +162,13 @@
         return typeof value === 'function' ? value.bind(target) : value;
       }
     });
-    replaceWindowProperty('indexedDB', idbProxy);
+    if (!replaceWindowProperty('indexedDB', idbProxy)) {
+      stopUnsafeAccountPage();
+      return;
+    }
+  } else {
+    stopUnsafeAccountPage();
+    return;
   }
 
   // Imported fonts and user-generated style assets also use CacheStorage from pages.
@@ -188,7 +210,13 @@
         return typeof value === 'function' ? value.bind(target) : value;
       }
     });
-    replaceWindowProperty('caches', cacheProxy);
+    if (!replaceWindowProperty('caches', cacheProxy)) {
+      stopUnsafeAccountPage();
+      return;
+    }
+  } else {
+    stopUnsafeAccountPage();
+    return;
   }
 
   try {
