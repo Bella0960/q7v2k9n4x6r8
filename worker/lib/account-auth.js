@@ -492,6 +492,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   return {
     getAuthenticatedAccount,
     handle: async (request, path, method) => {
+      if (path === '/api/admin/bootstrap/status' && method === 'GET') {
+        return ok({ initialized: store.hasMaoSuperAdminAccount() });
+      }
       if (path === '/api/accounts/register' && method === 'POST') return await register(request);
       if (path === '/api/accounts/login' && method === 'POST') return await login(request);
       if (path === '/api/accounts/logout' && method === 'POST') return await logout(request);
