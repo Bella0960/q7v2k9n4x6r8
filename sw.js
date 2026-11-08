@@ -184,11 +184,14 @@ self.addEventListener('fetch', event => {
     // (HttpOnly cookies are sent by same-origin fetch) and open the matching cache.
     event.respondWith((async function () {
       try {
+        const authHeaders = new Headers({ 'accept': 'application/json' });
+        const pageAccountContext = req.headers.get('x-mao-account-context');
+        if (pageAccountContext) authHeaders.set('x-mao-account-context', pageAccountContext);
         const authResponse = await fetch('/api/accounts/me', {
           method: 'GET',
           credentials: 'same-origin',
           cache: 'no-store',
-          headers: { 'accept': 'application/json' }
+          headers: authHeaders
         });
         if (!authResponse.ok) {
           return new Response('', {
