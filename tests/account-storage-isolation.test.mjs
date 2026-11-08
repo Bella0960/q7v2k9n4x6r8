@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const root = process.cwd();
 const scopeSource = fs.readFileSync(root + '/shared/js/mao-account-scope.js', 'utf8');
 const workerSource = fs.readFileSync(root + '/worker.js', 'utf8');
+const appSource = fs.readFileSync(root + '/worker/lib/app.js', 'utf8');
 const serviceWorkerSource = fs.readFileSync(root + '/sw.js', 'utf8');
 
 function makeStorage(seed = {}) {
@@ -217,8 +218,9 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(scopeSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(scopeSource, /setInterval\(verifyAccountSession, 30000\)/);
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);
-  assert.match(workerSource, /x-mao-account-context/);
-  assert.match(workerSource, /ACCOUNT_CONTEXT_CHANGED/);
+  assert.match(appSource, /x-mao-account-context/);
+  assert.match(appSource, /ACCOUNT_CONTEXT_CHANGED/);
+  assert.match(scopeSource, /headers\\.set\\('x-mao-account-context', accountId\\)/);
 });
 
 test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
