@@ -2476,6 +2476,10 @@ test('47 rpRenewImportLock：续期写入失败时必须返回错误而非续租
 });
 
 test('48 完整导入：只恢复音频元数据时保留同 ID 本地 Blob', async () => {
+    const restoreSource = backupSrc.slice(backupSrc.indexOf('function restoreDatabase('), backupSrc.indexOf('function estimateRestorePointBytes('));
+    assert.match(restoreSource, /store\.get\(entry\.lookupKey\)/);
+    assert.doesNotMatch(restoreSource, /excludedFields[\s\S]{0,500}?store\.getAll\(/,
+        'metadata restore must not clone every local audio Blob into memory');
     clearAllDBs();
     const ctx = buildCtxFull({
         confirmResult: true,
