@@ -2474,3 +2474,60 @@ test('47 rpRenewImportLock：续期写入失败时必须返回错误而非续租
     assert.equal(after.expiresAt, originalExpiry,
         '续租事务失败时不能把租约报告为已延长');
 });
+
+test('48 完整导入：只恢复音频元数据时保留同 ID 本地 Blob', async () => {
+    clearAllDBs();
+    const ctx = buildCtxFull({
+        confirmResult: true,
+        localStorage: {
+            ai_custom_characters: 'old-character-state',
+            phone_data_v2: 'old-phone-state'
+        }
+    });
+    const mediaDef = ctx.IDB_TARGETS.find(t => t.db === 'maomao-media-store');
+    const mediaDb = registerDB('maomao-media-store', mediaDef.version, mediaDef.stores);
+    const audioDef = mediaDef.stores.find(s => s.store === 'audio');
+    const originalBytes = Buffer.from('keep-this-device-local-audio');
+    const staleBytes = Buffer.from('remove-this-unreferenced-audio');
+    await injectRecords(mediaDb, 'audio', audioDef, [
+        { id: 'audio-keep', title: 'Old title', blob: new SandboxBlob([originalBytes], { type: 'audio/mpeg' }) },
+        { id: 'audio-stale', title: 'No longer in backup', blob: new SandboxBlob([staleBytes], { type: 'audio/ogg' }) }
+    ]);
+
+    await runImport(ctx, makeImportPayload({
+        'maomao-media-store': {
+            audio: [
+                {
+                    id: 'audio-keep',
+                    title: 'Updated metadata from backup',
+                    // 普通备份不会携带 blob；即使输入文件伪造同名字段，也不得覆盖本机原件。
+                    blob: 'aW5jb21pbmctZmlsZS1tdXN0LW5vdC1vdmVyd3JpdGU='
+                },
+                {
+                    id: 'audio-new',
+                    title: 'New metadata without local file',
+                    blob: 'bmV3LWZha2UtZmlsZQ=='
+                }
+            ]
+        }
+    }));
+
+    const kept = mediaDb._data.audio.find(row => row.id === 'audio-keep');
+    const added = mediaDb._data.audio.find(row => row.id === 'audio-new');
+    const removed = mediaDb._data.audio.find(row => row.id === 'audio-stale');
+    assert.ok(kept, 'matching audio metadata should remain');
+    assert.equal(kept.title, 'Updated metadata from backup');
+    assert.ok(isBlobLike(kept.blob), 'matching local audio Blob must be preserved');
+    assert.equal(kept.blob.type, 'audio/mpeg');
+    assert.equal(kept.blob._data.toString('utf8'), 'keep-this-device-local-audio',
+        'incoming excluded fields must not replace the local audio file');
+    assert.ok(added, 'new audio metadata should be imported');
+    assert.equal(added.blob, undefined,
+        'a backup without a local audio file must not inject an excluded blob');
+    assert.equal(removed, undefined,
+        'records absent from the imported metadata snapshot should still be removed');
+    assert.equal(ctx.__restorePointRows.size, 0,
+        'successful import should still clean both verified restore points');
+    assert.equal(ctx.__intercepted.reloads, 1);
+});
+
