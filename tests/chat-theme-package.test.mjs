@@ -705,6 +705,66 @@ test('import rejects oversized files before allocating their ArrayBuffer',async(
   assert.match(ids.status.textContent,/超过 48 MB/,'应明确告知主题包体积超限');
 });
 
+test('installed chat themes export with CSS and MediaRepository assets',async()=>{
+  const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
+  const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
+  const script=scripts[scripts.length-1];
+  function makeNode(tag){
+    const node={tagName:tag,children:[],handlers:{},className:'',textContent:'',disabled:false,hidden:false,value:'',style:{},
+      classList:{add(){},remove(){}},
+      addEventListener(type,callback){this.handlers[type]=callback},
+      appendChild(child){this.children.push(child);child.parentNode=this;return child},
+      removeChild(child){this.children=this.children.filter(item=>item!==child);child.parentNode=null},
+      setAttribute(){},click(){this.clicked=true}
+    };
+    let inner='';
+    Object.defineProperty(node,'innerHTML',{get(){return inner},set(value){inner=String(value);if(value==='')node.children.length=0}});
+    return node;
+  }
+  const ids={};
+  ['toast','status','installedList','chooseFile','themeFile','importApply','clearFile','packagePreview','fileName',
+   'previewName','previewVersion','previewCss','previewList','previewDetail','previewSummary'].forEach(id=>ids[id]=makeNode('div'));
+  const assetBytes=new Uint8Array([137,80,78,71,13,10,26,10]);
+  const theme={
+    id:'installed-export-theme',sourceId:'source-theme',name:'Round / Trip: Theme?',version:'1.0.0',
+    format:F.FORMAT,schemaVersion:F.VERSION,target:'maomao-chat',
+    pages:{chatList:[{id:'statusBar'}],chatDetail:[{id:'detailHeader'}]},
+    styles:{chatList:{},chatDetail:{}},
+    blocks:{chatList:[{id:'custom-photo',type:'image',assetPath:'assets/photo.png',slot:'top-of-content'}],chatDetail:[]},
+    layerOrder:{chatList:['statusBar','custom-photo'],chatDetail:['detailHeader']},motions:[],
+    assetIndex:[{path:'assets/photo.png',name:'photo.png',type:'image',mimeType:'image/png'}],
+    assetRefs:{'assets/photo.png':'asset-photo'},customCss:'.sample{color:#111}'
+  };
+  const values=new Map([['maomao_chat_theme_packages_v1',JSON.stringify([theme])],['maomao_chat_theme_active_v1',theme.id]]);
+  const localStorage={getItem(key){return values.has(key)?values.get(key):null},setItem(key,value){values.set(key,String(value))},removeItem(key){values.delete(key)}};
+  const body=makeNode('body'),downloads=[],revoked=[];
+  const document={body,querySelector(selector){return selector.charAt(0)==='#'?(ids[selector.slice(1)]||null):null},createElement:makeNode};
+  const media={getBlob(id){assert.equal(id,'asset-photo');return Promise.resolve({ok:true,value:{arrayBuffer(){return Promise.resolve(assetBytes.buffer.slice(0))}}})}};
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    PhoneStorage:phoneStorage,MAOMAOChatThemeFormat:F,dispatchEvent(){},
+    URL:{createObjectURL(blob){downloads.push({blob,url:'blob:theme-export'});return 'blob:theme-export'},revokeObjectURL(url){revoked.push(url)}}
+  };
+  function CustomEvent(type){this.type=type}
+  vm.runInNewContext(script,{window:windowMock,PhoneStorage:phoneStorage,document,localStorage,CustomEvent,Blob,setTimeout(callback){callback();return 1},console});
+  const row=ids.installedList.children[0];
+  const exportButton=row.children[1].children[0];
+  assert.equal(exportButton.textContent,'导出','每套已安装主题都应提供导出操作');
+  exportButton.handlers.click();
+  for(let i=0;i<12;i++)await Promise.resolve();
+  assert.equal(downloads.length,1,'成功导出时应触发一个文件下载');
+  assert.equal(exportButton.disabled,false,'导出结束后按钮应恢复可用');
+  assert.equal(exportButton.textContent,'导出','导出结束后按钮文案应恢复');
+  const download=downloads[0];
+  const link=body.children.find(node=>node.tagName==='a');
+  assert.equal(link,undefined,'下载链接点击后应从页面移除');
+  assert.deepEqual(revoked,['blob:theme-export'],'下载后应释放临时对象 URL');
+  const bytes=new Uint8Array(await download.blob.arrayBuffer());
+  const parsed=F.readPackage(F.parseStoredZip(bytes));
+  assert.equal(parsed.theme.name,theme.name);
+  assert.equal(parsed.customCss,theme.customCss);
+  assert.deepEqual(Array.from(parsed.assets['assets/photo.png'].bytes),Array.from(assetBytes));
+});
 test('import preview ignores stale file reads after a newer selection or clear',async()=>{
   const html=readFileSync(new URL('../beauty/theme-import.html',import.meta.url),'utf8');
   const scripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match=>match[1].trim()).filter(Boolean);
