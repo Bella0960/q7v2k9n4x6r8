@@ -64,6 +64,34 @@ The account row and its associated data are retained. Admin audit records retain
 
 Open pages recheck the session every 30 seconds and when returning to the foreground. Cloud APIs check every request. The account-management page displays the permanent ID, username, optional QQ email verification state, devices, and sessions. Users can revoke their own devices and other sessions, change their password (which revokes all other sessions), and log out. An already-open, fully offline page cannot receive a remote revocation until it reconnects; do not describe offline revocation as instantaneous.
 
+## Data-adoption and lifecycle safety
+
+The first super-admin bootstrap and the legacy `owner` adoption run inside one SQLite transaction. If any owner-scoped table fails to update, the admin row and all earlier ownership updates roll back together. The adopted tables are:
+
+- `devices`
+- `user_autonomy`
+- `character_autonomy`
+- `character_schedules`
+- `device_presence`
+- `character_leases`
+- `device_pairing_tokens`
+- `character_context_versions`
+- `character_context_events`
+- `outbound_device_receipts`
+
+Message payloads, subscriptions, outbound rows, delivery receipts and execution logs remain attached to their existing device IDs; their owner is resolved through the device's migrated `user_id`. A remaining `user_id='owner'` device is denied after the super-admin exists rather than treated as an anonymous bypass.
+
+Temporary account disable remembers whether the account was `pending_invite` or `active`. Restore returns it to that exact state. For older disabled rows without a recorded prior state, restore fails closed to `pending_invite`; it never grants authorization based on an unknown history. The field is added by the separate additive migration `0013_mao_account_restore_state`; migration `0012_mao_accounts` remains unchanged.
+
+The eight-per-hour registration cap is also checked in the account INSERT statement, not only in an earlier read, so concurrent requests cannot all pass the pre-check and exceed the quota.
+
+## Service Worker cache boundaries
+
+- Same-origin `/api/*` GET requests bypass the shared PWA cache. Session, account, admin and cloud API responses must never be served from a cache shared by different MAO accounts.
+- Imported-font CacheStorage remains account-scoped for ordinary accounts. The Service Worker resolves the current HttpOnly MAO session before opening that account's font cache.
+- The creator's original `maomao-font-assets-v1` cache name remains supported so existing creator fonts are not hidden by the new account namespace.
+- Protected app HTML continues to require a Worker authorization check on every navigation; offline fallback may show only the public account entry.
+
 ## Browser-side account separation
 
 The authenticated Worker injects shared/js/mao-account-scope.js before the app's scripts and adds the authenticated account ID and role as meta values.
