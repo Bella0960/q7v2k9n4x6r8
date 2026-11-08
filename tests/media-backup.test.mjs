@@ -2902,8 +2902,14 @@ test('59 createRecoveryPointRescuePackage：导出 JSON 清单和原始 Blob 附
         const dataStart = nameStart + nameLength + extraLength;
         const name = zip.subarray(nameStart, nameStart + nameLength).toString('utf8');
         const data = zip.subarray(dataStart, dataStart + size);
-        entries.push({ name, data });
+        entries.push({ name, data, headerOffset: offset, crc: zip.readUInt32LE(offset + 14) });
         offset = dataStart + size;
+    }
+    assert.equal(zip.readUInt32LE(offset), 0x02014b50,
+        'central directory must immediately follow local file entries');
+    for (const entry of entries) {
+        const expectedCrc = await ctx.rescueCrc32(new SandboxBlob([entry.data]));
+        assert.equal(entry.crc, expectedCrc, 'local ZIP CRC must match file bytes: ' + entry.name);
     }
     const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
     const assetEntry = entries.find(entry => entry.name === 'assets/blob-000001.bin');
