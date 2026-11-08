@@ -37,12 +37,13 @@ export async function isRealUserFriendsConfigured(env) {
       "'trg_real_user_friendship_source_guard', " +
       "'trg_real_user_friendship_update_guard', " +
       "'trg_real_user_block_removes_friendship', " +
-      "'trg_real_user_block_terminates_pending_requests')) AS ready_triggers"
+      "'trg_real_user_block_terminates_pending_requests', " +
+      "'trg_real_user_friend_request_active_accounts_guard')) AS ready_triggers"
     ).first();
     return !!schema &&
       Number(schema.ready_tables) === 4 &&
       Number(schema.ready_indexes) === 2 &&
-      Number(schema.ready_triggers) === 8;
+      Number(schema.ready_triggers) === 9;
   } catch {
     return false;
   }
@@ -169,7 +170,7 @@ async function sendFriendRequest(request, env, account) {
         return authJson({ ok: false, error: "request_id_already_used", status: existingById.status }, 409);
       }
       const peer = await env.DB.prepare(
-        "SELECT id, handle, display_name, avatar_asset_id FROM real_user_accounts WHERE id = ? LIMIT 1"
+        "SELECT id, handle, display_name, avatar_asset_id FROM real_user_accounts WHERE id = ? AND status = 'active' LIMIT 1"
       ).bind(existingById.recipient_id).first();
       return authJson({
         ok: true,
@@ -253,7 +254,7 @@ async function sendFriendRequest(request, env, account) {
         ).bind(pairLow, pairHigh).first();
         if (pending && pending.requester_id === account.id) {
           const peer = await env.DB.prepare(
-            "SELECT id, handle, display_name, avatar_asset_id FROM real_user_accounts WHERE id = ? LIMIT 1"
+            "SELECT id, handle, display_name, avatar_asset_id FROM real_user_accounts WHERE id = ? AND status = 'active' LIMIT 1"
           ).bind(pending.recipient_id).first();
           return authJson({ ok: true, duplicate: true, request: {
             id: pending.id, status: pending.status, createdAt: pending.created_at
@@ -282,7 +283,10 @@ async function listFriendRequests(request, env, account, url) {
   try {
     const result = await env.DB.prepare(
       "SELECT r.id, r.requester_id, r.recipient_id, r.note, r.created_at, " +
-      "a.id AS peer_id, a.handle, a.display_name, a.avatar_asset_id " +
+      "a.id AS peer_id, a.status AS peer_status, " +
+      "CASE WHEN a.status = 'active' THEN a.handle ELSE NULL END AS handle, " +
+      "CASE WHEN a.status = 'active' THEN a.display_name ELSE NULL END AS display_name, " +
+      "CASE WHEN a.status = 'active' THEN a.avatar_asset_id ELSE NULL END AS avatar_asset_id " +
       "FROM real_user_friend_requests r " +
       "JOIN real_user_accounts a ON a.id = CASE WHEN r.requester_id = ? THEN r.recipient_id ELSE r.requester_id END " +
       "WHERE r." + ownerColumn + " = ? AND r.status = 'pending' " +
@@ -295,11 +299,14 @@ async function listFriendRequests(request, env, account, url) {
         id: row.id,
         note: row.note,
         createdAt: row.created_at,
-        peer: {
+        peer: row.peer_status === "active" ? {
           id: row.peer_id,
           handle: row.handle,
           displayName: row.display_name,
           avatarAssetId: row.avatar_asset_id || null
+        } : {
+          id: row.peer_id,
+          unavailable: true
         }
       }))
     }, 200);
@@ -330,6 +337,9 @@ async function transitionFriendRequest(request, env, account, requestId, action)
   } catch (error) {
     if (String(error && error.message || "").includes("real_user_friendship_blocked")) {
       return authJson({ ok: false, error: "friendship_blocked" }, 403);
+    }
+    if (String(error && error.message || "").includes("real_user_friend_request_account_unavailable")) {
+      return authJson({ ok: false, error: "friend_request_account_unavailable" }, 409);
     }
     return authJson({ ok: false, error: "friend_request_transition_unavailable" }, 503);
   }
@@ -419,7 +429,7 @@ async function listFriends(env, account, url) {
 async function listBlocked(env, account) {
   try {
     const result = await env.DB.prepare(
-      "SELECT a.id, a.handle, a.display_name, a.avatar_asset_id, b.created_at " +
+      "SELECT a.id, a.handle, a.display_name, b.created_at " +
       "FROM real_user_blocks b " +
       "JOIN real_user_accounts a ON a.id = b.blocked_id " +
       "WHERE b.blocker_id = ? " +
@@ -431,7 +441,6 @@ async function listBlocked(env, account) {
         id: row.id,
         handle: row.handle,
         displayName: row.display_name,
-        avatarAssetId: row.avatar_asset_id || null,
         blockedAt: row.created_at
       }))
     }, 200);
