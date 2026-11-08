@@ -131,14 +131,25 @@
     // 快照：{ key: 原始字符串值 }
     // @param {Boolean} dropCaches   为 true 时跳过临时缓存（EXCLUDE_KEYS）
     // @param {Boolean} dropSecrets  为 true 时跳过敏感凭据（SECRET_KEYS）
-    function snapshot(dropCaches, dropSecrets) {
+    function snapshot(dropCaches, dropSecrets, strict) {
         var out = {};
         var keys = [];
-        try { keys = Object.keys(localStorage); } catch (e) {}
+        try {
+            keys = Object.keys(localStorage);
+        } catch (e) {
+            if (strict) throw new Error('无法读取本机 localStorage 键清单：' + ((e && e.message) || '读取失败'));
+        }
         keys.forEach(function (k) {
             if (dropCaches && EXCLUDE_KEYS.indexOf(k) !== -1) return;
             if (dropSecrets && SECRET_KEYS.indexOf(k) !== -1) return;
-            try { out[k] = localStorage.getItem(k); } catch (e) {}
+            try {
+                var value = localStorage.getItem(k);
+                if (strict && value === null) throw new Error('读取结果为空');
+                out[k] = value;
+            } catch (e) {
+                if (strict) throw new Error('无法完整读取本机数据键「' + k + '」：'
+                    + ((e && e.message) || '读取失败'));
+            }
         });
         return out;
     }
@@ -389,7 +400,11 @@
 
     // 清空后整份写入；逐键 try/catch，任一键失败即视为整体失败
     function restore(snap) {
-        localStorage.clear();
+        try {
+            localStorage.clear();
+        } catch (e) {
+            return false;
+        }
         var failed = false;
         Object.keys(snap).forEach(function (k) {
             try { localStorage.setItem(k, String(snap[k])); }
@@ -414,12 +429,14 @@
                 if (curVal !== snap[k]) mismatchedKeys.push(k);
             } catch (e) { mismatchedKeys.push(k); }
         });
+        var extraKeys = curKeys.filter(function (k) { return snapKeys.indexOf(k) === -1; });
         return {
-            ok: missingKeys.length === 0 && mismatchedKeys.length === 0,
+            ok: missingKeys.length === 0 && mismatchedKeys.length === 0 && extraKeys.length === 0,
             total: snapKeys.length,
             matched: snapKeys.length - missingKeys.length - mismatchedKeys.length,
             missing: missingKeys,
-            mismatched: mismatchedKeys
+            mismatched: mismatchedKeys,
+            extra: extraKeys
         };
     }
 
@@ -1237,7 +1254,16 @@
             // 1. 建立本机恢复点：把当前 localStorage 快照写入独立 IndexedDB，
             //    写完立即读回并用 verifyRestore 对 localStorage 实际内容做校验。
             //    恢复点 DB 独立于三个业务库的 version，localStorage.clear() 炸不到它。
-            var current = snapshot(false, false);
+            var current;
+            try {
+                // 导入前必须完整读取每个本机键；普通导出允许跳过读取失败项，
+                // 但恢复点不允许静默缺项，否则后续回滚可能无法还原完整状态。
+                current = snapshot(false, false, true);
+            } catch (snapshotError) {
+                toast('已中止导入：无法完整读取本机数据，现有业务数据未修改。'
+                    + ((snapshotError && snapshotError.message) || ''));
+                return;
+            }
             var rpSnap = null;       // 从恢复点读回的真正快照
             var rpReady = false;
             try {
@@ -1317,6 +1343,7 @@
                         + verify.matched + '/' + verify.total + ' 项匹配'
                         + (verify.missing && verify.missing.length ? '，缺失 ' + verify.missing.length + ' 项' : '')
                         + (verify.mismatched && verify.mismatched.length ? '，值不等 ' + verify.mismatched.length + ' 项' : '')
+                        + (verify.extra && verify.extra.length ? '，多出 ' + verify.extra.length + ' 项' : '')
                         + '）。本机恢复点已保留，请勿清理网站数据。');
                 }
                 return;
