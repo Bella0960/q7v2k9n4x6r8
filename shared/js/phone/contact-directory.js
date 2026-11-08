@@ -108,7 +108,13 @@
     }
 
     function isVisibleForActiveAccount(record) {
-        return !record.ownerAccountId || (!!activeAccountId && record.ownerAccountId === activeAccountId);
+        // Legacy rows without an owner are local-only, not shared across every
+        // signed-in account on this device. Keep them readable while logged out,
+        // and keep account-owned rows scoped to their exact active account.
+        if (record.ownerAccountId) {
+            return !!activeAccountId && record.ownerAccountId === activeAccountId;
+        }
+        return !activeAccountId;
     }
 
     function sameIdentity(left, right) {
