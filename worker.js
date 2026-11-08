@@ -19,6 +19,31 @@ import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
+async function injectAccountScope(response, account) {
+  if (!response || !response.ok || !String(response.headers.get('content-type') || '').toLowerCase().includes('text/html')) {
+    return response;
+  }
+  const accountId = String(account?.id || '');
+  const role = String(account?.role || 'user');
+  if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return response;
+
+  const source = await response.text();
+  const tags =
+    '<meta name="mao-account-id" content="' + accountId + '">' +
+    '<meta name="mao-account-role" content="' + (role === 'super_admin' ? 'super_admin' : 'user') + '">' +
+    '<script src="/shared/js/mao-account-scope.js?v=1" data-mao-account-scope></script>';
+  const html = source.replace(/<head\b[^>]*>/i, match => match + tags);
+  const headers = new Headers(response.headers);
+  ['content-length', 'content-encoding', 'content-md5', 'etag', 'last-modified'].forEach(name => headers.delete(name));
+  headers.set('cache-control', 'private, no-store, max-age=0');
+  headers.set('vary', 'Cookie');
+  return new Response(html, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
 /**
  * 调度参数全部来自显式环境配置，不设产品默认值。
  * 缺失时 runTick 会 fail-closed 并写入 missing_config 日志。
@@ -154,6 +179,7 @@ export default {
       (url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html'));
     const isPublicAccountDocument = url.pathname === '/account' ||
       url.pathname.startsWith('/account/');
+    let authorizedAccount = null;
     if (isHtmlDocument && !isPublicAccountDocument) {
       if (!env.CLOUD_DB) {
         return Response.redirect(new URL('/account/index.html', url), 302);
@@ -175,6 +201,7 @@ export default {
           if (disabled) target.searchParams.set('disabled', '1');
           return Response.redirect(target, 302);
         }
+        authorizedAccount = authPayload.account;
       } catch {
         return Response.redirect(new URL('/account/index.html', url), 302);
       }
@@ -183,9 +210,15 @@ export default {
     // html_handling="none" 时显式把站点根路径映射到构建后的首页（沿用 main 的路由修复）。
     if (url.pathname === "/" && request.method === "GET") {
       const indexUrl = new URL("/index.html", url);
-      return env.ASSETS.fetch(new Request(indexUrl, request));
+      const response = await env.ASSETS.fetch(new Request(indexUrl, request));
+      return authorizedAccount ? await injectAccountScope(response, authorizedAccount) : response;
     }
-    if (env.ASSETS) return env.ASSETS.fetch(request);
+    if (env.ASSETS) {
+      const response = await env.ASSETS.fetch(request);
+      return isHtmlDocument && authorizedAccount
+        ? await injectAccountScope(response, authorizedAccount)
+        : response;
+    }
     return new Response('Not found', { status: 404 });
   },
 
