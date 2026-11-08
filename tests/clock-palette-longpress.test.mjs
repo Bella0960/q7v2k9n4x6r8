@@ -69,12 +69,15 @@ function startServer() {
         urlPath = (req.url || '/').split('?')[0];
       }
       const rel = urlPath === '/' ? '/index.html' : urlPath;
+      // 源文件里的 %BASE_URL% 由 Vite 在构建时替换；静态直出时按 "/" 解析，
+      // 避免把构建期占位符误报成 404。
+      const normalized = rel.replaceAll('%BASE_URL%', '');
       // 避免浏览器自动请求 favicon 时产生基线 404；其他缺失资源仍应暴露。
-      if (rel === '/favicon.ico') {
+      if (normalized === '/favicon.ico') {
         res.writeHead(204).end();
         return;
       }
-      const filePath = path.join(root, rel);
+      const filePath = path.join(root, normalized);
       if (!filePath.startsWith(root)) {
         res.writeHead(403).end('Forbidden');
         return;
@@ -316,6 +319,70 @@ async function runLargeClock(browser, origin, viewport) {
     });
     await context.close();
   }
+}
+
+async function runGestureEdges(browser, origin, viewport) {
+  const label = `${viewport.width}x${viewport.height}`;
+  const { context, page, consoleErrors } = await openPage(browser, origin, viewport, true);
+  const cdp = await context.newCDPSession(page);
+  const center = await targetCenter(page, 'clgTime');
+
+  if (!center) {
+    check(`gesture edges ${label} target`, false, 'large clock is not visible');
+    await context.close();
+    return;
+  }
+
+  const snapshot = () => page.evaluate(() => ({
+    palette: document.querySelectorAll('.clock-palette').length,
+    editing: document.body.classList.contains('home-editing'),
+    ghost: !!document.querySelector('.ds-drag-ghost, .drag-ghost')
+  }));
+
+  // 1) 长按 360ms 后取消触摸：不得残留编辑模式或拖拽幽灵
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: center.x, y: center.y, radiusX: 1, radiusY: 1, force: 1, id: 1 }]
+  });
+  await delay(360);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  await delay(600);
+  let state = await snapshot();
+  check(`gesture edges ${label} touch cancel 360ms`, !state.palette && !state.editing && !state.ghost, state);
+
+  // 2) 取消后仍可正常短按打开面板（无卡死的手势状态）
+  await touchPress(cdp, center.x, center.y, 100);
+  state = await snapshot();
+  check(`gesture edges ${label} tap after cancel`, state.palette === 1 && !state.editing && !state.ghost, state);
+  await closePalette(page);
+
+  // 3) 快速连击三次（真实连续触摸：按住 40ms、间隔 60ms）：只出现一个面板，不进入编辑模式
+  for (let i = 0; i < 3; i += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: center.x, y: center.y, radiusX: 1, radiusY: 1, force: 1, id: 1 }]
+    });
+    await delay(40);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await delay(60);
+  }
+  await delay(700);
+  state = await snapshot();
+  check(`gesture edges ${label} rapid triple tap`, state.palette <= 1 && !state.editing && !state.ghost, state);
+  if (state.palette) await closePalette(page);
+
+  // 4) 面板与编辑模式互斥（任何时刻都不同时出现）
+  const exclusive = await page.evaluate(() => {
+    const palette = !!document.querySelector('.clock-palette');
+    const editing = document.body.classList.contains('home-editing');
+    return { palette, editing, exclusive: !(palette && editing) };
+  });
+  check(`gesture edges ${label} palette-editing exclusive`, exclusive.exclusive, exclusive);
+
+  check(`gesture edges ${label} console`, unexpectedErrors(consoleErrors).length === 0, {
+    unexpected: unexpectedErrors(consoleErrors)
+  });
+  await context.close();
 }
 
 async function runSmallClock(browser, origin, viewport) {
@@ -594,6 +661,7 @@ try {
 
   for (const viewport of VIEWPORTS) {
     await runLargeClock(browser, origin, viewport);
+    await runGestureEdges(browser, origin, viewport);
     await runSmallClock(browser, origin, viewport);
   }
   await runEditModeDrag(browser, origin);
