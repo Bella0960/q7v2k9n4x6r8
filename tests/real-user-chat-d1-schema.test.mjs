@@ -117,6 +117,7 @@ test("friendship rows must originate from accepted requests and blocked pairs ar
   assert.match(migration, /trg_real_user_block_removes_friendship/);
   assert.match(migration, /trg_real_user_friend_request_accept_guard/);
   assert.match(migration, /trg_real_user_friend_request_active_accounts_guard/);
+  assert.match(migration, /trg_real_user_friend_request_active_accounts_insert_guard/);
 });
 
 test("friend requests can only be created pending and cannot be replayed from terminal states", () => {
