@@ -8,9 +8,9 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v177'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v178'/);
 assert.ok(serviceWorker.includes('./settings/mcp-connections.html'));
-assert.ok(serviceWorker.includes('./shared/js/phone/mcp-client.js?v=20261108g'));
+assert.ok(serviceWorker.includes('./shared/js/phone/mcp-client.js?v=20261108h'));
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -68,6 +68,6 @@ test('failed app navigation never falls back to the desktop index page', () => {
 
 test('MCP settings page and PWA shell load the same guarded client version', () => {
   const mcpPage = read('settings/mcp-connections.html');
-  assert.match(mcpPage, /mcp-client\.js\?v=20261108g/);
-  assert.ok(serviceWorker.includes('./shared/js/phone/mcp-client.js?v=20261108g'));
+  assert.match(mcpPage, /mcp-client\.js\?v=20261108h/);
+  assert.ok(serviceWorker.includes('./shared/js/phone/mcp-client.js?v=20261108h'));
 });
