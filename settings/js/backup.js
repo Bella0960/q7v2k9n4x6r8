@@ -223,6 +223,315 @@
         return { name: name, chars: text.length, count: keys.length };
     }
 
+    // 恢复点抢救包采用 ZIP Store（不压缩）：大 Blob 作为独立文件直接写入，
+    // 不转 base64，避免额外制造 33% 的二进制膨胀；原始恢复点只读，不会被删除。
+    function rescueUtf8Bytes(value) {
+        var encoded = unescape(encodeURIComponent(String(value)));
+        var bytes = new Uint8Array(encoded.length);
+        for (var i = 0; i < encoded.length; i++) bytes[i] = encoded.charCodeAt(i);
+        return bytes;
+    }
+
+    async function serializeRecoveryPointValue(value, assets, state) {
+        if (value === null) return null;
+        if (value === undefined) return { __maomaoRescueType: 'Undefined' };
+        if (typeof value === 'string' || typeof value === 'boolean') return value;
+        if (typeof value === 'number') {
+            if (Number.isNaN(value)) return { __maomaoRescueType: 'Number', value: 'NaN' };
+            if (!Number.isFinite(value)) return { __maomaoRescueType: 'Number', value: String(value) };
+            if (Object.is(value, -0)) return { __maomaoRescueType: 'Number', value: '-0' };
+            return value;
+        }
+        if (typeof value === 'bigint') {
+            return { __maomaoRescueType: 'BigInt', value: String(value) };
+        }
+        if (typeof value !== 'object') {
+            return { __maomaoRescueType: 'Unsupported', value: String(value) };
+        }
+
+        var assetName;
+        if (typeof Blob !== 'undefined' && value instanceof Blob) {
+            assetName = 'assets/blob-' + String(++state.assetIndex).padStart(6, '0') + '.bin';
+            assets.push({ name: assetName, blob: value });
+            var blobInfo = {
+                __maomaoRescueType: 'Blob',
+                file: assetName,
+                size: value.size,
+                mime: value.type || ''
+            };
+            if (typeof File !== 'undefined' && value instanceof File) {
+                blobInfo.fileName = value.name;
+                blobInfo.lastModified = value.lastModified;
+            }
+            return blobInfo;
+        }
+        if (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) {
+            assetName = 'assets/buffer-' + String(++state.assetIndex).padStart(6, '0') + '.bin';
+            assets.push({ name: assetName, blob: new Blob([value], { type: 'application/octet-stream' }) });
+            return { __maomaoRescueType: 'ArrayBuffer', file: assetName, byteLength: value.byteLength };
+        }
+        if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value)) {
+            assetName = 'assets/view-' + String(++state.assetIndex).padStart(6, '0') + '.bin';
+            var viewBytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+            assets.push({ name: assetName, blob: new Blob([viewBytes], { type: 'application/octet-stream' }) });
+            return {
+                __maomaoRescueType: 'ArrayBufferView',
+                constructor: value.constructor && value.constructor.name || 'Uint8Array',
+                file: assetName,
+                byteLength: value.byteLength
+            };
+        }
+        if (value instanceof Date) {
+            return { __maomaoRescueType: 'Date', value: Number.isNaN(value.getTime()) ? null : value.toISOString() };
+        }
+        if (typeof RegExp !== 'undefined' && value instanceof RegExp) {
+            return { __maomaoRescueType: 'RegExp', source: value.source, flags: value.flags };
+        }
+
+        state.stack = state.stack || [];
+        if (state.stack.indexOf(value) !== -1) {
+            throw new Error('恢复点包含循环引用；为避免导出后丢失关系，本轮未导出该记录');
+        }
+        state.stack.push(value);
+        try {
+            if (Array.isArray(value)) {
+                var array = [];
+                for (var i = 0; i < value.length; i++) {
+                    array.push(await serializeRecoveryPointValue(value[i], assets, state));
+                }
+                return array;
+            }
+            if (typeof Map !== 'undefined' && value instanceof Map) {
+                var mapEntries = [];
+                for (var pair of value.entries()) {
+                    mapEntries.push([
+                        await serializeRecoveryPointValue(pair[0], assets, state),
+                        await serializeRecoveryPointValue(pair[1], assets, state)
+                    ]);
+                }
+                return { __maomaoRescueType: 'Map', entries: mapEntries };
+            }
+            if (typeof Set !== 'undefined' && value instanceof Set) {
+                var setEntries = [];
+                for (var entry of value.values()) {
+                    setEntries.push(await serializeRecoveryPointValue(entry, assets, state));
+                }
+                return { __maomaoRescueType: 'Set', values: setEntries };
+            }
+            var output = Object.create(null);
+            var keys = Object.keys(value);
+            for (var k = 0; k < keys.length; k++) {
+                Object.defineProperty(output, keys[k], {
+                    value: await serializeRecoveryPointValue(value[keys[k]], assets, state),
+                    enumerable: true,
+                    configurable: true,
+                    writable: true
+                });
+            }
+            return output;
+        } finally {
+            state.stack.pop();
+        }
+    }
+
+    function readBlobArrayBuffer(blob) {
+        return new Promise(function (resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function () { resolve(reader.result); };
+            reader.onerror = function () {
+                reject(reader.error || new Error('抢救包二进制分块读取失败'));
+            };
+            try { reader.readAsArrayBuffer(blob); }
+            catch (error) { reject(error); }
+        });
+    }
+
+    function rescueCrcTable() {
+        var table = [];
+        for (var n = 0; n < 256; n++) {
+            var c = n;
+            for (var k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+            table[n] = c >>> 0;
+        }
+        return table;
+    }
+
+    async function rescueCrc32(blob) {
+        var table = rescueCrcTable();
+        var crc = 0xffffffff;
+        var chunkSize = 1024 * 1024;
+        for (var offset = 0; offset < blob.size; offset += chunkSize) {
+            var buffer = await readBlobArrayBuffer(blob.slice(offset, Math.min(blob.size, offset + chunkSize)));
+            var bytes = new Uint8Array(buffer);
+            for (var i = 0; i < bytes.length; i++) {
+                crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+            }
+        }
+        return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    async function createRecoveryRescueZip(files) {
+        if (!Array.isArray(files) || files.length > 65535) {
+            throw new Error('抢救包文件数量超出 ZIP 格式支持范围');
+        }
+        var parts = [];
+        var central = [];
+        var offset = 0;
+        var centralSize = 0;
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            var nameBytes = rescueUtf8Bytes(file.name);
+            var blob = file.blob instanceof Blob ? file.blob : new Blob([file.blob || '']);
+            if (nameBytes.length > 65535 || blob.size > 0xffffffff || offset > 0xffffffff) {
+                throw new Error('抢救包单个文件超过 ZIP 格式安全范围');
+            }
+            var crc = await rescueCrc32(blob);
+            var local = new Uint8Array(30 + nameBytes.length);
+            var lv = new DataView(local.buffer);
+            lv.setUint32(0, 0x04034b50, true);
+            lv.setUint16(4, 20, true);
+            lv.setUint16(6, 0x0800, true);
+            lv.setUint16(8, 0, true);
+            lv.setUint16(10, 0, true);
+            lv.setUint16(12, 0x21, true);
+            lv.setUint32(14, crc, true);
+            lv.setUint32(18, blob.size, true);
+            lv.setUint32(22, blob.size, true);
+            lv.setUint16(26, nameBytes.length, true);
+            lv.setUint16(28, 0, true);
+            local.set(nameBytes, 30);
+            parts.push(local, nameBytes, blob);
+            var directory = new Uint8Array(46 + nameBytes.length);
+            var dv = new DataView(directory.buffer);
+            dv.setUint32(0, 0x02014b50, true);
+            dv.setUint16(4, 20, true);
+            dv.setUint16(6, 20, true);
+            dv.setUint16(8, 0x0800, true);
+            dv.setUint16(10, 0, true);
+            dv.setUint16(12, 0, true);
+            dv.setUint16(14, 0x21, true);
+            dv.setUint32(16, crc, true);
+            dv.setUint32(20, blob.size, true);
+            dv.setUint32(24, blob.size, true);
+            dv.setUint16(28, nameBytes.length, true);
+            dv.setUint16(30, 0, true);
+            dv.setUint16(32, 0, true);
+            dv.setUint16(34, 0, true);
+            dv.setUint16(36, 0, true);
+            dv.setUint32(38, 0, true);
+            dv.setUint32(42, offset, true);
+            directory.set(nameBytes, 46);
+            central.push(directory);
+            centralSize += directory.length;
+            offset += local.length + blob.size;
+            if (offset > 0xffffffff || centralSize > 0xffffffff) {
+                throw new Error('抢救包总体积超过 ZIP 格式安全范围');
+            }
+        }
+        var end = new Uint8Array(22);
+        var ev = new DataView(end.buffer);
+        ev.setUint32(0, 0x06054b50, true);
+        ev.setUint16(4, 0, true);
+        ev.setUint16(6, 0, true);
+        ev.setUint16(8, files.length, true);
+        ev.setUint16(10, files.length, true);
+        ev.setUint32(12, centralSize, true);
+        ev.setUint32(16, offset, true);
+        ev.setUint16(20, 0, true);
+        return new Blob(parts.concat(central).concat([end]), { type: 'application/zip' });
+    }
+
+    async function createRecoveryPointRescuePackage() {
+        var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE, RP_ROLE_META];
+        var records = Object.create(null);
+        var readErrors = [];
+        var assets = [];
+        var state = { assetIndex: 0, stack: [] };
+        for (var i = 0; i < roles.length; i++) {
+            try {
+                var record = await rpReadSnapshot(roles[i]);
+                if (record) {
+                    records[roles[i]] = await serializeRecoveryPointValue(record, assets, state);
+                }
+            } catch (error) {
+                readErrors.push({
+                    role: roles[i],
+                    message: (error && error.message) || '读取失败'
+                });
+            }
+        }
+        var recordNames = Object.keys(records);
+        if (!recordNames.length && !readErrors.length) return null;
+        var manifest = {
+            format: 'maomao-restore-point-rescue',
+            schema: 1,
+            exportedAt: new Date().toISOString(),
+            purpose: '只读抢救包；不是可直接导入的普通备份文件。',
+            records: records,
+            readErrors: readErrors
+        };
+        var json = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+        var files = [{ name: 'recovery-points.json', blob: json }].concat(assets);
+        var archive = await createRecoveryRescueZip(files);
+        return {
+            blob: archive,
+            name: 'maomao-recovery-rescue-' + new Date().toISOString().replace(/[:.]/g, '-') + '.zip',
+            records: recordNames.length,
+            assets: assets.length,
+            readErrors: readErrors
+        };
+    }
+
+    async function exportRecoveryPointRescueBundle() {
+        var acquired = false;
+        try {
+            acquired = await rpAcquireImportLock(importLockOwner);
+            if (!acquired) {
+                toast('另一个 MAOMAO 标签页正在导入或恢复数据；请等操作结束后再导出抢救包。');
+                return;
+            }
+            startImportLockHeartbeat();
+            var result = await createRecoveryPointRescuePackage();
+            await assertImportLock();
+            if (!result) {
+                toast('当前没有可导出的本机恢复点。');
+                return;
+            }
+            var url = URL.createObjectURL(result.blob);
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = result.name;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+            toast('恢复点抢救包已生成：' + result.records + ' 份恢复记录、' + result.assets
+                + ' 个二进制附件' + (result.readErrors.length ? '；有 ' + result.readErrors.length + ' 项读取失败，详情已写入抢救包' : '')
+                + '。原始恢复点未删除。');
+        } catch (error) {
+            toast('恢复点抢救包导出失败：' + ((error && error.message) || '未知错误')
+                + '。原始恢复点仍保留，请勿清理网站数据。');
+        } finally {
+            if (acquired) await releaseImportLock();
+        }
+    }
+
+    async function refreshRecoveryRescueEntry() {
+        var row = $('rowExportRecoveryPoints');
+        if (!row) return;
+        try {
+            var found = false;
+            var roles = [RP_ROLE_PRE, RP_ROLE_IDB_PRE, RP_ROLE_META];
+            for (var i = 0; i < roles.length; i++) {
+                if (await rpReadSnapshot(roles[i])) { found = true; break; }
+            }
+            row.style.display = found ? '' : 'none';
+        } catch (error) {
+            // 读取状态本身失败时仍显示抢救入口，允许用户尝试导出可读记录。
+            row.style.display = '';
+        }
+    }
+
     // 流式拼接 indexedDB 段：不一次性 JSON.stringify 整个含几十 MB base64 的对象。
     // 每个 db / store / record 分别转字符串再拼，峰值内存是"当前最大单条 + 已拼好的部分"。
     // 输入：{ <dbName>: { <storeName>: [records...] } }
@@ -2377,6 +2686,9 @@
         });
     }
 
+    var rescueExport = $('rowExportRecoveryPoints');
+    if (rescueExport) rescueExport.addEventListener('click', exportRecoveryPointRescueBundle);
+
     // 「导出时包含 API 密钥」开关：整行可点；复选框自身的点击不再冒泡回整行，
     // 否则会触发一次行切换 + 一次原生切换，互相抵消。
     var secretRow = $('rowExportSecrets');
@@ -2391,9 +2703,11 @@
     // 启动时先检查断电/关页遗留的恢复点；未确认安全前不允许开始新导入。
     recoverInterruptedImportOnStartup().then(function (ready) {
         importRecoveryReady = !!ready;
+        return refreshRecoveryRescueEntry();
     }).catch(function (error) {
         importRecoveryReady = false;
         toast('无法检查上次整机恢复状态：' + ((error && error.message) || '未知错误')
             + '。为保护数据，已暂时禁止新的整机导入。');
+        return refreshRecoveryRescueEntry();
     });
 })();
