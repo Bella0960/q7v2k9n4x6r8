@@ -224,14 +224,18 @@ function validateScheduleInput(body) {
  * Build a privacy-safe notification for an already-persisted chat outbox row.
  * Message text is intentionally omitted so lock-screen previews reveal no chat content.
  */
-export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp }) {
+export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID }) {
   const roleId = String(characterId || '');
   const messageId = String(serverMessageId || '');
-  if (!roleId || roleId.length > 96 || !/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
+  const maoAccountId = String(accountId || OWNER_USER_ID);
+  if (!roleId || roleId.length > 96 ||
+      !/^[A-Za-z0-9_-]{16,128}$/.test(messageId) ||
+      !(maoAccountId === OWNER_USER_ID || /^MAO-[A-Z0-9]{12,24}$/.test(maoAccountId))) {
     throw new TypeError('outbound push target is invalid');
   }
   return {
     type: 'chat_message',
+    accountId: maoAccountId,
     title: '新消息',
     body: '有一位角色刚刚联系你，打开聊天查看。',
     url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
@@ -318,6 +322,7 @@ export async function dispatchPendingOutboundPushes({
     let outcome;
     try {
       const payload = buildOutboundPushPayload({
+        accountId: candidate.target_account_id || OWNER_USER_ID,
         characterId: candidate.character_id,
         serverMessageId: candidate.server_message_id,
         timestamp: Number(candidate.created_at || timestamp)
@@ -708,6 +713,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const dedupeKey = String(body.dedupeKey || `test:${device.id}:${timestamp}`).slice(0, 96);
     const payload = JSON.stringify({
       type: 'test',
+      accountId: String(device.user_id || OWNER_USER_ID),
       title: 'MAOMAO 云端连接测试',
       body: '如果你看到这条通知，说明推送链路已经打通。',
       url: './settings/settings.html',
