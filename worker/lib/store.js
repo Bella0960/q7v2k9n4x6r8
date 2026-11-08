@@ -1450,16 +1450,16 @@ class CloudStore {
 
 
   hideFriendMessage({ userId, friendId, messageId, now }) {
-    if (!this.getFriendship(userId, friendId)) {
-      return { kind: 'not_friends' };
-    }
+    const friendship = this.getFriendship(userId, friendId);
+    if (!friendship) return { kind: 'not_friends' };
     const message = this.exec(
       `SELECT id FROM friend_messages
-       WHERE id = ? AND (
+       WHERE id = ? AND generation_id = ? AND (
          (sender_id = ? AND recipient_id = ?)
          OR (sender_id = ? AND recipient_id = ?)
        )`,
       messageId,
+      friendship.generation_id,
       userId,
       friendId,
       friendId,
@@ -1480,16 +1480,17 @@ class CloudStore {
   }
 
   clearFriendConversation({ userId, friendId, now }) {
-    if (!this.getFriendship(userId, friendId)) {
-      return { kind: 'not_friends', cleared: false };
-    }
+    const friendship = this.getFriendship(userId, friendId);
+    if (!friendship) return { kind: 'not_friends', cleared: false };
     const latest = this.exec(
       `SELECT id, created_at
        FROM friend_messages
-       WHERE (sender_id = ? AND recipient_id = ?)
-          OR (sender_id = ? AND recipient_id = ?)
+       WHERE generation_id = ?
+         AND ((sender_id = ? AND recipient_id = ?)
+          OR (sender_id = ? AND recipient_id = ?))
        ORDER BY created_at DESC, id DESC
        LIMIT 1`,
+      friendship.generation_id,
       userId,
       friendId,
       friendId,
@@ -1526,15 +1527,14 @@ class CloudStore {
   }
 
   markFriendConversationRead({ userId, friendId, messageId, now }) {
-    if (!this.getFriendship(userId, friendId)) {
-      return { kind: 'not_friends', read: null };
-    }
+    const friendship = this.getFriendship(userId, friendId);
+    if (!friendship) return { kind: 'not_friends', read: null };
     const target = this.exec(
       `SELECT m.id, m.created_at
        FROM friend_messages m
        LEFT JOIN friend_conversation_clears c
          ON c.user_id = ? AND c.friend_id = ?
-       WHERE m.id = ? AND m.sender_id = ? AND m.recipient_id = ?
+       WHERE m.id = ? AND m.generation_id = ? AND m.sender_id = ? AND m.recipient_id = ?
          AND (
            c.clear_before_created_at IS NULL
            OR m.created_at > c.clear_before_created_at
@@ -1547,6 +1547,7 @@ class CloudStore {
       userId,
       friendId,
       messageId,
+      friendship.generation_id,
       friendId,
       userId,
       userId,
