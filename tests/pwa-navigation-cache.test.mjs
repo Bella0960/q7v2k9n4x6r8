@@ -55,15 +55,16 @@ test('service worker caches the public account entry but excludes protected app 
 
 test('account and cloud API GET requests bypass the shared Service Worker cache', () => {
   const apiBypass = serviceWorker.indexOf("if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;");
-  const fontCache = serviceWorker.indexOf("if (url.pathname.endsWith('/shared/js/font-loader.js'))");
+  const fontAssetHandler = serviceWorker.indexOf("const fontAssetPrefix = new URL('__maomao_fonts/'");
   const sharedCache = serviceWorker.indexOf('caches.match(req).then(cached => {');
   assert.ok(apiBypass >= 0, 'the API bypass must exist');
-  assert.ok(fontCache > apiBypass, 'the API bypass must run before cache-specific handlers');
-  assert.ok(sharedCache > fontCache, 'the API bypass must run before the shared GET cache');
-  const bypassRegion = serviceWorker.slice(apiBypass, fontCache);
-  assert.doesNotMatch(bypassRegion, /event\.respondWith|caches\./,
+  assert.ok(fontAssetHandler > apiBypass, 'the API bypass must run before font/cache handlers');
+  assert.ok(sharedCache > fontAssetHandler, 'the API bypass must run before the shared GET cache');
+  const bypassRegion = serviceWorker.slice(apiBypass, fontAssetHandler);
+  assert.doesNotMatch(bypassRegion, /event\\.respondWith|caches\\./,
     'API requests must pass directly to the network/Worker without touching CacheStorage');
 });
+
 
 test('protected app navigation always checks the Worker before showing a document', () => {
   assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
