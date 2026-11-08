@@ -69,8 +69,8 @@ test('failed app navigation never falls back to the desktop index page', () => {
 
 test('MCP settings page and PWA shell load the same guarded client and role-permission versions', () => {
   const mcpPage = read('settings/mcp-connections.html');
-  assert.match(mcpPage, /mcp-client\\.js\\?v=20261108m/);
-  assert.match(mcpPage, /mcp-role-permissions\\.js\\?v=20261108a/);
+  assert.ok(mcpPage.includes('mcp-client.js?v=20261108m'));
+  assert.ok(mcpPage.includes('mcp-role-permissions.js?v=20261108a'));
   assert.ok(serviceWorker.includes('./shared/js/phone/mcp-client.js?v=20261108m'));
   assert.ok(serviceWorker.includes('./shared/js/phone/mcp-role-permissions.js?v=20261108a'));
 });

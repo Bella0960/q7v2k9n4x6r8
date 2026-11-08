@@ -278,14 +278,18 @@ test('MCP page stores service metadata only and requires confirmation before eac
   assert.match(html, /仅本次页面会话使用/);
   assert.match(html, /MaoMcpClient\.validateToolArguments\(tool\.inputSchema/);
   assert.match(html, /mcp-client\.js\?v=20261108m/);
-  assert.match(html, /mcp-role-permissions\\.js\\?v=20261108a/);
+  assert.ok(html.includes('mcp-role-permissions.js?v=20261108a'));
+  assert.ok(html.includes('MaoMcpRolePermissions.revokeRole'));
+  assert.ok(html.includes('MaoMcpRolePermissions.grantTool'));
+  assert.ok(html.includes('renderPermissionRoles();\n    if (!activeTools.length)'));
+
   assert.match(html, /角色级工具授权/);
   assert.match(html, /Bearer Token 按连接共用/);
   assert.match(html, /不代替 MCP 服务端自身的账户权限校验/);
   assert.match(html, /clearRolePermissions/);
   assert.match(html, /renderPermissionRoles\(\);[\\s\\S]*if \(!activeTools\.length\)/);
-  assert.match(html, /MaoMcpRolePermissions\\.revokeRole/);
-  assert.match(html, /MaoMcpRolePermissions\\.grantTool/);
+
+
   assert.match(html, /window\.addEventListener\('pagehide'/);
   assert.match(html, /window\.addEventListener\('pageshow'/);
   assert.match(html, /页面已恢复。为保护连接凭据/);
