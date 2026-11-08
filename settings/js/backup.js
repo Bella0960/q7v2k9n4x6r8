@@ -715,11 +715,13 @@
         importLockHeartbeat = setInterval(function () {
             rpRenewImportLock(importLockOwner).then(function (renewed) {
                 if (!renewed) {
+                    stopImportLockHeartbeat();
                     importLockLost = true;
                     importRecoveryReady = false;
                     toast('整机导入互斥租约已失效，本轮将停止继续覆盖；原始恢复点会保留。');
                 }
             }).catch(function () {
+                stopImportLockHeartbeat();
                 importLockLost = true;
                 importRecoveryReady = false;
                 toast('无法续期整机导入互斥租约；为保护数据，本轮将停止继续覆盖。');
@@ -736,7 +738,12 @@
 
     async function releaseImportLock() {
         stopImportLockHeartbeat();
-        try { await rpReleaseImportLock(importLockOwner); } catch (e) {}
+        try {
+            var released = await rpReleaseImportLock(importLockOwner);
+            if (!released) importRecoveryReady = false;
+        } catch (e) {
+            importRecoveryReady = false;
+        }
     }
 
     async function assertImportLock() {
@@ -801,6 +808,7 @@
 
         var state = metaRecord && metaRecord.snap && metaRecord.snap.status;
         if (state === 'committed' || state === 'rolled-back') {
+            await assertImportLock();
             var cleanup = await clearRestorePoints();
             if (cleanup.ok) {
                 toast(state === 'committed'
@@ -1944,6 +1952,7 @@
                             + '原始恢复点已保留，请勿清理网站数据。');
                         return;
                     }
+                    await assertImportLock();
                     var cleanupAfterLocalRollback = await clearRestorePoints();
                     toast('导入失败，已从本机恢复点回滚到导入前状态'
                         + (cleanupAfterLocalRollback.ok ? '' : '；恢复点清理未能完全确认，残留记录仍保留在本机'));
@@ -1984,6 +1993,7 @@
                                 + '原始恢复点已保留，请勿清理网站数据。');
                             return;
                         }
+                        await assertImportLock();
                         var cleanupAfterDatabaseRollback = await clearRestorePoints();
                         toast('导入失败：' + idbRestoreResult.failedDb + ' 恢复失败（'
                             + idbRestoreResult.error + '），已将其他数据全部回滚到导入前状态'
@@ -2019,6 +2029,7 @@
                     + '请勿清理网站数据，并重新打开设置页执行安全恢复。');
                 return;
             }
+            await assertImportLock();
             var cleanupAfterSuccess = await clearRestorePoints();
 
             // 6. 组装最终提示
