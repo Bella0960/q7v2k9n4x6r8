@@ -17,6 +17,7 @@ const minimaxPage = readFileSync(resolve(here, '../settings/minimax-tts.html'), 
 const worldbookPage = readFileSync(resolve(here, '../worldbook/worldbook/worldbook.html'), 'utf8');
 const cafePage = readFileSync(resolve(here, '../cafe/cafe.html'), 'utf8');
 const libraryPage = readFileSync(resolve(here, '../library/library.html'), 'utf8');
+const backupScript = readFileSync(resolve(here, '../settings/js/backup.js'), 'utf8');
 
 function readExtraLessons(source) {
   const match = source.match(/var extraLessons=(\[[\s\S]*?\]);\nlessons=lessons\.concat\(extraLessons\);/);
@@ -358,6 +359,19 @@ test('reader cleanup deletes books and comments in one IndexedDB transaction', a
   await Promise.resolve();
   failed.commentRequest.onerror();
   await assert.rejects(rejected, /transaction failed|本地书籍删除/);
+});
+
+test('backup tutorial explains per-database rollback and retained recovery points', () => {
+  const start = html.indexOf("{id:'backup'");
+  const end = html.indexOf("\\n{id:'api-errors'", start);
+  assert.ok(start >= 0 && end > start, 'backup lesson must exist');
+  const lesson = html.slice(start, end);
+  assert.match(lesson, /同一数据库中的多个表会在一个事务里恢复/);
+  assert.match(lesson, /不同数据库分别处理/);
+  assert.match(lesson, /部分数据库没有恢复/);
+  assert.match(backupScript, /db\.transaction\(storeNames, 'readwrite'\)/);
+  assert.match(backupScript, /var restorePointKept = dbFailed\.length > 0/);
+  assert.match(backupScript, /本机导入前恢复点已保留，供排查/);
 });
 
 test('reader cleanup walkthrough explains the destructive scope and verifies the real result', () => {
