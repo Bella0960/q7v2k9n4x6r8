@@ -8,6 +8,7 @@ import { SQL as CONTEXT_SOURCE_DEVICE_SQL, VERSION as CONTEXT_SOURCE_DEVICE_VERS
 import { SQL as ACTIVITY_RESULT_STAGING_SQL, VERSION as ACTIVITY_RESULT_STAGING_VERSION } from '../migrations/0009_activity_result_staging.js';
 import { SQL as OUTBOUND_LIFECYCLE_SQL, VERSION as OUTBOUND_LIFECYCLE_VERSION } from '../migrations/0010_outbound_lifecycle_receipts.js';
 import { SQL as OUTBOUND_DEVICE_RECEIPTS_SQL, VERSION as OUTBOUND_DEVICE_RECEIPTS_VERSION } from '../migrations/0011_outbound_device_receipts.js';
+import { SQL as MAO_ACCOUNTS_SQL, VERSION as MAO_ACCOUNTS_VERSION } from '../migrations/0012_mao_accounts.js';
 import { SQL as OUTBOUND_INBOX_SQL, VERSION as OUTBOUND_INBOX_VERSION } from '../migrations/0006_outbound_inbox_index.js';
 
 /**
@@ -25,7 +26,8 @@ export const MIGRATIONS = [
   { version: CONTEXT_SOURCE_DEVICE_VERSION, sql: CONTEXT_SOURCE_DEVICE_SQL },
   { version: ACTIVITY_RESULT_STAGING_VERSION, sql: ACTIVITY_RESULT_STAGING_SQL },
   { version: OUTBOUND_LIFECYCLE_VERSION, sql: OUTBOUND_LIFECYCLE_SQL },
-  { version: OUTBOUND_DEVICE_RECEIPTS_VERSION, sql: OUTBOUND_DEVICE_RECEIPTS_SQL }
+  { version: OUTBOUND_DEVICE_RECEIPTS_VERSION, sql: OUTBOUND_DEVICE_RECEIPTS_SQL },
+  { version: MAO_ACCOUNTS_VERSION, sql: MAO_ACCOUNTS_SQL }
 ];
 
 /** 以单引号感知的方式拆分多条语句，避免把字符串里的分号切坏。 */
