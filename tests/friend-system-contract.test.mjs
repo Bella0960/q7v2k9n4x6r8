@@ -28,6 +28,15 @@ function auth(account) {
 }
 
 function asAccount(ctx, account, path, options = {}) {
+  const parts = String(path || '').split('/');
+  const target = options.method === 'DELETE' && parts.length === 4 &&
+    parts[1] === 'api' && parts[2] === 'friends' ? parts[3] : '';
+  if (target && !options.body) {
+    const friendship = ctx.store.getFriendship(account.userId, target);
+    if (friendship) {
+      options = { ...options, body: { friendshipGenerationId: friendship.generation_id } };
+    }
+  }
   return ctx.asJson(path, {
     ...options,
     headers: { ...auth(account), ...(options.headers || {}) }
