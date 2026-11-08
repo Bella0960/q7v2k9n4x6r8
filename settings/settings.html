@@ -85,101 +85,21 @@
                 </div>
             </section>
 
-            <!-- 云端分组（Milestone 1：设备连接、推送订阅与测试） -->
+            <!-- 云端推送独立入口 -->
             <div class="group-title">CLOUD</div>
             <section class="card">
-                <div class="menu-row" style="cursor:default;">
-                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 18a3.5 3.5 0 0 1 0-7 5 5 0 0 1 9.7-1.3A4 4 0 0 1 19 18Z"/><path d="M12 14v5"/><path d="M9.5 17.5 12 20l2.5-2.5"/></svg></div>
-                    <div class="menu-title"><span class="t-cn">云端连接</span><span class="t-en">Cloud</span></div>
-                    <div class="menu-meta" id="cloudStatusText" style="font-size:12px;color:var(--aux);max-width:56%;text-align:right;line-height:1.45;">未连接</div>
-                </div>
-                <div class="menu-row">
-                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
-                    <div class="menu-title"><span class="t-cn">推送通知</span><span class="t-en">Push</span></div>
-                    <label class="switch"><input type="checkbox" id="cloudPushToggle"><span class="slider"></span></label>
-                </div>
-                <div class="menu-row">
-                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="8"/></svg></div>
-                    <div class="menu-title"><span class="t-cn">云端自主活动授权</span><span class="t-en">Autonomy</span></div>
-                    <label class="switch"><input type="checkbox" id="cloudAutonomyToggle" disabled><span class="slider"></span></label>
-                </div>
-                <div style="padding:0 16px 12px;font-size:11.5px;line-height:1.5;color:var(--aux,#8e8e93);">云端只负责活动排队、授权校验和消息去重；生成由已配对设备调用本机 API 配置和本地聊天上下文完成。仅小手机前台运行时可执行，关闭应用或页面后台时不会继续生成；完整链路仍需部署与真机验收。</div>
-                <div style="padding:4px 16px 15px;border-top:1px solid var(--line,#e7e7eb);">
-                    <div style="font-size:13px;font-weight:600;margin:10px 0;">角色自主活动</div>
-                    <div style="font-size:11.5px;color:var(--aux,#8e8e93);line-height:1.5;margin-bottom:8px;">角色名称只从本机读取；云端只保存角色 ID、授权状态和作息。</div>
-                    <select id="cloudRoleSelect" aria-label="选择角色" style="width:100%;height:40px;padding:0 10px;border:1px solid var(--line,#d0d0d5);border-radius:10px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:13px;">
-                        <option value="">正在读取本机角色…</option>
-                    </select>
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;">
-                        <label for="cloudCharacterAutonomyMode" style="font-size:12px;">角色授权</label>
-                        <select id="cloudCharacterAutonomyMode" style="height:36px;padding:0 9px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:12px;">
-                            <option value="inherit">跟随全局设置</option>
-                            <option value="on">仅此角色开启</option>
-                            <option value="off">仅此角色关闭</option>
-                        </select>
+                <div class="menu-row" onclick="window.location.href='cloud-push.html'" role="button" tabindex="0">
+                    <div class="menu-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6.5 18a3.5 3.5 0 0 1 0-7 5 5 0 0 1 9.7-1.3A4 4 0 0 1 19 18Z"/>
+                            <path d="M12 14v5M9.5 17.5 12 20l2.5-2.5"/>
+                        </svg>
                     </div>
-                    <button id="cloudRoleAutonomySave" type="button" style="width:100%;height:38px;margin-top:9px;border:1px solid var(--line,#d0d0d5);border-radius:10px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:12px;">保存角色授权</button>
-                    <div style="font-size:12px;font-weight:600;margin:16px 0 8px;">角色作息与时区</div>
-                    <label for="cloudRoleTimezone" style="display:block;font-size:11.5px;color:var(--aux,#8e8e93);margin-bottom:5px;">IANA 时区（例如 America/Los_Angeles）</label>
-                    <input id="cloudRoleTimezone" type="text" inputmode="text" autocomplete="off" placeholder="必须明确填写时区" style="width:100%;height:40px;padding:0 10px;border:1px solid var(--line,#d0d0d5);border-radius:10px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:13px;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
-                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">允许主动联系 · 开始
-                            <input id="cloudRoleActiveStart" type="text" inputmode="numeric" placeholder="HH:MM" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
-                        </label>
-                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">允许主动联系 · 结束
-                            <input id="cloudRoleActiveEnd" type="text" inputmode="numeric" placeholder="HH:MM" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
-                        </label>
-                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">忙碌时段 · 开始（可选）
-                            <input id="cloudRoleBusyStart" type="text" inputmode="numeric" placeholder="HH:MM" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
-                        </label>
-                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">忙碌时段 · 结束（可选）
-                            <input id="cloudRoleBusyEnd" type="text" inputmode="numeric" placeholder="HH:MM" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
-                        </label>
-                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">休息时段 · 开始（可选）
-                            <input id="cloudRoleAsleepStart" type="text" inputmode="numeric" placeholder="HH:MM" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
-                        </label>
-                        <label style="font-size:11.5px;color:var(--aux,#8e8e93);">休息时段 · 结束（可选）
-                            <input id="cloudRoleAsleepEnd" type="text" inputmode="numeric" placeholder="HH:MM" style="display:block;width:100%;height:38px;margin-top:5px;padding:0 8px;border:1px solid var(--line,#d0d0d5);border-radius:9px;background:var(--surface,#f7f7f9);color:var(--ink,#111);">
-                        </label>
+                    <div class="menu-info">
+                        <div class="menu-title">云端推送</div>
+                        <div class="menu-sub">设备通知与角色主动联系</div>
                     </div>
-                    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;">
-                        <input id="cloudRoleAway" type="checkbox" style="width:16px;height:16px;">
-                        此角色当前设为外出
-                    </label>
-                    <button id="cloudRoleScheduleSave" type="button" style="width:100%;height:42px;margin-top:13px;border:0;border-radius:11px;background:#111;color:#fff;font-size:13px;">保存角色设置与作息</button>
-                    <div style="font-size:11px;color:var(--aux,#8e8e93);line-height:1.5;margin-top:8px;">未填写并保存有效作息的角色不会获得云端调度资格。此设置不会上传聊天记录或角色设定。</div>
-                </div>
-                <div class="menu-row" id="cloudReadinessCheck" role="button" tabindex="0">
-                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></div>
-                    <div class="menu-title"><span class="t-cn">检查云端准备情况</span><span class="t-en">Readiness</span></div>
-                </div>
-                <div id="cloudReadinessResult" role="status" aria-live="polite" style="display:none;padding:0 16px 12px;font-size:11.5px;line-height:1.6;color:var(--aux,#8e8e93);white-space:pre-line;"></div>
-                <div class="menu-row" id="cloudTestRow" role="button" tabindex="0">
-                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></div>
-                    <div class="menu-title"><span class="t-cn">发送测试推送</span><span class="t-en">Test</span></div>
-                </div>
-                <div class="menu-row" id="cloudPairCreateRow" role="button" tabindex="0">
-                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 12v5M9.5 14.5h5"/><path d="M7 8V5a5 5 0 0 1 10 0v3"/></svg></div>
-                    <div class="menu-title"><span class="t-cn">生成设备配对码</span><span class="t-en">Pair device</span></div>
                     <div class="menu-arrow">›</div>
-                </div>
-                <div id="cloudPairCodePanel" style="display:none;padding:0 16px 14px;">
-                    <div style="font-size:12px;color:var(--aux,#8e8e93);line-height:1.5;margin-bottom:8px;">配对码短时有效，只能使用一次。请在另一台设备上输入。</div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <input id="cloudPairCodeOutput" type="text" readonly aria-label="一次性设备配对码" style="min-width:0;flex:1;height:40px;padding:0 10px;border:1px solid var(--line,#d0d0d5);border-radius:10px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:12px;letter-spacing:.3px;">
-                        <button id="cloudPairCodeCopyButton" type="button" style="height:40px;padding:0 14px;border:0;border-radius:10px;background:#111;color:#fff;font-size:13px;">复制</button>
-                    </div>
-                </div>
-                <div style="padding:12px 16px 14px;">
-                    <div style="font-size:12px;color:var(--aux,#8e8e93);margin-bottom:8px;">首次连接时输入初始认领码；之后添加新设备，输入已连接设备生成的一次性配对码。</div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <input id="cloudPairCodeInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入一次性配对码" aria-label="输入一次性配对码" style="min-width:0;flex:1;height:42px;padding:0 11px;border:1px solid var(--line,#d0d0d5);border-radius:10px;background:var(--surface,#f7f7f9);color:var(--ink,#111);font-size:13px;">
-                        <button id="cloudPairConnectButton" type="button" style="height:42px;padding:0 14px;border:0;border-radius:10px;background:#111;color:#fff;font-size:13px;white-space:nowrap;">连接设备</button>
-                    </div>
-                </div>
-                <div class="menu-row" id="cloudRevokeRow" role="button" tabindex="0">
-                    <div class="menu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></div>
-                    <div class="menu-title"><span class="t-cn">断开云连接</span><span class="t-en">Disconnect</span></div>
                 </div>
             </section>
 
@@ -441,14 +361,6 @@
     </div>
     <script src="js/settings.js"></script>
     <script src="js/backup.js"></script>
-    <script src="../shared/js/cloud-push-client.js"></script>
-    <script>
-    (function () {
-        if (window.MaomaoCloud && window.MaomaoCloud.mountSettings) {
-            window.MaomaoCloud.mountSettings();
-        }
-    })();
-    </script>
     <script>
     // 设置页用户卡片 + 深色模式开关
     (function () {
