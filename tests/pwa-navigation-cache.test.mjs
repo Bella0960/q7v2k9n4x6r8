@@ -8,10 +8,11 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v185'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v186'/);
 assert.ok(serviceWorker.includes('./settings/mcp-connections.html'));
 assert.ok(serviceWorker.includes('./shared/js/phone/mcp-client.js?v=20261108m'));
 assert.ok(serviceWorker.includes('./shared/js/phone/mcp-role-permissions.js?v=20261108a'));
+assert.ok(serviceWorker.includes('./shared/js/phone/mcp-ai-tools.js?v=20261108a'));
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {

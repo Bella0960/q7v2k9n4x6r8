@@ -24,7 +24,7 @@
     '$comment': true, '$schema': true, '$id': true, deprecated: true
   };
   var SAFE_TYPES = ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'];
-  var DANGEROUS_PROPERTY_NAMES = { '__proto__': true, 'prototype': true, 'constructor': true };
+  var DANGEROUS_PROPERTY_NAMES = ['__proto__', 'prototype', 'constructor'];
 
   function utf8ByteLength(value) {
     return new TextEncoder().encode(String(value)).byteLength;
@@ -76,7 +76,7 @@
           output.properties = {};
           propertyNames.forEach(function (name) {
             if (!name || name.length > 120 || /[\u0000-\u001f\u007f]/.test(name) ||
-                Object.prototype.hasOwnProperty.call(DANGEROUS_PROPERTY_NAMES, name)) {
+                DANGEROUS_PROPERTY_NAMES.indexOf(name) !== -1) {
               throw new Error('工具参数包含不安全的字段名称。');
             }
             output.properties[name] = visit(value[name], depth + 1, false);
@@ -111,7 +111,7 @@
           return;
         }
         if (['minItems', 'maxItems', 'minLength', 'maxLength', 'minimum', 'maximum'].indexOf(key) !== -1) {
-          if (!Number.isFinite(value) || value < 0 && ['minimum', 'maximum'].indexOf(key) !== -1) {
+          if (!Number.isFinite(value) || value < 0 && ['minimum', 'maximum'].indexOf(key) === -1) {
             throw new Error('工具参数边界值无效：' + key);
           }
           output[key] = value;
