@@ -90,7 +90,7 @@ test('CSS package references must resolve to registered package assets',()=>{
 });
 
 
-test('runtime CSS asset rewriting follows the same tokenizer as package validation',()=>{
+test('runtime CSS asset rewriting follows package CSS escape and comment rules',()=>{
   const theme=fixture({
     assetIndex:[{path:'assets/bg.png',name:'bg.png',type:'image',mimeType:'image/png'}]
   });
@@ -112,7 +112,7 @@ test('runtime CSS asset rewriting follows the same tokenizer as package validati
   const contentOnly='.sample{content:"url(assets/bg.png)"}';
   assert.equal(F.rewriteCssAssetUrls(contentOnly,urls),contentOnly,'普通文本中的 url 字样不能被当成素材引用替换');
   const runtime=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
-  assert.ok(runtime.includes('FORMAT.rewriteCssAssetUrls(css,assetUrls)'),'运行时必须使用与导入校验相同的 CSS URL 解析器');
+  assert.ok(runtime.includes('FORMAT.rewriteCssAssetUrls(css,assetUrls)'),'运行时必须使用主题格式模块提供的共享 CSS URL 替换器');
 });
 
 test('chat beauty exports only global CSS presets as chat theme packages',()=>{
