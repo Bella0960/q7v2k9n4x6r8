@@ -85,11 +85,11 @@ button,input,textarea{font:inherit}
         <label class="field" style="margin:0"><span>角色级工具授权</span><select id="permissionRole" aria-label="选择需要管理 MCP 权限的角色"><option value="">选择角色（默认无授权）</option></select></label>
         <button class="btn secondary" id="clearRolePermissions" type="button" disabled>清空该角色授权</button>
       </div>
-      <p class="hint" id="permissionHint">每个角色独立授权到具体服务和工具。未授权角色不能通过角色调用接口使用 MCP。</p>
+      <p class="hint" id="permissionHint">每个角色独立授权到具体服务和工具。当前连接的 Bearer Token 按连接共用，不会复制到角色记录。未授权角色不能通过角色调用接口使用 MCP。</p>
     </div>
     <div id="toolList"></div>
   </section>
-  <div class="notice">安全说明：工具结果只作为文本展示，不会执行服务端返回的脚本。手动调用仍逐次确认。角色授权按角色 ID、服务地址、工具名称和参数结构 SHA-256 指纹分别保存；参数结构变化后旧授权自动失效。授权记录只保存在本机，不包含令牌、调用参数或工具结果。角色调用接口已有权限门禁，但尚未接入 AI 自动工具选择。浏览器连接还要求 MCP 服务允许当前网站的 CORS 跨域请求。</div>
+  <div class="notice">安全说明：工具结果只作为文本展示，不会执行服务端返回的脚本。手动调用仍逐次确认。角色授权按角色 ID、服务地址、工具名称和参数结构 SHA-256 指纹分别保存；参数结构变化后旧授权自动失效。授权记录只保存在本机，不包含令牌、调用参数或工具结果。这是客户端角色调用门禁，不代替 MCP 服务端自身的账户权限校验。角色调用接口已有权限门禁，但尚未接入 AI 自动工具选择。浏览器连接还要求 MCP 服务允许当前网站的 CORS 跨域请求。</div>
 </main>
 <script>
 (function () {
