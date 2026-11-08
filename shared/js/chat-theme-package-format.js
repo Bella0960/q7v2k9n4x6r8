@@ -308,6 +308,14 @@
     }
     return css;
   }
+  function validateCssAssetRefs(css,assets){
+    var normalized=normalizeCssForSafety(String(css||""));
+    var re=/url\\s*\\(\\s*(?:\\u0001(\\d+)\\u0002|([^)]*?))\\s*\\)/gi,match;
+    while((match=re.exec(normalized.code))){
+      var path=match[1]!==undefined?String(normalized.strings[Number(match[1])]||"").trim():String(match[2]||"").trim();
+      if(path.indexOf("assets/")===0&&!own(assets,path))fail("CSS 引用了未登记的主题素材："+path);
+    }
+  }
   function cleanValue(v,propertyName){
     if(typeof v==="number")return Number.isFinite(v)?v:null;
     if(typeof v==="boolean")return v;
@@ -459,7 +467,9 @@
     });
     var seen={};clean.motions=(theme.motions||[]).slice(0,20).filter(function(m){return m&&RULES[m.id]&&!seen[m.id]&&(seen[m.id]=1)}).map(function(m){return Object.assign({},m,{enabled:m.enabled===true,duration:clamp(m.duration,80,1600,260),threshold:clamp(m.threshold,0,240,20),compactScale:clamp(m.compactScale,.55,1,.86),compactHeight:clamp(m.compactHeight,24,72,38),scale:clamp(m.scale,.75,1.3,1.1),lift:clamp(m.lift,0,16,4),distance:clamp(m.distance,0,40,8)})});
     clean.assetIndex=paths.map(function(p){var a=assets[p];return{path:p,name:a.name,mimeType:a.mimeType,type:a.type}});
-    return{manifest:manifest,theme:clean,customCss:validateCss(files["custom.css"]?text(files["custom.css"],"custom.css"):""),assets:assets};
+    var customCss=validateCss(files["custom.css"]?text(files["custom.css"],"custom.css"):"");
+    validateCssAssetRefs(customCss,assets);
+    return{manifest:manifest,theme:clean,customCss:customCss,assets:assets};
   }
   function readPackage(files){
     if(!files["manifest.json"]||!files["theme.json"])fail("主题包必须包含 manifest.json 与 theme.json。");
