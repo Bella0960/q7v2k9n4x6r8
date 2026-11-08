@@ -13,6 +13,63 @@
 
   if (!accountId || !/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
 
+  // Bind every same-origin API request to the MAO account whose data namespace
+  // this page opened with. This closes the interval before the 30-second tab
+  // recheck when another tab signs into a different account on the same device.
+  function installAccountBoundFetch() {
+    if (typeof global.fetch !== 'function' ||
+        typeof global.Headers !== 'function' ||
+        typeof global.URL !== 'function' ||
+        !global.location) return false;
+    try {
+      var nativeFetch = global.fetch.bind(global);
+      var wrappedFetch = function (input, init) {
+        var requestUrl;
+        try {
+          var rawUrl = typeof input === 'string' ? input : (input && input.url ? input.url : String(input));
+          requestUrl = new global.URL(rawUrl, global.location.href);
+        } catch (error) {
+          return nativeFetch(input, init);
+        }
+        if (requestUrl.origin !== global.location.origin) {
+          return nativeFetch(input, init);
+        }
+
+        var headers = new global.Headers(input && input.headers ? input.headers : undefined);
+        if (init && init.headers) {
+          new global.Headers(init.headers).forEach(function (value, key) {
+            headers.set(key, value);
+          });
+        }
+        headers.set('x-mao-account-context', accountId);
+        var nextInit = Object.assign({}, init || {});
+        nextInit.headers = headers;
+        return nativeFetch(input, nextInit);
+      };
+      Object.defineProperty(global, 'fetch', {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: wrappedFetch
+      });
+      return true;
+    } catch (error) {
+      console.error('[MAO account scope] unable to bind API requests to the account');
+      return false;
+    }
+  }
+
+  if (!installAccountBoundFetch()) {
+    // Do not open app storage if same-origin requests cannot be account-bound.
+    try {
+      global.stop();
+      document.open();
+      document.write('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAO</title><body style="margin:0;padding:12vh 8vw;font:16px/1.8 -apple-system,BlinkMacSystemFont,sans-serif;color:#222;background:#f7f7f8"><h2>账号会话隔离暂不可用</h2><p>为保护不同账号的数据，MAO 已阻止打开此页面。请更新浏览器后重试。</p></body></html>');
+      document.close();
+    } catch (error) {}
+    return;
+  }
+
   var redirectingToAccountEntry = false;
 
   function redirectToAccountEntry(query) {
