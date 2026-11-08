@@ -266,3 +266,92 @@ test('runtime clears temporary navigation tap styles when deactivated',async()=>
   assert.equal(tapStyles.size,0,'停用后应清除按钮临时 CSS 变量');
   assert.ok(cleared>=1,'停用后应取消未完成的动效定时器');
 });
+
+
+test('runtime records the last successfully applied package after refresh',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  const theme={id:'refresh-theme',customCss:'.refresh-theme{color:#111}'};
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([theme])],
+    ['maomao_chat_theme_active_v1',theme.id]
+  ]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  const styleNodes=new Map();
+  const shell={
+    classList:{add(){},remove(){}},style:{removeProperty(){}},
+    setAttribute(){},removeAttribute(){},querySelector(){return null},querySelectorAll(){return[]}
+  };
+  const document={
+    readyState:'complete',querySelector(){return shell},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const listeners={};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(theme){return '/* '+theme.id+' */'}},
+    location:{pathname:'/chat/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(type,callback){listeners[type]=callback}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,console,setTimeout});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),theme.id,'刷新后正常应用应记录最后成功主题');
+  assert.match(styleNodes.get('maomao-chat-theme-package-style').textContent,/refresh-theme/,'刷新后应重新应用持久化活动主题');
+});
+
+test('runtime falls back to the last working theme when the newly selected theme assets fail',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  const first={id:'working-theme',assetRefs:{'assets/a.png':'asset-a'}};
+  const broken={id:'broken-theme',assetRefs:{'assets/b.png':'asset-b'}};
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([first,broken])],
+    ['maomao_chat_theme_active_v1',first.id]
+  ]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    setItem(key,value){values.set(key,String(value))},
+    removeItem(key){values.delete(key)}
+  };
+  let aReads=0,bReads=0,aRevokes=0;
+  const media={toObjectUrl(id){
+    if(id==='asset-b'){bReads++;return Promise.reject(new Error('模拟素材读取失败'))}
+    aReads++;return Promise.resolve({ok:true,value:{url:'blob:working-theme',revoke(){aRevokes++}}});
+  }};
+  const styleNodes=new Map(),listeners={};
+  const shell={
+    classList:{add(){},remove(){}},style:{removeProperty(){}},
+    setAttribute(){},removeAttribute(){},querySelector(){return null},querySelectorAll(){return[]}
+  };
+  const document={
+    readyState:'complete',querySelector(){return shell},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(theme){return '/* '+theme.id+' */'}},
+    PhoneStorage:phoneStorage,
+    location:{pathname:'/chat/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(type,callback){listeners[type]=callback},
+    dispatchEvent(event){if(event.type==='maomao:chat-theme-change'&&listeners[event.type])listeners[event.type]()}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,PhoneStorage:phoneStorage,console:{error(){}},setTimeout});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),first.id,'首次成功应用应记住可回退主题');
+  localStorage.setItem('maomao_chat_theme_active_v1',broken.id);
+  listeners['maomao:chat-theme-change']();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(bReads,1,'新主题素材失败应只尝试一次，不能在回退时无限重试');
+  assert.equal(localStorage.getItem('maomao_chat_theme_active_v1'),first.id,'新主题加载失败应恢复先前成功主题');
+  assert.equal(localStorage.getItem('maomao_chat_theme_last_good_v1'),first.id,'回退后应保留最后成功主题标记');
+  assert.match(styleNodes.get('maomao-chat-theme-package-style').textContent,/working-theme/,'回退后应重新加载并显示原先可用主题');
+  assert.ok(aRevokes>=1,'切换和回退时应释放已替换的旧对象 URL');
+});

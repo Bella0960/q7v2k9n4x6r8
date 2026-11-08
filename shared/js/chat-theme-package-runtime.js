@@ -1,7 +1,7 @@
 /* MAOMAO Chat Theme Package Runtime v1. Applies package themes only to chat list/detail pages. */
 (function(global){
   "use strict";
-  var LIST="maomao_chat_theme_packages_v1",ACTIVE="maomao_chat_theme_active_v1",FORMAT=global.MAOMAOChatThemeFormat;
+  var LIST="maomao_chat_theme_packages_v1",ACTIVE="maomao_chat_theme_active_v1",LAST_GOOD="maomao_chat_theme_last_good_v1",FORMAT=global.MAOMAOChatThemeFormat;
   var styleId="maomao-chat-theme-package-style",motionId="maomao-chat-theme-motion-style",media=null,assetUrls={},releases=[],signature="",generation=0;
   function list(){try{var a=JSON.parse(localStorage.getItem(LIST)||"[]");return Array.isArray(a)?a:[]}catch(e){return[]}}
   function active(){var id="";try{id=localStorage.getItem(ACTIVE)||""}catch(e){}return list().find(function(x){return x&&x.id===id})||null}
@@ -91,7 +91,7 @@
   function apply(){
     var path=global.location.pathname.toLowerCase(),page=path.indexOf("chat-detail.html")>=0?"chatDetail":(path.indexOf("chat.html")>=0?"chatList":"");
     if(!page||!FORMAT)return;var shell=document.querySelector(".phone-mockup");if(!shell)return;var theme=active(),gen=++generation;
-    if(!theme){shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);removeCustomBlocks(shell);revoke();signature="";return}
+    if(!theme){shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);removeCustomBlocks(shell);revoke();signature="";try{localStorage.removeItem(LAST_GOOD);if(localStorage.getItem(ACTIVE))localStorage.removeItem(ACTIVE)}catch(e){}return}
     var sig=theme.id+":"+String(theme.updatedAt||"");if(sig===signature)return;shell.setAttribute("data-maomao-chat-theme-active","1");
     loadAssets(theme).then(function(resources){if(gen!==generation||!active()||active().id!==theme.id){releaseUrls(resources.releases);return}var previousReleases=releases;assetUrls=resources.assetUrls;releases=resources.releases;try{addStyle(styleId,rewrite(FORMAT.buildScopedCss(theme,theme.customCss||"")));var pageKey=page;mount(shell,theme,pageKey);var effects=theme.motions||[];var rules=[
       '.phone-mockup[data-maomao-chat-theme-active="1"] .floating-nav{transition:transform var(--maomao-theme-motion-duration,260ms) var(--maomao-theme-motion-easing,ease-out),opacity var(--maomao-theme-motion-hide-duration,220ms) ease-out!important}',
@@ -102,8 +102,19 @@
       '@keyframes maomaoThemeEnter{from{opacity:0;transform:translateY(var(--maomao-theme-motion-distance,8px))}to{opacity:1;transform:none}}',
       '.phone-mockup[data-maomao-chat-theme-active="1"].maomao-theme-bubble-press .msg-bubble:active{transform:scale(var(--maomao-theme-bubble-scale,.985))!important;transition:transform var(--maomao-theme-bubble-duration,120ms) var(--maomao-theme-bubble-easing,ease-out)!important}',
       '.phone-mockup[data-maomao-chat-theme-active="1"].maomao-theme-sheet-rise .plus-panel-overlay .plus-panel-sheet{transition-duration:var(--maomao-theme-sheet-duration,300ms)!important;transition-timing-function:var(--maomao-theme-sheet-easing,ease-out)!important}'
-    ];addStyle(motionId,rules.join("\n"));motion(shell,theme);signature=sig}catch(error){releaseUrls(previousReleases);throw error}releaseUrls(previousReleases)
-    }).catch(function(e){if(gen!==generation)return;shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);removeCustomBlocks(shell);revoke();signature="";if(console&&console.error)console.error("[MAOMAO Chat Theme]",e)})
+    ];addStyle(motionId,rules.join("\n"));motion(shell,theme);signature=sig;try{localStorage.setItem(LAST_GOOD,theme.id)}catch(e){} }catch(error){releaseUrls(previousReleases);throw error}releaseUrls(previousReleases)
+    }).catch(function(e){
+      var selectedId="";try{selectedId=localStorage.getItem(ACTIVE)||""}catch(ignore){}
+      if(gen!==generation||selectedId!==theme.id)return;
+      shell.removeAttribute("data-maomao-chat-theme-active");addStyle(styleId,"");addStyle(motionId,"");cleanMotion(shell);removeCustomBlocks(shell);revoke();signature="";
+      var fallbackId="";try{fallbackId=localStorage.getItem(LAST_GOOD)||""}catch(ignore){}
+      var fallback=list().find(function(item){return item&&item.id===fallbackId&&item.id!==theme.id});
+      try{
+        if(fallback){localStorage.setItem(ACTIVE,fallback.id);global.dispatchEvent(new CustomEvent("maomao:chat-theme-change"))}
+        else{localStorage.removeItem(ACTIVE);localStorage.removeItem(LAST_GOOD)}
+      }catch(storageError){}
+      if(console&&console.error)console.error("[MAOMAO Chat Theme]",e)
+    })
   }
   function schedule(){if(global.requestAnimationFrame)global.requestAnimationFrame(apply);else global.setTimeout(apply,0)}
   global.MAOMAOChatThemePackageRuntime={refresh:schedule,getActive:active,getInstalled:list};
