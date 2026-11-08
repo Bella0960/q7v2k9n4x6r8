@@ -4233,6 +4233,19 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   assert.equal(notification.url, './chat/chat/chat-detail.html?id=char-push');
   assert.equal(notification.type, 'chat_message');
   assert.equal(notification.accountId, 'owner', '云端推送必须带上目标设备所属 MAO 账号');
+  const accountNotification = buildOutboundPushPayload({
+    accountId: 'MAO-AAAAAAAAAAAA',
+    characterId: 'char-push',
+    serverMessageId,
+    timestamp: now
+  });
+  assert.equal(accountNotification.accountId, 'MAO-AAAAAAAAAAAA');
+  assert.throws(() => buildOutboundPushPayload({
+    accountId: 'MAO-invalid',
+    characterId: 'char-push',
+    serverMessageId,
+    timestamp: now
+  }), /outbound push target is invalid/);
   assert.match(notification.body, /有一位角色刚刚联系你/);
   assert.equal(notification.body.includes('我刚刚想到'), false,
     '锁屏通知不得暴露主动消息正文');
