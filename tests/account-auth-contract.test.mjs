@@ -58,7 +58,7 @@ test('迁移版本号写入失败时，DDL 一并回滚并可安全重试', () =
   }
 
   const failingExec = (sql, ...params) => {
-    if (/^\\s*INSERT INTO schema_migrations/i.test(sql) &&
+    if (/^\s*INSERT INTO schema_migrations/i.test(sql) &&
         params[0] === '0013_mao_account_restore_state') {
       throw new Error('simulated migration marker write failure');
     }
