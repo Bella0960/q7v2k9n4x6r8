@@ -440,7 +440,7 @@ function buildCtxFull(opts) {
         'recoverInterruptedImportUnlocked', 'recoverInterruptedImportOnStartup', 'validateInterruptedRestorePoints',
         'downloadSnapshot', 'carryOverSecrets', 'checkFontPresetOrphan',
         'rescueUtf8Bytes', 'serializeRecoveryPointValue', 'readBlobArrayBuffer',
-        'rescueCrcTable', 'rescueCrc32', 'createRecoveryRescueZip',
+        'rescueCrcTable', 'rescueCrc32', 'createRecoveryRescueZip', 'markUnavailableRescueAssets',
         'createRecoveryPointRescuePackage',
         'estimateRestorePointBytes', 'assertRestorePointCapacity', 'fingerprintRestorePoint', 'dumpDatabaseForRestorePoint',
         'captureIndexedDbRestorePoint', 'restoreIndexedDBWithRollback',
@@ -3012,4 +3012,84 @@ test('61 createRecoveryPointRescuePackage：单份记录序列化失败时继续
     assert.ok(ctx.__restorePointRows.has('pre-import'));
     assert.ok(ctx.__restorePointRows.has('pre-import-indexeddb'));
     assert.ok(ctx.__restorePointRows.has('pre-import-meta'));
+});
+
+
+/* ═══════════════════════════════════════════════
+   62. 单个 Blob 分块读取失败：其他附件仍可导出并明确标记 partial
+   ═══════════════════════════════════════════════ */
+test('62 createRecoveryPointRescuePackage：单个二进制附件读取失败不拖垮其他附件', async () => {
+    const ctx = buildCtxFull();
+    ctx.FileReader = function RescueFailureFileReader() {
+        return {
+            result: null,
+            error: null,
+            onload: null,
+            onerror: null,
+            readAsArrayBuffer(blob) {
+                if (blob && blob._data && blob._data.toString('utf8').includes('BAD-ASSET')) {
+                    this.error = new Error('injected binary chunk read failure');
+                    if (this.onerror) this.onerror();
+                    return;
+                }
+                this.result = Uint8Array.from(blob._data).buffer;
+                if (this.onload) this.onload();
+            }
+        };
+    };
+
+    ctx.__restorePointRows.set('pre-import', {
+        role: 'pre-import',
+        snap: {
+            media: [
+                new SandboxBlob([Buffer.from('BAD-ASSET')], { type: 'audio/mpeg' }),
+                new SandboxBlob([Buffer.from('GOOD-ASSET')], { type: 'image/png' })
+            ]
+        },
+        createdAt: Date.now()
+    });
+    ctx.__restorePointRows.set('pre-import-meta', {
+        role: 'pre-import-meta',
+        snap: { status: 'applying', indexedDbTargets: [] },
+        createdAt: Date.now()
+    });
+
+    const result = await ctx.createRecoveryPointRescuePackage();
+    assert.ok(result);
+    assert.equal(result.records, 2);
+    assert.equal(result.assets, 1, 'only the readable Blob should be placed in ZIP');
+    assert.equal(result.readErrors.length, 1);
+    assert.equal(result.readErrors[0].role, 'assets/blob-000001.bin');
+    assert.match(result.readErrors[0].message, /injected binary chunk read failure/);
+
+    const zip = Buffer.from(result.blob._data);
+    let offset = 0;
+    const entries = [];
+    while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+        const nameLength = zip.readUInt16LE(offset + 26);
+        const extraLength = zip.readUInt16LE(offset + 28);
+        const size = zip.readUInt32LE(offset + 18);
+        const nameStart = offset + 30;
+        const dataStart = nameStart + nameLength + extraLength;
+        entries.push({
+            name: zip.subarray(nameStart, nameStart + nameLength).toString('utf8'),
+            data: zip.subarray(dataStart, dataStart + size)
+        });
+        offset = dataStart + size;
+    }
+    const manifestEntry = entries.find(entry => entry.name === 'recovery-points.json');
+    const goodAsset = entries.find(entry => entry.name === 'assets/blob-000002.bin');
+    assert.ok(goodAsset);
+    assert.equal(goodAsset.data.toString('utf8'), 'GOOD-ASSET');
+    assert.equal(entries.some(entry => entry.name === 'assets/blob-000001.bin'), false,
+        'the unreadable original must not be represented by a corrupt or empty file');
+    const manifest = JSON.parse(manifestEntry.data.toString('utf8'));
+    assert.equal(manifest.recordStatuses['pre-import'], 'partial');
+    const blobs = manifest.records['pre-import'].snap.media;
+    assert.equal(blobs[0].unavailable, true);
+    assert.match(blobs[0].reason, /injected binary chunk read failure/);
+    assert.equal(blobs[1].file, 'assets/blob-000002.bin');
+    assert.equal(blobs[1].unavailable, undefined);
+    assert.ok(ctx.__restorePointRows.has('pre-import'),
+        'partial rescue export must not delete the original record');
 });
