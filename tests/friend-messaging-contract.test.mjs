@@ -587,9 +587,12 @@ test('真人聊天页面安全渲染正文、立即显示发送状态并在后�
   assert.match(FRIEND_CENTER_HTML, /friend\.unreadCount/);
   assert.match(FRIEND_CENTER_HTML, /unread-count/);
   assert.match(FRIEND_CENTER_HTML, /friendsPollTimer/);
+  assert.match(FRIEND_CENTER_HTML, /data-remove-generation/);
+  assert.match(FRIEND_CENTER_HTML, /data-remove-friend.*data-remove-generation/);
+  assert.match(FRIEND_CENTER_HTML, /api\.removeFriend\(remove\.getAttribute\('data-remove-friend'\), remove\.getAttribute\('data-remove-generation'\)\)/);
   assert.doesNotMatch(FRIEND_CHAT_HTML, /id="clearChatBtn"|id="refreshBtn"/);
   assert.doesNotMatch(FRIEND_CHAT_HTML, /className = 'message-more'/);
-  assert.match(FRIEND_CHAT_HTML, /api\.clearMessages\(friendId\)/);
+  assert.match(FRIEND_CHAT_HTML, /api\.clearMessages\(friendId, conversationGenerationId\)/);
   assert.match(FRIEND_CHAT_HTML, /api\.hideMessage\(friendId, messageId\)/);
   assert.match(FRIEND_CHAT_HTML, /好友仍然可以看到原消息/);
   assert.match(FRIEND_CHAT_HTML, /清空你这边的全部聊天记录/);
@@ -709,6 +712,25 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   });
   assert.equal(delayedOldGenerationWrite.status, 409);
   assert.equal(delayedOldGenerationWrite.payload.error.code, 'STALE_FRIENDSHIP_GENERATION');
+
+  const staleClear = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages', {
+    method: 'DELETE',
+    body: { friendshipGenerationId: oldGenerationId }
+  });
+  assert.equal(staleClear.status, 409);
+  assert.equal(staleClear.payload.error.code, 'STALE_FRIENDSHIP_GENERATION');
+
+  const staleRemove = await asAccount(ctx, alice, '/api/friends/' + bob.userId, {
+    method: 'DELETE',
+    body: { friendshipGenerationId: oldGenerationId }
+  });
+  assert.equal(staleRemove.status, 409);
+  assert.equal(staleRemove.payload.error.code, 'STALE_FRIENDSHIP_GENERATION');
+  assert.deepEqual(
+    (await asAccount(ctx, alice, '/api/friends')).payload.friends.map(item => item.userId),
+    [bob.userId],
+    '旧关系的迟到删除请求不能删除新关系'
+  );
 
   const aliceHistory = await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages');
   const bobHistory = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
