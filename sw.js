@@ -1,7 +1,7 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v209';
+const CACHE_NAME = 'phone-app-pwa-v210';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
@@ -188,7 +188,7 @@ self.addEventListener('fetch', event => {
   // On network loss, fall back only to the public account entry, never cached app pages.
   const accountPath = new URL('account/', self.registration.scope).pathname;
   const isPublicAccountPage = url.pathname === accountPath ||
-    url.pathname.startsWith(accountPath);
+    url.pathname === accountPath + 'index.html';
   if (req.mode === 'navigate' && !isPublicAccountPage) {
     event.respondWith((async function () {
       try {
