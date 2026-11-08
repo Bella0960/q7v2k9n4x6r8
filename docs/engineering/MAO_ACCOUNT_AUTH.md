@@ -37,7 +37,7 @@ POST /api/admin/bootstrap:
 }
 ```
 
-Bootstrap is one-time. A partial unique index prevents a second super-admin. No bootstrap secret is included in the repository or front-end bundle. This branch has not been deployed and the Worker secret has not been configured.
+Bootstrap is one-time. A partial unique index prevents a second super-admin. No bootstrap secret is included in the repository or front-end bundle. This branch has not been deployed and the Worker secret has not been configured. The creator setup page checks the server's public initialized flag before revealing the setup form; if the status request fails, the form remains hidden and the page offers a retry. A final status check also runs immediately before submission.
 
 ## User registration and invitations
 
