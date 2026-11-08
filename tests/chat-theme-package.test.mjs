@@ -152,3 +152,53 @@ test('import page can restore the original theme without deleting installed pack
   row=ids.installedList.children[0];
   assert.equal(row.children[1].textContent,'应用','停用后仍应允许重新应用');
 });
+
+
+test('runtime releases asset URLs that resolve after theme deactivation',async()=>{
+  const runtimeSource=readFileSync(new URL('../shared/js/chat-theme-package-runtime.js',import.meta.url),'utf8');
+  let resolveObjectUrl,revoked=0;
+  const pending=new Promise(resolve=>{resolveObjectUrl=resolve});
+  const media={toObjectUrl(){return pending}};
+  const theme={id:'delayed-theme',assetRefs:{'assets/bg.png':'asset-delayed'}};
+  const values=new Map([
+    ['maomao_chat_theme_packages_v1',JSON.stringify([theme])],
+    ['maomao_chat_theme_active_v1',theme.id]
+  ]);
+  const localStorage={
+    getItem(key){return values.has(key)?values.get(key):null},
+    removeItem(key){values.delete(key)}
+  };
+  const attributes=new Set();
+  const styleNodes=new Map();
+  const shell={
+    classList:{remove(){}},style:{removeProperty(){}},
+    removeAttribute(name){attributes.delete(name)},
+    setAttribute(name){attributes.add(name)},
+    querySelector(){return null},
+    querySelectorAll(){return[]}
+  };
+  const document={
+    readyState:'complete',
+    querySelector(){return shell},
+    getElementById(id){return styleNodes.get(id)||null},
+    createElement(){return{id:'',textContent:'',style:{}}},
+    head:{appendChild(node){styleNodes.set(node.id,node)}}
+  };
+  const listeners={};
+  const phoneStorage={repository:{media(){return media}}};
+  const windowMock={
+    MAOMAOChatThemeFormat:{buildScopedCss(){return''}},
+    PhoneStorage:phoneStorage,
+    location:{pathname:'/chat/chat/chat.html'},
+    requestAnimationFrame(callback){callback()},
+    addEventListener(type,callback){listeners[type]=callback}
+  };
+  vm.runInNewContext(runtimeSource,{window:windowMock,document,localStorage,PhoneStorage:phoneStorage,console,setTimeout});
+  localStorage.removeItem('maomao_chat_theme_active_v1');
+  listeners['maomao:chat-theme-change']();
+  resolveObjectUrl({ok:true,value:{url:'blob:late-theme-asset',revoke(){revoked++}}});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(revoked,1,'停用后才完成加载的对象 URL 也必须立即释放');
+  assert.equal(attributes.has('data-maomao-chat-theme-active'),false,'迟到的资源加载不能重新激活主题');
+  assert.equal(styleNodes.get('maomao-chat-theme-package-style').textContent,'','迟到的资源加载不能重新写回主题 CSS');
+});
