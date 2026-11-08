@@ -117,6 +117,7 @@
     var items=Array.isArray(theme.assetIndex)?theme.assetIndex.slice():[];
     var refs=theme.assetRefs&&typeof theme.assetRefs==="object"?theme.assetRefs:{};
     var missing=Object.keys(refs).filter(function(path){return !items.some(function(item){return item&&item.path===path})});
+    if(items.length+missing.length>117)return Promise.reject(new Error("主题素材数量超过 117 项限制。"));
     if(!missing.length)return Promise.resolve(items);
     if(missing.some(function(path){return !safeAssetPath(path)}))return Promise.reject(new Error("旧版主题包含无效素材路径。"));
     if(!media||typeof media.listByOwner!=="function")return Promise.reject(new Error("该主题缺少素材清单，当前媒体仓储无法恢复素材元数据。"));
