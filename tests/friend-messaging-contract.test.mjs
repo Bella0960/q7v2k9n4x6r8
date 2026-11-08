@@ -576,6 +576,7 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
     body: { clientMessageId: oldClientMessageId, body: '旧关系里的消息' }
   });
   assert.equal(oldMessage.status, 200);
+  const oldViewVersion = (await asAccount(ctx, alice, '/api/friends/' + bob.userId + '/messages')).payload.viewState.version;
 
   const oldRead = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/read', {
     method: 'POST',
@@ -600,6 +601,7 @@ test('删除并重新添加好友会开启全新聊天关系，不恢复旧消�
   const bobHistory = await asAccount(ctx, bob, '/api/friends/' + alice.userId + '/messages');
   assert.equal(aliceHistory.status, 200);
   assert.equal(bobHistory.status, 200);
+  assert.notEqual(aliceHistory.payload.viewState.version, oldViewVersion, '新好友关系必须改变会话版本，促使仍打开的聊天页重置旧游标');
   assert.deepEqual(aliceHistory.payload.messages, []);
   assert.deepEqual(bobHistory.payload.messages, []);
   assert.equal((await asAccount(ctx, alice, '/api/friends')).payload.friends[0].unreadCount, 0);
