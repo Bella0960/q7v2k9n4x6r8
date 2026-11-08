@@ -181,7 +181,8 @@ export default {
       (url.pathname === '/' || url.pathname.toLowerCase().endsWith('.html'));
     const isPublicAccountDocument = url.pathname === '/account' ||
       url.pathname === '/account/' ||
-      url.pathname === '/account/index.html';
+      url.pathname === '/account/index.html' ||
+      url.pathname === '/account/bootstrap.html';
     let authorizedAccount = null;
     if (isHtmlDocument && !isPublicAccountDocument) {
       if (!env.CLOUD_DB) {
