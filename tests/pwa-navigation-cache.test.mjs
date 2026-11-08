@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v177'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v178'/);
 assert.match(serviceWorker, /friend-chat\.html/);
 assert.match(serviceWorker, /friends-client\.js\?v=friend4/);
 const viteConfig = read('vite.config.js');
