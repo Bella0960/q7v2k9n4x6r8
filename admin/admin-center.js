@@ -248,14 +248,18 @@
     pendingAction = '';
 
     if (account.status === 'pending_invite') {
-      createActionButton('生成专属邀请码', 'primary', 'invite', false);
-      $('detailActions').lastElementChild.addEventListener('click', () => run(async () => {
+      const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
+      inviteButton.type = 'button';
+      inviteButton.addEventListener('click', () => run(async () => {
+        if (!window.confirm('将为 ' + account.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
         const result = await api('/api/admin/invites', 'POST', { targetAccountId: account.id });
         generatedCode = result.invite.code;
         $('generatedCode').textContent = generatedCode;
+        $('copyInviteCode').textContent = '复制邀请码';
         $('inviteCodeSheet').hidden = false;
         await refreshAll();
       }));
+      actions.appendChild(inviteButton);
     } else if (account.status === 'active') {
       createActionButton('停用账号', 'danger', 'disable', true);
     } else if (account.status === 'disabled') {
