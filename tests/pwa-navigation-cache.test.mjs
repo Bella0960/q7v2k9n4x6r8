@@ -40,7 +40,7 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
 test('service worker caches the public account entry but excludes protected app HTML', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.ok(serviceWorker.includes("url === './account/index.html' || !/\\.html"));
+  assert.ok(serviceWorker.includes("url === './account/index.html' || url === './account/bootstrap.html' || !/\\.html"));
   assert.ok(serviceWorker.includes('./shared/js/mao-account-scope.js?v=1'));
   assert.ok(serviceWorker.includes('./account/manage.css'));
   assert.ok(serviceWorker.includes('./account/manage.js'));
