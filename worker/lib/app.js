@@ -418,7 +418,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       throw new ApiError(409, 'ALREADY_FRIENDS', '你们已经是好友了');
     }
     if (result.kind === 'incoming_request_exists') {
-      throw new ApiError(409, 'INCOMING_REQUEST_EXISTS', '对方已经向你发送好友申请，请先在新朋友中处理');
+      throw new ApiError(409, 'INCOMING_REQUEST_EXISTS', '对方已经向你发送好友申请，请先处理好友申请');
     }
     if (result.kind === 'request_conflict') {
       throw new ApiError(409, 'FRIEND_REQUEST_CONFLICT', '好友关系刚刚发生变化，请刷新好友申请后重试');
