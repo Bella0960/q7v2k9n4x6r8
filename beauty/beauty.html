@@ -1091,16 +1091,59 @@ function renderList(){
   }
   box.innerHTML = list.map(function(p, i){
     var isActive = (active[p.target] === p.name);
+    var exportAction = p.target === 'all'
+      ? '<button class="preset-export" type="button" onclick="event.stopPropagation();exportCssPreset('+i+')">导出主题包</button>'
+      : '<span class="preset-export-disabled" title="角色专属预设保持独立，不导出为全局主题">角色专属</span>';
     return '<div class="preset-item '+(isActive?'active':'')+'" onclick="usePreset('+i+')">'+
       '<div class="preset-dot"></div>'+
       '<div class="preset-info">'+
         '<div class="preset-name">'+esc(p.name)+'</div>'+
         '<div class="preset-meta">'+targetLabel(p.target)+(isActive?' · 使用中':'')+'</div>'+
       '</div>'+
+      exportAction+
       '<button class="preset-del" onclick="delPreset(event,'+i+')">×</button>'+
     '</div>';
   }).join('');
 }
+function exportCssPreset(i){
+  var preset = getPresets()[i];
+  if (!preset) { showToast('这个 CSS 预设已经不存在'); return; }
+  if (preset.target !== 'all') { showToast('角色专属预设不能导出为全局主题包'); return; }
+  var format = window.MAOMAOChatThemeFormat;
+  if (!format || typeof format.createPackage !== 'function') { showToast('主题包模块未加载，请刷新页面后重试'); return; }
+  try {
+    var theme = {
+      format: format.FORMAT, schemaVersion: format.VERSION, target: 'maomao-chat',
+      id: 'beauty-css-' + Date.now().toString(36),
+      name: String(preset.name || '聊天 CSS 主题').slice(0, 80), version: '1.0.0',
+      pages: {
+        chatList: ['statusBar','listHeader','coverSpacer','profileStage','musicCard','conversationList','bottomNav'].map(function(id){return{id:id}}),
+        chatDetail: ['detailStatus','detailHeader','detailMenu','messageStage','timeSeparator','receivedBubble','sentBubble','avatar','quoteBar','inputDock','morePanel'].map(function(id){return{id:id}})
+      },
+      styles: {chatList:{},chatDetail:{}}, blocks: {chatList:[],chatDetail:[]},
+      layerOrder: {chatList:[],chatDetail:[]}, motions: [], assetIndex: []
+    };
+    var archive = format.createPackage(theme, preset.css || '', {});
+    var blob = new Blob([archive], {type:'application/zip'});
+    var urlApi = window.URL || window.webkitURL;
+    if (!urlApi || typeof urlApi.createObjectURL !== 'function') throw new Error('当前浏览器不支持主题包下载');
+    var url = urlApi.createObjectURL(blob), link = document.createElement('a');
+    var filename = Array.from(String(preset.name || 'chat-theme')).map(function(ch){
+      var code = ch.charCodeAt(0);
+      return code < 32 || code === 34 || code === 47 || code === 58 || code === 42 || code === 63 || code === 60 || code === 62 || code === 124 || code === 92 ? '_' : ch;
+    }).join('').trim().slice(0,64) || 'chat-theme';
+    link.href = url; link.download = filename + '.maomaotheme'; link.style.display = 'none';
+    document.body.appendChild(link); link.click();
+    if (link.parentNode) link.parentNode.removeChild(link);
+    setTimeout(function(){ try { urlApi.revokeObjectURL(url); } catch (e) {} }, 2000);
+    showToast('主题包已导出：' + filename);
+  } catch (error) {
+    var message = error && error.message ? error.message : String(error);
+    if (message.indexOf('未登记的主题素材') >= 0) message = 'CSS 引用了未随预设保存的素材，请移除该素材引用后再导出。';
+    showToast('导出失败：' + message);
+  }
+}
+
 function esc(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
