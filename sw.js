@@ -134,7 +134,10 @@ self.addEventListener('install', event => {
         // 清单不可用时仍继续安装已有核心资源，不阻塞整个 PWA。
       }
 
-      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
+      // Only the public account entry may be stored as an HTML document.
+      // Account-owned app pages are always fetched through the Worker gate.
+      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
+        .filter(url => url === './account/index.html' || !/\.html(?:\?|$)/i.test(url));
       await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
     }).then(() => self.skipWaiting())
   );
