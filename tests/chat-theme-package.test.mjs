@@ -821,7 +821,7 @@ test('theme CSS rejects global keyframes including comment and escape obfuscatio
     '@keyframes fadeIn{from{opacity:0}to{opacity:1}}',
     '@-webkit-keyframes fadeIn{from{opacity:0}to{opacity:1}}',
     '@key/**/frames fadeIn{from{opacity:0}to{opacity:1}}',
-    String.raw\`@k\\65 yframes fadeIn{from{opacity:0}to{opacity:1}}\`
+    String.raw`@k\65 yframes fadeIn{from{opacity:0}to{opacity:1}}`
   ];
   blocked.forEach(css=>assert.throws(()=>F.validateCss(css),/不允许/));
   assert.doesNotThrow(()=>F.validateCss('.msg-bubble{transition:opacity .2s ease-out}'));
