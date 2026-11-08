@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
-import { MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
+import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
 
@@ -44,6 +44,38 @@ test('旧数据库已经应用 0012 时，新增 0013 可安全补上恢复状�
   assert.ok(
     ctx.query('SELECT version FROM schema_migrations WHERE version = ?', '0013_mao_account_restore_state').length === 1
   );
+});
+
+test('迁移版本号写入失败时，DDL 一并回滚并可安全重试', () => {
+  const db = openTestDb();
+  for (const migration of MIGRATIONS.filter(item => item.version !== '0013_mao_account_restore_state')) {
+    for (const statement of splitSql(migration.sql)) db.exec(statement);
+    db.exec(
+      'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+      migration.version,
+      1
+    );
+  }
+
+  const failingExec = (sql, ...params) => {
+    if (/^\\s*INSERT INTO schema_migrations/i.test(sql) &&
+        params[0] === '0013_mao_account_restore_state') {
+      throw new Error('simulated migration marker write failure');
+    }
+    return db.exec(sql, ...params);
+  };
+  assert.throws(() => applyMigrations(failingExec), /simulated migration marker write failure/);
+  const afterFailure = db.query('PRAGMA table_info(mao_accounts)').map(column => column.name);
+  assert.ok(!afterFailure.includes('disabled_from_status'),
+    '0013 的 ALTER TABLE 必须与迁移记录一起回滚');
+  assert.equal(
+    db.query('SELECT COUNT(*) AS total FROM schema_migrations WHERE version = ?', '0013_mao_account_restore_state')[0].total,
+    0
+  );
+
+  applyMigrations(db.exec);
+  const afterRetry = db.query('PRAGMA table_info(mao_accounts)').map(column => column.name);
+  assert.ok(afterRetry.includes('disabled_from_status'), '迁移回滚后应能完整重试');
 });
 
 test('0012 创建独立 MAO 账号、会话、邀请码与审计表', () => {
