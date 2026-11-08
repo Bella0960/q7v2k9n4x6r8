@@ -54,9 +54,19 @@ function createScope({ accountId, role = 'user', fetchImpl = null }) {
     documentElement: {}
   };
   const storageListeners = [];
+  const defaultFetch = async () => ({
+    ok: true,
+    json: async () => ({ account: { id: accountId, role, status: 'active' } })
+  });
   const window = {
-    location: { replace(url) { window.redirectedTo = url; } },
-    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+    location: {
+      href: 'https://mao.test/index.html',
+      origin: 'https://mao.test',
+      replace(url) { window.redirectedTo = url; }
+    },
+    fetch: fetchImpl || defaultFetch,
+    Headers,
+    URL,
     localStorage: local,
     sessionStorage: session,
     indexedDB: nativeIndexedDB,
@@ -82,6 +92,32 @@ test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命
   a.window.sessionStorage.setItem('active_tab', 'chat');
   assert.equal(a.window.sessionStorage.getItem('active_tab'), 'chat');
   assert.equal(a.session.getItem('active_tab'), 'home', 'sessionStorage 也必须按账号隔离');
+});
+
+test('页面同源 API 请求会自动绑定注入的 MAO 永久 ID', async () => {
+  const requests = [];
+  const accountId = 'MAO-AAAAAAAAAAAA';
+  const a = createScope({
+    accountId,
+    role: 'user',
+    fetchImpl: async (input, init) => {
+      requests.push({ input, headers: new Headers(init && init.headers) });
+      return {
+        ok: true,
+        json: async () => ({ account: { id: accountId, role: 'user', status: 'active' } })
+      };
+    }
+  });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(requests[0].headers.get('x-mao-account-context'), accountId,
+    '会话复核请求也必须携带页面账号上下文');
+
+  await a.window.fetch('/api/accounts/security');
+  assert.equal(requests[1].headers.get('x-mao-account-context'), accountId);
+
+  await a.window.fetch('https://external.example/resource');
+  assert.equal(requests[2].headers.has('x-mao-account-context'), false,
+    '不得给跨域请求增加 MAO 专用头，避免触发不必要的 CORS 预检');
 });
 
 test('同一设备在其他标签页切换 MAO 账号后，旧账号页面必须退出', async () => {
@@ -181,6 +217,8 @@ test('Worker 只对已授权账号页面注入数据命名空间，并禁止缓�
   assert.match(scopeSource, /fetch\('\/api\/accounts\/me'/);
   assert.match(scopeSource, /setInterval\(verifyAccountSession, 30000\)/);
   assert.match(workerSource, /cache-control', 'private, no-store, max-age=0/);
+  assert.match(workerSource, /x-mao-account-context/);
+  assert.match(workerSource, /ACCOUNT_CONTEXT_CHANGED/);
 });
 
 test('Service Worker 按 MAO 会话读取对应账号的字体 CacheStorage，创作者旧缓存名保持兼容', () => {
