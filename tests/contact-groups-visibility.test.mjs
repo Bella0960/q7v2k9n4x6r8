@@ -590,3 +590,54 @@ test('blocked, unblocked, and removed real users never enter a new Moments audie
     'real_user:user-removed'
   ]);
 });
+
+
+test('legacy local contacts stay isolated from signed-in accounts without being deleted', () => {
+  const { api, directory, data } = createRuntime();
+  directory.save({
+    id: 'legacy-local-friend',
+    displayName: '旧版本地好友',
+    status: 'accepted',
+    requestId: 'legacy-local-request',
+    createdAt: 1,
+    updatedAt: 2
+  });
+  api.saveGroups([{
+    id: 'legacy-local-group',
+    name: '旧版本地分组',
+    memberIds: [],
+    memberRefs: ['real_user:legacy-local-friend']
+  }]);
+
+  // Legacy ownerless rows remain available in local mode.
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    directory.getAcceptedRefs().refs.map((ref) => ref.key)
+  )), ['real_user:legacy-local-friend']);
+
+  directory.setActiveAccountId('account-a');
+  assert.deepEqual(JSON.parse(JSON.stringify(directory.getAcceptedRefs().refs)), []);
+  assert.equal(directory.get('legacy-local-friend'), null);
+  const accountASnapshot = api.buildAudienceSnapshot(['legacy-local-group'], [], {
+    availableContactIds: [],
+    availableContactRefs: []
+  });
+  assert.equal(accountASnapshot.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(accountASnapshot.memberRefs)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(accountASnapshot.staleMemberRefs)), [
+    'real_user:legacy-local-friend'
+  ]);
+
+  // Switching to another signed-in account must not expose the same legacy row.
+  directory.setActiveAccountId('account-b');
+  assert.deepEqual(JSON.parse(JSON.stringify(directory.getAcceptedRefs().refs)), []);
+
+  // The original local record is retained and becomes readable again after logout.
+  const stored = JSON.parse(data.get('real_user_contacts_v1'));
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].id, 'legacy-local-friend');
+  assert.equal(stored[0].status, 'accepted');
+  directory.setActiveAccountId('');
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    directory.getAcceptedRefs().refs.map((ref) => ref.key)
+  )), ['real_user:legacy-local-friend']);
+});
