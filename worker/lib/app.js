@@ -425,8 +425,15 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const deviceUserId = String(device.user_id || OWNER_USER_ID);
     if (deviceUserId !== OWNER_USER_ID) {
       const account = await store.getMaoAccountById(deviceUserId);
-      if (!account || account.status !== 'active') {
+      if (!account || account.status === 'disabled' || account.status === 'revoked') {
         throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+      }
+      if (account.status !== 'active') {
+        throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权');
+      }
+      const accountSession = await accountAuth.getAuthenticatedAccount(request);
+      if (!accountSession || accountSession.account_id !== deviceUserId) {
+        throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
       }
     }
     if (device.revoked_at) throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
@@ -479,6 +486,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     // A signed-in, authorized MAO account may enroll another device directly.
     // The permanent account ID becomes the only tenant key for this device.
     const accountSession = await accountAuth.getAuthenticatedAccount(request);
+    if (!accountSession && store.hasMaoSuperAdminAccount()) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录已获授权的 MAO 账号，再添加设备');
+    }
     if (accountSession) {
       if (accountSession.status !== 'active') {
         throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权，请先验证专属邀请码');
