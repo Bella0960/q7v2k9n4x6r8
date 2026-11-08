@@ -165,3 +165,41 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
   const restoreRevoked = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'restore' }, adminCookie);
   assert.equal(restoreRevoked.status, 409, '永久撤销不可恢复');
 });
+
+test('重复错误登录触发持久化限流，窗口过期后恢复并清除失败计数', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: { username: 'rate-user', password: 'rate-user-password-123', confirmPassword: 'rate-user-password-123' }
+  });
+  assert.equal(registered.status, 201);
+
+  for (let index = 0; index < 7; index += 1) {
+    const failed = await ctx.asJson('/api/accounts/login', {
+      method: 'POST',
+      body: { identifier: 'rate-user', password: 'incorrect-password-123' }
+    });
+    assert.equal(failed.status, 401);
+  }
+  const eighth = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'rate-user', password: 'incorrect-password-123' }
+  });
+  assert.equal(eighth.status, 429);
+  const stillBlocked = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'rate-user', password: 'rate-user-password-123' }
+  });
+  assert.equal(stillBlocked.status, 429, '封锁期间正确密码也不能绕过限流');
+
+  const later = ctx.now() + 15 * 60 * 1000 + 1;
+  ctx.timestamps.push(later);
+  const recovered = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'rate-user', password: 'rate-user-password-123' }
+  });
+  assert.equal(recovered.status, 200);
+  const limits = ctx.query('SELECT COUNT(*) AS total FROM mao_login_rate_limits');
+  assert.equal(Number(limits[0].total), 0, '成功登录后清除该来源的失败计数');
+});
