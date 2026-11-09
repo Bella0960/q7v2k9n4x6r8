@@ -615,6 +615,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         targetAccountId: record.target_account_id,
         action: record.action,
         reason: String(detail.reason || ''),
+        fromStatus: detail.fromStatus == null ? null : String(detail.fromStatus),
+        toStatus: detail.toStatus == null ? null : String(detail.toStatus),
         inviteId: detail.inviteId == null ? null : String(detail.inviteId),
         sourceAction: detail.sourceAction == null ? null : String(detail.sourceAction),
         expiresAt: detail.expiresAt == null ? null : Number(detail.expiresAt),
