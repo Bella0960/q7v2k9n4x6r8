@@ -26,6 +26,8 @@ test('MAO 欢迎页遵循已确认的静态白底灰兔与单次渐变标题设�
   assert.match(html, /id="creatorContactButton"/);
   assert.match(html, /class="creator-contact-link"/);
   assert.match(css, /\.hero-avatar-frame\s*\{[^}]*background:\s*#fff/i);
+  assert.doesNotMatch(css, /\.hero-avatar\s*\{[^}]*animation:/,
+    'the bunny avatar itself must remain static');
   assert.match(css, /\.welcome-title\s*\{[^}]*linear-gradient/i);
   assert.match(css, /@keyframes welcomeReveal/);
   assert.doesNotMatch(css, /bunnyFloat|orbitDrift|pointPulse/,
