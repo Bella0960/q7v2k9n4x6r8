@@ -37,12 +37,22 @@ function createScope({ accountId, role = 'user', fetchImpl = null }) {
   const nativeCaches = {
     open(name) {
       cacheNames.push(name);
-      return Promise.resolve({ name, match: async key => name.includes(encodeURIComponent(accountId)) ? 'private-match' : null });
+      return Promise.resolve({
+        name,
+        match: async key => name.includes(encodeURIComponent(accountId)) ? 'private-match' : null,
+        matchAll: async (key, options) => name.includes(encodeURIComponent(accountId)) ? ['private-match:' + accountId] : ['foreign-cache-match']
+      });
     },
     delete(name) { cacheCalls.push(['delete', name]); return Promise.resolve(true); },
     has(name) { cacheCalls.push(['has', name]); return Promise.resolve(true); },
     keys() { return Promise.resolve(cacheNames.slice()); },
-    match() { return Promise.resolve('native-global-match'); }
+    match() { return Promise.resolve('native-global-match'); },
+    matchAll(request, options) {
+      cacheCalls.push(['matchAll', options && options.cacheName]);
+      return Promise.resolve(options && String(options.cacheName || '').includes(encodeURIComponent(accountId))
+        ? ['explicit-scoped-match']
+        : ['foreign-global-cache-match']);
+    }
   };
   const document = {
     querySelector(selector) {
@@ -219,6 +229,19 @@ test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互�
   assert.match(a.cacheNames[0], /MAO-AAAAAAAAAAAA.*font-assets/);
   assert.match(b.cacheNames[0], /MAO-BBBBBBBBBBBB.*font-assets/);
   assert.notEqual(a.cacheNames[0], b.cacheNames[0]);
+
+  const allA = await a.window.caches.matchAll('/private-resource');
+  assert.deepEqual(allA, ['private-match:MAO-AAAAAAAAAAAA'],
+    '无 cacheName 的 matchAll 必须逐个遍历当前账号缓存，不能委托给全域原生 matchAll');
+  assert.equal(a.cacheCalls.some(call => call[0] === 'matchAll'), false,
+    '无 cacheName 查询不得调用会搜索全域缓存的原生 CacheStorage.matchAll');
+
+  const namedA = await a.window.caches.matchAll('/private-resource', { cacheName: 'font-assets' });
+  assert.deepEqual(namedA, ['explicit-scoped-match']);
+  const namedCall = a.cacheCalls.find(call => call[0] === 'matchAll');
+  assert.ok(namedCall);
+  assert.match(namedCall[1], /MAO-AAAAAAAAAAAA.*font-assets/,
+    '指定 cacheName 也必须自动加上当前 MAO 前缀');
 });
 
 test('唯一超级管理员继续使用创作者现有本地数据，不迁移或清空旧数据', () => {
