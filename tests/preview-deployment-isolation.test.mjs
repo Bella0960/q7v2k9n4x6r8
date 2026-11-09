@@ -53,6 +53,13 @@ test('preview workflow only deploys the account-auth branch with dedicated crede
   assert.match(workflow, /MAO_PREVIEW_DEVICE_SECRET_PEPPER/);
   assert.match(workflow, /MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET/);
   assert.match(workflow, /wrangler\.preview\.jsonc/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /id: deploy-preview/);
+  assert.match(workflow, /steps\.deploy-preview\.outputs\.deployment-url/);
+  assert.match(workflow, /Smoke-test the deployed preview and publish its phone link/);
+  assert.match(workflow, /\/api\/admin\/bootstrap\/status/);
+  assert.match(workflow, /Unauthenticated admin page should redirect/);
+  assert.match(workflow, /GITHUB_STEP_SUMMARY/);
   assert.doesNotMatch(workflow, /wrangler\.jsonc(?!\w)/,
     'the preview workflow must not deploy the production config');
 });
