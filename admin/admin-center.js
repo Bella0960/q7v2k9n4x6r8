@@ -606,12 +606,26 @@
         const actionLabel = ({
           disable: '停用账号',
           restore: '恢复授权',
-          revoke: '永久撤销'
+          revoke: '永久撤销',
+          invite_create: '生成专属邀请码',
+          invite_revoke: '撤销专属邀请码'
         })[record.action] || record.action;
+        const subline = [
+          formatTime(record.createdAt),
+          '管理员 ' + record.actorAccountId
+        ];
+        if (record.inviteId) subline.push('邀请码记录 ' + record.inviteId);
+        if (record.expiresAt) subline.push('到期 ' + formatTime(record.expiresAt));
+        if (record.maxUses != null) {
+          subline.push('使用次数 ' + Number(record.usedCount || 0) + '/' + Number(record.maxUses || 1));
+        }
         item.append(
           el('div', 'audit-title', actionLabel),
-          el('div', 'audit-sub', formatTime(record.createdAt) + ' · 管理员 ' + record.actorAccountId),
-          el('div', 'audit-reason', record.reason ? '备注：' + record.reason : '未填写备注')
+          el('div', 'audit-sub', subline.join(' · ')),
+          el('div', 'audit-reason', record.reason ? '备注：' + record.reason :
+            (record.action === 'invite_create' || record.action === 'invite_revoke'
+              ? '仅记录邀请码管理事件，不保存邀请码明文。'
+              : '未填写备注'))
         );
         list.appendChild(item);
       });
