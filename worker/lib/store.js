@@ -230,7 +230,13 @@ class CloudStore {
   }
 
   touchDevice(deviceId, now) {
-    this.exec('UPDATE devices SET last_seen_at = ? WHERE id = ?', now, deviceId);
+    // A last-seen refresh may follow an asynchronous authentication read.
+    // Never update a row after another request has revoked the device.
+    this.exec(
+      'UPDATE devices SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL',
+      now,
+      deviceId
+    );
   }
 
   revokeDevice(deviceId, now) {
