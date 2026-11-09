@@ -23,6 +23,9 @@
   let auditHasMore = false;
   let auditTotalCount = 0;
   let auditLoadedCount = 0;
+  let auditRequestSequence = 0;
+  let accountSearchRefreshPending = false;
+  let inviteSearchRefreshPending = false;
   let pendingAction = '';
   let generatedCode = '';
   let busy = false;
@@ -148,6 +151,18 @@
     } finally {
       busy = false;
       setButtonsDisabled(false);
+      const reloadAccounts = accountSearchRefreshPending;
+      const reloadInvites = inviteSearchRefreshPending;
+      accountSearchRefreshPending = false;
+      inviteSearchRefreshPending = false;
+      if (reloadAccounts || reloadInvites) {
+        window.setTimeout(() => run(async () => {
+          await Promise.all([
+            reloadAccounts ? loadAccountPage(true) : Promise.resolve(),
+            reloadInvites ? loadInvitePage(true) : Promise.resolve()
+          ]);
+        }), 0);
+      }
     }
   }
 
@@ -492,6 +507,7 @@
   }
 
   async function loadAudit(accountId, reset = true) {
+    const requestSequence = ++auditRequestSequence;
     const list = $('auditList');
     if (reset) {
       auditNextCursor = '';
@@ -510,7 +526,7 @@
       const result = await api(
         '/api/admin/accounts/' + encodeURIComponent(accountId) + '/audit?' + params.toString()
       );
-      if (selectedAccountId !== accountId) return;
+      if (selectedAccountId !== accountId || requestSequence !== auditRequestSequence) return;
       const records = Array.isArray(result.records) ? result.records : [];
       if (reset) list.replaceChildren();
       if (!records.length && reset) {
@@ -537,7 +553,7 @@
       $('auditResultCount').textContent = '已加载 ' + auditLoadedCount + ' / ' + auditTotalCount + ' 条管理记录';
       $('loadMoreAudit').hidden = !auditHasMore;
     } catch (error) {
-      if (selectedAccountId !== accountId) return;
+      if (selectedAccountId !== accountId || requestSequence !== auditRequestSequence) return;
       if (error.code === 'ACCOUNT_DISABLED') {
         window.location.replace('/account/index.html?disabled=1');
         return;
@@ -557,6 +573,7 @@
 
   function closeDetail() {
     selectedAccountId = '';
+    auditRequestSequence += 1;
     $('accountDetail').hidden = true;
     $('reasonField').hidden = true;
   }
@@ -608,11 +625,23 @@
   });
   $('accountSearch').addEventListener('input', () => {
     window.clearTimeout(accountSearchTimer);
-    accountSearchTimer = window.setTimeout(() => run(() => loadAccountPage(true)), 250);
+    accountSearchTimer = window.setTimeout(() => {
+      if (busy) {
+        accountSearchRefreshPending = true;
+        return;
+      }
+      run(() => loadAccountPage(true));
+    }, 250);
   });
   $('inviteSearch').addEventListener('input', () => {
     window.clearTimeout(inviteSearchTimer);
-    inviteSearchTimer = window.setTimeout(() => run(() => loadInvitePage(true)), 250);
+    inviteSearchTimer = window.setTimeout(() => {
+      if (busy) {
+        inviteSearchRefreshPending = true;
+        return;
+      }
+      run(() => loadInvitePage(true));
+    }, 250);
   });
   document.querySelectorAll('[data-account-filter]').forEach(button => {
     button.addEventListener('click', () => {
