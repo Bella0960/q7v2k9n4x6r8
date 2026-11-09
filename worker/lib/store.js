@@ -32,7 +32,7 @@ function buildMaoAuditFilter({ search = '', type = 'all', cursor = null, since =
   const clauses = [];
   const params = [];
   if (type === 'account') {
-    clauses.push(column('action') + " IN ('disable', 'restore', 'revoke')");
+    clauses.push(column('action') + " IN ('account_register', 'admin_bootstrap', 'disable', 'restore', 'revoke')");
   } else if (type === 'invite') {
     clauses.push(column('action') + " IN ('invite_create', 'invite_redeem', 'invite_revoke')");
   }
@@ -2575,7 +2575,7 @@ class CloudStore {
   getMaoAccountAuditSummary() {
     const row = this.exec(
       `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN action IN ('disable', 'restore', 'revoke') THEN 1 ELSE 0 END) AS accountActions,
+              SUM(CASE WHEN action IN ('account_register', 'admin_bootstrap', 'disable', 'restore', 'revoke') THEN 1 ELSE 0 END) AS accountActions,
               SUM(CASE WHEN action IN ('invite_create', 'invite_redeem', 'invite_revoke') THEN 1 ELSE 0 END) AS inviteActions
        FROM mao_account_audit`
     )[0] || {};
