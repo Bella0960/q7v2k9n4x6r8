@@ -246,6 +246,10 @@ test('全局操作审计视图使用服务器搜索、类别筛选和游标分�
   assert.match(adminScript, /globalAuditSearchRefreshPending/);
   assert.match(adminScript, /globalAuditSummary|globalAuditAccountActions/);
   assert.match(adminScript, /查看账号详情/);
+  assert.match(adminScript, /account_register: '账号注册创建'/);
+  assert.match(adminScript, /admin_bootstrap: '创作者首次初始化'/);
+  assert.match(adminScript, /record\.actorType === 'system'/);
+
   assert.match(adminScript, /loadMoreGlobalAudit'\)\.addEventListener/);
   assert.match(adminCss, /\.global-audit-entry/);
   assert.match(adminCss, /\.policy-item/);
