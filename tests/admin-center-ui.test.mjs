@@ -103,25 +103,33 @@ test('search edits during another admin request are queued instead of silently d
   assert.match(adminScript, /if \(busy\) \{\s*inviteSearchRefreshPending = true/);
 });
 
-test('账号详情从服务端按 MAO ID 核对有效邀请码，失败时禁止误显示发码操作', () => {
+test('账号详情使用服务端权威状态与邀请码快照，查询失败时禁止误操作', () => {
   assert.match(adminScript, /let accountDetailRequestSequence = 0/);
   assert.match(adminScript, /const detailRequestSequence = \+\+accountDetailRequestSequence/);
-  assert.match(adminScript, /\/active-invite/);
-  assert.match(adminScript, /正在核对当前邀请码/);
-  assert.match(adminScript, /暂时无法核对邀请码状态/);
-  assert.match(adminScript, /为避免重复发码，暂不显示生成按钮/);
+  assert.match(adminScript, /\/detail/);
+  assert.match(adminScript, /const currentAccount = snapshot\?\.account/);
+  assert.match(adminScript, /const activeInvite = snapshot\.invite \|\| null/);
+  assert.match(adminScript, /暂时无法核对账号状态/);
+  assert.match(adminScript, /为避免依据旧状态误发邀请码/);
   assert.match(adminScript, /retryButton\.addEventListener\('click', \(\) => renderAccountDetail\(account\)\)/);
   assert.match(adminScript, /accountDetailRequestSequence \+= 1/);
-  assert.doesNotMatch(adminScript, /function findActiveInviteForAccount/);
+  assert.doesNotMatch(adminScript, /\/active-invite/,
+    '页面不应再把列表缓存状态与第二个邀请码请求拼成详情');
+
   const start = adminScript.indexOf('  async function renderAccountDetail(account) {');
   const end = adminScript.indexOf('  async function loadAudit(accountId, reset = true) {', start);
   assert.ok(start >= 0 && end > start, 'account detail renderer must exist');
   const detail = adminScript.slice(start, end);
-  assert.match(detail, /selectedAccountId !== account\.id/);
+  assert.match(detail, /selectedAccountId !== accountId/);
   assert.match(detail, /detailRequestSequence !== accountDetailRequestSequence/);
-  assert.ok(detail.indexOf('/active-invite') < detail.indexOf('catch (error)'),
-    'the account-specific lookup must finish before showing a generate action');
+  assert.ok(detail.indexOf('/detail') < detail.indexOf('const currentAccount = snapshot?.account'),
+    'the server detail snapshot must be read before account state is rendered');
+  assert.match(detail, /if \(currentAccount\.status === 'pending_invite'\)[\s\S]*snapshot\.invite/);
   assert.match(detail, /if \(activeInvite\)[\s\S]*撤销当前邀请码[\s\S]*else[\s\S]*生成专属邀请码/);
+  assert.match(detail, /if \(currentAccount\.status === 'active'\)/);
+  assert.match(detail, /if \(currentAccount\.status === 'disabled'\)/);
+  assert.match(detail, /if \(currentAccount\.status === 'revoked'\)/);
+  assert.match(detail, /if \(busy\) setButtonsDisabled\(true\);\s*await loadAudit\(currentAccount\.id\)/);
 });
 
 test('only the latest audit request may update the currently open account detail', () => {
