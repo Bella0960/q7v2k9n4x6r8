@@ -2239,7 +2239,7 @@ test('账号停用时邀请码撤销与状态变更共同回滚，不留下半�
 });
 
 
-test('永久撤销账号会撤销已验证 QQ 邮箱绑定的邀请码，且不能恢复账号', async () => {
+test('永久撤销账号会撤销邮箱变更前签发的 QQ 邮箱邀请码，且不能恢复账号', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
   const admin = await ctx.fetchTo('/api/admin/bootstrap', {
@@ -2276,6 +2276,15 @@ test('永久撤销账号会撤销已验证 QQ 邮箱绑定的邀请码，且不�
   assert.equal(invite.payload.invite.targetAccountId, null);
   assert.equal(invite.payload.invite.targetEmail, 'verified-owner@qq.com');
 
+  const changedEmail = ctx.store.updateMaoAccountEmail(
+    accountId,
+    'changed-owner@qq.com',
+    ctx.now()
+  );
+  assert.equal(changedEmail.qq_email, 'changed-owner@qq.com');
+  assert.equal(changedEmail.qq_email_verified_at, null,
+    '更换 QQ 邮箱后旧邮箱必须失去已验证状态');
+
   const revoked = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
     action: 'revoke',
     reason: '永久撤销后邮箱邀请码也必须失效'
@@ -2285,7 +2294,7 @@ test('永久撤销账号会撤销已验证 QQ 邮箱绑定的邀请码，且不�
   assert.notEqual(
     ctx.query('SELECT revoked_at FROM mao_invite_codes WHERE id = ?', invite.payload.invite.id)[0].revoked_at,
     null,
-    '永久撤销账号时必须撤销绑定到其已验证 QQ 邮箱的邀请码'
+    '即使账号已经更换并取消验证旧邮箱，也必须撤销历史绑定邀请码'
   );
   const emailAudit = await json(await ctx.fetchTo(
     '/api/admin/accounts/' + accountId + '/audit',
@@ -2305,6 +2314,68 @@ test('永久撤销账号会撤销已验证 QQ 邮箱绑定的邀请码，且不�
   assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', accountId)[0].status, 'revoked');
 });
 
+
+test('邮箱变更并取消验证后，临时停用仍会撤销历史邮箱邀请码', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'changed-email-pending',
+      password: 'changed-email-pending-password-123',
+      confirmPassword: 'changed-email-pending-password-123',
+      qqEmail: 'before-change@qq.com'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+  ctx.store.exec(
+    'UPDATE mao_accounts SET qq_email_verified_at = ? WHERE id = ?',
+    ctx.now(), accountId
+  );
+
+  const invite = await post(ctx, '/api/admin/invites', {
+    targetEmail: 'before-change@qq.com'
+  }, adminCookie);
+  assert.equal(invite.status, 201);
+  const inviteId = invite.payload.invite.id;
+
+  const changed = ctx.store.updateMaoAccountEmail(accountId, 'after-change@qq.com', ctx.now());
+  assert.equal(changed.qq_email, 'after-change@qq.com');
+  assert.equal(changed.qq_email_verified_at, null);
+
+  const disabled = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'disable',
+    reason: '邮箱更新后暂停待授权账号'
+  }, adminCookie);
+  assert.equal(disabled.status, 200);
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM mao_invite_codes WHERE id = ?', inviteId)[0].revoked_at,
+    null,
+    '系统应通过 invite_create 历史归属定位旧邮箱邀请码，而不是只查当前邮箱'
+  );
+
+  const audit = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + accountId + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.ok(audit.payload.records.some(record =>
+    record.action === 'invite_revoke' &&
+    record.inviteId === inviteId &&
+    record.targetAccountId === accountId &&
+    record.sourceAction === 'disable'
+  ), '旧邮箱邀请码自动撤销事件必须仍记录在原账号时间线');
+});
 
 test('0014 adds ordered cursor indexes for the admin account and invitation directories', () => {
   const db = openTestDb();
