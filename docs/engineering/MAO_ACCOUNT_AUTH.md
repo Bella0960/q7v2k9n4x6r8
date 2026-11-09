@@ -57,9 +57,9 @@ QQ email may be recorded on registration. Once an account's QQ mailbox is marked
 
 Only a session whose account role is super_admin may call the admin actions.
 
-- disable: block login, revoke all sessions and all device credentials, disable push subscriptions, clear live presence/leases and supersede pending autonomous tasks.
-- restore: restore a temporarily disabled account. Previously revoked device credentials remain revoked; the user must log in and enroll a new device.
-- revoke: permanently revoke authorization. This state cannot be restored.
+- disable: block login, revoke all sessions and all device credentials, disable push subscriptions, clear live presence/leases, supersede pending autonomous tasks, and revoke every unused invitation bound to the account (including an email invitation bound to its verified QQ mailbox).
+- restore: restore a temporarily disabled account. Previously revoked device credentials and invitations remain revoked; a pending account must receive a newly generated one-time invitation, and the user must enroll a new device.
+- revoke: permanently revoke authorization and every unused invitation bound to the account. This state cannot be restored.
 
 The account row and its associated data are retained. Admin audit records retain the actor, action, target and optional reason. Audit and reason endpoints are admin-only.
 
@@ -106,7 +106,7 @@ Temporary account disable remembers whether the account was `pending_invite` or 
 
 The eight-per-hour registration cap is also checked in the account INSERT statement, not only in an earlier read, so concurrent requests cannot all pass the pre-check and exceed the quota.
 The creator management API loads up to 500 ordinary accounts and the 500 newest invitation records in the first release. Both lists now show an explicit limit notice when 500 records are loaded, so the displayed set is not mistaken for a complete history. Cursor pagination is required before exceeding either limit.
-Invitation issuance re-checks the one-active-code rule under a write transaction, and redemption consumes the code plus activates the account atomically. Current-password verification for password changes has its own IP/account-scoped 15-minute rate limit. Password rotation and revocation of all other sessions commit in one transaction; if session revocation fails, the password change rolls back too.
+Invitation issuance re-checks both target eligibility (pending_invite) and the one-active-code rule under a write transaction. Disabling or permanently revoking an account atomically revokes its unused account-ID and verified-email invitations alongside sessions, devices and related state. A concurrent invitation request that passed its early route check but loses a race to account suspension is rejected by the storage-layer eligibility check. Redemption consumes the code plus activates the account atomically. Current-password verification for password changes has its own IP/account-scoped 15-minute rate limit. Password rotation and revocation of all other sessions commit in one transaction; if session revocation fails, the password change rolls back too.
 In Cloudflare Durable Objects, account lifecycle, invitation, legacy-owner adoption, and schema migrations use the native `storage.transactionSync` boundary. The Node SQLite test adapter uses explicit SQL transactions behind the same store abstraction.
 
 ## Service Worker cache boundaries
