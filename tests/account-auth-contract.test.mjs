@@ -202,6 +202,23 @@ test('所有 API 写请求都必须来自精确同源页面，跨来源和缺少
   assert.equal(missingOrigin.status, 403);
   assert.equal(missingOrigin.payload.error.code, 'ORIGIN_REQUIRED');
 
+  const explicitCrossOriginHeaders = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    headers: {
+      origin: 'https://attacker.test',
+      'sec-fetch-site': 'cross-site'
+    },
+    body: {
+      username: 'origin-explicit-header-user',
+      password: 'origin-explicit-header-user-password-123',
+      confirmPassword: 'origin-explicit-header-user-password-123'
+    }
+  });
+  assert.equal(explicitCrossOriginHeaders.status, 403,
+    '测试 Mock 必须保留调用方显式传入的 Origin，不能覆盖成默认同源值');
+  assert.equal(explicitCrossOriginHeaders.payload.error.code, 'CROSS_ORIGIN_REQUEST_BLOCKED');
+  assert.equal(ctx.store.getMaoAccountByIdentifier('origin-explicit-header-user'), null);
+
   const mismatchedFetchMetadata = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     origin: 'https://mao.test',
