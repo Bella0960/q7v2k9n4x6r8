@@ -682,7 +682,12 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       authKey: validated.authKey,
       expirationTime: validated.expirationTime,
       now: timestamp
+    }, {
+      maxSubscriptions: MAX_SUBSCRIPTIONS_PER_DEVICE
     });
+    if (result?.limitReached) {
+      throw new ApiError(409, 'SUBSCRIPTION_LIMIT', '该设备订阅数量已达上限');
+    }
     if (!result) {
       const currentDevice = await store.getDevice(device.id);
       if (!currentDevice || currentDevice.revoked_at) {
