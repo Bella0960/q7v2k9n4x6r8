@@ -2,8 +2,61 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
-import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
+import { openTestDb, setupTestStore, createTestRequestHeaders } from './helpers/cloud-helpers.mjs';
 import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
+
+test('账号契约测试 Mock 对请求来源头的默认值、保留、覆盖与移除行为彼此独立', () => {
+  const defaults = createTestRequestHeaders();
+  assert.equal(defaults.get('origin'), 'https://mao.test');
+  assert.equal(defaults.get('sec-fetch-site'), 'same-origin');
+  assert.equal(defaults.get('cf-connecting-ip'), '203.0.113.1');
+
+  const preserved = createTestRequestHeaders({
+    headers: {
+      origin: 'https://attacker.test',
+      'sec-fetch-site': 'cross-site'
+    }
+  });
+  assert.equal(preserved.get('origin'), 'https://attacker.test',
+    '调用方显式传入的 Origin 不得被 Mock 的默认值覆盖');
+  assert.equal(preserved.get('sec-fetch-site'), 'cross-site',
+    '调用方显式传入的 Fetch Metadata 不得被 Mock 的默认值覆盖');
+
+  const overridden = createTestRequestHeaders({
+    headers: {
+      origin: 'https://attacker.test',
+      'sec-fetch-site': 'cross-site'
+    },
+    origin: 'https://mao.test',
+    fetchSite: 'same-origin'
+  });
+  assert.equal(overridden.get('origin'), 'https://mao.test');
+  assert.equal(overridden.get('sec-fetch-site'), 'same-origin');
+
+  const originRemoved = createTestRequestHeaders({
+    headers: {
+      origin: 'https://mao.test',
+      'sec-fetch-site': 'same-origin'
+    },
+    origin: false
+  });
+  assert.equal(originRemoved.has('origin'), false,
+    'origin:false 必须只移除 Origin');
+  assert.equal(originRemoved.get('sec-fetch-site'), 'same-origin',
+    '移除 Origin 不得顺带移除 Fetch Metadata');
+
+  const fetchSiteRemoved = createTestRequestHeaders({
+    headers: {
+      origin: 'https://mao.test',
+      'sec-fetch-site': 'same-origin'
+    },
+    fetchSite: false
+  });
+  assert.equal(fetchSiteRemoved.get('origin'), 'https://mao.test',
+    '移除 Fetch Metadata 不得顺带移除 Origin');
+  assert.equal(fetchSiteRemoved.has('sec-fetch-site'), false,
+    'fetchSite:false 必须只移除 Sec-Fetch-Site');
+});
 
 test('MAO 欢迎页遵循已确认的静态白底灰兔与单次渐变标题设计', () => {
   const html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8');
