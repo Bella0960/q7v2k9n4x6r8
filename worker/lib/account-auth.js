@@ -3,6 +3,10 @@ import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './
 
 const SESSION_COOKIE = 'MAO_SESSION';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_IP_MAX_ATTEMPTS = 40;
+const LOGIN_ACCOUNT_IP_MAX_ATTEMPTS = 8;
+const LOGIN_RATE_RETENTION_MS = 60 * 60 * 1000;
 const PASSWORD_ITERATIONS = 210000;
 const USERNAME_RE = /^[\p{L}\p{N}_-]{2,24}$/u;
 const ACCOUNT_ID_RE = /^MAO-[A-Z0-9]{12,24}$/;
@@ -282,27 +286,59 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       throw new ApiError(503, 'ACCOUNT_SECURITY_NOT_CONFIGURED', '账号安全服务尚未完成配置');
     }
     const ip = String(request.headers.get('cf-connecting-ip') || 'unavailable');
-    const ipHash = await sha256Hex('mao-login|' + pepper + '|' + ip);
-    if (store.getMaoLoginRateLimit(ipHash, now()).blocked) {
+    const ipRateLimitKey = await sha256Hex('mao-login|' + pepper + '|' + ip);
+    const rateLimitTimestamp = now();
+    // The IP bucket is an aggregate safety ceiling for shared networks. Its
+    // count is never cleared by one user's successful login.
+    store.cleanupMaoLoginRateLimits(rateLimitTimestamp, LOGIN_RATE_RETENTION_MS);
+    if (store.getMaoLoginRateLimit(ipRateLimitKey, rateLimitTimestamp, LOGIN_RATE_WINDOW_MS).blocked) {
       throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
     }
 
     const account = store.getMaoAccountByIdentifier(identifier);
+    // Resolve aliases (username, permanent MAO ID, verified email) to the same
+    // account bucket. Unknown identifiers use their normalized input so they
+    // receive the same failure cadence without storing plaintext identifiers.
+    const accountBucketIdentity = account?.id || identifier.toLowerCase();
+    const accountIpRateLimitKey = await sha256Hex(
+      'mao-login-account-ip|' + pepper + '|' + accountBucketIdentity + '|' + ip
+    );
+    if (store.getMaoLoginRateLimit(accountIpRateLimitKey, rateLimitTimestamp, LOGIN_RATE_WINDOW_MS).blocked) {
+      throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
+    }
+
+    const recordLoginFailure = () => {
+      const failedAt = now();
+      const ipFailure = store.recordMaoLoginFailure(ipRateLimitKey, failedAt, {
+        windowMs: LOGIN_RATE_WINDOW_MS,
+        maxAttempts: LOGIN_IP_MAX_ATTEMPTS
+      });
+      const accountIpFailure = store.recordMaoLoginFailure(accountIpRateLimitKey, failedAt, {
+        windowMs: LOGIN_RATE_WINDOW_MS,
+        maxAttempts: LOGIN_ACCOUNT_IP_MAX_ATTEMPTS
+      });
+      return ipFailure.blocked || accountIpFailure.blocked;
+    };
+
     if (!account) {
       // Spend comparable password-hash work for unknown identifiers to reduce
       // account enumeration through response timing.
       await passwordDigest(password, 'AAAAAAAAAAAAAAAAAAAAAA');
-      const failed = store.recordMaoLoginFailure(ipHash, now());
-      if (failed.blocked) throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
+      if (recordLoginFailure()) {
+        throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
+      }
       throw new ApiError(401, 'LOGIN_FAILED', '账号或密码不正确');
     }
     const actual = await passwordDigest(password, account.password_salt);
     if (!timingSafeEqualHex(actual, account.password_hash)) {
-      const failed = store.recordMaoLoginFailure(ipHash, now());
-      if (failed.blocked) throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
+      if (recordLoginFailure()) {
+        throw new ApiError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请 15 分钟后再试');
+      }
       throw new ApiError(401, 'LOGIN_FAILED', '账号或密码不正确');
     }
-    store.clearMaoLoginRateLimit(ipHash);
+    // A successful login clears only this account + this IP's failure bucket.
+    // The shared IP aggregate deliberately survives until its window expires.
+    store.clearMaoLoginRateLimit(accountIpRateLimitKey);
     if (account.status === 'disabled' || account.status === 'revoked') {
       throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
     }
