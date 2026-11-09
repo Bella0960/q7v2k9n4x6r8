@@ -684,9 +684,11 @@
         const actorLabel = record.action === 'invite_redeem' || record.action === 'account_register'
           ? '账号 '
           : (record.action === 'admin_bootstrap' ? '系统 ' : '管理员 ');
+        const actorId = record.actorAccountId ||
+          (record.action === 'admin_bootstrap' ? '自动记录' : '未知');
         const subline = [
           formatTime(record.createdAt),
-          actorLabel + record.actorAccountId
+          actorLabel + actorId
         ];
         if (record.fromStatus && record.toStatus) {
           subline.push('状态从 ' + statusText(record.fromStatus) + ' 调整为 ' + statusText(record.toStatus));
@@ -755,7 +757,8 @@
   function renderGlobalAuditRecord(record) {
     const item = el('details', 'global-audit-entry', '');
     const summary = el('summary', '', '');
-    const actorId = String(record.actorAccountId || '未知');
+    const actorId = String(record.actorAccountId ||
+      (record.actorType === 'system' ? '自动记录' : '未知'));
     const actorName = String(record.actorUsername || '');
     const actorPrefix = record.actorType === 'account'
       ? '账号'
