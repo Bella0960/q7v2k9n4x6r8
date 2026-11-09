@@ -5,18 +5,25 @@ import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 
-test('MAO 欢迎页移除左上角旧品牌标记并显示已存档的小兔子图片', () => {
+test('MAO 欢迎页使用精致的动态兔子主视觉且移除旧品牌标记', () => {
   const html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../account/account.css', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /class="brand-mark"|class="brand-name"/,
     '欢迎页不再显示左上角方框 M 和 MAO 字标');
   assert.match(html, /class="brand-caption">ACCOUNT ACCESS/);
-  assert.match(html, /src="\.\.\/assets\/mao-bunny-192\.png"/,
-    '欢迎卡片应恢复项目中已存档的小兔子图片');
+  assert.match(html, /class="hero-art"/);
+  assert.match(html, /class="hero-bunny" src="\.\.\/assets\/mao-bunny-192\.png"/,
+    '兔子图片应成为欢迎页主视觉');
+  assert.match(html, /class="hero-orbit hero-orbit-one"/);
+  assert.match(html, /class="welcome-card-copy"/);
   assert.doesNotMatch(html, /<svg viewBox="0 0 48 48">/,
-    '欢迎卡片不应继续使用旧的笑脸 SVG');
-  assert.match(css, /\.brand-row\s*\{[^}]*justify-content:\s*flex-end/);
-  assert.match(css, /\.welcome-symbol img\s*\{[^}]*object-fit:\s*contain/);
+    '欢迎页不应继续使用旧的笑脸 SVG');
+  assert.match(css, /@keyframes bunnyFloat/);
+  assert.match(css, /@keyframes orbitDrift/);
+  assert.match(css, /@keyframes panelEnter/);
+  assert.match(css, /\.hero-bunny\s*\{[^}]*animation:\s*bunnyFloat/);
+  assert.match(css, /\.hero-orbit-one\s*\{[^}]*animation:\s*orbitDrift/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
 
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
