@@ -14,6 +14,8 @@ on:
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/cloud-push-contract.test.mjs'
       - 'tests/font-runtime-performance.test.mjs'
+      - 'tests/helpers/**'
+      - 'scripts/check-syntax.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'vite.config.js'
@@ -46,7 +48,3 @@ jobs:
       - name: Run complete MAO account security and regression gates
         run: npm run test:accounts:all
 
-      - name: Verify desktop compatibility and Service Worker cache boundaries
-        run: |
-          npm run test:desktop:layout
-          npm run test:pwa:navigation
