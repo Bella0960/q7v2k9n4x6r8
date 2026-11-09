@@ -1928,6 +1928,32 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
   }
 
+  function assertSameOriginMutation(request) {
+    const method = request.method.toUpperCase();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+
+    const requestOrigin = new URL(request.url).origin;
+    const originHeader = String(request.headers.get('origin') || '').trim();
+    if (!originHeader) {
+      throw new ApiError(403, 'ORIGIN_REQUIRED', '写入请求缺少可信来源信息');
+    }
+
+    let suppliedOrigin = '';
+    try {
+      suppliedOrigin = new URL(originHeader).origin;
+    } catch {
+      throw new ApiError(403, 'CROSS_ORIGIN_REQUEST_BLOCKED', '写入请求来源无效');
+    }
+    if (suppliedOrigin !== requestOrigin) {
+      throw new ApiError(403, 'CROSS_ORIGIN_REQUEST_BLOCKED', '已拒绝跨来源写入请求');
+    }
+
+    const fetchSite = String(request.headers.get('sec-fetch-site') || '').trim().toLowerCase();
+    if (fetchSite && fetchSite !== 'same-origin') {
+      throw new ApiError(403, 'CROSS_ORIGIN_REQUEST_BLOCKED', '已拒绝非同源浏览器请求');
+    }
+  }
+
   async function assertAccountPageContext(request, path) {
     const pageAccountId = String(request.headers.get('x-mao-account-context') || '').trim();
     const contextOptionalPaths = new Set([
@@ -1969,6 +1995,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const path = url.pathname.replace(/\/+$/, '');
     const method = request.method.toUpperCase();
     try {
+      assertSameOriginMutation(request);
       await assertAccountPageContext(request, path);
       const accountResponse = await accountAuth.handle(request, path, method);
       if (accountResponse) return accountResponse;
