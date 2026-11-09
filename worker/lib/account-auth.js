@@ -550,7 +550,12 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     await requireActiveAdmin(request);
     const account = store.getMaoAccountById(accountId);
     if (!account) throw new ApiError(404, 'ACCOUNT_NOT_FOUND', '账号不存在');
-    const records = store.listMaoAccountAudit(accountId).map(record => {
+    const options = adminDirectoryOptions(request, ['all'], /^audit_[A-Za-z0-9_-]{8,80}$/);
+    const rows = store.listMaoAccountAudit(accountId, options);
+    const hasMore = rows.length > options.limit;
+    const pageRecords = rows.slice(0, options.limit);
+    const last = pageRecords[pageRecords.length - 1] || null;
+    const records = pageRecords.map(record => {
       let detail = {};
       try { detail = JSON.parse(String(record.detail_json || '{}')); } catch {}
       return {
@@ -562,7 +567,15 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         createdAt: Number(record.created_at)
       };
     });
-    return ok({ records });
+    return ok({
+      records,
+      page: {
+        limit: options.limit,
+        totalCount: store.countMaoAccountAudit(accountId),
+        hasMore,
+        nextCursor: hasMore && last ? String(last.created_at) + ':' + last.id : null
+      }
+    });
   }
 
   async function accountAction(request, accountId) {
