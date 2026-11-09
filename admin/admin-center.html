@@ -75,16 +75,15 @@
       <div class="detail-id"><div class="detail-id-copy"><span>MAO 永久 ID</span><strong id="detailId">—</strong></div><button type="button" class="copy-detail-id" id="copyDetailId">复制 ID</button></div>
       <div class="detail-meta" id="detailMeta"></div>
       <div class="invite-status" id="accountInviteStatus" hidden></div>
-      <div class="action-stack" id="detailActions"></div>
-      <div class="reason-field" id="reasonField" hidden>
-        <label for="actionReason">管理员备注（仅管理员可见）</label>
-        <textarea id="actionReason" rows="3" maxlength="500" placeholder="填写本次管理操作的备注"></textarea>
-        <div class="reason-actions"><button type="button" id="cancelAction">取消</button><button type="button" id="confirmAction">确认操作</button></div>
-      </div>
       <div class="audit-heading"><h3>管理记录</h3><span>PRIVATE AUDIT</span></div>
       <p class="results-count audit-result-count" id="auditResultCount" aria-live="polite">正在读取记录…</p>
       <div class="audit-list" id="auditList"><p class="empty-note">正在读取记录…</p></div>
       <button class="directory-more audit-more" id="loadMoreAudit" type="button" hidden>加载更多管理记录</button>
+      <div class="danger-zone">
+        <div class="danger-zone-heading">账号操作</div>
+        <p>以下操作会影响账号使用资格，请仔细核对后再执行。</p>
+        <div class="action-stack" id="detailActions"></div>
+      </div>
     </section>
 
     <section class="code-sheet" id="inviteCodeSheet" hidden>
@@ -95,7 +94,22 @@
       <p class="helper-note">此邀请码已绑定目标 MAO 永久 ID，只能成功使用一次。</p>
     </section>
 
-    <p class="admin-footer">仅超级管理员可访问 · 所有操作由服务器记录</p>
+    <p class="admin-footer">仅管理员可访问 · 所有操作由服务器记录</p>
   </main>
+  <dialog id="adminConfirmDialog" class="admin-confirm-dialog" aria-labelledby="adminConfirmTitle" aria-describedby="adminConfirmDescription">
+    <div class="admin-confirm-content">
+      <div class="eyebrow">CONFIRM ACTION</div>
+      <h2 id="adminConfirmTitle">请确认操作</h2>
+      <p id="adminConfirmDescription"></p>
+      <div class="admin-confirm-reason" id="adminConfirmReasonField" hidden>
+        <label for="adminConfirmReason">管理员备注（仅管理员可见）</label>
+        <textarea id="adminConfirmReason" rows="3" maxlength="500" placeholder="可填写本次操作的备注"></textarea>
+      </div>
+      <div class="admin-confirm-actions">
+        <button type="button" id="adminConfirmCancel">取消</button>
+        <button type="button" id="adminConfirmSubmit" class="danger">确认操作</button>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>
