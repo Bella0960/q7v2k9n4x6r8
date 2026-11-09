@@ -17,19 +17,15 @@
 
     <section class="panel welcome-panel" id="welcomePanel">
       <div class="welcome-heading">
-        <div class="eyebrow"><span class="eyebrow-dot"></span> A SPACE OF YOUR OWN <span class="welcome-index">01 / 04</span></div>
-        <div class="hero-art" aria-hidden="true">
-          <span class="hero-orbit hero-orbit-one"></span>
-          <span class="hero-orbit hero-orbit-two"></span>
-          <span class="hero-art-label hero-art-label-left">PRIVATE<br>BY DESIGN</span>
-          <span class="hero-art-label hero-art-label-right">EST. MAO<br>NO. 001</span>
-          <span class="hero-red-point"></span>
-          <img class="hero-bunny" src="../assets/mao-bunny-192.png" alt="" width="128" height="128" decoding="async">
-          <span class="hero-art-line"></span>
+        <div class="eyebrow welcome-eyebrow">PRIVATE SPACE</div>
+        <div class="hero-avatar" aria-hidden="true">
+          <div class="hero-avatar-frame">
+            <img class="hero-bunny" src="../assets/mao-bunny-192.png" alt="" width="88" height="88" decoding="async">
+          </div>
+          <span class="hero-avatar-caption">A QUIET LITTLE DETAIL</span>
         </div>
-        <div class="hero-kicker">WELCOME TO YOUR SPACE</div>
-        <h1>欢迎来到<br><span>你的 MAO。</span></h1>
-        <p class="lead">为自己留一处空间，记录喜欢的日常。</p>
+        <h1 class="welcome-title">欢迎使用 MAO</h1>
+        <p class="lead welcome-lead">给日常留一处只属于自己的空间。</p>
       </div>
       <div class="welcome-content">
         <div class="welcome-card">
@@ -38,23 +34,37 @@
             <strong>属于你的独立空间</strong>
             <span>账号身份与使用授权分别管理</span>
           </div>
-          <span class="card-index">01<span>—</span>01</span>
+          
         </div>
-        <button class="primary-button" type="button" data-show="registerPanel">创建账号 <span class="button-arrow" aria-hidden="true">↗</span></button>
+        <button class="primary-button" type="button" data-show="registerPanel">创建账号</button>
         <button class="text-button" type="button" data-show="loginPanel">已有账号？<strong>登录</strong></button>
         <div class="bottom-note"><span></span> 未经创作者授权的账号无法进入 MAO <span></span></div>
       </div>
     </section>
 
     <section class="panel form-panel" id="registerPanel" hidden>
-      <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">←</button>
+      <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">返回</button>
       <div class="eyebrow">CREATE ACCOUNT · 02</div>
       <h1>创建账号</h1>
       <p class="lead">先建立你的永久身份，再完成邀请码验证。</p>
       <form id="registerForm" novalidate>
         <label>用户名<input name="username" autocomplete="username" minlength="2" maxlength="24" required placeholder="设置用户名"></label>
-        <label>登录密码<input name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="至少 10 位"></label>
-        <label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="再次输入密码"></label>
+        <label>登录密码
+          <span class="password-field">
+            <input id="registerPassword" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="至少 10 位">
+            <button class="password-toggle" type="button" data-password-toggle data-target="registerPassword" aria-label="显示密码" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="eye-slash" d="M3 3 21 21"/></svg>
+            </button>
+          </span>
+        </label>
+        <label>确认密码
+          <span class="password-field">
+            <input id="registerConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="再次输入密码">
+            <button class="password-toggle" type="button" data-password-toggle data-target="registerConfirmPassword" aria-label="显示密码" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="eye-slash" d="M3 3 21 21"/></svg>
+            </button>
+          </span>
+        </label>
         <label>QQ 邮箱 <span class="optional">选填</span><input name="qqEmail" type="email" autocomplete="email" placeholder="用于后续账号验证"></label>
         <div class="notice-line">
           <span class="red-mark">!</span>
@@ -68,12 +78,19 @@
 
     <section class="panel form-panel" id="loginPanel" hidden>
       <button class="back-button" type="button" data-show="welcomePanel" aria-label="返回">←</button>
-      <div class="eyebrow">SIGN IN · 03</div>
-      <h1>登录 MAO</h1>
-      <p class="lead">使用用户名或永久 ID 登录。</p>
+      <div class="eyebrow">SIGN IN</div>
+      <h1>欢迎回来。</h1>
+      <p class="lead">登录你的 MAO 独立账号，继续进入专属空间。</p>
       <form id="loginForm" novalidate>
-        <label>账号<input name="identifier" autocomplete="username" required placeholder="用户名 / MAO 永久 ID"></label>
-        <label>密码<input name="password" type="password" autocomplete="current-password" required placeholder="输入登录密码"></label>
+        <label>用户名 / MAO 永久 ID<input name="identifier" autocomplete="username" required placeholder="请输入用户名或 MAO ID"></label>
+        <label>登录密码
+          <span class="password-field">
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="请输入登录密码">
+            <button class="password-toggle" type="button" data-password-toggle data-target="loginPassword" aria-label="显示密码" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="eye-slash" d="M3 3 21 21"/></svg>
+            </button>
+          </span>
+        </label>
         <button class="primary-button" type="submit">登录</button>
         <p class="form-error" id="loginError" role="alert" aria-live="polite"></p>
       </form>
@@ -81,7 +98,7 @@
     </section>
 
     <section class="panel form-panel" id="invitePanel" hidden>
-      <button class="back-button" type="button" data-show="loginPanel" aria-label="返回">←</button>
+      <button class="back-button" type="button" data-show="loginPanel" aria-label="返回">返回</button>
       <div class="eyebrow">INVITATION · 04</div>
       <h1>邀请码验证</h1>
       <p class="lead">你的永久 ID 已创建。请使用管理员发放给你的专属邀请码完成授权。</p>
@@ -94,13 +111,13 @@
         <label>专属邀请码<input name="inviteCode" autocomplete="one-time-code" required maxlength="128" placeholder="输入管理员发放的随机邀请码"></label>
         <div class="notice-line">
           <span class="red-mark">!</span>
-          <span>邀请码由唯一超级管理员生成，并绑定指定账号。不得转售或转让。</span>
+          <span>邀请码由管理员发放，并绑定指定账号。不得转售或转让。</span>
           <button class="notice-link" type="button" data-legal>授权说明</button>
         </div>
         <button class="primary-button" type="submit">验证并获得授权</button>
         <p class="form-error" id="inviteError" role="alert" aria-live="polite"></p>
       </form>
-      <p class="quiet-note">还没有邀请码？请联系 MAO 创作者本人申请。</p>
+      <p class="quiet-note">还没有邀请码？ <button class="creator-contact-link" id="creatorContactButton" type="button">请联系创作者</button></p>
     </section>
 
     <section class="panel state-panel" id="authorizedPanel" hidden>
@@ -112,7 +129,7 @@
         <span>MAO 永久 ID</span>
         <strong id="authorizedAccountId">—</strong>
       </div>
-      <button class="primary-button" type="button" id="enterMao">进入 MAO <span aria-hidden="true">→</span></button>
+      <button class="primary-button" type="button" id="enterMao">进入 MAO</button>
     </section>
 
     <section class="panel state-panel" id="blockedPanel" hidden>
@@ -131,6 +148,13 @@
     <p>禁止对 MAO 使用资格进行二次转售、出租、转让或以其他方式向未获授权者提供。</p>
     <p>未经授权购买资格的用户，请联系创作者本人核实处理。邀请码不得转交给绑定对象以外的账号使用。</p>
     <button class="primary-button" type="button" id="confirmLegal">我已了解</button>
+  </dialog>
+  <dialog id="creatorContactDialog" class="legal-dialog" aria-labelledby="creatorContactTitle">
+    <button class="dialog-close" type="button" id="closeCreatorContact" aria-label="关闭">×</button>
+    <div class="eyebrow">CONTACT CREATOR</div>
+    <h2 id="creatorContactTitle">联系创作者</h2>
+    <p>创作者联系方式尚未配置。收到联系方式后，这里会显示可直接联系的入口。</p>
+    <button class="primary-button" type="button" id="confirmCreatorContact">我知道了</button>
   </dialog>
   <a id="creatorBootstrapLink" class="creator-bootstrap-link" href="./bootstrap.html" hidden>创作者首次初始化</a>
   <footer class="page-footer">MAO <span>·</span> PRIVATE ACCOUNT ACCESS</footer>
