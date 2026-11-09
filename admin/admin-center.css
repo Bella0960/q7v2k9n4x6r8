@@ -123,6 +123,8 @@ h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .audit-summary-row strong{display:block;margin-top:4px;color:#292b30;font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}
 .audit-filter-row{display:flex;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;padding:0 0 2px;margin:0 0 8px;scrollbar-width:none}
 .audit-filter-row::-webkit-scrollbar{display:none}
+.audit-range-row{display:flex;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;padding:0 0 2px;margin:0 0 8px;scrollbar-width:none}
+.audit-range-row::-webkit-scrollbar{display:none}
 .global-audit-list{padding:0 14px}
 .global-audit-entry{padding:13px 0;border-bottom:1px solid #f0f0f2}
 .global-audit-entry:last-child{border-bottom:0}
