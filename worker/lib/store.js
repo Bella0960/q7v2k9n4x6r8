@@ -2732,12 +2732,28 @@ class CloudStore {
     accountId, keepSessionId, passwordSalt, passwordHash, now
   }) {
     return this.transaction(() => {
+      // The handler performs asynchronous password hashing after it first
+      // authenticates the caller. Revalidate the account and exact current
+      // session in the same UPDATE that commits the new password, so a session
+      // revoked or an account disabled during hashing cannot finish the change.
       const updated = this.exec(
-        "UPDATE mao_accounts SET password_salt = ?, password_hash = ?, updated_at = ? WHERE id = ? RETURNING id",
+        `UPDATE mao_accounts
+         SET password_salt = ?, password_hash = ?, updated_at = ?
+         WHERE id = ? AND status = 'active'
+           AND EXISTS (
+             SELECT 1 FROM mao_account_sessions s
+             WHERE s.id = ?
+               AND s.account_id = mao_accounts.id
+               AND s.revoked_at IS NULL
+               AND s.expires_at > ?
+           )
+         RETURNING id`,
         passwordSalt,
         passwordHash,
         now,
-        accountId
+        accountId,
+        keepSessionId,
+        now
       )[0];
       if (!updated) return false;
 
