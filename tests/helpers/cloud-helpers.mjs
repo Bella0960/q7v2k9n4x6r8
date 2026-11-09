@@ -6,6 +6,33 @@ import { createApp } from '../../worker/lib/app.js';
 import { ApiError, fail, ok } from '../../worker/lib/http.js';
 
 /**
+ * Build deterministic request headers for contract tests.
+ *
+ * Caller-supplied security headers are preserved by default. Explicit
+ * origin/fetchSite options override them, and false removes them.
+ */
+export function createTestRequestHeaders(options = {}) {
+  const {
+    headers: suppliedHeaders,
+    ip = '203.0.113.1',
+    origin,
+    fetchSite
+  } = options;
+  const headers = new Headers(suppliedHeaders || {});
+  headers.set('cf-connecting-ip', ip);
+
+  if (origin === false) headers.delete('origin');
+  else if (typeof origin === 'string') headers.set('origin', origin);
+  else if (!headers.has('origin')) headers.set('origin', 'https://mao.test');
+
+  if (fetchSite === false) headers.delete('sec-fetch-site');
+  else if (typeof fetchSite === 'string') headers.set('sec-fetch-site', fetchSite);
+  else if (!headers.has('sec-fetch-site')) headers.set('sec-fetch-site', 'same-origin');
+
+  return headers;
+}
+
+/**
  * 契约测试存储：node:sqlite 跑真实 SQL + 真实迁移。
  * 共享同一数据库实例，便于验证"幂等插入不产生重复记录"这类跨调用行为。
  */
@@ -45,16 +72,8 @@ export function setupTestStore(testDb, env = {}) {
   });
 
   const fetchTo = async (path, options = {}) => {
-    const { method = 'GET', device, body, ip = '203.0.113.1', accountContext = true,
-      origin, fetchSite } = options;
-    const headers = new Headers(options.headers || {});
-    headers.set('cf-connecting-ip', ip);
-    if (origin === false) headers.delete('origin');
-    else if (typeof origin === 'string') headers.set('origin', origin);
-    else if (!headers.has('origin')) headers.set('origin', 'https://mao.test');
-    if (fetchSite === false) headers.delete('sec-fetch-site');
-    else if (typeof fetchSite === 'string') headers.set('sec-fetch-site', fetchSite);
-    else if (!headers.has('sec-fetch-site')) headers.set('sec-fetch-site', 'same-origin');
+    const { method = 'GET', device, body, accountContext = true } = options;
+    const headers = createTestRequestHeaders(options);
     if (device) headers.set('x-device-auth', `${device.deviceId}.${device.secret}`);
 
     // Browser pages receive an account-context fetch wrapper from the Worker.
