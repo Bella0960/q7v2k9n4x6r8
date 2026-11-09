@@ -104,14 +104,15 @@ jobs:
             "Creator bootstrap: $previewUrl/account/bootstrap.html"
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
+          $curlCommand = if ($IsWindows) { 'curl.exe' } else { 'curl' }
           $accountPage = Join-Path $env:RUNNER_TEMP 'mao-preview-account-entry.html'
-          $bootstrapPage = Join-Path $env:TEMP 'mao-preview-bootstrap.html'
-          & curl.exe --fail --silent --show-error "$previewUrl/account/index.html" --output $accountPage
+          $bootstrapPage = Join-Path $env:RUNNER_TEMP 'mao-preview-bootstrap.html'
+          & $curlCommand --fail --silent --show-error "$previewUrl/account/index.html" --output $accountPage
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & curl.exe --fail --silent --show-error "$previewUrl/account/bootstrap.html" --output $bootstrapPage
+          & $curlCommand --fail --silent --show-error "$previewUrl/account/bootstrap.html" --output $bootstrapPage
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          $statusJson = & curl.exe --fail --silent --show-error "$previewUrl/api/admin/bootstrap/status"
+          $statusJson = & $curlCommand --fail --silent --show-error "$previewUrl/api/admin/bootstrap/status"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bootstrapStatus = $statusJson | ConvertFrom-Json
           if ($bootstrapStatus.ok -ne $true -or $bootstrapStatus.initialized -isnot [bool]) {
@@ -119,7 +120,7 @@ jobs:
           }
           Write-Output ("Preview bootstrap endpoint: reachable; initialized=" + $bootstrapStatus.initialized)
 
-          $adminStatus = & curl.exe --silent --show-error --output (Join-Path $env:TEMP 'mao-preview-admin-response.html') --write-out '%{http_code}' "$previewUrl/admin/admin-center.html"
+          $adminStatus = & $curlCommand --silent --show-error --output (Join-Path $env:RUNNER_TEMP 'mao-preview-admin-response.html') --write-out '%{http_code}' "$previewUrl/admin/admin-center.html"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($adminStatus.Trim() -ne '302') {
             throw "Unauthenticated admin page should redirect to account entry (expected 302, got $adminStatus)"
