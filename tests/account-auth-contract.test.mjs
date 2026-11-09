@@ -2730,6 +2730,20 @@ test('全局管理审计支持服务端筛选、搜索、游标分页并只返�
   assert.equal(next.payload.records.length, 1);
   assert.equal(next.payload.page.hasMore, false);
 
+  const timeRangeResponse = await ctx.fetchTo('/api/admin/audit?since=0&type=all', {
+    headers: { cookie: adminCookie }
+  });
+  const timeRangeResult = await json(timeRangeResponse);
+  assert.equal(timeRangeResult.status, 200);
+  assert.equal(timeRangeResult.payload.page.totalCount, 3,
+    'server-side timestamp filtering must preserve all records newer than the Unix epoch');
+
+  const invalidTimeRange = await ctx.fetchTo('/api/admin/audit?since=9007199254740992', {
+    headers: { cookie: adminCookie }
+  });
+  assert.equal(invalidTimeRange.status, 400);
+  assert.equal((await json(invalidTimeRange)).payload.error.code, 'INVALID_AUDIT_RANGE');
+
   const inviteResponse = await ctx.fetchTo('/api/admin/audit?type=invite&search=' + encodeURIComponent(inviteId), {
     headers: { cookie: adminCookie }
   });
