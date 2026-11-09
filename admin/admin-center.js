@@ -30,6 +30,8 @@
   let inviteSearchRefreshPending = false;
   let globalAuditSearchRefreshPending = false;
   let globalAuditFilter = 'all';
+  let globalAuditRange = 'all';
+  let globalAuditSince = null;
   let globalAuditDirectoryKey = '';
   let globalAuditNextCursor = '';
   let globalAuditHasMore = false;
@@ -796,7 +798,7 @@
 
   async function loadGlobalAudit(reset = true) {
     const search = String($('globalAuditSearch').value || '').trim();
-    const key = JSON.stringify([search, globalAuditFilter]);
+    const key = JSON.stringify([search, globalAuditFilter, globalAuditRange, globalAuditSince]);
     const restart = reset || key !== globalAuditDirectoryKey;
     const cursor = restart ? '' : globalAuditNextCursor;
     const requestSequence = ++globalAuditRequestSequence;
@@ -813,6 +815,7 @@
     params.set('limit', '50');
     params.set('type', globalAuditFilter);
     if (search) params.set('search', search);
+    if (globalAuditSince != null) params.set('since', String(globalAuditSince));
     if (cursor) params.set('cursor', cursor);
     try {
       const result = await api('/api/admin/audit?' + params.toString());
@@ -947,7 +950,27 @@
       run(() => loadGlobalAudit(true));
     });
   });
-  $('refreshGlobalAudit').addEventListener('click', () => run(() => loadGlobalAudit(true)));
+  document.querySelectorAll('[data-audit-range]').forEach(button => {
+    button.addEventListener('click', () => {
+      globalAuditRange = button.dataset.auditRange || 'all';
+      if (globalAuditRange === 'today') {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        globalAuditSince = start.getTime();
+      } else if (globalAuditRange === '7d') {
+        globalAuditSince = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      } else {
+        globalAuditSince = null;
+      }
+      document.querySelectorAll('[data-audit-range]').forEach(item => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      run(() => loadGlobalAudit(true));
+    });
+  });
+    $('refreshGlobalAudit').addEventListener('click', () => run(() => loadGlobalAudit(true)));
   $('loadMoreGlobalAudit').addEventListener('click', () => run(() => loadGlobalAudit(false)));
 
   document.querySelectorAll('[data-account-filter]').forEach(button => {
