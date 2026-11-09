@@ -2207,18 +2207,20 @@ class CloudStore {
       if (!invite) return false;
 
       let targetAccountId = invite.target_account_id || null;
-      if (!targetAccountId && invite.target_email) {
-        const owner = this.findVerifiedMaoEmail(String(invite.target_email).toLowerCase());
-        targetAccountId = owner?.id || null;
-      }
-      // The creation audit remembers the original target even if the verified
-      // mailbox was later changed or unverified.
+      // Prefer the original account captured when the invitation was issued.
+      // A verified mailbox may later be changed or reassigned to another user.
       if (!targetAccountId) {
         const creation = this.exec(
           "SELECT target_account_id FROM mao_account_audit WHERE action = 'invite_create' AND instr(detail_json, ?) > 0 ORDER BY created_at DESC, id DESC LIMIT 1",
           '"inviteId":"' + String(inviteId) + '"'
         )[0];
         targetAccountId = creation?.target_account_id || null;
+      }
+      // Older invitations predate invite audit events; retain a verified-email
+      // fallback for those records.
+      if (!targetAccountId && invite.target_email) {
+        const owner = this.findVerifiedMaoEmail(String(invite.target_email).toLowerCase());
+        targetAccountId = owner?.id || null;
       }
 
       const revoked = this.exec(
