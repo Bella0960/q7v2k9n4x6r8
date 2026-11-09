@@ -498,11 +498,30 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         }
       }
       if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
-      await store.updateDeviceProfile(deviceId, {
-        label: String(body.label || '').slice(0, 64),
-        platform: String(body.platform || '').slice(0, 64)
-      });
-      await store.touchDevice(deviceId, timestamp);
+      const refreshed = await store.refreshActiveDeviceProfile(
+        deviceId,
+        existingUserId,
+        existing.secret_hash,
+        {
+          label: String(body.label || '').slice(0, 64),
+          platform: String(body.platform || '').slice(0, 64),
+          now: timestamp
+        }
+      );
+      if (!refreshed) {
+        const current = await store.getDevice(deviceId);
+        if (!current) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
+        if (current.revoked_at) {
+          throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
+        }
+        if (
+          String(current.user_id || OWNER_USER_ID) !== existingUserId ||
+          !timingSafeEqualHex(String(current.secret_hash || ''), String(existing.secret_hash || ''))
+        ) {
+          throw new ApiError(409, 'DEVICE_CONFLICT', '设备授权状态已变化，请重新连接');
+        }
+        throw new ApiError(409, 'DEVICE_STATE_CHANGED', '设备状态已变化，请重新尝试连接');
+      }
       return ok({ device: { id: deviceId, createdAt: Number(existing.created_at), reenrolled: true } });
     }
 
