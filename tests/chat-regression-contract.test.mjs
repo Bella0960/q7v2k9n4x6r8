@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import worker from '../worker.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
@@ -1876,16 +1877,60 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
 });
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
-  const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\/\/.*\n/, ''));
-  const worker = read('worker.js');
+  // wrangler.jsonc allows // comments; strip every full-line comment so parsing does not
+  // depend on the checkout line endings (core.autocrlf=true checks out CRLF on Windows).
+  const wranglerConfig = JSON.parse(read('wrangler.jsonc')
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join('\n'));
+  const workerSource = read('worker.js');
 
   assert.equal(wranglerConfig.main, 'worker.js');
   assert.equal(wranglerConfig.assets.binding, 'ASSETS');
   assert.equal(wranglerConfig.assets.html_handling, 'none');
   assert.equal(wranglerConfig.assets.run_worker_first, true);
-  assert.match(worker, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
-  assert.match(worker, /return env\.ASSETS\.fetch\(request\)/,
+  assert.match(workerSource, /url\.pathname === "\/"[\s\S]*?new URL\("\/index\.html", url\)/);
+  assert.match(workerSource, /return env\.ASSETS\.fetch\(request\)/,
     'non-root app routes must be passed through unchanged instead of falling back to index.html');
+});
+
+test('Cloudflare Worker rewrites only GET / and forwards every other path untouched', async () => {
+  const assetsRequests = [];
+  const env = {
+    ASSETS: {
+      fetch: async (request) => {
+        assetsRequests.push(new URL(request.url));
+        return new Response('asset', { status: 200 });
+      },
+    },
+  };
+
+  const dispatch = async (pathname, method = 'GET') => {
+    assetsRequests.length = 0;
+    const response = await worker.fetch(new Request(`https://example.com${pathname}`, { method }), env);
+    assert.equal(response.status, 200);
+    assert.equal(assetsRequests.length, 1, 'each request must reach ASSETS exactly once');
+    return assetsRequests[0].pathname;
+  };
+
+  assert.equal(await dispatch('/'), '/index.html',
+    'the site root must be mapped to the desktop index');
+
+  for (const pathname of [
+    '/index.html',
+    '/chat/chat/chat.html',
+    '/settings/settings.html',
+    '/shared/js/nav.js',
+    '/shared/css/mobile-fit.css',
+    '/unknown-path',
+  ]) {
+    assert.equal(await dispatch(pathname), pathname,
+      `${pathname} must be passed through unchanged, not rewritten to /index.html`);
+  }
+
+  assert.equal(await dispatch('/', 'POST'), '/',
+    'non-GET root requests must not be rewritten to the desktop index');
 });
 
 
