@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
-import { randomToken, base64UrlToBytes } from '../worker/lib/crypto.js';
+import { randomToken, base64UrlToBytes, sha256Hex } from '../worker/lib/crypto.js';
 import {
   buildVapidAuthorization,
   encryptPayload,
@@ -92,7 +92,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多设备消息回执结构', async () => {
+test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多设备消息回执结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -160,7 +160,7 @@ test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 11);
+  assert.equal(versions.length, 16);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -172,14 +172,21 @@ test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多�
     '0008_context_source_device',
     '0009_activity_result_staging',
     '0010_outbound_lifecycle_receipts',
-    '0011_outbound_device_receipts'
+    '0011_outbound_device_receipts',
+    '0012_mao_accounts',
+    '0013_mao_account_restore_state',
+    '0014_mao_admin_directory_indexes',
+    '0015_mao_account_audit_cursor',
+    '0016_mao_global_audit_cursor'
   ]);
 });
 
 test('0011 迁移为历史消息保留来源设备回执，新设备仍可独立接管', () => {
   const legacy = openTestDb();
   legacy.exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
-  for (const migration of MIGRATIONS.slice(0, -1)) {
+  const receiptsMigrationIndex = MIGRATIONS.findIndex(item => item.version === '0011_outbound_device_receipts');
+  assert.ok(receiptsMigrationIndex >= 0);
+  for (const migration of MIGRATIONS.slice(0, receiptsMigrationIndex)) {
     for (const statement of splitSql(migration.sql)) legacy.exec(statement);
     legacy.exec(
       'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
@@ -201,13 +208,13 @@ test('0011 迁移为历史消息保留来源设备回执，新设备仍可独立
        'legacy-dedupe', 20, 30, 'delivered', 25, 30, 35, 'legacy-device')`
   );
 
-  const migration = MIGRATIONS[MIGRATIONS.length - 1];
+  const migration = MIGRATIONS[receiptsMigrationIndex];
   for (const statement of splitSql(migration.sql)) legacy.exec(statement);
   const receipt = legacy.query(
     'SELECT user_id, device_id, character_id, device_received_at, local_saved_at, read_at FROM outbound_device_receipts WHERE server_message_id = ?',
     'legacy_message_123456'
   )[0];
-  assert.deepEqual(receipt, {
+  assert.deepEqual({ ...receipt }, {
     user_id: 'owner',
     device_id: 'legacy-device',
     character_id: 'char-a',
@@ -229,19 +236,19 @@ test('推送投递迁移只恢复历史临时失败，不重放成功与永久�
     );
   }
   legacy.exec(
-    \`INSERT INTO push_deliveries
+    `INSERT INTO push_deliveries
       (id, dedupe_key, subscription_id, status, http_status, created_at)
-     VALUES ('legacy-5xx', 'legacy-5xx', 'sub-1', 'failed', 503, 100)\`
+     VALUES ('legacy-5xx', 'legacy-5xx', 'sub-1', 'failed', 503, 100)`
   );
   legacy.exec(
-    \`INSERT INTO push_deliveries
+    `INSERT INTO push_deliveries
       (id, dedupe_key, subscription_id, status, http_status, created_at)
-     VALUES ('legacy-400', 'legacy-400', 'sub-2', 'failed', 400, 200)\`
+     VALUES ('legacy-400', 'legacy-400', 'sub-2', 'failed', 400, 200)`
   );
   legacy.exec(
-    \`INSERT INTO push_deliveries
+    `INSERT INTO push_deliveries
       (id, dedupe_key, subscription_id, status, http_status, created_at)
-     VALUES ('legacy-sent', 'legacy-sent', 'sub-3', 'sent', 201, 300)\`
+     VALUES ('legacy-sent', 'legacy-sent', 'sub-3', 'sent', 201, 300)`
   );
 
   const applied = applyMigrations(legacy.exec, 999);
@@ -544,7 +551,10 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.equal(readiness.payload.contextVersionReady, true);
   assert.equal(readiness.payload.contextVersionTrackedRoles, 1);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
-  assert.deepEqual(readiness.payload.autonomyExecutionBlockers, ['executor_unavailable']);
+  assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
+    'activity_executor_config_missing',
+    'device_local_model_runtime_not_verified'
+  ]);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
   assert.equal(snapshot.contextVersion, 2);
@@ -932,7 +942,7 @@ test('独立云端推送页暴露设备配对入口，客户端提供一次性�
   assert.ok(presenceClientStart >= 0 && presenceClientEnd > presenceClientStart,
     '必须存在可独立核对的角色前台状态管理器');
   const presenceClientSource = clientSource.slice(presenceClientStart, presenceClientEnd);
-  assert.ok(presenceClientSource.includes("if (document.visibilityState === 'hidden') return;"),
+  assert.ok(presenceClientSource.includes("document.visibilityState === 'hidden') return;"),
     '隐藏标签页不能覆盖设备级前台心跳');
   assert.equal(presenceClientSource.includes('updatePresenceHeartbeat(false)'), false,
     '设备级在线状态必须依靠心跳 TTL 过期，不能由单个标签页写离线');
@@ -1339,6 +1349,7 @@ test('停止前台管理器会中止当前标签页的在途请求', async () =>
   });
 
   const manager = await browserWindow.MaomaoCloud.startCharacterPresence('role-123');
+  await new Promise(resolve => setTimeout(resolve, 0));
   intervalCallback();
   await secondHeartbeatStarted;
   manager.stop();
@@ -1632,7 +1643,8 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readiness.payload.contextVersionTrackedRoles, 0);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
-    'executor_unavailable',
+    'activity_executor_config_missing',
+    'device_local_model_runtime_not_verified',
     'context_version_unavailable'
   ]);
   assert.deepEqual(readiness.payload.recentSchedulerReasons, [
@@ -1802,9 +1814,19 @@ test('readiness 的在线设备与前台租约计数按账号、心跳 TTL 和 g
   const revokedDevice = makeDevice();
   const futureDevice = makeDevice();
   await registerDevice(ctx, activeDevice);
-  await registerDevice(ctx, staleDevice);
-  await registerDevice(ctx, revokedDevice);
-  await registerDevice(ctx, futureDevice);
+  const registerPairedDevice = async device => {
+    const pairing = await ctx.asJson('/api/devices/pairing-token', {
+      method: 'POST', device: activeDevice
+    });
+    assert.equal(pairing.status, 200);
+    const registered = await registerDevice(ctx, device, {
+      pairingToken: pairing.payload.pairingToken
+    });
+    assert.equal(registered.status, 200);
+  };
+  await registerPairedDevice(staleDevice);
+  await registerPairedDevice(revokedDevice);
+  await registerPairedDevice(futureDevice);
 
   ctx.store.upsertDevicePresence({
     userId: 'owner',
@@ -2737,7 +2759,7 @@ test('CSS 字体请求按 URL 中的 MAO ID 取缓存，并拒绝其他账号 Co
   assert.deepEqual(bob.cacheNamesOpened, [],
     'B 登录态不能打开或查找 A 的字体缓存');
   assert.equal(
-    bob.authRequests[0].init.headers['x-mao-account-context'],
+    bob.authRequests[0].init.headers.get('x-mao-account-context'),
     accountA,
     '字体路径中的账号 ID 必须和服务器会话一起核对'
   );
@@ -2765,7 +2787,7 @@ test('客户端代码不含任何私钥或 API Key 字面量', async () => {
   assert.ok(cloudSettings.includes('cloud-push-client.js'), '独立云端推送页必须加载原云连接客户端');
 
   const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
-  assert.ok(serviceWorker.includes("'./shared/js/cloud-push-client.js'"), 'PWA 必须预缓存云连接客户端');
+  assert.ok(serviceWorker.includes('./shared/js/cloud-push-client.js'), 'PWA 必须预缓存云连接客户端');
 });
 
 
@@ -3157,13 +3179,13 @@ test('同账号其他设备可接管未确认消息，设备回执互不覆盖�
   const otherPairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device: deviceA });
   assert.equal(otherPairing.status, 200);
   await registerDevice(ctx, otherAccount, { pairingToken: otherPairing.payload.pairingToken });
-  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
-  const isolatedPull = await ctx.asJson('/api/characters/char-a/outbound', { device: otherAccount });
+  const foreignAccountId = 'MAO-BBBBBBBBBBBB', foreignSessionToken = randomToken(32), foreignSessionId = randomToken(12), foreignNow = ctx.now(); ctx.store.exec('INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at, authorized_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', foreignAccountId, 'takeover_foreign', 'takeover_foreign', 'test-salt', 'test-hash', 'user', 'active', foreignNow, foreignNow, foreignNow); assert.equal(ctx.store.createMaoAccountSession({ id: foreignSessionId, accountId: foreignAccountId, tokenHash: await sha256Hex(foreignSessionToken), now: foreignNow, expiresAt: foreignNow + 3600000 }), true); ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', foreignAccountId, otherAccount.deviceId);
+  const isolatedPull = await ctx.asJson('/api/characters/char-a/outbound', { device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } });
   assert.equal(isolatedPull.status, 200);
   assert.equal(isolatedPull.payload.messages.length, 0);
   const isolatedAck = await ctx.asJson(
     '/api/characters/char-a/outbound/' + message.serverMessageId + '/ack',
-    { method: 'POST', device: otherAccount }
+    { method: 'POST', device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } }
   );
   assert.equal(isolatedAck.status, 404);
 });
@@ -3494,7 +3516,7 @@ test('客户端收件箱真实运行：断网后从持久化游标续收，失�
       }
       throw new Error('unexpected mock request: ' + method + ' ' + url.pathname);
     };
-    runInNewContext(clientSource, {
+    vm.runInNewContext(clientSource, {
       window: windowMock,
       document: documentMock,
       localStorage: localStorageMock,
@@ -3615,7 +3637,7 @@ test('本地存储额度不足时，页面内存游标仍可让连续轮询越�
     }
     throw new Error('unexpected mock request: ' + method + ' ' + url.pathname);
   };
-  runInNewContext(clientSource, {
+  vm.runInNewContext(clientSource, {
     window: windowMock,
     document: documentMock,
     localStorage: localStorageMock,
@@ -3716,7 +3738,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(helperStart >= 0 && helperEnd > helperStart,
     '云端重复消息必须提供本地记录完整性检查');
   const helperSource = chat.slice(helperStart, helperEnd).trim();
-  const inspectHistory = runInNewContext('(' + helperSource + ')');
+  const inspectHistory = vm.runInNewContext('(' + helperSource + ')');
   const serverMessageId = 'cloud_integrity_message_123456';
   const expectedText = '完整的云端正文';
   assert.equal(inspectHistory([], serverMessageId, expectedText), 'missing');
@@ -3742,9 +3764,11 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(adapter.includes("existingState === 'conflict') return false"),
     '本地记录内容冲突时必须保留云端待同步状态');
   const saveIndex = adapter.indexOf('if (!saveMessages(history))');
-  const renderIndex = adapter.indexOf('if (_vl) vlRefresh();');
-  assert.ok(saveIndex >= 0 && renderIndex > saveIndex,
-    '必须先验证本地保存成功，再渲染消息');
+  const renderIndex = adapter.indexOf('if (_vl) {');
+  const pacedRenderIndex = adapter.indexOf('await appendAiMessageWithPacing(');
+  assert.ok(saveIndex >= 0 && renderIndex > saveIndex &&
+    pacedRenderIndex > renderIndex,
+    '必须先验证本地保存成功，再走任一消息渲染分支');
   assert.ok(adapter.includes('if (document.visibilityState === \'hidden\') return false'),
     '页面隐藏后，迟到的拉取响应不能再写入聊天历史');
   assert.ok(adapter.includes('if (isGroupChat'),
@@ -3772,7 +3796,10 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(sync.includes('window.addEventListener(\'storage\', onOtherTabNotice)'),
     '其他标签页保存消息后应刷新当前历史');
 
-  assert.match(serviceWorker, /phone-app-pwa-v179/);
+  const serviceWorkerCacheVersion = serviceWorker.match(/const CACHE_NAME = ['"]phone-app-pwa-v(\d+)['"]/);
+  assert.ok(serviceWorkerCacheVersion &&
+    Number(serviceWorkerCacheVersion[1]) >= 179,
+    'PWA 缓存版本不得回退到可见区域已读观察修复之前');
   assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
     'PWA shell 应继续预缓存现有聊天详情页');
 });
@@ -3780,6 +3807,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
 
 test('自主活动 API：本地生成器可安全认领并把结果交给原有出站收件箱', async () => {
   const now = 1800000000000;
+  const proactiveMessage = '我刚刚想到一件想和你分享的事。';
   const ctx = setupTestStore(openTestDb(), {
     AUTONOMY_LEASE_MS: '60000',
     AUTONOMY_TICK_LIMIT: '10',
@@ -3987,6 +4015,17 @@ test('生成期间上下文版本发生变化时，完成接口会跳过过时�
   ctx.timestamps.push(now);
   const device = makeDevice();
   await registerDevice(ctx, device);
+
+  const heartbeat = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST', device, body: { foregroundActive: true }
+  });
+  assert.equal(heartbeat.status, 200);
+
+  const lease = await ctx.asJson('/api/characters/char-stale/lease', {
+    method: 'POST', device, body: { action: 'acquire' }
+  });
+  assert.equal(lease.status, 200);
+
   await ctx.asJson('/api/autonomy/global', {
     method: 'PUT', device, body: { enabled: true }
   });
@@ -4321,7 +4360,8 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
   const device = makeDevice();
   await registerDevice(ctx, device);
   const subscription = await makeBrowserSubscription();
-  await subscribeDevice(ctx, device, subscription);
+  const subscribed = await subscribeDevice(ctx, device, subscription);
+  assert.equal(subscribed.status, 200);
 
   const serverMessageId = 'autonomy_retry_push_123456_1';
   const outbox = ctx.store.enqueueOutboundMessage({
@@ -4365,7 +4405,7 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
 
   const delivery = ctx.store.findDelivery(
     'outbound:' + serverMessageId,
-    subscription.payload.subscription.id
+    subscribed.payload.subscription.id
   );
   assert.equal(delivery.status, 'sent');
   assert.equal(delivery.attempt_count, 2);
@@ -4394,8 +4434,6 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
   const second = await pairAnotherDevice();
   const revoked = await pairAnotherDevice();
   const foreign = await pairAnotherDevice();
-  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', foreign.deviceId);
-
   const subscriptions = new Map();
   for (const device of [source, second, revoked, foreign]) {
     const subscription = await makeBrowserSubscription();
@@ -4406,6 +4444,20 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
 
   const receiverAccountId = 'MAO-AAAAAAAAAAAA';
   const foreignAccountId = 'MAO-BBBBBBBBBBBB';
+
+  for (const account of [
+    { id: receiverAccountId, username: 'push_receiver' },
+    { id: foreignAccountId, username: 'push_foreign' }
+  ]) {
+    ctx.store.exec(
+      `INSERT INTO mao_accounts
+        (id, username, username_key, password_salt, password_hash,
+         role, status, created_at, updated_at, authorized_at)
+       VALUES (?, ?, ?, 'test-salt', 'test-hash', 'user', 'active', ?, ?, ?)`,
+      account.id, account.username, account.username, now, now, now
+    );
+  }
+
   ctx.store.exec(
     'UPDATE devices SET user_id = ? WHERE id IN (?, ?, ?)',
     receiverAccountId, source.deviceId, second.deviceId, revoked.deviceId
@@ -4631,11 +4683,23 @@ test('一台设备已保存消息后，其他尚未保存设备仍能获得 Push
 test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Push', () => {
   const workerSource = fs.readFileSync(path.join(rootDir, 'worker.js'), 'utf8');
   assert.match(workerSource, /import \{ createApp, dispatchPendingOutboundPushes \} from '\.\/worker\/lib\/app\.js'/);
-  assert.match(workerSource, /internal\/maintenance[\s\S]{0,700}dispatchPendingOutboundPushes/);
+  const maintenanceStart = workerSource.indexOf(
+    "if (url.pathname === '/internal/maintenance' && request.method === 'POST') {"
+  );
+  const maintenanceEnd = workerSource.indexOf(
+    "if (url.pathname === '/internal/tick' && request.method === 'POST') {",
+    maintenanceStart
+  );
+  assert.ok(
+    maintenanceStart >= 0 && maintenanceEnd > maintenanceStart,
+    'Worker 必须存在独立的 internal maintenance 处理分支'
+  );
+  const maintenanceHandler = workerSource.slice(maintenanceStart, maintenanceEnd);
+  assert.match(maintenanceHandler, /dispatchPendingOutboundPushes/);
   assert.match(workerSource, /async scheduled\([\s\S]{0,500}internal\/maintenance/);
   assert.match(workerSource, /pushDispatch/);
-  const recoveryIndex = workerSource.indexOf('repairAllStagedActivityOutboxes');
-  const dispatchIndex = workerSource.indexOf('dispatchPendingOutboundPushes', recoveryIndex);
+  const recoveryIndex = maintenanceHandler.indexOf('repairAllStagedActivityOutboxes');
+  const dispatchIndex = maintenanceHandler.indexOf('dispatchPendingOutboundPushes');
   assert.ok(recoveryIndex >= 0 && dispatchIndex > recoveryIndex,
     '定时维护必须先恢复暂存收件箱，再发送对应 Push');
 });
@@ -4843,15 +4907,16 @@ test('生命周期回执支持同账号跨设备恢复，但不能跨账号或�
   const otherPairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device });
   assert.equal(otherPairing.status, 200);
   await registerDevice(ctx, otherAccount, { pairingToken: otherPairing.payload.pairingToken });
-  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
+  ctx.store.exec('INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at, authorized_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 'MAO-BBBBBBBBBBBB', 'lifecycle_foreign', 'lifecycle_foreign', 'test-salt', 'test-hash', 'user', 'active', now, now, now); ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'MAO-BBBBBBBBBBBB', otherAccount.deviceId);
+  const foreignSessionToken = randomToken(32); const foreignSessionId = randomToken(12); assert.equal(ctx.store.createMaoAccountSession({ id: foreignSessionId, accountId: "MAO-BBBBBBBBBBBB", tokenHash: await sha256Hex(foreignSessionToken), now, expiresAt: now + 3600000 }), true);
   const otherAccountStatus = await ctx.asJson(
     '/api/characters/char-owner-only/outbound/' + messageId + '/status',
-    { device: otherAccount }
+    { device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } }
   );
   assert.equal(otherAccountStatus.status, 404);
   const forgedAck = await ctx.asJson(
     '/api/characters/char-owner-only/outbound/' + messageId + '/ack',
-    { method: 'POST', device: otherAccount }
+    { method: 'POST', device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } }
   );
   assert.equal(forgedAck.status, 404);
 });

@@ -1,3 +1,4 @@
+import { createAccountAuth } from './account-auth.js';
 import {
   ApiError, fail, ok, readJsonBody
 } from './http.js';
@@ -675,7 +676,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       const expected = await sha256Hex(`bootstrap|${configuredToken}`);
       const supplied = await sha256Hex(`bootstrap|${suppliedToken}`);
       if (!timingSafeEqualHex(expected, supplied)) {
-        throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '配对码无效、已使用或已过期');
+        throw new ApiError(403, 'PAIRING_TOKEN_INVALID', '配对码无效、已使用或已过期');
       }
       const inserted = await store.insertBootstrapDevice({ ...commonDevice, userId });
       if (!inserted) {
