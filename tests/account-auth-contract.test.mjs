@@ -617,6 +617,24 @@ test('邀请码生成与撤销写入账号审计时间线，且审计不包含�
     record.inviteId === emailInvite.payload.invite.id
   ), '已验证邮箱绑定的邀请也必须归入邮箱所属 MAO 账号的审计时间线');
 
+  // If a mailbox is later changed/unverified, revocation must still be linked
+  // to the original target account rather than whichever account may own it now.
+  ctx.store.exec(
+    'UPDATE mao_accounts SET qq_email = ?, qq_email_verified_at = NULL WHERE id = ?',
+    'new-address@qq.com', emailTarget.payload.account.id
+  );
+  const emailRevoked = await post(ctx, '/api/admin/invites/' +
+    encodeURIComponent(emailInvite.payload.invite.id) + '/revoke', {}, adminCookie);
+  assert.equal(emailRevoked.status, 200);
+  const emailAuditAfterRevoke = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(emailTarget.payload.account.id) + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.ok(emailAuditAfterRevoke.payload.records.some(record =>
+    record.action === 'invite_revoke' && record.targetAccountId === emailTarget.payload.account.id &&
+    record.inviteId === emailInvite.payload.invite.id
+  ), '邮箱变更后撤销邀请码仍必须关联到最初的 MAO 账号');
+
   const ordinaryLogin = await ctx.fetchTo('/api/accounts/login', {
     method: 'POST',
     body: {
