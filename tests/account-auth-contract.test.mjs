@@ -2037,6 +2037,10 @@ test('停用或永久撤销账号会在同一事务内撤销其未核销邀请�
     '账号停用自动撤销的邀请码必须单独进入账号审计时间线');
   assert.equal(autoRevokeRecord.targetAccountId, accountId);
   assert.equal(autoRevokeRecord.actorAccountId, (await admin.clone().json()).account.id);
+  const disableRecord = disabledAudit.payload.records.find(record => record.action === 'disable');
+  assert.equal(disableRecord.fromStatus, 'pending_invite');
+  assert.equal(disableRecord.toStatus, 'disabled',
+    '停用审计必须保留操作前后的真实状态');
 
   const restored = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
     action: 'restore',
@@ -2044,6 +2048,13 @@ test('停用或永久撤销账号会在同一事务内撤销其未核销邀请�
   }, adminCookie);
   assert.equal(restored.status, 200);
   assert.equal(restored.payload.account.status, 'pending_invite');
+  const restoreAudit = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + accountId + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  const restoreRecord = restoreAudit.payload.records.find(record => record.action === 'restore');
+  assert.equal(restoreRecord.fromStatus, 'disabled');
+  assert.equal(restoreRecord.toStatus, 'pending_invite');
 
   const userLogin = await ctx.fetchTo('/api/accounts/login', {
     method: 'POST',
@@ -2107,6 +2118,9 @@ test('停用或永久撤销账号会在同一事务内撤销其未核销邀请�
     record.inviteId === permanentInvite.payload.invite.id &&
     record.sourceAction === 'revoke'
   ), '永久撤销账号自动失效的邀请码也必须单独写入账号审计');
+  const permanentStateRecord = permanentAudit.payload.records.find(record => record.action === 'revoke');
+  assert.equal(permanentStateRecord.fromStatus, 'pending_invite');
+  assert.equal(permanentStateRecord.toStatus, 'revoked');
 });
 
 test('发码预检查后账号被停用时，事务内二次校验阻止插入新邀请码', async () => {
