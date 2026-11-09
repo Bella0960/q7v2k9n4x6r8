@@ -251,6 +251,8 @@ test('全局操作审计视图使用服务器搜索、类别筛选和游标分�
   assert.match(adminScript, /record\.action === 'account_register'/);
   assert.match(adminScript, /record\.action === 'admin_bootstrap'/);
   assert.match(adminScript, /record\.actorType === 'system'/);
+  assert.match(adminScript, /record\.actorType === 'system' \? '自动记录' : '未知'/);
+  assert.match(adminScript, /record\.action === 'admin_bootstrap' \? '自动记录' : '未知'/);
 
   assert.match(adminScript, /loadMoreGlobalAudit'\)\.addEventListener/);
   assert.match(adminCss, /\.global-audit-entry/);
