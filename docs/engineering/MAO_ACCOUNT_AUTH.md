@@ -105,7 +105,7 @@ Message payloads, subscriptions, outbound rows, delivery receipts and execution 
 Temporary account disable remembers whether the account was `pending_invite` or `active`. Restore returns it to that exact state. For older disabled rows without a recorded prior state, restore fails closed to `pending_invite`; it never grants authorization based on an unknown history. The field is added by the separate additive migration `0013_mao_account_restore_state`; migration `0012_mao_accounts` remains unchanged.
 
 The eight-per-hour registration cap is also checked in the account INSERT statement, not only in an earlier read, so concurrent requests cannot all pass the pre-check and exceed the quota.
-The creator management API loads up to 500 ordinary accounts and the 500 newest invitation records in the first release. Both lists now show an explicit limit notice when 500 records are loaded, so the displayed set is not mistaken for a complete history. Cursor pagination is required before exceeding either limit.
+The creator management directories use keyset cursor pagination ordered by `created_at DESC, id DESC`. Each request returns up to 50 records (the API accepts a bounded 1–100 page size), a stable next cursor, the full filtered-result count, and global status summaries. Search and status filters are applied in SQL before pagination, so older records remain searchable and filter counts do not shrink to the currently loaded pages. The UI appends pages on demand; refreshing or changing a filter starts again from the newest record. The cursor uses the last row's creation timestamp and permanent record ID as a deterministic tie-breaker, avoiding skips when multiple records share the same timestamp.
 Invitation issuance re-checks both target eligibility (pending_invite) and the one-active-code rule under a write transaction. Disabling or permanently revoking an account atomically revokes its unused account-ID and verified-email invitations alongside sessions, devices and related state. A concurrent invitation request that passed its early route check but loses a race to account suspension is rejected by the storage-layer eligibility check. Redemption consumes the code plus activates the account atomically. Current-password verification for password changes has its own IP/account-scoped 15-minute rate limit. Password rotation and revocation of all other sessions commit in one transaction; if session revocation fails, the password change rolls back too.
 In Cloudflare Durable Objects, account lifecycle, invitation, legacy-owner adoption, and schema migrations use the native `storage.transactionSync` boundary. The Node SQLite test adapter uses explicit SQL transactions behind the same store abstraction.
 
@@ -151,9 +151,9 @@ Authenticated account routes (require the page MAO context to match the HttpOnly
 - POST /api/accounts/devices/:id/revoke
 
 Super-admin only:
-- GET /api/admin/accounts
+- GET /api/admin/accounts?limit=50&cursor=...&search=...&status=... (keyset-paginated; status: all, pending_invite, active, restricted)
 - GET /api/admin/accounts/:id/audit
-- GET /api/admin/invites
+- GET /api/admin/invites?limit=50&cursor=...&search=...&status=... (keyset-paginated; status: all, pending, used, expired, revoked)
 - POST /api/admin/invites
 - POST /api/admin/invites/:id/revoke
 - POST /api/admin/accounts/:id/action (disable / restore / revoke)
@@ -184,8 +184,8 @@ Run `npm run test:preview:config` to verify the checked-in preview configuration
 
 ## Validation
 
-- npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, and account/device revocation.
-- npm run test:admin:center covers admin-page recovery after transient session/API failures, duplicate-action button locking, audit retry behavior, and the one-time invitation reveal flow on mobile.
+- npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, account/device revocation, and full directory cursor traversal beyond 500 accounts with duplicate-timestamp boundaries and search.
+- npm run test:admin:center covers admin-page recovery after transient session/API failures, duplicate-action button locking, audit retry behavior, the one-time invitation reveal flow on mobile, and server-side cursor pagination controls.
 - The account command also includes browser storage namespace tests for two account IDs.
 - The focused `MAO Account Auth Contract` workflow must execute the tests and build before the branch can be considered validated. The latest observed jobs still terminate before runner assignment (`runner_id=0`, no steps/logs), so tests and build remain NOT VERIFIED.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.

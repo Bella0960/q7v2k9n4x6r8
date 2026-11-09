@@ -60,10 +60,19 @@ test('retry controls remain touchable and readable at narrow phone widths', () =
   assert.match(adminCss, /@media\(max-width:380px\)/);
 });
 
-test('account and invitation directories disclose the current 500-record read cap', () => {
+test('account and invitation directories use server-side cursor pagination', () => {
   assert.match(adminHtml, /id="accountLimitNotice" hidden/);
   assert.match(adminHtml, /id="inviteLimitNotice" hidden/);
-  assert.match(adminScript, /accountLimitNotice'\)\.hidden = accounts\.length < 500/);
-  assert.match(adminScript, /inviteLimitNotice'\)\.hidden = invites\.length < 500/);
-  assert.match(adminCss, /\.limit-note\[hidden\]\{display:none\}/);
+  assert.match(adminHtml, /id="loadMoreAccounts"[^>]*hidden/);
+  assert.match(adminHtml, /id="loadMoreInvites"[^>]*hidden/);
+  assert.match(adminScript, /function loadAccountPage\(reset = false\)/);
+  assert.match(adminScript, /function loadInvitePage\(reset = false\)/);
+  assert.match(adminScript, /page\?\.nextCursor/);
+  assert.match(adminScript, /page\?\.totalCount/);
+  assert.match(adminScript, /URLSearchParams/);
+  assert.match(adminScript, /loadMoreAccounts'\)\.addEventListener/);
+  assert.match(adminScript, /loadMoreInvites'\)\.addEventListener/);
+  assert.match(adminScript, /summary\.total/);
+  assert.doesNotMatch(adminScript, /accounts\.length < 500|invites\.length < 500/);
+  assert.match(adminCss, /\.directory-more\[hidden\]\{display:none\}/);
 });

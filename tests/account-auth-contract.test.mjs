@@ -284,7 +284,7 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   assert.equal(JSON.stringify(listResult.payload).includes('token_hash'), false, '管理列表不得泄露邀请码哈希');
 });
 
-test('创作者管理中心默认列表可返回完整 500 名普通账号，不让管理员占用名额', async () => {
+test('创作者账号目录使用稳定游标分页，能够完整读取 500 条以上并跨全量搜索', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
   const admin = await ctx.fetchTo('/api/admin/bootstrap', {
@@ -301,28 +301,52 @@ test('创作者管理中心默认列表可返回完整 500 名普通账号，不
     "SELECT created_at FROM mao_accounts WHERE role = 'super_admin'"
   )[0].created_at;
 
-  // Make the creator account newer than these ordinary users so a LIMIT applied
-  // before role filtering would incorrectly return only 499 ordinary accounts.
+  // Deliberately share timestamps to exercise the permanent-ID tie breaker.
   for (let index = 0; index < 505; index += 1) {
     const suffix = String(index).padStart(12, '0');
     const username = 'capacity_' + index;
-    const createdAt = Number(adminCreatedAt) - 10000 + index;
+    const createdAt = Number(adminCreatedAt) - 10000 + Math.floor(index / 2);
     ctx.store.exec(
       "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at) VALUES (?, ?, ?, 'test-salt', 'test-hash', 'user', 'pending_invite', ?, ?)",
       'MAO-' + suffix, username, username, createdAt, createdAt
     );
   }
 
-  const response = await ctx.fetchTo('/api/admin/accounts', {
-    headers: { cookie: adminCookie }
-  });
-  const result = await json(response);
-  assert.equal(result.status, 200);
-  assert.equal(result.payload.accounts.length, 500,
-    '管理列表默认应返回完整 500 名普通账号，超级管理员不能占用名额');
-  assert.ok(result.payload.accounts.every(account => account.role === 'user'));
-  assert.ok(result.payload.accounts.some(account => account.username === 'capacity_504'));
-  assert.ok(!result.payload.accounts.some(account => account.username === 'capacity_0'));
+  let cursor = '';
+  const ids = [];
+  let firstPage = null;
+  for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
+    const path = '/api/admin/accounts?limit=50' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+    const result = await json(await ctx.fetchTo(path, { headers: { cookie: adminCookie } }));
+    assert.equal(result.status, 200);
+    if (!firstPage) firstPage = result.payload;
+    assert.equal(result.payload.page.totalCount, 505);
+    assert.equal(result.payload.summary.total, 505);
+    assert.equal(result.payload.accounts.length, Math.min(50, 505 - ids.length));
+    ids.push(...result.payload.accounts.map(account => account.id));
+    if (!result.payload.page.hasMore) break;
+    assert.ok(result.payload.page.nextCursor, '还有下一页时必须返回游标');
+    cursor = result.payload.page.nextCursor;
+  }
+  assert.equal(ids.length, 505, '所有账号都应能翻页取回');
+  assert.equal(new Set(ids).size, 505, '相邻页不能重复返回同一账号');
+  assert.ok(firstPage.accounts.some(account => account.username === 'capacity_504'));
+  assert.ok(!firstPage.accounts.some(account => account.username === 'capacity_0'));
+
+  const oldAccount = await json(await ctx.fetchTo(
+    '/api/admin/accounts?search=' + encodeURIComponent('MAO-000000000000'),
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(oldAccount.status, 200);
+  assert.equal(oldAccount.payload.page.totalCount, 1,
+    '搜索必须覆盖目录中较早的记录，而不是只搜索已加载的第一页');
+  assert.equal(oldAccount.payload.accounts[0].username, 'capacity_0');
+
+  const invalidFilter = await json(await ctx.fetchTo(
+    '/api/admin/accounts?status=not-a-filter',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(invalidFilter.status, 400, '无效筛选参数必须被拒绝');
 });
 
 test('并发创建同一目标账号的邀请码时只允许一张有效邀请码', async () => {
