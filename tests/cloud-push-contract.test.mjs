@@ -4474,6 +4474,84 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
   assert.equal(delivery.status, 'sent');
 });
  
+
+test('接收设备在 Push 加密期间被撤销时，实际网络发送前必须再次校验', async () => {
+  const now = 1800000000000;
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const ctx = setupTestStore(openTestDb());
+  const source = makeDevice();
+  await registerDevice(ctx, source);
+
+  const pairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: source
+  });
+  assert.equal(pairing.status, 200);
+  const target = makeDevice();
+  assert.equal((await registerDevice(ctx, target, {
+    pairingToken: pairing.payload.pairingToken
+  })).status, 200);
+
+  const subscription = await makeBrowserSubscription();
+  const subscribed = await subscribeDevice(ctx, target, subscription);
+  assert.equal(subscribed.status, 200);
+  const serverMessageId = 'push_revoke_during_crypto_123456';
+  const outbox = ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: source.deviceId,
+    userId: 'owner',
+    characterId: 'char-push-revoke-race',
+    serverMessageId,
+    dedupeKey: 'autonomy:push:revoke-race',
+    payload: { type: 'text', text: '这条消息不应推送给撤销后的设备。' },
+    now
+  });
+  assert.equal(outbox.inserted, true);
+
+  const originalPreflight = ctx.store.isActivePushSubscription.bind(ctx.store);
+  let preflightCalls = 0;
+  ctx.store.isActivePushSubscription = (subscriptionId, deviceId) => {
+    preflightCalls += 1;
+    // Simulate an administrator/device request revoking the recipient while
+    // WebCrypto is still preparing the push payload.
+    ctx.store.revokeDevice(target.deviceId, now + 1);
+    return originalPreflight(subscriptionId, deviceId);
+  };
+
+  const dispatched = await dispatchPendingOutboundPushes({
+    store: ctx.store,
+    env: {
+      VAPID_PUBLIC_KEY: keys.publicB64,
+      VAPID_PRIVATE_KEY: keys.privateB64,
+      VAPID_SUBJECT: 'mailto:test@maomao.dev'
+    },
+    now: now + 1,
+    fetchImpl: pushFetch,
+    limit: 10
+  });
+
+  assert.equal(preflightCalls, 1);
+  assert.equal(pushFetch.calls.length, 0,
+    '接收设备撤销后，Web Push 网络请求不得再启动');
+  assert.equal(dispatched.sent, 0);
+  assert.equal(dispatched.skipped, 1);
+  assert.equal(
+    ctx.store.findDelivery('outbound:' + serverMessageId, subscribed.payload.subscription.id).status,
+    'failed',
+    '已取消的投递需要结束租约，不能卡在 sending 状态'
+  );
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM devices WHERE id = ?', target.deviceId)[0].revoked_at,
+    null
+  );
+  assert.equal(
+    ctx.query('SELECT disabled_at FROM push_subscriptions WHERE id = ?', subscribed.payload.subscription.id)[0].disabled_at != null,
+    true
+  );
+});
+
+
 test('一台设备已保存消息后，其他尚未保存设备仍能获得 Push 提醒', async () => {
   const now = 1800000000000;
   const keys = makeVapidKeys();
