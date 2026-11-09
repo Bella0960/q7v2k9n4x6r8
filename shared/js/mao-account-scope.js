@@ -370,13 +370,19 @@
           });
         };
         if (property === 'match') return function (request, options) {
+          var queryOptions = options ? Object.assign({}, options) : {};
+          if (queryOptions.cacheName != null) {
+            queryOptions.cacheName = prefix + String(queryOptions.cacheName);
+            return target.match(request, queryOptions);
+          }
+          delete queryOptions.cacheName;
           return target.keys().then(function (items) {
             var scopedNames = items.filter(function (name) { return name.indexOf(prefix) === 0; });
             return scopedNames.reduce(function (chain, name) {
               return chain.then(function (found) {
                 if (found) return found;
                 return target.open(name).then(function (cache) {
-                  return cache.match(request, options);
+                  return cache.match(request, queryOptions);
                 });
               });
             }, Promise.resolve(null));
