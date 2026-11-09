@@ -72,7 +72,7 @@ test('account and invitation directories use server-side cursor pagination', () 
   assert.match(adminScript, /URLSearchParams/);
   assert.match(adminScript, /loadMoreAccounts'\)\.addEventListener/);
   assert.match(adminScript, /loadMoreInvites'\)\.addEventListener/);
-  assert.match(adminScript, /summary\.total/);
+  assert.match(adminScript, /accountSummary/);
   assert.doesNotMatch(adminScript, /accounts\.length < 500|invites\.length < 500/);
   assert.match(adminCss, /\.directory-more\[hidden\]\{display:none\}/);
 });
