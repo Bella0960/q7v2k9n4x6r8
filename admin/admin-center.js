@@ -19,6 +19,10 @@
   let accountFilter = 'all';
   let inviteFilter = 'all';
   let selectedAccountId = '';
+  let auditNextCursor = '';
+  let auditHasMore = false;
+  let auditTotalCount = 0;
+  let auditLoadedCount = 0;
   let pendingAction = '';
   let generatedCode = '';
   let busy = false;
@@ -487,17 +491,30 @@
     await loadAudit(account.id);
   }
 
-  async function loadAudit(accountId) {
+  async function loadAudit(accountId, reset = true) {
     const list = $('auditList');
-    list.replaceChildren(el('p', 'empty-note', '正在读取管理记录…'));
+    if (reset) {
+      auditNextCursor = '';
+      auditHasMore = false;
+      auditTotalCount = 0;
+      auditLoadedCount = 0;
+      list.replaceChildren(el('p', 'empty-note', '正在读取管理记录…'));
+      $('auditResultCount').textContent = '正在读取…';
+      $('loadMoreAudit').hidden = true;
+    }
+    const cursor = reset ? '' : auditNextCursor;
+    const params = new URLSearchParams();
+    params.set('limit', '50');
+    if (cursor) params.set('cursor', cursor);
     try {
-      const result = await api('/api/admin/accounts/' + encodeURIComponent(accountId) + '/audit');
+      const result = await api(
+        '/api/admin/accounts/' + encodeURIComponent(accountId) + '/audit?' + params.toString()
+      );
       if (selectedAccountId !== accountId) return;
-      list.replaceChildren();
       const records = Array.isArray(result.records) ? result.records : [];
-      if (!records.length) {
+      if (reset) list.replaceChildren();
+      if (!records.length && reset) {
         list.appendChild(el('p', 'empty-note', '暂无管理操作记录。'));
-        return;
       }
       records.forEach(record => {
         const item = el('div', 'audit-entry', '');
@@ -513,6 +530,12 @@
         );
         list.appendChild(item);
       });
+      auditLoadedCount = (reset ? 0 : auditLoadedCount) + records.length;
+      auditTotalCount = Number(result.page?.totalCount || 0);
+      auditHasMore = Boolean(result.page?.hasMore);
+      auditNextCursor = result.page?.nextCursor || '';
+      $('auditResultCount').textContent = '已加载 ' + auditLoadedCount + ' / ' + auditTotalCount + ' 条管理记录';
+      $('loadMoreAudit').hidden = !auditHasMore;
     } catch (error) {
       if (selectedAccountId !== accountId) return;
       if (error.code === 'ACCOUNT_DISABLED') {
@@ -526,8 +549,9 @@
       const message = el('p', 'empty-note', error.message || '管理记录暂时无法读取。');
       const retryButton = el('button', 'audit-retry', '重试读取');
       retryButton.type = 'button';
-      retryButton.addEventListener('click', () => loadAudit(accountId));
-      list.replaceChildren(message, retryButton);
+      retryButton.addEventListener('click', () => loadAudit(accountId, reset));
+      if (reset) list.replaceChildren(message, retryButton);
+      else list.append(message, retryButton);
     }
   }
 
@@ -579,6 +603,9 @@
   $('refreshInvites').addEventListener('click', () => run(refreshAll));
   $('loadMoreAccounts').addEventListener('click', () => run(() => loadAccountPage(false)));
   $('loadMoreInvites').addEventListener('click', () => run(() => loadInvitePage(false)));
+  $('loadMoreAudit').addEventListener('click', () => {
+    if (selectedAccountId) run(() => loadAudit(selectedAccountId, false));
+  });
   $('accountSearch').addEventListener('input', () => {
     window.clearTimeout(accountSearchTimer);
     accountSearchTimer = window.setTimeout(() => run(() => loadAccountPage(true)), 250);
