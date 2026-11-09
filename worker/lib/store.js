@@ -27,6 +27,29 @@ function serializeStoreJson(value, maxBytes, field) {
   return serialized;
 }
 
+function buildMaoAuditFilter({ search = '', type = 'all', cursor = null } = {}) {
+  const clauses = [];
+  const params = [];
+  if (type === 'account') {
+    clauses.push("action IN ('disable', 'restore', 'revoke')");
+  } else if (type === 'invite') {
+    clauses.push("action IN ('invite_create', 'invite_redeem', 'invite_revoke')");
+  }
+  const query = String(search || '').trim();
+  if (query) {
+    const pattern = '%' + query.replace(/[\\%_]/g, '\\export function createStore(exec, transaction = null) {
+  return new CloudStore(exec, transaction);
+}') + '%';
+    clauses.push("(id LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR actor_account_id LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR target_account_id LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR action LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR detail_json LIKE ? ESCAPE '\\\\' COLLATE NOCASE)");
+    params.push(pattern, pattern, pattern, pattern, pattern);
+  }
+  if (cursor) {
+    clauses.push('(created_at < ? OR (created_at = ? AND id < ?))');
+    params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+  }
+  return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', params };
+}
+
 export function createStore(exec, transaction = null) {
   return new CloudStore(exec, transaction);
 }
@@ -2494,6 +2517,45 @@ class CloudStore {
       accountId
     )[0];
     return Number(row?.total || 0);
+  }
+
+  listMaoAccountAuditEvents({ limit = 50, cursor = null, search = '', type = 'all' } = {}) {
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
+    const { where, params } = buildMaoAuditFilter({ search, type, cursor });
+    return this.exec(
+      `SELECT a.id, a.actor_account_id, a.target_account_id, a.action, a.detail_json, a.created_at,
+              actor.username AS actor_username, target.username AS target_username
+       FROM mao_account_audit a
+       LEFT JOIN mao_accounts actor ON actor.id = a.actor_account_id
+       LEFT JOIN mao_accounts target ON target.id = a.target_account_id${where.replace(/\\b(id|actor_account_id|target_account_id|action|detail_json|created_at)\\b/g, 'a.$1')}
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT ?`,
+      ...params,
+      safeLimit + 1
+    );
+  }
+
+  countMaoAccountAuditEvents({ search = '', type = 'all' } = {}) {
+    const { where, params } = buildMaoAuditFilter({ search, type });
+    const row = this.exec(
+      `SELECT COUNT(*) AS total FROM mao_account_audit${where}`,
+      ...params
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  getMaoAccountAuditSummary() {
+    const row = this.exec(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN action IN ('disable', 'restore', 'revoke') THEN 1 ELSE 0 END) AS accountActions,
+              SUM(CASE WHEN action IN ('invite_create', 'invite_redeem', 'invite_revoke') THEN 1 ELSE 0 END) AS inviteActions
+       FROM mao_account_audit`
+    )[0] || {};
+    return {
+      total: Number(row.total || 0),
+      accountActions: Number(row.accountActions || 0),
+      inviteActions: Number(row.inviteActions || 0)
+    };
   }
 
   listMaoAccountDevices(accountId) {
