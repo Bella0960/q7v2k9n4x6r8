@@ -3976,3 +3976,103 @@ test('全局管理审计支持服务端筛选、搜索、游标分页并只返�
   assert.equal(denied.status, 401, 'global audit must remain creator/admin-only');
 });
 
+
+
+test('并发注册推送订阅不能突破单设备订阅数量上限', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'push-cap-admin',
+      password: 'push-cap-admin-password-123',
+      confirmPassword: 'push-cap-admin-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const deviceId = 'device_push_cap_race01';
+  const deviceSecret = randomToken(32);
+  const enrolled = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret: deviceSecret,
+    label: 'push cap test device',
+    platform: 'test'
+  }, adminCookie);
+  assert.equal(enrolled.status, 200);
+
+  const timestamp = ctx.now();
+  for (let index = 0; index < 9; index += 1) {
+    ctx.store.exec(
+      'INSERT INTO push_subscriptions (id, device_id, endpoint, p256dh, auth_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'sub_push_cap_seed_' + String(index).padStart(2, '0'),
+      deviceId,
+      'https://push.example.com/seed-' + index,
+      'seed-p256dh',
+      'seed-auth-key',
+      timestamp,
+      timestamp
+    );
+  }
+
+  const p256dhBytes = Buffer.alloc(65);
+  p256dhBytes[0] = 4;
+  for (let index = 1; index < p256dhBytes.length; index += 1) {
+    p256dhBytes[index] = index;
+  }
+  const authBytes = Buffer.alloc(16, 7);
+  const buildSubscription = endpoint => ({
+    endpoint,
+    expirationTime: null,
+    keys: {
+      p256dh: p256dhBytes.toString('base64url'),
+      auth: authBytes.toString('base64url')
+    }
+  });
+
+  // Force both requests to pass the initial route-level count with the same
+  // nine-row snapshot, reproducing the interleaving that used to exceed 10.
+  const originalListSubscriptions = ctx.store.listSubscriptions.bind(ctx.store);
+  let snapshotsTaken = 0;
+  let releaseSnapshots;
+  const bothSnapshotsReady = new Promise(resolve => { releaseSnapshots = resolve; });
+  ctx.store.listSubscriptions = async (targetDeviceId, options = {}) => {
+    const rows = originalListSubscriptions(targetDeviceId, options);
+    if (targetDeviceId === deviceId && options.includeDisabled === true) {
+      snapshotsTaken += 1;
+      if (snapshotsTaken === 2) releaseSnapshots();
+      await bothSnapshotsReady;
+    }
+    return rows;
+  };
+
+  const headers = {
+    cookie: adminCookie,
+    'x-device-auth': deviceId + '.' + deviceSecret
+  };
+  const submit = endpoint => ctx.fetchTo('/api/push/subscriptions', {
+    method: 'POST',
+    headers,
+    body: { subscription: buildSubscription(endpoint) }
+  });
+  const responses = await Promise.all([
+    submit('https://push.example.com/concurrent-a'),
+    submit('https://push.example.com/concurrent-b')
+  ]);
+  ctx.store.listSubscriptions = originalListSubscriptions;
+
+  const results = await Promise.all(responses.map(json));
+  assert.deepEqual(results.map(result => result.status).sort((a, b) => a - b), [200, 409]);
+  const rejected = results.find(result => result.status === 409);
+  assert.equal(rejected.payload.error.code, 'SUBSCRIPTION_LIMIT');
+  assert.equal(
+    Number(ctx.query(
+      'SELECT COUNT(*) AS total FROM push_subscriptions WHERE device_id = ?',
+      deviceId
+    )[0].total),
+    10,
+    '两个并发请求只能占用最后一个空位，不能把设备订阅数写到 11'
+  );
+});
