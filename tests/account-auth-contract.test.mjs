@@ -76,6 +76,9 @@ test('账号自助管理中的设备和会话撤销必须使用中央模态确�
   assert.match(script, /accountActionConfirm'\)\.addEventListener\('click'/);
   assert.match(script, /确认移除此设备？/);
   assert.match(script, /确认退出此登录会话？/);
+  assert.match(script, /session\.revokedAt \|\| session\.expired/,
+    '已撤销或过期的会话不得继续显示退出操作');
+  assert.match(script, /已过期的登录会话/);
   assert.doesNotMatch(script, /window\.confirm\(/,
     '设备与会话撤销不能使用浏览器默认确认框');
 });
@@ -118,6 +121,47 @@ async function post(ctx, path, body, cookie = '') {
   const headers = cookie ? { cookie } : {};
   return ctx.asJson(path, { method: 'POST', body, headers });
 }
+
+test('过期登录会话由服务端明确标记，账号管理页不再提供退出操作', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'expired-session-admin',
+      password: 'expired-session-admin-password',
+      confirmPassword: 'expired-session-admin-password'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const accountId = (await admin.clone().json()).account.id;
+  const timestamp = ctx.now();
+  const expiredSessionId = 'session_expired_0001';
+  ctx.store.exec(
+    'INSERT INTO mao_account_sessions (id, account_id, token_hash, created_at, expires_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)',
+    expiredSessionId,
+    accountId,
+    await sha256Hex('expired-session-fixture-token'),
+    timestamp - 60000,
+    timestamp - 1,
+    timestamp - 30000
+  );
+
+  const response = await ctx.fetchTo('/api/accounts/security', {
+    headers: { cookie: adminCookie, 'x-mao-account-context': accountId }
+  });
+  const result = await json(response);
+  assert.equal(result.status, 200);
+  const expired = result.payload.sessions.find(session => session.id === expiredSessionId);
+  const current = result.payload.sessions.find(session => session.current);
+  assert.ok(expired);
+  assert.equal(expired.expired, true);
+  assert.equal(expired.revokedAt, null,
+    '仅过期的会话应与主动撤销的会话保持不同状态');
+  assert.equal(current.expired, false);
+});
 
 test('密码验证期间账号被管理员停用时，不得再创建登录会话', async () => {
   const testDb = openTestDb();
@@ -2211,6 +2255,106 @@ test('设备在重新登记的异步账号校验期间被撤销时，不能返�
   assert.equal(persisted.label, 'original device label',
     '重新登记不得覆盖已经撤销设备的资料');
   assert.equal(persisted.platform, 'original platform');
+});
+
+test('现有设备重新登记时，Session 在数据库写入前被撤销必须拒绝刷新', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'session-revoke-reenroll',
+      password: 'session-revoke-reenroll-password-123',
+      confirmPassword: 'session-revoke-reenroll-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+  const invite = await post(ctx, '/api/admin/invites', { targetAccountId: accountId }, adminCookie);
+  assert.equal(invite.status, 201);
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'session-revoke-reenroll',
+      password: 'session-revoke-reenroll-password-123'
+    }
+  });
+  assert.equal(login.status, 200);
+  const userCookie = cookieFrom(login);
+  const redeemed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, userCookie);
+  assert.equal(redeemed.status, 200);
+
+  const deviceId = 'device_session_revoke_01';
+  const deviceSecret = randomToken(32);
+  const enrolled = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret: deviceSecret,
+    label: 'original session device',
+    platform: 'test'
+  }, userCookie);
+  assert.equal(enrolled.status, 200);
+
+  // The account-page context check reads a valid session first. On the
+  // register handler's second read, revoke it immediately after returning the
+  // snapshot so only a SQL-level recheck can prevent the stale refresh.
+  const originalGetSession = ctx.store.getMaoAccountSession.bind(ctx.store);
+  let sessionReads = 0;
+  ctx.store.getMaoAccountSession = tokenHash => {
+    const session = originalGetSession(tokenHash);
+    if (session && session.account_id === accountId) {
+      sessionReads += 1;
+      if (sessionReads === 2) {
+        ctx.store.revokeMaoAccountSession(session.session_id, ctx.now());
+      }
+    }
+    return session;
+  };
+
+  const reenrollment = await ctx.fetchTo('/api/devices/register', {
+    method: 'POST',
+    body: {
+      deviceId,
+      secret: deviceSecret,
+      label: 'stale session refresh',
+      platform: 'stale'
+    },
+    headers: {
+      cookie: userCookie,
+      'x-mao-account-context': accountId
+    }
+  });
+  const result = await json(reenrollment);
+  assert.equal(sessionReads >= 2, true);
+  assert.equal(result.status, 401);
+  assert.equal(result.payload.error.code, 'ACCOUNT_SESSION_REQUIRED');
+
+  const persisted = ctx.query(
+    'SELECT label, platform, revoked_at FROM devices WHERE id = ?',
+    deviceId
+  )[0];
+  assert.equal(persisted.revoked_at, null,
+    '仅撤销 Session 不应错误地撤销该设备授权本身');
+  assert.equal(persisted.label, 'original session device',
+    '已撤销 Session 不得更新设备资料');
+  assert.equal(persisted.platform, 'test');
+  const session = ctx.query(
+    'SELECT revoked_at FROM mao_account_sessions WHERE account_id = ? ORDER BY created_at DESC LIMIT 1',
+    accountId
+  )[0];
+  assert.notEqual(session.revoked_at, null);
 });
 
 test('新设备登记与账号停用并发时，停用后的账号不能留下新设备凭据', async () => {
