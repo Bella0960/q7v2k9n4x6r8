@@ -2527,13 +2527,13 @@ class CloudStore {
 
   listMaoAccountAuditEvents({ limit = 50, cursor = null, search = '', type = 'all' } = {}) {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
-    const { where, params } = buildMaoAuditFilter({ search, type, cursor });
+    const { where, params } = buildMaoAuditFilter({ search, type, cursor, alias: 'a' });
     return this.exec(
       `SELECT a.id, a.actor_account_id, a.target_account_id, a.action, a.detail_json, a.created_at,
               actor.username AS actor_username, target.username AS target_username
        FROM mao_account_audit a
        LEFT JOIN mao_accounts actor ON actor.id = a.actor_account_id
-       LEFT JOIN mao_accounts target ON target.id = a.target_account_id${where.replace(/\\b(id|actor_account_id|target_account_id|action|detail_json|created_at)\\b/g, 'a.$1')}
+       LEFT JOIN mao_accounts target ON target.id = a.target_account_id${where}
        ORDER BY a.created_at DESC, a.id DESC
        LIMIT ?`,
       ...params,
