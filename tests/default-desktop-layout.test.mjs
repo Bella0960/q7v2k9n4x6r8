@@ -191,6 +191,33 @@ test('invitation records can navigate directly to their bound account details', 
   assert.match(adminScript, /button\.addEventListener\('click', \(\) => activateTab\(button\.dataset\.tab\)\)/);
 });
 
+test('creator invitation directory supports target search and lifecycle-state filters', () => {
+  const adminHtml = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const adminScript = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
+  const adminCss = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+
+  assert.match(adminHtml, /id="inviteSearch" type="search"/);
+  assert.match(adminHtml, /id="inviteResultCount" aria-live="polite"/);
+  for (const state of ['all', 'pending', 'used', 'expired', 'revoked']) {
+    assert.match(adminHtml, new RegExp('data-invite-filter="' + state + '"'));
+  }
+  for (const countId of ['inviteCountAll', 'inviteCountPending', 'inviteCountUsed', 'inviteCountExpired', 'inviteCountRevoked']) {
+    assert.match(adminHtml, new RegExp('id="' + countId + '"'));
+  }
+  assert.match(adminScript, /function inviteState\(invite, timestamp = Date\.now\(\)\)/);
+  assert.match(adminScript, /if \(invite\.revoked_at\) return 'revoked'/);
+  assert.match(adminScript, /Number\(invite\.expires_at\) <= timestamp\) return 'expired'/);
+  assert.match(adminScript, /Number\(invite\.used_count \|\| 0\) >= Number\(invite\.max_uses \|\| 1\)\) return 'used'/);
+  assert.match(adminScript, /\[invite\.id, invite\.target_account_id, invite\.target_email, invite\.target_username\]/);
+  assert.match(adminScript, /inviteFilter === 'all' \|\| inviteState\(invite\) === inviteFilter/);
+  assert.match(adminScript, /updateInviteFilterCounts\(\)/);
+  assert.match(adminScript, /\$\('inviteSearch'\)\.addEventListener\('input', renderInvites\)/);
+  assert.match(adminScript, /data-invite-filter[\s\S]*setAttribute\('aria-pressed', active \? 'true' : 'false'\)/);
+  assert.match(adminScript, /if \(state === 'pending'\)[\s\S]*'撤销'/,
+    'only active unused invitations should expose the revoke action');
+  assert.match(adminCss, /\.invite-filter-row\{display:flex;gap:6px;overflow-x:auto/);
+});
+
 test('creator bootstrap form stays hidden until server initialization status is confirmed', () => {
   const bootstrapHtml = readFileSync(new URL('../account/bootstrap.html', import.meta.url), 'utf8');
   const bootstrapScript = readFileSync(new URL('../account/bootstrap.js', import.meta.url), 'utf8');
