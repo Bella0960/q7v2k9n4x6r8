@@ -104,3 +104,6 @@ h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .directory-more{display:block;width:100%;min-height:42px;margin:12px 0 4px;padding:10px 14px;border:1px solid #d0d0d5;border-radius:12px;background:#fff;color:#222;font:inherit;font-size:13px;cursor:pointer}
 .directory-more[hidden]{display:none}
 .directory-more:disabled{opacity:.55;cursor:wait}
+
+.audit-result-count{margin:8px 0;color:#777c84;font-size:11px}
+.audit-more{margin-top:8px}
