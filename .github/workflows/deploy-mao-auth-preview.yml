@@ -59,8 +59,8 @@ jobs:
         run: |
           if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_ACCOUNT_ID)) { throw "Missing GitHub secret: CLOUDFLARE_ACCOUNT_ID" }
           if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_PREVIEW_API_TOKEN)) { throw "Missing GitHub secret: CLOUDFLARE_PREVIEW_API_TOKEN" }
-          if ($env:MAO_PREVIEW_DEVICE_SECRET_PEPPER.Length -lt 32) { throw "MAO_PREVIEW_DEVICE_SECRET_PEPPER must contain at least 32 characters" }
-          if ($env:MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET.Length -lt 32) { throw "MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET must contain at least 32 characters" }
+          if ([string]::IsNullOrWhiteSpace($env:MAO_PREVIEW_DEVICE_SECRET_PEPPER) -or $env:MAO_PREVIEW_DEVICE_SECRET_PEPPER.Length -lt 32) { throw "MAO_PREVIEW_DEVICE_SECRET_PEPPER must contain at least 32 characters" }
+          if ([string]::IsNullOrWhiteSpace($env:MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET) -or $env:MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET.Length -lt 32) { throw "MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET must contain at least 32 characters" }
 
       - name: Run the complete account-auth validation gate before deployment
         shell: pwsh
@@ -104,7 +104,7 @@ jobs:
             "Creator bootstrap: $previewUrl/account/bootstrap.html"
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-          $accountPage = Join-Path $env:TEMP 'mao-preview-account-entry.html'
+          $accountPage = Join-Path $env:RUNNER_TEMP 'mao-preview-account-entry.html'
           $bootstrapPage = Join-Path $env:TEMP 'mao-preview-bootstrap.html'
           & curl.exe --fail --silent --show-error "$previewUrl/account/index.html" --output $accountPage
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
