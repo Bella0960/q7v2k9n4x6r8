@@ -410,6 +410,120 @@ test('管理员可按永久账号 ID 查询有效邀请码，兼容已验证邮�
   assert.equal(afterRevoke.payload.invite, null, '撤销后不能继续报告为有效邀请码');
 });
 
+test('管理员账号详情返回权威状态与有效邀请码快照，撤销后可安全重新发码', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const target = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'detail-snapshot',
+      password: 'detail-snapshot-password-123',
+      confirmPassword: 'detail-snapshot-password-123'
+    }
+  });
+  assert.equal(target.status, 201);
+  const targetId = target.payload.account.id;
+  const detailPath = '/api/admin/accounts/' + encodeURIComponent(targetId) + '/detail';
+
+  const created = await post(ctx, '/api/admin/invites', { targetAccountId: targetId }, adminCookie);
+  assert.equal(created.status, 201);
+  const pendingDetail = await json(await ctx.fetchTo(detailPath, {
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(pendingDetail.status, 200);
+  assert.equal(pendingDetail.payload.account.id, targetId);
+  assert.equal(pendingDetail.payload.account.status, 'pending_invite');
+  assert.equal(pendingDetail.payload.invite.id, created.payload.invite.id);
+  assert.equal(Object.hasOwn(pendingDetail.payload.account, 'password_hash'), false);
+  assert.equal(Object.hasOwn(pendingDetail.payload.account, 'password_salt'), false);
+  assert.equal(Object.hasOwn(pendingDetail.payload.invite, 'code'), false);
+  assert.equal(/token_hash|tokenHash/i.test(JSON.stringify(pendingDetail.payload)), false,
+    '账号详情快照不能泄露密码材料、邀请码明文或哈希');
+
+  const targetLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'detail-snapshot', password: 'detail-snapshot-password-123' }
+  });
+  const targetCookie = cookieFrom(targetLogin);
+  const redeemed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: created.payload.invite.code
+  }, targetCookie);
+  assert.equal(redeemed.status, 200);
+
+  const activeDetail = await json(await ctx.fetchTo(detailPath, {
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(activeDetail.status, 200);
+  assert.equal(activeDetail.payload.account.status, 'active',
+    '详情必须读取服务器当前状态，而不是沿用打开详情前的列表状态');
+  assert.equal(activeDetail.payload.invite, null,
+    '已核销邀请码不能继续作为有效邀请码显示');
+
+  await post(ctx, '/api/admin/accounts/' + encodeURIComponent(targetId) + '/action', {
+    action: 'disable', reason: 'detail snapshot test'
+  }, adminCookie);
+  const disabledDetail = await json(await ctx.fetchTo(detailPath, {
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(disabledDetail.status, 200);
+  assert.equal(disabledDetail.payload.account.status, 'disabled');
+  assert.equal(disabledDetail.payload.invite, null);
+
+  await post(ctx, '/api/admin/accounts/' + encodeURIComponent(targetId) + '/action', {
+    action: 'restore', reason: ''
+  }, adminCookie);
+  const restoredDetail = await json(await ctx.fetchTo(detailPath, {
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(restoredDetail.payload.account.status, 'active');
+
+  const pending = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'detail-revoke',
+      password: 'detail-revoke-password-123',
+      confirmPassword: 'detail-revoke-password-123'
+    }
+  });
+  const pendingId = pending.payload.account.id;
+  const pendingPath = '/api/admin/accounts/' + encodeURIComponent(pendingId) + '/detail';
+  const invite = await post(ctx, '/api/admin/invites', { targetAccountId: pendingId }, adminCookie);
+  assert.equal(invite.status, 201);
+  await post(ctx, '/api/admin/invites/' + encodeURIComponent(invite.payload.invite.id) + '/revoke', {}, adminCookie);
+
+  const afterRevoke = await json(await ctx.fetchTo(pendingPath, {
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(afterRevoke.status, 200);
+  assert.equal(afterRevoke.payload.account.status, 'pending_invite');
+  assert.equal(afterRevoke.payload.invite, null,
+    '撤销后的详情刷新必须立即返回无有效邀请码，不能保留旧记录');
+
+  const replacement = await post(ctx, '/api/admin/invites', {
+    targetAccountId: pendingId
+  }, adminCookie);
+  assert.equal(replacement.status, 201,
+    '服务端确认旧码撤销后必须允许为同一待授权账号生成替代邀请码');
+
+  const ordinary = await ctx.fetchTo(detailPath, { headers: { cookie: targetCookie } });
+  assert.equal(ordinary.status, 403, '普通账号不能读取管理员详情快照');
+  const missing = await ctx.fetchTo('/api/admin/accounts/MAO-AAAAAAAAAAAA/detail', {
+    headers: { cookie: adminCookie }
+  });
+  assert.equal(missing.status, 404, '不存在的账号必须返回明确的 404');
+});
+
 test('创作者账号目录使用稳定游标分页，能够完整读取 500 条以上并跨全量搜索', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
