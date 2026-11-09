@@ -335,7 +335,14 @@ export async function dispatchPendingOutboundPushes({
         },
         JSON.stringify(payload),
         keys,
-        { nowMs: deliveryTimestamp, fetchImpl }
+        {
+          nowMs: deliveryTimestamp,
+          fetchImpl,
+          beforeSend: () => store.isActivePushSubscription(
+            candidate.subscription_id,
+            candidate.device_id
+          )
+        }
       );
     } catch (error) {
       outcome = {
@@ -343,6 +350,40 @@ export async function dispatchPendingOutboundPushes({
         statusCode: error instanceof PushConfigError ? 400 : Number(error?.statusCode || 0),
         gone: false
       };
+    }
+
+    if (outcome.skipped) {
+      const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+      const finalized = store.finishDelivery({
+        dedupeKey,
+        subscriptionId: candidate.subscription_id,
+        owner: deliveryOwner,
+        status: 'failed',
+        httpStatus: 0,
+        nextAttemptAt: null,
+        now: finishedAt
+      });
+      if (!finalized) {
+        summary.failed += 1;
+      } else {
+        summary.skipped += 1;
+      }
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId: candidate.device_id,
+        kind: 'outbound_push',
+        status: finalized ? 'skipped' : 'failed',
+        reasonCode: 'subscription_unavailable_before_send',
+        detail: {
+          outboundMessageId: candidate.outbound_message_id,
+          serverMessageId: candidate.server_message_id,
+          subscriptionId: candidate.subscription_id,
+          httpStatus: 0,
+          retryScheduled: false
+        },
+        now: finishedAt
+      });
+      continue;
     }
 
     const statusCode = Number(outcome.statusCode || 0);
@@ -841,7 +882,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth_key },
           payload,
           keys,
-          { nowMs: timestamp, fetchImpl }
+          {
+            nowMs: timestamp,
+            fetchImpl,
+            beforeSend: () => store.isActivePushSubscription(
+              subscription.id,
+              device.id
+            )
+          }
         );
       } catch (error) {
         // A network failure can happen after the push service accepted the
@@ -856,6 +904,27 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
             : Number(error?.statusCode || 0),
           gone: false
         };
+      }
+
+      if (outcome.skipped) {
+        const finishedAt = now();
+        const finalized = await store.finishDelivery({
+          dedupeKey,
+          subscriptionId: subscription.id,
+          owner: deliveryOwner,
+          status: 'failed',
+          httpStatus: 0,
+          nextAttemptAt: null,
+          now: finishedAt
+        });
+        if (!finalized) {
+          failed += 1;
+          results.push({ subscriptionId: subscription.id, status: 'lease_lost' });
+        } else {
+          skipped += 1;
+          results.push({ subscriptionId: subscription.id, status: 'revoked' });
+        }
+        continue;
       }
 
       const statusCode = Number(outcome.statusCode || 0);
