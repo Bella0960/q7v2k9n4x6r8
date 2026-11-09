@@ -2774,6 +2774,35 @@ test('设备撤销并发时，不能新增上下文版本事件或排队自主�
   )[0].total, 0, '已撤销设备不能在撤销完成后新增自主活动任务');
 });
 
+test('设备撤销后，迟到的 last-seen 更新不得再改写设备记录', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  const deviceId = 'device_late_touch_0001';
+  const createdAt = ctx.now();
+  ctx.store.insertDevice({
+    id: deviceId,
+    userId: 'owner',
+    secretHash: 'late-touch-test-secret-hash',
+    label: 'revoked device',
+    platform: 'test',
+    now: createdAt
+  });
+  ctx.store.exec(
+    'UPDATE devices SET last_seen_at = ? WHERE id = ?',
+    createdAt - 1000,
+    deviceId
+  );
+  ctx.store.revokeDevice(deviceId, createdAt);
+
+  ctx.store.touchDevice(deviceId, createdAt + 5000);
+  const device = ctx.query(
+    'SELECT last_seen_at, revoked_at FROM devices WHERE id = ?',
+    deviceId
+  )[0];
+  assert.equal(Number(device.last_seen_at), createdAt - 1000);
+  assert.equal(Number(device.revoked_at), createdAt);
+});
+
 test('遗留运行中任务在设备被撤销后不能再被完成、跳过或重试', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
