@@ -21,6 +21,8 @@ on:
       - 'tests/**'
       - 'docs/engineering/MAO_ACCOUNT_AUTH.md'
 
+  workflow_dispatch:
+
 permissions:
   contents: read
 
@@ -68,6 +70,7 @@ jobs:
           npm run test:admin:center
 
       - name: Deploy only the isolated preview Worker
+        id: deploy-preview
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_PREVIEW_API_TOKEN }}
@@ -79,3 +82,41 @@ jobs:
         env:
           DEVICE_SECRET_PEPPER: ${{ secrets.MAO_PREVIEW_DEVICE_SECRET_PEPPER }}
           MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: ${{ secrets.MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET }}
+
+      - name: Smoke-test the deployed preview and publish its phone link
+        env:
+          PREVIEW_URL: ${{ steps.deploy-preview.outputs.deployment-url }}
+        run: |
+          set -eu
+          test -n "$PREVIEW_URL" || { echo "Wrangler did not return a preview deployment URL"; exit 1; }
+          case "$PREVIEW_URL" in
+            https://*) ;;
+            *) echo "Preview deployment URL must use HTTPS"; exit 1 ;;
+          esac
+
+          echo "## MAO account-auth preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Open the isolated MAO preview on a phone]($PREVIEW_URL)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Account entry: $PREVIEW_URL/account/index.html" >> "$GITHUB_STEP_SUMMARY"
+          echo "Creator bootstrap: $PREVIEW_URL/account/bootstrap.html" >> "$GITHUB_STEP_SUMMARY"
+
+          curl --fail --silent --show-error "$PREVIEW_URL/account/index.html" --output /dev/null
+          curl --fail --silent --show-error "$PREVIEW_URL/account/bootstrap.html" --output /dev/null
+
+          curl --fail --silent --show-error "$PREVIEW_URL/api/admin/bootstrap/status" \
+            | node --input-type=module -e '
+              let raw = "";
+              for await (const chunk of process.stdin) raw += chunk;
+              const result = JSON.parse(raw);
+              if (result.ok !== true || typeof result.initialized !== "boolean") {
+                throw new Error("Preview bootstrap status endpoint returned an unexpected response");
+              }
+              console.log("Preview bootstrap endpoint: reachable; initialized=" + result.initialized);
+            '
+
+          admin_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$PREVIEW_URL/admin/admin-center.html")"
+          test "$admin_status" = "302" || {
+            echo "Unauthenticated admin page should redirect to account entry (expected 302, got $admin_status)"
+            exit 1
+          }
+          echo "Unauthenticated admin-page gate: HTTP 302 (passed)" >> "$GITHUB_STEP_SUMMARY"
