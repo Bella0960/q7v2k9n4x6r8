@@ -214,3 +214,40 @@ These changes are implementation-branch updates only. The creator contact destin
 - QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
 
 No production deployment, merge into main, or APK update is part of this branch.
+
+
+## Additional security gates and request-origin validation (2026-11-09)
+
+### API write-request origin gate
+
+The API handler now runs a single same-origin mutation guard before dispatching account or cloud API routes:
+
+- GET, HEAD, and OPTIONS do not use the mutation-origin gate.
+- Other methods require an Origin header whose parsed origin exactly matches the request URL origin.
+- When Sec-Fetch-Site is supplied, only same-origin is accepted.
+- Missing, malformed, cross-origin, and non-same-origin browser metadata fail closed with an explicit 403 response.
+- This is a CSRF defense-in-depth check. It does not replace Session authentication, device authentication, account ownership checks, or XSS prevention.
+
+The account contract tests cover cross-origin registration (no account may be created), missing Origin, conflicting Fetch Metadata, cross-origin logout (the Session must remain valid), and successful same-origin registration/logout. The helper defaults to browser-like same-origin request metadata while allowing tests to omit or override those headers.
+
+Real browser/PWA/Android WebView compatibility is still NOT VERIFIED. Confirm that supported browsers send the expected Origin and Sec-Fetch-Site headers for same-origin writes before treating this defense as accepted.
+
+### Honest JavaScript syntax gate
+
+The previous lint package command only printed a success message and performed no checks. It has been replaced with scripts/check-syntax.mjs, which enumerates tracked .js, .mjs, and .cjs files and invokes Node.js --check on each one. The check excludes generated or dependency directories such as dist, node_modules, and coverage.
+
+This is intentionally a syntax check, not a style linter or semantic analyzer. Its output says so explicitly. The focused account-auth and chat-regression workflows run this gate before dependency installation.
+
+The checker itself was exercised in an isolated temporary Git repository using Node.js 22.16.0:
+- A valid tracked JavaScript file passed.
+- A deliberately malformed tracked JavaScript file caused a non-zero exit and reported the failing filename and parser diagnostic.
+
+This isolated harness validates the checker's pass/fail behavior only. It does not mean the full MAOMAO source tree has passed the check.
+
+### Current evidence and release gate
+
+- Source code and contract test changes are committed on the implementation branch.
+- The latest observed PR Actions jobs still finish before any steps are reported (steps=[]); the job-log endpoint returns BlobNotFound. The reason has not been established from available GitHub records.
+- Therefore the full account test suite, Vite build, browser flows, and phone verification remain NOT VERIFIED.
+- This branch remains Draft and must not be merged or deployed until the Actions runner issue is resolved and the full gates pass.
+
