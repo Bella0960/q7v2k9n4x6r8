@@ -2141,6 +2141,78 @@ test('设备在异步鉴权期间被撤销时，旧设备请求必须在最终�
 });
 
 
+test('设备在重新登记的异步账号校验期间被撤销时，不能返回重新登记成功', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const adminAccountId = (await admin.clone().json()).account.id;
+  const deviceId = 'device_reenroll_race01';
+  const deviceSecret = randomToken(32);
+
+  const enrolled = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret: deviceSecret,
+    label: 'original device label',
+    platform: 'original platform'
+  }, adminCookie);
+  assert.equal(enrolled.status, 200);
+
+  // The existing device snapshot is already loaded when registerDevice awaits
+  // this account lookup. Revoke it before the handler reaches profile refresh.
+  const getAccount = ctx.store.getMaoAccountById.bind(ctx.store);
+  let revokedDuringReenrollment = false;
+  ctx.store.getMaoAccountById = accountId => {
+    const account = getAccount(accountId);
+    if (accountId === adminAccountId && !revokedDuringReenrollment) {
+      revokedDuringReenrollment = true;
+      assert.equal(
+        ctx.store.revokeMaoAccountDevice(adminAccountId, deviceId, ctx.now()),
+        true,
+        '模拟的并发请求应成功撤销设备'
+      );
+    }
+    return account;
+  };
+
+  const reenrollment = await ctx.fetchTo('/api/devices/register', {
+    method: 'POST',
+    body: {
+      deviceId,
+      secret: deviceSecret,
+      label: 'stale reenrollment label',
+      platform: 'stale reenrollment platform'
+    },
+    headers: {
+      cookie: adminCookie,
+      'x-mao-account-context': adminAccountId
+    }
+  });
+  const result = await json(reenrollment);
+  assert.equal(revokedDuringReenrollment, true);
+  assert.equal(result.status, 403);
+  assert.equal(result.payload.error.code, 'DEVICE_REVOKED');
+
+  const persisted = ctx.query(
+    'SELECT label, platform, revoked_at FROM devices WHERE id = ?',
+    deviceId
+  )[0];
+  assert.notEqual(persisted.revoked_at, null);
+  assert.equal(persisted.label, 'original device label',
+    '重新登记不得覆盖已经撤销设备的资料');
+  assert.equal(persisted.platform, 'original platform');
+});
+
 test('停用或永久撤销账号会在同一事务内撤销其未核销邀请码，恢复后必须重新发码', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
