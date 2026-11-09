@@ -133,6 +133,25 @@ class CloudStore {
     this.exec('UPDATE devices SET label = ?, platform = ? WHERE id = ?', label || '', platform || '', deviceId);
   }
 
+  refreshActiveDeviceProfile(deviceId, userId, secretHash, { label, platform, now }) {
+    // Device re-enrollment follows asynchronous account-session checks. Update
+    // its profile only if the same credential still belongs to the same account
+    // and the device has not been revoked in the meantime.
+    const refreshed = this.exec(
+      `UPDATE devices
+       SET label = ?, platform = ?, last_seen_at = ?
+       WHERE id = ? AND user_id = ? AND secret_hash = ? AND revoked_at IS NULL
+       RETURNING id`,
+      label || '',
+      platform || '',
+      now,
+      deviceId,
+      userId,
+      secretHash
+    )[0] || null;
+    return Boolean(refreshed);
+  }
+
   touchDevice(deviceId, now) {
     this.exec('UPDATE devices SET last_seen_at = ? WHERE id = ?', now, deviceId);
   }
