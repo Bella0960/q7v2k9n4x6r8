@@ -1192,6 +1192,11 @@ test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧�
 
   const restored = await post(ctx, '/api/admin/accounts/' + alice.payload.account.id + '/action', { action: 'restore' }, adminCookie);
   assert.equal(restored.status, 200);
+  const oldSessionAfterRestore = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie: aliceCookie }
+  });
+  assert.equal(oldSessionAfterRestore.status, 401,
+    '账号恢复只能恢复账号状态，不能重新激活停用前撤销的 Session');
   const relogin = await ctx.fetchTo('/api/accounts/login', {
     method: 'POST', body: { identifier: 'alice', password: 'alice-password-123' }
   });
@@ -1660,6 +1665,84 @@ test('账号安全只返回本人设备与会话，并支持撤销设备、会�
 
   const bobStillActive = await ctx.fetchTo('/api/accounts/me', { headers: { cookie: bob.cookie } });
   assert.equal(bobStillActive.status, 200, '修改 Alice 的密码不得影响 Bob');
+});
+
+test('密码哈希计算期间当前 Session 被撤销时，不能提交密码修改', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'password-session-race',
+      password: 'password-session-race-password-123',
+      confirmPassword: 'password-session-race-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+  const invite = await post(ctx, '/api/admin/invites', { targetAccountId: accountId }, adminCookie);
+  assert.equal(invite.status, 201);
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'password-session-race',
+      password: 'password-session-race-password-123'
+    }
+  });
+  const userCookie = cookieFrom(login);
+  const redeemed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, userCookie);
+  assert.equal(redeemed.status, 200);
+
+  const originalUpdate = ctx.store.updateMaoAccountPasswordAndRevokeOtherSessions.bind(ctx.store);
+  let revokedBeforePasswordWrite = false;
+  ctx.store.updateMaoAccountPasswordAndRevokeOtherSessions = options => {
+    revokedBeforePasswordWrite = true;
+    ctx.store.revokeMaoAccountSession(options.keepSessionId, ctx.now());
+    return originalUpdate(options);
+  };
+
+  const changed = await post(ctx, '/api/accounts/password/change', {
+    currentPassword: 'password-session-race-password-123',
+    newPassword: 'password-session-race-new-456',
+    confirmPassword: 'password-session-race-new-456'
+  }, userCookie);
+  assert.equal(revokedBeforePasswordWrite, true);
+  assert.equal(changed.status, 409);
+  assert.equal(changed.payload.error.code, 'PASSWORD_UPDATE_FAILED');
+
+  const oldPasswordStillWorks = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'password-session-race',
+      password: 'password-session-race-password-123'
+    }
+  });
+  assert.equal(oldPasswordStillWorks.status, 200,
+    '当前 Session 已撤销时，原密码不得被并发密码修改覆盖');
+  const newPasswordMustFail = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'password-session-race',
+      password: 'password-session-race-new-456'
+    }
+  });
+  assert.equal(newPasswordMustFail.status, 401);
+  const oldSessionMustFail = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie: userCookie }
+  });
+  assert.equal(oldSessionMustFail.status, 401);
 });
 
 test('初始化缺少 Worker Secret 时明确拒绝，公开状态不泄露密钥配置情况', async () => {
