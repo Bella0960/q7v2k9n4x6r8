@@ -1,0 +1,81 @@
+name: Deploy isolated MAO auth preview
+
+on:
+  push:
+    branches:
+      - feat/mao-account-auth-foundation
+    paths:
+      - '.github/workflows/deploy-mao-auth-preview.yml'
+      - 'wrangler.preview.jsonc'
+      - 'worker.js'
+      - 'worker/**'
+      - 'account/**'
+      - 'admin/**'
+      - 'shared/**'
+      - '**/*.html'
+      - '**/*.css'
+      - 'assets/**'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tests/**'
+      - 'docs/engineering/MAO_ACCOUNT_AUTH.md'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-isolated-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the account-auth development branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/mao-account-auth-foundation
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate isolated preview configuration
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PREVIEW_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_API_TOKEN }}
+          MAO_PREVIEW_DEVICE_SECRET_PEPPER: ${{ secrets.MAO_PREVIEW_DEVICE_SECRET_PEPPER }}
+          MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET: ${{ secrets.MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET }}
+        run: |
+          set -eu
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing GitHub secret: CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          test -n "$CLOUDFLARE_PREVIEW_API_TOKEN" || { echo "Missing GitHub secret: CLOUDFLARE_PREVIEW_API_TOKEN"; exit 1; }
+          test "${#MAO_PREVIEW_DEVICE_SECRET_PEPPER}" -ge 32 || { echo "MAO_PREVIEW_DEVICE_SECRET_PEPPER must contain at least 32 characters"; exit 1; }
+          test "${#MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET}" -ge 32 || { echo "MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET must contain at least 32 characters"; exit 1; }
+
+      - name: Build MAOMAO preview assets
+        run: npm run build
+
+      - name: Verify preview cannot point at the production Worker
+        run: npm run test:preview:config
+
+      - name: Verify MAO account and admin contracts before deployment
+        run: |
+          npm run test:accounts
+          npm run test:admin:center
+
+      - name: Deploy only the isolated preview Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_PREVIEW_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.preview.jsonc
+          secrets: |
+            DEVICE_SECRET_PEPPER
+            MAO_SUPER_ADMIN_BOOTSTRAP_SECRET
+        env:
+          DEVICE_SECRET_PEPPER: ${{ secrets.MAO_PREVIEW_DEVICE_SECRET_PEPPER }}
+          MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: ${{ secrets.MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET }}
