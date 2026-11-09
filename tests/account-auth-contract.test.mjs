@@ -2369,12 +2369,106 @@ test('邮箱变更并取消验证后，临时停用仍会撤销历史邮箱邀�
     '/api/admin/accounts/' + accountId + '/audit',
     { headers: { cookie: adminCookie } }
   ));
-  assert.ok(audit.payload.records.some(record =>
-    record.action === 'invite_revoke' &&
-    record.inviteId === inviteId &&
-    record.targetAccountId === accountId &&
-    record.sourceAction === 'disable'
-  ), '旧邮箱邀请码自动撤销事件必须仍记录在原账号时间线');
+  const oldInviteEvents = audit.payload.records.filter(record =>
+    record.action === 'invite_revoke' && record.inviteId === inviteId
+  );
+  assert.equal(oldInviteEvents.length, 1,
+    '同一张旧邮箱邀请码只应产生一条自动撤销审计，不能重复记账');
+  assert.equal(oldInviteEvents[0].targetAccountId, accountId);
+  assert.equal(oldInviteEvents[0].sourceAction, 'disable',
+    '旧邮箱邀请码自动撤销事件必须仍记录在原账号时间线');
+});
+
+test('邮箱变更后的历史邀请码撤销审计失败时，停用与撤销一起回滚，重试不重复记账', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'historical-email-rollback',
+      password: 'historical-email-rollback-password-123',
+      confirmPassword: 'historical-email-rollback-password-123',
+      qqEmail: 'rollback-before@qq.com'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+  ctx.store.exec(
+    'UPDATE mao_accounts SET qq_email_verified_at = ? WHERE id = ?',
+    ctx.now(), accountId
+  );
+
+  const invite = await post(ctx, '/api/admin/invites', {
+    targetEmail: 'rollback-before@qq.com'
+  }, adminCookie);
+  assert.equal(invite.status, 201);
+  const inviteId = invite.payload.invite.id;
+
+  const changed = ctx.store.updateMaoAccountEmail(accountId, 'rollback-after@qq.com', ctx.now());
+  assert.equal(changed.qq_email_verified_at, null);
+
+  ctx.store.exec(
+    'CREATE TRIGGER fail_historical_invite_audit BEFORE INSERT ON mao_account_audit ' +
+    "WHEN NEW.target_account_id = '" + accountId + "' AND NEW.action = 'invite_revoke' " +
+    "BEGIN SELECT RAISE(ABORT, 'simulated historical invite audit failure'); END"
+  );
+
+  const failed = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'disable',
+    reason: '验证历史邮箱撤销的审计事务回滚'
+  }, adminCookie);
+  assert.equal(failed.status, 500);
+  assert.equal(
+    ctx.query('SELECT status FROM mao_accounts WHERE id = ?', accountId)[0].status,
+    'pending_invite',
+    '历史邀请码审计失败时账号状态不能单独变为 disabled'
+  );
+  assert.equal(
+    ctx.query('SELECT revoked_at FROM mao_invite_codes WHERE id = ?', inviteId)[0].revoked_at,
+    null,
+    '历史邀请码审计失败时 revoked_at 必须一并回滚'
+  );
+  assert.equal(
+    Number(ctx.query(
+      "SELECT COUNT(*) AS total FROM mao_account_audit WHERE target_account_id = ? AND action = 'invite_revoke'",
+      accountId
+    )[0].total),
+    0,
+    '失败事务不应留下半条历史邀请码撤销审计'
+  );
+
+  ctx.store.exec('DROP TRIGGER fail_historical_invite_audit');
+  const retried = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'disable',
+    reason: '故障解除后重试'
+  }, adminCookie);
+  assert.equal(retried.status, 200);
+  assert.equal(retried.payload.account.status, 'disabled');
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM mao_invite_codes WHERE id = ?', inviteId)[0].revoked_at,
+    null,
+    '重试必须成功撤销同一张历史邀请码'
+  );
+  const audit = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + accountId + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  const events = audit.payload.records.filter(record =>
+    record.action === 'invite_revoke' && record.inviteId === inviteId
+  );
+  assert.equal(events.length, 1,
+    '失败后成功重试最终只能留下单条自动撤销审计');
+  assert.equal(events[0].sourceAction, 'disable');
 });
 
 test('0014 adds ordered cursor indexes for the admin account and invitation directories', () => {
