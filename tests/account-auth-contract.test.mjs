@@ -524,6 +524,112 @@ test('管理员账号详情返回权威状态与有效邀请码快照，撤销�
   assert.equal(missing.status, 404, '不存在的账号必须返回明确的 404');
 });
 
+test('邀请码生成与撤销写入账号审计时间线，且审计不包含邀请码密钥', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const target = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'audit-invite-target',
+      password: 'audit-invite-target-password-123',
+      confirmPassword: 'audit-invite-target-password-123'
+    }
+  });
+  assert.equal(target.status, 201);
+  const targetId = target.payload.account.id;
+
+  const created = await post(ctx, '/api/admin/invites', {
+    targetAccountId: targetId
+  }, adminCookie);
+  assert.equal(created.status, 201);
+
+  const auditPath = '/api/admin/accounts/' + encodeURIComponent(targetId) + '/audit';
+  const afterCreate = await json(await ctx.fetchTo(auditPath, {
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(afterCreate.status, 200);
+  const createRecord = afterCreate.payload.records.find(record => record.action === 'invite_create');
+  assert.ok(createRecord, '生成邀请码必须立即写入目标账号的审计时间线');
+  assert.equal(createRecord.targetAccountId, targetId);
+  assert.equal(createRecord.actorAccountId, ctx.query(
+    "SELECT id FROM mao_accounts WHERE role = 'super_admin'"
+  )[0].id);
+  assert.equal(createRecord.inviteId, created.payload.invite.id);
+  assert.equal(createRecord.expiresAt, created.payload.invite.expiresAt);
+  assert.equal(createRecord.maxUses, 1);
+  assert.equal(createRecord.usedCount, 0);
+  assert.equal(Object.hasOwn(createRecord, 'code'), false);
+  assert.equal(/token_hash|tokenHash|inviteCode/i.test(JSON.stringify(afterCreate.payload)), false,
+    '审计接口不得返回邀请码明文、核销码或 token 哈希');
+
+  const revoked = await post(ctx, '/api/admin/invites/' +
+    encodeURIComponent(created.payload.invite.id) + '/revoke', {}, adminCookie);
+  assert.equal(revoked.status, 200);
+
+  const afterRevoke = await json(await ctx.fetchTo(auditPath, {
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(afterRevoke.status, 200);
+  const revokeRecord = afterRevoke.payload.records.find(record =>
+    record.action === 'invite_revoke' && record.inviteId === created.payload.invite.id
+  );
+  assert.ok(revokeRecord, '撤销邀请码必须进入同一账号的审计时间线');
+  assert.equal(revokeRecord.targetAccountId, targetId);
+  assert.equal(revokeRecord.actorAccountId, createRecord.actorAccountId);
+
+  const emailTarget = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'audit-email-target',
+      password: 'audit-email-target-password-123',
+      confirmPassword: 'audit-email-target-password-123',
+      qqEmail: 'audit-email-target@qq.com'
+    }
+  });
+  assert.equal(emailTarget.status, 201);
+  ctx.store.exec(
+    'UPDATE mao_accounts SET qq_email_verified_at = ? WHERE id = ?',
+    ctx.now(), emailTarget.payload.account.id
+  );
+  const emailInvite = await post(ctx, '/api/admin/invites', {
+    targetEmail: 'audit-email-target@qq.com'
+  }, adminCookie);
+  assert.equal(emailInvite.status, 201);
+
+  const emailAudit = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(emailTarget.payload.account.id) + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(emailAudit.status, 200);
+  assert.ok(emailAudit.payload.records.some(record =>
+    record.action === 'invite_create' && record.targetAccountId === emailTarget.payload.account.id &&
+    record.inviteId === emailInvite.payload.invite.id
+  ), '已验证邮箱绑定的邀请也必须归入邮箱所属 MAO 账号的审计时间线');
+
+  const ordinaryLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'audit-invite-target',
+      password: 'audit-invite-target-password-123'
+    }
+  });
+  const denied = await ctx.fetchTo(auditPath, {
+    headers: { cookie: cookieFrom(ordinaryLogin) }
+  });
+  assert.equal(denied.status, 403, '普通账号不能读取包含邀请码管理动作的审计时间线');
+});
+
 test('创作者账号目录使用稳定游标分页，能够完整读取 500 条以上并跨全量搜索', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
