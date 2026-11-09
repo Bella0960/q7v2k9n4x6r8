@@ -647,7 +647,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/admin/invites' && method === 'GET') return await adminInvites(request);
       if (path === '/api/admin/invites' && method === 'POST') return await createInvite(request);
 
-      const activeInviteMatch = /^\\/api\\/admin\\/accounts\\/(MAO-[A-Z0-9]{12,24})\\/active-invite$/.exec(path);
+      const activeInviteMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/active-invite$/.exec(path);
       if (activeInviteMatch && method === 'GET') return await adminActiveInvite(request, activeInviteMatch[1]);
       const auditMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/audit$/.exec(path);
       if (auditMatch && method === 'GET') return await adminAccountAudit(request, auditMatch[1]);
