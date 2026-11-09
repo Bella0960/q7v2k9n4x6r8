@@ -7,11 +7,13 @@ on:
     paths:
       - '.github/workflows/deploy-mao-auth-preview.yml'
       - 'wrangler.preview.jsonc'
+      - 'wrangler.jsonc'
       - 'worker.js'
       - 'worker/**'
       - 'account/**'
       - 'admin/**'
       - 'shared/**'
+      - 'sw.js'
       - '**/*.html'
       - '**/*.css'
       - 'assets/**'
@@ -19,6 +21,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'tests/**'
+      - 'scripts/check-syntax.mjs'
       - 'docs/engineering/MAO_ACCOUNT_AUTH.md'
 
   workflow_dispatch:
@@ -29,7 +32,7 @@ permissions:
 jobs:
   deploy-isolated-preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out the account-auth development branch
         uses: actions/checkout@v4
@@ -45,7 +48,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Validate isolated preview configuration
+      - name: Validate isolated preview configuration and dedicated credentials
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_PREVIEW_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_API_TOKEN }}
@@ -58,16 +61,11 @@ jobs:
           test "${#MAO_PREVIEW_DEVICE_SECRET_PEPPER}" -ge 32 || { echo "MAO_PREVIEW_DEVICE_SECRET_PEPPER must contain at least 32 characters"; exit 1; }
           test "${#MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET}" -ge 32 || { echo "MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET must contain at least 32 characters"; exit 1; }
 
-      - name: Build MAOMAO preview assets
-        run: npm run build
-
-      - name: Verify preview cannot point at the production Worker
-        run: npm run test:preview:config
-
-      - name: Verify MAO account and admin contracts before deployment
+      - name: Run the complete account-auth validation gate before deployment
         run: |
-          npm run test:accounts
-          npm run test:admin:center
+          set -eu
+          npm run check:syntax
+          npm run test:accounts:all
 
       - name: Deploy only the isolated preview Worker
         id: deploy-preview
