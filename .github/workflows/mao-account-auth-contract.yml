@@ -10,6 +10,7 @@ on:
       - 'shared/js/font-loader.js'
       - 'sw.js'
       - 'tests/account-*.test.mjs'
+      - 'tests/MAO_ACCOUNT_AUTH_ACCEPTANCE.md'
       - 'tests/admin-center-*.test.mjs'
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/cloud-push-contract.test.mjs'
