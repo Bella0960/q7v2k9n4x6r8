@@ -47,8 +47,9 @@
         <button class="filter-button" type="button" data-account-filter="restricted" aria-pressed="false">受限 <span id="filterCountRestricted">—</span></button>
       </div>
       <p class="results-count" id="accountResultCount" aria-live="polite">正在读取账号…</p>
-      <p class="limit-note" id="accountLimitNotice" hidden>账号列表已达到当前 500 条读取上限；如账号总量更多，较早创建的账号暂不会出现在列表中。</p>
+      <p class="limit-note" id="accountLimitNotice" hidden></p>
       <div class="records-card" id="accountsList"><p class="empty-note">正在读取账号…</p></div>
+      <button class="directory-more" id="loadMoreAccounts" type="button" hidden>加载更多账号</button>
     </section>
 
     <section class="admin-view" id="invitesView" hidden>
@@ -63,8 +64,9 @@
         <button class="filter-button" type="button" data-invite-filter="revoked" aria-pressed="false">已撤销 <span id="inviteCountRevoked">—</span></button>
       </div>
       <p class="results-count" id="inviteResultCount" aria-live="polite">正在读取邀请码…</p>
-      <p class="limit-note" id="inviteLimitNotice" hidden>邀请码记录已达到当前 500 条读取上限；较早的历史记录暂不会出现在列表中。</p>
+      <p class="limit-note" id="inviteLimitNotice" hidden></p>
       <div class="records-card" id="invitesList"><p class="empty-note">正在读取邀请码…</p></div>
+      <button class="directory-more" id="loadMoreInvites" type="button" hidden>加载更多邀请码</button>
       <p class="helper-note">当前可直接绑定 MAO 永久 ID。QQ 邮箱所有权验证与邮件发送尚未接通，因此邮箱方式暂不开放。</p>
     </section>
 
