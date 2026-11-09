@@ -5,7 +5,7 @@ button,input{font:inherit}
 button{cursor:pointer}
 .manage-shell{width:min(100%,560px);min-height:100svh;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 20px max(28px,env(safe-area-inset-bottom))}
 .manage-header{display:flex;align-items:center;gap:14px;padding:12px 0 24px}
-.back-link{width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--line);border-radius:13px;background:#fff;color:#454850;text-decoration:none;font-size:21px}
+.back-link{width:auto;min-height:38px;padding:0 11px;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:#fff;color:#686b72;text-decoration:none;font-size:11px}
 .eyebrow{font-size:9px;letter-spacing:.16em;color:#a0a3aa;font-weight:650;margin-bottom:5px}
 h1{font-size:25px;letter-spacing:-.04em;margin:0;font-weight:650}
 .header-mark{margin-left:auto;font-size:12px;letter-spacing:.17em;font-weight:700;color:#555963}
@@ -49,5 +49,13 @@ h1{font-size:25px;letter-spacing:-.04em;margin:0;font-weight:650}
 .logout-button{width:100%;height:49px;margin-top:28px;border:1px solid #f0dfe0;border-radius:14px;background:#fff;color:var(--red);font-size:13px;font-weight:580}
 .footer-note{text-align:center;color:#a1a4ab;font-size:10px;line-height:1.7;margin:17px 0 0}
 .page-error{padding:16px 4px;color:var(--red);font-size:12px;line-height:1.7}
+.account-action-dialog{position:fixed;inset:0;width:min(calc(100% - 36px),410px);max-width:410px;max-height:82svh;margin:auto;padding:22px;border:1px solid #e0e2e6;border-radius:20px;background:#fff;color:var(--ink);box-shadow:0 24px 80px rgba(18,20,26,.2);overflow:auto}
+.account-action-dialog::backdrop{background:rgba(22,24,30,.38);backdrop-filter:blur(3px)}
+.account-action-content h2{margin:0;font-size:19px;line-height:1.35;font-weight:650}
+.account-action-content>p{margin:10px 0 0;color:#737780;font-size:12px;line-height:1.8}
+.account-action-buttons{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:20px}
+.account-action-buttons button{min-height:44px;padding:0 12px;border:1px solid #dfe1e5;border-radius:11px;background:#f4f5f6;color:#4d525b;font:inherit;font-size:12px;font-weight:600}
+.account-action-buttons button:last-child{border-color:#d9dadd;background:#e5e6e9;color:#34363b}
+.account-action-buttons button:disabled{opacity:.55;cursor:wait}
 @media(prefers-reduced-motion:no-preference){.info-card,.identity-card{animation:fade-in .22s ease-out}}
 @keyframes fade-in{from{opacity:.55;transform:translateY(3px)}to{opacity:1;transform:none}}
