@@ -131,10 +131,27 @@
     try {
       const created = await api('/api/accounts/register', 'POST', body);
       const accountId = created.account.id;
-      const signedIn = await api('/api/accounts/login', 'POST', {
-        identifier: body.username,
-        password: body.password
-      });
+      const loginIdentifier = byId('loginForm').querySelector('[name="identifier"]');
+      if (loginIdentifier) loginIdentifier.value = body.username;
+
+      let signedIn;
+      try {
+        signedIn = await api('/api/accounts/login', 'POST', {
+          identifier: body.username,
+          password: body.password
+        });
+      } catch {
+        // Registration has already committed. Do not send the user back to
+        // the registration form, where retrying would create a duplicate.
+        setError(
+          'loginError',
+          '账号已创建，MAO 永久 ID：' + accountId +
+            '。自动登录暂未完成，请使用刚设置的用户名和密码重新登录。'
+        );
+        showPanel('loginPanel');
+        return;
+      }
+
       const account = signedIn.account || { id: accountId, status: 'pending_invite' };
       byId('pendingAccountId').textContent = account.id || accountId;
       presentAccount({ ...account, status: account.status || 'pending_invite' });
