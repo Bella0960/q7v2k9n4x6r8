@@ -192,15 +192,15 @@ test('所有危险操作使用屏幕中央原生模态确认，不再使用浏�
   assert.match(adminHtml, /id="adminConfirmSubmit"/);
   assert.match(adminScript, /function openAdminConfirmation\(options\)/);
   assert.match(adminScript, /dialog\.showModal\(\)/);
-  assert.match(adminScript, /pendingConfirmation\.onConfirm\(reason\)/);
+  assert.match(adminScript, /confirmation\.onConfirm\(reason\)/);
   assert.match(adminScript, /adminConfirmDialog'\)\.addEventListener\('cancel'/);
   assert.doesNotMatch(adminScript, /window\.confirm\(/,
     '账号停用、永久撤销和邀请码撤销不能再使用浏览器默认确认框');
   assert.match(adminScript, /title: '确认撤销邀请码？'/);
   assert.match(adminScript, /title: '确认撤销当前邀请码？'/);
-  assert.match(adminScript, /title: '确认临时停用账号？'/);
-  assert.match(adminScript, /title: '确认永久撤销账号？'/);
-  assert.match(adminScript, /title: '确认恢复账号？'/);
+  assert.match(adminScript, /disable: '确认临时停用账号？'/);
+  assert.match(adminScript, /revoke: '确认永久撤销账号？'/);
+  assert.match(adminScript, /restore: '确认恢复账号？'/);
   assert.match(adminCss, /\.admin-confirm-dialog\{position:fixed;inset:0/);
   assert.match(adminCss, /\.admin-confirm-dialog::backdrop/);
   assert.match(adminCss, /\.admin-confirm-actions/);
