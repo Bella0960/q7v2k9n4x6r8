@@ -85,6 +85,11 @@
         <button class="filter-button" type="button" data-audit-filter="account" aria-pressed="false">账号状态</button>
         <button class="filter-button" type="button" data-audit-filter="invite" aria-pressed="false">邀请码</button>
       </div>
+      <div class="audit-range-row" role="group" aria-label="操作记录时间范围">
+        <button class="filter-button active" type="button" data-audit-range="all" aria-pressed="true">全部时间</button>
+        <button class="filter-button" type="button" data-audit-range="today" aria-pressed="false">今天</button>
+        <button class="filter-button" type="button" data-audit-range="7d" aria-pressed="false">近 7 天</button>
+      </div>
       <p class="results-count" id="globalAuditResultCount" aria-live="polite">正在读取操作记录…</p>
       <div class="records-card global-audit-list" id="globalAuditList"><p class="empty-note">正在读取操作记录…</p></div>
       <button class="directory-more" id="loadMoreGlobalAudit" type="button" hidden>加载更多记录</button>
