@@ -46,7 +46,12 @@ function createScope({ accountId, role = 'user', fetchImpl = null }) {
     delete(name) { cacheCalls.push(['delete', name]); return Promise.resolve(true); },
     has(name) { cacheCalls.push(['has', name]); return Promise.resolve(true); },
     keys() { return Promise.resolve(cacheNames.slice()); },
-    match() { return Promise.resolve('native-global-match'); },
+    match(request, options) {
+      cacheCalls.push(['match', options && options.cacheName]);
+      return Promise.resolve(options && String(options.cacheName || '').includes(encodeURIComponent(accountId))
+        ? 'explicit-scoped-match'
+        : 'foreign-global-cache-match');
+    },
     matchAll(request, options) {
       cacheCalls.push(['matchAll', options && options.cacheName]);
       return Promise.resolve(options && String(options.cacheName || '').includes(encodeURIComponent(accountId))
@@ -242,6 +247,13 @@ test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互�
   assert.ok(namedCall);
   assert.match(namedCall[1], /MAO-AAAAAAAAAAAA.*font-assets/,
     '指定 cacheName 也必须自动加上当前 MAO 前缀');
+
+  const namedMatchA = await a.window.caches.match('/private-resource', { cacheName: 'font-assets' });
+  assert.equal(namedMatchA, 'explicit-scoped-match');
+  const namedMatchCall = a.cacheCalls.find(call => call[0] === 'match');
+  assert.ok(namedMatchCall);
+  assert.match(namedMatchCall[1], /MAO-AAAAAAAAAAAA.*font-assets/,
+    'CacheStorage.match 指定 cacheName 时也必须自动加上当前 MAO 前缀');
 });
 
 test('唯一超级管理员继续使用创作者现有本地数据，不迁移或清空旧数据', () => {
