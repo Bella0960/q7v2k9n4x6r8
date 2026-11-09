@@ -88,7 +88,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   justify-items: center;
   gap: 7px;
   margin: 0 0 12px;
-  animation: welcomeReveal .55s ease both;
 }
 .hero-avatar-frame {
   width: 112px;
@@ -150,6 +149,8 @@ h1 {
   text-align: center;
   animation: welcomeReveal .58s .20s ease both;
 }
+.welcome-panel .welcome-card { animation: welcomeReveal .58s .26s ease both; }
+.welcome-panel .primary-button { animation: welcomeReveal .58s .34s ease both; }
 .lead {
   margin: 12px 0 22px;
   color: var(--secondary);
