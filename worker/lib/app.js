@@ -503,11 +503,6 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     }
 
     const timestamp = now();
-    if (timestamp - Number(currentDevice.last_seen_at || 0) > 300000) {
-      // Store writes are synchronous. Do not yield after this touch; the
-      // session/device authorization check below must be the final operation.
-      store.touchDevice(currentDevice.id, timestamp);
-    }
     // Re-check the exact MAO session that authenticated this device. A second
     // session for the same account must not keep an in-flight request alive
     // after its own session has been revoked or expired.
@@ -524,6 +519,12 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
       }
       throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '登录会话已失效，请重新登录后继续');
+    }
+    // Store writes are synchronous. Touch only after the final authorization
+    // check and do not yield afterward, so rejected stale sessions leave no
+    // device metadata changes behind.
+    if (timestamp - Number(currentDevice.last_seen_at || 0) > 300000) {
+      store.touchDevice(currentDevice.id, timestamp);
     }
     return currentDevice;
   }
