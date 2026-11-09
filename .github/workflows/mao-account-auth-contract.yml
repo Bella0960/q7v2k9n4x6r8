@@ -14,11 +14,15 @@ on:
       - 'tests/pwa-navigation-cache.test.mjs'
       - 'tests/cloud-push-contract.test.mjs'
       - 'tests/font-runtime-performance.test.mjs'
+      - 'tests/preview-deployment-isolation.test.mjs'
       - 'tests/helpers/**'
       - 'scripts/check-syntax.mjs'
       - 'package.json'
       - 'package-lock.json'
+      - 'wrangler.jsonc'
+      - 'wrangler.preview.jsonc'
       - 'vite.config.js'
+      - '.github/workflows/deploy-mao-auth-preview.yml'
       - '.github/workflows/mao-account-auth-contract.yml'
   workflow_dispatch:
 
