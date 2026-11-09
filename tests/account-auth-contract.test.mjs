@@ -1543,8 +1543,102 @@ test('重复错误登录触发持久化限流，窗口过期后恢复并清除�
     body: { identifier: 'rate-user', password: 'rate-user-password-123' }
   });
   assert.equal(recovered.status, 200);
-  const limits = ctx.query('SELECT COUNT(*) AS total FROM mao_login_rate_limits');
-  assert.equal(Number(limits[0].total), 0, '成功登录后清除该来源的失败计数');
+  const pepper = 'test-device-secret-pepper-for-contract-tests-32chars';
+  const ip = '203.0.113.1';
+  const ipRateLimitKey = await sha256Hex('mao-login|' + pepper + '|' + ip);
+  const accountIpRateLimitKey = await sha256Hex(
+    'mao-login-account-ip|' + pepper + '|' + registered.payload.account.id + '|' + ip
+  );
+  assert.equal(
+    ctx.query('SELECT COUNT(*) AS total FROM mao_login_rate_limits WHERE ip_hash = ?', accountIpRateLimitKey)[0].total,
+    0,
+    '成功登录只清除当前账号与当前 IP 的失败桶'
+  );
+  const sharedIpState = ctx.store.getMaoLoginRateLimit(ipRateLimitKey, ctx.now());
+  assert.equal(sharedIpState.attemptCount, 8,
+    '成功登录不能清除同一 IP 的汇总失败计数');
+  assert.equal(sharedIpState.blocked, false,
+    '8 次失败不应过早封锁共享网络中的其他账号');
+});
+
+test('同一 IP 下一个账号成功登录不能清除另一个账号的失败计数', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  const register = async username => {
+    const result = await ctx.asJson('/api/accounts/register', {
+      method: 'POST',
+      body: {
+        username,
+        password: username + '-password-123',
+        confirmPassword: username + '-password-123'
+      }
+    });
+    assert.equal(result.status, 201);
+    return result.payload.account;
+  };
+  const alice = await register('shared-ip-alice');
+  const bob = await register('shared-ip-bob');
+  const ip = '203.0.113.1';
+  const pepper = 'test-device-secret-pepper-for-contract-tests-32chars';
+  const ipRateLimitKey = await sha256Hex('mao-login|' + pepper + '|' + ip);
+  const aliceRateLimitKey = await sha256Hex(
+    'mao-login-account-ip|' + pepper + '|' + alice.id + '|' + ip
+  );
+
+  for (let index = 0; index < 7; index += 1) {
+    const failed = await ctx.asJson('/api/accounts/login', {
+      method: 'POST',
+      body: { identifier: alice.username, password: 'wrong-password-for-alice' }
+    });
+    assert.equal(failed.status, 401);
+  }
+
+  const bobSuccess = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: bob.username, password: 'shared-ip-bob-password-123' }
+  });
+  assert.equal(bobSuccess.status, 200);
+
+  // Use Alice's permanent MAO ID to confirm username/ID aliases share one
+  // canonical account bucket rather than creating a fresh allowance.
+  const aliceEighthFailure = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: alice.id, password: 'wrong-password-for-alice' }
+  });
+  assert.equal(aliceEighthFailure.status, 429,
+    'Bob 登录成功不能重置 Alice 的 7 次失败记录');
+  const aliceRate = ctx.store.getMaoLoginRateLimit(aliceRateLimitKey, ctx.now());
+  assert.equal(aliceRate.attemptCount, 8);
+  assert.equal(aliceRate.blocked, true);
+  const ipRate = ctx.store.getMaoLoginRateLimit(ipRateLimitKey, ctx.now());
+  assert.equal(ipRate.attemptCount, 8,
+    '共享 IP 汇总计数应包含两个账号的请求且不能被成功登录清空');
+  assert.equal(ipRate.blocked, false);
+});
+
+test('共享 IP 汇总限流允许合理的多账号失败量，并在高频失败时触发保护', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  const ip = '198.51.100.77';
+  const pepper = 'test-device-secret-pepper-for-contract-tests-32chars';
+  const ipRateLimitKey = await sha256Hex('mao-login|' + pepper + '|' + ip);
+  for (let index = 0; index < 39; index += 1) {
+    const failure = ctx.store.recordMaoLoginFailure(ipRateLimitKey, ctx.now(), {
+      windowMs: 15 * 60 * 1000,
+      maxAttempts: 40
+    });
+    assert.equal(failure.blocked, false);
+  }
+  const blocked = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'unknown-shared-ip-user', password: 'unknown-password-123' },
+    ip
+  });
+  assert.equal(blocked.status, 429,
+    '跨账号失败累计达到 IP 汇总阈值后仍必须保护该来源');
+  const state = ctx.store.getMaoLoginRateLimit(ipRateLimitKey, ctx.now());
+  assert.equal(state.attemptCount, 40);
+  assert.equal(state.blocked, true);
 });
 
 test('账号安全只返回本人设备与会话，并支持撤销设备、会话及修改密码', async () => {
