@@ -97,3 +97,6 @@ h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .error-retry,.audit-retry{min-height:32px;padding:0 11px;border:1px solid #d9dbe0;border-radius:9px;background:#fff;color:#454a53;font-size:10px;white-space:nowrap}
 .error-retry:disabled{opacity:.55;cursor:wait}
 .audit-retry{margin:0 0 10px}
+
+.limit-note{margin:0 2px 9px;color:#777c84;font-size:10px;line-height:1.6}
+.limit-note[hidden]{display:none}
