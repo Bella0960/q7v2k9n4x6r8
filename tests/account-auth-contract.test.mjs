@@ -2273,6 +2273,16 @@ test('永久撤销账号会撤销已验证 QQ 邮箱绑定的邀请码，且不�
     null,
     '永久撤销账号时必须撤销绑定到其已验证 QQ 邮箱的邀请码'
   );
+  const emailAudit = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + accountId + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.ok(emailAudit.payload.records.some(record =>
+    record.action === 'invite_revoke' &&
+    record.inviteId === invite.payload.invite.id &&
+    record.targetAccountId === accountId &&
+    record.sourceAction === 'revoke'
+  ), '通过已验证邮箱绑定的邀请码自动失效后，必须记录在其所属账号时间线');
 
   const restore = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
     action: 'restore'
