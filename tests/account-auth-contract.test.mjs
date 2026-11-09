@@ -1853,3 +1853,78 @@ test('创作者邀请码目录超过 500 条时可按游标完整翻页，统计
     '历史邀请码必须能通过全目录搜索找到');
   assert.equal(oldInvite.payload.invites[0].id, 'invite_record_000000000000');
 });
+
+
+test('管理审计记录按稳定游标完整分页，且普通用户不能读取', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const adminId = ctx.query("SELECT id FROM mao_accounts WHERE role = 'super_admin'")[0].id;
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'audit-pagination-user',
+      password: 'audit-pagination-user-password-123',
+      confirmPassword: 'audit-pagination-user-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const targetId = registered.payload.account.id;
+
+  for (let index = 0; index < 225; index += 1) {
+    const suffix = String(index).padStart(6, '0');
+    ctx.store.exec(
+      'INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      'audit_test_' + suffix, adminId, targetId, 'disable',
+      JSON.stringify({ reason: '历史审计 ' + index }),
+      5000 + Math.floor(index / 2)
+    );
+  }
+
+  let cursor = '';
+  const ids = [];
+  for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+    const path = '/api/admin/accounts/' + targetId + '/audit?limit=50' +
+      (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+    const result = await json(await ctx.fetchTo(path, { headers: { cookie: adminCookie } }));
+    assert.equal(result.status, 200);
+    assert.equal(result.payload.page.totalCount, 225);
+    assert.equal(result.payload.records.length, Math.min(50, 225 - ids.length));
+    ids.push(...result.payload.records.map(record => record.id));
+    if (!result.payload.page.hasMore) break;
+    assert.ok(result.payload.page.nextCursor);
+    cursor = result.payload.page.nextCursor;
+  }
+  assert.equal(ids.length, 225);
+  assert.equal(new Set(ids).size, 225,
+    'created_at 相同的审计记录不能在翻页时重复或遗漏');
+
+  const ordinaryLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'audit-pagination-user',
+      password: 'audit-pagination-user-password-123'
+    }
+  });
+  const ordinaryCookie = cookieFrom(ordinaryLogin);
+  const denied = await ctx.fetchTo('/api/admin/accounts/' + targetId + '/audit', {
+    headers: { cookie: ordinaryCookie }
+  });
+  assert.equal(denied.status, 403, '非超级管理员不得读取审计原因和历史');
+});
+
+test('0015 adds the per-account audit cursor index', () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  const names = ctx.query("SELECT name FROM sqlite_master WHERE type = 'index'").map(row => row.name);
+  assert.ok(names.includes('idx_mao_account_audit_cursor'));
+});
