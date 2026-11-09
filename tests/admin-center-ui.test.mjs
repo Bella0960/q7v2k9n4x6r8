@@ -95,7 +95,9 @@ test('account detail audit history supports paginated loading and preserves retr
 
 test('账号审计时间线展示邀请码生成与撤销事件，但不显示一次性密钥', () => {
   assert.match(adminScript, /invite_create: '生成专属邀请码'/);
+  assert.match(adminScript, /invite_redeem: '用户核销邀请码'/);
   assert.match(adminScript, /invite_revoke: '撤销专属邀请码'/);
+  assert.match(adminScript, /record\.action === 'invite_redeem' \? '账号 ' : '管理员 '/);
   assert.match(adminScript, /if \(record\.inviteId\) subline\.push\('邀请码记录 '/);
   assert.match(adminScript, /if \(record\.expiresAt\) subline\.push\('到期 '/);
   assert.match(adminScript, /if \(record\.maxUses != null\)/);
