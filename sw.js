@@ -7,7 +7,7 @@ const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 const APP_SHELL = [
   './',
   './index.html',
-  './shared/js/mao-account-scope.js?v=1',
+  './shared/js/mao-account-scope.js?v=2',
   './account/manage.css',
   './account/manage.js',
   './account/settings-link.js?v=1',
