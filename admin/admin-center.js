@@ -617,6 +617,8 @@
           actorLabel + record.actorAccountId
         ];
         if (record.inviteId) subline.push('邀请码记录 ' + record.inviteId);
+        if (record.sourceAction === 'disable') subline.push('随账号停用自动撤销');
+        if (record.sourceAction === 'revoke') subline.push('随账号永久撤销自动失效');
         if (record.expiresAt) subline.push('到期 ' + formatTime(record.expiresAt));
         if (record.maxUses != null) {
           subline.push('使用次数 ' + Number(record.usedCount || 0) + '/' + Number(record.maxUses || 1));
