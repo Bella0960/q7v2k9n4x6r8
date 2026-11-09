@@ -177,8 +177,12 @@
 
   function inviteState(invite, timestamp = Date.now()) {
     if (invite.revoked_at) return 'revoked';
-    if (Number(invite.expires_at) <= timestamp) return 'expired';
-    if (Number(invite.used_count || 0) >= Number(invite.max_uses || 1)) return 'used';
+    const usedCount = Number(invite.used_count || 0);
+    const maxUses = Number(invite.max_uses || 1);
+    if (Number.isFinite(usedCount) && Number.isFinite(maxUses) &&
+        maxUses > 0 && usedCount >= maxUses) return 'used';
+    const expiresAt = Number(invite.expires_at);
+    if (!Number.isFinite(expiresAt) || expiresAt <= timestamp) return 'expired';
     return 'pending';
   }
 
