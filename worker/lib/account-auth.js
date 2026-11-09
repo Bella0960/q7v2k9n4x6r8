@@ -476,8 +476,12 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     const accepted = store.redeemMaoInvite({
       tokenHash: await sha256Hex('mao-invite|' + inviteCode),
       accountId: account.id,
+      sessionId: account.session_id,
       now: now()
     });
+    if (accepted === 'session_invalid') {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '登录会话已失效，请重新登录后再验证邀请码');
+    }
     if (!accepted) {
       throw new ApiError(403, 'INVITE_NOT_VALID_FOR_ACCOUNT', '邀请码无效、已使用、已过期或不属于当前账号');
     }
@@ -530,9 +534,13 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       targetEmail,
       maxUses,
       createdByAccountId: actor.account_id,
+      actorSessionId: actor.session_id,
       now: timestamp,
       expiresAt
     });
+    if (inserted === 'actor_session_invalid') {
+      throw new ApiError(403, 'ADMIN_SESSION_REVOKED', '管理员会话已失效，请重新登录后再操作');
+    }
     if (inserted === 'target_not_pending') {
       throw new ApiError(409, 'INVITE_TARGET_NOT_PENDING', '该账号状态已经变化，不能生成邀请码；请刷新账号状态后重试');
     }
@@ -753,9 +761,13 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       accountId,
       action,
       actorAccountId: actor.account_id,
+      actorSessionId: actor.session_id,
       reason: String(body.reason || '').trim().slice(0, 500),
       now: now()
     });
+    if (updated === 'actor_session_invalid') {
+      throw new ApiError(403, 'ADMIN_SESSION_REVOKED', '管理员会话已失效，请重新登录后再操作');
+    }
     if (!updated) {
       throw new ApiError(409, 'ACCOUNT_ACTION_REJECTED', '该账号不存在，或当前状态不允许此操作');
     }
@@ -767,7 +779,16 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
 
   async function revokeInvite(request, inviteId) {
     const actor = await requireActiveAdmin(request);
-    if (!store.revokeMaoInvite(inviteId, actor.account_id, now())) {
+    const revoked = store.revokeMaoInvite(
+      inviteId,
+      actor.account_id,
+      now(),
+      actor.session_id
+    );
+    if (revoked === 'actor_session_invalid') {
+      throw new ApiError(403, 'ADMIN_SESSION_REVOKED', '管理员会话已失效，请重新登录后再操作');
+    }
+    if (!revoked) {
       throw new ApiError(404, 'INVITE_NOT_ACTIVE', '邀请码不存在或已失效');
     }
     return ok({ revoked: true });
