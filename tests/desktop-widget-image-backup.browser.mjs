@@ -105,7 +105,9 @@ function makeNoisePng(width, height, seedStart) {
 
 const WIDGETS = [
   { name: 'image', click: '[data-drag="image"]', render: '[data-drag="image"]', key: 'home_widget_image_v1_image_img', legacyKey: 'ds_image_v1' },
-  { name: 'postcard-background', click: '#pcBgTop', render: '#pcBgTop', key: 'home_widget_image_v1_postcard_background', legacyKey: 'ds_postcard_v1' },
+  // The avatar sits at the exact center of the background layer and keeps its own
+  // upload handler, so click an empty corner of the background instead.
+  { name: 'postcard-background', click: '#pcBgTop', render: '#pcBgTop', key: 'home_widget_image_v1_postcard_background', legacyKey: 'ds_postcard_v1', pos: { x: 24, y: 24 } },
   { name: 'postcard-avatar', click: '#pcAvatar', render: '#pcAvatar', key: 'home_widget_image_v1_postcard_avatar', legacyKey: 'ds_postcard_v1' },
   { name: 'polaroid', click: '#poImg', render: '#poImg', key: 'home_widget_image_v1_polaroid_img', legacyKey: 'ds_polaroid_v1' },
   { name: 'dialog-them-avatar', click: '#dlAvatarThem', render: '#dlAvatarThem', key: 'home_widget_image_v1_dialog_themAvatar', legacyKey: 'ds_dialog_v1' },
@@ -175,7 +177,7 @@ async function uploadWidget(page, widget, photo) {
   const target = page.locator(widget.click);
   await target.scrollIntoViewIfNeeded();
   const chooserPromise = page.waitForEvent('filechooser', { timeout: 10000 });
-  await target.click();
+  await target.click(widget.pos ? { position: widget.pos } : {});
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: widget.name + '.png', mimeType: 'image/png', buffer: photo });
   await waitSaved(page, widget.key);
