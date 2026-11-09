@@ -1933,17 +1933,28 @@ class CloudStore {
   }
 
   createMaoAccount(account) {
-    const inserted = this.exec(
-      "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at, registration_ip_hash) " +
-      "SELECT ?, ?, ?, ?, ?, 'user', 'pending_invite', ?, NULL, ?, ?, ? " +
-      "WHERE (SELECT COUNT(*) FROM mao_accounts WHERE registration_ip_hash = ? AND created_at >= ?) < 8 " +
-      "RETURNING id",
-      account.id, account.username, account.usernameKey, account.passwordSalt,
-      account.passwordHash, account.qqEmail || null, account.now, account.now,
-      account.registrationIpHash || '', account.registrationIpHash || '',
-      Number(account.now) - 60 * 60 * 1000
-    )[0];
-    return inserted ? this.getMaoAccountById(account.id) : null;
+    return this.transaction(() => {
+      const inserted = this.exec(
+        "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at, registration_ip_hash) " +
+        "SELECT ?, ?, ?, ?, ?, 'user', 'pending_invite', ?, NULL, ?, ?, ? " +
+        "WHERE (SELECT COUNT(*) FROM mao_accounts WHERE registration_ip_hash = ? AND created_at >= ?) < 8 " +
+        "RETURNING id",
+        account.id, account.username, account.usernameKey, account.passwordSalt,
+        account.passwordHash, account.qqEmail || null, account.now, account.now,
+        account.registrationIpHash || '', account.registrationIpHash || '',
+        Number(account.now) - 60 * 60 * 1000
+      )[0];
+      if (!inserted) return null;
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'account_register', ?, ?)",
+        'audit_' + crypto.randomUUID(),
+        account.id,
+        account.id,
+        serializeStoreJson({ registrationMethod: 'password' }, 2048, 'account registration audit detail'),
+        account.now
+      );
+      return this.getMaoAccountById(account.id);
+    });
   }
 
 
@@ -1983,6 +1994,13 @@ class CloudStore {
       for (const table of tables) {
         this.exec('UPDATE ' + table + " SET user_id = ? WHERE user_id = 'owner'", account.id);
       }
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, NULL, ?, 'admin_bootstrap', ?, ?)",
+        'audit_' + crypto.randomUUID(),
+        account.id,
+        serializeStoreJson({ bootstrap: 'one_time_creator_initialization' }, 2048, 'admin bootstrap audit detail'),
+        account.now
+      );
       return true;
     });
   }
