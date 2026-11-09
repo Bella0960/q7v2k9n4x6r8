@@ -597,6 +597,56 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     });
   }
 
+  function adminAuditOptions(request) {
+    const options = adminDirectoryOptions(request, ['all'], /^audit_[A-Za-z0-9_-]{8,80}$/);
+    const type = String(new URL(request.url).searchParams.get('type') || 'all');
+    if (!['all', 'account', 'invite'].includes(type)) {
+      throw new ApiError(400, 'INVALID_AUDIT_FILTER', '操作记录筛选条件不正确');
+    }
+    return { ...options, type };
+  }
+
+  async function adminAudit(request) {
+    await requireActiveAdmin(request);
+    const options = adminAuditOptions(request);
+    const rows = store.listMaoAccountAuditEvents(options);
+    const hasMore = rows.length > options.limit;
+    const pageRecords = rows.slice(0, options.limit);
+    const last = pageRecords[pageRecords.length - 1] || null;
+    const records = pageRecords.map(record => {
+      let detail = {};
+      try { detail = JSON.parse(String(record.detail_json || '{}')); } catch {}
+      return {
+        id: String(record.id),
+        actorAccountId: record.actor_account_id == null ? null : String(record.actor_account_id),
+        actorUsername: record.actor_username == null ? '' : String(record.actor_username),
+        actorType: record.action === 'invite_redeem' ? 'account' : 'admin',
+        targetAccountId: record.target_account_id == null ? null : String(record.target_account_id),
+        targetUsername: record.target_username == null ? '' : String(record.target_username),
+        action: String(record.action),
+        reason: String(detail.reason || ''),
+        fromStatus: detail.fromStatus == null ? null : String(detail.fromStatus),
+        toStatus: detail.toStatus == null ? null : String(detail.toStatus),
+        inviteId: detail.inviteId == null ? null : String(detail.inviteId),
+        sourceAction: detail.sourceAction == null ? null : String(detail.sourceAction),
+        expiresAt: detail.expiresAt == null ? null : Number(detail.expiresAt),
+        maxUses: detail.maxUses == null ? null : Number(detail.maxUses),
+        usedCount: detail.usedCount == null ? null : Number(detail.usedCount),
+        createdAt: Number(record.created_at)
+      };
+    });
+    return ok({
+      records,
+      page: {
+        limit: options.limit,
+        totalCount: store.countMaoAccountAuditEvents(options),
+        hasMore,
+        nextCursor: hasMore && last ? String(last.created_at) + ':' + last.id : null
+      },
+      summary: store.getMaoAccountAuditSummary()
+    });
+  }
+
   async function adminAccountAudit(request, accountId) {
     await requireActiveAdmin(request);
     const account = store.getMaoAccountById(accountId);
@@ -687,6 +737,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (deviceMatch && method === 'POST') return await revokeOwnDevice(request, deviceMatch[1]);
       if (path === '/api/admin/bootstrap' && method === 'POST') return await bootstrap(request);
       if (path === '/api/admin/accounts' && method === 'GET') return await adminAccounts(request);
+      if (path === '/api/admin/audit' && method === 'GET') return await adminAudit(request);
       if (path === '/api/admin/invites' && method === 'GET') return await adminInvites(request);
       if (path === '/api/admin/invites' && method === 'POST') return await createInvite(request);
 
