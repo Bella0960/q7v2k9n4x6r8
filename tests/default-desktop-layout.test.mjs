@@ -206,8 +206,10 @@ test('creator invitation directory supports target search and lifecycle-state fi
   }
   assert.match(adminScript, /function inviteState\(invite, timestamp = Date\.now\(\)\)/);
   assert.match(adminScript, /if \(invite\.revoked_at\) return 'revoked'/);
-  assert.match(adminScript, /Number\(invite\.expires_at\) <= timestamp\) return 'expired'/);
-  assert.match(adminScript, /Number\(invite\.used_count \|\| 0\) >= Number\(invite\.max_uses \|\| 1\)\) return 'used'/);
+  assert.match(adminScript, /usedCount >= maxUses\) return 'used'[\s\S]*!Number\.isFinite\(expiresAt\) \|\| expiresAt <= timestamp\) return 'expired'/,
+    'a redeemed invite must stay in the used state even after its expiry timestamp');
+  assert.match(adminScript, /!Number\.isFinite\(expiresAt\) \|\| expiresAt <= timestamp\) return 'expired'/,
+    'missing or invalid expiry data must not be treated as a currently valid invitation');
   assert.match(adminScript, /\[invite\.id, invite\.target_account_id, invite\.target_email, invite\.target_username\]/);
   assert.match(adminScript, /inviteFilter === 'all' \|\| inviteState\(invite\) === inviteFilter/);
   assert.match(adminScript, /updateInviteFilterCounts\(\)/);
