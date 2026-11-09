@@ -19,7 +19,7 @@ console.log('Hosted GitHub Actions is not used by this runner.');
 
 for (let index = 0; index < steps.length; index += 1) {
   const [label, script] = steps[index];
-  console.log('\\n[' + (index + 1) + '/' + steps.length + '] ' + label + ' (' + script + ')');
+  console.log('\n[' + (index + 1) + '/' + steps.length + '] ' + label + ' (' + script + ')');
   const result = spawnSync(npm, ['run', script], {
     stdio: 'inherit',
     shell: process.platform === 'win32'
@@ -38,4 +38,4 @@ for (let index = 0; index < steps.length; index += 1) {
   console.log('PASSED: ' + label);
 }
 
-console.log('\\nALL LOCAL ACCEPTANCE CHECKS PASSED');
+console.log('\nALL LOCAL ACCEPTANCE CHECKS PASSED');
