@@ -1880,7 +1880,10 @@ class CloudStore {
     return Boolean(row);
   }
 
-  completeActivity({ id, owner, attemptCount, now }) {
+  completeActivity({
+    id, owner, attemptCount, now, userId = null, requireActiveDevice = false
+  }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, owner)) return false;
     const row = this.exec(
       `UPDATE activity_queue
        SET status = 'completed', locked_by = NULL, locked_until = NULL,
@@ -1897,7 +1900,10 @@ class CloudStore {
     return Boolean(row);
   }
 
-  failActivity({ id, owner, attemptCount, now, nextAttemptAt }) {
+  failActivity({
+    id, owner, attemptCount, now, nextAttemptAt, userId = null, requireActiveDevice = false
+  }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, owner)) return false;
     const retryable = Number.isFinite(nextAttemptAt) && nextAttemptAt > now;
     const row = this.exec(
       `UPDATE activity_queue
