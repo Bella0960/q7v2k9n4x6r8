@@ -103,6 +103,41 @@ class CloudStore {
     );
   }
 
+  insertMaoAccountDevice(device) {
+    // A new device must be inserted only while both its MAO account and the
+    // exact enrolling browser session are still active. This closes the gap
+    // between asynchronous session validation and account-disable cleanup.
+    const inserted = this.exec(
+      `INSERT INTO devices
+        (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1
+         FROM mao_accounts a
+         INNER JOIN mao_account_sessions s ON s.account_id = a.id
+         WHERE a.id = ?
+           AND a.status = 'active'
+           AND s.id = ?
+           AND s.revoked_at IS NULL
+           AND s.expires_at > ?
+       )
+       RETURNING id`,
+      device.id,
+      device.userId,
+      device.secretHash,
+      device.label || '',
+      device.platform || '',
+      device.userAgent || '',
+      device.ipHash || '',
+      device.now,
+      device.now,
+      device.userId,
+      device.sessionId,
+      device.now
+    )[0] || null;
+    return Boolean(inserted);
+  }
+
   insertBootstrapDevice(device) {
     // Claim and insert are synchronous within this Durable Object request, so
     // another request cannot interleave between the gate update and insertion.
