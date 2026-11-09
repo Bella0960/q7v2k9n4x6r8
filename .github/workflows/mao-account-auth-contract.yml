@@ -43,19 +43,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run MAO account, authorization and data-isolation tests
-        run: npm run test:accounts
-
-      - name: Verify creator management center interaction contracts
-        run: npm run test:admin:center
-
-      - name: Build production bundle
-        run: npm run build
-
-      - name: Verify cloud push privacy and font runtime contracts
-        run: |
-          npm run test:cloud:push
-          npm run test:font:runtime
+      - name: Run complete MAO account security and regression gates
+        run: npm run test:accounts:all
 
       - name: Verify desktop compatibility and Service Worker cache boundaries
         run: |
