@@ -70,7 +70,7 @@ The creator-only desktop shortcut opens `/admin/admin-center.html`. The page is 
 The first management screen includes:
 - A count of ordinary MAO accounts (the creator account is deliberately excluded), pending invitations, active accounts, and restricted accounts.
 - Search by username, permanent MAO ID, or QQ email; filter the directory by all, pending, active, or restricted states.
-- Per-account details and private audit history, with a one-tap permanent-ID copy control and protection against stale audit responses when switching accounts.
+- Per-account details and private audit history, with a one-tap permanent-ID copy control, stale-response protection when switching accounts, and cursor pagination for audit histories beyond the first 50 entries.
 - One-time invitation generation for pending accounts, with the raw code displayed once for copying.
 - Invitation records with a matching permanent account ID link directly back to that account's detail and audit view.
 - Search invitation records by record ID, target permanent MAO ID, target email, or username; filter and count pending, used, expired, and revoked invitations. Only currently pending invitations expose the revoke action. When a record is both redeemed and past its expiry timestamp, the redeemed state takes precedence; revoked records take precedence over both. Missing or invalid expiry timestamps are treated as expired in the management UI.
@@ -152,7 +152,7 @@ Authenticated account routes (require the page MAO context to match the HttpOnly
 
 Super-admin only:
 - GET /api/admin/accounts?limit=50&cursor=...&search=...&status=... (keyset-paginated; status: all, pending_invite, active, restricted)
-- GET /api/admin/accounts/:id/audit
+- GET /api/admin/accounts/:id/audit?limit=50&cursor=... (private per-account history, keyset-paginated)
 - GET /api/admin/invites?limit=50&cursor=...&search=...&status=... (keyset-paginated; status: all, pending, used, expired, revoked)
 - POST /api/admin/invites
 - POST /api/admin/invites/:id/revoke
@@ -184,8 +184,8 @@ Run `npm run test:preview:config` to verify the checked-in preview configuration
 
 ## Validation
 
-- npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, account/device revocation, and full directory cursor traversal beyond 500 accounts with duplicate-timestamp boundaries and search.
-- npm run test:admin:center covers admin-page recovery after transient session/API failures, duplicate-action button locking, audit retry behavior, the one-time invitation reveal flow on mobile, and server-side cursor pagination controls.
+- npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, account/device revocation, full directory cursor traversal beyond 500 accounts with duplicate-timestamp boundaries and search, and private audit history pagination beyond 200 entries.
+- npm run test:admin:center covers admin-page recovery after transient session/API failures, duplicate-action button locking, audit retry and pagination behavior, the one-time invitation reveal flow on mobile, and server-side directory cursor pagination controls.
 - The account command also includes browser storage namespace tests for two account IDs.
 - The focused `MAO Account Auth Contract` workflow must execute the tests and build before the branch can be considered validated. The latest observed jobs still terminate before runner assignment (`runner_id=0`, no steps/logs), so tests and build remain NOT VERIFIED.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
