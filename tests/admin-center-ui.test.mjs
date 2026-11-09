@@ -83,11 +83,11 @@ test('account and invitation directories use server-side cursor pagination', () 
 test('account detail audit history supports paginated loading and preserves retry behavior', () => {
   assert.match(adminHtml, /id="auditResultCount"/);
   assert.match(adminHtml, /id="loadMoreAudit"[^>]*hidden/);
-  assert.match(adminScript, /async function loadAudit\\(accountId, reset = true\\)/);
-  assert.match(adminScript, /auditLoadedCount/);
-  assert.match(adminScript, /result\\.page\\?\\.nextCursor/);
-  assert.match(adminScript, /result\\.page\\?\\.totalCount/);
-  assert.match(adminScript, /loadMoreAudit'\\)\\.addEventListener/);
-  assert.match(adminScript, /retryButton\\.addEventListener\\('click', \\(\\) => loadAudit\\(accountId, reset\\)\\)/);
-  assert.match(adminCss, /\\.audit-result-count/);
+  assert.ok(adminScript.includes('async function loadAudit(accountId, reset = true)'));
+  assert.ok(adminScript.includes('auditLoadedCount'));
+  assert.ok(adminScript.includes('result.page?.nextCursor'));
+  assert.ok(adminScript.includes('result.page?.totalCount'));
+  assert.ok(adminScript.includes("$('loadMoreAudit').addEventListener"));
+  assert.ok(adminScript.includes("retryButton.addEventListener('click', () => loadAudit(accountId, reset))"));
+  assert.match(adminCss, /\.audit-result-count/);
 });
