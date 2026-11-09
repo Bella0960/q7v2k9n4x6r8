@@ -171,6 +171,94 @@ async function post(ctx, path, body, cookie = '') {
   return ctx.asJson(path, { method: 'POST', body, headers });
 }
 
+test('所有 API 写请求都必须来自精确同源页面，跨来源和缺少来源信息均拒绝', async () => {
+  const ctx = setupTestStore(openTestDb());
+
+  const crossOriginRegistration = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    origin: 'https://attacker.test',
+    fetchSite: 'cross-site',
+    body: {
+      username: 'origin-cross-user',
+      password: 'origin-cross-user-password-123',
+      confirmPassword: 'origin-cross-user-password-123'
+    }
+  });
+  assert.equal(crossOriginRegistration.status, 403);
+  assert.equal(crossOriginRegistration.payload.error.code, 'CROSS_ORIGIN_REQUEST_BLOCKED');
+  assert.equal(ctx.store.getMaoAccountByIdentifier('origin-cross-user'), null,
+    '跨来源注册请求不得创建账号');
+
+  const missingOrigin = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    origin: false,
+    fetchSite: false,
+    body: {
+      username: 'origin-missing-user',
+      password: 'origin-missing-user-password-123',
+      confirmPassword: 'origin-missing-user-password-123'
+    }
+  });
+  assert.equal(missingOrigin.status, 403);
+  assert.equal(missingOrigin.payload.error.code, 'ORIGIN_REQUIRED');
+
+  const mismatchedFetchMetadata = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    origin: 'https://mao.test',
+    fetchSite: 'cross-site',
+    body: {
+      username: 'origin-fetch-site-user',
+      password: 'origin-fetch-site-user-password-123',
+      confirmPassword: 'origin-fetch-site-user-password-123'
+    }
+  });
+  assert.equal(mismatchedFetchMetadata.status, 403);
+  assert.equal(mismatchedFetchMetadata.payload.error.code, 'CROSS_ORIGIN_REQUEST_BLOCKED');
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'origin-valid-user',
+      password: 'origin-valid-user-password-123',
+      confirmPassword: 'origin-valid-user-password-123'
+    }
+  });
+  assert.equal(registered.status, 201, '正常 MAO 同源注册必须保持可用');
+
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'origin-valid-user', password: 'origin-valid-user-password-123' }
+  });
+  assert.equal(login.status, 200);
+  const cookie = cookieFrom(login);
+
+  const crossOriginLogout = await ctx.asJson('/api/accounts/logout', {
+    method: 'POST',
+    headers: { cookie },
+    origin: 'https://attacker.test',
+    fetchSite: 'cross-site'
+  });
+  assert.equal(crossOriginLogout.status, 403,
+    '跨来源请求不得撤销登录会话');
+
+  const stillAuthenticated = await ctx.fetchTo('/api/accounts/me', {
+    headers: { cookie },
+    origin: false,
+    fetchSite: false
+  });
+  assert.equal(stillAuthenticated.status, 200,
+    '被拒绝的跨来源登出不能影响原有 Session，安全 GET 仍兼容无 Origin 客户端');
+
+  const sameOriginLogout = await ctx.asJson('/api/accounts/logout', {
+    method: 'POST',
+    headers: { cookie }
+  });
+  assert.equal(sameOriginLogout.status, 200, '正常同源登出必须保持可用');
+
+  const afterLogout = await ctx.fetchTo('/api/accounts/me', { headers: { cookie } });
+  assert.equal(afterLogout.status, 401);
+});
+
 test('过期登录会话由服务端明确标记，账号管理页不再提供退出操作', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
