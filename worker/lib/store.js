@@ -350,7 +350,7 @@ class CloudStore {
     return rows.length;
   }
 
-  upsertSubscription(subscription) {
+  upsertSubscription(subscription, { maxSubscriptions = null } = {}) {
     // Re-check authorization at the write boundary. A request can pass
     // authenticate() and then be overtaken by a concurrent device revocation.
     // Store operations are synchronous, so this guard and the write below
@@ -370,6 +370,23 @@ class CloudStore {
       // A subscription may move only when its previous device was revoked.
       // Never let a second live device silently take over an active endpoint.
       if (!previousOwner || previousOwner.revoked_at == null) return null;
+    }
+
+    // The route-level count is only an early UX check: concurrent requests can
+    // both observe a free slot. Enforce the per-device cap again immediately
+    // before the write, within this synchronous store operation.
+    if (
+      existing?.device_id !== subscription.deviceId &&
+      Number.isInteger(maxSubscriptions) &&
+      maxSubscriptions >= 0
+    ) {
+      const count = this.exec(
+        'SELECT COUNT(*) AS total FROM push_subscriptions WHERE device_id = ?',
+        subscription.deviceId
+      )[0];
+      if (Number(count?.total || 0) >= maxSubscriptions) {
+        return { limitReached: true };
+      }
     }
 
     if (existing) {
