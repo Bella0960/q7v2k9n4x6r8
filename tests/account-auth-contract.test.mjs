@@ -71,7 +71,7 @@ test('MAO 欢迎页遵循已确认的静态白底灰兔与单次渐变标题设�
   assert.match(html, /class="hero-avatar-caption">A QUIET LITTLE DETAIL/);
   assert.match(html, /class="welcome-title">欢迎使用 MAO<\/h1>/,
     '欢迎标题只出现一次');
-  assert.match(html, /class="welcome-lead">给日常留一处只属于自己的空间。/);
+  assert.match(html, /class="[^"]*\bwelcome-lead\b[^"]*">给日常留一处只属于自己的空间。/);
   assert.doesNotMatch(html, /welcome-index|card-index|hero-orbit|hero-red-point|button-arrow|01\s*\/\s*04|↗|←|→/,
     '欢迎页不应出现编号、轨道装饰或方向箭头');
   assert.doesNotMatch(html, /唯一超级管理员/, '公开邀请码说明只称管理员');
@@ -1017,8 +1017,16 @@ test('管理员账号详情返回权威状态与有效邀请码快照，撤销�
   assert.equal(replacement.status, 201,
     '服务端确认旧码撤销后必须允许为同一待授权账号生成替代邀请码');
 
-  const ordinary = await ctx.fetchTo(detailPath, { headers: { cookie: targetCookie } });
-  assert.equal(ordinary.status, 403, '普通账号不能读取管理员详情快照');
+  const ordinaryLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'detail-snapshot',
+      password: 'detail-snapshot-password-123'
+    }
+  });
+  const ordinaryCookie = cookieFrom(ordinaryLogin);
+  const ordinary = await ctx.fetchTo(detailPath, { headers: { cookie: ordinaryCookie } });
+  assert.equal(ordinary.status, 403, '有效的普通账号会话不能读取管理员详情快照');
   const missing = await ctx.fetchTo('/api/admin/accounts/MAO-AAAAAAAAAAAA/detail', {
     headers: { cookie: adminCookie }
   });
@@ -2795,10 +2803,19 @@ test('设备在写入期间被撤销后，不能重新写入 presence、lease �
     return { deviceId, secret };
   };
   const revokeAtWrite = device => {
+    const stored = ctx.query(
+      'SELECT id, user_id, revoked_at FROM devices WHERE id = ?',
+      device.deviceId
+    )[0];
+    assert.ok(stored, '并发撤销前，刚登记的设备必须存在');
+    assert.equal(stored.user_id, accountId,
+      '刚登记的设备必须归属于当前 MAO 永久 ID：' + JSON.stringify(stored));
+    assert.equal(stored.revoked_at, null,
+      '刚登记的设备在模拟撤销前必须仍然有效：' + JSON.stringify(stored));
     assert.equal(
       ctx.store.revokeMaoAccountDevice(accountId, device.deviceId, ctx.now()),
       true,
-      '模拟的并发管理员撤销必须成功'
+      '模拟的并发管理员撤销必须成功：' + JSON.stringify(stored)
     );
   };
 
@@ -2914,9 +2931,17 @@ test('设备撤销并发时，不能新增上下文版本事件或排队自主�
   const characterId = 'role_context_revoke_race';
   const originalRecord = ctx.store.recordCharacterContextEvent.bind(ctx.store);
   ctx.store.recordCharacterContextEvent = options => {
+    const stored = ctx.query(
+      'SELECT id, user_id, revoked_at FROM devices WHERE id = ?',
+      contextDevice.deviceId
+    )[0];
+    assert.ok(stored, '上下文事件撤销前，刚登记的设备必须存在');
+    assert.equal(stored.user_id, accountId,
+      '上下文事件设备必须归属于当前 MAO 永久 ID：' + JSON.stringify(stored));
     assert.equal(
       ctx.store.revokeMaoAccountDevice(accountId, contextDevice.deviceId, ctx.now()),
-      true
+      true,
+      '上下文事件设备撤销必须成功：' + JSON.stringify(stored)
     );
     return originalRecord({ ...options, requireActiveDevice: true });
   };
@@ -3012,7 +3037,12 @@ test('设备撤销后，迟到的 last-seen 更新不得再改写设备记录', 
 
 test('遗留运行中任务在设备被撤销后不能再被完成、跳过或重试', async () => {
   const db = openTestDb();
-  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const ctx = setupTestStore(db, {
+    MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET,
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '5',
+    AUTONOMY_RETRY_BACKOFF_MS: '1000,5000'
+  });
   const admin = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
     body: {
@@ -3492,9 +3522,9 @@ test('停用或永久撤销账号会在同一事务内撤销其未核销邀请�
   const permanentTarget = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     body: {
-      username: 'permanent-invite-lifecycle',
-      password: 'permanent-invite-lifecycle-password-123',
-      confirmPassword: 'permanent-invite-lifecycle-password-123'
+      username: 'permanent-invite',
+      password: 'permanent-invite-password-123',
+      confirmPassword: 'permanent-invite-password-123'
     }
   });
   const permanentId = permanentTarget.payload.account.id;
@@ -3543,9 +3573,9 @@ test('发码预检查后账号被停用时，事务内二次校验阻止插入�
   const registered = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     body: {
-      username: 'invite-create-disable-race',
-      password: 'invite-create-disable-race-password-123',
-      confirmPassword: 'invite-create-disable-race-password-123'
+      username: 'invite-disable-race',
+      password: 'invite-disable-race-password-123',
+      confirmPassword: 'invite-disable-race-password-123'
     }
   });
   assert.equal(registered.status, 201);
@@ -3798,9 +3828,9 @@ test('邮箱变更后的历史邀请码撤销审计失败时，停用与撤销�
   const registered = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     body: {
-      username: 'historical-email-rollback',
-      password: 'historical-email-rollback-password-123',
-      confirmPassword: 'historical-email-rollback-password-123',
+      username: 'email-rollback',
+      password: 'email-rollback-password-123',
+      confirmPassword: 'email-rollback-password-123',
       qqEmail: 'rollback-before@qq.com'
     }
   });
@@ -4364,7 +4394,7 @@ test('配对码只能消费一次，签发设备撤销后剩余配对码立即�
   });
   const replayResult = await json(replay);
   assert.equal(replayResult.status, 403);
-  assert.equal(replayResult.payload.error.code, 'DEVICE_PAIRING_REQUIRED');
+  assert.equal(replayResult.payload.error.code, 'PAIRING_TOKEN_INVALID');
   assert.equal(
     Number(ctx.query(
       "SELECT COUNT(*) AS total FROM devices WHERE id = ?",
@@ -4394,7 +4424,7 @@ test('配对码只能消费一次，签发设备撤销后剩余配对码立即�
   });
   const staleResult = await json(stalePairing);
   assert.equal(staleResult.status, 403);
-  assert.equal(staleResult.payload.error.code, 'DEVICE_PAIRING_REQUIRED');
+  assert.equal(staleResult.payload.error.code, 'PAIRING_TOKEN_INVALID');
   assert.equal(
     Number(ctx.query(
       'SELECT COUNT(*) AS total FROM device_pairing_tokens WHERE created_by_device_id = ? AND consumed_at IS NULL',
@@ -4567,9 +4597,9 @@ test('管理员会话在停用请求提交前被撤销时，账号状态不得�
   const target = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     body: {
-      username: 'admin-session-race-target',
-      password: 'admin-session-race-target-password-123',
-      confirmPassword: 'admin-session-race-target-password-123'
+      username: 'admin-race-target',
+      password: 'admin-race-target-password-123',
+      confirmPassword: 'admin-race-target-password-123'
     }
   });
   assert.equal(target.status, 201);
@@ -4673,9 +4703,9 @@ test('管理员会话在生成或撤销邀请码提交前失效时不得写入�
     method: 'POST',
     body: {
       bootstrapSecret: BOOTSTRAP_SECRET,
-      username: 'invite-admin-session-race',
-      password: 'invite-admin-session-race-password-123',
-      confirmPassword: 'invite-admin-session-race-password-123'
+      username: 'invite-admin-race',
+      password: 'invite-admin-race-password-123',
+      confirmPassword: 'invite-admin-race-password-123'
     }
   });
   assert.equal(admin.status, 200);
@@ -4687,17 +4717,17 @@ test('管理员会话在生成或撤销邀请码提交前失效时不得写入�
   const createTarget = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     body: {
-      username: 'invite-create-session-target',
-      password: 'invite-create-session-target-password-123',
-      confirmPassword: 'invite-create-session-target-password-123'
+      username: 'invite-create-target',
+      password: 'invite-create-target-password-123',
+      confirmPassword: 'invite-create-target-password-123'
     }
   });
   const revokeTarget = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     body: {
-      username: 'invite-revoke-session-target',
-      password: 'invite-revoke-session-target-password-123',
-      confirmPassword: 'invite-revoke-session-target-password-123'
+      username: 'invite-revoke-target',
+      password: 'invite-revoke-target-password-123',
+      confirmPassword: 'invite-revoke-target-password-123'
     }
   });
   assert.equal(createTarget.status, 201);
@@ -4729,8 +4759,8 @@ test('管理员会话在生成或撤销邀请码提交前失效时不得写入�
   const relogin = await ctx.fetchTo('/api/accounts/login', {
     method: 'POST',
     body: {
-      identifier: 'invite-admin-session-race',
-      password: 'invite-admin-session-race-password-123'
+      identifier: 'invite-admin-race',
+      password: 'invite-admin-race-password-123'
     }
   });
   assert.equal(relogin.status, 200);
