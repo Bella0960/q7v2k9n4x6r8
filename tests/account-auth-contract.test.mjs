@@ -63,6 +63,55 @@ test('注册创建成功但自动登录失败时，引导用户登录而不是�
   assert.match(registrationFlow, /loginError/);
 });
 
+test('创作者管理中心的危险操作必须先居中确认，取消不得提交', () => {
+  const html = readFileSync(new URL('../admin/admin-center.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../admin/admin-center.css', import.meta.url), 'utf8');
+  const script = readFileSync(new URL('../admin/admin-center.js', import.meta.url), 'utf8');
+
+  assert.match(html, /<dialog id="adminConfirmDialog"/,
+    '管理中心必须使用原生 dialog 模态框');
+  assert.match(css, /\.admin-confirm-dialog\{position:fixed;inset:0/,
+    '确认框必须覆盖页面并居中显示');
+  assert.match(css, /\.admin-confirm-dialog::backdrop\{background:/,
+    '确认时必须弱化背景，避免误点底层页面');
+  assert.match(css, /\.admin-confirm-actions button\.danger\{[^}]*background:#e5e6e9/i,
+    '危险确认按钮使用浅灰色而不是黑底');
+  assert.match(script, /function openAdminConfirmation\(options\)/);
+  assert.match(script, /dialog\.showModal\(\)/);
+  assert.match(script, /adminConfirmDialog'\)\.addEventListener\('cancel'/,
+    'Esc 取消必须清除待执行操作');
+  assert.match(script, /if \(!confirmation \|\| busy\) return/,
+    '未打开确认项或已有操作执行中时不得提交');
+  assert.match(script, /adminConfirmSubmit'\)\.addEventListener\('click'/);
+  assert.doesNotMatch(script, /window\.confirm\(/,
+    '不能退回浏览器默认确认框');
+
+  const inviteStart = script.indexOf('function renderInvites');
+  const inviteEnd = script.indexOf('function directoryPath', inviteStart);
+  const inviteSection = script.slice(inviteStart, inviteEnd);
+  assert.ok(inviteStart >= 0 && inviteEnd > inviteStart);
+  assert.ok(
+    inviteSection.indexOf('openAdminConfirmation') >= 0 &&
+    inviteSection.indexOf("await api('/api/admin/invites/") >
+      inviteSection.indexOf('openAdminConfirmation'),
+    '邀请码撤销 API 只能位于二次确认回调中'
+  );
+
+  const accountStart = script.indexOf('function createActionButton');
+  const accountEnd = script.indexOf('async function renderAccountDetail', accountStart);
+  const accountSection = script.slice(accountStart, accountEnd);
+  assert.ok(accountStart >= 0 && accountEnd > accountStart);
+  assert.ok(
+    accountSection.indexOf('openAdminConfirmation') >= 0 &&
+    accountSection.indexOf("await api('/api/admin/accounts/") >
+      accountSection.indexOf('openAdminConfirmation'),
+    '停用、恢复和永久撤销 API 只能位于二次确认回调中'
+  );
+
+  assert.match(script, /pendingConfirmation = null;/,
+    '取消后必须清空待确认动作，不能在下一次点击中意外执行');
+});
+
 test('账号自助管理中的设备和会话撤销必须使用中央模态确认', () => {
   const html = readFileSync(new URL('../account/manage.html', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../account/manage.css', import.meta.url), 'utf8');
