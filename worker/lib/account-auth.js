@@ -546,6 +546,42 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     });
   }
 
+  async function adminAccountDetail(request, accountId) {
+    await requireActiveAdmin(request);
+    const account = store.getMaoAccountById(accountId);
+    if (!account) throw new ApiError(404, 'ACCOUNT_NOT_FOUND', '账号不存在');
+
+    // Return only fields needed by the creator UI. Never expose password
+    // material, registration hashes, invitation hashes, or raw invite codes.
+    const publicAccount = {
+      id: String(account.id),
+      username: String(account.username || ''),
+      role: String(account.role || 'user'),
+      status: String(account.status || ''),
+      qq_email: account.qq_email == null ? null : String(account.qq_email),
+      qq_email_verified_at: account.qq_email_verified_at == null ? null : Number(account.qq_email_verified_at),
+      created_at: Number(account.created_at || 0),
+      authorized_at: account.authorized_at == null ? null : Number(account.authorized_at),
+      disabled_at: account.disabled_at == null ? null : Number(account.disabled_at),
+      revoked_at: account.revoked_at == null ? null : Number(account.revoked_at)
+    };
+
+    // Read account state and its pending invitation together in one Worker
+    // request so the UI never combines a stale list row with a newer invite.
+    const row = account.status === 'pending_invite'
+      ? store.getActiveMaoInviteForAccount(accountId, now())
+      : null;
+    return ok({
+      account: publicAccount,
+      invite: row ? {
+        id: String(row.id),
+        expiresAt: Number(row.expires_at),
+        maxUses: Number(row.max_uses || 1),
+        usedCount: Number(row.used_count || 0)
+      } : null
+    });
+  }
+
   async function adminActiveInvite(request, accountId) {
     await requireActiveAdmin(request);
     const account = store.getMaoAccountById(accountId);
@@ -647,6 +683,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/admin/invites' && method === 'GET') return await adminInvites(request);
       if (path === '/api/admin/invites' && method === 'POST') return await createInvite(request);
 
+      const detailMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/detail$/.exec(path);
+      if (detailMatch && method === 'GET') return await adminAccountDetail(request, detailMatch[1]);
       const activeInviteMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/active-invite$/.exec(path);
       if (activeInviteMatch && method === 'GET') return await adminActiveInvite(request, activeInviteMatch[1]);
       const auditMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/audit$/.exec(path);
