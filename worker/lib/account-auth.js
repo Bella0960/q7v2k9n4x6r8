@@ -629,7 +629,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         id: String(record.id),
         actorAccountId: record.actor_account_id == null ? null : String(record.actor_account_id),
         actorUsername: record.actor_username == null ? '' : String(record.actor_username),
-        actorType: record.action === 'invite_redeem' ? 'account' : 'admin',
+        actorType: record.action === 'invite_redeem' || record.action === 'account_register'
+          ? 'account'
+          : (record.action === 'admin_bootstrap' ? 'system' : 'admin'),
         targetAccountId: record.target_account_id == null ? null : String(record.target_account_id),
         targetUsername: record.target_username == null ? '' : String(record.target_username),
         action: String(record.action),
