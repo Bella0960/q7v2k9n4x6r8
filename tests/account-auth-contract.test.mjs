@@ -4320,6 +4320,20 @@ test('设备鉴权末端必须复核同一个 MAO Session，不能只确认账�
   const sessionToken = userCookie.slice('MAO_SESSION='.length);
   const session = ctx.store.getMaoAccountSession(await sha256Hex(sessionToken));
   assert.ok(session?.session_id);
+  const originalLastSeen = ctx.query(
+    'SELECT last_seen_at FROM devices WHERE id = ?',
+    device.deviceId
+  )[0].last_seen_at;
+  ctx.store.exec(
+    'UPDATE devices SET last_seen_at = ? WHERE id = ?',
+    ctx.now() - 600000,
+    device.deviceId
+  );
+  const staleLastSeen = ctx.query(
+    'SELECT last_seen_at FROM devices WHERE id = ?',
+    device.deviceId
+  )[0].last_seen_at;
+  assert.notEqual(staleLastSeen, originalLastSeen);
 
   // Simulate a concurrent "log out this session" action immediately before
   // the final synchronous authorization gate in device authentication.
@@ -4357,5 +4371,10 @@ test('设备鉴权末端必须复核同一个 MAO Session，不能只确认账�
     ctx.query('SELECT revoked_at FROM devices WHERE id = ?', device.deviceId)[0].revoked_at,
     null,
     '撤销登录会话不能顺带撤销设备凭据'
+  );
+  assert.equal(
+    ctx.query('SELECT last_seen_at FROM devices WHERE id = ?', device.deviceId)[0].last_seen_at,
+    staleLastSeen,
+    '请求已被 Session 末端校验拒绝时，不能继续触碰设备 last-seen'
   );
 });
