@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const preview = JSON.parse(readFileSync(new URL('../wrangler.preview.jsonc', import.meta.url), 'utf8'));
-const production = JSON.parse(
+function parseJsonc(source) {
+  const withoutLineComments = source.replace(/^\\s*\\/\\/.*$/gm, '');
+  return JSON.parse(withoutLineComments);
+}
+
+const production = parseJsonc(
   readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8')
 );
 const workflow = readFileSync(
