@@ -1046,6 +1046,87 @@ test('并发创建同一目标账号的邀请码时只允许一张有效邀请�
   );
 });
 
+test('账号停用会清理此前已撤销设备遗留的未完成活动任务', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'legacy-revoked-queue',
+      password: 'legacy-revoked-queue-password-123',
+      confirmPassword: 'legacy-revoked-queue-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+  const invite = await post(ctx, '/api/admin/invites', { targetAccountId: accountId }, adminCookie);
+  assert.equal(invite.status, 201);
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'legacy-revoked-queue',
+      password: 'legacy-revoked-queue-password-123'
+    }
+  });
+  const userCookie = cookieFrom(login);
+  const redeemed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, userCookie);
+  assert.equal(redeemed.status, 200);
+
+  const deviceId = 'device_legacy_revoked_queue01';
+  const deviceSecret = randomToken(32);
+  const enrolled = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret: deviceSecret,
+    label: 'legacy device',
+    platform: 'test'
+  }, userCookie);
+  assert.equal(enrolled.status, 200);
+  const timestamp = ctx.now();
+  ctx.store.exec(
+    "INSERT INTO activity_queue (id, device_id, character_id, kind, status, scheduled_at, locked_by, locked_until, payload_json, created_at, updated_at, dedupe_key) VALUES (?, ?, ?, 'contact', 'retry', ?, 'stale-worker', ?, '{}', ?, ?, ?)",
+    'activity_legacy_revoked_queue_0001',
+    deviceId,
+    'role_legacy_revoked_queue',
+    timestamp,
+    timestamp + 60000,
+    timestamp,
+    timestamp,
+    'legacy-revoked-queue-dedupe'
+  );
+
+  // Model a device revoked by an older code path before queue cleanup was
+  // attached to every entry point. The later account suspension must still
+  // sweep this device's stale work even though no active device row is changed.
+  ctx.store.revokeDevice(deviceId, timestamp);
+  assert.equal(ctx.query('SELECT status FROM activity_queue WHERE id = ?', 'activity_legacy_revoked_queue_0001')[0].status, 'retry');
+
+  const disabled = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'disable',
+    reason: '清理所有历史设备活动'
+  }, adminCookie);
+  assert.equal(disabled.status, 200);
+  const task = ctx.query(
+    'SELECT status, locked_by, locked_until FROM activity_queue WHERE id = ?',
+    'activity_legacy_revoked_queue_0001'
+  )[0];
+  assert.equal(task.status, 'superseded');
+  assert.equal(task.locked_by, null);
+  assert.equal(task.locked_until, null);
+});
+
 test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧设备，永久撤销不可恢复', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
@@ -2316,7 +2397,11 @@ test('现有设备重新登记时，Session 在数据库写入前被撤销必须
     const session = originalGetSession(tokenHash);
     if (session && session.account_id === accountId) {
       sessionReads += 1;
-      if (sessionReads === 2) {
+      // fetchTo first resolves the page account context, then the Worker
+      // validates that context, and finally registerDevice validates again.
+      // Revoke after returning the third valid snapshot to exercise the SQL
+      // write-boundary guard rather than an earlier request-level rejection.
+      if (sessionReads === 3) {
         ctx.store.revokeMaoAccountSession(session.session_id, ctx.now());
       }
     }
@@ -2355,6 +2440,72 @@ test('现有设备重新登记时，Session 在数据库写入前被撤销必须
     accountId
   )[0];
   assert.notEqual(session.revoked_at, null);
+});
+
+test('通用设备撤销入口与活动队列清理必须原子提交', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const deviceId = 'device_self_revoke_queue01';
+  const deviceSecret = randomToken(32);
+  const enrolled = await post(ctx, '/api/devices/register', {
+    deviceId,
+    secret: deviceSecret,
+    label: 'self revoke queue device',
+    platform: 'test'
+  }, adminCookie);
+  assert.equal(enrolled.status, 200);
+  const timestamp = ctx.now();
+  ctx.store.exec(
+    "INSERT INTO activity_queue (id, device_id, character_id, kind, status, scheduled_at, locked_by, locked_until, payload_json, created_at, updated_at, dedupe_key) VALUES (?, ?, ?, 'contact', 'waiting', ?, NULL, NULL, '{}', ?, ?, ?)",
+    'activity_self_revoke_queue_0001',
+    deviceId,
+    'role_self_revoke_queue',
+    timestamp,
+    timestamp,
+    timestamp,
+    'self-revoke-queue-dedupe'
+  );
+  ctx.store.exec(
+    `CREATE TRIGGER fail_self_revoke_queue_cleanup
+     BEFORE UPDATE OF status ON activity_queue
+     WHEN OLD.device_id = '${deviceId}' AND NEW.status = 'superseded'
+     BEGIN SELECT RAISE(ABORT, 'simulated queue cleanup failure'); END`
+  );
+
+  const failed = await ctx.fetchTo('/api/devices/revoke', {
+    method: 'POST',
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': deviceId + '.' + deviceSecret
+    }
+  });
+  assert.equal(failed.status, 500);
+  assert.equal(ctx.query('SELECT revoked_at FROM devices WHERE id = ?', deviceId)[0].revoked_at, null,
+    '活动清理失败时设备授权必须保持未撤销');
+  assert.equal(ctx.query('SELECT status FROM activity_queue WHERE id = ?', 'activity_self_revoke_queue_0001')[0].status, 'waiting');
+
+  ctx.store.exec('DROP TRIGGER fail_self_revoke_queue_cleanup');
+  const successful = await ctx.fetchTo('/api/devices/revoke', {
+    method: 'POST',
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': deviceId + '.' + deviceSecret
+    }
+  });
+  assert.equal(successful.status, 200);
+  assert.notEqual(ctx.query('SELECT revoked_at FROM devices WHERE id = ?', deviceId)[0].revoked_at, null);
+  assert.equal(ctx.query('SELECT status FROM activity_queue WHERE id = ?', 'activity_self_revoke_queue_0001')[0].status, 'superseded');
 });
 
 test('新设备登记与账号停用并发时，停用后的账号不能留下新设备凭据', async () => {
