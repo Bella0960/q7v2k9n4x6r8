@@ -86,6 +86,27 @@ class CloudStore {
     return this.exec('SELECT * FROM devices WHERE id = ?', deviceId)[0] || null;
   }
 
+  isActiveAccountDevice(userId, deviceId) {
+    const ownerId = String(userId || 'owner');
+    return Boolean(this.exec(
+      `SELECT d.id
+       FROM devices d
+       WHERE d.id = ? AND d.user_id = ? AND d.revoked_at IS NULL
+         AND (
+           (d.user_id = 'owner' AND NOT EXISTS (
+             SELECT 1 FROM mao_accounts WHERE role = 'super_admin'
+           ))
+           OR EXISTS (
+             SELECT 1 FROM mao_accounts a
+             WHERE a.id = d.user_id AND a.status = 'active'
+           )
+         )
+       LIMIT 1`,
+      deviceId,
+      ownerId
+    )[0]);
+  }
+
   insertDevice(device) {
     this.exec(
       `INSERT INTO devices
@@ -641,7 +662,8 @@ class CloudStore {
    * Explicit non-chat autonomy metadata. Missing global row is treated as OFF
    * by the gate; missing character row inherits the global choice.
    */
-  setUserAutonomy(userId, enabled, now) {
+  setUserAutonomy(userId, enabled, now, deviceId = null) {
+    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO user_autonomy (user_id, enabled, updated_at)
        VALUES (?, ?, ?)
@@ -657,7 +679,8 @@ class CloudStore {
     return this.exec('SELECT * FROM user_autonomy WHERE user_id = ?', userId)[0] || null;
   }
 
-  setCharacterAutonomy(userId, characterId, enabled, now) {
+  setCharacterAutonomy(userId, characterId, enabled, now, deviceId = null) {
+    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO character_autonomy (user_id, character_id, enabled, updated_at)
        VALUES (?, ?, ?, ?)
@@ -679,7 +702,8 @@ class CloudStore {
     )[0] || null;
   }
 
-  setCharacterSchedule(userId, characterId, timeZone, schedule, now) {
+  setCharacterSchedule(userId, characterId, timeZone, schedule, now, deviceId = null) {
+    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO character_schedules (user_id, character_id, time_zone, schedule_json, updated_at)
        VALUES (?, ?, ?, ?, ?)
@@ -704,7 +728,8 @@ class CloudStore {
     )[0] || null;
   }
 
-  upsertDevicePresence({ userId, deviceId, foregroundActive, now }) {
+  upsertDevicePresence({ userId, deviceId, foregroundActive, now, requireActiveDevice = false }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO device_presence
         (user_id, device_id, foreground_active, last_heartbeat_at, updated_at)
@@ -807,7 +832,8 @@ class CloudStore {
     };
   }
 
-  acquireCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs }) {
+  acquireCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs, requireActiveDevice = false }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) return null;
     return this.exec(
       `INSERT INTO character_leases
         (user_id, character_id, owner_device_id, lease_until, updated_at)
@@ -830,7 +856,8 @@ class CloudStore {
     )[0] || null;
   }
 
-  renewCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs }) {
+  renewCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs, requireActiveDevice = false }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) return null;
     return this.exec(
       `UPDATE character_leases
        SET lease_until = ?, updated_at = ?
@@ -899,8 +926,12 @@ class CloudStore {
    */
   recordCharacterContextEvent({
     userId, characterId, eventId, deviceId, now,
-    eventLimit = 600, windowStart = Number(now) - 3600000
+    eventLimit = 600, windowStart = Number(now) - 3600000,
+    requireActiveDevice = false
   }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) {
+      return { revoked: true, changed: false, version: 0, updatedAt: null };
+    }
     const existingEvent = this.exec(
       'SELECT event_id FROM character_context_events WHERE user_id = ? AND character_id = ? AND event_id = ?',
       userId,
@@ -1448,6 +1479,10 @@ class CloudStore {
     const characterId = requireStoreString(activity?.characterId, 'activity.characterId');
     const dedupeKey = requireStoreString(activity?.dedupeKey || ('legacy:' + id), 'activity.dedupeKey');
     const payloadJson = serializeStoreJson(activity.payload, 4000, 'activity.payload');
+    if (activity.requireActiveDevice === true &&
+        !this.isActiveAccountDevice(activity.userId || 'owner', deviceId)) {
+      return { inserted: false, duplicate: false, conflict: false, revoked: true, activity: null };
+    }
     const inserted = this.exec(
       `INSERT INTO activity_queue
         (id, device_id, character_id, kind, status, scheduled_at, next_attempt_at,
