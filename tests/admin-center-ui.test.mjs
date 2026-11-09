@@ -103,7 +103,7 @@ test('账号审计时间线展示邀请码生成与撤销事件，但不显示�
   assert.match(adminScript, /if \(record\.sourceAction === 'revoke'\) subline\.push\('随账号永久撤销自动失效'/);
   assert.match(adminScript, /if \(record\.expiresAt\) subline\.push\('到期 '/);
   assert.match(adminScript, /if \(record\.maxUses != null\)/);
-  assert.match(adminScript, /仅记录邀请码管理事件，不保存邀请码明文/);
+  assert.match(adminScript, /仅记录授权事件和邀请码元数据，不保存邀请码明文/);
   const start = adminScript.indexOf('      records.forEach(record => {');
   const end = adminScript.indexOf('      auditLoadedCount =', start);
   assert.ok(start >= 0 && end > start, 'audit entries must render from server records');
@@ -182,4 +182,42 @@ test('only the latest audit request may update the currently open account detail
   assert.match(adminScript, /const requestSequence = \+\+auditRequestSequence/);
   assert.match(adminScript, /requestSequence !== auditRequestSequence/);
   assert.match(adminScript, /auditRequestSequence \+= 1/);
+});
+
+
+test('所有危险操作使用屏幕中央原生模态确认，不再使用浏览器原生 confirm', () => {
+  assert.match(adminHtml, /<dialog id="adminConfirmDialog" class="admin-confirm-dialog"/);
+  assert.match(adminHtml, /aria-labelledby="adminConfirmTitle"/);
+  assert.match(adminHtml, /id="adminConfirmCancel"/);
+  assert.match(adminHtml, /id="adminConfirmSubmit"/);
+  assert.match(adminScript, /function openAdminConfirmation\(options\)/);
+  assert.match(adminScript, /dialog\.showModal\(\)/);
+  assert.match(adminScript, /pendingConfirmation\.onConfirm\(reason\)/);
+  assert.match(adminScript, /adminConfirmDialog'\)\.addEventListener\('cancel'/);
+  assert.doesNotMatch(adminScript, /window\.confirm\(/,
+    '账号停用、永久撤销和邀请码撤销不能再使用浏览器默认确认框');
+  assert.match(adminScript, /title: '确认撤销邀请码？'/);
+  assert.match(adminScript, /title: '确认撤销当前邀请码？'/);
+  assert.match(adminScript, /title: '确认临时停用账号？'/);
+  assert.match(adminScript, /title: '确认永久撤销账号？'/);
+  assert.match(adminScript, /title: '确认恢复账号？'/);
+  assert.match(adminCss, /\.admin-confirm-dialog\{position:fixed;inset:0/);
+  assert.match(adminCss, /\.admin-confirm-dialog::backdrop/);
+  assert.match(adminCss, /\.admin-confirm-actions/);
+});
+
+test('账号危险操作区位于账号详情与审计记录之后的页面底部', () => {
+  const audit = adminHtml.indexOf('id="auditList"');
+  const loadMore = adminHtml.indexOf('id="loadMoreAudit"');
+  const dangerZone = adminHtml.indexOf('class="danger-zone"');
+  const actions = adminHtml.indexOf('id="detailActions"');
+  assert.ok(audit >= 0 && loadMore > audit && dangerZone > loadMore && actions > dangerZone);
+  assert.doesNotMatch(adminHtml, /id="reasonField"|id="actionReason"|id="confirmAction"/);
+});
+
+test('管理中心搜索输入框保持单层边框，避免外框套输入框', () => {
+  assert.match(adminCss, /\.search-box\{[^}]*border:1px solid var\(--line\)/);
+  assert.match(adminCss, /\.search-box input\{[^}]*border:0/);
+  assert.match(adminHtml, /<label class="search-box">[\s\S]*?<input id="accountSearch"/);
+  assert.match(adminHtml, /<label class="search-box">[\s\S]*?<input id="inviteSearch"/);
 });
