@@ -2313,11 +2313,30 @@ class CloudStore {
   }
 
 
-  listMaoAccountAudit(accountId) {
+  listMaoAccountAudit(accountId, { limit = 50, cursor = null } = {}) {
+    const params = [accountId];
+    let cursorClause = '';
+    if (cursor) {
+      cursorClause = ' AND (created_at < ? OR (created_at = ? AND id < ?))';
+      params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    }
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
     return this.exec(
-      "SELECT id, actor_account_id, target_account_id, action, detail_json, created_at FROM mao_account_audit WHERE target_account_id = ? ORDER BY created_at DESC, id DESC LIMIT 200",
-      accountId
+      `SELECT id, actor_account_id, target_account_id, action, detail_json, created_at
+       FROM mao_account_audit
+       WHERE target_account_id = ?${cursorClause}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?`,
+      ...params, safeLimit + 1
     );
+  }
+
+  countMaoAccountAudit(accountId) {
+    const row = this.exec(
+      'SELECT COUNT(*) AS total FROM mao_account_audit WHERE target_account_id = ?',
+      accountId
+    )[0];
+    return Number(row?.total || 0);
   }
 
   listMaoAccountDevices(accountId) {
