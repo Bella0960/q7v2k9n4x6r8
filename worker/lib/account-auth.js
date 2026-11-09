@@ -119,13 +119,20 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   async function createSession(account, request) {
     const token = randomToken(32);
     const timestamp = now();
-    store.createMaoAccountSession({
+    const inserted = store.createMaoAccountSession({
       id: randomToken(12),
       accountId: account.id,
       tokenHash: await sha256Hex(token),
       now: timestamp,
       expiresAt: timestamp + SESSION_TTL_MS
     });
+    if (!inserted) {
+      const latest = store.getMaoAccountById(account.id);
+      if (latest && (latest.status === 'disabled' || latest.status === 'revoked')) {
+        throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+      }
+      throw new ApiError(409, 'ACCOUNT_STATE_CHANGED', '账号状态已变化，请重新登录后再试');
+    }
     return withSessionCookie(ok({ account: publicAccount(account) }), token, request);
   }
 
