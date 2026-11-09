@@ -181,6 +181,7 @@
         'INVITE_NOT_ACTIVE'
       ];
       if (stateConflictCodes.includes(error.code)) {
+        if ($('adminConfirmDialog')?.open) closeAdminConfirmation();
         let refreshed = false;
         try {
           await refreshAll();
@@ -194,6 +195,7 @@
         );
         return;
       }
+      if ($('adminConfirmDialog')?.open) closeAdminConfirmation();
       showError(error.message || '操作失败，请稍后重试。', () => refreshAll());
     } finally {
       busy = false;
