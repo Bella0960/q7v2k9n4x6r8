@@ -2655,15 +2655,15 @@ test('管理审计记录按稳定游标完整分页，且普通用户不能读�
       (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
     const result = await json(await ctx.fetchTo(path, { headers: { cookie: adminCookie } }));
     assert.equal(result.status, 200);
-    assert.equal(result.payload.page.totalCount, 225);
-    assert.equal(result.payload.records.length, Math.min(50, 225 - ids.length));
+    assert.equal(result.payload.page.totalCount, 226);
+    assert.equal(result.payload.records.length, Math.min(50, 226 - ids.length));
     ids.push(...result.payload.records.map(record => record.id));
     if (!result.payload.page.hasMore) break;
     assert.ok(result.payload.page.nextCursor);
     cursor = result.payload.page.nextCursor;
   }
-  assert.equal(ids.length, 225);
-  assert.equal(new Set(ids).size, 225,
+  assert.equal(ids.length, 226);
+  assert.equal(new Set(ids).size, 226,
     'created_at 相同的审计记录不能在翻页时重复或遗漏');
 
   const ordinaryLogin = await ctx.fetchTo('/api/accounts/login', {
@@ -2782,7 +2782,8 @@ test('全局管理审计支持服务端筛选、搜索、游标分页并只返�
   }
 
   const nextResponse = await ctx.fetchTo(
-    '/api/admin/audit?limit=2&type=all&cursor=' + encodeURIComponent(first.payload.page.nextCursor),
+    '/api/admin/audit?limit=2&type=all&search=' + encodeURIComponent(targetId) +
+      '&cursor=' + encodeURIComponent(first.payload.page.nextCursor),
     { headers: { cookie: adminCookie } }
   );
   const next = await json(nextResponse);
