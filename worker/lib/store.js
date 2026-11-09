@@ -27,7 +27,7 @@ function serializeStoreJson(value, maxBytes, field) {
   return serialized;
 }
 
-function buildMaoAuditFilter({ search = '', type = 'all', cursor = null, alias = '' } = {}) {
+function buildMaoAuditFilter({ search = '', type = 'all', cursor = null, since = null, alias = '' } = {}) {
   const column = name => alias ? alias + '.' + name : name;
   const clauses = [];
   const params = [];
@@ -47,6 +47,10 @@ function buildMaoAuditFilter({ search = '', type = 'all', cursor = null, alias =
       column('action') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
       column('detail_json') + " LIKE ? ESCAPE '\\' COLLATE NOCASE)");
     params.push(pattern, pattern, pattern, pattern, pattern);
+  }
+  if (since != null) {
+    clauses.push(column('created_at') + ' >= ?');
+    params.push(since);
   }
   if (cursor) {
     clauses.push('(' + column('created_at') + ' < ? OR (' +
@@ -2525,9 +2529,9 @@ class CloudStore {
     return Number(row?.total || 0);
   }
 
-  listMaoAccountAuditEvents({ limit = 50, cursor = null, search = '', type = 'all' } = {}) {
+  listMaoAccountAuditEvents({ limit = 50, cursor = null, search = '', type = 'all', since = null } = {}) {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
-    const { where, params } = buildMaoAuditFilter({ search, type, cursor, alias: 'a' });
+    const { where, params } = buildMaoAuditFilter({ search, type, cursor, since, alias: 'a' });
     return this.exec(
       `SELECT a.id, a.actor_account_id, a.target_account_id, a.action, a.detail_json, a.created_at,
               actor.username AS actor_username, target.username AS target_username
@@ -2541,8 +2545,8 @@ class CloudStore {
     );
   }
 
-  countMaoAccountAuditEvents({ search = '', type = 'all' } = {}) {
-    const { where, params } = buildMaoAuditFilter({ search, type });
+  countMaoAccountAuditEvents({ search = '', type = 'all', since = null } = {}) {
+    const { where, params } = buildMaoAuditFilter({ search, type, since });
     const row = this.exec(
       `SELECT COUNT(*) AS total FROM mao_account_audit${where}`,
       ...params
