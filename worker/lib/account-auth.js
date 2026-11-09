@@ -457,6 +457,9 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       now: timestamp,
       expiresAt
     });
+    if (inserted === 'target_not_pending') {
+      throw new ApiError(409, 'INVITE_TARGET_NOT_PENDING', '该账号状态已经变化，不能生成邀请码；请刷新账号状态后重试');
+    }
     if (!inserted) {
       throw new ApiError(409, 'INVITE_ALREADY_ACTIVE', '该账号已有尚未使用且未过期的邀请码，请先撤销原邀请码');
     }
