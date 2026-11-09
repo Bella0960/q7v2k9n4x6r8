@@ -2709,14 +2709,15 @@ test('创作者首次初始化与迁移审计原子提交，审计失败后可�
   assert.equal(Number(ctx.query("SELECT COUNT(*) AS total FROM mao_account_audit WHERE action = 'admin_bootstrap'")[0].total), 0);
 
   ctx.store.exec('DROP TRIGGER fail_admin_bootstrap_audit');
-  const retried = await ctx.fetchTo('/api/admin/bootstrap', { method: 'POST', body: payload });
+  const retriedResponse = await ctx.fetchTo('/api/admin/bootstrap', { method: 'POST', body: payload });
+  const retried = await json(retriedResponse);
   assert.equal(retried.status, 200);
   const events = ctx.query(
     "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE action = 'admin_bootstrap'"
   );
   assert.equal(events.length, 1);
   assert.equal(events[0].actor_account_id, null);
-  assert.equal(events[0].target_account_id, retried.account?.id || (await json(retried)).payload.account.id);
+  assert.equal(events[0].target_account_id, retried.payload.account.id);
 });
 
 test('账号注册与注册审计原子提交，审计失败时账号创建回滚且可重试', async () => {
