@@ -107,6 +107,35 @@ class CloudStore {
     )[0]);
   }
 
+  isActiveAccountDeviceSession(userId, deviceId, sessionId, now) {
+    const ownerId = String(userId || 'owner');
+    if (ownerId === 'owner') {
+      return this.isActiveAccountDevice(ownerId, deviceId);
+    }
+    if (typeof sessionId !== 'string' || !sessionId) return false;
+    const timestamp = Number(now);
+    if (!Number.isSafeInteger(timestamp) || timestamp < 0) return false;
+    return Boolean(this.exec(
+      `SELECT d.id
+       FROM devices d
+       INNER JOIN mao_accounts a
+         ON a.id = d.user_id AND a.status = 'active'
+       INNER JOIN mao_account_sessions s
+         ON s.account_id = a.id
+       WHERE d.id = ?
+         AND d.user_id = ?
+         AND d.revoked_at IS NULL
+         AND s.id = ?
+         AND s.revoked_at IS NULL
+         AND s.expires_at > ?
+       LIMIT 1`,
+      deviceId,
+      ownerId,
+      sessionId,
+      timestamp
+    )[0]);
+  }
+
   insertDevice(device) {
     this.exec(
       `INSERT INTO devices
