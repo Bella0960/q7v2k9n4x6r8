@@ -1030,7 +1030,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (typeof body.enabled !== 'boolean') {
       throw new ApiError(400, 'INVALID_AUTONOMY_SETTING', 'enabled 必须是布尔值');
     }
-    const row = await store.setUserAutonomy(device.user_id || OWNER_USER_ID, body.enabled, now());
+    const row = await store.setUserAutonomy(device.user_id || OWNER_USER_ID, body.enabled, now(), device.id);
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     return ok({ enabled: row.enabled === 1, updatedAt: Number(row.updated_at) });
   }
 
@@ -1054,8 +1055,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       device.user_id || OWNER_USER_ID,
       characterId,
       body.enabled,
-      now()
+      now(),
+      device.id
     );
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     return ok({
       enabled: row.enabled == null ? null : row.enabled === 1,
       inherited: row.enabled == null,
@@ -1097,8 +1100,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       deviceId: device.id,
       now: timestamp,
       eventLimit: 600,
-      windowStart: timestamp - 3600000
+      windowStart: timestamp - 3600000,
+      requireActiveDevice: true
     });
+    if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     if (result.limited) {
       throw new ApiError(429, 'CONTEXT_VERSION_RATE_LIMITED', '角色上下文版本同步过于频繁，请稍后重试');
     }
@@ -1332,8 +1337,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       maxAttempts: config.maxAttempts,
       payload: { contextVersion, sourceDeviceId: device.id },
       dedupeKey,
-      now: timestamp
+      now: timestamp,
+      userId,
+      requireActiveDevice: true
     });
+    if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     if (result.conflict) {
       throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '该活动幂等键已被不同任务占用');
     }
@@ -1724,8 +1732,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       characterId,
       validated.timeZone,
       validated.schedule,
-      now()
+      now(),
+      device.id
     );
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     return ok({ configured: true, timeZone: row.time_zone, schedule: validated.schedule, updatedAt: Number(row.updated_at) });
   }
 
@@ -1750,8 +1760,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userId,
       deviceId: device.id,
       foregroundActive: body.foregroundActive,
-      now: timestamp
+      now: timestamp,
+      requireActiveDevice: true
     });
+    if (!presence) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     // Device-level heartbeat and per-character leases are separate.
     // A hidden tab must not release every role lease owned by other tabs.
     return ok({
@@ -1789,7 +1801,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           deviceId: device.id,
           now: timestamp,
           leaseUntil: timestamp + config.leaseDurationMs,
-          graceMs: config.graceMs
+          graceMs: config.graceMs,
+          requireActiveDevice: true
         })
       : await store.renewCharacterLease({
           userId,
@@ -1797,9 +1810,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           deviceId: device.id,
           now: timestamp,
           leaseUntil: timestamp + config.leaseDurationMs,
-          graceMs: config.graceMs
+          graceMs: config.graceMs,
+          requireActiveDevice: true
         });
     if (!lease) {
+      if (!store.isActiveAccountDevice(userId, device.id)) {
+        throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+      }
       throw new ApiError(409, action === 'acquire' ? 'CHARACTER_LEASE_HELD' : 'LEASE_NOT_OWNED', '当前设备无法取得该角色的前台租约');
     }
     return ok({
