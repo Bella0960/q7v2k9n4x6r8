@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const preview = JSON.parse(readFileSync(new URL('../wrangler.preview.jsonc', import.meta.url), 'utf8'));
+const preview = JSON.parse(
+  readFileSync(new URL('../wrangler.preview.jsonc', import.meta.url), 'utf8')
+);
+
 function parseJsonc(source) {
   const withoutLineComments = source.replace(/^\s*\/\/.*$/gm, '');
   return JSON.parse(withoutLineComments);
@@ -62,7 +65,16 @@ test('preview workflow only deploys the account-auth branch with dedicated crede
   assert.match(workflow, /GITHUB_STEP_SUMMARY/);
   assert.doesNotMatch(workflow, /wrangler\.jsonc(?!\w)/,
     'the preview workflow must not deploy the production config');
-  asstest('preview secrets and the full test gate are checked before Wrangler deploy is called', () => {
+  assert.match(workflow, /npm run check:syntax/);
+  assert.match(workflow, /npm run test:accounts:all/,
+    'preview deployment must use the same complete validation gate as the account contract workflow');
+  const gateIndex = workflow.indexOf('Run the complete account-auth validation gate before deployment');
+  const deployIndex = workflow.indexOf('Deploy only the isolated preview Worker');
+  assert.ok(gateIndex >= 0 && deployIndex > gateIndex,
+    'the full validation gate must finish before Wrangler deployment can begin');
+});
+
+test('preview secrets and the full test gate are checked before Wrangler deploy is called', () => {
   const installIndex = workflow.indexOf('Install dependencies');
   const validateIndex = workflow.indexOf('Validate isolated preview configuration and dedicated credentials');
   const gateIndex = workflow.indexOf('Run the complete account-auth validation gate before deployment');
