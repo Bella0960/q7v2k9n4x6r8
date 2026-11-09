@@ -3,7 +3,7 @@ name: Deploy isolated MAO auth preview
 on:
   push:
     branches:
-      - feat/mao-account-auth-foundation
+      - feat/cloud-autonomous-activity-push
     paths:
       - '.github/workflows/deploy-mao-auth-preview.yml'
       - 'wrangler.preview.jsonc'
@@ -30,15 +30,28 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mao-auth-preview-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy-isolated-preview:
     runs-on: ${{ vars.MAO_AUTH_RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
-      - name: Check out the account-auth development branch
+      - name: Check out the exact cloud-push development commit
         uses: actions/checkout@v4
         with:
-          ref: feat/mao-account-auth-foundation
+          ref: ${{ github.sha }}
+
+      - name: Verify checkout matches the triggering commit
+        shell: pwsh
+        run: |
+          $checkedOutSha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $checkedOutSha -ne $env:GITHUB_SHA) {
+            throw "Preview checkout does not match the triggering commit (expected $env:GITHUB_SHA, got $checkedOutSha)"
+          }
+          Write-Output ("Preview source commit: " + $checkedOutSha)
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
