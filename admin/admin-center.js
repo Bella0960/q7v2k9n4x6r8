@@ -608,6 +608,7 @@
           restore: '恢复授权',
           revoke: '永久撤销',
           invite_create: '生成专属邀请码',
+          invite_redeem: '用户核销邀请码',
           invite_revoke: '撤销专属邀请码'
         })[record.action] || record.action;
         const subline = [
@@ -623,8 +624,8 @@
           el('div', 'audit-title', actionLabel),
           el('div', 'audit-sub', subline.join(' · ')),
           el('div', 'audit-reason', record.reason ? '备注：' + record.reason :
-            (record.action === 'invite_create' || record.action === 'invite_revoke'
-              ? '仅记录邀请码管理事件，不保存邀请码明文。'
+            (['invite_create', 'invite_redeem', 'invite_revoke'].includes(record.action)
+              ? '仅记录授权事件和邀请码元数据，不保存邀请码明文。'
               : '未填写备注'))
         );
         list.appendChild(item);
