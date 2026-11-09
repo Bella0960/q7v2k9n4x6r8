@@ -275,6 +275,22 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   assert.equal(redeemed.payload.account.status, 'active');
   assert.equal(redeemed.payload.authorized, true);
 
+  const auditAfterRedemption = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(alice.payload.account.id) + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(auditAfterRedemption.status, 200);
+  const redemptionRecord = auditAfterRedemption.payload.records.find(record =>
+    record.action === 'invite_redeem' && record.inviteId === invite.payload.invite.id
+  );
+  assert.ok(redemptionRecord, '成功核销必须写入目标账号的授权审计时间线');
+  assert.equal(redemptionRecord.actorAccountId, alice.payload.account.id,
+    '核销事件的执行者应为实际登录并核销的 MAO 账号');
+  assert.equal(redemptionRecord.targetAccountId, alice.payload.account.id);
+  assert.equal(redemptionRecord.usedCount, 1);
+  assert.equal(/token_hash|tokenHash|inviteCode|code/.test(JSON.stringify(redemptionRecord)), false,
+    '核销审计不能包含邀请码明文或哈希');
+
   const replay = await post(ctx, '/api/accounts/invites/redeem', { inviteCode: invite.payload.invite.code }, aliceCookie);
   assert.equal(replay.status, 409, '已授权账号不得重复核销邀请码');
 
@@ -282,6 +298,83 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   const listResult = await json(inviteList);
   assert.equal(listResult.status, 200);
   assert.equal(JSON.stringify(listResult.payload).includes('token_hash'), false, '管理列表不得泄露邀请码哈希');
+});
+
+test('邀请码核销审计写入失败时，账号授权与邀请码使用次数共同回滚', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const target = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'redeem-rollback',
+      password: 'redeem-rollback-password-123',
+      confirmPassword: 'redeem-rollback-password-123'
+    }
+  });
+  assert.equal(target.status, 201);
+  const targetId = target.payload.account.id;
+  const invite = await post(ctx, '/api/admin/invites', {
+    targetAccountId: targetId
+  }, adminCookie);
+  assert.equal(invite.status, 201);
+
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'redeem-rollback', password: 'redeem-rollback-password-123' }
+  });
+  const targetCookie = cookieFrom(login);
+
+  ctx.store.exec(`CREATE TRIGGER fail_invite_redeem_audit
+    BEFORE INSERT ON mao_account_audit
+    WHEN NEW.action = 'invite_redeem'
+    BEGIN
+      SELECT RAISE(ABORT, 'simulated invite redemption audit failure');
+    END`);
+
+  const failed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, targetCookie);
+  assert.notEqual(failed.status, 200,
+    '审计写入失败时核销 API 不能报告授权成功');
+
+  const accountAfterFailure = ctx.query(
+    'SELECT status FROM mao_accounts WHERE id = ?', targetId
+  )[0];
+  const inviteAfterFailure = ctx.query(
+    'SELECT used_count FROM mao_invite_codes WHERE id = ?', invite.payload.invite.id
+  )[0];
+  assert.equal(accountAfterFailure.status, 'pending_invite',
+    '事务回滚后账号必须仍为待授权');
+  assert.equal(Number(inviteAfterFailure.used_count), 0,
+    '事务回滚后邀请码不能被消耗');
+  assert.equal(Number(ctx.query(
+    "SELECT COUNT(*) AS total FROM mao_account_audit WHERE target_account_id = ? AND action = 'invite_redeem'",
+    targetId
+  )[0].total), 0);
+
+  ctx.store.exec('DROP TRIGGER fail_invite_redeem_audit');
+  const retried = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, targetCookie);
+  assert.equal(retried.status, 200, '撤掉模拟故障后，原邀请码应仍可正常核销');
+  const auditAfterRetry = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(targetId) + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.ok(auditAfterRetry.payload.records.some(record =>
+    record.action === 'invite_redeem' && record.inviteId === invite.payload.invite.id
+  ));
 });
 
 test('管理员可按永久账号 ID 查询有效邀请码，兼容已验证邮箱绑定且不依赖目录分页', async () => {
