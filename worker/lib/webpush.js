@@ -169,10 +169,23 @@ export async function encryptPayload(subscription, payloadText) {
  * 发送一条 Web Push。返回 { ok, statusCode, gone }。
  * 404/410 表示订阅已失效，由调用方负责停用。
  */
-export async function sendWebPush(subscription, payloadText, keys, { nowMs = Date.now(), fetchImpl = fetch } = {}) {
+export async function sendWebPush(
+  subscription,
+  payloadText,
+  keys,
+  { nowMs = Date.now(), fetchImpl = fetch, beforeSend = null } = {}
+) {
   const endpoint = subscription.endpoint;
   const authorization = await buildVapidAuthorization(endpoint, keys, nowMs);
   const body = await encryptPayload(subscription, payloadText);
+
+  // This callback must be synchronous: it runs after asynchronous crypto work
+  // and immediately before fetchImpl is invoked, with no intervening await.
+  // Callers use it to close the gap where a device/subscription is revoked
+  // while VAPID signing and payload encryption are in progress.
+  if (typeof beforeSend === 'function' && !beforeSend()) {
+    return { ok: false, statusCode: 0, gone: false, skipped: true };
+  }
 
   let response;
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
