@@ -23,11 +23,21 @@
 
 在完整仓库根目录，使用 Node.js 22：
 
+在 Windows PowerShell、macOS Terminal 或 Linux shell 中，推荐直接运行本机一键命令（它会自动执行 `npm ci`、语法检查和完整账号验收链）：
+
+```bash
+npm run test:accounts:local
+```
+
+也可以手动逐条运行：
+
 ```bash
 npm ci
 npm run check:syntax
 npm run test:accounts:all
 ```
+
+这条本机路径不消耗 GitHub Actions runner 额度，但电脑必须能够访问 npm registry，并且本地有完整私有仓库工作树。
 
 `test:accounts:all` 按以下顺序运行，任何一项失败都会停止：
 
