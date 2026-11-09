@@ -615,6 +615,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         targetAccountId: record.target_account_id,
         action: record.action,
         reason: String(detail.reason || ''),
+        inviteId: detail.inviteId == null ? null : String(detail.inviteId),
+        expiresAt: detail.expiresAt == null ? null : Number(detail.expiresAt),
+        maxUses: detail.maxUses == null ? null : Number(detail.maxUses),
+        usedCount: detail.usedCount == null ? null : Number(detail.usedCount),
         createdAt: Number(record.created_at)
       };
     });
@@ -653,8 +657,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   }
 
   async function revokeInvite(request, inviteId) {
-    await requireActiveAdmin(request);
-    if (!store.revokeMaoInvite(inviteId, now())) {
+    const actor = await requireActiveAdmin(request);
+    if (!store.revokeMaoInvite(inviteId, actor.account_id, now())) {
       throw new ApiError(404, 'INVITE_NOT_ACTIVE', '邀请码不存在或已失效');
     }
     return ok({ revoked: true });
