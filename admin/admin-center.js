@@ -4,6 +4,16 @@
   const $ = id => document.getElementById(id);
   let accounts = [];
   let invites = [];
+  let accountNextCursor = '';
+  let inviteNextCursor = '';
+  let accountHasMore = false;
+  let inviteHasMore = false;
+  let accountTotalCount = 0;
+  let inviteTotalCount = 0;
+  let accountSummary = null;
+  let inviteSummary = null;
+  let accountSearchTimer = 0;
+  let inviteSearchTimer = 0;
   let accountFilter = 'all';
   let inviteFilter = 'all';
   let selectedAccountId = '';
@@ -136,27 +146,24 @@
   }
 
   function updateStats() {
-    const totals = {
+    const totals = accountSummary || {
       total: accounts.length,
-      pending: accounts.filter(item => item.status === 'pending_invite').length,
-      active: accounts.filter(item => item.status === 'active').length,
-      disabled: accounts.filter(item => item.status === 'disabled' || item.status === 'revoked').length
+      pending: 0,
+      active: 0,
+      restricted: 0
     };
     $('statTotal').textContent = String(totals.total);
     $('statPending').textContent = String(totals.pending);
     $('statActive').textContent = String(totals.active);
-    $('statDisabled').textContent = String(totals.disabled);
+    $('statDisabled').textContent = String(totals.restricted);
   }
 
   function updateAccountFilterCounts() {
-    const counts = {
-      all: accounts.length,
-      pending_invite: accounts.filter(account => account.status === 'pending_invite').length,
-      active: accounts.filter(account => account.status === 'active').length,
-      restricted: accounts.filter(account => account.status === 'disabled' || account.status === 'revoked').length
+    const counts = accountSummary || {
+      total: accounts.length, pending: 0, active: 0, restricted: 0
     };
-    $('filterCountAll').textContent = String(counts.all);
-    $('filterCountPending').textContent = String(counts.pending_invite);
+    $('filterCountAll').textContent = String(counts.total);
+    $('filterCountPending').textContent = String(counts.pending);
     $('filterCountActive').textContent = String(counts.active);
     $('filterCountRestricted').textContent = String(counts.restricted);
   }
@@ -173,10 +180,11 @@
       if (accountFilter === 'restricted') return account.status === 'disabled' || account.status === 'revoked';
       return accountFilter === 'all' || account.status === accountFilter;
     });
-    $('accountResultCount').textContent = query || accountFilter !== 'all'
-      ? '当前显示 ' + filtered.length + ' / ' + accounts.length + ' 个账号'
-      : '共 ' + accounts.length + ' 个普通账号';
-    $('accountLimitNotice').hidden = accounts.length < 500;
+    $('accountResultCount').textContent = '已加载 ' + accounts.length + ' / ' + accountTotalCount +
+      ' 个账号，本页显示 ' + filtered.length + ' 个';
+    $('accountLimitNotice').hidden = !accountHasMore;
+    $('accountLimitNotice').textContent = '还有更多账号记录，继续向下加载即可查看；搜索和状态筛选会覆盖全部账号。';
+    $('loadMoreAccounts').hidden = !accountHasMore;
 
     if (!filtered.length) {
       list.appendChild(el(
@@ -218,14 +226,10 @@
   }
 
   function updateInviteFilterCounts() {
-    const counts = {
-      all: invites.length,
-      pending: invites.filter(invite => inviteState(invite) === 'pending').length,
-      used: invites.filter(invite => inviteState(invite) === 'used').length,
-      expired: invites.filter(invite => inviteState(invite) === 'expired').length,
-      revoked: invites.filter(invite => inviteState(invite) === 'revoked').length
+    const counts = inviteSummary || {
+      total: invites.length, pending: 0, used: 0, expired: 0, revoked: 0
     };
-    $('inviteCountAll').textContent = String(counts.all);
+    $('inviteCountAll').textContent = String(counts.total);
     $('inviteCountPending').textContent = String(counts.pending);
     $('inviteCountUsed').textContent = String(counts.used);
     $('inviteCountExpired').textContent = String(counts.expired);
@@ -241,10 +245,11 @@
         .some(value => String(value || '').toLocaleLowerCase().includes(query))
     );
     const filtered = searched.filter(invite => inviteFilter === 'all' || inviteState(invite) === inviteFilter);
-    $('inviteResultCount').textContent = query || inviteFilter !== 'all'
-      ? '当前显示 ' + filtered.length + ' / ' + invites.length + ' 条邀请码'
-      : '共 ' + invites.length + ' 条邀请码';
-    $('inviteLimitNotice').hidden = invites.length < 500;
+    $('inviteResultCount').textContent = '已加载 ' + invites.length + ' / ' + inviteTotalCount +
+      ' 条邀请码，本页显示 ' + filtered.length + ' 条';
+    $('inviteLimitNotice').hidden = !inviteHasMore;
+    $('inviteLimitNotice').textContent = '还有更早的邀请码记录，继续向下加载即可查看；搜索和状态筛选会覆盖全部记录。';
+    $('loadMoreInvites').hidden = !inviteHasMore;
 
     if (!filtered.length) {
       list.appendChild(el(
@@ -300,18 +305,54 @@
     if (busy) setButtonsDisabled(true);
   }
 
-  async function refreshAll() {
-    const [accountResult, inviteResult] = await Promise.all([
-      api('/api/admin/accounts'),
-      api('/api/admin/invites')
-    ]);
-    accounts = Array.isArray(accountResult.accounts) ? accountResult.accounts : [];
-    invites = Array.isArray(inviteResult.invites) ? inviteResult.invites : [];
+  function directoryPath(path, search, status, cursor) {
+    const params = new URLSearchParams();
+    params.set('limit', '50');
+    if (search) params.set('search', search);
+    if (status && status !== 'all') params.set('status', status);
+    if (cursor) params.set('cursor', cursor);
+    return path + '?' + params.toString();
+  }
+
+  async function loadAccountPage(reset = false) {
+    const cursor = reset ? '' : accountNextCursor;
+    const result = await api(directoryPath(
+      '/api/admin/accounts',
+      $('accountSearch').value.trim(),
+      accountFilter,
+      cursor
+    ));
+    const next = Array.isArray(result.accounts) ? result.accounts : [];
+    accounts = reset ? next : accounts.concat(next);
+    accountNextCursor = result.page?.nextCursor || '';
+    accountHasMore = Boolean(result.page?.hasMore);
+    accountTotalCount = Number(result.page?.totalCount || 0);
+    accountSummary = result.summary || accountSummary;
     updateStats();
     updateAccountFilterCounts();
-    updateInviteFilterCounts();
     renderAccounts();
+  }
+
+  async function loadInvitePage(reset = false) {
+    const cursor = reset ? '' : inviteNextCursor;
+    const result = await api(directoryPath(
+      '/api/admin/invites',
+      $('inviteSearch').value.trim(),
+      inviteFilter,
+      cursor
+    ));
+    const next = Array.isArray(result.invites) ? result.invites : [];
+    invites = reset ? next : invites.concat(next);
+    inviteNextCursor = result.page?.nextCursor || '';
+    inviteHasMore = Boolean(result.page?.hasMore);
+    inviteTotalCount = Number(result.page?.totalCount || 0);
+    inviteSummary = result.summary || inviteSummary;
+    updateInviteFilterCounts();
     renderInvites();
+  }
+
+  async function refreshAll() {
+    await Promise.all([loadAccountPage(true), loadInvitePage(true)]);
     if (selectedAccountId && !$('accountDetail').hidden) {
       const account = accounts.find(item => item.id === selectedAccountId);
       if (account) await renderAccountDetail(account);
@@ -529,8 +570,16 @@
   $('closeDetail').addEventListener('click', closeDetail);
   $('refreshUsers').addEventListener('click', () => run(refreshAll));
   $('refreshInvites').addEventListener('click', () => run(refreshAll));
-  $('accountSearch').addEventListener('input', renderAccounts);
-  $('inviteSearch').addEventListener('input', renderInvites);
+  $('loadMoreAccounts').addEventListener('click', () => run(() => loadAccountPage(false)));
+  $('loadMoreInvites').addEventListener('click', () => run(() => loadInvitePage(false)));
+  $('accountSearch').addEventListener('input', () => {
+    window.clearTimeout(accountSearchTimer);
+    accountSearchTimer = window.setTimeout(() => run(() => loadAccountPage(true)), 250);
+  });
+  $('inviteSearch').addEventListener('input', () => {
+    window.clearTimeout(inviteSearchTimer);
+    inviteSearchTimer = window.setTimeout(() => run(() => loadInvitePage(true)), 250);
+  });
   document.querySelectorAll('[data-account-filter]').forEach(button => {
     button.addEventListener('click', () => {
       accountFilter = button.dataset.accountFilter || 'all';
@@ -539,7 +588,7 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
-      renderAccounts();
+      run(() => loadAccountPage(true));
     });
   });
   document.querySelectorAll('[data-invite-filter]').forEach(button => {
@@ -550,7 +599,7 @@
         item.classList.toggle('active', active);
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
-      renderInvites();
+      run(() => loadInvitePage(true));
     });
   });
 
@@ -573,8 +622,10 @@
       item.classList.toggle('active', active);
       item.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
-    renderAccounts();
-    openAccount(accountId);
+    run(async () => {
+      await loadAccountPage(true);
+      openAccount(accountId);
+    });
   }
 
   document.querySelectorAll('[data-tab]').forEach(button => {
