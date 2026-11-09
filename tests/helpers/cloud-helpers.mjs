@@ -45,9 +45,14 @@ export function setupTestStore(testDb, env = {}) {
   });
 
   const fetchTo = async (path, options = {}) => {
-    const { method = 'GET', device, body, ip = '203.0.113.1', accountContext = true } = options;
+    const { method = 'GET', device, body, ip = '203.0.113.1', accountContext = true,
+      origin = 'https://mao.test', fetchSite = 'same-origin' } = options;
     const headers = new Headers(options.headers || {});
     headers.set('cf-connecting-ip', ip);
+    if (origin) headers.set('origin', String(origin));
+    else headers.delete('origin');
+    if (fetchSite) headers.set('sec-fetch-site', String(fetchSite));
+    else headers.delete('sec-fetch-site');
     if (device) headers.set('x-device-auth', `${device.deviceId}.${device.secret}`);
 
     // Browser pages receive an account-context fetch wrapper from the Worker.
