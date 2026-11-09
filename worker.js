@@ -40,7 +40,7 @@ async function injectAccountScope(response, account) {
   const tags =
     '<meta name="mao-account-id" content="' + accountId + '">' +
     '<meta name="mao-account-role" content="' + (role === 'super_admin' ? 'super_admin' : 'user') + '">' +
-    '<script src="/shared/js/mao-account-scope.js?v=1" data-mao-account-scope></script>';
+    '<script src="/shared/js/mao-account-scope.js?v=2" data-mao-account-scope></script>';
   let injected = false;
   const html = source.replace(/<head\b[^>]*>/i, match => {
     injected = true;
