@@ -1,0 +1,211 @@
+/**
+ * M2.2b scheduler eligibility adapter.
+ *
+ * This is deliberately fail-closed until explicit authorization, schedules,
+ * presence leases, and a server-observed role context revision exist.
+ * It adapts persisted non-chat metadata and the content-free revision counter
+ * through the existing M2.1 policy.
+ *
+ * It never reads chat bodies, persona data, browser storage, or secrets.
+ */
+import '../../shared/js/phone/character-schedule-policy.js';
+import { REASON_CODES } from './scheduler-policy.js';
+
+const POLICY = globalThis.CharacterSchedulePolicy;
+const CONTEXT_TASK_KINDS = new Set(['contact', 'follow_up', 'busy_reply', 'diary']);
+
+function deny(reasonCode, extra = {}) {
+  return {
+    autonomyAllowed: false,
+    characterState: 'inactive',
+    reasonCode,
+    ...extra
+  };
+}
+
+function readPayload(task) {
+  let payload = task?.payload == null ? task?.payload_json : task.payload;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
+  return payload && typeof payload === 'object' ? payload : null;
+}
+
+function readVersion(value) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
+  const version = Number(value);
+  return Number.isSafeInteger(version) && version >= 0 ? version : null;
+}
+
+function hasRequiredSnapshot(snapshot) {
+  return Boolean(
+    snapshot &&
+    typeof snapshot === 'object' &&
+    snapshot.authorization &&
+    typeof snapshot.authorization === 'object' &&
+    snapshot.schedule &&
+    typeof snapshot.schedule === 'object' &&
+    typeof snapshot.timeZone === 'string' &&
+    snapshot.timeZone.trim() &&
+    snapshot.presence &&
+    typeof snapshot.presence === 'object' &&
+    Array.isArray(snapshot.presence.devices) &&
+    Array.isArray(snapshot.presence.leases)
+  );
+}
+
+/**
+ * Create the gate consumed by scheduler-policy.planTask.
+ *
+ * store.getSchedulerGateSnapshot({ userId, characterId }) reads only the
+ * persisted non-chat scheduling metadata plus the server-observed role
+ * revision. Missing global authorization is OFF; missing schedules or role
+ * revisions fail closed. The revision endpoint accepts only an authenticated
+ * random event ID and never receives chat content.
+ *
+ * Tests may provide synthetic snapshots, but production never fabricates
+ * context versions or infers permission from device connectivity.
+ */
+export function createSchedulerGate({ store, now = Date.now, config = {}, executorDeviceId = null } = {}) {
+  return function schedulerGate(task) {
+    const timestamp = Number(typeof now === 'function' ? now() : now);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+      return deny(REASON_CODES.INVALID_TASK);
+    }
+
+    const characterId = String(task?.character_id || task?.characterId || '');
+    if (!characterId) return deny(REASON_CODES.INVALID_TASK);
+    // Tenant scope must come from the queue row's owning device join. Never
+    // silently evaluate another account's task under the legacy "owner" user.
+    const userId = String(task?.user_id || task?.userId || '').trim();
+    if (!userId) return deny(REASON_CODES.GATE_DATA_MISSING);
+    if (task?.source_device_revoked_at != null) {
+      return deny(REASON_CODES.SOURCE_DEVICE_REVOKED, { supersede: true });
+    }
+
+    if (!store || typeof store.getSchedulerGateSnapshot !== 'function') {
+      return deny(REASON_CODES.GATE_DATA_SOURCE_MISSING);
+    }
+
+    let snapshot;
+    try {
+      snapshot = store.getSchedulerGateSnapshot({
+        userId,
+        characterId
+      });
+    } catch {
+      return deny(REASON_CODES.GATE_PROVIDER_ERROR);
+    }
+
+    if (!hasRequiredSnapshot(snapshot) || snapshot.userId !== userId) {
+      return deny(REASON_CODES.GATE_DATA_MISSING);
+    }
+    if (!POLICY || typeof POLICY.evaluate !== 'function') {
+      return deny(REASON_CODES.GATE_POLICY_UNAVAILABLE);
+    }
+
+    let evaluated;
+    try {
+      evaluated = POLICY.evaluate({
+        nowMs: timestamp,
+        userId,
+        characterId,
+        timeZone: snapshot.timeZone,
+        schedule: snapshot.schedule,
+        authorization: snapshot.authorization,
+        presence: snapshot.presence,
+        config: snapshot.policyConfig || config
+      });
+    } catch {
+      return deny(REASON_CODES.GATE_PROVIDER_ERROR);
+    }
+
+    if (!evaluated || evaluated.ok !== true) {
+      return deny(REASON_CODES.GATE_POLICY_INVALID);
+    }
+    if (evaluated.autonomy?.allowed !== true) {
+      return deny(REASON_CODES.AUTONOMY_DENIED);
+    }
+    if (CONTEXT_TASK_KINDS.has(String(task?.kind || ''))) {
+      const payload = readPayload(task);
+      const taskVersion = readVersion(payload?.contextVersion);
+      const currentVersion = readVersion(snapshot.contextVersion);
+      if (taskVersion == null || currentVersion == null) {
+        return deny(REASON_CODES.CONTEXT_VERSION_UNAVAILABLE);
+      }
+      if (taskVersion !== currentVersion) {
+        return deny(REASON_CODES.STALE_CONTEXT, {
+          supersede: true,
+          latestContextVersion: currentVersion
+        });
+      }
+      const taskSourceDeviceId = String(payload?.sourceDeviceId || task?.source_device_id || '');
+      if (taskSourceDeviceId && snapshot.contextSourceDeviceId !== taskSourceDeviceId) {
+        return deny(REASON_CODES.STALE_CONTEXT, {
+          supersede: true,
+          latestContextVersion: currentVersion
+        });
+      }
+      if (executorDeviceId != null && snapshot.contextSourceDeviceId !== String(executorDeviceId)) {
+        return deny(REASON_CODES.DEVICE_CONTEXT_NOT_LOCAL);
+      }
+    }
+
+    if (executorDeviceId != null) {
+      // The device-side model executor may run only for the exact foreground
+      // device that owns this character lease. A sibling device cannot borrow
+      // another device's lease, and an active heartbeat alone is insufficient.
+      const deviceId = String(executorDeviceId);
+      const hasFreshHeartbeat = Array.isArray(evaluated.presence?.activeDeviceIds) &&
+        evaluated.presence.activeDeviceIds.includes(deviceId);
+      const ownsCharacterLease = Array.isArray(evaluated.presence?.validLeaseDeviceIds) &&
+        evaluated.presence.validLeaseDeviceIds.includes(deviceId);
+      if (!hasFreshHeartbeat || !ownsCharacterLease) {
+        return deny(REASON_CODES.DEVICE_EXECUTOR_LEASE_REQUIRED);
+      }
+      if (evaluated.character?.state !== 'active') {
+        return deny(REASON_CODES.CHARACTER_NOT_ACTIVE, {
+          characterState: evaluated.character?.state || 'inactive'
+        });
+      }
+    } else {
+      if (evaluated.presence?.hasValidForegroundLease) {
+        return deny(REASON_CODES.FOREGROUND_LEASE_HELD);
+      }
+      if (evaluated.presence?.gracePending) {
+        return deny(REASON_CODES.FOREGROUND_LEASE_GRACE);
+      }
+      if (
+        evaluated.character?.state !== 'active' ||
+        evaluated.execution?.owner !== POLICY.EXECUTION_OWNERS.CLOUD ||
+        evaluated.execution?.contactAllowed !== true
+      ) {
+        return deny(REASON_CODES.CHARACTER_NOT_ACTIVE, {
+          characterState: evaluated.character?.state || 'inactive'
+        });
+      }
+    }
+
+    if (CONTEXT_TASK_KINDS.has(String(task?.kind || ''))) {
+      return {
+        autonomyAllowed: true,
+        characterState: evaluated.character.state,
+        latestContextVersion: readVersion(snapshot.contextVersion),
+        reasonCode: REASON_CODES.CLAIMED,
+        policyChecked: true
+      };
+    }
+
+    return {
+      autonomyAllowed: true,
+      characterState: evaluated.character.state,
+      latestContextVersion: readVersion(snapshot.contextVersion),
+      reasonCode: REASON_CODES.CLAIMED,
+      policyChecked: true
+    };
+  };
+}

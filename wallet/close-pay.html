@@ -6,6 +6,7 @@
 <title>亲密付 · 小手机</title>
 <script src="../shared/js/font-loader.js?v=20261022v1"></script>
 <script src="../shared/js/native-feel.js"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -265,8 +266,30 @@
     } catch (e) {}
     return { enabled: false, roleId: '', roleName: '', limit: 500, used: 0, history: [] };
   }
-  function saveData(d) {
-    try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {}
+  async function mutateData(mutator) {
+    var ledger = window.MaoMaoWalletLedger;
+    if (!ledger || typeof ledger.runExclusive !== 'function') {
+      return { ok: false, reason: 'module' };
+    }
+    try {
+      return await ledger.runExclusive(function () {
+        // 在锁内读取最新设置，避免旧页面快照覆盖结算刚写入的额度。
+        var data = getData();
+        var result = typeof mutator === 'function' ? mutator(data) : null;
+        if (result && result.abort) return { ok: false, reason: result.abort };
+        var serialized = JSON.stringify(data);
+        localStorage.setItem(KEY, serialized);
+        if (localStorage.getItem(KEY) !== serialized) return { ok: false, reason: 'storage' };
+        return { ok: true, data: data, result: result };
+      }, {
+        onFallback: function () {
+          toast('当前浏览器不支持跨页面设置互斥，请避免同时在多个页面修改亲密付');
+        }
+      });
+    } catch (error) {
+      console.warn('[close-pay] 设置保存失败', error);
+      return { ok: false, reason: 'storage' };
+    }
   }
 
   function getCharacters() {
@@ -356,15 +379,17 @@
   }
 
   // 开关
-  document.getElementById('cpSwitch').addEventListener('click', function(){
-    var d = getData();
-    if (!d.roleName) {
-      toast('请先选择亲密付对象');
+  document.getElementById('cpSwitch').addEventListener('click', async function(){
+    var outcome = await mutateData(function (d) {
+      if (!d.roleName) return { abort: 'missing-role' };
+      d.enabled = !d.enabled;
+      return { enabled: d.enabled };
+    });
+    if (!outcome.ok) {
+      toast(outcome.reason === 'missing-role' ? '请先选择亲密付对象' : '亲密付设置保存失败，请重试');
       return;
     }
-    d.enabled = !d.enabled;
-    saveData(d);
-    toast(d.enabled ? '亲密付已开启' : '亲密付已关闭');
+    toast(outcome.data.enabled ? '亲密付已开启' : '亲密付已关闭');
     render();
   });
 
@@ -388,28 +413,44 @@
     }
     document.getElementById('pickerOverlay').classList.add('open');
   });
-  document.getElementById('pickerOverlay').addEventListener('click', function(e){
+  document.getElementById('pickerOverlay').addEventListener('click', async function(e){
     if (e.target === this) this.classList.remove('open');
     var item = e.target.closest('.cp-picker-item');
     if (!item) return;
-    var d = getData();
-    d.roleId = item.dataset.id;
-    d.roleName = item.dataset.name;
-    d.roleAvatar = item.dataset.avatar;
-    saveData(d);
+    var selected = {
+      id: item.dataset.id,
+      name: item.dataset.name,
+      avatar: item.dataset.avatar
+    };
+    var outcome = await mutateData(function (d) {
+      d.roleId = selected.id;
+      d.roleName = selected.name;
+      d.roleAvatar = selected.avatar;
+      return true;
+    });
+    if (!outcome.ok) {
+      toast('亲密付对象保存失败，请重试');
+      return;
+    }
     this.classList.remove('open');
-    toast('已选择 ' + d.roleName + ' 为亲密付对象');
+    toast('已选择 ' + outcome.data.roleName + ' 为亲密付对象');
     render();
   });
 
   // 额度输入
-  document.getElementById('limitInput').addEventListener('change', function(){
+  document.getElementById('limitInput').addEventListener('change', async function(){
     var v = parseFloat(this.value);
     if (!isFinite(v) || v < 0) { toast('请输入有效额度'); return; }
-    var d = getData();
-    d.limit = Math.round(v * 100) / 100;
-    saveData(d);
-    toast('月额度已设为 ¥' + d.limit);
+    var nextLimit = Math.round(v * 100) / 100;
+    var outcome = await mutateData(function (d) {
+      d.limit = nextLimit;
+      return true;
+    });
+    if (!outcome.ok) {
+      toast('月额度保存失败，请重试');
+      return;
+    }
+    toast('月额度已设为 ¥' + outcome.data.limit);
     render();
   });
 

@@ -615,6 +615,39 @@
     };
   }
 
+  function normalizeProactiveBubbles(value) {
+    var source = value;
+    if (source && typeof source === 'object' && !Array.isArray(source)) {
+      source = Array.isArray(source.bubbles) ? source.bubbles : source.text;
+    }
+    var parts;
+    if (Array.isArray(source)) {
+      parts = source;
+    } else if (typeof source === 'string') {
+      var legacyText = source.replace(/\r\n?/g, '\n').trim();
+      if (!legacyText) return '';
+      parts = legacyText.split(/\n\s*\n+/);
+    } else { return ''; }
+    // Variable bubble count; four is a safety ceiling, not a required count.
+    if (!parts.length || parts.length > 4) return '';
+    var cleaned = [];
+    for (var i = 0; i < parts.length; i++) {
+      if (typeof parts[i] !== 'string') return '';
+      var bubble = parts[i]
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\[(?:红包|转账|图片|亲属卡|亲密付|心声|记住|发起语音通话|群动作|群投票|群接龙|群私聊)[^\]]*\]/g, ' ')
+        .replace(/[\r\n\t\f\v ]+/g, ' ')
+        .trim();
+      var length = Array.from(bubble).length;
+      if (length < 2 || length > 220 ||
+          /[<>\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(bubble) ||
+          /\[[^\]]{1,100}\]/.test(bubble) ||
+          /https?:\/\//i.test(bubble)) return '';
+      cleaned.push(bubble);
+    }
+    var result = cleaned.join('\n\n');
+    return result.length <= 220 && Array.from(result).length <= 220 ? result : '';
+  }
   function buildProactiveContactPrompt(contact, history, options) {
     options = options || {};
     var name = String(contact && contact.name || '角色').trim() || '角色';
@@ -625,14 +658,23 @@
       '只有当你确实想到一件与自己有关、符合人设、且有上下文依据的事情时才发送；可以是对近期安排的小更新、一个自然想到的兴趣话题，或与之前谈话有关的补充。',
       '如果没有值得分享的内容、上次对话已经自然结束、对方可能正在忙，或你只是为了刷存在感，就选择不发送。宁可跳过，也不要凑消息。',
       '禁止责备、催促、制造愧疚或要求对方立即回复；不要说「为什么不理我」「你怎么不找我」等施压内容。不要伪称正在现实地点、已完成现实行动或已操作用户设备。',
-      '一次最多发一条自然短消息，不连续追发，不强行制造问题，不输出动作旁白、隐藏机器标记、红包/转账/通话/图片指令或 Markdown。',
-      '若确实适合发送，只输出 JSON：{"send":true,"text":"一条自然的消息"}；若不适合，输出 {"send":false,"text":""}。不要在 JSON 外添加任何文字。'
+      '一次主动联系可以是一条，也可以由几条真正独立的短消息组成；条数由当前语境、角色自己的聊天习惯和表达节奏决定，不要求每次拆分。',
+      '默认一条即可；只有存在自然分开的表达节点时才拆分，最多 4 条。每条都应完整、能独立发送，绝不把一句完整的话硬切成碎片。',
+      '不连续追发，不强行制造问题，不输出动作旁白、隐藏机器标记、红包/转账/通话/图片指令或 Markdown。',
+      '若确实适合发送，只输出 JSON：{"send":true,"bubbles":["第一条独立消息","第二条独立消息"]}；条数按语境变化，也可只返回一个元素。若不适合，输出 {"send":false,"bubbles":[]}。不要在 JSON 外添加任何文字。'
     ];
+    var relationship = contact && typeof contact.relationship === 'string'
+      ? contact.relationship.trim().slice(0, 40) : '';
+    if (relationship) {
+      lines.push('', '【当前关系设定】' + relationship + '。只按已明确设定和真实互动决定熟悉程度；不要擅自升级关系，不制造占有、愧疚或依赖。');
+    }
     if (persona) lines.push('', '【角色设定】', persona);
     var voicePrompt = buildPrompt({ mode: 'online', history: history, maxSamples: 2, maxSampleChars: 72 });
     if (voicePrompt) lines.push('', voicePrompt);
     var habitPrompt = buildVoiceHabitPrompt(options.voiceProfile);
     if (habitPrompt) lines.push('', habitPrompt);
+    var emotionPrompt = buildEmotionContinuityPrompt(history, { mode: 'online' });
+    if (emotionPrompt) lines.push('', emotionPrompt);
     var autonomyPrompt = buildAutonomyPrompt(history, { mode: 'online', maxScan: 60, maxNotes: 2, maxTurns: 4 });
     if (autonomyPrompt) lines.push('', autonomyPrompt);
     if (options.localTime) lines.push('', '【当前本地时间】' + String(options.localTime) + '。只能将其用于理解时间语境，不得声称在未知地点。');
@@ -696,6 +738,7 @@
   NS.buildAutonomyPrompt = buildAutonomyPrompt;
   NS.evaluateProactiveContact = evaluateProactiveContact;
   NS.buildProactiveContactPrompt = buildProactiveContactPrompt;
+  NS.normalizeProactiveBubbles = normalizeProactiveBubbles;
   NS.getBubbleDelayMs = getBubbleDelayMs;
   NS.buildPrompt = buildPrompt;
 })(window);

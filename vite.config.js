@@ -10,7 +10,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // node_modules contains third-party demo HTML (e.g. Playwright's Vite dashboard)
 // that is not part of this app and may reference assets unavailable to this build.
 const htmlFiles = {};
-const excludedHtmlDirs = new Set(['node_modules', 'dist', '.wrangler']);
+const excludedHtmlDirs = new Set(['node_modules', 'dist', '.wrangler', 'worker']);
 (function collectHtml(dir, prefix) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.') || excludedHtmlDirs.has(entry.name)) continue;
@@ -32,7 +32,8 @@ export default defineConfig({
       // This project uses many classic script tags and relative static URLs.
       // Vite warns that classic scripts are not bundled; copy their referenced
       // files into dist at the same paths so they work after Worker deployment.
-      const excludedDirs = new Set(['.git', '.github', 'node_modules', 'dist', '.wrangler']);
+      // worker/ 是服务端代码（Worker 由 wrangler 单独打包），绝不能作为静态资源发布。
+      const excludedDirs = new Set(['.git', '.github', 'node_modules', 'dist', '.wrangler', 'worker']);
       const excludedFiles = new Set([
         '.gitignore', 'CLAUDE.md', 'README.md', 'package.json',
         'package-lock.json', 'bun.lock', 'vite.config.js',

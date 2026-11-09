@@ -7,7 +7,9 @@
 <title>外卖 · 小手机</title>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
-<script src="../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
+<script src="../shared/js/phone/order-after-sales.js?v=20261107v2"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -27,6 +29,44 @@
     padding-top: calc(16px + env(safe-area-inset-top));
   }
   .header-left { display: flex; align-items: center; gap: 12px; }
+  .header-right { display:flex; align-items:center; gap:10px; }
+  .order-after-sales {
+    background:#fff; border:1px solid #ECECEF; border-radius:14px;
+    padding:14px; margin:12px 0 16px;
+  }
+  .order-after-sales-title { font-size:.813rem; font-weight:700; }
+  .order-after-sales-note { margin-top:7px; color:#888; font-size:.688rem; line-height:1.6; }
+  .order-after-sales-select {
+    width:100%; height:40px; margin-top:10px; padding:0 10px;
+    border:1px solid #E5E5EA; border-radius:9px; background:#F7F7F9;
+    color:#333; font-size:.75rem;
+  }
+  .order-after-sales-button {
+    width:100%; height:40px; margin-top:10px; border:0;
+    border-radius:10px; background:#111; color:#fff;
+    font-size:.813rem; font-weight:600; cursor:pointer;
+  }
+  .order-card { background:#fff; border:1px solid #ECECEF; border-radius:14px; padding:14px; margin-bottom:10px; cursor:pointer; }
+  .order-card-top { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .order-card-shop { font-size:.875rem; font-weight:700; min-width:0; }
+  .order-card-status { flex-shrink:0; font-size:.688rem; color:#555; border:1px solid #D8D8DD; border-radius:12px; padding:3px 9px; }
+  .order-card-meta { font-size:.688rem; color:#999; margin-top:7px; line-height:1.5; }
+  .order-card-bottom { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:.813rem; }
+  .order-timeline { background:#fff; border:1px solid #ECECEF; border-radius:14px; padding:16px; margin-bottom:12px; }
+  .order-timeline-row { display:flex; gap:12px; position:relative; padding-bottom:17px; }
+  .order-timeline-row:last-child { padding-bottom:0; }
+  .order-timeline-row::before { content:''; position:absolute; left:4px; top:12px; bottom:0; width:1px; background:#ECECEF; }
+  .order-timeline-row:last-child::before { display:none; }
+  .order-timeline-row.done::before { background:#111; }
+  .order-timeline-dot { width:9px; height:9px; border-radius:50%; background:#DDD; flex-shrink:0; margin-top:3px; z-index:1; }
+  .order-timeline-row.done .order-timeline-dot,.order-timeline-row.now .order-timeline-dot { background:#111; }
+  .order-timeline-copy { flex:1; min-width:0; }
+  .order-timeline-label { font-size:.813rem; font-weight:600; }
+  .order-timeline-desc,.order-timeline-time { font-size:.688rem; color:#999; margin-top:3px; }
+  .order-detail-card { background:#fff; border:1px solid #ECECEF; border-radius:14px; padding:15px; margin-bottom:12px; }
+  .order-detail-line { display:flex; justify-content:space-between; gap:12px; padding:8px 0; font-size:.813rem; border-bottom:1px solid #F2F2F4; }
+  .order-detail-line:last-child { border-bottom:0; }
+
   .back-btn {
     width: 36px; height: 36px; border: 0; background: transparent;
     border-bottom: 1px solid #bdbdbd; cursor: pointer;
@@ -255,9 +295,14 @@
       </button>
       <div class="brand-title">外卖<small>TAKEOUT</small></div>
     </div>
-    <div class="cart-icon" onclick="openCart()">
-      <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-      <div class="cart-badge" id="cartBadge"></div>
+    <div class="header-right">
+      <div class="cart-icon" onclick="openTakeoutOrders()" title="我的订单" aria-label="我的订单">
+        <svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z"/><path d="M9 8h6M9 12h6"/></svg>
+      </div>
+      <div class="cart-icon" onclick="openCart()" title="购物车" aria-label="购物车">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <div class="cart-badge" id="cartBadge"></div>
+      </div>
     </div>
   </div>
 
@@ -279,12 +324,44 @@
       </button>
       <div class="brand-title" id="shopTitle">餐厅</div>
     </div>
-    <div class="cart-icon" onclick="openCart()">
-      <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-      <div class="cart-badge" id="cartBadge2"></div>
+    <div class="header-right">
+      <div class="cart-icon" onclick="openTakeoutOrders()" title="我的订单" aria-label="我的订单">
+        <svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2Z"/><path d="M9 8h6M9 12h6"/></svg>
+      </div>
+      <div class="cart-icon" onclick="openCart()" title="购物车" aria-label="购物车">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <div class="cart-badge" id="cartBadge2"></div>
+      </div>
     </div>
   </div>
   <div class="dish-list" id="dishList"></div>
+</div>
+
+<!-- 外卖订单中心 -->
+<div class="view" id="viewOrders">
+  <div class="header">
+    <div class="header-left">
+      <button class="back-btn" onclick="closeTakeoutOrders()">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="brand-title">我的订单<small>ORDERS</small></div>
+    </div>
+    <div style="width:36px;"></div>
+  </div>
+  <div id="takeoutOrdersList" style="padding:0 20px 24px;"></div>
+</div>
+
+<div class="view" id="viewOrderDetail">
+  <div class="header">
+    <div class="header-left">
+      <button class="back-btn" onclick="closeTakeoutOrderDetail()">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="brand-title">订单详情<small>ORDER DETAIL</small></div>
+    </div>
+    <div style="width:36px;"></div>
+  </div>
+  <div id="takeoutOrderDetailBody" style="padding:0 20px 24px;"></div>
 </div>
 
 <!-- 底部购物车条 -->
@@ -428,13 +505,20 @@
   }
   function saveCart() {
     try {
-      localStorage.setItem('takeout_cart', JSON.stringify(cart));
+      var serialized = JSON.stringify(cart);
+      localStorage.setItem('takeout_cart', serialized);
       if (cartCount() > 0 && cartShopId) localStorage.setItem('takeout_cart_shop_id', cartShopId);
       else localStorage.removeItem('takeout_cart_shop_id');
+      var shopIdSaved = cartCount() > 0 && cartShopId
+        ? localStorage.getItem('takeout_cart_shop_id') === cartShopId
+        : localStorage.getItem('takeout_cart_shop_id') === null;
+      updateCartUI();
+      return localStorage.getItem('takeout_cart') === serialized && shopIdSaved;
     } catch(e) {
       toast('购物车保存失败，请检查手机存储空间');
+      updateCartUI();
+      return false;
     }
-    updateCartUI();
   }
 
   function getCharacters() {
@@ -458,6 +542,292 @@
       return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
     });
   }
+  const TAKEOUT_ORDER_STATUS_LABELS = {
+    placed: '已下单', accepted: '商家已接单', preparing: '备餐中',
+    picked_up: '骑手已取餐', delivering: '配送中', delivered: '已送达'
+  };
+  function loadTakeoutOrders() {
+    try {
+      var raw = localStorage.getItem('takeout_orders');
+      if (raw == null) return [];
+      var rows = JSON.parse(raw);
+      if (!Array.isArray(rows)) return null;
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row || typeof row !== 'object' || Array.isArray(row) ||
+            typeof row.paymentId !== 'string' || !row.paymentId ||
+            !Array.isArray(row.items) ||
+            !isFinite(Number(row.total)) || Number(row.total) < 0 ||
+            !isFinite(Number(row.ts)) || Number(row.ts) <= 0 ||
+            (Object.prototype.hasOwnProperty.call(row, 'statusHistory') && !Array.isArray(row.statusHistory))) return null;
+        for (var itemIndex = 0; itemIndex < row.items.length; itemIndex++) {
+          var item = row.items[itemIndex];
+          if (!item || typeof item !== 'object' ||
+              typeof item.name !== 'string' || !item.name ||
+              !isFinite(Number(item.price)) || Number(item.price) < 0 ||
+              !isFinite(Number(item.qty)) || Number(item.qty) < 1 ||
+              Math.floor(Number(item.qty)) !== Number(item.qty)) return null;
+        }
+      }
+      return rows;
+    } catch (error) { return null; }
+  }
+  function saveTakeoutOrders(rows) {
+    if (!Array.isArray(rows)) return false;
+    try {
+      var serialized = JSON.stringify(rows);
+      localStorage.setItem('takeout_orders', serialized);
+      return localStorage.getItem('takeout_orders') === serialized;
+    } catch (error) { return false; }
+  }
+  function takeoutOrderStages(order) {
+    var found = String(order.delivery || '').match(/\d+/);
+    var parsed = parseInt(found ? found[0] : '30', 10);
+    var etaMinutes = Math.max(5, Math.min(180, isFinite(parsed) ? parsed : 30));
+    var duration = etaMinutes * 60000;
+    return [
+      { status:'placed', label:'已下单', desc:'订单已提交，等待餐厅确认', offset:0 },
+      { status:'accepted', label:'商家已接单', desc:'餐厅开始处理订单', offset:Math.round(duration * 0.08) },
+      { status:'preparing', label:'备餐中', desc:'餐品正在制作', offset:Math.round(duration * 0.25) },
+      { status:'picked_up', label:'骑手已取餐', desc:'骑手已取餐，准备出发', offset:Math.round(duration * 0.52) },
+      { status:'delivering', label:'配送中', desc:'餐品正在送往收货地址', offset:Math.round(duration * 0.78) },
+      { status:'delivered', label:'已送达', desc:'本次模拟配送已完成', offset:duration }
+    ];
+  }
+  function advanceOrderLifecycle(order, stages, now) {
+    if (!order || !Array.isArray(stages) || !stages.length) return null;
+    var createdAt = Number(order.ts);
+    if (!isFinite(createdAt) || createdAt <= 0) return null;
+    if (Object.prototype.hasOwnProperty.call(order, 'statusHistory') &&
+        !Array.isArray(order.statusHistory)) return null;
+    var history = order.statusHistory || [];
+    for (var hi = 0; hi < history.length; hi++) {
+      var event = history[hi];
+      if (!event || typeof event !== 'object' ||
+          !stages.some(function (stage) { return stage.status === event.status; }) ||
+          !isFinite(Number(event.time))) return null;
+    }
+    var targetIndex = -1;
+    stages.forEach(function (stage, index) {
+      if (Number(now) - createdAt >= stage.offset) targetIndex = index;
+    });
+    history.forEach(function (event) {
+      var eventIndex = stages.findIndex(function (stage) { return stage.status === event.status; });
+      if (eventIndex > targetIndex) targetIndex = eventIndex;
+    });
+    if (order.status != null) {
+      var storedIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+      if (storedIndex < 0) return null;
+      if (storedIndex > targetIndex) targetIndex = storedIndex;
+    }
+    if (targetIndex < 0) targetIndex = 0;
+    var changed = !Array.isArray(order.statusHistory);
+    for (var si = 0; si <= targetIndex; si++) {
+      var stage = stages[si];
+      if (!history.some(function (event) { return event.status === stage.status; })) {
+        history.push({ status:stage.status, label:stage.label, time:createdAt + stage.offset });
+        changed = true;
+      }
+    }
+    history.sort(function (a, b) { return Number(a.time) - Number(b.time); });
+    var lastEvent = history.find(function (event) { return event.status === stages[targetIndex].status; });
+    if (order.status !== stages[targetIndex].status) { order.status = stages[targetIndex].status; changed = true; }
+    if (order.statusUpdatedAt !== Number(lastEvent.time)) { order.statusUpdatedAt = Number(lastEvent.time); changed = true; }
+    if (!Array.isArray(order.statusHistory)) order.statusHistory = history;
+    return changed;
+  }
+  function syncTakeoutOrders() {
+    var rows = loadTakeoutOrders();
+    if (!rows) return null;
+    var changed = false;
+    for (var i = 0; i < rows.length; i++) {
+      var result = advanceOrderLifecycle(rows[i], takeoutOrderStages(rows[i]), Date.now());
+      if (result === null) return null;
+      if (result) changed = true;
+    }
+    if (changed && !saveTakeoutOrders(rows)) return null;
+    return rows;
+  }
+  function getTakeoutOrderStatus(order) {
+    return TAKEOUT_ORDER_STATUS_LABELS[order.status] || '状态待确认';
+  }
+  var takeoutOrdersReturnView = 'viewShops';
+  function openTakeoutOrders() {
+    closeCart();
+    closeCheckout();
+    closeForward();
+    takeoutOrdersReturnView = currentShop ? 'viewDishes' : 'viewShops';
+    document.querySelectorAll('.view').forEach(function (view) { view.classList.remove('active'); });
+    document.getElementById('viewOrders').classList.add('active');
+    document.getElementById('cartBar').style.display = 'none';
+    renderTakeoutOrders();
+    window.scrollTo(0, 0);
+  }
+  function closeTakeoutOrders() {
+    document.getElementById('viewOrders').classList.remove('active');
+    document.getElementById('viewOrderDetail').classList.remove('active');
+    document.getElementById(takeoutOrdersReturnView).classList.add('active');
+    updateCartUI();
+    if (currentShop) renderDishes();
+  }
+  function renderTakeoutOrders() {
+    var rows = syncTakeoutOrders();
+    var box = document.getElementById('takeoutOrdersList');
+    if (!rows) {
+      box.innerHTML = '<div style="text-align:center;padding:54px 12px;color:#999;font-size:.875rem;">订单数据暂时无法读取，已停止自动修改</div>';
+      return;
+    }
+    rows = rows.slice().sort(function (a, b) { return Number(b.ts) - Number(a.ts); });
+    if (!rows.length) {
+      box.innerHTML = '<div style="text-align:center;padding:54px 12px;color:#999;font-size:.875rem;">还没有外卖订单</div>';
+      return;
+    }
+    box.innerHTML = rows.map(function (order) {
+      var names = order.items.map(function (item) {
+        return escapeFamilyCardText(item.name || '菜品') + ' × ' + Math.max(1, Number(item.qty) || 1);
+      }).join('、');
+      return '<div class="order-card" data-order-id="' + escapeFamilyCardText(order.paymentId) + '">' +
+        '<div class="order-card-top"><div class="order-card-shop">' + escapeFamilyCardText(order.shop || '外卖订单') + '</div>' +
+        '<div class="order-card-status">' + escapeFamilyCardText(getTakeoutOrderStatus(order)) + '</div></div>' +
+        '<div class="order-card-meta">' + names + '</div>' +
+        '<div class="order-card-bottom"><span style="color:#999;">' + new Date(order.ts).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>' +
+        '<strong>¥' + Number(order.total).toFixed(2) + '</strong></div></div>';
+    }).join('');
+  }
+  var currentTakeoutOrderPaymentId = '';
+
+  function takeoutAfterSalesPanel(order, stageIndex) {
+    var afterSales = order.afterSales;
+    if (afterSales && afterSales.status === 'pending_review' && afterSales.journalStatus === 'linked') {
+      var kindLabel = afterSales.type === 'cancel' ? '取消订单申请' : '售后申请';
+      return '<div class="order-after-sales"><div class="order-after-sales-title">' +
+        kindLabel + ' · 待处理</div><div class="order-after-sales-note">申请编号：' +
+        escapeFamilyCardText(afterSales.requestId) +
+        '<br>已关联原支付流水，当前还没有发生退款或订单取消。</div></div>';
+    }
+    if (afterSales && afterSales.status === 'recording') {
+      return '<div class="order-after-sales"><div class="order-after-sales-title">申请记录待同步</div>' +
+        '<div class="order-after-sales-note">已生成申请编号，正在恢复与原支付流水的关联。请继续同步，不要重复下单。</div>' +
+        '<button class="order-after-sales-button" onclick="submitTakeoutAfterSales()">继续同步申请</button></div>';
+    }
+    if (afterSales) {
+      return '<div class="order-after-sales"><div class="order-after-sales-title">售后申请状态待核对</div>' +
+        '<div class="order-after-sales-note">检测到已有申请记录，为避免重复申请，暂时不开放再次提交。</div></div>';
+    }
+    var eligibility = window.MaoMaoOrderAfterSales && window.MaoMaoOrderAfterSales.canSubmit
+      ? window.MaoMaoOrderAfterSales.canSubmit({
+          channel: 'takeout', ordersKey: 'takeout_orders', financeKey: 'finance_records',
+          paymentId: order.paymentId, amount: Number(order.total), paymentMethod: String(order.payMethod || '')
+        }) : { ok: false, reason: 'module' };
+    if (!eligibility.ok) {
+      return '<div class="order-after-sales"><div class="order-after-sales-title">暂不可提交售后</div>' +
+        '<div class="order-after-sales-note">' + (!order.paymentId
+          ? '这笔旧订单没有原支付编号。'
+          : '未能核验完整的原始支出明细。') +
+        '为保护账本，系统不会创建无法关联支付记录的申请。</div></div>';
+    }
+    var isCancelable = stageIndex <= 1;
+    return '<div class="order-after-sales"><div class="order-after-sales-title">订单售后</div>' +
+      '<select class="order-after-sales-select" id="takeoutAfterSalesReason" aria-label="申请原因">' +
+      '<option value="下错订单">下错订单</option><option value="暂时不需要了">暂时不需要了</option>' +
+      '<option value="餐品或配送有问题">餐品或配送有问题</option><option value="其他原因">其他原因</option></select>' +
+      '<button class="order-after-sales-button" onclick="submitTakeoutAfterSales()">' +
+      (isCancelable ? '申请取消订单' : '申请售后') + '</button>' +
+      '<div class="order-after-sales-note">申请会关联原支付流水并进入待处理状态；不会自动退款、修改钱包余额或直接取消模拟配送。</div></div>';
+  }
+
+  async function submitTakeoutAfterSales() {
+    var journal = window.MaoMaoOrderAfterSales;
+    if (!journal || typeof journal.submit !== 'function') {
+      toast('售后模块尚未加载，请刷新页面后重试');
+      return;
+    }
+    var rows = syncTakeoutOrders();
+    if (!rows) { toast('订单数据无法读取，未提交售后申请'); return; }
+    var order = rows.find(function (row) { return row && row.paymentId === currentTakeoutOrderPaymentId; });
+    if (!order) { toast('找不到原订单，未提交售后申请'); return; }
+    var stages = takeoutOrderStages(order);
+    var stageIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+    var type = order.afterSales ? order.afterSales.type : (stageIndex <= 1 ? 'cancel' : 'after_sales');
+    var reasonEl = document.getElementById('takeoutAfterSalesReason');
+    var reason = order.afterSales ? order.afterSales.reason : (reasonEl ? reasonEl.value : '');
+    var result = await journal.submit({
+      channel: 'takeout',
+      ordersKey: 'takeout_orders',
+      financeKey: 'finance_records',
+      paymentId: order.paymentId,
+      amount: Number(order.total),
+      paymentMethod: String(order.payMethod || ''),
+      type: type,
+      reason: reason
+    });
+    if (!result.ok) {
+      var messages = {
+        'payment-lines-missing': '找不到这笔订单的原支出明细，已停止申请',
+        'payment-amount-mismatch': '原订单金额与支出明细不一致，已停止申请',
+        'another-request-linked': '这笔支付流水已关联其他售后申请',
+        'order-payment-conflict': '订单支付信息与原流水不一致，已停止申请',
+        'finance-invalid': '财务记录异常，已停止申请',
+        'finance-missing': '找不到财务记录，已停止申请',
+        'request-conflict': '已有售后申请与当前信息冲突'
+      };
+      toast(messages[result.reason] || '申请暂未同步成功，可再次点击恢复');
+    } else {
+      toast(result.replayed ? '原售后申请已存在' : '申请已关联原支付流水，等待处理');
+    }
+    var updatedRows = syncTakeoutOrders();
+    if (updatedRows) openTakeoutOrderDetail(currentTakeoutOrderPaymentId);
+  }
+
+  function openTakeoutOrderDetail(orderId) {
+    var rows = syncTakeoutOrders();
+    if (!rows) { toast('订单数据异常，无法打开详情'); return; }
+    var order = rows.find(function (row) { return row.paymentId === String(orderId); });
+    if (!order) { toast('找不到这笔订单，请刷新订单列表'); return; }
+    currentTakeoutOrderPaymentId = String(order.paymentId);
+    var stages = takeoutOrderStages(order);
+    var currentIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+    currentIndex = Math.max(0, currentIndex);
+    var currentStage = stages[currentIndex];
+    var events = order.statusHistory || [];
+    var timeline = stages.map(function (stage, index) {
+      var event = events.find(function (entry) { return entry.status === stage.status; });
+      var state = index < currentIndex ? 'done' : (index === currentIndex ? 'now' : '');
+      return '<div class="order-timeline-row ' + state + '"><span class="order-timeline-dot"></span>' +
+        '<div class="order-timeline-copy"><div class="order-timeline-label">' + escapeFamilyCardText(stage.label) + '</div>' +
+        '<div class="order-timeline-desc">' + escapeFamilyCardText(stage.desc) + '</div>' +
+        (event ? '<div class="order-timeline-time">' + new Date(event.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</div>' : '') +
+        '</div></div>';
+    }).join('');
+    var itemsHtml = order.items.map(function (item) {
+      var qty = Math.max(1, Math.floor(Number(item.qty) || 1));
+      return '<div class="order-detail-line"><span>' + escapeFamilyCardText(item.name || '菜品') + ' × ' + qty +
+        '</span><strong>¥' + (Number(item.price) * qty).toFixed(2) + '</strong></div>';
+    }).join('');
+    document.getElementById('takeoutOrderDetailBody').innerHTML =
+      '<div class="order-detail-card"><div style="font-size:1rem;font-weight:700;">' +
+      escapeFamilyCardText(currentStage.label) + '</div><div style="font-size:.75rem;color:#888;margin-top:5px;">' +
+      escapeFamilyCardText(currentStage.desc) + '</div></div>' +
+      '<div class="order-timeline">' + timeline + '</div>' +
+      '<div class="order-detail-card"><div style="font-size:.75rem;color:#999;margin-bottom:6px;">' +
+      escapeFamilyCardText(order.shop || '餐厅') + '</div>' + itemsHtml +
+      '<div class="order-detail-line" style="margin-top:8px;"><span>合计</span><strong>¥' + Number(order.total).toFixed(2) +
+      '</strong></div></div>' +
+      '<div class="order-detail-card" style="font-size:.75rem;color:#777;line-height:1.8;">' +
+      '订单编号：' + escapeFamilyCardText(order.paymentId) + '<br>' +
+      '支付方式：' + escapeFamilyCardText(order.payMethod === 'normal' ? '日常账户' : (order.payMethod === 'close_pay' ? '亲密付' : '角色赠予额度')) + '<br>' +
+      '下单时间：' + new Date(order.ts).toLocaleString('zh-CN') + '</div>' +
+      '<div style="font-size:.625rem;color:#aaa;padding:0 2px 12px;">配送节点为应用内模拟进度，按预计送达时长自动推进，不代表真实骑手或平台配送状态。</div>' +
+      takeoutAfterSalesPanel(order, currentIndex);
+    document.getElementById('viewOrders').classList.remove('active');
+    document.getElementById('viewOrderDetail').classList.add('active');
+    window.scrollTo(0, 0);
+  }
+  function closeTakeoutOrderDetail() {
+    document.getElementById('viewOrderDetail').classList.remove('active');
+    document.getElementById('viewOrders').classList.add('active');
+  }
+
   function getRoleCardFromMethod(method) {
     if (!window.RoleFamilyCards || String(method || '').indexOf('role_card:') !== 0) return null;
     return window.RoleFamilyCards.find(String(method).slice('role_card:'.length));
@@ -750,108 +1120,317 @@
   }
     function closeCheckout() { document.getElementById('checkoutOverlay').classList.remove('open'); }
 
-  function doPay() {
-    var items = cartItems();
-    if (!items.length) { toast('购物车是空的'); return; }
-    var orderShop = getCartShop();
-    if (!orderShop) {
-      toast('购物车包含多家店铺，请清空后重新添加');
-      closeCheckout();
-      return;
-    }
-    var total = cartTotal();
-    var roleFamilyCard = getRoleCardFromMethod(payMethod);
-    if (payMethod.indexOf('role_card:') === 0) {
-      if (!roleFamilyCard || !canUseRoleCard(roleFamilyCard, total)) {
-        toast('这张亲属卡的额度不足或已停用');
-        payMethod = 'normal';
-        closeCheckout();
-        openCheckout();
-        return;
-      }
-      var familySpend = window.RoleFamilyCards.consume(
-        roleFamilyCard.id, total, '外卖 · ' + items.map(function (it) { return it.dish.name + '×' + it.qty; }).join('、'), 'takeout'
-      );
-      if (!familySpend || !familySpend.ok) {
-        toast(familySpend && familySpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择');
-        closeCheckout();
-        openCheckout();
-        return;
-      }
-      roleFamilyCard = familySpend.card;
-    }
-    var now = new Date();
-    var timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
-    var itemsDesc = items.map(it => it.dish.name + '×' + it.qty).join('、');
+  var takeoutPaymentInProgress = false;
 
-    // 1. 写记账
+  async function doPay() {
+    if (takeoutPaymentInProgress) return;
+    takeoutPaymentInProgress = true;
     try {
-      var list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-      items.forEach(it => {
-        list.push({ amount: it.dish.price * it.qty, type: 'expense',
-          category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
-          note: (payMethod==='close_pay'
-            ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
-            : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
-          time: timeStr });
-      });
-      localStorage.setItem('finance_records', JSON.stringify(list));
-    } catch(e) {}
-
-    // 2. 亲密付：扣钱包 + 更新额度 + 发聊天
-    if (payMethod === 'close_pay') {
-      try {
-        var cp = getClosePay();
-        if (cp) {
-          var wd = JSON.parse(localStorage.getItem('workData') || 'null') || { balance: 1000, history: [] };
-          if (typeof wd.balance !== 'number') wd.balance = 1000;
+      var ledger = window.MaoMaoWalletLedger;
+      if (!ledger || typeof ledger.runExclusive !== 'function') {
+        toast('钱包保护模块尚未加载，请刷新页面后重试');
+        return;
+      }
+      await ledger.runExclusive(function () {
+        
+            var items = cartItems();
+            if (!items.length) { toast('购物车是空的'); return; }
+            var orderShop = getCartShop();
+            if (!orderShop) {
+              toast('购物车包含多家店铺，请清空后重新添加');
+              closeCheckout();
+              return;
+            }
+            var total = cartTotal();
+            var checkoutSignature = JSON.stringify({
+              shopId: orderShop.id,
+              items: items.map(function (item) {
+                return { id: item.dish.id || item.dish.name, name: item.dish.name, price: item.dish.price, qty: item.qty };
+              }),
+              total: total,
+            });
+            var transactionId = ledger.getOrCreatePendingCheckout('takeout', checkoutSignature, payMethod);
+            if (!transactionId) {
+              toast('存在未完成的结算；请恢复上次商品和支付方式后继续，避免重复扣款');
+              return;
+            }
+            var roleFamilyCard = getRoleCardFromMethod(payMethod);
+            if (payMethod.indexOf('role_card:') === 0) {
+              if (!roleFamilyCard) {
+                ledger.cancelPendingCheckout(transactionId);
+                toast('这张亲属卡不存在或已失效');
+                payMethod = 'normal';
+                closeCheckout();
+                openCheckout();
+                return;
+              }
+              var familySpend = window.RoleFamilyCards.consume(
+                roleFamilyCard.id, total, '外卖 · ' + items.map(function (it) { return it.dish.name + '×' + it.qty; }).join('、'), 'takeout', transactionId
+              );
+              if (!familySpend || !familySpend.ok) {
+                if (familySpend && (familySpend.reason === 'limit' || familySpend.reason === 'missing')) {
+                  ledger.cancelPendingCheckout(transactionId);
+                }
+                toast(familySpend && familySpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择');
+                closeCheckout();
+                openCheckout();
+                return;
+              }
+              roleFamilyCard = familySpend.card;
+            }
+            var now = new Date();
+            var timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
+            var itemsDesc = items.map(it => it.dish.name + '×' + it.qty).join('、');
+        
+            // 2. 亲密付：扣钱包 + 更新额度 + 发聊天
+            if (payMethod === 'close_pay') {
+              var oldWalletRaw = null;
+              var walletSerialized = '';
+              var closePaySerialized = '';
+              var closePayQuotaCommitted = false;
+              try {
+                var cp = getClosePay();
+                if (!cp) {
+                  toast('亲密付设置不可用，原交易仍保留待恢复；请恢复亲密付设置后重试');
+                  return;
+                }
+                if (cp) {
+                  if (!Array.isArray(cp.history)) cp.history = [];
+          var quotaAlreadyCommitted = cp.history.some(function (row) {
+            return row && row.paymentId === transactionId;
+          });
+          oldWalletRaw = localStorage.getItem('workData');
+          var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
+          if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
           if (!Array.isArray(wd.history)) wd.history = [];
-          wd.balance = Math.round((wd.balance - total) * 100) / 100;
-          wd.history.unshift({ type:'expense', category:'close_pay',
-            title: '外卖亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
-            amount: total, time: Date.now() });
-          localStorage.setItem('workData', JSON.stringify(wd));
+          var walletAlreadyCommitted = wd.history.some(function (row) {
+            return row && row.paymentId === transactionId;
+          });
 
-          cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
-          if (!Array.isArray(cp.history)) cp.history = [];
-          cp.history.push({ amount: total, note: '外卖 · ' + itemsDesc, time: Date.now() });
-          localStorage.setItem('close_pay', JSON.stringify(cp));
+          // A partial prior commit must be completed even if settings changed afterward.
+          if (!walletAlreadyCommitted && !quotaAlreadyCommitted && !cp.enabled) {
+            ledger.cancelPendingCheckout(transactionId);
+            toast('亲密付已关闭，订单未完成');
+            return;
+          }
+          if (!walletAlreadyCommitted && !quotaAlreadyCommitted &&
+              (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
+            ledger.cancelPendingCheckout(transactionId);
+            toast('亲密付额度已变化，订单未完成');
+            return;
+          }
+          if (!walletAlreadyCommitted) {
+            if (wd.balance < total) {
+              ledger.cancelPendingCheckout(transactionId);
+              toast('钱包余额不足，未完成支付');
+              return;
+            }
+            wd.balance = Math.round((wd.balance - total) * 100) / 100;
+            wd.history.unshift({ type:'expense', category:'close_pay',
+              title: '外卖亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
+              amount: total, time: Date.now(), paymentId: transactionId });
+            walletSerialized = JSON.stringify(wd);
+            localStorage.setItem('workData', walletSerialized);
+            if (localStorage.getItem('workData') !== walletSerialized) {
+              toast('钱包扣款未能确认；再次提交会核对原交易，不会盲目重复扣款');
+              return;
+            }
+          } else {
+            walletSerialized = oldWalletRaw || JSON.stringify(wd);
+          }
+
+          if (!quotaAlreadyCommitted) {
+            cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
+            cp.history.push({ amount: total, note: '外卖 · ' + itemsDesc,
+              time: Date.now(), paymentId: transactionId });
+            closePaySerialized = JSON.stringify(cp);
+            localStorage.setItem('close_pay', closePaySerialized);
+            if (localStorage.getItem('close_pay') !== closePaySerialized) {
+              try {
+                if (localStorage.getItem('workData') === walletSerialized) {
+                  if (oldWalletRaw == null) localStorage.removeItem('workData');
+                  else localStorage.setItem('workData', oldWalletRaw);
+                }
+              } catch (rollbackError) {}
+              toast('亲密付额度未能保存，已尝试撤回钱包扣款；请重试核对原交易');
+              return;
+            }
+          }
+          closePayQuotaCommitted = true;
 
           if (cp.roleId) {
-            var key = 'chat_history_' + cp.roleId;
-            var arr = JSON.parse(localStorage.getItem(key) || '[]');
-            arr.push({ role:'user', type:'text',
-              text: '刚刚帮你点了外卖：' + itemsDesc + '，¥' + total + '，等好吃的到吧～',
-              time: Date.now() });
-            localStorage.setItem(key, JSON.stringify(arr));
-          }
+                    var key = 'chat_history_' + cp.roleId;
+                    var arr = JSON.parse(localStorage.getItem(key) || '[]');
+                    if (!arr.some(function (row) { return row && row.paymentId === transactionId; })) {
+                      arr.push({ role:'user', type:'text',
+                        text: '刚刚帮你点了外卖：' + itemsDesc + '，¥' + total + '，等好吃的到吧～',
+                        time: Date.now(),
+                        paymentId: transactionId });
+                      var chatSerialized = JSON.stringify(arr);
+                      localStorage.setItem(key, chatSerialized);
+                      if (localStorage.getItem(key) !== chatSerialized) {
+                        toast('亲密付已扣款，但聊天记录暂未保存；再次提交会恢复原交易');
+                        return;
+                      }
+                    }
+                  }
+                }
+              } catch(e) {
+                if (!closePayQuotaCommitted && walletSerialized) {
+                  try {
+                    if (localStorage.getItem('workData') === walletSerialized) {
+                      if (oldWalletRaw == null) localStorage.removeItem('workData');
+                      else localStorage.setItem('workData', oldWalletRaw);
+                    }
+                  } catch (rollbackError) {}
+                }
+                toast('亲密付操作未能确认，订单未完成');
+                return;
+              }
+            }
+
+            // 财务明细按交易 ID + 商品序号幂等写入；失败时保留待恢复交易。
+            try {
+              var list = JSON.parse(localStorage.getItem('finance_records') || '[]');
+              if (!Array.isArray(list)) throw new Error('finance_records is not an array');
+              items.forEach(function (item, index) {
+                var exists = list.some(function (row) {
+                  return row && row.paymentId === transactionId && Number(row.paymentLineIndex) === index;
+                });
+                if (!exists) list.push({
+                  amount: item.dish.price * item.qty,
+                  type: 'expense',
+                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '外卖'),
+                  note: (payMethod === 'close_pay'
+                    ? '亲密付给' + (getClosePay()||{}).roleName + ' · '
+                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '外卖 · ')) + itemsDesc,
+                  time: timeStr,
+                  paymentId: transactionId,
+                  paymentLineIndex: index
+                });
+              });
+              var financeSerialized = JSON.stringify(list);
+              localStorage.setItem('finance_records', financeSerialized);
+              if (localStorage.getItem('finance_records') !== financeSerialized) {
+                toast('支付已记录，但财务明细未保存；再次提交会补齐且不会重复扣款');
+                return;
+              }
+            } catch (financeError) {
+              console.warn('[takeout] 财务明细保存失败', financeError);
+              toast('财务明细保存失败；再次提交可恢复原交易');
+              return;
+            }
+
+
+        
+
+        
+            // 订单按 paymentId 去重，且以精确读回作为保存成功标准。
+            try {
+              var orders = loadTakeoutOrders();
+              if (!orders) throw new Error('takeout_orders data is invalid; refusing to overwrite');
+              var existingOrder = orders.find(function (row) { return row.paymentId === transactionId; });
+              if (existingOrder) {
+                var sameItems = Array.isArray(existingOrder.items) &&
+                  existingOrder.items.length === items.length &&
+                  existingOrder.items.every(function (storedItem, index) {
+                    var currentItem = items[index];
+                    return storedItem.name === currentItem.dish.name &&
+                      Number(storedItem.price) === Number(currentItem.dish.price) &&
+                      Number(storedItem.qty) === Number(currentItem.qty);
+                  });
+                if (!sameItems || Number(existingOrder.total) !== Number(total) ||
+                    String(existingOrder.shopId || '') !== String(orderShop.id) ||
+                    String(existingOrder.payMethod || '') !== String(payMethod)) {
+                  throw new Error('payment ID is already attached to a different order payload');
+                }
+              } else {
+                var orderCreatedAt = Date.now();
+                orders.push({
+                  orderId: transactionId,
+                  paymentId: transactionId,
+                  items: items.map(function (item) {
+                    return { name: item.dish.name, price: item.dish.price, qty: item.qty };
+                  }),
+                  total: total,
+                  shop: orderShop.name,
+                  shopId: orderShop.id,
+                  delivery: orderShop.delivery,
+                  payMethod: payMethod,
+                  ts: orderCreatedAt,
+                  status: 'placed',
+                  statusUpdatedAt: orderCreatedAt,
+                  statusHistory: [{ status: 'placed', label: '已下单', time: orderCreatedAt }],
+                  statusSource: 'simulation'
+                });
+              }
+              if (!saveTakeoutOrders(orders)) {
+                toast('支付已记录，但订单暂未保存；再次提交会补齐订单且不会重复扣款');
+                return;
+              }
+            } catch (orderError) {
+              console.warn('[takeout] 订单保存失败', orderError);
+              toast('订单保存失败；再次提交可恢复原交易');
+              return;
+            }
+
+
+            // 订单落盘后再清空购物车；清理未确认时保留原购物车与待恢复交易。
+            var cartSnapshot = cart;
+            var cartShopSnapshot = cartShopId;
+            var cartStorageSnapshot = localStorage.getItem('takeout_cart');
+            var cartShopStorageSnapshot = localStorage.getItem('takeout_cart_shop_id');
+            cart = {};
+            cartShopId = '';
+            if (!saveCart()) {
+              cart = cartSnapshot;
+              cartShopId = cartShopSnapshot;
+              updateCartUI();
+              toast('订单已保存，但购物车未能清空；再次提交会恢复原交易');
+              return;
+            }
+            if (!ledger.completePendingCheckout(transactionId)) {
+              if (ledger.isPendingCheckout(transactionId) === true) {
+                cart = cartSnapshot;
+                cartShopId = cartShopSnapshot;
+                try {
+                  if (cartStorageSnapshot == null) localStorage.removeItem('takeout_cart');
+                  else localStorage.setItem('takeout_cart', cartStorageSnapshot);
+                  if (cartShopStorageSnapshot == null) localStorage.removeItem('takeout_cart_shop_id');
+                  else localStorage.setItem('takeout_cart_shop_id', cartShopStorageSnapshot);
+                } catch (restoreError) {}
+                updateCartUI();
+                toast('订单已保存，结算确认暂未完成；已恢复购物车，可再次提交完成确认');
+              } else {
+                toast('订单已保存，但结算确认暂未完成；请勿重新购买这笔外卖');
+              }
+              return;
+            }
+            try {
+              if (roleFamilyCard) {
+                            notifyRoleCardIssuer(roleFamilyCard,
+                              '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
+                              '点了外卖：' + itemsDesc + '，共 ¥' + total.toFixed(2) + '。本月已使用 ¥' +
+                              window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+                          }
+            } catch (notifyError) {
+              console.warn('[takeout] 亲属卡通知未能发送', notifyError);
+            }
+            closeCheckout();
+            if (currentShop) renderDishes();
+            else updateCartUI();
+            toast('下单成功，预计 ' + orderShop.delivery + ' 送达');
+      }, {
+        onFallback: function () {
+          toast('当前浏览器不支持跨页面支付互斥，请避免同时从多个页面结算');
         }
-      } catch(e) {}
+      });
+    } catch (error) {
+      console.warn('[takeout] 支付操作未完成', error);
+      toast('支付暂未完成，请检查钱包记录后重试');
+    } finally {
+      takeoutPaymentInProgress = false;
     }
-
-    if (roleFamilyCard) {
-      notifyRoleCardIssuer(roleFamilyCard,
-        '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
-        '点了外卖：' + itemsDesc + '，共 ¥' + total.toFixed(2) + '。本月已使用 ¥' +
-        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
-    }
-
-    // 3. 写订单
-    try {
-      var orders = JSON.parse(localStorage.getItem('takeout_orders') || '[]');
-      orders.push({ items: items.map(it => ({name:it.dish.name, price:it.dish.price, qty:it.qty})),
-        total, shop: orderShop.name, shopId: orderShop.id, delivery: orderShop.delivery, payMethod, ts: Date.now() });
-      localStorage.setItem('takeout_orders', JSON.stringify(orders));
-    } catch(e) {}
-
-    // 清购物车
-    cart = {};
-    cartShopId = '';
-    saveCart();
-    closeCheckout();
-    if (currentShop) renderDishes();
-    else updateCartUI();
-    toast('下单成功，预计 ' + orderShop.delivery + ' 送达');
   }
 
   // ===== 转发给TA =====
@@ -875,6 +1454,11 @@
     document.getElementById('forwardOverlay').classList.add('open');
   }
   function closeForward() { document.getElementById('forwardOverlay').classList.remove('open'); }
+
+  document.getElementById('takeoutOrdersList').addEventListener('click', function (event) {
+    var card = event.target.closest('[data-order-id]');
+    if (card) openTakeoutOrderDetail(card.getAttribute('data-order-id'));
+  });
 
   document.getElementById('forwardList').addEventListener('click', function(e){
     var row = e.target.closest('.forward-row');

@@ -1,0 +1,221 @@
+# MAO 账号与管理员中心验收手册
+
+**适用分支：** `feat/mao-account-auth-foundation`  
+**对应 PR：** #213（Draft；未合并）  
+**目的：** 给创作者进行隔离预览环境中的端到端验收。此文档不代表任何尚未执行的测试已经通过。
+
+## 0. 先确认测试环境
+
+本功能只能在独立账号预览环境验收，不能用正式 MAOMAO 站点做注册、初始化或破坏性操作。
+
+预览环境使用 `wrangler.preview.jsonc`，Worker 名称为 `mao-auth-preview`；正式环境仍为 `mao`。两者必须保持独立数据库命名空间。预览部署成功后，从 GitHub Actions 对应运行记录的 Summary 获取实际 URL。**当前尚无此 HEAD 的已验证预览 URL；不要拿旧版本链接或正式站点代替。**
+
+部署前必须由仓库维护者在 GitHub Actions Secrets 配置四个预览专用值：
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_PREVIEW_API_TOKEN`（只允许部署预览 Worker，不复用正式部署 Token）
+- `MAO_PREVIEW_DEVICE_SECRET_PEPPER`（至少 32 个字符）
+- `MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET`（至少 32 个字符）
+
+这些值只放 GitHub Secrets / Worker Secret，不写入仓库文件、截图、聊天或 PR 评论。预览数据库只用于测试账号。
+
+## 1. 自动化验证
+
+在完整仓库根目录，使用 Node.js 22：
+
+在 Windows PowerShell、macOS Terminal 或 Linux shell 中，推荐直接运行本机一键命令（它会自动执行 `npm ci`、语法检查和完整账号验收链）：
+
+```bash
+npm run test:accounts:local
+```
+
+也可以手动逐条运行：
+
+```bash
+npm ci
+npm run check:syntax
+npm run test:accounts:all
+```
+
+这条本机路径不消耗 GitHub Actions runner 额度，但电脑必须能够访问 npm registry，并且本地有完整私有仓库工作树。
+
+### 电脑上没有仓库工作树时
+
+必须使用 Git 克隆，不要用 GitHub 的 Download ZIP；语法检查会调用 `git ls-files`。
+
+新克隆：
+
+```powershell
+git clone --single-branch --branch feat/mao-account-auth-foundation https://github.com/Bella0960/MAOMAO.git
+cd MAOMAO
+node --version
+npm run test:accounts:local
+```
+
+已有仓库：
+
+```powershell
+git fetch origin
+git switch feat/mao-account-auth-foundation
+git pull --ff-only origin feat/mao-account-auth-foundation
+npm run test:accounts:local
+```
+
+Node 版本必须是 22.16 或更新的 22.x。私有仓库需要用有权限的 GitHub 账号完成 Git 登录；不要把 Personal Access Token 发到聊天或写进命令截图。
+
+### GitHub Actions 托管额度不足时：使用自己的 Windows 电脑跑工作流
+> **针对日常电脑的建议：** 如果这台电脑已经很卡，不要在它上面注册自托管 Runner，也不要为了验证而运行整套本地测试。Runner 执行期间会运行 Node 测试、Vite 构建和依赖安装，可能明显增加 CPU、内存、磁盘和网络负载。下面的步骤只适用于备用电脑或专门的云端/测试机器；自托管 Runner 不是必须配置项。
+
+
+两个账号工作流都支持专用自托管 runner。默认不配置时仍使用 GitHub-hosted `ubuntu-latest`。只有配置下面的仓库变量后，才会切换到你自己的电脑。
+
+1. 在 GitHub 仓库进入 **Settings → Actions → Runners → New self-hosted runner**，选择 **Windows / x64**。
+2. 按 GitHub 页面为这个仓库生成的步骤下载并解压 Runner。建议使用专门的本机 Windows 用户或独立测试机，目录例如 `C:\actions-runner-mao-auth`。
+3. 在该目录打开 PowerShell，按 GitHub 页面提示运行 `config.cmd`。注册时添加一个自定义标签：`mao-auth-preview`。Runner 注册令牌由 GitHub 临时提供，只在本机配置窗口使用，绝不能发给我或写入仓库。
+4. 注册完成后运行 `run.cmd`，保持窗口开启。电脑关机、休眠或关闭 Runner 后，排队任务不会在这台机器上执行。
+5. 回到仓库 **Settings → Secrets and variables → Actions → Variables**，新增 Repository variable：
+   - Name：`MAO_AUTH_RUNNER_LABEL`
+   - Value：`mao-auth-preview`
+6. 在同一页面的 **Secrets** 中配置上文四个预览专用 Cloudflare/Worker 密钥。不要复用正式部署 Token，也不要把密钥值发送到聊天。
+7. 向 `feat/mao-account-auth-foundation` 推送新提交后，账号验证和预览部署工作流会匹配这个 runner 标签。预览工作流必须先通过完整测试链，之后才会部署独立 Worker；手机链接会写入该次运行的 Summary。
+8. 配置完 Runner、变量和 Secrets 后，旧的失败记录不会自动重新排队。到 **Actions** 打开最新的 `MAO Account Auth Contract` 失败运行，点 **Re-run all jobs**；随后重新触发 `Deploy isolated MAO auth preview`。如果页面没有 `Run workflow` 按钮，就向功能分支推送一个新提交触发 `push` 工作流（无需合并 PR）。
+
+**安全边界：** 自托管 Runner 会执行仓库里的代码，并能访问它运行的电脑。只把它注册到这个私有 MAOMAO 仓库，不要拿它执行陌生来源或未经审查的 Pull Request；不要在这台 Runner 上配置正式生产密钥。最好使用独立测试账户/机器。完成后可以在 Runner 窗口按 Ctrl+C 停止，并从仓库 Runner 设置中移除。
+
+这条路径把计算任务放到你自己的电脑，而不是 GitHub-hosted runner；仓库仍需允许 GitHub Actions 工作流运行。若没有可用的本机 Runner，仍可用上一节的 `npm run test:accounts:local` 跑测试，但预览部署和手机链接需要等可用 Runner 或另一个已授权的部署环境。
+
+`test:accounts:all` 按以下顺序运行，任何一项失败都会停止：
+
+1. `test:accounts:gate-contract`：检查统一验收命令、工作流及路径触发范围没有漏项。
+2. `test:accounts`：账号 API、注册/登录、管理员初始化、邀请码、限流、会话、设备、迁移和账号存储隔离。
+3. `test:admin:center`：管理员页面恢复、目录分页、审计、邀请和危险操作确认。
+4. `test:preview:config`：预览 Worker 与生产 Worker 的配置隔离契约。
+5. `build`：Vite 生产构建。
+6. `test:cloud:push`：账号归属与登出/切换后的推送保护契约。
+7. `test:font:runtime`：字体 URL 与 CacheStorage 账号隔离契约。
+8. `test:desktop:layout`：桌面布局兼容契约。
+9. `test:pwa:navigation`：PWA 导航缓存和图标预设契约。
+
+注意：`check:syntax` 是 JavaScript 语法解析，不是完整 ESLint；单个定向测试通过也不等于完整套件通过。
+
+## 2. 创作者首次初始化
+
+打开预览域名下的 `/account/bootstrap.html`。
+
+- 首次访问应显示尚未初始化状态；服务器状态不可用时，页面应隐藏初始化表单并允许重试。
+- 使用预览专用初始化密钥创建唯一创作者账号。
+- 初始化成功后进入账号体系；刷新页面后，初始化入口应显示已完成。
+- 再尝试初始化第二个超级管理员，必须被拒绝，不能出现第二个超级管理员。
+- 直接打开 `/admin/admin-center.html` 的未登录请求必须跳回账号入口。
+
+**通过标准：** 恰好一个超级管理员；账号初始化后不能再次执行；未登录用户不能进入管理中心。
+
+## 3. 普通账号注册与待授权状态
+
+从 `/account/index.html` 注册一个全新的普通测试账号。
+
+- 注册成功后应得到 MAO 永久 ID。
+- 新账号初始状态为 `pending_invite`。
+- 登录后只能进入待授权/邀请码流程，不能绕过邀请码直接进入手机主界面。
+- 使用另一个未注册用户名再注册，确认账号之间的永久 ID 不相同。
+- 退出后可用用户名或永久 ID 重新登录。
+
+**通过标准：** 注册不会自动授予正式使用权限；账号 ID 唯一；退出后会话失效。
+
+## 4. 一人一码授权
+
+在创作者管理中心找到刚注册的测试账号。
+
+- 搜索用户名或 MAO 永久 ID，打开该账号详情。
+- 为该账号生成邀请码；页面应明确显示绑定目标。
+- 复制邀请码后，在目标账号中核销。
+- 目标账号核销成功后状态转为 `active`，可进入手机。
+- 再用另一个普通账号尝试核销同一邀请码，必须拒绝。
+- 再次提交已使用的邀请码，必须拒绝，不能重复授权。
+- 返回管理中心，确认该邀请码记录与账号审计时间线均有记录；任何页面/API 不得把密码哈希、Session、原始邀请码或邀请码 Token 哈希显示在列表和审计中。
+
+**通过标准：** 邀请码绑定指定永久 ID、只成功核销一次；错误账号不能使用；密钥材料不泄露。
+
+## 5. 管理中心常规验收
+
+逐项验证：
+
+- 账号目录可按用户名、MAO ID 搜索，并按待授权、正常、受限状态筛选。
+- 打开账号详情时显示服务器返回的权威状态；刷新、切换账号详情时，旧请求不能覆盖当前详情。
+- 邀请码目录支持查询和状态筛选；被使用、过期或已撤销的码不能继续提供撤销入口。
+- 账号详情审计和全局审计能翻页；搜索、类别和时间筛选在翻页后保持一致。
+- 审计显示事件、操作者、目标与必要状态变化；不得暴露密码、Cookie、Session、原始邀请码、设备密钥或 Token 哈希。
+- 模拟一次临时网络/API 失败，页面应提供重试或重新核对入口，不能把加载失败误显示成“账号不存在”，也不能在状态不明时显示可提交的危险操作。
+
+## 6. 危险操作确认与账号生命周期
+
+对测试账号执行操作。每项都先测试取消，再测试确认：
+
+- **邀请码撤销：** 第一次点击只打开屏幕中央模态框；点击取消或按 Esc 后邀请码仍有效；再次打开并明确确认后才撤销。
+- **临时停用：** 取消不改变账号状态；确认后该账号不能继续登录，现有 Session 和设备凭据被撤销。
+- **恢复：** 临时停用的普通账号恢复后回到停用前的授权状态。若停用前是 `pending_invite`，恢复后仍须重新获取邀请码；不能凭恢复直接进入手机。
+- **永久撤销：** 必须二次明确确认；确认后账号不可恢复。普通用户看到的公开禁用提示不暴露管理员内部原因。
+- **设备/会话撤销：** 账号自助管理页必须使用中央模态确认；取消不得触发 API。
+
+**通过标准：** 所有危险动作第一次点击都不提交；取消/Esc 无副作用；确认后状态、设备、Session、邀请码和审计保持一致。
+
+## 7. 账号自助安全
+
+以普通已授权测试账号登录，进入账号管理页面：
+
+- 确认页面展示的是当前账号的永久 ID、设备和 Session。
+- 修改密码时输入错误的当前密码，必须拒绝且不能改变密码。
+- 使用正确当前密码修改后，新密码能登录；旧密码不能登录；其他 Session 按规则失效。
+- 撤销另一条登录 Session 后，那条 Session 不得继续访问私有账号 API。
+- 撤销设备后，设备凭据不能继续调用云 API；再次登记应走正常设备授权流程。
+- 退出账号后，受保护页面应退回账号入口。
+
+## 8. 同设备账号隔离
+
+建议使用同一台手机的两个浏览器标签页或两个独立浏览器配置文件：
+
+1. 账号 A 登录，记录一个仅属于 A 的测试设置或本地内容。
+2. 另一标签页登录账号 B。
+3. 回到 A 的旧标签页，等待会话复核或将页面切回前台；旧页面必须退回账号入口，不能借用 B 的 Cookie 访问 A 的私有 API。
+4. B 不得读取 A 的 localStorage、sessionStorage、IndexedDB 或 CacheStorage 内容。
+5. A 重新登录后，只能看到 A 自己的数据；B 重新登录后，只能看到 B 自己的数据。
+6. 创作者超级管理员仍应使用既有创作者本地存储，不能被普通账号切换清空或覆盖。
+
+**通过标准：** 账号切换后不存在跨账号数据读取、覆盖或私有 API 越权。这个项目仍需要在真实浏览器/Android WebView 上验证，Node Mock 不能替代本步骤。
+
+## 9. PWA 与手机检查
+
+- 用手机浏览器打开预览 URL，确认账号入口、注册、登录和管理中心在窄屏下没有横向溢出。
+- 危险确认框应在屏幕中央，背景弱化，确认/取消按钮可触达。
+- 切到后台再返回，账号状态复核正常。
+- 受保护页面不应从离线缓存中显示另一个账号的页面。
+- 重新加载预览后，登录状态应由服务器 Session 决定，而不是只依赖页面本地缓存。
+
+离线设备在尚未重新联网前无法即时收到服务器撤销；请在设备联网并刷新/回到前台后验证撤销生效，不要把离线瞬间仍显示旧页面误判为服务端允许继续访问。
+
+## 10. 当前明确不在本轮验收范围
+
+- QQ 邮箱所有权验证和验证邮件发送尚未接入；未验证邮箱邀请码路径应失败关闭。
+- 密码找回/重置流程尚未实现。
+- 尚未完成生产 Worker Secret 配置和正式部署。
+- 本轮不验收任何未明确纳入的自主活动、后台推送真机送达等独立功能。
+- 不对生产账号执行初始化、停用、撤销或注册测试。
+
+## 11. 回报测试结果时
+
+请按“步骤编号 + 设备/浏览器 + 预期结果 + 实际结果”反馈。截图请遮住用户名以外的个人信息、永久 ID、邀请码、邮箱、密码、Cookie、Session 和任何 Secret。不要把一次性邀请码或密钥发到聊天里。
+
+建议结果格式：
+
+| 步骤 | 结果 | 实际表现 / 截图编号 |
+| --- | --- | --- |
+| 2 创作者初始化 | 未测 / 通过 / 失败 |  |
+| 3 普通账号注册 | 未测 / 通过 / 失败 |  |
+| 4 一人一码授权 | 未测 / 通过 / 失败 |  |
+| 5 管理中心 | 未测 / 通过 / 失败 |  |
+| 6 危险操作与生命周期 | 未测 / 通过 / 失败 |  |
+| 7 账号自助安全 | 未测 / 通过 / 失败 |  |
+| 8 同设备账号隔离 | 未测 / 通过 / 失败 |  |
+| 9 手机/PWA | 未测 / 通过 / 失败 |  |
+
+**整体验收只有在自动化门禁全绿、独立预览部署完成、手工手机流程完成后才能关闭。**

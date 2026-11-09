@@ -358,10 +358,20 @@
         });
     }
 
+    function ensureOptionalCloudClient() {
+        if (global.MaomaoCloud) return Promise.resolve(true);
+        return loadProactiveScript(
+            proactiveAsset('shared/js/cloud-push-client.js'),
+            function () { return !!global.MaomaoCloud; }
+        ).then(function () { return true; });
+    }
+
     function ensureProactiveDependencies() {
         if (global.PhoneStorage && global.PhoneAPI && typeof global.PhoneAPI.completeJSON === 'function' &&
-            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function') {
-            return Promise.resolve(true);
+            global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
+            typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function' &&
+            typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function') {
+            return ensureOptionalCloudClient();
         }
         if (proactiveDependenciesPromise) return proactiveDependenciesPromise;
         proactiveDependenciesPromise = loadProactiveScript(
@@ -376,12 +386,19 @@
         }).then(function (ok) {
             if (!ok) return false;
             return loadProactiveScript(
-                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v17'),
-                function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function'; }
+                proactiveAsset('shared/js/phone/chat-presence-policy.js?v=20261102v19'),
+                function () { return !!global.ChatPresencePolicy && typeof global.ChatPresencePolicy.evaluateProactiveContact === 'function' &&
+                    typeof global.ChatPresencePolicy.normalizeProactiveBubbles === 'function' &&
+                    typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function'; }
             );
         }).then(function (ok) {
-            if (!ok) proactiveDependenciesPromise = null;
-            return ok;
+            if (!ok) {
+                proactiveDependenciesPromise = null;
+                return false;
+            }
+            // Cloud executor is optional for legacy local-only proactive contact.
+            // Its failure must not disable the existing local PhoneAPI path.
+            return ensureOptionalCloudClient();
         }).catch(function () {
             proactiveDependenciesPromise = null;
             return false;
@@ -498,14 +515,235 @@
     }
 
     function cleanProactiveMessage(value) {
-        var text = String(value == null ? '' : value)
-            .replace(/<[^>]*>/g, ' ')
-            .replace(/\[(?:红包|转账|图片|亲属卡|亲密付|心声|记住|发起语音通话|群动作|群投票|群接龙|群私聊)[^\]]*\]/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        if (text.length < 2 || text.length > 220) return '';
-        if (/\[[^\]]{1,100}\]/.test(text) || /https?:\/\//i.test(text)) return '';
-        return text;
+        var policy = global.ChatPresencePolicy;
+        if (!policy || typeof policy.normalizeProactiveBubbles !== 'function') return '';
+        return policy.normalizeProactiveBubbles(value);
+    }
+
+    var cloudExecutorPresenceManagers = Object.create(null);
+    var cloudExecutorPresenceStarting = Object.create(null);
+
+    function ensureCloudExecutorPresence(roleId, cloud) {
+        var key = String(roleId);
+        if (cloudExecutorPresenceManagers[key]) return Promise.resolve(true);
+        if (cloudExecutorPresenceStarting[key]) return cloudExecutorPresenceStarting[key];
+        if (!cloud || typeof cloud.updatePresenceHeartbeat !== 'function' ||
+            typeof cloud.updateCharacterLease !== 'function' ||
+            typeof cloud.startCharacterPresence !== 'function') {
+            return Promise.reject(new Error('本机前台租约能力不可用'));
+        }
+
+        cloudExecutorPresenceStarting[key] = (async function () {
+            // Establish an authenticated foreground heartbeat before acquiring
+            // the role lease. Another device's lease is never stolen.
+            await cloud.updatePresenceHeartbeat(true);
+            await cloud.updateCharacterLease(key, 'acquire');
+            var manager = await cloud.startCharacterPresence(key);
+            if (!manager || typeof manager.stop !== 'function') {
+                throw new Error('本机角色前台租约未能启动');
+            }
+            cloudExecutorPresenceManagers[key] = manager;
+            return true;
+        })().finally(function () {
+            delete cloudExecutorPresenceStarting[key];
+        });
+        return cloudExecutorPresenceStarting[key];
+    }
+
+    function hasStoredCloudDeviceCredentials() {
+        // An explicit cloud disconnect removes this key. Any non-empty record,
+        // even one that no longer parses, means local fallback is unsafe.
+        var raw = safeGet('cloud_device_v1');
+        return typeof raw === 'string' && raw.trim().length > 0;
+    }
+
+    function resetProactiveAttempt(roleId) {
+        safeSet('chat_proactive_global_attempt_at', '0');
+        safeSet('chat_proactive_last_attempt_' + String(roleId), '0');
+    }
+
+    async function executeCloudProactiveCandidate(candidate, messages) {
+        var cloud = global.MaomaoCloud;
+        if (!cloud) {
+            // Unpaired installs retain the legacy local-only path. A paired
+            // device must fail closed if the cloud client failed to load,
+            // otherwise it could bypass the cloud autonomy master switch.
+            return hasStoredCloudDeviceCredentials();
+        }
+        if (!cloud._internal || typeof cloud._internal.readDevice !== 'function' ||
+            !cloud._internal.readDevice()) {
+            // A malformed/stale stored pairing record must not silently switch
+            // a previously paired install back to the legacy local executor.
+            return hasStoredCloudDeviceCredentials();
+        }
+
+        var roleId = String(candidate.contact.id);
+        var globalSetting;
+        try {
+            globalSetting = await cloud.getGlobalAutonomy();
+        } catch (error) {
+            // A paired device must not bypass cloud authorization when offline.
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+        if (!globalSetting || globalSetting.enabled !== true) {
+            // Cloud authorization is the master switch for paired devices.
+            // Never fall through to the legacy local-only generator.
+            return true;
+        }
+
+        var roleSetting;
+        try {
+            roleSetting = await cloud.getCharacterAutonomy(roleId);
+        } catch (error) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+        if (!roleSetting ||
+            (roleSetting.enabled !== true && roleSetting.enabled !== null)) {
+            // A malformed or incomplete per-role policy response is not
+            // permission to use the legacy local executor.
+            return true;
+        }
+
+        if (document.visibilityState === 'hidden') {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+
+        var context;
+        try {
+            // Flush and confirm local ownership before taking a role lease;
+            // a device with stale local history must not block the true owner.
+            if (typeof cloud.flushCharacterContextVersion === 'function') {
+                await cloud.flushCharacterContextVersion(roleId);
+            }
+            context = await cloud.getCharacterContextVersion(roleId);
+            if (!context || context.configured !== true ||
+                context.ownedByCurrentDevice !== true ||
+                !Number.isSafeInteger(Number(context.version)) || Number(context.version) < 1) {
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+
+            await ensureCloudExecutorPresence(roleId, cloud);
+            // Lease startup can flush another pending local revision; capture
+            // the authoritative version again immediately before enqueue.
+            if (typeof cloud.flushCharacterContextVersion === 'function') {
+                await cloud.flushCharacterContextVersion(roleId);
+            }
+            context = await cloud.getCharacterContextVersion(roleId);
+        } catch (contextOrPresenceError) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+        if (!context || context.configured !== true ||
+            context.ownedByCurrentDevice !== true ||
+            !Number.isSafeInteger(Number(context.version)) || Number(context.version) < 1) {
+            resetProactiveAttempt(roleId);
+            return true;
+        }
+
+        var activity = null;
+        try {
+            var queued = await cloud.enqueueAutonomyActivity(roleId, Number(context.version));
+            if (!queued || queued.queued !== true) {
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+            activity = await cloud.claimAutonomyActivity(roleId);
+            if (document.visibilityState === 'hidden') {
+                if (activity) await cloud.skipAutonomyActivity(activity, 'feature_disabled');
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+            if (!activity) {
+                // The server may be waiting for an allowed schedule window,
+                // or another paired device may already own the task.
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+
+            var result = await global.PhoneAPI.completeJSON({
+                messages: messages,
+                temperature: 0.78,
+                timeoutMs: 15000
+            });
+            if (!result || result.ok !== true || !result.data) {
+                await cloud.failAutonomyActivity(activity, 'generation_failed');
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+            if (result.data.send !== true) {
+                await cloud.skipAutonomyActivity(activity, 'no_worthy_message');
+                return true;
+            }
+
+            var content = cleanProactiveMessage(result.data);
+            if (!content) {
+                await cloud.skipAutonomyActivity(activity, 'invalid_generation');
+                return true;
+            }
+            if (safeGet('chat_proactive_contact_' + roleId) !== 'true' ||
+                document.visibilityState === 'hidden') {
+                await cloud.skipAutonomyActivity(activity, 'feature_disabled');
+                return true;
+            }
+
+            // Re-check the local chat after generation. No message body, persona
+            // or history has been sent to the Worker; only this result is handed off.
+            var freshHistory = readHistory(roleId);
+            var freshLatest = newestMeaningfulMessage(freshHistory);
+            if (!freshLatest || freshLatest.time !== candidate.latest.time ||
+                freshLatest.text !== candidate.latest.text) {
+                await cloud.skipAutonomyActivity(activity, 'context_changed');
+                return true;
+            }
+
+            var completion = await cloud.completeAutonomyActivity(activity, content);
+            // The server may accept the task but skip its stale result after a
+            // final gate re-check. This is a terminal decision, not a transient
+            // generation failure; do not immediately requeue it.
+            if (completion && completion.skipped === true) return true;
+            var serverMessageId = String(completion && completion.serverMessageId || '');
+            if (!/^[A-Za-z0-9_-]{16,128}$/.test(serverMessageId)) {
+                resetProactiveAttempt(roleId);
+                return true;
+            }
+
+            // Mirror the accepted outbound message into this device's existing
+            // local conversation. The outbox keeps it pending until local
+            // history write/read-back is verified by the chat-detail receiver.
+            if (!freshHistory.some(function (item) {
+                return item && String(item.serverMessageId || '') === serverMessageId;
+            })) {
+                var localMessage = {
+                    role: 'assistant',
+                    text: content,
+                    time: Date.now(),
+                    voiceMode: 'online',
+                    proactiveContact: true,
+                    source: 'cloud_autonomous',
+                    mid: 'cloud_' + serverMessageId,
+                    serverMessageId: serverMessageId
+                };
+                freshHistory.push(localMessage);
+                var saved = global.PhoneStorage && typeof global.PhoneStorage.saveChatHistory === 'function'
+                    ? global.PhoneStorage.saveChatHistory(roleId, freshHistory)
+                    : safeSet('chat_history_' + roleId, freshHistory);
+                var verified = readHistory(roleId).some(function (item) {
+                    return item && String(item.serverMessageId || '') === serverMessageId;
+                });
+                if (saved && verified) tick();
+            }
+            return true;
+        } catch (error) {
+            if (activity) {
+                try { await cloud.failAutonomyActivity(activity, 'generation_failed'); } catch (ignored) {}
+            }
+            resetProactiveAttempt(roleId);
+            throw error;
+        }
     }
 
     async function checkProactiveContacts() {
@@ -549,6 +787,12 @@
                 var voiceKey = 'chat_voice_habits_v1_' +
                     encodeURIComponent(String(candidate.contact.id)) + '_direct';
                 voiceProfile = safeJsonParse(safeGet(voiceKey));
+                if (global.ChatPresencePolicy && typeof global.ChatPresencePolicy.buildVoiceHabitProfile === 'function') {
+                    voiceProfile = global.ChatPresencePolicy.buildVoiceHabitProfile(
+                        candidate.history, { maxMessages: 80 }, voiceProfile
+                    );
+                    if (voiceProfile) safeSet(voiceKey, voiceProfile);
+                }
             } catch (e) {}
 
             var currentTime = new Date();
@@ -570,6 +814,9 @@
                 content: '请判断现在是否真的有值得主动分享的一件事。若没有，请明确返回 send=false。只按系统要求输出 JSON。'
             });
 
+            var cloudHandled = await executeCloudProactiveCandidate(candidate, messages);
+            if (cloudHandled) return;
+
             var result = await global.PhoneAPI.completeJSON({
                 messages: messages,
                 temperature: 0.78,
@@ -577,7 +824,7 @@
             });
             if (!result || result.ok !== true || !result.data || result.data.send !== true) return;
 
-            var content = cleanProactiveMessage(result.data.text);
+            var content = cleanProactiveMessage(result.data);
             if (!content || safeGet('chat_proactive_contact_' + candidate.contact.id) !== 'true') return;
             if (document.visibilityState === 'hidden') return;
 

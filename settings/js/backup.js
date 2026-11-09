@@ -115,6 +115,9 @@
     // 一旦打包进去就等于把密钥交出去。需要整机迁移时，由用户在 DATA 分组
     // 显式勾选「导出时包含 API 密钥」，走 confirm 二次确认后才打包。
     var SECRET_KEYS = ['api_settings', 'api_profiles_v1', 'minimax_tts_config'];
+    // 设备授权凭据与"这台设备"强绑定：即使用户勾选「包含密钥」也永不导出。
+    // 换设备后应重新注册，而不是把旧设备的凭据带到新设备上。
+    var DEVICE_BOUND_KEYS = ['cloud_device_v1'];
     // 核心键抽样前缀：快速判断"这像不像本应用的备份"
     var CORE_HINTS = ['ai_custom_characters', 'phone_data_v2', 'myProfile', 'chat_history_'];
 
@@ -137,6 +140,7 @@
         try { keys = Object.keys(localStorage); } catch (e) {}
         keys.forEach(function (k) {
             if (dropCaches && EXCLUDE_KEYS.indexOf(k) !== -1) return;
+            if (DEVICE_BOUND_KEYS.indexOf(k) !== -1) return;
             if (dropSecrets && SECRET_KEYS.indexOf(k) !== -1) return;
             try { out[k] = localStorage.getItem(k); } catch (e) {}
         });

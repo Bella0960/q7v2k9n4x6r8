@@ -171,6 +171,13 @@
   .r-date { font-size: 0.688rem; color: #ccc; margin-top: 2px; }
   .r-char-note { margin-top: 5px; font-size: 0.688rem; color: #aaa; line-height: 1.55; overflow-wrap: anywhere; }
   .r-char-note .cc-role { color: #888; font-weight: 600; margin-right: 4px; }
+  .r-after-sales {
+    margin-top: 6px; padding: 6px 8px; border-radius: 8px;
+    background: #F4F4F6; color: #555; font-size: .656rem; line-height: 1.5;
+  }
+  .r-after-sales strong { color: #222; font-weight: 650; }
+  .r-after-sales-id { color: #999; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
 
   .empty {
     text-align: center; padding: 40px 20px; color: #999; font-size: 0.875rem;
@@ -367,6 +374,29 @@
     localStorage.setItem('finance_records', JSON.stringify(list));
   }
 
+  function escapeFinanceText(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
+    });
+  }
+
+  function renderAfterSalesNote(record) {
+    if (!record || !record.afterSalesRequestId) return '';
+    var requestId = String(record.afterSalesRequestId);
+    var shortId = escapeFinanceText(requestId.slice(-6));
+    var channelLabel = record.afterSalesChannel === 'takeout' ? '外卖' :
+      (record.afterSalesChannel === 'shop' ? '商店' : '订单');
+    var typeLabel = record.afterSalesType === 'cancel' ? '取消申请' : '售后申请';
+    if (record.afterSalesStatus === 'pending_review') {
+      return '<div class="r-after-sales"><strong>' + channelLabel + typeLabel +
+        ' · 待处理</strong><span class="r-after-sales-id">编号 ' + shortId +
+        '</span><div>仍按原支出记账；申请处理前不会自动退款或改动余额。</div></div>';
+    }
+    return '<div class="r-after-sales"><strong>' + channelLabel +
+      '售后记录待核对</strong><span class="r-after-sales-id">编号 ' + shortId +
+      '</span></div>';
+  }
+
   function render() {
     const list = loadRecords();
     let balance = 0;
@@ -388,6 +418,7 @@
       const ccList = Array.isArray(r.charComments) ? r.charComments : [];
       const ccLast = ccList[ccList.length - 1];
       const ccHtml = ccLast ? `<div class="r-char-note"><span class="cc-role">${ccLast.characterName || 'TA'}</span>${String(ccLast.text || '').slice(0, 44)}</div>` : '';
+      const afterSalesHtml = renderAfterSalesNote(r);
       return `
       <div class="record-item">
         <div class="r-icon">${CAT_ICONS[r.category] || CAT_ICONS['其他']}</div>
@@ -395,6 +426,7 @@
           <div class="r-name">${r.category}</div>
           <div class="r-merchant">${r.note || '—'}</div>
           ${ccHtml}
+          ${afterSalesHtml}
         </div>
         <div class="r-right">
           <div class="r-amount">${r.type === 'income' ? '+' : '-'}¥${r.amount.toFixed(2)}</div>
