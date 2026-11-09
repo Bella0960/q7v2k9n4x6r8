@@ -93,6 +93,23 @@ test('account detail audit history supports paginated loading and preserves retr
 });
 
 
+test('账号审计时间线展示邀请码生成与撤销事件，但不显示一次性密钥', () => {
+  assert.match(adminScript, /invite_create: '生成专属邀请码'/);
+  assert.match(adminScript, /invite_revoke: '撤销专属邀请码'/);
+  assert.match(adminScript, /if \(record\.inviteId\) subline\.push\('邀请码记录 '/);
+  assert.match(adminScript, /if \(record\.expiresAt\) subline\.push\('到期 '/);
+  assert.match(adminScript, /if \(record\.maxUses != null\)/);
+  assert.match(adminScript, /仅记录邀请码管理事件，不保存邀请码明文/);
+  const start = adminScript.indexOf('      records.forEach(record => {');
+  const end = adminScript.indexOf('      auditLoadedCount =', start);
+  assert.ok(start >= 0 && end > start, 'audit entries must render from server records');
+  const renderer = adminScript.slice(start, end);
+  assert.match(renderer, /invite_create/);
+  assert.match(renderer, /invite_revoke/);
+  assert.doesNotMatch(renderer, /record\.code|record\.tokenHash|record\.token_hash/,
+    'one-time invitation secrets must never be rendered from audit data');
+});
+
 test('search edits during another admin request are queued instead of silently dropped', () => {
   assert.match(adminScript, /accountSearchRefreshPending/);
   assert.match(adminScript, /inviteSearchRefreshPending/);
