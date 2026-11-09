@@ -9,6 +9,23 @@ const accountWorkflow = readFileSync(
   new URL('../.github/workflows/mao-account-auth-contract.yml', import.meta.url),
   'utf8'
 );
+const localRunner = readFileSync(
+  new URL('../scripts/run-account-auth-gate.mjs', import.meta.url),
+  'utf8'
+);
+
+test('one-command local runner works without GitHub Actions and fails fast', () => {
+  assert.equal(packageJson.scripts['test:accounts:local'],
+    'node scripts/run-account-auth-gate.mjs');
+  assert.match(localRunner, /process\.platform === 'win32' \? 'npm\.cmd' : 'npm'/);
+  assert.match(localRunner, /major !== 22 \|\| minor < 16/);
+  assert.match(localRunner, /\['ci', '--no-audit', '--no-fund'\]/);
+  assert.match(localRunner, /\['run', 'check:syntax'\]/);
+  assert.match(localRunner, /\['run', 'test:accounts:all'\]/);
+  assert.match(localRunner, /if \(result\.status !== 0\)/);
+  assert.match(localRunner, /GitHub Actions is not required for this local run/);
+  assert.match(localRunner, /does not replace independent preview deployment and phone acceptance/);
+});
 
 test('complete account gate runs every required suite in the approved order', () => {
   const expected = [
