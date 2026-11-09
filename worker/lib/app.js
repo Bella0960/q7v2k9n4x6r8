@@ -940,7 +940,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   async function revokeDevice(request) {
     const device = await authenticate(request);
     const timestamp = now();
-    await store.revokeDevice(device.id, timestamp);
+    const revoked = await store.revokeMaoAccountDevice(
+      device.user_id || OWNER_USER_ID,
+      device.id,
+      timestamp
+    );
+    if (!revoked) {
+      throw new ApiError(409, 'DEVICE_REVOKED', '设备授权状态已变化，请刷新后重试');
+    }
     await store.logExecution({
       id: randomToken(12),
       deviceId: device.id,
