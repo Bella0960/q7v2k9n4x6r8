@@ -2386,10 +2386,36 @@ class CloudStore {
         // Outstanding one-time codes are part of the target account's
         // authorization state. Revoke them in this same transaction so restore
         // always requires a newly issued invitation.
+        // First revoke invitations still addressable through the account's
+        // current permanent ID or verified email.
         const revokedInvites = this.exec(
           "UPDATE mao_invite_codes SET revoked_at = ? WHERE revoked_at IS NULL AND used_count < max_uses AND (target_account_id = ? OR target_email = (SELECT LOWER(qq_email) FROM mao_accounts WHERE id = ? AND qq_email_verified_at IS NOT NULL)) RETURNING id, expires_at, max_uses, used_count",
           now, accountId, accountId
         );
+        const revokedInviteIds = new Set(revokedInvites.map(invite => String(invite.id)));
+
+        // An email-targeted invite has target_account_id=NULL. Its owner was
+        // recorded in the invite_create audit event at issue time, so keep
+        // revocation working even after that account changes or un-verifies
+        // the email. The account ID in the audit row is the durable owner link.
+        const historicalInviteCreates = this.exec(
+          "SELECT detail_json FROM mao_account_audit WHERE target_account_id = ? AND action = 'invite_create'",
+          accountId
+        );
+        for (const audit of historicalInviteCreates) {
+          let detail = {};
+          try { detail = JSON.parse(String(audit.detail_json || '{}')); } catch {}
+          const inviteId = detail.inviteId == null ? '' : String(detail.inviteId);
+          if (!inviteId || revokedInviteIds.has(inviteId)) continue;
+          const invite = this.exec(
+            "UPDATE mao_invite_codes SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses RETURNING id, expires_at, max_uses, used_count",
+            now, inviteId
+          )[0];
+          if (invite) {
+            revokedInvites.push(invite);
+            revokedInviteIds.add(String(invite.id));
+          }
+        }
         for (const invite of revokedInvites) {
           // These invitation revocations are caused by the account lifecycle
           // transition, but remain individually traceable in the same account
