@@ -1,8 +1,23 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
+
+test('MAO 欢迎页移除左上角旧品牌标记并显示已存档的小兔子图片', () => {
+  const html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../account/account.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(html, /class="brand-mark"|class="brand-name"/,
+    '欢迎页不再显示左上角方框 M 和 MAO 字标');
+  assert.match(html, /class="brand-caption">ACCOUNT ACCESS/);
+  assert.match(html, /src="\.\.\/assets\/mao-bunny-192\.png"/,
+    '欢迎卡片应恢复项目中已存档的小兔子图片');
+  assert.doesNotMatch(html, /<svg viewBox="0 0 48 48">/,
+    '欢迎卡片不应继续使用旧的笑脸 SVG');
+  assert.match(css, /\.brand-row\s*\{[^}]*justify-content:\s*flex-end/);
+  assert.match(css, /\.welcome-symbol img\s*\{[^}]*object-fit:\s*contain/);
+});
 
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
 
