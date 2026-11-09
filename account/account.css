@@ -26,14 +26,8 @@ button { cursor: pointer; }
   display: flex;
   flex-direction: column;
 }
-.brand-row { display: flex; align-items: center; gap: 10px; min-height: 34px; }
-.brand-mark {
-  width: 28px; height: 28px; border: 1px solid #d7d9de; border-radius: 9px;
-  display: grid; place-items: center; font-size: 14px; font-weight: 600;
-  background: rgba(255,255,255,.72);
-}
-.brand-name { font-size: 15px; font-weight: 650; letter-spacing: .12em; }
-.brand-caption { margin-left: auto; color: #a1a3aa; font-size: 9px; letter-spacing: .16em; }
+.brand-row { display: flex; align-items: center; justify-content: flex-end; min-height: 34px; }
+.brand-caption { color: #a1a3aa; font-size: 9px; letter-spacing: .16em; }
 .panel {
   width: 100%;
   margin: auto 0;
@@ -52,10 +46,11 @@ h1 { margin: 0; font-size: clamp(28px, 7vw, 36px); line-height: 1.2; font-weight
   border-radius: 19px; box-shadow: 0 8px 28px rgba(28,31,38,.035);
 }
 .welcome-symbol {
-  width: 48px; height: 48px; flex: 0 0 auto; border: 1px solid #e6e7eb;
-  border-radius: 15px; background: #f9fafb; display: grid; place-items: center;
+  width: 64px; height: 64px; flex: 0 0 auto;
+  border-radius: 16px; background: #f9fafb; display: grid; place-items: center;
+  overflow: hidden;
 }
-.welcome-symbol svg { width: 28px; height: 28px; fill: none; stroke: #4e525a; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.welcome-symbol img { display: block; width: 64px; height: 64px; object-fit: contain; }
 .welcome-card strong, .welcome-card span { display: block; }
 .welcome-card strong { font-size: 14px; font-weight: 600; }
 .welcome-card div span { margin-top: 5px; color: var(--secondary); font-size: 12px; }
