@@ -1554,10 +1554,14 @@ test('重复错误登录触发持久化限流，窗口过期后恢复并清除�
     0,
     '成功登录只清除当前账号与当前 IP 的失败桶'
   );
-  const sharedIpState = ctx.store.getMaoLoginRateLimit(ipRateLimitKey, ctx.now());
-  assert.equal(sharedIpState.attemptCount, 8,
+  const sharedIpRow = ctx.query(
+    'SELECT attempt_count, blocked_until FROM mao_login_rate_limits WHERE ip_hash = ?',
+    ipRateLimitKey
+  )[0];
+  assert.ok(sharedIpRow, '成功登录不能删除同一 IP 的汇总失败桶');
+  assert.equal(Number(sharedIpRow.attempt_count), 8,
     '成功登录不能清除同一 IP 的汇总失败计数');
-  assert.equal(sharedIpState.blocked, false,
+  assert.equal(sharedIpRow.blocked_until, null,
     '8 次失败不应过早封锁共享网络中的其他账号');
 });
 
