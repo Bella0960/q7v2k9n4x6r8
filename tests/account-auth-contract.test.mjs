@@ -1550,7 +1550,7 @@ test('重复错误登录触发持久化限流，窗口过期后恢复并清除�
     'mao-login-account-ip|' + pepper + '|' + registered.payload.account.id + '|' + ip
   );
   assert.equal(
-    ctx.query('SELECT COUNT(*) AS total FROM mao_login_rate_limits WHERE ip_hash = ?', accountIpRateLimitKey)[0].total,
+    Number(ctx.query('SELECT COUNT(*) AS total FROM mao_login_rate_limits WHERE ip_hash = ?', accountIpRateLimitKey)[0].total),
     0,
     '成功登录只清除当前账号与当前 IP 的失败桶'
   );
@@ -1588,11 +1588,21 @@ test('同一 IP 下一个账号成功登录不能清除另一个账号的失败�
   const aliceRateLimitKey = await sha256Hex(
     'mao-login-account-ip|' + pepper + '|' + alice.id + '|' + ip
   );
+  const bobRateLimitKey = await sha256Hex(
+    'mao-login-account-ip|' + pepper + '|' + bob.id + '|' + ip
+  );
 
   for (let index = 0; index < 7; index += 1) {
     const failed = await ctx.asJson('/api/accounts/login', {
       method: 'POST',
       body: { identifier: alice.username, password: 'wrong-password-for-alice' }
+    });
+    assert.equal(failed.status, 401);
+  }
+  for (let index = 0; index < 2; index += 1) {
+    const failed = await ctx.asJson('/api/accounts/login', {
+      method: 'POST',
+      body: { identifier: bob.username, password: 'wrong-password-for-bob' }
     });
     assert.equal(failed.status, 401);
   }
@@ -1602,6 +1612,12 @@ test('同一 IP 下一个账号成功登录不能清除另一个账号的失败�
     body: { identifier: bob.username, password: 'shared-ip-bob-password-123' }
   });
   assert.equal(bobSuccess.status, 200);
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM mao_login_rate_limits WHERE ip_hash = ?',
+    bobRateLimitKey
+  )[0].total), 0, 'Bob 的成功登录只清除 Bob 自己的失败桶');
+  assert.equal(ctx.store.getMaoLoginRateLimit(aliceRateLimitKey, ctx.now()).attemptCount, 7,
+    'Bob 成功登录不能触碰 Alice 的失败桶');
 
   // Use Alice's permanent MAO ID to confirm username/ID aliases share one
   // canonical account bucket rather than creating a fresh allowance.
@@ -1615,8 +1631,8 @@ test('同一 IP 下一个账号成功登录不能清除另一个账号的失败�
   assert.equal(aliceRate.attemptCount, 8);
   assert.equal(aliceRate.blocked, true);
   const ipRate = ctx.store.getMaoLoginRateLimit(ipRateLimitKey, ctx.now());
-  assert.equal(ipRate.attemptCount, 8,
-    '共享 IP 汇总计数应包含两个账号的请求且不能被成功登录清空');
+  assert.equal(ipRate.attemptCount, 10,
+    '共享 IP 汇总计数应包含两个账号的失败请求且不能被成功登录清空');
   assert.equal(ipRate.blocked, false);
 });
 
@@ -2579,11 +2595,10 @@ test('现有设备重新登记时，Session 在数据库写入前被撤销必须
     const session = originalGetSession(tokenHash);
     if (session && session.account_id === accountId) {
       sessionReads += 1;
-      // fetchTo first resolves the page account context, then the Worker
-      // validates that context, and finally registerDevice validates again.
-      // Revoke after returning the third valid snapshot to exercise the SQL
-      // write-boundary guard rather than an earlier request-level rejection.
-      if (sessionReads === 3) {
+      // The explicit page context is validated once by the Worker, then
+      // registerDevice performs its own Session lookup. Revoke after that
+      // second valid snapshot so the SQL write-boundary guard is exercised.
+      if (sessionReads === 2) {
         ctx.store.revokeMaoAccountSession(session.session_id, ctx.now());
       }
     }
