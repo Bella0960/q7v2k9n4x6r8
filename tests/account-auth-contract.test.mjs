@@ -2688,6 +2688,37 @@ test('0015 adds the per-account audit cursor index', () => {
 });
 
 
+test('创作者首次初始化与迁移审计原子提交，审计失败后可安全重试', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  ctx.store.exec(
+    "CREATE TRIGGER fail_admin_bootstrap_audit BEFORE INSERT ON mao_account_audit " +
+    "WHEN NEW.action = 'admin_bootstrap' " +
+    "BEGIN SELECT RAISE(ABORT, 'simulated creator bootstrap audit failure'); END"
+  );
+  const payload = {
+    bootstrapSecret: BOOTSTRAP_SECRET,
+    username: 'bootstrap-audit-rollback',
+    password: 'bootstrap-audit-rollback-password',
+    confirmPassword: 'bootstrap-audit-rollback-password'
+  };
+  const failed = await ctx.fetchTo('/api/admin/bootstrap', { method: 'POST', body: payload });
+  assert.equal(failed.status, 500);
+  assert.equal(Number(ctx.query("SELECT COUNT(*) AS total FROM mao_accounts WHERE role = 'super_admin'")[0].total), 0,
+    '初始化审计失败时不能留下超级管理员账号');
+  assert.equal(Number(ctx.query("SELECT COUNT(*) AS total FROM mao_account_audit WHERE action = 'admin_bootstrap'")[0].total), 0);
+
+  ctx.store.exec('DROP TRIGGER fail_admin_bootstrap_audit');
+  const retried = await ctx.fetchTo('/api/admin/bootstrap', { method: 'POST', body: payload });
+  assert.equal(retried.status, 200);
+  const events = ctx.query(
+    "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE action = 'admin_bootstrap'"
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0].actor_account_id, null);
+  assert.equal(events[0].target_account_id, retried.account?.id || (await json(retried)).payload.account.id);
+});
+
 test('账号注册与注册审计原子提交，审计失败时账号创建回滚且可重试', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db);
