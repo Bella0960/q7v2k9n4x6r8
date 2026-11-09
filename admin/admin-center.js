@@ -5,6 +5,7 @@
   let accounts = [];
   let invites = [];
   let accountFilter = 'all';
+  let inviteFilter = 'all';
   let selectedAccountId = '';
   let pendingAction = '';
   let generatedCode = '';
@@ -174,18 +175,58 @@
     });
   }
 
+  function inviteState(invite, timestamp = Date.now()) {
+    if (invite.revoked_at) return 'revoked';
+    if (Number(invite.expires_at) <= timestamp) return 'expired';
+    if (Number(invite.used_count || 0) >= Number(invite.max_uses || 1)) return 'used';
+    return 'pending';
+  }
+
+  function updateInviteFilterCounts() {
+    const counts = {
+      all: invites.length,
+      pending: invites.filter(invite => inviteState(invite) === 'pending').length,
+      used: invites.filter(invite => inviteState(invite) === 'used').length,
+      expired: invites.filter(invite => inviteState(invite) === 'expired').length,
+      revoked: invites.filter(invite => inviteState(invite) === 'revoked').length
+    };
+    $('inviteCountAll').textContent = String(counts.all);
+    $('inviteCountPending').textContent = String(counts.pending);
+    $('inviteCountUsed').textContent = String(counts.used);
+    $('inviteCountExpired').textContent = String(counts.expired);
+    $('inviteCountRevoked').textContent = String(counts.revoked);
+  }
+
   function renderInvites() {
     const list = $('invitesList');
     list.replaceChildren();
-    if (!invites.length) {
-      list.appendChild(el('p', 'empty-note', '还没有生成邀请码。请在待授权账号的详情中生成。'));
+    const query = String($('inviteSearch').value || '').trim().toLocaleLowerCase();
+    const searched = invites.filter(invite =>
+      [invite.id, invite.target_account_id, invite.target_email, invite.target_username]
+        .some(value => String(value || '').toLocaleLowerCase().includes(query))
+    );
+    const filtered = searched.filter(invite => inviteFilter === 'all' || inviteState(invite) === inviteFilter);
+    $('inviteResultCount').textContent = query || inviteFilter !== 'all'
+      ? '当前显示 ' + filtered.length + ' / ' + invites.length + ' 条邀请码'
+      : '共 ' + invites.length + ' 条邀请码';
+
+    if (!filtered.length) {
+      list.appendChild(el(
+        'p',
+        'empty-note',
+        invites.length ? '没有找到符合条件的邀请码。' : '还没有生成邀请码。请在待授权账号的详情中生成。'
+      ));
       return;
     }
-    invites.forEach(invite => {
-      const revoked = Boolean(invite.revoked_at);
-      const expired = Number(invite.expires_at) <= Date.now();
-      const used = Number(invite.used_count || 0) >= Number(invite.max_uses || 1);
-      const state = revoked ? '已撤销' : (expired ? '已过期' : (used ? '已使用' : '待使用'));
+
+    filtered.forEach(invite => {
+      const state = inviteState(invite);
+      const stateLabels = {
+        revoked: '已撤销',
+        expired: '已过期',
+        used: '已使用',
+        pending: '待使用'
+      };
       const row = el('div', 'invite-row', '');
       const icon = el('div', 'row-avatar', '⌁');
       const main = el('div', 'row-main', '');
@@ -196,7 +237,8 @@
           '生成于 ' + formatTime(invite.created_at) + ' · 到期 ' + formatTime(invite.expires_at)),
         el('div', 'row-sub', '使用次数 ' + Number(invite.used_count || 0) + '/' + Number(invite.max_uses || 1))
       );
-      const meta = el('div', 'row-status ' + (revoked || expired ? 'status-revoked' : (used ? 'status-active' : 'status-pending')), state);
+      const stateClass = state === 'pending' ? 'status-pending' : (state === 'used' ? 'status-active' : 'status-revoked');
+      const meta = el('div', 'row-status ' + stateClass, stateLabels[state]);
       row.append(icon, main, meta);
       const targetAccount = invite.target_account_id
         ? accounts.find(account => account.id === invite.target_account_id)
@@ -207,7 +249,7 @@
         detailButton.addEventListener('click', () => openAccountFromInvite(targetAccount.id));
         row.appendChild(detailButton);
       }
-      if (!revoked && !expired && !used) {
+      if (state === 'pending') {
         const button = el('button', 'open-detail', '撤销');
         button.type = 'button';
         button.addEventListener('click', () => run(async () => {
@@ -230,6 +272,7 @@
     invites = Array.isArray(inviteResult.invites) ? inviteResult.invites : [];
     updateStats();
     updateAccountFilterCounts();
+    updateInviteFilterCounts();
     renderAccounts();
     renderInvites();
     if (selectedAccountId && !$('accountDetail').hidden) {
@@ -435,6 +478,7 @@
   $('refreshUsers').addEventListener('click', () => run(refreshAll));
   $('refreshInvites').addEventListener('click', () => run(refreshAll));
   $('accountSearch').addEventListener('input', renderAccounts);
+  $('inviteSearch').addEventListener('input', renderInvites);
   document.querySelectorAll('[data-account-filter]').forEach(button => {
     button.addEventListener('click', () => {
       accountFilter = button.dataset.accountFilter || 'all';
@@ -444,6 +488,17 @@
         item.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
       renderAccounts();
+    });
+  });
+  document.querySelectorAll('[data-invite-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+      inviteFilter = button.dataset.inviteFilter || 'all';
+      document.querySelectorAll('[data-invite-filter]').forEach(item => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      renderInvites();
     });
   });
 
