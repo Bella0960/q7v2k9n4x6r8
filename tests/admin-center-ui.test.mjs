@@ -221,3 +221,40 @@ test('管理中心搜索输入框保持单层边框，避免外框套输入框',
   assert.match(adminHtml, /<label class="search-box">[\s\S]*?<input id="accountSearch"/);
   assert.match(adminHtml, /<label class="search-box">[\s\S]*?<input id="inviteSearch"/);
 });
+
+
+test('全局操作审计视图使用服务器搜索、类别筛选和游标分页', () => {
+  assert.match(adminHtml, /data-tab="audit"/);
+  assert.match(adminHtml, /id="auditView"/);
+  assert.match(adminHtml, /data-tab="settings"/);
+  assert.match(adminHtml, /id="settingsView"/);
+  assert.match(adminHtml, /id="globalAuditSearch"/);
+  assert.match(adminHtml, /data-audit-filter="all"/);
+  assert.match(adminHtml, /data-audit-filter="account"/);
+  assert.match(adminHtml, /data-audit-filter="invite"/);
+  assert.match(adminHtml, /id="loadMoreGlobalAudit"/);
+  assert.match(adminScript, /async function loadGlobalAudit\(reset = true\)/);
+  assert.match(adminScript, /api\('\/api\/admin\/audit\?' \+ params\.toString\(\)\)/);
+  assert.match(adminScript, /params\.set\('type', globalAuditFilter\)/);
+  assert.match(adminScript, /params\.set\('cursor', cursor\)/);
+  assert.match(adminScript, /globalAuditSearchRefreshPending/);
+  assert.match(adminScript, /globalAuditSummary|globalAuditAccountActions/);
+  assert.match(adminScript, /查看账号详情/);
+  assert.match(adminScript, /loadMoreGlobalAudit'\)\.addEventListener/);
+  assert.match(adminCss, /\.global-audit-entry/);
+  assert.match(adminCss, /\.policy-item/);
+});
+
+test('后台设置为只读强制安全规则，不提供可以关闭的危险开关', () => {
+  const settingsViewStart = adminHtml.indexOf('id="settingsView"');
+  const settingsViewEnd = adminHtml.indexOf('</section>', settingsViewStart);
+  const settingsView = adminHtml.slice(settingsViewStart, settingsViewEnd);
+  assert.ok(settingsViewStart >= 0 && settingsViewEnd > settingsViewStart);
+  assert.match(settingsView, /账号准入与邀请码/);
+  assert.match(settingsView, /账号生命周期/);
+  assert.match(settingsView, /危险操作保护/);
+  assert.match(settingsView, /事务与异常恢复/);
+  assert.match(settingsView, /审计记录与敏感信息/);
+  assert.match(settingsView, /账号数据隔离/);
+  assert.doesNotMatch(settingsView, /<input[^>]*type="checkbox"/);
+});
