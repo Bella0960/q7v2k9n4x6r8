@@ -157,7 +157,10 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
 
   async function requireActiveAdmin(request) {
     const account = await getAuthenticatedAccount(request);
-    if (!account || account.status !== 'active' || account.role !== 'super_admin') {
+    if (!account) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+    }
+    if (account.status !== 'active' || account.role !== 'super_admin') {
       throw new ApiError(403, 'ADMIN_ONLY', '仅超级管理员可以使用此功能');
     }
     return account;
