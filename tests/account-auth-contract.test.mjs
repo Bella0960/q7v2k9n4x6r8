@@ -2024,6 +2024,19 @@ test('停用或永久撤销账号会在同一事务内撤销其未核销邀请�
     null,
     '停用账号时必须撤销该账号未使用的邀请码'
   );
+  const disabledAudit = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + accountId + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  const autoRevokeRecord = disabledAudit.payload.records.find(record =>
+    record.action === 'invite_revoke' &&
+    record.inviteId === firstInviteId &&
+    record.sourceAction === 'disable'
+  );
+  assert.ok(autoRevokeRecord,
+    '账号停用自动撤销的邀请码必须单独进入账号审计时间线');
+  assert.equal(autoRevokeRecord.targetAccountId, accountId);
+  assert.equal(autoRevokeRecord.actorAccountId, (await admin.clone().json()).account.id);
 
   const restored = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
     action: 'restore',
@@ -2065,6 +2078,35 @@ test('停用或永久撤销账号会在同一事务内撤销其未核销邀请�
   assert.notEqual(finalInviteState[0].revoked_at, null);
   assert.equal(Number(finalInviteState[0].used_count), 0);
   assert.equal(Number(finalInviteState[1].used_count), 1);
+
+  const permanentTarget = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'permanent-invite-lifecycle',
+      password: 'permanent-invite-lifecycle-password-123',
+      confirmPassword: 'permanent-invite-lifecycle-password-123'
+    }
+  });
+  const permanentId = permanentTarget.payload.account.id;
+  const permanentInvite = await post(ctx, '/api/admin/invites', {
+    targetAccountId: permanentId
+  }, adminCookie);
+  assert.equal(permanentInvite.status, 201);
+  const permanentRevoked = await post(ctx,
+    '/api/admin/accounts/' + permanentId + '/action',
+    { action: 'revoke', reason: '永久撤销测试' },
+    adminCookie
+  );
+  assert.equal(permanentRevoked.status, 200);
+  const permanentAudit = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + permanentId + '/audit',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.ok(permanentAudit.payload.records.some(record =>
+    record.action === 'invite_revoke' &&
+    record.inviteId === permanentInvite.payload.invite.id &&
+    record.sourceAction === 'revoke'
+  ), '永久撤销账号自动失效的邀请码也必须单独写入账号审计');
 });
 
 test('发码预检查后账号被停用时，事务内二次校验阻止插入新邀请码', async () => {
