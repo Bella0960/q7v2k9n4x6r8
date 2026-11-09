@@ -86,6 +86,7 @@ test('changes to every account-gate input can trigger the contract workflow', ()
     "      - 'tests/cloud-push-contract.test.mjs'",
     "      - 'tests/font-runtime-performance.test.mjs'",
     "      - 'scripts/check-syntax.mjs'",
+    "      - 'scripts/run-account-auth-gate.mjs'",
     "      - 'vite.config.js'",
     "      - 'wrangler.jsonc'",
     "      - 'wrangler.preview.jsonc'",
@@ -103,4 +104,18 @@ test('the syntax command is honestly named and does not expose a fake lint alias
   assert.equal(packageJson.scripts['check:syntax'], 'node scripts/check-syntax.mjs');
   assert.equal(Object.hasOwn(packageJson.scripts, 'lint'), false,
     'syntax-only validation must not be advertised as a full lint');
+});
+
+test('preview deploy workflow requires the complete test gate before Wrangler', () => {
+  const previewWorkflow = readFileSync(
+    new URL('../.github/workflows/deploy-mao-auth-preview.yml', import.meta.url),
+    'utf8'
+  );
+  const validationIndex = previewWorkflow.indexOf('Run the complete account-auth validation gate before deployment');
+  const deployIndex = previewWorkflow.indexOf('Deploy only the isolated preview Worker');
+  assert.ok(validationIndex >= 0 && deployIndex > validationIndex);
+  assert.match(previewWorkflow, /npm run check:syntax/);
+  assert.match(previewWorkflow, /npm run test:accounts:all/);
+  assert.doesNotMatch(previewWorkflow, /secrets\.CLOUDFLARE_API_TOKEN/);
+  assert.match(previewWorkflow, /secrets\.CLOUDFLARE_PREVIEW_API_TOKEN/);
 });
