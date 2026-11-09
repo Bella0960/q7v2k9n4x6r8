@@ -91,3 +91,21 @@ test('account detail audit history supports paginated loading and preserves retr
   assert.ok(adminScript.includes("retryButton.addEventListener('click', () => loadAudit(accountId, reset))"));
   assert.match(adminCss, /\.audit-result-count/);
 });
+
+
+test('search edits during another admin request are queued instead of silently dropped', () => {
+  assert.match(adminScript, /accountSearchRefreshPending/);
+  assert.match(adminScript, /inviteSearchRefreshPending/);
+  assert.match(adminScript, /const reloadAccounts = accountSearchRefreshPending/);
+  assert.match(adminScript, /const reloadInvites = inviteSearchRefreshPending/);
+  assert.match(adminScript, /window\.setTimeout\(\(\) => run\(async \(\) =>/);
+  assert.match(adminScript, /if \(busy\) \{\s*accountSearchRefreshPending = true/);
+  assert.match(adminScript, /if \(busy\) \{\s*inviteSearchRefreshPending = true/);
+});
+
+test('only the latest audit request may update the currently open account detail', () => {
+  assert.match(adminScript, /let auditRequestSequence = 0/);
+  assert.match(adminScript, /const requestSequence = \+\+auditRequestSequence/);
+  assert.match(adminScript, /requestSequence !== auditRequestSequence/);
+  assert.match(adminScript, /auditRequestSequence \+= 1/);
+});
