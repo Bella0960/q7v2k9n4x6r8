@@ -27,7 +27,7 @@
   let accountDetailRequestSequence = 0;
   let accountSearchRefreshPending = false;
   let inviteSearchRefreshPending = false;
-  let pendingAction = '';
+  let pendingConfirmation = null;
   let generatedCode = '';
   let busy = false;
   let initializing = false;
@@ -70,6 +70,32 @@
     if (className) node.className = className;
     if (text != null) node.textContent = String(text);
     return node;
+  }
+
+  function openAdminConfirmation(options) {
+    const dialog = $('adminConfirmDialog');
+    if (!dialog || typeof dialog.showModal !== 'function') {
+      showError('当前浏览器不支持安全确认弹窗，操作已阻止。请使用支持模态弹窗的浏览器后重试。');
+      return false;
+    }
+    if (dialog.open) dialog.close();
+    pendingConfirmation = options;
+    $('adminConfirmTitle').textContent = options.title || '请确认操作';
+    $('adminConfirmDescription').textContent = options.description || '请核对操作对象和影响范围。';
+    $('adminConfirmSubmit').textContent = options.confirmLabel || '确认操作';
+    $('adminConfirmSubmit').classList.toggle('danger', Boolean(options.danger));
+    $('adminConfirmReasonField').hidden = !options.requiresReason;
+    $('adminConfirmReason').value = '';
+    dialog.showModal();
+    $('adminConfirmCancel').focus();
+    return true;
+  }
+
+  function closeAdminConfirmation() {
+    const dialog = $('adminConfirmDialog');
+    pendingConfirmation = null;
+    if (dialog?.open) dialog.close();
+    $('adminConfirmReason').value = '';
   }
 
   function showError(message, retry) {
@@ -332,10 +358,15 @@
       if (state === 'pending') {
         const button = el('button', 'open-detail', '撤销');
         button.type = 'button';
-        button.addEventListener('click', () => run(async () => {
-          if (!window.confirm('确定撤销这个尚未使用的邀请码？')) return;
-          await api('/api/admin/invites/' + encodeURIComponent(invite.id) + '/revoke', 'POST', {});
-          await refreshAll();
+        button.addEventListener('click', () => openAdminConfirmation({
+          title: '确认撤销邀请码？',
+          description: '即将撤销邀请码记录 ' + invite.id + '。撤销后，该邀请码不能再用于核销；此操作会写入管理审计记录。',
+          confirmLabel: '确认撤销',
+          danger: true,
+          onConfirm: async () => {
+            await api('/api/admin/invites/' + encodeURIComponent(invite.id) + '/revoke', 'POST', {});
+            await refreshAll();
+          }
         }));
         row.appendChild(button);
       }
@@ -425,18 +456,31 @@
     const button = el('button', 'action-button ' + (className || ''), label);
     button.type = 'button';
     button.addEventListener('click', () => {
-      if (requiresReason) {
-        pendingAction = action;
-        $('actionReason').value = '';
-        $('reasonField').hidden = false;
-        $('actionReason').focus();
-      } else {
-        run(async () => {
-          if (!window.confirm('确定执行“' + label + '”吗？')) return;
-          await api('/api/admin/accounts/' + encodeURIComponent(selectedAccountId) + '/action', 'POST', { action, reason: '' });
+      const descriptions = {
+        disable: '账号将暂时无法使用，所有登录设备和会话凭据会失效；关联的有效邀请码也会自动撤销。',
+        restore: '系统会按账号停用前保存的授权状态恢复，不能借此跳过邀请码验证。',
+        revoke: '这是不可逆操作。账号将永久失去 MAO 使用资格，相关设备、会话和有效邀请码会失效。'
+      };
+      const titles = {
+        disable: '确认临时停用账号？',
+        restore: '确认恢复账号？',
+        revoke: '确认永久撤销账号？'
+      };
+      const confirmLabels = { disable: '确认停用', restore: '确认恢复', revoke: '确认永久撤销' };
+      openAdminConfirmation({
+        title: titles[action] || ('确认' + label + '？'),
+        description: (descriptions[action] || '请核对账号及本次操作影响。') + ' 目标账号：' + selectedAccountId,
+        confirmLabel: confirmLabels[action] || '确认操作',
+        danger: action === 'disable' || action === 'revoke',
+        requiresReason,
+        onConfirm: async reason => {
+          await api('/api/admin/accounts/' + encodeURIComponent(selectedAccountId) + '/action', 'POST', {
+            action,
+            reason: String(reason || '').trim()
+          });
           await refreshAll();
-        });
-      }
+        }
+      });
     });
     $('detailActions').appendChild(button);
   }
@@ -454,8 +498,6 @@
 
     const actions = $('detailActions');
     actions.replaceChildren();
-    $('reasonField').hidden = true;
-    pendingAction = '';
 
     let snapshot;
     try {
@@ -539,25 +581,35 @@
         );
         const revokeButton = el('button', 'invite-revoke-button', '撤销当前邀请码');
         revokeButton.type = 'button';
-        revokeButton.addEventListener('click', () => run(async () => {
-          if (!window.confirm('撤销后，当前邀请码将立即失效。确定继续吗？')) return;
-          await api('/api/admin/invites/' + encodeURIComponent(activeInvite.id) + '/revoke', 'POST', {});
-          await refreshAll();
+        revokeButton.addEventListener('click', () => openAdminConfirmation({
+          title: '确认撤销当前邀请码？',
+          description: '即将撤销邀请码记录 ' + activeInvite.id + '。撤销后不能再次核销；如需重新授权，必须重新生成专属邀请码。',
+          confirmLabel: '确认撤销',
+          danger: true,
+          onConfirm: async () => {
+            await api('/api/admin/invites/' + encodeURIComponent(activeInvite.id) + '/revoke', 'POST', {});
+            await refreshAll();
+          }
         }));
         inviteStatus.appendChild(revokeButton);
       } else {
         inviteStatus.hidden = true;
         const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
         inviteButton.type = 'button';
-        inviteButton.addEventListener('click', () => run(async () => {
-          if (!window.confirm('将为 ' + currentAccount.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
-          const created = await api('/api/admin/invites', 'POST', { targetAccountId: currentAccount.id });
-          generatedCode = created.invite.code;
-          $('generatedCode').textContent = generatedCode;
-          $('copyInviteCode').textContent = '复制邀请码';
-          $('inviteCodeSheet').hidden = false;
-          $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
-          await refreshAll();
+        inviteButton.addEventListener('click', () => openAdminConfirmation({
+          title: '确认生成专属邀请码？',
+          description: '将为待授权账号 ' + currentAccount.id + ' 生成一张绑定该账号的一次性邀请码。明文只在生成结果中展示一次，请及时复制并安全交付。',
+          confirmLabel: '生成邀请码',
+          danger: false,
+          onConfirm: async () => {
+            const created = await api('/api/admin/invites', 'POST', { targetAccountId: currentAccount.id });
+            generatedCode = created.invite.code;
+            $('generatedCode').textContent = generatedCode;
+            $('copyInviteCode').textContent = '复制邀请码';
+            $('inviteCodeSheet').hidden = false;
+            $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await refreshAll();
+          }
         }));
         actions.appendChild(inviteButton);
       }
@@ -666,27 +718,25 @@
     auditRequestSequence += 1;
     accountDetailRequestSequence += 1;
     $('accountDetail').hidden = true;
-    $('reasonField').hidden = true;
   }
 
-  $('confirmAction').addEventListener('click', () => {
-    if (!pendingAction || !selectedAccountId) return;
-    const action = pendingAction;
-    const reason = String($('actionReason').value || '').trim();
-    const confirmText = action === 'revoke' ? '永久撤销后不能恢复。确定继续吗？' :
-      (action === 'disable' ? '停用后该账号的所有登录设备都会失效。确定继续吗？' : '确定恢复这个账号的使用资格吗？');
-    run(async () => {
-      if (!window.confirm(confirmText)) return;
-      await api('/api/admin/accounts/' + encodeURIComponent(selectedAccountId) + '/action', 'POST', { action, reason });
-      $('reasonField').hidden = true;
-      pendingAction = '';
-      await refreshAll();
-    });
+  $('adminConfirmCancel').addEventListener('click', closeAdminConfirmation);
+  $('adminConfirmDialog').addEventListener('cancel', () => {
+    pendingConfirmation = null;
+    $('adminConfirmReason').value = '';
   });
-
-  $('cancelAction').addEventListener('click', () => {
-    pendingAction = '';
-    $('reasonField').hidden = true;
+  $('adminConfirmSubmit').addEventListener('click', async () => {
+    const confirmation = pendingConfirmation;
+    if (!confirmation || busy) return;
+    const reason = confirmation.requiresReason
+      ? String($('adminConfirmReason').value || '').trim()
+      : '';
+    let completed = false;
+    await run(async () => {
+      await confirmation.onConfirm(reason);
+      completed = true;
+    });
+    if (completed && pendingConfirmation === confirmation) closeAdminConfirmation();
   });
 
   $('copyDetailId').addEventListener('click', async () => {
