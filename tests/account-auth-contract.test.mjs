@@ -1107,11 +1107,25 @@ test('账号停用会清理此前已撤销设备遗留的未完成活动任务',
     'legacy-revoked-queue-dedupe'
   );
 
-  // Model a device revoked by an older code path before queue cleanup was
-  // attached to every entry point. The later account suspension must still
-  // sweep this device's stale work even though no active device row is changed.
-  ctx.store.revokeDevice(deviceId, timestamp);
+  ctx.store.exec(
+    `INSERT INTO push_subscriptions
+      (id, device_id, endpoint, p256dh, auth_key, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    'sub_legacy_revoked_device_0001',
+    deviceId,
+    'https://push.example.test/legacy-revoked-device',
+    'legacy-p256dh',
+    'legacy-auth-key',
+    timestamp,
+    timestamp
+  );
+
+  // Model a historical revocation path that left its subscription enabled
+  // and its activity queued. Account suspension must sweep both records even
+  // though no active device row is changed by the later transition.
+  ctx.store.exec('UPDATE devices SET revoked_at = ? WHERE id = ?', timestamp, deviceId);
   assert.equal(ctx.query('SELECT status FROM activity_queue WHERE id = ?', 'activity_legacy_revoked_queue_0001')[0].status, 'retry');
+  assert.equal(ctx.query('SELECT disabled_at FROM push_subscriptions WHERE id = ?', 'sub_legacy_revoked_device_0001')[0].disabled_at, null);
 
   const disabled = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
     action: 'disable',
@@ -1125,6 +1139,12 @@ test('账号停用会清理此前已撤销设备遗留的未完成活动任务',
   assert.equal(task.status, 'superseded');
   assert.equal(task.locked_by, null);
   assert.equal(task.locked_until, null);
+  const subscription = ctx.query(
+    'SELECT disabled_at, disabled_reason FROM push_subscriptions WHERE id = ?',
+    'sub_legacy_revoked_device_0001'
+  )[0];
+  assert.notEqual(subscription.disabled_at, null);
+  assert.equal(subscription.disabled_reason, 'account_disabled');
 });
 
 test('账号停用会撤销全部会话与设备凭据，恢复不能恢复旧设备，永久撤销不可恢复', async () => {
