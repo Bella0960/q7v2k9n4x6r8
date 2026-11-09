@@ -14,7 +14,7 @@ const excludedRoots = new Set([
 ]);
 
 function fail(message) {
-  process.stderr.write('[syntax-check] ' + message + '\\n');
+  process.stderr.write('[syntax-check] ' + message + '\n');
   process.exitCode = 1;
 }
 
@@ -30,9 +30,9 @@ if (tracked.error || tracked.status !== 0) {
 }
 
 const candidates = tracked.stdout.toString('utf8')
-  .split('\\0')
+  .split('\0')
   .filter(Boolean)
-  .filter((file) => /\\.(?:c|m)?js$/i.test(file))
+  .filter((file) => /\.(?:c|m)?js$/i.test(file))
   .filter((file) => !excludedRoots.has(file.split('/')[0]))
   .sort();
 
@@ -52,23 +52,23 @@ for (const relativePath of candidates) {
       file: relativePath,
       output: [checked.stderr, checked.stdout, checked.error?.message]
         .filter(Boolean)
-        .join('\\n')
+        .join('\n')
         .trim()
     });
   }
 }
 
 if (failures.length > 0) {
-  process.stderr.write('[syntax-check] Failed files:\\n');
+  process.stderr.write('[syntax-check] Failed files:\n');
   for (const failure of failures) {
-    process.stderr.write('\\n--- ' + failure.file + ' ---\\n');
-    process.stderr.write((failure.output || 'Node --check failed without diagnostic.') + '\\n');
+    process.stderr.write('\n--- ' + failure.file + ' ---\n');
+    process.stderr.write((failure.output || 'Node --check failed without diagnostic.') + '\n');
   }
   process.exit(1);
 }
 
 process.stdout.write(
   '[syntax-check] Passed: ' + candidates.length +
-  ' tracked JavaScript files parsed by Node.js ' + process.versions.node + '.\\n' +
-  '[syntax-check] This verifies syntax only; no style or semantic lint rules are configured.\\n'
+  ' tracked JavaScript files parsed by Node.js ' + process.versions.node + '.\n' +
+  '[syntax-check] This verifies syntax only; no style or semantic lint rules are configured.\n'
 );
