@@ -176,6 +176,7 @@
     $('accountResultCount').textContent = query || accountFilter !== 'all'
       ? '当前显示 ' + filtered.length + ' / ' + accounts.length + ' 个账号'
       : '共 ' + accounts.length + ' 个普通账号';
+    $('accountLimitNotice').hidden = accounts.length < 500;
 
     if (!filtered.length) {
       list.appendChild(el(
@@ -243,6 +244,7 @@
     $('inviteResultCount').textContent = query || inviteFilter !== 'all'
       ? '当前显示 ' + filtered.length + ' / ' + invites.length + ' 条邀请码'
       : '共 ' + invites.length + ' 条邀请码';
+    $('inviteLimitNotice').hidden = invites.length < 500;
 
     if (!filtered.length) {
       list.appendChild(el(
