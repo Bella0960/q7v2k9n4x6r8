@@ -27,24 +27,30 @@ function serializeStoreJson(value, maxBytes, field) {
   return serialized;
 }
 
-function buildMaoAuditFilter({ search = '', type = 'all', cursor = null } = {}) {
+function buildMaoAuditFilter({ search = '', type = 'all', cursor = null, alias = '' } = {}) {
+  const column = name => alias ? alias + '.' + name : name;
   const clauses = [];
   const params = [];
   if (type === 'account') {
-    clauses.push("action IN ('disable', 'restore', 'revoke')");
+    clauses.push(column('action') + " IN ('disable', 'restore', 'revoke')");
   } else if (type === 'invite') {
-    clauses.push("action IN ('invite_create', 'invite_redeem', 'invite_revoke')");
+    clauses.push(column('action') + " IN ('invite_create', 'invite_redeem', 'invite_revoke')");
   }
   const query = String(search || '').trim();
   if (query) {
-    const pattern = '%' + query.replace(/[\\%_]/g, '\\export function createStore(exec, transaction = null) {
-  return new CloudStore(exec, transaction);
-}') + '%';
-    clauses.push("(id LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR actor_account_id LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR target_account_id LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR action LIKE ? ESCAPE '\\\\' COLLATE NOCASE OR detail_json LIKE ? ESCAPE '\\\\' COLLATE NOCASE)");
+    const escaped = query.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+    const pattern = '%' + escaped + '%';
+    clauses.push('(' +
+      column('id') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('actor_account_id') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('target_account_id') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('action') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('detail_json') + " LIKE ? ESCAPE '\\' COLLATE NOCASE)");
     params.push(pattern, pattern, pattern, pattern, pattern);
   }
   if (cursor) {
-    clauses.push('(created_at < ? OR (created_at = ? AND id < ?))');
+    clauses.push('(' + column('created_at') + ' < ? OR (' +
+      column('created_at') + ' = ? AND ' + column('id') + ' < ?))');
     params.push(cursor.createdAt, cursor.createdAt, cursor.id);
   }
   return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', params };
