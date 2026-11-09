@@ -98,6 +98,46 @@ async function post(ctx, path, body, cookie = '') {
   return ctx.asJson(path, { method: 'POST', body, headers });
 }
 
+test('密码验证期间账号被管理员停用时，不得再创建登录会话', async () => {
+  const testDb = openTestDb();
+  const ctx = setupTestStore(testDb);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'login-disable-race',
+      password: 'login-disable-race-password-123',
+      confirmPassword: 'login-disable-race-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+
+  const originalCreateSession = ctx.store.createMaoAccountSession.bind(ctx.store);
+  ctx.store.createMaoAccountSession = session => {
+    // Simulate the administrator's state transition after password lookup
+    // but immediately before the atomic session insert.
+    testDb.db.prepare(
+      "UPDATE mao_accounts SET status = 'disabled', disabled_from_status = 'pending_invite' WHERE id = ?"
+    ).run(session.accountId);
+    return originalCreateSession(session);
+  };
+
+  const login = await ctx.asJson('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'login-disable-race',
+      password: 'login-disable-race-password-123'
+    }
+  });
+  assert.equal(login.status, 403);
+  assert.equal(login.payload.error.code, 'ACCOUNT_DISABLED');
+  const sessions = ctx.query(
+    'SELECT COUNT(*) AS total FROM mao_account_sessions WHERE account_id = ?',
+    registered.payload.account.id
+  );
+  assert.equal(sessions[0].total, 0,
+    '停用状态提交后，不得为该账号创建新的登录会话');
+});
+
 test('旧数据库已经应用 0012 时，新增 0013 可安全补上恢复状态字段', () => {
   const db = openTestDb();
   // Simulate an installation whose schema_migrations already records 0012.
