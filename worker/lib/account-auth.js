@@ -318,6 +318,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   async function accountSecurity(request) {
     const actor = await getAuthenticatedAccount(request);
     if (!actor) throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
+    const timestamp = now();
     return ok({
       currentSessionId: actor.session_id,
       devices: store.listMaoAccountDevices(actor.account_id).map(device => ({
@@ -334,6 +335,7 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
         expiresAt: Number(session.expires_at),
         lastUsedAt: Number(session.last_used_at),
         revokedAt: session.revoked_at == null ? null : Number(session.revoked_at),
+        expired: session.revoked_at == null && Number(session.expires_at) <= timestamp,
         current: session.id === actor.session_id
       }))
     });
