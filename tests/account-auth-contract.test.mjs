@@ -2605,10 +2605,10 @@ test('现有设备重新登记时，Session 在数据库写入前被撤销必须
   }, userCookie);
   assert.equal(enrolled.status, 200);
 
-  // The test request helper first resolves the page context; the Worker
-  // then validates that context, and registerDevice performs its own Session
-  // lookup. Revoke only after the route-level lookup returns its valid snapshot
-  // so the SQL-level recheck is what must prevent the stale profile refresh.
+  // This request explicitly supplies account context, so the Worker first
+  // validates the Session once and registerDevice then reads it again.
+  // Revoke after the second lookup returns its valid snapshot to exercise the
+  // SQL write-boundary guard rather than an earlier request-level rejection.
   const originalGetSession = ctx.store.getMaoAccountSession.bind(ctx.store);
   let sessionReads = 0;
   ctx.store.getMaoAccountSession = tokenHash => {
