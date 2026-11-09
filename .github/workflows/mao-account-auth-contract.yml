@@ -22,6 +22,7 @@ on:
       - 'tests/preview-deployment-isolation.test.mjs'
       - 'tests/helpers/**'
       - 'scripts/check-syntax.mjs'
+      - 'scripts/run-account-auth-gate.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'wrangler.jsonc'
