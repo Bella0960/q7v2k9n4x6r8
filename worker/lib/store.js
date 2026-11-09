@@ -2039,8 +2039,21 @@ class CloudStore {
 
   insertMaoInvite(invite) {
     return this.transaction(() => {
-      // Re-check under the write transaction. The route's earlier check is only
-      // an optimization; this one closes concurrent ID/email invite issuance races.
+      // The target check must share the write transaction with insertion.
+      // Otherwise an invite request that passed its route check can insert a
+      // code after an overlapping disable/revoke transition has completed.
+      let target = null;
+      if (invite.targetAccountId) {
+        target = this.getMaoAccountById(invite.targetAccountId);
+      } else if (invite.targetEmail) {
+        const verifiedOwner = this.findVerifiedMaoEmail(String(invite.targetEmail).toLowerCase());
+        target = verifiedOwner ? this.getMaoAccountById(verifiedOwner.id) : null;
+      }
+      if (!target || target.role === 'super_admin' || target.status !== 'pending_invite') {
+        return 'target_not_pending';
+      }
+
+      // Re-check the one-active-code rule under the same write transaction.
       if (this.hasActiveMaoInvite({
         targetAccountId: invite.targetAccountId || null,
         targetEmail: invite.targetEmail || null,
@@ -2153,6 +2166,13 @@ class CloudStore {
       if (!changed) return null;
 
       if (action === 'disable' || action === 'revoke') {
+        // Outstanding one-time codes are part of the target account's
+        // authorization state. Revoke them in this same transaction so restore
+        // always requires a newly issued invitation.
+        this.exec(
+          "UPDATE mao_invite_codes SET revoked_at = ? WHERE revoked_at IS NULL AND used_count < max_uses AND (target_account_id = ? OR target_email = (SELECT LOWER(qq_email) FROM mao_accounts WHERE id = ? AND qq_email_verified_at IS NOT NULL))",
+          now, accountId, accountId
+        );
         this.revokeMaoAccountSessions(accountId, now);
         this.exec(
           "UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = 'account_disabled' WHERE disabled_at IS NULL AND device_id IN (SELECT id FROM devices WHERE user_id = ? AND revoked_at IS NULL)",
