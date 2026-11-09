@@ -42,6 +42,27 @@ test('MAO 欢迎页遵循已确认的静态白底灰兔与单次渐变标题设�
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
 
+test('注册创建成功但自动登录失败时，引导用户登录而不是重复注册', () => {
+  const script = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
+  const start = script.indexOf("byId('registerForm').addEventListener('submit'");
+  const end = script.indexOf("byId('loginForm').addEventListener('submit'", start);
+  assert.ok(start >= 0 && end > start, '注册提交流程必须存在');
+  const registrationFlow = script.slice(start, end);
+  const loginAttempt = registrationFlow.indexOf("api('/api/accounts/login', 'POST'");
+  const recovery = registrationFlow.indexOf("账号已创建，MAO 永久 ID：");
+  const switchToLogin = registrationFlow.indexOf("showPanel('loginPanel')");
+  const enterAuthorizedFlow = registrationFlow.indexOf('presentAccount(');
+  assert.ok(loginAttempt >= 0, '注册成功后应尝试自动登录');
+  assert.ok(recovery > loginAttempt, '自动登录失败分支必须发生在账号创建之后');
+  assert.ok(switchToLogin > recovery, '自动登录失败时应转到登录页');
+  assert.ok(enterAuthorizedFlow > switchToLogin, '只有自动登录成功才继续进入账号状态分流');
+  assert.match(registrationFlow, /const accountId = created\.account\.id/);
+  assert.match(registrationFlow, /querySelector\('\[name="identifier"\]'\)/,
+    '登录页应预填刚创建账号的用户名');
+  assert.match(registrationFlow, /请使用刚设置的用户名和密码重新登录/);
+  assert.match(registrationFlow, /loginError/);
+});
+
 test('账号自助管理中的设备和会话撤销必须使用中央模态确认', () => {
   const html = readFileSync(new URL('../account/manage.html', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../account/manage.css', import.meta.url), 'utf8');
