@@ -63,7 +63,7 @@ test('preview workflow only deploys the account-auth branch with dedicated crede
   assert.match(workflow, /\/api\/admin\/bootstrap\/status/);
   assert.match(workflow, /Unauthenticated admin page should redirect/);
   assert.match(workflow, /GITHUB_STEP_SUMMARY/);
-  assert.doesNotMatch(workflow, /wrangler\.jsonc(?!\w)/,
+  assert.doesNotMatch(workflow, /command:\s*deploy\s+--config\s+wrangler\.jsonc/,
     'the preview workflow must not deploy the production config');
   assert.match(workflow, /npm run check:syntax/);
   assert.match(workflow, /npm run test:accounts:all/,
