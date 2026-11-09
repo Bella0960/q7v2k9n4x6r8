@@ -22,6 +22,7 @@ on:
       - 'package-lock.json'
       - 'tests/**'
       - 'scripts/check-syntax.mjs'
+      - 'scripts/run-account-auth-gate.mjs'
       - 'docs/engineering/MAO_ACCOUNT_AUTH.md'
 
   workflow_dispatch:
