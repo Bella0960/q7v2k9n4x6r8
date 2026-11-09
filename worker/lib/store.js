@@ -2432,7 +2432,11 @@ class CloudStore {
         "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         'audit_' + crypto.randomUUID(),
         actorAccountId, accountId, action,
-        serializeStoreJson({ reason: String(reason || '').slice(0, 500) }, 2048, 'audit detail'),
+        serializeStoreJson({
+          reason: String(reason || '').slice(0, 500),
+          fromStatus: String(account.status),
+          toStatus: String(nextStatus)
+        }, 2048, 'audit detail'),
         now
       );
       return this.getMaoAccountById(accountId);
