@@ -2213,6 +2213,93 @@ test('设备在重新登记的异步账号校验期间被撤销时，不能返�
   assert.equal(persisted.platform, 'original platform');
 });
 
+test('新设备登记与账号停用并发时，停用后的账号不能留下新设备凭据', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const adminAccountId = (await admin.clone().json()).account.id;
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'device-enroll-race-user',
+      password: 'device-enroll-race-user-password-123',
+      confirmPassword: 'device-enroll-race-user-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+  const invite = await post(ctx, '/api/admin/invites', {
+    targetAccountId: accountId
+  }, adminCookie);
+  assert.equal(invite.status, 201);
+
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'device-enroll-race-user',
+      password: 'device-enroll-race-user-password-123'
+    }
+  });
+  assert.equal(login.status, 200);
+  const userCookie = cookieFrom(login);
+  const redeemed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, userCookie);
+  assert.equal(redeemed.status, 200);
+
+  const originalInsert = ctx.store.insertMaoAccountDevice.bind(ctx.store);
+  let disabledDuringEnrollment = false;
+  ctx.store.insertMaoAccountDevice = device => {
+    disabledDuringEnrollment = true;
+    const changed = ctx.store.setMaoAccountState({
+      accountId,
+      action: 'disable',
+      actorAccountId: adminAccountId,
+      reason: '模拟新设备登记过程中的并发停用',
+      now: ctx.now()
+    });
+    assert.equal(changed.status, 'disabled');
+    return originalInsert(device);
+  };
+
+  const deviceId = 'device_new_enroll_race01';
+  const deviceSecret = randomToken(32);
+  const enrollment = await ctx.fetchTo('/api/devices/register', {
+    method: 'POST',
+    body: {
+      deviceId,
+      secret: deviceSecret,
+      label: 'race-created device',
+      platform: 'test'
+    },
+    headers: {
+      cookie: userCookie,
+      'x-mao-account-context': accountId
+    }
+  });
+  const result = await json(enrollment);
+  assert.equal(disabledDuringEnrollment, true);
+  assert.equal(result.status, 403);
+  assert.equal(result.payload.error.code, 'ACCOUNT_DISABLED');
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM devices WHERE id = ? AND user_id = ?',
+    deviceId, accountId
+  )[0].total), 0,
+  '账号停用提交后，不能再插入新的有效设备凭据');
+});
+
 test('停用或永久撤销账号会在同一事务内撤销其未核销邀请码，恢复后必须重新发码', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
