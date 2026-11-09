@@ -168,7 +168,7 @@
         );
         return;
       }
-      showError(error.message || '操作失败，请稍后重试。');
+      showError(error.message || '操作失败，请稍后重试。', () => refreshAll());
     } finally {
       busy = false;
       setButtonsDisabled(false);
