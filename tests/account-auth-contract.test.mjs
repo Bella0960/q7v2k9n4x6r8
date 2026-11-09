@@ -1700,3 +1700,60 @@ test('账号停用时邀请码撤销与状态变更共同回滚，不留下半�
   }, userCookie);
   assert.equal(redeemed.status, 200, '回滚后仍有效的邀请码应保持可核销');
 });
+
+
+test('永久撤销账号会撤销已验证 QQ 邮箱绑定的邀请码，且不能恢复账号', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'verified-email-owner',
+      password: 'verified-email-owner-password-123',
+      confirmPassword: 'verified-email-owner-password-123',
+      qqEmail: 'verified-owner@qq.com'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+  ctx.store.exec(
+    'UPDATE mao_accounts SET qq_email_verified_at = ? WHERE id = ?',
+    ctx.now(), accountId
+  );
+
+  const invite = await post(ctx, '/api/admin/invites', {
+    targetEmail: 'verified-owner@qq.com'
+  }, adminCookie);
+  assert.equal(invite.status, 201);
+  assert.equal(invite.payload.invite.targetAccountId, null);
+  assert.equal(invite.payload.invite.targetEmail, 'verified-owner@qq.com');
+
+  const revoked = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'revoke',
+    reason: '永久撤销后邮箱邀请码也必须失效'
+  }, adminCookie);
+  assert.equal(revoked.status, 200);
+  assert.equal(revoked.payload.account.status, 'revoked');
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM mao_invite_codes WHERE id = ?', invite.payload.invite.id)[0].revoked_at,
+    null,
+    '永久撤销账号时必须撤销绑定到其已验证 QQ 邮箱的邀请码'
+  );
+
+  const restore = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'restore'
+  }, adminCookie);
+  assert.equal(restore.status, 409, '永久撤销状态不可恢复');
+  assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', accountId)[0].status, 'revoked');
+});
