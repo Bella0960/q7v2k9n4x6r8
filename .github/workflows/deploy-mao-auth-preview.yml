@@ -50,23 +50,25 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Validate isolated preview configuration and dedicated credentials
+        shell: pwsh
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_PREVIEW_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_API_TOKEN }}
           MAO_PREVIEW_DEVICE_SECRET_PEPPER: ${{ secrets.MAO_PREVIEW_DEVICE_SECRET_PEPPER }}
           MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET: ${{ secrets.MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET }}
         run: |
-          set -eu
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing GitHub secret: CLOUDFLARE_ACCOUNT_ID"; exit 1; }
-          test -n "$CLOUDFLARE_PREVIEW_API_TOKEN" || { echo "Missing GitHub secret: CLOUDFLARE_PREVIEW_API_TOKEN"; exit 1; }
-          test "${#MAO_PREVIEW_DEVICE_SECRET_PEPPER}" -ge 32 || { echo "MAO_PREVIEW_DEVICE_SECRET_PEPPER must contain at least 32 characters"; exit 1; }
-          test "${#MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET}" -ge 32 || { echo "MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET must contain at least 32 characters"; exit 1; }
+          if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_ACCOUNT_ID)) { throw "Missing GitHub secret: CLOUDFLARE_ACCOUNT_ID" }
+          if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_PREVIEW_API_TOKEN)) { throw "Missing GitHub secret: CLOUDFLARE_PREVIEW_API_TOKEN" }
+          if ($env:MAO_PREVIEW_DEVICE_SECRET_PEPPER.Length -lt 32) { throw "MAO_PREVIEW_DEVICE_SECRET_PEPPER must contain at least 32 characters" }
+          if ($env:MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET.Length -lt 32) { throw "MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET must contain at least 32 characters" }
 
       - name: Run the complete account-auth validation gate before deployment
+        shell: pwsh
         run: |
-          set -eu
           npm run check:syntax
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:accounts:all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Deploy only the isolated preview Worker
         id: deploy-preview
@@ -83,39 +85,43 @@ jobs:
           MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: ${{ secrets.MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET }}
 
       - name: Smoke-test the deployed preview and publish its phone link
+        shell: pwsh
         env:
           PREVIEW_URL: ${{ steps.deploy-preview.outputs.deployment-url }}
         run: |
-          set -eu
-          test -n "$PREVIEW_URL" || { echo "Wrangler did not return a preview deployment URL"; exit 1; }
-          case "$PREVIEW_URL" in
-            https://*) ;;
-            *) echo "Preview deployment URL must use HTTPS"; exit 1 ;;
-          esac
-
-          echo "## MAO account-auth preview" >> "$GITHUB_STEP_SUMMARY"
-          echo "[Open the isolated MAO preview on a phone]($PREVIEW_URL)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Account entry: $PREVIEW_URL/account/index.html" >> "$GITHUB_STEP_SUMMARY"
-          echo "Creator bootstrap: $PREVIEW_URL/account/bootstrap.html" >> "$GITHUB_STEP_SUMMARY"
-
-          curl --fail --silent --show-error "$PREVIEW_URL/account/index.html" --output /dev/null
-          curl --fail --silent --show-error "$PREVIEW_URL/account/bootstrap.html" --output /dev/null
-
-          curl --fail --silent --show-error "$PREVIEW_URL/api/admin/bootstrap/status" \
-            | node --input-type=module -e '
-              let raw = "";
-              for await (const chunk of process.stdin) raw += chunk;
-              const result = JSON.parse(raw);
-              if (result.ok !== true || typeof result.initialized !== "boolean") {
-                throw new Error("Preview bootstrap status endpoint returned an unexpected response");
-              }
-              console.log("Preview bootstrap endpoint: reachable; initialized=" + result.initialized);
-            '
-
-          admin_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$PREVIEW_URL/admin/admin-center.html")"
-          test "$admin_status" = "302" || {
-            echo "Unauthenticated admin page should redirect to account entry (expected 302, got $admin_status)"
-            exit 1
+          $ErrorActionPreference = 'Stop'
+          $previewUrl = $env:PREVIEW_URL
+          if ([string]::IsNullOrWhiteSpace($previewUrl)) { throw "Wrangler did not return a preview deployment URL" }
+          if (-not $previewUrl.StartsWith('https://', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Preview deployment URL must use HTTPS"
           }
-          echo "Unauthenticated admin-page gate: HTTP 302 (passed)" >> "$GITHUB_STEP_SUMMARY"
+
+          @(
+            "## MAO account-auth preview"
+            "[Open the isolated MAO preview on a phone]($previewUrl)"
+            ""
+            "Account entry: $previewUrl/account/index.html"
+            "Creator bootstrap: $previewUrl/account/bootstrap.html"
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+          $accountPage = Join-Path $env:TEMP 'mao-preview-account-entry.html'
+          $bootstrapPage = Join-Path $env:TEMP 'mao-preview-bootstrap.html'
+          & curl.exe --fail --silent --show-error "$previewUrl/account/index.html" --output $accountPage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & curl.exe --fail --silent --show-error "$previewUrl/account/bootstrap.html" --output $bootstrapPage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $statusJson = & curl.exe --fail --silent --show-error "$previewUrl/api/admin/bootstrap/status"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $bootstrapStatus = $statusJson | ConvertFrom-Json
+          if ($bootstrapStatus.ok -ne $true -or $bootstrapStatus.initialized -isnot [bool]) {
+            throw "Preview bootstrap status endpoint returned an unexpected response"
+          }
+          Write-Output ("Preview bootstrap endpoint: reachable; initialized=" + $bootstrapStatus.initialized)
+
+          $adminStatus = & curl.exe --silent --show-error --output (Join-Path $env:TEMP 'mao-preview-admin-response.html') --write-out '%{http_code}' "$previewUrl/admin/admin-center.html"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($adminStatus.Trim() -ne '302') {
+            throw "Unauthenticated admin page should redirect to account entry (expected 302, got $adminStatus)"
+          }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value 'Unauthenticated admin-page gate: HTTP 302 (passed)'
