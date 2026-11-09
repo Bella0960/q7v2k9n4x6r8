@@ -281,13 +281,10 @@
       const stateClass = state === 'pending' ? 'status-pending' : (state === 'used' ? 'status-active' : 'status-revoked');
       const meta = el('div', 'row-status ' + stateClass, stateLabels[state]);
       row.append(icon, main, meta);
-      const targetAccount = invite.target_account_id
-        ? accounts.find(account => account.id === invite.target_account_id)
-        : null;
-      if (targetAccount) {
+      if (invite.target_account_id) {
         const detailButton = el('button', 'open-detail', '查看账号');
         detailButton.type = 'button';
-        detailButton.addEventListener('click', () => openAccountFromInvite(targetAccount.id));
+        detailButton.addEventListener('click', () => openAccountFromInvite(invite.target_account_id));
         row.appendChild(detailButton);
       }
       if (state === 'pending') {
@@ -616,7 +613,9 @@
   function openAccountFromInvite(accountId) {
     activateTab('users');
     accountFilter = 'all';
-    $('accountSearch').value = '';
+    // Search by permanent ID on the server so older accounts outside the
+    // currently loaded pages can still be opened from their invitation record.
+    $('accountSearch').value = accountId;
     document.querySelectorAll('[data-account-filter]').forEach(item => {
       const active = item.dataset.accountFilter === 'all';
       item.classList.toggle('active', active);

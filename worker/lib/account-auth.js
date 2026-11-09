@@ -46,7 +46,7 @@ function adminDirectoryOptions(request, allowedStatuses, idPattern) {
     const createdAtText = cursorText.slice(0, separator);
     const id = cursorText.slice(separator + 1);
     const createdAt = Number(createdAtText);
-    if (separator < 1 || !/^\\d{1,16}$/.test(createdAtText) ||
+    if (separator < 1 || !/^\d{1,16}$/.test(createdAtText) ||
         !Number.isSafeInteger(createdAt) || createdAt < 0 || !idPattern.test(id)) {
       throw new ApiError(400, 'INVALID_DIRECTORY_CURSOR', '列表游标无效，请刷新后重试');
     }
