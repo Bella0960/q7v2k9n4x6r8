@@ -1569,7 +1569,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         id: activityId,
         owner: device.id,
         attemptCount,
-        now: timestamp
+        now: timestamp,
+        userId,
+        requireActiveDevice: true
       });
       if (!finished) {
         throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
@@ -1643,7 +1645,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       id: activityId,
       owner: device.id,
       attemptCount,
-      now: timestamp
+      now: timestamp,
+      userId: device.user_id || OWNER_USER_ID,
+      requireActiveDevice: true
     });
     if (!completed) {
       throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
@@ -1693,7 +1697,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       owner: device.id,
       attemptCount,
       now: timestamp,
-      nextAttemptAt
+      nextAttemptAt,
+      userId: device.user_id || OWNER_USER_ID,
+      requireActiveDevice: true
     });
     if (!failed) {
       throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
