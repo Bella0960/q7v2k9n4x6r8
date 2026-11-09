@@ -96,6 +96,26 @@
   byId('closeLegal').addEventListener('click', () => byId('legalDialog').close());
   byId('confirmLegal').addEventListener('click', () => byId('legalDialog').close());
 
+  document.querySelectorAll('[data-password-toggle]').forEach(button => {
+    button.addEventListener('click', () => {
+      const input = byId(button.dataset.target || '');
+      if (!input) return;
+      const visible = input.type === 'password';
+      input.type = visible ? 'text' : 'password';
+      button.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      button.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
+      button.title = visible ? '隐藏密码' : '显示密码';
+    });
+  });
+
+  const creatorContactDialog = byId('creatorContactDialog');
+  byId('creatorContactButton').addEventListener('click', () => {
+    if (typeof creatorContactDialog.showModal === 'function') creatorContactDialog.showModal();
+    else creatorContactDialog.setAttribute('open', '');
+  });
+  byId('closeCreatorContact').addEventListener('click', () => creatorContactDialog.close());
+  byId('confirmCreatorContact').addEventListener('click', () => creatorContactDialog.close());
+
   byId('registerForm').addEventListener('submit', async event => {
     event.preventDefault();
     setError('registerError');
