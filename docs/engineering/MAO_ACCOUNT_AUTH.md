@@ -151,7 +151,7 @@ Authenticated account routes (require the page MAO context to match the HttpOnly
 - POST /api/accounts/devices/:id/revoke
 
 Super-admin only:
-- GET /api/admin/bootstrap/status (public boolean only; never exposes whether the secret is configured)\n- GET /api/admin/accounts
+- GET /api/admin/accounts
 - GET /api/admin/accounts/:id/audit
 - GET /api/admin/invites
 - POST /api/admin/invites
