@@ -154,6 +154,7 @@ Authenticated account routes (require the page MAO context to match the HttpOnly
 
 Super-admin only:
 - GET /api/admin/accounts?limit=50&cursor=...&search=...&status=... (keyset-paginated; status: all, pending_invite, active, restricted)
+- GET /api/admin/accounts/:id/detail (authoritative account state plus active-invitation metadata in one admin-only response; excludes password and token material)
 - GET /api/admin/accounts/:id/audit?limit=50&cursor=... (private per-account history, keyset-paginated)
 - GET /api/admin/invites?limit=50&cursor=...&search=...&status=... (keyset-paginated; status: all, pending, used, expired, revoked)
 - POST /api/admin/invites
@@ -184,14 +185,18 @@ After a successful deploy, the workflow uses the Wrangler Action's `deployment-u
 
 Run `npm run test:preview:config` to verify the checked-in preview configuration is distinct from production. A passing static contract does not prove Cloudflare isolation; the first real preview deployment must still be checked for the returned Worker URL, preview account registration/bootstrap, and successful admin API operations.
 
-## Account-scoped active invitation lookup
+## Account detail and active invitation snapshot
 
-The admin account detail no longer infers invitation state from the currently loaded invitation-directory page. It calls the admin-only `GET /api/admin/accounts/:id/active-invite` endpoint, which resolves active invitations by permanent MAO account ID and also recognizes invitations bound to that account's verified QQ email. The response contains only invitation metadata (ID, expiry, usage counts); it never returns the raw code or token hash. If lookup fails, the detail view displays a retry action and suppresses code generation until the server state is known. A request sequence guard prevents a late lookup from changing a different or reopened account detail.
+The admin account detail reads the admin-only `GET /api/admin/accounts/:id/detail` endpoint before rendering account actions. The response contains a safe account projection (permanent ID, username, role, current status, QQ email verification state, and lifecycle timestamps) plus the current active invitation metadata when the account is still `pending_invite`. Account state and invitation state are read together in the same Worker request, so the page does not combine a stale directory row with a newer invitation result.
+
+The detail response never returns password hashes/salts, raw invitation codes, or invitation token hashes. It returns `invite: null` for active, disabled, revoked, and pending accounts without a currently valid code. After an invitation is revoked, the page refreshes this snapshot; a replacement-code action is shown only when the server confirms the account is still pending and no active invitation remains. Temporary lookup failures show a retry action and suppress both invitation generation and account lifecycle actions until the state can be verified. The older `GET /api/admin/accounts/:id/active-invite` endpoint remains available for compatibility and direct contract coverage.
+
+The detail renderer also applies a monotonically increasing request sequence and checks the selected account ID before rendering a response. Closing or switching accounts invalidates older requests, preventing late responses from overwriting the currently visible detail.
 
 ## Validation
 
-- npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, account/device revocation, full directory cursor traversal beyond 500 accounts with duplicate-timestamp boundaries and search, and private audit history pagination beyond 200 entries.
-- npm run test:admin:center covers admin-page recovery after transient session/API failures, duplicate-action button locking, audit retry and pagination behavior, the one-time invitation reveal flow on mobile, and server-side directory cursor pagination controls.
+- npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, authoritative admin detail snapshots across pending/active/disabled states, revoked-invitation refresh and replacement, account/device revocation, full directory cursor traversal beyond 500 accounts with duplicate-timestamp boundaries and search, and private audit history pagination beyond 200 entries.
+- npm run test:admin:center covers admin-page recovery after transient session/API failures, duplicate-action button locking, audit retry and pagination behavior, the one-time invitation reveal flow on mobile, server-side directory cursor pagination controls, and rendering from the authoritative account/invitation snapshot.
 - The account command also includes browser storage namespace tests for two account IDs.
 - The focused `MAO Account Auth Contract` workflow must execute the tests and build before the branch can be considered validated. The latest observed jobs still terminate before runner assignment (`runner_id=0`, no steps/logs), so tests and build remain NOT VERIFIED.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
