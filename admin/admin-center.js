@@ -669,7 +669,7 @@
           actorLabel + record.actorAccountId
         ];
         if (record.fromStatus && record.toStatus) {
-          subline.push('状态 ' + statusText(record.fromStatus) + ' → ' + statusText(record.toStatus));
+          subline.push('状态从 ' + statusText(record.fromStatus) + ' 调整为 ' + statusText(record.toStatus));
         }
         if (record.inviteId) subline.push('邀请码记录 ' + record.inviteId);
         if (record.sourceAction === 'disable') subline.push('随账号停用自动撤销');
