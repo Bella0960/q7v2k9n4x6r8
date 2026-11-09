@@ -598,12 +598,21 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
   }
 
   function adminAuditOptions(request) {
+    const url = new URL(request.url);
     const options = adminDirectoryOptions(request, ['all'], /^audit_[A-Za-z0-9_-]{8,80}$/);
-    const type = String(new URL(request.url).searchParams.get('type') || 'all');
+    const type = String(url.searchParams.get('type') || 'all');
     if (!['all', 'account', 'invite'].includes(type)) {
       throw new ApiError(400, 'INVALID_AUDIT_FILTER', '操作记录筛选条件不正确');
     }
-    return { ...options, type };
+    const rawSince = url.searchParams.get('since');
+    let since = null;
+    if (rawSince != null && rawSince !== '') {
+      since = Number(rawSince);
+      if (!Number.isSafeInteger(since) || since < 0 || since > now()) {
+        throw new ApiError(400, 'INVALID_AUDIT_RANGE', '操作记录时间范围不正确');
+      }
+    }
+    return { ...options, type, since };
   }
 
   async function adminAudit(request) {
