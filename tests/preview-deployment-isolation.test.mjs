@@ -81,7 +81,7 @@ test('preview secrets and the full test gate are checked before Wrangler deploy 
   const deployIndex = workflow.indexOf('Deploy only the isolated preview Worker');
   assert.ok(installIndex >= 0 && validateIndex > installIndex);
   assert.ok(gateIndex > validateIndex && deployIndex > gateIndex);
-  assert.match(workflow, /test "\$\{#MAO_PREVIEW_DEVICE_SECRET_PEPPER\}" -ge 32/);
-  assert.match(workflow, /test "\$\{#MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET\}" -ge 32/);
+  assert.match(workflow, /MAO_PREVIEW_DEVICE_SECRET_PEPPER\.Length -lt 32/);
+  assert.match(workflow, /MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET\.Length -lt 32/);
   assert.match(workflow, /MAO_SUPER_ADMIN_BOOTSTRAP_SECRET/);
 });
