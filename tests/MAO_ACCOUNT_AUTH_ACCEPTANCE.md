@@ -64,6 +64,8 @@ npm run test:accounts:local
 Node 版本必须是 22.16 或更新的 22.x。私有仓库需要用有权限的 GitHub 账号完成 Git 登录；不要把 Personal Access Token 发到聊天或写进命令截图。
 
 ### GitHub Actions 托管额度不足时：使用自己的 Windows 电脑跑工作流
+> **针对日常电脑的建议：** 如果这台电脑已经很卡，不要在它上面注册自托管 Runner，也不要为了验证而运行整套本地测试。Runner 执行期间会运行 Node 测试、Vite 构建和依赖安装，可能明显增加 CPU、内存、磁盘和网络负载。下面的步骤只适用于备用电脑或专门的云端/测试机器；自托管 Runner 不是必须配置项。
+
 
 两个账号工作流都支持专用自托管 runner。默认不配置时仍使用 GitHub-hosted `ubuntu-latest`。只有配置下面的仓库变量后，才会切换到你自己的电脑。
 
