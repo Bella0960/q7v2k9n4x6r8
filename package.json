@@ -10,6 +10,7 @@
     "test:chat:contract": "node --test tests/chat-regression-contract.test.mjs",
     "test:accounts": "node --test tests/account-auth-contract.test.mjs tests/account-storage-isolation.test.mjs",
     "test:accounts:gate-contract": "node --test tests/account-auth-gate-contract.test.mjs",
+    "test:accounts:local": "node scripts/run-account-auth-gate.mjs",
     "test:admin:center": "node --test tests/admin-center-ui.test.mjs",
     "test:chat:isolation": "node --test tests/chat-data-isolation.test.mjs",
     "test:bugfix:blockers": "node --test tests/forum-chat-blockers.test.mjs",
