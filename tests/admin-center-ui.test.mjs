@@ -132,6 +132,14 @@ test('账号详情使用服务端权威状态与邀请码快照，查询失败�
   assert.match(detail, /if \(busy\) setButtonsDisabled\(true\);\s*await loadAudit\(currentAccount\.id\)/);
 });
 
+test('并发状态冲突后自动重新核对账号和邀请码，避免页面保留旧操作入口', () => {
+  assert.match(adminScript, /const stateConflictCodes = \[[\s\S]*'ACCOUNT_ACTION_REJECTED'[\s\S]*'INVITE_ALREADY_ACTIVE'[\s\S]*'INVITE_TARGET_NOT_PENDING'[\s\S]*'INVITE_NOT_ACTIVE'/);
+  assert.match(adminScript, /if \(stateConflictCodes\.includes\(error\.code\)\) \{[\s\S]*await refreshAll\(\);[\s\S]*showError\(/);
+  assert.match(adminScript, /服务器状态已变化，账号和邀请码详情已重新核对/);
+  assert.match(adminScript, /自动核对未完成。请重新检查/);
+  assert.match(adminScript, /\(\) => refreshAll\(\)/);
+});
+
 test('only the latest audit request may update the currently open account detail', () => {
   assert.match(adminScript, /let auditRequestSequence = 0/);
   assert.match(adminScript, /const requestSequence = \+\+auditRequestSequence/);
