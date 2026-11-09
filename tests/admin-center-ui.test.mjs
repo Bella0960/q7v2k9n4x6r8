@@ -99,6 +99,8 @@ test('账号审计时间线展示邀请码生成与撤销事件，但不显示�
   assert.match(adminScript, /invite_revoke: '撤销专属邀请码'/);
   assert.match(adminScript, /record\.action === 'invite_redeem' \? '账号 ' : '管理员 '/);
   assert.match(adminScript, /if \(record\.inviteId\) subline\.push\('邀请码记录 '/);
+  assert.match(adminScript, /if \(record\.sourceAction === 'disable'\) subline\.push\('随账号停用自动撤销'/);
+  assert.match(adminScript, /if \(record\.sourceAction === 'revoke'\) subline\.push\('随账号永久撤销自动失效'/);
   assert.match(adminScript, /if \(record\.expiresAt\) subline\.push\('到期 '/);
   assert.match(adminScript, /if \(record\.maxUses != null\)/);
   assert.match(adminScript, /仅记录邀请码管理事件，不保存邀请码明文/);
