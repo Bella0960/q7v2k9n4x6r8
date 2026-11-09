@@ -5,24 +5,38 @@ import { randomToken, sha256Hex } from '../worker/lib/crypto.js';
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
 import { applyMigrations, MIGRATIONS, splitSql } from '../worker/lib/migrations.js';
 
-test('MAO 欢迎页使用精致的动态兔子主视觉且移除旧品牌标记', () => {
+test('MAO 欢迎页遵循已确认的静态白底灰兔与单次渐变标题设计', () => {
   const html = readFileSync(new URL('../account/index.html', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../account/account.css', import.meta.url), 'utf8');
+  const script = readFileSync(new URL('../account/account.js', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /class="brand-mark"|class="brand-name"/,
     '欢迎页不再显示左上角方框 M 和 MAO 字标');
   assert.match(html, /class="brand-caption">ACCOUNT ACCESS/);
-  assert.match(html, /class="hero-art"/);
+  assert.match(html, /class="hero-avatar-frame"/, '兔子头像必须有独立白底');
   assert.match(html, /class="hero-bunny" src="\.\.\/assets\/mao-bunny-192\.png"/,
-    '兔子图片应成为欢迎页主视觉');
-  assert.match(html, /class="hero-orbit hero-orbit-one"/);
-  assert.match(html, /class="welcome-card-copy"/);
-  assert.doesNotMatch(html, /<svg viewBox="0 0 48 48">/,
-    '欢迎页不应继续使用旧的笑脸 SVG');
-  assert.match(css, /@keyframes bunnyFloat/);
-  assert.match(css, /@keyframes orbitDrift/);
-  assert.match(css, /@keyframes panelEnter/);
-  assert.match(css, /\.hero-bunny\s*\{[^}]*animation:\s*bunnyFloat/);
-  assert.match(css, /\.hero-orbit-one\s*\{[^}]*animation:\s*orbitDrift/);
+    '欢迎页应使用项目内已存在的小兔子素材');
+  assert.match(html, /class="hero-avatar-caption">A QUIET LITTLE DETAIL/);
+  assert.match(html, /class="welcome-title">欢迎使用 MAO<\/h1>/,
+    '欢迎标题只出现一次');
+  assert.match(html, /class="welcome-lead">给日常留一处只属于自己的空间。/);
+  assert.doesNotMatch(html, /welcome-index|card-index|hero-orbit|hero-red-point|button-arrow|01\s*\/\s*04|↗|←|→/,
+    '欢迎页不应出现编号、轨道装饰或方向箭头');
+  assert.doesNotMatch(html, /唯一超级管理员/, '公开邀请码说明只称管理员');
+  assert.match(html, /邀请码由管理员发放，并绑定指定账号/);
+  assert.match(html, /id="creatorContactButton"/);
+  assert.match(html, /class="creator-contact-link"/);
+  assert.match(css, /\.hero-avatar-frame\s*\{[^}]*background:\s*#fff/i);
+  assert.match(css, /\.welcome-title\s*\{[^}]*linear-gradient/i);
+  assert.match(css, /@keyframes welcomeReveal/);
+  assert.doesNotMatch(css, /bunnyFloat|orbitDrift|pointPulse/,
+    '兔子与装饰轨道保持静态');
+  assert.equal((html.match(/data-password-toggle/g) || []).length, 3,
+    '注册密码、确认密码和登录密码都应有框内眼睛开关');
+  assert.match(css, /\.password-field\s*\{[^}]*border:\s*1px/);
+  assert.match(css, /\.password-field input\s*\{[^}]*border:\s*0/);
+  assert.match(script, /data-password-toggle/);
+  assert.match(script, /input\.type = visible \? 'text' : 'password'/);
+  assert.match(script, /creatorContactDialog\.showModal\(\)/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
 
