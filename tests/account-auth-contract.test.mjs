@@ -141,7 +141,7 @@ test('0012 创建独立 MAO 账号、会话、邀请码与审计表', () => {
     assert.ok(tables.includes(name), '缺少 ' + name);
   }
   const indexes = ctx.query("SELECT name FROM sqlite_master WHERE type='index'").map(row => row.name);
-  for (const name of ['idx_mao_single_super_admin', 'idx_mao_sessions_account_active', 'idx_mao_invites_target_account']) {
+  for (const name of ['idx_mao_single_super_admin', 'idx_mao_sessions_account_active', 'idx_mao_invites_target_account', 'idx_mao_audit_global_cursor', 'idx_mao_audit_action_cursor']) {
     assert.ok(indexes.includes(name), '缺少索引 ' + name);
   }
 });
@@ -2671,3 +2671,82 @@ test('0015 adds the per-account audit cursor index', () => {
   const names = ctx.query("SELECT name FROM sqlite_master WHERE type = 'index'").map(row => row.name);
   assert.ok(names.includes('idx_mao_account_audit_cursor'));
 });
+
+test('全局管理审计支持服务端筛选、搜索、游标分页并只返回安全字段', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const bootstrap = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'global-audit-admin',
+      password: 'global-audit-admin-password',
+      confirmPassword: 'global-audit-admin-password'
+    }
+  });
+  assert.equal(bootstrap.status, 200);
+  const adminCookie = cookieFrom(bootstrap);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: { username: 'global-audit-target', password: 'global-audit-target-password', confirmPassword: 'global-audit-target-password' }
+  });
+  assert.equal(registered.status, 201);
+  const targetId = registered.payload.account.id;
+  const created = await post(ctx, '/api/admin/invites', { targetAccountId: targetId }, adminCookie);
+  assert.equal(created.status, 201);
+  const inviteId = created.payload.invite.id;
+  const disabled = await post(ctx, '/api/admin/accounts/' + encodeURIComponent(targetId) + '/action', {
+    action: 'disable',
+    reason: 'global audit contract'
+  }, adminCookie);
+  assert.equal(disabled.status, 200);
+
+  const firstResponse = await ctx.fetchTo('/api/admin/audit?limit=2&type=all', {
+    headers: { cookie: adminCookie }
+  });
+  const first = await json(firstResponse);
+  assert.equal(first.status, 200);
+  assert.equal(first.payload.records.length, 2);
+  assert.equal(first.payload.page.totalCount, 3);
+  assert.equal(first.payload.page.hasMore, true);
+  assert.ok(first.payload.page.nextCursor);
+  for (const record of first.payload.records) {
+    assert.ok(record.id.startsWith('audit_'));
+    assert.equal(record.targetAccountId, targetId);
+    assert.ok(['admin', 'account'].includes(record.actorType));
+    assert.equal(Object.hasOwn(record, 'code'), false);
+    assert.equal(Object.hasOwn(record, 'tokenHash'), false);
+    assert.equal(Object.hasOwn(record, 'detail_json'), false);
+    assert.equal(JSON.stringify(record).includes(created.payload.invite.code), false);
+  }
+
+  const nextResponse = await ctx.fetchTo(
+    '/api/admin/audit?limit=2&type=all&cursor=' + encodeURIComponent(first.payload.page.nextCursor),
+    { headers: { cookie: adminCookie } }
+  );
+  const next = await json(nextResponse);
+  assert.equal(next.status, 200);
+  assert.equal(next.payload.records.length, 1);
+  assert.equal(next.payload.page.hasMore, false);
+
+  const inviteResponse = await ctx.fetchTo('/api/admin/audit?type=invite&search=' + encodeURIComponent(inviteId), {
+    headers: { cookie: adminCookie }
+  });
+  const inviteResult = await json(inviteResponse);
+  assert.equal(inviteResult.status, 200);
+  assert.equal(inviteResult.payload.page.totalCount, 2);
+  assert.ok(inviteResult.payload.records.every(record => record.action.startsWith('invite_')));
+
+  const accountResponse = await ctx.fetchTo('/api/admin/audit?type=account', {
+    headers: { cookie: adminCookie }
+  });
+  const accountResult = await json(accountResponse);
+  assert.equal(accountResult.status, 200);
+  assert.equal(accountResult.payload.page.totalCount, 1);
+  assert.equal(accountResult.payload.records[0].action, 'disable');
+
+  const denied = await ctx.fetchTo('/api/admin/audit', { method: 'GET' });
+  assert.equal(denied.status, 401, 'global audit must remain creator/admin-only');
+});
+
