@@ -2083,10 +2083,72 @@ class CloudStore {
     return Boolean(row);
   }
 
-  listMaoInvites() {
+  listMaoInvites({ limit = 50, cursor = null, search = '', status = 'all', now = Date.now() } = {}) {
+    const clauses = [];
+    const params = [];
+    if (status === 'pending') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND i.expires_at > ?");
+    else if (status === 'used') clauses.push("i.revoked_at IS NULL AND i.used_count >= i.max_uses");
+    else if (status === 'expired') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND (i.expires_at IS NULL OR i.expires_at <= ?)");
+    else if (status === 'revoked') clauses.push("i.revoked_at IS NOT NULL");
+    if (status === 'pending' || status === 'expired') params.push(Number(now));
+    if (search) {
+      clauses.push("(instr(lower(i.id), lower(?)) > 0 OR instr(lower(COALESCE(i.target_account_id, '')), lower(?)) > 0 OR instr(lower(COALESCE(i.target_email, '')), lower(?)) > 0 OR instr(lower(COALESCE(a.username, '')), lower(?)) > 0)");
+      params.push(search, search, search, search);
+    }
+    if (cursor) {
+      clauses.push("(i.created_at < ? OR (i.created_at = ? AND i.id < ?))");
+      params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    }
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
     return this.exec(
-      "SELECT i.id, i.target_account_id, i.target_email, i.max_uses, i.used_count, i.created_by_account_id, i.created_at, i.expires_at, i.revoked_at, a.username AS target_username FROM mao_invite_codes i LEFT JOIN mao_accounts a ON a.id = i.target_account_id ORDER BY i.created_at DESC, i.id DESC LIMIT 500"
+      `SELECT i.id, i.target_account_id, i.target_email, i.max_uses, i.used_count, i.created_by_account_id, i.created_at, i.expires_at, i.revoked_at, a.username AS target_username
+       FROM mao_invite_codes i
+       LEFT JOIN mao_accounts a ON a.id = i.target_account_id
+       ${clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''}
+       ORDER BY i.created_at DESC, i.id DESC
+       LIMIT ?`,
+      ...params, safeLimit + 1
     );
+  }
+
+  countMaoInvites({ search = '', status = 'all', now = Date.now() } = {}) {
+    const clauses = [];
+    const params = [];
+    if (status === 'pending') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND i.expires_at > ?");
+    else if (status === 'used') clauses.push("i.revoked_at IS NULL AND i.used_count >= i.max_uses");
+    else if (status === 'expired') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND (i.expires_at IS NULL OR i.expires_at <= ?)");
+    else if (status === 'revoked') clauses.push("i.revoked_at IS NOT NULL");
+    if (status === 'pending' || status === 'expired') params.push(Number(now));
+    if (search) {
+      clauses.push("(instr(lower(i.id), lower(?)) > 0 OR instr(lower(COALESCE(i.target_account_id, '')), lower(?)) > 0 OR instr(lower(COALESCE(i.target_email, '')), lower(?)) > 0 OR instr(lower(COALESCE(a.username, '')), lower(?)) > 0)");
+      params.push(search, search, search, search);
+    }
+    const row = this.exec(
+      `SELECT COUNT(*) AS total FROM mao_invite_codes i
+       LEFT JOIN mao_accounts a ON a.id = i.target_account_id
+       ${clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''}`,
+      ...params
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  getMaoInviteDirectorySummary(now = Date.now()) {
+    const row = this.exec(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END) AS revoked,
+        SUM(CASE WHEN revoked_at IS NULL AND used_count >= max_uses THEN 1 ELSE 0 END) AS used,
+        SUM(CASE WHEN revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at <= ?) THEN 1 ELSE 0 END) AS expired,
+        SUM(CASE WHEN revoked_at IS NULL AND used_count < max_uses AND expires_at > ? THEN 1 ELSE 0 END) AS pending
+       FROM mao_invite_codes`,
+      Number(now), Number(now)
+    )[0] || {};
+    return {
+      total: Number(row.total || 0),
+      pending: Number(row.pending || 0),
+      used: Number(row.used || 0),
+      expired: Number(row.expired || 0),
+      revoked: Number(row.revoked || 0)
+    };
   }
 
   findVerifiedMaoEmail(email) {
@@ -2121,13 +2183,60 @@ class CloudStore {
   }
 
 
-  listMaoAccounts({ limit = 500 } = {}) {
-    // The creator account is outside the ordinary-user directory. Exclude it
-    // before LIMIT so the advertised 500-user capacity is not reduced to 499.
+  listMaoAccounts({ limit = 50, cursor = null, search = '', status = 'all' } = {}) {
+    const clauses = ["role != 'super_admin'"];
+    const params = [];
+    if (status === 'pending_invite' || status === 'active') clauses.push("status = ?");
+    else if (status === 'restricted') clauses.push("status IN ('disabled', 'revoked')");
+    if (status === 'pending_invite' || status === 'active') params.push(status);
+    if (search) {
+      clauses.push("(instr(lower(id), lower(?)) > 0 OR instr(lower(username), lower(?)) > 0 OR instr(lower(COALESCE(qq_email, '')), lower(?)) > 0)");
+      params.push(search, search, search);
+    }
+    if (cursor) {
+      clauses.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    }
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
     return this.exec(
-      "SELECT id, username, role, status, qq_email, qq_email_verified_at, created_at, authorized_at, disabled_at, revoked_at FROM mao_accounts WHERE role != 'super_admin' ORDER BY created_at DESC, id DESC LIMIT ?",
-      Math.min(500, Math.max(1, Number(limit) || 500))
+      `SELECT id, username, role, status, qq_email, qq_email_verified_at, created_at, authorized_at, disabled_at, revoked_at
+       FROM mao_accounts WHERE ${clauses.join(' AND ')}
+       ORDER BY created_at DESC, id DESC LIMIT ?`,
+      ...params, safeLimit + 1
     );
+  }
+
+  countMaoAccounts({ search = '', status = 'all' } = {}) {
+    const clauses = ["role != 'super_admin'"];
+    const params = [];
+    if (status === 'pending_invite' || status === 'active') clauses.push("status = ?");
+    else if (status === 'restricted') clauses.push("status IN ('disabled', 'revoked')");
+    if (status === 'pending_invite' || status === 'active') params.push(status);
+    if (search) {
+      clauses.push("(instr(lower(id), lower(?)) > 0 OR instr(lower(username), lower(?)) > 0 OR instr(lower(COALESCE(qq_email, '')), lower(?)) > 0)");
+      params.push(search, search, search);
+    }
+    const row = this.exec(
+      `SELECT COUNT(*) AS total FROM mao_accounts WHERE ${clauses.join(' AND ')}`,
+      ...params
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  getMaoAccountDirectorySummary() {
+    const row = this.exec(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status = 'pending_invite' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status IN ('disabled', 'revoked') THEN 1 ELSE 0 END) AS restricted
+       FROM mao_accounts WHERE role != 'super_admin'`
+    )[0] || {};
+    return {
+      total: Number(row.total || 0),
+      pending: Number(row.pending || 0),
+      active: Number(row.active || 0),
+      restricted: Number(row.restricted || 0)
+    };
   }
 
   setMaoAccountState({ accountId, action, actorAccountId, reason = '', now }) {
