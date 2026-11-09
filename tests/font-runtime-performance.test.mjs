@@ -41,6 +41,21 @@ test('heavy font work is deferred to an idle slot after first paint', () => {
   assert.match(loader, /requestAnimationFrame/, 'font application must wait for a rendered frame');
 });
 
+test('an IndexedDB font request remains usable when the same preset is reselected after an intermediate switch', () => {
+  assert.match(loader, /function fontRequestIsRelevant\(source, isStillCurrent\)/);
+  assert.match(loader, /return isStillCurrent\(\) \|\| readActiveFontSource\(\)\.key === source\.key/);
+  assert.match(loader, /if \(failedFontKey === source\.key \|\| !fontRequestIsRelevant\(source, isStillCurrent\)\)/);
+});
+
+test('pending IndexedDB reads are deduplicated independently per font preset', () => {
+  assert.ok(loader.includes('var fontDbRequests = Object.create(null)'));
+  assert.ok(loader.includes('if (fontDbRequests[source.activeId]) return'));
+  assert.ok(loader.includes('fontDbRequests[source.activeId] = requestToken'));
+  assert.ok(loader.includes('fontDbRequests[source.activeId] === requestToken'));
+  assert.ok(loader.includes('delete fontDbRequests[source.activeId]'));
+  assert.doesNotMatch(loader, /fontDbRequestKey/);
+});
+
 test('font source application is idempotent per document', () => {
   assert.match(loader, /if \(key && key === appliedFontKey && hasAppliedFontStyle\(\)\) return false;/);
   assert.match(loader, /if \(source\.key !== 'none' && source\.key === appliedFontKey && hasAppliedFontStyle\(\)\)/);

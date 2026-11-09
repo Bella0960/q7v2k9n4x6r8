@@ -75,10 +75,8 @@
     var failedFontKey = '';
     var fontLoadGeneration = 0;
     var fontLoadScheduled = false;
-    /* 记录进行中的 IndexedDB 读取及其所属加载代次：
-       同一代次内的重复触发才跳过；A→B→A 这类新代次必须允许重新读取。 */
-    var fontDbRequestKey = '';
-    var fontDbRequestGeneration = -1;
+    // Track pending reads per preset so switching A → B → A cannot overwrite A's in-flight marker.
+    var fontDbRequests = Object.create(null);
     /* 缓存重建失败只影响持久化：同一文档同一字体不再重复尝试写入。 */
     var failedCacheRebuildKeys = {};
 
@@ -341,26 +339,30 @@
         });
     }
 
+    /* A preset can be selected again while its original IndexedDB request is still pending.
+       In that A → B → A case the generation is stale, but the source is current again;
+       reuse the in-flight record instead of leaving B's font applied indefinitely. */
+    function fontRequestIsRelevant(source, isStillCurrent) {
+        return isStillCurrent() || readActiveFontSource().key === source.key;
+    }
+
     function loadPresetFromIndexedDb(source, isStillCurrent, recoverFromCache) {
         if (!source.activeId) return;
-        var requestGeneration = fontLoadGeneration;
-        /* 同一代次内同一字体只允许一次未完成的 IndexedDB 读取；
-           新代次（例如 A→B→A 快速切换后重新激活 A）必须允许重新读取，否则会残留旧字体或空白。 */
-        if (fontDbRequestKey === source.activeId && fontDbRequestGeneration === requestGeneration) return;
-        fontDbRequestKey = source.activeId;
-        fontDbRequestGeneration = requestGeneration;
+        /* 每个预设独立去重：不同字体可以并行读取，同一字体在途时则复用原请求。 */
+        if (fontDbRequests[source.activeId]) return;
+        var requestToken = {};
+        fontDbRequests[source.activeId] = requestToken;
         var finished = false;
         function finish() {
             if (finished) return;
             finished = true;
-            if (fontDbRequestKey === source.activeId && fontDbRequestGeneration === requestGeneration) {
-                fontDbRequestKey = '';
-                fontDbRequestGeneration = -1;
+            if (fontDbRequests[source.activeId] === requestToken) {
+                delete fontDbRequests[source.activeId];
             }
         }
         function failToSystemFont() {
             finish();
-            if (isStillCurrent()) fallbackToSystemFont(source.key);
+            if (fontRequestIsRelevant(source, isStillCurrent)) fallbackToSystemFont(source.key);
         }
         if (!window.indexedDB) { failToSystemFont(); return; }
         var request;
@@ -369,7 +371,7 @@
 
         request.onsuccess = function () {
             var db = request.result;
-            if (failedFontKey === source.key || !isStillCurrent()) {
+            if (failedFontKey === source.key || !fontRequestIsRelevant(source, isStillCurrent)) {
                 finish();
                 try { db.close(); } catch (e) {}
                 return;
@@ -378,7 +380,7 @@
                 var tx = db.transaction('presets', 'readonly');
                 var get = tx.objectStore('presets').get(source.activeId);
                 get.onsuccess = function () {
-                    if (!isStillCurrent()) { finish(); return; }
+                    if (!fontRequestIsRelevant(source, isStillCurrent)) { finish(); return; }
                     var record = get.result;
                     finish();
                     if (!record) {
@@ -402,7 +404,7 @@
             } catch (e) {
                 finish();
                 try { db.close(); } catch (err) {}
-                if (isStillCurrent()) fallbackToSystemFont(source.key);
+                if (fontRequestIsRelevant(source, isStillCurrent)) fallbackToSystemFont(source.key);
             }
         };
         request.onerror = failToSystemFont;

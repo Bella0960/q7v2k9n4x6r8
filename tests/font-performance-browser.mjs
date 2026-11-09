@@ -18,6 +18,7 @@ import { chromium } from 'playwright';
  * 4. 同一字体并发加载：只注册一次、只创建一个 ObjectURL。
  * 5. 字体损坏及失败回退：自动移除自定义字体规则，回到系统字体。
  * 6. 原有字体数据兼容性：旧 custom_font_url 与旧 type:'url' 预设仍可使用。
+ * 7. A → B → A 快速切换：同一字体重新选中时复用在途 IndexedDB 读取。
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -75,7 +76,6 @@ const INSTRUMENT = () => {
     cachePutFailures: 0,
     cachePutMs: 0,
     forcePutFailure: false,
-    fontDbGetDelay: 0,
     objectUrls: 0,
     objectUrlRevokes: 0,
     longTasks: [],
@@ -92,24 +92,8 @@ const INSTRUMENT = () => {
   try {
     const get = IDBObjectStore.prototype.get;
     IDBObjectStore.prototype.get = function (...args) {
-      const isFontStore = this.name === 'presets';
-      if (isFontStore) fp.fontDbGets++;
-      const request = get.apply(this, args);
-      const delay = isFontStore ? (fp.fontDbGetDelay || 0) : 0;
-      if (!delay) return request;
-      /* 延迟回调，稳定复现快速切换时“旧读取未完成”的时序。 */
-      const proxy = { result: undefined, error: null, onsuccess: null, onerror: null };
-      request.onsuccess = function () {
-        setTimeout(function () {
-          proxy.result = request.result;
-          if (typeof proxy.onsuccess === 'function') proxy.onsuccess({ target: proxy });
-        }, delay);
-      };
-      request.onerror = function (event) {
-        proxy.error = request.error;
-        if (typeof proxy.onerror === 'function') proxy.onerror(event);
-      };
-      return proxy;
+      if (this.name === 'presets') fp.fontDbGets++;
+      return get.apply(this, args);
     };
   } catch (e) {}
   try {
@@ -575,7 +559,7 @@ try {
     assert.ok(!/MAOMAOUserFont/.test(swMetrics.bodyFamily), '页面应回退到系统字体栈');
     assert.deepEqual(swErrors, [], '解码失败不得产生页面错误');
     await swContext.close();
-    pass('字体损坏时回退系统字体（含 SW 恢复路径：仅在解码失败时回退）');
+    pass('字体损坏时自动回退系统字体（含 SW 恢复路径：仅在解码失败时回退）');
   }
 
   /* 6. 原有字体数据兼容性：旧 custom_font_url。 */
@@ -1072,81 +1056,85 @@ try {
     pass('SW 控制 + Cache Storage 读取拒绝：不因持久化失败回退，仍可从 IndexedDB 恢复');
     await context.close();
   }
-
-  /* 17. A→B→A 快速切换：旧读取被作废后必须允许重新读取 A，不得残留 B 或被丢弃。 */
+  /* 17. A → B → A，A/B 均为 IndexedDB 预设：每个 preset 只允许一个在途读取。 */
   {
-    console.log('\n[17] A→B→A 快速切换');
+    console.log('\n[17] 两个字体预设交替选择时分别去重');
     const context = await createContext(browser, origin, { blockSw: true });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(origin + '/index.html', { waitUntil: 'load' });
-    await seedFontPreset(page, origin, { id: 'font_ab_a', name: 'Switch A' });
-    /* B 预置为“已缓存但损坏”：切换过程不会读 IndexedDB，用来模拟切换中途的坏字体。 */
-    await page.evaluate(async ({ bUrl }) => {
-      const cache = await caches.open('maomao-font-assets-v1');
-      await cache.put(bUrl, new Response(new Blob(['not a font'], { type: 'font/ttf' }), {
-        headers: { 'Content-Type': 'font/ttf' }
-      }));
-      localStorage.setItem('maomao_font_cache_format_font_ab_b', 'truetype');
-      localStorage.setItem('active_font_preset_id', 'font_ab_a');
-    }, { bUrl: fontCacheUrl(origin, 'font_ab_b') });
-    await page.reload({ waitUntil: 'load' });
-    await waitForCustomFont(page);
-
-    /* 让 A 必须重新走 IndexedDB，并人为拉长读取耗时以稳定复现切换时序。 */
-    await page.evaluate(async ({ aUrl }) => {
-      const cache = await caches.open('maomao-font-assets-v1');
-      await cache.delete(aUrl);
-      localStorage.removeItem('maomao_font_cache_format_font_ab_a');
-      window.__fp.fontDbGetDelay = 200;
-    }, { aUrl: fontCacheUrl(origin, 'font_ab_a') });
-
-    const switchTo = (id) => page.evaluate((nextId) => {
-      localStorage.setItem('active_font_preset_id', nextId);
-      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
-    }, id);
-    await switchTo('font_ab_a');
-    await delay(80);
-    await switchTo('font_ab_b');
-    await delay(80);
-    await switchTo('font_ab_a');
-    await page.waitForFunction(() => {
-      const tag = document.getElementById('maomao-global-custom-font-style');
-      return !!tag && !!tag.textContent;
-    }, null, { timeout: 20000 });
-    await waitForCustomFont(page);
-    await delay(400);
-    const metrics = await readMetrics(page);
-    const styleText = await page.evaluate(() => {
-      const tag = document.getElementById('maomao-global-custom-font-style');
-      return tag ? tag.textContent : '';
-    });
-    report('[17] 切换落定', metrics);
-    assert.equal(metrics.hasStyle, true, '最终必须保留字体样式');
-    assert.ok(metrics.fontFaces.includes('loaded'), '最终字体必须处于 loaded 状态');
-    assert.ok(/MAOMAOUserFont/.test(metrics.bodyFamily), '最终应使用自定义字体');
-    assert.ok(!/font_ab_b/.test(styleText), '不得残留 B 字体地址');
-    assert.equal(metrics.fontDbGets, 2, '首屏一次 + 切回 A 一次必要重读，不得有第三次读取，实际 ' + metrics.fontDbGets);
-    assert.equal(metrics.cachePutAttempts, 2, '首屏一次 + 切回 A 一次缓存重建，不得重复写入，实际 ' + metrics.cachePutAttempts);
-    assert.deepEqual(errors, [], '快速切换不得产生页面错误');
-
-    const settledGets = metrics.fontDbGets;
+    await seedFontPreset(page, origin, { id: 'font_race_a', name: 'Race A' });
+    await seedFontPreset(page, origin, { id: 'font_race_b', name: 'Race B' });
     await page.evaluate(() => {
-      for (let i = 0; i < 3; i++) {
-        window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
-        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
-      }
+      window.__fp.fontDbOpens = 0;
+      window.__fp.fontDbGets = 0;
+      localStorage.setItem('active_font_preset_id', 'font_race_a');
+      localStorage.removeItem('custom_font_url');
     });
-    await delay(700);
-    const afterRetry = await readMetrics(page);
-    assert.equal(afterRetry.fontDbGets, settledGets, '切换落定后重复触发不得再次读取字体库');
-    assert.equal(afterRetry.cachePutAttempts, metrics.cachePutAttempts, '切换落定后不得重复重建缓存');
-    assert.equal(afterRetry.hasStyle, true, '重复触发后仍应保留字体');
-    assert.deepEqual(errors, []);
-    pass('A→B→A 快速切换：作废旧读取后重新读取 A，不残留错误字体');
+
+    /* 将 A、B 的 open success handler 都延后，确保两个请求会短暂同时在途。 */
+    await context.addInitScript(() => {
+      window.__fontRace = { openSuccesses: 0 };
+      const open = indexedDB.open.bind(indexedDB);
+      indexedDB.open = function (name, ...args) {
+        const request = open(name, ...args);
+        if (String(name) !== 'maomao-font-presets') return request;
+        let handler = null;
+        let delayed = false;
+        Object.defineProperty(request, 'onsuccess', {
+          configurable: true,
+          get: function () { return handler; },
+          set: function (next) {
+            handler = next;
+            if (typeof next !== 'function' || delayed) return;
+            delayed = true;
+            request.addEventListener('success', function (event) {
+              window.__fontRace.openSuccesses++;
+              setTimeout(function () {
+                if (typeof handler === 'function') handler.call(request, event);
+              }, 1800);
+            }, { once: true });
+          }
+        });
+        return request;
+      };
+    });
+
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => window.__fp.fontDbOpens === 1, null, { timeout: 10000 });
+    await page.waitForFunction(() => window.__fontRace && window.__fontRace.openSuccesses === 1, null, { timeout: 10000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem('active_font_preset_id', 'font_race_b');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+    });
+    await page.waitForFunction(() => window.__fp.fontDbOpens === 2, null, { timeout: 10000 });
+    await page.waitForFunction(() => window.__fontRace.openSuccesses === 2, null, { timeout: 10000 });
+
+    await page.evaluate(() => {
+      localStorage.setItem('active_font_preset_id', 'font_race_a');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+    });
+    /* Idle callback has a 1s upper bound; keep the delayed IDB success handlers pending. */
+    await delay(1250);
+    const beforeRelease = await readMetrics(page);
+    assert.equal(beforeRelease.fontDbOpens, 2,
+      'reselecting A while A and B are pending must reuse A rather than open a duplicate IDB request');
+
+    await waitForCustomFont(page);
+    await delay(300);
+    const metrics = await readMetrics(page);
+    report('[17] A → B → A 交替预设', metrics);
+    assert.equal(metrics.fontDbOpens, 2, 'A/B 两个预设各只能打开一次字体库');
+    assert.equal(metrics.fontDbGets, 1, '只有最终选中的 A 应读取 Blob；过期 B 不应读取');
+    assert.equal(metrics.hasStyle, true, '最终应应用 A 的自定义字体');
+    assert.ok(metrics.fontFaces.includes('loaded'), '最终字体应成功加载');
+    assert.deepEqual(errors, [], '交替切换不得产生页面错误');
+    pass('两个 IndexedDB 预设 A → B → A：每个预设独立去重，最终应用 A');
     await context.close();
   }
+
 } catch (error) {
   console.error('\nFAILED:', error && error.stack ? error.stack : error);
   process.exitCode = 1;
