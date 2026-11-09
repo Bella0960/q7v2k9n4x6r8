@@ -14,6 +14,8 @@
   let inviteSummary = null;
   let accountSearchTimer = 0;
   let inviteSearchTimer = 0;
+  let accountDirectoryKey = '';
+  let inviteDirectoryKey = '';
   let accountFilter = 'all';
   let inviteFilter = 'all';
   let selectedAccountId = '';
@@ -312,15 +314,19 @@
   }
 
   async function loadAccountPage(reset = false) {
-    const cursor = reset ? '' : accountNextCursor;
+    const search = $('accountSearch').value.trim();
+    const key = JSON.stringify([search, accountFilter]);
+    const restart = reset || key !== accountDirectoryKey;
+    const cursor = restart ? '' : accountNextCursor;
     const result = await api(directoryPath(
       '/api/admin/accounts',
-      $('accountSearch').value.trim(),
+      search,
       accountFilter,
       cursor
     ));
     const next = Array.isArray(result.accounts) ? result.accounts : [];
-    accounts = reset ? next : accounts.concat(next);
+    accountDirectoryKey = key;
+    accounts = restart ? next : accounts.concat(next);
     accountNextCursor = result.page?.nextCursor || '';
     accountHasMore = Boolean(result.page?.hasMore);
     accountTotalCount = Number(result.page?.totalCount || 0);
@@ -331,15 +337,19 @@
   }
 
   async function loadInvitePage(reset = false) {
-    const cursor = reset ? '' : inviteNextCursor;
+    const search = $('inviteSearch').value.trim();
+    const key = JSON.stringify([search, inviteFilter]);
+    const restart = reset || key !== inviteDirectoryKey;
+    const cursor = restart ? '' : inviteNextCursor;
     const result = await api(directoryPath(
       '/api/admin/invites',
-      $('inviteSearch').value.trim(),
+      search,
       inviteFilter,
       cursor
     ));
     const next = Array.isArray(result.invites) ? result.invites : [];
-    invites = reset ? next : invites.concat(next);
+    inviteDirectoryKey = key;
+    invites = restart ? next : invites.concat(next);
     inviteNextCursor = result.page?.nextCursor || '';
     inviteHasMore = Boolean(result.page?.hasMore);
     inviteTotalCount = Number(result.page?.totalCount || 0);

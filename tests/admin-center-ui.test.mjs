@@ -70,6 +70,8 @@ test('account and invitation directories use server-side cursor pagination', () 
   assert.match(adminScript, /page\?\.nextCursor/);
   assert.match(adminScript, /page\?\.totalCount/);
   assert.match(adminScript, /URLSearchParams/);
+  assert.match(adminScript, /accountDirectoryKey/);
+  assert.match(adminScript, /inviteDirectoryKey/);
   assert.match(adminScript, /loadMoreAccounts'\)\.addEventListener/);
   assert.match(adminScript, /loadMoreInvites'\)\.addEventListener/);
   assert.match(adminScript, /accountSummary/);
