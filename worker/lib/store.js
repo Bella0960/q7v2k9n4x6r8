@@ -27,17 +27,113 @@ function serializeStoreJson(value, maxBytes, field) {
   return serialized;
 }
 
-export function createStore(exec) {
-  return new CloudStore(exec);
+function buildMaoAuditFilter({ search = '', type = 'all', cursor = null, since = null, alias = '' } = {}) {
+  const column = name => alias ? alias + '.' + name : name;
+  const clauses = [];
+  const params = [];
+  if (type === 'account') {
+    clauses.push(column('action') + " IN ('account_register', 'admin_bootstrap', 'disable', 'restore', 'revoke')");
+  } else if (type === 'invite') {
+    clauses.push(column('action') + " IN ('invite_create', 'invite_redeem', 'invite_revoke')");
+  }
+  const query = String(search || '').trim();
+  if (query) {
+    const escaped = query.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+    const pattern = '%' + escaped + '%';
+    clauses.push('(' +
+      column('id') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('actor_account_id') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('target_account_id') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('action') + " LIKE ? ESCAPE '\\' COLLATE NOCASE OR " +
+      column('detail_json') + " LIKE ? ESCAPE '\\' COLLATE NOCASE)");
+    params.push(pattern, pattern, pattern, pattern, pattern);
+  }
+  if (since != null) {
+    clauses.push(column('created_at') + ' >= ?');
+    params.push(since);
+  }
+  if (cursor) {
+    clauses.push('(' + column('created_at') + ' < ? OR (' +
+      column('created_at') + ' = ? AND ' + column('id') + ' < ?))');
+    params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+  }
+  return { where: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '', params };
+}
+
+export function createStore(exec, transaction = null) {
+  return new CloudStore(exec, transaction);
 }
 
 class CloudStore {
-  constructor(exec) {
+  constructor(exec, transaction = null) {
     this.exec = exec;
+    this.transaction = typeof transaction === 'function'
+      ? transaction
+      : callback => {
+          exec('BEGIN IMMEDIATE');
+          try {
+            const result = callback();
+            exec('COMMIT');
+            return result;
+          } catch (error) {
+            try { exec('ROLLBACK'); } catch (rollbackError) {}
+            throw error;
+          }
+        };
   }
 
   getDevice(deviceId) {
     return this.exec('SELECT * FROM devices WHERE id = ?', deviceId)[0] || null;
+  }
+
+  isActiveAccountDevice(userId, deviceId) {
+    const ownerId = String(userId || 'owner');
+    return Boolean(this.exec(
+      `SELECT d.id
+       FROM devices d
+       WHERE d.id = ? AND d.user_id = ? AND d.revoked_at IS NULL
+         AND (
+           (d.user_id = 'owner' AND NOT EXISTS (
+             SELECT 1 FROM mao_accounts WHERE role = 'super_admin'
+           ))
+           OR EXISTS (
+             SELECT 1 FROM mao_accounts a
+             WHERE a.id = d.user_id AND a.status = 'active'
+           )
+         )
+       LIMIT 1`,
+      deviceId,
+      ownerId
+    )[0]);
+  }
+
+  isActiveAccountDeviceSession(userId, deviceId, sessionId, now) {
+    const ownerId = String(userId || 'owner');
+    if (ownerId === 'owner') {
+      return this.isActiveAccountDevice(ownerId, deviceId);
+    }
+    if (typeof sessionId !== 'string' || !sessionId) return false;
+    const timestamp = Number(now);
+    if (!Number.isSafeInteger(timestamp) || timestamp < 0) return false;
+    return Boolean(this.exec(
+      `SELECT d.id
+       FROM devices d
+       INNER JOIN mao_accounts a
+         ON a.id = d.user_id AND a.status = 'active'
+       INNER JOIN mao_account_sessions s
+         ON s.account_id = a.id
+       WHERE d.id = ?
+         AND d.user_id = ?
+         AND d.revoked_at IS NULL
+         AND s.id = ?
+         AND s.revoked_at IS NULL
+         AND s.expires_at > ?
+       LIMIT 1`,
+      deviceId,
+      ownerId,
+      sessionId,
+      timestamp
+    )[0]);
   }
 
   insertDevice(device) {
@@ -55,6 +151,41 @@ class CloudStore {
       device.now,
       device.now
     );
+  }
+
+  insertMaoAccountDevice(device) {
+    // A new device must be inserted only while both its MAO account and the
+    // exact enrolling browser session are still active. This closes the gap
+    // between asynchronous session validation and account-disable cleanup.
+    const inserted = this.exec(
+      `INSERT INTO devices
+        (id, user_id, secret_hash, label, platform, user_agent, ip_hash, created_at, last_seen_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1
+         FROM mao_accounts a
+         INNER JOIN mao_account_sessions s ON s.account_id = a.id
+         WHERE a.id = ?
+           AND a.status = 'active'
+           AND s.id = ?
+           AND s.revoked_at IS NULL
+           AND s.expires_at > ?
+       )
+       RETURNING id`,
+      device.id,
+      device.userId,
+      device.secretHash,
+      device.label || '',
+      device.platform || '',
+      device.userAgent || '',
+      device.ipHash || '',
+      device.now,
+      device.now,
+      device.userId,
+      device.sessionId,
+      device.now
+    )[0] || null;
+    return Boolean(inserted);
   }
 
   insertBootstrapDevice(device) {
@@ -87,8 +218,54 @@ class CloudStore {
     this.exec('UPDATE devices SET label = ?, platform = ? WHERE id = ?', label || '', platform || '', deviceId);
   }
 
+  refreshActiveDeviceProfile(deviceId, userId, secretHash, { label, platform, now, sessionId = null }) {
+    // Device re-enrollment follows asynchronous account-session checks. Re-check
+    // the exact MAO session at the SQL write boundary so a session revoked after
+    // route-level validation cannot still refresh an account-owned device.
+    const normalizedUserId = String(userId || 'owner');
+    if (normalizedUserId !== 'owner' && !sessionId) return false;
+    const refreshed = this.exec(
+      `UPDATE devices
+       SET label = ?, platform = ?, last_seen_at = ?
+       WHERE id = ? AND user_id = ? AND secret_hash = ? AND revoked_at IS NULL
+         AND (
+           (? = 'owner' AND ? IS NULL)
+           OR EXISTS (
+             SELECT 1
+             FROM mao_accounts a
+             INNER JOIN mao_account_sessions s ON s.account_id = a.id
+             WHERE a.id = devices.user_id
+               AND a.id = ?
+               AND a.status = 'active'
+               AND s.id = ?
+               AND s.revoked_at IS NULL
+               AND s.expires_at > ?
+           )
+         )
+       RETURNING id`,
+      label || '',
+      platform || '',
+      now,
+      deviceId,
+      normalizedUserId,
+      secretHash,
+      normalizedUserId,
+      sessionId,
+      normalizedUserId,
+      sessionId,
+      now
+    )[0] || null;
+    return Boolean(refreshed);
+  }
+
   touchDevice(deviceId, now) {
-    this.exec('UPDATE devices SET last_seen_at = ? WHERE id = ?', now, deviceId);
+    // A last-seen refresh may follow an asynchronous authentication read.
+    // Never update a row after another request has revoked the device.
+    this.exec(
+      'UPDATE devices SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL',
+      now,
+      deviceId
+    );
   }
 
   revokeDevice(deviceId, now) {
@@ -202,7 +379,7 @@ class CloudStore {
     return rows.length;
   }
 
-  upsertSubscription(subscription) {
+  upsertSubscription(subscription, { maxSubscriptions = null } = {}) {
     // Re-check authorization at the write boundary. A request can pass
     // authenticate() and then be overtaken by a concurrent device revocation.
     // Store operations are synchronous, so this guard and the write below
@@ -222,6 +399,23 @@ class CloudStore {
       // A subscription may move only when its previous device was revoked.
       // Never let a second live device silently take over an active endpoint.
       if (!previousOwner || previousOwner.revoked_at == null) return null;
+    }
+
+    // The route-level count is only an early UX check: concurrent requests can
+    // both observe a free slot. Enforce the per-device cap again immediately
+    // before the write, within this synchronous store operation.
+    if (
+      existing?.device_id !== subscription.deviceId &&
+      Number.isInteger(maxSubscriptions) &&
+      maxSubscriptions >= 0
+    ) {
+      const count = this.exec(
+        'SELECT COUNT(*) AS total FROM push_subscriptions WHERE device_id = ?',
+        subscription.deviceId
+      )[0];
+      if (Number(count?.total || 0) >= maxSubscriptions) {
+        return { limitReached: true };
+      }
     }
 
     if (existing) {
@@ -261,6 +455,22 @@ class CloudStore {
       endpoint,
       deviceId
     )[0] || null;
+  }
+
+  isActivePushSubscription(subscriptionId, deviceId) {
+    const row = this.exec(
+      `SELECT d.user_id, d.id
+       FROM push_subscriptions s
+       INNER JOIN devices d ON d.id = s.device_id
+       WHERE s.id = ?
+         AND d.id = ?
+         AND s.disabled_at IS NULL
+         AND d.revoked_at IS NULL
+       LIMIT 1`,
+      subscriptionId,
+      deviceId
+    )[0] || null;
+    return Boolean(row && this.isActiveAccountDevice(row.user_id, row.id));
   }
 
   disableSubscriptionByEndpoint(deviceId, endpoint, reason, now) {
@@ -520,7 +730,8 @@ class CloudStore {
    * Explicit non-chat autonomy metadata. Missing global row is treated as OFF
    * by the gate; missing character row inherits the global choice.
    */
-  setUserAutonomy(userId, enabled, now) {
+  setUserAutonomy(userId, enabled, now, deviceId = null) {
+    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO user_autonomy (user_id, enabled, updated_at)
        VALUES (?, ?, ?)
@@ -536,7 +747,8 @@ class CloudStore {
     return this.exec('SELECT * FROM user_autonomy WHERE user_id = ?', userId)[0] || null;
   }
 
-  setCharacterAutonomy(userId, characterId, enabled, now) {
+  setCharacterAutonomy(userId, characterId, enabled, now, deviceId = null) {
+    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO character_autonomy (user_id, character_id, enabled, updated_at)
        VALUES (?, ?, ?, ?)
@@ -558,7 +770,8 @@ class CloudStore {
     )[0] || null;
   }
 
-  setCharacterSchedule(userId, characterId, timeZone, schedule, now) {
+  setCharacterSchedule(userId, characterId, timeZone, schedule, now, deviceId = null) {
+    if (deviceId && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO character_schedules (user_id, character_id, time_zone, schedule_json, updated_at)
        VALUES (?, ?, ?, ?, ?)
@@ -583,7 +796,8 @@ class CloudStore {
     )[0] || null;
   }
 
-  upsertDevicePresence({ userId, deviceId, foregroundActive, now }) {
+  upsertDevicePresence({ userId, deviceId, foregroundActive, now, requireActiveDevice = false }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) return null;
     this.exec(
       `INSERT INTO device_presence
         (user_id, device_id, foreground_active, last_heartbeat_at, updated_at)
@@ -686,7 +900,8 @@ class CloudStore {
     };
   }
 
-  acquireCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs }) {
+  acquireCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs, requireActiveDevice = false }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) return null;
     return this.exec(
       `INSERT INTO character_leases
         (user_id, character_id, owner_device_id, lease_until, updated_at)
@@ -709,7 +924,8 @@ class CloudStore {
     )[0] || null;
   }
 
-  renewCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs }) {
+  renewCharacterLease({ userId, characterId, deviceId, now, leaseUntil, graceMs, requireActiveDevice = false }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) return null;
     return this.exec(
       `UPDATE character_leases
        SET lease_until = ?, updated_at = ?
@@ -778,8 +994,12 @@ class CloudStore {
    */
   recordCharacterContextEvent({
     userId, characterId, eventId, deviceId, now,
-    eventLimit = 600, windowStart = Number(now) - 3600000
+    eventLimit = 600, windowStart = Number(now) - 3600000,
+    requireActiveDevice = false
   }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, deviceId)) {
+      return { revoked: true, changed: false, version: 0, updatedAt: null };
+    }
     const existingEvent = this.exec(
       'SELECT event_id FROM character_context_events WHERE user_id = ? AND character_id = ? AND event_id = ?',
       userId,
@@ -1004,11 +1224,12 @@ class CloudStore {
     return this.exec(
       `SELECT o.id AS outbound_message_id,
               target_device.id AS device_id,
+              target_device.user_id AS target_account_id,
               source_device.id AS source_device_id,
               o.character_id, o.server_message_id, o.created_at,
               s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
        FROM outbound_messages o
-       INNER JOIN devices source_device ON source_device.id = o.device_id
+        INNER JOIN devices source_device ON source_device.id = o.device_id
        INNER JOIN devices target_device
          ON target_device.user_id = source_device.user_id
         AND target_device.revoked_at IS NULL
@@ -1326,6 +1547,10 @@ class CloudStore {
     const characterId = requireStoreString(activity?.characterId, 'activity.characterId');
     const dedupeKey = requireStoreString(activity?.dedupeKey || ('legacy:' + id), 'activity.dedupeKey');
     const payloadJson = serializeStoreJson(activity.payload, 4000, 'activity.payload');
+    if (activity.requireActiveDevice === true &&
+        !this.isActiveAccountDevice(activity.userId || 'owner', deviceId)) {
+      return { inserted: false, duplicate: false, conflict: false, revoked: true, activity: null };
+    }
     const inserted = this.exec(
       `INSERT INTO activity_queue
         (id, device_id, character_id, kind, status, scheduled_at, next_attempt_at,
@@ -1723,7 +1948,10 @@ class CloudStore {
     return Boolean(row);
   }
 
-  completeActivity({ id, owner, attemptCount, now }) {
+  completeActivity({
+    id, owner, attemptCount, now, userId = null, requireActiveDevice = false
+  }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, owner)) return false;
     const row = this.exec(
       `UPDATE activity_queue
        SET status = 'completed', locked_by = NULL, locked_until = NULL,
@@ -1740,7 +1968,10 @@ class CloudStore {
     return Boolean(row);
   }
 
-  failActivity({ id, owner, attemptCount, now, nextAttemptAt }) {
+  failActivity({
+    id, owner, attemptCount, now, nextAttemptAt, userId = null, requireActiveDevice = false
+  }) {
+    if (requireActiveDevice && !this.isActiveAccountDevice(userId, owner)) return false;
     const retryable = Number.isFinite(nextAttemptAt) && nextAttemptAt > now;
     const row = this.exec(
       `UPDATE activity_queue
@@ -1865,6 +2096,861 @@ class CloudStore {
       reasonCode: String(row.reason_code || ''),
       count: Number(row.total || 0)
     }));
+  }
+
+  hasMaoSuperAdminAccount() {
+    return Boolean(this.exec("SELECT id FROM mao_accounts WHERE role = 'super_admin' LIMIT 1")[0]);
+  }
+
+  getMaoAccountById(accountId) {
+    return this.exec("SELECT * FROM mao_accounts WHERE id = ?", accountId)[0] || null;
+  }
+
+  getMaoAccountByIdentifier(identifier) {
+    const value = String(identifier || '').trim();
+    return this.exec(
+      "SELECT * FROM mao_accounts WHERE id = ? OR username_key = ? OR (qq_email IS NOT NULL AND qq_email_verified_at IS NOT NULL AND LOWER(qq_email) = ?) LIMIT 1",
+      value.toUpperCase(),
+      value.toLocaleLowerCase('en-US'),
+      value.toLowerCase()
+    )[0] || null;
+  }
+
+  createMaoAccount(account) {
+    return this.transaction(() => {
+      const inserted = this.exec(
+        "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at, registration_ip_hash) " +
+        "SELECT ?, ?, ?, ?, ?, 'user', 'pending_invite', ?, NULL, ?, ?, ? " +
+        "WHERE (SELECT COUNT(*) FROM mao_accounts WHERE registration_ip_hash = ? AND created_at >= ?) < 8 " +
+        "RETURNING id",
+        account.id, account.username, account.usernameKey, account.passwordSalt,
+        account.passwordHash, account.qqEmail || null, account.now, account.now,
+        account.registrationIpHash || '', account.registrationIpHash || '',
+        Number(account.now) - 60 * 60 * 1000
+      )[0];
+      if (!inserted) return null;
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'account_register', ?, ?)",
+        'audit_' + crypto.randomUUID(),
+        account.id,
+        account.id,
+        serializeStoreJson({ registrationMethod: 'password' }, 2048, 'account registration audit detail'),
+        account.now
+      );
+      return this.getMaoAccountById(account.id);
+    });
+  }
+
+
+  countMaoAccountsByRegistrationIp(ipHash, since) {
+    const row = this.exec(
+      "SELECT COUNT(*) AS total FROM mao_accounts WHERE registration_ip_hash = ? AND created_at >= ?",
+      ipHash,
+      since
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  createMaoSuperAdminAccountIfEmpty(account) {
+    return this.transaction(() => {
+      const existing = this.exec("SELECT id FROM mao_accounts WHERE role = 'super_admin' LIMIT 1")[0];
+      if (existing) return false;
+      this.exec(
+        "INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, qq_email, qq_email_verified_at, created_at, updated_at, authorized_at) VALUES (?, ?, ?, ?, ?, 'super_admin', 'active', ?, NULL, ?, ?, ?)",
+        account.id, account.username, account.usernameKey, account.passwordSalt,
+        account.passwordHash, account.qqEmail || null, account.now, account.now, account.now
+      );
+
+      // Move every creator-owned tenant row in the same storage transaction as
+      // the one-time admin insert. A failure rolls back the account and all rows.
+      const tables = [
+        'devices',
+        'user_autonomy',
+        'character_autonomy',
+        'character_schedules',
+        'device_presence',
+        'character_leases',
+        'device_pairing_tokens',
+        'character_context_versions',
+        'character_context_events',
+        'outbound_device_receipts'
+      ];
+      for (const table of tables) {
+        this.exec('UPDATE ' + table + " SET user_id = ? WHERE user_id = 'owner'", account.id);
+      }
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, NULL, ?, 'admin_bootstrap', ?, ?)",
+        'audit_' + crypto.randomUUID(),
+        account.id,
+        serializeStoreJson({ bootstrap: 'one_time_creator_initialization' }, 2048, 'admin bootstrap audit detail'),
+        account.now
+      );
+      return true;
+    });
+  }
+
+
+  getMaoLoginRateLimit(ipHash, now, windowMs = 15 * 60 * 1000) {
+    const row = this.exec(
+      "SELECT window_started_at, attempt_count, blocked_until FROM mao_login_rate_limits WHERE ip_hash = ?",
+      ipHash
+    )[0];
+    if (!row || Number(row.window_started_at) <= now - windowMs) {
+      return { attemptCount: 0, blockedUntil: 0, blocked: false };
+    }
+    const blockedUntil = Number(row.blocked_until || 0);
+    return {
+      attemptCount: Number(row.attempt_count || 0),
+      blockedUntil,
+      blocked: blockedUntil > now
+    };
+  }
+
+  recordMaoLoginFailure(ipHash, now, { windowMs = 15 * 60 * 1000, maxAttempts = 8, blockMs = 15 * 60 * 1000 } = {}) {
+    const current = this.getMaoLoginRateLimit(ipHash, now, windowMs);
+    if (current.blocked) return current;
+    const row = this.exec(
+      "SELECT window_started_at FROM mao_login_rate_limits WHERE ip_hash = ?",
+      ipHash
+    )[0];
+    const expired = !row || Number(row.window_started_at) <= now - windowMs;
+    const windowStartedAt = expired ? now : Number(row.window_started_at);
+    const attemptCount = expired ? 1 : current.attemptCount + 1;
+    const blockedUntil = attemptCount >= maxAttempts ? now + blockMs : null;
+    this.exec(
+      "INSERT INTO mao_login_rate_limits (ip_hash, window_started_at, attempt_count, blocked_until) VALUES (?, ?, ?, ?) ON CONFLICT(ip_hash) DO UPDATE SET window_started_at = excluded.window_started_at, attempt_count = excluded.attempt_count, blocked_until = excluded.blocked_until",
+      ipHash, windowStartedAt, attemptCount, blockedUntil
+    );
+    return { attemptCount, blockedUntil: blockedUntil || 0, blocked: Boolean(blockedUntil) };
+  }
+
+  clearMaoLoginRateLimit(ipHash) {
+    this.exec("DELETE FROM mao_login_rate_limits WHERE ip_hash = ?", ipHash);
+  }
+
+  cleanupMaoLoginRateLimits(now, retentionMs = 30 * 24 * 60 * 60 * 1000) {
+    return this.exec(
+      "DELETE FROM mao_login_rate_limits WHERE window_started_at < ? AND (blocked_until IS NULL OR blocked_until < ?) RETURNING ip_hash",
+      now - retentionMs,
+      now
+    ).length;
+  }
+
+  createMaoAccountSession(session) {
+    // Re-check the account state in the same SQL statement that inserts the
+    // session. A login may finish password hashing after an administrator has
+    // already disabled or permanently revoked the account.
+    const inserted = this.exec(
+      `INSERT INTO mao_account_sessions
+        (id, account_id, token_hash, created_at, expires_at, last_used_at)
+       SELECT ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM mao_accounts
+         WHERE id = ? AND status IN ('pending_invite', 'active')
+       )
+       RETURNING id`,
+      session.id, session.accountId, session.tokenHash, session.now,
+      session.expiresAt, session.now, session.accountId
+    )[0] || null;
+    return Boolean(inserted);
+  }
+
+  getMaoAccountSession(tokenHash) {
+    return this.exec(
+      "SELECT s.id AS session_id, s.account_id, s.expires_at, s.revoked_at AS session_revoked_at, a.id, a.username, a.role, a.status, a.qq_email, a.qq_email_verified_at, a.authorized_at, a.disabled_at, a.revoked_at FROM mao_account_sessions s INNER JOIN mao_accounts a ON a.id = s.account_id WHERE s.token_hash = ? LIMIT 1",
+      tokenHash
+    )[0] || null;
+  }
+
+  isActiveMaoSuperAdminSession(accountId, sessionId, now) {
+    const timestamp = Number(now);
+    if (!accountId || !sessionId || !Number.isSafeInteger(timestamp) || timestamp < 0) return false;
+    return Boolean(this.exec(
+      `SELECT s.id
+       FROM mao_account_sessions s
+       INNER JOIN mao_accounts a ON a.id = s.account_id
+       WHERE s.id = ?
+         AND s.account_id = ?
+         AND s.revoked_at IS NULL
+         AND s.expires_at > ?
+         AND a.role = 'super_admin'
+         AND a.status = 'active'
+       LIMIT 1`,
+      sessionId,
+      accountId,
+      timestamp
+    )[0]);
+  }
+
+  isActivePendingMaoAccountSession(accountId, sessionId, now) {
+    const timestamp = Number(now);
+    if (!accountId || !sessionId || !Number.isSafeInteger(timestamp) || timestamp < 0) return false;
+    return Boolean(this.exec(
+      `SELECT s.id
+       FROM mao_account_sessions s
+       INNER JOIN mao_accounts a ON a.id = s.account_id
+       WHERE s.id = ?
+         AND s.account_id = ?
+         AND s.revoked_at IS NULL
+         AND s.expires_at > ?
+         AND a.status = 'pending_invite'
+       LIMIT 1`,
+      sessionId,
+      accountId,
+      timestamp
+    )[0]);
+  }
+
+  touchMaoAccountSession(sessionId, now) {
+    this.exec(
+      "UPDATE mao_account_sessions SET last_used_at = ? WHERE id = ? AND revoked_at IS NULL",
+      now, sessionId
+    );
+  }
+
+  revokeMaoAccountSession(sessionId, now) {
+    this.exec(
+      "UPDATE mao_account_sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+      now,
+      sessionId
+    );
+  }
+
+  revokeMaoAccountSessions(accountId, now) {
+    return this.exec(
+      "UPDATE mao_account_sessions SET revoked_at = ? WHERE account_id = ? AND revoked_at IS NULL RETURNING id",
+      now, accountId
+    ).length;
+  }
+
+  insertMaoInvite(invite) {
+    return this.transaction(() => {
+      // The administrator's exact session is revalidated inside the same
+      // transaction as invitation creation, after route-level async work.
+      if (!this.isActiveMaoSuperAdminSession(
+        invite.createdByAccountId,
+        invite.actorSessionId,
+        invite.now
+      )) return 'actor_session_invalid';
+
+      // The target check must share the write transaction with insertion.
+      // Otherwise an invite request that passed its route check can insert a
+      // code after an overlapping disable/revoke transition has completed.
+      let target = null;
+      if (invite.targetAccountId) {
+        target = this.getMaoAccountById(invite.targetAccountId);
+      } else if (invite.targetEmail) {
+        const verifiedOwner = this.findVerifiedMaoEmail(String(invite.targetEmail).toLowerCase());
+        target = verifiedOwner ? this.getMaoAccountById(verifiedOwner.id) : null;
+      }
+      if (!target || target.role === 'super_admin' || target.status !== 'pending_invite') {
+        return 'target_not_pending';
+      }
+
+      // Re-check the one-active-code rule under the same write transaction.
+      if (this.hasActiveMaoInvite({
+        targetAccountId: invite.targetAccountId || null,
+        targetEmail: invite.targetEmail || null,
+        now: invite.now
+      })) return false;
+      this.exec(
+        "INSERT INTO mao_invite_codes (id, token_hash, target_account_id, target_email, max_uses, used_count, created_by_account_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
+        invite.id, invite.tokenHash, invite.targetAccountId || null, invite.targetEmail || null,
+        invite.maxUses, invite.createdByAccountId, invite.now, invite.expiresAt
+      );
+      // Keep the account timeline consistent with the invitation write. If
+      // auditing fails, the invitation insert rolls back with this transaction.
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_create', ?, ?)",
+        'audit_' + crypto.randomUUID(),
+        invite.createdByAccountId,
+        target.id,
+        serializeStoreJson({
+          inviteId: invite.id,
+          expiresAt: invite.expiresAt,
+          maxUses: invite.maxUses,
+          usedCount: 0
+        }, 2048, 'invite audit detail'),
+        invite.now
+      );
+      return true;
+    });
+  }
+
+
+  hasActiveMaoInvite({ targetAccountId = null, targetEmail = null, now }) {
+    const row = this.exec(
+      "SELECT i.id FROM mao_invite_codes i WHERE i.revoked_at IS NULL AND i.expires_at > ? AND i.used_count < i.max_uses AND ((? IS NOT NULL AND (i.target_account_id = ? OR i.target_email = (SELECT LOWER(qq_email) FROM mao_accounts WHERE id = ? AND qq_email_verified_at IS NOT NULL))) OR (? IS NOT NULL AND (i.target_email = ? OR i.target_account_id = (SELECT id FROM mao_accounts WHERE LOWER(qq_email) = ? AND qq_email_verified_at IS NOT NULL))) ) LIMIT 1",
+      now,
+      targetAccountId,
+      targetAccountId,
+      targetAccountId,
+      targetEmail,
+      targetEmail,
+      targetEmail
+    )[0];
+    return Boolean(row);
+  }
+
+  getActiveMaoInviteForAccount(accountId, now = Date.now()) {
+    const row = this.exec(
+      `SELECT i.id, i.target_account_id, i.target_email, i.max_uses, i.used_count, i.created_at, i.expires_at
+       FROM mao_invite_codes i
+       WHERE i.revoked_at IS NULL
+         AND i.expires_at > ?
+         AND i.used_count < i.max_uses
+         AND (
+           i.target_account_id = ?
+           OR (
+             i.target_email IS NOT NULL
+             AND lower(i.target_email) = (
+               SELECT lower(qq_email)
+               FROM mao_accounts
+               WHERE id = ? AND qq_email_verified_at IS NOT NULL
+             )
+           )
+         )
+       ORDER BY i.created_at DESC, i.id DESC
+       LIMIT 1`,
+      Number(now), accountId, accountId
+    )[0];
+    return row || null;
+  }
+
+  listMaoInvites({ limit = 50, cursor = null, search = '', status = 'all', now = Date.now() } = {}) {
+    const clauses = [];
+    const params = [];
+    if (status === 'pending') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND i.expires_at > ?");
+    else if (status === 'used') clauses.push("i.revoked_at IS NULL AND i.used_count >= i.max_uses");
+    else if (status === 'expired') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND (i.expires_at IS NULL OR i.expires_at <= ?)");
+    else if (status === 'revoked') clauses.push("i.revoked_at IS NOT NULL");
+    if (status === 'pending' || status === 'expired') params.push(Number(now));
+    if (search) {
+      clauses.push("(instr(lower(i.id), lower(?)) > 0 OR instr(lower(COALESCE(i.target_account_id, '')), lower(?)) > 0 OR instr(lower(COALESCE(i.target_email, '')), lower(?)) > 0 OR instr(lower(COALESCE(a.username, '')), lower(?)) > 0)");
+      params.push(search, search, search, search);
+    }
+    if (cursor) {
+      clauses.push("(i.created_at < ? OR (i.created_at = ? AND i.id < ?))");
+      params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    }
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
+    return this.exec(
+      `SELECT i.id, i.target_account_id, i.target_email, i.max_uses, i.used_count, i.created_by_account_id, i.created_at, i.expires_at, i.revoked_at, a.username AS target_username
+       FROM mao_invite_codes i
+       LEFT JOIN mao_accounts a ON a.id = i.target_account_id
+       ${clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''}
+       ORDER BY i.created_at DESC, i.id DESC
+       LIMIT ?`,
+      ...params, safeLimit + 1
+    );
+  }
+
+  countMaoInvites({ search = '', status = 'all', now = Date.now() } = {}) {
+    const clauses = [];
+    const params = [];
+    if (status === 'pending') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND i.expires_at > ?");
+    else if (status === 'used') clauses.push("i.revoked_at IS NULL AND i.used_count >= i.max_uses");
+    else if (status === 'expired') clauses.push("i.revoked_at IS NULL AND i.used_count < i.max_uses AND (i.expires_at IS NULL OR i.expires_at <= ?)");
+    else if (status === 'revoked') clauses.push("i.revoked_at IS NOT NULL");
+    if (status === 'pending' || status === 'expired') params.push(Number(now));
+    if (search) {
+      clauses.push("(instr(lower(i.id), lower(?)) > 0 OR instr(lower(COALESCE(i.target_account_id, '')), lower(?)) > 0 OR instr(lower(COALESCE(i.target_email, '')), lower(?)) > 0 OR instr(lower(COALESCE(a.username, '')), lower(?)) > 0)");
+      params.push(search, search, search, search);
+    }
+    const row = this.exec(
+      `SELECT COUNT(*) AS total FROM mao_invite_codes i
+       LEFT JOIN mao_accounts a ON a.id = i.target_account_id
+       ${clauses.length ? 'WHERE ' + clauses.join(' AND ') : ''}`,
+      ...params
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  getMaoInviteDirectorySummary(now = Date.now()) {
+    const row = this.exec(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END) AS revoked,
+        SUM(CASE WHEN revoked_at IS NULL AND used_count >= max_uses THEN 1 ELSE 0 END) AS used,
+        SUM(CASE WHEN revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at <= ?) THEN 1 ELSE 0 END) AS expired,
+        SUM(CASE WHEN revoked_at IS NULL AND used_count < max_uses AND expires_at > ? THEN 1 ELSE 0 END) AS pending
+       FROM mao_invite_codes`,
+      Number(now), Number(now)
+    )[0] || {};
+    return {
+      total: Number(row.total || 0),
+      pending: Number(row.pending || 0),
+      used: Number(row.used || 0),
+      expired: Number(row.expired || 0),
+      revoked: Number(row.revoked || 0)
+    };
+  }
+
+  findVerifiedMaoEmail(email) {
+    return this.exec(
+      "SELECT id FROM mao_accounts WHERE qq_email = ? AND qq_email_verified_at IS NOT NULL LIMIT 1",
+      email
+    )[0] || null;
+  }
+
+  revokeMaoInvite(inviteId, actorAccountId, now, actorSessionId) {
+    return this.transaction(() => {
+      if (!this.isActiveMaoSuperAdminSession(actorAccountId, actorSessionId, now)) {
+        return 'actor_session_invalid';
+      }
+      const invite = this.exec(
+        "SELECT id, target_account_id, target_email FROM mao_invite_codes WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses LIMIT 1",
+        inviteId
+      )[0];
+      if (!invite) return false;
+
+      let targetAccountId = invite.target_account_id || null;
+      // Prefer the original account captured when the invitation was issued.
+      // A verified mailbox may later be changed or reassigned to another user.
+      if (!targetAccountId) {
+        const creation = this.exec(
+          "SELECT target_account_id FROM mao_account_audit WHERE action = 'invite_create' AND instr(detail_json, ?) > 0 ORDER BY created_at DESC, id DESC LIMIT 1",
+          '"inviteId":"' + String(inviteId) + '"'
+        )[0];
+        targetAccountId = creation?.target_account_id || null;
+      }
+      // Older invitations predate invite audit events; retain a verified-email
+      // fallback for those records.
+      if (!targetAccountId && invite.target_email) {
+        const owner = this.findVerifiedMaoEmail(String(invite.target_email).toLowerCase());
+        targetAccountId = owner?.id || null;
+      }
+
+      const revoked = this.exec(
+        "UPDATE mao_invite_codes SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses RETURNING id",
+        now, inviteId
+      )[0];
+      if (!revoked) return false;
+
+      if (targetAccountId) {
+        this.exec(
+          "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_revoke', ?, ?)",
+          'audit_' + crypto.randomUUID(),
+          actorAccountId,
+          targetAccountId,
+          serializeStoreJson({ inviteId: String(inviteId) }, 2048, 'invite revoke audit detail'),
+          now
+        );
+      }
+      return true;
+    });
+  }
+
+  redeemMaoInvite({ tokenHash, accountId, sessionId, now }) {
+    try {
+      return this.transaction(() => {
+        if (!this.isActivePendingMaoAccountSession(accountId, sessionId, now)) {
+          return 'session_invalid';
+        }
+        const account = this.getMaoAccountById(accountId);
+        if (!account || account.status !== 'pending_invite') return false;
+        const invite = this.exec(
+          "UPDATE mao_invite_codes SET used_count = used_count + 1 WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ? AND used_count < max_uses AND (target_account_id = ? OR (target_email IS NOT NULL AND target_email = ? AND EXISTS (SELECT 1 FROM mao_accounts verified WHERE verified.id = ? AND verified.qq_email = target_email AND verified.qq_email_verified_at IS NOT NULL))) RETURNING id, used_count, max_uses, expires_at",
+          tokenHash, now, accountId, String(account.qq_email || '').toLowerCase(), accountId
+        )[0];
+        if (!invite) return false;
+
+        const updated = this.exec(
+          "UPDATE mao_accounts SET status = 'active', authorized_at = ?, updated_at = ? WHERE id = ? AND status = 'pending_invite' RETURNING id",
+          now, now, accountId
+        )[0];
+        if (!updated) {
+          // Throwing forces the transaction helper to roll back the invite's
+          // usage increment; the API can still treat this as an invalid invite.
+          const conflict = new Error('MAO account state changed during invitation redemption');
+          conflict.code = 'MAO_INVITE_REDEMPTION_CONFLICT';
+          throw conflict;
+        }
+
+        // Redemption is part of the same authorization transaction. The
+        // account can never become active without its audit event, and the
+        // one-time invite cannot be consumed without the account activation.
+        this.exec(
+          "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_redeem', ?, ?)",
+          'audit_' + crypto.randomUUID(),
+          accountId,
+          accountId,
+          serializeStoreJson({
+            inviteId: String(invite.id),
+            expiresAt: Number(invite.expires_at),
+            maxUses: Number(invite.max_uses || 1),
+            usedCount: Number(invite.used_count || 0)
+          }, 2048, 'invite redemption audit detail'),
+          now
+        );
+        return true;
+      });
+    } catch (error) {
+      if (error?.code === 'MAO_INVITE_REDEMPTION_CONFLICT') return false;
+      throw error;
+    }
+  }
+
+
+  listMaoAccounts({ limit = 50, cursor = null, search = '', status = 'all' } = {}) {
+    const clauses = ["role != 'super_admin'"];
+    const params = [];
+    if (status === 'pending_invite' || status === 'active') clauses.push("status = ?");
+    else if (status === 'restricted') clauses.push("status IN ('disabled', 'revoked')");
+    if (status === 'pending_invite' || status === 'active') params.push(status);
+    if (search) {
+      clauses.push("(instr(lower(id), lower(?)) > 0 OR instr(lower(username), lower(?)) > 0 OR instr(lower(COALESCE(qq_email, '')), lower(?)) > 0)");
+      params.push(search, search, search);
+    }
+    if (cursor) {
+      clauses.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    }
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
+    return this.exec(
+      `SELECT id, username, role, status, qq_email, qq_email_verified_at, created_at, authorized_at, disabled_at, revoked_at
+       FROM mao_accounts WHERE ${clauses.join(' AND ')}
+       ORDER BY created_at DESC, id DESC LIMIT ?`,
+      ...params, safeLimit + 1
+    );
+  }
+
+  countMaoAccounts({ search = '', status = 'all' } = {}) {
+    const clauses = ["role != 'super_admin'"];
+    const params = [];
+    if (status === 'pending_invite' || status === 'active') clauses.push("status = ?");
+    else if (status === 'restricted') clauses.push("status IN ('disabled', 'revoked')");
+    if (status === 'pending_invite' || status === 'active') params.push(status);
+    if (search) {
+      clauses.push("(instr(lower(id), lower(?)) > 0 OR instr(lower(username), lower(?)) > 0 OR instr(lower(COALESCE(qq_email, '')), lower(?)) > 0)");
+      params.push(search, search, search);
+    }
+    const row = this.exec(
+      `SELECT COUNT(*) AS total FROM mao_accounts WHERE ${clauses.join(' AND ')}`,
+      ...params
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  getMaoAccountDirectorySummary() {
+    const row = this.exec(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status = 'pending_invite' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status IN ('disabled', 'revoked') THEN 1 ELSE 0 END) AS restricted
+       FROM mao_accounts WHERE role != 'super_admin'`
+    )[0] || {};
+    return {
+      total: Number(row.total || 0),
+      pending: Number(row.pending || 0),
+      active: Number(row.active || 0),
+      restricted: Number(row.restricted || 0)
+    };
+  }
+
+  setMaoAccountState({
+    accountId, action, actorAccountId, actorSessionId = null, reason = '', now
+  }) {
+    return this.transaction(() => {
+      // A non-null actor is always a human administrator. System/test callers
+      // with no actor retain the explicit internal transition path.
+      if (actorAccountId && !this.isActiveMaoSuperAdminSession(actorAccountId, actorSessionId, now)) {
+        return 'actor_session_invalid';
+      }
+      const account = this.getMaoAccountById(accountId);
+      if (!account || account.role === 'super_admin') return null;
+
+      let nextStatus = '';
+      if (action === 'disable' && ['pending_invite', 'active'].includes(account.status)) {
+        nextStatus = 'disabled';
+      } else if (action === 'restore' && account.status === 'disabled') {
+        // Temporary suspension must never grant an invitation that was not redeemed.
+        nextStatus = account.disabled_from_status === 'active' ? 'active' : 'pending_invite';
+      } else if (action === 'revoke' && account.status !== 'revoked') {
+        nextStatus = 'revoked';
+      }
+      if (!nextStatus || nextStatus === account.status) return null;
+
+      let changed = null;
+      if (action === 'disable') {
+        changed = this.exec(
+          "UPDATE mao_accounts SET status = 'disabled', disabled_from_status = ?, updated_at = ?, disabled_at = ? WHERE id = ? AND status = ? RETURNING id",
+          account.status, now, now, accountId, account.status
+        )[0] || null;
+      } else if (action === 'restore') {
+        changed = this.exec(
+          "UPDATE mao_accounts SET status = ?, disabled_from_status = NULL, updated_at = ? WHERE id = ? AND status = 'disabled' RETURNING id",
+          nextStatus, now, accountId
+        )[0] || null;
+      } else if (action === 'revoke') {
+        changed = this.exec(
+          "UPDATE mao_accounts SET status = 'revoked', disabled_from_status = NULL, updated_at = ?, revoked_at = ? WHERE id = ? AND status != 'revoked' RETURNING id",
+          now, now, accountId
+        )[0] || null;
+      }
+      if (!changed) return null;
+
+      if (action === 'disable' || action === 'revoke') {
+        // Outstanding one-time codes are part of the target account's
+        // authorization state. Revoke them in this same transaction so restore
+        // always requires a newly issued invitation.
+        // First revoke invitations still addressable through the account's
+        // current permanent ID or verified email.
+        const revokedInvites = this.exec(
+          "UPDATE mao_invite_codes SET revoked_at = ? WHERE revoked_at IS NULL AND used_count < max_uses AND (target_account_id = ? OR target_email = (SELECT LOWER(qq_email) FROM mao_accounts WHERE id = ? AND qq_email_verified_at IS NOT NULL)) RETURNING id, expires_at, max_uses, used_count",
+          now, accountId, accountId
+        );
+        const revokedInviteIds = new Set(revokedInvites.map(invite => String(invite.id)));
+
+        // An email-targeted invite has target_account_id=NULL. Its owner was
+        // recorded in the invite_create audit event at issue time, so keep
+        // revocation working even after that account changes or un-verifies
+        // the email. The account ID in the audit row is the durable owner link.
+        const historicalInviteCreates = this.exec(
+          "SELECT detail_json FROM mao_account_audit WHERE target_account_id = ? AND action = 'invite_create'",
+          accountId
+        );
+        for (const audit of historicalInviteCreates) {
+          let detail = {};
+          try { detail = JSON.parse(String(audit.detail_json || '{}')); } catch {}
+          const inviteId = detail.inviteId == null ? '' : String(detail.inviteId);
+          if (!inviteId || revokedInviteIds.has(inviteId)) continue;
+          const invite = this.exec(
+            "UPDATE mao_invite_codes SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses RETURNING id, expires_at, max_uses, used_count",
+            now, inviteId
+          )[0];
+          if (invite) {
+            revokedInvites.push(invite);
+            revokedInviteIds.add(String(invite.id));
+          }
+        }
+        for (const invite of revokedInvites) {
+          // These invitation revocations are caused by the account lifecycle
+          // transition, but remain individually traceable in the same account
+          // timeline. Audit failure rolls back the account and invite changes.
+          this.exec(
+            "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_revoke', ?, ?)",
+            'audit_' + crypto.randomUUID(),
+            actorAccountId,
+            accountId,
+            serializeStoreJson({
+              inviteId: String(invite.id),
+              expiresAt: Number(invite.expires_at),
+              maxUses: Number(invite.max_uses || 1),
+              usedCount: Number(invite.used_count || 0),
+              sourceAction: action
+            }, 2048, 'automatic invite revoke audit detail'),
+            now
+          );
+        }
+        this.revokeMaoAccountSessions(accountId, now);
+        this.exec(
+          "UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = 'account_disabled' WHERE disabled_at IS NULL AND device_id IN (SELECT id FROM devices WHERE user_id = ?)",
+          now, accountId
+        );
+        this.exec(
+          "UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+          now, accountId
+        );
+        this.exec("DELETE FROM device_presence WHERE user_id = ?", accountId);
+        this.exec("DELETE FROM character_leases WHERE user_id = ?", accountId);
+        this.exec("DELETE FROM device_pairing_tokens WHERE user_id = ? AND consumed_at IS NULL", accountId);
+        // Sweep every device ever associated with this account, not only rows
+        // newly revoked above. Older/self-revoked devices can still have stale
+        // queued work from pre-cleanup paths or an overlapping in-flight request.
+        this.exec(
+          "UPDATE activity_queue SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ? WHERE device_id IN (SELECT id FROM devices WHERE user_id = ?) AND status IN ('waiting', 'retry', 'running')",
+          now, accountId
+        );
+      }
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        'audit_' + crypto.randomUUID(),
+        actorAccountId, accountId, action,
+        serializeStoreJson({
+          reason: String(reason || '').slice(0, 500),
+          fromStatus: String(account.status),
+          toStatus: String(nextStatus)
+        }, 2048, 'audit detail'),
+        now
+      );
+      return this.getMaoAccountById(accountId);
+    });
+  }
+
+
+  listMaoAccountAudit(accountId, { limit = 50, cursor = null } = {}) {
+    const params = [accountId];
+    let cursorClause = '';
+    if (cursor) {
+      cursorClause = ' AND (created_at < ? OR (created_at = ? AND id < ?))';
+      params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    }
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
+    return this.exec(
+      `SELECT id, actor_account_id, target_account_id, action, detail_json, created_at
+       FROM mao_account_audit
+       WHERE target_account_id = ?${cursorClause}
+       ORDER BY created_at DESC, id DESC
+       LIMIT ?`,
+      ...params, safeLimit + 1
+    );
+  }
+
+  countMaoAccountAudit(accountId) {
+    const row = this.exec(
+      'SELECT COUNT(*) AS total FROM mao_account_audit WHERE target_account_id = ?',
+      accountId
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  listMaoAccountAuditEvents({ limit = 50, cursor = null, search = '', type = 'all', since = null } = {}) {
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 50)));
+    const { where, params } = buildMaoAuditFilter({ search, type, cursor, since, alias: 'a' });
+    return this.exec(
+      `SELECT a.id, a.actor_account_id, a.target_account_id, a.action, a.detail_json, a.created_at,
+              actor.username AS actor_username, target.username AS target_username
+       FROM mao_account_audit a
+       LEFT JOIN mao_accounts actor ON actor.id = a.actor_account_id
+       LEFT JOIN mao_accounts target ON target.id = a.target_account_id${where}
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT ?`,
+      ...params,
+      safeLimit + 1
+    );
+  }
+
+  countMaoAccountAuditEvents({ search = '', type = 'all', since = null } = {}) {
+    const { where, params } = buildMaoAuditFilter({ search, type, since });
+    const row = this.exec(
+      `SELECT COUNT(*) AS total FROM mao_account_audit${where}`,
+      ...params
+    )[0];
+    return Number(row?.total || 0);
+  }
+
+  getMaoAccountAuditSummary() {
+    const row = this.exec(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN action IN ('account_register', 'admin_bootstrap', 'disable', 'restore', 'revoke') THEN 1 ELSE 0 END) AS accountActions,
+              SUM(CASE WHEN action IN ('invite_create', 'invite_redeem', 'invite_revoke') THEN 1 ELSE 0 END) AS inviteActions
+       FROM mao_account_audit`
+    )[0] || {};
+    return {
+      total: Number(row.total || 0),
+      accountActions: Number(row.accountActions || 0),
+      inviteActions: Number(row.inviteActions || 0)
+    };
+  }
+
+  listMaoAccountDevices(accountId) {
+    return this.exec(
+      "SELECT id, label, platform, created_at, last_seen_at, revoked_at FROM devices WHERE user_id = ? ORDER BY last_seen_at DESC, created_at DESC LIMIT 100",
+      accountId
+    );
+  }
+
+  listMaoAccountSessions(accountId) {
+    return this.exec(
+      "SELECT id, created_at, expires_at, last_used_at, revoked_at FROM mao_account_sessions WHERE account_id = ? ORDER BY last_used_at DESC, created_at DESC LIMIT 100",
+      accountId
+    );
+  }
+
+  revokeMaoAccountSessionForAccount(accountId, sessionId, now) {
+    return Boolean(this.exec(
+      "UPDATE mao_account_sessions SET revoked_at = ? WHERE id = ? AND account_id = ? AND revoked_at IS NULL RETURNING id",
+      now,
+      sessionId,
+      accountId
+    )[0]);
+  }
+
+  revokeMaoAccountSessionsExcept(accountId, keepSessionId, now) {
+    return this.exec(
+      "UPDATE mao_account_sessions SET revoked_at = ? WHERE account_id = ? AND id != ? AND revoked_at IS NULL RETURNING id",
+      now,
+      accountId,
+      keepSessionId
+    ).length;
+  }
+
+  revokeMaoAccountDevice(accountId, deviceId, now) {
+    return this.transaction(() => {
+      const device = this.exec(
+        "SELECT id, revoked_at FROM devices WHERE id = ? AND user_id = ? LIMIT 1",
+        deviceId,
+        accountId
+      )[0];
+      if (!device || device.revoked_at) return false;
+
+      // Device credential revocation and every dependent cleanup form one
+      // security transition. A failed cleanup must not leave a half-revoked
+      // device with stale presence, leases, pairing tokens, or queued work.
+      this.revokeDevice(deviceId, now);
+      this.exec(
+        "UPDATE activity_queue SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ? WHERE device_id = ? AND status IN ('waiting', 'retry', 'running')",
+        now,
+        deviceId
+      );
+      return true;
+    });
+  }
+
+  updateMaoAccountPasswordAndRevokeOtherSessions({
+    accountId, keepSessionId, passwordSalt, passwordHash, now
+  }) {
+    return this.transaction(() => {
+      // The handler performs asynchronous password hashing after it first
+      // authenticates the caller. Revalidate the account and exact current
+      // session in the same UPDATE that commits the new password, so a session
+      // revoked or an account disabled during hashing cannot finish the change.
+      const updated = this.exec(
+        `UPDATE mao_accounts
+         SET password_salt = ?, password_hash = ?, updated_at = ?
+         WHERE id = ? AND status = 'active'
+           AND EXISTS (
+             SELECT 1 FROM mao_account_sessions s
+             WHERE s.id = ?
+               AND s.account_id = mao_accounts.id
+               AND s.revoked_at IS NULL
+               AND s.expires_at > ?
+           )
+         RETURNING id`,
+        passwordSalt,
+        passwordHash,
+        now,
+        accountId,
+        keepSessionId,
+        now
+      )[0];
+      if (!updated) return false;
+
+      // Password rotation and revoking every other session are one atomic
+      // security change. Never leave the new password active with old sessions.
+      this.exec(
+        "UPDATE mao_account_sessions SET revoked_at = ? WHERE account_id = ? AND id != ? AND revoked_at IS NULL",
+        now,
+        accountId,
+        keepSessionId
+      );
+      return true;
+    });
+  }
+
+  updateMaoAccountEmail(accountId, email, now) {
+    const account = this.getMaoAccountById(accountId);
+    if (!account) return null;
+    if (String(account.qq_email || '').toLowerCase() === String(email || '').toLowerCase()) {
+      return account;
+    }
+    this.exec(
+      "UPDATE mao_accounts SET qq_email = ?, qq_email_verified_at = NULL, updated_at = ? WHERE id = ?",
+      email || null,
+      now,
+      accountId
+    );
+    return this.getMaoAccountById(accountId);
   }
 
   counts() {

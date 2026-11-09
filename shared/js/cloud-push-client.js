@@ -164,10 +164,27 @@
     });
   }
 
+  async function registerDeviceForCurrentAccount(enrollmentToken) {
+    var device = ensureDevice();
+    try {
+      await registerDevice(device, enrollmentToken);
+      return device;
+    } catch (error) {
+      // Admin suspension revokes the old device credential. After the user logs
+      // back into the restored account, only this explicit server response
+      // permits a new device identity to be issued. Session/authorization and
+      // network failures keep the existing local credential untouched.
+      if (enrollmentToken || error.code !== 'DEVICE_REVOKED') throw error;
+      clearDevice();
+      device = ensureDevice();
+      await registerDevice(device);
+      return device;
+    }
+  }
+
   async function enablePush(userInitiated, enrollmentToken) {
     if (!isSupported()) throw new Error('当前浏览器不支持 Web Push');
-    var device = ensureDevice();
-    await registerDevice(device, enrollmentToken);
+    var device = await registerDeviceForCurrentAccount(enrollmentToken);
 
     if (userInitiated && 'Notification' in global && Notification.permission === 'default') {
       await Notification.requestPermission();
@@ -1624,6 +1641,6 @@
     getStatus: getStatus,
     refreshSettings: refreshSettings,
     mountSettings: mountSettings,
-    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice, getPresenceRenewInterval: getPresenceRenewInterval, fingerprintCharacterHistory: fingerprintCharacterHistory }
+    _internal: { ensureDevice: ensureDevice, readDevice: readDevice, clearDevice: clearDevice, registerDeviceForCurrentAccount: registerDeviceForCurrentAccount, getPresenceRenewInterval: getPresenceRenewInterval, fingerprintCharacterHistory: fingerprintCharacterHistory }
   };
 })(typeof window !== 'undefined' ? window : self);

@@ -1,12 +1,23 @@
 /* 小手机 PWA Service Worker
  * 页面与静态资源均采用缓存优先+后台更新，断网/慢网时秒开。
  */
-const CACHE_NAME = 'phone-app-pwa-v207';
+const CACHE_NAME = 'phone-app-pwa-v216';
 const FONT_ASSET_CACHE = 'maomao-font-assets-v1';
 // v179 release: resume visible-bubble read observation after foreground restore.
 const APP_SHELL = [
   './',
   './index.html',
+  './shared/js/mao-account-scope.js?v=2',
+  './account/manage.css',
+  './account/manage.js',
+  './account/settings-link.js?v=1',
+  './admin/admin-center.css',
+  './admin/admin-center.js',
+  './account/index.html',
+  './account/bootstrap.html',
+  './account/bootstrap.js',
+  './account/account.css',
+  './account/account.js',
   './beauty/beauty.html',
   './theme-store/theme-store.html',
   './chat/chat/chat.html',
@@ -131,7 +142,10 @@ self.addEventListener('install', event => {
         // 清单不可用时仍继续安装已有核心资源，不阻塞整个 PWA。
       }
 
-      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)));
+      // Only the public account entry may be stored as an HTML document.
+      // Account-owned app pages are always fetched through the Worker gate.
+      const resources = Array.from(new Set(APP_SHELL.concat(pageEntries)))
+        .filter(url => url === './account/index.html' || url === './account/bootstrap.html' || !/\.html(?:\?|$)/i.test(url));
       await Promise.all(resources.map(url => cache.add(url).catch(() => undefined)));
     }).then(() => self.skipWaiting())
   );
@@ -159,27 +173,107 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
+  // Authenticated API responses are account-private; never store them in the shared origin cache.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+
   // User-imported fonts are cached once by font-loader.js and served as same-origin
   // font resources. Keep this cache separate from the versioned app-shell cache.
   const fontAssetPrefix = new URL('__maomao_fonts/', self.registration.scope).pathname;
   if (url.pathname.startsWith(fontAssetPrefix)) {
-    event.respondWith(
-      caches.open(FONT_ASSET_CACHE).then(function (cache) {
-        return cache.match(req).then(function (cached) {
-          return cached || new Response('', {
+    // CSS font requests do not carry custom fetch headers. The account ID is
+    // therefore part of ordinary-account font URLs and is matched against the
+    // current HttpOnly session before opening any account's CacheStorage.
+    event.respondWith((async function () {
+      try {
+        const relativeFontPath = url.pathname.slice(fontAssetPrefix.length);
+        const firstSegment = relativeFontPath.split('/')[0] || '';
+        let requestedAccountId = '';
+        try { requestedAccountId = decodeURIComponent(firstSegment); } catch (error) {
+          return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+        }
+        const hasAccountPath = /^MAO-[A-Z0-9]{12,24}$/.test(requestedAccountId);
+        const authHeaders = new Headers({ 'accept': 'application/json' });
+        const pageAccountContext = req.headers.get('x-mao-account-context');
+        if (pageAccountContext) authHeaders.set('x-mao-account-context', pageAccountContext);
+        if (hasAccountPath) authHeaders.set('x-mao-account-context', requestedAccountId);
+
+        const authResponse = await fetch('/api/accounts/me', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: authHeaders
+        });
+        if (!authResponse.ok) {
+          return new Response('', {
             status: 404,
             headers: { 'Cache-Control': 'no-store' }
           });
+        }
+        const payload = await authResponse.json();
+        const account = payload && payload.account;
+        if (!account || !/^MAO-[A-Z0-9]{12,24}$/.test(String(account.id || ''))) {
+          return new Response('', {
+            status: 404,
+            headers: { 'Cache-Control': 'no-store' }
+          });
+        }
+
+        let cacheName;
+        if (account.role === 'super_admin') {
+          // Preserve the creator's existing unqualified font URLs and cache.
+          if (hasAccountPath) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = FONT_ASSET_CACHE;
+        } else {
+          // A stale tab A must never resolve its font URL through account B's cookie.
+          if (!hasAccountPath || requestedAccountId !== account.id) {
+            return new Response('', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+          }
+          cacheName = '__mao_account_v1__' + encodeURIComponent(account.id) + '__' + FONT_ASSET_CACHE;
+        }
+
+        const cache = await caches.open(cacheName);
+        return await cache.match(req) || new Response('', {
+          status: 404,
+          headers: { 'Cache-Control': 'no-store' }
         });
-      })
-    );
+      } catch (error) {
+        return new Response('', {
+          status: 503,
+          headers: { 'Cache-Control': 'no-store' }
+        });
+      }
+    })());
     return;
   }
 
-  // 页面导航采用“缓存优先、后台更新”：
-  // 已缓存的应用立即打开，不让慢网络/VPN 阻塞页面；缓存未命中时才等待网络。
-  // 绝不把 index.html 当作其他应用的兜底页面，避免点开应用却重新显示桌面。
-  if (req.mode === 'navigate') {
+  // Protected app documents must reach the Worker on every navigation so
+  // account disable/revocation cannot be bypassed by a stale offline HTML cache.
+  // On network loss, fall back only to the public account entry, never cached app pages.
+  const accountPath = new URL('account/', self.registration.scope).pathname;
+  const isPublicAccountPage = url.pathname === accountPath ||
+    url.pathname === accountPath + 'index.html' ||
+    url.pathname === accountPath + 'bootstrap.html';
+  if (req.mode === 'navigate' && !isPublicAccountPage) {
+    event.respondWith((async function () {
+      try {
+        return await fetch(req);
+      } catch {
+        const entry = new URL('account/index.html', self.registration.scope);
+        const cachedEntry = await caches.match(entry.href).catch(function () { return null; });
+        return cachedEntry || new Response('当前处于离线状态，请联网验证 MAO 账号后继续。', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=UTF-8', 'Cache-Control': 'no-store' }
+        });
+      }
+    })());
+    return;
+  }
+
+  // The public account entry stays cache-first so a disabled or offline device
+  // can display the safe sign-in/disabled notice, never a cached app document.
+  if (req.mode === 'navigate' && isPublicAccountPage) {
     event.respondWith((async function () {
       var cachedPromise = caches.match(req).catch(function () { return null; });
       var cacheWritePromise = null;
@@ -281,18 +375,46 @@ self.addEventListener('push', event => {
   } catch (error) {
     payload = {};
   }
-  const title = String(payload.title || 'MAOMAO');
-  const body = String(payload.body || '你有一条新消息。');
-  const targetUrl = pushTargetUrl(payload.url);
-  // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
-  const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
 
-  event.waitUntil(
-    self.registration.showNotification(title, {
+  event.waitUntil((async function () {
+    // Notifications are private to the MAO account that owns the target device.
+    // Re-check the HttpOnly session at display time so a logged-out or switched
+    // browser cannot show another account's previously queued push.
+    const accountId = String(payload.accountId || '');
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+    let authResponse;
+    try {
+      authResponse = await fetch('/api/accounts/me', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'accept': 'application/json',
+          'x-mao-account-context': accountId
+        }
+      });
+    } catch (error) {
+      return;
+    }
+    if (!authResponse || !authResponse.ok) return;
+    let authPayload = {};
+    try { authPayload = await authResponse.json(); } catch (error) { return; }
+    const currentAccount = authPayload && authPayload.account;
+    if (!currentAccount ||
+        currentAccount.id !== accountId ||
+        currentAccount.status !== 'active') return;
+
+    const title = String(payload.title || 'MAOMAO');
+    const body = String(payload.body || '你有一条新消息。');
+    const targetUrl = pushTargetUrl(payload.url);
+    // 相同 tag 的通知会在系统里合并，避免多端/重试造成重复提醒。
+    const tag = String(payload.tag || payload.dedupeKey || 'maomao-cloud').slice(0, 64);
+    await self.registration.showNotification(title, {
       body,
       tag,
       data: {
         url: targetUrl,
+        accountId,
         dedupeKey: String(payload.dedupeKey || '').slice(0, 96),
         type: String(payload.type || 'message').slice(0, 32)
       },
@@ -300,15 +422,42 @@ self.addEventListener('push', event => {
       badge: './assets/icon-192.png',
       renotify: false,
       silent: false
-    })
-  );
+    });
+  })());
 });
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const targetUrl = pushTargetUrl(event.notification.data && event.notification.data.url);
+  const notificationData = event.notification.data || {};
+  const targetUrl = pushTargetUrl(notificationData.url);
+  const accountId = String(notificationData.accountId || '');
 
   event.waitUntil((async function () {
+    // A notification may remain in the OS tray after logout or account switch.
+    // Re-validate the account when clicked; old unbound notifications fail closed.
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(accountId)) return;
+    let authResponse;
+    try {
+      authResponse = await fetch('/api/accounts/me', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'accept': 'application/json',
+          'x-mao-account-context': accountId
+        }
+      });
+    } catch (error) {
+      return;
+    }
+    if (!authResponse || !authResponse.ok) return;
+    let authPayload = {};
+    try { authPayload = await authResponse.json(); } catch (error) { return; }
+    const currentAccount = authPayload && authPayload.account;
+    if (!currentAccount ||
+        currentAccount.id !== accountId ||
+        currentAccount.status !== 'active') return;
+
     const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windowClients) {
       if (client.url === targetUrl && 'focus' in client) return client.focus();
@@ -327,4 +476,5 @@ self.addEventListener('notificationclick', event => {
     if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
     return undefined;
   })());
+
 });

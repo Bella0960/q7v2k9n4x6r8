@@ -47,6 +47,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Check tracked JavaScript syntax
+        run: npm run check:syntax
       - name: Install dependencies
         run: npm ci
       - name: Install Chromium for mobile viewport checks
@@ -57,6 +59,7 @@ jobs:
           npm run test:desktop:layout
           npm run test:bugfix:blockers
           npm run test:media:backup
+          npm run test:accounts
           npm run test:cloud:push
           npm run test:schedule
           npm run test:autonomy

@@ -1,3 +1,4 @@
+import { createAccountAuth } from './account-auth.js';
 import {
   ApiError, fail, ok, readJsonBody
 } from './http.js';
@@ -224,14 +225,18 @@ function validateScheduleInput(body) {
  * Build a privacy-safe notification for an already-persisted chat outbox row.
  * Message text is intentionally omitted so lock-screen previews reveal no chat content.
  */
-export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp }) {
+export function buildOutboundPushPayload({ characterId, serverMessageId, timestamp, accountId = OWNER_USER_ID }) {
   const roleId = String(characterId || '');
   const messageId = String(serverMessageId || '');
-  if (!roleId || roleId.length > 96 || !/^[A-Za-z0-9_-]{16,128}$/.test(messageId)) {
+  const maoAccountId = String(accountId || OWNER_USER_ID);
+  if (!roleId || roleId.length > 96 ||
+      !/^[A-Za-z0-9_-]{16,128}$/.test(messageId) ||
+      !(maoAccountId === OWNER_USER_ID || /^MAO-[A-Z0-9]{12,24}$/.test(maoAccountId))) {
     throw new TypeError('outbound push target is invalid');
   }
   return {
     type: 'chat_message',
+    accountId: maoAccountId,
     title: '新消息',
     body: '有一位角色刚刚联系你，打开聊天查看。',
     url: './chat/chat/chat-detail.html?id=' + encodeURIComponent(roleId),
@@ -318,6 +323,7 @@ export async function dispatchPendingOutboundPushes({
     let outcome;
     try {
       const payload = buildOutboundPushPayload({
+        accountId: candidate.target_account_id || OWNER_USER_ID,
         characterId: candidate.character_id,
         serverMessageId: candidate.server_message_id,
         timestamp: Number(candidate.created_at || timestamp)
@@ -330,7 +336,14 @@ export async function dispatchPendingOutboundPushes({
         },
         JSON.stringify(payload),
         keys,
-        { nowMs: deliveryTimestamp, fetchImpl }
+        {
+          nowMs: deliveryTimestamp,
+          fetchImpl,
+          beforeSend: () => store.isActivePushSubscription(
+            candidate.subscription_id,
+            candidate.device_id
+          )
+        }
       );
     } catch (error) {
       outcome = {
@@ -338,6 +351,40 @@ export async function dispatchPendingOutboundPushes({
         statusCode: error instanceof PushConfigError ? 400 : Number(error?.statusCode || 0),
         gone: false
       };
+    }
+
+    if (outcome.skipped) {
+      const finishedAt = Number(typeof now === 'function' ? now() : timestamp);
+      const finalized = store.finishDelivery({
+        dedupeKey,
+        subscriptionId: candidate.subscription_id,
+        owner: deliveryOwner,
+        status: 'failed',
+        httpStatus: 0,
+        nextAttemptAt: null,
+        now: finishedAt
+      });
+      if (!finalized) {
+        summary.failed += 1;
+      } else {
+        summary.skipped += 1;
+      }
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId: candidate.device_id,
+        kind: 'outbound_push',
+        status: finalized ? 'skipped' : 'failed',
+        reasonCode: 'subscription_unavailable_before_send',
+        detail: {
+          outboundMessageId: candidate.outbound_message_id,
+          serverMessageId: candidate.server_message_id,
+          subscriptionId: candidate.subscription_id,
+          httpStatus: 0,
+          retryScheduled: false
+        },
+        now: finishedAt
+      });
+      continue;
     }
 
     const statusCode = Number(outcome.statusCode || 0);
@@ -411,21 +458,76 @@ export async function dispatchPendingOutboundPushes({
 }
 
 export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl = fetch }) {
+  const accountAuth = createAccountAuth({ store, env, now });
+
   async function authenticate(request) {
     const parsed = deviceAuthHeader(request);
     if (!parsed) throw new ApiError(401, 'UNAUTHORIZED', '缺少或非法的设备凭据');
     const device = await store.getDevice(parsed.deviceId);
     if (!device) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
-    if (device.revoked_at) throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
     const expected = await secretHash(env, parsed.deviceId, parsed.secret);
     if (!timingSafeEqualHex(expected, device.secret_hash)) {
       throw new ApiError(401, 'UNAUTHORIZED', '设备凭据校验失败');
     }
-    const timestamp = now();
-    if (timestamp - Number(device.last_seen_at || 0) > 300000) {
-      await store.touchDevice(device.id, timestamp);
+    const deviceUserId = String(device.user_id || OWNER_USER_ID);
+    let authenticatedSessionId = null;
+    if (deviceUserId === OWNER_USER_ID && store.hasMaoSuperAdminAccount()) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
     }
-    return device;
+    if (deviceUserId !== OWNER_USER_ID) {
+      const account = await store.getMaoAccountById(deviceUserId);
+      if (!account || account.status === 'disabled' || account.status === 'revoked') {
+        throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+      }
+      if (account.status !== 'active') {
+        throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权');
+      }
+      const accountSession = await accountAuth.getAuthenticatedAccount(request);
+      if (!accountSession || accountSession.account_id !== deviceUserId) {
+        throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+      }
+      authenticatedSessionId = accountSession.session_id;
+    }
+    // Credential hashing and account-session validation above are asynchronous.
+    // A device can be revoked while those checks are in flight, so never make the
+    // final authorization decision from the stale row loaded at the start.
+    const currentDevice = await store.getDevice(parsed.deviceId);
+    if (!currentDevice) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
+    if (currentDevice.revoked_at) {
+      throw new ApiError(401, 'DEVICE_REVOKED', '设备授权已被撤销');
+    }
+    if (
+      String(currentDevice.user_id || OWNER_USER_ID) !== deviceUserId ||
+      !timingSafeEqualHex(String(currentDevice.secret_hash || ''), String(device.secret_hash || ''))
+    ) {
+      throw new ApiError(401, 'UNAUTHORIZED', '设备授权状态已变化，请重新连接');
+    }
+
+    const timestamp = now();
+    // Re-check the exact MAO session that authenticated this device. A second
+    // session for the same account must not keep an in-flight request alive
+    // after its own session has been revoked or expired.
+    if (!store.isActiveAccountDeviceSession(
+      deviceUserId,
+      currentDevice.id,
+      authenticatedSessionId,
+      timestamp
+    )) {
+      const latestAccount = deviceUserId === OWNER_USER_ID
+        ? null
+        : store.getMaoAccountById(deviceUserId);
+      if (latestAccount && (latestAccount.status === 'disabled' || latestAccount.status === 'revoked')) {
+        throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+      }
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '登录会话已失效，请重新登录后继续');
+    }
+    // Store writes are synchronous. Touch only after the final authorization
+    // check and do not yield afterward, so rejected stale sessions leave no
+    // device metadata changes behind.
+    if (timestamp - Number(currentDevice.last_seen_at || 0) > 300000) {
+      store.touchDevice(currentDevice.id, timestamp);
+    }
+    return currentDevice;
   }
 
   async function registerDevice(request) {
@@ -439,15 +541,60 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const existing = await store.getDevice(deviceId);
     const hash = await secretHash(env, deviceId, secret);
     if (existing) {
-      if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
       if (!timingSafeEqualHex(hash, existing.secret_hash)) {
         throw new ApiError(409, 'DEVICE_CONFLICT', '设备 ID 已被其他凭据占用');
       }
-      await store.updateDeviceProfile(deviceId, {
-        label: String(body.label || '').slice(0, 64),
-        platform: String(body.platform || '').slice(0, 64)
-      });
-      await store.touchDevice(deviceId, timestamp);
+      const existingUserId = String(existing.user_id || OWNER_USER_ID);
+      let accountSessionId = null;
+      if (existingUserId === OWNER_USER_ID && store.hasMaoSuperAdminAccount()) {
+        throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+      }
+      if (existingUserId !== OWNER_USER_ID) {
+        const account = await store.getMaoAccountById(existingUserId);
+        if (!account || account.status === 'disabled' || account.status === 'revoked') {
+          throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+        }
+        if (account.status !== 'active') {
+          throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权');
+        }
+        const accountSession = await accountAuth.getAuthenticatedAccount(request);
+        if (!accountSession || accountSession.account_id !== existingUserId) {
+          throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
+        }
+        accountSessionId = accountSession.session_id;
+      }
+      if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
+      const refreshed = await store.refreshActiveDeviceProfile(
+        deviceId,
+        existingUserId,
+        existing.secret_hash,
+        {
+          label: String(body.label || '').slice(0, 64),
+          platform: String(body.platform || '').slice(0, 64),
+          now: timestamp,
+          sessionId: accountSessionId
+        }
+      );
+      if (!refreshed) {
+        const current = await store.getDevice(deviceId);
+        if (!current) throw new ApiError(401, 'DEVICE_UNKNOWN', '设备未注册');
+        if (current.revoked_at) {
+          throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
+        }
+        if (
+          String(current.user_id || OWNER_USER_ID) !== existingUserId ||
+          !timingSafeEqualHex(String(current.secret_hash || ''), String(existing.secret_hash || ''))
+        ) {
+          throw new ApiError(409, 'DEVICE_CONFLICT', '设备授权状态已变化，请重新连接');
+        }
+        if (existingUserId !== OWNER_USER_ID) {
+          const latestSession = await accountAuth.getAuthenticatedAccount(request);
+          if (!latestSession || latestSession.account_id !== existingUserId) {
+            throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '登录会话已失效，请重新登录后添加设备');
+          }
+        }
+        throw new ApiError(409, 'DEVICE_STATE_CHANGED', '设备状态已变化，请重新尝试连接');
+      }
       return ok({ device: { id: deviceId, createdAt: Number(existing.created_at), reenrolled: true } });
     }
 
@@ -466,6 +613,43 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       ipHash,
       now: timestamp
     };
+
+    // A signed-in, authorized MAO account may enroll another device directly.
+    // The permanent account ID becomes the only tenant key for this device.
+    const accountSession = await accountAuth.getAuthenticatedAccount(request);
+    if (!accountSession && store.hasMaoSuperAdminAccount()) {
+      throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录已获授权的 MAO 账号，再添加设备');
+    }
+    if (accountSession) {
+      if (accountSession.status !== 'active') {
+        throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权，请先验证专属邀请码');
+      }
+      const inserted = await store.insertMaoAccountDevice({
+        ...commonDevice,
+        userId: accountSession.account_id,
+        sessionId: accountSession.session_id
+      });
+      if (!inserted) {
+        const latestAccount = await store.getMaoAccountById(accountSession.account_id);
+        if (!latestAccount || latestAccount.status === 'disabled' || latestAccount.status === 'revoked') {
+          throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+        }
+        if (latestAccount.status !== 'active') {
+          throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权，请先验证专属邀请码');
+        }
+        throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '登录会话已失效，请重新登录后添加设备');
+      }
+      await store.logExecution({
+        id: randomToken(12),
+        deviceId,
+        kind: 'device_register',
+        status: 'success',
+        reasonCode: 'mao_account_session',
+        detail: { platform: String(body.platform || '').slice(0, 64) },
+        now: timestamp
+      });
+      return ok({ device: { id: deviceId, createdAt: timestamp, reenrolled: false, enrollmentMode: 'account' } });
+    }
 
     let userId = OWNER_USER_ID;
     let enrollmentMode = '';
@@ -492,7 +676,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       const expected = await sha256Hex(`bootstrap|${configuredToken}`);
       const supplied = await sha256Hex(`bootstrap|${suppliedToken}`);
       if (!timingSafeEqualHex(expected, supplied)) {
-        throw new ApiError(403, 'DEVICE_PAIRING_REQUIRED', '配对码无效、已使用或已过期');
+        throw new ApiError(403, 'PAIRING_TOKEN_INVALID', '配对码无效、已使用或已过期');
       }
       const inserted = await store.insertBootstrapDevice({ ...commonDevice, userId });
       if (!inserted) {
@@ -562,7 +746,12 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       authKey: validated.authKey,
       expirationTime: validated.expirationTime,
       now: timestamp
+    }, {
+      maxSubscriptions: MAX_SUBSCRIPTIONS_PER_DEVICE
     });
+    if (result?.limitReached) {
+      throw new ApiError(409, 'SUBSCRIPTION_LIMIT', '该设备订阅数量已达上限');
+    }
     if (!result) {
       const currentDevice = await store.getDevice(device.id);
       if (!currentDevice || currentDevice.revoked_at) {
@@ -649,6 +838,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     const dedupeKey = String(body.dedupeKey || `test:${device.id}:${timestamp}`).slice(0, 96);
     const payload = JSON.stringify({
       type: 'test',
+      accountId: String(device.user_id || OWNER_USER_ID),
       title: 'MAOMAO 云端连接测试',
       body: '如果你看到这条通知，说明推送链路已经打通。',
       url: './settings/settings.html',
@@ -715,7 +905,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth_key },
           payload,
           keys,
-          { nowMs: timestamp, fetchImpl }
+          {
+            nowMs: timestamp,
+            fetchImpl,
+            beforeSend: () => store.isActivePushSubscription(
+              subscription.id,
+              device.id
+            )
+          }
         );
       } catch (error) {
         // A network failure can happen after the push service accepted the
@@ -730,6 +927,27 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
             : Number(error?.statusCode || 0),
           gone: false
         };
+      }
+
+      if (outcome.skipped) {
+        const finishedAt = now();
+        const finalized = await store.finishDelivery({
+          dedupeKey,
+          subscriptionId: subscription.id,
+          owner: deliveryOwner,
+          status: 'failed',
+          httpStatus: 0,
+          nextAttemptAt: null,
+          now: finishedAt
+        });
+        if (!finalized) {
+          failed += 1;
+          results.push({ subscriptionId: subscription.id, status: 'lease_lost' });
+        } else {
+          skipped += 1;
+          results.push({ subscriptionId: subscription.id, status: 'revoked' });
+        }
+        continue;
       }
 
       const statusCode = Number(outcome.statusCode || 0);
@@ -819,7 +1037,14 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
   async function revokeDevice(request) {
     const device = await authenticate(request);
     const timestamp = now();
-    await store.revokeDevice(device.id, timestamp);
+    const revoked = await store.revokeMaoAccountDevice(
+      device.user_id || OWNER_USER_ID,
+      device.id,
+      timestamp
+    );
+    if (!revoked) {
+      throw new ApiError(409, 'DEVICE_REVOKED', '设备授权状态已变化，请刷新后重试');
+    }
     await store.logExecution({
       id: randomToken(12),
       deviceId: device.id,
@@ -902,7 +1127,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     if (typeof body.enabled !== 'boolean') {
       throw new ApiError(400, 'INVALID_AUTONOMY_SETTING', 'enabled 必须是布尔值');
     }
-    const row = await store.setUserAutonomy(device.user_id || OWNER_USER_ID, body.enabled, now());
+    const row = await store.setUserAutonomy(device.user_id || OWNER_USER_ID, body.enabled, now(), device.id);
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     return ok({ enabled: row.enabled === 1, updatedAt: Number(row.updated_at) });
   }
 
@@ -926,8 +1152,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       device.user_id || OWNER_USER_ID,
       characterId,
       body.enabled,
-      now()
+      now(),
+      device.id
     );
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     return ok({
       enabled: row.enabled == null ? null : row.enabled === 1,
       inherited: row.enabled == null,
@@ -969,8 +1197,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       deviceId: device.id,
       now: timestamp,
       eventLimit: 600,
-      windowStart: timestamp - 3600000
+      windowStart: timestamp - 3600000,
+      requireActiveDevice: true
     });
+    if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     if (result.limited) {
       throw new ApiError(429, 'CONTEXT_VERSION_RATE_LIMITED', '角色上下文版本同步过于频繁，请稍后重试');
     }
@@ -1204,8 +1434,11 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       maxAttempts: config.maxAttempts,
       payload: { contextVersion, sourceDeviceId: device.id },
       dedupeKey,
-      now: timestamp
+      now: timestamp,
+      userId,
+      requireActiveDevice: true
     });
+    if (result.revoked) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     if (result.conflict) {
       throw new ApiError(409, 'ACTIVITY_IDEMPOTENCY_CONFLICT', '该活动幂等键已被不同任务占用');
     }
@@ -1433,7 +1666,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         id: activityId,
         owner: device.id,
         attemptCount,
-        now: timestamp
+        now: timestamp,
+        userId,
+        requireActiveDevice: true
       });
       if (!finished) {
         throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
@@ -1507,7 +1742,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       id: activityId,
       owner: device.id,
       attemptCount,
-      now: timestamp
+      now: timestamp,
+      userId: device.user_id || OWNER_USER_ID,
+      requireActiveDevice: true
     });
     if (!completed) {
       throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
@@ -1557,7 +1794,9 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       owner: device.id,
       attemptCount,
       now: timestamp,
-      nextAttemptAt
+      nextAttemptAt,
+      userId: device.user_id || OWNER_USER_ID,
+      requireActiveDevice: true
     });
     if (!failed) {
       throw new ApiError(409, 'ACTIVITY_LEASE_LOST', '活动租约已失效或已被其他设备接管');
@@ -1596,8 +1835,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       characterId,
       validated.timeZone,
       validated.schedule,
-      now()
+      now(),
+      device.id
     );
+    if (!row) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     return ok({ configured: true, timeZone: row.time_zone, schedule: validated.schedule, updatedAt: Number(row.updated_at) });
   }
 
@@ -1622,8 +1863,10 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       userId,
       deviceId: device.id,
       foregroundActive: body.foregroundActive,
-      now: timestamp
+      now: timestamp,
+      requireActiveDevice: true
     });
+    if (!presence) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
     // Device-level heartbeat and per-character leases are separate.
     // A hidden tab must not release every role lease owned by other tabs.
     return ok({
@@ -1661,7 +1904,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           deviceId: device.id,
           now: timestamp,
           leaseUntil: timestamp + config.leaseDurationMs,
-          graceMs: config.graceMs
+          graceMs: config.graceMs,
+          requireActiveDevice: true
         })
       : await store.renewCharacterLease({
           userId,
@@ -1669,9 +1913,13 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           deviceId: device.id,
           now: timestamp,
           leaseUntil: timestamp + config.leaseDurationMs,
-          graceMs: config.graceMs
+          graceMs: config.graceMs,
+          requireActiveDevice: true
         });
     if (!lease) {
+      if (!store.isActiveAccountDevice(userId, device.id)) {
+        throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销');
+      }
       throw new ApiError(409, action === 'acquire' ? 'CHARACTER_LEASE_HELD' : 'LEASE_NOT_OWNED', '当前设备无法取得该角色的前台租约');
     }
     return ok({
@@ -1681,11 +1929,78 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
     });
   }
 
+  function assertSameOriginMutation(request) {
+    const method = request.method.toUpperCase();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+
+    const requestOrigin = new URL(request.url).origin;
+    const originHeader = String(request.headers.get('origin') || '').trim();
+    if (!originHeader) {
+      throw new ApiError(403, 'ORIGIN_REQUIRED', '写入请求缺少可信来源信息');
+    }
+
+    let suppliedOrigin = '';
+    try {
+      suppliedOrigin = new URL(originHeader).origin;
+    } catch {
+      throw new ApiError(403, 'CROSS_ORIGIN_REQUEST_BLOCKED', '写入请求来源无效');
+    }
+    if (suppliedOrigin !== requestOrigin) {
+      throw new ApiError(403, 'CROSS_ORIGIN_REQUEST_BLOCKED', '已拒绝跨来源写入请求');
+    }
+
+    const fetchSite = String(request.headers.get('sec-fetch-site') || '').trim().toLowerCase();
+    if (fetchSite && fetchSite !== 'same-origin') {
+      throw new ApiError(403, 'CROSS_ORIGIN_REQUEST_BLOCKED', '已拒绝非同源浏览器请求');
+    }
+  }
+
+  async function assertAccountPageContext(request, path) {
+    const pageAccountId = String(request.headers.get('x-mao-account-context') || '').trim();
+    const contextOptionalPaths = new Set([
+      '/api/accounts/register',
+      '/api/accounts/login',
+      '/api/accounts/logout',
+      '/api/accounts/me',
+      '/api/admin/bootstrap/status',
+      '/api/admin/bootstrap',
+      '/api/health',
+      '/api/push/config'
+    ]);
+
+    // Public account-entry and bootstrap calls must work before a page has an
+    // authenticated account scope. Every other request carrying a valid MAO
+    // session must prove which account namespace its page was opened for.
+    if (!pageAccountId) {
+      if (contextOptionalPaths.has(path)) return;
+      const session = await accountAuth.getAuthenticatedAccount(request);
+      if (session) {
+        throw new ApiError(409, 'ACCOUNT_CONTEXT_REQUIRED', '当前请求缺少 MAO 账号上下文，请重新进入页面');
+      }
+      return;
+    }
+    if (!/^MAO-[A-Z0-9]{12,24}$/.test(pageAccountId)) {
+      throw new ApiError(400, 'INVALID_ACCOUNT_CONTEXT', '页面账号标识无效');
+    }
+    const session = await accountAuth.getAuthenticatedAccount(request);
+    if (!session) {
+      throw new ApiError(401, 'LOGIN_REQUIRED', '请先登录 MAO 账号');
+    }
+    if (session.account_id !== pageAccountId) {
+      throw new ApiError(409, 'ACCOUNT_CONTEXT_CHANGED', '当前页面所属 MAO 账号已切换，请重新进入');
+    }
+  }
+
   return async function handleApi(request) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '');
     const method = request.method.toUpperCase();
     try {
+      assertSameOriginMutation(request);
+      await assertAccountPageContext(request, path);
+      const accountResponse = await accountAuth.handle(request, path, method);
+      if (accountResponse) return accountResponse;
+
       if (path === '/api/health' && method === 'GET') {
         const counts = await store.counts();
         const vapid = vapidSummary(env);

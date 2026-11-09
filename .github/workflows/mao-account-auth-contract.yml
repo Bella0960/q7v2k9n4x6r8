@@ -1,0 +1,60 @@
+name: MAO Account Auth Contract
+
+on:
+  pull_request:
+    paths:
+      - 'account/**'
+      - 'admin/**'
+      - 'worker/**'
+      - 'worker.js'
+      - 'assets/**'
+      - 'shared/js/mao-account-scope.js'
+      - 'shared/js/font-loader.js'
+      - 'sw.js'
+      - 'tests/account-*.test.mjs'
+      - 'tests/MAO_ACCOUNT_AUTH_ACCEPTANCE.md'
+      - 'tests/admin-center-*.test.mjs'
+      - 'tests/pwa-navigation-cache.test.mjs'
+      - 'tests/default-desktop-layout.test.mjs'
+      - 'tests/icon-presets-contract.test.mjs'
+      - 'tests/cloud-push-contract.test.mjs'
+      - 'tests/font-runtime-performance.test.mjs'
+      - 'tests/preview-deployment-isolation.test.mjs'
+      - 'tests/helpers/**'
+      - 'scripts/check-syntax.mjs'
+      - 'scripts/run-account-auth-gate.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'wrangler.jsonc'
+      - 'wrangler.preview.jsonc'
+      - 'vite.config.js'
+      - '.github/workflows/deploy-mao-auth-preview.yml'
+      - '.github/workflows/mao-account-auth-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-auth-contract:
+    runs-on: ${{ vars.MAO_AUTH_RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Check tracked JavaScript syntax
+        run: npm run check:syntax
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run complete MAO account security and regression gates
+        run: npm run test:accounts:all
+

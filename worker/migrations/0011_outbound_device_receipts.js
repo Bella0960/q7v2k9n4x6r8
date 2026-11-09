@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_outbound_receipts_device_pending
 CREATE INDEX IF NOT EXISTS idx_outbound_receipts_account_message
   ON outbound_device_receipts (user_id, character_id, server_message_id, local_saved_at);
 
--- Account inbox queries start from a character and the source device; keep
+-- Account inbox queries start from a character and the source device, keep
 -- chronological scans indexed without rewriting the immutable source ownership.
 CREATE INDEX IF NOT EXISTS idx_outbound_character_source_created
   ON outbound_messages (character_id, device_id, created_at, id);

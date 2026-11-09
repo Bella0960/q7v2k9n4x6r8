@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 import { openTestDb, setupTestStore } from './helpers/cloud-helpers.mjs';
-import { randomToken, base64UrlToBytes } from '../worker/lib/crypto.js';
+import { randomToken, base64UrlToBytes, sha256Hex } from '../worker/lib/crypto.js';
 import {
   buildVapidAuthorization,
   encryptPayload,
@@ -92,7 +92,7 @@ async function subscribeDevice(ctx, device, subscription) {
 
 /* ------------------------------------------------------------------ */
 
-test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多设备消息回执结构', async () => {
+test('迁移 0001–0016 建立云推送、活动幂等、上下文来源与多设备消息回执结构', async () => {
   const testDb = openTestDb();
   applyMigrations(testDb.exec);
   const tables = testDb.query("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -160,7 +160,7 @@ test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多�
   const applied = applyMigrations(testDb.exec);
   assert.deepEqual(applied, []);
   const versions = testDb.query('SELECT version FROM schema_migrations');
-  assert.equal(versions.length, 11);
+  assert.equal(versions.length, 16);
   assert.deepEqual(versions.map(row => row.version).sort(), [
     '0001_init',
     '0002_autonomy_metadata',
@@ -172,14 +172,21 @@ test('迁移 0001–0011 建立云推送、活动幂等、上下文来源与多�
     '0008_context_source_device',
     '0009_activity_result_staging',
     '0010_outbound_lifecycle_receipts',
-    '0011_outbound_device_receipts'
+    '0011_outbound_device_receipts',
+    '0012_mao_accounts',
+    '0013_mao_account_restore_state',
+    '0014_mao_admin_directory_indexes',
+    '0015_mao_account_audit_cursor',
+    '0016_mao_global_audit_cursor'
   ]);
 });
 
 test('0011 迁移为历史消息保留来源设备回执，新设备仍可独立接管', () => {
   const legacy = openTestDb();
   legacy.exec('CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
-  for (const migration of MIGRATIONS.slice(0, -1)) {
+  const receiptsMigrationIndex = MIGRATIONS.findIndex(item => item.version === '0011_outbound_device_receipts');
+  assert.ok(receiptsMigrationIndex >= 0);
+  for (const migration of MIGRATIONS.slice(0, receiptsMigrationIndex)) {
     for (const statement of splitSql(migration.sql)) legacy.exec(statement);
     legacy.exec(
       'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
@@ -201,13 +208,13 @@ test('0011 迁移为历史消息保留来源设备回执，新设备仍可独立
        'legacy-dedupe', 20, 30, 'delivered', 25, 30, 35, 'legacy-device')`
   );
 
-  const migration = MIGRATIONS[MIGRATIONS.length - 1];
+  const migration = MIGRATIONS[receiptsMigrationIndex];
   for (const statement of splitSql(migration.sql)) legacy.exec(statement);
   const receipt = legacy.query(
     'SELECT user_id, device_id, character_id, device_received_at, local_saved_at, read_at FROM outbound_device_receipts WHERE server_message_id = ?',
     'legacy_message_123456'
   )[0];
-  assert.deepEqual(receipt, {
+  assert.deepEqual({ ...receipt }, {
     user_id: 'owner',
     device_id: 'legacy-device',
     character_id: 'char-a',
@@ -229,19 +236,19 @@ test('推送投递迁移只恢复历史临时失败，不重放成功与永久�
     );
   }
   legacy.exec(
-    \`INSERT INTO push_deliveries
+    `INSERT INTO push_deliveries
       (id, dedupe_key, subscription_id, status, http_status, created_at)
-     VALUES ('legacy-5xx', 'legacy-5xx', 'sub-1', 'failed', 503, 100)\`
+     VALUES ('legacy-5xx', 'legacy-5xx', 'sub-1', 'failed', 503, 100)`
   );
   legacy.exec(
-    \`INSERT INTO push_deliveries
+    `INSERT INTO push_deliveries
       (id, dedupe_key, subscription_id, status, http_status, created_at)
-     VALUES ('legacy-400', 'legacy-400', 'sub-2', 'failed', 400, 200)\`
+     VALUES ('legacy-400', 'legacy-400', 'sub-2', 'failed', 400, 200)`
   );
   legacy.exec(
-    \`INSERT INTO push_deliveries
+    `INSERT INTO push_deliveries
       (id, dedupe_key, subscription_id, status, http_status, created_at)
-     VALUES ('legacy-sent', 'legacy-sent', 'sub-3', 'sent', 201, 300)\`
+     VALUES ('legacy-sent', 'legacy-sent', 'sub-3', 'sent', 201, 300)`
   );
 
   const applied = applyMigrations(legacy.exec, 999);
@@ -544,7 +551,10 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.equal(readiness.payload.contextVersionReady, true);
   assert.equal(readiness.payload.contextVersionTrackedRoles, 1);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
-  assert.deepEqual(readiness.payload.autonomyExecutionBlockers, ['executor_unavailable']);
+  assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
+    'activity_executor_config_missing',
+    'device_local_model_runtime_not_verified'
+  ]);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
   assert.equal(snapshot.contextVersion, 2);
@@ -932,7 +942,7 @@ test('独立云端推送页暴露设备配对入口，客户端提供一次性�
   assert.ok(presenceClientStart >= 0 && presenceClientEnd > presenceClientStart,
     '必须存在可独立核对的角色前台状态管理器');
   const presenceClientSource = clientSource.slice(presenceClientStart, presenceClientEnd);
-  assert.ok(presenceClientSource.includes("if (document.visibilityState === 'hidden') return;"),
+  assert.ok(presenceClientSource.includes("document.visibilityState === 'hidden') return;"),
     '隐藏标签页不能覆盖设备级前台心跳');
   assert.equal(presenceClientSource.includes('updatePresenceHeartbeat(false)'), false,
     '设备级在线状态必须依靠心跳 TTL 过期，不能由单个标签页写离线');
@@ -1339,6 +1349,7 @@ test('停止前台管理器会中止当前标签页的在途请求', async () =>
   });
 
   const manager = await browserWindow.MaomaoCloud.startCharacterPresence('role-123');
+  await new Promise(resolve => setTimeout(resolve, 0));
   intervalCallback();
   await secondHeartbeatStarted;
   manager.stop();
@@ -1632,7 +1643,8 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readiness.payload.contextVersionTrackedRoles, 0);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
-    'executor_unavailable',
+    'activity_executor_config_missing',
+    'device_local_model_runtime_not_verified',
     'context_version_unavailable'
   ]);
   assert.deepEqual(readiness.payload.recentSchedulerReasons, [
@@ -1802,9 +1814,19 @@ test('readiness 的在线设备与前台租约计数按账号、心跳 TTL 和 g
   const revokedDevice = makeDevice();
   const futureDevice = makeDevice();
   await registerDevice(ctx, activeDevice);
-  await registerDevice(ctx, staleDevice);
-  await registerDevice(ctx, revokedDevice);
-  await registerDevice(ctx, futureDevice);
+  const registerPairedDevice = async device => {
+    const pairing = await ctx.asJson('/api/devices/pairing-token', {
+      method: 'POST', device: activeDevice
+    });
+    assert.equal(pairing.status, 200);
+    const registered = await registerDevice(ctx, device, {
+      pairingToken: pairing.payload.pairingToken
+    });
+    assert.equal(registered.status, 200);
+  };
+  await registerPairedDevice(staleDevice);
+  await registerPairedDevice(revokedDevice);
+  await registerPairedDevice(futureDevice);
 
   ctx.store.upsertDevicePresence({
     userId: 'owner',
@@ -2425,7 +2447,7 @@ test('活动队列幂等入队是原子的，重复 ID 不覆盖首次任务数�
 /* Service Worker 回归：保留缓存/离线导航，同时具备推送处理能力          */
 /* ------------------------------------------------------------------ */
 
-function loadServiceWorker(scope) {
+function loadServiceWorker(scope, authAccount, authStatus = 200) {
   const source = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
   const serviceWorkerScope = scope || 'https://mao.test/';
   const existingChatUrl = new URL('chat/chat/chat.html', serviceWorkerScope).href;
@@ -2434,6 +2456,11 @@ function loadServiceWorker(scope) {
   const opened = [];
   const focused = [];
   const navigations = [];
+  const authRequests = [];
+  const cacheNamesOpened = [];
+  const account = authAccount === undefined
+    ? { id: 'MAO-AAAAAAAAAAAA', role: 'user', status: 'active' }
+    : authAccount;
   const clients = {
     matchAll: async () => [
       {
@@ -2457,12 +2484,19 @@ function loadServiceWorker(scope) {
       console
     },
     caches: {
-      open: async () => ({ add: async () => undefined, put: async () => undefined, match: async () => null }),
+      open: async name => { cacheNamesOpened.push(String(name)); return { add: async () => undefined, put: async () => undefined, match: async () => null }; },
       match: async () => null,
       keys: async () => []
     },
-    fetch: async () => new Response('', { status: 200 }),
+    fetch: async (url, init) => {
+      authRequests.push({ url: String(url), init: init || {} });
+      return new Response(JSON.stringify(account ? { account } : {}), {
+        status: authStatus,
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+    },
     URL,
+    Headers,
     Response,
     console,
     Date,
@@ -2474,7 +2508,7 @@ function loadServiceWorker(scope) {
     TextDecoder
   };
   vm.runInNewContext(source, sandbox, { filename: 'sw.js' });
-  return { handlers, notifications, opened, focused, navigations };
+  return { handlers, notifications, opened, focused, navigations, authRequests, cacheNamesOpened };
 }
 
 test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', async () => {
@@ -2487,7 +2521,7 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
 
   // 推送展示
   const pushEvent = {
-    data: { json: () => ({ title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine', tag: 't1' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine', tag: 't1' }) },
     waitUntil: promise => { pushEvent.wait = promise; }
   };
   sw.handlers.push[0](pushEvent);
@@ -2503,7 +2537,7 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
 
   // 外站 URL 必须被拒绝，回退到首页
   const evil = {
-    data: { json: () => ({ title: 'x', body: 'y', url: 'https://evil.example/phish' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: 'https://evil.example/phish' }) },
     waitUntil: promise => { evil.wait = promise; }
   };
   sw.handlers.push[0](evil);
@@ -2512,7 +2546,7 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
 
   // 点击通知：已有本站窗口时在该窗口内跳转
   const clickEvent = {
-    notification: { close: () => undefined, data: { url: 'https://mao.test/chat/chat/chat-detail.html?id=heroine' } },
+    notification: { close: () => undefined, data: { accountId: 'MAO-AAAAAAAAAAAA', url: 'https://mao.test/chat/chat/chat-detail.html?id=heroine' } },
     waitUntil: promise => { clickEvent.wait = promise; }
   };
   sw.handlers.notificationclick[0](clickEvent);
@@ -2521,11 +2555,115 @@ test('sw.js 保留缓存与离线导航，并新增 push / notificationclick', a
   assert.deepEqual(sw.opened, [], '已有窗口时不应重复开窗');
 });
 
+
+test('推送只在当前登录 MAO 账号匹配时展示，退出或切换账号后静默丢弃', async () => {
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+
+  const matching = loadServiceWorker(undefined, {
+    id: accountA, role: 'user', status: 'active'
+  });
+  const validEvent = {
+    data: { json: () => ({
+      accountId: accountA,
+      title: '新消息',
+      body: '有一位角色刚刚联系你',
+      url: './chat/chat/chat-detail.html?id=role-a',
+      tag: 'role-a-message'
+    }) },
+    waitUntil: promise => { validEvent.wait = promise; }
+  };
+  matching.handlers.push[0](validEvent);
+  await validEvent.wait;
+  assert.equal(matching.notifications.length, 1);
+  assert.equal(matching.notifications[0].options.data.accountId, accountA);
+  assert.equal(matching.authRequests.length, 1);
+  assert.equal(matching.authRequests[0].url, '/api/accounts/me');
+  assert.equal(matching.authRequests[0].init.credentials, 'same-origin');
+  assert.equal(matching.authRequests[0].init.headers['x-mao-account-context'], accountA);
+
+  const switched = loadServiceWorker(undefined, {
+    id: accountB, role: 'user', status: 'active'
+  });
+  const staleEvent = {
+    data: { json: () => ({
+      accountId: accountA, title: '新消息', body: '旧账号通知',
+      url: './chat/chat/chat-detail.html?id=role-a'
+    }) },
+    waitUntil: promise => { staleEvent.wait = promise; }
+  };
+  switched.handlers.push[0](staleEvent);
+  await staleEvent.wait;
+  assert.equal(switched.notifications.length, 0,
+    '登录了 B 账号的设备不能展示 A 账号的推送');
+  assert.equal(switched.authRequests[0].init.headers['x-mao-account-context'], accountA);
+
+  const loggedOut = loadServiceWorker(undefined, null, 401);
+  const loggedOutEvent = {
+    data: { json: () => ({
+      accountId: accountA, title: '新消息', body: '已退出账号的通知',
+      url: './chat/chat/chat-detail.html?id=role-a'
+    }) },
+    waitUntil: promise => { loggedOutEvent.wait = promise; }
+  };
+  loggedOut.handlers.push[0](loggedOutEvent);
+  await loggedOutEvent.wait;
+  assert.equal(loggedOut.notifications.length, 0,
+    '未登录状态不得展示此前账号的通知');
+
+  const legacyOwner = loadServiceWorker();
+  const legacyEvent = {
+    data: { json: () => ({
+      accountId: 'owner', title: '旧通知', body: '未绑定永久账号的旧通知',
+      url: './index.html'
+    }) },
+    waitUntil: promise => { legacyEvent.wait = promise; }
+  };
+  legacyOwner.handlers.push[0](legacyEvent);
+  await legacyEvent.wait;
+  assert.equal(legacyOwner.notifications.length, 0,
+    '缺少有效 MAO 永久 ID 的旧通知必须 fail-closed');
+});
+
+test('点击系统通知时重新核对 MAO 账号，过期账号通知不能打开聊天页', async () => {
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+  const switched = loadServiceWorker(undefined, {
+    id: accountB, role: 'user', status: 'active'
+  });
+  const switchedClick = {
+    notification: {
+      close: () => undefined,
+      data: { accountId: accountA, url: 'https://mao.test/chat/chat/chat-detail.html?id=role-a' }
+    },
+    waitUntil: promise => { switchedClick.wait = promise; }
+  };
+  switched.handlers.notificationclick[0](switchedClick);
+  await switchedClick.wait;
+  assert.deepEqual(switched.navigations, []);
+  assert.deepEqual(switched.opened, [],
+    '账号切换后，旧账号通知只能关闭，不能打开旧账号聊天');
+
+  const loggedOut = loadServiceWorker(undefined, null, 401);
+  const loggedOutClick = {
+    notification: {
+      close: () => undefined,
+      data: { accountId: accountA, url: 'https://mao.test/chat/chat/chat-detail.html?id=role-a' }
+    },
+    waitUntil: promise => { loggedOutClick.wait = promise; }
+  };
+  loggedOut.handlers.notificationclick[0](loggedOutClick);
+  await loggedOutClick.wait;
+  assert.deepEqual(loggedOut.navigations, []);
+  assert.deepEqual(loggedOut.opened, [],
+    '退出登录后，系统通知不能重新打开账号页面');
+});
+
 test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地址', async () => {
   const sw = loadServiceWorker('https://mao.test/app/');
 
   const valid = {
-    data: { json: () => ({ title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: '测试', body: 'hello', url: './chat/chat/chat-detail.html?id=heroine' }) },
     waitUntil: promise => { valid.wait = promise; }
   };
   sw.handlers.push[0](valid);
@@ -2537,7 +2675,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   );
 
   const outsideRelative = {
-    data: { json: () => ({ title: 'x', body: 'y', url: '../outside.html' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: '../outside.html' }) },
     waitUntil: promise => { outsideRelative.wait = promise; }
   };
   sw.handlers.push[0](outsideRelative);
@@ -2549,7 +2687,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   );
 
   const outsideSameOrigin = {
-    data: { json: () => ({ title: 'x', body: 'y', url: 'https://mao.test/other-app/settings.html' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: 'https://mao.test/other-app/settings.html' }) },
     waitUntil: promise => { outsideSameOrigin.wait = promise; }
   };
   sw.handlers.push[0](outsideSameOrigin);
@@ -2561,7 +2699,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   );
 
   const credentialed = {
-    data: { json: () => ({ title: 'x', body: 'y', url: 'https://user@mao.test/app/chat/chat.html' }) },
+    data: { json: () => ({ accountId: 'MAO-AAAAAAAAAAAA', title: 'x', body: 'y', url: 'https://user@mao.test/app/chat/chat.html' }) },
     waitUntil: promise => { credentialed.wait = promise; }
   };
   sw.handlers.push[0](credentialed);
@@ -2575,7 +2713,7 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   const click = {
     notification: {
       close: () => undefined,
-      data: { url: 'https://mao.test/outside.html' }
+      data: { accountId: 'MAO-AAAAAAAAAAAA', url: 'https://mao.test/outside.html' }
     },
     waitUntil: promise => { click.wait = promise; }
   };
@@ -2586,6 +2724,55 @@ test('sw.js 在子路径部署时拒绝同源但超出应用 scope 的通知地�
   assert.deepEqual(sw.opened, [], '已有 scope 内窗口时应在原窗口回退到首页');
 });
 
+
+test('CSS 字体请求按 URL 中的 MAO ID 取缓存，并拒绝其他账号 Cookie', async () => {
+  const accountA = 'MAO-AAAAAAAAAAAA';
+  const accountB = 'MAO-BBBBBBBBBBBB';
+  const fontRequest = (url) => ({
+    request: {
+      method: 'GET',
+      url: 'https://mao.test' + url,
+      headers: new Headers()
+    },
+    respondWith(promise) { this.responsePromise = promise; }
+  });
+
+  const alice = loadServiceWorker(undefined, {
+    id: accountA, role: 'user', status: 'active'
+  });
+  const aliceEvent = fontRequest('/__maomao_fonts/' + accountA + '/custom.woff2');
+  alice.handlers.fetch[0](aliceEvent);
+  const aliceResponse = await aliceEvent.responsePromise;
+  assert.equal(aliceResponse.status, 404,
+    '缓存尚未写入时返回 404，但只能查询 Alice 自己的缓存');
+  assert.deepEqual(alice.cacheNamesOpened, [
+    '__mao_account_v1__' + accountA + '__maomao-font-assets-v1'
+  ]);
+
+  const bob = loadServiceWorker(undefined, {
+    id: accountB, role: 'user', status: 'active'
+  });
+  const staleAliceEvent = fontRequest('/__maomao_fonts/' + accountA + '/custom.woff2');
+  bob.handlers.fetch[0](staleAliceEvent);
+  const staleAliceResponse = await staleAliceEvent.responsePromise;
+  assert.equal(staleAliceResponse.status, 404);
+  assert.deepEqual(bob.cacheNamesOpened, [],
+    'B 登录态不能打开或查找 A 的字体缓存');
+  assert.equal(
+    bob.authRequests[0].init.headers.get('x-mao-account-context'),
+    accountA,
+    '字体路径中的账号 ID 必须和服务器会话一起核对'
+  );
+
+  const creator = loadServiceWorker(undefined, {
+    id: 'MAO-CCCCCCCCCCCC', role: 'super_admin', status: 'active'
+  });
+  const creatorEvent = fontRequest('/__maomao_fonts/creator-font.woff2');
+  creator.handlers.fetch[0](creatorEvent);
+  await creatorEvent.responsePromise;
+  assert.deepEqual(creator.cacheNamesOpened, ['maomao-font-assets-v1'],
+    '创作者必须继续使用既有字体缓存名');
+});
 
 test('客户端代码不含任何私钥或 API Key 字面量', async () => {
   const client = fs.readFileSync(path.join(rootDir, 'shared/js/cloud-push-client.js'), 'utf8');
@@ -2600,7 +2787,7 @@ test('客户端代码不含任何私钥或 API Key 字面量', async () => {
   assert.ok(cloudSettings.includes('cloud-push-client.js'), '独立云端推送页必须加载原云连接客户端');
 
   const serviceWorker = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
-  assert.ok(serviceWorker.includes("'./shared/js/cloud-push-client.js'"), 'PWA 必须预缓存云连接客户端');
+  assert.ok(serviceWorker.includes('./shared/js/cloud-push-client.js'), 'PWA 必须预缓存云连接客户端');
 });
 
 
@@ -2992,13 +3179,13 @@ test('同账号其他设备可接管未确认消息，设备回执互不覆盖�
   const otherPairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device: deviceA });
   assert.equal(otherPairing.status, 200);
   await registerDevice(ctx, otherAccount, { pairingToken: otherPairing.payload.pairingToken });
-  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
-  const isolatedPull = await ctx.asJson('/api/characters/char-a/outbound', { device: otherAccount });
+  const foreignAccountId = 'MAO-BBBBBBBBBBBB', foreignSessionToken = randomToken(32), foreignSessionId = randomToken(12), foreignNow = ctx.now(); ctx.store.exec('INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at, authorized_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', foreignAccountId, 'takeover_foreign', 'takeover_foreign', 'test-salt', 'test-hash', 'user', 'active', foreignNow, foreignNow, foreignNow); assert.equal(ctx.store.createMaoAccountSession({ id: foreignSessionId, accountId: foreignAccountId, tokenHash: await sha256Hex(foreignSessionToken), now: foreignNow, expiresAt: foreignNow + 3600000 }), true); ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', foreignAccountId, otherAccount.deviceId);
+  const isolatedPull = await ctx.asJson('/api/characters/char-a/outbound', { device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } });
   assert.equal(isolatedPull.status, 200);
   assert.equal(isolatedPull.payload.messages.length, 0);
   const isolatedAck = await ctx.asJson(
     '/api/characters/char-a/outbound/' + message.serverMessageId + '/ack',
-    { method: 'POST', device: otherAccount }
+    { method: 'POST', device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } }
   );
   assert.equal(isolatedAck.status, 404);
 });
@@ -3329,7 +3516,7 @@ test('客户端收件箱真实运行：断网后从持久化游标续收，失�
       }
       throw new Error('unexpected mock request: ' + method + ' ' + url.pathname);
     };
-    runInNewContext(clientSource, {
+    vm.runInNewContext(clientSource, {
       window: windowMock,
       document: documentMock,
       localStorage: localStorageMock,
@@ -3450,7 +3637,7 @@ test('本地存储额度不足时，页面内存游标仍可让连续轮询越�
     }
     throw new Error('unexpected mock request: ' + method + ' ' + url.pathname);
   };
-  runInNewContext(clientSource, {
+  vm.runInNewContext(clientSource, {
     window: windowMock,
     document: documentMock,
     localStorage: localStorageMock,
@@ -3551,7 +3738,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(helperStart >= 0 && helperEnd > helperStart,
     '云端重复消息必须提供本地记录完整性检查');
   const helperSource = chat.slice(helperStart, helperEnd).trim();
-  const inspectHistory = runInNewContext('(' + helperSource + ')');
+  const inspectHistory = vm.runInNewContext('(' + helperSource + ')');
   const serverMessageId = 'cloud_integrity_message_123456';
   const expectedText = '完整的云端正文';
   assert.equal(inspectHistory([], serverMessageId, expectedText), 'missing');
@@ -3577,9 +3764,11 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(adapter.includes("existingState === 'conflict') return false"),
     '本地记录内容冲突时必须保留云端待同步状态');
   const saveIndex = adapter.indexOf('if (!saveMessages(history))');
-  const renderIndex = adapter.indexOf('if (_vl) vlRefresh();');
-  assert.ok(saveIndex >= 0 && renderIndex > saveIndex,
-    '必须先验证本地保存成功，再渲染消息');
+  const renderIndex = adapter.indexOf('if (_vl) {');
+  const pacedRenderIndex = adapter.indexOf('await appendAiMessageWithPacing(');
+  assert.ok(saveIndex >= 0 && renderIndex > saveIndex &&
+    pacedRenderIndex > renderIndex,
+    '必须先验证本地保存成功，再走任一消息渲染分支');
   assert.ok(adapter.includes('if (document.visibilityState === \'hidden\') return false'),
     '页面隐藏后，迟到的拉取响应不能再写入聊天历史');
   assert.ok(adapter.includes('if (isGroupChat'),
@@ -3607,7 +3796,10 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
   assert.ok(sync.includes('window.addEventListener(\'storage\', onOtherTabNotice)'),
     '其他标签页保存消息后应刷新当前历史');
 
-  assert.match(serviceWorker, /phone-app-pwa-v179/);
+  const serviceWorkerCacheVersion = serviceWorker.match(/const CACHE_NAME = ['"]phone-app-pwa-v(\d+)['"]/);
+  assert.ok(serviceWorkerCacheVersion &&
+    Number(serviceWorkerCacheVersion[1]) >= 179,
+    'PWA 缓存版本不得回退到可见区域已读观察修复之前');
   assert.ok(serviceWorker.includes("'./chat/chat/chat-detail.html'"),
     'PWA shell 应继续预缓存现有聊天详情页');
 });
@@ -3615,6 +3807,7 @@ test('单角色聊天页接收出站消息并在原历史写后读回成功后�
 
 test('自主活动 API：本地生成器可安全认领并把结果交给原有出站收件箱', async () => {
   const now = 1800000000000;
+  const proactiveMessage = '我刚刚想到一件想和你分享的事。';
   const ctx = setupTestStore(openTestDb(), {
     AUTONOMY_LEASE_MS: '60000',
     AUTONOMY_TICK_LIMIT: '10',
@@ -3822,6 +4015,17 @@ test('生成期间上下文版本发生变化时，完成接口会跳过过时�
   ctx.timestamps.push(now);
   const device = makeDevice();
   await registerDevice(ctx, device);
+
+  const heartbeat = await ctx.asJson('/api/presence/heartbeat', {
+    method: 'POST', device, body: { foregroundActive: true }
+  });
+  assert.equal(heartbeat.status, 200);
+
+  const lease = await ctx.asJson('/api/characters/char-stale/lease', {
+    method: 'POST', device, body: { action: 'acquire' }
+  });
+  assert.equal(lease.status, 200);
+
   await ctx.asJson('/api/autonomy/global', {
     method: 'PUT', device, body: { enabled: true }
   });
@@ -4118,6 +4322,20 @@ test('本机主动消息完成后会立即发送不含正文的角色聊天 Push
   });
   assert.equal(notification.url, './chat/chat/chat-detail.html?id=char-push');
   assert.equal(notification.type, 'chat_message');
+  assert.equal(notification.accountId, 'owner', '云端推送必须带上目标设备所属 MAO 账号');
+  const accountNotification = buildOutboundPushPayload({
+    accountId: 'MAO-AAAAAAAAAAAA',
+    characterId: 'char-push',
+    serverMessageId,
+    timestamp: now
+  });
+  assert.equal(accountNotification.accountId, 'MAO-AAAAAAAAAAAA');
+  assert.throws(() => buildOutboundPushPayload({
+    accountId: 'MAO-invalid',
+    characterId: 'char-push',
+    serverMessageId,
+    timestamp: now
+  }), /outbound push target is invalid/);
   assert.match(notification.body, /有一位角色刚刚联系你/);
   assert.equal(notification.body.includes('我刚刚想到'), false,
     '锁屏通知不得暴露主动消息正文');
@@ -4142,7 +4360,8 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
   const device = makeDevice();
   await registerDevice(ctx, device);
   const subscription = await makeBrowserSubscription();
-  await subscribeDevice(ctx, device, subscription);
+  const subscribed = await subscribeDevice(ctx, device, subscription);
+  assert.equal(subscribed.status, 200);
 
   const serverMessageId = 'autonomy_retry_push_123456_1';
   const outbox = ctx.store.enqueueOutboundMessage({
@@ -4186,7 +4405,7 @@ test('聊天 Push 失败会写入退避记录，并由后续维护重试同一�
 
   const delivery = ctx.store.findDelivery(
     'outbound:' + serverMessageId,
-    subscription.payload.subscription.id
+    subscribed.payload.subscription.id
   );
   assert.equal(delivery.status, 'sent');
   assert.equal(delivery.attempt_count, 2);
@@ -4215,8 +4434,6 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
   const second = await pairAnotherDevice();
   const revoked = await pairAnotherDevice();
   const foreign = await pairAnotherDevice();
-  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', foreign.deviceId);
-
   const subscriptions = new Map();
   for (const device of [source, second, revoked, foreign]) {
     const subscription = await makeBrowserSubscription();
@@ -4225,11 +4442,36 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
     subscriptions.set(device.deviceId, result.payload.subscription.id);
   }
 
+  const receiverAccountId = 'MAO-AAAAAAAAAAAA';
+  const foreignAccountId = 'MAO-BBBBBBBBBBBB';
+
+  for (const account of [
+    { id: receiverAccountId, username: 'push_receiver' },
+    { id: foreignAccountId, username: 'push_foreign' }
+  ]) {
+    ctx.store.exec(
+      `INSERT INTO mao_accounts
+        (id, username, username_key, password_salt, password_hash,
+         role, status, created_at, updated_at, authorized_at)
+       VALUES (?, ?, ?, 'test-salt', 'test-hash', 'user', 'active', ?, ?, ?)`,
+      account.id, account.username, account.username, now, now, now
+    );
+  }
+
+  ctx.store.exec(
+    'UPDATE devices SET user_id = ? WHERE id IN (?, ?, ?)',
+    receiverAccountId, source.deviceId, second.deviceId, revoked.deviceId
+  );
+  ctx.store.exec(
+    'UPDATE devices SET user_id = ? WHERE id = ?',
+    foreignAccountId, foreign.deviceId
+  );
+
   const serverMessageId = 'account_push_targets_123456';
   ctx.store.enqueueOutboundMessage({
     id: 'out_' + serverMessageId,
     deviceId: source.deviceId,
-    userId: 'owner',
+    userId: receiverAccountId,
     characterId: 'char-push-multi',
     serverMessageId,
     dedupeKey: 'autonomy:push:multi-device',
@@ -4238,6 +4480,8 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
   });
 
   const beforeRevocation = ctx.store.listOutboundPushCandidates({ now, limit: 50 });
+  assert.ok(beforeRevocation.every(row => row.target_account_id === receiverAccountId),
+    'Push payload 的账号标识必须取自目标设备所属 MAO ID，而不是发送设备以外的其他租户');
   assert.deepEqual(
     beforeRevocation.map(row => row.device_id).sort(),
     [source.deviceId, second.deviceId, revoked.deviceId].sort(),
@@ -4282,6 +4526,84 @@ test('聊天 Push 面向同账号所有有效设备，排除跨账号和已撤�
   assert.equal(delivery.status, 'sent');
 });
  
+
+test('接收设备在 Push 加密期间被撤销时，实际网络发送前必须再次校验', async () => {
+  const now = 1800000000000;
+  const keys = makeVapidKeys();
+  const pushFetch = createFakePushFetch(201);
+  const ctx = setupTestStore(openTestDb());
+  const source = makeDevice();
+  await registerDevice(ctx, source);
+
+  const pairing = await ctx.asJson('/api/devices/pairing-token', {
+    method: 'POST',
+    device: source
+  });
+  assert.equal(pairing.status, 200);
+  const target = makeDevice();
+  assert.equal((await registerDevice(ctx, target, {
+    pairingToken: pairing.payload.pairingToken
+  })).status, 200);
+
+  const subscription = await makeBrowserSubscription();
+  const subscribed = await subscribeDevice(ctx, target, subscription);
+  assert.equal(subscribed.status, 200);
+  const serverMessageId = 'push_revoke_during_crypto_123456';
+  const outbox = ctx.store.enqueueOutboundMessage({
+    id: 'out_' + serverMessageId,
+    deviceId: source.deviceId,
+    userId: 'owner',
+    characterId: 'char-push-revoke-race',
+    serverMessageId,
+    dedupeKey: 'autonomy:push:revoke-race',
+    payload: { type: 'text', text: '这条消息不应推送给撤销后的设备。' },
+    now
+  });
+  assert.equal(outbox.inserted, true);
+
+  const originalPreflight = ctx.store.isActivePushSubscription.bind(ctx.store);
+  let preflightCalls = 0;
+  ctx.store.isActivePushSubscription = (subscriptionId, deviceId) => {
+    preflightCalls += 1;
+    // Simulate an administrator/device request revoking the recipient while
+    // WebCrypto is still preparing the push payload.
+    ctx.store.revokeDevice(target.deviceId, now + 1);
+    return originalPreflight(subscriptionId, deviceId);
+  };
+
+  const dispatched = await dispatchPendingOutboundPushes({
+    store: ctx.store,
+    env: {
+      VAPID_PUBLIC_KEY: keys.publicB64,
+      VAPID_PRIVATE_KEY: keys.privateB64,
+      VAPID_SUBJECT: 'mailto:test@maomao.dev'
+    },
+    now: now + 1,
+    fetchImpl: pushFetch,
+    limit: 10
+  });
+
+  assert.equal(preflightCalls, 1);
+  assert.equal(pushFetch.calls.length, 0,
+    '接收设备撤销后，Web Push 网络请求不得再启动');
+  assert.equal(dispatched.sent, 0);
+  assert.equal(dispatched.skipped, 1);
+  assert.equal(
+    ctx.store.findDelivery('outbound:' + serverMessageId, subscribed.payload.subscription.id).status,
+    'failed',
+    '已取消的投递需要结束租约，不能卡在 sending 状态'
+  );
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM devices WHERE id = ?', target.deviceId)[0].revoked_at,
+    null
+  );
+  assert.equal(
+    ctx.query('SELECT disabled_at FROM push_subscriptions WHERE id = ?', subscribed.payload.subscription.id)[0].disabled_at != null,
+    true
+  );
+});
+
+
 test('一台设备已保存消息后，其他尚未保存设备仍能获得 Push 提醒', async () => {
   const now = 1800000000000;
   const keys = makeVapidKeys();
@@ -4361,11 +4683,23 @@ test('一台设备已保存消息后，其他尚未保存设备仍能获得 Push
 test('Worker scheduled maintenance 会持续扫描并重试待送达的聊天 Push', () => {
   const workerSource = fs.readFileSync(path.join(rootDir, 'worker.js'), 'utf8');
   assert.match(workerSource, /import \{ createApp, dispatchPendingOutboundPushes \} from '\.\/worker\/lib\/app\.js'/);
-  assert.match(workerSource, /internal\/maintenance[\s\S]{0,700}dispatchPendingOutboundPushes/);
+  const maintenanceStart = workerSource.indexOf(
+    "if (url.pathname === '/internal/maintenance' && request.method === 'POST') {"
+  );
+  const maintenanceEnd = workerSource.indexOf(
+    "if (url.pathname === '/internal/tick' && request.method === 'POST') {",
+    maintenanceStart
+  );
+  assert.ok(
+    maintenanceStart >= 0 && maintenanceEnd > maintenanceStart,
+    'Worker 必须存在独立的 internal maintenance 处理分支'
+  );
+  const maintenanceHandler = workerSource.slice(maintenanceStart, maintenanceEnd);
+  assert.match(maintenanceHandler, /dispatchPendingOutboundPushes/);
   assert.match(workerSource, /async scheduled\([\s\S]{0,500}internal\/maintenance/);
   assert.match(workerSource, /pushDispatch/);
-  const recoveryIndex = workerSource.indexOf('repairAllStagedActivityOutboxes');
-  const dispatchIndex = workerSource.indexOf('dispatchPendingOutboundPushes', recoveryIndex);
+  const recoveryIndex = maintenanceHandler.indexOf('repairAllStagedActivityOutboxes');
+  const dispatchIndex = maintenanceHandler.indexOf('dispatchPendingOutboundPushes');
   assert.ok(recoveryIndex >= 0 && dispatchIndex > recoveryIndex,
     '定时维护必须先恢复暂存收件箱，再发送对应 Push');
 });
@@ -4573,15 +4907,16 @@ test('生命周期回执支持同账号跨设备恢复，但不能跨账号或�
   const otherPairing = await ctx.asJson('/api/devices/pairing-token', { method: 'POST', device });
   assert.equal(otherPairing.status, 200);
   await registerDevice(ctx, otherAccount, { pairingToken: otherPairing.payload.pairingToken });
-  ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'another-account', otherAccount.deviceId);
+  ctx.store.exec('INSERT INTO mao_accounts (id, username, username_key, password_salt, password_hash, role, status, created_at, updated_at, authorized_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 'MAO-BBBBBBBBBBBB', 'lifecycle_foreign', 'lifecycle_foreign', 'test-salt', 'test-hash', 'user', 'active', now, now, now); ctx.store.exec('UPDATE devices SET user_id = ? WHERE id = ?', 'MAO-BBBBBBBBBBBB', otherAccount.deviceId);
+  const foreignSessionToken = randomToken(32); const foreignSessionId = randomToken(12); assert.equal(ctx.store.createMaoAccountSession({ id: foreignSessionId, accountId: "MAO-BBBBBBBBBBBB", tokenHash: await sha256Hex(foreignSessionToken), now, expiresAt: now + 3600000 }), true);
   const otherAccountStatus = await ctx.asJson(
     '/api/characters/char-owner-only/outbound/' + messageId + '/status',
-    { device: otherAccount }
+    { device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } }
   );
   assert.equal(otherAccountStatus.status, 404);
   const forgedAck = await ctx.asJson(
     '/api/characters/char-owner-only/outbound/' + messageId + '/ack',
-    { method: 'POST', device: otherAccount }
+    { method: 'POST', device: otherAccount, headers: { cookie: 'MAO_SESSION=' + foreignSessionToken } }
   );
   assert.equal(forgedAck.status, 404);
 });
