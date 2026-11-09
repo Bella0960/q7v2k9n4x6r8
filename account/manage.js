@@ -156,11 +156,12 @@
     }
     sessions.forEach(session => {
       const detail = '最近使用 ' + formatTime(session.lastUsedAt) + ' · 到期 ' + formatTime(session.expiresAt);
-      if (session.revokedAt) {
+      if (session.revokedAt || session.expired) {
         const row = textElement('div', 'session-item', '');
         row.append(textElement('div', 'item-icon', '◷'));
         const main = textElement('div', 'item-main', '');
-        main.append(textElement('div', 'item-title', '已退出的登录会话'), textElement('div', 'item-sub', detail));
+        const status = session.revokedAt ? '已退出的登录会话' : '已过期的登录会话';
+        main.append(textElement('div', 'item-title', status), textElement('div', 'item-sub', detail));
         row.appendChild(main);
         list.appendChild(row);
         return;
