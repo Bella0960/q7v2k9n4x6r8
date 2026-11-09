@@ -155,7 +155,7 @@ test('账号详情使用服务端权威状态与邀请码快照，查询失败�
 
 test('账号停用、恢复和永久撤销的审计时间线展示状态迁移', () => {
   assert.match(adminScript, /if \(record\.fromStatus && record\.toStatus\)/);
-  assert.match(adminScript, /'状态 ' \+ statusText\(record\.fromStatus\) \+ ' → ' \+ statusText\(record\.toStatus\)/);
+  assert.match(adminScript, /'状态从 ' \+ statusText\(record\.fromStatus\) \+ ' 调整为 ' \+ statusText\(record\.toStatus\)/);
   assert.match(adminScript, /statusText\(status\)/);
   assert.match(adminScript, /随账号停用自动撤销/);
   assert.match(adminScript, /随账号永久撤销自动失效/);
