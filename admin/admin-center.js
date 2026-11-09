@@ -10,6 +10,8 @@
   let pendingAction = '';
   let generatedCode = '';
   let busy = false;
+  let initializing = false;
+  const busyButtonState = new WeakMap();
 
   async function api(path, method = 'GET', body = null) {
     const response = await fetch(path, {
@@ -50,14 +52,29 @@
     return node;
   }
 
-  function showError(message) {
+  function showError(message, retry) {
     let node = $('adminError');
     if (!node) {
       node = el('div', 'page-error', '');
       node.id = 'adminError';
       document.querySelector('.admin-intro').after(node);
     }
-    node.textContent = message || '操作失败，请稍后再试。';
+    node.replaceChildren(el('span', '', message || '操作失败，请稍后再试。'));
+    if (typeof retry === 'function') {
+      const retryButton = el('button', 'error-retry', '重新检查');
+      retryButton.type = 'button';
+      retryButton.addEventListener('click', async () => {
+        if (retryButton.disabled) return;
+        retryButton.disabled = true;
+        try {
+          await retry();
+        } finally {
+          if (retryButton.isConnected) retryButton.disabled = false;
+        }
+      });
+      node.appendChild(retryButton);
+    }
+    if (busy) setButtonsDisabled(true);
   }
 
   function hideError() {
@@ -83,10 +100,22 @@
     })[status] || '';
   }
 
+  function setButtonsDisabled(disabled) {
+    document.querySelectorAll('button').forEach(button => {
+      if (disabled) {
+        if (!busyButtonState.has(button)) busyButtonState.set(button, button.disabled);
+        button.disabled = true;
+      } else if (busyButtonState.has(button)) {
+        button.disabled = busyButtonState.get(button);
+        busyButtonState.delete(button);
+      }
+    });
+  }
+
   async function run(action) {
     if (busy) return;
     busy = true;
-    document.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    setButtonsDisabled(true);
     hideError();
     try {
       await action();
@@ -95,14 +124,14 @@
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      if (error.status === 401 || error.code === 'ADMIN_ONLY') {
+      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
         window.location.replace('../index.html');
         return;
       }
       showError(error.message || '操作失败，请稍后重试。');
     } finally {
       busy = false;
-      document.querySelectorAll('button').forEach(button => { button.disabled = false; });
+      setButtonsDisabled(false);
     }
   }
 
@@ -173,6 +202,7 @@
       row.append(avatar, main, status, button);
       list.appendChild(row);
     });
+    if (busy) setButtonsDisabled(true);
   }
 
   function inviteState(invite, timestamp = Date.now()) {
@@ -265,6 +295,7 @@
       }
       list.appendChild(row);
     });
+    if (busy) setButtonsDisabled(true);
   }
 
   async function refreshAll() {
@@ -284,6 +315,7 @@
       if (account) await renderAccountDetail(account);
       else closeDetail();
     }
+    if (busy) setButtonsDisabled(true);
   }
 
   async function openAccount(accountId) {
@@ -386,6 +418,7 @@
           $('generatedCode').textContent = generatedCode;
           $('copyInviteCode').textContent = '复制邀请码';
           $('inviteCodeSheet').hidden = false;
+          $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
           await refreshAll();
         }));
         actions.appendChild(inviteButton);
@@ -400,6 +433,7 @@
       actions.appendChild(el('p', 'empty-note', '该账号已永久撤销，不能恢复。'));
     }
 
+    if (busy) setButtonsDisabled(true);
     await loadAudit(account.id);
   }
 
@@ -431,7 +465,19 @@
       });
     } catch (error) {
       if (selectedAccountId !== accountId) return;
-      list.replaceChildren(el('p', 'empty-note', error.message || '管理记录暂时无法读取。'));
+      if (error.code === 'ACCOUNT_DISABLED') {
+        window.location.replace('/account/index.html?disabled=1');
+        return;
+      }
+      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+        window.location.replace('../index.html');
+        return;
+      }
+      const message = el('p', 'empty-note', error.message || '管理记录暂时无法读取。');
+      const retryButton = el('button', 'audit-retry', '重试读取');
+      retryButton.type = 'button';
+      retryButton.addEventListener('click', () => loadAudit(accountId));
+      list.replaceChildren(message, retryButton);
     }
   }
 
@@ -549,18 +595,33 @@
   });
 
   async function init() {
+    if (initializing) return;
+    initializing = true;
     try {
       const me = await api('/api/accounts/me');
-      if (me.account?.role !== 'super_admin' || me.account?.status !== 'active') {
-        return window.location.replace('../index.html');
+      if (!me.account || me.account.role !== 'super_admin' || me.account.status !== 'active') {
+        window.location.replace('../index.html');
+        return;
       }
       await refreshAll();
+      hideError();
     } catch (error) {
       if (error.code === 'ACCOUNT_DISABLED') {
         window.location.replace('/account/index.html?disabled=1');
         return;
       }
-      window.location.replace('../index.html');
+      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+        window.location.replace('../index.html');
+        return;
+      }
+      $('accountsList').replaceChildren(el('p', 'empty-note', '账号数据暂未加载，请重新检查。'));
+      $('invitesList').replaceChildren(el('p', 'empty-note', '邀请码数据暂未加载，请重新检查。'));
+      showError(
+        error.message || '暂时无法连接服务器，管理员身份尚未重新验证。管理数据尚未加载，请重试。',
+        () => init()
+      );
+    } finally {
+      initializing = false;
     }
   }
 
