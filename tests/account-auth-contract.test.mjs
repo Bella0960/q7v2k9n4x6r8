@@ -4283,6 +4283,19 @@ test('设备鉴权末端必须复核同一个 MAO Session，不能只确认账�
   assert.equal(login.status, 200);
   const userCookie = cookieFrom(login);
   const accountId = registered.payload.account.id;
+  const secondLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'session-race-user',
+      password: 'session-race-user-password-123'
+    }
+  });
+  assert.equal(secondLogin.status, 200);
+  const otherSessionCookie = cookieFrom(secondLogin);
+  const otherSession = ctx.store.getMaoAccountSession(
+    await sha256Hex(otherSessionCookie.slice('MAO_SESSION='.length))
+  );
+  assert.ok(otherSession?.session_id);
 
   const invite = await post(ctx, '/api/admin/invites', {
     targetAccountId: accountId
@@ -4334,6 +4347,11 @@ test('设备鉴权末端必须复核同一个 MAO Session，不能只确认账�
     ctx.query('SELECT revoked_at FROM mao_account_sessions WHERE id = ?', session.session_id)[0].revoked_at,
     null,
     '测试必须确实在最终检查前撤销了原会话'
+  );
+  assert.equal(
+    ctx.query('SELECT revoked_at FROM mao_account_sessions WHERE id = ?', otherSession.session_id)[0].revoked_at,
+    null,
+    '同账号的另一条会话仍然有效，不能替代本请求使用的已撤销会话'
   );
   assert.equal(
     ctx.query('SELECT revoked_at FROM devices WHERE id = ?', device.deviceId)[0].revoked_at,
