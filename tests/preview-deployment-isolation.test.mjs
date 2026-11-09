@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const preview = JSON.parse(readFileSync(new URL('../wrangler.preview.jsonc', import.meta.url), 'utf8'));
 function parseJsonc(source) {
-  const withoutLineComments = source.replace(/^\\s*\\/\\/.*$/gm, '');
+  const withoutLineComments = source.replace(/^\s*\/\/.*$/gm, '');
   return JSON.parse(withoutLineComments);
 }
 
