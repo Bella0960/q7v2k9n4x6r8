@@ -2244,20 +2244,50 @@ class CloudStore {
   }
 
   redeemMaoInvite({ tokenHash, accountId, now }) {
-    return this.transaction(() => {
-      const account = this.getMaoAccountById(accountId);
-      if (!account || account.status !== 'pending_invite') return false;
-      const invite = this.exec(
-        "UPDATE mao_invite_codes SET used_count = used_count + 1 WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ? AND used_count < max_uses AND (target_account_id = ? OR (target_email IS NOT NULL AND target_email = ? AND EXISTS (SELECT 1 FROM mao_accounts verified WHERE verified.id = ? AND verified.qq_email = target_email AND verified.qq_email_verified_at IS NOT NULL))) RETURNING id",
-        tokenHash, now, accountId, String(account.qq_email || '').toLowerCase(), accountId
-      )[0];
-      if (!invite) return false;
-      const updated = this.exec(
-        "UPDATE mao_accounts SET status = 'active', authorized_at = ?, updated_at = ? WHERE id = ? AND status = 'pending_invite' RETURNING id",
-        now, now, accountId
-      )[0];
-      return Boolean(updated);
-    });
+    try {
+      return this.transaction(() => {
+        const account = this.getMaoAccountById(accountId);
+        if (!account || account.status !== 'pending_invite') return false;
+        const invite = this.exec(
+          "UPDATE mao_invite_codes SET used_count = used_count + 1 WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ? AND used_count < max_uses AND (target_account_id = ? OR (target_email IS NOT NULL AND target_email = ? AND EXISTS (SELECT 1 FROM mao_accounts verified WHERE verified.id = ? AND verified.qq_email = target_email AND verified.qq_email_verified_at IS NOT NULL))) RETURNING id, used_count, max_uses, expires_at",
+          tokenHash, now, accountId, String(account.qq_email || '').toLowerCase(), accountId
+        )[0];
+        if (!invite) return false;
+
+        const updated = this.exec(
+          "UPDATE mao_accounts SET status = 'active', authorized_at = ?, updated_at = ? WHERE id = ? AND status = 'pending_invite' RETURNING id",
+          now, now, accountId
+        )[0];
+        if (!updated) {
+          // Throwing forces the transaction helper to roll back the invite's
+          // usage increment; the API can still treat this as an invalid invite.
+          const conflict = new Error('MAO account state changed during invitation redemption');
+          conflict.code = 'MAO_INVITE_REDEMPTION_CONFLICT';
+          throw conflict;
+        }
+
+        // Redemption is part of the same authorization transaction. The
+        // account can never become active without its audit event, and the
+        // one-time invite cannot be consumed without the account activation.
+        this.exec(
+          "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_redeem', ?, ?)",
+          'audit_' + crypto.randomUUID(),
+          accountId,
+          accountId,
+          serializeStoreJson({
+            inviteId: String(invite.id),
+            expiresAt: Number(invite.expires_at),
+            maxUses: Number(invite.max_uses || 1),
+            usedCount: Number(invite.used_count || 0)
+          }, 2048, 'invite redemption audit detail'),
+          now
+        );
+        return true;
+      });
+    } catch (error) {
+      if (error?.code === 'MAO_INVITE_REDEMPTION_CONFLICT') return false;
+      throw error;
+    }
   }
 
 
