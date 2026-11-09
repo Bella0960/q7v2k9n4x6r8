@@ -369,13 +369,11 @@
               .map(function (name) { return name.slice(prefix.length); });
           });
         };
+        // CacheStorage.match() searches the origin-wide cache list by
+        // default. Walk only this account's physical caches so a shared shell
+        // cache or another account's Cache cannot leak a private Response.
         if (property === 'match') return function (request, options) {
           var queryOptions = options ? Object.assign({}, options) : {};
-          if (queryOptions.cacheName != null) {
-            queryOptions.cacheName = prefix + String(queryOptions.cacheName);
-            return target.match(request, queryOptions);
-          }
-          delete queryOptions.cacheName;
           return target.keys().then(function (items) {
             var scopedNames = items.filter(function (name) { return name.indexOf(prefix) === 0; });
             return scopedNames.reduce(function (chain, name) {
@@ -386,29 +384,6 @@
                 });
               });
             }, Promise.resolve(null));
-          });
-        };
-        // CacheStorage.matchAll() without a cacheName searches every cache
-        // from the origin. Never delegate that unqualified call: it would let
-        // one MAO account read Response bodies stored by another account.
-        if (property === 'matchAll') return function (request, options) {
-          var queryOptions = options ? Object.assign({}, options) : {};
-          if (queryOptions.cacheName != null) {
-            queryOptions.cacheName = prefix + String(queryOptions.cacheName);
-            return target.matchAll(request, queryOptions);
-          }
-          delete queryOptions.cacheName;
-          return target.keys().then(function (items) {
-            var scopedNames = items.filter(function (name) { return name.indexOf(prefix) === 0; });
-            return Promise.all(scopedNames.map(function (name) {
-              return target.open(name).then(function (cache) {
-                return cache.matchAll(request, queryOptions);
-              });
-            })).then(function (groups) {
-              return groups.reduce(function (responses, group) {
-                return responses.concat(group);
-              }, []);
-            });
           });
         };
         var value = Reflect.get(target, property, target);
