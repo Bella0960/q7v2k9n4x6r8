@@ -481,6 +481,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         throw new ApiError(409, 'DEVICE_CONFLICT', '设备 ID 已被其他凭据占用');
       }
       const existingUserId = String(existing.user_id || OWNER_USER_ID);
+      let accountSessionId = null;
       if (existingUserId === OWNER_USER_ID && store.hasMaoSuperAdminAccount()) {
         throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
       }
@@ -496,6 +497,7 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         if (!accountSession || accountSession.account_id !== existingUserId) {
           throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '请先登录 MAO 账号');
         }
+        accountSessionId = accountSession.session_id;
       }
       if (existing.revoked_at) throw new ApiError(403, 'DEVICE_REVOKED', '设备授权已撤销，不能自动恢复');
       const refreshed = await store.refreshActiveDeviceProfile(
@@ -505,7 +507,8 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
         {
           label: String(body.label || '').slice(0, 64),
           platform: String(body.platform || '').slice(0, 64),
-          now: timestamp
+          now: timestamp,
+          sessionId: accountSessionId
         }
       );
       if (!refreshed) {
@@ -519,6 +522,12 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
           !timingSafeEqualHex(String(current.secret_hash || ''), String(existing.secret_hash || ''))
         ) {
           throw new ApiError(409, 'DEVICE_CONFLICT', '设备授权状态已变化，请重新连接');
+        }
+        if (existingUserId !== OWNER_USER_ID) {
+          const latestSession = await accountAuth.getAuthenticatedAccount(request);
+          if (!latestSession || latestSession.account_id !== existingUserId) {
+            throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '登录会话已失效，请重新登录后添加设备');
+          }
         }
         throw new ApiError(409, 'DEVICE_STATE_CHANGED', '设备状态已变化，请重新尝试连接');
       }
