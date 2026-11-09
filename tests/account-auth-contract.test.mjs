@@ -160,6 +160,14 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.equal(firstResult.status, 200);
   assert.match(firstResult.payload.account.id, /^MAO-[A-Z0-9]{12,24}$/);
   assert.equal(firstResult.payload.account.role, 'super_admin');
+  const bootstrapAudit = ctx.query(
+    "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE target_account_id = ?",
+    firstResult.payload.account.id
+  );
+  assert.equal(bootstrapAudit.length, 1);
+  assert.equal(bootstrapAudit[0].action, 'admin_bootstrap');
+  assert.equal(bootstrapAudit[0].actor_account_id, null,
+    '首次初始化记录应明确标记为系统初始化来源');
   const statusAfter = await ctx.asJson('/api/admin/bootstrap/status');
   assert.equal(statusAfter.payload.initialized, true);
   const second = await ctx.asJson('/api/admin/bootstrap', {
@@ -176,6 +184,13 @@ test('管理员初始化唯一、账号注册先生成永久 ID 并保持待授�
   assert.match(registered.payload.account.id, /^MAO-[A-Z0-9]{12,24}$/);
   assert.equal(registered.payload.account.status, 'pending_invite');
   assert.notEqual(registered.payload.account.id, firstResult.payload.account.id);
+  const registrationAudit = ctx.query(
+    "SELECT action, actor_account_id, target_account_id FROM mao_account_audit WHERE target_account_id = ?",
+    registered.payload.account.id
+  );
+  assert.equal(registrationAudit.length, 1);
+  assert.equal(registrationAudit[0].action, 'account_register');
+  assert.equal(registrationAudit[0].actor_account_id, registered.payload.account.id);
 });
 
 test('登录会话与旧标签页 MAO 上下文不一致时，所有账号 API 都必须拒绝', async () => {
@@ -2672,6 +2687,51 @@ test('0015 adds the per-account audit cursor index', () => {
   assert.ok(names.includes('idx_mao_account_audit_cursor'));
 });
 
+
+test('账号注册与注册审计原子提交，审计失败时账号创建回滚且可重试', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  ctx.store.exec(
+    "CREATE TRIGGER fail_account_register_audit BEFORE INSERT ON mao_account_audit " +
+    "WHEN NEW.action = 'account_register' " +
+    "BEGIN SELECT RAISE(ABORT, 'simulated account registration audit failure'); END"
+  );
+
+  const failed = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'audit-register-rollback',
+      password: 'audit-register-rollback-password',
+      confirmPassword: 'audit-register-rollback-password'
+    }
+  });
+  assert.equal(failed.status, 500);
+  assert.equal(Number(ctx.query(
+    "SELECT COUNT(*) AS total FROM mao_accounts WHERE username_key = ?",
+    'audit-register-rollback'
+  )[0].total), 0, '注册审计失败时不能留下没有审计事件的账号');
+  assert.equal(Number(ctx.query(
+    "SELECT COUNT(*) AS total FROM mao_account_audit WHERE action = 'account_register'"
+  )[0].total), 0);
+
+  ctx.store.exec('DROP TRIGGER fail_account_register_audit');
+  const retried = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'audit-register-rollback',
+      password: 'audit-register-rollback-password',
+      confirmPassword: 'audit-register-rollback-password'
+    }
+  });
+  assert.equal(retried.status, 201);
+  const events = ctx.query(
+    "SELECT action, target_account_id FROM mao_account_audit WHERE target_account_id = ? AND action = 'account_register'",
+    retried.payload.account.id
+  );
+  assert.equal(events.length, 1, '修复故障后注册和审计应当只成功一次');
+  assert.equal(events[0].target_account_id, retried.payload.account.id);
+});
+
 test('全局管理审计支持服务端筛选、搜索、游标分页并只返回安全字段', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
@@ -2702,13 +2762,13 @@ test('全局管理审计支持服务端筛选、搜索、游标分页并只返�
   }, adminCookie);
   assert.equal(disabled.status, 200);
 
-  const firstResponse = await ctx.fetchTo('/api/admin/audit?limit=2&type=all', {
+  const firstResponse = await ctx.fetchTo('/api/admin/audit?limit=2&type=all&search=' + encodeURIComponent(targetId), {
     headers: { cookie: adminCookie }
   });
   const first = await json(firstResponse);
   assert.equal(first.status, 200);
   assert.equal(first.payload.records.length, 2);
-  assert.equal(first.payload.page.totalCount, 3);
+  assert.equal(first.payload.page.totalCount, 4);
   assert.equal(first.payload.page.hasMore, true);
   assert.ok(first.payload.page.nextCursor);
   for (const record of first.payload.records) {
@@ -2727,7 +2787,7 @@ test('全局管理审计支持服务端筛选、搜索、游标分页并只返�
   );
   const next = await json(nextResponse);
   assert.equal(next.status, 200);
-  assert.equal(next.payload.records.length, 1);
+  assert.equal(next.payload.records.length, 2);
   assert.equal(next.payload.page.hasMore, false);
 
   const timeRangeResponse = await ctx.fetchTo('/api/admin/audit?since=0&type=all', {
@@ -2735,7 +2795,7 @@ test('全局管理审计支持服务端筛选、搜索、游标分页并只返�
   });
   const timeRangeResult = await json(timeRangeResponse);
   assert.equal(timeRangeResult.status, 200);
-  assert.equal(timeRangeResult.payload.page.totalCount, 3,
+  assert.equal(timeRangeResult.payload.page.totalCount, 5,
     'server-side timestamp filtering must preserve all records newer than the Unix epoch');
 
   const invalidTimeRange = await ctx.fetchTo('/api/admin/audit?since=9007199254740992', {
@@ -2752,13 +2812,14 @@ test('全局管理审计支持服务端筛选、搜索、游标分页并只返�
   assert.equal(inviteResult.payload.page.totalCount, 2);
   assert.ok(inviteResult.payload.records.every(record => record.action.startsWith('invite_')));
 
-  const accountResponse = await ctx.fetchTo('/api/admin/audit?type=account', {
+  const accountResponse = await ctx.fetchTo('/api/admin/audit?type=account&search=' + encodeURIComponent(targetId), {
     headers: { cookie: adminCookie }
   });
   const accountResult = await json(accountResponse);
   assert.equal(accountResult.status, 200);
-  assert.equal(accountResult.payload.page.totalCount, 1);
-  assert.equal(accountResult.payload.records[0].action, 'disable');
+  assert.equal(accountResult.payload.page.totalCount, 2);
+  assert.ok(accountResult.payload.records.some(record => record.action === 'account_register'));
+  assert.ok(accountResult.payload.records.some(record => record.action === 'disable'));
 
   const denied = await ctx.fetchTo('/api/admin/audit', { method: 'GET' });
   assert.equal(denied.status, 401, 'global audit must remain creator/admin-only');
