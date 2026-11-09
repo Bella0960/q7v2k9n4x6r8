@@ -149,6 +149,14 @@ test('账号详情使用服务端权威状态与邀请码快照，查询失败�
   assert.match(detail, /if \(busy\) setButtonsDisabled\(true\);\s*await loadAudit\(currentAccount\.id\)/);
 });
 
+test('普通操作异常也提供重新拉取账号、邀请码和审计状态的恢复入口', () => {
+  assert.match(adminScript, /showError\(error\.message \|\| '操作失败，请稍后重试。', \(\) => refreshAll\(\)\)/);
+  assert.match(adminScript, /async function refreshAll\(\)/);
+  assert.match(adminScript, /await Promise\.all\(\[loadAccountPage\(true\), loadInvitePage\(true\)\]\)/);
+  assert.match(adminScript, /if \(selectedAccountId && !\$\('accountDetail'\)\.hidden\)/);
+  assert.match(adminScript, /await renderAccountDetail\(account\)/);
+});
+
 test('并发状态冲突后自动重新核对账号和邀请码，避免页面保留旧操作入口', () => {
   assert.match(adminScript, /const stateConflictCodes = \[[\s\S]*'ACCOUNT_ACTION_REJECTED'[\s\S]*'INVITE_ALREADY_ACTIVE'[\s\S]*'INVITE_TARGET_NOT_PENDING'[\s\S]*'INVITE_NOT_ACTIVE'/);
   assert.match(adminScript, /if \(stateConflictCodes\.includes\(error\.code\)\) \{[\s\S]*await refreshAll\(\);[\s\S]*showError\(/);
