@@ -5,6 +5,7 @@
   let currentAccount = null;
   let currentSessionId = '';
   let busy = false;
+  let pendingAccountAction = null;
 
   async function api(path, method = 'GET', body = null) {
     const response = await fetch(path, {
@@ -43,6 +44,27 @@
     if (className) node.className = className;
     node.textContent = String(value == null ? '' : value);
     return node;
+  }
+
+  function openAccountActionConfirmation(options) {
+    const dialog = $('accountActionDialog');
+    if (!dialog || typeof dialog.showModal !== 'function') {
+      showError('当前浏览器不支持安全确认弹窗，操作已阻止。请更新浏览器后重试。');
+      return false;
+    }
+    pendingAccountAction = options;
+    $('accountActionTitle').textContent = options.title;
+    $('accountActionDescription').textContent = options.description;
+    $('accountActionConfirm').textContent = options.confirmLabel || '确认操作';
+    dialog.showModal();
+    $('accountActionCancel').focus();
+    return true;
+  }
+
+  function closeAccountActionConfirmation() {
+    pendingAccountAction = null;
+    const dialog = $('accountActionDialog');
+    if (dialog?.open) dialog.close();
   }
 
   function showError(message) {
@@ -98,11 +120,15 @@
         list.appendChild(row);
         return;
       }
-      addItem(list, 'device', label, detail, '移除此设备', async () => {
-        if (!window.confirm('移除此设备后，它将无法再访问 MAO，需要重新登录和绑定。确定继续？')) return;
-        await runAction(async () => {
-          await api('/api/accounts/devices/' + encodeURIComponent(device.id) + '/revoke', 'POST', {});
-          await refreshSecurity();
+      addItem(list, 'device', label, detail, '移除此设备', () => {
+        openAccountActionConfirmation({
+          title: '确认移除此设备？',
+          description: '设备 ' + label + ' 将无法再访问 MAO，需要重新登录和绑定。当前账号的其他设备不会受到影响。',
+          confirmLabel: '确认移除',
+          onConfirm: async () => {
+            await api('/api/accounts/devices/' + encodeURIComponent(device.id) + '/revoke', 'POST', {});
+            await refreshSecurity();
+          }
         });
       });
     });
@@ -126,15 +152,19 @@
         list.appendChild(row);
         return;
       }
-      addItem(list, 'session', '登录会话', detail, '退出此会话', async () => {
-        if (!window.confirm('确定退出这个登录会话？')) return;
-        await runAction(async () => {
-          const result = await api('/api/accounts/sessions/' + encodeURIComponent(session.id) + '/revoke', 'POST', {});
-          if (result.current) {
-            window.location.replace('/account/index.html');
-            return;
+      addItem(list, 'session', '登录会话', detail, '退出此会话', () => {
+        openAccountActionConfirmation({
+          title: '确认退出此登录会话？',
+          description: '该会话退出后，对应设备需要重新登录。当前页面所在的会话不会受到影响。',
+          confirmLabel: '确认退出',
+          onConfirm: async () => {
+            const result = await api('/api/accounts/sessions/' + encodeURIComponent(session.id) + '/revoke', 'POST', {});
+            if (result.current) {
+              window.location.replace('/account/index.html');
+              return;
+            }
+            await refreshSecurity();
           }
-          await refreshSecurity();
         });
       }, session.current);
     });
@@ -148,18 +178,24 @@
   }
 
   async function runAction(action) {
-    if (busy) return;
+    if (busy) return false;
     busy = true;
     document.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    let succeeded = false;
     try {
       await action();
+      succeeded = true;
     } catch (error) {
-      if (error.code === 'ACCOUNT_DISABLED') return showDisabled();
+      if (error.code === 'ACCOUNT_DISABLED') {
+        showDisabled();
+        return false;
+      }
       showError(error.message || '操作失败，请稍后重试');
     } finally {
       busy = false;
       document.querySelectorAll('button').forEach(button => { button.disabled = false; });
     }
+    return succeeded;
   }
 
   async function init() {
@@ -228,6 +264,17 @@
     }).finally(() => {
       submit.disabled = false;
     });
+  });
+
+  $('accountActionCancel').addEventListener('click', closeAccountActionConfirmation);
+  $('accountActionDialog').addEventListener('cancel', () => {
+    pendingAccountAction = null;
+  });
+  $('accountActionConfirm').addEventListener('click', async () => {
+    const action = pendingAccountAction;
+    if (!action || busy) return;
+    const success = await runAction(action.onConfirm);
+    if (success && pendingAccountAction === action) closeAccountActionConfirmation();
   });
 
   $('logoutButton').addEventListener('click', () => {
