@@ -153,6 +153,14 @@ test('账号详情使用服务端权威状态与邀请码快照，查询失败�
   assert.match(detail, /if \(busy\) setButtonsDisabled\(true\);\s*await loadAudit\(currentAccount\.id\)/);
 });
 
+test('账号停用、恢复和永久撤销的审计时间线展示状态迁移', () => {
+  assert.match(adminScript, /if \(record\.fromStatus && record\.toStatus\)/);
+  assert.match(adminScript, /'状态 ' \+ statusText\(record\.fromStatus\) \+ ' → ' \+ statusText\(record\.toStatus\)/);
+  assert.match(adminScript, /statusText\(status\)/);
+  assert.match(adminScript, /随账号停用自动撤销/);
+  assert.match(adminScript, /随账号永久撤销自动失效/);
+});
+
 test('普通操作异常也提供重新拉取账号、邀请码和审计状态的恢复入口', () => {
   assert.match(adminScript, /showError\(error\.message \|\| '操作失败，请稍后重试。', \(\) => refreshAll\(\)\)/);
   assert.match(adminScript, /async function refreshAll\(\)/);
