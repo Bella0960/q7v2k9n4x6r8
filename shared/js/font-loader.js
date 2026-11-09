@@ -75,7 +75,10 @@
     var failedFontKey = '';
     var fontLoadGeneration = 0;
     var fontLoadScheduled = false;
+    /* 记录进行中的 IndexedDB 读取及其所属加载代次：
+       同一代次内的重复触发才跳过；A→B→A 这类新代次必须允许重新读取。 */
     var fontDbRequestKey = '';
+    var fontDbRequestGeneration = -1;
     /* 缓存重建失败只影响持久化：同一文档同一字体不再重复尝试写入。 */
     var failedCacheRebuildKeys = {};
 
@@ -340,14 +343,20 @@
 
     function loadPresetFromIndexedDb(source, isStillCurrent, recoverFromCache) {
         if (!source.activeId) return;
-        /* 同一文档同一字体只允许一次未完成的 IndexedDB 读取，避免 pageshow/storage 重复触发。 */
-        if (fontDbRequestKey === source.activeId) return;
+        var requestGeneration = fontLoadGeneration;
+        /* 同一代次内同一字体只允许一次未完成的 IndexedDB 读取；
+           新代次（例如 A→B→A 快速切换后重新激活 A）必须允许重新读取，否则会残留旧字体或空白。 */
+        if (fontDbRequestKey === source.activeId && fontDbRequestGeneration === requestGeneration) return;
         fontDbRequestKey = source.activeId;
+        fontDbRequestGeneration = requestGeneration;
         var finished = false;
         function finish() {
             if (finished) return;
             finished = true;
-            if (fontDbRequestKey === source.activeId) fontDbRequestKey = '';
+            if (fontDbRequestKey === source.activeId && fontDbRequestGeneration === requestGeneration) {
+                fontDbRequestKey = '';
+                fontDbRequestGeneration = -1;
+            }
         }
         function failToSystemFont() {
             finish();

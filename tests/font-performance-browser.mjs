@@ -75,6 +75,7 @@ const INSTRUMENT = () => {
     cachePutFailures: 0,
     cachePutMs: 0,
     forcePutFailure: false,
+    fontDbGetDelay: 0,
     objectUrls: 0,
     objectUrlRevokes: 0,
     longTasks: [],
@@ -91,8 +92,24 @@ const INSTRUMENT = () => {
   try {
     const get = IDBObjectStore.prototype.get;
     IDBObjectStore.prototype.get = function (...args) {
-      if (this.name === 'presets') fp.fontDbGets++;
-      return get.apply(this, args);
+      const isFontStore = this.name === 'presets';
+      if (isFontStore) fp.fontDbGets++;
+      const request = get.apply(this, args);
+      const delay = isFontStore ? (fp.fontDbGetDelay || 0) : 0;
+      if (!delay) return request;
+      /* 延迟回调，稳定复现快速切换时“旧读取未完成”的时序。 */
+      const proxy = { result: undefined, error: null, onsuccess: null, onerror: null };
+      request.onsuccess = function () {
+        setTimeout(function () {
+          proxy.result = request.result;
+          if (typeof proxy.onsuccess === 'function') proxy.onsuccess({ target: proxy });
+        }, delay);
+      };
+      request.onerror = function (event) {
+        proxy.error = request.error;
+        if (typeof proxy.onerror === 'function') proxy.onerror(event);
+      };
+      return proxy;
     };
   } catch (e) {}
   try {
@@ -529,7 +546,36 @@ try {
     assert.ok(/apple-system|-apple-system|sf pro|pingfang|sans-serif|segoe/i.test(metrics.bodyFamily), '回退字体栈应包含系统字体');
     assert.deepEqual(errors, [], '字体损坏不应导致页面错误');
     await context.close();
-    pass('字体损坏时自动回退系统字体');
+
+    /* 5B. 真实 SW 控制器 + 缓存被清 + IndexedDB 里是损坏字体 → 解码失败才回退（缓存写入本身成功）。 */
+    console.log('[5B] SW 恢复路径 + IndexedDB 字体损坏');
+    const swContext = await createContext(browser, origin);
+    const swPage = await swContext.newPage();
+    const swErrors = [];
+    swPage.on('pageerror', (error) => swErrors.push(error.message));
+    await ensureServiceWorkerControl(swPage, origin);
+    await seedFontPreset(swPage, origin, { id: 'font_corrupt_sw', name: 'Corrupt SW', corrupt: true });
+    await swPage.evaluate(() => {
+      localStorage.setItem('active_font_preset_id', 'font_corrupt_sw');
+      localStorage.setItem('maomao_font_cache_format_font_corrupt_sw', 'truetype');
+    });
+    await swPage.evaluate(async () => { await caches.delete('maomao-font-assets-v1'); });
+    await swPage.reload({ waitUntil: 'load' });
+    await swPage.waitForFunction(() => window.__fp.fontDbGets >= 1, null, { timeout: 20000 });
+    await waitForFontFallback(swPage);
+    await delay(600);
+    const swMetrics = await readMetrics(swPage);
+    report('[5B] 恢复路径损坏字体', swMetrics);
+    assert.equal(swMetrics.fontDbGets, 1, '恢复路径只读取一次字体 Blob');
+    assert.equal(swMetrics.cachePutAttempts, 1, '恢复路径会尝试写入一次缓存');
+    assert.equal(swMetrics.cachePutSuccesses, 1, '损坏字体写入缓存本身是成功的（缓存不是回退原因）');
+    assert.equal(swMetrics.cachePutFailures, 0, '缓存写入未失败');
+    assert.equal(swMetrics.hasStyle, false, '解码失败后应移除自定义字体规则');
+    assert.ok(!swMetrics.fontFaces.includes('loaded'), '损坏字体不得保持 loaded 状态');
+    assert.ok(!/MAOMAOUserFont/.test(swMetrics.bodyFamily), '页面应回退到系统字体栈');
+    assert.deepEqual(swErrors, [], '解码失败不得产生页面错误');
+    await swContext.close();
+    pass('字体损坏时回退系统字体（含 SW 恢复路径：仅在解码失败时回退）');
   }
 
   /* 6. 原有字体数据兼容性：旧 custom_font_url。 */
@@ -951,6 +997,19 @@ try {
     assert.ok(afterRetry.fontFaces.includes('loaded'), '重复触发后字体仍应可用');
     assert.equal(afterRetry.fontStyleRemovedAt, null, '重复触发不得触发字体回退');
     assert.deepEqual(errors, []);
+
+    /* 后续页面仍必须能从 IndexedDB 原件恢复（持久化失败不等于字体丢失）。 */
+    await page.reload({ waitUntil: 'load' });
+    await waitForCustomFont(page);
+    const nextPage = await readMetrics(page);
+    report('[15] 写入失败后的下一个页面', nextPage);
+    assert.equal(nextPage.fontDbGets, 1, '后续页面仍从 IndexedDB 原件恢复');
+    assert.equal(nextPage.cachePutAttempts, 1, '后续页面只尝试重建一次缓存');
+    assert.equal(nextPage.cachePutFailures, 1, '后续页面缓存写入仍失败一次');
+    assert.equal(nextPage.hasStyle, true, '后续页面仍应使用自定义字体');
+    assert.ok(nextPage.fontFaces.includes('loaded'), '后续页面字体仍应可用');
+    assert.equal(nextPage.fontStyleRemovedAt, null, '后续页面不得因缓存失败回退');
+    assert.deepEqual(errors, []);
     pass('SW 控制 + cache.put 抛错：当前页保留字体，仅记录缓存失败且不重试');
     await context.close();
   }
@@ -1013,11 +1072,86 @@ try {
     pass('SW 控制 + Cache Storage 读取拒绝：不因持久化失败回退，仍可从 IndexedDB 恢复');
     await context.close();
   }
+
+  /* 17. A→B→A 快速切换：旧读取被作废后必须允许重新读取 A，不得残留 B 或被丢弃。 */
+  {
+    console.log('\n[17] A→B→A 快速切换');
+    const context = await createContext(browser, origin, { blockSw: true });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(origin + '/index.html', { waitUntil: 'load' });
+    await seedFontPreset(page, origin, { id: 'font_ab_a', name: 'Switch A' });
+    /* B 预置为“已缓存但损坏”：切换过程不会读 IndexedDB，用来模拟切换中途的坏字体。 */
+    await page.evaluate(async ({ bUrl }) => {
+      const cache = await caches.open('maomao-font-assets-v1');
+      await cache.put(bUrl, new Response(new Blob(['not a font'], { type: 'font/ttf' }), {
+        headers: { 'Content-Type': 'font/ttf' }
+      }));
+      localStorage.setItem('maomao_font_cache_format_font_ab_b', 'truetype');
+      localStorage.setItem('active_font_preset_id', 'font_ab_a');
+    }, { bUrl: fontCacheUrl(origin, 'font_ab_b') });
+    await page.reload({ waitUntil: 'load' });
+    await waitForCustomFont(page);
+
+    /* 让 A 必须重新走 IndexedDB，并人为拉长读取耗时以稳定复现切换时序。 */
+    await page.evaluate(async ({ aUrl }) => {
+      const cache = await caches.open('maomao-font-assets-v1');
+      await cache.delete(aUrl);
+      localStorage.removeItem('maomao_font_cache_format_font_ab_a');
+      window.__fp.fontDbGetDelay = 200;
+    }, { aUrl: fontCacheUrl(origin, 'font_ab_a') });
+
+    const switchTo = (id) => page.evaluate((nextId) => {
+      localStorage.setItem('active_font_preset_id', nextId);
+      window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+    }, id);
+    await switchTo('font_ab_a');
+    await delay(80);
+    await switchTo('font_ab_b');
+    await delay(80);
+    await switchTo('font_ab_a');
+    await page.waitForFunction(() => {
+      const tag = document.getElementById('maomao-global-custom-font-style');
+      return !!tag && !!tag.textContent;
+    }, null, { timeout: 20000 });
+    await waitForCustomFont(page);
+    await delay(400);
+    const metrics = await readMetrics(page);
+    const styleText = await page.evaluate(() => {
+      const tag = document.getElementById('maomao-global-custom-font-style');
+      return tag ? tag.textContent : '';
+    });
+    report('[17] 切换落定', metrics);
+    assert.equal(metrics.hasStyle, true, '最终必须保留字体样式');
+    assert.ok(metrics.fontFaces.includes('loaded'), '最终字体必须处于 loaded 状态');
+    assert.ok(/MAOMAOUserFont/.test(metrics.bodyFamily), '最终应使用自定义字体');
+    assert.ok(!/font_ab_b/.test(styleText), '不得残留 B 字体地址');
+    assert.equal(metrics.fontDbGets, 2, '首屏一次 + 切回 A 一次必要重读，不得有第三次读取，实际 ' + metrics.fontDbGets);
+    assert.equal(metrics.cachePutAttempts, 2, '首屏一次 + 切回 A 一次缓存重建，不得重复写入，实际 ' + metrics.cachePutAttempts);
+    assert.deepEqual(errors, [], '快速切换不得产生页面错误');
+
+    const settledGets = metrics.fontDbGets;
+    await page.evaluate(() => {
+      for (let i = 0; i < 3; i++) {
+        window.dispatchEvent(new StorageEvent('storage', { key: 'active_font_preset_id' }));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      }
+    });
+    await delay(700);
+    const afterRetry = await readMetrics(page);
+    assert.equal(afterRetry.fontDbGets, settledGets, '切换落定后重复触发不得再次读取字体库');
+    assert.equal(afterRetry.cachePutAttempts, metrics.cachePutAttempts, '切换落定后不得重复重建缓存');
+    assert.equal(afterRetry.hasStyle, true, '重复触发后仍应保留字体');
+    assert.deepEqual(errors, []);
+    pass('A→B→A 快速切换：作废旧读取后重新读取 A，不残留错误字体');
+    await context.close();
+  }
 } catch (error) {
   console.error('\nFAILED:', error && error.stack ? error.stack : error);
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close();
   server.close();
-  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/16 tests: ' + results.join(' | '));
+  console.log('\n' + (process.exitCode ? 'FAILED' : 'PASSED') + ' ' + results.length + '/17 tests: ' + results.join(' | '));
 }
