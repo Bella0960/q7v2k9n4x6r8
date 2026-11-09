@@ -423,22 +423,10 @@
 
   async function renderAccountDetail(account) {
     const detailRequestSequence = ++accountDetailRequestSequence;
-    $('detailUsername').textContent = account.username || '账号详情';
-    $('detailId').textContent = account.id;
-    const meta = [
-      el('span', '', '状态：' + statusText(account.status)),
-      el('span', '', '创建：' + formatTime(account.created_at)),
-      el('span', '', '授权：' + formatTime(account.authorized_at))
-    ];
-    if (account.qq_email) {
-      meta.push(el(
-        'span',
-        '',
-        'QQ 邮箱：' + account.qq_email +
-          (account.qq_email_verified_at ? '（已验证）' : '（未验证）')
-      ));
-    }
-    $('detailMeta').replaceChildren(...meta);
+    const accountId = account.id;
+    $('detailUsername').textContent = '正在核对账号状态…';
+    $('detailId').textContent = accountId;
+    $('detailMeta').replaceChildren();
 
     const inviteStatus = $('accountInviteStatus');
     inviteStatus.hidden = true;
@@ -449,87 +437,122 @@
     $('reasonField').hidden = true;
     pendingAction = '';
 
-    if (account.status === 'pending_invite') {
-      inviteStatus.hidden = false;
-      inviteStatus.append(
-        el('strong', 'invite-status-title', '正在核对当前邀请码'),
-        el('span', 'invite-status-meta', '正在从服务器读取这个 MAO 账号的有效授权状态…')
+    let snapshot;
+    try {
+      snapshot = await api(
+        '/api/admin/accounts/' + encodeURIComponent(accountId) + '/detail'
       );
-      try {
-        const result = await api(
-          '/api/admin/accounts/' + encodeURIComponent(account.id) + '/active-invite'
-        );
-        if (selectedAccountId !== account.id ||
-            detailRequestSequence !== accountDetailRequestSequence) return;
+    } catch (error) {
+      if (selectedAccountId !== accountId ||
+          detailRequestSequence !== accountDetailRequestSequence) return;
+      if (error.code === 'ACCOUNT_DISABLED') {
+        window.location.replace('/account/index.html?disabled=1');
+        return;
+      }
+      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+        window.location.replace('../index.html');
+        return;
+      }
+      $('detailUsername').textContent = '账号状态暂时无法核对';
+      inviteStatus.hidden = false;
+      inviteStatus.replaceChildren(
+        el('strong', 'invite-status-title', '暂时无法核对账号状态'),
+        el('span', 'invite-status-note', '为避免依据旧状态误发邀请码，当前不会显示生成或账号操作按钮。请检查网络后重新核对。')
+      );
+      const retryButton = el('button', 'audit-retry', '重新核对');
+      retryButton.type = 'button';
+      retryButton.addEventListener('click', () => renderAccountDetail(account));
+      inviteStatus.appendChild(retryButton);
+      if (busy) setButtonsDisabled(true);
+      return;
+    }
 
-        const activeInvite = result.invite || null;
-        inviteStatus.replaceChildren();
-        if (activeInvite) {
-          inviteStatus.append(
-            el('strong', 'invite-status-title', '已有有效的专属邀请码'),
-            el('span', 'invite-status-meta',
-              '到期时间：' + formatTime(activeInvite.expiresAt) +
-              ' · 使用次数：' + Number(activeInvite.usedCount || 0) + '/' + Number(activeInvite.maxUses || 1)),
-            el('span', 'invite-status-note',
-              '原始邀请码只在生成时展示一次。若用户遗失，需要先撤销当前邀请码，再生成新的。')
-          );
-          const revokeButton = el('button', 'invite-revoke-button', '撤销当前邀请码');
-          revokeButton.type = 'button';
-          revokeButton.addEventListener('click', () => run(async () => {
-            if (!window.confirm('撤销后，当前邀请码将立即失效。确定继续吗？')) return;
-            await api('/api/admin/invites/' + encodeURIComponent(activeInvite.id) + '/revoke', 'POST', {});
-            await refreshAll();
-          }));
-          inviteStatus.appendChild(revokeButton);
-        } else {
-          inviteStatus.hidden = true;
-          const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
-          inviteButton.type = 'button';
-          inviteButton.addEventListener('click', () => run(async () => {
-            if (!window.confirm('将为 ' + account.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
-            const created = await api('/api/admin/invites', 'POST', { targetAccountId: account.id });
-            generatedCode = created.invite.code;
-            $('generatedCode').textContent = generatedCode;
-            $('copyInviteCode').textContent = '复制邀请码';
-            $('inviteCodeSheet').hidden = false;
-            $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
-            await refreshAll();
-          }));
-          actions.appendChild(inviteButton);
-        }
-      } catch (error) {
-        if (selectedAccountId !== account.id ||
-            detailRequestSequence !== accountDetailRequestSequence) return;
-        if (error.code === 'ACCOUNT_DISABLED') {
-          window.location.replace('/account/index.html?disabled=1');
-          return;
-        }
-        if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
-          window.location.replace('../index.html');
-          return;
-        }
-        inviteStatus.hidden = false;
+    if (selectedAccountId !== accountId ||
+        detailRequestSequence !== accountDetailRequestSequence) return;
+
+    const currentAccount = snapshot?.account;
+    const validStatuses = ['pending_invite', 'active', 'disabled', 'revoked'];
+    if (!currentAccount || currentAccount.id !== accountId ||
+        !validStatuses.includes(currentAccount.status)) {
+      $('detailUsername').textContent = '账号状态暂时无法核对';
+      inviteStatus.hidden = false;
+      inviteStatus.replaceChildren(
+        el('strong', 'invite-status-title', '服务器返回的账号状态无效'),
+        el('span', 'invite-status-note', '为避免误操作，当前不会显示生成或账号操作按钮。请重新核对。')
+      );
+      const retryButton = el('button', 'audit-retry', '重新核对');
+      retryButton.type = 'button';
+      retryButton.addEventListener('click', () => renderAccountDetail(account));
+      inviteStatus.appendChild(retryButton);
+      if (busy) setButtonsDisabled(true);
+      return;
+    }
+
+    $('detailUsername').textContent = currentAccount.username || '账号详情';
+    $('detailId').textContent = currentAccount.id;
+    const meta = [
+      el('span', '', '状态：' + statusText(currentAccount.status)),
+      el('span', '', '创建：' + formatTime(currentAccount.created_at)),
+      el('span', '', '授权：' + formatTime(currentAccount.authorized_at))
+    ];
+    if (currentAccount.qq_email) {
+      meta.push(el(
+        'span',
+        '',
+        'QQ 邮箱：' + currentAccount.qq_email +
+          (currentAccount.qq_email_verified_at ? '（已验证）' : '（未验证）')
+      ));
+    }
+    $('detailMeta').replaceChildren(...meta);
+
+    if (currentAccount.status === 'pending_invite') {
+      inviteStatus.hidden = false;
+      const activeInvite = snapshot.invite || null;
+      if (activeInvite) {
         inviteStatus.replaceChildren(
-          el('strong', 'invite-status-title', '暂时无法核对邀请码状态'),
-          el('span', 'invite-status-note', '为避免重复发码，暂不显示生成按钮。请检查网络后重新核对。')
+          el('strong', 'invite-status-title', '已有有效的专属邀请码'),
+          el('span', 'invite-status-meta',
+            '到期时间：' + formatTime(activeInvite.expiresAt) +
+            ' · 使用次数：' + Number(activeInvite.usedCount || 0) + '/' + Number(activeInvite.maxUses || 1)),
+          el('span', 'invite-status-note',
+            '原始邀请码只在生成时展示一次。若用户遗失，需要先撤销当前邀请码，再生成新的。')
         );
-        const retryButton = el('button', 'audit-retry', '重新核对');
-        retryButton.type = 'button';
-        retryButton.addEventListener('click', () => renderAccountDetail(account));
-        inviteStatus.appendChild(retryButton);
+        const revokeButton = el('button', 'invite-revoke-button', '撤销当前邀请码');
+        revokeButton.type = 'button';
+        revokeButton.addEventListener('click', () => run(async () => {
+          if (!window.confirm('撤销后，当前邀请码将立即失效。确定继续吗？')) return;
+          await api('/api/admin/invites/' + encodeURIComponent(activeInvite.id) + '/revoke', 'POST', {});
+          await refreshAll();
+        }));
+        inviteStatus.appendChild(revokeButton);
+      } else {
+        inviteStatus.hidden = true;
+        const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
+        inviteButton.type = 'button';
+        inviteButton.addEventListener('click', () => run(async () => {
+          if (!window.confirm('将为 ' + currentAccount.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
+          const created = await api('/api/admin/invites', 'POST', { targetAccountId: currentAccount.id });
+          generatedCode = created.invite.code;
+          $('generatedCode').textContent = generatedCode;
+          $('copyInviteCode').textContent = '复制邀请码';
+          $('inviteCodeSheet').hidden = false;
+          $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await refreshAll();
+        }));
+        actions.appendChild(inviteButton);
       }
       createActionButton('停用账号', 'danger', 'disable', true);
-    } else if (account.status === 'active') {
+    } else if (currentAccount.status === 'active') {
       createActionButton('停用账号', 'danger', 'disable', true);
-    } else if (account.status === 'disabled') {
+    } else if (currentAccount.status === 'disabled') {
       createActionButton('恢复授权', 'primary', 'restore', true);
       createActionButton('永久撤销', 'danger', 'revoke', true);
-    } else if (account.status === 'revoked') {
+    } else if (currentAccount.status === 'revoked') {
       actions.appendChild(el('p', 'empty-note', '该账号已永久撤销，不能恢复。'));
     }
 
     if (busy) setButtonsDisabled(true);
-    await loadAudit(account.id);
+    await loadAudit(currentAccount.id);
   }
 
   async function loadAudit(accountId, reset = true) {
