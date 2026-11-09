@@ -190,6 +190,7 @@
         showDisabled();
         return false;
       }
+      if ($('accountActionDialog')?.open) closeAccountActionConfirmation();
       showError(error.message || '操作失败，请稍后重试');
     } finally {
       busy = false;
