@@ -4076,3 +4076,124 @@ test('并发注册推送订阅不能突破单设备订阅数量上限', async ()
     '两个并发请求只能占用最后一个空位，不能把设备订阅数写到 11'
   );
 });
+
+
+test('配对码只能消费一次，签发设备撤销后剩余配对码立即失效', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  const enrollmentToken = 'test-enrollment-token-for-contract-tests';
+  const issuer = {
+    deviceId: 'device_pair_issuer01',
+    secret: randomToken(32)
+  };
+
+  const bootstrap = await ctx.fetchTo('/api/devices/register', {
+    method: 'POST',
+    body: {
+      deviceId: issuer.deviceId,
+      secret: issuer.secret,
+      label: 'pairing issuer',
+      platform: 'test',
+      pairingToken: enrollmentToken
+    }
+  });
+  const bootstrapResult = await json(bootstrap);
+  assert.equal(bootstrapResult.status, 200);
+  assert.equal(bootstrapResult.payload.device.enrollmentMode, 'bootstrap');
+
+  const makePairingToken = async () => {
+    const response = await ctx.fetchTo('/api/devices/pairing-token', {
+      method: 'POST',
+      headers: { 'x-device-auth': issuer.deviceId + '.' + issuer.secret }
+    });
+    return json(response);
+  };
+
+  const issued = await makePairingToken();
+  assert.equal(issued.status, 200);
+  assert.equal(typeof issued.payload.pairingToken, 'string');
+  assert.ok(issued.payload.pairingToken.length >= 32);
+
+  const target = {
+    deviceId: 'device_pair_target01',
+    secret: randomToken(32)
+  };
+  const paired = await ctx.fetchTo('/api/devices/register', {
+    method: 'POST',
+    body: {
+      deviceId: target.deviceId,
+      secret: target.secret,
+      label: 'paired device',
+      platform: 'test',
+      pairingToken: issued.payload.pairingToken
+    }
+  });
+  const pairedResult = await json(paired);
+  assert.equal(pairedResult.status, 200);
+  assert.equal(pairedResult.payload.device.enrollmentMode, 'paired');
+  assert.equal(
+    ctx.query('SELECT user_id FROM devices WHERE id = ?', target.deviceId)[0].user_id,
+    'owner',
+    '配对设备必须继承签发设备的数据归属'
+  );
+
+  const replay = await ctx.fetchTo('/api/devices/register', {
+    method: 'POST',
+    body: {
+      deviceId: 'device_pair_replay01',
+      secret: randomToken(32),
+      label: 'replayed device',
+      platform: 'test',
+      pairingToken: issued.payload.pairingToken
+    }
+  });
+  const replayResult = await json(replay);
+  assert.equal(replayResult.status, 403);
+  assert.equal(replayResult.payload.error.code, 'DEVICE_PAIRING_REQUIRED');
+  assert.equal(
+    Number(ctx.query(
+      "SELECT COUNT(*) AS total FROM devices WHERE id = ?",
+      'device_pair_replay01'
+    )[0].total),
+    0,
+    '已消费配对码不能再次创建设备凭据'
+  );
+
+  const pending = await makePairingToken();
+  assert.equal(pending.status, 200);
+  const revoked = await ctx.fetchTo('/api/devices/revoke', {
+    method: 'POST',
+    headers: { 'x-device-auth': issuer.deviceId + '.' + issuer.secret }
+  });
+  assert.equal(revoked.status, 200);
+
+  const stalePairing = await ctx.fetchTo('/api/devices/register', {
+    method: 'POST',
+    body: {
+      deviceId: 'device_pair_revoked01',
+      secret: randomToken(32),
+      label: 'stale pairing device',
+      platform: 'test',
+      pairingToken: pending.payload.pairingToken
+    }
+  });
+  const staleResult = await json(stalePairing);
+  assert.equal(staleResult.status, 403);
+  assert.equal(staleResult.payload.error.code, 'DEVICE_PAIRING_REQUIRED');
+  assert.equal(
+    Number(ctx.query(
+      'SELECT COUNT(*) AS total FROM device_pairing_tokens WHERE created_by_device_id = ? AND consumed_at IS NULL',
+      issuer.deviceId
+    )[0].total),
+    0,
+    '签发设备撤销时必须清除其所有未消费配对码'
+  );
+  assert.equal(
+    Number(ctx.query(
+      'SELECT COUNT(*) AS total FROM devices WHERE id = ?',
+      'device_pair_revoked01'
+    )[0].total),
+    0,
+    '签发设备撤销后，旧配对码不得创建新设备'
+  );
+});
