@@ -2557,7 +2557,12 @@ test('设备在重新登记的异步账号校验期间被撤销时，不能返�
 
 test('设备在写入期间被撤销后，不能重新写入 presence、lease 或账号授权设置', async () => {
   const db = openTestDb();
-  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const ctx = setupTestStore(db, {
+    MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET,
+    AUTONOMY_HEARTBEAT_TTL_MS: '60000',
+    AUTONOMY_DEVICE_LEASE_MS: '120000',
+    AUTONOMY_DEVICE_GRACE_MS: '30000'
+  });
   const admin = await ctx.fetchTo('/api/admin/bootstrap', {
     method: 'POST',
     body: {
