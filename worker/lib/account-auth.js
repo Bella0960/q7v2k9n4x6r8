@@ -4,7 +4,7 @@ import { randomToken, sha256Hex, base64UrlToBytes, timingSafeEqualHex } from './
 const SESSION_COOKIE = 'MAO_SESSION';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_IP_MAX_ATTEMPTS = 40;
+const LOGIN_IP_MAX_ATTEMPTS = 120;
 const LOGIN_ACCOUNT_IP_MAX_ATTEMPTS = 8;
 const LOGIN_RATE_RETENTION_MS = 60 * 60 * 1000;
 const PASSWORD_ITERATIONS = 210000;
