@@ -161,7 +161,8 @@ Super-admin only:
 ## Validation
 
 - npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, and account/device revocation.
-- The command also includes browser storage namespace tests for two account IDs.
+- npm run test:admin:center covers admin-page recovery after transient session/API failures, duplicate-action button locking, audit retry behavior, and the one-time invitation reveal flow on mobile.
+- The account command also includes browser storage namespace tests for two account IDs.
 - The focused `MAO Account Auth Contract` workflow must execute the tests and build before the branch can be considered validated. The latest observed jobs still terminate before runner assignment (`runner_id=0`, no steps/logs), so tests and build remain NOT VERIFIED.
 - Android browser testing, account switching on a shared device, real login, and admin bootstrap still need to be performed.
 - QQ mailbox ownership verification/email delivery, password reset/recovery, and production configuration remain follow-up work.
