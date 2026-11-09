@@ -234,9 +234,9 @@ Real browser/PWA/Android WebView compatibility is still NOT VERIFIED. Confirm th
 
 ### Honest JavaScript syntax gate
 
-The previous lint package command only printed a success message and performed no checks. It has been replaced with scripts/check-syntax.mjs, which enumerates tracked .js, .mjs, and .cjs files and invokes Node.js --check on each one. The check excludes generated or dependency directories such as dist, node_modules, and coverage.
+The previous lint package command only printed a success message and performed no checks. The misleading lint script has been removed. The repository now exposes npm run check:syntax, implemented by scripts/check-syntax.mjs; it enumerates tracked .js, .mjs, and .cjs files and invokes Node.js --check on each one. The check excludes generated or dependency directories such as dist, node_modules, and coverage.
 
-This is intentionally a syntax check, not a style linter or semantic analyzer. Its output says so explicitly. The focused account-auth and chat-regression workflows run this gate before dependency installation.
+This is intentionally a syntax check, not a style linter or semantic analyzer. Its output says so explicitly. The focused account-auth and chat-regression workflows run npm run check:syntax before dependency installation.
 
 The checker itself was exercised in an isolated temporary Git repository using Node.js 22.16.0:
 - A valid tracked JavaScript file passed.
