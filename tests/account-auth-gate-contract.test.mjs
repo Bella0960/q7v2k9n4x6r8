@@ -12,6 +12,7 @@ const accountWorkflow = readFileSync(
 
 test('complete account gate runs every required suite in the approved order', () => {
   const expected = [
+    'test:accounts:gate-contract',
     'test:accounts',
     'test:admin:center',
     'test:preview:config',
@@ -53,6 +54,7 @@ test('changes to every account-gate input can trigger the contract workflow', ()
     "      - 'admin/**'",
     "      - 'worker/**'",
     "      - 'tests/account-*.test.mjs'",
+    "      - 'tests/MAO_ACCOUNT_AUTH_ACCEPTANCE.md'",
     "      - 'tests/admin-center-*.test.mjs'",
     "      - 'tests/helpers/**'",
     "      - 'tests/preview-deployment-isolation.test.mjs'",
