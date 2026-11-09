@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import { parseJson, parseJsonc } from './support/text-encoding.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(resolve(root, relativePath), 'utf8');
@@ -29,7 +30,7 @@ const stream = read('shared/js/phone/phone_stream.js');
 const memoryRecall = read('shared/js/phone/memory_recall.js');
 const date = read('chat/date/date.html');
 const journey = read('chat/date/journey.html');
-const fixtures = JSON.parse(readFileSync(resolve(root, 'tests/fixtures/chat-message-cases.json'), 'utf8'));
+const fixtures = parseJson(readFileSync(resolve(root, 'tests/fixtures/chat-message-cases.json'), 'utf8'));
 const policySource = read('shared/js/phone/chat-message-policy.js');
 const policyWindow = {};
 runInNewContext(policySource, { window: policyWindow, globalThis: {} });
@@ -70,7 +71,7 @@ const chatListPage = read('chat/chat/chat.html');
 const contactsPage = read('chat/contacts/contacts.html');
 const profilePage = read('profile/profile.html');
 const wechatThemeCss = read('shared/css/wechat-theme-refinements.css');
-const packageJson = JSON.parse(read('package.json'));
+const packageJson = parseJson(read('package.json'));
 
 test('synthetic fixture set covers the compatibility-critical message families', () => {
   const ids = fixtures.cases.map((item) => item.id);
@@ -1876,7 +1877,7 @@ test('Service Worker navigation does not abort slow mobile page requests', () =>
 });
 
 test('Cloudflare Worker preserves explicit HTML routes and maps only the root to the desktop index', () => {
-  const wranglerConfig = JSON.parse(read('wrangler.jsonc').replace(/^\/\/.*\n/, ''));
+  const wranglerConfig = parseJsonc(read('wrangler.jsonc'));
   const worker = read('worker.js');
 
   assert.equal(wranglerConfig.main, 'worker.js');
@@ -2044,7 +2045,7 @@ test('whole-chat theme is refreshed when a chat page is restored from browser hi
 
 
 test('MAo uses the bunny as its installed app icon and exposes the three default avatar presets', () => {
-  const manifest = JSON.parse(read('manifest.json'));
+  const manifest = parseJson(read('manifest.json'));
   assert.equal(manifest.name, 'MAo');
   assert.equal(manifest.short_name, 'MAo');
   assert.ok(manifest.icons.some(icon => icon.src === './assets/mao-bunny-192.png' && icon.sizes === '192x192'));
