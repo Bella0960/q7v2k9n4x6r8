@@ -23,42 +23,59 @@ function makeStorage(seed = {}) {
   };
 }
 
-function createScope({ accountId, role = 'user', fetchImpl = null }) {
+function createNativeCacheStorage() {
+  const entries = new Map();
+  const calls = [];
+  const storage = {
+    calls,
+    async open(name) {
+      const key = String(name);
+      calls.push(['open', key]);
+      if (!entries.has(key)) {
+        entries.set(key, {
+          name: key,
+          async match(request, options) {
+            calls.push(['cache.match', key, options || null]);
+            return 'cache-response:' + key;
+          },
+          async matchAll(request, options) {
+            calls.push(['cache.matchAll', key, options || null]);
+            return ['cache-response:' + key];
+          }
+        });
+      }
+      return entries.get(key);
+    },
+    async delete(name) {
+      calls.push(['delete', String(name)]);
+      return entries.delete(String(name));
+    },
+    async has(name) { return entries.has(String(name)); },
+    async keys() { return [...entries.keys()]; },
+    async match(request, options) {
+      calls.push(['storage.match', request, options || null]);
+      for (const cache of entries.values()) {
+        const response = await cache.match(request, options);
+        if (response) return response;
+      }
+      return undefined;
+    }
+  };
+  return storage;
+}
+
+function createScope({ accountId, role = 'user', fetchImpl = null, caches = null }) {
   const local = makeStorage({ ai_custom_characters: '[{"id":"legacy-owner"}]' });
   const session = makeStorage({ active_tab: 'home' });
   const openCalls = [];
   const cacheCalls = [];
-  const cacheNames = [];
+  const cacheNames = caches || createNativeCacheStorage();
   const nativeIndexedDB = {
     open(name, version) { openCalls.push(['open', name, version]); return { name, version }; },
     deleteDatabase(name) { openCalls.push(['delete', name]); return { name }; },
     databases() { return Promise.resolve([{ name: 'public-db', version: 1 }, { name: '__mao_account_v1__' + encodeURIComponent(accountId) + '__private-db', version: 2 }]); }
   };
-  const nativeCaches = {
-    open(name) {
-      cacheNames.push(name);
-      return Promise.resolve({
-        name,
-        match: async key => name.includes(encodeURIComponent(accountId)) ? 'private-match' : null,
-        matchAll: async (key, options) => name.includes(encodeURIComponent(accountId)) ? ['private-match:' + accountId] : ['foreign-cache-match']
-      });
-    },
-    delete(name) { cacheCalls.push(['delete', name]); return Promise.resolve(true); },
-    has(name) { cacheCalls.push(['has', name]); return Promise.resolve(true); },
-    keys() { return Promise.resolve(cacheNames.slice()); },
-    match(request, options) {
-      cacheCalls.push(['match', options && options.cacheName]);
-      return Promise.resolve(options && String(options.cacheName || '').includes(encodeURIComponent(accountId))
-        ? 'explicit-scoped-match'
-        : 'foreign-global-cache-match');
-    },
-    matchAll(request, options) {
-      cacheCalls.push(['matchAll', options && options.cacheName]);
-      return Promise.resolve(options && String(options.cacheName || '').includes(encodeURIComponent(accountId))
-        ? ['explicit-scoped-match']
-        : ['foreign-global-cache-match']);
-    }
-  };
+  const nativeCaches = cacheNames;
   const document = {
     querySelector(selector) {
       if (selector.includes('mao-account-id')) return { content: accountId };
@@ -215,8 +232,11 @@ test('账号会话仍属于当前 MAO ID 和角色时，页面不应误退出', 
 });
 
 test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互隔离', async () => {
-  const a = createScope({ accountId: 'MAO-AAAAAAAAAAAA', role: 'user' });
-  const b = createScope({ accountId: 'MAO-BBBBBBBBBBBB', role: 'user' });
+  const sharedCaches = createNativeCacheStorage();
+  await sharedCaches.open('shared-app-shell');
+  await sharedCaches.open('__mao_account_v1__MAO-BBBBBBBBBBBB__font-assets');
+  const a = createScope({ accountId: 'MAO-AAAAAAAAAAAA', role: 'user', caches: sharedCaches });
+  const b = createScope({ accountId: 'MAO-BBBBBBBBBBBB', role: 'user', caches: sharedCaches });
 
   a.window.localStorage.setItem('private', 'A');
   b.window.localStorage.setItem('private', 'B');
@@ -231,31 +251,35 @@ test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互�
 
   await a.window.caches.open('font-assets');
   await b.window.caches.open('font-assets');
-  assert.match(a.cacheNames[0], /MAO-AAAAAAAAAAAA.*font-assets/);
-  assert.match(b.cacheNames[0], /MAO-BBBBBBBBBBBB.*font-assets/);
-  assert.notEqual(a.cacheNames[0], b.cacheNames[0]);
+  const keysA = await a.window.caches.keys();
+  const keysB = await b.window.caches.keys();
+  assert.deepEqual(keysA, ['font-assets']);
+  assert.deepEqual(keysB, ['font-assets']);
+  assert.ok(sharedCaches.calls.some(call => call[1] === 'shared-app-shell'));
+  assert.ok(sharedCaches.calls.some(call => call[1] === '__mao_account_v1__MAO-BBBBBBBBBBBB__font-assets'));
 
-  const allA = await a.window.caches.matchAll('/private-resource');
-  assert.deepEqual(allA, ['private-match:MAO-AAAAAAAAAAAA'],
-    '无 cacheName 的 matchAll 必须逐个遍历当前账号缓存，不能委托给全域原生 matchAll');
-  assert.equal(a.cacheCalls.some(call => call[0] === 'matchAll'), false,
-    '无 cacheName 查询不得调用会搜索全域缓存的原生 CacheStorage.matchAll');
-
-  const namedA = await a.window.caches.matchAll('/private-resource', { cacheName: 'font-assets' });
-  assert.deepEqual(namedA, ['explicit-scoped-match']);
-  const namedCall = a.cacheCalls.find(call => call[0] === 'matchAll');
-  assert.ok(namedCall);
-  assert.match(namedCall[1], /MAO-AAAAAAAAAAAA.*font-assets/,
-    '指定 cacheName 也必须自动加上当前 MAO 前缀');
-
-  const namedMatchA = await a.window.caches.match('/private-resource', { cacheName: 'font-assets' });
-  assert.equal(namedMatchA, 'explicit-scoped-match');
-  const namedMatchCall = a.cacheCalls.find(call => call[0] === 'match');
-  assert.ok(namedMatchCall);
-  assert.match(namedMatchCall[1], /MAO-AAAAAAAAAAAA.*font-assets/,
-    'CacheStorage.match 指定 cacheName 时也必须自动加上当前 MAO 前缀');
+  const matchA = await a.window.caches.match('/private-resource');
+  assert.equal(
+    matchA,
+    'cache-response:__mao_account_v1__MAO-AAAAAAAAAAAA__font-assets',
+    'CacheStorage.match 不得从共享 shell 或 B 账号缓存返回响应'
+  );
+  assert.equal(
+    sharedCaches.calls.some(call => call[0] === 'storage.match'),
+    false,
+    '代理不能调用会跨整个 origin 搜索的原生 CacheStorage.match'
+  );
+  assert.equal(
+    typeof a.window.caches.matchAll,
+    'undefined',
+    'CacheStorage 没有 matchAll 原生方法，账号代理不能虚构它并掩盖错误调用'
+  );
+  const accountCache = await a.window.caches.open('font-assets');
+  const accountCacheMatches = await accountCache.matchAll('/private-resource');
+  assert.deepEqual(accountCacheMatches, [
+    'cache-response:__mao_account_v1__MAO-AAAAAAAAAAAA__font-assets'
+  ], 'Cache.matchAll 只能作用于当前账号明确打开的缓存');
 });
-
 test('唯一超级管理员继续使用创作者现有本地数据，不迁移或清空旧数据', () => {
   const admin = createScope({ accountId: 'MAO-CCCCCCCCCCCC', role: 'super_admin' });
   assert.equal(admin.window.localStorage, admin.local);
