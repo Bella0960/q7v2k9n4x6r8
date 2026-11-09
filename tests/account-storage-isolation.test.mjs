@@ -277,6 +277,13 @@ test('不同 MAO 永久 ID 的 localStorage、IndexedDB 与 CacheStorage 相互�
   assert.deepEqual(accountCacheMatches, [
     'cache-response:__mao_account_v1__MAO-AAAAAAAAAAAA__font-assets'
   ], 'Cache.matchAll 只能作用于当前账号明确打开的缓存');
+
+  assert.equal(await a.window.caches.has('font-assets'), true);
+  assert.equal(await a.window.caches.delete('font-assets'), true,
+    'A 账号只能删除自己的物理缓存');
+  assert.equal(await a.window.caches.has('font-assets'), false);
+  assert.equal(await b.window.caches.has('font-assets'), true,
+    'A 删除自己的缓存不能影响 B 账号的同名缓存');
 });
 test('唯一超级管理员继续使用创作者现有本地数据，不迁移或清空旧数据', () => {
   const admin = createScope({ accountId: 'MAO-CCCCCCCCCCCC', role: 'super_admin' });
