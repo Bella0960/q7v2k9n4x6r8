@@ -2064,6 +2064,21 @@ class CloudStore {
         invite.id, invite.tokenHash, invite.targetAccountId || null, invite.targetEmail || null,
         invite.maxUses, invite.createdByAccountId, invite.now, invite.expiresAt
       );
+      // Keep the account timeline consistent with the invitation write. If
+      // auditing fails, the invitation insert rolls back with this transaction.
+      this.exec(
+        "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_create', ?, ?)",
+        'audit_' + crypto.randomUUID(),
+        invite.createdByAccountId,
+        target.id,
+        serializeStoreJson({
+          inviteId: invite.id,
+          expiresAt: invite.expiresAt,
+          maxUses: invite.maxUses,
+          usedCount: 0
+        }, 2048, 'invite audit detail'),
+        invite.now
+      );
       return true;
     });
   }
@@ -2183,11 +2198,47 @@ class CloudStore {
     )[0] || null;
   }
 
-  revokeMaoInvite(inviteId, now) {
-    return Boolean(this.exec(
-      "UPDATE mao_invite_codes SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses RETURNING id",
-      now, inviteId
-    )[0]);
+  revokeMaoInvite(inviteId, actorAccountId, now) {
+    return this.transaction(() => {
+      const invite = this.exec(
+        "SELECT id, target_account_id, target_email FROM mao_invite_codes WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses LIMIT 1",
+        inviteId
+      )[0];
+      if (!invite) return false;
+
+      let targetAccountId = invite.target_account_id || null;
+      if (!targetAccountId && invite.target_email) {
+        const owner = this.findVerifiedMaoEmail(String(invite.target_email).toLowerCase());
+        targetAccountId = owner?.id || null;
+      }
+      // The creation audit remembers the original target even if the verified
+      // mailbox was later changed or unverified.
+      if (!targetAccountId) {
+        const creation = this.exec(
+          "SELECT target_account_id FROM mao_account_audit WHERE action = 'invite_create' AND instr(detail_json, ?) > 0 ORDER BY created_at DESC, id DESC LIMIT 1",
+          '"inviteId":"' + String(inviteId) + '"'
+        )[0];
+        targetAccountId = creation?.target_account_id || null;
+      }
+
+      const revoked = this.exec(
+        "UPDATE mao_invite_codes SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses RETURNING id",
+        now, inviteId
+      )[0];
+      if (!revoked) return false;
+
+      if (targetAccountId) {
+        this.exec(
+          "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_revoke', ?, ?)",
+          'audit_' + crypto.randomUUID(),
+          actorAccountId,
+          targetAccountId,
+          serializeStoreJson({ inviteId: String(inviteId) }, 2048, 'invite revoke audit detail'),
+          now
+        );
+      }
+      return true;
+    });
   }
 
   redeemMaoInvite({ tokenHash, accountId, now }) {
