@@ -4506,3 +4506,103 @@ test('普通账号在核销邀请码途中退出时，邀请码不能被消耗�
     null
   );
 });
+
+
+test('管理员会话在生成或撤销邀请码提交前失效时不得写入邀请码记录', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'invite-admin-session-race',
+      password: 'invite-admin-session-race-password-123',
+      confirmPassword: 'invite-admin-session-race-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  let adminCookie = cookieFrom(admin);
+  let adminSession = ctx.store.getMaoAccountSession(
+    await sha256Hex(adminCookie.slice('MAO_SESSION='.length))
+  );
+
+  const createTarget = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-create-session-target',
+      password: 'invite-create-session-target-password-123',
+      confirmPassword: 'invite-create-session-target-password-123'
+    }
+  });
+  const revokeTarget = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-revoke-session-target',
+      password: 'invite-revoke-session-target-password-123',
+      confirmPassword: 'invite-revoke-session-target-password-123'
+    }
+  });
+  assert.equal(createTarget.status, 201);
+  assert.equal(revokeTarget.status, 201);
+
+  const existingInvite = await post(ctx, '/api/admin/invites', {
+    targetAccountId: revokeTarget.payload.account.id
+  }, adminCookie);
+  assert.equal(existingInvite.status, 201);
+
+  const originalInsertInvite = ctx.store.insertMaoInvite.bind(ctx.store);
+  let revokedDuringCreate = false;
+  ctx.store.insertMaoInvite = invite => {
+    revokedDuringCreate = true;
+    ctx.store.revokeMaoAccountSession(invite.actorSessionId, invite.now);
+    return originalInsertInvite(invite);
+  };
+  const createAttempt = await post(ctx, '/api/admin/invites', {
+    targetAccountId: createTarget.payload.account.id
+  }, adminCookie);
+  assert.equal(revokedDuringCreate, true);
+  assert.equal(createAttempt.status, 403);
+  assert.equal(createAttempt.payload.error.code, 'ADMIN_SESSION_REVOKED');
+  assert.equal(Number(ctx.query(
+    'SELECT COUNT(*) AS total FROM mao_invite_codes WHERE target_account_id = ?',
+    createTarget.payload.account.id
+  )[0].total), 0, '管理员 Session 失效后不能创建邀请码');
+
+  const relogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'invite-admin-session-race',
+      password: 'invite-admin-session-race-password-123'
+    }
+  });
+  assert.equal(relogin.status, 200);
+  adminCookie = cookieFrom(relogin);
+  adminSession = ctx.store.getMaoAccountSession(
+    await sha256Hex(adminCookie.slice('MAO_SESSION='.length))
+  );
+
+  const originalRevokeInvite = ctx.store.revokeMaoInvite.bind(ctx.store);
+  let revokedDuringRevoke = false;
+  ctx.store.revokeMaoInvite = (inviteId, actorAccountId, now, actorSessionId) => {
+    revokedDuringRevoke = true;
+    ctx.store.revokeMaoAccountSession(actorSessionId, now);
+    return originalRevokeInvite(inviteId, actorAccountId, now, actorSessionId);
+  };
+  const revokeAttempt = await post(
+    ctx,
+    '/api/admin/invites/' + encodeURIComponent(existingInvite.payload.invite.id) + '/revoke',
+    {},
+    adminCookie
+  );
+  assert.equal(revokedDuringRevoke, true);
+  assert.equal(revokeAttempt.status, 403);
+  assert.equal(revokeAttempt.payload.error.code, 'ADMIN_SESSION_REVOKED');
+  assert.equal(ctx.query(
+    'SELECT revoked_at FROM mao_invite_codes WHERE id = ?',
+    existingInvite.payload.invite.id
+  )[0].revoked_at, null, '管理员 Session 失效后不能撤销邀请码记录');
+  assert.equal(
+    ctx.query('SELECT revoked_at FROM mao_account_sessions WHERE id = ?', adminSession.session_id)[0].revoked_at != null,
+    true
+  );
+});
