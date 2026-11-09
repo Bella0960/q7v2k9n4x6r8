@@ -17,8 +17,9 @@ h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .stat-card{padding:12px 10px;border:1px solid var(--line);border-radius:13px;background:#fff;min-width:0}
 .stat-card span{display:block;font-size:10px;color:#898d95;white-space:nowrap}
 .stat-card strong{display:block;margin-top:7px;font-size:20px;font-weight:650;letter-spacing:-.03em}
-.admin-tabs{display:flex;gap:7px;border-bottom:1px solid #e4e5e8;margin-bottom:20px}
-.tab-button{position:relative;border:0;background:transparent;color:#8c9098;padding:12px 14px 13px;font-size:12px}
+.admin-tabs{display:flex;gap:5px;overflow-x:auto;overscroll-behavior-x:contain;border-bottom:1px solid #e4e5e8;margin-bottom:20px;scrollbar-width:none}
+.admin-tabs::-webkit-scrollbar{display:none}
+.tab-button{position:relative;flex:0 0 auto;border:0;background:transparent;color:#8c9098;padding:12px 11px 13px;font-size:11px;white-space:nowrap}
 .tab-button.active{color:#22252a;font-weight:650}
 .tab-button.active::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:2px;border-radius:2px;background:#26282d}
 .admin-view[hidden],.detail-sheet[hidden],.code-sheet[hidden]{display:none}
@@ -115,6 +116,38 @@ h1{margin:0;font-size:24px;letter-spacing:-.035em;font-weight:650}
 .directory-more{display:block;width:100%;min-height:42px;margin:12px 0 4px;padding:10px 14px;border:1px solid #d0d0d5;border-radius:12px;background:#fff;color:#222;font:inherit;font-size:13px;cursor:pointer}
 .directory-more[hidden]{display:none}
 .directory-more:disabled{opacity:.55;cursor:wait}
+
+
+.audit-summary-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:4px 2px 13px;margin-bottom:12px;border-bottom:1px solid #e6e7ea}
+.audit-summary-row span{display:block;color:#92959c;font-size:10px;line-height:1.5}
+.audit-summary-row strong{display:block;margin-top:4px;color:#292b30;font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}
+.audit-filter-row{display:flex;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;padding:0 0 2px;margin:0 0 8px;scrollbar-width:none}
+.audit-filter-row::-webkit-scrollbar{display:none}
+.global-audit-list{padding:0 14px}
+.global-audit-entry{padding:13px 0;border-bottom:1px solid #f0f0f2}
+.global-audit-entry:last-child{border-bottom:0}
+.global-audit-entry summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;align-items:center;list-style:none;cursor:pointer}
+.global-audit-entry summary::-webkit-details-marker{display:none}
+.global-audit-entry summary::after{content:"＋";grid-column:2;grid-row:1/3;color:#999da5;font-size:13px}
+.global-audit-entry[open] summary::after{content:"−"}
+.global-audit-title{font-size:11px;font-weight:650;overflow-wrap:anywhere}
+.global-audit-time{color:#999da5;font-size:10px;font-variant-numeric:tabular-nums}
+.global-audit-actor{grid-column:1;color:#777c84;font-size:10px;line-height:1.55;overflow-wrap:anywhere}
+.global-audit-detail{display:grid;gap:7px;margin-top:11px;padding-top:10px;border-top:1px solid #f0f0f2}
+.global-audit-detail-row{display:flex;justify-content:space-between;gap:12px;font-size:10px;line-height:1.55}
+.global-audit-detail-row span:first-child{flex:0 0 auto;color:#999da5}
+.global-audit-detail-row span:last-child{min-width:0;color:#555a63;text-align:right;overflow-wrap:anywhere}
+.global-audit-description{margin:0;color:#777c84;font-size:10px;line-height:1.7;overflow-wrap:anywhere}
+.audit-open-account{justify-self:start;min-height:32px;padding:0 10px;border:1px solid #e1e3e6;border-radius:9px;background:#fff;color:#555b64;font-size:10px}
+.policy-list{border-top:1px solid #e4e5e8}
+.policy-item{border-bottom:1px solid #e4e5e8}
+.policy-item summary{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:50px;list-style:none;cursor:pointer}
+.policy-item summary::-webkit-details-marker{display:none}
+.policy-item summary span{color:#34373d;font-size:12px;font-weight:620}
+.policy-item summary small{color:#999da5;font-size:9px;white-space:nowrap}
+.policy-item summary::after{content:"＋";color:#999da5;font-size:13px}
+.policy-item[open] summary::after{content:"−"}
+.policy-item p{margin:0 0 14px;color:#777c84;font-size:11px;line-height:1.8}
 
 .audit-result-count{margin:8px 0;color:#777c84;font-size:11px}
 .audit-more{margin-top:8px}
