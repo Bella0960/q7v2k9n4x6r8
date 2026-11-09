@@ -134,11 +134,16 @@ test('密码验证期间账号被管理员停用时，不得再创建登录会�
 
   const originalCreateSession = ctx.store.createMaoAccountSession.bind(ctx.store);
   ctx.store.createMaoAccountSession = session => {
-    // Simulate the administrator's state transition after password lookup
+    // Perform the real administrator state transition after password lookup
     // but immediately before the atomic session insert.
-    testDb.db.prepare(
-      "UPDATE mao_accounts SET status = 'disabled', disabled_from_status = 'pending_invite' WHERE id = ?"
-    ).run(session.accountId);
+    const disabled = ctx.store.setMaoAccountState({
+      accountId: session.accountId,
+      action: 'disable',
+      actorAccountId: null,
+      reason: 'simulated concurrent admin action',
+      now: ctx.now()
+    });
+    assert.equal(disabled.status, 'disabled');
     return originalCreateSession(session);
   };
 
