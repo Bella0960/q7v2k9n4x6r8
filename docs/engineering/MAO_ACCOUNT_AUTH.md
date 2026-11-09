@@ -158,6 +158,30 @@ Super-admin only:
 - POST /api/admin/invites/:id/revoke
 - POST /api/admin/accounts/:id/action (disable / restore / revoke)
 
+## Isolated account-auth preview
+
+The account-auth branch has a dedicated preview deployment configuration. It is deliberately separate from the production Worker:
+
+- Production remains `wrangler.jsonc` with Worker name `mao`; this preview uses `wrangler.preview.jsonc` with Worker name `mao-auth-preview`.
+- Both scripts run the same `worker.js` and bind a `CloudDatabase` SQLite Durable Object. A Durable Object namespace belongs to its Worker script, so the different script names create a separate namespace and do not attach to production's `mao` database. The shared internal object name in `worker.js` is only an ID name inside each Worker's own namespace.
+- Preview has no route to the production Worker and no cron trigger. The account/admin UI and authenticated APIs run against the preview Worker and its own empty database. Autonomous scheduled activity and maintenance are not started by this preview.
+- The preview workflow listens only to pushes on `feat/mao-account-auth-foundation`; the existing production workflow remains main-only and unchanged.
+
+Before the preview workflow can deploy, add these GitHub Actions repository secrets. Secret values must never be committed or placed in issue/PR comments:
+
+| GitHub Actions secret | Purpose |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account containing both separate Worker scripts |
+| `CLOUDFLARE_PREVIEW_API_TOKEN` | Dedicated Cloudflare API token with permission to deploy the preview Worker; do not reuse the production deployment token |
+| `MAO_PREVIEW_DEVICE_SECRET_PEPPER` | Preview-only device/account security pepper, at least 32 characters |
+| `MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET` | Preview-only one-time creator bootstrap secret, at least 32 characters |
+
+The workflow checks that all four secrets are present and that both preview secrets meet the minimum length before it invokes Wrangler. It then builds the branch, runs the preview-isolation contract, account contract and admin-center contract, and only then deploys `wrangler.preview.jsonc`. Wrangler installs the two preview-only values as Worker secrets named `DEVICE_SECRET_PEPPER` and `MAO_SUPER_ADMIN_BOOTSTRAP_SECRET`.
+
+The deployment URL is emitted by Wrangler after a successful run; it is not guessed or hard-coded in this document. No preview has been deployed or verified yet. If the dedicated preview credentials are absent, or Actions cannot obtain a runner, no deployment occurs. The preview deployment does not merge this branch, change the production URL, reuse production data, or generate an APK.
+
+Run `npm run test:preview:config` to verify the checked-in preview configuration is distinct from production. A passing static contract does not prove Cloudflare isolation; the first real preview deployment must still be checked for the returned Worker URL, preview account registration/bootstrap, and successful admin API operations.
+
 ## Validation
 
 - npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, and account/device revocation.
