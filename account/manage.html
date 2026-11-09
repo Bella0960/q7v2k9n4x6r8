@@ -11,7 +11,7 @@
 <body>
   <main class="manage-shell">
     <header class="manage-header">
-      <a class="back-link" href="../settings/settings.html" aria-label="返回设置">←</a>
+      <a class="back-link" href="../settings/settings.html" aria-label="返回设置">返回设置</a>
       <div><div class="eyebrow">ACCOUNT CENTER</div><h1>账号管理</h1></div>
       <span class="header-mark">MAO</span>
     </header>
@@ -66,5 +66,16 @@
     <button class="logout-button" id="logoutButton" type="button">退出当前账号</button>
     <p class="footer-note">账号身份与使用授权由 MAO 服务器独立管理。</p>
   </main>
+  <dialog id="accountActionDialog" class="account-action-dialog" aria-labelledby="accountActionTitle" aria-describedby="accountActionDescription">
+    <div class="account-action-content">
+      <div class="eyebrow">CONFIRM ACTION</div>
+      <h2 id="accountActionTitle">请确认操作</h2>
+      <p id="accountActionDescription"></p>
+      <div class="account-action-buttons">
+        <button type="button" id="accountActionCancel">取消</button>
+        <button type="button" id="accountActionConfirm">确认操作</button>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>
