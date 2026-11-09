@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   account-auth-contract:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.MAO_AUTH_RUNNER_LABEL || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - name: Check out repository
