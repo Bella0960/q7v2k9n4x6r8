@@ -168,21 +168,42 @@ class CloudStore {
     this.exec('UPDATE devices SET label = ?, platform = ? WHERE id = ?', label || '', platform || '', deviceId);
   }
 
-  refreshActiveDeviceProfile(deviceId, userId, secretHash, { label, platform, now }) {
-    // Device re-enrollment follows asynchronous account-session checks. Update
-    // its profile only if the same credential still belongs to the same account
-    // and the device has not been revoked in the meantime.
+  refreshActiveDeviceProfile(deviceId, userId, secretHash, { label, platform, now, sessionId = null }) {
+    // Device re-enrollment follows asynchronous account-session checks. Re-check
+    // the exact MAO session at the SQL write boundary so a session revoked after
+    // route-level validation cannot still refresh an account-owned device.
+    const normalizedUserId = String(userId || 'owner');
+    if (normalizedUserId !== 'owner' && !sessionId) return false;
     const refreshed = this.exec(
       `UPDATE devices
        SET label = ?, platform = ?, last_seen_at = ?
        WHERE id = ? AND user_id = ? AND secret_hash = ? AND revoked_at IS NULL
+         AND (
+           (? = 'owner' AND ? IS NULL)
+           OR EXISTS (
+             SELECT 1
+             FROM mao_accounts a
+             INNER JOIN mao_account_sessions s ON s.account_id = a.id
+             WHERE a.id = devices.user_id
+               AND a.id = ?
+               AND a.status = 'active'
+               AND s.id = ?
+               AND s.revoked_at IS NULL
+               AND s.expires_at > ?
+           )
+         )
        RETURNING id`,
       label || '',
       platform || '',
       now,
       deviceId,
-      userId,
-      secretHash
+      normalizedUserId,
+      secretHash,
+      normalizedUserId,
+      sessionId,
+      normalizedUserId,
+      sessionId,
+      now
     )[0] || null;
     return Boolean(refreshed);
   }
