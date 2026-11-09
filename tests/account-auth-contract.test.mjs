@@ -1781,3 +1781,75 @@ test('永久撤销账号会撤销已验证 QQ 邮箱绑定的邀请码，且不�
   assert.equal(restore.status, 409, '永久撤销状态不可恢复');
   assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', accountId)[0].status, 'revoked');
 });
+
+
+test('0014 adds ordered cursor indexes for the admin account and invitation directories', () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db);
+  const names = ctx.query("SELECT name FROM sqlite_master WHERE type = 'index'").map(row => row.name);
+  assert.ok(names.includes('idx_mao_accounts_directory_cursor'));
+  assert.ok(names.includes('idx_mao_invites_directory_cursor'));
+});
+
+test('创作者邀请码目录超过 500 条时可按游标完整翻页，统计与全目录搜索一致', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const adminAccountId = ctx.query("SELECT id FROM mao_accounts WHERE role = 'super_admin'")[0].id;
+  const timestamp = ctx.now();
+
+  for (let index = 0; index < 503; index += 1) {
+    const suffix = String(index).padStart(12, '0');
+    const recordId = 'invite_record_' + suffix;
+    const createdAt = 1000 + Math.floor(index / 2);
+    const usedCount = index % 3 === 0 ? 1 : 0;
+    const expiresAt = index % 3 === 1 ? timestamp - 1 : timestamp + 100000;
+    const revokedAt = index % 7 === 0 ? timestamp : null;
+    ctx.store.exec(
+      "INSERT INTO mao_invite_codes (id, token_hash, target_account_id, target_email, max_uses, used_count, created_by_account_id, created_at, expires_at, revoked_at) VALUES (?, ?, NULL, ?, 1, ?, ?, ?, ?, ?)",
+      recordId, 'token-hash-' + suffix, 'invite' + index + '@qq.com',
+      usedCount, adminAccountId, createdAt, expiresAt, revokedAt
+    );
+  }
+
+  let cursor = '';
+  const ids = [];
+  for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
+    const path = '/api/admin/invites?limit=40' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+    const result = await json(await ctx.fetchTo(path, { headers: { cookie: adminCookie } }));
+    assert.equal(result.status, 200);
+    assert.equal(result.payload.page.totalCount, 503);
+    assert.equal(result.payload.summary.total, 503);
+    assert.equal(
+      result.payload.summary.pending + result.payload.summary.used +
+        result.payload.summary.expired + result.payload.summary.revoked,
+      503,
+      '全局状态统计必须覆盖所有邀请码且互斥'
+    );
+    ids.push(...result.payload.invites.map(invite => invite.id));
+    if (!result.payload.page.hasMore) break;
+    assert.ok(result.payload.page.nextCursor);
+    cursor = result.payload.page.nextCursor;
+  }
+  assert.equal(ids.length, 503);
+  assert.equal(new Set(ids).size, 503,
+    '创建时间相同的历史邀请码也不能在翻页时重复或遗漏');
+
+  const oldInvite = await json(await ctx.fetchTo(
+    '/api/admin/invites?search=' + encodeURIComponent('invite_record_000000000000'),
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(oldInvite.status, 200);
+  assert.equal(oldInvite.payload.page.totalCount, 1,
+    '历史邀请码必须能通过全目录搜索找到');
+  assert.equal(oldInvite.payload.invites[0].id, 'invite_record_000000000000');
+});
