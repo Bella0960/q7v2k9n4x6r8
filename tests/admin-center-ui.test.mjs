@@ -229,6 +229,12 @@ test('全局操作审计视图使用服务器搜索、类别筛选和游标分�
   assert.match(adminHtml, /data-tab="settings"/);
   assert.match(adminHtml, /id="settingsView"/);
   assert.match(adminHtml, /id="globalAuditSearch"/);
+  assert.match(adminHtml, /data-audit-range="all"/);
+  assert.match(adminHtml, /data-audit-range="today"/);
+  assert.match(adminHtml, /data-audit-range="7d"/);
+  assert.match(adminScript, /globalAuditRange === 'today'/);
+  assert.match(adminScript, /globalAuditRange === '7d'/);
+  assert.match(adminScript, /params\.set\('since', String\(globalAuditSince\)\)/);
   assert.match(adminHtml, /data-audit-filter="all"/);
   assert.match(adminHtml, /data-audit-filter="account"/);
   assert.match(adminHtml, /data-audit-filter="invite"/);
