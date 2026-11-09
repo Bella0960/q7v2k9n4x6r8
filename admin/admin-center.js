@@ -611,9 +611,10 @@
           invite_redeem: '用户核销邀请码',
           invite_revoke: '撤销专属邀请码'
         })[record.action] || record.action;
+        const actorLabel = record.action === 'invite_redeem' ? '账号 ' : '管理员 ';
         const subline = [
           formatTime(record.createdAt),
-          '管理员 ' + record.actorAccountId
+          actorLabel + record.actorAccountId
         ];
         if (record.inviteId) subline.push('邀请码记录 ' + record.inviteId);
         if (record.expiresAt) subline.push('到期 ' + formatTime(record.expiresAt));
