@@ -35,6 +35,8 @@
     <nav class="admin-tabs" aria-label="管理项目">
       <button class="tab-button active" type="button" data-tab="users">用户管理</button>
       <button class="tab-button" type="button" data-tab="invites">邀请码管理</button>
+      <button class="tab-button" type="button" data-tab="audit">操作审计</button>
+      <button class="tab-button" type="button" data-tab="settings">后台设置</button>
     </nav>
 
     <section class="admin-view" id="usersView">
@@ -68,6 +70,56 @@
       <div class="records-card" id="invitesList"><p class="empty-note">正在读取邀请码…</p></div>
       <button class="directory-more" id="loadMoreInvites" type="button" hidden>加载更多邀请码</button>
       <p class="helper-note">当前可直接绑定 MAO 永久 ID。QQ 邮箱所有权验证与邮件发送尚未接通，因此邮箱方式暂不开放。</p>
+    </section>
+
+    <section class="admin-view" id="auditView" hidden>
+      <div class="view-heading"><div><h2>操作审计</h2><p>全局查询账号状态与邀请码授权事件</p></div><button class="refresh-button" id="refreshGlobalAudit" type="button">刷新</button></div>
+      <div class="audit-summary-row">
+        <div><span>记录总数</span><strong id="globalAuditTotal">—</strong></div>
+        <div><span>账号状态操作</span><strong id="globalAuditAccountActions">—</strong></div>
+        <div><span>邀请码事件</span><strong id="globalAuditInviteActions">—</strong></div>
+      </div>
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="globalAuditSearch" type="search" placeholder="搜索记录 ID、MAO ID、操作或邀请码记录 ID"></label>
+      <div class="audit-filter-row" role="group" aria-label="操作记录类别">
+        <button class="filter-button active" type="button" data-audit-filter="all" aria-pressed="true">全部</button>
+        <button class="filter-button" type="button" data-audit-filter="account" aria-pressed="false">账号状态</button>
+        <button class="filter-button" type="button" data-audit-filter="invite" aria-pressed="false">邀请码</button>
+      </div>
+      <p class="results-count" id="globalAuditResultCount" aria-live="polite">正在读取操作记录…</p>
+      <div class="records-card global-audit-list" id="globalAuditList"><p class="empty-note">正在读取操作记录…</p></div>
+      <button class="directory-more" id="loadMoreGlobalAudit" type="button" hidden>加载更多记录</button>
+      <p class="helper-note">此处只展示服务器保存的授权与账号操作审计，不保存或显示邀请码明文、密码摘要和会话令牌。</p>
+    </section>
+
+    <section class="admin-view" id="settingsView" hidden>
+      <div class="view-heading"><div><h2>后台设置</h2><p>账号授权、安全保护与审计规则</p></div></div>
+      <div class="policy-list">
+        <details class="policy-item" open>
+          <summary><span>账号准入与邀请码</span><small>强制规则</small></summary>
+          <p>新账号创建后先进入待授权状态。必须使用绑定该 MAO 永久 ID 的有效邀请码完成一次性核销，才能进入 MAO。邮箱所有权验证未接通前，不开放邮箱目标发码路径。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>账号生命周期</span><small>强制规则</small></summary>
+          <p>临时停用会撤销登录会话、设备凭据和关联有效邀请码。恢复时回到停用前保存的授权状态。永久撤销不可通过普通恢复操作复活，保留只读历史资料。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>危险操作保护</span><small>强制规则</small></summary>
+          <p>停用、永久撤销、邀请码撤销、设备移除和会话撤销等操作必须先打开屏幕中央确认弹窗，明确显示对象与影响范围；只有再次点击确认按钮才会提交。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>事务与异常恢复</span><small>强制规则</small></summary>
+          <p>账号状态、邀请码与对应审计事件必须在同一事务中提交。请求失败或发生并发冲突时，不得显示假成功；页面必须重新核对服务器状态后再提供操作入口。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>审计记录与敏感信息</span><small>只读保护</small></summary>
+          <p>审计历史在普通管理界面只允许查询，不提供编辑或删除入口。记录保留操作人、目标账号、时间、状态变化及必要元数据；邀请码明文、密码摘要和会话令牌不得进入审计展示。</p>
+        </details>
+        <details class="policy-item">
+          <summary><span>账号数据隔离</span><small>强制规则</small></summary>
+          <p>MAO 永久账号 ID 是账号数据分区依据，与真人好友 ID 和设备 ID 分离。所有私有 API 必须核对登录会话与页面账号上下文，不能依赖前端隐藏按钮代替服务器权限检查。</p>
+        </details>
+      </div>
+      <p class="helper-note">这些是系统强制安全规则，不提供普通开关。规则修改必须通过受控代码变更、回归测试和明确发布审批完成。</p>
     </section>
 
     <section class="detail-sheet" id="accountDetail" hidden>
