@@ -1329,11 +1329,20 @@
       }
 
       // ===== 事件监听：触摸手势与鼠标 =====
+      // 时钟挂件在常态下只用于打开颜色面板：不参与通用长按拖拽，避免慢点击误入编辑模式。
+      // 编辑模式下仍沿用下面的短延时分支，保留时钟拖动能力。
+      function isClockDragTarget(el) {
+        if (!el) return false;
+        var id = el.getAttribute('data-drag');
+        return id === 'clock' || id === 'clock-lg';
+      }
+
       // 1. Touch Events
       document.addEventListener('touchstart', function (e) {
         var t = e.target.closest('[data-drag]');
         if (!t) return;
         if (e.target.classList.contains('ds-del')) return;
+        if (!editing && isClockDragTarget(t)) return;
 
         var touch = e.touches[0];
         startX = touch.clientX;
@@ -1400,6 +1409,7 @@
         var t = e.target.closest('[data-drag]');
         if (!t) return;
         if (e.target.classList.contains('ds-del')) return;
+        if (!editing && isClockDragTarget(t)) return;
 
         startX = e.clientX;
         startY = e.clientY;
