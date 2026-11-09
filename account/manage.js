@@ -6,6 +6,7 @@
   let currentSessionId = '';
   let busy = false;
   let pendingAccountAction = null;
+  const busyButtonState = new WeakMap();
 
   async function api(path, method = 'GET', body = null) {
     const response = await fetch(path, {
@@ -75,6 +76,18 @@
       document.querySelector('.manage-shell').prepend(node);
     }
     node.textContent = message;
+  }
+
+  function setButtonsDisabled(disabled) {
+    document.querySelectorAll('button').forEach(button => {
+      if (disabled) {
+        if (!busyButtonState.has(button)) busyButtonState.set(button, button.disabled);
+        button.disabled = true;
+      } else if (busyButtonState.has(button)) {
+        button.disabled = busyButtonState.get(button);
+        busyButtonState.delete(button);
+      }
+    });
   }
 
   function showDisabled() {
@@ -175,12 +188,13 @@
     currentSessionId = result.currentSessionId || '';
     renderDevices(Array.isArray(result.devices) ? result.devices : []);
     renderSessions(Array.isArray(result.sessions) ? result.sessions : []);
+    if (busy) setButtonsDisabled(true);
   }
 
-  async function runAction(action) {
+  async function runAction(action, onError = null) {
     if (busy) return false;
     busy = true;
-    document.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    setButtonsDisabled(true);
     let succeeded = false;
     try {
       await action();
@@ -191,10 +205,11 @@
         return false;
       }
       if ($('accountActionDialog')?.open) closeAccountActionConfirmation();
-      showError(error.message || '操作失败，请稍后重试');
+      if (typeof onError === 'function') onError(error);
+      else showError(error.message || '操作失败，请稍后重试');
     } finally {
       busy = false;
-      document.querySelectorAll('button').forEach(button => { button.disabled = false; });
+      setButtonsDisabled(false);
     }
     return succeeded;
   }
@@ -249,21 +264,14 @@
     $('passwordMessage').textContent = '';
     $('passwordMessage').className = 'inline-message';
     const formElement = event.currentTarget;
-    const submit = formElement.querySelector('button[type="submit"]');
-    submit.disabled = true;
-    api('/api/accounts/password/change', 'POST', body).then(async result => {
+    runAction(async () => {
+      const result = await api('/api/accounts/password/change', 'POST', body);
       formElement.reset();
       $('passwordMessage').textContent = result.changed ? '密码已更新，其他登录会话已退出。' : '密码没有修改。';
       await refreshSecurity();
-    }).catch(error => {
-      if (error.code === 'ACCOUNT_DISABLED') {
-        showDisabled();
-        return;
-      }
+    }, error => {
       $('passwordMessage').textContent = error.message || '密码修改失败。';
       $('passwordMessage').className = 'inline-message error';
-    }).finally(() => {
-      submit.disabled = false;
     });
   });
 
