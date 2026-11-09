@@ -68,7 +68,7 @@ Node 版本必须是 22.16 或更新的 22.x。私有仓库需要用有权限的
 两个账号工作流都支持专用自托管 runner。默认不配置时仍使用 GitHub-hosted `ubuntu-latest`。只有配置下面的仓库变量后，才会切换到你自己的电脑。
 
 1. 在 GitHub 仓库进入 **Settings → Actions → Runners → New self-hosted runner**，选择 **Windows / x64**。
-2. 按 GitHub 页面为这个仓库生成的步骤下载并解压 Runner。建议使用专门的本机 Windows 用户或独立测试机，目录例如 `C:\\actions-runner-mao-auth`。
+2. 按 GitHub 页面为这个仓库生成的步骤下载并解压 Runner。建议使用专门的本机 Windows 用户或独立测试机，目录例如 `C:\actions-runner-mao-auth`。
 3. 在该目录打开 PowerShell，按 GitHub 页面提示运行 `config.cmd`。注册时添加一个自定义标签：`mao-auth-preview`。Runner 注册令牌由 GitHub 临时提供，只在本机配置窗口使用，绝不能发给我或写入仓库。
 4. 注册完成后运行 `run.cmd`，保持窗口开启。电脑关机、休眠或关闭 Runner 后，排队任务不会在这台机器上执行。
 5. 回到仓库 **Settings → Secrets and variables → Actions → Variables**，新增 Repository variable：
