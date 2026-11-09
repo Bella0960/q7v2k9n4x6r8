@@ -1184,9 +1184,7 @@ class CloudStore {
               o.character_id, o.server_message_id, o.created_at,
               s.id AS subscription_id, s.endpoint, s.p256dh, s.auth_key
        FROM outbound_messages o
-        INNER JOIN devices source_device
-          ON source_device.id = o.device_id
-         AND source_device.revoked_at IS NULL
+        INNER JOIN devices source_device ON source_device.id = o.device_id
        INNER JOIN devices target_device
          ON target_device.user_id = source_device.user_id
         AND target_device.revoked_at IS NULL
