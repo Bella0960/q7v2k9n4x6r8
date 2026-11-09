@@ -2262,6 +2262,45 @@ class CloudStore {
     )[0] || null;
   }
 
+  isActiveMaoSuperAdminSession(accountId, sessionId, now) {
+    const timestamp = Number(now);
+    if (!accountId || !sessionId || !Number.isSafeInteger(timestamp) || timestamp < 0) return false;
+    return Boolean(this.exec(
+      `SELECT s.id
+       FROM mao_account_sessions s
+       INNER JOIN mao_accounts a ON a.id = s.account_id
+       WHERE s.id = ?
+         AND s.account_id = ?
+         AND s.revoked_at IS NULL
+         AND s.expires_at > ?
+         AND a.role = 'super_admin'
+         AND a.status = 'active'
+       LIMIT 1`,
+      sessionId,
+      accountId,
+      timestamp
+    )[0]);
+  }
+
+  isActivePendingMaoAccountSession(accountId, sessionId, now) {
+    const timestamp = Number(now);
+    if (!accountId || !sessionId || !Number.isSafeInteger(timestamp) || timestamp < 0) return false;
+    return Boolean(this.exec(
+      `SELECT s.id
+       FROM mao_account_sessions s
+       INNER JOIN mao_accounts a ON a.id = s.account_id
+       WHERE s.id = ?
+         AND s.account_id = ?
+         AND s.revoked_at IS NULL
+         AND s.expires_at > ?
+         AND a.status = 'pending_invite'
+       LIMIT 1`,
+      sessionId,
+      accountId,
+      timestamp
+    )[0]);
+  }
+
   touchMaoAccountSession(sessionId, now) {
     this.exec(
       "UPDATE mao_account_sessions SET last_used_at = ? WHERE id = ? AND revoked_at IS NULL",
@@ -2286,6 +2325,14 @@ class CloudStore {
 
   insertMaoInvite(invite) {
     return this.transaction(() => {
+      // The administrator's exact session is revalidated inside the same
+      // transaction as invitation creation, after route-level async work.
+      if (!this.isActiveMaoSuperAdminSession(
+        invite.createdByAccountId,
+        invite.actorSessionId,
+        invite.now
+      )) return 'actor_session_invalid';
+
       // The target check must share the write transaction with insertion.
       // Otherwise an invite request that passed its route check can insert a
       // code after an overlapping disable/revoke transition has completed.
@@ -2445,8 +2492,11 @@ class CloudStore {
     )[0] || null;
   }
 
-  revokeMaoInvite(inviteId, actorAccountId, now) {
+  revokeMaoInvite(inviteId, actorAccountId, now, actorSessionId) {
     return this.transaction(() => {
+      if (!this.isActiveMaoSuperAdminSession(actorAccountId, actorSessionId, now)) {
+        return 'actor_session_invalid';
+      }
       const invite = this.exec(
         "SELECT id, target_account_id, target_email FROM mao_invite_codes WHERE id = ? AND revoked_at IS NULL AND used_count < max_uses LIMIT 1",
         inviteId
@@ -2490,9 +2540,12 @@ class CloudStore {
     });
   }
 
-  redeemMaoInvite({ tokenHash, accountId, now }) {
+  redeemMaoInvite({ tokenHash, accountId, sessionId, now }) {
     try {
       return this.transaction(() => {
+        if (!this.isActivePendingMaoAccountSession(accountId, sessionId, now)) {
+          return 'session_invalid';
+        }
         const account = this.getMaoAccountById(accountId);
         if (!account || account.status !== 'pending_invite') return false;
         const invite = this.exec(
@@ -2594,8 +2647,15 @@ class CloudStore {
     };
   }
 
-  setMaoAccountState({ accountId, action, actorAccountId, reason = '', now }) {
+  setMaoAccountState({
+    accountId, action, actorAccountId, actorSessionId = null, reason = '', now
+  }) {
     return this.transaction(() => {
+      // A non-null actor is always a human administrator. System/test callers
+      // with no actor retain the explicit internal transition path.
+      if (actorAccountId && !this.isActiveMaoSuperAdminSession(actorAccountId, actorSessionId, now)) {
+        return 'actor_session_invalid';
+      }
       const account = this.getMaoAccountById(accountId);
       if (!account || account.role === 'super_admin') return null;
 
