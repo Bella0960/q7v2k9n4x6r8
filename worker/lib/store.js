@@ -2386,10 +2386,29 @@ class CloudStore {
         // Outstanding one-time codes are part of the target account's
         // authorization state. Revoke them in this same transaction so restore
         // always requires a newly issued invitation.
-        this.exec(
-          "UPDATE mao_invite_codes SET revoked_at = ? WHERE revoked_at IS NULL AND used_count < max_uses AND (target_account_id = ? OR target_email = (SELECT LOWER(qq_email) FROM mao_accounts WHERE id = ? AND qq_email_verified_at IS NOT NULL))",
+        const revokedInvites = this.exec(
+          "UPDATE mao_invite_codes SET revoked_at = ? WHERE revoked_at IS NULL AND used_count < max_uses AND (target_account_id = ? OR target_email = (SELECT LOWER(qq_email) FROM mao_accounts WHERE id = ? AND qq_email_verified_at IS NOT NULL)) RETURNING id, expires_at, max_uses, used_count",
           now, accountId, accountId
         );
+        for (const invite of revokedInvites) {
+          // These invitation revocations are caused by the account lifecycle
+          // transition, but remain individually traceable in the same account
+          // timeline. Audit failure rolls back the account and invite changes.
+          this.exec(
+            "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, 'invite_revoke', ?, ?)",
+            'audit_' + crypto.randomUUID(),
+            actorAccountId,
+            accountId,
+            serializeStoreJson({
+              inviteId: String(invite.id),
+              expiresAt: Number(invite.expires_at),
+              maxUses: Number(invite.max_uses || 1),
+              usedCount: Number(invite.used_count || 0),
+              sourceAction: action
+            }, 2048, 'automatic invite revoke audit detail'),
+            now
+          );
+        }
         this.revokeMaoAccountSessions(accountId, now);
         this.exec(
           "UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = 'account_disabled' WHERE disabled_at IS NULL AND device_id IN (SELECT id FROM devices WHERE user_id = ? AND revoked_at IS NULL)",
