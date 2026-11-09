@@ -2774,6 +2774,118 @@ test('设备撤销并发时，不能新增上下文版本事件或排队自主�
   )[0].total, 0, '已撤销设备不能在撤销完成后新增自主活动任务');
 });
 
+test('遗留运行中任务在设备被撤销后不能再被完成、跳过或重试', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const accountId = (await admin.clone().json()).account.id;
+
+  const registerDevice = async deviceId => {
+    const secret = randomToken(32);
+    const enrolled = await post(ctx, '/api/devices/register', {
+      deviceId,
+      secret,
+      label: deviceId,
+      platform: 'test'
+    }, adminCookie);
+    assert.equal(enrolled.status, 200);
+    return { deviceId, secret };
+  };
+  const insertRunningActivity = (device, activityId) => {
+    const timestamp = ctx.now();
+    ctx.store.exec(
+      `INSERT INTO activity_queue
+        (id, device_id, character_id, kind, status, scheduled_at, attempt_count,
+         max_attempts, locked_by, locked_until, payload_json, created_at, updated_at, dedupe_key)
+       VALUES (?, ?, ?, 'contact', 'running', ?, 1, 3, ?, ?, '{}', ?, ?, ?)`,
+      activityId,
+      device.deviceId,
+      'role_legacy_running',
+      timestamp,
+      device.deviceId,
+      timestamp + 60000,
+      timestamp,
+      timestamp,
+      'legacy-dedupe-' + activityId
+    );
+  };
+  const revokeWithoutQueueSweep = device => {
+    ctx.store.exec(
+      'UPDATE devices SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL',
+      ctx.now(),
+      device.deviceId
+    );
+  };
+
+  const skipDevice = await registerDevice('device_task_skip_0001');
+  const skipActivityId = 'activity_legacy_skip_0001';
+  insertRunningActivity(skipDevice, skipActivityId);
+  const originalComplete = ctx.store.completeActivity.bind(ctx.store);
+  ctx.store.completeActivity = options => {
+    revokeWithoutQueueSweep(skipDevice);
+    return originalComplete({
+      ...options,
+      userId: accountId,
+      requireActiveDevice: true
+    });
+  };
+  const skipped = await ctx.fetchTo('/api/autonomy/activities/' + skipActivityId + '/skip', {
+    method: 'POST',
+    body: { attemptCount: 1, reasonCode: 'no_worthy_message' },
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': skipDevice.deviceId + '.' + skipDevice.secret
+    }
+  });
+  const skipResult = await json(skipped);
+  assert.equal(skipResult.status, 409);
+  assert.equal(skipResult.payload.error.code, 'ACTIVITY_LEASE_LOST');
+  assert.equal(ctx.query(
+    'SELECT status FROM activity_queue WHERE id = ?',
+    skipActivityId
+  )[0].status, 'running',
+  '设备撤销后旧请求不能把遗留运行中任务标记为已完成');
+
+  const failDevice = await registerDevice('device_task_fail_0001');
+  const failActivityId = 'activity_legacy_fail_0001';
+  insertRunningActivity(failDevice, failActivityId);
+  const originalFail = ctx.store.failActivity.bind(ctx.store);
+  ctx.store.failActivity = options => {
+    revokeWithoutQueueSweep(failDevice);
+    return originalFail({
+      ...options,
+      userId: accountId,
+      requireActiveDevice: true
+    });
+  };
+  const failed = await ctx.fetchTo('/api/autonomy/activities/' + failActivityId + '/fail', {
+    method: 'POST',
+    body: { attemptCount: 1, reasonCode: 'generation_failed' },
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': failDevice.deviceId + '.' + failDevice.secret
+    }
+  });
+  const failResult = await json(failed);
+  assert.equal(failResult.status, 409);
+  assert.equal(failResult.payload.error.code, 'ACTIVITY_LEASE_LOST');
+  assert.equal(ctx.query(
+    'SELECT status, next_attempt_at FROM activity_queue WHERE id = ?',
+    failActivityId
+  )[0].status, 'running',
+  '设备撤销后旧请求不能再把遗留任务重新排入 retry 队列');
+});
+
 test('现有设备重新登记时，Session 在数据库写入前被撤销必须拒绝刷新', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
