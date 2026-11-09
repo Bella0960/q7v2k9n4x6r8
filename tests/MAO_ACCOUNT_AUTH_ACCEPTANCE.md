@@ -76,6 +76,7 @@ Node 版本必须是 22.16 或更新的 22.x。私有仓库需要用有权限的
    - Value：`mao-auth-preview`
 6. 在同一页面的 **Secrets** 中配置上文四个预览专用 Cloudflare/Worker 密钥。不要复用正式部署 Token，也不要把密钥值发送到聊天。
 7. 向 `feat/mao-account-auth-foundation` 推送新提交后，账号验证和预览部署工作流会匹配这个 runner 标签。预览工作流必须先通过完整测试链，之后才会部署独立 Worker；手机链接会写入该次运行的 Summary。
+8. 配置完 Runner、变量和 Secrets 后，旧的失败记录不会自动重新排队。到 **Actions** 打开最新的 `MAO Account Auth Contract` 失败运行，点 **Re-run all jobs**；随后重新触发 `Deploy isolated MAO auth preview`。如果页面没有 `Run workflow` 按钮，就向功能分支推送一个新提交触发 `push` 工作流（无需合并 PR）。
 
 **安全边界：** 自托管 Runner 会执行仓库里的代码，并能访问它运行的电脑。只把它注册到这个私有 MAOMAO 仓库，不要拿它执行陌生来源或未经审查的 Pull Request；不要在这台 Runner 上配置正式生产密钥。最好使用独立测试账户/机器。完成后可以在 Runner 窗口按 Ctrl+C 停止，并从仓库 Runner 设置中移除。
 
