@@ -24,6 +24,37 @@ async function passwordDigest(password, saltText) {
   return toHex(new Uint8Array(bits));
 }
 
+function adminDirectoryOptions(request, allowedStatuses, idPattern) {
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get('limit');
+  const limit = rawLimit == null ? 50 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new ApiError(400, 'INVALID_DIRECTORY_LIMIT', '每页读取数量必须在 1–100 之间');
+  }
+  const search = String(url.searchParams.get('search') || '').trim();
+  if (search.length > 120) {
+    throw new ApiError(400, 'INVALID_DIRECTORY_SEARCH', '搜索内容不能超过 120 个字符');
+  }
+  const status = String(url.searchParams.get('status') || 'all');
+  if (!allowedStatuses.includes(status)) {
+    throw new ApiError(400, 'INVALID_DIRECTORY_FILTER', '列表筛选条件不正确');
+  }
+  const cursorText = String(url.searchParams.get('cursor') || '');
+  let cursor = null;
+  if (cursorText) {
+    const separator = cursorText.indexOf(':');
+    const createdAtText = cursorText.slice(0, separator);
+    const id = cursorText.slice(separator + 1);
+    const createdAt = Number(createdAtText);
+    if (separator < 1 || !/^\\d{1,16}$/.test(createdAtText) ||
+        !Number.isSafeInteger(createdAt) || createdAt < 0 || !idPattern.test(id)) {
+      throw new ApiError(400, 'INVALID_DIRECTORY_CURSOR', '列表游标无效，请刷新后重试');
+    }
+    cursor = { createdAt, id };
+  }
+  return { limit, search, status, cursor };
+}
+
 function normalizedUsername(value) {
   const username = String(value || '').trim();
   if (!USERNAME_RE.test(username)) {
@@ -472,21 +503,47 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
 
   async function adminAccounts(request) {
     await requireActiveAdmin(request);
+    const options = adminDirectoryOptions(request, ['all', 'pending_invite', 'active', 'restricted'], ACCOUNT_ID_RE);
+    const rows = store.listMaoAccounts(options);
+    const hasMore = rows.length > options.limit;
+    const accounts = rows.slice(0, options.limit);
+    const last = accounts[accounts.length - 1] || null;
     return ok({
-      // The creator account is managed through Account Management, never through
-      // ordinary-user disable/revoke controls in this list.
-      accounts: store.listMaoAccounts()
-        .filter(account => account.role !== 'super_admin')
-        .map(account => ({
-          ...account,
-          qq_email_verified_at: account.qq_email_verified_at == null ? null : Number(account.qq_email_verified_at)
-        }))
+      accounts: accounts.map(account => ({
+        ...account,
+        qq_email_verified_at: account.qq_email_verified_at == null ? null : Number(account.qq_email_verified_at)
+      })),
+      page: {
+        limit: options.limit,
+        totalCount: store.countMaoAccounts(options),
+        hasMore,
+        nextCursor: hasMore && last ? String(last.created_at) + ':' + last.id : null
+      },
+      summary: store.getMaoAccountDirectorySummary()
     });
   }
 
   async function adminInvites(request) {
     await requireActiveAdmin(request);
-    return ok({ invites: store.listMaoInvites() });
+    const options = adminDirectoryOptions(
+      request,
+      ['all', 'pending', 'used', 'expired', 'revoked'],
+      /^[A-Za-z0-9_-]{16,64}$/
+    );
+    const rows = store.listMaoInvites({ ...options, now: now() });
+    const hasMore = rows.length > options.limit;
+    const invites = rows.slice(0, options.limit);
+    const last = invites[invites.length - 1] || null;
+    return ok({
+      invites,
+      page: {
+        limit: options.limit,
+        totalCount: store.countMaoInvites({ search: options.search, status: options.status, now: now() }),
+        hasMore,
+        nextCursor: hasMore && last ? String(last.created_at) + ':' + last.id : null
+      },
+      summary: store.getMaoInviteDirectorySummary(now())
+    });
   }
 
   async function adminAccountAudit(request, accountId) {
