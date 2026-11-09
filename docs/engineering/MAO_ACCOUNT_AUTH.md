@@ -184,6 +184,10 @@ After a successful deploy, the workflow uses the Wrangler Action's `deployment-u
 
 Run `npm run test:preview:config` to verify the checked-in preview configuration is distinct from production. A passing static contract does not prove Cloudflare isolation; the first real preview deployment must still be checked for the returned Worker URL, preview account registration/bootstrap, and successful admin API operations.
 
+## Account-scoped active invitation lookup
+
+The admin account detail no longer infers invitation state from the currently loaded invitation-directory page. It calls the admin-only `GET /api/admin/accounts/:id/active-invite` endpoint, which resolves active invitations by permanent MAO account ID and also recognizes invitations bound to that account's verified QQ email. The response contains only invitation metadata (ID, expiry, usage counts); it never returns the raw code or token hash. If lookup fails, the detail view displays a retry action and suppresses code generation until the server state is known. A request sequence guard prevents a late lookup from changing a different or reopened account detail.
+
 ## Validation
 
 - npm run test:accounts covers account tables, one-time bootstrap, pending registration, target-bound invitation redemption, account/device revocation, full directory cursor traversal beyond 500 accounts with duplicate-timestamp boundaries and search, and private audit history pagination beyond 200 entries.

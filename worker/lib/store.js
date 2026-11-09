@@ -2083,6 +2083,31 @@ class CloudStore {
     return Boolean(row);
   }
 
+  getActiveMaoInviteForAccount(accountId, now = Date.now()) {
+    const row = this.exec(
+      `SELECT i.id, i.target_account_id, i.target_email, i.max_uses, i.used_count, i.created_at, i.expires_at
+       FROM mao_invite_codes i
+       WHERE i.revoked_at IS NULL
+         AND i.expires_at > ?
+         AND i.used_count < i.max_uses
+         AND (
+           i.target_account_id = ?
+           OR (
+             i.target_email IS NOT NULL
+             AND lower(i.target_email) = (
+               SELECT lower(qq_email)
+               FROM mao_accounts
+               WHERE id = ? AND qq_email_verified_at IS NOT NULL
+             )
+           )
+         )
+       ORDER BY i.created_at DESC, i.id DESC
+       LIMIT 1`,
+      Number(now), accountId, accountId
+    )[0];
+    return row || null;
+  }
+
   listMaoInvites({ limit = 50, cursor = null, search = '', status = 'all', now = Date.now() } = {}) {
     const clauses = [];
     const params = [];

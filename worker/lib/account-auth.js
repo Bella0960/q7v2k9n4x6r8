@@ -546,6 +546,21 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
     });
   }
 
+  async function adminActiveInvite(request, accountId) {
+    await requireActiveAdmin(request);
+    const account = store.getMaoAccountById(accountId);
+    if (!account) throw new ApiError(404, 'ACCOUNT_NOT_FOUND', '账号不存在');
+    const row = store.getActiveMaoInviteForAccount(accountId, now());
+    return ok({
+      invite: row ? {
+        id: String(row.id),
+        expiresAt: Number(row.expires_at),
+        maxUses: Number(row.max_uses || 1),
+        usedCount: Number(row.used_count || 0)
+      } : null
+    });
+  }
+
   async function adminAccountAudit(request, accountId) {
     await requireActiveAdmin(request);
     const account = store.getMaoAccountById(accountId);
@@ -632,6 +647,8 @@ export function createAccountAuth({ store, env = {}, now = () => Date.now() }) {
       if (path === '/api/admin/invites' && method === 'GET') return await adminInvites(request);
       if (path === '/api/admin/invites' && method === 'POST') return await createInvite(request);
 
+      const activeInviteMatch = /^\\/api\\/admin\\/accounts\\/(MAO-[A-Z0-9]{12,24})\\/active-invite$/.exec(path);
+      if (activeInviteMatch && method === 'GET') return await adminActiveInvite(request, activeInviteMatch[1]);
       const auditMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/audit$/.exec(path);
       if (auditMatch && method === 'GET') return await adminAccountAudit(request, auditMatch[1]);
       const actionMatch = /^\/api\/admin\/accounts\/(MAO-[A-Z0-9]{12,24})\/action$/.exec(path);

@@ -24,6 +24,7 @@
   let auditTotalCount = 0;
   let auditLoadedCount = 0;
   let auditRequestSequence = 0;
+  let accountDetailRequestSequence = 0;
   let accountSearchRefreshPending = false;
   let inviteSearchRefreshPending = false;
   let pendingAction = '';
@@ -420,17 +421,8 @@
     $('detailActions').appendChild(button);
   }
 
-  function findActiveInviteForAccount(accountId) {
-    const timestamp = Date.now();
-    return invites.find(invite =>
-      invite.target_account_id === accountId &&
-      !invite.revoked_at &&
-      Number(invite.expires_at) > timestamp &&
-      Number(invite.used_count || 0) < Number(invite.max_uses || 1)
-    ) || null;
-  }
-
   async function renderAccountDetail(account) {
+    const detailRequestSequence = ++accountDetailRequestSequence;
     $('detailUsername').textContent = account.username || '账号详情';
     $('detailId').textContent = account.id;
     const meta = [
@@ -458,39 +450,73 @@
     pendingAction = '';
 
     if (account.status === 'pending_invite') {
-      const activeInvite = findActiveInviteForAccount(account.id);
-      if (activeInvite) {
-        inviteStatus.hidden = false;
-        inviteStatus.append(
-          el('strong', 'invite-status-title', '已有有效的专属邀请码'),
-          el('span', 'invite-status-meta',
-            '到期时间：' + formatTime(activeInvite.expires_at) +
-            ' · 使用次数：' + Number(activeInvite.used_count || 0) + '/' + Number(activeInvite.max_uses || 1)),
-          el('span', 'invite-status-note',
-            '原始邀请码只在生成时展示一次。若用户遗失，需要先撤销当前邀请码，再生成新的。')
+      inviteStatus.hidden = false;
+      inviteStatus.append(
+        el('strong', 'invite-status-title', '正在核对当前邀请码'),
+        el('span', 'invite-status-meta', '正在从服务器读取这个 MAO 账号的有效授权状态…')
+      );
+      try {
+        const result = await api(
+          '/api/admin/accounts/' + encodeURIComponent(account.id) + '/active-invite'
         );
-        const revokeButton = el('button', 'invite-revoke-button', '撤销当前邀请码');
-        revokeButton.type = 'button';
-        revokeButton.addEventListener('click', () => run(async () => {
-          if (!window.confirm('撤销后，当前邀请码将立即失效。确定继续吗？')) return;
-          await api('/api/admin/invites/' + encodeURIComponent(activeInvite.id) + '/revoke', 'POST', {});
-          await refreshAll();
-        }));
-        inviteStatus.appendChild(revokeButton);
-      } else {
-        const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
-        inviteButton.type = 'button';
-        inviteButton.addEventListener('click', () => run(async () => {
-          if (!window.confirm('将为 ' + account.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
-          const result = await api('/api/admin/invites', 'POST', { targetAccountId: account.id });
-          generatedCode = result.invite.code;
-          $('generatedCode').textContent = generatedCode;
-          $('copyInviteCode').textContent = '复制邀请码';
-          $('inviteCodeSheet').hidden = false;
-          $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
-          await refreshAll();
-        }));
-        actions.appendChild(inviteButton);
+        if (selectedAccountId !== account.id ||
+            detailRequestSequence !== accountDetailRequestSequence) return;
+
+        const activeInvite = result.invite || null;
+        inviteStatus.replaceChildren();
+        if (activeInvite) {
+          inviteStatus.append(
+            el('strong', 'invite-status-title', '已有有效的专属邀请码'),
+            el('span', 'invite-status-meta',
+              '到期时间：' + formatTime(activeInvite.expiresAt) +
+              ' · 使用次数：' + Number(activeInvite.usedCount || 0) + '/' + Number(activeInvite.maxUses || 1)),
+            el('span', 'invite-status-note',
+              '原始邀请码只在生成时展示一次。若用户遗失，需要先撤销当前邀请码，再生成新的。')
+          );
+          const revokeButton = el('button', 'invite-revoke-button', '撤销当前邀请码');
+          revokeButton.type = 'button';
+          revokeButton.addEventListener('click', () => run(async () => {
+            if (!window.confirm('撤销后，当前邀请码将立即失效。确定继续吗？')) return;
+            await api('/api/admin/invites/' + encodeURIComponent(activeInvite.id) + '/revoke', 'POST', {});
+            await refreshAll();
+          }));
+          inviteStatus.appendChild(revokeButton);
+        } else {
+          inviteStatus.hidden = true;
+          const inviteButton = el('button', 'action-button primary', '生成专属邀请码');
+          inviteButton.type = 'button';
+          inviteButton.addEventListener('click', () => run(async () => {
+            if (!window.confirm('将为 ' + account.id + ' 生成一个一次性专属邀请码。继续吗？')) return;
+            const created = await api('/api/admin/invites', 'POST', { targetAccountId: account.id });
+            generatedCode = created.invite.code;
+            $('generatedCode').textContent = generatedCode;
+            $('copyInviteCode').textContent = '复制邀请码';
+            $('inviteCodeSheet').hidden = false;
+            $('inviteCodeSheet').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await refreshAll();
+          }));
+          actions.appendChild(inviteButton);
+        }
+      } catch (error) {
+        if (selectedAccountId !== account.id ||
+            detailRequestSequence !== accountDetailRequestSequence) return;
+        if (error.code === 'ACCOUNT_DISABLED') {
+          window.location.replace('/account/index.html?disabled=1');
+          return;
+        }
+        if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+          window.location.replace('../index.html');
+          return;
+        }
+        inviteStatus.hidden = false;
+        inviteStatus.replaceChildren(
+          el('strong', 'invite-status-title', '暂时无法核对邀请码状态'),
+          el('span', 'invite-status-note', '为避免重复发码，暂不显示生成按钮。请检查网络后重新核对。')
+        );
+        const retryButton = el('button', 'audit-retry', '重新核对');
+        retryButton.type = 'button';
+        retryButton.addEventListener('click', () => renderAccountDetail(account));
+        inviteStatus.appendChild(retryButton);
       }
       createActionButton('停用账号', 'danger', 'disable', true);
     } else if (account.status === 'active') {
@@ -574,6 +600,7 @@
   function closeDetail() {
     selectedAccountId = '';
     auditRequestSequence += 1;
+    accountDetailRequestSequence += 1;
     $('accountDetail').hidden = true;
     $('reasonField').hidden = true;
   }

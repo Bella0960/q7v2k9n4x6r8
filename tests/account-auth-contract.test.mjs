@@ -284,6 +284,132 @@ test('邀请码绑定指定永久 ID：其他账号不能使用，正确账号�
   assert.equal(JSON.stringify(listResult.payload).includes('token_hash'), false, '管理列表不得泄露邀请码哈希');
 });
 
+test('管理员可按永久账号 ID 查询有效邀请码，兼容已验证邮箱绑定且不依赖目录分页', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const adminId = ctx.query("SELECT id FROM mao_accounts WHERE role = 'super_admin'")[0].id;
+
+  const target = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-lookup-id',
+      password: 'invite-lookup-id-password-123',
+      confirmPassword: 'invite-lookup-id-password-123'
+    }
+  });
+  assert.equal(target.status, 201);
+  const targetId = target.payload.account.id;
+  const created = await post(ctx, '/api/admin/invites', { targetAccountId: targetId }, adminCookie);
+  assert.equal(created.status, 201);
+
+  // Put newer unrelated invitations ahead of the target in the directory's first page.
+  const timestamp = ctx.now();
+  for (let index = 0; index < 55; index += 1) {
+    const suffix = String(index).padStart(3, '0');
+    ctx.store.exec(
+      "INSERT INTO mao_invite_codes (id, token_hash, target_account_id, target_email, max_uses, used_count, created_by_account_id, created_at, expires_at) VALUES (?, ?, NULL, ?, 1, 0, ?, ?, ?)",
+      'lookup_noise_' + suffix,
+      'lookup-noise-hash-' + suffix,
+      'lookup-noise-' + suffix + '@qq.com',
+      adminId,
+      timestamp + index + 1,
+      timestamp + 1000000
+    );
+  }
+  const firstPage = await json(await ctx.fetchTo(
+    '/api/admin/invites?limit=50&status=pending',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(firstPage.status, 200);
+  assert.equal(firstPage.payload.invites.some(invite => invite.id === created.payload.invite.id), false,
+    '目标邀请码必须确实不在当前目录第一页');
+
+  const direct = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(targetId) + '/active-invite',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(direct.status, 200);
+  assert.equal(direct.payload.invite.id, created.payload.invite.id,
+    '账号详情应能直接查到分页之外的有效邀请码');
+  assert.equal(direct.payload.invite.usedCount, 0);
+  assert.equal(direct.payload.invite.maxUses, 1);
+  assert.equal(Object.hasOwn(direct.payload.invite, 'code'), false);
+  assert.equal(/token_hash|tokenHash/i.test(JSON.stringify(direct.payload)), false,
+    '查询接口不得返回邀请码明文或哈希');
+
+  const emptyTarget = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-lookup-empty',
+      password: 'invite-lookup-empty-password-123',
+      confirmPassword: 'invite-lookup-empty-password-123'
+    }
+  });
+  const empty = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(emptyTarget.payload.account.id) + '/active-invite',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(empty.status, 200);
+  assert.equal(empty.payload.invite, null, '没有有效邀请码时应明确返回 null');
+
+  const emailTarget = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-lookup-email',
+      password: 'invite-lookup-email-password-123',
+      confirmPassword: 'invite-lookup-email-password-123',
+      qqEmail: 'invite-lookup-email@qq.com'
+    }
+  });
+  const emailTargetId = emailTarget.payload.account.id;
+  ctx.store.exec(
+    'UPDATE mao_accounts SET qq_email_verified_at = ? WHERE id = ?',
+    ctx.now(), emailTargetId
+  );
+  const emailInvite = await post(ctx, '/api/admin/invites', {
+    targetEmail: 'invite-lookup-email@qq.com'
+  }, adminCookie);
+  assert.equal(emailInvite.status, 201);
+  const emailLookup = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(emailTargetId) + '/active-invite',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(emailLookup.status, 200);
+  assert.equal(emailLookup.payload.invite.id, emailInvite.payload.invite.id,
+    '已验证邮箱绑定的邀请码也必须出现在对应账号详情');
+
+  const ordinaryLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'invite-lookup-id',
+      password: 'invite-lookup-id-password-123'
+    }
+  });
+  const denied = await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(targetId) + '/active-invite',
+    { headers: { cookie: cookieFrom(ordinaryLogin) } }
+  );
+  assert.equal(denied.status, 403, '普通账号不能调用管理员专用查询');
+
+  await post(ctx, '/api/admin/invites/' + encodeURIComponent(created.payload.invite.id) + '/revoke', {}, adminCookie);
+  const afterRevoke = await json(await ctx.fetchTo(
+    '/api/admin/accounts/' + encodeURIComponent(targetId) + '/active-invite',
+    { headers: { cookie: adminCookie } }
+  ));
+  assert.equal(afterRevoke.status, 200);
+  assert.equal(afterRevoke.payload.invite, null, '撤销后不能继续报告为有效邀请码');
+});
+
 test('创作者账号目录使用稳定游标分页，能够完整读取 500 条以上并跨全量搜索', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });

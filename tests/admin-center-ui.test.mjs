@@ -103,6 +103,27 @@ test('search edits during another admin request are queued instead of silently d
   assert.match(adminScript, /if \(busy\) \{\s*inviteSearchRefreshPending = true/);
 });
 
+test('账号详情从服务端按 MAO ID 核对有效邀请码，失败时禁止误显示发码操作', () => {
+  assert.match(adminScript, /let accountDetailRequestSequence = 0/);
+  assert.match(adminScript, /const detailRequestSequence = \+\+accountDetailRequestSequence/);
+  assert.match(adminScript, /\/active-invite/);
+  assert.match(adminScript, /正在核对当前邀请码/);
+  assert.match(adminScript, /暂时无法核对邀请码状态/);
+  assert.match(adminScript, /为避免重复发码，暂不显示生成按钮/);
+  assert.match(adminScript, /retryButton\.addEventListener\('click', \(\) => renderAccountDetail\(account\)\)/);
+  assert.match(adminScript, /accountDetailRequestSequence \+= 1/);
+  assert.doesNotMatch(adminScript, /function findActiveInviteForAccount/);
+  const start = adminScript.indexOf('  async function renderAccountDetail(account) {');
+  const end = adminScript.indexOf('  async function loadAudit(accountId, reset = true) {', start);
+  assert.ok(start >= 0 && end > start, 'account detail renderer must exist');
+  const detail = adminScript.slice(start, end);
+  assert.match(detail, /selectedAccountId !== account\.id/);
+  assert.match(detail, /detailRequestSequence !== accountDetailRequestSequence/);
+  assert.ok(detail.indexOf('/active-invite') < detail.indexOf('catch (error)'),
+    'the account-specific lookup must finish before showing a generate action');
+  assert.match(detail, /if \(activeInvite\)[\s\S]*撤销当前邀请码[\s\S]*else[\s\S]*生成专属邀请码/);
+});
+
 test('only the latest audit request may update the currently open account detail', () => {
   assert.match(adminScript, /let auditRequestSequence = 0/);
   assert.match(adminScript, /const requestSequence = \+\+auditRequestSequence/);
