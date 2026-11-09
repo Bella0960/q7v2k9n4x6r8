@@ -62,12 +62,13 @@ test('preview workflow only deploys the account-auth branch with dedicated crede
   assert.match(workflow, /GITHUB_STEP_SUMMARY/);
   assert.doesNotMatch(workflow, /wrangler\.jsonc(?!\w)/,
     'the preview workflow must not deploy the production config');
-});
-
-test('preview secrets are validated before Wrangler deploy is called', () => {
-  const validateIndex = workflow.indexOf('Validate isolated preview configuration');
+  asstest('preview secrets and the full test gate are checked before Wrangler deploy is called', () => {
+  const installIndex = workflow.indexOf('Install dependencies');
+  const validateIndex = workflow.indexOf('Validate isolated preview configuration and dedicated credentials');
+  const gateIndex = workflow.indexOf('Run the complete account-auth validation gate before deployment');
   const deployIndex = workflow.indexOf('Deploy only the isolated preview Worker');
-  assert.ok(validateIndex >= 0 && deployIndex > validateIndex);
+  assert.ok(installIndex >= 0 && validateIndex > installIndex);
+  assert.ok(gateIndex > validateIndex && deployIndex > gateIndex);
   assert.match(workflow, /test "\$\{#MAO_PREVIEW_DEVICE_SECRET_PEPPER\}" -ge 32/);
   assert.match(workflow, /test "\$\{#MAO_PREVIEW_SUPER_ADMIN_BOOTSTRAP_SECRET\}" -ge 32/);
   assert.match(workflow, /MAO_SUPER_ADMIN_BOOTSTRAP_SECRET/);
