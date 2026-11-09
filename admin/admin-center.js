@@ -14,6 +14,7 @@
   let inviteSummary = null;
   let accountSearchTimer = 0;
   let inviteSearchTimer = 0;
+  let globalAuditSearchTimer = 0;
   let accountDirectoryKey = '';
   let inviteDirectoryKey = '';
   let accountFilter = 'all';
@@ -27,6 +28,14 @@
   let accountDetailRequestSequence = 0;
   let accountSearchRefreshPending = false;
   let inviteSearchRefreshPending = false;
+  let globalAuditSearchRefreshPending = false;
+  let globalAuditFilter = 'all';
+  let globalAuditDirectoryKey = '';
+  let globalAuditNextCursor = '';
+  let globalAuditHasMore = false;
+  let globalAuditLoadedCount = 0;
+  let globalAuditTotalCount = 0;
+  let globalAuditRequestSequence = 0;
   let pendingConfirmation = null;
   let generatedCode = '';
   let busy = false;
@@ -202,13 +211,16 @@
       setButtonsDisabled(false);
       const reloadAccounts = accountSearchRefreshPending;
       const reloadInvites = inviteSearchRefreshPending;
+      const reloadAudit = globalAuditSearchRefreshPending;
       accountSearchRefreshPending = false;
       inviteSearchRefreshPending = false;
-      if (reloadAccounts || reloadInvites) {
+      globalAuditSearchRefreshPending = false;
+      if (reloadAccounts || reloadInvites || reloadAudit) {
         window.setTimeout(() => run(async () => {
           await Promise.all([
             reloadAccounts ? loadAccountPage(true) : Promise.resolve(),
-            reloadInvites ? loadInvitePage(true) : Promise.resolve()
+            reloadInvites ? loadInvitePage(true) : Promise.resolve(),
+            reloadAudit ? loadGlobalAudit(true) : Promise.resolve()
           ]);
         }), 0);
       }
@@ -715,6 +727,134 @@
     }
   }
 
+  function globalAuditActionLabel(action) {
+    return ({
+      disable: '临时停用账号',
+      restore: '恢复账号',
+      revoke: '永久撤销账号',
+      invite_create: '生成专属邀请码',
+      invite_redeem: '用户核销邀请码',
+      invite_revoke: '撤销专属邀请码'
+    })[action] || String(action || '未知操作');
+  }
+
+  function globalAuditDetailRow(label, value) {
+    const row = el('div', 'global-audit-detail-row', '');
+    row.append(el('span', '', label), el('span', '', value || '—'));
+    return row;
+  }
+
+  function renderGlobalAuditRecord(record) {
+    const item = el('details', 'global-audit-entry', '');
+    const summary = el('summary', '', '');
+    const actorId = String(record.actorAccountId || '未知');
+    const actorName = String(record.actorUsername || '');
+    const actorPrefix = record.actorType === 'account' ? '账号' : '管理员';
+    const actorText = actorPrefix + '：' + (actorName ? actorName + ' · ' : '') + actorId;
+    const targetId = String(record.targetAccountId || '未知');
+    const targetName = String(record.targetUsername || '');
+    const targetText = targetName ? targetName + ' · ' + targetId : targetId;
+    summary.append(
+      el('span', 'global-audit-title', globalAuditActionLabel(record.action)),
+      el('span', 'global-audit-time', formatTime(record.createdAt)),
+      el('span', 'global-audit-actor', actorText)
+    );
+    const detail = el('div', 'global-audit-detail', '');
+    detail.append(
+      globalAuditDetailRow('记录 ID', record.id),
+      globalAuditDetailRow('操作人', actorText),
+      globalAuditDetailRow('目标账号', targetText)
+    );
+    if (record.fromStatus && record.toStatus) {
+      detail.append(globalAuditDetailRow(
+        '状态变化',
+        statusText(record.fromStatus) + ' 调整为 ' + statusText(record.toStatus)
+      ));
+    }
+    if (record.inviteId) detail.append(globalAuditDetailRow('邀请码记录 ID', record.inviteId));
+    if (record.expiresAt) detail.append(globalAuditDetailRow('邀请码到期', formatTime(record.expiresAt)));
+    if (record.maxUses != null) {
+      detail.append(globalAuditDetailRow(
+        '使用次数',
+        Number(record.usedCount || 0) + ' / ' + Number(record.maxUses || 1)
+      ));
+    }
+    if (record.reason) {
+      detail.append(el('p', 'global-audit-description', '管理员备注：' + record.reason));
+    }
+    detail.append(el('p', 'global-audit-description',
+      '审计仅包含授权事件和必要元数据，不保存邀请码明文、密码摘要或会话令牌。'));
+    if (record.targetAccountId && /^MAO-[A-Z0-9]{12,24}$/.test(record.targetAccountId)) {
+      const openButton = el('button', 'audit-open-account', '查看账号详情');
+      openButton.type = 'button';
+      openButton.addEventListener('click', () => openAccountFromInvite(record.targetAccountId));
+      detail.appendChild(openButton);
+    }
+    item.append(summary, detail);
+    return item;
+  }
+
+  async function loadGlobalAudit(reset = true) {
+    const search = String($('globalAuditSearch').value || '').trim();
+    const key = JSON.stringify([search, globalAuditFilter]);
+    const restart = reset || key !== globalAuditDirectoryKey;
+    const cursor = restart ? '' : globalAuditNextCursor;
+    const requestSequence = ++globalAuditRequestSequence;
+    const list = $('globalAuditList');
+    if (restart) {
+      globalAuditNextCursor = '';
+      globalAuditHasMore = false;
+      globalAuditLoadedCount = 0;
+      list.replaceChildren(el('p', 'empty-note', '正在读取操作记录…'));
+      $('globalAuditResultCount').textContent = '正在读取…';
+      $('loadMoreGlobalAudit').hidden = true;
+    }
+    const params = new URLSearchParams();
+    params.set('limit', '50');
+    params.set('type', globalAuditFilter);
+    if (search) params.set('search', search);
+    if (cursor) params.set('cursor', cursor);
+    try {
+      const result = await api('/api/admin/audit?' + params.toString());
+      if (requestSequence !== globalAuditRequestSequence) return;
+      const records = Array.isArray(result.records) ? result.records : [];
+      if (restart) list.replaceChildren();
+      if (!records.length && restart) {
+        list.appendChild(el('p', 'empty-note', '暂无符合条件的操作记录。'));
+      }
+      records.forEach(record => list.appendChild(renderGlobalAuditRecord(record)));
+      globalAuditDirectoryKey = key;
+      globalAuditLoadedCount = (restart ? 0 : globalAuditLoadedCount) + records.length;
+      globalAuditTotalCount = Number(result.page?.totalCount || 0);
+      globalAuditNextCursor = result.page?.nextCursor || '';
+      globalAuditHasMore = Boolean(result.page?.hasMore);
+      const summary = result.summary || {};
+      $('globalAuditTotal').textContent = String(summary.total ?? globalAuditTotalCount);
+      $('globalAuditAccountActions').textContent = String(summary.accountActions ?? '—');
+      $('globalAuditInviteActions').textContent = String(summary.inviteActions ?? '—');
+      $('globalAuditResultCount').textContent = '已加载 ' + globalAuditLoadedCount + ' / ' + globalAuditTotalCount + ' 条记录';
+      $('loadMoreGlobalAudit').hidden = !globalAuditHasMore;
+      if (busy) setButtonsDisabled(true);
+    } catch (error) {
+      if (requestSequence !== globalAuditRequestSequence) return;
+      if (error.code === 'ACCOUNT_DISABLED') {
+        window.location.replace('/account/index.html?disabled=1');
+        return;
+      }
+      if (error.status === 401 || error.status === 403 || error.code === 'ADMIN_ONLY') {
+        window.location.replace('../index.html');
+        return;
+      }
+      const message = el('p', 'empty-note', error.message || '全局审计记录暂时无法读取。');
+      const retry = el('button', 'audit-retry', '重新读取');
+      retry.type = 'button';
+      retry.addEventListener('click', () => run(() => loadGlobalAudit(true)));
+      if (restart) list.replaceChildren(message, retry);
+      else list.append(message, retry);
+      $('globalAuditResultCount').textContent = '操作记录读取失败';
+    }
+  }
+
   function closeDetail() {
     selectedAccountId = '';
     auditRequestSequence += 1;
@@ -786,6 +926,30 @@
       run(() => loadInvitePage(true));
     }, 250);
   });
+  $('globalAuditSearch').addEventListener('input', () => {
+    window.clearTimeout(globalAuditSearchTimer);
+    globalAuditSearchTimer = window.setTimeout(() => {
+      if (busy) {
+        globalAuditSearchRefreshPending = true;
+        return;
+      }
+      run(() => loadGlobalAudit(true));
+    }, 250);
+  });
+  document.querySelectorAll('[data-audit-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+      globalAuditFilter = button.dataset.auditFilter || 'all';
+      document.querySelectorAll('[data-audit-filter]').forEach(item => {
+        const active = item === button;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      run(() => loadGlobalAudit(true));
+    });
+  });
+  $('refreshGlobalAudit').addEventListener('click', () => run(() => loadGlobalAudit(true)));
+  $('loadMoreGlobalAudit').addEventListener('click', () => run(() => loadGlobalAudit(false)));
+
   document.querySelectorAll('[data-account-filter]').forEach(button => {
     button.addEventListener('click', () => {
       accountFilter = button.dataset.accountFilter || 'all';
@@ -810,12 +974,14 @@
   });
 
   function activateTab(name) {
-    const selected = name === 'invites' ? 'invites' : 'users';
+    const selected = ['invites', 'audit', 'settings'].includes(name) ? name : 'users';
     document.querySelectorAll('[data-tab]').forEach(item => {
       item.classList.toggle('active', item.dataset.tab === selected);
     });
     $('usersView').hidden = selected !== 'users';
     $('invitesView').hidden = selected !== 'invites';
+    $('auditView').hidden = selected !== 'audit';
+    $('settingsView').hidden = selected !== 'settings';
     closeDetail();
   }
 
@@ -837,7 +1003,11 @@
   }
 
   document.querySelectorAll('[data-tab]').forEach(button => {
-    button.addEventListener('click', () => activateTab(button.dataset.tab));
+    button.addEventListener('click', () => {
+      const tab = button.dataset.tab;
+      activateTab(tab);
+      if (tab === 'audit') run(() => loadGlobalAudit(true));
+    });
   });
 
   $('closeCodeSheet').addEventListener('click', () => {
