@@ -39,6 +39,48 @@ npm run test:accounts:all
 
 这条本机路径不消耗 GitHub Actions runner 额度，但电脑必须能够访问 npm registry，并且本地有完整私有仓库工作树。
 
+### 电脑上没有仓库工作树时
+
+必须使用 Git 克隆，不要用 GitHub 的 Download ZIP；语法检查会调用 `git ls-files`。
+
+新克隆：
+
+```powershell
+git clone --single-branch --branch feat/mao-account-auth-foundation https://github.com/Bella0960/MAOMAO.git
+cd MAOMAO
+node --version
+npm run test:accounts:local
+```
+
+已有仓库：
+
+```powershell
+git fetch origin
+git switch feat/mao-account-auth-foundation
+git pull --ff-only origin feat/mao-account-auth-foundation
+npm run test:accounts:local
+```
+
+Node 版本必须是 22.16 或更新的 22.x。私有仓库需要用有权限的 GitHub 账号完成 Git 登录；不要把 Personal Access Token 发到聊天或写进命令截图。
+
+### GitHub Actions 托管额度不足时：使用自己的 Windows 电脑跑工作流
+
+两个账号工作流都支持专用自托管 runner。默认不配置时仍使用 GitHub-hosted `ubuntu-latest`。只有配置下面的仓库变量后，才会切换到你自己的电脑。
+
+1. 在 GitHub 仓库进入 **Settings → Actions → Runners → New self-hosted runner**，选择 **Windows / x64**。
+2. 按 GitHub 页面为这个仓库生成的步骤下载并解压 Runner。建议使用专门的本机 Windows 用户或独立测试机，目录例如 `C:\\actions-runner-mao-auth`。
+3. 在该目录打开 PowerShell，按 GitHub 页面提示运行 `config.cmd`。注册时添加一个自定义标签：`mao-auth-preview`。Runner 注册令牌由 GitHub 临时提供，只在本机配置窗口使用，绝不能发给我或写入仓库。
+4. 注册完成后运行 `run.cmd`，保持窗口开启。电脑关机、休眠或关闭 Runner 后，排队任务不会在这台机器上执行。
+5. 回到仓库 **Settings → Secrets and variables → Actions → Variables**，新增 Repository variable：
+   - Name：`MAO_AUTH_RUNNER_LABEL`
+   - Value：`mao-auth-preview`
+6. 在同一页面的 **Secrets** 中配置上文四个预览专用 Cloudflare/Worker 密钥。不要复用正式部署 Token，也不要把密钥值发送到聊天。
+7. 向 `feat/mao-account-auth-foundation` 推送新提交后，账号验证和预览部署工作流会匹配这个 runner 标签。预览工作流必须先通过完整测试链，之后才会部署独立 Worker；手机链接会写入该次运行的 Summary。
+
+**安全边界：** 自托管 Runner 会执行仓库里的代码，并能访问它运行的电脑。只把它注册到这个私有 MAOMAO 仓库，不要拿它执行陌生来源或未经审查的 Pull Request；不要在这台 Runner 上配置正式生产密钥。最好使用独立测试账户/机器。完成后可以在 Runner 窗口按 Ctrl+C 停止，并从仓库 Runner 设置中移除。
+
+这条路径把计算任务放到你自己的电脑，而不是 GitHub-hosted runner；仓库仍需允许 GitHub Actions 工作流运行。若没有可用的本机 Runner，仍可用上一节的 `npm run test:accounts:local` 跑测试，但预览部署和手机链接需要等可用 Runner 或另一个已授权的部署环境。
+
 `test:accounts:all` 按以下顺序运行，任何一项失败都会停止：
 
 1. `test:accounts:gate-contract`：检查统一验收命令、工作流及路径触发范围没有漏项。
