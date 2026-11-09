@@ -1501,3 +1501,202 @@ test('设备在异步鉴权期间被撤销时，旧设备请求必须在最终�
   )[0];
   assert.notEqual(persisted.revoked_at, null);
 });
+
+
+test('停用或永久撤销账号会在同一事务内撤销其未核销邀请码，恢复后必须重新发码', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'pending-invite-lifecycle',
+      password: 'pending-invite-lifecycle-password-123',
+      confirmPassword: 'pending-invite-lifecycle-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const accountId = registered.payload.account.id;
+
+  const firstInvite = await post(ctx, '/api/admin/invites', { targetAccountId: accountId }, adminCookie);
+  assert.equal(firstInvite.status, 201);
+  const firstInviteId = firstInvite.payload.invite.id;
+
+  const disabled = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'disable',
+    reason: '停用时撤销旧授权入口'
+  }, adminCookie);
+  assert.equal(disabled.status, 200);
+  assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', accountId)[0].status, 'disabled');
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM mao_invite_codes WHERE id = ?', firstInviteId)[0].revoked_at,
+    null,
+    '停用账号时必须撤销该账号未使用的邀请码'
+  );
+
+  const restored = await post(ctx, '/api/admin/accounts/' + accountId + '/action', {
+    action: 'restore',
+    reason: '恢复后重新授权'
+  }, adminCookie);
+  assert.equal(restored.status, 200);
+  assert.equal(restored.payload.account.status, 'pending_invite');
+
+  const userLogin = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: { identifier: 'pending-invite-lifecycle', password: 'pending-invite-lifecycle-password-123' }
+  });
+  const userCookie = cookieFrom(userLogin);
+  const staleCode = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: firstInvite.payload.invite.code
+  }, userCookie);
+  assert.equal(staleCode.status, 403, '恢复后的账号不得继续使用停用前的邀请码');
+  assert.equal(staleCode.payload.error.code, 'INVITE_NOT_VALID_FOR_ACCOUNT');
+  assert.equal(
+    Number(ctx.query('SELECT used_count FROM mao_invite_codes WHERE id = ?', firstInviteId)[0].used_count),
+    0,
+    '被撤销的邀请码不能被计为核销'
+  );
+
+  const secondInvite = await post(ctx, '/api/admin/invites', { targetAccountId: accountId }, adminCookie);
+  assert.equal(secondInvite.status, 201, '恢复后的待授权账号应能获得一张新邀请码');
+  assert.notEqual(secondInvite.payload.invite.id, firstInviteId);
+  const accepted = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: secondInvite.payload.invite.code
+  }, userCookie);
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.payload.account.status, 'active');
+
+  const finalInviteState = ctx.query(
+    'SELECT id, revoked_at, used_count FROM mao_invite_codes WHERE target_account_id = ? ORDER BY created_at ASC, id ASC',
+    accountId
+  );
+  assert.equal(finalInviteState.length, 2);
+  assert.notEqual(finalInviteState[0].revoked_at, null);
+  assert.equal(Number(finalInviteState[0].used_count), 0);
+  assert.equal(Number(finalInviteState[1].used_count), 1);
+});
+
+test('发码预检查后账号被停用时，事务内二次校验阻止插入新邀请码', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const adminAccountId = (await admin.clone().json()).account.id;
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-create-disable-race',
+      password: 'invite-create-disable-race-password-123',
+      confirmPassword: 'invite-create-disable-race-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const targetAccountId = registered.payload.account.id;
+
+  const insertInvite = ctx.store.insertMaoInvite.bind(ctx.store);
+  let disabledBetweenCheckAndInsert = false;
+  ctx.store.insertMaoInvite = invite => {
+    const changed = ctx.store.setMaoAccountState({
+      accountId: targetAccountId,
+      action: 'disable',
+      actorAccountId: adminAccountId,
+      reason: '模拟发码并发停用',
+      now: ctx.now()
+    });
+    assert.ok(changed, '模拟并发停用必须成功');
+    disabledBetweenCheckAndInsert = true;
+    return insertInvite(invite);
+  };
+
+  const response = await post(ctx, '/api/admin/invites', {
+    targetAccountId
+  }, adminCookie);
+  assert.equal(disabledBetweenCheckAndInsert, true);
+  assert.equal(response.status, 409);
+  assert.equal(response.payload.error.code, 'INVITE_TARGET_NOT_PENDING');
+  assert.equal(
+    Number(ctx.query('SELECT COUNT(*) AS total FROM mao_invite_codes WHERE target_account_id = ?', targetAccountId)[0].total),
+    0,
+    '账号状态改变后，事务内二次校验必须阻止留下可用邀请码'
+  );
+  assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', targetAccountId)[0].status, 'disabled');
+});
+
+test('账号停用时邀请码撤销与状态变更共同回滚，不留下半完成授权状态', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'invite-disable-rollback',
+      password: 'invite-disable-rollback-password-123',
+      confirmPassword: 'invite-disable-rollback-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const targetAccountId = registered.payload.account.id;
+  const invite = await post(ctx, '/api/admin/invites', { targetAccountId }, adminCookie);
+  assert.equal(invite.status, 201);
+
+  ctx.store.exec(
+    'CREATE TRIGGER fail_invite_lifecycle_audit BEFORE INSERT ON mao_account_audit ' +
+    "WHEN NEW.target_account_id = '" + targetAccountId + "' " +
+    "BEGIN SELECT RAISE(ABORT, 'simulated lifecycle audit failure'); END"
+  );
+
+  const failed = await post(ctx, '/api/admin/accounts/' + targetAccountId + '/action', {
+    action: 'disable',
+    reason: '触发事务回滚'
+  }, adminCookie);
+  assert.equal(failed.status, 500);
+  assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', targetAccountId)[0].status, 'pending_invite');
+  assert.equal(
+    ctx.query('SELECT revoked_at FROM mao_invite_codes WHERE id = ?', invite.payload.invite.id)[0].revoked_at,
+    null,
+    '审计写入失败时邀请码撤销必须随事务一起回滚'
+  );
+
+  ctx.store.exec('DROP TRIGGER fail_invite_lifecycle_audit');
+  const stillUsable = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'invite-disable-rollback',
+      password: 'invite-disable-rollback-password-123'
+    }
+  });
+  const userCookie = cookieFrom(stillUsable);
+  const redeemed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, userCookie);
+  assert.equal(redeemed.status, 200, '回滚后仍有效的邀请码应保持可核销');
+});
