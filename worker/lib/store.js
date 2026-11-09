@@ -2575,7 +2575,7 @@ class CloudStore {
         }
         this.revokeMaoAccountSessions(accountId, now);
         this.exec(
-          "UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = 'account_disabled' WHERE disabled_at IS NULL AND device_id IN (SELECT id FROM devices WHERE user_id = ? AND revoked_at IS NULL)",
+          "UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = 'account_disabled' WHERE disabled_at IS NULL AND device_id IN (SELECT id FROM devices WHERE user_id = ?)",
           now, accountId
         );
         this.exec(
