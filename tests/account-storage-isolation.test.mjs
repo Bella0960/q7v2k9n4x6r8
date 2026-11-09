@@ -68,14 +68,12 @@ function createScope({ accountId, role = 'user', fetchImpl = null, caches = null
   const local = makeStorage({ ai_custom_characters: '[{"id":"legacy-owner"}]' });
   const session = makeStorage({ active_tab: 'home' });
   const openCalls = [];
-  const cacheCalls = [];
-  const cacheNames = caches || createNativeCacheStorage();
+  const nativeCaches = caches || createNativeCacheStorage();
   const nativeIndexedDB = {
     open(name, version) { openCalls.push(['open', name, version]); return { name, version }; },
     deleteDatabase(name) { openCalls.push(['delete', name]); return { name }; },
     databases() { return Promise.resolve([{ name: 'public-db', version: 1 }, { name: '__mao_account_v1__' + encodeURIComponent(accountId) + '__private-db', version: 2 }]); }
   };
-  const nativeCaches = cacheNames;
   const document = {
     querySelector(selector) {
       if (selector.includes('mao-account-id')) return { content: accountId };
@@ -129,7 +127,7 @@ function createScope({ accountId, role = 'user', fetchImpl = null, caches = null
     stop() { this.stopped = true; }
   };
   vm.runInNewContext(scopeSource, { window, document, console, Object, Array, Proxy, Reflect, Promise, encodeURIComponent, Symbol });
-  return { window, document, local, session, openCalls, cacheCalls, cacheNames, nativeIndexedDB, nativeCaches, storageListeners };
+  return { window, document, local, session, openCalls, nativeIndexedDB, nativeCaches, storageListeners };
 }
 
 test('普通 MAO 账号的 localStorage 与 sessionStorage 只读写自己的命名空间', () => {
