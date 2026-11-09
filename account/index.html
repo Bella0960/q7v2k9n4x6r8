@@ -16,21 +16,34 @@
     </header>
 
     <section class="panel welcome-panel" id="welcomePanel">
-      <div class="eyebrow">PRIVATE SPACE · 01</div>
-      <h1>欢迎使用 MAO</h1>
-      <p class="lead">创建专属账号，开始你的 MAO 之旅。</p>
-      <div class="welcome-card">
-        <span class="welcome-symbol" aria-hidden="true">
-          <img src="../assets/mao-bunny-192.png" alt="" width="64" height="64" decoding="async">
-        </span>
-        <div>
-          <strong>属于你的独立空间</strong>
-          <span>账号身份与使用授权分别管理</span>
+      <div class="welcome-heading">
+        <div class="eyebrow"><span class="eyebrow-dot"></span> A SPACE OF YOUR OWN <span class="welcome-index">01 / 04</span></div>
+        <div class="hero-art" aria-hidden="true">
+          <span class="hero-orbit hero-orbit-one"></span>
+          <span class="hero-orbit hero-orbit-two"></span>
+          <span class="hero-art-label hero-art-label-left">PRIVATE<br>BY DESIGN</span>
+          <span class="hero-art-label hero-art-label-right">EST. MAO<br>NO. 001</span>
+          <span class="hero-red-point"></span>
+          <img class="hero-bunny" src="../assets/mao-bunny-192.png" alt="" width="128" height="128" decoding="async">
+          <span class="hero-art-line"></span>
         </div>
+        <div class="hero-kicker">WELCOME TO YOUR SPACE</div>
+        <h1>欢迎来到<br><span>你的 MAO。</span></h1>
+        <p class="lead">为自己留一处空间，记录喜欢的日常。</p>
       </div>
-      <button class="primary-button" type="button" data-show="registerPanel">创建账号 <span aria-hidden="true">→</span></button>
-      <button class="text-button" type="button" data-show="loginPanel">已有账号？登录</button>
-      <div class="bottom-note"><span></span> 未经创作者授权的账号无法进入 MAO <span></span></div>
+      <div class="welcome-content">
+        <div class="welcome-card">
+          <div class="welcome-card-copy">
+            <span class="card-eyebrow">YOUR PRIVATE SPACE</span>
+            <strong>属于你的独立空间</strong>
+            <span>账号身份与使用授权分别管理</span>
+          </div>
+          <span class="card-index">01<span>—</span>01</span>
+        </div>
+        <button class="primary-button" type="button" data-show="registerPanel">创建账号 <span class="button-arrow" aria-hidden="true">↗</span></button>
+        <button class="text-button" type="button" data-show="loginPanel">已有账号？<strong>登录</strong></button>
+        <div class="bottom-note"><span></span> 未经创作者授权的账号无法进入 MAO <span></span></div>
+      </div>
     </section>
 
     <section class="panel form-panel" id="registerPanel" hidden>
