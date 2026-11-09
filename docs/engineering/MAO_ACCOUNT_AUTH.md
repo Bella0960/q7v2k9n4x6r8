@@ -73,6 +73,7 @@ The first management screen includes:
 - Per-account details and private audit history, with a one-tap permanent-ID copy control and protection against stale audit responses when switching accounts.
 - One-time invitation generation for pending accounts, with the raw code displayed once for copying.
 - Invitation records with a matching permanent account ID link directly back to that account's detail and audit view.
+- Search invitation records by record ID, target permanent MAO ID, target email, or username; filter and count pending, used, expired, and revoked invitations. Only currently pending invitations expose the revoke action.
 - Temporary disable, restore, and permanent revoke actions with an admin-only reason.
 
 The account list distinguishes `disabled` (temporary suspension) from `revoked` (permanent authorization removal). Ordinary users continue to receive the same public disabled notice for both states. The creator shortcut is restored beside Settings when an active super-admin opens the desktop, including when an older custom layout had the newly introduced shortcut stored in its removed-items list.
