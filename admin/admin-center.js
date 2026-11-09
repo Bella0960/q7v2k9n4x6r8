@@ -672,6 +672,8 @@
       records.forEach(record => {
         const item = el('div', 'audit-entry', '');
         const actionLabel = ({
+          account_register: '账号注册创建',
+          admin_bootstrap: '创作者首次初始化',
           disable: '停用账号',
           restore: '恢复授权',
           revoke: '永久撤销',
@@ -679,7 +681,9 @@
           invite_redeem: '用户核销邀请码',
           invite_revoke: '撤销专属邀请码'
         })[record.action] || record.action;
-        const actorLabel = record.action === 'invite_redeem' ? '账号 ' : '管理员 ';
+        const actorLabel = record.action === 'invite_redeem' || record.action === 'account_register'
+          ? '账号 '
+          : (record.action === 'admin_bootstrap' ? '系统 ' : '管理员 ');
         const subline = [
           formatTime(record.createdAt),
           actorLabel + record.actorAccountId
@@ -731,6 +735,8 @@
 
   function globalAuditActionLabel(action) {
     return ({
+      account_register: '账号注册创建',
+      admin_bootstrap: '创作者首次初始化',
       disable: '临时停用账号',
       restore: '恢复账号',
       revoke: '永久撤销账号',
@@ -751,7 +757,9 @@
     const summary = el('summary', '', '');
     const actorId = String(record.actorAccountId || '未知');
     const actorName = String(record.actorUsername || '');
-    const actorPrefix = record.actorType === 'account' ? '账号' : '管理员';
+    const actorPrefix = record.actorType === 'account'
+      ? '账号'
+      : (record.actorType === 'system' ? '系统' : '管理员');
     const actorText = actorPrefix + '：' + (actorName ? actorName + ' · ' : '') + actorId;
     const targetId = String(record.targetAccountId || '未知');
     const targetName = String(record.targetUsername || '');
