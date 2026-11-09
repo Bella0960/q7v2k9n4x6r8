@@ -59,3 +59,11 @@ test('retry controls remain touchable and readable at narrow phone widths', () =
   assert.match(adminCss, /\.error-retry,.audit-retry\{min-height:32px/);
   assert.match(adminCss, /@media\(max-width:380px\)/);
 });
+
+test('account and invitation directories disclose the current 500-record read cap', () => {
+  assert.match(adminHtml, /id="accountLimitNotice" hidden/);
+  assert.match(adminHtml, /id="inviteLimitNotice" hidden/);
+  assert.match(adminScript, /accountLimitNotice'\)\.hidden = accounts\.length < 500/);
+  assert.match(adminScript, /inviteLimitNotice'\)\.hidden = invites\.length < 500/);
+  assert.match(adminCss, /\.limit-note\[hidden\]\{display:none\}/);
+});
