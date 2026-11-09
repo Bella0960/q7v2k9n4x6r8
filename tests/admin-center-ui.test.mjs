@@ -34,7 +34,7 @@ test('admin actions lock existing and newly rendered buttons without erasing the
 });
 
 test('audit request failures offer a retry but authentication failures leave the protected page', () => {
-  const start = adminScript.indexOf('  async function loadAudit(accountId) {');
+  const start = adminScript.indexOf('  async function loadAudit(accountId, reset = true) {');
   const end = adminScript.indexOf('\n\n  function closeDetail()', start);
   assert.ok(start >= 0 && end > start, 'audit loader must exist');
   const audit = adminScript.slice(start, end);
