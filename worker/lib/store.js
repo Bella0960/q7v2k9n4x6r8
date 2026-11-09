@@ -2053,10 +2053,22 @@ class CloudStore {
   }
 
   createMaoAccountSession(session) {
-    this.exec(
-      "INSERT INTO mao_account_sessions (id, account_id, token_hash, created_at, expires_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)",
-      session.id, session.accountId, session.tokenHash, session.now, session.expiresAt, session.now
-    );
+    // Re-check the account state in the same SQL statement that inserts the
+    // session. A login may finish password hashing after an administrator has
+    // already disabled or permanently revoked the account.
+    const inserted = this.exec(
+      `INSERT INTO mao_account_sessions
+        (id, account_id, token_hash, created_at, expires_at, last_used_at)
+       SELECT ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (
+         SELECT 1 FROM mao_accounts
+         WHERE id = ? AND status IN ('pending_invite', 'active')
+       )
+       RETURNING id`,
+      session.id, session.accountId, session.tokenHash, session.now,
+      session.expiresAt, session.now, session.accountId
+    )[0] || null;
+    return Boolean(inserted);
   }
 
   getMaoAccountSession(tokenHash) {
