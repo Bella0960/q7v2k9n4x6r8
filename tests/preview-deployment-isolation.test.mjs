@@ -49,8 +49,14 @@ test('preview has the same protected app asset behavior and no production routes
 });
 
 test('preview workflow only deploys the account-auth branch with dedicated credentials', () => {
-  assert.match(workflow, /branches:\s*\n\s*- feat\/mao-account-auth-foundation/);
+  assert.match(workflow, /branches:\s*\n\s*- feat\/cloud-autonomous-activity-push/);
   assert.match(workflow, /runs-on:\s*\$\{\{\s*vars\.MAO_AUTH_RUNNER_LABEL\s*\|\|\s*'ubuntu-latest'\s*\}\}/);
+  assert.match(workflow, /ref:\s*\$\{\{\s*github\.sha\s*\}\}/,
+    'preview must deploy the exact commit that triggered the workflow');
+  assert.doesNotMatch(workflow, /ref:\s*feat\/mao-account-auth-foundation/,
+    'preview must not silently check out the older account-auth-only branch');
+  assert.match(workflow, /group:\s*mao-auth-preview-deploy/,
+    'preview deploys must be serialized to avoid racing deployments');
   assert.match(workflow, /shell:\s*pwsh/);
   assert.match(workflow, /\$curlCommand = if \(\$IsWindows\)/);
   assert.match(workflow, /\$env:RUNNER_TEMP/);
