@@ -50,6 +50,8 @@ test('preview has the same protected app asset behavior and no production routes
 
 test('preview workflow only deploys the account-auth branch with dedicated credentials', () => {
   assert.match(workflow, /branches:\s*\n\s*- feat\/mao-account-auth-foundation/);
+  assert.match(workflow, /runs-on:\s*\$\{\{\s*vars\.MAO_AUTH_RUNNER_LABEL\s*\|\|\s*'ubuntu-latest'\s*\}\}/);
+  assert.match(workflow, /shell:\s*pwsh/);
   assert.match(workflow, /CLOUDFLARE_PREVIEW_API_TOKEN/);
   assert.doesNotMatch(workflow, /secrets\.CLOUDFLARE_API_TOKEN/,
     'the production deployment token must not be reused');
