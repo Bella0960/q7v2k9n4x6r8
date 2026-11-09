@@ -58,7 +58,7 @@ test('complete account gate runs every required suite in the approved order', ()
 
 test('account workflow runs syntax, dependency and full-gate commands', () => {
   assert.match(accountWorkflow, /name:\s*MAO Account Auth Contract/);
-  assert.match(accountWorkflow, /runs-on:\s*ubuntu-latest/);
+  assert.match(accountWorkflow, /runs-on:\s*\$\{\{\s*vars\.MAO_AUTH_RUNNER_LABEL\s*\|\|\s*'ubuntu-latest'\s*\}\}/);
   assert.match(accountWorkflow, /node-version:\s*22/);
   assert.match(accountWorkflow, /run:\s*npm run check:syntax/);
   assert.match(accountWorkflow, /run:\s*npm ci/);
