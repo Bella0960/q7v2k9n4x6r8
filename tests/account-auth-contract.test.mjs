@@ -40,6 +40,23 @@ test('MAO 欢迎页遵循已确认的静态白底灰兔与单次渐变标题设�
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
 
+test('账号自助管理中的设备和会话撤销必须使用中央模态确认', () => {
+  const html = readFileSync(new URL('../account/manage.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../account/manage.css', import.meta.url), 'utf8');
+  const script = readFileSync(new URL('../account/manage.js', import.meta.url), 'utf8');
+  assert.match(html, /<dialog id="accountActionDialog"/);
+  assert.match(html, /id="accountActionCancel"/);
+  assert.match(html, /id="accountActionConfirm"/);
+  assert.match(css, /\.account-action-dialog\{position:fixed;inset:0/);
+  assert.match(script, /function openAccountActionConfirmation\(options\)/);
+  assert.match(script, /dialog\.showModal\(\)/);
+  assert.match(script, /accountActionConfirm'\)\.addEventListener\('click'/);
+  assert.match(script, /确认移除此设备？/);
+  assert.match(script, /确认退出此登录会话？/);
+  assert.doesNotMatch(script, /window\.confirm\(/,
+    '设备与会话撤销不能使用浏览器默认确认框');
+});
+
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
 
 function cookieFrom(response) {
