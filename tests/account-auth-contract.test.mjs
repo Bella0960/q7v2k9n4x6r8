@@ -3150,6 +3150,9 @@ test('新设备登记与账号停用并发时，停用后的账号不能留下�
   assert.equal(admin.status, 200);
   const adminCookie = cookieFrom(admin);
   const adminAccountId = (await admin.clone().json()).account.id;
+  const adminSession = ctx.store.getMaoAccountSession(
+    await sha256Hex(adminCookie.slice('MAO_SESSION='.length))
+  );
 
   const registered = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
@@ -3188,6 +3191,7 @@ test('新设备登记与账号停用并发时，停用后的账号不能留下�
       accountId,
       action: 'disable',
       actorAccountId: adminAccountId,
+      actorSessionId: adminSession.session_id,
       reason: '模拟新设备登记过程中的并发停用',
       now: ctx.now()
     });
@@ -3375,6 +3379,9 @@ test('发码预检查后账号被停用时，事务内二次校验阻止插入�
   });
   const adminCookie = cookieFrom(admin);
   const adminAccountId = (await admin.clone().json()).account.id;
+  const adminSession = ctx.store.getMaoAccountSession(
+    await sha256Hex(adminCookie.slice('MAO_SESSION='.length))
+  );
   const registered = await ctx.asJson('/api/accounts/register', {
     method: 'POST',
     body: {
@@ -3393,6 +3400,7 @@ test('发码预检查后账号被停用时，事务内二次校验阻止插入�
       accountId: targetAccountId,
       action: 'disable',
       actorAccountId: adminAccountId,
+      actorSessionId: adminSession.session_id,
       reason: '模拟发码并发停用',
       now: ctx.now()
     });
@@ -4376,5 +4384,125 @@ test('设备鉴权末端必须复核同一个 MAO Session，不能只确认账�
     ctx.query('SELECT last_seen_at FROM devices WHERE id = ?', device.deviceId)[0].last_seen_at,
     staleLastSeen,
     '请求已被 Session 末端校验拒绝时，不能继续触碰设备 last-seen'
+  );
+});
+
+
+test('管理员会话在停用请求提交前被撤销时，账号状态不得改变', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'admin-session-race',
+      password: 'admin-session-race-password-123',
+      confirmPassword: 'admin-session-race-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const adminSession = ctx.store.getMaoAccountSession(
+    await sha256Hex(adminCookie.slice('MAO_SESSION='.length))
+  );
+
+  const target = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'admin-session-race-target',
+      password: 'admin-session-race-target-password-123',
+      confirmPassword: 'admin-session-race-target-password-123'
+    }
+  });
+  assert.equal(target.status, 201);
+  const targetId = target.payload.account.id;
+
+  const originalSetState = ctx.store.setMaoAccountState.bind(ctx.store);
+  let revokedAtCommitBoundary = false;
+  ctx.store.setMaoAccountState = options => {
+    revokedAtCommitBoundary = true;
+    ctx.store.revokeMaoAccountSession(options.actorSessionId, options.now);
+    return originalSetState(options);
+  };
+
+  const response = await post(ctx, '/api/admin/accounts/' + targetId + '/action', {
+    action: 'disable',
+    reason: 'should not be committed after admin session revocation'
+  }, adminCookie);
+  assert.equal(revokedAtCommitBoundary, true);
+  assert.equal(response.status, 403);
+  assert.equal(response.payload.error.code, 'ADMIN_SESSION_REVOKED');
+  assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', targetId)[0].status, 'pending_invite');
+  assert.equal(Number(ctx.query(
+    "SELECT COUNT(*) AS total FROM mao_account_audit WHERE target_account_id = ? AND action = 'disable'",
+    targetId
+  )[0].total), 0, '会话撤销后不能留下账号停用或审计写入');
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM mao_account_sessions WHERE id = ?', adminSession.session_id)[0].revoked_at,
+    null
+  );
+});
+
+test('普通账号在核销邀请码途中退出时，邀请码不能被消耗且授权不能生效', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'redeem-session-admin',
+      password: 'redeem-session-admin-password-123',
+      confirmPassword: 'redeem-session-admin-password-123'
+    }
+  });
+  const adminCookie = cookieFrom(admin);
+  const target = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'redeem-session-target',
+      password: 'redeem-session-target-password-123',
+      confirmPassword: 'redeem-session-target-password-123'
+    }
+  });
+  assert.equal(target.status, 201);
+  const targetId = target.payload.account.id;
+  const invite = await post(ctx, '/api/admin/invites', {
+    targetAccountId: targetId
+  }, adminCookie);
+  assert.equal(invite.status, 201);
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'redeem-session-target',
+      password: 'redeem-session-target-password-123'
+    }
+  });
+  const userCookie = cookieFrom(login);
+  const userSession = ctx.store.getMaoAccountSession(
+    await sha256Hex(userCookie.slice('MAO_SESSION='.length))
+  );
+
+  const originalRedeem = ctx.store.redeemMaoInvite.bind(ctx.store);
+  let revokedAtRedeemBoundary = false;
+  ctx.store.redeemMaoInvite = options => {
+    revokedAtRedeemBoundary = true;
+    ctx.store.revokeMaoAccountSession(options.sessionId, options.now);
+    return originalRedeem(options);
+  };
+
+  const response = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, userCookie);
+  assert.equal(revokedAtRedeemBoundary, true);
+  assert.equal(response.status, 401);
+  assert.equal(response.payload.error.code, 'ACCOUNT_SESSION_REQUIRED');
+  assert.equal(ctx.query('SELECT status FROM mao_accounts WHERE id = ?', targetId)[0].status, 'pending_invite');
+  assert.equal(Number(ctx.query(
+    'SELECT used_count FROM mao_invite_codes WHERE id = ?',
+    invite.payload.invite.id
+  )[0].used_count), 0, '已退出会话不能消耗一次性邀请码');
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM mao_account_sessions WHERE id = ?', userSession.session_id)[0].revoked_at,
+    null
   );
 });
