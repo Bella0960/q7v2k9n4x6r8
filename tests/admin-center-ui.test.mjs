@@ -41,7 +41,7 @@ test('audit request failures offer a retry but authentication failures leave the
   assert.match(audit, /error\.code === 'ACCOUNT_DISABLED'/);
   assert.match(audit, /error\.status === 401 \|\| error\.status === 403 \|\| error\.code === 'ADMIN_ONLY'/);
   assert.match(audit, /'重试读取'/);
-  assert.match(audit, /retryButton\.addEventListener\('click', \(\) => loadAudit\(accountId\)\)/);
+  assert.match(audit, /retryButton\.addEventListener\('click', \(\) => loadAudit\(accountId, reset\)\)/);
 });
 
 test('new one-time invitation codes are scrolled into view before a follow-up refresh can fail', () => {
@@ -77,4 +77,17 @@ test('account and invitation directories use server-side cursor pagination', () 
   assert.match(adminScript, /accountSummary/);
   assert.doesNotMatch(adminScript, /accounts\.length < 500|invites\.length < 500/);
   assert.match(adminCss, /\.directory-more\[hidden\]\{display:none\}/);
+});
+
+
+test('account detail audit history supports paginated loading and preserves retry behavior', () => {
+  assert.match(adminHtml, /id="auditResultCount"/);
+  assert.match(adminHtml, /id="loadMoreAudit"[^>]*hidden/);
+  assert.match(adminScript, /async function loadAudit\\(accountId, reset = true\\)/);
+  assert.match(adminScript, /auditLoadedCount/);
+  assert.match(adminScript, /result\\.page\\?\\.nextCursor/);
+  assert.match(adminScript, /result\\.page\\?\\.totalCount/);
+  assert.match(adminScript, /loadMoreAudit'\\)\\.addEventListener/);
+  assert.match(adminScript, /retryButton\\.addEventListener\\('click', \\(\\) => loadAudit\\(accountId, reset\\)\\)/);
+  assert.match(adminCss, /\\.audit-result-count/);
 });
