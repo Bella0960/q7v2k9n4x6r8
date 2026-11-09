@@ -2578,19 +2578,20 @@ class CloudStore {
           "UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = 'account_disabled' WHERE disabled_at IS NULL AND device_id IN (SELECT id FROM devices WHERE user_id = ? AND revoked_at IS NULL)",
           now, accountId
         );
-        const devices = this.exec(
-          "UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL RETURNING id",
+        this.exec(
+          "UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
           now, accountId
         );
         this.exec("DELETE FROM device_presence WHERE user_id = ?", accountId);
         this.exec("DELETE FROM character_leases WHERE user_id = ?", accountId);
         this.exec("DELETE FROM device_pairing_tokens WHERE user_id = ? AND consumed_at IS NULL", accountId);
-        for (const device of devices) {
-          this.exec(
-            "UPDATE activity_queue SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ? WHERE device_id = ? AND status IN ('waiting', 'retry', 'running')",
-            now, device.id
-          );
-        }
+        // Sweep every device ever associated with this account, not only rows
+        // newly revoked above. Older/self-revoked devices can still have stale
+        // queued work from pre-cleanup paths or an overlapping in-flight request.
+        this.exec(
+          "UPDATE activity_queue SET status = 'superseded', locked_by = NULL, locked_until = NULL, updated_at = ? WHERE device_id IN (SELECT id FROM devices WHERE user_id = ?) AND status IN ('waiting', 'retry', 'running')",
+          now, accountId
+        );
       }
       this.exec(
         "INSERT INTO mao_account_audit (id, actor_account_id, target_account_id, action, detail_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
