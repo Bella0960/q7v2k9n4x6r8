@@ -428,6 +428,22 @@ class CloudStore {
     )[0] || null;
   }
 
+  isActivePushSubscription(subscriptionId, deviceId) {
+    const row = this.exec(
+      `SELECT d.user_id, d.id
+       FROM push_subscriptions s
+       INNER JOIN devices d ON d.id = s.device_id
+       WHERE s.id = ?
+         AND d.id = ?
+         AND s.disabled_at IS NULL
+         AND d.revoked_at IS NULL
+       LIMIT 1`,
+      subscriptionId,
+      deviceId
+    )[0] || null;
+    return Boolean(row && this.isActiveAccountDevice(row.user_id, row.id));
+  }
+
   disableSubscriptionByEndpoint(deviceId, endpoint, reason, now) {
     this.exec(
       `UPDATE push_subscriptions SET disabled_at = ?, disabled_reason = ?
