@@ -4246,3 +4246,98 @@ test('配对码只能消费一次，签发设备撤销后剩余配对码立即�
     '签发设备撤销后，旧配对码不得创建新设备'
   );
 });
+
+
+test('设备鉴权末端必须复核同一个 MAO Session，不能只确认账号仍有其他有效会话', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'session-race-admin',
+      password: 'session-race-admin-password-123',
+      confirmPassword: 'session-race-admin-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+
+  const registered = await ctx.asJson('/api/accounts/register', {
+    method: 'POST',
+    body: {
+      username: 'session-race-user',
+      password: 'session-race-user-password-123',
+      confirmPassword: 'session-race-user-password-123'
+    }
+  });
+  assert.equal(registered.status, 201);
+  const login = await ctx.fetchTo('/api/accounts/login', {
+    method: 'POST',
+    body: {
+      identifier: 'session-race-user',
+      password: 'session-race-user-password-123'
+    }
+  });
+  assert.equal(login.status, 200);
+  const userCookie = cookieFrom(login);
+  const accountId = registered.payload.account.id;
+
+  const invite = await post(ctx, '/api/admin/invites', {
+    targetAccountId: accountId
+  }, adminCookie);
+  assert.equal(invite.status, 201);
+  const redeemed = await post(ctx, '/api/accounts/invites/redeem', {
+    inviteCode: invite.payload.invite.code
+  }, userCookie);
+  assert.equal(redeemed.status, 200);
+
+  const device = {
+    deviceId: 'device_session_race_01',
+    secret: randomToken(32)
+  };
+  const enrolled = await post(ctx, '/api/devices/register', {
+    ...device,
+    label: 'session race phone',
+    platform: 'test'
+  }, userCookie);
+  assert.equal(enrolled.status, 200);
+
+  const sessionToken = userCookie.slice('MAO_SESSION='.length);
+  const session = ctx.store.getMaoAccountSession(await sha256Hex(sessionToken));
+  assert.ok(session?.session_id);
+
+  // Simulate a concurrent "log out this session" action immediately before
+  // the final synchronous authorization gate in device authentication.
+  const originalGuard = ctx.store.isActiveAccountDeviceSession.bind(ctx.store);
+  let finalGuardCalled = false;
+  ctx.store.isActiveAccountDeviceSession = (userId, deviceId, sessionId, now) => {
+    finalGuardCalled = true;
+    assert.equal(sessionId, session.session_id);
+    ctx.store.revokeMaoAccountSession(sessionId, now);
+    return originalGuard(userId, deviceId, sessionId, now);
+  };
+
+  const denied = await ctx.fetchTo('/api/autonomy/global', {
+    headers: {
+      cookie: userCookie,
+      'x-device-auth': device.deviceId + '.' + device.secret,
+      'x-mao-account-context': accountId
+    }
+  });
+  const result = await json(denied);
+  assert.equal(finalGuardCalled, true);
+  assert.equal(result.status, 401);
+  assert.equal(result.payload.error.code, 'ACCOUNT_SESSION_REQUIRED');
+  assert.notEqual(
+    ctx.query('SELECT revoked_at FROM mao_account_sessions WHERE id = ?', session.session_id)[0].revoked_at,
+    null,
+    '测试必须确实在最终检查前撤销了原会话'
+  );
+  assert.equal(
+    ctx.query('SELECT revoked_at FROM devices WHERE id = ?', device.deviceId)[0].revoked_at,
+    null,
+    '撤销登录会话不能顺带撤销设备凭据'
+  );
+});
