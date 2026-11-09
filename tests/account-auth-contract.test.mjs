@@ -80,6 +80,27 @@ test('账号自助管理中的设备和会话撤销必须使用中央模态确�
     '设备与会话撤销不能使用浏览器默认确认框');
 });
 
+test('账号安全操作共享忙碌锁，并恢复按钮原始禁用状态', () => {
+  const script = readFileSync(new URL('../account/manage.js', import.meta.url), 'utf8');
+  assert.match(script, /const busyButtonState = new WeakMap\(\)/);
+  assert.match(script, /function setButtonsDisabled\(disabled\)/);
+  assert.match(script, /if \(!busyButtonState\.has\(button\)\) busyButtonState\.set\(button, button\.disabled\)/);
+  assert.match(script, /button\.disabled = busyButtonState\.get\(button\)/);
+  assert.match(script, /async function runAction\(action, onError = null\)/);
+  assert.match(script, /setButtonsDisabled\(true\)/);
+  assert.match(script, /setButtonsDisabled\(false\)/);
+
+  const start = script.indexOf("$('passwordForm').addEventListener('submit'");
+  const end = script.indexOf("$('accountActionCancel').addEventListener", start);
+  assert.ok(start >= 0 && end > start, '密码修改处理器必须存在');
+  const passwordHandler = script.slice(start, end);
+  assert.match(passwordHandler, /runAction\(async \(\) =>/,
+    '密码修改必须与设备、会话撤销共用同一个操作锁');
+  assert.match(passwordHandler, /passwordMessage/);
+  assert.doesNotMatch(script, /querySelectorAll\('button'\)\.forEach\(button => \{ button\.disabled = false;/,
+    '操作结束不能无条件重新启用所有按钮');
+});
+
 const BOOTSTRAP_SECRET = 'test-mao-super-admin-bootstrap-secret-32-characters';
 
 function cookieFrom(response) {
