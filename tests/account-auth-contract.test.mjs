@@ -2555,6 +2555,220 @@ test('设备在重新登记的异步账号校验期间被撤销时，不能返�
   assert.equal(persisted.platform, 'original platform');
 });
 
+test('设备在写入期间被撤销后，不能重新写入 presence、lease 或账号授权设置', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const accountId = (await admin.clone().json()).account.id;
+
+  const registerDevice = async deviceId => {
+    const secret = randomToken(32);
+    const response = await post(ctx, '/api/devices/register', {
+      deviceId,
+      secret,
+      label: deviceId,
+      platform: 'test'
+    }, adminCookie);
+    assert.equal(response.status, 200);
+    return { deviceId, secret };
+  };
+  const revokeAtWrite = device => {
+    assert.equal(
+      ctx.store.revokeMaoAccountDevice(accountId, device.deviceId, ctx.now()),
+      true,
+      '模拟的并发管理员撤销必须成功'
+    );
+  };
+
+  const heartbeatDevice = await registerDevice('device_presence_race01');
+  const originalPresence = ctx.store.upsertDevicePresence.bind(ctx.store);
+  ctx.store.upsertDevicePresence = options => {
+    revokeAtWrite(heartbeatDevice);
+    return originalPresence({ ...options, requireActiveDevice: true });
+  };
+  const heartbeat = await ctx.fetchTo('/api/presence/heartbeat', {
+    method: 'POST',
+    body: { foregroundActive: true },
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': heartbeatDevice.deviceId + '.' + heartbeatDevice.secret
+    }
+  });
+  const heartbeatResult = await json(heartbeat);
+  assert.equal(heartbeatResult.status, 403);
+  assert.equal(heartbeatResult.payload.error.code, 'DEVICE_REVOKED');
+  assert.equal(ctx.query(
+    'SELECT COUNT(*) AS total FROM device_presence WHERE user_id = ? AND device_id = ?',
+    accountId,
+    heartbeatDevice.deviceId
+  )[0].total, 0, '已撤销设备不能重新留下在线心跳');
+
+  const leaseDevice = await registerDevice('device_lease_race_0001');
+  const characterId = 'role_lease_race';
+  ctx.store.upsertDevicePresence({
+    userId: accountId,
+    deviceId: leaseDevice.deviceId,
+    foregroundActive: true,
+    now: ctx.now()
+  });
+  const originalAcquire = ctx.store.acquireCharacterLease.bind(ctx.store);
+  ctx.store.acquireCharacterLease = options => {
+    revokeAtWrite(leaseDevice);
+    return originalAcquire({ ...options, requireActiveDevice: true });
+  };
+  const lease = await ctx.fetchTo('/api/characters/' + characterId + '/lease', {
+    method: 'POST',
+    body: { action: 'acquire' },
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': leaseDevice.deviceId + '.' + leaseDevice.secret
+    }
+  });
+  const leaseResult = await json(lease);
+  assert.equal(leaseResult.status, 403);
+  assert.equal(leaseResult.payload.error.code, 'DEVICE_REVOKED');
+  assert.equal(ctx.query(
+    'SELECT COUNT(*) AS total FROM character_leases WHERE user_id = ? AND character_id = ?',
+    accountId,
+    characterId
+  )[0].total, 0, '已撤销设备不能重新取得角色租约');
+
+  const settingsDevice = await registerDevice('device_settings_race01');
+  const originalSetAutonomy = ctx.store.setUserAutonomy.bind(ctx.store);
+  ctx.store.setUserAutonomy = (userId, enabled, timestamp, deviceId) => {
+    revokeAtWrite(settingsDevice);
+    return originalSetAutonomy(userId, enabled, timestamp, deviceId);
+  };
+  const settings = await ctx.fetchTo('/api/autonomy/global', {
+    method: 'PUT',
+    body: { enabled: true },
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': settingsDevice.deviceId + '.' + settingsDevice.secret
+    }
+  });
+  const settingsResult = await json(settings);
+  assert.equal(settingsResult.status, 403);
+  assert.equal(settingsResult.payload.error.code, 'DEVICE_REVOKED');
+  assert.equal(ctx.query(
+    'SELECT COUNT(*) AS total FROM user_autonomy WHERE user_id = ?',
+    accountId
+  )[0].total, 0, '已撤销设备不能在撤销后继续修改账号自主活动权限');
+});
+
+test('设备撤销并发时，不能新增上下文版本事件或排队自主活动', async () => {
+  const db = openTestDb();
+  const ctx = setupTestStore(db, {
+    MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET,
+    AUTONOMY_LEASE_MS: '60000',
+    AUTONOMY_TICK_LIMIT: '5',
+    AUTONOMY_RETRY_BACKOFF_MS: '1000,5000'
+  });
+  const admin = await ctx.fetchTo('/api/admin/bootstrap', {
+    method: 'POST',
+    body: {
+      bootstrapSecret: BOOTSTRAP_SECRET,
+      username: 'creator',
+      password: 'creator-password-123',
+      confirmPassword: 'creator-password-123'
+    }
+  });
+  assert.equal(admin.status, 200);
+  const adminCookie = cookieFrom(admin);
+  const accountId = (await admin.clone().json()).account.id;
+  const registerDevice = async deviceId => {
+    const secret = randomToken(32);
+    const response = await post(ctx, '/api/devices/register', {
+      deviceId,
+      secret,
+      label: deviceId,
+      platform: 'test'
+    }, adminCookie);
+    assert.equal(response.status, 200);
+    return { deviceId, secret };
+  };
+
+  const contextDevice = await registerDevice('device_context_race_01');
+  const characterId = 'role_context_revoke_race';
+  const originalRecord = ctx.store.recordCharacterContextEvent.bind(ctx.store);
+  ctx.store.recordCharacterContextEvent = options => {
+    assert.equal(
+      ctx.store.revokeMaoAccountDevice(accountId, contextDevice.deviceId, ctx.now()),
+      true
+    );
+    return originalRecord({ ...options, requireActiveDevice: true });
+  };
+  const contextResponse = await ctx.fetchTo('/api/characters/' + characterId + '/context-version', {
+    method: 'POST',
+    body: { eventId: 'context_race_event_0001' },
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': contextDevice.deviceId + '.' + contextDevice.secret
+    }
+  });
+  const contextResult = await json(contextResponse);
+  assert.equal(contextResult.status, 403);
+  assert.equal(contextResult.payload.error.code, 'DEVICE_REVOKED');
+  assert.equal(ctx.query(
+    'SELECT COUNT(*) AS total FROM character_context_events WHERE user_id = ? AND character_id = ?',
+    accountId,
+    characterId
+  )[0].total, 0);
+  assert.equal(ctx.query(
+    'SELECT COUNT(*) AS total FROM character_context_versions WHERE user_id = ? AND character_id = ?',
+    accountId,
+    characterId
+  )[0].total, 0);
+
+  const activityDevice = await registerDevice('device_activity_race01');
+  const activityCharacterId = 'role_activity_revoke_race';
+  const timestamp = ctx.now();
+  ctx.store.setUserAutonomy(accountId, true, timestamp);
+  ctx.store.setCharacterAutonomy(accountId, activityCharacterId, null, timestamp);
+  const version = ctx.store.recordCharacterContextEvent({
+    userId: accountId,
+    characterId: activityCharacterId,
+    eventId: 'activity_context_seed_0001',
+    deviceId: activityDevice.deviceId,
+    now: timestamp
+  });
+  assert.equal(version.changed, true);
+
+  const originalEnqueue = ctx.store.enqueueActivity.bind(ctx.store);
+  ctx.store.enqueueActivity = activity => {
+    assert.equal(
+      ctx.store.revokeMaoAccountDevice(accountId, activityDevice.deviceId, ctx.now()),
+      true
+    );
+    return originalEnqueue({ ...activity, requireActiveDevice: true, userId: accountId });
+  };
+  const queued = await ctx.fetchTo('/api/autonomy/characters/' + activityCharacterId + '/activities', {
+    method: 'POST',
+    body: { contextVersion: version.version },
+    headers: {
+      cookie: adminCookie,
+      'x-device-auth': activityDevice.deviceId + '.' + activityDevice.secret
+    }
+  });
+  const queuedResult = await json(queued);
+  assert.equal(queuedResult.status, 403);
+  assert.equal(queuedResult.payload.error.code, 'DEVICE_REVOKED');
+  assert.equal(ctx.query(
+    'SELECT COUNT(*) AS total FROM activity_queue WHERE device_id = ?',
+    activityDevice.deviceId
+  )[0].total, 0, '已撤销设备不能在撤销完成后新增自主活动任务');
+});
+
 test('现有设备重新登记时，Session 在数据库写入前被撤销必须拒绝刷新', async () => {
   const db = openTestDb();
   const ctx = setupTestStore(db, { MAO_SUPER_ADMIN_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET });
