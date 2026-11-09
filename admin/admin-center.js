@@ -148,6 +148,26 @@
         window.location.replace('../index.html');
         return;
       }
+      const stateConflictCodes = [
+        'ACCOUNT_ACTION_REJECTED',
+        'INVITE_ALREADY_ACTIVE',
+        'INVITE_TARGET_NOT_PENDING',
+        'INVITE_NOT_ACTIVE'
+      ];
+      if (stateConflictCodes.includes(error.code)) {
+        let refreshed = false;
+        try {
+          await refreshAll();
+          refreshed = true;
+        } catch {}
+        showError(
+          refreshed
+            ? '服务器状态已变化，账号和邀请码详情已重新核对。' + (error.message ? ' ' + error.message : '')
+            : '服务器状态可能已变化，自动核对未完成。请重新检查。',
+          () => refreshAll()
+        );
+        return;
+      }
       showError(error.message || '操作失败，请稍后重试。');
     } finally {
       busy = false;
