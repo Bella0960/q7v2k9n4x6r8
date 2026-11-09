@@ -1662,10 +1662,10 @@ test('共享 IP 汇总限流允许合理的多账号失败量，并在高频失�
   const ip = '198.51.100.77';
   const pepper = 'test-device-secret-pepper-for-contract-tests-32chars';
   const ipRateLimitKey = await sha256Hex('mao-login|' + pepper + '|' + ip);
-  for (let index = 0; index < 39; index += 1) {
+  for (let index = 0; index < 119; index += 1) {
     const failure = ctx.store.recordMaoLoginFailure(ipRateLimitKey, ctx.now(), {
       windowMs: 15 * 60 * 1000,
-      maxAttempts: 40
+      maxAttempts: 120
     });
     assert.equal(failure.blocked, false);
   }
@@ -1675,9 +1675,9 @@ test('共享 IP 汇总限流允许合理的多账号失败量，并在高频失�
     ip
   });
   assert.equal(blocked.status, 429,
-    '跨账号失败累计达到 IP 汇总阈值后仍必须保护该来源');
+    '跨账号失败累计达到 120 次 IP 汇总阈值后仍必须保护该来源');
   const state = ctx.store.getMaoLoginRateLimit(ipRateLimitKey, ctx.now());
-  assert.equal(state.attemptCount, 40);
+  assert.equal(state.attemptCount, 120);
   assert.equal(state.blocked, true);
 });
 
