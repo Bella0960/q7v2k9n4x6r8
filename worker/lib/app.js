@@ -551,7 +551,21 @@ export function createApp({ store, env = {}, now = () => Date.now(), fetchImpl =
       if (accountSession.status !== 'active') {
         throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权，请先验证专属邀请码');
       }
-      await store.insertDevice({ ...commonDevice, userId: accountSession.account_id });
+      const inserted = await store.insertMaoAccountDevice({
+        ...commonDevice,
+        userId: accountSession.account_id,
+        sessionId: accountSession.session_id
+      });
+      if (!inserted) {
+        const latestAccount = await store.getMaoAccountById(accountSession.account_id);
+        if (!latestAccount || latestAccount.status === 'disabled' || latestAccount.status === 'revoked') {
+          throw new ApiError(403, 'ACCOUNT_DISABLED', '您的账号已被禁用');
+        }
+        if (latestAccount.status !== 'active') {
+          throw new ApiError(403, 'INVITE_REQUIRED', '账号尚未获得 MAO 使用授权，请先验证专属邀请码');
+        }
+        throw new ApiError(401, 'ACCOUNT_SESSION_REQUIRED', '登录会话已失效，请重新登录后添加设备');
+      }
       await store.logExecution({
         id: randomToken(12),
         deviceId,
