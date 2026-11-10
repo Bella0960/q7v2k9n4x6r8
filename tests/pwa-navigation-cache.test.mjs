@@ -8,7 +8,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const serviceWorker = read('sw.js');
 const desktopScript = read('desktop/js/script.js');
 const homePage = read('index.html');
-assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v173'/);
+assert.match(serviceWorker, /const CACHE_NAME = 'phone-app-pwa-v217'/);
 const viteConfig = read('vite.config.js');
 
 test('build emits a manifest containing every HTML entry point', () => {
@@ -37,16 +37,44 @@ test('every desktop app shortcut is emitted as a real HTML page in the productio
   }
 });
 
-test('service worker precaches all HTML routes listed by the build manifest', () => {
+test('service worker caches the public account entry but excludes protected app HTML', () => {
   assert.match(serviceWorker, /fetch\('\.\/pwa-pages\.json'/);
   assert.match(serviceWorker, /APP_SHELL\.concat\(pageEntries\)/);
-  assert.match(serviceWorker, /cache\.add\(url\)/);
+  assert.ok(serviceWorker.includes("url === './account/index.html' || url === './account/bootstrap.html' || !/\\.html"));
+  assert.ok(serviceWorker.includes('./shared/js/mao-account-scope.js?v=2'));
+  assert.ok(serviceWorker.includes('./account/manage.css'));
+  assert.ok(serviceWorker.includes('./account/manage.js'));
+  assert.ok(serviceWorker.includes('./account/settings-link.js?v=1'));
+  assert.ok(serviceWorker.includes('./admin/admin-center.css'));
+  assert.ok(serviceWorker.includes('./admin/admin-center.js'));
+  assert.ok(serviceWorker.includes('./account/bootstrap.html'));
+  assert.ok(serviceWorker.includes('./account/bootstrap.js'));
+  assert.match(serviceWorker, /url\.pathname === accountPath \+ 'bootstrap\.html'/);
+  assert.match(serviceWorker, /account\/account\.js/);
 });
 
-test('mobile navigation serves cached app pages before waiting for network', () => {
-  assert.match(serviceWorker, /var cachedPromise = caches\.match\(req\)/);
-  assert.match(serviceWorker, /if \(cached\) return cached/);
-  assert.match(serviceWorker, /event\.waitUntil\(updatePromise/);
+test('account and cloud API GET requests bypass the shared Service Worker cache', () => {
+  const apiBypass = serviceWorker.indexOf("if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;");
+  const fontAssetHandler = serviceWorker.indexOf("const fontAssetPrefix = new URL('__maomao_fonts/'");
+  const sharedCache = serviceWorker.indexOf('caches.match(req).then(cached => {');
+  assert.ok(apiBypass >= 0, 'the API bypass must exist');
+  assert.ok(fontAssetHandler > apiBypass, 'the API bypass must run before font/cache handlers');
+  assert.ok(sharedCache > fontAssetHandler, 'the API bypass must run before the shared GET cache');
+  const bypassRegion = serviceWorker.slice(apiBypass, fontAssetHandler);
+  assert.doesNotMatch(bypassRegion, /event\.respondWith|caches\./,
+    'API requests must pass directly to the network/Worker without touching CacheStorage');
+});
+
+
+test('protected app navigation always checks the Worker before showing a document', () => {
+  assert.match(serviceWorker, /req\.mode === 'navigate' && !isPublicAccountPage/);
+  assert.match(serviceWorker, /return await fetch\(req\)/);
+  assert.match(serviceWorker, /account\/index\.html/);
+  const protectedNavigation = serviceWorker.slice(
+    serviceWorker.indexOf("if (req.mode === 'navigate' && !isPublicAccountPage)"),
+    serviceWorker.indexOf('// The public account entry stays cache-first')
+  );
+  assert.doesNotMatch(protectedNavigation, /caches\.match\(req\)/);
 });
 
 

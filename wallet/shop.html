@@ -7,7 +7,9 @@
 <title>商店</title>
 <script src="../shared/js/native-feel.js"></script>
 <script src="../shared/js/phone/phone_storage.js"></script>
-<script src="../shared/js/phone/role_family_cards.js?v=20261028v3"></script>
+<script src="../shared/js/phone/role_family_cards.js?v=20261107v2"></script>
+<script src="../shared/js/phone/wallet-ledger.js?v=20261107v6"></script>
+<script src="../shared/js/phone/order-after-sales.js?v=20261107v2"></script>
 <link rel="stylesheet" href="../shared/css/mobile-fit.css">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -208,6 +210,22 @@
   .p-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   /* 物流详情 */
+  .order-after-sales {
+    margin: 12px 20px 16px; padding: 14px; border: 1px solid #ECECEF;
+    border-radius: 14px; background: #fff;
+  }
+  .order-after-sales-title { font-size: .813rem; font-weight: 700; }
+  .order-after-sales-note { margin-top: 7px; color: #888; font-size: .688rem; line-height: 1.6; }
+  .order-after-sales-select {
+    width: 100%; height: 40px; margin-top: 10px; padding: 0 10px;
+    border: 1px solid #E5E5EA; border-radius: 9px; background: #F7F7F9;
+    color: #333; font-size: .75rem;
+  }
+  .order-after-sales-button {
+    width: 100%; height: 40px; margin-top: 10px; border: 0;
+    border-radius: 10px; background: #111; color: #fff;
+    font-size: .813rem; font-weight: 600; cursor: pointer;
+  }
   .logi-card { margin: 0 20px 12px; background: #fff; border: 1px solid #ECECEF; border-radius: 14px; padding: 16px; }
   .logi-latest { font-size: 0.875rem; font-weight: 700; line-height: 1.5; }
   .logi-time { font-size: 0.688rem; color: #999; margin-top: 4px; }
@@ -656,7 +674,17 @@
     try { return JSON.parse(localStorage.getItem('shop_cart') || '[]'); }
     catch(e) { return []; }
   }
-  function saveCart(c) { localStorage.setItem('shop_cart', JSON.stringify(c)); updateBadge(); }
+  function saveCart(c) {
+    try {
+      var serialized = JSON.stringify(c);
+      localStorage.setItem('shop_cart', serialized);
+      updateBadge();
+      return localStorage.getItem('shop_cart') === serialized;
+    } catch (error) {
+      updateBadge();
+      return false;
+    }
+  }
   let shopCart = loadCart();
   // 支付流程使用的商品快照（避免污染真实购物车）
   let payItems = [];
@@ -785,17 +813,220 @@
 
   // === 订单（含角色送礼）===
   function loadOrders() {
-    try { return JSON.parse(localStorage.getItem('shop_orders') || '[]'); }
-    catch(e) { return []; }
+    try {
+      var raw = localStorage.getItem('shop_orders');
+      if (raw == null) return [];
+      var rows = JSON.parse(raw);
+      if (!Array.isArray(rows)) return null;
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row || typeof row !== 'object' || Array.isArray(row) ||
+            typeof row.roleName !== 'string' || !row.roleName ||
+            !isFinite(Number(row.ts)) || Number(row.ts) <= 0 ||
+            !isFinite(Number(row.total)) || Number(row.total) < 0 ||
+            !Array.isArray(row.items) ||
+            (Object.prototype.hasOwnProperty.call(row, 'statusHistory') && !Array.isArray(row.statusHistory))) return null;
+        for (var itemIndex = 0; itemIndex < row.items.length; itemIndex++) {
+          var item = row.items[itemIndex];
+          if (!item || typeof item !== 'object' ||
+              (typeof item.cn !== 'string' && typeof item.name !== 'string') ||
+              !isFinite(Number(item.price)) || Number(item.price) < 0) return null;
+        }
+      }
+      return rows;
+    } catch(e) { return null; }
   }
-  function saveOrders(o) { localStorage.setItem('shop_orders', JSON.stringify(o)); }
+  function saveOrders(o) {
+    if (!Array.isArray(o)) return false;
+    try {
+      var serialized = JSON.stringify(o);
+      localStorage.setItem('shop_orders', serialized);
+      return localStorage.getItem('shop_orders') === serialized;
+    } catch (error) {
+      return false;
+    }
+  }
 
-  function orderStatus(ts) {
-    const hr = (Date.now() - ts) / 3600000;
-    if (hr < 1) return { label: '已下单', color: '#999' };
-    if (hr < 3) return { label: '打包中', color: '#666' };
-    if (hr < 24) return { label: '派送中', color: '#111' };
-    return { label: '已签收', color: '#999' };
+  const SHOP_ORDER_STAGES = [
+    { status: 'placed', label: '订单已下单', desc: '等待仓库处理', offset: 0 },
+    { status: 'packed', label: '仓库已打包', desc: '包裹已打包，等待快递揽收', offset: 1 * 3600000 },
+    { status: 'shipped', label: '商品已发货', desc: '快递已揽收，包裹正在发往转运中心', offset: 3 * 3600000 },
+    { status: 'in_transit', label: '运输中', desc: '包裹正在发往派送点', offset: 24 * 3600000 },
+    { status: 'delivering', label: '派送中', desc: '配送员正在为您派送', offset: 48 * 3600000 },
+    { status: 'delivered', label: '已签收', desc: '本次模拟配送已完成', offset: 72 * 3600000 }
+  ];
+
+  // Persist each elapsed simulated milestone once; clock rollback never moves an order backwards.
+  function advanceOrderLifecycle(order, stages, now) {
+    if (!order || !Array.isArray(stages) || !stages.length) return null;
+    var createdAt = Number(order.ts);
+    if (!isFinite(createdAt) || createdAt <= 0) return null;
+    if (Object.prototype.hasOwnProperty.call(order, 'statusHistory') &&
+        !Array.isArray(order.statusHistory)) return null;
+    var history = order.statusHistory || [];
+    for (var hi = 0; hi < history.length; hi++) {
+      var event = history[hi];
+      if (!event || typeof event !== 'object' ||
+          !stages.some(function (stage) { return stage.status === event.status; }) ||
+          !isFinite(Number(event.time))) return null;
+    }
+
+    var targetIndex = -1;
+    stages.forEach(function (stage, index) {
+      if (Number(now) - createdAt >= stage.offset) targetIndex = index;
+    });
+    history.forEach(function (event) {
+      var eventIndex = stages.findIndex(function (stage) { return stage.status === event.status; });
+      if (eventIndex > targetIndex) targetIndex = eventIndex;
+    });
+    if (order.status != null) {
+      var storedIndex = stages.findIndex(function (stage) { return stage.status === order.status; });
+      if (storedIndex < 0) return null;
+      if (storedIndex > targetIndex) targetIndex = storedIndex;
+    }
+    if (targetIndex < 0) targetIndex = 0;
+
+    var changed = !Array.isArray(order.statusHistory);
+    for (var si = 0; si <= targetIndex; si++) {
+      var stage = stages[si];
+      if (!history.some(function (event) { return event.status === stage.status; })) {
+        history.push({ status: stage.status, label: stage.label, time: createdAt + stage.offset });
+        changed = true;
+      }
+    }
+    history.sort(function (a, b) { return Number(a.time) - Number(b.time); });
+    var lastEvent = history.find(function (event) { return event.status === stages[targetIndex].status; });
+    if (order.status !== stages[targetIndex].status) {
+      order.status = stages[targetIndex].status;
+      changed = true;
+    }
+    if (order.statusUpdatedAt !== Number(lastEvent.time)) {
+      order.statusUpdatedAt = Number(lastEvent.time);
+      changed = true;
+    }
+    if (!Array.isArray(order.statusHistory)) order.statusHistory = history;
+    return changed;
+  }
+
+  function syncShopOrders() {
+    var orders = loadOrders();
+    if (!orders) return null;
+    var changed = false;
+    for (var i = 0; i < orders.length; i++) {
+      var result = advanceOrderLifecycle(orders[i], SHOP_ORDER_STAGES, Date.now());
+      if (result === null) return null;
+      if (result) changed = true;
+    }
+    if (changed && !saveOrders(orders)) return null;
+    return orders;
+  }
+
+  function orderStatus(order) {
+    var stage = SHOP_ORDER_STAGES.find(function (item) { return item.status === order.status; });
+    return stage ? {
+      label: stage.label,
+      color: order.status === 'delivering' || order.status === 'shipped' ? '#111' : '#777'
+    } : { label: '状态待确认', color: '#999' };
+  }
+
+  var currentShopOrderPaymentId = '';
+
+  function shopAfterSalesPanel(order, stageIndex) {
+    var afterSales = order.afterSales;
+    if (afterSales && afterSales.status === 'pending_review' && afterSales.journalStatus === 'linked') {
+      var kindLabel = afterSales.type === 'cancel' ? '取消订单申请' : '售后申请';
+      return `
+        <div class="order-after-sales">
+          <div class="order-after-sales-title">${kindLabel} · 待处理</div>
+          <div class="order-after-sales-note">申请编号：${escapeFamilyCardText(afterSales.requestId)}<br>已关联原支付流水，当前还没有发生退款或订单取消。</div>
+        </div>`;
+    }
+    if (afterSales && afterSales.status === 'recording') {
+      return `
+        <div class="order-after-sales">
+          <div class="order-after-sales-title">申请记录待同步</div>
+          <div class="order-after-sales-note">已生成申请编号，正在恢复与原支付流水的关联。请继续同步，不要重复下单。</div>
+          <button class="order-after-sales-button" onclick="submitShopAfterSales()">继续同步申请</button>
+        </div>`;
+    }
+    if (afterSales) {
+      return `
+        <div class="order-after-sales">
+          <div class="order-after-sales-title">售后申请状态待核对</div>
+          <div class="order-after-sales-note">检测到已有申请记录，为避免重复申请，暂时不开放再次提交。</div>
+        </div>`;
+    }
+    var eligibility = window.MaoMaoOrderAfterSales && window.MaoMaoOrderAfterSales.canSubmit
+      ? window.MaoMaoOrderAfterSales.canSubmit({
+          channel: 'shop', ordersKey: 'shop_orders', financeKey: 'finance_records',
+          paymentId: order.paymentId, amount: Number(order.total), paymentMethod: String(order.payMethod || '')
+        }) : { ok: false, reason: 'module' };
+    if (!eligibility.ok) {
+      return `
+        <div class="order-after-sales">
+          <div class="order-after-sales-title">暂不可提交售后</div>
+          <div class="order-after-sales-note">${!order.paymentId ? '这笔旧订单没有原支付编号。' : '未能核验完整的原始支出明细。'}为保护账本，系统不会创建无法关联支付记录的申请。</div>
+        </div>`;
+    }
+    var isCancelable = stageIndex <= 1;
+    return `
+      <div class="order-after-sales">
+        <div class="order-after-sales-title">订单售后</div>
+        <select class="order-after-sales-select" id="shopAfterSalesReason" aria-label="申请原因">
+          <option value="下错订单">下错订单</option>
+          <option value="暂时不需要了">暂时不需要了</option>
+          <option value="商品信息有误">商品信息有误</option>
+          <option value="其他原因">其他原因</option>
+        </select>
+        <button class="order-after-sales-button" onclick="submitShopAfterSales()">${isCancelable ? '申请取消订单' : '申请售后'}</button>
+        <div class="order-after-sales-note">申请会关联原支付流水并进入待处理状态；不会自动退款、修改钱包余额或直接取消模拟物流。</div>
+      </div>`;
+  }
+
+  async function submitShopAfterSales() {
+    var ledger = window.MaoMaoOrderAfterSales;
+    if (!ledger || typeof ledger.submit !== 'function') {
+      showToast('售后模块尚未加载，请刷新页面后重试');
+      return;
+    }
+    var orders = syncShopOrders();
+    if (!orders) { showToast('订单数据无法读取，未提交售后申请'); return; }
+    var order = orders.find(function (row) {
+      return row && row.paymentId === currentShopOrderPaymentId;
+    });
+    if (!order) { showToast('找不到原订单，未提交售后申请'); return; }
+    var stageIndex = SHOP_ORDER_STAGES.findIndex(function (stage) { return stage.status === order.status; });
+    var type = order.afterSales ? order.afterSales.type : (stageIndex <= 1 ? 'cancel' : 'after_sales');
+    var reasonEl = document.getElementById('shopAfterSalesReason');
+    var reason = order.afterSales ? order.afterSales.reason : (reasonEl ? reasonEl.value : '');
+    var result = await ledger.submit({
+      channel: 'shop',
+      ordersKey: 'shop_orders',
+      financeKey: 'finance_records',
+      paymentId: order.paymentId,
+      amount: Number(order.total),
+      paymentMethod: String(order.payMethod || ''),
+      type: type,
+      reason: reason
+    });
+    if (!result.ok) {
+      var messages = {
+        'payment-lines-missing': '找不到这笔订单的原支出明细，已停止申请',
+        'payment-amount-mismatch': '原订单金额与支出明细不一致，已停止申请',
+        'another-request-linked': '这笔支付流水已关联其他售后申请',
+        'order-payment-conflict': '订单支付信息与原流水不一致，已停止申请',
+        'finance-invalid': '财务记录异常，已停止申请',
+        'finance-missing': '找不到财务记录，已停止申请',
+        'request-conflict': '已有售后申请与当前信息冲突'
+      };
+      showToast(messages[result.reason] || '申请暂未同步成功，可再次点击恢复');
+    } else {
+      showToast(result.replayed ? '原售后申请已存在' : '申请已关联原支付流水，等待处理');
+    }
+    var latest = syncShopOrders() || [];
+    var currentIndex = latest.slice().reverse().filter(function (row) { return row.roleName === '我'; })
+      .findIndex(function (row) { return row.paymentId === currentShopOrderPaymentId; });
+    if (currentIndex >= 0) openOrderDetail(currentIndex);
   }
 
   function openOrders() {
@@ -813,15 +1044,20 @@
   }
 
   function renderOrders() {
-    const all = loadOrders().reverse();
-    const orders = all.filter(o => o.roleName === '我');
+    const stored = syncShopOrders();
     const box = document.getElementById('ordersList');
+    if (!stored) {
+      box.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#999;font-size:0.875rem;">订单数据暂时无法读取，请先检查本地存储</div>';
+      return;
+    }
+    const all = stored.slice().reverse();
+    const orders = all.filter(o => o.roleName === '我');
     if (orders.length === 0) {
       box.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#999;font-size:0.875rem;">还没有订单</div>';
       return;
     }
     box.innerHTML = orders.map((o, i) => {
-      const st = orderStatus(o.ts);
+      const st = orderStatus(o);
       const itemNames = o.items.map(it => it.cn).join('、');
       return `
         <div style="background:#fff;border:1px solid #ECECEF;border-radius:14px;padding:14px;margin-bottom:10px;cursor:pointer;" onclick="openOrderDetail(${i})">
@@ -843,68 +1079,62 @@
   }
 
   function openOrderDetail(i) {
-    const all = loadOrders().reverse();
-    const orders = all.filter(o => o.roleName === '我');
+    currentShopOrderPaymentId = '';
+    const all = syncShopOrders();
+    if (!all) {
+      showToast('订单数据异常，暂时无法打开详情');
+      return;
+    }
+    const orders = all.slice().reverse().filter(o => o.roleName === '我');
     const o = orders[i];
     if (!o) return;
+    currentShopOrderPaymentId = String(o.paymentId || '');
     const box = document.getElementById('orderDetailBody');
-    const now = Date.now();
-    const hr = (now - o.ts) / 3600000;
     const fmt = (t) => new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-');
-    // 物流步骤：[标题, 描述, 相对小时偏移, 已完成?]
-    const steps = [
-      { title: '订单已下单', desc: '等待仓库发货', off: 0 },
-      { title: '仓库已打包', desc: '包裹已打包，等待快递揽收', off: 1 },
-      { title: '商品已发货', desc: '快递已揽收，包裹正在发往转运中心', off: 3 },
-      { title: '运输中', desc: '包裹已到达转运中心，正在发往派送点', off: 24 },
-      { title: '派送中', desc: '快递员正在为您派送，请保持电话畅通', off: 48 },
-      { title: '已签收', desc: '感谢购买，欢迎再次光临', off: 72 },
-    ];
-    let curIdx = 0;
-    steps.forEach((s, idx) => { if (hr >= s.off) curIdx = idx; });
-    const latest = steps[curIdx];
-    const latestTime = fmt(o.ts + latest.off * 3600000);
-
-    let stepsHtml = steps.map((s, idx) => {
-      let state = '';
-      if (idx < curIdx) state = 'done';
-      else if (idx === curIdx) state = 'now';
-      const t = idx <= curIdx ? fmt(o.ts + s.off * 3600000) : '';
+    const currentIndex = SHOP_ORDER_STAGES.findIndex(function (stage) { return stage.status === o.status; });
+    const curIdx = Math.max(0, currentIndex);
+    const currentStage = SHOP_ORDER_STAGES[curIdx];
+    const latestEvent = (o.statusHistory || []).find(function (event) { return event.status === currentStage.status; });
+    const latestTime = fmt(latestEvent ? latestEvent.time : o.ts);
+    const stepsHtml = SHOP_ORDER_STAGES.map(function (stage, idx) {
+      const event = (o.statusHistory || []).find(function (entry) { return entry.status === stage.status; });
+      const state = idx < curIdx ? 'done' : (idx === curIdx ? 'now' : '');
+      const time = event ? fmt(event.time) : '';
       return `
         <div class="logi-step ${state}">
           <div class="logi-dot"></div>
           <div class="logi-step-body">
-            <div class="logi-step-title">${s.title}</div>
-            <div class="logi-step-desc">${s.desc}</div>
-            ${t ? `<div class="logi-step-time">${t}</div>` : ''}
+            <div class="logi-step-title">${stage.label}</div>
+            <div class="logi-step-desc">${stage.desc}</div>
+            ${time ? `<div class="logi-step-time">${time}</div>` : ''}
           </div>
         </div>`;
     }).join('');
 
-    let itemsHtml = o.items.map(it => `
+    const itemsHtml = o.items.map(it => `
       <div class="order-item-row">
-        <div style="flex:1;">
-          <div style="font-size:0.813rem;font-weight:600;">${it.cn}</div>
-        </div>
-        <div class="oi-price">¥${it.price}.00</div>
-      </div>
-    `).join('');
+        <div style="flex:1;"><div style="font-size:0.813rem;font-weight:600;">${it.cn || it.name || '商品'}</div></div>
+        <div class="oi-price">¥${Number(it.price || 0).toFixed(2)}</div>
+      </div>`
+    ).join('');
 
     box.innerHTML = `
       <div class="logi-card">
-        <div class="logi-latest">${latest.title} · ${latest.desc}</div>
+        <div class="logi-latest">${currentStage.label} · ${currentStage.desc}</div>
         <div class="logi-time">${latestTime}</div>
       </div>
       <div class="logi-steps">${stepsHtml}</div>
       <div class="logi-card">
-        <div style="font-size:0.75rem;color:#999;margin-bottom:8px;">包裹信息 · 极简速运</div>
+        <div style="font-size:0.75rem;color:#999;margin-bottom:8px;">包裹信息 · 应用内模拟物流</div>
         ${itemsHtml}
         <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid #F2F2F4;">
           <span style="font-size:0.813rem;color:#666;">合计</span>
-          <span style="font-size:1rem;font-weight:800;">¥${o.total}.00</span>
+          <span style="font-size:1rem;font-weight:800;">¥${Number(o.total || 0).toFixed(2)}</span>
         </div>
       </div>
-      <div style="margin:0 20px;font-size:0.688rem;color:#bbb;">订单号 #${String(o.ts).slice(-6)} · 下单时间 ${fmt(o.ts)}</div>
+      <div style="margin:0 20px;font-size:0.688rem;color:#bbb;">订单号 #${String(o.orderId || o.paymentId || o.ts).slice(-6)} · 下单时间 ${fmt(o.ts)}</div>
+      <div style="margin:8px 20px 16px;font-size:0.625rem;color:#aaa;">进度按应用内模拟时间推进，不代表真实快递扫描或签收。</div>
+      ${shopAfterSalesPanel(o, curIdx)}
     `;
     document.getElementById('ordersView').style.display = 'none';
     document.getElementById('orderDetailView').style.display = 'block';
@@ -924,14 +1154,22 @@
     const c = chars[Math.floor(Math.random()*chars.length)];
     const p = PRODUCTS[Math.floor(Math.random()*PRODUCTS.length)];
     const orders = loadOrders();
+    if (!orders) {
+      showToast('订单数据异常，未新增模拟订单');
+      return;
+    }
     orders.push({
+      orderId: 'legacy_shop_' + Date.now().toString(36),
       roleName: c.name || '神秘人',
       roleBg: c.avatarBg || '#111',
       items: [{ cn: p.cn, price: p.price }],
       total: p.price,
-      ts: Date.now() - Math.random()*3600000*10  // 随机10小时内
+      ts: Date.now() - Math.random()*3600000*10
     });
-    saveOrders(orders);
+    if (!saveOrders(orders)) {
+      showToast('模拟订单保存失败');
+      return;
+    }
     renderOrders();
   }
 
@@ -1002,110 +1240,307 @@
     document.getElementById('cartView').style.display = 'block';
   }
 
-  function doPay() {
-    const total = payItems.reduce((s,c) => s + c.price, 0);
-    var roleFamilyCard = getRoleCardFromMethod(payMethod);
-    if (payMethod.indexOf('role_card:') === 0) {
-      if (!roleFamilyCard || !canUseRoleCard(roleFamilyCard, total)) {
-        showToast('这张亲属卡的额度不足或已停用');
-        payMethod = 'normal';
-        renderPayMethods(total);
-        return;
-      }
-      var roleCardSpend = window.RoleFamilyCards.consume(
-        roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop'
-      );
-      if (!roleCardSpend || !roleCardSpend.ok) {
-        showToast(roleCardSpend && roleCardSpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式');
-        renderPayMethods(total);
-        return;
-      }
-      roleFamilyCard = roleCardSpend.card;
-    }
-    const now = new Date();
-    const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
-    const itemsDesc = payItems.map(c => c.cn).join('、');
+  var shopPaymentInProgress = false;
 
-    // 记账：写 finance_records
+  async function doPay() {
+    if (shopPaymentInProgress) return;
+    shopPaymentInProgress = true;
     try {
-      const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
-      payItems.forEach(c => {
-        list.push({ amount: c.price, type: 'expense',
-          category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
-          note: (payMethod === 'close_pay'
-            ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
-            : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + c.cn,
-          time: timeStr });
-      });
-      localStorage.setItem('finance_records', JSON.stringify(list));
-    } catch(e) {}
-
-    // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
-    if (payMethod === 'close_pay') {
-      try {
-        var cp = getClosePay();
-        if (cp) {
-          // 扣钱包余额
-          var wd = JSON.parse(localStorage.getItem('workData') || 'null') || { balance: 1000, history: [] };
-          if (typeof wd.balance !== 'number') wd.balance = 1000;
-          if (!Array.isArray(wd.history)) wd.history = [];
-          wd.balance = Math.round((wd.balance - total) * 100) / 100;
-          wd.history.unshift({ type: 'expense', category: 'close_pay',
-            title: '亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
-            amount: total, time: Date.now() });
-          localStorage.setItem('workData', JSON.stringify(wd));
-
-          // 更新亲密付额度
-          cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
+      var ledger = window.MaoMaoWalletLedger;
+      if (!ledger || typeof ledger.runExclusive !== 'function') {
+        showToast('钱包保护模块尚未加载，请刷新页面后重试');
+        return;
+      }
+      await ledger.runExclusive(function () {
+        
+            const total = payItems.reduce((s,c) => s + c.price, 0);
+            var checkoutSignature = JSON.stringify({
+              items: payItems.map(function (item) { return { id: item.id, cn: item.cn, price: item.price }; }),
+              total: total,
+            });
+            var transactionId = ledger.getOrCreatePendingCheckout('shop', checkoutSignature, payMethod);
+            if (!transactionId) {
+              showToast('存在未完成的结算；请恢复上次商品和支付方式后继续，避免重复扣款');
+              return;
+            }
+            var roleFamilyCard = getRoleCardFromMethod(payMethod);
+            if (payMethod.indexOf('role_card:') === 0) {
+              if (!roleFamilyCard) {
+                ledger.cancelPendingCheckout(transactionId);
+                showToast('这张亲属卡不存在或已失效');
+                payMethod = 'normal';
+                renderPayMethods(total);
+                return;
+              }
+              var roleCardSpend = window.RoleFamilyCards.consume(
+                roleFamilyCard.id, total, '商店 · ' + payItems.map(function (item) { return item.cn; }).join('、'), 'shop', transactionId
+              );
+              if (!roleCardSpend || !roleCardSpend.ok) {
+                if (roleCardSpend && (roleCardSpend.reason === 'limit' || roleCardSpend.reason === 'missing')) {
+                  ledger.cancelPendingCheckout(transactionId);
+                }
+                showToast(roleCardSpend && roleCardSpend.reason === 'storage' ? '亲属卡记录保存失败，请重试' : '亲属卡额度已变化，请重新选择支付方式');
+                renderPayMethods(total);
+                return;
+              }
+              roleFamilyCard = roleCardSpend.card;
+            }
+            const now = new Date();
+            const timeStr = (now.getMonth()+1) + '月' + now.getDate() + '日';
+            const itemsDesc = payItems.map(c => c.cn).join('、');
+        
+            // 亲密付：扣钱包余额 + 写钱包明细 + 更新额度 + 发聊天消息
+            if (payMethod === 'close_pay') {
+              var oldWalletRaw = null;
+              var walletSerialized = '';
+              var closePaySerialized = '';
+              var closePayQuotaCommitted = false;
+              try {
+                var cp = getClosePay();
+                if (!cp) {
+                  showToast('亲密付设置不可用，原交易仍保留待恢复；请恢复亲密付设置后重试');
+                  return;
+                }
+                if (cp) {
+                  // 重新校验亲密付额度与真实余额，结算全程处于钱包全局锁内。
           if (!Array.isArray(cp.history)) cp.history = [];
-          cp.history.push({ amount: total, note: '商店 · ' + itemsDesc, time: Date.now() });
-          localStorage.setItem('close_pay', JSON.stringify(cp));
+          var quotaAlreadyCommitted = cp.history.some(function (row) {
+            return row && row.paymentId === transactionId;
+          });
+          oldWalletRaw = localStorage.getItem('workData');
+          var wd = JSON.parse(oldWalletRaw || 'null') || { balance: 1000, history: [] };
+          if (typeof wd.balance !== 'number' || !isFinite(wd.balance)) wd.balance = 1000;
+          if (!Array.isArray(wd.history)) wd.history = [];
+          var walletAlreadyCommitted = wd.history.some(function (row) {
+            return row && row.paymentId === transactionId;
+          });
+
+          // A partial prior commit must be completed even if settings changed afterward.
+          if (!walletAlreadyCommitted && !quotaAlreadyCommitted && !cp.enabled) {
+            ledger.cancelPendingCheckout(transactionId);
+            showToast('亲密付已关闭，订单未完成');
+            return;
+          }
+          if (!walletAlreadyCommitted && !quotaAlreadyCommitted &&
+              (Number(cp.used) || 0) + total > (Number(cp.limit) || 0)) {
+            ledger.cancelPendingCheckout(transactionId);
+            showToast('亲密付额度已变化，订单未完成');
+            return;
+          }
+          if (!walletAlreadyCommitted) {
+            if (wd.balance < total) {
+              ledger.cancelPendingCheckout(transactionId);
+              showToast('钱包余额不足，未完成支付');
+              return;
+            }
+            wd.balance = Math.round((wd.balance - total) * 100) / 100;
+            wd.history.unshift({ type: 'expense', category: 'close_pay',
+              title: '亲密付 · ' + cp.roleName + ' · ' + itemsDesc,
+              amount: total, time: Date.now(), paymentId: transactionId });
+            walletSerialized = JSON.stringify(wd);
+            localStorage.setItem('workData', walletSerialized);
+            if (localStorage.getItem('workData') !== walletSerialized) {
+              showToast('钱包扣款未能确认；再次提交会核对原交易，不会盲目重复扣款');
+              return;
+            }
+          } else {
+            walletSerialized = oldWalletRaw || JSON.stringify(wd);
+          }
+
+          if (!quotaAlreadyCommitted) {
+            cp.used = Math.round(((Number(cp.used)||0) + total) * 100) / 100;
+            cp.history.push({ amount: total, note: '商店 · ' + itemsDesc,
+              time: Date.now(), paymentId: transactionId });
+            closePaySerialized = JSON.stringify(cp);
+            localStorage.setItem('close_pay', closePaySerialized);
+            if (localStorage.getItem('close_pay') !== closePaySerialized) {
+              try {
+                if (localStorage.getItem('workData') === walletSerialized) {
+                  if (oldWalletRaw == null) localStorage.removeItem('workData');
+                  else localStorage.setItem('workData', oldWalletRaw);
+                }
+              } catch (rollbackError) {}
+              showToast('亲密付额度未能保存，已尝试撤回钱包扣款；请重试核对原交易');
+              return;
+            }
+          }
+          closePayQuotaCommitted = true;
 
           // 给对方发一条聊天消息
-          if (cp.roleId) {
-            var key = 'chat_history_' + cp.roleId;
-            var arr = JSON.parse(localStorage.getItem(key) || '[]');
-            arr.push({
-              role: 'user',
-              type: 'text',
-              text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
-              time: Date.now()
-            });
-            localStorage.setItem(key, JSON.stringify(arr));
-          }
+                  if (cp.roleId) {
+                    var key = 'chat_history_' + cp.roleId;
+                    var arr = JSON.parse(localStorage.getItem(key) || '[]');
+                    if (!arr.some(function (row) { return row && row.paymentId === transactionId; })) {
+                      arr.push({
+                        role: 'user',
+                        type: 'text',
+                        text: '刚刚帮你付了 ¥' + total + '（' + itemsDesc + '），喜欢就好。',
+                        time: Date.now(),
+                        paymentId: transactionId
+                      });
+                      var chatSerialized = JSON.stringify(arr);
+                      localStorage.setItem(key, chatSerialized);
+                      if (localStorage.getItem(key) !== chatSerialized) {
+                        showToast('亲密付已扣款，但聊天记录暂未保存；再次提交会恢复原交易');
+                        return;
+                      }
+                    }
+                  }
+                }
+              } catch(e) {
+                // 如果异常发生在亲密付额度提交前，尽量恢复本次刚写入的钱包快照。
+                if (!closePayQuotaCommitted && walletSerialized) {
+                  try {
+                    if (localStorage.getItem('workData') === walletSerialized) {
+                      if (oldWalletRaw == null) localStorage.removeItem('workData');
+                      else localStorage.setItem('workData', oldWalletRaw);
+                    }
+                  } catch (rollbackError) {}
+                }
+                showToast('亲密付操作未能确认，订单未完成');
+                return;
+              }
+            }
+
+            // 财务明细按交易 ID + 商品序号幂等写入；失败时保留待恢复交易。
+            try {
+              const list = JSON.parse(localStorage.getItem('finance_records') || '[]');
+              if (!Array.isArray(list)) throw new Error('finance_records is not an array');
+              payItems.forEach(function (item, index) {
+                var exists = list.some(function (row) {
+                  return row && row.paymentId === transactionId && Number(row.paymentLineIndex) === index;
+                });
+                if (!exists) list.push({
+                  amount: item.price,
+                  type: 'expense',
+                  category: payMethod === 'close_pay' ? '亲密付' : (payMethod.indexOf('role_card:') === 0 ? '亲属卡' : '购物'),
+                  note: (payMethod === 'close_pay'
+                    ? '亲密付给' + ((getClosePay()||{}).roleName||'TA') + ' · '
+                    : (roleFamilyCard ? roleFamilyCard.roleName + ' 亲属卡代付 · ' : '商店 · ')) + item.cn,
+                  time: timeStr,
+                  paymentId: transactionId,
+                  paymentLineIndex: index
+                });
+              });
+              var financeSerialized = JSON.stringify(list);
+              localStorage.setItem('finance_records', financeSerialized);
+              if (localStorage.getItem('finance_records') !== financeSerialized) {
+                showToast('支付已记录，但财务明细未保存；再次提交会补齐且不会重复扣款');
+                return;
+              }
+            } catch (financeError) {
+              console.warn('[shop] 财务明细保存失败', financeError);
+              showToast('财务明细保存失败；再次提交可恢复原交易');
+              return;
+            }
+
+        
+
+            // 订单按 paymentId 去重；订单保存失败时保留待恢复交易。
+            const orders = loadOrders();
+            if (!orders) {
+              showToast('订单数据异常，已停止覆盖保存；原支付交易仍可恢复');
+              return;
+            }
+            if (!orders.some(function (row) { return row && row.paymentId === transactionId; })) {
+              var orderCreatedAt = Date.now();
+              orders.push({
+                orderId: transactionId,
+                paymentId: transactionId,
+                roleName: '我',
+                roleBg: '#111',
+                items: payItems.map(function (item) { return { cn: item.cn, price: item.price }; }),
+                total: total,
+                ts: orderCreatedAt,
+                payMethod: payMethod,
+                status: 'placed',
+                statusUpdatedAt: orderCreatedAt,
+                statusHistory: [{ status: 'placed', label: '订单已下单', time: orderCreatedAt }],
+                statusSource: 'simulation'
+              });
+            }
+            var storedOrder = orders.find(function (row) { return row && row.paymentId === transactionId; });
+            var storedItemsMatch = storedOrder && Array.isArray(storedOrder.items) &&
+              storedOrder.items.length === payItems.length &&
+              storedOrder.items.every(function (storedItem, index) {
+                return storedItem.cn === payItems[index].cn &&
+                  Number(storedItem.price) === Number(payItems[index].price);
+              });
+            if (!storedOrder || Number(storedOrder.total) !== Number(total) ||
+                !storedItemsMatch || String(storedOrder.payMethod || '') !== String(payMethod)) {
+              showToast('订单交易编号与商品明细不一致，已停止继续处理');
+              return;
+            }
+            if (!saveOrders(orders)) {
+              showToast('支付已记录，但订单暂未保存；再次提交会补齐订单且不会重复扣款');
+              return;
+            }
+            var cartSnapshot = null;
+            var cartStorageSnapshot = null;
+            if (payFromCart) {
+              cartSnapshot = shopCart.slice();
+              cartStorageSnapshot = localStorage.getItem('shop_cart');
+              shopCart = [];
+              if (!saveCart(shopCart)) {
+                shopCart = cartSnapshot;
+                updateBadge();
+                showToast('订单已保存，但购物车未能清空；再次提交会恢复原交易');
+                return;
+              }
+            }
+            if (!ledger.completePendingCheckout(transactionId)) {
+              if (payFromCart && ledger.isPendingCheckout(transactionId) === true && cartSnapshot) {
+                shopCart = cartSnapshot;
+                try {
+                  if (cartStorageSnapshot == null) localStorage.removeItem('shop_cart');
+                  else localStorage.setItem('shop_cart', cartStorageSnapshot);
+                } catch (restoreError) {}
+                updateBadge();
+                showToast('订单已保存，结算确认暂未完成；已恢复购物车，可再次提交完成确认');
+              } else {
+                showToast('订单已保存，但结算确认暂未完成；请勿重新购买这笔商品');
+              }
+              return;
+            }
+            try {
+              if (roleFamilyCard) {
+                            notifyRoleCardIssuer(roleFamilyCard,
+                              '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
+                              '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
+                              '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
+                              window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
+                          }
+            } catch (notifyError) {
+              console.warn('[shop] 亲属卡通知未能发送', notifyError);
+            }
+            // 弹小票
+            document.getElementById('rOrder').textContent = String(Math.floor(Math.random()*9000)+1000);
+            document.getElementById('rBody').innerHTML =
+              payItems.map(c => `
+                <div class="r-row"><span class="name">${c.cn}</span><span>¥${c.price}</span></div>
+              `).join('') +
+              `<div class="r-divider"></div>
+               <div class="r-row"><span>商品件数</span><span>${payItems.length} 件</span></div>
+               <div class="r-row r-total"><span>合计</span><span>¥${total}.00</span></div>`;
+            document.getElementById('rFoot').textContent =
+              new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-') + ' · 谢谢惠顾';
+            document.getElementById('doneItems').innerHTML = payItems.map(c =>
+              `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.813rem;">
+                 <span>${c.cn}</span><span style="font-weight:600;">¥${c.price}</span>
+               </div>`).join('');
+            document.getElementById('payView').style.display = 'none';
+            document.getElementById('receiptBox').classList.add('show');
+      }, {
+        onFallback: function () {
+          showToast('当前浏览器不支持跨页面支付互斥，请避免同时从多个页面结算');
         }
-      } catch(e) {}
+      });
+    } catch (error) {
+      console.warn('[shop] 支付操作未完成', error);
+      showToast('支付暂未完成，请检查钱包记录后重试');
+    } finally {
+      shopPaymentInProgress = false;
     }
-
-    if (roleFamilyCard) {
-      notifyRoleCardIssuer(roleFamilyCard,
-        '我刚刚使用你给我的' + (roleFamilyCard.kind === 'intimate' ? '亲密付' : '亲属卡') +
-        '在商店买了' + payItems.map(function (item) { return item.cn; }).join('、') +
-        '，共 ¥' + total.toFixed(2) + '。本月已经使用 ¥' +
-        window.RoleFamilyCards.usedThisMonth(roleFamilyCard).toFixed(2) + '。');
-    }
-
-    // 写入订单
-    const orders = loadOrders();
-    orders.push({ roleName: '我', roleBg: '#111', items: payItems.map(c=>({cn:c.cn,price:c.price})), total, ts: Date.now(), payMethod });
-    saveOrders(orders);
-    // 弹小票
-    document.getElementById('rOrder').textContent = String(Math.floor(Math.random()*9000)+1000);
-    document.getElementById('rBody').innerHTML =
-      payItems.map(c => `
-        <div class="r-row"><span class="name">${c.cn}</span><span>¥${c.price}</span></div>
-      `).join('') +
-      `<div class="r-divider"></div>
-       <div class="r-row"><span>商品件数</span><span>${payItems.length} 件</span></div>
-       <div class="r-row r-total"><span>合计</span><span>¥${total}.00</span></div>`;
-    document.getElementById('rFoot').textContent =
-      new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-') + ' · 谢谢惠顾';
-    document.getElementById('doneItems').innerHTML = payItems.map(c =>
-      `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.813rem;">
-         <span>${c.cn}</span><span style="font-weight:600;">¥${c.price}</span>
-       </div>`).join('');
-    document.getElementById('payView').style.display = 'none';
-    document.getElementById('receiptBox').classList.add('show');
   }
 
   function closeReceipt() {

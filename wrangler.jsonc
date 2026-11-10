@@ -1,4 +1,4 @@
-// Production redeploy trigger for main source commit 4be283839031dae52f5d35026a79b706d58b3337.
+// MAOMAO — Cloudflare Worker（静态资源 + /api 云接口共存）；云能力部署与密钥说明见 docs/engineering/CLOUD_PUSH.md。
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mao",
@@ -8,7 +8,25 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "html_handling": "none",
+    "not_found_handling": "none",
     "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CLOUD_DB",
+        "class_name": "CloudDatabase"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CloudDatabase"]
+    }
+  ],
+  "triggers": {
+    "crons": ["17 3 * * *"]
   },
   "previews": {}
 }

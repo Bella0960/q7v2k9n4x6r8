@@ -17,8 +17,11 @@
 
   function writeAll(cards) {
     try {
-      localStorage.setItem(KEY, JSON.stringify(Array.isArray(cards) ? cards : []));
-      return true;
+      var serialized = JSON.stringify(Array.isArray(cards) ? cards : []);
+      localStorage.setItem(KEY, serialized);
+      // Some storage adapters can report success while retaining an older value.
+      // Treat the mutation as committed only when the exact payload reads back.
+      return localStorage.getItem(KEY) === serialized;
     } catch (e) { return false; }
   }
 
@@ -162,22 +165,51 @@
       : { ok: false, reason: 'storage', card: card };
   }
 
-  function consume(cardId, amount, note, appId) {
+  function consume(cardId, amount, note, appId, transactionId) {
     var cards = readAll();
     var card = cards.find(function (item) { return String(item.id) === String(cardId); });
     if (!card) return { ok: false, reason: 'missing', card: null };
+
+    var paymentId = String(transactionId || '').trim().slice(0, 120);
+    var roundedAmount = Math.round(Number(amount) * 100) / 100;
+    if (paymentId) {
+      var receipts = Array.isArray(card.paymentReceipts) ? card.paymentReceipts : [];
+      var previous = receipts.find(function (item) { return item && item.paymentId === paymentId; });
+      if (!previous && Array.isArray(card.history)) {
+        previous = card.history.find(function (item) { return item && item.paymentId === paymentId; });
+      }
+      if (previous) {
+        var sameAmount = Math.abs(Number(previous.amount) - roundedAmount) < 0.000001;
+        var sameApp = String(previous.appId || appId || 'shop') === String(appId || 'shop');
+        return sameAmount && sameApp
+          ? { ok: true, reason: '', card: card, record: previous, replayed: true }
+          : { ok: false, reason: 'transaction-conflict', card: card };
+      }
+    }
+
     if (!canUse(card, amount)) return { ok: false, reason: 'limit', card: card };
     if (!Array.isArray(card.history)) card.history = [];
     var row = {
-      amount: Math.round(Number(amount) * 100) / 100,
+      amount: roundedAmount,
       note: String(note || '').slice(0, 180),
       appId: String(appId || 'shop'),
       time: Date.now()
     };
+    if (paymentId) {
+      row.paymentId = paymentId;
+      if (!Array.isArray(card.paymentReceipts)) card.paymentReceipts = [];
+      card.paymentReceipts.push({
+        paymentId: paymentId,
+        amount: roundedAmount,
+        appId: row.appId,
+        time: row.time
+      });
+      while (card.paymentReceipts.length > 500) card.paymentReceipts.shift();
+    }
     card.history.push(row);
     while (card.history.length > 80) card.history.shift();
     card.lastUsedAt = row.time;
-    return writeAll(cards) ? { ok: true, reason: '', card: card, record: row }
+    return writeAll(cards) ? { ok: true, reason: '', card: card, record: row, replayed: false }
       : { ok: false, reason: 'storage', card: card };
   }
 
