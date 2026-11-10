@@ -563,16 +563,20 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.equal(readiness.payload.cloudSchedulerLastRunAt, null);
   assert.equal(readiness.payload.cloudModelLastGeneratedAt, null);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
-    'web_push_keys_not_configured',
-    'current_device_push_subscription_missing',
     'activity_executor_config_missing',
     'server_model_credentials_missing',
     'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
     'cloud_model_scheduler_runtime_not_verified',
-    'cloud_model_generation_not_verified',
+    'cloud_model_generation_not_verified'
+  ]);
+  assert.deepEqual(readiness.payload.pushDeliveryBlockers, [
+    'web_push_keys_not_configured',
+    'current_device_push_subscription_missing',
     'cloud_push_provider_acceptance_not_verified'
   ]);
+  assert.equal(readiness.payload.pushDeliveryReady, false);
+  assert.equal(readiness.payload.autonomousContactAndPushReady, false);
 
   const snapshot = ctx.store.getSchedulerGateSnapshot({ userId: 'owner', characterId: 'char-a' });
   assert.equal(snapshot.contextVersion, 2);
@@ -1776,16 +1780,20 @@ test('云端 readiness 只暴露配置状态与匿名队列汇总，且必须设
   assert.equal(readiness.payload.contextVersionTrackedRoles, 0);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
-    'current_device_push_subscription_missing',
     'activity_executor_config_missing',
     'server_model_credentials_missing',
     'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
     'context_version_unavailable',
     'cloud_model_scheduler_runtime_not_verified',
-    'cloud_model_generation_not_verified',
+    'cloud_model_generation_not_verified'
+  ]);
+  assert.deepEqual(readiness.payload.pushDeliveryBlockers, [
+    'current_device_push_subscription_missing',
     'cloud_push_provider_acceptance_not_verified'
   ]);
+  assert.equal(readiness.payload.pushDeliveryReady, false);
+  assert.equal(readiness.payload.autonomousContactAndPushReady, false);
   assert.deepEqual(readiness.payload.recentSchedulerReasons, [
     { reasonCode: 'context_version_unavailable', count: 1 },
     { reasonCode: 'foreground_lease_held', count: 1 }
