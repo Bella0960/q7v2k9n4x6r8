@@ -14,8 +14,7 @@
 import { createApp, dispatchPendingOutboundPushes } from './worker/lib/app.js';
 import { createStore } from './worker/lib/store.js';
 import { applyMigrations } from './worker/lib/migrations.js';
-import { runTick } from './worker/lib/scheduler.js';
-import { createSchedulerGate } from './worker/lib/scheduler-gate.js';
+import { runCloudModelTick } from './worker/lib/cloud-model-scheduler.js';
 
 const INSTANCE_NAME = 'maomao-global';
 
@@ -56,52 +55,6 @@ async function injectAccountScope(response, account) {
     statusText: response.statusText,
     headers
   });
-}
-
-/**
- * 调度参数全部来自显式环境配置，不设产品默认值。
- * 缺失时 runTick 会 fail-closed 并写入 missing_config 日志。
- */
-function readSchedulerConfig(env) {
-  const config = {};
-  if (env?.AUTONOMY_LEASE_MS != null) config.leaseMs = Number(env.AUTONOMY_LEASE_MS);
-  if (env?.AUTONOMY_TICK_LIMIT != null) config.tickLimit = Number(env.AUTONOMY_TICK_LIMIT);
-  if (env?.AUTONOMY_RETRY_BACKOFF_MS != null) {
-    config.retryBackoffMs = String(env.AUTONOMY_RETRY_BACKOFF_MS)
-      .split(',')
-      .map(value => value.trim())
-      .filter(Boolean)
-      .map(Number);
-  }
-  return config;
-}
-
-/**
- * M2.1 time/presence parameters remain explicit operator configuration.
- * Missing values are not replaced with guessed product defaults.
- */
-function readSchedulePolicyConfig(env) {
-  const config = {};
-  const readPositive = name => {
-    const raw = env?.[name];
-    if (raw == null || String(raw).trim() === '') return undefined;
-    const value = Number(raw);
-    return Number.isSafeInteger(value) && value > 0 ? value : NaN;
-  };
-  const readNonNegative = name => {
-    const raw = env?.[name];
-    if (raw == null || String(raw).trim() === '') return undefined;
-    const value = Number(raw);
-    return Number.isSafeInteger(value) && value >= 0 ? value : NaN;
-  };
-
-  const heartbeatTtlMs = readPositive('AUTONOMY_HEARTBEAT_TTL_MS');
-  const leaseDurationMs = readPositive('AUTONOMY_DEVICE_LEASE_MS');
-  const graceMs = readNonNegative('AUTONOMY_DEVICE_GRACE_MS');
-  if (heartbeatTtlMs !== undefined) config.heartbeatTtlMs = heartbeatTtlMs;
-  if (leaseDurationMs !== undefined) config.leaseDurationMs = leaseDurationMs;
-  if (graceMs !== undefined) config.graceMs = graceMs;
-  return config;
 }
 
 export class CloudDatabase {
@@ -164,19 +117,26 @@ export class CloudDatabase {
       });
     }
     if (url.pathname === '/internal/tick' && request.method === 'POST') {
-      // 真实 gate 已接入；缺少显式授权/作息/lease 配置或可信上下文版本时仍 fail-closed。
       const timestamp = Date.now();
-      const result = runTick({
+      const result = await runCloudModelTick({
         store: this.store,
+        env: this.env,
         now: timestamp,
-        config: readSchedulerConfig(this.env),
-        gate: createSchedulerGate({
-          store: this.store,
-          now: () => timestamp,
-          config: readSchedulePolicyConfig(this.env)
-        })
+        fetchImpl: fetch
       });
-      return Response.json({ ok: true, result });
+      let pushDispatch;
+      try {
+        pushDispatch = await dispatchPendingOutboundPushes({
+          store: this.store,
+          env: this.env,
+          now: Date.now(),
+          fetchImpl: fetch,
+          limit: 50
+        });
+      } catch (error) {
+        pushDispatch = { configured: false, reason: 'dispatch_deferred' };
+      }
+      return Response.json({ ok: true, result, pushDispatch });
     }
     return new Response('Not found', { status: 404 });
   }
