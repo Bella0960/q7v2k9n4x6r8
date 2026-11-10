@@ -1699,8 +1699,8 @@
               : '暂无记录'),
             '角色聊天版本计数：' + (ready.contextVersionReady ? '已有记录' : '尚未记录'),
             '已跟踪角色数：' + Number(ready.contextVersionTrackedRoles || 0),
-            '主动联系/推送未完成项：' + (Array.isArray(ready.autonomyExecutionBlockers) && ready.autonomyExecutionBlockers.length
-              ? ready.autonomyExecutionBlockers.map(function (reason) {
+            '主动联系/推送未完成项：' + (Array.isArray(ready.autonomyExecutionBlockers) && ready.autonomyExecutionBlockers.concat(Array.isArray(ready.pushDeliveryBlockers) ? ready.pushDeliveryBlockers : []).length
+              ? ready.autonomyExecutionBlockers.concat(Array.isArray(ready.pushDeliveryBlockers) ? ready.pushDeliveryBlockers : []).map(function (reason) {
                   var labels = {
                     web_push_keys_not_configured: '未配置 Web Push 密钥',
                     current_device_push_subscription_missing: '当前设备没有有效推送订阅',
@@ -1716,16 +1716,20 @@
                   return labels[reason] || reason;
                 }).join('；')
               : '暂无'),
-            'AI 主动消息生成：' + (ready.autonomousMessageGenerationReady ? '已就绪' : '未就绪'),
+            '云端主动生成：' + (ready.autonomousMessageGenerationReady ? '已通过近期运行验收' : '未就绪'),
+            '当前设备推送：' + (ready.pushDeliveryReady ? '已通过近期服务端接受验收' : '未就绪'),
+            '主动联系＋推送闭环：' + (ready.autonomousContactAndPushReady ? '已就绪' : '未完成'),
             '',
             ready.note || '此检查只读取配置与匿名队列汇总，不会发送通知。'
           ];
           if (readinessResult) readinessResult.textContent = lines.join('\n');
-          setStatusText(ready.testPushReady && ready.autonomousMessageGenerationReady
-            ? '主动联系与推送均已通过近期运行验收'
-            : ready.testPushReady
-              ? '推送通道可测试；主动联系仍有配置或运行验收项目未完成'
-              : '云端仍有配置未完成');
+          setStatusText(ready.autonomousContactAndPushReady
+            ? '主动联系与当前设备推送均已通过近期验收'
+            : ready.autonomousMessageGenerationReady && ready.testPushReady
+              ? '云端主动生成已就绪；当前设备推送仍未通过近期回执验收'
+              : ready.testPushReady
+                ? '当前设备推送可进行测试；云端主动生成仍有配置或运行验收项目未完成'
+                : '云端仍有配置未完成');
         } catch (error) {
           if (readinessResult) readinessResult.textContent = '检查失败：' + (error.message || '未知错误');
           setStatusText('读取云端准备情况失败');
