@@ -2960,6 +2960,8 @@ test('设备撤销并发时，不能新增上下文版本事件或排队自主�
     assert.ok(stored, '上下文事件撤销前，刚登记的设备必须存在');
     assert.equal(stored.user_id, accountId,
       '上下文事件设备必须归属于当前 MAO 永久 ID：' + JSON.stringify(stored));
+    assert.equal(stored.revoked_at, null,
+      '上下文事件设备在模拟撤销前必须仍然有效：' + JSON.stringify({ stored, deviceMutationTrace }));
     assert.equal(
       ctx.store.revokeMaoAccountDevice(accountId, contextDevice.deviceId, ctx.now()),
       true,
