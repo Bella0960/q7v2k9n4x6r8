@@ -3262,7 +3262,7 @@ test('不支持 Web Locks 的浏览器只提供页面内队列并明确暴露降
   assert.deepEqual(notices, ['fallback'], 'fallback warning is emitted only once per page');
 });
 
-test('亲属卡所有状态变更与商店外卖消费共用钱包锁', () => {
+test('亲属卡所有状态变更与商店外卖消费共用钱包锁', async () => {
   assert.match(familyCardsPage, /wallet-ledger\.js\?v=20261107v7/);
   assert.match(familyCardsPage, /async function runAction\(action, id\)/);
   assert.match(familyCardsPage, /await ledger\.runExclusive\(function \(\)/);
