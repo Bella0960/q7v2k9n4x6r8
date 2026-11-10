@@ -556,9 +556,14 @@ test('角色上下文版本事件：仅保存事件 ID、服务器递增、重�
   assert.equal(readiness.payload.contextVersionReady, true);
   assert.equal(readiness.payload.contextVersionTrackedRoles, 1);
   assert.equal(readiness.payload.autonomousMessageGenerationReady, false);
+  assert.equal(readiness.payload.cloudSchedulerRuntimeVerified, false);
+  assert.equal(readiness.payload.cloudModelGenerationVerified, false);
+  assert.equal(readiness.payload.cloudSchedulerLastRunAt, null);
+  assert.equal(readiness.payload.cloudModelLastGeneratedAt, null);
   assert.deepEqual(readiness.payload.autonomyExecutionBlockers, [
     'activity_executor_config_missing',
     'server_model_credentials_missing',
+    'global_autonomy_not_enabled',
     'context_sharing_not_enabled',
     'cloud_model_scheduler_runtime_not_verified'
   ]);
