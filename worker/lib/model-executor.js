@@ -28,7 +28,7 @@ function parseEndpoint(raw, allowedHosts) {
     !allowedHosts.has(host) || !host.includes('.') ||
     host.startsWith('[') || /^[0-9.]+$/.test(host) ||
     host === 'localhost' || host.endsWith('.local') ||
-    !url.pathname.endsWith('/chat/completions')
+    url.pathname !== '/v1/chat/completions' && !url.pathname.endsWith('/chat/completions')
   ) return null;
   return url.toString();
 }
@@ -93,7 +93,7 @@ function parseModelResult(content) {
 }
 
 export async function generateAutonomousMessages({
-  env = {}, snapshot, fetchImpl = fetch, now = Date.now
+  env = {}, snapshot, fetchImpl = fetch
 } = {}) {
   const config = readAutonomyModelConfig(env);
   if (!config) return { ok: false, reason: 'model_not_configured' };
