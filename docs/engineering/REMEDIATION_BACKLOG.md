@@ -86,7 +86,7 @@ Acceptance:
 - No accidental publication from creating a GitHub release.
 
 ### CI-004 — Replace fake lint command
-**Priority:** P1 · **Status:** OPEN
+**Priority:** P1 · **Status:** IN PROGRESS (no-dependency Node syntax lint for first-party JS/MJS/CJS and inline HTML scripts; CI hookup is intentionally pending a working runner baseline)
 
 Evidence: npm run lint only prints a fixed success message.
 
