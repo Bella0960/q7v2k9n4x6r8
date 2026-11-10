@@ -66,6 +66,11 @@ let currentNpcId = '';
 let relationshipFilter = 'all';
 let npcEditorReturnView = 'relationshipView';
 let editorReturnView = 'listView';
+let portraitPurpose = 'profile';
+let avatarLibraryObjectUrls = [];
+let avatarLibraryRenderToken = 0;
+let avatarPairDraftRoleId = '';
+let avatarPairDraftIds = [];
 
 // 读取世界书列表（phone_worldbooks），只读不写，异常/脏数据一律兜底为空数组
 function loadWorldBooks() {
@@ -165,6 +170,455 @@ function saveRoles(roles) {
     }
 }
 
+const ROLE_AVATAR_CLEANUP_QUEUE_KEY = 'maomao_role_avatar_cleanup_queue_v1';
+
+function readRoleAvatarCleanupQueue() {
+    try {
+        const raw = localStorage.getItem(ROLE_AVATAR_CLEANUP_QUEUE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        const seen = Object.create(null);
+        return parsed.filter(function (item) {
+            const roleId = item && item.roleId != null ? String(item.roleId).trim() : '';
+            if (!roleId || roleId.length > 180 || seen[roleId]) return false;
+            seen[roleId] = true;
+            return true;
+        }).map(function (item) {
+            return { roleId: String(item.roleId), queuedAt: Math.max(0, Number(item.queuedAt) || 0) };
+        });
+    } catch (error) {
+        return [];
+    }
+}
+
+function writeRoleAvatarCleanupQueue(queue) {
+    try {
+        localStorage.setItem(ROLE_AVATAR_CLEANUP_QUEUE_KEY, JSON.stringify(queue));
+        return true;
+    } catch (error) {
+        console.warn('角色头像清理队列无法保存:', error);
+        return false;
+    }
+}
+
+function enqueueRoleAvatarCleanup(roleId) {
+    roleId = String(roleId == null ? '' : roleId).trim();
+    if (!roleId || roleId.length > 180) return false;
+    const queue = readRoleAvatarCleanupQueue();
+    if (!queue.some(function (item) { return item.roleId === roleId; })) {
+        queue.push({ roleId: roleId, queuedAt: Date.now() });
+    }
+    return writeRoleAvatarCleanupQueue(queue);
+}
+
+async function retryPendingRoleAvatarCleanup() {
+    const library = window.RoleAvatarLibrary;
+    if (!library || typeof library.removeRole !== 'function') return { attempted: 0, pending: readRoleAvatarCleanupQueue().length };
+
+    // Merge the persisted queue with deletion tombstones. The tombstone is the durable
+    // source of truth, so a page close between delete and queue-write cannot strand media.
+    const queue = readRoleAvatarCleanupQueue();
+    const byRoleId = Object.create(null);
+    queue.forEach(function (item) { byRoleId[item.roleId] = item; });
+    if (typeof library.listPendingRoleCleanups === 'function') {
+        try {
+            const discovered = library.listPendingRoleCleanups();
+            if (discovered && discovered.ok && Array.isArray(discovered.value)) {
+                discovered.value.forEach(function (roleId) {
+                    roleId = String(roleId || '').trim();
+                    if (roleId && !byRoleId[roleId]) {
+                        byRoleId[roleId] = { roleId: roleId, queuedAt: Date.now() };
+                    }
+                });
+            } else {
+                console.warn('角色头像清理标记暂时无法扫描，将继续处理已有重试队列。');
+            }
+        } catch (error) {
+            console.warn('角色头像清理标记扫描失败，将继续处理已有重试队列:', error);
+        }
+    }
+    const tasks = Object.keys(byRoleId).map(function (roleId) { return byRoleId[roleId]; });
+    if (!tasks.length) return { attempted: 0, pending: 0 };
+
+    const pending = [];
+    let attempted = 0;
+    for (const item of tasks) {
+        attempted += 1;
+        try {
+            const result = await library.removeRole(item.roleId);
+            if (!result || !result.ok) {
+                pending.push(item);
+                console.warn('角色头像清理仍未完成，将在下次打开角色档案页时重试:', item.roleId);
+            }
+        } catch (error) {
+            pending.push(item);
+            console.warn('角色头像清理失败，将在下次打开角色档案页时重试:', item.roleId, error);
+        }
+    }
+    if (!writeRoleAvatarCleanupQueue(pending)) {
+        return { attempted: attempted, pending: pending.length, queueWriteFailed: true };
+    }
+    return { attempted: attempted, pending: pending.length };
+}
+
+
+
+function setAvatarLibraryStatus(message, state) {
+    const el = document.getElementById('avatarLibraryStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.dataset.state = state || 'info';
+}
+
+function releaseAvatarLibraryUrls() {
+    avatarLibraryObjectUrls.forEach(function (item) {
+        try { if (item && typeof item.revoke === 'function') item.revoke(); } catch (error) {}
+    });
+    avatarLibraryObjectUrls = [];
+}
+
+async function ensureLegacyAvatarInLibrary(role) {
+    const library = window.RoleAvatarLibrary;
+    if (!library || !role || !role.id) return false;
+
+    const items = library.list(role.id);
+    const linked = items.find(function (item) {
+        return item.assetId === String(role.avatarAssetId || '');
+    });
+    if (linked) {
+        const active = library.getActive(role.id);
+        if (!active || active.id !== linked.id) {
+            const synchronized = library.setActive(role.id, linked.id);
+            if (!synchronized.ok) {
+                setAvatarLibraryStatus('原头像仍正常使用，但图库的当前标记暂时无法同步。', 'error');
+                return false;
+            }
+        }
+        return true;
+    }
+
+    const legacyAvatar = String(role.avatar || '');
+    if (!/^data:image\//i.test(legacyAvatar)) {
+        if (legacyAvatar) setAvatarLibraryStatus('当前头像仍由角色资料使用；可添加照片建立独立收藏。', 'info');
+        return true;
+    }
+
+    setAvatarLibraryStatus('正在将原有头像安全加入角色图库…', 'info');
+    const saved = await library.add(role.id, legacyAvatar, {
+        label: '当前头像',
+        source: 'legacy'
+    });
+    if (!saved || !saved.ok) {
+        setAvatarLibraryStatus('原头像仍正常使用；图库暂时无法读取或保存。', 'error');
+        return false;
+    }
+
+    const previousActive = library.getActive(role.id);
+    const activated = library.setActive(role.id, saved.value.id);
+    if (!activated.ok) {
+        setAvatarLibraryStatus('头像已保存，但当前头像标记未能更新。', 'error');
+        return false;
+    }
+
+    const roles = loadRoles();
+    const latest = roles.find(function (item) { return String(item.id) === String(role.id); });
+    if (!latest) return false;
+    const previousAssetId = latest.avatarAssetId || '';
+    latest.avatarAssetId = saved.value.assetId;
+    if (!saveRoles(roles)) {
+        latest.avatarAssetId = previousAssetId;
+        library.setActive(role.id, previousActive ? previousActive.id : '');
+        setAvatarLibraryStatus('图库已保留原图；角色资料写入失败，未更改原头像。', 'error');
+        return false;
+    }
+    return true;
+}
+
+async function renderAvatarLibrary(roleId) {
+    const grid = document.getElementById('avatarLibraryGrid');
+    const pairContainer = document.getElementById('avatarPairList');
+    if (!grid || !window.RoleAvatarLibrary) return;
+    const token = ++avatarLibraryRenderToken;
+    releaseAvatarLibraryUrls();
+    grid.innerHTML = '<div class="avatar-library-empty">正在整理头像…</div>';
+    if (pairContainer) pairContainer.innerHTML = '<div class="avatar-pair-empty">配对头像会在这里并排展示。</div>';
+    if (!document.getElementById('avatarPairLibraryStyle')) {
+        const style = document.createElement('style');
+        style.id = 'avatarPairLibraryStyle';
+        style.textContent = '.avatar-pair-builder{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:10px 0 14px;padding:10px 12px;border:1px solid #e8e8ec;border-radius:14px;background:#f7f7f9;color:#666;font-size:12px}.avatar-pair-builder-actions{display:flex;gap:6px}.avatar-pair-builder button{border:0;border-radius:9px;padding:7px 10px;font-size:11px;background:#fff;color:#333}.avatar-pair-builder button:disabled{opacity:.38}.avatar-pair-pick{display:block;width:100%;margin-top:7px;border:1px solid #e8e8ec;border-radius:9px;padding:8px 5px;background:#fff;color:#666;font-size:11px}.avatar-pair-pick.is-selected{background:#111;color:#fff;border-color:#111}.avatar-library-origin{display:inline-block;margin-left:6px;color:#999;font-size:10px;font-weight:400}.avatar-pair-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0 0 14px}.avatar-pair-empty{padding:12px 0;color:#999;font-size:12px}.avatar-pair-card{min-width:0;border:1px solid #e8e8ec;border-radius:16px;padding:12px;background:#fff}.avatar-pair-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;color:#333;font-size:12px}.avatar-pair-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.avatar-pair-label-input{min-width:0;width:100%;max-width:150px;border:1px solid #e8e8ec;border-radius:9px;padding:7px 8px;color:#333;background:#fff;font:inherit;font-size:11px}.avatar-pair-unlink,.avatar-pair-swap,.avatar-pair-rename{border:0;background:#f7f7f9;color:#666;border-radius:9px;padding:6px 9px;font-size:11px}.avatar-pair-swap{background:#111;color:#fff}.avatar-pair-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.avatar-pair-side{min-width:0;border:0;padding:0;background:transparent;text-align:left;color:#555}.avatar-pair-side img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#f0f0f3}.avatar-pair-side span{display:block;padding:7px 2px 0;font-size:11px}.avatar-pair-side.is-active img{outline:2px solid #111;outline-offset:2px}.avatar-pair-side.is-active span{color:#111;font-weight:600}';
+        document.head.appendChild(style);
+    }
+
+    const role = getRoleById(roleId);
+    if (!role) return;
+    const legacyReady = await ensureLegacyAvatarInLibrary(role);
+    if (token !== avatarLibraryRenderToken || String(currentProfileRoleId) !== String(roleId)) return;
+
+    if (String(avatarPairDraftRoleId) !== String(roleId)) {
+        avatarPairDraftRoleId = String(roleId);
+        avatarPairDraftIds = [];
+    }
+    const items = window.RoleAvatarLibrary.list(roleId);
+    const pairs = typeof window.RoleAvatarLibrary.getPairs === 'function'
+        ? window.RoleAvatarLibrary.getPairs(roleId) : [];
+    const pairedPortraitIds = Object.create(null);
+    pairs.forEach(function (pair) {
+        (pair.avatarIds || []).forEach(function (id) { pairedPortraitIds[String(id)] = true; });
+    });
+    avatarPairDraftIds = avatarPairDraftIds.filter(function (id) {
+        return items.some(function (item) { return item.id === id; }) && !pairedPortraitIds[id];
+    }).slice(0, 2);
+    const pairBuilder = document.getElementById('avatarPairBuilder');
+    if (pairBuilder) {
+        const selectedCount = avatarPairDraftIds.length;
+        pairBuilder.innerHTML = '<span>' + (selectedCount ? ('已选择 ' + selectedCount + ' / 2 张头像') : '也可以手动从收藏中选两张配对') + '</span>' +
+            '<div class="avatar-pair-builder-actions">' +
+            '<button type="button" data-avatar-pair-action="cancel"' + (selectedCount ? '' : ' disabled') + '>取消</button>' +
+            '<button type="button" data-avatar-pair-action="create"' + (selectedCount === 2 ? '' : ' disabled') + '>建立配对</button>' +
+            '</div>';
+    }
+    if (pairContainer) {
+        pairContainer.innerHTML = pairs.length ? '<div class="avatar-pair-list">' + pairs.map(function (pair) {
+            const first = pair.avatars && pair.avatars[0];
+            const second = pair.avatars && pair.avatars[1];
+            if (!first || !second) return '';
+            const pairId = escapeHtml(pair.id);
+            const firstId = escapeHtml(first.id);
+            const secondId = escapeHtml(second.id);
+            const firstAsset = escapeHtml(first.assetId);
+            const secondAsset = escapeHtml(second.assetId);
+            const firstLabel = escapeHtml(first.label || '头像 A');
+            const secondLabel = escapeHtml(second.label || '头像 B');
+            return '<article class="avatar-pair-card">' +
+                '<div class="avatar-pair-card-head"><input class="avatar-pair-label-input" type="text" maxlength="36" value="' + escapeHtml(pair.label || '配对头像') + '" data-saved-value="' + escapeHtml(pair.label || '配对头像') + '" aria-label="配对名称" data-avatar-pair-label-input="' + pairId + '">' +
+                '<div class="avatar-pair-actions"><button class="avatar-pair-rename" type="button" data-avatar-pair-action="rename" data-pair-id="' + pairId + '">保存名称</button>' +
+                '<button class="avatar-pair-swap" type="button" data-avatar-pair-action="swap" data-pair-id="' + pairId + '">交换 A/B</button>' +
+                '<button class="avatar-pair-unlink" type="button" data-avatar-pair-action="unlink" data-pair-id="' + pairId + '">解除配对</button></div></div>' +
+                '<div class="avatar-pair-photos">' +
+                    '<button class="avatar-pair-side' + (first.active ? ' is-active' : '') + '" type="button" data-avatar-pair-action="use" data-avatar-id="' + firstId + '"><img data-avatar-pair-asset="' + firstAsset + '" alt="' + firstLabel + '" loading="lazy" decoding="async"><span>' + (first.active ? 'A · 当前头像' : 'A · 设为当前') + '</span></button>' +
+                    '<button class="avatar-pair-side' + (second.active ? ' is-active' : '') + '" type="button" data-avatar-pair-action="use" data-avatar-id="' + secondId + '"><img data-avatar-pair-asset="' + secondAsset + '" alt="' + secondLabel + '" loading="lazy" decoding="async"><span>' + (second.active ? 'B · 当前头像' : 'B · 设为当前') + '</span></button>' +
+                '</div>' +
+            '</article>';
+        }).join('') + '</div>' : '<div class="avatar-pair-empty">配对头像会在这里并排展示；解除配对不会删除两张原图。</div>';
+    }
+    if (!items.length) {
+        grid.innerHTML = '<div class="avatar-library-empty"><span class="avatar-library-empty-mark">＋</span><strong>这里还没有收藏头像</strong><span>添加几张照片，为这个角色建立自己的头像档案。</span></div>';
+        if (legacyReady && !role.avatar) setAvatarLibraryStatus('还没有收藏头像，添加一张作为这个角色的专属头像。', 'info');
+        return;
+    }
+
+    grid.innerHTML = items.map(function (item, index) {
+        const id = escapeHtml(item.id);
+        const assetId = escapeHtml(item.assetId);
+        const label = escapeHtml(item.label || ('头像 ' + String(index + 1)));
+        const active = item.active;
+        const isPaired = !!pairedPortraitIds[item.id];
+        const isPairPicked = avatarPairDraftIds.indexOf(item.id) >= 0;
+        const originLabel = item.source === 'chat' ? '聊天候选' : (item.source === 'legacy' ? '原有头像' : '已上传');
+        return '<article class="avatar-library-card' + (active ? ' is-active' : '') + '">' +
+            '<button class="avatar-library-preview" type="button" data-avatar-action="select" data-avatar-id="' + id + '" aria-pressed="' + (active ? 'true' : 'false') + '" aria-label="' + (active ? '当前头像：' : '设为当前头像：') + label + '">' +
+                '<span class="avatar-library-photo"><img data-avatar-asset="' + assetId + '" alt="' + label + '" loading="lazy" decoding="async"><span class="avatar-library-current">正在使用</span></span>' +
+                '<span class="avatar-library-label">' + label + '<span class="avatar-library-origin">' + originLabel + '</span></span>' +
+                '<span class="avatar-library-select-label">' + (active ? '当前头像' : '设为当前') + '</span>' +
+            '</button>' +
+            '<button class="avatar-pair-pick' + (isPairPicked ? ' is-selected' : '') + '" type="button" data-avatar-pair-action="pick" data-avatar-id="' + id + '"' + (isPaired ? ' disabled title="这张头像已经属于一组配对"' : '') + '>' + (isPaired ? '已配对' : (isPairPicked ? '已选入配对' : '选择配对')) + '</button>' +
+            '<button class="avatar-library-remove" type="button" data-avatar-action="remove" data-avatar-id="' + id + '"' + (active || isPaired ? ' disabled aria-disabled="true" title="' + (active ? '先切换当前头像再移除' : '先解除配对再移除') + '"' : '') + '>移除</button>' +
+        '</article>';
+    }).join('');
+
+    const images = Array.prototype.slice.call(grid.querySelectorAll('img[data-avatar-asset]'));
+    if (pairContainer) {
+        Array.prototype.push.apply(images, Array.prototype.slice.call(pairContainer.querySelectorAll('img[data-avatar-pair-asset]')));
+    }
+    await Promise.all(images.map(async function (image) {
+        const assetId = image.getAttribute('data-avatar-asset') || image.getAttribute('data-avatar-pair-asset');
+        const resolved = await window.RoleAvatarLibrary.toObjectUrl(assetId);
+        if (!resolved || !resolved.ok || !resolved.value) {
+            image.classList.add('is-missing');
+            image.alt = '头像暂时无法读取';
+            return;
+        }
+        if (token !== avatarLibraryRenderToken || (!grid.contains(image) && !(pairContainer && pairContainer.contains(image)))) {
+            try { resolved.value.revoke(); } catch (error) {}
+            return;
+        }
+        avatarLibraryObjectUrls.push(resolved.value);
+        image.src = resolved.value.url;
+    }));
+
+    if (token === avatarLibraryRenderToken && legacyReady) {
+        const active = window.RoleAvatarLibrary.getActive(roleId);
+        if (active) setAvatarLibraryStatus('已保存 ' + items.length + ' 张头像 · 当前头像已标记', 'success');
+        else setAvatarLibraryStatus('已保存 ' + items.length + ' 张头像', 'info');
+    }
+}
+
+function openAvatarLibraryUpload() {
+    if (!currentProfileRoleId) return;
+    const input = document.getElementById('avatarLibraryFileInput');
+    if (!input) {
+        setAvatarLibraryStatus('头像上传入口暂不可用，请刷新后重试。', 'error');
+        return;
+    }
+    portraitPurpose = 'library';
+    input.value = '';
+    input.click();
+}
+
+async function selectRoleAvatarFromLibrary(avatarId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library) return;
+    const item = library.find(roleId, avatarId);
+    if (!item) {
+        setAvatarLibraryStatus('这张头像不属于当前角色，未进行更改。', 'error');
+        return;
+    }
+
+    setAvatarLibraryStatus('正在切换当前头像…', 'info');
+    const resolved = await library.toDataUrl(item.assetId);
+    if (!resolved || !resolved.ok || typeof resolved.value !== 'string') {
+        setAvatarLibraryStatus('图片暂时无法读取，原头像没有变化。', 'error');
+        return;
+    }
+
+    const roles = loadRoles();
+    const target = roles.find(function (role) { return String(role.id) === roleId; });
+    if (!target) {
+        setAvatarLibraryStatus('找不到当前角色，原头像没有变化。', 'error');
+        return;
+    }
+
+    const previousAvatar = target.avatar || '';
+    const previousAssetId = target.avatarAssetId || '';
+    const previousActive = library.getActive(roleId);
+    const activated = library.setActive(roleId, item.id);
+    if (!activated.ok) {
+        setAvatarLibraryStatus('当前头像标记保存失败，未更改角色资料。', 'error');
+        return;
+    }
+
+    target.avatar = resolved.value;
+    target.avatarAssetId = item.assetId;
+    if (!saveRoles(roles)) {
+        target.avatar = previousAvatar;
+        target.avatarAssetId = previousAssetId;
+        library.setActive(roleId, previousActive ? previousActive.id : '');
+        setAvatarLibraryStatus('保存失败，已恢复原头像。请检查浏览器存储空间。', 'error');
+        return;
+    }
+
+    renderRoleProfile();
+    setAvatarLibraryStatus('已设为当前头像。聊天列表与角色资料会读取这份角色头像。', 'success');
+}
+
+function toggleRoleAvatarPairDraft(avatarId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library) return;
+    const item = library.find(roleId, avatarId);
+    if (!item) return;
+    const existingPair = typeof library.getPairForAvatar === 'function'
+        ? library.getPairForAvatar(roleId, item.id) : null;
+    if (existingPair) {
+        setAvatarLibraryStatus('这张头像已经属于一组配对，请先解除原配对。', 'error');
+        return;
+    }
+    const index = avatarPairDraftIds.indexOf(item.id);
+    if (index >= 0) avatarPairDraftIds.splice(index, 1);
+    else if (avatarPairDraftIds.length >= 2) {
+        setAvatarLibraryStatus('一组配对只能选择两张头像。先取消一张再重新选择。', 'info');
+        return;
+    } else avatarPairDraftIds.push(item.id);
+    avatarPairDraftRoleId = roleId;
+    renderAvatarLibrary(roleId);
+}
+
+function cancelRoleAvatarPairDraft() {
+    avatarPairDraftIds = [];
+    avatarPairDraftRoleId = String(currentProfileRoleId || '');
+    if (avatarPairDraftRoleId) renderAvatarLibrary(avatarPairDraftRoleId);
+}
+
+async function createRoleAvatarPairFromDraft() {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || avatarPairDraftIds.length !== 2 || typeof library.linkPair !== 'function') return;
+    const ids = avatarPairDraftIds.slice();
+    const result = library.linkPair(roleId, ids[0], ids[1], { source: 'manual', label: '手动配对' });
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message ? result.error.message : '配对没有保存成功，原头像均已保留。', 'error');
+        return;
+    }
+    avatarPairDraftIds = [];
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('已建立配对，两张头像仍可分别设为当前头像。', 'success');
+}
+
+async function renameRoleAvatarPair(pairId, label) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || typeof library.renamePair !== 'function') return;
+    const result = library.renamePair(roleId, pairId, label);
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message ? result.error.message : '配对名称没有保存成功。', 'error');
+        return;
+    }
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('配对名称已更新。', 'success');
+}
+
+async function swapRoleAvatarPair(pairId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || typeof library.swapPair !== 'function') return;
+    const result = library.swapPair(roleId, pairId);
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message ? result.error.message : '交换配对顺序失败，原有头像没有变化。', 'error');
+        return;
+    }
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('已交换配对头像 A/B 顺序，当前使用的头像没有改变。', 'success');
+}
+
+async function unlinkRoleAvatarPair(pairId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library || typeof library.unlinkPair !== 'function') return;
+    if (!confirm('只解除这两张头像之间的配对关系？两张原图仍会保留在头像收藏中。')) return;
+    setAvatarLibraryStatus('正在解除配对…', 'info');
+    const result = library.unlinkPair(roleId, pairId);
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message ? result.error.message : '解除配对失败，原有收藏没有变化。', 'error');
+        return;
+    }
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('已解除配对，两张头像仍保留在收藏中。', 'success');
+}
+
+async function removeRoleAvatarFromLibrary(avatarId) {
+    const roleId = String(currentProfileRoleId || '');
+    const library = window.RoleAvatarLibrary;
+    if (!roleId || !library) return;
+    const item = library.find(roleId, avatarId);
+    if (!item) return;
+    if (item.active) {
+        setAvatarLibraryStatus('当前头像不能直接移除，请先切换到另一张。', 'error');
+        return;
+    }
+    if (!confirm('从这个角色的头像收藏中移除这张图片？聊天里已经发送的图片不会受影响。')) return;
+
+    setAvatarLibraryStatus('正在移除头像…', 'info');
+    const result = await library.remove(roleId, avatarId);
+    if (!result || !result.ok) {
+        setAvatarLibraryStatus(result && result.error && result.error.message
+            ? result.error.message : '移除失败，图片没有从图库中删除。', 'error');
+        return;
+    }
+    await renderAvatarLibrary(roleId);
+    setAvatarLibraryStatus('已从这个角色的头像收藏中移除。', 'success');
+}
+
 function escapeHtml(str) {
     return String(str == null ? '' : str).replace(/[&<>"']/g, m => ({
         '&': '&amp;',
@@ -226,6 +680,10 @@ function renderRoleList() {
 }
 
 function showAppView(viewId) {
+    if (viewId !== 'profileView') {
+        avatarPairDraftIds = [];
+        avatarPairDraftRoleId = '';
+    }
     const viewIds = ['listView', 'profileView', 'relationshipView', 'npcProfileView', 'npcEditorView', 'lifeView', 'editorView'];
     viewIds.forEach(function (id) {
         const el = document.getElementById(id);
@@ -300,6 +758,15 @@ function renderRoleProfile() {
                 '</button>' +
             '</div>' +
         '</section>' +
+        '<section class="avatar-library-section" aria-labelledby="avatarLibraryTitle">' +
+            '<div class="avatar-library-heading"><div><div class="avatar-library-kicker">PORTRAIT ARCHIVE / PRIVATE COLLECTION</div><h3 id="avatarLibraryTitle">头像收藏</h3><p>每个角色独立保存，互不混用。</p></div>' +
+            '<button class="avatar-library-add" type="button" data-profile-action="avatar-add"><span aria-hidden="true">＋</span> 添加头像</button></div>' +
+            '<div class="avatar-library-status" id="avatarLibraryStatus" aria-live="polite" role="status"></div>' +
+            '<div class="avatar-pair-heading"><h4>配对头像</h4><p>识别为一组的两张图片会并排关联保存，也可以手动选择。</p></div>' +
+            '<div id="avatarPairBuilder" class="avatar-pair-builder"></div>' +
+            '<div id="avatarPairList" class="avatar-pair-container"></div>' +
+            '<div class="avatar-library-grid" id="avatarLibraryGrid"><div class="avatar-library-empty">正在载入头像…</div></div>' +
+        '</section>' +
         '<div class="profile-section-kicker">CHARACTER SETTINGS / 角色设定</div>' +
         '<div class="profile-branch-list">' +
             '<button class="profile-branch" type="button" data-profile-action="basic"><span class="profile-branch-index">01</span><span class="profile-branch-copy"><span class="profile-branch-title">基本资料与人设</span><span class="profile-branch-desc">身份、性格、成长背景与人物设定</span></span><span class="profile-branch-arrow">›</span></button>' +
@@ -313,16 +780,59 @@ function renderRoleProfile() {
         '<p class="profile-bottom-note">人物关系和生活记录只属于这个主角色。其他主角色不会自动继承这些人物或关系。</p>';
 
     content.onclick = function (event) {
+        const pairButton = event.target.closest ? event.target.closest('[data-avatar-pair-action]') : null;
+        if (pairButton) {
+            event.preventDefault();
+            const pairAction = pairButton.getAttribute('data-avatar-pair-action');
+            if (pairAction === 'unlink') unlinkRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
+            if (pairAction === 'swap') swapRoleAvatarPair(pairButton.getAttribute('data-pair-id'));
+            if (pairAction === 'rename') {
+                const pairId = pairButton.getAttribute('data-pair-id');
+                const labelInput = content.querySelector('[data-avatar-pair-label-input="' + pairId + '"]');
+                renameRoleAvatarPair(pairId, labelInput ? labelInput.value : '');
+            }
+            if (pairAction === 'use') selectRoleAvatarFromLibrary(pairButton.getAttribute('data-avatar-id'));
+            if (pairAction === 'pick') toggleRoleAvatarPairDraft(pairButton.getAttribute('data-avatar-id'));
+            if (pairAction === 'create') createRoleAvatarPairFromDraft();
+            if (pairAction === 'cancel') cancelRoleAvatarPairDraft();
+            return;
+        }
+        const avatarButton = event.target.closest ? event.target.closest('[data-avatar-action]') : null;
+        if (avatarButton) {
+            event.preventDefault();
+            const avatarAction = avatarButton.getAttribute('data-avatar-action');
+            const avatarId = avatarButton.getAttribute('data-avatar-id');
+            if (avatarAction === 'select') selectRoleAvatarFromLibrary(avatarId);
+            if (avatarAction === 'remove' && !avatarButton.disabled) removeRoleAvatarFromLibrary(avatarId);
+            return;
+        }
         const button = event.target.closest ? event.target.closest('[data-profile-action]') : null;
         if (!button) return;
         const action = button.getAttribute('data-profile-action');
+        if (action === 'avatar-add') openAvatarLibraryUpload();
         if (action === 'basic') openMainRoleEditor(false);
         if (action === 'tone') openMainRoleEditor(true);
         if (action === 'relationships') showAppView('relationshipView');
         if (action === 'life') showAppView('lifeView');
     };
+    content.onkeydown = function (event) {
+        const labelInput = event.target && event.target.closest
+            ? event.target.closest('[data-avatar-pair-label-input]') : null;
+        if (!labelInput || !content.contains(labelInput)) return;
+        // Do not intercept Enter/Escape while a CJK IME is composing a candidate.
+        if (event.isComposing || event.keyCode === 229) return;
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            renameRoleAvatarPair(labelInput.getAttribute('data-avatar-pair-label-input'), labelInput.value);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            labelInput.value = labelInput.getAttribute('data-saved-value') || '';
+            labelInput.blur();
+        }
+    };
 
     initPersonaCollapse(content);
+    renderAvatarLibrary(role.id);
 }
 
 /**
@@ -655,26 +1165,31 @@ function handleRoleCardClick(event, roleId) {
 }
 
 // ====== 头像上传与 Canvas 压缩 ======
+function portraitFeedback(message, state) {
+    if (portraitPurpose === 'library') setAvatarLibraryStatus(message, state);
+    else setSaveStatus(message, state);
+}
+
 function handleAvatarUpload(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     e.target.value = '';
     if (!/^image\//i.test(file.type || '')) {
-        setSaveStatus('这不是可识别的图片文件，请重新选择。', 'error');
+        portraitFeedback('这不是可识别的图片文件，请重新选择。', 'error');
         return;
     }
     if (file.size > 12 * 1024 * 1024) {
-        setSaveStatus('图片超过 12MB，请选择较小的图片。', 'error');
+        portraitFeedback('图片超过 12MB，请选择较小的图片。', 'error');
         return;
     }
     const reader = new FileReader();
     reader.onerror = function() {
-        setSaveStatus('图片读取失败，请重试。', 'error');
+        portraitFeedback('图片读取失败，请重试。', 'error');
     };
     reader.onload = function(ev) {
         const img = new Image();
         img.onerror = function() {
-            setSaveStatus('图片无法读取，请换一张照片。', 'error');
+            portraitFeedback('图片无法读取，请换一张照片。', 'error');
         };
         img.onload = function() {
             cropSourceImage = img;
@@ -726,16 +1241,57 @@ function confirmPortraitCrop() {
         const ctx = output.getContext('2d');
         if (!ctx) throw new Error('canvas unavailable');
         ctx.drawImage(canvas, 0, 0, 600, 600, 0, 0, 200, 200);
+
+        if (portraitPurpose === 'library') {
+            const roleId = String(currentProfileRoleId || '');
+            if (!roleId || !window.RoleAvatarLibrary) {
+                portraitFeedback('头像图库暂不可用，原有头像没有变化。', 'error');
+                return;
+            }
+            const confirmButton = document.getElementById('btnConfirmPortrait');
+            if (confirmButton) confirmButton.disabled = true;
+            output.toBlob(function (blob) {
+                if (!blob) {
+                    if (confirmButton) confirmButton.disabled = false;
+                    portraitFeedback('图片压缩失败，请重试。', 'error');
+                    return;
+                }
+                window.RoleAvatarLibrary.add(roleId, blob, {
+                    label: '头像 ' + String(window.RoleAvatarLibrary.list(roleId).length + 1),
+                    source: 'upload',
+                    mimeType: 'image/jpeg'
+                }).then(async function (saved) {
+                    if (confirmButton) confirmButton.disabled = false;
+                    if (!saved || !saved.ok) {
+                        portraitFeedback(saved && saved.error && saved.error.message
+                            ? saved.error.message : '头像保存失败，原头像没有变化。', 'error');
+                        return;
+                    }
+                    const studio = document.getElementById('portraitStudio');
+                    if (studio) studio.classList.add('hidden');
+                    cropSourceImage = null;
+                    portraitPurpose = 'profile';
+                    await renderAvatarLibrary(roleId);
+                    setAvatarLibraryStatus('新头像已加入这个角色的收藏。选择缩略图即可设为当前头像。', 'success');
+                }).catch(function (error) {
+                    if (confirmButton) confirmButton.disabled = false;
+                    portraitFeedback(error && error.message ? error.message : '头像保存失败，请重试。', 'error');
+                });
+            }, 'image/jpeg', 0.88);
+            return;
+        }
+
         avatarDataUrl = output.toDataURL('image/jpeg', 0.88);
         updateAvatarPreview();
         const studio = document.getElementById('portraitStudio');
         if (studio) studio.classList.add('hidden');
         cropSourceImage = null;
+        portraitPurpose = 'profile';
         persistEditorDraft();
         setSaveStatus('头像已加入待保存资料', 'info');
     } catch (err) {
         console.error('头像裁切失败:', err);
-        setSaveStatus('头像处理失败，原头像未更改。请重试。', 'error');
+        portraitFeedback('头像处理失败，原头像未更改。请重试。', 'error');
     }
 }
 
@@ -744,7 +1300,10 @@ function cancelPortraitCrop() {
     if (studio) studio.classList.add('hidden');
     cropSourceImage = null;
     const input = document.getElementById('avatarFileInput');
+    const libraryInput = document.getElementById('avatarLibraryFileInput');
     if (input) input.value = '';
+    if (libraryInput) libraryInput.value = '';
+    portraitPurpose = 'profile';
 }
 
 function updateAvatarPreview() {
@@ -769,6 +1328,7 @@ function updateAvatarPreview() {
 
 // 打开添加角色
 function openAddRole() {
+    portraitPurpose = 'profile';
     editorReturnView = 'listView';
     document.getElementById('editorTitle').textContent = 'New Character';
     document.getElementById('editRoleId').value = '';
@@ -789,6 +1349,7 @@ function openAddRole() {
 
 // 打开编辑旧角色
 function openEditRole(id) {
+    portraitPurpose = 'profile';
     editorReturnView = 'profileView';
     const roles = loadRoles();
     const target = roles.find(r => r.id === id);
@@ -844,6 +1405,7 @@ function handleSaveRole() {
         target.tone = toneVal;
         target.appearanceDescription = appearanceVal;
         target.styleKeywords = styleKeywordsVal;
+        if (String(target.avatar || '') !== String(avatarDataUrl || '')) target.avatarAssetId = '';
         target.avatar = avatarDataUrl || '';
         target.avatarBg = selectedColor;
         target.worldBookIds = selectedWorldBookIds.slice();
@@ -858,7 +1420,8 @@ function handleSaveRole() {
             tone: toneVal,
             appearanceDescription: appearanceVal,
             styleKeywords: styleKeywordsVal,
-            worldBookIds: selectedWorldBookIds.slice()
+            worldBookIds: selectedWorldBookIds.slice(),
+            replyBubbleMode: 'auto'
         });
     }
 
@@ -883,24 +1446,63 @@ function handleSaveRole() {
 }
 
 
-// 删除角色
-function handleDeleteRole(id) {
+// 删除角色：先保存角色列表，再等待头像引用清理；失败会进入持久化重试队列。
+async function handleDeleteRole(id) {
     const roles = loadRoles();
-    const target = roles.find(r => r.id === id);
+    const target = roles.find(function (role) { return String(role.id) === String(id); });
     if (!target) return;
 
     const confirmed = confirm(`确定要删除角色"${target.name}"吗？`);
     if (!confirmed) return;
 
-    const updatedRoles = roles.filter(r => r.id !== id);
-    saveRoles(updatedRoles);
-
-    if (getCurrentPhoneContactId() === id) {
-        localStorage.removeItem(CURRENT_CONTACT_KEY);
-        localStorage.removeItem(LEGACY_CONTACT_KEY);
+    const updatedRoles = roles.filter(function (role) { return String(role.id) !== String(id); });
+    if (!saveRoles(updatedRoles)) {
+        alert('角色删除失败，原有资料和头像均已保留。');
+        return;
     }
 
-    renderRoleList();
+    try {
+        if (String(getCurrentPhoneContactId() || '') === String(id)) {
+            localStorage.removeItem(CURRENT_CONTACT_KEY);
+            localStorage.removeItem(LEGACY_CONTACT_KEY);
+        }
+    } catch (error) {
+        console.warn('角色已删除，但当前联系人状态暂时无法清理:', error);
+    }
+    try {
+        renderRoleList();
+    } catch (error) {
+        console.warn('角色已删除，但角色列表刷新失败:', error);
+    }
+
+    const library = window.RoleAvatarLibrary;
+    if (!library || typeof library.removeRole !== 'function') {
+        const queued = enqueueRoleAvatarCleanup(id);
+        alert(queued
+            ? '角色已删除，但头像清理模块暂时不可用，系统会在下次打开角色档案页时重试。'
+            : '角色已删除，但头像清理模块不可用，且清理任务无法写入重试队列。请重新打开角色档案页检查。');
+        return;
+    }
+
+    try {
+        const result = await library.removeRole(String(id));
+        if (!result || !result.ok) {
+            const queued = enqueueRoleAvatarCleanup(id);
+            alert(queued
+                ? '角色已删除，但头像资源清理暂时失败。系统已记录任务，会在下次打开角色档案页时自动重试。'
+                : '角色已删除，但头像清理失败，重试任务也未能保存。请重新打开角色档案页检查。');
+            return;
+        }
+        if (result.value && Number(result.value.retained) > 0) {
+            console.info('角色头像引用已清理；仍被其他位置引用或暂时无法删除的媒体资源数量:', result.value.retained);
+        }
+    } catch (error) {
+        const queued = enqueueRoleAvatarCleanup(id);
+        console.warn('角色头像资产清理未完成:', error);
+        alert(queued
+            ? '角色已删除，但头像清理暂时失败。系统已记录任务，会在下次打开角色档案页时自动重试。'
+            : '角色已删除，但头像清理失败，重试任务也未能保存。请重新打开角色档案页检查。');
+    }
 }
 
 // ====== 草稿、保存反馈与编辑状态 ======
@@ -1077,8 +1679,10 @@ document.getElementById('worldBookBindList').addEventListener('click', function(
     setSaveStatus('未保存', 'info');
 });
 document.getElementById('avatarBubbleWrapper').addEventListener('click', function() {
+    portraitPurpose = 'profile';
     document.getElementById('avatarFileInput').click();
 });
+document.getElementById('avatarLibraryFileInput').addEventListener('change', handleAvatarUpload);
 document.getElementById('avatarFileInput').addEventListener('change', handleAvatarUpload);
 document.getElementById('portraitZoom').addEventListener('input', function() {
     cropZoom = Number(this.value) / 100;
@@ -1165,6 +1769,9 @@ if (cropCanvas) {
 
 // 页面初始化
 renderRoleList();
+retryPendingRoleAvatarCleanup().catch(function (error) {
+    console.warn('角色头像清理队列暂时无法执行:', error);
+});
 
 // ====== 列表页返回按钮：根据来源决定去哪 ======
 // from=contacts → 回通讯录；其他情况（从桌面点进来）→ 回主页 index.html

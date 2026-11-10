@@ -108,11 +108,13 @@
     }
 
     /* ---------- 未读统计 ---------- */
-    // 统计单个会话未读：该会话里 time > lastread 的 assistant 消息条数
+    // 统计单个会话未读：该会话里 time > lastread 的 assistant 消息条数。
+    // 多气泡回复按 turnId 去重：同一轮回复拆成多条消息也只算 1 条未读。
     function unreadOf(contact) {
         var history = readHistory(contact.id);
         var lastread = Number(safeGet('chat_lastread_' + contact.id)) || 0;
         var count = 0, newest = null;
+        var seenTurns = Object.create(null);
         for (var i = 0; i < history.length; i++) {
             var m = history[i];
             if (!m) continue;
@@ -120,6 +122,15 @@
             if (m.isError || m.type === 'call' || m.type === 'system') continue;
             var t = Number(m.time) || 0;
             if (t > lastread) {
+                // 老记录没有 turnId，保持逐条计数；新记录按整轮回复去重。
+                if (m.turnId) {
+                    var turnKey = 'turn:' + String(m.turnId);
+                    if (seenTurns[turnKey]) {
+                        if (!newest || t > Number(newest.time)) newest = m;
+                        continue;
+                    }
+                    seenTurns[turnKey] = true;
+                }
                 count++;
                 if (!newest || t > Number(newest.time)) newest = m;
             }
