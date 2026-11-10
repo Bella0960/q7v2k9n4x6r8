@@ -5555,27 +5555,38 @@
         // AI 气泡动画期间可能又收到云端消息。动画结束后重新读取最新记录，
         // 只补回本轮 AI 回复（如被并发旧快照覆盖），后续红包/转账/图片/通话卡
         // 必须继续使用这份新历史，不能再拿动画开始前的数组保存。
-        function refreshHistoryAfterAssistantPacing(snapshot, currentUserMid, currentUserIndex, assistantMessage) {
+        function refreshHistoryAfterAssistantPacing(snapshot, currentUserMid, currentUserIndex, assistantMessages) {
             var latest = refreshSendHistorySnapshot(snapshot, currentUserMid, currentUserIndex);
             if (!Array.isArray(latest)) return null;
 
-            if (assistantMessage && typeof assistantMessage === 'object') {
-                ensureMid(assistantMessage);
-                var assistantMid = String(assistantMessage.mid || '');
+            var expected = Array.isArray(assistantMessages)
+                ? assistantMessages.filter(function (item) { return item && typeof item === 'object'; })
+                : (assistantMessages && typeof assistantMessages === 'object' ? [assistantMessages] : []);
+            if (!expected.length) return latest;
+
+            var missing = [];
+            expected.forEach(function (message) {
+                ensureMid(message);
+                var assistantMid = String(message.mid || '');
                 var alreadyPresent = assistantMid && latest.some(function (item) {
                     return item && String(item.mid || '') === assistantMid;
                 });
-                if (!alreadyPresent) {
-                    latest.push(assistantMessage);
-                    if (!saveMessages(latest)) return null;
-                }
-                var verified = loadMessages();
-                if (!Array.isArray(verified) || !verified.some(function (item) {
-                    return item && String(item.mid || '') === assistantMid;
-                })) return null;
-                return verified;
+                if (!alreadyPresent) missing.push(message);
+            });
+            if (missing.length) {
+                missing.forEach(function (message) { latest.push(message); });
+                if (!saveMessages(latest)) return null;
             }
-            return latest;
+
+            var verified = loadMessages();
+            if (!Array.isArray(verified)) return null;
+            var allPresent = expected.every(function (message) {
+                var assistantMid = String(message.mid || '');
+                return assistantMid && verified.some(function (item) {
+                    return item && String(item.mid || '') === assistantMid;
+                });
+            });
+            return allPresent ? verified : null;
         }
 
         // 3. 核心真实 AI 聊天发送逻辑 (含历史记录、人设构造与 15 秒超时控制)
